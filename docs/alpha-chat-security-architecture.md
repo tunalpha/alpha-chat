@@ -961,28 +961,26 @@ Queste sono le attività da completare **prima di scrivere la prima riga di codi
 
 ---
 
-#### 0-SEC-01 — Decisione definitiva su E2E: Strada A o Strada B
-**Priorità: Bloccante**
+#### 0-SEC-01 — ✅ DECISIONE PRESA: E2E dal Giorno 1
+**Priorità: Bloccante → CHIUSA**
+**Data decisione: Luglio 2025**
 
-Prima di ogni altra cosa, il team deve scegliere e documentare:
+**Decisione: Strada B — Signal Protocol dalla Versione 1.**
 
-**Strada A — Beta pubblica con TLS + onestà:**
-- La beta pubblica viene dichiarata esplicitamente come "non E2E" nella privacy policy e nelle FAQ
-- Il copy nell'app usa "messaggi protetti" o "crittografia in transito" — mai "E2E"
-- Signal Protocol viene implementato in V1.1 (sprint aggiuntivo post-beta)
-- Vantaggio: beta pubblica in 18 settimane come pianificato
-- Svantaggio: competizione diretta su privacy è più difficile da vincere
+Alpha Chat è E2E. Non "forse". Non "in V1.1". Non "quando saremo pronti". Dal primo messaggio inviato da un utente reale, il contenuto è cifrato con Signal Protocol e il server non può leggerlo.
 
-**Strada B — E2E prima della beta pubblica:**
-- Signal Protocol (libsignal) viene aggiunto come Sprint 2.5 tra Chat Core ed Eliminazione Messaggi
-- La timeline si estende di 3–4 settimane (22 settimane totali invece di 18)
-- Il copy usa "E2E" liberamente e onestamente
-- Vantaggio: credibilità privacy dall'inizio, nessun debito tecnico da pagare dopo
-- Svantaggio: timeline più lunga
+**Motivazione:**
+Tra cinque anni nessun utente dirà "uso Alpha Chat perché ha il wallet" o "perché ha più feature di WhatsApp". Lo diranno perché si fidano. La fiducia è il prodotto reale — e la E2E è l'unico modo per guadagnarsela in modo verificabile, non solo dichiararlo.
 
-**Raccomandazione:** Strada B. Una chat che non è E2E è un prodotto in competizione su funzionalità con WhatsApp — dove WhatsApp vince sempre. Una chat E2E dal primo giorno è un prodotto in competizione su fiducia con Signal — dove c'è spazio di mercato reale.
+Una chat senza E2E compete sulle funzionalità contro WhatsApp, che ha 2 miliardi di utenti e un team di migliaia di ingegneri. Una chat E2E dal primo giorno compete sulla fiducia — e lì c'è spazio reale.
 
-**Output richiesto:** Decisione documentata nel changelog del documento MVP con motivazione.
+**Implicazioni architetturali:**
+- Signal Protocol (libsignal) entra come Sprint 2.5, tra Chat Core e Eliminazione Messaggi
+- La timeline si estende a ~22 settimane totali (da 18)
+- Ogni componente del sistema — database, backup, notifiche, allegati, multi-device, ricerca — è progettato sapendo che il server non accede mai al plaintext
+- Il documento MVP viene aggiornato per riflettere E2E come requisito non negoziabile in tutti i componenti rilevanti
+
+**Questa decisione è chiusa. Non si riapre.**
 
 ---
 

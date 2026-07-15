@@ -1,10 +1,16 @@
 # Alpha Chat — MVP Architecture
 ### Startup First. Ship Fast. Grow Without Rewriting.
-> Versione 2.0 — Luglio 2025
+> Versione 3.0 — Luglio 2025
 > Status: Architecture Design — Pre-Development
 > Contesto: 1 sviluppatore principale + AI. Target: Beta pubblica nel minor tempo possibile.
 
 ---
+
+## Changelog v3.0
+- **E2E:** decisione definitiva — Signal Protocol (libsignal) dalla Versione 1. Non in V2, non "più avanti". Dal primo messaggio. La sezione 8.2 è riscritta integralmente.
+- **Timeline:** aggiornata a ~22 settimane (Sprint 2.5 aggiunto per Signal Protocol)
+- **Sicurezza:** allineamento con `alpha-chat-security-architecture.md` — ES256 (non RS256), JWT blocklist Redis, HMAC-SHA256 per phone hashing, signed URL TTL 1h
+- **Feature filter:** ogni nuova funzionalità deve superare tre domande prima di entrare nel documento (vedi Sezione 1.4)
 
 ## Changelog v2.0
 - **Database:** sostituito PostgreSQL con MongoDB Atlas come database unico per V1
@@ -640,11 +646,33 @@ Oltre ~500.000 MAU, quando il costo Stream (~$2.000–5.000/mese) supera il cost
 
 ---
 
-### 8.2 Crittografia E2E
+### 8.2 Crittografia E2E — Signal Protocol dalla Versione 1
 
-Stream supporta E2E tramite SDK. Per la beta chiusa, si usa TLS 1.3 in transit + MongoDB Atlas Encryption at Rest. Per la beta pubblica, si attiva l'E2E di Stream.
+**Decisione definitiva (Luglio 2025):** Alpha Chat implementa Signal Protocol da V1. Non esiste una "fase intermedia" con solo TLS. Dal primo messaggio inviato in beta pubblica, il server non può leggere il contenuto.
 
-**In V2:** migrazione a Signal Protocol puro con gestione chiavi interamente client-side. L'architettura backend non cambia.
+**Libreria:** `@signalapp/libsignal-client` — binding ufficiale Node.js della libreria libsignal mantenuta da Signal Foundation. Open source, audit pubblici, zero algoritmi proprietari.
+
+**Protocolli adottati:**
+- **X3DH (Extended Triple Diffie-Hellman):** key agreement iniziale tra due utenti che non si sono mai scritti. Basato su Curve25519 (RFC 7748).
+- **Double Ratchet Algorithm:** ogni messaggio usa una chiave derivata diversa. Forward secrecy garantita — la compromissione di una chiave non espone i messaggi passati.
+- **AES-256-GCM:** cifratura simmetrica autenticata (AEAD) di ogni messaggio. Standard NIST.
+
+**Cosa il server vede:**
+```
+{ ciphertext: "Ax3B9f...", iv: "kj2...", sender_key_id: 42 }
+```
+Il contenuto è opaco. Il server Alpha Chat e il server Stream Chat non possono decifrarlo.
+
+**Key Store:**
+- iOS: Secure Enclave / Keychain Services (hardware-backed)
+- Android: Android Keystore System (TEE hardware-backed)
+- Web: SubtleCrypto API + IndexedDB cifrata
+
+**Sincronizzazione multi-device:** ogni device ha una propria sessione E2E. Un messaggio inviato a un utente con 3 device viene cifrato 3 volte — una copia per device — e consegnato separatamente. Stream gestisce il fan-out; ogni copia è indipendente e opaca.
+
+**Sprint dedicato:** Sprint 2.5 (3–4 settimane), inserito tra Sprint 2 (Chat Core) e Sprint 3 (Eliminazione Messaggi). Vedi Sezione 21 per la roadmap aggiornata.
+
+**Nota per la beta chiusa (primo gruppo ristretto di test):** la beta chiusa può avvenire con TLS + at-rest encryption dichiarandolo onestamente agli utenti invitati ("stai testando una versione non ancora E2E"). La beta **pubblica** non viene aperta finché Signal Protocol non è operativo e testato.
 
 ---
 
