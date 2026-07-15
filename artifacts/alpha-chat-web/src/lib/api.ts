@@ -266,7 +266,14 @@ async function requestPaginated<T>(
 // ---------------------------------------------------------------------------
 
 export async function apiRegister(input: RegisterInput): Promise<AuthResult> {
-  return request<AuthResult>("POST", "/auth/register", input);
+  return request<AuthResult>("POST", "/auth/register", {
+    username: input.username,
+    display_name: input.display_name,
+    password: input.password,
+    device_id: getDeviceId(),
+    device_name: navigator.userAgent.slice(0, 80),
+    device_type: "web" as const,
+  });
 }
 
 export async function apiLogin(input: LoginInput): Promise<AuthResult> {
@@ -275,6 +282,7 @@ export async function apiLogin(input: LoginInput): Promise<AuthResult> {
     password: input.password,
     device_id: getDeviceId(),
     device_name: navigator.userAgent.slice(0, 80),
+    device_type: "web" as const,
   });
 }
 
