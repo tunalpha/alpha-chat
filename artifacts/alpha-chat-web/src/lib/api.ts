@@ -285,6 +285,10 @@ async function requestPaginated<T>(
   let jsonBody: unknown;
   try { jsonBody = await res.json(); } catch { jsonBody = null; }
 
+  if (res.status === 401) {
+    window.dispatchEvent(new CustomEvent("auth:expired"));
+    throw new AuthExpiredError();
+  }
   if (!res.ok) {
     throw new Error(extractErrorMessage(jsonBody, `Errore ${res.status}`));
   }
@@ -298,6 +302,18 @@ async function requestPaginated<T>(
     cursor: wrapper.pagination?.cursor ?? null,
     hasMore: wrapper.pagination?.has_more ?? false,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Errori tipizzati
+// ---------------------------------------------------------------------------
+
+/** Lanciato quando il server risponde 401 (token scaduto o invalido). */
+export class AuthExpiredError extends Error {
+  constructor() {
+    super("Sessione scaduta. Effettua di nuovo il login.");
+    this.name = "AuthExpiredError";
+  }
 }
 
 // ---------------------------------------------------------------------------

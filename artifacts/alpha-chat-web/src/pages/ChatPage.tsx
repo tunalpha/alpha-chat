@@ -8,6 +8,7 @@ import {
   apiSendMessage,
   apiMarkRead,
   decodeMessage,
+  AuthExpiredError,
   type ConversationItem,
   type MessageItem,
 } from "../lib/api";
@@ -360,10 +361,15 @@ export default function ChatPage({ onNavigate }: Props) {
     try {
       const res = await apiListConversations();
       setConversations(res.items);
-    } catch { /* ignore */ } finally {
+    } catch (err) {
+      if (err instanceof AuthExpiredError) {
+        void logout();
+      }
+      // altri errori (rete, etc.) ignorati silenziosamente
+    } finally {
       setLoadingConvs(false);
     }
-  }, []);
+  }, [logout]);
 
   useEffect(() => { void loadConversations(); }, [loadConversations]);
 

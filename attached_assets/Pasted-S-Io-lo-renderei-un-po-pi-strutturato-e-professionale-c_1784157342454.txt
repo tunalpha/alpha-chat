@@ -1,0 +1,72 @@
+Sì. Io lo renderei un po’ più strutturato e professionale, così l’agente capisce che questa è una scelta di prodotto e non solo una lista di feature.
+
+⸻
+
+Visione Alpha Chat — Modalità Privacy/Militare
+
+Alpha Chat non deve essere un clone di WhatsApp o Telegram. Deve diventare la chat più orientata alla privacy.
+
+Per questo motivo, tutte le funzioni già presenti nell’interfaccia devono essere realmente implementate e non rimanere solo placeholder.
+
+Priorità alta
+
+Implementare completamente:
+
+* Allegati (foto, video, documenti)
+* Messaggi vocali
+* Chiamate vocali
+* Videochiamate
+* Eliminazione messaggi:
+    * Elimina per me
+    * Elimina per tutti
+* Modifica messaggi
+* Risposta ai messaggi
+* Reazioni emoji
+* Inoltro messaggi
+* Messaggi fissati
+* Ricerca nella chat
+* Media condivisi
+* Blocco utenti
+* Silenzia chat
+* Cancella conversazione
+* Avatar personalizzati
+* Backup cifrati
+* Gestione notifiche
+
+Privacy come elemento distintivo
+
+Voglio eliminare completamente la ricerca pubblica degli utenti.
+
+Ogni utente deve poter generare un codice invito monouso (e relativo QR Code).
+
+Caratteristiche:
+
+* valido una sola volta;
+* oppure con scadenza configurabile (es. 5–15 minuti);
+* dopo l’utilizzo viene distrutto automaticamente;
+* non può essere riutilizzato;
+* il server conserva solo l’hash del codice;
+* nessuna possibilità di cercare utenti tramite username pubblico.
+
+L’associazione tra due utenti deve avvenire esclusivamente tramite questo sistema.
+
+Modalità “Militare”
+
+In futuro voglio introdurre una modalità opzionale che abiliti automaticamente:
+
+* E2E reale con Signal Protocol;
+* nessuna ricerca utenti;
+* solo codici invito temporanei;
+* messaggi autodistruttivi;
+* logout remoto da tutti i dispositivi;
+* verifica identità tramite QR/fingerprint;
+* protezione screenshot dove supportata;
+* blocco app con PIN/biometria.
+
+Questa deve diventare la filosofia del prodotto.
+
+Motto:
+
+Privacy by Design. Zero Tracking. Zero Knowledge.
+
+Importante: non introdurre regressioni, mantenere la UI esistente e sviluppare le funzionalità in modo incrementale, con backend, frontend, test e documentazione per ogni sprint.
