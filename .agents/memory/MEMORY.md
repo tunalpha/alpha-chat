@@ -1,0 +1,2 @@
+- [MongoDB null unique index bug](mongo-null-unique-index.md) — sparse+unique indicizza null esplicitamente; usare partialFilterExpression per campi nullable
+- [validate middleware read-only query](validate-middleware-query.md) — req.query è getter read-only in Express 5; usare Object.defineProperty per target query/params

@@ -5,6 +5,32 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ---
 
+## [0.5.0] — Sprint 5A — User Discovery — 2026-07-15
+
+### Added
+- `GET /api/v1/users/:username` — profilo pubblico privacy-aware (presence, last_seen)
+- `GET /api/v1/users/search?q=&limit=` — ricerca per prefisso username, cursor pagination
+- `src/models/presence.model.ts` — collection presenza real-time (status, last_seen, typing, recording, in_call)
+- `src/services/user.service.ts` — getUserProfile(), searchUsers()
+- `src/controllers/user.controller.ts`
+- `src/routes/v1/user.routes.ts` — montato su `/api/v1/users`
+- `src/validation/user.schemas.ts` — UserSearchSchema, UsernameParamSchema
+- `src/__tests__/user.discovery.integration.test.ts` — 17 test integrazione
+
+### Changed
+- `src/repositories/user.repository.ts` — aggiunto searchByUsername() con prefix regex su indice
+- `src/middleware/validate.middleware.ts` — fix read-only property: usa Object.defineProperty per `query` e `params`
+- `src/models/user.model.ts` — **BUG FIX**: indice `email` e `phone_hash` da `sparse` a `partialFilterExpression` (MongoDB indicizza null con sparse → E11000 su multi-user tests)
+
+### Bug Fixes
+- `validate.middleware.ts`: `req.query = data` → `Cannot set property query (read-only getter)` in Express 5 / Node.js http — sostituito con Object.defineProperty
+- `user.model.ts`: `{ unique: true, sparse: true }` su campi null-default → E11000 su seconda registrazione — sostituito con `partialFilterExpression: { $type: "string" }`
+
+### Tests
+- 93/93 ✅ (76 precedenti + 17 user discovery)
+
+---
+
 ## [0.4.0] — Sprint 4 — 2026-07-15
 
 ### Added

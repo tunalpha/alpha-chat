@@ -140,8 +140,16 @@ const userSchema = new Schema<IUserDocument>(
 // Indici (conformi a 05_Database.md)
 // ---------------------------------------------------------------------------
 
-userSchema.index({ email: 1 }, { unique: true, sparse: true });
-userSchema.index({ phone_hash: 1 }, { unique: true, sparse: true });
+// Partial index — indicizza solo email non-null (MongoDB indicizza null anche con sparse: true
+// quando il campo è esplicitamente impostato a null, causando E11000 su più utenti senza email).
+userSchema.index(
+  { email: 1 },
+  { unique: true, partialFilterExpression: { email: { $type: "string" } } },
+);
+userSchema.index(
+  { phone_hash: 1 },
+  { unique: true, partialFilterExpression: { phone_hash: { $type: "string" } } },
+);
 userSchema.index({ status: 1 });
 userSchema.index({ status: 1, createdAt: -1 });
 

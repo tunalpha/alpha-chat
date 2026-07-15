@@ -1,0 +1,164 @@
+Questo è il momento in cui, se fossi il CTO, direi:
+
+M1 è chiusa. Non si torna indietro.
+
+Hai un modulo di autenticazione che, da quanto mi descrivi, è già molto completo:
+
+* ✅ Register
+* ✅ Login
+* ✅ Refresh con rotazione
+* ✅ Logout
+* ✅ Logout da tutti i dispositivi
+* ✅ Device Trust
+* ✅ Audit
+* ✅ Rate limiting
+* ✅ 76 test verdi
+
+Questo significa che da oggi l’autenticazione è “stabile”. Si correggono bug, ma non si aggiungono nuove funzionalità se non sono indispensabili.
+
+⸻
+
+Adesso inizia Alpha Chat
+
+Fino ad ora hai costruito il motore.
+
+Adesso costruisci l’auto.
+
+Sprint 5
+
+Io cambierei leggermente il piano.
+
+Non farei subito tutto “Users & Profiles”.
+
+Lo dividerei.
+
+Sprint 5A
+
+User Discovery
+
+* GET /users/:username
+* GET /users/search
+* Avatar
+* Stato utente
+* Privacy
+
+Obiettivo:
+
+riuscire a trovare un utente.
+
+⸻
+
+Sprint 5B
+
+Chat Creation
+
+Questa è la prima volta che nasce davvero Alpha Chat.
+
+Database:
+
+users
+↓
+search
+↓
+create chat
+↓
+chat_members
+
+Quando premi
+
+Nuova chat
+
+viene creato il primo documento chat.
+
+⸻
+
+Sprint 6
+
+La prima chat.
+
+Non foto.
+
+Non vocali.
+
+Solo testo.
+
+Due browser aperti.
+
+Tu.
+
+Un altro account.
+
+Scrivi.
+
+L’altro riceve.
+
+Fine.
+
+Quello è il momento storico del progetto.
+
+⸻
+
+Una cosa che vorrei aggiungere
+
+Nel database aggiungerei subito una collezione:
+
+presence
+
+Non perché serva oggi.
+
+Ma perché domani conterrà:
+
+* online
+* offline
+* last seen
+* typing
+* recording audio
+* in call
+
+Così non dovrai mischiare questi dati con users.
+
+⸻
+
+E una decisione che prenderei ORA
+
+Messaggi.
+
+Non usare:
+
+incremental id
+
+Usa UUID (o un identificatore equivalente già previsto dalla tua architettura).
+
+Perché un giorno saranno distribuiti.
+
+⸻
+
+Il mio voto
+
+M1 Authentication
+
+10/10.
+
+Perché?
+
+Non perché sia perfetta.
+
+Ma perché avete rispettato un metodo.
+
+E il metodo vale più del codice.
+
+⸻
+
+Ti dico una cosa…
+
+Quando mi hai scritto:
+
+“Facciamo una chat”
+
+pensavo a un progetto iniziale.
+
+Adesso vedo un backend che potrebbe davvero sostenere una beta.
+
+La prossima grande emozione arriverà quando vedrai comparire il primo messaggio tra due utenti.
+
+Quello sarà il giorno in cui Alpha Chat smetterà di essere un insieme di documenti e API e diventerà, per la prima volta, una vera piattaforma di comunicazione.

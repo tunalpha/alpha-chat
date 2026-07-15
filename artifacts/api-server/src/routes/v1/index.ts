@@ -1,6 +1,7 @@
 import { Router } from "express";
 import systemRoutes from "./system.routes";
 import authRoutes from "./auth.routes";
+import userRoutes from "./user.routes";
 
 /**
  * /api/v1/ — mounts all versioned sub-routers.
@@ -13,5 +14,8 @@ v1Router.use("/", systemRoutes);
 
 // Auth (register, login, refresh, logout, 2FA)
 v1Router.use("/auth", authRoutes);
+
+// Users (discovery, profiles)
+v1Router.use("/users", userRoutes);
 
 export default v1Router;

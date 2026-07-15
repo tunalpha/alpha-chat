@@ -8,7 +8,7 @@
  *   La conversione in AppError avviene nel Service.
  */
 
-import type mongoose from "mongoose";
+import mongoose from "mongoose";
 import { UserModel, type IUserDocument } from "../models/user.model";
 import { logger } from "../lib/logger";
 
@@ -103,6 +103,47 @@ export class UserRepository {
     lockedUntil: Date,
   ): Promise<void> {
     await UserModel.findByIdAndUpdate(userId, { locked_until: lockedUntil });
+  }
+
+  /**
+   * Ricerca utenti per prefisso username (case-insensitive).
+   * Esclude l'utente corrente, sospesi e cancellati.
+   * Regex ancorata all'inizio: sfrutta l'indice su username.
+   * Nota: username contiene solo [a-z0-9_.] — nessun carattere speciale regex.
+   */
+  async searchByUsername(
+    query: string,
+    options: {
+      excludeUserId?: string;
+      limit?: number;
+      cursor?: string;
+    } = {},
+  ): Promise<IUserDocument[]> {
+    const { excludeUserId, limit = 20, cursor } = options;
+
+    const usernameFilter: Record<string, unknown> = {
+      $regex: "^" + query,
+      $options: "i",
+    };
+
+    // Cursor pagination: username > cursor (alfabetico)
+    if (cursor) {
+      usernameFilter["$gt"] = cursor;
+    }
+
+    const filter: Record<string, unknown> = {
+      username: usernameFilter,
+      status: "active",
+    };
+
+    if (excludeUserId) {
+      filter["_id"] = { $ne: new mongoose.Types.ObjectId(excludeUserId) };
+    }
+
+    return UserModel.find(filter)
+      .select("username display_name bio avatar_media_id is_verified createdAt privacy")
+      .sort({ username: 1 })
+      .limit(limit);
   }
 
   /**
