@@ -50,14 +50,24 @@ export interface ConversationPartner {
 }
 
 /** Conversazione nella lista conversazioni */
+export interface LastMessagePreview {
+  message_id: string;
+  sender_id: string;
+  ciphertext: string;
+  sent_at: string;
+}
+
 export interface ConversationItem {
-  conversation_id: string;  // ← backend usa conversation_id, non id
+  conversation_id: string;
   type: "direct" | "group";
   name: string | null;
   other_user: ConversationPartner | null;
   last_activity_at: string;
   last_message_at: string | null;
   unread_count: number;
+  last_message_preview: LastMessagePreview | null;
+  /** ISO timestamp di quando l'ALTRO utente ha letto per l'ultima volta (per ✓✓) */
+  other_user_last_read_at: string | null;
 }
 
 /** Conversazione appena creata (POST /conversations) */
@@ -409,6 +419,10 @@ export async function apiRedeemInvite(code: string): Promise<RedeemResult> {
 }
 
 /** Revoca tutti i codici invito attivi */
+export async function apiMarkRead(convId: string): Promise<void> {
+  await request<void>("PATCH", `/conversations/${convId}/read`);
+}
+
 export async function apiRevokeInvites(): Promise<{ revoked: number }> {
   return request<{ revoked: number }>("DELETE", "/invites/mine");
 }

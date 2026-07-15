@@ -19,8 +19,10 @@ import { ConversationRepository } from "../repositories/conversation.repository"
 import { ConversationMemberRepository } from "../repositories/conversation-member.repository";
 import { ConversationModel } from "../models/conversation.model";
 import { UserModel } from "../models/user.model";
+import { MessageModel } from "../models/message.model";
 import { logAuditEvent } from "../lib/audit";
 import { logger } from "../lib/logger";
+import { wsManager } from "../lib/ws-manager";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -48,6 +50,14 @@ export interface ConversationResult {
   is_new: boolean;
 }
 
+export interface LastMessagePreview {
+  message_id: string;
+  sender_id: string;
+  /** ciphertext opaco — il server non lo decrittografa mai */
+  ciphertext: string;
+  sent_at: string;
+}
+
 export interface ConversationListItem {
   conversation_id: string;
   type: "direct" | "group" | "channel";
@@ -66,7 +76,10 @@ export interface ConversationListItem {
   is_pinned: boolean;
   is_archived: boolean;
   is_muted: boolean;
-  unread_count: number; // Sprint 8: calcolato dai messaggi
+  unread_count: number;
+  last_message_preview: LastMessagePreview | null;
+  /** ISO timestamp dell'ultima lettura dell'ALTRO utente (per le ✓✓ read receipts) */
+  other_user_last_read_at: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -202,8 +215,8 @@ export async function listConversations(
       ? await memberRepo.listByUser(userObjectId, { limit: 200 })
       : [];
 
-  // Mappa conversationId → other member
-  const otherMembersMap: Map<string, { userId: mongoose.Types.ObjectId }> = new Map();
+  // Mappa conversationId → other member + last_read_at
+  const otherMembersMap: Map<string, { userId: mongoose.Types.ObjectId; lastReadAt: Date | null }> = new Map();
 
   if (directConvIds.length > 0) {
     const { ConversationMemberModel } = await import("../models/conversation-member.model");
@@ -214,7 +227,10 @@ export async function listConversations(
     }).lean();
 
     for (const m of otherMembers) {
-      otherMembersMap.set(m.conversation_id.toString(), { userId: m.user_id });
+      otherMembersMap.set(m.conversation_id.toString(), {
+        userId: m.user_id,
+        lastReadAt: m.last_read_at ?? null,
+      });
     }
   }
 
@@ -230,13 +246,53 @@ export async function listConversations(
   // 5. Mappa membership per lookup rapido
   const membershipMap = new Map(memberships.map((m) => [m.conversation_id.toString(), m]));
 
-  // 6. Assembla risultato
+  // 6. Batch-fetch ultimi messaggi per anteprima
+  const lastMessageIds = conversations
+    .map((c) => c.last_message_id)
+    .filter((id): id is mongoose.Types.ObjectId => id != null);
+
+  const lastMessages =
+    lastMessageIds.length > 0
+      ? await MessageModel.find({ _id: { $in: lastMessageIds } })
+          .select("_id conversation_id sender_id ciphertext sent_at")
+          .lean()
+      : [];
+
+  const lastMessageMap = new Map(lastMessages.map((m) => [m.conversation_id.toString(), m]));
+
+  // 7. Conta messaggi non letti per ciascuna conversazione
+  //    Non letti = messaggi con sent_at > membership.last_read_at, mittente ≠ me
+  const convIdsWithLastRead = conversations.map((c) => {
+    const m = membershipMap.get(c._id.toString());
+    return { convId: c._id, lastReadAt: m?.last_read_at ?? null };
+  });
+
+  const unreadAgg: { _id: string; count: number }[] = await MessageModel.aggregate([
+    {
+      $match: {
+        $or: convIdsWithLastRead.map(({ convId, lastReadAt }) => ({
+          conversation_id: convId,
+          sender_id: { $ne: userObjectId },
+          ...(lastReadAt ? { sent_at: { $gt: lastReadAt } } : {}),
+        })),
+      },
+    },
+    {
+      $group: { _id: { $toString: "$conversation_id" }, count: { $sum: 1 } },
+    },
+  ]);
+
+  const unreadMap = new Map(unreadAgg.map((r) => [r._id, r.count]));
+
+  // 8. Assembla risultato
   return conversations.map((conv) => {
     const membership = membershipMap.get(conv._id.toString());
     const otherMemberInfo = otherMembersMap.get(conv._id.toString());
     const otherUser = otherMemberInfo
       ? otherUserMap.get(otherMemberInfo.userId.toString())
       : undefined;
+    const lastMsg = lastMessageMap.get(conv._id.toString());
+    const otherMember = otherMembersMap.get(conv._id.toString());
 
     return {
       conversation_id: conv._id.toString(),
@@ -247,7 +303,7 @@ export async function listConversations(
             user_id: otherUser._id.toString(),
             username: otherUser.username,
             display_name: otherUser.display_name,
-            avatar_url: null, // TODO Sprint 7: media service
+            avatar_url: null,
             is_verified: otherUser.is_verified,
           }
         : null,
@@ -257,9 +313,55 @@ export async function listConversations(
       is_pinned: membership?.pinned ?? false,
       is_archived: membership?.archived ?? false,
       is_muted: membership?.is_muted ?? false,
-      unread_count: 0, // TODO Sprint 8: messaggi
+      unread_count: unreadMap.get(conv._id.toString()) ?? 0,
+      last_message_preview: lastMsg
+        ? {
+            message_id: lastMsg._id.toString(),
+            sender_id: lastMsg.sender_id.toString(),
+            ciphertext: lastMsg.ciphertext ?? "",
+            sent_at: lastMsg.sent_at.toISOString(),
+          }
+        : null,
+      other_user_last_read_at: otherMember?.lastReadAt?.toISOString() ?? null,
     };
   });
+}
+
+// ---------------------------------------------------------------------------
+// markConversationRead
+// ---------------------------------------------------------------------------
+
+/**
+ * Marca come letti tutti i messaggi della conversazione per l'utente corrente.
+ * Aggiorna last_read_at nella membership e invia read.receipt via WebSocket
+ * agli altri membri.
+ */
+export async function markConversationRead(
+  userId: string,
+  conversationId: string,
+): Promise<void> {
+  const userObjectId = new mongoose.Types.ObjectId(userId);
+  const convObjectId = new mongoose.Types.ObjectId(conversationId);
+
+  const now = new Date();
+  await memberRepo.markRead(convObjectId, userObjectId, now);
+
+  // Broadcast read.receipt ai membri che NON sono l'utente corrente
+  const members = await memberRepo.listMembers(convObjectId);
+  const recipientIds = members
+    .map((m) => m.user_id.toString())
+    .filter((id) => id !== userId);
+
+  if (recipientIds.length > 0) {
+    wsManager.sendToUsers(recipientIds, {
+      type: "read.receipt",
+      payload: {
+        conversation_id: conversationId,
+        user_id: userId,
+        read_at: now.toISOString(),
+      },
+    });
+  }
 }
 
 // ---------------------------------------------------------------------------

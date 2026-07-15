@@ -2,7 +2,7 @@ import { Router } from "express";
 import { authenticate } from "../../middleware/authenticate.middleware";
 import { validate } from "../../middleware/validate.middleware";
 import { CreateConversationSchema, ListConversationsSchema } from "../../validation/conversation.schemas";
-import { createConversation, listConversations } from "../../controllers/conversation.controller";
+import { createConversation, listConversations, markConversationRead } from "../../controllers/conversation.controller";
 
 const router = Router();
 
@@ -21,5 +21,6 @@ router.post("/", validate("body", CreateConversationSchema), createConversation)
  * Lista le conversazioni dell'utente autenticato, ordinate per last_activity_at.
  */
 router.get("/", validate("query", ListConversationsSchema), listConversations);
+router.patch("/:id/read", markConversationRead);
 
 export default router;

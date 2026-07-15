@@ -9,6 +9,7 @@ import type { RequestHandler } from "express";
 import * as conversationService from "../services/conversation.service";
 import { successResponse, paginatedResponse } from "../utils/response";
 import type { CreateConversationInput, ListConversationsInput } from "../validation/conversation.schemas";
+import mongoose from "mongoose";
 
 // ---------------------------------------------------------------------------
 // POST /api/v1/conversations
@@ -51,6 +52,24 @@ export const listConversations: RequestHandler = async (req, res, next) => {
         req.requestId,
       ),
     );
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ---------------------------------------------------------------------------
+// PATCH /api/v1/conversations/:id/read
+// ---------------------------------------------------------------------------
+
+export const markConversationRead: RequestHandler = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    if (!mongoose.isValidObjectId(id)) {
+      res.status(400).json({ success: false, error: "Invalid conversation id" });
+      return;
+    }
+    await conversationService.markConversationRead(req.user!.userId, id);
+    res.status(204).send();
   } catch (err) {
     next(err);
   }

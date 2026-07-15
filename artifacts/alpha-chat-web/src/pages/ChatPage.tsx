@@ -6,6 +6,7 @@ import {
   apiListConversations,
   apiListMessages,
   apiSendMessage,
+  apiMarkRead,
   decodeMessage,
   type ConversationItem,
   type MessageItem,
@@ -342,6 +343,8 @@ export default function ChatPage({ onNavigate }: Props) {
   const [showContactProfile, setShowContactProfile] = useState(false);
   const [showChatSearch, setShowChatSearch] = useState(false);
   const [chatSearchQuery, setChatSearchQuery] = useState("");
+  // read receipts: convId → ISO timestamp dell'ultima lettura dell'altro utente
+  const [readReceipts, setReadReceipts] = useState<Record<string, string>>({});
   const [typingUsers, setTypingUsers] = useState<Record<string, Set<string>>>({});
   const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
   const [atBottom, setAtBottom] = useState(true);
@@ -439,6 +442,15 @@ export default function ChatPage({ onNavigate }: Props) {
           setOnlineUsers((prev) => { const s = new Set(prev); s.delete(id); return s; });
           break;
         }
+        case "read.receipt": {
+          const { conversation_id, read_at } = event.payload;
+          setReadReceipts((prev) => {
+            const existing = prev[conversation_id];
+            if (existing && existing >= read_at) return prev; // non retrocedere
+            return { ...prev, [conversation_id]: read_at };
+          });
+          break;
+        }
       }
     });
   }, [on, activeConvId]);
@@ -486,6 +498,18 @@ export default function ChatPage({ onNavigate }: Props) {
     setActiveConvId(convId);
     setMobileShowChat(true);
     setAtBottom(true);
+    setShowChatSearch(false);
+    setChatSearchQuery("");
+    // Inizializza read receipt dalla lista conversazioni
+    const conv = conversations.find((c) => c.conversation_id === convId);
+    if (conv?.other_user_last_read_at) {
+      setReadReceipts((prev) => ({
+        ...prev,
+        [convId]: conv.other_user_last_read_at as string,
+      }));
+    }
+    // Notifica il backend che abbiamo letto i messaggi
+    void apiMarkRead(convId).catch(() => {/* silenzioso */});
   }
 
   async function handleLogout() {
@@ -569,25 +593,44 @@ export default function ChatPage({ onNavigate }: Props) {
               const other = conv.other_user;
               const isOnline = other ? onlineUsers.has(other.user_id) : false;
               const isActive = conv.conversation_id === activeConvId;
+              const hasUnread = conv.unread_count > 0;
+
+              // Anteprima ultimo messaggio
+              const preview = conv.last_message_preview;
+              const previewText = preview
+                ? (preview.ciphertext ? decodeMessage(preview.ciphertext) : "")
+                : null;
+              const previewLabel = previewText
+                ? (preview!.sender_id === auth?.userId ? `Tu: ${previewText}` : previewText)
+                : "Nessun messaggio";
+
               return (
                 <button
                   key={conv.conversation_id}
-                  className={`conv-item${isActive ? " active" : ""}`}
+                  className={`conv-item${isActive ? " active" : ""}${hasUnread ? " conv-item-unread" : ""}`}
                   onClick={() => handleSelectConv(conv.conversation_id)}
                 >
                   <div className="avatar-wrapper">
-                    <div className="avatar avatar-md">{other?.display_name[0]?.toUpperCase() ?? "?"}</div>
+                    <div className={`avatar avatar-md${hasUnread ? " avatar-unread" : ""}`}>
+                      {other?.display_name[0]?.toUpperCase() ?? "?"}
+                    </div>
                     {isOnline && <div className="presence-dot" />}
                   </div>
                   <div className="conv-info">
                     <div className="conv-row-top">
-                      <div className="conv-name">{other?.display_name ?? "Chat"}</div>
-                      <div className="conv-time">{formatConvTime(conv.last_activity_at)}</div>
+                      <div className={`conv-name${hasUnread ? " conv-name-bold" : ""}`}>
+                        {other?.display_name ?? "Chat"}
+                      </div>
+                      <div className={`conv-time${hasUnread ? " conv-time-unread" : ""}`}>
+                        {formatConvTime(conv.last_activity_at)}
+                      </div>
                     </div>
                     <div className="conv-row-bottom">
-                      <div className="conv-last-msg">@{other?.username ?? ""}</div>
-                      {conv.unread_count > 0 && (
-                        <div className="conv-unread-badge">{conv.unread_count}</div>
+                      <div className="conv-last-msg">{previewLabel}</div>
+                      {hasUnread && (
+                        <div className="conv-unread-badge">
+                          {conv.unread_count > 99 ? "99+" : conv.unread_count}
+                        </div>
                       )}
                     </div>
                   </div>
@@ -686,6 +729,10 @@ export default function ChatPage({ onNavigate }: Props) {
                       </span>
                     );
                   };
+                  // ✓ = inviato, ✓✓ = letto dall'altro utente
+                  const otherReadAt = activeConvId ? readReceipts[activeConvId] : null;
+                  const isRead = isMine && otherReadAt != null && msg.sent_at <= otherReadAt;
+
                   return (
                     <div key={msg.id} className={`msg-row ${isMine ? "mine" : "theirs"}`}>
                       <div className={`msg-bubble ${isMine ? "mine" : "theirs"}`}>
@@ -693,10 +740,19 @@ export default function ChatPage({ onNavigate }: Props) {
                         <div className="msg-meta">
                           <span className="msg-time">{time}</span>
                           {isMine && (
-                            <span className="msg-status" title="Inviato">
-                              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12">
-                                <polyline points="1 8 5 12 15 4"/>
-                              </svg>
+                            <span className={`msg-status${isRead ? " msg-status-read" : ""}`} title={isRead ? "Letto" : "Inviato"}>
+                              {isRead ? (
+                                // ✓✓ doppia spunta — letto
+                                <svg viewBox="0 0 22 12" fill="none" stroke="currentColor" strokeWidth="2" width="18" height="12">
+                                  <polyline points="1 6 5 10 13 2"/>
+                                  <polyline points="8 6 12 10 20 2"/>
+                                </svg>
+                              ) : (
+                                // ✓ spunta singola — inviato
+                                <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12">
+                                  <polyline points="1 8 5 12 15 4"/>
+                                </svg>
+                              )}
                             </span>
                           )}
                         </div>

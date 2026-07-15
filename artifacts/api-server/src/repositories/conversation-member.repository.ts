@@ -75,6 +75,20 @@ export class ConversationMemberRepository {
   }
 
   /**
+   * Aggiorna last_read_at per l'utente nella conversazione.
+   */
+  async markRead(
+    conversationId: mongoose.Types.ObjectId,
+    userId: mongoose.Types.ObjectId,
+    readAt: Date,
+  ): Promise<void> {
+    await ConversationMemberModel.updateOne(
+      { conversation_id: conversationId, user_id: userId, deleted_at: null },
+      { $set: { last_read_at: readAt } },
+    );
+  }
+
+  /**
    * Ritorna tutti gli user_id che condividono almeno una conversazione
    * con userId (escluso userId stesso). Usato per broadcast presence.
    * Due query MongoDB — nessuna business logic.

@@ -6,6 +6,7 @@ export type WsEvent =
   | { type: "typing.stop"; payload: { user_id: string; conversation_id: string } }
   | { type: "presence.online"; payload: { user_id: string } }
   | { type: "presence.offline"; payload: { user_id: string; last_seen_at: string } }
+  | { type: "read.receipt"; payload: { conversation_id: string; user_id: string; read_at: string } }
   | { type: "auth.ok"; payload: { user_id: string } }
   | { type: "auth.error"; payload: { message: string } }
   | { type: "ping" }

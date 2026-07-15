@@ -39,9 +39,16 @@ export type WsOutboundEventType =
   | "presence.online"   // utente connesso
   | "presence.offline"  // utente disconnesso
   | "typing.start"      // utente sta scrivendo (broadcast ai membri)
-  | "typing.stop";      // utente ha smesso (broadcast ai membri)
+  | "typing.stop"       // utente ha smesso (broadcast ai membri)
+  | "read.receipt";     // l'altra persona ha letto i messaggi
 
 export interface WsOutboundEvent {
   type: WsOutboundEventType;
   payload?: unknown;
+}
+
+export interface ReadReceiptPayload {
+  conversation_id: string;
+  user_id: string;       // chi ha letto
+  read_at: string;       // ISO timestamp
 }
