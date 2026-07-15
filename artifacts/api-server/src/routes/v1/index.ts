@@ -3,6 +3,7 @@ import systemRoutes from "./system.routes";
 import authRoutes from "./auth.routes";
 import userRoutes from "./user.routes";
 import conversationRoutes from "./conversation.routes";
+import messageRoutes from "./message.routes";
 
 /**
  * /api/v1/ — mounts all versioned sub-routers.
@@ -21,5 +22,8 @@ v1Router.use("/users", userRoutes);
 
 // Conversations (direct chat, groups)
 v1Router.use("/conversations", conversationRoutes);
+
+// Messages (nested under conversations)
+v1Router.use("/conversations/:conversationId/messages", messageRoutes);
 
 export default v1Router;

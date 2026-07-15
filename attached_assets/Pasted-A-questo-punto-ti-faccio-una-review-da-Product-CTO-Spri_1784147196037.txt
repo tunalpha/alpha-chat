@@ -1,0 +1,205 @@
+A questo punto ti faccio una review da Product + CTO.
+
+Sprint 5B: APPROVATO ✅
+
+Voto: 10/10
+
+Perché hai preso due decisioni che considero fondamentali.
+
+1. Idempotenza di POST /conversations
+
+Questa è una scelta da prodotto maturo.
+
+L’utente preme due volte “Nuova chat con Bob”?
+
+➡️ Ottiene sempre la stessa conversazione.
+
+Niente duplicati.
+
+⸻
+
+2. Stato personale in conversation_members
+
+Questa è una delle scelte più importanti del database.
+
+Hai messo:
+
+* pinned
+* archived
+* muted
+
+nel member e non nella conversazione.
+
+È corretto.
+
+Se io archivio una chat con Luca, Luca non deve vedere la chat archiviata.
+
+⸻
+
+Adesso arriva il momento storico.
+
+Sprint 6
+
+Per me questo sprint ha un solo obiettivo.
+
+Far arrivare un messaggio da A a B.
+
+Non voglio:
+
+* GIF
+* Emoji
+* Vocali
+* Foto
+
+Solo testo.
+
+⸻
+
+Io farei questo ordine.
+
+STEP 1
+
+Collection
+
+messages
+
+⸻
+
+STEP 2
+
+POST /messages
+
+⸻
+
+STEP 3
+
+GET /messages
+
+⸻
+
+STEP 4
+
+Aggiornare automaticamente
+
+conversation
+last_message_id
+last_message_at
+last_activity_at
+
+nella stessa operazione logica della creazione del messaggio, così eviti conversazioni con anteprime non allineate.
+
+⸻
+
+Una cosa importantissima.
+
+Hai scritto:
+
+ciphertext opaque al server
+
+Questo mi rende contento.
+
+Il server deve vedere qualcosa tipo:
+
+AQICAHj9s0....
+
+Non deve sapere se dentro c’è:
+
+Ciao
+
+oppure
+
+Come stai?
+
+Questa è la filosofia giusta per una chat con crittografia end-to-end.
+
+⸻
+
+Una modifica che farei.
+
+Nel modello Message aggiungerei:
+
+status
+queued
+sent
+delivered
+read
+deleted
+failed
+
+Non serve tutto subito.
+
+Ma il campo deve esserci.
+
+Così il frontend sarà già pronto per:
+
+✓
+
+✓✓
+
+messaggio non inviato
+
+ritenta
+
+⸻
+
+Poi…
+
+Aggiungerei
+
+server_received_at
+
+separato da
+
+created_at
+
+Perché il client potrebbe essere offline.
+
+Domani ti servirà.
+
+⸻
+
+Ed ecco il momento che aspetto da settimane.
+
+Quando Sprint 6 sarà finito voglio vedere:
+
+Browser 1
+
+Marco
+
+Browser 2
+
+Luca
+
+Marco scrive
+
+Ciao Luca 👋
+
+Invia.
+
+Sul browser di Luca compare
+
+Marco
+Ciao Luca 👋
+
+Se succede questo…
+
+🎉 Alpha Chat è ufficialmente nata.
+
+Da quel momento tutto il resto (doppia spunta, typing, vocali, foto, chiamate) sarà un’evoluzione di qualcosa che già esiste.
+
+Il mio consiglio finale
+
+Dopo Sprint 6, fermati un giorno.
+
+Non aggiungere subito altre funzioni.
+
+Usa la chat per qualche ora tra due account.
+
+Prova a rompere tutto:
+
+* invia messaggi velocemente;
+* ricarica la pagina;
+* apri due browser;
+* prova due dispositivi.
+
+Questi test “da utente reale” spesso fanno emergere dettagli che i test automatici non coprono, e ti daranno molta più fiducia prima di passare agli sprint successivi.

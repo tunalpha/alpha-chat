@@ -1,0 +1,36 @@
+/**
+ * Message routes — montate su /api/v1/conversations/:conversationId/messages
+ * tramite mergeParams: true per accedere a :conversationId dal parent router.
+ */
+
+import { Router } from "express";
+import { authenticate } from "../../middleware/authenticate.middleware";
+import { validate } from "../../middleware/validate.middleware";
+import {
+  SendMessageSchema,
+  ListMessagesSchema,
+  ConversationIdParamSchema,
+} from "../../validation/message.schemas";
+import { sendMessage, listMessages } from "../../controllers/message.controller";
+
+const router = Router({ mergeParams: true });
+
+// Tutte le route messaggi richiedono autenticazione
+router.use(authenticate);
+
+// Valida :conversationId per tutte le route di questo router
+router.use(validate("params", ConversationIdParamSchema));
+
+/**
+ * POST /api/v1/conversations/:conversationId/messages
+ * Invia un messaggio. Idempotente su client_message_id.
+ */
+router.post("/", validate("body", SendMessageSchema), sendMessage);
+
+/**
+ * GET /api/v1/conversations/:conversationId/messages
+ * Lista messaggi (DESC per sequence_number, paginazione cursor).
+ */
+router.get("/", validate("query", ListMessagesSchema), listMessages);
+
+export default router;

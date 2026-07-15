@@ -54,6 +54,13 @@ export interface IConversation {
   // --- Denormalizzato per evitare COUNT query ---
   member_count: number;
 
+  /**
+   * sequence_counter — contatore atomico per sequence_number dei messaggi.
+   * Incrementato con $inc ad ogni messaggio inviato.
+   * Garantisce sequence_number monotono per conversazione.
+   */
+  sequence_counter: number;
+
   deleted_at: Date | null;
 
   createdAt: Date;
@@ -92,6 +99,7 @@ const conversationSchema = new Schema<IConversationDocument>(
     last_activity_at: { type: Date, default: () => new Date() },
 
     member_count: { type: Number, default: 0 },
+    sequence_counter: { type: Number, default: 0 },
 
     deleted_at: { type: Date, default: null },
   },

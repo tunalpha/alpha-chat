@@ -5,6 +5,31 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ---
 
+## [0.6.0] — Sprint 6 — First Message — 2026-07-15
+
+### Added
+- `src/models/message.model.ts` — collection `messages`: ciphertext opaco E2E, `status` (queued/sent/delivered/read/deleted/failed), `server_received_at` separato da `createdAt`, `sequence_number` monotono per conversazione
+- `src/models/conversation.model.ts` — aggiunto `sequence_counter` (atomic $inc per sequence_number)
+- `src/repositories/message.repository.ts` — `findByClientId()` (idempotency), `create()` (atomic seq + aggiorna last_message_*), `list()` (paginazione cursor su sequence_number), `updateStatus()`
+- `src/validation/message.schemas.ts` — `SendMessageSchema`, `ListMessagesSchema`, `ConversationIdParamSchema`
+- `src/services/message.service.ts` — `sendMessage()` (idempotente su client_message_id), `listMessages()`
+- `src/controllers/message.controller.ts`
+- `src/routes/v1/message.routes.ts` — `mergeParams: true` per :conversationId
+- `src/routes/v1/index.ts` — montato `/api/v1/conversations/:conversationId/messages`
+- `src/lib/audit.ts` — evento `MESSAGE_SENT`
+- `src/__tests__/message.integration.test.ts` — 19 test integrazione
+
+### Behaviour
+- `POST /api/v1/conversations/:id/messages` — 201 nuovo, 200 idempotente; server conserva ciphertext invariato (opaco)
+- `GET /api/v1/conversations/:id/messages` — DESC per sequence_number; cursor base64 su `{ seq }` per next page
+- Atomic: `findOneAndUpdate { $inc: sequence_counter }` su conversazione = sequence_number senza race condition
+- Atomic update `last_message_id` + `last_message_at` + `last_activity_at` nella stessa write del sequence_counter
+
+### Tests
+- 126/126 ✅ (107 precedenti + 19 message)
+
+---
+
 ## [0.5.1] — Sprint 5B — Chat Creation — 2026-07-15
 
 ### Added

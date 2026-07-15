@@ -51,7 +51,9 @@ export type AuditEventType =
   | "ACCOUNT_DELETED"
   | "USERNAME_CHANGED"
   // Conversations (Sprint 5B)
-  | "CONVERSATION_CREATED";
+  | "CONVERSATION_CREATED"
+  // Messages (Sprint 6)
+  | "MESSAGE_SENT";
 
 export interface AuditEvent {
   event: AuditEventType;
