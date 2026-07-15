@@ -116,6 +116,9 @@ export interface PaginatedResult<T> {
 
 let isRefreshing = false;
 let refreshQueue: Array<(token: string | null) => void> = [];
+/** Timestamp dell'ultimo refresh fallito — evita loop di retry */
+let refreshFailedAt = 0;
+const REFRESH_COOLDOWN_MS = 10_000; // 10s cooldown dopo fallimento
 
 /** Estrae il messaggio leggibile da una risposta di errore del backend.
  *  Priorità: 1) details.issues[0].message (specifico al campo)
@@ -199,8 +202,14 @@ async function request<T>(
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
 
-  // 401 → prova a rinnovare il token
+  // 401 → prova a rinnovare il token (una volta sola, con cooldown)
   if (res.status === 401 && retry) {
+    // Se il refresh è fallito di recente, non riprovare
+    if (Date.now() - refreshFailedAt < REFRESH_COOLDOWN_MS) {
+      window.dispatchEvent(new CustomEvent("auth:expired"));
+      throw new Error("Sessione scaduta. Accedi di nuovo.");
+    }
+
     if (isRefreshing) {
       const newToken = await new Promise<string | null>((resolve) => {
         refreshQueue.push(resolve);
@@ -212,13 +221,18 @@ async function request<T>(
     isRefreshing = true;
     const newToken = await attemptRefresh();
     isRefreshing = false;
-    refreshQueue.forEach((cb) => cb(newToken));
-    refreshQueue = [];
 
     if (!newToken) {
+      refreshFailedAt = Date.now(); // evita loop
+      refreshQueue.forEach((cb) => cb(null));
+      refreshQueue = [];
       window.dispatchEvent(new CustomEvent("auth:expired"));
       throw new Error("Sessione scaduta. Accedi di nuovo.");
     }
+
+    refreshFailedAt = 0; // reset su successo
+    refreshQueue.forEach((cb) => cb(newToken));
+    refreshQueue = [];
     return request<T>(method, path, body, false);
   }
 

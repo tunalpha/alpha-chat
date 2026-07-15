@@ -184,7 +184,7 @@ export default function ChatPage() {
     searchTimerRef.current = setTimeout(async () => {
       setSearching(true);
       try {
-        const res = await apiSearchUsers(q.trim());
+        const res = await apiSearchUsers(q.trim().toLowerCase());
         setSearchResults(res.items.filter((u) => u.id !== auth?.userId));
       } catch { /* ignore */ } finally { setSearching(false); }
     }, 300);
@@ -329,6 +329,10 @@ export default function ChatPage() {
                 value={searchQuery}
                 onChange={handleSearchChange}
                 autoFocus
+                autoCapitalize="none"
+                autoCorrect="off"
+                autoComplete="off"
+                spellCheck={false}
               />
               <button className="icon-btn" onClick={() => { setShowSearch(false); setSearchQuery(""); setSearchResults([]); }}>✕</button>
             </div>
