@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { useWebSocket, type WsEvent } from "../hooks/useWebSocket";
+import type { AppView } from "../App";
 import {
   apiListConversations,
   apiCreateConversation,
@@ -13,7 +14,310 @@ import {
   type UserProfile,
 } from "../lib/api";
 
-export default function ChatPage() {
+interface Props {
+  onNavigate: (view: AppView) => void;
+}
+
+// ── Helpers ─────────────────────────────────────────────────────────────────
+function formatTime(iso: string): string {
+  return new Date(iso).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" });
+}
+
+function formatConvTime(iso: string | null): string {
+  if (!iso) return "";
+  const d = new Date(iso);
+  const now = new Date();
+  const isToday = d.toDateString() === now.toDateString();
+  return isToday
+    ? d.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" })
+    : d.toLocaleDateString("it-IT", { day: "2-digit", month: "short" });
+}
+
+// ── Chat header with call/video/menu ────────────────────────────────────────
+function ChatHeader({
+  otherUser,
+  isOnline,
+  onBack,
+}: {
+  otherUser: { display_name: string; username: string } | null | undefined;
+  isOnline: boolean;
+  onBack: () => void;
+}) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [menuOpen]);
+
+  const menuItems = [
+    { label: "Visualizza profilo", icon: "👤", soon: true },
+    { label: "Media condivisi", icon: "🖼️", soon: true },
+    { label: "Cerca nella chat", icon: "🔍", soon: true },
+    { label: "Silenzia", icon: "🔕", soon: true },
+    { label: "Blocca utente", icon: "🚫", danger: true, soon: true },
+    { label: "Cancella chat", icon: "🗑️", danger: true, soon: true },
+  ];
+
+  return (
+    <div className="chat-header">
+      <button className="chat-back-btn" onClick={onBack} aria-label="Torna alla lista">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" width="20" height="20">
+          <polyline points="15 18 9 12 15 6" />
+        </svg>
+      </button>
+
+      <div className="avatar avatar-md">
+        {otherUser?.display_name[0]?.toUpperCase() ?? "?"}
+      </div>
+
+      <div className="chat-header-info">
+        <div className="chat-header-name">{otherUser?.display_name ?? "Chat"}</div>
+        <div className={`chat-header-status ${isOnline ? "online" : "offline"}`}>
+          {isOnline ? "● Online" : "○ Offline"}
+        </div>
+      </div>
+
+      <div className="chat-header-actions">
+        <button className="icon-btn icon-btn-header" title="Chiamata" aria-label="Chiamata">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="20" height="20">
+            <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.61 3.4 2 2 0 0 1 3.6 1.22h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.8a16 16 0 0 0 5.55 5.55l.95-.95a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/>
+          </svg>
+        </button>
+        <button className="icon-btn icon-btn-header" title="Video" aria-label="Videochiamata">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="20" height="20">
+            <polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/>
+          </svg>
+        </button>
+
+        <div className="chat-menu-wrapper" ref={menuRef}>
+          <button
+            className="icon-btn icon-btn-header"
+            aria-label="Menu"
+            onClick={() => setMenuOpen((v) => !v)}
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="20" height="20">
+              <circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/>
+            </svg>
+          </button>
+          {menuOpen && (
+            <div className="chat-menu-dropdown">
+              {menuItems.map((item) => (
+                <button
+                  key={item.label}
+                  className={`chat-menu-item${item.danger ? " danger" : ""}`}
+                  onClick={() => setMenuOpen(false)}
+                >
+                  <span className="chat-menu-icon">{item.icon}</span>
+                  {item.label}
+                  {item.soon && <span className="chat-menu-badge">Presto</span>}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── Chat input bar ───────────────────────────────────────────────────────────
+function ChatInput({
+  value,
+  onChange,
+  onSubmit,
+  disabled,
+}: {
+  value: string;
+  onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;
+  onSubmit: (e: React.FormEvent) => void;
+  disabled: boolean;
+}) {
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const hasText = value.trim().length > 0;
+
+  // Auto-resize textarea up to 6 lines
+  useEffect(() => {
+    const ta = textareaRef.current;
+    if (!ta) return;
+    ta.style.height = "auto";
+    const lineHeight = 22;
+    const maxHeight = lineHeight * 6 + 24;
+    ta.style.height = Math.min(ta.scrollHeight, maxHeight) + "px";
+  }, [value]);
+
+  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      if (hasText && !disabled) onSubmit(e as unknown as React.FormEvent);
+    }
+  }
+
+  return (
+    <form className="chat-input-bar" onSubmit={onSubmit}>
+      <button type="button" className="input-icon-btn" aria-label="Emoji" title="Emoji">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="22" height="22">
+          <circle cx="12" cy="12" r="10"/><path d="M8 13s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/>
+        </svg>
+      </button>
+      <button type="button" className="input-icon-btn" aria-label="Allega" title="Allega file">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="22" height="22">
+          <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
+        </svg>
+      </button>
+
+      <textarea
+        ref={textareaRef}
+        className="chat-textarea"
+        placeholder="Scrivi un messaggio…"
+        value={value}
+        onChange={onChange}
+        onKeyDown={handleKeyDown}
+        disabled={disabled}
+        rows={1}
+        autoComplete="off"
+        autoCorrect="off"
+        spellCheck={true}
+      />
+
+      {hasText ? (
+        <button type="submit" className="send-btn" disabled={disabled} aria-label="Invia">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" width="20" height="20">
+            <line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/>
+          </svg>
+        </button>
+      ) : (
+        <button type="button" className="send-btn mic-btn" aria-label="Messaggio vocale">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" width="20" height="20">
+            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/>
+          </svg>
+        </button>
+      )}
+    </form>
+  );
+}
+
+// ── Sidebar user menu ────────────────────────────────────────────────────────
+function SidebarMenu({
+  displayName,
+  username,
+  connected,
+  onNavigate,
+  onLogout,
+  onLogoutAll,
+  loggingOut,
+}: {
+  displayName: string;
+  username: string;
+  connected: boolean;
+  onNavigate: (v: AppView) => void;
+  onLogout: () => void;
+  onLogoutAll: () => void;
+  loggingOut: boolean;
+}) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    const handler = (e: MouseEvent) => {
+      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [open]);
+
+  const navItems: { label: string; view: AppView; icon: React.ReactNode }[] = [
+    {
+      label: "Profilo",
+      view: "profile",
+      icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>,
+    },
+    {
+      label: "Privacy e Sicurezza",
+      view: "privacy",
+      icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>,
+    },
+    {
+      label: "Dispositivi",
+      view: "devices",
+      icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>,
+    },
+    {
+      label: "Impostazioni",
+      view: "settings",
+      icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>,
+    },
+    {
+      label: "Archivio",
+      view: "archive",
+      icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>,
+    },
+  ];
+
+  return (
+    <div className="user-menu-wrapper" ref={ref}>
+      <button
+        className="avatar-menu-btn"
+        onClick={() => setOpen((v) => !v)}
+        aria-label="Menu utente"
+        aria-expanded={open}
+      >
+        <div className="avatar avatar-sm">{displayName[0]?.toUpperCase()}</div>
+      </button>
+
+      {open && (
+        <div className="user-menu-dropdown">
+          <div className="user-menu-header">
+            <div className="user-menu-name">{displayName}</div>
+            <div className="user-menu-username">@{username}</div>
+            <div className={`user-menu-status ${connected ? "online" : "offline"}`}>
+              {connected ? "● Online" : "○ Offline"}
+            </div>
+          </div>
+
+          <div className="user-menu-section">
+            {navItems.map((item) => (
+              <button
+                key={item.view}
+                className="user-menu-item"
+                onClick={() => { setOpen(false); onNavigate(item.view); }}
+              >
+                {item.icon}
+                {item.label}
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14" className="menu-chevron">
+                  <polyline points="9 18 15 12 9 6"/>
+                </svg>
+              </button>
+            ))}
+          </div>
+
+          <div className="user-menu-divider" />
+
+          <div className="user-menu-section">
+            <button className="user-menu-item danger" onClick={onLogout} disabled={loggingOut}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+              {loggingOut ? "Uscita…" : "Esci"}
+            </button>
+            <button className="user-menu-item danger" onClick={onLogoutAll} disabled={loggingOut}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/><line x1="5" y1="8" x2="5" y2="16" strokeDasharray="2 2"/></svg>
+              Esci da tutti i dispositivi
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── Main ChatPage ────────────────────────────────────────────────────────────
+export default function ChatPage({ onNavigate }: Props) {
   const { auth, logout, logoutAll } = useAuth();
   const { connected, on, sendTypingStart, sendTypingStop } = useWebSocket(auth?.accessToken ?? null);
 
@@ -25,45 +329,23 @@ export default function ChatPage() {
   const [sendError, setSendError] = useState<string | null>(null);
   const [loadingConvs, setLoadingConvs] = useState(true);
   const [loadingMsgs, setLoadingMsgs] = useState(false);
-
-  // Mobile: mostra sidebar (false) o chat (true)
   const [mobileShowChat, setMobileShowChat] = useState(false);
-
-  // User menu dropdown
-  const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
-  const userMenuRef = useRef<HTMLDivElement>(null);
-
-  // Search
   const [showSearch, setShowSearch] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<UserProfile[]>([]);
   const [searching, setSearching] = useState(false);
-
-  // Typing indicators: { conversation_id: Set<user_id> }
   const [typingUsers, setTypingUsers] = useState<Record<string, Set<string>>>({});
-
-  // Online users: Set<user_id>
   const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
+  const [atBottom, setAtBottom] = useState(true);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isTypingRef = useRef(false);
   const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // ── Close user menu on outside click ─────────────────────────────────────
-  useEffect(() => {
-    if (!userMenuOpen) return;
-    function handleClick(e: MouseEvent) {
-      if (userMenuRef.current && !userMenuRef.current.contains(e.target as Node)) {
-        setUserMenuOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", handleClick);
-    return () => document.removeEventListener("mousedown", handleClick);
-  }, [userMenuOpen]);
-
-  // ── Load conversations ────────────────────────────────────────────────────
+  // ── Load conversations ──────────────────────────────────────────────────
   const loadConversations = useCallback(async () => {
     setLoadingConvs(true);
     try {
@@ -76,7 +358,7 @@ export default function ChatPage() {
 
   useEffect(() => { void loadConversations(); }, [loadConversations]);
 
-  // ── Load messages when conversation changes ───────────────────────────────
+  // ── Load messages ───────────────────────────────────────────────────────
   useEffect(() => {
     if (!activeConvId) { setMessages([]); return; }
     setLoadingMsgs(true);
@@ -86,12 +368,21 @@ export default function ChatPage() {
       .finally(() => setLoadingMsgs(false));
   }, [activeConvId]);
 
-  // Scroll al fondo su nuovi messaggi
+  // ── Auto-scroll only when at bottom ────────────────────────────────────
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [messages]);
+    if (atBottom) {
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [messages, atBottom]);
 
-  // ── WebSocket events ──────────────────────────────────────────────────────
+  function handleScroll() {
+    const el = messagesContainerRef.current;
+    if (!el) return;
+    const threshold = 60;
+    setAtBottom(el.scrollHeight - el.scrollTop - el.clientHeight < threshold);
+  }
+
+  // ── WebSocket events ────────────────────────────────────────────────────
   useEffect(() => {
     return on((event: WsEvent) => {
       switch (event.type) {
@@ -104,13 +395,11 @@ export default function ChatPage() {
             });
           }
           setConversations((prev) =>
-            prev
-              .map((c) =>
-                c.conversation_id === msg.conversation_id
-                  ? { ...c, last_activity_at: msg.server_received_at }
-                  : c,
-              )
-              .sort((a, b) => b.last_activity_at.localeCompare(a.last_activity_at)),
+            prev.map((c) =>
+              c.conversation_id === msg.conversation_id
+                ? { ...c, last_activity_at: msg.server_received_at }
+                : c,
+            ).sort((a, b) => b.last_activity_at.localeCompare(a.last_activity_at)),
           );
           break;
         }
@@ -148,7 +437,7 @@ export default function ChatPage() {
     });
   }, [on, activeConvId]);
 
-  // ── Handlers ──────────────────────────────────────────────────────────────
+  // ── Handlers ────────────────────────────────────────────────────────────
   async function handleSend(e: React.FormEvent) {
     e.preventDefault();
     if (!activeConvId || !inputText.trim() || sending) return;
@@ -170,7 +459,7 @@ export default function ChatPage() {
     }
   }
 
-  function handleInputChange(e: React.ChangeEvent<HTMLInputElement>) {
+  function handleInputChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
     setInputText(e.target.value);
     if (!activeConvId) return;
     if (!isTypingRef.current) { sendTypingStart(activeConvId); isTypingRef.current = true; }
@@ -189,7 +478,6 @@ export default function ChatPage() {
     searchTimerRef.current = setTimeout(async () => {
       setSearching(true);
       try {
-        // Rimuove @ iniziale (es. "@cricco" → "cricco")
         const query = q.trim().toLowerCase().replace(/^@+/, "");
         if (query.length < 2) return;
         const res = await apiSearchUsers(query);
@@ -213,25 +501,20 @@ export default function ChatPage() {
   function handleSelectConv(convId: string) {
     setActiveConvId(convId);
     setMobileShowChat(true);
-  }
-
-  function handleBackToSidebar() {
-    setMobileShowChat(false);
+    setAtBottom(true);
   }
 
   async function handleLogout() {
     setLoggingOut(true);
-    setUserMenuOpen(false);
     await logout();
   }
 
   async function handleLogoutAll() {
     setLoggingOut(true);
-    setUserMenuOpen(false);
     await logoutAll();
   }
 
-  // ── Derived state ─────────────────────────────────────────────────────────
+  // ── Derived ──────────────────────────────────────────────────────────────
   const activeConv = conversations.find((c) => c.conversation_id === activeConvId);
   const otherUser = activeConv?.other_user;
   const isOtherOnline = otherUser ? onlineUsers.has(otherUser.user_id) : false;
@@ -240,90 +523,30 @@ export default function ChatPage() {
 
   return (
     <div className="chat-root">
-      {/* ── Sidebar ─────────────────────────────────────────────────────── */}
+      {/* ── Sidebar ──────────────────────────────────────────────────────── */}
       <aside className={`sidebar${mobileShowChat ? " sidebar-mobile-hidden" : ""}`}>
-
         {/* Header */}
         <div className="sidebar-header">
-          {/* Avatar → apre il menu utente */}
-          <div className="user-menu-wrapper" ref={userMenuRef}>
-            <button
-              className="avatar-menu-btn"
-              onClick={() => setUserMenuOpen((v) => !v)}
-              aria-label="Menu utente"
-              aria-expanded={userMenuOpen}
-            >
-              <div className="avatar avatar-sm">{auth?.displayName?.[0]?.toUpperCase()}</div>
-            </button>
-
-            {/* Dropdown */}
-            {userMenuOpen && (
-              <div className="user-menu-dropdown" role="menu">
-                {/* Info utente */}
-                <div className="user-menu-header">
-                  <div className="user-menu-name">{auth?.displayName}</div>
-                  <div className="user-menu-username">@{auth?.username}</div>
-                  <div className={`user-menu-status ${connected ? "online" : "offline"}`}>
-                    {connected ? "● Online" : "○ Offline"}
-                  </div>
-                </div>
-
-                {/* Voci placeholder */}
-                <div className="user-menu-section">
-                  <button className="user-menu-item disabled" role="menuitem" disabled>
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>
-                    Profilo
-                    <span className="user-menu-badge">presto</span>
-                  </button>
-                  <button className="user-menu-item disabled" role="menuitem" disabled>
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-                    Impostazioni
-                    <span className="user-menu-badge">presto</span>
-                  </button>
-                  <button className="user-menu-item disabled" role="menuitem" disabled>
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>
-                    Dispositivi
-                    <span className="user-menu-badge">presto</span>
-                  </button>
-                </div>
-
-                <div className="user-menu-divider" />
-
-                {/* Logout */}
-                <div className="user-menu-section">
-                  <button
-                    className="user-menu-item danger"
-                    role="menuitem"
-                    onClick={handleLogout}
-                    disabled={loggingOut}
-                  >
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-                    {loggingOut ? "Uscita..." : "Esci"}
-                  </button>
-                  <button
-                    className="user-menu-item danger"
-                    role="menuitem"
-                    onClick={handleLogoutAll}
-                    disabled={loggingOut}
-                  >
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/><path d="M3 12h6" strokeDasharray="2 2"/></svg>
-                    Esci da tutti i dispositivi
-                  </button>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Stato utente */}
+          <SidebarMenu
+            displayName={auth?.displayName ?? ""}
+            username={auth?.username ?? ""}
+            connected={connected}
+            onNavigate={onNavigate}
+            onLogout={handleLogout}
+            onLogoutAll={handleLogoutAll}
+            loggingOut={loggingOut}
+          />
           <div className="sidebar-user-info">
             <div className="sidebar-username">{auth?.displayName}</div>
             <div className={`sidebar-status ${connected ? "online" : "offline"}`}>
               {connected ? "● Online" : "○ Offline"}
             </div>
           </div>
-
-          {/* Nuova chat */}
-          <button className="icon-btn" title="Nuova chat" onClick={() => setShowSearch(true)}>＋</button>
+          <button className="icon-btn new-chat-btn" title="Nuova chat" onClick={() => setShowSearch(true)} aria-label="Nuova chat">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" width="18" height="18">
+              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+          </button>
         </div>
 
         {/* Search panel */}
@@ -333,7 +556,7 @@ export default function ChatPage() {
               <input
                 className="search-input"
                 type="text"
-                placeholder="Cerca utente..."
+                placeholder="Cerca utente…"
                 value={searchQuery}
                 onChange={handleSearchChange}
                 autoFocus
@@ -342,20 +565,20 @@ export default function ChatPage() {
                 autoComplete="off"
                 spellCheck={false}
               />
-              <button className="icon-btn" onClick={() => { setShowSearch(false); setSearchQuery(""); setSearchResults([]); }}>✕</button>
+              <button className="icon-btn" onClick={() => { setShowSearch(false); setSearchQuery(""); setSearchResults([]); }}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="18" height="18">
+                  <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+              </button>
             </div>
             <div className="search-results">
-              {searching && <div className="search-hint">Ricerca...</div>}
+              {searching && <div className="search-hint">Ricerca…</div>}
               {!searching && searchQuery && searchResults.length === 0 && (
                 <div className="search-hint">Nessun utente trovato</div>
               )}
               {searchResults.map((user) => (
-                <button
-                  key={user.id}
-                  className="search-result"
-                  onClick={() => void handleStartChat(user.username)}
-                >
-                  <div className="avatar">{user.display_name[0]?.toUpperCase()}</div>
+                <button key={user.id} className="search-result" onClick={() => void handleStartChat(user.username)}>
+                  <div className="avatar avatar-sm">{user.display_name[0]?.toUpperCase()}</div>
                   <div>
                     <div className="result-name">{user.display_name}</div>
                     <div className="result-username">@{user.username}</div>
@@ -369,26 +592,40 @@ export default function ChatPage() {
         {/* Conversation list */}
         {!showSearch && (
           <div className="conv-list">
-            {loadingConvs && <div className="conv-hint">Caricamento...</div>}
+            {loadingConvs && <div className="conv-hint">Caricamento…</div>}
             {!loadingConvs && conversations.length === 0 && (
-              <div className="conv-hint">Nessuna conversazione.<br />Premi ＋ per iniziare.</div>
+              <div className="conv-hint conv-hint-empty">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" width="40" height="40" style={{ opacity: 0.3, marginBottom: 12 }}>
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                </svg>
+                Nessuna conversazione.<br />Premi + per iniziare.
+              </div>
             )}
             {conversations.map((conv) => {
               const other = conv.other_user;
               const isOnline = other ? onlineUsers.has(other.user_id) : false;
+              const isActive = conv.conversation_id === activeConvId;
               return (
                 <button
                   key={conv.conversation_id}
-                  className={`conv-item ${conv.conversation_id === activeConvId ? "active" : ""}`}
+                  className={`conv-item${isActive ? " active" : ""}`}
                   onClick={() => handleSelectConv(conv.conversation_id)}
                 >
                   <div className="avatar-wrapper">
-                    <div className="avatar">{other?.display_name[0]?.toUpperCase() ?? "?"}</div>
+                    <div className="avatar avatar-md">{other?.display_name[0]?.toUpperCase() ?? "?"}</div>
                     {isOnline && <div className="presence-dot" />}
                   </div>
                   <div className="conv-info">
-                    <div className="conv-name">{other?.display_name ?? "Chat"}</div>
-                    <div className="conv-username">@{other?.username ?? ""}</div>
+                    <div className="conv-row-top">
+                      <div className="conv-name">{other?.display_name ?? "Chat"}</div>
+                      <div className="conv-time">{formatConvTime(conv.last_activity_at)}</div>
+                    </div>
+                    <div className="conv-row-bottom">
+                      <div className="conv-last-msg">@{other?.username ?? ""}</div>
+                      {conv.unread_count > 0 && (
+                        <div className="conv-unread-badge">{conv.unread_count}</div>
+                      )}
+                    </div>
                   </div>
                 </button>
               );
@@ -397,62 +634,79 @@ export default function ChatPage() {
         )}
       </aside>
 
-      {/* ── Chat area ───────────────────────────────────────────────────── */}
+      {/* ── Chat area ─────────────────────────────────────────────────────── */}
       <main className={`chat-area${!mobileShowChat ? " chat-area-mobile-hidden" : ""}`}>
         {!activeConvId ? (
           <div className="chat-empty">
-            <div className="chat-empty-icon">💬</div>
-            <div className="chat-empty-text">Seleziona una conversazione</div>
-            <button
-              className="auth-btn"
-              style={{ marginTop: 16, width: "auto", padding: "10px 24px" }}
-              onClick={() => setShowSearch(true)}
-            >
+            <div className="chat-empty-logo">α</div>
+            <h2 className="chat-empty-title">Alpha Chat</h2>
+            <p className="chat-empty-text">Seleziona una conversazione o iniziane una nuova</p>
+            <button className="chat-empty-btn" onClick={() => setShowSearch(true)}>
               Nuova chat
             </button>
           </div>
         ) : (
           <>
-            <div className="chat-header">
-              {/* Back button (mobile only) */}
-              <button className="chat-back-btn" onClick={handleBackToSidebar} aria-label="Torna alla lista">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" width="20" height="20">
-                  <polyline points="15 18 9 12 15 6"/>
-                </svg>
-              </button>
-              <div className="avatar">{otherUser?.display_name[0]?.toUpperCase() ?? "?"}</div>
-              <div>
-                <div className="chat-header-name">{otherUser?.display_name ?? "Chat"}</div>
-                <div className={`chat-header-status ${isOtherOnline ? "online" : "offline"}`}>
-                  {isOtherOnline ? "● Online" : "○ Offline"}
-                </div>
-              </div>
-            </div>
+            <ChatHeader
+              otherUser={otherUser}
+              isOnline={isOtherOnline}
+              onBack={() => setMobileShowChat(false)}
+            />
 
-            <div className="messages">
-              {loadingMsgs && <div className="msg-hint">Caricamento messaggi...</div>}
+            <div
+              className="messages"
+              ref={messagesContainerRef}
+              onScroll={handleScroll}
+            >
+              {loadingMsgs && <div className="msg-hint">Caricamento messaggi…</div>}
+
               {messages.map((msg) => {
                 const isMine = msg.sender_id === auth?.userId;
                 const text = msg.ciphertext ? decodeMessage(msg.ciphertext) : "";
-                const time = new Date(msg.sent_at).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" });
+                const time = formatTime(msg.sent_at);
                 return (
                   <div key={msg.id} className={`msg-row ${isMine ? "mine" : "theirs"}`}>
                     <div className={`msg-bubble ${isMine ? "mine" : "theirs"}`}>
                       <span className="msg-text">{text}</span>
-                      <span className="msg-time">{time}</span>
+                      <div className="msg-meta">
+                        <span className="msg-time">{time}</span>
+                        {isMine && (
+                          <span className="msg-status" title="Inviato">
+                            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12">
+                              <polyline points="1 8 5 12 15 4"/>
+                            </svg>
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
                 );
               })}
+
               {othersTyping.length > 0 && (
                 <div className="msg-row theirs">
                   <div className="msg-bubble theirs typing-bubble">
-                    <span className="typing-dot" /><span className="typing-dot" /><span className="typing-dot" />
+                    <span className="typing-dot" />
+                    <span className="typing-dot" />
+                    <span className="typing-dot" />
                   </div>
                 </div>
               )}
+
               <div ref={messagesEndRef} />
             </div>
+
+            {!atBottom && (
+              <button
+                className="scroll-to-bottom"
+                onClick={() => { setAtBottom(true); messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }); }}
+                aria-label="Scorri in fondo"
+              >
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="18" height="18">
+                  <polyline points="6 9 12 15 18 9"/>
+                </svg>
+              </button>
+            )}
 
             {sendError && (
               <div className="send-error-banner">
@@ -461,17 +715,12 @@ export default function ChatPage() {
               </div>
             )}
 
-            <form className="chat-input-row" onSubmit={handleSend}>
-              <input
-                className="chat-input"
-                type="text"
-                placeholder="Scrivi un messaggio..."
-                value={inputText}
-                onChange={handleInputChange}
-                disabled={sending}
-              />
-              <button className="send-btn" type="submit" disabled={sending || !inputText.trim()}>➤</button>
-            </form>
+            <ChatInput
+              value={inputText}
+              onChange={handleInputChange}
+              onSubmit={handleSend}
+              disabled={sending}
+            />
           </>
         )}
       </main>

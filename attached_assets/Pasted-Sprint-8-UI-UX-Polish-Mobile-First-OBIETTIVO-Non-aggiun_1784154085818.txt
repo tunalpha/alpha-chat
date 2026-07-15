@@ -1,0 +1,235 @@
+Sprint 8 — UI/UX Polish (Mobile First)
+
+OBIETTIVO
+
+Non aggiungere funzionalità backend.
+Voglio trasformare l'interfaccia attuale in una UI professionale, moderna e fluida, mantenendo tutta la logica esistente.
+
+NON modificare:
+- API
+- WebSocket
+- autenticazione
+- database
+- modelli
+- endpoint
+
+Modificare SOLO il frontend React.
+
+──────────────────────────────
+
+CHAT
+
+1. Le bolle devono avere:
+- margini corretti
+- larghezza massima 70%
+- angoli arrotondati stile Signal
+- ombra leggera
+- padding maggiore
+- timestamp più piccolo
+- stato del messaggio (inviato/consegnato/letto) predisposto.
+
+2. Animazioni:
+- comparsa messaggi
+- scroll fluido
+- auto-scroll solo se l'utente è già in fondo
+- transizioni morbide.
+
+──────────────────────────────
+
+INPUT
+
+Ridisegnare completamente la barra inferiore.
+
+Da sinistra verso destra:
+
+😊 Emoji
+📎 Allega
+Campo testo espandibile
+🎤 Microfono
+➡️ Invia
+
+Il pulsante invio compare solo se il campo contiene testo.
+Altrimenti mostra il microfono.
+
+Il campo cresce automaticamente fino a 6 righe.
+
+──────────────────────────────
+
+HEADER CHAT
+
+Header moderno con:
+
+Avatar
+Nome
+Online / Ultimo accesso
+Pulsante chiamata
+Pulsante videochiamata
+Menu (...)
+
+Il menu deve contenere:
+
+Visualizza profilo
+Media condivisi
+Cerca nella chat
+Silenzia
+Blocca utente
+Cancella chat
+
+Le funzioni non implementate possono mostrare "Disponibile prossimamente", ma il menu deve essere funzionante.
+
+──────────────────────────────
+
+LISTA CHAT
+
+Ogni conversazione deve mostrare:
+
+Avatar
+Nome
+Ultimo messaggio
+Ora
+Badge non letti
+Mute
+Pinned
+
+Animazione all'apertura.
+
+──────────────────────────────
+
+SIDEBAR
+
+Ridisegnare il profilo utente.
+
+Menu:
+
+Profilo
+Privacy e Sicurezza
+Dispositivi
+Impostazioni
+Archivio
+Esci
+Esci da tutti i dispositivi
+
+Tutte le voci devono aprire una pagina reale.
+
+Se una funzione non esiste ancora,
+mostrare una pagina elegante con:
+
+"Questa funzione sarà disponibile nei prossimi sprint."
+
+Mai lasciare elementi non cliccabili.
+
+──────────────────────────────
+
+PROFILO
+
+Pagina con:
+
+Avatar grande
+Nome
+Bio
+Codice invito (quando sarà implementato)
+Pulsante cambia avatar
+
+──────────────────────────────
+
+IMPOSTAZIONI
+
+Tema
+Lingua
+Notifiche
+Privacy
+Aspetto
+Download media
+
+──────────────────────────────
+
+DISPOSITIVI
+
+Pagina stile Telegram.
+
+Visualizzare:
+
+Questo dispositivo
+Ultimo accesso
+IP (se disponibile)
+Paese
+Browser
+Sistema operativo
+
+Lista degli altri dispositivi.
+
+Pulsante:
+
+Disconnetti dispositivo
+
+e
+
+Disconnetti tutti gli altri dispositivi
+
+──────────────────────────────
+
+PRIVACY
+
+Pagina dedicata.
+
+Preparare la UI per:
+
+Ultimo accesso
+Foto profilo
+Bio
+Blocco utenti
+PIN
+Biometria
+Messaggi effimeri
+Verifica sicurezza Signal
+
+──────────────────────────────
+
+MOBILE
+
+Ottimizzare completamente Safari iPhone.
+
+Usare:
+
+safe-area-inset
+100dvh
+touch target minimo 44px
+keyboard avoidance
+scroll corretto
+
+Nessun overflow orizzontale.
+
+──────────────────────────────
+
+DESIGN
+
+Mantenere il tema Alpha Chat.
+
+Palette viola.
+
+Usare gradienti leggeri.
+
+Animazioni eleganti.
+
+Look premium tipo Signal + Telegram.
+
+──────────────────────────────
+
+IMPORTANTE
+
+NON rompere nulla del backend.
+
+NON modificare API.
+
+NON modificare autenticazione.
+
+NON modificare websocket.
+
+Al termine:
+
+- typecheck
+- build
+- test
+- correggere ogni errore
+- aggiornare CHANGELOG
+- fornire report finale con tutti i file modificati.

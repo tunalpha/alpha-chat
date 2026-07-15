@@ -1,19 +1,52 @@
+import { useState } from "react";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import AuthPage from "./pages/AuthPage";
 import ChatPage from "./pages/ChatPage";
+import ProfilePage from "./pages/ProfilePage";
+import SettingsPage from "./pages/SettingsPage";
+import DevicesPage from "./pages/DevicesPage";
+import PrivacyPage from "./pages/PrivacyPage";
+import ComingSoonPage from "./pages/ComingSoonPage";
+
+export type AppView = "chat" | "profile" | "settings" | "devices" | "privacy" | "archive";
 
 function AppContent() {
-  const { auth, isLoading } = useAuth();
+  const { auth, isLoading, logout, logoutAll } = useAuth();
+  const [view, setView] = useState<AppView>("chat");
 
   if (isLoading) {
     return (
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100vh", background: "#0f0f10", color: "#e0e0e5" }}>
-        Caricamento...
+      <div className="app-loading">
+        <div className="app-loading-logo">α</div>
+        <div className="app-loading-text">Caricamento…</div>
       </div>
     );
   }
 
-  return auth ? <ChatPage /> : <AuthPage />;
+  if (!auth) return <AuthPage />;
+
+  const goBack = () => setView("chat");
+
+  switch (view) {
+    case "profile":
+      return <ProfilePage auth={auth} onBack={goBack} />;
+    case "settings":
+      return <SettingsPage onBack={goBack} />;
+    case "devices":
+      return (
+        <DevicesPage
+          auth={auth}
+          onBack={goBack}
+          onLoggedOut={() => { void logoutAll(); }}
+        />
+      );
+    case "privacy":
+      return <PrivacyPage onBack={goBack} />;
+    case "archive":
+      return <ComingSoonPage title="Archivio" onBack={goBack} />;
+    default:
+      return <ChatPage onNavigate={setView} />;
+  }
 }
 
 export default function App() {

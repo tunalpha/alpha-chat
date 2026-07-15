@@ -5,6 +5,48 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ---
 
+## [0.8.0] — Sprint 8 — UI/UX Polish (Mobile First) — 2026-07-15
+
+### Added (Frontend only — nessuna modifica API/WS/DB)
+- `src/pages/ProfilePage.tsx` — profilo utente con avatar grande, nome, username, bio placeholder, pulsante cambia avatar
+- `src/pages/SettingsPage.tsx` — impostazioni (Tema, Lingua, Notifiche, Privacy, Archiviazione) con badge "Presto"
+- `src/pages/DevicesPage.tsx` — pagina stile Telegram: browser, OS, device ID, data connessione; pulsante "Disconnetti tutti"
+- `src/pages/PrivacyPage.tsx` — controllo privacy (Ultimo accesso, Foto profilo, Bio, Blocco utenti, PIN, Biometria, Messaggi effimeri, Verifica Signal)
+- `src/pages/ComingSoonPage.tsx` — pagina elegante generica per funzioni non ancora implementate
+- `App.tsx` — view routing React state: `"chat" | "profile" | "settings" | "devices" | "privacy" | "archive"`
+
+### Changed
+- `src/pages/ChatPage.tsx` — refactor completo Sprint 8:
+  - Bolle Signal-style: max 70%, angoli asimmetrici, ombra, padding aumentato, timestamp + icona spunta
+  - Input bar redesign: Emoji 😊 | Allega 📎 | textarea auto-expand (6 righe) | Mic 🎤 ↔ Invia ➤ (toggle)
+  - `ChatHeader` con avatar, nome, stato online, pulsanti chiamata/video, menu (…) con 6 voci
+  - `SidebarMenu` — tutte le voci navigano a pagine reali (Profilo, Privacy, Dispositivi, Impostazioni, Archivio)
+  - Lista conversazioni: avatar, nome, ultimo orario, badge unread
+  - Auto-scroll solo quando l'utente è già in fondo (`atBottom` state + scroll sentinel)
+  - Animazione messaggi (`msg-in` keyframe)
+  - Pulsante "scorri in fondo" flottante quando non si è in fondo
+  - Enter per inviare, Shift+Enter per newline
+- `src/index.css` — riscrittura completa (741 → 1020 linee):
+  - `100dvh` + `env(safe-area-inset-*)` ovunque
+  - Touch target 44px su mobile (`@media (pointer: coarse)`)
+  - Mobile layout: slide CSS `transform: translateX` con `cubic-bezier` al posto di classi show/hide
+  - Keyboard avoidance via `padding-bottom: calc(10px + var(--sab))`
+  - Nuovi componenti: `.settings-*`, `.device-card`, `.privacy-hero`, `.coming-soon-*`, `.chat-menu-*`, `.scroll-to-bottom`, `.input-icon-btn`, `.chat-textarea`, `.profile-*`
+  - Animazioni: `menu-pop`, `msg-in`, `typing-bounce`, `fade-in`
+  - Scrollbar viola-tinted custom
+
+### Fixed (backend)
+- `sender_key_id` ora accettato come `null` (M1 placeholder): Zod schema `.nullable().optional().default(null)` — rimuove l'asimmetria invio tra Marco e Cricco causata da iOS Safari cache
+- `message.repository.ts` — tipo `senderKeyId: number | null`
+
+### Tests
+- 126/126 ✅ (invariato — nessuna logica backend modificata)
+
+### Build
+- ✅ `vite build` — 232KB JS gzipped 69KB, 21KB CSS gzipped 4.5KB
+
+---
+
 ## [0.6.0] — Sprint 6 — First Message — 2026-07-15
 
 ### Added
