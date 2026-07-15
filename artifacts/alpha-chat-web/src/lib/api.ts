@@ -1,6 +1,12 @@
 /**
- * API client — wrapper fetch verso /api/v1/*.
- * Gestisce refresh automatico del token su 401.
+ * API client — fetch verso /api/v1/*.
+ *
+ * Il backend avvolge TUTTE le risposte:
+ *   Successo:   { data: T, meta: { request_id, timestamp } }
+ *   Paginato:   { data: T[], pagination: { cursor, has_more }, meta }
+ *   Errore:     { error: { code, message, field, details, docs }, meta }
+ *
+ * Questo client estrae automaticamente i dati e normalizza gli errori.
  */
 
 import { getAccessToken, getRefreshToken, updateAccessToken, saveAuth, clearAuth, getDeviceId } from "./auth";
@@ -8,43 +14,71 @@ import { getAccessToken, getRefreshToken, updateAccessToken, saveAuth, clearAuth
 const BASE = "/api/v1";
 
 // ---------------------------------------------------------------------------
-// Tipi
+// Tipi backend — corrispondono esattamente alle shape restituite dal server
 // ---------------------------------------------------------------------------
 
-export interface RegisterInput {
-  username: string;
-  password: string;
-  display_name: string;
-}
-
-export interface LoginInput {
-  username_or_email: string;
-  password: string;
-}
-
-export interface AuthResult {
+export interface AuthTokens {
   access_token: string;
   refresh_token: string;
-  user: { id: string; username: string; display_name: string };
+  access_token_expires_at: string;
+  refresh_token_expires_at: string;
 }
 
+export interface AuthUserProfile {
+  id: string;
+  username: string;
+  display_name: string;
+  email: string;
+  is_verified: boolean;
+}
+
+/** Shape completa restituita da /auth/register, /auth/login, /auth/refresh */
+export interface AuthResult {
+  user: AuthUserProfile;
+  tokens: AuthTokens;
+  is_new_device: boolean;
+  requires_2fa: false;
+}
+
+/** Utente nella lista conversazioni (other_user) */
+export interface ConversationPartner {
+  user_id: string;   // ← backend usa user_id, non id
+  username: string;
+  display_name: string;
+  avatar_url: string | null;
+  is_verified: boolean;
+}
+
+/** Conversazione nella lista conversazioni */
+export interface ConversationItem {
+  conversation_id: string;  // ← backend usa conversation_id, non id
+  type: "direct" | "group";
+  name: string | null;
+  other_user: ConversationPartner | null;
+  last_activity_at: string;
+  last_message_at: string | null;
+  unread_count: number;
+}
+
+/** Conversazione appena creata (POST /conversations) */
+export interface ConversationCreated {
+  conversation_id: string;
+  type: "direct" | "group";
+  is_new: boolean;
+  last_activity_at: string;
+}
+
+/** Profilo utente (ricerca utenti) */
 export interface UserProfile {
   id: string;
   username: string;
   display_name: string;
+  bio: string | null;
   avatar_url: string | null;
-  is_online?: boolean;
+  is_verified: boolean;
 }
 
-export interface ConversationItem {
-  id: string;
-  type: "direct" | "group";
-  last_activity_at: string | null;
-  last_message_id: string | null;
-  unread_count: number;
-  other_user?: UserProfile;
-}
-
+/** Messaggio */
 export interface MessageItem {
   id: string;
   client_message_id: string;
@@ -60,18 +94,45 @@ export interface MessageItem {
   deleted_for_everyone: boolean;
 }
 
-export interface MessageListResult {
-  messages: MessageItem[];
+// ---------------------------------------------------------------------------
+// Input types
+// ---------------------------------------------------------------------------
+
+export interface RegisterInput { username: string; password: string; display_name: string; }
+export interface LoginInput { identifier: string; password: string; }
+
+// ---------------------------------------------------------------------------
+// Paginated result — shape usata internamente nel client
+// ---------------------------------------------------------------------------
+export interface PaginatedResult<T> {
+  items: T[];
+  cursor: string | null;
   hasMore: boolean;
-  nextCursor: string | null;
 }
 
 // ---------------------------------------------------------------------------
-// Core fetch
+// Core fetch — estrae automaticamente body.data, normalizza errori
 // ---------------------------------------------------------------------------
 
 let isRefreshing = false;
-let refreshQueue: Array<(token: string) => void> = [];
+let refreshQueue: Array<(token: string | null) => void> = [];
+
+/** Estrae il messaggio leggibile da una risposta di errore del backend */
+function extractErrorMessage(body: unknown, fallback: string): string {
+  if (body && typeof body === "object") {
+    const b = body as Record<string, unknown>;
+    // Formato standard Alpha Chat: { error: { message, code } }
+    if (b.error && typeof b.error === "object") {
+      const e = b.error as Record<string, unknown>;
+      if (typeof e.message === "string" && e.message) return e.message;
+      if (typeof e.code === "string" && e.code) return e.code;
+    }
+    // Fallback generico
+    if (typeof b.message === "string" && b.message) return b.message;
+    if (typeof b.error === "string" && b.error) return b.error;
+  }
+  return fallback;
+}
 
 async function attemptRefresh(): Promise<string | null> {
   const refreshToken = getRefreshToken();
@@ -83,26 +144,30 @@ async function attemptRefresh(): Promise<string | null> {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ refresh_token: refreshToken, device_id: getDeviceId() }),
     });
-    if (!res.ok) {
-      clearAuth();
-      return null;
-    }
-    const data = (await res.json()) as AuthResult;
-    updateAccessToken(data.access_token);
+    if (!res.ok) { clearAuth(); return null; }
+
+    const json = (await res.json()) as { data: AuthResult };
+    const result = json.data;
+
+    updateAccessToken(result.tokens.access_token);
     saveAuth({
-      accessToken: data.access_token,
-      refreshToken: data.refresh_token,
-      userId: data.user.id,
-      username: data.user.username,
-      displayName: data.user.display_name,
+      accessToken: result.tokens.access_token,
+      refreshToken: result.tokens.refresh_token,
+      userId: result.user.id,
+      username: result.user.username,
+      displayName: result.user.display_name,
     });
-    return data.access_token;
+    return result.tokens.access_token;
   } catch {
     clearAuth();
     return null;
   }
 }
 
+/**
+ * Fa una request e restituisce body.data (unwrapped da successResponse).
+ * Riprova una volta se riceve 401 (token scaduto → refresh).
+ */
 async function request<T>(
   method: string,
   path: string,
@@ -110,11 +175,7 @@ async function request<T>(
   retry = true,
 ): Promise<T> {
   const token = getAccessToken();
-
-  const headers: Record<string, string> = {
-    "Content-Type": "application/json",
-    "X-Client-Version": "1.0.0",
-  };
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (token) headers["Authorization"] = `Bearer ${token}`;
 
   const res = await fetch(`${BASE}${path}`, {
@@ -123,44 +184,81 @@ async function request<T>(
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
 
-  // Token scaduto → refresh e riprova una volta
+  // 401 → prova a rinnovare il token
   if (res.status === 401 && retry) {
     if (isRefreshing) {
-      // Aspetta che il refresh corrente finisca
       const newToken = await new Promise<string | null>((resolve) => {
-        refreshQueue.push((t) => resolve(t));
+        refreshQueue.push(resolve);
       });
-      if (!newToken) throw new Error("SESSION_EXPIRED");
+      if (!newToken) { window.dispatchEvent(new CustomEvent("auth:expired")); throw new Error("Sessione scaduta"); }
       return request<T>(method, path, body, false);
     }
 
     isRefreshing = true;
     const newToken = await attemptRefresh();
     isRefreshing = false;
-    refreshQueue.forEach((cb) => cb(newToken ?? ""));
+    refreshQueue.forEach((cb) => cb(newToken));
     refreshQueue = [];
 
     if (!newToken) {
-      // Dispatch evento per far uscire l'utente
       window.dispatchEvent(new CustomEvent("auth:expired"));
-      throw new Error("SESSION_EXPIRED");
+      throw new Error("Sessione scaduta. Accedi di nuovo.");
     }
     return request<T>(method, path, body, false);
-  }
-
-  if (!res.ok) {
-    let msg = `HTTP ${res.status}`;
-    try {
-      const err = (await res.json()) as { message?: string; error?: string };
-      msg = err.message ?? err.error ?? msg;
-    } catch { /* ignore */ }
-    throw new Error(msg);
   }
 
   // 204 No Content
   if (res.status === 204) return undefined as T;
 
-  return res.json() as Promise<T>;
+  let jsonBody: unknown;
+  try { jsonBody = await res.json(); } catch { jsonBody = null; }
+
+  if (!res.ok) {
+    throw new Error(extractErrorMessage(jsonBody, `Errore ${res.status}`));
+  }
+
+  // Scartola il wrapper { data: T, meta: {...} }
+  if (jsonBody && typeof jsonBody === "object" && "data" in (jsonBody as object)) {
+    return (jsonBody as { data: T }).data;
+  }
+  return jsonBody as T;
+}
+
+/**
+ * Fa una request paginata e restituisce { items, cursor, hasMore }.
+ * La risposta dal backend è { data: T[], pagination: { cursor, has_more }, meta }.
+ */
+async function requestPaginated<T>(
+  method: string,
+  path: string,
+  body?: unknown,
+): Promise<PaginatedResult<T>> {
+  const token = getAccessToken();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${BASE}${path}`, {
+    method,
+    headers,
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+
+  let jsonBody: unknown;
+  try { jsonBody = await res.json(); } catch { jsonBody = null; }
+
+  if (!res.ok) {
+    throw new Error(extractErrorMessage(jsonBody, `Errore ${res.status}`));
+  }
+
+  const wrapper = jsonBody as {
+    data: T[];
+    pagination: { cursor: string | null; has_more: boolean };
+  };
+  return {
+    items: wrapper.data ?? [],
+    cursor: wrapper.pagination?.cursor ?? null,
+    hasMore: wrapper.pagination?.has_more ?? false,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -173,44 +271,43 @@ export async function apiRegister(input: RegisterInput): Promise<AuthResult> {
 
 export async function apiLogin(input: LoginInput): Promise<AuthResult> {
   return request<AuthResult>("POST", "/auth/login", {
-    ...input,
+    identifier: input.identifier,
+    password: input.password,
     device_id: getDeviceId(),
     device_name: navigator.userAgent.slice(0, 80),
   });
 }
 
 export async function apiLogout(): Promise<void> {
-  const refreshToken = getRefreshToken();
-  if (refreshToken) {
-    await request<void>("POST", "/auth/logout", { refresh_token: refreshToken }).catch(() => {});
-  }
+  // /auth/logout usa authenticate middleware (Bearer token nell'header) — nessun body necessario
+  await request<void>("POST", "/auth/logout").catch(() => {});
 }
 
 // ---------------------------------------------------------------------------
 // Users
 // ---------------------------------------------------------------------------
 
-export async function apiSearchUsers(q: string): Promise<{ users: UserProfile[] }> {
-  return request<{ users: UserProfile[] }>("GET", `/users/search?q=${encodeURIComponent(q)}&limit=20`);
+export async function apiSearchUsers(q: string): Promise<PaginatedResult<UserProfile>> {
+  return requestPaginated<UserProfile>("GET", `/users/search?q=${encodeURIComponent(q)}&limit=20`);
 }
 
 // ---------------------------------------------------------------------------
 // Conversations
 // ---------------------------------------------------------------------------
 
-export async function apiCreateConversation(username: string): Promise<{ id: string }> {
-  return request<{ id: string }>("POST", "/conversations", { username });
+export async function apiCreateConversation(username: string): Promise<ConversationCreated> {
+  return request<ConversationCreated>("POST", "/conversations", { username });
 }
 
-export async function apiListConversations(): Promise<{ conversations: ConversationItem[] }> {
-  return request<{ conversations: ConversationItem[] }>("GET", "/conversations");
+export async function apiListConversations(): Promise<PaginatedResult<ConversationItem>> {
+  return requestPaginated<ConversationItem>("GET", "/conversations");
 }
 
 // ---------------------------------------------------------------------------
 // Messages
 // ---------------------------------------------------------------------------
 
-/** Codifica testo → base64 (UTF-8 safe) */
+/** Codifica testo → base64 UTF-8 safe (test client: simula ciphertext) */
 export function encodeMessage(text: string): string {
   const bytes = new TextEncoder().encode(text);
   const binStr = Array.from(bytes, (b) => String.fromCharCode(b)).join("");
@@ -224,15 +321,15 @@ export function decodeMessage(ciphertext: string): string {
     const bytes = Uint8Array.from(binStr, (c) => c.charCodeAt(0));
     return new TextDecoder().decode(bytes);
   } catch {
-    return "[encrypted]";
+    return "[cifrato]";
   }
 }
 
 export async function apiSendMessage(
   conversationId: string,
   text: string,
-): Promise<MessageItem & { is_new: boolean }> {
-  return request("POST", `/conversations/${conversationId}/messages`, {
+): Promise<MessageItem> {
+  return request<MessageItem>("POST", `/conversations/${conversationId}/messages`, {
     client_message_id: crypto.randomUUID(),
     ciphertext: encodeMessage(text),
     ciphertext_type: 1,
@@ -245,12 +342,12 @@ export async function apiSendMessage(
 export async function apiListMessages(
   conversationId: string,
   options: { limit?: number; beforeSequence?: number } = {},
-): Promise<MessageListResult> {
+): Promise<PaginatedResult<MessageItem>> {
   const params = new URLSearchParams();
   if (options.limit) params.set("limit", String(options.limit));
   if (options.beforeSequence) params.set("before_sequence", String(options.beforeSequence));
   const qs = params.toString();
-  return request<MessageListResult>(
+  return requestPaginated<MessageItem>(
     "GET",
     `/conversations/${conversationId}/messages${qs ? `?${qs}` : ""}`,
   );

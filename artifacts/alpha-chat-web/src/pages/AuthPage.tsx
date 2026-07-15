@@ -8,7 +8,7 @@ export default function AuthPage() {
   const [loading, setLoading] = useState(false);
 
   // Login form state
-  const [loginUsername, setLoginUsername] = useState("");
+  const [loginIdentifier, setLoginIdentifier] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
 
   // Register form state
@@ -21,7 +21,7 @@ export default function AuthPage() {
     setError("");
     setLoading(true);
     try {
-      await login({ username_or_email: loginUsername, password: loginPassword });
+      await login({ identifier: loginIdentifier, password: loginPassword });
     } catch (err: unknown) {
       setError((err as Error).message ?? "Errore di accesso");
     } finally {
@@ -81,8 +81,8 @@ export default function AuthPage() {
             <input
               className="auth-input"
               type="text"
-              value={loginUsername}
-              onChange={(e) => setLoginUsername(e.target.value)}
+              value={loginIdentifier}
+              onChange={(e) => setLoginIdentifier(e.target.value)}
               placeholder="marco"
               required
               autoFocus

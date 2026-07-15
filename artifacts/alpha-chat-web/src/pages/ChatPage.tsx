@@ -31,10 +31,10 @@ export default function ChatPage() {
   const [searchResults, setSearchResults] = useState<UserProfile[]>([]);
   const [searching, setSearching] = useState(false);
 
-  // Typing indicators per conversazione: { convId: Set<userId> }
+  // Typing indicators: { conversation_id: Set<user_id> }
   const [typingUsers, setTypingUsers] = useState<Record<string, Set<string>>>({});
 
-  // Online users: Set<userId>
+  // Online users: Set<user_id>
   const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
@@ -47,7 +47,7 @@ export default function ChatPage() {
     setLoadingConvs(true);
     try {
       const res = await apiListConversations();
-      setConversations(res.conversations);
+      setConversations(res.items);
     } catch { /* ignore */ } finally {
       setLoadingConvs(false);
     }
@@ -59,13 +59,14 @@ export default function ChatPage() {
   useEffect(() => {
     if (!activeConvId) { setMessages([]); return; }
     setLoadingMsgs(true);
+    // I messaggi arrivano in ordine DESC (sequence_number decrescente) → li invertiamo
     apiListMessages(activeConvId, { limit: 50 })
-      .then((res) => setMessages(res.messages.slice().reverse()))
+      .then((res) => setMessages([...res.items].reverse()))
       .catch(() => {})
       .finally(() => setLoadingMsgs(false));
   }, [activeConvId]);
 
-  // Scroll to bottom on new messages
+  // Scroll al fondo su nuovi messaggi
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
@@ -76,23 +77,26 @@ export default function ChatPage() {
       switch (event.type) {
         case "message.new": {
           const msg = event.payload as unknown as MessageItem & { conversation_id: string };
-          // Aggiorna la conversazione attiva
+
+          // Aggiunge alla conversazione attiva
           if (msg.conversation_id === activeConvId) {
             setMessages((prev) => {
-              // Evita duplicati
               if (prev.some((m) => m.id === msg.id)) return prev;
               return [...prev, msg];
             });
           }
-          // Aggiorna last_activity_at nella lista
+
+          // Aggiorna last_activity_at nella lista e riordina
           setConversations((prev) =>
-            prev.map((c) =>
-              c.id === msg.conversation_id
-                ? { ...c, last_activity_at: msg.server_received_at }
-                : c,
-            ).sort((a, b) =>
-              (b.last_activity_at ?? "").localeCompare(a.last_activity_at ?? "")
-            ),
+            prev
+              .map((c) =>
+                c.conversation_id === msg.conversation_id
+                  ? { ...c, last_activity_at: msg.server_received_at }
+                  : c,
+              )
+              .sort((a, b) =>
+                (b.last_activity_at ?? "").localeCompare(a.last_activity_at ?? ""),
+              ),
           );
           break;
         }
@@ -101,8 +105,9 @@ export default function ChatPage() {
           const { user_id, conversation_id } = event.payload;
           setTypingUsers((prev) => {
             const copy = { ...prev };
-            if (!copy[conversation_id]) copy[conversation_id] = new Set();
-            copy[conversation_id] = new Set(copy[conversation_id]).add(user_id);
+            const s = new Set(copy[conversation_id] ?? []);
+            s.add(user_id);
+            copy[conversation_id] = s;
             return copy;
           });
           break;
@@ -130,25 +135,20 @@ export default function ChatPage() {
 
         case "presence.offline": {
           const { user_id } = event.payload;
-          setOnlineUsers((prev) => {
-            const s = new Set(prev);
-            s.delete(user_id);
-            return s;
-          });
+          setOnlineUsers((prev) => { const s = new Set(prev); s.delete(user_id); return s; });
           break;
         }
       }
     });
   }, [on, activeConvId]);
 
-  // ── Send message ─────────────────────────────────────────────────────────
+  // ── Send message ──────────────────────────────────────────────────────────
   async function handleSend(e: React.FormEvent) {
     e.preventDefault();
     if (!activeConvId || !inputText.trim() || sending) return;
     const text = inputText.trim();
     setInputText("");
 
-    // Stop typing indicator
     if (isTypingRef.current) {
       sendTypingStop(activeConvId);
       isTypingRef.current = false;
@@ -158,9 +158,9 @@ export default function ChatPage() {
     try {
       await apiSendMessage(activeConvId, text);
       // Il messaggio arriva via WebSocket message.new
-    } catch (err: unknown) {
+    } catch (err) {
       console.error("Send failed:", err);
-      setInputText(text); // restore
+      setInputText(text);
     } finally {
       setSending(false);
     }
@@ -175,7 +175,6 @@ export default function ChatPage() {
       sendTypingStart(activeConvId);
       isTypingRef.current = true;
     }
-    // Reset auto-stop timer
     if (typingTimerRef.current) clearTimeout(typingTimerRef.current);
     typingTimerRef.current = setTimeout(() => {
       if (activeConvId && isTypingRef.current) {
@@ -196,7 +195,7 @@ export default function ChatPage() {
       setSearching(true);
       try {
         const res = await apiSearchUsers(q.trim());
-        setSearchResults(res.users.filter((u) => u.id !== auth?.userId));
+        setSearchResults(res.items.filter((u) => u.id !== auth?.userId));
       } catch { /* ignore */ } finally {
         setSearching(false);
       }
@@ -210,16 +209,18 @@ export default function ChatPage() {
       setSearchQuery("");
       setSearchResults([]);
       await loadConversations();
-      setActiveConvId(res.id);
-    } catch (err: unknown) {
+      // Il backend restituisce conversation_id
+      setActiveConvId(res.conversation_id);
+    } catch (err) {
       console.error("Create conversation failed:", err);
     }
   }
 
   // ── Active conversation info ──────────────────────────────────────────────
-  const activeConv = conversations.find((c) => c.id === activeConvId);
+  const activeConv = conversations.find((c) => c.conversation_id === activeConvId);
   const otherUser = activeConv?.other_user;
-  const isOtherOnline = otherUser ? onlineUsers.has(otherUser.id) : false;
+  // other_user.user_id è il campo corretto (non other_user.id)
+  const isOtherOnline = otherUser ? onlineUsers.has(otherUser.user_id) : false;
   const typingInActive = activeConvId ? [...(typingUsers[activeConvId] ?? [])] : [];
   const othersTyping = typingInActive.filter((id) => id !== auth?.userId);
 
@@ -284,12 +285,13 @@ export default function ChatPage() {
           )}
           {conversations.map((conv) => {
             const other = conv.other_user;
-            const isOnline = other ? onlineUsers.has(other.id) : false;
+            // Usa user_id (campo corretto dal backend)
+            const isOnline = other ? onlineUsers.has(other.user_id) : false;
             return (
               <button
-                key={conv.id}
-                className={`conv-item ${conv.id === activeConvId ? "active" : ""}`}
-                onClick={() => setActiveConvId(conv.id)}
+                key={conv.conversation_id}
+                className={`conv-item ${conv.conversation_id === activeConvId ? "active" : ""}`}
+                onClick={() => setActiveConvId(conv.conversation_id)}
               >
                 <div className="avatar-wrapper">
                   <div className="avatar">{other?.display_name[0]?.toUpperCase() ?? "?"}</div>
@@ -313,8 +315,13 @@ export default function ChatPage() {
           <div className="chat-empty">
             <div className="chat-empty-icon">💬</div>
             <div className="chat-empty-text">Seleziona una conversazione</div>
-            <button className="auth-btn" style={{ marginTop: 16, width: "auto" }}
-              onClick={() => setShowSearch(true)}>Nuova chat</button>
+            <button
+              className="auth-btn"
+              style={{ marginTop: 16, width: "auto", padding: "10px 24px" }}
+              onClick={() => setShowSearch(true)}
+            >
+              Nuova chat
+            </button>
           </div>
         ) : (
           <>
@@ -347,6 +354,7 @@ export default function ChatPage() {
                   </div>
                 );
               })}
+
               {/* Typing indicator */}
               {othersTyping.length > 0 && (
                 <div className="msg-row theirs">

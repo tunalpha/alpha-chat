@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
-import { loadAuth, saveAuth, clearAuth, type StoredAuth } from "../lib/auth";
-import { apiLogin, apiRegister, apiLogout, type LoginInput, type RegisterInput } from "../lib/api";
+import { loadAuth, saveAuth, clearAuth, getDeviceId, type StoredAuth } from "../lib/auth";
+import { apiLogin, apiRegister, apiLogout, type LoginInput, type RegisterInput, type AuthResult } from "../lib/api";
 
 interface AuthContextValue {
   auth: StoredAuth | null;
@@ -12,50 +12,42 @@ interface AuthContextValue {
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
+function authResultToStored(result: AuthResult): StoredAuth {
+  return {
+    accessToken: result.tokens.access_token,
+    refreshToken: result.tokens.refresh_token,
+    userId: result.user.id,
+    username: result.user.username,
+    displayName: result.user.display_name,
+    deviceId: getDeviceId(),
+  };
+}
+
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [auth, setAuth] = useState<StoredAuth | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    const stored = loadAuth();
-    setAuth(stored);
+    setAuth(loadAuth());
     setIsLoading(false);
   }, []);
 
-  // Logout automatico se il token scade e il refresh fallisce
   useEffect(() => {
-    const handler = () => {
-      clearAuth();
-      setAuth(null);
-    };
+    const handler = () => { clearAuth(); setAuth(null); };
     window.addEventListener("auth:expired", handler);
     return () => window.removeEventListener("auth:expired", handler);
   }, []);
 
   const login = useCallback(async (input: LoginInput) => {
     const result = await apiLogin(input);
-    const stored: StoredAuth = {
-      accessToken: result.access_token,
-      refreshToken: result.refresh_token,
-      userId: result.user.id,
-      username: result.user.username,
-      displayName: result.user.display_name,
-      deviceId: localStorage.getItem("ac_device_id") ?? crypto.randomUUID(),
-    };
+    const stored = authResultToStored(result);
     saveAuth(stored);
     setAuth(stored);
   }, []);
 
   const register = useCallback(async (input: RegisterInput) => {
     const result = await apiRegister(input);
-    const stored: StoredAuth = {
-      accessToken: result.access_token,
-      refreshToken: result.refresh_token,
-      userId: result.user.id,
-      username: result.user.username,
-      displayName: result.user.display_name,
-      deviceId: localStorage.getItem("ac_device_id") ?? crypto.randomUUID(),
-    };
+    const stored = authResultToStored(result);
     saveAuth(stored);
     setAuth(stored);
   }, []);
