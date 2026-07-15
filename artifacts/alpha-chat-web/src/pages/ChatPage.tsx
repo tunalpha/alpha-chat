@@ -354,6 +354,10 @@ export default function ChatPage({ onNavigate }: Props) {
   const [replyTo, setReplyTo] = useState<MessageItem | null>(null);
   // edit
   const [editingMessage, setEditingMessage] = useState<MessageItem | null>(null);
+  // forward
+  const [forwardingMessage, setForwardingMessage] = useState<MessageItem | null>(null);
+  // toast
+  const [toastMsg, setToastMsg] = useState<string | null>(null);
   const [typingUsers, setTypingUsers] = useState<Record<string, Set<string>>>({});
   const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
   const [atBottom, setAtBottom] = useState(true);
@@ -550,6 +554,23 @@ export default function ChatPage({ onNavigate }: Props) {
   }
 
   function closeContextMenu() { setContextMenu(null); }
+
+  function showToast(text: string) {
+    setToastMsg(text);
+    setTimeout(() => setToastMsg(null), 2500);
+  }
+
+  async function handleForwardTo(targetConvId: string) {
+    if (!forwardingMessage) return;
+    const text = forwardingMessage.ciphertext ? decodeMessage(forwardingMessage.ciphertext) : "";
+    setForwardingMessage(null);
+    try {
+      await apiSendMessage(targetConvId, text);
+      showToast("Messaggio inoltrato ✓");
+    } catch {
+      showToast("Errore durante l'inoltro");
+    }
+  }
 
   async function handleDeleteForMe(msg: MessageItem) {
     closeContextMenu();
@@ -954,6 +975,10 @@ export default function ChatPage({ onNavigate }: Props) {
                 Modifica
               </button>
             )}
+            <button className="ctx-item" onClick={() => { setForwardingMessage(contextMenu.msg); closeContextMenu(); }}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14"><polyline points="15 17 20 12 15 7"/><path d="M4 18v-2a4 4 0 0 1 4-4h12"/></svg>
+              Inoltra
+            </button>
             <button className="ctx-item" onClick={() => void handleDeleteForMe(contextMenu.msg)}>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
               Elimina per me
@@ -966,6 +991,56 @@ export default function ChatPage({ onNavigate }: Props) {
             )}
           </div>
         </div>
+      )}
+
+      {/* ── Forward modal ──────────────────────────────────────────────────── */}
+      {forwardingMessage && (
+        <div className="modal-backdrop" onClick={() => setForwardingMessage(null)}>
+          <div className="forward-sheet" onClick={(e) => e.stopPropagation()}>
+            <div className="forward-sheet-header">
+              <span className="forward-sheet-title">Inoltra a…</span>
+              <button className="forward-sheet-close" onClick={() => setForwardingMessage(null)} aria-label="Chiudi">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="16" height="16">
+                  <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+              </button>
+            </div>
+            <div className="forward-sheet-preview">
+              "{forwardingMessage.ciphertext ? decodeMessage(forwardingMessage.ciphertext).slice(0, 60) : "Messaggio"}"
+            </div>
+            <div className="forward-conv-list">
+              {conversations
+                .filter((c) => c.conversation_id !== activeConvId)
+                .map((conv) => {
+                  const letter = (conv.other_user?.display_name?.[0] ?? conv.other_user?.username?.[0] ?? "?").toUpperCase();
+                  return (
+                    <button
+                      key={conv.conversation_id}
+                      className="forward-conv-item"
+                      onClick={() => void handleForwardTo(conv.conversation_id)}
+                    >
+                      <div className="forward-conv-avatar">{letter}</div>
+                      <div className="forward-conv-info">
+                        <span className="forward-conv-name">{conv.other_user?.display_name ?? conv.other_user?.username ?? "Chat"}</span>
+                        <span className="forward-conv-sub">@{conv.other_user?.username}</span>
+                      </div>
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16" style={{ opacity: 0.4 }}>
+                        <polyline points="15 17 20 12 15 7"/><path d="M4 18v-2a4 4 0 0 1 4-4h12"/>
+                      </svg>
+                    </button>
+                  );
+                })}
+              {conversations.filter((c) => c.conversation_id !== activeConvId).length === 0 && (
+                <div className="forward-empty">Nessun altro contatto disponibile</div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Toast ──────────────────────────────────────────────────────────── */}
+      {toastMsg && (
+        <div className="toast-msg">{toastMsg}</div>
       )}
 
       {/* ── Invite modals ──────────────────────────────────────────────────── */}
