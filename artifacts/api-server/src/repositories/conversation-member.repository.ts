@@ -73,4 +73,35 @@ export class ConversationMemberRepository {
       .sort({ pinned: -1, updatedAt: -1 })
       .limit(limit);
   }
+
+  /**
+   * Ritorna tutti gli user_id che condividono almeno una conversazione
+   * con userId (escluso userId stesso). Usato per broadcast presence.
+   * Due query MongoDB — nessuna business logic.
+   */
+  async listContactUserIds(
+    userId: mongoose.Types.ObjectId,
+  ): Promise<string[]> {
+    const memberships = await ConversationMemberModel.find(
+      { user_id: userId, deleted_at: null, left_at: null },
+      "conversation_id",
+    ).lean();
+
+    if (memberships.length === 0) return [];
+
+    const convIds = memberships.map((m) => m.conversation_id);
+
+    const contacts = await ConversationMemberModel.find(
+      {
+        conversation_id: { $in: convIds },
+        user_id: { $ne: userId },
+        deleted_at: null,
+        left_at: null,
+      },
+      "user_id",
+    ).lean();
+
+    // Deduplica (un utente può essere in più conversazioni condivise)
+    return [...new Set(contacts.map((c) => c.user_id.toString()))];
+  }
 }

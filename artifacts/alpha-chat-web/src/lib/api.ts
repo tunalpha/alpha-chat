@@ -360,7 +360,7 @@ export async function apiSendMessage(
     client_message_id: crypto.randomUUID(),
     ciphertext: encodeMessage(text),
     ciphertext_type: 1,
-    sender_key_id: null,
+    sender_key_id: 1, // M1 placeholder — libsignal in M2
     message_type: "text",
     sent_at: new Date().toISOString(),
   });

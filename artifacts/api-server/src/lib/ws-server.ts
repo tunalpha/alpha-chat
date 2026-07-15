@@ -128,6 +128,7 @@ export function createWsServer(httpServer: HttpServer): WebSocketServer {
         if (!wsManager.isOnline(userId)) {
           // Ultimo device disconnesso → offline
           await setOffline(userId);
+          void broadcastPresence(userId, "presence.offline");
           logger.info({ userId }, "User went offline");
         }
       }
@@ -166,6 +167,7 @@ export function createWsServer(httpServer: HttpServer): WebSocketServer {
           safeSend(ws, { type: "auth.ok", payload: { user_id: userId } });
           startHeartbeat();
           await setOnline(userId);
+          void broadcastPresence(userId, "presence.online");
 
           logger.info({ userId }, "WS client authenticated");
         } catch {
@@ -237,6 +239,31 @@ export function createWsServer(httpServer: HttpServer): WebSocketServer {
 // ---------------------------------------------------------------------------
 // Helpers broadcast
 // ---------------------------------------------------------------------------
+
+/**
+ * Broadcast presence.online / presence.offline a tutti i contatti connessi
+ * dell'utente (tutti i membri delle sue conversazioni, escluso se stesso).
+ */
+async function broadcastPresence(
+  userId: string,
+  type: "presence.online" | "presence.offline",
+): Promise<void> {
+  try {
+    const contactIds = await memberRepo.listContactUserIds(
+      new mongoose.Types.ObjectId(userId),
+    );
+    if (contactIds.length === 0) return;
+
+    const payload =
+      type === "presence.online"
+        ? { user_id: userId }
+        : { user_id: userId, last_seen_at: new Date().toISOString() };
+
+    wsManager.sendToUsers(contactIds, { type, payload } as WsOutboundEvent);
+  } catch (err) {
+    logger.warn({ err, userId, type }, "broadcastPresence failed");
+  }
+}
 
 async function broadcastTyping(
   senderId: string,
