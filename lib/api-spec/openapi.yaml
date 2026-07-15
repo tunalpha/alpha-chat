@@ -1,22 +1,22 @@
 openapi: 3.1.0
 info:
-  # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Alpha Chat Database Manager API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: mongo
+    description: MongoDB operations
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,13 +24,152 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /mongo/test:
+    post:
+      operationId: testConnection
+      tags: [mongo]
+      summary: Test a MongoDB connection URI
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/MongoConnectionInput"
+      responses:
+        "200":
+          description: Connection result
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/MongoConnectionResult"
+        "400":
+          description: Invalid URI or connection failed
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /mongo/collections:
+    get:
+      operationId: listCollections
+      tags: [mongo]
+      summary: List all collections in the connected database
+      parameters:
+        - name: uri
+          in: query
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: List of collections
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CollectionListResult"
+        "400":
+          description: Connection error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    post:
+      operationId: createCollection
+      tags: [mongo]
+      summary: Create a new collection in the connected database
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateCollectionInput"
+      responses:
+        "201":
+          description: Collection created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/CreateCollectionResult"
+        "400":
+          description: Invalid input or connection error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 components:
   schemas:
     HealthStatus:
       type: object
+      required: [status]
       properties:
         status:
           type: string
-      required:
-        - status
 
+    MongoConnectionInput:
+      type: object
+      required: [uri]
+      properties:
+        uri:
+          type: string
+          description: MongoDB connection string (mongodb:// or mongodb+srv://)
+
+    MongoConnectionResult:
+      type: object
+      required: [ok, dbName, host]
+      properties:
+        ok:
+          type: boolean
+        dbName:
+          type: string
+        host:
+          type: string
+
+    CollectionListResult:
+      type: object
+      required: [collections]
+      properties:
+        collections:
+          type: array
+          items:
+            $ref: "#/components/schemas/CollectionInfo"
+
+    CollectionInfo:
+      type: object
+      required: [name, type]
+      properties:
+        name:
+          type: string
+        type:
+          type: string
+        count:
+          type: ["integer", "null"]
+
+    CreateCollectionInput:
+      type: object
+      required: [uri, name]
+      properties:
+        uri:
+          type: string
+        name:
+          type: string
+          description: Name of the collection to create
+
+    CreateCollectionResult:
+      type: object
+      required: [ok, name]
+      properties:
+        ok:
+          type: boolean
+        name:
+          type: string
+        message:
+          type: string
+
+    ErrorResponse:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: string
