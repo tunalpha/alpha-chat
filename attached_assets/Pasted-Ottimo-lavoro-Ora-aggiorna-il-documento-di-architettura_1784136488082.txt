@@ -1,0 +1,93 @@
+Ottimo lavoro.
+
+Ora aggiorna il documento di architettura seguendo queste nuove direttive.
+
+## Database
+
+Per la Versione 1 utilizzeremo esclusivamente MongoDB Atlas.
+
+Non utilizzare PostgreSQL.
+
+Motiva questa scelta considerando:
+
+- sviluppo rapido
+- esperienza del team
+- semplicità di gestione
+- ottima integrazione con Node.js e TypeScript
+- possibilità di scalare successivamente senza modificare l'architettura dell'applicazione
+
+Se in futuro saranno necessari altri database, inseriscili solamente nella roadmap futura.
+
+---
+
+## Architettura
+
+La piattaforma deve essere completamente modulare.
+
+Ogni componente deve essere indipendente.
+
+Struttura prevista:
+
+Core
+- Chat
+- Gruppi
+- Canali
+- Chiamate
+- Videochiamate
+- Media
+- Notifiche
+
+Moduli opzionali
+
+- Wallet USDA
+- AI
+- Business
+- Cloud
+- Marketplace
+
+Il Wallet USDA deve essere totalmente separato dalla messaggistica e poter essere aggiornato senza modificare il modulo Chat.
+
+---
+
+## Funzionalità obbligatoria Versione 1
+
+Implementare una funzione di eliminazione messaggi ispirata a Telegram.
+
+Quando l'utente tiene premuto un messaggio deve comparire il menu:
+
+- Copia
+- Rispondi
+- Inoltra
+- Modifica (solo messaggi propri)
+- Elimina
+
+Se seleziona "Elimina" deve comparire una finestra con:
+
+○ Elimina solo per me
+
+○ Elimina per tutti
+
+Se viene scelta l'opzione "Elimina per tutti", il messaggio deve essere rimosso da tutti i dispositivi dei partecipanti autorizzati.
+
+Il comportamento deve essere definito chiaramente nel documento di progettazione, includendo:
+
+- casi d'uso
+- regole di autorizzazione
+- limiti temporali (se previsti)
+- comportamento nelle chat private
+- comportamento nei gruppi
+- comportamento nei canali
+- sincronizzazione tra dispositivi
+- gestione degli allegati
+
+Questa funzionalità deve essere inclusa tra quelle della Versione 1.
+
+---
+
+## Obiettivo
+
+Aggiorna il documento docs/alpha-chat-mvp-architecture.md mantenendo l'architettura semplice, moderna e realizzabile da una startup composta da un singolo sviluppatore supportato dall'AI.
+
+Non scrivere codice.
+
+Aggiorna esclusivamente la documentazione tecnica.

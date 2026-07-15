@@ -1,33 +1,43 @@
 # Alpha Chat — MVP Architecture
 ### Startup First. Ship Fast. Grow Without Rewriting.
-> Versione 1.0 — Luglio 2025
+> Versione 2.0 — Luglio 2025
 > Status: Architecture Design — Pre-Development
 > Contesto: 1 sviluppatore principale + AI. Target: Beta pubblica nel minor tempo possibile.
+
+---
+
+## Changelog v2.0
+- **Database:** sostituito PostgreSQL con MongoDB Atlas come database unico per V1
+- **Architettura:** riprogettata come sistema completamente modulare (Core + Moduli Opzionali)
+- **Nuova sezione:** specifica completa della funzionalità di eliminazione messaggi (Versione 1)
+- Aggiornate tutte le sezioni coerenti con le nuove scelte
 
 ---
 
 ## Indice
 
 1. [Principi Guida](#1-principi-guida)
-2. [Visione dell'Architettura MVP](#2-visione-dellarchitettura-mvp)
-3. [Stack Tecnologico Scelto](#3-stack-tecnologico-scelto)
-4. [Database Unico](#4-database-unico)
-5. [Backend](#5-backend)
-6. [Frontend](#6-frontend)
-7. [Real-time Messaging](#7-real-time-messaging)
-8. [Crittografia e Sicurezza](#8-crittografia-e-sicurezza)
-9. [Sistema Media](#9-sistema-media)
-10. [Autenticazione](#10-autenticazione)
-11. [Chiamate e Videochiamate](#11-chiamate-e-videochiamate)
-12. [Notifiche Push](#12-notifiche-push)
-13. [Sistema Gruppi](#13-sistema-gruppi)
-14. [Username e Identità](#14-username-e-identità)
-15. [Wallet USDA](#15-wallet-usda)
-16. [Hosting e Deployment](#16-hosting-e-deployment)
-17. [Monitoraggio e Osservabilità](#17-monitoraggio-e-osservabilità)
-18. [Percorso di Crescita](#18-percorso-di-crescita)
-19. [Roadmap MVP — Sprint Plan](#19-roadmap-mvp--sprint-plan)
-20. [Checklist Pre-Beta](#20-checklist-pre-beta)
+2. [Architettura Modulare](#2-architettura-modulare)
+3. [Visione dell'Architettura MVP](#3-visione-dellarchitettura-mvp)
+4. [Stack Tecnologico Scelto](#4-stack-tecnologico-scelto)
+5. [Database Unico — MongoDB Atlas](#5-database-unico--mongodb-atlas)
+6. [Backend](#6-backend)
+7. [Frontend](#7-frontend)
+8. [Real-time Messaging](#8-real-time-messaging)
+9. [Crittografia e Sicurezza](#9-crittografia-e-sicurezza)
+10. [Sistema Media](#10-sistema-media)
+11. [Autenticazione](#11-autenticazione)
+12. [Chiamate e Videochiamate](#12-chiamate-e-videochiamate)
+13. [Notifiche Push](#13-notifiche-push)
+14. [Sistema Gruppi](#14-sistema-gruppi)
+15. [Username e Identità](#15-username-e-identità)
+16. [Eliminazione Messaggi](#16-eliminazione-messaggi)
+17. [Wallet USDA — Modulo Opzionale](#17-wallet-usda--modulo-opzionale)
+18. [Hosting e Deployment](#18-hosting-e-deployment)
+19. [Monitoraggio e Osservabilità](#19-monitoraggio-e-osservabilità)
+20. [Percorso di Crescita](#20-percorso-di-crescita)
+21. [Roadmap MVP — Sprint Plan](#21-roadmap-mvp--sprint-plan)
+22. [Checklist Pre-Beta](#22-checklist-pre-beta)
 
 ---
 
@@ -45,888 +55,1259 @@ Un team di 1 che implementa quell'architettura impiega 3 anni prima di aprire la
 Ogni scelta tecnica deve rispondere a: *"Posso costruire questo in giorni, non in settimane?"*
 
 **Database singolo finché tiene.**
-Aggiungere un secondo database moltiplica la complessità operativa. Il primo database deve reggere fino a ~50.000 utenti attivi senza problemi. Oltre, si migra con dati reali.
+Aggiungere un secondo database moltiplica la complessità operativa. Il database scelto deve reggere fino a ~50.000 utenti attivi senza problemi. Oltre, si aggiunge con dati reali come guida.
 
 **Managed services ovunque possibile.**
-Ogni servizio gestito da un provider è una paginetta di infrastruttura che non devi scrivere, mantenere, monitorare, aggiornare. Il costo di un managed service è irrisorio rispetto al costo del tempo di uno sviluppatore.
+Ogni servizio gestito da un provider è infrastruttura che non devi scrivere, mantenere, monitorare, aggiornare. Il costo di un managed service è irrisorio rispetto al costo del tempo di uno sviluppatore.
 
-**Monolite prima, microservizi mai (in V1).**
-Il monolite non è una scelta sbagliata — è la scelta corretta per un team piccolo. Si separa quando il dolore di non separare è più alto del costo di separare. In V1, quel momento non arriva mai.
+**Monolite modulare, non microservizi.**
+Il monolite non è una scelta sbagliata — è la scelta corretta per un team piccolo. I moduli sono ben separati internamente, pronti per essere estratti quando il dolore supera il costo di separare.
+
+**Modularità come principio architetturale.**
+Ogni componente è indipendente. Un modulo opzionale (Wallet, AI, Marketplace) si aggiunge senza toccare il Core. Si aggiorna senza rischio di regressione sulla messaggistica. Si disattiva senza impatto sugli altri moduli.
 
 **Le funzionalità "difficili" si comprano, non si costruiscono.**
-Real-time messaging, chiamate, push notifications: esistono servizi maturi che risolvono questi problemi meglio di quanto potresti in V1. Usali.
+Real-time messaging, chiamate, push notifications: esistono servizi maturi che risolvono questi problemi meglio di quanto si possa fare in V1.
 
 ---
 
-## 2. Visione dell'Architettura MVP
+## 2. Architettura Modulare
+
+### 2.1 Visione
+
+Alpha Chat è progettata come una piattaforma modulare in cui il **Core** di messaggistica è indipendente da qualsiasi modulo aggiuntivo. I moduli opzionali si agganciano al Core tramite interfacce definite, senza modificarne il comportamento.
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                     CLIENT LAYER                         │
-│                                                          │
-│   React Native (iOS + Android)      React Web (PWA)      │
-│                                                          │
-└───────────────────────┬─────────────────────────────────┘
-                        │ HTTPS / WebSocket
-┌───────────────────────▼─────────────────────────────────┐
-│                  SINGLE BACKEND                          │
-│                                                          │
-│          Node.js + Express  (Monolite)                   │
-│                                                          │
-│   Auth │ Users │ Messages │ Groups │ Media │ Wallet      │
-│                                                          │
-└──────┬─────────────┬──────────────┬──────────────────────┘
-       │             │              │
-┌──────▼──────┐ ┌────▼─────┐ ┌─────▼──────────────────────┐
-│  PostgreSQL │ │  Redis   │ │   External Managed Services  │
-│  (unico DB) │ │ (cache + │ │                              │
-│             │ │ presence)│ │  Stream (messaging real-time)│
-│             │ └──────────┘ │  Cloudflare R2 (media)       │
-└─────────────┘              │  Twilio (SMS OTP)            │
-                             │  Expo Push (notifiche)       │
-                             │  Daily.co (chiamate)         │
-                             └──────────────────────────────┘
+╔═══════════════════════════════════════════════════════════════╗
+║                      ALPHA CHAT PLATFORM                      ║
+╠═══════════════════════════════════════════════════════════════╣
+║                                                               ║
+║   ┌─────────────────────────── CORE ──────────────────────┐   ║
+║   │                                                       │   ║
+║   │   Chat         Gruppi        Canali (V1)              │   ║
+║   │   Chiamate     Videochiamate Media                    │   ║
+║   │   Notifiche                                           │   ║
+║   │                                                       │   ║
+║   └───────────────────────────────────────────────────────┘   ║
+║                                                               ║
+║   ┌────────────── MODULI OPZIONALI ───────────────────────┐   ║
+║   │                                                       │   ║
+║   │   Wallet USDA    AI Assistant    Business Tools       │   ║
+║   │   Cloud Storage  Marketplace                          │   ║
+║   │                                                       │   ║
+║   └───────────────────────────────────────────────────────┘   ║
+║                                                               ║
+╚═══════════════════════════════════════════════════════════════╝
 ```
 
-Questo è tutto. Nessun orchestratore, nessun service mesh, nessuna queue distribuita. Un backend, un database, servizi managed per le parti complesse.
+### 2.2 Moduli Core (Versione 1)
+
+Questi moduli compongono il prodotto base. Sono tutti sviluppati e rilasciati in V1.
+
+| Modulo | Responsabilità | Dipendenze |
+|---|---|---|
+| **Chat** | Messaggi 1-to-1, delivery status, E2E | Auth, Media, Notifiche |
+| **Gruppi** | Chat multi-utente, permessi, inviti | Chat, Notifiche |
+| **Canali** | Broadcast 1-to-many, iscrizioni | Auth, Media |
+| **Chiamate** | Audio 1-to-1 e di gruppo | Auth, Notifiche |
+| **Videochiamate** | Video 1-to-1 | Auth, Notifiche |
+| **Media** | Upload, storage, delivery | Auth |
+| **Notifiche** | Push, preferenze, DND | Auth |
+
+> **Regola fondamentale del Core:** nessun modulo Core fa riferimento a un modulo Opzionale. Il Core non sa che il Wallet esiste.
+
+### 2.3 Moduli Opzionali
+
+Questi moduli si aggiungono al Core in versioni successive senza modificare il Core stesso. Si attivano per utente (opt-in) o per configurazione del sistema.
+
+| Modulo | Descrizione | Versione |
+|---|---|---|
+| **Wallet USDA** | Micro-transazioni in USDA, completamente separato dalla messaggistica | V2 |
+| **AI Assistant** | Riassunti chat, smart reply, trascrizione vocale — tutto on-device | V3 |
+| **Business Tools** | Profili business, broadcast, analytics, bot API | V2 |
+| **Cloud Storage** | Backup E2E su storage personale (iCloud/Drive/self-hosted) | V3 |
+| **Marketplace** | Mini App Framework, integrazioni third-party | V3 |
+
+### 2.4 Principio di Isolamento del Wallet
+
+Il modulo Wallet USDA è **architetturalmente separato** da tutti i moduli Core:
+
+```
+Core DB (MongoDB Atlas)          Wallet DB (MongoDB Atlas separato)
+      │                                        │
+      │  ← Nessuna connessione diretta →       │
+      │                                        │
+   user._id ─────────────────────────── user_ref (FK opaca)
+```
+
+- Wallet ha il proprio cluster MongoDB separato
+- Wallet ha il proprio set di route API (`/api/v1/wallet/...`)
+- Wallet ha autenticazione aggiuntiva (PIN + biometria)
+- Un aggiornamento del modulo Wallet non richiede deploy del Core
+- Il Core non importa nessun modulo del Wallet
 
 ---
 
-## 3. Stack Tecnologico Scelto
+## 3. Visione dell'Architettura MVP
 
-### 3.1 Backend — Node.js + TypeScript + Express
+```
+┌─────────────────────────────────────────────────────────────┐
+│                       CLIENT LAYER                           │
+│                                                              │
+│   React Native (iOS + Android)        React Web (PWA)        │
+│                                                              │
+└──────────────────────┬──────────────────────────────────────┘
+                       │ HTTPS / WebSocket
+┌──────────────────────▼──────────────────────────────────────┐
+│                   SINGLE BACKEND                             │
+│                                                              │
+│          Node.js + Express  (Monolite Modulare)              │
+│                                                              │
+│  ┌────────────────── CORE ──────────────────────────────┐   │
+│  │  Auth │ Users │ Messages │ Groups │ Media │ Notif.  │   │
+│  └──────────────────────────────────────────────────────┘   │
+│  ┌────────────── MODULI OPZIONALI ──────────────────────┐   │
+│  │  Wallet (disabilitato in V1)  │  AI (V3)             │   │
+│  └──────────────────────────────────────────────────────┘   │
+│                                                              │
+└───────┬──────────────┬─────────────────┬────────────────────┘
+        │              │                 │
+┌───────▼──────┐ ┌─────▼─────┐ ┌────────▼───────────────────┐
+│ MongoDB Atlas│ │  Upstash  │ │  External Managed Services  │
+│ (unico DB)   │ │  Redis    │ │                             │
+│              │ │ (cache +  │ │  Stream Chat  (messaging)   │
+│              │ │ presence) │ │  Cloudflare R2  (media)     │
+└──────────────┘ └───────────┘ │  Twilio  (SMS OTP)          │
+                               │  Expo Push  (notifiche)     │
+                               │  Daily.co  (chiamate)       │
+                               └─────────────────────────────┘
+```
+
+Un backend, un database principale, Redis per lo stato in-memory, servizi managed per le parti complesse. Nessun orchestratore, nessun service mesh, nessuna queue distribuita in V1.
+
+---
+
+## 4. Stack Tecnologico Scelto
+
+### 4.1 Backend — Node.js + TypeScript + Express
 
 **Perché scelto:**
 - TypeScript condiviso tra frontend e backend elimina le discrepanze di tipo tra i due layer
 - Ecosistema npm vastissimo: librerie per qualsiasi problema già risolto
-- Facilità di sviluppo su Replit: ambienti Node.js sono nativi
-- Il team (1 sviluppatore) conosce quasi certamente JavaScript/TypeScript meglio di Go o Rust
+- Facilità di sviluppo su Replit: ambienti Node.js sono nativi e preconfigurati
+- Un team di 1 conosce quasi certamente JavaScript/TypeScript meglio di Go o Rust
 - I/O-bound workload (messaggi, API) non richiedono Go per le performance in V1
-- Le librerie per i servizi managed (Stream, Twilio, AWS SDK) hanno SDK TypeScript di prima classe
+- Le librerie per i servizi managed (Stream, Twilio, MongoDB) hanno SDK TypeScript di prima classe
 - Framework Express: minimalista, nessuna magia nascosta, debugging lineare
 
 **Perché escluso Go:**
-Go è eccellente per alta concorrenza e bassa latenza. Ma per un team di 1, il vantaggio in performance di Go rispetto a Node.js non si manifesta prima di milioni di richieste/giorno. Il costo di switching (nuova lingua, nuovo ecosistema, librerie diverse) supera ampiamente il beneficio in V1.
+Go è eccellente per alta concorrenza e bassa latenza. Il vantaggio di Go rispetto a Node.js non si manifesta prima di milioni di richieste/giorno. Il costo di switching (nuova lingua, ecosistema diverso, librerie diverse) supera il beneficio in V1.
 
 **Quando migrare:**
-Quando la latenza P99 delle API supera i 500ms sotto carico reale, o quando si raggiungono ~100.000 DAU con traffico reale. Non prima.
+Quando la latenza P99 delle API supera stabilmente i 500ms sotto carico reale, o quando si supera ~100.000 DAU. Non prima.
 
 ---
 
-### 3.2 Frontend Mobile — React Native + Expo
+### 4.2 Frontend Mobile — React Native + Expo
 
 **Perché scelto:**
-- Un codebase per iOS e Android (circa 85% del codice condiviso)
-- Expo Managed Workflow: nessuna configurazione nativa necessaria per V1 (nessun Xcode per ogni nuova libreria)
-- Expo EAS Build: build iOS/Android nel cloud, senza Mac necessario per Android
+- Un codebase per iOS e Android (~85% del codice condiviso)
+- Expo Managed Workflow: nessuna configurazione nativa necessaria per V1
+- Expo EAS Build: build iOS/Android nel cloud, senza necessità di Mac per Android
 - Over-the-air updates (EAS Update): fix critici senza re-submission all'App Store
 - TypeScript condiviso con il backend (tipi degli endpoint disponibili su entrambi i lati)
-- Comunità enorme, librerie di alta qualità, documentazione eccellente
+- Comunità enorme, librerie di alta qualità
 
-**Perché escluso Flutter:**
-Flutter è eccellente ma richiede Dart, un linguaggio che non condivide nulla con il backend. Nessun codice riutilizzabile, nessun tipo condiviso. Per un team di 1, questo overhead è inaccettabile.
+**Perché escluso Flutter:** richiede Dart, nessun codice condiviso con il backend Node.js. Overhead inaccettabile per un team di 1.
 
-**Perché escluso nativo (Swift/Kotlin):**
-Richiederebbe due codebase separate, due set di competenze, il doppio del tempo di sviluppo. Impensabile per un MVP.
+**Perché escluso nativo (Swift/Kotlin):** due codebase, due set di competenze, il doppio del tempo. Impensabile per un MVP.
 
 **Quando migrare:**
-Quando le performance della lista messaggi o della camera non sono accettabili con React Native. Nella pratica: quasi mai in V1. WhatsApp ha usato React Native per anni su feature critiche.
+Quando le performance della lista messaggi o della camera non sono accettabili. Nella pratica: raramente in V1. WhatsApp ha usato React Native per feature critiche per anni.
 
 ---
 
-### 3.3 Frontend Web — React + Vite + TypeScript
+### 4.3 Frontend Web — React + Vite + TypeScript
 
 **Perché scelto:**
-- Stesso linguaggio e framework del mobile → massimo riutilizzo dei componenti logici e degli hook
-- Vite: sviluppo estremamente rapido, HMR istantaneo
-- PWA-ready: installabile su desktop e mobile dal browser
-- Il web client è anche la strategia di acquisizione più facile: nessun download richiesto
+- Stesso linguaggio e framework del mobile → massimo riutilizzo di hook e logica
+- Vite: sviluppo velocissimo, HMR istantaneo
+- PWA-ready: installabile da browser, nessun download richiesto
+- Il web è la strategia di acquisizione più rapida per una beta
 
 **Quando migrare:**
-Mai. React + Vite scala benissimo fino a prodotti di grande dimensione. La migrazione eventuale sarebbe a Next.js per SSR/SEO, non per performance.
+Mai per performance. L'eventuale migrazione sarebbe a Next.js solo per SSR/SEO, non per capacità tecnica.
 
 ---
 
-### 3.4 Linguaggio — TypeScript ovunque
+### 4.4 Linguaggio — TypeScript Ovunque
 
-**Perché scelto:**
-- Tipi condivisi tra frontend (mobile + web) e backend tramite un pacchetto `shared-types`
-- Un errore di tipo catturato a compile-time non diventa un bug in produzione
-- Autocomplete e refactoring sicuro con qualsiasi IDE/editor
-- L'AI (Copilot, Claude, ChatGPT) genera TypeScript di alta qualità
+TypeScript strict mode con `noImplicitAny: true` su tutti i package. Un errore di tipo a compile-time non diventa un bug in produzione. L'AI genera TypeScript di alta qualità.
 
-**Svantaggi:**
-- Aggiunge uno step di compilazione
-- I tipi possono essere "aggiustati" con `any` se il developer è stanco → richiede disciplina
-
-**Decisione:** TypeScript strict mode con `noImplicitAny: true`. Nessuna eccezione.
+Il pacchetto `shared-types` è il punto centrale: i tipi `Message`, `User`, `Conversation` sono definiti una volta e usati ovunque — backend, mobile, web.
 
 ---
 
-## 4. Database Unico
+## 5. Database Unico — MongoDB Atlas
 
-### 4.1 La Scelta: PostgreSQL
+### 5.1 La Scelta: MongoDB Atlas
 
-**Perché scelto:**
-PostgreSQL è il database relazionale open source più avanzato al mondo. È ACID-compliant, ha JSON nativo, full-text search built-in, window functions, array types, e una maturità di 30 anni. Per V1, può fare il lavoro di 4 database diversi (relazionale + JSON + full-text + time-series base) senza installare nulla di aggiuntivo.
+**MongoDB Atlas** è il database unico per la Versione 1.
 
-**Ciò che PostgreSQL fa nativamente in V1:**
-
-| Workload | Come PostgreSQL lo gestisce |
-|---|---|
-| Messaggi ordinati per tempo | Tabella messages con indice su (conversation_id, created_at DESC) |
-| Full-text search messaggi | tsvector + gin index (built-in, no Elasticsearch) |
-| Presenza utenti | Tabella user_presence con timestamp aggiornato da Redis via background job |
-| Contatori non letti | Tabella unread_counts con increment/decrement atomici |
-| Storage temporaneo | Non necessario — Redis per questo |
-| Sessioni | Tabella sessions |
-| Media metadata | Tabella media con URL S3 |
-
-**Perché escluso MongoDB:**
-MongoDB è popolare ma non migliore per questo use case. Le relazioni tra entità (utente → conversazione → messaggio → reazione) sono relazionali. Modellarle in documenti annidati porta a query complesse e inconsistenze. PostgreSQL con JSONB gestisce dati semi-strutturati meglio di quanto MongoDB gestisca dati relazionali.
-
-**Perché escluso PlanetScale / MySQL:**
-MySQL ha limitazioni non trascurabili rispetto a PostgreSQL (full-text search più debole, JSONB meno potente, meno tipi di indice). PlanetScale è interessante per lo sharding automatico ma introduce un vendor lock-in non necessario in V1.
-
-**Perché escluso Cassandra / MongoDB per i messaggi:**
-Cassandra eccelle a centinaia di milioni di messaggi al giorno. Fino a 10–20 milioni di messaggi al giorno, PostgreSQL con partitioning per data regge senza problemi. Discord ha gestito miliardi di messaggi su Cassandra *dopo* aver outgrown PostgreSQL. Non partiamo da Cassandra prima di aver outgrown PostgreSQL.
-
-**Quando migrare:**
-- I messaggi: quando `SELECT * FROM messages WHERE conversation_id = $1 ORDER BY created_at DESC LIMIT 50` supera i 100ms di latenza media anche con indici ottimizzati. Probabilmente non prima di 5–10 milioni di messaggi per conversazione o ~100M messaggi totali.
-- La ricerca: quando il full-text search di PostgreSQL non è abbastanza veloce o ricco. Migrare il solo search a Elasticsearch lasciando tutto il resto su PostgreSQL.
+**Cos'è MongoDB Atlas:** il servizio managed di MongoDB, hostato su cloud (AWS/GCP/Azure a scelta), con backup automatici, monitoring integrato, scaling verticale e orizzontale tramite UI, e free tier permanente (M0: 512MB).
 
 ---
 
-### 4.2 Schema delle Tabelle Principali (Logico)
+**Perché MongoDB Atlas per Alpha Chat:**
 
-Questo non è SQL — è la struttura logica per orientare lo sviluppo.
+**1. Sviluppo rapido**
+MongoDB lavora con documenti JSON-nativi. I messaggi, i profili, le conversazioni sono naturalmente documenti — non tabelle con relazioni da gestire tramite JOIN. Aggiungere un campo a un documento non richiede una migration: il campo esiste nei nuovi documenti, non esiste in quelli vecchi, e il codice gestisce entrambi i casi. In un contesto startup dove lo schema evolve ogni settimana, questa flessibilità è un vantaggio concreto.
 
-**users**
-Campi: id, username (unique), email (unique, nullable), phone_hash (nullable), password_hash, display_name, avatar_url, bio, status, status_expires_at, last_seen, is_online, created_at, updated_at
+**2. Esperienza del team**
+Node.js e MongoDB sono nati insieme nell'ecosistema JavaScript. Mongoose (il principale ODM per Node.js) è ampiamente documentato, con esempi ovunque e supporto AI eccellente. La curva di apprendimento per uno sviluppatore Node.js che inizia con MongoDB è misurata in ore, non in giorni.
 
-**sessions**
-Campi: id, user_id (→ users), device_id, refresh_token_hash, device_info, ip_address, last_active, created_at, expires_at
+**3. Semplicità di gestione**
+MongoDB Atlas gestisce in automatico: backup giornalieri, monitoring delle performance, alert su anomalie, aggiornamenti di versione, replica set per alta disponibilità. Non c'è nulla da configurare sul server. Il database è operativo in 5 minuti dalla creazione dell'account.
 
-**conversations**
-Campi: id, type (direct/group), created_at, updated_at, last_message_at
+**4. Integrazione nativa con Node.js e TypeScript**
+Il driver ufficiale MongoDB per Node.js è mantenuto da MongoDB Inc., aggiornato ad ogni release, con tipi TypeScript di prima classe. Mongoose aggiunge schema validation, middleware (hooks), e virtual fields — ottenendo garanzie strutturali simili a quelle di un ORM relazionale, mantenendo la flessibilità del documento.
 
-**conversation_members**
-Campi: conversation_id, user_id, role (member/admin/owner), joined_at, muted_until, last_read_message_id
-
-**messages**
-Campi: id, conversation_id, sender_id, type (text/image/video/audio/document/system), content (testo in chiaro o riferimento cifrato), content_iv (vettore di inizializzazione per E2E), is_deleted, reply_to_id, forwarded_from_id, expires_at, created_at, updated_at
-
-**message_reactions**
-Campi: id, message_id, user_id, emoji, created_at
-
-**message_read_receipts**
-Campi: message_id, user_id, read_at
-
-**media**
-Campi: id, uploader_id, storage_url, thumbnail_url, mime_type, size_bytes, duration_seconds, width, height, is_encrypted, created_at
-
-**groups** (estende conversations di tipo 'group')
-Campi: conversation_id, name, description, avatar_url, invite_link_token, max_members, settings_json, created_at
-
-**contacts**
-Campi: user_id, contact_user_id, nickname, is_blocked, created_at
-
-**push_tokens**
-Campi: id, user_id, device_id, platform (ios/android/web), token, created_at, updated_at
-
-**wallet_accounts** (tabella separata, accesso ristretto)
-Campi: id, user_id, balance_usda, kyc_status, is_active, created_at
-
-**wallet_transactions** (append-only)
-Campi: id, from_wallet_id, to_wallet_id, amount_usda, type, status, reference_id, created_at
+**5. Scalabilità senza riscrivere l'applicazione**
+MongoDB Atlas offre tre percorsi di crescita senza modificare il codice applicativo:
+- **Scaling verticale:** upgrade del cluster (da M0 free a M10, M30, M50) tramite un click nella UI
+- **Atlas Search:** full-text search integrato nativamente (Lucene-based), attivabile sulla stessa istanza senza aggiungere Elasticsearch
+- **Sharding orizzontale:** quando la singola istanza non basta, MongoDB gestisce la distribuzione dei dati su più nodi automaticamente — l'applicazione non cambia
 
 ---
 
-### 4.3 Redis — Cache e Real-time State
+**Perché escluso PostgreSQL:**
+PostgreSQL è un database eccellente per dati relazionali con schema stabile. In un contesto startup con schema in rapida evoluzione, le migrations frequenti sono un costo. Aggiungere un campo a una tabella PostgreSQL su milioni di righe richiede una migration attenta. Aggiungere un campo a un documento MongoDB non richiede nulla. Per il modello dati di Alpha Chat (messaggi, conversazioni, profili, reazioni), il documento è un'astrazione più naturale della tabella relazionale.
 
-Redis affianca PostgreSQL per workload in-memory:
+**Perché escluso Firebase Firestore:**
+Firestore è un ottimo database real-time per prototipi. Ma crea dipendenza vendor totale (Google), non ha query aggregate flessibili, e il pricing può scalare in modo non prevedibile con volumi elevati. MongoDB Atlas è più flessibile, più economico a parità di volume, e non lock-in.
 
-**Perché Redis anche con PostgreSQL:**
-PostgreSQL non è ottimale per dati che cambiano molte volte al minuto e non devono essere persistiti durabilmente. La presenza online di un utente cambia ogni 30 secondi (heartbeat). Aggiornare PostgreSQL ad ogni heartbeat per 10.000 utenti online è inutile e stressante per il DB.
+**Perché esclusa Supabase:**
+Supabase è PostgreSQL managed con real-time built-in. Ottimo strumento, ma la scelta del database rimane PostgreSQL — con tutti i pro e i contro già descritti. La real-time layer di Supabase non sostituisce Stream Chat per una piattaforma di messaging completa.
+
+---
+
+### 5.2 Struttura delle Collection Principali (Logica)
+
+Questa è la struttura logica dei documenti — non schema Mongoose. Serve per orientare lo sviluppo.
+
+**Collection: `users`**
+```
+{
+  _id: ObjectId,
+  username: String (unique, lowercase),
+  email: String (unique, nullable),
+  phone_hash: String (nullable),
+  password_hash: String,
+  display_name: String,
+  avatar_url: String,
+  bio: String,
+  status: { text: String, emoji: String, expires_at: Date },
+  last_seen: Date,
+  is_online: Boolean,
+  privacy: {
+    last_seen: "everyone" | "contacts" | "nobody",
+    read_receipts: Boolean,
+    online_status: Boolean
+  },
+  created_at: Date,
+  updated_at: Date
+}
+```
+
+**Collection: `sessions`**
+```
+{
+  _id: ObjectId,
+  user_id: ObjectId (→ users),
+  device_id: String,
+  refresh_token_hash: String,
+  device_info: { platform, os_version, app_version },
+  ip_address: String,
+  last_active: Date,
+  created_at: Date,
+  expires_at: Date
+}
+```
+
+**Collection: `conversations`**
+```
+{
+  _id: ObjectId,
+  type: "direct" | "group" | "channel",
+  participants: [ObjectId] (→ users),
+  members: [{
+    user_id: ObjectId,
+    role: "owner" | "admin" | "member",
+    joined_at: Date,
+    muted_until: Date,
+    last_read_message_id: ObjectId
+  }],
+  last_message: { preview, sender_id, sent_at },
+  created_at: Date,
+  updated_at: Date
+}
+```
+
+**Collection: `messages`**
+```
+{
+  _id: ObjectId,
+  conversation_id: ObjectId (→ conversations),
+  sender_id: ObjectId (→ users),
+  type: "text" | "image" | "video" | "audio" | "document" | "system",
+  content: String,
+  content_iv: String (per E2E),
+  status: "sent" | "delivered" | "read",
+  reply_to: { message_id: ObjectId, preview: String, sender_id: ObjectId },
+  forwarded_from: { message_id: ObjectId, conversation_id: ObjectId },
+  reactions: [{ user_id: ObjectId, emoji: String, created_at: Date }],
+  media: { url: String, thumbnail_url: String, mime_type, size_bytes, duration_seconds },
+  deleted_for: [ObjectId],        ← "Elimina solo per me" (array di user_id)
+  deleted_for_everyone: Boolean,  ← "Elimina per tutti"
+  deleted_for_everyone_at: Date,
+  deleted_by: ObjectId,
+  edited: Boolean,
+  edited_at: Date,
+  expires_at: Date,
+  created_at: Date,
+  updated_at: Date
+}
+```
+
+**Collection: `groups`**
+```
+{
+  _id: ObjectId,
+  conversation_id: ObjectId (→ conversations),
+  name: String,
+  description: String,
+  avatar_url: String,
+  invite_link_token: String,
+  max_members: Number,
+  settings: {
+    who_can_send: "everyone" | "admins_only",
+    who_can_add_members: "everyone" | "admins_only",
+    require_invite_approval: Boolean
+  },
+  created_at: Date
+}
+```
+
+**Collection: `contacts`**
+```
+{
+  _id: ObjectId,
+  user_id: ObjectId,
+  contact_user_id: ObjectId,
+  nickname: String,
+  is_blocked: Boolean,
+  created_at: Date
+}
+```
+
+**Collection: `media`**
+```
+{
+  _id: ObjectId,
+  uploader_id: ObjectId,
+  storage_url: String,
+  thumbnail_url: String,
+  mime_type: String,
+  size_bytes: Number,
+  duration_seconds: Number,
+  width: Number,
+  height: Number,
+  is_encrypted: Boolean,
+  created_at: Date
+}
+```
+
+**Collection: `push_tokens`**
+```
+{
+  _id: ObjectId,
+  user_id: ObjectId,
+  device_id: String,
+  platform: "ios" | "android" | "web",
+  token: String,
+  created_at: Date,
+  updated_at: Date
+}
+```
+
+---
+
+### 5.3 Indici Principali
+
+Gli indici sono fondamentali per le performance. Da creare fin dall'inizio:
+
+| Collection | Indice | Motivo |
+|---|---|---|
+| `users` | `{ username: 1 }` unique | Ricerca utente per username |
+| `users` | `{ email: 1 }` unique sparse | Login e verifica email |
+| `messages` | `{ conversation_id: 1, created_at: -1 }` | Feed messaggi paginato |
+| `messages` | `{ sender_id: 1, created_at: -1 }` | Messaggi per utente |
+| `conversations` | `{ participants: 1, updated_at: -1 }` | Lista chat dell'utente |
+| `sessions` | `{ user_id: 1 }` | Sessioni attive per utente |
+| `sessions` | `{ expires_at: 1 }` TTL | Pulizia automatica sessioni scadute |
+
+> **Nota:** MongoDB Atlas crea automaticamente l'indice su `_id`. Gli indici TTL (Time To Live) eliminano automaticamente i documenti scaduti senza background jobs.
+
+---
+
+### 5.4 ODM — Mongoose
+
+**Mongoose** come Object Document Mapper.
+
+**Perché Mongoose:**
+- Schema validation con tipi, required, default, custom validators
+- Middleware (pre/post hooks) per logica cross-cutting (timestamp automatici, soft delete)
+- Virtual fields per proprietà computate senza salvarle nel DB
+- Populate per referenze tra documenti (simile ai JOIN, usato con parsimonia)
+- TypeScript support nativo con `mongoose.InferSchemaType`
+
+**Perché non il driver MongoDB nativo direttamente:**
+Il driver nativo è più performante ma richiede validazione manuale. Per V1, la Developer Experience di Mongoose supera il margine di performance. Si può passare al driver nativo per query critiche se necessario.
+
+---
+
+### 5.5 Redis (Upstash) — Cache e Real-time State
+
+Redis affianca MongoDB per workload in-memory che non richiedono persistenza duratura.
 
 **Cosa va in Redis:**
-- Presenza utenti: `user:presence:{user_id}` → timestamp, TTL 2 minuti (se non rinnovato = offline)
-- Sessioni WebSocket attive: `ws:session:{user_id}` → lista di connection_id attive
-- Rate limiting: sliding window counter per endpoint
-- Cache breve dei profili più richiesti (TTL 5 minuti)
-- OTP temporanei (SMS/Email): con TTL di 5 minuti
+- Presenza utenti: `user:presence:{user_id}` → timestamp con TTL 2 minuti (nessun rinnovo = offline)
+- Sessioni WebSocket attive: `ws:session:{user_id}` → lista connection_id
+- Rate limiting: sliding window counter per endpoint e user_id
+- Cache profili frequenti: TTL 5 minuti
+- OTP temporanei (SMS/Email): TTL 5 minuti
 
-**Provider scelto:** Redis managed via Upstash (serverless Redis, pay-per-use, zero management). Per V1, i costi sono trascurabili (< $10/mese).
+**Provider: Upstash** — serverless Redis, pay-per-request, zero management. Costo trascurabile in V1 (< $10/mese per beta).
 
 **Quando migrare:**
-Upstash scala bene fino a milioni di operazioni/giorno. Se il costo diventa significativo o la latenza non è accettabile, si migra a Redis Cloud o Redis Enterprise.
+Upstash scala fino a milioni di operazioni/giorno. Si migra a Redis Cloud o Redis Enterprise solo se il costo Upstash diventa significativo.
 
 ---
 
-## 5. Backend
+### 5.6 Roadmap Database Futura
 
-### 5.1 Struttura del Monolite
+In V1 MongoDB Atlas gestisce tutto. I database aggiuntivi si aggiungono solo quando i dati reali dimostrano che servono:
 
-Il backend è un monolite **modulare**: un singolo processo Node.js con moduli interni ben separati. I moduli non condividono il database direttamente tra loro — ogni modulo ha le sue funzioni di accesso ai dati. Questo rende la futura estrazione in microservizi un refactoring, non una riscrittura.
+| Database aggiuntivo | Quando aggiungerlo | Cosa gestisce |
+|---|---|---|
+| **Atlas Search** (integrato in Atlas) | Quando la ricerca full-text base non basta | Ricerca messaggi avanzata — attivabile sulla stessa istanza Atlas senza migrazioni |
+| **TimescaleDB / InfluxDB** | > 50K DAU con bisogno di analytics time-series | Metriche di sistema, analytics prodotto |
+| **Cassandra** | > 100M messaggi totali con query lente | Sostituzione della collection `messages` ad alto volume |
+| **Elasticsearch standalone** | Quando Atlas Search non è sufficiente | Ricerca full-text avanzata con relevance tuning |
+
+> **Principio:** non aggiungere un database prima che il problema che risolve sia reale e misurabile.
+
+---
+
+## 6. Backend
+
+### 6.1 Struttura del Monolite Modulare
+
+Il backend è un **monolite modulare**: un singolo processo Node.js con moduli interni ben separati. Ogni modulo possiede il proprio layer di accesso ai dati — nessun modulo accede direttamente alle collection di un altro. Questo rende l'eventuale estrazione in servizi separati un refactoring, non una riscrittura.
 
 ```
 src/
-├── modules/
-│   ├── auth/          → registrazione, login, token management
-│   ├── users/         → profilo, contatti, blocchi, presence
-│   ├── messages/      → invio, ricezione, delivery status
-│   ├── conversations/ → gestione chat 1-to-1 e gruppi
-│   ├── groups/        → admin gruppi, membership
-│   ├── media/         → upload presigned URL, metadata
-│   ├── notifications/ → invio push, preferenze
-│   ├── calls/         → token per chiamate (Daily.co)
-│   └── wallet/        → saldo, transazioni, KYC (modulo separato)
+├── core/
+│   ├── auth/           → registrazione, login, JWT, refresh token
+│   ├── users/          → profilo, contatti, blocchi, presence
+│   ├── messages/       → invio, ricezione, delivery, eliminazione
+│   ├── conversations/  → gestione chat 1-to-1
+│   ├── groups/         → membership, permessi, inviti
+│   ├── channels/       → broadcast, iscrizioni (V1 base)
+│   ├── media/          → presigned URL, metadata, post-processing
+│   ├── notifications/  → push tokens, invio, preferenze
+│   └── calls/          → token Daily.co, signaling
+│
+├── optional/
+│   ├── wallet/         → saldo USDA, transazioni (disabilitato in V1)
+│   ├── ai/             → (V3, non presente in V1)
+│   └── business/       → (V2, non presente in V1)
+│
 ├── shared/
-│   ├── db/            → connection pool PostgreSQL
-│   ├── redis/         → client Redis
-│   ├── middleware/    → auth, rate limiting, logging
-│   └── utils/         → helpers comuni
-└── app.ts             → entry point, router principale
+│   ├── db/             → connessione MongoDB, istanza Mongoose
+│   ├── redis/          → client Upstash Redis
+│   ├── middleware/     → auth JWT, rate limiting, logging, error handler
+│   ├── utils/          → helpers, validatori, formatters
+│   └── types/          → tipi condivisi con i client
+│
+└── app.ts              → entry point, router principale, middleware globali
 ```
 
-### 5.2 API Design
+### 6.2 API Design
 
 **REST per tutte le operazioni standard**
-- Semplice, universalmente supportato, facilmente testabile con curl o Postman
-- OpenAPI spec generata automaticamente dal codice (tsoa o zod-to-openapi)
+- Semplice, universalmente supportato, testabile con curl/Postman
 - Versioning: `/api/v1/`
+- OpenAPI spec generata dal codice (zod-to-openapi)
 
-**WebSocket per real-time (via Stream SDK)**
-Non costruiamo il WebSocket server da zero. Vedi sezione [Real-time Messaging](#7-real-time-messaging).
+**WebSocket per real-time:** gestito da Stream Chat SDK — non costruiamo il server WebSocket.
 
 **Autenticazione:**
-- JWT access token (15 minuti)
-- Refresh token opaque in cookie HttpOnly (30 giorni)
+- JWT access token (15 minuti) nell'header `Authorization: Bearer`
+- Refresh token opaque in cookie `HttpOnly Secure SameSite=Strict` (30 giorni)
 - Ogni request autenticata ha `req.user` iniettato dal middleware
 
-### 5.3 Validazione Input
+### 6.3 Validazione Input — Zod
 
-**Zod** per la validazione di tutte le richieste in ingresso.
+Ogni route ha uno schema Zod per la validazione del body, dei params, e della query string. Un singolo schema definisce sia la validazione runtime che il tipo TypeScript — zero duplicazione.
 
-Perché Zod: schema-first, TypeScript-native, i tipi vengono inferiti dallo schema (nessuna duplicazione). Un singolo schema definisce sia la validazione runtime che il tipo TypeScript.
+### 6.4 Separazione Moduli: Regola di Dipendenza
 
-### 5.4 ORM — Drizzle ORM
+```
+DIPENDENZE PERMESSE:         DIPENDENZE VIETATE:
+Core → Shared               Optional → Core ✗ (il wallet non modifica la chat)
+Optional → Shared           Core → Optional ✗ (la chat non sa che il wallet esiste)
+Optional → Core (read-only, tramite API interna)
+```
 
-**Perché Drizzle:**
-- TypeScript-first: le query sono typesafe, gli errori di colonna vengono catturati a compile-time
-- Leggero: non è un ORM che nasconde il SQL — genera SQL che puoi ispezionare
-- Schema-as-code: il database schema è definito in TypeScript, le migrations sono generate automaticamente
-- Performance: zero overhead rispetto a query SQL grezze
-
-**Perché escluso Prisma:**
-Prisma è eccellente ma introduce un binary engine separato che può complicare il deployment su Replit. Drizzle è un pacchetto npm puro, nessun binary aggiuntivo.
-
-**Perché escluso Sequelize:**
-Vecchio, non TypeScript-native, performance non ottimali per query complesse.
+I moduli opzionali possono leggere dati del Core tramite funzioni di servizio esposte — mai accedendo direttamente alle collection del Core.
 
 ---
 
-## 6. Frontend
+## 7. Frontend
 
-### 6.1 Struttura del Monorepo
+### 7.1 Struttura del Monorepo
 
 ```
 alpha-chat/
 ├── apps/
-│   ├── mobile/        → React Native + Expo
-│   └── web/           → React + Vite
+│   ├── mobile/           → React Native + Expo
+│   └── web/              → React + Vite (PWA)
 ├── packages/
-│   ├── shared-types/  → tipi TypeScript condivisi (User, Message, ecc.)
-│   ├── ui/            → componenti UI condivisi
-│   └── api-client/    → client HTTP type-safe (fetch + hooks React Query)
-└── backend/           → Node.js monolite
+│   ├── shared-types/     → tipi TypeScript (User, Message, Conversation...)
+│   ├── ui/               → componenti UI condivisi (es: MessageBubble)
+│   └── api-client/       → client HTTP type-safe + React Query hooks
+└── backend/              → Node.js monolite
 ```
 
-Il pacchetto `shared-types` è fondamentale: il tipo `Message` è definito una volta sola e usato ovunque. Se cambia un campo nel backend, TypeScript segnala l'errore nei client immediatamente.
+### 7.2 State Management
 
-### 6.2 State Management
+**Zustand** per lo stato UI globale (utente autenticato, chat attiva, settings, UI state)
+**TanStack Query (React Query)** per i dati dal server (lista conversazioni, profili, messaggi paginati)
 
-**Zustand** per lo stato globale (utente autenticato, chat attiva, settings)
-**React Query (TanStack Query)** per i dati remoti (lista conversazioni, messaggi, profili)
+Redux è overengineering per questo scale. Questa combinazione copre il 95% dei casi con il minimo boilerplate.
 
-Questa combinazione copre il 95% dei casi senza boilerplate. Redux è overengineering per questo scale.
+### 7.3 Navigazione Mobile
 
-### 6.3 Navigazione Mobile
+**Expo Router** — file-based routing, deep linking automatico, Developer Experience ottima.
 
-**Expo Router** (file-based routing, simile a Next.js ma per mobile)
+### 7.4 UI Component Library
 
-Perché Expo Router invece di React Navigation standalone: Expo Router è il layer ufficiale Expo sopra React Navigation, con deep linking automatico, URL-based navigation, e una Developer Experience molto più fluida.
-
-### 6.4 UI Component Library
-
-**React Native Paper** (mobile) + **shadcn/ui** (web)
-
-Perché non costruire tutto da zero: i componenti base (Button, Input, Modal, Card) sono già risolti in modo professionale. La personalizzazione avviene via theming e override, non da zero.
+**React Native Paper** (mobile) + **shadcn/ui** (web). Theming centralizzato, nessuna costruzione da zero dei componenti base.
 
 ---
 
-## 7. Real-time Messaging
+## 8. Real-time Messaging
 
-### 7.1 La Scelta: Stream Chat
+### 8.1 La Scelta: Stream Chat
 
-**Cos'è Stream:** un servizio managed per chat in-app. Fornisce WebSocket, canali, messaggi, reactions, thread, presence — tutto tramite SDK.
+**Cos'è Stream:** servizio managed per chat in-app. Fornisce WebSocket, canali, messaggi, reactions, thread, presence, typing indicators — tutto tramite SDK.
 
 **Perché scelto:**
-Costruire un server WebSocket affidabile, con fan-out dei messaggi, gestione della presenza, retry automatici, ordering garantito, e multi-device sync richiede settimane di sviluppo backend. Stream lo fornisce come SDK in pochi giorni di integrazione.
+Costruire un server WebSocket affidabile — con fan-out dei messaggi, gestione presenza, retry automatici, ordering garantito, multi-device sync — richiede settimane. Stream lo fornisce come SDK in pochi giorni di integrazione. Il backend Alpha Chat si occupa di autenticazione e business logic; Stream si occupa del delivery.
 
-Stream ha:
-- SDK iOS, Android, React Native, Web nativi
-- Supporto per messaggi E2E (con la propria implementazione)
+Caratteristiche rilevanti:
+- SDK React Native e Web nativi
 - Chat 1-to-1 e gruppi
-- Typing indicators, read receipts, reactions
-- File e media attachment
-- 5 milioni di messaggi/mese free tier → sufficiente per una beta pubblica
-- Pricing chiaro e scala con il prodotto
+- Typing indicators, read receipts, reactions built-in
+- 5 milioni di messaggi/mese free tier → sufficiente per beta pubblica
+- Supporto eliminazione messaggi per mittente e per tutti (usato nella sezione 16)
 
-**Cosa rimane nel nostro backend:**
-- Autenticazione e generazione del token Stream (il backend firma i JWT per Stream)
-- Business logic custom (es: blocco utenti, permessi gruppi)
-- Salvataggio di metadata aggiuntivi nel nostro PostgreSQL
-- Tutto ciò che Stream non fa (wallet, profili avanzati, impostazioni)
+**Cosa rimane nel backend Alpha Chat:**
+- Generazione token Stream (il backend firma i JWT per Stream)
+- Business logic custom (blocco utenti, permessi gruppi avanzati)
+- Metadata aggiuntivi in MongoDB
+- Tutto ciò che Stream non fa (wallet, profili avanzati, chiamate)
 
-**Perché escluso Pusher:**
-Pusher è un servizio pub/sub generico, non specificamente per chat. Richiede di costruire sopra tutta la logica (messaggi, threads, reactions, presence). Stream è già un prodotto chat completo.
+**Perché escluso Pusher:** pub/sub generico, non una soluzione chat. Richiederebbe di costruire tutta la logica sopra.
 
-**Perché escluso Socket.io costruito in casa:**
-Socket.io è una libreria, non una soluzione. Costruire sopra tutto il layer applicativo di una chat (ordering, persistence, multi-device, retry) richiede mesi. In V1 non ha senso.
+**Perché escluso Socket.io custom:** è una libreria, non una soluzione. Costruire ordering, persistence, multi-device, retry richiede mesi.
 
-**Perché escluso Matrix/Synapse:**
-Matrix è un protocollo di comunicazione federato con un server di riferimento (Synapse) scritto in Python. Eccellente per V3 (federazione). Per V1, l'overhead operativo di un server Matrix self-hosted è sproporzionato.
+**Perché escluso Matrix/Synapse:** overhead operativo eccessivo per V1. Ottimo per V3 (federazione).
 
-**Quando migrare via da Stream:**
-Quando il costo mensile di Stream supera il costo di sviluppo e manutenzione di un sistema custom. In pratica, oltre ~500.000 MAU il costo di Stream diventa significativo (~$2.000–5.000/mese). A quella scala, il business supporta lo sviluppo custom.
+**Quando migrare:**
+Oltre ~500.000 MAU, quando il costo Stream (~$2.000–5.000/mese) supera il costo di sviluppo di un sistema custom.
 
 ---
 
-### 7.2 Crittografia E2E con Stream
+### 8.2 Crittografia E2E
 
-Stream supporta messaggi E2E tramite il suo SDK. Per V1, si usa l'implementazione E2E di Stream (basata su Signal Protocol sottostante).
+Stream supporta E2E tramite SDK. Per la beta chiusa, si usa TLS 1.3 in transit + MongoDB Atlas Encryption at Rest. Per la beta pubblica, si attiva l'E2E di Stream.
 
-**Limitazione:** L'E2E di Stream non è "open" come Signal Protocol puro — il protocollo non è auditato pubblicamente con la stessa profondità. È un trade-off accettabile per V1.
-
-**In V2:** migrazione a Signal Protocol puro con gestione delle chiavi interamente client-side. L'architettura del backend non cambia — solo il layer crittografico nel client.
+**In V2:** migrazione a Signal Protocol puro con gestione chiavi interamente client-side. L'architettura backend non cambia.
 
 ---
 
-## 8. Crittografia e Sicurezza
+## 9. Crittografia e Sicurezza
 
-### 8.1 Principio Fondamentale
+### 9.1 Principio Fondamentale
 
 Non si progettano algoritmi crittografici proprietari. Si usano protocolli consolidati, librerie auditate, implementazioni esistenti.
 
-### 8.2 Crittografia dei Messaggi in V1
+### 9.2 Password — Argon2id
 
-**Opzione A — Stream E2E (default V1):**
-Delegare la crittografia E2E allo SDK Stream. I messaggi sono cifrati client-side prima di raggiungere i server Stream. Il backend Alpha Chat non vede mai il testo in chiaro.
+Vincitore del Password Hashing Competition 2015, resistente ad attacchi GPU e ASIC. È la raccomandazione attuale di OWASP. Non si usano MD5, SHA-1, SHA-256 direttamente per le password — mai.
 
-**Opzione B — TLS in transit + encryption at rest (alternativa più semplice per early beta):**
-I messaggi sono cifrati in transito (TLS 1.3) e at rest nel database (PostgreSQL tablespace encryption + backup encryption). Non è E2E pura, ma è una postura di sicurezza accettabile per una beta privata dove la priorità è validare il prodotto.
+### 9.3 Transport Security
 
-**Raccomandazione:** Partire con Opzione B per la beta chiusa (più veloce da implementare, più facile da debuggare). Implementare E2E completo tramite Stream per la beta pubblica.
-
-**Motivazione:** L'E2E aggiunge complessità non trascurabile al debugging. In una beta chiusa con utenti fidati, la priorità è capire se il prodotto funziona, non proteggere comunicazioni mission-critical.
-
-### 8.3 Password e Credenziali
-
-**Argon2id** per l'hashing delle password.
-
-Perché Argon2id: vincitore del Password Hashing Competition 2015, resistente ad attacchi GPU e ASIC, memory-hard. È la raccomandazione corrente di OWASP. bcrypt è ancora accettabile ma inferiore.
-
-Non si usa MD5, SHA-1, SHA-256 direttamente per le password. Mai.
-
-### 8.4 Transport Security
-
-- TLS 1.3 obbligatorio (gestito automaticamente da Replit/Cloudflare)
-- HTTPS ovunque, HTTP redirect automatico
-- Headers di sicurezza: HSTS, CSP, X-Frame-Options (middleware Helmet.js)
+- TLS 1.3 obbligatorio (gestito da Replit/Cloudflare)
+- HTTPS ovunque, redirect automatico da HTTP
+- Security headers via Helmet.js: HSTS, CSP, X-Frame-Options, X-Content-Type-Options
 - CORS: whitelist esplicita dei domini client
 
-### 8.5 Autenticazione JWT
+### 9.4 JWT
 
-- Algoritmo: RS256 (firma asimmetrica) per i JWT. La chiave privata firma, la chiave pubblica verifica. I microservizi futuri possono verificare il token senza avere la chiave privata.
+- Algoritmo RS256 (firma asimmetrica): la chiave privata firma, la chiave pubblica verifica
 - Access token: 15 minuti
-- Refresh token: opaque (UUID v4), conservato hashato in PostgreSQL, TTL 30 giorni
+- Refresh token: opaque UUID v4, hashato in MongoDB, TTL 30 giorni
 
-### 8.6 Rate Limiting
+### 9.5 Rate Limiting
 
-**express-rate-limit** + Redis (Upstash) per rate limiting distribuito.
+Express-rate-limit + Upstash Redis per rate limiting distribuito:
 
-- Endpoint autenticazione: 5 tentativi / 15 minuti per IP
-- Invio messaggi: 100 messaggi / minuto per user_id
-- Upload media: 20 upload / minuto per user_id
-- API generiche: 300 richieste / minuto per IP
+- Auth endpoints: 5 tentativi / 15 minuti per IP
+- Invio messaggi: 100 / minuto per user_id
+- Upload media: 20 / minuto per user_id
+- API generiche: 300 / minuto per IP
 
----
+### 9.6 MongoDB Security
 
-## 9. Sistema Media
-
-### 9.1 La Scelta: Cloudflare R2
-
-**Cos'è R2:** Object storage di Cloudflare, API-compatibile con AWS S3. Zero egress fees (non si paga per il bandwidth in uscita).
-
-**Perché scelto:**
-- **Costo:** AWS S3 addebita il bandwidth in uscita (~$0.09/GB). Per una chat con foto e video, i costi possono essere significativi. R2 ha egress gratuito, paghi solo lo storage e le operazioni.
-- **Performance:** Cloudflare CDN è inclusa — i media vengono serviti dall'edge, vicino all'utente
-- **Compatibilità S3:** le librerie AWS SDK funzionano senza modifica con R2 cambiando solo l'endpoint
-- **Semplice da configurare su Replit:** variabili d'ambiente standard
-
-**Alternativa AWS S3:**
-S3 è più maturo con più funzionalità (lifecycle rules, replication, analytics). Raccomandato se l'ecosistema AWS è già in uso (RDS, EC2, ecc.). Per un progetto standalone, R2 è più economico.
-
-**Quando migrare:**
-R2 scala virtualmente senza limiti. Non c'è un trigger tecnico per migrare — solo un eventuale cambio di strategia cloud.
-
-### 9.2 Upload Flow
-
-**Presigned URL pattern:** il client richiede un URL firmato al backend, carica il file direttamente su R2, poi notifica il backend. Il file non passa mai per il server backend.
-
-Questo è fondamentale anche per V1: non vuoi che un video da 50MB attraversi il tuo server Node.js.
-
-**Compressione:**
-- Immagini: compresse client-side (Expo ImagePicker + sharp) prima dell'upload
-- Video: transcoding asincrono post-upload (Cloudflare Stream per V2; per V1, limite dimensione a 50MB e formato già accettabile)
-- Audio: nessun processing — i messaggi vocali in AAC sono già piccoli (< 1MB per 5 minuti)
-
-### 9.3 Media in Chat E2E (V2)
-
-Per la crittografia dei media in chat E2E: il client cifra il file con AES-256-GCM prima dell'upload, carica il blob cifrato, e include la chiave nel payload del messaggio (cifrato E2E). Il server non può accedere al contenuto.
-
-Per V1 (senza E2E completo): i media sono accessibili via URL autenticato (signed URL con TTL di 24 ore). Non pubblicamente accessibili.
+- MongoDB Atlas: encryption at rest attiva di default (AES-256)
+- Network access: whitelist IP del backend — nessun accesso pubblico al DB
+- Utente database con privilegi minimi (read/write sul solo database di produzione)
+- Backup automatici giornalieri con retention 7 giorni (inclusi nel piano Atlas)
 
 ---
 
-## 10. Autenticazione
+## 10. Sistema Media
 
-### 10.1 Registro e Login
+### 10.1 La Scelta: Cloudflare R2
 
-**Due modalità supportate in V1:**
+Object storage API-compatibile con AWS S3. Zero egress fees — si paga solo storage e operazioni, non il bandwidth in uscita. CDN Cloudflare inclusa.
 
-**Email + Password + 2FA (opzionale)**
-- Registrazione con email e password (Argon2id hash)
-- Verifica email con link (TTL 24 ore)
-- 2FA opzionale via TOTP (Google Authenticator compatibile)
+**Perché non AWS S3:** S3 addebita ~$0.09/GB in egress. Per una piattaforma media-heavy, i costi di bandwidth possono essere significativi. R2 elimina questo costo.
+
+### 10.2 Upload Flow (Presigned URL)
+
+Il client richiede un URL firmato al backend → carica direttamente su R2 → notifica il backend. Il file non transita mai per il server Node.js.
+
+```
+1. Client → POST /api/v1/media/upload-url  (tipo, dimensione)
+2. Backend → R2: genera presigned URL (TTL 5 minuti)
+3. Backend → Client: { upload_url, media_id }
+4. Client → R2: PUT diretto con il file
+5. Client → POST /api/v1/media/{media_id}/confirm
+6. Backend: valida integrità, aggiorna stato in MongoDB
+```
+
+### 10.3 Post-Processing
+
+Asincrono e non bloccante:
+- Immagini: resize adattivo (thumbnail/preview/originale), strip EXIF metadata GPS
+- Video: thumbnail extraction, verifica formato
+- Audio: nessun processing — AAC già ottimale
+- Tutti i file: virus scan (ClamAV managed o Cloudflare Gateway)
+
+### 10.4 Signed URL per la Lettura
+
+I media non sono pubblicamente accessibili. Ogni URL di lettura è un signed URL con TTL di 24 ore, generato dal backend al momento della richiesta. Questo garantisce che solo gli utenti autorizzati possano accedere ai file.
+
+---
+
+## 11. Autenticazione
+
+### 11.1 Modalità di Registrazione
+
+**Email + Password (primario)**
+- Hash Argon2id
+- Verifica email con link (TTL 24h, provider email: Resend API)
+- 2FA opzionale via TOTP (RFC 6238, compatibile con Google Authenticator)
 - Recovery via email
 
-**Telefono + SMS OTP**
-- Registrazione con numero di telefono
-- OTP via SMS (Twilio SMS API)
-- OTP: 6 cifre, TTL 5 minuti, max 3 tentativi
-- Numero telefono: conservato hashato, non mostrato ad altri utenti
+**Telefono + SMS OTP (secondario)**
+- OTP 6 cifre via Twilio, TTL 5 minuti, max 3 tentativi
+- Numero conservato hashato, mai visibile ad altri utenti
 
-**Provider SMS: Twilio**
+**Social Login — V2** (OAuth 2.0 con Google e Apple Sign In)
 
-Perché Twilio: leader di mercato, copertura globale eccellente, SDK eccellente, pay-as-you-go (nessun costo fisso), pricing trasparente (~$0.0079 per SMS in Italia). Per una beta, il costo è trascurabile. Alternativa valida: Vonage (ex Nexmo), più economico ma con documentazione inferiore.
+### 11.2 Session Management
 
-### 10.2 Session Management
+- Access Token: JWT RS256, 15 minuti, in `Authorization: Bearer`
+- Refresh Token: UUID v4 hashato in MongoDB, 30 giorni, cookie `HttpOnly Secure SameSite=Strict`
+- Multi-device: ogni device ha il proprio refresh token, visibile e revocabile dall'utente
 
-**Access Token:** JWT firmato RS256, 15 minuti, inviato in Authorization header
-**Refresh Token:** UUID v4, conservato hashato in tabella `sessions`, 30 giorni, inviato in cookie HttpOnly Secure SameSite=Strict
+### 11.3 Provider SMS — Twilio
 
-**Multi-device:** ogni device ha il proprio refresh token. L'utente può vedere e revocare i device attivi.
-
-**Logout:** invalida il refresh token (delete dalla tabella sessions). L'access token rimane valido fino alla sua naturale scadenza (15 minuti) — accettabile in V1.
-
-### 10.3 Social Login (V2)
-
-OAuth 2.0 con Google e Apple (obbligatorio per App Store se si usa social login).
-
-Non incluso in V1 per ridurre la complessità iniziale. L'architettura lo supporta perché l'identità è già separata dall'autenticazione nel modello dati.
+Pay-as-you-go (~$0.0079/SMS in Italia), copertura globale, SDK TypeScript eccellente. Alternativa: Vonage (più economico, documentazione inferiore).
 
 ---
 
-## 11. Chiamate e Videochiamate
+## 12. Chiamate e Videochiamate
 
-### 11.1 La Scelta: Daily.co
+### 12.1 La Scelta: Daily.co
 
-**Cos'è Daily.co:** servizio managed per chiamate audio e video via WebRTC. Fornisce infrastruttura TURN/STUN, SFU, e SDK React Native + Web.
+Servizio managed WebRTC con STUN/TURN/SFU gestiti. SDK React Native + Web.
 
-**Perché scelto:**
-Costruire un'infrastruttura WebRTC completa (STUN server, TURN server per NAT traversal, SFU per chiamate di gruppo) richiede settimane di configurazione e manutenzione continua. Daily.co:
-- Gestisce tutto l'infrastruttura WebRTC
-- Ha SDK React Native e Web di alta qualità
-- Supporta chiamate 1-to-1 e di gruppo fino a 1.000 partecipanti
+**Perché scelto:** costruire infrastruttura WebRTC completa (STUN, TURN, SFU) richiede settimane e manutenzione continua. Daily.co:
+- Gestisce tutta l'infrastruttura WebRTC
 - E2E encrypted (DTLS-SRTP nativo WebRTC)
 - Free tier: 10.000 minuti/mese (sufficiente per beta)
 - Pricing lineare: ~$0.004/minuto partecipante
 
-**Integrazione:**
-Il backend Alpha Chat genera un token Daily.co per ogni chiamata. Il client usa l'SDK Daily per connettersi alla stanza. Non costruiamo nulla di custom — solo l'orchestrazione (chi chiama chi, rifiuto/accettazione via WebSocket).
+**Integrazione:** il backend genera un token Daily.co per ogni chiamata. Il client usa l'SDK Daily. Il signaling (chi chiama chi, accetta/rifiuta) viaggia via Stream Chat come messaggio di tipo `system`.
 
-**Perché escluso LiveKit (self-hosted SFU):**
-LiveKit è open source ed eccellente per V3 (controllo totale, costo ridotto a scala). Ma richiede di gestire server SFU, TURN, monitoring, scaling. Per V1 con 1 sviluppatore, il costo operativo è troppo alto.
+**Perché escluso LiveKit:** ottimo per V3 (controllo totale, self-hosted). Per V1 con 1 sviluppatore, il costo operativo è sproporzionato.
 
-**Perché escluso Agora:**
-Agora è un'alternativa valida. Daily.co è preferito per la migliore Developer Experience e la documentazione più chiara.
-
-**Quando migrare:**
-Quando il costo mensile di Daily.co supera il costo di gestione di LiveKit self-hosted. Approssimativamente oltre 500.000 minuti chiamata/mese (~$2.000/mese).
+**Quando migrare:** oltre ~500.000 minuti/mese (~$2.000/mese).
 
 ---
 
-## 12. Notifiche Push
+## 13. Notifiche Push
 
-### 12.1 La Scelta: Expo Push Notifications
+### 13.1 La Scelta: Expo Push Notifications
 
-**Cos'è:** il servizio push di Expo che astrae sopra APNs (Apple) e FCM (Google).
+Astrae APNs (Apple) e FCM (Google) in un unico endpoint. Zero configurazione aggiuntiva per chi usa Expo.
 
-**Perché scelto:**
-- Integrazione nativa con Expo — praticamente zero configurazione
-- Un solo endpoint per inviare push sia a iOS che Android
-- Gestisce automaticamente il routing al provider corretto (APNs vs FCM)
-- Free per progetti Expo
-- Expo Push API è una singola chiamata HTTP dal backend
+**Per il web:** Web Push API standard via Service Worker — nessun servizio esterno.
 
-**Per il web:** Web Push API standard via Service Worker. Nessun servizio esterno necessario.
+**Privacy:** il payload push non contiene il testo del messaggio. Contiene solo `conversation_id` e `notification_type`. Il contenuto viene mostrato solo dal client dopo averlo ricevuto localmente.
 
-**Limitazione:** Expo Push è meno flessibile di APNs/FCM diretti per configurazioni avanzate (payload cifrati, notifiche interattive complesse). Per V1 è più che sufficiente.
-
-**Quando migrare:**
-Quando si ha bisogno di notifiche rich media, payload encrypted (per privacy del contenuto nel push), o configurazioni avanzate per retention. In pratica: V2 o quando si esce da Expo Managed Workflow.
+**Quando migrare:** quando si ha bisogno di payload encrypted o configurazioni avanzate APNs/FCM. In pratica: all'uscita da Expo Managed Workflow.
 
 ---
 
-## 13. Sistema Gruppi
+## 14. Sistema Gruppi
 
-### 13.1 Architettura Semplificata
+### 14.1 Struttura
 
-In V1, i gruppi non sono un sistema separato — sono conversazioni di tipo `group` nel sistema di conversazioni standard.
+I gruppi sono conversazioni di tipo `group` nella collection `conversations`. Stream Chat gestisce il delivery dei messaggi nel canale di gruppo.
 
-**Stream Chat gestisce:**
-- Canali di gruppo con più partecipanti
-- Permessi di amministrazione (chi può scrivere, chi può aggiungere membri)
-- Notifiche di gruppo
+**Stream gestisce:** fan-out messaggi ai partecipanti, typing indicators, notifiche di gruppo.
+**Backend Alpha Chat gestisce:** metadata gruppo (MongoDB), permessi avanzati, inviti, admin tools, limite 500 partecipanti.
 
-**Il backend Alpha Chat gestisce:**
-- Metadata del gruppo (nome, avatar, descrizione)
-- Permessi avanzati (chi può creare inviti, ecc.) tramite Stream custom permissions
-- Limite massimo partecipanti (500 per V1)
+### 14.2 Ruoli e Permessi
 
-**Link di invito:**
-Token UUID v4 conservato nella tabella `groups`. Chi conosce il link può unirsi (o viene messo in lista d'attesa se l'admin ha attivato l'approvazione).
+- **Owner:** tutti i permessi + trasferimento ownership + eliminazione gruppo
+- **Admin:** aggiunta/rimozione membri + silenziamento + modifica info gruppo
+- **Member:** invio messaggi (se permesso dalle impostazioni) + lettura
 
----
+### 14.3 Inviti
 
-## 14. Username e Identità
-
-### 14.1 Strategia
-
-Alpha Chat identifica gli utenti con username univoci. Il numero di telefono è opzionale e non è mai visibile ad altri utenti.
-
-**Regole username:**
-- 3–32 caratteri, alfanumerici e underscore
-- Case-insensitive (salvato lowercase)
-- Unico globalmente
-- Modificabile con cooldown 14 giorni
-- Ricerca per username esatto (non parziale di default)
-
-**Implementazione:**
-- Tabella `users` con colonna `username` con indice UNIQUE
-- Lock ottimistico per prevenire race condition nella claim dell'username
-
-### 14.2 Discovery dei Contatti
-
-**Via username:** cerca `@nomeutente` — il modo principale
-
-**Via rubrica telefonica (opzionale, opt-in):** l'app legge i numeri della rubrica, li hashe con bcrypt/SHA-256, e li invia al backend. Il backend confronta con i hash conservati. Se c'è match, propone quell'utente come contatto. Il numero in chiaro non lascia mai il dispositivo.
-
-**Motivazione privacy del hash matching:** il numero di telefono viene hashato lato client prima di essere inviato. Il server conserva hash, non numeri in chiaro. Anche se il database venisse compromesso, i numeri di telefono non sarebbero recuperabili (facilmente).
+- **Link:** token UUID salvato in MongoDB, revocabile dall'admin, opzionale lista d'attesa con approvazione
+- **QR code:** generato dal link di invito
+- **Invito diretto:** notifica push al destinatario con preview del gruppo
 
 ---
 
-## 15. Wallet USDA
+## 15. Username e Identità
 
-### 15.1 Principio di Separazione
+### 15.1 Regole
 
-Il wallet è un modulo separato con accesso rigorosamente controllato. Non è incluso in V1 del prodotto — è una funzionalità V2 che richiede:
-- Compliance regulatoria (EMD/PSD2 in EU, licenza operatore money service)
-- KYC/AML provider integrato
-- Audit di sicurezza specifico
+- Formato: `@nomeutente`, 3–32 caratteri, alfanumerici + underscore
+- Case-insensitive (salvato lowercase), unico globalmente
+- Modificabile con cooldown di 14 giorni
+- Ricerca per username esatto (non parziale di default — privacy)
 
-### 15.2 Architettura in V1 (Placeholder)
+**Implementazione MongoDB:** indice unique sul campo `username` (lowercase). Upsert con `{ upsert: false }` per garantire che il claim sia atomico — nessuna race condition.
 
-Per V1, il wallet è una struttura dati vuota nel database (tabella `wallet_accounts` con `is_active = false`). Non è accessibile dall'UI.
+### 15.2 Discovery Contatti
 
-**Perché creare la tabella anche in V1:**
-Evitare una migration futura che aggiunge una foreign key su una tabella esistente con milioni di righe. Creare lo schema ora, activare la funzionalità in V2.
+**Via username:** metodo principale, zero frizione.
 
-### 15.3 Architettura V2
-
-Quando il wallet è attivato:
-- Modulo backend isolato con accesso in lettura/scrittura solo tramite funzioni dedicate
-- PIN separato (4–6 cifre) + biometria per ogni operazione wallet
-- Audit log append-only di ogni transazione
-- Provider KYC: Onfido o Sumsub (entrambi hanno SDK pronto per React Native)
-- Provider pagamenti sottostante: da definire in base al contesto regulatorio (EU → licenza EMI propria o partenariato con istituto di moneta elettronica)
+**Via rubrica (opt-in):** i numeri vengono hashati sul dispositivo client prima di essere inviati. Il server confronta hash. Il numero in chiaro non lascia mai il dispositivo.
 
 ---
 
-## 16. Hosting e Deployment
+## 16. Eliminazione Messaggi
 
-### 16.1 Fase 1 — Replit (Sviluppo + Beta chiusa)
+### 16.1 Panoramica
 
-**Replit** come piattaforma di sviluppo e hosting iniziale.
-
-**Perché Replit per lo sviluppo:**
-- Ambiente di sviluppo cloud: nessuna configurazione locale
-- Database PostgreSQL managed integrato
-- Deployment con un click
-- Collaborazione in tempo reale con AI (Replit AI)
-- Preview automatico ad ogni push
-
-**Limitazioni di Replit per produzione:**
-- Performance non ottimali per applicazioni high-traffic
-- Meno controllo sull'infrastruttura rispetto a cloud providers
-- Adatto per beta chiusa (< 1.000 utenti attivi)
-
-### 16.2 Fase 2 — Railway o Render (Beta Pubblica)
-
-Per la beta pubblica (1.000–10.000 utenti), si migra su:
-
-**Railway** (raccomandato):
-- Deploy da GitHub con un click
-- PostgreSQL managed integrato
-- Redis integrato
-- Scaling verticale semplice
-- Prezzo trasparente e ragionevole ($5–20/mese per V1)
-- Nessuna gestione del server
-
-**Alternativa: Render**
-- Simile a Railway, leggermente meno flessibile
-- Free tier disponibile per test
-
-**Perché non AWS/GCP/Azure direttamente:**
-Richiedono configurazione di VPC, security groups, load balancer, autoscaling groups — complessità operativa significativa. Per V1 e V2, un PaaS (Platform as a Service) come Railway è più appropriato.
-
-### 16.3 Fase 3 — AWS/GCP (Scale)
-
-Quando il costo del PaaS supera il costo di gestione infrastruttura diretta. Questo accade tipicamente oltre ~50.000 DAU o quando servono requisiti specifici (multi-region, compliance GDPR con data residency garantita).
-
-### 16.4 CDN — Cloudflare
-
-Cloudflare su tutto il dominio, free tier:
-- CDN per asset statici
-- DDoS protection automatica
-- SSL/TLS terminazione
-- R2 object storage (già scelto)
+Alpha Chat implementa un sistema di eliminazione messaggi ispirato a Telegram: granulare, reversibile nell'intenzione, con propagazione real-time su tutti i dispositivi. L'eliminazione è una funzionalità V1 obbligatoria.
 
 ---
 
-## 17. Monitoraggio e Osservabilità
+### 16.2 Interazione Utente
 
-### 17.1 Logging — Pino
+**Trigger:** long press su qualsiasi messaggio nella chat.
 
-**Pino** per il logging strutturato (JSON) in Node.js.
+**Menu contestuale** (appare dopo long press):
 
-Perché Pino: il logger più veloce per Node.js, output JSON strutturato (filtrabile, ricercabile), integrazione nativa con il request lifecycle Express.
+| Azione | Visibile per | Note |
+|---|---|---|
+| Copia | Tutti | Copia il testo negli appunti |
+| Rispondi | Tutti | Apre il campo risposta con anteprima |
+| Inoltra | Tutti | Apre il selettore conversazione |
+| Modifica | Solo mittente | Visibile solo se il messaggio è proprio |
+| Elimina | Solo mittente (regole avanzate nei gruppi) | Apre la dialog di eliminazione |
 
-### 17.2 Error Tracking — Sentry
-
-**Sentry** per il tracciamento degli errori in produzione.
-
-Perché Sentry: cattura automaticamente eccezioni non gestite, fornisce stack trace, context, e breadcrumbs. Free tier per progetti piccoli. Alerting via email/Slack quando si verifica un errore.
-
-Integrazione in 10 minuti con `@sentry/node` e `@sentry/react-native`.
-
-### 17.3 Uptime Monitoring — Better Uptime o UptimeRobot
-
-Ping dell'endpoint `/api/health` ogni minuto. Alert via email/SMS se il servizio è giù. Free per 1 monitor.
-
-### 17.4 Analytics Prodotto — PostHog
-
-**PostHog** per analytics di prodotto (page views, funnel, retention, feature flags).
-
-Perché PostHog: open source, self-hostable (nessun dato a terzi), free tier generoso (1M eventi/mese), feature flags integrati (utile per rollout graduali).
-
----
-
-## 18. Percorso di Crescita
-
-### 18.1 Da Monolite a Moduli Separati
-
-Il monolite modulare è progettato per essere "split" quando necessario. L'ordine naturale di separazione:
-
-1. **Primo a separarsi: Media Service**
-   *Quando:* quando l'upload di file appesantisce l'unico processo Node.js
-   *Come:* estrarre il modulo `media/` in un servizio separato con la stessa interfaccia HTTP
-
-2. **Secondo: Notification Service**
-   *Quando:* quando le notifiche push rallentano le API
-   *Come:* estrarre in servizio asincrono con Kafka o BullMQ
-
-3. **Terzo: Wallet Service**
-   *Quando:* quando il wallet è attivato (V2), per isolamento di sicurezza obbligatorio
-   *Come:* già progettato per essere isolato
-
-### 18.2 Da PostgreSQL a Database Specializzati
-
-L'ordine naturale di aggiunta:
-
-1. **Elasticsearch per la ricerca** — quando il full-text search di PostgreSQL non è abbastanza veloce. PostgreSQL rimane il source of truth; Elasticsearch è solo un indice.
-
-2. **Cassandra per i messaggi** — quando le query sulla tabella `messages` (miliardi di righe) diventano lente nonostante gli indici. La migrazione dei dati storici è l'operazione più complessa (richiede uno script di migrazione attento).
-
-3. **Redis Cluster** — quando l'istanza Redis singola non basta per la presence di milioni di utenti online.
-
-### 18.3 Da Stream Chat a Sistema Custom
-
-Stream Chat scala bene fino a un certo punto. Quando il costo diventa significativo o si hanno requisiti che Stream non supporta:
-
-1. Progettare il protocollo WebSocket interno (basato su libwebsockets o socket.io)
-2. Implementare Signal Protocol puro per E2E
-3. Migrare i messaggi da Stream al database interno
-
-Questa migrazione è la più complessa e non va pianificata prima che sia necessaria.
-
----
-
-## 19. Roadmap MVP — Sprint Plan
-
-Obiettivo: **Beta Pubblica in 16 settimane** con 1 sviluppatore principale.
+**Dialog di eliminazione** (dopo aver selezionato "Elimina"):
 
 ```
-TIMELINE: 16 SETTIMANE
+┌─────────────────────────────────────────┐
+│          Elimina messaggio              │
+├─────────────────────────────────────────┤
+│  ○  Elimina solo per me                 │
+│                                         │
+│  ○  Elimina per tutti                   │
+│     (visibile per 24 ore dall'invio)    │
+├─────────────────────────────────────────┤
+│        [ Annulla ]  [ Elimina ]         │
+└─────────────────────────────────────────┘
+```
+
+> **Nota UX:** il bottone "Elimina" diventa rosso. "Elimina per tutti" è disponibile solo se il messaggio rientra nella finestra temporale consentita (24 ore).
+
+---
+
+### 16.3 Modalità di Eliminazione
+
+#### Modalità A — "Elimina solo per me"
+
+**Cosa succede:**
+- Il messaggio viene rimosso dalla visualizzazione dell'utente che ha eseguito l'azione
+- Gli altri partecipanti continuano a vedere il messaggio normalmente
+- Il messaggio non viene eliminato dal database
+
+**Implementazione:**
+Nel documento MongoDB del messaggio, l'`_id` dell'utente viene aggiunto all'array `deleted_for`:
+```
+messages.deleted_for: [user_id_1, user_id_2, ...]
+```
+Ogni query che recupera i messaggi per un utente filtra i documenti in cui `user_id` è presente in `deleted_for`. Questo avviene a livello di query MongoDB, non a livello applicativo.
+
+**Limiti temporali:** nessuno — si può eliminare solo per sé qualsiasi messaggio ricevuto in qualsiasi momento.
+
+**Effetto sugli allegati:** il file rimane su Cloudflare R2 e accessibile agli altri partecipanti. Solo la visualizzazione del messaggio viene rimossa per l'utente corrente.
+
+---
+
+#### Modalità B — "Elimina per tutti"
+
+**Cosa succede:**
+- Il messaggio viene rimosso dalla visualizzazione di tutti i partecipanti della conversazione
+- Tutti i dispositivi connessi ricevono l'aggiornamento in real-time
+- Il contenuto del messaggio viene cancellato dal database; rimane solo un "tombstone"
+- Negli eventuali messaggi di risposta (reply) che citano il messaggio eliminato, l'anteprima diventa "Messaggio eliminato"
+
+**Implementazione:**
+
+Nel documento MongoDB il messaggio viene aggiornato come segue:
+```
+{
+  deleted_for_everyone: true,
+  deleted_for_everyone_at: <timestamp>,
+  deleted_by: <user_id>,
+  content: null,
+  media: null
+}
+```
+Il documento rimane nel database (tombstone) per mantenere la continuità del thread e permettere ai messaggi di risposta di mostrare "Messaggio eliminato". Non viene mai rimosso fisicamente.
+
+**Propagazione real-time:** il backend pubblica un evento `message.deleted` via Stream Chat. Tutti i client connessi a quella conversazione ricevono l'evento e rimuovono il messaggio dalla lista visualizzata.
+
+**Dispositivi offline:** alla prossima connessione, il client sincronizza lo stato dei messaggi aggiornati (Stream Chat gestisce questa sincronizzazione automaticamente).
+
+---
+
+### 16.4 Regole di Autorizzazione
+
+#### Chat Private (1-to-1)
+
+| Azione | Chi può eseguirla |
+|---|---|
+| Elimina solo per me | Entrambi i partecipanti, qualsiasi messaggio ricevuto |
+| Elimina per tutti | Solo il mittente del messaggio |
+| Finestra temporale "elimina per tutti" | Entro 24 ore dall'invio |
+
+#### Gruppi
+
+| Azione | Chi può eseguirla |
+|---|---|
+| Elimina solo per me | Qualsiasi membro, qualsiasi messaggio |
+| Elimina per tutti (messaggio proprio) | Il mittente, entro 24 ore |
+| Elimina per tutti (qualsiasi messaggio) | Admin e Owner, senza limite temporale |
+
+> **Motivazione dei permessi admin nei gruppi:** gli admin devono poter rimuovere contenuti inappropriati o violazioni delle regole del gruppo, indipendentemente dal mittente o dal tempo trascorso. Questo è coerente con il comportamento di Telegram.
+
+#### Canali
+
+| Azione | Chi può eseguirla |
+|---|---|
+| Elimina solo per me | Iscritti, solo sui messaggi ricevuti |
+| Elimina per tutti | Solo Owner e Admin del canale |
+| Finestra temporale | Nessun limite per Owner/Admin |
+
+---
+
+### 16.5 Limite Temporale per "Elimina per tutti"
+
+**V1: 24 ore dall'invio**
+
+**Motivazione della scelta:**
+Un limite temporale bilancia due interessi contrapposti: il diritto dell'utente di correggere un errore (messaggio inviato alla persona sbagliata, contenuto errato) e la ragionevole aspettativa del destinatario che i messaggi ricevuti permangano. 24 ore è il tempo scelto da WhatsApp (60 ore, più generoso) e Telegram (48 ore). Alpha Chat sceglie 24 ore come default per V1, modificabile da impostazioni di sistema in V2.
+
+**Come viene comunicato all'utente:**
+Se il messaggio ha più di 24 ore, nella dialog di eliminazione l'opzione "Elimina per tutti" è disabilitata con nota: "Non disponibile dopo 24 ore dall'invio". L'utente può comunque scegliere "Elimina solo per me".
+
+---
+
+### 16.6 Comportamento dei Messaggi di Risposta (Reply)
+
+Quando un messaggio viene eliminato per tutti e altri messaggi lo citano in risposta:
+
+- L'anteprima nel messaggio di risposta diventa: *"Messaggio eliminato"* in corsivo
+- Il messaggio di risposta stesso rimane visibile
+- Non è possibile toccare l'anteprima per navigare al messaggio originale (non esiste più)
+
+Questo comportamento è coerente con Telegram e WhatsApp.
+
+---
+
+### 16.7 Sincronizzazione Multi-Device
+
+**Elimina solo per me:**
+- L'eliminazione viene sincronizzata su tutti i dispositivi dell'utente che ha eseguito l'azione
+- Il messaggio scompare da tutti i dispositivi dell'utente (mobile + web + desktop)
+- I dispositivi degli altri partecipanti non sono coinvolti
+
+**Elimina per tutti:**
+- L'eliminazione viene propagata in real-time a tutti i dispositivi di tutti i partecipanti
+- I dispositivi offline ricevono l'aggiornamento alla prossima connessione
+- Stream Chat garantisce la consegna dell'evento anche ai client disconnessi (message history sync)
+
+---
+
+### 16.8 Gestione degli Allegati (Media)
+
+| Scenario | Comportamento file su R2 |
+|---|---|
+| Elimina solo per me | Il file rimane su R2. Gli altri partecipanti possono accedervi. |
+| Elimina per tutti | Il file su R2 viene eliminato in modo asincrono entro 1 ora. I signed URL esistenti scadono naturalmente (TTL 24h). Dopo l'eliminazione, i vecchi URL tornano 404. |
+| Eliminazione da admin (gruppo/canale) | Il file su R2 viene eliminato in modo asincrono. Stesso comportamento di "Elimina per tutti". |
+
+**Pipeline di eliminazione media:**
+Quando un messaggio viene eliminato per tutti con allegato, un job asincrono (coda in-memory con BullMQ o semplice setImmediate per V1) cancella il file da R2. Questo avviene in background per non bloccare la risposta API.
+
+---
+
+### 16.9 Audit e Accountability
+
+Per i canali e i gruppi con più di 100 membri, le eliminazioni eseguite da admin vengono registrate in un audit log (collection `moderation_log` in MongoDB) con:
+
+- `action: "message_deleted"`
+- `moderator_id`, `target_message_id`, `target_sender_id`
+- `reason` (opzionale, può essere aggiunto dall'admin)
+- `timestamp`
+
+Questo log è visibile solo agli Owner del gruppo/canale e non è accessibile ai membri ordinari.
+
+---
+
+### 16.10 Edge Case
+
+| Scenario | Comportamento |
+|---|---|
+| Utente non connesso quando il messaggio viene eliminato | Riceve l'aggiornamento alla prossima connessione. Stream Chat bufferizza gli eventi. |
+| Messaggio già eliminato da un altro device | Idempotente — l'operazione è no-op se `deleted_for_everyone` è già `true`. |
+| Eliminazione fallisce per errore di rete | Il client mostra errore e permette retry. Il messaggio rimane visibile fino a conferma del backend. |
+| Messaggio fissato (pinned) che viene eliminato per tutti | Il pin viene rimosso automaticamente dal sistema. |
+| Messaggio in una notifica push già inviata | La notifica push già consegnata non può essere ritirata. Il messaggio scompare dalla chat ma potrebbe essere ancora visibile nella notification center dell'OS fino alla cancellazione manuale. |
+
+---
+
+## 17. Wallet USDA — Modulo Opzionale
+
+### 17.1 Principio di Separazione
+
+Il Wallet USDA è un **modulo opzionale totalmente separato** dal Core. Non è incluso nella Versione 1 del prodotto. La chat funziona completamente senza che il wallet esista.
+
+**Requisiti per l'attivazione (V2):**
+- Compliance regolamentare (PSD2/EMD2 in EU, licenza EMI o partenariato con istituto autorizzato)
+- KYC/AML provider integrato (Onfido, Sumsub)
+- Audit di sicurezza specifico sul modulo finanziario
+- Cluster MongoDB separato per i dati finanziari
+
+### 17.2 Placeholder in V1
+
+In V1, il modulo wallet esiste nel codice ma non è attivo:
+- Nessuna route wallet esposta
+- Nessuna UI wallet nel client
+- La collection `wallet_accounts` è già definita nel schema (per evitare migrations future su dati esistenti) ma nessun documento ha `is_active: true`
+
+### 17.3 Architettura V2
+
+- Cluster MongoDB Atlas separato (isolamento fisico dei dati finanziari)
+- PIN dedicato (4–6 cifre) + biometria per ogni operazione wallet
+- Audit log append-only di ogni transazione (documenti immutabili — nessun update/delete permesso)
+- Route API separate: `/api/v1/wallet/...` con middleware autenticazione aggiuntivo
+- Zero condivisione di codice con i moduli Core della chat
+
+---
+
+## 18. Hosting e Deployment
+
+### 18.1 Fase 1 — Replit (Sviluppo + Alpha/Beta Chiusa)
+
+**Perché Replit:**
+- Ambiente Node.js nativo, zero configurazione locale
+- Collaborazione AI integrata (Replit AI)
+- Deploy immediato per test
+- Adatto per sviluppo e beta chiusa (< 500 utenti attivi)
+
+**Limitazione:** non progettato per alta disponibilità in produzione. Si usa esclusivamente per sviluppo e test interni.
+
+### 18.2 Fase 2 — Railway (Beta Pubblica)
+
+**Railway** come piattaforma per la beta pubblica (500–10.000 utenti):
+
+- Deploy da GitHub con un click
+- Scaling verticale semplice tramite UI
+- Redis managed integrato (alternativa a Upstash)
+- Variabili d'ambiente e secrets sicuri
+- Pricing trasparente (~$5–20/mese per V1)
+- Nessuna gestione del server
+
+> **Nota:** MongoDB continua su Atlas indipendentemente dall'hosting del backend — non si usa il database managed di Railway.
+
+**Alternativa: Render** — simile a Railway, free tier disponibile per test.
+
+**Perché non AWS/GCP/Azure direttamente:** richiedono configurazione VPC, security groups, load balancer. Complessità operativa sproporzionata per un team di 1 in V1.
+
+### 18.3 Fase 3 — AWS/GCP (Scale, > 50K DAU)
+
+Quando il costo del PaaS supera il beneficio. Tipicamente oltre ~50.000 DAU o con requisiti di compliance specifici (data residency GDPR garantita).
+
+### 18.4 CDN — Cloudflare
+
+Cloudflare su tutto il dominio (free tier):
+- CDN per asset statici del frontend
+- DDoS protection automatica
+- SSL/TLS terminazione
+- R2 object storage (media)
+
+---
+
+## 19. Monitoraggio e Osservabilità
+
+### 19.1 Logging — Pino
+
+Logger strutturato JSON per Node.js. Output filtrabile, integrazione nativa con Express, il più veloce per Node.js.
+
+### 19.2 Error Tracking — Sentry
+
+Cattura eccezioni non gestite in produzione. Stack trace, context, breadcrumbs. Free tier. Alerting via email quando si verifica un errore critico. Integrazione: `@sentry/node` + `@sentry/react-native`.
+
+### 19.3 Uptime Monitoring — UptimeRobot
+
+Ping su `/api/v1/health` ogni minuto. Alert email/SMS se giù. Free per 1 monitor.
+
+### 19.4 Analytics Prodotto — PostHog
+
+Open source, self-hostable, free tier 1M eventi/mese. Feature flags integrati per rollout graduali delle funzionalità.
+
+---
+
+## 20. Percorso di Crescita
+
+### 20.1 Da Monolite a Moduli Separati
+
+Il monolite modulare è già organizzato per essere split. Ordine naturale di estrazione:
+
+1. **Media Service** — primo a separarsi quando l'upload file appesantisce il processo principale
+2. **Notification Service** — quando le push lente impattano le API
+3. **Wallet Service** — in V2, per isolamento di sicurezza obbligatorio (già progettato separato)
+
+### 20.2 Evoluzione del Database
+
+| Trigger | Azione |
+|---|---|
+| Ricerca lenta | Attivare **Atlas Search** (built-in in MongoDB Atlas, zero migrazioni) |
+| Collection `messages` > 100M documenti lenta | Valutare sharding Atlas o migrazione a Cassandra |
+| Analytics complesse | Aggiungere **TimescaleDB** per metriche time-series |
+| Search avanzato oltre Atlas Search | Aggiungere **Elasticsearch** standalone |
+
+### 20.3 Da Stream Chat a Sistema Custom
+
+Quando il costo mensile Stream supera il costo di sviluppo e manutenzione custom (~500K MAU):
+1. Progettare protocollo WebSocket interno
+2. Implementare Signal Protocol puro per E2E
+3. Migrare messaggi da Stream a MongoDB
+
+Questa è la migrazione più complessa. Non va pianificata prima che sia necessaria.
+
+---
+
+## 21. Roadmap MVP — Sprint Plan
+
+**Obiettivo: Beta Pubblica in 18 settimane** con 1 sviluppatore + AI.
+
+```
+TIMELINE: 18 SETTIMANE
 ═══════════════════════════════════════════════════════════════════════
 
-SPRINT 0 — SETUP (Settimana 1)
-────────────────────────────────
-□ Setup monorepo (Turborepo o pnpm workspaces)
+SPRINT 0 — SETUP INFRASTRUTTURA (Settimana 1)
+──────────────────────────────────────────────
+□ Setup monorepo (pnpm workspaces)
 □ Backend: Node.js + Express + TypeScript boilerplate
-□ Database: PostgreSQL su Replit, Drizzle ORM setup
-□ Redis: Upstash configurato
+□ MongoDB Atlas: cluster M0, connessione Mongoose, collection setup
+□ Upstash Redis: configurato e connesso
 □ CI/CD: GitHub Actions → deploy automatico su Replit
-□ Sentry installato e configurato (errori da subito monitorati)
-□ Stream Chat account: credenziali configurate
-□ Cloudflare R2 bucket creato
-□ Daily.co account: credenziali configurate
-  ▶ DELIVERABLE: Ambiente funzionante, "hello world" deployato
+□ Sentry: installato su backend e client
+□ Stream Chat: account, API keys, test connessione
+□ Cloudflare R2: bucket creato, credenziali configurate
+□ Daily.co: account, API keys, test connessione
+□ Struttura modulare Core/Optional: cartelle e boilerplate
+  ▶ DELIVERABLE: Ambiente funzionante, struttura modulare, hello world deployato
 
 SPRINT 1 — AUTH + IDENTITÀ (Settimane 2–3)
 ────────────────────────────────────────────
-□ Tabelle DB: users, sessions, contacts
+□ Collection MongoDB: users, sessions, contacts (schema Mongoose)
 □ Registrazione con email + password (Argon2id)
-□ Login + JWT access token + refresh token
-□ Middleware di autenticazione per tutte le route protette
-□ Verifica email (link con token, Resend API per le email)
-□ Sistema username: claim, validazione, unicità
-□ Profilo utente: foto (Cloudflare R2), bio, status
-□ Rate limiting su endpoint autenticazione
-□ Test: registrazione, login, logout, refresh token
-  ▶ DELIVERABLE: Auth funzionante e testato
+□ Login + JWT RS256 access token + refresh token (cookie HttpOnly)
+□ Middleware autenticazione per tutte le route protette
+□ Verifica email via Resend API (link con token UUID)
+□ Sistema username: claim, validazione unicità, indice MongoDB
+□ Profilo utente: avatar (R2), bio, status con scadenza
+□ Rate limiting su endpoint autenticazione (Redis sliding window)
+□ Registrazione telefono + SMS OTP via Twilio
+□ Test: registrazione, login, logout, refresh token, rate limit
+  ▶ DELIVERABLE: Auth completo, username system funzionante
 
 SPRINT 2 — CHAT CORE (Settimane 4–6)
 ──────────────────────────────────────
-□ Integrazione Stream Chat SDK backend (generazione token)
-□ Integrazione Stream Chat SDK mobile (React Native)
-□ Integrazione Stream Chat SDK web
-□ UI chat list: lista conversazioni con preview ultimo messaggio
-□ UI chat view: bubble messaggi, input, invio
-□ Delivery status: sent / delivered / read (Stream built-in)
+□ Stream Chat SDK: generazione token backend, integrazione mobile e web
+□ Collection MongoDB: conversations, messages (con campi deleted_for,
+  deleted_for_everyone, deleted_by per supportare eliminazione V1)
+□ UI chat list: lista conversazioni, preview ultimo messaggio, badge non letti
+□ UI chat view: bubble messaggi, input, invio testo
+□ Delivery status: sent ✓ / delivered ✓✓ / read ✓✓ blu (Stream built-in)
 □ Typing indicator (Stream built-in)
-□ UI profilo contatto
-□ Aggiunta contatti via username
-□ Blocco utenti
+□ Aggiunta contatti via @username
+□ Blocco utenti (blocco bidirezionale)
   ▶ DELIVERABLE: Chat 1-to-1 funzionante su mobile e web
 
-SPRINT 3 — MEDIA (Settimane 7–8)
+SPRINT 3 — ELIMINAZIONE MESSAGGI (Settimana 7)
+─────────────────────────────────────────────────
+□ Long press menu: Copia, Rispondi, Inoltra, Modifica, Elimina
+□ Dialog "Elimina per me" vs "Elimina per tutti" (con timer 24h)
+□ Backend: PATCH /api/v1/messages/{id}/delete con logica di autorizzazione
+□ MongoDB: aggiornamento campi deleted_for / deleted_for_everyone
+□ Propagazione real-time via Stream Chat (evento message.deleted)
+□ Sincronizzazione multi-device per "Elimina solo per me"
+□ Tombstone UI: "Messaggio eliminato" nei reply che citano il messaggio
+□ Eliminazione media da R2 (job asincrono)
+□ Permessi: differenziati per chat privata, gruppo (admin), canale
+□ Edge case: messaggio già eliminato, dispositivo offline, pinned message
+  ▶ DELIVERABLE: Sistema eliminazione messaggi completo e testato
+
+SPRINT 4 — MEDIA (Settimane 8–9)
 ──────────────────────────────────
-□ Presigned URL endpoint (backend → R2)
-□ Upload immagini: picker, compressione, upload, visualizzazione
-□ Upload documenti: picker, upload, download
-□ Messaggi vocali: registrazione, waveform, riproduzione, velocità
-□ Link preview: scraper backend, cache 24h
-□ Galleria media per conversazione
-□ Limiti dimensione e tipo file con feedback chiaro
-  ▶ DELIVERABLE: Invio media completo
+□ Presigned URL endpoint (backend → R2 → client)
+□ Upload immagini: picker, compressione client-side, signed URL lettura
+□ Upload video: picker, thumbnail post-upload, progress indicator
+□ Upload documenti: PDF, limite 100MB, download con signed URL
+□ Messaggi vocali: registrazione, waveform, riproduzione, velocità 1x/1.5x/2x
+□ Link preview: scraper Open Graph backend, cache MongoDB 24h
+□ Galleria media per conversazione (grid scrollabile)
+□ Limiti dimensione/tipo con feedback UI chiaro
+  ▶ DELIVERABLE: Invio e ricezione media completo
 
-SPRINT 4 — GRUPPI (Settimane 9–10)
-─────────────────────────────────────
-□ Creazione gruppo (Stream Channel type: "group")
-□ Aggiunta / rimozione membri
-□ Ruoli: owner, admin, member (Stream permissions)
-□ Inviti via link (token nel DB + Stream)
-□ Impostazioni gruppo: nome, avatar, descrizione
-□ Menzioni @username con notifica
-□ Admin tools: silenziamento, ban
-  ▶ DELIVERABLE: Gruppi funzionanti fino a 500 partecipanti
+SPRINT 5 — GRUPPI + CANALI (Settimane 10–11)
+─────────────────────────────────────────────
+□ Gruppi: creazione, stream channel type "group"
+□ Aggiunta / rimozione membri (con permessi Owner/Admin/Member)
+□ Link invito (token MongoDB + Stream), QR code
+□ Impostazioni gruppo: nome, avatar, descrizione, permessi
+□ Menzioni @username con notifica dedicata
+□ Admin tools: silenziamento membro, rimozione, ban
+□ Eliminazione messaggi nei gruppi con permessi admin (Sprint 3 extension)
+□ Canali V1 base: broadcast 1-to-many, iscrizione/disiscrizione
+  ▶ DELIVERABLE: Gruppi completi (500 partecipanti) + Canali base
 
-SPRINT 5 — NOTIFICHE (Settimane 9–10, parallelo Gruppi)
-─────────────────────────────────────────────────────────
-□ Expo Push Notifications: token device, salvataggio
-□ Backend: invio push via Expo Push API
-□ Notifica per nuovo messaggio (privacy: no testo nel payload)
-□ Notifica per menzione
-□ Preferenze notifiche: per-chat mute, DND schedule
+SPRINT 6 — NOTIFICHE (Settimana 10, parallelo Sprint 5)
+────────────────────────────────────────────────────────
+□ Expo Push: salvataggio token device in MongoDB
+□ Backend: invio push via Expo Push API (payload senza testo messaggio)
+□ Notifica per nuovo messaggio, menzione, chiamata in ingresso
+□ Preferenze notifiche: mute per-chat, DND schedule globale
 □ Web Push via Service Worker
   ▶ DELIVERABLE: Notifiche push su iOS, Android, Web
 
-SPRINT 6 — CHIAMATE (Settimane 11–12)
-────────────────────────────────────────
-□ Daily.co: creazione room, token generazione
-□ Signaling via Stream Chat (messaggio tipo "call_offer")
-□ UI chiamata in ingresso (overlay con accetta/rifiuta)
-□ Chiamate vocali 1-to-1: Daily.co SDK mobile
-□ Videochiamate 1-to-1: Daily.co SDK mobile
-□ Chiamate vocali web
-□ In-call UI: mute, speaker, flip camera, hangup
-□ Chiamate di gruppo audio (fino a 8, Daily.co managed SFU)
+SPRINT 7 — CHIAMATE E VIDEOCHIAMATE (Settimane 12–13)
+───────────────────────────────────────────────────────
+□ Daily.co: creazione room, token backend, URL stanza
+□ Signaling via Stream Chat (messaggio system tipo "call_offer/answer/end")
+□ UI chiamata in ingresso: overlay full-screen con accetta/rifiuta
+□ Chiamate vocali 1-to-1 su mobile (Daily.co SDK)
+□ Videochiamate 1-to-1 su mobile (Daily.co SDK, adaptive bitrate)
+□ Chiamate web (Daily.co SDK web)
+□ In-call UI: mute, speaker, flip camera, hangup, timer durata
+□ Chiamate audio di gruppo fino a 8 (Daily.co SFU managed)
   ▶ DELIVERABLE: Chiamate e videochiamate funzionanti
 
-SPRINT 7 — FEATURES COMPLETE (Settimane 13–14)
-─────────────────────────────────────────────────
-□ Messaggi a scomparsa: timer configurabile
-□ Reazioni emoji ai messaggi
-□ Reply inline con preview
-□ Forward messaggio
-□ Ricerca messaggi (PostgreSQL full-text)
-□ Ricerca utenti per username
-□ Impostazioni privacy: last seen, read receipts, online status
-□ Blocco screenshot (mobile)
-□ Multi-device: verifica sincronizzazione
-□ Dark mode / Light mode
+SPRINT 8 — FEATURES COMPLETE (Settimane 14–15)
+────────────────────────────────────────────────
+□ Messaggi a scomparsa: timer per chat (dopo lettura o dopo N ore)
+□ Reazioni emoji: aggiunta, rimozione, counter aggregato
+□ Reply inline: preview messaggio originale, scroll al messaggio citato
+□ Forward: selettore destinazione, etichetta "Inoltrato"
+□ Modifica messaggio: entro 24h, con indicatore "modificato"
+□ Ricerca messaggi: MongoDB text index sulla collection messages
+□ Ricerca utenti per @username
+□ Impostazioni privacy: last seen, read receipts, online status (per contatti/tutti/nessuno)
+□ Blocco screenshot in chat (mobile, React Native)
+□ Dark mode / Light mode con system preference detection
+□ Multi-device: verifica sincronizzazione messaggi e stato
   ▶ DELIVERABLE: Feature set V1 completo
 
-SPRINT 8 — HARDENING + BETA CHIUSA (Settimane 15–16)
-───────────────────────────────────────────────────────
-□ Security review: header sicurezza, input validation, SQL injection
-□ Rate limiting verificato su tutti gli endpoint critici
-□ Load test: 500 utenti concorrenti in staging
-□ Bug fixing: lista da Sprint 1–7
-□ Onboarding flow: prima apertura, claim username, primo contatto
-□ Empty states: lista chat vuota, nessun contatto, nessun media
-□ Error states: connessione persa, messaggio non inviato, retry
-□ Performance: scroll lista messaggi fluido (60fps)
-□ Beta chiusa: 50–100 utenti invitati
-□ Feedback collection: PostHog + canale feedback in-app
-  ▶ DELIVERABLE: Beta chiusa live
+SPRINT 9 — HARDENING + BETA CHIUSA (Settimane 16–17)
+──────────────────────────────────────────────────────
+□ Security review: OWASP Top 10, injection, broken auth, rate limiting
+□ MongoDB: audit indici, explain() sulle query lente
+□ Load test: 500 utenti concorrenti in staging (k6 o Artillery)
+□ Bug fixing lista da Sprint 1–8
+□ Onboarding flow: prima apertura, claim username, aggiunta primo contatto
+□ Empty states: nessuna chat, nessun contatto, galleria vuota
+□ Error states: connessione persa (banner), messaggio non inviato (retry)
+□ Performance: scroll lista messaggi 60fps, apertura app < 2s su 4G
+□ Beta chiusa: 50–100 utenti invitati su TestFlight (iOS) e Play Internal (Android)
+□ Feedback: PostHog funnel + canale feedback in-app
+  ▶ DELIVERABLE: Beta chiusa live, monitoraggio attivo
 
-SETTIMANA 17–18 — BETA PUBBLICA
-──────────────────────────────────
+SETTIMANA 18 — BETA PUBBLICA
+──────────────────────────────
 □ Fix critici emersi dalla beta chiusa
-□ App Store submission (iOS) — review ~3 giorni
-□ Google Play submission (Android) — review ~2 giorni
-□ Web app dominio definitivo
+□ App Store submission iOS (review ~3 giorni)
+□ Google Play submission Android (review ~2 giorni)
+□ Web app su dominio definitivo con Cloudflare
 □ Landing page pubblica
-□ Monitoraggio intensivo h24 per la prima settimana
+□ Monitoraggio h24 per la prima settimana post-lancio
   ▶ DELIVERABLE: Alpha Chat Beta Pubblica 🚀
 
 ═══════════════════════════════════════════════════════════════════════
 
 RIEPILOGO TIMELINE
 ────────────────────
-Settimana 1:   Setup e infrastruttura
-Settimane 2–3: Auth e identità
-Settimane 4–6: Chat core (la feature più importante)
-Settimane 7–8: Media
-Settimane 9–10: Gruppi + Notifiche (paralleli)
-Settimane 11–12: Chiamate
-Settimane 13–14: Feature complete
-Settimane 15–16: Hardening + Beta chiusa
-Settimane 17–18: Beta pubblica
+Settimana 1:      Setup infrastruttura modulare
+Settimane 2–3:    Auth + identità
+Settimane 4–6:    Chat core 1-to-1
+Settimana 7:      Eliminazione messaggi (feature V1 obbligatoria)
+Settimane 8–9:    Media
+Settimane 10–11:  Gruppi + Canali (+ Notifiche in parallelo)
+Settimane 12–13:  Chiamate e videochiamate
+Settimane 14–15:  Feature set completo
+Settimane 16–17:  Hardening + Beta chiusa
+Settimana 18:     Beta pubblica
 
 TOTALE: 18 settimane (~4 mesi e mezzo)
 
@@ -935,38 +1316,50 @@ TOTALE: 18 settimane (~4 mesi e mezzo)
 
 ---
 
-## 20. Checklist Pre-Beta
+## 22. Checklist Pre-Beta
 
 ### Sicurezza (Non Negoziabile)
 - [ ] HTTPS ovunque (nessun endpoint HTTP in produzione)
 - [ ] Rate limiting su tutti gli endpoint write
-- [ ] Input validation su tutte le route (Zod schema)
-- [ ] SQL injection impossibile (ORM parametrizzato, nessuna query con stringa concatenata)
-- [ ] XSS impossibile (React sanitizza per default, nessun dangerouslySetInnerHTML)
-- [ ] Password hashate con Argon2id (nessuna password in chiaro in DB o log)
-- [ ] JWT con scadenza breve (15 minuti)
-- [ ] Refresh token hashati nel DB
-- [ ] Nessun secret in codice (tutti in variabili d'ambiente)
-- [ ] Headers di sicurezza (Helmet.js)
+- [ ] Input validation con Zod su tutte le route
+- [ ] NoSQL injection impossibile (Mongoose sanitize, nessuna query con input non validato)
+- [ ] XSS impossibile (React sanitizza per default)
+- [ ] Password hashate con Argon2id
+- [ ] JWT con scadenza 15 minuti, RS256
+- [ ] Refresh token hashati in MongoDB
+- [ ] Nessun secret nel codice (tutti in variabili d'ambiente)
+- [ ] Security headers via Helmet.js
+- [ ] MongoDB Atlas: network access solo da IP del backend
+
+### Eliminazione Messaggi (Feature V1 Specifica)
+- [ ] "Elimina solo per me" rimuove il messaggio solo per l'utente richiedente
+- [ ] "Elimina per tutti" propaga l'evento a tutti i dispositivi di tutti i partecipanti
+- [ ] Finestra 24h verificata: dopo 24h, "Elimina per tutti" è disabilitato per utenti normali
+- [ ] Admin gruppo possono eliminare qualsiasi messaggio senza limite temporale
+- [ ] I messaggi di risposta che citano il messaggio eliminato mostrano "Messaggio eliminato"
+- [ ] I media dei messaggi eliminati per tutti vengono rimossi da R2
+- [ ] Dispositivi offline ricevono la sincronizzazione alla riconnessione
+- [ ] Idempotenza: eliminare due volte lo stesso messaggio è un no-op
 
 ### Performance
-- [ ] Lista messaggi: scroll a 60fps su iPhone 12 e Android di fascia media
+- [ ] Lista messaggi: scroll 60fps su iPhone 12 e Android di fascia media
 - [ ] Apertura app: < 2 secondi su connessione 4G
-- [ ] Invio messaggio: appare nella UI < 100ms (optimistic update)
+- [ ] Invio messaggio: appare in UI < 100ms (optimistic update)
 - [ ] Caricamento immagini: thumbnail istantanea, full-res lazy
+- [ ] MongoDB query principali: < 50ms (verificato con explain())
 
 ### Affidabilità
-- [ ] Gestione connessione persa: banner + retry automatico
-- [ ] Messaggi non inviati: stato "failed" con retry manuale
-- [ ] App funziona con connessione lenta (3G)
+- [ ] Gestione connessione persa: banner visibile + retry automatico
+- [ ] Messaggi non inviati: stato "failed" con bottone retry
+- [ ] App utilizzabile con connessione lenta (3G)
 - [ ] Sentry configurato: ogni errore non gestito viene tracciato
-- [ ] Backup database: automatico ogni 24 ore
+- [ ] MongoDB Atlas: backup automatico configurato
 
 ### UX Minima
-- [ ] Onboarding: claim username, foto profilo (opzionale), primo contatto
-- [ ] Empty states: lista chat vuota, nessun risultato ricerca
-- [ ] Loading states: skeleton screen (non spinner bianchi)
-- [ ] Error messages: messaggi comprensibili, non stack trace
+- [ ] Onboarding: claim username, foto profilo opzionale, primo contatto
+- [ ] Empty states: lista chat vuota, nessun risultato ricerca, galleria vuota
+- [ ] Loading states: skeleton screen (non spinner generici)
+- [ ] Error messages: comprensibili per l'utente, non stack trace
 
 ---
 
@@ -974,30 +1367,33 @@ TOTALE: 18 settimane (~4 mesi e mezzo)
 
 | Componente | Enterprise (doc precedente) | MVP (questo documento) | Quando migrare |
 |---|---|---|---|
-| Backend | Go + microservizi | Node.js monolite | > 100K DAU o team > 5 persone |
-| Real-time | WebSocket custom + Kafka | Stream Chat SDK | > 500K MAU o costo Stream > $2K/mese |
-| Database messaggi | Cassandra | PostgreSQL | > 100M messaggi totali |
-| Ricerca | Elasticsearch | PostgreSQL full-text | Quando tsvector non basta |
+| Backend | Go + microservizi | Node.js monolite modulare | > 100K DAU o team > 5 persone |
+| Architettura | Microservizi separati | Monolite modulare Core + Optional | Quando un modulo è il bottleneck |
+| Real-time | WebSocket custom + Kafka | Stream Chat SDK | > 500K MAU o costo > $2K/mese |
+| Database | PostgreSQL + Cassandra + Elasticsearch | MongoDB Atlas (unico) | Aggiunta selettiva con Atlas Search e sharding |
 | Cache/Presence | Redis self-hosted | Upstash Redis | > 10M op/giorno |
 | Object storage | AWS S3 | Cloudflare R2 | Mai (R2 scala senza limiti) |
 | Chiamate | LiveKit SFU self-hosted | Daily.co managed | > 500K min/mese |
 | Notifiche | APNs/FCM diretti | Expo Push | Uscita da Expo Managed Workflow |
-| Auth | Auth custom completo | JWT + Refresh Token | Mai (è già scalabile) |
-| Infrastruttura | Kubernetes + Istio | Railway / Render | > 50K DAU o requisiti compliance |
+| Auth | Auth custom completo | JWT RS256 + Refresh Token | Mai (già scalabile) |
+| Infrastruttura | Kubernetes + Istio | Replit → Railway | > 50K DAU o compliance specifici |
 | SMS OTP | Provider custom | Twilio | Mai (Twilio scala) |
-| Monitoraggio | Prometheus + Grafana + Jaeger | Sentry + Better Uptime | > 50K DAU |
+| Monitoraggio | Prometheus + Grafana + Jaeger | Sentry + UptimeRobot | > 50K DAU |
+| Wallet | Microservizio separato fin da V1 | Modulo disabilitato, attivato in V2 | Quando compliance e KYC sono pronti |
 
 ---
 
 ## Note Finali
 
-Questa architettura non è un compromesso — è la scelta **corretta per questa fase**. Usare Kubernetes per servire 100 utenti non è "scalabile" — è spreco. La scalabilità vera è sapere quando aggiungere complessità e quando resisterle.
+Questa architettura non è un compromesso — è la scelta **corretta per questa fase**. Ogni tecnologia è stata scelta perché è la migliore per un team di 1 oggi, con un percorso chiaro verso la scala.
 
-I prodotti che sopravvivono non sono quelli con l'architettura più elegante in partenza. Sono quelli che arrivano agli utenti, validano il prodotto, e poi crescono l'architettura insieme agli utenti.
+La modularità non è solo organizzazione del codice — è una promessa: il wallet non tocca la chat, i moduli futuri non rompono ciò che già funziona, ogni componente può essere aggiornato indipendentemente.
 
-**Ship first. Optimize later. Rewrite never.**
+L'eliminazione dei messaggi non è un dettaglio UI — è una funzionalità architetturale che richiede attenzione al database (tombstone), alla sincronizzazione real-time, ai permessi granulari, e alla gestione dei media. Trattarla come un sprint dedicato (Sprint 3) è la scelta corretta.
+
+**Ship first. Stay modular. Grow without rewriting.**
 
 ---
 
 *Documento preparato per il team Alpha Chat*
-*Ultima revisione: Luglio 2025*
+*Ultima revisione: Luglio 2025 — Versione 2.0*
