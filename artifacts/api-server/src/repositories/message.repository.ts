@@ -48,6 +48,7 @@ export class MessageRepository {
     messageType: IMessageDocument["message_type"];
     sentAt: Date;
     replyToMessageId?: mongoose.Types.ObjectId | null;
+    mediaId?: mongoose.Types.ObjectId | null;
     status?: MessageStatus;
   }): Promise<IMessageDocument> {
     const now = new Date();
@@ -86,6 +87,7 @@ export class MessageRepository {
       sequence_number: sequenceNumber,
       status: params.status ?? "sent",
       reply_to_message_id: params.replyToMessageId ?? null,
+      media_id: params.mediaId ?? null,
     });
 
     // 3. Aggiorna last_message_id sulla conversazione (non critico per ordering)

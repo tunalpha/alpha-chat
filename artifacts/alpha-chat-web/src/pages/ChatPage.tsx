@@ -8,12 +8,16 @@ import {
   apiSendMessage,
   apiEditMessage,
   apiDeleteMessage,
+  apiSendVoiceMessage,
   apiMarkRead,
   decodeMessage,
+  decodeVoiceMeta,
   AuthExpiredError,
   type ConversationItem,
   type MessageItem,
 } from "../lib/api";
+import VoiceRecorder, { type VoiceBlob } from "../components/VoiceRecorder";
+import VoiceMessage from "../components/VoiceMessage";
 import InviteModal from "../components/InviteModal";
 import RedeemModal from "../components/RedeemModal";
 
@@ -138,11 +142,13 @@ function ChatInput({
   value,
   onChange,
   onSubmit,
+  onVoiceStart,
   disabled,
 }: {
   value: string;
   onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;
   onSubmit: (e: React.FormEvent) => void;
+  onVoiceStart: () => void;
   disabled: boolean;
 }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -201,8 +207,7 @@ function ChatInput({
           </svg>
         </button>
       ) : (
-        /* Microfono — non implementato */
-        <button type="button" className="send-btn mic-btn" aria-label="Messaggio vocale" title="Disponibile prossimamente" disabled>
+        <button type="button" className="send-btn mic-btn" onClick={onVoiceStart} disabled={disabled} aria-label="Messaggio vocale">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" width="20" height="20">
             <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
             <path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/>
@@ -358,6 +363,8 @@ export default function ChatPage({ onNavigate }: Props) {
   const [forwardingMessage, setForwardingMessage] = useState<MessageItem | null>(null);
   // toast
   const [toastMsg, setToastMsg] = useState<string | null>(null);
+  // voice recorder
+  const [showVoiceRecorder, setShowVoiceRecorder] = useState(false);
   const [typingUsers, setTypingUsers] = useState<Record<string, Set<string>>>({});
   const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
   const [atBottom, setAtBottom] = useState(true);
@@ -586,6 +593,19 @@ export default function ChatPage({ onNavigate }: Props) {
       showToast("Messaggio inoltrato ✓");
     } catch {
       showToast("Errore durante l'inoltro");
+    }
+  }
+
+  async function handleVoiceSend(voice: VoiceBlob) {
+    setShowVoiceRecorder(false);
+    if (!activeConvId) return;
+    setSending(true);
+    try {
+      await apiSendVoiceMessage(activeConvId, voice.blob, voice.durationMs, voice.waveform);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Errore invio vocale");
+    } finally {
+      setSending(false);
     }
   }
 
@@ -864,6 +884,9 @@ export default function ChatPage({ onNavigate }: Props) {
                     ? messages.find((m) => m.id === msg.reply_to_message_id)
                     : null;
 
+                  // Messaggio vocale
+                  const voiceMeta = msg.message_type === "media" ? decodeVoiceMeta(msg.ciphertext) : null;
+
                   return (
                     <div
                       key={msg.id}
@@ -873,7 +896,7 @@ export default function ChatPage({ onNavigate }: Props) {
                       onTouchEnd={handleTouchCancel}
                       onTouchMove={handleTouchCancel}
                     >
-                      <div className={`msg-bubble ${isMine ? "mine" : "theirs"}`}>
+                      <div className={`msg-bubble ${isMine ? "mine" : "theirs"} ${voiceMeta ? "voice-bubble" : ""}`}>
                         {/* Reply preview */}
                         {repliedMsg && (
                           <div className="msg-reply-preview">
@@ -883,7 +906,16 @@ export default function ChatPage({ onNavigate }: Props) {
                             </span>
                           </div>
                         )}
-                        {renderText()}
+                        {voiceMeta ? (
+                          <VoiceMessage
+                            mediaId={voiceMeta.media_id}
+                            durationMs={voiceMeta.duration_ms}
+                            waveform={voiceMeta.waveform}
+                            isMine={isMine}
+                          />
+                        ) : (
+                          renderText()
+                        )}
                         <div className="msg-meta">
                           {msg.edited_at && <span className="msg-edited">Modificato</span>}
                           <span className="msg-time">{time}</span>
@@ -960,12 +992,20 @@ export default function ChatPage({ onNavigate }: Props) {
               </div>
             )}
 
-            <ChatInput
-              value={inputText}
-              onChange={handleInputChange}
-              onSubmit={handleSend}
-              disabled={sending}
-            />
+            {showVoiceRecorder ? (
+              <VoiceRecorder
+                onSend={(v) => void handleVoiceSend(v)}
+                onCancel={() => setShowVoiceRecorder(false)}
+              />
+            ) : (
+              <ChatInput
+                value={inputText}
+                onChange={handleInputChange}
+                onSubmit={handleSend}
+                onVoiceStart={() => setShowVoiceRecorder(true)}
+                disabled={sending}
+              />
+            )}
           </>
         )}
       </main>

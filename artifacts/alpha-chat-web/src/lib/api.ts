@@ -93,6 +93,8 @@ export interface MessageItem {
   // campi aggiunti Sprint 10
   edited_at?: string | null;
   reply_to_message_id?: string | null;
+  // campi aggiunti Sprint 11
+  media_id?: string | null;
   id: string;
   client_message_id: string;
   conversation_id: string;
@@ -105,6 +107,26 @@ export interface MessageItem {
   server_received_at: string;
   status: string;
   deleted_for_everyone: boolean;
+}
+
+/** Metadati vocale estratti dal ciphertext di un media message */
+export interface VoiceMeta {
+  type: "voice";
+  media_id: string;
+  duration_ms: number;
+  waveform: number[];
+}
+
+export function decodeVoiceMeta(ciphertext: string | null): VoiceMeta | null {
+  if (!ciphertext) return null;
+  try {
+    const json = atob(ciphertext);
+    const parsed = JSON.parse(json) as VoiceMeta;
+    if (parsed.type !== "voice") return null;
+    return parsed;
+  } catch {
+    return null;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -419,6 +441,63 @@ export async function apiEditMessage(
   return request<MessageItem>("PATCH", `/conversations/${conversationId}/messages/${messageId}`, {
     ciphertext: encodeMessage(text),
     ciphertext_type: 1,
+  });
+}
+
+export interface MediaUploadResult {
+  media_id: string;
+  duration_ms: number | null;
+  waveform: number[];
+}
+
+/** Upload audio blob come base64 JSON */
+export async function apiUploadMedia(
+  conversationId: string,
+  blob: Blob,
+  durationMs: number,
+  waveform: number[],
+): Promise<MediaUploadResult> {
+  const arrayBuffer = await blob.arrayBuffer();
+  const bytes = new Uint8Array(arrayBuffer);
+  let binary = "";
+  for (const b of bytes) binary += String.fromCharCode(b);
+  const base64 = btoa(binary);
+
+  return request<MediaUploadResult>("POST", "/media", {
+    data: base64,
+    mime_type: blob.type || "audio/webm",
+    conversation_id: conversationId,
+    duration_ms: Math.round(durationMs),
+    waveform,
+  });
+}
+
+/** Invia un messaggio vocale: prima fa upload, poi crea il messaggio */
+export async function apiSendVoiceMessage(
+  conversationId: string,
+  blob: Blob,
+  durationMs: number,
+  waveform: number[],
+): Promise<MessageItem> {
+  const media = await apiUploadMedia(conversationId, blob, durationMs, waveform);
+
+  // Il ciphertext contiene i metadati vocali come base64-JSON (M1, non ancora cifrato)
+  const meta = JSON.stringify({
+    type: "voice",
+    media_id: media.media_id,
+    duration_ms: media.duration_ms ?? durationMs,
+    waveform: media.waveform.length > 0 ? media.waveform : waveform,
+  });
+  const ciphertext = btoa(meta);
+
+  return request<MessageItem>("POST", `/conversations/${conversationId}/messages`, {
+    client_message_id: crypto.randomUUID(),
+    ciphertext,
+    ciphertext_type: 1,
+    sender_key_id: 1,
+    message_type: "media",
+    media_id: media.media_id,
+    sent_at: new Date().toISOString(),
   });
 }
 

@@ -41,6 +41,7 @@ export interface MessageResult {
   server_received_at: string;
   status: string;
   reply_to_message_id: string | null;
+  media_id: string | null;
   deleted_for_everyone: boolean;
   edited_at: string | null;
   is_new: boolean;
@@ -123,6 +124,7 @@ export async function sendMessage(
     messageType: input.message_type,
     sentAt: input.sent_at as Date,
     replyToMessageId: replyToObjectId,
+    mediaId: input.media_id ? new mongoose.Types.ObjectId(input.media_id) : null,
     status: "sent",
   });
 
@@ -244,6 +246,7 @@ function formatMessageResult(
     server_received_at: Date;
     status: string;
     reply_to_message_id: mongoose.Types.ObjectId | null;
+    media_id?: mongoose.Types.ObjectId | null;
     deleted_for_everyone: boolean;
     edited_at?: Date | null;
   },
@@ -263,6 +266,7 @@ function formatMessageResult(
     server_received_at: msg.server_received_at.toISOString(),
     status: msg.status,
     reply_to_message_id: msg.reply_to_message_id?.toString() ?? null,
+    media_id: msg.media_id?.toString() ?? null,
     deleted_for_everyone: msg.deleted_for_everyone,
     edited_at: msg.edited_at?.toISOString() ?? null,
     is_new: isNew,

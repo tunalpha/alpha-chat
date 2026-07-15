@@ -62,6 +62,14 @@ export const SendMessageSchema = z.object({
     .optional()
     .nullable()
     .default(null),
+
+  /** Solo per message_type: 'media' — riferimento al documento Media */
+  media_id: z
+    .string()
+    .regex(/^[0-9a-fA-F]{24}$/, "media_id deve essere ObjectId")
+    .optional()
+    .nullable()
+    .default(null),
 });
 
 export type SendMessageInput = z.infer<typeof SendMessageSchema>;

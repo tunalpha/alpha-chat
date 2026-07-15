@@ -5,6 +5,7 @@ import userRoutes from "./user.routes";
 import conversationRoutes from "./conversation.routes";
 import messageRoutes from "./message.routes";
 import inviteRoutes from "./invite.routes";
+import mediaRoutes from "./media.routes";
 
 /**
  * /api/v1/ — mounts all versioned sub-routers.
@@ -29,5 +30,8 @@ v1Router.use("/conversations/:conversationId/messages", messageRoutes);
 
 // Invites (privacy-first contact discovery — Sprint 9)
 v1Router.use("/invites", inviteRoutes);
+
+// Media (upload/download audio, images — Sprint 11)
+v1Router.use("/media", mediaRoutes);
 
 export default v1Router;
