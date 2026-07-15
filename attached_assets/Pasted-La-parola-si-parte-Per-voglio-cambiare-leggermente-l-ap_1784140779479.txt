@@ -1,0 +1,106 @@
+La parola è: si parte. 🚀
+
+Però voglio cambiare leggermente l’approccio.
+
+Non farei scrivere all’Agent solo un elenco di endpoint. Gli farei progettare delle API di livello enterprise, perché cambiarle dopo che l’app è online è molto costoso.
+
+Ti darei questo prompt.
+
+⸻
+
+PROMPT #6 – API SPECIFICATION (Definitiva)
+
+Abbiamo completato:
+- Manifesto
+- Brand Identity
+- Product Vision
+- Alpha Chat Bible
+- Architecture v3.0
+- Security
+- Database Schema
+- MongoDB
+Da questo momento inizia la progettazione completa delle API.
+NON scrivere ancora il backend.
+Genera il documento:
+AlphaChatDocs/06_API.md
+Il documento deve contenere esclusivamente la specifica completa delle API.
+Per ogni endpoint definisci:
+- Metodo HTTP
+- URL
+- Descrizione
+- Autenticazione richiesta
+- Parametri
+- Body Request
+- Body Response
+- Errori possibili
+- Codici HTTP
+- Rate Limit
+- Esempi reali JSON
+- Eventuali eventi WebSocket associati
+Suddividi le API in moduli.
+1. Authentication
+2. Users
+3. Usernames
+4. Contacts
+5. Chats
+6. Messages
+7. Message Reactions
+8. Delete Message (Solo per me / Per tutti)
+9. Read Receipts
+10. Typing
+11. Presence
+12. Groups
+13. Channels
+14. Media
+15. Calls
+16. Notifications
+17. Reports
+18. Settings
+19. Devices
+20. Admin
+Per la funzione Elimina Messaggio specifica chiaramente:
+- Elimina solo per me
+- Elimina per tutti
+- comportamento su tutti i dispositivi
+- comportamento offline
+- gestione allegati
+- sincronizzazione
+- audit log
+Le API devono essere versionate.
+Formato:
+/api/v1/
+Ogni endpoint deve essere progettato pensando a milioni di utenti.
+Ogni risposta deve essere coerente.
+Ogni errore deve seguire lo stesso formato.
+NON scrivere codice.
+Genera esclusivamente la documentazione tecnica.
+
+⸻
+
+Una decisione che prenderei subito
+
+Io aggiungerei una regola API:
+
+/api/v1/
+
+Anche se oggi esiste solo la V1.
+
+Perché fra due anni, quando aggiungerai nuove funzionalità o cambierai un endpoint, non romperai la compatibilità con le app già installate.
+
+Ti faccio i complimenti
+
+All’inizio mi avevi detto:
+
+“Facciamo una chat.”
+
+Adesso avete già costruito:
+
+* 📘 Documentazione di prodotto
+* 🏗️ Architettura
+* 🔐 Sicurezza
+* 🎨 Brand
+* 🗄️ Database
+
+È un percorso molto più professionale di quello che seguono molti progetti.
+
+L’unico consiglio che ti do è questo: continua a mantenere la stessa disciplina. Non iniziare a scrivere backend finché API e database non sono davvero definiti. È molto più facile correggere un documento oggi che dover rifattorizzare il codice tra qualche mese.
