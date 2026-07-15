@@ -367,6 +367,7 @@ export default function ChatPage({ onNavigate }: Props) {
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isTypingRef = useRef(false);
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const ctxOpenedAtRef = useRef<number>(0); // ghost-click guard
 
   // ── Load conversations ──────────────────────────────────────────────────
   const loadConversations = useCallback(async () => {
@@ -511,11 +512,18 @@ export default function ChatPage({ onNavigate }: Props) {
         setReplyTo(null);
       }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Errore invio";
-      setSendError(msg.includes("sender_key_id") || msg.includes("key")
-        ? "Errore JS vecchio — ricarica la pagina (↻)"
-        : msg);
-      setInputText(text);
+      const errMsg = err instanceof Error ? err.message : "Errore invio";
+      if (editingMessage && (errMsg.includes("EDIT_EXPIRED") || errMsg.includes("EDIT_FORBIDDEN"))) {
+        // Non si può più modificare — pulisci la modalità edit
+        setEditingMessage(null);
+        setInputText("");
+        setSendError("Impossibile modificare: tempo scaduto (15 min)");
+      } else {
+        setSendError(errMsg.includes("sender_key_id") || errMsg.includes("key")
+          ? "Errore JS vecchio — ricarica la pagina (↻)"
+          : errMsg);
+        setInputText(text);
+      }
     } finally {
       setSending(false);
     }
@@ -523,10 +531,19 @@ export default function ChatPage({ onNavigate }: Props) {
 
   function openContextMenuAt(msg: MessageItem, rawX: number, rawY: number) {
     // Evita che il menu esca fuori schermo
-    const menuW = 180, menuH = 200;
+    const menuW = 180, menuH = 220;
     const x = Math.min(rawX, window.innerWidth - menuW - 8);
     const y = Math.min(rawY, window.innerHeight - menuH - 8);
+    ctxOpenedAtRef.current = Date.now(); // timestamp per ghost-click guard
     setContextMenu({ msg, x, y });
+  }
+
+  /** Esegue l'azione solo se il menu è aperto da almeno 350ms (anti ghost-click iOS) */
+  function ctxAction(fn: () => void) {
+    return () => {
+      if (Date.now() - ctxOpenedAtRef.current < 350) return;
+      fn();
+    };
   }
 
   function handleContextMenu(e: React.MouseEvent, msg: MessageItem) {
@@ -961,30 +978,30 @@ export default function ChatPage({ onNavigate }: Props) {
             style={{ top: contextMenu.y, left: contextMenu.x }}
             onClick={(e) => e.stopPropagation()}
           >
-            <button className="ctx-item" onClick={() => { setReplyTo(contextMenu.msg); closeContextMenu(); }}>
+            <button className="ctx-item" onClick={ctxAction(() => { setReplyTo(contextMenu.msg); closeContextMenu(); })}>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg>
               Rispondi
             </button>
             {contextMenu.msg.sender_id === auth?.userId && (
-              <button className="ctx-item" onClick={() => {
+              <button className="ctx-item" onClick={ctxAction(() => {
                 setEditingMessage(contextMenu.msg);
                 setInputText(contextMenu.msg.ciphertext ? decodeMessage(contextMenu.msg.ciphertext) : "");
                 closeContextMenu();
-              }}>
+              })}>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
                 Modifica
               </button>
             )}
-            <button className="ctx-item" onClick={() => { setForwardingMessage(contextMenu.msg); closeContextMenu(); }}>
+            <button className="ctx-item" onClick={ctxAction(() => { setForwardingMessage(contextMenu.msg); closeContextMenu(); })}>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14"><polyline points="15 17 20 12 15 7"/><path d="M4 18v-2a4 4 0 0 1 4-4h12"/></svg>
               Inoltra
             </button>
-            <button className="ctx-item" onClick={() => void handleDeleteForMe(contextMenu.msg)}>
+            <button className="ctx-item" onClick={ctxAction(() => void handleDeleteForMe(contextMenu.msg))}>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
               Elimina per me
             </button>
             {contextMenu.msg.sender_id === auth?.userId && (
-              <button className="ctx-item danger" onClick={() => void handleDeleteForAll(contextMenu.msg)}>
+              <button className="ctx-item danger" onClick={ctxAction(() => void handleDeleteForAll(contextMenu.msg))}>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M9 6V4h6v2"/></svg>
                 Elimina per tutti
               </button>
