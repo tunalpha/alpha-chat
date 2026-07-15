@@ -184,7 +184,10 @@ export default function ChatPage() {
     searchTimerRef.current = setTimeout(async () => {
       setSearching(true);
       try {
-        const res = await apiSearchUsers(q.trim().toLowerCase());
+        // Rimuove @ iniziale (es. "@cricco" → "cricco")
+        const query = q.trim().toLowerCase().replace(/^@+/, "");
+        if (query.length < 2) return;
+        const res = await apiSearchUsers(query);
         setSearchResults(res.items.filter((u) => u.id !== auth?.userId));
       } catch { /* ignore */ } finally { setSearching(false); }
     }, 300);
