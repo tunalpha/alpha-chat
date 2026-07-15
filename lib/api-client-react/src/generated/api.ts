@@ -27,7 +27,8 @@ import type {
   HealthStatus,
   ListCollectionsParams,
   MongoConnectionInput,
-  MongoConnectionResult
+  MongoConnectionResult,
+  SetupResult
 } from './api.schemas';
 
 import { customFetch } from '../custom-fetch';
@@ -203,6 +204,77 @@ export const useTestConnection = <TError = ErrorType<ErrorResponse>,
         TContext
       > => {
       return useMutation(getTestConnectionMutationOptions(options));
+    }
+
+export const getSetupAlphaChatUrl = () => {
+
+
+
+
+  return `/api/mongo/setup`
+}
+
+/**
+ * @summary Create all Alpha Chat collections in one shot
+ */
+export const setupAlphaChat = async (mongoConnectionInput: MongoConnectionInput, options?: RequestInit): Promise<SetupResult> => {
+
+  return customFetch<SetupResult>(getSetupAlphaChatUrl(),
+  {
+    ...options,
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...options?.headers },
+    body: JSON.stringify(mongoConnectionInput)
+  }
+);}
+
+
+
+
+
+export const getSetupAlphaChatMutationOptions = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setupAlphaChat>>, TError,{data: BodyType<MongoConnectionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+): UseMutationOptions<Awaited<ReturnType<typeof setupAlphaChat>>, TError,{data: BodyType<MongoConnectionInput>}, TContext> => {
+
+const mutationKey = ['setupAlphaChat'];
+const {mutation: mutationOptions, request: requestOptions} = options ?
+      options.mutation && 'mutationKey' in options.mutation && options.mutation.mutationKey ?
+      options
+      : {...options, mutation: {...options.mutation, mutationKey}}
+      : {mutation: { mutationKey, }, request: undefined};
+
+
+
+
+      const mutationFn: MutationFunction<Awaited<ReturnType<typeof setupAlphaChat>>, {data: BodyType<MongoConnectionInput>}> = (props) => {
+          const {data} = props ?? {};
+
+          return  setupAlphaChat(data,requestOptions)
+        }
+
+
+
+
+
+
+  return  { mutationFn, ...mutationOptions }}
+
+    export type SetupAlphaChatMutationResult = NonNullable<Awaited<ReturnType<typeof setupAlphaChat>>>
+    export type SetupAlphaChatMutationBody = BodyType<MongoConnectionInput>
+    export type SetupAlphaChatMutationError = ErrorType<ErrorResponse>
+
+    /**
+ * @summary Create all Alpha Chat collections in one shot
+ */
+export const useSetupAlphaChat = <TError = ErrorType<ErrorResponse>,
+    TContext = unknown>(options?: { mutation?:UseMutationOptions<Awaited<ReturnType<typeof setupAlphaChat>>, TError,{data: BodyType<MongoConnectionInput>}, TContext>, request?: SecondParameter<typeof customFetch>}
+ ): UseMutationResult<
+        Awaited<ReturnType<typeof setupAlphaChat>>,
+        TError,
+        {data: BodyType<MongoConnectionInput>},
+        TContext
+      > => {
+      return useMutation(getSetupAlphaChatMutationOptions(options));
     }
 
 export const getListCollectionsUrl = (params: ListCollectionsParams,) => {

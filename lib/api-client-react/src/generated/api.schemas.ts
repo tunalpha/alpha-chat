@@ -43,6 +43,29 @@ export interface CreateCollectionResult {
   message?: string;
 }
 
+export type CollectionSetupStatusStatus = typeof CollectionSetupStatusStatus[keyof typeof CollectionSetupStatusStatus];
+
+
+export const CollectionSetupStatusStatus = {
+  created: 'created',
+  already_exists: 'already_exists',
+  error: 'error',
+} as const;
+
+export interface CollectionSetupStatus {
+  name: string;
+  status: CollectionSetupStatusStatus;
+  /** @nullable */
+  error?: string | null;
+}
+
+export interface SetupResult {
+  collections: CollectionSetupStatus[];
+  created: number;
+  skipped: number;
+  errors: number;
+}
+
 export interface ErrorResponse {
   error: string;
 }

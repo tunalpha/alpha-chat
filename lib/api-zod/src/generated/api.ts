@@ -31,6 +31,25 @@ export const TestConnectionResponse = zod.object({
 
 
 /**
+ * @summary Create all Alpha Chat collections in one shot
+ */
+export const SetupAlphaChatBody = zod.object({
+  "uri": zod.string().describe('MongoDB connection string (mongodb:\/\/ or mongodb+srv:\/\/)')
+})
+
+export const SetupAlphaChatResponse = zod.object({
+  "collections": zod.array(zod.object({
+  "name": zod.string(),
+  "status": zod.enum(['created', 'already_exists', 'error']),
+  "error": zod.string().nullish()
+})),
+  "created": zod.number(),
+  "skipped": zod.number(),
+  "errors": zod.number()
+})
+
+
+/**
  * @summary List all collections in the connected database
  */
 export const ListCollectionsQueryParams = zod.object({

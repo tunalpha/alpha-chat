@@ -23,6 +23,62 @@ async function getConnection(uri: string): Promise<mongoose.Connection> {
   return conn;
 }
 
+const ALPHA_CHAT_COLLECTIONS = [
+  "users",
+  "sessions",
+  "conversations",
+  "conversation_members",
+  "messages",
+  "message_reactions",
+  "media",
+  "user_prekeys",
+  "contacts",
+  "reports",
+  "channels",
+  "channel_members",
+  "call_logs",
+];
+
+// POST /api/mongo/setup — crea tutte le collection Alpha Chat
+router.post("/mongo/setup", async (req, res) => {
+  const { uri } = req.body as { uri?: string };
+
+  if (!uri || typeof uri !== "string" || uri.trim() === "") {
+    res.status(400).json({ error: "URI mancante." });
+    return;
+  }
+
+  try {
+    const conn = await getConnection(uri.trim());
+    const existing = await conn.db.listCollections().toArray();
+    const existingNames = new Set(existing.map((c) => c.name));
+
+    const results = await Promise.all(
+      ALPHA_CHAT_COLLECTIONS.map(async (name) => {
+        if (existingNames.has(name)) {
+          return { name, status: "already_exists" as const, error: null };
+        }
+        try {
+          await conn.db.createCollection(name);
+          return { name, status: "created" as const, error: null };
+        } catch (err: any) {
+          return { name, status: "error" as const, error: err?.message ?? "Errore sconosciuto" };
+        }
+      })
+    );
+
+    const created = results.filter((r) => r.status === "created").length;
+    const skipped = results.filter((r) => r.status === "already_exists").length;
+    const errors = results.filter((r) => r.status === "error").length;
+
+    logger.info({ created, skipped, errors }, "Alpha Chat setup complete");
+    res.json({ collections: results, created, skipped, errors });
+  } catch (err: any) {
+    logger.error({ err: err?.message }, "Setup failed");
+    res.status(400).json({ error: err?.message ?? "Setup fallito." });
+  }
+});
+
 // POST /api/mongo/test — verifica connessione
 router.post("/mongo/test", async (req, res) => {
   const { uri } = req.body as { uri?: string };

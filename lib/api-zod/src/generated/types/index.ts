@@ -8,6 +8,8 @@
 
 export * from './collectionInfo';
 export * from './collectionListResult';
+export * from './collectionSetupStatus';
+export * from './collectionSetupStatusStatus';
 export * from './createCollectionInput';
 export * from './createCollectionResult';
 export * from './errorResponse';
@@ -15,3 +17,4 @@ export * from './healthStatus';
 export * from './listCollectionsParams';
 export * from './mongoConnectionInput';
 export * from './mongoConnectionResult';
+export * from './setupResult';

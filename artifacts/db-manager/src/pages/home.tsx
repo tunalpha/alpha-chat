@@ -1,12 +1,13 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState } from 'react';
 import { 
   useTestConnection, 
   useListCollections, 
   useCreateCollection, 
+  useSetupAlphaChat,
   getListCollectionsQueryKey,
 } from '@workspace/api-client-react';
 import { useQueryClient } from '@tanstack/react-query';
-import { Eye, EyeOff, Database, Plus, CheckCircle2, XCircle, LayoutList, Layers } from 'lucide-react';
+import { Eye, EyeOff, Database, Plus, CheckCircle2, XCircle, LayoutList, Layers, Zap, AlertCircle, SkipForward } from 'lucide-react';
 
 export default function Home() {
   const queryClient = useQueryClient();
@@ -22,9 +23,13 @@ export default function Home() {
   // Collection creation state
   const [newCollectionName, setNewCollectionName] = useState('');
 
+  // Setup state
+  const [setupResult, setSetupResult] = useState<null | { collections: Array<{name: string; status: string; error: string | null}>; created: number; skipped: number; errors: number }>(null);
+
   // API Hooks
   const testConnection = useTestConnection();
   const createCollection = useCreateCollection();
+  const setupAlphaChat = useSetupAlphaChat();
   const { data: collectionsData, isLoading: isLoadingCollections, isError: isErrorCollections, refetch: refetchCollections } = useListCollections(
     { uri: connectedUri },
     { query: { enabled: !!connectedUri, queryKey: getListCollectionsQueryKey({ uri: connectedUri }) } }
@@ -71,6 +76,17 @@ export default function Home() {
           queryClient.invalidateQueries({ queryKey: getListCollectionsQueryKey({ uri: connectedUri }) });
         }
       }
+    });
+  };
+
+  const handleSetup = () => {
+    if (!connectedUri) return;
+    setSetupResult(null);
+    setupAlphaChat.mutate({ data: { uri: connectedUri } }, {
+      onSuccess: (data) => {
+        setSetupResult(data as any);
+        queryClient.invalidateQueries({ queryKey: getListCollectionsQueryKey({ uri: connectedUri }) });
+      },
     });
   };
 
@@ -158,6 +174,83 @@ export default function Home() {
             </div>
           </form>
         </section>
+
+        {/* SETUP ALPHA CHAT — visible when connected */}
+        {isConnected && (
+          <section className="bg-card rounded-xl border border-card-border p-6 shadow-lg animate-in fade-in slide-in-from-bottom-4 duration-500">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-3 mb-1">
+                  <div className="p-2 bg-secondary rounded-lg">
+                    <Zap className="w-5 h-5 text-primary" />
+                  </div>
+                  <h2 className="text-xl font-semibold">Setup Alpha Chat</h2>
+                </div>
+                <p className="text-sm text-muted-foreground ml-14">
+                  Crea tutte le 13 collection del progetto in un solo click.
+                </p>
+              </div>
+              <button
+                onClick={handleSetup}
+                disabled={setupAlphaChat.isPending}
+                className="alpha-gradient px-6 py-2.5 rounded-lg text-white font-semibold hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2 shrink-0"
+              >
+                {setupAlphaChat.isPending ? (
+                  <>
+                    <div className="w-4 h-4 rounded-full border-2 border-white/30 border-t-white animate-spin" />
+                    <span>Setup in corso...</span>
+                  </>
+                ) : (
+                  <>
+                    <Zap className="w-4 h-4" />
+                    <span>Esegui Setup</span>
+                  </>
+                )}
+              </button>
+            </div>
+
+            {/* Setup results */}
+            {setupResult && (
+              <div className="mt-5 space-y-3">
+                <div className="flex gap-4 text-sm font-medium">
+                  <span className="flex items-center gap-1.5 text-green-400">
+                    <CheckCircle2 className="w-4 h-4" />
+                    {setupResult.created} create
+                  </span>
+                  <span className="flex items-center gap-1.5 text-muted-foreground">
+                    <SkipForward className="w-4 h-4" />
+                    {setupResult.skipped} già esistenti
+                  </span>
+                  {setupResult.errors > 0 && (
+                    <span className="flex items-center gap-1.5 text-destructive">
+                      <AlertCircle className="w-4 h-4" />
+                      {setupResult.errors} errori
+                    </span>
+                  )}
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-2">
+                  {setupResult.collections.map((col) => (
+                    <div
+                      key={col.name}
+                      className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-xs font-mono ${
+                        col.status === 'created'
+                          ? 'bg-green-500/10 border-green-500/20 text-green-400'
+                          : col.status === 'already_exists'
+                          ? 'bg-secondary border-border/20 text-muted-foreground'
+                          : 'bg-destructive/10 border-destructive/20 text-destructive'
+                      }`}
+                    >
+                      {col.status === 'created' && <CheckCircle2 className="w-3 h-3 shrink-0" />}
+                      {col.status === 'already_exists' && <SkipForward className="w-3 h-3 shrink-0" />}
+                      {col.status === 'error' && <AlertCircle className="w-3 h-3 shrink-0" />}
+                      <span className="truncate">{col.name}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </section>
+        )}
 
         {/* ONLY RENDER THESE IF CONNECTED */}
         {isConnected && (
