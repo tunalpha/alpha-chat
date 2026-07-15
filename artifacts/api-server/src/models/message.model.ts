@@ -92,6 +92,9 @@ export interface IMessage {
   deleted_for_everyone_at: Date | null;
   deleted_for: mongoose.Types.ObjectId[];
 
+  // --- Modifica ---
+  edited_at: Date | null;
+
   // --- Messaggi a scomparsa ---
   expires_at: Date | null;
 
@@ -150,6 +153,8 @@ const messageSchema = new Schema<IMessageDocument>(
     deleted_for_everyone: { type: Boolean, default: false },
     deleted_for_everyone_at: { type: Date, default: null },
     deleted_for: { type: [Schema.Types.ObjectId], default: [] },
+
+    edited_at: { type: Date, default: null },
 
     expires_at: { type: Date, default: null },
   },

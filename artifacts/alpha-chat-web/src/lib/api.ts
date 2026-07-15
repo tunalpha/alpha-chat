@@ -90,6 +90,9 @@ export interface UserProfile {
 
 /** Messaggio */
 export interface MessageItem {
+  // campi aggiunti Sprint 10
+  edited_at?: string | null;
+  reply_to_message_id?: string | null;
   id: string;
   client_message_id: string;
   conversation_id: string;
@@ -395,14 +398,37 @@ export function decodeMessage(ciphertext: string): string {
 export async function apiSendMessage(
   conversationId: string,
   text: string,
+  options: { replyToMessageId?: string } = {},
 ): Promise<MessageItem> {
   return request<MessageItem>("POST", `/conversations/${conversationId}/messages`, {
     client_message_id: crypto.randomUUID(),
     ciphertext: encodeMessage(text),
     ciphertext_type: 1,
-    sender_key_id: 1, // M1 placeholder — libsignal in M2
-    message_type: "text",
+    sender_key_id: 1,
+    message_type: options.replyToMessageId ? "reply" : "text",
     sent_at: new Date().toISOString(),
+    reply_to_message_id: options.replyToMessageId ?? null,
+  });
+}
+
+export async function apiEditMessage(
+  conversationId: string,
+  messageId: string,
+  text: string,
+): Promise<MessageItem> {
+  return request<MessageItem>("PATCH", `/conversations/${conversationId}/messages/${messageId}`, {
+    ciphertext: encodeMessage(text),
+    ciphertext_type: 1,
+  });
+}
+
+export async function apiDeleteMessage(
+  conversationId: string,
+  messageId: string,
+  forEveryone: boolean,
+): Promise<void> {
+  await request<void>("DELETE", `/conversations/${conversationId}/messages/${messageId}`, {
+    for_everyone: forEveryone,
   });
 }
 

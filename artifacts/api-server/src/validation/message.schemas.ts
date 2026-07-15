@@ -103,3 +103,47 @@ export const ConversationIdParamSchema = z.object({
 });
 
 export type ConversationIdParam = z.infer<typeof ConversationIdParamSchema>;
+
+// ---------------------------------------------------------------------------
+// PATCH /api/v1/conversations/:conversationId/messages/:messageId
+// ---------------------------------------------------------------------------
+
+export const EditMessageSchema = z.object({
+  ciphertext: z
+    .string()
+    .min(1, "ciphertext obbligatorio")
+    .max(65536, "ciphertext troppo lungo"),
+
+  ciphertext_type: z
+    .number()
+    .int()
+    .min(1)
+    .max(2),
+});
+
+export type EditMessageInput = z.infer<typeof EditMessageSchema>;
+
+// ---------------------------------------------------------------------------
+// DELETE /api/v1/conversations/:conversationId/messages/:messageId
+// ---------------------------------------------------------------------------
+
+export const DeleteMessageSchema = z.object({
+  for_everyone: z.boolean().default(false),
+});
+
+export type DeleteMessageInput = z.infer<typeof DeleteMessageSchema>;
+
+// ---------------------------------------------------------------------------
+// Params: :messageId
+// ---------------------------------------------------------------------------
+
+export const MessageIdParamSchema = z.object({
+  conversationId: z
+    .string()
+    .regex(/^[0-9a-fA-F]{24}$/, "conversationId deve essere ObjectId"),
+  messageId: z
+    .string()
+    .regex(/^[0-9a-fA-F]{24}$/, "messageId deve essere ObjectId"),
+});
+
+export type MessageIdParam = z.infer<typeof MessageIdParamSchema>;

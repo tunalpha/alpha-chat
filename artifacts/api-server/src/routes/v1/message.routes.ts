@@ -10,8 +10,11 @@ import {
   SendMessageSchema,
   ListMessagesSchema,
   ConversationIdParamSchema,
+  EditMessageSchema,
+  DeleteMessageSchema,
+  MessageIdParamSchema,
 } from "../../validation/message.schemas";
-import { sendMessage, listMessages } from "../../controllers/message.controller";
+import { sendMessage, listMessages, editMessage, deleteMessage } from "../../controllers/message.controller";
 
 const router = Router({ mergeParams: true });
 
@@ -32,5 +35,27 @@ router.post("/", validate("body", SendMessageSchema), sendMessage);
  * Lista messaggi (DESC per sequence_number, paginazione cursor).
  */
 router.get("/", validate("query", ListMessagesSchema), listMessages);
+
+/**
+ * PATCH /api/v1/conversations/:conversationId/messages/:messageId
+ * Modifica il ciphertext di un messaggio (solo mittente, entro 15 min).
+ */
+router.patch(
+  "/:messageId",
+  validate("params", MessageIdParamSchema),
+  validate("body", EditMessageSchema),
+  editMessage,
+);
+
+/**
+ * DELETE /api/v1/conversations/:conversationId/messages/:messageId
+ * Elimina un messaggio per me o per tutti.
+ */
+router.delete(
+  "/:messageId",
+  validate("params", MessageIdParamSchema),
+  validate("body", DeleteMessageSchema),
+  deleteMessage,
+);
 
 export default router;

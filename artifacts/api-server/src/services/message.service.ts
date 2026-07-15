@@ -21,7 +21,7 @@ import { MessageRepository } from "../repositories/message.repository";
 import { logAuditEvent } from "../lib/audit";
 import { logger } from "../lib/logger";
 import { wsManager } from "../lib/ws-manager";
-import type { SendMessageInput, ListMessagesInput } from "../validation/message.schemas";
+import type { SendMessageInput, ListMessagesInput, EditMessageInput, DeleteMessageInput } from "../validation/message.schemas";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -42,6 +42,7 @@ export interface MessageResult {
   status: string;
   reply_to_message_id: string | null;
   deleted_for_everyone: boolean;
+  edited_at: string | null;
   is_new: boolean;
 }
 
@@ -196,9 +197,10 @@ export async function listMessages(
     throw new AppError("NOT_CHAT_MEMBER", 403);
   }
 
-  // 3. Fetch messaggi paginati
-  const { messages, hasMore } = await msgRepo.list({
+  // 3. Fetch messaggi paginati (filtra quelli eliminati per l'utente)
+  const { messages, hasMore } = await msgRepo.listForUser({
     conversationId: convObjectId,
+    userId: userObjectId,
     limit: input.limit,
     beforeSequence: input.before_sequence,
     afterSequence: input.after_sequence,
@@ -243,6 +245,7 @@ function formatMessageResult(
     status: string;
     reply_to_message_id: mongoose.Types.ObjectId | null;
     deleted_for_everyone: boolean;
+    edited_at?: Date | null;
   },
   isNew: boolean,
 ): MessageResult {
@@ -261,6 +264,138 @@ function formatMessageResult(
     status: msg.status,
     reply_to_message_id: msg.reply_to_message_id?.toString() ?? null,
     deleted_for_everyone: msg.deleted_for_everyone,
+    edited_at: msg.edited_at?.toISOString() ?? null,
     is_new: isNew,
   };
+}
+
+// ---------------------------------------------------------------------------
+// editMessage
+// ---------------------------------------------------------------------------
+
+const EDIT_WINDOW_MS = 15 * 60 * 1_000; // 15 minuti
+
+/**
+ * Modifica il ciphertext di un messaggio esistente.
+ * Solo il mittente può modificare, entro la finestra di 15 minuti.
+ */
+export async function editMessage(
+  userId: string,
+  conversationId: string,
+  messageId: string,
+  input: EditMessageInput,
+  context?: { requestId?: string },
+): Promise<MessageResult> {
+  const userObjectId = new mongoose.Types.ObjectId(userId);
+  const convObjectId = new mongoose.Types.ObjectId(conversationId);
+  const msgObjectId = new mongoose.Types.ObjectId(messageId);
+
+  // 1. Verifica membership
+  const membership = await memberRepo.findMembership(convObjectId, userObjectId);
+  if (!membership || membership.left_at !== null) {
+    throw new AppError("NOT_CHAT_MEMBER", 403);
+  }
+
+  // 2. Trova il messaggio
+  const msg = await msgRepo.findByIdRaw(msgObjectId);
+  if (!msg || msg.conversation_id.toString() !== conversationId) {
+    throw new AppError("MESSAGE_NOT_FOUND", 404);
+  }
+
+  // 3. Solo il mittente può modificare
+  if (msg.sender_id.toString() !== userId) {
+    throw new AppError("MESSAGE_EDIT_FORBIDDEN", 403);
+  }
+
+  // 4. Finestra di modifica
+  if (Date.now() - msg.sent_at.getTime() > EDIT_WINDOW_MS) {
+    throw new AppError("MESSAGE_EDIT_EXPIRED", 403);
+  }
+
+  // 5. Aggiorna
+  const updated = await msgRepo.editById(msgObjectId, input.ciphertext, input.ciphertext_type);
+  if (!updated) throw new AppError("MESSAGE_NOT_FOUND", 404);
+
+  logAuditEvent("message.edited", userId, { messageId, conversationId }, context);
+
+  const result = formatMessageResult(updated, false);
+  const { is_new: _d, ...rest } = result;
+
+  // 6. Broadcast message.edited
+  void (async () => {
+    try {
+      const members = await memberRepo.listMembers(convObjectId);
+      const memberIds = members.map((m) => m.user_id.toString());
+      wsManager.sendToUsers(memberIds, { type: "message.edited", payload: rest });
+    } catch (err) {
+      logger.warn({ err }, "WS broadcast message.edited failed");
+    }
+  })();
+
+  return result;
+}
+
+// ---------------------------------------------------------------------------
+// deleteMessage
+// ---------------------------------------------------------------------------
+
+const DELETE_FOR_ALL_WINDOW_MS = 60 * 60 * 1_000; // 1 ora
+
+/**
+ * Elimina un messaggio per me o per tutti.
+ */
+export async function deleteMessage(
+  userId: string,
+  conversationId: string,
+  messageId: string,
+  input: DeleteMessageInput,
+  context?: { requestId?: string },
+): Promise<void> {
+  const userObjectId = new mongoose.Types.ObjectId(userId);
+  const convObjectId = new mongoose.Types.ObjectId(conversationId);
+  const msgObjectId = new mongoose.Types.ObjectId(messageId);
+
+  // 1. Verifica membership
+  const membership = await memberRepo.findMembership(convObjectId, userObjectId);
+  if (!membership || membership.left_at !== null) {
+    throw new AppError("NOT_CHAT_MEMBER", 403);
+  }
+
+  // 2. Trova il messaggio
+  const msg = await msgRepo.findByIdRaw(msgObjectId);
+  if (!msg || msg.conversation_id.toString() !== conversationId) {
+    throw new AppError("MESSAGE_NOT_FOUND", 404);
+  }
+
+  if (input.for_everyone) {
+    // Solo il mittente può eliminare per tutti, entro 1 ora
+    if (msg.sender_id.toString() !== userId) {
+      throw new AppError("MESSAGE_DELETE_FORBIDDEN", 403);
+    }
+    if (Date.now() - msg.sent_at.getTime() > DELETE_FOR_ALL_WINDOW_MS) {
+      throw new AppError("MESSAGE_DELETE_EXPIRED", 403);
+    }
+
+    await msgRepo.deleteForEveryoneById(msgObjectId);
+
+    logAuditEvent("message.deleted_everyone", userId, { messageId, conversationId }, context);
+
+    // Broadcast message.deleted a tutti
+    void (async () => {
+      try {
+        const members = await memberRepo.listMembers(convObjectId);
+        const memberIds = members.map((m) => m.user_id.toString());
+        wsManager.sendToUsers(memberIds, {
+          type: "message.deleted",
+          payload: { message_id: messageId, conversation_id: conversationId, for_everyone: true },
+        });
+      } catch (err) {
+        logger.warn({ err }, "WS broadcast message.deleted failed");
+      }
+    })();
+  } else {
+    // Elimina solo per me
+    await msgRepo.deleteForMeById(msgObjectId, userObjectId);
+    logAuditEvent("message.deleted_me", userId, { messageId, conversationId }, context);
+  }
 }

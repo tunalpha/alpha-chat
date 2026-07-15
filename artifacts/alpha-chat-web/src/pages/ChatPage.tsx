@@ -6,6 +6,8 @@ import {
   apiListConversations,
   apiListMessages,
   apiSendMessage,
+  apiEditMessage,
+  apiDeleteMessage,
   apiMarkRead,
   decodeMessage,
   AuthExpiredError,
@@ -346,6 +348,12 @@ export default function ChatPage({ onNavigate }: Props) {
   const [chatSearchQuery, setChatSearchQuery] = useState("");
   // read receipts: convId → ISO timestamp dell'ultima lettura dell'altro utente
   const [readReceipts, setReadReceipts] = useState<Record<string, string>>({});
+  // context menu
+  const [contextMenu, setContextMenu] = useState<{ msg: MessageItem; x: number; y: number } | null>(null);
+  // reply
+  const [replyTo, setReplyTo] = useState<MessageItem | null>(null);
+  // edit
+  const [editingMessage, setEditingMessage] = useState<MessageItem | null>(null);
   const [typingUsers, setTypingUsers] = useState<Record<string, Set<string>>>({});
   const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
   const [atBottom, setAtBottom] = useState(true);
@@ -452,9 +460,25 @@ export default function ChatPage({ onNavigate }: Props) {
           const { conversation_id, read_at } = event.payload;
           setReadReceipts((prev) => {
             const existing = prev[conversation_id];
-            if (existing && existing >= read_at) return prev; // non retrocedere
+            if (existing && existing >= read_at) return prev;
             return { ...prev, [conversation_id]: read_at };
           });
+          break;
+        }
+        case "message.edited": {
+          const edited = event.payload as unknown as MessageItem;
+          if (edited.conversation_id === activeConvId) {
+            setMessages((prev) =>
+              prev.map((m) => m.id === edited.id ? { ...m, ciphertext: edited.ciphertext, edited_at: edited.edited_at } : m)
+            );
+          }
+          break;
+        }
+        case "message.deleted": {
+          const { message_id, conversation_id, for_everyone } = event.payload;
+          if (for_everyone && conversation_id === activeConvId) {
+            setMessages((prev) => prev.filter((m) => m.id !== message_id));
+          }
           break;
         }
       }
@@ -471,7 +495,16 @@ export default function ChatPage({ onNavigate }: Props) {
     if (isTypingRef.current) { sendTypingStop(activeConvId); isTypingRef.current = false; }
     setSending(true);
     try {
-      await apiSendMessage(activeConvId, text);
+      if (editingMessage) {
+        // Modalità modifica
+        const updated = await apiEditMessage(activeConvId, editingMessage.id, text);
+        setMessages((prev) => prev.map((m) => m.id === updated.id ? { ...m, ciphertext: updated.ciphertext, edited_at: updated.edited_at } : m));
+        setEditingMessage(null);
+      } else {
+        // Invio normale o risposta
+        await apiSendMessage(activeConvId, text, { replyToMessageId: replyTo?.id });
+        setReplyTo(null);
+      }
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Errore invio";
       setSendError(msg.includes("sender_key_id") || msg.includes("key")
@@ -481,6 +514,27 @@ export default function ChatPage({ onNavigate }: Props) {
     } finally {
       setSending(false);
     }
+  }
+
+  function handleContextMenu(e: React.MouseEvent, msg: MessageItem) {
+    e.preventDefault();
+    setContextMenu({ msg, x: e.clientX, y: e.clientY });
+  }
+
+  function closeContextMenu() { setContextMenu(null); }
+
+  async function handleDeleteForMe(msg: MessageItem) {
+    closeContextMenu();
+    if (!activeConvId) return;
+    await apiDeleteMessage(activeConvId, msg.id, false).catch(() => {});
+    setMessages((prev) => prev.filter((m) => m.id !== msg.id));
+  }
+
+  async function handleDeleteForAll(msg: MessageItem) {
+    closeContextMenu();
+    if (!activeConvId) return;
+    await apiDeleteMessage(activeConvId, msg.id, true).catch(() => {});
+    setMessages((prev) => prev.filter((m) => m.id !== msg.id));
   }
 
   function handleInputChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
@@ -739,22 +793,39 @@ export default function ChatPage({ onNavigate }: Props) {
                   const otherReadAt = activeConvId ? readReceipts[activeConvId] : null;
                   const isRead = isMine && otherReadAt != null && msg.sent_at <= otherReadAt;
 
+                  // Messaggio a cui si risponde (lookup locale)
+                  const repliedMsg = msg.reply_to_message_id
+                    ? messages.find((m) => m.id === msg.reply_to_message_id)
+                    : null;
+
                   return (
-                    <div key={msg.id} className={`msg-row ${isMine ? "mine" : "theirs"}`}>
+                    <div
+                      key={msg.id}
+                      className={`msg-row ${isMine ? "mine" : "theirs"}`}
+                      onContextMenu={(e) => handleContextMenu(e, msg)}
+                    >
                       <div className={`msg-bubble ${isMine ? "mine" : "theirs"}`}>
+                        {/* Reply preview */}
+                        {repliedMsg && (
+                          <div className="msg-reply-preview">
+                            <span className="msg-reply-bar" />
+                            <span className="msg-reply-text">
+                              {repliedMsg.ciphertext ? decodeMessage(repliedMsg.ciphertext) : "Messaggio"}
+                            </span>
+                          </div>
+                        )}
                         {renderText()}
                         <div className="msg-meta">
+                          {msg.edited_at && <span className="msg-edited">Modificato</span>}
                           <span className="msg-time">{time}</span>
                           {isMine && (
                             <span className={`msg-status${isRead ? " msg-status-read" : ""}`} title={isRead ? "Letto" : "Inviato"}>
                               {isRead ? (
-                                // ✓✓ doppia spunta — letto
                                 <svg viewBox="0 0 22 12" fill="none" stroke="currentColor" strokeWidth="2" width="18" height="12">
                                   <polyline points="1 6 5 10 13 2"/>
                                   <polyline points="8 6 12 10 20 2"/>
                                 </svg>
                               ) : (
-                                // ✓ spunta singola — inviato
                                 <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12">
                                   <polyline points="1 8 5 12 15 4"/>
                                 </svg>
@@ -800,6 +871,26 @@ export default function ChatPage({ onNavigate }: Props) {
               </div>
             )}
 
+            {/* Reply bar */}
+            {replyTo && (
+              <div className="reply-bar">
+                <span className="reply-bar-icon">↩</span>
+                <span className="reply-bar-text">
+                  {replyTo.ciphertext ? decodeMessage(replyTo.ciphertext) : "Messaggio"}
+                </span>
+                <button className="reply-bar-close" onClick={() => setReplyTo(null)} aria-label="Annulla risposta">✕</button>
+              </div>
+            )}
+
+            {/* Edit bar */}
+            {editingMessage && (
+              <div className="reply-bar edit-bar">
+                <span className="reply-bar-icon">✏</span>
+                <span className="reply-bar-text">Modifica messaggio</span>
+                <button className="reply-bar-close" onClick={() => { setEditingMessage(null); setInputText(""); }} aria-label="Annulla modifica">✕</button>
+              </div>
+            )}
+
             <ChatInput
               value={inputText}
               onChange={handleInputChange}
@@ -809,6 +900,42 @@ export default function ChatPage({ onNavigate }: Props) {
           </>
         )}
       </main>
+
+      {/* ── Context menu ───────────────────────────────────────────────────── */}
+      {contextMenu && (
+        <div className="ctx-overlay" onClick={closeContextMenu}>
+          <div
+            className="ctx-menu"
+            style={{ top: contextMenu.y, left: contextMenu.x }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <button className="ctx-item" onClick={() => { setReplyTo(contextMenu.msg); closeContextMenu(); }}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg>
+              Rispondi
+            </button>
+            {contextMenu.msg.sender_id === auth?.userId && (
+              <button className="ctx-item" onClick={() => {
+                setEditingMessage(contextMenu.msg);
+                setInputText(contextMenu.msg.ciphertext ? decodeMessage(contextMenu.msg.ciphertext) : "");
+                closeContextMenu();
+              }}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+                Modifica
+              </button>
+            )}
+            <button className="ctx-item" onClick={() => void handleDeleteForMe(contextMenu.msg)}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+              Elimina per me
+            </button>
+            {contextMenu.msg.sender_id === auth?.userId && (
+              <button className="ctx-item danger" onClick={() => void handleDeleteForAll(contextMenu.msg)}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M9 6V4h6v2"/></svg>
+                Elimina per tutti
+              </button>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* ── Invite modals ──────────────────────────────────────────────────── */}
       {showInvite && (

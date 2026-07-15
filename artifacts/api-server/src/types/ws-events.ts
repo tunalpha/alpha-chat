@@ -40,7 +40,9 @@ export type WsOutboundEventType =
   | "presence.offline"  // utente disconnesso
   | "typing.start"      // utente sta scrivendo (broadcast ai membri)
   | "typing.stop"       // utente ha smesso (broadcast ai membri)
-  | "read.receipt";     // l'altra persona ha letto i messaggi
+  | "read.receipt"      // l'altra persona ha letto i messaggi
+  | "message.edited"    // un messaggio è stato modificato
+  | "message.deleted";  // un messaggio è stato eliminato per tutti
 
 export interface WsOutboundEvent {
   type: WsOutboundEventType;

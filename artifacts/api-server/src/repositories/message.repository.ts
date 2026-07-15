@@ -144,4 +144,97 @@ export class MessageRepository {
   ): Promise<void> {
     await MessageModel.updateOne({ _id: messageId }, { $set: { status } });
   }
+
+  /**
+   * Trova un messaggio per _id (per operazioni di edit/delete).
+   * Ignora deleted_for_everyone per permettere al server di gestire la cancellazione.
+   */
+  async findByIdRaw(
+    messageId: mongoose.Types.ObjectId,
+  ): Promise<IMessageDocument | null> {
+    return MessageModel.findById(messageId);
+  }
+
+  /**
+   * Modifica il ciphertext di un messaggio e imposta edited_at.
+   */
+  async editById(
+    messageId: mongoose.Types.ObjectId,
+    ciphertext: string,
+    ciphertextType: number,
+  ): Promise<IMessageDocument | null> {
+    return MessageModel.findOneAndUpdate(
+      { _id: messageId, deleted_for_everyone: false },
+      { $set: { ciphertext, ciphertext_type: ciphertextType, edited_at: new Date() } },
+      { returnDocument: "after" },
+    );
+  }
+
+  /**
+   * Elimina un messaggio per tutti (soft delete).
+   */
+  async deleteForEveryoneById(
+    messageId: mongoose.Types.ObjectId,
+  ): Promise<void> {
+    const now = new Date();
+    await MessageModel.updateOne(
+      { _id: messageId },
+      {
+        $set: {
+          deleted_for_everyone: true,
+          deleted_for_everyone_at: now,
+          status: "deleted",
+          ciphertext: null,
+        },
+      },
+    );
+  }
+
+  /**
+   * Elimina un messaggio solo per l'utente specificato (aggiunge a deleted_for[]).
+   */
+  async deleteForMeById(
+    messageId: mongoose.Types.ObjectId,
+    userId: mongoose.Types.ObjectId,
+  ): Promise<void> {
+    await MessageModel.updateOne(
+      { _id: messageId },
+      { $addToSet: { deleted_for: userId } },
+    );
+  }
+
+  /**
+   * Lista messaggi filtrati per utente (escludi deleted_for e deleted_for_everyone).
+   */
+  async listForUser(params: {
+    conversationId: mongoose.Types.ObjectId;
+    userId: mongoose.Types.ObjectId;
+    limit: number;
+    beforeSequence?: number;
+    afterSequence?: number;
+  }): Promise<{ messages: IMessageDocument[]; hasMore: boolean }> {
+    const { conversationId, userId, limit, beforeSequence, afterSequence } = params;
+
+    const filter: Record<string, unknown> = {
+      conversation_id: conversationId,
+      deleted_for_everyone: false,
+      deleted_for: { $nin: [userId] },
+    };
+
+    if (beforeSequence !== undefined) {
+      filter["sequence_number"] = { $lt: beforeSequence };
+    } else if (afterSequence !== undefined) {
+      filter["sequence_number"] = { $gt: afterSequence };
+    }
+
+    const messages = await MessageModel.find(filter)
+      .sort({ sequence_number: -1 })
+      .limit(limit + 1);
+
+    const hasMore = messages.length > limit;
+    return {
+      messages: hasMore ? messages.slice(0, limit) : messages,
+      hasMore,
+    };
+  }
 }
