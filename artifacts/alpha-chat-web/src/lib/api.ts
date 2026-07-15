@@ -117,19 +117,34 @@ export interface PaginatedResult<T> {
 let isRefreshing = false;
 let refreshQueue: Array<(token: string | null) => void> = [];
 
-/** Estrae il messaggio leggibile da una risposta di errore del backend */
+/** Estrae il messaggio leggibile da una risposta di errore del backend.
+ *  Priorità: 1) details.issues[0].message (specifico al campo)
+ *             2) error.message (generico)
+ *             3) error.code
+ *             4) fallback
+ */
 function extractErrorMessage(body: unknown, fallback: string): string {
   if (body && typeof body === "object") {
     const b = body as Record<string, unknown>;
-    // Formato standard Alpha Chat: { error: { message, code } }
     if (b.error && typeof b.error === "object") {
       const e = b.error as Record<string, unknown>;
+
+      // 1. Messaggio specifico dal primo issue di validazione
+      if (e.details && typeof e.details === "object") {
+        const d = e.details as Record<string, unknown>;
+        if (Array.isArray(d.issues) && d.issues.length > 0) {
+          const first = d.issues[0] as { path?: string; message?: string };
+          if (first.message) {
+            return first.path ? `${first.path}: ${first.message}` : first.message;
+          }
+        }
+      }
+
+      // 2. Messaggio generico
       if (typeof e.message === "string" && e.message) return e.message;
-      if (typeof e.code === "string" && e.code) return e.code;
+      if (typeof e.code === "string") return e.code;
     }
-    // Fallback generico
     if (typeof b.message === "string" && b.message) return b.message;
-    if (typeof b.error === "string" && b.error) return b.error;
   }
   return fallback;
 }

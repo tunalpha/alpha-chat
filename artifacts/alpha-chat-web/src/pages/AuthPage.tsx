@@ -136,12 +136,16 @@ export default function AuthPage() {
               type="text"
               value={regUsername}
               onChange={(e) => setRegUsername(e.target.value.toLowerCase())}
-              placeholder="marco"
+              placeholder="es. mario_rossi"
               pattern="[a-z0-9_.]+"
               minLength={3}
               maxLength={32}
               required
               autoFocus
+              autoComplete="username"
+              autoCorrect="off"
+              autoCapitalize="none"
+              spellCheck={false}
             />
             <label className="auth-label">Nome visualizzato</label>
             <input
