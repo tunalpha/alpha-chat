@@ -743,9 +743,13 @@ export default function ChatPage({ onNavigate }: Props) {
 
               // Anteprima ultimo messaggio
               const preview = conv.last_message_preview;
-              const previewText = preview
-                ? (preview.ciphertext ? decodeMessage(preview.ciphertext) : "")
-                : null;
+              const previewText = (() => {
+                if (!preview?.ciphertext) return null;
+                // Controlla se è un messaggio vocale
+                const vm = decodeVoiceMeta(preview.ciphertext);
+                if (vm) return "🎙 Messaggio vocale";
+                return decodeMessage(preview.ciphertext);
+              })();
               const previewLabel = previewText
                 ? (preview!.sender_id === auth?.userId ? `Tu: ${previewText}` : previewText)
                 : "Nessun messaggio";

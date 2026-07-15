@@ -501,6 +501,25 @@ export async function apiSendVoiceMessage(
   });
 }
 
+/**
+ * Scarica un file media come blob URL autenticato.
+ * L'elemento <audio> non può passare il Bearer token — questa funzione
+ * fa il fetch con l'header Authorization e crea un objectURL temporaneo.
+ */
+export async function apiFetchMediaBlob(mediaId: string): Promise<string> {
+  const token = getAccessToken();
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${BASE}/media/${mediaId}`, { headers });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({})) as { error?: { code?: string } };
+    throw new Error(body.error?.code ?? `HTTP ${res.status}`);
+  }
+  const blob = await res.blob();
+  return URL.createObjectURL(blob);
+}
+
 export async function apiDeleteMessage(
   conversationId: string,
   messageId: string,
