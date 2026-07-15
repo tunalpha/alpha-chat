@@ -37,10 +37,14 @@ function ChatHeader({
   otherUser,
   isOnline,
   onBack,
+  onViewProfile,
+  onSearchInChat,
 }: {
   otherUser: { display_name: string; username: string } | null | undefined;
   isOnline: boolean;
   onBack: () => void;
+  onViewProfile: () => void;
+  onSearchInChat: () => void;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -159,12 +163,14 @@ function ChatInput({
 
   return (
     <form className="chat-input-bar" onSubmit={onSubmit}>
-      <button type="button" className="input-icon-btn" aria-label="Emoji" title="Emoji">
+      {/* Emoji — non implementata */}
+      <button type="button" className="input-icon-btn" aria-label="Emoji" title="Disponibile prossimamente" disabled>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="22" height="22">
           <circle cx="12" cy="12" r="10"/><path d="M8 13s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/>
         </svg>
       </button>
-      <button type="button" className="input-icon-btn" aria-label="Allega" title="Allega file">
+      {/* Allega — non implementata */}
+      <button type="button" className="input-icon-btn" aria-label="Allega" title="Disponibile prossimamente" disabled>
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="22" height="22">
           <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
         </svg>
@@ -191,7 +197,8 @@ function ChatInput({
           </svg>
         </button>
       ) : (
-        <button type="button" className="send-btn mic-btn" aria-label="Messaggio vocale">
+        /* Microfono — non implementato */
+        <button type="button" className="send-btn mic-btn" aria-label="Messaggio vocale" title="Disponibile prossimamente" disabled>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" width="20" height="20">
             <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
             <path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/>
@@ -332,6 +339,9 @@ export default function ChatPage({ onNavigate }: Props) {
   const [loggingOut, setLoggingOut] = useState(false);
   const [showInvite, setShowInvite] = useState(false);
   const [showRedeem, setShowRedeem] = useState(false);
+  const [showContactProfile, setShowContactProfile] = useState(false);
+  const [showChatSearch, setShowChatSearch] = useState(false);
+  const [chatSearchQuery, setChatSearchQuery] = useState("");
   const [typingUsers, setTypingUsers] = useState<Record<string, Set<string>>>({});
   const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
   const [atBottom, setAtBottom] = useState(true);
@@ -608,8 +618,36 @@ export default function ChatPage({ onNavigate }: Props) {
             <ChatHeader
               otherUser={otherUser}
               isOnline={isOtherOnline}
-              onBack={() => setMobileShowChat(false)}
+              onBack={() => { setMobileShowChat(false); setShowChatSearch(false); setChatSearchQuery(""); }}
+              onViewProfile={() => setShowContactProfile(true)}
+              onSearchInChat={() => setShowChatSearch((v) => !v)}
             />
+
+            {/* ── Search bar (inline) ─────────────────────────── */}
+            {showChatSearch && (
+              <div className="chat-search-bar">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16" style={{ flexShrink: 0, opacity: 0.5 }}>
+                  <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+                </svg>
+                <input
+                  className="chat-search-input"
+                  type="search"
+                  placeholder="Cerca nei messaggi…"
+                  value={chatSearchQuery}
+                  onChange={(e) => setChatSearchQuery(e.target.value)}
+                  autoFocus
+                />
+                <button
+                  className="chat-search-close"
+                  onClick={() => { setShowChatSearch(false); setChatSearchQuery(""); }}
+                  aria-label="Chiudi ricerca"
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="16" height="16">
+                    <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                  </svg>
+                </button>
+              </div>
+            )}
 
             <div
               className="messages"
@@ -618,28 +656,55 @@ export default function ChatPage({ onNavigate }: Props) {
             >
               {loadingMsgs && <div className="msg-hint">Caricamento messaggi…</div>}
 
-              {messages.map((msg) => {
-                const isMine = msg.sender_id === auth?.userId;
-                const text = msg.ciphertext ? decodeMessage(msg.ciphertext) : "";
-                const time = formatTime(msg.sent_at);
-                return (
-                  <div key={msg.id} className={`msg-row ${isMine ? "mine" : "theirs"}`}>
-                    <div className={`msg-bubble ${isMine ? "mine" : "theirs"}`}>
-                      <span className="msg-text">{text}</span>
-                      <div className="msg-meta">
-                        <span className="msg-time">{time}</span>
-                        {isMine && (
-                          <span className="msg-status" title="Inviato">
-                            <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12">
-                              <polyline points="1 8 5 12 15 4"/>
-                            </svg>
-                          </span>
-                        )}
+              {(() => {
+                const q = chatSearchQuery.trim().toLowerCase();
+                const filtered = q
+                  ? messages.filter((m) => {
+                      const text = m.ciphertext ? decodeMessage(m.ciphertext) : "";
+                      return text.toLowerCase().includes(q);
+                    })
+                  : messages;
+
+                if (q && filtered.length === 0) {
+                  return <div className="msg-hint">Nessun messaggio trovato per "<strong>{chatSearchQuery}</strong>"</div>;
+                }
+
+                return filtered.map((msg) => {
+                  const isMine = msg.sender_id === auth?.userId;
+                  const text = msg.ciphertext ? decodeMessage(msg.ciphertext) : "";
+                  const time = formatTime(msg.sent_at);
+                  // Evidenzia la query nel testo
+                  const renderText = () => {
+                    if (!q) return <span className="msg-text">{text}</span>;
+                    const idx = text.toLowerCase().indexOf(q);
+                    if (idx === -1) return <span className="msg-text">{text}</span>;
+                    return (
+                      <span className="msg-text">
+                        {text.slice(0, idx)}
+                        <mark className="msg-search-highlight">{text.slice(idx, idx + q.length)}</mark>
+                        {text.slice(idx + q.length)}
+                      </span>
+                    );
+                  };
+                  return (
+                    <div key={msg.id} className={`msg-row ${isMine ? "mine" : "theirs"}`}>
+                      <div className={`msg-bubble ${isMine ? "mine" : "theirs"}`}>
+                        {renderText()}
+                        <div className="msg-meta">
+                          <span className="msg-time">{time}</span>
+                          {isMine && (
+                            <span className="msg-status" title="Inviato">
+                              <svg viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12">
+                                <polyline points="1 8 5 12 15 4"/>
+                              </svg>
+                            </span>
+                          )}
+                        </div>
                       </div>
                     </div>
-                  </div>
-                );
-              })}
+                  );
+                });
+              })()}
 
               {othersTyping.length > 0 && (
                 <div className="msg-row theirs">
@@ -692,6 +757,45 @@ export default function ChatPage({ onNavigate }: Props) {
           onClose={() => setShowRedeem(false)}
           onSuccess={(convId) => void handleRedeemSuccess(convId)}
         />
+      )}
+
+      {/* ── Contact profile sheet ───────────────────────────────────────────── */}
+      {showContactProfile && otherUser && (
+        <div className="modal-backdrop" onClick={() => setShowContactProfile(false)}>
+          <div className="contact-profile-sheet" onClick={(e) => e.stopPropagation()}>
+            <button
+              className="contact-profile-close"
+              onClick={() => setShowContactProfile(false)}
+              aria-label="Chiudi"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="18" height="18">
+                <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+              </svg>
+            </button>
+
+            <div className="contact-profile-avatar">
+              {otherUser.display_name[0]?.toUpperCase() ?? "?"}
+            </div>
+            <h2 className="contact-profile-name">{otherUser.display_name}</h2>
+            <p className="contact-profile-username">@{otherUser.username}</p>
+            <div className={`contact-profile-status ${isOtherOnline ? "online" : "offline"}`}>
+              {isOtherOnline ? "● Online" : "○ Offline"}
+            </div>
+
+            <div className="contact-profile-info">
+              <div className="contact-profile-row">
+                <span className="contact-profile-row-label">Username</span>
+                <span className="contact-profile-row-value">@{otherUser.username}</span>
+              </div>
+              <div className="contact-profile-row">
+                <span className="contact-profile-row-label">Crittografia</span>
+                <span className="contact-profile-row-value" style={{ color: "#4ade80" }}>
+                  ✓ E2E attiva
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

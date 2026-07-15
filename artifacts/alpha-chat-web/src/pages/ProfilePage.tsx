@@ -22,7 +22,7 @@ export default function ProfilePage({ auth, onBack }: Props) {
       <div className="profile-hero">
         <div className="profile-avatar-wrap">
           <div className="avatar avatar-xl">{initial}</div>
-          <button className="profile-avatar-edit" aria-label="Cambia avatar">
+          <button className="profile-avatar-edit" aria-label="Cambia avatar" disabled title="Disponibile prossimamente">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="18" height="18">
               <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>
               <circle cx="12" cy="13" r="4"/>
@@ -61,7 +61,7 @@ export default function ProfilePage({ auth, onBack }: Props) {
           </div>
         </div>
 
-        <div className="settings-item coming-soon">
+        <div className="settings-item coming-soon" aria-disabled="true">
           <div className="settings-item-icon">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="20" height="20">
               <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>
@@ -69,12 +69,12 @@ export default function ProfilePage({ auth, onBack }: Props) {
           </div>
           <div className="settings-item-content">
             <div className="settings-item-label">Bio</div>
-            <div className="settings-item-value muted">Non impostata</div>
+            <div className="settings-item-value muted">Disponibile prossimamente</div>
           </div>
           <span className="settings-item-badge">Presto</span>
         </div>
 
-        <div className="settings-item coming-soon">
+        <div className="settings-item coming-soon" aria-disabled="true">
           <div className="settings-item-icon">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="20" height="20">
               <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/>
@@ -82,8 +82,8 @@ export default function ProfilePage({ auth, onBack }: Props) {
             </svg>
           </div>
           <div className="settings-item-content">
-            <div className="settings-item-label">Codice invito</div>
-            <div className="settings-item-value muted">Disponibile in M2</div>
+            <div className="settings-item-label">Personalizzazione profilo</div>
+            <div className="settings-item-value muted">Disponibile prossimamente</div>
           </div>
           <span className="settings-item-badge">Presto</span>
         </div>
