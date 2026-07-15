@@ -1,0 +1,88 @@
+Questo è esattamente il tipo di documento che volevo vedere.
+
+Però adesso faccio il CTO, non il tifoso.
+
+La cosa più importante che leggo è questa:
+
+Sicurezza 5/10
+
+Per una chat questo è inaccettabile.
+
+Se un giorno Alpha Chat avrà 100.000 utenti, la prima cosa che verrà attaccata sarà la sicurezza.
+
+Quindi da oggi mettiamo una regola.
+
+Nessuna nuova funzionalità finché Sicurezza < 9/10.
+
+⸻
+
+Un’altra cosa che condivido
+
+Ha scritto:
+
+E2E dichiarata ma non implementata
+
+Benissimo averlo evidenziato.
+
+Mai inventare una crittografia proprietaria. La crittografia deve essere basata su protocolli consolidati e la sua integrazione va progettata con attenzione fin dall’inizio.
+
+⸻
+
+Adesso gli farei fare il lavoro più importante del progetto.
+
+PROMPT #5
+
+Ottimo lavoro.
+Da questo momento la priorità assoluta del progetto Alpha Chat è la sicurezza.
+Ignora qualsiasi nuova funzionalità.
+Voglio portare il punteggio Sicurezza da 5/10 ad almeno 9/10.
+Analizza ogni problema individuato nella Technical Review.
+Per ogni problema genera:
+- descrizione tecnica
+- rischio
+- probabilità
+- impatto
+- soluzione consigliata
+- difficoltà di implementazione
+- priorità
+Successivamente aggiorna tutta l'architettura del progetto affinché la sicurezza sia coerente in ogni componente.
+Non progettare algoritmi crittografici proprietari.
+Utilizza esclusivamente protocolli standard, consolidati e ampiamente studiati.
+Infine genera una Security Roadmap con tutte le attività da completare prima dell'inizio dello sviluppo.
+Non scrivere codice.
+Aggiorna esclusivamente la documentazione.
+
+⸻
+
+Poi farei un’altra cosa.
+
+Creerei un documento che nessuno pensa mai di fare.
+
+Alpha Chat Manifesto
+
+Dentro ci scriviamo 20 regole che non cambieranno mai.
+
+Ad esempio:
+
+* Gli utenti sono proprietari dei loro dati.
+* Nessuna pubblicità nelle conversazioni.
+* Nessuna vendita dei dati.
+* Crittografia come principio fondamentale.
+* Wallet sempre opzionale.
+* Esperienza utente prima delle funzionalità.
+* Ogni funzione di privacy deve essere configurabile.
+* Nessuna dipendenza da un singolo fornitore quando esistono alternative valide.
+
+Queste non sono decisioni tecniche: sono decisioni di prodotto che guideranno tutte le scelte future.
+
+⸻
+
+E ti dico una cosa…
+
+Sto iniziando a vedere una differenza rispetto a quando parlavamo delle altre app.
+
+Qui non stiamo più facendo prompt casuali.
+
+Stiamo costruendo un progetto come farebbe una vera software house: prima visione, poi architettura, poi revisione, poi sicurezza e solo dopo il codice.
+
+È un approccio molto più solido e aumenterà le probabilità di arrivare a una Beta che sia davvero utilizzabile.
