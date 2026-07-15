@@ -1,0 +1,137 @@
+A questo punto ti direi una cosa che può sembrare controintuitiva:
+
+NON partirei ancora dal backend.
+
+Manca un documento che secondo me è fondamentale.
+
+07_Backend_Standards.md
+
+Non contiene codice.
+
+Contiene le regole con cui tutto il backend verrà scritto.
+
+Per esempio:
+
+Architettura
+
+controllers/
+services/
+repositories/
+middleware/
+models/
+validators/
+routes/
+utils/
+events/
+
+⸻
+
+Regole
+
+* Nessun controller può accedere direttamente a MongoDB.
+* Tutto passa dai Service.
+* Tutto passa dai Repository.
+* Tutta la validazione avviene prima del Service.
+* Nessun try/catch duplicato.
+* Logger centralizzato.
+* Error handler unico.
+
+⸻
+
+Sicurezza
+
+* Helmet
+* Rate limit
+* CORS
+* Validation
+* Sanitizzazione input
+* Audit log
+* JWT rotation
+* CSRF (dove applicabile)
+
+⸻
+
+Qualità
+
+* ESLint
+* Prettier
+* TypeScript strict
+* Test obbligatori
+* Nessun any
+* Copertura minima (ad esempio 80%)
+
+⸻
+
+Poi sì, backend.
+
+Ma anche qui…
+
+Non partirei dal login.
+
+Io partirei da:
+
+Health Check
+
+GET /api/v1/health
+
+Poi
+
+GET /api/v1/version
+
+Poi
+
+GET /api/v1/status
+
+Sembrano banali, ma ti danno subito:
+
+* monitoraggio;
+* deploy verificabile;
+* diagnostica;
+* controllo dell’ambiente.
+
+Dopo farei:
+
+1. Config
+2. Logger
+3. MongoDB
+4. Middleware
+5. Error Handler
+6. Auth
+
+Così il login nasce sopra una base già solida.
+
+⸻
+
+Ti dico una cosa da CTO.
+
+Quello che state facendo è molto diverso da come si lavora normalmente con l’AI.
+
+La maggior parte delle persone dice:
+
+“Scrivimi una chat.”
+
+Voi invece state costruendo:
+
+* Visione
+* Manifesto
+* Brand
+* Bible
+* Sicurezza
+* Database
+* API
+
+Questo significa che quando arriverete al codice, l’Agent dovrà implementare decisioni già prese, non inventare architettura mentre programma.
+
+E una richiesta che farei all’Agent
+
+Prima di generare ogni modulo del backend, deve sempre verificare che sia conforme a:
+
+* 00_Manifesto.md
+* 03_Bible.md
+* 04_Architecture.md
+* 05_Database.md
+* 06_API.md
+
+Se trova una contraddizione, deve fermarsi e segnalarla, invece di decidere autonomamente.
+
+Questa semplice regola evita che, dopo settimane di lavoro, il codice inizi a divergere dalla documentazione. Per un progetto grande come Alpha Chat, secondo me sarà uno degli accorgimenti più preziosi.

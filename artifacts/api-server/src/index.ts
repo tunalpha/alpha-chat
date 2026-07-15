@@ -1,25 +1,43 @@
 import app from "./app";
 import { logger } from "./lib/logger";
+import { config } from "./config";
+import { connectMongoDB, disconnectMongoDB } from "./lib/mongodb";
 
-const rawPort = process.env["PORT"];
+const port = config.app.port;
 
-if (!rawPort) {
-  throw new Error(
-    "PORT environment variable is required but was not provided.",
-  );
+// ── Boot sequence ─────────────────────────────────────────────────────────────
+async function start(): Promise<void> {
+  // Connect to MongoDB if configured
+  await connectMongoDB();
+
+  // Start HTTP server
+  const server = app.listen(port, () => {
+    logger.info({ port, env: config.app.env }, "Alpha Chat API listening");
+  });
+
+  // ── Graceful shutdown ───────────────────────────────────────────────────────
+  const shutdown = async (signal: string): Promise<void> => {
+    logger.info({ signal }, "Shutdown signal received");
+
+    server.close(async () => {
+      logger.info("HTTP server closed");
+      await disconnectMongoDB();
+      logger.info("Graceful shutdown complete");
+      process.exit(0);
+    });
+
+    // Force exit after 10 seconds if graceful shutdown hangs
+    setTimeout(() => {
+      logger.error("Graceful shutdown timeout — forcing exit");
+      process.exit(1);
+    }, 10_000).unref();
+  };
+
+  process.once("SIGTERM", () => void shutdown("SIGTERM"));
+  process.once("SIGINT", () => void shutdown("SIGINT"));
 }
 
-const port = Number(rawPort);
-
-if (Number.isNaN(port) || port <= 0) {
-  throw new Error(`Invalid PORT value: "${rawPort}"`);
-}
-
-app.listen(port, (err) => {
-  if (err) {
-    logger.error({ err }, "Error listening on port");
-    process.exit(1);
-  }
-
-  logger.info({ port }, "Server listening");
+start().catch((err) => {
+  logger.fatal({ err }, "Fatal error during startup");
+  process.exit(1);
 });
