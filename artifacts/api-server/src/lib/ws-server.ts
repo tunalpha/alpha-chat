@@ -167,6 +167,10 @@ export function createWsServer(httpServer: HttpServer): WebSocketServer {
           safeSend(ws, { type: "auth.ok", payload: { user_id: userId } });
           startHeartbeat();
           await setOnline(userId);
+
+          // Invia presenza iniziale: chi tra i contatti è già online
+          void sendInitialPresence(userId, ws);
+          // Notifica i contatti che questo utente è online
           void broadcastPresence(userId, "presence.online");
 
           logger.info({ userId }, "WS client authenticated");
@@ -239,6 +243,26 @@ export function createWsServer(httpServer: HttpServer): WebSocketServer {
 // ---------------------------------------------------------------------------
 // Helpers broadcast
 // ---------------------------------------------------------------------------
+
+/**
+ * Invia al client appena connesso un evento presence.online per ogni contatto
+ * che è già online in questo momento. Risolve il problema "Marco appare offline
+ * perché si era connesso prima di Cricco".
+ */
+async function sendInitialPresence(userId: string, ws: WebSocket): Promise<void> {
+  try {
+    const contactIds = await memberRepo.listContactUserIds(
+      new mongoose.Types.ObjectId(userId),
+    );
+    for (const contactId of contactIds) {
+      if (wsManager.isOnline(contactId)) {
+        safeSend(ws, { type: "presence.online", payload: { user_id: contactId } });
+      }
+    }
+  } catch (err) {
+    logger.warn({ err, userId }, "sendInitialPresence failed");
+  }
+}
 
 /**
  * Broadcast presence.online / presence.offline a tutti i contatti connessi

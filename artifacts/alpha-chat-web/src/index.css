@@ -526,6 +526,29 @@ input  { font-family: inherit; font-size: inherit; border: none; outline: none; 
 .send-btn:active:not(:disabled) { transform: scale(0.94); }
 .send-btn:disabled { opacity: 0.35; cursor: default; box-shadow: none; }
 
+/* ── Send error banner ────────────────────────────────────────────────── */
+.send-error-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  background: rgba(239,68,68,0.12);
+  border-top: 1px solid rgba(239,68,68,0.25);
+  color: #FCA5A5;
+  font-size: 13px;
+  flex-shrink: 0;
+}
+
+.send-error-close {
+  margin-left: auto;
+  color: #FCA5A5;
+  font-size: 14px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  flex-shrink: 0;
+}
+.send-error-close:hover { background: rgba(239,68,68,0.2); }
+
 /* Scrollbar viola-tinted */
 ::-webkit-scrollbar { width: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }

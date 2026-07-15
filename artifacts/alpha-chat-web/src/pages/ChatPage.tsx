@@ -22,6 +22,7 @@ export default function ChatPage() {
   const [messages, setMessages] = useState<MessageItem[]>([]);
   const [inputText, setInputText] = useState("");
   const [sending, setSending] = useState(false);
+  const [sendError, setSendError] = useState<string | null>(null);
   const [loadingConvs, setLoadingConvs] = useState(true);
   const [loadingMsgs, setLoadingMsgs] = useState(false);
 
@@ -153,12 +154,16 @@ export default function ChatPage() {
     if (!activeConvId || !inputText.trim() || sending) return;
     const text = inputText.trim();
     setInputText("");
+    setSendError(null);
     if (isTypingRef.current) { sendTypingStop(activeConvId); isTypingRef.current = false; }
     setSending(true);
     try {
       await apiSendMessage(activeConvId, text);
     } catch (err) {
-      console.error("Send failed:", err);
+      const msg = err instanceof Error ? err.message : "Errore invio";
+      setSendError(msg.includes("sender_key_id") || msg.includes("key")
+        ? "Errore JS vecchio — ricarica la pagina (↻)"
+        : msg);
       setInputText(text);
     } finally {
       setSending(false);
@@ -448,6 +453,13 @@ export default function ChatPage() {
               )}
               <div ref={messagesEndRef} />
             </div>
+
+            {sendError && (
+              <div className="send-error-banner">
+                ⚠ {sendError}
+                <button className="send-error-close" onClick={() => setSendError(null)}>✕</button>
+              </div>
+            )}
 
             <form className="chat-input-row" onSubmit={handleSend}>
               <input
