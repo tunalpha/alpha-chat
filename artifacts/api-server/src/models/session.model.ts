@@ -28,6 +28,7 @@ export interface ISession {
   // Sicurezza
   is_suspicious: boolean;
   last_used_at: Date;
+  user_agent: string | null;
 
   deleted_at: Date | null;
 
@@ -65,6 +66,7 @@ const sessionSchema = new Schema<ISessionDocument>(
 
     is_suspicious: { type: Boolean, default: false },
     last_used_at: { type: Date, required: true },
+    user_agent: { type: String, default: null, maxlength: 512 },
 
     deleted_at: { type: Date, default: null },
   },

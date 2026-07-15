@@ -86,7 +86,7 @@ export async function createSession(
       deleted_at: null,
       push_enabled: true,
     },
-    { upsert: true, new: true, setDefaultsOnInsert: true },
+    { upsert: true, returnDocument: "after", setDefaultsOnInsert: true },
   );
 
   return { refreshToken: rawToken, session };

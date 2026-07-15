@@ -1,0 +1,115 @@
+Ti dico sinceramente: questo è un ottimo Sprint 1.
+
+Quello che mi piace è che non avete ancora scritto una sola route di business, ma avete già costruito le fondamenta.
+
+Il mio voto è 9,5/10.
+
+L’unica cosa che vorrei verificare prima di Sprint 2 è una checklist di sicurezza.
+
+✅ Password
+
+Hai usato Argon2id.
+
+Ottima scelta.
+
+Verifica solo che i parametri siano quelli raccomandati oggi (memoria, iterazioni e parallelismo adeguati) e che siano configurabili se un domani vorrai aumentarli.
+
+⸻
+
+✅ JWT
+
+Hai scelto ES256.
+
+Mi piace.
+
+Controlla che:
+
+* ci sia kid nell’header JWT per facilitare la rotazione delle chiavi;
+* iss (issuer) e aud (audience) vengano verificati;
+* nbf (not before) e exp siano controllati;
+* esista già una strategia di rotazione delle chiavi.
+
+⸻
+
+✅ Refresh Token
+
+Hai implementato la rotazione.
+
+Perfetto.
+
+Vorrei solo che ogni sessione avesse anche:
+
+* User ID
+* Device ID
+* IP (eventualmente anonimizzato o con retention limitata, in base alla tua politica)
+* User Agent
+* Created At
+* Last Used
+* Revoked
+
+Questo rende molto più semplice gestire la sicurezza e mostrare all’utente i dispositivi attivi.
+
+⸻
+
+Prima di Sprint 2
+
+Io chiederei all’Agent una sola cosa.
+
+Non partire dal Controller.
+
+Partire dal Repository.
+
+L’ordine dovrebbe essere:
+
+Repository
+↓
+Service
+↓
+Validation
+↓
+Controller
+↓
+Route
+↓
+Integration Test
+
+Così tutta la logica rimane nel Service.
+
+Il Controller deve essere quasi “stupido”.
+
+⸻
+
+Un’altra cosa
+
+Da oggi introduci una regola.
+
+Ogni Service pubblico deve avere:
+
+* test unitari;
+* logging strutturato;
+* gestione errori coerente;
+* documentazione.
+
+Così fra un anno il progetto sarà ancora manutenibile.
+
+⸻
+
+E la cosa che mi rende più tranquillo…
+
+Hai scritto:
+
+25/25 test verdi
+
+Continua così.
+
+Per Alpha Chat, preferirei avere 1.000 test automatici e una funzione in meno, piuttosto che molte funzioni senza una buona copertura.
+
+⸻
+
+Via libera
+
+Io darei il via allo Sprint 2 – Register, ma con un obiettivo preciso:
+
+Alla fine dello Sprint 2 dovete avere un utente che riesce a registrarsi, ottenere una sessione valida e comparire nel database con tutti i dati previsti, mantenendo i test verdi e senza introdurre regressioni.
+
+Se mantenete questa disciplina sprint dopo sprint, state costruendo una base molto solida per Alpha Chat.
