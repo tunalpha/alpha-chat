@@ -35,11 +35,18 @@ export const SendMessageSchema = z.object({
     .min(1)
     .max(2),
 
-  /** ID della chiave SPK/OPK usata per la cifratura */
+  /**
+   * ID della chiave SPK/OPK usata per la cifratura.
+   * M1: null accettato (libsignal non ancora implementato).
+   * M2: campo obbligatorio positivo quando Signal Protocol è attivo.
+   */
   sender_key_id: z
     .number()
     .int()
-    .positive("sender_key_id deve essere positivo"),
+    .positive()
+    .nullable()
+    .optional()
+    .default(null),
 
   /** Timestamp di invio dal client (ISO 8601) */
   sent_at: z

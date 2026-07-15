@@ -44,7 +44,7 @@ export class MessageRepository {
     senderId: mongoose.Types.ObjectId;
     ciphertext: string;
     ciphertextType: number;
-    senderKeyId: number;
+    senderKeyId: number | null;
     messageType: IMessageDocument["message_type"];
     sentAt: Date;
     replyToMessageId?: mongoose.Types.ObjectId | null;
