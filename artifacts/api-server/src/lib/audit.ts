@@ -53,7 +53,12 @@ export type AuditEventType =
   // Conversations (Sprint 5B)
   | "CONVERSATION_CREATED"
   // Messages (Sprint 6)
-  | "MESSAGE_SENT";
+  | "MESSAGE_SENT"
+  // Inviti (Sprint 9)
+  | "INVITE_GENERATED"
+  | "INVITE_REDEEMED"
+  | "INVITE_REDEEM_FAILED"
+  | "INVITE_REVOKED";
 
 export interface AuditEvent {
   event: AuditEventType;

@@ -4,15 +4,14 @@ import { useWebSocket, type WsEvent } from "../hooks/useWebSocket";
 import type { AppView } from "../App";
 import {
   apiListConversations,
-  apiCreateConversation,
   apiListMessages,
   apiSendMessage,
-  apiSearchUsers,
   decodeMessage,
   type ConversationItem,
   type MessageItem,
-  type UserProfile,
 } from "../lib/api";
+import InviteModal from "../components/InviteModal";
+import RedeemModal from "../components/RedeemModal";
 
 interface Props {
   onNavigate: (view: AppView) => void;
@@ -331,10 +330,8 @@ export default function ChatPage({ onNavigate }: Props) {
   const [loadingMsgs, setLoadingMsgs] = useState(false);
   const [mobileShowChat, setMobileShowChat] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
-  const [showSearch, setShowSearch] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [searchResults, setSearchResults] = useState<UserProfile[]>([]);
-  const [searching, setSearching] = useState(false);
+  const [showInvite, setShowInvite] = useState(false);
+  const [showRedeem, setShowRedeem] = useState(false);
   const [typingUsers, setTypingUsers] = useState<Record<string, Set<string>>>({});
   const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
   const [atBottom, setAtBottom] = useState(true);
@@ -343,7 +340,6 @@ export default function ChatPage({ onNavigate }: Props) {
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isTypingRef = useRef(false);
-  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── Load conversations ──────────────────────────────────────────────────
   const loadConversations = useCallback(async () => {
@@ -469,33 +465,11 @@ export default function ChatPage({ onNavigate }: Props) {
     }, 3_000);
   }
 
-  function handleSearchChange(e: React.ChangeEvent<HTMLInputElement>) {
-    const q = e.target.value;
-    setSearchQuery(q);
-    setSearchResults([]);
-    if (searchTimerRef.current) clearTimeout(searchTimerRef.current);
-    if (q.trim().length < 2) return;
-    searchTimerRef.current = setTimeout(async () => {
-      setSearching(true);
-      try {
-        const query = q.trim().toLowerCase().replace(/^@+/, "");
-        if (query.length < 2) return;
-        const res = await apiSearchUsers(query);
-        setSearchResults(res.items.filter((u) => u.id !== auth?.userId));
-      } catch { /* ignore */ } finally { setSearching(false); }
-    }, 300);
-  }
-
-  async function handleStartChat(username: string) {
-    try {
-      const res = await apiCreateConversation(username);
-      setShowSearch(false);
-      setSearchQuery("");
-      setSearchResults([]);
-      await loadConversations();
-      setActiveConvId(res.conversation_id);
-      setMobileShowChat(true);
-    } catch (err) { console.error("Create conversation failed:", err); }
+  async function handleRedeemSuccess(conversationId: string) {
+    setShowRedeem(false);
+    await loadConversations();
+    setActiveConvId(conversationId);
+    setMobileShowChat(true);
   }
 
   function handleSelectConv(convId: string) {
@@ -542,63 +516,52 @@ export default function ChatPage({ onNavigate }: Props) {
               {connected ? "● Online" : "○ Offline"}
             </div>
           </div>
-          <button className="icon-btn new-chat-btn" title="Nuova chat" onClick={() => setShowSearch(true)} aria-label="Nuova chat">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" width="18" height="18">
-              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-            </svg>
-          </button>
+          {/* Invite buttons */}
+          <div className="invite-action-btns">
+            <button
+              className="invite-sidebar-btn"
+              title="Invita persona"
+              onClick={() => setShowInvite(true)}
+              aria-label="Invita persona"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" width="17" height="17">
+                <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
+                <circle cx="9" cy="7" r="4"/>
+                <line x1="19" y1="8" x2="19" y2="14"/>
+                <line x1="22" y1="11" x2="16" y2="11"/>
+              </svg>
+            </button>
+            <button
+              className="invite-sidebar-btn"
+              title="Inserisci codice invito"
+              onClick={() => setShowRedeem(true)}
+              aria-label="Inserisci codice invito"
+            >
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" width="17" height="17">
+                <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
+                <rect x="3" y="14" width="7" height="7"/>
+                <line x1="14" y1="14" x2="14" y2="14.01"/>
+                <line x1="17" y1="14" x2="17" y2="14.01"/>
+                <line x1="20" y1="14" x2="20" y2="14.01"/>
+                <line x1="20" y1="17" x2="20" y2="17.01"/>
+                <line x1="17" y1="17" x2="17" y2="17.01"/>
+                <line x1="14" y1="20" x2="14" y2="20.01"/>
+                <line x1="17" y1="20" x2="17" y2="20.01"/>
+                <line x1="20" y1="20" x2="20" y2="20.01"/>
+              </svg>
+            </button>
+          </div>
         </div>
 
-        {/* Search panel */}
-        {showSearch && (
-          <div className="search-panel">
-            <div className="search-header">
-              <input
-                className="search-input"
-                type="text"
-                placeholder="Cerca utente…"
-                value={searchQuery}
-                onChange={handleSearchChange}
-                autoFocus
-                autoCapitalize="none"
-                autoCorrect="off"
-                autoComplete="off"
-                spellCheck={false}
-              />
-              <button className="icon-btn" onClick={() => { setShowSearch(false); setSearchQuery(""); setSearchResults([]); }}>
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="18" height="18">
-                  <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-                </svg>
-              </button>
-            </div>
-            <div className="search-results">
-              {searching && <div className="search-hint">Ricerca…</div>}
-              {!searching && searchQuery && searchResults.length === 0 && (
-                <div className="search-hint">Nessun utente trovato</div>
-              )}
-              {searchResults.map((user) => (
-                <button key={user.id} className="search-result" onClick={() => void handleStartChat(user.username)}>
-                  <div className="avatar avatar-sm">{user.display_name[0]?.toUpperCase()}</div>
-                  <div>
-                    <div className="result-name">{user.display_name}</div>
-                    <div className="result-username">@{user.username}</div>
-                  </div>
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
-
         {/* Conversation list */}
-        {!showSearch && (
-          <div className="conv-list">
+        <div className="conv-list">
             {loadingConvs && <div className="conv-hint">Caricamento…</div>}
             {!loadingConvs && conversations.length === 0 && (
               <div className="conv-hint conv-hint-empty">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" width="40" height="40" style={{ opacity: 0.3, marginBottom: 12 }}>
                   <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
                 </svg>
-                Nessuna conversazione.<br />Premi + per iniziare.
+                Nessuna conversazione.<br />Usa i pulsanti in alto per invitare qualcuno.
               </div>
             )}
             {conversations.map((conv) => {
@@ -631,7 +594,6 @@ export default function ChatPage({ onNavigate }: Props) {
               );
             })}
           </div>
-        )}
       </aside>
 
       {/* ── Chat area ─────────────────────────────────────────────────────── */}
@@ -641,9 +603,14 @@ export default function ChatPage({ onNavigate }: Props) {
             <div className="chat-empty-logo">α</div>
             <h2 className="chat-empty-title">Alpha Chat</h2>
             <p className="chat-empty-text">Seleziona una conversazione o iniziane una nuova</p>
-            <button className="chat-empty-btn" onClick={() => setShowSearch(true)}>
-              Nuova chat
-            </button>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button className="chat-empty-btn" onClick={() => setShowInvite(true)}>
+                Invita persona
+              </button>
+              <button className="chat-empty-btn" style={{ background: "var(--bg-3)", color: "var(--text-1)" }} onClick={() => setShowRedeem(true)}>
+                Ho un codice
+              </button>
+            </div>
           </div>
         ) : (
           <>
@@ -724,6 +691,17 @@ export default function ChatPage({ onNavigate }: Props) {
           </>
         )}
       </main>
+
+      {/* ── Invite modals ──────────────────────────────────────────────────── */}
+      {showInvite && (
+        <InviteModal onClose={() => setShowInvite(false)} />
+      )}
+      {showRedeem && (
+        <RedeemModal
+          onClose={() => setShowRedeem(false)}
+          onSuccess={(convId) => void handleRedeemSuccess(convId)}
+        />
+      )}
     </div>
   );
 }

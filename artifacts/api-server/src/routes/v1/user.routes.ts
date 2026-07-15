@@ -10,11 +10,19 @@ const router = Router();
 router.use(authenticate);
 
 /**
- * GET /api/v1/users/search?q=marco&limit=20
- * ATTENZIONE: questa route deve stare PRIMA di /:username
- * altrimenti "search" viene interpretato come username.
+ * GET /api/v1/users/search — DISABILITATO (Sprint 9)
+ * La ricerca pubblica è stata rimossa per privacy.
+ * La scoperta di nuovi contatti avviene solo tramite codice invito monouso.
+ * Endpoint mantenuto per retrocompatibilità ma restituisce sempre 410 Gone.
  */
-router.get("/search", validate("query", UserSearchSchema), searchUsers);
+router.get("/search", (_req, res) => {
+  res.status(410).json({
+    error: {
+      code: "ENDPOINT_DEPRECATED",
+      message: "La ricerca utenti è stata rimossa. Usa i codici invito per aggiungere contatti.",
+    },
+  });
+});
 
 /**
  * GET /api/v1/users/:username

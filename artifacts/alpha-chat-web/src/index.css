@@ -709,6 +709,219 @@ a { color: inherit; text-decoration: none; }
   max-width: 300px; line-height: 1.6;
 }
 
+/* ── Invite / Redeem modals ────────────────────────────────────────────────── */
+.modal-backdrop {
+  position: fixed; inset: 0; z-index: 200;
+  background: rgba(0,0,0,0.7);
+  backdrop-filter: blur(6px);
+  display: flex; align-items: flex-end; justify-content: center;
+  padding: 0 0 env(safe-area-inset-bottom, 0);
+  animation: fade-in 0.15s ease;
+}
+@media (min-width: 480px) {
+  .modal-backdrop { align-items: center; }
+}
+
+.modal-card {
+  background: var(--bg-2);
+  border-radius: 20px 20px 0 0;
+  border: 1px solid rgba(255,255,255,0.07);
+  width: 100%; max-width: 440px;
+  max-height: 92dvh; overflow-y: auto;
+  display: flex; flex-direction: column;
+  animation: menu-pop 0.18s cubic-bezier(0.34,1.56,0.64,1);
+  box-shadow: 0 -8px 40px rgba(0,0,0,0.5);
+}
+@media (min-width: 480px) {
+  .modal-card {
+    border-radius: 20px;
+    box-shadow: 0 20px 60px rgba(0,0,0,0.6);
+  }
+}
+
+.modal-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 18px 20px 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.modal-title {
+  font-size: 17px; font-weight: 700; color: var(--text-1); margin: 0;
+}
+.modal-close {
+  width: 32px; height: 32px; border-radius: 50%;
+  background: rgba(255,255,255,0.07); border: none; cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--text-2); transition: background 0.15s;
+}
+.modal-close:hover { background: rgba(255,255,255,0.13); }
+
+.modal-body { padding: 20px; display: flex; flex-direction: column; gap: 16px; }
+.modal-footer {
+  padding: 12px 20px 20px;
+  border-top: 1px solid rgba(255,255,255,0.06);
+}
+
+/* Invite generate */
+.invite-subtitle {
+  font-size: 14px; color: var(--text-2); line-height: 1.6;
+  text-align: center; margin: 0;
+}
+
+.invite-qr-wrap {
+  display: flex; justify-content: center;
+  background: #1A1133;
+  border-radius: 16px; padding: 16px;
+  border: 1px solid rgba(255,255,255,0.08);
+}
+.invite-qr {
+  width: 200px; height: 200px;
+  border-radius: 8px; display: block;
+}
+
+.invite-code-wrap {
+  display: flex; align-items: center; justify-content: center; gap: 10px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 12px; padding: 12px 16px;
+}
+.invite-code {
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 20px; font-weight: 700; letter-spacing: 3px;
+  color: var(--text-1);
+}
+.invite-copy-btn {
+  display: flex; align-items: center; gap: 6px;
+  padding: 6px 12px; border-radius: 8px;
+  background: rgba(109,40,217,0.2); border: 1px solid rgba(109,40,217,0.3);
+  color: var(--brand-3); font-size: 13px; font-weight: 600;
+  cursor: pointer; transition: all 0.15s; white-space: nowrap;
+}
+.invite-copy-btn:hover { background: rgba(109,40,217,0.35); }
+.invite-copy-btn.copied { background: rgba(34,197,94,0.2); border-color: rgba(34,197,94,0.3); color: #4ade80; }
+
+.invite-countdown {
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  font-size: 13px; color: var(--text-2);
+}
+.invite-countdown.urgent { color: #f87171; }
+.invite-countdown strong { color: var(--text-1); }
+
+.invite-loading {
+  display: flex; flex-direction: column; align-items: center;
+  gap: 12px; padding: 20px; color: var(--text-2); font-size: 14px;
+}
+.invite-spinner {
+  width: 32px; height: 32px;
+  border: 3px solid rgba(109,40,217,0.2);
+  border-top-color: var(--brand-3);
+  border-radius: 50%;
+  animation: typing-bounce 0.6s linear infinite;
+}
+
+.invite-error {
+  padding: 10px 14px; background: rgba(239,68,68,0.12);
+  border: 1px solid rgba(239,68,68,0.25); border-radius: 10px;
+  color: #fca5a5; font-size: 13px; text-align: center;
+}
+
+.invite-regen-btn {
+  width: 100%; display: flex; align-items: center; justify-content: center;
+  gap: 8px; padding: 13px 20px;
+  background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 12px; color: var(--text-1); font-size: 15px; font-weight: 600;
+  cursor: pointer; transition: background 0.15s;
+}
+.invite-regen-btn:hover:not(:disabled) { background: rgba(255,255,255,0.09); }
+.invite-regen-btn:disabled { opacity: 0.4; cursor: default; }
+
+/* Redeem */
+.redeem-tabs {
+  display: flex; border-bottom: 1px solid rgba(255,255,255,0.06);
+}
+.redeem-tab {
+  flex: 1; display: flex; align-items: center; justify-content: center;
+  gap: 7px; padding: 12px 8px;
+  background: transparent; border: none;
+  color: var(--text-2); font-size: 14px; font-weight: 500;
+  cursor: pointer; transition: all 0.15s;
+  border-bottom: 2px solid transparent;
+}
+.redeem-tab.active { color: var(--brand-3); border-bottom-color: var(--brand-3); }
+
+.redeem-form { display: flex; flex-direction: column; gap: 12px; }
+
+.redeem-input {
+  width: 100%; padding: 14px 16px;
+  background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.12);
+  border-radius: 12px; color: var(--text-1); font-size: 18px;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  letter-spacing: 2px; text-align: center; text-transform: uppercase;
+  outline: none; transition: border-color 0.15s; box-sizing: border-box;
+}
+.redeem-input:focus { border-color: var(--brand-3); }
+.redeem-input::placeholder { color: var(--text-3); font-size: 14px; letter-spacing: 1px; }
+
+.redeem-submit-btn {
+  width: 100%; padding: 14px;
+  background: var(--brand-gradient);
+  border: none; border-radius: 12px;
+  color: #fff; font-size: 15px; font-weight: 700;
+  cursor: pointer; transition: opacity 0.15s;
+}
+.redeem-submit-btn:hover:not(:disabled) { opacity: 0.9; }
+.redeem-submit-btn:disabled { opacity: 0.4; cursor: default; }
+
+/* QR scanner */
+.qr-scanner-wrap { display: flex; flex-direction: column; align-items: center; gap: 16px; }
+
+.qr-scanner-frame {
+  position: relative; width: 260px; height: 260px;
+  border-radius: 16px; overflow: hidden;
+  background: #000;
+}
+.qr-video {
+  width: 100%; height: 100%; object-fit: cover;
+}
+.qr-canvas-hidden { display: none; }
+.qr-scanner-overlay {
+  position: absolute; inset: 0; pointer-events: none;
+}
+.qr-corner {
+  position: absolute; width: 28px; height: 28px;
+  border-color: var(--brand-3); border-style: solid; border-width: 0;
+}
+.qr-corner.tl { top: 12px; left: 12px; border-top-width: 3px; border-left-width: 3px; border-radius: 4px 0 0 0; }
+.qr-corner.tr { top: 12px; right: 12px; border-top-width: 3px; border-right-width: 3px; border-radius: 0 4px 0 0; }
+.qr-corner.bl { bottom: 12px; left: 12px; border-bottom-width: 3px; border-left-width: 3px; border-radius: 0 0 0 4px; }
+.qr-corner.br { bottom: 12px; right: 12px; border-bottom-width: 3px; border-right-width: 3px; border-radius: 0 0 4px 0; }
+
+/* Success state */
+.redeem-success {
+  display: flex; flex-direction: column; align-items: center;
+  gap: 12px; padding: 40px 20px; text-align: center;
+  animation: fade-in 0.25s ease;
+}
+.redeem-success-icon {
+  width: 64px; height: 64px; border-radius: 50%;
+  background: rgba(34,197,94,0.15); border: 2px solid rgba(34,197,94,0.3);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 32px; color: #4ade80;
+}
+.redeem-success h3 { font-size: 20px; font-weight: 700; color: var(--text-1); margin: 0; }
+.redeem-success p { font-size: 14px; color: var(--text-2); margin: 0; }
+
+/* Sidebar invite buttons */
+.invite-action-btns {
+  display: flex; gap: 4px; align-items: center;
+}
+.invite-sidebar-btn {
+  width: 36px; height: 36px; border-radius: 10px;
+  background: rgba(255,255,255,0.06); border: none;
+  cursor: pointer; display: flex; align-items: center; justify-content: center;
+  color: var(--text-2); transition: all 0.15s;
+}
+.invite-sidebar-btn:hover { background: var(--brand-2); color: #fff; }
+
 /* ── Coming soon page ──────────────────────────────────────────────────────── */
 .coming-soon-body {
   flex: 1; display: flex; flex-direction: column;

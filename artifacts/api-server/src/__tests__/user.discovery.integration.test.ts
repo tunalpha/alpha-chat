@@ -230,110 +230,49 @@ describe("GET /api/v1/users/:username", () => {
 // GET /api/v1/users/search
 // ---------------------------------------------------------------------------
 
-describe("GET /api/v1/users/search", () => {
+/**
+ * GET /api/v1/users/search — DISABILITATO (Sprint 9)
+ *
+ * La ricerca pubblica degli utenti è stata rimossa a favore del sistema
+ * di invito basato su codici monouso crittograficamente sicuri.
+ * L'endpoint ora restituisce 410 Gone per qualsiasi richiesta autenticata.
+ */
+describe("GET /api/v1/users/search (disabled — Sprint 9)", () => {
 
-  it("200 — ricerca per prefisso restituisce risultati", async () => {
+  it("410 Gone — endpoint disabilitato per privacy (con token)", async () => {
     const viewer = await registerUser("searchviewer1");
-    await registerUser("marcobianchi");
-    await registerUser("marcorossi");
-    await registerUser("luca_verdi");
 
     const res = await request(app)
       .get("/api/v1/users/search?q=marco")
       .set("Authorization", `Bearer ${viewer.accessToken}`)
-      .expect(200);
+      .expect(410);
 
-    expect(res.body.data).toHaveLength(2);
-    const usernames = res.body.data.map((u: { username: string }) => u.username);
-    expect(usernames).toContain("marcobianchi");
-    expect(usernames).toContain("marcorossi");
-    expect(usernames).not.toContain("luca_verdi");
+    expect(res.body.error.code).toBe("ENDPOINT_DEPRECATED");
   });
 
-  it("200 — l'utente corrente è escluso dai risultati", async () => {
-    const viewer = await registerUser("marcoviewer");
-    await registerUser("marcoaltro");
-
-    const res = await request(app)
-      .get("/api/v1/users/search?q=marco")
-      .set("Authorization", `Bearer ${viewer.accessToken}`)
-      .expect(200);
-
-    const usernames = res.body.data.map((u: { username: string }) => u.username);
-    expect(usernames).not.toContain("marcoviewer");
-    expect(usernames).toContain("marcoaltro");
-  });
-
-  it("200 — utenti sospesi o cancellati esclusi dalla ricerca", async () => {
+  it("410 Gone — anche senza parametri query (con token)", async () => {
     const viewer = await registerUser("searchviewer2");
-    const suspended = await registerUser("lucasospeso");
-
-    await UserModel.updateOne(
-      { _id: new mongoose.Types.ObjectId(suspended.userId) },
-      { status: "suspended" },
-    );
-
-    const res = await request(app)
-      .get("/api/v1/users/search?q=luca")
-      .set("Authorization", `Bearer ${viewer.accessToken}`)
-      .expect(200);
-
-    const usernames = res.body.data.map((u: { username: string }) => u.username);
-    expect(usernames).not.toContain("lucasospeso");
-  });
-
-  it("200 — paginazione: has_more e next_cursor presenti", async () => {
-    const viewer = await registerUser("searchviewer3");
-    // Crea 3 utenti con "zzz" prefisso
-    await registerUser("zzz_alpha");
-    await registerUser("zzz_beta");
-    await registerUser("zzz_gamma");
-
-    const res = await request(app)
-      .get("/api/v1/users/search?q=zzz&limit=2")
-      .set("Authorization", `Bearer ${viewer.accessToken}`)
-      .expect(200);
-
-    expect(res.body.data).toHaveLength(2);
-    expect(res.body.pagination.has_more).toBe(true);
-    expect(res.body.pagination.cursor).toBeTruthy();
-  });
-
-  it("200 — lista vuota se nessun risultato", async () => {
-    const viewer = await registerUser("searchviewer4");
-
-    const res = await request(app)
-      .get("/api/v1/users/search?q=xyznotfound")
-      .set("Authorization", `Bearer ${viewer.accessToken}`)
-      .expect(200);
-
-    expect(res.body.data).toHaveLength(0);
-    expect(res.body.pagination.has_more).toBe(false);
-  });
-
-  it("400 VALIDATION_ERROR — q troppo corto (< 2 chars)", async () => {
-    const viewer = await registerUser("searchviewer5");
-
-    const res = await request(app)
-      .get("/api/v1/users/search?q=a")
-      .set("Authorization", `Bearer ${viewer.accessToken}`)
-      .expect(400);
-
-    expect(res.body.error.code).toBe("VALIDATION_ERROR");
-  });
-
-  it("400 VALIDATION_ERROR — q mancante", async () => {
-    const viewer = await registerUser("searchviewer6");
 
     const res = await request(app)
       .get("/api/v1/users/search")
       .set("Authorization", `Bearer ${viewer.accessToken}`)
-      .expect(400);
+      .expect(410);
 
-    expect(res.body.error.code).toBe("VALIDATION_ERROR");
+    expect(res.body.error.code).toBe("ENDPOINT_DEPRECATED");
   });
 
-  it("401 — ricerca senza token", async () => {
+  it("410 Gone — anche con parametri non validi (con token)", async () => {
+    const viewer = await registerUser("searchviewer3");
+
+    const res = await request(app)
+      .get("/api/v1/users/search?q=a")
+      .set("Authorization", `Bearer ${viewer.accessToken}`)
+      .expect(410);
+
+    expect(res.body.error.code).toBe("ENDPOINT_DEPRECATED");
+  });
+
+  it("401 — senza token rimane non autorizzato", async () => {
     const res = await request(app).get("/api/v1/users/search?q=marco").expect(401);
     expect(res.body.error.code).toBe("UNAUTHORIZED");
   });

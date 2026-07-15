@@ -380,6 +380,39 @@ export async function apiSendMessage(
   });
 }
 
+// ---------------------------------------------------------------------------
+// Invites
+// ---------------------------------------------------------------------------
+
+export interface InviteData {
+  code: string;
+  expires_at: string;
+  invite_id: string;
+  qr_payload: string;
+}
+
+export interface RedeemResult {
+  conversation_id: string;
+  is_new: boolean;
+}
+
+/** Genera un nuovo codice invito (invalida i precedenti) */
+export async function apiGenerateInvite(
+  expiresInSeconds = 300,
+): Promise<InviteData> {
+  return request<InviteData>("POST", "/invites/generate", { expires_in_seconds: expiresInSeconds });
+}
+
+/** Riscatta un codice invito ricevuto */
+export async function apiRedeemInvite(code: string): Promise<RedeemResult> {
+  return request<RedeemResult>("POST", "/invites/redeem", { code });
+}
+
+/** Revoca tutti i codici invito attivi */
+export async function apiRevokeInvites(): Promise<{ revoked: number }> {
+  return request<{ revoked: number }>("DELETE", "/invites/mine");
+}
+
 export async function apiListMessages(
   conversationId: string,
   options: { limit?: number; beforeSequence?: number } = {},

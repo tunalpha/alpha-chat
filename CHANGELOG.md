@@ -5,6 +5,43 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ---
 
+## [0.9.0] — Sprint 9 — Invita Persona (Privacy-First) — 2026-07-15
+
+### Added (Backend)
+- `src/models/invite.model.ts` — collezione `invites`: `code_hash` (SHA-256), `owner_id`, `expires_at`, `used`, `used_by`. TTL index su `expires_at` → auto-delete MongoDB.
+- `src/repositories/invite.repository.ts` — `create()`, `findValidByHash()`, `markUsed()` (atomic), `listActive()`, `deleteAllActive()`, `deleteOwned()`
+- `src/services/invite.service.ts` — `generateInvite()` (CSPRNG, 16 char, salva solo hash), `redeemInvite()` (verifica hash, atomic markUsed, crea conversazione), `revokeMyInvites()`
+- `src/validation/invite.schemas.ts` — `GenerateInviteSchema`, `RedeemInviteSchema` (normalizza codice: uppercase, strip non-alfanumerico)
+- `src/controllers/invite.controller.ts` — `generateInvite`, `redeemInvite`, `revokeMyInvites`
+- `src/routes/v1/invite.routes.ts` — montato su `/api/v1/invites`
+- Nuovi codici errore: `INVITE_INVALID`, `INVITE_SELF_REDEEM`
+- Nuovi eventi audit: `INVITE_GENERATED`, `INVITE_REDEEMED`, `INVITE_REDEEM_FAILED`, `INVITE_REVOKED`
+
+### Added (Frontend)
+- `src/components/InviteModal.tsx` — genera codice, QR code (libreria `qrcode`), countdown live, pulsante Rigenera
+- `src/components/RedeemModal.tsx` — inserisci codice + scanner QR live (camera + `jsqr`), stato successo
+- `src/lib/api.ts` — `apiGenerateInvite()`, `apiRedeemInvite()`, `apiRevokeInvites()`
+- `src/index.css` — 214 righe CSS: modal, QR frame con angoli animati, code monospace, countdown urgente, scanner overlay
+
+### Changed
+- `src/routes/v1/user.routes.ts` — `GET /users/search` ora restituisce **410 Gone** (`ENDPOINT_DEPRECATED`). La ricerca pubblica è eliminata.
+- `src/pages/ChatPage.tsx` — rimossa ricerca utenti, aggiunti pulsanti "Invita persona" + "Inserisci codice" nella sidebar + schermata vuota
+- `src/tests/user.discovery.integration.test.ts` — 7 test legacy rimossi, sostituiti con 4 test che verificano il comportamento 410
+
+### Security
+- Codici CSPRNG: alfabeto 32 caratteri (no I, O, 0, 1), 16 caratteri, ~80 bit di entropia
+- Solo SHA-256 hash salvato in DB — il codice grezzo non è mai persistito
+- Audit log registra solo `code_hash_prefix` (8 hex) per correlazione, mai il codice grezzo
+- Rate limit: max 5 tentativi di riscatto per IP ogni 10 minuti (in-memory / Redis fallback)
+- Risposta generica su codice non valido, scaduto o già usato (no oracle)
+- Atomic `markUsed` — protezione race condition (due utenti stessi codice contemporaneamente)
+- TTL MongoDB → nessun codice scaduto rimane in DB
+
+### Tests
+- 122/122 ✅
+
+---
+
 ## [0.8.0] — Sprint 8 — UI/UX Polish (Mobile First) — 2026-07-15
 
 ### Added (Frontend only — nessuna modifica API/WS/DB)
