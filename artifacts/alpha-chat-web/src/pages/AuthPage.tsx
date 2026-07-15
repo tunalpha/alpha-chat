@@ -47,7 +47,11 @@ export default function AuthPage() {
       <div className="auth-card">
         {/* Logo */}
         <div className="auth-logo">
-          <span className="auth-logo-icon">α</span>
+          <img
+            src={`${import.meta.env.BASE_URL}logo.png`}
+            alt="Alpha Chat"
+            className="auth-logo-img"
+          />
           <span className="auth-logo-text">Alpha Chat</span>
         </div>
 
