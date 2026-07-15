@@ -5,6 +5,31 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ---
 
+## [0.5.1] — Sprint 5B — Chat Creation — 2026-07-15
+
+### Added
+- `src/models/conversation.model.ts` — collection `conversations` (direct/group/channel), include `last_activity_at` (separato da `updatedAt`), `last_message_id`
+- `src/models/conversation-member.model.ts` — collection `conversation_members` include `archived`, `pinned`, `pinned_at` (CTO recommendation)
+- `src/repositories/conversation.repository.ts` — `findDirectBetween()`, `create()`, `findById()`, `incrementMemberCount()`
+- `src/repositories/conversation-member.repository.ts` — `addMember()`, `findMembership()`, `listMembers()`, `listByUser()`
+- `src/validation/conversation.schemas.ts` — `CreateConversationSchema`, `ListConversationsSchema`
+- `src/services/conversation.service.ts` — `createDirectConversation()` (idempotente), `listConversations()` (con other_user per direct)
+- `src/controllers/conversation.controller.ts`
+- `src/routes/v1/conversation.routes.ts` — POST `/`, GET `/`
+- `src/routes/v1/index.ts` — montato `/api/v1/conversations`
+- `src/lib/audit.ts` — evento `CONVERSATION_CREATED`
+- `src/__tests__/conversation.integration.test.ts` — 14 test integrazione
+
+### Behaviour
+- `POST /api/v1/conversations { username }` — 201 se nuova, 200 se già esistente (idempotente)
+- `GET /api/v1/conversations` — lista ordinata per `last_activity_at` desc; include `other_user` per chat dirette
+- `CANNOT_CHAT_WITH_SELF` error code già presente da Sprint 2
+
+### Tests
+- 107/107 ✅ (93 precedenti + 14 conversation)
+
+---
+
 ## [0.5.0] — Sprint 5A — User Discovery — 2026-07-15
 
 ### Added

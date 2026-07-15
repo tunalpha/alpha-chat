@@ -49,7 +49,9 @@ export type AuditEventType =
   | "2FA_DISABLED"
   // Account lifecycle
   | "ACCOUNT_DELETED"
-  | "USERNAME_CHANGED";
+  | "USERNAME_CHANGED"
+  // Conversations (Sprint 5B)
+  | "CONVERSATION_CREATED";
 
 export interface AuditEvent {
   event: AuditEventType;
