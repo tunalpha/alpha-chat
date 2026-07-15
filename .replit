@@ -18,3 +18,14 @@ expertMode = true
 [postMerge]
 path = "scripts/post-merge.sh"
 timeoutMs = 20000
+
+[userenv]
+
+[userenv.production]
+JWT_KEY_ID = "alpha-chat-v1"
+JWT_PUBLIC_KEY = """
+-----BEGIN PUBLIC KEY-----
+MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEo3C0JlwOJ6pj5Zrz/ydgSBxK8MWO
+lgyD53PvJUN093uY+2aNbnPy3QIc7jCF2z3TCtMamPf7vaFSogYNiq3Fjg==
+-----END PUBLIC KEY-----"""
+PHONE_HMAC_PEPPER = "2322a6207a5af3652e3cde48d56ecfd903b4c92c836a7b6da6d3e2a4fdba7761"
