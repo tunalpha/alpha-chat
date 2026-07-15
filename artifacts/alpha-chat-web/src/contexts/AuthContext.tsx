@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { loadAuth, saveAuth, clearAuth, getDeviceId, type StoredAuth } from "../lib/auth";
-import { apiLogin, apiRegister, apiLogout, type LoginInput, type RegisterInput, type AuthResult } from "../lib/api";
+import { apiLogin, apiRegister, apiLogout, apiLogoutAll, type LoginInput, type RegisterInput, type AuthResult } from "../lib/api";
 
 interface AuthContextValue {
   auth: StoredAuth | null;
@@ -8,6 +8,7 @@ interface AuthContextValue {
   login: (input: LoginInput) => Promise<void>;
   register: (input: RegisterInput) => Promise<void>;
   logout: () => Promise<void>;
+  logoutAll: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -58,8 +59,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setAuth(null);
   }, []);
 
+  const logoutAll = useCallback(async () => {
+    await apiLogoutAll();
+    clearAuth();
+    setAuth(null);
+  }, []);
+
   return (
-    <AuthContext.Provider value={{ auth, isLoading, login, register, logout }}>
+    <AuthContext.Provider value={{ auth, isLoading, login, register, logout, logoutAll }}>
       {children}
     </AuthContext.Provider>
   );

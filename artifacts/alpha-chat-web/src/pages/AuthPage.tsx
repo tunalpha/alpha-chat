@@ -10,11 +10,13 @@ export default function AuthPage() {
   // Login form state
   const [loginIdentifier, setLoginIdentifier] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
+  const [showLoginPwd, setShowLoginPwd] = useState(false);
 
   // Register form state
   const [regUsername, setRegUsername] = useState("");
   const [regDisplayName, setRegDisplayName] = useState("");
   const [regPassword, setRegPassword] = useState("");
+  const [showRegPwd, setShowRegPwd] = useState(false);
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -88,14 +90,37 @@ export default function AuthPage() {
               autoFocus
             />
             <label className="auth-label">Password</label>
-            <input
-              className="auth-input"
-              type="password"
-              value={loginPassword}
-              onChange={(e) => setLoginPassword(e.target.value)}
-              placeholder="••••••••"
-              required
-            />
+            <div className="pwd-wrapper">
+              <input
+                className="auth-input pwd-input"
+                type={showLoginPwd ? "text" : "password"}
+                value={loginPassword}
+                onChange={(e) => setLoginPassword(e.target.value)}
+                placeholder="••••••••"
+                required
+              />
+              <button
+                type="button"
+                className="pwd-toggle"
+                aria-label={showLoginPwd ? "Nascondi password" : "Mostra password"}
+                onClick={() => setShowLoginPwd((v) => !v)}
+              >
+                {showLoginPwd ? (
+                  /* eye-off */
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/>
+                    <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/>
+                    <line x1="1" y1="1" x2="23" y2="23"/>
+                  </svg>
+                ) : (
+                  /* eye */
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                    <circle cx="12" cy="12" r="3"/>
+                  </svg>
+                )}
+              </button>
+            </div>
             <button className="auth-btn" type="submit" disabled={loading}>
               {loading ? "Accesso in corso..." : "Accedi"}
             </button>
@@ -130,15 +155,36 @@ export default function AuthPage() {
               required
             />
             <label className="auth-label">Password</label>
-            <input
-              className="auth-input"
-              type="password"
-              value={regPassword}
-              onChange={(e) => setRegPassword(e.target.value)}
-              placeholder="Min. 8 caratteri"
-              minLength={8}
-              required
-            />
+            <div className="pwd-wrapper">
+              <input
+                className="auth-input pwd-input"
+                type={showRegPwd ? "text" : "password"}
+                value={regPassword}
+                onChange={(e) => setRegPassword(e.target.value)}
+                placeholder="Min. 8 caratteri"
+                minLength={8}
+                required
+              />
+              <button
+                type="button"
+                className="pwd-toggle"
+                aria-label={showRegPwd ? "Nascondi password" : "Mostra password"}
+                onClick={() => setShowRegPwd((v) => !v)}
+              >
+                {showRegPwd ? (
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/>
+                    <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/>
+                    <line x1="1" y1="1" x2="23" y2="23"/>
+                  </svg>
+                ) : (
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+                    <circle cx="12" cy="12" r="3"/>
+                  </svg>
+                )}
+              </button>
+            </div>
             <button className="auth-btn" type="submit" disabled={loading}>
               {loading ? "Registrazione..." : "Crea account"}
             </button>
@@ -146,9 +192,7 @@ export default function AuthPage() {
         )}
 
         <p className="auth-hint">
-          {tab === "login"
-            ? "Non hai un account? "
-            : "Hai già un account? "}
+          {tab === "login" ? "Non hai un account? " : "Hai già un account? "}
           <button
             className="auth-link"
             onClick={() => { setTab(tab === "login" ? "register" : "login"); setError(""); }}

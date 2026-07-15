@@ -291,6 +291,10 @@ export async function apiLogout(): Promise<void> {
   await request<void>("POST", "/auth/logout").catch(() => {});
 }
 
+export async function apiLogoutAll(): Promise<void> {
+  await request<void>("POST", "/auth/logout-all").catch(() => {});
+}
+
 // ---------------------------------------------------------------------------
 // Users
 // ---------------------------------------------------------------------------
