@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import mongoose, { type Document, type Model, Schema } from "mongoose";
 
 // ---------------------------------------------------------------------------
@@ -14,19 +15,29 @@ export interface ISession {
 
   // Token
   refresh_token_hash: string;
+  /**
+   * previous_refresh_token_hash — hash dell'ultimo token ruotato.
+   * Conservato per 1 livello per rilevare il riutilizzo (S-03 theft detection).
+   * Se un client presenta un token il cui hash è qui → REFRESH_TOKEN_REUSED.
+   */
+  previous_refresh_token_hash: string | null;
   expires_at: Date;
+  /**
+   * family_id — UUID che identifica la catena di rotazione di questa sessione.
+   * Generato alla creazione, mai modificato durante le rotazioni.
+   * Usato per: audit trail, revoca famiglia su token theft detection.
+   */
+  family_id: string;
 
-  // Geolocalizzazione
+  // Geolocalizzazione (CTO review: solo country_code, no city/coordinate)
   ip_hash: string | null;
   country_code: string | null;
-  city: string | null;
 
   // Push
   push_token: string | null;
   push_enabled: boolean;
 
-  // Device Trust (CTO review Sprint 2)
-  // Dopo 3 login consecutivi dallo stesso device → is_trusted = true
+  // Device Trust (after DEVICE_TRUST_THRESHOLD consecutive logins → is_trusted)
   login_count: number;
   is_trusted: boolean;
 
@@ -60,11 +71,12 @@ const sessionSchema = new Schema<ISessionDocument>(
     },
 
     refresh_token_hash: { type: String, required: true, unique: true },
+    previous_refresh_token_hash: { type: String, default: null },
     expires_at: { type: Date, required: true },
+    family_id: { type: String, default: () => randomUUID() },
 
     ip_hash: { type: String, default: null },
     country_code: { type: String, default: null, maxlength: 2 },
-    city: { type: String, default: null, maxlength: 100 },
 
     push_token: { type: String, default: null },
     push_enabled: { type: Boolean, default: true },
@@ -87,6 +99,8 @@ const sessionSchema = new Schema<ISessionDocument>(
 
 sessionSchema.index({ user_id: 1 });
 sessionSchema.index({ user_id: 1, device_id: 1 }, { unique: true });
+sessionSchema.index({ family_id: 1 });
+sessionSchema.index({ previous_refresh_token_hash: 1 }, { sparse: true });
 sessionSchema.index({ expires_at: 1 }, { expireAfterSeconds: 0 });
 
 // ---------------------------------------------------------------------------

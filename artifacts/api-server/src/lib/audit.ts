@@ -5,7 +5,7 @@
  *   event, user_id, device_id, request_id, created_at, metadata.
  *
  * In development: stdout via pino (JSON).
- * In production (Sprint 4+): persistiti su MongoDB (audit_events collection)
+ * In production (Sprint 5+): persistiti su MongoDB (audit_events collection)
  *   + forwarded a SIEM esterno.
  *
  * Regola: un audit event non deve mai fallire silenziosamente.
@@ -14,11 +14,9 @@
 
 import pino from "pino";
 
-// Audit logger separato dall'app logger — stream dedicato in produzione
 const auditLogger = pino({
   name: "audit",
   level: process.env["LOG_LEVEL"] ?? "info",
-  // In prod verrà configurato con un transport verso MongoDB/SIEM
 });
 
 // ---------------------------------------------------------------------------
@@ -26,20 +24,30 @@ const auditLogger = pino({
 // ---------------------------------------------------------------------------
 
 export type AuditEventType =
+  // Registrazione
   | "USER_REGISTERED"
+  // Login / Logout
   | "USER_LOGIN"
   | "USER_LOGIN_FAILED"
   | "USER_LOGOUT"
   | "USER_LOGOUT_ALL"
+  // Token
+  | "REFRESH_TOKEN_REUSED"         // CTO Sprint 4
+  // Account
   | "PASSWORD_CHANGED"
   | "PASSWORD_RESET_REQUESTED"
   | "ACCOUNT_LOCKED"
+  // Sessioni / Device
   | "SESSION_REVOKED"
   | "SESSION_REVOKED_ALL"
-  | "REFRESH_TOKEN_REUSED"   // token theft detection
   | "NEW_DEVICE_LOGIN"
+  | "DEVICE_REMOVED"               // CTO Sprint 4
+  | "DEVICE_RENAMED"               // CTO Sprint 4
+  | "TRUST_STATUS_CHANGED"         // CTO Sprint 4
+  // 2FA
   | "2FA_ENABLED"
   | "2FA_DISABLED"
+  // Account lifecycle
   | "ACCOUNT_DELETED"
   | "USERNAME_CHANGED";
 
@@ -47,6 +55,7 @@ export interface AuditEvent {
   event: AuditEventType;
   user_id?: string;
   device_id?: string;
+  family_id?: string;              // CTO Sprint 4 — refresh token family
   request_id?: string;
   ip_hash?: string;
   country_code?: string | null;
@@ -66,6 +75,6 @@ export function logAuditEvent(event: AuditEvent): void {
   try {
     auditLogger.info({ ...event }, `audit:${event.event}`);
   } catch {
-    // Fallback silenzioso — non bloccare l'operazione principale
+    // Fallback silenzioso
   }
 }

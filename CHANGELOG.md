@@ -5,20 +5,61 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 
 ---
 
-## [Unreleased] — Sprint 3
+## [0.4.0] — Sprint 4 — 2026-07-15
+
+### Added
+- `POST /api/v1/auth/refresh` — rotazione obbligatoria RT (invariante S-02)
+- `POST /api/v1/auth/logout` — revoca sessione corrente + JTI blocklist
+- `POST /api/v1/auth/logout-all` — revoca tutte le sessioni
+- `src/lib/jti-blocklist.ts` — blocklist Redis per access token revocati
+- `src/lib/geoip.ts` — stub GeoIP (country code only, lookup reale in Sprint 5)
+- `src/middleware/authenticate.middleware.ts` — verifica JWT + JTI blocklist
+- Milestone `AlphaChatDocs/M1_Authentication_Complete.md` — auth in maintenance mode
+
+### Changed
+- `src/models/session.model.ts` — aggiunto `family_id` (UUID immutabile, tracking catena RT)
+- `src/services/refresh-token.service.ts` — S-03: revoca per `family_id` (non più per user_id)
+- `src/repositories/session.repository.ts` — `upsert` usa `$setOnInsert` per `family_id`; aggiunto `revokeFamilyByFamilyId`, `findByUserDevice`, `revokeByUserDevice`
+- `src/types/express.d.ts` — aggiunto `req.user` (userId, deviceId, roles, jti, accessTokenExpiresAt)
+- `src/lib/audit.ts` — aggiunto: REFRESH_TOKEN_REUSED, DEVICE_REMOVED, DEVICE_RENAMED, TRUST_STATUS_CHANGED
+- `src/lib/redis.ts` — esposto `_resetRedisClient()` per reset tra i test
+
+### Security
+- JTI blocklist: AT revocato immediatamente (non attendere scadenza 15min)
+- S-03 potenziato: revoca per `family_id` invece di tutti gli utenti (più precisa)
+- Token theft detection: REFRESH_TOKEN_REUSED audit con `family_id` in metadata
+
+### Tests
+- 79/79 ✅ (25 unit + 17 register + 20 login + 9 refresh + 8 logout)
+
+---
+
+## [0.3.0] — Sprint 3 — 2026-07-15
 
 ### Added
 - `POST /api/v1/auth/login` — login con username/email + password
 - Rate limiting login falliti (sliding window, Redis-optional)
 - Device Trust — `is_trusted`, `login_count` nella session
-- Notifica nuovo dispositivo (framework WebSocket — Sprint 4)
+- Notifica nuovo dispositivo (framework: audit + log; WebSocket delivery: Sprint 7)
 - `src/lib/redis.ts` — client Upstash opzionale con fallback InMemoryRedis
 - `src/lib/rate-limiter.ts` — sliding window rate limiter
-- Audit log `USER_LOGIN`, `USER_LOGIN_FAILED`, `NEW_DEVICE_LOGIN`
+- `src/lib/reserved-usernames.ts` — blacklist 40+ username riservati + RESERVED_USERNAMES_EXTRA
+- `src/lib/audit.ts` — audit logging strutturato
+- Audit log: USER_LOGIN, USER_LOGIN_FAILED, NEW_DEVICE_LOGIN, ACCOUNT_LOCKED
 - `src/__tests__/auth.login.integration.test.ts`
+- `CHANGELOG.md`
 
 ### Changed
 - `src/models/session.model.ts` — aggiunto `is_trusted`, `login_count`
+- `src/validation/auth.schemas.ts` — blacklist riservata, decisione ASCII-only documentata
+
+### Security
+- Anti-enumeration: risposta identica per "utente non trovato" e "password errata"
+- Blocco account graduale: 10/20/30 tentativi → 15min/1h/24h
+- Ordine: Password Verify PRIMA di Rate Limit (CTO requirement)
+
+### Tests
+- 59/59 ✅
 
 ---
 
@@ -49,39 +90,29 @@ Versioning: [Semantic Versioning](https://semver.org/spec/v2.0.0.html)
 - `LOG_LEVEL=silent` aggiunto all'enum Zod per supporto test
 
 ### Security
-- Password: Argon2id (memoryCost 64MB, timeCost 3, parallelism 4) — OWASP 2024
+- Password: Argon2id (memoryCost 64MB, timeCost 3, parallelism 4)
 - JWT: ES256 con `kid`, `nbf`, `exp`, `iss`, `aud` verificati
 - Refresh token: hashati SHA-256, rotazione obbligatoria, token theft detection
 - Phone: HMAC-SHA256 con pepper server-side
 
 ### Tests
-- 42/42 ✅ (25 unit + 17 integrazione)
+- 42/42 ✅
 
 ---
 
 ## [0.1.0] — Sprint 1 — 2026-07-15
 
 ### Added
-- `src/config/index.ts` — Zod env validation, fail-fast se env mancante
-- `src/errors/AppError.ts` — classe base errori con code, httpStatus, field, details
-- `src/errors/error-codes.ts` — 40+ codici errore con messaggi in italiano
-- `src/errors/error-handler.ts` — global Express error handler
-- `src/utils/response.ts` — factory successResponse, paginatedResponse, errorResponse
-- `src/middleware/request-id.middleware.ts` — UUID per ogni request
-- `src/middleware/client-version.middleware.ts` — X-Client-Version check
-- `src/middleware/validate.middleware.ts` — Zod wrapper per body/query/params
-- `src/lib/mongodb.ts` — connessione Mongoose con graceful shutdown
-- `src/routes/v1/system.routes.ts` — GET /health, /version, /status
-- `src/services/password.service.ts` — Argon2id hash/verify
-- `src/services/jwt.service.ts` — ES256 JWT sign/verify
-- `src/services/refresh-token.service.ts` — generate, hash, rotate, revoke
-- Helmet, CORS, pino-http nel middleware stack
-- Graceful shutdown SIGTERM/SIGINT in `src/index.ts`
+- Config Zod fail-fast, Pino logger, MongoDB + graceful shutdown
+- AppError, error-codes (40+ codici IT), error-handler globale
+- Response factory: successResponse, paginatedResponse, errorResponse
+- Middleware: RequestID, ClientVersion, Validate (Zod)
+- Route versionate `/api/v1/` con system routes (health, version, status)
+- Servizi: password.service (Argon2id), jwt.service (ES256), refresh-token.service
 
 ### Security
-- Algoritmo JWT: ES256 (ECDSA P-256) — conforme 04b_Security.md
+- JWT: ES256 (ECDSA P-256)
 - Password: Argon2id
-- Refresh token: formato `rt_<32 byte hex>`, SHA-256 nel DB
 
 ### Tests
-- 25/25 ✅ (unit tests: password, jwt, refresh-token)
+- 25/25 ✅

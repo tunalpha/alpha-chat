@@ -11,11 +11,15 @@
  *   → Session → JWT → Refresh → Response → Audit Log
  */
 
-import { createHmac } from "node:crypto";
+import { createHmac, createHash } from "node:crypto";
 import { AppError } from "../errors/AppError";
 import { hashPassword, verifyPassword } from "./password.service";
 import { signAccessToken } from "./jwt.service";
-import { generateRefreshToken } from "./refresh-token.service";
+import {
+  generateRefreshToken,
+  rotateRefreshToken,
+  revokeAllSessions,
+} from "./refresh-token.service";
 import { UserRepository } from "../repositories/user.repository";
 import { SessionRepository } from "../repositories/session.repository";
 import { UserPrekeysModel } from "../models/user-prekeys.model";
@@ -24,8 +28,8 @@ import {
   recordFailedAttempt,
   clearFailedAttempts,
   loginFailKey,
-  LOGIN_THRESHOLDS,
 } from "../lib/rate-limiter";
+import { blockJti } from "../lib/jti-blocklist";
 import { logAuditEvent } from "../lib/audit";
 import { logger } from "../lib/logger";
 import type { RegisterInput, LoginInput } from "../validation/auth.schemas";
@@ -35,7 +39,7 @@ import type { IUserDocument } from "../models/user.model";
 // Constants
 // ---------------------------------------------------------------------------
 
-const DEVICE_TRUST_THRESHOLD = 3; // login consecutivi prima di diventare trusted
+const DEVICE_TRUST_THRESHOLD = 3;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -66,25 +70,7 @@ const userRepo = new UserRepository();
 const sessionRepo = new SessionRepository();
 
 // ---------------------------------------------------------------------------
-// Shared token builder
-// ---------------------------------------------------------------------------
-
-async function buildTokens(
-  userId: string,
-  deviceId: string,
-  sessionExpiresAt: Date,
-) {
-  const { token: accessToken, expiresAt: accessExpiresAt } = await signAccessToken({
-    userId,
-    deviceId,
-    roles: [],
-  });
-  const refreshToken = generateRefreshToken();
-  return { accessToken, refreshToken, accessExpiresAt, refreshExpiresAt: sessionExpiresAt };
-}
-
-// ---------------------------------------------------------------------------
-// Register
+// Types
 // ---------------------------------------------------------------------------
 
 export interface AuthResult {
@@ -98,6 +84,10 @@ export interface AuthResult {
   is_new_device: boolean;
   requires_2fa: false;
 }
+
+// ---------------------------------------------------------------------------
+// Register
+// ---------------------------------------------------------------------------
 
 export interface RegisterServiceParams extends RegisterInput {
   userAgent?: string | null;
@@ -136,8 +126,10 @@ export async function register(params: RegisterServiceParams): Promise<AuthResul
 
   // 4 & 5. Hash password + crea utente
   const passwordHash = await hashPassword(password);
-  const user = await userRepo.create({ username, display_name, password_hash: passwordHash,
-    email: email ?? null, phone_hash: phoneHash });
+  const user = await userRepo.create({
+    username, display_name, password_hash: passwordHash,
+    email: email ?? null, phone_hash: phoneHash,
+  });
 
   // 6. Signal keys (opzionali)
   if (signal_keys) {
@@ -165,12 +157,9 @@ export async function register(params: RegisterServiceParams): Promise<AuthResul
   // 8. Audit
   logAuditEvent({
     event: "USER_REGISTERED",
-    user_id: user._id.toString(),
-    device_id,
-    request_id: requestId,
-    ip_hash: ipHash ?? undefined,
-    country_code: countryCode,
-    created_at: new Date().toISOString(),
+    user_id: user._id.toString(), device_id,
+    request_id: requestId, ip_hash: ipHash ?? undefined,
+    country_code: countryCode, created_at: new Date().toISOString(),
     metadata: { username },
   });
 
@@ -179,8 +168,7 @@ export async function register(params: RegisterServiceParams): Promise<AuthResul
   return {
     user: formatUserProfile(user),
     tokens: {
-      access_token: accessToken,
-      refresh_token: refreshToken,
+      access_token: accessToken, refresh_token: refreshToken,
       access_token_expires_at: accessExpiresAt.toISOString(),
       refresh_token_expires_at: session.expires_at.toISOString(),
     },
@@ -213,93 +201,69 @@ export type LoginResult =
 
 /**
  * Login con username/email + password.
- * Ordine (CTO review + 08_Authentication_Flow.md):
- * Repository → Password Verify → Rate Limit → Device Trust → Session → JWT → Audit
+ * Ordine: Repository → Password Verify → Rate Limit → Device Trust → Session → JWT → Audit
  */
 export async function login(params: LoginServiceParams): Promise<LoginResult> {
   const { identifier, password, device_id, device_name, device_type,
     userAgent, ipHash, countryCode, requestId } = params;
 
-  // 1. Trova utente (username o email)
+  // 1. Trova utente
   const isEmail = identifier.includes("@");
   const user = isEmail
     ? await userRepo.findByEmail(identifier)
     : await userRepo.findByUsername(identifier);
 
-  // Risposta uguale per "non trovato" e "password errata" (anti-enumeration)
   if (!user) {
-    logger.warn({ identifier: isEmail ? "[email]" : identifier }, "Login failed: user not found");
+    logger.warn({ identifier: isEmail ? "[email]" : identifier }, "Login failed: not found");
     throw new AppError("INVALID_CREDENTIALS", 401);
   }
 
-  // 2. Account sospeso
-  if (user.status === "suspended") {
-    throw new AppError("ACCOUNT_SUSPENDED", 403);
-  }
+  // 2. Account sospeso / bloccato
+  if (user.status === "suspended") throw new AppError("ACCOUNT_SUSPENDED", 403);
+  if (user.locked_until && user.locked_until > new Date()) throw new AppError("ACCOUNT_LOCKED", 423);
 
-  // 3. Account bloccato
-  if (user.locked_until && user.locked_until > new Date()) {
-    throw new AppError("ACCOUNT_LOCKED", 423);
-  }
-
-  // 4. Verifica password
+  // 3. Verifica password
   const passwordOk = user.password_hash
     ? await verifyPassword(user.password_hash, password)
     : false;
 
-  // 5. Rate limit — gestito DOPO password verify (ordine CTO)
+  // 4. Rate limit — DOPO password verify (ordine CTO)
   if (!passwordOk) {
     const { shouldLock, lockMinutes } = await recordFailedAttempt(loginFailKey(user._id.toString()));
-
     if (shouldLock && lockMinutes > 0) {
       const lockedUntil = new Date(Date.now() + lockMinutes * 60 * 1000);
       await userRepo.lockAccount(user._id, lockedUntil);
-      logger.warn({ userId: user._id.toString(), lockMinutes }, "Account locked");
       logAuditEvent({ event: "ACCOUNT_LOCKED", user_id: user._id.toString(),
         ip_hash: ipHash ?? undefined, created_at: new Date().toISOString(),
         metadata: { lockMinutes } });
     }
-
     logAuditEvent({ event: "USER_LOGIN_FAILED", user_id: user._id.toString(),
       device_id, request_id: requestId, ip_hash: ipHash ?? undefined,
       created_at: new Date().toISOString() });
-
     throw new AppError("INVALID_CREDENTIALS", 401);
   }
 
-  // 6. Password corretta — azzera contatore
+  // 5. Password corretta — azzera contatore
   await clearFailedAttempts(loginFailKey(user._id.toString()));
   await userRepo.recordSuccessfulLogin(user._id, { ipHash: ipHash ?? null, countryCode: countryCode ?? null });
 
-  // 7. 2FA (se abilitato)
+  // 6. 2FA
   if (user.totp_enabled) {
-    // TODO Sprint 5: genera challenge token e lo persiste in Redis
-    // Per ora ritorniamo un placeholder — il client mostrerà la schermata TOTP
     const challengeToken = `chall_${Date.now()}`;
     const expiresAt = new Date(Date.now() + 5 * 60 * 1000).toISOString();
-
-    // Determina se il device è nuovo (per il branch is_new_device dopo 2FA)
-    const existingSession = await SessionModel.findOne({
-      user_id: user._id, device_id, deleted_at: null,
-    });
-
+    const existingSession = await SessionModel.findOne({ user_id: user._id, device_id, deleted_at: null });
     return {
-      requires_2fa: true,
-      totp_challenge_token: challengeToken,
-      totp_challenge_expires_at: expiresAt,
-      user: null,
-      tokens: null,
+      requires_2fa: true, totp_challenge_token: challengeToken,
+      totp_challenge_expires_at: expiresAt, user: null, tokens: null,
       is_new_device: existingSession === null,
     };
   }
 
-  // 8. Device Trust — check se device è già noto
-  const existingSession = await SessionModel.findOne({
-    user_id: user._id, device_id, deleted_at: null,
-  });
+  // 7. Device Trust
+  const existingSession = await SessionModel.findOne({ user_id: user._id, device_id, deleted_at: null });
   const isNewDevice = existingSession === null;
 
-  // 9. Sessione + tokens
+  // 8. Sessione + tokens
   const refreshToken = generateRefreshToken();
   const { session } = await sessionRepo.upsert({
     userId: user._id, deviceId: device_id, deviceName: device_name ?? null,
@@ -307,44 +271,160 @@ export async function login(params: LoginServiceParams): Promise<LoginResult> {
     countryCode: countryCode ?? null, ipHash: ipHash ?? null, userAgent: userAgent ?? null,
   });
 
-  // Aggiorna login_count e is_trusted
+  // Incrementa login_count e aggiorna is_trusted
   const newLoginCount = (existingSession?.login_count ?? 0) + 1;
   const isTrusted = newLoginCount >= DEVICE_TRUST_THRESHOLD;
-  await SessionModel.updateOne(
-    { _id: session._id },
-    { login_count: newLoginCount, is_trusted: isTrusted },
-  );
+  await SessionModel.updateOne({ _id: session._id }, { login_count: newLoginCount, is_trusted: isTrusted });
 
   const { token: accessToken, expiresAt: accessExpiresAt } = await signAccessToken({
     userId: user._id.toString(), deviceId: device_id, roles: [],
   });
 
-  // 10. Audit
+  // 9. Audit
   logAuditEvent({
     event: isNewDevice ? "NEW_DEVICE_LOGIN" : "USER_LOGIN",
-    user_id: user._id.toString(),
-    device_id, request_id: requestId, ip_hash: ipHash ?? undefined,
-    country_code: countryCode, created_at: new Date().toISOString(),
+    user_id: user._id.toString(), device_id,
+    request_id: requestId, ip_hash: ipHash ?? undefined, country_code: countryCode,
+    created_at: new Date().toISOString(),
     metadata: { is_trusted: isTrusted, login_count: newLoginCount },
   });
 
   if (isNewDevice) {
-    logger.info({ userId: user._id.toString(), deviceId: device_id }, "New device login detected");
-    // TODO Sprint 4: emetti WebSocket event agli altri device dell'utente
+    logger.info({ userId: user._id.toString(), deviceId: device_id }, "New device login");
+    // TODO Sprint 7: WebSocket event agli altri device dell'utente
   }
 
   return {
     user: formatUserProfile(user),
     tokens: {
-      access_token: accessToken,
-      refresh_token: refreshToken,
+      access_token: accessToken, refresh_token: refreshToken,
       access_token_expires_at: accessExpiresAt.toISOString(),
       refresh_token_expires_at: session.expires_at.toISOString(),
     },
-    is_new_device: isNewDevice,
-    requires_2fa: false,
+    is_new_device: isNewDevice, requires_2fa: false,
   };
 }
 
-// Re-export per compatibilità
-export { buildTokens };
+// ---------------------------------------------------------------------------
+// Refresh
+// ---------------------------------------------------------------------------
+
+export interface RefreshServiceParams {
+  refreshToken: string;
+  requestId?: string;
+  ipHash?: string | null;
+}
+
+/**
+ * Ruota il refresh token e rilascia nuovi token.
+ * Invariante S-02: ogni refresh token è monouso.
+ * Invariante S-03: se il token è già stato usato → revoca famiglia + audit.
+ */
+export async function refresh(params: RefreshServiceParams): Promise<{
+  tokens: AuthResult["tokens"];
+}> {
+  const { refreshToken, requestId, ipHash } = params;
+
+  const { newRefreshToken, session } = await rotateRefreshToken(
+    refreshToken,
+    { requestId: requestId, ipHash: ipHash ?? undefined },
+  );
+
+  const { token: accessToken, expiresAt: accessExpiresAt } = await signAccessToken({
+    userId: session.user_id.toString(),
+    deviceId: session.device_id,
+    roles: [],
+  });
+
+  logger.info(
+    { userId: session.user_id.toString(), deviceId: session.device_id },
+    "Token refreshed",
+  );
+
+  return {
+    tokens: {
+      access_token: accessToken,
+      refresh_token: newRefreshToken,
+      access_token_expires_at: accessExpiresAt.toISOString(),
+      refresh_token_expires_at: session.expires_at.toISOString(),
+    },
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Logout (sessione corrente)
+// ---------------------------------------------------------------------------
+
+export interface LogoutServiceParams {
+  userId: string;
+  deviceId: string;
+  jti: string;
+  accessTokenExpiresAt: Date;
+  requestId?: string;
+  ipHash?: string | null;
+}
+
+/**
+ * Revoca la sessione del device corrente e aggiunge il JTI alla blocklist.
+ * L'access token diventa immediatamente inutilizzabile.
+ */
+export async function logout(params: LogoutServiceParams): Promise<void> {
+  const { userId, deviceId, jti, accessTokenExpiresAt, requestId, ipHash } = params;
+
+  // Revoca sessione (refresh token invalidato)
+  await sessionRepo.revokeByUserDevice(
+    new (await import("mongoose")).default.Types.ObjectId(userId),
+    deviceId,
+  );
+
+  // Blocklist JTI (access token invalidato immediatamente)
+  await blockJti(jti, accessTokenExpiresAt);
+
+  logAuditEvent({
+    event: "USER_LOGOUT",
+    user_id: userId, device_id: deviceId,
+    request_id: requestId, ip_hash: ipHash ?? undefined,
+    created_at: new Date().toISOString(),
+  });
+
+  logger.info({ userId, deviceId }, "User logged out");
+}
+
+// ---------------------------------------------------------------------------
+// Logout All (tutte le sessioni)
+// ---------------------------------------------------------------------------
+
+export interface LogoutAllServiceParams {
+  userId: string;
+  deviceId: string;
+  jti: string;
+  accessTokenExpiresAt: Date;
+  requestId?: string;
+  ipHash?: string | null;
+}
+
+/**
+ * Revoca tutte le sessioni dell'utente e blocklist il JTI corrente.
+ * Usato da "disconnetti da tutti i dispositivi".
+ */
+export async function logoutAll(params: LogoutAllServiceParams): Promise<{ revokedCount: number }> {
+  const { userId, deviceId, jti, accessTokenExpiresAt, requestId, ipHash } = params;
+
+  const mongoose = await import("mongoose");
+  const userObjectId = new mongoose.default.Types.ObjectId(userId);
+
+  const revokedCount = await revokeAllSessions(userObjectId);
+  await blockJti(jti, accessTokenExpiresAt);
+
+  logAuditEvent({
+    event: "USER_LOGOUT_ALL",
+    user_id: userId, device_id: deviceId,
+    request_id: requestId, ip_hash: ipHash ?? undefined,
+    created_at: new Date().toISOString(),
+    metadata: { revoked_sessions: revokedCount },
+  });
+
+  logger.info({ userId, deviceId, revokedCount }, "User logged out from all devices");
+
+  return { revokedCount };
+}

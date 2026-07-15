@@ -5,6 +5,7 @@
  * Solo query MongoDB. Nessuna business logic.
  */
 
+import { randomUUID } from "node:crypto";
 import type mongoose from "mongoose";
 import { SessionModel, type ISessionDocument } from "../models/session.model";
 import { hashRefreshToken, refreshTokenExpiresAt } from "../services/refresh-token.service";
@@ -17,7 +18,6 @@ export interface CreateOrUpdateSessionParams {
   deviceType: "ios" | "android" | "web" | "desktop";
   refreshToken: string; // in chiaro — viene hashato internamente
   countryCode?: string | null;
-  city?: string | null;
   ipHash?: string | null;
   userAgent?: string | null;
 }
@@ -25,7 +25,7 @@ export interface CreateOrUpdateSessionParams {
 export class SessionRepository {
   /**
    * Crea o aggiorna la sessione per (user_id, device_id).
-   * Restituisce anche se era un dispositivo nuovo (isNewDevice).
+   * family_id è generato solo alla creazione ($setOnInsert) e non cambia mai.
    */
   async upsert(params: CreateOrUpdateSessionParams): Promise<{
     session: ISessionDocument;
@@ -43,16 +43,21 @@ export class SessionRepository {
     const session = await SessionModel.findOneAndUpdate(
       { user_id: params.userId, device_id: params.deviceId },
       {
-        refresh_token_hash: tokenHash,
-        expires_at: refreshTokenExpiresAt(),
-        device_name: params.deviceName,
-        device_type: params.deviceType,
-        country_code: params.countryCode ?? null,
-        city: params.city ?? null,
-        ip_hash: params.ipHash ?? null,
-        user_agent: params.userAgent ?? null,
-        last_used_at: now,
-        deleted_at: null,
+        $set: {
+          refresh_token_hash: tokenHash,
+          expires_at: refreshTokenExpiresAt(),
+          device_name: params.deviceName,
+          device_type: params.deviceType,
+          country_code: params.countryCode ?? null,
+          ip_hash: params.ipHash ?? null,
+          user_agent: params.userAgent ?? null,
+          last_used_at: now,
+          deleted_at: null,
+        },
+        $setOnInsert: {
+          // family_id generato solo alla creazione — immutabile durante le rotazioni
+          family_id: randomUUID(),
+        },
       },
       { upsert: true, returnDocument: "after", setDefaultsOnInsert: true },
     );
@@ -79,6 +84,23 @@ export class SessionRepository {
   }
 
   /**
+   * Trova una sessione (anche revocata) tramite hash — usata nella theft detection.
+   */
+  async findByTokenHash(tokenHash: string): Promise<ISessionDocument | null> {
+    return SessionModel.findOne({ refresh_token_hash: tokenHash });
+  }
+
+  /**
+   * Trova una sessione per (user_id, device_id).
+   */
+  async findByUserDevice(
+    userId: mongoose.Types.ObjectId,
+    deviceId: string,
+  ): Promise<ISessionDocument | null> {
+    return SessionModel.findOne({ user_id: userId, device_id: deviceId, deleted_at: null });
+  }
+
+  /**
    * Lista tutte le sessioni attive di un utente.
    */
   async findAllActiveByUserId(userId: mongoose.Types.ObjectId): Promise<ISessionDocument[]> {
@@ -90,11 +112,26 @@ export class SessionRepository {
   }
 
   /**
-   * Revoca la sessione corrispondente al token hash.
+   * Revoca tutte le sessioni dello stesso family_id.
+   * Usata quando viene rilevato un token theft (S-03).
    */
-  async revokeByTokenHash(tokenHash: string): Promise<void> {
+  async revokeFamilyByFamilyId(familyId: string): Promise<number> {
+    const result = await SessionModel.updateMany(
+      { family_id: familyId, deleted_at: null },
+      { deleted_at: new Date() },
+    );
+    return result.modifiedCount;
+  }
+
+  /**
+   * Revoca la sessione per (user_id, device_id).
+   */
+  async revokeByUserDevice(
+    userId: mongoose.Types.ObjectId,
+    deviceId: string,
+  ): Promise<void> {
     await SessionModel.updateOne(
-      { refresh_token_hash: tokenHash },
+      { user_id: userId, device_id: deviceId },
       { deleted_at: new Date() },
     );
   }
