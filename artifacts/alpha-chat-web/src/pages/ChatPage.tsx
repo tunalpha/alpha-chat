@@ -516,52 +516,43 @@ export default function ChatPage({ onNavigate }: Props) {
               {connected ? "● Online" : "○ Offline"}
             </div>
           </div>
-          {/* Invite buttons */}
-          <div className="invite-action-btns">
-            <button
-              className="invite-sidebar-btn"
-              title="Invita persona"
-              onClick={() => setShowInvite(true)}
-              aria-label="Invita persona"
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" width="17" height="17">
-                <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
-                <circle cx="9" cy="7" r="4"/>
-                <line x1="19" y1="8" x2="19" y2="14"/>
-                <line x1="22" y1="11" x2="16" y2="11"/>
-              </svg>
-            </button>
-            <button
-              className="invite-sidebar-btn"
-              title="Inserisci codice invito"
-              onClick={() => setShowRedeem(true)}
-              aria-label="Inserisci codice invito"
-            >
-              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" width="17" height="17">
-                <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
-                <rect x="3" y="14" width="7" height="7"/>
-                <line x1="14" y1="14" x2="14" y2="14.01"/>
-                <line x1="17" y1="14" x2="17" y2="14.01"/>
-                <line x1="20" y1="14" x2="20" y2="14.01"/>
-                <line x1="20" y1="17" x2="20" y2="17.01"/>
-                <line x1="17" y1="17" x2="17" y2="17.01"/>
-                <line x1="14" y1="20" x2="14" y2="20.01"/>
-                <line x1="17" y1="20" x2="17" y2="20.01"/>
-                <line x1="20" y1="20" x2="20" y2="20.01"/>
-              </svg>
-            </button>
-          </div>
+          {/* Invite button */}
+          <button
+            className="invite-sidebar-btn"
+            title="Invita persona"
+            onClick={() => setShowInvite(true)}
+            aria-label="Invita persona"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" width="17" height="17">
+              <path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/>
+              <circle cx="9" cy="7" r="4"/>
+              <line x1="19" y1="8" x2="19" y2="14"/>
+              <line x1="22" y1="11" x2="16" y2="11"/>
+            </svg>
+          </button>
         </div>
 
         {/* Conversation list */}
         <div className="conv-list">
+            {/* Redeem banner — sempre visibile in cima alla lista */}
+            <button className="redeem-banner" onClick={() => setShowRedeem(true)}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="15" height="15">
+                <rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/>
+                <rect x="3" y="14" width="7" height="7"/>
+                <circle cx="17" cy="17" r="3"/>
+              </svg>
+              Ho ricevuto un codice invito
+              <span className="redeem-banner-arrow">›</span>
+            </button>
+
             {loadingConvs && <div className="conv-hint">Caricamento…</div>}
             {!loadingConvs && conversations.length === 0 && (
               <div className="conv-hint conv-hint-empty">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" width="40" height="40" style={{ opacity: 0.3, marginBottom: 12 }}>
                   <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
                 </svg>
-                Nessuna conversazione.<br />Usa i pulsanti in alto per invitare qualcuno.
+                Nessuna conversazione ancora.<br />
+                <span style={{ fontSize: 13 }}>Premi <strong>Invita persona</strong> →</span>
               </div>
             )}
             {conversations.map((conv) => {

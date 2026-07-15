@@ -16,7 +16,7 @@ interface Props {
   onClose: () => void;
 }
 
-const DEFAULT_TTL = 300; // 5 minuti
+const DEFAULT_TTL = 900; // 15 minuti
 
 function formatCountdown(seconds: number): string {
   const m = Math.floor(seconds / 60);
@@ -134,7 +134,7 @@ export default function InviteModal({ onClose }: Props) {
 
               {/* Codice leggibile */}
               <div className="invite-code-wrap">
-                <div className="invite-code">{formatCode(invite.code)}</div>
+                <div className="invite-code" style={{ letterSpacing: "4px", wordBreak: "keep-all", whiteSpace: "nowrap" }}>{formatCode(invite.code)}</div>
                 <button
                   className={`invite-copy-btn${copied ? " copied" : ""}`}
                   onClick={handleCopy}

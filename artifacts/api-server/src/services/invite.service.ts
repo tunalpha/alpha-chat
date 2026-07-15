@@ -25,7 +25,7 @@ import { logger } from "../lib/logger";
 /** Alfabeto leggibile: niente I, O, 0, 1 (confusione visiva) */
 const ALPHABET = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
 const CODE_LENGTH = 16;
-const DEFAULT_EXPIRES_SECONDS = 300; // 5 minuti
+const DEFAULT_EXPIRES_SECONDS = 900; // 15 minuti
 const MAX_EXPIRES_SECONDS = 3600;    // 1 ora max
 
 /** Rate limit: max 5 tentativi di riscatto per IP ogni 10 minuti */
