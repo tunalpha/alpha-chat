@@ -362,6 +362,7 @@ export default function ChatPage({ onNavigate }: Props) {
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isTypingRef = useRef(false);
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── Load conversations ──────────────────────────────────────────────────
   const loadConversations = useCallback(async () => {
@@ -516,9 +517,36 @@ export default function ChatPage({ onNavigate }: Props) {
     }
   }
 
+  function openContextMenuAt(msg: MessageItem, rawX: number, rawY: number) {
+    // Evita che il menu esca fuori schermo
+    const menuW = 180, menuH = 200;
+    const x = Math.min(rawX, window.innerWidth - menuW - 8);
+    const y = Math.min(rawY, window.innerHeight - menuH - 8);
+    setContextMenu({ msg, x, y });
+  }
+
   function handleContextMenu(e: React.MouseEvent, msg: MessageItem) {
     e.preventDefault();
-    setContextMenu({ msg, x: e.clientX, y: e.clientY });
+    openContextMenuAt(msg, e.clientX, e.clientY);
+  }
+
+  function handleTouchStart(e: React.TouchEvent, msg: MessageItem) {
+    const touch = e.touches[0];
+    if (!touch) return;
+    const x = touch.clientX;
+    const y = touch.clientY;
+    longPressTimerRef.current = setTimeout(() => {
+      longPressTimerRef.current = null;
+      openContextMenuAt(msg, x, y - 60); // sposta sopra il dito
+      if (navigator.vibrate) navigator.vibrate(30);
+    }, 500);
+  }
+
+  function handleTouchCancel() {
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
   }
 
   function closeContextMenu() { setContextMenu(null); }
@@ -803,6 +831,9 @@ export default function ChatPage({ onNavigate }: Props) {
                       key={msg.id}
                       className={`msg-row ${isMine ? "mine" : "theirs"}`}
                       onContextMenu={(e) => handleContextMenu(e, msg)}
+                      onTouchStart={(e) => handleTouchStart(e, msg)}
+                      onTouchEnd={handleTouchCancel}
+                      onTouchMove={handleTouchCancel}
                     >
                       <div className={`msg-bubble ${isMine ? "mine" : "theirs"}`}>
                         {/* Reply preview */}
