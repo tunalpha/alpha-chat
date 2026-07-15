@@ -61,7 +61,7 @@ export function getMongoStatus(): {
   return {
     status: isConnected ? "ok" : "disconnected",
     latency_ms: connectionLatencyMs,
-    connections: mongoose.connection.pool?.totalConnectionCount ?? 0,
+    connections: 0,
   };
 }
 

@@ -45,7 +45,7 @@ app.use(
   pinoHttp({
     logger,
     customProps: (req) => ({
-      requestId: (req as Record<string, unknown>).requestId,
+      requestId: req.requestId,
     }),
     serializers: {
       req(req) {

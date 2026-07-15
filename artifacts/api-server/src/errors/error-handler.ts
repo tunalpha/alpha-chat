@@ -14,7 +14,7 @@ import { logger } from "../lib/logger";
  * - Unknown   → 500 Internal Server Error
  */
 export const errorHandler: ErrorRequestHandler = (err, req, res, _next) => {
-  const requestId = (req as Record<string, unknown>).requestId as string | undefined;
+  const requestId = req.requestId;
 
   if (err instanceof AppError) {
     // Expected application error — log at warn level

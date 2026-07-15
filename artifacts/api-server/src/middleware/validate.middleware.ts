@@ -19,7 +19,8 @@ export function validate(target: Target, schema: ZodSchema): RequestHandler {
       return;
     }
     // Replace with the parsed + transformed value
-    (req as Record<string, unknown>)[target] = result.data;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (req as any)[target] = result.data;
     next();
   };
 }

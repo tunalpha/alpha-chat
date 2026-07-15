@@ -16,6 +16,11 @@ const EnvSchema = z.object({
     .transform((s) => (s === "*" ? ["*"] : s.split(",").map((o) => o.trim()))),
   MIN_CLIENT_VERSION: z.string().default("1.0.0"),
   LOG_LEVEL: z.enum(["fatal", "error", "warn", "info", "debug", "trace"]).default("info"),
+  // JWT — obbligatori in production, opzionali in development (chiavi effimere)
+  JWT_PRIVATE_KEY: z.string().optional(),
+  JWT_PUBLIC_KEY: z.string().optional(),
+  // Phone hashing — pepper server-side (HMAC-SHA256)
+  PHONE_HMAC_PEPPER: z.string().min(32).optional(),
 });
 
 const parsed = EnvSchema.safeParse(process.env);
@@ -44,5 +49,12 @@ export const config = {
   },
   log: {
     level: parsed.data.LOG_LEVEL,
+  },
+  jwt: {
+    privateKey: parsed.data.JWT_PRIVATE_KEY ?? null,
+    publicKey: parsed.data.JWT_PUBLIC_KEY ?? null,
+  },
+  auth: {
+    phonePepper: parsed.data.PHONE_HMAC_PEPPER ?? null,
   },
 } as const;

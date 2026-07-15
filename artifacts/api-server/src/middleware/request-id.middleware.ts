@@ -15,7 +15,7 @@ export const requestIdMiddleware: RequestHandler = (req, res, next) => {
       : randomUUID();
 
   // Attach to request for use in controllers and logger
-  (req as Record<string, unknown>).requestId = requestId;
+  req.requestId = requestId;
 
   // Echo back so the client can correlate logs
   res.setHeader("X-Request-ID", requestId);

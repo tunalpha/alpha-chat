@@ -50,7 +50,8 @@ router.post("/mongo/setup", async (req, res) => {
 
   try {
     const conn = await getConnection(uri.trim());
-    const existing = await conn.db.listCollections().toArray();
+    const db = conn.db!;
+    const existing = await db.listCollections().toArray();
     const existingNames = new Set(existing.map((c) => c.name));
 
     const results = await Promise.all(
@@ -59,7 +60,7 @@ router.post("/mongo/setup", async (req, res) => {
           return { name, status: "already_exists" as const, error: null };
         }
         try {
-          await conn.db.createCollection(name);
+          await db.createCollection(name);
           return { name, status: "created" as const, error: null };
         } catch (err: any) {
           return { name, status: "error" as const, error: err?.message ?? "Errore sconosciuto" };
@@ -96,9 +97,10 @@ router.post("/mongo/test", async (req, res) => {
 
   try {
     const conn = await getConnection(trimmed);
-    const admin = conn.db.admin();
+    const db = conn.db!;
+    const admin = db.admin();
     const info = await admin.serverInfo();
-    const dbName = conn.db.databaseName;
+    const dbName = db.databaseName;
 
     // extract host from URI
     let host = "sconosciuto";
@@ -126,13 +128,14 @@ router.get("/mongo/collections", async (req, res) => {
 
   try {
     const conn = await getConnection(uri);
-    const rawCollections = await conn.db.listCollections().toArray();
+    const db = conn.db!;
+    const rawCollections = await db.listCollections().toArray();
 
     const collections = await Promise.all(
       rawCollections.map(async (col) => {
         let count: number | null = null;
         try {
-          count = await conn.db.collection(col.name).estimatedDocumentCount();
+          count = await db.collection(col.name).estimatedDocumentCount();
         } catch {}
         return { name: col.name, type: col.type ?? "collection", count };
       })
@@ -167,15 +170,16 @@ router.post("/mongo/collections", async (req, res) => {
 
   try {
     const conn = await getConnection(uri.trim());
+    const db = conn.db!;
 
     // check if already exists
-    const existing = await conn.db.listCollections({ name: collectionName }).toArray();
+    const existing = await db.listCollections({ name: collectionName }).toArray();
     if (existing.length > 0) {
       res.status(400).json({ error: `La collection "${collectionName}" esiste già.` });
       return;
     }
 
-    await conn.db.createCollection(collectionName);
+    await db.createCollection(collectionName);
     logger.info({ collectionName }, "Collection created");
 
     res.status(201).json({
