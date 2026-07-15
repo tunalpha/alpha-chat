@@ -1,0 +1,160 @@
+Abbiamo completato con successo il deploy della Alpha Chat API.
+
+Il backend è online in produzione su:
+
+https://alphachat.replit.app
+
+Stato attuale:
+
+✅ Deploy Production
+✅ MongoDB Atlas
+✅ Authentication completa
+✅ Users
+✅ Search
+✅ Conversations
+✅ Messages
+✅ 126/126 test verdi
+
+Da questo momento il backend entra in maintenance mode.
+
+NON modificare le API esistenti salvo bug critici.
+
+OBIETTIVO
+
+Costruire la prima esperienza reale di Alpha Chat.
+
+FASE 1 — WebSocket
+
+Implementa il layer WebSocket mantenendo l'architettura esistente.
+
+Requisiti:
+
+- autenticazione tramite JWT
+- riconnessione automatica
+- heartbeat ping/pong
+- gestione multi-device
+- gestione disconnessione pulita
+
+Eventi:
+
+message.new
+message.delivered
+presence.online
+presence.offline
+typing.start
+typing.stop
+
+Nessuna breaking change sulle API REST.
+
+--------------------------------------------------
+
+FASE 2 — Frontend Web di Test
+
+Crea una semplice web application React che utilizzi ESCLUSIVAMENTE le API già pubblicate.
+
+Non creare API nuove se non strettamente necessarie.
+
+La web app deve avere:
+
+1.
+Login
+
+2.
+Registrazione
+
+3.
+Ricerca utenti
+
+4.
+Creazione conversazione
+
+5.
+Lista conversazioni
+
+6.
+Lista messaggi
+
+7.
+Invio messaggio
+
+8.
+Ricezione messaggio realtime tramite WebSocket
+
+9.
+Indicatore "Sta scrivendo..."
+
+10.
+Online / Offline
+
+Design semplice.
+
+Nessun lavoro grafico.
+
+Priorità assoluta alla funzionalità.
+
+--------------------------------------------------
+
+FASE 3 — Test
+
+Aprire due browser.
+
+Account A
+
+Marco
+
+Account B
+
+Luca
+
+Verificare:
+
+✓ registrazione
+
+✓ login
+
+✓ ricerca
+
+✓ creazione chat
+
+✓ invio messaggio
+
+✓ ricezione realtime
+
+✓ refresh pagina
+
+✓ cronologia mantenuta
+
+--------------------------------------------------
+
+Regole
+
+Non modificare Auth.
+
+Non modificare Database Schema salvo bug.
+
+Non modificare API Versioning.
+
+Seguire il ciclo:
+
+Documentazione
+
+Implementazione
+
+Typecheck
+
+Test
+
+Deploy
+
+Al termine produrre:
+
+IMPLEMENTATION REPORT
+
+con:
+
+- file creati
+- file modificati
+- test aggiunti
+- bug risolti
+- nuove dipendenze
+- eventuali breaking changes (devono essere zero)

@@ -20,6 +20,7 @@ import { ConversationMemberRepository } from "../repositories/conversation-membe
 import { MessageRepository } from "../repositories/message.repository";
 import { logAuditEvent } from "../lib/audit";
 import { logger } from "../lib/logger";
+import { wsManager } from "../lib/ws-manager";
 import type { SendMessageInput, ListMessagesInput } from "../validation/message.schemas";
 
 // ---------------------------------------------------------------------------
@@ -147,7 +148,22 @@ export async function sendMessage(
     "Message sent",
   );
 
-  return formatMessageResult(message, true);
+  const result = formatMessageResult(message, true);
+
+  // ── WebSocket broadcast ───────────────────────────────────────────────────
+  // Consegna realtime a tutti i membri della conversazione (incluso il mittente,
+  // per sincronizzare multi-device). Non bloccante — errori loggati come warn.
+  void (async () => {
+    try {
+      const members = await memberRepo.listMembers(convObjectId);
+      const memberIds = members.map((m) => m.user_id.toString());
+      wsManager.sendToUsers(memberIds, { type: "message.new", payload: result });
+    } catch (err) {
+      logger.warn({ err, conversationId }, "WS broadcast message.new failed");
+    }
+  })();
+
+  return result;
 }
 
 // ---------------------------------------------------------------------------

@@ -2,6 +2,7 @@ import app from "./app";
 import { logger } from "./lib/logger";
 import { config } from "./config";
 import { connectMongoDB, disconnectMongoDB } from "./lib/mongodb";
+import { createWsServer } from "./lib/ws-server";
 
 const port = config.app.port;
 
@@ -14,6 +15,9 @@ async function start(): Promise<void> {
   const server = app.listen(port, () => {
     logger.info({ port, env: config.app.env }, "Alpha Chat API listening");
   });
+
+  // Attach WebSocket server (shares same port via HTTP upgrade)
+  createWsServer(server);
 
   // ── Graceful shutdown ───────────────────────────────────────────────────────
   const shutdown = async (signal: string): Promise<void> => {
