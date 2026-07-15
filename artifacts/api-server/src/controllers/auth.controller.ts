@@ -6,10 +6,20 @@
  * Nessuna business logic qui.
  */
 
+import { createHash } from "node:crypto";
 import type { RequestHandler } from "express";
 import * as authService from "../services/auth.service";
 import { successResponse } from "../utils/response";
-import type { RegisterInput } from "../validation/auth.schemas";
+import type { RegisterInput, LoginInput } from "../validation/auth.schemas";
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+function getIpHash(req: Parameters<RequestHandler>[0]): string | null {
+  const rawIp = req.ip ?? req.socket.remoteAddress ?? null;
+  return rawIp ? createHash("sha256").update(rawIp).digest("hex") : null;
+}
 
 // ---------------------------------------------------------------------------
 // POST /api/v1/auth/register
@@ -17,23 +27,33 @@ import type { RegisterInput } from "../validation/auth.schemas";
 
 export const register: RequestHandler = async (req, res, next) => {
   try {
-    const body = req.body as RegisterInput;
-
-    // Metadati di contesto estratti dalla request (non dalla business logic)
-    const userAgent = req.headers["user-agent"] ?? null;
-    const rawIp = req.ip ?? req.socket.remoteAddress ?? null;
-    const ipHash = rawIp
-      ? require("node:crypto").createHash("sha256").update(rawIp).digest("hex")
-      : null;
-
     const result = await authService.register({
-      ...body,
-      userAgent,
-      ipHash,
-      countryCode: null, // geolocalizzazione IP: Sprint 4 (GeoIP)
+      ...(req.body as RegisterInput),
+      userAgent: req.headers["user-agent"] ?? null,
+      ipHash: getIpHash(req),
+      countryCode: null, // GeoIP: Sprint 4
+      requestId: req.requestId,
     });
-
     res.status(201).json(successResponse(result, req.requestId));
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ---------------------------------------------------------------------------
+// POST /api/v1/auth/login
+// ---------------------------------------------------------------------------
+
+export const login: RequestHandler = async (req, res, next) => {
+  try {
+    const result = await authService.login({
+      ...(req.body as LoginInput),
+      userAgent: req.headers["user-agent"] ?? null,
+      ipHash: getIpHash(req),
+      countryCode: null, // GeoIP: Sprint 4
+      requestId: req.requestId,
+    });
+    res.status(200).json(successResponse(result, req.requestId));
   } catch (err) {
     next(err);
   }

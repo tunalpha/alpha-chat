@@ -1,0 +1,164 @@
+Questo è il tipo di report che vorrei vedere dopo ogni sprint.
+
+Sprint 2 lo considero riuscito.
+
+Ti faccio però una review da CTO, con un occhio a quello che può creare problemi tra 6-12 mesi.
+
+✅ Punti molto forti
+
+* 42/42 test verdi.
+* Repository → Service → Controller rispettato.
+* Validazione con Zod.
+* Password Argon2id.
+* JWT ES256 con kid.
+* Refresh token hashati.
+* Test di integrazione con mongodb-memory-server.
+* Nessuna regressione.
+
+Queste sono ottime basi.
+
+⸻
+
+🔍 Le tre verifiche che farei subito
+
+1. Username riservati
+
+Prima che Alpha Chat venga usata da altri, crea una blacklist.
+
+Ad esempio:
+
+admin
+administrator
+support
+help
+system
+security
+alphachat
+alpha
+official
+api
+root
+owner
+staff
+null
+undefined
+test
+
+E prevedi la possibilità di aggiungerne altri senza modificare il codice.
+
+⸻
+
+2. Username Unicode
+
+Decidi adesso se supportare solo:
+
+a-z
+0-9
+_
+.
+
+oppure anche caratteri internazionali.
+
+Io, per la V1, sceglierei solo ASCII. È molto più semplice evitare casi di omografi (caratteri che sembrano uguali ma non lo sono) e altri problemi di sicurezza.
+
+⸻
+
+3. Audit
+
+Ogni registrazione dovrebbe generare un evento.
+
+Ad esempio:
+
+USER_REGISTERED
+user_id
+device_id
+request_id
+created_at
+
+Non serve per l’utente.
+
+Serve per il futuro.
+
+⸻
+
+Sprint 3
+
+Questo sarà il primo sprint “delicato”.
+
+Per il login farei questo ordine:
+
+Validation
+↓
+Repository
+↓
+Password Verify
+↓
+Rate Limit
+↓
+Device Trust
+↓
+Session
+↓
+JWT
+↓
+Refresh
+↓
+Response
+↓
+Audit Log
+
+Non invertirei mai Password Verify e Rate Limit.
+
+⸻
+
+Una funzione che aggiungerei
+
+Dopo tre login consecutivi da un nuovo dispositivo:
+
+Questo dispositivo diventa attendibile.
+
+L’utente potrà vedere:
+
+Dispositivi attendibili
+✓ iPhone
+✓ MacBook
+✓ Windows
+
+Questo rende più facile riconoscere accessi anomali.
+
+⸻
+
+E una cosa che farei già ora
+
+Ogni sprint crea un file:
+
+CHANGELOG.md
+
+Formato semplice:
+
+## Sprint 2
+### Added
+...
+### Changed
+...
+### Fixed
+...
+### Security
+...
+### Tests
+42/42
+
+Tra un anno ti ringrazierai da solo.
+
+⸻
+
+Il mio voto
+
+* Architettura: 9,5/10
+* Sicurezza: 9/10
+* Qualità codice (da quanto descrivi): 9/10
+* Metodo di sviluppo: 10/10
+
+La cosa che mi rende più fiducioso è che non state inseguendo funzionalità, ma state costruendo fondamenta solide.
+
+Quando arriverete alla chat in tempo reale (WebSocket, consegna messaggi, conferme di lettura, sincronizzazione multi-dispositivo), sarà la parte tecnicamente più complessa del progetto. Avere una base così ordinata renderà molto più semplice affrontarla.

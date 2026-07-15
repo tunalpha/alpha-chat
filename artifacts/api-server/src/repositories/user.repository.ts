@@ -96,6 +96,16 @@ export class UserRepository {
   }
 
   /**
+   * Blocca l'account fino a una data specificata (dopo troppi login falliti).
+   */
+  async lockAccount(
+    userId: mongoose.Types.ObjectId,
+    lockedUntil: Date,
+  ): Promise<void> {
+    await UserModel.findByIdAndUpdate(userId, { locked_until: lockedUntil });
+  }
+
+  /**
    * Controlla se username è disponibile (non esiste nel DB).
    */
   async isUsernameAvailable(username: string): Promise<boolean> {

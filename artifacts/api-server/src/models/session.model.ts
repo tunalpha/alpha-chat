@@ -25,6 +25,11 @@ export interface ISession {
   push_token: string | null;
   push_enabled: boolean;
 
+  // Device Trust (CTO review Sprint 2)
+  // Dopo 3 login consecutivi dallo stesso device → is_trusted = true
+  login_count: number;
+  is_trusted: boolean;
+
   // Sicurezza
   is_suspicious: boolean;
   last_used_at: Date;
@@ -64,6 +69,9 @@ const sessionSchema = new Schema<ISessionDocument>(
     push_token: { type: String, default: null },
     push_enabled: { type: Boolean, default: true },
 
+    login_count: { type: Number, default: 0 },
+    is_trusted: { type: Boolean, default: false },
+
     is_suspicious: { type: Boolean, default: false },
     last_used_at: { type: Date, required: true },
     user_agent: { type: String, default: null, maxlength: 512 },
@@ -82,7 +90,7 @@ sessionSchema.index({ user_id: 1, device_id: 1 }, { unique: true });
 sessionSchema.index({ expires_at: 1 }, { expireAfterSeconds: 0 });
 
 // ---------------------------------------------------------------------------
-// Helper: query sessioni attive
+// Helper statics
 // ---------------------------------------------------------------------------
 
 sessionSchema.statics.findActive = function (
