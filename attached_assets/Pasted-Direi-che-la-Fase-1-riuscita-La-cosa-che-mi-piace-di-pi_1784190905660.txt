@@ -1,0 +1,91 @@
+Direi che la Fase 1 è riuscita. La cosa che mi piace di più è che avete mantenuto la compatibilità con il resto dell’app: nessuna regressione e nessun downtime.
+
+C’è però un punto che fermerei prima di iniziare la Fase 2, perché riguarda la correttezza crittografica.
+
+Da verificare subito
+
+Nel report leggo:
+
+Frontend
+@noble/curves
+Identity (Ed25519)
+SignedPreKey (X25519)
+
+e contemporaneamente:
+
+Backend
+@signalapp/libsignal-client
+
+Questo mi fa accendere un campanello.
+
+Signal utilizza primitive ben precise e la libreria ufficiale gestisce internamente il formato delle chiavi, le firme e gli oggetti crittografici. Se parte della generazione viene fatta con @noble/curves e parte con @signalapp/libsignal-client, bisogna essere assolutamente certi che siano 100% interoperabili.
+
+Prima domanda che farei all’Agent
+
+Le Identity Key, Signed PreKey e One-Time PreKeys vengono generate direttamente tramite le API di @signalapp/libsignal-client, oppure vengono generate con @noble/curves e poi convertite?
+
+Per me questa risposta è fondamentale.
+
+Se la risposta è:
+
+“Sono generate con libsignal.”
+
+Perfetto.
+
+Se invece è:
+
+“Le generiamo con @noble/curves.”
+
+Gli chiederei di verificare attentamente che questo sia compatibile con le aspettative della libreria ufficiale, oppure di valutare se sia preferibile affidare anche la generazione delle chiavi a @signalapp/libsignal-client, così da ridurre il rischio di incompatibilità future.
+
+⸻
+
+Un’altra verifica importante
+
+Nella Fase 2 aggiungerei un test molto semplice ma fondamentale.
+
+Due utenti completamente nuovi.
+
+Alice
+↓
+genera chiavi
+↓
+upload bundle
+↓
+Bob
+↓
+genera chiavi
+↓
+upload bundle
+↓
+Bob scarica bundle Alice
+↓
+Alice scarica bundle Bob
+↓
+X3DH
+↓
+Double Ratchet
+↓
+Alice cifra
+↓
+Bob decifra
+↓
+test PASS
+
+Se questo test passa, allora sai che tutta la catena funziona davvero.
+
+⸻
+
+Voto Fase 1
+
+Architettura: ⭐⭐⭐⭐⭐ (10/10)
+
+Compatibilità: ⭐⭐⭐⭐⭐ (10/10)
+
+Roadmap: ⭐⭐⭐⭐⭐ (10/10)
+
+Rischio tecnico: ⭐⭐⭐☆☆ (7.5/10)
+
+Il rischio non deriva dal lavoro svolto, ma dal fatto che la Fase 2 è il punto in cui si entra nel cuore del protocollo Signal. Vale la pena essere molto rigorosi sulle API utilizzate e sulla compatibilità tra le librerie.
+
+Per il resto, direi che siete pronti ad affrontare la Fase 2. È probabilmente la parte più delicata dell’intero progetto.
