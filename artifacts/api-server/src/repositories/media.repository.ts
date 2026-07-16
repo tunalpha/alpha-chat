@@ -13,17 +13,21 @@ export class MediaRepository {
     mimeType: string;
     data: Buffer;
     size: number;
+    originalFilename?: string | null;
+    thumbnail?: Buffer | null;
     durationMs: number | null;
     waveform: number[];
   }): Promise<IMediaDocument> {
     return MediaModel.create({
-      uploader_id:     params.uploaderId,
-      conversation_id: params.conversationId,
-      mime_type:       params.mimeType,
-      data:            params.data,
-      size:            params.size,
-      duration_ms:     params.durationMs,
-      waveform:        params.waveform,
+      uploader_id:        params.uploaderId,
+      conversation_id:    params.conversationId,
+      mime_type:          params.mimeType,
+      data:               params.data,
+      size:               params.size,
+      original_filename:  params.originalFilename ?? null,
+      thumbnail:          params.thumbnail ?? null,
+      duration_ms:        params.durationMs,
+      waveform:           params.waveform,
     });
   }
 

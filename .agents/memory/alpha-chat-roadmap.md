@@ -13,7 +13,7 @@ description: Roadmap ufficiale Sprint 13–20, approvata dal CTO (aggiornamento 
 
 ## Prossimi Sprint
 
-### Sprint 13 — Media sicuri (PROSSIMO)
+### Sprint 13 — Media sicuri ✅ COMPLETATO
 Modulo completo allegati — la logica Secure Destroy viene riutilizzata per ogni tipo di contenuto.
 - 🎙️ Messaggi vocali (Secure Destroy)
 - 📷 Foto

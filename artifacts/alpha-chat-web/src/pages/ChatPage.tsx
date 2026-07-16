@@ -10,16 +10,21 @@ import {
   apiDeleteMessage,
   apiSecureDestroy,
   apiSendVoiceMessage,
+  apiSendFileMessage,
   apiMarkRead,
   decodeMessage,
   decodeVoiceMeta,
+  decodeMediaMeta,
   AuthExpiredError,
   type ConversationItem,
   type MessageItem,
+  type MediaMeta,
 } from "../lib/api";
 import VoiceRecorder, { type VoiceBlob } from "../components/VoiceRecorder";
 import { attachAudioUnlockListener, playNotifSound } from "../lib/notifSound";
 import VoiceMessage from "../components/VoiceMessage";
+import MediaMessage from "../components/MediaMessage";
+import MediaViewer from "../components/MediaViewer";
 import InviteModal from "../components/InviteModal";
 import RedeemModal from "../components/RedeemModal";
 
@@ -145,15 +150,18 @@ function ChatInput({
   onChange,
   onSubmit,
   onVoiceStart,
+  onAttach,
   disabled,
 }: {
   value: string;
   onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;
   onSubmit: (e: React.FormEvent) => void;
   onVoiceStart: () => void;
+  onAttach?: (files: FileList) => void;
   disabled: boolean;
 }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const localFileRef = useRef<HTMLInputElement>(null);
   const hasText = value.trim().length > 0;
 
   // Auto-resize textarea up to 6 lines
@@ -181,8 +189,22 @@ function ChatInput({
           <circle cx="12" cy="12" r="10"/><path d="M8 13s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/>
         </svg>
       </button>
-      {/* Allega — non implementata */}
-      <button type="button" className="input-icon-btn" aria-label="Allega" title="Disponibile prossimamente" disabled>
+      {/* Allega — Sprint 13: foto, video, documenti */}
+      <input
+        ref={localFileRef}
+        type="file"
+        accept="image/*,video/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.*,text/plain,audio/*"
+        style={{ display: "none" }}
+        onChange={(e) => { if (e.target.files && onAttach) onAttach(e.target.files); }}
+      />
+      <button
+        type="button"
+        className="input-icon-btn"
+        aria-label="Allega file"
+        title="Allega foto, video o documento"
+        disabled={disabled}
+        onClick={() => localFileRef.current?.click()}
+      >
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="22" height="22">
           <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
         </svg>
@@ -375,12 +397,16 @@ export default function ChatPage({ onNavigate }: Props) {
   const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
   const [atBottom, setAtBottom] = useState(true);
 
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const [viewerMedia, setViewerMedia] = useState<{ url: string; type: "image" | "video" } | null>(null);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isTypingRef = useRef(false);
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const ctxOpenedAtRef = useRef<number>(0); // ghost-click guard
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // ── Load conversations ──────────────────────────────────────────────────
   const loadConversations = useCallback(async () => {
@@ -630,6 +656,35 @@ export default function ChatPage({ onNavigate }: Props) {
       showToast(err instanceof Error ? err.message : "Errore invio vocale");
     } finally {
       setSending(false);
+    }
+  }
+
+  async function handleFilePick(files: FileList) {
+    if (!activeConvId || files.length === 0) return;
+    const file = files[0];
+
+    // Limiti client-side (backend li rifiuta comunque)
+    const LIMIT: Record<string, number> = { image: 10, video: 15, audio: 5, document: 10 };
+    const categ = file.type.startsWith("image/") ? "image"
+                : file.type.startsWith("video/") ? "video"
+                : file.type.startsWith("audio/") ? "audio"
+                : "document";
+    const maxBytes = (LIMIT[categ] ?? 10) * 1024 * 1024;
+    if (file.size > maxBytes) {
+      setSendError(`File troppo grande (max ${maxBytes / 1024 / 1024} MB per ${categ})`);
+      return;
+    }
+
+    setSending(true);
+    setUploadProgress(0);
+    try {
+      await apiSendFileMessage(activeConvId, file, (pct) => setUploadProgress(pct));
+    } catch (err) {
+      setSendError(err instanceof Error ? err.message : "Errore upload file");
+    } finally {
+      setSending(false);
+      setUploadProgress(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
     }
   }
 
@@ -934,8 +989,12 @@ export default function ChatPage({ onNavigate }: Props) {
                     ? messages.find((m) => m.id === msg.reply_to_message_id)
                     : null;
 
-                  // Messaggio vocale
-                  const voiceMeta = msg.message_type === "media" ? decodeVoiceMeta(msg.ciphertext) : null;
+                  // Media meta (audio, immagine, video, documento)
+                  const mediaMeta: MediaMeta | null = msg.message_type === "media"
+                    ? decodeMediaMeta(msg.ciphertext)
+                    : null;
+                  const voiceMeta = mediaMeta?.type === "voice" ? mediaMeta : null;
+                  const isMedia   = mediaMeta !== null;
 
                   return (
                     <div
@@ -965,6 +1024,12 @@ export default function ChatPage({ onNavigate }: Props) {
                             durationMs={voiceMeta.duration_ms}
                             waveform={voiceMeta.waveform}
                             isMine={isMine}
+                          />
+                        ) : mediaMeta && (mediaMeta.type === "image" || mediaMeta.type === "video" || mediaMeta.type === "document") ? (
+                          <MediaMessage
+                            meta={mediaMeta}
+                            isMine={isMine}
+                            onView={(url, type) => setViewerMedia({ url, type })}
                           />
                         ) : (
                           renderText()
@@ -1051,13 +1116,21 @@ export default function ChatPage({ onNavigate }: Props) {
                 onCancel={() => setShowVoiceRecorder(false)}
               />
             ) : (
-              <ChatInput
-                value={inputText}
-                onChange={handleInputChange}
-                onSubmit={handleSend}
-                onVoiceStart={() => setShowVoiceRecorder(true)}
-                disabled={sending}
-              />
+              <div style={{ position: "relative" }}>
+                {uploadProgress !== null && (
+                  <div className="upload-progress-wrap">
+                    <div className="upload-progress-bar" style={{ width: `${uploadProgress}%` }} />
+                  </div>
+                )}
+                <ChatInput
+                  value={inputText}
+                  onChange={handleInputChange}
+                  onSubmit={handleSend}
+                  onVoiceStart={() => setShowVoiceRecorder(true)}
+                  onAttach={handleFilePick}
+                  disabled={sending}
+                />
+              </div>
             )}
           </>
         )}
@@ -1238,6 +1311,15 @@ export default function ChatPage({ onNavigate }: Props) {
             </div>
           </div>
         </div>
+      )}
+
+      {/* ── Media viewer full-screen ──────────────────────────────────────── */}
+      {viewerMedia && (
+        <MediaViewer
+          blobUrl={viewerMedia.url}
+          type={viewerMedia.type}
+          onClose={() => setViewerMedia(null)}
+        />
       )}
     </div>
   );

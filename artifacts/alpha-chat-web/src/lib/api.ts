@@ -109,7 +109,7 @@ export interface MessageItem {
   deleted_for_everyone: boolean;
 }
 
-/** Metadati vocale estratti dal ciphertext di un media message */
+/** Metadati media estratti dal ciphertext di un media message */
 export interface VoiceMeta {
   type: "voice";
   media_id: string;
@@ -117,12 +117,30 @@ export interface VoiceMeta {
   waveform: number[];
 }
 
+export type MediaMeta =
+  | VoiceMeta
+  | { type: "image";    media_id: string; mime_type: string; filename: string; size: number }
+  | { type: "video";    media_id: string; mime_type: string; filename: string; size: number; duration_ms?: number }
+  | { type: "document"; media_id: string; mime_type: string; filename: string; size: number };
+
 export function decodeVoiceMeta(ciphertext: string | null): VoiceMeta | null {
   if (!ciphertext) return null;
   try {
     const json = atob(ciphertext);
     const parsed = JSON.parse(json) as VoiceMeta;
     if (parsed.type !== "voice") return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+export function decodeMediaMeta(ciphertext: string | null): MediaMeta | null {
+  if (!ciphertext) return null;
+  try {
+    const json   = atob(ciphertext);
+    const parsed = JSON.parse(json) as MediaMeta;
+    if (!parsed.type || !parsed.media_id) return null;
     return parsed;
   } catch {
     return null;
@@ -445,9 +463,12 @@ export async function apiEditMessage(
 }
 
 export interface MediaUploadResult {
-  media_id: string;
-  duration_ms: number | null;
-  waveform: number[];
+  media_id:          string;
+  mime_type:         string;
+  original_filename: string | null;
+  has_thumbnail:     boolean;
+  duration_ms:       number | null;
+  waveform:          number[];
 }
 
 /** Upload audio blob come base64 JSON */
@@ -498,6 +519,135 @@ export async function apiSendVoiceMessage(
     message_type: "media",
     media_id: media.media_id,
     sent_at: new Date().toISOString(),
+  });
+}
+
+// ── Genera thumbnail JPEG lato client (max 240×240) ─────────────────────────
+
+async function generateImageThumbnail(file: File): Promise<string> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      const MAX = 240;
+      const scale = Math.min(MAX / img.width, MAX / img.height, 1);
+      canvas.width  = Math.round(img.width  * scale);
+      canvas.height = Math.round(img.height * scale);
+      const ctx = canvas.getContext("2d");
+      if (!ctx) { resolve(""); return; }
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      const dataUrl = canvas.toDataURL("image/jpeg", 0.72);
+      URL.revokeObjectURL(url);
+      // Strip data:image/jpeg;base64, prefix
+      resolve(dataUrl.split(",")[1] ?? "");
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); resolve(""); };
+    img.src = url;
+  });
+}
+
+async function generateVideoThumbnail(file: File): Promise<string> {
+  return new Promise((resolve) => {
+    const video = document.createElement("video");
+    const url   = URL.createObjectURL(file);
+    video.preload  = "metadata";
+    video.muted    = true;
+    video.playsInline = true;
+    video.onloadeddata = () => {
+      const canvas = document.createElement("canvas");
+      const MAX = 240;
+      const scale = Math.min(MAX / video.videoWidth, MAX / video.videoHeight, 1);
+      canvas.width  = Math.round(video.videoWidth  * scale);
+      canvas.height = Math.round(video.videoHeight * scale);
+      const ctx = canvas.getContext("2d");
+      if (!ctx) { URL.revokeObjectURL(url); resolve(""); return; }
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      const dataUrl = canvas.toDataURL("image/jpeg", 0.72);
+      URL.revokeObjectURL(url);
+      resolve(dataUrl.split(",")[1] ?? "");
+    };
+    video.onerror = () => { URL.revokeObjectURL(url); resolve(""); };
+    video.src = url;
+  });
+}
+
+/**
+ * Upload generico di un File (foto, video, documento).
+ * Genera thumbnail client-side per immagini e video.
+ * Onprogress: simulato a 0→100 (il fetch non espone progress su body piccoli).
+ */
+export async function apiUploadFile(
+  conversationId: string,
+  file: File,
+  onProgress?: (pct: number) => void,
+): Promise<MediaUploadResult> {
+  onProgress?.(10);
+
+  const arrayBuffer = await file.arrayBuffer();
+  const bytes  = new Uint8Array(arrayBuffer);
+  let binary   = "";
+  for (const b of bytes) binary += String.fromCharCode(b);
+  const base64 = btoa(binary);
+
+  onProgress?.(40);
+
+  let thumbnailBase64 = "";
+  if (file.type.startsWith("image/")) {
+    thumbnailBase64 = await generateImageThumbnail(file);
+  } else if (file.type.startsWith("video/")) {
+    thumbnailBase64 = await generateVideoThumbnail(file);
+  }
+
+  onProgress?.(60);
+
+  const result = await request<MediaUploadResult>("POST", "/media", {
+    data:              base64,
+    mime_type:         file.type || "application/octet-stream",
+    conversation_id:   conversationId,
+    original_filename: file.name,
+    thumbnail:         thumbnailBase64,
+  });
+
+  onProgress?.(100);
+  return result;
+}
+
+/**
+ * Invia un messaggio file (foto/video/documento): upload + crea messaggio.
+ * Encoding metadata nel ciphertext come base64-JSON (M1).
+ */
+export async function apiSendFileMessage(
+  conversationId: string,
+  file: File,
+  onProgress?: (pct: number) => void,
+): Promise<MessageItem> {
+  const media = await apiUploadFile(conversationId, file, onProgress);
+
+  const mtype = file.type.startsWith("image/")  ? "image"
+              : file.type.startsWith("video/")   ? "video"
+              : file.type.startsWith("audio/")   ? "voice"
+              : "document";
+
+  const meta = JSON.stringify({
+    type:      mtype,
+    media_id:  media.media_id,
+    mime_type: file.type,
+    filename:  file.name,
+    size:      file.size,
+    ...(media.duration_ms != null ? { duration_ms: media.duration_ms } : {}),
+    ...(media.waveform.length > 0 ? { waveform: media.waveform }       : {}),
+  });
+  const ciphertext = btoa(meta);
+
+  return request<MessageItem>("POST", `/conversations/${conversationId}/messages`, {
+    client_message_id: crypto.randomUUID(),
+    ciphertext,
+    ciphertext_type:   1,
+    sender_key_id:     1,
+    message_type:      "media",
+    media_id:          media.media_id,
+    sent_at:           new Date().toISOString(),
   });
 }
 

@@ -1617,3 +1617,171 @@ button:disabled.profile-avatar-edit {
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 3px; }
 ::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,0.14); }
+
+/* ── Sprint 13: Media Sicuri ─────────────────────────────────────────────── */
+
+/* Image bubble */
+.media-bubble-img {
+  position: relative;
+  max-width: 260px;
+  min-width: 100px;
+  border-radius: 10px;
+  overflow: hidden;
+  cursor: pointer;
+  background: rgba(255,255,255,0.05);
+}
+.media-img-preview {
+  display: block;
+  width: 100%;
+  max-width: 260px;
+  max-height: 320px;
+  object-fit: cover;
+  border-radius: 10px;
+}
+
+/* Video bubble */
+.media-bubble-video {
+  position: relative;
+  max-width: 260px;
+  min-width: 100px;
+  border-radius: 10px;
+  overflow: hidden;
+  cursor: pointer;
+  background: #000;
+}
+.media-video-preview {
+  display: block;
+  width: 100%;
+  max-width: 260px;
+  max-height: 220px;
+  object-fit: cover;
+  border-radius: 10px;
+  pointer-events: none;
+}
+.media-play-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+/* Document bubble */
+.media-bubble-doc {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 180px;
+  max-width: 260px;
+  padding: 4px 2px;
+}
+.media-doc-icon { color: #a78bfa; flex-shrink: 0; }
+.media-doc-info { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+.media-doc-name {
+  font-size: 0.82rem;
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #e9d5ff;
+}
+.media-doc-size { font-size: 0.72rem; color: rgba(255,255,255,0.45); margin-top: 2px; }
+.media-doc-download {
+  flex-shrink: 0;
+  color: #a78bfa;
+  padding: 4px;
+  border-radius: 6px;
+  transition: background 0.15s;
+  display: flex;
+  align-items: center;
+}
+.media-doc-download:hover { background: rgba(167,139,250,0.15); }
+.media-doc-loading { font-size: 0.78rem; color: rgba(255,255,255,0.35); }
+.media-doc-error   { color: #f87171; font-size: 0.8rem; }
+
+/* Shared */
+.media-filename {
+  font-size: 0.72rem;
+  color: rgba(255,255,255,0.55);
+  padding: 3px 6px 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.media-skeleton {
+  width: 200px;
+  height: 120px;
+  background: linear-gradient(90deg, rgba(255,255,255,0.05) 25%, rgba(255,255,255,0.1) 50%, rgba(255,255,255,0.05) 75%);
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.4s infinite;
+  border-radius: 10px;
+}
+@keyframes skeleton-shimmer {
+  0%   { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
+.media-error { font-size: 0.8rem; color: #f87171; padding: 8px; }
+
+/* Full-screen viewer */
+.media-viewer-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  background: rgba(0,0,0,0.93);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: viewer-fadein 0.18s ease;
+}
+@keyframes viewer-fadein { from { opacity: 0; } to { opacity: 1; } }
+.media-viewer-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  background: rgba(255,255,255,0.1);
+  border: none;
+  color: #fff;
+  border-radius: 50%;
+  width: 38px;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.15s;
+  z-index: 1;
+}
+.media-viewer-close:hover { background: rgba(255,255,255,0.2); }
+.media-viewer-img {
+  max-width: 96vw;
+  max-height: 90vh;
+  object-fit: contain;
+  border-radius: 6px;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.6);
+}
+.media-viewer-video {
+  max-width: 96vw;
+  max-height: 88vh;
+  border-radius: 6px;
+  outline: none;
+  box-shadow: 0 8px 40px rgba(0,0,0,0.6);
+}
+
+/* Upload progress bar */
+.upload-progress-wrap {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 3px;
+  background: rgba(255,255,255,0.08);
+}
+.upload-progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, #7c3aed, #c026d3);
+  transition: width 0.25s ease;
+}
+
+/* Attach button active state */
+.input-icon-btn:not([disabled]) { opacity: 1; }
