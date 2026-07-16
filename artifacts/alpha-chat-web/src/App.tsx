@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
-import AuthPage from "./pages/AuthPage";
+import LandingPage from "./pages/LandingPage";
 import ChatPage from "./pages/ChatPage";
 import ProfilePage from "./pages/ProfilePage";
 import SettingsPage from "./pages/SettingsPage";
@@ -23,7 +23,7 @@ function AppContent() {
     );
   }
 
-  if (!auth) return <AuthPage />;
+  if (!auth) return <LandingPage />;
 
   const goBack = () => setView("chat");
 
