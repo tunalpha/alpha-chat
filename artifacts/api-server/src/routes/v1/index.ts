@@ -6,6 +6,7 @@ import conversationRoutes from "./conversation.routes";
 import messageRoutes from "./message.routes";
 import inviteRoutes from "./invite.routes";
 import mediaRoutes from "./media.routes";
+import keysRoutes from "./keys.routes";
 
 /**
  * /api/v1/ — mounts all versioned sub-routers.
@@ -33,5 +34,8 @@ v1Router.use("/invites", inviteRoutes);
 
 // Media (upload/download audio, images — Sprint 11)
 v1Router.use("/media", mediaRoutes);
+
+// Signal Protocol — Key Distribution Center (Sprint 16, Fase 1)
+v1Router.use("/keys", keysRoutes);
 
 export default v1Router;

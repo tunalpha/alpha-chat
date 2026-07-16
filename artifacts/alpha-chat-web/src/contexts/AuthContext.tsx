@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { loadAuth, saveAuth, clearAuth, getDeviceId, type StoredAuth } from "../lib/auth";
 import { apiLogin, apiRegister, apiLogout, apiLogoutAll, type LoginInput, type RegisterInput, type AuthResult } from "../lib/api";
+import { initSignalKeys, clearSignalKeys } from "../lib/signal";
 
 interface AuthContextValue {
   auth: StoredAuth | null;
@@ -44,6 +45,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const stored = authResultToStored(result);
     saveAuth(stored);
     setAuth(stored);
+    // Inizializza chiavi Signal in background — non blocca il login
+    // Zero Plaintext Rule: le chiavi private rimangono in IndexedDB
+    void initSignalKeys(result.user.id, getDeviceId()).catch(() => {
+      // Errore non critico in Fase 1 — verrà ritentato al prossimo login
+    });
   }, []);
 
   const register = useCallback(async (input: RegisterInput) => {
@@ -51,18 +57,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const stored = authResultToStored(result);
     saveAuth(stored);
     setAuth(stored);
+    // Genera e carica il bundle Signal subito dopo la registrazione
+    void initSignalKeys(result.user.id, getDeviceId()).catch(() => {
+      // Errore non critico in Fase 1
+    });
   }, []);
 
   const logout = useCallback(async () => {
+    const current = loadAuth();
     await apiLogout();
     clearAuth();
     setAuth(null);
+    // Pulisce le chiavi Signal locali al logout
+    if (current?.userId) {
+      void clearSignalKeys(current.userId).catch(() => {});
+    }
   }, []);
 
   const logoutAll = useCallback(async () => {
+    const current = loadAuth();
     await apiLogoutAll();
     clearAuth();
     setAuth(null);
+    if (current?.userId) {
+      void clearSignalKeys(current.userId).catch(() => {});
+    }
   }, []);
 
   return (

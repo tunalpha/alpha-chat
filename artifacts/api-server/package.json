@@ -12,6 +12,7 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
+    "@signalapp/libsignal-client": "^0.97.3",
     "@types/helmet": "^4.0.0",
     "@upstash/redis": "^1.38.0",
     "@workspace/api-zod": "workspace:*",

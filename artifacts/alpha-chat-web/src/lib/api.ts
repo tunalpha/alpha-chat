@@ -775,6 +775,95 @@ export async function apiUnblockUser(userId: string): Promise<void> {
   await request<void>("DELETE", `/users/${userId}/block`);
 }
 
+// ---------------------------------------------------------------------------
+// Signal Protocol — Key Distribution (Sprint 16, Fase 1)
+// ---------------------------------------------------------------------------
+
+export interface ApiKeyBundleUpload {
+  deviceId: string;
+  registrationId: number;
+  identityKey: string;           // base64
+  signedPreKeyId: number;
+  signedPreKey: string;          // base64
+  signedPreKeySignature: string; // base64
+  oneTimePreKeys: Array<{ keyId: number; publicKey: string }>;
+}
+
+export interface ApiReceivedKeyBundle {
+  userId: string;
+  deviceId: string;
+  registrationId: number;
+  identityKey: string;
+  signedPreKeyId: number;
+  signedPreKey: string;
+  signedPreKeySignature: string;
+  oneTimePreKey: { keyId: number; publicKey: string } | null;
+  hasOneTimePreKey: boolean;
+}
+
+export interface ApiKeyCountResponse {
+  userId: string;
+  otpkCount: number;
+  needsReplenishment: boolean;
+}
+
+/** Carica il bundle di chiavi pubbliche sul server (chiamato dopo login/registrazione) */
+export async function apiUploadKeyBundle(bundle: ApiKeyBundleUpload): Promise<void> {
+  await request<void>("POST", "/keys/bundle", {
+    device_id: bundle.deviceId,
+    registration_id: bundle.registrationId,
+    identity_key: bundle.identityKey,
+    signed_pre_key_id: bundle.signedPreKeyId,
+    signed_pre_key: bundle.signedPreKey,
+    signed_pre_key_signature: bundle.signedPreKeySignature,
+    one_time_pre_keys: bundle.oneTimePreKeys.map((k) => ({
+      key_id: k.keyId,
+      public_key: k.publicKey,
+    })),
+  });
+}
+
+/** Recupera il bundle Signal di un utente per iniziare una sessione X3DH */
+export async function apiGetKeyBundle(userId: string): Promise<ApiReceivedKeyBundle> {
+  const res = await request<{ data: ApiReceivedKeyBundle }>("GET", `/keys/bundle/${userId}`);
+  return res.data;
+}
+
+/** Controlla il livello OTPK locali rimaste sul server */
+export async function apiGetKeyCount(): Promise<ApiKeyCountResponse> {
+  const res = await request<{ data: ApiKeyCountResponse }>("GET", "/keys/count");
+  return res.data;
+}
+
+/** Rifornisce il pool di One-Time PreKeys sul server */
+export async function apiReplenishOneTimePreKeys(payload: {
+  deviceId: string;
+  oneTimePreKeys: Array<{ keyId: number; publicKey: string }>;
+}): Promise<void> {
+  await request<void>("POST", "/keys/one-time-pre-keys", {
+    device_id: payload.deviceId,
+    one_time_pre_keys: payload.oneTimePreKeys.map((k) => ({
+      key_id: k.keyId,
+      public_key: k.publicKey,
+    })),
+  });
+}
+
+/** Ruota la Signed PreKey (ogni ~settimana) */
+export async function apiRotateSignedPreKey(payload: {
+  deviceId: string;
+  signedPreKeyId: number;
+  signedPreKey: string;
+  signedPreKeySignature: string;
+}): Promise<void> {
+  await request<void>("PUT", "/keys/signed-pre-key", {
+    device_id: payload.deviceId,
+    signed_pre_key_id: payload.signedPreKeyId,
+    signed_pre_key: payload.signedPreKey,
+    signed_pre_key_signature: payload.signedPreKeySignature,
+  });
+}
+
 export async function apiSetDisappearing(
   conversationId: string,
   enabled: boolean,
