@@ -30,4 +30,12 @@ export class MediaRepository {
   async findById(mediaId: mongoose.Types.ObjectId): Promise<IMediaDocument | null> {
     return MediaModel.findById(mediaId);
   }
+
+  /**
+   * Hard delete — rimuove completamente il documento media (dati inclusi).
+   * Usato da Secure Destroy per eliminare foto/audio/video senza lasciare orfani.
+   */
+  async hardDeleteById(mediaId: mongoose.Types.ObjectId): Promise<void> {
+    await MediaModel.deleteOne({ _id: mediaId });
+  }
 }

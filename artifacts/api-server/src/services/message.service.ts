@@ -18,6 +18,7 @@ import { AppError } from "../errors/AppError";
 import { ConversationRepository } from "../repositories/conversation.repository";
 import { ConversationMemberRepository } from "../repositories/conversation-member.repository";
 import { MessageRepository } from "../repositories/message.repository";
+import { MediaRepository } from "../repositories/media.repository";
 import { logAuditEvent } from "../lib/audit";
 import { logger } from "../lib/logger";
 import { wsManager } from "../lib/ws-manager";
@@ -57,9 +58,10 @@ export interface MessageListResult {
 // Singletons
 // ---------------------------------------------------------------------------
 
-const convRepo = new ConversationRepository();
+const convRepo   = new ConversationRepository();
 const memberRepo = new ConversationMemberRepository();
-const msgRepo = new MessageRepository();
+const msgRepo    = new MessageRepository();
+const mediaRepo  = new MediaRepository();
 
 // ---------------------------------------------------------------------------
 // sendMessage
@@ -385,8 +387,23 @@ export async function secureDestroy(
     throw new AppError("MESSAGE_DELETE_FORBIDDEN", 403);
   }
 
-  // 4. Hard delete — rimuove completamente il documento
+  // 4a. Hard delete media allegato (foto/audio/video) — nessun file orfano
+  if (msg.media_id) {
+    await mediaRepo.hardDeleteById(msg.media_id as mongoose.Types.ObjectId);
+  }
+
+  // 4b. Hard delete del documento messaggio
   await msgRepo.hardDeleteById(msgObjectId);
+
+  // 4c. Aggiorna last_message sulla conversazione se era l'ultimo messaggio
+  void (async () => {
+    try {
+      const prevMsg = await msgRepo.findLastInConversation(convObjectId);
+      await convRepo.updateLastMessage(convObjectId, prevMsg);
+    } catch (err) {
+      logger.warn({ err }, "Secure Destroy: aggiornamento last_message fallito");
+    }
+  })();
 
   // 5. Audit log — solo metadati, mai il contenuto
   logAuditEvent({

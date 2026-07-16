@@ -77,6 +77,27 @@ export class ConversationRepository {
   }
 
   /**
+   * Aggiorna last_message_id, last_message_at e last_activity_at.
+   * Chiamato dopo Secure Destroy per puntare al messaggio precedente.
+   * Se prevMsg è null la conversazione non ha più messaggi → campi a null.
+   */
+  async updateLastMessage(
+    conversationId: mongoose.Types.ObjectId,
+    prevMsg: { _id: mongoose.Types.ObjectId; server_received_at: Date } | null,
+  ): Promise<void> {
+    await ConversationModel.updateOne(
+      { _id: conversationId },
+      {
+        $set: {
+          last_message_id:  prevMsg ? prevMsg._id           : null,
+          last_message_at:  prevMsg ? prevMsg.server_received_at : null,
+          last_activity_at: new Date(),
+        },
+      },
+    );
+  }
+
+  /**
    * Aggiorna member_count e last_activity_at atomicamente.
    */
   async incrementMemberCount(

@@ -215,6 +215,20 @@ export class MessageRepository {
   }
 
   /**
+   * Trova il messaggio più recente di una conversazione (dopo un hard delete).
+   * Usato da Secure Destroy per aggiornare last_message_id sulla conversazione.
+   */
+  async findLastInConversation(
+    conversationId: mongoose.Types.ObjectId,
+  ): Promise<{ _id: mongoose.Types.ObjectId; server_received_at: Date } | null> {
+    const msg = await MessageModel.findOne(
+      { conversation_id: conversationId, deleted_for_everyone: false },
+      { _id: 1, server_received_at: 1 },
+    ).sort({ sequence_number: -1 });
+    return msg ? { _id: msg._id as mongoose.Types.ObjectId, server_received_at: msg.server_received_at } : null;
+  }
+
+  /**
    * Lista messaggi filtrati per utente (escludi deleted_for e deleted_for_everyone).
    */
   async listForUser(params: {

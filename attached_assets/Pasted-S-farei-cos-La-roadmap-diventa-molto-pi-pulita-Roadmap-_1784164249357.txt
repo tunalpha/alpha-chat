@@ -1,0 +1,133 @@
+Sì, farei così. La roadmap diventa molto più pulita.
+
+Roadmap Alpha Chat
+
+✅ Sprint 1–11 (Completati)
+
+* Autenticazione
+* Chat E2E
+* Reply
+* Edit
+* Delete
+* Inviti usa e getta
+* QR
+* Ricerca rimossa
+* Profilo
+* Impostazioni
+* Dispositivi
+* Demo interattiva
+* Secure Destroy (in lavorazione)
+
+⸻
+
+🚀 Sprint 12 — Media sicuri
+
+* 📷 Foto
+* 🎥 Video
+* 📄 Documenti
+* 🖼️ Galleria condivisa
+* Compressione
+* Download
+* Anteprime
+* Upload cifrato E2E
+* Progress upload
+
+⸻
+
+🚀 Sprint 13 — Vocali (quasi completato)
+
+Rimane da completare solo:
+
+* 🛡️ Secure Destroy dei messaggi vocali
+
+⸻
+
+🚀 Sprint 14 — Chiamate protette
+
+* 📞 Chiamate vocali
+* 📹 Videochiamate
+* WebRTC
+* TURN/STUN
+* Riduzione rumore
+* Verifica connessione E2E
+* Indicatore “Connessione verificata”
+
+⸻
+
+🚀 Sprint 15 — Privacy avanzata
+
+* Timer autodistruzione
+* Modalità Ghost
+* Nascondi ultimo accesso
+* Nascondi online
+* Nascondi avatar
+* Bio privata
+* Gestione utenti bloccati
+
+⸻
+
+🚀 Sprint 16 — Sicurezza
+
+* PIN Alpha Chat
+* Face ID
+* Touch ID
+* Password secondaria
+* Sessioni attive
+* Gestione dispositivi
+* Logout remoto
+* Avviso nuovo accesso
+
+⸻
+
+🚀 Sprint 17 — Organizzazione
+
+* Archivio
+* Preferiti
+* Cartelle
+* Ricerca globale
+* Messaggi fissati
+* Filtri
+
+⸻
+
+🚀 Sprint 18 — Gruppi
+
+* Gruppi E2E
+* Amministratori
+* Ruoli
+* Permessi
+* Inviti monouso
+* QR di gruppo
+* Broadcast
+
+⸻
+
+🚀 Sprint 19 — Ecosistema Alpha
+
+* Installazione PWA
+* Multi-dispositivo
+* Backup cifrato opzionale
+* Sincronizzazione
+* Temi
+* Notifiche Push
+
+⸻
+
+🚀 Sprint 20 — Military Edition
+
+Il punto di arrivo.
+
+* 🛡️ Panic Mode
+* 🛡️ Distruzione completa conversazione
+* 🛡️ Distruzione completa account
+* 🛡️ Distruzione programmata
+* 🛡️ Modalità infiltrazione (Ghost)
+* 🛡️ Verifica integrità dispositivo
+* 🛡️ Codici invito monouso avanzati
+* 🛡️ Zero tracking
+* 🛡️ Nessuna ricerca pubblica
+* 🛡️ Audit di sicurezza completo
+
+⸻
+
+Questa versione mi convince di più: rimane focalizzata sulle funzionalità che rendono Alpha Chat diversa, senza introdurre elementi (come i canali) che non sono essenziali alla tua visione del prodotto. Inoltre il traguardo della Military Edition dà un’identità forte e coerente con il motto che avete scelto: “Il tuo bunker digitale.”
