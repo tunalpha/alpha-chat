@@ -116,3 +116,27 @@ export async function sendPhoenixConfirmEmail(params: PhoenixEmailParams): Promi
   await transport.sendMail({ from: FROM, to, subject: `Alpha Chat — Conferma ${actionLabel}`, html, text });
   logger.info({ to, action }, "Phoenix confirmation email sent");
 }
+
+// ---------------------------------------------------------------------------
+// Generic sendEmail — usato da altri servizi (DMS, ecc.)
+// ---------------------------------------------------------------------------
+
+export interface GenericEmailParams {
+  to: string;
+  subject: string;
+  html: string;
+}
+
+export async function sendEmail(params: GenericEmailParams): Promise<void> {
+  const { to, subject, html } = params;
+  const transport = createTransport();
+
+  if (!transport) {
+    logger.warn({ to, subject }, "[Email DEV] SMTP non configurato — email logged");
+    console.log(`\nEMAIL → ${to}\nSubject: ${subject}\n`);
+    return;
+  }
+
+  await transport.sendMail({ from: FROM, to, subject, html });
+  logger.info({ to, subject }, "Email sent");
+}

@@ -76,7 +76,11 @@ export type AuditEventType =
   | "USER_UNBLOCKED"
   // Phoenix Protocol (Sprint 18)
   | "PHOENIX_LOCK_EXECUTED"
-  | "PHOENIX_PROTOCOL_EXECUTED";
+  | "PHOENIX_PROTOCOL_EXECUTED"
+  // Dead Man Switch (Sprint 19)
+  | "DMS_CONFIGURED"
+  | "DMS_WARNING_SENT"
+  | "DMS_ACTION_EXECUTED";
 
 export interface AuditEvent {
   event: AuditEventType;

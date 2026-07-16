@@ -3,6 +3,7 @@ import { logger } from "./lib/logger";
 import { config } from "./config";
 import { connectMongoDB, disconnectMongoDB } from "./lib/mongodb";
 import { createWsServer } from "./lib/ws-server";
+import { runDmsScheduler } from "./services/dead-man-switch.service";
 
 const port = config.app.port;
 
@@ -18,6 +19,11 @@ async function start(): Promise<void> {
 
   // Attach WebSocket server (shares same port via HTTP upgrade)
   createWsServer(server);
+
+  // Dead Man Switch scheduler — controlla ogni 4 ore
+  const DMS_INTERVAL_MS = 4 * 60 * 60 * 1000;
+  setInterval(() => { void runDmsScheduler(); }, DMS_INTERVAL_MS).unref();
+  logger.info("DMS scheduler started (interval: 4h)");
 
   // ── Graceful shutdown ───────────────────────────────────────────────────────
   const shutdown = async (signal: string): Promise<void> => {

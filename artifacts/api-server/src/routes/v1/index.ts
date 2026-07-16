@@ -7,39 +7,33 @@ import messageRoutes from "./message.routes";
 import inviteRoutes from "./invite.routes";
 import mediaRoutes from "./media.routes";
 import keysRoutes from "./keys.routes";
+import phoenixRoutes from "./phoenix.routes";
+import deadManSwitchRoutes from "./dead-man-switch.routes";
+import recoveryContactsRoutes from "./recovery-contacts.routes";
+import securityTimelineRoutes from "./security-timeline.routes";
+import recoveryDashboardRoutes from "./recovery-dashboard.routes";
 
 /**
  * /api/v1/ — mounts all versioned sub-routers.
- * Add new modules here as they are implemented.
  */
 const v1Router = Router();
 
-// System (health, version, status)
 v1Router.use("/", systemRoutes);
-
-// Auth (register, login, refresh, logout, 2FA)
 v1Router.use("/auth", authRoutes);
-
-// Users (discovery, profiles)
 v1Router.use("/users", userRoutes);
-
-// Conversations (direct chat, groups)
 v1Router.use("/conversations", conversationRoutes);
-
-// Messages (nested under conversations)
 v1Router.use("/conversations/:conversationId/messages", messageRoutes);
-
-// Invites (privacy-first contact discovery — Sprint 9)
 v1Router.use("/invites", inviteRoutes);
-
-// Media (upload/download audio, images — Sprint 11)
 v1Router.use("/media", mediaRoutes);
-
-// Signal Protocol — Key Distribution Center (Sprint 16, Fase 1)
 v1Router.use("/keys", keysRoutes);
 
-// Phoenix Protocol — Emergency Lock / Account Destruction (Sprint 18)
-import phoenixRoutes from "./phoenix.routes";
+// Phoenix Protocol — Sprint 18
 v1Router.use("/phoenix", phoenixRoutes);
+
+// Recovery & Continuity Center — Sprint 19
+v1Router.use("/dead-man-switch", deadManSwitchRoutes);
+v1Router.use("/recovery-contacts", recoveryContactsRoutes);
+v1Router.use("/security-timeline", securityTimelineRoutes);
+v1Router.use("/recovery-dashboard", recoveryDashboardRoutes);
 
 export default v1Router;

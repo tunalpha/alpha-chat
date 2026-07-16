@@ -1,0 +1,219 @@
+Io farei uno Sprint 19 molto forte. Non solo un “Dead Man Switch”, ma un vero Recovery & Continuity Center, che completa il Phoenix Protocol.
+
+Ecco il prompt.
+
+⸻
+
+Sprint 19 — Recovery & Continuity Center
+
+Missione
+
+Completare definitivamente l’ecosistema di sicurezza di Alpha Chat implementando il Recovery & Continuity Center.
+
+L’obiettivo è permettere all’utente di mantenere il controllo del proprio account anche quando perde completamente l’accesso ai dispositivi.
+
+Questo sprint completa il Phoenix Protocol.
+
+⸻
+
+Regole
+
+* Nessuna modifica al Signal Protocol.
+* Nessuna modifica a X3DH.
+* Nessuna modifica al Double Ratchet.
+* Nessuna modifica alla cifratura E2E.
+* Tutte le nuove funzioni devono essere additive.
+
+⸻
+
+Fase 1 — Dead Man Switch
+
+Nuova sezione:
+
+Impostazioni → Sicurezza → Dead Man Switch
+
+L’utente può scegliere:
+
+* Disattivato
+* 30 giorni
+* 60 giorni
+* 90 giorni
+* 180 giorni
+* Personalizzato
+
+Se Alpha Chat non riceve alcun accesso entro il periodo scelto:
+
+1. inviare email;
+2. inviare notifica push (se disponibile);
+3. attendere un periodo di grazia configurabile (es. 7 giorni);
+4. se non arriva alcuna conferma, eseguire l’azione scelta.
+
+⸻
+
+Fase 2 — Azione automatica
+
+L’utente sceglie:
+
+Nessuna azione
+
+Solo notifica.
+
+⸻
+
+Emergency Lock
+
+Blocca:
+
+* tutti i dispositivi;
+* tutte le sessioni;
+* tutti i token.
+
+⸻
+
+Phoenix Protocol
+
+Avvia automaticamente il Phoenix Protocol.
+
+Richiedere comunque la doppia conferma configurata dall’utente (es. Recovery Contact o procedura equivalente).
+
+⸻
+
+Fase 3 — Recovery Contacts
+
+Permettere di configurare fino a 5 contatti fidati.
+
+Per ciascuno:
+
+* nome;
+* email;
+* relazione (facoltativa).
+
+I contatti non vedono mai i dati dell’account.
+
+Ricevono solo richieste di conferma se previste dalla configurazione dell’utente.
+
+⸻
+
+Fase 4 — Emergency Dashboard
+
+Nuova pagina:
+
+Recovery Center
+
+Mostrare:
+
+* ultimo accesso;
+* stato Dead Man Switch;
+* Recovery Contacts;
+* Recovery Card;
+* Phoenix Code configurato;
+* ultimo utilizzo del Phoenix Protocol;
+* dispositivi autorizzati;
+* sessioni attive.
+
+⸻
+
+Fase 5 — Timeline
+
+Visualizzare una timeline completa degli eventi di sicurezza:
+
+* login;
+* nuovi dispositivi;
+* verifica identità;
+* cambio chiavi;
+* Emergency Lock;
+* Phoenix Protocol;
+* cambio Phoenix Code;
+* modifica Dead Man Switch.
+
+Solo eventi tecnici.
+
+Mai contenuti delle conversazioni.
+
+⸻
+
+Fase 6 — Recovery Card v2
+
+Aggiornare la Recovery Card.
+
+Aggiungere:
+
+* QR Code;
+* Emergency ID;
+* Username;
+* versione;
+* checksum;
+* istruzioni sintetiche.
+
+Formato PDF stampabile.
+
+⸻
+
+Fase 7 — Centro Sicurezza
+
+Aggiungere una dashboard che mostri:
+
+🟢 Signal E2E
+
+🟢 Safety Number
+
+🟢 Ghost Mode
+
+🟢 Device Security
+
+🟢 Phoenix Protocol
+
+🟢 Dead Man Switch
+
+🟢 Recovery Contacts
+
+Ogni funzione deve indicare chiaramente se è configurata o meno.
+
+⸻
+
+Audit
+
+Verificare:
+
+* impossibilità di attivazione accidentale;
+* rate limiting;
+* replay protection;
+* token monouso;
+* idempotenza;
+* recovery multipla;
+* revoca dispositivi;
+* recovery dopo reinstallazione;
+* nessuna regressione delle funzioni esistenti.
+
+⸻
+
+Test
+
+Creare test automatici per:
+
+* Dead Man Switch;
+* Recovery Contacts;
+* Recovery Card;
+* Dashboard;
+* Timeline;
+* Timeout;
+* Grace period;
+* Emergency Lock automatico;
+* Phoenix Protocol automatico;
+* ripristino dopo nuova autenticazione.
+
+⸻
+
+Deliverable
+
+* TypeScript pulito.
+* Build pulita.
+* Test automatici tutti verdi.
+* Audit di sicurezza.
+* Documentazione tecnica.
+* Documentazione utente.
+* Nessuna regressione di Signal Protocol, Device Security o Phoenix Protocol.
+
+⸻
+
+Nota di prodotto: eviterei un’attivazione completamente automatica e irreversibile del Phoenix Protocol basata solo sull’inattività. Per una funzione così critica, è preferibile che il Dead Man Switch esegua prima azioni reversibili (avvisi, blocco dei dispositivi, ecc.) e richieda una procedura di conferma aggiuntiva se l’utente desidera arrivare alla distruzione definitiva dell’account. Questo riduce il rischio di perdere dati a causa di un semplice periodo di inattività o di un errore di configurazione.

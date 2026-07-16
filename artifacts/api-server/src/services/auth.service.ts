@@ -280,7 +280,7 @@ export async function login(params: LoginServiceParams): Promise<LoginResult> {
     userId: user._id.toString(), deviceId: device_id, roles: [],
   });
 
-  // 9. Audit
+  // 9. Audit + Security Events + DMS check-in
   logAuditEvent({
     event: isNewDevice ? "NEW_DEVICE_LOGIN" : "USER_LOGIN",
     user_id: user._id.toString(), device_id,
@@ -289,9 +289,21 @@ export async function login(params: LoginServiceParams): Promise<LoginResult> {
     metadata: { is_trusted: isTrusted, login_count: newLoginCount },
   });
 
+  // Sprint 19 — DMS check-in + security timeline (fire-and-forget, mai blocking)
+  void import("./dead-man-switch.service").then(({ dmsCheckIn }) =>
+    dmsCheckIn(user._id.toString()).catch(() => {}),
+  );
+  void import("./security-timeline.service").then(({ logSecurityEvent }) =>
+    logSecurityEvent({
+      user_id: user._id.toString(),
+      event_type: isNewDevice ? "NEW_DEVICE" : "LOGIN",
+      metadata: { device_name: device_name ?? null },
+      ip: ipHash ?? undefined,
+    }).catch(() => {}),
+  );
+
   if (isNewDevice) {
     logger.info({ userId: user._id.toString(), deviceId: device_id }, "New device login");
-    // TODO Sprint 7: WebSocket event agli altri device dell'utente
   }
 
   return {

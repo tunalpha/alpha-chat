@@ -12,6 +12,10 @@ import PrivacyPage from "./pages/PrivacyPage";
 import ComingSoonPage from "./pages/ComingSoonPage";
 import EmergencyPage from "./pages/EmergencyPage";
 import SecurityCenterPage from "./pages/SecurityCenterPage";
+import DeadManSwitchPage from "./pages/DeadManSwitchPage";
+import RecoveryContactsPage from "./pages/RecoveryContactsPage";
+import RecoveryDashboardPage from "./pages/RecoveryDashboardPage";
+import SecurityTimelinePage from "./pages/SecurityTimelinePage";
 import LockScreen from "./components/LockScreen";
 import PrivacyOverlay from "./components/PrivacyOverlay";
 
@@ -24,7 +28,11 @@ export type AppView =
   | "devices"
   | "privacy"
   | "archive"
-  | "security-center";
+  | "security-center"
+  | "dead-man-switch"
+  | "recovery-contacts"
+  | "recovery-dashboard"
+  | "security-timeline";
 
 /** Controlla se l'URL corrente è la pagina di emergenza (accessibile senza auth). */
 function isEmergencyPath(): boolean {
@@ -84,6 +92,14 @@ function AppContent() {
             return <ComingSoonPage title="Archivio" onBack={goBack} />;
           case "security-center":
             return <SecurityCenterPage onClose={goSettings} />;
+          case "dead-man-switch":
+            return <DeadManSwitchPage onBack={goSettings} />;
+          case "recovery-contacts":
+            return <RecoveryContactsPage onBack={goSettings} />;
+          case "recovery-dashboard":
+            return <RecoveryDashboardPage onBack={goSettings} onNavigate={setView} />;
+          case "security-timeline":
+            return <SecurityTimelinePage onBack={goSettings} />;
           default:
             return <ChatPage onNavigate={setView} />;
         }
