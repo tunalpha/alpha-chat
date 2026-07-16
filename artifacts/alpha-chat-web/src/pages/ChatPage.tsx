@@ -17,6 +17,7 @@ import {
   type MessageItem,
 } from "../lib/api";
 import VoiceRecorder, { type VoiceBlob } from "../components/VoiceRecorder";
+import { attachAudioUnlockListener, playNotifSound } from "../lib/notifSound";
 import VoiceMessage from "../components/VoiceMessage";
 import InviteModal from "../components/InviteModal";
 import RedeemModal from "../components/RedeemModal";
@@ -394,9 +395,13 @@ export default function ChatPage({ onNavigate }: Props) {
 
   useEffect(() => { void loadConversations(); }, [loadConversations]);
 
-  // ── Load messages ───────────────────────────────────────────────────────
+  // Sblocca audio al primo gesto utente (necessario su iOS Safari / Chrome iOS)
+  useEffect(() => { attachAudioUnlockListener(); }, []);
+
+  // ── Load messages + suono apertura conversazione ─────────────────────────
   useEffect(() => {
     if (!activeConvId) { setMessages([]); return; }
+    void playNotifSound();   // suono apertura conversazione
     setLoadingMsgs(true);
     apiListMessages(activeConvId, { limit: 50 })
       .then((res) => setMessages([...res.items].reverse()))
@@ -424,6 +429,7 @@ export default function ChatPage({ onNavigate }: Props) {
       switch (event.type) {
         case "message.new": {
           const msg = event.payload as unknown as MessageItem & { conversation_id: string };
+          void playNotifSound();   // suono ricezione messaggio
           if (msg.conversation_id === activeConvId) {
             setMessages((prev) => {
               if (prev.some((m) => m.id === msg.id)) return prev;
@@ -516,6 +522,7 @@ export default function ChatPage({ onNavigate }: Props) {
       } else {
         // Invio normale o risposta
         await apiSendMessage(activeConvId, text, { replyToMessageId: replyTo?.id });
+        void playNotifSound();   // suono invio messaggio
         setReplyTo(null);
       }
     } catch (err) {

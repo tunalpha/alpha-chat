@@ -8,6 +8,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useAuth } from "../contexts/AuthContext";
+import { unlockNotifAudio, playNotifSound } from "../lib/notifSound";
 
 // ── Script della conversazione ────────────────────────────────────────────────
 type Speaker = "user" | "alpha" | "status";
@@ -45,57 +46,6 @@ const GAP_MS    = 320;
 // Delay extra per messaggi "user" (nessun typing, ma piccola pausa naturale)
 const USER_PAUSE_MS = 420;
 
-// ── Suono notifica — HTML5 Audio (WAV base64) ────────────────────────────────
-// Web Audio API non è affidabile su iOS Safari fuori dal gesture handler.
-// HTML5 Audio con .play() nel gesture handler sblocca l'audio per la sessione.
-// Il WAV è un tono 880Hz 120ms pre-generato (8-bit mono 8kHz) in base64.
-const NOTIF_SRC =
-  "data:audio/wav;base64,UklGRuQDAABXQVZFZm10IBAAAAABAAEAQB" +
-  "8AAEAfAAABAAgAZGF0YcADAACA0fzvrlgVAil4yvrxtWAaAiRwwvbzvGgg" +
-  "AyBou/L1wnAmBRxhtO72x3gsBxlarOr2zX8zCRZTpeX20oc5DBRNneD21" +
-  "o5ADxJHltr12pVHExBBjtT03pxOFw88h87y4aNVGw83gMjv46lcIA8yeML" +
-  "t5a9kJRAucbvq57VrKhEqa7Xm6LpyLxInZK7i6cB5NRQkXqfe6cSAOxYi" +
-  "WKHa6ciGQRkgUprV6cyNRxweTZPQ6NCTTR8dSIzL5tOZVCMcQ4bF5dWfW" +
-  "iccP4DA4tikYSscO3m64NmqZy8dOHO03duvbTQeNG2u2tyzczkfMmio1ty" +
-  "4ej4hL2Ki0ty8f0MjLV2czty/hUkmLFiWytvDi04oKlORxtrFkFQrKk+L" +
-  "wdnIllkvKUuFvNfKm18yKUh/t9XMoGU2KUR6stPNpGo6KkF1rdDOqHA+K" +
-  "z9wqM3PrHVDLTxro8rPsHpHLjpmnsfPs4BMMDlimMPPtoVRMjhek7/OuY" +
-  "lVNTdajrvNu45aODZWibfMvZJfOzZThLPKv5dkPjZQgK/IwJtpQTdNe6r" +
-  "GwZ5tRTdLdqbEwqJySThJcqLBwqV3TDpHbp2+w6h7UDtGapm7wqt/VD1E" +
-  "Z5S4wq2EWD9EY5C1wa+IXUJDYIyxwLGMYURDXYeuv7OPZUdDW4OqvbST" +
-  "aUpDWICmu7WWbU1EVnyjubWZcVBFVXift7acdVNGU3WbtbaeeFZHUnGXsr" +
-  "agfFlJUW6UsLWif11KUGyQrbWkg2BMUGmNqrSmhmROT2eJp7OniWdQUGWG" +
-  "pLGojGpTUGODobCpjm5VUGF/nq6pkXFYUV99m6ypk3RaUl96mKqplXdd" +
-  "U113laipl3pgVF11kqapmH1jVlxzj6Samn9lV1xxjKKnm4JoWVxviZ+mn" +
-  "IRrW1xth52lnYdtXVxshJqknYlwX11qgpijnYpzYV1pf5WhnYx1Y15pfZ" +
-  "OgnY13ZV9oe5GenY96Z2Boeo6cnZB8amJneIyanJF+bGNnd4qYm5F/bmRn" +
-  "dYiWmpKBcGZodIaUmZKDcmhoc4STmJKEdGlpc4KRl5KFdmtqcoGPlpKGd" +
-  "21qcoCNlJKHeW5rcn6Lk5GIe3Bscn2KkZGIfHJucnyIkJCJfXNvcnuGjo" +
-  "+Jf3VwcnuFjY6Jf3Zxc3qEi42JgHhzdHqDioyJgXl0dXqCiIuIgnp1dX" +
-  "qBh4qIgnt3dnqAhoiHgnx4d3qAhIeGgn15eXt/g4aFgn57ent/goWEgn9" +
-  "8e3x/goODgn99fH1/gYKCgX9+fX5/gIGBgH9/fn9/gICAgIA=";
-
-let _notifAudio: HTMLAudioElement | null = null;
-
-/** Chiamare SINCRONO nel gesture handler — sblocca audio su iOS Safari */
-function unlockAudio() {
-  if (_notifAudio) return;
-  try {
-    _notifAudio = new Audio(NOTIF_SRC);
-    _notifAudio.volume = 0.001;      // quasi silenzioso per l'unlock
-    const p = _notifAudio.play();
-    if (p) p.then(() => { if (_notifAudio) { _notifAudio.pause(); _notifAudio.currentTime = 0; _notifAudio.volume = 1; } }).catch(() => {});
-  } catch { /* ignora */ }
-}
-
-function playNotif() {
-  if (!_notifAudio) return;
-  try {
-    _notifAudio.currentTime = 0;
-    _notifAudio.volume = 1;
-    _notifAudio.play().catch(() => {});
-  } catch { /* ignora */ }
-}
 
 function vibrate() {
   try { navigator.vibrate?.(40); } catch { /* ignora */ }
@@ -145,7 +95,7 @@ export default function LandingPage() {
     function handleFirstGesture() {
       if (startedRef.current) return;
       startedRef.current = true;
-      unlockAudio();           // sincrono nel gesto → iOS/Chrome sbloccati
+      void unlockNotifAudio(); // unlock HTML5 Audio per tutta la sessione
       setStarted(true);
     }
     const events = ["click", "touchstart", "mousemove", "keydown"] as const;
@@ -191,7 +141,7 @@ export default function LandingPage() {
 
         setVisible((prev) => [...prev, line]);
         if (line.speaker !== "status") {
-          playNotif();
+          void playNotifSound();
           vibrate();
         }
 
