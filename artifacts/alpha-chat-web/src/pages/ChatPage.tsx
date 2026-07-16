@@ -91,6 +91,10 @@ function ChatHeader({
   onBack,
   onViewProfile,
   onSearchInChat,
+  onCallAudio,
+  onCallVideo,
+  onBlockUser,
+  onToast,
   trustStatus,
   onOpenSafetyNumber,
 }: {
@@ -99,6 +103,10 @@ function ChatHeader({
   onBack: () => void;
   onViewProfile: () => void;
   onSearchInChat: () => void;
+  onCallAudio: () => void;
+  onCallVideo: () => void;
+  onBlockUser: () => void;
+  onToast: (msg: string) => void;
   trustStatus?: TrustStatus | "loading" | null;
   onOpenSafetyNumber?: () => void;
 }) {
@@ -114,13 +122,21 @@ function ChatHeader({
     return () => document.removeEventListener("mousedown", handler);
   }, [menuOpen]);
 
-  const menuItems = [
-    { label: "Visualizza profilo", icon: "👤", soon: true },
-    { label: "Media condivisi", icon: "🖼️", soon: true },
-    { label: "Cerca nella chat", icon: "🔍", soon: true },
-    { label: "Silenzia", icon: "🔕", soon: true },
-    { label: "Blocca utente", icon: "🚫", danger: true, soon: true },
-    { label: "Cancella chat", icon: "🗑️", danger: true, soon: true },
+  const closeMenu = () => setMenuOpen(false);
+
+  const menuItems: {
+    label: string;
+    icon: string;
+    danger?: boolean;
+    soon?: boolean;
+    onClick: () => void;
+  }[] = [
+    { label: "Visualizza profilo", icon: "👤", onClick: () => { closeMenu(); onViewProfile(); } },
+    { label: "Media condivisi", icon: "🖼️", soon: true, onClick: () => { closeMenu(); onToast("Media condivisi disponibile prossimamente"); } },
+    { label: "Cerca nella chat", icon: "🔍", onClick: () => { closeMenu(); onSearchInChat(); } },
+    { label: "Silenzia", icon: "🔕", soon: true, onClick: () => { closeMenu(); onToast("Silenzia disponibile prossimamente"); } },
+    { label: "Blocca utente", icon: "🚫", danger: true, onClick: () => { closeMenu(); onBlockUser(); } },
+    { label: "Cancella chat", icon: "🗑️", danger: true, soon: true, onClick: () => { closeMenu(); onToast("Cancella chat disponibile prossimamente"); } },
   ];
 
   const trustBadge = trustStatus && trustStatus !== "loading"
@@ -159,12 +175,12 @@ function ChatHeader({
       </div>
 
       <div className="chat-header-actions">
-        <button className="icon-btn icon-btn-header" title="Chiamata" aria-label="Chiamata">
+        <button className="icon-btn icon-btn-header" title="Chiamata vocale (prossimamente)" aria-label="Chiamata" onClick={onCallAudio}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="20" height="20">
             <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.61 3.4 2 2 0 0 1 3.6 1.22h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.8a16 16 0 0 0 5.55 5.55l.95-.95a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/>
           </svg>
         </button>
-        <button className="icon-btn icon-btn-header" title="Video" aria-label="Videochiamata">
+        <button className="icon-btn icon-btn-header" title="Videochiamata (prossimamente)" aria-label="Videochiamata" onClick={onCallVideo}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="20" height="20">
             <polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/>
           </svg>
@@ -196,7 +212,7 @@ function ChatHeader({
                 <button
                   key={item.label}
                   className={`chat-menu-item${item.danger ? " danger" : ""}`}
-                  onClick={() => setMenuOpen(false)}
+                  onClick={item.onClick}
                 >
                   <span className="chat-menu-icon">{item.icon}</span>
                   {item.label}
@@ -298,7 +314,11 @@ function ChatInput({
         type="file"
         accept="image/*,video/*,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.*,text/plain,audio/*"
         style={{ display: "none" }}
-        onChange={(e) => { if (e.target.files && onAttach) onAttach(e.target.files); }}
+        onChange={(e) => {
+          if (e.target.files && onAttach) onAttach(e.target.files);
+          // FIX: reset il valore così la stessa foto può essere riselezionata (iOS fix)
+          e.target.value = "";
+        }}
       />
       <button
         type="button"
@@ -1227,6 +1247,22 @@ export default function ChatPage({ onNavigate }: Props) {
     }
   }
 
+  async function handleBlockUser() {
+    const conv = conversations.find((c) => c.conversation_id === activeConvId);
+    const targetId = conv?.other_user?.user_id;
+    if (!targetId) return;
+    const name = conv?.other_user?.display_name ?? conv?.other_user?.username ?? "questo utente";
+    const confirmed = window.confirm(`Bloccare ${name}?\n\nNon potrà più inviarti messaggi.`);
+    if (!confirmed) return;
+    try {
+      const { apiBlockUser } = await import("../lib/api");
+      await apiBlockUser(targetId);
+      showToast(`🚫 ${name} bloccato`);
+    } catch {
+      showToast("Errore durante il blocco dell'utente");
+    }
+  }
+
   async function handleDeleteForMe(msg: MessageItem) {
     closeContextMenu();
     if (!activeConvId) return;
@@ -1449,6 +1485,10 @@ export default function ChatPage({ onNavigate }: Props) {
               onBack={() => { setMobileShowChat(false); setShowChatSearch(false); setChatSearchQuery(""); }}
               onViewProfile={() => setShowContactProfile(true)}
               onSearchInChat={() => setShowChatSearch((v) => !v)}
+              onCallAudio={() => showToast("📞 Chiamate vocali disponibili prossimamente")}
+              onCallVideo={() => showToast("📹 Videochiamate disponibili prossimamente")}
+              onBlockUser={handleBlockUser}
+              onToast={showToast}
               trustStatus={trustStatus}
               onOpenSafetyNumber={() => setShowSafetyModal(true)}
             />

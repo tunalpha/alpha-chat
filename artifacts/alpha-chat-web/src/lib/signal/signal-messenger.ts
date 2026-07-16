@@ -52,8 +52,20 @@ function bufferToString(buf: ArrayBuffer): string {
 export function legacyDecode(ciphertext: string): string {
   try {
     const binStr = atob(ciphertext);
+    // FIX: i messaggi Signal iniziano con un type byte specifico.
+    // Non provare a decodificarli come plaintext — produrrebbero testo garbled.
+    // 0x33 (51) = PreKeyWhisperMessage, 0x22 (34) = WhisperMessage, 0x35 (53) = SenderKey
+    const firstByte = binStr.charCodeAt(0);
+    if (firstByte === 0x33 || firstByte === 0x22 || firstByte === 0x35) {
+      return "[cifrato]";
+    }
     const bytes = Uint8Array.from(binStr, (c) => c.charCodeAt(0));
     const decoded = new TextDecoder().decode(bytes);
+    // Troppi caratteri di sostituzione = dati binari non decodificabili come testo
+    const replacements = (decoded.match(/\uFFFD/g) ?? []).length;
+    if (replacements > 3 || replacements / Math.max(decoded.length, 1) > 0.1) {
+      return "[cifrato]";
+    }
     return decoded;
   } catch {
     return "[cifrato]";
