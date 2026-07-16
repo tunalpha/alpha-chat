@@ -1,10 +1,13 @@
 /**
- * CallContext — Global WebRTC call state — Sprint 23/24
+ * CallContext — Global WebRTC call state — Sprint 23/24/25
  *
- * Sprint 24 additions:
- * - isSpeaker / toggleSpeaker (vivavoce)
- * - peerConnection esposto per getStats() in ActiveCallScreen
- * - cleanup anche isSpeaker
+ * Sprint 25 additions:
+ * - ICE restart automatico su disconnessione (riconnessione intelligente)
+ * - Camera switch frontale/posteriore senza ricreare il PC
+ * - isBusy state per "Utente occupato" UI
+ * - isReconnecting state + overlay
+ * - callEndReason per cronologia chiamate
+ * - Log chiamata a backend al termine
  */
 
 import {
@@ -13,12 +16,15 @@ import {
 } from "react";
 import {
   getUserMedia, createPeerConnection, addTracksToPC,
-  closePeerConnection, type CallType,
+  closePeerConnection, switchCameraTrack,
+  type CallType, type FacingMode,
 } from "../lib/webrtc";
+import { apiLogCall } from "../lib/api";
 
 // ── Tipi ─────────────────────────────────────────────────────────────────────
 
 export type CallState = "idle" | "calling" | "incoming" | "active";
+export type CallEndReason = "normal" | "missed" | "declined" | "failed" | "busy" | "cancelled" | "reconnect_failed";
 
 export interface IncomingCallInfo {
   fromUserId: string;
@@ -39,6 +45,9 @@ interface CallContextValue {
   isMuted: boolean;
   isCameraOff: boolean;
   isSpeaker: boolean;
+  isBusy: boolean;
+  isReconnecting: boolean;
+  facingMode: FacingMode;
   /** RTCPeerConnection esposto per getStats() in ActiveCallScreen */
   peerConnection: RTCPeerConnection | null;
   initiateCall: (toUserId: string, displayName: string, type: CallType) => Promise<void>;
@@ -48,6 +57,8 @@ interface CallContextValue {
   toggleMute: () => void;
   toggleCamera: () => void;
   toggleSpeaker: () => void;
+  switchCamera: () => Promise<void>;
+  dismissBusy: () => void;
   setWsSend: (fn: (msg: object) => void) => void;
   handleWsCallEvent: (type: string, payload: Record<string, unknown>) => void;
 }
@@ -76,15 +87,24 @@ export function CallProvider({ children }: { children: ReactNode }) {
   const [isMuted, setIsMuted]                 = useState(false);
   const [isCameraOff, setIsCameraOff]         = useState(false);
   const [isSpeaker, setIsSpeaker]             = useState(false);
+  const [isBusy, setIsBusy]                   = useState(false);
+  const [isReconnecting, setIsReconnecting]   = useState(false);
+  const [facingMode, setFacingMode]           = useState<FacingMode>("user");
   const [peerConnection, setPeerConnection]   = useState<RTCPeerConnection | null>(null);
 
-  const pcRef             = useRef<RTCPeerConnection | null>(null);
-  const localStreamRef    = useRef<MediaStream | null>(null);
-  const wsSendRef         = useRef<((msg: object) => void) | null>(null);
-  const timerRef          = useRef<ReturnType<typeof setInterval> | null>(null);
-  const callTimeoutRef    = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pcRef              = useRef<RTCPeerConnection | null>(null);
+  const localStreamRef     = useRef<MediaStream | null>(null);
+  const wsSendRef          = useRef<((msg: object) => void) | null>(null);
+  const timerRef           = useRef<ReturnType<typeof setInterval> | null>(null);
+  const callTimeoutRef     = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const reconnectTimerRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const callStartedAtRef   = useRef<Date | null>(null);
+  const callAnsweredAtRef  = useRef<Date | null>(null);
+  const callRoleRef        = useRef<"caller" | "callee">("caller");
+  const peerIdRef          = useRef<string | null>(null);
+  const callTypeRef        = useRef<CallType | null>(null);
 
-  // ── Helpers ────────────────────────────────────────────────────────────────
+  // ── Helpers ────────────────────────────────────────────────────────────
 
   const setWsSend = useCallback((fn: (msg: object) => void) => {
     wsSendRef.current = fn;
@@ -98,12 +118,60 @@ export function CallProvider({ children }: { children: ReactNode }) {
     timerRef.current = setInterval(() => setCallDuration((d) => d + 1), 1000);
   }
 
-  function cleanup() {
-    if (timerRef.current)     { clearInterval(timerRef.current); timerRef.current = null; }
+  function stopDurationTimer() {
+    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+  }
+
+  function clearCallTimeout() {
     if (callTimeoutRef.current) { clearTimeout(callTimeoutRef.current); callTimeoutRef.current = null; }
+  }
+
+  function clearReconnectTimer() {
+    if (reconnectTimerRef.current) { clearTimeout(reconnectTimerRef.current); reconnectTimerRef.current = null; }
+  }
+
+  /** Logga la chiamata al backend. Non critico — fallisce silenziosamente. */
+  async function logCall(status: CallEndReason, endedAt: Date) {
+    const peerId   = peerIdRef.current;
+    const cType    = callTypeRef.current;
+    const startAt  = callStartedAtRef.current;
+    if (!peerId || !cType || !startAt) return;
+    const apiStatus =
+      status === "normal"            ? "completed" :
+      status === "missed"            ? "missed"    :
+      status === "declined"          ? "declined"  :
+      status === "cancelled"         ? "cancelled" :
+      status === "reconnect_failed"  ? "failed"    : "failed";
+    const durationSec = callAnsweredAtRef.current
+      ? Math.round((endedAt.getTime() - callAnsweredAtRef.current.getTime()) / 1000)
+      : undefined;
+    try {
+      await apiLogCall({
+        peer_id:      peerId,
+        call_type:    cType,
+        status:       apiStatus,
+        started_at:   startAt.toISOString(),
+        answered_at:  callAnsweredAtRef.current?.toISOString(),
+        ended_at:     endedAt.toISOString(),
+        duration_sec: durationSec,
+        role:         callRoleRef.current,
+      });
+    } catch { /* non-critical */ }
+  }
+
+  function cleanup(reason: CallEndReason = "normal") {
+    clearCallTimeout();
+    clearReconnectTimer();
+    stopDurationTimer();
     closePeerConnection(pcRef.current, localStreamRef.current);
     pcRef.current         = null;
     localStreamRef.current = null;
+    const endedAt = new Date();
+    void logCall(reason, endedAt);
+    callStartedAtRef.current  = null;
+    callAnsweredAtRef.current = null;
+    peerIdRef.current         = null;
+    callTypeRef.current       = null;
     setLocalStream(null);
     setRemoteStream(null);
     setPeerConnection(null);
@@ -116,6 +184,8 @@ export function CallProvider({ children }: { children: ReactNode }) {
     setIsMuted(false);
     setIsCameraOff(false);
     setIsSpeaker(false);
+    setIsReconnecting(false);
+    setFacingMode("user");
   }
 
   function buildPC(toUserId: string) {
@@ -125,8 +195,29 @@ export function CallProvider({ children }: { children: ReactNode }) {
       },
       (stream) => setRemoteStream(stream),
       (state) => {
-        if (state === "failed" || state === "disconnected" || state === "closed") {
-          cleanup();
+        // connectionState change — failed/closed → cleanup
+        if (state === "failed" || state === "closed") {
+          if (isReconnecting) {
+            // Già in riconnessione — abbandona
+            cleanup("reconnect_failed");
+          } else {
+            cleanup("failed");
+          }
+        }
+      },
+      (iceState) => {
+        // ICE connection state — riconnessione intelligente
+        if (iceState === "disconnected") {
+          setIsReconnecting(true);
+          // Dopo 15s senza recupero → abbandona
+          reconnectTimerRef.current = setTimeout(() => {
+            cleanup("reconnect_failed");
+          }, 15_000);
+        } else if (iceState === "connected" || iceState === "completed") {
+          setIsReconnecting(false);
+          clearReconnectTimer();
+        } else if (iceState === "failed") {
+          cleanup("reconnect_failed");
         }
       },
     );
@@ -147,6 +238,10 @@ export function CallProvider({ children }: { children: ReactNode }) {
       setCallType(type);
       setRemoteUserId(toUserId);
       setRemoteDisplayName(displayName);
+      callStartedAtRef.current = new Date();
+      callRoleRef.current      = "caller";
+      peerIdRef.current        = toUserId;
+      callTypeRef.current      = type;
 
       const pc = buildPC(toUserId);
       addTracksToPC(pc, stream);
@@ -159,14 +254,15 @@ export function CallProvider({ children }: { children: ReactNode }) {
         payload: { to_user_id: toUserId, sdp: offer, call_type: type, from_display_name: displayName },
       });
 
+      // Timeout 30s — se nessuno risponde
       callTimeoutRef.current = setTimeout(() => {
-        wsSend({ type: "call.end", payload: { to_user_id: toUserId } });
-        cleanup();
+        wsSend({ type: "call.end", payload: { to_user_id: toUserId, reason: "timeout" } });
+        cleanup("missed");
       }, 30_000);
 
     } catch (err) {
       console.error("[Call] initiateCall error", err);
-      cleanup();
+      cleanup("failed");
     }
   }, [callState]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -191,6 +287,12 @@ export function CallProvider({ children }: { children: ReactNode }) {
         payload: { to_user_id: incomingCall.fromUserId, sdp: answer },
       });
 
+      callAnsweredAtRef.current = new Date();
+      callRoleRef.current       = "callee";
+      peerIdRef.current         = incomingCall.fromUserId;
+      callTypeRef.current       = incomingCall.callType;
+      if (!callStartedAtRef.current) callStartedAtRef.current = new Date();
+
       setCallState("active");
       setCallType(incomingCall.callType);
       setRemoteUserId(incomingCall.fromUserId);
@@ -203,7 +305,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
       if (incomingCall) {
         wsSend({ type: "call.reject", payload: { to_user_id: incomingCall.fromUserId, reason: "error" } });
       }
-      cleanup();
+      cleanup("failed");
     }
   }, [incomingCall]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -213,46 +315,64 @@ export function CallProvider({ children }: { children: ReactNode }) {
     if (incomingCall) {
       wsSend({ type: "call.reject", payload: { to_user_id: incomingCall.fromUserId, reason: "declined" } });
     }
-    cleanup();
+    cleanup("declined");
   }, [incomingCall]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── End call ───────────────────────────────────────────────────────────────
 
   const endCall = useCallback(() => {
-    const toId = remoteUserId;
-    cleanup();
-    if (toId) wsSend({ type: "call.end", payload: { to_user_id: toId } });
+    const peerId = peerIdRef.current ?? remoteUserId;
+    if (peerId) wsSend({ type: "call.end", payload: { to_user_id: peerId } });
+    cleanup("normal");
   }, [remoteUserId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Toggle controls ────────────────────────────────────────────────────────
+  // ── Mute / Camera / Speaker ────────────────────────────────────────────────
 
   const toggleMute = useCallback(() => {
     const stream = localStreamRef.current;
     if (!stream) return;
-    stream.getAudioTracks().forEach((t) => { t.enabled = !t.enabled; });
-    setIsMuted((v) => !v);
-  }, []);
+    const enabled = !isMuted;
+    stream.getAudioTracks().forEach((t) => { t.enabled = !enabled; });
+    setIsMuted(enabled);
+  }, [isMuted]);
 
   const toggleCamera = useCallback(() => {
     const stream = localStreamRef.current;
     if (!stream) return;
-    stream.getVideoTracks().forEach((t) => { t.enabled = !t.enabled; });
-    setIsCameraOff((v) => !v);
-  }, []);
+    const enabled = !isCameraOff;
+    stream.getVideoTracks().forEach((t) => { t.enabled = !enabled; });
+    setIsCameraOff(enabled);
+  }, [isCameraOff]);
 
   const toggleSpeaker = useCallback(() => {
-    setIsSpeaker((v) => !v);
+    setIsSpeaker((prev) => !prev);
   }, []);
 
-  // ── Handle incoming WS call events ────────────────────────────────────────
+  // ── Camera switch (front ↔ back) ───────────────────────────────────────────
+
+  const switchCamera = useCallback(async () => {
+    const pc = pcRef.current;
+    const stream = localStreamRef.current;
+    if (!pc || !stream) return;
+    const result = await switchCameraTrack(pc, stream, facingMode);
+    if (result) {
+      setLocalStream(result.stream);
+      setFacingMode(result.facing);
+    }
+  }, [facingMode]);
+
+  const dismissBusy = useCallback(() => setIsBusy(false), []);
+
+  // ── WS event handler ───────────────────────────────────────────────────────
 
   const handleWsCallEvent = useCallback((type: string, payload: Record<string, unknown>) => {
     switch (type) {
       case "call.incoming": {
         if (callState !== "idle") {
-          wsSend({ type: "call.reject", payload: { to_user_id: payload["from_user_id"], reason: "busy" } });
-          return;
+          // Già in chiamata — il server avrebbe già inviato call.busy; dismissiamo silenziosamente
+          break;
         }
+        callStartedAtRef.current = new Date();
         setIncomingCall({
           fromUserId:      payload["from_user_id"] as string,
           fromDisplayName: payload["from_display_name"] as string,
@@ -266,10 +386,11 @@ export function CallProvider({ children }: { children: ReactNode }) {
       case "call.answered": {
         const pc = pcRef.current;
         if (!pc) return;
-        if (callTimeoutRef.current) { clearTimeout(callTimeoutRef.current); callTimeoutRef.current = null; }
+        clearCallTimeout();
+        callAnsweredAtRef.current = new Date();
         pc.setRemoteDescription(new RTCSessionDescription(payload["sdp"] as RTCSessionDescriptionInit))
           .then(() => { setCallState("active"); startDurationTimer(); })
-          .catch((e) => { console.error("[Call] setRemoteDescription answer error", e); cleanup(); });
+          .catch((e) => { console.error("[Call] setRemoteDescription answer error", e); cleanup("failed"); });
         break;
       }
 
@@ -281,10 +402,38 @@ export function CallProvider({ children }: { children: ReactNode }) {
         break;
       }
 
-      case "call.rejected":
-      case "call.ended":
+      case "call.rejected": {
+        cleanup("declined");
+        break;
+      }
+
+      case "call.ended": {
+        cleanup("normal");
+        break;
+      }
+
       case "call.busy": {
-        cleanup();
+        // Cleanup senza loggare (non era ancora una vera chiamata)
+        clearCallTimeout();
+        closePeerConnection(pcRef.current, localStreamRef.current);
+        pcRef.current = null;
+        localStreamRef.current = null;
+        setLocalStream(null);
+        setRemoteStream(null);
+        setPeerConnection(null);
+        setCallState("idle");
+        setCallType(null);
+        setIncomingCall(null);
+        setCallDuration(0);
+        // Mostra UI "occupato"
+        setIsBusy(true);
+        break;
+      }
+
+      case "call.missed":
+      case "call.ended_elsewhere": {
+        // Altro device ha risposto o il caller ha annullato — dismetti squillo
+        cleanup("missed");
         break;
       }
     }
@@ -295,9 +444,9 @@ export function CallProvider({ children }: { children: ReactNode }) {
       callState, callType, remoteUserId, remoteDisplayName,
       localStream, remoteStream, incomingCall,
       callDuration, isMuted, isCameraOff, isSpeaker,
-      peerConnection,
+      isBusy, isReconnecting, facingMode, peerConnection,
       initiateCall, acceptCall, rejectCall, endCall,
-      toggleMute, toggleCamera, toggleSpeaker,
+      toggleMute, toggleCamera, toggleSpeaker, switchCamera, dismissBusy,
       setWsSend, handleWsCallEvent,
     }}>
       {children}

@@ -1,0 +1,225 @@
+Ottimo lavoro. A questo punto Alpha Chat sta raggiungendo un livello molto alto. Ci sono però alcune funzionalità che aggiungerei per rendere il modulo chiamate davvero “premium” e coerente con il resto del progetto.
+
+Sprint 25 — Chiamate Secure Pro
+
+🎙️ 1. Test microfono e videocamera
+
+Prima della chiamata aggiungere una schermata di anteprima.
+
+Mostrare:
+
+* 🎤 livello microfono in tempo reale
+* 📷 anteprima videocamera
+* scelta fotocamera anteriore/posteriore
+* scelta dispositivo audio
+* test altoparlante
+
+⸻
+
+📞 2. Chiamata occupato
+
+Se l’utente è già in chiamata:
+
+mostrare
+
+Utente occupato
+
+con possibilità di:
+
+* Richiama
+* Annulla
+
+⸻
+
+⏳ 3. Timeout automatico
+
+Se nessuno risponde entro 30 secondi:
+
+* termina automaticamente
+* registra “Chiamata senza risposta”
+
+⸻
+
+🔄 4. Riconnessione intelligente
+
+Se cade la rete:
+
+mostrare
+
+Riconnessione…
+
+Tentare automaticamente ICE restart.
+
+Se fallisce:
+
+terminare la chiamata.
+
+⸻
+
+🎚️ 5. Controlli audio avanzati
+
+Aggiungere:
+
+* vivavoce
+* auricolare
+* mute
+* disattiva videocamera
+* cambio fotocamera
+* volume
+
+⸻
+
+📈 6. Statistiche WebRTC
+
+Pagina tecnica.
+
+Visualizzare:
+
+* codec
+* RTT
+* jitter
+* packet loss
+* bitrate audio
+* bitrate video
+* FPS
+* risoluzione
+* ICE candidate
+* relay/P2P
+* DTLS
+
+Aggiornamento ogni secondo.
+
+⸻
+
+🛡️ 7. Verifica identità durante la chiamata
+
+Pulsante:
+
+Verifica
+
+Mostrare:
+
+* Safety Number
+* QR
+* Stato verificato
+
+Utilizzare la stessa verifica identità già implementata per le chat.
+
+⸻
+
+📱 8. Multi-device
+
+Se un utente ha:
+
+iPhone
+
+Mac
+
+iPad
+
+devono squillare tutti.
+
+Quando uno risponde:
+
+gli altri chiudono automaticamente.
+
+⸻
+
+🔔 9. Suonerie
+
+Consentire di scegliere:
+
+* Classica
+* Digitale
+* Militare
+* Silenziosa
+* Personalizzata (in futuro)
+
+Volume separato dalle notifiche.
+
+⸻
+
+🌙 10. Modalità silenziosa
+
+Impostazioni:
+
+* non disturbare
+* solo contatti
+* solo gruppi
+* nessuno
+
+⸻
+
+📋 11. Cronologia chiamate
+
+Nuova schermata:
+
+Mostrare:
+
+* entrata
+* uscita
+* persa
+* rifiutata
+* audio
+* video
+* durata
+
+Mai registrare contenuti.
+
+⸻
+
+⚙️ 12. Impostazioni chiamate
+
+Aggiungere:
+
+* chi può chiamarmi
+* chi può videochiamarmi
+* risposta automatica (opzionale)
+* riduzione rumore (quando supportata dal browser)
+* cancellazione eco (configurabile)
+
+⸻
+
+🚨 13. Chiamata di emergenza
+
+In una chiamata attiva aggiungere nel menu:
+
+🚨 Emergency Lock
+
+Se premuto:
+
+* termina la chiamata
+* esegue Emergency Lock
+* disconnette tutti i dispositivi
+
+Per il Phoenix Protocol manterrei invece la procedura separata dal portale di emergenza: una distruzione irreversibile dell’account non dovrebbe mai essere attivabile con un solo tocco durante una chiamata.
+
+⸻
+
+Audit finale
+
+Verificare:
+
+* audio
+* video
+* squillo
+* vivavoce
+* codec
+* riconnessione
+* multi-device
+* sicurezza
+* nessuna regressione
+
+TypeScript pulito.
+
+Build pulita.
+
+Test automatici.
+
+Audit conclusivo.
+
+⸻
+
+Una funzione esclusiva che potrebbe distinguere Alpha Chat
+
+Aggiungerei una modalità “Call Shield”: durante una chiamata, una piccola barra mostra in tempo reale lo stato della connessione (🔒 Cifrata, 🟢 P2P diretto oppure 🟡 Relay TURN) e la qualità (Eccellente, Buona, Debole). È una funzione semplice da capire per gli utenti e rafforza la percezione di trasparenza e sicurezza senza esporre dettagli tecnici complessi.

@@ -1051,6 +1051,38 @@ export async function apiListBlocked(): Promise<BlockedUserEntry[]> {
   return request<BlockedUserEntry[]>("GET", "/users/me/blocked");
 }
 
+// ── Cronologia chiamate — Sprint 25 ──────────────────────────────────────────
+
+export interface CallLogEntry {
+  _id: string;
+  caller_id: string;
+  callee_id: string;
+  call_type: "audio" | "video";
+  status: "missed" | "declined" | "completed" | "failed" | "cancelled";
+  started_at: string;
+  answered_at?: string;
+  ended_at?: string;
+  duration_sec?: number;
+}
+
+export async function apiLogCall(data: {
+  peer_id: string;
+  call_type: "audio" | "video";
+  status: string;
+  started_at: string;
+  answered_at?: string;
+  ended_at?: string;
+  duration_sec?: number;
+  role: "caller" | "callee";
+}): Promise<void> {
+  await request<unknown>("POST", "/calls/log", data);
+}
+
+export async function apiGetCallHistory(limit = 50): Promise<CallLogEntry[]> {
+  const data = await request<{ calls: CallLogEntry[] }>("GET", `/calls/history?limit=${limit}`);
+  return data.calls;
+}
+
 /** Aggiorna il profilo dell'utente autenticato (display_name, avatar_url). */
 export async function apiUpdateMe(patch: {
   display_name?: string;

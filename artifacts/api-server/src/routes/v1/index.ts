@@ -44,6 +44,10 @@ v1Router.use("/trust-center", trustCenterRoutes);
 // Gruppi E2E — Sprint 21
 v1Router.use("/groups", groupRoutes);
 
+// Chiamate — Sprint 25
+import callsRoutes from "./calls.routes";
+v1Router.use("/calls", callsRoutes);
+
 // Account Recovery — Sprint 22
 import { recoveryAuthRouter, recoveryAccountRouter } from "./account-recovery.routes";
 v1Router.use("/auth/recover",     recoveryAuthRouter);

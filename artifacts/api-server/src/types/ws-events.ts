@@ -66,7 +66,9 @@ export type WsOutboundEventType =
   | "call.ice_candidate"// Server → Client: candidato ICE
   | "call.rejected"     // Server → Caller: callee ha rifiutato
   | "call.ended"        // Server → Client: chiamata terminata
-  | "call.busy"         // Server → Caller: callee già in chiamata
+  | "call.busy"            // Server → Caller: callee già in chiamata
+  | "call.ended_elsewhere" // Server → Callee altri device: chiamata risposta altrove
+  | "call.missed"          // Server → Callee: chiamata persa (caller ha annullato)
   | "conversation.cleared"; // Server → membri: tutti i messaggi eliminati (Sprint 24)
 
 export interface WsOutboundEvent {

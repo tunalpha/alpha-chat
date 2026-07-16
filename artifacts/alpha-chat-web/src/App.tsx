@@ -26,6 +26,9 @@ import RecoveryPage from "./pages/RecoveryPage";
 import ForcePasswordChangePage from "./pages/ForcePasswordChangePage";
 import LockScreen from "./components/LockScreen";
 import PrivacyOverlay from "./components/PrivacyOverlay";
+import BusyCallScreen from "./components/BusyCallScreen";
+import CallHistoryPage from "./pages/CallHistoryPage";
+import CallSettingsPage from "./pages/CallSettingsPage";
 
 export type AppView =
   | "chat"
@@ -43,7 +46,9 @@ export type AppView =
   | "security-timeline"
   | "trust-center"
   | "group-info"
-  | "recovery-settings";
+  | "recovery-settings"
+  | "call-history"
+  | "call-settings";
 
 /** Controlla se l'URL corrente è la pagina di emergenza (accessibile senza auth). */
 function isEmergencyPath(): boolean {
@@ -125,6 +130,10 @@ function AppContent() {
             return <TrustCenterPage onBack={goSettings} onNavigate={setView} />;
           case "recovery-settings":
             return <RecoverySettingsPage onBack={goSettings} />;
+          case "call-history":
+            return <CallHistoryPage onBack={goBack} />;
+          case "call-settings":
+            return <CallSettingsPage onBack={goBack} />;
           // group-info è gestito come overlay dentro ChatPage
           default:
             return <ChatPage onNavigate={setView} />;
@@ -142,6 +151,7 @@ export default function App() {
           <AppContent />
           <IncomingCallModal />
           <ActiveCallScreen />
+          <BusyCallScreen />
         </CallProvider>
       </LockProvider>
     </AuthProvider>

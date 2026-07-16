@@ -992,12 +992,14 @@ export async function unlockNotifAudio(): Promise<void> {
   a.volume = 1;
 
   // Pre-sblocca anche il suono di squillo
-  if (_ringEl) {
-    _ringEl.volume = 0;
-    try { await _ringEl.play(); } catch { /* ignore */ }
-    _ringEl.pause();
-    _ringEl.currentTime = 0;
-    _ringEl.volume = 1;
+  // Sblocca TUTTI i ring elements (multi-ringtone)
+  for (const el of _ringEls.values()) {
+    if (!el) continue;
+    el.volume = 0;
+    try { await el.play(); } catch { /* ignore */ }
+    el.pause();
+    el.currentTime = 0;
+    el.volume = 1;
   }
 
   console.info('[notifSound] audio unlocked ✓');
@@ -1069,25 +1071,139 @@ function _buildRingDataUrl(): string {
   return "data:audio/wav;base64," + btoa(bin);
 }
 
-// Creato SINCRONAMENTE → disponibile immediatamente, nessuna race condition
-let _ringEl: HTMLAudioElement | null = null;
-try {
-  _ringEl = new Audio(_buildRingDataUrl());
-  _ringEl.loop = true;
-} catch { /* ambiente senza Audio (SSR) */ }
+// ── Ringtone aggiuntivi ───────────────────────────────────────────────────────
 
-/** Avvia lo squillo. Richiede che unlockNotifAudio() sia stato chiamato prima. */
-export async function startRing(): Promise<void> {
-  if (!_ringEl) return;
-  _ringEl.currentTime = 0;
-  try { await _ringEl.play(); } catch { /* non sbloccato — chiamare unlockNotifAudio() al primo gesto */ }
+/** Digitale: tre beep rapidi a 880 Hz (8-bit style) */
+function _buildDigitaleDataUrl(): string {
+  const sampleRate  = 22050;
+  const beepDur     = 0.07;
+  const silDur      = 0.07;
+  const numBeeps    = 3;
+  const totalSamples = Math.ceil(sampleRate * (beepDur + silDur) * numBeeps);
+  const dataSize    = totalSamples * 2;
+  const ab = new ArrayBuffer(44 + dataSize);
+  const v  = new DataView(ab);
+  const ws = (off: number, s: string) => { for (let i = 0; i < s.length; i++) v.setUint8(off + i, s.charCodeAt(i)); };
+  ws(0, "RIFF"); v.setUint32(4, 36 + dataSize, true);
+  ws(8, "WAVE"); ws(12, "fmt "); v.setUint32(16, 16, true);
+  v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, sampleRate, true); v.setUint32(28, sampleRate * 2, true);
+  v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+  ws(36, "data"); v.setUint32(40, dataSize, true);
+  const beepSamples = Math.ceil(sampleRate * beepDur);
+  const silSamples  = Math.ceil(sampleRate * silDur);
+  const cycleLen    = beepSamples + silSamples;
+  for (let i = 0; i < totalSamples; i++) {
+    const posInCycle = i % cycleLen;
+    let s16 = 0;
+    if (posInCycle < beepSamples) {
+      const t = posInCycle / sampleRate;
+      s16 = Math.round(Math.sin(2 * Math.PI * 880 * t) * 0.55 * 32767);
+    }
+    v.setInt16(44 + i * 2, Math.max(-32767, Math.min(32767, s16)), true);
+  }
+  const bytes = new Uint8Array(ab);
+  let bin = ""; const CHUNK = 8192;
+  for (let i = 0; i < bytes.length; i += CHUNK) bin += String.fromCharCode(...Array.from(bytes.subarray(i, Math.min(i + CHUNK, bytes.length))));
+  return "data:audio/wav;base64," + btoa(bin);
 }
 
-/** Ferma lo squillo. */
+/** Militare: tre note ascendenti Do-Mi-Sol (523→659→784 Hz) */
+function _buildMilitareDataUrl(): string {
+  const sampleRate = 22050;
+  const notes      = [523.25, 659.25, 783.99];
+  const noteDur    = 0.15;
+  const gap        = 0.04;
+  const totalSamples = Math.ceil(sampleRate * (noteDur + gap) * notes.length + sampleRate * 0.1);
+  const dataSize = totalSamples * 2;
+  const ab = new ArrayBuffer(44 + dataSize);
+  const v  = new DataView(ab);
+  const ws = (off: number, s: string) => { for (let i = 0; i < s.length; i++) v.setUint8(off + i, s.charCodeAt(i)); };
+  ws(0, "RIFF"); v.setUint32(4, 36 + dataSize, true);
+  ws(8, "WAVE"); ws(12, "fmt "); v.setUint32(16, 16, true);
+  v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, sampleRate, true); v.setUint32(28, sampleRate * 2, true);
+  v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+  ws(36, "data"); v.setUint32(40, dataSize, true);
+  let sampleIdx = 0;
+  for (let ni = 0; ni < notes.length; ni++) {
+    const freq = notes[ni];
+    const noteLen = Math.ceil(sampleRate * noteDur);
+    const gapLen  = Math.ceil(sampleRate * gap);
+    for (let i = 0; i < noteLen && sampleIdx < totalSamples; i++, sampleIdx++) {
+      const t = i / sampleRate;
+      const env = i < noteLen * 0.1 ? i / (noteLen * 0.1) : Math.exp(-(t - noteDur * 0.1) * 8);
+      const s16 = Math.round(Math.sin(2 * Math.PI * freq * t) * env * 0.5 * 32767);
+      v.setInt16(44 + sampleIdx * 2, Math.max(-32767, Math.min(32767, s16)), true);
+    }
+    for (let i = 0; i < gapLen && sampleIdx < totalSamples; i++, sampleIdx++) {
+      v.setInt16(44 + sampleIdx * 2, 0, true);
+    }
+  }
+  const bytes = new Uint8Array(ab);
+  let bin = ""; const CHUNK = 8192;
+  for (let i = 0; i < bytes.length; i += CHUNK) bin += String.fromCharCode(...Array.from(bytes.subarray(i, Math.min(i + CHUNK, bytes.length))));
+  return "data:audio/wav;base64," + btoa(bin);
+}
+
+// ── Registro suonerie ────────────────────────────────────────────────────────
+
+export type RingtoneId = "classica" | "digitale" | "militare" | "silenziosa";
+export const RINGTONES: { id: RingtoneId; label: string }[] = [
+  { id: "classica",   label: "Classica"   },
+  { id: "digitale",   label: "Digitale"   },
+  { id: "militare",   label: "Militare"   },
+  { id: "silenziosa", label: "Silenziosa" },
+];
+
+const LS_RINGTONE_KEY = "alpha_ringtone";
+export function getRingtone(): RingtoneId {
+  const v = localStorage.getItem(LS_RINGTONE_KEY) as RingtoneId | null;
+  return (v && RINGTONES.some((r) => r.id === v)) ? v : "classica";
+}
+export function setRingtone(id: RingtoneId): void {
+  localStorage.setItem(LS_RINGTONE_KEY, id);
+}
+
+/** Pre-genera TUTTI e tre i toni sincronamente al caricamento del modulo */
+const _ringEls = new Map<RingtoneId, HTMLAudioElement | null>();
+try {
+  const mk = (src: string) => { const a = new Audio(src); a.loop = true; return a; };
+  _ringEls.set("classica",   mk(_buildRingDataUrl()));
+  _ringEls.set("digitale",   mk(_buildDigitaleDataUrl()));
+  _ringEls.set("militare",   mk(_buildMilitareDataUrl()));
+  _ringEls.set("silenziosa", null);
+} catch { /* SSR */ }
+
+function _currentRingEl(): HTMLAudioElement | null {
+  return _ringEls.get(getRingtone()) ?? null;
+}
+
+/** Avvia lo squillo con la suoneria selezionata. */
+export async function startRing(): Promise<void> {
+  const el = _currentRingEl();
+  if (!el) return; // silenziosa
+  el.currentTime = 0;
+  try { await el.play(); } catch { /* non sbloccato */ }
+}
+
+/** Ferma lo squillo (su tutti i toni, per sicurezza). */
 export function stopRing(): void {
-  if (!_ringEl) return;
-  _ringEl.pause();
-  _ringEl.currentTime = 0;
+  for (const el of _ringEls.values()) {
+    if (el && !el.paused) { el.pause(); el.currentTime = 0; }
+  }
+}
+
+/** Preview di una suoneria (una sola riproduzione non ciclica). */
+export async function playRingPreview(id: RingtoneId): Promise<void> {
+  const el = _ringEls.get(id);
+  if (!el) return;
+  stopRing();
+  el.loop = false;
+  el.currentTime = 0;
+  try { await el.play(); } catch { /* ignora */ }
+  // Ripristina loop dopo la durata del preview (≈ 1.5 s)
+  setTimeout(() => { el.loop = true; }, 1500);
 }
 
 // ── Setup listener primo gesto (importare all'avvio dell'app) ─────────────────

@@ -23,6 +23,7 @@ import { wsManager, type ClientConnection } from "./ws-manager";
 import { verifyAccessToken } from "../services/jwt.service";
 import { setOnline, setOffline, setTyping } from "../services/presence.service";
 import { ConversationMemberRepository } from "../repositories/conversation-member.repository";
+import { UserModel } from "../models/user.model";
 import type {
   WsInboundEvent,
   WsOutboundEvent,
@@ -219,10 +220,32 @@ export function createWsServer(httpServer: HttpServer): WebSocketServer {
         // Il server fa solo relay: instrada i messaggi tra caller e callee.
         // Nessuna logica di chiamata sul server — tutto P2P via ICE/STUN.
 
+        // ── WebRTC signaling Sprint 25 — busy/DND/multi-device ───────────
         case "call.offer": {
           const p = (event.payload ?? {}) as Record<string, unknown>;
           const toId = p["to_user_id"] as string | undefined;
           if (!toId) break;
+
+          // Busy check: callee già in chiamata attiva
+          if (wsManager.isInCall(toId)) {
+            safeSend(ws, { type: "call.busy", payload: { to_user_id: toId } });
+            break;
+          }
+
+          // DND check: allow_calls_from del destinatario
+          try {
+            const callee = await UserModel.findById(toId).select("allow_calls_from").lean() as { allow_calls_from?: string } | null;
+            if (callee) {
+              const pref = callee.allow_calls_from ?? "contacts";
+              if (pref === "nobody") {
+                safeSend(ws, { type: "call.rejected", payload: { from_user_id: toId, reason: "privacy" } });
+                break;
+              }
+              // "contacts" check — semplificato: se non online accetta comunque (server non traccia contatti)
+            }
+          } catch { /* non-critical */ }
+
+          // Fan-out a TUTTI i device del destinatario (multi-device ring)
           wsManager.sendToUser(toId, {
             type: "call.incoming",
             payload: { ...p, from_user_id: userId },
@@ -234,9 +257,21 @@ export function createWsServer(httpServer: HttpServer): WebSocketServer {
           const p = (event.payload ?? {}) as Record<string, unknown>;
           const toId = p["to_user_id"] as string | undefined;
           if (!toId) break;
+
+          // Relay risposta al chiamante
           wsManager.sendToUser(toId, {
             type: "call.answered",
             payload: { ...p, from_user_id: userId },
+          });
+
+          // Marca entrambi come "in chiamata"
+          wsManager.setInCall(userId!);
+          wsManager.setInCall(toId);
+
+          // Dice agli ALTRI device del callee di smettere di squillare
+          wsManager.sendToUserExcept(userId!, conn, {
+            type: "call.ended_elsewhere",
+            payload: { from_user_id: toId },
           });
           break;
         }
@@ -256,9 +291,17 @@ export function createWsServer(httpServer: HttpServer): WebSocketServer {
           const p = (event.payload ?? {}) as Record<string, unknown>;
           const toId = p["to_user_id"] as string | undefined;
           if (!toId) break;
+
+          // Relay rifiuto al chiamante
           wsManager.sendToUser(toId, {
             type: "call.rejected",
             payload: { from_user_id: userId, reason: p["reason"] },
+          });
+
+          // Dismisses gli altri device del callee (se erano anche loro in squillo)
+          wsManager.sendToUserExcept(userId!, conn, {
+            type: "call.ended_elsewhere",
+            payload: { from_user_id: toId },
           });
           break;
         }
@@ -267,10 +310,23 @@ export function createWsServer(httpServer: HttpServer): WebSocketServer {
           const p = (event.payload ?? {}) as Record<string, unknown>;
           const toId = p["to_user_id"] as string | undefined;
           if (!toId) break;
+
           wsManager.sendToUser(toId, {
             type: "call.ended",
             payload: { from_user_id: userId },
           });
+
+          // Se il caller annulla prima della risposta → notifica "chiamata persa" al callee
+          if (p["reason"] === "timeout" || p["reason"] === "cancelled") {
+            wsManager.sendToUser(toId, {
+              type: "call.missed",
+              payload: { from_user_id: userId },
+            });
+          }
+
+          // Libera entrambi dal "in call" status
+          wsManager.clearInCall(userId!);
+          wsManager.clearInCall(toId);
           break;
         }
 

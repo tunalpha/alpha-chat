@@ -34,6 +34,9 @@ class WsManager {
   /** chiave `${userId}:${conversationId}` → timer typing auto-stop */
   private readonly typingTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
+  /** Set di userId attualmente in una chiamata attiva (per busy detection) */
+  private readonly inCallUsers = new Set<string>();
+
   // ── Registry ────────────────────────────────────────────────────────────
 
   register(conn: ClientConnection): void {
@@ -95,6 +98,30 @@ class WsManager {
       this.sendToUser(userId, event);
     }
   }
+
+  /** Invia a tutti i socket dell'utente TRANNE la connessione specificata. */
+  sendToUserExcept(userId: string, excludeConn: ClientConnection, event: WsOutboundEvent): void {
+    const conns = this.userConnections.get(userId);
+    if (!conns) return;
+    const msg = JSON.stringify(event);
+    for (const conn of conns) {
+      if (conn === excludeConn) continue;
+      if (conn.ws.readyState === WebSocket.OPEN) {
+        conn.ws.send(msg, (err) => { if (err) logger.warn({ err, userId }, "WS send error"); });
+      }
+    }
+  }
+
+  /** Numero di connessioni attive per un utente (per multi-device). */
+  getConnectionCount(userId: string): number {
+    return this.userConnections.get(userId)?.size ?? 0;
+  }
+
+  // ── In-call tracking (busy detection) ──────────────────────────────────
+
+  setInCall(userId: string): void  { this.inCallUsers.add(userId); }
+  clearInCall(userId: string): void { this.inCallUsers.delete(userId); }
+  isInCall(userId: string): boolean { return this.inCallUsers.has(userId); }
 
   // ── Typing timer ────────────────────────────────────────────────────────
 
