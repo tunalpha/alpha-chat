@@ -45,51 +45,55 @@ const GAP_MS    = 320;
 // Delay extra per messaggi "user" (nessun typing, ma piccola pausa naturale)
 const USER_PAUSE_MS = 420;
 
-// ── Suono notifica — Web Audio API ───────────────────────────────────────────
-// Strategia per iOS Safari + Chrome:
-// 1. AudioContext viene creato DENTRO il gesture handler (sincrono)
-// 2. In quel momento pre-genero il buffer audio del tono (sincrono)
-// 3. Riproduco 1 sample silenzioso per sbloccare iOS
-// 4. playNotif() usa il buffer già pronto — nessuna dipendenza da ctx.state
-let _ctx: AudioContext | null = null;
-let _notifBuf: AudioBuffer | null = null;
+// ── Suono notifica — HTML5 Audio (WAV base64) ────────────────────────────────
+// Web Audio API non è affidabile su iOS Safari fuori dal gesture handler.
+// HTML5 Audio con .play() nel gesture handler sblocca l'audio per la sessione.
+// Il WAV è un tono 880Hz 120ms pre-generato (8-bit mono 8kHz) in base64.
+const NOTIF_SRC =
+  "data:audio/wav;base64,UklGRuQDAABXQVZFZm10IBAAAAABAAEAQB" +
+  "8AAEAfAAABAAgAZGF0YcADAACA0fzvrlgVAil4yvrxtWAaAiRwwvbzvGgg" +
+  "AyBou/L1wnAmBRxhtO72x3gsBxlarOr2zX8zCRZTpeX20oc5DBRNneD21" +
+  "o5ADxJHltr12pVHExBBjtT03pxOFw88h87y4aNVGw83gMjv46lcIA8yeML" +
+  "t5a9kJRAucbvq57VrKhEqa7Xm6LpyLxInZK7i6cB5NRQkXqfe6cSAOxYi" +
+  "WKHa6ciGQRkgUprV6cyNRxweTZPQ6NCTTR8dSIzL5tOZVCMcQ4bF5dWfW" +
+  "iccP4DA4tikYSscO3m64NmqZy8dOHO03duvbTQeNG2u2tyzczkfMmio1ty" +
+  "4ej4hL2Ki0ty8f0MjLV2czty/hUkmLFiWytvDi04oKlORxtrFkFQrKk+L" +
+  "wdnIllkvKUuFvNfKm18yKUh/t9XMoGU2KUR6stPNpGo6KkF1rdDOqHA+K" +
+  "z9wqM3PrHVDLTxro8rPsHpHLjpmnsfPs4BMMDlimMPPtoVRMjhek7/OuY" +
+  "lVNTdajrvNu45aODZWibfMvZJfOzZThLPKv5dkPjZQgK/IwJtpQTdNe6r" +
+  "GwZ5tRTdLdqbEwqJySThJcqLBwqV3TDpHbp2+w6h7UDtGapm7wqt/VD1E" +
+  "Z5S4wq2EWD9EY5C1wa+IXUJDYIyxwLGMYURDXYeuv7OPZUdDW4OqvbST" +
+  "aUpDWICmu7WWbU1EVnyjubWZcVBFVXift7acdVNGU3WbtbaeeFZHUnGXsr" +
+  "agfFlJUW6UsLWif11KUGyQrbWkg2BMUGmNqrSmhmROT2eJp7OniWdQUGWG" +
+  "pLGojGpTUGODobCpjm5VUGF/nq6pkXFYUV99m6ypk3RaUl96mKqplXdd" +
+  "U113laipl3pgVF11kqapmH1jVlxzj6Samn9lV1xxjKKnm4JoWVxviZ+mn" +
+  "IRrW1xth52lnYdtXVxshJqknYlwX11qgpijnYpzYV1pf5WhnYx1Y15pfZ" +
+  "OgnY13ZV9oe5GenY96Z2Boeo6cnZB8amJneIyanJF+bGNnd4qYm5F/bmRn" +
+  "dYiWmpKBcGZodIaUmZKDcmhoc4STmJKEdGlpc4KRl5KFdmtqcoGPlpKGd" +
+  "21qcoCNlJKHeW5rcn6Lk5GIe3Bscn2KkZGIfHJucnyIkJCJfXNvcnuGjo" +
+  "+Jf3VwcnuFjY6Jf3Zxc3qEi42JgHhzdHqDioyJgXl0dXqCiIuIgnp1dX" +
+  "qBh4qIgnt3dnqAhoiHgnx4d3qAhIeGgn15eXt/g4aFgn57ent/goWEgn9" +
+  "8e3x/goODgn99fH1/gYKCgX9+fX5/gIGBgH9/fn9/gICAgIA=";
 
+let _notifAudio: HTMLAudioElement | null = null;
+
+/** Chiamare SINCRONO nel gesture handler — sblocca audio su iOS Safari */
 function unlockAudio() {
-  if (_ctx) return;                       // già sbloccato
+  if (_notifAudio) return;
   try {
-    _ctx = new AudioContext();
-
-    // Pre-genera il tono 880→660 Hz, 180ms
-    const sr  = _ctx.sampleRate;
-    const len = Math.floor(sr * 0.18);
-    const buf = _ctx.createBuffer(1, len, sr);
-    const ch  = buf.getChannelData(0);
-    for (let i = 0; i < len; i++) {
-      const t    = i / sr;
-      const freq = 880 - 220 * (t / 0.18);                   // sweep lineare
-      const env  = Math.max(0, 1 - t / 0.18);                // fade-out
-      ch[i] = Math.sin(2 * Math.PI * freq * t) * 0.07 * env;
-    }
-    _notifBuf = buf;
-
-    // Buffer silenzioso — sblocca iOS sincrono nel gesture handler
-    const silent = _ctx.createBuffer(1, 1, sr);
-    const src    = _ctx.createBufferSource();
-    src.buffer   = silent;
-    src.connect(_ctx.destination);
-    src.start(0);
-
-    _ctx.resume().catch(() => {});
-  } catch { /* browser non supporta Web Audio */ }
+    _notifAudio = new Audio(NOTIF_SRC);
+    _notifAudio.volume = 0.001;      // quasi silenzioso per l'unlock
+    const p = _notifAudio.play();
+    if (p) p.then(() => { if (_notifAudio) { _notifAudio.pause(); _notifAudio.currentTime = 0; _notifAudio.volume = 1; } }).catch(() => {});
+  } catch { /* ignora */ }
 }
 
 function playNotif() {
-  if (!_ctx || !_notifBuf) return;
+  if (!_notifAudio) return;
   try {
-    const src = _ctx.createBufferSource();
-    src.buffer = _notifBuf;
-    src.connect(_ctx.destination);
-    src.start(0);
+    _notifAudio.currentTime = 0;
+    _notifAudio.volume = 1;
+    _notifAudio.play().catch(() => {});
   } catch { /* ignora */ }
 }
 
