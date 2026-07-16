@@ -13,6 +13,7 @@ import PhoenixSetupPage from "./pages/PhoenixSetupPage";
 import DevicesPage from "./pages/DevicesPage";
 import PrivacyPage from "./pages/PrivacyPage";
 import ComingSoonPage from "./pages/ComingSoonPage";
+import ArchivioPage from "./pages/ArchivioPage";
 import EmergencyPage from "./pages/EmergencyPage";
 import SecurityCenterPage from "./pages/SecurityCenterPage";
 import DeadManSwitchPage from "./pages/DeadManSwitchPage";
@@ -109,7 +110,7 @@ function AppContent() {
           case "privacy":
             return <PrivacyPage onBack={goBack} />;
           case "archive":
-            return <ComingSoonPage title="Archivio" onBack={goBack} />;
+            return <ArchivioPage onBack={goBack} onOpen={(_convId) => { goBack(); /* naviga a conversazione */ }} />;
           case "security-center":
             return <SecurityCenterPage onClose={goSettings} />;
           case "dead-man-switch":

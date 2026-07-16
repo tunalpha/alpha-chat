@@ -1,0 +1,145 @@
+Ottimo. Questo completa una delle funzionalità più importanti di una chat moderna. Però, prima di considerare concluse le chiamate, farei un ultimo sprint di rifinitura dedicato alla qualità.
+
+Sprint 24 — Chiamate Professionali (VoIP)
+
+1. Sicurezza
+
+* Verificare che le chiamate utilizzino solo DTLS-SRTP, il meccanismo standard di WebRTC per cifrare audio e video.
+* Mostrare durante la chiamata un badge:
+    * 🟢 Connessione cifrata
+* Consentire di visualizzare informazioni tecniche (opzionale):
+    * codec audio/video;
+    * tipo di connessione (P2P o TURN);
+    * bitrate;
+    * latenza.
+
+⸻
+
+2. Cronologia chiamate
+
+Nuova schermata:
+
+📞 Chiamate
+
+Mostrare:
+
+* in uscita;
+* in entrata;
+* perse;
+* rifiutate;
+* durata;
+* data;
+* audio/video.
+
+Naturalmente senza registrare il contenuto.
+
+⸻
+
+3. Qualità
+
+Durante la chiamata mostrare:
+
+🟢 Qualità eccellente
+
+🟡 Qualità media
+
+🔴 Connessione debole
+
+Basata su:
+
+* RTT
+* packet loss
+* jitter
+
+(recuperabili da RTCPeerConnection.getStats()).
+
+⸻
+
+4. Chiamata in corso
+
+Mostrare:
+
+* timer;
+* stato microfono;
+* stato videocamera;
+* altoparlante;
+* connessione.
+
+⸻
+
+5. Privacy
+
+Aggiungere impostazioni:
+
+* Consenti chiamate da:
+    * Tutti
+    * Solo contatti
+    * Nessuno
+* Consenti videochiamate:
+    * Sì / No
+* Silenzia chiamate sconosciute.
+
+⸻
+
+6. Multi-device
+
+Se l’utente è connesso su più dispositivi:
+
+* squillano tutti;
+* quando uno risponde:
+    * gli altri smettono di squillare automaticamente.
+
+⸻
+
+7. Chiamata persa
+
+Inviare un evento:
+
+📞 Chiamata persa
+
+con:
+
+* audio/video;
+* orario.
+
+⸻
+
+8. TURN
+
+Lasciare STUN come default.
+
+Preparare però l’architettura per aggiungere facilmente un server TURN (ad esempio Coturn) tramite configurazione.
+
+In questo modo, quando vorrai supportare reti aziendali o NAT molto restrittivi, non dovrai riscrivere il codice.
+
+⸻
+
+9. Test
+
+Creare test automatici per:
+
+* chiamata audio;
+* videochiamata;
+* rifiuto;
+* timeout;
+* occupato;
+* chiamata persa;
+* multi-device;
+* mute;
+* camera off;
+* riconnessione dopo perdita temporanea della rete;
+* statistiche WebRTC.
+
+⸻
+
+Una funzione che aggiungerei
+
+📞 Verifica sicurezza della chiamata
+
+All’inizio della chiamata, mostra un piccolo pulsante:
+
+🛡️ Verifica
+
+Aprendolo, entrambi gli utenti vedono lo stesso Safety Number (o una sua versione abbreviata) già usato per la messaggistica.
+
+Se i codici coincidono, hanno un’ulteriore conferma che stanno parlando con il contatto previsto e non con un interlocutore sostituito da un attacco. Questo non sostituisce le garanzie offerte da WebRTC e Signal, ma è una funzione coerente con l’approccio di Alpha Chat orientato alla verifica dell’identità.

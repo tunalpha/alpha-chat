@@ -1,40 +1,22 @@
 /**
- * IncomingCallModal — Sprint 23
- * Schermata di chiamata in arrivo con accetta/rifiuta.
+ * IncomingCallModal — Sprint 23/24
+ * Schermata chiamata in arrivo con squillo su iOS.
+ *
+ * FIX iOS: AudioContext creato senza gesto utente parte in "suspended" →
+ * usiamo un HTMLAudioElement pre-sbloccato via unlockNotifAudio().
  */
 
-import { useEffect, useRef } from "react";
+import { useEffect } from "react";
 import { useCall } from "../contexts/CallContext";
+import { startRing, stopRing } from "../lib/notifSound";
 
 export default function IncomingCallModal() {
   const { incomingCall, callType, acceptCall, rejectCall } = useCall();
-  const audioRef = useRef<HTMLAudioElement | null>(null);
 
-  // Suono squillo (beep sintetico via Web Audio)
   useEffect(() => {
     if (!incomingCall) return;
-    let ctx: AudioContext | null = null;
-    let stopped = false;
-
-    async function ring() {
-      try {
-        ctx = new AudioContext();
-        while (!stopped) {
-          const osc = ctx.createOscillator();
-          const gain = ctx.createGain();
-          osc.connect(gain);
-          gain.connect(ctx.destination);
-          osc.frequency.value = 440;
-          gain.gain.setValueAtTime(0.3, ctx.currentTime);
-          gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.6);
-          osc.start();
-          osc.stop(ctx.currentTime + 0.6);
-          await new Promise((r) => setTimeout(r, 1500));
-        }
-      } catch { /* ignore */ }
-    }
-    void ring();
-    return () => { stopped = true; ctx?.close(); };
+    void startRing();
+    return () => stopRing();
   }, [incomingCall]);
 
   if (!incomingCall) return null;
@@ -66,7 +48,6 @@ export default function IncomingCallModal() {
           </button>
         </div>
       </div>
-      <audio ref={audioRef} />
     </div>
   );
 }

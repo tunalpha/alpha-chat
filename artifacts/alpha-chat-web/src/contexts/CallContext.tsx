@@ -1,8 +1,10 @@
 /**
- * CallContext — Global WebRTC call state — Sprint 23
+ * CallContext — Global WebRTC call state — Sprint 23/24
  *
- * Gestisce tutta la logica WebRTC + signaling WS per chiamate audio/video.
- * Montato una sola volta in App.tsx sopra la chat.
+ * Sprint 24 additions:
+ * - isSpeaker / toggleSpeaker (vivavoce)
+ * - peerConnection esposto per getStats() in ActiveCallScreen
+ * - cleanup anche isSpeaker
  */
 
 import {
@@ -33,19 +35,20 @@ interface CallContextValue {
   localStream: MediaStream | null;
   remoteStream: MediaStream | null;
   incomingCall: IncomingCallInfo | null;
-  callDuration: number; // secondi
+  callDuration: number;
   isMuted: boolean;
   isCameraOff: boolean;
-  /** Chiamato da ChatPage quando si clicca 📞/📹 */
+  isSpeaker: boolean;
+  /** RTCPeerConnection esposto per getStats() in ActiveCallScreen */
+  peerConnection: RTCPeerConnection | null;
   initiateCall: (toUserId: string, displayName: string, type: CallType) => Promise<void>;
   acceptCall: () => Promise<void>;
   rejectCall: () => void;
   endCall: () => void;
   toggleMute: () => void;
   toggleCamera: () => void;
-  /** Chiamato da useWebSocket per iniettare il WS sender */
+  toggleSpeaker: () => void;
   setWsSend: (fn: (msg: object) => void) => void;
-  /** Chiamato da App.tsx quando arrivano eventi WS relativi alle chiamate */
   handleWsCallEvent: (type: string, payload: Record<string, unknown>) => void;
 }
 
@@ -62,22 +65,24 @@ export function useCall(): CallContextValue {
 // ── Provider ──────────────────────────────────────────────────────────────────
 
 export function CallProvider({ children }: { children: ReactNode }) {
-  const [callState, setCallState] = useState<CallState>("idle");
-  const [callType, setCallType] = useState<CallType | null>(null);
-  const [remoteUserId, setRemoteUserId] = useState<string | null>(null);
+  const [callState, setCallState]             = useState<CallState>("idle");
+  const [callType, setCallType]               = useState<CallType | null>(null);
+  const [remoteUserId, setRemoteUserId]       = useState<string | null>(null);
   const [remoteDisplayName, setRemoteDisplayName] = useState<string | null>(null);
-  const [localStream, setLocalStream] = useState<MediaStream | null>(null);
-  const [remoteStream, setRemoteStream] = useState<MediaStream | null>(null);
-  const [incomingCall, setIncomingCall] = useState<IncomingCallInfo | null>(null);
-  const [callDuration, setCallDuration] = useState(0);
-  const [isMuted, setIsMuted] = useState(false);
-  const [isCameraOff, setIsCameraOff] = useState(false);
+  const [localStream, setLocalStream]         = useState<MediaStream | null>(null);
+  const [remoteStream, setRemoteStream]       = useState<MediaStream | null>(null);
+  const [incomingCall, setIncomingCall]       = useState<IncomingCallInfo | null>(null);
+  const [callDuration, setCallDuration]       = useState(0);
+  const [isMuted, setIsMuted]                 = useState(false);
+  const [isCameraOff, setIsCameraOff]         = useState(false);
+  const [isSpeaker, setIsSpeaker]             = useState(false);
+  const [peerConnection, setPeerConnection]   = useState<RTCPeerConnection | null>(null);
 
-  const pcRef = useRef<RTCPeerConnection | null>(null);
-  const localStreamRef = useRef<MediaStream | null>(null);
-  const wsSendRef = useRef<((msg: object) => void) | null>(null);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const callTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pcRef             = useRef<RTCPeerConnection | null>(null);
+  const localStreamRef    = useRef<MediaStream | null>(null);
+  const wsSendRef         = useRef<((msg: object) => void) | null>(null);
+  const timerRef          = useRef<ReturnType<typeof setInterval> | null>(null);
+  const callTimeoutRef    = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -94,13 +99,14 @@ export function CallProvider({ children }: { children: ReactNode }) {
   }
 
   function cleanup() {
-    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+    if (timerRef.current)     { clearInterval(timerRef.current); timerRef.current = null; }
     if (callTimeoutRef.current) { clearTimeout(callTimeoutRef.current); callTimeoutRef.current = null; }
     closePeerConnection(pcRef.current, localStreamRef.current);
-    pcRef.current = null;
+    pcRef.current         = null;
     localStreamRef.current = null;
     setLocalStream(null);
     setRemoteStream(null);
+    setPeerConnection(null);
     setCallState("idle");
     setCallType(null);
     setRemoteUserId(null);
@@ -109,6 +115,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
     setCallDuration(0);
     setIsMuted(false);
     setIsCameraOff(false);
+    setIsSpeaker(false);
   }
 
   function buildPC(toUserId: string) {
@@ -124,6 +131,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
       },
     );
     pcRef.current = pc;
+    setPeerConnection(pc);
     return pc;
   }
 
@@ -148,15 +156,9 @@ export function CallProvider({ children }: { children: ReactNode }) {
 
       wsSend({
         type: "call.offer",
-        payload: {
-          to_user_id: toUserId,
-          sdp: offer,
-          call_type: type,
-          from_display_name: displayName, // overridden by server with actual name
-        },
+        payload: { to_user_id: toUserId, sdp: offer, call_type: type, from_display_name: displayName },
       });
 
-      // Timeout 30s se nessuna risposta
       callTimeoutRef.current = setTimeout(() => {
         wsSend({ type: "call.end", payload: { to_user_id: toUserId } });
         cleanup();
@@ -222,7 +224,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
     if (toId) wsSend({ type: "call.end", payload: { to_user_id: toId } });
   }, [remoteUserId]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // ── Toggle mute / camera ──────────────────────────────────────────────────
+  // ── Toggle controls ────────────────────────────────────────────────────────
 
   const toggleMute = useCallback(() => {
     const stream = localStreamRef.current;
@@ -238,13 +240,16 @@ export function CallProvider({ children }: { children: ReactNode }) {
     setIsCameraOff((v) => !v);
   }, []);
 
+  const toggleSpeaker = useCallback(() => {
+    setIsSpeaker((v) => !v);
+  }, []);
+
   // ── Handle incoming WS call events ────────────────────────────────────────
 
   const handleWsCallEvent = useCallback((type: string, payload: Record<string, unknown>) => {
     switch (type) {
       case "call.incoming": {
         if (callState !== "idle") {
-          // Già in chiamata → busy
           wsSend({ type: "call.reject", payload: { to_user_id: payload["from_user_id"], reason: "busy" } });
           return;
         }
@@ -259,15 +264,11 @@ export function CallProvider({ children }: { children: ReactNode }) {
       }
 
       case "call.answered": {
-        // Caller riceve risposta
         const pc = pcRef.current;
         if (!pc) return;
         if (callTimeoutRef.current) { clearTimeout(callTimeoutRef.current); callTimeoutRef.current = null; }
         pc.setRemoteDescription(new RTCSessionDescription(payload["sdp"] as RTCSessionDescriptionInit))
-          .then(() => {
-            setCallState("active");
-            startDurationTimer();
-          })
+          .then(() => { setCallState("active"); startDurationTimer(); })
           .catch((e) => { console.error("[Call] setRemoteDescription answer error", e); cleanup(); });
         break;
       }
@@ -280,16 +281,8 @@ export function CallProvider({ children }: { children: ReactNode }) {
         break;
       }
 
-      case "call.rejected": {
-        cleanup();
-        break;
-      }
-
-      case "call.ended": {
-        cleanup();
-        break;
-      }
-
+      case "call.rejected":
+      case "call.ended":
       case "call.busy": {
         cleanup();
         break;
@@ -301,9 +294,10 @@ export function CallProvider({ children }: { children: ReactNode }) {
     <CallContext.Provider value={{
       callState, callType, remoteUserId, remoteDisplayName,
       localStream, remoteStream, incomingCall,
-      callDuration, isMuted, isCameraOff,
+      callDuration, isMuted, isCameraOff, isSpeaker,
+      peerConnection,
       initiateCall, acceptCall, rejectCall, endCall,
-      toggleMute, toggleCamera,
+      toggleMute, toggleCamera, toggleSpeaker,
       setWsSend, handleWsCallEvent,
     }}>
       {children}

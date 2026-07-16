@@ -990,6 +990,16 @@ export async function unlockNotifAudio(): Promise<void> {
   a.pause();
   a.currentTime = 0;
   a.volume = 1;
+
+  // Pre-sblocca anche il suono di squillo
+  if (_ringEl) {
+    _ringEl.volume = 0;
+    try { await _ringEl.play(); } catch { /* ignore */ }
+    _ringEl.pause();
+    _ringEl.currentTime = 0;
+    _ringEl.volume = 1;
+  }
+
   console.info('[notifSound] audio unlocked ✓');
 }
 
@@ -1003,6 +1013,72 @@ export async function playNotifSound(type: SoundType = 'received'): Promise<void
   } catch (err) {
     console.error('[notifSound] play() rejected for type='+type+':', err);
   }
+}
+
+// ── Squillo chiamata in arrivo ────────────────────────────────────────────────
+// Generato via OfflineAudioContext (non richiede gesto utente) e riprodotto
+// via HTMLAudioElement pre-sbloccato da unlockNotifAudio.
+
+let _ringEl: HTMLAudioElement | null = null;
+
+/** Pre-genera il suono di squillo in background al caricamento del modulo. */
+(function initRing() {
+  try {
+    const sampleRate = 22050;
+    const dur = 0.35;
+    const ctx = new OfflineAudioContext(1, Math.ceil(sampleRate * dur), sampleRate);
+    const osc = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.type = "sine";
+    osc.frequency.value = 440;
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    gain.gain.setValueAtTime(0.4, 0);
+    gain.gain.exponentialRampToValueAtTime(0.001, dur * 0.9);
+    osc.start(0);
+    osc.stop(dur);
+    ctx.startRendering().then((buf) => {
+      // AudioBuffer → WAV Blob → data URI
+      const numSamples = buf.length;
+      const dataSize = numSamples * 2; // 16-bit mono
+      const ab = new ArrayBuffer(44 + dataSize);
+      const v = new DataView(ab);
+      const ws = (off: number, s: string) => { for (let i = 0; i < s.length; i++) v.setUint8(off + i, s.charCodeAt(i)); };
+      ws(0, "RIFF"); v.setUint32(4, 36 + dataSize, true);
+      ws(8, "WAVE"); ws(12, "fmt "); v.setUint32(16, 16, true);
+      v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+      v.setUint32(24, sampleRate, true); v.setUint32(28, sampleRate * 2, true);
+      v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+      ws(36, "data"); v.setUint32(40, dataSize, true);
+      const ch = buf.getChannelData(0);
+      let off = 44;
+      for (let i = 0; i < numSamples; i++) {
+        const s = Math.max(-1, Math.min(1, ch[i]));
+        v.setInt16(off, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+        off += 2;
+      }
+      const bytes = new Uint8Array(ab);
+      let bin = "";
+      for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+      const uri = "data:audio/wav;base64," + btoa(bin);
+      _ringEl = new Audio(uri);
+      _ringEl.loop = true;
+    }).catch(() => { /* fallback silenzioso */ });
+  } catch { /* browser senza OfflineAudioContext */ }
+})();
+
+/** Avvia lo squillo (se pre-sbloccato da unlockNotifAudio). */
+export async function startRing(): Promise<void> {
+  if (!_ringEl) return;
+  _ringEl.currentTime = 0;
+  try { await _ringEl.play(); } catch { /* iOS blocca se non pre-sbloccato */ }
+}
+
+/** Ferma lo squillo. */
+export function stopRing(): void {
+  if (!_ringEl) return;
+  _ringEl.pause();
+  _ringEl.currentTime = 0;
 }
 
 // ── Setup listener primo gesto (importare all'avvio dell'app) ─────────────────
