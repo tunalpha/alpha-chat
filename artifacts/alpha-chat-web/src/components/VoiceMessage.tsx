@@ -150,7 +150,8 @@ export default function VoiceMessage({ mediaId, durationMs, waveform, isMine, en
         promise
           .then(() => setPlaying(true))
           .catch((err: Error) => {
-            setPlayErr(err.name === "NotAllowedError" ? "Tocca di nuovo" : "Errore avvio");
+            // Non sovrascrivere errori più specifici già impostati da onerror
+            setPlayErr((prev) => prev ?? (err.name === "NotAllowedError" ? "Tocca di nuovo" : "Errore avvio"));
           });
       } else {
         setPlaying(true);

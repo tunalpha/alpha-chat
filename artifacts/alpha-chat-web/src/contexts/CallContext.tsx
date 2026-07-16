@@ -19,6 +19,7 @@ import {
   closePeerConnection, switchCameraTrack,
   type CallType, type FacingMode,
 } from "../lib/webrtc";
+import { setRemoteStream as setRemoteAudioStream } from "../lib/remoteAudio";
 import { apiLogCall } from "../lib/api";
 
 // ── Tipi ─────────────────────────────────────────────────────────────────────
@@ -193,7 +194,10 @@ export function CallProvider({ children }: { children: ReactNode }) {
       (candidate) => {
         wsSend({ type: "call.ice_candidate", payload: { to_user_id: toUserId, candidate: candidate.toJSON() } });
       },
-      (stream) => setRemoteStream(stream),
+      (stream) => {
+        setRemoteStream(stream);        // React state → UI
+        setRemoteAudioStream(stream);   // singleton <audio> element → audio reale
+      },
       (state) => {
         // connectionState change — failed/closed → cleanup
         if (state === "failed" || state === "closed") {

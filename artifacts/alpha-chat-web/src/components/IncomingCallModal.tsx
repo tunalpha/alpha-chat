@@ -27,12 +27,12 @@ export default function IncomingCallModal() {
 
   const isVideo = callType === "video" || incomingCall.callType === "video";
 
-  async function handleAccept() {
-    // 🔑 Sblocca l'audio iOS DENTRO il user gesture (tap sul pulsante Accetta):
-    // 1. unlockNotifAudio: sblocca elementi ring (notifiche suono)
-    // 2. primeRemoteAudio: sblocca l'elemento audio remoto WebRTC (audio chiamata)
-    // Entrambi devono avvenire nello stesso stack del gesture, prima di acceptCall().
-    await Promise.allSettled([unlockNotifAudio(), primeRemoteAudio()]);
+  function handleAccept() {
+    // 🔑 iOS gesture context: fire-and-forget, NON await.
+    // getUserMedia() dentro acceptCall() deve essere nel primo tick del gesture.
+    // primeRemoteAudio/unlockNotifAudio partono in parallelo come side-effect.
+    void primeRemoteAudio().catch(() => {});
+    void unlockNotifAudio().catch(() => {});
     stopRing();
     void acceptCall();
   }
