@@ -16,7 +16,7 @@ import {
 } from "react";
 import {
   getUserMedia, createPeerConnection, addTracksToPC,
-  closePeerConnection, switchCameraTrack,
+  closePeerConnection, switchCameraTrack, loadIceConfig,
   type CallType, type FacingMode,
 } from "../lib/webrtc";
 import { setRemoteStream as setRemoteAudioStream } from "../lib/remoteAudio";
@@ -235,6 +235,8 @@ export function CallProvider({ children }: { children: ReactNode }) {
   const initiateCall = useCallback(async (toUserId: string, displayName: string, type: CallType) => {
     if (callState !== "idle") return;
     try {
+      // Preleva configurazione ICE (STUN + TURN opzionale da env) prima di creare il PC
+      await loadIceConfig();
       const stream = await getUserMedia(type);
       localStreamRef.current = stream;
       setLocalStream(stream);
@@ -275,6 +277,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
   const acceptCall = useCallback(async () => {
     if (!incomingCall) return;
     try {
+      await loadIceConfig();
       const stream = await getUserMedia(incomingCall.callType);
       localStreamRef.current = stream;
       setLocalStream(stream);

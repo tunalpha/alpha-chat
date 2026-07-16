@@ -114,6 +114,22 @@ export default function VoiceMessage({ mediaId, durationMs, waveform, isMine, en
         });
 
         if (cancelled) return;
+
+        // Controlla se il browser supporta il formato rilevato (es. webm non
+        // supportato su iOS Safari) → errore immediato con messaggio chiaro
+        // invece di aspettare onerror dopo il play.
+        const mimeFromUrl = dataUrl.split(";")[0].replace("data:", "").trim();
+        if (mimeFromUrl && audio.canPlayType(mimeFromUrl) === "") {
+          const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent);
+          const isWebm = mimeFromUrl.includes("webm");
+          setLoadErr(
+            isIOS && isWebm
+              ? "Formato non compatibile con iOS (inviato da Android)"
+              : `Formato non supportato: ${mimeFromUrl}`,
+          );
+          return;
+        }
+
         dataUrlRef.current = dataUrl;
         audio.src = dataUrl;
         setReady(true);

@@ -1,0 +1,76 @@
+Il lavoro fatto è importante e la Root Cause Analysis è coerente. Prima del deploy, però, ci sono tre punti su cui ti suggerisco di non chiudere completamente il bug.
+
+1. Vocali Android → iPhone (priorità alta)
+
+Questo non è un bug del tuo codice, ma un problema di interoperabilità dei codec.
+
+Se Android registra in WebM/Opus e Safari iOS non lo supporta, il risultato è esattamente quello che descrivi (“Errore avvio”).
+
+Per la V1 hai tre possibilità:
+
+* Migliore: registrare direttamente in un formato supportato da entrambe le piattaforme (se il browser lo consente).
+* Accettabile: rilevare il browser e mostrare un messaggio chiaro quando il codec non è riproducibile.
+* Completa: transcodifica server-side (più costosa, ma risolve definitivamente).
+
+Io non bloccherei la beta per questo, ma lo documenterei come limitazione nota.
+
+⸻
+
+2. Messaggi vecchi non recuperabili
+
+Questa è una proprietà del Signal Protocol: se la sessione viene realmente persa o corrotta, non è possibile decifrare retroattivamente i messaggi.
+
+Quello che invece verificherei è che la sessione non venga mai persa accidentalmente.
+
+Aggiungerei un test di lunga durata:
+
+* invio 500 messaggi;
+* refresh casuali;
+* logout/login;
+* chiusura browser;
+* cambio dispositivo;
+* tutti i messaggi successivi devono restare decifrabili.
+
+⸻
+
+3. TURN server
+
+Hai correttamente classificato il problema come infrastrutturale.
+
+Io preparerei già il codice per leggere da configurazione:
+
+* STUN_URLS
+* TURN_URLS
+* TURN_USERNAME
+* TURN_PASSWORD
+
+Così quando deciderai di installare un server TURN (ad esempio Coturn) non dovrai modificare la logica dell’app.
+
+⸻
+
+Prima del deploy
+
+Farei eseguire all’agente un ultimo controllo con questo obiettivo:
+
+Pre-Deploy Verification
+
+Eseguire un audit completo della build candidata alla produzione.
+
+Verificare:
+
+* nessun errore JavaScript in console;
+* nessun warning React;
+* nessun errore TypeScript;
+* nessun endpoint REST in errore;
+* nessun errore WebSocket;
+* login, registrazione, recovery, messaggi, media, gruppi, chiamate audio/video, Burn After Read, Phoenix Protocol e Device Security funzionanti in un ambiente pulito.
+
+Fornire un report finale con:
+
+* numero di test eseguiti;
+* eventuali limitazioni note (es. WebM su Safari e assenza di TURN);
+* elenco dei blocker rimasti, se presenti.
+
+Se non emergono blocker, dichiarare esplicitamente la build idonea alla beta pubblica.
+
+Se questo audit finale passa senza problemi, considero Alpha Chat pronta per essere distribuita in beta e iniziare a raccogliere feedback da utenti reali.

@@ -10,11 +10,30 @@
 export type CallType = "audio" | "video";
 export type FacingMode = "user" | "environment";
 
-// STUN pubblico Google — gratuito
-const ICE_SERVERS: RTCIceServer[] = [
+// Configurazione ICE — caricata dal server (supporta STUN+TURN da env).
+// Fallback ai server STUN pubblici Google se l'API non risponde.
+let _iceServers: RTCIceServer[] = [
   { urls: "stun:stun.l.google.com:19302" },
   { urls: "stun:stun1.l.google.com:19302" },
 ];
+let _iceLoaded = false;
+
+/** Preleva la configurazione ICE dal backend (STUN + eventuale TURN). */
+export async function loadIceConfig(): Promise<void> {
+  if (_iceLoaded) return;
+  try {
+    const res = await fetch("/api/v1/calls/ice-config");
+    if (res.ok) {
+      const json = await res.json() as { iceServers: RTCIceServer[] };
+      if (Array.isArray(json.iceServers) && json.iceServers.length > 0) {
+        _iceServers = json.iceServers;
+      }
+    }
+  } catch {
+    // Fallback silenzioso ai server Google
+  }
+  _iceLoaded = true;
+}
 
 export async function getUserMedia(callType: CallType, facingMode: FacingMode = "user"): Promise<MediaStream> {
   const constraints: MediaStreamConstraints =
@@ -30,7 +49,7 @@ export function createPeerConnection(
   onConnectionStateChange: (state: RTCPeerConnectionState) => void,
   onIceStateChange?: (state: RTCIceConnectionState) => void,
 ): RTCPeerConnection {
-  const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+  const pc = new RTCPeerConnection({ iceServers: _iceServers });
 
   pc.onicecandidate = (e) => {
     if (e.candidate) onIceCandidate(e.candidate);
