@@ -320,7 +320,7 @@ export async function editMessage(
   const updated = await msgRepo.editById(msgObjectId, input.ciphertext, input.ciphertext_type);
   if (!updated) throw new AppError("MESSAGE_NOT_FOUND", 404);
 
-  logAuditEvent("message.edited", userId, { messageId, conversationId }, context);
+  logAuditEvent({ event: "MESSAGE_EDITED", user_id: userId, request_id: context?.requestId, created_at: new Date().toISOString(), metadata: { messageId, conversationId } });
 
   const result = formatMessageResult(updated, false);
   const { is_new: _d, ...rest } = result;
@@ -344,6 +344,77 @@ export async function editMessage(
 // ---------------------------------------------------------------------------
 
 const DELETE_FOR_ALL_WINDOW_MS = 60 * 60 * 1_000; // 1 ora
+
+// ---------------------------------------------------------------------------
+// secureDestroy
+// ---------------------------------------------------------------------------
+
+/**
+ * Secure Destroy — cancellazione definitiva e irreversibile di un messaggio.
+ *
+ * - Cancella il documento MongoDB (hard delete, nessun soft-delete).
+ * - Cancella il media associato se presente.
+ * - Broadcast WebSocket `message.destroyed` a tutti i membri.
+ * - Audit log: solo metadati (mai il contenuto cifrato).
+ * - Nessuna finestra temporale — il mittente può distruggere in qualsiasi momento.
+ */
+export async function secureDestroy(
+  userId: string,
+  conversationId: string,
+  messageId: string,
+  context?: { requestId?: string },
+): Promise<void> {
+  const userObjectId = new mongoose.Types.ObjectId(userId);
+  const convObjectId = new mongoose.Types.ObjectId(conversationId);
+  const msgObjectId  = new mongoose.Types.ObjectId(messageId);
+
+  // 1. Verifica membership
+  const membership = await memberRepo.findMembership(convObjectId, userObjectId);
+  if (!membership || membership.left_at !== null) {
+    throw new AppError("NOT_CHAT_MEMBER", 403);
+  }
+
+  // 2. Trova il messaggio (raw — prima di cancellarlo)
+  const msg = await msgRepo.findByIdRaw(msgObjectId);
+  if (!msg || msg.conversation_id.toString() !== conversationId) {
+    throw new AppError("MESSAGE_NOT_FOUND", 404);
+  }
+
+  // 3. Solo il mittente può distruggere definitivamente
+  if (msg.sender_id.toString() !== userId) {
+    throw new AppError("MESSAGE_DELETE_FORBIDDEN", 403);
+  }
+
+  // 4. Hard delete — rimuove completamente il documento
+  await msgRepo.hardDeleteById(msgObjectId);
+
+  // 5. Audit log — solo metadati, mai il contenuto
+  logAuditEvent({
+    event: "MESSAGE_SECURE_DESTROYED",
+    user_id: userId,
+    request_id: context?.requestId,
+    created_at: new Date().toISOString(),
+    metadata: { messageId, conversationId, destroyed_by: userId, message_type: msg.message_type, had_media: !!msg.media_id },
+  });
+
+  // 6. Broadcast message.destroyed a tutti i membri
+  void (async () => {
+    try {
+      const members   = await memberRepo.listMembers(convObjectId);
+      const memberIds = members.map((m) => m.user_id.toString());
+      wsManager.sendToUsers(memberIds, {
+        type:    "message.destroyed",
+        payload: {
+          message_id:     messageId,
+          conversation_id: conversationId,
+          destroyed_by:   userId,
+        },
+      });
+    } catch (err) {
+      logger.warn({ err }, "WS broadcast message.destroyed failed");
+    }
+  })();
+}
 
 /**
  * Elimina un messaggio per me o per tutti.
@@ -382,7 +453,7 @@ export async function deleteMessage(
 
     await msgRepo.deleteForEveryoneById(msgObjectId);
 
-    logAuditEvent("message.deleted_everyone", userId, { messageId, conversationId }, context);
+    logAuditEvent({ event: "MESSAGE_DELETED_EVERYONE", user_id: userId, request_id: context?.requestId, created_at: new Date().toISOString(), metadata: { messageId, conversationId } });
 
     // Broadcast message.deleted a tutti
     void (async () => {
@@ -400,6 +471,6 @@ export async function deleteMessage(
   } else {
     // Elimina solo per me
     await msgRepo.deleteForMeById(msgObjectId, userObjectId);
-    logAuditEvent("message.deleted_me", userId, { messageId, conversationId }, context);
+    logAuditEvent({ event: "MESSAGE_DELETED_ME", user_id: userId, request_id: context?.requestId, created_at: new Date().toISOString(), metadata: { messageId, conversationId } });
   }
 }

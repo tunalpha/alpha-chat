@@ -14,7 +14,7 @@ import {
   DeleteMessageSchema,
   MessageIdParamSchema,
 } from "../../validation/message.schemas";
-import { sendMessage, listMessages, editMessage, deleteMessage } from "../../controllers/message.controller";
+import { sendMessage, listMessages, editMessage, deleteMessage, secureDestroyMessage } from "../../controllers/message.controller";
 
 const router = Router({ mergeParams: true });
 
@@ -56,6 +56,16 @@ router.delete(
   validate("params", MessageIdParamSchema),
   validate("body", DeleteMessageSchema),
   deleteMessage,
+);
+
+/**
+ * DELETE /api/v1/conversations/:conversationId/messages/:messageId/destroy
+ * Secure Destroy — cancellazione definitiva e irreversibile. Solo mittente.
+ */
+router.delete(
+  "/:messageId/destroy",
+  validate("params", MessageIdParamSchema),
+  secureDestroyMessage,
 );
 
 export default router;

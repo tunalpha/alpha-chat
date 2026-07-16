@@ -98,6 +98,10 @@ export interface IMessage {
   // --- Messaggi a scomparsa ---
   expires_at: Date | null;
 
+  // --- Secure Destroy (auto-destroy timer — schema prep) ---
+  /** Se impostato, il messaggio viene distrutto definitivamente a questa data */
+  destroy_at: Date | null;
+
   createdAt: Date;
   updatedAt: Date;
 }
@@ -157,6 +161,8 @@ const messageSchema = new Schema<IMessageDocument>(
     edited_at: { type: Date, default: null },
 
     expires_at: { type: Date, default: null },
+
+    destroy_at: { type: Date, default: null },
   },
   { timestamps: true },
 );

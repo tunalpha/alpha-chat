@@ -58,7 +58,14 @@ export type AuditEventType =
   | "INVITE_GENERATED"
   | "INVITE_REDEEMED"
   | "INVITE_REDEEM_FAILED"
-  | "INVITE_REVOKED";
+  | "INVITE_REVOKED"
+  // Messaggi — azioni (Sprint 6+)
+  | "MESSAGE_EDITED"
+  | "MESSAGE_DELETED_EVERYONE"
+  | "MESSAGE_DELETED_ME"
+  | "MESSAGE_SECURE_DESTROYED"
+  // Media
+  | "MEDIA_UPLOADED";
 
 export interface AuditEvent {
   event: AuditEventType;

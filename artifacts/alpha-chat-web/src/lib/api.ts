@@ -530,6 +530,13 @@ export async function apiDeleteMessage(
   });
 }
 
+export async function apiSecureDestroy(
+  conversationId: string,
+  messageId: string,
+): Promise<void> {
+  await request<void>("DELETE", `/conversations/${conversationId}/messages/${messageId}/destroy`);
+}
+
 // ---------------------------------------------------------------------------
 // Invites
 // ---------------------------------------------------------------------------

@@ -193,6 +193,15 @@ export class MessageRepository {
   }
 
   /**
+   * Secure Destroy — cancellazione definitiva del documento (hard delete).
+   * Non lascia tracce nel database. Per audit log usare il service layer.
+   */
+  async hardDeleteById(messageId: mongoose.Types.ObjectId): Promise<boolean> {
+    const result = await MessageModel.deleteOne({ _id: messageId });
+    return result.deletedCount === 1;
+  }
+
+  /**
    * Elimina un messaggio solo per l'utente specificato (aggiunge a deleted_for[]).
    */
   async deleteForMeById(

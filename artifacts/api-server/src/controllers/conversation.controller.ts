@@ -68,7 +68,7 @@ export const markConversationRead: RequestHandler = async (req, res, next) => {
       res.status(400).json({ success: false, error: "Invalid conversation id" });
       return;
     }
-    await conversationService.markConversationRead(req.user!.userId, id);
+    await conversationService.markConversationRead(req.user!.userId, id as string);
     res.status(204).send();
   } catch (err) {
     next(err);

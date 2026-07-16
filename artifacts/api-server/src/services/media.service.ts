@@ -57,11 +57,7 @@ export async function uploadMedia(
     waveform:       input.waveform ?? [],
   });
 
-  logAuditEvent("media.uploaded", uploaderId, {
-    mediaId: media._id.toString(),
-    conversationId: input.conversation_id,
-    size: buffer.length,
-  }, context);
+  logAuditEvent({ event: "MEDIA_UPLOADED", user_id: uploaderId, request_id: context?.requestId, created_at: new Date().toISOString(), metadata: { mediaId: media._id.toString(), conversationId: input.conversation_id, size: buffer.length } });
 
   return {
     media_id:    media._id.toString(),

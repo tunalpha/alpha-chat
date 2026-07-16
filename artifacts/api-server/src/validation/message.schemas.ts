@@ -142,6 +142,12 @@ export const DeleteMessageSchema = z.object({
 export type DeleteMessageInput = z.infer<typeof DeleteMessageSchema>;
 
 // ---------------------------------------------------------------------------
+// DELETE /api/v1/conversations/:conversationId/messages/:messageId/destroy
+// ---------------------------------------------------------------------------
+// Nessun body richiesto — il Secure Destroy è sempre totale e irreversibile.
+// Il route usa MessageIdParamSchema per i params.
+
+// ---------------------------------------------------------------------------
 // Params: :messageId
 // ---------------------------------------------------------------------------
 

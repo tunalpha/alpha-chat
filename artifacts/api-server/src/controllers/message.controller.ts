@@ -114,3 +114,25 @@ export const deleteMessage: RequestHandler = async (req, res, next) => {
     next(err);
   }
 };
+
+// ---------------------------------------------------------------------------
+// DELETE /api/v1/conversations/:conversationId/messages/:messageId/destroy
+// ---------------------------------------------------------------------------
+
+export const secureDestroyMessage: RequestHandler = async (req, res, next) => {
+  try {
+    const { conversationId, messageId } = req.params as unknown as MessageIdParam;
+    const userId = req.user!.userId;
+
+    await messageService.secureDestroy(
+      userId,
+      conversationId,
+      messageId,
+      { requestId: req.requestId },
+    );
+
+    res.status(204).send();
+  } catch (err) {
+    next(err);
+  }
+};

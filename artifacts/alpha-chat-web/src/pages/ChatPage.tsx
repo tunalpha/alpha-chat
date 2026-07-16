@@ -8,6 +8,7 @@ import {
   apiSendMessage,
   apiEditMessage,
   apiDeleteMessage,
+  apiSecureDestroy,
   apiSendVoiceMessage,
   apiMarkRead,
   decodeMessage,
@@ -364,6 +365,10 @@ export default function ChatPage({ onNavigate }: Props) {
   const [forwardingMessage, setForwardingMessage] = useState<MessageItem | null>(null);
   // toast
   const [toastMsg, setToastMsg] = useState<string | null>(null);
+  // secure destroy
+  const [destroyTarget, setDestroyTarget] = useState<MessageItem | null>(null);
+  const [destroyingIds, setDestroyingIds] = useState<Set<string>>(new Set());
+  const [destroying, setDestroying] = useState(false);
   // voice recorder
   const [showVoiceRecorder, setShowVoiceRecorder] = useState(false);
   const [typingUsers, setTypingUsers] = useState<Record<string, Set<string>>>({});
@@ -500,6 +505,18 @@ export default function ChatPage({ onNavigate }: Props) {
           }
           break;
         }
+        case "message.destroyed": {
+          const { message_id, conversation_id } = event.payload;
+          if (conversation_id === activeConvId) {
+            // avvia animazione dissoluzione, poi rimuovi dopo 600ms
+            setDestroyingIds((prev) => { const s = new Set(prev); s.add(message_id); return s; });
+            setTimeout(() => {
+              setMessages((prev) => prev.filter((m) => m.id !== message_id));
+              setDestroyingIds((prev) => { const s = new Set(prev); s.delete(message_id); return s; });
+            }, 600);
+          }
+          break;
+        }
       }
     });
   }, [on, activeConvId]);
@@ -613,6 +630,28 @@ export default function ChatPage({ onNavigate }: Props) {
       showToast(err instanceof Error ? err.message : "Errore invio vocale");
     } finally {
       setSending(false);
+    }
+  }
+
+  async function handleConfirmSecureDestroy() {
+    if (!destroyTarget || !activeConvId || destroying) return;
+    setDestroying(true);
+    try {
+      await apiSecureDestroy(activeConvId, destroyTarget.id);
+      void playNotifSound('destroy');
+      // avvia dissoluzione locale (il WS arriverà anche per noi)
+      const id = destroyTarget.id;
+      setDestroyingIds((prev) => { const s = new Set(prev); s.add(id); return s; });
+      setTimeout(() => {
+        setMessages((prev) => prev.filter((m) => m.id !== id));
+        setDestroyingIds((prev) => { const s = new Set(prev); s.delete(id); return s; });
+      }, 600);
+      showToast("🛡 Secure Destroy completato");
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Errore Secure Destroy");
+    } finally {
+      setDestroying(false);
+      setDestroyTarget(null);
     }
   }
 
@@ -901,7 +940,7 @@ export default function ChatPage({ onNavigate }: Props) {
                   return (
                     <div
                       key={msg.id}
-                      className={`msg-row ${isMine ? "mine" : "theirs"}`}
+                      className={`msg-row ${isMine ? "mine" : "theirs"}${destroyingIds.has(msg.id) ? " msg-dissolve" : ""}`}
                       onContextMenu={(e) => handleContextMenu(e, msg)}
                       onTouchStart={(e) => handleTouchStart(e, msg)}
                       onTouchEnd={handleTouchCancel}
@@ -909,11 +948,14 @@ export default function ChatPage({ onNavigate }: Props) {
                     >
                       <div className={`msg-bubble ${isMine ? "mine" : "theirs"} ${voiceMeta ? "voice-bubble" : ""}`}>
                         {/* Reply preview */}
-                        {repliedMsg && (
+                        {msg.reply_to_message_id && (
                           <div className="msg-reply-preview">
                             <span className="msg-reply-bar" />
                             <span className="msg-reply-text">
-                              {repliedMsg.ciphertext ? decodeMessage(repliedMsg.ciphertext) : "Messaggio"}
+                              {repliedMsg
+                                ? (repliedMsg.ciphertext ? decodeMessage(repliedMsg.ciphertext) : "Messaggio")
+                                : <em className="msg-reply-destroyed">🛡 Messaggio non più disponibile</em>
+                              }
                             </span>
                           </div>
                         )}
@@ -1057,6 +1099,12 @@ export default function ChatPage({ onNavigate }: Props) {
                 Elimina per tutti
               </button>
             )}
+            {contextMenu.msg.sender_id === auth?.userId && (
+              <button className="ctx-item secure-destroy" onClick={ctxAction(() => { setDestroyTarget(contextMenu.msg); closeContextMenu(); })}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                Secure Destroy
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -1101,6 +1149,37 @@ export default function ChatPage({ onNavigate }: Props) {
               {conversations.filter((c) => c.conversation_id !== activeConvId).length === 0 && (
                 <div className="forward-empty">Nessun altro contatto disponibile</div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Secure Destroy dialog ──────────────────────────────────────────── */}
+      {destroyTarget && (
+        <div className="modal-backdrop sd-backdrop" onClick={() => !destroying && setDestroyTarget(null)}>
+          <div className="sd-dialog" onClick={(e) => e.stopPropagation()}>
+            <div className="sd-dialog-icon">🛡</div>
+            <h2 className="sd-dialog-title">Secure Destroy</h2>
+            <p className="sd-dialog-body">
+              Il messaggio verrà distrutto definitivamente.<br />
+              L&apos;operazione è irreversibile.<br />
+              Una volta completata non sarà più possibile recuperarlo.
+            </p>
+            <div className="sd-dialog-actions">
+              <button
+                className="sd-btn-cancel"
+                onClick={() => setDestroyTarget(null)}
+                disabled={destroying}
+              >
+                ANNULLA
+              </button>
+              <button
+                className="sd-btn-confirm"
+                onClick={() => void handleConfirmSecureDestroy()}
+                disabled={destroying}
+              >
+                {destroying ? "…" : "SECURE DESTROY"}
+              </button>
             </div>
           </div>
         </div>

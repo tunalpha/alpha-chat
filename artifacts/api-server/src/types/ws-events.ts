@@ -42,7 +42,8 @@ export type WsOutboundEventType =
   | "typing.stop"       // utente ha smesso (broadcast ai membri)
   | "read.receipt"      // l'altra persona ha letto i messaggi
   | "message.edited"    // un messaggio è stato modificato
-  | "message.deleted";  // un messaggio è stato eliminato per tutti
+  | "message.deleted"   // un messaggio è stato eliminato per tutti
+  | "message.destroyed"; // un messaggio è stato distrutto definitivamente (Secure Destroy)
 
 export interface WsOutboundEvent {
   type: WsOutboundEventType;
