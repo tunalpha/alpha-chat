@@ -48,7 +48,7 @@ import {
   getTextByServerId,
 } from "../lib/media-cache";
 import VoiceRecorder, { type VoiceBlob } from "../components/VoiceRecorder";
-import { attachAudioUnlockListener, playNotifSound } from "../lib/notifSound";
+import { attachAudioUnlockListener, playNotifSound, unlockNotifAudio } from "../lib/notifSound";
 import VoiceMessage from "../components/VoiceMessage";
 import MediaMessage from "../components/MediaMessage";
 import MediaViewer from "../components/MediaViewer";
@@ -67,8 +67,10 @@ import {
   type TrustStatus,
 } from "../lib/signal";
 import { arrayBufferToBase64 } from "@workspace/libsignal-ts";
+import { resetAndRebuildSession } from "../lib/signal/signal-session";
 import ConfirmModal from "../components/ConfirmModal";
 import { apiClearConversationMessages } from "../lib/api";
+import { archiveConversation } from "./ArchivioPage";
 
 interface Props {
   onNavigate: (view: AppView) => void;
@@ -106,6 +108,7 @@ function ChatHeader({
   onClearChat,
   trustStatus,
   onOpenSafetyNumber,
+  onSessionReset,
 }: {
   otherUser: { display_name: string; username: string } | null | undefined;
   isOnline: boolean;
@@ -122,6 +125,7 @@ function ChatHeader({
   onClearChat: () => void;
   trustStatus?: TrustStatus | "loading" | null;
   onOpenSafetyNumber?: () => void;
+  onSessionReset?: () => void;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -148,6 +152,7 @@ function ChatHeader({
     { label: "Media condivisi", icon: "🖼️", onClick: () => { closeMenu(); onMediaGallery(); } },
     { label: "Cerca nella chat", icon: "🔍", onClick: () => { closeMenu(); onSearchInChat(); } },
     { label: isMuted ? "Riattiva notifiche" : "Silenzia", icon: isMuted ? "🔔" : "🔕", onClick: () => { closeMenu(); onSilenzia(); } },
+    { label: "Resetta sessione E2E", icon: "🔄", onClick: () => { closeMenu(); onSessionReset?.(); } },
     { label: "Blocca utente", icon: "🚫", danger: true, onClick: () => { closeMenu(); onBlockUser(); } },
     { label: "Cancella chat", icon: "🗑️", danger: true, onClick: () => { closeMenu(); onClearChat(); } },
   ];
@@ -383,6 +388,7 @@ function SidebarMenu({
   displayName,
   username,
   connected,
+  avatarUrl,
   onNavigate,
   onLogout,
   onLogoutAll,
@@ -391,6 +397,7 @@ function SidebarMenu({
   displayName: string;
   username: string;
   connected: boolean;
+  avatarUrl?: string | null;
   onNavigate: (v: AppView) => void;
   onLogout: () => void;
   onLogoutAll: () => void;
@@ -449,7 +456,10 @@ function SidebarMenu({
         aria-label="Menu utente"
         aria-expanded={open}
       >
-        <div className="avatar avatar-sm">{displayName[0]?.toUpperCase()}</div>
+        {avatarUrl
+          ? <img src={avatarUrl} alt={displayName} className="avatar avatar-sm" style={{ objectFit: "cover", borderRadius: "50%" }} />
+          : <div className="avatar avatar-sm">{displayName[0]?.toUpperCase()}</div>
+        }
       </button>
 
       {open && (
@@ -546,6 +556,10 @@ export default function ChatPage({ onNavigate }: Props) {
   const [showCreateGroup, setShowCreateGroup] = useState(false);
   const [showGroupInfo, setShowGroupInfo]     = useState(false);
   const [groupInfoId, setGroupInfoId]         = useState<string | null>(null);
+
+  // Archivio — long press su conversazione
+  const [convActionSheet, setConvActionSheet] = useState<{ convId: string; displayName: string } | null>(null);
+  const convLongPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [viewerMedia, setViewerMedia] = useState<{ url: string; type: "image" | "video" } | null>(null);
@@ -1450,6 +1464,7 @@ export default function ChatPage({ onNavigate }: Props) {
             displayName={auth?.displayName ?? ""}
             username={auth?.username ?? ""}
             connected={connected}
+            avatarUrl={auth?.avatarUrl}
             onNavigate={onNavigate}
             onLogout={handleLogout}
             onLogoutAll={handleLogoutAll}
@@ -1535,11 +1550,35 @@ export default function ChatPage({ onNavigate }: Props) {
                 ? (preview!.sender_id === auth?.userId ? `Tu: ${previewText}` : previewText)
                 : "Nessun messaggio";
 
+              const convId = conv.conversation_id;
+              const convDisplayName = displayName;
               return (
                 <button
-                  key={conv.conversation_id}
+                  key={convId}
                   className={`conv-item${isActive ? " active" : ""}${hasUnread ? " conv-item-unread" : ""}${isGroup ? " conv-item-group" : ""}`}
-                  onClick={() => handleSelectConv(conv.conversation_id)}
+                  onClick={() => handleSelectConv(convId)}
+                  onTouchStart={() => {
+                    convLongPressTimerRef.current = setTimeout(() => {
+                      convLongPressTimerRef.current = null;
+                      setConvActionSheet({ convId, displayName: convDisplayName });
+                    }, 600);
+                  }}
+                  onTouchEnd={() => {
+                    if (convLongPressTimerRef.current) {
+                      clearTimeout(convLongPressTimerRef.current);
+                      convLongPressTimerRef.current = null;
+                    }
+                  }}
+                  onTouchMove={() => {
+                    if (convLongPressTimerRef.current) {
+                      clearTimeout(convLongPressTimerRef.current);
+                      convLongPressTimerRef.current = null;
+                    }
+                  }}
+                  onContextMenu={(e) => {
+                    e.preventDefault();
+                    setConvActionSheet({ convId, displayName: convDisplayName });
+                  }}
                 >
                   <div className="avatar-wrapper">
                     <div className={`avatar avatar-md${hasUnread ? " avatar-unread" : ""}${isGroup ? " avatar-group" : ""}`}>
@@ -1600,13 +1639,18 @@ export default function ChatPage({ onNavigate }: Props) {
                 const conv = conversations.find((c) => c.conversation_id === activeConvId);
                 const toId = conv?.other_user?.user_id;
                 const name = conv?.other_user?.display_name ?? conv?.other_user?.username ?? "Utente";
-                if (toId) void initiateCall(toId, name, "audio");
+                if (toId) {
+                  // Sblocca iOS audio nel user gesture prima di initiateCall
+                  void unlockNotifAudio().catch(() => {}).then(() => initiateCall(toId, name, "audio"));
+                }
               }}
               onCallVideo={() => {
                 const conv = conversations.find((c) => c.conversation_id === activeConvId);
                 const toId = conv?.other_user?.user_id;
                 const name = conv?.other_user?.display_name ?? conv?.other_user?.username ?? "Utente";
-                if (toId) void initiateCall(toId, name, "video");
+                if (toId) {
+                  void unlockNotifAudio().catch(() => {}).then(() => initiateCall(toId, name, "video"));
+                }
               }}
               onBlockUser={handleBlockUser}
               onToast={showToast}
@@ -1616,6 +1660,18 @@ export default function ChatPage({ onNavigate }: Props) {
               onClearChat={handleClearChat}
               trustStatus={trustStatus}
               onOpenSafetyNumber={() => setShowSafetyModal(true)}
+              onSessionReset={async () => {
+                if (!auth || !activeConvId) return;
+                const conv = conversations.find((c) => c.conversation_id === activeConvId);
+                const toId = conv?.other_user?.user_id;
+                if (!toId) return;
+                try {
+                  await resetAndRebuildSession(auth.userId, auth.deviceId, toId);
+                  showToast("Sessione E2E ripristinata. Invia un messaggio per confermare.");
+                } catch {
+                  showToast("Errore nel ripristino sessione. Riprova.");
+                }
+              }}
             />
 
             {/* ── Search bar (inline) ─────────────────────────── */}
@@ -1996,6 +2052,39 @@ export default function ChatPage({ onNavigate }: Props) {
       {/* ── Toast ──────────────────────────────────────────────────────────── */}
       {toastMsg && (
         <div className="toast-msg">{toastMsg}</div>
+      )}
+
+      {/* ── Archivio action sheet (long press su conversazione) ────────────── */}
+      {convActionSheet && (
+        <div
+          className="conv-action-overlay"
+          onClick={() => setConvActionSheet(null)}
+        >
+          <div className="conv-action-sheet" onClick={(e) => e.stopPropagation()}>
+            <div className="conv-action-title">{convActionSheet.displayName}</div>
+            <button
+              className="conv-action-btn"
+              onClick={() => {
+                archiveConversation(convActionSheet.convId);
+                setConversations((prev) => prev.filter((c) => c.conversation_id !== convActionSheet.convId));
+                if (activeConvId === convActionSheet.convId) {
+                  setActiveConvId(null);
+                  setMobileShowChat(false);
+                }
+                setConvActionSheet(null);
+                showToast("Conversazione archiviata");
+              }}
+            >
+              📦 Archivia conversazione
+            </button>
+            <button
+              className="conv-action-btn conv-action-cancel"
+              onClick={() => setConvActionSheet(null)}
+            >
+              Annulla
+            </button>
+          </div>
+        </div>
       )}
 
       {/* ── Sprint 21: Crea gruppo ─────────────────────────────────────────── */}

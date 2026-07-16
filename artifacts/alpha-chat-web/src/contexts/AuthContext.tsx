@@ -28,6 +28,7 @@ function authResultToStored(result: AuthResult): StoredAuth {
     displayName: result.user.display_name,
     deviceId: getDeviceId(),
     requirePasswordChange: result.require_password_change ?? result.user.require_password_change ?? false,
+    avatarUrl: result.user.avatar_url ?? null,
   };
 }
 

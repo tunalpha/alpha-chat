@@ -110,6 +110,29 @@ export async function ensureSession(
  * ⚠ Reset TOFU: pulisce la trust identity per permettere il re-keying.
  *   Questo è sicuro solo se il server garantisce l'autenticità del bundle.
  */
+/**
+ * Elimina e ricostruisce una sessione Signal rotta.
+ * Usato dal pulsante "Resetta sessione E2E" nella UI.
+ *
+ * Dopo il reset, il prossimo messaggio inviato sarà un PreKeyWhisperMessage
+ * che stabilirà automaticamente una nuova sessione con l'interlocutore.
+ */
+export async function resetAndRebuildSession(
+  userId: string,
+  deviceId: string,
+  remoteUserId: string,
+  remoteDeviceId = 1,
+): Promise<void> {
+  const store = getSignalStore(userId, deviceId);
+  const addr  = new SignalProtocolAddress(remoteUserId, remoteDeviceId);
+
+  // 1. Elimina la sessione corrotta
+  await store.deleteSession(addr.toString());
+
+  // 2. Ricostruisce la sessione lato uscente (scarica il key bundle fresco)
+  await rebuildSession(userId, deviceId, remoteUserId, remoteDeviceId);
+}
+
 export async function rebuildSession(
   userId: string,
   deviceId: string,

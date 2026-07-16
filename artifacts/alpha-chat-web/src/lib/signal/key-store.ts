@@ -266,6 +266,12 @@ export class SignalProtocolStore implements StorageType {
     return db.get("sessions", encodedAddress);
   }
 
+  /** Elimina una sessione specifica — usato per il reset manuale della sessione */
+  async deleteSession(encodedAddress: string): Promise<void> {
+    const db = await this.db();
+    await db.delete("sessions", encodedAddress);
+  }
+
   // ---------------------------------------------------------------------------
   // Metadati
   // ---------------------------------------------------------------------------

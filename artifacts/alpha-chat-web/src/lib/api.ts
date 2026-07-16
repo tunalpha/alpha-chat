@@ -31,6 +31,7 @@ export interface AuthUserProfile {
   display_name: string;
   email: string;
   is_verified: boolean;
+  avatar_url?: string | null;
 }
 
 /** Shape completa restituita da /auth/register, /auth/login, /auth/refresh */
