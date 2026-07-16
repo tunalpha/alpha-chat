@@ -5,3 +5,4 @@
 - [Sprint 16 Fase 3 — Media E2E](signal-phase3.md) — AES-256-GCM per blob, key wrapping Signal, pipeline upload/decrypt
 - [Sprint 16 Fase 4 — Multi-device, Media Cache, Thumbnail, DeviceManager](signal-phase4.md) — fan-out Signal per device, cache IDB cifrata, thumbnail E2E, revoca device
 - [Sprint 16 Fase 5 — Identity Verification](signal-phase5.md) — Safety Number, TOFU trust manager IDB separato, QR, key-change banner, 26 test (18.1-18.7)
+- [Sprint 18 — Phoenix Protocol](sprint-18-phoenix.md) — argon2id Phoenix Code, email confirm token, Lock Mode vs destroy, Emergency Portal /emergency
