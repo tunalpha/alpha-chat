@@ -158,12 +158,19 @@ a { color: inherit; text-decoration: none; }
   box-shadow: 0 0 0 3px rgba(139,92,246,0.15);
 }
 .auth-input::placeholder { color: var(--text-3); }
+.pwd-wrapper { position: relative; }
+.pwd-wrapper .auth-input { padding-right: 48px; }
 .pwd-toggle {
   position: absolute; right: 12px; top: 50%; transform: translateY(-50%);
-  color: var(--text-3); min-height: unset; min-width: unset;
-  padding: 4px; border-radius: var(--r-xs);
+  color: var(--text-3); background: transparent; border: none;
+  cursor: pointer; padding: 4px; border-radius: var(--r-xs);
+  display: flex; align-items: center; justify-content: center;
+  min-height: unset; min-width: unset; width: 28px; height: 28px;
+  -webkit-tap-highlight-color: transparent;
 }
+.pwd-toggle svg { width: 20px; height: 20px; pointer-events: none; }
 .pwd-toggle:hover { color: var(--text-2); }
+.pwd-toggle:active { color: var(--text-1); }
 .auth-error {
   font-size: 13px; color: #FCA5A5; padding: 10px 12px;
   background: rgba(239,68,68,0.1); border-radius: var(--r-sm);
