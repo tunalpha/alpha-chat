@@ -1,0 +1,159 @@
+Questa secondo me è un’idea molto più forte. Invece di una landing page “marketing”, fai vivere Alpha Chat nei primi 5 secondi.
+
+Ecco un prompt completo.
+
+⸻
+
+SPRINT 11 — Welcome Experience (Demo Chat)
+
+L’attuale home con lo scudo sembra una landing page di un antivirus. Voglio sostituirla con una demo interattiva che faccia capire immediatamente cos’è Alpha Chat.
+
+Obiettivo
+
+L’utente apre Alpha Chat e vede direttamente una conversazione demo, senza poter scrivere.
+
+Deve sembrare di essere già dentro l’app.
+
+La demo deve trasmettere:
+
+* privacy
+* esclusività
+* sicurezza
+* semplicità
+
+Alla fine della demo l’utente può scegliere:
+
+* Crea account
+* Accedi
+
+⸻
+
+Layout
+
+Header identico a quello reale di Alpha Chat.
+
+Logo piccolo.
+
+Alpha Chat.
+
+Nessun enorme scudo.
+
+Sfondo identico alla chat reale.
+
+⸻
+
+Conversazione demo
+
+La chat è finta.
+
+I messaggi arrivano con una piccola animazione uno dopo l’altro (300-500 ms).
+
+Esempio:
+
+⸻
+
+Alpha Chat
+
+Benvenuto.
+
+⸻
+
+Qui la tua privacy non è una funzione.
+
+È il punto di partenza.
+
+⸻
+
+Il tuo bunker digitale.
+
+⸻
+
+Solo chi inviti può trovarti.
+
+⸻
+
+Nessuna ricerca pubblica.
+
+⸻
+
+Nessun numero di telefono.
+
+⸻
+
+Codici invito usa e getta.
+
+⸻
+
+Messaggi protetti.
+
+Zero tracking.
+
+⸻
+
+La privacy è la tua prima linea di difesa.
+
+⸻
+
+Benvenuto in Alpha Chat.
+
+⸻
+
+L’utente non può rispondere.
+
+L’input è visibile ma disabilitato con placeholder:
+
+“Accedi per iniziare una conversazione”
+
+⸻
+
+Footer
+
+Due pulsanti grandi.
+
+[ CREA ACCOUNT ]
+
+[ ACCEDI ]
+
+Devono rimanere sempre visibili.
+
+⸻
+
+Esperienza
+
+Niente effetti eccessivi.
+
+Animazioni molto morbide.
+
+Sembra una vera conversazione.
+
+Non una presentazione PowerPoint.
+
+⸻
+
+Motto
+
+Il motto ufficiale diventa:
+
+Alpha Chat
+
+Il tuo bunker digitale.
+
+Sicurezza di livello militare. Privacy senza compromessi.
+
+⸻
+
+Importante
+
+Non modificare il resto dell’app.
+
+Non toccare login.
+
+Non toccare backend.
+
+Non modificare la UI della chat reale.
+
+Creare soltanto questa nuova Welcome Experience utilizzando gli stessi componenti grafici già presenti nella chat.
+
+⸻
+
+Secondo me questa apertura avrebbe un impatto molto più forte: invece di leggere slogan, l’utente entra subito nell’atmosfera dell’app e percepisce Alpha Chat come un prodotto già maturo e diverso dalle altre chat.
