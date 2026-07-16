@@ -46,55 +46,50 @@ const GAP_MS    = 320;
 const USER_PAUSE_MS = 420;
 
 // ── Suono notifica — Web Audio API ───────────────────────────────────────────
-// iOS Safari richiede che AudioContext venga creato E che venga riprodotto
-// un buffer silenzioso SINCRONO dentro un handler di gesto utente.
-// Solo così viene sbloccato per uso successivo asincrono.
-let _audioCtx: AudioContext | null = null;
-let _audioUnlocked = false;
+// Strategia per iOS Safari + Chrome:
+// 1. AudioContext viene creato DENTRO il gesture handler (sincrono)
+// 2. In quel momento pre-genero il buffer audio del tono (sincrono)
+// 3. Riproduco 1 sample silenzioso per sbloccare iOS
+// 4. playNotif() usa il buffer già pronto — nessuna dipendenza da ctx.state
+let _ctx: AudioContext | null = null;
+let _notifBuf: AudioBuffer | null = null;
 
-function getAudioCtx(): AudioContext | null {
-  if (!_audioCtx) {
-    try { _audioCtx = new AudioContext(); }
-    catch { return null; }
-  }
-  return _audioCtx;
-}
-
-/**
- * Da chiamare SINCRONO dentro un event handler (touchstart/touchend/click).
- * Crea il context + riproduce buffer silenzioso + chiama resume().
- * Questo è l'unico pattern affidabile su iOS Safari.
- */
 function unlockAudio() {
-  if (_audioUnlocked) return;
-  const ctx = getAudioCtx();
-  if (!ctx) return;
-  // Buffer silenzioso da 1 sample — deve essere avviato sincrono nel gesto
+  if (_ctx) return;                       // già sbloccato
   try {
-    const buf = ctx.createBuffer(1, 1, 22050);
-    const src = ctx.createBufferSource();
-    src.buffer = buf;
-    src.connect(ctx.destination);
+    _ctx = new AudioContext();
+
+    // Pre-genera il tono 880→660 Hz, 180ms
+    const sr  = _ctx.sampleRate;
+    const len = Math.floor(sr * 0.18);
+    const buf = _ctx.createBuffer(1, len, sr);
+    const ch  = buf.getChannelData(0);
+    for (let i = 0; i < len; i++) {
+      const t    = i / sr;
+      const freq = 880 - 220 * (t / 0.18);                   // sweep lineare
+      const env  = Math.max(0, 1 - t / 0.18);                // fade-out
+      ch[i] = Math.sin(2 * Math.PI * freq * t) * 0.07 * env;
+    }
+    _notifBuf = buf;
+
+    // Buffer silenzioso — sblocca iOS sincrono nel gesture handler
+    const silent = _ctx.createBuffer(1, 1, sr);
+    const src    = _ctx.createBufferSource();
+    src.buffer   = silent;
+    src.connect(_ctx.destination);
     src.start(0);
-  } catch { /* ignora */ }
-  ctx.resume().then(() => { _audioUnlocked = true; }).catch(() => {});
+
+    _ctx.resume().catch(() => {});
+  } catch { /* browser non supporta Web Audio */ }
 }
 
 function playNotif() {
-  const ctx = getAudioCtx();
-  if (!ctx || ctx.state !== "running") return;
+  if (!_ctx || !_notifBuf) return;
   try {
-    const osc  = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.type = "sine";
-    osc.frequency.setValueAtTime(880, ctx.currentTime);
-    osc.frequency.exponentialRampToValueAtTime(660, ctx.currentTime + 0.12);
-    gain.gain.setValueAtTime(0.08, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.18);
-    osc.start(ctx.currentTime);
-    osc.stop(ctx.currentTime + 0.18);
+    const src = _ctx.createBufferSource();
+    src.buffer = _notifBuf;
+    src.connect(_ctx.destination);
+    src.start(0);
   } catch { /* ignora */ }
 }
 
