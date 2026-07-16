@@ -35,11 +35,42 @@ Modulo completo allegati — la logica Secure Destroy viene riutilizzata per ogn
 
 ### Sprint 16 — Signal Protocol (M3) — migrazione architetturale completa
 
-⚠️ VINCOLO CRITICO — NESSUNA CRITTOGRAFIA CUSTOM:
+⚠️ VINCOLI PERMANENTI — NON NEGOZIABILI:
+
+**[A] Nessuna crittografia custom**
   Usare ESCLUSIVAMENTE `@signalapp/libsignal-client` (libreria ufficiale Signal Foundation).
   NON implementare algoritmi crittografici personalizzati.
   NON modificare X3DH, Double Ratchet o Sender Keys.
   Limitarsi a integrare il protocollo con l'architettura esistente.
+
+**[B] Zero Plaintext Rule — regola di progetto permanente**
+  Il server NON deve mai ricevere testo in chiaro.
+  ❌ Niente log del testo, niente debug del testo, niente analytics del testo
+  ❌ Niente preview generate dal server, niente ricerca server-side sul contenuto
+  ✅ Il server vede SOLO: ciphertext, nonce, key ids, metadata strettamente necessari
+
+**[C] Metadata Minimization**
+  Anche con Signal il server conosce alcuni metadati — ridurli al minimo:
+  - Lunghezza messaggio: padding opzionale per oscurare la dimensione reale
+  - Tipo messaggio, timestamp, sender, recipient: necessari per routing
+  - Contenuto: completamente opaco per il server
+
+**[D] Recovery Strategy — decisione architetturale pre-codice**
+  Filosofia scelta: Backup cifrato opzionale (non Signal pura)
+  - Reinstallo / cambio telefono / rottura dispositivo: chiavi locali perse di default
+  - Funzione opzionale: export backup cifrato con passphrase nota solo all'utente
+  - Messaggi vecchi non recuperabili senza backup (massima sicurezza come default)
+  Questa scelta va comunicata chiaramente all'utente in UI prima dell'onboarding.
+
+**[E] Crypto Review Gate — checklist obbligatoria pre-merge Sprint 16**
+  Nessun merge accettato finché non verificati:
+  ☐ Nessuna chiave privata nei log
+  ☐ Nessuna chiave privata nel database
+  ☐ Nessun plaintext inviato al server
+  ☐ Nessun algoritmo custom
+  ☐ Uso esclusivo di @signalapp/libsignal-client
+  ☐ Test di interoperabilità
+  ☐ Test di migrazione chat esistenti
 
 **Fase 1 — Crittografia**
 - Identity Key Pair

@@ -1,0 +1,111 @@
+La struttura mi convince. Hai evitato l’errore che fanno molti progetti: “aggiungere E2E” come una feature. Qui invece diventa una migrazione dell’architettura, ed è l’approccio corretto.
+
+Io aggiungerei solo quattro requisiti permanenti alla roadmap di Sprint 16, perché sono quelli che, se dimenticati all’inizio, diventano difficili da introdurre dopo.
+
+⸻
+
+1️⃣ Zero Plaintext Rule (obbligatoria)
+
+Questa deve diventare una regola del progetto.
+
+Il server non deve mai ricevere testo in chiaro.
+
+Quindi:
+
+* ❌ niente log del testo
+* ❌ niente debug del testo
+* ❌ niente analytics del testo
+* ❌ niente preview generate dal server
+* ❌ niente ricerca server-side sul contenuto
+
+Il server deve vedere esclusivamente:
+
+* ciphertext
+* nonce
+* key ids
+* metadata strettamente necessari
+
+⸻
+
+2️⃣ Metadata Minimization
+
+Anche con Signal il server continua a conoscere alcuni metadati.
+
+Riducili il più possibile.
+
+Ad esempio:
+
+* lunghezza messaggio (padding opzionale)
+* tipo messaggio
+* timestamp
+* sender
+* recipient
+
+Il contenuto deve essere completamente opaco.
+
+⸻
+
+3️⃣ Recovery Strategy
+
+Prima di scrivere una riga di codice decidete cosa succede se:
+
+* l’utente cambia telefono
+* perde tutte le chiavi
+* reinstalla Alpha Chat
+* rompe il telefono
+
+Ci sono due filosofie.
+
+Filosofia Signal
+
+Le chiavi sono perse.
+
+I messaggi vecchi sono persi.
+
+Massima sicurezza.
+
+Filosofia Backup cifrato
+
+L’utente può esportare un backup cifrato con una passphrase che solo lui conosce.
+
+Io sceglierei questa come funzione opzionale, non obbligatoria.
+
+⸻
+
+4️⃣ Crypto Review Gate
+
+Prima del merge finale dello Sprint 16 inserirei una regola molto rigida.
+
+Nessuna PR viene accettata finché non sono verificati:
+
+* nessuna chiave privata nei log
+* nessuna chiave privata nel database
+* nessun plaintext inviato al server
+* nessun algoritmo custom
+* uso esclusivo di @signalapp/libsignal-client
+* test di interoperabilità
+* test di migrazione
+
+⸻
+
+Dopo Sprint 16
+
+A quel punto, secondo me, Alpha Chat entra davvero in una nuova fase.
+
+Potrai scrivere sul sito:
+
+I messaggi sono cifrati end-to-end. Il server non può leggerne il contenuto.
+
+Questa è un’affermazione tecnica verificabile.
+
+Ed è molto più forte di qualsiasi slogan.
+
+Il motto rimane:
+
+Alpha Chat
+
+Il tuo bunker digitale.
+
+La privacy è la tua prima linea di difesa.
+
+Perché da quel momento sarà supportato non solo dalla filosofia del progetto, ma anche dalla sua architettura tecnica.
