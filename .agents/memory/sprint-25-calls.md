@@ -1,9 +1,9 @@
 ---
-name: Sprint 25 — Chiamate Secure Pro
-description: Architettura e decisioni implementative di Sprint 25 (busy detection, multi-device ring, ICE restart, cronologia, suonerie, UI enhanced)
+name: Sprint 25 — Chiamate Secure Pro + bug fix persistenti
+description: Architettura chiamate, busy detection, ICE restart, cronologia, suonerie, avatar fix, sessione E2E reset, archivio
 ---
 
-## Implementato
+## Sprint 25 — Chiamate Secure Pro (implementato)
 
 ### Backend
 - **CallLogModel** (`artifacts/api-server/src/models/call-log.model.ts`): caller_id, callee_id, call_type, status, started_at/answered_at/ended_at/duration_sec
@@ -30,7 +30,34 @@ description: Architettura e decisioni implementative di Sprint 25 (busy detectio
 - `getRingtone()/setRingtone()` via localStorage key `alpha_ringtone`
 - `startRing()` usa `_currentRingEl()` basato su preferenza; `stopRing()` ferma tutti
 - `playRingPreview(id)` — loop=false, poi ripristina loop dopo 1.5s
-- `unlockNotifAudio()` aggiornato per sbloccare tutti i ring elements
+- `unlockNotifAudio()` aggiornato per sbloccare tutti i ring elements + audio context
+
+## Bug fix persistenti (dopo Sprint 25)
+
+### [Messaggio non decifrabile] — Session Reset
+**Root cause**: Signal WhisperMessage (tipo 1) non ha recovery automatico. Se la sessione IDB va persa (logout, altro device, IDB cleared), tutti i messaggi ricevuti successivi falliscono silenziosamente.
+
+**Fix implementato**:
+- `SignalProtocolStore.deleteSession(encodedAddress)` aggiunto a key-store.ts
+- `resetAndRebuildSession(userId, deviceId, remoteUserId)` in signal-session.ts: cancella sessione corrotta + ricostruisce quella uscente con bundle fresco
+- ChatPage.tsx: menu ⋮ → "Resetta sessione E2E" → toast "Invia un messaggio per confermare"
+
+**Limite**: vecchi messaggi con "[Messaggio non decifrabile]" rimangono irrecuperabili (design E2E). Solo messaggi nuovi funzioneranno dopo il reset.
+
+### Avatar non persistito al login
+**Root cause**: `authResultToStored()` in AuthContext.tsx non includeva `avatar_url`. Avatar perso ad ogni login/refresh token.
+
+**Fix**: `authResultToStored` include `avatarUrl: result.user.avatar_url ?? null`. `AuthUserProfile` interface aggiornata con `avatar_url?: string | null`. SidebarMenu mostra `<img>` se `avatarUrl` presente.
+
+### Chiamate mute su iOS (audio context bloccato)
+**Root cause**: `acceptCall()` e `initiateCall()` vengono chiamati asincronamente dopo il tap. iOS Safari blocca `HTMLMediaElement.play()` se non eseguito entro ~1s dal user gesture.
+
+**Fix**: `unlockNotifAudio()` chiamato DENTRO l'onClick del pulsante Accetta (IncomingCallModal) e dei bottoni chiamata (ChatPage onCallAudio/onCallVideo). Sblocca il contesto audio iOS prima di tutto il resto.
+
+### Archivio vuoto (no modo per archiviare)
+**Root cause**: non c'era nessun handler long press/context menu sui conv-item nel sidebar. La funzione `archiveConversation()` esisteva in ArchivioPage.tsx ma non era collegata.
+
+**Fix**: Long press 600ms + `onContextMenu` su ogni conv-item → action sheet bottom "Archivia conversazione" → chiama `archiveConversation(convId)`, rimuove dalla lista, mostra toast.
 
 ## Decisioni chiave
 
@@ -40,6 +67,6 @@ description: Architettura e decisioni implementative di Sprint 25 (busy detectio
 
 **Why busy check in-memory?** Evita un read MongoDB su ogni `call.offer`; `wsManager.setInCall/clearInCall` gestisce lo stato in RAM. Reset automatico se il server si riavvia (accettabile).
 
-**Why DND check semplificato?** "contacts" non è verificato lato server (richiede query sui members); solo "nobody" blocca esplicitamente. "everyone" e "contacts" permettono la chiamata.
-
 **AppError signature**: `new AppError(code: string, httpStatus: number, field?: string, details?: Record<string,unknown>)` — NON `(statusCode, message)`.
+
+**Archivio in localStorage**: IDs archiviati in `alpha_archived_convs` — device-specific, non sincronizzato. Normale per una PWA offline-first.
