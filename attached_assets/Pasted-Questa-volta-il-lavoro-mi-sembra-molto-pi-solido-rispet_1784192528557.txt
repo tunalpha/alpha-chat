@@ -1,0 +1,55 @@
+Questa volta il lavoro mi sembra molto più solido rispetto alla prima proposta.
+
+Il punto fondamentale è che non avete scritto codice crittografico personalizzato, ma avete documentato la scelta e creato un layer di isolamento (packages/libsignal-ts). Dal punto di vista architetturale è una scelta sensata: se un domani cambierete implementazione, il resto dell’app non dovrà essere riscritto.
+
+Detto questo, prima di iniziare la Fase 2, chiederei all’Agent un’ultima verifica tecnica.
+
+⸻
+
+Domanda da fargli
+
+Prima di implementare X3DH e SessionBuilder, esegui un test di interoperabilità completo.
+
+Crea due utenti fittizi (Alice e Bob).
+
+Verifica che:
+
+* Alice generi Identity Key, Signed PreKey e One-Time PreKey.
+* Bob scarichi il bundle di Alice.
+* Bob costruisca la sessione X3DH.
+* Alice riesca a decrittare il primo messaggio.
+* Da quel momento entrambi usino Double Ratchet senza errori.
+* Tutti i test siano automatici e ripetibili.
+
+Se uno qualsiasi di questi test fallisce, interrompi la Fase 2 e produci un report tecnico invece di proseguire.
+
+⸻
+
+Un’altra richiesta
+
+Chiederei anche di aggiungere una suite di test che rimanga nel progetto.
+
+Per esempio:
+
+* ✅ Alice → Bob
+* ✅ Bob → Alice
+* ✅ Due dispositivi di Alice
+* ✅ OTPK esaurite
+* ✅ Rotazione Signed PreKey
+* ✅ Safety Number stabile
+* ✅ Replay attack rifiutato
+* ✅ Chiave cambiata → nuova sessione
+* ✅ Burn After Read continua a funzionare con E2E
+* ✅ Secure Destroy continua a funzionare con E2E
+
+Questi test diventeranno una rete di sicurezza ogni volta che aggiornerete la libreria o modificherete il protocollo.
+
+⸻
+
+Valutazione
+
+A questo punto darei il via libera alla Fase 2, ma con una regola:
+
+Non implementare ancora media, gruppi o multi-device. Concentrarsi esclusivamente sull’instaurazione della prima sessione cifrata tra due utenti e dimostrare, con test automatici, che Alice e Bob riescono a scambiarsi messaggi usando X3DH e Double Ratchet. Solo dopo un esito positivo passare alla fase successiva.
+
+Se quella dimostrazione funziona, allora avrete superato il passaggio più delicato dell’intero progetto.

@@ -9,13 +9,17 @@
  *   2. Nessuna modifica agli algoritmi crittografici sottostanti
  *   3. Tutte le deviazioni dalla spec Signal devono essere documentate
  *
+ * ⚠ INIZIALIZZAZIONE — comportamento documentato:
+ *   Non chiamare setCurve() dopo libsignal(). Vedere il commento in
+ *   initSignalLibrary() per la spiegazione completa del bug.
+ *
  * INIZIALIZZAZIONE: chiamare `initSignalLibrary()` una volta prima di
  * qualsiasi operazione crittografica (tipicamente al caricamento dell'app).
  */
 
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore — CJS package, Vite pre-bundled
-import libsignal, { setCurve, setWebCrypto } from "@privacyresearch/libsignal-protocol-typescript";
+import libsignal from "@privacyresearch/libsignal-protocol-typescript";
 
 // Re-export tutto il necessario per i consumer
 export {
@@ -46,25 +50,25 @@ let _initialized = false;
 let _initPromise: Promise<void> | null = null;
 
 /**
- * Carica il modulo WebAssembly Curve25519 e configura la libreria.
+ * Carica il modulo WebAssembly/asm.js Curve25519 e lo rende pronto.
  * Idempotente: sicuro da chiamare più volte.
  *
  * DEVE essere chiamata prima di qualsiasi operazione crittografica.
+ *
+ * ⚠ Internamente: chiama libsignal() per garantire il caricamento del WASM,
+ *   ma NON chiama setCurve(). Motivo: setCurve(Curve) sostituirebbe
+ *   AsyncCurve._curve25519 (AsyncCurve25519Wrapper con metodo .keyPair())
+ *   con il wrapper di alto livello Curve (che non ha .keyPair()).
+ *   L'AsyncCurve25519Wrapper si auto-inizializza dalla stessa instancePromise.
  */
 export async function initSignalLibrary(): Promise<void> {
   if (_initialized) return;
   if (_initPromise) return _initPromise;
 
   _initPromise = (async () => {
+    // Garantisce caricamento WASM/asm.js. NON usiamo il ritorno né setCurve().
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const { Curve } = await (libsignal as any)();
-    setCurve(Curve);
-
-    // Imposta Web Crypto API (standard nei browser moderni)
-    if (typeof window !== "undefined" && window.crypto) {
-      setWebCrypto(window.crypto);
-    }
-
+    await (libsignal as any)();
     _initialized = true;
   })();
 
