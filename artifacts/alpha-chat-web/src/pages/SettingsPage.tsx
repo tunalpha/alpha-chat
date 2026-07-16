@@ -1,13 +1,23 @@
-interface Props { onBack: () => void; }
+import { type AppView } from "../App";
+import { useLock } from "../contexts/LockContext";
 
-interface SettingRow {
-  icon: React.ReactNode;
-  label: string;
-  value?: string;
-  soon?: boolean;
+interface Props {
+  onBack: () => void;
+  onNavigate: (view: AppView) => void;
 }
 
-export default function SettingsPage({ onBack }: Props) {
+export default function SettingsPage({ onBack, onNavigate }: Props) {
+  const { hasPINSet, lock } = useLock();
+
+  type SettingRow = {
+    icon: React.ReactNode;
+    label: string;
+    value?: string;
+    soon?: boolean;
+    onClick?: () => void;
+    badge?: string;
+  };
+
   const sections: { title: string; rows: SettingRow[] }[] = [
     {
       title: "Aspetto",
@@ -33,17 +43,19 @@ export default function SettingsPage({ onBack }: Props) {
       ],
     },
     {
-      title: "Privacy",
+      title: "Privacy e Sicurezza",
       rows: [
         {
           icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="20" height="20"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>,
-          label: "Privacy e Sicurezza",
-          soon: true,
+          label: "Privacy",
+          onClick: () => onNavigate("privacy"),
         },
         {
           icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="20" height="20"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>,
-          label: "Blocco applicazione",
-          soon: true,
+          label: "Sicurezza dispositivo",
+          value: hasPINSet ? "PIN attivo" : "Non configurato",
+          onClick: () => onNavigate("security"),
+          badge: hasPINSet ? "🔒" : undefined,
         },
       ],
     },
@@ -73,6 +85,19 @@ export default function SettingsPage({ onBack }: Props) {
           </svg>
         </button>
         <h1 className="settings-title">Impostazioni</h1>
+        {hasPINSet && (
+          <button
+            className="settings-lock-btn"
+            onClick={lock}
+            aria-label="Blocca app"
+            title="Blocca app"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="18" height="18">
+              <rect x="3" y="11" width="18" height="11" rx="2"/>
+              <path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+            </svg>
+          </button>
+        )}
       </header>
 
       <div className="settings-body">
@@ -80,10 +105,20 @@ export default function SettingsPage({ onBack }: Props) {
           <div key={section.title} className="settings-section">
             <div className="settings-section-title">{section.title}</div>
             {section.rows.map((row) => (
-              <div key={row.label} className={`settings-item${row.soon ? " coming-soon" : ""}`}>
+              <div
+                key={row.label}
+                className={`settings-item${row.soon ? " coming-soon" : ""}${row.onClick ? " clickable" : ""}`}
+                onClick={row.onClick}
+                role={row.onClick ? "button" : undefined}
+                tabIndex={row.onClick ? 0 : undefined}
+                onKeyDown={row.onClick ? (e) => { if (e.key === "Enter") row.onClick?.(); } : undefined}
+              >
                 <div className="settings-item-icon">{row.icon}</div>
                 <div className="settings-item-content">
-                  <div className="settings-item-label">{row.label}</div>
+                  <div className="settings-item-label">
+                    {row.label}
+                    {row.badge && <span className="settings-security-badge">{row.badge}</span>}
+                  </div>
                   {row.value && <div className="settings-item-value muted">{row.value}</div>}
                 </div>
                 {row.soon

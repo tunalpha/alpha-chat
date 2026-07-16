@@ -1,0 +1,44 @@
+Sì. Da quello che mi hai mostrato, Sprint 16 è sostanzialmente completo: avete implementato E2E, media cifrati, multi-device, Safety Numbers, QR, TOFU e avete una suite di test molto ampia. L’audit Playwright serve a convalidare l’integrazione end-to-end, ma non blocca necessariamente il lavoro sullo sprint successivo.
+
+Io procederei così:
+
+* Lascia terminare l’audit senza interromperlo.
+* Inizia Sprint 17 su un ramo separato, così se l’audit trova un bug puoi correggerlo senza mischiare le modifiche.
+
+La roadmap quindi diventa:
+
+* ✅ Sprint 16 – Signal Protocol E2E
+* 🔄 Audit finale in esecuzione
+* ▶️ Sprint 17 – Sicurezza del dispositivo
+    * Face ID / Touch ID
+    * PIN locale
+    * Blocco automatico dopo inattività
+    * Richiesta biometrica all’apertura dell’app
+    * Protezione screenshot (dove supportata)
+    * Schermata privacy nell’app switcher
+    * Timeout configurabile
+    * Panic Lock
+    * Cancellazione delle chiavi locali dopo troppi tentativi falliti (opzionale)
+
+Questa è una sequenza coerente perché ora che il contenuto è realmente cifrato end-to-end, ha senso proteggere anche l’accesso al dispositivo.
+
+Prompt per l’agente
+
+Avvia Sprint 17 – Sicurezza del dispositivo. Lavora su un branch separato senza modificare il codice di Sprint 16 finché l’audit Playwright non è concluso. Esplora prima la codebase e proponi un piano incrementale. Implementa nell’ordine:
+
+1. PIN locale.
+2. Face ID / Touch ID (WebAuthn/Platform Authenticator dove disponibile, fallback PIN).
+3. Blocco automatico dopo timeout configurabile.
+4. Schermata privacy quando l’app va in background o appare nell’app switcher.
+5. Richiesta biometrica alla riapertura.
+6. Impostazioni utente per abilitare/disabilitare le protezioni.
+7. Test automatici, typecheck, build e audit finale.
+
+Vincoli:
+
+* Nessuna regressione delle funzionalità E2E.
+* Nessuna modifica ai protocolli Signal.
+* Tutte le protezioni devono agire solo sul client.
+* Le chiavi private non devono mai lasciare il dispositivo.
+
+Una piccola modifica alla roadmap che ti suggerirei: sposterei il Panic Mode / Emergency Lock dallo Sprint 21 allo Sprint 17. È una funzionalità strettamente legata alla sicurezza del dispositivo e completa molto meglio questo sprint. Gli altri elementi “Military Edition” (ad esempio l’autodistruzione dell’account) possono invece restare più avanti.
