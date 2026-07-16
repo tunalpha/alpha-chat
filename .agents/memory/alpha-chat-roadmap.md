@@ -33,20 +33,28 @@ Modulo completo allegati — la logica Secure Destroy viene riutilizzata per ogn
 ⚠️ AUDIT COMPLETO richiesto prima di Sprint 16 (sicurezza, performance, batteria, memoria,
    sincronizzazione multi-device, test iPhone/Android/desktop).
 
-### Sprint 16 — Sicurezza
+### Sprint 16 — E2E reale (Signal Protocol)
+- Implementazione libsignal / Signal Protocol lato client
+- Key exchange, PreKeys, Session state, Double Ratchet
+- Migrazione ciphertext da base64 simulato a pacchetti Signal reali
+- Verifica impronta digitale sessione (Safety Numbers)
+- sender_key_id obbligatorio (attualmente nullable per compatibilità M1)
+- Zero-knowledge per il server: nessun plaintext mai accessibile
+
+### Sprint 17 — Sicurezza dispositivo
 - Face ID, Touch ID, PIN, Password secondaria, Gestione sessioni, Gestione dispositivi
 
-### Sprint 17 — Organizzazione
+### Sprint 18 — Organizzazione
 - Archivio, Preferiti, Cartelle, Ricerca locale (client-side dopo decifratura — E2E
   rende impossibile la ricerca server-side), Filtri, Messaggi fissati
 
-### Sprint 18 — Gruppi
+### Sprint 19 — Gruppi
 - Gruppi E2E, Ruoli, Amministratori, Permessi, QR gruppo, Inviti monouso
 
-### Sprint 19 — Ecosistema
+### Sprint 20 — Ecosistema
 - Multi-dispositivo, PWA, Backup cifrato opzionale, Temi, Notifiche Push
 
-### Sprint 20 — Military Edition (traguardo finale)
+### Sprint 21 — Military Edition (traguardo finale)
 - 🛡️ Panic Mode
 - 🛡️ Distruzione completa conversazione
 - 🛡️ Distruzione completa account
