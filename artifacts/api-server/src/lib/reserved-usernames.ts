@@ -9,7 +9,7 @@
 
 const BUILTIN_RESERVED: ReadonlyArray<string> = [
   // Brand / sistema
-  "alphachat", "alpha", "official", "staff", "team", "admin", "administrator",
+  "alphachat", "official", "staff", "team", "admin", "administrator",
   // Ruoli sistema
   "root", "system", "owner", "operator", "moderator", "mod",
   // Supporto
