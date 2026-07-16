@@ -57,6 +57,12 @@ export default function SettingsPage({ onBack, onNavigate }: Props) {
           onClick: () => onNavigate("security"),
           badge: hasPINSet ? "🔒" : undefined,
         },
+        {
+          icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="20" height="20"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>,
+          label: "Phoenix Protocol",
+          value: "Emergenza account",
+          onClick: () => onNavigate("phoenix"),
+        },
       ],
     },
     {

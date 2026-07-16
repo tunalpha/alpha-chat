@@ -1,0 +1,178 @@
+Puoi rispondere così:
+
+⸻
+
+Ottimo lavoro. Non farei ancora il merge su main.
+
+Prima voglio chiudere definitivamente Sprint 16 con l’audit Playwright completo (Scenari B–E). Se tutti gli scenari risultano verdi, procederemo con:
+
+1. Merge Sprint 16.
+2. Merge Sprint 17.
+3. Deploy unico su alphachat.sbs.
+4. Smoke test completo in produzione.
+
+C’è però una modifica che desidero introdurre.
+
+Panic Mode
+
+Non voglio che 5 PIN errati provochino l’autodistruzione dell’account.
+
+Preferisco questo comportamento:
+
+* 5 PIN errati → Lock Mode
+    * logout del dispositivo;
+    * cancellazione delle chiavi locali;
+    * revoca della sessione del dispositivo;
+    * nessuna perdita dell’account.
+
+L’autodistruzione completa deve essere disponibile solo tramite il Phoenix Protocol, perché è una funzione di emergenza e deve richiedere una decisione esplicita dell’utente.
+
+⸻
+
+Prossimo Sprint — Phoenix Protocol
+
+Missione
+
+Implementare Phoenix Protocol, la funzione di emergenza di Alpha Chat.
+
+Obiettivo:
+
+Se l’utente perde il telefono o ritiene compromesso il proprio account, deve poter bloccare o distruggere completamente la propria identità digitale da qualsiasi browser.
+
+Questa funzione dovrà diventare uno dei pilastri di Alpha Chat e del motto:
+
+Alpha Chat — Il tuo bunker digitale.
+
+⸻
+
+Regole
+
+* Non modificare Signal Protocol.
+* Non modificare X3DH.
+* Non modificare Double Ratchet.
+* Non introdurre crittografia custom.
+* Riutilizzare tutta l’infrastruttura esistente.
+
+⸻
+
+Fase 1 — Phoenix Code
+
+L’utente crea un Phoenix Code (passphrase lunga).
+
+Requisiti:
+
+* minimo 20 caratteri;
+* Argon2id con salt casuale;
+* mai salvato in chiaro;
+* mai recuperabile.
+
+⸻
+
+Fase 2 — Emergency Portal
+
+Realizzare:
+
+https://emergency.alphachat.sbs
+
+Interfaccia minimale con:
+
+* Username
+* Phoenix Code
+* Pulsante “Avvia procedura”
+
+⸻
+
+Fase 3 — Doppia conferma
+
+Dopo la verifica del Phoenix Code:
+
+* inviare un’email di conferma con link monouso e scadenza breve;
+* solo il link autorizza la procedura.
+
+⸻
+
+Fase 4 — Due modalità
+
+Lock Mode
+
+* logout di tutti i dispositivi;
+* revoca di tutte le sessioni;
+* revoca di tutti i token;
+
+L’account rimane recuperabile.
+
+Phoenix Protocol
+
+Distruzione irreversibile di:
+
+* account;
+* conversazioni;
+* messaggi;
+* media;
+* avatar;
+* Identity Key Signal;
+* Signed PreKeys;
+* One-Time PreKeys;
+* sessioni;
+* dispositivi;
+* token.
+
+Inviare un evento WebSocket ai dispositivi online affinché cancellino:
+
+* IndexedDB;
+* cache media;
+* chiavi Signal;
+* storage locale;
+* sessione.
+
+⸻
+
+Fase 5 — Countdown
+
+Dopo la conferma via email:
+
+* mostrare un conto alla rovescia di 10 secondi;
+* consentire l’annullamento fino allo scadere del tempo;
+* allo scadere avviare la procedura irreversibile.
+
+⸻
+
+Fase 6 — Recovery Card
+
+Generare una Recovery Card contenente:
+
+* Username;
+* Emergency ID;
+* QR Code verso https://emergency.alphachat.sbs;
+* istruzioni per l’uso.
+
+L’utente può salvarla o stamparla.
+
+⸻
+
+Fase 7 — Sicurezza e test
+
+Verificare:
+
+* impossibilità di bypassare il Phoenix Code;
+* impossibilità di distruggere l’account di un altro utente;
+* rate limiting;
+* protezione CSRF;
+* protezione brute force;
+* link monouso;
+* scadenza token;
+* audit log dell’operazione (senza conservare dati sensibili).
+
+Creare test automatici per:
+
+* Lock Mode;
+* Phoenix Protocol;
+* email valida/scaduta;
+* Phoenix Code errato;
+* replay del link;
+* multi-device;
+* distruzione remota;
+* pulizia delle chiavi locali;
+* nessuna regressione delle funzionalità E2E.
+
+Lo sprint sarà considerato concluso solo con typecheck pulito, build pulita, test tutti verdi e audit di sicurezza completo.

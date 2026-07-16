@@ -16,7 +16,7 @@ export default function LockScreen() {
     hasBiometricSet,
     settings,
     failedAttempts,
-    triggerPanic,
+    emergencyLock,
   } = useLock();
 
   const [error, setError] = useState<string | null>(null);
@@ -65,7 +65,7 @@ export default function LockScreen() {
     if (!settings.panicEnabled) return;
     setPanicHold(true);
     panicTimerRef.current = setTimeout(() => {
-      triggerPanic();
+      emergencyLock();
     }, 3000);
   };
   const onPanicEnd = () => {

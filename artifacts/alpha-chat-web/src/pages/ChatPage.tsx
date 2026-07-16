@@ -826,6 +826,20 @@ export default function ChatPage({ onNavigate }: Props) {
           }
           break;
         }
+
+        // Sprint 18 — Phoenix Protocol
+        case "phoenix:lock": {
+          // Emergency Lock: revoca sessione, pulisce chiavi locali
+          void logout();
+          break;
+        }
+        case "phoenix:destroy": {
+          // Phoenix Protocol: account distrutto — pulisce tutto localmente
+          localStorage.clear();
+          sessionStorage.clear();
+          void logout();
+          break;
+        }
       }
     });
   }, [on, activeConvId]);

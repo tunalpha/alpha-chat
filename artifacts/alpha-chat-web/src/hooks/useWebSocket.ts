@@ -14,7 +14,9 @@ export type WsEvent =
   | { type: "auth.ok"; payload: { user_id: string } }
   | { type: "auth.error"; payload: { message: string } }
   | { type: "ping" }
-  | { type: "error"; payload: { message: string } };
+  | { type: "error"; payload: { message: string } }
+  | { type: "phoenix:lock"; payload: { reason: string } }
+  | { type: "phoenix:destroy"; payload: { reason: string } };
 
 type EventHandler = (event: WsEvent) => void;
 

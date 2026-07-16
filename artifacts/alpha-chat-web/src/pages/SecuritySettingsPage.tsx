@@ -280,10 +280,10 @@ export default function SecuritySettingsPage({ onBack }: Props) {
           </div>
         )}
 
-        {/* Panic Mode */}
+        {/* Emergency Lock */}
         {hasPINSet && (
           <div className="settings-section">
-            <div className="settings-section-title">Emergency</div>
+            <div className="settings-section-title">Emergency Lock</div>
             <div className="settings-item">
               <div className="settings-item-icon">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="20" height="20">
@@ -291,9 +291,10 @@ export default function SecuritySettingsPage({ onBack }: Props) {
                 </svg>
               </div>
               <div className="settings-item-content">
-                <div className="settings-item-label">Panic Mode</div>
+                <div className="settings-item-label">Blocco rapido</div>
                 <div className="settings-item-value muted">
-                  Tieni premuto il lucchetto 3s per bloccare e cancellare la sessione
+                  Tieni premuto il lucchetto 3s per revocare la sessione e cancellare le chiavi locali.
+                  L'account rimane recuperabile.
                 </div>
               </div>
               <button
@@ -304,6 +305,10 @@ export default function SecuritySettingsPage({ onBack }: Props) {
               >
                 <div className="security-toggle-thumb" />
               </button>
+            </div>
+            <div className="security-phoenix-note">
+              Per la distruzione irreversibile dell'account usa il{" "}
+              <strong>Phoenix Protocol</strong> nelle impostazioni account.
             </div>
           </div>
         )}

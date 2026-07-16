@@ -50,7 +50,14 @@ interface LockContextType {
   enableBiometric: () => Promise<boolean>;
   disableBiometric: () => void;
   clearPIN: () => void;
-  triggerPanic: () => void;
+  /**
+   * Emergency Lock Mode — NON è Phoenix Protocol.
+   * Revoca la sessione del dispositivo e cancella le chiavi locali.
+   * L'account rimane integro sul server ed è recuperabile.
+   * La distruzione irreversibile dell'account è disponibile solo
+   * tramite Phoenix Protocol (azione esplicita dell'utente).
+   */
+  emergencyLock: () => void;
 }
 
 const LockContext = createContext<LockContextType | null>(null);
@@ -182,9 +189,11 @@ export function LockProvider({ children }: { children: ReactNode }) {
       setFailedAttempts(next);
       localStorage.setItem(FAILED_KEY(userId), String(next));
 
-      // Dopo MAX_FAILED_ATTEMPTS tentativi → Panic automatico
+      // Dopo MAX_FAILED_ATTEMPTS tentativi → Emergency Lock Mode
+      // NON distrugge l'account: revoca sessione + pulizia locale.
+      // L'autodistruzione completa è solo via Phoenix Protocol.
       if (next >= MAX_FAILED_ATTEMPTS) {
-        triggerPanic();
+        emergencyLock();
       }
       return false;
     },
@@ -256,8 +265,16 @@ export function LockProvider({ children }: { children: ReactNode }) {
     [userId, settings, resetLockTimer]
   );
 
-  const triggerPanic = useCallback(() => {
-    // Lock immediato + logout completo (cancella token e chiavi)
+  /**
+   * Emergency Lock Mode.
+   * - Revoca la sessione del dispositivo corrente (apiLogout).
+   * - Cancella le chiavi Signal locali e la media cache.
+   * - L'account rimane intatto sul server ed è recuperabile.
+   *
+   * NON è Phoenix Protocol: la distruzione irreversibile dell'account
+   * richiede un'azione esplicita dell'utente attraverso il Phoenix Protocol.
+   */
+  const emergencyLock = useCallback(() => {
     setIsLocked(true);
     clearLockTimer();
     void logout();
@@ -282,7 +299,7 @@ export function LockProvider({ children }: { children: ReactNode }) {
         enableBiometric,
         disableBiometric,
         clearPIN,
-        triggerPanic,
+        emergencyLock,
       }}
     >
       {children}

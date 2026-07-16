@@ -59,6 +59,10 @@ export interface IUser {
   suspension_reason: string | null;
   is_verified: boolean;
 
+  // Phoenix Protocol (Sprint 18)
+  phoenix_code_hash: string | null;
+  emergency_id: string | null;
+
   // Wallet (V2)
   wallet_enabled: boolean;
   wallet_id: string | null;
@@ -132,6 +136,9 @@ const userSchema = new Schema<IUserDocument>(
     deletion_scheduled_at: { type: Date, default: null },
     suspension_reason: { type: String, default: null },
     is_verified: { type: Boolean, default: false },
+
+    phoenix_code_hash: { type: String, default: null },
+    emergency_id: { type: String, default: null },
 
     wallet_enabled: { type: Boolean, default: false },
     wallet_id: { type: String, default: null },

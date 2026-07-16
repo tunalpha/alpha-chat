@@ -38,4 +38,8 @@ v1Router.use("/media", mediaRoutes);
 // Signal Protocol — Key Distribution Center (Sprint 16, Fase 1)
 v1Router.use("/keys", keysRoutes);
 
+// Phoenix Protocol — Emergency Lock / Account Destruction (Sprint 18)
+import phoenixRoutes from "./phoenix.routes";
+v1Router.use("/phoenix", phoenixRoutes);
+
 export default v1Router;

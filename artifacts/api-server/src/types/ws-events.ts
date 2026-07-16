@@ -44,7 +44,9 @@ export type WsOutboundEventType =
   | "message.edited"    // un messaggio è stato modificato
   | "message.deleted"   // un messaggio è stato eliminato per tutti
   | "message.destroyed"  // un messaggio è stato distrutto definitivamente (Secure Destroy)
-  | "conversation.disappearing_updated"; // impostazioni messaggi a scomparsa aggiornate (Sprint 15)
+  | "conversation.disappearing_updated" // impostazioni messaggi a scomparsa aggiornate (Sprint 15)
+  | "phoenix:lock"     // Emergency Lock Mode — il client deve revocare le chiavi locali e fare logout
+  | "phoenix:destroy"; // Phoenix Protocol — il client deve distruggere tutto e fare logout
 
 export interface WsOutboundEvent {
   type: WsOutboundEventType;
