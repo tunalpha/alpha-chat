@@ -1,0 +1,166 @@
+È un buon punto di arrivo. C’è però un’ultima parte fondamentale per chiudere davvero il ciclo di recupero account: il cambio password obbligatorio dopo l’accesso con una password temporanea.
+
+Ti suggerisco questo prompt.
+
+⸻
+
+Sprint 22 — Password Recovery Completion
+
+Missione
+
+Completare il flusso di recupero account implementando l’obbligo di cambio password al primo accesso con password temporanea.
+
+L’obiettivo è impedire che una password temporanea rimanga utilizzabile oltre il necessario.
+
+⸻
+
+Requisiti
+
+Login
+
+Dopo l’autenticazione:
+
+Se:
+
+user.require_password_change == true
+
+NON aprire la chat.
+
+Reindirizzare automaticamente alla pagina:
+
+Cambia password
+
+L’utente non deve poter accedere ad alcuna schermata finché non imposta una nuova password.
+
+⸻
+
+Pagina “Cambio Password Obbligatorio”
+
+Mostrare:
+
+Titolo
+
+🔐 Proteggi nuovamente il tuo account
+
+Testo
+
+Hai effettuato l’accesso con una password temporanea.
+
+Per motivi di sicurezza devi impostarne una nuova prima di continuare.
+
+Campi:
+
+* Password attuale (temporanea)
+* Nuova password
+* Conferma nuova password
+
+Validazione:
+
+* minimo 12 caratteri
+* indicatore robustezza
+* conferma obbligatoria
+
+⸻
+
+Backend
+
+Nuovo endpoint:
+
+POST /auth/change-temporary-password
+
+Verificare:
+
+* password temporanea corretta
+* token valido
+* account autenticato
+
+Se tutto è corretto:
+
+* hash nuova password
+* eliminare temp_password_hash
+* eliminare temp_password_expires_at
+* require_password_change = false
+* invalidare tutte le altre sessioni
+* mantenere attiva solo la sessione corrente
+* registrare evento audit:
+    * TEMP_PASSWORD_CHANGED
+
+⸻
+
+Frontend
+
+Aggiungere:
+
+* ForcePasswordChangePage
+* intercettazione globale dopo login
+* redirect automatico
+
+Finché require_password_change è true:
+
+* bloccare Chat
+* bloccare Impostazioni
+* bloccare Recovery
+* bloccare Trust Center
+
+Consentire esclusivamente:
+
+* Cambio Password
+* Logout
+
+⸻
+
+Sicurezza
+
+Dopo il cambio password:
+
+* revocare refresh token degli altri dispositivi
+* mantenere solo la sessione corrente
+* aggiornare Timeline Sicurezza
+
+⸻
+
+Audit
+
+Nuovi eventi:
+
+* TEMP_PASSWORD_LOGIN
+* TEMP_PASSWORD_CHANGED
+* TEMP_PASSWORD_EXPIRED
+
+⸻
+
+Test
+
+Creare test automatici per:
+
+* login con password temporanea
+* redirect obbligatorio
+* cambio password corretto
+* password errata
+* password temporanea scaduta
+* tentativo di accedere alla chat prima del cambio
+* invalidazione sessioni
+* rimozione flag require_password_change
+
+⸻
+
+Verifica finale
+
+* TypeScript pulito
+* Build pulita
+* Test tutti verdi
+* Nessuna regressione
+* Recovery end-to-end completato
+
+⸻
+
+Dopo questo sprint
+
+Con il completamento del flusso di recupero account, io eviterei di aggiungere nuove funzionalità di sicurezza “core”. Il prodotto ha ormai un set molto ricco (Signal, Device Security, Phoenix, Recovery, Trust Center, Gruppi E2E). La priorità passerebbe a:
+
+1. Stabilità e bug fixing.
+2. Ottimizzazione delle prestazioni.
+3. Miglioramenti dell’esperienza utente.
+4. Beta pubblica con raccolta di feedback reali.
+
+Questa fase è spesso quella che trasforma un progetto tecnicamente valido in un prodotto realmente usabile.

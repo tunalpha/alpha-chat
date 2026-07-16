@@ -105,6 +105,17 @@ export type LoginInput = z.infer<typeof LoginSchema>;
 // POST /api/v1/auth/refresh
 // ---------------------------------------------------------------------------
 
+/** Sprint 22: cambio password obbligatorio dopo recupero */
+export const ChangeTempPasswordAuthSchema = z.object({
+  current_password: z.string().min(1, "Password temporanea obbligatoria"),
+  new_password:     z.string().min(12, "La nuova password deve avere almeno 12 caratteri"),
+  confirm_password: z.string().min(1, "Conferma obbligatoria"),
+}).refine((d) => d.new_password === d.confirm_password, {
+  message: "Le password non coincidono",
+  path: ["confirm_password"],
+});
+export type ChangeTempPasswordAuthInput = z.infer<typeof ChangeTempPasswordAuthSchema>;
+
 export const RefreshSchema = z.object({
   refresh_token: z.string().startsWith("rt_", "Formato refresh token non valido"),
 });

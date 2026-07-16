@@ -7,10 +7,15 @@
  */
 
 import { createHash } from "node:crypto";
+import mongoose from "mongoose";
 import type { RequestHandler } from "express";
 import * as authService from "../services/auth.service";
 import { successResponse } from "../utils/response";
 import type { RegisterInput, LoginInput, RefreshInput } from "../validation/auth.schemas";
+import { ChangeTempPasswordAuthSchema } from "../validation/auth.schemas";
+import { changeTempPassword } from "../services/account-recovery.service";
+import { validate } from "../middleware/validate.middleware";
+import { authenticate } from "../middleware/authenticate.middleware";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -94,6 +99,24 @@ export const logout: RequestHandler = async (req, res, next) => {
 // ---------------------------------------------------------------------------
 // POST /api/v1/auth/logout-all   (richiede authenticate middleware)
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// POST /api/v1/auth/change-temporary-password — Sprint 22
+// ---------------------------------------------------------------------------
+
+export const changeTempPasswordAuth = [
+  authenticate,
+  validate("body", ChangeTempPasswordAuthSchema),
+  async (req: Parameters<RequestHandler>[0], res: Parameters<RequestHandler>[1], next: Parameters<RequestHandler>[2]) => {
+    try {
+      const user   = req.user!;
+      const userId = new mongoose.Types.ObjectId(user.userId);
+      const { current_password, new_password } = req.body;
+      await changeTempPassword(userId, current_password, new_password, user.deviceId);
+      res.status(200).json(successResponse({ message: "Password aggiornata. Effettua nuovamente l'accesso con la nuova password." }, req.requestId));
+    } catch (err) { next(err); }
+  },
+];
 
 export const logoutAll: RequestHandler = async (req, res, next) => {
   try {

@@ -19,6 +19,7 @@ import SecurityTimelinePage from "./pages/SecurityTimelinePage";
 import TrustCenterPage from "./pages/TrustCenterPage";
 import RecoverySettingsPage from "./pages/RecoverySettingsPage";
 import RecoveryPage from "./pages/RecoveryPage";
+import ForcePasswordChangePage from "./pages/ForcePasswordChangePage";
 import LockScreen from "./components/LockScreen";
 import PrivacyOverlay from "./components/PrivacyOverlay";
 
@@ -47,7 +48,7 @@ function isEmergencyPath(): boolean {
 }
 
 function AppContent() {
-  const { auth, isLoading, logout, logoutAll } = useAuth();
+  const { auth, isLoading, logout, logoutAll, clearPasswordChangeRequired } = useAuth();
   const { isLocked, showPrivacy, hasPINSet } = useLock();
   const [view, setView] = useState<AppView>("chat");
 
@@ -66,6 +67,16 @@ function AppContent() {
   if (!auth) return <LandingPage />;
 
   if (hasPINSet && isLocked) return <LockScreen />;
+
+  // Sprint 22: cambio password obbligatorio dopo recovery con password temporanea
+  if (auth.requirePasswordChange) {
+    return (
+      <ForcePasswordChangePage
+        onComplete={() => clearPasswordChangeRequired()}
+        onLogout={async () => { await logout(); }}
+      />
+    );
+  }
 
   const goBack = () => setView("chat");
   const goSettings = () => setView("settings");

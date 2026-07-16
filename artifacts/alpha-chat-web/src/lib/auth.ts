@@ -19,6 +19,8 @@ export interface StoredAuth {
   username: string;
   displayName: string;
   deviceId: string;
+  /** Sprint 22: true dopo recovery con password temporanea — blocca l'app fino al cambio */
+  requirePasswordChange?: boolean;
 }
 
 export function getDeviceId(): string {
@@ -36,6 +38,12 @@ export function saveAuth(data: Omit<StoredAuth, "deviceId">): void {
   localStorage.setItem(KEYS.USER_ID, data.userId);
   localStorage.setItem(KEYS.USERNAME, data.username);
   localStorage.setItem(KEYS.DISPLAY_NAME, data.displayName);
+  // Sprint 22: persiste il flag require_password_change
+  if (data.requirePasswordChange) {
+    localStorage.setItem("alpha_require_pwd_change", "1");
+  } else {
+    localStorage.removeItem("alpha_require_pwd_change");
+  }
 }
 
 export function loadAuth(): StoredAuth | null {
@@ -49,7 +57,12 @@ export function loadAuth(): StoredAuth | null {
   if (!accessToken || !refreshToken || !userId || !username || !displayName) {
     return null;
   }
-  return { accessToken, refreshToken, userId, username, displayName, deviceId };
+  const requirePasswordChange = localStorage.getItem("alpha_require_pwd_change") === "1";
+  return { accessToken, refreshToken, userId, username, displayName, deviceId, requirePasswordChange };
+}
+
+export function clearRequirePasswordChange(): void {
+  localStorage.removeItem("alpha_require_pwd_change");
 }
 
 export function clearAuth(): void {
@@ -58,6 +71,7 @@ export function clearAuth(): void {
   localStorage.removeItem(KEYS.USER_ID);
   localStorage.removeItem(KEYS.USERNAME);
   localStorage.removeItem(KEYS.DISPLAY_NAME);
+  localStorage.removeItem("alpha_require_pwd_change");
 }
 
 export function updateAccessToken(token: string): void {

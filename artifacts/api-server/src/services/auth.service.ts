@@ -59,6 +59,8 @@ export function formatUserProfile(user: IUserDocument) {
     email_verified: user.email_verified,
     is_verified: user.is_verified,
     created_at: user.createdAt.toISOString(),
+    /** Sprint 22: true dopo recupero con password temporanea */
+    require_password_change: user.require_password_change ?? false,
   };
 }
 
@@ -93,6 +95,8 @@ export interface AuthResult {
   requires_2fa: false;
   /** Sprint 22: Recovery Card — presente solo alla prima registrazione */
   recovery_card?: RecoveryCardPayload;
+  /** Sprint 22 completion: true se l'utente ha fatto login con password temporanea */
+  require_password_change?: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -250,9 +254,27 @@ export async function login(params: LoginServiceParams): Promise<LoginResult> {
   if (user.locked_until && user.locked_until > new Date()) throw new AppError("ACCOUNT_LOCKED", 423);
 
   // 3. Verifica password
-  const passwordOk = user.password_hash
+  let passwordOk = user.password_hash
     ? await verifyPassword(user.password_hash, password)
     : false;
+
+  // Sprint 22: controlla anche temp_password_hash se password principale fallisce
+  let usedTempPassword = false;
+  if (!passwordOk && user.temp_password_hash && user.temp_password_expires_at) {
+    if (user.temp_password_expires_at > new Date()) {
+      const tempOk = await verifyPassword(user.temp_password_hash, password);
+      if (tempOk) {
+        passwordOk = true;
+        usedTempPassword = true;
+      }
+    } else {
+      // Temp password scaduta — logga silenziosamente
+      logAuditEvent({
+        event: "TEMP_PASSWORD_EXPIRED",
+        user_id: user._id.toString(), created_at: new Date().toISOString(),
+      });
+    }
+  }
 
   // 4. Rate limit — DOPO password verify (ordine CTO)
   if (!passwordOk) {
@@ -307,6 +329,16 @@ export async function login(params: LoginServiceParams): Promise<LoginResult> {
     userId: user._id.toString(), deviceId: device_id, roles: [],
   });
 
+  // Sprint 22: audit se usata password temporanea
+  if (usedTempPassword) {
+    logAuditEvent({
+      event: "TEMP_PASSWORD_LOGIN",
+      user_id: user._id.toString(), device_id,
+      request_id: requestId, ip_hash: ipHash ?? undefined,
+      created_at: new Date().toISOString(),
+    });
+  }
+
   // 9. Audit + Security Events + DMS check-in
   logAuditEvent({
     event: isNewDevice ? "NEW_DEVICE_LOGIN" : "USER_LOGIN",
@@ -341,6 +373,7 @@ export async function login(params: LoginServiceParams): Promise<LoginResult> {
       refresh_token_expires_at: session.expires_at.toISOString(),
     },
     is_new_device: isNewDevice, requires_2fa: false,
+    require_password_change: usedTempPassword || (user.require_password_change ?? false),
   };
 }
 

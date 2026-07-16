@@ -95,7 +95,11 @@ export type AuditEventType =
   | "ACCOUNT_RECOVERED_CARD"
   | "ACCOUNT_RECOVERED_EMAIL"
   | "RECOVERY_EMAIL_SET"
-  | "RECOVERY_EMAIL_REQUESTED";
+  | "RECOVERY_EMAIL_REQUESTED"
+  // Temp password lifecycle — Sprint 22 completion
+  | "TEMP_PASSWORD_LOGIN"
+  | "TEMP_PASSWORD_CHANGED"
+  | "TEMP_PASSWORD_EXPIRED";
 
 export interface AuditEvent {
   event: AuditEventType;

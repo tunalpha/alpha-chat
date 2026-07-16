@@ -396,6 +396,8 @@ export async function changeTempPassword(
   userId: mongoose.Types.ObjectId,
   tempPassword: string,
   newPassword: string,
+  /** deviceId della sessione corrente — viene mantenuta, le altre revocate */
+  currentDeviceId?: string,
 ): Promise<void> {
   const user = await UserModel.findById(userId);
   if (!user) throw new AppError("USER_NOT_FOUND", 404);
@@ -405,11 +407,16 @@ export async function changeTempPassword(
   }
 
   if (user.temp_password_expires_at < new Date()) {
+    logAuditEvent({
+      event: "TEMP_PASSWORD_EXPIRED",
+      user_id: userId.toString(), created_at: new Date().toISOString(),
+    });
     throw new AppError("TEMP_PASSWORD_EXPIRED", 400);
   }
 
   const { verifyPassword } = await import("./password.service");
-  const valid = await verifyPassword(tempPassword, user.temp_password_hash);
+  // FIX: verifyPassword(hash, plaintext) — hash prima, plaintext dopo
+  const valid = await verifyPassword(user.temp_password_hash, tempPassword);
   if (!valid) throw new AppError("INVALID_TEMP_PASSWORD", 400);
 
   const newHash = await hashPassword(newPassword);
@@ -423,12 +430,19 @@ export async function changeTempPassword(
     },
   });
 
+  // Sprint 22: revoca tutte le sessioni ECCETTO quella corrente
+  if (currentDeviceId) {
+    const { SessionRepository } = await import("../repositories/session.repository");
+    const sessionRepo = new SessionRepository();
+    await sessionRepo.revokeAllExceptDevice(userId, currentDeviceId);
+  }
+
   logAuditEvent({
-    event: "PASSWORD_CHANGED",
+    event: "TEMP_PASSWORD_CHANGED",
     user_id: userId.toString(),
     created_at: new Date().toISOString(),
-    metadata: { method: "temp_password_recovery" },
+    metadata: { method: "forced_change", device_kept: currentDeviceId ?? null },
   });
 
-  logger.info({ userId: userId.toString() }, "Password cambiata post-recovery");
+  logger.info({ userId: userId.toString() }, "Password temporanea sostituita, sessioni revocate");
 }

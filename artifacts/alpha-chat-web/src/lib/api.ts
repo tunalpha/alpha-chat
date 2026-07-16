@@ -24,6 +24,7 @@ export interface AuthTokens {
   refresh_token_expires_at: string;
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 export interface AuthUserProfile {
   id: string;
   username: string;
@@ -34,12 +35,14 @@ export interface AuthUserProfile {
 
 /** Shape completa restituita da /auth/register, /auth/login, /auth/refresh */
 export interface AuthResult {
-  user: AuthUserProfile;
+  user: AuthUserProfile & { require_password_change?: boolean };
   tokens: AuthTokens;
   is_new_device: boolean;
   requires_2fa: false;
   /** Sprint 22: presente solo alla prima registrazione, poi mai più */
   recovery_card?: RecoveryCardPayload;
+  /** Sprint 22 completion: true se l'utente ha fatto login con password temporanea */
+  require_password_change?: boolean;
 }
 
 /** Utente nella lista conversazioni (other_user) */
@@ -472,6 +475,19 @@ export async function apiChangeTempPassword(tempPassword: string, newPassword: s
   await request<unknown>("POST", "/account/recovery/password", {
     temp_password: tempPassword,
     new_password:  newPassword,
+  });
+}
+
+/** Sprint 22 completion: cambio password obbligatorio via /auth/change-temporary-password */
+export async function apiChangeTempPasswordAuth(
+  currentPassword: string,
+  newPassword: string,
+  confirmPassword: string,
+): Promise<void> {
+  await request<unknown>("POST", "/auth/change-temporary-password", {
+    current_password: currentPassword,
+    new_password:     newPassword,
+    confirm_password: confirmPassword,
   });
 }
 

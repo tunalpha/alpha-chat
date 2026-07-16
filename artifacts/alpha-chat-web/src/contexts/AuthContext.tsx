@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
-import { loadAuth, saveAuth, clearAuth, getDeviceId, type StoredAuth } from "../lib/auth";
+import { loadAuth, saveAuth, clearAuth, clearRequirePasswordChange, getDeviceId, type StoredAuth } from "../lib/auth";
 import { apiLogin, apiRegister, apiLogout, apiLogoutAll, type LoginInput, type RegisterInput, type AuthResult } from "../lib/api";
 import { initSignalKeys, clearSignalKeys } from "../lib/signal";
 import { initMediaCache, clearMediaCache } from "../lib/media-cache";
@@ -11,6 +11,8 @@ interface AuthContextValue {
   register: (input: RegisterInput) => Promise<{ recovery_card?: import("../lib/api").RecoveryCardPayload }>;
   logout: () => Promise<void>;
   logoutAll: () => Promise<void>;
+  /** Sprint 22: chiamato dopo il cambio password obbligatorio */
+  clearPasswordChangeRequired: () => void;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -23,6 +25,7 @@ function authResultToStored(result: AuthResult): StoredAuth {
     username: result.user.username,
     displayName: result.user.display_name,
     deviceId: getDeviceId(),
+    requirePasswordChange: result.require_password_change ?? result.user.require_password_change ?? false,
   };
 }
 
@@ -107,8 +110,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  const clearPasswordChangeRequired = useCallback(() => {
+    clearRequirePasswordChange();
+    setAuth((prev) => prev ? { ...prev, requirePasswordChange: false } : prev);
+  }, []);
+
   return (
-    <AuthContext.Provider value={{ auth, isLoading, login, register, logout, logoutAll }}>
+    <AuthContext.Provider value={{ auth, isLoading, login, register, logout, logoutAll, clearPasswordChangeRequired }}>
       {children}
     </AuthContext.Provider>
   );
