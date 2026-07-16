@@ -48,6 +48,16 @@ import MediaViewer from "../components/MediaViewer";
 import InviteModal from "../components/InviteModal";
 import RedeemModal from "../components/RedeemModal";
 import DeviceManager from "../components/DeviceManager";
+// Fase 5 — Safety Number + TOFU
+import SafetyNumberModal from "../components/SafetyNumberModal";
+import {
+  getSignalStore,
+  checkAndUpdateTrust,
+  markVerified,
+  acceptKeyChange,
+  type TrustStatus,
+} from "../lib/signal";
+import { arrayBufferToBase64 } from "@workspace/libsignal-ts";
 
 interface Props {
   onNavigate: (view: AppView) => void;
@@ -75,12 +85,16 @@ function ChatHeader({
   onBack,
   onViewProfile,
   onSearchInChat,
+  trustStatus,
+  onOpenSafetyNumber,
 }: {
   otherUser: { display_name: string; username: string } | null | undefined;
   isOnline: boolean;
   onBack: () => void;
   onViewProfile: () => void;
   onSearchInChat: () => void;
+  trustStatus?: TrustStatus | "loading" | null;
+  onOpenSafetyNumber?: () => void;
 }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
@@ -103,6 +117,10 @@ function ChatHeader({
     { label: "Cancella chat", icon: "🗑️", danger: true, soon: true },
   ];
 
+  const trustBadge = trustStatus && trustStatus !== "loading"
+    ? { verified: "🟢", unverified: "🟡", key_changed: "🔴" }[trustStatus]
+    : null;
+
   return (
     <div className="chat-header">
       <button className="chat-back-btn" onClick={onBack} aria-label="Torna alla lista">
@@ -117,8 +135,20 @@ function ChatHeader({
 
       <div className="chat-header-info">
         <div className="chat-header-name">{otherUser?.display_name ?? "Chat"}</div>
-        <div className={`chat-header-status ${isOnline ? "online" : "offline"}`}>
-          {isOnline ? "● Online" : "○ Offline"}
+        <div className="chat-header-status-row">
+          <div className={`chat-header-status ${isOnline ? "online" : "offline"}`}>
+            {isOnline ? "● Online" : "○ Offline"}
+          </div>
+          {trustBadge && (
+            <button
+              className="trust-badge-btn"
+              onClick={onOpenSafetyNumber}
+              title={{ verified: "Identità verificata", unverified: "Non verificata — tocca per verificare", key_changed: "Chiave cambiata — tocca per verificare" }[trustStatus as TrustStatus]}
+              aria-label="Stato verifica identità"
+            >
+              {trustBadge}
+            </button>
+          )}
         </div>
       </div>
 
@@ -146,6 +176,16 @@ function ChatHeader({
           </button>
           {menuOpen && (
             <div className="chat-menu-dropdown">
+              {onOpenSafetyNumber && (
+                <button
+                  className="chat-menu-item"
+                  onClick={() => { setMenuOpen(false); onOpenSafetyNumber(); }}
+                >
+                  <span className="chat-menu-icon">🔐</span>
+                  Numero di sicurezza
+                  {trustStatus === "key_changed" && <span className="chat-menu-badge trust-badge-alert">!</span>}
+                </button>
+              )}
               {menuItems.map((item) => (
                 <button
                   key={item.label}
@@ -463,6 +503,12 @@ export default function ChatPage({ onNavigate }: Props) {
     enabled: boolean; duration_ms: number | null;
   } | null>(null);
 
+  // ── Sprint 16 Fase 5 — Trust / Safety Number ────────────────────────────
+  const [trustStatus, setTrustStatus] = useState<TrustStatus | "loading" | null>(null);
+  const [showSafetyModal, setShowSafetyModal] = useState(false);
+  const [myIKBase64, setMyIKBase64] = useState<string | null>(null);
+  const [theirIKBase64, setTheirIKBase64] = useState<string | null>(null);
+
   // ── Signal Protocol — Fase 2 ────────────────────────────────────────────
   /** Testi decifrati (async) indicizzati per messageId */
   const [decryptedTexts, setDecryptedTexts] = useState<Map<string, string>>(new Map());
@@ -597,6 +643,47 @@ export default function ChatPage({ onNavigate }: Props) {
 
   // Sblocca audio al primo gesto utente (necessario su iOS Safari / Chrome iOS)
   useEffect(() => { attachAudioUnlockListener(); }, []);
+
+  // ── Sprint 16 Fase 5 — Trust check when conversation changes ────────────
+  useEffect(() => {
+    const theirId = conversations.find((c) => c.conversation_id === activeConvId)?.other_user?.user_id;
+    if (!auth || !theirId) {
+      setTrustStatus(null);
+      setMyIKBase64(null);
+      setTheirIKBase64(null);
+      return;
+    }
+
+    let cancelled = false;
+    async function checkTrust() {
+      setTrustStatus("loading");
+      try {
+        const store = getSignalStore(auth!.userId, auth!.deviceId);
+
+        // Leggi la mia IK
+        const myIKPair = await store.getIdentityKeyPair();
+        if (!cancelled && myIKPair) {
+          setMyIKBase64(arrayBufferToBase64(myIKPair.pubKey));
+        }
+
+        // Controlla lo stato di fiducia (legge da IDB locale, zero API call)
+        const status = await checkAndUpdateTrust(auth!.userId, auth!.deviceId, theirId!);
+        if (cancelled) return;
+        setTrustStatus(status ?? "unverified");
+
+        // Leggi la IK del contatto dallo store Signal (per il Safety Number)
+        const theirIK = await store.getRemoteIdentityKey(theirId!);
+        if (!cancelled && theirIK) {
+          setTheirIKBase64(arrayBufferToBase64(theirIK));
+        }
+      } catch {
+        if (!cancelled) setTrustStatus("unverified");
+      }
+    }
+    void checkTrust();
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeConvId, conversations]);
 
   // ── Load messages + suono apertura conversazione ─────────────────────────
   useEffect(() => {
@@ -1239,6 +1326,8 @@ export default function ChatPage({ onNavigate }: Props) {
               onBack={() => { setMobileShowChat(false); setShowChatSearch(false); setChatSearchQuery(""); }}
               onViewProfile={() => setShowContactProfile(true)}
               onSearchInChat={() => setShowChatSearch((v) => !v)}
+              trustStatus={trustStatus}
+              onOpenSafetyNumber={() => setShowSafetyModal(true)}
             />
 
             {/* ── Search bar (inline) ─────────────────────────── */}
@@ -1264,6 +1353,23 @@ export default function ChatPage({ onNavigate }: Props) {
                     <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
                   </svg>
                 </button>
+              </div>
+            )}
+
+            {/* ── Fase 5: key-change warning banner ─────────────── */}
+            {trustStatus === "key_changed" && (
+              <div className="key-change-banner">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16" style={{ flexShrink: 0 }}>
+                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                  <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+                </svg>
+                <span>
+                  La chiave di sicurezza di <strong>{otherUser?.display_name}</strong> è cambiata.
+                  {" "}
+                  <button className="key-change-link" onClick={() => setShowSafetyModal(true)}>
+                    Verifica l'identità →
+                  </button>
+                </span>
               </div>
             )}
 
@@ -1659,6 +1765,31 @@ export default function ChatPage({ onNavigate }: Props) {
           blobUrl={viewerMedia.url}
           type={viewerMedia.type}
           onClose={() => setViewerMedia(null)}
+        />
+      )}
+
+      {/* ── Fase 5: Safety Number Modal ─────────────────────────────────── */}
+      {showSafetyModal && auth && otherUser && myIKBase64 && theirIKBase64 && (
+        <SafetyNumberModal
+          myUsername={auth.username}
+          theirUsername={otherUser.username}
+          theirDisplayName={otherUser.display_name}
+          myIKBase64={myIKBase64}
+          theirIKBase64={theirIKBase64}
+          trustStatus={(trustStatus as TrustStatus) ?? "unverified"}
+          onMarkVerified={async () => {
+            if (!auth || !otherUser) return;
+            await markVerified(auth.userId, otherUser.user_id ?? (activeConv?.other_user?.user_id ?? ""));
+            setTrustStatus("verified");
+            setShowSafetyModal(false);
+          }}
+          onAcceptKeyChange={trustStatus === "key_changed" ? async () => {
+            if (!auth || !otherUser) return;
+            await acceptKeyChange(auth.userId, otherUser.user_id ?? (activeConv?.other_user?.user_id ?? ""));
+            setTrustStatus("unverified");
+            setShowSafetyModal(false);
+          } : undefined}
+          onClose={() => setShowSafetyModal(false)}
         />
       )}
     </div>

@@ -15,6 +15,7 @@ import {
 import { base64ToArrayBuffer } from "@workspace/libsignal-ts";
 import { getSignalStore } from "./key-store";
 import { apiGetKeyBundle, type ApiReceivedKeyBundle } from "../api";
+import { updateTrustFromBundle } from "./trust-manager";
 
 // ---------------------------------------------------------------------------
 // Conversione bundle server → DeviceType (@privacyresearch)
@@ -84,6 +85,13 @@ export async function ensureSession(
   const deviceBundle = toBundleDevice(bundle);
   const builder = new SessionBuilder(store, recipientAddr);
   await builder.processPreKey(deviceBundle);
+
+  // Fase 5: aggiorna trust manager con la IK dal bundle (rileva cambio chiave)
+  try {
+    await updateTrustFromBundle(userId, recipientUserId, bundle.identityKey);
+  } catch {
+    // Non fatale — il trust può essere ri-computato dall'UI
+  }
 }
 
 // ---------------------------------------------------------------------------

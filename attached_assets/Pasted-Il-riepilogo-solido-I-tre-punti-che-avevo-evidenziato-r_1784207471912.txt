@@ -1,0 +1,48 @@
+Il riepilogo è solido. I tre punti che avevo evidenziato risultano affrontati con una soluzione coerente:
+
+* Race condition: spostare la garanzia di unicità su MongoDB con indice unique e gestire E11000 è la soluzione corretta. I test concorrenti (2 richieste e 5 richieste in parallelo) sono quelli che mi aspetterei.
+* Cleanup: avere client_upload_id nello stesso documento del media evita una seconda struttura dati da mantenere e rende il cleanup naturale con l’hard delete.
+* Multi-device: la scelta è ragionevole. Se i dispositivi condividono il client_upload_id, l’idempotenza è cross-device; se non lo condividono, il comportamento è documentato e prevedibile.
+
+L’unica nota che lascerei per il futuro è la proposta di derivare l’identificatore dal contenuto (hash(ciphertext || conversationId || ... )). È un’idea interessante, ma la valuterei con attenzione più avanti perché cambia il modello di idempotenza e va studiata rispetto alla privacy e alle collisioni. Per ora l’UUID casuale è una soluzione semplice e robusta.
+
+Quindi sì: passerei alla Fase 5.
+
+La Fase 5 dovrebbe avere un obiettivo molto chiaro: permettere agli utenti di verificare crittograficamente l’identità del contatto, non solo cifrare i messaggi.
+
+Io la strutturerei con questi deliverable:
+
+1. Safety Number
+    * Generazione del fingerprint dall’Identity Key.
+    * Stabile nel tempo.
+    * Cambia quando cambia la Identity Key.
+2. QR Code
+    * Generazione QR contenente il fingerprint.
+    * Scansione reciproca.
+    * Verifica immediata.
+3. TOFU (Trust On First Use)
+    * Primo contatto → identità salvata come “non verificata”.
+    * Cambio Identity Key → avviso evidente all’utente.
+4. Stato della conversazione
+    * 🟢 Verificata
+    * 🟡 Non verificata
+    * 🔴 Chiave cambiata
+5. Test automatici
+    * Fingerprint identico sui due client.
+    * QR A↔B.
+    * Cambio Identity Key.
+    * MITM simulato.
+    * Multi-device con Identity Key condivisa.
+
+Prima di chiudere definitivamente la Fase 5
+
+Richiederei anche un piccolo audit finale con queste prove:
+
+* screenshot del QR;
+* screenshot della Safety Number identica su entrambi i dispositivi;
+* screenshot dell’avviso quando la Identity Key cambia;
+* test MITM che dimostri che l’avviso compare;
+* typecheck e build puliti;
+* suite completa di test aggiornata.
+
+Se questi elementi passano, allora il nucleo crittografico di Alpha Chat può essere considerato completo e si può passare con tranquillità allo Sprint 17 (sicurezza del dispositivo).

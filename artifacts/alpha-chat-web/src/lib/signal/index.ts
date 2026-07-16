@@ -42,3 +42,20 @@ export {
   hashDeviceId,
   type DeviceCiphertext,
 } from "./multi-device";
+
+// ── Fase 5: Safety Number + TOFU trust management ────────────────────────────
+export {
+  generateSafetyNumber,
+  formatSafetyNumber,
+  safetyNumberToQRPayload,
+} from "./safety-number";
+
+export {
+  getTrustRecord,
+  checkAndUpdateTrust,
+  markVerified,
+  acceptKeyChange,
+  updateTrustFromBundle,
+  type TrustStatus,
+  type TrustRecord,
+} from "./trust-manager";

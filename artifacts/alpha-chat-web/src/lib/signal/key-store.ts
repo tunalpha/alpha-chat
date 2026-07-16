@@ -166,6 +166,24 @@ export class SignalProtocolStore implements StorageType {
     return existing !== undefined;
   }
 
+  /**
+   * [Fase 5] Legge la chiave pubblica di un'identità remota.
+   *
+   * La libreria Signal usa due convenzioni per i key di identity-remote:
+   *   - isTrustedIdentity: usa remoteAddress.name (es. "alice", solo userId)
+   *   - saveIdentity: usa encodedAddress (es. "alice.1", userId.deviceId)
+   * Proviamo entrambi per coprire i due casi.
+   */
+  async getRemoteIdentityKey(identifier: string): Promise<ArrayBuffer | null> {
+    const db = await this.db();
+    // 1. Prova con il nome puro (convenzione isTrustedIdentity)
+    const byName = await db.get("identity-remote", identifier);
+    if (byName) return byName;
+    // 2. Fallback: indirizzo completo (convenzione saveIdentity, deviceId=1)
+    const byAddr = await db.get("identity-remote", `${identifier}.1`);
+    return byAddr ?? null;
+  }
+
   // ---------------------------------------------------------------------------
   // One-Time PreKeys (pool monouso)
   // ---------------------------------------------------------------------------

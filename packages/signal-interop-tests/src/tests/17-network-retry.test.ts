@@ -226,12 +226,17 @@ describe("17 — Resilienza di rete: retry, idempotenza, media orfani", () => {
         });
       } catch { /* atteso */ }
 
-      // Retry reale con la stessa chiave → deve creare il documento (il server non l'ha mai ricevuto)
+      // Retry reale con la stessa chiave.
+      // Due esiti validi:
+      //   201 — il server non aveva ricevuto la richiesta abortita → crea documento
+      //   200 — il server aveva completato la scrittura prima dell'abort → idempotenza
+      // Entrambi sono corretti: la proprietà essenziale è che il documento esista
+      // e che il retry non generi errori né orfani.
       const retry = await uploadEncrypted(alice!.token, convId, encryptedBlob, "image/jpeg", uploadId);
-      expect(retry.status).toBe(201);
+      expect([200, 201]).toContain(retry.status);
       const mediaId = (retry.body as { data: { media_id: string } }).data.media_id;
       expect(mediaId).toMatch(/^[0-9a-fA-F]{24}$/);
-      console.log(`  [17.1.2] retry dopo abort → 201, media_id: ${mediaId} ✓`);
+      console.log(`  [17.1.2] retry dopo abort → ${retry.status}, media_id: ${mediaId} ✓`);
     }, 20000);
   });
 

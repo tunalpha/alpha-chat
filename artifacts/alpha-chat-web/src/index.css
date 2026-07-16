@@ -1069,6 +1069,160 @@ a { color: inherit; text-decoration: none; }
 .mic-btn { background: rgba(255,255,255,0.07); box-shadow: none; color: var(--text-2); }
 .mic-btn:hover { background: var(--bg-hover); color: var(--text-1); }
 
+/* ── Sprint 16 Fase 5 — Trust badge + key-change banner + Safety Number Modal ── */
+
+/* Trust badge nel ChatHeader */
+.chat-header-status-row {
+  display: flex; align-items: center; gap: 6px;
+}
+.trust-badge-btn {
+  background: none; border: none; padding: 0 2px;
+  font-size: 12px; line-height: 1; cursor: pointer;
+  min-height: unset; min-width: unset;
+  opacity: 0.9; transition: opacity 0.15s, transform 0.1s;
+}
+.trust-badge-btn:hover { opacity: 1; transform: scale(1.2); }
+
+/* Badge "!" nel menu per key_changed */
+.trust-badge-alert {
+  background: rgba(239,68,68,0.25) !important;
+  color: #fca5a5 !important;
+  font-weight: 700;
+}
+
+/* Banner avviso cambio chiave */
+.key-change-banner {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 16px;
+  background: rgba(239,68,68,0.1);
+  border-bottom: 1px solid rgba(239,68,68,0.22);
+  color: #fca5a5; font-size: 13px; flex-shrink: 0;
+  animation: fadeSlideDown 0.25s ease;
+}
+@keyframes fadeSlideDown {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: none; }
+}
+.key-change-link {
+  background: none; border: none; padding: 0;
+  color: #f87171; font-size: 13px; font-weight: 600;
+  cursor: pointer; text-decoration: underline; text-underline-offset: 2px;
+  min-height: unset; min-width: unset;
+}
+.key-change-link:hover { color: #fca5a5; }
+
+/* Safety Number Modal */
+.sn-modal {
+  max-width: 400px;
+  width: 92vw;
+}
+.sn-body {
+  display: flex; flex-direction: column; gap: 14px;
+}
+.sn-trust-badge {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 12px;
+  background: var(--bg-3);
+  border-radius: var(--r-md);
+  font-size: 14px; font-weight: 600;
+}
+.sn-trust-icon { font-size: 18px; }
+.sn-trust-text { color: var(--text-1); }
+.sn-desc { font-size: 13px; color: var(--text-2); line-height: 1.5; margin: 0; }
+
+/* Avviso cambio chiave nel modal */
+.sn-key-changed-detail {
+  display: flex; align-items: flex-start; gap: 8px;
+  padding: 10px 12px;
+  background: rgba(239,68,68,0.1);
+  border: 1px solid rgba(239,68,68,0.22);
+  border-radius: var(--r-md);
+  color: #fca5a5; font-size: 13px; line-height: 1.5;
+}
+
+/* Tabs */
+.sn-tabs {
+  display: flex; gap: 4px;
+  background: var(--bg-3); border-radius: var(--r-md);
+  padding: 3px;
+}
+.sn-tab {
+  flex: 1; padding: 6px 0; border-radius: calc(var(--r-md) - 2px);
+  background: none; font-size: 13px; font-weight: 500;
+  color: var(--text-2); cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+  min-height: unset; min-width: unset;
+}
+.sn-tab.active {
+  background: var(--bg-2); color: var(--text-1);
+}
+
+/* Griglia numero */
+.sn-grid {
+  display: flex; flex-direction: column; gap: 6px;
+  background: var(--bg-3); border-radius: var(--r-md);
+  padding: 16px 12px;
+}
+.sn-row {
+  display: flex; gap: 10px; justify-content: center;
+}
+.sn-group {
+  font-family: "SF Mono", "Fira Code", "Consolas", monospace;
+  font-size: 20px; font-weight: 700; letter-spacing: 3px;
+  color: var(--text-1); min-width: 60px; text-align: center;
+  padding: 4px 2px;
+}
+
+/* QR */
+.sn-qr-wrap {
+  display: flex; flex-direction: column; align-items: center; gap: 12px;
+  background: var(--bg-3); border-radius: var(--r-md);
+  padding: 16px;
+}
+.sn-qr-img {
+  width: 200px; height: 200px;
+  border-radius: var(--r-sm);
+}
+.sn-qr-hint {
+  font-size: 12px; color: var(--text-2); text-align: center;
+  line-height: 1.5; margin: 0; max-width: 260px;
+}
+
+/* Loading / error */
+.sn-loading {
+  text-align: center; color: var(--text-2); font-size: 14px;
+  padding: 20px 0;
+}
+.sn-error {
+  text-align: center; color: #fca5a5; font-size: 13px;
+  padding: 12px; background: rgba(239,68,68,0.1);
+  border-radius: var(--r-md);
+}
+
+/* Footer */
+.sn-footer {
+  display: flex; flex-direction: column; gap: 8px;
+  padding: 16px 20px;
+}
+.sn-btn {
+  padding: 11px 0; border-radius: var(--r-full);
+  font-size: 14px; font-weight: 600; cursor: pointer;
+  transition: opacity 0.2s;
+}
+.sn-btn:hover { opacity: 0.85; }
+.sn-btn-verify {
+  background: linear-gradient(135deg, #4ade80, #22c55e);
+  color: #fff;
+}
+.sn-btn-accept {
+  background: rgba(248,113,113,0.18);
+  color: #fca5a5;
+  border: 1px solid rgba(248,113,113,0.3);
+}
+.sn-already-verified {
+  font-size: 13px; color: var(--text-2); text-align: center; margin: 0;
+}
+
 /* ── Send error banner ─────────────────────────────────────────────────────── */
 .send-error-banner {
   display: flex; align-items: center; gap: 8px;
