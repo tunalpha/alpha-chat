@@ -112,8 +112,16 @@ export interface MessageItem {
   deleted_for_everyone: boolean;
 }
 
+/** Campi E2E aggiuntivi presenti nei media meta di Fase 3 */
+export interface MediaE2EFields {
+  e2e?: true;
+  key?: string;      // base64 AES-256 key (Fase 3)
+  iv?: string;       // base64 GCM IV (Fase 3)
+  thumb_iv?: string; // base64 IV thumbnail (Fase 4)
+}
+
 /** Metadati media estratti dal ciphertext di un media message */
-export interface VoiceMeta {
+export interface VoiceMeta extends MediaE2EFields {
   type: "voice";
   media_id: string;
   duration_ms: number;
@@ -122,14 +130,25 @@ export interface VoiceMeta {
 
 export type MediaMeta =
   | VoiceMeta
-  | { type: "image";    media_id: string; mime_type: string; filename: string; size: number }
-  | { type: "video";    media_id: string; mime_type: string; filename: string; size: number; duration_ms?: number }
-  | { type: "document"; media_id: string; mime_type: string; filename: string; size: number };
+  | ({ type: "image";    media_id: string; mime_type: string; filename: string; size: number } & MediaE2EFields)
+  | ({ type: "video";    media_id: string; mime_type: string; filename: string; size: number; duration_ms?: number } & MediaE2EFields)
+  | ({ type: "document"; media_id: string; mime_type: string; filename: string; size: number } & MediaE2EFields);
 
-export function decodeVoiceMeta(ciphertext: string | null): VoiceMeta | null {
-  if (!ciphertext) return null;
+/**
+ * Decifra i metadati vocali dal testo del messaggio.
+ * Fase 3: testo già Signal-decifrato → JSON diretto.
+ * Legacy: testo in base64 (pre-Fase 3).
+ */
+export function decodeVoiceMeta(text: string | null): VoiceMeta | null {
+  if (!text) return null;
+  // Fase 3: testo già decodificato da Signal → JSON diretto
   try {
-    const json = atob(ciphertext);
+    const parsed = JSON.parse(text) as VoiceMeta;
+    if (parsed.type === "voice" && parsed.media_id) return parsed;
+  } catch {}
+  // Legacy: base64-encoded JSON (pre-Fase 3)
+  try {
+    const json = atob(text);
     const parsed = JSON.parse(json) as VoiceMeta;
     if (parsed.type !== "voice") return null;
     return parsed;
@@ -138,10 +157,21 @@ export function decodeVoiceMeta(ciphertext: string | null): VoiceMeta | null {
   }
 }
 
-export function decodeMediaMeta(ciphertext: string | null): MediaMeta | null {
-  if (!ciphertext) return null;
+/**
+ * Decifra i metadati media dal testo del messaggio.
+ * Fase 3: testo già Signal-decifrato → JSON diretto (contiene key e iv AES).
+ * Legacy: testo in base64 (pre-Fase 3, no key).
+ */
+export function decodeMediaMeta(text: string | null): MediaMeta | null {
+  if (!text) return null;
+  // Fase 3: testo già decodificato da Signal → JSON diretto
   try {
-    const json   = atob(ciphertext);
+    const parsed = JSON.parse(text) as MediaMeta;
+    if (parsed.type && parsed.media_id) return parsed;
+  } catch {}
+  // Legacy: base64-encoded JSON (pre-Fase 3)
+  try {
+    const json   = atob(text);
     const parsed = JSON.parse(json) as MediaMeta;
     if (!parsed.type || !parsed.media_id) return null;
     return parsed;
@@ -518,6 +548,70 @@ export async function apiUploadMedia(
   });
 }
 
+/**
+ * Fase 3: Upload di un blob già cifrato con AES-256-GCM.
+ * Il server riceve solo byte opachi — mai il file originale in chiaro.
+ */
+export async function apiUploadEncryptedMedia(
+  conversationId: string,
+  encryptedBlob: Blob,
+  originalMimeType: string,
+  options: {
+    durationMs?: number;
+    waveform?: number[];
+    originalFilename?: string;
+    onProgress?: (pct: number) => void;
+  } = {},
+): Promise<MediaUploadResult> {
+  const { onProgress, durationMs, waveform, originalFilename } = options;
+  onProgress?.(5);
+
+  const arrayBuffer = await encryptedBlob.arrayBuffer();
+  const bytes = new Uint8Array(arrayBuffer);
+  let binary = "";
+  for (const b of bytes) binary += String.fromCharCode(b);
+  const base64 = btoa(binary);
+
+  onProgress?.(70);
+
+  const result = await request<MediaUploadResult>("POST", "/media", {
+    data:            base64,
+    mime_type:       originalMimeType,
+    conversation_id: conversationId,
+    encrypted:       true,
+    ...(durationMs      != null ? { duration_ms: Math.round(durationMs) } : {}),
+    ...(waveform                ? { waveform }                            : {}),
+    ...(originalFilename        ? { original_filename: originalFilename } : {}),
+  });
+
+  onProgress?.(100);
+  return result;
+}
+
+/**
+ * Fase 3: Invia un messaggio media già caricato sul server.
+ * Il ciphertext Signal contiene i metadata (inclusa la chiave AES) cifrati E2E.
+ */
+export async function apiSendMediaMessage(
+  conversationId: string,
+  mediaId: string,
+  signal?: { body: string; type: number },
+  clientMessageId?: string,
+  plaintextMetaFallback?: string,
+): Promise<MessageItem> {
+  const ciphertext = signal?.body
+    ?? (plaintextMetaFallback ? btoa(plaintextMetaFallback) : "");
+  return request<MessageItem>("POST", `/conversations/${conversationId}/messages`, {
+    client_message_id: clientMessageId ?? crypto.randomUUID(),
+    ciphertext,
+    ciphertext_type: signal?.type ?? 1,
+    sender_key_id:   1,
+    message_type:    "media",
+    media_id:        mediaId,
+    sent_at:         new Date().toISOString(),
+  });
+}
+
 /** Invia un messaggio vocale: prima fa upload, poi crea il messaggio */
 export async function apiSendVoiceMessage(
   conversationId: string,
@@ -692,6 +786,45 @@ export async function apiFetchMediaBlob(mediaId: string): Promise<string> {
     throw new Error(body.error?.code ?? `HTTP ${res.status}`);
   }
   const blob = await res.blob();
+  return URL.createObjectURL(blob);
+}
+
+/**
+ * Fase 3: Scarica un blob cifrato e lo decifra localmente con AES-256-GCM.
+ * Il server non partecipa alla decifratura — zero-knowledge completo.
+ */
+export async function apiFetchAndDecryptMediaBlob(
+  mediaId: string,
+  keyBase64: string,
+  ivBase64: string,
+  mimeType = "application/octet-stream",
+): Promise<string> {
+  const token = getAccessToken();
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${BASE}/media/${mediaId}`, { headers });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({})) as { error?: { code?: string } };
+    throw new Error(body.error?.code ?? `HTTP ${res.status}`);
+  }
+  const encrypted = await res.arrayBuffer();
+
+  // AES-256-GCM decrypt — chiave estratta dal metadata Signal-decifrato
+  const binKey = atob(keyBase64);
+  const keyBytes = new Uint8Array(binKey.length);
+  for (let i = 0; i < binKey.length; i++) keyBytes[i] = binKey.charCodeAt(i);
+
+  const binIv = atob(ivBase64);
+  const iv = new Uint8Array(binIv.length);
+  for (let i = 0; i < binIv.length; i++) iv[i] = binIv.charCodeAt(i);
+
+  const cryptoKey = await crypto.subtle.importKey(
+    "raw", keyBytes, { name: "AES-GCM", length: 256 }, false, ["decrypt"],
+  );
+  const decrypted = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, cryptoKey, encrypted);
+
+  const blob = new Blob([decrypted], { type: mimeType });
   return URL.createObjectURL(blob);
 }
 

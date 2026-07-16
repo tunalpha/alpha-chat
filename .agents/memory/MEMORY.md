@@ -2,3 +2,4 @@
 - [validate middleware read-only query](validate-middleware-query.md) — req.query è getter read-only in Express 5; usare Object.defineProperty per target query/params
 - [Sprint 16 Fase 1 — Signal key management](signal-phase1.md) — chiavi, dipendenze, API, decisioni architetturali
 - [Sprint 16 Fase 2 — Signal E2E Integration](signal-phase2.md) — signalEncrypt/Decrypt, body base64 roundtrip, ChatPage decrypt pattern
+- [Sprint 16 Fase 3 — Media E2E](signal-phase3.md) — AES-256-GCM per blob, key wrapping Signal, pipeline upload/decrypt

@@ -1,0 +1,160 @@
+Sì. A questo punto la roadmap che avevamo definito rimane coerente. La prossima tappa naturale non è aggiungere funzioni utente, ma completare l’E2E anche per gli allegati.
+
+Sprint 16 — Fase 3: Media E2E (Zero Knowledge completo)
+
+Obiettivo: foto, video, vocali e documenti devono essere cifrati sul dispositivo prima dell’upload. Il server deve vedere solo dati cifrati.
+
+Regole obbligatorie
+
+* Nessuna crittografia custom.
+* Riutilizzare il layer Signal della Fase 2.
+* Il server rimane un relay puro.
+* Mai caricare file in chiaro.
+* Thumbnail e preview devono rispettare la privacy (mai immagini complete in chiaro).
+
+⸻
+
+Step 3.1 — Encrypt media
+
+Prima dell’upload:
+
+File
+↓
+chiave casuale AES-256
+↓
+encrypt()
+↓
+blob cifrato
+↓
+upload
+
+Il server riceve soltanto:
+
+* blob cifrato
+* dimensione
+* mime type minimo necessario
+* hash integrità
+
+Mai il file originale.
+
+⸻
+
+Step 3.2 — Key wrapping
+
+La chiave AES del file non va inviata in chiaro.
+
+Deve essere cifrata tramite la sessione Signal già esistente.
+
+Schema:
+
+AES Key
+↓
+Signal SessionCipher
+↓
+Encrypted Media Key
+↓
+server
+
+Solo il destinatario può recuperarla.
+
+⸻
+
+Step 3.3 — Download
+
+Quando Bob apre il file:
+
+download blob cifrato
+↓
+decrypt media key
+↓
+AES decrypt
+↓
+render
+
+Il server non partecipa mai alla decifratura.
+
+⸻
+
+Step 3.4 — Secure Destroy
+
+Quando un media viene distrutto:
+
+* eliminare il documento Mongo;
+* eliminare il blob;
+* eliminare thumbnail;
+* eliminare metadata;
+* eliminare chiave AES locale;
+* broadcast media.destroyed;
+* nessuna possibilità di recupero dall’applicazione.
+
+⸻
+
+Step 3.5 — Voice
+
+I messaggi vocali seguono lo stesso flusso:
+
+registrazione
+
+↓
+
+encrypt
+
+↓
+
+upload
+
+↓
+
+decrypt locale
+
+↓
+
+play
+
+Mai audio PCM sul server.
+
+⸻
+
+Step 3.6 — Test obbligatori
+
+Creare test automatici per:
+
+* foto E2E
+* video E2E
+* audio E2E
+* PDF E2E
+* download corretto
+* Secure Destroy media
+* Burn After Read media
+* Disappearing media
+* replay media
+* media multi-device
+
+⸻
+
+Step 3.7 — Audit
+
+Dimostrare con prove oggettive:
+
+* screenshot MongoDB con blob cifrati;
+* screenshot GridFS/storage con file non leggibili;
+* nessun file apribile direttamente;
+* nessuna chiave AES sul server;
+* benchmark upload/download;
+* typecheck ✅;
+* build ✅;
+* tutti i test verdi.
+
+⸻
+
+Roadmap aggiornata
+
+* ✅ Sprint 16 Fase 1 — Gestione chiavi
+* ✅ Sprint 16 Fase 2 — Messaggi E2E reali
+* ▶️ Sprint 16 Fase 3 — Media E2E
+* Sprint 16 Fase 4 — Multi-device completo (sincronizzazione sessioni e gestione dispositivi)
+* Sprint 16 Fase 5 — Verifica identità (QR Code, Safety Numbers, cambio chiavi)
+* Sprint 16 Fase 6 — Migrazione completa delle chat legacy
+* Sprint 16 Fase 7 — Audit finale di sicurezza e interoperabilità
+
+Dopo queste sette fasi, Alpha Chat avrebbe un’architettura E2E completa, con cifratura estesa a messaggi, allegati, vocali e gestione delle identità, pronta per passare agli sprint successivi della roadmap.

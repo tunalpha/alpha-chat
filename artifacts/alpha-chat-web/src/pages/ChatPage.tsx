@@ -11,6 +11,8 @@ import {
   apiSecureDestroy,
   apiSendVoiceMessage,
   apiSendFileMessage,
+  apiUploadEncryptedMedia,
+  apiSendMediaMessage,
   apiMarkRead,
   apiSetDisappearing,
   decodeMessage,
@@ -21,7 +23,7 @@ import {
   type MessageItem,
   type MediaMeta,
 } from "../lib/api";
-import { signalEncrypt, signalDecrypt, safeDecodeForPreview } from "../lib/signal";
+import { signalEncrypt, signalDecrypt, safeDecodeForPreview, encryptMediaBlob } from "../lib/signal";
 import VoiceRecorder, { type VoiceBlob } from "../components/VoiceRecorder";
 import { attachAudioUnlockListener, playNotifSound } from "../lib/notifSound";
 import VoiceMessage from "../components/VoiceMessage";
@@ -468,22 +470,25 @@ export default function ChatPage({ onNavigate }: Props) {
    */
   function getDisplayText(msg: MessageItem): string {
     if (!msg.ciphertext) return "";
-    if (msg.message_type === "media") return msg.ciphertext; // media: pass-through
+    // Fase 3: media messages also go through Signal decrypt → decryptedTexts
     return decryptedTexts.get(msg.id) ?? decodeMessage(msg.ciphertext);
   }
 
   /** Decifra un singolo messaggio e aggiorna lo state */
   async function decryptSingleMsg(msg: MessageItem): Promise<void> {
     if (!auth) return;
-    if (!msg.ciphertext || msg.message_type === "media") {
-      setDecryptedTexts((prev) => new Map(prev).set(msg.id, msg.ciphertext ?? ""));
+    if (!msg.ciphertext) {
+      setDecryptedTexts((prev) => new Map(prev).set(msg.id, ""));
       return;
     }
     if (msg.sender_id === auth.userId) {
-      // Messaggio inviato da noi: usa la cache locale
+      // Messaggio/media inviato da noi: usa la cache locale (ha il plaintext/metaJson)
       const cached = sentCacheRef.current.get(msg.client_message_id);
       setDecryptedTexts((prev) =>
-        new Map(prev).set(msg.id, cached ?? decodeMessage(msg.ciphertext!)),
+        new Map(prev).set(
+          msg.id,
+          cached ?? (msg.message_type === "media" ? msg.ciphertext! : decodeMessage(msg.ciphertext!)),
+        ),
       );
       return;
     }
@@ -497,10 +502,14 @@ export default function ChatPage({ onNavigate }: Props) {
       );
       setDecryptedTexts((prev) => new Map(prev).set(msg.id, text));
     } catch {
-      // Fallback sicuro — mostra messaggio non decifrabile
-      setDecryptedTexts((prev) =>
-        new Map(prev).set(msg.id, "[Messaggio non decifrabile]"),
-      );
+      if (msg.message_type === "media") {
+        // Fallback legacy per media pre-Fase 3 (ciphertext è il base64-JSON diretto)
+        setDecryptedTexts((prev) => new Map(prev).set(msg.id, msg.ciphertext ?? ""));
+      } else {
+        setDecryptedTexts((prev) =>
+          new Map(prev).set(msg.id, "[Messaggio non decifrabile]"),
+        );
+      }
     }
   }
 
@@ -651,6 +660,8 @@ export default function ChatPage({ onNavigate }: Props) {
             setTimeout(() => {
               setMessages((prev) => prev.filter((m) => m.id !== message_id));
               setDestroyingIds((prev) => { const s = new Set(prev); s.delete(message_id); return s; });
+              // Fase 3: rimuove la chiave AES dalla memoria (Secure Destroy completo)
+              setDecryptedTexts((prev) => { const next = new Map(prev); next.delete(message_id); return next; });
             }, 600);
           }
           break;
@@ -807,10 +818,31 @@ export default function ChatPage({ onNavigate }: Props) {
 
   async function handleVoiceSend(voice: VoiceBlob) {
     setShowVoiceRecorder(false);
-    if (!activeConvId) return;
+    if (!activeConvId || !auth) return;
     setSending(true);
     try {
-      await apiSendVoiceMessage(activeConvId, voice.blob, voice.durationMs, voice.waveform);
+      // Fase 3: cifra il blob audio con AES-256-GCM prima dell'upload
+      const { encryptedBlob, keyBase64, ivBase64 } = await encryptMediaBlob(voice.blob);
+      const media = await apiUploadEncryptedMedia(activeConvId, encryptedBlob, voice.blob.type || "audio/webm", {
+        durationMs: voice.durationMs,
+        waveform:   voice.waveform,
+      });
+
+      // Metadata JSON con chiave AES — verrà Signal-cifrato (server non vede la chiave)
+      const metaJson = JSON.stringify({
+        e2e:        true,
+        type:       "voice",
+        media_id:   media.media_id,
+        key:        keyBase64,
+        iv:         ivBase64,
+        duration_ms: media.duration_ms ?? voice.durationMs,
+        waveform:   media.waveform.length > 0 ? media.waveform : voice.waveform,
+      });
+
+      const clientMessageId = crypto.randomUUID();
+      sentCacheRef.current.set(clientMessageId, metaJson);
+      const signal = await encryptForActive(metaJson);
+      await apiSendMediaMessage(activeConvId, media.media_id, signal, clientMessageId, metaJson);
     } catch (err) {
       showToast(err instanceof Error ? err.message : "Errore invio vocale");
     } finally {
@@ -819,7 +851,7 @@ export default function ChatPage({ onNavigate }: Props) {
   }
 
   async function handleFilePick(files: FileList) {
-    if (!activeConvId || files.length === 0) return;
+    if (!activeConvId || !auth || files.length === 0) return;
     const file = files[0];
 
     // Limiti client-side (backend li rifiuta comunque)
@@ -837,7 +869,39 @@ export default function ChatPage({ onNavigate }: Props) {
     setSending(true);
     setUploadProgress(0);
     try {
-      await apiSendFileMessage(activeConvId, file, (pct) => setUploadProgress(pct));
+      // Fase 3: cifra il file con AES-256-GCM prima dell'upload
+      const { encryptedBlob, keyBase64, ivBase64 } = await encryptMediaBlob(file);
+      setUploadProgress(10);
+
+      const media = await apiUploadEncryptedMedia(activeConvId, encryptedBlob, file.type, {
+        originalFilename: file.name,
+        onProgress: (pct) => setUploadProgress(Math.round(10 + pct * 0.8)),
+      });
+      setUploadProgress(90);
+
+      const mtype = file.type.startsWith("image/")  ? "image"
+                  : file.type.startsWith("video/")   ? "video"
+                  : file.type.startsWith("audio/")   ? "voice"
+                  : "document";
+
+      const metaJson = JSON.stringify({
+        e2e:       true,
+        type:      mtype,
+        media_id:  media.media_id,
+        key:       keyBase64,
+        iv:        ivBase64,
+        mime_type: file.type,
+        filename:  file.name,
+        size:      file.size,
+        ...(media.duration_ms != null ? { duration_ms: media.duration_ms } : {}),
+        ...(media.waveform.length > 0 ? { waveform: media.waveform }       : {}),
+      });
+
+      const clientMessageId = crypto.randomUUID();
+      sentCacheRef.current.set(clientMessageId, metaJson);
+      const signal = await encryptForActive(metaJson);
+      await apiSendMediaMessage(activeConvId, media.media_id, signal, clientMessageId, metaJson);
+      setUploadProgress(100);
     } catch (err) {
       setSendError(err instanceof Error ? err.message : "Errore upload file");
     } finally {
@@ -1149,8 +1213,9 @@ export default function ChatPage({ onNavigate }: Props) {
                     : null;
 
                   // Media meta (audio, immagine, video, documento)
+                  // Fase 3: usa il testo Signal-decifrato (contiene key AES per E2E)
                   const mediaMeta: MediaMeta | null = msg.message_type === "media"
-                    ? decodeMediaMeta(msg.ciphertext)
+                    ? decodeMediaMeta(getDisplayText(msg))
                     : null;
                   const voiceMeta = mediaMeta?.type === "voice" ? mediaMeta : null;
                   const isMedia   = mediaMeta !== null;
@@ -1183,6 +1248,8 @@ export default function ChatPage({ onNavigate }: Props) {
                             durationMs={voiceMeta.duration_ms}
                             waveform={voiceMeta.waveform}
                             isMine={isMine}
+                            encryptedKey={voiceMeta.key}
+                            encryptedIv={voiceMeta.iv}
                           />
                         ) : mediaMeta && (mediaMeta.type === "image" || mediaMeta.type === "video" || mediaMeta.type === "document") ? (
                           <MediaMessage

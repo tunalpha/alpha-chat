@@ -1,10 +1,13 @@
 /**
  * MediaMessage — bubble per foto, video e documenti.
  * Audio (vocali) viene gestito da VoiceMessage.tsx separatamente.
+ *
+ * Fase 3: se il meta contiene `e2e: true` con `key` e `iv`,
+ * il blob è cifrato AES-256-GCM → viene decifrato localmente.
  */
 
 import { useState, useEffect, useRef } from "react";
-import { apiFetchMediaBlob } from "../lib/api";
+import { apiFetchMediaBlob, apiFetchAndDecryptMediaBlob } from "../lib/api";
 import type { MediaMeta } from "../lib/api";
 
 type NonVoiceMedia = Extract<MediaMeta, { type: "image" | "video" | "document" }>;
@@ -55,7 +58,12 @@ export default function MediaMessage({ meta, isMine, onView }: Props) {
     if (fetchedRef.current) return;
     fetchedRef.current = true;
 
-    apiFetchMediaBlob(meta.media_id)
+    // Fase 3: se il media è E2E cifrato, decifra localmente
+    const fetchPromise = (meta.e2e && meta.key && meta.iv)
+      ? apiFetchAndDecryptMediaBlob(meta.media_id, meta.key, meta.iv, meta.mime_type)
+      : apiFetchMediaBlob(meta.media_id);
+
+    fetchPromise
       .then((url) => { setBlobUrl(url); setLoading(false); })
       .catch(() => { setError(true); setLoading(false); });
 

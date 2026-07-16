@@ -1,20 +1,27 @@
 /**
- * VoiceMessage — Sprint 11 (fix iOS Safari)
+ * VoiceMessage — Sprint 11 (fix iOS Safari) + Sprint 16 Fase 3 (E2E decrypt)
  *
  * Due problemi noti di iOS Safari risolti:
  * 1. objectURL + <audio> inaffidabile su iOS → usiamo data URL (base64)
  * 2. audio.play() dopo await non conta come gesto utente su iOS →
  *    pre-carichiamo l'audio al mount, così il click chiama play() sincrono
+ *
+ * Fase 3: se encryptedKey + encryptedIv sono presenti, il blob audio
+ * è cifrato AES-256-GCM → viene decifrato localmente prima della riproduzione.
  */
 
 import { useEffect, useRef, useState } from "react";
-import { apiFetchMediaBlob } from "../lib/api";
+import { apiFetchMediaBlob, apiFetchAndDecryptMediaBlob } from "../lib/api";
 
 interface Props {
   mediaId: string;
   durationMs: number;
   waveform: number[];
   isMine: boolean;
+  /** Fase 3: chiave AES-256 in base64 (dal metadata Signal-decifrato) */
+  encryptedKey?: string;
+  /** Fase 3: IV AES-GCM in base64 (dal metadata Signal-decifrato) */
+  encryptedIv?: string;
 }
 
 const SPEEDS = [1, 1.5, 2] as const;
@@ -26,8 +33,8 @@ function formatDuration(ms: number): string {
   return `${m}:${String(s % 60).padStart(2, "0")}`;
 }
 
-export default function VoiceMessage({ mediaId, durationMs, waveform, isMine }: Props) {
-  const [ready, setReady]       = useState(false);   // audio pre-caricato
+export default function VoiceMessage({ mediaId, durationMs, waveform, isMine, encryptedKey, encryptedIv }: Props) {
+  const [ready, setReady]       = useState(false);
   const [playing, setPlaying]   = useState(false);
   const [progress, setProgress] = useState(0);
   const [elapsed, setElapsed]   = useState(0);
@@ -36,7 +43,7 @@ export default function VoiceMessage({ mediaId, durationMs, waveform, isMine }: 
   const [playErr, setPlayErr]   = useState<string | null>(null);
 
   const audioRef    = useRef<HTMLAudioElement | null>(null);
-  const dataUrlRef  = useRef<string | null>(null);  // data URL base64 (iOS-safe)
+  const dataUrlRef  = useRef<string | null>(null);
 
   // ── Pre-carica l'audio al mount ───────────────────────────────────────────
   useEffect(() => {
@@ -69,16 +76,27 @@ export default function VoiceMessage({ mediaId, durationMs, waveform, isMine }: 
 
     let cancelled = false;
 
-    // Fetch autenticato → data URL base64 (evita problemi objectURL su iOS)
     (async () => {
       try {
-        // apiFetchMediaBlob restituisce un objectURL; lo convertiamo in data URL
-        const objectUrl = await apiFetchMediaBlob(mediaId);
+        let objectUrl: string;
 
-        // Converti objectURL → Blob → base64 data URL
+        if (encryptedKey && encryptedIv) {
+          // Fase 3: scarica blob cifrato e decifra localmente (AES-256-GCM)
+          objectUrl = await apiFetchAndDecryptMediaBlob(
+            mediaId,
+            encryptedKey,
+            encryptedIv,
+            "audio/webm",
+          );
+        } else {
+          // Legacy: blob in chiaro
+          objectUrl = await apiFetchMediaBlob(mediaId);
+        }
+
+        // Converti objectURL → Blob → base64 data URL (iOS-safe)
         const blobRes = await fetch(objectUrl);
         const blob = await blobRes.blob();
-        URL.revokeObjectURL(objectUrl); // libera subito
+        URL.revokeObjectURL(objectUrl);
 
         const reader = new FileReader();
         const dataUrl = await new Promise<string>((resolve, reject) => {
@@ -102,7 +120,7 @@ export default function VoiceMessage({ mediaId, durationMs, waveform, isMine }: 
       audio.pause();
       audio.src = "";
     };
-  }, [mediaId, durationMs]);
+  }, [mediaId, durationMs, encryptedKey, encryptedIv]);
 
   useEffect(() => {
     if (audioRef.current) audioRef.current.playbackRate = speed;
@@ -127,7 +145,7 @@ export default function VoiceMessage({ mediaId, durationMs, waveform, isMine }: 
             setPlayErr(err.name === "NotAllowedError" ? "Tocca di nuovo" : "Errore avvio");
           });
       } else {
-        setPlaying(true); // vecchie implementazioni senza Promise
+        setPlaying(true);
       }
     }
   }
@@ -162,7 +180,6 @@ export default function VoiceMessage({ mediaId, durationMs, waveform, isMine }: 
         aria-label={playing ? "Pausa" : "Riproduci"}
       >
         {isLoading ? (
-          // Spinner caricamento
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="14" height="14">
             <circle cx="12" cy="12" r="10" strokeDasharray="40" strokeDashoffset="30">
               <animateTransform attributeName="transform" type="rotate" dur="1s" from="0 12 12" to="360 12 12" repeatCount="indefinite"/>

@@ -22,3 +22,12 @@ export type {
   SignalOneTimePreKeyPair,
   SignalPublicBundle,
 } from "./types";
+
+// ── Fase 3: cifratura media E2E ──────────────────────────────────────────────
+export {
+  encryptMediaBlob,
+  decryptAndCreateObjectUrl,
+  rawToBase64,
+  base64ToRaw,
+  base64ToUint8Array,
+} from "./media-crypto";
