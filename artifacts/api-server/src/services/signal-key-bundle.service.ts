@@ -11,6 +11,7 @@
 import mongoose from "mongoose";
 import { UserModel } from "../models/user.model";
 import * as repo from "../repositories/signal-key-bundle.repository";
+import { AppError } from "../errors/AppError";
 import type {
   UploadKeyBundleInput,
   ReplenishOneTimePreKeysInput,
@@ -77,17 +78,14 @@ export async function fetchKeyBundle(
     .exec();
 
   if (!targetUser || targetUser.status !== "active") {
-    throw Object.assign(new Error("Utente non trovato"), { statusCode: 404 });
+    throw new AppError("USER_NOT_FOUND", 404);
   }
 
   const uid = new mongoose.Types.ObjectId(targetUserId);
   const result = await repo.fetchBundleForX3DH(uid);
 
   if (!result) {
-    throw Object.assign(
-      new Error("Bundle Signal non ancora disponibile per questo utente"),
-      { statusCode: 404, code: "SIGNAL_BUNDLE_NOT_FOUND" },
-    );
+    throw new AppError("SIGNAL_BUNDLE_NOT_FOUND", 404);
   }
 
   const { bundle, poppedOtpk } = result;
@@ -195,18 +193,12 @@ export async function revokeDevice(
   const allBundles = await repo.listAllBundlesForUser(uid);
 
   if (allBundles.length <= 1) {
-    throw Object.assign(
-      new Error("Non puoi revocare l'unico device registrato"),
-      { statusCode: 400, code: "LAST_DEVICE_REVOKE" },
-    );
+    throw new AppError("LAST_DEVICE_REVOKE", 400);
   }
 
   const ok = await repo.deleteBundleForDevice(uid, targetDeviceId);
   if (!ok) {
-    throw Object.assign(
-      new Error("Device non trovato"),
-      { statusCode: 404, code: "DEVICE_NOT_FOUND" },
-    );
+    throw new AppError("DEVICE_NOT_FOUND", 404);
   }
 }
 
@@ -222,17 +214,14 @@ export async function fetchAllKeyBundles(
     .select("_id status").lean().exec();
 
   if (!targetUser || targetUser.status !== "active") {
-    throw Object.assign(new Error("Utente non trovato"), { statusCode: 404 });
+    throw new AppError("USER_NOT_FOUND", 404);
   }
 
   const uid = new mongoose.Types.ObjectId(targetUserId);
   const results = await repo.fetchAllBundlesForX3DH(uid);
 
   if (results.length === 0) {
-    throw Object.assign(
-      new Error("Bundle Signal non ancora disponibile per questo utente"),
-      { statusCode: 404, code: "SIGNAL_BUNDLE_NOT_FOUND" },
-    );
+    throw new AppError("SIGNAL_BUNDLE_NOT_FOUND", 404);
   }
 
   return results.map(({ bundle, poppedOtpk }) => ({

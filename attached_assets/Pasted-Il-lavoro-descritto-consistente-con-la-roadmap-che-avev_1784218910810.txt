@@ -1,0 +1,95 @@
+Il lavoro descritto è consistente con la roadmap che avevate definito. Se i 182/182 test e il comportamento dell’app corrispondono davvero a quanto riportato, avete completato uno dei passaggi più importanti dell’intero progetto.
+
+Quello che considero particolarmente positivo è:
+
+* ✅ Safety Number deterministico e stabile.
+* ✅ TOFU (Trust On First Use) implementato.
+* ✅ Rilevazione del cambio Identity Key.
+* ✅ Verifica manuale dell’identità.
+* ✅ Simulazione MITM coperta dai test.
+* ✅ Multi-device verificato con Identity Key condivisa.
+
+Questi elementi sono quelli che distinguono una chat semplicemente cifrata da una chat con verifica dell’identità.
+
+⸻
+
+Prima di dichiarare concluso Sprint 16
+
+Io farei un ultimo audit funzionale, non di codice.
+
+Checklist finale
+
+* Due utenti reali (Alice e Bob)
+* Iniziano una conversazione
+* Verificano il QR
+* Stato → 🟢 Verificato
+
+Poi:
+
+* reinstallare Alpha Chat su Bob
+* rigenerare completamente le chiavi
+* riaprire la conversazione
+
+Verificare che:
+
+* compare banner rosso
+* stato diventa 🔴
+* nuovo Safety Number
+* impossibile restare “Verificato”
+* solo dopo la verifica manuale torna 🟢
+
+⸻
+
+Poi farei una seconda prova:
+
+Alice:
+
+* iPhone
+* iPad
+* Browser
+
+Tutti devono mostrare lo stesso Safety Number.
+
+⸻
+
+Infine una prova MITM reale:
+
+Alice
+      \
+       falso bundle
+        \
+      Mallory
+        /
+       bundle diverso
+      /
+Bob
+
+I due utenti devono ottenere Safety Number differenti.
+
+⸻
+
+Dopo questo
+
+Io considererei Sprint 16 chiuso.
+
+La roadmap diventerebbe:
+
+* ✅ Sprint 16 — Signal Protocol completo
+    * Fase 1
+    * Fase 2
+    * Fase 3
+    * Fase 4
+    * Fase 5
+* ▶️ Sprint 17 — Sicurezza dispositivo
+    * Face ID / Touch ID
+    * PIN locale
+    * Blocco automatico
+    * Timeout inattività
+    * Screenshot protection (dove supportata)
+    * Secure clipboard
+* Sprint 18 — Archivio, Preferiti, ricerca locale
+* Sprint 19 — Gruppi E2E
+* Sprint 20 — Ecosistema
+* Sprint 21 — Military Edition
+
+A questo punto Alpha Chat non è più soltanto una chat con funzioni di privacy: se tutto quanto descritto è operativo, dispone di un’architettura E2E con verifica dell’identità degli interlocutori, che rappresenta uno dei traguardi tecnici più significativi del progetto.

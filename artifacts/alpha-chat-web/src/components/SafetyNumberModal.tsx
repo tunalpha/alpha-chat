@@ -20,8 +20,8 @@ interface Props {
   myUsername: string;
   theirUsername: string;
   theirDisplayName: string;
-  myIKBase64: string;
-  theirIKBase64: string;
+  myIKBase64: string | null;
+  theirIKBase64: string | null;
   trustStatus: TrustStatus;
   onMarkVerified: () => void;
   onAcceptKeyChange?: () => void;
@@ -45,11 +45,19 @@ export default function SafetyNumberModal({
   const [tab, setTab] = useState<"number" | "qr">("number");
 
   useEffect(() => {
+    if (!myIKBase64) {
+      setError("Chiave locale non disponibile — riavvia l'app.");
+      return;
+    }
+    if (!theirIKBase64) {
+      setError(`Sessione non ancora stabilita con ${theirDisplayName}. Invia prima un messaggio per avviare la sessione sicura.`);
+      return;
+    }
     async function compute() {
       try {
         const sn = await generateSafetyNumber(
-          myUsername, myIKBase64,
-          theirUsername, theirIKBase64,
+          myUsername, myIKBase64!,
+          theirUsername, theirIKBase64!,
         );
         setSafetyNumber(sn);
 

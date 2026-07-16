@@ -49,9 +49,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Inizializza chiavi Signal in background — non blocca il login
     // Zero Plaintext Rule: le chiavi private rimangono in IndexedDB
     const devId = getDeviceId();
-    void initSignalKeys(result.user.id, devId).catch(() => {
-      // Errore non critico in Fase 1 — verrà ritentato al prossimo login
-    });
+    void initSignalKeys(result.user.id, devId)
+      .then(() => {
+        localStorage.setItem(`signal_keys_ready:${result.user.id}`, "1");
+        window.dispatchEvent(new CustomEvent("signal:ready", { detail: { userId: result.user.id } }));
+      })
+      .catch(() => {
+        // Errore non critico in Fase 1 — verrà ritentato al prossimo login
+      });
     void initMediaCache(result.user.id, devId).catch(() => {});
   }, []);
 
@@ -62,9 +67,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setAuth(stored);
     // Genera e carica il bundle Signal subito dopo la registrazione
     const devId = getDeviceId();
-    void initSignalKeys(result.user.id, devId).catch(() => {
-      // Errore non critico in Fase 1
-    });
+    void initSignalKeys(result.user.id, devId)
+      .then(() => {
+        localStorage.setItem(`signal_keys_ready:${result.user.id}`, "1");
+        window.dispatchEvent(new CustomEvent("signal:ready", { detail: { userId: result.user.id } }));
+      })
+      .catch(() => {
+        // Errore non critico in Fase 1
+      });
     void initMediaCache(result.user.id, devId).catch(() => {});
   }, []);
 

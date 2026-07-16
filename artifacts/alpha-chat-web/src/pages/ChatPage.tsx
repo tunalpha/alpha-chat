@@ -644,6 +644,36 @@ export default function ChatPage({ onNavigate }: Props) {
   // Sblocca audio al primo gesto utente (necessario su iOS Safari / Chrome iOS)
   useEffect(() => { attachAudioUnlockListener(); }, []);
 
+  // ── Sprint 16 Fase 5 — Trust helpers ────────────────────────────────────
+
+  /**
+   * Rilegge lo stato di fiducia dall'IDB locale e aggiorna lo stato React.
+   * Non fa API call, zero network. Chiamato:
+   *   1. All'apertura di ogni conversazione (useEffect sotto)
+   *   2. Dopo ogni invio (encryptForActive può aver aggiornato il trust IDB)
+   */
+  const refreshTrust = useCallback(async (theirId: string) => {
+    if (!auth) return;
+    try {
+      const store = getSignalStore(auth.userId, auth.deviceId);
+
+      // IK di me
+      const myIKPair = await store.getIdentityKeyPair();
+      if (myIKPair) setMyIKBase64(arrayBufferToBase64(myIKPair.pubKey));
+
+      // Stato fiducia (confronta trust IDB con Signal IDB)
+      const status = await checkAndUpdateTrust(auth.userId, auth.deviceId, theirId);
+      setTrustStatus(status ?? "unverified");
+
+      // IK del contatto (per Safety Number)
+      const theirIK = await store.getRemoteIdentityKey(theirId);
+      if (theirIK) setTheirIKBase64(arrayBufferToBase64(theirIK));
+    } catch {
+      setTrustStatus("unverified");
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [auth?.userId, auth?.deviceId]);
+
   // ── Sprint 16 Fase 5 — Trust check when conversation changes ────────────
   useEffect(() => {
     const theirId = conversations.find((c) => c.conversation_id === activeConvId)?.other_user?.user_id;
@@ -653,34 +683,9 @@ export default function ChatPage({ onNavigate }: Props) {
       setTheirIKBase64(null);
       return;
     }
-
     let cancelled = false;
-    async function checkTrust() {
-      setTrustStatus("loading");
-      try {
-        const store = getSignalStore(auth!.userId, auth!.deviceId);
-
-        // Leggi la mia IK
-        const myIKPair = await store.getIdentityKeyPair();
-        if (!cancelled && myIKPair) {
-          setMyIKBase64(arrayBufferToBase64(myIKPair.pubKey));
-        }
-
-        // Controlla lo stato di fiducia (legge da IDB locale, zero API call)
-        const status = await checkAndUpdateTrust(auth!.userId, auth!.deviceId, theirId!);
-        if (cancelled) return;
-        setTrustStatus(status ?? "unverified");
-
-        // Leggi la IK del contatto dallo store Signal (per il Safety Number)
-        const theirIK = await store.getRemoteIdentityKey(theirId!);
-        if (!cancelled && theirIK) {
-          setTheirIKBase64(arrayBufferToBase64(theirIK));
-        }
-      } catch {
-        if (!cancelled) setTrustStatus("unverified");
-      }
-    }
-    void checkTrust();
+    setTrustStatus("loading");
+    void refreshTrust(theirId).catch(() => { if (!cancelled) setTrustStatus("unverified"); });
     return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeConvId, conversations]);
@@ -891,6 +896,11 @@ export default function ChatPage({ onNavigate }: Props) {
         void playNotifSound('sent');   // suono invio messaggio
         setReplyTo(null);
         if (burnAfterRead) setBurnAfterRead(false); // reset dopo invio BAR
+        // Fase 5: dopo ogni invio, rileggi il trust status dal IDB locale.
+        // Se ensureSession ha rilevato un cambio di Identity Key durante la cifratura,
+        // updateTrustFromBundle avrà già aggiornato il trust IDB → aggiorna la UI.
+        const theirId = conversations.find((c) => c.conversation_id === activeConvId)?.other_user?.user_id;
+        if (theirId) void refreshTrust(theirId);
       }
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : "Errore invio";
@@ -1769,7 +1779,7 @@ export default function ChatPage({ onNavigate }: Props) {
       )}
 
       {/* ── Fase 5: Safety Number Modal ─────────────────────────────────── */}
-      {showSafetyModal && auth && otherUser && myIKBase64 && theirIKBase64 && (
+      {showSafetyModal && auth && otherUser && (
         <SafetyNumberModal
           myUsername={auth.username}
           theirUsername={otherUser.username}
