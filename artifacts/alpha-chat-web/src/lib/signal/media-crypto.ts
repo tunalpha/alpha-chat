@@ -175,10 +175,18 @@ export async function decryptAndCreateObjectUrl(
 // Helpers Base64 ↔ ArrayBuffer
 // ---------------------------------------------------------------------------
 
+/**
+ * Converte un ArrayBuffer in base64.
+ * Usa chunk da 8 192 B con spread operator — O(n) invece di O(n²).
+ * Il loop con string += era O(n²) e causava freeze su Safari iOS con blob grandi.
+ */
 export function rawToBase64(buf: ArrayBuffer): string {
   const bytes = new Uint8Array(buf);
+  const CHUNK = 8192;
   let binary = "";
-  for (const b of bytes) binary += String.fromCharCode(b);
+  for (let i = 0; i < bytes.length; i += CHUNK) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + CHUNK));
+  }
   return btoa(binary);
 }
 

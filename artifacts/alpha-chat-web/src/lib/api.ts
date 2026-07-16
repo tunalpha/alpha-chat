@@ -581,11 +581,19 @@ export async function apiUploadEncryptedMedia(
   const { onProgress, durationMs, waveform, originalFilename, encryptedThumbnail } = options;
   onProgress?.(5);
 
-  const arrayBuffer = await encryptedBlob.arrayBuffer();
-  const bytes = new Uint8Array(arrayBuffer);
-  let binary = "";
-  for (const b of bytes) binary += String.fromCharCode(b);
-  const base64 = btoa(binary);
+  // Usa FileReader.readAsDataURL — gestione nativa (C++) di file grandi.
+  // Il loop manuale con string += era O(n²) e causava freeze/crash su Safari iOS
+  // con foto > 1 MB (3M concatenazioni per una foto da 3 MB).
+  const base64 = await new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => {
+      const dataUrl = reader.result as string;
+      // dataUrl = "data:application/octet-stream;base64,<base64>"
+      resolve(dataUrl.split(",")[1] ?? "");
+    };
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(encryptedBlob);
+  });
 
   onProgress?.(70);
 
