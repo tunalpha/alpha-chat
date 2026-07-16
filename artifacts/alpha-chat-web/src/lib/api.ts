@@ -1051,6 +1051,14 @@ export async function apiListBlocked(): Promise<BlockedUserEntry[]> {
   return request<BlockedUserEntry[]>("GET", "/users/me/blocked");
 }
 
+/** Aggiorna il profilo dell'utente autenticato (display_name, avatar_url). */
+export async function apiUpdateMe(patch: {
+  display_name?: string;
+  avatar_url?: string | null;
+}): Promise<{ display_name: string; avatar_url: string | null }> {
+  return request<{ display_name: string; avatar_url: string | null }>("PATCH", "/users/me", patch);
+}
+
 /** Cancella definitivamente tutti i messaggi di una conversazione sul server. */
 export async function apiClearConversationMessages(conversationId: string): Promise<void> {
   await request<void>("DELETE", `/conversations/${conversationId}/messages`);

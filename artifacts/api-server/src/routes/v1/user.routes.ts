@@ -1,8 +1,8 @@
 import { Router } from "express";
 import { authenticate } from "../../middleware/authenticate.middleware";
 import { validate } from "../../middleware/validate.middleware";
-import { UsernameParamSchema } from "../../validation/user.schemas";
-import { getUserProfile } from "../../controllers/user.controller";
+import { UsernameParamSchema, UpdateMeSchema } from "../../validation/user.schemas";
+import { getUserProfile, updateMe } from "../../controllers/user.controller";
 import {
   UpdatePrivacySchema,
   BlockUserParamSchema,
@@ -38,6 +38,9 @@ router.get("/search", (_req, res) => {
 // ---------------------------------------------------------------------------
 // Privacy (Sprint 15)
 // ---------------------------------------------------------------------------
+
+/** PATCH /api/v1/users/me — aggiorna display_name e/o avatar_url */
+router.patch("/me", validate("body", UpdateMeSchema), updateMe);
 
 /** GET  /api/v1/users/me/privacy */
 router.get("/me/privacy", getPrivacySettings);

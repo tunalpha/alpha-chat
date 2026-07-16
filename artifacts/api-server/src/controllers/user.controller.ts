@@ -8,7 +8,7 @@
 import type { RequestHandler } from "express";
 import * as userService from "../services/user.service";
 import { successResponse, paginatedResponse } from "../utils/response";
-import type { UserSearchInput, UsernameParamInput } from "../validation/user.schemas";
+import type { UserSearchInput, UsernameParamInput, UpdateMeInput } from "../validation/user.schemas";
 
 // ---------------------------------------------------------------------------
 // GET /api/v1/users/search?q=...
@@ -48,6 +48,17 @@ export const getUserProfile: RequestHandler = async (req, res, next) => {
     const profile = await userService.getUserProfile(username, viewerUserId);
 
     res.status(200).json(successResponse(profile, req.requestId));
+  } catch (err) {
+    next(err);
+  }
+};
+
+export const updateMe: RequestHandler = async (req, res, next) => {
+  try {
+    const userId = req.user!.userId;
+    const input = req.body as UpdateMeInput;
+    const result = await userService.updateMe(userId, input);
+    res.status(200).json({ success: true, data: result });
   } catch (err) {
     next(err);
   }

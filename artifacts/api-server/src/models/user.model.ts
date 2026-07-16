@@ -12,6 +12,8 @@ export interface IUser {
   display_name: string;
   bio: string | null;
   avatar_media_id: mongoose.Types.ObjectId | null;
+  /** Data URL (base64 JPEG) o URL pubblico dell'avatar. Max ~200 KB. */
+  avatar_url: string | null;
 
   // Autenticazione
   email: string | null;
@@ -106,6 +108,7 @@ const userSchema = new Schema<IUserDocument>(
     display_name: { type: String, required: true, maxlength: 60, trim: true },
     bio: { type: String, default: null, maxlength: 200 },
     avatar_media_id: { type: Schema.Types.ObjectId, default: null, ref: "Media" },
+    avatar_url: { type: String, default: null },
 
     email: { type: String, default: null, lowercase: true, trim: true },
     email_verified: { type: Boolean, default: false },

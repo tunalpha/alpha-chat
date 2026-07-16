@@ -13,6 +13,8 @@ interface AuthContextValue {
   logoutAll: () => Promise<void>;
   /** Sprint 22: chiamato dopo il cambio password obbligatorio */
   clearPasswordChangeRequired: () => void;
+  /** Sprint 24: aggiorna campi dell'auth in memoria (es. avatarUrl dopo upload) */
+  updateAuth: (patch: Partial<StoredAuth>) => void;
 }
 
 const AuthContext = createContext<AuthContextValue | null>(null);
@@ -115,8 +117,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setAuth((prev) => prev ? { ...prev, requirePasswordChange: false } : prev);
   }, []);
 
+  const updateAuth = useCallback((patch: Partial<StoredAuth>) => {
+    setAuth((prev) => prev ? { ...prev, ...patch } : prev);
+  }, []);
+
   return (
-    <AuthContext.Provider value={{ auth, isLoading, login, register, logout, logoutAll, clearPasswordChangeRequired }}>
+    <AuthContext.Provider value={{ auth, isLoading, login, register, logout, logoutAll, clearPasswordChangeRequired, updateAuth }}>
       {children}
     </AuthContext.Provider>
   );

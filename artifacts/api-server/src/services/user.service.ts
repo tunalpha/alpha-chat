@@ -20,7 +20,8 @@ import { AppError } from "../errors/AppError";
 import { UserRepository } from "../repositories/user.repository";
 import { PresenceModel, type PresenceStatus } from "../models/presence.model";
 import { logger } from "../lib/logger";
-import type { IUserDocument } from "../models/user.model";
+import { UserModel, type IUserDocument } from "../models/user.model";
+import type { UpdateMeInput } from "../validation/user.schemas";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -172,4 +173,28 @@ export async function searchUsers(
   logger.debug({ query, resultCount: profiles.length, hasMore }, "User search completed");
 
   return { users: profiles, has_more: hasMore, next_cursor: nextCursor };
+}
+
+// ---------------------------------------------------------------------------
+// updateMe — Sprint 24
+// ---------------------------------------------------------------------------
+export async function updateMe(
+  userId: string,
+  input: UpdateMeInput,
+): Promise<{ display_name: string; avatar_url: string | null }> {
+  const patch: Record<string, unknown> = {};
+  if (input.display_name !== undefined) patch.display_name = input.display_name;
+  if (input.avatar_url !== undefined)   patch.avatar_url   = input.avatar_url;
+
+  const user = await UserModel.findByIdAndUpdate(
+    userId,
+    { $set: patch },
+    { new: true, runValidators: true },
+  ).lean();
+  if (!user) throw new AppError("USER_NOT_FOUND", 404);
+
+  return {
+    display_name: user.display_name,
+    avatar_url: user.avatar_url ?? null,
+  };
 }

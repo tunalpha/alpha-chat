@@ -1612,10 +1612,13 @@ button:disabled.icon-btn,
 button:disabled.icon-btn-header,
 button:disabled.input-icon-btn,
 button:disabled.send-btn,
-button:disabled.chat-menu-item,
-button:disabled.profile-avatar-edit {
+button:disabled.chat-menu-item {
   opacity: 0.35;
   cursor: not-allowed;
+}
+/* Avatar edit: spinner durante upload ma non opaco/bloccato visivamente */
+button:disabled.profile-avatar-edit {
+  cursor: wait;
 }
 
 /* Avatar header clickable */
@@ -4348,4 +4351,25 @@ button:disabled.profile-avatar-edit {
   border-top-color: #fff;
   border-radius: 50%;
   animation: spin 0.7s linear infinite;
+}
+
+/* ── ProfilePage — Avatar upload ──────────────────────────────── */
+.profile-avatar-img {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  object-fit: cover;
+}
+.profile-avatar-spinner {
+  width: 16px; height: 16px;
+  border: 2px solid rgba(255,255,255,0.35);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+.profile-upload-err {
+  margin-top: 8px;
+  font-size: 13px;
+  color: #f87171;
+  text-align: center;
 }

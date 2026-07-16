@@ -52,7 +52,7 @@ function isEmergencyPath(): boolean {
 }
 
 function AppContent() {
-  const { auth, isLoading, logout, logoutAll, clearPasswordChangeRequired } = useAuth();
+  const { auth, isLoading, logout, logoutAll, clearPasswordChangeRequired, updateAuth } = useAuth();
   const { isLocked, showPrivacy, hasPINSet } = useLock();
   const [view, setView] = useState<AppView>("chat");
 
@@ -92,7 +92,7 @@ function AppContent() {
       {(() => {
         switch (view) {
           case "profile":
-            return <ProfilePage auth={auth} onBack={goBack} />;
+            return <ProfilePage auth={auth} onBack={goBack} onAuthUpdate={updateAuth} />;
           case "settings":
             return <SettingsPage onBack={goBack} onNavigate={setView} />;
           case "security":

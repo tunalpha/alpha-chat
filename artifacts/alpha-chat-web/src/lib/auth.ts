@@ -10,9 +10,11 @@ const KEYS = {
   USERNAME: "ac_username",
   DISPLAY_NAME: "ac_display_name",
   DEVICE_ID: "ac_device_id",
+  AVATAR_URL: "ac_avatar_url",
 } as const;
 
 export interface StoredAuth {
+  avatarUrl?: string | null;
   accessToken: string;
   refreshToken: string;
   userId: string;
@@ -38,6 +40,11 @@ export function saveAuth(data: Omit<StoredAuth, "deviceId">): void {
   localStorage.setItem(KEYS.USER_ID, data.userId);
   localStorage.setItem(KEYS.USERNAME, data.username);
   localStorage.setItem(KEYS.DISPLAY_NAME, data.displayName);
+  if (data.avatarUrl != null) {
+    localStorage.setItem(KEYS.AVATAR_URL, data.avatarUrl);
+  } else {
+    localStorage.removeItem(KEYS.AVATAR_URL);
+  }
   // Sprint 22: persiste il flag require_password_change
   if (data.requirePasswordChange) {
     localStorage.setItem("alpha_require_pwd_change", "1");
@@ -58,11 +65,21 @@ export function loadAuth(): StoredAuth | null {
     return null;
   }
   const requirePasswordChange = localStorage.getItem("alpha_require_pwd_change") === "1";
-  return { accessToken, refreshToken, userId, username, displayName, deviceId, requirePasswordChange };
+  const avatarUrl = localStorage.getItem(KEYS.AVATAR_URL) ?? null;
+  return { accessToken, refreshToken, userId, username, displayName, deviceId, requirePasswordChange, avatarUrl };
 }
 
 export function clearRequirePasswordChange(): void {
   localStorage.removeItem("alpha_require_pwd_change");
+}
+
+/** Aggiorna solo l'avatar URL in localStorage senza toccare gli altri dati. */
+export function updateStoredAvatarUrl(url: string | null): void {
+  if (url != null) {
+    localStorage.setItem(KEYS.AVATAR_URL, url);
+  } else {
+    localStorage.removeItem(KEYS.AVATAR_URL);
+  }
 }
 
 export function clearAuth(): void {
@@ -71,6 +88,7 @@ export function clearAuth(): void {
   localStorage.removeItem(KEYS.USER_ID);
   localStorage.removeItem(KEYS.USERNAME);
   localStorage.removeItem(KEYS.DISPLAY_NAME);
+  localStorage.removeItem(KEYS.AVATAR_URL);
   localStorage.removeItem("alpha_require_pwd_change");
 }
 

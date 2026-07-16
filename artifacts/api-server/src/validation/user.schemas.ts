@@ -40,3 +40,13 @@ export const UsernameParamSchema = z.object({
 });
 
 export type UsernameParamInput = z.infer<typeof UsernameParamSchema>;
+
+// ---------------------------------------------------------------------------
+// PATCH /api/v1/users/me
+// ---------------------------------------------------------------------------
+export const UpdateMeSchema = z.object({
+  display_name: z.string().min(1).max(60).optional(),
+  /** Data URL base64 JPEG — max 200 KB (client li comprime prima di inviare). */
+  avatar_url: z.string().max(300_000).nullable().optional(),
+});
+export type UpdateMeInput = z.infer<typeof UpdateMeSchema>;
