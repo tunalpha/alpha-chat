@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useAuth } from "../contexts/AuthContext";
+import { useCall } from "../contexts/CallContext";
 import { useWebSocket, type WsEvent } from "../hooks/useWebSocket";
 import type { AppView } from "../App";
 import {
@@ -486,7 +487,11 @@ function SidebarMenu({
 // ── Main ChatPage ────────────────────────────────────────────────────────────
 export default function ChatPage({ onNavigate }: Props) {
   const { auth, logout, logoutAll } = useAuth();
-  const { connected, on, sendTypingStart, sendTypingStop } = useWebSocket(auth?.accessToken ?? null);
+  const { connected, on, send: wsSend, sendTypingStart, sendTypingStop } = useWebSocket(auth?.accessToken ?? null);
+  const { initiateCall, setWsSend, handleWsCallEvent } = useCall();
+
+  // Registra il sender WS nel CallContext in modo che le chiamate possano segnalare
+  useEffect(() => { setWsSend(wsSend); }, [wsSend, setWsSend]);
 
   const [conversations, setConversations] = useState<ConversationItem[]>([]);
   const [activeConvId, setActiveConvId] = useState<string | null>(null);
@@ -892,20 +897,28 @@ export default function ChatPage({ onNavigate }: Props) {
 
         // Sprint 18 — Phoenix Protocol
         case "phoenix:lock": {
-          // Emergency Lock: revoca sessione, pulisce chiavi locali
           void logout();
           break;
         }
         case "phoenix:destroy": {
-          // Phoenix Protocol: account distrutto — pulisce tutto localmente
           localStorage.clear();
           sessionStorage.clear();
           void logout();
           break;
         }
+
+        // Sprint 23 — WebRTC call signaling (routing verso CallContext)
+        case "call.incoming":
+        case "call.answered":
+        case "call.ice_candidate":
+        case "call.rejected":
+        case "call.ended":
+        case "call.busy":
+          handleWsCallEvent(event.type, event.payload as Record<string, unknown>);
+          break;
       }
     });
-  }, [on, activeConvId]);
+  }, [on, activeConvId, handleWsCallEvent]);
 
   // ── Helpers Signal — encrypt per un gruppo (fan-out per membro) ──────────
   async function encryptForGroup(groupId: string, text: string): Promise<{
@@ -1485,8 +1498,18 @@ export default function ChatPage({ onNavigate }: Props) {
               onBack={() => { setMobileShowChat(false); setShowChatSearch(false); setChatSearchQuery(""); }}
               onViewProfile={() => setShowContactProfile(true)}
               onSearchInChat={() => setShowChatSearch((v) => !v)}
-              onCallAudio={() => showToast("📞 Chiamate vocali disponibili prossimamente")}
-              onCallVideo={() => showToast("📹 Videochiamate disponibili prossimamente")}
+              onCallAudio={() => {
+                const conv = conversations.find((c) => c.conversation_id === activeConvId);
+                const toId = conv?.other_user?.user_id;
+                const name = conv?.other_user?.display_name ?? conv?.other_user?.username ?? "Utente";
+                if (toId) void initiateCall(toId, name, "audio");
+              }}
+              onCallVideo={() => {
+                const conv = conversations.find((c) => c.conversation_id === activeConvId);
+                const toId = conv?.other_user?.user_id;
+                const name = conv?.other_user?.display_name ?? conv?.other_user?.username ?? "Utente";
+                if (toId) void initiateCall(toId, name, "video");
+              }}
               onBlockUser={handleBlockUser}
               onToast={showToast}
               trustStatus={trustStatus}

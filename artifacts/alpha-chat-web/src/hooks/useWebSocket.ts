@@ -16,7 +16,14 @@ export type WsEvent =
   | { type: "ping" }
   | { type: "error"; payload: { message: string } }
   | { type: "phoenix:lock"; payload: { reason: string } }
-  | { type: "phoenix:destroy"; payload: { reason: string } };
+  | { type: "phoenix:destroy"; payload: { reason: string } }
+  // WebRTC signaling — Sprint 23
+  | { type: "call.incoming";     payload: Record<string, unknown> }
+  | { type: "call.answered";     payload: Record<string, unknown> }
+  | { type: "call.ice_candidate";payload: Record<string, unknown> }
+  | { type: "call.rejected";     payload: Record<string, unknown> }
+  | { type: "call.ended";        payload: Record<string, unknown> }
+  | { type: "call.busy";         payload: Record<string, unknown> };
 
 type EventHandler = (event: WsEvent) => void;
 
@@ -112,5 +119,5 @@ export function useWebSocket(accessToken: string | null) {
     };
   }, [accessToken]);
 
-  return { connected, on, sendTypingStart, sendTypingStop };
+  return { connected, on, send, sendTypingStart, sendTypingStop };
 }

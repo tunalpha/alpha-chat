@@ -3839,3 +3839,202 @@ button:disabled.profile-avatar-edit {
 .fpc-done-icon { font-size: 48px; margin-bottom: 16px; }
 .fpc-done h2 { font-size: 20px; font-weight: 700; color: var(--text-1); margin: 0 0 8px; }
 .fpc-done p { font-size: 14px; color: var(--text-3); margin: 0; }
+
+/* ═══════════════════════════════════════════════════════════════
+   Sprint 23 — WebRTC Calls: IncomingCallModal + ActiveCallScreen
+   ═══════════════════════════════════════════════════════════════ */
+
+/* ── IncomingCallModal ─────────────────────────────────────────── */
+.icm-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  background: rgba(0,0,0,0.82);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+.icm-card {
+  background: var(--bg-2, #1e1e2e);
+  border-radius: 28px;
+  padding: 40px 32px 32px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  width: min(340px, 90vw);
+  box-shadow: 0 24px 80px rgba(0,0,0,0.6);
+  position: relative;
+}
+.icm-pulse-ring {
+  position: absolute;
+  top: -20px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  background: transparent;
+  border: 3px solid var(--accent, #7c5cbf);
+  animation: icm-pulse 1.5s ease-out infinite;
+}
+@keyframes icm-pulse {
+  0%   { transform: translateX(-50%) scale(0.85); opacity: 1; }
+  100% { transform: translateX(-50%) scale(1.4);  opacity: 0; }
+}
+.icm-avatar {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  background: var(--accent, #7c5cbf);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 32px;
+  font-weight: 700;
+  color: #fff;
+  margin-top: 16px;
+}
+.icm-name {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--text-1, #fff);
+}
+.icm-type {
+  font-size: 14px;
+  color: var(--text-3, #aaa);
+}
+.icm-actions {
+  display: flex;
+  gap: 40px;
+  margin-top: 20px;
+}
+.icm-btn {
+  width: 68px;
+  height: 68px;
+  border-radius: 50%;
+  border: none;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: transform 0.15s, opacity 0.15s;
+}
+.icm-btn:active { transform: scale(0.9); }
+.icm-reject {
+  background: #e53935;
+  color: #fff;
+}
+.icm-accept {
+  background: #43a047;
+  color: #fff;
+}
+
+/* ── ActiveCallScreen ──────────────────────────────────────────── */
+.acs-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1900;
+  background: #0d0d18;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  padding: 60px 0 48px;
+}
+.acs-overlay.acs-video-mode {
+  background: #000;
+}
+.acs-remote-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  z-index: 0;
+}
+.acs-avatar-bg {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1;
+}
+.acs-avatar {
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  background: var(--accent, #7c5cbf);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 48px;
+  font-weight: 700;
+  color: #fff;
+}
+.acs-info {
+  position: relative;
+  z-index: 2;
+  text-align: center;
+}
+.acs-name {
+  font-size: 26px;
+  font-weight: 700;
+  color: #fff;
+  text-shadow: 0 2px 8px rgba(0,0,0,0.6);
+}
+.acs-status {
+  font-size: 15px;
+  color: rgba(255,255,255,0.75);
+  margin-top: 4px;
+}
+.acs-local-video {
+  position: absolute;
+  bottom: 140px;
+  right: 16px;
+  width: 100px;
+  height: 140px;
+  border-radius: 12px;
+  object-fit: cover;
+  z-index: 3;
+  border: 2px solid rgba(255,255,255,0.3);
+  background: #111;
+}
+.acs-local-video.acs-camera-off {
+  display: none;
+}
+.acs-controls {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+}
+.acs-btn {
+  width: 60px;
+  height: 60px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255,255,255,0.15);
+  color: #fff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s, transform 0.1s;
+  backdrop-filter: blur(4px);
+}
+.acs-btn:active { transform: scale(0.9); }
+.acs-btn.acs-btn-active {
+  background: rgba(255,255,255,0.35);
+}
+.acs-btn.acs-btn-end {
+  width: 72px;
+  height: 72px;
+  background: #e53935;
+}
+.acs-btn.acs-btn-end:hover { background: #c62828; }

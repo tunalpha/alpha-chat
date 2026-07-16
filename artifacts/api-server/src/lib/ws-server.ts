@@ -215,6 +215,65 @@ export function createWsServer(httpServer: HttpServer): WebSocketServer {
           break;
         }
 
+        // ── WebRTC signaling — Sprint 23 ──────────────────────────────────
+        // Il server fa solo relay: instrada i messaggi tra caller e callee.
+        // Nessuna logica di chiamata sul server — tutto P2P via ICE/STUN.
+
+        case "call.offer": {
+          const p = (event.payload ?? {}) as Record<string, unknown>;
+          const toId = p["to_user_id"] as string | undefined;
+          if (!toId) break;
+          wsManager.sendToUser(toId, {
+            type: "call.incoming",
+            payload: { ...p, from_user_id: userId },
+          });
+          break;
+        }
+
+        case "call.answer": {
+          const p = (event.payload ?? {}) as Record<string, unknown>;
+          const toId = p["to_user_id"] as string | undefined;
+          if (!toId) break;
+          wsManager.sendToUser(toId, {
+            type: "call.answered",
+            payload: { ...p, from_user_id: userId },
+          });
+          break;
+        }
+
+        case "call.ice_candidate": {
+          const p = (event.payload ?? {}) as Record<string, unknown>;
+          const toId = p["to_user_id"] as string | undefined;
+          if (!toId) break;
+          wsManager.sendToUser(toId, {
+            type: "call.ice_candidate",
+            payload: { ...p, from_user_id: userId },
+          });
+          break;
+        }
+
+        case "call.reject": {
+          const p = (event.payload ?? {}) as Record<string, unknown>;
+          const toId = p["to_user_id"] as string | undefined;
+          if (!toId) break;
+          wsManager.sendToUser(toId, {
+            type: "call.rejected",
+            payload: { from_user_id: userId, reason: p["reason"] },
+          });
+          break;
+        }
+
+        case "call.end": {
+          const p = (event.payload ?? {}) as Record<string, unknown>;
+          const toId = p["to_user_id"] as string | undefined;
+          if (!toId) break;
+          wsManager.sendToUser(toId, {
+            type: "call.ended",
+            payload: { from_user_id: userId },
+          });
+          break;
+        }
+
         default:
           safeSend(ws, {
             type: "error",

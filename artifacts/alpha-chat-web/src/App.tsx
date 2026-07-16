@@ -1,6 +1,9 @@
 import { useState, useEffect } from "react";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { LockProvider, useLock } from "./contexts/LockContext";
+import { CallProvider } from "./contexts/CallContext";
+import IncomingCallModal from "./components/IncomingCallModal";
+import ActiveCallScreen from "./components/ActiveCallScreen";
 import LandingPage from "./pages/LandingPage";
 import ChatPage from "./pages/ChatPage";
 import ProfilePage from "./pages/ProfilePage";
@@ -134,7 +137,11 @@ export default function App() {
   return (
     <AuthProvider>
       <LockProvider>
-        <AppContent />
+        <CallProvider>
+          <AppContent />
+          <IncomingCallModal />
+          <ActiveCallScreen />
+        </CallProvider>
       </LockProvider>
     </AuthProvider>
   );
