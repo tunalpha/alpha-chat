@@ -121,10 +121,12 @@ export default function LandingPage() {
   const { login, register } = useAuth();
 
   // Demo state
+  const [started, setStarted]   = useState(false);  // diventa true al primo gesto
   const [visible, setVisible]   = useState<Line[]>([]);
-  const [typing, setTyping]     = useState(false);   // typing indicator Alpha
-  const [done, setDone]         = useState(false);   // conversazione finita → mostra CTA
-  const msgsRef = useRef<HTMLDivElement>(null);
+  const [typing, setTyping]     = useState(false);
+  const [done, setDone]         = useState(false);
+  const msgsRef   = useRef<HTMLDivElement>(null);
+  const startedRef = useRef(false);  // ref sincrona per l'handler evento
 
   // Auth modal
   const [showAuth, setShowAuth] = useState(false);
@@ -139,12 +141,17 @@ export default function LandingPage() {
   const [regPwd, setRegPwd]     = useState("");
   const [showRPwd, setShowRPwd] = useState(false);
 
-  // Sblocca AudioContext al primo gesto utente (richiesto da tutti i browser mobili)
+  // Al primo gesto: sblocca audio sincrono + avvia sequenza
   useEffect(() => {
-    const events = ["click", "touchend", "touchstart", "keydown"] as const;
-    const unlock = () => unlockAudio();
-    events.forEach((e) => document.addEventListener(e, unlock, { passive: true }));
-    return () => events.forEach((e) => document.removeEventListener(e, unlock));
+    function handleFirstGesture() {
+      if (startedRef.current) return;
+      startedRef.current = true;
+      unlockAudio();           // sincrono nel gesto → iOS/Chrome sbloccati
+      setStarted(true);
+    }
+    const events = ["click", "touchstart", "mousemove", "keydown"] as const;
+    events.forEach((e) => document.addEventListener(e, handleFirstGesture, { passive: true, once: true }));
+    return () => events.forEach((e) => document.removeEventListener(e, handleFirstGesture));
   }, []);
 
   // Scroll to bottom
@@ -157,55 +164,51 @@ export default function LandingPage() {
     scrollBottom();
   }, [visible, typing, scrollBottom]);
 
-  // Sequenziatore messaggi
+  // Sequenziatore — parte solo dopo il primo gesto (started = true)
   useEffect(() => {
+    if (!started) return;
     let cancelled = false;
     let timer: ReturnType<typeof setTimeout>;
 
     async function runScript() {
+      // Piccolo delay iniziale prima del primo messaggio
+      await delay(400);
       for (let i = 0; i < SCRIPT.length; i++) {
         if (cancelled) return;
         const line = SCRIPT[i];
 
         if (line.speaker === "alpha") {
-          // Mostra typing indicator
           setTyping(true);
           await delay(TYPING_MS);
           if (cancelled) return;
           setTyping(false);
         } else if (line.speaker === "user") {
-          // Pausa naturale (nessun typing per messaggi utente)
           await delay(USER_PAUSE_MS);
           if (cancelled) return;
         } else {
-          // Status messages: pausa breve
           await delay(400);
           if (cancelled) return;
         }
 
-        // Aggiungi messaggio
         setVisible((prev) => [...prev, line]);
         if (line.speaker !== "status") {
           playNotif();
           vibrate();
         }
 
-        // Pausa tra messaggi
         await delay(GAP_MS);
       }
       if (!cancelled) {
-        // CTA appare con lieve ritardo dopo l'ultima riga
         timer = setTimeout(() => setDone(true), 600);
       }
     }
 
-    // Avvio con delay iniziale
-    timer = setTimeout(() => { void runScript(); }, 600);
+    void runScript();
     return () => {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [started]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function openAuth(t: "login" | "register") {
     setTab(t); setError(""); setShowAuth(true);
@@ -252,6 +255,15 @@ export default function LandingPage() {
 
       {/* ── Area messaggi ─────────────────────────────────────────────────── */}
       <div className="messages demo-messages" ref={msgsRef}>
+
+        {/* Waiting state — visibile finché l'utente non interagisce */}
+        {!started && (
+          <div className="demo-waiting">
+            <img src={`${import.meta.env.BASE_URL}logo.png`} alt="Alpha Chat" className="demo-waiting-logo" />
+            <p className="demo-waiting-hint">Tocca per iniziare</p>
+          </div>
+        )}
+
         {visible.map((line, i) => {
           if (line.speaker === "status") {
             return (

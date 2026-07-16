@@ -646,6 +646,29 @@ a { color: inherit; text-decoration: none; }
   width: 28px; height: 28px; align-self: flex-end; margin-bottom: 2px;
 }
 
+/* Waiting state — prima del primo gesto */
+.demo-waiting {
+  flex: 1; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 16px;
+}
+.demo-waiting-logo {
+  width: 72px; height: 72px; border-radius: 50%;
+  animation: demoPulse 2s ease-in-out infinite;
+  box-shadow: 0 0 0 0 rgba(124,58,237,0.5);
+}
+@keyframes demoPulse {
+  0%   { box-shadow: 0 0 0 0   rgba(124,58,237,0.5); }
+  60%  { box-shadow: 0 0 0 18px rgba(124,58,237,0); }
+  100% { box-shadow: 0 0 0 0   rgba(124,58,237,0); }
+}
+.demo-waiting-hint {
+  font-size: 13px; color: var(--text-3); letter-spacing: 0.5px;
+  animation: fadeInOut 2s ease-in-out infinite;
+}
+@keyframes fadeInOut {
+  0%, 100% { opacity: 0.4; } 50% { opacity: 1; }
+}
+
 /* Messaggi di stato (🟢 ...) */
 .demo-status-line {
   text-align: center; font-size: 12px; font-weight: 600; letter-spacing: 0.4px;
