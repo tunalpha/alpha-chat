@@ -637,6 +637,32 @@ a { color: inherit; text-decoration: none; }
   animation: msgEnter 0.25s ease-out both;
 }
 
+/* Avatar Alpha nella demo */
+.demo-alpha-avatar {
+  width: 38px; height: 38px; border-radius: 50%; flex-shrink: 0;
+  background: linear-gradient(135deg, #6D28D9, #C026D3);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px; font-weight: 700; color: #fff;
+}
+.demo-alpha-avatar--sm {
+  width: 28px; height: 28px; font-size: 12px; align-self: flex-end; margin-bottom: 2px;
+}
+
+/* Messaggi di stato (🟢 ...) */
+.demo-status-line {
+  text-align: center; font-size: 12px; font-weight: 600; letter-spacing: 0.4px;
+  color: #4ADE80; padding: 4px 0;
+  opacity: 0.9;
+}
+
+/* CTA footer: nascosto → visibile con fade */
+.demo-cta-footer {
+  display: flex; gap: 10px; padding: 10px 14px 16px;
+  transition: opacity 0.4s ease, transform 0.4s ease;
+}
+.demo-cta-hidden { opacity: 0; pointer-events: none; transform: translateY(6px); }
+.demo-cta-visible { opacity: 1; pointer-events: auto; transform: translateY(0); }
+
 /* Wrapper input + CTA */
 .demo-input-wrap {
   flex-shrink: 0; border-top: 1px solid var(--border-2);

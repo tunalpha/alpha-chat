@@ -1,0 +1,154 @@
+SPRINT 11A — Welcome Experience
+
+Voglio eliminare completamente la landing page attuale.
+
+Alpha Chat deve aprirsi direttamente dentro una conversazione DEMO.
+
+L'utente deve avere la sensazione di essere già dentro Alpha Chat.
+
+NON è una presentazione.
+
+NON è una landing.
+
+È una vera conversazione.
+
+Usare esattamente la UI della chat reale.
+
+Le bolle devono comparire con:
+
+- typing indicator
+- piccolo suono messaggio
+- animazione di arrivo
+- leggera vibrazione (mobile)
+
+Tempo tra un messaggio e l'altro:
+400-700ms
+
+────────────────────────────
+
+CONVERSAZIONE
+
+👤
+
+Perché dovrei usare Alpha Chat?
+
+🛡 Alpha Chat
+
+Perché la tua privacy viene prima di tutto.
+
+────────────────────────────
+
+👤
+
+Cosa vi rende diversi?
+
+🛡
+
+Solo chi autorizzi può contattarti.
+
+────────────────────────────
+
+👤
+
+Come mi trovano?
+
+🛡
+
+Con un codice invito usa e getta.
+
+Nessuna ricerca pubblica.
+
+────────────────────────────
+
+👤
+
+Serve il mio numero di telefono?
+
+🛡
+
+No.
+
+────────────────────────────
+
+👤
+
+Posso essere intercettato?
+
+🛡
+
+La tua conversazione è progettata per rimanere privata.
+
+────────────────────────────
+
+👤
+
+E se un messaggio non deve più esistere?
+
+🛡
+
+Puoi ordinarne la distruzione definitiva.
+
+────────────────────────────
+
+👤
+
+Cosa significa?
+
+🛡
+
+Quando viene distrutto,
+non lascia tracce nella conversazione.
+
+────────────────────────────
+
+👤
+
+Perché lo chiamate bunker digitale?
+
+🛡
+
+Perché la sicurezza non è una funzione.
+
+È l'architettura.
+
+────────────────────────────
+
+👤
+
+Qual è il vostro motto?
+
+🛡
+
+Il tuo bunker digitale.
+
+La privacy è la tua prima linea di difesa.
+
+────────────────────────────
+
+Messaggi finali automatici.
+
+🟢 Canale protetto
+
+🟢 Perimetro sicuro
+
+🟢 Comunicazione riservata
+
+🟢 Benvenuto in Alpha Chat
+
+────────────────────────────
+
+Alla fine mostra due pulsanti grandi:
+
+CREA ACCOUNT
+
+ACCEDI
+
+L'utente può rileggere tutta la conversazione.
+
+Usare gli stessi componenti della chat reale.
+
+Nessuna schermata marketing.
+
+L'impressione deve essere:
+
+"Sto già usando Alpha Chat."

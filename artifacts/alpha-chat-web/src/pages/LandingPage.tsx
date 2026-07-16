@@ -1,33 +1,73 @@
 /**
- * LandingPage — Welcome Experience
+ * LandingPage — Welcome Experience "Bunker Digitale"
  *
- * L'utente vede subito una chat demo che trasmette l'identità di Alpha Chat.
- * Stesse classi CSS della chat reale — stesso sfondo, stesse bolle, stesso header.
- * Nessuna modifica al backend o al resto dell'app.
+ * Una vera conversazione demo. L'utente vede Alpha Chat in azione —
+ * stesse bolle, stesso header, stesso sfondo della chat reale.
+ * Nessuna landing. Nessun marketing. Solo l'app.
  */
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import { useAuth } from "../contexts/AuthContext";
 
-// ── Messaggi demo ────────────────────────────────────────────────────────────
-const DEMO_MESSAGES = [
-  "Benvenuto.",
-  "Qui la tua privacy non è una funzione.",
-  "È il punto di partenza.",
-  "Il tuo bunker digitale.",
-  "Solo chi inviti può trovarti.",
-  "Nessuna ricerca pubblica.",
-  "Nessun numero di telefono.",
-  "Codici invito usa e getta.",
-  "Messaggi protetti. Zero tracking.",
-  "La privacy è la tua prima linea di difesa.",
-  "Benvenuto in Alpha Chat.",
+// ── Script della conversazione ────────────────────────────────────────────────
+type Speaker = "user" | "alpha" | "status";
+interface Line { speaker: Speaker; text: string }
+
+const SCRIPT: Line[] = [
+  { speaker: "user",   text: "Perché dovrei usare Alpha Chat?" },
+  { speaker: "alpha",  text: "Perché la tua privacy viene prima di tutto." },
+  { speaker: "user",   text: "Cosa vi rende diversi?" },
+  { speaker: "alpha",  text: "Solo chi autorizzi può contattarti." },
+  { speaker: "user",   text: "Come mi trovano?" },
+  { speaker: "alpha",  text: "Con un codice invito usa e getta.\nNessuna ricerca pubblica." },
+  { speaker: "user",   text: "Serve il mio numero di telefono?" },
+  { speaker: "alpha",  text: "No." },
+  { speaker: "user",   text: "Posso essere intercettato?" },
+  { speaker: "alpha",  text: "La tua conversazione è progettata\nper rimanere privata." },
+  { speaker: "user",   text: "E se un messaggio non deve più esistere?" },
+  { speaker: "alpha",  text: "Puoi ordinarne la distruzione definitiva." },
+  { speaker: "user",   text: "Cosa significa?" },
+  { speaker: "alpha",  text: "Quando viene distrutto,\nnon lascia tracce nella conversazione." },
+  { speaker: "user",   text: "Perché lo chiamate bunker digitale?" },
+  { speaker: "alpha",  text: "Perché la sicurezza non è una funzione.\nÈ l'architettura." },
+  { speaker: "user",   text: "Qual è il vostro motto?" },
+  { speaker: "alpha",  text: "Il tuo bunker digitale.\nLa privacy è la tua prima linea di difesa." },
+  { speaker: "status", text: "🟢  Canale protetto" },
+  { speaker: "status", text: "🟢  Perimetro sicuro" },
+  { speaker: "status", text: "🟢  Comunicazione riservata" },
+  { speaker: "status", text: "🟢  Benvenuto in Alpha Chat" },
 ];
 
-const TYPING_MS  = 650;   // durata indicatore "sta scrivendo"
-const GAP_MS     = 350;   // pausa dopo ogni messaggio prima del prossimo
+// Durata typing indicator per messaggi Alpha (ms)
+const TYPING_MS = 550;
+// Pausa dopo ogni messaggio prima del prossimo (ms)  
+const GAP_MS    = 320;
+// Delay extra per messaggi "user" (nessun typing, ma piccola pausa naturale)
+const USER_PAUSE_MS = 420;
 
-// Occhio per password
+// ── Suono notifica — Web Audio API (nessun file esterno) ─────────────────────
+function playNotif() {
+  try {
+    const ctx = new AudioContext();
+    const osc  = ctx.createOscillator();
+    const gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    osc.type = "sine";
+    osc.frequency.setValueAtTime(880, ctx.currentTime);
+    osc.frequency.exponentialRampToValueAtTime(660, ctx.currentTime + 0.12);
+    gain.gain.setValueAtTime(0.08, ctx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.18);
+    osc.start(ctx.currentTime);
+    osc.stop(ctx.currentTime + 0.18);
+  } catch { /* silenzioso se AudioContext bloccato */ }
+}
+
+function vibrate() {
+  try { navigator.vibrate?.(40); } catch { /* ignora */ }
+}
+
+// ── Icone occhio password ─────────────────────────────────────────────────────
 const EyeOn = () => (
   <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
     <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>
@@ -41,60 +81,88 @@ const EyeOff = () => (
   </svg>
 );
 
+// ── Componente principale ─────────────────────────────────────────────────────
 export default function LandingPage() {
   const { login, register } = useAuth();
 
-  // ── Demo chat state ────────────────────────────────────────────────────────
-  const [visibleMsgs, setVisibleMsgs] = useState<string[]>([]);
-  const [isTyping, setIsTyping]       = useState(false);
-  const messagesRef = useRef<HTMLDivElement>(null);
+  // Demo state
+  const [visible, setVisible]   = useState<Line[]>([]);
+  const [typing, setTyping]     = useState(false);   // typing indicator Alpha
+  const [done, setDone]         = useState(false);   // conversazione finita → mostra CTA
+  const msgsRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    let idx = 0;
-    let timer: ReturnType<typeof setTimeout>;
+  // Auth modal
+  const [showAuth, setShowAuth] = useState(false);
+  const [tab, setTab]           = useState<"login" | "register">("login");
+  const [error, setError]       = useState("");
+  const [loading, setLoading]   = useState(false);
+  const [loginId, setLoginId]   = useState("");
+  const [loginPwd, setLoginPwd] = useState("");
+  const [showLPwd, setShowLPwd] = useState(false);
+  const [regUser, setRegUser]   = useState("");
+  const [regName, setRegName]   = useState("");
+  const [regPwd, setRegPwd]     = useState("");
+  const [showRPwd, setShowRPwd] = useState(false);
 
-    function showNext() {
-      if (idx >= DEMO_MESSAGES.length) return;
-
-      // 1. Mostra typing
-      setIsTyping(true);
-
-      timer = setTimeout(() => {
-        // 2. Aggiungi messaggio
-        const msg = DEMO_MESSAGES[idx++];
-        setIsTyping(false);
-        setVisibleMsgs((prev) => [...prev, msg]);
-
-        // 3. Pausa, poi il prossimo
-        timer = setTimeout(showNext, GAP_MS);
-      }, TYPING_MS);
-    }
-
-    // Primo messaggio dopo 800ms
-    timer = setTimeout(showNext, 800);
-    return () => clearTimeout(timer);
+  // Scroll to bottom
+  const scrollBottom = useCallback(() => {
+    const el = msgsRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
   }, []);
 
-  // Scroll to bottom quando arrivano messaggi
   useEffect(() => {
-    const el = messagesRef.current;
-    if (el) el.scrollTop = el.scrollHeight;
-  }, [visibleMsgs, isTyping]);
+    scrollBottom();
+  }, [visible, typing, scrollBottom]);
 
-  // ── Auth modal state ───────────────────────────────────────────────────────
-  const [showAuth, setShowAuth]   = useState(false);
-  const [tab, setTab]             = useState<"login" | "register">("login");
-  const [error, setError]         = useState("");
-  const [loading, setLoading]     = useState(false);
+  // Sequenziatore messaggi
+  useEffect(() => {
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout>;
 
-  const [loginId, setLoginId]     = useState("");
-  const [loginPwd, setLoginPwd]   = useState("");
-  const [showLoginPwd, setShowLoginPwd] = useState(false);
+    async function runScript() {
+      for (let i = 0; i < SCRIPT.length; i++) {
+        if (cancelled) return;
+        const line = SCRIPT[i];
 
-  const [regUser, setRegUser]     = useState("");
-  const [regName, setRegName]     = useState("");
-  const [regPwd, setRegPwd]       = useState("");
-  const [showRegPwd, setShowRegPwd]   = useState(false);
+        if (line.speaker === "alpha") {
+          // Mostra typing indicator
+          setTyping(true);
+          await delay(TYPING_MS);
+          if (cancelled) return;
+          setTyping(false);
+        } else if (line.speaker === "user") {
+          // Pausa naturale (nessun typing per messaggi utente)
+          await delay(USER_PAUSE_MS);
+          if (cancelled) return;
+        } else {
+          // Status messages: pausa breve
+          await delay(400);
+          if (cancelled) return;
+        }
+
+        // Aggiungi messaggio
+        setVisible((prev) => [...prev, line]);
+        if (line.speaker !== "status") {
+          playNotif();
+          vibrate();
+        }
+
+        // Pausa tra messaggi
+        await delay(GAP_MS);
+      }
+      if (!cancelled) {
+        // CTA appare con lieve ritardo dopo l'ultima riga
+        timer = setTimeout(() => setDone(true), 600);
+      }
+    }
+
+    // Avvio con delay iniziale
+    timer = setTimeout(() => { void runScript(); }, 600);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   function openAuth(t: "login" | "register") {
     setTab(t); setError(""); setShowAuth(true);
@@ -117,29 +185,21 @@ export default function LandingPage() {
   return (
     <div className="demo-root">
 
-      {/* ── Header — identico al reale ─────────────────────────────────────── */}
+      {/* ── Header identico alla chat reale ──────────────────────────────── */}
       <header className="chat-header">
-        {/* back placeholder (stessa struttura dell'header reale) */}
-        <div style={{ width: 36 }} />
+        <div style={{ width: 36, flexShrink: 0 }} />
 
-        {/* Avatar + nome */}
-        <div className="chat-header-avatar" style={{ background: "linear-gradient(135deg,#6D28D9,#C026D3)", borderRadius: "50%", width: 38, height: 38, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 16, fontWeight: 700, color: "#fff", flexShrink: 0 }}>
-          α
-        </div>
+        <div className="demo-alpha-avatar">α</div>
+
         <div className="chat-header-info">
           <div className="chat-header-name">Alpha Chat</div>
           <div className="chat-header-status online">sicuro e privato</div>
         </div>
 
-        {/* Azioni header (icona profilo) */}
         <div className="chat-header-actions">
-          <button
-            className="header-icon-btn"
-            onClick={() => openAuth("login")}
-            aria-label="Accedi"
-            title="Accedi"
-          >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="20" height="20">
+          <button className="header-icon-btn" onClick={() => openAuth("login")} aria-label="Accedi">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+              strokeLinecap="round" strokeLinejoin="round" width="20" height="20">
               <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
               <circle cx="12" cy="7" r="4"/>
             </svg>
@@ -147,18 +207,33 @@ export default function LandingPage() {
         </div>
       </header>
 
-      {/* ── Area messaggi demo ────────────────────────────────────────────── */}
-      <div className="messages demo-messages" ref={messagesRef}>
-        {visibleMsgs.map((text, i) => (
-          <div key={i} className="msg-row theirs demo-msg-enter">
-            <div className="msg-bubble theirs">
-              <span className="msg-text">{text}</span>
+      {/* ── Area messaggi ─────────────────────────────────────────────────── */}
+      <div className="messages demo-messages" ref={msgsRef}>
+        {visible.map((line, i) => {
+          if (line.speaker === "status") {
+            return (
+              <div key={i} className="demo-status-line demo-msg-enter">
+                {line.text}
+              </div>
+            );
+          }
+          const isMine = line.speaker === "user";
+          return (
+            <div key={i} className={`msg-row ${isMine ? "mine" : "theirs"} demo-msg-enter`}>
+              {!isMine && <div className="demo-alpha-avatar demo-alpha-avatar--sm">α</div>}
+              <div className={`msg-bubble ${isMine ? "mine" : "theirs"}`}>
+                <span className="msg-text" style={{ whiteSpace: "pre-line" }}>
+                  {line.text}
+                </span>
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
 
-        {isTyping && (
-          <div className="msg-row theirs">
+        {/* Typing indicator Alpha */}
+        {typing && (
+          <div className="msg-row theirs demo-msg-enter">
+            <div className="demo-alpha-avatar demo-alpha-avatar--sm">α</div>
             <div className="msg-bubble theirs typing-bubble">
               <span className="typing-dot" />
               <span className="typing-dot" />
@@ -168,12 +243,14 @@ export default function LandingPage() {
         )}
       </div>
 
-      {/* ── Input disabilitato ────────────────────────────────────────────── */}
+      {/* ── Bottom: input disabilitato + CTA ─────────────────────────────── */}
       <div className="demo-input-wrap">
         <form className="chat-input-bar" onSubmit={(e) => e.preventDefault()}>
           <button type="button" className="input-icon-btn" disabled aria-label="Emoji">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="22" height="22">
-              <circle cx="12" cy="12" r="10"/><path d="M8 13s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/>
+              <circle cx="12" cy="12" r="10"/>
+              <path d="M8 13s1.5 2 4 2 4-2 4-2"/>
+              <line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/>
             </svg>
           </button>
           <button type="button" className="input-icon-btn" disabled aria-label="Allega">
@@ -184,19 +261,20 @@ export default function LandingPage() {
           <textarea
             className="chat-textarea"
             placeholder="Accedi per iniziare una conversazione"
-            disabled
-            rows={1}
+            disabled rows={1}
           />
           <button type="button" className="send-btn mic-btn" disabled aria-label="Microfono">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" width="20" height="20">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
+              strokeLinecap="round" strokeLinejoin="round" width="20" height="20">
               <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
-              <path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/>
+              <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+              <line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/>
             </svg>
           </button>
         </form>
 
-        {/* CTA fissi */}
-        <div className="demo-cta-footer">
+        {/* CTA — compaiono dopo la fine della conversazione */}
+        <div className={`demo-cta-footer ${done ? "demo-cta-visible" : "demo-cta-hidden"}`}>
           <button className="demo-cta-primary" onClick={() => openAuth("register")}>
             Crea account
           </button>
@@ -211,6 +289,7 @@ export default function LandingPage() {
         <div className="auth-modal-overlay" onClick={() => setShowAuth(false)}>
           <div className="auth-modal-sheet" onClick={(e) => e.stopPropagation()}>
             <div className="auth-modal-handle" />
+
             <button className="auth-modal-close" onClick={() => setShowAuth(false)} aria-label="Chiudi">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="18" height="18">
                 <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
@@ -218,7 +297,8 @@ export default function LandingPage() {
             </button>
 
             <div className="auth-modal-logo">
-              <img src={`${import.meta.env.BASE_URL}logo.png`} alt="α" width="40" height="40" style={{ borderRadius: "50%" }} />
+              <img src={`${import.meta.env.BASE_URL}logo.png`} alt="α" width="40" height="40"
+                style={{ borderRadius: "50%" }} />
               <span>Alpha Chat</span>
             </div>
 
@@ -241,13 +321,13 @@ export default function LandingPage() {
                 <label className="auth-label">Password</label>
                 <div className="pwd-wrapper">
                   <input className="auth-input pwd-input"
-                    type={showLoginPwd ? "text" : "password"} value={loginPwd}
+                    type={showLPwd ? "text" : "password"} value={loginPwd}
                     onChange={(e) => setLoginPwd(e.target.value)}
                     placeholder="••••••••" required autoComplete="current-password" />
                   <button type="button" className="pwd-toggle"
-                    onClick={() => setShowLoginPwd((v) => !v)}
-                    aria-label={showLoginPwd ? "Nascondi" : "Mostra"}>
-                    {showLoginPwd ? <EyeOff /> : <EyeOn />}
+                    onClick={() => setShowLPwd((v) => !v)}
+                    aria-label={showLPwd ? "Nascondi" : "Mostra"}>
+                    {showLPwd ? <EyeOff /> : <EyeOn />}
                   </button>
                 </div>
                 <button className="auth-btn" type="submit" disabled={loading}>
@@ -271,14 +351,14 @@ export default function LandingPage() {
                 <label className="auth-label">Password</label>
                 <div className="pwd-wrapper">
                   <input className="auth-input pwd-input"
-                    type={showRegPwd ? "text" : "password"} value={regPwd}
+                    type={showRPwd ? "text" : "password"} value={regPwd}
                     onChange={(e) => setRegPwd(e.target.value)}
                     placeholder="Min. 8 caratteri" minLength={8} required
                     autoComplete="new-password" />
                   <button type="button" className="pwd-toggle"
-                    onClick={() => setShowRegPwd((v) => !v)}
-                    aria-label={showRegPwd ? "Nascondi" : "Mostra"}>
-                    {showRegPwd ? <EyeOff /> : <EyeOn />}
+                    onClick={() => setShowRPwd((v) => !v)}
+                    aria-label={showRPwd ? "Nascondi" : "Mostra"}>
+                    {showRPwd ? <EyeOff /> : <EyeOn />}
                   </button>
                 </div>
                 <button className="auth-btn" type="submit" disabled={loading}>
@@ -299,4 +379,9 @@ export default function LandingPage() {
       )}
     </div>
   );
+}
+
+// Helper
+function delay(ms: number) {
+  return new Promise<void>((res) => setTimeout(res, ms));
 }
