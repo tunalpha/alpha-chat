@@ -13,6 +13,7 @@ import recoveryContactsRoutes from "./recovery-contacts.routes";
 import securityTimelineRoutes from "./security-timeline.routes";
 import recoveryDashboardRoutes from "./recovery-dashboard.routes";
 import trustCenterRoutes from "./trust-center.routes";
+import groupRoutes from "./group.routes";
 
 /**
  * /api/v1/ — mounts all versioned sub-routers.
@@ -39,5 +40,8 @@ v1Router.use("/recovery-dashboard", recoveryDashboardRoutes);
 
 // Trust Center — Sprint 20
 v1Router.use("/trust-center", trustCenterRoutes);
+
+// Gruppi E2E — Sprint 21
+v1Router.use("/groups", groupRoutes);
 
 export default v1Router;

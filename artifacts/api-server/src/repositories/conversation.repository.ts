@@ -60,12 +60,16 @@ export class ConversationRepository {
     type: ConversationType;
     createdBy: mongoose.Types.ObjectId;
     memberCount?: number;
+    name?: string;
+    description?: string;
   }): Promise<IConversationDocument> {
     return ConversationModel.create({
       type: params.type,
       created_by: params.createdBy,
       member_count: params.memberCount ?? 0,
       last_activity_at: new Date(),
+      ...(params.name        ? { name:        params.name }        : {}),
+      ...(params.description ? { description: params.description } : {}),
     });
   }
 
@@ -94,6 +98,30 @@ export class ConversationRepository {
           last_activity_at: new Date(),
         },
       },
+    );
+  }
+
+  /**
+   * Aggiorna name e description di un gruppo.
+   */
+  async updateGroupMeta(
+    conversationId: mongoose.Types.ObjectId,
+    fields: { name?: string; description?: string },
+  ): Promise<void> {
+    const set: Record<string, string> = {};
+    if (fields.name        !== undefined) set["name"]        = fields.name;
+    if (fields.description !== undefined) set["description"] = fields.description;
+    if (Object.keys(set).length === 0) return;
+    await ConversationModel.updateOne({ _id: conversationId }, { $set: set });
+  }
+
+  /**
+   * Soft-delete una conversazione (gruppo eliminato dall'admin).
+   */
+  async softDelete(conversationId: mongoose.Types.ObjectId): Promise<void> {
+    await ConversationModel.updateOne(
+      { _id: conversationId },
+      { $set: { deleted_at: new Date() } },
     );
   }
 

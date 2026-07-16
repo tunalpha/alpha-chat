@@ -1075,6 +1075,73 @@ export async function apiSetDisappearing(
   );
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Gruppi E2E — Sprint 21
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface GroupMemberInfo {
+  user_id:      string;
+  username:     string;
+  display_name: string;
+  role:         "admin" | "member";
+  joined_at:    string;
+}
+
+export interface GroupDetail {
+  group_id:     string;
+  name:         string;
+  description:  string;
+  member_count: number;
+  max_members:  number;
+  created_by:   string;
+  created_at:   string;
+  my_role:      "admin" | "member";
+  members:      GroupMemberInfo[];
+}
+
+export async function apiCreateGroup(
+  name: string,
+  description: string,
+  memberUsernames: string[],
+): Promise<GroupDetail> {
+  return request<GroupDetail>("POST", "/groups", { name, description, member_usernames: memberUsernames });
+}
+
+export async function apiGetGroup(groupId: string): Promise<GroupDetail> {
+  return request<GroupDetail>("GET", `/groups/${groupId}`);
+}
+
+export async function apiUpdateGroup(
+  groupId: string,
+  fields: { name?: string; description?: string },
+): Promise<GroupDetail> {
+  return request<GroupDetail>("PATCH", `/groups/${groupId}`, fields);
+}
+
+export async function apiDeleteGroup(groupId: string): Promise<void> {
+  await request<unknown>("DELETE", `/groups/${groupId}`);
+}
+
+export async function apiAddGroupMember(groupId: string, username: string): Promise<GroupMemberInfo> {
+  return request<GroupMemberInfo>("POST", `/groups/${groupId}/members`, { username });
+}
+
+export async function apiRemoveGroupMember(groupId: string, userId: string): Promise<void> {
+  await request<unknown>("DELETE", `/groups/${groupId}/members/${userId}`);
+}
+
+export async function apiLeaveGroup(groupId: string): Promise<void> {
+  await request<unknown>("POST", `/groups/${groupId}/leave`);
+}
+
+export async function apiChangeGroupMemberRole(
+  groupId: string,
+  userId: string,
+  role: "admin" | "member",
+): Promise<void> {
+  await request<unknown>("PATCH", `/groups/${groupId}/members/${userId}/role`, { role });
+}
+
 export async function apiListMessages(
   conversationId: string,
   options: { limit?: number; beforeSequence?: number } = {},

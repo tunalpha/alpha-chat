@@ -80,7 +80,15 @@ export type AuditEventType =
   // Dead Man Switch (Sprint 19)
   | "DMS_CONFIGURED"
   | "DMS_WARNING_SENT"
-  | "DMS_ACTION_EXECUTED";
+  | "DMS_ACTION_EXECUTED"
+  // Gruppi E2E — Sprint 21
+  | "GROUP_CREATED"
+  | "GROUP_UPDATED"
+  | "GROUP_DELETED"
+  | "GROUP_MEMBER_ADDED"
+  | "GROUP_MEMBER_REMOVED"
+  | "GROUP_LEFT"
+  | "GROUP_ROLE_CHANGED";
 
 export interface AuditEvent {
   event: AuditEventType;

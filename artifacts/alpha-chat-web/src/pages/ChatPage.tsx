@@ -16,6 +16,8 @@ import {
   apiMarkRead,
   apiSetDisappearing,
   apiGetAllKeyBundles,
+  apiGetKeyBundle,
+  apiGetGroup,
   decodeMessage,
   decodeVoiceMeta,
   decodeMediaMeta,
@@ -46,6 +48,8 @@ import VoiceMessage from "../components/VoiceMessage";
 import MediaMessage from "../components/MediaMessage";
 import MediaViewer from "../components/MediaViewer";
 import InviteModal from "../components/InviteModal";
+import CreateGroupModal from "../components/CreateGroupModal";
+import GroupInfoPage from "./GroupInfoPage";
 import RedeemModal from "../components/RedeemModal";
 import DeviceManager from "../components/DeviceManager";
 // Fase 5 — Safety Number + TOFU
@@ -499,6 +503,10 @@ export default function ChatPage({ onNavigate }: Props) {
   const [typingUsers, setTypingUsers] = useState<Record<string, Set<string>>>({});
   const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
   const [atBottom, setAtBottom] = useState(true);
+  // Sprint 21 — Gruppi
+  const [showCreateGroup, setShowCreateGroup] = useState(false);
+  const [showGroupInfo, setShowGroupInfo]     = useState(false);
+  const [groupInfoId, setGroupInfoId]         = useState<string | null>(null);
 
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [viewerMedia, setViewerMedia] = useState<{ url: string; type: "image" | "video" } | null>(null);
@@ -579,7 +587,24 @@ export default function ChatPage({ onNavigate }: Props) {
     // Messaggio ricevuto
     try {
       let text: string;
-      // Fase 4: prova prima device_ciphertexts (multi-device)
+      // Sprint 21: gruppo — cerca ciphertext con device_id === userId (fan-out)
+      const isGroupMsg = conversations.find((c) => c.conversation_id === activeConvId)?.type === "group";
+      if (isGroupMsg && msg.device_ciphertexts && msg.device_ciphertexts.length > 0) {
+        const myEntry = msg.device_ciphertexts.find((d) => d.device_id === auth.userId);
+        if (myEntry) {
+          try {
+            const found = await signalDecryptFromDeviceCiphertexts(
+              auth.userId, auth.deviceId, msg.sender_id,
+              [{ ...myEntry, device_id: auth.deviceId }],
+            );
+            if (found !== null) {
+              setDecryptedTexts((prev) => new Map(prev).set(msg.id, found));
+              return;
+            }
+          } catch { /* fallthrough */ }
+        }
+      }
+      // Fase 4: prova prima device_ciphertexts (multi-device 1:1)
       if (msg.device_ciphertexts && msg.device_ciphertexts.length > 0) {
         const found = await signalDecryptFromDeviceCiphertexts(
           auth.userId, auth.deviceId, msg.sender_id, msg.device_ciphertexts,
@@ -849,6 +874,37 @@ export default function ChatPage({ onNavigate }: Props) {
     });
   }, [on, activeConvId]);
 
+  // ── Helpers Signal — encrypt per un gruppo (fan-out per membro) ──────────
+  async function encryptForGroup(groupId: string, text: string): Promise<{
+    body: string;
+    type: number;
+    deviceCiphertexts: Array<{ device_id: string; body: string; type: number }>;
+  } | undefined> {
+    if (!auth) return undefined;
+    try {
+      const group = await apiGetGroup(groupId);
+      const others = group.members.filter((m) => m.user_id !== auth.userId);
+      const deviceCiphertexts: Array<{ device_id: string; body: string; type: number }> = [];
+      await Promise.all(
+        others.map(async (member) => {
+          try {
+            const bundle = await apiGetKeyBundle(member.user_id);
+            // signalEncryptMulti con un solo bundle → usa device_id del bundle come chiave
+            const { deviceCiphertexts: dcs } = await signalEncryptMulti(
+              auth.userId, auth.deviceId, member.user_id, text, [bundle],
+            );
+            if (dcs[0]) {
+              // Sovrascrivi device_id con userId per il fan-out di gruppo
+              deviceCiphertexts.push({ device_id: member.user_id, body: dcs[0].body, type: dcs[0].type });
+            }
+          } catch { /* un membro irraggiungibile non blocca il gruppo */ }
+        }),
+      );
+      // body/type primario vuoto — in un gruppo non c'è un "destinatario principale"
+      return { body: "", type: 1, deviceCiphertexts };
+    } catch { return undefined; }
+  }
+
   // ── Helpers Signal — encrypt per il destinatario attivo ─────────────────
   async function encryptForActive(text: string): Promise<{
     body: string;
@@ -857,6 +913,12 @@ export default function ChatPage({ onNavigate }: Props) {
   } | undefined> {
     if (!auth || !activeConvId) return undefined;
     const activeConv = conversations.find((c) => c.conversation_id === activeConvId);
+
+    // Sprint 21: Gruppo → fan-out per ogni membro
+    if (activeConv?.type === "group") {
+      return encryptForGroup(activeConvId, text);
+    }
+
     const recipientId = activeConv?.other_user?.user_id;
     if (!recipientId) return undefined;
     try {
@@ -1237,6 +1299,20 @@ export default function ChatPage({ onNavigate }: Props) {
               {connected ? "● Online" : "○ Offline"}
             </div>
           </div>
+          {/* Nuovo gruppo */}
+          <button
+            className="invite-sidebar-btn"
+            title="Nuovo gruppo"
+            onClick={() => setShowCreateGroup(true)}
+            aria-label="Nuovo gruppo"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" width="17" height="17">
+              <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/>
+              <circle cx="9" cy="7" r="4"/>
+              <path d="M23 21v-2a4 4 0 0 0-3-3.87"/>
+              <path d="M16 3.13a4 4 0 0 1 0 7.75"/>
+            </svg>
+          </button>
           {/* Invite button */}
           <button
             className="invite-sidebar-btn"
@@ -1277,16 +1353,18 @@ export default function ChatPage({ onNavigate }: Props) {
               </div>
             )}
             {conversations.map((conv) => {
-              const other = conv.other_user;
-              const isOnline = other ? onlineUsers.has(other.user_id) : false;
-              const isActive = conv.conversation_id === activeConvId;
+              const other     = conv.other_user;
+              const isGroup   = conv.type === "group";
+              const isOnline  = other ? onlineUsers.has(other.user_id) : false;
+              const isActive  = conv.conversation_id === activeConvId;
               const hasUnread = conv.unread_count > 0;
+              const displayName = isGroup ? (conv.name ?? "Gruppo") : (other?.display_name ?? "Chat");
+              const avatarChar  = isGroup ? "👥" : (other?.display_name[0]?.toUpperCase() ?? "?");
 
               // Anteprima ultimo messaggio
               const preview = conv.last_message_preview;
               const previewText = (() => {
                 if (!preview?.ciphertext) return null;
-                // Controlla se è un messaggio vocale
                 const vm = decodeVoiceMeta(preview.ciphertext);
                 if (vm) return "🎙 Messaggio vocale";
                 return safeDecodeForPreview(preview.ciphertext);
@@ -1298,19 +1376,20 @@ export default function ChatPage({ onNavigate }: Props) {
               return (
                 <button
                   key={conv.conversation_id}
-                  className={`conv-item${isActive ? " active" : ""}${hasUnread ? " conv-item-unread" : ""}`}
+                  className={`conv-item${isActive ? " active" : ""}${hasUnread ? " conv-item-unread" : ""}${isGroup ? " conv-item-group" : ""}`}
                   onClick={() => handleSelectConv(conv.conversation_id)}
                 >
                   <div className="avatar-wrapper">
-                    <div className={`avatar avatar-md${hasUnread ? " avatar-unread" : ""}`}>
-                      {other?.display_name[0]?.toUpperCase() ?? "?"}
+                    <div className={`avatar avatar-md${hasUnread ? " avatar-unread" : ""}${isGroup ? " avatar-group" : ""}`}>
+                      {avatarChar}
                     </div>
-                    {isOnline && <div className="presence-dot" />}
+                    {!isGroup && isOnline && <div className="presence-dot" />}
                   </div>
                   <div className="conv-info">
                     <div className="conv-row-top">
                       <div className={`conv-name${hasUnread ? " conv-name-bold" : ""}`}>
-                        {other?.display_name ?? "Chat"}
+                        {displayName}
+                        {isGroup && <span className="conv-group-badge"> · Gruppo</span>}
                       </div>
                       <div className={`conv-time${hasUnread ? " conv-time-unread" : ""}`}>
                         {formatConvTime(conv.last_activity_at)}
@@ -1731,6 +1810,38 @@ export default function ChatPage({ onNavigate }: Props) {
       {/* ── Toast ──────────────────────────────────────────────────────────── */}
       {toastMsg && (
         <div className="toast-msg">{toastMsg}</div>
+      )}
+
+      {/* ── Sprint 21: Crea gruppo ─────────────────────────────────────────── */}
+      {showCreateGroup && (
+        <CreateGroupModal
+          onClose={() => setShowCreateGroup(false)}
+          onCreated={(gid) => {
+            setShowCreateGroup(false);
+            void (async () => {
+              const convs = await apiListConversations();
+              setConversations(convs.items ?? []);
+              const newConv = (convs.items ?? []).find((c) => c.conversation_id === gid);
+              if (newConv) handleSelectConv(gid);
+            })();
+          }}
+        />
+      )}
+
+      {/* ── Sprint 21: Group Info overlay ──────────────────────────────────── */}
+      {showGroupInfo && groupInfoId && (
+        <div className="group-info-overlay">
+          <GroupInfoPage
+            groupId={groupInfoId}
+            onBack={() => setShowGroupInfo(false)}
+            onNavigate={onNavigate}
+            onLeft={() => {
+              setShowGroupInfo(false);
+              setActiveConvId(null);
+              void apiListConversations().then((r) => setConversations(r.items ?? []));
+            }}
+          />
+        </div>
       )}
 
       {/* ── Invite modals ──────────────────────────────────────────────────── */}

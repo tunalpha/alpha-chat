@@ -89,6 +89,60 @@ export class ConversationMemberRepository {
   }
 
   /**
+   * Imposta left_at = now per un membro (uscita dal gruppo).
+   */
+  async setLeftAt(
+    conversationId: mongoose.Types.ObjectId,
+    userId: mongoose.Types.ObjectId,
+  ): Promise<void> {
+    await ConversationMemberModel.updateOne(
+      { conversation_id: conversationId, user_id: userId, deleted_at: null },
+      { $set: { left_at: new Date() } },
+    );
+  }
+
+  /**
+   * Re-aggiunge un membro che aveva già lasciato il gruppo (reset left_at).
+   */
+  async rejoinMember(
+    conversationId: mongoose.Types.ObjectId,
+    userId: mongoose.Types.ObjectId,
+  ): Promise<void> {
+    await ConversationMemberModel.updateOne(
+      { conversation_id: conversationId, user_id: userId },
+      { $set: { left_at: null, joined_at: new Date() } },
+    );
+  }
+
+  /**
+   * Cambia il ruolo di un membro.
+   */
+  async setRole(
+    conversationId: mongoose.Types.ObjectId,
+    userId: mongoose.Types.ObjectId,
+    role: MemberRole,
+  ): Promise<void> {
+    await ConversationMemberModel.updateOne(
+      { conversation_id: conversationId, user_id: userId, deleted_at: null },
+      { $set: { role } },
+    );
+  }
+
+  /**
+   * Lista tutti gli admin attivi di una conversazione.
+   */
+  async listAdmins(
+    conversationId: mongoose.Types.ObjectId,
+  ): Promise<IConversationMemberDocument[]> {
+    return ConversationMemberModel.find({
+      conversation_id: conversationId,
+      role: "admin",
+      deleted_at: null,
+      left_at: null,
+    });
+  }
+
+  /**
    * Ritorna tutti gli user_id che condividono almeno una conversazione
    * con userId (escluso userId stesso). Usato per broadcast presence.
    * Due query MongoDB — nessuna business logic.

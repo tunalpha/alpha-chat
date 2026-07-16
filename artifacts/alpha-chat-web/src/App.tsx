@@ -34,7 +34,8 @@ export type AppView =
   | "recovery-contacts"
   | "recovery-dashboard"
   | "security-timeline"
-  | "trust-center";
+  | "trust-center"
+  | "group-info";
 
 /** Controlla se l'URL corrente è la pagina di emergenza (accessibile senza auth). */
 function isEmergencyPath(): boolean {
@@ -104,6 +105,7 @@ function AppContent() {
             return <SecurityTimelinePage onBack={goSettings} />;
           case "trust-center":
             return <TrustCenterPage onBack={goSettings} onNavigate={setView} />;
+          // group-info è gestito come overlay dentro ChatPage
           default:
             return <ChatPage onNavigate={setView} />;
         }
