@@ -4038,3 +4038,96 @@ button:disabled.profile-avatar-edit {
   background: #e53935;
 }
 .acs-btn.acs-btn-end:hover { background: #c62828; }
+
+/* ═══════════════════════════════════════════════════════════════
+   Sprint 23 — Media Gallery + Silenzia badge
+   ═══════════════════════════════════════════════════════════════ */
+
+.media-gallery-sheet {
+  background: var(--bg-2, #1e1e2e);
+  border-radius: 20px 20px 0 0;
+  width: 100%;
+  max-width: 480px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  position: fixed;
+  bottom: 0;
+  left: 50%;
+  transform: translateX(-50%);
+  overflow: hidden;
+  box-shadow: 0 -8px 40px rgba(0,0,0,0.5);
+}
+.media-gallery-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px 12px;
+  border-bottom: 1px solid rgba(255,255,255,0.07);
+}
+.media-gallery-header h3 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text-1, #fff);
+}
+.media-gallery-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 48px 24px;
+  gap: 12px;
+  color: var(--text-3, #888);
+  font-size: 14px;
+  text-align: center;
+}
+.media-gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 3px;
+  overflow-y: auto;
+  padding: 8px;
+}
+.media-gallery-item {
+  aspect-ratio: 1;
+  background: var(--bg-3, #2a2a3e);
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  position: relative;
+  overflow: hidden;
+  transition: opacity 0.15s;
+}
+.media-gallery-item:active { opacity: 0.8; }
+.media-gallery-thumb-placeholder {
+  font-size: 32px;
+}
+.media-gallery-doc {
+  aspect-ratio: auto;
+  min-height: 80px;
+  padding: 12px 8px 8px;
+  gap: 6px;
+}
+.media-gallery-doc-icon { font-size: 28px; }
+.media-gallery-doc-name {
+  font-size: 10px;
+  color: var(--text-3, #888);
+  text-align: center;
+  word-break: break-all;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.media-gallery-time {
+  position: absolute;
+  bottom: 4px;
+  right: 6px;
+  font-size: 9px;
+  color: rgba(255,255,255,0.6);
+  text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+}

@@ -96,6 +96,10 @@ function ChatHeader({
   onCallVideo,
   onBlockUser,
   onToast,
+  isMuted,
+  onSilenzia,
+  onMediaGallery,
+  onClearChat,
   trustStatus,
   onOpenSafetyNumber,
 }: {
@@ -108,6 +112,10 @@ function ChatHeader({
   onCallVideo: () => void;
   onBlockUser: () => void;
   onToast: (msg: string) => void;
+  isMuted: boolean;
+  onSilenzia: () => void;
+  onMediaGallery: () => void;
+  onClearChat: () => void;
   trustStatus?: TrustStatus | "loading" | null;
   onOpenSafetyNumber?: () => void;
 }) {
@@ -133,11 +141,11 @@ function ChatHeader({
     onClick: () => void;
   }[] = [
     { label: "Visualizza profilo", icon: "👤", onClick: () => { closeMenu(); onViewProfile(); } },
-    { label: "Media condivisi", icon: "🖼️", soon: true, onClick: () => { closeMenu(); onToast("Media condivisi disponibile prossimamente"); } },
+    { label: "Media condivisi", icon: "🖼️", onClick: () => { closeMenu(); onMediaGallery(); } },
     { label: "Cerca nella chat", icon: "🔍", onClick: () => { closeMenu(); onSearchInChat(); } },
-    { label: "Silenzia", icon: "🔕", soon: true, onClick: () => { closeMenu(); onToast("Silenzia disponibile prossimamente"); } },
+    { label: isMuted ? "Riattiva notifiche" : "Silenzia", icon: isMuted ? "🔔" : "🔕", onClick: () => { closeMenu(); onSilenzia(); } },
     { label: "Blocca utente", icon: "🚫", danger: true, onClick: () => { closeMenu(); onBlockUser(); } },
-    { label: "Cancella chat", icon: "🗑️", danger: true, soon: true, onClick: () => { closeMenu(); onToast("Cancella chat disponibile prossimamente"); } },
+    { label: "Cancella chat", icon: "🗑️", danger: true, onClick: () => { closeMenu(); onClearChat(); } },
   ];
 
   const trustBadge = trustStatus && trustStatus !== "loading"
@@ -537,6 +545,12 @@ export default function ChatPage({ onNavigate }: Props) {
 
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [viewerMedia, setViewerMedia] = useState<{ url: string; type: "image" | "video" } | null>(null);
+  // Sprint 23 — Silenzia + Media condivisi + Cancella chat
+  const [showMediaGallery, setShowMediaGallery] = useState(false);
+  const [mutedConvIds, setMutedConvIds] = useState<Set<string>>(() => {
+    try { return new Set(JSON.parse(localStorage.getItem("alpha_muted_convs") ?? "[]") as string[]); }
+    catch { return new Set(); }
+  });
   // Sprint 15 — Privacy avanzata
   const [burnAfterRead, setBurnAfterRead] = useState(false);
   const [disappearingSettings, setDisappearingSettings] = useState<{
@@ -795,7 +809,7 @@ export default function ChatPage({ onNavigate }: Props) {
       switch (event.type) {
         case "message.new": {
           const msg = event.payload as unknown as MessageItem & { conversation_id: string };
-          void playNotifSound('received');   // suono ricezione messaggio
+          if (!mutedConvIds.has(msg.conversation_id)) void playNotifSound('received');
           if (msg.conversation_id === activeConvId) {
             setMessages((prev) => {
               if (prev.some((m) => m.id === msg.id)) return prev;
@@ -1153,6 +1167,33 @@ export default function ChatPage({ onNavigate }: Props) {
     }
   }
 
+  /** Comprimi un'immagine via Canvas prima del caricamento.
+   * Riduce foto iPhone da 4-8 MB a ~300-600 KB → upload 10-20x più veloce.
+   * Non tocca video, audio, o documenti. */
+  async function compressImage(file: File): Promise<Blob> {
+    return new Promise((resolve) => {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        URL.revokeObjectURL(url);
+        const MAX = 1920;
+        let { width, height } = img;
+        if (width > MAX || height > MAX) {
+          if (width >= height) { height = Math.round(height * MAX / width); width = MAX; }
+          else                 { width  = Math.round(width  * MAX / height); height = MAX; }
+        }
+        const canvas = document.createElement("canvas");
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d")!;
+        ctx.drawImage(img, 0, 0, width, height);
+        canvas.toBlob((blob) => resolve(blob ?? file), "image/jpeg", 0.85);
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); resolve(file); };
+      img.src = url;
+    });
+  }
+
   async function handleFilePick(files: FileList) {
     if (!activeConvId || !auth || files.length === 0) return;
     const file = files[0];
@@ -1172,8 +1213,13 @@ export default function ChatPage({ onNavigate }: Props) {
     setSending(true);
     setUploadProgress(0);
     try {
+      // Comprimi immagini prima di cifrare (riduce freeze su iOS con foto grandi)
+      const blobToEncrypt: File | Blob =
+        file.type.startsWith("image/") && file.size > 300_000
+          ? await compressImage(file)
+          : file;
       // Fase 3: cifra il file con AES-256-GCM prima dell'upload
-      const { encryptedBlob, keyBase64, ivBase64 } = await encryptMediaBlob(file);
+      const { encryptedBlob, keyBase64, ivBase64 } = await encryptMediaBlob(blobToEncrypt);
       setUploadProgress(10);
 
       const media = await apiUploadEncryptedMedia(activeConvId, encryptedBlob, file.type, {
@@ -1187,24 +1233,11 @@ export default function ChatPage({ onNavigate }: Props) {
                   : file.type.startsWith("audio/")   ? "voice"
                   : "document";
 
-      // Fase 4: thumbnail E2E per immagini e video
-      let thumbIvBase64: string | undefined;
-      if (mtype === "image" || mtype === "video") {
-        try {
-          const { encryptedBlob: encThumb, ivBase64: tIv } = await encryptBlobWithKey(file, keyBase64);
-          const encThumbB64 = await new Promise<string>((resolve) => {
-            const reader = new FileReader();
-            reader.onload = () => resolve(btoa(
-              String.fromCharCode(...new Uint8Array(reader.result as ArrayBuffer)),
-            ));
-            reader.readAsArrayBuffer(encThumb);
-          });
-          thumbIvBase64 = tIv;
-          // Re-upload con thumbnail cifrata (media già caricato, ma vogliamo thumbnail separata)
-          // Per semplicità Fase 4: includiamo solo il thumb_iv nei metadata; il server non la distingue.
-          void encThumbB64; // usato per futura integrazione upload thumbnail
-        } catch { /* thumbnail opzionale — non blocca l'invio */ }
-      }
+      // Thumbnail: nessun re-processing aggiuntivo — la Fase 4 è rimandata.
+      // FIX: il vecchio codice ri-cifrava l'intero file originale (8MB) e
+      // usava String.fromCharCode(...spread) O(n²) causando freeze totale
+      // su iOS Safari. Il risultato veniva poi scartato → rimosso.
+      const thumbIvBase64: string | undefined = undefined;
 
       const metaJson = JSON.stringify({
         e2e:       true,
@@ -1258,6 +1291,30 @@ export default function ChatPage({ onNavigate }: Props) {
       setDestroying(false);
       setDestroyTarget(null);
     }
+  }
+
+  function toggleMuteConversation() {
+    if (!activeConvId) return;
+    setMutedConvIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(activeConvId!)) next.delete(activeConvId!);
+      else next.add(activeConvId!);
+      try { localStorage.setItem("alpha_muted_convs", JSON.stringify([...next])); } catch {}
+      const muted = next.has(activeConvId!);
+      showToast(muted ? "🔕 Conversazione silenziata" : "🔔 Notifiche riattivate");
+      return next;
+    });
+  }
+
+  function handleClearChat() {
+    if (!activeConvId) return;
+    const confirmed = window.confirm(
+      "Cancellare tutti i messaggi di questa chat?\n\nL'operazione è locale — i messaggi riappariranno al prossimo accesso. La cancellazione definitiva sarà disponibile in una prossima versione.",
+    );
+    if (!confirmed) return;
+    setMessages([]);
+    setDecryptedTexts(new Map());
+    showToast("Chat cancellata");
   }
 
   async function handleBlockUser() {
@@ -1512,6 +1569,10 @@ export default function ChatPage({ onNavigate }: Props) {
               }}
               onBlockUser={handleBlockUser}
               onToast={showToast}
+              isMuted={activeConvId ? mutedConvIds.has(activeConvId) : false}
+              onSilenzia={toggleMuteConversation}
+              onMediaGallery={() => setShowMediaGallery(true)}
+              onClearChat={handleClearChat}
               trustStatus={trustStatus}
               onOpenSafetyNumber={() => setShowSafetyModal(true)}
             />
@@ -1942,6 +2003,65 @@ export default function ChatPage({ onNavigate }: Props) {
           onClose={() => setShowRedeem(false)}
           onSuccess={(convId) => void handleRedeemSuccess(convId)}
         />
+      )}
+
+      {/* ── Media Gallery ─────────────────────────────────────────────────── */}
+      {showMediaGallery && (
+        <div className="modal-backdrop" onClick={() => setShowMediaGallery(false)}>
+          <div className="media-gallery-sheet" onClick={(e) => e.stopPropagation()}>
+            <div className="media-gallery-header">
+              <h3>Media condivisi</h3>
+              <button className="contact-profile-close" onClick={() => setShowMediaGallery(false)} aria-label="Chiudi">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="18" height="18">
+                  <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                </svg>
+              </button>
+            </div>
+            {(() => {
+              const mediaMessages = messages.filter((m) => m.message_type === "media");
+              const items = mediaMessages
+                .map((m) => ({ msg: m, meta: decodeMediaMeta(getDisplayText(m)) }))
+                .filter((x) => x.meta && (x.meta.type === "image" || x.meta.type === "video" || x.meta.type === "document"));
+              if (items.length === 0) {
+                return (
+                  <div className="media-gallery-empty">
+                    <div style={{ fontSize: 40 }}>🖼️</div>
+                    <p>Nessun media condiviso in questa chat</p>
+                  </div>
+                );
+              }
+              return (
+                <div className="media-gallery-grid">
+                  {items.map(({ msg, meta }) => {
+                    const isImg = meta!.type === "image";
+                    const isDoc = meta!.type === "document";
+                    return (
+                      <div
+                        key={msg.id}
+                        className={`media-gallery-item${isDoc ? " media-gallery-doc" : ""}`}
+                        title={"filename" in meta! ? (meta as {filename:string}).filename : ""}
+                      >
+                        {isDoc ? (
+                          <>
+                            <div className="media-gallery-doc-icon">📄</div>
+                            <div className="media-gallery-doc-name">{"filename" in meta! ? (meta as {filename:string}).filename : "Documento"}</div>
+                          </>
+                        ) : (
+                          <div className="media-gallery-thumb-placeholder">
+                            {isImg ? "🖼️" : "🎬"}
+                          </div>
+                        )}
+                        <div className="media-gallery-time">
+                          {new Date(msg.sent_at).toLocaleDateString("it-IT", { day: "2-digit", month: "short" })}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+          </div>
+        </div>
       )}
 
       {/* ── Contact profile sheet ───────────────────────────────────────────── */}
