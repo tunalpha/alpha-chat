@@ -141,7 +141,7 @@ export default function LandingPage() {
 
         setVisible((prev) => [...prev, line]);
         if (line.speaker !== "status") {
-          void playNotifSound();
+          void playNotifSound('received');
           vibrate();
         }
 

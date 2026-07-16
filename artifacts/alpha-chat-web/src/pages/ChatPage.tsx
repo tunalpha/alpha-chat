@@ -401,7 +401,7 @@ export default function ChatPage({ onNavigate }: Props) {
   // ── Load messages + suono apertura conversazione ─────────────────────────
   useEffect(() => {
     if (!activeConvId) { setMessages([]); return; }
-    void playNotifSound();   // suono apertura conversazione
+    void playNotifSound('received');   // suono apertura conversazione
     setLoadingMsgs(true);
     apiListMessages(activeConvId, { limit: 50 })
       .then((res) => setMessages([...res.items].reverse()))
@@ -429,7 +429,7 @@ export default function ChatPage({ onNavigate }: Props) {
       switch (event.type) {
         case "message.new": {
           const msg = event.payload as unknown as MessageItem & { conversation_id: string };
-          void playNotifSound();   // suono ricezione messaggio
+          void playNotifSound('received');   // suono ricezione messaggio
           if (msg.conversation_id === activeConvId) {
             setMessages((prev) => {
               if (prev.some((m) => m.id === msg.id)) return prev;
@@ -522,7 +522,7 @@ export default function ChatPage({ onNavigate }: Props) {
       } else {
         // Invio normale o risposta
         await apiSendMessage(activeConvId, text, { replyToMessageId: replyTo?.id });
-        void playNotifSound();   // suono invio messaggio
+        void playNotifSound('sent');   // suono invio messaggio
         setReplyTo(null);
       }
     } catch (err) {
