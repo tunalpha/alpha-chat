@@ -1,0 +1,113 @@
+Secondo me la roadmap ora è molto matura.
+
+C’è solo una modifica importante che farei allo Sprint 16: non implementerei Signal “a pezzi”. Lo farei come una vera migrazione architetturale, con test approfonditi, perché è il cuore della sicurezza di Alpha Chat.
+
+Io lo strutturerei così:
+
+⸻
+
+🚀 Sprint 16 — Signal Protocol (M3)
+
+Fase 1 — Crittografia
+
+* Identity Key Pair
+* Signed PreKey
+* One-Time PreKeys
+* PreKey Bundle
+* X3DH
+* Session Builder
+
+⸻
+
+Fase 2 — Double Ratchet
+
+* Encrypt
+* Decrypt
+* Forward Secrecy
+* Rotazione automatica chiavi
+
+⸻
+
+Fase 3 — Media E2E
+
+* Foto
+* Video
+* Vocali
+* Documenti
+
+Il server riceve solo dati cifrati.
+
+⸻
+
+Fase 4 — Multi-device
+
+Ogni dispositivo ha:
+
+* Identity propria
+* Signed PreKey propria
+* Sessioni indipendenti
+
+⸻
+
+Fase 5 — Verifica identità
+
+* QR Code
+* Fingerprint
+* Stato verificato
+* Cambio chiavi → avviso
+
+⸻
+
+Fase 6 — Migrazione
+
+Il punto più delicato.
+
+I messaggi già esistenti non devono andare persi.
+
+Per ogni conversazione:
+
+* nuove chat → E2E
+* chat vecchie → migrazione progressiva
+* compatibilità temporanea
+
+⸻
+
+Fase 7 — Audit
+
+* Penetration test
+* Test replay attack
+* MITM
+* Key compromise
+* Device revoke
+* Restore
+* Performance
+
+⸻
+
+Dopo Sprint 16
+
+Solo allora il motto diventa pienamente coerente:
+
+Alpha Chat
+
+Il tuo bunker digitale.
+
+Solo tu e il destinatario potete leggere i messaggi.
+
+⸻
+
+Un ultimo consiglio
+
+Chiederei all’Agent di non inventare una propria implementazione crittografica.
+
+Il prompt dovrebbe specificare chiaramente:
+
+Usare esclusivamente la libreria ufficiale @signalapp/libsignal-client.
+
+Non implementare algoritmi crittografici personalizzati.
+
+Non modificare X3DH, Double Ratchet o Sender Keys.
+
+Seguire rigorosamente il protocollo Signal e limitarsi a integrarlo con l’architettura esistente.
+
+Questa è probabilmente la decisione tecnica più importante dell’intero progetto: nella crittografia è molto più sicuro integrare un protocollo consolidato che crearne uno nuovo. Se lo Sprint 16 sarà realizzato bene, rappresenterà il salto di qualità che trasforma Alpha Chat da una buona applicazione di messaggistica a una piattaforma con una solida base di sicurezza.
