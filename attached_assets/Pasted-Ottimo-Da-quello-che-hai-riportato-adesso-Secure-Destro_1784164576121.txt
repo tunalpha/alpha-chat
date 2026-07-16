@@ -1,0 +1,145 @@
+Ottimo. Da quello che hai riportato, adesso Secure Destroy è coerente con l’obiettivo che ti eri prefissato.
+
+La roadmap la aggiornerei così:
+
+✅ Sprint 1–12 (Completati)
+
+* Autenticazione
+* WebSocket
+* Chat
+* Reply
+* Edit
+* Delete
+* Inviti monouso
+* QR
+* Ricerca pubblica rimossa
+* Profili
+* Impostazioni
+* Dispositivi
+* Demo interattiva
+* Secure Destroy completo
+    * Hard delete MongoDB
+    * Eliminazione media
+    * Aggiornamento preview conversazioni
+    * Broadcast WebSocket
+    * Multi-device
+    * Reply invalidati
+    * Predisposizione autodistruzione
+
+⸻
+
+🚀 Sprint 13 — Media sicuri
+
+Non lo chiamerei più “Secure Destroy vocali”.
+
+Lo allargherei a Media Sicuri, così nasce un modulo completo.
+
+Comprende:
+
+* 🎙️ Messaggi vocali
+* 📷 Foto
+* 🎥 Video
+* 📄 Documenti
+* 🖼️ Anteprime
+* 📥 Download
+* 🔒 Cifratura E2E degli allegati
+* 🛡️ Secure Destroy dei media
+
+Così la logica di Secure Destroy viene riutilizzata per qualsiasi tipo di contenuto.
+
+⸻
+
+🚀 Sprint 14 — Chiamate protette
+
+* Audio
+* Video
+* WebRTC
+* TURN/STUN
+* Riduzione rumore
+* Verifica connessione
+
+⸻
+
+🚀 Sprint 15 — Privacy avanzata
+
+* Timer autodistruzione
+* Burn After Read
+* Modalità Ghost
+* Nascondi stato
+* Lista bloccati
+* Privacy avanzata
+
+⸻
+
+🚀 Sprint 16 — Sicurezza
+
+* Face ID
+* Touch ID
+* PIN
+* Password secondaria
+* Gestione sessioni
+* Gestione dispositivi
+
+⸻
+
+🚀 Sprint 17 — Organizzazione
+
+* Archivio
+* Preferiti
+* Cartelle
+* Ricerca locale
+* Filtri
+* Messaggi fissati
+
+Nota: con E2E la ricerca sul server non è possibile. Se vorrai una ricerca nei messaggi, dovrà essere locale sul dispositivo, dopo la decifratura.
+
+⸻
+
+🚀 Sprint 18 — Gruppi
+
+* Gruppi E2E
+* Ruoli
+* Amministratori
+* Permessi
+* QR gruppo
+* Inviti monouso
+
+⸻
+
+🚀 Sprint 19 — Ecosistema
+
+* Multi-dispositivo
+* PWA
+* Backup cifrato opzionale
+* Temi
+* Notifiche Push
+
+⸻
+
+🚀 Sprint 20 — Military Edition
+
+Il traguardo finale.
+
+* 🛡️ Panic Mode
+* 🛡️ Distruzione completa conversazione
+* 🛡️ Distruzione completa account
+* 🛡️ Burn After Read
+* 🛡️ Autodistruzione programmata
+* 🛡️ Zero Tracking
+* 🛡️ Modalità Ghost
+* 🛡️ Audit di sicurezza
+
+⸻
+
+Una nota importante
+
+Quando arriverete allo Sprint 15, io farei una pausa per un audit completo:
+
+* sicurezza;
+* prestazioni;
+* consumo batteria;
+* memoria;
+* sincronizzazione multi-dispositivo;
+* test su iPhone, Android e desktop.
+
+Arrivare allo Sprint 20 con una base già solida sarà molto più semplice che dover correggere problemi accumulati lungo il percorso. Inoltre, se l’obiettivo è un prodotto orientato alla privacy, un audit approfondito prima della versione 1.0 rafforza la credibilità del progetto.

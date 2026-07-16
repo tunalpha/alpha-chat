@@ -1,48 +1,64 @@
 ---
 name: Alpha Chat Roadmap
-description: Roadmap ufficiale Sprint 12–20, approvata dal CTO
+description: Roadmap ufficiale Sprint 13–20, approvata dal CTO (aggiornamento post Sprint 12)
 ---
 
 ## Stato
-- Sprint 1–11: ✅ Completati
-- Sprint 12 (Secure Destroy): ✅ Completato (hard delete, WS message.destroyed, dissolve animation, audit log, dialog conferma, suono destroy)
+- Sprint 1–12: ✅ Completati
+  - Include: Auth, WebSocket, Chat E2E, Reply, Edit, Delete, Inviti monouso, QR,
+    Ricerca pubblica rimossa, Profili, Impostazioni, Dispositivi, Demo interattiva,
+    Secure Destroy completo (hard delete MongoDB, eliminazione media, aggiornamento
+    preview conversazioni, broadcast WebSocket, multi-device, reply invalidati,
+    predisposizione autodistruzione)
 
 ## Prossimi Sprint
 
-### Sprint 13 — Vocali (quasi completo)
-Rimane solo:
-- 🛡 Secure Destroy dei messaggi vocali
+### Sprint 13 — Media sicuri (PROSSIMO)
+Modulo completo allegati — la logica Secure Destroy viene riutilizzata per ogni tipo di contenuto.
+- 🎙️ Messaggi vocali (Secure Destroy)
+- 📷 Foto
+- 🎥 Video
+- 📄 Documenti
+- 🖼️ Anteprime
+- 📥 Download
+- 🔒 Cifratura E2E degli allegati
+- 🛡️ Secure Destroy dei media
 
 ### Sprint 14 — Chiamate protette
-- Chiamate vocali + Videochiamate
-- WebRTC, TURN/STUN, riduzione rumore
-- Verifica connessione E2E, indicatore "Connessione verificata"
+- Audio + Video, WebRTC, TURN/STUN, Riduzione rumore, Verifica connessione E2E
 
 ### Sprint 15 — Privacy avanzata
-- Timer autodistruzione, Modalità Ghost
-- Nascondi ultimo accesso / online / avatar / bio
-- Gestione utenti bloccati
+- Timer autodistruzione, Burn After Read, Modalità Ghost
+- Nascondi stato, Lista bloccati, Privacy avanzata
+⚠️ Dopo Sprint 15: AUDIT COMPLETO (sicurezza, performance, batteria, memoria,
+   sincronizzazione multi-device, test iPhone/Android/desktop) prima di procedere.
 
 ### Sprint 16 — Sicurezza
-- PIN Alpha Chat, Face ID, Touch ID, Password secondaria
-- Sessioni attive, gestione dispositivi, logout remoto, avviso nuovo accesso
+- Face ID, Touch ID, PIN, Password secondaria, Gestione sessioni, Gestione dispositivi
 
 ### Sprint 17 — Organizzazione
-- Archivio, Preferiti, Cartelle, Ricerca globale, Messaggi fissati, Filtri
+- Archivio, Preferiti, Cartelle, Ricerca locale (client-side dopo decifratura — E2E
+  rende impossibile la ricerca server-side), Filtri, Messaggi fissati
 
 ### Sprint 18 — Gruppi
-- Gruppi E2E, Amministratori, Ruoli, Permessi
-- Inviti monouso, QR di gruppo, Broadcast
+- Gruppi E2E, Ruoli, Amministratori, Permessi, QR gruppo, Inviti monouso
 
-### Sprint 19 — Ecosistema Alpha
-- Installazione PWA, Multi-dispositivo, Backup cifrato opzionale
-- Sincronizzazione, Temi, Notifiche Push
+### Sprint 19 — Ecosistema
+- Multi-dispositivo, PWA, Backup cifrato opzionale, Temi, Notifiche Push
 
-### Sprint 20 — Military Edition (punto di arrivo)
-- Panic Mode, Distruzione completa conversazione/account/programmata
-- Modalità infiltrazione (Ghost), Verifica integrità dispositivo
-- Codici invito monouso avanzati, Zero tracking, Nessuna ricerca pubblica
-- Audit di sicurezza completo
+### Sprint 20 — Military Edition (traguardo finale)
+- 🛡️ Panic Mode
+- 🛡️ Distruzione completa conversazione
+- 🛡️ Distruzione completa account
+- 🛡️ Burn After Read
+- 🛡️ Autodistruzione programmata
+- 🛡️ Zero Tracking
+- 🛡️ Modalità Ghost
+- 🛡️ Audit di sicurezza completo
+
+## Note architetturali
+- Ricerca messaggi: solo client-side dopo decifratura (E2E rende impossibile server-side)
+- Audit completo obbligatorio tra Sprint 15 e 16
 
 ## Motto
 "Il tuo bunker digitale."
