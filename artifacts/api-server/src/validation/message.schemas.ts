@@ -28,12 +28,15 @@ export const SendMessageSchema = z.object({
     .min(1, "ciphertext obbligatorio")
     .max(65536, "ciphertext troppo lungo"),
 
-  /** Signal Protocol message type: 1=PreKeyWhisperMessage, 2=WhisperMessage */
+  /**
+   * Signal Protocol message type.
+   * 1 = WhisperMessage (Double Ratchet)
+   * 3 = PreKeyWhisperMessage (X3DH + primo Double Ratchet)
+   */
   ciphertext_type: z
     .number()
     .int()
-    .min(1)
-    .max(2),
+    .refine((v) => v === 1 || v === 3, { message: "ciphertext_type deve essere 1 o 3" }),
 
   /**
    * ID della chiave SPK/OPK usata per la cifratura.
@@ -76,6 +79,21 @@ export const SendMessageSchema = z.object({
    * non appena il destinatario lo legge.
    */
   burn_after_read: z.boolean().optional().default(false),
+
+  /**
+   * Fase 4 — Multi-device: array di ciphertext, uno per device del destinatario.
+   * Il campo ciphertext contiene il body del primo device (compat. legacy).
+   */
+  device_ciphertexts: z
+    .array(
+      z.object({
+        device_id: z.string().min(1),
+        body: z.string().min(1),
+        type: z.number().int().refine((v) => v === 1 || v === 3),
+      }),
+    )
+    .optional()
+    .default([]),
 });
 
 export type SendMessageInput = z.infer<typeof SendMessageSchema>;

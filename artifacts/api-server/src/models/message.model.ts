@@ -46,10 +46,16 @@ export interface IMessage {
   // --- Contenuto cifrato (Signal Protocol) ---
   /** base64 — null solo per messaggi di sistema */
   ciphertext: string | null;
-  /** Signal Protocol message type: 1=PreKeyWhisperMessage, 2=WhisperMessage */
+  /** Signal Protocol message type: 1=WhisperMessage, 3=PreKeyWhisperMessage */
   ciphertext_type: number | null;
   /** ID della chiave SPK/OPK del mittente */
   sender_key_id: number | null;
+  /**
+   * Fase 4 — Multi-device: mappa device_id → ciphertext cifrato per quel device.
+   * Il server non interpreta mai il contenuto (opaco, E2E).
+   * Null per messaggi legacy (pre-Fase 4).
+   */
+  device_ciphertexts: Array<{ device_id: string; body: string; type: number }> | null;
 
   // --- Tipo ---
   message_type: MessageType;
@@ -172,6 +178,9 @@ const messageSchema = new Schema<IMessageDocument>(
     destroy_at: { type: Date, default: null },
 
     burn_after_read: { type: Boolean, default: false },
+
+    // Fase 4: multi-device — array opaco al server
+    device_ciphertexts: { type: Schema.Types.Mixed, default: null },
   },
   { timestamps: true },
 );

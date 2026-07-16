@@ -69,3 +69,43 @@ export const rotateSignedPreKey: RequestHandler = async (req, res) => {
   await service.rotateSPK(req.user!.userId, input);
   res.json({ success: true });
 };
+
+// ---------------------------------------------------------------------------
+// Fase 4: multi-device
+// ---------------------------------------------------------------------------
+
+/** GET /api/v1/keys/bundle/:userId/all — tutti i bundle del destinatario */
+export const fetchAllBundles: RequestHandler = async (req, res) => {
+  const targetUserId = Array.isArray(req.params["userId"])
+    ? req.params["userId"][0]
+    : req.params["userId"];
+
+  if (!targetUserId) {
+    res.status(400).json({ error: "userId mancante" });
+    return;
+  }
+
+  const bundles = await service.fetchAllKeyBundles(req.user!.userId, targetUserId);
+  res.json({ success: true, data: bundles });
+};
+
+/** GET /api/v1/keys/devices — elenco device corrente */
+export const listDevices: RequestHandler = async (req, res) => {
+  const devices = await service.listDevices(req.user!.userId);
+  res.json({ success: true, data: devices });
+};
+
+/** DELETE /api/v1/keys/devices/:deviceId — revoca un device */
+export const revokeDevice: RequestHandler = async (req, res) => {
+  const deviceId = Array.isArray(req.params["deviceId"])
+    ? req.params["deviceId"][0]
+    : req.params["deviceId"];
+
+  if (!deviceId) {
+    res.status(400).json({ error: "deviceId mancante" });
+    return;
+  }
+
+  await service.revokeDevice(req.user!.userId, deviceId);
+  res.json({ success: true });
+};

@@ -153,3 +153,99 @@ export async function getKeyCount(userId: string): Promise<KeyCountResponse> {
     needsReplenishment: count < 20,
   };
 }
+
+// ---------------------------------------------------------------------------
+// Fase 4: multi-device
+// ---------------------------------------------------------------------------
+
+export interface DeviceInfo {
+  deviceId: string;
+  registrationId: number;
+  /** Data ultima rotazione SPK (proxy per "ultimo login") */
+  lastActiveAt: string;
+  otpkCount: number;
+}
+
+/**
+ * Elenca tutti i device registrati per l'utente corrente.
+ */
+export async function listDevices(userId: string): Promise<DeviceInfo[]> {
+  const uid = new mongoose.Types.ObjectId(userId);
+  const bundles = await repo.listAllBundlesForUser(uid);
+  return bundles.map((b) => ({
+    deviceId: b.device_id,
+    registrationId: b.registration_id,
+    lastActiveAt: b.signed_pre_key_rotated_at?.toISOString() ?? new Date(0).toISOString(),
+    otpkCount: b.otpk_count ?? 0,
+  }));
+}
+
+/**
+ * Revoca un device: cancella il suo key bundle dal server.
+ * Dopo la revoca il device non può più stabilire nuove sessioni né ricevere messaggi.
+ *
+ * ⚠ Solo l'owner (userId) può revocare i propri device.
+ *    Non si può revocare l'unico device rimasto (protezione lock-out).
+ */
+export async function revokeDevice(
+  userId: string,
+  targetDeviceId: string,
+): Promise<void> {
+  const uid = new mongoose.Types.ObjectId(userId);
+  const allBundles = await repo.listAllBundlesForUser(uid);
+
+  if (allBundles.length <= 1) {
+    throw Object.assign(
+      new Error("Non puoi revocare l'unico device registrato"),
+      { statusCode: 400, code: "LAST_DEVICE_REVOKE" },
+    );
+  }
+
+  const ok = await repo.deleteBundleForDevice(uid, targetDeviceId);
+  if (!ok) {
+    throw Object.assign(
+      new Error("Device non trovato"),
+      { statusCode: 404, code: "DEVICE_NOT_FOUND" },
+    );
+  }
+}
+
+/**
+ * Fetch di TUTTI i bundle del destinatario per X3DH multi-device.
+ * Ogni bundle include il pop atomico di una OTPK.
+ */
+export async function fetchAllKeyBundles(
+  requestingUserId: string,
+  targetUserId: string,
+): Promise<KeyBundleResponse[]> {
+  const targetUser = await UserModel.findById(targetUserId)
+    .select("_id status").lean().exec();
+
+  if (!targetUser || targetUser.status !== "active") {
+    throw Object.assign(new Error("Utente non trovato"), { statusCode: 404 });
+  }
+
+  const uid = new mongoose.Types.ObjectId(targetUserId);
+  const results = await repo.fetchAllBundlesForX3DH(uid);
+
+  if (results.length === 0) {
+    throw Object.assign(
+      new Error("Bundle Signal non ancora disponibile per questo utente"),
+      { statusCode: 404, code: "SIGNAL_BUNDLE_NOT_FOUND" },
+    );
+  }
+
+  return results.map(({ bundle, poppedOtpk }) => ({
+    userId: targetUserId,
+    deviceId: bundle.device_id,
+    registrationId: bundle.registration_id,
+    identityKey: bundle.identity_key,
+    signedPreKeyId: bundle.signed_pre_key_id,
+    signedPreKey: bundle.signed_pre_key,
+    signedPreKeySignature: bundle.signed_pre_key_signature,
+    oneTimePreKey: poppedOtpk
+      ? { keyId: poppedOtpk.key_id, publicKey: poppedOtpk.public_key }
+      : null,
+    hasOneTimePreKey: poppedOtpk !== null,
+  }));
+}

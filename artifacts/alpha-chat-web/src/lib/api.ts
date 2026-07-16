@@ -110,6 +110,16 @@ export interface MessageItem {
   server_received_at: string;
   status: string;
   deleted_for_everyone: boolean;
+  /** Fase 4: un ciphertext per device del destinatario (null per messaggi legacy) */
+  device_ciphertexts?: Array<{ device_id: string; body: string; type: number }> | null;
+}
+
+/** Informazioni dispositivo (Device Manager) */
+export interface DeviceInfo {
+  deviceId: string;
+  registrationId: number;
+  lastActiveAt: string;
+  otpkCount: number;
 }
 
 /** Campi E2E aggiuntivi presenti nei media meta di Fase 3 */
@@ -486,6 +496,8 @@ export async function apiSendMessage(
     signal?: { body: string; type: number };
     /** Fase 2: client_message_id generato dal chiamante (per sentCache) */
     clientMessageId?: string;
+    /** Fase 4: array multi-device ciphertexts */
+    deviceCiphertexts?: Array<{ device_id: string; body: string; type: number }>;
   } = {},
 ): Promise<MessageItem> {
   const ciphertext = options.signal?.body ?? encodeMessage(text);
@@ -499,6 +511,7 @@ export async function apiSendMessage(
     sent_at: new Date().toISOString(),
     reply_to_message_id: options.replyToMessageId ?? null,
     burn_after_read: options.burnAfterRead ?? false,
+    device_ciphertexts: options.deviceCiphertexts ?? [],
   });
 }
 
@@ -561,9 +574,11 @@ export async function apiUploadEncryptedMedia(
     waveform?: number[];
     originalFilename?: string;
     onProgress?: (pct: number) => void;
+    /** Fase 4: thumbnail cifrata (base64) — mai in chiaro al server */
+    encryptedThumbnail?: string;
   } = {},
 ): Promise<MediaUploadResult> {
-  const { onProgress, durationMs, waveform, originalFilename } = options;
+  const { onProgress, durationMs, waveform, originalFilename, encryptedThumbnail } = options;
   onProgress?.(5);
 
   const arrayBuffer = await encryptedBlob.arrayBuffer();
@@ -579,9 +594,10 @@ export async function apiUploadEncryptedMedia(
     mime_type:       originalMimeType,
     conversation_id: conversationId,
     encrypted:       true,
-    ...(durationMs      != null ? { duration_ms: Math.round(durationMs) } : {}),
-    ...(waveform                ? { waveform }                            : {}),
-    ...(originalFilename        ? { original_filename: originalFilename } : {}),
+    ...(durationMs         != null  ? { duration_ms: Math.round(durationMs) } : {}),
+    ...(waveform                    ? { waveform }                            : {}),
+    ...(originalFilename            ? { original_filename: originalFilename } : {}),
+    ...(encryptedThumbnail          ? { thumbnail: encryptedThumbnail }       : {}),
   });
 
   onProgress?.(100);
@@ -598,6 +614,7 @@ export async function apiSendMediaMessage(
   signal?: { body: string; type: number },
   clientMessageId?: string,
   plaintextMetaFallback?: string,
+  deviceCiphertexts?: Array<{ device_id: string; body: string; type: number }>,
 ): Promise<MessageItem> {
   const ciphertext = signal?.body
     ?? (plaintextMetaFallback ? btoa(plaintextMetaFallback) : "");
@@ -609,6 +626,7 @@ export async function apiSendMediaMessage(
     message_type:    "media",
     media_id:        mediaId,
     sent_at:         new Date().toISOString(),
+    device_ciphertexts: deviceCiphertexts ?? [],
   });
 }
 
@@ -793,6 +811,25 @@ export async function apiFetchMediaBlob(mediaId: string): Promise<string> {
  * Fase 3: Scarica un blob cifrato e lo decifra localmente con AES-256-GCM.
  * Il server non partecipa alla decifratura — zero-knowledge completo.
  */
+// ---------------------------------------------------------------------------
+// Fase 4: Device Manager + Multi-device key bundles
+// ---------------------------------------------------------------------------
+
+/** Tutti i bundle Signal del destinatario (uno per device attivo) */
+export async function apiGetAllKeyBundles(userId: string): Promise<ApiReceivedKeyBundle[]> {
+  return request<ApiReceivedKeyBundle[]>("GET", `/keys/bundle/${userId}/all`);
+}
+
+/** Elenco device dell'utente corrente */
+export async function apiListDevices(): Promise<DeviceInfo[]> {
+  return request<DeviceInfo[]>("GET", "/keys/devices");
+}
+
+/** Revoca un device (cancella il suo bundle Signal dal server) */
+export async function apiRevokeDevice(deviceId: string): Promise<void> {
+  return request<void>("DELETE", `/keys/devices/${deviceId}`);
+}
+
 export async function apiFetchAndDecryptMediaBlob(
   mediaId: string,
   keyBase64: string,

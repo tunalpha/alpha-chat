@@ -26,8 +26,19 @@ export type {
 // ── Fase 3: cifratura media E2E ──────────────────────────────────────────────
 export {
   encryptMediaBlob,
+  encryptBlobWithKey,
   decryptAndCreateObjectUrl,
   rawToBase64,
   base64ToRaw,
   base64ToUint8Array,
 } from "./media-crypto";
+
+// ── Fase 4: multi-device ─────────────────────────────────────────────────────
+export {
+  signalEncryptMulti,
+  signalDecryptFromDeviceCiphertexts,
+  ensureSessionForBundle,
+  rebuildSessionForBundle,
+  hashDeviceId,
+  type DeviceCiphertext,
+} from "./multi-device";

@@ -1,0 +1,137 @@
+Direi che siete arrivati a un punto molto importante. Se Fase 2 e Fase 3 sono realmente operative, non passerei ancora a Safety Number. Chiuderei prima le limitazioni rimaste, perché sono architetturali.
+
+La roadmap la riorganizzerei così:
+
+Stato	Sprint 16	Obiettivo
+✅	Fase 1	Chiavi Signal
+✅	Fase 2	Messaggi E2E
+✅	Fase 3	Media E2E
+▶️	Fase 4	Multi-device reale + Thumbnail E2E + Local encrypted cache
+⏳	Fase 5	Safety Numbers + verifica identità
+⏳	Fase 6	Migrazione definitiva chat legacy
+⏳	Fase 7	Audit finale
+
+⸻
+
+Io farei costruire la Fase 4
+
+Non solo “deviceId fisso”.
+
+1. Multi-device vero
+
+Ogni dispositivo deve avere:
+
+* Identity condivisa
+* SignedPreKey propria
+* OneTimePreKey proprie
+* Sessioni indipendenti
+
+esattamente come Signal.
+
+⸻
+
+2. Local encrypted cache
+
+È la limitazione che hai già visto.
+
+Dopo refresh oggi:
+
+* media propri
+* vocali proprie
+
+devono essere riscaricati.
+
+Meglio invece:
+
+Media cifrato
+↓
+IndexedDB
+↓
+AES ancora cifrato
+↓
+decrypt locale
+↓
+render
+
+Mai plaintext persistente.
+
+⸻
+
+3. Thumbnail E2E
+
+Oggi (dal report):
+
+Thumbnail non cifrate.
+
+Questa è la cosa che eliminerei subito.
+
+Il server deve vedere soltanto:
+
+blob AES
+thumbnail AES
+metadata minimi
+
+⸻
+
+4. Device Manager
+
+Prepara già la Fase 5.
+
+Schermata tipo:
+
+iPhone 16
+Attivo
+MacBook
+Windows
+Chrome
+Safari
+
+Con:
+
+* revoca dispositivo
+* logout remoto
+* rename
+
+⸻
+
+5. Recovery
+
+Se un device viene perso:
+
+* nuove sessioni
+* revoke automatico
+* ricreazione bundle
+
+⸻
+
+Il prompt che darei all’agente
+
+Sprint 16 – Fase 4: Multi-device reale + Cache locale cifrata + Thumbnail E2E
+
+Obiettivo: eliminare tutte le limitazioni residue dell’architettura E2E.
+
+Implementare:
+
+* Multi-device conforme al modello Signal (sessioni indipendenti per dispositivo).
+* Local encrypted cache in IndexedDB per media e vocali.
+* Thumbnail cifrate con AES-256-GCM.
+* Device Manager con elenco dispositivi, revoca e logout remoto.
+* Recovery automatico dopo perdita dispositivo o rotazione chiavi.
+
+Vincoli:
+
+* Nessun plaintext persistente.
+* Nessuna chiave privata sul server.
+* Nessun media o thumbnail leggibile dal server.
+* Tutte le funzioni esistenti (Secure Destroy, Burn After Read, Disappearing Messages, Reply, Edit, Media, Vocali) devono continuare a funzionare.
+
+Lo sprint termina solo con:
+
+* typecheck backend/frontend ✅
+* build pulita ✅
+* test automatici ≥100 tutti verdi ✅
+* benchmark prestazioni ✅
+* audit Zero Knowledge aggiornato ✅
+* dimostrazione che nessun dispositivo revocato può più decifrare nuovi messaggi.
+
+A questo punto Alpha Chat inizierebbe ad avere un’architettura molto vicina a quella delle principali app di messaggistica E2E moderne, con le ultime differenze concentrate soprattutto nella verifica delle identità (Safety Numbers) e nella migrazione completa delle chat legacy.

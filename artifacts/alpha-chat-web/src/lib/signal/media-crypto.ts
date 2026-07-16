@@ -57,6 +57,25 @@ export function generateIV(): { iv: Uint8Array; ivBase64: string } {
 // ---------------------------------------------------------------------------
 
 /**
+ * Cifra un Blob con AES-256-GCM usando una chiave AES esistente (base64).
+ * Genera un IV fresco internamente.
+ *
+ * Usato in Fase 4 per cifrare le thumbnail con la stessa chiave del blob principale.
+ */
+export async function encryptBlobWithKey(
+  blob: Blob,
+  keyBase64: string,
+): Promise<{ encryptedBlob: Blob; ivBase64: string }> {
+  const raw = base64ToRaw(keyBase64);
+  const key = await crypto.subtle.importKey(
+    "raw", raw, { name: "AES-GCM", length: AES_KEY_BITS }, false, ["encrypt"],
+  );
+  const { iv, ivBase64 } = generateIV();
+  const encryptedBlob    = await encryptBlob(blob, key, iv);
+  return { encryptedBlob, ivBase64 };
+}
+
+/**
  * Cifra un Blob con AES-256-GCM.
  * Restituisce un Blob con byte opachi (include autotag GCM a 128 bit).
  *

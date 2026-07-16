@@ -52,6 +52,8 @@ export class MessageRepository {
     status?: MessageStatus;
     burnAfterRead?: boolean;
     expiresAt?: Date | null;
+    /** Fase 4: array di ciphertext per device del destinatario */
+    deviceCiphertexts?: Array<{ device_id: string; body: string; type: number }> | null;
   }): Promise<IMessageDocument> {
     const now = new Date();
 
@@ -92,6 +94,7 @@ export class MessageRepository {
       media_id: params.mediaId ?? null,
       burn_after_read: params.burnAfterRead ?? false,
       expires_at: params.expiresAt ?? null,
+      device_ciphertexts: params.deviceCiphertexts ?? null,
     });
 
     // 3. Aggiorna last_message_id sulla conversazione (non critico per ordering)

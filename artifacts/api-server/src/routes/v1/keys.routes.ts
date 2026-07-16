@@ -27,6 +27,9 @@ import {
   getKeyCount,
   replenishOneTimePreKeys,
   rotateSignedPreKey,
+  fetchAllBundles,
+  listDevices,
+  revokeDevice,
 } from "../../controllers/signal-key-bundle.controller";
 
 const router = Router();
@@ -54,5 +57,15 @@ router.put(
   validate("body", RotateSignedPreKeySchema),
   rotateSignedPreKey,
 );
+
+// Fase 4: multi-device
+/** Fetch di TUTTI i bundle del destinatario (per cifratura multi-device) */
+router.get("/bundle/:userId/all", validate("params", FetchBundleParamSchema), fetchAllBundles);
+
+/** Elenco device dell'utente corrente */
+router.get("/devices", listDevices);
+
+/** Revoca un device */
+router.delete("/devices/:deviceId", revokeDevice);
 
 export default router;

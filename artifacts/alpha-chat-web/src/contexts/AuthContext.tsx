@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useCallback } fr
 import { loadAuth, saveAuth, clearAuth, getDeviceId, type StoredAuth } from "../lib/auth";
 import { apiLogin, apiRegister, apiLogout, apiLogoutAll, type LoginInput, type RegisterInput, type AuthResult } from "../lib/api";
 import { initSignalKeys, clearSignalKeys } from "../lib/signal";
+import { initMediaCache, clearMediaCache } from "../lib/media-cache";
 
 interface AuthContextValue {
   auth: StoredAuth | null;
@@ -47,9 +48,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setAuth(stored);
     // Inizializza chiavi Signal in background — non blocca il login
     // Zero Plaintext Rule: le chiavi private rimangono in IndexedDB
-    void initSignalKeys(result.user.id, getDeviceId()).catch(() => {
+    const devId = getDeviceId();
+    void initSignalKeys(result.user.id, devId).catch(() => {
       // Errore non critico in Fase 1 — verrà ritentato al prossimo login
     });
+    void initMediaCache(result.user.id, devId).catch(() => {});
   }, []);
 
   const register = useCallback(async (input: RegisterInput) => {
@@ -58,9 +61,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     saveAuth(stored);
     setAuth(stored);
     // Genera e carica il bundle Signal subito dopo la registrazione
-    void initSignalKeys(result.user.id, getDeviceId()).catch(() => {
+    const devId = getDeviceId();
+    void initSignalKeys(result.user.id, devId).catch(() => {
       // Errore non critico in Fase 1
     });
+    void initMediaCache(result.user.id, devId).catch(() => {});
   }, []);
 
   const logout = useCallback(async () => {
@@ -68,9 +73,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await apiLogout();
     clearAuth();
     setAuth(null);
-    // Pulisce le chiavi Signal locali al logout
+    // Pulisce le chiavi Signal e la media cache locali al logout
     if (current?.userId && current.deviceId) {
       void clearSignalKeys(current.userId, current.deviceId).catch(() => {});
+      void clearMediaCache(current.userId, current.deviceId).catch(() => {});
     }
   }, []);
 
@@ -81,6 +87,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setAuth(null);
     if (current?.userId && current.deviceId) {
       void clearSignalKeys(current.userId, current.deviceId).catch(() => {});
+      void clearMediaCache(current.userId, current.deviceId).catch(() => {});
     }
   }, []);
 

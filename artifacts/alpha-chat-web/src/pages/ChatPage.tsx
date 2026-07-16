@@ -15,6 +15,7 @@ import {
   apiSendMediaMessage,
   apiMarkRead,
   apiSetDisappearing,
+  apiGetAllKeyBundles,
   decodeMessage,
   decodeVoiceMeta,
   decodeMediaMeta,
@@ -23,7 +24,22 @@ import {
   type MessageItem,
   type MediaMeta,
 } from "../lib/api";
-import { signalEncrypt, signalDecrypt, safeDecodeForPreview, encryptMediaBlob } from "../lib/signal";
+import {
+  signalEncrypt,
+  signalDecrypt,
+  safeDecodeForPreview,
+  encryptMediaBlob,
+  encryptBlobWithKey,
+  signalEncryptMulti,
+  signalDecryptFromDeviceCiphertexts,
+} from "../lib/signal";
+import {
+  initMediaCache,
+  cacheOwnMessageMeta,
+  cacheDecryptedMeta,
+  getMetaByMessageId,
+  getMetaByClientId,
+} from "../lib/media-cache";
 import VoiceRecorder, { type VoiceBlob } from "../components/VoiceRecorder";
 import { attachAudioUnlockListener, playNotifSound } from "../lib/notifSound";
 import VoiceMessage from "../components/VoiceMessage";
@@ -31,6 +47,7 @@ import MediaMessage from "../components/MediaMessage";
 import MediaViewer from "../components/MediaViewer";
 import InviteModal from "../components/InviteModal";
 import RedeemModal from "../components/RedeemModal";
+import DeviceManager from "../components/DeviceManager";
 
 interface Props {
   onNavigate: (view: AppView) => void;
@@ -412,6 +429,7 @@ export default function ChatPage({ onNavigate }: Props) {
   const [loggingOut, setLoggingOut] = useState(false);
   const [showInvite, setShowInvite] = useState(false);
   const [showRedeem, setShowRedeem] = useState(false);
+  const [showDeviceManager, setShowDeviceManager] = useState(false);
   const [showContactProfile, setShowContactProfile] = useState(false);
   const [showChatSearch, setShowChatSearch] = useState(false);
   const [chatSearchQuery, setChatSearchQuery] = useState("");
@@ -481,29 +499,69 @@ export default function ChatPage({ onNavigate }: Props) {
       setDecryptedTexts((prev) => new Map(prev).set(msg.id, ""));
       return;
     }
+
     if (msg.sender_id === auth.userId) {
-      // Messaggio/media inviato da noi: usa la cache locale (ha il plaintext/metaJson)
+      // Messaggio inviato da noi: sentCache → media cache → fallback
       const cached = sentCacheRef.current.get(msg.client_message_id);
+      if (cached !== undefined) {
+        setDecryptedTexts((prev) => new Map(prev).set(msg.id, cached));
+        return;
+      }
+      // Fase 4: media cache per clientId (utile dopo page reload)
+      if (msg.message_type === "media") {
+        const cachedByClient = await getMetaByClientId(msg.client_message_id);
+        if (cachedByClient) {
+          setDecryptedTexts((prev) => new Map(prev).set(msg.id, cachedByClient));
+          void cacheDecryptedMeta(msg.id, cachedByClient);
+          return;
+        }
+      }
       setDecryptedTexts((prev) =>
         new Map(prev).set(
           msg.id,
-          cached ?? (msg.message_type === "media" ? msg.ciphertext! : decodeMessage(msg.ciphertext!)),
+          msg.message_type === "media" ? msg.ciphertext! : decodeMessage(msg.ciphertext!),
         ),
       );
       return;
     }
+
+    // Messaggio ricevuto
     try {
-      const text = await signalDecrypt(
-        auth.userId,
-        auth.deviceId,
-        msg.sender_id,
-        msg.ciphertext,
-        msg.ciphertext_type ?? null,
-      );
+      let text: string;
+      // Fase 4: prova prima device_ciphertexts (multi-device)
+      if (msg.device_ciphertexts && msg.device_ciphertexts.length > 0) {
+        const found = await signalDecryptFromDeviceCiphertexts(
+          auth.userId, auth.deviceId, msg.sender_id, msg.device_ciphertexts,
+        );
+        if (found !== null) {
+          text = found;
+        } else {
+          // Il mio device non è nella lista → fallback campo principale
+          text = await signalDecrypt(
+            auth.userId, auth.deviceId, msg.sender_id,
+            msg.ciphertext, msg.ciphertext_type ?? null,
+          );
+        }
+      } else {
+        text = await signalDecrypt(
+          auth.userId, auth.deviceId, msg.sender_id,
+          msg.ciphertext, msg.ciphertext_type ?? null,
+        );
+      }
       setDecryptedTexts((prev) => new Map(prev).set(msg.id, text));
+      // Fase 4: cache metadata media per reload futuro
+      if (msg.message_type === "media") {
+        void cacheDecryptedMeta(msg.id, text);
+      }
     } catch {
       if (msg.message_type === "media") {
-        // Fallback legacy per media pre-Fase 3 (ciphertext è il base64-JSON diretto)
+        // Fase 4: controlla la cache prima del fallback legacy
+        const cached = await getMetaByMessageId(msg.id);
+        if (cached) {
+          setDecryptedTexts((prev) => new Map(prev).set(msg.id, cached));
+          return;
+        }
+        // Fallback legacy (pre-Fase 3: ciphertext è base64-JSON diretto)
         setDecryptedTexts((prev) => new Map(prev).set(msg.id, msg.ciphertext ?? ""));
       } else {
         setDecryptedTexts((prev) =>
@@ -681,16 +739,30 @@ export default function ChatPage({ onNavigate }: Props) {
   }, [on, activeConvId]);
 
   // ── Helpers Signal — encrypt per il destinatario attivo ─────────────────
-  async function encryptForActive(text: string): Promise<{ body: string; type: number } | undefined> {
+  async function encryptForActive(text: string): Promise<{
+    body: string;
+    type: number;
+    deviceCiphertexts: Array<{ device_id: string; body: string; type: number }>;
+  } | undefined> {
     if (!auth || !activeConvId) return undefined;
     const activeConv = conversations.find((c) => c.conversation_id === activeConvId);
     const recipientId = activeConv?.other_user?.user_id;
     if (!recipientId) return undefined;
     try {
-      return await signalEncrypt(auth.userId, auth.deviceId, recipientId, text);
+      // Fase 4: fan-out multi-device
+      const allBundles = await apiGetAllKeyBundles(recipientId);
+      const { primary, deviceCiphertexts } = await signalEncryptMulti(
+        auth.userId, auth.deviceId, recipientId, text, allBundles,
+      );
+      return { ...primary, deviceCiphertexts };
     } catch {
-      // Sessione non ancora disponibile o errore temporaneo → fallback legacy
-      return undefined;
+      // Fallback a single-device (backward compat / primo avvio)
+      try {
+        const ct = await signalEncrypt(auth.userId, auth.deviceId, recipientId, text);
+        return { ...ct, deviceCiphertexts: [] };
+      } catch {
+        return undefined;
+      }
     }
   }
 
@@ -727,6 +799,7 @@ export default function ChatPage({ onNavigate }: Props) {
           burnAfterRead,
           signal,
           clientMessageId,
+          deviceCiphertexts: signal?.deviceCiphertexts,
         });
         void playNotifSound('sent');   // suono invio messaggio
         setReplyTo(null);
@@ -841,8 +914,12 @@ export default function ChatPage({ onNavigate }: Props) {
 
       const clientMessageId = crypto.randomUUID();
       sentCacheRef.current.set(clientMessageId, metaJson);
+      void cacheOwnMessageMeta(clientMessageId, metaJson);
       const signal = await encryptForActive(metaJson);
-      await apiSendMediaMessage(activeConvId, media.media_id, signal, clientMessageId, metaJson);
+      await apiSendMediaMessage(
+        activeConvId, media.media_id, signal, clientMessageId, metaJson,
+        signal?.deviceCiphertexts,
+      );
     } catch (err) {
       showToast(err instanceof Error ? err.message : "Errore invio vocale");
     } finally {
@@ -884,6 +961,25 @@ export default function ChatPage({ onNavigate }: Props) {
                   : file.type.startsWith("audio/")   ? "voice"
                   : "document";
 
+      // Fase 4: thumbnail E2E per immagini e video
+      let thumbIvBase64: string | undefined;
+      if (mtype === "image" || mtype === "video") {
+        try {
+          const { encryptedBlob: encThumb, ivBase64: tIv } = await encryptBlobWithKey(file, keyBase64);
+          const encThumbB64 = await new Promise<string>((resolve) => {
+            const reader = new FileReader();
+            reader.onload = () => resolve(btoa(
+              String.fromCharCode(...new Uint8Array(reader.result as ArrayBuffer)),
+            ));
+            reader.readAsArrayBuffer(encThumb);
+          });
+          thumbIvBase64 = tIv;
+          // Re-upload con thumbnail cifrata (media già caricato, ma vogliamo thumbnail separata)
+          // Per semplicità Fase 4: includiamo solo il thumb_iv nei metadata; il server non la distingue.
+          void encThumbB64; // usato per futura integrazione upload thumbnail
+        } catch { /* thumbnail opzionale — non blocca l'invio */ }
+      }
+
       const metaJson = JSON.stringify({
         e2e:       true,
         type:      mtype,
@@ -893,14 +989,19 @@ export default function ChatPage({ onNavigate }: Props) {
         mime_type: file.type,
         filename:  file.name,
         size:      file.size,
-        ...(media.duration_ms != null ? { duration_ms: media.duration_ms } : {}),
-        ...(media.waveform.length > 0 ? { waveform: media.waveform }       : {}),
+        ...(thumbIvBase64                 ? { thumb_iv: thumbIvBase64 }      : {}),
+        ...(media.duration_ms != null     ? { duration_ms: media.duration_ms }: {}),
+        ...(media.waveform.length > 0     ? { waveform: media.waveform }      : {}),
       });
 
       const clientMessageId = crypto.randomUUID();
       sentCacheRef.current.set(clientMessageId, metaJson);
+      void cacheOwnMessageMeta(clientMessageId, metaJson);
       const signal = await encryptForActive(metaJson);
-      await apiSendMediaMessage(activeConvId, media.media_id, signal, clientMessageId, metaJson);
+      await apiSendMediaMessage(
+        activeConvId, media.media_id, signal, clientMessageId, metaJson,
+        signal?.deviceCiphertexts,
+      );
       setUploadProgress(100);
     } catch (err) {
       setSendError(err instanceof Error ? err.message : "Errore upload file");
@@ -1500,6 +1601,11 @@ export default function ChatPage({ onNavigate }: Props) {
       {/* ── Invite modals ──────────────────────────────────────────────────── */}
       {showInvite && (
         <InviteModal onClose={() => setShowInvite(false)} />
+      )}
+
+      {/* ── Device Manager (Fase 4) ─────────────────────────────────────────── */}
+      {showDeviceManager && (
+        <DeviceManager onClose={() => setShowDeviceManager(false)} />
       )}
       {showRedeem && (
         <RedeemModal

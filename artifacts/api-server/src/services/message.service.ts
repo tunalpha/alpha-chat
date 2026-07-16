@@ -50,6 +50,8 @@ export interface MessageResult {
   burn_after_read: boolean;
   /** Sprint 15: TTL auto-delete (null = nessun timer) */
   expires_at: string | null;
+  /** Fase 4: multi-device — null per messaggi legacy */
+  device_ciphertexts: Array<{ device_id: string; body: string; type: number }> | null;
 }
 
 export interface MessageListResult {
@@ -140,6 +142,7 @@ export async function sendMessage(
     status: "sent",
     burnAfterRead: input.burn_after_read ?? false,
     expiresAt,
+    deviceCiphertexts: (input as { device_ciphertexts?: Array<{ device_id: string; body: string; type: number }> }).device_ciphertexts ?? null,
   });
 
   // Audit (solo evento — non logghiamo il ciphertext)
@@ -265,6 +268,8 @@ function formatMessageResult(
     edited_at?: Date | null;
     burn_after_read?: boolean;
     expires_at?: Date | null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    device_ciphertexts?: any; // Fase 4: multi-device (opaco)
   },
   isNew: boolean,
 ): MessageResult {
@@ -288,6 +293,7 @@ function formatMessageResult(
     is_new: isNew,
     burn_after_read: msg.burn_after_read ?? false,
     expires_at: msg.expires_at?.toISOString() ?? null,
+    device_ciphertexts: (msg.device_ciphertexts as Array<{ device_id: string; body: string; type: number }> | null) ?? null,
   };
 }
 

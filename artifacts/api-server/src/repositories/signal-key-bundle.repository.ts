@@ -196,3 +196,77 @@ export async function hasBundleForUser(
   const count = await SignalKeyBundleModel.countDocuments({ user_id: userId });
   return count > 0;
 }
+
+// ---------------------------------------------------------------------------
+// Fase 4: multi-device
+// ---------------------------------------------------------------------------
+
+/**
+ * Restituisce TUTTI i bundle di un utente (un bundle per device).
+ * Non consuma OTPKs — usato per elenco device e multi-device fetch.
+ */
+export async function listAllBundlesForUser(
+  userId: mongoose.Types.ObjectId,
+): Promise<ISignalKeyBundle[]> {
+  return SignalKeyBundleModel
+    .find({ user_id: userId })
+    .lean<ISignalKeyBundle[]>()
+    .exec();
+}
+
+/**
+ * Fetch multi-device per X3DH: restituisce tutti i bundle del destinatario,
+ * ognuno con pop atomico di una OTPK (se disponibile).
+ */
+export async function fetchAllBundlesForX3DH(
+  targetUserId: mongoose.Types.ObjectId,
+): Promise<Array<{ bundle: ISignalKeyBundle; poppedOtpk: IOneTimePreKey | null }>> {
+  const bundles = await SignalKeyBundleModel
+    .find({ user_id: targetUserId })
+    .lean<ISignalKeyBundle[]>()
+    .exec();
+
+  const results: Array<{ bundle: ISignalKeyBundle; poppedOtpk: IOneTimePreKey | null }> = [];
+
+  for (const b of bundles) {
+    // Pop atomico OTPK per questo device
+    const updated = await SignalKeyBundleModel.findOneAndUpdate(
+      {
+        user_id: targetUserId,
+        device_id: b.device_id,
+        "one_time_pre_keys": { $elemMatch: { consumed: false } },
+      },
+      {
+        $set: {
+          "one_time_pre_keys.$[elem].consumed": true,
+          "one_time_pre_keys.$[elem].consumed_at": new Date(),
+        },
+        $inc: { otpk_count: -1 },
+      },
+      { arrayFilters: [{ "elem.consumed": false }], new: true },
+    );
+
+    if (updated) {
+      const poppedOtpk = updated.one_time_pre_keys
+        .filter((k) => k.consumed)
+        .sort((a, b) => (b.consumed_at?.getTime() ?? 0) - (a.consumed_at?.getTime() ?? 0))[0] ?? null;
+      results.push({ bundle: updated.toObject() as ISignalKeyBundle, poppedOtpk });
+    } else {
+      results.push({ bundle: b, poppedOtpk: null });
+    }
+  }
+
+  return results;
+}
+
+/**
+ * Revoca (cancella) il bundle di un device specifico.
+ * Dopo la revoca il device non può più ricevere nuovi messaggi.
+ */
+export async function deleteBundleForDevice(
+  userId: mongoose.Types.ObjectId,
+  deviceId: string,
+): Promise<boolean> {
+  const result = await SignalKeyBundleModel.deleteOne({ user_id: userId, device_id: deviceId });
+  return result.deletedCount > 0;
+}
