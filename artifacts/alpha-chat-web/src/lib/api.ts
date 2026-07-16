@@ -38,6 +38,8 @@ export interface AuthResult {
   tokens: AuthTokens;
   is_new_device: boolean;
   requires_2fa: false;
+  /** Sprint 22: presente solo alla prima registrazione, poi mai più */
+  recovery_card?: RecoveryCardPayload;
 }
 
 /** Utente nella lista conversazioni (other_user) */
@@ -120,6 +122,26 @@ export interface DeviceInfo {
   registrationId: number;
   lastActiveAt: string;
   otpkCount: number;
+}
+
+/** Sprint 22 — Recovery Card data (restituita UNA SOLA VOLTA alla registrazione) */
+export interface RecoveryCardPayload {
+  emergency_id:    string;
+  recovery_secret: string;
+  version:         number;
+  generated_at:    string;
+  checksum:        string;
+}
+
+/** Sprint 22 — Stato recovery dell'account */
+export interface RecoveryStatus {
+  has_recovery_card:     boolean;
+  has_recovery_email:    boolean;
+  has_phoenix_code:      boolean;
+  card_version:          number | null;
+  card_generated_at:     string | null;
+  last_recovery_at:      string | null;
+  recovery_email_masked: string | null;
 }
 
 /** Campi E2E aggiuntivi presenti nei media meta di Fase 3 */
@@ -405,6 +427,53 @@ export class AuthExpiredError extends Error {
 // ---------------------------------------------------------------------------
 // Auth
 // ---------------------------------------------------------------------------
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Account Recovery — Sprint 22
+// ─────────────────────────────────────────────────────────────────────────────
+
+export async function apiRecoverByCard(
+  username: string,
+  emergencyId: string,
+  recoverySecret: string,
+): Promise<{ temp_password: string; expires_at: string }> {
+  return request<{ temp_password: string; expires_at: string }>(
+    "POST", "/auth/recover/card",
+    { username, emergency_id: emergencyId, recovery_secret: recoverySecret },
+  );
+}
+
+export async function apiRequestEmailRecovery(username: string, email: string): Promise<void> {
+  await request<unknown>("POST", "/auth/recover/email/request", { username, email });
+}
+
+export async function apiVerifyEmailToken(
+  token: string,
+): Promise<{ temp_password: string; expires_at: string }> {
+  return request<{ temp_password: string; expires_at: string }>(
+    "POST", "/auth/recover/email/verify", { token },
+  );
+}
+
+export async function apiGetRecoveryStatus(): Promise<RecoveryStatus> {
+  return request<RecoveryStatus>("GET", "/account/recovery/status");
+}
+
+export async function apiSetRecoveryEmail(email: string): Promise<void> {
+  await request<unknown>("POST", "/account/recovery/email", { email });
+}
+
+export async function apiRegenerateRecoveryCard(): Promise<RecoveryCardPayload> {
+  const res = await request<{ card: RecoveryCardPayload }>("POST", "/account/recovery/card/regenerate");
+  return res.card;
+}
+
+export async function apiChangeTempPassword(tempPassword: string, newPassword: string): Promise<void> {
+  await request<unknown>("POST", "/account/recovery/password", {
+    temp_password: tempPassword,
+    new_password:  newPassword,
+  });
+}
 
 export async function apiRegister(input: RegisterInput): Promise<AuthResult> {
   return request<AuthResult>("POST", "/auth/register", {

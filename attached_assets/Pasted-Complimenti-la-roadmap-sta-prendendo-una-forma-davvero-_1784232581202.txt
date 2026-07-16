@@ -1,0 +1,144 @@
+Complimenti, la roadmap sta prendendo una forma davvero completa. Con gli Sprint 16–21 hai costruito un insieme di funzionalità di sicurezza che va ben oltre una normale chat.
+
+A questo punto non aggiungerei altre funzioni “core” alla messaggistica. Mi concentrerei invece sull’esperienza d’uso, sulle prestazioni e sull’ecosistema.
+
+Prossimo Sprint
+
+Sprint 22 — Ecosistema Alpha Chat
+
+Missione:
+
+Trasformare Alpha Chat da semplice applicazione di chat a piattaforma completa.
+
+⸻
+
+1. Progressive Web App (PWA)
+
+* Installabile su Android, iPhone e Desktop.
+* Splash screen.
+* Icone dedicate.
+* Avvio a schermo intero.
+* Manifest completo.
+
+⸻
+
+2. Notifiche Push
+
+Implementare notifiche push rispettando la privacy.
+
+Le notifiche devono essere configurabili:
+
+* Nessuna anteprima.
+* Solo “Nuovo messaggio”.
+* Anteprima limitata.
+* Nome mittente sì/no.
+
+L’utente decide il livello di dettaglio.
+
+⸻
+
+3. Gestione dispositivi
+
+Pagina completa:
+
+Dispositivi collegati
+
+Visualizzare:
+
+* nome dispositivo;
+* browser o sistema operativo;
+* ultimo accesso;
+* stato online/offline;
+* possibilità di revocare il singolo dispositivo.
+
+⸻
+
+4. Backup impostazioni
+
+Backup solo delle impostazioni dell’utente:
+
+* Ghost Mode
+* Privacy
+* Dead Man Switch
+* Phoenix
+* Recovery Contacts
+* Preferenze
+
+Mai messaggi o chiavi private.
+
+⸻
+
+5. Centro aggiornamenti
+
+Nuova pagina:
+
+Novità
+
+Con cronologia delle versioni e delle nuove funzionalità.
+
+⸻
+
+6. Stato del servizio
+
+Pagina:
+
+System Status
+
+Mostrare:
+
+* API
+* WebSocket
+* Database
+* Push
+* Storage
+* Uptime
+
+⸻
+
+7. Dashboard amministrativa
+
+Realizzare un vero pannello amministrativo con:
+
+* utenti registrati;
+* utenti online;
+* nuovi utenti oggi;
+* gruppi creati;
+* gruppi attivi;
+* messaggi inviati oggi (solo conteggio);
+* media caricati;
+* spazio occupato;
+* utilizzo delle funzioni di sicurezza (Ghost Mode, Phoenix, Dead Man Switch, ecc.);
+* performance del server;
+* stato MongoDB;
+* CPU e RAM;
+* eventi di sicurezza recenti.
+
+Il pannello deve essere orientato alla gestione operativa e alla salute del sistema, mai alla lettura dei contenuti delle chat.
+
+⸻
+
+8. Audit
+
+Verificare:
+
+* nessuna regressione;
+* prestazioni;
+* consumo memoria;
+* comportamento PWA;
+* notifiche;
+* gestione multi-dispositivo.
+
+⸻
+
+Deliverable
+
+* TypeScript pulito.
+* Build pulita.
+* Test automatici.
+* Audit finale.
+* Nessuna modifica al protocollo Signal.
+* Nessuna modifica alla cifratura End-to-End.
+
+⸻
+
+Secondo me, dopo questo sprint, Alpha Chat sarà abbastanza matura da poter essere presentata come una piattaforma professionale di messaggistica privata, non solo come una chat. Il passo successivo dovrebbe essere la rifinitura dell’esperienza utente, l’ottimizzazione delle prestazioni e la raccolta di feedback reali prima di introdurre altre grandi funzionalità.

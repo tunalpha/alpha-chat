@@ -73,6 +73,14 @@ const sessionRepo = new SessionRepository();
 // Types
 // ---------------------------------------------------------------------------
 
+export interface RecoveryCardPayload {
+  emergency_id:    string;
+  recovery_secret: string;  // Base58, mostrato UNA SOLA VOLTA
+  version:         number;
+  generated_at:    string;
+  checksum:        string;
+}
+
 export interface AuthResult {
   user: ReturnType<typeof formatUserProfile>;
   tokens: {
@@ -83,6 +91,8 @@ export interface AuthResult {
   };
   is_new_device: boolean;
   requires_2fa: false;
+  /** Sprint 22: Recovery Card — presente solo alla prima registrazione */
+  recovery_card?: RecoveryCardPayload;
 }
 
 // ---------------------------------------------------------------------------
@@ -165,6 +175,22 @@ export async function register(params: RegisterServiceParams): Promise<AuthResul
 
   logger.info({ userId: user._id.toString(), username, deviceId: device_id }, "User registered");
 
+  // Sprint 22: genera Recovery Card alla registrazione (mostrata una sola volta)
+  let recoveryCard: RecoveryCardPayload | undefined;
+  try {
+    const { generateRecoveryCard } = await import("./account-recovery.service");
+    const card = await generateRecoveryCard(user._id, username);
+    recoveryCard = {
+      emergency_id:    card.emergency_id,
+      recovery_secret: card.recovery_secret,
+      version:         card.version,
+      generated_at:    card.generated_at,
+      checksum:        card.checksum,
+    };
+  } catch (e) {
+    logger.error({ err: e }, "Recovery card generation failed (non-blocking)");
+  }
+
   return {
     user: formatUserProfile(user),
     tokens: {
@@ -174,6 +200,7 @@ export async function register(params: RegisterServiceParams): Promise<AuthResul
     },
     is_new_device: true,
     requires_2fa: false,
+    recovery_card: recoveryCard,
   };
 }
 

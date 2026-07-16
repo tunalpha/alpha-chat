@@ -87,6 +87,12 @@ export default function SettingsPage({ onBack, onNavigate }: Props) {
           onClick: () => onNavigate("recovery-dashboard"),
         },
         {
+          icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="20" height="20"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/></svg>,
+          label: "Recovery Card",
+          value: "Email & rigenerazione card",
+          onClick: () => onNavigate("recovery-settings"),
+        },
+        {
           icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="20" height="20"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>,
           label: "Dead Man Switch",
           value: "Monitoraggio inattività",

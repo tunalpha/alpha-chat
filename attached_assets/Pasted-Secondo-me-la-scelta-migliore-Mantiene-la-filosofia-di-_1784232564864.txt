@@ -1,0 +1,212 @@
+Secondo me è la scelta migliore. Mantiene la filosofia di Alpha Chat (anonimato e privacy) senza rinunciare alla possibilità di recuperare l’account.
+
+Ti propongo questo prompt definitivo.
+
+⸻
+
+Sprint 21 — Account Recovery (Privacy First)
+
+Missione
+
+Implementare un sistema di recupero account coerente con la filosofia di Alpha Chat.
+
+Alpha Chat NON richiede email né numero di telefono durante la registrazione.
+
+L’email rimane completamente opzionale.
+
+Il recupero dell’account si basa sulla Recovery Card.
+
+⸻
+
+Principi
+
+* Nessun numero di telefono obbligatorio.
+* Nessuna email obbligatoria.
+* Nessuna domanda segreta.
+* Nessuna password recuperabile.
+* Nessun amministratore può conoscere la password.
+* Tutto deve essere compatibile con Phoenix Protocol.
+
+⸻
+
+Registrazione
+
+Al termine della registrazione:
+
+Generare automaticamente una Recovery Card.
+
+La Recovery Card contiene:
+
+* Username
+* Emergency ID
+* Recovery Secret (32 byte casuali codificati Base58)
+* QR Code
+* Data di generazione
+* Versione
+* Checksum
+
+Mostrare un avviso molto evidente:
+
+Questa Recovery Card verrà mostrata una sola volta. Conservala in un luogo sicuro. Senza di essa non sarà possibile recuperare il tuo account se dimentichi la password e non hai configurato un’email di recupero.
+
+L’utente può:
+
+* scaricarla in PDF;
+* stamparla;
+* salvarla.
+
+⸻
+
+Email
+
+L’email NON è obbligatoria.
+
+Nelle impostazioni aggiungere:
+
+Email di recupero (opzionale)
+
+Spiegare chiaramente:
+
+L’email serve esclusivamente come metodo aggiuntivo di recupero dell’account. Alpha Chat continua a funzionare anche senza email.
+
+⸻
+
+Recupero password
+
+Nuova pagina:
+
+Recupera account
+
+L’utente può scegliere:
+
+Metodo 1
+
+Recovery Card
+
+Richiedere:
+
+* Username
+* Emergency ID
+* Recovery Secret
+
+Se tutti i dati sono corretti:
+
+Generare automaticamente una password temporanea casuale (20–24 caratteri).
+
+La password:
+
+* vale una sola volta;
+* scade dopo 15 minuti;
+* obbliga al cambio password al primo accesso;
+* invalida tutte le sessioni esistenti.
+
+⸻
+
+Metodo 2
+
+Email di recupero (solo se configurata)
+
+Richiedere:
+
+* Username
+* Email
+
+Inviare un link monouso con scadenza breve.
+
+Dopo la verifica:
+
+Generare una password temporanea.
+
+Anche in questo caso:
+
+* obbligo di cambio password;
+* revoca delle sessioni.
+
+⸻
+
+Sicurezza
+
+Ogni recupero account deve:
+
+* revocare tutte le sessioni;
+* revocare tutti i refresh token;
+* richiedere nuovo login su tutti i dispositivi;
+* registrare un evento nella Timeline Sicurezza.
+
+⸻
+
+Rigenerazione Recovery Card
+
+Dalle impostazioni:
+
+Rigenera Recovery Card.
+
+Quando viene rigenerata:
+
+* il vecchio Recovery Secret diventa immediatamente invalido;
+* viene creato un nuovo Emergency ID;
+* viene generata una nuova Recovery Card;
+* viene registrato un evento di sicurezza.
+
+⸻
+
+Dashboard Recovery
+
+Mostrare:
+
+* Recovery Card presente
+* Email di recupero configurata
+* Phoenix Code configurato
+* Ultima rigenerazione Recovery Card
+* Ultimo recupero account
+* Stato Recovery
+
+⸻
+
+Audit
+
+Verificare:
+
+* brute force;
+* replay attack;
+* token monouso;
+* rate limiting;
+* Recovery Secret mai in chiaro;
+* impossibilità di recuperare senza Recovery Card o email configurata;
+* invalidazione completa delle sessioni;
+* compatibilità con Phoenix Protocol.
+
+⸻
+
+Test
+
+Creare test automatici per:
+
+* recupero tramite Recovery Card;
+* recupero tramite email;
+* Recovery Secret errato;
+* Emergency ID errato;
+* Recovery Secret scaduto o revocato;
+* rigenerazione Recovery Card;
+* password temporanea;
+* cambio password obbligatorio;
+* revoca sessioni;
+* nessuna regressione delle funzionalità esistenti.
+
+⸻
+
+Vincoli
+
+* Nessuna regressione.
+* Nessuna modifica al Signal Protocol.
+* Nessuna modifica alla cifratura End-to-End.
+* Nessun numero di telefono obbligatorio.
+* Nessuna email obbligatoria.
+* TypeScript pulito.
+* Build pulita.
+* Test tutti verdi.
+* Audit finale.
+
+Nota progettuale
+
+Per maggiore sicurezza, ti suggerisco un’ulteriore regola: la Recovery Card deve essere mostrata una sola volta. Se l’utente la perde, dovrà autenticarsi normalmente per generarne una nuova, che invaliderà immediatamente la precedente. In questo modo non esisteranno mai più Recovery Card valide contemporaneamente.

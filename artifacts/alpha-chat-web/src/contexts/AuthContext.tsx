@@ -8,7 +8,7 @@ interface AuthContextValue {
   auth: StoredAuth | null;
   isLoading: boolean;
   login: (input: LoginInput) => Promise<void>;
-  register: (input: RegisterInput) => Promise<void>;
+  register: (input: RegisterInput) => Promise<{ recovery_card?: import("../lib/api").RecoveryCardPayload }>;
   logout: () => Promise<void>;
   logoutAll: () => Promise<void>;
 }
@@ -80,6 +80,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Errore non critico in Fase 1
       });
     void initMediaCache(result.user.id, devId).catch(() => {});
+    // Sprint 22: restituisce la Recovery Card (presente solo alla prima registrazione)
+    return { recovery_card: result.recovery_card };
   }, []);
 
   const logout = useCallback(async () => {

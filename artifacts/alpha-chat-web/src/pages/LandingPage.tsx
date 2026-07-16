@@ -9,6 +9,8 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { unlockNotifAudio, playNotifSound } from "../lib/notifSound";
+import RecoveryCardModal, { type RecoveryCardData } from "../components/RecoveryCardModal";
+import RecoveryPage from "./RecoveryPage";
 
 // ── Script della conversazione ────────────────────────────────────────────────
 type Speaker = "user" | "alpha" | "status";
@@ -182,9 +184,19 @@ export default function LandingPage() {
     finally { setLoading(false); }
   }
 
+  const [recoveryCard, setRecoveryCard] = useState<RecoveryCardData | null>(null);
+  const [showRecovery, setShowRecovery] = useState(false);
+
   async function handleRegister(e: React.FormEvent) {
     e.preventDefault(); setError(""); setLoading(true);
-    try { await register({ username: regUser, display_name: regName, password: regPwd }); }
+    try {
+      const result = await register({ username: regUser, display_name: regName, password: regPwd });
+      // Sprint 22: mostra Recovery Card se presente
+      if (result?.recovery_card) {
+        const rc = result.recovery_card;
+        setRecoveryCard({ username: regUser, emergency_id: rc.emergency_id, recovery_secret: rc.recovery_secret, version: rc.version, generated_at: rc.generated_at, checksum: rc.checksum });
+      }
+    }
     catch (err) { setError((err as Error).message ?? "Errore di registrazione"); }
     finally { setLoading(false); }
   }
@@ -390,7 +402,26 @@ export default function LandingPage() {
                 {tab === "login" ? "Registrati" : "Accedi"}
               </button>
             </p>
+            {tab === "login" && (
+              <p className="auth-hint" style={{ marginTop: 4 }}>
+                <button className="auth-link" onClick={() => { setShowAuth(false); setShowRecovery(true); }}>
+                  🔑 Recupera account
+                </button>
+              </p>
+            )}
           </div>
+        </div>
+      )}
+
+      {/* Recovery Card Modal — mostrata dopo la registrazione */}
+      {recoveryCard && (
+        <RecoveryCardModal card={recoveryCard} onConfirm={() => setRecoveryCard(null)} />
+      )}
+
+      {/* Recovery Page — overlay pubblico */}
+      {showRecovery && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 300, background: "var(--bg-1)", overflowY: "auto" }}>
+          <RecoveryPage onBack={() => setShowRecovery(false)} />
         </div>
       )}
     </div>

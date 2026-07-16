@@ -88,7 +88,14 @@ export type AuditEventType =
   | "GROUP_MEMBER_ADDED"
   | "GROUP_MEMBER_REMOVED"
   | "GROUP_LEFT"
-  | "GROUP_ROLE_CHANGED";
+  | "GROUP_ROLE_CHANGED"
+  // Account Recovery — Sprint 22
+  | "RECOVERY_CARD_GENERATED"
+  | "RECOVERY_CARD_REGENERATED"
+  | "ACCOUNT_RECOVERED_CARD"
+  | "ACCOUNT_RECOVERED_EMAIL"
+  | "RECOVERY_EMAIL_SET"
+  | "RECOVERY_EMAIL_REQUESTED";
 
 export interface AuditEvent {
   event: AuditEventType;

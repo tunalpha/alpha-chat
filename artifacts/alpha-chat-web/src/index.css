@@ -3325,3 +3325,379 @@ button:disabled.profile-avatar-edit {
   .tc-arch-desc { color:#444 !important; }
   .settings-header { display:none !important; }
 }
+
+/* ══════════════════════════════════════════════════════════════════
+   Recovery Card Modal — Sprint 22
+   ══════════════════════════════════════════════════════════════════ */
+
+.rc-overlay {
+  background: rgba(0,0,0,0.75);
+  backdrop-filter: blur(6px);
+  z-index: 500;
+  overflow-y: auto;
+  padding: 24px 16px;
+}
+
+.rc-modal {
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  max-width: 480px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 28px 24px;
+  box-shadow: 0 24px 64px rgba(0,0,0,0.5);
+}
+
+.rc-header {
+  text-align: center;
+  margin-bottom: 20px;
+}
+.rc-lock-icon {
+  font-size: 36px;
+  margin-bottom: 8px;
+}
+.rc-title {
+  font-size: 20px;
+  font-weight: 700;
+  color: var(--text-1);
+  margin: 0 0 8px;
+}
+.rc-subtitle {
+  font-size: 13px;
+  color: var(--text-2);
+  margin: 0;
+}
+
+.rc-warning-banner {
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--danger) 40%, transparent);
+  border-radius: 8px;
+  padding: 10px 14px;
+  font-size: 12px;
+  color: var(--danger);
+  margin-bottom: 20px;
+  line-height: 1.5;
+}
+
+.rc-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-bottom: 24px;
+}
+.rc-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.rc-field-row {
+  display: flex;
+  gap: 12px;
+}
+.rc-field-half {
+  flex: 1;
+}
+.rc-field-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--text-3);
+  font-weight: 600;
+}
+.rc-field-value {
+  font-size: 14px;
+  color: var(--text-1);
+  background: var(--bg-3);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 12px;
+  word-break: break-all;
+}
+.rc-mono {
+  font-family: 'Courier New', Courier, monospace;
+  font-size: 12px;
+  letter-spacing: 0.5px;
+}
+.rc-secret {
+  font-size: 11px;
+  letter-spacing: 1px;
+  color: var(--accent);
+}
+.rc-select {
+  user-select: all;
+}
+
+.rc-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 16px;
+}
+.rc-btn-print {
+  padding: 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background: var(--bg-3);
+  color: var(--text-1);
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.rc-btn-print:hover {
+  background: var(--bg-4, var(--bg-3));
+}
+.rc-btn-confirm {
+  padding: 14px;
+  border-radius: 10px;
+  border: none;
+  background: var(--accent);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.rc-btn-confirm:hover {
+  opacity: 0.9;
+}
+
+.rc-footer {
+  font-size: 11px;
+  color: var(--text-3);
+  text-align: center;
+  line-height: 1.6;
+  margin: 0;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   Recovery Page — Sprint 22
+   ══════════════════════════════════════════════════════════════════ */
+
+.recovery-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-1);
+  padding: 24px 16px;
+}
+
+.recovery-box {
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  max-width: 400px;
+  width: 100%;
+  box-shadow: 0 16px 48px rgba(0,0,0,0.3);
+  overflow: hidden;
+}
+
+.recovery-header {
+  padding: 28px 24px 20px;
+  text-align: center;
+  border-bottom: 1px solid var(--border);
+}
+.recovery-back {
+  display: block;
+  margin: 0 auto 12px;
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-size: 13px;
+  cursor: pointer;
+  padding: 0;
+}
+.recovery-logo { font-size: 32px; margin-bottom: 8px; }
+.recovery-title { font-size: 20px; font-weight: 700; color: var(--text-1); margin: 0 0 6px; }
+.recovery-subtitle { font-size: 13px; color: var(--text-3); margin: 0; }
+
+.recovery-methods {
+  display: flex;
+  flex-direction: column;
+  padding: 16px;
+  gap: 10px;
+}
+.recovery-method-btn {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 16px;
+  background: var(--bg-3);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.15s;
+  color: var(--text-1);
+  width: 100%;
+}
+.recovery-method-btn:hover { background: var(--bg-4, var(--bg-3)); border-color: var(--accent); }
+.recovery-method-icon { font-size: 24px; flex-shrink: 0; }
+.recovery-method-title { font-size: 15px; font-weight: 600; color: var(--text-1); }
+.recovery-method-desc { font-size: 12px; color: var(--text-3); margin-top: 2px; }
+.recovery-method-arrow { margin-left: auto; font-size: 20px; color: var(--text-3); }
+
+.recovery-form {
+  padding: 16px 24px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.recovery-form-title { font-size: 17px; font-weight: 700; color: var(--text-1); margin: 0; }
+.recovery-form-desc { font-size: 13px; color: var(--text-3); margin: 0; }
+.recovery-back-method {
+  background: none;
+  border: none;
+  color: var(--accent);
+  font-size: 13px;
+  cursor: pointer;
+  padding: 0;
+  text-align: left;
+}
+
+.recovery-field { display: flex; flex-direction: column; gap: 5px; }
+.recovery-label { font-size: 12px; color: var(--text-3); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; }
+.recovery-input {
+  width: 100%;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-3);
+  color: var(--text-1);
+  font-size: 14px;
+  box-sizing: border-box;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.recovery-input:focus { border-color: var(--accent); }
+.recovery-mono { font-family: 'Courier New', monospace; font-size: 12px; letter-spacing: 0.5px; }
+.recovery-error { font-size: 13px; color: var(--danger); background: color-mix(in srgb, var(--danger) 10%, transparent); border-radius: 8px; padding: 10px 12px; }
+.recovery-submit {
+  padding: 13px;
+  border-radius: 10px;
+  border: none;
+  background: var(--accent);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+}
+.recovery-submit:disabled { opacity: 0.6; cursor: not-allowed; }
+.recovery-submit:hover:not(:disabled) { opacity: 0.9; }
+
+.recovery-sent, .recovery-success {
+  padding: 24px;
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+}
+.recovery-sent-icon, .recovery-success-icon { font-size: 40px; }
+.recovery-sent h2, .recovery-success h2 { font-size: 18px; font-weight: 700; color: var(--text-1); margin: 0; }
+.recovery-sent p, .recovery-success p { font-size: 14px; color: var(--text-2); margin: 0; }
+
+.recovery-temp-password {
+  background: var(--bg-3);
+  border: 2px solid var(--accent);
+  border-radius: 10px;
+  padding: 14px 18px;
+  width: 100%;
+  box-sizing: border-box;
+}
+.recovery-temp-label { font-size: 11px; text-transform: uppercase; color: var(--text-3); letter-spacing: 0.8px; margin-bottom: 4px; }
+.recovery-temp-value { font-family: 'Courier New', monospace; font-size: 18px; font-weight: 700; color: var(--accent); letter-spacing: 2px; word-break: break-all; user-select: all; }
+.recovery-temp-expiry { font-size: 13px; color: var(--text-3); }
+.recovery-temp-warn { font-size: 12px; color: var(--danger); background: color-mix(in srgb, var(--danger) 10%, transparent); border-radius: 8px; padding: 10px 14px; }
+
+/* ══════════════════════════════════════════════════════════════════
+   Recovery Settings Page — Sprint 22
+   ══════════════════════════════════════════════════════════════════ */
+
+.rs-section {
+  background: var(--bg-2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 16px;
+}
+.rs-section-danger { border-color: color-mix(in srgb, var(--danger) 30%, transparent); }
+.rs-section-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-1);
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  margin-bottom: 10px;
+}
+.rs-optional { color: var(--text-3); font-weight: 400; text-transform: none; letter-spacing: 0; }
+.rs-desc { font-size: 13px; color: var(--text-3); margin: 0 0 12px; line-height: 1.5; }
+.rs-success { font-size: 14px; color: var(--success, #22c55e); }
+.rs-error { font-size: 13px; color: var(--danger); margin-top: 6px; }
+
+.rs-status-grid { display: flex; flex-direction: column; gap: 10px; }
+.rs-status-item { display: flex; align-items: center; gap: 10px; }
+.rs-status-icon { font-size: 18px; flex-shrink: 0; }
+.rs-status-label { font-size: 12px; color: var(--text-3); }
+.rs-status-value { font-size: 13px; color: var(--text-1); font-weight: 500; }
+
+.rs-email-form { display: flex; gap: 8px; }
+.rs-input {
+  flex: 1;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-3);
+  color: var(--text-1);
+  font-size: 14px;
+  outline: none;
+}
+.rs-input:focus { border-color: var(--accent); }
+.rs-btn {
+  padding: 10px 16px;
+  border-radius: 8px;
+  border: none;
+  background: var(--accent);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.rs-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.rs-btn-danger {
+  padding: 11px 16px;
+  border-radius: 8px;
+  border: 1px solid var(--danger);
+  background: color-mix(in srgb, var(--danger) 12%, transparent);
+  color: var(--danger);
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.rs-btn-danger:hover { background: color-mix(in srgb, var(--danger) 20%, transparent); }
+
+.rs-confirm { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; font-size: 13px; color: var(--text-2); }
+.rs-confirm-yes {
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: none;
+  background: var(--danger);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.rs-confirm-no {
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--bg-3);
+  color: var(--text-2);
+  font-size: 13px;
+  cursor: pointer;
+}

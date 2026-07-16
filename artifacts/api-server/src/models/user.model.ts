@@ -63,6 +63,19 @@ export interface IUser {
   phoenix_code_hash: string | null;
   emergency_id: string | null;
 
+  // Account Recovery — Sprint 22
+  recovery_secret_hash:           string | null;
+  recovery_emergency_id:          string | null;
+  recovery_card_version:          number | null;
+  recovery_card_generated_at:     Date   | null;
+  recovery_email:                 string | null;
+  recovery_email_token:           string | null;
+  recovery_email_token_expires_at: Date  | null;
+  temp_password_hash:             string | null;
+  temp_password_expires_at:       Date   | null;
+  require_password_change:        boolean;
+  last_recovery_at:               Date   | null;
+
   // Wallet (V2)
   wallet_enabled: boolean;
   wallet_id: string | null;
@@ -139,6 +152,19 @@ const userSchema = new Schema<IUserDocument>(
 
     phoenix_code_hash: { type: String, default: null },
     emergency_id: { type: String, default: null },
+
+    // Account Recovery — Sprint 22
+    recovery_secret_hash:            { type: String,  default: null },
+    recovery_emergency_id:           { type: String,  default: null },
+    recovery_card_version:           { type: Number,  default: null },
+    recovery_card_generated_at:      { type: Date,    default: null },
+    recovery_email:                  { type: String,  default: null },
+    recovery_email_token:            { type: String,  default: null },
+    recovery_email_token_expires_at: { type: Date,    default: null },
+    temp_password_hash:              { type: String,  default: null },
+    temp_password_expires_at:        { type: Date,    default: null },
+    require_password_change:         { type: Boolean, default: false },
+    last_recovery_at:                { type: Date,    default: null },
 
     wallet_enabled: { type: Boolean, default: false },
     wallet_id: { type: String, default: null },

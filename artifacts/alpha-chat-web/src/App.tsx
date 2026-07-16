@@ -17,6 +17,8 @@ import RecoveryContactsPage from "./pages/RecoveryContactsPage";
 import RecoveryDashboardPage from "./pages/RecoveryDashboardPage";
 import SecurityTimelinePage from "./pages/SecurityTimelinePage";
 import TrustCenterPage from "./pages/TrustCenterPage";
+import RecoverySettingsPage from "./pages/RecoverySettingsPage";
+import RecoveryPage from "./pages/RecoveryPage";
 import LockScreen from "./components/LockScreen";
 import PrivacyOverlay from "./components/PrivacyOverlay";
 
@@ -35,7 +37,8 @@ export type AppView =
   | "recovery-dashboard"
   | "security-timeline"
   | "trust-center"
-  | "group-info";
+  | "group-info"
+  | "recovery-settings";
 
 /** Controlla se l'URL corrente è la pagina di emergenza (accessibile senza auth). */
 function isEmergencyPath(): boolean {
@@ -105,6 +108,8 @@ function AppContent() {
             return <SecurityTimelinePage onBack={goSettings} />;
           case "trust-center":
             return <TrustCenterPage onBack={goSettings} onNavigate={setView} />;
+          case "recovery-settings":
+            return <RecoverySettingsPage onBack={goSettings} />;
           // group-info è gestito come overlay dentro ChatPage
           default:
             return <ChatPage onNavigate={setView} />;

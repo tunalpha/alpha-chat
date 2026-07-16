@@ -1,11 +1,18 @@
 import { useState } from "react";
 import { useAuth } from "../contexts/AuthContext";
+import RecoveryCardModal, { type RecoveryCardData } from "../components/RecoveryCardModal";
+import type { RecoveryCardPayload } from "../lib/api";
 
-export default function AuthPage() {
+interface Props {
+  onRecover?: () => void;
+}
+
+export default function AuthPage({ onRecover }: Props) {
   const { login, register } = useAuth();
   const [tab, setTab] = useState<"login" | "register">("login");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [recoveryCard, setRecoveryCard] = useState<RecoveryCardData | null>(null);
 
   // Login form state
   const [loginIdentifier, setLoginIdentifier] = useState("");
@@ -36,7 +43,19 @@ export default function AuthPage() {
     setError("");
     setLoading(true);
     try {
-      await register({ username: regUsername, display_name: regDisplayName, password: regPassword });
+      const result = await register({ username: regUsername, display_name: regDisplayName, password: regPassword });
+      // Sprint 22: mostra Recovery Card se presente
+      if (result?.recovery_card) {
+        const rc = result.recovery_card;
+        setRecoveryCard({
+          username:        regUsername,
+          emergency_id:    rc.emergency_id,
+          recovery_secret: rc.recovery_secret,
+          version:         rc.version,
+          generated_at:    rc.generated_at,
+          checksum:        rc.checksum,
+        });
+      }
     } catch (err: unknown) {
       setError((err as Error).message ?? "Errore di registrazione");
     } finally {

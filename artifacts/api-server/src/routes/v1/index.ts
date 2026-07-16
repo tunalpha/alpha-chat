@@ -44,4 +44,9 @@ v1Router.use("/trust-center", trustCenterRoutes);
 // Gruppi E2E — Sprint 21
 v1Router.use("/groups", groupRoutes);
 
+// Account Recovery — Sprint 22
+import { recoveryAuthRouter, recoveryAccountRouter } from "./account-recovery.routes";
+v1Router.use("/auth/recover",     recoveryAuthRouter);
+v1Router.use("/account/recovery", recoveryAccountRouter);
+
 export default v1Router;
