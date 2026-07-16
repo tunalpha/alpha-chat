@@ -15,6 +15,11 @@ export interface IMedia {
   _id: mongoose.Types.ObjectId;
   uploader_id: mongoose.Types.ObjectId;
   conversation_id: mongoose.Types.ObjectId;
+  /**
+   * Chiave di idempotenza opzionale generata dal client prima dell'upload.
+   * Presente quando il client supporta la deduplicazione dei retry.
+   */
+  client_upload_id?: string | null;
   /** MIME type, es. "audio/webm;codecs=opus", "image/jpeg", "video/mp4" */
   mime_type: string;
   /** Dati binari del file */
@@ -46,6 +51,7 @@ const mediaSchema = new Schema<IMediaDocument>(
     thumbnail:          { type: Buffer, default: null },
     duration_ms:        { type: Number, default: null },
     waveform:           { type: [Number], default: [] },
+    client_upload_id:   { type: String, default: null },
   },
   { timestamps: true },
 );
@@ -54,6 +60,11 @@ const mediaSchema = new Schema<IMediaDocument>(
 mediaSchema.index({ uploader_id: 1 });
 // Pulizia per conversazione
 mediaSchema.index({ conversation_id: 1 });
+// Idempotenza upload: unique sparse (null non crea collisioni)
+mediaSchema.index(
+  { client_upload_id: 1 },
+  { unique: true, sparse: true, partialFilterExpression: { client_upload_id: { $type: "string" } } },
+);
 
 export const MediaModel: Model<IMediaDocument> =
   mongoose.models["Media"] ??

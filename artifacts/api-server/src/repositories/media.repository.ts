@@ -17,6 +17,7 @@ export class MediaRepository {
     thumbnail?: Buffer | null;
     durationMs: number | null;
     waveform: number[];
+    clientUploadId?: string | null;
   }): Promise<IMediaDocument> {
     return MediaModel.create({
       uploader_id:        params.uploaderId,
@@ -28,11 +29,25 @@ export class MediaRepository {
       thumbnail:          params.thumbnail ?? null,
       duration_ms:        params.durationMs,
       waveform:           params.waveform,
+      client_upload_id:   params.clientUploadId ?? null,
     });
   }
 
   async findById(mediaId: mongoose.Types.ObjectId): Promise<IMediaDocument | null> {
     return MediaModel.findById(mediaId);
+  }
+
+  /**
+   * Cerca un documento per chiave di idempotenza, filtrato per uploader.
+   * Il filtro su uploader_id è essenziale: senza di esso un UUID condiviso tra
+   * utenti diversi (evento astronomicamente raro ma possibile) restituirebbe
+   * i metadati di un altro utente, violando il principio zero-knowledge.
+   */
+  async findByClientUploadId(
+    clientUploadId: string,
+    uploaderId: mongoose.Types.ObjectId,
+  ): Promise<IMediaDocument | null> {
+    return MediaModel.findOne({ client_upload_id: clientUploadId, uploader_id: uploaderId });
   }
 
   /**

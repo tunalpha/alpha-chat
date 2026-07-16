@@ -121,6 +121,7 @@ async function uploadEncrypted(
   encryptedBlob: Blob,
   mimeType: string,
   filename: string,
+  clientUploadId?: string,
 ): Promise<{ status: number; body: unknown; timeMs: number }> {
   const b64 = await blobToBase64(encryptedBlob);
   const t0 = performance.now();
@@ -129,6 +130,7 @@ async function uploadEncrypted(
     mime_type: mimeType,
     conversation_id: conversationId,
     original_filename: filename,
+    ...(clientUploadId ? { client_upload_id: clientUploadId } : {}),
   }, token);
   const timeMs = performance.now() - t0;
   const body = await res.json();
@@ -193,13 +195,20 @@ describe("16 — Integrazione reale: upload media contro API live", () => {
   describe("16.2 — Upload reali: tipi e dimensioni di campo", () => {
 
     const cases: Array<{ label: string; sizeMB: number; mime: string; ext: string }> = [
-      { label: "iPhone HEIC 3 MB",  sizeMB: 3,    mime: "image/heic",        ext: "photo.heic"   },
-      { label: "JPEG 10 MB",        sizeMB: 10,   mime: "image/jpeg",        ext: "photo.jpg"    },
-      { label: "Video 15 MB",       sizeMB: 15,   mime: "video/mp4",         ext: "video.mp4"    },
-      { label: "PDF 10 MB",         sizeMB: 10,   mime: "application/pdf",   ext: "doc.pdf"      },
-      // Audio: il limite Zod include +16 B GCM tag (fix media.schemas.ts) →
-      // un file esattamente da 5 MB raw viene accettato.
-      { label: "Audio 5 MB",        sizeMB: 5,    mime: "audio/mpeg",        ext: "audio.mp3"    },
+      // Casi di campo originali
+      { label: "iPhone HEIC 3 MB",          sizeMB: 3,  mime: "image/heic",      ext: "photo.heic"   },
+      { label: "JPEG 10 MB",                sizeMB: 10, mime: "image/jpeg",      ext: "photo.jpg"    },
+      { label: "Video 15 MB",               sizeMB: 15, mime: "video/mp4",       ext: "video.mp4"    },
+      { label: "PDF 10 MB",                 sizeMB: 10, mime: "application/pdf", ext: "doc.pdf"      },
+      // Audio: limite Zod include +16 B GCM tag → file esattamente 5 MB raw accettato
+      { label: "Audio 5 MB",                sizeMB: 5,  mime: "audio/mpeg",      ext: "audio.mp3"    },
+      // Varianti HEIC border-case (richieste dalla review)
+      //   HEIC 8 MB — foto ritratto alta risoluzione
+      { label: "HEIC 8 MB ritratto",        sizeMB: 8,  mime: "image/heic",      ext: "portrait.heic" },
+      //   HEIC 10 MB — al limite (48 MP, HDR, Live Photo still-frame)
+      //   Il server non distingue HEIC da JPEG: riceve ciphertext opaco.
+      //   Il test verifica memoria e timing, non la decodifica del formato.
+      { label: "HEIC 10 MB (limite, 48MP)", sizeMB: 10, mime: "image/heic",      ext: "48mp.heic"    },
     ];
 
     for (const { label, sizeMB, mime, ext } of cases) {
@@ -375,6 +384,98 @@ describe("16 — Integrazione reale: upload media contro API live", () => {
       const d = (body as { data: { mime_type: string } }).data;
       // Il server salva il mime_type originale (non application/octet-stream del blob cifrato)
       expect(d.mime_type).toBe("image/png");
+    }, 20000);
+  });
+
+  // ── 16.6 Idempotenza upload ───────────────────────────────────────────────────
+  describe("16.6 — Idempotenza: client_upload_id previene duplicati su retry", () => {
+
+    it("16.6.1 — stesso client_upload_id due volte → stesso media_id, secondo HTTP 200", async () => {
+      const skip = skipIfNoServer();
+      if (skip) { console.log("  ↷ skip"); return; }
+
+      const blob = makeFakeFile(64 * 1024, "image/jpeg");
+      const { encryptedBlob } = await encryptMediaBlob(blob);
+      const id = crypto.randomUUID();
+
+      // Prima chiamata: deve creare il documento (201)
+      const first = await uploadEncrypted(alice!.token, convId, encryptedBlob, "image/jpeg", "idempotent.jpg", id);
+      expect(first.status).toBe(201);
+      const firstMediaId = (first.body as { data: { media_id: string } }).data.media_id;
+      expect(firstMediaId).toMatch(/^[0-9a-fA-F]{24}$/);
+
+      // Seconda chiamata: stessa chiave → documento esistente (200, stesso media_id)
+      const second = await uploadEncrypted(alice!.token, convId, encryptedBlob, "image/jpeg", "idempotent.jpg", id);
+      expect(second.status).toBe(200);
+      const secondMediaId = (second.body as { data: { media_id: string } }).data.media_id;
+
+      // Nessun duplicato: i due media_id devono essere identici
+      expect(secondMediaId).toBe(firstMediaId);
+      console.log(`  [16.6.1] media_id primo upload:  ${firstMediaId}`);
+      console.log(`  [16.6.1] media_id retry (200):   ${secondMediaId} ✓ (identico, nessun orfano)`);
+    }, 20000);
+
+    it("16.6.2 — client_upload_id diversi → media_id distinti (nessuna falsa deduplicazione)", async () => {
+      const skip = skipIfNoServer();
+      if (skip) { console.log("  ↷ skip"); return; }
+
+      const blob = makeFakeFile(64 * 1024, "image/jpeg");
+      const { encryptedBlob } = await encryptMediaBlob(blob);
+
+      const r1 = await uploadEncrypted(alice!.token, convId, encryptedBlob, "image/jpeg", "a.jpg", crypto.randomUUID());
+      const r2 = await uploadEncrypted(alice!.token, convId, encryptedBlob, "image/jpeg", "b.jpg", crypto.randomUUID());
+
+      expect(r1.status).toBe(201);
+      expect(r2.status).toBe(201);
+      const id1 = (r1.body as { data: { media_id: string } }).data.media_id;
+      const id2 = (r2.body as { data: { media_id: string } }).data.media_id;
+      expect(id1).not.toBe(id2);
+      console.log(`  [16.6.2] due chiavi diverse → due media_id diversi ✓`);
+    }, 20000);
+
+    it("16.6.3 — senza client_upload_id → retry crea documento orfano duplicato (comportamento legacy)", async () => {
+      const skip = skipIfNoServer();
+      if (skip) { console.log("  ↷ skip"); return; }
+
+      // Questo test documenta il comportamento SENZA idempotenza:
+      // ogni chiamata senza client_upload_id crea un nuovo documento.
+      // Il client DEVE sempre fornire client_upload_id per evitare duplicati.
+      const blob = makeFakeFile(32 * 1024, "image/jpeg");
+      const { encryptedBlob } = await encryptMediaBlob(blob);
+
+      const r1 = await uploadEncrypted(alice!.token, convId, encryptedBlob, "image/jpeg", "no-id.jpg");
+      const r2 = await uploadEncrypted(alice!.token, convId, encryptedBlob, "image/jpeg", "no-id.jpg");
+
+      expect(r1.status).toBe(201);
+      expect(r2.status).toBe(201);
+      const id1 = (r1.body as { data: { media_id: string } }).data.media_id;
+      const id2 = (r2.body as { data: { media_id: string } }).data.media_id;
+      // Senza chiave, due documenti distinti vengono creati (orfano potenziale)
+      expect(id1).not.toBe(id2);
+      console.log(`  [16.6.3] senza client_upload_id → due media_id diversi (orfano potenziale documentato) ✓`);
+    }, 20000);
+
+    it("16.6.4 — client_upload_id di un altro utente non produce collisione (isolamento per uploader_id)", async () => {
+      const skip = skipIfNoServer();
+      if (skip) { console.log("  ↷ skip"); return; }
+
+      // Stessa UUID usata da Alice e Bob: devono ottenere media_id distinti
+      const blob = makeFakeFile(32 * 1024, "image/jpeg");
+      const { encryptedBlob: blobAlice } = await encryptMediaBlob(blob);
+      const { encryptedBlob: blobBob }   = await encryptMediaBlob(blob);
+      const sharedId = crypto.randomUUID();
+
+      // Bob deve anche far parte della conversazione (già membro)
+      const rAlice = await uploadEncrypted(alice!.token, convId, blobAlice, "image/jpeg", "alice.jpg", sharedId);
+      const rBob   = await uploadEncrypted(bob!.token,   convId, blobBob,   "image/jpeg", "bob.jpg",   sharedId);
+
+      expect(rAlice.status).toBe(201);
+      expect(rBob.status).toBe(201);
+      const idAlice = (rAlice.body as { data: { media_id: string } }).data.media_id;
+      const idBob   = (rBob.body   as { data: { media_id: string } }).data.media_id;
+      // Utenti diversi con stessa UUID → documenti separati, nessuna contaminazione
+      expect(idAlice).not.toBe(idBob);
+      console.log(`  [16.6.4] stessa UUID, uploader diversi → media_id separati ✓ (isolamento corretto)`);
     }, 20000);
   });
 

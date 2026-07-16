@@ -29,6 +29,17 @@ function mimeCategory(mime: string): keyof typeof LIMITS | "document" {
 }
 
 export const UploadMediaSchema = z.object({
+  /**
+   * Chiave di idempotenza generata dal client prima dell'upload.
+   * Il server restituisce il documento esistente (HTTP 200) se la chiave è già presente,
+   * prevenendo duplicati in caso di retry dopo un timeout di rete.
+   * Formato: UUID v4 (es. "550e8400-e29b-41d4-a716-446655440000").
+   */
+  client_upload_id: z
+    .string()
+    .uuid("client_upload_id deve essere un UUID v4 valido")
+    .optional(),
+
   /** Base64 del file */
   data: z
     .string()

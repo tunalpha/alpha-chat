@@ -19,6 +19,8 @@ export interface MediaUploadResult {
   has_thumbnail:     boolean;
   duration_ms:       number | null;
   waveform:          number[];
+  /** true se il documento esisteva già (retry idempotente — nessuna scrittura su DB) */
+  already_existed?:  boolean;
 }
 
 const mediaRepo  = new MediaRepository();
@@ -46,15 +48,41 @@ export async function uploadMedia(
     throw new AppError("NOT_CHAT_MEMBER", 403);
   }
 
-  // 2. Decodifica base64 → Buffer
+  // 2. Idempotenza: se il client ha fornito un client_upload_id, controlla se esiste già.
+  //    Questo previene la creazione di documenti orfani duplicati quando il client fa
+  //    retry dopo un timeout di rete (il server ha scritto su DB ma la risposta è andata persa).
+  if (input.client_upload_id) {
+    const existing = await mediaRepo.findByClientUploadId(input.client_upload_id, uploaderObjectId);
+    if (existing) {
+      logAuditEvent({
+        event:      "MEDIA_UPLOAD_IDEMPOTENT_HIT",
+        user_id:    uploaderId,
+        request_id: context?.requestId,
+        created_at: new Date().toISOString(),
+        metadata:   { mediaId: existing._id.toString(), client_upload_id: input.client_upload_id },
+      });
+      return {
+        media_id:          existing._id.toString(),
+        size:              existing.size,
+        mime_type:         existing.mime_type,
+        original_filename: existing.original_filename,
+        has_thumbnail:     !!existing.thumbnail,
+        duration_ms:       existing.duration_ms,
+        waveform:          existing.waveform,
+        already_existed:   true,
+      };
+    }
+  }
+
+  // 3. Decodifica base64 → Buffer
   const buffer = Buffer.from(input.data, "base64");
 
-  // 3. Decodifica thumbnail se presente
+  // 4. Decodifica thumbnail se presente
   const thumbnailBuf = input.thumbnail
     ? Buffer.from(input.thumbnail, "base64")
     : null;
 
-  // 4. Salva
+  // 5. Salva
   const media = await mediaRepo.create({
     uploaderId:       uploaderObjectId,
     conversationId:   convObjectId,
@@ -65,6 +93,7 @@ export async function uploadMedia(
     thumbnail:        thumbnailBuf,
     durationMs:       input.duration_ms ?? null,
     waveform:         input.waveform ?? [],
+    clientUploadId:   input.client_upload_id ?? null,
   });
 
   logAuditEvent({
@@ -73,11 +102,12 @@ export async function uploadMedia(
     request_id: context?.requestId,
     created_at: new Date().toISOString(),
     metadata:   {
-      mediaId:        media._id.toString(),
-      conversationId: input.conversation_id,
-      mime_type:      input.mime_type,
-      size:           buffer.length,
-      has_thumbnail:  !!thumbnailBuf,
+      mediaId:          media._id.toString(),
+      conversationId:   input.conversation_id,
+      mime_type:        input.mime_type,
+      size:             buffer.length,
+      has_thumbnail:    !!thumbnailBuf,
+      client_upload_id: input.client_upload_id ?? null,
     },
   });
 
@@ -89,6 +119,7 @@ export async function uploadMedia(
     has_thumbnail:     !!media.thumbnail,
     duration_ms:       media.duration_ms,
     waveform:          media.waveform,
+    already_existed:   false,
   };
 }
 

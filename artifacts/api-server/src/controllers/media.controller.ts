@@ -19,7 +19,9 @@ export const uploadMedia: RequestHandler = async (req, res, next) => {
 
     const result = await mediaService.uploadMedia(uploaderId, input, { requestId: req.requestId });
 
-    res.status(201).json(successResponse(result, req.requestId));
+    // HTTP 200 se il documento esisteva già (retry idempotente), 201 se appena creato.
+    const status = result.already_existed ? 200 : 201;
+    res.status(status).json(successResponse(result, req.requestId));
   } catch (err) {
     next(err);
   }
