@@ -1,72 +1,47 @@
 /**
- * Tipi locali per Signal Protocol — Fase 1 (Key Management).
+ * Tipi locali per Signal Protocol — layer alpha-chat-web.
  *
- * ⚠ Zero Plaintext Rule: le chiavi private (Uint8Array) rimangono
- *    esclusivamente in IndexedDB sul dispositivo. Non vengono mai
- *    inviate al server né incluse in log o analytics.
+ * Le chiavi usano ArrayBuffer (formato nativo di @privacyresearch/libsignal-protocol-typescript).
+ * IndexedDB supporta ArrayBuffer nativamente — nessuna conversione in storage.
+ *
+ * ⚠ Zero Plaintext Rule: le chiavi private (privKey: ArrayBuffer) rimangono
+ *    esclusivamente in IndexedDB sul dispositivo. Non vengono mai trasmesse
+ *    al server né incluse in log, debug o analytics.
  */
 
-/** Coppia di chiavi crittografiche — privata locale, pubblica distribuita */
-export interface KeyPair {
-  privateKey: Uint8Array;   // 32 byte — Mai lasciano il dispositivo
-  publicKey: Uint8Array;    // 32 byte — Caricata sul server (base64)
+/** Coppia di chiavi Curve25519 (formato @privacyresearch) */
+export interface SignalKeyPair {
+  pubKey: ArrayBuffer;   // 33 byte per Identity Key (0x05 prefix), 32 byte per DH keys
+  privKey: ArrayBuffer;  // 32 byte — Mai lasciano il dispositivo
 }
 
 /** Identity Key Pair — chiave a lungo termine del dispositivo */
-export interface IdentityKeyPair {
-  keyType: "identity";
-  privateKey: Uint8Array;   // Ed25519 — 32 byte seed
-  publicKey: Uint8Array;    // Ed25519 — 32 byte
+export interface SignalIdentityKeyPair extends SignalKeyPair {
+  /** registrationId associato (1–16383) */
+  registrationId: number;
 }
 
 /** Signed PreKey — chiave DH a medio termine, firmata con Identity Key */
-export interface SignedPreKeyPair {
-  keyType: "signed-pre-key";
+export interface SignalSignedPreKeyPair {
   keyId: number;
-  privateKey: Uint8Array;   // X25519 — 32 byte
-  publicKey: Uint8Array;    // X25519 — 32 byte
-  signature: Uint8Array;    // Ed25519 signature — 64 byte
-  createdAt: number;        // timestamp Unix ms
+  keyPair: SignalKeyPair;
+  signature: ArrayBuffer;  // XEdDSA — 64 byte
+  createdAt: number;       // timestamp Unix ms
 }
 
-/** One-Time PreKey — chiave DH monouso (pool) */
-export interface OneTimePreKeyPair {
-  keyType: "one-time-pre-key";
+/** One-Time PreKey — chiave DH monouso (pool, Signal spec: min 20) */
+export interface SignalOneTimePreKeyPair {
   keyId: number;
-  privateKey: Uint8Array;   // X25519 — 32 byte
-  publicKey: Uint8Array;    // X25519 — 32 byte
+  keyPair: SignalKeyPair;
 }
 
-/** Materiale locale completo del dispositivo Signal */
-export interface LocalSignalIdentity {
-  userId: string;
+/** Bundle pubblico da caricare sul server (nessuna chiave privata) */
+export interface SignalPublicBundle {
   deviceId: string;
   registrationId: number;
-  identityKey: IdentityKeyPair;
-  signedPreKey: SignedPreKeyPair;
-  /** Lista key_id ancora locali (non consumati da X3DH) */
-  oneTimePreKeyIds: number[];
-}
-
-/** Bundle pubblico caricato sul server (nessuna chiave privata) */
-export interface PublicKeyBundle {
-  deviceId: string;
-  registrationId: number;
-  identityKey: string;             // base64
+  identityKey: string;             // base64 (33 byte con prefisso)
   signedPreKeyId: number;
   signedPreKey: string;            // base64
-  signedPreKeySignature: string;   // base64
+  signedPreKeySignature: string;   // base64 (XEdDSA, 64 byte)
   oneTimePreKeys: Array<{ keyId: number; publicKey: string }>;
-}
-
-/** Bundle ricevuto dal server per iniziare sessione X3DH con un utente */
-export interface ReceivedKeyBundle {
-  userId: string;
-  deviceId: string;
-  registrationId: number;
-  identityKey: string;           // base64
-  signedPreKeyId: number;
-  signedPreKey: string;          // base64
-  signedPreKeySignature: string; // base64
-  oneTimePreKey: { keyId: number; publicKey: string } | null;
 }

@@ -1,0 +1,41 @@
+L’analisi è ben fatta e individua un problema reale: oggi non esiste una soluzione perfetta per usare il moderno ecosistema Signal in un’app web pura.
+
+Detto questo, non concordo con una conclusione: rimuovere @signalapp/libsignal-client dal server.
+
+Il server può continuare a usarlo (o anche non usarlo) indipendentemente dal client. Se il server è davvero un relay che memorizza bundle e inoltra messaggi cifrati, non è obbligatorio eliminarlo solo perché il browser usa un’altra implementazione.
+
+La scelta che farei
+
+Sceglierei:
+
+✅ Procedere con @privacyresearch/libsignal-protocol-typescript (fork pinned)
+
+ma con alcune condizioni molto chiare.
+
+Nel commento scriverei:
+
+Procediamo con @privacyresearch/libsignal-protocol-typescript tramite fork interno e versione congelata. Nessuna modifica agli algoritmi crittografici. Nessuna implementazione custom di X3DH, Double Ratchet o XEdDSA. Tutte le deviazioni rispetto all’ecosistema libsignal moderno devono essere documentate. Il server rimane un relay puro e la roadmap dovrà prevedere una rivalutazione periodica qualora Signal rilasci una soluzione browser ufficiale.
+
+Inoltre chiederei all’Agent di aggiungere quattro vincoli permanenti:
+
+1. Fork interno
+    * Non dipendere dal repository originale.
+    * Importare il codice nel monorepo.
+2. Versione congelata
+    * Nessun aggiornamento automatico.
+    * Ogni upgrade passa da audit.
+3. Test di interoperabilità
+    * Alice ↔ Bob
+    * Multi-device
+    * Nuovo dispositivo
+    * Rotazione Signed PreKey
+    * One-Time PreKey esaurite
+    * Safety Number
+    * Replay attack
+4. Documento ADR (Architecture Decision Record)
+    * Spiegare perché è stata scelta questa implementazione.
+    * Elencare rischi, limiti e piano di migrazione futura.
+
+⸻
+
+Questa, a mio avviso, è la soluzione più pragmatica. Non è perfetta, ma evita di inventare crittografia propria e permette di arrivare a un sistema E2E funzionante, mantenendo aperta la possibilità di migrare a un’implementazione ufficiale se Signal ne pubblicherà una per il browser.

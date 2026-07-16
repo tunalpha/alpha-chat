@@ -1,161 +1,193 @@
 /**
- * Signal Protocol — Key Manager (Fase 1).
+ * Signal Protocol — Key Manager.
  *
- * Orchestra:
- *   1. Verifica se le chiavi locali esistono già (IndexedDB)
- *   2. Se no: genera Identity Key + Signed PreKey + 100 One-Time PreKeys
- *   3. Carica il bundle pubblico sul server
- *   4. Periodicamente controlla il livello OTPK e rifornisce se < soglia
+ * Orchestra il ciclo di vita delle chiavi Signal per un dispositivo:
+ *   1. Inizializzazione al primo login (genera + carica bundle)
+ *   2. Rifornimento OTPKs (quando il server ne ha < 20)
+ *   3. Rotazione Signed PreKey (pianificata in Phase 2)
+ *   4. Cleanup al logout
  *
- * ZERO PLAINTEXT RULE:
- *   Solo le chiavi pubbliche (e la firma) vengono inviate al server.
- *   Le chiavi private rimangono esclusivamente in IndexedDB.
+ * PUNTO DI ACCESSO PRINCIPALE: `initSignalKeys(userId, deviceId)`
+ *
+ * ⚠ Zero Plaintext Rule: questo manager non trasmette mai chiavi private.
+ *    Le private restano in IndexedDB; al server vanno solo chiavi pubbliche.
  */
 
+import { initSignalLibrary } from "@workspace/libsignal-ts";
+import { getSignalStore } from "./key-store";
 import {
   generateIdentityKeyPair,
   generateSignedPreKey,
   generateOneTimePreKeys,
-  generateRegistrationId,
-  toBase64,
+  buildPublicBundle,
 } from "./key-generator";
 import {
-  hasIdentityKey,
-  saveIdentityKey,
-  saveSignedPreKey,
-  saveOneTimePreKeys,
-  loadMetadata,
-  saveMetadata,
-  countLocalOneTimePreKeys,
-  getNextOtpkStartId,
-  clearSignalStore,
-} from "./key-store";
-import {
   apiUploadKeyBundle,
+  apiGetKeyCount,
   apiReplenishOneTimePreKeys,
 } from "../api";
-import type { PublicKeyBundle } from "./types";
-
-/** Soglia minima OTPK locali prima di generarne di nuove */
-const OTPK_REFILL_THRESHOLD = 20;
-/** Numero di OTPK da generare per rifornimento */
-const OTPK_REFILL_BATCH = 100;
 
 // ---------------------------------------------------------------------------
-// Inizializzazione chiavi (chiamata post-login)
+// Soglie
+// ---------------------------------------------------------------------------
+
+const OTPK_MIN = 20;   // Rifornimento quando il server ha < 20 OTPK
+const OTPK_BATCH = 100; // Quante OTPK generare per rifornimento
+
+// ---------------------------------------------------------------------------
+// initSignalKeys — punto di ingresso principale
 // ---------------------------------------------------------------------------
 
 /**
- * Inizializza le chiavi Signal per l'utente/dispositivo.
- * Idempotente: se le chiavi esistono già non fa nulla.
+ * Inizializza le chiavi Signal per (userId, deviceId).
  *
- * @param userId    ID utente (da AuthContext)
- * @param deviceId  ID dispositivo (da localStorage o SessionModel)
+ * Idempotente: se le chiavi esistono già, verifica solo il livello OTPK.
+ * Chiamato dopo login e registrazione (non blocca il flusso — fire-and-forget).
+ *
+ * Flusso:
+ *   1. Carica WASM curve25519 (singleton)
+ *   2. Se non inizializzato: genera Identity Key, Signed PreKey, 100 OTPKs
+ *   3. Carica bundle pubblico sul server
+ *   4. Controlla se il server ha abbastanza OTPKs; rifornisce se necessario
  */
 export async function initSignalKeys(
   userId: string,
   deviceId: string,
 ): Promise<void> {
-  const alreadyInitialized = await hasIdentityKey(userId);
-  if (alreadyInitialized) {
-    // Controlla solo se serve rifornire le OTPK
+  // 1. Inizializza WASM (no-op se già fatto)
+  await initSignalLibrary();
+
+  const store = getSignalStore(userId, deviceId);
+
+  if (!(await store.isInitialized())) {
+    // Prima inizializzazione: genera tutto e carica sul server
+    await _firstTimeSetup(store, userId, deviceId);
+  } else {
+    // Già inizializzato: controlla solo il livello OTPK
     await maybeReplenishOtpks(userId, deviceId);
-    return;
   }
-
-  // --- Generazione ---
-  const identityKey = generateIdentityKeyPair();
-  const registrationId = generateRegistrationId();
-
-  const spkId = 1;
-  const signedPreKey = generateSignedPreKey(spkId, identityKey.privateKey);
-
-  const startOtpkId = await getNextOtpkStartId(userId);
-  const oneTimePreKeys = generateOneTimePreKeys(startOtpkId, 100);
-
-  // --- Storage locale (PRIVATE keys — mai al server) ---
-  await saveIdentityKey(userId, deviceId, identityKey);
-  await saveSignedPreKey(userId, signedPreKey);
-  await saveOneTimePreKeys(userId, oneTimePreKeys);
-
-  // Salva registrationId e deviceId in metadata
-  await saveMetadata(`${userId}:registrationId`, registrationId);
-  await saveMetadata(`${userId}:deviceId`, deviceId);
-
-  // --- Upload bundle PUBBLICO al server ---
-  const bundle: PublicKeyBundle = {
-    deviceId,
-    registrationId,
-    identityKey: toBase64(identityKey.publicKey),
-    signedPreKeyId: spkId,
-    signedPreKey: toBase64(signedPreKey.publicKey),
-    signedPreKeySignature: toBase64(signedPreKey.signature),
-    oneTimePreKeys: oneTimePreKeys.map((k) => ({
-      keyId: k.keyId,
-      publicKey: toBase64(k.publicKey),
-    })),
-  };
-
-  await apiUploadKeyBundle(bundle);
 }
 
 // ---------------------------------------------------------------------------
-// Rifornimento One-Time PreKeys
+// Setup iniziale (prima volta)
+// ---------------------------------------------------------------------------
+
+async function _firstTimeSetup(
+  store: ReturnType<typeof getSignalStore>,
+  userId: string,
+  deviceId: string,
+): Promise<void> {
+  // Genera Identity Key Pair
+  const identityKeyPair = await generateIdentityKeyPair();
+
+  // Registration ID (1–16383)
+  const { generateRegistrationId } = await import("@workspace/libsignal-ts");
+  const registrationId = generateRegistrationId();
+
+  // Salva identità locale
+  await store.storeIdentityKeyPair(identityKeyPair, registrationId);
+
+  // Genera Signed PreKey (keyId = 1)
+  const signedPreKey = await generateSignedPreKey(identityKeyPair, 1);
+  await store.storeSignedPreKey(signedPreKey.keyId, signedPreKey.keyPair);
+  await store.setCurrentSpkId(signedPreKey.keyId);
+
+  // Genera 100 One-Time PreKeys
+  const startId = await store.getNextOtpkId();
+  const oneTimePreKeys = await generateOneTimePreKeys(startId, OTPK_BATCH);
+  await Promise.all(
+    oneTimePreKeys.map((k) => store.storePreKey(k.keyId, k.keyPair)),
+  );
+  await store.setNextOtpkId(startId + OTPK_BATCH);
+
+  // Costruisce e carica il bundle pubblico
+  const bundle = await buildPublicBundle(
+    store,
+    deviceId,
+    identityKeyPair,
+    signedPreKey,
+    oneTimePreKeys,
+  );
+
+  await apiUploadKeyBundle({
+    deviceId: bundle.deviceId,
+    registrationId: bundle.registrationId,
+    identityKey: bundle.identityKey,
+    signedPreKeyId: bundle.signedPreKeyId,
+    signedPreKey: bundle.signedPreKey,
+    signedPreKeySignature: bundle.signedPreKeySignature,
+    oneTimePreKeys: bundle.oneTimePreKeys,
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Rifornimento OTPKs
 // ---------------------------------------------------------------------------
 
 /**
- * Controlla il livello OTPK locale e rifornisce se sotto soglia.
- * Chiamato silenziosamente in background (non blocca l'UI).
+ * Controlla il livello OTPK sul server e rifornisce se < OTPK_MIN.
+ * Chiamato automaticamente da `initSignalKeys` e può essere chiamato
+ * periodicamente (es. ogni N minuti o a ogni avvio).
  */
 export async function maybeReplenishOtpks(
   userId: string,
   deviceId: string,
 ): Promise<void> {
   try {
-    const count = await countLocalOneTimePreKeys(userId);
-    if (count >= OTPK_REFILL_THRESHOLD) return;
+    await initSignalLibrary(); // Assicura WASM caricato
 
-    const startId = await getNextOtpkStartId(userId);
-    const newKeys = generateOneTimePreKeys(startId, OTPK_REFILL_BATCH);
+    const { otpkCount, needsReplenishment } = await apiGetKeyCount();
+    if (!needsReplenishment) return;
 
-    await saveOneTimePreKeys(userId, newKeys);
+    const store = getSignalStore(userId, deviceId);
+    const identityKeyPair = await store.getIdentityKeyPair();
+    if (!identityKeyPair) return; // Non inizializzato
+
+    // Genera nuove OTPKs partendo dall'ID successivo
+    const startId = await store.getNextOtpkId();
+    const needed = Math.max(OTPK_MIN - otpkCount, 0) + OTPK_BATCH;
+    const newKeys = await generateOneTimePreKeys(startId, needed);
+
+    // Salva localmente
+    await Promise.all(newKeys.map((k) => store.storePreKey(k.keyId, k.keyPair)));
+    await store.setNextOtpkId(startId + needed);
+
+    // Carica sul server
     await apiReplenishOneTimePreKeys({
       deviceId,
       oneTimePreKeys: newKeys.map((k) => ({
         keyId: k.keyId,
-        publicKey: toBase64(k.publicKey),
+        publicKey: _ab2b64(k.keyPair.pubKey),
       })),
     });
   } catch {
-    // Errore non critico — il rifornimento verrà ritentato al prossimo login
+    // Errore non critico — verrà ritentato alla prossima occasione
   }
 }
 
 // ---------------------------------------------------------------------------
-// Cleanup (logout / reset account)
+// Cleanup al logout
 // ---------------------------------------------------------------------------
 
 /**
- * Elimina TUTTE le chiavi Signal locali per l'utente.
- * Chiamato durante logout o reset account.
+ * Cancella tutte le chiavi Signal locali per (userId, deviceId).
+ * Chiamato al logout. Non reversibile: richiede re-inizializzazione al login.
  */
-export async function clearSignalKeys(userId: string): Promise<void> {
-  await clearSignalStore(userId);
+export async function clearSignalKeys(
+  userId: string,
+  deviceId: string,
+): Promise<void> {
+  const store = getSignalStore(userId, deviceId);
+  await store.clear();
 }
 
 // ---------------------------------------------------------------------------
-// Utilità status
+// Helper locale
 // ---------------------------------------------------------------------------
 
-export async function getSignalStatus(userId: string): Promise<{
-  initialized: boolean;
-  registrationId: number | null;
-  localOtpkCount: number;
-}> {
-  const initialized = await hasIdentityKey(userId);
-  const registrationId = initialized
-    ? ((await loadMetadata(`${userId}:registrationId`)) as number | null)
-    : null;
-  const localOtpkCount = initialized ? await countLocalOneTimePreKeys(userId) : 0;
-  return { initialized, registrationId, localOtpkCount };
+function _ab2b64(buf: ArrayBuffer): string {
+  const bytes = new Uint8Array(buf);
+  let bin = "";
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]!);
+  return btoa(bin);
 }

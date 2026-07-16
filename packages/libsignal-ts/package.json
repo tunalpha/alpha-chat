@@ -1,0 +1,19 @@
+{
+  "name": "@workspace/libsignal-ts",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Fork interno di @privacyresearch/libsignal-protocol-typescript v0.0.16 (versione congelata). Non aggiornare senza audit crittografico. Vedere docs/adr/ADR-001-signal-browser-crypto.md.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@privacyresearch/libsignal-protocol-typescript": "0.0.16"
+  },
+  "devDependencies": {
+    "typescript": "^5.8.3"
+  }
+}

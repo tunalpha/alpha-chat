@@ -1,303 +1,331 @@
 /**
- * Signal Protocol — IndexedDB Key Store (Fase 1).
+ * Signal Protocol — IndexedDB Store (Fase 1 / Fase 2-ready).
  *
- * Gestisce il persistence locale delle chiavi private su IndexedDB.
+ * Implementa `StorageType` di @privacyresearch/libsignal-protocol-typescript,
+ * l'interfaccia richiesta da SessionBuilder e SessionCipher per la gestione
+ * dello stato di sessione Signal.
  *
- * ZERO PLAINTEXT RULE:
- *   Le chiavi private in questo store NON vengono mai:
- *   - Inviate al server
- *   - Incluse in log o analytics
- *   - Esposte fuori dal modulo signal/
+ * ⚠ Zero Plaintext Rule: solo chiavi PRIVATE e stato di sessione cifrato
+ *    sono conservati qui. Il plaintext dei messaggi non passa mai per questo store.
  *
- * Struttura DB:
- *   DB: "alpha-chat-signal-v1"
- *   Store "identity"          → { userId, privateKey, publicKey }
- *   Store "signed-pre-keys"   → { id (keyId), userId, ...SignedPreKeyPair }
- *   Store "one-time-pre-keys" → { id (keyId), userId, privateKey, publicKey }
- *   Store "metadata"          → { key, value } (registrationId, nextOtpkId, ...)
+ * DB: "alpha-chat-signal-v2" (versione 1)
  */
 
 import { openDB, type DBSchema, type IDBPDatabase } from "idb";
-import type { IdentityKeyPair, SignedPreKeyPair, OneTimePreKeyPair } from "./types";
+import type { StorageType, KeyPairType, SessionRecordType, Direction } from "@workspace/libsignal-ts";
 
 // ---------------------------------------------------------------------------
-// Schema IDB
+// Schema IndexedDB
 // ---------------------------------------------------------------------------
 
-interface SignalDB extends DBSchema {
-  identity: {
-    key: string; // userId
-    value: {
-      userId: string;
-      deviceId: string;
-      privateKey: Uint8Array;
-      publicKey: Uint8Array;
-      createdAt: number;
-    };
+interface SignalDBSchema extends DBSchema {
+  /** Identità locale: chiave propria + registrationId */
+  "identity-self": {
+    key: "self";
+    value: { pubKey: ArrayBuffer; privKey: ArrayBuffer; registrationId: number };
   };
+  /** Identità remote affidabili: address → pubKey */
+  "identity-remote": {
+    key: string;
+    value: ArrayBuffer;
+  };
+  /** Sessioni Double Ratchet: address → SessionRecord serializzato */
+  "sessions": {
+    key: string;
+    value: string; // SessionRecordType = string
+  };
+  /** One-Time PreKeys: keyId → keypair */
+  "pre-keys": {
+    key: number;
+    value: { pubKey: ArrayBuffer; privKey: ArrayBuffer };
+  };
+  /** Signed PreKeys: keyId → keypair */
   "signed-pre-keys": {
-    key: [string, number]; // [userId, keyId]
-    value: {
-      userId: string;
-      keyId: number;
-      privateKey: Uint8Array;
-      publicKey: Uint8Array;
-      signature: Uint8Array;
-      createdAt: number;
-    };
-    indexes: { byUser: string };
+    key: number;
+    value: { pubKey: ArrayBuffer; privKey: ArrayBuffer };
   };
-  "one-time-pre-keys": {
-    key: [string, number]; // [userId, keyId]
-    value: {
-      userId: string;
-      keyId: number;
-      privateKey: Uint8Array;
-      publicKey: Uint8Array;
-    };
-    indexes: { byUser: string };
-  };
-  metadata: {
-    key: string; // `${userId}:${field}`
-    value: {
-      key: string;
-      value: number | string | boolean;
-    };
+  /** Metadati: chiave → valore */
+  "metadata": {
+    key: string;
+    value: number;
   };
 }
 
-const DB_NAME = "alpha-chat-signal-v1";
+const DB_NAME = "alpha-chat-signal-v2";
 const DB_VERSION = 1;
 
-let dbInstance: IDBPDatabase<SignalDB> | null = null;
+// ---------------------------------------------------------------------------
+// SignalProtocolStore
+// ---------------------------------------------------------------------------
 
-async function getDB(): Promise<IDBPDatabase<SignalDB>> {
-  if (dbInstance) return dbInstance;
-  dbInstance = await openDB<SignalDB>(DB_NAME, DB_VERSION, {
-    upgrade(db) {
-      // Identity — una per (userId, deviceId)
-      db.createObjectStore("identity", { keyPath: "userId" });
+/**
+ * Store IndexedDB che implementa l'interfaccia `StorageType` di @privacyresearch.
+ *
+ * Un'istanza per coppia (userId, deviceId) — ogni dispositivo ha il suo DB.
+ * La chiave del DB è `${userId}:${deviceId}`.
+ */
+export class SignalProtocolStore implements StorageType {
+  private _db: IDBPDatabase<SignalDBSchema> | null = null;
+  private readonly _dbKey: string;
 
-      // Signed PreKeys — indicizzati per userId
-      const spkStore = db.createObjectStore("signed-pre-keys", {
-        keyPath: ["userId", "keyId"],
-      });
-      spkStore.createIndex("byUser", "userId");
+  constructor(userId: string, deviceId: string) {
+    // DB separato per utente+dispositivo
+    this._dbKey = `${DB_NAME}:${userId}:${deviceId}`;
+  }
 
-      // One-Time PreKeys — indicizzati per userId
-      const otpkStore = db.createObjectStore("one-time-pre-keys", {
-        keyPath: ["userId", "keyId"],
-      });
-      otpkStore.createIndex("byUser", "userId");
+  // ---------------------------------------------------------------------------
+  // Inizializzazione DB
+  // ---------------------------------------------------------------------------
 
-      // Metadata — registrationId, nextOtpkId, ecc.
-      db.createObjectStore("metadata", { keyPath: "key" });
-    },
-  });
-  return dbInstance;
+  private async db(): Promise<IDBPDatabase<SignalDBSchema>> {
+    if (this._db) return this._db;
+    this._db = await openDB<SignalDBSchema>(this._dbKey, DB_VERSION, {
+      upgrade(db) {
+        db.createObjectStore("identity-self");
+        db.createObjectStore("identity-remote");
+        db.createObjectStore("sessions");
+        db.createObjectStore("pre-keys");
+        db.createObjectStore("signed-pre-keys");
+        db.createObjectStore("metadata");
+      },
+    });
+    return this._db;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Identità locale (propria)
+  // ---------------------------------------------------------------------------
+
+  /** Salva la propria Identity Key Pair (chiamato una volta al setup) */
+  async storeIdentityKeyPair(
+    keyPair: KeyPairType,
+    registrationId: number,
+  ): Promise<void> {
+    const db = await this.db();
+    await db.put("identity-self", {
+      pubKey: keyPair.pubKey,
+      privKey: keyPair.privKey,
+      registrationId,
+    }, "self");
+  }
+
+  /** [StorageType] Restituisce la propria Identity Key Pair */
+  async getIdentityKeyPair(): Promise<KeyPairType | undefined> {
+    const db = await this.db();
+    const stored = await db.get("identity-self", "self");
+    if (!stored) return undefined;
+    return { pubKey: stored.pubKey, privKey: stored.privKey };
+  }
+
+  /** [StorageType] Restituisce il Registration ID locale */
+  async getLocalRegistrationId(): Promise<number | undefined> {
+    const db = await this.db();
+    const stored = await db.get("identity-self", "self");
+    return stored?.registrationId;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Identità remote (trust management)
+  // ---------------------------------------------------------------------------
+
+  /**
+   * [StorageType] Verifica se un'identità remota è fidata.
+   * Prima implementazione (TOFU — Trust On First Use):
+   * la prima chiave vista per un address viene accettata automaticamente.
+   */
+  async isTrustedIdentity(
+    identifier: string,
+    identityKey: ArrayBuffer,
+    _direction: Direction,
+  ): Promise<boolean> {
+    const db = await this.db();
+    const stored = await db.get("identity-remote", identifier);
+
+    if (!stored) {
+      // TOFU: prima volta → salva e fidati
+      await db.put("identity-remote", identityKey, identifier);
+      return true;
+    }
+
+    // Confronto byte-per-byte
+    return arrayBufferEquals(stored, identityKey);
+  }
+
+  /**
+   * [StorageType] Salva la chiave pubblica di un'identità remota.
+   * Ritorna true se la chiave era già presente (aggiornamento).
+   */
+  async saveIdentity(
+    encodedAddress: string,
+    publicKey: ArrayBuffer,
+    _nonblockingApproval?: boolean,
+  ): Promise<boolean> {
+    const db = await this.db();
+    const existing = await db.get("identity-remote", encodedAddress);
+    await db.put("identity-remote", publicKey, encodedAddress);
+    return existing !== undefined;
+  }
+
+  // ---------------------------------------------------------------------------
+  // One-Time PreKeys (pool monouso)
+  // ---------------------------------------------------------------------------
+
+  /** [StorageType] Carica una One-Time PreKey per keyId */
+  async loadPreKey(keyId: string | number): Promise<KeyPairType | undefined> {
+    const db = await this.db();
+    const id = typeof keyId === "string" ? parseInt(keyId, 10) : keyId;
+    const stored = await db.get("pre-keys", id);
+    if (!stored) return undefined;
+    return { pubKey: stored.pubKey, privKey: stored.privKey };
+  }
+
+  /** [StorageType] Salva una One-Time PreKey */
+  async storePreKey(keyId: number | string, keyPair: KeyPairType): Promise<void> {
+    const db = await this.db();
+    const id = typeof keyId === "string" ? parseInt(keyId, 10) : keyId;
+    await db.put("pre-keys", { pubKey: keyPair.pubKey, privKey: keyPair.privKey }, id);
+  }
+
+  /** [StorageType] Rimuove una One-Time PreKey dopo l'uso in X3DH */
+  async removePreKey(keyId: number | string): Promise<void> {
+    const db = await this.db();
+    const id = typeof keyId === "string" ? parseInt(keyId, 10) : keyId;
+    await db.delete("pre-keys", id);
+  }
+
+  /** Conta le OTPKs rimanenti (per decidere se rifornire) */
+  async countPreKeys(): Promise<number> {
+    const db = await this.db();
+    return db.count("pre-keys");
+  }
+
+  /** Elenca tutti i keyId delle OTPKs (per upload al server) */
+  async getAllPreKeyIds(): Promise<number[]> {
+    const db = await this.db();
+    return db.getAllKeys("pre-keys");
+  }
+
+  // ---------------------------------------------------------------------------
+  // Signed PreKey
+  // ---------------------------------------------------------------------------
+
+  /** [StorageType] Carica la Signed PreKey per keyId */
+  async loadSignedPreKey(keyId: number | string): Promise<KeyPairType | undefined> {
+    const db = await this.db();
+    const id = typeof keyId === "string" ? parseInt(keyId, 10) : keyId;
+    const stored = await db.get("signed-pre-keys", id);
+    if (!stored) return undefined;
+    return { pubKey: stored.pubKey, privKey: stored.privKey };
+  }
+
+  /** [StorageType] Salva la Signed PreKey */
+  async storeSignedPreKey(keyId: number | string, keyPair: KeyPairType): Promise<void> {
+    const db = await this.db();
+    const id = typeof keyId === "string" ? parseInt(keyId, 10) : keyId;
+    await db.put("signed-pre-keys", { pubKey: keyPair.pubKey, privKey: keyPair.privKey }, id);
+  }
+
+  /** [StorageType] Rimuove la vecchia Signed PreKey (dopo rotazione) */
+  async removeSignedPreKey(keyId: number | string): Promise<void> {
+    const db = await this.db();
+    const id = typeof keyId === "string" ? parseInt(keyId, 10) : keyId;
+    await db.delete("signed-pre-keys", id);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Sessioni Double Ratchet
+  // ---------------------------------------------------------------------------
+
+  /** [StorageType] Salva il record di sessione serializzato */
+  async storeSession(encodedAddress: string, record: SessionRecordType): Promise<void> {
+    const db = await this.db();
+    await db.put("sessions", record, encodedAddress);
+  }
+
+  /** [StorageType] Carica il record di sessione */
+  async loadSession(encodedAddress: string): Promise<SessionRecordType | undefined> {
+    const db = await this.db();
+    return db.get("sessions", encodedAddress);
+  }
+
+  // ---------------------------------------------------------------------------
+  // Metadati
+  // ---------------------------------------------------------------------------
+
+  /** Legge il prossimo keyId disponibile per OTPKs */
+  async getNextOtpkId(): Promise<number> {
+    const db = await this.db();
+    return (await db.get("metadata", "nextOtpkId")) ?? 1;
+  }
+
+  async setNextOtpkId(id: number): Promise<void> {
+    const db = await this.db();
+    await db.put("metadata", id, "nextOtpkId");
+  }
+
+  /** Legge il keyId della Signed PreKey corrente */
+  async getCurrentSpkId(): Promise<number> {
+    const db = await this.db();
+    return (await db.get("metadata", "currentSpkId")) ?? 1;
+  }
+
+  async setCurrentSpkId(id: number): Promise<void> {
+    const db = await this.db();
+    await db.put("metadata", id, "currentSpkId");
+  }
+
+  // ---------------------------------------------------------------------------
+  // Lifecycle
+  // ---------------------------------------------------------------------------
+
+  /** Verifica se lo store è stato inizializzato (Identity Key presente) */
+  async isInitialized(): Promise<boolean> {
+    const db = await this.db();
+    const self = await db.get("identity-self", "self");
+    return self !== undefined;
+  }
+
+  /**
+   * Cancella tutto lo state locale Signal per questo (userId, deviceId).
+   * Chiamato al logout. Non reversibile.
+   */
+  async clear(): Promise<void> {
+    const db = await this.db();
+    await Promise.all([
+      db.clear("identity-self"),
+      db.clear("identity-remote"),
+      db.clear("sessions"),
+      db.clear("pre-keys"),
+      db.clear("signed-pre-keys"),
+      db.clear("metadata"),
+    ]);
+  }
 }
 
 // ---------------------------------------------------------------------------
-// Identity Key
+// Helpers
 // ---------------------------------------------------------------------------
 
-export async function saveIdentityKey(
-  userId: string,
-  deviceId: string,
-  pair: IdentityKeyPair,
-): Promise<void> {
-  const db = await getDB();
-  await db.put("identity", {
-    userId,
-    deviceId,
-    privateKey: pair.privateKey,
-    publicKey: pair.publicKey,
-    createdAt: Date.now(),
-  });
-}
-
-export async function loadIdentityKey(
-  userId: string,
-): Promise<IdentityKeyPair | null> {
-  const db = await getDB();
-  const row = await db.get("identity", userId);
-  if (!row) return null;
-  return {
-    keyType: "identity",
-    privateKey: row.privateKey,
-    publicKey: row.publicKey,
-  };
-}
-
-export async function hasIdentityKey(userId: string): Promise<boolean> {
-  const db = await getDB();
-  const count = await db.count("identity", userId);
-  return count > 0;
+function arrayBufferEquals(a: ArrayBuffer, b: ArrayBuffer): boolean {
+  if (a.byteLength !== b.byteLength) return false;
+  const va = new Uint8Array(a);
+  const vb = new Uint8Array(b);
+  for (let i = 0; i < va.length; i++) {
+    if (va[i] !== vb[i]) return false;
+  }
+  return true;
 }
 
 // ---------------------------------------------------------------------------
-// Signed PreKey
+// Factory: istanza per userId+deviceId
 // ---------------------------------------------------------------------------
 
-export async function saveSignedPreKey(
-  userId: string,
-  pair: SignedPreKeyPair,
-): Promise<void> {
-  const db = await getDB();
-  await db.put("signed-pre-keys", {
-    userId,
-    keyId: pair.keyId,
-    privateKey: pair.privateKey,
-    publicKey: pair.publicKey,
-    signature: pair.signature,
-    createdAt: pair.createdAt,
-  });
-}
+const _stores = new Map<string, SignalProtocolStore>();
 
-export async function loadSignedPreKey(
-  userId: string,
-  keyId: number,
-): Promise<SignedPreKeyPair | null> {
-  const db = await getDB();
-  const row = await db.get("signed-pre-keys", [userId, keyId]);
-  if (!row) return null;
-  return {
-    keyType: "signed-pre-key",
-    keyId: row.keyId,
-    privateKey: row.privateKey,
-    publicKey: row.publicKey,
-    signature: row.signature,
-    createdAt: row.createdAt,
-  };
-}
-
-export async function loadCurrentSignedPreKey(
-  userId: string,
-): Promise<SignedPreKeyPair | null> {
-  const db = await getDB();
-  const all = await db.getAllFromIndex("signed-pre-keys", "byUser", userId);
-  if (all.length === 0) return null;
-  // La più recente
-  const latest = all.sort((a, b) => b.createdAt - a.createdAt)[0]!;
-  return {
-    keyType: "signed-pre-key",
-    keyId: latest.keyId,
-    privateKey: latest.privateKey,
-    publicKey: latest.publicKey,
-    signature: latest.signature,
-    createdAt: latest.createdAt,
-  };
-}
-
-// ---------------------------------------------------------------------------
-// One-Time PreKeys
-// ---------------------------------------------------------------------------
-
-export async function saveOneTimePreKeys(
-  userId: string,
-  pairs: OneTimePreKeyPair[],
-): Promise<void> {
-  const db = await getDB();
-  const tx = db.transaction("one-time-pre-keys", "readwrite");
-  await Promise.all(
-    pairs.map((p) =>
-      tx.store.put({
-        userId,
-        keyId: p.keyId,
-        privateKey: p.privateKey,
-        publicKey: p.publicKey,
-      }),
-    ),
-  );
-  await tx.done;
-}
-
-export async function loadOneTimePreKey(
-  userId: string,
-  keyId: number,
-): Promise<OneTimePreKeyPair | null> {
-  const db = await getDB();
-  const row = await db.get("one-time-pre-keys", [userId, keyId]);
-  if (!row) return null;
-  return {
-    keyType: "one-time-pre-key",
-    keyId: row.keyId,
-    privateKey: row.privateKey,
-    publicKey: row.publicKey,
-  };
-}
-
-/** Consuma (carica + elimina) una OTP key dopo X3DH — forward secrecy */
-export async function consumeOneTimePreKey(
-  userId: string,
-  keyId: number,
-): Promise<OneTimePreKeyPair | null> {
-  const db = await getDB();
-  const tx = db.transaction("one-time-pre-keys", "readwrite");
-  const row = await tx.store.get([userId, keyId]);
-  if (!row) { await tx.done; return null; }
-  await tx.store.delete([userId, keyId]);
-  await tx.done;
-  return {
-    keyType: "one-time-pre-key",
-    keyId: row.keyId,
-    privateKey: row.privateKey,
-    publicKey: row.publicKey,
-  };
-}
-
-export async function countLocalOneTimePreKeys(userId: string): Promise<number> {
-  const db = await getDB();
-  const all = await db.getAllKeysFromIndex("one-time-pre-keys", "byUser", userId);
-  return all.length;
-}
-
-// ---------------------------------------------------------------------------
-// Metadata
-// ---------------------------------------------------------------------------
-
-export async function saveMetadata(key: string, value: number | string | boolean): Promise<void> {
-  const db = await getDB();
-  await db.put("metadata", { key, value });
-}
-
-export async function loadMetadata(key: string): Promise<number | string | boolean | null> {
-  const db = await getDB();
-  const row = await db.get("metadata", key);
-  return row?.value ?? null;
-}
-
-export async function getNextOtpkStartId(userId: string): Promise<number> {
-  const metaKey = `${userId}:nextOtpkId`;
-  const current = (await loadMetadata(metaKey)) as number | null;
-  const next = (current ?? 0) + 100;
-  await saveMetadata(metaKey, next);
-  return current ?? 1;
-}
-
-/** Elimina TUTTI i dati Signal locali per un utente (es. logout / reset) */
-export async function clearSignalStore(userId: string): Promise<void> {
-  const db = await getDB();
-  const tx = db.transaction(
-    ["identity", "signed-pre-keys", "one-time-pre-keys", "metadata"],
-    "readwrite",
-  );
-
-  await tx.objectStore("identity").delete(userId);
-
-  const spkKeys = await tx.objectStore("signed-pre-keys").index("byUser").getAllKeys(userId);
-  await Promise.all(spkKeys.map((k) => tx.objectStore("signed-pre-keys").delete(k)));
-
-  const otpkKeys = await tx.objectStore("one-time-pre-keys").index("byUser").getAllKeys(userId);
-  await Promise.all(otpkKeys.map((k) => tx.objectStore("one-time-pre-keys").delete(k)));
-
-  // Metadata con prefisso userId
-  const allMeta = await tx.objectStore("metadata").getAllKeys();
-  await Promise.all(
-    allMeta
-      .filter((k) => (k as string).startsWith(`${userId}:`))
-      .map((k) => tx.objectStore("metadata").delete(k)),
-  );
-
-  await tx.done;
+export function getSignalStore(userId: string, deviceId: string): SignalProtocolStore {
+  const key = `${userId}:${deviceId}`;
+  if (!_stores.has(key)) {
+    _stores.set(key, new SignalProtocolStore(userId, deviceId));
+  }
+  return _stores.get(key)!;
 }

@@ -3,27 +3,31 @@ name: Sprint 16 Fase 1 — Signal Key Management
 description: Decisioni architetturali, dipendenze, formato chiavi e punti aperti per le fasi successive
 ---
 
-## Librerie installate
+## Librerie installate (post-revisione architetturale)
 
 **Backend (api-server):**
-- `@signalapp/libsignal-client` — Node.js native bindings. Installato e pronto per Fase 2 (X3DH session + firma verification). NON ancora usato in Fase 1 (solo infrastruttura key store).
+- `@signalapp/libsignal-client` v0.97.3 — Node.js native (AGPL-3.0-only). Mantenuto come relay infrastruttura; NON usato per operazioni crittografiche sui messaggi (Phases 1-5). Rivalutare in Phase 6 dopo verifica legale licenza.
 
 **Frontend (alpha-chat-web):**
-- `@noble/curves` v2.2.0 — Curve25519/Ed25519. Subpath import: `@noble/curves/ed25519.js` (con .js extension).
-  - API: `ed25519.utils.randomSecretKey()` (NON randomPrivateKey — rinominata in v2)
-  - `ed25519` e `x25519` sono nello STESSO modulo (`ed25519.js`)
+- `@workspace/libsignal-ts` — fork interno (packages/libsignal-ts/). Wrapper di `@privacyresearch/libsignal-protocol-typescript` v0.0.16 (versione CONGELATA — no auto-update).
 - `idb` — wrapper tipizzato IndexedDB per storage chiavi private locali.
 
-## Formato chiavi scelto
+## Decisione architetturale (ADR-001)
+
+- `@signalapp/libsignal-client` ha licenza AGPL-3.0-only (incompatibile con prodotto proprietario) e NON ha build WASM (confermato: rust/bridge/ = ffi, jni, node, shared — no wasm).
+- Unica opzione browser senza crypto custom: `@privacyresearch/libsignal-protocol-typescript` v0.0.16.
+- ADR completo: `docs/adr/ADR-001-signal-browser-crypto.md`.
+
+## Formato chiavi (post-revisione — Signal-compatible)
 
 | Chiave | Algoritmo | Byte | Formato server |
 |---|---|---|---|
-| Identity Key | Ed25519 | 32 | base64 raw |
-| Signed PreKey | X25519 | 32 | base64 raw |
-| SPK Signature | Ed25519 sig | 64 | base64 raw |
-| One-Time PreKey | X25519 | 32 | base64 raw |
+| Identity Key | Curve25519 XEdDSA | 33 (con 0x05 prefix) | base64 |
+| Signed PreKey | Curve25519 DH | 32 | base64 |
+| SPK Signature | XEdDSA | 64 | base64 |
+| One-Time PreKey | Curve25519 DH | 32 | base64 |
 
-Nota: Signal usa XEdDSA (Curve25519 → Ed25519 per signing). Noi usiamo Ed25519 separato per Fase 1. In Fase 2, con libsignal nel loop, valutare se allineare al formato XEdDSA nativo di Signal.
+Nota: @privacyresearch usa XEdDSA nativo via curve25519-typescript (WASM/asm.js). Non custom crypto.
 
 ## API backend (tutti auth-protected)
 

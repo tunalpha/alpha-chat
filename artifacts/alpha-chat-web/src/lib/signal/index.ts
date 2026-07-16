@@ -1,18 +1,16 @@
 /**
- * Signal Protocol — Public exports (Fase 1: Key Management).
+ * Signal Protocol — Punto di accesso pubblico per alpha-chat-web.
  *
- * Punto di accesso unico al modulo signal/.
- * Il resto dell'app non importa da sotto-moduli direttamente.
+ * Importa SOLO da qui, non direttamente da @workspace/libsignal-ts o da
+ * file interni del modulo signal/.
  */
 
-export { initSignalKeys, clearSignalKeys, maybeReplenishOtpks, getSignalStatus } from "./key-manager";
-export { toBase64, fromBase64, verifySignedPreKey } from "./key-generator";
+export { initSignalKeys, clearSignalKeys, maybeReplenishOtpks } from "./key-manager";
+export { getSignalStore, SignalProtocolStore } from "./key-store";
 export type {
-  KeyPair,
-  IdentityKeyPair,
-  SignedPreKeyPair,
-  OneTimePreKeyPair,
-  LocalSignalIdentity,
-  PublicKeyBundle,
-  ReceivedKeyBundle,
+  SignalKeyPair,
+  SignalIdentityKeyPair,
+  SignalSignedPreKeyPair,
+  SignalOneTimePreKeyPair,
+  SignalPublicBundle,
 } from "./types";

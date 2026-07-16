@@ -69,8 +69,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     clearAuth();
     setAuth(null);
     // Pulisce le chiavi Signal locali al logout
-    if (current?.userId) {
-      void clearSignalKeys(current.userId).catch(() => {});
+    if (current?.userId && current.deviceId) {
+      void clearSignalKeys(current.userId, current.deviceId).catch(() => {});
     }
   }, []);
 
@@ -79,8 +79,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     await apiLogoutAll();
     clearAuth();
     setAuth(null);
-    if (current?.userId) {
-      void clearSignalKeys(current.userId).catch(() => {});
+    if (current?.userId && current.deviceId) {
+      void clearSignalKeys(current.userId, current.deviceId).catch(() => {});
     }
   }, []);
 

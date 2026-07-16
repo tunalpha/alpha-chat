@@ -1,135 +1,117 @@
 /**
- * Signal Protocol — Generazione chiavi crittografiche (Fase 1).
+ * Signal Protocol — Generazione chiavi crittografiche.
  *
- * Libreria: @noble/curves (Curve25519/Ed25519 — stesse primitive di libsignal).
+ * LIBRERIA: @workspace/libsignal-ts (fork interno di @privacyresearch/libsignal-protocol-typescript v0.0.16)
+ * Vedere docs/adr/ADR-001-signal-browser-crypto.md per il razionale.
  *
- * ZERO PLAINTEXT RULE:
- *   Tutte le chiavi private generate qui rimangono locali.
- *   Solo le chiavi pubbliche vengono trasmesse al server.
+ * ⚠ Zero Plaintext Rule:
+ *   Tutte le chiavi private generate qui vengono immediatamente salvate in
+ *   IndexedDB e poi scartate dalla memoria. Solo le chiavi pubbliche vengono
+ *   trasmesse al server (in formato base64).
  *
- * Nota: In Fase 2 (X3DH) e Fase 3 (Double Ratchet) le sessioni
- *   verranno instaurate e cifrate usando le stesse primitive,
- *   integrate con la libreria @signalapp/libsignal-client lato server.
+ * ⚠ Nessun crypto custom: KeyHelper usa internamente @privacyresearch/curve25519-typescript
+ *   (WASM/asm.js di Curve25519 — stesse primitive della spec Signal).
  */
 
-// ed25519 + x25519 sono nello stesso modulo Curve25519 in @noble/curves
-import { ed25519, x25519 } from "@noble/curves/ed25519.js";
-import type {
-  IdentityKeyPair,
-  SignedPreKeyPair,
-  OneTimePreKeyPair,
-} from "./types";
+import {
+  KeyHelper,
+  type KeyPairType,
+  type SignedPreKeyPairType,
+  type PreKeyPairType,
+  arrayBufferToBase64,
+} from "@workspace/libsignal-ts";
+import type { SignalSignedPreKeyPair, SignalOneTimePreKeyPair, SignalPublicBundle } from "./types";
+import type { SignalProtocolStore } from "./key-store";
 
 // ---------------------------------------------------------------------------
-// Utilità
-// ---------------------------------------------------------------------------
-
-/** Genera un Registration ID casuale nel range Signal spec (1–16383) */
-export function generateRegistrationId(): number {
-  const buf = crypto.getRandomValues(new Uint8Array(2));
-  // Maschera a 14 bit → 0–16383, poi +1 → 1–16383
-  return (((buf[0]! << 8) | buf[1]!) & 0x3fff) + 1;
-}
-
-/** Uint8Array → base64 (browser nativo, no dipendenze) */
-export function toBase64(bytes: Uint8Array): string {
-  let bin = "";
-  for (const b of bytes) bin += String.fromCharCode(b);
-  return btoa(bin);
-}
-
-/** base64 → Uint8Array */
-export function fromBase64(str: string): Uint8Array {
-  const bin = atob(str);
-  const bytes = new Uint8Array(bin.length);
-  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
-  return bytes;
-}
-
-// ---------------------------------------------------------------------------
-// Identity Key (Ed25519 — signing + long-term identity)
+// Identity Key Pair
 // ---------------------------------------------------------------------------
 
 /**
- * Genera un Identity Key Pair Ed25519.
- * La chiave privata NON lascia mai il dispositivo.
+ * Genera un Identity Key Pair Curve25519.
+ * La chiave pubblica è 33 byte (prefisso 0x05 + 32 byte raw) — formato Signal.
+ * La chiave privata è 32 byte e NON deve mai lasciare il dispositivo.
  */
-export function generateIdentityKeyPair(): IdentityKeyPair {
-  const privateKey = ed25519.utils.randomSecretKey(); // 32 byte seed
-  const publicKey = ed25519.getPublicKey(privateKey);  // 32 byte
-  return { keyType: "identity", privateKey, publicKey };
+export async function generateIdentityKeyPair(): Promise<KeyPairType> {
+  return KeyHelper.generateIdentityKeyPair();
 }
 
 // ---------------------------------------------------------------------------
-// Signed PreKey (X25519 DH — medium-term)
+// Signed PreKey
 // ---------------------------------------------------------------------------
 
 /**
- * Genera un Signed PreKey X25519 e lo firma con l'Identity Key.
+ * Genera una Signed PreKey Curve25519 firmata con l'Identity Key via XEdDSA.
  *
  * Signal spec: la firma attesta che la chiave DH appartiene allo stesso
  * dispositivo che controlla l'Identity Key.
- * La firma usa Ed25519 sulla chiave pubblica X25519.
  */
-export function generateSignedPreKey(
+export async function generateSignedPreKey(
+  identityKeyPair: KeyPairType,
   keyId: number,
-  identityPrivateKey: Uint8Array,
-): SignedPreKeyPair {
-  const privateKey = x25519.utils.randomSecretKey(); // 32 byte
-  const publicKey = x25519.getPublicKey(privateKey);  // 32 byte
-  const signature = ed25519.sign(publicKey, identityPrivateKey); // 64 byte
+): Promise<SignalSignedPreKeyPair> {
+  const result: SignedPreKeyPairType = await KeyHelper.generateSignedPreKey(identityKeyPair, keyId);
   return {
-    keyType: "signed-pre-key",
-    keyId,
-    privateKey,
-    publicKey,
-    signature,
+    keyId: result.keyId,
+    keyPair: result.keyPair,
+    signature: result.signature,
     createdAt: Date.now(),
   };
 }
 
+// ---------------------------------------------------------------------------
+// One-Time PreKeys (batch)
+// ---------------------------------------------------------------------------
+
 /**
- * Verifica la firma di un Signed PreKey ricevuto (lato client, pre-X3DH).
- * Ritorna true se la firma è valida.
+ * Genera un batch di One-Time PreKeys Curve25519.
+ *
+ * Signal spec: ogni chiave viene usata una sola volta durante X3DH,
+ * poi eliminata dal pool locale e remoto.
+ *
+ * @param startKeyId   Primo keyId del batch
+ * @param count        Numero di chiavi (default 100 — Signal recommends 100+)
  */
-export function verifySignedPreKey(
-  signedPreKeyPublic: Uint8Array,
-  signature: Uint8Array,
-  identityPublicKey: Uint8Array,
-): boolean {
-  try {
-    return ed25519.verify(signature, signedPreKeyPublic, identityPublicKey);
-  } catch {
-    return false;
+export async function generateOneTimePreKeys(
+  startKeyId: number,
+  count = 100,
+): Promise<SignalOneTimePreKeyPair[]> {
+  const tasks: Promise<PreKeyPairType>[] = [];
+  for (let i = 0; i < count; i++) {
+    tasks.push(KeyHelper.generatePreKey(startKeyId + i));
   }
+  const results = await Promise.all(tasks);
+  return results.map((r) => ({ keyId: r.keyId, keyPair: r.keyPair }));
 }
 
 // ---------------------------------------------------------------------------
-// One-Time PreKeys (X25519 DH — single-use pool)
+// Bundle pubblico per l'upload al server
 // ---------------------------------------------------------------------------
 
 /**
- * Genera un batch di One-Time PreKeys X25519.
- *
- * Signal spec: ogni chiave viene usata una sola volta per X3DH,
- * poi eliminata dal pool locale. Il server mantiene solo le chiavi pubbliche
- * e le distribuisce una alla volta.
- *
- * @param startKeyId   ID della prima chiave del batch
- * @param count        Numero di chiavi da generare (default 100)
+ * Costruisce il bundle pubblico da caricare sul server.
+ * Converte tutte le chiavi da ArrayBuffer a base64.
+ * ⚠ Include SOLO chiavi pubbliche — le private restano in IndexedDB.
  */
-export function generateOneTimePreKeys(
-  startKeyId: number,
-  count: number = 100,
-): OneTimePreKeyPair[] {
-  return Array.from({ length: count }, (_, i) => {
-    const privateKey = x25519.utils.randomSecretKey();
-    const publicKey = x25519.getPublicKey(privateKey);
-    return {
-      keyType: "one-time-pre-key" as const,
-      keyId: startKeyId + i,
-      privateKey,
-      publicKey,
-    };
-  });
+export async function buildPublicBundle(
+  store: SignalProtocolStore,
+  deviceId: string,
+  identityKeyPair: KeyPairType,
+  signedPreKey: SignalSignedPreKeyPair,
+  oneTimePreKeys: SignalOneTimePreKeyPair[],
+): Promise<SignalPublicBundle> {
+  const registrationId = await store.getLocalRegistrationId() ?? 0;
+
+  return {
+    deviceId,
+    registrationId,
+    identityKey: arrayBufferToBase64(identityKeyPair.pubKey),
+    signedPreKeyId: signedPreKey.keyId,
+    signedPreKey: arrayBufferToBase64(signedPreKey.keyPair.pubKey),
+    signedPreKeySignature: arrayBufferToBase64(signedPreKey.signature),
+    oneTimePreKeys: oneTimePreKeys.map((k) => ({
+      keyId: k.keyId,
+      publicKey: arrayBufferToBase64(k.keyPair.pubKey),
+    })),
+  };
 }

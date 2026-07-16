@@ -64,6 +64,11 @@ export default defineConfig({
     outDir: path.resolve(import.meta.dirname, 'dist/public'),
     emptyOutDir: true,
   },
+  // @privacyresearch/libsignal-protocol-typescript è un pacchetto CJS.
+  // Vite lo pre-bundlerà automaticamente quando viene importato via
+  // @workspace/libsignal-ts (non serve include esplicito — causerebbe
+  // un warning "Failed to resolve dependency" dato che il package è
+  // una dipendenza transitiva, non diretta di alpha-chat-web).
   server: {
     port,
     strictPort: true,
@@ -75,6 +80,10 @@ export default defineConfig({
     },
     fs: {
       strict: true,
+      // Permette a Vite di servire file dai workspace packages (packages/*)
+      allow: [
+        path.resolve(import.meta.dirname, '..', '..'),
+      ],
     },
   },
   preview: {
