@@ -1785,3 +1785,187 @@ button:disabled.profile-avatar-edit {
 
 /* Attach button active state */
 .input-icon-btn:not([disabled]) { opacity: 1; }
+
+/* ── Sprint 15 — Privacy avanzata ─────────────────────────────────────────── */
+
+/* Privacy page — Ghost Mode card */
+.privacy-ghost-card {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: var(--bg-2);
+  border: 1.5px solid var(--border);
+  border-radius: 14px;
+  padding: 16px;
+  margin: 0 16px 8px;
+  transition: border-color .25s, background .25s;
+}
+.privacy-ghost-card.active {
+  border-color: #7C3AED;
+  background: rgba(124,58,237,0.10);
+}
+.privacy-ghost-icon { font-size: 28px; flex-shrink: 0; }
+.privacy-ghost-content { flex: 1; min-width: 0; }
+.privacy-ghost-title { font-size: 15px; font-weight: 600; color: var(--text-1); margin-bottom: 3px; }
+.privacy-ghost-desc  { font-size: 12px; color: var(--text-3); line-height: 1.4; }
+
+/* Privacy toggle */
+.privacy-toggle {
+  position: relative;
+  width: 44px; height: 24px;
+  border-radius: 12px;
+  border: none;
+  background: var(--bg-3);
+  cursor: pointer;
+  transition: background .2s;
+  flex-shrink: 0;
+  padding: 0;
+}
+.privacy-toggle.on { background: #7C3AED; }
+.privacy-toggle:disabled { opacity: .45; cursor: not-allowed; }
+.privacy-toggle-thumb {
+  display: block;
+  position: absolute;
+  top: 3px; left: 3px;
+  width: 18px; height: 18px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform .2s;
+}
+.privacy-toggle.on .privacy-toggle-thumb { transform: translateX(20px); }
+
+/* Privacy select */
+.privacy-select {
+  background: var(--bg-3);
+  color: var(--text-1);
+  border: 1.5px solid var(--border);
+  border-radius: 8px;
+  padding: 5px 8px;
+  font-size: 13px;
+  cursor: pointer;
+  flex-shrink: 0;
+  outline: none;
+  font-family: inherit;
+}
+.privacy-select:focus { border-color: #7C3AED; }
+.privacy-select:disabled { opacity: .4; cursor: not-allowed; }
+
+/* Blocked count badge */
+.privacy-blocked-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--danger, #ef4444);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  border-radius: 10px;
+  padding: 1px 7px;
+  margin-left: 8px;
+}
+
+/* Blocked users empty state */
+.privacy-blocked-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 24px 16px;
+  color: var(--text-3);
+  font-size: 13px;
+}
+
+/* Unblock button */
+.privacy-unblock-btn {
+  background: transparent;
+  border: 1.5px solid var(--danger, #ef4444);
+  color: var(--danger, #ef4444);
+  border-radius: 8px;
+  padding: 4px 12px;
+  font-size: 13px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background .15s, color .15s;
+  font-family: inherit;
+}
+.privacy-unblock-btn:hover:not(:disabled) { background: var(--danger, #ef4444); color: #fff; }
+.privacy-unblock-btn:disabled { opacity: .4; cursor: not-allowed; }
+
+/* Unblocking animation */
+.privacy-unblocking { opacity: .4; pointer-events: none; transition: opacity .3s; }
+
+/* Error banner */
+.privacy-error-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: rgba(239,68,68,0.15);
+  border: 1px solid rgba(239,68,68,0.4);
+  border-radius: 10px;
+  color: #ef4444;
+  font-size: 13px;
+  padding: 10px 14px;
+  margin: 0 16px 12px;
+  gap: 10px;
+}
+.privacy-error-banner button {
+  background: none;
+  border: none;
+  color: #ef4444;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  padding: 0;
+}
+
+/* Loading dots */
+.privacy-loading-dots {
+  display: flex; gap: 6px; align-items: center;
+}
+.privacy-loading-dots span {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: var(--text-3);
+  animation: dot-pulse 1.2s ease-in-out infinite;
+}
+.privacy-loading-dots span:nth-child(2) { animation-delay: .2s; }
+.privacy-loading-dots span:nth-child(3) { animation-delay: .4s; }
+@keyframes dot-pulse {
+  0%, 80%, 100% { transform: scale(.8); opacity: .4; }
+  40%            { transform: scale(1.1); opacity: 1; }
+}
+
+/* ── BAR (Burn After Read) ─────────────────────────────────────────────────── */
+
+/* BAR toggle button in chat input */
+.bar-toggle {
+  font-size: 18px !important;
+  transition: transform .2s, opacity .2s;
+  opacity: .5;
+  padding: 0 6px !important;
+}
+.bar-toggle.bar-active {
+  opacity: 1;
+  animation: bar-pulse 1.5s ease-in-out infinite;
+}
+@keyframes bar-pulse {
+  0%, 100% { transform: scale(1); }
+  50%       { transform: scale(1.15); }
+}
+
+/* BAR indicator on message bubble */
+.msg-bar-badge {
+  font-size: 12px;
+  margin-right: 4px;
+  vertical-align: middle;
+  filter: drop-shadow(0 0 3px rgba(239,68,68,.6));
+}
+
+/* Expires countdown */
+.msg-expires {
+  font-size: 11px;
+  color: var(--text-3);
+  margin-right: 4px;
+  vertical-align: middle;
+  font-feature-settings: 'tnum';
+}

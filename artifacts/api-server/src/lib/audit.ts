@@ -65,7 +65,13 @@ export type AuditEventType =
   | "MESSAGE_DELETED_ME"
   | "MESSAGE_SECURE_DESTROYED"
   // Media
-  | "MEDIA_UPLOADED";
+  | "MEDIA_UPLOADED"
+  // Privacy (Sprint 15)
+  | "PRIVACY_SETTINGS_UPDATED"
+  | "DISAPPEARING_MESSAGES_SET"
+  // Block (Sprint 15)
+  | "USER_BLOCKED"
+  | "USER_UNBLOCKED";
 
 export interface AuditEvent {
   event: AuditEventType;

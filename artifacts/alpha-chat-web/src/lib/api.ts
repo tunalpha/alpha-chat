@@ -95,6 +95,9 @@ export interface MessageItem {
   reply_to_message_id?: string | null;
   // campi aggiunti Sprint 11
   media_id?: string | null;
+  // campi aggiunti Sprint 15
+  burn_after_read?: boolean;
+  expires_at?: string | null;
   id: string;
   client_message_id: string;
   conversation_id: string;
@@ -438,7 +441,7 @@ export function decodeMessage(ciphertext: string): string {
 export async function apiSendMessage(
   conversationId: string,
   text: string,
-  options: { replyToMessageId?: string } = {},
+  options: { replyToMessageId?: string; burnAfterRead?: boolean } = {},
 ): Promise<MessageItem> {
   return request<MessageItem>("POST", `/conversations/${conversationId}/messages`, {
     client_message_id: crypto.randomUUID(),
@@ -448,6 +451,7 @@ export async function apiSendMessage(
     message_type: options.replyToMessageId ? "reply" : "text",
     sent_at: new Date().toISOString(),
     reply_to_message_id: options.replyToMessageId ?? null,
+    burn_after_read: options.burnAfterRead ?? false,
   });
 }
 
@@ -722,6 +726,65 @@ export async function apiMarkRead(convId: string): Promise<void> {
 
 export async function apiRevokeInvites(): Promise<{ revoked: number }> {
   return request<{ revoked: number }>("DELETE", "/invites/mine");
+}
+
+// ---------------------------------------------------------------------------
+// Privacy (Sprint 15)
+// ---------------------------------------------------------------------------
+
+export interface PrivacySettings {
+  show_last_seen: "everyone" | "contacts" | "nobody";
+  show_online_status: "everyone" | "contacts" | "nobody";
+  show_read_receipts: boolean;
+  allow_adding_to_groups: "everyone" | "contacts" | "nobody";
+  allow_calls_from: "everyone" | "contacts" | "nobody";
+  ghost_mode: boolean;
+}
+
+export interface DisappearingSettings {
+  enabled: boolean;
+  duration_ms: number | null;
+}
+
+export interface BlockedUserEntry {
+  user_id: string;
+  username: string;
+  display_name: string;
+  blocked_at: string;
+}
+
+export async function apiGetPrivacySettings(): Promise<PrivacySettings> {
+  return request<PrivacySettings>("GET", "/users/me/privacy");
+}
+
+export async function apiUpdatePrivacySettings(
+  patch: Partial<PrivacySettings & { ghost_mode: boolean }>,
+): Promise<PrivacySettings> {
+  return request<PrivacySettings>("PATCH", "/users/me/privacy", patch);
+}
+
+export async function apiListBlocked(): Promise<BlockedUserEntry[]> {
+  return request<BlockedUserEntry[]>("GET", "/users/me/blocked");
+}
+
+export async function apiBlockUser(userId: string): Promise<void> {
+  await request<void>("POST", `/users/${userId}/block`);
+}
+
+export async function apiUnblockUser(userId: string): Promise<void> {
+  await request<void>("DELETE", `/users/${userId}/block`);
+}
+
+export async function apiSetDisappearing(
+  conversationId: string,
+  enabled: boolean,
+  duration_ms?: number | null,
+): Promise<DisappearingSettings> {
+  return request<DisappearingSettings>(
+    "PATCH",
+    `/conversations/${conversationId}/disappearing`,
+    { enabled, duration_ms: enabled ? duration_ms : null },
+  );
 }
 
 export async function apiListMessages(

@@ -70,6 +70,12 @@ export const SendMessageSchema = z.object({
     .optional()
     .nullable()
     .default(null),
+
+  /**
+   * Burn After Read (Sprint 15) — se true il server hard-delete il messaggio
+   * non appena il destinatario lo legge.
+   */
+  burn_after_read: z.boolean().optional().default(false),
 });
 
 export type SendMessageInput = z.infer<typeof SendMessageSchema>;

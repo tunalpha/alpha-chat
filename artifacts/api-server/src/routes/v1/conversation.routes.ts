@@ -2,7 +2,13 @@ import { Router } from "express";
 import { authenticate } from "../../middleware/authenticate.middleware";
 import { validate } from "../../middleware/validate.middleware";
 import { CreateConversationSchema, ListConversationsSchema } from "../../validation/conversation.schemas";
-import { createConversation, listConversations, markConversationRead } from "../../controllers/conversation.controller";
+import { SetDisappearingSchema } from "../../validation/privacy.schemas";
+import {
+  createConversation,
+  listConversations,
+  markConversationRead,
+} from "../../controllers/conversation.controller";
+import { setDisappearingMessages } from "../../controllers/privacy.controller";
 
 const router = Router();
 
@@ -21,6 +27,17 @@ router.post("/", validate("body", CreateConversationSchema), createConversation)
  * Lista le conversazioni dell'utente autenticato, ordinate per last_activity_at.
  */
 router.get("/", validate("query", ListConversationsSchema), listConversations);
+
+/**
+ * PATCH /api/v1/conversations/:id/read
+ * Marca tutti i messaggi della conversazione come letti. Trigghera Burn After Read.
+ */
 router.patch("/:id/read", markConversationRead);
+
+/**
+ * PATCH /api/v1/conversations/:id/disappearing
+ * Abilita/disabilita messaggi a scomparsa per la conversazione (Sprint 15).
+ */
+router.patch("/:id/disappearing", validate("body", SetDisappearingSchema), setDisappearingMessages);
 
 export default router;

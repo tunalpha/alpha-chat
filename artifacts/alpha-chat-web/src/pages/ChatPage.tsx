@@ -12,6 +12,7 @@ import {
   apiSendVoiceMessage,
   apiSendFileMessage,
   apiMarkRead,
+  apiSetDisappearing,
   decodeMessage,
   decodeVoiceMeta,
   decodeMediaMeta,
@@ -144,6 +145,31 @@ function ChatHeader({
   );
 }
 
+// ── Expires countdown (messaggi a scomparsa) ─────────────────────────────────
+function ExpiresCountdown({ expiresAt }: { expiresAt: string }) {
+  const [remaining, setRemaining] = useState<string>("");
+
+  useEffect(() => {
+    function update() {
+      const ms = new Date(expiresAt).getTime() - Date.now();
+      if (ms <= 0) { setRemaining("scaduto"); return; }
+      if (ms < 60_000)       setRemaining(`${Math.ceil(ms / 1_000)}s`);
+      else if (ms < 3_600_000) setRemaining(`${Math.ceil(ms / 60_000)}m`);
+      else if (ms < 86_400_000) setRemaining(`${Math.ceil(ms / 3_600_000)}h`);
+      else                   setRemaining(`${Math.ceil(ms / 86_400_000)}g`);
+    }
+    update();
+    const t = setInterval(update, 1_000);
+    return () => clearInterval(t);
+  }, [expiresAt]);
+
+  return (
+    <span className="msg-expires" title={`Scade: ${new Date(expiresAt).toLocaleString("it-IT")}`}>
+      ⏱ {remaining}
+    </span>
+  );
+}
+
 // ── Chat input bar ───────────────────────────────────────────────────────────
 function ChatInput({
   value,
@@ -152,6 +178,8 @@ function ChatInput({
   onVoiceStart,
   onAttach,
   disabled,
+  burnAfterRead,
+  onToggleBurn,
 }: {
   value: string;
   onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;
@@ -159,6 +187,8 @@ function ChatInput({
   onVoiceStart: () => void;
   onAttach?: (files: FileList) => void;
   disabled: boolean;
+  burnAfterRead?: boolean;
+  onToggleBurn?: () => void;
 }) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const localFileRef = useRef<HTMLInputElement>(null);
@@ -183,12 +213,19 @@ function ChatInput({
 
   return (
     <form className="chat-input-bar" onSubmit={onSubmit}>
-      {/* Emoji — non implementata */}
-      <button type="button" className="input-icon-btn" aria-label="Emoji" title="Disponibile prossimamente" disabled>
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="22" height="22">
-          <circle cx="12" cy="12" r="10"/><path d="M8 13s1.5 2 4 2 4-2 4-2"/><line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/>
-        </svg>
-      </button>
+      {/* Burn After Read toggle */}
+      {onToggleBurn && (
+        <button
+          type="button"
+          className={`input-icon-btn bar-toggle${burnAfterRead ? " bar-active" : ""}`}
+          aria-label="Burn After Read"
+          title={burnAfterRead ? "Burn After Read attivo — il messaggio si autodistrugge alla lettura" : "Attiva Burn After Read"}
+          onClick={onToggleBurn}
+          disabled={disabled}
+        >
+          🔥
+        </button>
+      )}
       {/* Allega — Sprint 13: foto, video, documenti */}
       <input
         ref={localFileRef}
@@ -399,6 +436,11 @@ export default function ChatPage({ onNavigate }: Props) {
 
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [viewerMedia, setViewerMedia] = useState<{ url: string; type: "image" | "video" } | null>(null);
+  // Sprint 15 — Privacy avanzata
+  const [burnAfterRead, setBurnAfterRead] = useState(false);
+  const [disappearingSettings, setDisappearingSettings] = useState<{
+    enabled: boolean; duration_ms: number | null;
+  } | null>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -543,6 +585,16 @@ export default function ChatPage({ onNavigate }: Props) {
           }
           break;
         }
+        // Sprint 15 — messaggi a scomparsa aggiornati da un altro membro
+        case "conversation.disappearing_updated": {
+          const { conversation_id, enabled, duration_ms } = event.payload as {
+            conversation_id: string; enabled: boolean; duration_ms: number | null;
+          };
+          if (conversation_id === activeConvId) {
+            setDisappearingSettings({ enabled, duration_ms });
+          }
+          break;
+        }
       }
     });
   }, [on, activeConvId]);
@@ -564,9 +616,13 @@ export default function ChatPage({ onNavigate }: Props) {
         setEditingMessage(null);
       } else {
         // Invio normale o risposta
-        await apiSendMessage(activeConvId, text, { replyToMessageId: replyTo?.id });
+        await apiSendMessage(activeConvId, text, {
+          replyToMessageId: replyTo?.id,
+          burnAfterRead,
+        });
         void playNotifSound('sent');   // suono invio messaggio
         setReplyTo(null);
+        if (burnAfterRead) setBurnAfterRead(false); // reset dopo invio BAR
       }
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : "Errore invio";
@@ -1035,6 +1091,12 @@ export default function ChatPage({ onNavigate }: Props) {
                           renderText()
                         )}
                         <div className="msg-meta">
+                          {msg.burn_after_read && (
+                            <span className="msg-bar-badge" title="Burn After Read — si autodistrugge alla lettura">🔥</span>
+                          )}
+                          {msg.expires_at && (
+                            <ExpiresCountdown expiresAt={msg.expires_at} />
+                          )}
                           {msg.edited_at && <span className="msg-edited">Modificato</span>}
                           <span className="msg-time">{time}</span>
                           {isMine && (
@@ -1129,6 +1191,8 @@ export default function ChatPage({ onNavigate }: Props) {
                   onVoiceStart={() => setShowVoiceRecorder(true)}
                   onAttach={handleFilePick}
                   disabled={sending}
+                  burnAfterRead={burnAfterRead}
+                  onToggleBurn={() => setBurnAfterRead((v) => !v)}
                 />
               </div>
             )}

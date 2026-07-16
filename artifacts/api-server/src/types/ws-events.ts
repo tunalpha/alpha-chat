@@ -43,7 +43,8 @@ export type WsOutboundEventType =
   | "read.receipt"      // l'altra persona ha letto i messaggi
   | "message.edited"    // un messaggio è stato modificato
   | "message.deleted"   // un messaggio è stato eliminato per tutti
-  | "message.destroyed"; // un messaggio è stato distrutto definitivamente (Secure Destroy)
+  | "message.destroyed"  // un messaggio è stato distrutto definitivamente (Secure Destroy)
+  | "conversation.disappearing_updated"; // impostazioni messaggi a scomparsa aggiornate (Sprint 15)
 
 export interface WsOutboundEvent {
   type: WsOutboundEventType;

@@ -102,6 +102,13 @@ export interface IMessage {
   /** Se impostato, il messaggio viene distrutto definitivamente a questa data */
   destroy_at: Date | null;
 
+  // --- Burn After Read (Sprint 15) ---
+  /**
+   * Se true, il messaggio viene hard-deleted sul server non appena il
+   * destinatario lo legge (markConversationRead). Broadcast message.destroyed.
+   */
+  burn_after_read: boolean;
+
   createdAt: Date;
   updatedAt: Date;
 }
@@ -163,6 +170,8 @@ const messageSchema = new Schema<IMessageDocument>(
     expires_at: { type: Date, default: null },
 
     destroy_at: { type: Date, default: null },
+
+    burn_after_read: { type: Boolean, default: false },
   },
   { timestamps: true },
 );

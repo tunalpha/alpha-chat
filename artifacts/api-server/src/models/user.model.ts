@@ -40,6 +40,8 @@ export interface IUser {
     show_read_receipts: boolean;
     allow_adding_to_groups: "everyone" | "contacts" | "nobody";
     allow_calls_from: "everyone" | "contacts" | "nobody";
+    /** Ghost Mode — override master: tutte le impostazioni al massimo privacy */
+    ghost_mode: boolean;
   };
 
   // Notifiche
@@ -111,6 +113,7 @@ const userSchema = new Schema<IUserDocument>(
       show_read_receipts: { type: Boolean, default: true },
       allow_adding_to_groups: { type: String, enum: ["everyone", "contacts", "nobody"], default: "contacts" },
       allow_calls_from: { type: String, enum: ["everyone", "contacts", "nobody"], default: "contacts" },
+      ghost_mode: { type: Boolean, default: false },
     },
 
     notification_settings: {

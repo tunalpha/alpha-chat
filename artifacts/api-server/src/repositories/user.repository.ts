@@ -147,6 +147,17 @@ export class UserRepository {
   }
 
   /**
+   * Cerca più utenti per un array di _id (batch lookup per block list).
+   */
+  async findByIds(
+    ids: mongoose.Types.ObjectId[],
+  ): Promise<IUserDocument[]> {
+    if (ids.length === 0) return [];
+    return UserModel.find({ _id: { $in: ids } })
+      .select("username display_name avatar_media_id is_verified status");
+  }
+
+  /**
    * Controlla se username è disponibile (non esiste nel DB).
    */
   async isUsernameAvailable(username: string): Promise<boolean> {

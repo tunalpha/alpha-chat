@@ -348,9 +348,8 @@ export async function markConversationRead(
 
   // Broadcast read.receipt ai membri che NON sono l'utente corrente
   const members = await memberRepo.listMembers(convObjectId);
-  const recipientIds = members
-    .map((m) => m.user_id.toString())
-    .filter((id) => id !== userId);
+  const memberIds = members.map((m) => m.user_id.toString());
+  const recipientIds = memberIds.filter((id) => id !== userId);
 
   if (recipientIds.length > 0) {
     wsManager.sendToUsers(recipientIds, {
@@ -362,6 +361,37 @@ export async function markConversationRead(
       },
     });
   }
+
+  // ── Burn After Read — Sprint 15 ────────────────────────────────────────────
+  // Dopo che l'utente legge, distruggi i messaggi BAR inviati dagli altri membri.
+  void (async () => {
+    try {
+      const barMessages = await MessageModel.find({
+        conversation_id: convObjectId,
+        sender_id: { $ne: userObjectId },   // non i miei messaggi
+        burn_after_read: true,
+        deleted_for_everyone: false,
+      });
+
+      if (barMessages.length === 0) return;
+
+      for (const msg of barMessages) {
+        // Hard delete del documento
+        await MessageModel.deleteOne({ _id: msg._id });
+        // Broadcast message.destroyed a tutti i membri
+        wsManager.sendToUsers(memberIds, {
+          type: "message.destroyed",
+          payload: {
+            message_id:      msg._id.toString(),
+            conversation_id: conversationId,
+            destroyed_by:    null,   // null = auto-destroy by server
+          },
+        });
+      }
+    } catch (err) {
+      logger.warn({ err, conversationId }, "Burn After Read cleanup failed");
+    }
+  })();
 }
 
 // ---------------------------------------------------------------------------

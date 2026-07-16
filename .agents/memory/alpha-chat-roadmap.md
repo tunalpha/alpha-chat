@@ -27,11 +27,11 @@ Modulo completo allegati — la logica Secure Destroy viene riutilizzata per ogn
 ### Sprint 14 — Chiamate protette
 - Audio + Video, WebRTC, TURN/STUN, Riduzione rumore, Verifica connessione E2E
 
-### Sprint 15 — Privacy avanzata
+### Sprint 15 — Privacy avanzata ✅ COMPLETATO
 - Timer autodistruzione, Burn After Read, Modalità Ghost
 - Nascondi stato, Lista bloccati, Privacy avanzata
-⚠️ Dopo Sprint 15: AUDIT COMPLETO (sicurezza, performance, batteria, memoria,
-   sincronizzazione multi-device, test iPhone/Android/desktop) prima di procedere.
+⚠️ AUDIT COMPLETO richiesto prima di Sprint 16 (sicurezza, performance, batteria, memoria,
+   sincronizzazione multi-device, test iPhone/Android/desktop).
 
 ### Sprint 16 — Sicurezza
 - Face ID, Touch ID, PIN, Password secondaria, Gestione sessioni, Gestione dispositivi

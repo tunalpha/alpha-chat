@@ -50,6 +50,8 @@ export class MessageRepository {
     replyToMessageId?: mongoose.Types.ObjectId | null;
     mediaId?: mongoose.Types.ObjectId | null;
     status?: MessageStatus;
+    burnAfterRead?: boolean;
+    expiresAt?: Date | null;
   }): Promise<IMessageDocument> {
     const now = new Date();
 
@@ -88,6 +90,8 @@ export class MessageRepository {
       status: params.status ?? "sent",
       reply_to_message_id: params.replyToMessageId ?? null,
       media_id: params.mediaId ?? null,
+      burn_after_read: params.burnAfterRead ?? false,
+      expires_at: params.expiresAt ?? null,
     });
 
     // 3. Aggiorna last_message_id sulla conversazione (non critico per ordering)

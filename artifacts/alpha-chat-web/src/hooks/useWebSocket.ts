@@ -9,7 +9,8 @@ export type WsEvent =
   | { type: "read.receipt"; payload: { conversation_id: string; user_id: string; read_at: string } }
   | { type: "message.edited"; payload: Record<string, unknown> }
   | { type: "message.deleted"; payload: { message_id: string; conversation_id: string; for_everyone: boolean } }
-  | { type: "message.destroyed"; payload: { message_id: string; conversation_id: string; destroyed_by: string } }
+  | { type: "message.destroyed"; payload: { message_id: string; conversation_id: string; destroyed_by: string | null } }
+  | { type: "conversation.disappearing_updated"; payload: { conversation_id: string; enabled: boolean; duration_ms: number | null; updated_by: string } }
   | { type: "auth.ok"; payload: { user_id: string } }
   | { type: "auth.error"; payload: { message: string } }
   | { type: "ping" }

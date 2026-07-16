@@ -46,6 +46,10 @@ export interface MessageResult {
   deleted_for_everyone: boolean;
   edited_at: string | null;
   is_new: boolean;
+  /** Sprint 15: hard-delete al primo read del destinatario */
+  burn_after_read: boolean;
+  /** Sprint 15: TTL auto-delete (null = nessun timer) */
+  expires_at: string | null;
 }
 
 export interface MessageListResult {
@@ -115,7 +119,13 @@ export async function sendMessage(
     }
   }
 
-  // 5. Crea il messaggio (acquisisce sequence_number atomicamente)
+  // 5. Calcola expires_at se la conversazione ha messaggi a scomparsa attivi
+  let expiresAt: Date | null = null;
+  if (conversation.disappearing_messages_enabled && conversation.disappearing_messages_duration) {
+    expiresAt = new Date(Date.now() + conversation.disappearing_messages_duration);
+  }
+
+  // 6. Crea il messaggio (acquisisce sequence_number atomicamente)
   const message = await msgRepo.create({
     clientMessageId: input.client_message_id,
     conversationId: convObjectId,
@@ -128,6 +138,8 @@ export async function sendMessage(
     replyToMessageId: replyToObjectId,
     mediaId: input.media_id ? new mongoose.Types.ObjectId(input.media_id) : null,
     status: "sent",
+    burnAfterRead: input.burn_after_read ?? false,
+    expiresAt,
   });
 
   // Audit (solo evento — non logghiamo il ciphertext)
@@ -251,6 +263,8 @@ function formatMessageResult(
     media_id?: mongoose.Types.ObjectId | null;
     deleted_for_everyone: boolean;
     edited_at?: Date | null;
+    burn_after_read?: boolean;
+    expires_at?: Date | null;
   },
   isNew: boolean,
 ): MessageResult {
@@ -272,6 +286,8 @@ function formatMessageResult(
     deleted_for_everyone: msg.deleted_for_everyone,
     edited_at: msg.edited_at?.toISOString() ?? null,
     is_new: isNew,
+    burn_after_read: msg.burn_after_read ?? false,
+    expires_at: msg.expires_at?.toISOString() ?? null,
   };
 }
 
