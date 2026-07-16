@@ -113,26 +113,43 @@ export async function getMetaByClientId(clientMessageId: string): Promise<string
  */
 const LS_OWN_TEXT_PREFIX = "alpha_mt:";
 
+/**
+ * Prefissi localStorage:
+ *   alpha_mt:<clientMessageId>  — testo salvato al momento dell'invio
+ *   alpha_si:<serverMsgId>      — testo salvato quando il WS riporta il server ID
+ *
+ * Il doppio caching garantisce il recupero anche dopo logout/reload:
+ * - Per clientId: disponibile subito dopo l'invio (prima che il server risponda)
+ * - Per serverId: disponibile non appena il WS echo arriva (msg.id stabile)
+ */
+const LS_OWN_TEXT_BY_SERVER = "alpha_si:";
+
 export async function cacheOwnText(clientMessageId: string, plaintext: string): Promise<void> {
-  // 1. localStorage sincrono — sempre affidabile
-  try {
-    localStorage.setItem(LS_OWN_TEXT_PREFIX + clientMessageId, plaintext);
-  } catch { /* quota exceeded — ignora, IDB come backup */ }
+  // 1. localStorage sincrono — sempre affidabile, nessuna race condition
+  try { localStorage.setItem(LS_OWN_TEXT_PREFIX + clientMessageId, plaintext); } catch { /* quota */ }
   // 2. IDB cifrato come backup
-  if (_ready) {
-    await _put(STORE_META_BY_CLIENT, `t:${clientMessageId}`, plaintext);
-  }
+  if (_ready) await _put(STORE_META_BY_CLIENT, `t:${clientMessageId}`, plaintext);
+}
+
+/** Salva il plaintext di un messaggio inviato indicizzato per server message ID. */
+export function cacheOwnTextByServerId(serverId: string, plaintext: string): void {
+  try { localStorage.setItem(LS_OWN_TEXT_BY_SERVER + serverId, plaintext); } catch { /* quota */ }
 }
 
 export async function getTextByClientId(clientMessageId: string): Promise<string | null> {
-  // 1. Controlla localStorage prima (sincrono, sempre disponibile)
+  // 1. localStorage per clientId
   try {
     const ls = localStorage.getItem(LS_OWN_TEXT_PREFIX + clientMessageId);
     if (ls !== null) return ls;
   } catch { /* ignora */ }
-  // 2. Fallback IDB
+  // 2. IDB cifrato
   if (!_ready) return null;
   return _get(STORE_META_BY_CLIENT, `t:${clientMessageId}`);
+}
+
+/** Recupera il plaintext di un messaggio inviato dal server message ID (sincrono). */
+export function getTextByServerId(serverId: string): string | null {
+  try { return localStorage.getItem(LS_OWN_TEXT_BY_SERVER + serverId); } catch { return null; }
 }
 
 // ---------------------------------------------------------------------------

@@ -43,7 +43,9 @@ import {
   getMetaByMessageId,
   getMetaByClientId,
   cacheOwnText,
+  cacheOwnTextByServerId,
   getTextByClientId,
+  getTextByServerId,
 } from "../lib/media-cache";
 import VoiceRecorder, { type VoiceBlob } from "../components/VoiceRecorder";
 import { attachAudioUnlockListener, playNotifSound } from "../lib/notifSound";
@@ -606,13 +608,22 @@ export default function ChatPage({ onNavigate }: Props) {
     }
 
     if (msg.sender_id === auth.userId) {
-      // Messaggio inviato da noi: sentCache → media cache → fallback
+      // Messaggio inviato da noi — catena di lookup:
+      // 1. sentCacheRef (in-memory, sessione corrente)
+      // 2. localStorage per serverId (alpha_si:) — stabile, sopravvive logout
+      // 3. localStorage per clientId (alpha_mt:) — salvato al momento dell'invio
+      // 4. IDB cifrato (backup)
+      // 5. [messaggio precedente] se niente trovato
+
       const cached = sentCacheRef.current.get(msg.client_message_id);
       if (cached !== undefined) {
         setDecryptedTexts((prev) => new Map(prev).set(msg.id, cached));
+        // Persisti per server ID se non già fatto (es. WS echo prima sessione)
+        cacheOwnTextByServerId(msg.id, cached);
         return;
       }
-      // Fase 4: media cache per clientId (utile dopo page reload)
+
+      // Fase 4: media cache per clientId (utile dopo page reload) — media messages
       if (msg.message_type === "media") {
         const cachedByClient = await getMetaByClientId(msg.client_message_id);
         if (cachedByClient) {
@@ -621,15 +632,22 @@ export default function ChatPage({ onNavigate }: Props) {
           return;
         }
       } else {
-        // FIX: controlla IDB cache per testi inviati (sopravvive al reload)
+        // Controlla per server ID prima (più stabile, set quando WS echo arriva)
+        const cachedById = getTextByServerId(msg.id);
+        if (cachedById !== null) {
+          setDecryptedTexts((prev) => new Map(prev).set(msg.id, cachedById));
+          return;
+        }
+        // Poi per client ID (set al momento dell'invio)
         const cachedText = await getTextByClientId(msg.client_message_id);
         if (cachedText !== null) {
           setDecryptedTexts((prev) => new Map(prev).set(msg.id, cachedText));
+          // Promuovi anche a server ID per lookup futuro più veloce
+          cacheOwnTextByServerId(msg.id, cachedText);
           return;
         }
       }
-      // Fallback: il plaintext non è disponibile (sessione rinnovata / IDB cancellato)
-      // FIX: non mostrare il ciphertext grezzo — placeholder leggibile
+      // Fallback: plaintext non disponibile (messaggio precedente al fix)
       setDecryptedTexts((prev) =>
         new Map(prev).set(
           msg.id,
