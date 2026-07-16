@@ -887,6 +887,11 @@ export default function ChatPage({ onNavigate }: Props) {
             });
             // Decifra il messaggio appena arrivato
             void decryptSingleMsg(msg);
+            // BAR: se il messaggio è burn_after_read, informa il server che lo
+            // abbiamo "letto" (anche se la conv era già aperta) → avvia il timer 10s
+            if ((msg as MessageItem & { burn_after_read?: boolean }).burn_after_read) {
+              void apiMarkRead(activeConvId).catch(() => {});
+            }
           }
           setConversations((prev) =>
             prev.map((c) =>

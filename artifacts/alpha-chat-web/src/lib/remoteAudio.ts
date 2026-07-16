@@ -19,7 +19,13 @@ function getEl(): HTMLAudioElement | null {
     _el = document.createElement("audio");
     (_el as HTMLVideoElement & HTMLAudioElement).playsInline = true;
     _el.autoplay    = false;
-    // Non serve aggiungerlo al DOM per l'audio
+    // iOS Safari richiede che l'elemento sia nel DOM per riprodurre un MediaStream
+    _el.style.position = "fixed";
+    _el.style.width    = "1px";
+    _el.style.height   = "1px";
+    _el.style.opacity  = "0";
+    _el.style.pointerEvents = "none";
+    document.body.appendChild(_el);
   }
   return _el;
 }
