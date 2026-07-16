@@ -6,3 +6,4 @@
 - [Sprint 16 Fase 4 — Multi-device, Media Cache, Thumbnail, DeviceManager](signal-phase4.md) — fan-out Signal per device, cache IDB cifrata, thumbnail E2E, revoca device
 - [Sprint 16 Fase 5 — Identity Verification](signal-phase5.md) — Safety Number, TOFU trust manager IDB separato, QR, key-change banner, 26 test (18.1-18.7)
 - [Sprint 18 — Phoenix Protocol](sprint-18-phoenix.md) — argon2id Phoenix Code, email confirm token, Lock Mode vs destroy, Emergency Portal /emergency
+- [Sprint 21 — Gruppi E2E](sprint-21-groups.md) — fan-out Signal per membro, device_id=userId, overlay GroupInfo in ChatPage, AuditEventType esteso
