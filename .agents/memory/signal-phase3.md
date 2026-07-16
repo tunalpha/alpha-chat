@@ -1,6 +1,6 @@
 ---
 name: Sprint 16 Fase 3 — Media E2E + Bug Fix Upload + Idempotenza
-description: AES-256-GCM per blob media, key wrapping Signal, pipeline upload/decrypt, fix HTTP 500, idempotenza upload
+description: AES-256-GCM per blob media, key wrapping Signal, pipeline upload/decrypt, fix HTTP 500, idempotenza upload, race condition, Atlas storage
 
 ## Architettura Fase 3
 

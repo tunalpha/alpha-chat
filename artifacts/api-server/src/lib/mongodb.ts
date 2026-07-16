@@ -22,6 +22,19 @@ export async function connectMongoDB(): Promise<void> {
     connectionLatencyMs = Date.now() - start;
     isConnected = true;
     logger.info({ latencyMs: connectionLatencyMs }, "MongoDB connected");
+
+    // Sincronizza gli indici di tutti i modelli Mongoose con il database.
+    // Senza questo passaggio gli indici definiti negli schema non vengono creati
+    // su collection già esistenti (Mongoose non li applica automaticamente a runtime).
+    // createIndexes() aggiunge gli indici mancanti senza rimuovere quelli extra.
+    try {
+      await mongoose.connection.syncIndexes();
+      logger.info("MongoDB indexes synced");
+    } catch (idxErr) {
+      // Errore non fatale: l'app funziona, ma alcune garanzie di unicità
+      // (es. client_upload_id per idempotenza upload) potrebbero mancare.
+      logger.warn({ idxErr }, "MongoDB index sync failed — some unique constraints may be missing");
+    }
   } catch (err) {
     logger.fatal({ err }, "MongoDB connection failed — cannot start");
     process.exit(1);

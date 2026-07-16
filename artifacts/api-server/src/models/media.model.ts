@@ -60,10 +60,14 @@ const mediaSchema = new Schema<IMediaDocument>(
 mediaSchema.index({ uploader_id: 1 });
 // Pulizia per conversazione
 mediaSchema.index({ conversation_id: 1 });
-// Idempotenza upload: unique sparse (null non crea collisioni)
+// Idempotenza upload: unique compound (client_upload_id + uploader_id).
+// Compound invece di solo client_upload_id per due motivi:
+//   1. Due utenti diversi con la stessa UUID (raro ma possibile) non si bloccano a vicenda.
+//   2. Il check E11000 nel service filtra già per uploader_id → il catch è coerente.
+// partialFilterExpression: null non crea collisioni (sparse semantics).
 mediaSchema.index(
-  { client_upload_id: 1 },
-  { unique: true, sparse: true, partialFilterExpression: { client_upload_id: { $type: "string" } } },
+  { client_upload_id: 1, uploader_id: 1 },
+  { unique: true, partialFilterExpression: { client_upload_id: { $type: "string" } } },
 );
 
 export const MediaModel: Model<IMediaDocument> =

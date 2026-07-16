@@ -1,0 +1,76 @@
+Il report è convincente. I fix descritti affrontano un problema reale (idempotenza degli upload) e la soluzione proposta è in linea con quello che usano molti sistemi di storage.
+
+Ci sono solo tre punti che farei verificare in Fase 5 prima di considerare il backend “blindato”:
+
+1. Atomicità dell’idempotenza (molto importante)
+
+La sequenza:
+
+findByClientUploadId(...)
+if (!existing) {
+    create(...)
+}
+
+può avere una race condition se due richieste identiche arrivano nello stesso millisecondo.
+
+La soluzione robusta è che sia MongoDB a garantire l’unicità tramite l’indice unique e che il codice gestisca l’eventuale E11000 duplicate key recuperando il documento esistente invece di fallire.
+
+Aggiungerei un test:
+
+* due upload identici lanciati in parallelo (Promise.all)
+* risultato:
+    * un solo documento creato
+    * entrambe le chiamate restituiscono lo stesso media_id
+
+⸻
+
+2. Cleanup dei client_upload_id
+
+Se quei documenti restano anni nel database, va bene perché sono parte del media stesso.
+
+Se invece il client_upload_id è memorizzato separatamente, verifica che non cresca senza limite oppure prevedi una TTL.
+
+⸻
+
+3. Multi-device
+
+Adesso un retry dal medesimo dispositivo è coperto.
+
+Verificherei anche:
+
+iPhone
+↓
+upload
+↓
+timeout
+↓
+utente apre Alpha Chat su Mac
+↓
+retry
+
+La domanda è:
+
+* il client_upload_id viene condiviso?
+* oppure ogni dispositivo genera un UUID diverso?
+
+È una differenza importante per capire se l’idempotenza è per dispositivo o per account.
+
+⸻
+
+A questo punto
+
+Se questi tre aspetti sono verificati, io non aggiungerei altre modifiche al sistema di upload e riprenderei la roadmap.
+
+La priorità successiva è corretta:
+
+Sprint 16 – Fase 5: Verifica identità
+
+Questa è probabilmente la fase più importante di tutto il progetto Signal, perché introduce:
+
+* QR Code di verifica;
+* Safety Numbers;
+* TOFU (Trust On First Use);
+* avviso immediato se la Identity Key di un contatto cambia;
+* stato “Identità verificata”.
+
+Da quel momento lo slogan “Il tuo bunker digitale” non sarà solo una promessa di cifratura, ma offrirà anche agli utenti uno strumento concreto per verificare l’identità del loro interlocutore e ridurre il rischio di attacchi man-in-the-middle.
