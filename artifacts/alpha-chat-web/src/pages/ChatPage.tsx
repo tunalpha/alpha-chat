@@ -838,6 +838,27 @@ export default function ChatPage({ onNavigate }: Props) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeConvId]);
 
+  // ── Refetch messaggi alla riconnessione WS ────────────────────────────────
+  // Quando il WS si disconnette e rientra (iOS bg, network flap, ecc.)
+  // i messaggi arrivati durante l'assenza non vengono consegnati via WS.
+  // Alla riconnessione (false→true) rifetchiamo silenziosamente la lista.
+  const prevConnectedRef = useRef(false);
+  useEffect(() => {
+    const wasConnected = prevConnectedRef.current;
+    prevConnectedRef.current = connected;
+    // Intervieni solo sulla transizione false → true (non al primo mount)
+    if (!wasConnected && connected && activeConvId) {
+      apiListMessages(activeConvId, { limit: 50 })
+        .then((res) => {
+          const msgs = [...res.items].reverse();
+          setMessages(msgs);
+          void decryptBatch(msgs);
+        })
+        .catch(() => {});
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [connected]);
+
   // ── Auto-scroll only when at bottom ────────────────────────────────────
   useEffect(() => {
     if (atBottom) {
