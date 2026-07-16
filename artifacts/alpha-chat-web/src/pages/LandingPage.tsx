@@ -45,10 +45,31 @@ const GAP_MS    = 320;
 // Delay extra per messaggi "user" (nessun typing, ma piccola pausa naturale)
 const USER_PAUSE_MS = 420;
 
-// ── Suono notifica — Web Audio API (nessun file esterno) ─────────────────────
+// ── Suono notifica — Web Audio API ───────────────────────────────────────────
+// AudioContext singleton — i browser richiedono un gesto utente prima di
+// permettere l'audio. Lo creiamo subito ma lo "sblocchiamo" al primo tocco.
+let _audioCtx: AudioContext | null = null;
+
+function getAudioCtx(): AudioContext | null {
+  if (!_audioCtx) {
+    try { _audioCtx = new AudioContext(); }
+    catch { return null; }
+  }
+  return _audioCtx;
+}
+
+/** Chiama questa funzione al primo gesto utente per sbloccare l'audio su mobile */
+function unlockAudio() {
+  const ctx = getAudioCtx();
+  if (ctx && ctx.state === "suspended") {
+    ctx.resume().catch(() => {});
+  }
+}
+
 function playNotif() {
+  const ctx = getAudioCtx();
+  if (!ctx || ctx.state !== "running") return;   // non ancora sbloccato → silenzio
   try {
-    const ctx = new AudioContext();
     const osc  = ctx.createOscillator();
     const gain = ctx.createGain();
     osc.connect(gain);
@@ -60,7 +81,7 @@ function playNotif() {
     gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.18);
     osc.start(ctx.currentTime);
     osc.stop(ctx.currentTime + 0.18);
-  } catch { /* silenzioso se AudioContext bloccato */ }
+  } catch { /* ignora */ }
 }
 
 function vibrate() {
@@ -103,6 +124,14 @@ export default function LandingPage() {
   const [regName, setRegName]   = useState("");
   const [regPwd, setRegPwd]     = useState("");
   const [showRPwd, setShowRPwd] = useState(false);
+
+  // Sblocca AudioContext al primo gesto utente (richiesto da tutti i browser mobili)
+  useEffect(() => {
+    const events = ["click", "touchend", "touchstart", "keydown"] as const;
+    const unlock = () => unlockAudio();
+    events.forEach((e) => document.addEventListener(e, unlock, { passive: true }));
+    return () => events.forEach((e) => document.removeEventListener(e, unlock));
+  }, []);
 
   // Scroll to bottom
   const scrollBottom = useCallback(() => {
