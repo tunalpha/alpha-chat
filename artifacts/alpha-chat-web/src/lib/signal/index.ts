@@ -7,6 +7,14 @@
 
 export { initSignalKeys, clearSignalKeys, maybeReplenishOtpks } from "./key-manager";
 export { getSignalStore, SignalProtocolStore } from "./key-store";
+export { ensureSession, rebuildSession } from "./signal-session";
+export {
+  signalEncrypt,
+  signalDecrypt,
+  legacyDecode,
+  safeDecodeForPreview,
+  type SignalCiphertext,
+} from "./signal-messenger";
 export type {
   SignalKeyPair,
   SignalIdentityKeyPair,

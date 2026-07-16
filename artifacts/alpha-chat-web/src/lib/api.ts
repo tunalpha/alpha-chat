@@ -420,14 +420,22 @@ export async function apiListConversations(): Promise<PaginatedResult<Conversati
 // Messages
 // ---------------------------------------------------------------------------
 
-/** Codifica testo → base64 UTF-8 safe (test client: simula ciphertext) */
-export function encodeMessage(text: string): string {
+/**
+ * Codifica testo → base64 UTF-8 safe.
+ * Usato come fallback legacy quando Signal non è disponibile.
+ * Non esportato: usare signalEncrypt() dal modulo signal/.
+ */
+function encodeMessage(text: string): string {
   const bytes = new TextEncoder().encode(text);
   const binStr = Array.from(bytes, (b) => String.fromCharCode(b)).join("");
   return btoa(binStr);
 }
 
-/** Decodifica base64 → testo */
+/**
+ * Decodifica base64 → testo (messaggi pre-Fase 2).
+ * Mantenuto per compatibilità legacy.
+ * Per messaggi Signal usare signalDecrypt() dal modulo signal/.
+ */
 export function decodeMessage(ciphertext: string): string {
   try {
     const binStr = atob(ciphertext);
@@ -441,12 +449,21 @@ export function decodeMessage(ciphertext: string): string {
 export async function apiSendMessage(
   conversationId: string,
   text: string,
-  options: { replyToMessageId?: string; burnAfterRead?: boolean } = {},
+  options: {
+    replyToMessageId?: string;
+    burnAfterRead?: boolean;
+    /** Fase 2: body e tipo già cifrati con Signal — se forniti, usati al posto di encodeMessage */
+    signal?: { body: string; type: number };
+    /** Fase 2: client_message_id generato dal chiamante (per sentCache) */
+    clientMessageId?: string;
+  } = {},
 ): Promise<MessageItem> {
+  const ciphertext = options.signal?.body ?? encodeMessage(text);
+  const ciphertextType = options.signal?.type ?? 1;
   return request<MessageItem>("POST", `/conversations/${conversationId}/messages`, {
-    client_message_id: crypto.randomUUID(),
-    ciphertext: encodeMessage(text),
-    ciphertext_type: 1,
+    client_message_id: options.clientMessageId ?? crypto.randomUUID(),
+    ciphertext,
+    ciphertext_type: ciphertextType,
     sender_key_id: 1,
     message_type: options.replyToMessageId ? "reply" : "text",
     sent_at: new Date().toISOString(),
@@ -459,10 +476,14 @@ export async function apiEditMessage(
   conversationId: string,
   messageId: string,
   text: string,
+  /** Fase 2: se fornito, usa il body Signal invece di encodeMessage */
+  signal?: { body: string; type: number },
 ): Promise<MessageItem> {
+  const ciphertext = signal?.body ?? encodeMessage(text);
+  const ciphertextType = signal?.type ?? 1;
   return request<MessageItem>("PATCH", `/conversations/${conversationId}/messages/${messageId}`, {
-    ciphertext: encodeMessage(text),
-    ciphertext_type: 1,
+    ciphertext,
+    ciphertext_type: ciphertextType,
   });
 }
 

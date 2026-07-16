@@ -21,6 +21,7 @@ import {
   type MessageItem,
   type MediaMeta,
 } from "../lib/api";
+import { signalEncrypt, signalDecrypt, safeDecodeForPreview } from "../lib/signal";
 import VoiceRecorder, { type VoiceBlob } from "../components/VoiceRecorder";
 import { attachAudioUnlockListener, playNotifSound } from "../lib/notifSound";
 import VoiceMessage from "../components/VoiceMessage";
@@ -442,6 +443,14 @@ export default function ChatPage({ onNavigate }: Props) {
     enabled: boolean; duration_ms: number | null;
   } | null>(null);
 
+  // ── Signal Protocol — Fase 2 ────────────────────────────────────────────
+  /** Testi decifrati (async) indicizzati per messageId */
+  const [decryptedTexts, setDecryptedTexts] = useState<Map<string, string>>(new Map());
+  /** Cache dei testi inviati da noi: clientMessageId → plaintext
+   * Necessario per visualizzare i propri messaggi dopo l'invio
+   * (i ciphertext uscenti non sono decifrabili senza il plaintext originale) */
+  const sentCacheRef = useRef(new Map<string, string>());
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -449,6 +458,57 @@ export default function ChatPage({ onNavigate }: Props) {
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const ctxOpenedAtRef = useRef<number>(0); // ghost-click guard
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // ── Signal helpers ───────────────────────────────────────────────────────
+
+  /**
+   * Restituisce il testo da mostrare per un messaggio.
+   * Usa il testo già decifrato (state async) se disponibile,
+   * altrimenti fallback a legacy decode (funziona per messaggi pre-Fase 2).
+   */
+  function getDisplayText(msg: MessageItem): string {
+    if (!msg.ciphertext) return "";
+    if (msg.message_type === "media") return msg.ciphertext; // media: pass-through
+    return decryptedTexts.get(msg.id) ?? decodeMessage(msg.ciphertext);
+  }
+
+  /** Decifra un singolo messaggio e aggiorna lo state */
+  async function decryptSingleMsg(msg: MessageItem): Promise<void> {
+    if (!auth) return;
+    if (!msg.ciphertext || msg.message_type === "media") {
+      setDecryptedTexts((prev) => new Map(prev).set(msg.id, msg.ciphertext ?? ""));
+      return;
+    }
+    if (msg.sender_id === auth.userId) {
+      // Messaggio inviato da noi: usa la cache locale
+      const cached = sentCacheRef.current.get(msg.client_message_id);
+      setDecryptedTexts((prev) =>
+        new Map(prev).set(msg.id, cached ?? decodeMessage(msg.ciphertext!)),
+      );
+      return;
+    }
+    try {
+      const text = await signalDecrypt(
+        auth.userId,
+        auth.deviceId,
+        msg.sender_id,
+        msg.ciphertext,
+        msg.ciphertext_type ?? null,
+      );
+      setDecryptedTexts((prev) => new Map(prev).set(msg.id, text));
+    } catch {
+      // Fallback sicuro — mostra messaggio non decifrabile
+      setDecryptedTexts((prev) =>
+        new Map(prev).set(msg.id, "[Messaggio non decifrabile]"),
+      );
+    }
+  }
+
+  /** Decifra un batch di messaggi (caricamento conversazione) */
+  async function decryptBatch(msgs: MessageItem[]): Promise<void> {
+    if (!auth) return;
+    await Promise.allSettled(msgs.map((msg) => decryptSingleMsg(msg)));
+  }
 
   // ── Load conversations ──────────────────────────────────────────────────
   const loadConversations = useCallback(async () => {
@@ -473,13 +533,19 @@ export default function ChatPage({ onNavigate }: Props) {
 
   // ── Load messages + suono apertura conversazione ─────────────────────────
   useEffect(() => {
-    if (!activeConvId) { setMessages([]); return; }
+    if (!activeConvId) { setMessages([]); setDecryptedTexts(new Map()); return; }
     void playNotifSound('received');   // suono apertura conversazione
     setLoadingMsgs(true);
     apiListMessages(activeConvId, { limit: 50 })
-      .then((res) => setMessages([...res.items].reverse()))
+      .then((res) => {
+        const msgs = [...res.items].reverse();
+        setMessages(msgs);
+        // Decifra tutti i messaggi in background (Signal + legacy)
+        void decryptBatch(msgs);
+      })
       .catch(() => {})
       .finally(() => setLoadingMsgs(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeConvId]);
 
   // ── Auto-scroll only when at bottom ────────────────────────────────────
@@ -508,6 +574,8 @@ export default function ChatPage({ onNavigate }: Props) {
               if (prev.some((m) => m.id === msg.id)) return prev;
               return [...prev, msg];
             });
+            // Decifra il messaggio appena arrivato
+            void decryptSingleMsg(msg);
           }
           setConversations((prev) =>
             prev.map((c) =>
@@ -563,6 +631,8 @@ export default function ChatPage({ onNavigate }: Props) {
             setMessages((prev) =>
               prev.map((m) => m.id === edited.id ? { ...m, ciphertext: edited.ciphertext, edited_at: edited.edited_at } : m)
             );
+            // Decifra il nuovo ciphertext del messaggio modificato
+            void decryptSingleMsg(edited);
           }
           break;
         }
@@ -599,6 +669,20 @@ export default function ChatPage({ onNavigate }: Props) {
     });
   }, [on, activeConvId]);
 
+  // ── Helpers Signal — encrypt per il destinatario attivo ─────────────────
+  async function encryptForActive(text: string): Promise<{ body: string; type: number } | undefined> {
+    if (!auth || !activeConvId) return undefined;
+    const activeConv = conversations.find((c) => c.conversation_id === activeConvId);
+    const recipientId = activeConv?.other_user?.user_id;
+    if (!recipientId) return undefined;
+    try {
+      return await signalEncrypt(auth.userId, auth.deviceId, recipientId, text);
+    } catch {
+      // Sessione non ancora disponibile o errore temporaneo → fallback legacy
+      return undefined;
+    }
+  }
+
   // ── Handlers ────────────────────────────────────────────────────────────
   async function handleSend(e: React.FormEvent) {
     e.preventDefault();
@@ -610,15 +694,28 @@ export default function ChatPage({ onNavigate }: Props) {
     setSending(true);
     try {
       if (editingMessage) {
-        // Modalità modifica
-        const updated = await apiEditMessage(activeConvId, editingMessage.id, text);
-        setMessages((prev) => prev.map((m) => m.id === updated.id ? { ...m, ciphertext: updated.ciphertext, edited_at: updated.edited_at } : m));
+        // Modalità modifica — cifra con Signal
+        const signal = await encryptForActive(text);
+        const updated = await apiEditMessage(activeConvId, editingMessage.id, text, signal);
+        // Aggiorna il testo decifrato nello state (conosciamo il plaintext)
+        setDecryptedTexts((prev) => new Map(prev).set(updated.id, text));
+        setMessages((prev) => prev.map((m) =>
+          m.id === updated.id
+            ? { ...m, ciphertext: updated.ciphertext, edited_at: updated.edited_at }
+            : m,
+        ));
         setEditingMessage(null);
       } else {
-        // Invio normale o risposta
+        // Invio normale o risposta — cifra con Signal
+        const clientMessageId = crypto.randomUUID();
+        // Salva il plaintext prima di cifrare (per display dei propri messaggi)
+        sentCacheRef.current.set(clientMessageId, text);
+        const signal = await encryptForActive(text);
         await apiSendMessage(activeConvId, text, {
           replyToMessageId: replyTo?.id,
           burnAfterRead,
+          signal,
+          clientMessageId,
         });
         void playNotifSound('sent');   // suono invio messaggio
         setReplyTo(null);
@@ -627,14 +724,11 @@ export default function ChatPage({ onNavigate }: Props) {
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : "Errore invio";
       if (editingMessage && (errMsg.includes("EDIT_EXPIRED") || errMsg.includes("EDIT_FORBIDDEN"))) {
-        // Non si può più modificare — pulisci la modalità edit
         setEditingMessage(null);
         setInputText("");
         setSendError("Impossibile modificare: tempo scaduto (15 min)");
       } else {
-        setSendError(errMsg.includes("sender_key_id") || errMsg.includes("key")
-          ? "Errore JS vecchio — ricarica la pagina (↻)"
-          : errMsg);
+        setSendError(errMsg);
         setInputText(text);
       }
     } finally {
@@ -692,10 +786,19 @@ export default function ChatPage({ onNavigate }: Props) {
 
   async function handleForwardTo(targetConvId: string) {
     if (!forwardingMessage) return;
-    const text = forwardingMessage.ciphertext ? decodeMessage(forwardingMessage.ciphertext) : "";
+    const text = getDisplayText(forwardingMessage);
     setForwardingMessage(null);
+    const targetConv = conversations.find((c) => c.conversation_id === targetConvId);
+    const targetRecipientId = targetConv?.other_user?.user_id;
     try {
-      await apiSendMessage(targetConvId, text);
+      const clientMessageId = crypto.randomUUID();
+      if (text) sentCacheRef.current.set(clientMessageId, text);
+      let signal: { body: string; type: number } | undefined;
+      if (auth && targetRecipientId) {
+        try { signal = await signalEncrypt(auth.userId, auth.deviceId, targetRecipientId, text); }
+        catch { /* fallback legacy */ }
+      }
+      await apiSendMessage(targetConvId, text, { signal, clientMessageId });
       showToast("Messaggio inoltrato ✓");
     } catch {
       showToast("Errore durante l'inoltro");
@@ -905,7 +1008,7 @@ export default function ChatPage({ onNavigate }: Props) {
                 // Controlla se è un messaggio vocale
                 const vm = decodeVoiceMeta(preview.ciphertext);
                 if (vm) return "🎙 Messaggio vocale";
-                return decodeMessage(preview.ciphertext);
+                return safeDecodeForPreview(preview.ciphertext);
               })();
               const previewLabel = previewText
                 ? (preview!.sender_id === auth?.userId ? `Tu: ${previewText}` : previewText)
@@ -1010,7 +1113,7 @@ export default function ChatPage({ onNavigate }: Props) {
                 const q = chatSearchQuery.trim().toLowerCase();
                 const filtered = q
                   ? messages.filter((m) => {
-                      const text = m.ciphertext ? decodeMessage(m.ciphertext) : "";
+                      const text = getDisplayText(m);
                       return text.toLowerCase().includes(q);
                     })
                   : messages;
@@ -1021,7 +1124,7 @@ export default function ChatPage({ onNavigate }: Props) {
 
                 return filtered.map((msg) => {
                   const isMine = msg.sender_id === auth?.userId;
-                  const text = msg.ciphertext ? decodeMessage(msg.ciphertext) : "";
+                  const text = getDisplayText(msg);
                   const time = formatTime(msg.sent_at);
                   // Evidenzia la query nel testo
                   const renderText = () => {
@@ -1068,7 +1171,7 @@ export default function ChatPage({ onNavigate }: Props) {
                             <span className="msg-reply-bar" />
                             <span className="msg-reply-text">
                               {repliedMsg
-                                ? (repliedMsg.ciphertext ? decodeMessage(repliedMsg.ciphertext) : "Messaggio")
+                                ? getDisplayText(repliedMsg)
                                 : <em className="msg-reply-destroyed">🛡 Messaggio non più disponibile</em>
                               }
                             </span>
@@ -1157,7 +1260,7 @@ export default function ChatPage({ onNavigate }: Props) {
               <div className="reply-bar">
                 <span className="reply-bar-icon">↩</span>
                 <span className="reply-bar-text">
-                  {replyTo.ciphertext ? decodeMessage(replyTo.ciphertext) : "Messaggio"}
+                  {getDisplayText(replyTo)}
                 </span>
                 <button className="reply-bar-close" onClick={() => setReplyTo(null)} aria-label="Annulla risposta">✕</button>
               </div>
@@ -1215,7 +1318,7 @@ export default function ChatPage({ onNavigate }: Props) {
             {contextMenu.msg.sender_id === auth?.userId && (
               <button className="ctx-item" onClick={ctxAction(() => {
                 setEditingMessage(contextMenu.msg);
-                setInputText(contextMenu.msg.ciphertext ? decodeMessage(contextMenu.msg.ciphertext) : "");
+                setInputText(getDisplayText(contextMenu.msg));
                 closeContextMenu();
               })}>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
@@ -1259,7 +1362,7 @@ export default function ChatPage({ onNavigate }: Props) {
               </button>
             </div>
             <div className="forward-sheet-preview">
-              "{forwardingMessage.ciphertext ? decodeMessage(forwardingMessage.ciphertext).slice(0, 60) : "Messaggio"}"
+              "{getDisplayText(forwardingMessage).slice(0, 60)}"
             </div>
             <div className="forward-conv-list">
               {conversations
