@@ -49,6 +49,7 @@ import {
 } from "../lib/media-cache";
 import VoiceRecorder, { type VoiceBlob } from "../components/VoiceRecorder";
 import { attachAudioUnlockListener, playNotifSound, unlockNotifAudio } from "../lib/notifSound";
+import { primeRemoteAudio } from "../lib/remoteAudio";
 import VoiceMessage from "../components/VoiceMessage";
 import MediaMessage from "../components/MediaMessage";
 import MediaViewer from "../components/MediaViewer";
@@ -761,6 +762,23 @@ export default function ChatPage({ onNavigate }: Props) {
 
   // Sblocca audio al primo gesto utente (necessario su iOS Safari / Chrome iOS)
   useEffect(() => { attachAudioUnlockListener(); }, []);
+
+  // Fix iOS Safari: quando la tastiera si apre, aggiorna --vvh per shrink il layout
+  // così la chat-input-bar rimane visibile sopra la tastiera
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const update = () => {
+      document.documentElement.style.setProperty("--vvh", `${vv.height}px`);
+    };
+    update();
+    vv.addEventListener("resize", update);
+    vv.addEventListener("scroll", update);
+    return () => {
+      vv.removeEventListener("resize", update);
+      vv.removeEventListener("scroll", update);
+    };
+  }, []);
 
   // ── Sprint 16 Fase 5 — Trust helpers ────────────────────────────────────
 
@@ -1640,8 +1658,10 @@ export default function ChatPage({ onNavigate }: Props) {
                 const toId = conv?.other_user?.user_id;
                 const name = conv?.other_user?.display_name ?? conv?.other_user?.username ?? "Utente";
                 if (toId) {
-                  // Sblocca iOS audio nel user gesture prima di initiateCall
-                  void unlockNotifAudio().catch(() => {}).then(() => initiateCall(toId, name, "audio"));
+                  // Sblocca iOS audio nel user gesture prima di initiateCall:
+                  // unlockNotifAudio → sblocca ring, primeRemoteAudio → sblocca audio remoto WebRTC
+                  void Promise.allSettled([unlockNotifAudio(), primeRemoteAudio()])
+                    .then(() => initiateCall(toId, name, "audio"));
                 }
               }}
               onCallVideo={() => {
@@ -1649,7 +1669,8 @@ export default function ChatPage({ onNavigate }: Props) {
                 const toId = conv?.other_user?.user_id;
                 const name = conv?.other_user?.display_name ?? conv?.other_user?.username ?? "Utente";
                 if (toId) {
-                  void unlockNotifAudio().catch(() => {}).then(() => initiateCall(toId, name, "video"));
+                  void Promise.allSettled([unlockNotifAudio(), primeRemoteAudio()])
+                    .then(() => initiateCall(toId, name, "video"));
                 }
               }}
               onBlockUser={handleBlockUser}

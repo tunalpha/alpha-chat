@@ -12,6 +12,7 @@
 import { useEffect } from "react";
 import { useCall } from "../contexts/CallContext";
 import { startRing, stopRing, unlockNotifAudio } from "../lib/notifSound";
+import { primeRemoteAudio } from "../lib/remoteAudio";
 
 export default function IncomingCallModal() {
   const { incomingCall, callType, acceptCall, rejectCall } = useCall();
@@ -27,9 +28,11 @@ export default function IncomingCallModal() {
   const isVideo = callType === "video" || incomingCall.callType === "video";
 
   async function handleAccept() {
-    // 🔑 Sblocca l'audio iOS DENTRO il user gesture (click/tap sul pulsante)
-    // Questo consente a remoteAudioRef.play() di funzionare anche fuori dal gesture
-    await unlockNotifAudio();
+    // 🔑 Sblocca l'audio iOS DENTRO il user gesture (tap sul pulsante Accetta):
+    // 1. unlockNotifAudio: sblocca elementi ring (notifiche suono)
+    // 2. primeRemoteAudio: sblocca l'elemento audio remoto WebRTC (audio chiamata)
+    // Entrambi devono avvenire nello stesso stack del gesture, prima di acceptCall().
+    await Promise.allSettled([unlockNotifAudio(), primeRemoteAudio()]);
     stopRing();
     void acceptCall();
   }

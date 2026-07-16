@@ -16,6 +16,7 @@ import {
 import { useCall } from "../contexts/CallContext";
 import { useLock } from "../contexts/LockContext";
 import CallVerifyModal from "./CallVerifyModal";
+import { setRemoteStream } from "../lib/remoteAudio";
 
 // ── Utility ───────────────────────────────────────────────────────────────────
 
@@ -60,7 +61,7 @@ export default function ActiveCallScreen() {
   } = useCall();
   const { emergencyLock } = useLock();
 
-  const remoteAudioRef = useRef<HTMLAudioElement>(null);
+  // remoteAudioRef rimosso — audio remoto gestito da lib/remoteAudio (singleton primato nel gesture)
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const localVideoRef  = useRef<HTMLVideoElement>(null);
 
@@ -73,11 +74,10 @@ export default function ActiveCallScreen() {
 
   // ── Media routing ────────────────────────────────────────────────────────
 
+  // Audio remoto: usa il singleton pre-primato nel gesture (iOS fix)
   useEffect(() => {
-    const audio = remoteAudioRef.current;
-    if (!audio || !remoteStream) return;
-    audio.srcObject = remoteStream;
-    void audio.play().catch(() => {});
+    setRemoteStream(remoteStream);
+    return () => { /* non stoppiamo qui, cleanup su endCall */ };
   }, [remoteStream]);
 
   useEffect(() => {
@@ -168,8 +168,7 @@ export default function ActiveCallScreen() {
   return (
     <>
       <div className={`acs-overlay${isVideo ? " acs-video-mode" : ""}`}>
-        {/* ── Audio: earpiece senza autoPlay (iOS routing fix Sprint 24) ─ */}
-        <audio ref={remoteAudioRef} playsInline style={{ position: "absolute", width: 0, height: 0, opacity: 0 }} />
+        {/* Audio remoto gestito da lib/remoteAudio (singleton, primato nel gesture iOS) */}
 
         {/* ── Video remoto (altoparlante / video call) ─ */}
         {(isSpeaker || isVideo) && (
@@ -253,7 +252,26 @@ export default function ActiveCallScreen() {
           </div>
         )}
 
-        {/* ── Controlli ─ */}
+        {/* ── Bottom: shield bar + controlli (flex column, no overlap) ─ */}
+        <div className="acs-bottom">
+        {/* Call Shield Bar — sopra i controlli */}
+        {callState === "active" && (
+          <div className="acs-shield-bar">
+            <span className="acs-shield-enc">🔒 Cifrata</span>
+            <span className="acs-shield-sep">·</span>
+            <span className="acs-shield-conn">
+              {connType === "TURN" ? "🟡 Relay" : "🟢 P2P"}
+            </span>
+            {ql && (
+              <>
+                <span className="acs-shield-sep">·</span>
+                <span>{ql.dot} {ql.text}</span>
+              </>
+            )}
+          </div>
+        )}
+
+        {/* Controlli ─ */}
         <div className="acs-controls">
           {/* Microfono */}
           <button className={`acs-btn${isMuted ? " acs-btn-active" : ""}`} onClick={toggleMute}
@@ -313,24 +331,8 @@ export default function ActiveCallScreen() {
               <line x1="23" y1="1" x2="1" y2="23"/>
             </svg>
           </button>
-        </div>
-
-        {/* ── Call Shield Bar permanente ─ */}
-        {callState === "active" && (
-          <div className="acs-shield-bar">
-            <span className="acs-shield-enc">🔒 Cifrata</span>
-            <span className="acs-shield-sep">·</span>
-            <span className="acs-shield-conn">
-              {connType === "TURN" ? "🟡 Relay" : "🟢 P2P"}
-            </span>
-            {ql && (
-              <>
-                <span className="acs-shield-sep">·</span>
-                <span>{ql.dot} {ql.text}</span>
-              </>
-            )}
-          </div>
-        )}
+        </div>{/* fine acs-controls */}
+        </div>{/* fine acs-bottom */}
       </div>
 
       {/* ── CallVerifyModal (portato fuori dall'overlay per z-index corretto) ─ */}

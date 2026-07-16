@@ -192,7 +192,8 @@ a { color: inherit; text-decoration: none; }
 /* ── Main layout ───────────────────────────────────────────────────────────── */
 .chat-root {
   display: flex;
-  height: 100dvh;
+  /* Fix iOS Safari keyboard: usa --vvh (aggiornato da visualViewport), fallback 100dvh */
+  height: var(--vvh, 100dvh);
   overflow: hidden;
   background: var(--bg-root);
 }
@@ -4490,9 +4491,15 @@ button:disabled.profile-avatar-edit {
 }
 .acs-reconnecting-label { color: #fff; font-size: 1rem; font-weight: 600; }
 
-/* Call Shield bar permanente (bottom) */
+/* Bottom section della schermata chiamata (shield bar + controlli, flex column) */
+.acs-bottom {
+  position: absolute; bottom: 0; left: 0; right: 0;
+  display: flex; flex-direction: column; align-items: center; gap: 14px;
+  padding-bottom: calc(36px + var(--sab, 0px));
+}
+
+/* Call Shield bar — ora in flow dentro .acs-bottom, sopra i controlli */
 .acs-shield-bar {
-  position: absolute; bottom: 88px; left: 50%; transform: translateX(-50%);
   display: flex; align-items: center; gap: 6px; white-space: nowrap;
   background: rgba(0,0,0,0.55); backdrop-filter: blur(8px);
   border-radius: 50px; padding: 6px 14px;
