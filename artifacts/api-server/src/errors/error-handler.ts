@@ -37,6 +37,22 @@ export const errorHandler: ErrorRequestHandler = (err, req, res, _next) => {
     return;
   }
 
+  // Express body-parser PayloadTooLargeError (limit exceeded) → 413
+  if (
+    typeof err === "object" &&
+    err !== null &&
+    ("type" in err || "status" in err) &&
+    (
+      (err as Record<string, unknown>).type === "entity.too.large" ||
+      (err as Record<string, unknown>).status === 413
+    )
+  ) {
+    const tooBigErr = new AppError("PAYLOAD_TOO_LARGE", 413);
+    logger.warn({ requestId }, "Payload too large");
+    res.status(413).json(errorResponse(tooBigErr, requestId));
+    return;
+  }
+
   // Unhandled / unexpected error — log at error level with full stack
   logger.error({ err, requestId }, "Unhandled error");
   const internalErr = new AppError("INTERNAL_ERROR", 500);

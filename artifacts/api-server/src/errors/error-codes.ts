@@ -66,6 +66,9 @@ export const ERROR_MESSAGES: Record<string, string> = {
   INVITE_INVALID: "Codice non valido, già usato o scaduto.",
   INVITE_SELF_REDEEM: "Non puoi usare il tuo stesso codice invito.",
 
+  // Payload
+  PAYLOAD_TOO_LARGE: "File troppo grande. Riduci la dimensione e riprova.",
+
   // System
   INTERNAL_ERROR: "Errore interno del server. Il team è stato notificato.",
   SERVICE_UNAVAILABLE: "Servizio temporaneamente non disponibile. Riprova tra qualche minuto.",
