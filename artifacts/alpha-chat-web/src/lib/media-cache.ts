@@ -101,6 +101,21 @@ export async function getMetaByClientId(clientMessageId: string): Promise<string
   return _get(STORE_META_BY_CLIENT, clientMessageId);
 }
 
+/**
+ * Salva il plaintext di un messaggio di testo inviato nell'IDB.
+ * Prefisso "t:" per evitare collisioni con i meta media.
+ * Sopravvive al reload della pagina — fix garbled text dopo reload.
+ */
+export async function cacheOwnText(clientMessageId: string, plaintext: string): Promise<void> {
+  if (!_ready) return;
+  await _put(STORE_META_BY_CLIENT, `t:${clientMessageId}`, plaintext);
+}
+
+export async function getTextByClientId(clientMessageId: string): Promise<string | null> {
+  if (!_ready) return null;
+  return _get(STORE_META_BY_CLIENT, `t:${clientMessageId}`);
+}
+
 // ---------------------------------------------------------------------------
 // Internals
 // ---------------------------------------------------------------------------

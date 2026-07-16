@@ -41,6 +41,8 @@ import {
   cacheDecryptedMeta,
   getMetaByMessageId,
   getMetaByClientId,
+  cacheOwnText,
+  getTextByClientId,
 } from "../lib/media-cache";
 import VoiceRecorder, { type VoiceBlob } from "../components/VoiceRecorder";
 import { attachAudioUnlockListener, playNotifSound } from "../lib/notifSound";
@@ -548,7 +550,8 @@ export default function ChatPage({ onNavigate }: Props) {
   function getDisplayText(msg: MessageItem): string {
     if (!msg.ciphertext) return "";
     // Fase 3: media messages also go through Signal decrypt → decryptedTexts
-    return decryptedTexts.get(msg.id) ?? decodeMessage(msg.ciphertext);
+    // FIX: non usare decodeMessage come fallback — produce garbled text dal binary Signal
+    return decryptedTexts.get(msg.id) ?? "";
   }
 
   /** Decifra un singolo messaggio e aggiorna lo state */
@@ -574,11 +577,20 @@ export default function ChatPage({ onNavigate }: Props) {
           void cacheDecryptedMeta(msg.id, cachedByClient);
           return;
         }
+      } else {
+        // FIX: controlla IDB cache per testi inviati (sopravvive al reload)
+        const cachedText = await getTextByClientId(msg.client_message_id);
+        if (cachedText !== null) {
+          setDecryptedTexts((prev) => new Map(prev).set(msg.id, cachedText));
+          return;
+        }
       }
+      // Fallback: il plaintext non è disponibile (sessione rinnovata / IDB cancellato)
+      // FIX: non mostrare il ciphertext grezzo — placeholder leggibile
       setDecryptedTexts((prev) =>
         new Map(prev).set(
           msg.id,
-          msg.message_type === "media" ? msg.ciphertext! : decodeMessage(msg.ciphertext!),
+          msg.message_type === "media" ? "" : "[messaggio precedente]",
         ),
       );
       return;
@@ -637,8 +649,9 @@ export default function ChatPage({ onNavigate }: Props) {
           setDecryptedTexts((prev) => new Map(prev).set(msg.id, cached));
           return;
         }
-        // Fallback legacy (pre-Fase 3: ciphertext è base64-JSON diretto)
-        setDecryptedTexts((prev) => new Map(prev).set(msg.id, msg.ciphertext ?? ""));
+        // FIX: non usare msg.ciphertext come fallback — produce base64 grezzo nel bubble
+        // Lasciare stringa vuota → mediaMeta=null → UI "media non disponibile"
+        setDecryptedTexts((prev) => new Map(prev).set(msg.id, ""));
       } else {
         setDecryptedTexts((prev) =>
           new Map(prev).set(msg.id, "[Messaggio non decifrabile]"),
@@ -966,6 +979,8 @@ export default function ChatPage({ onNavigate }: Props) {
         const clientMessageId = crypto.randomUUID();
         // Salva il plaintext prima di cifrare (per display dei propri messaggi)
         sentCacheRef.current.set(clientMessageId, text);
+        // FIX: persiste il plaintext in IDB — sopravvive al reload
+        void cacheOwnText(clientMessageId, text);
         const signal = await encryptForActive(text);
         await apiSendMessage(activeConvId, text, {
           replyToMessageId: replyTo?.id,
@@ -1572,6 +1587,12 @@ export default function ChatPage({ onNavigate }: Props) {
                             isMine={isMine}
                             onView={(url, type) => setViewerMedia({ url, type })}
                           />
+                        ) : msg.message_type === "media" && !mediaMeta ? (
+                          /* FIX: media non decriptabile — placeholder invece di testo garbled */
+                          <div className="msg-media-unavailable">
+                            <span className="msg-media-unavailable-icon">🔒</span>
+                            <span>Media non disponibile</span>
+                          </div>
                         ) : (
                           renderText()
                         )}

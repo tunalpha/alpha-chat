@@ -3701,3 +3701,19 @@ button:disabled.profile-avatar-edit {
   font-size: 13px;
   cursor: pointer;
 }
+
+/* ── Media non disponibile — placeholder bubble (Sprint 22 fix) ──────────── */
+.msg-media-unavailable {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 2px 0;
+  font-size: 13px;
+  color: color-mix(in srgb, currentColor 55%, transparent);
+  font-style: italic;
+}
+.msg-media-unavailable-icon {
+  font-size: 15px;
+  flex-shrink: 0;
+  opacity: 0.7;
+}
