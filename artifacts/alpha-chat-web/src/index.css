@@ -192,8 +192,9 @@ a { color: inherit; text-decoration: none; }
 /* ── Main layout ───────────────────────────────────────────────────────────── */
 .chat-root {
   display: flex;
-  /* Fix iOS Safari keyboard: usa --vvh (aggiornato da visualViewport), fallback 100dvh */
-  height: var(--vvh, 100dvh);
+  /* interactive-widget=resizes-content nel viewport meta fa sì che 100dvh si
+     aggiorni automaticamente quando la tastiera iOS si apre — nessun JS needed */
+  height: 100dvh;
   overflow: hidden;
   background: var(--bg-root);
 }

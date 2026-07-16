@@ -772,22 +772,8 @@ export default function ChatPage({ onNavigate }: Props) {
   // Sblocca audio al primo gesto utente (necessario su iOS Safari / Chrome iOS)
   useEffect(() => { attachAudioUnlockListener(); }, []);
 
-  // Fix iOS Safari: quando la tastiera si apre, aggiorna --vvh per shrink il layout
-  // così la chat-input-bar rimane visibile sopra la tastiera
-  useEffect(() => {
-    const vv = window.visualViewport;
-    if (!vv) return;
-    const update = () => {
-      document.documentElement.style.setProperty("--vvh", `${vv.height}px`);
-    };
-    update();
-    vv.addEventListener("resize", update);
-    vv.addEventListener("scroll", update);
-    return () => {
-      vv.removeEventListener("resize", update);
-      vv.removeEventListener("scroll", update);
-    };
-  }, []);
+  // iOS Safari keyboard: gestito con interactive-widget=resizes-content nel viewport meta
+  // (nessun listener JS necessario — 100dvh si aggiorna automaticamente)
 
   // ── Sprint 16 Fase 5 — Trust helpers ────────────────────────────────────
 
