@@ -46,9 +46,11 @@ const GAP_MS    = 320;
 const USER_PAUSE_MS = 420;
 
 // ── Suono notifica — Web Audio API ───────────────────────────────────────────
-// AudioContext singleton — i browser richiedono un gesto utente prima di
-// permettere l'audio. Lo creiamo subito ma lo "sblocchiamo" al primo tocco.
+// iOS Safari richiede che AudioContext venga creato E che venga riprodotto
+// un buffer silenzioso SINCRONO dentro un handler di gesto utente.
+// Solo così viene sbloccato per uso successivo asincrono.
 let _audioCtx: AudioContext | null = null;
+let _audioUnlocked = false;
 
 function getAudioCtx(): AudioContext | null {
   if (!_audioCtx) {
@@ -58,17 +60,29 @@ function getAudioCtx(): AudioContext | null {
   return _audioCtx;
 }
 
-/** Chiama questa funzione al primo gesto utente per sbloccare l'audio su mobile */
+/**
+ * Da chiamare SINCRONO dentro un event handler (touchstart/touchend/click).
+ * Crea il context + riproduce buffer silenzioso + chiama resume().
+ * Questo è l'unico pattern affidabile su iOS Safari.
+ */
 function unlockAudio() {
+  if (_audioUnlocked) return;
   const ctx = getAudioCtx();
-  if (ctx && ctx.state === "suspended") {
-    ctx.resume().catch(() => {});
-  }
+  if (!ctx) return;
+  // Buffer silenzioso da 1 sample — deve essere avviato sincrono nel gesto
+  try {
+    const buf = ctx.createBuffer(1, 1, 22050);
+    const src = ctx.createBufferSource();
+    src.buffer = buf;
+    src.connect(ctx.destination);
+    src.start(0);
+  } catch { /* ignora */ }
+  ctx.resume().then(() => { _audioUnlocked = true; }).catch(() => {});
 }
 
 function playNotif() {
   const ctx = getAudioCtx();
-  if (!ctx || ctx.state !== "running") return;   // non ancora sbloccato → silenzio
+  if (!ctx || ctx.state !== "running") return;
   try {
     const osc  = ctx.createOscillator();
     const gain = ctx.createGain();
@@ -218,7 +232,7 @@ export default function LandingPage() {
       <header className="chat-header">
         <div style={{ width: 36, flexShrink: 0 }} />
 
-        <div className="demo-alpha-avatar">α</div>
+        <img src={`${import.meta.env.BASE_URL}logo.png`} alt="Alpha Chat" className="demo-alpha-avatar" />
 
         <div className="chat-header-info">
           <div className="chat-header-name">Alpha Chat</div>
@@ -249,7 +263,7 @@ export default function LandingPage() {
           const isMine = line.speaker === "user";
           return (
             <div key={i} className={`msg-row ${isMine ? "mine" : "theirs"} demo-msg-enter`}>
-              {!isMine && <div className="demo-alpha-avatar demo-alpha-avatar--sm">α</div>}
+              {!isMine && <img src={`${import.meta.env.BASE_URL}logo.png`} alt="α" className="demo-alpha-avatar demo-alpha-avatar--sm" />}
               <div className={`msg-bubble ${isMine ? "mine" : "theirs"}`}>
                 <span className="msg-text" style={{ whiteSpace: "pre-line" }}>
                   {line.text}
@@ -262,7 +276,7 @@ export default function LandingPage() {
         {/* Typing indicator Alpha */}
         {typing && (
           <div className="msg-row theirs demo-msg-enter">
-            <div className="demo-alpha-avatar demo-alpha-avatar--sm">α</div>
+            <img src={`${import.meta.env.BASE_URL}logo.png`} alt="α" className="demo-alpha-avatar demo-alpha-avatar--sm" />
             <div className="msg-bubble theirs typing-bubble">
               <span className="typing-dot" />
               <span className="typing-dot" />

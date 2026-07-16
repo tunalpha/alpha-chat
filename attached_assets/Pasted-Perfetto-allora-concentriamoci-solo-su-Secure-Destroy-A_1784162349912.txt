@@ -1,0 +1,114 @@
+Perfetto, allora concentriamoci solo su Secure Destroy. Anzi, io lo trasformerei nella funzione simbolo di Alpha Chat.
+
+⸻
+
+SPRINT 11 — SECURE DESTROY
+OBIETTIVO
+Alpha Chat introduce una funzione esclusiva chiamata:
+🛡 Secure Destroy
+Non è una semplice eliminazione del messaggio.
+È una distruzione definitiva e irreversibile.
+L'utente deve percepire che sta impartendo un ordine di distruzione.
+====================================================================
+SOSTITUIRE
+"Elimina definitivamente"
+con
+🛡 Secure Destroy
+ovunque nell'app.
+====================================================================
+MENU MESSAGGIO
+↩ Rispondi
+✏ Modifica
+🗑 Elimina per me
+🛡 Secure Destroy
+Secure Destroy deve essere evidenziato.
+====================================================================
+DIALOG
+Titolo
+🛡 Secure Destroy
+Testo
+Il messaggio verrà distrutto definitivamente.
+L'operazione è irreversibile.
+Una volta completata non sarà più possibile recuperarlo.
+Pulsanti
+ANNULLA
+SECURE DESTROY
+====================================================================
+IMPLEMENTAZIONE BACKEND
+Secure Destroy deve eseguire realmente:
+✓ eliminazione del documento MongoDB
+✓ eliminazione di eventuali allegati
+✓ eliminazione thumbnail
+✓ eliminazione preview
+✓ eliminazione storage Cloudflare R2
+✓ invalidazione cache
+✓ aggiornamento lista conversazioni
+✓ aggiornamento ultimo messaggio
+✓ aggiornamento unread counter
+✓ broadcast WebSocket
+evento
+message.destroyed
+====================================================================
+DATABASE
+Il messaggio NON deve rimanere nel database.
+Non usare placeholder.
+Non usare
+"Messaggio eliminato"
+Il record deve essere eliminato.
+====================================================================
+FRONTEND
+Quando arriva
+message.destroyed
+il messaggio deve:
+• dissolversi lentamente
+• frammentarsi con un leggero effetto digitale
+• scomparire completamente
+L'animazione deve essere elegante.
+====================================================================
+REPLY
+Se un messaggio citato è stato distrutto
+mostrare
+Messaggio non più disponibile
+senza possibilità di recuperarlo.
+====================================================================
+API
+Ogni tentativo di recuperare un messaggio distrutto deve restituire
+404 MESSAGE_NOT_FOUND
+====================================================================
+LOG
+Registrare solamente:
+timestamp
+conversation_id
+sender_id
+destroyed_by
+Mai conservare il contenuto del messaggio.
+====================================================================
+ARCHITETTURA
+Preparare già il supporto per:
+Secure Destroy automatico
+30 secondi
+1 minuto
+10 minuti
+1 ora
+1 giorno
+timer personalizzato
+La UI può arrivare in uno sprint successivo, ma il backend deve essere predisposto.
+====================================================================
+DOCUMENTAZIONE
+Aggiornare:
+Architecture
+Bible
+API
+CHANGELOG
+inserendo Secure Destroy come funzionalità esclusiva di Alpha Chat.
+====================================================================
+OBIETTIVO
+Quando un utente utilizza questa funzione non deve avere la sensazione di "eliminare un messaggio".
+Deve avere la sensazione di impartire un ordine di distruzione definitiva.
+Secure Destroy deve diventare una delle caratteristiche distintive del marchio Alpha Chat.
+
+Una piccola idea di branding che trovo elegante: quando l’operazione termina con successo, invece di un semplice toast “Messaggio eliminato”, mostra per un secondo:
+
+🛡 Secure Destroy completato
+
+È un dettaglio, ma aiuta a rendere la funzione riconoscibile e coerente con l’identità di Alpha Chat.
