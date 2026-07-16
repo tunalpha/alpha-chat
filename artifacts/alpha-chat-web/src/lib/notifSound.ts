@@ -962,6 +962,12 @@ export type SoundType = 'received' | 'sent' | 'destroy';
 function mkAudio(src: string): HTMLAudioElement {
   const a = new Audio(src);
   a.preload = 'auto';
+  // iOS Safari richiede che l'elemento sia nel DOM per poter essere
+  // sbloccato con play() e riprodotto in seguito senza user gesture.
+  try {
+    a.style.cssText = 'position:fixed;width:1px;height:1px;opacity:0;pointer-events:none';
+    document.body.appendChild(a);
+  } catch { /* SSR guard */ }
   a.load();
   return a;
 }
@@ -979,26 +985,20 @@ export async function unlockNotifAudio(): Promise<void> {
   if (_unlocked) return;
   _unlocked = true;   // setta PRIMA dell'await — playNotifSound non aspetta
 
-  const a = _sounds.received;
-  a.volume = 0;
-  try {
-    await a.play();
-  } catch (err) {
-    console.warn('[notifSound] unlock play() rejected:', err);
-    return;
+  // Sblocca TUTTI i suoni di notifica — non abbandonare se uno fallisce
+  for (const a of Object.values(_sounds)) {
+    if (!a) continue;
+    const prev = a.volume;
+    a.volume = 0;
+    try { await a.play(); a.pause(); a.currentTime = 0; } catch { /* ignora */ }
+    a.volume = prev > 0 ? prev : 1;
   }
-  a.pause();
-  a.currentTime = 0;
-  a.volume = 1;
 
-  // Pre-sblocca anche il suono di squillo
   // Sblocca TUTTI i ring elements (multi-ringtone)
   for (const el of _ringEls.values()) {
     if (!el) continue;
     el.volume = 0;
-    try { await el.play(); } catch { /* ignore */ }
-    el.pause();
-    el.currentTime = 0;
+    try { await el.play(); el.pause(); el.currentTime = 0; } catch { /* ignora */ }
     el.volume = 1;
   }
 
@@ -1168,7 +1168,16 @@ export function setRingtone(id: RingtoneId): void {
 /** Pre-genera TUTTI e tre i toni sincronamente al caricamento del modulo */
 const _ringEls = new Map<RingtoneId, HTMLAudioElement | null>();
 try {
-  const mk = (src: string) => { const a = new Audio(src); a.loop = true; return a; };
+  const mk = (src: string) => {
+    const a = new Audio(src);
+    a.loop = true;
+    // iOS Safari: deve essere nel DOM per poter essere sbloccato
+    try {
+      a.style.cssText = 'position:fixed;width:1px;height:1px;opacity:0;pointer-events:none';
+      document.body.appendChild(a);
+    } catch { /* SSR guard */ }
+    return a;
+  };
   _ringEls.set("classica",   mk(_buildRingDataUrl()));
   _ringEls.set("digitale",   mk(_buildDigitaleDataUrl()));
   _ringEls.set("militare",   mk(_buildMilitareDataUrl()));

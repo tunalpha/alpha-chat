@@ -1,0 +1,256 @@
+Ecco un prompt unico che unisce tutti i bug critici da risolvere prima di continuare la roadmap.
+
+⸻
+
+Sprint 26A — Stabilizzazione completa Alpha Chat (STOP nuove funzionalità)
+
+Obiettivo: fermare temporaneamente lo sviluppo di nuove funzionalità e rendere Alpha Chat completamente stabile. Nessuna nuova feature. Solo bug fixing, audit, test e hardening.
+
+Bug 1 — Messaggi “[Messaggio non decifrabile]” (CRITICO)
+
+Analizzare l’intera pipeline Signal:
+
+* Identity Key
+* Signed PreKey
+* One Time PreKeys
+* X3DH
+* Double Ratchet
+* SessionBuilder
+* SessionCipher
+* SignalProtocolStore
+* IndexedDB
+* Cache decrypt
+* Restore dopo refresh
+* Restore dopo cambio pagina
+* Restore dopo riapertura browser
+
+Verificare che:
+
+* le sessioni non vengano rigenerate inutilmente;
+* le Identity Key restino persistenti;
+* il decrypt parta solo quando Signal è completamente inizializzato;
+* non esistano race condition tra login, caricamento chiavi e decrypt.
+
+Aggiungere log diagnostici temporanei per individuare il punto esatto della rottura e rimuoverli al termine.
+
+⸻
+
+Bug 2 — Vocali muti / “Errore avvio” (CRITICO)
+
+Analizzare:
+
+* MediaRecorder
+* MIME type Safari iOS
+* AES-256-GCM
+* Upload
+* Download
+* Decrypt
+* Blob
+* ObjectURL
+* Audio element
+
+Verificare che:
+
+* il blob registrato contenga realmente audio;
+* il blob cifrato e quello decifrato abbiano la stessa dimensione;
+* Safari utilizzi un MIME realmente supportato;
+* la riproduzione funzioni sempre.
+
+Eliminare definitivamente “Errore avvio”.
+
+⸻
+
+Bug 3 — Burn After Read (🔥)
+
+Verificare tutta la pipeline:
+
+lettura
+
+↓
+
+trigger BAR
+
+↓
+
+destroy API
+
+↓
+
+MongoDB
+
+↓
+
+WebSocket broadcast
+
+↓
+
+refresh UI
+
+↓
+
+eliminazione locale
+
+Verificare anche:
+
+* multi-device;
+* refresh pagina;
+* offline;
+* riconnessione.
+
+Il messaggio deve sparire ovunque.
+
+⸻
+
+Bug 4 — Navigazione
+
+Dopo:
+
+* refresh;
+* cambio pagina;
+* ritorno alla chat;
+* riapertura browser;
+
+tutti i messaggi devono rimanere leggibili.
+
+Verificare:
+
+* restore cache;
+* restore sessioni;
+* decrypt queue;
+* ordine inizializzazione.
+
+⸻
+
+Bug 5 — Chiamate non squillano (CRITICO)
+
+Audit completo della pipeline chiamate.
+
+Verificare ogni passaggio:
+
+1. chiamante invia call.offer;
+2. server WebSocket riceve;
+3. server individua destinatario;
+4. server invia call.offer;
+5. client destinatario riceve;
+6. CallContext aggiorna lo stato;
+7. IncomingCallModal viene renderizzato;
+8. startRing() viene eseguito;
+9. lo squillo è realmente udibile.
+
+Controllare inoltre:
+
+* unlockNotifAudio()
+* AudioContext
+* HTMLAudioElement
+* Safari iOS
+* Chrome Android
+* Desktop
+* deviceId
+* WsManager
+* DND
+* Busy mode
+* Multi-device
+
+Individuare il primo punto in cui la pipeline si interrompe.
+
+⸻
+
+Bug 6 — Audio chiamata
+
+Verificare:
+
+* microfono locale;
+* stream remoto;
+* remoteAudioRef;
+* remoteVideoRef;
+* speaker;
+* vivavoce;
+* switch speaker;
+* mute;
+* replaceTrack.
+
+L’audio deve funzionare sempre su:
+
+* iPhone
+* Android
+* Desktop
+
+⸻
+
+Bug 7 — Videochiamata
+
+Verificare:
+
+* camera;
+* switch front/back;
+* reconnect;
+* ICE restart;
+* codec;
+* bitrate;
+* fps.
+
+⸻
+
+Bug 8 — WebRTC
+
+Audit completo:
+
+* ICE
+* STUN
+* TURN fallback
+* DTLS
+* SRTP
+* codec
+* NAT
+* relay
+* packet loss
+* jitter
+* RTT
+
+Verificare che il badge qualità corrisponda ai dati reali.
+
+⸻
+
+Bug 9 — WebSocket
+
+Verificare:
+
+* reconnect;
+* heartbeat;
+* race condition;
+* doppie connessioni;
+* logout;
+* multi-device;
+* notifiche;
+* call signalling.
+
+⸻
+
+Bug 10 — Audit generale
+
+Riprodurre automaticamente tutti i bug.
+
+Creare test di regressione dedicati.
+
+Nessun bug deve poter ricomparire.
+
+⸻
+
+Deliverable obbligatori
+
+* ✅ TypeScript pulito
+* ✅ Build pulita
+* ✅ Tutti i test verdi
+* ✅ Nuovi test di regressione
+* ✅ Nessuna race condition
+* ✅ Nessun memory leak
+* ✅ Nessun messaggio non decifrabile
+* ✅ Nessun vocale muto
+* ✅ Burn After Read perfettamente funzionante
+* ✅ Chiamate audio perfette
+* ✅ Videochiamate perfette
+* ✅ Squillo funzionante su iOS, Android e Desktop
+* ✅ Audit finale con Root Cause Analysis per ogni bug risolto
+* ✅ Rimozione di tutti i log temporanei di debug
+
+Importante: non implementare alcuna nuova funzionalità. Lo scopo dello sprint è esclusivamente stabilizzare Alpha Chat fino a ottenere una build affidabile e pronta per la beta pubblica.

@@ -748,7 +748,18 @@ export default function ChatPage({ onNavigate }: Props) {
   /** Decifra un batch di messaggi (caricamento conversazione) */
   async function decryptBatch(msgs: MessageItem[]): Promise<void> {
     if (!auth) return;
-    await Promise.allSettled(msgs.map((msg) => decryptSingleMsg(msg)));
+    // Messaggi PROPRI: lookup in cache (localStorage/IDB), nessuno stato Signal →
+    //   parallelo sicuro.
+    // Messaggi RICEVUTI: il Double Ratchet è stateful (IDB).
+    //   Decrypt concorrenti leggono la stessa sessione, applicano step diversi e
+    //   si sovrascrivono → stato corrotto → "[Messaggio non decifrabile]" su tutti.
+    //   Soluzione: serializzare i decrypt dei messaggi altrui.
+    const mine   = msgs.filter((m) => m.sender_id === auth!.userId);
+    const theirs = msgs.filter((m) => m.sender_id !== auth!.userId);
+    await Promise.allSettled(mine.map((m) => decryptSingleMsg(m)));
+    for (const msg of theirs) {
+      await decryptSingleMsg(msg).catch(() => {});
+    }
   }
 
   // ── Load conversations ──────────────────────────────────────────────────
