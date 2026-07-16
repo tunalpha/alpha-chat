@@ -102,16 +102,35 @@ export async function getMetaByClientId(clientMessageId: string): Promise<string
 }
 
 /**
- * Salva il plaintext di un messaggio di testo inviato nell'IDB.
- * Prefisso "t:" per evitare collisioni con i meta media.
- * Sopravvive al reload della pagina — fix garbled text dopo reload.
+ * Salva il plaintext di un messaggio di testo inviato.
+ * PRIMARIO: localStorage (sincrono, nessuna race condition con IDB ready).
+ * SECONDARIO: IDB cifrato (persistente ma soggetto a race condition su init).
+ *
+ * Perché localStorage: cacheOwnText è chiamato fire-and-forget (void).
+ * Se l'IDB non è ancora pronto (_ready=false), il write IDB viene scartato
+ * silenziosamente → al reload il testo non si trova → "[messaggio precedente]".
+ * localStorage è sempre disponibile e sincrono → risolve il problema.
  */
+const LS_OWN_TEXT_PREFIX = "alpha_mt:";
+
 export async function cacheOwnText(clientMessageId: string, plaintext: string): Promise<void> {
-  if (!_ready) return;
-  await _put(STORE_META_BY_CLIENT, `t:${clientMessageId}`, plaintext);
+  // 1. localStorage sincrono — sempre affidabile
+  try {
+    localStorage.setItem(LS_OWN_TEXT_PREFIX + clientMessageId, plaintext);
+  } catch { /* quota exceeded — ignora, IDB come backup */ }
+  // 2. IDB cifrato come backup
+  if (_ready) {
+    await _put(STORE_META_BY_CLIENT, `t:${clientMessageId}`, plaintext);
+  }
 }
 
 export async function getTextByClientId(clientMessageId: string): Promise<string | null> {
+  // 1. Controlla localStorage prima (sincrono, sempre disponibile)
+  try {
+    const ls = localStorage.getItem(LS_OWN_TEXT_PREFIX + clientMessageId);
+    if (ls !== null) return ls;
+  } catch { /* ignora */ }
+  // 2. Fallback IDB
   if (!_ready) return null;
   return _get(STORE_META_BY_CLIENT, `t:${clientMessageId}`);
 }
