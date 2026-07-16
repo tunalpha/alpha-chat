@@ -73,7 +73,10 @@ export type AuditEventType =
   | "DISAPPEARING_MESSAGES_SET"
   // Block (Sprint 15)
   | "USER_BLOCKED"
-  | "USER_UNBLOCKED";
+  | "USER_UNBLOCKED"
+  // Phoenix Protocol (Sprint 18)
+  | "PHOENIX_LOCK_EXECUTED"
+  | "PHOENIX_PROTOCOL_EXECUTED";
 
 export interface AuditEvent {
   event: AuditEventType;

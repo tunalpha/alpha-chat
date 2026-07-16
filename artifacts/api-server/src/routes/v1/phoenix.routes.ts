@@ -95,6 +95,8 @@ const initiateSchema = z.object({
     username: z.string().min(1),
     phoenix_code: z.string().min(1),
     action: z.enum(["lock", "destroy"]),
+    /** Richiesto solo per destroy — doppia verifica identità via Recovery Card */
+    emergency_id: z.string().optional(),
   }),
 });
 
@@ -109,6 +111,7 @@ router.post(
         username: req.body.username as string,
         phoenixCode: req.body.phoenix_code as string,
         action: req.body.action as "lock" | "destroy",
+        emergencyId: req.body.emergency_id as string | undefined,
         ip,
       });
       // Risposta generica per non rivelare se l'utente esiste o meno

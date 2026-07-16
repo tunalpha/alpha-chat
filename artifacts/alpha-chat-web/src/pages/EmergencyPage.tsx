@@ -34,6 +34,7 @@ export default function EmergencyPage() {
   const [step, setStep] = useState<Step>("form");
   const [username, setUsername] = useState("");
   const [phoenixCode, setPhoenixCode] = useState("");
+  const [emergencyId, setEmergencyId] = useState("");
   const [action, setAction] = useState<"lock" | "destroy">("lock");
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
@@ -80,6 +81,7 @@ export default function EmergencyPage() {
         username: username.trim(),
         phoenix_code: phoenixCode,
         action,
+        ...(action === "destroy" ? { emergency_id: emergencyId.trim() } : {}),
       });
       const data = await res.json();
       if (!res.ok) {
@@ -94,9 +96,13 @@ export default function EmergencyPage() {
     }
   }
 
+  // 30s per destroy (irreversibile), 10s per lock
+  const COUNTDOWN_SECS = confirmInfo?.action === "destroy" ? 30 : 10;
+
   function startCountdown() {
+    const secs = confirmInfo?.action === "destroy" ? 30 : 10;
     setStep("countdown");
-    setCountdown(10);
+    setCountdown(secs);
     countdownRef.current = setInterval(() => {
       setCountdown((n) => {
         if (n <= 1) {
@@ -112,7 +118,7 @@ export default function EmergencyPage() {
   function cancelCountdown() {
     clearInterval(countdownRef.current!);
     setStep("confirm");
-    setCountdown(10);
+    setCountdown(COUNTDOWN_SECS);
   }
 
   async function executeAction() {
@@ -199,6 +205,26 @@ export default function EmergencyPage() {
                 <span className="emergency-action-desc">Distruggi account, messaggi e chiavi. IRREVERSIBILE.</span>
               </button>
             </div>
+
+            {action === "destroy" && (
+              <>
+                <label className="emergency-label">
+                  Emergency ID
+                  <span className="emergency-label-hint"> — dalla tua Recovery Card</span>
+                </label>
+                <input
+                  className="emergency-input emergency-input--mono"
+                  type="text"
+                  placeholder="XXXX-XXXX"
+                  value={emergencyId}
+                  onChange={(e) => setEmergencyId(e.target.value.toUpperCase())}
+                  required={action === "destroy"}
+                  autoComplete="off"
+                  spellCheck={false}
+                  maxLength={9}
+                />
+              </>
+            )}
 
             {errorMsg && <div className="emergency-error">{errorMsg}</div>}
 

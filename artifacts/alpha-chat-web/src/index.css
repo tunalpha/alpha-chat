@@ -2499,6 +2499,8 @@ button:disabled.profile-avatar-edit {
   font-family: inherit;
 }
 .emergency-input:focus { border-color: var(--brand-3); }
+.emergency-input--mono { font-family: "SF Mono", "Fira Code", monospace; letter-spacing: 2px; text-transform: uppercase; }
+.emergency-label-hint { font-size: 10px; font-weight: 400; text-transform: none; letter-spacing: 0; color: var(--text-3); margin-left: 4px; }
 .emergency-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
 .emergency-action-btn {
   background: rgba(255,255,255,0.04);

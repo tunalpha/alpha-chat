@@ -1,0 +1,63 @@
+La roadmap sta diventando molto coerente.
+
+Il passaggio da Panic Mode a Emergency Lock è corretto: evita di confondere una funzione reversibile con una irreversibile.
+
+Per il Phoenix Protocol ti suggerisco però un audit prima del merge in produzione. Controllerei in particolare:
+
+* ✅ Il codice Phoenix è memorizzato solo come hash Argon2id.
+* ✅ Il token email è monouso e con TTL.
+* ✅ Tutte le sessioni WebSocket vengono invalidate.
+* ✅ Tutte le chiavi Signal vengono eliminate.
+* ✅ Secure Destroy viene eseguito anche per media e allegati.
+* ✅ L’operazione è idempotente (se l’utente preme due volte non rompe nulla).
+* ✅ Tutte le operazioni vengono registrate nell’audit log senza salvare dati sensibili.
+* ✅ Non rimangono riferimenti orfani (media, bundle Signal, device, token, recovery).
+
+A livello di prodotto aggiungerei anche due funzioni che darebbero molto valore.
+
+1. Modalità “Emergency Lock”
+
+È già presente.
+
+Blocca immediatamente tutti i dispositivi, revoca le sessioni e permette di recuperare l’account.
+
+2. Phoenix Protocol
+
+Irreversibile.
+
+Richiede:
+
+* Recovery ID
+* Phoenix Code
+* Token ricevuto via email
+* Conto alla rovescia (es. 30 secondi)
+* Ultima conferma
+
+Solo dopo parte la distruzione definitiva.
+
+3. (Consiglio) Dead Man Switch
+
+Questa sarebbe una funzione davvero distintiva.
+
+L’utente può impostare:
+
+“Se non confermo di stare bene entro X giorni, attiva automaticamente il Phoenix Protocol.”
+
+Oppure:
+
+“Invia prima un’email di avviso. Se non rispondo entro 24 ore, procedi.”
+
+È utile per giornalisti, attivisti, investigatori o chiunque voglia una protezione aggiuntiva.
+
+⸻
+
+Io aggiungerei la roadmap così
+
+* ✅ Sprint 16 — Signal Protocol
+* ✅ Sprint 17 — Device Security
+* ✅ Sprint 18 — Phoenix Protocol
+* 🔜 Sprint 19 — Dead Man Switch + Recovery avanzato
+* 🔜 Sprint 20 — Gruppi E2E
+* 🔜 Sprint 21 — Ecosistema (PWA, Push, Backup cifrato)
+
+Con questa sequenza Alpha Chat avrebbe una proposta molto diversa rispetto alle normali app di messaggistica: non solo cifratura end-to-end, ma anche strumenti pensati per gestire situazioni di emergenza e perdita del controllo del dispositivo.
