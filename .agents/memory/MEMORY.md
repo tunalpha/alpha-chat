@@ -7,3 +7,4 @@
 - [Sprint 16 Fase 5 — Identity Verification](signal-phase5.md) — Safety Number, TOFU trust manager IDB separato, QR, key-change banner, 26 test (18.1-18.7)
 - [Sprint 18 — Phoenix Protocol](sprint-18-phoenix.md) — argon2id Phoenix Code, email confirm token, Lock Mode vs destroy, Emergency Portal /emergency
 - [Sprint 21 — Gruppi E2E](sprint-21-groups.md) — fan-out Signal per membro, device_id=userId, overlay GroupInfo in ChatPage, AuditEventType esteso
+- [Sprint 22 — Account Recovery](sprint-22-recovery.md) — Recovery Card auto-generata, argon2.verify senza opts, validate("body",Schema), AppError in errors/AppError, revokeAllSessions in refresh-token.service
