@@ -2737,3 +2737,207 @@ button:disabled.profile-avatar-edit {
   .recovery-card { border-color: #a855f7; }
   body > :not(#recovery-card) { display: none; }
 }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Security Center — "Perché Alpha Chat è diversa"
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* Root */
+.sc-root {
+  position: fixed; inset: 0; z-index: 200;
+  background: var(--bg-1);
+  display: flex; flex-direction: column;
+  overflow: hidden;
+}
+
+/* Top bar */
+.sc-topbar {
+  display: flex; align-items: center; gap: 12px;
+  padding: 14px 16px 12px;
+  border-bottom: 1px solid var(--border-1);
+  background: var(--bg-2);
+  flex-shrink: 0;
+}
+.sc-close-btn {
+  background: none; border: none; color: var(--text-1); cursor: pointer;
+  padding: 4px; border-radius: 8px; display: flex; align-items: center;
+  transition: background 0.15s;
+}
+.sc-close-btn:hover { background: rgba(255,255,255,0.07); }
+.sc-topbar-title { font-size: 16px; font-weight: 600; color: var(--text-1); }
+
+/* Scroll area */
+.sc-scroll { flex: 1; overflow-y: auto; padding-bottom: 48px; }
+
+/* ── Hero ────────────────────────────────────────────────────────────────── */
+.sc-hero {
+  display: flex; flex-direction: column; align-items: center;
+  text-align: center;
+  padding: 40px 24px 32px;
+  background: linear-gradient(180deg, rgba(124,58,237,0.12) 0%, transparent 100%);
+  border-bottom: 1px solid var(--border-1);
+}
+.sc-hero-logo {
+  width: 64px; height: 64px; border-radius: 50%;
+  background: linear-gradient(135deg, #7c3aed, #a855f7);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 28px; font-weight: 900; color: #fff;
+  margin-bottom: 12px;
+  box-shadow: 0 8px 32px rgba(124,58,237,0.4);
+}
+.sc-hero-brand { font-size: 13px; font-weight: 600; color: var(--brand-3); letter-spacing: 1px; text-transform: uppercase; margin-bottom: 16px; }
+.sc-hero-title {
+  font-size: 26px; font-weight: 900; color: var(--text-1);
+  letter-spacing: 1.5px; margin: 0 0 8px;
+  background: linear-gradient(135deg, #c4b5fd, #a855f7);
+  -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+}
+.sc-hero-subtitle { font-size: 15px; color: var(--text-2); margin: 0 0 16px; font-style: italic; }
+.sc-hero-desc { font-size: 14px; color: var(--text-3); line-height: 1.6; max-width: 420px; }
+
+/* ── Accordion list ──────────────────────────────────────────────────────── */
+.sc-accordion-list { display: flex; flex-direction: column; gap: 0; padding: 16px; gap: 8px; }
+
+.sc-accordion {
+  border-radius: 14px;
+  background: var(--bg-2);
+  border: 1px solid var(--border-1);
+  overflow: hidden;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.sc-accordion--open {
+  border-color: var(--brand-3);
+  box-shadow: 0 0 0 1px rgba(124,58,237,0.2);
+}
+.sc-accordion--highlight { border-color: rgba(239,68,68,0.35); background: rgba(239,68,68,0.04); }
+.sc-accordion--highlight.sc-accordion--open { border-color: #ef4444; box-shadow: 0 0 0 1px rgba(239,68,68,0.25); }
+
+.sc-accordion-header {
+  width: 100%; display: flex; align-items: center; gap: 12px;
+  padding: 15px 16px; background: none; border: none; cursor: pointer;
+  text-align: left; color: var(--text-1);
+}
+.sc-accordion-emoji { font-size: 20px; flex-shrink: 0; }
+.sc-accordion-title { flex: 1; font-size: 15px; font-weight: 600; }
+.sc-accordion-chevron { font-size: 10px; color: var(--text-3); transition: transform 0.2s; }
+
+.sc-accordion-body {
+  padding: 0 16px 18px;
+  border-top: 1px solid var(--border-1);
+  animation: sc-slide-down 0.2s ease;
+}
+@keyframes sc-slide-down {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.sc-accordion-body p { font-size: 14px; color: var(--text-2); line-height: 1.65; margin: 12px 0 0; }
+.sc-accordion-body strong { color: var(--text-1); }
+
+/* Badge row */
+.sc-badge-row { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 14px; }
+.sc-badge-row--wrap { flex-wrap: wrap; }
+.sc-badge {
+  font-size: 12px; padding: 4px 10px; border-radius: 20px;
+  background: rgba(255,255,255,0.07); color: var(--text-2);
+  border: 1px solid var(--border-2);
+}
+.sc-badge--green { background: rgba(34,197,94,0.1); color: #4ade80; border-color: rgba(34,197,94,0.3); }
+
+/* Feature list */
+.sc-feature-list { display: flex; flex-direction: column; gap: 12px; margin-top: 14px; }
+.sc-feature-item { display: flex; gap: 12px; align-items: flex-start; }
+.sc-feature-icon { font-size: 18px; flex-shrink: 0; margin-top: 1px; }
+.sc-feature-item div { display: flex; flex-direction: column; gap: 2px; }
+.sc-feature-item strong { font-size: 14px; color: var(--text-1); }
+.sc-feature-item p { font-size: 13px; color: var(--text-3); margin: 0; }
+
+/* Zero Knowledge grid */
+.sc-knows-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-top: 14px; }
+.sc-knows-col { display: flex; flex-direction: column; gap: 4px; }
+.sc-knows-header { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; padding: 6px 10px; border-radius: 8px 8px 0 0; }
+.sc-knows-header--yes { background: rgba(34,197,94,0.15); color: #4ade80; }
+.sc-knows-header--no  { background: rgba(239,68,68,0.15);  color: #f87171; }
+.sc-knows-item { font-size: 13px; color: var(--text-2); padding: 5px 10px; background: rgba(255,255,255,0.03); border-radius: 4px; }
+.sc-knows-item--no { color: var(--text-3); text-decoration: line-through; }
+
+/* Scenario list (Emergency Lock) */
+.sc-scenario-list { display: flex; flex-direction: column; gap: 6px; margin: 14px 0; }
+.sc-scenario { display: flex; align-items: center; gap: 10px; font-size: 14px; color: var(--text-2); background: rgba(255,255,255,0.04); padding: 10px 12px; border-radius: 10px; }
+.sc-hint { font-size: 12px; color: var(--text-3); font-style: italic; margin-top: 8px !important; }
+
+/* Phoenix Protocol */
+.sc-phoenix-hero { text-align: center; padding: 16px 0 8px; }
+.sc-phoenix-icon { font-size: 40px; }
+.sc-phoenix-tagline { font-size: 14px; color: var(--text-3); font-style: italic; margin: 6px 0 0; }
+
+.sc-auth-steps { display: flex; flex-direction: column; gap: 8px; margin: 14px 0; }
+.sc-auth-step {
+  display: flex; align-items: center; gap: 12px;
+  font-size: 14px; color: var(--text-2);
+  background: rgba(255,255,255,0.04); padding: 10px 14px; border-radius: 10px;
+}
+.sc-auth-step span {
+  width: 24px; height: 24px; border-radius: 50%;
+  background: linear-gradient(135deg, #7c3aed, #a855f7);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 12px; font-weight: 700; color: #fff; flex-shrink: 0;
+}
+
+.sc-section-label { font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.8px; color: var(--text-3); margin: 18px 0 8px !important; }
+
+.sc-scenario-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin-bottom: 4px; }
+@media (max-width: 360px) { .sc-scenario-grid { grid-template-columns: repeat(2, 1fr); } }
+.sc-scenario-card {
+  background: rgba(255,255,255,0.04); border: 1px solid var(--border-2);
+  border-radius: 12px; padding: 12px 6px; text-align: center;
+  font-size: 12px; color: var(--text-2); line-height: 1.4;
+}
+.sc-scenario-card strong { display: block; margin-top: 4px; color: var(--text-1); font-size: 11px; }
+
+.sc-destroy-list { display: flex; flex-direction: column; gap: 4px; margin-bottom: 14px; }
+.sc-destroy-item { font-size: 13px; color: var(--text-2); padding: 4px 0; }
+
+.sc-phoenix-warning {
+  background: rgba(239,68,68,0.1); border: 1px solid rgba(239,68,68,0.3);
+  border-radius: 10px; padding: 12px 14px;
+  font-size: 13px; color: #f87171; line-height: 1.5; margin-top: 14px;
+}
+
+/* ── Perché Alpha Chat (emozionale) ─────────────────────────────────────── */
+.sc-why-section {
+  margin: 8px 16px; padding: 28px 24px;
+  background: linear-gradient(135deg, rgba(124,58,237,0.08), rgba(168,85,247,0.04));
+  border: 1px solid rgba(124,58,237,0.2);
+  border-radius: 20px; text-align: center;
+}
+.sc-why-icon { font-size: 32px; margin-bottom: 12px; }
+.sc-why-title { font-size: 20px; font-weight: 800; color: var(--text-1); margin: 0 0 16px; }
+.sc-why-text { font-size: 15px; color: var(--text-2); line-height: 1.7; margin: 0 0 8px; }
+
+/* ── Banner finale ───────────────────────────────────────────────────────── */
+.sc-final-banner {
+  margin: 16px 16px 8px;
+  background: linear-gradient(135deg, #1a0a2e, #2d1b69);
+  border: 1px solid rgba(124,58,237,0.4);
+  border-radius: 24px; padding: 36px 24px 32px;
+  text-align: center;
+  box-shadow: 0 16px 48px rgba(124,58,237,0.2);
+}
+.sc-final-icon { font-size: 40px; margin-bottom: 12px; }
+.sc-final-title { font-size: 22px; font-weight: 800; color: #fff; margin: 0 0 12px; }
+.sc-final-text { font-size: 15px; color: rgba(255,255,255,0.7); line-height: 1.7; margin: 0 0 20px; }
+.sc-final-divider { width: 48px; height: 2px; background: rgba(124,58,237,0.5); margin: 0 auto 20px; border-radius: 2px; }
+.sc-final-motto {
+  font-size: 16px; font-weight: 900; letter-spacing: 2px;
+  text-transform: uppercase; color: #fff; margin: 0 0 6px;
+}
+.sc-final-submotto { font-size: 13px; color: rgba(255,255,255,0.55); font-style: italic; margin: 0 0 28px; }
+.sc-final-btn {
+  background: linear-gradient(135deg, #7c3aed, #a855f7);
+  color: #fff; border: none; border-radius: 14px;
+  padding: 14px 40px; font-size: 16px; font-weight: 700;
+  cursor: pointer; transition: opacity 0.15s, transform 0.15s;
+  box-shadow: 0 4px 16px rgba(124,58,237,0.4);
+}
+.sc-final-btn:hover { opacity: 0.9; transform: translateY(-1px); }
+.sc-final-btn:active { transform: translateY(0); }

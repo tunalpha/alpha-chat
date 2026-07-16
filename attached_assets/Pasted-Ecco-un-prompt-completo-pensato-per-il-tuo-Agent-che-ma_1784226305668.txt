@@ -1,0 +1,351 @@
+Ecco un prompt completo, pensato per il tuo Agent, che mantiene uno stile professionale e coerente con Alpha Chat.
+
+⸻
+
+Sprint 19 — Centro Sicurezza “Perché Alpha Chat”
+
+Obiettivo: creare una nuova sezione nelle Impostazioni chiamata:
+
+🛡️ Perché Alpha Chat è diversa
+
+(quindi NON “Info”).
+
+Aprendo la voce deve comparire un modal fullscreen, moderno, elegante e completamente responsive, con grafica coerente con Alpha Chat (tema viola/scuro).
+
+Non deve essere una semplice pagina di testo.
+
+Deve sembrare una guida interattiva che fa innamorare l’utente dell’app.
+
+⸻
+
+UX
+
+Il modal deve avere:
+
+* Hero iniziale con logo Alpha Chat
+* titolo grande
+
+IL TUO BUNKER DIGITALE
+
+sottotitolo
+
+La privacy è la tua prima linea di difesa.
+
+sotto un breve testo emozionale.
+
+Ogni sezione deve avere:
+
+* emoji
+* titolo
+* descrizione
+* card moderna
+* animazione di apertura
+* layout mobile-first
+
+Usare Accordion/Collapse.
+
+⸻
+
+Sezioni
+
+🔒 Crittografia End-to-End
+
+Spiegare in modo semplice ma accurato:
+
+* cos’è la cifratura End-to-End
+* perché il server non può leggere i messaggi
+* che solo mittente e destinatario possiedono le chiavi
+
+Spiegare chiaramente che Alpha Chat usa:
+
+✅ Signal Protocol
+
+⸻
+
+🔑 X3DH
+
+Spiegare:
+
+* prima stretta di mano crittografica
+* scambio sicuro delle chiavi
+* nessuna chiave viaggia mai in chiaro
+
+⸻
+
+🔄 Double Ratchet
+
+Spiegare:
+
+* una chiave diversa per ogni messaggio
+* Forward Secrecy
+* Post Compromise Security
+* impossibilità di decifrare messaggi precedenti anche compromettendo una chiave futura
+
+⸻
+
+📷 Media cifrati
+
+Spiegare:
+
+* foto
+* video
+* audio
+* documenti
+
+sono cifrati con AES-256-GCM prima dell’upload.
+
+Il server vede solo blob cifrati.
+
+⸻
+
+🧩 Zero Knowledge
+
+Spiegare cosa significa realmente.
+
+Il server conosce solo:
+
+* destinatario
+* mittente
+* timestamp
+* dati tecnici indispensabili
+
+NON conosce:
+
+* testo
+* foto
+* audio
+* documenti
+* chiavi
+
+⸻
+
+👻 Ghost Mode
+
+Descrivere:
+
+* nasconde ultimo accesso
+* stato online
+* conferme di lettura
+* presenza
+
+⸻
+
+🔥 Burn After Read
+
+Spiegare il funzionamento.
+
+⸻
+
+⏳ Messaggi a scomparsa
+
+Spiegare.
+
+⸻
+
+🗑️ Secure Destroy
+
+Spiegare che elimina definitivamente il messaggio.
+
+⸻
+
+👤 Safety Number
+
+Spiegare:
+
+* verifica identità
+* protezione MITM
+* QR
+* Fingerprint
+
+⸻
+
+📱 Sicurezza del dispositivo
+
+Descrivere:
+
+Face ID
+
+Touch ID
+
+PIN
+
+Privacy Screen
+
+Auto Lock
+
+⸻
+
+🚨 Emergency Lock
+
+Spiegare chiaramente.
+
+Scenario:
+
+📱 telefono rubato
+
+👤 telefono perso
+
+⚠️ accesso sospetto
+
+L’utente può bloccare immediatamente tutte le sessioni.
+
+L’account rimane recuperabile.
+
+⸻
+
+🔥 Phoenix Protocol
+
+Questa deve essere la sezione più spettacolare.
+
+Titolo grande.
+
+Icona Phoenix.
+
+Testo emozionale.
+
+Esempi concreti.
+
+⸻
+
+Scenario 1
+
+📱 Ti rubano il telefono.
+
+⸻
+
+Scenario 2
+
+🚔 Il dispositivo viene sequestrato.
+
+⸻
+
+Scenario 3
+
+⚠️ Sei costretto a consegnare il telefono.
+
+⸻
+
+Scenario 4
+
+🛂 Attraversamento di una frontiera.
+
+⸻
+
+Scenario 5
+
+📰 Giornalista.
+
+⸻
+
+Scenario 6
+
+⚖️ Avvocato.
+
+⸻
+
+Scenario 7
+
+👩‍⚕️ Medico.
+
+⸻
+
+Scenario 8
+
+🛡️ Attivista.
+
+⸻
+
+Spiegare che tramite
+
+Recovery ID
+
+Phoenix Code
+
+codice inviato via email
+
+è possibile ordinare la distruzione definitiva dell’account.
+
+Spiegare che vengono eliminati:
+
+✅ messaggi
+
+✅ media
+
+✅ sessioni
+
+✅ chiavi Signal
+
+✅ token
+
+✅ dispositivi
+
+✅ cache
+
+e che l’operazione è irreversibile.
+
+⸻
+
+📲 Multi Device
+
+Spiegare:
+
+* ogni dispositivo possiede una sessione Signal indipendente
+* revoca singolo dispositivo
+
+⸻
+
+🚫 Blocco utenti
+
+Spiegare.
+
+⸻
+
+💜 Perché Alpha Chat
+
+Scrivere un testo finale emozionale.
+
+Spiegare che Alpha Chat non nasce per essere “un’altra chat”.
+
+Nasce per proteggere la libertà digitale.
+
+La sicurezza non è una funzione.
+
+È l’architettura dell’app.
+
+⸻
+
+Banner finale
+
+Concludere con una card grande.
+
+Titolo:
+
+🛡️ Il tuo bunker digitale
+
+Testo:
+
+La privacy non dovrebbe essere un privilegio.
+
+Dovrebbe essere la normalità.
+
+Chiudere con il motto ufficiale:
+
+IL TUO BUNKER DIGITALE
+
+La privacy è la tua prima linea di difesa.
+
+⸻
+
+Requisiti tecnici
+
+* Nessuna regressione.
+* Nessuna modifica alla logica E2E.
+* Solo nuova UI informativa.
+* Mobile-first.
+* Tema coerente con Alpha Chat.
+* Accordion animati.
+* Hero iniziale con logo.
+* Icone/emoji in tutte le sezioni.
+* Scroll fluido.
+* Pulsante finale “Ho capito” per chiudere il modal.
+* Verificare typecheck e build finale con 0 errori.

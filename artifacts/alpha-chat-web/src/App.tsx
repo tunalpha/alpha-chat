@@ -11,6 +11,7 @@ import DevicesPage from "./pages/DevicesPage";
 import PrivacyPage from "./pages/PrivacyPage";
 import ComingSoonPage from "./pages/ComingSoonPage";
 import EmergencyPage from "./pages/EmergencyPage";
+import SecurityCenterPage from "./pages/SecurityCenterPage";
 import LockScreen from "./components/LockScreen";
 import PrivacyOverlay from "./components/PrivacyOverlay";
 
@@ -22,7 +23,8 @@ export type AppView =
   | "phoenix"
   | "devices"
   | "privacy"
-  | "archive";
+  | "archive"
+  | "security-center";
 
 /** Controlla se l'URL corrente è la pagina di emergenza (accessibile senza auth). */
 function isEmergencyPath(): boolean {
@@ -80,6 +82,8 @@ function AppContent() {
             return <PrivacyPage onBack={goBack} />;
           case "archive":
             return <ComingSoonPage title="Archivio" onBack={goBack} />;
+          case "security-center":
+            return <SecurityCenterPage onClose={goSettings} />;
           default:
             return <ChatPage onNavigate={setView} />;
         }
