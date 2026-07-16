@@ -22,6 +22,12 @@ interface Props {
   encryptedKey?: string;
   /** Fase 3: IV AES-GCM in base64 (dal metadata Signal-decifrato) */
   encryptedIv?: string;
+  /**
+   * MIME type del blob audio originale (es. "audio/mp4" su iOS, "audio/webm" su Android).
+   * Passato a apiFetchAndDecryptMediaBlob come hint; i magic bytes hanno precedenza.
+   * Per messaggi vecchi (senza mime_type nel metadata) i magic bytes rilevano il formato automaticamente.
+   */
+  mimeType?: string;
 }
 
 const SPEEDS = [1, 1.5, 2] as const;
@@ -33,7 +39,7 @@ function formatDuration(ms: number): string {
   return `${m}:${String(s % 60).padStart(2, "0")}`;
 }
 
-export default function VoiceMessage({ mediaId, durationMs, waveform, isMine, encryptedKey, encryptedIv }: Props) {
+export default function VoiceMessage({ mediaId, durationMs, waveform, isMine, encryptedKey, encryptedIv, mimeType }: Props) {
   const [ready, setReady]       = useState(false);
   const [playing, setPlaying]   = useState(false);
   const [progress, setProgress] = useState(0);
@@ -82,11 +88,13 @@ export default function VoiceMessage({ mediaId, durationMs, waveform, isMine, en
 
         if (encryptedKey && encryptedIv) {
           // Fase 3: scarica blob cifrato e decifra localmente (AES-256-GCM)
+          // mimeType è un hint; apiFetchAndDecryptMediaBlob usa magic bytes come
+          // fonte primaria → funziona anche per messaggi vecchi senza mime_type
           objectUrl = await apiFetchAndDecryptMediaBlob(
             mediaId,
             encryptedKey,
             encryptedIv,
-            "audio/webm",
+            mimeType,
           );
         } else {
           // Legacy: blob in chiaro

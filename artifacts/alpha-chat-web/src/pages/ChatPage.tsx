@@ -638,12 +638,21 @@ export default function ChatPage({ onNavigate }: Props) {
         return;
       }
 
-      // Fase 4: media cache per clientId (utile dopo page reload) — media messages
+      // Fase 4: media cache per messaggi propri dopo reload
       if (msg.message_type === "media") {
+        // 1. Controlla per server ID (salvato da cacheOwnTextByServerId nelle sessioni precedenti)
+        const cachedByServer = getTextByServerId(msg.id);
+        if (cachedByServer) {
+          setDecryptedTexts((prev) => new Map(prev).set(msg.id, cachedByServer));
+          void cacheDecryptedMeta(msg.id, cachedByServer);
+          return;
+        }
+        // 2. Controlla per client ID (localStorage-backed dopo il fix)
         const cachedByClient = await getMetaByClientId(msg.client_message_id);
         if (cachedByClient) {
           setDecryptedTexts((prev) => new Map(prev).set(msg.id, cachedByClient));
           void cacheDecryptedMeta(msg.id, cachedByClient);
+          cacheOwnTextByServerId(msg.id, cachedByClient); // promuovi a server ID per lookup futuro
           return;
         }
       } else {
@@ -1196,6 +1205,7 @@ export default function ChatPage({ onNavigate }: Props) {
       });
 
       // Metadata JSON con chiave AES — verrà Signal-cifrato (server non vede la chiave)
+      // mime_type incluso per compatibilità cross-platform (iOS→Android e viceversa)
       const metaJson = JSON.stringify({
         e2e:        true,
         type:       "voice",
@@ -1204,6 +1214,7 @@ export default function ChatPage({ onNavigate }: Props) {
         iv:         ivBase64,
         duration_ms: media.duration_ms ?? voice.durationMs,
         waveform:   media.waveform.length > 0 ? media.waveform : voice.waveform,
+        mime_type:  voice.blob.type || "audio/webm",
       });
 
       const clientMessageId = crypto.randomUUID();
@@ -1822,6 +1833,7 @@ export default function ChatPage({ onNavigate }: Props) {
                             isMine={isMine}
                             encryptedKey={voiceMeta.key}
                             encryptedIv={voiceMeta.iv}
+                            mimeType={voiceMeta.mime_type}
                           />
                         ) : mediaMeta && (mediaMeta.type === "image" || mediaMeta.type === "video" || mediaMeta.type === "document") ? (
                           <MediaMessage

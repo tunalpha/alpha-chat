@@ -91,12 +91,27 @@ export async function getMetaByMessageId(messageId: string): Promise<string | nu
 // Store / Get — per clientMessageId (messaggi inviati, prima di ricevere l'id server)
 // ---------------------------------------------------------------------------
 
+const LS_OWN_META_PREFIX = "alpha_mm:";
+
+/**
+ * Salva i metadati media di un messaggio inviato indicizzato per clientMessageId.
+ * USA localStorage come primario (sincrono, nessuna race condition IDB ready).
+ * Stessa strategia di cacheOwnText per i messaggi di testo.
+ */
 export async function cacheOwnMessageMeta(clientMessageId: string, metaJson: string): Promise<void> {
-  if (!_ready) return;
-  await _put(STORE_META_BY_CLIENT, clientMessageId, metaJson);
+  // 1. localStorage sincrono — sempre affidabile, sopravvive reload
+  try { localStorage.setItem(LS_OWN_META_PREFIX + clientMessageId, metaJson); } catch { /* quota */ }
+  // 2. IDB cifrato come backup
+  if (_ready) await _put(STORE_META_BY_CLIENT, clientMessageId, metaJson);
 }
 
 export async function getMetaByClientId(clientMessageId: string): Promise<string | null> {
+  // 1. localStorage (sempre disponibile, sincrono)
+  try {
+    const ls = localStorage.getItem(LS_OWN_META_PREFIX + clientMessageId);
+    if (ls !== null) return ls;
+  } catch { /* ignora */ }
+  // 2. IDB cifrato (backup)
   if (!_ready) return null;
   return _get(STORE_META_BY_CLIENT, clientMessageId);
 }

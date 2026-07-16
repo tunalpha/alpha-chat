@@ -162,6 +162,8 @@ export interface VoiceMeta extends MediaE2EFields {
   media_id: string;
   duration_ms: number;
   waveform: number[];
+  /** MIME type del blob audio originale (es. "audio/mp4" su iOS, "audio/webm" su Android) */
+  mime_type?: string;
 }
 
 export type MediaMeta =
@@ -924,11 +926,31 @@ export async function apiRevokeDevice(deviceId: string): Promise<void> {
   return request<void>("DELETE", `/keys/devices/${deviceId}`);
 }
 
+/**
+ * Rileva il MIME type audio dai magic bytes del buffer decifrato.
+ * Non si fida del mime_type dichiarato (che potrebbe mancare per messaggi vecchi).
+ * - WebM:  0x1A 0x45 0xDF 0xA3 (EBML header)
+ * - MP4/M4A: 'ftyp' box a offset 4
+ * - OGG:   0x4F 0x67 0x67 0x53
+ */
+function detectAudioMimeType(buffer: ArrayBuffer, hint?: string): string {
+  const b = new Uint8Array(buffer.slice(0, 12));
+  // WebM
+  if (b[0] === 0x1a && b[1] === 0x45 && b[2] === 0xdf && b[3] === 0xa3) return "audio/webm";
+  // MP4/M4A (ftyp box)
+  if (b[4] === 0x66 && b[5] === 0x74 && b[6] === 0x79 && b[7] === 0x70) return "audio/mp4";
+  // OGG
+  if (b[0] === 0x4f && b[1] === 0x67 && b[2] === 0x67 && b[3] === 0x53) return "audio/ogg";
+  // Fallback: usa hint se disponibile (es. da VoiceMeta.mime_type), altrimenti webm
+  return hint || "audio/webm";
+}
+
 export async function apiFetchAndDecryptMediaBlob(
   mediaId: string,
   keyBase64: string,
   ivBase64: string,
-  mimeType = "application/octet-stream",
+  /** Hint MIME type (da VoiceMeta.mime_type). Viene usato solo se i magic bytes non riconoscono il formato. */
+  mimeTypeHint?: string,
 ): Promise<string> {
   const token = getAccessToken();
   const headers: Record<string, string> = {};
@@ -955,7 +977,10 @@ export async function apiFetchAndDecryptMediaBlob(
   );
   const decrypted = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, cryptoKey, encrypted);
 
-  const blob = new Blob([decrypted], { type: mimeType });
+  // Auto-rileva il tipo dai magic bytes — funziona per messaggi vecchi (senza mime_type)
+  // e nuovi (dove mime_type è già nel metadata), ignorando eventuali hint errati
+  const detectedMime = detectAudioMimeType(decrypted, mimeTypeHint);
+  const blob = new Blob([decrypted], { type: detectedMime });
   return URL.createObjectURL(blob);
 }
 
