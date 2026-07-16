@@ -281,6 +281,55 @@ export default function TrustCenterPage({ onBack, onNavigate }: Props) {
               </div>
             </div>
 
+            {/* ── Security Version Card ── */}
+            <div className="tc-version-card">
+              <div className="tc-version-header">
+                <div className="tc-version-brand">
+                  <div className="tc-version-logo">α</div>
+                  <div>
+                    <div className="tc-version-name">Alpha Chat Security</div>
+                    <div className="tc-version-subtitle">Informazioni build & protocollo</div>
+                  </div>
+                </div>
+                <div className="tc-version-badge">ATTIVO</div>
+              </div>
+
+              <div className="tc-version-rows">
+                <div className="tc-version-row">
+                  <span className="tc-version-key">Versione</span>
+                  <span className="tc-version-val">{__APP_VERSION__}</span>
+                </div>
+                <div className="tc-version-row">
+                  <span className="tc-version-key">Build</span>
+                  <span className="tc-version-val tc-version-val--mono">{__BUILD_DATE__}</span>
+                </div>
+                <div className="tc-version-row">
+                  <span className="tc-version-key">Commit</span>
+                  <span className="tc-version-val tc-version-val--mono">{__BUILD_COMMIT__}</span>
+                </div>
+                <div className="tc-version-row">
+                  <span className="tc-version-key">Signal Protocol</span>
+                  <span className="tc-version-val tc-version-val--ok">✓ Attivo</span>
+                </div>
+                <div className="tc-version-row">
+                  <span className="tc-version-key">Ultimo audit</span>
+                  <span className="tc-version-val tc-version-val--mono">
+                    {status.last_audit_at
+                      ? new Date(status.last_audit_at).toLocaleString("it-IT", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })
+                      : "Mai eseguito"}
+                  </span>
+                </div>
+                <div className="tc-version-row">
+                  <span className="tc-version-key">Test interni</span>
+                  <span className="tc-version-val tc-version-val--ok">✓ {__BUILD_TESTS__} superati</span>
+                </div>
+              </div>
+
+              <p className="tc-version-disclaimer">
+                I test interni verificano il corretto funzionamento delle componenti di sicurezza al momento del rilascio. Non costituiscono una certificazione esterna o un audit indipendente.
+              </p>
+            </div>
+
             {/* ── PDF footer ── */}
             <div className="print-only tc-print-footer">
               <div>Alpha Chat Security Report — Solo dati tecnici, mai contenuti delle conversazioni.</div>

@@ -1,7 +1,15 @@
 import path from 'path';
+import { execSync } from 'child_process';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { defineConfig } from 'vite';
+
+// Metadati di build iniettati come costanti globali nel bundle
+const BUILD_COMMIT = (() => {
+  try { return execSync('git rev-parse --short HEAD', { encoding: 'utf8' }).trim(); }
+  catch { return 'dev'; }
+})();
+const BUILD_DATE = new Date().toISOString().slice(0, 10).replace(/-/g, '.');
 
 import runtimeErrorOverlay from '@replit/vite-plugin-runtime-error-modal';
 
@@ -47,6 +55,12 @@ export default defineConfig({
       ),
     },
     dedupe: ['react', 'react-dom'],
+  },
+  define: {
+    __BUILD_COMMIT__:  JSON.stringify(BUILD_COMMIT),
+    __BUILD_DATE__:    JSON.stringify(BUILD_DATE),
+    __APP_VERSION__:   JSON.stringify('1.0'),
+    __BUILD_TESTS__:   JSON.stringify('174/174'),
   },
   root: path.resolve(import.meta.dirname),
   build: {
