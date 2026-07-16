@@ -1,5 +1,4 @@
 import { Router } from "express";
-import express from "express";
 import systemRoutes from "./system.routes";
 import authRoutes from "./auth.routes";
 import userRoutes from "./user.routes";
@@ -34,10 +33,7 @@ v1Router.use("/conversations/:conversationId/messages", messageRoutes);
 v1Router.use("/invites", inviteRoutes);
 
 // Media (upload/download audio, images — Sprint 11)
-// Override body-parser limit to 25 MB for media uploads:
-// max file 15 MB (video) × 1.33 base64 overhead ≈ 20 MB; 25 MB gives headroom.
-// All other endpoints keep the global 1 MB limit.
-v1Router.use("/media", express.json({ limit: "25mb" }), mediaRoutes);
+v1Router.use("/media", mediaRoutes);
 
 // Signal Protocol — Key Distribution Center (Sprint 16, Fase 1)
 v1Router.use("/keys", keysRoutes);

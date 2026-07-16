@@ -6,12 +6,17 @@
 
 import { z } from "zod";
 
-// Limiti per tipo MIME
+// AES-256-GCM aggiunge 16 byte di authentication tag al ciphertext.
+// I limiti vengono applicati al ciphertext (non al plaintext originale),
+// quindi dobbiamo aggiungere 16 B per permettere file esattamente al limite dichiarato.
+const GCM_TAG_BYTES = 16;
+
+// Limiti per tipo MIME (plaintext max + GCM tag)
 const LIMITS: Record<string, number> = {
-  audio:    5  * 1024 * 1024,  // 5MB
-  image:    10 * 1024 * 1024,  // 10MB
-  video:    15 * 1024 * 1024,  // 15MB
-  document: 10 * 1024 * 1024,  // 10MB (application/*, text/*)
+  audio:    5  * 1024 * 1024 + GCM_TAG_BYTES,  // 5 MB plaintext
+  image:    10 * 1024 * 1024 + GCM_TAG_BYTES,  // 10 MB plaintext
+  video:    15 * 1024 * 1024 + GCM_TAG_BYTES,  // 15 MB plaintext
+  document: 10 * 1024 * 1024 + GCM_TAG_BYTES,  // 10 MB plaintext (application/*, text/*)
 };
 
 const ALLOWED_MIME_PREFIXES = ["audio/", "image/", "video/", "application/", "text/plain"];
