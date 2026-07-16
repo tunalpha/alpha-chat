@@ -2105,13 +2105,19 @@ button:disabled.profile-avatar-edit {
 /* BAR toggle button in chat input */
 .bar-toggle {
   font-size: 18px !important;
-  transition: transform .2s, opacity .2s;
-  opacity: .5;
+  transition: transform .2s, opacity .2s, background .2s, box-shadow .2s;
+  /* !important per battere .input-icon-btn:not([disabled]) { opacity: 1 } */
+  opacity: .4 !important;
   padding: 0 6px !important;
+  min-width: 44px !important;   /* iOS touch target minimo */
+  min-height: 44px !important;
 }
 .bar-toggle.bar-active {
-  opacity: 1;
-  animation: bar-pulse 1.5s ease-in-out infinite;
+  opacity: 1 !important;
+  background: rgba(251, 146, 60, 0.22) !important;  /* arancione visibile */
+  box-shadow: 0 0 0 1.5px rgba(251, 146, 60, 0.55);
+  border-radius: 50% !important;
+  animation: bar-pulse 1.4s ease-in-out infinite;
 }
 @keyframes bar-pulse {
   0%, 100% { transform: scale(1); }
