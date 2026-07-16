@@ -51,8 +51,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const devId = getDeviceId();
     void initSignalKeys(result.user.id, devId)
       .then(() => {
-        localStorage.setItem(`signal_keys_ready:${result.user.id}`, "1");
-        window.dispatchEvent(new CustomEvent("signal:ready", { detail: { userId: result.user.id } }));
+        const uid = result.user.id;
+        localStorage.setItem(`signal_keys_ready:${uid}`, "1");
+        document.body.setAttribute("data-signal-ready", uid);
+        window.dispatchEvent(new CustomEvent("signal:ready", { detail: { userId: uid } }));
       })
       .catch(() => {
         // Errore non critico in Fase 1 — verrà ritentato al prossimo login
@@ -69,8 +71,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const devId = getDeviceId();
     void initSignalKeys(result.user.id, devId)
       .then(() => {
-        localStorage.setItem(`signal_keys_ready:${result.user.id}`, "1");
-        window.dispatchEvent(new CustomEvent("signal:ready", { detail: { userId: result.user.id } }));
+        const uid = result.user.id;
+        localStorage.setItem(`signal_keys_ready:${uid}`, "1");
+        document.body.setAttribute("data-signal-ready", uid);
+        window.dispatchEvent(new CustomEvent("signal:ready", { detail: { userId: uid } }));
       })
       .catch(() => {
         // Errore non critico in Fase 1
