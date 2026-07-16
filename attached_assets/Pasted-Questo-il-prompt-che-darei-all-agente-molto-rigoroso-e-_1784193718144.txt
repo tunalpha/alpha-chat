@@ -1,0 +1,159 @@
+Questo è il prompt che darei all’agente. È molto rigoroso e mantiene il focus solo sull’integrazione E2E reale, senza introdurre funzionalità nuove.
+
+⸻
+
+Sprint 16 — Fase 2: Prima conversazione E2E reale (X3DH + Session Builder)
+
+Obiettivo: portare Alpha Chat dal prototipo al primo scambio di messaggi realmente cifrato end-to-end usando Signal Protocol.
+
+Regole obbligatorie
+
+* NON modificare X3DH.
+* NON modificare Double Ratchet.
+* NON implementare algoritmi crittografici custom.
+* Usare esclusivamente il fork interno packages/libsignal-ts.
+* Il server deve rimanere un relay puro.
+* Il server NON deve mai possedere chiavi private.
+* Il server NON deve mai decifrare un messaggio.
+
+⸻
+
+Fase 2.1 — Sessione Signal
+
+Quando Alice apre una chat con Bob:
+
+1. scaricare automaticamente il PreKey Bundle di Bob;
+2. creare SessionBuilder;
+3. eseguire X3DH;
+4. salvare la sessione nel SignalProtocolStore;
+5. evitare di creare una seconda sessione se esiste già.
+
+⸻
+
+Fase 2.2 — Invio
+
+Sostituire completamente il flusso attuale.
+
+Prima:
+
+plaintext
+↓
+
+server
+↓
+
+database
+
+Dopo:
+
+plaintext
+
+↓
+
+SessionCipher.encrypt()
+
+↓
+
+ciphertext base64
+
+↓
+
+server
+
+↓
+
+MongoDB
+
+Nel database deve esistere esclusivamente il ciphertext.
+
+⸻
+
+Fase 2.3 — Ricezione
+
+Alla ricezione:
+
+ciphertext
+
+↓
+
+SessionCipher.decrypt()
+
+↓
+
+plaintext
+
+↓
+
+render UI
+
+Se la sessione manca:
+
+* tentare automaticamente la creazione;
+* se impossibile mostrare errore sicuro;
+* mai mostrare testo parzialmente decifrato.
+
+⸻
+
+Fase 2.4 — Compatibilità
+
+Devono continuare a funzionare senza modifiche:
+
+* Reply
+* Edit
+* Secure Destroy
+* Burn After Read
+* Disappearing Messages
+* Media
+* WebSocket
+* Multi-device
+
+Il layer Signal deve essere completamente trasparente per il resto dell’app.
+
+⸻
+
+Fase 2.5 — Zero Knowledge Audit
+
+Verificare che:
+
+✅ nessun plaintext raggiunga il backend
+
+✅ nessun plaintext venga scritto su MongoDB
+
+✅ nessun log contenga testo
+
+✅ nessun audit log contenga testo
+
+✅ nessun websocket trasporti testo in chiaro
+
+⸻
+
+Fase 2.6 — Test obbligatori
+
+Creare test automatici che dimostrino:
+
+* Alice → Bob E2E
+* Bob → Alice E2E
+* Primo messaggio crea la sessione
+* Secondo messaggio usa Double Ratchet
+* Server vede solo ciphertext
+* MongoDB contiene solo ciphertext
+* Replay impossibile
+* Sessione persistente dopo refresh
+* Multi-device invariato
+* Secure Destroy continua a funzionare
+
+⸻
+
+Vincolo finale
+
+Lo sprint NON è concluso finché non viene prodotta una prova oggettiva composta da:
+
+* typecheck backend ✅
+* typecheck frontend ✅
+* build pulita ✅
+* test automatici tutti verdi ✅
+* screenshot del database con solo ciphertext
+* screenshot della chat Alice ↔ Bob funzionante
+* audit finale che dimostri che il server è tecnicamente incapace di leggere i messaggi.
+
+Solo dopo questa verifica si potrà iniziare la Fase 3 (media E2E).
