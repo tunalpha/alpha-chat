@@ -1,0 +1,164 @@
+Mi piace molto una scelta che avete fatto: il Dead Man Switch non può distruggere automaticamente l’account. È una decisione prudente e riduce il rischio di perdere dati a causa di un errore o di una semplice inattività.
+
+A questo punto io considererei concluso lo Sprint 19 e cambierei leggermente la roadmap.
+
+Non passerei subito ai gruppi. Prima completerei tutto ciò che riguarda la sicurezza e la continuità, poi costruirei le funzionalità social.
+
+Prossimo Sprint
+
+Sprint 20 — Trust Center & Security Dashboard
+
+Missione:
+
+Creare un unico luogo dove l’utente possa vedere in tempo reale lo stato di sicurezza del proprio account.
+
+Questa pagina deve trasmettere immediatamente fiducia.
+
+⸻
+
+Dashboard
+
+Mostrare con badge verdi, gialli o rossi:
+
+🟢 Signal Protocol attivo
+
+🟢 End-to-End Encryption
+
+🟢 Safety Number verificato
+
+🟢 Device Security
+
+🟢 Face ID / Touch ID
+
+🟢 PIN locale
+
+🟢 Ghost Mode
+
+🟢 Burn After Read
+
+🟢 Messaggi a scomparsa
+
+🟢 Secure Destroy
+
+🟢 Emergency Lock
+
+🟢 Phoenix Protocol configurato
+
+🟢 Dead Man Switch
+
+🟢 Recovery Contacts
+
+🟢 Recovery Card generata
+
+🟢 Recovery Email verificata
+
+🟢 Numero dispositivi collegati
+
+🟢 Ultimo audit sicurezza
+
+⸻
+
+Security Score
+
+Creare un punteggio da 0 a 100.
+
+Esempio:
+
+Security Score
+97 /100
+Livello:
+MILITARY READY
+
+Spiegare chiaramente cosa manca per arrivare al massimo.
+
+⸻
+
+Audit automatico
+
+Pulsante:
+
+Esegui audit sicurezza
+
+Controllare automaticamente:
+
+* Signal attivo
+* Identity verificata
+* QR verificato
+* Recovery Card presente
+* Phoenix Code presente
+* Dead Man Switch configurato
+* Sessioni sospette
+* Nuovi dispositivi
+* Recovery Contacts
+* Face ID
+* PIN
+* Timeout
+
+Mostrare il risultato in pochi secondi.
+
+⸻
+
+Cronologia
+
+Timeline elegante con:
+
+* login
+* logout
+* nuovi dispositivi
+* Safety Number verificato
+* Emergency Lock
+* Phoenix Protocol
+* cambio PIN
+* cambio Phoenix Code
+* Recovery Card rigenerata
+
+Mai mostrare contenuti delle chat.
+
+⸻
+
+Educazione
+
+Integrare il modal “Perché Alpha Chat è diversa” direttamente nella dashboard.
+
+⸻
+
+Certificazione
+
+Aggiungere una sezione:
+
+Architettura di Sicurezza
+
+Descrivere in modo comprensibile:
+
+* Signal Protocol
+* X3DH
+* Double Ratchet
+* AES-256-GCM
+* Argon2id
+* Zero Knowledge
+* WebAuthn
+* Safety Number
+* Phoenix Protocol
+
+⸻
+
+Report PDF
+
+Permettere all’utente di esportare un report PDF del proprio stato di sicurezza (solo impostazioni e stato, mai dati delle conversazioni).
+
+⸻
+
+Requisiti
+
+* Nessuna regressione.
+* Nessuna modifica al protocollo Signal.
+* Solo dashboard e strumenti di verifica.
+* Mobile-first.
+* TypeScript pulito.
+* Build pulita.
+* Test automatici.
+* Audit finale.
+
+⸻
+
+Secondo me questo sprint ha anche un vantaggio commerciale: quando un nuovo utente apre Alpha Chat e vede una dashboard con un Security Score, tutte le protezioni attive e una spiegazione chiara dell’architettura, percepisce immediatamente che l’app è stata progettata mettendo la sicurezza al centro. È un elemento che può differenziarvi rispetto a molte altre app di messaggistica.

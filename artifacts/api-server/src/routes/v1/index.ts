@@ -12,6 +12,7 @@ import deadManSwitchRoutes from "./dead-man-switch.routes";
 import recoveryContactsRoutes from "./recovery-contacts.routes";
 import securityTimelineRoutes from "./security-timeline.routes";
 import recoveryDashboardRoutes from "./recovery-dashboard.routes";
+import trustCenterRoutes from "./trust-center.routes";
 
 /**
  * /api/v1/ — mounts all versioned sub-routers.
@@ -35,5 +36,8 @@ v1Router.use("/dead-man-switch", deadManSwitchRoutes);
 v1Router.use("/recovery-contacts", recoveryContactsRoutes);
 v1Router.use("/security-timeline", securityTimelineRoutes);
 v1Router.use("/recovery-dashboard", recoveryDashboardRoutes);
+
+// Trust Center — Sprint 20
+v1Router.use("/trust-center", trustCenterRoutes);
 
 export default v1Router;

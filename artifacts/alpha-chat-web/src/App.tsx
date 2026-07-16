@@ -16,6 +16,7 @@ import DeadManSwitchPage from "./pages/DeadManSwitchPage";
 import RecoveryContactsPage from "./pages/RecoveryContactsPage";
 import RecoveryDashboardPage from "./pages/RecoveryDashboardPage";
 import SecurityTimelinePage from "./pages/SecurityTimelinePage";
+import TrustCenterPage from "./pages/TrustCenterPage";
 import LockScreen from "./components/LockScreen";
 import PrivacyOverlay from "./components/PrivacyOverlay";
 
@@ -32,7 +33,8 @@ export type AppView =
   | "dead-man-switch"
   | "recovery-contacts"
   | "recovery-dashboard"
-  | "security-timeline";
+  | "security-timeline"
+  | "trust-center";
 
 /** Controlla se l'URL corrente è la pagina di emergenza (accessibile senza auth). */
 function isEmergencyPath(): boolean {
@@ -100,6 +102,8 @@ function AppContent() {
             return <RecoveryDashboardPage onBack={goSettings} onNavigate={setView} />;
           case "security-timeline":
             return <SecurityTimelinePage onBack={goSettings} />;
+          case "trust-center":
+            return <TrustCenterPage onBack={goSettings} onNavigate={setView} />;
           default:
             return <ChatPage onNavigate={setView} />;
         }
