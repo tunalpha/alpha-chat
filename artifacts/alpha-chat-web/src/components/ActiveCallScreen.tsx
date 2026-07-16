@@ -53,15 +53,33 @@ export default function ActiveCallScreen() {
   }, [localStream]);
 
   // ── Collega stream remoto all'elemento corretto ──────────────────────────────
-  // iOS: <video> → altoparlante, <audio> → auricolare
+  // iOS audio routing:
+  //   <video> → altoparlante (loudspeaker)
+  //   <audio> → auricolare (earpiece)
+  //
+  // FIX vivavoce: rimuovere autoPlay dall'<audio> e chiamare .play() esplicitamente.
+  // Con autoPlay, iOS imposta la sessione audio in modalità Playback → altoparlante.
+  // Chiamando .play() dopo aver impostato srcObject, la sessione resta in VoiceChat.
   useEffect(() => {
-    if (!remoteStream) return;
+    if (!remoteStream) {
+      if (remoteAudioRef.current) { remoteAudioRef.current.srcObject = null; }
+      if (remoteVideoRef.current) { remoteVideoRef.current.srcObject = null; }
+      return;
+    }
     if (isSpeaker || callType === "video") {
-      if (remoteVideoRef.current)  remoteVideoRef.current.srcObject = remoteStream;
-      if (remoteAudioRef.current)  remoteAudioRef.current.srcObject = null;
+      // Altoparlante: stream → <video>
+      if (remoteAudioRef.current) { remoteAudioRef.current.srcObject = null; }
+      if (remoteVideoRef.current) {
+        remoteVideoRef.current.srcObject = remoteStream;
+        void remoteVideoRef.current.play().catch(() => {});
+      }
     } else {
-      if (remoteAudioRef.current)  remoteAudioRef.current.srcObject = remoteStream;
-      if (remoteVideoRef.current) remoteVideoRef.current.srcObject = null;
+      // Auricolare: stream → <audio> (no autoPlay → .play() esplicito)
+      if (remoteVideoRef.current) { remoteVideoRef.current.srcObject = null; }
+      if (remoteAudioRef.current) {
+        remoteAudioRef.current.srcObject = remoteStream;
+        void remoteAudioRef.current.play().catch(() => {});
+      }
     }
   }, [remoteStream, isSpeaker, callType]);
 
@@ -109,8 +127,10 @@ export default function ActiveCallScreen() {
 
   return (
     <div className={`acs-overlay${isVideo ? " acs-video-mode" : ""}`}>
-      {/* Audio earpiece — sempre montato, srcObject gestito sopra */}
-      <audio ref={remoteAudioRef} autoPlay playsInline style={{ display: "none" }} />
+      {/* Audio earpiece — sempre montato, senza autoPlay.
+          autoPlay causa iOS a impostare sessione audio → Playback → altoparlante.
+          .play() viene chiamato esplicitamente nell'effect dopo aver impostato srcObject. */}
+      <audio ref={remoteAudioRef} playsInline style={{ position: "absolute", width: 0, height: 0, opacity: 0 }} />
 
       {/* Video loudspeaker / sfondo per video call.
           ⚠️ iOS routing: <video autoPlay> presente nel DOM → altoparlante sempre.
