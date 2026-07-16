@@ -112,13 +112,18 @@ export default function ActiveCallScreen() {
       {/* Audio earpiece — sempre montato, srcObject gestito sopra */}
       <audio ref={remoteAudioRef} autoPlay playsInline style={{ display: "none" }} />
 
-      {/* Video loudspeaker / sfondo per video call */}
-      <video
-        ref={remoteVideoRef}
-        className={isVideo ? "acs-remote-video" : "acs-remote-audio-video"}
-        autoPlay
-        playsInline
-      />
+      {/* Video loudspeaker / sfondo per video call.
+          ⚠️ iOS routing: <video autoPlay> presente nel DOM → altoparlante sempre.
+          Montiamo l'elemento SOLO quando vivavoce è attivo o è una video call,
+          così in modalità auricolare non c'è nessun video nel DOM. */}
+      {(isSpeaker || callType === "video") && (
+        <video
+          ref={remoteVideoRef}
+          className={isVideo ? "acs-remote-video" : "acs-remote-audio-video"}
+          autoPlay
+          playsInline
+        />
+      )}
 
       {/* Avatar fallback */}
       {(!isVideo || !remoteStream) && (
