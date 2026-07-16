@@ -269,4 +269,10 @@ export class MessageRepository {
       hasMore,
     };
   }
+
+  /** Elimina definitivamente tutti i messaggi di una conversazione dal DB. */
+  async deleteAllByConversation(conversationId: mongoose.Types.ObjectId): Promise<number> {
+    const result = await MessageModel.deleteMany({ conversation_id: conversationId });
+    return result.deletedCount ?? 0;
+  }
 }

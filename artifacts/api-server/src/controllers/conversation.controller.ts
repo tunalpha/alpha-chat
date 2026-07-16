@@ -74,3 +74,22 @@ export const markConversationRead: RequestHandler = async (req, res, next) => {
     next(err);
   }
 };
+
+// ---------------------------------------------------------------------------
+// DELETE /api/v1/conversations/:id/messages  — Cancella tutta la chat (hard)
+// ---------------------------------------------------------------------------
+
+export const clearConversationMessages: RequestHandler = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    if (!mongoose.isValidObjectId(id)) {
+      res.status(400).json({ success: false, error: "Invalid conversation id" });
+      return;
+    }
+    const userId = req.user!.userId;
+    await conversationService.clearConversationMessages(userId, id as string);
+    res.status(204).send();
+  } catch (err) {
+    next(err);
+  }
+};

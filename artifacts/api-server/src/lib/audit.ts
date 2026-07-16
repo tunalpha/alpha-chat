@@ -99,7 +99,8 @@ export type AuditEventType =
   // Temp password lifecycle — Sprint 22 completion
   | "TEMP_PASSWORD_LOGIN"
   | "TEMP_PASSWORD_CHANGED"
-  | "TEMP_PASSWORD_EXPIRED";
+  | "TEMP_PASSWORD_EXPIRED"
+  | "CONVERSATION_CLEARED";
 
 export interface AuditEvent {
   event: AuditEventType;

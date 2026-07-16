@@ -1051,6 +1051,11 @@ export async function apiListBlocked(): Promise<BlockedUserEntry[]> {
   return request<BlockedUserEntry[]>("GET", "/users/me/blocked");
 }
 
+/** Cancella definitivamente tutti i messaggi di una conversazione sul server. */
+export async function apiClearConversationMessages(conversationId: string): Promise<void> {
+  await request<void>("DELETE", `/conversations/${conversationId}/messages`);
+}
+
 export async function apiBlockUser(userId: string): Promise<void> {
   await request<void>("POST", `/users/${userId}/block`);
 }

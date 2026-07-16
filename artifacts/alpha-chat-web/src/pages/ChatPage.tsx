@@ -65,6 +65,8 @@ import {
   type TrustStatus,
 } from "../lib/signal";
 import { arrayBufferToBase64 } from "@workspace/libsignal-ts";
+import ConfirmModal from "../components/ConfirmModal";
+import { apiClearConversationMessages } from "../lib/api";
 
 interface Props {
   onNavigate: (view: AppView) => void;
@@ -547,6 +549,8 @@ export default function ChatPage({ onNavigate }: Props) {
   const [viewerMedia, setViewerMedia] = useState<{ url: string; type: "image" | "video" } | null>(null);
   // Sprint 23 — Silenzia + Media condivisi + Cancella chat
   const [showMediaGallery, setShowMediaGallery] = useState(false);
+  const [showClearChatModal, setShowClearChatModal] = useState(false);
+  const [clearChatLoading, setClearChatLoading] = useState(false);
   const [mutedConvIds, setMutedConvIds] = useState<Set<string>>(() => {
     try { return new Set(JSON.parse(localStorage.getItem("alpha_muted_convs") ?? "[]") as string[]); }
     catch { return new Set(); }
@@ -1170,8 +1174,11 @@ export default function ChatPage({ onNavigate }: Props) {
   /** Comprimi un'immagine via Canvas prima del caricamento.
    * Riduce foto iPhone da 4-8 MB a ~300-600 KB → upload 10-20x più veloce.
    * Non tocca video, audio, o documenti. */
+  /** Comprimi immagine via Canvas con timeout di sicurezza (3 s).
+   * Su iOS alcune immagini (HEIC Live Photo) non triggherano mai onload →
+   * senza timeout la Promise non si risolve mai e l'app si blocca. */
   async function compressImage(file: File): Promise<Blob> {
-    return new Promise((resolve) => {
+    const compress = new Promise<Blob>((resolve) => {
       const img = new Image();
       const url = URL.createObjectURL(file);
       img.onload = () => {
@@ -1185,13 +1192,19 @@ export default function ChatPage({ onNavigate }: Props) {
         const canvas = document.createElement("canvas");
         canvas.width = width;
         canvas.height = height;
-        const ctx = canvas.getContext("2d")!;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) { resolve(file); return; }
         ctx.drawImage(img, 0, 0, width, height);
-        canvas.toBlob((blob) => resolve(blob ?? file), "image/jpeg", 0.85);
+        // toBlob ha un proprio timeout di 3 s
+        const blobTimeout = setTimeout(() => resolve(file), 3000);
+        canvas.toBlob((blob) => { clearTimeout(blobTimeout); resolve(blob ?? file); }, "image/jpeg", 0.85);
       };
       img.onerror = () => { URL.revokeObjectURL(url); resolve(file); };
       img.src = url;
     });
+    // Se onload non scatta entro 3 s → usa il file originale
+    const timeout = new Promise<Blob>((resolve) => setTimeout(() => resolve(file), 3000));
+    return Promise.race([compress, timeout]);
   }
 
   async function handleFilePick(files: FileList) {
@@ -1308,13 +1321,23 @@ export default function ChatPage({ onNavigate }: Props) {
 
   function handleClearChat() {
     if (!activeConvId) return;
-    const confirmed = window.confirm(
-      "Cancellare tutti i messaggi di questa chat?\n\nL'operazione è locale — i messaggi riappariranno al prossimo accesso. La cancellazione definitiva sarà disponibile in una prossima versione.",
-    );
-    if (!confirmed) return;
-    setMessages([]);
-    setDecryptedTexts(new Map());
-    showToast("Chat cancellata");
+    setShowClearChatModal(true);
+  }
+
+  async function confirmClearChat() {
+    if (!activeConvId) return;
+    setClearChatLoading(true);
+    try {
+      await apiClearConversationMessages(activeConvId);
+      setMessages([]);
+      setDecryptedTexts(new Map());
+      setShowClearChatModal(false);
+      showToast("Chat cancellata definitivamente");
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Errore durante la cancellazione");
+    } finally {
+      setClearChatLoading(false);
+    }
   }
 
   async function handleBlockUser() {
@@ -2006,6 +2029,19 @@ export default function ChatPage({ onNavigate }: Props) {
       )}
 
       {/* ── Media Gallery ─────────────────────────────────────────────────── */}
+      {/* ── Conferma cancellazione chat ─────────────────────────────────────── */}
+      {showClearChatModal && (
+        <ConfirmModal
+          title="Cancella chat"
+          message="Tutti i messaggi verranno eliminati definitivamente e in modo irreversibile per entrambi gli utenti. Questa operazione non può essere annullata."
+          confirmLabel="Elimina definitivamente"
+          danger
+          loading={clearChatLoading}
+          onConfirm={() => void confirmClearChat()}
+          onCancel={() => setShowClearChatModal(false)}
+        />
+      )}
+
       {showMediaGallery && (
         <div className="modal-backdrop" onClick={() => setShowMediaGallery(false)}>
           <div className="media-gallery-sheet" onClick={(e) => e.stopPropagation()}>

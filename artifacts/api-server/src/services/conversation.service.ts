@@ -439,3 +439,42 @@ function formatConversationResult(
     is_new: isNew,
   };
 }
+
+// ---------------------------------------------------------------------------
+// clearConversationMessages — Sprint 24
+// Cancellazione definitiva di tutti i messaggi di una conversazione.
+// Solo per membri attivi. Hard delete da MongoDB.
+// ---------------------------------------------------------------------------
+
+export async function clearConversationMessages(
+  userId: string,
+  conversationId: string,
+): Promise<void> {
+  const userObjectId = new mongoose.Types.ObjectId(userId);
+  const convObjectId = new mongoose.Types.ObjectId(conversationId);
+
+  // Verifica membership
+  const membership = await memberRepo.findMembership(convObjectId, userObjectId);
+  if (!membership || membership.left_at !== null) {
+    throw new AppError("NOT_CHAT_MEMBER", 403);
+  }
+
+  // Hard delete
+  await MessageModel.deleteMany({ conversation_id: convObjectId });
+
+  logAuditEvent({
+    event: "CONVERSATION_CLEARED",
+    user_id: userId,
+    created_at: new Date().toISOString(),
+    metadata: { conversationId },
+  });
+
+  // Notifica i membri online
+  try {
+    const members = await memberRepo.listMembers(convObjectId);
+    wsManager.sendToUsers(
+      members.map((m) => m.user_id.toString()),
+      { type: "conversation.cleared", payload: { conversation_id: conversationId } },
+    );
+  } catch { /* non bloccante */ }
+}

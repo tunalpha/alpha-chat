@@ -4,6 +4,7 @@ import { validate } from "../../middleware/validate.middleware";
 import { CreateConversationSchema, ListConversationsSchema } from "../../validation/conversation.schemas";
 import { SetDisappearingSchema } from "../../validation/privacy.schemas";
 import {
+  clearConversationMessages,
   createConversation,
   listConversations,
   markConversationRead,
@@ -39,5 +40,12 @@ router.patch("/:id/read", markConversationRead);
  * Abilita/disabilita messaggi a scomparsa per la conversazione (Sprint 15).
  */
 router.patch("/:id/disappearing", validate("body", SetDisappearingSchema), setDisappearingMessages);
+
+/**
+ * DELETE /api/v1/conversations/:id/messages
+ * Cancellazione definitiva e irreversibile di tutti i messaggi della chat.
+ * Solo per membri attivi. Hard delete — nessun recovery possibile.
+ */
+router.delete("/:id/messages", clearConversationMessages);
 
 export default router;

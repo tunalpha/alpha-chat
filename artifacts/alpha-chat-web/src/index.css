@@ -4266,3 +4266,86 @@ button:disabled.profile-avatar-edit {
   transition: color 0.15s, background 0.15s;
 }
 .archivio-unarchive-btn:hover { color: var(--accent, #7c5cbf); background: rgba(124,92,191,0.1); }
+
+/* ═══════════════════════════════════════════════════════════════
+   ConfirmModal — modale di conferma nativo all'app
+   ═══════════════════════════════════════════════════════════════ */
+.confirm-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 3000;
+  background: rgba(0,0,0,0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+}
+.confirm-modal-card {
+  background: var(--bg-2, #1e1e2e);
+  border-radius: 20px;
+  padding: 28px 24px 20px;
+  width: 100%;
+  max-width: 340px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  box-shadow: 0 16px 64px rgba(0,0,0,0.6);
+}
+.confirm-modal-icon { font-size: 40px; margin-bottom: 4px; }
+.confirm-modal-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-1, #fff);
+  margin: 0;
+  text-align: center;
+}
+.confirm-modal-message {
+  font-size: 14px;
+  color: var(--text-3, #aaa);
+  margin: 0 0 8px;
+  text-align: center;
+  line-height: 1.5;
+}
+.confirm-modal-actions {
+  display: flex;
+  gap: 10px;
+  width: 100%;
+  margin-top: 4px;
+}
+.confirm-modal-btn {
+  flex: 1;
+  padding: 13px 8px;
+  border-radius: 14px;
+  border: none;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity 0.15s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 48px;
+}
+.confirm-modal-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.confirm-modal-cancel {
+  background: rgba(255,255,255,0.1);
+  color: var(--text-1, #fff);
+}
+.confirm-modal-ok {
+  background: var(--accent, #7c5cbf);
+  color: #fff;
+}
+.confirm-modal-danger {
+  background: #e53935;
+  color: #fff;
+}
+.confirm-modal-spinner {
+  width: 18px; height: 18px;
+  border: 2px solid rgba(255,255,255,0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
