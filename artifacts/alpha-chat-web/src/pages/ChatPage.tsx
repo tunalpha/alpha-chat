@@ -1671,8 +1671,11 @@ export default function ChatPage({ onNavigate }: Props) {
                 if (toId) {
                   // Sblocca iOS audio nel user gesture prima di initiateCall:
                   // unlockNotifAudio → sblocca ring, primeRemoteAudio → sblocca audio remoto WebRTC
-                  void Promise.allSettled([unlockNotifAudio(), primeRemoteAudio()])
-                    .then(() => initiateCall(toId, name, "audio"));
+                  // Fire-and-forget: non aspettiamo prime/unlock — initiateCall
+                  // deve partire nel primo tick del gesture iOS (getUserMedia)
+                  void primeRemoteAudio().catch(() => {});
+                  void unlockNotifAudio().catch(() => {});
+                  void initiateCall(toId, name, "audio");
                 }
               }}
               onCallVideo={() => {
@@ -1680,8 +1683,9 @@ export default function ChatPage({ onNavigate }: Props) {
                 const toId = conv?.other_user?.user_id;
                 const name = conv?.other_user?.display_name ?? conv?.other_user?.username ?? "Utente";
                 if (toId) {
-                  void Promise.allSettled([unlockNotifAudio(), primeRemoteAudio()])
-                    .then(() => initiateCall(toId, name, "video"));
+                  void primeRemoteAudio().catch(() => {});
+                  void unlockNotifAudio().catch(() => {});
+                  void initiateCall(toId, name, "video");
                 }
               }}
               onBlockUser={handleBlockUser}
