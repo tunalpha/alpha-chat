@@ -1,0 +1,206 @@
+Puoi dargli questo prompt di test completo.
+
+⸻
+
+Sprint QA — Test di regressione completo (NO modifiche al codice)
+
+Obiettivo: non implementare nuove funzionalità e non modificare il codice, salvo correggere bug scoperti durante i test. Eseguire una verifica approfondita dell’intera applicazione dopo gli ultimi fix.
+
+1. Build
+
+* Build production.
+* TypeScript senza errori.
+* ESLint senza errori.
+* Nessun warning critico.
+
+⸻
+
+2. Test automatici
+
+Eseguire tutti i test esistenti.
+
+Verificare:
+
+* unit test;
+* integration test;
+* API test;
+* WebSocket test;
+* E2E (se presenti).
+
+Riportare:
+
+* numero totale;
+* passati;
+* falliti;
+* saltati.
+
+⸻
+
+3. Regressione codice inviti
+
+Testare almeno questi scenari:
+
+* genera codice;
+* chiudi modal;
+* riapri modal;
+* stesso codice visualizzato;
+* copia codice;
+* codice utilizzabile;
+* codice usato da altro utente;
+* riapertura modal dopo utilizzo;
+* generazione automatica nuovo codice;
+* pulsante Rigenera;
+* codice precedente invalidato;
+* revoca lato server;
+* localStorage cancellato;
+* browser refresh;
+* logout/login.
+
+Verificare che nessun codice venga invalidato accidentalmente.
+
+⸻
+
+4. Password temporanee
+
+Verificare:
+
+* generazione;
+* lunghezza;
+* copia;
+* login;
+* obbligo cambio password;
+* password temporanea inutilizzabile dopo il cambio.
+
+⸻
+
+5. Spinner Admin
+
+Simulare:
+
+* backend offline;
+* timeout;
+* errore 500;
+* token scaduto.
+
+Verificare redirect corretto.
+
+⸻
+
+6. Chat
+
+Verificare:
+
+* invio;
+* ricezione;
+* decrypt;
+* refresh;
+* cambio pagina;
+* logout/login;
+* immagini;
+* file;
+* vocali;
+* gruppi;
+* Burn After Read.
+
+⸻
+
+7. Chiamate
+
+Verificare:
+
+* chiamata audio;
+* video;
+* squillo;
+* risposta;
+* rifiuto;
+* chiusura;
+* mute;
+* speaker.
+
+⸻
+
+8. Notifiche
+
+Verificare:
+
+* messaggi;
+* chiamate;
+* gruppi;
+* preview;
+* backend sync.
+
+⸻
+
+9. Tema
+
+Provare:
+
+* chiaro;
+* scuro;
+* AMOLED;
+* sistema.
+
+Verificare persistenza.
+
+⸻
+
+10. Lingue
+
+Provare tutte le 10 lingue.
+
+Verificare:
+
+* nessuna chiave mancante;
+* fallback corretto;
+* RTL completo per arabo;
+* cambio lingua senza refresh.
+
+⸻
+
+11. Performance
+
+Controllare:
+
+* memory leak;
+* render inutili;
+* errori console;
+* errori WebSocket;
+* errori API.
+
+⸻
+
+12. Sicurezza
+
+Verificare:
+
+* nessun dato sensibile nei log;
+* nessun token esposto;
+* nessuna eccezione non gestita.
+
+⸻
+
+Report finale obbligatorio
+
+Consegnare una tabella con:
+
+Area	Stato	Dettagli
+Build	✅/❌	
+Test automatici	✅/❌	
+Inviti	✅/❌	
+Chat	✅/❌	
+Chiamate	✅/❌	
+Burn After Read	✅/❌	
+Password temporanee	✅/❌	
+Tema	✅/❌	
+Lingue	✅/❌	
+Notifiche	✅/❌	
+Sicurezza	✅/❌	
+Performance	✅/❌	
+
+Infine indicare chiaramente uno dei seguenti esiti:
+
+* ✅ Pronto per il deploy in produzione (nessun blocker rilevato).
+* ⚠️ Pronto con limitazioni, elencando i problemi residui.
+* ❌ Non pronto per il deploy, indicando i blocker e le correzioni necessarie.
+
+Se durante i test emerge un bug, interrompere il test di quell’area, correggere il problema, rieseguire i test interessati e aggiornare il report finale.

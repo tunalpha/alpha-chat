@@ -5,7 +5,10 @@ import { defineConfig } from 'vite';
 
 import runtimeErrorOverlay from '@replit/vite-plugin-runtime-error-modal';
 
-const rawPort = process.env.PORT;
+// PORT e BASE_PATH sono richiesti solo in modalità dev server, non durante il build
+const isBuildMode = process.argv.includes('build');
+
+const rawPort = process.env.PORT ?? (isBuildMode ? "3000" : undefined);
 
 if (!rawPort) {
   throw new Error(
@@ -19,7 +22,7 @@ if (Number.isNaN(port) || port <= 0) {
   throw new Error(`Invalid PORT value: "${rawPort}"`);
 }
 
-const basePath = process.env.BASE_PATH;
+const basePath = process.env.BASE_PATH ?? (isBuildMode ? "/admin/" : undefined);
 
 if (!basePath) {
   throw new Error(
