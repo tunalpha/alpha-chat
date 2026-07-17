@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, memo } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { useCall } from "../contexts/CallContext";
 import { useWebSocket, type WsEvent } from "../hooks/useWebSocket";
@@ -76,6 +76,42 @@ import { archiveConversation } from "./ArchivioPage";
 interface Props {
   onNavigate: (view: AppView) => void;
 }
+
+// ── BurnParticles — scintille stile Telegram per dissoluzione BAR ────────────
+// Direzioni pre-calcolate (sin/cos di 0°,45°…315° × 40px) — nessun Math.random
+const SPARK_DIRS: Array<{ dx: number; dy: number; delay: number; color: string }> = [
+  { dx:   0, dy: -40, delay: 0.00, color: '#ffd700' },
+  { dx:  28, dy: -28, delay: 0.04, color: '#ff6b35' },
+  { dx:  40, dy:   0, delay: 0.08, color: '#ffd700' },
+  { dx:  28, dy:  28, delay: 0.03, color: '#ff4500' },
+  { dx:   0, dy:  40, delay: 0.06, color: '#ff6b35' },
+  { dx: -28, dy:  28, delay: 0.02, color: '#ffd700' },
+  { dx: -40, dy:   0, delay: 0.07, color: '#ff4500' },
+  { dx: -28, dy: -28, delay: 0.05, color: '#ff6b35' },
+  { dx:  15, dy: -38, delay: 0.01, color: '#fff' },
+  { dx:  38, dy: -15, delay: 0.09, color: '#fff' },
+  { dx: -15, dy:  38, delay: 0.02, color: '#fff' },
+  { dx: -38, dy:  15, delay: 0.06, color: '#fff' },
+];
+
+const BurnParticles = memo(function BurnParticles() {
+  return (
+    <div className="burn-particles" aria-hidden="true">
+      {SPARK_DIRS.map((s, i) => (
+        <span
+          key={i}
+          className="burn-spark"
+          style={{
+            '--dx': `${s.dx}px`,
+            '--dy': `${s.dy}px`,
+            '--delay': `${s.delay}s`,
+            '--color': s.color,
+          } as React.CSSProperties}
+        />
+      ))}
+    </div>
+  );
+});
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
 function formatTime(iso: string): string {
@@ -973,14 +1009,14 @@ export default function ChatPage({ onNavigate }: Props) {
         case "message.destroyed": {
           const { message_id, conversation_id } = event.payload;
           if (conversation_id === activeConvId) {
-            // avvia animazione dissoluzione, poi rimuovi dopo 600ms
+            // avvia animazione dissoluzione stile Telegram, poi rimuovi dopo 900ms
             setDestroyingIds((prev) => { const s = new Set(prev); s.add(message_id); return s; });
             setTimeout(() => {
               setMessages((prev) => prev.filter((m) => m.id !== message_id));
               setDestroyingIds((prev) => { const s = new Set(prev); s.delete(message_id); return s; });
               // Fase 3: rimuove la chiave AES dalla memoria (Secure Destroy completo)
               setDecryptedTexts((prev) => { const next = new Map(prev); next.delete(message_id); return next; });
-            }, 600);
+            }, 900);
           }
           break;
         }
@@ -1839,6 +1875,7 @@ export default function ChatPage({ onNavigate }: Props) {
                       onTouchEnd={handleTouchCancel}
                       onTouchMove={handleTouchCancel}
                     >
+                      {destroyingIds.has(msg.id) && <BurnParticles />}
                       <div className={`msg-bubble ${isMine ? "mine" : "theirs"} ${voiceMeta ? "voice-bubble" : ""}`}>
                         {/* Reply preview */}
                         {msg.reply_to_message_id && (
