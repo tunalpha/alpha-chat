@@ -72,6 +72,7 @@ import { resetAndRebuildSession } from "../lib/signal/signal-session";
 import ConfirmModal from "../components/ConfirmModal";
 import { apiClearConversationMessages } from "../lib/api";
 import { archiveConversation } from "./ArchivioPage";
+import { useTranslation } from "react-i18next";
 
 interface Props {
   onNavigate: (view: AppView) => void;
@@ -164,6 +165,7 @@ function ChatHeader({
   onOpenSafetyNumber?: () => void;
   onSessionReset?: () => void;
 }) {
+  const { t } = useTranslation();
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
@@ -185,13 +187,13 @@ function ChatHeader({
     soon?: boolean;
     onClick: () => void;
   }[] = [
-    { label: "Visualizza profilo", icon: "👤", onClick: () => { closeMenu(); onViewProfile(); } },
-    { label: "Media condivisi", icon: "🖼️", onClick: () => { closeMenu(); onMediaGallery(); } },
-    { label: "Cerca nella chat", icon: "🔍", onClick: () => { closeMenu(); onSearchInChat(); } },
-    { label: isMuted ? "Riattiva notifiche" : "Silenzia", icon: isMuted ? "🔔" : "🔕", onClick: () => { closeMenu(); onSilenzia(); } },
-    { label: "Resetta sessione E2E", icon: "🔄", onClick: () => { closeMenu(); onSessionReset?.(); } },
-    { label: "Blocca utente", icon: "🚫", danger: true, onClick: () => { closeMenu(); onBlockUser(); } },
-    { label: "Cancella chat", icon: "🗑️", danger: true, onClick: () => { closeMenu(); onClearChat(); } },
+    { label: t("profile.title"), icon: "👤", onClick: () => { closeMenu(); onViewProfile(); } },
+    { label: t("chat.sendImage"), icon: "🖼️", onClick: () => { closeMenu(); onMediaGallery(); } },
+    { label: t("chat.searchMessages"), icon: "🔍", onClick: () => { closeMenu(); onSearchInChat(); } },
+    { label: isMuted ? t("notifications.messages") : t("notifications.messages"), icon: isMuted ? "🔔" : "🔕", onClick: () => { closeMenu(); onSilenzia(); } },
+    { label: "Reset E2E session", icon: "🔄", onClick: () => { closeMenu(); onSessionReset?.(); } },
+    { label: t("chat.blockUser"), icon: "🚫", danger: true, onClick: () => { closeMenu(); onBlockUser(); } },
+    { label: t("chat.clearHistory"), icon: "🗑️", danger: true, onClick: () => { closeMenu(); onClearChat(); } },
   ];
 
   const trustBadge = trustStatus && trustStatus !== "loading"
@@ -214,7 +216,7 @@ function ChatHeader({
         <div className="chat-header-name">{otherUser?.display_name ?? "Chat"}</div>
         <div className="chat-header-status-row">
           <div className={`chat-header-status ${isOnline ? "online" : "offline"}`}>
-            {isOnline ? "● Online" : "○ Offline"}
+            {isOnline ? `● ${t("chat.online")}` : `○ ${t("chat.offline")}`}
           </div>
           {trustBadge && (
             <button
@@ -440,6 +442,7 @@ function SidebarMenu({
   onLogoutAll: () => void;
   loggingOut: boolean;
 }) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -454,32 +457,32 @@ function SidebarMenu({
 
   const navItems: { label: string; view: AppView; icon: React.ReactNode }[] = [
     {
-      label: "Profilo",
+      label: t("nav.profile"),
       view: "profile",
       icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16"><circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/></svg>,
     },
     {
-      label: "Privacy e Sicurezza",
+      label: t("settings.privacySecurity"),
       view: "privacy",
       icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>,
     },
     {
-      label: "Dispositivi",
+      label: t("settings.devices"),
       view: "devices",
       icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12.01" y2="18"/></svg>,
     },
     {
-      label: "Impostazioni",
+      label: t("nav.settings"),
       view: "settings",
       icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>,
     },
     {
-      label: "Archivio",
+      label: t("nav.archive"),
       view: "archive",
       icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>,
     },
     {
-      label: "🛡️ Perché Alpha Chat",
+      label: `🛡️ ${t("settings.securityCenterLabel")}`,
       view: "security-center",
       icon: null,
     },
@@ -490,7 +493,7 @@ function SidebarMenu({
       <button
         className="avatar-menu-btn"
         onClick={() => setOpen((v) => !v)}
-        aria-label="Menu utente"
+        aria-label={t("nav.settings")}
         aria-expanded={open}
       >
         {avatarUrl
@@ -505,7 +508,7 @@ function SidebarMenu({
             <div className="user-menu-name">{displayName}</div>
             <div className="user-menu-username">@{username}</div>
             <div className={`user-menu-status ${connected ? "online" : "offline"}`}>
-              {connected ? "● Online" : "○ Offline"}
+              {connected ? `● ${t("chat.online")}` : `○ ${t("chat.offline")}`}
             </div>
           </div>
 
@@ -530,11 +533,11 @@ function SidebarMenu({
           <div className="user-menu-section">
             <button className="user-menu-item danger" onClick={onLogout} disabled={loggingOut}>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-              {loggingOut ? "Uscita…" : "Esci"}
+              {loggingOut ? t("chat.loggingOut") : t("settings.logout")}
             </button>
             <button className="user-menu-item danger" onClick={onLogoutAll} disabled={loggingOut}>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/><line x1="5" y1="8" x2="5" y2="16" strokeDasharray="2 2"/></svg>
-              Esci da tutti i dispositivi
+              {t("settings.logoutAll")}
             </button>
           </div>
         </div>
@@ -552,6 +555,7 @@ export default function ChatPage({ onNavigate }: Props) {
   // Registra il sender WS nel CallContext in modo che le chiamate possano segnalare
   useEffect(() => { setWsSend(wsSend); }, [wsSend, setWsSend]);
 
+  const { t } = useTranslation();
   const [conversations, setConversations] = useState<ConversationItem[]>([]);
   const [activeConvId, setActiveConvId] = useState<string | null>(null);
   const [messages, setMessages] = useState<MessageItem[]>([]);
@@ -1561,7 +1565,7 @@ export default function ChatPage({ onNavigate }: Props) {
           <div className="sidebar-user-info">
             <div className="sidebar-username">{auth?.displayName}</div>
             <div className={`sidebar-status ${connected ? "online" : "offline"}`}>
-              {connected ? "● Online" : "○ Offline"}
+              {connected ? `● ${t("chat.online")}` : `○ ${t("chat.offline")}`}
             </div>
           </div>
           {/* Nuovo gruppo */}
@@ -1603,18 +1607,18 @@ export default function ChatPage({ onNavigate }: Props) {
                 <rect x="3" y="14" width="7" height="7"/>
                 <circle cx="17" cy="17" r="3"/>
               </svg>
-              Ho ricevuto un codice invito
+              {t("chat.redeemBanner")}
               <span className="redeem-banner-arrow">›</span>
             </button>
 
-            {loadingConvs && <div className="conv-hint">Caricamento…</div>}
+            {loadingConvs && <div className="conv-hint">{t("common.loading")}</div>}
             {!loadingConvs && conversations.length === 0 && (
               <div className="conv-hint conv-hint-empty">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" width="40" height="40" style={{ opacity: 0.3, marginBottom: 12 }}>
                   <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
                 </svg>
-                Nessuna conversazione ancora.<br />
-                <span style={{ fontSize: 13 }}>Premi <strong>Invita persona</strong> →</span>
+                {t("chat.noChatsYet")}<br />
+                <span style={{ fontSize: 13 }}>{t("chat.inviteHint")}</span>
               </div>
             )}
             {conversations.map((conv) => {
@@ -1631,12 +1635,12 @@ export default function ChatPage({ onNavigate }: Props) {
               const previewText = (() => {
                 if (!preview?.ciphertext) return null;
                 const vm = decodeVoiceMeta(preview.ciphertext);
-                if (vm) return "🎙 Messaggio vocale";
+                if (vm) return t("chat.voiceNote");
                 return safeDecodeForPreview(preview.ciphertext);
               })();
               const previewLabel = previewText
-                ? (preview!.sender_id === auth?.userId ? `Tu: ${previewText}` : previewText)
-                : "Nessun messaggio";
+                ? (preview!.sender_id === auth?.userId ? `${t("chat.youPrefix")}${previewText}` : previewText)
+                : t("chat.noMessages");
 
               const convId = conv.conversation_id;
               const convDisplayName = displayName;
@@ -1678,7 +1682,7 @@ export default function ChatPage({ onNavigate }: Props) {
                     <div className="conv-row-top">
                       <div className={`conv-name${hasUnread ? " conv-name-bold" : ""}`}>
                         {displayName}
-                        {isGroup && <span className="conv-group-badge"> · Gruppo</span>}
+                        {isGroup && <span className="conv-group-badge"> · {t("chat.group")}</span>}
                       </div>
                       <div className={`conv-time${hasUnread ? " conv-time-unread" : ""}`}>
                         {formatConvTime(conv.last_activity_at)}
@@ -1705,13 +1709,13 @@ export default function ChatPage({ onNavigate }: Props) {
           <div className="chat-empty">
             <div className="chat-empty-logo">α</div>
             <h2 className="chat-empty-title">Alpha Chat</h2>
-            <p className="chat-empty-text">Seleziona una conversazione o iniziane una nuova</p>
+            <p className="chat-empty-text">{t("chat.selectConversation")}</p>
             <div style={{ display: "flex", gap: 10 }}>
               <button className="chat-empty-btn" onClick={() => setShowInvite(true)}>
-                Invita persona
+                {t("chat.invitePerson")}
               </button>
               <button className="chat-empty-btn" style={{ background: "var(--bg-3)", color: "var(--text-1)" }} onClick={() => setShowRedeem(true)}>
-                Ho un codice
+                {t("chat.redeemBtn")}
               </button>
             </div>
           </div>
@@ -2048,16 +2052,16 @@ export default function ChatPage({ onNavigate }: Props) {
             )}
             <button className="ctx-item" onClick={ctxAction(() => { setForwardingMessage(contextMenu.msg); closeContextMenu(); })}>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14"><polyline points="15 17 20 12 15 7"/><path d="M4 18v-2a4 4 0 0 1 4-4h12"/></svg>
-              Inoltra
+              {t("chat.forward")}
             </button>
             <button className="ctx-item" onClick={ctxAction(() => void handleDeleteForMe(contextMenu.msg))}>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
-              Elimina per me
+              {t("chat.deleteForMe")}
             </button>
             {contextMenu.msg.sender_id === auth?.userId && (
               <button className="ctx-item danger" onClick={ctxAction(() => void handleDeleteForAll(contextMenu.msg))}>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M9 6V4h6v2"/></svg>
-                Elimina per tutti
+                {t("chat.deleteForAll")}
               </button>
             )}
             {contextMenu.msg.sender_id === auth?.userId && (
@@ -2075,7 +2079,7 @@ export default function ChatPage({ onNavigate }: Props) {
         <div className="modal-backdrop" onClick={() => setForwardingMessage(null)}>
           <div className="forward-sheet" onClick={(e) => e.stopPropagation()}>
             <div className="forward-sheet-header">
-              <span className="forward-sheet-title">Inoltra a…</span>
+              <span className="forward-sheet-title">{t("chat.forwardTo")}</span>
               <button className="forward-sheet-close" onClick={() => setForwardingMessage(null)} aria-label="Chiudi">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="16" height="16">
                   <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
@@ -2108,7 +2112,7 @@ export default function ChatPage({ onNavigate }: Props) {
                   );
                 })}
               {conversations.filter((c) => c.conversation_id !== activeConvId).length === 0 && (
-                <div className="forward-empty">Nessun altro contatto disponibile</div>
+                <div className="forward-empty">{t("chat.noOtherContacts")}</div>
               )}
             </div>
           </div>
@@ -2172,13 +2176,13 @@ export default function ChatPage({ onNavigate }: Props) {
                 showToast("Conversazione archiviata");
               }}
             >
-              📦 Archivia conversazione
+              📦 {t("chat.archiveConversation")}
             </button>
             <button
               className="conv-action-btn conv-action-cancel"
               onClick={() => setConvActionSheet(null)}
             >
-              Annulla
+              {t("common.cancel")}
             </button>
           </div>
         </div>

@@ -12,6 +12,7 @@ import { useAuth } from "../contexts/AuthContext";
 import { unlockNotifAudio, playNotifSound } from "../lib/notifSound";
 import RecoveryCardModal, { type RecoveryCardData } from "../components/RecoveryCardModal";
 import RecoveryPage from "./RecoveryPage";
+import { useTranslation } from "react-i18next";
 
 // ── Script della conversazione ────────────────────────────────────────────────
 type Speaker = "user" | "alpha" | "status";
@@ -83,6 +84,7 @@ const EyeOff = () => (
 // ── Componente principale ─────────────────────────────────────────────────────
 export default function LandingPage() {
   const { login, register } = useAuth();
+  const { t } = useTranslation();
 
   // Demo state
   const [started, setStarted]   = useState(false);  // diventa true al primo gesto
@@ -226,7 +228,7 @@ export default function LandingPage() {
 
         <div className="chat-header-info">
           <div className="chat-header-name">Alpha Chat</div>
-          <div className="chat-header-status online">sicuro e privato</div>
+          <div className="chat-header-status online">{t("landing.tagline")}</div>
         </div>
 
         <div className="chat-header-actions">
@@ -247,7 +249,7 @@ export default function LandingPage() {
         {!started && (
           <div className="demo-waiting" onClick={() => { setStarted(true); startedRef.current = true; void playNotifSound('received'); }}>
             <img src={`${import.meta.env.BASE_URL}logo.png`} alt="Alpha Chat" className="demo-waiting-logo" />
-            <p className="demo-waiting-hint">Tocca per iniziare</p>
+            <p className="demo-waiting-hint">{t("landing.tapToStart")}</p>
           </div>
         )}
 
@@ -302,7 +304,7 @@ export default function LandingPage() {
           </button>
           <textarea
             className="chat-textarea"
-            placeholder="Accedi per iniziare una conversazione"
+            placeholder={t("auth.login") + " " + t("chat.startChat").toLowerCase()}
             disabled rows={1}
           />
           <button type="button" className="send-btn mic-btn" disabled aria-label="Microfono">
