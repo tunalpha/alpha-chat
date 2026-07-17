@@ -4023,11 +4023,17 @@ button:disabled.profile-avatar-edit {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 24px;
+  /* gap ridotto per far entrare 6 bottoni su iPhone (video call) */
+  gap: 12px;
+  padding: 0 8px;
+  width: 100%;
+  box-sizing: border-box;
 }
 .acs-btn {
-  width: 60px;
-  height: 60px;
+  /* dimensioni ridotte da 60→48px per adattarsi su schermi stretti */
+  width: 48px;
+  height: 48px;
+  min-width: 48px;
   border-radius: 50%;
   border: none;
   background: rgba(255,255,255,0.15);
@@ -4044,8 +4050,9 @@ button:disabled.profile-avatar-edit {
   background: rgba(255,255,255,0.35);
 }
 .acs-btn.acs-btn-end {
-  width: 72px;
-  height: 72px;
+  width: 60px;
+  height: 60px;
+  min-width: 60px;
   background: #e53935;
 }
 .acs-btn.acs-btn-end:hover { background: #c62828; }
