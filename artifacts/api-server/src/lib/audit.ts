@@ -14,6 +14,17 @@
 
 import pino from "pino";
 
+// Import lazy per evitare circular deps con mongoose al momento del modulo.
+// AuditEventModel viene risolto solo al primo evento.
+let _auditEventModel: (typeof import("../models/audit-event.model"))["AuditEventModel"] | null = null;
+async function getAuditEventModel() {
+  if (!_auditEventModel) {
+    const mod = await import("../models/audit-event.model");
+    _auditEventModel = mod.AuditEventModel;
+  }
+  return _auditEventModel;
+}
+
 const auditLogger = pino({
   name: "audit",
   level: process.env["LOG_LEVEL"] ?? "info",
@@ -121,6 +132,7 @@ export interface AuditEvent {
 /**
  * Emette un evento di audit.
  * Non lancia mai eccezioni — gli errori di audit non devono bloccare il flusso.
+ * Scrive su pino (stdout) E su MongoDB (AuditEvent collection).
  */
 export function logAuditEvent(event: AuditEvent): void {
   try {
@@ -128,4 +140,24 @@ export function logAuditEvent(event: AuditEvent): void {
   } catch {
     // Fallback silenzioso
   }
+
+  // Persistenza MongoDB — asincrona, non blocca il chiamante
+  void (async () => {
+    try {
+      const Model = await getAuditEventModel();
+      await Model.create({
+        event: event.event,
+        user_id: event.user_id ?? null,
+        device_id: event.device_id ?? null,
+        family_id: event.family_id ?? null,
+        request_id: event.request_id ?? null,
+        ip_hash: event.ip_hash ?? null,
+        country_code: event.country_code ?? null,
+        metadata: event.metadata ?? null,
+        created_at: event.created_at ? new Date(event.created_at) : new Date(),
+      });
+    } catch {
+      // Non blocca mai il flusso
+    }
+  })();
 }

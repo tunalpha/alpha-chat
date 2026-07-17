@@ -149,6 +149,7 @@ function ChatHeader({
   trustStatus,
   onOpenSafetyNumber,
   onSessionReset,
+  onGroupInfo,
 }: {
   otherUser: { display_name: string; username: string } | null | undefined;
   isOnline: boolean;
@@ -168,6 +169,7 @@ function ChatHeader({
   trustStatus?: TrustStatus | "loading" | null;
   onOpenSafetyNumber?: () => void;
   onSessionReset?: () => void;
+  onGroupInfo?: () => void;
 }) {
   const { t } = useTranslation();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -191,12 +193,19 @@ function ChatHeader({
     soon?: boolean;
     onClick: () => void;
   }[] = [
-    { label: t("profile.title"), icon: "👤", onClick: () => { closeMenu(); onViewProfile(); } },
+    ...(isGroup
+      ? [{ label: "Info gruppo", icon: "ℹ️", onClick: () => { closeMenu(); onGroupInfo?.(); } },
+         { label: "Aggiungi membri", icon: "➕", onClick: () => { closeMenu(); onGroupInfo?.(); } }]
+      : [{ label: t("profile.title"), icon: "👤", onClick: () => { closeMenu(); onViewProfile(); } }]
+    ),
     { label: t("chat.sendImage"), icon: "🖼️", onClick: () => { closeMenu(); onMediaGallery(); } },
     { label: t("chat.searchMessages"), icon: "🔍", onClick: () => { closeMenu(); onSearchInChat(); } },
     { label: isMuted ? t("notifications.messages") : t("notifications.messages"), icon: isMuted ? "🔔" : "🔕", onClick: () => { closeMenu(); onSilenzia(); } },
     { label: "Reset E2E session", icon: "🔄", onClick: () => { closeMenu(); onSessionReset?.(); } },
-    { label: t("chat.blockUser"), icon: "🚫", danger: true, onClick: () => { closeMenu(); onBlockUser(); } },
+    ...(!isGroup
+      ? [{ label: t("chat.blockUser"), icon: "🚫", danger: true, onClick: () => { closeMenu(); onBlockUser(); } }]
+      : []
+    ),
     { label: t("chat.clearHistory"), icon: "🗑️", danger: true, onClick: () => { closeMenu(); onClearChat(); } },
   ];
 
@@ -1098,8 +1107,10 @@ export default function ChatPage({ onNavigate }: Props) {
           } catch { /* un membro irraggiungibile non blocca il gruppo */ }
         }),
       );
-      // body/type primario vuoto — in un gruppo non c'è un "destinatario principale"
-      return { body: "", type: 1, deviceCiphertexts };
+      // body/type primario: placeholder non-vuoto per passare la validazione backend.
+      // Il contenuto reale dei gruppi è sempre in device_ciphertexts; questo campo
+      // non viene mai usato per la decifratura lato client nei gruppi.
+      return { body: btoa("_grp_"), type: 0, deviceCiphertexts };
     } catch { return undefined; }
   }
 
@@ -1818,6 +1829,12 @@ export default function ChatPage({ onNavigate }: Props) {
               onMediaGallery={() => setShowMediaGallery(true)}
               onClearChat={handleClearChat}
               trustStatus={trustStatus}
+              onGroupInfo={() => {
+                if (activeConvId) {
+                  setGroupInfoId(activeConvId);
+                  setShowGroupInfo(true);
+                }
+              }}
               onOpenSafetyNumber={() => setShowSafetyModal(true)}
               onSessionReset={async () => {
                 if (!auth || !activeConvId) return;

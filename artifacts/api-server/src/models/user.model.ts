@@ -85,6 +85,9 @@ export interface IUser {
   wallet_enabled: boolean;
   wallet_id: string | null;
 
+  // Admin — Sprint 23
+  admin_role: "super_admin" | "security_admin" | "support" | "read_only" | null;
+
   // Timestamps
   createdAt: Date;
   updatedAt: Date;
@@ -176,6 +179,13 @@ const userSchema = new Schema<IUserDocument>(
 
     wallet_enabled: { type: Boolean, default: false },
     wallet_id: { type: String, default: null },
+
+    // Admin — Sprint 23
+    admin_role: {
+      type: String,
+      enum: ["super_admin", "security_admin", "support", "read_only", null],
+      default: null,
+    },
   },
   { timestamps: true },
 );

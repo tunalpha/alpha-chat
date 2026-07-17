@@ -4,6 +4,7 @@ import { config } from "./config";
 import { connectMongoDB, disconnectMongoDB } from "./lib/mongodb";
 import { createWsServer } from "./lib/ws-server";
 import { runDmsScheduler } from "./services/dead-man-switch.service";
+import { seedAdminIfNeeded } from "./routes/v1/admin.routes";
 
 const port = config.app.port;
 
@@ -19,6 +20,9 @@ async function start(): Promise<void> {
 
   // Attach WebSocket server (shares same port via HTTP upgrade)
   createWsServer(server);
+
+  // Admin seed — promuove "alpha" a super_admin se nessun admin esiste
+  await seedAdminIfNeeded();
 
   // Dead Man Switch scheduler — controlla ogni 4 ore
   const DMS_INTERVAL_MS = 4 * 60 * 60 * 1000;

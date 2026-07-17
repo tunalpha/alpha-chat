@@ -51,6 +51,11 @@ class WsManager {
     );
   }
 
+  /** Numero di utenti unici con almeno una connessione WebSocket attiva. */
+  getOnlineCount(): number {
+    return this.userConnections.size;
+  }
+
   unregister(conn: ClientConnection): void {
     const { userId } = conn;
     const conns = this.userConnections.get(userId);

@@ -53,4 +53,8 @@ import { recoveryAuthRouter, recoveryAccountRouter } from "./account-recovery.ro
 v1Router.use("/auth/recover",     recoveryAuthRouter);
 v1Router.use("/account/recovery", recoveryAccountRouter);
 
+// Admin Operations Center — Sprint 23
+import adminRoutes from "./admin.routes";
+v1Router.use("/admin", adminRoutes);
+
 export default v1Router;
