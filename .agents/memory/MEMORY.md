@@ -11,3 +11,4 @@
 - [Sprint 24 — Chiamate professionali](sprint-24-calls.md) — audio remoto, vivavoce iOS, squillo OfflineAudioContext, getStats tipi any, ConversationItem fields
 - [Sprint 25 — Chiamate Secure Pro](sprint-25-calls.md) — busy detect (WsManager in-memory), multi-device dismissal, ICE restart, cronologia CallLog, suonerie multi-tone, CallVerifyModal via apiGetKeyBundle
 - [Sprint 27 — Personalizzazione Globale](sprint-27-personalization.md) — i18n 10 lingue, AppSettingsContext, temi/accenti/testo/bolle/animazioni CSS, AppearancePage, NotificationsPage, LanguagePage, backend notifiche
+- [Sprint 21 Group E2E — decrypt fix](sprint-21-group-e2e-fix.md) — type-1 senza sessione + isGroupMsg race condition su conversations state
