@@ -139,6 +139,15 @@ export async function signalEncryptMulti(
   recipientUserId: string,
   plaintext: string,
   allBundles: ApiReceivedKeyBundle[],
+  options?: {
+    /**
+     * Se true, elimina la sessione esistente prima di cifrare, forzando un
+     * nuovo handshake X3DH (PreKeyWhisperMessage tipo-3).
+     * Usato per i messaggi di gruppo dove il receiver potrebbe non avere la
+     * sessione in IDB (cambio device, IDB pulito, primo scambio).
+     */
+    forceNewSession?: boolean;
+  },
 ): Promise<{ deviceCiphertexts: DeviceCiphertext[]; primary: DeviceCiphertext }> {
   if (allBundles.length === 0) {
     throw new Error("Nessun bundle Signal disponibile per il destinatario");
@@ -152,7 +161,14 @@ export async function signalEncryptMulti(
     const devIdInt = Math.abs(hashDeviceId(bundle.deviceId));
     const addr = new SignalProtocolAddress(recipientUserId, devIdInt);
 
-    // Sessione (idempotente)
+    if (options?.forceNewSession) {
+      // Forza un nuovo handshake X3DH eliminando la sessione esistente.
+      // Questo garantisce che il messaggio sia un PreKeyWhisperMessage (tipo-3),
+      // che il receiver può sempre decifrare senza una sessione preesistente.
+      await store.deleteSession(addr.toString());
+    }
+
+    // Sessione (idempotente quando non forceNewSession)
     const existing = await store.loadSession(addr.toString());
     if (!existing) {
       await ensureSessionForBundle(userId, deviceId, recipientUserId, devIdInt, bundle);

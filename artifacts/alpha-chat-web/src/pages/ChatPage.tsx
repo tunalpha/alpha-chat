@@ -745,8 +745,12 @@ export default function ChatPage({ onNavigate }: Props) {
     // Messaggio ricevuto
     try {
       let text: string;
-      // Sprint 21: gruppo — cerca ciphertext con device_id === userId (fan-out)
-      const isGroupMsg = conversations.find((c) => c.conversation_id === activeConvId)?.type === "group";
+      // Sprint 21: gruppo — rileva formato fan-out dal contenuto di device_ciphertexts
+      // (device_id = userId, non deviceId) per evitare race condition con conversations state.
+      // I messaggi 1:1 multi-device usano device_id = deviceUUID; i gruppi usano device_id = userId.
+      const hasGroupStyleEntry = msg.device_ciphertexts?.some((d) => d.device_id === auth.userId) ?? false;
+      const isGroupMsg = hasGroupStyleEntry ||
+        conversations.find((c) => c.conversation_id === activeConvId)?.type === "group";
       if (isGroupMsg && msg.device_ciphertexts && msg.device_ciphertexts.length > 0) {
         const myEntry = msg.device_ciphertexts.find((d) => d.device_id === auth.userId);
         if (myEntry) {
@@ -1112,6 +1116,7 @@ export default function ChatPage({ onNavigate }: Props) {
             // signalEncryptMulti con un solo bundle → usa device_id del bundle come chiave
             const { deviceCiphertexts: dcs } = await signalEncryptMulti(
               auth.userId, auth.deviceId, member.user_id, text, [bundle],
+              { forceNewSession: true }, // Forza tipo-3 per garantire decifratura anche senza sessione preesistente
             );
             if (dcs[0]) {
               // Sovrascrivi device_id con userId per il fan-out di gruppo
