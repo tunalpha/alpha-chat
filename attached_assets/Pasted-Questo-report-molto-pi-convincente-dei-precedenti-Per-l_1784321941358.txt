@@ -1,0 +1,123 @@
+Questo report è molto più convincente dei precedenti. Per la prima volta non si basa su ipotesi ma su dati concreti del database.
+
+La parte decisiva è questa:
+
+device_ciphertexts: []
+
+Se il documento viene salvato così, il destinatario non potrà mai decifrare il messaggio. Il problema non è nella decrypt, è già avvenuto prima.
+
+Quindi la pipeline è:
+
+encryptForGroup
+      ↓
+signalEncryptMulti()
+      ↓
+❌ eccezione
+      ↓
+catch {}
+      ↓
+device_ciphertexts = []
+      ↓
+MongoDB
+      ↓
+WebSocket
+      ↓
+receiver
+      ↓
+🔒
+
+Questo spiega perfettamente le schermate che mi hai inviato.
+
+⸻
+
+C’è però un punto che farei verificare
+
+L’affermazione:
+
+“Signal non può fare X3DH senza OTPK”
+
+non la darei ancora per certa.
+
+Dipende da come è implementata la vostra libreria Signal.
+
+Alcune implementazioni:
+
+* usano l’OTPK quando disponibile;
+* se non disponibile usano comunque Identity + SignedPreKey;
+* altre invece falliscono.
+
+Quindi serve verificare cosa fa la vostra implementazione, non cosa fa Signal in generale.
+
+⸻
+
+La cosa più sospetta del report
+
+Questa.
+
+99 OTPK
+tutti consumed
+stesso millisecondo
+
+Questo non è normale.
+
+Potrebbe significare:
+
+* è stato consumato un batch intero per errore;
+* oppure qualcuno ha fatto un update massivo:
+
+updateMany(
+ {},
+ {$set:{consumed:true}}
+)
+
+oppure qualcosa di equivalente.
+
+⸻
+
+Prima di cambiare codice
+
+Io chiederei all’agente una sola verifica.
+
+Per uno degli OTPK marcati consumed:true, dimostrami dove nel codice viene eseguito l’UPDATE che lo imposta a consumed=true.
+
+Voglio:
+
+* file
+* funzione
+* query MongoDB
+* stack completo
+* numero di OTPK aggiornati in quella chiamata
+
+Se la query modifica più di una OTPK, mostra esattamente perché.
+
+Perché se davvero 99 chiavi vengono consumate nello stesso millisecondo, il bug potrebbe essere nella gestione delle OTPK, non nella chat di gruppo.
+
+⸻
+
+Una seconda cosa che farei immediatamente
+
+Quel catch va eliminato.
+
+Non:
+
+catch {
+}
+
+ma almeno:
+
+catch (err) {
+    console.error(err);
+    throw err;
+}
+
+oppure, se il gruppo deve continuare a funzionare:
+
+catch (err) {
+    console.error("Encrypt failed for member", member.user_id, err);
+}
+
+Perché un catch vuoto in un componente critico di crittografia rende molto difficile capire dove si rompe il flusso.
+
+⸻
+
+Questa volta, comunque, l’audit ha finalmente individuato un punto preciso della pipeline (signalEncryptMulti() che fallisce e lascia device_ciphertexts vuoto). Prima di implementare fix, io chiederei ancora quella verifica sul consumo anomalo delle 99 OTPK: è il dato che più di tutti merita di essere spiegato.

@@ -1149,7 +1149,13 @@ export default function ChatPage({ onNavigate }: Props) {
               });
               deviceCiphertexts.push({ device_id: member.user_id, body: dcs[0].body, type: dcs[0].type });
             }
-          } catch { /* un membro irraggiungibile non blocca il gruppo */ }
+          } catch (err) {
+            console.error("[Signal/group] signalEncryptMulti FAILED for member", {
+              memberId: member.user_id,
+              error: err instanceof Error ? err.message : String(err),
+              stack: err instanceof Error ? err.stack : undefined,
+            });
+          }
         }),
       );
       // Ripristino mid-session: controlla OTPK dopo ogni messaggio di gruppo
@@ -1157,7 +1163,14 @@ export default function ChatPage({ onNavigate }: Props) {
       void maybeReplenishOtpks(auth.userId, auth.deviceId);
       // body/type primario: placeholder non-vuoto per passare la validazione backend.
       return { body: btoa("_grp_"), type: 1, deviceCiphertexts };
-    } catch { return undefined; }
+    } catch (err) {
+      console.error("[Signal/group] encryptForGroup outer error", {
+        groupId,
+        error: err instanceof Error ? err.message : String(err),
+        stack: err instanceof Error ? err.stack : undefined,
+      });
+      return undefined;
+    }
   }
 
   // ── Helpers Signal — encrypt per il destinatario attivo ─────────────────
