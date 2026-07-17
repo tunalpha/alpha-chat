@@ -3523,12 +3523,16 @@ button:disabled.profile-avatar-edit {
    ══════════════════════════════════════════════════════════════════ */
 
 .recovery-page {
-  min-height: 100vh;
+  height: 100vh;
+  height: 100dvh;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: center;
   background: var(--bg-1);
-  padding: 24px 16px;
+  padding: 24px 16px env(safe-area-inset-bottom, 24px);
+  box-sizing: border-box;
 }
 
 .recovery-box {
