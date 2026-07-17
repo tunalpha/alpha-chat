@@ -771,6 +771,16 @@ export default function ChatPage({ onNavigate }: Props) {
         dcEntries: msg.device_ciphertexts?.map((d) => ({ device_id: d.device_id, type: d.type })) ?? [],
       });
       if (isGroupMsg && msg.device_ciphertexts && msg.device_ciphertexts.length > 0) {
+        // ── Lettura IDB prima del tentativo Signal ──────────────────────────
+        // L'OTPK (type 3) viene consumato al primo decrypt. Reload di pagina →
+        // stato React svuotato → secondo tentativo Signal → null → 🔒.
+        // Se già decifrato in una sessione precedente, usiamo la cache IDB e
+        // non tocchiamo il ratchet.
+        const cachedPlaintext = await getMetaByMessageId(msg.id);
+        if (cachedPlaintext) {
+          setDecryptedTexts((prev) => new Map(prev).set(msg.id, cachedPlaintext));
+          return;
+        }
         const myEntry = msg.device_ciphertexts.find((d) => d.device_id === auth.userId);
         reportAudit("AUDIT-5-match", {
           msgId: msg.id,
@@ -789,6 +799,9 @@ export default function ChatPage({ onNavigate }: Props) {
             );
             if (found !== null) {
               reportAudit("AUDIT-6-decrypt-ok", { msgId: msg.id, entryType: myEntry.type });
+              // Persisti in IDB: l'OTPK è ora consumato, le sessioni future
+              // leggeranno da cache invece di ritentare Signal (e ottenere null).
+              void cacheDecryptedMeta(msg.id, found);
               setDecryptedTexts((prev) => new Map(prev).set(msg.id, found));
               return;
             }
@@ -808,13 +821,25 @@ export default function ChatPage({ onNavigate }: Props) {
           });
         }
         // Il campo `ciphertext` contiene il placeholder "_grp_" — non decifrabile.
-        setDecryptedTexts((prev) => new Map(prev).set(msg.id, "🔒 Messaggio cifrato"));
+        // ⚠️ Non sovrascrivere un plaintext già decifrato con successo in un tentativo
+        // precedente: Signal PreKey (type 3) consuma l'OTPK al primo decrypt; il secondo
+        // tentativo (es. re-fetch messaggi, riconnessione WS) restituisce null ma il
+        // plaintext è già in state e NON va perso.
+        setDecryptedTexts((prev) => {
+          const existing = prev.get(msg.id);
+          if (existing && existing !== "🔒 Messaggio cifrato") return prev;
+          return new Map(prev).set(msg.id, "🔒 Messaggio cifrato");
+        });
         return;
       }
       if (isGroupMsg) {
         // Gruppo senza device_ciphertexts (messaggio vecchio/pre-fanout) —
         // il placeholder NON è decifrabile, mostra indicatore invece di "_grp_".
-        setDecryptedTexts((prev) => new Map(prev).set(msg.id, "🔒 Messaggio cifrato"));
+        setDecryptedTexts((prev) => {
+          const existing = prev.get(msg.id);
+          if (existing && existing !== "🔒 Messaggio cifrato") return prev;
+          return new Map(prev).set(msg.id, "🔒 Messaggio cifrato");
+        });
         return;
       }
       // Fase 4: prova prima device_ciphertexts (multi-device 1:1)

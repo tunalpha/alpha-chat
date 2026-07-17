@@ -1,0 +1,47 @@
+Questo cambia parecchio il quadro.
+
+Finora sembrava che il problema fosse la cifratura. I nuovi log invece mostrano che quella parte funziona:
+
+* ✅ apiGetKeyBundle restituisce un oggetto valido.
+* ✅ AUDIT-1-bundle viene eseguito.
+* ✅ Nessun AUDIT-2-encrypt-error.
+* ✅ deviceCiphertextsCount = 1.
+* ✅ Il messaggio viene salvato con il ciphertext.
+* ✅ AUDIT-5 trova il ciphertext corretto.
+* ✅ AUDIT-6-decrypt-ok viene registrato.
+
+Il punto più interessante è questo:
+
+AUDIT-6-decrypt-ok alle 22:54:44 seguito da AUDIT-6-decrypt-null alle 22:55:09 sullo stesso msgId.
+
+Questo significa che il problema non è più “non riesce a decrittare”. Almeno una decrittazione è riuscita.
+
+La domanda decisiva adesso è quella che pone l’agente:
+
+Dopo AUDIT-6-decrypt-ok, la UI mostra il testo in chiaro oppure continua a mostrare 🔒?
+
+Se la UI continua a mostrare 🔒, allora è molto probabile che:
+
+* la prima decrittazione riesca e produca il plaintext;
+* un successivo refresh/re-render riprovi a decrittare lo stesso messaggio;
+* il secondo tentativo fallisca (decrypt-null);
+* il risultato fallito sovrascriva quello riuscito nella UI.
+
+Questa è un’ipotesi coerente con i log, ma va verificata.
+
+Cosa farei ora
+
+Non toccherei più la parte Signal (X3DH/PreKey).
+
+Chiederei invece all’agente di verificare esclusivamente il flusso UI:
+
+Per il messaggio 6a5ab2ad... segui il ciclo completo:
+
+1. Dove viene gestito AUDIT-6-decrypt-ok?
+2. Dove viene salvato il plaintext (store/React state/cache)?
+3. Quale codice esegue un secondo tentativo di decrypt 25 secondi dopo?
+4. Se il secondo tentativo restituisce null, viene sovrascritto il plaintext già ottenuto con 🔒 Messaggio cifrato?
+
+Se la risposta è sì, allora il bug non è più crittografico: è nella gestione dello stato della UI dopo una decrittazione riuscita.
+
+In breve: i log che hai condiviso indicano che avete probabilmente risolto il problema principale di cifratura. Ora bisogna verificare se il client sta perdendo il plaintext dopo averlo già ottenuto.
