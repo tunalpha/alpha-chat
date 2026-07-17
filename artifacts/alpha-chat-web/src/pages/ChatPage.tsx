@@ -1153,6 +1153,15 @@ export default function ChatPage({ onNavigate }: Props) {
         others.map(async (member) => {
           try {
             const bundle = await apiGetKeyBundle(member.user_id);
+            // AUDIT-1-raw: log safe prima di toccare bundle.deviceId — diagnosi bundle undefined
+            reportAudit("AUDIT-1-raw", {
+              memberId: member.user_id,
+              bundleType: typeof bundle,
+              isNull: bundle === null,
+              bundleKeys: (bundle != null && typeof bundle === "object")
+                ? (Object.keys(bundle as object) as string[]).slice(0, 6)
+                : null,
+            });
             // AUDIT-1: cosa restituisce apiGetKeyBundle (già loggato lato server — qui log lato client)
             reportAudit("AUDIT-1-bundle", {
               memberId: member.user_id,
