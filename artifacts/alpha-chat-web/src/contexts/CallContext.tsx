@@ -19,7 +19,11 @@ import {
   closePeerConnection, switchCameraTrack, loadIceConfig,
   type CallType, type FacingMode,
 } from "../lib/webrtc";
-import { setRemoteStream as setRemoteAudioStream } from "../lib/remoteAudio";
+import {
+  setRemoteStream as setRemoteAudioStream,
+  setSpeakerMode,
+  resetRemoteAudio,
+} from "../lib/remoteAudio";
 import { apiLogCall } from "../lib/api";
 
 // ── Tipi ─────────────────────────────────────────────────────────────────────
@@ -187,6 +191,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
     setIsSpeaker(false);
     setIsReconnecting(false);
     setFacingMode("user");
+    resetRemoteAudio(); // disconnette AudioContext e resetta routing
   }
 
   function buildPC(toUserId: string) {
@@ -249,6 +254,11 @@ export function CallProvider({ children }: { children: ReactNode }) {
       peerIdRef.current        = toUserId;
       callTypeRef.current      = type;
 
+      // Imposta modalità audio iniziale: auricolare per chiamate vocali, speaker per video
+      const defaultSpeaker = type === "video";
+      setIsSpeaker(defaultSpeaker);
+      setSpeakerMode(defaultSpeaker);
+
       const pc = buildPC(toUserId);
       addTracksToPC(pc, stream);
 
@@ -293,6 +303,11 @@ export function CallProvider({ children }: { children: ReactNode }) {
         type: "call.answer",
         payload: { to_user_id: incomingCall.fromUserId, sdp: answer },
       });
+
+      // Imposta modalità audio iniziale: auricolare per chiamate vocali, speaker per video
+      const defaultSpeaker = incomingCall.callType === "video";
+      setIsSpeaker(defaultSpeaker);
+      setSpeakerMode(defaultSpeaker);
 
       callAnsweredAtRef.current = new Date();
       callRoleRef.current       = "callee";
@@ -352,7 +367,11 @@ export function CallProvider({ children }: { children: ReactNode }) {
   }, [isCameraOff]);
 
   const toggleSpeaker = useCallback(() => {
-    setIsSpeaker((prev) => !prev);
+    setIsSpeaker((prev) => {
+      const next = !prev;
+      setSpeakerMode(next); // applica routing audio reale
+      return next;
+    });
   }, []);
 
   // ── Camera switch (front ↔ back) ───────────────────────────────────────────
