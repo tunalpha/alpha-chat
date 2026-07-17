@@ -86,6 +86,10 @@ export async function fetchBundleForX3DH(
   // Con $ viene aggiornato solo il primo elemento matchato da $elemMatch.
   // Usiamo new:false per ottenere lo stato PRE-update: la prima OTPK con
   // consumed:false nel documento "before" è esattamente quella appena consumata.
+  // Ordina per updatedAt desc: serve il bundle del device più recente.
+  // Importante quando l'utente ha più device (es. ha fatto logout→login su un
+  // nuovo browser): senza sort MongoDB ritorna il documento in natural order
+  // (il più vecchio), inducendo "Identity key changed" lato mittente.
   const before = await SignalKeyBundleModel.findOneAndUpdate(
     {
       user_id: targetUserId,
@@ -100,7 +104,7 @@ export async function fetchBundleForX3DH(
       },
       $inc: { otpk_count: -1 },
     },
-    { new: false },   // ritorna documento PRIMA della modifica
+    { new: false, sort: { updatedAt: -1 } },   // ritorna documento PRIMA della modifica
   );
 
   if (before) {
@@ -108,9 +112,9 @@ export async function fetchBundleForX3DH(
     const poppedOtpk = before.one_time_pre_keys
       .find((k) => !k.consumed) ?? null;
 
-    // Rileggi il documento aggiornato per il bundle corrente
+    // Rileggi lo stesso documento (stesso device) per il bundle aggiornato
     const updatedBundle = await SignalKeyBundleModel
-      .findOne({ user_id: targetUserId })
+      .findOne({ user_id: targetUserId, device_id: before.device_id })
       .lean<ISignalKeyBundle>()
       .exec();
 
@@ -120,8 +124,10 @@ export async function fetchBundleForX3DH(
     };
   }
 
-  // Nessuna OTPK disponibile — restituisci bundle senza OTPK
-  const bundle = await SignalKeyBundleModel.findOne({ user_id: targetUserId })
+  // Nessuna OTPK disponibile — restituisci bundle del device più recente
+  const bundle = await SignalKeyBundleModel
+    .findOne({ user_id: targetUserId })
+    .sort({ updatedAt: -1 })
     .lean<ISignalKeyBundle>()
     .exec();
 
