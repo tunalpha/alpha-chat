@@ -37,8 +37,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    setAuth(loadAuth());
+    const stored = loadAuth();
+    setAuth(stored);
     setIsLoading(false);
+    // Re-inizializza Signal se l'utente è già loggato ma l'IDB è stato cancellato
+    // (es. pulizia browser, reinstallazione, switch di profilo).
+    // initSignalKeys è idempotente: no-op se le chiavi esistono già.
+    // Senza questo, un utente loggato con IDB vuoto non può decifrare i messaggi
+    // finché non fa logout + login espliciti.
+    if (stored) {
+      void initSignalKeys(stored.userId, stored.deviceId)
+        .then(() => {
+          localStorage.setItem(`signal_keys_ready:${stored.userId}`, "1");
+          document.body.setAttribute("data-signal-ready", stored.userId);
+          window.dispatchEvent(new CustomEvent("signal:ready", { detail: { userId: stored.userId } }));
+        })
+        .catch(() => {});
+    }
   }, []);
 
   useEffect(() => {
