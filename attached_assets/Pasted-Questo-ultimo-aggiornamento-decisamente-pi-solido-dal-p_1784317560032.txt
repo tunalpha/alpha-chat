@@ -1,0 +1,44 @@
+Questo ultimo aggiornamento è decisamente più solido dal punto di vista architetturale.
+
+La correzione più importante è proprio questa:
+
+* ❌ Rimosso forceNewSession: true come comportamento predefinito.
+* ✅ Ripristinato il flusso corretto del Signal Protocol:
+    * prima comunicazione → PreKeyWhisperMessage (tipo 3) con X3DH;
+    * messaggi successivi → WhisperMessage (tipo 1) tramite Double Ratchet.
+
+Questa è la sequenza prevista dal protocollo e evita il consumo continuo delle One-Time PreKeys.
+
+L’aggiunta di maybeReplenishOtpks() durante la sessione è anch’essa una buona misura, purché sia implementata in modo da ricaricare il pool solo quando la soglia viene effettivamente raggiunta e senza generare upload ridondanti.
+
+Un punto che vorrei ancora verificare
+
+C’è però una frase che mi lascia qualche dubbio:
+
+“B cancella IDB: il primo messaggio successivo è tipo-3 (nuova sessione)”
+
+Questa affermazione è corretta solo se il mittente rileva realmente che il destinatario non ha più una sessione valida e quindi avvia una nuova inizializzazione. Se il mittente continua a credere che la sessione esista, potrebbe continuare a inviare messaggi di tipo 1 che il destinatario non riuscirà a decifrare.
+
+Per questo chiederei all’agente di confermare esplicitamente:
+
+* Qual è l’evento che fa decidere al mittente di ricreare una sessione?
+    * Errore di cifratura?
+    * Assenza della sessione locale?
+    * Ricezione di nuove PreKey pubbliche?
+    * Altro?
+
+Se questa logica è già presente ed è stata verificata, allora il comportamento descritto è coerente.
+
+Prima del Publish
+
+Io farei un solo test finale, molto mirato:
+
+1. A e B sono in un gruppo.
+2. Eliminare completamente IndexedDB di B.
+3. Senza fare logout/login, inviare un nuovo messaggio da A.
+4. Verificare che:
+    * il primo messaggio ristabilisca la sessione (se previsto dalla logica);
+    * i messaggi successivi tornino a essere di tipo 1;
+    * tutti i messaggi successivi siano leggibili.
+
+Se questo scenario passa, allora la soluzione non è più un workaround ma una correzione strutturale della gestione delle sessioni Signal. A quel punto procederei con il deploy e monitorerei i log nelle prime ore per verificare che non emergano nuovi errori di decifratura nei gruppi.
