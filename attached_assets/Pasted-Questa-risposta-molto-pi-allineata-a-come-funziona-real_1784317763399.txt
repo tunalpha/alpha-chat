@@ -1,0 +1,39 @@
+Questa risposta è molto più allineata a come funziona realmente il Signal Protocol.
+
+In particolare condivido questi punti:
+
+* ✅ Il mittente non può sapere automaticamente che il destinatario ha perso il proprio database locale (IDB). Una volta stabilita una sessione, continuerà a usare quella finché non c’è un motivo per crearne una nuova.
+* ✅ La perdita dell’IDB comporta la perdita delle chiavi private locali. I messaggi già cifrati con quelle chiavi non sono recuperabili: è un comportamento atteso in un sistema E2E come Signal.
+* ✅ Eseguire initSignalKeys anche al caricamento della pagina (non solo al login) è una correzione importante, perché permette a un utente già autenticato ma con IDB cancellato di rigenerare rapidamente il proprio materiale crittografico.
+
+Un ultimo controllo prima del deploy
+
+Prima di pubblicare chiederei all’agente di verificare un solo scenario aggiuntivo, che è molto realistico:
+
+1. A e B sono nello stesso gruppo.
+2. B cancella IndexedDB e ricarica la pagina (quindi initSignalKeys genera nuove chiavi e le pubblica).
+3. A non ricarica la propria pagina e resta online con la sessione già aperta.
+4. A invia un nuovo messaggio.
+
+La domanda è: come A scopre che il bundle di B è cambiato?
+
+Se A usa ancora in memoria il vecchio bundle, potrebbe continuare a cifrare con la vecchia sessione. Serve verificare che esista un meccanismo di aggiornamento, ad esempio:
+
+* invalidazione della cache del bundle;
+* refresh periodico;
+* aggiornamento tramite WebSocket;
+* recupero del nuovo bundle quando la cifratura fallisce.
+
+Se questa parte è già implementata e testata, allora la catena di recupero è completa.
+
+Valutazione complessiva
+
+Il percorso descritto ora è molto più convincente rispetto ai tentativi precedenti:
+
+* eliminata la race condition;
+* eliminato il workaround forceNewSession;
+* aggiunto il ripristino delle One-Time PreKeys durante la sessione;
+* inizializzazione delle chiavi anche al page load;
+* rimossi i catch silenziosi a favore di log diagnostici.
+
+Se il test sul refresh del bundle del destinatario passa, considero la soluzione tecnicamente solida e procederei con il deploy.
