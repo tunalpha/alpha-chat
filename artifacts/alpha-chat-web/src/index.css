@@ -30,6 +30,9 @@
   --bubble-mine:   linear-gradient(135deg, #7C3AED, #A855F7);
   --bubble-theirs: #1E1535;
 
+  /* Menu dropdown background (adapts to theme) */
+  --bg-menu: #1A1133;
+
   /* Shadows */
   --shadow-sm:  0 1px 4px rgba(0,0,0,0.4);
   --shadow-md:  0 4px 16px rgba(0,0,0,0.5);
@@ -331,7 +334,7 @@ a { color: inherit; text-decoration: none; }
 .user-menu-dropdown {
   position: absolute; top: calc(100% + 8px); left: 0; z-index: 200;
   width: 240px;
-  background: #1A1133;
+  background: var(--bg-menu);
   border: 1px solid var(--border-2);
   border-radius: var(--r-lg);
   box-shadow: var(--shadow-lg);
@@ -361,6 +364,8 @@ a { color: inherit; text-decoration: none; }
 .user-menu-item:hover { background: var(--bg-hover); }
 .user-menu-item.danger:hover { background: rgba(239,68,68,0.1); color: #FCA5A5; }
 .user-menu-item.danger { color: #FDA4AF; }
+[data-theme="light"] .user-menu-item.danger { color: #DC2626; }
+[data-theme="light"] .user-menu-item.danger:hover { color: #B91C1C; background: rgba(220,38,38,0.08); }
 .menu-chevron { margin-left: auto; color: var(--text-3); }
 .user-menu-divider { height: 1px; background: var(--border); }
 
@@ -409,7 +414,7 @@ a { color: inherit; text-decoration: none; }
 .chat-menu-dropdown {
   position: absolute; top: calc(100% + 6px); right: 0; z-index: 200;
   width: 220px;
-  background: #1A1133;
+  background: var(--bg-menu);
   border: 1px solid var(--border-2);
   border-radius: var(--r-lg);
   box-shadow: var(--shadow-lg);
@@ -425,6 +430,8 @@ a { color: inherit; text-decoration: none; }
 .chat-menu-item:hover { background: var(--bg-hover); }
 .chat-menu-item.danger { color: #FDA4AF; }
 .chat-menu-item.danger:hover { background: rgba(239,68,68,0.1); }
+[data-theme="light"] .chat-menu-item.danger { color: #DC2626; }
+[data-theme="light"] .chat-menu-item.danger:hover { color: #B91C1C; background: rgba(220,38,38,0.08); }
 .chat-menu-icon { font-size: 16px; }
 .chat-menu-badge {
   margin-left: auto; font-size: 10px; font-weight: 600;
@@ -4659,6 +4666,7 @@ button:disabled.profile-avatar-edit {
   --bg-active:rgba(109,40,217,0.10);
   --bg-2:     #EDE9FE;
   --bg-3:     #DDD6FE;
+  --bg-menu:  #FFFFFF;
 
   --text-1:   #1C0B3A;
   --text-2:   #5B4B8A;
