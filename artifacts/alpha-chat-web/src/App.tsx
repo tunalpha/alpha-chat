@@ -34,6 +34,7 @@ import CallSettingsPage from "./pages/CallSettingsPage";
 import AppearancePage from "./pages/AppearancePage";
 import NotificationsPage from "./pages/NotificationsPage";
 import LanguagePage from "./pages/LanguagePage";
+import { useNotifSync } from "./hooks/useNotifSync";
 
 // Inizializza i18n subito (carica la lingua salvata o l'italiano di default)
 void initI18n();
@@ -71,6 +72,9 @@ function AppContent() {
   const { auth, isLoading, logout, logoutAll, clearPasswordChangeRequired, updateAuth } = useAuth();
   const { isLocked, showPrivacy, hasPINSet } = useLock();
   const [view, setView] = useState<AppView>("chat");
+
+  // Sincronizza le impostazioni notifiche dal backend quando l'utente è autenticato
+  useNotifSync(auth?.userId ?? null);
 
   // Pagina di emergenza — accessibile senza autenticazione
   if (isEmergencyPath()) return <EmergencyPage />;

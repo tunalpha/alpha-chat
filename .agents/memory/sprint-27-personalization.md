@@ -51,6 +51,35 @@ description: Tema, accento, testo, bolle, animazioni, i18n (10 lingue), notifich
 - Rimossi tutti i `soon: true` da Tema/Lingua/Notifiche
 - Aggiunto `onClick` per navigare a `appearance`, `language`, `notifications-settings`
 
+## Robustezza (v2 — requisiti aggiuntivi)
+
+### 1. Versionamento impostazioni
+- Campo `_v: number` serializzato insieme ai dati in `alpha_settings_v1`
+- Costante `SETTINGS_VERSION = 1` — da incrementare ad ogni cambio strutturale
+- `migrateSettings()` — funzione versione-aware da estendere per future migrazioni
+
+### 2. Validazione valori
+- `validateSettings()` — controlla ogni campo contro set di valori validi; usa default per invalidi
+- `validateNotif()` — verifica che tutti i 14 booleani siano effettivamente boolean
+- Qualunque valore corrotto/non riconosciuto → fallback a default sicuro
+
+### 3. Sincronizzazione tra dispositivi (`useNotifSync.ts`)
+- Al login (userId cambia) → GET backend → merge locale con `syncNotifFromBackend()`
+- Modifiche locali → PATCH backend immediato (da `NotificationsPage`)
+- Offline → `savePendingNotif()` scrive in `alpha_pending_notif` localStorage
+- Prossimo login → `useNotifSync` fa flush del pending prima del fetch
+- `syncNotifFromBackend` in context è semanticamente distinto da `setNotif` (non triggera ulteriori write)
+
+### 4. Tema Sistema dinamico
+- Listener `prefers-color-scheme` stabile con `useRef` — si registra una volta sola (deps `[]`)
+- `settingsRef` aggiornato ad ogni render; il handler legge sempre l'ultimo valore
+- Nessun re-subscribe inutile ad ogni cambio impostazione
+
+### 5. Resize immagini wallpaper
+- `compressImage(file, maxSide=1280, quality=0.82)` — usa Canvas API
+- Riduzione ~80-95% su foto grandi prima di salvare in localStorage
+- Fallback `FileReader` se canvas non disponibile (browser molto vecchi)
+
 ## Decisioni chiave
 - **Why accent default in :root**: `--accent: #7C3AED` in `:root` permette a qualsiasi componente di usare `var(--accent)` senza `[data-accent="violet"]` esplicito (violet è il default)
 - **Why guard `i18n.isInitialized`**: in dev HMR, `initI18n` può essere chiamato più volte; i18next lancia eccezione al doppio-init

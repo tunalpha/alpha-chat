@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppSettings, type NotifPrefs } from "../contexts/AppSettingsContext";
 import { apiUpdateNotificationSettings } from "../lib/api";
+import { savePendingNotif, notifToBackend } from "../hooks/useNotifSync";
 
 interface Props { onBack: () => void; }
 
@@ -42,12 +43,16 @@ export default function NotificationsPage({ onBack }: Props) {
     const serverKeys: (keyof NotifPrefs)[] = ["messages", "calls", "groups", "previewText"];
     if (!serverKeys.includes(key)) return;
 
+    const backendPatch = notifToBackend({ [key]: value });
     setSaving(true);
     try {
-      await apiUpdateNotificationSettings({ [key]: value });
+      await apiUpdateNotificationSettings(backendPatch);
       setSaved(true);
       setTimeout(() => setSaved(false), 2000);
-    } catch { /* silent — local state already updated */ }
+    } catch {
+      // Offline — salva per la sincronizzazione al prossimo login
+      savePendingNotif(backendPatch);
+    }
     finally { setSaving(false); }
   }
 
