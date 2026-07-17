@@ -70,7 +70,7 @@ export default function AuthPage({ onRecover }: Props) {
         {/* Logo */}
         <div className="auth-logo">
           <img
-            src={`${import.meta.env.BASE_URL}logo.png`}
+            src={`${import.meta.env.BASE_URL}logo.svg`}
             alt="Alpha Chat"
             className="auth-logo-img"
           />

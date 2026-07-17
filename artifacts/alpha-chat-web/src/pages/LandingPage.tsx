@@ -231,7 +231,7 @@ export default function LandingPage() {
       <header className="chat-header">
         <div style={{ width: 36, flexShrink: 0 }} />
 
-        <img src={`${import.meta.env.BASE_URL}logo.png`} alt="Alpha Chat" className="demo-alpha-avatar" />
+        <img src={`${import.meta.env.BASE_URL}logo.svg`} alt="Alpha Chat" className="demo-alpha-avatar" />
 
         <div className="chat-header-info">
           <div className="chat-header-name">Alpha Chat</div>
@@ -255,7 +255,7 @@ export default function LandingPage() {
         {/* Waiting state — visibile finché l'utente non interagisce */}
         {!started && (
           <div className="demo-waiting" onClick={() => { setStarted(true); startedRef.current = true; void playNotifSound('received'); }}>
-            <img src={`${import.meta.env.BASE_URL}logo.png`} alt="Alpha Chat" className="demo-waiting-logo" />
+            <img src={`${import.meta.env.BASE_URL}logo.svg`} alt="Alpha Chat" className="demo-waiting-logo" />
             <p className="demo-waiting-hint">{t("landing.tapToStart")}</p>
           </div>
         )}
@@ -271,7 +271,7 @@ export default function LandingPage() {
           const isMine = line.speaker === "user";
           return (
             <div key={i} className={`msg-row ${isMine ? "mine" : "theirs"} demo-msg-enter`}>
-              {!isMine && <img src={`${import.meta.env.BASE_URL}logo.png`} alt="α" className="demo-alpha-avatar demo-alpha-avatar--sm" />}
+              {!isMine && <img src={`${import.meta.env.BASE_URL}logo.svg`} alt="α" className="demo-alpha-avatar demo-alpha-avatar--sm" />}
               <div className={`msg-bubble ${isMine ? "mine" : "theirs"}`}>
                 <span className="msg-text" style={{ whiteSpace: "pre-line" }}>
                   {line.text}
@@ -284,7 +284,7 @@ export default function LandingPage() {
         {/* Typing indicator Alpha */}
         {typing && (
           <div className="msg-row theirs demo-msg-enter">
-            <img src={`${import.meta.env.BASE_URL}logo.png`} alt="α" className="demo-alpha-avatar demo-alpha-avatar--sm" />
+            <img src={`${import.meta.env.BASE_URL}logo.svg`} alt="α" className="demo-alpha-avatar demo-alpha-avatar--sm" />
             <div className="msg-bubble theirs typing-bubble">
               <span className="typing-dot" />
               <span className="typing-dot" />
@@ -348,7 +348,7 @@ export default function LandingPage() {
             </button>
 
             <div className="auth-modal-logo">
-              <img src={`${import.meta.env.BASE_URL}logo.png`} alt="α" width="40" height="40"
+              <img src={`${import.meta.env.BASE_URL}logo.svg`} alt="α" width="40" height="40"
                 style={{ borderRadius: "50%" }} />
               <span>Alpha Chat</span>
             </div>
