@@ -10,3 +10,4 @@
 - [Sprint 22 — Account Recovery](sprint-22-recovery.md) — Recovery Card auto-generata, argon2.verify senza opts, validate("body",Schema), AppError in errors/AppError, revokeAllSessions in refresh-token.service
 - [Sprint 24 — Chiamate professionali](sprint-24-calls.md) — audio remoto, vivavoce iOS, squillo OfflineAudioContext, getStats tipi any, ConversationItem fields
 - [Sprint 25 — Chiamate Secure Pro](sprint-25-calls.md) — busy detect (WsManager in-memory), multi-device dismissal, ICE restart, cronologia CallLog, suonerie multi-tone, CallVerifyModal via apiGetKeyBundle
+- [Sprint 27 — Personalizzazione Globale](sprint-27-personalization.md) — i18n 10 lingue, AppSettingsContext, temi/accenti/testo/bolle/animazioni CSS, AppearancePage, NotificationsPage, LanguagePage, backend notifiche

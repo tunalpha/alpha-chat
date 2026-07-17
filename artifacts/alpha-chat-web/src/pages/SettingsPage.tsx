@@ -24,21 +24,21 @@ export default function SettingsPage({ onBack, onNavigate }: Props) {
       rows: [
         {
           icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="20" height="20"><circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg>,
-          label: "Tema",
-          value: "Scuro",
-          soon: true,
+          label: "Tema e colori",
+          value: "Personalizza l'aspetto",
+          onClick: () => onNavigate("appearance"),
         },
         {
           icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="20" height="20"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>,
           label: "Lingua",
-          value: "Italiano",
-          soon: true,
+          value: "10 lingue disponibili",
+          onClick: () => onNavigate("language"),
         },
         {
           icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="20" height="20"><path d="M12 22c1.1 0 2-.9 2-2H10c0 1.1.9 2 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/></svg>,
           label: "Notifiche",
-          value: "Attive",
-          soon: true,
+          value: "Suoni, vibrazione, filtri",
+          onClick: () => onNavigate("notifications-settings"),
         },
       ],
     },

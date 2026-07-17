@@ -1077,6 +1077,25 @@ export async function apiListBlocked(): Promise<BlockedUserEntry[]> {
   return request<BlockedUserEntry[]>("GET", "/users/me/blocked");
 }
 
+// ── Impostazioni notifiche — Sprint 27 ───────────────────────────────────────
+
+export interface BackendNotificationSettings {
+  messages:     boolean;
+  calls:        boolean;
+  groups:       boolean;
+  preview_text: boolean;
+}
+
+export async function apiGetNotificationSettings(): Promise<BackendNotificationSettings> {
+  return request<BackendNotificationSettings>("GET", "/users/me/notifications");
+}
+
+export async function apiUpdateNotificationSettings(
+  patch: Partial<BackendNotificationSettings>,
+): Promise<BackendNotificationSettings> {
+  return request<BackendNotificationSettings>("PATCH", "/users/me/notifications", patch);
+}
+
 // ── Cronologia chiamate — Sprint 25 ──────────────────────────────────────────
 
 export interface CallLogEntry {

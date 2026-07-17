@@ -2,6 +2,8 @@ import { useState, useEffect } from "react";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { LockProvider, useLock } from "./contexts/LockContext";
 import { CallProvider } from "./contexts/CallContext";
+import { AppSettingsProvider } from "./contexts/AppSettingsContext";
+import { initI18n } from "./i18n";
 import IncomingCallModal from "./components/IncomingCallModal";
 import ActiveCallScreen from "./components/ActiveCallScreen";
 import LandingPage from "./pages/LandingPage";
@@ -29,6 +31,12 @@ import PrivacyOverlay from "./components/PrivacyOverlay";
 import BusyCallScreen from "./components/BusyCallScreen";
 import CallHistoryPage from "./pages/CallHistoryPage";
 import CallSettingsPage from "./pages/CallSettingsPage";
+import AppearancePage from "./pages/AppearancePage";
+import NotificationsPage from "./pages/NotificationsPage";
+import LanguagePage from "./pages/LanguagePage";
+
+// Inizializza i18n subito (carica la lingua salvata o l'italiano di default)
+void initI18n();
 
 export type AppView =
   | "chat"
@@ -48,7 +56,10 @@ export type AppView =
   | "group-info"
   | "recovery-settings"
   | "call-history"
-  | "call-settings";
+  | "call-settings"
+  | "appearance"
+  | "notifications-settings"
+  | "language";
 
 /** Controlla se l'URL corrente è la pagina di emergenza (accessibile senza auth). */
 function isEmergencyPath(): boolean {
@@ -134,6 +145,12 @@ function AppContent() {
             return <CallHistoryPage onBack={goBack} />;
           case "call-settings":
             return <CallSettingsPage onBack={goBack} />;
+          case "appearance":
+            return <AppearancePage onBack={goSettings} />;
+          case "notifications-settings":
+            return <NotificationsPage onBack={goSettings} />;
+          case "language":
+            return <LanguagePage onBack={goSettings} />;
           // group-info è gestito come overlay dentro ChatPage
           default:
             return <ChatPage onNavigate={setView} />;
@@ -145,15 +162,17 @@ function AppContent() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <LockProvider>
-        <CallProvider>
-          <AppContent />
-          <IncomingCallModal />
-          <ActiveCallScreen />
-          <BusyCallScreen />
-        </CallProvider>
-      </LockProvider>
-    </AuthProvider>
+    <AppSettingsProvider>
+      <AuthProvider>
+        <LockProvider>
+          <CallProvider>
+            <AppContent />
+            <IncomingCallModal />
+            <ActiveCallScreen />
+            <BusyCallScreen />
+          </CallProvider>
+        </LockProvider>
+      </AuthProvider>
+    </AppSettingsProvider>
   );
 }

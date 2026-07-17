@@ -1,0 +1,388 @@
+Sono d’accordo. Arrivati a questo punto del progetto, ha senso fare un unico Sprint di Personalizzazione Globale invece di dividerlo. Così eviti di toccare più volte tutta la UI e le impostazioni.
+
+Ti propongo questo prompt definitivo.
+
+⸻
+
+Sprint 27 — Personalizzazione Globale Alpha Chat
+
+Missione
+
+Realizzare il sistema completo di personalizzazione di Alpha Chat.
+
+L’utente deve poter personalizzare completamente l’app da un unico centro impostazioni.
+
+L’obiettivo è avere una soluzione definitiva, senza dover tornare in futuro su questi componenti.
+
+⸻
+
+1. Tema
+
+Implementare un Theme Manager globale.
+
+Supportare:
+
+☀️ Chiaro
+
+🌙 Scuro
+
+📱 Sistema
+
+⚫ AMOLED (nero puro)
+
+Cambio immediato.
+
+Persistenza della preferenza.
+
+Nessun refresh necessario.
+
+⸻
+
+2. Colore principale
+
+Permettere di scegliere il colore dell’intera interfaccia.
+
+Preset:
+
+💜 Viola Alpha (default)
+
+💙 Blu
+
+💚 Verde
+
+❤️ Rosso
+
+🩵 Azzurro
+
+🧡 Arancione
+
+🩷 Rosa
+
+⚪ Grigio
+
+Tutta la UI deve aggiornarsi in tempo reale.
+
+⸻
+
+3. Sfondo chat
+
+Implementare wallpaper.
+
+Categorie:
+
+Colori semplici
+
+Gradienti
+
+Texture
+
+Militare
+
+Minimal
+
+Scuro
+
+Chiaro
+
+Permettere anche:
+
+📷 immagine personale
+
+con crop automatico.
+
+⸻
+
+4. Dimensione testo
+
+Piccolo
+
+Normale
+
+Grande
+
+Molto grande
+
+Applicazione immediata.
+
+⸻
+
+5. Dimensione bolle
+
+Compatte
+
+Normali
+
+Ampie
+
+⸻
+
+6. Animazioni
+
+Normali
+
+Ridotte
+
+Disattivate
+
+Compatibilità con prefers-reduced-motion.
+
+⸻
+
+7. Lingue
+
+Implementare completamente i18next.
+
+Tradurre tutta Alpha Chat.
+
+Lingue:
+
+🇮🇹 Italiano
+
+🇬🇧 English
+
+🇪🇸 Español
+
+🇫🇷 Français
+
+🇩🇪 Deutsch
+
+🇵🇹 Português
+
+🇸🇦 العربية (RTL)
+
+🇷🇺 Русский
+
+🇨🇳 中文
+
+🇯🇵 日本語
+
+Tradurre:
+
+Menu
+
+Titoli
+
+Bottoni
+
+Errori
+
+Placeholder
+
+Recovery
+
+Phoenix
+
+Trust Center
+
+Gruppi
+
+Chiamate
+
+Videochiamate
+
+Archivio
+
+Timeline
+
+Impostazioni
+
+Dashboard
+
+Admin
+
+Modal
+
+Tooltip
+
+Toast
+
+Tutta la UI.
+
+I messaggi degli utenti NON devono essere tradotti.
+
+Fallback automatico all’italiano per chiavi mancanti.
+
+Supportare completamente RTL per l’arabo.
+
+⸻
+
+8. Notifiche
+
+Nuova pagina.
+
+Toggle:
+
+Messaggi
+
+Gruppi
+
+Chiamate
+
+Videochiamate
+
+Phoenix
+
+Emergency Lock
+
+Recovery
+
+Anteprima testo
+
+Suoni
+
+Vibrazione
+
+Badge
+
+Silenzia sconosciuti
+
+Solo contatti
+
+Non disturbare
+
+⸻
+
+9. Suonerie
+
+Permettere di scegliere:
+
+Classica
+
+Digitale
+
+Militare
+
+Silenziosa
+
+Le preferenze devono valere per:
+
+messaggi
+
+chiamate
+
+videochiamate
+
+⸻
+
+10. Vibrazione
+
+Separata da:
+
+messaggi
+
+chiamate
+
+Phoenix
+
+Emergency
+
+⸻
+
+11. Accessibilità
+
+Contrasto elevato
+
+Font grandi
+
+Riduzione animazioni
+
+Compatibilità VoiceOver
+
+Compatibilità TalkBack
+
+⸻
+
+12. Preview
+
+Ogni modifica deve essere visibile immediatamente.
+
+Nessun riavvio.
+
+⸻
+
+13. Backup impostazioni
+
+Le preferenze devono poter essere sincronizzate tra dispositivi tramite il profilo utente.
+
+Sincronizzare:
+
+tema
+
+lingua
+
+wallpaper
+
+notifiche
+
+suonerie
+
+dimensioni
+
+accessibilità
+
+colori
+
+Non sincronizzare dati locali sensibili.
+
+⸻
+
+14. Architettura
+
+Creare:
+
+ThemeContext
+
+LanguageContext
+
+NotificationContext
+
+SettingsContext
+
+Separare completamente la logica.
+
+⸻
+
+15. Performance
+
+Lazy loading dei file lingua.
+
+Caricare solo la lingua selezionata.
+
+Caching intelligente.
+
+⸻
+
+16. Audit
+
+Verificare:
+
+nessuna regressione
+
+nessun flickering
+
+cambio tema istantaneo
+
+RTL correto
+
+lingue complete
+
+notifiche corrette
+
+wallpaper
+
+backup impostazioni
+
+⸻
+
+Deliverable
+
+* TypeScript pulito.
+* Build pulita.
+* Tutti i test automatici verdi.
+* Nessuna regressione.
+* Audit finale.
+* UI completamente tradotta nelle 10 lingue.
+* Supporto RTL completo.
+* Personalizzazione completa dell’app.
+
+Obiettivo finale: fare in modo che ogni utente possa adattare Alpha Chat alle proprie preferenze, mantenendo la stessa attenzione alla privacy, alla sicurezza e alla qualità che caratterizza il resto dell’app.

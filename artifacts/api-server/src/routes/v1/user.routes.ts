@@ -12,6 +12,10 @@ import {
   updatePrivacySettings,
 } from "../../controllers/privacy.controller";
 import {
+  getNotificationSettings,
+  updateNotificationSettings,
+} from "../../controllers/notification.controller";
+import {
   blockUser,
   unblockUser,
   listBlocked,
@@ -47,6 +51,12 @@ router.get("/me/privacy", getPrivacySettings);
 
 /** PATCH /api/v1/users/me/privacy */
 router.patch("/me/privacy", validate("body", UpdatePrivacySchema), updatePrivacySettings);
+
+/** GET  /api/v1/users/me/notifications */
+router.get("/me/notifications", getNotificationSettings);
+
+/** PATCH /api/v1/users/me/notifications */
+router.patch("/me/notifications", updateNotificationSettings);
 
 // ---------------------------------------------------------------------------
 // Block list (Sprint 15)
