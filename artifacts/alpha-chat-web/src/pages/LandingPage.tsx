@@ -102,6 +102,7 @@ export default function LandingPage() {
   const [regUser, setRegUser]   = useState("");
   const [regName, setRegName]   = useState("");
   const [regPwd, setRegPwd]     = useState("");
+  const [regEmail, setRegEmail] = useState("");
   const [showRPwd, setShowRPwd] = useState(false);
 
   // Al primo gesto: sblocca audio sincrono + avvia sequenza
@@ -190,7 +191,7 @@ export default function LandingPage() {
   async function handleRegister(e: React.FormEvent) {
     e.preventDefault(); setError(""); setLoading(true);
     try {
-      const result = await register({ username: regUser, display_name: regName, password: regPwd });
+      const result = await register({ username: regUser, display_name: regName, password: regPwd, ...(regEmail ? { email: regEmail } : {}) });
       // Sprint 22: mostra Recovery Card se presente
       if (result?.recovery_card) {
         const rc = result.recovery_card;
@@ -202,6 +203,7 @@ export default function LandingPage() {
   }
 
   return (
+    <>
     <div className="demo-root">
 
       {/* ── Header identico alla chat reale ──────────────────────────────── */}
@@ -389,6 +391,11 @@ export default function LandingPage() {
                     {showRPwd ? <EyeOff /> : <EyeOn />}
                   </button>
                 </div>
+                <label className="auth-label">Email <span style={{ fontWeight: 400, textTransform: "none", letterSpacing: 0, color: "var(--text-3)", fontSize: "11px" }}>(facoltativa — per recupero account)</span></label>
+                <input className="auth-input" type="email" value={regEmail}
+                  onChange={(e) => setRegEmail(e.target.value)}
+                  placeholder="email@esempio.com"
+                  autoComplete="email" autoCapitalize="none" />
                 <button className="auth-btn" type="submit" disabled={loading}>
                   {loading ? "Registrazione…" : "Crea account"}
                 </button>
@@ -413,18 +420,20 @@ export default function LandingPage() {
         </div>
       )}
 
-      {/* Recovery Card Modal — mostrata dopo la registrazione */}
-      {recoveryCard && (
-        <RecoveryCardModal card={recoveryCard} onConfirm={() => setRecoveryCard(null)} />
-      )}
-
-      {/* Recovery Page — overlay pubblico */}
-      {showRecovery && (
-        <div style={{ position: "fixed", inset: 0, zIndex: 300, background: "var(--bg-1)", overflowY: "auto" }}>
-          <RecoveryPage onBack={() => setShowRecovery(false)} />
-        </div>
-      )}
     </div>
+
+    {/* Recovery Card Modal — fuori da demo-root per evitare clip overflow:hidden */}
+    {recoveryCard && (
+      <RecoveryCardModal card={recoveryCard} onConfirm={() => setRecoveryCard(null)} />
+    )}
+
+    {/* Recovery Page — overlay a schermo intero, fuori da demo-root (overflow:hidden rompe position:fixed su iOS) */}
+    {showRecovery && (
+      <div style={{ position: "fixed", inset: 0, zIndex: 300, background: "var(--bg-1)", overflowY: "auto" }}>
+        <RecoveryPage onBack={() => setShowRecovery(false)} />
+      </div>
+    )}
+    </>
   );
 }
 

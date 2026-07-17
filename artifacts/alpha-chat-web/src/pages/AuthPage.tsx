@@ -24,6 +24,7 @@ export default function AuthPage({ onRecover }: Props) {
   const [regDisplayName, setRegDisplayName] = useState("");
   const [regPassword, setRegPassword] = useState("");
   const [showRegPwd, setShowRegPwd] = useState(false);
+  const [regEmail, setRegEmail] = useState("");
 
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -43,7 +44,7 @@ export default function AuthPage({ onRecover }: Props) {
     setError("");
     setLoading(true);
     try {
-      const result = await register({ username: regUsername, display_name: regDisplayName, password: regPassword });
+      const result = await register({ username: regUsername, display_name: regDisplayName, password: regPassword, ...(regEmail ? { email: regEmail } : {}) });
       // Sprint 22: mostra Recovery Card se presente
       if (result?.recovery_card) {
         const rc = result.recovery_card;
@@ -208,6 +209,16 @@ export default function AuthPage({ onRecover }: Props) {
                 )}
               </button>
             </div>
+            <label className="auth-label">Email <span style={{ fontWeight: 400, textTransform: "none", letterSpacing: 0, color: "var(--text-3)", fontSize: "11px" }}>(facoltativa — per recupero account)</span></label>
+            <input
+              className="auth-input"
+              type="email"
+              value={regEmail}
+              onChange={(e) => setRegEmail(e.target.value)}
+              placeholder="email@esempio.com"
+              autoComplete="email"
+              autoCapitalize="none"
+            />
             <button className="auth-btn" type="submit" disabled={loading}>
               {loading ? "Registrazione..." : "Crea account"}
             </button>
