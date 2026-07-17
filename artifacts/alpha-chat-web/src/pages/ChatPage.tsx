@@ -1,5 +1,4 @@
 import { useState, useEffect, useRef, useCallback, memo } from "react";
-import { createPortal } from "react-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { useCall } from "../contexts/CallContext";
 import { useWebSocket, type WsEvent } from "../hooks/useWebSocket";
@@ -1798,8 +1797,21 @@ export default function ChatPage({ onNavigate }: Props) {
       </aside>
 
       {/* ── Chat area ─────────────────────────────────────────────────────── */}
-      <main className={`chat-area${!mobileShowChat ? " chat-area-mobile-hidden" : ""}`}>
-        {!activeConvId ? (
+      {/* Group Info — renderizzata dentro chat-area (stessa slide-in usata per la chat)
+          per evitare tutti i problemi di position:fixed su iOS Safari */}
+      <main className={`chat-area${(!mobileShowChat && !showGroupInfo) ? " chat-area-mobile-hidden" : ""}`}>
+        {showGroupInfo && groupInfoId ? (
+          <GroupInfoPage
+            groupId={groupInfoId}
+            onBack={() => setShowGroupInfo(false)}
+            onNavigate={onNavigate}
+            onLeft={() => {
+              setShowGroupInfo(false);
+              setActiveConvId(null);
+              void apiListConversations().then((r) => setConversations(r.items ?? []));
+            }}
+          />
+        ) : !activeConvId ? (
           <div className="chat-empty">
             <div className="chat-empty-logo">α</div>
             <h2 className="chat-empty-title">Alpha Chat</h2>
@@ -2331,22 +2343,6 @@ export default function ChatPage({ onNavigate }: Props) {
         />
       )}
 
-      {/* ── Sprint 21: Group Info overlay — Portal su document.body ──────── */}
-      {showGroupInfo && groupInfoId && createPortal(
-        <div className="group-info-overlay">
-          <GroupInfoPage
-            groupId={groupInfoId}
-            onBack={() => setShowGroupInfo(false)}
-            onNavigate={onNavigate}
-            onLeft={() => {
-              setShowGroupInfo(false);
-              setActiveConvId(null);
-              void apiListConversations().then((r) => setConversations(r.items ?? []));
-            }}
-          />
-        </div>,
-        document.body,
-      )}
 
       {/* ── Invite modals ──────────────────────────────────────────────────── */}
       {showInvite && (
