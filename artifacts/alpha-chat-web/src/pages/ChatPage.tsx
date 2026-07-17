@@ -133,6 +133,8 @@ function formatConvTime(iso: string | null): string {
 function ChatHeader({
   otherUser,
   isOnline,
+  isGroup,
+  groupName,
   onBack,
   onViewProfile,
   onSearchInChat,
@@ -150,6 +152,8 @@ function ChatHeader({
 }: {
   otherUser: { display_name: string; username: string } | null | undefined;
   isOnline: boolean;
+  isGroup?: boolean;
+  groupName?: string;
   onBack: () => void;
   onViewProfile: () => void;
   onSearchInChat: () => void;
@@ -208,15 +212,15 @@ function ChatHeader({
         </svg>
       </button>
 
-      <div className="avatar avatar-md">
-        {otherUser?.display_name[0]?.toUpperCase() ?? "?"}
+      <div className={`avatar avatar-md${isGroup ? " avatar-group" : ""}`}>
+        {isGroup ? "👥" : (otherUser?.display_name[0]?.toUpperCase() ?? "?")}
       </div>
 
       <div className="chat-header-info">
-        <div className="chat-header-name">{otherUser?.display_name ?? "Chat"}</div>
+        <div className="chat-header-name">{isGroup ? (groupName ?? "Gruppo") : (otherUser?.display_name ?? "Chat")}</div>
         <div className="chat-header-status-row">
-          <div className={`chat-header-status ${isOnline ? "online" : "offline"}`}>
-            {isOnline ? `● ${t("chat.online")}` : `○ ${t("chat.offline")}`}
+          <div className={`chat-header-status ${isGroup ? "offline" : (isOnline ? "online" : "offline")}`}>
+            {isGroup ? `◎ Gruppo` : (isOnline ? `● ${t("chat.online")}` : `○ ${t("chat.offline")}`)}
           </div>
           {trustBadge && (
             <button
@@ -600,6 +604,10 @@ export default function ChatPage({ onNavigate }: Props) {
 
   // Archivio — long press su conversazione
   const [convActionSheet, setConvActionSheet] = useState<{ convId: string; displayName: string } | null>(null);
+  // Swipe-to-action su conversazione (mobile)
+  const [swipedConvId, setSwipedConvId]       = useState<string | null>(null);
+  const swipeStartX = useRef<number>(0);
+  const swipeStartY = useRef<number>(0);
   const convLongPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
@@ -1648,60 +1656,106 @@ export default function ChatPage({ onNavigate }: Props) {
 
               const convId = conv.conversation_id;
               const convDisplayName = displayName;
+              const isSwiped = swipedConvId === convId;
               return (
-                <button
-                  key={convId}
-                  className={`conv-item${isActive ? " active" : ""}${hasUnread ? " conv-item-unread" : ""}${isGroup ? " conv-item-group" : ""}`}
-                  onClick={() => handleSelectConv(convId)}
-                  onTouchStart={() => {
-                    convLongPressTimerRef.current = setTimeout(() => {
-                      convLongPressTimerRef.current = null;
+                <div key={convId} className={`conv-swipe-wrapper${isSwiped ? " swiped" : ""}`}>
+                  {/* Swipe action buttons (behind) */}
+                  <div className="conv-swipe-actions">
+                    <button
+                      className="conv-swipe-btn conv-swipe-archive"
+                      onClick={() => {
+                        setSwipedConvId(null);
+                        archiveConversation(convId);
+                        setConversations((prev) => prev.filter((c) => c.conversation_id !== convId));
+                        if (activeConvId === convId) { setActiveConvId(null); setMobileShowChat(false); }
+                        showToast("Conversazione archiviata");
+                      }}
+                    >📦</button>
+                    <button
+                      className="conv-swipe-btn conv-swipe-delete"
+                      onClick={async () => {
+                        setSwipedConvId(null);
+                        setConversations((prev) => prev.filter((c) => c.conversation_id !== convId));
+                        if (activeConvId === convId) { setActiveConvId(null); setMobileShowChat(false); }
+                        try {
+                          if (isGroup) {
+                            const { apiLeaveGroup } = await import("../lib/api");
+                            await apiLeaveGroup(convId);
+                          } else {
+                            const { apiClearConversationMessages } = await import("../lib/api");
+                            await apiClearConversationMessages(convId);
+                          }
+                        } catch { /* silenzioso */ }
+                        showToast(isGroup ? "Hai lasciato il gruppo" : "Conversazione eliminata");
+                      }}
+                    >🗑️</button>
+                  </div>
+
+                  {/* Conv item (slide left on swipe) */}
+                  <button
+                    className={`conv-item${isActive ? " active" : ""}${hasUnread ? " conv-item-unread" : ""}${isGroup ? " conv-item-group" : ""}`}
+                    onClick={() => {
+                      if (isSwiped) { setSwipedConvId(null); return; }
+                      handleSelectConv(convId);
+                    }}
+                    onTouchStart={(e) => {
+                      swipeStartX.current = e.touches[0].clientX;
+                      swipeStartY.current = e.touches[0].clientY;
+                      convLongPressTimerRef.current = setTimeout(() => {
+                        convLongPressTimerRef.current = null;
+                        setConvActionSheet({ convId, displayName: convDisplayName });
+                      }, 600);
+                    }}
+                    onTouchMove={(e) => {
+                      const dx = e.touches[0].clientX - swipeStartX.current;
+                      const dy = Math.abs(e.touches[0].clientY - swipeStartY.current);
+                      if (Math.abs(dx) > 10 && dy < 30) {
+                        if (convLongPressTimerRef.current) {
+                          clearTimeout(convLongPressTimerRef.current);
+                          convLongPressTimerRef.current = null;
+                        }
+                        if (dx < -50) setSwipedConvId(convId);
+                        else if (dx > 20 && isSwiped) setSwipedConvId(null);
+                      }
+                    }}
+                    onTouchEnd={() => {
+                      if (convLongPressTimerRef.current) {
+                        clearTimeout(convLongPressTimerRef.current);
+                        convLongPressTimerRef.current = null;
+                      }
+                    }}
+                    onContextMenu={(e) => {
+                      e.preventDefault();
                       setConvActionSheet({ convId, displayName: convDisplayName });
-                    }, 600);
-                  }}
-                  onTouchEnd={() => {
-                    if (convLongPressTimerRef.current) {
-                      clearTimeout(convLongPressTimerRef.current);
-                      convLongPressTimerRef.current = null;
-                    }
-                  }}
-                  onTouchMove={() => {
-                    if (convLongPressTimerRef.current) {
-                      clearTimeout(convLongPressTimerRef.current);
-                      convLongPressTimerRef.current = null;
-                    }
-                  }}
-                  onContextMenu={(e) => {
-                    e.preventDefault();
-                    setConvActionSheet({ convId, displayName: convDisplayName });
-                  }}
-                >
-                  <div className="avatar-wrapper">
-                    <div className={`avatar avatar-md${hasUnread ? " avatar-unread" : ""}${isGroup ? " avatar-group" : ""}`}>
-                      {avatarChar}
-                    </div>
-                    {!isGroup && isOnline && <div className="presence-dot" />}
-                  </div>
-                  <div className="conv-info">
-                    <div className="conv-row-top">
-                      <div className={`conv-name${hasUnread ? " conv-name-bold" : ""}`}>
-                        {displayName}
-                        {isGroup && <span className="conv-group-badge"> · {t("chat.group")}</span>}
+                    }}
+                  >
+                    <div className="avatar-wrapper">
+                      <div className={`avatar avatar-md${hasUnread ? " avatar-unread" : ""}${isGroup ? " avatar-group" : ""}`}>
+                        {avatarChar}
                       </div>
-                      <div className={`conv-time${hasUnread ? " conv-time-unread" : ""}`}>
-                        {formatConvTime(conv.last_activity_at)}
-                      </div>
+                      {!isGroup && isOnline && <div className="presence-dot" />}
                     </div>
-                    <div className="conv-row-bottom">
-                      <div className="conv-last-msg">{previewLabel}</div>
-                      {hasUnread && (
-                        <div className="conv-unread-badge">
-                          {conv.unread_count > 99 ? "99+" : conv.unread_count}
+                    <div className="conv-info">
+                      <div className="conv-row-top">
+                        <div className={`conv-name${hasUnread ? " conv-name-bold" : ""}`}>
+                          {displayName}
+                          {isGroup && <span className="conv-group-badge"> · {t("chat.group")}</span>}
                         </div>
-                      )}
+                        <div className={`conv-time${hasUnread ? " conv-time-unread" : ""}`}>
+                          {formatConvTime(conv.last_activity_at)}
+                        </div>
+                      </div>
+                      <div className="conv-row-bottom">
+                        <div className="conv-last-msg">{previewLabel}</div>
+                        {hasUnread && (
+                          <div className="conv-unread-badge">
+                            {conv.unread_count > 99 ? "99+" : conv.unread_count}
+                          </div>
+                        )}
+                      </div>
                     </div>
-                  </div>
-                </button>
+                  </button>
+                </div>
               );
             })}
           </div>
@@ -1728,6 +1782,8 @@ export default function ChatPage({ onNavigate }: Props) {
             <ChatHeader
               otherUser={otherUser}
               isOnline={isOtherOnline}
+              isGroup={activeConv?.type === "group"}
+              groupName={activeConv?.name ?? undefined}
               onBack={() => { setMobileShowChat(false); setShowChatSearch(false); setChatSearchQuery(""); }}
               onViewProfile={() => setShowContactProfile(true)}
               onSearchInChat={() => setShowChatSearch((v) => !v)}
@@ -2183,6 +2239,28 @@ export default function ChatPage({ onNavigate }: Props) {
               📦 {t("chat.archiveConversation")}
             </button>
             <button
+              className="conv-action-btn conv-action-danger"
+              onClick={async () => {
+                const cid = convActionSheet.convId;
+                const isGrp = conversations.find((c) => c.conversation_id === cid)?.type === "group";
+                setConvActionSheet(null);
+                setConversations((prev) => prev.filter((c) => c.conversation_id !== cid));
+                if (activeConvId === cid) { setActiveConvId(null); setMobileShowChat(false); }
+                try {
+                  if (isGrp) {
+                    const { apiLeaveGroup } = await import("../lib/api");
+                    await apiLeaveGroup(cid);
+                  } else {
+                    const { apiClearConversationMessages } = await import("../lib/api");
+                    await apiClearConversationMessages(cid);
+                  }
+                } catch { /* silenzioso */ }
+                showToast(isGrp ? "Hai lasciato il gruppo" : "Conversazione eliminata");
+              }}
+            >
+              🗑️ {conversations.find((c) => c.conversation_id === convActionSheet.convId)?.type === "group" ? "Lascia gruppo" : "Elimina conversazione"}
+            </button>
+            <button
               className="conv-action-btn conv-action-cancel"
               onClick={() => setConvActionSheet(null)}
             >
@@ -2196,6 +2274,9 @@ export default function ChatPage({ onNavigate }: Props) {
       {showCreateGroup && (
         <CreateGroupModal
           onClose={() => setShowCreateGroup(false)}
+          contacts={conversations
+            .filter((c) => c.type !== "group" && c.other_user)
+            .map((c) => ({ username: c.other_user!.username, displayName: c.other_user!.display_name }))}
           onCreated={(gid) => {
             setShowCreateGroup(false);
             void (async () => {

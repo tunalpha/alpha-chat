@@ -3224,6 +3224,31 @@ button:disabled.profile-avatar-edit {
 .cg-submit:hover:not(:disabled) { opacity:.85; }
 .cg-submit:disabled { opacity:.4; cursor:not-allowed; }
 
+/* Contact picker dentro CreateGroupModal */
+.cg-contacts-list {
+  display: flex; flex-direction: column; gap: 4px;
+  max-height: 200px; overflow-y: auto;
+  border: 1px solid var(--border-2); border-radius: 12px;
+  padding: 4px;
+}
+.cg-contact-row {
+  display: flex; align-items: center; gap: 10px;
+  width: 100%; padding: 9px 10px; border-radius: 9px;
+  background: none; border: none; cursor: pointer; text-align: left;
+  transition: background 0.12s; color: var(--text-1);
+}
+.cg-contact-row:hover { background: var(--bg-hover); }
+.cg-contact-row.selected { background: rgba(124,58,237,0.15); }
+.cg-contact-avatar {
+  width: 32px; height: 32px; border-radius: 50%;
+  background: var(--brand-3); color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 13px; font-weight: 700; flex-shrink: 0;
+}
+.cg-contact-name { font-size: 14px; font-weight: 500; flex: 1; }
+.cg-contact-username { font-size: 12px; color: var(--text-3); }
+.cg-contact-check { font-size: 16px; color: var(--brand-3); width: 20px; text-align: center; }
+
 /* ── GroupInfoPage overlay ── */
 .group-info-overlay { position:fixed; inset:0; z-index:200; background:var(--bg-1); overflow:hidden; display:flex; flex-direction:column; }
 
@@ -4641,10 +4666,42 @@ button:disabled.profile-avatar-edit {
   cursor: pointer; text-align: left; transition: background 0.15s;
 }
 .conv-action-btn:hover { background: rgba(255,255,255,0.1); }
+.conv-action-danger { color: #FCA5A5; }
+.conv-action-danger:hover { background: rgba(239,68,68,0.15) !important; }
 .conv-action-cancel {
   color: rgba(255,255,255,0.4); font-size: 0.95rem; margin-top: 4px;
   text-align: center;
 }
+
+/* ── Swipe-to-action su conv item ──────────────────────────────────────────── */
+.conv-swipe-wrapper {
+  position: relative; overflow: hidden;
+  display: flex; align-items: stretch;
+}
+.conv-swipe-wrapper .conv-item {
+  flex: 1; transition: transform 0.2s ease;
+  transform: translateX(0);
+}
+.conv-swipe-wrapper.swiped .conv-item {
+  transform: translateX(-120px);
+}
+.conv-swipe-actions {
+  position: absolute; right: 0; top: 0; bottom: 0;
+  display: flex; align-items: stretch;
+  transform: translateX(120px);
+  transition: transform 0.2s ease;
+}
+.conv-swipe-wrapper.swiped .conv-swipe-actions {
+  transform: translateX(0);
+}
+.conv-swipe-btn {
+  width: 60px; border: none; cursor: pointer;
+  font-size: 22px; display: flex; align-items: center; justify-content: center;
+  transition: opacity 0.15s;
+}
+.conv-swipe-btn:active { opacity: 0.7; }
+.conv-swipe-archive { background: var(--brand-2); }
+.conv-swipe-delete  { background: #DC2626; }
 
 /* ═══════════════════════════════════════════════════════════════════════════
    SPRINT 27 — TEMA, ACCENTO, TESTO, BOLLE, ANIMAZIONI

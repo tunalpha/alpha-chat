@@ -6,12 +6,15 @@
 import { useState } from "react";
 import { apiCreateGroup } from "../lib/api";
 
+interface Contact { username: string; displayName: string; }
+
 interface Props {
   onClose: () => void;
   onCreated: (groupId: string) => void;
+  contacts?: Contact[];
 }
 
-export default function CreateGroupModal({ onClose, onCreated }: Props) {
+export default function CreateGroupModal({ onClose, onCreated, contacts = [] }: Props) {
   const [name, setName]               = useState("");
   const [description, setDescription] = useState("");
   const [usernameInput, setUsernameInput] = useState("");
@@ -88,17 +91,44 @@ export default function CreateGroupModal({ onClose, onCreated }: Props) {
           {/* Aggiungi membri */}
           <div className="cg-field">
             <label className="cg-label">Membri *</label>
-            <div className="cg-add-row">
+
+            {/* Contatti dalla lista chat (scelta rapida) */}
+            {contacts.length > 0 && (
+              <div className="cg-contacts-list">
+                {contacts.map((c) => {
+                  const selected = members.includes(c.username);
+                  return (
+                    <button
+                      key={c.username}
+                      type="button"
+                      className={`cg-contact-row${selected ? " selected" : ""}`}
+                      onClick={() => {
+                        if (selected) removeMember(c.username);
+                        else { setMembers((prev) => [...prev, c.username]); setError(null); }
+                      }}
+                    >
+                      <span className="cg-contact-avatar">{c.displayName[0]?.toUpperCase() ?? "?"}</span>
+                      <span className="cg-contact-name">{c.displayName}</span>
+                      <span className="cg-contact-username">@{c.username}</span>
+                      <span className="cg-contact-check">{selected ? "✓" : ""}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+
+            {/* Fallback: inserimento manuale username */}
+            <div className="cg-add-row" style={{ marginTop: contacts.length > 0 ? 8 : 0 }}>
               <input
                 className="cg-input"
                 type="text"
-                placeholder="Username (es. alice)"
+                placeholder={contacts.length > 0 ? "O digita username…" : "Username (es. alice)"}
                 value={usernameInput}
                 onChange={(e) => setUsernameInput(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addMember(); } }}
               />
               <button type="button" className="cg-add-btn" onClick={addMember}>
-                Aggiungi
+                +
               </button>
             </div>
           </div>
