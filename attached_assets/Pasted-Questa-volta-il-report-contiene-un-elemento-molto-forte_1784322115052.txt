@@ -1,0 +1,92 @@
+Questa volta il report contiene un elemento molto forte: hai individuato una query specifica con un comportamento potenzialmente errato. Però c’è un punto importante su cui non darei ancora il verdetto.
+
+Quello che mi convince
+
+Se davvero il codice è questo:
+
+$set: {
+  "one_time_pre_keys.$[elem].consumed": true,
+  "one_time_pre_keys.$[elem].consumed_at": new Date(),
+},
+arrayFilters: [{ "elem.consumed": false }]
+
+allora sì, quella query è progettata per aggiornare tutti gli elementi dell’array che soddisfano il filtro elem.consumed == false, non uno solo.
+
+Il fatto che:
+
+* 99 OTPK risultino consumed: true;
+* abbiano lo stesso identico consumed_at;
+
+è un indizio molto forte che siano state aggiornate in un’unica operazione.
+
+Il punto che NON darei ancora per dimostrato
+
+Questa frase:
+
+“Signal richiede obbligatoriamente una OTPK per una nuova sessione, quindi signalEncryptMulti() fallisce.”
+
+Potrebbe essere vera oppure no, a seconda della libreria Signal che state usando.
+
+Non basta vedere device_ciphertexts: [] per concludere che la causa sia l’assenza dell’OTPK.
+
+Prima di correggere il repository
+
+Io chiederei all’agente una prova definitiva.
+
+Gli direi:
+
+Esegui una prova controllata.
+
+1. Crea un bundle con una sola OTPK disponibile.
+2. Esegui una sola chiamata a GET /api/v1/keys/bundle/:userId.
+3. Stampa il documento MongoDB prima e dopo la chiamata.
+4. Dimostra:
+    * quante OTPK vengono marcate consumed;
+    * quale bundle viene restituito;
+    * se signalEncryptMulti() riceve davvero poppedOtpk: null dopo la prima chiamata.
+
+Se il risultato è:
+
+prima:
+OTPK disponibili = 1
+dopo:
+OTPK disponibili = 0
+
+→ comportamento corretto.
+
+Se invece è:
+
+prima:
+OTPK disponibili = 99
+dopo:
+OTPK disponibili = 0
+
+→ allora avete la prova definitiva del bug nella query.
+
+⸻
+
+Se il bug è confermato
+
+La correzione non dovrebbe limitarsi a sostituire $[elem] con $.
+
+Prima verificherei anche se l’operatore posizionale semplice ($) è compatibile con il modo in cui state selezionando l’elemento ($elemMatch) e con la struttura dell’array. In alcuni casi può essere più robusto:
+
+1. leggere il bundle;
+2. individuare la prima OTPK disponibile;
+3. aggiornarla tramite il suo identificatore o indice in una seconda operazione atomica (o con una pipeline di update, se necessario).
+
+In questo modo eviti ambiguità sul comportamento degli operatori dell’array.
+
+⸻
+
+La mia valutazione
+
+Rispetto ai report precedenti, questo è il più convincente che hai condiviso.
+
+Per la prima volta vedo:
+
+* ✅ una query precisa;
+* ✅ un effetto osservabile nel database;
+* ✅ un collegamento logico con il sintomo.
+
+Manca solo l’ultima prova sperimentale (99 → 0 dopo una singola chiamata controllata). Se quel test conferma il comportamento della query, allora avrete identificato una root cause reale e verificabile, non una semplice ipotesi.
