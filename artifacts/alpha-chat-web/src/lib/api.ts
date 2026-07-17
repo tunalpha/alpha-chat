@@ -1204,8 +1204,7 @@ export async function apiUploadKeyBundle(bundle: ApiKeyBundleUpload): Promise<vo
 
 /** Recupera il bundle Signal di un utente per iniziare una sessione X3DH */
 export async function apiGetKeyBundle(userId: string): Promise<ApiReceivedKeyBundle> {
-  const res = await request<{ data: ApiReceivedKeyBundle }>("GET", `/keys/bundle/${userId}`);
-  return res.data;
+  return request<ApiReceivedKeyBundle>("GET", `/keys/bundle/${userId}`);
 }
 
 /** Controlla il livello OTPK locali rimaste sul server */
