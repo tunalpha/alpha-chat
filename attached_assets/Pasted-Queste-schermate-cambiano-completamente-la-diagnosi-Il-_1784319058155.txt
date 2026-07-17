@@ -1,0 +1,127 @@
+Queste schermate cambiano completamente la diagnosi.
+
+Il fatto che dopo tutti i fix il destinatario continui a vedere “🔒 Messaggio cifrato” significa che la Root Cause precedente non era quella principale.
+
+Osservando le immagini:
+
+* Il mittente invia normalmente (Test, Twst, ?).
+* Tutti i messaggi arrivano.
+* Il destinatario riceve sempre il placeholder “🔒 Messaggio cifrato”.
+* Succede per ogni nuovo messaggio, non sporadicamente.
+
+Questo fa pensare che il decrypt non venga proprio eseguito con il ciphertext corretto, oppure che il destinatario stia cercando il ciphertext sbagliato.
+
+Io fermerei i tentativi di “fix”
+
+Non chiederei più all’agente di correggere il codice finché non produce prove.
+
+Gli farei fare un audit forense.
+
+⸻
+
+Prompt
+
+STOP.
+
+Non modificare altro codice.
+
+Non aggiungere workaround.
+
+Non aggiungere fallback.
+
+Non aggiungere altri catch.
+
+Obiettivo
+
+Dimostrare, con log, dove si rompe la pipeline dei messaggi di gruppo.
+
+Per UN SOLO messaggio (“Test”), produrre un log completo.
+
+1. Encrypt
+
+Loggare:
+
+* message_id
+* group_id
+* sender
+* recipient
+* Signal message type (1 o 3)
+* session_exists
+* identity key hash
+* device_ciphertexts.length
+
+⸻
+
+2. MongoDB
+
+Stampare il documento salvato.
+
+Verificare che:
+
+* esista un ciphertext per ogni membro;
+* ogni device_id corrisponda all’utente previsto;
+* nessun ciphertext sia vuoto.
+
+⸻
+
+3. WebSocket
+
+Stampare il payload inviato.
+
+Verificare che sia identico al DB.
+
+⸻
+
+4. Client destinatario
+
+Appena arriva il messaggio, loggare:
+
+* message_id
+* group_id
+* userId
+* deviceUUID
+* device_ciphertexts completi
+* quale elemento viene selezionato
+* perché viene selezionato
+
+⸻
+
+5. Decrypt
+
+Prima di chiamare Signal:
+
+Stampare:
+
+* ciphertext scelto
+* Signal message type
+* session trovata?
+* identity key hash
+
+Dopo:
+
+* plaintext
+* oppure stack completa dell’eccezione.
+
+⸻
+
+6. Vietato
+
+Non modificare il codice.
+
+Non correggere nulla.
+
+Non fare rebuild.
+
+Non fare publish.
+
+Deliverable
+
+Consegnare i log completi di un solo messaggio dal momento dell’invio fino al tentativo di decrypt.
+
+⸻
+
+Perché lo farei
+
+Finora l’agente ha formulato diverse ipotesi (race condition, forceNewSession, Identity Key…), ma il sintomo è rimasto invariato. Questo suggerisce che il problema potrebbe trovarsi più a monte (ad esempio nella selezione del device_ciphertext, nella struttura dei dati o nella gestione delle sessioni), e senza una traccia completa si rischia di continuare a correggere la parte sbagliata del codice.
+
+Con un log completo di un solo messaggio sarà molto più facile individuare il punto esatto in cui la pipeline si interrompe.
