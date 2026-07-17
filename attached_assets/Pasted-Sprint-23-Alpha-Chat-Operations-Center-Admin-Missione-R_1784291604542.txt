@@ -1,0 +1,329 @@
+Sprint 23 — Alpha Chat Operations Center (Admin)
+
+Missione
+
+Realizzare un pannello amministrativo completo per monitorare in tempo reale lo stato della piattaforma.
+
+L’admin non deve poter leggere alcun contenuto delle conversazioni.
+
+L’obiettivo è gestire salute del sistema, sicurezza e crescita.
+
+⸻
+
+Dashboard Home
+
+Hero con card live aggiornate automaticamente.
+
+Visualizzare:
+
+🟢 Utenti registrati
+
+🟢 Utenti attivi (24h)
+
+🟢 Utenti online
+
+🟢 Nuove registrazioni oggi
+
+🟢 Conversazioni private
+
+🟢 Gruppi
+
+🟢 Messaggi inviati oggi (solo conteggio)
+
+🟢 Media caricati
+
+🟢 Sessioni Signal attive
+
+🟢 Dispositivi collegati
+
+🟢 Phoenix configurati
+
+🟢 Emergency Lock eseguiti
+
+🟢 Dead Man Switch attivi
+
+🟢 Recovery Card generate
+
+⸻
+
+Crescita
+
+Grafici:
+
+* registrazioni giorno/settimana/mese
+* utenti attivi
+* retention
+* utenti ritornati
+* gruppi creati
+* inviti utilizzati
+
+⸻
+
+Utilizzo funzioni sicurezza
+
+Dashboard dedicata.
+
+Percentuali di utilizzo:
+
+Ghost Mode
+
+Face ID
+
+PIN
+
+Safety Number
+
+Burn After Read
+
+Secure Destroy
+
+Phoenix
+
+Dead Man Switch
+
+Recovery Card
+
+Recovery Email
+
+Trust Center
+
+⸻
+
+System Health
+
+Monitoraggio in tempo reale:
+
+CPU
+
+RAM
+
+MongoDB
+
+WebSocket
+
+API
+
+Scheduler
+
+Storage
+
+Tempo medio risposta API
+
+Uptime
+
+Ultimo deploy
+
+Commit in esecuzione
+
+⸻
+
+Storage
+
+Dimensioni database.
+
+Suddividere:
+
+Utenti
+
+Messaggi
+
+Media
+
+Documenti
+
+Audio
+
+Video
+
+Recovery
+
+Audit
+
+Timeline
+
+Percentuale spazio utilizzato.
+
+⸻
+
+Security Operations Center
+
+Timeline live.
+
+Eventi:
+
+Nuovo login
+
+Nuovo dispositivo
+
+Recovery account
+
+Phoenix
+
+Emergency Lock
+
+Cambio Identity Key
+
+PIN falliti
+
+Tentativi recovery falliti
+
+Brute force bloccati
+
+Rate limit
+
+Mai mostrare dati delle conversazioni.
+
+⸻
+
+Gestione utenti
+
+Ricerca.
+
+Visualizzare:
+
+Username
+
+Data registrazione
+
+Ultimo accesso
+
+Dispositivi
+
+Recovery configurata
+
+Phoenix configurato
+
+Dead Man Switch
+
+Gruppi
+
+Stato:
+
+Attivo
+
+Sospeso
+
+Bloccato
+
+Eliminato
+
+Azioni:
+
+Blocca
+
+Riattiva
+
+Reset password temporanea
+
+Revoca dispositivi
+
+Delete account
+
+Mai visualizzare password o Recovery Secret.
+
+⸻
+
+Device Center
+
+Visualizzare:
+
+Browser
+
+Sistema operativo
+
+Versione
+
+Ultimo accesso
+
+Online
+
+Offline
+
+Revoca singolo dispositivo
+
+⸻
+
+Moderazione
+
+Utenti sospesi
+
+Ban
+
+Inviti
+
+Segnalazioni
+
+Blocchi
+
+Statistiche
+
+⸻
+
+Audit PDF
+
+Esportazione giornaliera.
+
+Comprende:
+
+Statistiche
+
+Performance
+
+Incidenti
+
+Uptime
+
+Utilizzo sicurezza
+
+⸻
+
+Notifiche Admin
+
+Banner live.
+
+Esempi:
+
+🔴 Database offline
+
+🟠 CPU > 90%
+
+🟠 MongoDB quasi pieno
+
+🟢 Deploy completato
+
+🔴 Phoenix Protocol eseguito
+
+🔴 Recovery multipli sospetti
+
+⸻
+
+Permessi
+
+Creare ruoli:
+
+Super Admin
+
+Security Admin
+
+Support
+
+Read Only
+
+Ogni ruolo deve vedere solo le funzioni autorizzate.
+
+⸻
+
+Requisiti
+
+* Nessuna modifica al protocollo Signal.
+* Nessuna possibilità di leggere i messaggi degli utenti.
+* Dashboard in tempo reale.
+* Mobile responsive.
+* TypeScript pulito.
+* Build pulita.
+* Test automatici.
+* Audit finale.
+
+⸻
+
+Questo sprint chiuderebbe l’infrastruttura amministrativa di Alpha Chat, mantenendo il principio fondamentale: l’amministratore può gestire la piattaforma, ma non può leggere le conversazioni cifrate degli utenti. È un messaggio forte anche dal punto di vista della fiducia nel prodotto.
