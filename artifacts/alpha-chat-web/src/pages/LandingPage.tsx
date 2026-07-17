@@ -6,7 +6,7 @@
  * Nessuna landing. Nessun marketing. Solo l'app.
  */
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { unlockNotifAudio, playNotifSound } from "../lib/notifSound";
@@ -18,42 +18,46 @@ import { useTranslation } from "react-i18next";
 type Speaker = "user" | "alpha" | "status";
 interface Line { speaker: Speaker; text: string }
 
-const SCRIPT: Line[] = [
-  { speaker: "user",   text: "Perché dovrei usare Alpha Chat?" },
-  { speaker: "alpha",  text: "Perché la tua privacy viene prima di tutto." },
-  { speaker: "user",   text: "Cosa vi rende diversi?" },
-  { speaker: "alpha",  text: "Solo chi autorizzi può contattarti." },
-  { speaker: "user",   text: "Come mi trovano?" },
-  { speaker: "alpha",  text: "Con un codice invito usa e getta.\nNessuna ricerca pubblica." },
-  { speaker: "user",   text: "Serve il mio numero di telefono?" },
-  { speaker: "alpha",  text: "No." },
-  { speaker: "user",   text: "Posso essere intercettato?" },
-  { speaker: "alpha",  text: "La tua conversazione è progettata\nper rimanere privata." },
-  { speaker: "user",   text: "E se un messaggio non deve più esistere?" },
-  { speaker: "alpha",  text: "Puoi ordinarne la distruzione definitiva." },
-  { speaker: "user",   text: "Cosa significa?" },
-  { speaker: "alpha",  text: "Quando viene distrutto,\nnon lascia tracce nella conversazione." },
-  { speaker: "user",   text: "Perché lo chiamate bunker digitale?" },
-  { speaker: "alpha",  text: "Perché la sicurezza non è una funzione.\nÈ l'architettura." },
-  { speaker: "user",   text: "E se mi rubano il telefono?" },
-  { speaker: "alpha",  text: "Non devi avere il telefono con te.\n\nPuoi accedere al Portale Emergenze Alpha Chat da qualsiasi browser." },
-  { speaker: "user",   text: "E se sono sotto costrizione?" },
-  { speaker: "alpha",  text: "Puoi attivare il Phoenix Protocol.\n\nBlocca immediatamente tutti i dispositivi collegati oppure, se lo confermi, avvia la distruzione completa del tuo account." },
-  { speaker: "user",   text: "Cosa viene eliminato?" },
-  { speaker: "alpha",  text: "Messaggi.\n\nMedia.\n\nChiavi di cifratura.\n\nDispositivi autorizzati.\n\nSessioni.\n\nCronologia.\n\nL'account viene rimosso in modo permanente." },
-  { speaker: "user",   text: "E se qualcuno trova il mio telefono?" },
-  { speaker: "alpha",  text: "Senza Face ID, Touch ID o il tuo PIN non può aprire Alpha Chat.\n\nSe ritieni il dispositivo compromesso puoi revocarlo da remoto in qualsiasi momento." },
-  { speaker: "user",   text: "Quando serve davvero?" },
-  { speaker: "alpha",  text: "Quando perdi il telefono.\n\nQuando te lo rubano.\n\nSe sospetti un accesso non autorizzato.\n\nSe attraversi una frontiera e vuoi eliminare i tuoi dati prima di consegnare il dispositivo.\n\nOgni situazione in cui preferisci che le tue informazioni non rimangano disponibili." },
-  { speaker: "user",   text: "Perché nessun'altra chat lo offre così?" },
-  { speaker: "alpha",  text: "Perché Alpha Chat nasce con un obiettivo diverso.\n\nNon proteggere solo i messaggi.\n\nProteggere anche te quando le cose vanno male." },
-  { speaker: "user",   text: "Qual è il vostro motto?" },
-  { speaker: "alpha",  text: "Alpha Chat\n\nIl tuo bunker digitale.\n\nLa privacy è la tua prima linea di difesa." },
-  { speaker: "status", text: "🟢  Crittografia end-to-end" },
-  { speaker: "status", text: "🟢  Controllo totale dei tuoi dati" },
-  { speaker: "status", text: "🟢  Phoenix Protocol per le emergenze" },
-  { speaker: "status", text: "🟢  Progettata per proteggerti anche nei momenti più critici" },
-];
+type TFn = (key: string) => string;
+
+function buildScript(t: TFn): Line[] {
+  return [
+    { speaker: "user",   text: t("landing.script.q1") },
+    { speaker: "alpha",  text: t("landing.script.a1") },
+    { speaker: "user",   text: t("landing.script.q2") },
+    { speaker: "alpha",  text: t("landing.script.a2") },
+    { speaker: "user",   text: t("landing.script.q3") },
+    { speaker: "alpha",  text: t("landing.script.a3") },
+    { speaker: "user",   text: t("landing.script.q4") },
+    { speaker: "alpha",  text: t("landing.script.a4") },
+    { speaker: "user",   text: t("landing.script.q5") },
+    { speaker: "alpha",  text: t("landing.script.a5") },
+    { speaker: "user",   text: t("landing.script.q6") },
+    { speaker: "alpha",  text: t("landing.script.a6") },
+    { speaker: "user",   text: t("landing.script.q7") },
+    { speaker: "alpha",  text: t("landing.script.a7") },
+    { speaker: "user",   text: t("landing.script.q8") },
+    { speaker: "alpha",  text: t("landing.script.a8") },
+    { speaker: "user",   text: t("landing.script.q9") },
+    { speaker: "alpha",  text: t("landing.script.a9") },
+    { speaker: "user",   text: t("landing.script.q10") },
+    { speaker: "alpha",  text: t("landing.script.a10") },
+    { speaker: "user",   text: t("landing.script.q11") },
+    { speaker: "alpha",  text: t("landing.script.a11") },
+    { speaker: "user",   text: t("landing.script.q12") },
+    { speaker: "alpha",  text: t("landing.script.a12") },
+    { speaker: "user",   text: t("landing.script.q13") },
+    { speaker: "alpha",  text: t("landing.script.a13") },
+    { speaker: "user",   text: t("landing.script.q14") },
+    { speaker: "alpha",  text: t("landing.script.a14") },
+    { speaker: "user",   text: t("landing.script.q15") },
+    { speaker: "alpha",  text: t("landing.script.a15") },
+    { speaker: "status", text: t("landing.script.status1") },
+    { speaker: "status", text: t("landing.script.status2") },
+    { speaker: "status", text: t("landing.script.status3") },
+    { speaker: "status", text: t("landing.script.status4") },
+  ];
+}
 
 // Durata typing indicator per messaggi Alpha (ms)
 const TYPING_MS = 550;
@@ -85,6 +89,9 @@ const EyeOff = () => (
 export default function LandingPage() {
   const { login, register } = useAuth();
   const { t } = useTranslation();
+
+  // Script costruito in base alla lingua corrente
+  const script = useMemo(() => buildScript(t), [t]);
 
   // Demo state
   const [started, setStarted]   = useState(false);  // diventa true al primo gesto
@@ -137,9 +144,9 @@ export default function LandingPage() {
     async function runScript() {
       // Piccolo delay iniziale prima del primo messaggio
       await delay(400);
-      for (let i = 0; i < SCRIPT.length; i++) {
+      for (let i = 0; i < script.length; i++) {
         if (cancelled) return;
-        const line = SCRIPT[i];
+        const line = script[i];
 
         if (line.speaker === "alpha") {
           setTyping(true);
@@ -172,7 +179,7 @@ export default function LandingPage() {
       cancelled = true;
       clearTimeout(timer);
     };
-  }, [started]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [started, script]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function openAuth(t: "login" | "register") {
     setTab(t); setError(""); setShowAuth(true);
@@ -181,7 +188,7 @@ export default function LandingPage() {
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault(); setError(""); setLoading(true);
     try { await login({ identifier: loginId, password: loginPwd }); }
-    catch (err) { setError((err as Error).message ?? "Errore di accesso"); }
+    catch (err) { setError((err as Error).message ?? t("auth.errors.generic")); }
     finally { setLoading(false); }
   }
 
@@ -198,7 +205,7 @@ export default function LandingPage() {
         setRecoveryCard({ username: regUser, emergency_id: rc.emergency_id, recovery_secret: rc.recovery_secret, version: rc.version, generated_at: rc.generated_at, checksum: rc.checksum });
       }
     }
-    catch (err) { setError((err as Error).message ?? "Errore di registrazione"); }
+    catch (err) { setError((err as Error).message ?? t("auth.errors.generic")); }
     finally { setLoading(false); }
   }
 
@@ -232,7 +239,7 @@ export default function LandingPage() {
         </div>
 
         <div className="chat-header-actions">
-          <button className="header-icon-btn" onClick={() => openAuth("login")} aria-label="Accedi">
+          <button className="header-icon-btn" onClick={() => openAuth("login")} aria-label={t("auth.login")}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
               strokeLinecap="round" strokeLinejoin="round" width="20" height="20">
               <path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/>
@@ -297,17 +304,17 @@ export default function LandingPage() {
               <line x1="9" y1="9" x2="9.01" y2="9"/><line x1="15" y1="9" x2="15.01" y2="9"/>
             </svg>
           </button>
-          <button type="button" className="input-icon-btn" disabled aria-label="Allega">
+          <button type="button" className="input-icon-btn" disabled aria-label={t("chat.sendFile")}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="22" height="22">
               <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
             </svg>
           </button>
           <textarea
             className="chat-textarea"
-            placeholder={t("auth.login") + " " + t("chat.startChat").toLowerCase()}
+            placeholder={t("landing.signIn") + " · " + t("chat.startChat").toLowerCase()}
             disabled rows={1}
           />
-          <button type="button" className="send-btn mic-btn" disabled aria-label="Microfono">
+          <button type="button" className="send-btn mic-btn" disabled aria-label={t("chat.voiceMessage")}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
               strokeLinecap="round" strokeLinejoin="round" width="20" height="20">
               <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
@@ -320,10 +327,10 @@ export default function LandingPage() {
         {/* CTA — compaiono dopo la fine della conversazione */}
         <div className={`demo-cta-footer ${done ? "demo-cta-visible" : "demo-cta-hidden"}`}>
           <button className="demo-cta-primary" onClick={() => openAuth("register")}>
-            Crea account
+            {t("landing.createAccount")}
           </button>
           <button className="demo-cta-secondary" onClick={() => openAuth("login")}>
-            Accedi
+            {t("landing.signIn")}
           </button>
         </div>
       </div>
@@ -334,7 +341,7 @@ export default function LandingPage() {
           <div className="auth-modal-sheet" onClick={(e) => e.stopPropagation()}>
             <div className="auth-modal-handle" />
 
-            <button className="auth-modal-close" onClick={() => setShowAuth(false)} aria-label="Chiudi">
+            <button className="auth-modal-close" onClick={() => setShowAuth(false)} aria-label={t("common.close")}>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="18" height="18">
                 <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
               </svg>
@@ -348,21 +355,21 @@ export default function LandingPage() {
 
             <div className="auth-tabs">
               <button className={`auth-tab ${tab === "login" ? "active" : ""}`}
-                onClick={() => { setTab("login"); setError(""); }}>Accedi</button>
+                onClick={() => { setTab("login"); setError(""); }}>{t("auth.login")}</button>
               <button className={`auth-tab ${tab === "register" ? "active" : ""}`}
-                onClick={() => { setTab("register"); setError(""); }}>Registrati</button>
+                onClick={() => { setTab("register"); setError(""); }}>{t("auth.register")}</button>
             </div>
 
             {error && <div className="auth-error">{error}</div>}
 
             {tab === "login" && (
               <form onSubmit={handleLogin} className="auth-form">
-                <label className="auth-label">Username o Email</label>
+                <label className="auth-label">{t("auth.usernameOrEmail")}</label>
                 <input className="auth-input" type="text" value={loginId}
                   onChange={(e) => setLoginId(e.target.value)}
                   placeholder="marco" required autoFocus
                   autoComplete="username" autoCorrect="off" autoCapitalize="none" spellCheck={false} />
-                <label className="auth-label">Password</label>
+                <label className="auth-label">{t("auth.password")}</label>
                 <div className="pwd-wrapper">
                   <input className="auth-input pwd-input"
                     type={showLPwd ? "text" : "password"} value={loginPwd}
@@ -370,63 +377,63 @@ export default function LandingPage() {
                     placeholder="••••••••" required autoComplete="current-password" />
                   <button type="button" className="pwd-toggle"
                     onClick={() => setShowLPwd((v) => !v)}
-                    aria-label={showLPwd ? "Nascondi" : "Mostra"}>
+                    aria-label={showLPwd ? t("auth.hidePassword") : t("auth.showPassword")}>
                     {showLPwd ? <EyeOff /> : <EyeOn />}
                   </button>
                 </div>
                 <button className="auth-btn" type="submit" disabled={loading}>
-                  {loading ? "Accesso…" : "Accedi"}
+                  {loading ? t("auth.loggingInShort") : t("auth.loginBtn")}
                 </button>
               </form>
             )}
 
             {tab === "register" && (
               <form onSubmit={handleRegister} className="auth-form">
-                <label className="auth-label">Username</label>
+                <label className="auth-label">{t("auth.username")}</label>
                 <input className="auth-input" type="text" value={regUser}
                   onChange={(e) => setRegUser(e.target.value.toLowerCase())}
                   placeholder="mario_rossi" pattern="[a-z0-9_.]+"
                   minLength={3} maxLength={32} required autoFocus
                   autoComplete="username" autoCorrect="off" autoCapitalize="none" spellCheck={false} />
-                <label className="auth-label">Nome visualizzato</label>
+                <label className="auth-label">{t("auth.displayName")}</label>
                 <input className="auth-input" type="text" value={regName}
                   onChange={(e) => setRegName(e.target.value)}
                   placeholder="Mario Rossi" minLength={1} maxLength={50} required />
-                <label className="auth-label">Password</label>
+                <label className="auth-label">{t("auth.password")}</label>
                 <div className="pwd-wrapper">
                   <input className="auth-input pwd-input"
                     type={showRPwd ? "text" : "password"} value={regPwd}
                     onChange={(e) => setRegPwd(e.target.value)}
-                    placeholder="Min. 8 caratteri" minLength={8} required
+                    placeholder={t("auth.minCharsPlaceholder")} minLength={8} required
                     autoComplete="new-password" />
                   <button type="button" className="pwd-toggle"
                     onClick={() => setShowRPwd((v) => !v)}
-                    aria-label={showRPwd ? "Nascondi" : "Mostra"}>
+                    aria-label={showRPwd ? t("auth.hidePassword") : t("auth.showPassword")}>
                     {showRPwd ? <EyeOff /> : <EyeOn />}
                   </button>
                 </div>
-                <label className="auth-label">Email <span style={{ fontWeight: 400, textTransform: "none", letterSpacing: 0, color: "var(--text-3)", fontSize: "11px" }}>(facoltativa — per recupero account)</span></label>
+                <label className="auth-label">{t("auth.email")} <span style={{ fontWeight: 400, textTransform: "none", letterSpacing: 0, color: "var(--text-3)", fontSize: "11px" }}>({t("auth.emailOptional")})</span></label>
                 <input className="auth-input" type="email" value={regEmail}
                   onChange={(e) => setRegEmail(e.target.value)}
-                  placeholder="email@esempio.com"
+                  placeholder={t("auth.emailPlaceholder")}
                   autoComplete="email" autoCapitalize="none" />
                 <button className="auth-btn" type="submit" disabled={loading}>
-                  {loading ? "Registrazione…" : "Crea account"}
+                  {loading ? t("auth.registering") : t("auth.registerTitle")}
                 </button>
               </form>
             )}
 
             <p className="auth-hint">
-              {tab === "login" ? "Non hai un account? " : "Hai già un account? "}
+              {tab === "login" ? t("auth.noAccount") + " " : t("auth.hasAccount") + " "}
               <button className="auth-link"
                 onClick={() => { setTab(tab === "login" ? "register" : "login"); setError(""); }}>
-                {tab === "login" ? "Registrati" : "Accedi"}
+                {tab === "login" ? t("auth.register") : t("auth.login")}
               </button>
             </p>
             {tab === "login" && (
               <p className="auth-hint" style={{ marginTop: 4 }}>
                 <button className="auth-link" onClick={() => { setShowAuth(false); setShowRecovery(true); }}>
-                  🔑 Recupera account
+                  🔑 {t("auth.forgotPassword")}
                 </button>
               </p>
             )}

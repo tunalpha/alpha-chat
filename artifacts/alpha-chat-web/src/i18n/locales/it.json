@@ -59,7 +59,14 @@
     "displayNamePlaceholder": "come vuoi essere chiamato",
     "emailPlaceholder": "email@esempio.com",
     "loggingIn": "Accesso in corso…",
+    "loggingInShort": "Accesso…",
     "registering": "Registrazione…",
+    "usernameOrEmail": "Username o Email",
+    "noAccount": "Non hai un account?",
+    "hasAccount": "Hai già un account?",
+    "hidePassword": "Nascondi",
+    "showPassword": "Mostra",
+    "minCharsPlaceholder": "Min. 8 caratteri",
     "errors": {
       "invalidCredentials": "Credenziali non valide",
       "usernameTaken": "Username già in uso",
@@ -70,7 +77,45 @@
   },
   "landing": {
     "tapToStart": "Tocca per iniziare",
-    "tagline": "Il tuo bunker digitale"
+    "tagline": "Il tuo bunker digitale",
+    "createAccount": "Crea account",
+    "signIn": "Accedi",
+    "script": {
+      "q1": "Perché dovrei usare Alpha Chat?",
+      "a1": "Perché la tua privacy viene prima di tutto.",
+      "q2": "Cosa vi rende diversi?",
+      "a2": "Solo chi autorizzi può contattarti.",
+      "q3": "Come mi trovano?",
+      "a3": "Con un codice invito usa e getta.\nNessuna ricerca pubblica.",
+      "q4": "Serve il mio numero di telefono?",
+      "a4": "No.",
+      "q5": "Posso essere intercettato?",
+      "a5": "La tua conversazione è progettata\nper rimanere privata.",
+      "q6": "E se un messaggio non deve più esistere?",
+      "a6": "Puoi ordinarne la distruzione definitiva.",
+      "q7": "Cosa significa?",
+      "a7": "Quando viene distrutto,\nnon lascia tracce nella conversazione.",
+      "q8": "Perché lo chiamate bunker digitale?",
+      "a8": "Perché la sicurezza non è una funzione.\nÈ l'architettura.",
+      "q9": "E se mi rubano il telefono?",
+      "a9": "Non devi avere il telefono con te.\n\nPuoi accedere al Portale Emergenze Alpha Chat da qualsiasi browser.",
+      "q10": "E se sono sotto costrizione?",
+      "a10": "Puoi attivare il Phoenix Protocol.\n\nBlocca immediatamente tutti i dispositivi collegati oppure, se lo confermi, avvia la distruzione completa del tuo account.",
+      "q11": "Cosa viene eliminato?",
+      "a11": "Messaggi.\n\nMedia.\n\nChiavi di cifratura.\n\nDispositivi autorizzati.\n\nSessioni.\n\nCronologia.\n\nL'account viene rimosso in modo permanente.",
+      "q12": "E se qualcuno trova il mio telefono?",
+      "a12": "Senza Face ID, Touch ID o il tuo PIN non può aprire Alpha Chat.\n\nSe ritieni il dispositivo compromesso puoi revocarlo da remoto in qualsiasi momento.",
+      "q13": "Quando serve davvero?",
+      "a13": "Quando perdi il telefono.\n\nQuando te lo rubano.\n\nSe sospetti un accesso non autorizzato.\n\nSe attraversi una frontiera e vuoi eliminare i tuoi dati prima di consegnare il dispositivo.\n\nOgni situazione in cui preferisci che le tue informazioni non rimangano disponibili.",
+      "q14": "Perché nessun'altra chat lo offre così?",
+      "a14": "Perché Alpha Chat nasce con un obiettivo diverso.\n\nNon proteggere solo i messaggi.\n\nProteggere anche te quando le cose vanno male.",
+      "q15": "Qual è il vostro motto?",
+      "a15": "Alpha Chat\n\nIl tuo bunker digitale.\n\nLa privacy è la tua prima linea di difesa.",
+      "status1": "🟢  Crittografia end-to-end",
+      "status2": "🟢  Controllo totale dei tuoi dati",
+      "status3": "🟢  Phoenix Protocol per le emergenze",
+      "status4": "🟢  Progettata per proteggerti anche nei momenti più critici"
+    }
   },
   "chat": {
     "newMessage": "Scrivi un messaggio…",
@@ -414,5 +459,142 @@
     "confirmPassword": "Conferma password",
     "submit": "Cambia password",
     "mismatch": "Le password non coincidono"
+  },
+  "securityCenter": {
+    "pageTitle": "Perché Alpha Chat è diversa",
+    "heroTitle": "IL TUO BUNKER DIGITALE",
+    "heroSubtitle": "La privacy è la tua prima linea di difesa.",
+    "heroDesc": "Alpha Chat non è una chat con la crittografia aggiunta. È un'architettura di sicurezza con un'app di messaggistica sopra. Ogni funzione nasce per proteggere te, non per raccogliere i tuoi dati.",
+    "understood": "Ho capito",
+    "whyTitle": "Perché Alpha Chat",
+    "whyText1": "Alpha Chat non nasce per essere \"un'altra chat\".",
+    "whyText2": "Nasce per proteggere la libertà digitale.",
+    "whyText3": "La sicurezza non è una funzione.",
+    "whyText3b": "È l'architettura dell'app.",
+    "finalTitle": "Il tuo bunker digitale",
+    "finalText": "La privacy non dovrebbe essere un privilegio.",
+    "finalText2": "Dovrebbe essere la normalità.",
+    "finalMotto": "IL TUO BUNKER DIGITALE",
+    "finalSubmotto": "La privacy è la tua prima linea di difesa.",
+    "serverKnows": "Il server conosce",
+    "serverKnowsNot": "Il server NON conosce",
+    "serverKnowsItems": "Mittente (ID)|Destinatario (ID)|Timestamp|Dimensione blob",
+    "serverKnowsNotItems": "Testo dei messaggi|Foto e video|Audio e documenti|Chiavi crittografiche",
+    "phoenixTagline": "La difesa estrema. Irreversibile per definizione.",
+    "phoenixIntro": "Il Phoenix Protocol ordina la distruzione definitiva del tuo account quando non hai alternative. Richiede una triplice verifica:",
+    "phoenixStep1": "Recovery ID — dalla tua Recovery Card fisica",
+    "phoenixStep2": "Phoenix Code — la tua passphrase di emergenza",
+    "phoenixStep3": "Token via email — link monouso con TTL 15 minuti",
+    "phoenixScenariosLabel": "Scenari reali in cui è stato pensato",
+    "phoenixScenario1": "Telefono rubato",
+    "phoenixScenario2": "Dispositivo sequestrato",
+    "phoenixScenario3": "Costrizione fisica",
+    "phoenixScenario4": "Frontiera",
+    "phoenixScenario5": "Giornalista",
+    "phoenixScenario6": "Avvocato",
+    "phoenixScenario7": "Medico",
+    "phoenixScenario8": "Attivista",
+    "phoenixDestroyLabel": "Cosa viene eliminato",
+    "phoenixDestroyItems": "Messaggi|Media e allegati|Sessioni e token|Chiavi Signal|Dispositivi autorizzati|Cache|Cronologia",
+    "phoenixWarning": "⚠️ L'operazione è irreversibile. Una volta confermata, l'account non può essere recuperato.",
+    "sections": {
+      "e2e": {
+        "title": "Crittografia End-to-End",
+        "p1before": "Ogni messaggio viene cifrato sul tuo dispositivo ",
+        "p1bold": "prima",
+        "p1after": " di essere inviato. Il server non riceve mai il testo in chiaro — riceve solo dati cifrati che non può leggere.",
+        "p2": "Solo tu e il destinatario possedete le chiavi per decifrare i messaggi. Nessun intermediario, nessuna intercettazione possibile."
+      },
+      "x3dh": {
+        "title": "X3DH — Prima stretta di mano",
+        "p1after": " è il protocollo usato da Alpha Chat per stabilire una sessione sicura tra due utenti che non si sono mai parlati prima.",
+        "p2": "Le chiavi crittografiche vengono scambiate in modo che nessuna chiave viaggi mai in chiaro sulla rete. Anche se un attaccante intercettasse tutti i pacchetti, non potrebbe ricavare nulla di utile.",
+        "p3": "Il risultato è un segreto condiviso, noto solo ai due partecipanti, usato come base per il Double Ratchet."
+      },
+      "ratchet": {
+        "title": "Double Ratchet — Una chiave per ogni messaggio",
+        "p1after": " genera una chiave crittografica unica per ogni singolo messaggio. La chiave viene usata una volta sola e poi eliminata.",
+        "forwardSecrecyTitle": "Forward Secrecy",
+        "forwardSecrecyDesc": "Anche se una chiave futura venisse compromessa, i messaggi precedenti restano al sicuro.",
+        "postCompromiseTitle": "Post-Compromise Security",
+        "postCompromiseDesc": "Dopo una compromissione, il sistema si \"guarisce\" automaticamente ai messaggi successivi."
+      },
+      "media": {
+        "title": "Media cifrati — AES-256-GCM",
+        "p1before": "Foto, video, audio e documenti vengono cifrati con ",
+        "p1after": " direttamente sul tuo dispositivo prima dell'upload.",
+        "p2": "Il server vede solo blob cifrati opachi. Anche con accesso fisico al database, non è possibile vedere, ascoltare o leggere nessun file."
+      },
+      "zk": {
+        "title": "Zero Knowledge",
+        "p1": "Il server conosce solo il minimo indispensabile per consegnare i messaggi."
+      },
+      "ghost": {
+        "title": "Ghost Mode",
+        "p1": "Sei invisibile quanto vuoi. Puoi scegliere di nascondere ogni traccia della tua presenza.",
+        "lastSeenTitle": "Ultimo accesso nascosto",
+        "lastSeenDesc": "Nessuno vede quando hai usato l'app l'ultima volta.",
+        "onlineTitle": "Stato online nascosto",
+        "onlineDesc": "Non appari mai come \"online\" nella lista contatti.",
+        "receiptsTitle": "Conferme di lettura disattivate",
+        "receiptsDesc": "Le spunte non mostrano se hai letto il messaggio."
+      },
+      "burn": {
+        "title": "Burn After Read",
+        "p1before": "Alcuni messaggi devono sparire dopo essere stati letti. Con ",
+        "p1bold": "Burn After Read",
+        "p1after": " il messaggio si autodistrugge non appena il destinatario lo apre.",
+        "p2": "Non rimane nulla — né sul dispositivo del destinatario, né sul server. Come se non fosse mai esistito."
+      },
+      "disappearing": {
+        "title": "Messaggi a scomparsa",
+        "p1": "Ogni conversazione può avere un timer di scomparsa. Dopo il tempo impostato (da 5 secondi a 7 giorni), i messaggi vengono eliminati automaticamente da entrambi i dispositivi.",
+        "p2": "Ideale per conversazioni sensibili che non devono lasciare tracce nel tempo."
+      },
+      "destroy": {
+        "title": "Secure Destroy",
+        "p1bold": "Secure Destroy",
+        "p1after": " elimina definitivamente un messaggio da tutti i dispositivi e dal server.",
+        "p2": "A differenza dell'eliminazione normale — che può lasciare tracce — Secure Destroy rimuove il messaggio in modo permanente e irreversibile, senza lasciare alcun segno della sua esistenza nella conversazione."
+      },
+      "safety": {
+        "title": "Safety Number — Verifica identità",
+        "p1before": "Il ",
+        "p1bold": "Safety Number",
+        "p1after": " è un'impronta crittografica unica della tua sessione Signal con un contatto. Confrontandolo con il tuo contatto puoi verificare che nessuno si sia interposto nella comunicazione.",
+        "mitmTitle": "Protezione MITM",
+        "mitmDesc": "Rileva attacchi Man-in-the-Middle prima che possano compromettere la conversazione.",
+        "qrTitle": "QR Code",
+        "qrDesc": "Scansiona il QR del contatto per una verifica istantanea.",
+        "fingerprintTitle": "Fingerprint numerico",
+        "fingerprintDesc": "Confronta i 12 gruppi di 5 cifre anche di persona o via telefono."
+      },
+      "deviceSecurity": {
+        "title": "Sicurezza del dispositivo",
+        "p1": "Alpha Chat protegge i tuoi dati anche dal punto di vista fisico. Se qualcuno ha il tuo telefono in mano, non può aprire l'app senza autenticazione."
+      },
+      "emergencyLock": {
+        "title": "Emergency Lock",
+        "p1bold": "Emergency Lock",
+        "p1after": " disconnette immediatamente tutti i tuoi dispositivi e revoca tutte le sessioni attive. L'account rimane integro e recuperabile.",
+        "scenario1": "Il telefono viene rubato",
+        "scenario2": "Perdi il dispositivo",
+        "scenario3": "Sospetti un accesso non autorizzato",
+        "hint": "Accessibile da qualsiasi browser tramite il Portale Emergenze — anche senza avere il telefono con te."
+      },
+      "phoenix": {
+        "title": "Phoenix Protocol"
+      },
+      "multidevice": {
+        "title": "Multi-Device",
+        "p1": "Puoi usare Alpha Chat su più dispositivi contemporaneamente. Ogni dispositivo stabilisce una sessione Signal indipendente — non condivide le chiavi con gli altri.",
+        "p2": "Puoi revocare singolarmente qualsiasi dispositivo in qualsiasi momento dalla pagina Dispositivi, senza dover cambiare password o invalidare gli altri."
+      },
+      "block": {
+        "title": "Blocco utenti",
+        "p1": "Puoi bloccare qualsiasi utente in qualsiasi momento. Una volta bloccato, non potrà più inviarti messaggi, vedere il tuo profilo o sapere che esisti su Alpha Chat.",
+        "p2": "Il blocco è silenzioso: l'utente bloccato non riceve alcuna notifica."
+      }
+    }
   }
 }

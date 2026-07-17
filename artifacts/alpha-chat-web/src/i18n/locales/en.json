@@ -59,7 +59,14 @@
     "displayNamePlaceholder": "how you want to be called",
     "emailPlaceholder": "email@example.com",
     "loggingIn": "Signing in…",
+    "loggingInShort": "Signing in…",
     "registering": "Creating account…",
+    "usernameOrEmail": "Username or Email",
+    "noAccount": "No account?",
+    "hasAccount": "Already have an account?",
+    "hidePassword": "Hide",
+    "showPassword": "Show",
+    "minCharsPlaceholder": "Min. 8 characters",
     "errors": {
       "invalidCredentials": "Invalid credentials",
       "usernameTaken": "Username already taken",
@@ -70,7 +77,45 @@
   },
   "landing": {
     "tapToStart": "Tap to start",
-    "tagline": "Your digital bunker"
+    "tagline": "Your digital bunker",
+    "createAccount": "Create account",
+    "signIn": "Sign in",
+    "script": {
+      "q1": "Why should I use Alpha Chat?",
+      "a1": "Because your privacy comes first.",
+      "q2": "What makes you different?",
+      "a2": "Only people you authorize can contact you.",
+      "q3": "How do people find me?",
+      "a3": "With a single-use invite code.\nNo public search.",
+      "q4": "Do you need my phone number?",
+      "a4": "No.",
+      "q5": "Can I be intercepted?",
+      "a5": "Your conversation is designed\nto remain private.",
+      "q6": "What if a message must no longer exist?",
+      "a6": "You can order its permanent destruction.",
+      "q7": "What does that mean?",
+      "a7": "When it's destroyed,\nit leaves no trace in the conversation.",
+      "q8": "Why do you call it a digital bunker?",
+      "a8": "Because security isn't a feature.\nIt's the architecture.",
+      "q9": "What if my phone is stolen?",
+      "a9": "You don't need to have your phone with you.\n\nYou can access the Alpha Chat Emergency Portal from any browser.",
+      "q10": "What if I'm under coercion?",
+      "a10": "You can activate the Phoenix Protocol.\n\nIt immediately locks all connected devices or, if you confirm, initiates the complete destruction of your account.",
+      "q11": "What gets deleted?",
+      "a11": "Messages.\n\nMedia.\n\nEncryption keys.\n\nAuthorized devices.\n\nSessions.\n\nHistory.\n\nThe account is permanently removed.",
+      "q12": "What if someone finds my phone?",
+      "a12": "Without Face ID, Touch ID or your PIN they cannot open Alpha Chat.\n\nIf you think the device is compromised you can revoke it remotely at any time.",
+      "q13": "When is it really needed?",
+      "a13": "When you lose your phone.\n\nWhen it gets stolen.\n\nIf you suspect unauthorized access.\n\nIf you cross a border and want to erase your data before handing over the device.\n\nAny situation where you'd rather your information not remain available.",
+      "q14": "Why doesn't any other chat offer this?",
+      "a14": "Because Alpha Chat was built with a different goal.\n\nNot just to protect messages.\n\nTo protect you when things go wrong.",
+      "q15": "What's your motto?",
+      "a15": "Alpha Chat\n\nYour digital bunker.\n\nPrivacy is your first line of defense.",
+      "status1": "🟢  End-to-end encryption",
+      "status2": "🟢  Full control of your data",
+      "status3": "🟢  Phoenix Protocol for emergencies",
+      "status4": "🟢  Designed to protect you even in the most critical moments"
+    }
   },
   "chat": {
     "newMessage": "Write a message…",
@@ -414,5 +459,142 @@
     "confirmPassword": "Confirm password",
     "submit": "Change password",
     "mismatch": "Passwords do not match"
+  },
+  "securityCenter": {
+    "pageTitle": "Why Alpha Chat is different",
+    "heroTitle": "YOUR DIGITAL BUNKER",
+    "heroSubtitle": "Privacy is your first line of defense.",
+    "heroDesc": "Alpha Chat isn't a chat app with encryption bolted on. It's a security architecture with a messaging app on top. Every feature is built to protect you, not to collect your data.",
+    "understood": "Got it",
+    "whyTitle": "Why Alpha Chat",
+    "whyText1": "Alpha Chat wasn't built to be \"just another chat\".",
+    "whyText2": "It was built to protect digital freedom.",
+    "whyText3": "Security isn't a feature.",
+    "whyText3b": "It's the architecture of the app.",
+    "finalTitle": "Your digital bunker",
+    "finalText": "Privacy shouldn't be a privilege.",
+    "finalText2": "It should be the norm.",
+    "finalMotto": "YOUR DIGITAL BUNKER",
+    "finalSubmotto": "Privacy is your first line of defense.",
+    "serverKnows": "The server knows",
+    "serverKnowsNot": "The server does NOT know",
+    "serverKnowsItems": "Sender (ID)|Recipient (ID)|Timestamp|Blob size",
+    "serverKnowsNotItems": "Message text|Photos and videos|Audio and documents|Cryptographic keys",
+    "phoenixTagline": "The ultimate defense. Irreversible by design.",
+    "phoenixIntro": "The Phoenix Protocol orders the permanent destruction of your account when you have no alternatives. It requires triple verification:",
+    "phoenixStep1": "Recovery ID — from your physical Recovery Card",
+    "phoenixStep2": "Phoenix Code — your emergency passphrase",
+    "phoenixStep3": "Email token — single-use link with 15-minute TTL",
+    "phoenixScenariosLabel": "Real scenarios it was designed for",
+    "phoenixScenario1": "Stolen phone",
+    "phoenixScenario2": "Seized device",
+    "phoenixScenario3": "Physical coercion",
+    "phoenixScenario4": "Border crossing",
+    "phoenixScenario5": "Journalist",
+    "phoenixScenario6": "Lawyer",
+    "phoenixScenario7": "Doctor",
+    "phoenixScenario8": "Activist",
+    "phoenixDestroyLabel": "What gets deleted",
+    "phoenixDestroyItems": "Messages|Media and attachments|Sessions and tokens|Signal keys|Authorized devices|Cache|History",
+    "phoenixWarning": "⚠️ This operation is irreversible. Once confirmed, the account cannot be recovered.",
+    "sections": {
+      "e2e": {
+        "title": "End-to-End Encryption",
+        "p1before": "Every message is encrypted on your device ",
+        "p1bold": "before",
+        "p1after": " being sent. The server never receives plaintext — it only receives encrypted data it cannot read.",
+        "p2": "Only you and the recipient hold the keys to decrypt messages. No intermediaries, no possible interception."
+      },
+      "x3dh": {
+        "title": "X3DH — The First Handshake",
+        "p1after": " is the protocol Alpha Chat uses to establish a secure session between two users who have never spoken before.",
+        "p2": "Cryptographic keys are exchanged so that no key ever travels in plaintext over the network. Even if an attacker intercepted all packets, they couldn't extract anything useful.",
+        "p3": "The result is a shared secret, known only to the two participants, used as the basis for the Double Ratchet."
+      },
+      "ratchet": {
+        "title": "Double Ratchet — One Key Per Message",
+        "p1after": " generates a unique cryptographic key for every single message. The key is used once and then deleted.",
+        "forwardSecrecyTitle": "Forward Secrecy",
+        "forwardSecrecyDesc": "Even if a future key were compromised, previous messages remain safe.",
+        "postCompromiseTitle": "Post-Compromise Security",
+        "postCompromiseDesc": "After a compromise, the system automatically \"heals\" itself with subsequent messages."
+      },
+      "media": {
+        "title": "Encrypted Media — AES-256-GCM",
+        "p1before": "Photos, videos, audio and documents are encrypted with ",
+        "p1after": " directly on your device before upload.",
+        "p2": "The server only sees opaque encrypted blobs. Even with physical database access, no file can be seen, heard, or read."
+      },
+      "zk": {
+        "title": "Zero Knowledge",
+        "p1": "The server knows only the bare minimum needed to deliver messages."
+      },
+      "ghost": {
+        "title": "Ghost Mode",
+        "p1": "You're as invisible as you want. You can choose to hide every trace of your presence.",
+        "lastSeenTitle": "Hidden last seen",
+        "lastSeenDesc": "No one sees when you last used the app.",
+        "onlineTitle": "Hidden online status",
+        "onlineDesc": "You never appear as \"online\" in the contact list.",
+        "receiptsTitle": "Read receipts disabled",
+        "receiptsDesc": "Ticks don't show whether you've read the message."
+      },
+      "burn": {
+        "title": "Burn After Read",
+        "p1before": "Some messages must disappear after being read. With ",
+        "p1bold": "Burn After Read",
+        "p1after": " the message self-destructs as soon as the recipient opens it.",
+        "p2": "Nothing remains — neither on the recipient's device nor on the server. As if it never existed."
+      },
+      "disappearing": {
+        "title": "Disappearing messages",
+        "p1": "Every conversation can have a disappearing timer. After the set time (from 5 seconds to 7 days), messages are automatically deleted from both devices.",
+        "p2": "Ideal for sensitive conversations that shouldn't leave traces over time."
+      },
+      "destroy": {
+        "title": "Secure Destroy",
+        "p1bold": "Secure Destroy",
+        "p1after": " permanently deletes a message from all devices and from the server.",
+        "p2": "Unlike regular deletion — which can leave traces — Secure Destroy removes the message permanently and irreversibly, leaving no sign of its existence in the conversation."
+      },
+      "safety": {
+        "title": "Safety Number — Identity Verification",
+        "p1before": "The ",
+        "p1bold": "Safety Number",
+        "p1after": " is a unique cryptographic fingerprint of your Signal session with a contact. By comparing it with your contact, you can verify that no one has intercepted the communication.",
+        "mitmTitle": "MITM Protection",
+        "mitmDesc": "Detects Man-in-the-Middle attacks before they can compromise the conversation.",
+        "qrTitle": "QR Code",
+        "qrDesc": "Scan the contact's QR for instant verification.",
+        "fingerprintTitle": "Numeric fingerprint",
+        "fingerprintDesc": "Compare the 12 groups of 5 digits in person or over the phone."
+      },
+      "deviceSecurity": {
+        "title": "Device security",
+        "p1": "Alpha Chat protects your data from a physical standpoint too. If someone has your phone, they can't open the app without authentication."
+      },
+      "emergencyLock": {
+        "title": "Emergency Lock",
+        "p1bold": "Emergency Lock",
+        "p1after": " immediately disconnects all your devices and revokes all active sessions. The account remains intact and recoverable.",
+        "scenario1": "Phone gets stolen",
+        "scenario2": "You lose your device",
+        "scenario3": "You suspect unauthorized access",
+        "hint": "Accessible from any browser via the Emergency Portal — even without your phone."
+      },
+      "phoenix": {
+        "title": "Phoenix Protocol"
+      },
+      "multidevice": {
+        "title": "Multi-Device",
+        "p1": "You can use Alpha Chat on multiple devices simultaneously. Each device establishes an independent Signal session — it doesn't share keys with the others.",
+        "p2": "You can individually revoke any device at any time from the Devices page, without having to change your password or invalidate the others."
+      },
+      "block": {
+        "title": "Block users",
+        "p1": "You can block any user at any time. Once blocked, they can no longer send you messages, see your profile, or know you exist on Alpha Chat.",
+        "p2": "Blocking is silent: the blocked user receives no notification."
+      }
+    }
   }
 }
