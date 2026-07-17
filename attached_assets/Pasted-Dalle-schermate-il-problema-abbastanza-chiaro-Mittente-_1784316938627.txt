@@ -1,0 +1,192 @@
+Dalle schermate il problema è abbastanza chiaro.
+
+* Mittente: vede il messaggio in chiaro (“Ciao”, “Test”, ecc.).
+* Destinatario: vede sempre 🔒 Messaggio cifrato.
+
+Questo significa che il messaggio arriva, ma la decifratura sul destinatario fallisce. Non è un problema di WebSocket o di consegna.
+
+Mi preoccupa invece una cosa che avevo già notato dai report precedenti: avete introdotto un fix che dice “se il decrypt di gruppo fallisce, mostra 🔒 Messaggio cifrato e termina”. Questo evita di vedere _grp_, ma rischia di nascondere la vera causa del fallimento.
+
+Io farei fare all’agente una vera Root Cause Analysis e gli vieterei di aggiungere altri fallback.
+
+Puoi inviargli questo prompt:
+
+⸻
+
+Sprint 26B — Root Cause Analysis definitiva gruppi (NO workaround)
+
+IMPORTANTE
+
+Non aggiungere altri fallback.
+
+Non mostrare “🔒 Messaggio cifrato” come soluzione.
+
+Non aggiungere altri catch.
+
+Bisogna trovare la causa reale.
+
+Situazione
+
+Il mittente vede sempre il messaggio.
+
+Il destinatario riceve il messaggio ma il decrypt fallisce.
+
+Questo significa che:
+
+* il WebSocket funziona;
+* MongoDB salva il messaggio;
+* il gruppo riceve l’evento.
+
+Il problema è esclusivamente nella pipeline E2E dei gruppi.
+
+⸻
+
+Audit completo
+
+Verificare ogni passaggio.
+
+1. Invio
+
+Loggare:
+
+* groupId
+* senderId
+* recipients[]
+* messageId
+* ciphertext
+* senderKeyId
+
+⸻
+
+2. Salvataggio DB
+
+Verificare che il documento salvato contenga:
+
+* ciphertext
+* senderKey
+* keyVersion
+* senderId
+* groupId
+
+Confrontare il record DB con quello inviato.
+
+⸻
+
+3. Broadcast
+
+Verificare che il payload WebSocket sia identico al DB.
+
+⸻
+
+4. Ricezione
+
+Loggare il payload ricevuto.
+
+Verificare che nessun campo venga perso.
+
+⸻
+
+5. Sender Keys
+
+Verificare:
+
+* esiste una Sender Key per quel gruppo?
+* è quella corretta?
+* è stata ruotata?
+* è stata eliminata?
+* viene caricata da IndexedDB?
+
+⸻
+
+6. Session Store
+
+Controllare:
+
+SignalProtocolStore
+
+IndexedDB
+
+cache
+
+sender key cache
+
+group session cache
+
+⸻
+
+7. Decrypt
+
+Loggare:
+
+* quale funzione viene chiamata;
+* quale chiave viene usata;
+* quale eccezione viene lanciata.
+
+NON catturare semplicemente l’errore.
+
+Stampare stack completa.
+
+⸻
+
+8. Confronto mittente/destinatario
+
+Dump completo delle strutture:
+
+* sender keys
+* sessioni
+* key ids
+* versioni
+
+Confrontare.
+
+⸻
+
+9. Verificare se il problema è
+
+* Sender Key non sincronizzata
+* Sender Key mai distribuita
+* Key rotation errata
+* gruppo creato con chiavi obsolete
+* IndexedDB corrotta
+* race condition
+* decrypt eseguito prima del caricamento chiavi
+* mismatch keyVersion
+* sessione Signal errata
+
+⸻
+
+Vietato
+
+❌ aggiungere altri fallback
+
+❌ mostrare “Messaggio cifrato”
+
+❌ ignorare eccezioni
+
+❌ fare retry casuali
+
+⸻
+
+Deliverable
+
+Consegnare:
+
+1. Root Cause precisa.
+2. File e righe coinvolte.
+3. Perché il mittente riesce e il destinatario no.
+4. Perché il problema compare solo nei gruppi.
+5. Correzione definitiva.
+6. Test che dimostrano che due utenti in un gruppo leggono lo stesso messaggio in chiaro.
+
+⸻
+
+Una domanda importante
+
+Mi serve anche sapere come avete implementato la cifratura dei gruppi.
+
+State usando:
+
+* A) il vero Sender Keys del Signal Protocol (una chiave simmetrica condivisa per gruppo), oppure
+* B) cifrate il messaggio separatamente per ogni partecipante con una normale sessione Signal 1:1?
+
+Questa risposta è fondamentale: cambia completamente dove cercare il bug.
