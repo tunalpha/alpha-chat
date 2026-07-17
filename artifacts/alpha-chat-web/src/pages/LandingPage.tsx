@@ -207,6 +207,20 @@ export default function LandingPage() {
     finally { setLoading(false); }
   }
 
+  // Recovery Page: render diretto, nessun overlay position:fixed
+  // (html/body/#root hanno overflow:hidden che su iOS Safari clipa position:fixed)
+  if (showRecovery) {
+    return (
+      <>
+        <RecoveryPage onBack={() => setShowRecovery(false)} />
+        {recoveryCard && createPortal(
+          <RecoveryCardModal card={recoveryCard} onConfirm={() => setRecoveryCard(null)} />,
+          document.body
+        )}
+      </>
+    );
+  }
+
   return (
     <>
     <div className="demo-root">
@@ -427,17 +441,9 @@ export default function LandingPage() {
 
     </div>
 
-    {/* Recovery Card Modal — portal su document.body per bypassare #root overflow:hidden (iOS Safari) */}
+    {/* Recovery Card Modal — portal su document.body per bypassare overflow:hidden iOS */}
     {recoveryCard && createPortal(
       <RecoveryCardModal card={recoveryCard} onConfirm={() => setRecoveryCard(null)} />,
-      document.body
-    )}
-
-    {/* Recovery Page — portal su document.body: #root ha overflow:hidden che su iOS clipa position:fixed */}
-    {showRecovery && createPortal(
-      <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 9999, background: "var(--bg-1)", overflowY: "auto", overscrollBehavior: "contain" }}>
-        <RecoveryPage onBack={() => setShowRecovery(false)} />
-      </div>,
       document.body
     )}
     </>
