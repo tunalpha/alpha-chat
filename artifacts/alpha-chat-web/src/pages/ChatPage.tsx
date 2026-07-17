@@ -195,7 +195,7 @@ function ChatHeader({
   ];
 
   const trustBadge = trustStatus && trustStatus !== "loading"
-    ? { verified: "🟢", unverified: "🟡", key_changed: "🔴" }[trustStatus]
+    ? { verified: "✅", unverified: "⚠️", key_changed: "🔴" }[trustStatus]
     : null;
 
   return (
