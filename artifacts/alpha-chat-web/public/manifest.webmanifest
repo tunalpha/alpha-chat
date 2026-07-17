@@ -1,0 +1,35 @@
+{
+  "name": "Alpha Chat",
+  "short_name": "Alpha Chat",
+  "description": "Chat privata con crittografia end-to-end. Nessuno ascolta. Nessuno legge. Solo tu.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0d0520",
+  "theme_color": "#9b40f8",
+  "lang": "it",
+  "orientation": "portrait-primary",
+  "scope": "/",
+  "icons": [
+    {
+      "src": "/favicon.png",
+      "sizes": "32x32",
+      "type": "image/png"
+    },
+    {
+      "src": "/favicon-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/logo.png",
+      "sizes": "512x512",
+      "type": "image/png"
+    },
+    {
+      "src": "/maskable-icon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
