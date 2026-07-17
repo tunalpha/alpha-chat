@@ -226,7 +226,16 @@ export async function signalDecryptFromDeviceCiphertexts(
   try {
     const plainBuf = await tryDecrypt();
     return bufferToString(plainBuf);
-  } catch {
+  } catch (err) {
+    // Log real error for diagnostics — never swallow silently
+    console.error("[Signal] decryptFromDeviceCiphertexts FAILED", {
+      senderUserId,
+      addr: addr.toString(),
+      entryType: entry.type,
+      bodyLen: entry.body.length,
+      error: err instanceof Error ? err.message : String(err),
+      stack: err instanceof Error ? err.stack : undefined,
+    });
     return null;
   }
 }

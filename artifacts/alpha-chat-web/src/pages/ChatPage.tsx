@@ -753,6 +753,15 @@ export default function ChatPage({ onNavigate }: Props) {
         conversations.find((c) => c.conversation_id === activeConvId)?.type === "group";
       if (isGroupMsg && msg.device_ciphertexts && msg.device_ciphertexts.length > 0) {
         const myEntry = msg.device_ciphertexts.find((d) => d.device_id === auth.userId);
+        console.debug("[Signal/group] decrypt attempt", {
+          msgId: msg.id,
+          senderId: msg.sender_id,
+          myUserId: auth.userId,
+          myDeviceId: auth.deviceId,
+          hasMyEntry: !!myEntry,
+          entryType: myEntry?.type,
+          allEntryIds: msg.device_ciphertexts.map((d) => d.device_id),
+        });
         if (myEntry) {
           try {
             const found = await signalDecryptFromDeviceCiphertexts(
@@ -763,11 +772,23 @@ export default function ChatPage({ onNavigate }: Props) {
               setDecryptedTexts((prev) => new Map(prev).set(msg.id, found));
               return;
             }
-          } catch { /* fallthrough verso indicatore cifrato */ }
+            console.error("[Signal/group] decrypt returned null (no exception)", {
+              msgId: msg.id, entryType: myEntry.type,
+            });
+          } catch (err) {
+            console.error("[Signal/group] decrypt threw", {
+              msgId: msg.id,
+              error: err instanceof Error ? err.message : String(err),
+              stack: err instanceof Error ? err.stack : undefined,
+            });
+          }
+        } else {
+          console.error("[Signal/group] myEntry not found in device_ciphertexts", {
+            msgId: msg.id, myUserId: auth.userId,
+            allEntryIds: msg.device_ciphertexts.map((d) => d.device_id),
+          });
         }
-        // BUG FIX: NON fare fallthrough alla decifratura generica per messaggi di gruppo.
-        // Il campo `ciphertext` contiene il placeholder "_grp_" (non il testo reale):
-        // decifrarlo via legacyDecode produce "_grp_" visibile nel bubble.
+        // Il campo `ciphertext` contiene il placeholder "_grp_" — non decifrabile.
         setDecryptedTexts((prev) => new Map(prev).set(msg.id, "🔒 Messaggio cifrato"));
         return;
       }
@@ -1120,6 +1141,9 @@ export default function ChatPage({ onNavigate }: Props) {
             );
             if (dcs[0]) {
               // Sovrascrivi device_id con userId per il fan-out di gruppo
+              console.debug("[Signal/group] encrypted for member", {
+                memberId: member.user_id, msgType: dcs[0].type, // 3=PreKey ✓, 1=Whisper ✗
+              });
               deviceCiphertexts.push({ device_id: member.user_id, body: dcs[0].body, type: dcs[0].type });
             }
           } catch { /* un membro irraggiungibile non blocca il gruppo */ }
