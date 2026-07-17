@@ -17,14 +17,20 @@ import {
 } from "../lib/api";
 import type { AppView } from "../App";
 
+interface Contact {
+  username: string;
+  display_name: string;
+}
+
 interface Props {
   groupId: string;
   onBack: () => void;
   onNavigate: (view: AppView) => void;
   onLeft?: () => void; // chiamato dopo leaveGroup/deleteGroup
+  contacts?: Contact[];
 }
 
-export default function GroupInfoPage({ groupId, onBack, onLeft }: Props) {
+export default function GroupInfoPage({ groupId, onBack, onLeft, contacts = [] }: Props) {
   const { auth } = useAuth();
   const [group, setGroup]       = useState<GroupDetail | null>(null);
   const [loading, setLoading]   = useState(true);
@@ -32,6 +38,7 @@ export default function GroupInfoPage({ groupId, onBack, onLeft }: Props) {
   const [addUsername, setAddUsername] = useState("");
   const [addError, setAddError] = useState<string | null>(null);
   const [addLoading, setAddLoading] = useState(false);
+  const [showSuggestions, setShowSuggestions] = useState(false);
   const [editName, setEditName] = useState(false);
   const [nameInput, setNameInput] = useState("");
   const [confirmLeave, setConfirmLeave] = useState(false);
@@ -192,13 +199,43 @@ export default function GroupInfoPage({ groupId, onBack, onLeft }: Props) {
           <div className="gi-section">
             <div className="gi-section-title">Aggiungi partecipante</div>
             <form onSubmit={handleAddMember} className="gi-add-form">
-              <input
-                className="gi-add-input"
-                type="text"
-                placeholder="Username…"
-                value={addUsername}
-                onChange={(e) => setAddUsername(e.target.value)}
-              />
+              <div className="gi-add-input-wrap">
+                <input
+                  className="gi-add-input"
+                  type="text"
+                  placeholder="Username o nome…"
+                  value={addUsername}
+                  autoComplete="off"
+                  onChange={(e) => { setAddUsername(e.target.value); setAddError(null); setShowSuggestions(true); }}
+                  onFocus={() => setShowSuggestions(true)}
+                  onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
+                />
+                {/* Suggestion dropdown — contatti esistenti filtrati */}
+                {showSuggestions && addUsername.trim().length > 0 && (() => {
+                  const q = addUsername.trim().toLowerCase();
+                  const alreadyIn = new Set(group.members.map((m) => m.username));
+                  const hits = contacts.filter(
+                    (c) => !alreadyIn.has(c.username) &&
+                      (c.username.toLowerCase().includes(q) || c.display_name.toLowerCase().includes(q)),
+                  );
+                  if (hits.length === 0) return null;
+                  return (
+                    <div className="gi-suggestions">
+                      {hits.map((c) => (
+                        <button
+                          key={c.username}
+                          type="button"
+                          className="gi-suggestion-item"
+                          onMouseDown={() => { setAddUsername(c.username); setShowSuggestions(false); }}
+                        >
+                          <span className="gi-suggestion-name">{c.display_name}</span>
+                          <span className="gi-suggestion-username">@{c.username}</span>
+                        </button>
+                      ))}
+                    </div>
+                  );
+                })()}
+              </div>
               <button type="submit" className="gi-add-btn" disabled={addLoading}>
                 {addLoading ? "…" : "Aggiungi"}
               </button>

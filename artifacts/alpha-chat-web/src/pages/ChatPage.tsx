@@ -730,11 +730,11 @@ export default function ChatPage({ onNavigate }: Props) {
           return;
         }
       }
-      // Fallback: plaintext non disponibile (messaggio precedente al fix)
+      // Fallback: plaintext non disponibile (messaggio inviato prima del caching)
       setDecryptedTexts((prev) =>
         new Map(prev).set(
           msg.id,
-          msg.message_type === "media" ? "" : "[messaggio precedente]",
+          msg.message_type === "media" ? "" : "🔒 Messaggio cifrato",
         ),
       );
       return;
@@ -1810,6 +1810,9 @@ export default function ChatPage({ onNavigate }: Props) {
               setActiveConvId(null);
               void apiListConversations().then((r) => setConversations(r.items ?? []));
             }}
+            contacts={conversations
+              .filter((c) => c.type !== "group" && c.other_user)
+              .map((c) => ({ username: c.other_user!.username, display_name: c.other_user!.display_name }))}
           />
         ) : !activeConvId ? (
           <div className="chat-empty">
