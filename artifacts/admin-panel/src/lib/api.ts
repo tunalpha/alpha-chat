@@ -375,6 +375,12 @@ export async function revokeUserSessions(
   return apiFetch(`/users/${id}/sessions`, { method: "DELETE" });
 }
 
+export async function adminSetTempPassword(
+  id: string,
+): Promise<{ username: string; temp_password: string }> {
+  return apiFetch(`/users/${id}/temp-password`, { method: "POST" });
+}
+
 // ---------------------------------------------------------------------------
 // Devices / Sessions
 // ---------------------------------------------------------------------------

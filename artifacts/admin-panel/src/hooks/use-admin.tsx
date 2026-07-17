@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { 
   getStats, getGrowth, getSecurityFeatures, getSystemHealth, getStorage, 
   getSecurityEvents, getUsers, updateUserStatus, updateUserRole, deleteUser, 
-  revokeUserSessions, getDevices, revokeDevice, downloadAuditExport 
+  revokeUserSessions, adminSetTempPassword, getDevices, revokeDevice, downloadAuditExport 
 } from "@/lib/api";
 
 export const useAdminStats = () => useQuery({
@@ -93,3 +93,8 @@ export const useRevokeDevice = () => {
 export const useDownloadAuditExport = () => useMutation({
   mutationFn: downloadAuditExport,
 });
+
+export const useSetTempPassword = () =>
+  useMutation({
+    mutationFn: adminSetTempPassword,
+  });

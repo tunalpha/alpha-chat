@@ -688,6 +688,52 @@ router.delete("/users/:id/sessions", requireAdmin("security_admin"), async (req:
 });
 
 // ---------------------------------------------------------------------------
+// POST /admin/users/:id/temp-password
+// Genera una password temporanea per un utente (supporto assistenza).
+// La password in chiaro viene restituita UNA SOLA VOLTA — non viene mai salvata.
+// ---------------------------------------------------------------------------
+
+router.post("/users/:id/temp-password", requireAdmin("support"), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const id = req.params["id"] as string;
+
+    // Genera password casuale 12 caratteri — no ambigui (0/O, 1/l/I)
+    const CHARSET = "ABCDEFGHJKMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789";
+    let tempPassword = "";
+    for (let i = 0; i < 12; i++) {
+      tempPassword += CHARSET[Math.floor(Math.random() * CHARSET.length)];
+    }
+
+    const hash = await argon2.hash(tempPassword, { type: argon2.argon2id });
+
+    const user = await UserModel.findByIdAndUpdate(
+      id,
+      {
+        password_hash: hash,
+        require_password_change: true,
+        temp_password_expires_at: new Date(Date.now() + 24 * 60 * 60 * 1000), // 24h
+      },
+      { new: true },
+    ).select("username display_name");
+
+    if (!user) throw new AppError("USER_NOT_FOUND", 404);
+
+    logAuditEvent({
+      event: "PASSWORD_CHANGED",
+      user_id: id,
+      device_id: "admin-panel",
+      request_id: req.adminUser?.userId,
+      created_at: new Date().toISOString(),
+      metadata: { admin_action: "temp_password_set" },
+    });
+
+    res.json({ username: user.username, temp_password: tempPassword });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---------------------------------------------------------------------------
 // GET /admin/devices
 // Lista di tutti i device/sessioni attive.
 // ---------------------------------------------------------------------------

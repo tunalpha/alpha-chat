@@ -1,15 +1,16 @@
 import { useState } from "react";
-import { useUsers, useUpdateUserStatus, useUpdateUserRole, useDeleteUser, useRevokeUserSessions } from "@/hooks/use-admin";
+import { useUsers, useUpdateUserStatus, useUpdateUserRole, useDeleteUser, useRevokeUserSessions, useSetTempPassword } from "@/hooks/use-admin";
 import { format, parseISO } from "date-fns";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Search, ChevronLeft, ChevronRight, Shield, ShieldAlert, UserX, UserCheck, Trash2, Smartphone, MoreHorizontal } from "lucide-react";
+import { Search, ChevronLeft, ChevronRight, Shield, ShieldAlert, UserX, UserCheck, Trash2, Smartphone, MoreHorizontal, KeyRound, Copy, Check } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 
 export default function UsersPage() {
   const [page, setPage] = useState(1);
@@ -27,9 +28,16 @@ export default function UsersPage() {
   const updateRole = useUpdateUserRole();
   const deleteUser = useDeleteUser();
   const revokeSessions = useRevokeUserSessions();
+  const setTempPassword = useSetTempPassword();
 
   const [actionUser, setActionUser] = useState<any>(null);
   const [dialogType, setDialogType] = useState<"delete" | "revoke" | null>(null);
+
+  // Stato dialog password temporanea
+  const [tempPassDialog, setTempPassDialog] = useState(false);
+  const [tempPassUser, setTempPassUser] = useState<any>(null);
+  const [generatedPassword, setGeneratedPassword] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
 
   const handleAction = () => {
     if (!actionUser || !dialogType) return;
@@ -40,6 +48,31 @@ export default function UsersPage() {
     }
     setDialogType(null);
     setActionUser(null);
+  };
+
+  const handleOpenTempPass = (user: any) => {
+    setTempPassUser(user);
+    setGeneratedPassword(null);
+    setCopied(false);
+    setTempPassDialog(true);
+  };
+
+  const handleGenerateTempPass = () => {
+    if (!tempPassUser) return;
+    setTempPassword.mutate(tempPassUser.id, {
+      onSuccess: (data) => {
+        setGeneratedPassword(data.temp_password);
+        setCopied(false);
+      },
+    });
+  };
+
+  const handleCopy = () => {
+    if (!generatedPassword) return;
+    navigator.clipboard.writeText(generatedPassword).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    });
   };
 
   return (
@@ -135,7 +168,7 @@ export default function UsersPage() {
                             <MoreHorizontal className="w-4 h-4" />
                           </Button>
                         </DropdownMenuTrigger>
-                        <DropdownMenuContent align="end" className="w-48 font-mono text-xs uppercase">
+                        <DropdownMenuContent align="end" className="w-52 font-mono text-xs uppercase">
                           <DropdownMenuLabel>Actions</DropdownMenuLabel>
                           <DropdownMenuSeparator />
                           {user.status === 'active' ? (
@@ -149,6 +182,9 @@ export default function UsersPage() {
                           )}
                           <DropdownMenuItem onClick={() => { setActionUser(user); setDialogType("revoke"); }}>
                             <Smartphone className="w-4 h-4 mr-2" /> Revoke Sessions
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => handleOpenTempPass(user)}>
+                            <KeyRound className="w-4 h-4 mr-2" /> Temp Password
                           </DropdownMenuItem>
                           <DropdownMenuSeparator />
                           <DropdownMenuItem className="text-destructive focus:bg-destructive focus:text-destructive-foreground" onClick={() => { setActionUser(user); setDialogType("delete"); }}>
@@ -181,6 +217,7 @@ export default function UsersPage() {
         )}
       </Card>
 
+      {/* Dialog: conferma azioni distruttive */}
       <AlertDialog open={!!dialogType} onOpenChange={() => setDialogType(null)}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -201,6 +238,61 @@ export default function UsersPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      {/* Dialog: password temporanea */}
+      <Dialog open={tempPassDialog} onOpenChange={(open) => { setTempPassDialog(open); if (!open) setGeneratedPassword(null); }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle className="font-mono uppercase flex items-center gap-2">
+              <KeyRound className="w-4 h-4" /> Temp Password
+            </DialogTitle>
+            <DialogDescription>
+              Genera una password temporanea per <strong>@{tempPassUser?.username}</strong>.
+              L'utente dovrà cambiarla al primo accesso.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="space-y-4 pt-2">
+            {!generatedPassword ? (
+              <Button
+                className="w-full font-mono text-xs uppercase"
+                onClick={handleGenerateTempPass}
+                disabled={setTempPassword.isPending}
+              >
+                {setTempPassword.isPending ? "Generazione..." : "Genera password"}
+              </Button>
+            ) : (
+              <div className="space-y-3">
+                <p className="text-xs text-muted-foreground font-mono uppercase">Password generata — valida 24h</p>
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 bg-muted rounded-md px-3 py-2 font-mono text-sm tracking-widest select-all">
+                    {generatedPassword}
+                  </code>
+                  <Button
+                    variant="outline"
+                    size="icon"
+                    className="h-9 w-9 shrink-0"
+                    onClick={handleCopy}
+                  >
+                    {copied ? <Check className="w-4 h-4 text-emerald-500" /> : <Copy className="w-4 h-4" />}
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Condividi questa password con l'utente via canale sicuro. Non verrà più mostrata.
+                </p>
+                <Button
+                  variant="outline"
+                  className="w-full font-mono text-xs uppercase"
+                  onClick={handleGenerateTempPass}
+                  disabled={setTempPassword.isPending}
+                >
+                  Rigenera
+                </Button>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
