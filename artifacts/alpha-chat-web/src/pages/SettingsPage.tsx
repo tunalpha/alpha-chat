@@ -1,5 +1,7 @@
 import { type AppView } from "../App";
 import { useLock } from "../contexts/LockContext";
+import { useAppSettings } from "../contexts/AppSettingsContext";
+import { SUPPORTED_LANGUAGES } from "../i18n";
 
 interface Props {
   onBack: () => void;
@@ -8,6 +10,9 @@ interface Props {
 
 export default function SettingsPage({ onBack, onNavigate }: Props) {
   const { hasPINSet, lock } = useLock();
+  const { settings } = useAppSettings();
+
+  const currentLangLabel = SUPPORTED_LANGUAGES.find(l => l.code === settings.language)?.label ?? "Italiano";
 
   type SettingRow = {
     icon: React.ReactNode;
@@ -31,7 +36,7 @@ export default function SettingsPage({ onBack, onNavigate }: Props) {
         {
           icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="20" height="20"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>,
           label: "Lingua",
-          value: "10 lingue disponibili",
+          value: currentLangLabel,
           onClick: () => onNavigate("language"),
         },
         {

@@ -3,7 +3,6 @@ import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { LockProvider, useLock } from "./contexts/LockContext";
 import { CallProvider } from "./contexts/CallContext";
 import { AppSettingsProvider } from "./contexts/AppSettingsContext";
-import { initI18n } from "./i18n";
 import IncomingCallModal from "./components/IncomingCallModal";
 import ActiveCallScreen from "./components/ActiveCallScreen";
 import LandingPage from "./pages/LandingPage";
@@ -35,9 +34,6 @@ import AppearancePage from "./pages/AppearancePage";
 import NotificationsPage from "./pages/NotificationsPage";
 import LanguagePage from "./pages/LanguagePage";
 import { useNotifSync } from "./hooks/useNotifSync";
-
-// Inizializza i18n subito (carica la lingua salvata o l'italiano di default)
-void initI18n();
 
 export type AppView =
   | "chat"
