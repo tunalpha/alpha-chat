@@ -7,6 +7,7 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { unlockNotifAudio, playNotifSound } from "../lib/notifSound";
 import RecoveryCardModal, { type RecoveryCardData } from "../components/RecoveryCardModal";
@@ -107,10 +108,14 @@ export default function LandingPage() {
 
   // Al primo gesto: sblocca audio sincrono + avvia sequenza
   useEffect(() => {
-    function handleFirstGesture() {
+    function handleFirstGesture(e: Event) {
       if (startedRef.current) return;
       startedRef.current = true;
       void unlockNotifAudio(); // unlock HTML5 Audio per tutta la sessione
+      // Bip immediato solo su tap/click — non su mousemove
+      if (e.type === "click" || e.type === "touchstart") {
+        void playNotifSound('received');
+      }
       setStarted(true);
     }
     const events = ["click", "touchstart", "mousemove", "keydown"] as const;
@@ -422,16 +427,18 @@ export default function LandingPage() {
 
     </div>
 
-    {/* Recovery Card Modal — fuori da demo-root per evitare clip overflow:hidden */}
-    {recoveryCard && (
-      <RecoveryCardModal card={recoveryCard} onConfirm={() => setRecoveryCard(null)} />
+    {/* Recovery Card Modal — portal su document.body per bypassare #root overflow:hidden (iOS Safari) */}
+    {recoveryCard && createPortal(
+      <RecoveryCardModal card={recoveryCard} onConfirm={() => setRecoveryCard(null)} />,
+      document.body
     )}
 
-    {/* Recovery Page — overlay a schermo intero, fuori da demo-root (overflow:hidden rompe position:fixed su iOS) */}
-    {showRecovery && (
-      <div style={{ position: "fixed", inset: 0, zIndex: 300, background: "var(--bg-1)", overflowY: "auto" }}>
+    {/* Recovery Page — portal su document.body: #root ha overflow:hidden che su iOS clipa position:fixed */}
+    {showRecovery && createPortal(
+      <div style={{ position: "fixed", top: 0, left: 0, right: 0, bottom: 0, zIndex: 9999, background: "var(--bg-1)", overflowY: "auto", overscrollBehavior: "contain" }}>
         <RecoveryPage onBack={() => setShowRecovery(false)} />
-      </div>
+      </div>,
+      document.body
     )}
     </>
   );
