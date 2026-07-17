@@ -52,6 +52,9 @@ function bufferToString(buf: ArrayBuffer): string {
 export function legacyDecode(ciphertext: string): string {
   try {
     const binStr = atob(ciphertext);
+    // FIX: placeholder dei messaggi di gruppo — non deve mai essere mostrato.
+    // btoa("_grp_") = "X2dycF8=" → atob → "_grp_"
+    if (binStr === "_grp_") return "[cifrato]";
     // FIX: i messaggi Signal iniziano con un type byte specifico.
     // Non provare a decodificarli come plaintext — produrrebbero testo garbled.
     // 0x33 (51) = PreKeyWhisperMessage, 0x22 (34) = WhisperMessage, 0x35 (53) = SenderKey

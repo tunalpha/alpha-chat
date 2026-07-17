@@ -757,8 +757,19 @@ export default function ChatPage({ onNavigate }: Props) {
               setDecryptedTexts((prev) => new Map(prev).set(msg.id, found));
               return;
             }
-          } catch { /* fallthrough */ }
+          } catch { /* fallthrough verso indicatore cifrato */ }
         }
+        // BUG FIX: NON fare fallthrough alla decifratura generica per messaggi di gruppo.
+        // Il campo `ciphertext` contiene il placeholder "_grp_" (non il testo reale):
+        // decifrarlo via legacyDecode produce "_grp_" visibile nel bubble.
+        setDecryptedTexts((prev) => new Map(prev).set(msg.id, "🔒 Messaggio cifrato"));
+        return;
+      }
+      if (isGroupMsg) {
+        // Gruppo senza device_ciphertexts (messaggio vecchio/pre-fanout) —
+        // il placeholder NON è decifrabile, mostra indicatore invece di "_grp_".
+        setDecryptedTexts((prev) => new Map(prev).set(msg.id, "🔒 Messaggio cifrato"));
+        return;
       }
       // Fase 4: prova prima device_ciphertexts (multi-device 1:1)
       if (msg.device_ciphertexts && msg.device_ciphertexts.length > 0) {
@@ -1664,7 +1675,14 @@ export default function ChatPage({ onNavigate }: Props) {
                 // non proviamo mai a decodificare: anche i vecchi messaggi
                 // in base64 semplice verrebbero mostrati in chiaro.
                 if (preview.sender_id !== auth?.userId) return "🔒 Messaggio cifrato";
-                // Per i propri messaggi proviamo la decodifica (es. base64 legacy)
+                // Gruppi: il ciphertext è il placeholder "_grp_", non il testo reale.
+                // Cerca prima nella cache decryptedTexts (set al momento del decrypt/invio).
+                if (isGroup) {
+                  const cached = decryptedTexts.get(preview.message_id);
+                  if (cached && cached !== "🔒 Messaggio cifrato") return cached;
+                  return "📨 Messaggio inviato";
+                }
+                // Per i propri messaggi 1:1 proviamo la decodifica (es. base64 legacy)
                 return safeDecodeForPreview(preview.ciphertext);
               })();
               const previewLabel = previewText
