@@ -1,0 +1,73 @@
+Questa volta l’analisi è molto convincente e mette in luce due problemi distinti.
+
+Problema 1 (architetturale): logout/login rigenera l’identità Signal
+
+Questo è confermato dai dati:
+
+logout
+→ clearSignalKeys()
+→ IndexedDB vuoto
+login
+→ generateIdentityKeyPair()
+→ nuova Identity Key
+→ upload nuovo bundle
+
+Questa scelta ha una conseguenza inevitabile: tutte le sessioni Signal precedenti diventano invalide. È anche il motivo per cui mi avevi detto che, dopo logout/login, perfino le chat private già leggibili diventano 🔒.
+
+In un’implementazione tipo Signal/WhatsApp, normalmente:
+
+* il logout non rigenera automaticamente l’identità crittografica del dispositivo;
+* oppure, se la rigenera, il sistema considera esplicitamente il dispositivo come “nuovo” e gestisce il cambio di sicurezza.
+
+Problema 2 (quello attuale)
+
+Dopo aver corretto la selezione del bundle (sort(updatedAt: -1)), rimane:
+
+Identity key changed
+
+prima ancora di produrre il ciphertext.
+
+La tua conclusione:
+
+il trust store contiene ancora la vecchia identity key
+
+è coerente con i sintomi.
+
+Infatti:
+
+* bundle nuovo ✔️
+* device corretto ✔️
+* nessun ciphertext prodotto ❌
+
+quindi il blocco è prima della cifratura, nella verifica dell’identità.
+
+⸻
+
+C’è però una cosa che farei verificare prima di modificare altro
+
+Chiederei all’agente una verifica molto precisa:
+
+Quando viene rilevato Identity key changed, il codice confronta:
+
+* la identity key del bundle appena scaricato
+* con la identity key presente nel trust store
+
+Mostrami entrambe in Base64 (prime 20-30 cifre bastano) nello stesso log.
+
+Voglio vedere esattamente quali due chiavi vengono confrontate.
+
+Se risultano diverse, allora la causa è dimostrata.
+
+⸻
+
+Un’altra osservazione importante
+
+Dal DB emerge che Alpha ha 10 bundle.
+
+Questo significa che il backend sta trattando ogni contesto browser come un dispositivo diverso, il che è corretto se vuoi supportare il multi-device. Ma se l’app in realtà è progettata come single-device, allora quei bundle vecchi dovrebbero essere gestiti (ad esempio invalidati o rimossi), altrimenti accumulerai continuamente identità obsolete.
+
+In sintesi:
+
+* il fix sul sort() era necessario;
+* il bug residuo sembra essere nella gestione del trust store quando cambia l’Identity Key;
+* resta inoltre una decisione architetturale da prendere: vuoi davvero che un logout/login generi una nuova Identity Key? Se la risposta è “no”, allora vale la pena correggere quel comportamento alla radice, perché elimina un’intera classe di problemi.

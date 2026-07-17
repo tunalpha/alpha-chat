@@ -72,6 +72,7 @@ import {
   checkAndUpdateTrust,
   markVerified,
   acceptKeyChange,
+  hashDeviceId,
   type TrustStatus,
 } from "../lib/signal";
 import { arrayBufferToBase64 } from "@workspace/libsignal-ts";
@@ -1199,6 +1200,23 @@ export default function ChatPage({ onNavigate }: Props) {
               hasOtpk: bundle.oneTimePreKey !== null,
               otpkKeyId: bundle.oneTimePreKey?.keyId ?? null,
             });
+            // AUDIT-IK-CHECK: mostra le due chiavi confrontate prima di signalEncryptMulti.
+            // Permette di verificare se storedIdentityKey ≠ bundleIdentityKey (causa "Identity key changed").
+            {
+              const _ikStore = getSignalStore(auth.userId, auth.deviceId);
+              const _storedIk = await _ikStore.getRemoteIdentityKey(member.user_id);
+              const _devIdInt = Math.abs(hashDeviceId(bundle.deviceId));
+              const _sessionKey = `${member.user_id}.${_devIdInt}`;
+              const _sessionExists = !!(await _ikStore.loadSession(_sessionKey));
+              reportAudit("AUDIT-IK-CHECK", {
+                memberId: member.user_id,
+                bundleDeviceId: bundle.deviceId,
+                bundleIK: bundle.identityKey.slice(0, 28),
+                storedIK: _storedIk ? arrayBufferToBase64(_storedIk).slice(0, 28) : null,
+                keysMatch: _storedIk ? bundle.identityKey.slice(0, 28) === arrayBufferToBase64(_storedIk).slice(0, 28) : "no-stored-key",
+                sessionExists: _sessionExists,
+              });
+            }
             // signalEncryptMulti con un solo bundle → usa device_id del bundle come chiave
             const { deviceCiphertexts: dcs } = await signalEncryptMulti(
               auth.userId, auth.deviceId, member.user_id, text, [bundle],
