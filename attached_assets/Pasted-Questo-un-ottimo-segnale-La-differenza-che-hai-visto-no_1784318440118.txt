@@ -1,0 +1,62 @@
+Questo è un ottimo segnale.
+
+La differenza che hai visto è normale:
+
+* Server di sviluppo (Vite): può rispondere con text/html per percorsi non gestiti perché fa il fallback alla SPA.
+* Build di produzione: i file statici vengono serviti con i MIME type corretti.
+
+Quindi, se la verifica in produzione è davvero questa:
+
+File	Stato
+favicon.ico	✅
+favicon.svg	✅
+apple-touch-icon.png	✅
+manifest.webmanifest	✅
+mask-icon.svg	✅
+og-image.png	✅
+logo.png	✅
+
+e tutti hanno il Content-Type corretto, allora la configurazione lato server sembra a posto.
+
+Un’ultima cosa da ricordare
+
+Se dopo il deploy Safari continua a mostrare il globo, non dare per scontato che sia un bug del codice.
+
+Safari su iPhone è molto aggressivo con la cache di:
+
+* favicon;
+* apple-touch-icon;
+* manifest.
+
+Può continuare a mostrare la vecchia icona anche dopo un deploy corretto.
+
+Per evitare questo problema, ti consiglio di far fare all’agente anche un piccolo miglioramento:
+
+<link rel="icon" href="/favicon.svg?v=2" type="image/svg+xml">
+<link rel="icon" href="/favicon.ico?v=2" sizes="any">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png?v=2">
+<link rel="manifest" href="/manifest.webmanifest?v=2">
+
+oppure usare un hash del file generato automaticamente (favicon.abcd1234.svg).
+
+In questo modo, quando cambierai il logo in futuro, i browser scaricheranno subito i nuovi file invece di usare quelli in cache.
+
+A questo punto
+
+Dal riepilogo che hai condiviso, vedo che avete sistemato:
+
+* ✅ Signal Protocol e recovery delle sessioni.
+* ✅ Bug dei gruppi.
+* ✅ Inviti.
+* ✅ Tema e lingue.
+* ✅ Pack completo di icone PWA.
+* ✅ Meta tag Open Graph.
+* ✅ Manifest.
+* ✅ Asset statici con MIME type corretti.
+
+Mi concentrerei ora solo su due test reali dopo il deploy:
+
+1. Gruppi E2E: invio e ricezione tra almeno due dispositivi diversi, verificando che il destinatario legga sempre il testo in chiaro.
+2. PWA: installazione su iPhone e Android, controllando che l’icona installata sia quella nuova e non quella generica.
+
+Se anche questi due test passano, avrai una base molto solida per iniziare la beta pubblica di Alpha Chat.
