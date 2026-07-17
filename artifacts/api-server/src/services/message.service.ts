@@ -145,6 +145,16 @@ export async function sendMessage(
     deviceCiphertexts: (input as { device_ciphertexts?: Array<{ device_id: string; body: string; type: number }> }).device_ciphertexts ?? null,
   });
 
+  // AUDIT-6: device_ciphertexts salvati in MongoDB
+  const savedDcs = (message as unknown as { device_ciphertexts: Array<{ device_id: string; type: number }> | null }).device_ciphertexts;
+  logger.info({
+    messageId: message._id.toString(),
+    conversationId,
+    senderId,
+    deviceCiphertextsCount: savedDcs?.length ?? 0,
+    deviceCiphertextEntries: savedDcs?.map((d) => ({ device_id: d.device_id, type: d.type })) ?? [],
+  }, "[AUDIT-6] message saved — device_ciphertexts");
+
   // Audit (solo evento — non logghiamo il ciphertext)
   logAuditEvent({
     event: "MESSAGE_SENT",
