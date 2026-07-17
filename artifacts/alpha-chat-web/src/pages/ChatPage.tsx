@@ -639,6 +639,8 @@ export default function ChatPage({ onNavigate }: Props) {
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const ctxOpenedAtRef = useRef<number>(0); // ghost-click guard
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Debounce ref per apiMarkRead — evita chiamate multiple in rapida successione
+  const markReadTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── Signal helpers ───────────────────────────────────────────────────────
 
@@ -938,11 +940,13 @@ export default function ChatPage({ onNavigate }: Props) {
             });
             // Decifra il messaggio appena arrivato
             void decryptSingleMsg(msg);
-            // BAR: se il messaggio è burn_after_read, informa il server che lo
-            // abbiamo "letto" (anche se la conv era già aperta) → avvia il timer 10s
-            if ((msg as MessageItem & { burn_after_read?: boolean }).burn_after_read) {
+            // Marca sempre come letto quando la conversazione è aperta.
+            // Debounce 800ms: se arrivano più messaggi in rapida successione
+            // una sola chiamata copre tutti.
+            if (markReadTimerRef.current) clearTimeout(markReadTimerRef.current);
+            markReadTimerRef.current = setTimeout(() => {
               void apiMarkRead(activeConvId).catch(() => {});
-            }
+            }, 800);
           }
           setConversations((prev) =>
             prev.map((c) =>
