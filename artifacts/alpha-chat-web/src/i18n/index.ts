@@ -37,13 +37,36 @@ async function loadLocale(lng: string) {
   return mod.default ?? mod;
 }
 
-/** Legge la lingua salvata in localStorage (alpha_settings_v1) */
+/** Restituisce la lingua da usare, in ordine di priorità:
+ *  1. Preferenza esplicitamente salvata dall'utente in localStorage
+ *  2. Lingua del browser (navigator.languages / navigator.language)
+ *  3. Italiano come fallback finale
+ */
 function getSavedLang(): LangCode {
   try {
     const s = JSON.parse(localStorage.getItem("alpha_settings_v1") ?? "{}") as { language?: string };
-    const code = s.language ?? "it";
-    return SUPPORTED_LANGUAGES.find(l => l.code === code) ? (code as LangCode) : "it";
-  } catch { return "it"; }
+
+    // 1. L'utente ha già scelto una lingua esplicitamente
+    if (s.language && SUPPORTED_LANGUAGES.find(l => l.code === s.language)) {
+      return s.language as LangCode;
+    }
+
+    // 2. Prima visita: rileva la lingua del browser
+    const browserLangs = navigator.languages?.length
+      ? navigator.languages
+      : [navigator.language];
+
+    for (const raw of browserLangs) {
+      // "ar-SA" → "ar", "zh-TW" → "zh", "fr-FR" → "fr"
+      const code = raw.split("-")[0].toLowerCase();
+      if (SUPPORTED_LANGUAGES.find(l => l.code === code)) {
+        return code as LangCode;
+      }
+    }
+  } catch { /* ignore */ }
+
+  // 3. Fallback
+  return "it";
 }
 
 export async function initI18n(lng?: LangCode) {
