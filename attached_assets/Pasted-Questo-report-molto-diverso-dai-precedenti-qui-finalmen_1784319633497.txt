@@ -1,0 +1,91 @@
+Questo report è molto diverso dai precedenti: qui finalmente ci sono prove concrete e, se il report è fedele al codice, la Root Cause è credibile.
+
+La parte decisiva è questa:
+
+Encrypt (produzione)
+device_id = bundle.deviceId
+          = 661ad8f2-ceee-...   ← UUID
+
+poi in ricezione:
+
+Decrypt
+find(d.device_id === auth.userId)
+device_id = 661ad8f2-ceee-...   ← UUID
+auth.userId = 6a58010c...       ← MongoDB ObjectId
+=> mai uguali
+=> myEntry = undefined
+=> 🔒
+
+Questa è una spiegazione molto più convincente delle ipotesi precedenti (race condition, Identity Key, forceNewSession ecc.), perché spiega perfettamente un comportamento 100% riproducibile.
+
+⸻
+
+C’è però una cosa che voglio verificare
+
+Prima del deploy chiederei all’agente una sola conferma.
+
+Nel report scrive:
+
+NEW:
+
+device_id = member.user_id
+
+Io gli chiederei:
+
+Nel resto del codice device_id viene usato realmente come “recipient user id” oppure in qualche punto viene ancora interpretato come “device UUID”?
+
+Cerca globalmente:
+
+device_id
+bundle.deviceId
+member.user_id
+auth.userId
+auth.deviceId
+
+e verifica che dopo questa modifica non esista più nessun punto dove device_id venga confrontato con un UUID.
+
+Perché se rimane anche un solo confronto del tipo
+
+device_id === auth.deviceId
+
+oppure
+
+device_id === bundle.deviceId
+
+avrai un bug intermittente.
+
+⸻
+
+Se questa verifica passa…
+
+…allora io farei il deploy.
+
+Per la prima volta avete:
+
+* ✅ Root Cause supportata da dati.
+* ✅ Valori concreti osservati.
+* ✅ Punto preciso del mismatch.
+* ✅ Fix minimale.
+* ✅ Nessun workaround crittografico.
+
+Questa è esattamente la qualità di analisi che serve.
+
+⸻
+
+Una piccola osservazione di design
+
+Vedo che ora il campo si chiama ancora device_id, ma contiene un user_id.
+
+Funziona, ma è un nome fuorviante.
+
+In futuro valuterei di rinominarlo, ad esempio:
+
+recipient_user_id
+
+oppure
+
+target_user_id
+
+perché evita che tra sei mesi qualcuno ricada nello stesso errore pensando che quel campo contenga davvero l’UUID del dispositivo.
+
+In sintesi: questo è il primo report che individua una causa tecnica precisa e verificabile. Se la ricerca globale conferma che non esistono altri punti in cui device_id è ancora trattato come UUID, il fix ha ottime probabilità di risolvere definitivamente il problema.
