@@ -1176,8 +1176,11 @@ export default function ChatPage({ onNavigate }: Props) {
       const deviceCiphertexts: Array<{ device_id: string; body: string; type: number }> = [];
       await Promise.all(
         others.map(async (member) => {
+          // bundle dichiarato fuori dal try per renderlo accessibile nel catch
+          // (serve per il retry post-identity-reset senza un ulteriore round-trip).
+          let bundle: Awaited<ReturnType<typeof apiGetKeyBundle>> | undefined;
           try {
-            const bundle = await apiGetKeyBundle(member.user_id);
+            bundle = await apiGetKeyBundle(member.user_id);
             // AUDIT-1-raw: log safe prima di toccare bundle.deviceId — diagnosi bundle undefined
             reportAudit("AUDIT-1-raw", {
               memberId: member.user_id,
@@ -1214,11 +1217,41 @@ export default function ChatPage({ onNavigate }: Props) {
               reportAudit("AUDIT-2-no-ciphertext", { memberId: member.user_id });
             }
           } catch (err) {
-            reportAudit("AUDIT-2-encrypt-error", {
-              memberId: member.user_id,
-              error: err instanceof Error ? err.message : String(err),
-              stack: err instanceof Error ? err.stack : undefined,
-            });
+            const errMsg = err instanceof Error ? err.message : String(err);
+            if (errMsg === "Identity key changed" && bundle !== undefined) {
+              // La sessione Signal ha una identity key stale (es. destinatario ha rigenerato
+              // le chiavi dopo un reset IDB o nuovo login). Reset TOFU e riprova con lo
+              // stesso bundle — nessun round-trip aggiuntivo al server.
+              try {
+                reportAudit("AUDIT-2-identity-reset", { memberId: member.user_id });
+                await resetAndRebuildSession(auth.userId, auth.deviceId, member.user_id);
+                const { deviceCiphertexts: dcs2 } = await signalEncryptMulti(
+                  auth.userId, auth.deviceId, member.user_id, text, [bundle],
+                );
+                reportAudit("AUDIT-2-encrypt-retry-ok", {
+                  memberId: member.user_id,
+                  dcsCount: dcs2.length,
+                  entries: dcs2.map((d) => ({ device_id: d.device_id, type: d.type })),
+                });
+                if (dcs2[0]) {
+                  deviceCiphertexts.push({ device_id: member.user_id, body: dcs2[0].body, type: dcs2[0].type });
+                } else {
+                  reportAudit("AUDIT-2-retry-no-ciphertext", { memberId: member.user_id });
+                }
+              } catch (retryErr) {
+                reportAudit("AUDIT-2-encrypt-error", {
+                  memberId: member.user_id,
+                  error: `Identity key changed [retry: ${retryErr instanceof Error ? retryErr.message : String(retryErr)}]`,
+                  stack: retryErr instanceof Error ? retryErr.stack : undefined,
+                });
+              }
+            } else {
+              reportAudit("AUDIT-2-encrypt-error", {
+                memberId: member.user_id,
+                error: errMsg,
+                stack: err instanceof Error ? err.stack : undefined,
+              });
+            }
           }
         }),
       );
