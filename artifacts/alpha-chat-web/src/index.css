@@ -3250,13 +3250,13 @@ button:disabled.profile-avatar-edit {
 .cg-contact-check { font-size: 16px; color: var(--brand-3); width: 20px; text-align: center; }
 
 /* ── GroupInfoPage overlay ── */
-.group-info-overlay { position:fixed; inset:0; z-index:200; background:var(--bg-1); overflow:hidden; display:flex; flex-direction:column; }
+.group-info-overlay { position:fixed; inset:0; z-index:9100; background:var(--bg-1); overflow:hidden; display:flex; flex-direction:column; }
 
 /* ── GroupInfoPage layout ── */
 .gi-root { display:flex; flex-direction:column; height:100%; background:var(--bg-1); color:var(--text-1); }
 .gi-header { display:flex; align-items:center; gap:12px; padding:14px 16px; border-bottom:1px solid var(--border-1); }
 .gi-title { font-size:16px; font-weight:700; color:var(--text-1); }
-.gi-body { flex:1; overflow-y:auto; display:flex; flex-direction:column; gap:16px; padding:16px; }
+.gi-body { flex:1; min-height:0; overflow-y:auto; display:flex; flex-direction:column; gap:16px; padding:16px; padding-bottom:max(16px, env(safe-area-inset-bottom)); }
 .gi-loading,.gi-error { text-align:center; color:var(--text-3); padding:40px 0; font-size:14px; }
 
 /* Hero */

@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, memo } from "react";
+import { createPortal } from "react-dom";
 import { useAuth } from "../contexts/AuthContext";
 import { useCall } from "../contexts/CallContext";
 import { useWebSocket, type WsEvent } from "../hooks/useWebSocket";
@@ -2330,8 +2331,8 @@ export default function ChatPage({ onNavigate }: Props) {
         />
       )}
 
-      {/* ── Sprint 21: Group Info overlay ──────────────────────────────────── */}
-      {showGroupInfo && groupInfoId && (
+      {/* ── Sprint 21: Group Info overlay — Portal su document.body ──────── */}
+      {showGroupInfo && groupInfoId && createPortal(
         <div className="group-info-overlay">
           <GroupInfoPage
             groupId={groupInfoId}
@@ -2343,7 +2344,8 @@ export default function ChatPage({ onNavigate }: Props) {
               void apiListConversations().then((r) => setConversations(r.items ?? []));
             }}
           />
-        </div>
+        </div>,
+        document.body,
       )}
 
       {/* ── Invite modals ──────────────────────────────────────────────────── */}
