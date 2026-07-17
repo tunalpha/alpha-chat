@@ -1,0 +1,92 @@
+Il riepilogo è buono e il pacchetto sembra completo. Ci sono però due cose che verificherei prima di considerare chiuso il lavoro.
+
+1. Safari iPhone (la più importante)
+
+Dalle tue schermate precedenti, Safari continuava a mostrare il globo invece dell’icona.
+
+Anche se l’agente ha creato tutti gli asset, questo non dimostra ancora che vengano realmente usati.
+
+Gli chiederei di verificare concretamente:
+
+* GET /favicon.ico → restituisce 200 OK.
+* GET /favicon.svg → restituisce 200 OK.
+* GET /apple-touch-icon.png → restituisce 200 OK.
+* GET /manifest.webmanifest → restituisce 200 OK.
+* Il browser riceve i file con il Content-Type corretto (image/svg+xml, image/png, image/x-icon, ecc.).
+* I file vengono serviti dalla cartella pubblica prevista dal framework (ad esempio public/ o equivalente).
+
+Solo dopo questa verifica puoi essere sicuro che non sia un problema di configurazione del server.
+
+2. Open Graph
+
+Hai creato og-image.png, ottimo.
+
+Controlla anche che in index.html siano presenti almeno:
+
+<meta property="og:image" ...>
+<meta property="og:title" ...>
+<meta property="og:description" ...>
+<meta name="twitter:card" content="summary_large_image">
+
+Altrimenti WhatsApp, Telegram e altri servizi potrebbero non mostrare il logo e l’anteprima come previsto.
+
+⸻
+
+Sul fix Signal
+
+Questa parte ora mi convince.
+
+Il confronto esclusivo sulla Identity Key è il comportamento corretto.
+
+Non vedo più workaround evidenti.
+
+⸻
+
+Dopo il deploy
+
+Io farei questi 5 test pratici:
+
+✅ Test 1
+
+Apri alphachat.sbs su Safari.
+
+Controlla che il logo nella barra o nei preferiti non sia più il globo.
+
+✅ Test 2
+
+Aggiungi Alpha Chat alla Home di iPhone.
+
+Verifica:
+
+* icona corretta;
+* splash screen;
+* colore barra.
+
+✅ Test 3
+
+Installa la PWA su Android.
+
+Verifica:
+
+* icona adattiva (maskable);
+* splash screen.
+
+✅ Test 4
+
+Invia il link via WhatsApp o Telegram.
+
+Controlla che compaiano:
+
+* logo;
+* titolo;
+* descrizione.
+
+✅ Test 5
+
+Invia 30–50 messaggi di gruppo tra due account dopo il deploy.
+
+Verifica che nessuno venga più mostrato come “🔒 Messaggio cifrato”.
+
+⸻
+
+Se tutti questi test passano, direi che Alpha Chat è in uno stato molto più maturo, sia dal punto di vista dell’esperienza utente sia della stabilità tecnica.
