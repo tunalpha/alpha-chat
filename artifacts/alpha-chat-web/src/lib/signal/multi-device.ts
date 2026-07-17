@@ -42,6 +42,16 @@ function bufferToString(buf: ArrayBuffer): string {
   return new TextDecoder().decode(buf);
 }
 
+function buffersEqual(a: ArrayBuffer, b: ArrayBuffer): boolean {
+  if (a.byteLength !== b.byteLength) return false;
+  const va = new Uint8Array(a);
+  const vb = new Uint8Array(b);
+  for (let i = 0; i < va.length; i++) {
+    if (va[i] !== vb[i]) return false;
+  }
+  return true;
+}
+
 function toBundleDevice(b: ApiReceivedKeyBundle): DeviceType {
   const device: DeviceType = {
     registrationId: b.registrationId,
@@ -168,8 +178,21 @@ export async function signalEncryptMulti(
       await store.deleteSession(addr.toString());
     }
 
-    // Sessione (idempotente quando non forceNewSession)
-    const existing = await store.loadSession(addr.toString());
+    // Rileva cambio di identity key: se il destinatario ha rigenerato le chiavi
+    // (es. IDB cancellato + page reload), la sessione esistente è con le vecchie chiavi.
+    // A deve creare una nuova sessione X3DH con il nuovo bundle.
+    let existing = await store.loadSession(addr.toString());
+    if (existing) {
+      const bundleIdentityBuf = base64ToArrayBuffer(bundle.identityKey);
+      const storedIdentity = await store.getRemoteIdentityKey(recipientUserId);
+      if (storedIdentity && !buffersEqual(storedIdentity, bundleIdentityBuf)) {
+        // Identity key cambiata → resetta sessione per usare il nuovo bundle
+        console.warn("[Signal] Identity key changed for", recipientUserId, "— reset session");
+        await store.deleteSession(addr.toString());
+        await store.saveIdentity(recipientUserId, bundleIdentityBuf);
+        existing = undefined;
+      }
+    }
     if (!existing) {
       await ensureSessionForBundle(userId, deviceId, recipientUserId, devIdInt, bundle);
     }
