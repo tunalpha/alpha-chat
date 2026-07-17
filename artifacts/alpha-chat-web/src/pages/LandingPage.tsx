@@ -112,10 +112,7 @@ export default function LandingPage() {
       if (startedRef.current) return;
       startedRef.current = true;
       void unlockNotifAudio(); // unlock HTML5 Audio per tutta la sessione
-      // Bip immediato solo su tap/click — non su mousemove
-      if (e.type === "click" || e.type === "touchstart") {
-        void playNotifSound('received');
-      }
+      // Sblocca audio context (richiesto da iOS) ma non suona ancora
       setStarted(true);
     }
     const events = ["click", "touchstart", "mousemove", "keydown"] as const;
@@ -252,7 +249,7 @@ export default function LandingPage() {
 
         {/* Waiting state — visibile finché l'utente non interagisce */}
         {!started && (
-          <div className="demo-waiting">
+          <div className="demo-waiting" onClick={() => void playNotifSound('received')}>
             <img src={`${import.meta.env.BASE_URL}logo.png`} alt="Alpha Chat" className="demo-waiting-logo" />
             <p className="demo-waiting-hint">Tocca per iniziare</p>
           </div>
