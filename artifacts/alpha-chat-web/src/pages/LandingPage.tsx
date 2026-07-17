@@ -108,12 +108,8 @@ export default function LandingPage() {
 
   // Al primo gesto: sblocca audio sincrono + avvia sequenza
   useEffect(() => {
-    function handleFirstGesture(e: Event) {
-      if (startedRef.current) return;
-      startedRef.current = true;
-      void unlockNotifAudio(); // unlock HTML5 Audio per tutta la sessione
-      // Sblocca audio context (richiesto da iOS) ma non suona ancora
-      setStarted(true);
+    function handleFirstGesture() {
+      void unlockNotifAudio(); // unlock HTML5 Audio per tutta la sessione (richiesto da iOS)
     }
     const events = ["click", "touchstart", "mousemove", "keydown"] as const;
     events.forEach((e) => document.addEventListener(e, handleFirstGesture, { passive: true, once: true }));
@@ -249,7 +245,7 @@ export default function LandingPage() {
 
         {/* Waiting state — visibile finché l'utente non interagisce */}
         {!started && (
-          <div className="demo-waiting" onClick={() => void playNotifSound('received')}>
+          <div className="demo-waiting" onClick={() => { setStarted(true); startedRef.current = true; void playNotifSound('received'); }}>
             <img src={`${import.meta.env.BASE_URL}logo.png`} alt="Alpha Chat" className="demo-waiting-logo" />
             <p className="demo-waiting-hint">Tocca per iniziare</p>
           </div>
