@@ -1659,6 +1659,11 @@ export default function ChatPage({ onNavigate }: Props) {
                 if (!preview?.ciphertext) return null;
                 const vm = decodeVoiceMeta(preview.ciphertext);
                 if (vm) return t("chat.voiceNote");
+                // Per i messaggi ricevuti mostriamo sempre il lucchetto —
+                // non proviamo mai a decodificare: anche i vecchi messaggi
+                // in base64 semplice verrebbero mostrati in chiaro.
+                if (preview.sender_id !== auth?.userId) return "🔒 Messaggio cifrato";
+                // Per i propri messaggi proviamo la decodifica (es. base64 legacy)
                 return safeDecodeForPreview(preview.ciphertext);
               })();
               const previewLabel = previewText
