@@ -1110,7 +1110,8 @@ export default function ChatPage({ onNavigate }: Props) {
       // body/type primario: placeholder non-vuoto per passare la validazione backend.
       // Il contenuto reale dei gruppi è sempre in device_ciphertexts; questo campo
       // non viene mai usato per la decifratura lato client nei gruppi.
-      return { body: btoa("_grp_"), type: 0, deviceCiphertexts };
+      // type: 1 = WhisperMessage — valore valido per la validazione (accetta 1 o 3).
+      return { body: btoa("_grp_"), type: 1, deviceCiphertexts };
     } catch { return undefined; }
   }
 
