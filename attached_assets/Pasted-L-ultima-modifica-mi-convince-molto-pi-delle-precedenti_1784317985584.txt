@@ -1,0 +1,77 @@
+L’ultima modifica mi convince molto più delle precedenti perché non introduce un workaround, ma aggiunge un meccanismo coerente con il funzionamento di Signal.
+
+La parte chiave è questa:
+
+apiGetKeyBundle() viene chiamata ad ogni cifratura (nessuna cache) → confronto tra la Identity Key salvata localmente e quella appena scaricata → se diversa, eliminazione della sessione, aggiornamento dell’identità e nuova inizializzazione X3DH.
+
+Questo è un approccio ragionevole: la Identity Key è proprio l’indicatore che il dispositivo remoto ha cambiato identità crittografica (ad esempio dopo una perdita dell’IDB o una reinstallazione).
+
+Una sola verifica che chiederei ancora
+
+Prima del deploy chiederei all’agente di verificare che il reset della sessione avvenga solo quando cambia realmente la Identity Key.
+
+In particolare:
+
+* ✅ Cambio di Signed PreKey → non deve cancellare la sessione.
+* ✅ Cambio delle One-Time PreKeys → non deve cancellare la sessione.
+* ✅ Cambio della Identity Key → deve cancellare la sessione e crearne una nuova.
+
+Se il confronto è fatto esclusivamente sulla Identity Key, la logica è corretta.
+
+⸻
+
+Sul logo
+
+Dalle immagini che hai inviato:
+
+* Il logo originale è molto bello e riconoscibile.
+* La versione fatta dall’agente ha un effetto 3D/gradiente che la rende più moderna, ma è stata tagliata e quindi perde equilibrio visivo.
+* Nella barra del browser e nella favicon continua a comparire l’icona generica, segno che la favicon probabilmente non è configurata correttamente oppure il browser sta usando una cache vecchia.
+
+Io userei il logo completo (non tagliato) con lo stile grafico dell’agente e preparerei un set di icone dedicate, perché una favicon non può essere semplicemente il logo della landing ridotto.
+
+Gli farei fare un lavoro professionale con questo prompt:
+
+Logo & Icon Pack
+
+Partire dal logo originale Alpha Chat.
+
+Mantenere lo stile 3D, il gradiente e la brillantezza della versione moderna già realizzata, ma ricostruire il simbolo completo, senza alcun taglio o ritaglio.
+
+Generare un pacchetto completo di asset:
+
+* Logo orizzontale.
+* Logo verticale.
+* Simbolo quadrato.
+* Favicon SVG.
+* favicon.ico (16, 32 e 48 px).
+* Apple Touch Icon 180×180.
+* Android Chrome 192×192.
+* Android Chrome 512×512.
+* Maskable Icon 512×512.
+* Safari Pinned Tab (mask-icon.svg).
+* Open Graph Image 1200×630.
+
+Configurare inoltre la PWA con:
+
+* manifest.webmanifest;
+* tutte le icone dichiarate nel manifest;
+* <link rel="icon">;
+* <link rel="apple-touch-icon">;
+* <link rel="mask-icon">;
+* <meta name="theme-color">;
+* <meta name="apple-mobile-web-app-capable">;
+* <meta property="og:image">.
+
+Verificare infine che:
+
+* Safari iOS;
+* Chrome Android;
+* Firefox;
+* Edge;
+* Google Search;
+* condivisioni WhatsApp/Telegram;
+
+mostrino sempre l’icona corretta e non quella di default.
+
+Se l’agente completa anche questo pacchetto, Alpha Chat avrà un’identità visiva molto più professionale sia sul web sia quando verrà pubblicata come PWA o come app negli store.
