@@ -1029,6 +1029,11 @@ export async function apiRedeemInvite(code: string): Promise<RedeemResult> {
   return request<RedeemResult>("POST", "/invites/redeem", { code });
 }
 
+/** Controlla se esiste già un invite attivo lato server (non espone il codice) */
+export async function apiCheckActiveInvite(): Promise<{ has_active: boolean; expires_at: string | null }> {
+  return request<{ has_active: boolean; expires_at: string | null }>("GET", "/invites/active");
+}
+
 /** Revoca tutti i codici invito attivi */
 export async function apiMarkRead(convId: string): Promise<void> {
   await request<void>("PATCH", `/conversations/${convId}/read`);

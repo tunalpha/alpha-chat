@@ -1,22 +1,62 @@
 /**
  * InviteModal — genera un codice invito monouso con QR code e countdown.
  *
- * Flusso:
- *   1. Apre il modal → genera automaticamente un codice
- *   2. Mostra codice leggibile + QR code
- *   3. Countdown fino alla scadenza
- *   4. Pulsante "Rigenera" per un nuovo codice (invalida il precedente)
+ * Flusso corretto:
+ *   1. Apre il modal → controlla localStorage per un codice ancora valido
+ *   2. Se trovato localmente, verifica lato server che esista ancora (GET /invites/active)
+ *   3. Se valido → mostra il codice esistente SENZA rigenerare (fix bug "già usato")
+ *   4. Se scaduto/revocato → genera un nuovo codice
+ *   5. "Rigenera" → forza sempre una nuova generazione
+ *
+ * Bug fix: la precedente versione chiamava generate() ad ogni apertura del modal,
+ * cancellando silenziosamente il codice precedente che poteva essere già stato condiviso.
  */
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import QRCode from "qrcode";
-import { apiGenerateInvite, type InviteData } from "../lib/api";
+import { apiGenerateInvite, apiCheckActiveInvite, type InviteData } from "../lib/api";
 
 interface Props {
   onClose: () => void;
 }
 
 const DEFAULT_TTL = 900; // 15 minuti
+const STORAGE_KEY = "alphachat_pending_invite";
+
+interface StoredInvite {
+  code: string;
+  expires_at: string;
+  invite_id: string;
+  qr_payload: string;
+}
+
+function loadStoredInvite(): StoredInvite | null {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as StoredInvite;
+    // Scartare se scaduto
+    if (new Date(parsed.expires_at).getTime() <= Date.now()) {
+      localStorage.removeItem(STORAGE_KEY);
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function saveStoredInvite(data: InviteData): void {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+  } catch {
+    // Ignora errori di storage
+  }
+}
+
+function clearStoredInvite(): void {
+  localStorage.removeItem(STORAGE_KEY);
+}
 
 function formatCountdown(seconds: number): string {
   const m = Math.floor(seconds / 60);
@@ -25,7 +65,6 @@ function formatCountdown(seconds: number): string {
 }
 
 function formatCode(raw: string): string {
-  // ABCDEFGH JKLM NPQR → ABCD EFGH JKLM NPQR (gruppi da 4)
   return raw.match(/.{1,4}/g)?.join(" ") ?? raw;
 }
 
@@ -38,50 +77,91 @@ export default function InviteModal({ onClose }: Props) {
   const [copied, setCopied] = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  const startCountdown = useCallback((expiresAt: string) => {
+    if (timerRef.current) clearInterval(timerRef.current);
+    const tick = () => {
+      const remaining = Math.max(0, Math.floor((new Date(expiresAt).getTime() - Date.now()) / 1000));
+      setSecondsLeft(remaining);
+      if (remaining === 0) {
+        if (timerRef.current) clearInterval(timerRef.current);
+        setInvite(null);
+        setQrUrl(null);
+        clearStoredInvite();
+        setError("Il codice è scaduto. Generane uno nuovo.");
+      }
+    };
+    tick();
+    timerRef.current = setInterval(tick, 1000);
+  }, []);
+
+  const renderInvite = useCallback(async (data: InviteData) => {
+    setInvite(data);
+    const url = await QRCode.toDataURL(data.qr_payload, {
+      width: 240,
+      margin: 2,
+      color: { dark: "#F1F0F5", light: "#1A1133" },
+      errorCorrectionLevel: "M",
+    });
+    setQrUrl(url);
+    startCountdown(data.expires_at);
+  }, [startCountdown]);
+
+  /** Genera sempre un nuovo codice (invalida il precedente sul server) */
   const generate = useCallback(async () => {
     setLoading(true);
     setError(null);
     setQrUrl(null);
+    setInvite(null);
     if (timerRef.current) clearInterval(timerRef.current);
 
     try {
       const data = await apiGenerateInvite(DEFAULT_TTL);
-      setInvite(data);
-
-      // QR code come data URL
-      const url = await QRCode.toDataURL(data.qr_payload, {
-        width: 240,
-        margin: 2,
-        color: { dark: "#F1F0F5", light: "#1A1133" },
-        errorCorrectionLevel: "M",
-      });
-      setQrUrl(url);
-
-      // Countdown
-      const expiresAt = new Date(data.expires_at).getTime();
-      const tick = () => {
-        const remaining = Math.max(0, Math.floor((expiresAt - Date.now()) / 1000));
-        setSecondsLeft(remaining);
-        if (remaining === 0) {
-          if (timerRef.current) clearInterval(timerRef.current);
-          setInvite(null);
-          setQrUrl(null);
-          setError("Il codice è scaduto. Generane uno nuovo.");
-        }
-      };
-      tick();
-      timerRef.current = setInterval(tick, 1000);
+      saveStoredInvite(data);
+      await renderInvite(data);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Errore nella generazione del codice");
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [renderInvite]);
 
+  /** All'apertura: tenta di riusare il codice locale se ancora valido */
   useEffect(() => {
-    void generate();
-    return () => { if (timerRef.current) clearInterval(timerRef.current); };
-  }, [generate]);
+    let cancelled = false;
+
+    async function init() {
+      const stored = loadStoredInvite();
+
+      if (stored) {
+        // Verifica lato server che il codice non sia stato revocato
+        try {
+          const status = await apiCheckActiveInvite();
+          if (!cancelled && status.has_active) {
+            // Codice ancora valido: mostralo senza rigenerare
+            setLoading(false);
+            await renderInvite(stored);
+            return;
+          }
+          // Server non ha più un invite attivo → rigenera
+        } catch {
+          // Errore nel controllo → rigenera per sicurezza
+        }
+      }
+
+      if (!cancelled) {
+        await generate();
+      }
+    }
+
+    setLoading(true);
+    void init();
+
+    return () => {
+      cancelled = true;
+      if (timerRef.current) clearInterval(timerRef.current);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Solo al mount — non re-eseguire mai
 
   async function handleCopy() {
     if (!invite) return;
@@ -90,7 +170,7 @@ export default function InviteModal({ onClose }: Props) {
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
-      // Fallback: seleziona il testo
+      // Fallback silenzioso
     }
   }
 
@@ -127,12 +207,10 @@ export default function InviteModal({ onClose }: Props) {
 
           {invite && qrUrl && !loading && (
             <>
-              {/* QR Code */}
               <div className="invite-qr-wrap">
                 <img src={qrUrl} alt="QR Code invito" className="invite-qr" />
               </div>
 
-              {/* Codice leggibile */}
               <div className="invite-code-wrap">
                 <div className="invite-code" style={{ letterSpacing: "4px", wordBreak: "keep-all", whiteSpace: "nowrap" }}>{formatCode(invite.code)}</div>
                 <button
@@ -153,7 +231,6 @@ export default function InviteModal({ onClose }: Props) {
                 </button>
               </div>
 
-              {/* Countdown */}
               <div className={`invite-countdown${isUrgent ? " urgent" : ""}`}>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14">
                   <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>

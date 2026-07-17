@@ -6,12 +6,16 @@ import {
   generateInvite,
   redeemInvite,
   revokeMyInvites,
+  getActiveInvite,
 } from "../../controllers/invite.controller";
 
 const router = Router();
 
 // Tutti gli endpoint richiedono autenticazione
 router.use(authenticate);
+
+/** Verifica se l'utente ha già un codice invito attivo (senza esporre il codice grezzo) */
+router.get("/active", getActiveInvite);
 
 /** Genera un nuovo codice invito */
 router.post("/generate", validate("body", GenerateInviteSchema), generateInvite);

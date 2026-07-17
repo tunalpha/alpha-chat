@@ -1,5 +1,7 @@
 import type { Request, Response, NextFunction } from "express";
 import { InviteService } from "../services/invite.service";
+import { InviteRepository } from "../repositories/invite.repository";
+import mongoose from "mongoose";
 import { createHash } from "crypto";
 import type { GenerateInviteInput, RedeemInviteInput } from "../validation/invite.schemas";
 
@@ -69,6 +71,33 @@ export async function redeemInvite(
       data: {
         conversation_id: result.conversation_id,
         is_new: result.is_new,
+      },
+      meta: { request_id: req.requestId },
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
+/**
+ * GET /api/v1/invites/active
+ * Controlla se l'utente ha un codice invito attivo (senza esporre il codice grezzo).
+ * Usato dal client per verificare la validità del codice memorizzato localmente.
+ */
+export async function getActiveInvite(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const userId = req.user!.userId;
+    const repo = new InviteRepository();
+    const active = await repo.listActive(new mongoose.Types.ObjectId(userId));
+    const first = active[0] ?? null;
+    res.status(200).json({
+      data: {
+        has_active: first !== null,
+        expires_at: first ? first.expires_at.toISOString() : null,
       },
       meta: { request_id: req.requestId },
     });
