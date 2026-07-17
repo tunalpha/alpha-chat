@@ -49,8 +49,8 @@ export default function CreateGroupModal({ onClose, onCreated }: Props) {
   }
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-box cg-modal" onClick={(e) => e.stopPropagation()}>
+    <div className="modal-backdrop" onClick={onClose}>
+      <div className="modal-card cg-modal" onClick={(e) => e.stopPropagation()}>
         {/* Header */}
         <div className="modal-header">
           <span className="modal-title">👥 Nuovo gruppo</span>
