@@ -79,8 +79,14 @@ export async function fetchBundleForX3DH(
   bundle: ISignalKeyBundle;
   poppedOtpk: IOneTimePreKey | null;
 } | null> {
-  // Pop atomico: trova il primo OTPK non consumato e lo marca
-  const updated = await SignalKeyBundleModel.findOneAndUpdate(
+  // Pop atomico: trova il PRIMO OTPK non consumato e lo marca.
+  // NOTA: usa l'operatore posizionale $ (prima corrispondenza), NON $[elem].
+  // $[elem] con arrayFilters aggiorna TUTTI gli elementi corrispondenti in
+  // un'unica operazione — bug che consuma l'intero pool in una sola chiamata.
+  // Con $ viene aggiornato solo il primo elemento matchato da $elemMatch.
+  // Usiamo new:false per ottenere lo stato PRE-update: la prima OTPK con
+  // consumed:false nel documento "before" è esattamente quella appena consumata.
+  const before = await SignalKeyBundleModel.findOneAndUpdate(
     {
       user_id: targetUserId,
       "one_time_pre_keys": {
@@ -89,28 +95,29 @@ export async function fetchBundleForX3DH(
     },
     {
       $set: {
-        "one_time_pre_keys.$[elem].consumed": true,
-        "one_time_pre_keys.$[elem].consumed_at": new Date(),
+        "one_time_pre_keys.$.consumed": true,
+        "one_time_pre_keys.$.consumed_at": new Date(),
       },
       $inc: { otpk_count: -1 },
     },
-    {
-      arrayFilters: [{ "elem.consumed": false }],
-      new: true,
-      // Ritorna il documento PRIMA del pop per recuperare la OTPK poppata
-      // Usiamo returnDocument: "before" tramite opzione legacy
-    },
+    { new: false },   // ritorna documento PRIMA della modifica
   );
 
-  if (updated) {
-    // Trova la OTPK appena consumata (quella con consumed_at più recente)
-    const poppedOtpk = updated.one_time_pre_keys
-      .filter((k) => k.consumed)
-      .sort((a, b) =>
-        (b.consumed_at?.getTime() ?? 0) - (a.consumed_at?.getTime() ?? 0),
-      )[0] ?? null;
+  if (before) {
+    // La OTPK appena consumata è la prima con consumed:false nel doc pre-update
+    const poppedOtpk = before.one_time_pre_keys
+      .find((k) => !k.consumed) ?? null;
 
-    return { bundle: updated.toObject() as ISignalKeyBundle, poppedOtpk };
+    // Rileggi il documento aggiornato per il bundle corrente
+    const updatedBundle = await SignalKeyBundleModel
+      .findOne({ user_id: targetUserId })
+      .lean<ISignalKeyBundle>()
+      .exec();
+
+    return {
+      bundle: updatedBundle ?? (before.toObject() as ISignalKeyBundle),
+      poppedOtpk,
+    };
   }
 
   // Nessuna OTPK disponibile — restituisci bundle senza OTPK
@@ -229,8 +236,10 @@ export async function fetchAllBundlesForX3DH(
   const results: Array<{ bundle: ISignalKeyBundle; poppedOtpk: IOneTimePreKey | null }> = [];
 
   for (const b of bundles) {
-    // Pop atomico OTPK per questo device
-    const updated = await SignalKeyBundleModel.findOneAndUpdate(
+    // Pop atomico OTPK per questo device.
+    // Usa $ (prima corrispondenza), NON $[elem]+arrayFilters che consumerebbe
+    // tutte le OTPK in una sola operazione.
+    const before = await SignalKeyBundleModel.findOneAndUpdate(
       {
         user_id: targetUserId,
         device_id: b.device_id,
@@ -238,19 +247,24 @@ export async function fetchAllBundlesForX3DH(
       },
       {
         $set: {
-          "one_time_pre_keys.$[elem].consumed": true,
-          "one_time_pre_keys.$[elem].consumed_at": new Date(),
+          "one_time_pre_keys.$.consumed": true,
+          "one_time_pre_keys.$.consumed_at": new Date(),
         },
         $inc: { otpk_count: -1 },
       },
-      { arrayFilters: [{ "elem.consumed": false }], new: true },
+      { new: false },  // ritorna documento PRE-update
     );
 
-    if (updated) {
-      const poppedOtpk = updated.one_time_pre_keys
-        .filter((k) => k.consumed)
-        .sort((a, b) => (b.consumed_at?.getTime() ?? 0) - (a.consumed_at?.getTime() ?? 0))[0] ?? null;
-      results.push({ bundle: updated.toObject() as ISignalKeyBundle, poppedOtpk });
+    if (before) {
+      const poppedOtpk = before.one_time_pre_keys.find((k) => !k.consumed) ?? null;
+      const updatedBundle = await SignalKeyBundleModel
+        .findOne({ user_id: targetUserId, device_id: b.device_id })
+        .lean<ISignalKeyBundle>()
+        .exec();
+      results.push({
+        bundle: updatedBundle ?? (before.toObject() as ISignalKeyBundle),
+        poppedOtpk,
+      });
     } else {
       results.push({ bundle: b, poppedOtpk: null });
     }
