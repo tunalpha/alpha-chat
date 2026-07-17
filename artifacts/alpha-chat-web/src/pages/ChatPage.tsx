@@ -35,6 +35,7 @@ import {
   encryptBlobWithKey,
   signalEncryptMulti,
   signalDecryptFromDeviceCiphertexts,
+  maybeReplenishOtpks,
 } from "../lib/signal";
 import {
   initMediaCache,
@@ -1137,7 +1138,9 @@ export default function ChatPage({ onNavigate }: Props) {
             // signalEncryptMulti con un solo bundle → usa device_id del bundle come chiave
             const { deviceCiphertexts: dcs } = await signalEncryptMulti(
               auth.userId, auth.deviceId, member.user_id, text, [bundle],
-              { forceNewSession: true }, // Forza tipo-3 per garantire decifratura anche senza sessione preesistente
+              // NON forceNewSession: il normale ciclo Signal usa tipo-3 solo alla
+              // prima sessione (X3DH) e tipo-1 (Double Ratchet) nelle successive.
+              // forceNewSession consumerebbe 1 OTPK per messaggio → esaurimento pool.
             );
             if (dcs[0]) {
               // Sovrascrivi device_id con userId per il fan-out di gruppo
@@ -1149,10 +1152,10 @@ export default function ChatPage({ onNavigate }: Props) {
           } catch { /* un membro irraggiungibile non blocca il gruppo */ }
         }),
       );
+      // Ripristino mid-session: controlla OTPK dopo ogni messaggio di gruppo
+      // (non solo al login) per evitare esaurimento del pool.
+      void maybeReplenishOtpks(auth.userId, auth.deviceId);
       // body/type primario: placeholder non-vuoto per passare la validazione backend.
-      // Il contenuto reale dei gruppi è sempre in device_ciphertexts; questo campo
-      // non viene mai usato per la decifratura lato client nei gruppi.
-      // type: 1 = WhisperMessage — valore valido per la validazione (accetta 1 o 3).
       return { body: btoa("_grp_"), type: 1, deviceCiphertexts };
     } catch { return undefined; }
   }
