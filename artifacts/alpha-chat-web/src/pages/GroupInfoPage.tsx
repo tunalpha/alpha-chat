@@ -226,7 +226,7 @@ export default function GroupInfoPage({ groupId, onBack, onLeft, contacts = [] }
                           key={c.username}
                           type="button"
                           className="gi-suggestion-item"
-                          onMouseDown={() => { setAddUsername(c.username); setShowSuggestions(false); }}
+                          onPointerDown={(e) => { e.preventDefault(); setAddUsername(c.username); setShowSuggestions(false); }}
                         >
                           <span className="gi-suggestion-name">{c.display_name}</span>
                           <span className="gi-suggestion-username">@{c.username}</span>

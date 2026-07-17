@@ -3273,7 +3273,9 @@ button:disabled.profile-avatar-edit {
 .gi-meta { font-size:12px; color:var(--text-3); }
 
 /* Sezioni */
-.gi-section { background:var(--bg-2); border:1px solid var(--border-1); border-radius:14px; overflow:hidden; }
+.gi-section { background:var(--bg-2); border:1px solid var(--border-1); border-radius:14px; overflow:visible; }
+/* I figli che devono restare dentro i bordi arrotondati usano overflow:hidden propri */
+.gi-members-list, .gi-danger-zone { overflow:hidden; border-radius:0 0 14px 14px; }
 .gi-section-title { font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.6px; color:var(--text-3); padding:12px 14px 8px; }
 
 /* Add member form */

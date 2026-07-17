@@ -731,10 +731,12 @@ export default function ChatPage({ onNavigate }: Props) {
         }
       }
       // Fallback: plaintext non disponibile (messaggio inviato prima del caching)
+      // Non mostrare "🔒 Messaggio cifrato" per messaggi PROPRI — è confusivo;
+      // mostriamo invece che il messaggio è stato inviato ma non più leggibile localmente.
       setDecryptedTexts((prev) =>
         new Map(prev).set(
           msg.id,
-          msg.message_type === "media" ? "" : "🔒 Messaggio cifrato",
+          msg.message_type === "media" ? "" : "📨 Messaggio inviato",
         ),
       );
       return;
