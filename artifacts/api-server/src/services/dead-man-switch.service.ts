@@ -9,7 +9,7 @@
 
 import { DeadManSwitchModel, type DmsAction } from "../models/dead-man-switch.model";
 import { UserModel } from "../models/user.model";
-import { sendEmail } from "./email.service";
+import { sendDmsWarningEmail, sendDmsExecEmail } from "./email.service";
 import { executeLockMode } from "./phoenix.service";
 import { logSecurityEvent } from "./security-timeline.service";
 import { logAuditEvent } from "../lib/audit";
@@ -217,20 +217,12 @@ async function sendDmsWarning(
   if (!user?.email) return;
 
   const gracePeriodEnd = new Date(Date.now() + dms.grace_days * 24 * 3600 * 1000);
-  const publicUrl = process.env["PUBLIC_URL"] ?? "https://alphachat.sbs";
 
-  await sendEmail({
-    to: user.email,
-    subject: "⚠️ Alpha Chat — Avviso di inattività",
-    html: `
-      <div style="font-family:sans-serif;max-width:480px;margin:0 auto">
-        <h2>⚠️ Dead Man Switch — Avviso di inattività</h2>
-        <p>Non rileviamo accessi al tuo account Alpha Chat da più di <strong>${dms.grace_days} giorni</strong>.</p>
-        <p>Hai tempo fino al <strong>${gracePeriodEnd.toLocaleDateString("it-IT")}</strong> per effettuare l'accesso e annullare l'avviso.</p>
-        <p><a href="${publicUrl}" style="background:#7c3aed;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none">Accedi ad Alpha Chat</a></p>
-        <p style="color:#888;font-size:12px">Se non vuoi ricevere questi avvisi, disattiva il Dead Man Switch nelle impostazioni.</p>
-      </div>
-    `,
+  await sendDmsWarningEmail({
+    to:            user.email,
+    graceDays:     dms.grace_days,
+    gracePeriodEnd,
+    lang:          (user as { language?: string }).language,
   });
 
   await DeadManSwitchModel.updateOne(
@@ -250,10 +242,9 @@ async function executeDmsAction(
     // Solo notifica, nessuna azione automatica
     const user = await UserModel.findById(userId).lean();
     if (user?.email) {
-      await sendEmail({
-        to: user.email,
-        subject: "🔔 Alpha Chat — Dead Man Switch: periodo scaduto",
-        html: `<p>Il periodo del Dead Man Switch è scaduto. Accedi al tuo account Alpha Chat per ripristinare lo stato.</p>`,
+      await sendDmsExecEmail({
+        to:   user.email,
+        lang: (user as { language?: string }).language,
       });
     }
     logger.info({ userId, action: dms.action }, "DMS: period expired, notify only");

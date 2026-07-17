@@ -15,6 +15,7 @@ import {
   getNotificationSettings,
   updateNotificationSettings,
 } from "../../controllers/notification.controller";
+import { updateLanguage } from "../../controllers/language.controller";
 import {
   blockUser,
   unblockUser,
@@ -57,6 +58,9 @@ router.get("/me/notifications", getNotificationSettings);
 
 /** PATCH /api/v1/users/me/notifications */
 router.patch("/me/notifications", updateNotificationSettings);
+
+/** PATCH /api/v1/users/me/language */
+router.patch("/me/language", updateLanguage);
 
 // ---------------------------------------------------------------------------
 // Block list (Sprint 15)

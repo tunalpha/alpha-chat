@@ -1317,6 +1317,15 @@ export async function apiChangeGroupMemberRole(
   await request<unknown>("PATCH", `/groups/${groupId}/members/${userId}/role`, { role });
 }
 
+// ---------------------------------------------------------------------------
+// Language preference
+// ---------------------------------------------------------------------------
+
+/** Salva la lingua preferita dell'utente sul backend (usata per le email). */
+export async function apiUpdateUserLanguage(language: string): Promise<void> {
+  await request<unknown>("PATCH", "/users/me/language", { language });
+}
+
 export async function apiListMessages(
   conversationId: string,
   options: { limit?: number; beforeSequence?: number } = {},

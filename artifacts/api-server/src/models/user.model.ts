@@ -46,6 +46,9 @@ export interface IUser {
     ghost_mode: boolean;
   };
 
+  // Lingua interfaccia (usata per le email)
+  language: string;
+
   // Notifiche
   notification_settings: {
     messages: boolean;
@@ -135,6 +138,8 @@ const userSchema = new Schema<IUserDocument>(
       allow_calls_from: { type: String, enum: ["everyone", "contacts", "nobody"], default: "contacts" },
       ghost_mode: { type: Boolean, default: false },
     },
+
+    language: { type: String, default: "it", maxlength: 5 },
 
     notification_settings: {
       messages: { type: Boolean, default: true },

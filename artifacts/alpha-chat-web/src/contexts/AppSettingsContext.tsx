@@ -21,6 +21,7 @@ import React, {
   useMemo,
 } from "react";
 import { changeLanguage, SUPPORTED_LANGUAGES, type LangCode } from "../i18n";
+import { apiUpdateUserLanguage } from "../lib/api";
 
 // ─── Versione dello schema ─────────────────────────────────────────────────────
 // Incrementare quando la struttura cambia; migrateSettings gestirà la conversione.
@@ -290,6 +291,10 @@ export function AppSettingsProvider({ children }: { children: React.ReactNode })
   const setLanguage = useCallback(async (l: LangCode) => {
     await changeLanguage(l);
     update({ language: l });
+    // Sincronizza al backend (fire-and-forget): le email vengono inviate nella
+    // lingua scelta dall'utente. Gli errori non bloccano l'UI — l'utente ha già
+    // la lingua aggiornata in locale.
+    apiUpdateUserLanguage(l).catch(() => {/* ignore — nessun blocco UI */});
   }, [update]);
 
   const value = useMemo<AppSettingsContextValue>(() => ({

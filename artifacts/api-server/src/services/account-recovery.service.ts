@@ -20,6 +20,7 @@ import { AppError } from "../errors/AppError";
 import { logAuditEvent } from "../lib/audit";
 import { logger } from "../lib/logger";
 import { recordFailedAttempt, clearFailedAttempts } from "../lib/rate-limiter";
+import { sendRecoveryEmail } from "./email.service";
 
 // ---------------------------------------------------------------------------
 // Tipi
@@ -243,11 +244,15 @@ export async function requestEmailRecovery(params: {
     },
   });
 
-  // TODO: inviare email (SMTP non configurato — token loggato in dev)
-  logger.info(
-    { userId: user._id.toString(), expiresAt: expiresAt.toISOString() },
-    `[DEV] Recovery email token: ${token}`,
-  );
+  // Invia email di recupero nella lingua dell'utente
+  const EMAIL_TTL_MINUTES = Math.round(EMAIL_TOKEN_TTL_MS / 60_000);
+  await sendRecoveryEmail({
+    to:              user.recovery_email,
+    username:        user.username,
+    recoveryToken:   token,
+    expiresInMinutes: EMAIL_TTL_MINUTES,
+    lang:            (user as { language?: string }).language ?? "it",
+  });
 
   logAuditEvent({
     event: "RECOVERY_EMAIL_REQUESTED",

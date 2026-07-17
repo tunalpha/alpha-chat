@@ -137,6 +137,7 @@ export async function initiatePhoenix(params: {
     confirmToken: rawToken,
     action,
     expiresInMinutes: 15,
+    lang: (user as { language?: string }).language,
   });
 
   logger.info({ userId: user._id.toString(), action }, "Phoenix initiation email sent");
