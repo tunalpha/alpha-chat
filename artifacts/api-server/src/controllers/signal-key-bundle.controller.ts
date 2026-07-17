@@ -12,6 +12,7 @@ import type {
   ReplenishOneTimePreKeysInput,
   RotateSignedPreKeyInput,
 } from "../validation/signal-key.schemas";
+import { logger } from "../lib/logger";
 
 // ---------------------------------------------------------------------------
 // POST /api/v1/keys/bundle — upload bundle completo
@@ -38,6 +39,17 @@ export const fetchBundle: RequestHandler = async (req, res) => {
   }
 
   const bundle = await service.fetchKeyBundle(req.user!.userId, targetUserId);
+
+  // AUDIT-1: quale bundle è stato restituito e se ha una OTPK disponibile
+  logger.info({
+    requesterId: req.user!.userId,
+    targetUserId,
+    bundleDeviceId: bundle.deviceId,
+    signedPreKeyId: bundle.signedPreKeyId,
+    hasOtpk: bundle.oneTimePreKey !== null,
+    otpkKeyId: bundle.oneTimePreKey?.keyId ?? null,
+  }, "[SIGNAL-AUDIT] fetchBundle → bundle consegnato");
+
   res.json({ success: true, data: bundle });
 };
 
@@ -86,6 +98,20 @@ export const fetchAllBundles: RequestHandler = async (req, res) => {
   }
 
   const bundles = await service.fetchAllKeyBundles(req.user!.userId, targetUserId);
+
+  // AUDIT-1b: tutti i bundle multi-device restituiti (usato per 1:1, non gruppi)
+  logger.info({
+    requesterId: req.user!.userId,
+    targetUserId,
+    bundleCount: bundles.length,
+    bundles: bundles.map((b) => ({
+      deviceId: b.deviceId,
+      signedPreKeyId: b.signedPreKeyId,
+      hasOtpk: b.oneTimePreKey !== null,
+      otpkKeyId: b.oneTimePreKey?.keyId ?? null,
+    })),
+  }, "[SIGNAL-AUDIT] fetchAllBundles → bundle consegnati");
+
   res.json({ success: true, data: bundles });
 };
 

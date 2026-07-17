@@ -235,6 +235,29 @@ export async function listMessages(
     afterSequence: input.after_sequence,
   });
 
+  // AUDIT-6 lato destinatario: logga i messaggi di gruppo consegnati con device_ciphertexts
+  type DcEntry = { device_id: string; body: string; type: number };
+  const msgsWithDcs = messages.filter((m) => {
+    const dcs = (m as unknown as { device_ciphertexts?: DcEntry[] }).device_ciphertexts;
+    return Array.isArray(dcs) && dcs.length > 0;
+  });
+  if (msgsWithDcs.length > 0) {
+    logger.info({
+      fetcherUserId: userId,
+      conversationId,
+      count: msgsWithDcs.length,
+      messages: msgsWithDcs.map((m) => {
+        const dcs = (m as unknown as { device_ciphertexts: DcEntry[] }).device_ciphertexts;
+        return {
+          messageId: m._id.toString(),
+          senderId: m.sender_id.toString(),
+          dcCount: dcs.length,
+          dcEntries: dcs.map((d) => ({ device_id: d.device_id, type: d.type })),
+        };
+      }),
+    }, "[SIGNAL-AUDIT] listMessages — device_ciphertexts consegnati al destinatario");
+  }
+
   // 4. Cursor = sequence_number dell'ultimo elemento (per next page)
   const lastSeq = messages.length > 0
     ? messages[messages.length - 1]?.sequence_number

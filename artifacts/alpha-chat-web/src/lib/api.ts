@@ -1344,3 +1344,15 @@ export async function apiListMessages(
     `/conversations/${conversationId}/messages${qs ? `?${qs}` : ""}`,
   );
 }
+
+/**
+ * Invia un evento di audit Signal al server (fire-and-forget).
+ * Sostituisce console.debug/error per eventi crittografici visibili
+ * solo lato client, rendendoli disponibili nei log strutturati del server.
+ */
+export async function apiSignalAudit(
+  tag: string,
+  data: Record<string, unknown>,
+): Promise<void> {
+  await request<void>("POST", "/signal/audit", { tag, data });
+}

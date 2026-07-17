@@ -19,6 +19,7 @@ import {
   apiGetAllKeyBundles,
   apiGetKeyBundle,
   apiGetGroup,
+  apiSignalAudit,
   decodeMessage,
   decodeVoiceMeta,
   decodeMediaMeta,
@@ -27,6 +28,11 @@ import {
   type MessageItem,
   type MediaMeta,
 } from "../lib/api";
+
+/** Fire-and-forget: invia evento di audit Signal al server invece di console.debug. */
+function reportAudit(tag: string, data: Record<string, unknown>): void {
+  void apiSignalAudit(tag, data).catch(() => {});
+}
 import {
   signalEncrypt,
   signalDecrypt,
@@ -753,7 +759,7 @@ export default function ChatPage({ onNavigate }: Props) {
       const convType = conversations.find((c) => c.conversation_id === activeConvId)?.type;
       const isGroupMsg = hasGroupStyleEntry || convType === "group";
       // AUDIT-5: ricezione messaggio — ogni campo critico per il routing decrypt
-      console.debug("[Signal/group][AUDIT-5] messaggio ricevuto", {
+      reportAudit("AUDIT-5-rx", {
         msgId: msg.id,
         senderId: msg.sender_id,
         myUserId: auth.userId,
@@ -766,13 +772,13 @@ export default function ChatPage({ onNavigate }: Props) {
       });
       if (isGroupMsg && msg.device_ciphertexts && msg.device_ciphertexts.length > 0) {
         const myEntry = msg.device_ciphertexts.find((d) => d.device_id === auth.userId);
-        console.debug("[Signal/group] decrypt attempt", {
+        reportAudit("AUDIT-5-match", {
           msgId: msg.id,
           senderId: msg.sender_id,
           myUserId: auth.userId,
           myDeviceId: auth.deviceId,
           hasMyEntry: !!myEntry,
-          entryType: myEntry?.type,
+          entryType: myEntry?.type ?? null,
           allEntryIds: msg.device_ciphertexts.map((d) => d.device_id),
         });
         if (myEntry) {
@@ -782,22 +788,22 @@ export default function ChatPage({ onNavigate }: Props) {
               [{ ...myEntry, device_id: auth.deviceId }],
             );
             if (found !== null) {
+              reportAudit("AUDIT-6-decrypt-ok", { msgId: msg.id, entryType: myEntry.type });
               setDecryptedTexts((prev) => new Map(prev).set(msg.id, found));
               return;
             }
-            console.error("[Signal/group] decrypt returned null (no exception)", {
-              msgId: msg.id, entryType: myEntry.type,
-            });
+            reportAudit("AUDIT-6-decrypt-null", { msgId: msg.id, entryType: myEntry.type });
           } catch (err) {
-            console.error("[Signal/group] decrypt threw", {
+            reportAudit("AUDIT-6-decrypt-error", {
               msgId: msg.id,
               error: err instanceof Error ? err.message : String(err),
               stack: err instanceof Error ? err.stack : undefined,
             });
           }
         } else {
-          console.error("[Signal/group] myEntry not found in device_ciphertexts", {
-            msgId: msg.id, myUserId: auth.userId,
+          reportAudit("AUDIT-5-no-entry", {
+            msgId: msg.id,
+            myUserId: auth.userId,
             allEntryIds: msg.device_ciphertexts.map((d) => d.device_id),
           });
         }
@@ -1147,11 +1153,11 @@ export default function ChatPage({ onNavigate }: Props) {
         others.map(async (member) => {
           try {
             const bundle = await apiGetKeyBundle(member.user_id);
-            // AUDIT-1: cosa restituisce apiGetKeyBundle
-            console.debug("[Signal/group][AUDIT-1] apiGetKeyBundle →", {
+            // AUDIT-1: cosa restituisce apiGetKeyBundle (già loggato lato server — qui log lato client)
+            reportAudit("AUDIT-1-bundle", {
               memberId: member.user_id,
               bundleDeviceId: bundle.deviceId,
-              identityKey: bundle.identityKey?.slice(0, 20) + "…",
+              identityKeyPrefix: bundle.identityKey?.slice(0, 20) + "…",
               signedPreKeyId: bundle.signedPreKeyId,
               hasOtpk: bundle.oneTimePreKey !== null,
               otpkKeyId: bundle.oneTimePreKey?.keyId ?? null,
@@ -1163,25 +1169,18 @@ export default function ChatPage({ onNavigate }: Props) {
               // prima sessione (X3DH) e tipo-1 (Double Ratchet) nelle successive.
               // forceNewSession consumerebbe 1 OTPK per messaggio → esaurimento pool.
             );
-            // AUDIT-2: cosa restituisce signalEncryptMulti
-            console.debug("[Signal/group][AUDIT-2] signalEncryptMulti →", {
+            reportAudit("AUDIT-2-encrypt", {
               memberId: member.user_id,
               dcsCount: dcs.length,
               entries: dcs.map((d) => ({ device_id: d.device_id, type: d.type, bodyLen: d.body?.length ?? 0 })),
             });
             if (dcs[0]) {
-              // Sovrascrivi device_id con userId per il fan-out di gruppo
-              console.debug("[Signal/group] encrypted for member", {
-                memberId: member.user_id, msgType: dcs[0].type, // 3=PreKey ✓, 1=Whisper ✗
-              });
               deviceCiphertexts.push({ device_id: member.user_id, body: dcs[0].body, type: dcs[0].type });
             } else {
-              console.warn("[Signal/group][AUDIT-2] dcs[0] è undefined — signalEncryptMulti non ha prodotto ciphertext", {
-                memberId: member.user_id,
-              });
+              reportAudit("AUDIT-2-no-ciphertext", { memberId: member.user_id });
             }
           } catch (err) {
-            console.error("[Signal/group] signalEncryptMulti FAILED for member", {
+            reportAudit("AUDIT-2-encrypt-error", {
               memberId: member.user_id,
               error: err instanceof Error ? err.message : String(err),
               stack: err instanceof Error ? err.stack : undefined,
@@ -1192,8 +1191,7 @@ export default function ChatPage({ onNavigate }: Props) {
       // Ripristino mid-session: controlla OTPK dopo ogni messaggio di gruppo
       // (non solo al login) per evitare esaurimento del pool.
       void maybeReplenishOtpks(auth.userId, auth.deviceId);
-      // AUDIT-3: payload finale prima di inviarlo all'API
-      console.debug("[Signal/group][AUDIT-3] encryptForGroup → payload finale", {
+      reportAudit("AUDIT-3-payload", {
         groupId,
         deviceCiphertextsCount: deviceCiphertexts.length,
         entries: deviceCiphertexts.map((d) => ({ device_id: d.device_id, type: d.type })),
@@ -1201,7 +1199,7 @@ export default function ChatPage({ onNavigate }: Props) {
       // body/type primario: placeholder non-vuoto per passare la validazione backend.
       return { body: btoa("_grp_"), type: 1, deviceCiphertexts };
     } catch (err) {
-      console.error("[Signal/group] encryptForGroup outer error", {
+      reportAudit("AUDIT-3-outer-error", {
         groupId,
         error: err instanceof Error ? err.message : String(err),
         stack: err instanceof Error ? err.stack : undefined,
@@ -1274,8 +1272,7 @@ export default function ChatPage({ onNavigate }: Props) {
         // FIX: persiste il plaintext in IDB — sopravvive al reload
         void cacheOwnText(clientMessageId, text);
         const signal = await encryptForActive(text);
-        // AUDIT-4: payload inviato a apiSendMessage
-        console.debug("[Signal/group][AUDIT-4] apiSendMessage payload", {
+        reportAudit("AUDIT-4-send", {
           convId: activeConvId,
           signalType: signal?.type,
           deviceCiphertextsCount: signal?.deviceCiphertexts?.length ?? 0,

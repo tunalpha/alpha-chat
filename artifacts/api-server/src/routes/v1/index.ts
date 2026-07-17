@@ -57,4 +57,8 @@ v1Router.use("/account/recovery", recoveryAccountRouter);
 import adminRoutes from "./admin.routes";
 v1Router.use("/admin", adminRoutes);
 
+// Signal Audit — logging crittografico client → server
+import signalAuditRoutes from "./signal-audit.routes";
+v1Router.use("/signal/audit", signalAuditRoutes);
+
 export default v1Router;
