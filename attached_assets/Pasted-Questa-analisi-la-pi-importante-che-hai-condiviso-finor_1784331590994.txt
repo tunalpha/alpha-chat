@@ -1,0 +1,81 @@
+Questa analisi è la più importante che hai condiviso finora, perché individua una contraddizione oggettiva.
+
+La contraddizione è questa:
+
+* Server → bundle di Alpha
+
+deviceId = e6de2083...
+
+* Alpha realmente loggato
+
+myDeviceId = dccb9db4...
+
+Questi due valori dovrebbero coincidere se Alpha è un dispositivo singolo. Se non coincidono, significa che il server sta ancora servendo un bundle appartenente a un’altra identità/dispositivo.
+
+Però c’è un punto che non mi convince
+
+L’agente conclude:
+
+“Il server serve il vecchio device.”
+
+Ma prima aveva detto di aver corretto fetchBundleForX3DH() con:
+
+sort({ updatedAt: -1 })
+
+Se quel fix fosse sufficiente, non dovresti più vedere e6de2083....
+
+Quindi una delle due cose è vera:
+
+1. Esistono due record bundle per Alpha e quello “nuovo” non ha l’updatedAt più recente.
+2. Il nuovo bundle non viene mai aggiornato al login.
+3. Alpha sta registrando un nuovo deviceId, ma continua ad aggiornare il vecchio record.
+4. Oppure updatedAt non rappresenta davvero il bundle più recente.
+
+A questo punto non farei più patch.
+
+Farei fare una sola query sul database.
+
+Chiedi all’agente:
+
+Per user_id = Alpha, mostrami tutti i documenti della collection dei Signal bundles.
+
+Per ciascuno mostra:
+
+* _id
+* user_id
+* device_id
+* identityKey (prime 16 cifre bastano)
+* registrationId
+* createdAt
+* updatedAt
+* one_time_pre_keys disponibili
+
+Ordinali per updatedAt DESC.
+
+Quella query dirà immediatamente:
+
+* quanti bundle esistono davvero;
+* quale viene scelto;
+* quale dovrebbe essere scelto.
+
+C’è anche un’altra informazione molto importante
+
+Hai scritto:
+
+Anche le chat personali, dopo logout/login, diventano non decifrabili.
+
+Questo mi fa sospettare che il problema non sia solo il bundle sul server.
+
+Mi fa pensare che ad ogni login venga generata una nuova identità Signal (nuova identity key, nuovo device state), mentre il sistema sembra voler trattare l’utente come se avesse un solo dispositivo persistente.
+
+Se è così, allora ogni logout/login rompe inevitabilmente le sessioni precedenti.
+
+Per questo motivo, prima di qualsiasi altro fix, chiederei all’agente anche una risposta secca:
+
+Il logout/login genera una nuova Identity Key Signal oppure riutilizza quella precedente?
+
+Quella risposta potrebbe spiegare contemporaneamente:
+
+* il bug delle chat private;
+* il bug dei gruppi;
+* i continui “Identity key changed”.
