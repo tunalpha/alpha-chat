@@ -1,0 +1,38 @@
+Questa analisi è molto più convincente delle precedenti perché individua due cause tecniche specifiche invece di aggiungere un altro fallback. Tuttavia, c’è un punto che mi farebbe fermare prima del deploy.
+
+Il punto critico: forceNewSession: true
+
+L’idea di forzare sempre un PreKeyWhisperMessage (tipo 3) risolve il caso del destinatario senza sessione, ma ha un possibile effetto collaterale: il protocollo Signal normalmente usa i PreKey per inizializzare una sessione, non necessariamente per ogni messaggio successivo.
+
+Prima di pubblicare, chiederei all’agente di verificare esplicitamente:
+
+* I PreKey vengono consumati ad ogni messaggio oppure solo usati per creare/aggiornare la sessione?
+* Dopo 100, 500 o 1000 messaggi di gruppo tra gli stessi utenti, il sistema continua a funzionare senza esaurire i PreKey o degradare le prestazioni?
+* La libreria Signal che state usando supporta esplicitamente forceNewSession per ogni messaggio come uso previsto?
+
+Se la risposta è sì e i test lo confermano, allora il fix è valido. Se invece forceNewSession è solo un workaround, rischi di spostare il problema più avanti.
+
+La race condition
+
+Questa invece mi convince molto.
+
+Usare:
+
+conversations.find(...)?.type === "group"
+
+per decidere il percorso di decrypt significa dipendere dallo stato React, che può non essere ancora inizializzato.
+
+Molto più robusto è basarsi direttamente sui dati del messaggio ricevuto (device_ciphertexts, groupId o altri campi presenti nel payload), senza dipendere dall’interfaccia.
+
+Cosa chiederei prima del Publish
+
+Direi all’agente di eseguire un test di stress specifico:
+
+* Creare un gruppo con 3 utenti (A, B, C).
+* Cancellare completamente IndexedDB del dispositivo B.
+* Inviare 200 messaggi alternati da A e C.
+* Verificare che B riesca a decifrare tutti i messaggi, dal primo all’ultimo.
+* Riavviare il browser di B e verificare che i messaggi storici restino leggibili.
+* Controllare nei log che non vengano continuamente create nuove sessioni inutili.
+
+Se questo test passa, la Root Cause Analysis è molto credibile e avrai una buona evidenza che il problema è stato realmente risolto, non semplicemente mascherato.
