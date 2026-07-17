@@ -1,26 +1,25 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 86" width="100" height="86">
   <defs>
-    <linearGradient id="g1" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#c060ff"/>
-      <stop offset="100%" stop-color="#8020d0"/>
-    </linearGradient>
-    <linearGradient id="g2" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#b040f0"/>
+    <linearGradient id="g" x1="30%" y1="0%" x2="70%" y2="100%">
+      <stop offset="0%" stop-color="#8a2be2"/>
+      <stop offset="50%" stop-color="#b030e8"/>
       <stop offset="100%" stop-color="#e040fb"/>
     </linearGradient>
-    <linearGradient id="g3" x1="0%" y1="0%" x2="100%" y2="0%">
-      <stop offset="0%" stop-color="#d050f8"/>
-      <stop offset="100%" stop-color="#9030d0"/>
-    </linearGradient>
   </defs>
-  <path d="M 68 430 L 210 170 L 250 170 L 108 430 Z" fill="url(#g1)"/>
-  <path d="M 262 170 L 302 170 L 444 430 L 404 430 Z" fill="url(#g2)"/>
-  <path d="M 108 430 L 108 388 L 404 388 L 404 430 Z" fill="url(#g3)"/>
-  <circle cx="230" cy="174" r="26" fill="#b040e8"/>
-  <circle cx="282" cy="174" r="26" fill="#c050f0"/>
-  <circle cx="108" cy="409" r="22" fill="#c050f0"/>
-  <circle cx="404" cy="409" r="22" fill="#9030d0"/>
-  <path d="M 198 375 L 256 258 L 314 375 Z" fill="#0d0520"/>
-  <path d="M 82 410 L 212 175 L 225 182 L 98 418 Z" fill="white" opacity="0.18"/>
-  <path d="M 115 394 L 255 394 L 253 406 L 113 406 Z" fill="white" opacity="0.14"/>
+  <!-- Left leg -->
+  <path d="M 0 86 L 36 0 L 50 0 L 14 86 Z" fill="url(#g)"/>
+  <!-- Right leg -->
+  <path d="M 50 0 L 64 0 L 100 86 L 86 86 Z" fill="url(#g)"/>
+  <!-- Base bar -->
+  <path d="M 14 86 L 14 72 L 86 72 L 86 86 Z" fill="url(#g)"/>
+  <!-- Top cap rounded -->
+  <ellipse cx="50" cy="4" rx="14" ry="8" fill="#b030e8"/>
+  <!-- Bottom-left cap -->
+  <ellipse cx="7" cy="82" rx="9" ry="8" fill="#9030d0" transform="rotate(-60,7,82)"/>
+  <!-- Bottom-right cap -->
+  <ellipse cx="93" cy="82" rx="9" ry="8" fill="#c040f0" transform="rotate(60,93,82)"/>
+  <!-- Inner triangle cutout -->
+  <path d="M 35 68 L 50 36 L 65 68 Z" fill="#0d0520"/>
+  <!-- Highlight left -->
+  <path d="M 4 80 L 37 5 L 42 9 L 10 84 Z" fill="white" opacity="0.15"/>
 </svg>
