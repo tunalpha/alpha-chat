@@ -403,6 +403,12 @@ export async function changeTempPassword(
   newPassword: string,
   /** deviceId della sessione corrente — viene mantenuta, le altre revocate */
   currentDeviceId?: string,
+  /**
+   * Sprint 28: IK re-wrappata con il wrap_key derivato dalla nuova password.
+   * - Presente → password cambiata senza recovery: stessa IK, nuovo wrapper.
+   * - Assente  → scenario recovery (IK già resettata lato client, aggiornata via PATCH /auth/identity-key).
+   */
+  newEncryptedIdentityKey?: string,
 ): Promise<void> {
   const user = await UserModel.findById(userId);
   if (!user) throw new AppError("USER_NOT_FOUND", 404);
@@ -426,14 +432,19 @@ export async function changeTempPassword(
 
   const newHash = await hashPassword(newPassword);
 
-  await UserModel.findByIdAndUpdate(userId, {
-    $set: {
-      password_hash:            newHash,
-      temp_password_hash:       null,
-      temp_password_expires_at: null,
-      require_password_change:  false,
-    },
-  });
+  // Operazione atomica su singolo documento MongoDB.
+  // Se newEncryptedIdentityKey è presente, aggiorna il blob nello stesso $set.
+  const updateFields: Record<string, unknown> = {
+    password_hash:            newHash,
+    temp_password_hash:       null,
+    temp_password_expires_at: null,
+    require_password_change:  false,
+  };
+  if (newEncryptedIdentityKey) {
+    updateFields["encrypted_identity_key"] = newEncryptedIdentityKey;
+  }
+
+  await UserModel.findByIdAndUpdate(userId, { $set: updateFields });
 
   // Sprint 22: revoca tutte le sessioni ECCETTO quella corrente
   if (currentDeviceId) {

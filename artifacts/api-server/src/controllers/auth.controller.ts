@@ -12,7 +12,7 @@ import type { RequestHandler } from "express";
 import * as authService from "../services/auth.service";
 import { successResponse } from "../utils/response";
 import type { RegisterInput, LoginInput, RefreshInput } from "../validation/auth.schemas";
-import { ChangeTempPasswordAuthSchema } from "../validation/auth.schemas";
+import { ChangeTempPasswordAuthSchema, UpdateIdentityKeySchema } from "../validation/auth.schemas";
 import { changeTempPassword } from "../services/account-recovery.service";
 import { validate } from "../middleware/validate.middleware";
 import { authenticate } from "../middleware/authenticate.middleware";
@@ -111,9 +111,25 @@ export const changeTempPasswordAuth = [
     try {
       const user   = req.user!;
       const userId = new mongoose.Types.ObjectId(user.userId);
-      const { current_password, new_password } = req.body;
-      await changeTempPassword(userId, current_password, new_password, user.deviceId);
+      const { current_password, new_password, new_encrypted_identity_key } = req.body;
+      await changeTempPassword(userId, current_password, new_password, user.deviceId, new_encrypted_identity_key);
       res.status(200).json(successResponse({ message: "Password aggiornata. Effettua nuovamente l'accesso con la nuova password." }, req.requestId));
+    } catch (err) { next(err); }
+  },
+];
+
+// ---------------------------------------------------------------------------
+// PATCH /api/v1/auth/identity-key — Sprint 28
+// ---------------------------------------------------------------------------
+
+export const updateIdentityKey = [
+  authenticate,
+  validate("body", UpdateIdentityKeySchema),
+  async (req: Parameters<RequestHandler>[0], res: Parameters<RequestHandler>[1], next: Parameters<RequestHandler>[2]) => {
+    try {
+      const { encrypted_identity_key, ik_salt } = req.body;
+      await authService.updateIdentityKey(req.user!.userId, encrypted_identity_key, ik_salt);
+      res.status(200).json(successResponse({ message: "Identity key aggiornata" }, req.requestId));
     } catch (err) { next(err); }
   },
 ];

@@ -1,7 +1,11 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { loadAuth, saveAuth, clearAuth, clearRequirePasswordChange, getDeviceId, type StoredAuth } from "../lib/auth";
-import { apiLogin, apiRegister, apiLogout, apiLogoutAll, type LoginInput, type RegisterInput, type AuthResult } from "../lib/api";
-import { initSignalKeys, clearSignalKeys } from "../lib/signal";
+import { apiLogin, apiRegister, apiLogout, apiLogoutAll, apiUpdateIdentityKey, type LoginInput, type RegisterInput, type AuthResult } from "../lib/api";
+import {
+  initSignalKeys, clearSignalKeys,
+  unwrapIdentityKeyPair,
+  generateAndWrapSharedIdentityKey,
+} from "../lib/signal";
 import { initMediaCache, clearMediaCache } from "../lib/media-cache";
 
 interface AuthContextValue {
@@ -67,40 +71,76 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const stored = authResultToStored(result);
     saveAuth(stored);
     setAuth(stored);
-    // Inizializza chiavi Signal in background — non blocca il login
-    // Zero Plaintext Rule: le chiavi private rimangono in IndexedDB
+
     const devId = getDeviceId();
-    void initSignalKeys(result.user.id, devId)
+    const uid = result.user.id;
+
+    // Sprint 28: decifra la IK dal blob mentre la password è ancora in memoria.
+    // La password non viene mai persistita — viene usata solo qui e poi scartata.
+    let resolvedIkKeyPair: import("@workspace/libsignal-ts").KeyPairType | undefined;
+
+    if (result.encrypted_identity_key && result.ik_salt) {
+      // Caso normale post-migrazione: decifra IK dal blob con la password.
+      try {
+        resolvedIkKeyPair = await unwrapIdentityKeyPair(
+          result.encrypted_identity_key,
+          input.password,
+          result.ik_salt,
+        );
+      } catch {
+        // Decifratura fallita (password errata? blob corrotto?).
+        // Non blocchiamo il login — initSignalKeys genererà una nuova IK locale.
+        // Il blob verrà aggiornato alla prossima operazione che coinvolge la password.
+      }
+    } else {
+      // Caso migrazione lazy: utente legacy senza blob.
+      // Genera una nuova IK condivisa (WASM + Curve25519) e la salva sul server.
+      // Attendiamo la generazione (≈100ms) prima di procedere con initSignalKeys
+      // per evitare race condition — la IK deve essere nota prima dell'inizializzazione.
+      try {
+        const { ikKeyPair, blob, salt } = await generateAndWrapSharedIdentityKey(input.password);
+        resolvedIkKeyPair = ikKeyPair;
+        // Salva il blob in background — non critico se fallisce al primo tentativo
+        void apiUpdateIdentityKey(blob, salt).catch(() => {});
+      } catch {
+        // Non critico: senza IK, initSignalKeys genererà una IK locale per questo device
+      }
+    }
+
+    // Inizializza chiavi Signal in background — passa la IK risolta se disponibile
+    void initSignalKeys(uid, devId, resolvedIkKeyPair)
       .then(() => {
-        const uid = result.user.id;
         localStorage.setItem(`signal_keys_ready:${uid}`, "1");
         document.body.setAttribute("data-signal-ready", uid);
         window.dispatchEvent(new CustomEvent("signal:ready", { detail: { userId: uid } }));
       })
-      .catch(() => {
-        // Errore non critico in Fase 1 — verrà ritentato al prossimo login
-      });
-    void initMediaCache(result.user.id, devId).catch(() => {});
+      .catch(() => {});
+    void initMediaCache(uid, devId).catch(() => {});
   }, []);
 
   const register = useCallback(async (input: RegisterInput) => {
-    const result = await apiRegister(input);
+    // Sprint 28: genera la IK condivisa e la cifra con la password PRIMA di chiamare il server.
+    // La password non viene mai persistita — è disponibile solo qui durante la registrazione.
+    const { ikKeyPair: newIkKeyPair, blob: encryptedIK, salt: ikSalt } =
+      await generateAndWrapSharedIdentityKey(input.password);
+
+    // Invia blob + bundle al server in un'unica chiamata
+    const result = await apiRegister({ ...input, encrypted_identity_key: encryptedIK, ik_salt: ikSalt });
     const stored = authResultToStored(result);
     saveAuth(stored);
     setAuth(stored);
-    // Genera e carica il bundle Signal subito dopo la registrazione
+
+    // Inizializza Signal con la IK pre-generata (non ne genera una nuova)
     const devId = getDeviceId();
-    void initSignalKeys(result.user.id, devId)
+    const uid = result.user.id;
+    void initSignalKeys(uid, devId, newIkKeyPair)
       .then(() => {
-        const uid = result.user.id;
         localStorage.setItem(`signal_keys_ready:${uid}`, "1");
         document.body.setAttribute("data-signal-ready", uid);
         window.dispatchEvent(new CustomEvent("signal:ready", { detail: { userId: uid } }));
       })
-      .catch(() => {
-        // Errore non critico in Fase 1
-      });
-    void initMediaCache(result.user.id, devId).catch(() => {});
+      .catch(() => {});
+    void initMediaCache(uid, devId).catch(() => {});
     // Sprint 22: restituisce la Recovery Card (presente solo alla prima registrazione)
     return { recovery_card: result.recovery_card };
   }, []);

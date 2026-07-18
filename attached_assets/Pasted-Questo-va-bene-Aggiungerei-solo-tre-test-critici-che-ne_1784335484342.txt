@@ -1,0 +1,84 @@
+Questo va bene. Aggiungerei solo tre test critici che nel piano non compaiono e che riducono il rischio di scoprire problemi in produzione.
+
+Puoi inviare questa versione finale:
+
+Ottimo lavoro. L’analisi mi sembra completa e condivido la scelta di allineare l’architettura al modello previsto dalla libreria Signal.
+
+Prima di iniziare a modificare il codice, voglio un’ultima verifica pratica.
+
+Checklist E2E pre-deploy
+
+Blocco 1 — Chat 1:1
+
+* Alice invia un messaggio a Cricco → Cricco lo riceve e decifra.
+* Cricco risponde → Alice riceve e decifra.
+* La sessione persiste dopo page refresh (nessun nuovo handshake).
+
+Blocco 2 — Gruppi
+
+* Alice invia in un gruppo di 3 → tutti ricevono e decifrano.
+* Nuovo membro aggiunto → riceve i messaggi successivi.
+* Fan-out multi-device: Alice ha 2 browser → entrambi ricevono il messaggio.
+
+Blocco 3 — Multi-device
+
+* Browser 2 recupera la stessa Identity Key dal blob.
+* Nessun errore Identity key changed.
+* Un solo Safety Number per Alice.
+* Fan-out corretto su tutti i browser.
+
+Blocco 4 — Logout / Login
+
+* Logout → IDB cancellato.
+* Login → stessa Identity Key.
+* Nessun key-change banner.
+* Sessioni ricreate correttamente con PreKey.
+
+Blocco 5 — Nuovo dispositivo
+
+* Browser 3 aggiunto.
+* Stessa Identity Key.
+* Bundle corretto.
+* Messaggi ricevuti da tutti i dispositivi.
+
+Blocco 6 — Recovery Card
+
+* Recovery.
+* Nuova Identity Key.
+* Key-change banner previsto.
+* Ripristino completo della messaggistica.
+
+Blocco 7 — Cambio password
+
+* Re-wrap della Identity Key.
+* Nessun cambio Safety Number.
+* Nessun key-change banner.
+
+Blocco 8 — Migrazione utenti legacy
+
+* Migrazione dal primo browser.
+* Convergenza degli altri browser.
+* Un solo key-change banner per i contatti.
+
+Aggiungere inoltre questi tre test obbligatori:
+
+Blocco 9 — Offline
+
+* Un browser rimane offline durante la migrazione e torna online dopo giorni.
+* Deve recuperare correttamente la Identity Key condivisa senza generare conflitti.
+
+Blocco 10 — Concorrenza
+
+* Due browser effettuano login contemporaneamente.
+* Verificare assenza di race condition e duplicazioni di bundle.
+
+Blocco 11 — Regressione chiamate
+
+* Verificare che chiamate vocali e video funzionino ancora dopo la migrazione.
+* Confermare che la modifica della Identity Key non abbia effetti collaterali sul signaling WebRTC.
+
+Dopo il superamento di tutti questi test, procedi con l’implementazione per fasi, una fase alla volta, senza modificare la libreria Signal e mantenendo la retrocompatibilità durante la migrazione.
+
+Nessuna fase successiva deve iniziare senza che la precedente sia stata completata e validata con successo.
+
+Con questi tre blocchi aggiuntivi la checklist copre anche i casi più insidiosi (offline, concorrenza e regressioni), che spesso emergono solo in produzione.

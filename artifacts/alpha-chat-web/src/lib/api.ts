@@ -44,6 +44,12 @@ export interface AuthResult {
   recovery_card?: RecoveryCardPayload;
   /** Sprint 22 completion: true se l'utente ha fatto login con password temporanea */
   require_password_change?: boolean;
+  /**
+   * Sprint 28: blob IK cifrata (opaco per il client finché non decifera con la password).
+   * null → utente legacy pre-migrazione (il client genera nuova IK e chiama PATCH /auth/identity-key).
+   */
+  encrypted_identity_key?: string | null;
+  ik_salt?: string | null;
 }
 
 /** Utente nella lista conversazioni (other_user) */
@@ -486,15 +492,22 @@ export async function apiChangeTempPasswordAuth(
   currentPassword: string,
   newPassword: string,
   confirmPassword: string,
+  /** Sprint 28: IK re-wrappata con il nuovo wrap_key. Assente → scenario recovery. */
+  newEncryptedIdentityKey?: string,
 ): Promise<void> {
   await request<unknown>("POST", "/auth/change-temporary-password", {
     current_password: currentPassword,
     new_password:     newPassword,
     confirm_password: confirmPassword,
+    ...(newEncryptedIdentityKey ? { new_encrypted_identity_key: newEncryptedIdentityKey } : {}),
   });
 }
 
-export async function apiRegister(input: RegisterInput): Promise<AuthResult> {
+export async function apiRegister(input: RegisterInput & {
+  /** Sprint 28: blob IK cifrata da inviare con la registrazione */
+  encrypted_identity_key?: string;
+  ik_salt?: string;
+}): Promise<AuthResult> {
   return request<AuthResult>("POST", "/auth/register", {
     username: input.username,
     display_name: input.display_name,
@@ -502,6 +515,23 @@ export async function apiRegister(input: RegisterInput): Promise<AuthResult> {
     device_id: getDeviceId(),
     device_name: navigator.userAgent.slice(0, 80),
     device_type: "web" as const,
+    ...(input.encrypted_identity_key ? {
+      encrypted_identity_key: input.encrypted_identity_key,
+      ik_salt: input.ik_salt,
+    } : {}),
+  });
+}
+
+/**
+ * Sprint 28: aggiorna il blob IK cifrata sul server.
+ * Usato in due scenari:
+ *   1. Migrazione utenti legacy (prima volta che generano la IK condivisa).
+ *   2. Recovery: il client ha generato una nuova IK dopo recovery card.
+ */
+export async function apiUpdateIdentityKey(blob: string, salt: string): Promise<void> {
+  await request<unknown>("PATCH", "/auth/identity-key", {
+    encrypted_identity_key: blob,
+    ik_salt: salt,
   });
 }
 

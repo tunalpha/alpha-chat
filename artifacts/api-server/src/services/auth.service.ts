@@ -33,7 +33,7 @@ import { blockJti } from "../lib/jti-blocklist";
 import { logAuditEvent } from "../lib/audit";
 import { logger } from "../lib/logger";
 import type { RegisterInput, LoginInput } from "../validation/auth.schemas";
-import type { IUserDocument } from "../models/user.model";
+import { UserModel, type IUserDocument } from "../models/user.model";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -97,6 +97,14 @@ export interface AuthResult {
   recovery_card?: RecoveryCardPayload;
   /** Sprint 22 completion: true se l'utente ha fatto login con password temporanea */
   require_password_change?: boolean;
+  /**
+   * Sprint 28: blob opaco AES-256-GCM della Identity Key privata.
+   * Presente solo se il client ha già eseguito il setup chiavi condivise.
+   * null → utente legacy pre-migrazione (il client mostrerà la schermata di migrazione).
+   */
+  encrypted_identity_key?: string | null;
+  /** Sprint 28: sale per derivare wrap_key lato client. */
+  ik_salt?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -108,6 +116,9 @@ export interface RegisterServiceParams extends RegisterInput {
   ipHash?: string | null;
   countryCode?: string | null;
   requestId?: string;
+  /** Sprint 28: blob IK cifrata (opzionale — i client legacy non lo inviano) */
+  encrypted_identity_key?: string;
+  ik_salt?: string;
 }
 
 /**
@@ -144,6 +155,16 @@ export async function register(params: RegisterServiceParams): Promise<AuthResul
     username, display_name, password_hash: passwordHash,
     email: email ?? null, phone_hash: phoneHash,
   });
+
+  // Sprint 28: salva blob IK cifrata se il client l'ha inviata
+  if (params.encrypted_identity_key && params.ik_salt) {
+    await UserModel.findByIdAndUpdate(user._id, {
+      $set: {
+        encrypted_identity_key: params.encrypted_identity_key,
+        ik_salt: params.ik_salt,
+      },
+    });
+  }
 
   // 6. Signal keys (opzionali)
   if (signal_keys) {
@@ -205,6 +226,9 @@ export async function register(params: RegisterServiceParams): Promise<AuthResul
     is_new_device: true,
     requires_2fa: false,
     recovery_card: recoveryCard,
+    // Sprint 28: restituisce il blob al client (lo stesso appena salvato, o null per legacy)
+    encrypted_identity_key: params.encrypted_identity_key ?? null,
+    ik_salt: params.ik_salt ?? null,
   };
 }
 
@@ -374,7 +398,43 @@ export async function login(params: LoginServiceParams): Promise<LoginResult> {
     },
     is_new_device: isNewDevice, requires_2fa: false,
     require_password_change: usedTempPassword || (user.require_password_change ?? false),
+    // Sprint 28: restituisce il blob IK al client per decifrare la chiave condivisa.
+    // null → utente legacy pre-migrazione: il client mostrerà la schermata di migrazione.
+    encrypted_identity_key: (user as any).encrypted_identity_key ?? null,
+    ik_salt: (user as any).ik_salt ?? null,
   };
+}
+
+// ---------------------------------------------------------------------------
+// Sprint 28 — Aggiornamento blob Identity Key condivisa
+// ---------------------------------------------------------------------------
+
+/**
+ * Salva (o aggiorna) il blob IK cifrata per l'utente autenticato.
+ *
+ * Usato in due scenari:
+ *  1. Migrazione lazy: utente legacy che genera la IK condivisa per la prima volta.
+ *  2. Recovery: il client ha generato una nuova IK dopo recovery card e la salva.
+ *
+ * Il server accetta il blob senza decifrarlo (Zero Knowledge).
+ * L'atomicità è garantita da MongoDB (singolo documento, singolo $set).
+ */
+export async function updateIdentityKey(
+  userId: string,
+  encryptedIdentityKey: string,
+  ikSalt: string,
+): Promise<void> {
+  await UserModel.findByIdAndUpdate(
+    userId,
+    { $set: { encrypted_identity_key: encryptedIdentityKey, ik_salt: ikSalt } },
+    { new: false },
+  );
+  logAuditEvent({
+    event: "IDENTITY_KEY_UPDATED",
+    user_id: userId,
+    created_at: new Date().toISOString(),
+  });
+  logger.info({ userId }, "[Sprint28] Identity key blob aggiornato");
 }
 
 // ---------------------------------------------------------------------------

@@ -111,7 +111,9 @@ export type AuditEventType =
   | "TEMP_PASSWORD_LOGIN"
   | "TEMP_PASSWORD_CHANGED"
   | "TEMP_PASSWORD_EXPIRED"
-  | "CONVERSATION_CLEARED";
+  | "CONVERSATION_CLEARED"
+  // Sprint 28 — Shared Identity Key
+  | "IDENTITY_KEY_UPDATED";
 
 export interface AuditEvent {
   event: AuditEventType;

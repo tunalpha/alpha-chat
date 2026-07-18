@@ -44,11 +44,30 @@ export interface KeyCountResponse {
 // Upload bundle (post-registrazione / reset)
 // ---------------------------------------------------------------------------
 
+/**
+ * Feature flag — Sprint 28.
+ * Quando attivo, rifiuta upload di bundle con IK diversa da quella già registrata.
+ * Disattivo durante la migrazione per non bloccare i client legacy.
+ * Attivare dopo che tutti gli utenti hanno completato la migrazione.
+ */
+const IK_CONSISTENCY_CHECK = process.env["SIGNAL_IK_CONSISTENCY_CHECK"] === "true";
+
 export async function uploadKeyBundle(
   userId: string,
   input: UploadKeyBundleInput,
 ): Promise<void> {
   const uid = new mongoose.Types.ObjectId(userId);
+
+  // Sprint 28: verifica consistenza IK (feature-flaggata).
+  // Dopo la migrazione: tutti i bundle dello stesso utente devono avere la stessa IK pubblica.
+  if (IK_CONSISTENCY_CHECK) {
+    const existing = await repo.listAllBundlesForUser(uid);
+    const differentIk = existing.find((b) => b.identity_key !== input.identity_key);
+    if (differentIk) {
+      throw new AppError("IDENTITY_KEY_MISMATCH", 409);
+    }
+  }
+
   await repo.upsertKeyBundle(uid, {
     deviceId: input.device_id,
     registrationId: input.registration_id,

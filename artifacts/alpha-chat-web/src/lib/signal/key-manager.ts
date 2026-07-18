@@ -13,7 +13,7 @@
  *    Le private restano in IndexedDB; al server vanno solo chiavi pubbliche.
  */
 
-import { initSignalLibrary } from "@workspace/libsignal-ts";
+import { initSignalLibrary, type KeyPairType } from "@workspace/libsignal-ts";
 import { getSignalStore } from "./key-store";
 import {
   generateIdentityKeyPair,
@@ -46,13 +46,19 @@ const OTPK_BATCH = 100; // Quante OTPK generare per rifornimento
  *
  * Flusso:
  *   1. Carica WASM curve25519 (singleton)
- *   2. Se non inizializzato: genera Identity Key, Signed PreKey, 100 OTPKs
- *   3. Carica bundle pubblico sul server
- *   4. Controlla se il server ha abbastanza OTPKs; rifornisce se necessario
+ *   2. Se non inizializzato: usa ikKeyPair se fornita, altrimenti genera nuova IK
+ *   3. Genera Signed PreKey e 100 OTPKs per questo device
+ *   4. Carica bundle pubblico sul server (identityKey = ikKeyPair.pubKey)
+ *   5. Controlla se il server ha abbastanza OTPKs; rifornisce se necessario
+ *
+ * @param ikKeyPair Sprint 28: IK decifrata dal blob lato client.
+ *   - Presente → usa questa IK (stessa per tutti i device dello stesso utente).
+ *   - Assente  → genera nuova IK locale (legacy pre-migrazione o recovery).
  */
 export async function initSignalKeys(
   userId: string,
   deviceId: string,
+  ikKeyPair?: KeyPairType,
 ): Promise<void> {
   // 1. Inizializza WASM (no-op se già fatto)
   await initSignalLibrary();
@@ -61,7 +67,7 @@ export async function initSignalKeys(
 
   if (!(await store.isInitialized())) {
     // Prima inizializzazione: genera tutto e carica sul server
-    await _firstTimeSetup(store, userId, deviceId);
+    await _firstTimeSetup(store, userId, deviceId, ikKeyPair);
   } else {
     // Già inizializzato: controlla solo il livello OTPK
     await maybeReplenishOtpks(userId, deviceId);
@@ -76,9 +82,19 @@ async function _firstTimeSetup(
   store: ReturnType<typeof getSignalStore>,
   userId: string,
   deviceId: string,
+  /**
+   * Sprint 28: IK decifrata dal blob lato client.
+   * Se presente, viene usata al posto di generare una nuova IK.
+   * Questo garantisce che tutti i device dello stesso utente abbiano la stessa IK.
+   */
+  ikKeyPair?: KeyPairType,
 ): Promise<void> {
-  // Genera Identity Key Pair
-  const identityKeyPair = await generateIdentityKeyPair();
+  // Genera o riusa l'Identity Key Pair
+  // Sprint 28: se ikKeyPair è presente (blob decifrato), usala direttamente.
+  // Questo è il percorso normale post-migrazione: tutti i device usano la stessa IK.
+  // Il percorso legacy (assenza di ikKeyPair) genera una nuova IK locale —
+  // usato solo per utenti pre-migrazione che non hanno ancora il blob sul server.
+  const identityKeyPair = ikKeyPair ?? await generateIdentityKeyPair();
 
   // Registration ID (1–16383)
   const { generateRegistrationId } = await import("@workspace/libsignal-ts");

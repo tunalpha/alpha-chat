@@ -82,6 +82,10 @@ export const RegisterSchema = z.object({
   device_name: z.string().trim().max(100).optional().nullable(),
   device_type: deviceTypeSchema,
   signal_keys: SignalKeysSchema.optional(),
+  // Sprint 28: IK cifrata. Blob base64 AES-256-GCM (iv||ct||tag). Opaco per il server.
+  encrypted_identity_key: z.string().min(1).optional(),
+  // Sale base64 per Argon2id → HKDF → wrap_key. Distinto dal sale password.
+  ik_salt: z.string().min(1).optional(),
 });
 
 export type RegisterInput = z.infer<typeof RegisterSchema>;
@@ -110,6 +114,9 @@ export const ChangeTempPasswordAuthSchema = z.object({
   current_password: z.string().min(1, "Password temporanea obbligatoria"),
   new_password:     z.string().min(12, "La nuova password deve avere almeno 12 caratteri"),
   confirm_password: z.string().min(1, "Conferma obbligatoria"),
+  // Sprint 28: IK re-wrappata con il nuovo wrap_key.
+  // Assente → scenario di recovery (IK già resettata lato client, blob aggiornato separatamente).
+  new_encrypted_identity_key: z.string().min(1).optional(),
 }).refine((d) => d.new_password === d.confirm_password, {
   message: "Le password non coincidono",
   path: ["confirm_password"],
@@ -121,3 +128,17 @@ export const RefreshSchema = z.object({
 });
 
 export type RefreshInput = z.infer<typeof RefreshSchema>;
+
+// ---------------------------------------------------------------------------
+// PATCH /api/v1/auth/identity-key — Sprint 28
+// Aggiornamento blob IK cifrata (recovery o migrazione).
+// ---------------------------------------------------------------------------
+
+export const UpdateIdentityKeySchema = z.object({
+  /** Blob AES-256-GCM: iv (12B) || ciphertext (32B) || tag (16B), base64. */
+  encrypted_identity_key: z.string().min(1, "Blob IK obbligatorio"),
+  /** Sale base64 (32 byte) per derivare wrap_key = HKDF(Argon2id(pwd, salt)). */
+  ik_salt: z.string().min(1, "Salt IK obbligatorio"),
+});
+
+export type UpdateIdentityKeyInput = z.infer<typeof UpdateIdentityKeySchema>;

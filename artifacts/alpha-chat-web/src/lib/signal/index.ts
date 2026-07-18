@@ -6,6 +6,13 @@
  */
 
 export { initSignalKeys, clearSignalKeys, maybeReplenishOtpks } from "./key-manager";
+
+// ── Sprint 28: IK wrap/unwrap/generate (WebCrypto nativo) ────────────────────
+export {
+  wrapIdentityKeyPair,
+  unwrapIdentityKeyPair,
+  generateAndWrapSharedIdentityKey,
+} from "./ik-crypto";
 export { getSignalStore, SignalProtocolStore } from "./key-store";
 export { ensureSession, rebuildSession } from "./signal-session";
 export {

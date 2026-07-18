@@ -88,6 +88,12 @@ export interface IUser {
   // Admin — Sprint 23
   admin_role: "super_admin" | "security_admin" | "support" | "read_only" | null;
 
+  // Shared Identity Key — Sprint 28
+  // Blob opaco: AES-256-GCM(wrap_key, IK.privKey). Il server non lo decifra mai.
+  encrypted_identity_key: string | null;
+  // Sale per derivare wrap_key = HKDF(Argon2id(password, ik_salt)). Distinto dal sale password.
+  ik_salt: string | null;
+
   // Timestamps
   createdAt: Date;
   updatedAt: Date;
@@ -186,6 +192,15 @@ const userSchema = new Schema<IUserDocument>(
       enum: ["super_admin", "security_admin", "support", "read_only", null],
       default: null,
     },
+
+    // Sprint 28 — Shared Identity Key
+    // Blob opaco: iv (12B) || ciphertext (32B) || tag (16B), codificato base64.
+    // Il server conserva solo questo blob cifrato — mai la chiave privata in chiaro.
+    encrypted_identity_key: { type: String, default: null },
+    // Sale base64 (32 byte) per derivare wrap_key = HKDF(Argon2id(password, ik_salt)).
+    // Distinto dal sale della password per evitare che un leak dell'hash password
+    // permetta di derivare automaticamente il wrap_key.
+    ik_salt: { type: String, default: null },
   },
   { timestamps: true },
 );
