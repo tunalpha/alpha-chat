@@ -1,0 +1,69 @@
+Questa è probabilmente l’analisi più importante emersa finora. Se il codice riportato è fedele, avete individuato un conflitto reale.
+
+La parte decisiva è questa:
+
+isTrustedIdentity(...)
+↓
+identifier = address.getName()
+↓
+"userId"
+
+mentre
+
+saveIdentity(...)
+↓
+encodedAddress = address.toString()
+↓
+"userId.deviceId"
+
+Quindi la libreria legge usando un identificatore (userId) e scrive usando un altro (userId.deviceId).
+
+Però c’è un punto da verificare prima di concludere
+
+Nella tua implementazione di isTrustedIdentity() compare questo comportamento:
+
+const stored = await db.get("identity-remote", identifier);
+if (!stored) {
+    await db.put("identity-remote", identityKey, identifier);
+    return true;
+}
+
+cioè il TOFU viene scritto anche sotto la chiave userId.
+
+Poi la libreria scrive nuovamente:
+
+saveIdentity(...)
+↓
+"userId.deviceId"
+
+Quindi nello store finiscono due rappresentazioni della stessa identity:
+
+* userId
+* userId.deviceId
+
+Successivamente il secondo device trova la voce userId e fallisce il confronto.
+
+Questo è coerente con i log che avete raccolto.
+
+⸻
+
+Quello che chiederei di verificare ora
+
+Non chiederei ancora di modificare il codice.
+
+Chiederei invece:
+
+Verifica se questa implementazione è compatibile con le aspettative ufficiali della libreria @privacyresearch/libsignal-protocol-typescript.
+
+In particolare:
+
+* la libreria si aspetta davvero che isTrustedIdentity(identifier, ...) utilizzi identifier come chiave primaria?
+* oppure si aspetta che l’implementazione del KeyStore risolva internamente identifier verso l’identità corretta del dispositivo?
+* esistono esempi ufficiali della libreria o test che mostrano come implementare un KeyStore multi-device?
+
+Questa verifica è importante perché determina se:
+
+* il problema è un bug di integrazione (implementazione del KeyStore non conforme all’API prevista), oppure
+* è un limite della libreria per questo modello multi-device.
+
+In altre parole, prima di concludere che “la libreria non supporta questo scenario”, vale la pena verificare se il contratto previsto dall’API del KeyStore consente di gestire più dispositivi risolvendo l’identifier in modo diverso. Se non esiste alcun modo previsto dall’API, allora la conclusione che avete raggiunto acquista molta forza.
