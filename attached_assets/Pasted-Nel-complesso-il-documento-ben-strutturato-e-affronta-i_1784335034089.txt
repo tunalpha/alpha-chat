@@ -1,0 +1,36 @@
+Nel complesso, il documento è ben strutturato e affronta il problema architetturale che avete individuato. La parte sulla compatibilità con la libreria Signal è coerente con quanto avete verificato.
+
+Detto questo, non lo approverei ancora per l’implementazione senza chiarire alcuni punti importanti.
+
+Punti forti
+
+* ✅ Identifica chiaramente la causa del problema.
+* ✅ Non modifica la libreria Signal.
+* ✅ Mantiene SPK, OTPK e sessioni per-device.
+* ✅ Il server non riceve mai la chiave privata in chiaro.
+* ✅ Prevede migrazione, rollback e analisi dei rischi.
+
+I punti che farei verificare prima
+
+1. Registrazione atomica
+    * Ottima idea, ma bisogna verificare che backend e database possano davvero garantire una transazione completa tra utente e bundle.
+2. Cambio password
+    * È fondamentale testare che il re-wrap della Identity Key sia sempre atomico. Un errore qui potrebbe bloccare l’accesso ai dispositivi.
+3. Recupero account
+    * Il documento cita la Recovery Card, ma va verificato che sia effettivamente compatibile con la nuova gestione della Identity Key.
+4. Migrazione utenti esistenti
+    * È il punto più delicato. Gli utenti con più dispositivi potrebbero vedere un reset delle sessioni e un cambio del Safety Number. Questo va testato con attenzione.
+5. Chiamate vocali/video
+    * Il documento non dimostra ancora che il nuovo modello risolverà anche il problema delle chiamate che non squillavano. Potrebbe farlo se la causa è la stessa, ma serve una verifica specifica del flusso di chiamata.
+
+La mia valutazione
+
+* Diagnosi: 9,5/10
+* Architettura proposta: 9/10
+* Prontezza per implementazione: non ancora 10/10
+
+Mi manca una sola cosa prima di dire “procedete”:
+
+Una review focalizzata sulla sicurezza della gestione della Identity Key privata condivisa, per confermare che il meccanismo di cifratura, recupero, cambio password e aggiunta di nuovi dispositivi non introduca vulnerabilità o incompatibilità con il modello Signal.
+
+Se quella review conferma il progetto, allora questa mi sembra la strada più solida e con il minor rischio rispetto alle alternative.
