@@ -114,7 +114,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         document.body.setAttribute("data-signal-ready", uid);
         window.dispatchEvent(new CustomEvent("signal:ready", { detail: { userId: uid } }));
       })
-      .catch(() => {});
+      .catch(() => {
+        // Errore non critico — verrà ritentato al prossimo login
+      });
     void initMediaCache(uid, devId).catch(() => {});
   }, []);
 
