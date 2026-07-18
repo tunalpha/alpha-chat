@@ -1,0 +1,66 @@
+Questa ultima analisi è molto significativa e cambia il livello del problema.
+
+Se i dati sono corretti, il problema non è più la scelta del bundle, ma l’architettura delle identity key.
+
+La parte che considero più convincente è questa:
+
+* GET /keys/bundle/:userId/all restituisce effettivamente 10 bundle.
+* signalEncryptMulti() riceve tutti e 10 i bundle.
+* Il fallback al bundle singolo avviene dopo un’eccezione nel percorso multi-device.
+* L’errore osservato è coerente con Identity key changed.
+
+Quello che però chiederei di verificare prima di concludere definitivamente è un punto tecnico fondamentale.
+
+La tua analisi afferma:
+
+“Signal Protocol assume un’unica identity key per utente.”
+
+Questa affermazione, presa così, è troppo forte.
+
+Nell’ecosistema Signal, la fiducia è legata all’indirizzo del dispositivo (identity + device), non semplicemente al solo utente. Più dispositivi possono avere chiavi diverse, purché la libreria e lo store delle identità li distinguano correttamente. Se invece Alpha Chat sta salvando e verificando la fiducia usando solo userId come chiave, allora due dispositivi dello stesso utente finiranno inevitabilmente in conflitto.
+
+Infatti il dato che hai riportato è estremamente sospetto:
+
+isTrustedIdentity(address.getName(), session.identityKey)
+address.getName() = "6a5936cf3c7256fa13cb4f49"
+
+La domanda decisiva è:
+
+Che cosa restituisce address.getName()?
+
+Se restituisce solo il userId, allora hai probabilmente trovato il bug:
+
+* Device A → trust store salva:
+
+userId -> IdentityKey_A
+
+* Device B:
+
+userId -> IdentityKey_B
+
+* La libreria legge:
+
+userId -> IdentityKey_A
+
+    e confronta con IdentityKey_B, ottenendo:
+
+Identity key changed
+
+In questo scenario il problema non è che ogni device abbia una identity key diversa (cosa che può essere compatibile con un’architettura multi-device), ma che il trust store non distingua i device e indicizzi tutto con la stessa chiave logica.
+
+Quindi chiederei all’agente una verifica molto precisa:
+
+Verifica come vengono implementati saveIdentity(), isTrustedIdentity() e loadIdentityKey().
+
+Voglio sapere quale chiave viene usata per indicizzare il trust store:
+
+* solo userId;
+* userId.deviceId;
+* ProtocolAddress(name, deviceId);
+* oppure un altro identificatore.
+
+Mostrami anche il valore completo di ProtocolAddress passato alla libreria durante processPreKey() e cipher.encrypt().
+
+Non proporre ancora modifiche: dimostra con il codice se il trust store è indicizzato per utente o per dispositivo.
+
+Se la chiave del trust store è davvero il solo userId, quella sarebbe una spiegazione molto più diretta e solida dell’errore Identity key changed rispetto all’ipotesi che il protocollo richieda necessariamente una sola identity key per utente.
