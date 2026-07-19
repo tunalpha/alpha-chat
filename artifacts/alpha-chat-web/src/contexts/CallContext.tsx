@@ -23,7 +23,9 @@ import {
   setRemoteStream as setRemoteAudioStream,
   setSpeakerMode,
   resetRemoteAudio,
+  primeRemoteAudio,
 } from "../lib/remoteAudio";
+import { startRing, stopRing, startRingback, stopRingback, unlockNotifAudio } from "../lib/notifSound";
 import { apiLogCall } from "../lib/api";
 
 // ── Tipi ─────────────────────────────────────────────────────────────────────
@@ -100,6 +102,9 @@ export function CallProvider({ children }: { children: ReactNode }) {
   const pcRef              = useRef<RTCPeerConnection | null>(null);
   const localStreamRef     = useRef<MediaStream | null>(null);
   const wsSendRef          = useRef<((msg: object) => void) | null>(null);
+  // Buffer ICE candidate ricevuti prima che il PC esista (callee non ha ancora premuto Accept).
+  // Svuotato in buildPC() subito dopo la creazione del PC; azzerato in cleanup().
+  const iceCandidateBufferRef = useRef<RTCIceCandidateInit[]>([]);
   const timerRef           = useRef<ReturnType<typeof setInterval> | null>(null);
   const callTimeoutRef     = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reconnectTimerRef  = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -165,9 +170,13 @@ export function CallProvider({ children }: { children: ReactNode }) {
   }
 
   function cleanup(reason: CallEndReason = "normal") {
+    console.log('[Call] cleanup reason=%s', reason);
+    stopRing();     // ferma suoneria callee
+    stopRingback(); // ferma ringback chiamante
     clearCallTimeout();
     clearReconnectTimer();
     stopDurationTimer();
+    iceCandidateBufferRef.current = []; // azzera candidati bufferizzati pre-Accept
     closePeerConnection(pcRef.current, localStreamRef.current);
     pcRef.current         = null;
     localStreamRef.current = null;
@@ -232,6 +241,18 @@ export function CallProvider({ children }: { children: ReactNode }) {
     );
     pcRef.current = pc;
     setPeerConnection(pc);
+
+    // Flush dei candidati ICE ricevuti prima che il PC esistesse (callee: arrivano
+    // tra call.incoming e il click su Accept). Li applichiamo ora che il PC è pronto.
+    const buffered = iceCandidateBufferRef.current.splice(0);
+    if (buffered.length > 0) {
+      console.log('[Call] buildPC: flush %d ICE candidates bufferizzati', buffered.length);
+      for (const cand of buffered) {
+        pc.addIceCandidate(new RTCIceCandidate(cand))
+          .catch((e) => console.warn('[Call] addIceCandidate (buffered) error', e));
+      }
+    }
+
     return pc;
   }
 
@@ -240,11 +261,16 @@ export function CallProvider({ children }: { children: ReactNode }) {
   const initiateCall = useCallback(async (toUserId: string, displayName: string, type: CallType) => {
     if (callState !== "idle") return;
     try {
-      // Preleva configurazione ICE (STUN + TURN opzionale da env) prima di creare il PC
-      await loadIceConfig();
+      // iOS Safari: getUserMedia DEVE essere il primo await nel gesture context.
+      // Ogni await che lo precede consuma il contesto e iOS può consegnare il
+      // microfono in stato muto permanente per tutta la chiamata.
       const stream = await getUserMedia(type);
       localStreamRef.current = stream;
       setLocalStream(stream);
+
+      // Imposta callState IMMEDIATAMENTE dopo getUserMedia, prima di loadIceConfig.
+      // Senza questo, callState resta "idle" durante il fetch ICE → se l'utente tocca
+      // nuovamente il pulsante chiama in quel momento, una seconda initiateCall parte.
       setCallState("calling");
       setCallType(type);
       setRemoteUserId(toUserId);
@@ -254,21 +280,40 @@ export function CallProvider({ children }: { children: ReactNode }) {
       peerIdRef.current        = toUserId;
       callTypeRef.current      = type;
 
+      // ICE config dopo getUserMedia e dopo setCallState
+      await loadIceConfig();
+
       // Imposta modalità audio iniziale: auricolare per chiamate vocali, speaker per video
       const defaultSpeaker = type === "video";
       setIsSpeaker(defaultSpeaker);
       setSpeakerMode(defaultSpeaker);
 
+      // primeRemoteAudio: fire-and-forget DOPO getUserMedia.
+      // iOS è ora in PlayAndRecord — l'<audio> element viene sbloccato nella
+      // sessione audio corretta. Non await: il remote stream arriva più tardi
+      // (ICE + negotiate), dando tempo sufficiente al priming di completarsi.
+      void primeRemoteAudio().catch(() => {});
+
+      // ── Ringback lato chiamante ───────────────────────────────────────────
+      // Il chiamante sente un tono di ringback (425 Hz, 1s on/3s off) che indica
+      // che il telefono del destinatario sta squillando — diverso dalla suoneria
+      // personalizzata del callee (startRing) per evitare confusione.
+      console.log('[Call] initiateCall → startRingback() per caller');
+      void startRingback().catch(() => {});
+
       const pc = buildPC(toUserId);
       addTracksToPC(pc, stream);
 
+      console.log('[Call] createOffer...');
       const offer = await pc.createOffer();
+      console.log('[Call] setLocalDescription offer type=%s', offer.type);
       await pc.setLocalDescription(offer);
 
       wsSend({
         type: "call.offer",
         payload: { to_user_id: toUserId, sdp: offer, call_type: type, from_display_name: displayName },
       });
+      console.log('[Call] call.offer inviato → in attesa risposta');
 
       // Timeout 30s — se nessuno risponde
       callTimeoutRef.current = setTimeout(() => {
@@ -286,17 +331,41 @@ export function CallProvider({ children }: { children: ReactNode }) {
 
   const acceptCall = useCallback(async () => {
     if (!incomingCall) return;
+    console.log('[Call] acceptCall() callType=%s from=%s', incomingCall.callType, incomingCall.fromUserId);
     try {
-      await loadIceConfig();
+      // iOS Safari: getUserMedia DEVE venire prima di qualsiasi await di rete.
+      // stopRing() è sync, quindi non consuma il gesture context.
+      // loadIceConfig() viene spostato DOPO getUserMedia per preservare il contesto
+      // e garantire che iOS non muti il microfono per tutta la chiamata.
+      stopRing();
+
       const stream = await getUserMedia(incomingCall.callType);
+
+      // getUserMedia OK → iOS è ora in sessione PlayAndRecord.
+      // ADESSO è sicuro chiamare unlockNotifAudio() (non consuma più il contesto
+      // gesture che getUserMedia aveva bisogno). Il ring è già stato stoppato
+      // da stopRing() in handleAccept — unlock sblocca i futuri suoni notifica.
+      void unlockNotifAudio().catch(() => {});
+
+      // await primeRemoteAudio() PRIMA di loadIceConfig/ICE/negotiate.
+      // Garantisce che l'<audio> element sia sbloccato prima che ontrack arrivi.
+      // void → race condition: se il remote track arriva prima del prime,
+      // el.play() fallisce e iOS non consente retry fuori dal gesture context.
+      await primeRemoteAudio().catch(() => {});
+
+      // ICE config dopo getUserMedia
+      await loadIceConfig();
       localStreamRef.current = stream;
       setLocalStream(stream);
 
       const pc = buildPC(incomingCall.fromUserId);
       addTracksToPC(pc, stream);
 
+      console.log('[Call] setRemoteDescription offer...');
       await pc.setRemoteDescription(new RTCSessionDescription(incomingCall.sdp));
+      console.log('[Call] createAnswer...');
       const answer = await pc.createAnswer();
+      console.log('[Call] setLocalDescription answer type=%s', answer.type);
       await pc.setLocalDescription(answer);
 
       wsSend({
@@ -406,6 +475,11 @@ export function CallProvider({ children }: { children: ReactNode }) {
           callType:        (payload["call_type"] as CallType) ?? "audio",
         });
         setCallState("incoming");
+        // ── Suoneria lato callee ──────────────────────────────────────────────
+        // Il callee sente la sua suoneria personalizzata (startRing) — diversa
+        // dal ringback del caller (startRingback).
+        console.log('[Call] call.incoming → startRing() per callee');
+        void startRing().catch(() => {});
         break;
       }
 
@@ -413,17 +487,33 @@ export function CallProvider({ children }: { children: ReactNode }) {
         const pc = pcRef.current;
         if (!pc) return;
         clearCallTimeout();
+        stopRingback(); // callee ha risposto → stop ringback lato caller
+        console.log('[Call] call.answered → stopRingback(), primeRemoteAudio(), setRemoteDescription');
         callAnsweredAtRef.current = new Date();
+        // Re-prime AudioContext nel contesto corrente (il caller è in ascolto attivo)
+        void primeRemoteAudio().catch(() => {});
         pc.setRemoteDescription(new RTCSessionDescription(payload["sdp"] as RTCSessionDescriptionInit))
-          .then(() => { setCallState("active"); startDurationTimer(); })
+          .then(() => {
+            console.log('[Call] setRemoteDescription answer OK → active');
+            setCallState("active");
+            startDurationTimer();
+          })
           .catch((e) => { console.error("[Call] setRemoteDescription answer error", e); cleanup("failed"); });
         break;
       }
 
       case "call.ice_candidate": {
         const pc = pcRef.current;
-        if (!pc) return;
-        pc.addIceCandidate(new RTCIceCandidate(payload["candidate"] as RTCIceCandidateInit))
+        const cand = payload["candidate"] as RTCIceCandidateInit;
+        if (!pc) {
+          // PC non ancora creato (callee non ha ancora premuto Accept).
+          // Bufferizza il candidato: verrà applicato in buildPC() appena il PC esiste.
+          console.log('[Call] ice_candidate: PC non pronto — bufferizzato (%d in coda)',
+            iceCandidateBufferRef.current.length + 1);
+          iceCandidateBufferRef.current.push(cand);
+          return;
+        }
+        pc.addIceCandidate(new RTCIceCandidate(cand))
           .catch((e) => console.warn("[Call] addIceCandidate error", e));
         break;
       }
@@ -440,6 +530,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
 
       case "call.busy": {
         // Cleanup senza loggare (non era ancora una vera chiamata)
+        stopRing(); // utente occupato → stop squillo
         clearCallTimeout();
         closePeerConnection(pcRef.current, localStreamRef.current);
         pcRef.current = null;

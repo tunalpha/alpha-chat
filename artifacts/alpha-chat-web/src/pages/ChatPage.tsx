@@ -1208,6 +1208,8 @@ export default function ChatPage({ onNavigate }: Props) {
         case "call.rejected":
         case "call.ended":
         case "call.busy":
+        case "call.missed":           // caller ha annullato → dismetti squillo callee
+        case "call.ended_elsewhere":  // altro device ha risposto → dismetti squillo
           handleWsCallEvent(event.type, event.payload as Record<string, unknown>);
           break;
       }
