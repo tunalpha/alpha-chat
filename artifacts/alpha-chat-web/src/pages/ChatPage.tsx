@@ -989,7 +989,15 @@ export default function ChatPage({ onNavigate }: Props) {
     apiListMessages(activeConvId, { limit: 50 })
       .then((res) => {
         const msgs = [...res.items].reverse();
-        setMessages(msgs);
+        setMessages((prev) => {
+          console.log("[DIAG] HTTP listMessages resolved", {
+            activeConvId,
+            "messages from server": msgs.length,
+            "messages.length(before overwrite)": prev.length,
+            "messages.length(after overwrite)": msgs.length,
+          });
+          return msgs;
+        });
         // Decifra tutti i messaggi in background (Signal + legacy)
         void decryptBatch(msgs);
       })
@@ -1042,7 +1050,17 @@ export default function ChatPage({ onNavigate }: Props) {
           if (!mutedConvIds.has(msg.conversation_id)) void playNotifSound('received');
           if (msg.conversation_id === activeConvId) {
             setMessages((prev) => {
-              if (prev.some((m) => m.id === msg.id)) return prev;
+              const isDup = prev.some((m) => m.id === msg.id);
+              console.log("[DIAG] WS message.new", {
+                "msg.id": msg.id,
+                "msg.conversation_id": msg.conversation_id,
+                activeConvId,
+                equal: msg.conversation_id === activeConvId,
+                "messages.length(before)": prev.length,
+                "messages.length(after)": isDup ? prev.length : prev.length + 1,
+                isDuplicate: isDup,
+              });
+              if (isDup) return prev;
               return [...prev, msg];
             });
             // Decifra il messaggio appena arrivato
