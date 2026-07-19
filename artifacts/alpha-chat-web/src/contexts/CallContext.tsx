@@ -463,11 +463,14 @@ export function CallProvider({ children }: { children: ReactNode }) {
   const handleWsCallEvent = useCallback((type: string, payload: Record<string, unknown>) => {
     switch (type) {
       case "call.incoming": {
+        console.log('[DIAG-CP2] CallContext handleWsCallEvent: call.incoming, callState attuale=', callState);
         if (callState !== "idle") {
           // Già in chiamata — il server avrebbe già inviato call.busy; dismissiamo silenziosamente
+          console.log('[DIAG-CP2] BLOCCATO: callState non è idle, setIncomingCall NON chiamato');
           break;
         }
         callStartedAtRef.current = new Date();
+        console.log('[DIAG-CP2] setIncomingCall() in esecuzione, from=', payload["from_user_id"]);
         setIncomingCall({
           fromUserId:      payload["from_user_id"] as string,
           fromDisplayName: payload["from_display_name"] as string,

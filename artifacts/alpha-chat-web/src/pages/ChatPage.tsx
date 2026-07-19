@@ -1203,6 +1203,9 @@ export default function ChatPage({ onNavigate }: Props) {
 
         // Sprint 23 — WebRTC call signaling (routing verso CallContext)
         case "call.incoming":
+          console.log('[DIAG-CP1] ChatPage WS router: call.incoming ricevuto', event.payload);
+          handleWsCallEvent(event.type, event.payload as Record<string, unknown>);
+          break;
         case "call.answered":
         case "call.ice_candidate":
         case "call.rejected":

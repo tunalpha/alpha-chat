@@ -34,6 +34,8 @@ import AppearancePage from "./pages/AppearancePage";
 import NotificationsPage from "./pages/NotificationsPage";
 import LanguagePage from "./pages/LanguagePage";
 import { useNotifSync } from "./hooks/useNotifSync";
+import { initServiceWorker, requestAndSubscribe as pushSubscribe } from "./lib/pushManager";
+import SignalReinstallBanner from "./components/SignalReinstallBanner";
 
 export type AppView =
   | "chat"
@@ -66,11 +68,50 @@ function isEmergencyPath(): boolean {
 
 function AppContent() {
   const { auth, isLoading, logout, logoutAll, clearPasswordChangeRequired, updateAuth } = useAuth();
-  const { isLocked, showPrivacy, hasPINSet } = useLock();
+  const { isLocked, showPrivacy, hasPINSet, biometricOnlyEnabled } = useLock();
   const [view, setView] = useState<AppView>("chat");
 
   // Sincronizza le impostazioni notifiche dal backend quando l'utente è autenticato
   useNotifSync(auth?.userId ?? null);
+
+  // ── Web Push: inizializza SW e rinnova subscription ad ogni login ─────────
+  useEffect(() => {
+    if (!auth?.userId) return;
+    void initServiceWorker().then(() => pushSubscribe()).catch(() => {});
+  }, [auth?.userId]);
+
+  // ── Web Push: navigazione push → conversazione corretta ──────────────────
+  // Gestisce due scenari:
+  // 1. App aperta: il SW invia postMessage → dispatch CustomEvent → ChatPage ascolta
+  // 2. App chiusa: il SW apre /?push_conv=<id> → letto qui all'avvio
+  useEffect(() => {
+    if (!auth?.userId) return;
+
+    // Scenario 2: app aperta dal click sulla notifica con URL param
+    const params = new URLSearchParams(window.location.search);
+    const pushConv = params.get("push_conv");
+    if (pushConv) {
+      // Rimuove il param dall'URL senza reload
+      const clean = window.location.pathname;
+      window.history.replaceState({}, "", clean);
+      window.dispatchEvent(new CustomEvent("push:open-conversation", { detail: { convId: pushConv } }));
+    }
+
+    // Scenario 1: app già aperta, il SW invia postMessage
+    const onSwMessage = (e: MessageEvent) => {
+      const msg = e.data as { type?: string; conversationId?: string; callerId?: string };
+      console.log('[DIAG-CP3] App.tsx onSwMessage ricevuto:', msg?.type, msg);
+      if (msg?.type === "push.openConversation" && msg.conversationId) {
+        window.dispatchEvent(new CustomEvent("push:open-conversation", { detail: { convId: msg.conversationId } }));
+      }
+      // DIAG: push.openCall non ha handler — loggato per conferma diagnosi
+      if (msg?.type === "push.openCall") {
+        console.log('[DIAG-CP3] push.openCall ricevuto ma NON gestito — callerId=', msg.callerId);
+      }
+    };
+    navigator.serviceWorker?.addEventListener("message", onSwMessage);
+    return () => navigator.serviceWorker?.removeEventListener("message", onSwMessage);
+  }, [auth?.userId]);
 
   // Pagina di emergenza — accessibile senza autenticazione
   if (isEmergencyPath()) return <EmergencyPage />;
@@ -86,7 +127,7 @@ function AppContent() {
 
   if (!auth) return <LandingPage />;
 
-  if (hasPINSet && isLocked) return <LockScreen />;
+  if ((hasPINSet || biometricOnlyEnabled) && isLocked) return <LockScreen />;
 
   // Sprint 22: cambio password obbligatorio dopo recovery con password temporanea
   if (auth.requirePasswordChange) {
@@ -104,6 +145,7 @@ function AppContent() {
   return (
     <>
       {showPrivacy && <PrivacyOverlay />}
+      <SignalReinstallBanner />
 
       {(() => {
         switch (view) {

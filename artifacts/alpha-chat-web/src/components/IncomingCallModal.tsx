@@ -25,6 +25,8 @@ export default function IncomingCallModal() {
 
   if (!incomingCall) return null;
 
+  console.log('[DIAG-CP4] IncomingCallModal MONTATO, from=', incomingCall.fromUserId, incomingCall.fromDisplayName);
+
   const isVideo = callType === "video" || incomingCall.callType === "video";
 
   function handleAccept() {
