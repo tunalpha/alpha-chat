@@ -522,6 +522,8 @@ a { color: inherit; text-decoration: none; }
   border-radius: 10px; box-shadow: var(--shadow-lg);
   padding: 4px; min-width: 160px;
   animation: fade-in 0.12s ease;
+  -webkit-user-select: none;
+  user-select: none;
 }
 .ctx-item {
   display: flex; align-items: center; gap: 8px;
@@ -530,6 +532,10 @@ a { color: inherit; text-decoration: none; }
   border-radius: 7px; background: none; border: none;
   cursor: pointer; transition: background 0.1s;
   min-height: unset; min-width: unset;
+  -webkit-user-select: none;
+  user-select: none;
+  /* Prevent iOS callout (magnifier + selection handles) on long press */
+  -webkit-touch-callout: none;
 }
 .ctx-item:hover { background: rgba(255,255,255,0.07); }
 .ctx-item.danger { color: #f87171; }
@@ -637,6 +643,60 @@ a { color: inherit; text-decoration: none; }
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
   max-width: 200px;
 }
+
+/* ── Swipe-to-reply hint icon ─────────────────────────────────────────────── */
+.msg-swipe-hint {
+  position: absolute;
+  left: 10px;
+  top: 50%; transform: translateY(-50%);
+  width: 30px; height: 30px;
+  background: var(--surface-3);
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--brand-3);
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* ── Highlight post scroll-to-message ─────────────────────────────────────── */
+@keyframes msg-flash {
+  0%   { box-shadow: none; }
+  25%  { box-shadow: 0 0 0 3px rgba(109, 40, 217, 0.35); }
+  100% { box-shadow: none; }
+}
+.msg-highlighted .msg-bubble {
+  animation: msg-flash 1.8s ease forwards;
+}
+
+/* ── Desktop reply button (hover) ─────────────────────────────────────────── */
+.msg-reply-btn {
+  flex-shrink: 0;
+  opacity: 0;
+  pointer-events: none;
+  background: var(--surface-3);
+  border: none;
+  cursor: pointer;
+  border-radius: 50%;
+  width: 28px; height: 28px;
+  display: flex; align-items: center; justify-content: center;
+  color: var(--text-3);
+  transition: opacity 0.15s, color 0.15s;
+  align-self: center;
+  min-height: unset; min-width: unset;
+  padding: 0;
+}
+.msg-reply-btn:hover { color: var(--brand-3); }
+.msg-row:hover .msg-reply-btn {
+  opacity: 1;
+  pointer-events: auto;
+}
+/* "mine" (destra): pulsante appare a sinistra della bolla */
+.msg-row.mine .msg-reply-btn { order: -1; }
+/* "theirs" (sinistra): pulsante appare a destra della bolla */
+.msg-row.theirs .msg-reply-btn { order: 2; }
+
+/* ── Transizione di ritorno dopo swipe ──────────────────────────────────── */
+.msg-row { transition: transform 0.2s ease; }
 
 /* ── Edited label ──────────────────────────────────────────────────────────── */
 .msg-edited {
@@ -1942,26 +2002,33 @@ button:disabled.profile-avatar-edit {
   align-items: center;
   justify-content: center;
   animation: viewer-fadein 0.18s ease;
+  /* iOS: no delay sul tap per chiudere */
+  touch-action: manipulation;
 }
 @keyframes viewer-fadein { from { opacity: 0; } to { opacity: 1; } }
 .media-viewer-close {
   position: absolute;
-  top: 16px;
-  right: 16px;
-  background: rgba(255,255,255,0.1);
+  /* Rispetta la safe-area iOS (notch/Dynamic Island + Safari top bar) */
+  top: calc(env(safe-area-inset-top, 0px) + 16px);
+  right: calc(env(safe-area-inset-right, 0px) + 16px);
+  background: rgba(255,255,255,0.15);
   border: none;
   color: #fff;
   border-radius: 50%;
-  width: 38px;
-  height: 38px;
+  /* 44×44 = minimo hit-target Apple */
+  width: 44px;
+  height: 44px;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
   transition: background 0.15s;
-  z-index: 1;
+  z-index: 10;
+  /* iOS: risposta immediata al tap, nessun delay 300ms */
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
-.media-viewer-close:hover { background: rgba(255,255,255,0.2); }
+.media-viewer-close:hover { background: rgba(255,255,255,0.25); }
 .media-viewer-img {
   max-width: 96vw;
   max-height: 90vh;
@@ -3938,16 +4005,28 @@ button:disabled.profile-avatar-edit {
    ═══════════════════════════════════════════════════════════════ */
 
 /* ── IncomingCallModal ─────────────────────────────────────────── */
+/* Layer puramente decorativo: blur + dimming, mai intercetta touch.
+   Separato da icm-overlay per evitare il bug WebKit (backdrop-filter +
+   pointer-events:none sullo stesso elemento crea layer composited che
+   intercetta ghost touch in alcune versioni iOS Safari). */
+.icm-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1999;
+  background: rgba(0,0,0,0.82);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  pointer-events: none;
+}
+/* Layer interattivo: nessun backdrop-filter → nessun layer composited anomalo.
+   pointer-events: auto (default) → touch funzionano correttamente su iOS. */
 .icm-overlay {
   position: fixed;
   inset: 0;
   z-index: 2000;
-  background: rgba(0,0,0,0.82);
   display: flex;
   align-items: center;
   justify-content: center;
-  backdrop-filter: blur(6px);
-  -webkit-backdrop-filter: blur(6px);
 }
 .icm-card {
   background: var(--bg-2, #1e1e2e);
@@ -3972,6 +4051,8 @@ button:disabled.profile-avatar-edit {
   background: transparent;
   border: 3px solid var(--accent, #7c5cbf);
   animation: icm-pulse 1.5s ease-out infinite;
+  /* L'anello animato non deve intercettare touch */
+  pointer-events: none;
 }
 @keyframes icm-pulse {
   0%   { transform: translateX(-50%) scale(0.85); opacity: 1; }
@@ -4014,6 +4095,9 @@ button:disabled.profile-avatar-edit {
   align-items: center;
   justify-content: center;
   transition: transform 0.15s, opacity 0.15s;
+  /* iOS: elimina delay 300ms e previene comportamenti gestures indesiderati */
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 .icm-btn:active { transform: scale(0.9); }
 .icm-reject {
@@ -4778,6 +4862,84 @@ button:disabled.profile-avatar-edit {
   --bubble-theirs: #0E0823;
 }
 
+/* ── WhatsApp theme ──────────────────────────────────────────────────────── */
+[data-theme="whatsapp"] {
+  --brand-1:  #008069;
+  --brand-2:  #00A884;
+  --brand-3:  #25D366;
+  --brand-4:  #00A884;
+  --grad:     linear-gradient(135deg, #008069, #00A884, #25D366);
+
+  --bg-root:  #0B141A;
+  --bg-side:  #111B21;
+  --bg-chat:  #0B141A;
+  --bg-glass: rgba(255,255,255,0.02);
+  --bg-hover: rgba(255,255,255,0.06);
+  --bg-active:rgba(0,168,132,0.18);
+  --bg-2:     #1F2C34;
+  --bg-3:     #2A3942;
+  --bg-menu:  #233138;
+
+  --text-1:   #E9EDEF;
+  --text-2:   #8696A0;
+  --text-3:   #667781;
+
+  --border:   rgba(134,150,160,0.15);
+  --border-2: rgba(134,150,160,0.25);
+
+  /* Bolle in stile WhatsApp: verde pieno per i propri, grigio scuro per gli altri */
+  --bubble-mine:   #005C4B;
+  --bubble-theirs: #1F2C34;
+
+  --shadow-sm: 0 1px 4px rgba(0,0,0,0.30);
+  --shadow-md: 0 4px 16px rgba(0,0,0,0.40);
+  --shadow-lg: 0 8px 32px rgba(0,0,0,0.50);
+
+  --accent: #00A884;
+}
+[data-theme="whatsapp"] .msg-bubble.mine {
+  background: var(--bubble-mine) !important;
+}
+
+/* ── Telegram theme ──────────────────────────────────────────────────────── */
+[data-theme="telegram"] {
+  --brand-1:  #2B5278;
+  --brand-2:  #5288C1;
+  --brand-3:  #64B5EF;
+  --brand-4:  #5288C1;
+  --grad:     linear-gradient(135deg, #2B5278, #5288C1, #64B5EF);
+
+  --bg-root:  #0E1621;
+  --bg-side:  #17212B;
+  --bg-chat:  #0E1621;
+  --bg-glass: rgba(255,255,255,0.02);
+  --bg-hover: rgba(255,255,255,0.05);
+  --bg-active:rgba(83,136,193,0.18);
+  --bg-2:     #232E3C;
+  --bg-3:     #2B3A4A;
+  --bg-menu:  #17212B;
+
+  --text-1:   #FFFFFF;
+  --text-2:   #A2ACB4;
+  --text-3:   #6C7883;
+
+  --border:   rgba(255,255,255,0.07);
+  --border-2: rgba(255,255,255,0.12);
+
+  /* Bolle in stile Telegram: blu per i propri, grigio-blu scuro per gli altri */
+  --bubble-mine:   #2B5278;
+  --bubble-theirs: #182533;
+
+  --shadow-sm: 0 1px 4px rgba(0,0,0,0.30);
+  --shadow-md: 0 4px 16px rgba(0,0,0,0.40);
+  --shadow-lg: 0 8px 32px rgba(0,0,0,0.50);
+
+  --accent: #5288C1;
+}
+[data-theme="telegram"] .msg-bubble.mine {
+  background: var(--bubble-mine) !important;
+}
+
 /* ── Accent colors ───────────────────────────────────────────────────────── */
 /* violet è il default, già in :root */
 [data-accent="blue"] {
@@ -4907,6 +5069,10 @@ button:disabled.profile-avatar-edit {
 }
 .appearance-grid-4 {
   display: grid; grid-template-columns: repeat(4,1fr); gap: 8px;
+}
+/* 6 temi: 3 per riga × 2 righe */
+.appearance-grid-themes {
+  display: grid; grid-template-columns: repeat(3,1fr); gap: 8px;
 }
 .appearance-grid-3 {
   display: grid; grid-template-columns: repeat(3,1fr); gap: 8px;

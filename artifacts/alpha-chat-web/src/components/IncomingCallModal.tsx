@@ -43,7 +43,14 @@ export default function IncomingCallModal() {
   }
 
   return (
-    <div className="icm-overlay">
+    <>
+      {/* Layer puramente decorativo: blur + dimming. pointer-events: none in CSS.
+          Separato dal layer interattivo per evitare il bug WebKit:
+          backdrop-filter + pointer-events:none sullo stesso elemento causa
+          intercettazione ghost dei touch sul layer composited in alcune versioni iOS. */}
+      <div className="icm-backdrop" aria-hidden="true" />
+      {/* Layer interattivo: nessun backdrop-filter, pointer-events normali (default auto) */}
+      <div className="icm-overlay">
       <div className="icm-card">
         <div className="icm-pulse-ring" />
         <div className="icm-avatar">
@@ -68,5 +75,6 @@ export default function IncomingCallModal() {
         </div>
       </div>
     </div>
+    </>
   );
 }
