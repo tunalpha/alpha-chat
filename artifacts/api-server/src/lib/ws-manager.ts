@@ -122,6 +122,21 @@ class WsManager {
     return this.userConnections.get(userId)?.size ?? 0;
   }
 
+  /**
+   * DIAG ONLY — rimuovere dopo diagnosi.
+   * Restituisce lo stato dettagliato di tutte le connessioni di un utente:
+   *   connCount     — connessioni registrate nel Map
+   *   readyStates   — readyState di ogni socket (0=CONNECTING,1=OPEN,2=CLOSING,3=CLOSED)
+   *   openCount     — socket effettivamente in stato OPEN
+   */
+  diagCalleeState(userId: string): { connCount: number; readyStates: number[]; openCount: number } {
+    const conns = this.userConnections.get(userId);
+    if (!conns || conns.size === 0) return { connCount: 0, readyStates: [], openCount: 0 };
+    const readyStates = Array.from(conns).map((c) => c.ws.readyState);
+    const openCount   = readyStates.filter((s) => s === WebSocket.OPEN).length;
+    return { connCount: conns.size, readyStates, openCount };
+  }
+
   // ── In-call tracking (busy detection) ──────────────────────────────────
 
   setInCall(userId: string): void  { this.inCallUsers.add(userId); }

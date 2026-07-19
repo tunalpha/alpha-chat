@@ -245,15 +245,19 @@ export function createWsServer(httpServer: HttpServer): WebSocketServer {
             }
           } catch { /* non-critical */ }
 
-          // [DIAG-SRV] Stato WsManager al momento del call.offer
-          {
-            const connCount = wsManager.getConnectionCount(toId);
-            const online    = wsManager.isOnline(toId);
-            logger.info(
-              { callerId: userId, calleeId: toId, connCount, online },
-              "[DIAG-SRV] call.offer ricevuto — stato callee in WsManager",
-            );
-          }
+          // [DIAG-SRV] Snapshot dettagliato del WsManager prima di qualsiasi azione
+          const diagBefore = wsManager.diagCalleeState(toId);
+          logger.info(
+            {
+              callerId:    userId,
+              calleeId:    toId,
+              connCount:   diagBefore.connCount,
+              readyStates: diagBefore.readyStates,   // es. [1] = OPEN, [3] = CLOSED
+              openCount:   diagBefore.openCount,
+              isOnline:    wsManager.isOnline(toId),
+            },
+            "[DIAG-SRV] call.offer → stato callee pre-delivery",
+          );
 
           // Fan-out a TUTTI i device del destinatario (multi-device ring)
           wsManager.sendToUser(toId, {
@@ -265,8 +269,8 @@ export function createWsServer(httpServer: HttpServer): WebSocketServer {
           // Fire-and-forget — non blocca il signaling
           if (!wsManager.isOnline(toId)) {
             logger.info(
-              { calleeId: toId },
-              "[DIAG-SRV] callee offline — push inviata",
+              { calleeId: toId, openCount: diagBefore.openCount },
+              "[DIAG-SRV] callee offline (isOnline=false) → push inviata",
             );
             const { dispatchToOne } = await import("../services/push/PushDispatcher");
             dispatchToOne(toId, {
@@ -278,8 +282,9 @@ export function createWsServer(httpServer: HttpServer): WebSocketServer {
             });
           } else {
             logger.info(
-              { calleeId: toId },
-              "[DIAG-SRV] callee online — push NON inviata, WS delivery tentata",
+              { calleeId: toId, openCount: diagBefore.openCount },
+              "[DIAG-SRV] callee online (isOnline=true) → push NON inviata; WS delivered=" +
+              diagBefore.openCount + " socket(s)",
             );
           }
           break;
