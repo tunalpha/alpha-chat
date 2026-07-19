@@ -89,7 +89,8 @@ export function useWebSocket(accessToken: string | null) {
     mountedRef.current = true;
     if (!accessToken) return;
 
-    function connect() {
+    function connect(reason = "unknown") {
+      console.log('[DIAG-WS] connect() chiamato, reason=', reason, 'mounted=', mountedRef.current);
       if (!mountedRef.current) return;
 
       // CRITICAL FIX: leggi SEMPRE il token fresco da localStorage, non la prop React.
@@ -103,11 +104,13 @@ export function useWebSocket(accessToken: string | null) {
       // Il prop `accessToken` resta nella dipendenza di useEffect SOLO come gate
       // binario (login presente / logout) — non come sorgente del token per la WS auth.
       const freshToken = getAccessToken();
+      console.log('[DIAG-WS] getAccessToken() =', freshToken ? 'presente (' + freshToken.substring(0, 12) + '...)' : 'NULL');
       if (!freshToken) {
         // Token non disponibile (es. durante il refresh) — riprova dopo il backoff.
+        console.log('[DIAG-WS] token null → backoff', reconnectDelay.current, 'ms');
         reconnectTimer.current = setTimeout(() => {
           reconnectDelay.current = Math.min(reconnectDelay.current * 2, 30_000);
-          connect();
+          connect("backoff-no-token");
         }, reconnectDelay.current);
         return;
       }
@@ -118,6 +121,7 @@ export function useWebSocket(accessToken: string | null) {
 
       ws.onopen = () => {
         if (!mountedRef.current) { ws.close(); return; }
+        console.log('[DIAG-WS] onopen → invio auth');
         // Usa il token fresco letto sopra — non il prop chiuso nello useEffect.
         ws.send(JSON.stringify({ type: "auth", payload: { token: freshToken } }));
         reconnectDelay.current = 1000; // reset backoff su connessione riuscita
@@ -153,17 +157,19 @@ export function useWebSocket(accessToken: string | null) {
         handlersRef.current.forEach((h) => h(event));
       };
 
-      ws.onclose = () => {
+      ws.onclose = (ev) => {
+        console.log('[DIAG-WS] onclose — code=', ev.code, 'reason=', ev.reason || '(none)');
         if (mountedRef.current) setConnected(false);
         if (!mountedRef.current) return;
         // Exponential backoff reconnect
         reconnectTimer.current = setTimeout(() => {
           reconnectDelay.current = Math.min(reconnectDelay.current * 2, 30_000);
-          connect();
+          connect("backoff-onclose");
         }, reconnectDelay.current);
       };
 
       ws.onerror = () => {
+        console.log('[DIAG-WS] onerror → close');
         ws.close();
       };
     }
@@ -177,7 +183,10 @@ export function useWebSocket(accessToken: string | null) {
       if (!mountedRef.current || document.hidden) return;
       // Se il socket è già aperto o in fase di handshake, non fare nulla.
       const ws = wsRef.current;
+      const state = ws?.readyState ?? -1;
+      console.log('[DIAG-WS] visibilitychange → foreground, ws.readyState=', state);
       if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
+        console.log('[DIAG-WS] visibilitychange → WS già attiva, nessuna azione');
         return;
       }
       // Cancella il backoff in corso e riprova subito.
@@ -186,11 +195,11 @@ export function useWebSocket(accessToken: string | null) {
         reconnectTimer.current = null;
       }
       reconnectDelay.current = 1_000; // reset backoff: il foreground è un fresh start
-      connect();
+      connect("visibilitychange");
     }
     document.addEventListener("visibilitychange", handleVisibilityChange);
 
-    connect();
+    connect("initial");
 
     return () => {
       mountedRef.current = false;

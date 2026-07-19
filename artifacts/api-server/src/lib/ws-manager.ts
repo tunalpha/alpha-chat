@@ -45,9 +45,10 @@ class WsManager {
       this.userConnections.set(userId, new Set());
     }
     this.userConnections.get(userId)!.add(conn);
-    logger.debug(
+    // DIAG: promosso a INFO temporaneamente per tracciare mancata registrazione callee
+    logger.info(
       { userId, connections: this.userConnections.get(userId)!.size },
-      "WS client registered",
+      "[DIAG-SRV] WsManager.register() — connCount dopo registrazione",
     );
   }
 
