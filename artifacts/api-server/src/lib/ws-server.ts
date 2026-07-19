@@ -295,6 +295,8 @@ export function createWsServer(httpServer: HttpServer): WebSocketServer {
           const toId = p["to_user_id"] as string | undefined;
           if (!toId) break;
 
+          logger.info({ calleeId: userId, callerId: toId }, "[DIAG-SRV] call.answer ricevuto → callee ha ACCETTATO");
+
           // Relay risposta al chiamante
           wsManager.sendToUser(toId, {
             type: "call.answered",
@@ -328,6 +330,8 @@ export function createWsServer(httpServer: HttpServer): WebSocketServer {
           const p = (event.payload ?? {}) as Record<string, unknown>;
           const toId = p["to_user_id"] as string | undefined;
           if (!toId) break;
+
+          logger.info({ calleeId: userId, callerId: toId, reason: p["reason"] }, "[DIAG-SRV] call.reject ricevuto → callee ha RIFIUTATO (o errore acceptCall)");
 
           // Relay rifiuto al chiamante
           wsManager.sendToUser(toId, {
