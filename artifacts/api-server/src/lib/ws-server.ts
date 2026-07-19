@@ -245,11 +245,43 @@ export function createWsServer(httpServer: HttpServer): WebSocketServer {
             }
           } catch { /* non-critical */ }
 
+          // [DIAG-SRV] Stato WsManager al momento del call.offer
+          {
+            const connCount = wsManager.getConnectionCount(toId);
+            const online    = wsManager.isOnline(toId);
+            logger.info(
+              { callerId: userId, calleeId: toId, connCount, online },
+              "[DIAG-SRV] call.offer ricevuto — stato callee in WsManager",
+            );
+          }
+
           // Fan-out a TUTTI i device del destinatario (multi-device ring)
           wsManager.sendToUser(toId, {
             type: "call.incoming",
             payload: { ...p, from_user_id: userId },
           });
+
+          // Push per dispositivi offline (PWA installata ma WS non attivo)
+          // Fire-and-forget — non blocca il signaling
+          if (!wsManager.isOnline(toId)) {
+            logger.info(
+              { calleeId: toId },
+              "[DIAG-SRV] callee offline — push inviata",
+            );
+            const { dispatchToOne } = await import("../services/push/PushDispatcher");
+            dispatchToOne(toId, {
+              type:          "call.incoming",
+              recipientUserId: toId,
+              callerId:      userId!,
+              callerName:    (p["from_display_name"] as string) ?? "Utente",
+              callType:      ((p["call_type"] as string) === "video" ? "video" : "audio"),
+            });
+          } else {
+            logger.info(
+              { calleeId: toId },
+              "[DIAG-SRV] callee online — push NON inviata, WS delivery tentata",
+            );
+          }
           break;
         }
 
