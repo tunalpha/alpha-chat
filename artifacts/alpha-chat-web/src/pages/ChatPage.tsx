@@ -843,6 +843,13 @@ export default function ChatPage({ onNavigate }: Props) {
         });
         return;
       }
+      // Cache guard 1:1 — se già decifrato e salvato in IDB non tocchiamo il ratchet.
+      // L'OTPK è one-shot: un secondo tentativo Signal fallisce sempre.
+      const _cached1to1 = await getMetaByMessageId(msg.id);
+      if (_cached1to1 !== null) {
+        setDecryptedTexts((prev) => new Map(prev).set(msg.id, _cached1to1));
+        return;
+      }
       // Fase 4: prova prima device_ciphertexts (multi-device 1:1)
       if (msg.device_ciphertexts && msg.device_ciphertexts.length > 0) {
         const found = await signalDecryptFromDeviceCiphertexts(
@@ -864,18 +871,18 @@ export default function ChatPage({ onNavigate }: Props) {
         );
       }
       setDecryptedTexts((prev) => new Map(prev).set(msg.id, text));
-      // Fase 4: cache metadata media per reload futuro
-      if (msg.message_type === "media") {
-        void cacheDecryptedMeta(msg.id, text);
-      }
+      // Cache per TUTTI i tipi — OTPK è one-shot, non ri-decifrabile dopo il primo decrypt.
+      // await garantisce che l'IDB write sia completato prima del return,
+      // così un reconnect quasi-simultaneo trova già il plaintext in cache.
+      await cacheDecryptedMeta(msg.id, text);
     } catch {
+      // Controlla IDB per tutti i tipi (testo e media) prima di mostrare errore.
+      const cached = await getMetaByMessageId(msg.id);
+      if (cached) {
+        setDecryptedTexts((prev) => new Map(prev).set(msg.id, cached));
+        return;
+      }
       if (msg.message_type === "media") {
-        // Fase 4: controlla la cache prima del fallback legacy
-        const cached = await getMetaByMessageId(msg.id);
-        if (cached) {
-          setDecryptedTexts((prev) => new Map(prev).set(msg.id, cached));
-          return;
-        }
         // FIX: non usare msg.ciphertext come fallback — produce base64 grezzo nel bubble
         // Lasciare stringa vuota → mediaMeta=null → UI "media non disponibile"
         setDecryptedTexts((prev) => new Map(prev).set(msg.id, ""));
