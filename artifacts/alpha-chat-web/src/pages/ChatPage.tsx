@@ -1027,6 +1027,31 @@ export default function ChatPage({ onNavigate }: Props) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [connected]);
 
+  // ── Refetch messaggi al ritorno in foreground (iOS bg → fg) ─────────────
+  // Scenario: app in background → WS cade → messaggio arriva → push inviata.
+  // Quando l'utente riporta l'app in foreground il WS potrebbe non essersi
+  // ancora riconnesso (backoff esponenziale). Il visibilitychange garantisce
+  // un refetch silenzioso senza attendere il prossimo auth.ok.
+  // Usa activeConvId come dep → il listener viene ri-registrato al cambio
+  // conversazione e cattura sempre il valore corretto senza ref extra.
+  useEffect(() => {
+    if (!activeConvId) return;
+    function onVisibility() {
+      if (!document.hidden && activeConvId) {
+        apiListMessages(activeConvId, { limit: 50 })
+          .then((res) => {
+            const msgs = [...res.items].reverse();
+            setMessages(msgs);
+            void decryptBatch(msgs);
+          })
+          .catch(() => {});
+      }
+    }
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeConvId]);
+
   // ── Auto-scroll only when at bottom ────────────────────────────────────
   useEffect(() => {
     if (atBottom) {
