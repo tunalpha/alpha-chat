@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useCallback, memo } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import { useCall } from "../contexts/CallContext";
-import { useWebSocket, type WsEvent } from "../hooks/useWebSocket";
+import { useWs } from "../contexts/WebSocketContext";
+import type { WsEvent } from "../hooks/useWebSocket";
 import type { AppView } from "../App";
 import {
   apiListConversations,
@@ -570,11 +571,8 @@ function SidebarMenu({
 // ── Main ChatPage ────────────────────────────────────────────────────────────
 export default function ChatPage({ onNavigate }: Props) {
   const { auth, logout, logoutAll } = useAuth();
-  const { connected, on, send: wsSend, sendTypingStart, sendTypingStop } = useWebSocket(auth?.accessToken ?? null);
-  const { initiateCall, setWsSend, handleWsCallEvent } = useCall();
-
-  // Registra il sender WS nel CallContext in modo che le chiamate possano segnalare
-  useEffect(() => { setWsSend(wsSend); }, [wsSend, setWsSend]);
+  const { connected, on, send: wsSend, sendTypingStart, sendTypingStop } = useWs();
+  const { initiateCall } = useCall();
 
   const { t } = useTranslation();
   const [conversations, setConversations] = useState<ConversationItem[]>([]);
@@ -1189,35 +1187,11 @@ export default function ChatPage({ onNavigate }: Props) {
           break;
         }
 
-        // Sprint 18 — Phoenix Protocol
-        case "phoenix:lock": {
-          void logout();
-          break;
-        }
-        case "phoenix:destroy": {
-          localStorage.clear();
-          sessionStorage.clear();
-          void logout();
-          break;
-        }
-
-        // Sprint 23 — WebRTC call signaling (routing verso CallContext)
-        case "call.incoming":
-          console.log('[DIAG-CP1] ChatPage WS router: call.incoming ricevuto', event.payload);
-          handleWsCallEvent(event.type, event.payload as Record<string, unknown>);
-          break;
-        case "call.answered":
-        case "call.ice_candidate":
-        case "call.rejected":
-        case "call.ended":
-        case "call.busy":
-        case "call.missed":           // caller ha annullato → dismetti squillo callee
-        case "call.ended_elsewhere":  // altro device ha risposto → dismetti squillo
-          handleWsCallEvent(event.type, event.payload as Record<string, unknown>);
-          break;
+        // Sprint 18 — Phoenix Protocol: gestito in AppContent (sempre attivo)
+        // Sprint 23 — Call signaling: gestito in AppContent (sempre attivo)
       }
     });
-  }, [on, activeConvId, handleWsCallEvent]);
+  }, [on, activeConvId]);
 
   // ── Helpers Signal — encrypt per un gruppo (fan-out per membro) ──────────
   async function encryptForGroup(groupId: string, text: string): Promise<{

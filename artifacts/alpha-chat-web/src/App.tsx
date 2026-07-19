@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { LockProvider, useLock } from "./contexts/LockContext";
-import { CallProvider } from "./contexts/CallContext";
+import { CallProvider, useCall } from "./contexts/CallContext";
+import { WebSocketProvider, useWs } from "./contexts/WebSocketContext";
 import { AppSettingsProvider } from "./contexts/AppSettingsContext";
 import IncomingCallModal from "./components/IncomingCallModal";
 import ActiveCallScreen from "./components/ActiveCallScreen";
@@ -69,7 +70,40 @@ function isEmergencyPath(): boolean {
 function AppContent() {
   const { auth, isLoading, logout, logoutAll, clearPasswordChangeRequired, updateAuth } = useAuth();
   const { isLocked, showPrivacy, hasPINSet, biometricOnlyEnabled } = useLock();
+  const { on, send: wsSend } = useWs();
+  const { setWsSend, handleWsCallEvent } = useCall();
   const [view, setView] = useState<AppView>("chat");
+
+  // ── Registra il sender WS nel CallContext ─────────────────────────────────
+  useEffect(() => { setWsSend(wsSend); }, [wsSend, setWsSend]);
+
+  // ── Routing eventi call + phoenix — sempre attivo, indipendente dalla vista ─
+  // Questi eventi devono essere consegnati anche quando ChatPage non è montata
+  // (utente su LockScreen, ProfilePage, SettingsPage, ecc.).
+  useEffect(() => {
+    return on((event) => {
+      switch (event.type) {
+        case "call.incoming":
+        case "call.answered":
+        case "call.ice_candidate":
+        case "call.rejected":
+        case "call.ended":
+        case "call.busy":
+        case "call.missed":
+        case "call.ended_elsewhere":
+          handleWsCallEvent(event.type, event.payload as Record<string, unknown>);
+          break;
+        case "phoenix:lock":
+          void logout();
+          break;
+        case "phoenix:destroy":
+          localStorage.clear();
+          sessionStorage.clear();
+          void logout();
+          break;
+      }
+    });
+  }, [on, handleWsCallEvent, logout]);
 
   // Sincronizza le impostazioni notifiche dal backend quando l'utente è autenticato
   useNotifSync(auth?.userId ?? null);
@@ -207,12 +241,14 @@ export default function App() {
     <AppSettingsProvider>
       <AuthProvider>
         <LockProvider>
-          <CallProvider>
-            <AppContent />
-            <IncomingCallModal />
-            <ActiveCallScreen />
-            <BusyCallScreen />
-          </CallProvider>
+          <WebSocketProvider>
+            <CallProvider>
+              <AppContent />
+              <IncomingCallModal />
+              <ActiveCallScreen />
+              <BusyCallScreen />
+            </CallProvider>
+          </WebSocketProvider>
         </LockProvider>
       </AuthProvider>
     </AppSettingsProvider>
