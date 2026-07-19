@@ -1,4 +1,5 @@
 import { useEffect, useRef, useCallback, useState } from "react";
+import { getAccessToken } from "../lib/auth";
 
 export type WsEvent =
   | { type: "message.new"; payload: Record<string, unknown> }
@@ -17,15 +18,31 @@ export type WsEvent =
   | { type: "error"; payload: { message: string } }
   | { type: "phoenix:lock"; payload: { reason: string } }
   | { type: "phoenix:destroy"; payload: { reason: string } }
-  // WebRTC signaling — Sprint 23
-  | { type: "call.incoming";     payload: Record<string, unknown> }
-  | { type: "call.answered";     payload: Record<string, unknown> }
-  | { type: "call.ice_candidate";payload: Record<string, unknown> }
-  | { type: "call.rejected";     payload: Record<string, unknown> }
-  | { type: "call.ended";        payload: Record<string, unknown> }
-  | { type: "call.busy";         payload: Record<string, unknown> };
+  // WebRTC signaling — Sprint 23/25
+  | { type: "call.incoming";        payload: Record<string, unknown> }
+  | { type: "call.answered";        payload: Record<string, unknown> }
+  | { type: "call.ice_candidate";   payload: Record<string, unknown> }
+  | { type: "call.rejected";        payload: Record<string, unknown> }
+  | { type: "call.ended";           payload: Record<string, unknown> }
+  | { type: "call.busy";            payload: Record<string, unknown> }
+  | { type: "call.missed";          payload: Record<string, unknown> }
+  | { type: "call.ended_elsewhere"; payload: Record<string, unknown> };
 
 type EventHandler = (event: WsEvent) => void;
+
+/** Evento in coda — accodato quando il WS non è OPEN, consegnato alla riconnessione. */
+interface QueuedEvent {
+  data: object;
+  enqueuedAt: number;
+}
+
+/**
+ * TTL della coda: gli eventi più vecchi di questo valore vengono scartati al flush.
+ * 5 secondi è sufficiente per typing (auto-stop server a 5s) e call signaling iniziale.
+ */
+const QUEUE_TTL_MS = 5_000;
+/** Limite massimo di eventi in coda — evita memory leak in sessioni lunghe offline. */
+const QUEUE_MAX = 50;
 
 export function useWebSocket(accessToken: string | null) {
   const wsRef = useRef<WebSocket | null>(null);
@@ -35,9 +52,23 @@ export function useWebSocket(accessToken: string | null) {
   const [connected, setConnected] = useState(false);
   const mountedRef = useRef(true);
 
+  /**
+   * Coda degli eventi inviati mentre il WS era disconnesso.
+   * Vengono consegnati appena auth.ok arriva (WS pronto), scartando quelli scaduti.
+   */
+  const pendingEventsRef = useRef<QueuedEvent[]>([]);
+
   const send = useCallback((data: object) => {
     if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify(data));
+    } else {
+      // WS non disponibile: accoda l'evento invece di scartarlo silenziosamente.
+      // Sarà consegnato al prossimo auth.ok se ancora entro il TTL.
+      pendingEventsRef.current.push({ data, enqueuedAt: Date.now() });
+      // Impedisci crescita illimitata: rimuovi il più vecchio se supera il limite.
+      if (pendingEventsRef.current.length > QUEUE_MAX) {
+        pendingEventsRef.current.shift();
+      }
     }
   }, []);
 
@@ -61,15 +92,35 @@ export function useWebSocket(accessToken: string | null) {
     function connect() {
       if (!mountedRef.current) return;
 
+      // CRITICAL FIX: leggi SEMPRE il token fresco da localStorage, non la prop React.
+      //
+      // Perché: il token viene rinnovato da attemptRefresh() (in api.ts) che aggiorna
+      // solo localStorage, mai il React state in AuthContext. Se il WS cade e deve
+      // riconnettersi, usare la prop chiusa nello useEffect restituisce il token
+      // originale (scaduto) → il server lo rifiuta → auth.error → ciclo infinito di
+      // disconnessioni.
+      //
+      // Il prop `accessToken` resta nella dipendenza di useEffect SOLO come gate
+      // binario (login presente / logout) — non come sorgente del token per la WS auth.
+      const freshToken = getAccessToken();
+      if (!freshToken) {
+        // Token non disponibile (es. durante il refresh) — riprova dopo il backoff.
+        reconnectTimer.current = setTimeout(() => {
+          reconnectDelay.current = Math.min(reconnectDelay.current * 2, 30_000);
+          connect();
+        }, reconnectDelay.current);
+        return;
+      }
+
       const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
       const ws = new WebSocket(`${protocol}//${window.location.host}/api/ws`);
       wsRef.current = ws;
 
       ws.onopen = () => {
         if (!mountedRef.current) { ws.close(); return; }
-        // Authenticate
-        ws.send(JSON.stringify({ type: "auth", payload: { token: accessToken } }));
-        reconnectDelay.current = 1000; // reset backoff
+        // Usa il token fresco letto sopra — non il prop chiuso nello useEffect.
+        ws.send(JSON.stringify({ type: "auth", payload: { token: freshToken } }));
+        reconnectDelay.current = 1000; // reset backoff su connessione riuscita
       };
 
       ws.onmessage = (e: MessageEvent) => {
@@ -84,6 +135,18 @@ export function useWebSocket(accessToken: string | null) {
 
         if (event.type === "auth.ok") {
           if (mountedRef.current) setConnected(true);
+
+          // Flush coda: consegna gli eventi accodati durante la disconnessione,
+          // scartando quelli scaduti (oltre QUEUE_TTL_MS).
+          const now = Date.now();
+          const pending = pendingEventsRef.current.splice(0);
+          for (const { data, enqueuedAt } of pending) {
+            if (now - enqueuedAt < QUEUE_TTL_MS) {
+              ws.send(JSON.stringify(data));
+            }
+            // Gli eventi scaduti vengono scartati silenziosamente — erano già stale
+            // (es. typing.start senza typing.stop, call.offer non più rilevante).
+          }
         }
 
         // Dispatch to all handlers
@@ -105,16 +168,42 @@ export function useWebSocket(accessToken: string | null) {
       };
     }
 
+    // ── Riconnessione immediata al ritorno in foreground ───────────────────
+    // iOS sospende completamente l'esecuzione JS quando l'app va in background.
+    // Il setTimeout del backoff viene congelato → al ritorno in foreground il
+    // timer potrebbe non essere ancora partito. Il visibilitychange forza una
+    // riconnessione immediata, cancellando qualsiasi timer di backoff in corso.
+    function handleVisibilityChange(): void {
+      if (!mountedRef.current || document.hidden) return;
+      // Se il socket è già aperto o in fase di handshake, non fare nulla.
+      const ws = wsRef.current;
+      if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
+        return;
+      }
+      // Cancella il backoff in corso e riprova subito.
+      if (reconnectTimer.current) {
+        clearTimeout(reconnectTimer.current);
+        reconnectTimer.current = null;
+      }
+      reconnectDelay.current = 1_000; // reset backoff: il foreground è un fresh start
+      connect();
+    }
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
     connect();
 
     return () => {
       mountedRef.current = false;
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
       if (reconnectTimer.current) clearTimeout(reconnectTimer.current);
       if (wsRef.current) {
         wsRef.current.onclose = null; // prevent reconnect on unmount
         wsRef.current.close();
         wsRef.current = null;
       }
+      // Svuota la coda: gli eventi accodati durante il logout/unmount non hanno senso
+      // da consegnare alla prossima sessione (token diverso, contesto diverso).
+      pendingEventsRef.current = [];
       setConnected(false);
     };
   }, [accessToken]);
