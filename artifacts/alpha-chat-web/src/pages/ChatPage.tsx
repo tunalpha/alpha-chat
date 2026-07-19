@@ -990,11 +990,11 @@ export default function ChatPage({ onNavigate }: Props) {
       .then((res) => {
         const msgs = [...res.items].reverse();
         setMessages((prev) => {
-          console.log("[DIAG] HTTP listMessages resolved", {
+          reportAudit("DIAG-HTTP-LIST", {
             activeConvId,
-            "messages from server": msgs.length,
-            "messages.length(before overwrite)": prev.length,
-            "messages.length(after overwrite)": msgs.length,
+            msgsFromServer: msgs.length,
+            lengthBeforeOverwrite: prev.length,
+            lengthAfterOverwrite: msgs.length,
           });
           return msgs;
         });
@@ -1051,13 +1051,13 @@ export default function ChatPage({ onNavigate }: Props) {
           if (msg.conversation_id === activeConvId) {
             setMessages((prev) => {
               const isDup = prev.some((m) => m.id === msg.id);
-              console.log("[DIAG] WS message.new", {
-                "msg.id": msg.id,
-                "msg.conversation_id": msg.conversation_id,
+              reportAudit("DIAG-WS-NEW", {
+                msgId: msg.id,
+                msgConvId: msg.conversation_id,
                 activeConvId,
                 equal: msg.conversation_id === activeConvId,
-                "messages.length(before)": prev.length,
-                "messages.length(after)": isDup ? prev.length : prev.length + 1,
+                lengthBefore: prev.length,
+                lengthAfter: isDup ? prev.length : prev.length + 1,
                 isDuplicate: isDup,
               });
               if (isDup) return prev;
