@@ -4,6 +4,7 @@
  */
 
 import { useEffect, useRef, useState, useCallback } from "react";
+import { webmToWav } from "../lib/audioConvert";
 
 export interface VoiceBlob {
   blob: Blob;
@@ -39,6 +40,9 @@ export default function VoiceRecorder({ onSend, onCancel }: Props) {
   const startTimeRef     = useRef<number>(Date.now());
   const pausedMsRef      = useRef<number>(0);
   const waveformDataRef  = useRef<number[]>([]); // campioni continui
+  // Memorizza il mimeType scelto in startRecording così handleSend può leggerlo.
+  // Necessario perché startRecording e handleSend non condividono lo stesso scope.
+  const mimeTypeRef      = useRef<string>("");
 
   // ── Avvia la registrazione ────────────────────────────────────────────────
   const startRecording = useCallback(async () => {
@@ -61,6 +65,7 @@ export default function VoiceRecorder({ onSend, onCancel }: Props) {
           ? "audio/mp4"
           : "";
 
+      mimeTypeRef.current = mimeType; // rende il valore accessibile in handleSend
       const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
       recorder.ondataavailable = (e) => {
         if (e.data.size > 0) chunksRef.current.push(e.data);
@@ -171,10 +176,29 @@ export default function VoiceRecorder({ onSend, onCancel }: Props) {
     }
 
     recorder.onstop = () => {
-      const mimeType = recorder.mimeType || "audio/webm";
-      const blob = new Blob(chunksRef.current, { type: mimeType });
+      // Su alcuni iOS Safari, recorder.mimeType restituisce "" dopo la stop.
+      // mimeTypeRef.current contiene il valore scelto al costruttore (es. "audio/mp4").
+      const effectiveMime = recorder.mimeType || mimeTypeRef.current || "audio/webm";
+      const blob = new Blob(chunksRef.current, { type: effectiveMime });
       streamRef.current?.getTracks().forEach((t) => t.stop());
-      onSend({ blob, mimeType, durationMs: finalDuration, waveform });
+
+      if (effectiveMime.includes("webm")) {
+        // Android Chrome registra solo WebM/Opus, non riproducibile su iOS Safari.
+        // Convertiamo in WAV PCM (universale) prima che handleVoiceSend cifri il blob.
+        // ChatPage.tsx non viene modificata: riceve VoiceBlob già nel formato corretto.
+        webmToWav(blob)
+          .then((wavBlob) => {
+            onSend({ blob: wavBlob, mimeType: "audio/wav", durationMs: finalDuration, waveform });
+          })
+          .catch(() => {
+            // Fallback: se la conversione fallisce, invia il WebM originale.
+            // Il destinatario iOS vedrà "Formato non compatibile" come prima — nessuna regressione.
+            onSend({ blob, mimeType: effectiveMime, durationMs: finalDuration, waveform });
+          });
+      } else {
+        // iOS Safari (audio/mp4), macOS Safari — nessuna conversione necessaria.
+        onSend({ blob, mimeType: effectiveMime, durationMs: finalDuration, waveform });
+      }
     };
     recorder.stop();
   }
