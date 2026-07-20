@@ -26,7 +26,8 @@ export type WsEvent =
   | { type: "call.ended";           payload: Record<string, unknown> }
   | { type: "call.busy";            payload: Record<string, unknown> }
   | { type: "call.missed";          payload: Record<string, unknown> }
-  | { type: "call.ended_elsewhere"; payload: Record<string, unknown> };
+  | { type: "call.ended_elsewhere"; payload: Record<string, unknown> }
+  | { type: "call.signal_ack";      payload: Record<string, unknown> };
 
 type EventHandler = (event: WsEvent) => void;
 

@@ -611,6 +611,18 @@ export function CallProvider({ children }: { children: ReactNode }) {
         cleanup("missed");
         break;
       }
+
+      case "call.signal_ack": {
+        // M2 — ACK di consegna dal server.
+        // Significato: il server ha inoltrato il segnale a ≥1 socket OPEN del destinatario.
+        // NON significa "chiamata accettata" o "WebRTC avviato".
+        // Per ora solo log diagnostico; M3 userà questo evento per la logica di retry.
+        const callId    = payload["call_id"]    as string | undefined;
+        const eventType = payload["event_type"] as string | undefined;
+        const delivered = payload["delivered"]  as boolean | undefined;
+        console.log('[Call] call.signal_ack ricevuto — call_id=%s event_type=%s delivered=%s', callId, eventType, delivered);
+        break;
+      }
     }
   }, [callState]); // eslint-disable-line react-hooks/exhaustive-deps
 

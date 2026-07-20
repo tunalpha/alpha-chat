@@ -336,4 +336,47 @@ Build: ✅ compilazione pulita, server avviato.
 
 ---
 
-*M2, M3 in attesa di approvazione.*
+### M4-fix — APPLICATA ✅ (2026-07-20)
+**File:** `artifacts/api-server/src/lib/ws-server.ts`
+
+Il relay + push di `call.offer` è ora avvolto in `try/catch`:
+```typescript
+let offerRelayCount = 0;
+try {
+  offerRelayCount = wsManager.sendToUser(toId, { type: "call.incoming", ... });
+  wsManager.setPendingCall(toId, ...);
+  /* push M5 */
+} catch (relayErr) {
+  logger.error(...);
+  if (callId) wsManager.clearProcessedOffer(callId);  // ← libera per retry legittimi
+  break;
+}
+```
+**Design choice documentata:** i path `break` di busy/privacy avvengono PRIMA del mark (dopo il fix) e NON chiamano `clearProcessedOffer` perché sono rifiuti intenzionali (retry non utile). Solo un errore imprevisto nel relay libera il `call_id`.  
+Build: ✅ compilazione pulita.
+
+### M2 — APPLICATA ✅ (2026-07-20)
+**File:** `ws-events.ts` · `ws-manager.ts` · `ws-server.ts` · `useWebSocket.ts` · `CallContext.tsx`
+
+**`ws-events.ts`:** aggiunto `"call.signal_ack"` a `WsOutboundEventType` + interfaccia `CallSignalAckPayload`:
+```typescript
+{ call_id: string|undefined; event_type: "call.offer"|"call.answer"|"call.reject"|"call.end"; delivered: boolean }
+```
+Il JSDoc nel file chiarisce esplicitamente: l'ACK riguarda solo consegna al socket — non significa "callee online", "chiamata vista", "WebRTC avviato".
+
+**`ws-manager.ts`:** `sendToUser()` ora restituisce `number` (count socket OPEN a cui il messaggio è stato consegnato). Non-breaking: i chiamanti che non usano il valore lo ignorano.
+
+**`ws-server.ts`:** dopo ogni relay, ACK al mittente:
+- `call.offer` → `call.signal_ack { delivered: offerRelayCount > 0 }` al caller
+- `call.answer` → `call.signal_ack { delivered: answerDelivered > 0 }` al callee  
+- `call.reject` → `call.signal_ack { delivered: rejectDelivered > 0 }` al callee
+- `call.end` → `call.signal_ack { delivered: endDelivered > 0 }` al sender
+
+**`useWebSocket.ts`:** `call.signal_ack` aggiunto al discriminated union dei tipi WS inbound.
+
+**`CallContext.tsx`:** `case "call.signal_ack"` → solo `console.log` per ora. M3 sostituirà il log con la logica di retry.  
+Build: ✅ compilazione TypeScript pulita, entrambi i servizi avviati.
+
+---
+
+*M3 in attesa di approvazione.*

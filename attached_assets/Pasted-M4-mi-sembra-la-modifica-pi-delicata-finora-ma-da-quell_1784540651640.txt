@@ -1,0 +1,54 @@
+M4 mi sembra la modifica più delicata finora, ma da quello che descrivi l’impostazione è corretta.
+
+✅ Aspetti positivi
+
+* call_id come chiave di deduplicazione: è la scelta giusta. Evita confronti fragili sul contenuto del payload.
+* TTL di 60 secondi: è ragionevole per la fase di instaurazione della chiamata e impedisce che la mappa cresca senza limiti.
+* markOfferProcessed() prima di qualsiasi await: concordo pienamente. Questo elimina una classica race condition in cui due handler paralleli potrebbero entrambi superare il controllo prima che uno dei due registri l’offer.
+
+Un punto che verificherei
+
+La domanda che mi farei è: cosa succede se l’elaborazione della prima call.offer fallisce?
+
+Ad esempio:
+
+1. markOfferProcessed(callId)
+2. UserModel.findById(...) lancia un’eccezione
+3. Nessun relay viene effettuato
+
+In questo caso, eventuali retry con lo stesso call_id verrebbero ignorati fino alla scadenza del TTL.
+
+Non è necessariamente un bug, ma è una scelta di progettazione. Valuterei se:
+
+* mantenere questo comportamento (accettabile se i fallimenti sono eccezionali);
+* oppure rimuovere il call_id dal registry quando l’offer non viene effettivamente inoltrata (clearProcessedOffer()), funzione che hai già predisposto.
+
+M2 (ACK)
+
+A questo punto darei il via libera a M2, con un vincolo importante:
+
+L’ACK deve significare solo:
+
+“Il server ha consegnato questo segnale a un WebSocket del destinatario.”
+
+Non deve significare:
+
+* destinatario online;
+* destinatario ha visto la chiamata;
+* destinatario ha accettato;
+* WebRTC è partito.
+
+Sono eventi distinti e vanno mantenuti separati.
+
+⸻
+
+Stato complessivo
+
+Direi che la progressione è solida:
+
+* ✅ M5 — fallback push su zombie connection.
+* ✅ M1 — introduzione di call_id.
+* ✅ M4 — deduplicazione server basata su call_id.
+* 🟢 M2 — può procedere.
+
+L’unica raccomandazione è di prevedere esplicitamente il comportamento in caso di errore dopo markOfferProcessed(), così la deduplicazione non impedisce un retry legittimo quando la prima elaborazione non è mai arrivata a destinazione.

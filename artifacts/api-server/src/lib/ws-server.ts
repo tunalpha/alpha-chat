@@ -287,46 +287,66 @@ export function createWsServer(httpServer: HttpServer): WebSocketServer {
             "[DIAG-SRV] call.offer → stato callee pre-delivery",
           );
 
-          // Fan-out a TUTTI i device del destinatario (multi-device ring)
+          // Fan-out a TUTTI i device del destinatario (multi-device ring).
+          // M4 fix: avvolto in try/catch — se il relay fallisce per un errore imprevisto,
+          // rimuoviamo il call_id dal registry per permettere retry legittimi.
+          // Nota: busy/privacy → break prima di questo punto → dedup preservata (corretto).
+          // Nota: il DND try/catch sopra swallows errori DB → esecuzione sempre qui.
           const callIncomingPayload = { ...p, from_user_id: userId! };
-          wsManager.sendToUser(toId, {
-            type: "call.incoming",
-            payload: callIncomingPayload,
-          });
-
-          // Bufferizza per re-delivery se il callee si riconnette entro 35s
-          wsManager.setPendingCall(toId, callIncomingPayload);
-
-          // Push per dispositivi offline oppure con zombie connection (isOnline=true ma openCount=0)
-          // In entrambi i casi non esiste un socket OPEN → la push è l'unico canale affidabile.
-          // Fire-and-forget — non blocca il signaling
-          if (!wsManager.isOnline(toId) || diagBefore.openCount === 0) {
-            logger.info(
-              { calleeId: toId, isOnline: wsManager.isOnline(toId), openCount: diagBefore.openCount },
-              wsManager.isOnline(toId)
-                ? "[CALL-M5] callee isOnline=true ma openCount=0 (zombie) → push inviata"
-                : "[CALL-M5] callee offline → push inviata",
-            );
-            const { dispatchToOne } = await import("../services/push/PushDispatcher");
-            dispatchToOne(toId, {
-              type:          "call.incoming",
-              recipientUserId: toId,
-              callerId:      userId!,
-              callerName:    (p["from_display_name"] as string) ?? "Utente",
-              callType:      ((p["call_type"] as string) === "video" ? "video" : "audio"),
+          let offerRelayCount = 0;
+          try {
+            offerRelayCount = wsManager.sendToUser(toId, {
+              type: "call.incoming",
+              payload: callIncomingPayload,
             });
-          } else {
-            logger.info(
-              { calleeId: toId, openCount: diagBefore.openCount },
-              "[CALL-M5] callee online, openCount=" + diagBefore.openCount + " → WS delivery, push non necessaria",
-            );
+
+            // Bufferizza per re-delivery se il callee si riconnette entro 35s
+            wsManager.setPendingCall(toId, callIncomingPayload);
+
+            // Push per dispositivi offline oppure con zombie connection (isOnline=true ma openCount=0)
+            // In entrambi i casi non esiste un socket OPEN → la push è l'unico canale affidabile.
+            // Fire-and-forget — non blocca il signaling
+            if (!wsManager.isOnline(toId) || diagBefore.openCount === 0) {
+              logger.info(
+                { calleeId: toId, isOnline: wsManager.isOnline(toId), openCount: diagBefore.openCount },
+                wsManager.isOnline(toId)
+                  ? "[CALL-M5] callee isOnline=true ma openCount=0 (zombie) → push inviata"
+                  : "[CALL-M5] callee offline → push inviata",
+              );
+              const { dispatchToOne } = await import("../services/push/PushDispatcher");
+              dispatchToOne(toId, {
+                type:          "call.incoming",
+                recipientUserId: toId,
+                callerId:      userId!,
+                callerName:    (p["from_display_name"] as string) ?? "Utente",
+                callType:      ((p["call_type"] as string) === "video" ? "video" : "audio"),
+              });
+            } else {
+              logger.info(
+                { calleeId: toId, openCount: diagBefore.openCount },
+                "[CALL-M5] callee online, openCount=" + diagBefore.openCount + " → WS delivery, push non necessaria",
+              );
+            }
+          } catch (relayErr) {
+            // Errore imprevisto nel relay: libera il call_id per permettere retry legittimi.
+            logger.error({ callId, calleeId: toId, err: relayErr }, "[CALL-M4] relay fallito dopo markOfferProcessed → clearProcessedOffer");
+            if (callId) wsManager.clearProcessedOffer(callId);
+            break;
           }
+
+          // M2 — ACK al caller: conferma che almeno un socket OPEN del callee ha ricevuto l'offer
+          // (oppure 0 se solo pendingCalls/push). NON significa "callee ha risposto".
+          safeSend(ws, {
+            type: "call.signal_ack",
+            payload: { call_id: callId, event_type: "call.offer", delivered: offerRelayCount > 0 },
+          });
           break;
         }
 
         case "call.answer": {
-          const p = (event.payload ?? {}) as Record<string, unknown>;
-          const toId = p["to_user_id"] as string | undefined;
+          const p      = (event.payload ?? {}) as Record<string, unknown>;
+          const toId   = p["to_user_id"] as string | undefined;
+          const callId = p["call_id"]    as string | undefined;
           if (!toId) break;
 
           logger.info({ calleeId: userId, callerId: toId }, "[DIAG-SRV] call.answer ricevuto → callee ha ACCETTATO");
@@ -335,9 +355,16 @@ export function createWsServer(httpServer: HttpServer): WebSocketServer {
           wsManager.clearPendingCall(userId!);
 
           // Relay risposta al chiamante
-          wsManager.sendToUser(toId, {
+          const answerDelivered = wsManager.sendToUser(toId, {
             type: "call.answered",
             payload: { ...p, from_user_id: userId },
+          });
+
+          // M2 — ACK al callee: conferma che il call.answer è arrivato al socket del caller.
+          // NON significa "chiamata attiva" o "WebRTC avviato".
+          safeSend(ws, {
+            type: "call.signal_ack",
+            payload: { call_id: callId, event_type: "call.answer", delivered: answerDelivered > 0 },
           });
 
           // Marca entrambi come "in chiamata"
@@ -364,8 +391,9 @@ export function createWsServer(httpServer: HttpServer): WebSocketServer {
         }
 
         case "call.reject": {
-          const p = (event.payload ?? {}) as Record<string, unknown>;
-          const toId = p["to_user_id"] as string | undefined;
+          const p      = (event.payload ?? {}) as Record<string, unknown>;
+          const toId   = p["to_user_id"] as string | undefined;
+          const callId = p["call_id"]    as string | undefined;
           if (!toId) break;
 
           logger.info({ calleeId: userId, callerId: toId, reason: p["reason"] }, "[DIAG-SRV] call.reject ricevuto → callee ha RIFIUTATO (o errore acceptCall)");
@@ -374,9 +402,15 @@ export function createWsServer(httpServer: HttpServer): WebSocketServer {
           wsManager.clearPendingCall(userId!);
 
           // Relay rifiuto al chiamante
-          wsManager.sendToUser(toId, {
+          const rejectDelivered = wsManager.sendToUser(toId, {
             type: "call.rejected",
             payload: { from_user_id: userId, reason: p["reason"] },
+          });
+
+          // M2 — ACK al callee: conferma che il call.reject è arrivato al socket del caller.
+          safeSend(ws, {
+            type: "call.signal_ack",
+            payload: { call_id: callId, event_type: "call.reject", delivered: rejectDelivered > 0 },
           });
 
           // Dismisses gli altri device del callee (se erano anche loro in squillo)
@@ -388,8 +422,9 @@ export function createWsServer(httpServer: HttpServer): WebSocketServer {
         }
 
         case "call.end": {
-          const p = (event.payload ?? {}) as Record<string, unknown>;
-          const toId = p["to_user_id"] as string | undefined;
+          const p      = (event.payload ?? {}) as Record<string, unknown>;
+          const toId   = p["to_user_id"] as string | undefined;
+          const callId = p["call_id"]    as string | undefined;
           if (!toId) break;
 
           const calleeOnline = wsManager.isOnline(toId);
@@ -397,9 +432,15 @@ export function createWsServer(httpServer: HttpServer): WebSocketServer {
             { callerId: userId, calleeId: toId, reason: p["reason"], calleeOnline },
             "[DIAG-SRV] call.end ricevuto → invio call.ended al callee",
           );
-          wsManager.sendToUser(toId, {
+          const endDelivered = wsManager.sendToUser(toId, {
             type: "call.ended",
             payload: { from_user_id: userId },
+          });
+
+          // M2 — ACK al sender: conferma che call.ended ha raggiunto ≥1 socket del destinatario.
+          safeSend(ws, {
+            type: "call.signal_ack",
+            payload: { call_id: callId, event_type: "call.end", delivered: endDelivered > 0 },
           });
 
           // Se il caller annulla prima della risposta → notifica "chiamata persa" al callee

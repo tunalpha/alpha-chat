@@ -136,10 +136,16 @@ class WsManager {
 
   // ── Invio eventi ────────────────────────────────────────────────────────
 
-  sendToUser(userId: string, event: WsOutboundEvent): void {
+  /**
+   * Invia l'evento a tutti i socket OPEN dell'utente.
+   * Restituisce il numero di socket OPEN a cui il messaggio è stato consegnato (M2).
+   * I chiamanti che non hanno bisogno del conteggio possono ignorare il valore di ritorno.
+   */
+  sendToUser(userId: string, event: WsOutboundEvent): number {
     const conns = this.userConnections.get(userId);
-    if (!conns) return;
+    if (!conns) return 0;
     const msg = JSON.stringify(event);
+    let delivered = 0;
     for (const conn of conns) {
       if (conn.ws.readyState === WebSocket.OPEN) {
         conn.ws.send(msg, (err) => {
@@ -147,8 +153,10 @@ class WsManager {
             logger.warn({ err, userId }, "WS send error");
           }
         });
+        delivered++;
       }
     }
+    return delivered;
   }
 
   sendToUsers(userIds: string[], event: WsOutboundEvent): void {

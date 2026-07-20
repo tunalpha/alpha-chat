@@ -69,11 +69,24 @@ export type WsOutboundEventType =
   | "call.busy"            // Server → Caller: callee già in chiamata
   | "call.ended_elsewhere" // Server → Callee altri device: chiamata risposta altrove
   | "call.missed"          // Server → Callee: chiamata persa (caller ha annullato)
+  | "call.signal_ack"      // Server → Sender: conferma consegna del segnale (M2)
   | "conversation.cleared"; // Server → membri: tutti i messaggi eliminati (Sprint 24)
 
 export interface WsOutboundEvent {
   type: WsOutboundEventType;
   payload?: unknown;
+}
+
+/**
+ * M2 — ACK di consegna segnale (call.signal_ack).
+ * Significato: il server ha inoltrato questo segnale a ≥1 socket OPEN del destinatario.
+ * NON significa: destinatario online, ha visto la chiamata, ha accettato, WebRTC è partito.
+ * Sono eventi distinti. Questo ACK riguarda solo la consegna a livello di socket.
+ */
+export interface CallSignalAckPayload {
+  call_id:    string | undefined;  // UUID della chiamata (M1); undefined se client legacy
+  event_type: "call.offer" | "call.answer" | "call.reject" | "call.end";
+  delivered:  boolean;             // true = ≥1 socket OPEN del destinatario ha ricevuto il segnale
 }
 
 export interface ReadReceiptPayload {
