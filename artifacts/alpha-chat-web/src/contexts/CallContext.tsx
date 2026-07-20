@@ -400,6 +400,16 @@ export function CallProvider({ children }: { children: ReactNode }) {
     clearCallTimeout();
     console.log('[DIAG-ACCEPT] acceptCall() entered — callType=%s from=%s', incomingCall.callType, incomingCall.fromUserId);
 
+    // ── Snapshot del call_id all'inizio del flusso ────────────────────────────
+    // cleanup() può essere chiamato da un WS handler (call.ended / call.rejected)
+    // mentre acceptCall() è sospeso a un await. Questo azzera callIdRef.current a ""
+    // e chiama diagLogger.clearCurrentCall(), rendendo orfani tutti i diagLog
+    // successivi (call_id: null → non appaiono nel Diagnostics Center filtrato per call).
+    // Lo snapshot garantisce che:
+    //   1. tutti i diagLog mantengano il call_id corretto indipendentemente da cleanup()
+    //   2. call.answer e call.reject inviati con il call_id originale, non con ""
+    const _acceptCallId = callIdRef.current;
+
     // ── Timeout totale di 15s su TUTTO il flusso acceptCall ────────────────────
     // Copre ogni singolo await: getUserMedia, primeRemoteAudio, loadIceConfig,
     // setRemoteDescription, createAnswer, setLocalDescription.
@@ -415,7 +425,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
         () => {
           const elapsed = Date.now() - _stepStart;
           console.error('[DIAG-ACCEPT] timeout 15s scattato — step bloccato: step=%d elapsed=%dms', _currentStep, elapsed);
-          diagLog('accept.timeout', { step: _currentStep, elapsed_ms: elapsed });
+          diagLog('accept.timeout', { step: _currentStep, elapsed_ms: elapsed }, _acceptCallId);
           reject(new Error(`[acceptCall] timeout 15s — step ${_currentStep} bloccato`));
         },
         15_000,
@@ -434,7 +444,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
       console.log('[DIAG-ACCEPT] step 1 — getUserMedia()');
       const stream = await raceTimeout(getUserMedia(incomingCall.callType));
       console.log('[DIAG-ACCEPT] step 1 OK — tracks=%d elapsed=%dms', stream.getTracks().length, Date.now() - _stepStart);
-      diagLog('accept.step', { step: 1, ok: true, elapsed_ms: Date.now() - _stepStart });
+      diagLog('accept.step', { step: 1, ok: true, elapsed_ms: Date.now() - _stepStart }, _acceptCallId);
 
       // FIX: assegna il ref IMMEDIATAMENTE dopo getUserMedia, prima di qualsiasi
       // await successivo. Se un'eccezione viene lanciata nei passi seguenti,
@@ -450,13 +460,13 @@ export function CallProvider({ children }: { children: ReactNode }) {
       console.log('[DIAG-ACCEPT] step 2 — primeRemoteAudio()');
       await raceTimeout(primeRemoteAudio().catch(() => {}));
       console.log('[DIAG-ACCEPT] step 2 OK elapsed=%dms', Date.now() - _stepStart);
-      diagLog('accept.step', { step: 2, ok: true, elapsed_ms: Date.now() - _stepStart });
+      diagLog('accept.step', { step: 2, ok: true, elapsed_ms: Date.now() - _stepStart }, _acceptCallId);
 
       _currentStep = 3; _stepStart = Date.now();
       console.log('[DIAG-ACCEPT] step 3 — loadIceConfig()');
       await raceTimeout(loadIceConfig());
       console.log('[DIAG-ACCEPT] step 3 OK elapsed=%dms', Date.now() - _stepStart);
-      diagLog('accept.step', { step: 3, ok: true, elapsed_ms: Date.now() - _stepStart });
+      diagLog('accept.step', { step: 3, ok: true, elapsed_ms: Date.now() - _stepStart }, _acceptCallId);
 
       _currentStep = 4; _stepStart = Date.now();
       console.log('[DIAG-ACCEPT] step 4 — buildPC + setRemoteDescription');
@@ -464,29 +474,29 @@ export function CallProvider({ children }: { children: ReactNode }) {
       addTracksToPC(pc, stream);
       await raceTimeout(pc.setRemoteDescription(new RTCSessionDescription(incomingCall.sdp)));
       console.log('[DIAG-ACCEPT] step 4 OK elapsed=%dms', Date.now() - _stepStart);
-      diagLog('accept.step', { step: 4, ok: true, elapsed_ms: Date.now() - _stepStart });
+      diagLog('accept.step', { step: 4, ok: true, elapsed_ms: Date.now() - _stepStart }, _acceptCallId);
 
       _currentStep = 5; _stepStart = Date.now();
       console.log('[DIAG-ACCEPT] step 5 — createAnswer');
       const answer = await raceTimeout(pc.createAnswer());
       console.log('[DIAG-ACCEPT] step 5 OK — type=%s elapsed=%dms', answer.type, Date.now() - _stepStart);
-      diagLog('accept.step', { step: 5, ok: true, elapsed_ms: Date.now() - _stepStart });
+      diagLog('accept.step', { step: 5, ok: true, elapsed_ms: Date.now() - _stepStart }, _acceptCallId);
 
       _currentStep = 6; _stepStart = Date.now();
       console.log('[DIAG-ACCEPT] step 6 — setLocalDescription');
       await raceTimeout(pc.setLocalDescription(answer));
       console.log('[DIAG-ACCEPT] step 6 OK elapsed=%dms', Date.now() - _stepStart);
-      diagLog('accept.step', { step: 6, ok: true, elapsed_ms: Date.now() - _stepStart });
+      diagLog('accept.step', { step: 6, ok: true, elapsed_ms: Date.now() - _stepStart }, _acceptCallId);
 
       _currentStep = 7;
       const wsReady = wsSendRef.current !== null;
-      console.log('[DIAG-ACCEPT] step 7 — send call.answer → to=%s wsReady=%s', incomingCall.fromUserId, wsReady);
-      diagLog('accept.ws.ready', { wsReady, step: 7 });
+      console.log('[DIAG-ACCEPT] step 7 — send call.answer → to=%s wsReady=%s callId=%s', incomingCall.fromUserId, wsReady, _acceptCallId);
+      diagLog('accept.ws.ready', { wsReady, step: 7 }, _acceptCallId);
       wsSend({
         type: "call.answer",
-        payload: { to_user_id: incomingCall.fromUserId, sdp: answer, call_id: callIdRef.current },
+        payload: { to_user_id: incomingCall.fromUserId, sdp: answer, call_id: _acceptCallId },
       });
-      diagLog('call.answer.sent', { to: incomingCall.fromUserId, wsReady, call_id: callIdRef.current });
+      diagLog('call.answer.sent', { to: incomingCall.fromUserId, wsReady, call_id: _acceptCallId }, _acceptCallId);
 
       // Imposta modalità audio iniziale: auricolare per chiamate vocali, speaker per video
       const defaultSpeaker = incomingCall.callType === "video";
@@ -505,7 +515,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
       setRemoteUserId(incomingCall.fromUserId);
       setRemoteDisplayName(incomingCall.fromDisplayName);
       setIncomingCall(null);
-      diagLog('accept.complete', { call_id: callIdRef.current });
+      diagLog('accept.complete', { call_id: _acceptCallId }, _acceptCallId);
       startDurationTimer();
 
     } catch (err) {
@@ -515,9 +525,9 @@ export function CallProvider({ children }: { children: ReactNode }) {
         name:    err instanceof Error ? err.name                       : 'unknown',
         message: err instanceof Error ? err.message                    : String(err),
         stack:   err instanceof Error ? (err.stack ?? '').slice(0, 500) : '',
-      });
+      }, _acceptCallId);
       if (incomingCall) {
-        wsSend({ type: "call.reject", payload: { to_user_id: incomingCall.fromUserId, reason: "error", call_id: callIdRef.current } });
+        wsSend({ type: "call.reject", payload: { to_user_id: incomingCall.fromUserId, reason: "error", call_id: _acceptCallId } });
       }
       cleanup("failed");
     } finally {

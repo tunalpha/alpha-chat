@@ -100,13 +100,17 @@ class DiagnosticLoggerClass {
 
   // ── Registrazione eventi ───────────────────────────────────────────────────
 
-  log(event: string, payload: Record<string, unknown> = {}): void {
+  log(event: string, payload: Record<string, unknown> = {}, callIdOverride?: string | null): void {
     if (!this.enabled) return;
+    // callIdOverride permette a acceptCall() di passare uno snapshot del call_id
+    // acquisito all'inizio del flusso, anche se clearCurrentCall() è stato chiamato
+    // nel frattempo da un WS event (call.ended/call.rejected) concorrente.
+    const callId     = callIdOverride !== undefined ? callIdOverride : this._callId;
     const elapsed_ms = this._callStart !== null ? Date.now() - this._callStart : null;
     const entry: DiagnosticEvent = {
       id:        this._nextId++,
       timestamp: new Date().toISOString(),
-      call_id:   this._callId,
+      call_id:   callId,
       event,
       payload,
       elapsed_ms,
@@ -205,6 +209,6 @@ export const diagLogger = new DiagnosticLoggerClass();
  * Shorthand — registra un evento diagnostico.
  * No-op se diagLogger non è ancora inizializzato (prima del login).
  */
-export function diagLog(event: string, payload: Record<string, unknown> = {}): void {
-  diagLogger.log(event, payload);
+export function diagLog(event: string, payload: Record<string, unknown> = {}, callId?: string | null): void {
+  diagLogger.log(event, payload, callId);
 }
