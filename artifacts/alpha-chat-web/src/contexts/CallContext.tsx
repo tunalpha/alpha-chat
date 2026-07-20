@@ -458,7 +458,9 @@ export function CallProvider({ children }: { children: ReactNode }) {
 
       _currentStep = 2; _stepStart = Date.now();
       console.log('[DIAG-ACCEPT] step 2 — primeRemoteAudio()');
-      await raceTimeout(primeRemoteAudio().catch(() => {}));
+      diagLog('prime.call.before', { step: 2 }, _acceptCallId);
+      await raceTimeout(primeRemoteAudio(_acceptCallId).catch(() => {}));
+      diagLog('prime.call.after', { step: 2, elapsed_ms: Date.now() - _stepStart }, _acceptCallId);
       console.log('[DIAG-ACCEPT] step 2 OK elapsed=%dms', Date.now() - _stepStart);
       diagLog('accept.step', { step: 2, ok: true, elapsed_ms: Date.now() - _stepStart }, _acceptCallId);
 

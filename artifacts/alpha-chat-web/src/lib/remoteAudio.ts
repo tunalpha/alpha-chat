@@ -13,6 +13,8 @@
  * sbloccare l'<audio> element nel contesto della sessione PlayAndRecord corretta.
  */
 
+import { diagLog } from "./diagnosticLogger";
+
 let _el: HTMLAudioElement | null = null;
 let _audioCtx: AudioContext | null = null;      // usato SOLO da primeRemoteAudio su Chrome
 let _currentStream: MediaStream | null = null;
@@ -167,46 +169,50 @@ function applyRouting(): void {
  * Sblocca l'<audio> element per iOS Safari (autoplay policy).
  * Su iOS: chiamare DOPO getUserMedia() per essere nella sessione PlayAndRecord corretta.
  */
-export async function primeRemoteAudio(): Promise<void> {
-  // ── LOG GRANULARE (diagnosi blocco step 2) ────────────────────────────────
-  // Ogni checkpoint è preceduto da un log per identificare l'ultima istruzione
-  // eseguita prima di un eventuale hang. Rimuovere dopo la conferma della causa.
-  console.log('[remoteAudio] primeRemoteAudio() ENTER');
+/**
+ * callId opzionale passato da acceptCall() per mantenere i log diagnostici
+ * associati alla chiamata corretta anche se diagLogger.clearCurrentCall()
+ * viene invocato da un WS handler concorrente.
+ */
+export async function primeRemoteAudio(callId?: string): Promise<void> {
+  // Tutti i checkpoint usano diagLog (non console.log) per essere visibili
+  // nel Diagnostics Center senza Safari Web Inspector.
+  const dlog = (event: string, payload: Record<string, unknown> = {}) =>
+    diagLog(event, payload, callId);
+
+  dlog('prime.enter');
 
   const el = getEl();
-  console.log('[remoteAudio] primeRemoteAudio: el=%s', !!el);
+  dlog('prime.el', { present: !!el });
 
   if (el) {
     el.muted  = false;
     const prev = el.volume;
     el.volume = 0;
 
-    console.log('[remoteAudio] primeRemoteAudio: srcObject=%s', el.srcObject === null ? 'null' : 'present');
+    const srcNull = el.srcObject === null;
+    dlog('prime.srcObject', { null: srcNull });
 
-    if (el.srcObject === null) {
+    if (srcNull) {
       // Nessuna sorgente ancora disponibile (il remote stream arriva solo dopo ontrack,
       // cioè dopo buildPC/setRemoteDescription — step 4 di acceptCall).
       // el.play() su un elemento senza srcObject su iOS Safari può restare pending
-      // indefinitamente senza risolvere né rigettare → causa del blocco allo step 2.
+      // indefinitamente senza risolvere né rigettare → causa originale del blocco step 2.
       // Il priming reale avverrà in applyRouting() quando setRemoteStream() assegnerà lo stream.
-      console.log('[remoteAudio] primeRemoteAudio: srcObject=null — SKIP el.play()');
+      dlog('prime.play.skip', { reason: 'srcObject_null' });
     } else {
-      // srcObject presente: tentiamo il play() con un timeout interno bounded (1500ms).
-      console.log('[remoteAudio] primeRemoteAudio: srcObject present — PRE el.play()');
+      // srcObject presente: tentiamo il play() con timeout bounded 1500ms.
+      dlog('prime.play.before');
       try {
         let played = false;
         await Promise.race([
           el.play().then(() => { played = true; }),
           new Promise<void>(resolve => setTimeout(resolve, 1500)),
         ]);
-        if (played) {
-          el.pause();
-          console.info('[remoteAudio] primeRemoteAudio: POST el.play() — ✓ primed OK');
-        } else {
-          console.warn('[remoteAudio] primeRemoteAudio: POST el.play() — non completato in 1500ms');
-        }
+        dlog('prime.play.after', { ok: played });
+        if (played) el.pause();
       } catch (err) {
-        console.warn('[remoteAudio] primeRemoteAudio: POST el.play() — FAILED:', err);
+        dlog('prime.play.error', { err: String(err) });
       }
     }
 
@@ -216,34 +222,28 @@ export async function primeRemoteAudio(): Promise<void> {
 
   // ── AudioContext ──────────────────────────────────────────────────────────
   // Su iOS Safari, AudioContext.resume() in sessione PlayAndRecord può restare
-  // pending indefinitamente, proprio come el.play() senza srcObject.
-  // Fix: timeout bounded a 1500ms — se non risolve, si continua comunque.
-  // Il priming audio reale è garantito da applyRouting() quando arriva lo stream.
-  console.log('[remoteAudio] primeRemoteAudio: PRE getOrCreateAudioCtx()');
+  // pending indefinitamente, come el.play() senza srcObject.
+  // Fix: timeout bounded 1500ms — se non risolve, si continua comunque.
+  dlog('prime.ctx.before');
   const ctx = getOrCreateAudioCtx();
-  console.log('[remoteAudio] primeRemoteAudio: AudioContext state=%s', ctx?.state ?? 'null');
+  const ctxState = ctx?.state ?? 'null';
+  dlog('prime.ctx.state', { state: ctxState });
 
   if (ctx?.state === "suspended") {
-    console.log('[remoteAudio] primeRemoteAudio: PRE ctx.resume()');
+    dlog('prime.ctx.resume.before');
     try {
       let resumed = false;
       await Promise.race([
         ctx.resume().then(() => { resumed = true; }),
         new Promise<void>(resolve => setTimeout(resolve, 1500)),
       ]);
-      if (resumed) {
-        console.info('[remoteAudio] primeRemoteAudio: POST ctx.resume() — ✓ resumed');
-      } else {
-        console.warn('[remoteAudio] primeRemoteAudio: POST ctx.resume() — non completato in 1500ms (iOS hang) — continuo');
-      }
+      dlog('prime.ctx.resume.after', { ok: resumed });
     } catch (err) {
-      console.warn('[remoteAudio] primeRemoteAudio: POST ctx.resume() — FAILED:', err);
+      dlog('prime.ctx.resume.error', { err: String(err) });
     }
-  } else {
-    console.log('[remoteAudio] primeRemoteAudio: ctx.resume() non necessario (state=%s)', ctx?.state ?? 'null');
   }
 
-  console.log('[remoteAudio] primeRemoteAudio() EXIT');
+  dlog('prime.exit');
 }
 
 /**
