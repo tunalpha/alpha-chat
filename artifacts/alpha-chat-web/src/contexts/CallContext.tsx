@@ -192,6 +192,26 @@ export function CallProvider({ children }: { children: ReactNode }) {
   function cleanup(reason: CallEndReason = "normal") {
     console.log('[Call] cleanup reason=%s', reason);
     diagLog('call.cleanup', { reason });
+
+    // Se la chiamata era stata stabilita (server ha entrambi in inCallUsers via call.answer)
+    // e il cleanup non viene da endCall/rejectCall (che mandano call.end/call.reject da soli),
+    // inviamo call.end al server per liberare il busy state.
+    // Senza questo, ICE failure → entrambi restano "occupati" per sempre.
+    const _peerId  = peerIdRef.current;
+    const _callId  = callIdRef.current;
+    const _needsCallEnd =
+      _peerId && _callId &&
+      callAnsweredAtRef.current !== null &&
+      reason !== "normal" &&    // endCall() manda call.end prima di cleanup
+      reason !== "declined" &&  // rejectCall() manda call.reject prima di cleanup
+      reason !== "missed" &&    // il 30s timeout manda call.end prima di cleanup
+      reason !== "cancelled";   // idem cancelled
+    if (_needsCallEnd) {
+      wsSend({ type: "call.end", payload: { to_user_id: _peerId, reason, call_id: _callId } });
+      diagLog('call.end.auto', { to: _peerId, reason, call_id: _callId });
+      console.log('[Call] cleanup: call.end auto-inviato reason=%s', reason);
+    }
+
     diagLogger.clearCurrentCall();
     stopRing();     // ferma suoneria callee
     stopRingback(); // ferma ringback chiamante
