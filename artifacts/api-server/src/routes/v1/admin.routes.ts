@@ -29,6 +29,7 @@ import { PushSubscriptionModel } from "../../models/push-subscription.model";
 import { MediaModel } from "../../models/media.model";
 import { BlockModel } from "../../models/block.model";
 import { RecoveryContactModel } from "../../models/recovery-contact.model";
+import { callMetrics } from "../../lib/call-metrics";
 
 const router = Router();
 
@@ -920,6 +921,14 @@ router.get("/audit/export", requireAdmin("super_admin"), async (req: Request, re
   } catch (err) {
     next(err);
   }
+});
+
+// ---------------------------------------------------------------------------
+// GET /admin/call-metrics
+// Contatori in-memory delle chiamate WebRTC (reset a ogni riavvio server).
+// ---------------------------------------------------------------------------
+router.get("/call-metrics", requireAdmin("read_only"), (_req: Request, res: Response) => {
+  res.json({ ok: true, data: callMetrics.snapshot() });
 });
 
 // ---------------------------------------------------------------------------

@@ -147,6 +147,50 @@ Dopo il deploy, monitorare i log per almeno 2-3 giorni:
 
 ---
 
+## Contatori server-side (dashboard)
+
+Oltre ai grep, i dati sono disponibili direttamente tramite API:
+
+```
+GET /api/v1/admin/call-metrics        (requireAdmin)
+```
+
+Risposta di esempio (reset a ogni riavvio server):
+```json
+{
+  "ok": true,
+  "data": {
+    "calls_started":      42,
+    "calls_answered":     38,
+    "calls_completed":    40,
+    "calls_failed":        4,
+    "calls_retried":       2,
+    "calls_deduplicated":  2,
+    "answer_rate_pct":   90.5,
+    "retry_rate_pct":     4.8,
+    "failure_rate_pct":   9.5,
+    "since": "2026-07-20T10:05:34.603Z"
+  }
+}
+```
+
+**Interpretazione:**
+| Campo | Cosa misura | Soglia preoccupante |
+|---|---|---|
+| `answer_rate_pct` | % chiamate risposte sul totale | < 70% → investigare |
+| `retry_rate_pct` | % retry (call.offer duplicati ricevuti) | > 20% → timeout 2s troppo stretto? |
+| `failure_rate_pct` | % chiamate mai risposte (timeout + rifiuti) | > 30% → investigare rete/UX |
+| `calls_deduplicated` | sempre = `calls_retried` (dedup server) | valore > 0 → M3 ha agito |
+
+**Punti di incremento in ws-server.ts:**
+- `calls_started` — dopo `markOfferProcessed()`, prima del relay
+- `calls_answered` — all'inizio di `call.answer`
+- `calls_completed` — all'inizio di `call.end`
+- `calls_failed` — in `call.reject` + `call.end` con `reason=timeout/cancelled`
+- `calls_retried` + `calls_deduplicated` — quando `hasProcessedOffer()=true`
+
+---
+
 ## Soglie di allarme
 
 Se si osservano i seguenti pattern → investigare prima di procedere con Fase 2:

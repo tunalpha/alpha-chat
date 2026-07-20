@@ -22,6 +22,7 @@ import { logger } from "./logger";
 import { wsManager, type ClientConnection } from "./ws-manager";
 import { verifyAccessToken } from "../services/jwt.service";
 import { setOnline, setOffline, setTyping } from "../services/presence.service";
+import { callMetrics } from "./call-metrics";
 import { ConversationMemberRepository } from "../repositories/conversation-member.repository";
 import { UserModel } from "../models/user.model";
 import type {
@@ -248,11 +249,14 @@ export function createWsServer(httpServer: HttpServer): WebSocketServer {
           // restituiamo un ACK silenzioso senza rielaborare l'offer per evitare doppio squillo.
           if (callId && wsManager.hasProcessedOffer(callId)) {
             logger.info({ callId, callerId: userId, calleeId: toId }, "[CALL-M4] call.offer duplicato ignorato (stesso call_id)");
+            callMetrics.calls_retried++;
+            callMetrics.calls_deduplicated++;
             break;
           }
           // Marca subito come elaborato, prima di qualsiasi await, per prevenire
           // condizioni di gara in caso di retry rapido (es. due ritrasmissioni quasi simultanee).
           if (callId) wsManager.markOfferProcessed(callId);
+          callMetrics.calls_started++;
 
           // Busy check: callee già in chiamata attiva
           if (wsManager.isInCall(toId)) {
@@ -350,6 +354,7 @@ export function createWsServer(httpServer: HttpServer): WebSocketServer {
           if (!toId) break;
 
           logger.info({ calleeId: userId, callerId: toId }, "[DIAG-SRV] call.answer ricevuto → callee ha ACCETTATO");
+          callMetrics.calls_answered++;
 
           // Chiamata accettata: cancella la pending call (non serve più re-delivery)
           wsManager.clearPendingCall(userId!);
@@ -397,6 +402,7 @@ export function createWsServer(httpServer: HttpServer): WebSocketServer {
           if (!toId) break;
 
           logger.info({ calleeId: userId, callerId: toId, reason: p["reason"] }, "[DIAG-SRV] call.reject ricevuto → callee ha RIFIUTATO (o errore acceptCall)");
+          callMetrics.calls_failed++;
 
           // Chiamata rifiutata: cancella la pending call
           wsManager.clearPendingCall(userId!);
@@ -432,6 +438,10 @@ export function createWsServer(httpServer: HttpServer): WebSocketServer {
             { callerId: userId, calleeId: toId, reason: p["reason"], calleeOnline },
             "[DIAG-SRV] call.end ricevuto → invio call.ended al callee",
           );
+          callMetrics.calls_completed++;
+          if (p["reason"] === "timeout" || p["reason"] === "cancelled") {
+            callMetrics.calls_failed++;
+          }
           const endDelivered = wsManager.sendToUser(toId, {
             type: "call.ended",
             payload: { from_user_id: userId },
