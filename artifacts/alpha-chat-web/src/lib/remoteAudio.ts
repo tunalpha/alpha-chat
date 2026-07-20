@@ -174,13 +174,35 @@ export async function primeRemoteAudio(): Promise<void> {
     el.muted  = false;
     const prev = el.volume;
     el.volume = 0;
-    try {
-      await el.play();
-      el.pause();
-      console.info('[remoteAudio] ✓ primeRemoteAudio: el primed OK');
-    } catch (err) {
-      console.warn('[remoteAudio] primeRemoteAudio: el.play() failed (ok se fuori gesture):', err);
+
+    if (el.srcObject === null) {
+      // Nessuna sorgente ancora disponibile (il remote stream arriva solo dopo ontrack,
+      // cioè dopo buildPC/setRemoteDescription — step 4 di acceptCall).
+      // el.play() su un elemento senza srcObject su iOS Safari può restare pending
+      // indefinitamente senza risolvere né rigettare → causa del blocco allo step 2.
+      // Il priming reale avverrà in applyRouting() quando setRemoteStream() assegnerà lo stream.
+      console.log('[remoteAudio] primeRemoteAudio: srcObject=null — skip el.play() (stream non ancora disponibile)');
+    } else {
+      // srcObject presente: tentiamo il play() con un timeout interno bounded (1500ms).
+      // Difesa in profondità: su iOS in certi stati audio el.play() può restare pending
+      // anche con sorgente valida. Il timeout garantisce che la funzione completi comunque.
+      try {
+        let played = false;
+        await Promise.race([
+          el.play().then(() => { played = true; }),
+          new Promise<void>(resolve => setTimeout(resolve, 1500)),
+        ]);
+        if (played) {
+          el.pause();
+          console.info('[remoteAudio] ✓ primeRemoteAudio: el primed OK');
+        } else {
+          console.warn('[remoteAudio] primeRemoteAudio: el.play() non completato in 1500ms — continuo');
+        }
+      } catch (err) {
+        console.warn('[remoteAudio] primeRemoteAudio: el.play() failed (ok se fuori gesture):', err);
+      }
     }
+
     el.currentTime = 0;
     el.volume = prev > 0 ? prev : 1;
   }
