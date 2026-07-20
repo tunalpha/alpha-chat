@@ -121,6 +121,12 @@ export function CallProvider({ children }: { children: ReactNode }) {
    *  Generato dal caller in initiateCall(); copiato dal payload in call.incoming.
    *  Azzerato in cleanup(). Usato come chiave per dedup/ACK (M4/M2). */
   const callIdRef          = useRef<string>("");
+  /** M3 — Timer ACK per call.offer: se l'ACK non arriva entro 2s → un solo retry. */
+  const ackTimerRef        = useRef<ReturnType<typeof setTimeout> | null>(null);
+  /** M3 — true dopo il primo retry: impedisce un secondo retry automatico. */
+  const retryAttemptedRef  = useRef<boolean>(false);
+  /** M3 — Timestamp (ms) dell'invio originale di call.offer: usato per RTT nel log CALL_RETRY. */
+  const offerSentAtRef     = useRef<number>(0);
 
   // ── Helpers ────────────────────────────────────────────────────────────
 
@@ -146,6 +152,11 @@ export function CallProvider({ children }: { children: ReactNode }) {
 
   function clearReconnectTimer() {
     if (reconnectTimerRef.current) { clearTimeout(reconnectTimerRef.current); reconnectTimerRef.current = null; }
+  }
+
+  /** M3 — Cancella il timer ACK (chiamato all'arrivo di qualsiasi call.signal_ack o in cleanup). */
+  function clearAckTimer() {
+    if (ackTimerRef.current) { clearTimeout(ackTimerRef.current); ackTimerRef.current = null; }
   }
 
   /** Logga la chiamata al backend. Non critico — fallisce silenziosamente. */
@@ -195,6 +206,10 @@ export function CallProvider({ children }: { children: ReactNode }) {
     peerIdRef.current         = null;
     callTypeRef.current       = null;
     callIdRef.current         = "";
+    // M3 — azzera stato retry
+    clearAckTimer();
+    retryAttemptedRef.current = false;
+    offerSentAtRef.current    = 0;
     setLocalStream(null);
     setRemoteStream(null);
     setPeerConnection(null);
@@ -319,12 +334,39 @@ export function CallProvider({ children }: { children: ReactNode }) {
       await pc.setLocalDescription(offer);
 
       // Genera call_id univoco per questa chiamata (M1 — prerequisito dedup/ACK).
-      callIdRef.current = crypto.randomUUID();
-      wsSend({
-        type: "call.offer",
-        payload: { to_user_id: toUserId, sdp: offer, call_type: type, from_display_name: displayName, call_id: callIdRef.current },
-      });
-      console.log('[Call] call.offer inviato → call_id=%s, in attesa risposta', callIdRef.current);
+      callIdRef.current         = crypto.randomUUID();
+      offerSentAtRef.current    = Date.now();
+      retryAttemptedRef.current = false;
+
+      const offerPayload = {
+        to_user_id:        toUserId,
+        sdp:               offer,
+        call_type:         type,
+        from_display_name: displayName,
+        call_id:           callIdRef.current,
+        sent_at:           offerSentAtRef.current,   // M3 — timestamp per RTT futuro
+      };
+
+      wsSend({ type: "call.offer", payload: offerPayload });
+      console.log('[Call] call.offer inviato → call_id=%s sent_at=%d', callIdRef.current, offerSentAtRef.current);
+
+      // M3 — Timer ACK (2s): un solo retry automatico se call.signal_ack non arriva.
+      // Cancellato immediatamente in handleWsCallEvent case "call.signal_ack" per
+      // delivered=true (consegnato) E per delivered=false (server senza socket OPEN —
+      // push/pendingCalls attivi, retry WS non utile).
+      const capturedCallId = callIdRef.current;     // snapshot per guard nel closure
+      const capturedSentAt = offerSentAtRef.current;
+      ackTimerRef.current = setTimeout(() => {
+        ackTimerRef.current = null;
+        // Guard: stessa chiamata ancora attiva (callIdRef azzerato da cleanup o sostituito da nuova call)
+        if (!callIdRef.current || callIdRef.current !== capturedCallId) return;
+        if (retryAttemptedRef.current) return; // extra guard: mai un secondo retry
+        retryAttemptedRef.current = true;
+        const elapsed = Date.now() - capturedSentAt;
+        console.warn('[CALL_RETRY] call_id=%s attempt=2 reason=no_ack elapsed=%dms', capturedCallId, elapsed);
+        wsSend({ type: "call.offer", payload: { ...offerPayload, sent_at: Date.now() } });
+        // Nessun nuovo ackTimer — un solo retry. Il 30s callTimeoutRef gestisce il cleanup finale.
+      }, 2_000);
 
       // Timeout 30s — se nessuno risponde
       callTimeoutRef.current = setTimeout(() => {
@@ -613,14 +655,31 @@ export function CallProvider({ children }: { children: ReactNode }) {
       }
 
       case "call.signal_ack": {
-        // M2 — ACK di consegna dal server.
-        // Significato: il server ha inoltrato il segnale a ≥1 socket OPEN del destinatario.
-        // NON significa "chiamata accettata" o "WebRTC avviato".
-        // Per ora solo log diagnostico; M3 userà questo evento per la logica di retry.
-        const callId    = payload["call_id"]    as string | undefined;
+        // M3 — ACK di consegna dal server (M2) + logica retry (M3).
+        const ackCallId = payload["call_id"]    as string | undefined;
         const eventType = payload["event_type"] as string | undefined;
         const delivered = payload["delivered"]  as boolean | undefined;
-        console.log('[Call] call.signal_ack ricevuto — call_id=%s event_type=%s delivered=%s', callId, eventType, delivered);
+
+        // Solo call.offer gestito da M3; gli altri event_type sono solo diagnostici.
+        if (eventType !== "call.offer" || ackCallId !== callIdRef.current) {
+          console.log('[Call] call.signal_ack passthrough — call_id=%s event_type=%s delivered=%s', ackCallId, eventType, delivered);
+          break;
+        }
+
+        // Condizione 2: timer cancellato IMMEDIATAMENTE, sia per delivered=true che false.
+        clearAckTimer();
+
+        const rtt = offerSentAtRef.current ? Date.now() - offerSentAtRef.current : -1;
+
+        if (delivered === true) {
+          // Consegnato a ≥1 socket OPEN del callee — chiamata in corso normalmente.
+          console.log('[Call] call.signal_ack delivered=true — call_id=%s rtt=%dms', ackCallId, rtt);
+        } else {
+          // Condizione 3: delivered=false è già un ACK.
+          // Il server ha ricevuto l'offer ma non aveva socket OPEN → push + pendingCalls attivi.
+          // Non bisogna ritentare via WS; il 30s callTimeoutRef gestisce il cleanup se nessuno risponde.
+          console.warn('[Call] call.signal_ack delivered=false — call_id=%s rtt=%dms; push/pendingCalls in corso, nessun retry WS', ackCallId, rtt);
+        }
         break;
       }
     }

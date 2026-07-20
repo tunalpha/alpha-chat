@@ -1,0 +1,110 @@
+A questo punto approverei M3, ma con alcune condizioni precise. L’infrastruttura che avete costruito (M1 → M4 → M2) è quella che serve per implementare un retry in modo sicuro.
+
+Quello che mi convince:
+
+* ✅ call_id univoco disponibile.
+* ✅ Deduplicazione server già presente.
+* ✅ ACK separato dall’accettazione della chiamata (scelta corretta).
+* ✅ sendToUser() restituisce il numero di socket raggiunti, quindi delivered ha un significato preciso.
+
+Le condizioni che imporrei per M3
+
+1. Un solo retry
+
+Non deve mai esserci un ciclo.
+
+call.offer
+    ↓
+attesa ACK (2 s)
+    ↓
+nessun ACK
+    ↓
+1 retry
+    ↓
+fine
+
+Mai un secondo retry automatico.
+
+⸻
+
+2. Timer cancellato appena arriva l’ACK
+
+Appena arriva:
+
+call.signal_ack
+
+il timeout deve essere annullato immediatamente.
+
+Nessun retry “in ritardo”.
+
+⸻
+
+3. Retry solo se manca l’ACK
+
+Se arriva:
+
+delivered = false
+
+quello è già un ACK.
+
+Significa:
+
+“Il server ha ricevuto il messaggio ma non aveva socket aperti.”
+
+Non bisogna aspettare altri 2 secondi per ritentare.
+
+⸻
+
+4. Nessun retry per reject/end
+
+Valuterei attentamente questo punto.
+
+Per me il retry serve soprattutto a:
+
+* ✅ call.offer
+* ✅ eventualmente call.answer
+
+Su call.reject e call.end il beneficio è inferiore e aumenta la complessità. Li introdurrei solo se i test dimostrano che sono davvero un problema ricorrente.
+
+⸻
+
+5. Logging
+
+Ogni retry dovrebbe lasciare traccia.
+
+Ad esempio:
+
+CALL_RETRY
+call_id=...
+attempt=2
+reason=no_ack
+elapsed=2000ms
+
+Questo renderà molto più semplici eventuali RCA future.
+
+⸻
+
+Un piccolo miglioramento
+
+Già che state toccando questa parte, aggiungerei un timestamp:
+
+sent_at
+
+associato al call_id.
+
+Vi permetterà in futuro di sapere:
+
+* RTT dell’ACK;
+* tempo medio di consegna;
+* percentuale di retry;
+* distribuzione della latenza.
+
+Sono dati molto utili per capire se ci sono problemi di rete o di implementazione.
+
+⸻
+
+Conclusione
+
+La mia approvazione sarebbe:
+
+Procedi con M3, ma implementalo inizialmente solo per call.offer, con un solo retry, timer cancellato all’arrivo di qualsiasi ACK (delivered=true o delivered=false), logging completo e test specifici. Una volta validato sul campo, valuta se estendere lo stesso meccanismo agli altri segnali (call.answer, call.reject, call.end) solo se emerge una reale necessità.

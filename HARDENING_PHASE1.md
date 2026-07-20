@@ -379,4 +379,59 @@ Build: ✅ compilazione TypeScript pulita, entrambi i servizi avviati.
 
 ---
 
-*M3 in attesa di approvazione.*
+### M3 — APPLICATA ✅ (2026-07-20)
+**File:** `artifacts/alpha-chat-web/src/contexts/CallContext.tsx`
+
+**Nuovi ref:**
+- `ackTimerRef` — il timer da 2s; cancellato immediatamente all'arrivo di qualsiasi ACK
+- `retryAttemptedRef` — `true` dopo il primo retry; impedisce un secondo retry automatico
+- `offerSentAtRef` — timestamp `Date.now()` dell'invio originale; usato per RTT nel log + payload `sent_at`
+
+**`cleanup()`:** aggiunto `clearAckTimer()` + reset dei 3 ref sopra.
+
+**`initiateCall()` — flusso M3:**
+```
+callIdRef ← randomUUID()
+offerSentAtRef ← Date.now()
+retryAttemptedRef ← false
+offerPayload = { ..., call_id, sent_at }     ← sent_at nel payload per RTT futuro
+wsSend(call.offer, offerPayload)
+ackTimerRef ← setTimeout(2s) {
+  guard: callIdRef === capturedCallId (stesso call, non cleanup/nuova call)
+  guard: !retryAttemptedRef (no secondo retry)
+  retryAttemptedRef ← true
+  log: [CALL_RETRY] call_id=... attempt=2 reason=no_ack elapsed=...ms
+  wsSend(call.offer, { ...offerPayload, sent_at: Date.now() })
+  // nessun nuovo timer — fine retry
+}
+callTimeoutRef ← setTimeout(30s) { cleanup("missed") }
+```
+
+**`case "call.signal_ack"` — logica M3:**
+- Filtra: solo `event_type==="call.offer"` e `call_id === callIdRef.current`
+- **Sempre:** `clearAckTimer()` immediatamente
+- `delivered=true` → log RTT `[Call] call.signal_ack delivered=true rtt=...ms`, call prosegue
+- `delivered=false` → log warning, **nessun retry** (push/pendingCalls attivi), 30s timeout gestisce cleanup
+
+**Condizioni reviewer soddisfatte:**
+1. ✅ Un solo retry — `retryAttemptedRef` + nessun nuovo timer dopo retry
+2. ✅ Timer cancellato immediatamente — `clearAckTimer()` sia per `delivered=true` che `false`
+3. ✅ `delivered=false` = ACK ricevuto — nessun retry WS
+4. ✅ Solo `call.offer` — `call.reject`/`call.end` non hanno retry
+5. ✅ Logging `[CALL_RETRY] call_id=... attempt=2 reason=no_ack elapsed=...ms`
+6. ✅ `sent_at` nel payload per RTT futuro
+
+Build: ✅ compilazione TypeScript pulita, entrambi i servizi avviati.
+
+---
+
+## ✅ Fase 1 COMPLETA
+
+| Modifica | Stato | Data |
+|---|---|---|
+| M5 — push su zombie connection | ✅ | 2026-07-20 |
+| M1 — `call_id` univoco | ✅ | 2026-07-20 |
+| M4 — dedup server per `call.offer` | ✅ | 2026-07-20 |
+| M4-fix — try/catch relay con clearProcessedOffer | ✅ | 2026-07-20 |
+| M2 — `call.signal_ack` server→client | ✅ | 2026-07-20 |
+| M3 — retry automatico unico su ACK mancante | ✅ | 2026-07-20 |
