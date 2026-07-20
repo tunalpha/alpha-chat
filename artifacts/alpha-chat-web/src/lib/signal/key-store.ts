@@ -144,11 +144,38 @@ export class SignalProtocolStore implements StorageType {
     if (!stored) {
       // TOFU: prima volta → salva e fidati
       await db.put("identity-remote", identityKey, identifier);
+      console.info("[signal:trust] isTrustedIdentity TOFU →", {
+        identifier,
+        incomingIKPrefix: _ab2hex(identityKey).slice(0, 12) + "…",
+        result: true,
+      });
       return true;
     }
 
     // Confronto byte-per-byte
-    return arrayBufferEquals(stored, identityKey);
+    const trusted = arrayBufferEquals(stored, identityKey);
+    if (!trusted) {
+      // 🚨 MISMATCH — invia log al server per renderlo visibile da mobile
+      // (nessun devtools necessario: compare nei deployment logs come TRUST-MISMATCH)
+      const storedPrefix   = _ab2hex(stored).slice(0, 16);
+      const incomingPrefix = _ab2hex(identityKey).slice(0, 16);
+      console.warn("[signal:trust] isTrustedIdentity MISMATCH →", {
+        identifier,
+        storedIKPrefix:   storedPrefix + "…",
+        incomingIKPrefix: incomingPrefix + "…",
+        result: false,
+        hint: "Verificare se saveIdentity ha scritto con chiave 'userId' vs 'userId.N'",
+      });
+      // Fire-and-forget: POST al server — appare nei deployment logs
+      void _reportTrustMismatch(identifier, storedPrefix, incomingPrefix);
+    } else {
+      console.info("[signal:trust] isTrustedIdentity OK →", {
+        identifier,
+        IKPrefix: _ab2hex(identityKey).slice(0, 16) + "…",
+        result: true,
+      });
+    }
+    return trusted;
   }
 
   /**
@@ -162,6 +189,12 @@ export class SignalProtocolStore implements StorageType {
   ): Promise<boolean> {
     const db = await this.db();
     const existing = await db.get("identity-remote", encodedAddress);
+    // Log diagnostico: mostra esattamente quale chiave viene scritta in identity-remote
+    console.info("[signal:trust] saveIdentity →", {
+      encodedAddress,
+      publicKeyPrefix: _ab2hex(publicKey).slice(0, 12) + "…",
+      wasExisting: existing !== undefined,
+    });
     await db.put("identity-remote", publicKey, encodedAddress);
     return existing !== undefined;
   }
@@ -310,6 +343,22 @@ export class SignalProtocolStore implements StorageType {
   }
 
   /**
+   * Elimina la trusted identity per un remoto specifico (es. dopo IK change).
+   * Dopo questa chiamata, il prossimo isTrustedIdentity accetterà qualunque
+   * IK via TOFU — usato nel recovery path di decrypt quando l'IK del sender
+   * è cambiata (Sprint 28 convergenza o rigenerazione chiavi).
+   */
+  async clearRemoteIdentity(identifier: string): Promise<void> {
+    const db = await this.db();
+    // Cancella sia la chiave "userId" (usata da isTrustedIdentity) sia
+    // la chiave "userId.N" (usata da saveIdentity con address completo).
+    await Promise.all([
+      db.delete("identity-remote", identifier),
+      db.delete("identity-remote", `${identifier}.1`),
+    ]);
+  }
+
+  /**
    * Cancella tutto lo state locale Signal per questo (userId, deviceId).
    * Chiamato al logout. Non reversibile.
    */
@@ -329,6 +378,47 @@ export class SignalProtocolStore implements StorageType {
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
+
+/** Converte ArrayBuffer in stringa hex — usato solo per log diagnostici. */
+function _ab2hex(buf: ArrayBuffer): string {
+  return Array.from(new Uint8Array(buf))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+/**
+ * Invia un report di trust mismatch al server — fire-and-forget.
+ * Appare nei deployment logs come [SIGNAL-AUDIT] TRUST-MISMATCH.
+ * Questo permette la diagnosi da mobile senza devtools o cavi USB.
+ */
+async function _reportTrustMismatch(
+  identifier: string,
+  storedPrefix: string,
+  incomingPrefix: string,
+): Promise<void> {
+  try {
+    const token = localStorage.getItem("ac_access_token");
+    if (!token) return;
+    await fetch("/api/v1/signal/audit", {
+      method:  "POST",
+      headers: {
+        "Content-Type":  "application/json",
+        "Authorization": `Bearer ${token}`,
+      },
+      body: JSON.stringify({
+        tag:  "TRUST-MISMATCH",
+        data: {
+          identifier,
+          storedIKPrefix:   storedPrefix + "…",
+          incomingIKPrefix: incomingPrefix + "…",
+          hint: "last saveIdentity(userId,…) ha sovrascritto IK precedente — multi-device race",
+        },
+      }),
+    });
+  } catch {
+    // silenzioso — non deve mai bloccare il flusso Signal
+  }
+}
 
 function arrayBufferEquals(a: ArrayBuffer, b: ArrayBuffer): boolean {
   if (a.byteLength !== b.byteLength) return false;

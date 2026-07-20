@@ -1,0 +1,63 @@
+Questo report contiene un dato nuovo molto importante, ma anche una conclusione che io non darei ancora per dimostrata.
+
+Quello che considero una prova forte
+
+Il fatto che su Alpha ci siano:
+
+* 40 baseKey per la stessa sessione
+
+mentre su Cricco ce ne siano 1–4 è un’anomalia reale.
+
+In una situazione normale non ci si aspetta decine di sessioni accumulate per lo stesso peer. Quindi questa parte merita attenzione.
+
+Dove il report fa un salto logico
+
+Il report conclude:
+
+“Le 40 baseKey sono state sicuramente create dal loop Path C.”
+
+Questo non è ancora dimostrato dai log.
+
+I log dimostrano:
+
+* che esistono 40 baseKey;
+* che in passato c’era il bug del Path C.
+
+Non dimostrano però che ogni baseKey sia stata creata da quel bug e non, ad esempio, da altri tentativi di ricostruzione della sessione, test precedenti o altre chiamate di recovery.
+
+Un’altra osservazione importante
+
+Il report stesso dice:
+
+Nessun DECRYPT-FAILURE registrato.
+
+Quindi, nella sessione osservata, non avete catturato il fallimento che volete spiegare.
+
+Per questo motivo io farei ancora un ultimo controllo prima di dichiarare chiuso il caso.
+
+La domanda decisiva
+
+Direi all’agente:
+
+Per la sessione di Alpha che contiene 40 baseKey, identifica quale baseKey viene effettivamente selezionata da libsignal durante signalDecrypt() per un messaggio ricevuto da Cricco. Verifica se viene usata la più recente (B40), una precedente oppure se la ricerca fallisce. Basare la risposta sui log o aggiungere solo diagnostica di lettura, senza modificare la logica.
+
+Perché è importante?
+
+Perché avere 40 sessioni memorizzate non implica automaticamente che libsignal scelga quella sbagliata.
+
+Bisogna verificare quale viene realmente utilizzata.
+
+⸻
+
+La mia valutazione
+
+Siete molto più vicini alla causa rispetto ai giorni scorsi.
+
+Le cose che considero ormai ben supportate sono:
+
+* ✅ il bug del Path C era reale;
+* ✅ il client è stato reso più robusto;
+* ✅ il bundle server è stato reso resiliente;
+* ✅ esiste un’anomalia con le 40 baseKey.
+
+Prima però di concludere che la sessione corrotta è definitivamente la causa, farei quest’ultima verifica sulla selezione della sessione da parte di libsignal. Se anche quella conferma che viene usata una sessione non coerente, allora avrete una catena causale molto più solida.

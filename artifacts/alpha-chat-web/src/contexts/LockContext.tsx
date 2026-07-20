@@ -39,6 +39,8 @@ interface LockContextType {
   hasPINSet: boolean;
   hasBiometricSet: boolean;
   canUseBiometric: boolean;  // dispositivo supporta WebAuthn
+  /** true quando la biometria è attiva in modalità autonoma (senza PIN) */
+  biometricOnlyEnabled: boolean;
   settings: LockSettings;
   failedAttempts: number;
   lock: () => void;
@@ -49,6 +51,10 @@ interface LockContextType {
   changeSettings: (partial: Partial<LockSettings>) => void;
   enableBiometric: () => Promise<boolean>;
   disableBiometric: () => void;
+  /** Abilita Face ID / Touch ID senza richiedere un PIN. */
+  enableBiometricOnly: () => Promise<boolean>;
+  /** Disabilita la modalità biometrica autonoma. */
+  disableBiometricOnly: () => void;
   clearPIN: () => void;
   /**
    * Emergency Lock Mode — NON è Phoenix Protocol.
@@ -74,6 +80,7 @@ export function LockProvider({ children }: { children: ReactNode }) {
   const [hasPINSet, setHasPINSet] = useState(false);
   const [hasBiometricSet, setHasBiometricSet] = useState(false);
   const [canUseBiometric, setCanUseBiometric] = useState(false);
+  const [biometricOnlyEnabled, setBiometricOnlyEnabled] = useState(false);
   const [settings, setSettings] = useState<LockSettings>({ ...DEFAULT_LOCK_SETTINGS });
   const [failedAttempts, setFailedAttempts] = useState(0);
 
@@ -87,6 +94,7 @@ export function LockProvider({ children }: { children: ReactNode }) {
       setShowPrivacy(false);
       setHasPINSet(false);
       setHasBiometricSet(false);
+      setBiometricOnlyEnabled(false);
       setFailedAttempts(0);
       clearLockTimer();
       return;
@@ -96,14 +104,16 @@ export function LockProvider({ children }: { children: ReactNode }) {
     const bioExists = hasBiometricRegistered(userId);
     const s = loadLockSettings(userId);
     const failed = parseInt(localStorage.getItem(FAILED_KEY(userId)) ?? "0", 10);
+    const bioOnly = s.biometricOnly && bioExists;
 
     setHasPINSet(pinExists);
     setHasBiometricSet(bioExists);
+    setBiometricOnlyEnabled(bioOnly);
     setSettings(s);
     setFailedAttempts(failed);
 
-    // Se il PIN è impostato, l'app parte bloccata
-    setIsLocked(pinExists);
+    // Blocca all'avvio se il PIN è impostato OPPURE se la biometria autonoma è attiva
+    setIsLocked(pinExists || bioOnly);
 
     isPlatformAuthenticatorAvailable().then(setCanUseBiometric);
   }, [userId]);
@@ -131,7 +141,8 @@ export function LockProvider({ children }: { children: ReactNode }) {
 
   // Ascolta attività utente per resettare il timer
   useEffect(() => {
-    if (!userId || !hasPIN(userId)) return;
+    const s = loadLockSettings(userId ?? "");
+    if (!userId || (!hasPIN(userId) && !s.biometricOnly)) return;
 
     const events = ["mousemove", "mousedown", "keydown", "touchstart", "scroll"];
     const onActivity = () => resetLockTimer();
@@ -152,7 +163,7 @@ export function LockProvider({ children }: { children: ReactNode }) {
       const s = loadLockSettings(userId);
       if (document.hidden) {
         if (s.privacyScreen) setShowPrivacy(true);
-        if (s.autoLockMs === 0 && hasPIN(userId)) setIsLocked(true);
+        if (s.autoLockMs === 0 && (hasPIN(userId) || s.biometricOnly)) setIsLocked(true);
       } else {
         setShowPrivacy(false);
       }
@@ -253,6 +264,48 @@ export function LockProvider({ children }: { children: ReactNode }) {
     setSettings(next);
   }, [userId]);
 
+  /**
+   * Abilita la modalità biometrica autonoma (Face ID / Touch ID senza PIN).
+   * Registra la credenziale WebAuthn se non è già presente, poi blocca l'app
+   * subito per confermare che il flusso funziona prima di uscire dalle impostazioni.
+   */
+  const enableBiometricOnly = useCallback(async (): Promise<boolean> => {
+    if (!userId) return false;
+    // Registra la credenziale se non è già presente
+    if (!hasBiometricRegistered(userId)) {
+      const ok = await setupBiometricLib(userId);
+      if (!ok) return false;
+      setHasBiometricSet(true);
+    }
+    const s = loadLockSettings(userId);
+    const next = { ...s, biometricOnly: true, biometricEnabled: true };
+    saveLockSettings(userId, next);
+    setSettings(next);
+    setBiometricOnlyEnabled(true);
+    setIsLocked(true); // blocca subito — l'utente verifica subito che funziona
+    return true;
+  }, [userId]);
+
+  /**
+   * Disabilita la modalità biometrica autonoma.
+   * Se non c'è un PIN attivo, rimuove anche la credenziale WebAuthn dal dispositivo.
+   */
+  const disableBiometricOnly = useCallback(() => {
+    if (!userId) return;
+    const s = loadLockSettings(userId);
+    const next = { ...s, biometricOnly: false, biometricEnabled: false };
+    saveLockSettings(userId, next);
+    setSettings(next);
+    setBiometricOnlyEnabled(false);
+    setIsLocked(false);
+    // Rimuovi la credenziale solo se non c'è un PIN attivo.
+    // Con PIN, la biometria rimane disponibile come sblocco alternativo.
+    if (!hasPIN(userId)) {
+      removeBiometric(userId);
+      setHasBiometricSet(false);
+    }
+  }, [userId]);
+
   const changeSettings = useCallback(
     (partial: Partial<LockSettings>) => {
       if (!userId) return;
@@ -288,6 +341,7 @@ export function LockProvider({ children }: { children: ReactNode }) {
         hasPINSet,
         hasBiometricSet,
         canUseBiometric,
+        biometricOnlyEnabled,
         settings,
         failedAttempts,
         lock,
@@ -298,6 +352,8 @@ export function LockProvider({ children }: { children: ReactNode }) {
         changeSettings,
         enableBiometric,
         disableBiometric,
+        enableBiometricOnly,
+        disableBiometricOnly,
         clearPIN,
         emergencyLock,
       }}

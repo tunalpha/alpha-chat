@@ -40,7 +40,13 @@ export async function getUserMedia(callType: CallType, facingMode: FacingMode = 
     callType === "video"
       ? { audio: true, video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode } }
       : { audio: true, video: false };
-  return navigator.mediaDevices.getUserMedia(constraints);
+  console.log('[webrtc] getUserMedia constraints=%o', constraints);
+  const stream = await navigator.mediaDevices.getUserMedia(constraints);
+  console.log('[webrtc] getUserMedia ✓ audioTracks=%d videoTracks=%d',
+    stream.getAudioTracks().length, stream.getVideoTracks().length);
+  stream.getAudioTracks().forEach((t) =>
+    console.log('[webrtc]   localAudio id=%s enabled=%s readyState=%s', t.id, t.enabled, t.readyState));
+  return stream;
 }
 
 export function createPeerConnection(
@@ -51,22 +57,54 @@ export function createPeerConnection(
 ): RTCPeerConnection {
   const pc = new RTCPeerConnection({ iceServers: _iceServers });
 
-  pc.onicecandidate = (e) => {
-    if (e.candidate) onIceCandidate(e.candidate);
-  };
+  // Fallback stream per iOS Safari — e.streams[] può essere vuoto anche
+  // quando il sender ha chiamato addTrack(track, stream) correttamente.
+  let _remoteStream: MediaStream | null = null;
 
-  pc.ontrack = (e) => {
-    if (e.streams && e.streams[0]) {
-      onRemoteStream(e.streams[0]);
+  pc.onicecandidate = (e) => {
+    if (e.candidate) {
+      console.log('[webrtc] onicecandidate → candidate=%s', e.candidate.type);
+      onIceCandidate(e.candidate);
+    } else {
+      console.log('[webrtc] onicecandidate → gathering complete');
     }
   };
 
+  pc.ontrack = (e) => {
+    console.log('[webrtc] ontrack: kind=%s id=%s enabled=%s readyState=%s streams=%d',
+      e.track.kind, e.track.id, e.track.enabled, e.track.readyState, e.streams?.length ?? 0);
+
+    let stream: MediaStream;
+    if (e.streams && e.streams.length > 0) {
+      // Percorso standard: il sender ha associato il track a un MediaStream
+      stream = e.streams[0];
+      console.log('[webrtc] ontrack: usando e.streams[0] id=%s, audioTracks=%d',
+        stream.id, stream.getAudioTracks().length);
+    } else {
+      // iOS Safari bug: e.streams vuoto anche con addTrack(track, stream) — costruiamo noi
+      console.warn('[webrtc] ontrack: e.streams vuoto — fallback MediaStream manuale (iOS Safari bug)');
+      if (!_remoteStream) _remoteStream = new MediaStream();
+      _remoteStream.addTrack(e.track);
+      stream = _remoteStream;
+      console.log('[webrtc] ontrack: fallback stream audioTracks=%d', stream.getAudioTracks().length);
+    }
+
+    // Log dettaglio tracce audio
+    stream.getAudioTracks().forEach((t) => {
+      console.log('[webrtc] audioTrack: id=%s enabled=%s muted=%s readyState=%s', t.id, t.enabled, t.muted, t.readyState);
+    });
+
+    onRemoteStream(stream);
+  };
+
   pc.onconnectionstatechange = () => {
+    console.log('[webrtc] connectionState → %s', pc.connectionState);
     onConnectionStateChange(pc.connectionState);
   };
 
   if (onIceStateChange) {
     pc.oniceconnectionstatechange = () => {
+      console.log('[webrtc] iceConnectionState → %s', pc.iceConnectionState);
       onIceStateChange(pc.iceConnectionState);
     };
   }
@@ -75,7 +113,10 @@ export function createPeerConnection(
 }
 
 export function addTracksToPC(pc: RTCPeerConnection, stream: MediaStream): void {
-  stream.getTracks().forEach((track) => pc.addTrack(track, stream));
+  stream.getTracks().forEach((track) => {
+    console.log('[webrtc] addTrack: kind=%s id=%s enabled=%s', track.kind, track.id, track.enabled);
+    pc.addTrack(track, stream);
+  });
 }
 
 /**

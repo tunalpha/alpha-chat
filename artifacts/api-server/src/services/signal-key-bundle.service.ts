@@ -38,6 +38,7 @@ export interface KeyCountResponse {
   userId: string;
   otpkCount: number;
   needsReplenishment: boolean;
+  bundleExists: boolean;
 }
 
 // ---------------------------------------------------------------------------
@@ -58,13 +59,51 @@ export async function uploadKeyBundle(
 ): Promise<void> {
   const uid = new mongoose.Types.ObjectId(userId);
 
-  // Sprint 28: verifica consistenza IK (feature-flaggata).
-  // Dopo la migrazione: tutti i bundle dello stesso utente devono avere la stessa IK pubblica.
+  // Sprint 28: fetch bundle esistenti una sola volta — usati sia per consistency
+  // check sia per auto-cleanup (evita doppia query al DB).
+  const existing = await repo.listAllBundlesForUser(uid);
+
   if (IK_CONSISTENCY_CHECK) {
-    const existing = await repo.listAllBundlesForUser(uid);
+    // Fase post-migrazione: rifiuta upload con IK diversa da quella già registrata.
     const differentIk = existing.find((b) => b.identity_key !== input.identity_key);
     if (differentIk) {
       throw new AppError("IDENTITY_KEY_MISMATCH", 409);
+    }
+  } else {
+    // Fase di migrazione (flag OFF): auto-cleanup bundle stale.
+    //
+    // Se l'utente ha già un blob IK (migrazione avvenuta o Sprint28 nativo),
+    // il device che esegue l'upload usa la IK canonica del blob (garantito da
+    // Fix 2 — convergenza in initSignalKeys). I bundle con IK diversa sono
+    // quindi stale (device non ancora converguti o pre-migrazione) e vengono
+    // rimossi automaticamente.
+    //
+    // Questo consente a Marco e Alpha di auto-pulirsi al prossimo login
+    // senza intervento manuale, e prepara il DB per l'attivazione del flag.
+    const stale = existing.filter((b) => b.identity_key !== input.identity_key);
+    if (stale.length > 0) {
+      const user = await UserModel.findById(uid)
+        .select("encrypted_identity_key")
+        .lean()
+        .exec();
+      if (user?.encrypted_identity_key) {
+        const deleted = await repo.deleteBundlesByDeviceIds(
+          uid,
+          stale.map((b) => b.device_id),
+        );
+        if (deleted > 0) {
+          // Log temporaneo di migrazione — rimuovere dopo la convergenza di Marco e Alpha.
+          // Utile per verificare la migrazione senza interrogare il DB.
+          console.info("[Sprint28] IK convergence executed", {
+            userId,
+            deviceId: input.device_id,
+            event: "IK convergence executed",
+            staleBundlesRemoved: deleted,
+            staleBundleDeviceIds: stale.map((b) => b.device_id),
+            canonicalIdentityKey: input.identity_key.slice(0, 16) + "…",
+          });
+        }
+      }
     }
   }
 
@@ -133,10 +172,13 @@ export async function replenishOneTimePreKeys(
   input: ReplenishOneTimePreKeysInput,
 ): Promise<void> {
   const uid = new mongoose.Types.ObjectId(userId);
-  await repo.appendOneTimePreKeys(uid, input.device_id, input.one_time_pre_keys.map((k) => ({
+  const matched = await repo.appendOneTimePreKeys(uid, input.device_id, input.one_time_pre_keys.map((k) => ({
     keyId: k.key_id,
     publicKey: k.public_key,
   })));
+  if (!matched) {
+    throw new AppError("SIGNAL_BUNDLE_NOT_FOUND", 404);
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -161,13 +203,14 @@ export async function rotateSPK(
 // Stato chiavi
 // ---------------------------------------------------------------------------
 
-export async function getKeyCount(userId: string): Promise<KeyCountResponse> {
+export async function getKeyCount(userId: string, deviceId: string): Promise<KeyCountResponse> {
   const uid = new mongoose.Types.ObjectId(userId);
-  const count = await repo.getOtpkCount(uid);
+  const { otpkCount, bundleExists } = await repo.getOtpkCount(uid, deviceId);
   return {
     userId,
-    otpkCount: count,
-    needsReplenishment: count < 20,
+    otpkCount,
+    needsReplenishment: otpkCount < 20,
+    bundleExists,
   };
 }
 

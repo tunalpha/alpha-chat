@@ -1,0 +1,100 @@
+Questa prova è molto utile perché cambia completamente la diagnosi.
+
+Dallo screenshot la chiamata è:
+
+* ✅ stabilita (00:13)
+* ✅ P2P
+* ✅ “Eccellente”
+
+Ma tu riferisci:
+
+* ❌ lo squillo è il classico “tu… tu… tu…” di linea occupata, non un vero ringtone;
+* ❌ dopo la risposta nessuno sente nessuno.
+
+Quindi non è più un problema di UI, ma probabilmente di logica delle chiamate.
+
+La mia ipotesi
+
+Sono stati corretti gli effetti (ringtone e play), ma non la causa.
+
+In particolare:
+
+1. Il suono è quello sbagliato
+    * Sembra che venga riprodotto il tono di “ringback/linea occupata” invece del ringtone corretto.
+    * Verificare quale file audio viene usato da startRing():
+        * il chiamante dovrebbe sentire un tono di attesa (ringback);
+        * il destinatario dovrebbe sentire una suoneria.
+    * Se entrambi usano lo stesso file audio, è un bug.
+2. WebRTC si connette ma non passa audio
+    * La peer connection è attiva.
+    * Il timer parte.
+    * Lo stato è “Eccellente”.
+    * Ma il media non passa.
+
+Questo significa che bisogna verificare se esiste davvero una traccia audio attiva dopo la connessione.
+
+⸻
+
+Prompt da dare all’agente
+
+La situazione è cambiata dopo gli ultimi fix.
+
+Problema 1
+
+Lo squillo ora esiste ma è quello sbagliato.
+
+Si sente il classico:
+
+“tu… tu… tu…”
+
+come linea occupata/ringback.
+
+Verificare:
+
+* quale file audio usa il caller;
+* quale file audio usa il callee;
+* distinguere chiaramente:
+    * ringback (solo chiamante);
+    * ringtone (solo destinatario);
+    * busy tone;
+    * end tone.
+
+Nessuno deve usare il file sbagliato.
+
+⸻
+
+Problema 2
+
+La chiamata risulta:
+
+* connessa;
+* P2P;
+* qualità eccellente;
+
+ma entrambi non sentono alcun audio.
+
+Non intervenire alla cieca.
+
+Seguire l’intero flusso WebRTC con log:
+
+* getUserMedia()
+* numero di tracce audio locali
+* addTrack()
+* SDP offer/answer
+* ICE connected
+* ontrack
+* numero di tracce remote
+* remoteStream.getAudioTracks()
+* enabled
+* muted
+* readyState
+* assegnazione all’elemento <audio>
+* esito di audio.play()
+
+Verificare inoltre se la traccia remota viene effettivamente ricevuta o se la PeerConnection è connessa ma senza media.
+
+Applicare solo fix chirurgici.
+
+Non modificare messaggi, Signal, autenticazione o WebSocket della chat.
+
+A questo punto eviterei altri tentativi “preventivi”. Con i log sul flusso WebRTC si dovrebbe capire in modo definitivo se il problema è la negoziazione dei media, l’elemento audio o il routing.

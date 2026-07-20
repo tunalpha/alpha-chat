@@ -1,45 +1,100 @@
-# [Project name]
+# Alpha Chat
 
-_Replace the heading above with the project's name, and this line with one sentence describing what this app does for users._
+App di messaggistica end-to-end encrypted (Signal Protocol) con chiamate WebRTC, gruppi cifrati e funzionalità di sicurezza avanzate.
 
 ## Run & Operate
 
-- `pnpm --filter @workspace/api-server run dev` — run the API server (port 5000)
-- `pnpm run typecheck` — full typecheck across all packages
-- `pnpm run build` — typecheck + build all packages
-- `pnpm --filter @workspace/api-spec run codegen` — regenerate API hooks and Zod schemas from the OpenAPI spec
-- `pnpm --filter @workspace/db run push` — push DB schema changes (dev only)
-- Required env: `DATABASE_URL` — Postgres connection string
+- `pnpm --filter @workspace/api-server run dev` — avvia l'API server
+- `pnpm --filter @workspace/alpha-chat-web run dev` — avvia il frontend PWA
+- `pnpm run typecheck` — typecheck completo su tutti i package
+- `pnpm run build` — typecheck + build tutti i package
+- Required env: `MONGODB_URI`, `SESSION_SECRET`, `SMTP_PASS`
 
 ## Stack
 
 - pnpm workspaces, Node.js 24, TypeScript 5.9
-- API: Express 5
-- DB: PostgreSQL + Drizzle ORM
-- Validation: Zod (`zod/v4`), `drizzle-zod`
-- API codegen: Orval (from OpenAPI spec)
-- Build: esbuild (CJS bundle)
+- Frontend: React 18 + Vite, PWA (Service Worker + Web Push)
+- API: Fastify (api-server)
+- DB: MongoDB
+- Crypto: libsignal-protocol (Signal Protocol — X3DH + Double Ratchet)
+- Media E2E: AES-256-GCM con key wrapping Signal
+- Chiamate: WebRTC + ICE + STUN/TURN
 
 ## Where things live
 
-_Populate as you build — short repo map plus pointers to the source-of-truth file for DB schema, API contracts, theme files, etc._
+- `artifacts/alpha-chat-web/src/pages/ChatPage.tsx` — UI principale chat
+- `artifacts/alpha-chat-web/src/lib/signal/` — Signal Protocol (key-manager, signal-messenger, signal-session, trust-manager)
+- `artifacts/alpha-chat-web/src/contexts/CallContext.tsx` — stato globale chiamate
+- `artifacts/alpha-chat-web/src/components/IncomingCallModal.tsx` — schermata chiamata in arrivo
+- `artifacts/api-server/src/` — backend API + WS server
 
-## Architecture decisions
+---
 
-_Populate as you build — non-obvious choices a reader couldn't infer from the code (3-5 bullets)._
+## ⚠️ REGOLA DI ISOLAMENTO MODULI (OBBLIGATORIA)
 
-## Product
+### Modulo Messaggi — LOCKED 🔒
 
-_Describe the high-level user-facing capabilities of this app once they exist._
+Questa parte è considerata stabile. È **vietato** modificarla durante fix di altri moduli.
+
+Comprende i seguenti file e funzionalità:
+
+- Signal Protocol (X3DH, Double Ratchet, OTPK, Identity Key, SPK)
+- Encrypt / Decrypt (`signalEncrypt`, `signalDecrypt`, `decryptSingleMsg`)
+- Session Store, Trust Manager, Key Manager
+- Rendering messaggi e chat timeline (`ChatPage.tsx`)
+- Media messages (upload, decrypt, thumbnail)
+- Reply e Swipe Reply
+- Hook condivisi della chat (`useWebSocket`, ecc.)
+- WebSocket messaggi
+
+**Qualsiasi modifica a questi file richiede autorizzazione esplicita.**
+
+---
+
+### Modulo Chiamate — perimetro consentito
+
+I bug delle chiamate si risolvono modificando **esclusivamente**:
+
+- `IncomingCallModal.tsx`
+- `ActiveCallScreen.tsx`
+- `BusyCallScreen.tsx`
+- `CallContext.tsx`
+- `webrtc.ts`
+- `notifSound.ts` (solo per audio delle chiamate)
+- Sezioni CSS Sprint 23/24/25 in `index.css`
+
+È **vietato** modificare il sistema messaggi per correggere un bug delle chiamate.
+
+---
+
+### Procedura obbligatoria prima di ogni fix
+
+Prima di iniziare qualsiasi intervento, l'agente deve dichiarare:
+
+1. file che intende modificare;
+2. motivazione di ogni modifica;
+3. conferma esplicita che nessun file del Modulo Messaggi verrà toccato.
+
+**Se durante il lavoro emerge la necessità di modificare un file del Modulo Messaggi → il lavoro si interrompe e viene richiesta una nuova autorizzazione.**
+
+---
 
 ## User preferences
 
-_Populate as you build — explicit user instructions worth remembering across sessions._
+- Interventi chirurgici: modificare solo ciò che è strettamente necessario per il task assegnato.
+- Nessun refactoring, nessuna nuova feature, nessun cambio architetturale senza richiesta esplicita.
+- Prima di dichiarare una causa come "bug pre-esistente", fornire log a supporto (es. `DECRYPT-FAILURE`, `SESSION-SELECTION`).
+- Le regressioni sui messaggi sono critiche: in caso di dubbio, rollback immediato.
 
 ## Gotchas
 
-_Populate as you build — sharp edges, "always run X before Y" rules._
+- `onTouchMove` come listener React è **passivo** su iOS — per gesture swipe usare listener DOM nativo `{ passive: false }` sul container.
+- `e.currentTarget` in React 17+ event delegation può essere inaffidabile per DOM query dirette durante touch gesture — preferire `document.querySelector('[data-msg-id]')`.
+- Signal OTPK: ogni sessione fallita consuma la chiave prima del MAC verify — vedi `.agents/memory/signal-otpk-cache-bug.md`.
+- Path C double-decrypt: senza cache guard `getMetaByMessageId`, WS reconnect può decifrare lo stesso messaggio due volte — vedi `.agents/memory/path-c-double-decrypt-bug.md`.
 
 ## Pointers
 
-- See the `pnpm-workspace` skill for workspace structure, TypeScript setup, and package details
+- Vedi `.agents/memory/MEMORY.md` per tutte le decisioni architetturali e i bug documentati nelle sessioni precedenti.
+- Vedi il file `.agents/memory/module-isolation-policy.md` per la policy di isolamento moduli completa.
+- Vedi la `pnpm-workspace` skill per struttura workspace, TypeScript setup e dettagli package.

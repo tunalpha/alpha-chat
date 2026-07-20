@@ -1,0 +1,57 @@
+Questa analisi è molto più solida delle precedenti, perché non si limita a dire “Signal è rotto”, ma collega tutti i sintomi a una sequenza osservabile nei log.
+
+Quello che mi convince è soprattutto questo:
+
+* 401 → refresh token → cambio accessToken → ricostruzione del WebSocket → disconnessione → perdita degli eventi.
+
+Questa catena spiega contemporaneamente:
+
+* ❌ typing che sparisce;
+* ❌ chiamate che non squillano o rimangono mute (gli eventi di chiamata possono essere persi se il WS è giù);
+* ❌ presenza online/offline incoerente;
+* ❌ messaggi che il mittente non vede aggiornati correttamente.
+
+Su un punto però sarei prudente.
+
+La frase:
+
+“Il problema non è Signal”
+
+secondo me non è ancora dimostrata.
+
+Perché nei tuoi test iniziali comparivano realmente molti [Messaggio non decifrabile]. È possibile che:
+
+* il problema del WebSocket sia la causa principale dell’instabilità;
+* ma che esistessero anche difetti nella cache/decrypt che rendevano irreversibili alcuni casi quando il WS cadeva.
+
+Queste due cose non si escludono.
+
+Cosa farei adesso
+
+Non farei altri fix “alla cieca”. Chiederei invece una patch molto mirata sul WebSocket:
+
+* il refresh del token non deve distruggere una connessione funzionante se non è strettamente necessario;
+* deve esserci un solo refresh alla volta (evitare refresh concorrenti);
+* gli eventi (typing, call, ecc.) inviati mentre il WS non è OPEN dovrebbero essere accodati e spediti appena la connessione torna disponibile, invece di essere scartati silenziosamente.
+
+Questa parte del codice che hai riportato:
+
+if (wsRef.current?.readyState === WebSocket.OPEN) {
+  wsRef.current.send(JSON.stringify(data));
+}
+
+è un buon candidato per il problema degli eventi persi, perché se il socket è chiuso in quel momento, l’evento viene semplicemente buttato via.
+
+Quello che vorrei verificare dopo il fix
+
+Una sola prova:
+
+1. lascia aperta la chat 20-30 minuti (oltre il TTL del token);
+2. verifica che avvenga il refresh;
+3. controlla che il WebSocket rimanga stabile o si riconnetta una sola volta;
+4. subito dopo prova:
+    * typing;
+    * invio messaggio;
+    * chiamata.
+
+Se tutto continua a funzionare anche dopo il refresh del token, allora avrai una conferma molto forte che il ciclo di vita del token era davvero la causa principale dell’instabilità che stai osservando.

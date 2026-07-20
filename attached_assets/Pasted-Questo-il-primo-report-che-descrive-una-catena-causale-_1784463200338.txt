@@ -1,0 +1,52 @@
+Questo è il primo report che descrive una catena causale completa supportata da verifiche concrete. La parte che considero dimostrata è:
+
+* ✅ La collection signalkeybundles è vuota.
+* ✅ Tutte le richieste GET /api/v1/keys/bundle/:userId/all restituiscono 404.
+* ✅ initSignalKeys() non richiama _firstTimeSetup() se l’IDB locale esiste già.
+* ✅ appendOneTimePreKeys() usa updateOne() senza creare il documento se manca (stando a quanto riporta l’analisi).
+
+Se questi punti sono corretti, il sistema può effettivamente rimanere in uno stato da cui non riesce più a riprendersi automaticamente.
+
+L’unico punto che separerei
+
+La frase:
+
+“Il 404 è la causa del DECRYPT-FAILURE”
+
+la renderei leggermente più prudente.
+
+Quello che i log dimostrano è:
+
+* il DECRYPT-FAILURE deriva da una sessione Double Ratchet desincronizzata;
+* il 404 dei bundle impedisce di creare una nuova sessione X3DH che potrebbe sostituire quella desincronizzata.
+
+Quindi direi:
+
+Il 404 non genera direttamente l’errore di decrypt, ma impedisce il normale meccanismo di recupero tramite una nuova sessione Signal. Di conseguenza il sistema resta bloccato sulla sessione ormai desincronizzata.
+
+Questa formulazione è più precisa.
+
+⸻
+
+A questo punto io autorizzerei il fix
+
+Non un refactoring generale.
+
+Solo un fix chirurgico.
+
+Le modifiche dovrebbero essere limitate a:
+
+1. Se signalkeybundles non esiste per quell’utente/dispositivo, il client deve rieseguire l’upload completo del bundle (apiUploadKeyBundle) invece di tentare solo il replenishment degli OTPK.
+2. Il backend dovrebbe gestire correttamente il caso di documento assente (ad esempio creando il documento o restituendo un errore esplicito anziché un aggiornamento silenzioso che non produce effetti).
+3. Verificare che, dopo il primo login successivo, la collection signalkeybundles venga effettivamente ripopolata e che gli endpoint /keys/bundle/.../all non restituiscano più 404.
+
+Non toccherei ancora:
+
+* Double Ratchet
+* decrypt
+* Signal sessions
+* ChatPage
+* rendering
+* WebSocket
+
+Perché, se l’analisi è corretta, il problema principale da risolvere è il ripristino dei bundle Signal, non la logica di decifratura in sé. Una volta che il sistema può nuovamente creare nuove sessioni, sarà possibile verificare se le sessioni desincronizzate si rigenerano correttamente senza introdurre modifiche inutili nella parte più delicata del protocollo.

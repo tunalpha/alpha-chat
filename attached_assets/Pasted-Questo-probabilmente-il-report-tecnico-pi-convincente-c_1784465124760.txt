@@ -1,0 +1,82 @@
+Questo è probabilmente il report tecnico più convincente che hai condiviso finora.
+
+La parte che considero dimostrata è:
+
+* ✅ Il JSON del SessionRecord contiene realmente i dati.
+* ✅ La diagnostica legge proprietà sbagliate (_currentRatchet, _indexInfo, ecc.) invece di quelle realmente serializzate (currentRatchet, indexInfo, …).
+* ✅ Per questo motivo sendIdx e recvIdx risultano sempre "?".
+* ✅ La correzione riguarda solo la diagnostica e non modifica il protocollo Signal.
+
+Questa è una modifica a bassissimo rischio.
+
+⸻
+
+Sulla spiegazione di “Chiu”
+
+La ricostruzione è coerente con il funzionamento del Double Ratchet, ma distinguerei ancora tra ciò che è dedotto e ciò che è osservato.
+
+La frase:
+
+“Chiu usa la stessa sessione ma una nuova receiving chain…”
+
+è una spiegazione plausibile.
+
+Per trasformarla in una conclusione dimostrata serve che, dopo aver corretto la diagnostica, venga mostrato nei log qualcosa del tipo:
+
+Messaggio 13:30
+baseKey = X
+lastRemoteEphemeralKey = A
+chainType = RECEIVING
+counter = 48
+↓
+Message key not found
+
+e subito dopo:
+
+Messaggio Chiu
+baseKey = X
+lastRemoteEphemeralKey = B   ← diverso
+nuova receiving chain
+counter = 0
+decrypt OK
+
+A quel punto non ci sarebbero più dubbi.
+
+⸻
+
+Io autorizzerei questo intervento
+
+Autorizzerei solo:
+
+* correggere runSignalDiagnostic() affinché legga il JSON reale del SessionRecord;
+* esporre:
+    * sendIdx
+    * recvIdx
+    * previousCounter
+    * pendingPreKey
+    * lastRemoteEphemeralKey
+    * ratchet public key
+    * chainType
+    * numero di messageKeys memorizzate per ogni chain.
+
+Non autorizzerei ancora alcun fix del Double Ratchet.
+
+⸻
+
+Perché penso che siete molto vicini
+
+All’inizio cercavate la causa in:
+
+* bundle;
+* decrypt;
+* cache;
+* ChatPage;
+* login.
+
+Adesso il problema è confinato praticamente ad un’unica area:
+
+lo stato interno della sessione Signal.
+
+Se la diagnostica conferma anche i contatori reali, avrete finalmente una fotografia completa della sessione nel momento del fallimento.
+
+A quel punto il fix non sarà più un tentativo, ma una modifica mirata basata sullo stato reale della sessione.

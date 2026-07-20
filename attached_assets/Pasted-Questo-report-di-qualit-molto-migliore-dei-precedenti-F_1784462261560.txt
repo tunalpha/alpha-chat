@@ -1,0 +1,99 @@
+Questo report è di qualità molto migliore dei precedenti. Finalmente separa i fatti dimostrati dai log dalle ipotesi.
+
+Le parti che considero dimostrate sono:
+
+* ✅ Il messaggio arriva integro al client.
+* ✅ signalDecrypt() viene chiamato.
+* ✅ Esiste una sessione (sessionFound: true).
+* ✅ Libsignal restituisce esattamente:
+    “Message key not found. The counter was repeated or the key was not filled.”
+* ✅ Il placeholder [Messaggio non decifrabile] viene scritto nel catch di decryptSingleMsg().
+
+Queste sono evidenze solide.
+
+⸻
+
+C’è però un dato che per me è il più importante di tutto il report
+
+GET /api/v1/keys/bundle/.../all → 404
+
+e
+
+SIGNAL_BUNDLE_NOT_FOUND
+
+per entrambi gli utenti.
+
+Questo non dovrebbe succedere in un sistema stabile.
+
+Un 404 del bundle significa che il server non ha il bundle Signal pubblicato per quell’utente (o non lo restituisce).
+
+Se entrambi gli utenti ottengono 404, io prima di modificare il Double Ratchet indagherei perché il server risponde 404.
+
+⸻
+
+Anche questo dato è molto sospetto
+
+totalSessionsPre: 40
+
+40 sessioni tra due utenti sono anomale.
+
+Però attenzione:
+
+Il report dice:
+
+“40 sessioni aumentano il rischio…”
+
+Questo è plausibile, ma non dimostra che siano la causa del problema.
+
+Potrebbero essere:
+
+* innocue;
+* archiviate;
+* mai selezionate.
+
+Bisogna vedere quale SessionRecord viene realmente scelto.
+
+⸻
+
+Io NON autorizzerei ancora un fix
+
+Perché manca ancora una risposta fondamentale:
+
+Perché il server restituisce
+
+SIGNAL_BUNDLE_NOT_FOUND
+
+se gli utenti esistono?
+
+Questa è la domanda numero uno.
+
+⸻
+
+Il prossimo prompt che darei
+
+Non toccherei ancora Signal.
+
+Chiederei invece un’indagine esclusivamente sul bundle server.
+
+Ad esempio:
+
+Analizza esclusivamente la gestione dei Signal Bundle sul server.
+
+Perché /api/v1/keys/bundle/<userId>/all restituisce 404?
+
+Verifica:
+
+* se il bundle è realmente assente nel database;
+* se viene cancellato;
+* se il login non lo ripubblica;
+* se initSignalKeys() conclude con successo;
+* se bundleExists restituisce valori corretti;
+* se gli utenti Alpha e Cricco hanno effettivamente un bundle registrato.
+
+Non modificare il codice.
+
+Voglio capire perché il server non è in grado di fornire il bundle necessario alla creazione di una nuova sessione.
+
+⸻
+
+In sintesi: il report individua bene dove fallisce (Double Ratchet desincronizzato), ma io considero ancora aperta la domanda più importante: perché entrambi gli utenti risultano senza Signal Bundle (404), perché questo potrebbe essere la vera causa a monte della mancata possibilità di ristabilire una sessione valida.

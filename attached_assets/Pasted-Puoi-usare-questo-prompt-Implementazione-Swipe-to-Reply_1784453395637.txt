@@ -1,0 +1,124 @@
+Puoi usare questo prompt:
+
+⸻
+
+Implementazione “Swipe to Reply” stile WhatsApp/Telegram/Signal
+
+Implementa la funzione Rispondi a un messaggio con UX moderna, senza modificare la logica di crittografia o introdurre regressioni.
+
+Requisiti
+
+1. Swipe
+
+* Swipe verso destra sulla bubble del messaggio.
+* Animazione fluida (≈50–60 px).
+* Rilascio → entra in modalità risposta.
+* Feedback aptico su iOS e Android se disponibile.
+* Nessuna interferenza con lo scroll verticale.
+
+2. Barra risposta
+
+Sopra il campo di input mostra:
+
+* “Risposta a ”
+* anteprima del messaggio
+* pulsante ✕ per annullare
+
+L’utente può continuare a scrivere normalmente.
+
+3. Invio
+
+Quando viene inviato il messaggio aggiungere solamente un riferimento opzionale:
+
+replyToMessageId?: string
+
+oppure, se già esiste una struttura simile, riutilizzarla.
+
+Non duplicare il testo del messaggio originale nel database.
+
+4. Visualizzazione
+
+Se un messaggio contiene replyToMessageId mostra sopra la bubble:
+
+* nome del mittente originale
+* prime 1–2 righe del messaggio
+* eventuale icona:
+    * 📷 foto
+    * 🎤 audio
+    * 📎 allegato
+
+Grafica stile WhatsApp/Signal.
+
+5. Tap sulla risposta
+
+Premendo il riquadro della risposta:
+
+* scroll automatico al messaggio originale
+* evidenziazione temporanea della bubble
+* se il messaggio non è presente mostra “Messaggio non disponibile”.
+
+6. Compatibilità
+
+Funziona con:
+
+* messaggi inviati
+* messaggi ricevuti
+* gruppi (futuro)
+* media
+* testo
+
+7. Prestazioni
+
+Non effettuare query aggiuntive al server.
+
+Usare la cache dei messaggi già caricati.
+
+Solo se il messaggio non è presente prevedere un punto di estensione futuro.
+
+Vincoli IMPORTANTI
+
+Non modificare assolutamente:
+
+* Signal Protocol
+* libsignal
+* X3DH
+* Double Ratchet
+* SessionRecord
+* decrypt
+* encrypt
+* gestione bundle
+* Identity Key
+* Signed PreKey
+* One-Time PreKey
+* WebSocket
+* sincronizzazione messaggi
+* cache di decrypt
+
+La funzione deve essere completamente indipendente dalla crittografia.
+
+UX
+
+Realizzare un’esperienza pari o superiore a WhatsApp, Telegram e Signal:
+
+* animazioni fluide
+* swipe naturale
+* risposta facilmente annullabile
+* interfaccia pulita
+* perfettamente responsive su desktop, Android e iPhone (Safari PWA incluso).
+
+Prima di modificare
+
+Analizza il codice esistente e riutilizza i componenti già presenti.
+
+Evita duplicazioni di codice.
+
+Mantieni lo stile grafico dell’app.
+
+Al termine
+
+Fornisci:
+
+* elenco dei file modificati;
+* spiegazione delle modifiche;
+* verifica che non siano state introdotte regressioni;
+* elenco dei test eseguiti (invio, ricezione, swipe, annullamento risposta, tap sulla risposta, logout/login, refresh pagina).

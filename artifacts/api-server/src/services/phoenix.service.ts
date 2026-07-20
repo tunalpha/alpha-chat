@@ -102,13 +102,16 @@ export async function initiatePhoenix(params: {
   const { username, phoenixCode, action, emergencyId, ip } = params;
   const user = await UserModel.findOne({ username: username.toLowerCase().trim() });
 
-  // Risposta generica indipendentemente dall'esistenza dell'utente (anti-enum)
-  if (!user || !user.phoenix_code_hash || !user.email) {
+  // Anti-enumeration: stessa risposta se l'utente non esiste o non ha Phoenix Code.
+  // NON controlliamo l'email qui: l'errore EMAIL_NOT_CONFIGURED viene restituito
+  // solo DOPO la verifica del codice (chi non conosce il codice non può saperlo).
+  if (!user || !user.phoenix_code_hash) {
     await new Promise((r) => setTimeout(r, 300 + Math.random() * 200));
     throw new AppError("INVALID_CREDENTIALS", 401);
   }
 
-  // Per Phoenix Protocol (destroy) verificare anche l'Emergency ID
+  // Per Phoenix Protocol (destroy) verificare anche l'Emergency ID.
+  // Lo facciamo prima di argon2 per evitare computo costoso con emergencyId sbagliato.
   if (action === "destroy") {
     if (!emergencyId || user.emergency_id?.toUpperCase() !== emergencyId.toUpperCase()) {
       await new Promise((r) => setTimeout(r, 300 + Math.random() * 200));
@@ -116,8 +119,16 @@ export async function initiatePhoenix(params: {
     }
   }
 
+  // Verifica Phoenix Code con Argon2id — operazione costosa, eseguita solo ora.
   const valid = await argon2.verify(user.phoenix_code_hash, phoenixCode);
   if (!valid) throw new AppError("INVALID_CREDENTIALS", 401);
+
+  // Email richiesta per inviare il link di conferma.
+  // Sicuro da rivelare qui: l'utente ha già dimostrato la propria identità
+  // con il Phoenix Code. Chi non conosce il codice non raggiunge mai questa riga.
+  if (!user.email) {
+    throw new AppError("EMAIL_NOT_CONFIGURED", 422);
+  }
 
   // Invalida token precedenti non usati
   await PhoenixTokenModel.deleteMany({ user_id: user._id, used_at: null });
@@ -225,23 +236,11 @@ export async function executePhoenixProtocol(rawToken: string, ip?: string): Pro
     PhoenixTokenModel.deleteMany({ user_id: userObjectId }),
   ]);
 
-  // Anonimizza il profilo (non elimina per audit trail minimo)
-  await UserModel.updateOne(
-    { _id: userObjectId },
-    {
-      $set: {
-        status: "deleted",
-        deleted_at: new Date(),
-        phoenix_code_hash: null,
-        password_hash: null,
-        email: null,
-        display_name: "[Deleted]",
-        bio: null,
-        avatar_media_id: null,
-        emergency_id: null,
-      },
-    },
-  );
+  // Eliminazione definitiva del documento utente.
+  // Tutte le referenze (sessioni, messaggi, chiavi, media, blocchi, inviti)
+  // sono già state cancellate sopra → deleteOne è sicuro e non lascia orfani.
+  // L'username torna disponibile; nessun dato identificativo resta in DB.
+  await UserModel.deleteOne({ _id: userObjectId });
 
   logAuditEvent({
     event: "PHOENIX_PROTOCOL_EXECUTED",
@@ -252,6 +251,42 @@ export async function executePhoenixProtocol(rawToken: string, ip?: string): Pro
   });
 
   logger.info({ userId, ip: hashIp(ip) }, "Phoenix Protocol executed — account destroyed");
+}
+
+// ── 4c. Distruzione diretta (utente autenticato, nessun token email) ──────────
+
+export async function destroyAccountDirect(userId: string, ip?: string): Promise<void> {
+  const userObjectId = new mongoose.Types.ObjectId(userId);
+
+  // Notifica WS PRIMA della delete (500ms grace per delivery)
+  wsManager.sendToUser(userId, { type: "phoenix:destroy", payload: { reason: "account_destroyed" } });
+  await new Promise((r) => setTimeout(r, 500));
+
+  // Distruzione completa — identica a executePhoenixProtocol
+  await Promise.all([
+    revokeAllSessions(userObjectId),
+    SignalKeyBundleModel.deleteMany({ user_id: userObjectId }),
+    UserPrekeysModel.deleteMany({ user_id: userObjectId }),
+    ConversationModel.deleteMany({ "members.user_id": userObjectId }),
+    ConversationMemberModel.deleteMany({ user_id: userObjectId }),
+    MessageModel.deleteMany({ sender_id: userObjectId }),
+    MediaModel.deleteMany({ uploader_id: userObjectId }),
+    BlockModel.deleteMany({ $or: [{ blocker_id: userObjectId }, { blocked_id: userObjectId }] }),
+    InviteModel.deleteMany({ owner_id: userObjectId }),
+    PhoenixTokenModel.deleteMany({ user_id: userObjectId }),
+  ]);
+
+  await UserModel.deleteOne({ _id: userObjectId });
+
+  logAuditEvent({
+    event: "PHOENIX_PROTOCOL_EXECUTED",
+    user_id: userId,
+    ip_hash: hashIp(ip) ?? undefined,
+    created_at: new Date().toISOString(),
+    metadata: { irreversible: true, method: "direct" },
+  });
+
+  logger.info({ userId, ip: hashIp(ip) }, "Phoenix Protocol (direct) executed — account destroyed");
 }
 
 // ── Recovery Card ────────────────────────────────────────────────────────────

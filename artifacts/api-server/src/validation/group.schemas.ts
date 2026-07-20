@@ -16,8 +16,10 @@ export const CreateGroupSchema = z.object({
 });
 
 export const UpdateGroupSchema = z.object({
-  name: z.string().min(1).max(100).optional(),
-  description: z.string().max(500).optional(),
+  name:             z.string().min(1).max(100).optional(),
+  description:      z.string().max(500).optional(),
+  /** ObjectId del media caricato via POST /api/v1/media — null = rimuovi avatar */
+  avatar_media_id:  z.string().regex(/^[0-9a-fA-F]{24}$/).nullable().optional(),
 });
 
 export const AddMemberSchema = z.object({

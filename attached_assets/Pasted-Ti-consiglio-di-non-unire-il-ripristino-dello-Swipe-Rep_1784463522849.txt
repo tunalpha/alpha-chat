@@ -1,0 +1,102 @@
+Ti consiglio di non unire il ripristino dello Swipe Reply con il login persistente nello stesso intervento. Sono due aree completamente diverse (UI vs autenticazione). Se qualcosa va storto, diventa molto più difficile capire quale modifica ha introdotto il problema.
+
+Farei due prompt separati.
+
+⸻
+
+PROMPT 1 — Ripristino Swipe Reply (solo UI)
+
+Obiettivo
+
+Ripristinare esclusivamente la funzione Swipe Reply che è stata persa durante il rollback.
+
+Regole
+
+Non modificare:
+
+* Signal
+* Cifratura
+* Double Ratchet
+* Sessioni
+* WebSocket
+* Login
+* Refresh token
+* API
+* Database
+* Chiamate audio/video
+
+Intervenire esclusivamente sulla UI della chat.
+
+Attività
+
+Verificare dove è stato perso il codice dello Swipe Reply.
+
+Recuperare solo:
+
+* gesture swipe
+* reply preview
+* reply bar
+* scroll al messaggio originale
+* evidenziazione del messaggio
+* pulsante reply desktop (se già esisteva)
+
+Ripristinare il comportamento originale senza modificare la logica dei messaggi.
+
+Report
+
+Indicare:
+
+* file modificati;
+* funzioni ripristinate;
+* conferma che nessuna logica Signal è stata toccata.
+
+⸻
+
+PROMPT 2 — Login Persistente
+
+Obiettivo
+
+Implementare il login persistente mantenendo invariata la sicurezza del sistema.
+
+Modifiche autorizzate
+
+* Access Token: 15 minuti → 1 ora.
+* Refresh Token: 30 giorni → 90 giorni.
+* Coordinamento refresh multi-tab tramite BroadcastChannel (o meccanismo equivalente).
+
+Ripristino automatico del bundle
+
+Durante l’inizializzazione di Signal:
+
+* se il server restituisce SIGNAL_BUNDLE_NOT_FOUND;
+* oppure il bundle non esiste;
+
+rieseguire automaticamente l’upload completo del Signal Bundle.
+
+Non tentare solo il replenishment delle OTPK se il documento server è assente.
+
+Non modificare
+
+* Signal Protocol.
+* Double Ratchet.
+* decrypt.
+* ChatPage.
+* WebSocket.
+* Rendering dei messaggi.
+* UI della chat.
+
+Report finale
+
+Consegnare:
+
+1. file modificati;
+2. test eseguiti;
+3. verifica che:
+    * i bundle vengano ricreati automaticamente;
+    * /keys/bundle/.../all non restituisca più 404;
+    * il login rimanga valido fino a 90 giorni con refresh automatico;
+    * nessuna regressione sia stata introdotta nella messaggistica.
+
+⸻
+
+Questa strategia mantiene ogni modifica isolata e rende molto più semplice individuare eventuali regressioni. In particolare, il ripristino dello Swipe Reply resta confinato alla UI, mentre il lavoro sul login e sui bundle Signal rimane separato dalla logica di presentazione.

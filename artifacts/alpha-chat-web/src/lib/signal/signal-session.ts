@@ -146,8 +146,14 @@ export async function rebuildSession(
   const bundle = await apiGetKeyBundle(recipientUserId);
   const deviceBundle = toBundleDevice(bundle);
 
-  // Reset trust identity (TOFU) per il destinatario
-  // Il server è la fonte di verità per il bundle aggiornato
+  // Reset trust identity (TOFU) per il destinatario.
+  // IMPORTANTE: saveIdentity deve usare recipientUserId (il "name" dell'address),
+  // NON recipientAddr.toString() ("userId.deviceIdInt").
+  // isTrustedIdentity legge da identity-remote[name], quindi la chiave corretta
+  // è il plain userId — altrimenti l'aggiornamento finisce in una chiave diversa
+  // e processPreKey continua a fallire con "Identity key changed".
+  await store.saveIdentity(recipientUserId, deviceBundle.identityKey);
+  // Salva anche la chiave per indirizzo completo per compatibilità futura
   await store.saveIdentity(recipientAddr.toString(), deviceBundle.identityKey);
 
   const builder = new SessionBuilder(store, recipientAddr);

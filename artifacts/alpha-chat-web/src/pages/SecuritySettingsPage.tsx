@@ -11,11 +11,12 @@ import { TIMEOUT_OPTIONS } from "../lib/security/lock-settings";
 
 interface Props {
   onBack: () => void;
+  onNavigate?: (view: string) => void;
 }
 
 type SubView = "main" | "setup-pin-new" | "setup-pin-confirm" | "change-pin-old" | "change-pin-new" | "change-pin-confirm";
 
-export default function SecuritySettingsPage({ onBack }: Props) {
+export default function SecuritySettingsPage({ onBack, onNavigate }: Props) {
   const { auth } = useAuth();
   const {
     hasPINSet,
@@ -308,8 +309,17 @@ export default function SecuritySettingsPage({ onBack }: Props) {
             </div>
             <div className="security-phoenix-note">
               Per la distruzione irreversibile dell'account usa il{" "}
-              <strong>Phoenix Protocol</strong> nelle impostazioni account.
+              <strong>Phoenix Protocol</strong> nelle impostazioni account,
+              oppure usa il Protocollo Nucleare qui sotto.
             </div>
+            {onNavigate && (
+              <button
+                className="security-nuclear-btn"
+                onClick={() => onNavigate("nuclear-destroy")}
+              >
+                ☢ Protocollo Nucleare — Distruggi Account
+              </button>
+            )}
           </div>
         )}
 

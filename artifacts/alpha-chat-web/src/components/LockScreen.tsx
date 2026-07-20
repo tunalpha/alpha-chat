@@ -9,11 +9,13 @@ import { useAuth } from "../contexts/AuthContext";
 import PinPad from "./PinPad";
 
 export default function LockScreen() {
-  const { auth } = useAuth();
+  const { auth, logout } = useAuth();
   const {
     tryUnlockWithPIN,
     tryUnlockWithBiometric,
     hasBiometricSet,
+    hasPINSet,
+    biometricOnlyEnabled,
     settings,
     failedAttempts,
     emergencyLock,
@@ -76,6 +78,65 @@ export default function LockScreen() {
     }
   };
 
+  const BiometricIcon = () => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="28" height="28">
+      <path d="M12 1C5.925 1 1 5.925 1 12s4.925 11 11 11 11-4.925 11-11S18.075 1 12 1z"/>
+      <path d="M8.5 9.5c0-1.933 1.567-3.5 3.5-3.5s3.5 1.567 3.5 3.5"/>
+      <path d="M6 12c0-3.314 2.686-6 6-6s6 2.686 6 6"/>
+      <path d="M3.5 12c0-4.694 3.806-8.5 8.5-8.5s8.5 3.806 8.5 8.5"/>
+      <circle cx="12" cy="12" r="1"/>
+    </svg>
+  );
+
+  // ── Modalità biometrica autonoma (nessun PIN) ─────────────────────────────
+  // L'overlay mostra solo Face ID / Touch ID come metodo principale.
+  // Nessuna riconnessione di WebSocket, Signal o componenti — solo l'overlay sparisce.
+  if (biometricOnlyEnabled && !hasPINSet) {
+    return (
+      <div className="lock-screen">
+        <div className="lock-screen-inner">
+          <div className="lock-logo" style={{ cursor: "default" }}>
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8"
+              strokeLinecap="round" strokeLinejoin="round" width="40" height="40">
+              <rect x="3" y="11" width="18" height="11" rx="2" />
+              <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+            </svg>
+          </div>
+
+          <div className="lock-app-name">Alpha Chat</div>
+          <div className="lock-subtitle">
+            {auth?.displayName ? `Ciao, ${auth.displayName}` : "Sblocca per continuare"}
+          </div>
+
+          {error && (
+            <div className="lock-bio-only-error">{error}</div>
+          )}
+
+          <button
+            className="lock-biometric-btn lock-biometric-btn--primary"
+            onClick={handleBiometric}
+            disabled={loading}
+            aria-label="Sblocca con Face ID / Touch ID"
+          >
+            <BiometricIcon />
+            <span>{loading ? "Verifica in corso…" : "Face ID / Touch ID"}</span>
+          </button>
+
+          {/* Fallback: se il biometrico è stato rimosso dal telefono o non risponde.
+              Mostra il logout come via d'uscita sicura — non bypassa l'autenticazione. */}
+          <button
+            className="lock-exit-link"
+            onClick={() => { void logout(); }}
+            disabled={loading}
+          >
+            Esci dall'account
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Modalità PIN (con biometria opzionale) ────────────────────────────────
   return (
     <div className="lock-screen">
       <div className="lock-screen-inner">
@@ -121,13 +182,7 @@ export default function LockScreen() {
             disabled={loading}
             aria-label="Sblocca con biometria"
           >
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="24" height="24">
-              <path d="M12 1C5.925 1 1 5.925 1 12s4.925 11 11 11 11-4.925 11-11S18.075 1 12 1z"/>
-              <path d="M8.5 9.5c0-1.933 1.567-3.5 3.5-3.5s3.5 1.567 3.5 3.5"/>
-              <path d="M6 12c0-3.314 2.686-6 6-6s6 2.686 6 6"/>
-              <path d="M3.5 12c0-4.694 3.806-8.5 8.5-8.5s8.5 3.806 8.5 8.5"/>
-              <circle cx="12" cy="12" r="1"/>
-            </svg>
+            <BiometricIcon />
             <span>Face ID / Touch ID</span>
           </button>
         )}

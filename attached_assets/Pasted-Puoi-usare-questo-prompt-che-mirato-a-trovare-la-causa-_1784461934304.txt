@@ -1,0 +1,204 @@
+Puoi usare questo prompt, che è mirato a trovare la causa senza introdurre nuove regressioni.
+
+⸻
+
+REGRESSIONE CRITICA – MESSAGGI “[Messaggio non decifrabile]”
+
+Stato del progetto
+
+È presente una regressione critica.
+
+I messaggi in uscita vengono inviati.
+
+I messaggi ricevuti vengono mostrati come:
+
+[Messaggio non decifrabile]
+
+Lo screenshot conferma che il problema è riproducibile anche dopo il rollback.
+
+⸻
+
+PRIORITÀ ASSOLUTA
+
+Da questo momento è vietato lavorare su:
+
+* Chiamate
+* Login
+* UI
+* CSS
+* Swipe
+* Reply
+* Nuove funzionalità
+
+L’unico obiettivo è individuare la causa della regressione nella decifratura dei messaggi.
+
+⸻
+
+REGOLA
+
+Non implementare alcun fix.
+
+Prima voglio una diagnosi completa.
+
+Non modificare il codice finché non viene individuato il punto esatto del fallimento.
+
+⸻
+
+Analisi richiesta
+
+Seguire il percorso completo di ogni messaggio ricevuto:
+
+Server
+
+↓
+
+WebSocket
+
+↓
+
+Ricezione client
+
+↓
+
+Metadata
+
+↓
+
+Scelta SessionRecord
+
+↓
+
+signalDecrypt()
+
+↓
+
+Rendering
+
+Individuare esattamente dove il flusso fallisce.
+
+⸻
+
+Verifiche obbligatorie
+
+1. Ricezione
+
+Verificare che il payload ricevuto dal client sia integro:
+
+* senderId
+* deviceId
+* ciphertext
+* messageType
+* reply metadata
+* attachments
+* session identifiers
+
+⸻
+
+2. Sessione Signal
+
+Per ogni messaggio verificare:
+
+* SessionRecord utilizzato
+* BaseKey selezionata
+* IdentityKey remota
+* One-Time PreKey
+* Signed PreKey
+
+⸻
+
+3. Decrypt
+
+Loggare completamente:
+
+* ingresso in signalDecrypt()
+* algoritmo utilizzato
+* sessione scelta
+* eventuale cambio sessione
+
+⸻
+
+4. Eccezione
+
+Voglio sapere ESATTAMENTE quale errore restituisce libsignal.
+
+Ad esempio:
+
+* InvalidMac
+* MessageCounterError
+* DuplicateMessage
+* InvalidMessage
+* NoSession
+* InvalidKey
+* altra eccezione
+
+Con stack trace completo.
+
+⸻
+
+5. Placeholder
+
+Individuare il punto preciso dove viene scritto:
+
+[Messaggio non decifrabile]
+
+Voglio sapere:
+
+* quale funzione lo scrive;
+* quale eccezione lo provoca;
+* se esiste già un plaintext prima della sostituzione.
+
+⸻
+
+6. Path C
+
+Verificare se il codice passa ancora nel Path C.
+
+Per ogni messaggio loggare:
+
+* cache hit
+* cache miss
+* getMetaByMessageId()
+* eventuale seconda chiamata a signalDecrypt()
+
+⸻
+
+7. Session Selection
+
+Attivare (o verificare) i log diagnostici:
+
+* SESSION-SELECTION
+* DECRYPT-FAILURE
+
+Se non vengono prodotti, spiegare perché.
+
+⸻
+
+Report richiesto
+
+Consegnare un report contenente:
+
+1. ultimo punto del flusso che funziona;
+2. primo punto in cui il flusso fallisce;
+3. eccezione esatta restituita da libsignal;
+4. file coinvolti;
+5. funzione coinvolta;
+6. stack trace;
+7. causa tecnica supportata dai log.
+
+⸻
+
+Vietato
+
+Non correggere il problema.
+
+Non modificare Signal.
+
+Non modificare sessioni.
+
+Non modificare la chat.
+
+Non modificare il rendering.
+
+Non fare tentativi.
+
+Prima voglio la causa dimostrata dai log. Solo dopo verrà autorizzato il fix.

@@ -1,0 +1,114 @@
+Puoi usare questo prompt, che è focalizzato sulla verifica forense e non suggerisce fix finché non ci sono prove.
+
+⸻
+
+Prompt forense – Verifica esecuzione reale del rebuild Signal
+
+Non proporre nuovi fix. Agisci come forensic engineer.
+
+Fatti già accertati
+
+* Deploy completato.
+* Alpha PWA riavviata.
+* iPhone riavviato.
+* Il problema persiste.
+* Tutti i messaggi Alpha → Felix26 post-deploy hanno ancora:
+    * type = 3
+    * pre_key_id = 50
+* Il server consegna bundle nuovi (OTPK #62, poi #79 ecc.).
+* Felix26 continua a mostrare [Messaggio non decifrabile].
+
+Obiettivo
+
+Dimostrare con prove se il ramo:
+
+delete session
+→ rebuild X3DH
+→ re-encrypt
+
+viene realmente eseguito.
+
+Richiedo SOLO verifiche
+
+1. Individua il punto esatto dove viene chiamato:
+
+signalEncryptMulti(...)
+
+2. Logga obbligatoriamente:
+
+existingSession
+sessionKey
+deviceId
+
+3. Prima del delete:
+
+console.warn("[FORENSIC] BEFORE DELETE", {
+    sessionKey,
+    sessionExists,
+    preKeyBefore,
+});
+
+4. Dopo il delete:
+
+Verifica realmente che IndexedDB non contenga più quella sessione.
+
+Non assumere.
+
+Logga:
+
+sessionStillExistsAfterDelete
+
+5. Dopo processPreKeyBundle():
+
+Logga:
+
+bundle.preKey.keyId
+bundle.signedPreKey.keyId
+
+6. Dopo encrypt():
+
+Logga:
+
+cipher.type
+cipher.preKeyId
+
+7. Se cipher.preKeyId è ancora 50, dimostra perché.
+
+Seguire tutta la catena:
+
+fetchBundle()
+↓
+bundle ricevuto
+↓
+processPreKeyBundle()
+↓
+session store
+↓
+encrypt()
+↓
+PreKeySignalMessage
+
+Indicare in quale punto il valore torna a 50.
+
+Vietato
+
+Non modificare la logica.
+
+Non aggiungere workaround.
+
+Non cancellare altre sessioni.
+
+Non proporre nuovi fix.
+
+Output richiesto
+
+Restituisci solo:
+
+1. Il delete è realmente avvenuto? (SÌ/NO)
+2. La sessione è stata realmente ricreata? (SÌ/NO)
+3. Quale pre_key_id entra in processPreKeyBundle()?
+4. Quale pre_key_id esce dal PreKeySignalMessage?
+5. In quale riga di codice il valore torna a 50?
+6. Se il valore non torna mai a 50, spiegare perché il messaggio contiene ancora pre_key_id=50.
+
+Nessuna ipotesi. Solo prove tratte dal codice e dai log.

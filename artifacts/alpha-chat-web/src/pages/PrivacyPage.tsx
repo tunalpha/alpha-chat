@@ -7,6 +7,8 @@ import {
   type PrivacySettings,
   type BlockedUserEntry,
 } from "../lib/api";
+import { useLock } from "../contexts/LockContext";
+import { TIMEOUT_OPTIONS } from "../lib/security/lock-settings";
 
 interface Props { onBack: () => void; }
 
@@ -64,7 +66,40 @@ function Toggle({
   );
 }
 
+// Subset dei timeout mostrati nella sezione Face ID (come richiesto)
+const FACE_ID_TIMEOUT_OPTIONS = TIMEOUT_OPTIONS.filter((o) =>
+  [0, 60_000, 5 * 60_000, 15 * 60_000].includes(o.ms),
+);
+
 export default function PrivacyPage({ onBack }: Props) {
+  // ── Lock / biometria ──────────────────────────────────────────────────────
+  const {
+    canUseBiometric,
+    biometricOnlyEnabled,
+    enableBiometricOnly,
+    disableBiometricOnly,
+    settings: lockSettings,
+    changeSettings: changeLockSettings,
+  } = useLock();
+  const [bioLoading, setBioLoading]   = useState(false);
+  const [bioFeedback, setBioFeedback] = useState<string | null>(null);
+
+  async function handleFaceIdToggle() {
+    setBioFeedback(null);
+    if (biometricOnlyEnabled) {
+      disableBiometricOnly();
+      setBioFeedback("Face ID disabilitato");
+      setTimeout(() => setBioFeedback(null), 2500);
+    } else {
+      setBioLoading(true);
+      const ok = await enableBiometricOnly();
+      setBioLoading(false);
+      if (!ok) setBioFeedback("Face ID non disponibile su questo dispositivo");
+      // Se ok=true l'app si è già bloccata — l'utente sblocca con Face ID
+    }
+  }
+
+  // ── Privacy settings (backend) ────────────────────────────────────────────
   const [settings, setSettings]   = useState<PrivacySettings | null>(null);
   const [blocked, setBlocked]     = useState<BlockedUserEntry[]>([]);
   const [loading, setLoading]     = useState(true);
@@ -173,6 +208,70 @@ export default function PrivacyPage({ onBack }: Props) {
       </header>
 
       <div className="settings-body">
+
+        {/* ── Face ID / Touch ID ─────────────────────────────────────────── */}
+        {canUseBiometric && (
+          <div className="settings-section">
+            <div className="settings-section-title">Face ID / Touch ID</div>
+
+            {bioFeedback && (
+              <div className="privacy-error-banner" style={{ background: "var(--accent-alpha, rgba(99,102,241,.12))", borderColor: "var(--accent)" }}>
+                <span>✓ {bioFeedback}</span>
+                <button onClick={() => setBioFeedback(null)}>✕</button>
+              </div>
+            )}
+
+            {/* Toggle principale */}
+            <div className="settings-item">
+              <div className="settings-item-icon">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="20" height="20">
+                  <path d="M12 1C5.925 1 1 5.925 1 12s4.925 11 11 11 11-4.925 11-11S18.075 1 12 1z"/>
+                  <path d="M8.5 9.5c0-1.933 1.567-3.5 3.5-3.5s3.5 1.567 3.5 3.5"/>
+                  <path d="M6 12c0-3.314 2.686-6 6-6s6 2.686 6 6"/>
+                  <path d="M3.5 12c0-4.694 3.806-8.5 8.5-8.5s8.5 3.806 8.5 8.5"/>
+                  <circle cx="12" cy="12" r="1"/>
+                </svg>
+              </div>
+              <div className="settings-item-content">
+                <div className="settings-item-label">Abilita Face ID</div>
+                <div className="settings-item-value muted">
+                  {bioLoading
+                    ? "Configurazione…"
+                    : biometricOnlyEnabled
+                      ? "Attivo — richiesto all'apertura"
+                      : "Sblocca l'app con il volto o l'impronta"}
+                </div>
+              </div>
+              <Toggle
+                checked={biometricOnlyEnabled}
+                onChange={() => { void handleFaceIdToggle(); }}
+                disabled={bioLoading}
+              />
+            </div>
+
+            {/* Timeout — visibile solo quando Face ID è attivo */}
+            {biometricOnlyEnabled && (
+              <div className="settings-item" style={{ flexDirection: "column", alignItems: "flex-start", gap: 8 }}>
+                <div className="settings-item-label">Richiedi dopo inattività</div>
+                <div className="security-timeout-grid">
+                  {FACE_ID_TIMEOUT_OPTIONS.map((opt) => (
+                    <button
+                      key={opt.ms}
+                      className={`security-timeout-chip${lockSettings.autoLockMs === opt.ms ? " active" : ""}`}
+                      onClick={() => changeLockSettings({ autoLockMs: opt.ms })}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="privacy-faceid-note">
+              La chiave biometrica rimane sul dispositivo. Nessun dato biometrico viene inviato ai server.
+            </div>
+          </div>
+        )}
 
         {/* Error banner */}
         {error && (

@@ -1,0 +1,114 @@
+Puoi usare questo prompt aggiornato:
+
+⸻
+
+PROMPT
+
+Non modificare nessuna parte della messaggistica.
+
+I fix su:
+
+* requestPaginated()
+* useWebSocket
+* handleSend()
+* handleVoiceSend()
+* handleFilePick()
+* handleForwardTo()
+* messaggi BAR 🔥
+
+sono stati verificati e funzionano correttamente.
+
+Queste parti sono congelate. Non devono essere toccate.
+
+Lavorare esclusivamente sul modulo chiamate.
+
+Bug 1 — Nessuno squillo (Priorità MASSIMA)
+
+Lo squillo non si sente né al chiamante né al destinatario.
+
+Comportamento attuale:
+
+* il chiamante avvia la chiamata;
+* il destinatario riceve la schermata della chiamata;
+* nessuno dei due sente alcun ringtone.
+
+Analizzare l’intero flusso:
+
+* creazione della chiamata;
+* invio/ricezione eventi WS;
+* call.incoming;
+* avvio del ringtone;
+* autoplay policy Safari iOS;
+* gestione degli elementi audio.
+
+Non fare ipotesi: aggiungere log e individuare la causa esatta.
+
+Il ringtone deve:
+
+* partire quando la chiamata viene avviata;
+* fermarsi su:
+    * risposta;
+    * rifiuto;
+    * timeout;
+    * annullamento;
+    * chiamata terminata da altro dispositivo.
+
+⸻
+
+Bug 2 — Audio dopo l’accettazione
+
+Comportamento riproducibile:
+
+* nessuno squillo;
+* il destinatario accetta;
+* la chiamata risulta connessa (timer parte);
+* senza premere alcun pulsante, l’audio è già muto.
+
+Verificare:
+
+* acceptCall();
+* initiateCall();
+* primeRemoteAudio();
+* ontrack;
+* MediaStream locale e remoto;
+* elemento <audio>;
+* muted;
+* volume;
+* AudioContext;
+* readyState;
+* enabled;
+* eventuali eventi che mettono in mute l’audio subito dopo la connessione.
+
+Aggiungere log temporanei per seguire tutto il flusso fino alla causa precisa.
+
+⸻
+
+Regole
+
+NON modificare:
+
+* Signal
+* decrypt
+* encrypt
+* sessioni
+* cache
+* requestPaginated
+* AuthContext
+* WebSocket messaggi
+* ChatPage (parte messaggi)
+* handleSend
+* BAR
+* logica realtime messaggi
+
+Sono stati appena stabilizzati.
+
+Applicare solo fix chirurgici sul modulo chiamate.
+
+Per ogni modifica indicare:
+
+* file interessato;
+* motivo;
+* impatto;
+* perché il fix non può introdurre regressioni nella messaggistica.
+
+Se durante l’analisi emerge la necessità di modificare componenti condivisi con la messaggistica, fermarsi e chiedere conferma prima di procedere.

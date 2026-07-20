@@ -1,0 +1,74 @@
+Questa analisi contiene una distinzione importante.
+
+Quello che è dimostrato
+
+* ✅ Il server consegna OTPK nuove (#86, #87…).
+* ✅ Il problema continua.
+* ✅ I log server non possono dire cosa succede dentro IndexedDB del client.
+* ✅ Le domande sul delete, processPreKeyBundle() e sul pre_key_id finale non sono risolvibili dai deployment logs.
+
+Quello che invece non è dimostrato
+
+L’ultima conclusione:
+
+“Il fatto che ogni fetchAllBundles consegni una nuova OTPK significa che Alpha NON ha una sessione stabile…”
+
+è plausibile, ma non è una prova definitiva.
+
+Il fatto che il server consegni ogni volta un nuovo bundle dimostra che il client lo richiede. Non dimostra da solo che il rebuild venga completato o che la sessione venga salvata correttamente.
+
+⸻
+
+Dove siete bloccati davvero
+
+Ormai non è più un problema di MongoDB.
+
+Non è più un problema dei deployment logs.
+
+Non è più un problema del server.
+
+Il collo di bottiglia è il client iOS (PWA).
+
+Ed è proprio lì che sono stati messi i log [FORENSIC].
+
+⸻
+
+Il passo successivo
+
+Adesso chiederei al reviewer una cosa molto semplice:
+
+Come raccogliamo la console del client iOS?
+
+Per una PWA su iPhone normalmente si usa:
+
+* Safari su Mac
+* menu Develop
+* selezione dell’iPhone
+* Web Inspector della PWA
+
+Solo così si vedranno i console.warn("[FORENSIC] ...").
+
+⸻
+
+Se non avete un Mac
+
+Allora chiederei al team di fare una delle due cose:
+
+* inoltrare temporaneamente quei log al server tramite /signal/audit;
+* oppure salvarli in una collection MongoDB dedicata.
+
+Perché ormai avete raggiunto il limite di quello che i deployment logs possono mostrare.
+
+⸻
+
+In pratica
+
+Non ti farei perdere altro tempo con prove sul telefono.
+
+Il prossimo passo non è:
+
+* riavviare;
+* reinstallare;
+* rifare test.
+
+Il prossimo passo è ottenere i log client [FORENSIC], perché sono l’unica fonte che può rispondere alle domande rimaste aperte. Finché quei log restano solo nella console della PWA, il server non potrà dire se la sessione viene davvero cancellata, ricreata e usata.

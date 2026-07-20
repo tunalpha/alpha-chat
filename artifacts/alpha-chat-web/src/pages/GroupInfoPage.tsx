@@ -3,10 +3,12 @@
  * Info gruppo, lista membri, azioni admin (aggiungi/rimuovi, promuovi, lascia/elimina).
  */
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useAuth } from "../contexts/AuthContext";
 import {
   apiGetGroup,
+  apiUpdateGroup,
+  apiUploadGroupAvatar,
   apiAddGroupMember,
   apiRemoveGroupMember,
   apiLeaveGroup,
@@ -27,23 +29,28 @@ interface Props {
   onBack: () => void;
   onNavigate: (view: AppView) => void;
   onLeft?: () => void; // chiamato dopo leaveGroup/deleteGroup
+  onGroupRenamed?: (groupId: string, newName: string, avatarUrl?: string | null) => void;
   contacts?: Contact[];
+  onlineUsers?: Set<string>; // userId → online
 }
 
-export default function GroupInfoPage({ groupId, onBack, onLeft, contacts = [] }: Props) {
+export default function GroupInfoPage({ groupId, onBack, onLeft, onGroupRenamed, contacts = [], onlineUsers = new Set() }: Props) {
   const { auth } = useAuth();
-  const [group, setGroup]       = useState<GroupDetail | null>(null);
-  const [loading, setLoading]   = useState(true);
-  const [error, setError]       = useState<string | null>(null);
+  const [group, setGroup]             = useState<GroupDetail | null>(null);
+  const [loading, setLoading]         = useState(true);
+  const [error, setError]             = useState<string | null>(null);
   const [addUsername, setAddUsername] = useState("");
-  const [addError, setAddError] = useState<string | null>(null);
-  const [addLoading, setAddLoading] = useState(false);
+  const [addError, setAddError]       = useState<string | null>(null);
+  const [addLoading, setAddLoading]   = useState(false);
   const [showSuggestions, setShowSuggestions] = useState(false);
-  const [editName, setEditName] = useState(false);
-  const [nameInput, setNameInput] = useState("");
-  const [confirmLeave, setConfirmLeave] = useState(false);
+  const [editName, setEditName]       = useState(false);
+  const [nameInput, setNameInput]     = useState("");
+  const [nameError, setNameError]     = useState<string | null>(null);
+  const [confirmLeave, setConfirmLeave]   = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [actionLoading, setActionLoading] = useState(false);
+  const [avatarLoading, setAvatarLoading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -62,6 +69,53 @@ export default function GroupInfoPage({ groupId, onBack, onLeft, contacts = [] }
   useEffect(() => { void load(); }, [load]);
 
   const isAdmin = group?.my_role === "admin";
+
+  // ── Avatar upload ─────────────────────────────────────────────────────────
+
+  /** Ridimensiona l'immagine a maxW×maxH con crop centrale, restituisce un Blob JPEG. */
+  function resizeImageToBlob(file: File, maxW: number, maxH: number): Promise<Blob> {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        const scale = Math.max(maxW / img.width, maxH / img.height);
+        const sw = maxW / scale;
+        const sh = maxH / scale;
+        const sx = (img.width  - sw) / 2;
+        const sy = (img.height - sh) / 2;
+        const canvas = document.createElement("canvas");
+        canvas.width  = maxW;
+        canvas.height = maxH;
+        const ctx = canvas.getContext("2d")!;
+        ctx.drawImage(img, sx, sy, sw, sh, 0, 0, maxW, maxH);
+        canvas.toBlob(
+          (b) => { if (b) resolve(b); else reject(new Error("canvas toBlob failed")); },
+          "image/jpeg", 0.88,
+        );
+        URL.revokeObjectURL(img.src);
+      };
+      img.onerror = () => { URL.revokeObjectURL(img.src); reject(new Error("image load failed")); };
+      img.src = URL.createObjectURL(file);
+    });
+  }
+
+  async function handleAvatarChange(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (!file.type.startsWith("image/")) { alert("Seleziona un'immagine (jpg, png, webp)"); return; }
+    setAvatarLoading(true);
+    try {
+      const resized  = await resizeImageToBlob(file, 256, 256);
+      const mediaId  = await apiUploadGroupAvatar(groupId, resized);
+      const updated  = await apiUpdateGroup(groupId, { avatar_media_id: mediaId });
+      setGroup(updated);
+      onGroupRenamed?.(groupId, updated.name, updated.avatar_url);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Errore upload avatar");
+    } finally {
+      setAvatarLoading(false);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+    }
+  }
 
   async function handleAddMember(e: React.FormEvent) {
     e.preventDefault();
@@ -158,32 +212,69 @@ export default function GroupInfoPage({ groupId, onBack, onLeft, contacts = [] }
       <div className="gi-body">
         {/* Avatar + nome gruppo */}
         <div className="gi-hero">
-          <div className="gi-avatar">{group.name[0]?.toUpperCase() ?? "G"}</div>
+          {/* Avatar cliccabile (solo admin) per cambio foto */}
+          <div
+            className={`gi-avatar${isAdmin ? " gi-avatar-editable" : ""}`}
+            onClick={isAdmin ? () => fileInputRef.current?.click() : undefined}
+            title={isAdmin ? "Cambia foto gruppo" : undefined}
+          >
+            {group.avatar_url ? (
+              <img src={group.avatar_url} alt={group.name} className="gi-avatar-img" />
+            ) : (
+              group.name[0]?.toUpperCase() ?? "G"
+            )}
+            {isAdmin && (
+              <div className="gi-avatar-overlay">
+                {avatarLoading ? <span className="gi-avatar-spinner" /> : "📷"}
+              </div>
+            )}
+          </div>
+          {/* Input file nascosto */}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            style={{ display: "none" }}
+            onChange={handleAvatarChange}
+          />
+
           <div className="gi-name-row">
             {editName ? (
-              <form onSubmit={async (e) => {
-                e.preventDefault();
-                try {
-                  const updated = await apiGetGroup(groupId);
-                  setGroup({ ...updated, name: nameInput });
-                  setEditName(false);
-                } catch { setEditName(false); }
-              }} style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                <input
-                  className="gi-name-input"
-                  value={nameInput}
-                  onChange={(e) => setNameInput(e.target.value)}
-                  maxLength={100}
-                  autoFocus
-                />
-                <button type="submit" className="gi-name-save">✓</button>
-                <button type="button" className="gi-name-cancel" onClick={() => setEditName(false)}>✕</button>
+              <form
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  const trimmed = nameInput.trim();
+                  if (!trimmed) { setNameError("Il nome non può essere vuoto"); return; }
+                  setNameError(null);
+                  try {
+                    const updated = await apiUpdateGroup(groupId, { name: trimmed });
+                    setGroup(updated);
+                    setEditName(false);
+                    onGroupRenamed?.(groupId, updated.name, updated.avatar_url);
+                  } catch (err) {
+                    setNameError(err instanceof Error ? err.message : "Errore salvataggio");
+                  }
+                }}
+                style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "stretch" }}
+              >
+                <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                  <input
+                    className="gi-name-input"
+                    value={nameInput}
+                    onChange={(e) => { setNameInput(e.target.value); setNameError(null); }}
+                    maxLength={100}
+                    autoFocus
+                  />
+                  <button type="submit" className="gi-name-save">✓</button>
+                  <button type="button" className="gi-name-cancel" onClick={() => { setEditName(false); setNameError(null); }}>✕</button>
+                </div>
+                {nameError && <span style={{ color: "#f87171", fontSize: 12 }}>{nameError}</span>}
               </form>
             ) : (
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <span className="gi-group-name">{group.name}</span>
                 {isAdmin && (
-                  <button className="gi-edit-btn" onClick={() => setEditName(true)} title="Modifica nome">✏️</button>
+                  <button className="gi-edit-btn" onClick={() => { setEditName(true); setNameInput(group.name); }} title="Modifica nome">✏️</button>
                 )}
               </div>
             )}
@@ -252,15 +343,24 @@ export default function GroupInfoPage({ groupId, onBack, onLeft, contacts = [] }
               const isSelf    = m.user_id === auth?.userId;
               const isMemAdmin = m.role === "admin";
 
+              const isOnline = onlineUsers.has(m.user_id);
               return (
                 <div key={m.user_id} className="gi-member-row">
-                  <div className="gi-member-avatar">{m.display_name[0]?.toUpperCase() ?? "?"}</div>
+                  <div className="gi-member-avatar-wrap">
+                    <div className="gi-member-avatar">{m.display_name[0]?.toUpperCase() ?? "?"}</div>
+                    {isOnline && <span className="gi-member-online-dot" />}
+                  </div>
                   <div className="gi-member-info">
                     <div className="gi-member-name">
                       {m.display_name}
                       {isSelf && <span className="gi-member-you"> (tu)</span>}
                     </div>
-                    <div className="gi-member-username">@{m.username}</div>
+                    <div className="gi-member-username">
+                      @{m.username}
+                      {isOnline
+                        ? <span className="gi-member-status online"> · Online</span>
+                        : <span className="gi-member-status offline"> · Offline</span>}
+                    </div>
                   </div>
                   <div className="gi-member-actions">
                     {isMemAdmin && <span className="gi-badge-admin">👑 Admin</span>}

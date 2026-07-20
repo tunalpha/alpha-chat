@@ -1,0 +1,45 @@
+No, non confermerei ancora quella conclusione come certa.
+
+Dalla descrizione che hai riportato ci sono fatti osservati e deduzioni. È importante distinguerli.
+
+Quello che i log dimostrano
+
+* ✅ Alpha invia sempre messaggi di tipo 3 (PreKey) verso Felix26.
+* ✅ Felix26 non riesce a completare la sessione, perché continua a ricevere PreKey invece di passare ai WhisperMessage (type 1).
+* ✅ Le OTPK di Alpha risultano esaurite (hasOtpk: false).
+
+Questi sono fatti supportati dai log.
+
+Quello che invece non è ancora dimostrato
+
+L’affermazione:
+
+“store.clear() elimina tutto l’IDB Signal di Felix26”
+
+non è dimostrata dai log che hai descritto.
+
+Per dimostrarla servirebbe vedere almeno uno di questi elementi:
+
+* un log che mostri effettivamente l’esecuzione di store.clear();
+* oppure un log che mostri che subito dopo il numero di sessioni nello store passa da >0 a 0;
+* oppure un log che mostri che l’IndexedDB viene realmente azzerato.
+
+Il fatto che ci sia un loop di PreKey non implica automaticamente che store.clear() sia la causa. Potrebbe esserlo, ma potrebbe anche essere un altro problema nella creazione o nel salvataggio della sessione.
+
+Sulle due operazioni proposte
+
+1. Deploy del fix che sostituisce store.clear() con console.warn
+
+Se quel codice è già stato verificato e non introduce regressioni, è una modifica ragionevole da distribuire. È poco invasiva e serve anche a capire se il wipe dello store era davvero il problema.
+
+2. Rigenerare le OTPK di Alpha
+
+Anche questa è sensata, se il pool è realmente a zero. Senza OTPK disponibili, i nuovi handshake X3DH possono fallire o ricadere su percorsi meno desiderabili, quindi ripristinare il pool è opportuno.
+
+⸻
+
+Quindi direi:
+
+* ✅ procedere con il deploy del fix se è già stato testato;
+* ✅ rigenerare le OTPK di Alpha se il server conferma che sono esaurite;
+* ❌ evitare però di concludere che la causa radice è certamente store.clear() finché non c’è una prova diretta che quella funzione venga effettivamente eseguita e provochi la perdita delle sessioni. Il loop di PreKey è compatibile con quella spiegazione, ma da solo non la dimostra.

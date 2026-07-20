@@ -26,9 +26,12 @@ const STORE_META_BY_CLIENT = "meta_by_client_id";
 // Stato del modulo
 // ---------------------------------------------------------------------------
 
-let _db:        IDBDatabase | null = null;
-let _cacheKey:  CryptoKey   | null = null;
-let _ready      = false;
+let _db:          IDBDatabase | null = null;
+let _cacheKey:    CryptoKey   | null = null;
+let _ready        = false;
+// Promise dell'init in volo — usata da cacheDecryptedMeta/getMetaByMessageId
+// per attendere il completamento se invocati durante la finestra di apertura IDB.
+let _initPromise: Promise<void> | null = null;
 
 // In-memory fallback per ambienti senza IndexedDB (SSR / test Node.js)
 const _memCache = new Map<string, string>(); // key → plaintext metaJson
@@ -44,17 +47,23 @@ const _memCache = new Map<string, string>(); // key → plaintext metaJson
  */
 export async function initMediaCache(userId: string, deviceId: string): Promise<void> {
   if (_ready) return;
+  // Se un'altra chiamata ha già avviato l'init, aspetta la stessa promise
+  // invece di aprire un secondo IDB in parallelo.
+  if (_initPromise) return _initPromise;
 
-  if (typeof indexedDB === "undefined") {
-    // Fallback in-memory (test Node.js / SSR)
+  _initPromise = (async () => {
+    if (typeof indexedDB === "undefined") {
+      // Fallback in-memory (test Node.js / SSR)
+      _ready = true;
+      return;
+    }
+    const name = `alpha-chat-media-cache-v1:${userId}:${deviceId}`;
+    _db = await openDatabase(name);
+    _cacheKey = await loadOrCreateCacheKey(_db);
     _ready = true;
-    return;
-  }
+  })();
 
-  const name = `alpha-chat-media-cache-v1:${userId}:${deviceId}`;
-  _db = await openDatabase(name);
-  _cacheKey = await loadOrCreateCacheKey(_db);
-  _ready = true;
+  return _initPromise;
 }
 
 /**
@@ -65,6 +74,7 @@ export async function clearMediaCache(userId: string, deviceId: string): Promise
   _db = null;
   _cacheKey = null;
   _ready = false;
+  _initPromise = null;
   _memCache.clear();
 
   if (typeof indexedDB !== "undefined") {
@@ -78,12 +88,21 @@ export async function clearMediaCache(userId: string, deviceId: string): Promise
 // ---------------------------------------------------------------------------
 
 export async function cacheDecryptedMeta(messageId: string, metaJson: string): Promise<void> {
-  if (!_ready) return;
+  // Se l'init è in volo, attendiamo che completi prima di scrivere.
+  // Questo gestisce la race condition: primo messaggio WS arriva mentre IDB è ancora in apertura.
+  if (!_ready) {
+    if (_initPromise) await _initPromise.catch(() => {});
+    if (!_ready) return; // initMediaCache non ancora chiamata o fallita
+  }
   await _put(STORE_META_BY_MSG, messageId, metaJson);
 }
 
 export async function getMetaByMessageId(messageId: string): Promise<string | null> {
-  if (!_ready) return null;
+  // Stessa logica di attesa: non restituire null prematuramente se l'init è in volo.
+  if (!_ready) {
+    if (_initPromise) await _initPromise.catch(() => {});
+    if (!_ready) return null;
+  }
   return _get(STORE_META_BY_MSG, messageId);
 }
 

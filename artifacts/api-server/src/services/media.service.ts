@@ -5,11 +5,54 @@
  */
 
 import mongoose from "mongoose";
+import { spawn, execSync } from "child_process";
 import { AppError } from "../errors/AppError";
 import { MediaRepository } from "../repositories/media.repository";
 import { ConversationMemberRepository } from "../repositories/conversation-member.repository";
 import { logAuditEvent } from "../lib/audit";
 import type { UploadMediaInput } from "../validation/media.schemas";
+
+// ---------------------------------------------------------------------------
+// Audio transcoding — webm/opus → mp4/aac via ffmpeg
+// ---------------------------------------------------------------------------
+
+/**
+ * Path assoluto di ffmpeg risolto all'avvio.
+ * In produzione Replit il processo non eredita /nix/store nel PATH →
+ * spawn("ffmpeg") fallisce con ENOENT. Usiamo il path assoluto da `which`.
+ */
+const FFMPEG_BIN: string = (() => {
+  try { return execSync("which ffmpeg", { encoding: "utf8" }).trim(); }
+  catch { return "ffmpeg"; }
+})();
+
+/**
+ * Trascrive webm/opus → mp4/aac via ffmpeg (pipe I/O, nessun file temporaneo).
+ * Risolve la non-compatibilità di iOS Safari con il codec opus.
+ */
+function transcodeWebmToMp4(input: Buffer): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const proc = spawn(FFMPEG_BIN, [
+      "-i", "pipe:0",
+      "-c:a", "aac", "-b:a", "96k", "-ac", "1",
+      "-movflags", "+frag_keyframe+empty_moov",
+      "-f", "mp4", "pipe:1",
+    ]);
+    const chunks: Buffer[] = [];
+    proc.stdout.on("data", (c: Buffer) => chunks.push(c));
+    proc.stdout.on("end", () => {
+      const out = Buffer.concat(chunks);
+      if (out.length === 0) reject(new Error("ffmpeg: empty output"));
+      else resolve(out);
+    });
+    proc.stderr.on("data", () => { /* noop */ });
+    proc.on("error", reject);
+    const t = setTimeout(() => { proc.kill("SIGKILL"); reject(new Error("ffmpeg: timeout")); }, 30_000);
+    proc.on("close", () => clearTimeout(t));
+    proc.stdin.write(input);
+    proc.stdin.end();
+  });
+}
 
 export interface MediaUploadResult {
   media_id:          string;
@@ -75,7 +118,25 @@ export async function uploadMedia(
   }
 
   // 3. Decodifica base64 → Buffer
-  const buffer = Buffer.from(input.data, "base64");
+  let buffer = Buffer.from(input.data, "base64");
+  let effectiveMimeType = input.mime_type;
+
+  // 3b. Trascodifica webm/opus → mp4/aac per compatibilità iOS Safari.
+  //     Il blob ricevuto è cifrato AES-GCM; il mime_type è dichiarato dal client.
+  //     Se il client dichiara webm/opus (Android) → trascriviamo lato server.
+  //     Se ffmpeg fallisce → fall-through con buffer originale (audio non perso).
+  if (effectiveMimeType.startsWith("audio/webm") || effectiveMimeType.includes("opus")) {
+    try {
+      buffer = await transcodeWebmToMp4(buffer);
+      effectiveMimeType = "audio/mp4";
+    } catch (err) {
+      logAuditEvent({
+        event: "MEDIA_TRANSCODE_FAILED", user_id: uploaderId,
+        request_id: context?.requestId, created_at: new Date().toISOString(),
+        metadata: { ffmpeg: FFMPEG_BIN, mime: effectiveMimeType, error: String(err) },
+      });
+    }
+  }
 
   // 4. Decodifica thumbnail se presente
   const thumbnailBuf = input.thumbnail
@@ -98,7 +159,7 @@ export async function uploadMedia(
     media = await mediaRepo.create({
       uploaderId:       uploaderObjectId,
       conversationId:   convObjectId,
-      mimeType:         input.mime_type,
+      mimeType:         effectiveMimeType,
       data:             buffer,
       size:             buffer.length,
       originalFilename: input.original_filename || null,

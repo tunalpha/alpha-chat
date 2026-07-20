@@ -36,15 +36,17 @@ export interface GroupMemberInfo {
 }
 
 export interface GroupDetail {
-  group_id:     string;
-  name:         string;
-  description:  string;
-  member_count: number;
-  max_members:  number;
-  created_by:   string;
-  created_at:   string;
-  my_role:      "admin" | "member";
-  members:      GroupMemberInfo[];
+  group_id:        string;
+  name:            string;
+  description:     string;
+  avatar_url:      string | null;  // /api/v1/media/:id oppure null
+  avatar_media_id: string | null;  // ObjectId raw — usato dal client per aggiornare
+  member_count:    number;
+  max_members:     number;
+  created_by:      string;
+  created_at:      string;
+  my_role:         "admin" | "member";
+  members:         GroupMemberInfo[];
 }
 
 // ---------------------------------------------------------------------------
@@ -145,16 +147,21 @@ export async function getGroupDetail(
     };
   });
 
+  const rawAvatarId = (conv as any).avatar_media_id;
+  const avatarMediaId: string | null = rawAvatarId ? rawAvatarId.toString() : null;
+
   return {
-    group_id:     conv._id.toString(),
-    name:         (conv as any).name        ?? "",
-    description:  (conv as any).description ?? "",
-    member_count: conv.member_count,
-    max_members:  conv.max_members,
-    created_by:   conv.created_by?.toString() ?? "",
-    created_at:   (conv.createdAt ?? new Date()).toISOString(),
-    my_role:      myMembership.role as "admin" | "member",
-    members:      memberInfos,
+    group_id:        conv._id.toString(),
+    name:            (conv as any).name        ?? "",
+    description:     (conv as any).description ?? "",
+    avatar_url:      avatarMediaId ? `/api/v1/media/${avatarMediaId}` : null,
+    avatar_media_id: avatarMediaId,
+    member_count:    conv.member_count,
+    max_members:     conv.max_members,
+    created_by:      conv.created_by?.toString() ?? "",
+    created_at:      (conv.createdAt ?? new Date()).toISOString(),
+    my_role:         myMembership.role as "admin" | "member",
+    members:         memberInfos,
   };
 }
 
@@ -170,8 +177,9 @@ export async function updateGroup(
 ): Promise<GroupDetail> {
   await assertAdmin(adminId, groupId);
   await convRepo.updateGroupMeta(new mongoose.Types.ObjectId(groupId), {
-    name:        input.name,
-    description: input.description,
+    name:            input.name,
+    description:     input.description,
+    avatar_media_id: input.avatar_media_id,
   });
   logAuditEvent({
     event: "GROUP_UPDATED", user_id: adminId, request_id: context?.requestId,

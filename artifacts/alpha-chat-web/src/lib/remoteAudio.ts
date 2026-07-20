@@ -2,19 +2,22 @@
  * remoteAudio — Singleton per l'audio remoto delle chiamate.
  *
  * Routing audio:
- *  - Speaker (vivavoce):   <audio>.srcObject = stream  → iOS usa speaker, Chrome usa default output
- *  - Auricolare:           AudioContext → destination  → iOS usa auricolare quando getUserMedia attivo
- *                          + setSinkId() su Chrome Android/Desktop per selezionare device "earpiece/communications"
+ *  - Chrome/Edge (hasSinkId): <audio>.srcObject → play() → setSinkId(earpiece) per auricolare
+ *  - iOS Safari / tutti senza setSinkId: <audio>.srcObject → play()
+ *    Con getUserMedia attivo iOS è in PlayAndRecord → receiver (auricolare) è il default port.
+ *    Non usiamo AudioContext per il routing su iOS: il cambio di sessione audio
+ *    Playback→PlayAndRecord sospende il ctx e ctx.resume() richiede un gesture che
+ *    a quel punto non è più disponibile → silenzio totale.
  *
- * IMPORTANTE: primeRemoteAudio() deve essere chiamato durante un user gesture per
- * sbloccare sia l'<audio> element sia l'AudioContext su iOS Safari.
+ * IMPORTANTE: primeRemoteAudio() deve essere chiamato DOPO getUserMedia() (iOS) per
+ * sbloccare l'<audio> element nel contesto della sessione PlayAndRecord corretta.
  */
 
 let _el: HTMLAudioElement | null = null;
-let _audioCtx: AudioContext | null = null;
-let _sourceNode: MediaStreamAudioSourceNode | null = null;
+let _audioCtx: AudioContext | null = null;      // usato SOLO da primeRemoteAudio su Chrome
 let _currentStream: MediaStream | null = null;
-let _speakerMode = true; // default speaker; aggiornato da setSpeakerMode() all'inizio di ogni chiamata
+let _speakerMode = true;
+let _playRetryTimer: ReturnType<typeof setTimeout> | null = null;
 
 // ── Element singleton ─────────────────────────────────────────────────────────
 
@@ -31,7 +34,7 @@ function getEl(): HTMLAudioElement | null {
   return _el;
 }
 
-// ── AudioContext singleton ────────────────────────────────────────────────────
+// ── AudioContext singleton (solo per primeRemoteAudio, non per routing iOS) ──
 
 function getOrCreateAudioCtx(): AudioContext | null {
   if (typeof window === "undefined") return null;
@@ -45,93 +48,152 @@ function getOrCreateAudioCtx(): AudioContext | null {
   return _audioCtx;
 }
 
+// ── Retry play ────────────────────────────────────────────────────────────────
+// Annulla il timer di retry attivo (chiamato su reset/routing-change).
+
+function cancelPlayRetry(): void {
+  if (_playRetryTimer !== null) {
+    clearTimeout(_playRetryTimer);
+    _playRetryTimer = null;
+  }
+}
+
+/**
+ * Prova el.play() e, se fallisce, ritenta ogni `delayMs` ms per `attemptsLeft` volte.
+ * Utile su iOS quando primeRemoteAudio() non ha ancora completato al momento
+ * dell'arrivo del primo remote stream (race condition nel setup della chiamata).
+ */
+function schedulePlayRetry(el: HTMLAudioElement, delayMs: number, attemptsLeft: number): void {
+  cancelPlayRetry();
+  if (attemptsLeft <= 0 || !_currentStream) return;
+  _playRetryTimer = setTimeout(() => {
+    _playRetryTimer = null;
+    if (!_currentStream) return; // chiamata terminata nel frattempo
+    void el.play()
+      .then(() => console.info('[remoteAudio] ✓ retry el.play() OK (tentativi rimasti=%d)', attemptsLeft))
+      .catch(() => schedulePlayRetry(el, delayMs, attemptsLeft - 1));
+  }, delayMs);
+}
+
 // ── Routing ───────────────────────────────────────────────────────────────────
 
 function applyRouting(): void {
   const el = getEl();
   if (!el) return;
 
+  cancelPlayRetry();
+
   // Nessuno stream → silenzia tutto
   if (!_currentStream) {
-    _sourceNode?.disconnect();
-    _sourceNode = null;
     el.srcObject = null;
     el.pause();
+    console.log('[remoteAudio] applyRouting: nessun stream — in attesa');
     return;
   }
 
-  if (_speakerMode) {
-    // ── Vivavoce: <audio>.srcObject → speaker ────────────────────────────────
-    _sourceNode?.disconnect();
-    _sourceNode = null;
+  const hasSinkId = typeof (el as HTMLAudioElement & { setSinkId?: unknown }).setSinkId === "function";
+  console.log('[remoteAudio] applyRouting: speakerMode=%s hasSinkId=%s elMuted=%s volume=%s',
+    _speakerMode, hasSinkId, el.muted, el.volume);
+
+  // Garantisce che l'elemento non sia mai muto
+  el.muted  = false;
+  el.volume = 1;
+
+  if (_speakerMode || !hasSinkId) {
+    // ── Speaker  ─  OPPURE  ─  iOS/Safari (no setSinkId) ────────────────────
+    //
+    // iOS con getUserMedia attivo (PlayAndRecord): il <audio> element va al
+    // receiver (auricolare) per default. Il pulsante vivavoce su iOS non
+    // cambia il routing perché non esistono web API per forzare lo speaker
+    // in PlayAndRecord senza setSinkId. L'audio viene comunque riprodotto. ✓
+    //
+    // Chrome speaker mode: <audio> → default output device.
     if (el.srcObject !== _currentStream) el.srcObject = _currentStream;
-    void el.play().catch(() => {});
 
-    // Chrome: resetta eventuale setSinkId verso earpiece
-    const elS = el as HTMLAudioElement & { setSinkId?: (id: string) => Promise<void> };
-    if (typeof elS.setSinkId === "function") {
-      void elS.setSinkId("").catch(() => {});
+    void el.play()
+      .then(() => console.info('[remoteAudio] ✓ el.play() OK (speaker/iOS path)'))
+      .catch((err) => {
+        console.warn('[remoteAudio] el.play() FAILED (attempt 1):', err, '— retry ogni 400ms');
+        // Retry progressivo: primeRemoteAudio potrebbe non aver ancora sbloccato l'elemento
+        schedulePlayRetry(el, 400, 6); // max 2.4s di tentativi
+      });
+
+    if (hasSinkId && !_speakerMode) {
+      // questo ramo non si raggiunge (hasSinkId=false in iOS), ma è sicuro lasciarlo
+    } else if (hasSinkId && _speakerMode) {
+      // Chrome speaker: reset eventuale setSinkId verso earpiece
+      const elS = el as HTMLAudioElement & { setSinkId?: (id: string) => Promise<void> };
+      void elS.setSinkId!("").catch(() => {});
     }
+
   } else {
-    // ── Auricolare ────────────────────────────────────────────────────────────
-    const elS = el as HTMLAudioElement & { setSinkId?: (id: string) => Promise<void> };
+    // ── Auricolare su Chrome/Edge (hasSinkId=true, speakerMode=false) ────────
+    if (el.srcObject !== _currentStream) el.srcObject = _currentStream;
 
-    if (typeof elS.setSinkId === "function") {
-      // Chrome Android / Desktop: cerca device "earpiece" o "communications"
-      if (el.srcObject !== _currentStream) el.srcObject = _currentStream;
-      void el.play().catch(() => {});
-      void (async () => {
-        try {
-          const devices = await navigator.mediaDevices.enumerateDevices();
-          const earpiece = devices.find(
-            (d) =>
-              d.kind === "audiooutput" &&
-              (d.label.toLowerCase().includes("earpiece") ||
-                d.label.toLowerCase().includes("communications") ||
-                d.label.toLowerCase().includes("auricolare")),
-          );
-          if (earpiece) await elS.setSinkId!(earpiece.deviceId);
-        } catch { /* non-critico */ }
-      })();
-    } else {
-      // iOS Safari: AudioContext.destination → auricolare (quando getUserMedia è attivo
-      // iOS mappa automaticamente il destination all'auricolare in contesto chiamata)
-      el.srcObject = null;
-      el.pause();
-      const ctx = getOrCreateAudioCtx();
-      if (ctx && ctx.state !== "closed") {
-        if (ctx.state === "suspended") void ctx.resume();
-        _sourceNode?.disconnect();
-        _sourceNode = ctx.createMediaStreamSource(_currentStream);
-        _sourceNode.connect(ctx.destination);
-      } else {
-        // Fallback: audio element (potrebbe rimanere su speaker)
-        el.srcObject = _currentStream;
-        void el.play().catch(() => {});
+    void (async () => {
+      try {
+        await el.play();
+        console.info('[remoteAudio] ✓ earpiece el.play() OK');
+      } catch (err) {
+        console.warn('[remoteAudio] earpiece el.play() FAILED:', err);
+        schedulePlayRetry(el, 400, 4);
+        return;
       }
-    }
+      try {
+        const elS = el as HTMLAudioElement & { setSinkId?: (id: string) => Promise<void> };
+        const devices = await navigator.mediaDevices.enumerateDevices();
+        const earpiece = devices.find(
+          (d) =>
+            d.kind === "audiooutput" &&
+            (d.label.toLowerCase().includes("earpiece") ||
+              d.label.toLowerCase().includes("communications") ||
+              d.label.toLowerCase().includes("auricolare")),
+        );
+        if (earpiece) {
+          await elS.setSinkId!(earpiece.deviceId);
+          console.info('[remoteAudio] ✓ setSinkId → earpiece device %s', earpiece.label);
+        } else {
+          console.log('[remoteAudio] nessun earpiece device trovato — default output');
+        }
+      } catch (e) { console.warn('[remoteAudio] setSinkId error:', e); }
+    })();
   }
 }
 
 // ── API pubblica ──────────────────────────────────────────────────────────────
 
 /**
- * Chiama DURANTE un user gesture (tap su "Accetta" / "Chiama").
- * Sblocca <audio> element E AudioContext su iOS Safari.
+ * Chiama DURANTE (o immediatamente dopo) un user gesture E DOPO getUserMedia().
+ * Sblocca l'<audio> element per iOS Safari (autoplay policy).
+ * Su iOS: chiamare DOPO getUserMedia() per essere nella sessione PlayAndRecord corretta.
  */
 export async function primeRemoteAudio(): Promise<void> {
+  console.log('[remoteAudio] primeRemoteAudio() start');
   const el = getEl();
   if (el) {
+    el.muted  = false;
     const prev = el.volume;
     el.volume = 0;
-    try { await el.play(); el.pause(); } catch { /* ignora */ }
+    try {
+      await el.play();
+      el.pause();
+      console.info('[remoteAudio] ✓ primeRemoteAudio: el primed OK');
+    } catch (err) {
+      console.warn('[remoteAudio] primeRemoteAudio: el.play() failed (ok se fuori gesture):', err);
+    }
     el.currentTime = 0;
     el.volume = prev > 0 ? prev : 1;
   }
-  // AudioContext deve essere creato/ripreso durante un gesture
+  // AudioContext: usato solo su Chrome/Edge — su iOS è inaffidabile dopo getUserMedia
   const ctx = getOrCreateAudioCtx();
+  console.log('[remoteAudio] primeRemoteAudio: AudioContext state=%s', ctx?.state ?? 'null');
   if (ctx?.state === "suspended") {
-    try { await ctx.resume(); } catch { /* ignora */ }
+    try {
+      await ctx.resume();
+      console.info('[remoteAudio] ✓ primeRemoteAudio: AudioContext resumed');
+    } catch (err) {
+      console.warn('[remoteAudio] primeRemoteAudio: ctx.resume() failed:', err);
+    }
   }
 }
 
@@ -140,34 +202,41 @@ export async function primeRemoteAudio(): Promise<void> {
  * Chiamato quando il remoteStream WebRTC arriva (ontrack).
  */
 export function setRemoteStream(stream: MediaStream | null): void {
+  console.log('[remoteAudio] setRemoteStream: stream=%s tracks=%s',
+    !!stream, stream?.getAudioTracks().length ?? 0);
+  if (stream) {
+    const audioTracks = stream.getAudioTracks();
+    audioTracks.forEach((t) =>
+      console.log('[remoteAudio]   remoteAudioTrack id=%s enabled=%s muted=%s readyState=%s',
+        t.id, t.enabled, t.muted, t.readyState));
+  }
   _currentStream = stream;
-  _sourceNode?.disconnect();
-  _sourceNode = null;
   applyRouting();
 }
 
 /**
  * Imposta la modalità audio:
+ *   true  = vivavoce / speaker
  *   false = auricolare (default per chiamate audio)
- *   true  = vivavoce (default per videochiamate)
  * Applica immediatamente il routing anche se lo stream è già attivo.
+ * NOTA: su iOS senza setSinkId, entrambe le modalità usano <audio> element;
+ * il routing fisico è controllato dall'audio session iOS (PlayAndRecord → receiver).
  */
 export function setSpeakerMode(enabled: boolean): void {
   _speakerMode = enabled;
+  console.log('[remoteAudio] setSpeakerMode: %s', enabled);
   applyRouting();
 }
 
 /** Resetta tutto a fine chiamata. */
 export function resetRemoteAudio(): void {
-  _sourceNode?.disconnect();
-  _sourceNode = null;
+  cancelPlayRetry();
   _currentStream = null;
-  _speakerMode = true;
+  _speakerMode   = true;
   const el = getEl();
   if (el) {
     el.srcObject = null;
     el.pause();
-    // Resetta sinkId su Chrome
     const elS = el as HTMLAudioElement & { setSinkId?: (id: string) => Promise<void> };
     if (typeof elS.setSinkId === "function") void elS.setSinkId("").catch(() => {});
   }

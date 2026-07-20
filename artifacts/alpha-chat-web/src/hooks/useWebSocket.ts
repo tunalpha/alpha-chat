@@ -90,7 +90,7 @@ export function useWebSocket(accessToken: string | null) {
     if (!accessToken) return;
 
     function connect(reason = "unknown") {
-      console.log('[DIAG-WS] connect() chiamato, reason=', reason, 'mounted=', mountedRef.current);
+      console.log('[WS] connect() reason=' + reason + ' mounted=' + mountedRef.current);
       if (!mountedRef.current) return;
 
       // CRITICAL FIX: leggi SEMPRE il token fresco da localStorage, non la prop React.
@@ -104,16 +104,17 @@ export function useWebSocket(accessToken: string | null) {
       // Il prop `accessToken` resta nella dipendenza di useEffect SOLO come gate
       // binario (login presente / logout) — non come sorgente del token per la WS auth.
       const freshToken = getAccessToken();
-      console.log('[DIAG-WS] getAccessToken() =', freshToken ? 'presente (' + freshToken.substring(0, 12) + '...)' : 'NULL');
       if (!freshToken) {
-        // Token non disponibile (es. durante il refresh) — riprova dopo il backoff.
-        console.log('[DIAG-WS] token null → backoff', reconnectDelay.current, 'ms');
+        const delay = reconnectDelay.current;
+        console.log('[WS] token null → reconnect scheduled delay=' + delay + 'ms');
         reconnectTimer.current = setTimeout(() => {
-          reconnectDelay.current = Math.min(reconnectDelay.current * 2, 30_000);
+          reconnectDelay.current = Math.min(delay * 2, 30_000);
+          console.log('[WS] reconnect started (no-token) — nextDelay=' + reconnectDelay.current + 'ms');
           connect("backoff-no-token");
-        }, reconnectDelay.current);
+        }, delay);
         return;
       }
+      console.log('[WS] token ok (' + freshToken.substring(0, 12) + '...) — apertura WebSocket');
 
       const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
       const ws = new WebSocket(`${protocol}//${window.location.host}/api/ws`);
@@ -121,9 +122,9 @@ export function useWebSocket(accessToken: string | null) {
 
       ws.onopen = () => {
         if (!mountedRef.current) { ws.close(); return; }
-        console.log('[DIAG-WS] onopen → invio auth');
-        // Usa il token fresco letto sopra — non il prop chiuso nello useEffect.
+        console.log('[WS] onopen — connessione TCP stabilita');
         ws.send(JSON.stringify({ type: "auth", payload: { token: freshToken } }));
+        console.log('[WS] auth sent — token=' + freshToken.substring(0, 12) + '...');
         reconnectDelay.current = 1000; // reset backoff su connessione riuscita
       };
 
@@ -133,17 +134,20 @@ export function useWebSocket(accessToken: string | null) {
 
         // Handle ping → pong
         if (event.type === "ping") {
+          console.log('[WS] ping received — invio pong');
           ws.send(JSON.stringify({ type: "pong" }));
           return;
         }
 
         if (event.type === "auth.ok") {
+          console.log('[WS] auth.ok ricevuto — WS autenticata e pronta');
           if (mountedRef.current) setConnected(true);
 
           // Flush coda: consegna gli eventi accodati durante la disconnessione,
           // scartando quelli scaduti (oltre QUEUE_TTL_MS).
           const now = Date.now();
           const pending = pendingEventsRef.current.splice(0);
+          if (pending.length > 0) console.log('[WS] flush coda — eventi in coda:', pending.length);
           for (const { data, enqueuedAt } of pending) {
             if (now - enqueuedAt < QUEUE_TTL_MS) {
               ws.send(JSON.stringify(data));
@@ -158,18 +162,21 @@ export function useWebSocket(accessToken: string | null) {
       };
 
       ws.onclose = (ev) => {
-        console.log('[DIAG-WS] onclose — code=', ev.code, 'reason=', ev.reason || '(none)');
+        console.log('[WS] onclose — code=' + ev.code + ' reason=' + (ev.reason || '(none)') + ' wasClean=' + ev.wasClean);
         if (mountedRef.current) setConnected(false);
         if (!mountedRef.current) return;
+        const delay = reconnectDelay.current;
+        console.log('[WS] reconnect scheduled — delay=' + delay + 'ms');
         // Exponential backoff reconnect
         reconnectTimer.current = setTimeout(() => {
-          reconnectDelay.current = Math.min(reconnectDelay.current * 2, 30_000);
+          reconnectDelay.current = Math.min(delay * 2, 30_000);
+          console.log('[WS] reconnect started — nextDelay=' + reconnectDelay.current + 'ms');
           connect("backoff-onclose");
-        }, reconnectDelay.current);
+        }, delay);
       };
 
-      ws.onerror = () => {
-        console.log('[DIAG-WS] onerror → close');
+      ws.onerror = (ev) => {
+        console.log('[WS] onerror — type=' + ev.type);
         ws.close();
       };
     }
@@ -181,20 +188,21 @@ export function useWebSocket(accessToken: string | null) {
     // riconnessione immediata, cancellando qualsiasi timer di backoff in corso.
     function handleVisibilityChange(): void {
       if (!mountedRef.current || document.hidden) return;
-      // Se il socket è già aperto o in fase di handshake, non fare nulla.
       const ws = wsRef.current;
       const state = ws?.readyState ?? -1;
-      console.log('[DIAG-WS] visibilitychange → foreground, ws.readyState=', state);
+      const stateLabel = ['CONNECTING','OPEN','CLOSING','CLOSED'][state] ?? ('?'+state);
+      console.log('[WS] visibilitychange → foreground, readyState=' + stateLabel + ' (' + state + ')');
       if (ws && (ws.readyState === WebSocket.OPEN || ws.readyState === WebSocket.CONNECTING)) {
-        console.log('[DIAG-WS] visibilitychange → WS già attiva, nessuna azione');
+        console.log('[WS] visibilitychange → WS già attiva, nessuna azione');
         return;
       }
       // Cancella il backoff in corso e riprova subito.
       if (reconnectTimer.current) {
         clearTimeout(reconnectTimer.current);
         reconnectTimer.current = null;
+        console.log('[WS] visibilitychange → timer backoff annullato, riconnessione immediata');
       }
-      reconnectDelay.current = 1_000; // reset backoff: il foreground è un fresh start
+      reconnectDelay.current = 1_000;
       connect("visibilitychange");
     }
     document.addEventListener("visibilitychange", handleVisibilityChange);

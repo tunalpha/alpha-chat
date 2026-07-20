@@ -1,4 +1,5 @@
 import { Router } from "express";
+import mongoose from "mongoose";
 import { authenticate } from "../../middleware/authenticate.middleware";
 import { validate } from "../../middleware/validate.middleware";
 import { UsernameParamSchema, UpdateMeSchema } from "../../validation/user.schemas";
@@ -21,6 +22,11 @@ import {
   unblockUser,
   listBlocked,
 } from "../../controllers/block.controller";
+import { ConversationMemberRepository } from "../../repositories/conversation-member.repository";
+import { wsManager } from "../../lib/ws-manager";
+import { successResponse } from "../../utils/response";
+
+const memberRepo = new ConversationMemberRepository();
 
 const router = Router();
 
@@ -74,6 +80,29 @@ router.post("/:userId/block", validate("params", BlockUserParamSchema), blockUse
 
 /** DELETE /api/v1/users/:userId/block */
 router.delete("/:userId/block", validate("params", BlockUserParamSchema), unblockUser);
+
+// ---------------------------------------------------------------------------
+// Presenza — Sprint 27+
+// ---------------------------------------------------------------------------
+
+/**
+ * GET /api/v1/users/me/presence/contacts
+ * Ritorna gli user_id dei contatti attualmente online.
+ * Usato dal client al (ri)connessione WS per ottenere lo stato iniziale senza
+ * dipendere dal timing degli eventi presence.online inviati dal server.
+ */
+router.get("/me/presence/contacts", async (req, res, next) => {
+  try {
+    const userId = req.user!.userId;
+    const contactIds = await memberRepo.listContactUserIds(
+      new mongoose.Types.ObjectId(userId),
+    );
+    const online_user_ids = contactIds.filter((id) => wsManager.isOnline(id));
+    res.json(successResponse({ online_user_ids }));
+  } catch (err) {
+    next(err);
+  }
+});
 
 // ---------------------------------------------------------------------------
 // Profilo pubblico — deve stare DOPO le route /me/* per evitare conflitti

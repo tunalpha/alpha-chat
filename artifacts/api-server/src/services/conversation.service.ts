@@ -375,8 +375,8 @@ export async function markConversationRead(
 
       if (barMessages.length === 0) return;
 
-      // ⏱ Attendi 10s — il destinatario ha il tempo di leggere prima della distruzione
-      await new Promise<void>((res) => setTimeout(res, 10_000));
+      // ⏱ Attendi 5s — il destinatario ha il tempo di leggere prima della distruzione
+      await new Promise<void>((res) => setTimeout(res, 5_000));
 
       for (const msg of barMessages) {
         // Hard delete del documento

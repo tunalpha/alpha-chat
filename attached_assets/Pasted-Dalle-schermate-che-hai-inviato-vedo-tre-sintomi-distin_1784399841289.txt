@@ -1,0 +1,75 @@
+Dalle schermate che hai inviato vedo tre sintomi distinti, e messi insieme indicano che probabilmente c’è ancora un problema nella gestione dell’identità Signal, non solo nella UI.
+
+1. Il numero di sicurezza è cambiato e chiede la verifica
+
+Nella prima schermata compare:
+
+Non ancora verificata
+
+e il numero di sicurezza è diverso.
+
+Questo è normale solo se almeno una delle due Identity Key è cambiata. Può succedere se:
+
+* hai reinstallato l’app (e la tua IK è cambiata), oppure
+* l’ha reinstallata Cricco, oppure
+* il client sta pubblicando una nuova Identity Key ad ogni accesso (questo sarebbe un bug).
+
+2. Ad ogni accesso richiede di nuovo la verifica
+
+Questo invece non è normale.
+
+Se premi “Segna come verificata”, quella verifica dovrebbe rimanere memorizzata localmente.
+
+Se ad ogni login torna a “Non ancora verificata”, significa che probabilmente accade una di queste cose:
+
+* la verifica del contatto non viene salvata in IndexedDB;
+* oppure viene salvata ma persa ad ogni riavvio;
+* oppure il fingerprint cambia davvero ad ogni accesso.
+
+Quest’ultimo è il caso più grave.
+
+3. Offline → Online appena apri la chat
+
+Questo comportamento è quasi certamente separato dalla crittografia.
+
+Da quello che descrivi:
+
+* entri nella chat;
+* il contatto risulta offline;
+* dopo uno o due secondi diventa online;
+* arrivano i messaggi.
+
+Sembra semplicemente che la connessione WebSocket venga ristabilita quando apri la conversazione. Non è necessariamente un bug critico, ma va verificato se il WebSocket dovrebbe restare connesso anche mentre sei nella lista chat.
+
+⸻
+
+Quello che farei verificare subito all’agente
+
+Gli chiederei di rispondere a queste tre domande con i log:
+
+1. La Identity Key fingerprint è identica ad ogni login?
+    * Se cambia, c’è un bug grave.
+    * Se resta uguale, il problema è altrove.
+2. Il Safety Number viene ricalcolato ad ogni login?
+    * Oppure cambia perché cambia davvero la Identity Key?
+3. Lo stato “verified” viene persistito?
+    * Dove viene salvato?
+    * IndexedDB?
+    * MongoDB?
+    * LocalStorage?
+    * Perché viene perso?
+
+⸻
+
+Quello che mi preoccupa di più
+
+Il fatto che ogni accesso ti chieda di verificare di nuovo il numero di sicurezza.
+
+Questo non dovrebbe accadere se:
+
+* la tua Identity Key è stabile;
+* quella di Cricco è stabile.
+
+Quindi prima di considerare chiusa la parte Signal, farei verificare con un log se il fingerprint della tua Identity Key è esattamente lo stesso tra due login consecutivi senza reinstallare l’app.
+
+Se è sempre identico, il problema è solo nella persistenza dello stato “verificato”. Se invece cambia, allora c’è ancora un bug nella gestione dell’Identity Key.

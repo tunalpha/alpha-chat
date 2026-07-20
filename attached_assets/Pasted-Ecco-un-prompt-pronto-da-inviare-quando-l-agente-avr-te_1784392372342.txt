@@ -1,0 +1,256 @@
+Ecco un prompt pronto da inviare quando l’agente avrà terminato il lavoro corrente.
+
+⸻
+
+PROMPT — Sessione persistente PWA (NO logout) per Alpha Chat
+
+⚠️ VINCOLO ASSOLUTO
+
+NON TOCCARE la logica della messaggistica.
+
+Dopo settimane di debugging è stata finalmente stabilizzata.
+
+È vietato modificare:
+
+* Signal Protocol
+* encrypt/decrypt
+* Session Store
+* Identity Keys
+* PreKeys
+* BAR 🔥
+* requestPaginated()
+* Auth dei messaggi
+* WebSocket messaggi
+* ChatPage
+* handleSend()
+* handleVoiceSend()
+* handleFilePick()
+* handleForwardTo()
+* typing
+* Conversation Store
+* CallContext (salvo bug critici)
+* WebRTC
+* notifiche messaggi già funzionanti
+
+L’obiettivo è esclusivamente rendere la PWA persistente.
+
+⸻
+
+OBIETTIVO
+
+L’utente deve effettuare il login una sola volta.
+
+Dopo l’installazione della PWA dalla schermata Home:
+
+* deve rimanere autenticato per mesi;
+* non deve perdere la sessione se iOS sospende la PWA;
+* non deve essere disconnesso dopo ore o giorni;
+* deve riaprire Alpha Chat direttamente nella chat.
+
+Comportamento tipo:
+
+* WhatsApp
+* Telegram
+* Signal
+
+⸻
+
+PRIMA DI SCRIVERE CODICE
+
+Analizzare completamente l’attuale gestione della sessione.
+
+Produrre una Root Cause Analysis.
+
+Individuare esattamente perché la PWA effettua il logout.
+
+⸻
+
+ANALISI OBBLIGATORIA
+
+Verificare:
+
+Token
+
+Dove viene salvato:
+
+* Access Token
+* Refresh Token
+
+Verificare se sono conservati:
+
+* solo in memoria
+* localStorage
+* IndexedDB
+* Cookie HttpOnly
+
+⸻
+
+Refresh
+
+Verificare:
+
+* durata Access Token
+* durata Refresh Token
+* rotazione token
+* revoca
+* retry
+
+⸻
+
+Startup PWA
+
+Alla riapertura della PWA verificare il flusso:
+
+PWA Start
+↓
+recupero refresh token
+↓
+POST /auth/refresh
+↓
+nuovo access token
+↓
+inizializza Signal
+↓
+apre websocket
+↓
+carica chat
+
+Mai mostrare il login se il refresh token è valido.
+
+⸻
+
+Logout
+
+Analizzare tutti i punti dove viene chiamato:
+
+clearAuth()
+
+logout()
+
+removeTokens()
+
+resetSession()
+
+storage.clear()
+
+localStorage.clear()
+
+indexedDB.delete()
+
+sessionStorage.clear()
+
+Verificare se vengono eseguiti dopo:
+
+401
+
+errore websocket
+
+timeout
+
+errore fetch
+
+refresh fallito
+
+chiusura browser
+
+background iOS
+
+⸻
+
+iOS PWA
+
+Analizzare il comportamento quando:
+
+* iOS sospende la PWA
+* memoria liberata
+* schermo spento
+* riapertura dopo ore
+
+Verificare che la sessione venga ricostruita automaticamente.
+
+⸻
+
+ARCHITETTURA DA SEGUIRE
+
+Utilizzare questo flusso:
+
+PWA Start
+↓
+Init Session
+↓
+Refresh Token
+↓
+Nuovo Access Token
+↓
+Init Signal
+↓
+Init Push
+↓
+Connect WebSocket
+↓
+Carica Conversazioni
+↓
+Ready
+
+Signal non deve inizializzarsi prima dell’autenticazione.
+
+⸻
+
+NOTIFICHE PUSH
+
+Preparare la base per le Push.
+
+La PWA deve:
+
+* mantenere la subscription
+* riutilizzarla dopo il refresh
+* non richiedere nuovi permessi ad ogni apertura
+
+Senza ancora implementare il sistema Push.
+
+Solo preparare l’architettura.
+
+⸻
+
+PERFORMANCE
+
+Il refresh della sessione deve essere completamente trasparente.
+
+Mai:
+
+* bloccare UI
+* perdere websocket
+* perdere Signal
+* perdere chat
+* ricaricare inutilmente le conversazioni
+
+⸻
+
+MODIFICHE
+
+Prima di modificare qualsiasi file:
+
+elencare:
+
+* file modificati
+* motivo
+* impatto
+* perché non possono introdurre regressioni nella messaggistica
+
+⸻
+
+OBIETTIVO FINALE
+
+Alpha Chat installata come PWA deve comportarsi come una vera app:
+
+* login una sola volta;
+* sessione persistente;
+* riapertura immediata;
+* nessun logout indesiderato;
+* base pronta per notifiche push future.
+
+Non iniziare subito a scrivere codice. Prima completare l’analisi tecnica e la Root Cause Analysis, poi proporre il piano di implementazione.
+
+⸻
+
+Per quanto riguarda il “tenerlo in memoria”: non posso conservarlo automaticamente per una conversazione futura a meno che tu non mi chieda esplicitamente di salvarlo come memoria permanente. Se vuoi che lo ricordi anche nelle prossime chat, posso farlo.

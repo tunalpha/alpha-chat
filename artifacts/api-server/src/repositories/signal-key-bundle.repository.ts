@@ -147,7 +147,7 @@ export async function appendOneTimePreKeys(
   userId: mongoose.Types.ObjectId,
   deviceId: string,
   keys: Array<{ keyId: number; publicKey: string }>,
-): Promise<void> {
+): Promise<boolean> {
   const otpks: IOneTimePreKey[] = keys.map((k) => ({
     key_id: k.keyId,
     public_key: k.publicKey,
@@ -155,13 +155,14 @@ export async function appendOneTimePreKeys(
     consumed_at: null,
   }));
 
-  await SignalKeyBundleModel.updateOne(
+  const result = await SignalKeyBundleModel.updateOne(
     { user_id: userId, device_id: deviceId },
     {
       $push: { one_time_pre_keys: { $each: otpks } },
       $inc: { otpk_count: otpks.length },
     },
   );
+  return result.matchedCount > 0;
 }
 
 // ---------------------------------------------------------------------------
@@ -194,13 +195,17 @@ export async function rotateSignedPreKey(
 
 export async function getOtpkCount(
   userId: mongoose.Types.ObjectId,
-): Promise<number> {
+  deviceId: string,
+): Promise<{ otpkCount: number; bundleExists: boolean }> {
   const doc = await SignalKeyBundleModel
-    .findOne({ user_id: userId })
+    .findOne({ user_id: userId, device_id: deviceId })
     .select("otpk_count")
     .lean<{ otpk_count: number }>()
     .exec();
-  return doc?.otpk_count ?? 0;
+  return {
+    otpkCount: doc?.otpk_count ?? 0,
+    bundleExists: doc != null,
+  };
 }
 
 export async function hasBundleForUser(
@@ -289,4 +294,22 @@ export async function deleteBundleForDevice(
 ): Promise<boolean> {
   const result = await SignalKeyBundleModel.deleteOne({ user_id: userId, device_id: deviceId });
   return result.deletedCount > 0;
+}
+
+/**
+ * Sprint 28 — auto-cleanup migrazione IK.
+ * Elimina i bundle stale di un utente identificati per device_id.
+ * Chiamato da uploadKeyBundle quando l'utente ha già un blob IK e carica
+ * un nuovo bundle con IK diversa da quelli precedenti.
+ */
+export async function deleteBundlesByDeviceIds(
+  userId: mongoose.Types.ObjectId,
+  deviceIds: string[],
+): Promise<number> {
+  if (deviceIds.length === 0) return 0;
+  const result = await SignalKeyBundleModel.deleteMany({
+    user_id: userId,
+    device_id: { $in: deviceIds },
+  });
+  return result.deletedCount;
 }

@@ -19,7 +19,7 @@ import { logAuditEvent } from "../lib/audit";
 import { logger } from "../lib/logger";
 import mongoose from "mongoose";
 
-const REFRESH_TOKEN_TTL_DAYS = 30;
+const REFRESH_TOKEN_TTL_DAYS = 90;
 const REFRESH_TOKEN_PREFIX = "rt_";
 
 // ---------------------------------------------------------------------------

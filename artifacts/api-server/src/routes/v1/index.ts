@@ -61,4 +61,8 @@ v1Router.use("/admin", adminRoutes);
 import signalAuditRoutes from "./signal-audit.routes";
 v1Router.use("/signal/audit", signalAuditRoutes);
 
+// Web Push Notifications — completamente separato dalla messaggistica
+import pushRoutes from "./push.routes";
+v1Router.use("/push", pushRoutes);
+
 export default v1Router;

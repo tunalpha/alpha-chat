@@ -13,10 +13,10 @@ const GCM_TAG_BYTES = 16;
 
 // Limiti per tipo MIME (plaintext max + GCM tag)
 const LIMITS: Record<string, number> = {
-  audio:    5  * 1024 * 1024 + GCM_TAG_BYTES,  // 5 MB plaintext
-  image:    10 * 1024 * 1024 + GCM_TAG_BYTES,  // 10 MB plaintext
-  video:    15 * 1024 * 1024 + GCM_TAG_BYTES,  // 15 MB plaintext
-  document: 10 * 1024 * 1024 + GCM_TAG_BYTES,  // 10 MB plaintext (application/*, text/*)
+  audio:    25  * 1024 * 1024 + GCM_TAG_BYTES,  //  25 MB plaintext
+  image:    50  * 1024 * 1024 + GCM_TAG_BYTES,  //  50 MB plaintext
+  video:    100 * 1024 * 1024 + GCM_TAG_BYTES,  // 100 MB plaintext
+  document: 50  * 1024 * 1024 + GCM_TAG_BYTES,  //  50 MB plaintext (application/*, text/*)
 };
 
 const ALLOWED_MIME_PREFIXES = ["audio/", "image/", "video/", "application/", "text/plain"];

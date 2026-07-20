@@ -561,6 +561,14 @@ function SidebarMenu({
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/><line x1="5" y1="8" x2="5" y2="16" strokeDasharray="2 2"/></svg>
               {t("settings.logoutAll")}
             </button>
+            <button
+              className="user-menu-item user-menu-nuclear"
+              onClick={() => { setOpen(false); onNavigate("nuclear-destroy"); }}
+            >
+              ☢
+              Protocollo Nucleare
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14" className="menu-chevron"><polyline points="9 18 15 12 9 6"/></svg>
+            </button>
           </div>
         </div>
       )}
@@ -571,7 +579,7 @@ function SidebarMenu({
 // ── Main ChatPage ────────────────────────────────────────────────────────────
 export default function ChatPage({ onNavigate }: Props) {
   const { auth, logout, logoutAll } = useAuth();
-  const { connected, on, send: wsSend, sendTypingStart, sendTypingStop } = useWs();
+  const { connected, on, send: wsSend, sendTypingStart, sendTypingStop, onlineUsers } = useWs();
   const { initiateCall } = useCall();
 
   const { t } = useTranslation();
@@ -610,7 +618,6 @@ export default function ChatPage({ onNavigate }: Props) {
   // voice recorder
   const [showVoiceRecorder, setShowVoiceRecorder] = useState(false);
   const [typingUsers, setTypingUsers] = useState<Record<string, Set<string>>>({});
-  const [onlineUsers, setOnlineUsers] = useState<Set<string>>(new Set());
   const [atBottom, setAtBottom] = useState(true);
   // Sprint 21 — Gruppi
   const [showCreateGroup, setShowCreateGroup] = useState(false);
@@ -1064,6 +1071,14 @@ export default function ChatPage({ onNavigate }: Props) {
     setAtBottom(el.scrollHeight - el.scrollTop - el.clientHeight < threshold);
   }
 
+  // ── Typing cleanup su disconnessione WS ────────────────────────────────
+  // Se il WS cade, gli eventi typing.stop potrebbero non arrivare mai →
+  // il pallino di scrittura rimarrebbe bloccato. Azzera tutti i typing
+  // indicator quando la connessione cade.
+  useEffect(() => {
+    if (!connected) setTypingUsers({});
+  }, [connected]);
+
   // ── WebSocket events ────────────────────────────────────────────────────
   useEffect(() => {
     return on((event: WsEvent) => {
@@ -1127,14 +1142,7 @@ export default function ChatPage({ onNavigate }: Props) {
           });
           break;
         }
-        case "presence.online":
-          setOnlineUsers((prev) => new Set(prev).add(event.payload.user_id));
-          break;
-        case "presence.offline": {
-          const id = event.payload.user_id;
-          setOnlineUsers((prev) => { const s = new Set(prev); s.delete(id); return s; });
-          break;
-        }
+        // presence.online / presence.offline → gestiti in WebSocketContext (sempre montato)
         case "read.receipt": {
           const { conversation_id, read_at } = event.payload;
           setReadReceipts((prev) => {

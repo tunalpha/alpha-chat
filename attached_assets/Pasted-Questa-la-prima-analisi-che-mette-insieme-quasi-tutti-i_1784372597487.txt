@@ -1,0 +1,72 @@
+Questa è la prima analisi che mette insieme quasi tutti i sintomi con un’unica causa osservabile nei log. Però farei una distinzione importante.
+
+Quello che considero ben supportato
+
+Se i log mostrano davvero questa sequenza:
+
+* 401
+* refresh token
+* setAuth()
+* ricreazione del WebSocket
+* OFFLINE
+* nuova connessione che cade dopo 2 secondi
+
+allora c’è quasi certamente un problema nel ciclo di vita del WebSocket e del refresh del token.
+
+Questo spiega molto bene:
+
+* ✅ typing perso;
+* ✅ chiamate che non arrivano o non squillano;
+* ✅ presenza online/offline instabile;
+* ✅ messaggi del mittente che rimangono in stato “sending” o non ricevono l’echo.
+
+Il punto che vorrei verificare
+
+La conclusione:
+
+“Il problema non è Signal”
+
+non è ancora dimostrata solo con questi dati.
+
+Per poterla affermare servirebbe verificare che:
+
+* durante un periodo in cui il WebSocket rimane stabile, non si verifichi mai un [Messaggio non decifrabile].
+
+Perché se anche con un WS stabile compare ancora un errore di decrypt, allora esistono due problemi distinti.
+
+C’è una cosa che mi salta all’occhio
+
+Hai scritto:
+
+Access token scade (15 min TTL)
+
+ma prima hai scritto:
+
+il WS cade ogni 15-75 secondi.
+
+Queste due affermazioni non coincidono.
+
+Quindi chiederei all’agente di chiarire con precisione:
+
+* i 401 avvengono realmente ogni 15 minuti (TTL), e i 15-75 secondi sono solo la durata delle continue riconnessioni successive?
+* oppure il token viene considerato invalido molto prima del TTL?
+
+Questa differenza è fondamentale.
+
+Prima di altri fix
+
+Io chiederei una sola prova conclusiva.
+
+Lascia un utente connesso per 20 minuti e registra una timeline completa:
+
+* ora apertura WS;
+* ora del primo 401;
+* refresh riuscito;
+* nuovo JWT (solo scadenza, non il token);
+* apertura nuovo WS;
+* eventuale chiusura;
+* motivo della chiusura.
+
+Se la timeline conferma questa sequenza, allora ha senso correggere il meccanismo di refresh/WebSocket prima di toccare altro.
+
+Questa è una diagnosi molto più convincente rispetto alle precedenti, ma la confermerei con quella prova temporale prima di dichiararla la causa radice definitiva.

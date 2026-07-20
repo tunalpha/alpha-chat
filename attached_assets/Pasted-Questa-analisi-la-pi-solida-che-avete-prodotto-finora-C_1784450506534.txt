@@ -1,0 +1,74 @@
+Questa analisi è la più solida che avete prodotto finora. C’è però una distinzione importante tra ciò che è dimostrato e ciò che è ancora un’ipotesi.
+
+Quello che mi sembra dimostrato
+
+✅ Dopo il reset del database:
+
+* signal_key_bundles = 0
+* userprekeys = 0
+* i messaggi restano ctype=1
+* il server non possiede più il bundle completo.
+
+E anche questa osservazione è molto credibile:
+
+initSignalKeys() vede isInitialized() == true e quindi non ricarica il bundle sul server.
+
+Questa è una situazione reale che va sistemata indipendentemente dal bug attuale. Se il server perde i dati (come dopo il reset), il client dovrebbe essere in grado di ripubblicare il bundle esistente, senza rigenerare le chiavi.
+
+⸻
+
+Quello che invece è ancora un’ipotesi
+
+La parte:
+
+“Il Double Ratchet su Cricco è permanentemente desincronizzato perché il doppio decrypt lo ha fatto avanzare.”
+
+È una spiegazione plausibile, ma non ancora dimostrata.
+
+Per esserne certi bisognerebbe vedere un errore di libsignal compatibile (ad esempio Bad MAC o un errore di contatore) e verificare che una nuova sessione risolva davvero il problema.
+
+⸻
+
+La modifica che farei comunque
+
+Indipendentemente dal ratchet, questa modifica mi sembra corretta:
+
+In initSignalKeys():
+
+if (IDB inizializzata) {
+    verifica se il bundle esiste sul server
+    se NON esiste:
+        ricarica Identity Key + Signed PreKey + metadata
+        NON rigenerare nulla
+}
+
+Questo rende il sistema resiliente ai reset del database del server.
+
+⸻
+
+Prima di toccare altro
+
+Io farei questo test molto semplice.
+
+Per Cricco soltanto:
+
+1. Cancella completamente lo stato Signal locale (sessioni e chiavi).
+2. Lascia Alpha invariato.
+3. Assicurati che il server abbia di nuovo il bundle di Cricco.
+4. Fai creare una nuova sessione Signal.
+5. Invia un nuovo messaggio.
+
+Se da quel momento Cricco ricomincia a decifrare tutto correttamente, allora avrete una prova molto forte che il problema era davvero nella sessione Signal di Cricco.
+
+⸻
+
+La mia impressione
+
+Siete arrivati molto più vicini alla causa rispetto ai tentativi precedenti.
+
+Vedo due problemi distinti:
+
+1. Bug architetturale: il client non ripristina automaticamente signal_key_bundles dopo un reset del server. Questo va corretto.
+2. Possibile sessione Signal corrotta di Cricco, che va verificata con un test di ricostruzione della sessione invece che con ulteriori modifiche speculative.
+
+Io risolverei prima il punto 1, perché è un difetto oggettivo dell’inizializzazione e migliora la robustezza del sistema anche se non fosse l’unica causa del bug attuale.

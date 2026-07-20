@@ -1,0 +1,57 @@
+Dalla schermata vedo due cose importanti:
+
+1. Il badge “1” è dentro Alpha Chat, quindi il messaggio è arrivato al server e l’app lo vede quando è aperta.
+2. Non c’è alcuna notifica di iOS (banner, suono o schermata di blocco) e nell’elenco chat compare ancora 🔒 Messaggio cifrato invece dell’anteprima.
+
+Quindi il problema non è l’arrivo del messaggio, ma il sistema di notifiche.
+
+Le cause più probabili, in ordine, sono:
+
+1. La Push Subscription non è stata registrata sul backend, quindi il server non sa a quale dispositivo inviare la push.
+2. Il Service Worker non sta ricevendo l’evento push oppure non esegue showNotification().
+3. Il backend invia la push ma il payload è incompleto, quindi iOS non mostra il banner.
+4. L’anteprima è volutamente nascosta: se avete progettato Alpha Chat come Signal, mostrare solo “Nuovo messaggio” o nessuna anteprima può essere una scelta di privacy. Se invece volete vedere il testo, il Service Worker deve ricevere il contenuto del messaggio (o almeno una versione sicura da mostrare).
+
+Io non toccherei altro codice
+
+Chiederei all’agente una diagnosi mirata.
+
+Prompt
+
+BUG CRITICO – PUSH iOS PWA
+
+Sintomi:
+
+* Il messaggio arriva (badge aggiornato nell’app).
+* Nessun banner iOS.
+* Nessun suono.
+* Nessuna notifica nella schermata di blocco.
+
+Analizzare senza modificare Signal o la messaggistica.
+
+Verificare:
+
+1. La subscription Push viene realmente salvata nel database?
+2. Il backend chiama webpush.sendNotification()? Qual è il risultato?
+3. Il Service Worker riceve l’evento push?
+4. self.registration.showNotification() viene chiamato?
+5. La PWA su iPhone ha il permesso Notifiche attivo?
+6. Il payload contiene title, body, icon, badge, data.conversationId?
+
+Fornire una Root Cause Analysis con i log di ogni passaggio.
+
+Una verifica da fare subito sul tuo iPhone
+
+Vai in:
+
+Impostazioni → Notifiche → Alpha Chat
+
+e controlla che siano attivi:
+
+* ✅ Consenti notifiche
+* ✅ Schermata di blocco
+* ✅ Centro notifiche
+* ✅ Banner
+* ✅ Suoni
+
+Dimmi anche se Alpha Chat compare nell’elenco delle app in Impostazioni → Notifiche. Se non compare affatto, significa che la PWA probabilmente non ha ancora ottenuto l’autorizzazione alle notifiche, e questo restringe molto il problema.

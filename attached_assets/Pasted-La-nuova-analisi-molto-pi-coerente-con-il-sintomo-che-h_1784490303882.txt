@@ -1,0 +1,73 @@
+La nuova analisi è molto più coerente con il sintomo che hai osservato.
+
+Il punto fondamentale è questo:
+
+Se ricevi la push, allora il server ha deciso che il destinatario era offline (isOnline() == false).
+
+Se il codice è davvero:
+
+sendToUser(...)
+if (!wsManager.isOnline(toId)) {
+    dispatchToOne(...)
+}
+
+allora la push non dovrebbe essere inviata quando il server considera il client online.
+
+Però c’è una cosa che non torna
+
+Tu mi hai detto:
+
+“Anche con app aperta arriva la notifica ma non compare la chiamata.”
+
+Se per “app aperta” intendi davvero in primo piano (foreground), allora la spiegazione “iOS ha sospeso il WebSocket in background” non basta, perché in foreground il WebSocket dovrebbe già essere riconnesso.
+
+Per questo motivo, non implementerei ancora nessun fix.
+
+Il prossimo passo deve essere solo diagnostico
+
+I log server che stanno aggiungendo sono esattamente quelli che servono. Per ogni chiamata voglio vedere qualcosa del tipo:
+
+[CALL]
+callee=123
+isOnline=false
+connections=0
+sendToUser() -> 0 socket
+push dispatched=true
+
+oppure
+
+[CALL]
+callee=123
+isOnline=true
+connections=1
+socket readyState=OPEN
+sendToUser delivered=1
+
+oppure
+
+isOnline=true
+connections=1
+readyState=CLOSED
+delivered=0
+push=false
+
+Quest’ultimo sarebbe la prova della race descritta nel report.
+
+La domanda più importante
+
+Ti chiedo solo una cosa, perché cambia completamente la diagnosi:
+
+Quando dici “app aperta”, intendi:
+
+1. era visibile sullo schermo, cioè Alpha Chat era già aperta in primo piano?
+
+oppure
+
+2. era semplicemente nel multitasking di iPhone (task switcher), ma non in primo piano?
+
+Questa differenza è fondamentale:
+
+* Se era in primo piano, il problema è quasi certamente nel WebSocket/server.
+* Se era solo nel multitasking, la spiegazione con la sospensione di iOS diventa molto più credibile.
+
+Prima di scrivere altro codice, aspetterei i log del server: sono quelli che diranno con certezza se call.incoming è stato realmente inviato, a quanti socket e con quale stato della connessione.

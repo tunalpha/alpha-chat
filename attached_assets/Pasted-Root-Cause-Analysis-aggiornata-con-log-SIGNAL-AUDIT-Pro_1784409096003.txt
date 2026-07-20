@@ -1,0 +1,77 @@
+Root Cause Analysis — aggiornata con log SIGNAL-AUDIT
+
+Problema 1 — [Messaggio non decifrabile]: causa dimostrata dai log server
+
+Log SIGNAL-AUDIT: sequenza ricostruita
+
+20:43:28 — Cricco (6a5936cf) scarica il bundle di Alice (6a58010c, device 9d3f53c0):
+
+fetchBundle: signedPreKeyId=1, hasOtpk=false, otpkKeyId=null
+Alice aveva zero OTPKs sul server. Cricco stabilisce la sessione usando solo la Signed PreKey.
+
+20:45:48 — Alice scarica i bundle di Cricco (3 device):
+
+dccb9db4: signedPreKeyId=1, hasOtpk=false          ← nessuna OTPK
+98cf59cc: signedPreKeyId=1, hasOtpk=true, otpkId=37
+c7c280bb: signedPreKeyId=1, hasOtpk=true, otpkId=3
+20:45:48 — Alice invia a tutti e 3 i device di Cricco: type:3, type:3, type:3
+
+20:53:22 (× molti) — Alice RICEVE da Cricco, tutti type:3:
+
+dcEntries: [{device_id: "9d3f53c0...", type:3}]
+Tutti i messaggi in arrivo da Cricco sono type:3 = PreKeyBundle. Cricco continua a stabilire nuove sessioni invece di usare quella esistente. Questo succede quando Alice non riesce a decriptare i suoi messaggi e non risponde mai con un messaggio che avanzi il ratchet.
+
+Causa dimostrata: sovrascrittura multi-device in saveIdentity
+
+Quando Alice invia a Cricco, chiama questo codice per ognuno dei 3 device (signal-session.ts:155):
+
+// Per device dccb9db4:
+await store.saveIdentity(recipientUserId, IK_device1);   // scrive identity-remote["cricco_userId"] = IK_1
+// Per device 98cf59cc:
+await store.saveIdentity(recipientUserId, IK_device2);   // SOVRASCRIVE → IK_2
+// Per device c7c280bb:
+await store.saveIdentity(recipientUserId, IK_device3);   // SOVRASCRIVE → IK_3
+Risultato: identity-remote["cricco_userId"] = IK dell'ultimo device (c7c280bb).
+
+Quando Cricco invia da un device qualsiasi (es. dccb9db4 o 98cf59cc), la libreria Signal chiama internamente:
+
+isTrustedIdentity("cricco_userId", IK_device_sending, RECEIVING)
+legge identity-remote["cricco_userId"] = IK_c7c280bb. Se il device mittente non è c7c280bb → mismatch → false → processPreKey lancia eccezione → [Messaggio non decifrabile].
+
+Questo spiega:
+
+Perché TUTTI i messaggi falliscono: basta che Cricco invii da qualunque device diverso dall'ultimo processato
+Perché i messaggi recenti (22:02, 22:03) falliscono: la sovrascrittura è permanente, non dipende dall'età del messaggio
+Perché Cricco continua a inviare type:3: Alice non riesce mai a decriptare, non risponde via nuova sessione, Cricco non avanza il ratchet
+Perché il banner "i nuovi messaggi funzionano" è falso: il banner non testa isTrustedIdentity — è basato su euristiche (es. timestamp dell'ultimo messaggio decifrabile), non sul decrypt effettivo
+Il device dccb9db4 di Cricco con hasOtpk: false suggerisce che anch'esso abbia subito un store.clear() in una sessione precedente e non abbia ricaricato le OTPKs — questo rende il suo IK potenzialmente diverso da quello degli altri device (Sprint 28 shared-IK non ha avuto modo di sincronizzarsi se il device era offline o il blob non era aggiornato).
+
+Per la conferma definitiva, i log [signal:trust] isTrustedIdentity MISMATCH che ho aggiunto a key-store.ts (ora nel working tree ma non ancora deployati) mostrerebbero i fingerprint esatti delle chiavi confrontate.
+
+Problema 2 — Push: solo la prima notifica arriva
+
+Causa: comportamento corretto, non un bug di codice.
+
+// message.service.ts:199
+const offlineIds = memberIds.filter(
+  (id) => id !== senderId && !wsManager.isOnline(id),
+);
+if (offlineIds.length > 0) {
+  PushDispatcher.dispatch(offlineIds, {...});
+}
+Il push viene inviato solo quando il WebSocket è disconnesso. Sequenza reale:
+
+Alice è offline → Cricco invia messaggio → isOnline(Alice) = false → push inviata ✅
+Alice riceve la push → apre la PWA → WebSocket si connette → isOnline(Alice) = true
+Cricco invia altri messaggi → isOnline(Alice) = true → nessuna push (corretto per design)
+Alice vede i messaggi come [Messaggio non decifrabile] — ma questo è il problema Signal, non il push
+Se Alice chiude la PWA e il WebSocket si disconnette, la push successiva verrebbe inviata correttamente. Il problema percepito ("solo la prima arriva") è un effetto collaterale del fatto che la PWA resta tecnicamente "online" (Service Worker mantiene la connessione WS viva brevemente dopo la chiusura).
+
+Il fatto che la prima push sia arrivata conferma che la subscription è registrata correttamente. Il sistema push è funzionante.
+
+Riepilogo
+
+Problema	Causa dimostrata	File	Stato
+[Messaggio non decifrabile] nuovi	saveIdentity(recipientUserId, ...) sovrascrive last-write-wins per utenti multi-device → isTrustedIdentity fallisce per tutti i device tranne l'ultimo	signal-session.ts:155	⚠️ Richiede conferma da browser console
+Push successive assenti	Push inviata solo offline — dopo la prima, WS riconnette → isOnline()=true → no push (comportamento corretto)	message.service.ts:199	✅ Confermato dai log
+Prossimo passo per Signal: caricare la versione con i log [signal:trust] e osservare la console durante la ricezione di un messaggio. Se appare isTrustedIdentity MISMATCH con identifier = cricco_userId e storedIKPrefix ≠ incomingIKPrefix, la causa è confermata.

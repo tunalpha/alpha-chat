@@ -5,7 +5,7 @@
  * file interni del modulo signal/.
  */
 
-export { initSignalKeys, clearSignalKeys, maybeReplenishOtpks } from "./key-manager";
+export { initSignalKeys, clearSignalKeys, maybeReplenishOtpks, runSignalDiagnostic } from "./key-manager";
 
 // ── Sprint 28: IK wrap/unwrap/generate (WebCrypto nativo) ────────────────────
 export {

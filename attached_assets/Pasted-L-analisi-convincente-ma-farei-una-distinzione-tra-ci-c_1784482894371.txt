@@ -1,0 +1,47 @@
+L’analisi è convincente, ma farei una distinzione tra ciò che è dimostrato e ciò che è dedotto.
+
+Quello che i log dimostrano
+
+I log dimostrano che:
+
+* ✅ il messaggio viene salvato nel database;
+* ✅ il server decide che il destinatario è offline;
+* ✅ viene inviata una push notification;
+* ✅ sendToUser() non trova connessioni registrate (!conns) e quindi non invia l’evento WebSocket.
+
+Questo supporta fortemente l’idea che quel messaggio specifico non abbia mai raggiunto il client via WebSocket.
+
+Quello che non è ancora dimostrato
+
+La conclusione:
+
+“WS instabile su iOS”
+
+è plausibile, ma i log mostrano l’effetto, non ancora la causa.
+
+userConnections può essere vuoto per diversi motivi, ad esempio:
+
+* la connessione WebSocket è realmente caduta;
+* il client non si è mai registrato correttamente dopo una riconnessione;
+* il server ha rimosso la connessione troppo presto;
+* il token è scaduto e la registrazione è fallita;
+* il server ha più istanze e la connessione è registrata su un’altra istanza (se l’architettura è distribuita).
+
+I log che hai riportato non permettono ancora di distinguere tra queste possibilità.
+
+Il prossimo passo
+
+Prima di modificare qualsiasi cosa, farei analizzare il ciclo di vita del WebSocket.
+
+Chiederei un report, senza modifiche, che ricostruisca:
+
+1. Quando viene aggiunta una connessione a userConnections.
+2. Quando viene rimossa.
+3. Quali eventi (close, error, heartbeat, timeout, logout) portano alla rimozione.
+4. Se esiste una riconnessione automatica lato client.
+5. Se, dopo una riconnessione, il client si registra nuovamente nel WsManager.
+6. Se il deployment usa una sola istanza del server o più istanze (quest’ultimo punto è fondamentale se c’è scalabilità orizzontale).
+
+Se il sistema gira su una sola istanza e la connessione viene effettivamente rimossa per una chiusura del socket, allora la diagnosi “WebSocket perso → messaggio non consegnato in tempo reale” diventa molto solida. Se invece ci sono più istanze o un problema di registrazione, il fix sarà completamente diverso.
+
+In altre parole: la causa immediata è identificata (sendToUser() non trova connessioni), ma la causa originaria della perdita della connessione WebSocket va ancora confermata prima di intervenire.

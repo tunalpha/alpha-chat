@@ -3,37 +3,21 @@
  * Configurazione Phoenix Code e Recovery Card (autenticato).
  */
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import RecoveryCard from "../components/RecoveryCard";
+import {
+  apiGetPhoenixRecoveryCard,
+  apiSetupPhoenixCode,
+  type PhoenixRecoveryData,
+} from "../lib/api";
 
 interface Props { onBack: () => void; }
-
-interface RecoveryData {
-  username: string;
-  emergencyId: string;
-  hasPhoenixCode: boolean;
-  portalUrl: string;
-}
-
-const BASE = "/api/v1/phoenix";
-
-async function authFetch(path: string, init?: RequestInit): Promise<Response> {
-  const token = localStorage.getItem("alpha-chat-access-token");
-  return fetch(BASE + path, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...init?.headers,
-    },
-  });
-}
 
 type View = "main" | "setup" | "change" | "card";
 
 export default function PhoenixSetupPage({ onBack }: Props) {
   const [view, setView] = useState<View>("main");
-  const [recovery, setRecovery] = useState<RecoveryData | null>(null);
+  const [recovery, setRecovery] = useState<PhoenixRecoveryData | null>(null);
   const [phoenixCode, setPhoenixCode] = useState("");
   const [confirmCode, setConfirmCode] = useState("");
   const [loading, setLoading] = useState(false);
@@ -45,8 +29,8 @@ export default function PhoenixSetupPage({ onBack }: Props) {
 
   async function loadRecovery() {
     try {
-      const res = await authFetch("/recovery-card");
-      if (res.ok) setRecovery(await res.json());
+      const data = await apiGetPhoenixRecoveryCard();
+      setRecovery(data);
     } catch { /* non blocca il render */ }
   }
 
@@ -67,21 +51,13 @@ export default function PhoenixSetupPage({ onBack }: Props) {
     }
     setLoading(true);
     try {
-      const res = await authFetch("/setup", {
-        method: "POST",
-        body: JSON.stringify({ phoenix_code: phoenixCode }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        showFeedback("err", data.error?.message ?? "Errore.");
-        return;
-      }
+      const data = await apiSetupPhoenixCode(phoenixCode);
       showFeedback("ok", `Phoenix Code configurato. Emergency ID: ${data.emergency_id}`);
       setPhoenixCode(""); setConfirmCode("");
       await loadRecovery();
       setView("card");
-    } catch {
-      showFeedback("err", "Errore di connessione.");
+    } catch (err) {
+      showFeedback("err", err instanceof Error ? err.message : "Errore di connessione.");
     } finally {
       setLoading(false);
     }

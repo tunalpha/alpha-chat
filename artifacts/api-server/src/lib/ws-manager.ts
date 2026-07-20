@@ -37,6 +37,30 @@ class WsManager {
   /** Set di userId attualmente in una chiamata attiva (per busy detection) */
   private readonly inCallUsers = new Set<string>();
 
+  /**
+   * Pending call registry: calleeId → payload del call.incoming inviato.
+   * Usato per re-consegnare call.incoming quando il callee si riconnette
+   * (iOS backgrounding, rete temporaneamente assente) prima che il caller
+   * annulli. Scade automaticamente 35 secondi dopo l'offer.
+   */
+  private readonly pendingCalls = new Map<string, { payload: Record<string, unknown>; expiresAt: number }>();
+
+  setPendingCall(calleeId: string, payload: Record<string, unknown>): void {
+    this.pendingCalls.set(calleeId, { payload, expiresAt: Date.now() + 35_000 });
+  }
+
+  clearPendingCall(calleeId: string): void {
+    this.pendingCalls.delete(calleeId);
+  }
+
+  /** Restituisce il payload della chiamata pendente se ancora valida, null altrimenti. */
+  getPendingCall(calleeId: string): Record<string, unknown> | null {
+    const entry = this.pendingCalls.get(calleeId);
+    if (!entry) return null;
+    if (Date.now() > entry.expiresAt) { this.pendingCalls.delete(calleeId); return null; }
+    return entry.payload;
+  }
+
   // ── Registry ────────────────────────────────────────────────────────────
 
   register(conn: ClientConnection): void {

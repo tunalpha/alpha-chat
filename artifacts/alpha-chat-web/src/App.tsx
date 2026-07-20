@@ -34,6 +34,7 @@ import CallSettingsPage from "./pages/CallSettingsPage";
 import AppearancePage from "./pages/AppearancePage";
 import NotificationsPage from "./pages/NotificationsPage";
 import LanguagePage from "./pages/LanguagePage";
+import NuclearDestroyPage from "./pages/NuclearDestroyPage";
 import { useNotifSync } from "./hooks/useNotifSync";
 import { initServiceWorker, requestAndSubscribe as pushSubscribe } from "./lib/pushManager";
 import SignalReinstallBanner from "./components/SignalReinstallBanner";
@@ -59,7 +60,8 @@ export type AppView =
   | "call-settings"
   | "appearance"
   | "notifications-settings"
-  | "language";
+  | "language"
+  | "nuclear-destroy";
 
 /** Controlla se l'URL corrente è la pagina di emergenza (accessibile senza auth). */
 function isEmergencyPath(): boolean {
@@ -138,9 +140,11 @@ function AppContent() {
       if (msg?.type === "push.openConversation" && msg.conversationId) {
         window.dispatchEvent(new CustomEvent("push:open-conversation", { detail: { convId: msg.conversationId } }));
       }
-      // DIAG: push.openCall non ha handler — loggato per conferma diagnosi
       if (msg?.type === "push.openCall") {
-        console.log('[DIAG-CP3] push.openCall ricevuto ma NON gestito — callerId=', msg.callerId);
+        // Il server re-invia call.incoming via WS al callee che si riconnette
+        // (pendingCalls in WsManager). Non c'è nulla da fare qui: IncomingCallModal
+        // è sempre montata e apparirà non appena il WS consegna l'evento.
+        console.log('[WS] push.openCall: callerId=', msg.callerId, '— call.incoming sarà re-consegnato via WS');
       }
     };
     navigator.serviceWorker?.addEventListener("message", onSwMessage);
@@ -188,7 +192,9 @@ function AppContent() {
           case "settings":
             return <SettingsPage onBack={goBack} onNavigate={setView} />;
           case "security":
-            return <SecuritySettingsPage onBack={goSettings} />;
+            return <SecuritySettingsPage onBack={goSettings} onNavigate={setView} />;
+          case "nuclear-destroy":
+            return <NuclearDestroyPage onBack={goSettings} />;
           case "phoenix":
             return <PhoenixSetupPage onBack={goSettings} />;
           case "devices":

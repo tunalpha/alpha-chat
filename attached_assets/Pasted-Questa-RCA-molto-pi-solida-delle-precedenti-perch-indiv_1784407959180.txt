@@ -1,0 +1,105 @@
+Questa RCA è molto più solida delle precedenti perché individua file e modifiche specifiche, ma io non approverei ancora modifiche. Ci sono tre punti con livelli di certezza diversi.
+
+1. Messaggi non decifrabili ⚠️ (priorità massima)
+
+Questa è la parte più critica.
+
+La teoria su:
+
+saveIdentity(userId, ...)
+
+che fa fallire isTrustedIdentity() è plausibile, ma non ancora dimostrata.
+
+Prima di cambiare il codice chiederei una prova con i log:
+
+* valore di identifier passato a isTrustedIdentity();
+* chiavi realmente presenti in identity-remote;
+* Identity Key memorizzata;
+* Identity Key ricevuta;
+* motivo preciso del ritorno false.
+
+Se i log mostrano:
+
+identifier = userId
+storedIK != incomingIK
+
+allora avete trovato la causa.
+
+Se invece isTrustedIdentity() non viene nemmeno chiamata, questa RCA è incompleta.
+
+⸻
+
+2. store.clear() in key-manager.ts 🚨
+
+Questo è il punto che mi preoccupa di più.
+
+Se davvero esiste:
+
+await store.clear();
+
+in caso di mismatch, è un’operazione molto distruttiva.
+
+Non approverei mai un wipe totale basato soltanto su:
+
+currentPub !== blobPub
+
+senza prima dimostrare che il confronto è affidabile.
+
+Prima di qualsiasi wipe bisogna loggare:
+
+* fingerprint locale;
+* fingerprint blob;
+* motivo della differenza.
+
+Solo dopo si può decidere se rigenerare qualcosa.
+
+⸻
+
+3. Audio
+
+Qui invece la spiegazione è convincente.
+
+Se hai trasformato:
+
+await primeRemoteAudio()
+
+in
+
+void primeRemoteAudio()
+
+hai reintrodotto una race condition.
+
+Questo è il candidato più forte della RCA.
+
+Io riporterei semplicemente:
+
+await primeRemoteAudio();
+
+e rifarei il test.
+
+⸻
+
+Push
+
+Anche qui la spiegazione è coerente.
+
+Se la PWA non aveva mai ottenuto:
+
+Notification.permission = granted
+
+subscribe() non poteva funzionare.
+
+requestAndSubscribe() è la soluzione giusta.
+
+⸻
+
+Cosa farei adesso
+
+L’ordine dovrebbe essere:
+
+1. Bloccare immediatamente qualsiasi store.clear() automatico finché non è dimostrato il mismatch.
+2. Ripristinare await primeRemoteAudio() e verificare le chiamate.
+3. Fare il deploy della versione con requestAndSubscribe() e ritestare le push.
+4. Solo dopo indagare definitivamente saveIdentity() con i log.
+
+Il punto 1 è quello che può causare la perdita irreversibile delle sessioni Signal; per questo gli darei la priorità assoluta rispetto agli altri due problemi.

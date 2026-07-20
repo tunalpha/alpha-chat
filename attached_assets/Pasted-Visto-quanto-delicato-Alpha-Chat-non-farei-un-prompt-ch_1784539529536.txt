@@ -1,0 +1,64 @@
+Visto quanto è delicato Alpha Chat, non farei un prompt che chieda di “migliorare tutto”. È il modo più facile per introdurre regressioni.
+
+Io darei un incarico molto preciso, con vincoli rigidi.
+
+Puoi usare questo prompt:
+
+⸻
+
+PROMPT
+
+Esegui un hardening dell’affidabilità di Alpha Chat senza modificare l’architettura esistente e senza introdurre regressioni.
+
+Regole obbligatorie:
+
+* NON modificare Signal Protocol, la crittografia, WebRTC o il database salvo dove strettamente necessario.
+* NON cambiare API pubbliche.
+* NON modificare il flusso di login, chat o chiamate se non richiesto dai punti sotto.
+* Ogni modifica deve essere piccola, isolata e testabile.
+* Dopo ogni fix esegui i test esistenti e aggiungi test solo per il bug corretto.
+* Se una modifica può introdurre regressioni, fermati e descrivi il rischio prima di applicarla.
+
+Priorità (una alla volta):
+
+Fase 1 – Signaling affidabile
+
+* Rendere affidabili call.offer, call.answer, call.reject e call.end.
+* Implementare ACK server→client.
+* Implementare retry automatico solo se manca l’ACK.
+* Deduplicare i messaggi tramite messageId.
+* Non cambiare il protocollo WebRTC.
+
+Fase 2 – Presenza
+
+* Verificare che presence.online e presence.offline siano sempre sincronizzati.
+* Mantenere heartbeat a 15 s.
+* Non modificare il comportamento del reconnect.
+
+Fase 3 – Cambio identità Signal
+
+* Gestire reinstallazione PWA e nuovo deviceId.
+* Se il peer cambia identity key o deviceId, invalidare la vecchia sessione, scaricare il nuovo bundle e creare automaticamente una nuova sessione.
+* Non perdere messaggi futuri.
+
+Fase 4 – Chiamate
+
+* Eliminare definitivamente spinner infinito.
+* Evitare acceptCall() multipli.
+* Gestire WebSocket chiuso durante acceptCall().
+* Nessuna modifica alla logica ICE o SRTP.
+
+Per ogni fase:
+
+1. Audit del codice.
+2. Root Cause Analysis.
+3. Piano di modifica.
+4. Implementazione minima.
+5. Test.
+6. Attendere approvazione prima della fase successiva.
+
+⸻
+
+Questo approccio è molto più sicuro perché evita che l’agente tocchi contemporaneamente presenza, Signal, WebRTC e UI, che è il modo tipico in cui nascono le regressioni.
+
+Una raccomandazione: prima di iniziare la Fase 1, crea un tag Git (ad esempio stable-pre-hardening) così, se qualcosa va storto, puoi tornare immediatamente all’ultima versione stabile.

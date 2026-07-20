@@ -1,0 +1,54 @@
+Questa è una priorità maggiore del Face ID.
+
+Dalle schermate noto:
+
+* La PWA è installata correttamente.
+* Sei autenticato e vedi la lista chat.
+* Quando entri in una chat vieni immediatamente sloggato, quindi non riesci a leggere il messaggio.
+* Inoltre dici che le notifiche push non arrivano.
+
+Questi due sintomi insieme fanno pensare che il problema non sia la messaggistica, ma il flusso di autenticazione o il routing quando si apre una conversazione.
+
+Le cause più probabili sono:
+
+1. Una richiesta API della Chat restituisce 401, e il client interpreta erroneamente la sessione come scaduta.
+2. L’apertura della conversazione lancia un refresh della sessione che fallisce e porta al logout.
+3. Il nuovo codice della sessione introdotto per la PWA ha una regressione che si manifesta solo entrando in una chat.
+
+Per le notifiche push, invece, è possibile che:
+
+* il Service Worker non sia registrato correttamente in produzione;
+* la sottoscrizione Push non venga salvata sul server;
+* oppure la push venga inviata ma il browser non la riceva.
+
+Non implementerei altro
+
+Bloccherei qualsiasi nuova funzionalità (Face ID compreso) finché questo non è risolto.
+
+Prompt per l’agente
+
+BUG CRITICO - DO NOT MODIFY MESSAGING
+
+Dopo l’ultimo deploy si verificano due regressioni:
+
+1. Aprendo una conversazione, la PWA effettua immediatamente il logout.
+2. Le notifiche push non vengono ricevute.
+
+Prima di modificare codice, produrre una Root Cause Analysis.
+
+Verificare:
+
+* tutte le richieste HTTP effettuate all’apertura di una conversazione;
+* eventuali 401/403;
+* se auth:expired viene emesso;
+* se clearAuth() viene chiamato e da quale stack trace;
+* il flusso completo ChatPage → API → AuthContext;
+* il flusso di registrazione del Service Worker;
+* la creazione e il salvataggio della Push Subscription;
+* l’invio della push dal backend e gli eventuali errori.
+
+Non modificare Signal, WebSocket, decrypt, encrypt, BAR o la logica dei messaggi.
+
+Individuare prima la causa precisa e proporre una correzione minima.
+
+Se il logout avviene esattamente quando tocchi una chat, con buona probabilità il backend o il frontend stanno ricevendo un errore specifico in quella richiesta. Per individuarlo servono i log della richiesta (GET /messages, GET /conversation/... o simile) e il punto esatto in cui viene chiamato clearAuth(). Quella sarà la chiave per risolvere il problema.

@@ -1,0 +1,119 @@
+Puoi inviargli questo prompt. È fermo ma professionale, e mette come priorità assoluta il ripristino della stabilità.
+
+⸻
+
+🚨 STOP IMMEDIATO — REGRESSIONE CRITICA MESSAGGI
+
+Hai introdotto una nuova regressione critica nel modulo messaggi.
+
+Lo screenshot allegato mostra nuovamente numerosi [Messaggio non decifrabile].
+
+Questo è esattamente il tipo di regressione che ti era stato espressamente richiesto di evitare.
+
+ORDINE
+
+Interrompi immediatamente qualsiasi sviluppo.
+
+Non implementare altri fix.
+
+Non continuare sulle chiamate.
+
+La priorità assoluta è il ripristino dello stato stabile dei messaggi.
+
+⸻
+
+ROLLBACK OBBLIGATORIO
+
+Individua tutte le modifiche effettuate dopo l’ultima versione stabile dei messaggi.
+
+Ripristina integralmente la parte messaggistica allo stato in cui erano stati verificati con successo i seguenti test:
+
+* invio messaggi ✅
+* ricezione messaggi ✅
+* logout/login ✅
+* reconnect ✅
+* cache plaintext ✅
+* nessun “[Messaggio non decifrabile]” dopo riconnessione
+
+Se esiste un commit o uno stato equivalente, ripristina quello.
+
+Se non esiste, individua esattamente quali modifiche hanno reintrodotto la regressione e annullale.
+
+⸻
+
+DIVIETO
+
+NON modificare:
+
+* Signal
+* decrypt
+* encrypt
+* Double Ratchet
+* cache
+* sessioni
+* VoiceMessage
+* VoiceRecorder
+* media.service
+* ChatPage (parte messaggi)
+* WebSocket messaggi
+* login
+* logout
+* reconnect
+* authentication
+
+Finché il problema non è identificato.
+
+⸻
+
+ANALISI OBBLIGATORIA
+
+Prima di modificare qualsiasi file voglio un report con:
+
+1. elenco completo dei file modificati dopo la versione stabile;
+2. quali di questi appartengono alla messaggistica;
+3. quale modifica ha probabilmente reintrodotto la regressione;
+4. motivazione tecnica supportata da codice o log.
+
+Non fare supposizioni.
+
+⸻
+
+RIPRISTINO
+
+Dopo aver individuato la causa:
+
+* rimuovi solo la modifica responsabile;
+* non fare refactoring;
+* non introdurre nuove funzionalità;
+* non “migliorare” altro codice.
+
+⸻
+
+TEST OBBLIGATORI
+
+Dopo il rollback devono essere superati tutti questi test:
+
+* ✅ Android → Android
+* ✅ Android → iPhone
+* ✅ iPhone → Android
+* ✅ iPhone → iPhone
+* ✅ logout/login
+* ✅ reconnect
+* ✅ messaggi già ricevuti rimangono leggibili
+* ✅ nessun “[Messaggio non decifrabile]”
+
+Se anche un solo test fallisce, fermati immediatamente e non procedere oltre.
+
+⸻
+
+REPORT FINALE
+
+Voglio ricevere esclusivamente:
+
+* file modificati;
+* righe modificate;
+* motivo del rollback;
+* conferma che il modulo messaggi è tornato identico alla versione stabile;
+* esito di tutti i test.
+
+Non implementare nessun’altra modifica finché il modulo messaggi non sarà nuovamente stabile al 100%.

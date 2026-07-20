@@ -1,0 +1,68 @@
+Puoi usare questo prompt completo:
+
+⸻
+
+Implementa una vera eliminazione definitiva dell’account (Hard Delete) e applicala subito all’account di test “cricco”. Non modificare altre funzionalità.
+
+Attualmente esistono due azioni Admin:
+
+* Sospendi → deve rimanere invariata (soft delete, reversibile).
+* Elimina → deve diventare una cancellazione definitiva e irreversibile.
+
+Requisiti
+
+Quando l’Admin preme Elimina:
+
+1. Eliminare completamente il record utente dal database (non impostare status = deleted).
+2. Eliminare tutti i dati associati all’utente:
+    * dispositivi registrati;
+    * Identity Key;
+    * Signed PreKeys;
+    * One-Time PreKeys;
+    * bundle Signal;
+    * sessioni Signal;
+    * refresh token;
+    * sessioni login;
+    * sottoscrizioni Push;
+    * impostazioni profilo;
+    * qualsiasi record collegato tramite userId.
+3. Liberare username ed email affinché possano essere riutilizzati immediatamente.
+4. Dopo l’eliminazione:
+    * il login deve restituire ACCOUNT_NOT_FOUND;
+    * la registrazione con lo stesso username/email deve riuscire normalmente.
+5. Mantenere invariata la funzione Sospendi, che continua a bloccare il login ma conserva l’account nel database.
+
+Conversazioni e messaggi
+
+Non eliminare i messaggi degli altri utenti.
+
+Se necessario, anonimizzare il mittente nei messaggi storici come “Account eliminato”, senza rompere la cronologia delle conversazioni.
+
+Sicurezza
+
+L’operazione deve essere atomica:
+
+* se una parte fallisce, eseguire rollback;
+* non lasciare record orfani.
+
+Azione immediata
+
+Dopo aver implementato la nuova logica di Hard Delete, eseguila subito sull’account di test:
+
+* Username: cricco
+
+L’account cricco deve essere rimosso completamente dal database insieme a tutti i dati collegati (device, chiavi Signal, sessioni, push, ecc.), in modo che lo username cricco possa essere registrato nuovamente senza alcun errore.
+
+Output richiesto
+
+Al termine fornire:
+
+* elenco delle collection/tabelle da cui è stato eliminato cricco;
+* file modificati;
+* conferma che cricco non esiste più nel database;
+* conferma che username ed email sono nuovamente disponibili;
+* conferma che login con cricco restituisce ACCOUNT_NOT_FOUND;
+* conferma che è possibile registrare nuovamente cricco;
+* conferma che la funzione Sospendi continua a funzionare senza modifiche.
+
+Non modificare altre parti dell’applicazione oltre a questa funzionalità.

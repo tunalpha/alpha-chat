@@ -102,15 +102,20 @@ export class ConversationRepository {
   }
 
   /**
-   * Aggiorna name e description di un gruppo.
+   * Aggiorna name, description e/o avatar_media_id di un gruppo.
    */
   async updateGroupMeta(
     conversationId: mongoose.Types.ObjectId,
-    fields: { name?: string; description?: string },
+    fields: { name?: string; description?: string; avatar_media_id?: string | null },
   ): Promise<void> {
-    const set: Record<string, string> = {};
-    if (fields.name        !== undefined) set["name"]        = fields.name;
-    if (fields.description !== undefined) set["description"] = fields.description;
+    const set: Record<string, unknown> = {};
+    if (fields.name             !== undefined) set["name"]             = fields.name;
+    if (fields.description      !== undefined) set["description"]      = fields.description;
+    if (fields.avatar_media_id  !== undefined) {
+      set["avatar_media_id"] = fields.avatar_media_id
+        ? new mongoose.Types.ObjectId(fields.avatar_media_id)
+        : null;
+    }
     if (Object.keys(set).length === 0) return;
     await ConversationModel.updateOne({ _id: conversationId }, { $set: set });
   }

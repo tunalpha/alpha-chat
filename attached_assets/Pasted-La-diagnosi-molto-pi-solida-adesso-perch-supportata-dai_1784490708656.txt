@@ -1,0 +1,100 @@
+La diagnosi è molto più solida adesso perché è supportata dai log, non solo da ipotesi.
+
+Il dato decisivo è questo:
+
+connCount:   0
+openCount:   0
+isOnline:    false
+Push dispatch: success
+
+Questo dimostra che al momento della chiamata il server non aveva alcuna connessione WebSocket del callee. Di conseguenza:
+
+* call.incoming non poteva essere consegnato via WebSocket;
+* il server ha fatto correttamente il fallback alla push.
+
+Quindi la causa primaria è:
+
+Il dispositivo destinatario non era connesso via WebSocket quando è partita la chiamata.
+
+⸻
+
+Però non sono d’accordo su un punto della conclusione
+
+La frase:
+
+“App.tsx push.openCall non gestito è il blocco immediato”
+
+non è ancora dimostrata dai log che hai mostrato.
+
+Per affermarlo servirebbe vedere almeno uno di questi:
+
+[DIAG-CP3] App.tsx ricevuto push.openCall
+
+oppure
+
+notificationclick -> postMessage(push.openCall)
+
+Al momento i log dimostrano solo che il WebSocket era assente e che la push è stata inviata.
+
+⸻
+
+Ordine con cui affronterei il problema
+
+Io non partirei dal frontend.
+
+1️⃣ Prima: capire perché il WS è a zero
+
+Questo è il bug principale.
+
+Bisogna capire perché connCount=0 mentre l’utente riteneva di avere l’app aperta.
+
+Domande da risolvere:
+
+* il reconnect parte sempre quando l’app torna in foreground?
+* il login WS fallisce?
+* il token WS è valido?
+* il socket viene registrato in WsManager.register()?
+
+⸻
+
+2️⃣ Poi: rendere robusta la chiamata
+
+Anche dopo aver corretto il WS, esisteranno sempre casi reali in cui il telefono è offline.
+
+Per questo serve un meccanismo di recupero, ad esempio:
+
+* reinvio di call.incoming alla riconnessione oppure
+* endpoint /calls/pending oppure
+* payload completo nella push.
+
+⸻
+
+3️⃣ Solo dopo: push.openCall
+
+Gestire push.openCall è comunque utile, ma da solo non risolve il problema mostrato dai log.
+
+⸻
+
+Quindi la mia raccomandazione
+
+Non implementerei ancora L1-L4 tutti insieme.
+
+Chiederei all’agente di fare un’ultima diagnosi mirata:
+
+Perché WsManager aveva connCount=0?
+
+Seguire esclusivamente questa catena:
+
+App foreground/background
+        ↓
+useWebSocket reconnect
+        ↓
+WebSocket handshake
+        ↓
+authenticate
+        ↓
+WsManager.register()
+        ↓
+connCount passa da 0 → 1
+
+Se scoprite perché quella registrazione non avviene (o viene rimossa), avrete probabilmente individuato la causa principale. Dopo, sarà molto più semplice decidere se aggiungere anche un meccanismo di recupero delle chiamate perse.

@@ -23,6 +23,12 @@ import { logAuditEvent } from "../../lib/audit";
 import { wsManager } from "../../lib/ws-manager";
 import { AppError } from "../../errors/AppError";
 import { SessionModel } from "../../models/session.model";
+import { SignalKeyBundleModel } from "../../models/signal-key-bundle.model";
+import { ConversationMemberModel } from "../../models/conversation-member.model";
+import { PushSubscriptionModel } from "../../models/push-subscription.model";
+import { MediaModel } from "../../models/media.model";
+import { BlockModel } from "../../models/block.model";
+import { RecoveryContactModel } from "../../models/recovery-contact.model";
 
 const router = Router();
 
@@ -625,23 +631,63 @@ router.patch("/users/:id/role", requireAdmin("super_admin"), async (req: Request
 
 // ---------------------------------------------------------------------------
 // DELETE /admin/users/:id
-// Soft-delete di un utente (solo super_admin).
+// Hard delete irreversibile di un utente (solo super_admin).
+//
+// Elimina completamente il record utente e tutti i dati associati:
+//   - signal_key_bundles, sessions, push_subscriptions
+//   - conversationmembers, blocks, recovery_contacts, media
+//   - il documento utente stesso
+//
+// I messaggi storici vengono preservati (Forward Secrecy): il sender_id
+// rimane invariato ma il client mostra "Account eliminato" quando non
+// riesce a risolvere il profilo mittente.
+//
+// Username ed email vengono liberati per essere riutilizzati.
 // ---------------------------------------------------------------------------
 
 router.delete("/users/:id", requireAdmin("super_admin"), async (req: Request, res: Response, next: NextFunction) => {
   try {
     const id = req.params["id"] as string;
+    const objectId = new mongoose.Types.ObjectId(id);
 
-    const user = await UserModel.findByIdAndUpdate(
-      id,
-      { status: "deleted", deleted_at: new Date() },
-      { new: true },
-    ).select("username status");
-
+    // 1. Verifica che l'utente esista
+    const user = await UserModel.findById(id).select("username email status").lean();
     if (!user) throw new AppError("USER_NOT_FOUND", 404);
 
-    // Revoca tutte le sessioni
-    await SessionModel.updateMany({ user_id: id }, { $set: { deleted_at: new Date() } });
+    // 2. Elimina tutti i dati associati (best-effort sequenziale con log errori)
+    // Nota: le WebSocket attive cadranno al prossimo heartbeat dopo la revoca delle sessioni.
+    const errors: string[] = [];
+
+    const deleteStep = async (label: string, fn: () => Promise<unknown>) => {
+      try { await fn(); } catch (e) { errors.push(`${label}: ${String(e)}`); }
+    };
+
+    await deleteStep("signal_key_bundles", () =>
+      SignalKeyBundleModel.deleteMany({ user_id: objectId }));
+
+    await deleteStep("sessions", () =>
+      SessionModel.deleteMany({ user_id: objectId }));
+
+    await deleteStep("push_subscriptions", () =>
+      PushSubscriptionModel.deleteMany({ user_id: objectId }));
+
+    await deleteStep("conversation_members", () =>
+      ConversationMemberModel.deleteMany({ user_id: objectId }));
+
+    await deleteStep("blocks_blocker", () =>
+      BlockModel.deleteMany({ blocker_id: objectId }));
+
+    await deleteStep("blocks_blocked", () =>
+      BlockModel.deleteMany({ blocked_id: objectId }));
+
+    await deleteStep("recovery_contacts", () =>
+      RecoveryContactModel.deleteMany({ user_id: objectId }));
+
+    await deleteStep("media_uploader", () =>
+      MediaModel.deleteMany({ uploader_id: objectId }));
+
+    // 4. Elimina il documento utente (libera username + email)
+    await UserModel.findByIdAndDelete(id);
 
     logAuditEvent({
       event: "ACCOUNT_DELETED",
@@ -649,10 +695,19 @@ router.delete("/users/:id", requireAdmin("super_admin"), async (req: Request, re
       device_id: "admin-panel",
       request_id: req.adminUser?.userId,
       created_at: new Date().toISOString(),
-      metadata: { admin_action: "soft_delete" },
+      metadata: {
+        admin_action: "hard_delete",
+        username: user.username,
+        partial_errors: errors.length > 0 ? errors : undefined,
+      },
     });
 
-    res.json({ id, username: user.username, status: user.status });
+    res.json({
+      id,
+      username: user.username,
+      hard_deleted: true,
+      partial_errors: errors.length > 0 ? errors : null,
+    });
   } catch (err) {
     next(err);
   }

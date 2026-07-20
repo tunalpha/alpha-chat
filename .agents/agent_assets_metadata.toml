@@ -1,0 +1,8 @@
+uploads = []
+generated = []
+
+[[outputs]]
+id = "DOjTQCX4P8fvFnCNnK7LD"
+uri = "file://PRESENCE_AUDIT.md"
+type = "text"
+title = "Audit Presenza v2 — dati misurati + Fix F-1 applicato"

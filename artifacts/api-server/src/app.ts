@@ -63,12 +63,12 @@ app.use(
 );
 
 // ── Body parsing ──────────────────────────────────────────────────────────────
-// Global limit: 25 MB to accommodate media uploads (max video 15 MB × 1.33 base64 ≈ 20 MB).
+// Global limit: 145 MB to accommodate media uploads (max video 100 MB × 1.37 base64 ≈ 137 MB).
 // Non-media endpoints are protected at the Zod validation layer (field-level length limits).
 // Route-level body parsers cannot override the global one because the global runs first
 // and rejects before routing; setting a single global limit is the correct Express pattern.
-app.use(express.json({ limit: "25mb" }));
-app.use(express.urlencoded({ extended: true, limit: "25mb" }));
+app.use(express.json({ limit: "145mb" }));
+app.use(express.urlencoded({ extended: true, limit: "145mb" }));
 
 // ── Client version check ──────────────────────────────────────────────────────
 app.use(clientVersionMiddleware);

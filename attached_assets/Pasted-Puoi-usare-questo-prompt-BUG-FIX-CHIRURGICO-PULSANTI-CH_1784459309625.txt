@@ -1,0 +1,163 @@
+Puoi usare questo prompt:
+
+⸻
+
+BUG FIX CHIRURGICO – PULSANTI CHIAMATA IN ARRIVO NON CLICCABILI
+
+Contesto
+
+L’app è in una fase stabile.
+
+I messaggi funzionano correttamente.
+
+* ✅ Signal Protocol stabile
+* ✅ Encrypt/Decrypt stabile
+* ✅ Sessioni e ratchet stabili
+* ✅ Invio e ricezione messaggi OK
+* ✅ Reply ai messaggi funzionante
+
+NON DEVI TOCCARE NESSUNA PARTE DEL SISTEMA MESSAGGI.
+
+⸻
+
+Problema da risolvere
+
+Quando arriva una chiamata:
+
+* la schermata di chiamata viene visualizzata correttamente;
+* i pulsanti Accetta e Rifiuta sono visibili;
+* ma non rispondono al tocco (iPhone/PWA).
+
+La UI compare correttamente, quindi il problema è limitato all’interazione dei pulsanti.
+
+⸻
+
+Regola fondamentale
+
+Intervento chirurgico.
+
+Lavora esclusivamente sul flusso della schermata di chiamata.
+
+È vietato modificare:
+
+* Signal Protocol
+* Encrypt
+* Decrypt
+* Sessioni
+* Ratchet
+* WebSocket dei messaggi
+* Gestione chat
+* Reply
+* Swipe Reply
+* Rendering dei messaggi
+* Database messaggi
+* Media
+* Timeline chat
+
+Qualsiasi modifica fuori dal modulo chiamate è proibita.
+
+⸻
+
+Analisi richiesta
+
+Individua con precisione perché i pulsanti non ricevono il tocco.
+
+Verifica nell’ordine:
+
+1.
+
+Esiste un overlay che intercetta gli eventi?
+
+Controllare:
+
+* z-index
+* pointer-events
+* backdrop
+* modal
+* elementi fixed
+
+⸻
+
+2.
+
+Gli eventi arrivano ai pulsanti?
+
+Verificare:
+
+* onClick
+* onTouchStart
+* onTouchEnd
+* onPointerDown
+
+Loggare quale evento viene realmente eseguito.
+
+⸻
+
+3.
+
+Le funzioni vengono chiamate?
+
+Verificare:
+
+* acceptCall()
+* declineCall()
+
+oppure le rispettive funzioni effettive del progetto.
+
+⸻
+
+4.
+
+Se le funzioni vengono chiamate,
+
+individuare perché il flusso si interrompe.
+
+⸻
+
+5.
+
+Se gli eventi NON arrivano,
+
+identificare esattamente quale elemento li blocca.
+
+⸻
+
+Fix
+
+Applicare solo il fix minimo indispensabile.
+
+Non effettuare refactoring.
+
+Non riscrivere componenti.
+
+Non cambiare architettura.
+
+Non introdurre nuove feature.
+
+⸻
+
+Obiettivo
+
+Correggere esclusivamente il problema dei pulsanti della chiamata in arrivo.
+
+Il comportamento dei messaggi deve rimanere identico al 100%.
+
+⸻
+
+Report finale
+
+Indicare:
+
+* causa precisa del bug;
+* file modificati;
+* numero di righe cambiate;
+* motivo tecnico della correzione;
+* conferma esplicita che:
+
+✅ nessun file del sistema messaggi è stato modificato;
+
+✅ nessuna logica Signal è stata modificata;
+
+✅ nessuna regressione è stata introdotta nel flusso dei messaggi;
+
+✅ l’intervento è stato limitato esclusivamente al modulo chiamate.

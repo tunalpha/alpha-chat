@@ -19,6 +19,7 @@ import {
   validatePhoenixToken,
   executeLockMode,
   executePhoenixProtocol,
+  destroyAccountDirect,
   getRecoveryCardData,
 } from "../../services/phoenix.service";
 import { AppError } from "../../errors/AppError";
@@ -120,11 +121,25 @@ router.post(
         message: "Se l'utente esiste e il codice è corretto, riceverai un'email di conferma.",
       });
     } catch (err) {
-      // Risposta generica anche in caso di errore di autenticazione
+      // Risposta generica per INVALID_CREDENTIALS (anti-enumeration).
       if (err instanceof AppError && err.code === "INVALID_CREDENTIALS") {
         res.status(200).json({
           success: true,
           message: "Se l'utente esiste e il codice è corretto, riceverai un'email di conferma.",
+        });
+        return;
+      }
+      // EMAIL_NOT_CONFIGURED: l'utente ha già dimostrato la propria identità con il
+      // Phoenix Code — è sicuro mostrare un errore specifico e actionable.
+      if (err instanceof AppError && err.code === "EMAIL_NOT_CONFIGURED") {
+        res.status(422).json({
+          error: {
+            code: "EMAIL_NOT_CONFIGURED",
+            message:
+              "Questo account non ha un'email configurata. " +
+              "Per usare il Phoenix Protocol è necessaria un'email di recupero: " +
+              "aggiungila nelle Impostazioni → Profilo prima di procedere.",
+          },
         });
         return;
       }
@@ -184,6 +199,33 @@ router.post(
       }
 
       res.status(200).json({ success: true, action });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// ---------------------------------------------------------------------------
+// Destroy Direct (autenticato, nessun token email — protocollo nucleare)
+// ---------------------------------------------------------------------------
+
+const destroyDirectRateLimit = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 ora
+  max: 3,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Troppi tentativi. Riprova tra un'ora." },
+});
+
+router.post(
+  "/destroy-direct",
+  authenticate,
+  destroyDirectRateLimit,
+  async (req: Request, res: Response, next: NextFunction) => {
+    try {
+      const ip = req.ip ?? req.socket.remoteAddress;
+      await destroyAccountDirect(req.user!.userId, ip);
+      res.status(200).json({ success: true });
     } catch (err) {
       next(err);
     }

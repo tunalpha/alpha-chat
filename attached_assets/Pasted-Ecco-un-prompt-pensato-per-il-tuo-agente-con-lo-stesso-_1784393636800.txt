@@ -1,0 +1,260 @@
+Ecco un prompt pensato per il tuo agente, con lo stesso approccio “chirurgico” usato finora.
+
+⸻
+
+PROMPT — Face ID / Touch ID per Alpha Chat PWA (ZERO regressioni)
+
+⚠️ VINCOLO ASSOLUTO
+
+NON modificare alcuna logica della messaggistica.
+
+È vietato toccare:
+
+* Signal Protocol
+* encrypt/decrypt
+* Session Store Signal
+* Identity Keys
+* PreKeys
+* BAR 🔥
+* ChatPage (salvo listener strettamente necessari)
+* WebSocket
+* handleSend()
+* handleVoiceSend()
+* handleFilePick()
+* handleForwardTo()
+* requestPaginated()
+* Push Notifications
+* CallContext
+* WebRTC
+* API dei messaggi
+* Database messaggi
+
+L’obiettivo è aggiungere uno sblocco biometrico locale, senza modificare autenticazione, crittografia o protocollo.
+
+⸻
+
+OBIETTIVO
+
+Implementare uno sblocco opzionale tramite:
+
+* Face ID (iPhone)
+* Touch ID
+* biometria Android
+
+utilizzando WebAuthn (Web Authentication API).
+
+Lo sblocco deve essere completamente locale.
+
+Non deve sostituire il login.
+
+Non deve modificare JWT.
+
+Non deve modificare Refresh Token.
+
+Non deve modificare Signal.
+
+Serve soltanto a proteggere l’apertura della PWA.
+
+⸻
+
+COMPORTAMENTO DESIDERATO
+
+Primo login:
+
+Login
+↓
+utente abilita Face ID
+↓
+registrazione credenziale WebAuthn
+↓
+salvataggio credenziale
+↓
+Alpha Chat pronta
+
+⸻
+
+Aperture successive:
+
+Apri Alpha Chat
+↓
+sessione valida?
+↓
+SI
+↓
+Face ID
+↓
+chat
+
+⸻
+
+Se la sessione è scaduta:
+
+Apri Alpha Chat
+↓
+refresh token non valido
+↓
+login normale
+↓
+Face ID NON sostituisce il login
+
+⸻
+
+IMPOSTAZIONI
+
+Aggiungere una sezione:
+
+Privacy
+
+Face ID
+
+con:
+
+* Abilita Face ID ON/OFF
+* Richiedi Face ID ad ogni apertura
+* Richiedi dopo inattività
+
+Timeout:
+
+* subito
+* 1 minuto
+* 5 minuti
+* 15 minuti
+
+⸻
+
+BACKGROUND
+
+Quando la PWA torna in foreground:
+
+se il timeout è scaduto
+
+↓
+
+mostrare overlay
+
+↓
+
+Face ID
+
+↓
+
+sblocca
+
+Mai mostrare login.
+
+Mai rifare refresh token.
+
+⸻
+
+OVERLAY
+
+Lo sblocco deve essere un overlay.
+
+Non ricaricare React.
+
+Non smontare componenti.
+
+Non riconnettere WebSocket.
+
+Non reinizializzare Signal.
+
+Non ricaricare conversazioni.
+
+Semplicemente:
+
+Overlay Face ID
+↓
+successo
+↓
+overlay sparisce
+
+⸻
+
+WEBAUTHN
+
+Utilizzare esclusivamente:
+
+* Web Authentication API
+* navigator.credentials.create()
+* navigator.credentials.get()
+
+Non usare librerie esterne se non strettamente necessarie.
+
+⸻
+
+SICUREZZA
+
+La chiave privata biometrica deve rimanere nel dispositivo.
+
+Mai salvare dati biometrici.
+
+Mai inviare dati biometrici al server.
+
+Usare challenge casuali.
+
+Seguire lo standard WebAuthn.
+
+⸻
+
+COMPATIBILITÀ
+
+Verificare compatibilità con:
+
+* Safari iOS (PWA)
+* Chrome Android
+* Chrome Desktop
+* Safari Desktop
+
+Se WebAuthn non è disponibile:
+
+nascondere la funzione.
+
+⸻
+
+ANALISI PRELIMINARE
+
+Prima di scrivere codice:
+
+analizzare:
+
+* AuthContext
+* App.tsx
+* routing
+* lifecycle PWA
+* visibilitychange
+* resume da background
+
+Produrre una Root Cause Analysis di dove inserire il blocco biometrico con il minor impatto possibile.
+
+⸻
+
+FILE DA MODIFICARE
+
+Modificare il minor numero possibile di file.
+
+Prima di iniziare elencare:
+
+* file modificati
+* motivo
+* impatto
+* dimostrazione che non possono introdurre regressioni nella messaggistica.
+
+⸻
+
+TEST OBBLIGATORI
+
+Verificare:
+
+* Login normale invariato.
+* Face ID opzionale.
+* Riapertura PWA → Face ID → chat.
+* Background → timeout → Face ID.
+* Background breve → nessuna richiesta.
+* Logout → Face ID non deve bypassare il login.
+* Refresh token scaduto → login normale.
+* Push notification → apertura conversazione → Face ID → conversazione corretta.
+* WebSocket rimane connesso dopo lo sblocco.
+* Nessun [Messaggio non decifrabile].
+* Nessuna regressione su Signal, WebSocket, Push e chiamate.
+
+Non iniziare subito a scrivere codice. Prima completare l’analisi tecnica e la Root Cause Analysis, poi proporre il piano di implementazione.

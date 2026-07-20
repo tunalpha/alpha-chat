@@ -1,0 +1,114 @@
+Il report è complessivamente di buon livello e distingue correttamente ciò che è dimostrato da ciò che è infrastrutturale. Farei però alcune precisazioni.
+
+P1 – call.missed e call.ended_elsewhere
+
+Questo è il punto più solido del report.
+
+Se il server invia davvero questi eventi e CallContext li gestisce già, ma ChatPage non li inoltra perché mancano i case, allora è un bug ben circoscritto.
+
+È un fix chirurgico:
+
+* modifica di poche righe;
+* nessun impatto su Signal;
+* nessun impatto sui messaggi;
+* nessun impatto sul protocollo.
+
+Lo farei.
+
+⸻
+
+P2 – Buffer degli ICE candidate
+
+Anche questo è un fix corretto.
+
+Il pattern di bufferizzare gli ICE candidate ricevuti prima che esista la RTCPeerConnection è una pratica comune nelle applicazioni WebRTC.
+
+L’unica attenzione è:
+
+* svuotare il buffer appena viene creato il PC;
+* cancellarlo sempre in cleanup() per evitare candidati residui.
+
+Se queste due condizioni vengono rispettate, il rischio di regressione è basso.
+
+⸻
+
+P3 – Mancanza di TURN
+
+Qui farei una distinzione.
+
+Il report afferma:
+
+“~30–40% delle chiamate su rete mobile falliscono.”
+
+Questa percentuale non è dimostrabile dal solo codice. È una stima plausibile, ma non una prova.
+
+Quello che invece è dimostrato è:
+
+* viene configurato solo STUN;
+* nessun TURN è presente;
+* alcune combinazioni di NAT non riusciranno a stabilire una connessione P2P.
+
+Quindi la conclusione corretta è:
+
+assenza di TURN = alcune reti non saranno supportate, non una percentuale certa.
+
+⸻
+
+P4 – isReconnecting
+
+Concordo.
+
+È un problema di logging/stato, non sembra una causa dei malfunzionamenti principali.
+
+Può aspettare.
+
+⸻
+
+P5 – Race primeRemoteAudio
+
+Concordo anche qui.
+
+È un caso limite.
+
+Non lo toccherei finché non avete dati che dimostrino un problema reale.
+
+⸻
+
+Ordine con cui procederei
+
+1. P1
+    * instradare call.missed
+    * instradare call.ended_elsewhere
+2. P2
+    * buffer ICE candidate
+    * flush dopo buildPC()
+    * clear nel cleanup()
+3. Test completi
+
+Solo dopo aver verificato che tutto funziona, valuterei l’infrastruttura TURN.
+
+⸻
+
+Sul TURN
+
+Il codice è già predisposto per usarlo.
+
+Quindi non serve modificare il software.
+
+Serve semplicemente configurare:
+
+* TURN_URLS
+* TURN_USERNAME
+* TURN_PASSWORD
+
+È un cambiamento infrastrutturale, non applicativo.
+
+⸻
+
+La mia raccomandazione
+
+Il report individua due bug software concreti (P1 e P2) che vale la pena correggere subito con modifiche isolate.
+
+Il P3 (TURN) lo tratterei come un’attività separata di configurazione dell’infrastruttura, dopo aver verificato che i fix software abbiano risolto i problemi direttamente attribuibili al codice.
+
+In questo modo mantenete l’approccio che vi ha dato i risultati migliori finora: interventi piccoli, separati e con rischio minimo di regressioni.

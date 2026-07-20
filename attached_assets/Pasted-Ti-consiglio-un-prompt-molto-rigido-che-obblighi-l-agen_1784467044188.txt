@@ -1,0 +1,221 @@
+Ti consiglio un prompt molto rigido, che obblighi l’agente a lavorare solo sulle chiamate e a fermarsi se tocca anche un solo file della messaggistica.
+
+⸻
+
+TASK: Ripristino sistema Chiamate (Modulo isolato)
+
+CONTESTO
+
+Il sistema di messaggistica è stato appena stabilizzato dopo una lunga analisi.
+
+Sono stati risolti bug critici riguardanti:
+
+* decrypt dei messaggi
+* cache plaintext
+* reconnect
+* login/logout
+* Signal bundle
+* IDB cache
+* diagnostica Signal
+
+Questa parte è considerata STABILE.
+
+Da questo momento è vietato modificarla.
+
+⸻
+
+OBIETTIVO
+
+Ripristinare esclusivamente il funzionamento delle chiamate audio/video.
+
+Non implementare nuove funzioni.
+
+Non modificare la messaggistica.
+
+Solo correggere il modulo chiamate.
+
+⸻
+
+MODULI BLOCCATI (NON TOCCARE)
+
+È assolutamente vietato modificare qualsiasi file riguardante:
+
+Signal
+
+Double Ratchet
+
+decrypt
+
+encrypt
+
+message cache
+
+IDB cache
+
+bundle Signal
+
+key manager
+
+session manager
+
+chat
+
+messaggi
+
+WebSocket dei messaggi
+
+reconnect messaggi
+
+login
+
+logout
+
+refresh token
+
+authentication
+
+storage dei messaggi
+
+cache plaintext
+
+decryptSingleMsg
+
+signalDecrypt
+
+runSignalDiagnostic
+
+Signal Protocol
+
+Qualsiasi modifica a questi file annulla il task.
+
+⸻
+
+MODULI AUTORIZZATI
+
+Puoi modificare esclusivamente:
+
+IncomingCallModal
+
+OutgoingCall
+
+CallManager
+
+CallService
+
+WebRTC
+
+ICE
+
+TURN/STUN
+
+Call signaling
+
+Call UI
+
+Audio routing
+
+Microfono
+
+Speaker
+
+Camera
+
+Call notifications
+
+Suoneria
+
+Call CSS
+
+e qualsiasi file appartenente esclusivamente al modulo chiamate.
+
+⸻
+
+REGOLA DI ISOLAMENTO
+
+Se durante l’analisi ritieni necessario modificare un file appartenente alla messaggistica:
+
+FERMATI.
+
+Non modificarlo.
+
+Spiega perché sarebbe necessario.
+
+Aspetta autorizzazione.
+
+⸻
+
+DIVIETO ASSOLUTO
+
+Non fare refactoring.
+
+Non spostare codice.
+
+Non rinominare file.
+
+Non aggiornare librerie.
+
+Non cambiare architettura.
+
+Non “pulire” codice.
+
+Solo fix mirati.
+
+⸻
+
+METODO
+
+1. Analizza il flusso completo della chiamata.
+2. Individua il punto preciso dove fallisce.
+3. Dimostra il problema con log.
+4. Proponi il fix.
+5. Applica solo il fix minimo necessario.
+
+⸻
+
+DOPO OGNI MODIFICA
+
+Esegui test completo:
+
+✓ invio messaggi
+
+✓ ricezione messaggi
+
+✓ logout/login
+
+✓ reconnect
+
+✓ decrypt
+
+✓ cache plaintext
+
+✓ chiamata audio
+
+✓ chiamata video
+
+Se uno qualsiasi dei test fallisce:
+
+FERMATI.
+
+Ripristina.
+
+Non continuare.
+
+⸻
+
+REPORT OBBLIGATORIO
+
+Alla fine voglio:
+
+* file modificati;
+* motivazione di ogni modifica;
+* conferma esplicita che nessun file della messaggistica è stato modificato;
+* risultato dei test;
+* eventuali rischi residui.
+
+⸻
+
+REGOLA FINALE
+
+Il modulo Messaggi è in “code freeze”.
+
+L’obiettivo è che, al termine del lavoro sulle chiamate, i messaggi continuino a comportarsi esattamente come adesso, senza alcuna regressione. Questo è un requisito obbligatorio, non un obiettivo opzionale.

@@ -1,0 +1,132 @@
+Ottimo, questo è un segnale importante: se si è ripristinato senza deploy, molto probabilmente la regressione era dovuta alle modifiche in sviluppo (HMR/dev state) e non è finita in produzione.
+
+Puoi dare all’agente questo prompt:
+
+⸻
+
+TASK: Risolvere esclusivamente l’invio dei messaggi vocali
+
+CONTESTO
+
+Il modulo messaggi è tornato stabile.
+
+È assolutamente vietato reintrodurre qualsiasi regressione.
+
+L’obiettivo di questo task è solo risolvere la compatibilità dei messaggi vocali.
+
+OBIETTIVO
+
+I messaggi vocali devono funzionare correttamente nei seguenti scenari:
+
+* ✅ iPhone → iPhone
+* ✅ iPhone → Android
+* ✅ Android → Android
+* ✅ Android → iPhone
+
+Nessun altro comportamento deve cambiare.
+
+⸻
+
+MODULI BLOCCATI
+
+NON modificare:
+
+* Signal
+* decrypt
+* encrypt
+* Double Ratchet
+* sessioni
+* cache plaintext
+* reconnect
+* login/logout
+* bundle Signal
+* key manager
+* ChatPage (parte messaggi)
+* WebSocket messaggi
+* logica dei messaggi di testo
+
+⸻
+
+MODULI AUTORIZZATI
+
+Puoi modificare esclusivamente:
+
+* VoiceRecorder.tsx
+* VoiceMessage.tsx
+* media.service.ts
+* media upload
+* media repository
+* media MIME detection
+* transcodifica ffmpeg
+* audio playback
+
+Se ritieni necessario modificare qualsiasi altro file:
+
+FERMATI e chiedi autorizzazione.
+
+⸻
+
+REGOLE
+
+Non fare refactoring.
+
+Non cambiare architettura.
+
+Non modificare codice non necessario.
+
+Applica il fix minimo indispensabile.
+
+⸻
+
+TEST OBBLIGATORI
+
+Dopo ogni modifica esegui e documenta:
+
+Messaggi
+
+* ✅ invio testo
+* ✅ ricezione testo
+* ✅ logout/login
+* ✅ reconnect
+* ✅ nessun “[Messaggio non decifrabile]”
+
+Vocali
+
+* ✅ iPhone → iPhone
+* ✅ iPhone → Android
+* ✅ Android → Android
+* ✅ Android → iPhone
+
+Per ogni test indica:
+
+* MIME registrato dal mittente
+* MIME rilevato dal server
+* MIME salvato nel DB
+* MIME inviato nel messaggio
+* MIME riprodotto dal destinatario
+
+⸻
+
+SICUREZZA
+
+Se durante il lavoro compare anche una sola regressione nei messaggi:
+
+* interrompi immediatamente il lavoro;
+* annulla l’ultima modifica;
+* ripristina lo stato stabile;
+* segnala il problema;
+* non continuare.
+
+⸻
+
+REPORT FINALE
+
+Voglio ricevere:
+
+* file modificati;
+* righe modificate;
+* motivazione tecnica di ogni modifica;
+* conferma che nessun file della messaggistica è stato modificato;
+* esito completo dei test.
+
+Il modulo messaggi è in “code freeze”. La priorità assoluta è che continui a funzionare esattamente come ora.

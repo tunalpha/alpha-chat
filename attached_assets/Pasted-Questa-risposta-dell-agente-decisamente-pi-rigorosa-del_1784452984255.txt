@@ -1,0 +1,82 @@
+Questa risposta dell’agente è decisamente più rigorosa della precedente.
+
+Ha fatto una cosa importante: prima ha letto il codice di libsignal, poi ha aggiunto sola diagnostica di lettura, senza cambiare il comportamento. Questo riduce il rischio di regressioni.
+
+C’è però una distinzione importante:
+
+* Dimostrato: ha verificato dal sorgente di libsignal l’ordine con cui vengono provate le sessioni e il fatto che la libreria modifica lo stato interno durante il tentativo di decrypt.
+* Non ancora dimostrato: il terzo scenario (“MessageCounterError permanente dovuto alle 40 sessioni”) è ancora una previsione. Sarà dimostrato solo quando i nuovi log SESSION-SELECTION mostreranno effettivamente quel comportamento durante un caso reale.
+
+Io non implementerei ancora alcun fix
+
+Aspetterei il risultato di questa nuova diagnostica.
+
+Se i log confermano la teoria, allora il prompt finale dovrebbe essere molto conservativo e imporre modifiche che non introducano regressioni.
+
+Puoi usare questo:
+
+⸻
+
+FIX FINALE – ZERO REGRESSIONI
+
+Non modificare alcun comportamento che oggi funziona.
+
+I log SESSION-SELECTION, IDB-DIAGNOSTIC e DECRYPT-FAILURE sono la fonte di verità.
+
+Vincoli obbligatori
+
+* Nessuna modifica al protocollo Signal.
+* Nessuna modifica alla logica X3DH.
+* Nessuna modifica al Double Ratchet.
+* Nessuna modifica alla selezione delle sessioni implementata da libsignal.
+* Nessuna modifica alle Identity Key.
+* Nessuna modifica alla gestione delle Signed PreKey.
+* Nessuna modifica alla gestione delle One-Time PreKey.
+* Nessuna modifica al flusso normale di decrypt.
+
+Consentito
+
+È consentito esclusivamente:
+
+* eliminare o ricostruire una sessione dimostrata corrotta;
+* eseguire la ricostruzione solo quando i log dimostrano che quella sessione è inutilizzabile;
+* mantenere invariato il comportamento per tutte le altre sessioni.
+
+Prima di applicare il fix
+
+Dimostrare con i log:
+
+1. quale baseKey viene selezionata;
+2. quale baseKey fallisce;
+3. quale errore restituisce libsignal;
+4. perché il fallimento non è recuperabile automaticamente.
+
+Test anti-regressione obbligatori
+
+Eseguire e documentare:
+
+* invio Alpha → Cricco;
+* invio Cricco → Alpha;
+* logout/login ripetuto;
+* chiusura completa della PWA;
+* riapertura della PWA;
+* reconnect WebSocket;
+* ricezione messaggi storici;
+* ricezione nuovi messaggi;
+* utenti nuovi;
+* utenti esistenti;
+* più dispositivi.
+
+Criterio di accettazione
+
+Il fix è accettato solo se:
+
+* nessun nuovo DECRYPT-FAILURE;
+* nessuna ricostruzione di sessioni sane;
+* nessuna perdita di messaggi;
+* nessun aumento del numero di baseKey;
+* nessuna regressione nei flussi oggi funzionanti.
+
+⸻
+
+Questo approccio è prudente: usa la nuova diagnostica per confermare la causa prima di intervenire e limita il possibile fix alla sola sessione realmente problematica, senza alterare la logica di libsignal o del protocollo Signal.

@@ -1,0 +1,229 @@
+Ecco un prompt molto più rigoroso, costruito dopo tutte le regressioni che avete già vissuto.
+
+⸻
+
+🚨 TASK — Fix compatibilità messaggi vocali Android → iPhone (LAVORO CHIRURGICO)
+
+CONTESTO
+
+Il problema dei messaggi è stato risolto.
+
+NON deve essere introdotta alcuna regressione.
+
+Qualsiasi modifica che possa influenzare:
+
+* Signal
+* Double Ratchet
+* decrypt
+* encrypt
+* cache
+* sessioni
+* WebSocket
+* messaggi di testo
+* presenza (online/offline)
+* ChatPage (parte messaggi)
+
+è vietata.
+
+L’obiettivo è risolvere esclusivamente la compatibilità dei messaggi vocali Android → iPhone.
+
+⸻
+
+STATO ATTUALE (GIÀ ACCERTATO)
+
+La diagnosi è conclusa.
+
+Il server riceve soltanto ciphertext AES-256-GCM.
+
+Di conseguenza:
+
+* ffmpeg riceve dati cifrati
+* MEDIA_TRANSCODE_FAILED è inevitabile
+* la transcodifica lato server è architetturalmente impossibile in un sistema E2E
+
+Questa parte NON deve più essere modificata.
+
+Non voglio ulteriori tentativi lato server.
+
+⸻
+
+DIREZIONE OBBLIGATORIA
+
+La pipeline corretta è:
+
+Registrazione
+
+↓
+
+(eventuale transcodifica CLIENT)
+
+↓
+
+Encrypt
+
+↓
+
+Upload
+
+Mai:
+
+Upload
+
+↓
+
+Server
+
+↓
+
+Transcodifica
+
+⸻
+
+OBIETTIVO
+
+Verificare quale sia la soluzione realmente implementabile lato client Android.
+
+⸻
+
+PRIMA FASE — SOLO ANALISI
+
+NON modificare nessun file.
+
+Verifica:
+
+1.
+
+Android Chrome/WebView può registrare direttamente in MP4/AAC?
+
+Oppure soltanto WebM/Opus?
+
+Mostra prove.
+
+⸻
+
+2.
+
+Se registra solo WebM:
+
+esiste già nel progetto una libreria capace di convertire
+
+WebM → MP4
+
+lato client?
+
+Verifica:
+
+* dipendenze già installate
+* API disponibili
+* costi computazionali
+* compatibilità Android
+* compatibilità iOS
+
+⸻
+
+3.
+
+Se non esiste,
+
+qual è la libreria minima realmente integrabile?
+
+Valuta soltanto librerie mature e mantenute.
+
+⸻
+
+4.
+
+La conversione può avvenire
+
+PRIMA di
+
+encryptMediaBlob()
+
+senza modificare il protocollo Signal?
+
+Mostra il punto esatto del codice.
+
+⸻
+
+5.
+
+Elenca tutti i file che sarebbe necessario modificare.
+
+Per ogni file indica:
+
+* motivo
+* numero stimato di righe
+* rischio
+
+⸻
+
+DIVIETO ASSOLUTO
+
+NON modificare:
+
+* ChatPage.tsx (parte messaggi)
+* decrypt
+* encrypt
+* cache
+* sessioni
+* Signal
+* WebSocket
+* useWebSocket
+* ws-server
+* ws-manager
+* backend
+* media.service lato server
+* database
+* API
+* protocollo
+
+Il lavoro deve rimanere esclusivamente lato client audio.
+
+⸻
+
+LAVORO CHIRURGICO
+
+Il fix deve essere:
+
+* minimo
+* isolato
+* facilmente reversibile
+* senza effetti collaterali
+
+Se per implementarlo fosse necessario toccare file non appartenenti al modulo audio,
+
+FERMATI
+
+e chiedi autorizzazione.
+
+⸻
+
+NO REGRESSIONI
+
+Prima di proporre il fix indica esplicitamente:
+
+* perché il fix non può rompere i messaggi
+* perché non può rompere Signal
+* perché non può rompere la cifratura E2E
+* perché non può rompere WebSocket
+* perché non può rompere la cache
+* perché non può rompere il decrypt
+* perché non modifica il protocollo
+
+⸻
+
+CONSEGNA
+
+Non implementare ancora nulla.
+
+Voglio un report tecnico con:
+
+1. soluzione migliore
+2. soluzione alternativa
+3. file coinvolti
+4. rischi
+5. impatto sulle performance
+6. compatibilità Android/iPhone
+7. garanzia che il lavoro rimanga completamente separato dal modulo messaggi.
+
+Se durante l’analisi scopri che il fix richiede modifiche fuori dal modulo audio, interrompi immediatamente il lavoro e chiedi autorizzazione.

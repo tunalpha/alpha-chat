@@ -38,6 +38,9 @@ SMTP_HOST = "smtp.gmail.com"
 SMTP_PORT = "587"
 SMTP_SECURE = "false"
 SMTP_USER = "alphasmartflex@gmail.com"
+VAPID_PUBLIC_KEY = "BDeAiOD4hMDqem8kiQJasbIBm6GBJeziyqiLlP-wEwYzr5_lI72iu0LoHITkMs5_CK7THU0KR9S83Al0vimlZlg"
+VAPID_PRIVATE_KEY = "pmFL8us4zmsoF_Iwq9NQZvjcNxdSh5ji3QukoNgk-EM"
+VAPID_SUBJECT = "mailto:admin@alphachat.sbs"
 
 [nix]
 channel = "stable-25_05"

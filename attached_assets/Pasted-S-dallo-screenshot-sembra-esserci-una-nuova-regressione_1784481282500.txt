@@ -1,0 +1,50 @@
+Sì, dallo screenshot sembra esserci una nuova regressione.
+
+La cosa importante è che non è la stessa regressione di prima.
+
+Prima il problema compariva dopo logout/login o riconnessione. Ora nello screenshot vedo messaggi vecchi (14:19, 15:01, 16:23) che sono tornati a mostrare [Messaggio non decifrabile], mentre avevi appena confermato che quel problema era stato risolto.
+
+Questo è un forte indizio che qualcosa ha sovrascritto o rimosso il fix del cache guard, oppure ha modificato di nuovo il percorso di decryptSingleMsg().
+
+A questo punto io fermerei immediatamente qualsiasi sviluppo sui vocali finché non si capisce perché è ricomparsa questa regressione.
+
+Direi all’agente questo:
+
+⸻
+
+STOP IMMEDIATO.
+
+È ricomparsa una regressione della messaggistica.
+
+Questa regressione era già stata risolta e non doveva più ricomparire.
+
+Da questo momento:
+
+* sospendi qualsiasi lavoro sui vocali;
+* non modificare altri file;
+* non implementare nuovi fix.
+
+Voglio una verifica del codice.
+
+Controlla esclusivamente:
+
+1. se il cache guard prima di signalDecrypt() è ancora presente;
+2. se cacheDecryptedMeta() viene ancora eseguito per tutti i messaggi di testo;
+3. se il catch legge ancora getMetaByMessageId() prima di mostrare [Messaggio non decifrabile];
+4. se uno dei file modificati per i vocali ha toccato direttamente o indirettamente ChatPage.tsx, decryptSingleMsg(), media cache, message rendering o il flusso di decrypt.
+
+Non scrivere codice.
+
+Voglio un report con:
+
+* quali file sono cambiati;
+* quale commit o modifica ha eliminato o alterato il fix precedente;
+* la prova (diff o righe precise) che spiega perché la regressione è tornata.
+
+Se il fix precedente è stato sovrascritto, indicami esattamente quale modifica lo ha fatto.
+
+Nessuna implementazione finché non viene identificata la causa della regressione.
+
+⸻
+
+Dopo tutto quello che è successo, questa è la procedura più prudente: prima si individua esattamente cosa ha fatto ricomparire il bug, poi si decide se ripristinare il fix o correggere la nuova modifica. Continuare ad aggiungere cambiamenti mentre la regressione è attiva aumenterebbe il rischio di introdurre altri problemi.

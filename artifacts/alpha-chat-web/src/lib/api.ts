@@ -9,7 +9,7 @@
  * Questo client estrae automaticamente i dati e normalizza gli errori.
  */
 
-import { getAccessToken, getRefreshToken, updateAccessToken, saveAuth, clearAuth, getDeviceId } from "./auth";
+import { getAccessToken, getRefreshToken, updateAccessToken, updateAccessTokenExpiry, saveAuth, clearAuth, getDeviceId, isAccessTokenExpired } from "./auth";
 
 const BASE = "/api/v1";
 
@@ -250,6 +250,50 @@ let refreshQueue: Array<(token: string | null) => void> = [];
 let refreshFailedAt = 0;
 const REFRESH_COOLDOWN_MS = 10_000; // 10s cooldown dopo fallimento
 
+// ── BroadcastChannel — coordinamento refresh multi-tab ─────────────────────
+//
+// Previene REFRESH_TOKEN_REUSED quando più tab si svegliano contemporaneamente
+// (es. ritorno dallo sfondo dopo >1h) e tentano il refresh in parallelo.
+//
+// Flusso:
+//   Tab A inizia il refresh → broadcast "refreshing"
+//   Tab B riceve "refreshing" → _bcRefreshInProgress = true
+//   Tab B chiama ensureValidToken → vede il flag → attende in coda BC
+//   Tab A completa → broadcast "token_refreshed" o "token_refresh_failed"
+//   Tab B legge il token fresco da localStorage (già aggiornato da Tab A)
+//
+// Graceful degradation: se BroadcastChannel non è supportato (iframe, Safari
+// privato) il sistema continua a funzionare con il solo mutex intra-tab.
+let _bcRefreshInProgress = false;
+let _bcWaiters: Array<(token: string | null) => void> = [];
+let _refreshBC: BroadcastChannel | null = null;
+try {
+  if (typeof BroadcastChannel !== "undefined") {
+    _refreshBC = new BroadcastChannel("alpha-chat:token-refresh");
+    _refreshBC.onmessage = (e: MessageEvent) => {
+      const msg = e.data as { type: string };
+      if (msg.type === "token_refreshed") {
+        // Un'altra tab ha già aggiornato localStorage — rileggiamo da lì.
+        _bcRefreshInProgress = false;
+        const freshToken = getAccessToken();
+        _bcWaiters.forEach((r) => r(freshToken));
+        _bcWaiters = [];
+      } else if (msg.type === "token_refresh_failed") {
+        _bcRefreshInProgress = false;
+        _bcWaiters.forEach((r) => r(null));
+        _bcWaiters = [];
+      } else if (msg.type === "refreshing") {
+        // Un'altra tab ha appena iniziato il refresh.
+        _bcRefreshInProgress = true;
+      }
+    };
+  }
+} catch { /* no-op: BroadcastChannel non disponibile */ }
+
+/** Retry del refresh: max tentativi e delay tra un tentativo e l'altro. */
+const REFRESH_MAX_RETRIES   = 3;
+const REFRESH_RETRY_DELAYS  = [500, 1500, 4500] as const;
+
 /** Estrae il messaggio leggibile da una risposta di errore del backend.
  *  Priorità: 1) details.issues[0].message (specifico al campo)
  *             2) error.message (generico)
@@ -282,34 +326,156 @@ function extractErrorMessage(body: unknown, fallback: string): string {
   return fallback;
 }
 
+/**
+ * Tenta di rinnovare l'access token usando il refresh token.
+ *
+ * Semantica di clearAuth():
+ *  - clearAuth() viene chiamato SOLO se il server risponde 401/403
+ *    (sessione genuinamente invalida/revocata).
+ *  - Errori di rete (fetch fallito, timeout, 5xx) NON chiamano clearAuth():
+ *    il refresh token viene conservato e il retry avviene alla prossima occasione.
+ *
+ * Retry: fino a REFRESH_MAX_RETRIES tentativi con backoff su errori di rete/5xx.
+ * Se tutti falliscono per motivi di rete, ritorna null SENZA cancellare la sessione.
+ */
 async function attemptRefresh(): Promise<string | null> {
   const refreshToken = getRefreshToken();
   if (!refreshToken) return null;
 
-  try {
-    const res = await fetch(`${BASE}/auth/refresh`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ refresh_token: refreshToken, device_id: getDeviceId() }),
-    });
-    if (!res.ok) { clearAuth(); return null; }
+  for (let attempt = 0; attempt < REFRESH_MAX_RETRIES; attempt++) {
+    // Backoff tra i tentativi (non prima del primo)
+    if (attempt > 0) {
+      await new Promise<void>((resolve) =>
+        setTimeout(resolve, REFRESH_RETRY_DELAYS[attempt - 1] ?? 4500),
+      );
+    }
 
-    const json = (await res.json()) as { data: AuthResult };
-    const result = json.data;
+    try {
+      const res = await fetch(`${BASE}/auth/refresh`, {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ refresh_token: refreshToken, device_id: getDeviceId() }),
+      });
 
-    updateAccessToken(result.tokens.access_token);
-    saveAuth({
-      accessToken: result.tokens.access_token,
-      refreshToken: result.tokens.refresh_token,
-      userId: result.user.id,
-      username: result.user.username,
-      displayName: result.user.display_name,
-    });
-    return result.tokens.access_token;
-  } catch {
-    clearAuth();
-    return null;
+      // 401 / 403: il server conferma che il refresh token è invalido o revocato.
+      // Unico caso in cui è corretto cancellare la sessione locale.
+      if (res.status === 401 || res.status === 403) {
+        clearAuth();
+        return null;
+      }
+
+      // 5xx o altro errore server: non invalida la sessione — ritenta se possibile.
+      if (!res.ok) {
+        if (attempt < REFRESH_MAX_RETRIES - 1) continue;
+        return null; // tutti i tentativi esauriti per errore server → mantieni sessione
+      }
+
+      // Successo: aggiorna token in localStorage e ritorna il nuovo access token.
+      const json   = (await res.json()) as { data: AuthResult };
+      const result = json.data;
+
+      updateAccessToken(result.tokens.access_token);
+      updateAccessTokenExpiry(result.tokens.access_token_expires_at);
+      saveAuth({
+        accessToken:          result.tokens.access_token,
+        accessTokenExpiresAt: result.tokens.access_token_expires_at,
+        refreshToken:         result.tokens.refresh_token,
+        userId:               result.user.id,
+        username:             result.user.username,
+        displayName:          result.user.display_name,
+        avatarUrl:            result.user.avatar_url ?? undefined,
+      });
+      return result.tokens.access_token;
+
+    } catch {
+      // Errore di rete (fetch fallito, DNS, timeout iOS, ecc.) — ritenta.
+      if (attempt < REFRESH_MAX_RETRIES - 1) continue;
+      // Tutti i tentativi esauriti per problemi di rete.
+      // NON clearAuth(): il refresh token è ancora valido, la sessione è preservata.
+      // Il prossimo 401 o il prossimo visibilitychange ci riproverà.
+      return null;
+    }
   }
+
+  return null;
+}
+
+/**
+ * Coordinamento refresh — unico punto di controllo del mutex isRefreshing.
+ *
+ * Garantisce:
+ *  - Un solo HTTP refresh in volo alla volta (isRefreshing guard).
+ *  - Tutte le chiamate concorrenti che ricevono 401 attendono in coda
+ *    e riutilizzano il nuovo token senza fare un secondo refresh HTTP.
+ *  - Coordinamento multi-tab via BroadcastChannel: se un'altra tab sta
+ *    già rinfrescando, questa attende il suo risultato invece di fare una
+ *    seconda richiesta HTTP (che causerebbe REFRESH_TOKEN_REUSED).
+ *  - clearAuth() + auth:expired SOLO se il server conferma 401/403
+ *    (refresh token genuinamente invalido).
+ *  - Nessuna azione se il refresh è fallito di recente (cooldown 10s).
+ *
+ * Usata da: request(), requestPaginated(), apiRefreshSession().
+ */
+async function ensureValidToken(): Promise<string | null> {
+  // Cooldown: refresh fallito di recente → non riprovare
+  if (Date.now() - refreshFailedAt < REFRESH_COOLDOWN_MS) return null;
+
+  // Un'altra tab sta già rinfrescando → attendi il suo risultato via BC.
+  // Quando completa, tutti i waiter leggono il token fresco da localStorage.
+  if (_bcRefreshInProgress) {
+    return new Promise<string | null>((resolve) => _bcWaiters.push(resolve));
+  }
+
+  // Un refresh è già in corso in questa tab → attendi il suo risultato in coda.
+  // Quando completa, tutti i waiter ricevono lo stesso nuovo token.
+  if (isRefreshing) {
+    return new Promise<string | null>((resolve) => refreshQueue.push(resolve));
+  }
+
+  // Controlla se un'altra tab ha già aggiornato il token in localStorage.
+  // Coprire il caso: due tab registrano visibilitychange con <50ms di scarto,
+  // la prima aggiorna localStorage prima che la seconda entri qui.
+  if (!isAccessTokenExpired()) {
+    const freshToken = getAccessToken();
+    if (freshToken) return freshToken;
+  }
+
+  // Segnala alle altre tab che questa sta iniziando il refresh.
+  _refreshBC?.postMessage({ type: "refreshing" });
+  isRefreshing = true;
+  const newToken = await attemptRefresh();
+  isRefreshing = false;
+
+  if (!newToken) {
+    refreshFailedAt = Date.now();
+    refreshQueue.forEach((cb) => cb(null));
+    refreshQueue = [];
+    _refreshBC?.postMessage({ type: "token_refresh_failed" });
+    // Dispatch auth:expired solo se clearAuth() è già stato chiamato
+    // da attemptRefresh() (401/403 dal server → refresh token rimosso).
+    // Se il fallimento era di rete, getRefreshToken() è ancora presente.
+    if (!getRefreshToken()) {
+      window.dispatchEvent(new CustomEvent("auth:expired"));
+    }
+  } else {
+    refreshFailedAt = 0;
+    refreshQueue.forEach((cb) => cb(newToken));
+    refreshQueue = [];
+    _refreshBC?.postMessage({ type: "token_refreshed" });
+  }
+
+  return newToken;
+}
+
+/**
+ * Refresh proattivo — esposto per AuthContext (avvio PWA, visibilitychange).
+ *
+ * Usa lo stesso mutex di request(): due chiamate concorrenti producono
+ * un solo HTTP request verso /auth/refresh; la seconda attende il risultato
+ * della prima e riutilizza il nuovo access token.
+ */
+export async function apiRefreshSession(): Promise<string | null> {
+  return ensureValidToken();
 }
 
 /**
@@ -332,37 +498,16 @@ async function request<T>(
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
 
-  // 401 → prova a rinnovare il token (una volta sola, con cooldown)
+  // 401 → prova a rinnovare il token tramite ensureValidToken() (una volta sola)
   if (res.status === 401 && retry) {
-    // Se il refresh è fallito di recente, non riprovare
-    if (Date.now() - refreshFailedAt < REFRESH_COOLDOWN_MS) {
-      window.dispatchEvent(new CustomEvent("auth:expired"));
-      throw new Error("Sessione scaduta. Accedi di nuovo.");
-    }
-
-    if (isRefreshing) {
-      const newToken = await new Promise<string | null>((resolve) => {
-        refreshQueue.push(resolve);
-      });
-      if (!newToken) { window.dispatchEvent(new CustomEvent("auth:expired")); throw new Error("Sessione scaduta"); }
-      return request<T>(method, path, body, false);
-    }
-
-    isRefreshing = true;
-    const newToken = await attemptRefresh();
-    isRefreshing = false;
-
+    const newToken = await ensureValidToken();
     if (!newToken) {
-      refreshFailedAt = Date.now(); // evita loop
-      refreshQueue.forEach((cb) => cb(null));
-      refreshQueue = [];
-      window.dispatchEvent(new CustomEvent("auth:expired"));
-      throw new Error("Sessione scaduta. Accedi di nuovo.");
+      throw new Error(
+        !getRefreshToken()
+          ? "Sessione scaduta. Accedi di nuovo."
+          : "Connessione non disponibile. Riprova tra poco.",
+      );
     }
-
-    refreshFailedAt = 0; // reset su successo
-    refreshQueue.forEach((cb) => cb(newToken));
-    refreshQueue = [];
     return request<T>(method, path, body, false);
   }
 
@@ -391,6 +536,7 @@ async function requestPaginated<T>(
   method: string,
   path: string,
   body?: unknown,
+  retry = true,
 ): Promise<PaginatedResult<T>> {
   const token = getAccessToken();
   const headers: Record<string, string> = { "Content-Type": "application/json" };
@@ -405,8 +551,18 @@ async function requestPaginated<T>(
   let jsonBody: unknown;
   try { jsonBody = await res.json(); } catch { jsonBody = null; }
 
+  // 401 → stessa logica di request(): tenta il refresh tramite ensureValidToken(),
+  // poi riprova. Due 401 concorrenti producono un solo HTTP refresh (mutex condiviso).
+  if (res.status === 401 && retry) {
+    const newToken = await ensureValidToken();
+    if (!newToken) {
+      if (!getRefreshToken()) throw new AuthExpiredError();
+      throw new Error("Connessione non disponibile. Riprova tra poco.");
+    }
+    return requestPaginated<T>(method, path, body, false);
+  }
   if (res.status === 401) {
-    window.dispatchEvent(new CustomEvent("auth:expired"));
+    // retry=false: secondo tentativo fallito dopo refresh → sessione invalida
     throw new AuthExpiredError();
   }
   if (!res.ok) {
@@ -536,13 +692,24 @@ export async function apiUpdateIdentityKey(blob: string, salt: string): Promise<
 }
 
 export async function apiLogin(input: LoginInput): Promise<AuthResult> {
-  return request<AuthResult>("POST", "/auth/login", {
-    identifier: input.identifier,
-    password: input.password,
-    device_id: getDeviceId(),
-    device_name: navigator.userAgent.slice(0, 80),
-    device_type: "web" as const,
+  // Usa fetch() diretto — NON request() — per evitare che la logica di refresh
+  // intercetti il 401 e lanci "Sessione scaduta" al posto dell'errore reale del server.
+  const res = await fetch(`${BASE}/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      identifier: input.identifier,
+      password:   input.password,
+      device_id:  getDeviceId(),
+      device_name: navigator.userAgent.slice(0, 80),
+      device_type: "web" as const,
+    }),
   });
+  let body: unknown;
+  try { body = await res.json(); } catch { body = null; }
+  if (!res.ok) throw new Error(extractErrorMessage(body, `Errore ${res.status}`));
+  const b = body as { data?: AuthResult };
+  return (b?.data ?? body) as AuthResult;
 }
 
 export async function apiLogout(): Promise<void> {
@@ -1214,6 +1381,7 @@ export interface ApiKeyCountResponse {
   userId: string;
   otpkCount: number;
   needsReplenishment: boolean;
+  bundleExists: boolean;
 }
 
 /** Carica il bundle di chiavi pubbliche sul server (chiamato dopo login/registrazione) */
@@ -1297,15 +1465,17 @@ export interface GroupMemberInfo {
 }
 
 export interface GroupDetail {
-  group_id:     string;
-  name:         string;
-  description:  string;
-  member_count: number;
-  max_members:  number;
-  created_by:   string;
-  created_at:   string;
-  my_role:      "admin" | "member";
-  members:      GroupMemberInfo[];
+  group_id:        string;
+  name:            string;
+  description:     string;
+  member_count:    number;
+  max_members:     number;
+  created_by:      string;
+  created_at:      string;
+  my_role:         "admin" | "member";
+  members:         GroupMemberInfo[];
+  avatar_url:      string | null;
+  avatar_media_id: string | null;
 }
 
 export async function apiCreateGroup(
@@ -1322,9 +1492,28 @@ export async function apiGetGroup(groupId: string): Promise<GroupDetail> {
 
 export async function apiUpdateGroup(
   groupId: string,
-  fields: { name?: string; description?: string },
+  fields: { name?: string; description?: string; avatar_media_id?: string | null },
 ): Promise<GroupDetail> {
   return request<GroupDetail>("PATCH", `/groups/${groupId}`, fields);
+}
+
+/** Carica un blob come avatar del gruppo. Ritorna il media_id assegnato dal server. */
+export async function apiUploadGroupAvatar(groupId: string, blob: Blob): Promise<string> {
+  const token = localStorage.getItem("accessToken") ?? "";
+  const form  = new FormData();
+  form.append("file", blob, "avatar.jpg");
+  form.append("conversation_id", groupId);
+  form.append("message_type", "image");
+  const res = await fetch(`${BASE}/media`, {
+    method:  "POST",
+    headers: { Authorization: `Bearer ${token}` },
+    body:    form,
+  });
+  if (!res.ok) throw new Error(`Upload avatar fallito: ${res.status}`);
+  const body = await res.json() as { data?: { media_id?: string } };
+  const mediaId = body.data?.media_id;
+  if (!mediaId) throw new Error("media_id mancante nella risposta");
+  return mediaId;
 }
 
 export async function apiDeleteGroup(groupId: string): Promise<void> {
@@ -1384,4 +1573,65 @@ export async function apiSignalAudit(
   data: Record<string, unknown>,
 ): Promise<void> {
   await request<void>("POST", "/signal/audit", { tag, data });
+}
+
+// ── Web Push Notifications ──────────────────────────────────────────────────
+
+export async function apiGetVapidPublicKey(): Promise<string | null> {
+  try {
+    const data = await request<{ publicKey: string }>("GET", "/push/vapid-public-key");
+    return data.publicKey ?? null;
+  } catch { return null; }
+}
+
+export interface PushSubscribeInput {
+  endpoint: string;
+  p256dh:   string;
+  auth:     string;
+  platform?: string;
+  browser?:  string;
+  device?:   string;
+}
+
+export async function apiSubscribePush(sub: PushSubscribeInput): Promise<void> {
+  await request<unknown>("POST", "/push/subscribe", sub);
+}
+
+export async function apiUnsubscribePush(endpoint?: string): Promise<void> {
+  await request<unknown>("DELETE", "/push/subscribe", endpoint ? { endpoint } : {});
+}
+
+// ── Phoenix Protocol ──────────────────────────────────────────────────────────
+
+export interface PhoenixRecoveryData {
+  username:      string;
+  emergencyId:   string;
+  hasPhoenixCode: boolean;
+  portalUrl:     string;
+}
+
+export async function apiGetPhoenixRecoveryCard(): Promise<PhoenixRecoveryData> {
+  return request<PhoenixRecoveryData>("GET", "/phoenix/recovery-card");
+}
+
+export async function apiSetupPhoenixCode(
+  phoenixCode: string,
+): Promise<{ success: boolean; emergency_id: string }> {
+  return request<{ success: boolean; emergency_id: string }>(
+    "POST", "/phoenix/setup", { phoenix_code: phoenixCode },
+  );
+}
+
+/**
+ * GET /users/me/presence/contacts
+ * Ritorna gli user_id dei contatti attualmente online.
+ * Chiamato al (ri)connessione WS per ottenere lo stato iniziale senza dipendere
+ * dal timing degli eventi presence.online (race condition auth.ok vs ChatPage mount).
+ */
+export async function apiGetContactsPresence(): Promise<{ online_user_ids: string[] }> {
+  return request<{ online_user_ids: string[] }>("GET", "/users/me/presence/contacts");
+}
+
+export async function apiDestroyAccountDirect(): Promise<{ success: boolean }> {
+  return request<{ success: boolean }>("POST", "/phoenix/destroy-direct");
 }

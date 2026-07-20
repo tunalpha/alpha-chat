@@ -29,7 +29,7 @@ const SETTINGS_VERSION = 1;
 
 // ─── Tipi ────────────────────────────────────────────────────────────────────
 
-export type Theme        = "dark" | "light" | "system" | "amoled";
+export type Theme        = "dark" | "light" | "system" | "amoled" | "whatsapp" | "telegram";
 export type AccentColor  = "violet" | "blue" | "green" | "red" | "cyan" | "orange" | "pink" | "gray";
 export type TextSize     = "small" | "normal" | "large" | "x-large";
 export type BubbleSize   = "compact" | "normal" | "wide";
@@ -65,7 +65,7 @@ export interface AppSettings {
 
 // ─── Valori validi (per validazione) ─────────────────────────────────────────
 
-const VALID_THEMES:   Theme[]       = ["dark","light","system","amoled"];
+const VALID_THEMES:   Theme[]       = ["dark","light","system","amoled","whatsapp","telegram"];
 const VALID_ACCENTS:  AccentColor[] = ["violet","blue","green","red","cyan","orange","pink","gray"];
 const VALID_TEXTS:    TextSize[]    = ["small","normal","large","x-large"];
 const VALID_BUBBLES:  BubbleSize[]  = ["compact","normal","wide"];
@@ -190,7 +190,7 @@ function saveSettings(s: AppSettings) {
 
 // ─── Applicazione CSS ─────────────────────────────────────────────────────────
 
-function resolveTheme(theme: Theme): "dark" | "light" | "amoled" {
+function resolveTheme(theme: Theme): "dark" | "light" | "amoled" | "whatsapp" | "telegram" {
   if (theme === "system") {
     return window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
   }

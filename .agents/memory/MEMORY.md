@@ -12,4 +12,18 @@
 - [Sprint 25 — Chiamate Secure Pro](sprint-25-calls.md) — busy detect (WsManager in-memory), multi-device dismissal, ICE restart, cronologia CallLog, suonerie multi-tone, CallVerifyModal via apiGetKeyBundle
 - [Sprint 27 — Personalizzazione Globale](sprint-27-personalization.md) — i18n 10 lingue, AppSettingsContext, temi/accenti/testo/bolle/animazioni CSS, AppearancePage, NotificationsPage, LanguagePage, backend notifiche
 - [Sprint 21 Group E2E — decrypt fix](sprint-21-group-e2e-fix.md) — type-1 senza sessione + isGroupMsg race condition su conversations state
-- [Sprint 28 — Shared Identity Key](sprint-28-shared-ik.md) — pubKey Signal = 33B (prefisso 0x05); serializzare IK con JSON+base64, non byte offset fissi; E2E 10/11 PASS (Blocco 8 UNABLE)
+- [Sprint 28 — Shared Identity Key](sprint-28-shared-ik.md) — IK JSON+base64 (pubKey 33B); account-recovery.controller usava `auth` invece di `req.user` (fix bug); prerequisiti Phase 4 PASS
+- [Signal OTPK cache bug (🔒 permanente)](signal-otpk-cache-bug.md) — 3 sub-bug in decryptSingleMsg causano perdita plaintext al reload; Pattern obbligatorio: await getMetaByMessageId → decrypt → await cacheDecryptedMeta
+- [WS token staleness bug](ws-token-staleness.md) — WS riconnetteva con token scaduto (React state stale); fix: leggere getAccessToken() da localStorage in connect()
+- [Web Push Notifications](push-notifications.md) — sistema VAPID completo con chiavi impostate come segreti Replit ✓
+- [PWA Session Persistence](pwa-session-persistence.md) — clearAuth() solo su 401/403 server; retry rete; refresh proattivo avvio+visibilitychange
+- [Refresh race condition](refresh-race-condition.md) — due refresh concorrenti = REFRESH_TOKEN_REUSED; fix: ensureValidToken() mutex unico per request()+requestPaginated()+apiRefreshSession()
+- [Signal init race condition](signal-init-race.md) — initSignalKeys era fire-and-forget in AuthContext; fix: await in login/register/restore per prevenire [Messaggio non decifrabile]
+- [Biometric-only lock (Face ID)](sprint-biometric-only.md) — biometricOnly flag in LockSettings; enableBiometricOnly/disableBiometricOnly in LockContext; LockScreen senza PinPad; PrivacyPage sezione Face ID
+- [Signal recovery guard fix](signal-recovery-guard.md) — recovery in signalDecrypt() gated su "Unknown identity key"; processV3 non awaita isTrustedIdentity (async store → irraggiungibile in prod); fix blocca OTPK exhaustion
+- [Path C double-decrypt bug](path-c-double-decrypt-bug.md) — cache guard mancante in decryptSingleMsg path 1:1 senza dc → WS reconnect → secondo decrypt → [Messaggio non decifrabile] su testo già decifrato
+- [Module isolation policy](module-isolation-policy.md) — Messaggi CONGELATO; Chiamate separato; se un fix chiamate richiede ChatPage.tsx → stop e chiedi approvazione
+- [Signal bundle self-heal](signal-bundle-self-heal.md) — signalkeybundles svuotato → maybeReplenishOtpks ora rileva bundleExists=false e riesegue _firstTimeSetup con IK invariata
+- [Call fixes batch 1](call-fixes-batch1.md) — stream leak/callee timeout/pending-call re-delivery on WS reconnect
+- [Call fixes batch 2](call-fixes-batch2.md) — spinner infinito: timeout totale 15s su acceptCall, safety-net 16s in modal; Phoenix UNAUTHORIZED: chiave localStorage sbagliata
+- [Phoenix localStorage key bug](phoenix-localstorage-key.md) — PhoenixSetupPage usava authFetch custom con chiave "alpha-chat-access-token" (inesistente); chiave reale è "ac_access_token" da KEYS in auth.ts

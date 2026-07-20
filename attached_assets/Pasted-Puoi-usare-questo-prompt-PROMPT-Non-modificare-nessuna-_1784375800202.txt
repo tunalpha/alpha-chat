@@ -1,0 +1,112 @@
+Puoi usare questo prompt:
+
+⸻
+
+PROMPT
+
+Non modificare nessuna parte della logica di messaggistica appena corretta.
+
+I fix su:
+
+* requestPaginated()
+* useWebSocket
+* handleSend()
+* handleVoiceSend()
+* handleFilePick()
+* handleForwardTo()
+
+sono stati verificati e i messaggi ora funzionano correttamente.
+
+Queste parti sono congelate.
+Non devono essere toccate né rifattorizzate, salvo bug critici dimostrabili.
+
+Lavora esclusivamente sul modulo chiamate.
+
+Bug da correggere
+
+1. Nessuno squillo (Priorità MASSIMA)
+
+Quando arriva call.incoming il destinatario deve:
+
+* sentire immediatamente lo squillo;
+* vedere la schermata di chiamata;
+* lo squillo deve interrompersi automaticamente quando:
+    * la chiamata viene accettata;
+    * viene rifiutata;
+    * viene annullata;
+    * scade il timeout.
+
+Analizza:
+
+* dove viene gestito call.incoming;
+* se il ringtone viene mai avviato;
+* se viene bloccato da autoplay/browser;
+* implementa il fix minimo indispensabile.
+
+⸻
+
+2. Routing audio
+
+Situazione attuale:
+
+* il chiamante sente solo in vivavoce;
+* il destinatario può usare sia capsula auricolare sia vivavoce.
+
+Individua:
+
+* dove viene configurato l’output audio;
+* perché il comportamento è diverso tra caller e callee;
+* se dipende dal browser (Safari iOS) oppure dal codice.
+
+Correggere solo se esiste una soluzione reale.
+
+⸻
+
+3. Compatibilità browser
+
+Verificare eventuali limitazioni di:
+
+* Safari iOS
+* Chrome Android
+* Desktop
+
+Specificare chiaramente cosa è un limite del browser e cosa è un bug del codice.
+
+⸻
+
+Regola fondamentale
+
+NON toccare assolutamente:
+
+* Signal
+* decrypt
+* encrypt
+* sessioni
+* cache
+* requestPaginated
+* AuthContext
+* WebSocket messaggi
+* ChatPage
+* handleSend
+* media cache
+* logica realtime dei messaggi
+
+Sono stati appena stabilizzati e qualsiasi modifica rischia di reintrodurre regressioni.
+
+⸻
+
+Modalità di lavoro
+
+Applicare solo fix chirurgici sul modulo chiamate.
+
+Per ogni modifica indicare:
+
+* file
+* righe
+* motivo della modifica
+* impatto
+* perché non può causare regressioni alla messaggistica.
+
+Se una modifica richiede di toccare la logica dei messaggi o del WebSocket condiviso, fermarsi e chiedere conferma prima di procedere.
+
+L’obiettivo è correggere esclusivamente le chiamate mantenendo invariata la stabilità dei messaggi appena raggiunta.

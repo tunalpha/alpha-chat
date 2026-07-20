@@ -1,0 +1,73 @@
+Nel complesso questa implementazione mi sembra ben impostata, ma ci sono due punti che controllerei prima del deploy in produzione.
+
+✅ 1. Fix [Messaggio non decifrabile]
+
+Questo è il fix che mi convince di più.
+
+La root cause è coerente:
+
+* initSignalKeys() veniva lanciato in modalità fire-and-forget;
+* il caricamento della cronologia partiva prima che IndexedDB/Signal fosse pronto;
+* decryptBatch() falliva perché le chiavi non erano ancora disponibili.
+
+Trasformare initSignalKeys() in un await durante:
+
+* login,
+* registrazione,
+* restore della sessione,
+
+è una correzione logica e non modifica la logica dei messaggi, ma solo l’ordine di inizializzazione.
+
+⸻
+
+✅ 2. Push Notification Service
+
+Anche l’architettura è buona.
+
+Mi piace che:
+
+* il Push Service sia separato;
+* utilizzi VAPID standard;
+* il dispatcher sia asincrono (setImmediate / fire-and-forget);
+* un errore nelle push non possa bloccare l’invio dei messaggi.
+
+È esattamente il tipo di disaccoppiamento che avevi chiesto.
+
+⸻
+
+⚠️ Unica verifica che farei
+
+Hai scritto:
+
+“il push in message.service.ts avviene in un secondo void IIFE dopo il return result”
+
+Verifica che il Push Service venga attivato solo dopo che il messaggio è stato realmente salvato nel database.
+
+L’ordine corretto dovrebbe essere:
+
+save message
+        ↓
+commit DB
+        ↓
+return result
+        ↓
+WebSocket
+        ↓
+Push (asincrona)
+
+Non deve mai esistere il rischio che venga inviata una push per un messaggio che poi non viene salvato o che l’utente riceva una notifica prima che il messaggio sia disponibile.
+
+⸻
+
+Prima di andare in produzione
+
+Io farei questi test:
+
+* ✅ Login → logout → login: la cronologia deve rimanere leggibile.
+* ✅ Riavvio della PWA dalla schermata Home: nessun logout indesiderato.
+* ✅ Due dispositivi: messaggio con chat aperta → arriva via WebSocket, senza duplicare la push.
+* ✅ Destinatario con app in background → riceve la push.
+* ✅ Tocco sulla push → si apre direttamente la conversazione corretta.
+* ✅ Se il server push fallisce, i messaggi continuano a funzionare normalmente.
+
+Se anche questi test passano, direi che hai raggiunto un traguardo importante: una base con messaggistica stabile, sessioni inizializzate correttamente e infrastruttura pronta per le notifiche push, senza intrecciare la logica delle push con quella della chat.

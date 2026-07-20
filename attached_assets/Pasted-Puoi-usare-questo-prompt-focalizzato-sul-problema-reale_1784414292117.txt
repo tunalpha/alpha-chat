@@ -1,0 +1,91 @@
+Puoi usare questo prompt. È focalizzato sul problema reale e chiede di raccogliere prove prima di modificare altro codice.
+
+⸻
+
+Prompt
+
+Non implementare nuovi fix e non modificare la logica finché non viene identificata con certezza la causa del problema.
+
+Situazione attuale:
+
+* Le notifiche push ora funzionano.
+* I messaggi inviati partono correttamente.
+* I messaggi ricevuti arrivano immediatamente come ”[Messaggio non decifrabile]”.
+* Succede con più utenti (Cricco, Felix26, Mariagrazia), quindi non è un problema di una singola conversazione.
+* Non assumere che la causa siano le OTPK, lo store.clear() o la Identity Key senza prove.
+
+Obiettivo
+
+Individuare il motivo esatto per cui la decrittazione fallisce.
+
+Aggiungi logging completo nel punto in cui viene chiamato Signal per decifrare il messaggio.
+
+Per ogni messaggio ricevuto registra:
+
+* senderUserId
+* senderDeviceId
+* recipientUserId
+* recipientDeviceId
+* conversationId
+* messageId
+* messageType (PreKeySignalMessage o SignalMessage)
+* esistenza della sessione Signal prima della decrypt
+* fingerprint della Identity Key locale
+* fingerprint della Identity Key remota
+* SignedPreKeyId utilizzata
+* OneTimePreKeyId utilizzata (se presente)
+
+In caso di errore NON limitarti a mostrare “[Messaggio non decifrabile]”.
+
+Logga integralmente:
+
+* nome dell’eccezione
+* stack trace
+* messaggio completo dell’errore restituito dalla libreria Signal
+
+Ad esempio capire se è:
+
+* NoSessionError
+* InvalidMessageError
+* BadMacError
+* IdentityKeyChangedError
+* InvalidKeyError
+* DuplicateMessageError
+* oppure qualsiasi altra eccezione.
+
+Verifica inoltre
+
+Prima della decrypt loggare:
+
+* numero di sessioni Signal presenti nello store
+* chiave con cui viene cercata la sessione
+* chiave con cui la sessione è stata salvata
+* se viene trovata oppure no
+
+Non modificare
+
+* gestione Identity Key
+* gestione OTPK
+* store.clear()
+* login
+* push
+* trust manager
+
+finché non è disponibile il log completo.
+
+Output richiesto
+
+Per un singolo messaggio ricevuto fornire:
+
+* eccezione completa della libreria Signal;
+* stack trace;
+* identificatore della sessione cercata;
+* identificatore della sessione trovata;
+* esito della ricerca della sessione;
+* fingerprint Identity Key locale;
+* fingerprint Identity Key remota;
+* SignedPreKeyId;
+* OneTimePreKeyId;
+* conclusione tecnica basata esclusivamente sui log, senza ipotesi non dimostrate.
+
+Solo dopo aver ottenuto questi dati proporre un fix.

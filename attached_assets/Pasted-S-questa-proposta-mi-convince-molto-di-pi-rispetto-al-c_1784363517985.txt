@@ -1,0 +1,58 @@
+Sì, questa proposta mi convince molto di più rispetto al cleanup iniziale.
+
+Anzi, credo che durante i test sia emersa una questione ancora più importante del cleanup stesso:
+
+La migrazione lazy attuale sembra generare una nuova Identity Key anche quando il dispositivo possiede già una IK valida nell’IndexedDB.
+
+Se la tua descrizione del flusso è corretta, non procederei ancora con la Fase 4. Prima chiederei di correggere questo comportamento.
+
+Il motivo
+
+L’obiettivo della migrazione è avere un’unica IK canonica per utente.
+
+Se un dispositivo esistente ha già una IK valida e la migrazione genera invece una IK completamente nuova da salvare nel blob, si crea una situazione in cui:
+
+* Device → continua a usare IK A.
+* Server (blob) → contiene IK B.
+
+Questa non è una migrazione: è una divergenza silenziosa. Attivare il controllo di consistenza sopra una situazione del genere è rischioso.
+
+Sul cleanup automatico
+
+L’idea dell’hook server-side mi sembra decisamente migliore del cleanup massivo.
+
+Ha diversi vantaggi:
+
+* non tocca gli utenti inattivi;
+* non cancella bundle di utenti reali in anticipo;
+* pulisce solo quando l’utente torna effettivamente online;
+* riduce il rischio di effetti collaterali.
+
+L’unica cosa che farei verificare
+
+Prima di implementarlo chiederei una verifica precisa:
+
+Se un utente ha il blob ma il dispositivo continua a usare la vecchia IK presente nell’IndexedDB, come viene determinata la IK “canonica” durante l’upload del bundle?
+
+Perché qui ci sono due possibilità:
+
+1. La IK canonica è quella del blob.
+2. La IK canonica è quella del bundle appena caricato dal dispositivo.
+
+Il tuo agente propone implicitamente la seconda, ma la sua spiegazione contiene anche la frase:
+
+“il blob garantisce che la nuova IK sia quella canonica”
+
+Questa affermazione non è automaticamente vera se il dispositivo continua a usare una IK diversa. Bisogna definire una sola fonte di verità.
+
+La sequenza che approverei
+
+Io darei l’OK a questa sequenza, con una modifica:
+
+1. Correggere definitivamente la migrazione lazy in modo che non possa lasciare blob e dispositivo con IK diverse.
+2. Implementare l’hook di cleanup automatico.
+3. Eliminare il bundle stale dell’account di test rc2_rt0rns.
+4. Verificare con Marco e Alpha (quando effettueranno il prossimo accesso) che la migrazione avvenga come previsto.
+5. Solo dopo attivare SIGNAL_IK_CONSISTENCY_CHECK=true.
+
+Questa è la differenza principale rispetto alla proposta dell’agente: non attiverei il controllo di consistenza finché non sono certo che la migrazione lazy non possa più creare nuove divergenze. Se la migrazione è corretta, il cleanup automatico diventa una rifinitura; se la migrazione è ancora incoerente, il flag rischia di trasformare un’incoerenza silenziosa in errori visibili agli utenti.

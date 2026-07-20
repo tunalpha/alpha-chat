@@ -74,7 +74,7 @@ export const verifyEmailTokenHandler = [
 // ── GET /account/recovery/status ────────────────────────────────────────────
 export async function getRecoveryStatusHandler(req: Request, res: Response, next: NextFunction) {
   try {
-    const userId = new mongoose.Types.ObjectId((req as any).auth.userId);
+    const userId = new mongoose.Types.ObjectId(req.user!.userId);
     const status = await getRecoveryStatus(userId);
     res.json(status);
   } catch (e) { next(e); }
@@ -85,7 +85,7 @@ export const setRecoveryEmailHandler = [
   validate("body", SetRecoveryEmailSchema),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const userId = new mongoose.Types.ObjectId((req as any).auth.userId);
+      const userId = new mongoose.Types.ObjectId(req.user!.userId);
       await setRecoveryEmail(userId, req.body.email);
       res.json({ success: true });
     } catch (e) { next(e); }
@@ -95,12 +95,11 @@ export const setRecoveryEmailHandler = [
 // ── POST /account/recovery/card/regenerate ──────────────────────────────────
 export async function regenerateRecoveryCardHandler(req: Request, res: Response, next: NextFunction) {
   try {
-    const auth   = (req as any).auth;
-    const userId = new mongoose.Types.ObjectId(auth.userId);
+    const userId = new mongoose.Types.ObjectId(req.user!.userId);
     // Recupera username dal DB se non presente nel token
     const { UserModel } = await import("../models/user.model");
     const user = await UserModel.findById(userId).select("username");
-    const card   = await regenerateRecoveryCard(userId, user?.username ?? auth.username ?? "");
+    const card = await regenerateRecoveryCard(userId, user?.username ?? "");
     res.json({ success: true, card });
   } catch (e) { next(e); }
 }
@@ -110,8 +109,15 @@ export const changeTempPasswordHandler = [
   validate("body", ChangeTempPasswordSchema),
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const userId = new mongoose.Types.ObjectId((req as any).auth.userId);
-      await changeTempPassword(userId, req.body.temp_password, req.body.new_password);
+      const userId = new mongoose.Types.ObjectId(req.user!.userId);
+      const deviceId = req.user!.deviceId;
+      await changeTempPassword(
+        userId,
+        req.body.temp_password,
+        req.body.new_password,
+        deviceId,
+        req.body.new_encrypted_identity_key,
+      );
       res.json({ success: true });
     } catch (e) { next(e); }
   },

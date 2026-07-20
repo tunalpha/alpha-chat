@@ -58,7 +58,7 @@ export const fetchBundle: RequestHandler = async (req, res) => {
 // ---------------------------------------------------------------------------
 
 export const getKeyCount: RequestHandler = async (req, res) => {
-  const count = await service.getKeyCount(req.user!.userId);
+  const count = await service.getKeyCount(req.user!.userId, req.user!.deviceId);
   res.json({ success: true, data: count });
 };
 

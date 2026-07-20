@@ -1,0 +1,49 @@
+Dallo screenshot non sembra che i messaggi siano stati cancellati.
+
+Quello che vedo è:
+
+* I messaggi sono ancora presenti nella cronologia (stessi orari: 12:32, 12:50, 13:07…).
+* Al posto del testo compare [Messaggio non decifrabile].
+* I tuoi messaggi vengono mostrati come “✉️ Messaggio inviato”, quindi il client non riesce più a ricostruire il testo in chiaro.
+
+Questo indica che la cronologia è stata caricata, ma la decifratura dopo il login non funziona.
+
+La causa più probabile
+
+Dopo il login è successo uno di questi casi:
+
+1. Le sessioni Signal non vengono ripristinate correttamente.
+2. Le chiavi locali (Identity Key, Session Store, ecc.) vengono perse o ricreate.
+3. Il codice tenta di decifrare i messaggi prima che il ripristino delle chiavi sia completato.
+4. Il logout/login cancella parte dello storage usato da Signal.
+
+Dato che questo problema compare proprio dopo il login, io mi concentrerei sul flusso di autenticazione e inizializzazione, non sulla messaggistica in sé.
+
+⸻
+
+Prompt per l’agente
+
+Bug critico dopo login
+
+Dopo aver effettuato nuovamente il login:
+
+* la cronologia viene caricata;
+* i messaggi non sono cancellati;
+* tutti i messaggi diventano [Messaggio non decifrabile];
+* i messaggi inviati vengono mostrati come “✉️ Messaggio inviato”.
+
+Analizzare esclusivamente il flusso di login e di inizializzazione Signal.
+
+Verificare:
+
+1. Se durante login/logout viene cancellato qualsiasi storage utilizzato da Signal.
+2. Se Identity Key, Session Store, PreKeys e Sender Keys vengono preservati.
+3. Se il ripristino delle chiavi termina prima del caricamento della cronologia.
+4. Se loadMessages() parte prima che initSignalKeys() sia completata.
+5. Se dopo il login vengono ricreate nuove chiavi invece di riutilizzare quelle esistenti.
+
+NON modificare la logica della messaggistica, che è stata stabilizzata con molta difficoltà.
+
+Limitarsi a individuare la causa nel flusso di login/inizializzazione e proporre un fix chirurgico.
+
+Questo lo considererei un bug critico, perché un utente che effettua nuovamente l’accesso si aspetta di poter leggere la propria cronologia. Prima di aggiungere nuove funzionalità (come le notifiche push), darei priorità a risolvere questo comportamento.

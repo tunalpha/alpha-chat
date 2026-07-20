@@ -1,0 +1,71 @@
+Il report contiene una contraddizione importante.
+
+L’agente scrive:
+
+“La regressione non è nuova.”
+
+Ma questo è in conflitto con quello che avevi verificato tu in precedenza:
+
+* avevi testato logout → login;
+* avevi confermato che i messaggi rimanevano in chiaro;
+* avevi scritto esplicitamente: “Problema risolto, disconnesso e riconnesso i messaggi restano in chiaro.”
+
+Quindi non può limitarsi a confrontare due screenshot (17:52 e 18:13) e concludere che “era già così”. Quello dimostra solo che quei vecchi messaggi erano ancora in quello stato, non spiega perché in un test precedente il comportamento era corretto.
+
+Inoltre c’è un’altra incongruenza.
+
+Nel report dice:
+
+cacheDecryptedMeta viene chiamato solo per message_type === "media".
+
+Ma qualche ora fa aveva dichiarato di aver corretto proprio questo problema, dicendo che:
+
+* il cache guard era globale;
+* cacheDecryptedMeta() veniva chiamato per tutti i messaggi;
+* il catch leggeva la cache prima di mostrare [Messaggio non decifrabile].
+
+Se oggi legge il codice e vede ancora:
+
+if (msg.message_type === "media") {
+    cacheDecryptedMeta(...)
+}
+
+allora una delle due cose è vera:
+
+1. il fix non è mai stato realmente presente nel codice corrente;
+2. oppure è stato sovrascritto successivamente.
+
+Questa è la domanda da chiarire.
+
+Gli farei quindi questa richiesta molto precisa:
+
+⸻
+
+STOP. C’è una contraddizione nei report.
+
+In precedenza avevi dichiarato di aver implementato:
+
+* cache guard globale;
+* cacheDecryptedMeta() per tutti i messaggi;
+* fallback cache nel catch.
+
+Oggi invece leggi il codice e trovi ancora:
+
+if (msg.message_type === "media")
+
+Quindi voglio sapere quale delle due affermazioni è corretta.
+
+Non fare modifiche.
+
+Rispondi solo a queste domande:
+
+1. Il fix era realmente presente nel repository oppure no?
+2. Se era presente, quando e da quale modifica è stato rimosso?
+3. Se non era presente, perché nel report precedente avevi dichiarato che era stato implementato?
+4. Mostrami il diff o le righe che dimostrano la risposta.
+
+Non implementare nulla finché questa contraddizione non è chiarita.
+
+⸻
+
+Questo evita di procedere sulla base di informazioni incoerenti. Prima è importante stabilire se il codice attuale corrisponde davvero a quanto era stato dichiarato nei report precedenti.

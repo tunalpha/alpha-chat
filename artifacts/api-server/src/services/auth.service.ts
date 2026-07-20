@@ -273,7 +273,8 @@ export async function login(params: LoginServiceParams): Promise<LoginResult> {
     throw new AppError("INVALID_CREDENTIALS", 401);
   }
 
-  // 2. Account sospeso / bloccato
+  // 2. Account eliminato / sospeso / bloccato
+  if (user.status === "deleted")   throw new AppError("ACCOUNT_DELETED",   403);
   if (user.status === "suspended") throw new AppError("ACCOUNT_SUSPENDED", 403);
   if (user.locked_until && user.locked_until > new Date()) throw new AppError("ACCOUNT_LOCKED", 423);
 

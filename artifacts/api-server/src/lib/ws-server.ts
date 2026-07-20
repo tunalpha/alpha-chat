@@ -35,7 +35,7 @@ import type {
 // Costanti
 // ---------------------------------------------------------------------------
 
-const PING_INTERVAL_MS = 30_000; // 30 secondi
+const PING_INTERVAL_MS = 15_000; // 15 secondi (ridotto da 30s — zombie window massima)
 const AUTH_TIMEOUT_MS = 10_000;  // 10 secondi per autenticarsi
 
 // ---------------------------------------------------------------------------
@@ -93,6 +93,8 @@ export function createWsServer(httpServer: HttpServer): WebSocketServer {
     let isAlive = true;
     let pingInterval: ReturnType<typeof setInterval> | null = null;
     let authTimeout: ReturnType<typeof setTimeout> | null = null;
+    let lastPingSentAt: number | null = null;
+    let lastPongAt: number | null = null;
 
     // Oggetto conn usato come chiave nel WsManager
     const conn: ClientConnection = { ws, userId: "", isAlive };
@@ -109,12 +111,17 @@ export function createWsServer(httpServer: HttpServer): WebSocketServer {
     function startHeartbeat(): void {
       pingInterval = setInterval(() => {
         if (!isAlive) {
-          logger.debug({ userId }, "WS heartbeat timeout — terminating");
+          logger.info(
+            { userId, lastPingSentAt, lastPongAt, msSinceLastPing: lastPingSentAt ? Date.now() - lastPingSentAt : null },
+            "[WS] heartbeat timeout — nessun pong ricevuto → terminate()",
+          );
           ws.terminate();
           return;
         }
         isAlive = false;
         conn.isAlive = false;
+        lastPingSentAt = Date.now();
+        logger.info({ userId, lastPingSentAt }, "[WS] ping sent");
         safeSend(ws, { type: "ping" });
       }, PING_INTERVAL_MS);
     }
@@ -168,6 +175,16 @@ export function createWsServer(httpServer: HttpServer): WebSocketServer {
           safeSend(ws, { type: "auth.ok", payload: { user_id: userId } });
           startHeartbeat();
           await setOnline(userId);
+
+          // Re-deliver pending call.incoming se il callee si è riconnesso
+          // mentre una chiamata era in corso (iOS background → foreground).
+          // Il caller ha già inviato call.offer; il server lo ha bufferizzato
+          // in pendingCalls e lo reinvia solo a questa nuova connessione.
+          const pendingCall = wsManager.getPendingCall(userId);
+          if (pendingCall) {
+            logger.info({ userId }, "[DIAG-SRV] WS reconnect — re-delivering pending call.incoming");
+            safeSend(ws, { type: "call.incoming", payload: pendingCall } as unknown as Parameters<typeof safeSend>[1]);
+          }
 
           // Invia presenza iniziale: chi tra i contatti è già online
           void sendInitialPresence(userId, ws);
@@ -260,10 +277,14 @@ export function createWsServer(httpServer: HttpServer): WebSocketServer {
           );
 
           // Fan-out a TUTTI i device del destinatario (multi-device ring)
+          const callIncomingPayload = { ...p, from_user_id: userId! };
           wsManager.sendToUser(toId, {
             type: "call.incoming",
-            payload: { ...p, from_user_id: userId },
+            payload: callIncomingPayload,
           });
+
+          // Bufferizza per re-delivery se il callee si riconnette entro 35s
+          wsManager.setPendingCall(toId, callIncomingPayload);
 
           // Push per dispositivi offline (PWA installata ma WS non attivo)
           // Fire-and-forget — non blocca il signaling
@@ -296,6 +317,9 @@ export function createWsServer(httpServer: HttpServer): WebSocketServer {
           if (!toId) break;
 
           logger.info({ calleeId: userId, callerId: toId }, "[DIAG-SRV] call.answer ricevuto → callee ha ACCETTATO");
+
+          // Chiamata accettata: cancella la pending call (non serve più re-delivery)
+          wsManager.clearPendingCall(userId!);
 
           // Relay risposta al chiamante
           wsManager.sendToUser(toId, {
@@ -333,6 +357,9 @@ export function createWsServer(httpServer: HttpServer): WebSocketServer {
 
           logger.info({ calleeId: userId, callerId: toId, reason: p["reason"] }, "[DIAG-SRV] call.reject ricevuto → callee ha RIFIUTATO (o errore acceptCall)");
 
+          // Chiamata rifiutata: cancella la pending call
+          wsManager.clearPendingCall(userId!);
+
           // Relay rifiuto al chiamante
           wsManager.sendToUser(toId, {
             type: "call.rejected",
@@ -352,6 +379,11 @@ export function createWsServer(httpServer: HttpServer): WebSocketServer {
           const toId = p["to_user_id"] as string | undefined;
           if (!toId) break;
 
+          const calleeOnline = wsManager.isOnline(toId);
+          logger.info(
+            { callerId: userId, calleeId: toId, reason: p["reason"], calleeOnline },
+            "[DIAG-SRV] call.end ricevuto → invio call.ended al callee",
+          );
           wsManager.sendToUser(toId, {
             type: "call.ended",
             payload: { from_user_id: userId },
@@ -364,6 +396,9 @@ export function createWsServer(httpServer: HttpServer): WebSocketServer {
               payload: { from_user_id: userId },
             });
           }
+
+          // Chiamata terminata dal caller: cancella pending (callee non ha risposto)
+          wsManager.clearPendingCall(toId);
 
           // Libera entrambi dal "in call" status
           wsManager.clearInCall(userId!);
@@ -383,9 +418,22 @@ export function createWsServer(httpServer: HttpServer): WebSocketServer {
     ws.on("pong", () => {
       isAlive = true;
       conn.isAlive = true;
+      lastPongAt = Date.now();
+      logger.info(
+        { userId, lastPongAt, rttMs: lastPingSentAt ? lastPongAt - lastPingSentAt : null },
+        "[WS] pong received",
+      );
     });
 
-    ws.on("close", () => { void cleanup(); });
+    ws.on("close", (code: number, reason: Buffer) => {
+      const reasonStr = reason.toString() || "(none)";
+      logger.info(
+        { userId, code, reason: reasonStr, lastPingSentAt, lastPongAt,
+          msSinceLastPong: lastPongAt ? Date.now() - lastPongAt : null },
+        "[WS] onclose",
+      );
+      void cleanup();
+    });
 
     ws.on("error", (err) => {
       logger.warn({ err, userId }, "WS socket error");

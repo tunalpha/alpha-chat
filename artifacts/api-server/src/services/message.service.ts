@@ -22,6 +22,8 @@ import { MediaRepository } from "../repositories/media.repository";
 import { logAuditEvent } from "../lib/audit";
 import { logger } from "../lib/logger";
 import { wsManager } from "../lib/ws-manager";
+import { UserRepository } from "../repositories/user.repository";
+import * as PushDispatcher from "../services/push/PushDispatcher";
 import type { SendMessageInput, ListMessagesInput, EditMessageInput, DeleteMessageInput } from "../validation/message.schemas";
 
 // ---------------------------------------------------------------------------
@@ -67,6 +69,7 @@ export interface MessageListResult {
 const convRepo   = new ConversationRepository();
 const memberRepo = new ConversationMemberRepository();
 const msgRepo    = new MessageRepository();
+const userRepo   = new UserRepository();
 const mediaRepo  = new MediaRepository();
 
 // ---------------------------------------------------------------------------
@@ -188,6 +191,64 @@ export async function sendMessage(
       const members = await memberRepo.listMembers(convObjectId);
       const memberIds = members.map((m) => m.user_id.toString());
       wsManager.sendToUsers(memberIds, { type: "message.new", payload: result });
+
+      // ── Push Notifications — fire-and-forget, separato dal flusso WS ─────
+      // Invia solo agli utenti offline (quelli online ricevono già il WS event).
+      // Nessun contenuto del messaggio — solo metadati (mittente, conversazione).
+      const potentialIds = memberIds.filter((id) => id !== senderId);
+      const offlineIds   = potentialIds.filter((id) => !wsManager.isOnline(id));
+      const onlineIds    = potentialIds.filter((id) =>  wsManager.isOnline(id));
+
+      // Log 3 — per ogni destinatario considerato online: motivo dello skip
+      for (const userId of onlineIds) {
+        logger.info(
+          {
+            userId,
+            isOnline:        true,
+            connectionCount: wsManager.getConnectionCount(userId),
+            decision:        "skip push — recipient online",
+          },
+          "Push skip — recipient considered online",
+        );
+      }
+
+      // Log 1 — decisione complessiva per questo messaggio
+      logger.info(
+        {
+          conversationId,
+          potentialRecipients: potentialIds,
+          onlineIds,
+          offlineIds,
+          decision: offlineIds.length > 0 ? "send push" : "skip push — all recipients online",
+        },
+        "Push decision",
+      );
+
+      if (offlineIds.length > 0) {
+        void (async () => {
+          try {
+            const senderUser = await userRepo.findById(
+              new mongoose.Types.ObjectId(senderId),
+            );
+            const senderName =
+              senderUser?.display_name ?? senderUser?.username ?? "Utente";
+            const conv = await convRepo.findById(convObjectId);
+            const isGroup   = conv?.type === "group";
+            const convName  = isGroup ? ((conv as unknown as Record<string, unknown>)["name"] as string | null) ?? null : null;
+            PushDispatcher.dispatch(offlineIds, {
+              type:             "message.new",
+              recipientUserIds: offlineIds,
+              senderId,
+              senderName,
+              conversationId,
+              conversationName: convName,
+              isGroup,
+            });
+          } catch (err) {
+            logger.warn({ err }, "Push dispatch message.new: errore non critico");
+          }
+        })();
+      }
     } catch (err) {
       logger.warn({ err, conversationId }, "WS broadcast message.new failed");
     }

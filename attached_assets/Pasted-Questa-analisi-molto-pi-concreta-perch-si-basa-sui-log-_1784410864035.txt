@@ -1,0 +1,82 @@
+Questa analisi è molto più concreta perché si basa sui log, ma farei una distinzione tra ciò che è dimostrato e ciò che è ancora un’ipotesi.
+
+✅ Dimostrato
+
+1. Presenza online / Push
+
+Questo è praticamente confermato.
+
+Il timeout del WebSocket (30 s + un secondo giro fino a ~60 s) spiega perfettamente perché:
+
+* chiudi la PWA;
+* per circa 30–70 secondi il server ti considera ancora online;
+* in quel periodo non invia le push;
+* iOS ha già sospeso JavaScript e quindi i messaggi non vengono elaborati.
+
+Questa parte è coerente con il codice e con i timestamp.
+
+⸻
+
+⚠️ Non ancora dimostrato
+
+2. TRUST-MISMATCH
+
+Hai scritto:
+
+“TRUST-MISMATCH reporter non era nel deploy”
+
+Quindi non sappiamo ancora se il problema dei messaggi è davvero quello.
+
+Non bisogna dare per scontato che sia la causa.
+
+⸻
+
+🚨 Il dato che mi interessa di più
+
+Questo:
+
+Alice: hasOtpk: false ad ogni fetch.
+
+Se è corretto, è un’anomalia importante.
+
+In un’implementazione Signal, le One-Time PreKeys dovrebbero essere rifornite quando si esauriscono.
+
+Se il server restituisce continuamente:
+
+hasOtpk: false
+
+per lo stesso utente, bisogna capire:
+
+* le OTPK sono state consumate e mai rigenerate?
+* non vengono caricate dal client?
+* il server non le salva?
+* oppure è un comportamento previsto della vostra implementazione?
+
+Questo, secondo me, merita un’indagine separata perché potrebbe contribuire ai problemi di creazione delle nuove sessioni.
+
+⸻
+
+La cosa che farei verificare prima di qualsiasi altro deploy
+
+Chiederei una risposta molto precisa:
+
+Perché Alice ha hasOtpk: false in modo permanente?
+
+* Quante OTPK risultano nel database per Alice?
+* Quando vengono caricate?
+* Esiste un meccanismo di replenishment?
+* Se sì, perché non è stato eseguito?
+
+Questa risposta è più importante del fare un altro deploy alla cieca.
+
+⸻
+
+In sintesi
+
+In questo momento avete:
+
+* ✅ una spiegazione convincente del comportamento delle push dopo la chiusura della PWA;
+* ⚠️ nessuna prova definitiva sulla causa dei messaggi non decifrabili;
+* 🚨 un nuovo indizio (hasOtpk: false) che potrebbe essere rilevante e che va chiarito prima di continuare a modificare il codice.
+
+Io eviterei altri cambiamenti finché non è chiaro perché Alice non dispone più di One-Time PreKeys. Quella potrebbe essere la chiave per capire perché le nuove sessioni continuano a non stabilizzarsi.

@@ -33,7 +33,7 @@ export default function MediaViewer({ blobUrl, type, onClose }: Props) {
           src={blobUrl}
           className="media-viewer-img"
           alt="Immagine"
-          onClick={(e) => e.stopPropagation()}
+          /* Tap sull'immagine → chiude il viewer (comportamento atteso su mobile) */
         />
       ) : (
         <video

@@ -1,0 +1,85 @@
+Questa RCA è una delle più convincenti che ho letto finora, ma farei una distinzione importante.
+
+La Causa 1 è corretta
+
+Se hai disinstallato la PWA, iOS elimina lo storage della web app (incluso IndexedDB). Se le sessioni del Double Ratchet erano memorizzate solo lì, la perdita delle sessioni è un comportamento atteso del protocollo: i vecchi messaggi non possono più essere decifrati.
+
+Questa non è un’anomalia di Signal, è una conseguenza della Forward Secrecy.
+
+⸻
+
+La Causa 2 è quella da verificare con attenzione
+
+Questa invece potrebbe essere un bug.
+
+Se il flusso è davvero:
+
+PWA reinstallata
+        ↓
+sessione JWT ancora valida
+        ↓
+nessuna password disponibile
+        ↓
+IndexedDB vuota
+        ↓
+initSignalKeys()
+        ↓
+genera nuova Identity Key
+
+allora il client sta creando una nuova identità senza che l’utente abbia effettuato un nuovo login.
+
+Questa sarebbe una regressione importante.
+
+In quel caso io non genererei mai una nuova Identity Key automaticamente.
+
+Preferirei un comportamento del tipo:
+
+Sessione valida
+        ↓
+IndexedDB vuota
+        ↓
+Identity Key non recuperabile
+        ↓
+Richiedi nuovamente la password
+        ↓
+Ripristina Identity Key dal blob cifrato
+
+Solo se l’utente decide esplicitamente di “reinizializzare la sicurezza” avrebbe senso creare una nuova Identity Key.
+
+⸻
+
+Quello che chiederei all’agente
+
+Non correggere ancora il codice.
+
+Prima aggiungere un log diagnostico:
+
+Signal startup
+IndexedDB initialized = true/false
+Identity Key fingerprint locale = ...
+Identity Key fingerprint server = ...
+Bootstrap = true/false
+Restore = true/false
+
+Con questi log si capirà immediatamente se:
+
+* è successo solo il caso 1 (atteso);
+* oppure il client ha davvero generato una nuova Identity Key (caso 2).
+
+⸻
+
+Una domanda per te
+
+Mi hai detto:
+
+“Dopo che ho reinstallato…”
+
+Hai fatto di nuovo il login inserendo email/password?
+
+Oppure:
+
+* hai reinstallato la PWA;
+* l’hai aperta;
+* sei entrato direttamente perché la sessione era ancora valida?
+
+Questa risposta è decisiva per capire se siete nel caso 1 (comportamento atteso) o nel caso 2 (bug da correggere).

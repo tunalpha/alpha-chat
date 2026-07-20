@@ -1,0 +1,70 @@
+Puoi usare questo prompt, che è molto mirato e chiede prove, non ipotesi:
+
+⸻
+
+PROMPT
+
+Non implementare altri fix. Voglio una Root Cause Analysis definitiva basata esclusivamente su evidenze nei log e nel codice.
+
+L’ipotesi attuale è che il problema sia nel ciclo refresh token → AuthContext → WebSocket, ma voglio confermarla o smentirla con dati oggettivi.
+
+Esegui queste verifiche:
+
+1. Primo refresh che fallisce
+    * Individua il primo /auth/refresh che porta alla cascata di 401.
+    * Dimmi esattamente cosa restituisce:
+        * HTTP status
+        * body
+        * eccezione (timeout, network error, abort, ecc.)
+        * stack trace lato client.
+    * Non voglio ipotesi (“forse rete mobile”), ma la causa reale.
+2. Perché viene chiamato clearAuth()
+    * Mostrami il punto esatto del codice che esegue clearAuth().
+    * Quale condizione lo attiva?
+    * Era un errore di rete o un vero 401/403 del refresh endpoint?
+3. Timeline completa
+    Ricostruisci cronologicamente:
+    * WS OPEN
+    * refresh richiesto
+    * refresh completato/fallito
+    * updateAccessToken()
+    * setAuth()
+    * render React
+    * cleanup useWebSocket()
+    * nuova connessione WS
+    * eventuale OFFLINE.
+4. Refresh concorrenti
+    Verifica se possono partire due /auth/refresh contemporaneamente.
+    Se sì:
+    * mostra dove;
+    * dimostra se esiste realmente una race.
+5. WebSocket
+    Dimmi se il WS viene chiuso:
+    * dal server;
+    * dal browser;
+    * dalla cleanup di React;
+    * oppure da un’altra causa.
+6. Messaggi
+    Per un singolo messaggio inviato durante il problema dimmi:
+    * viene salvato nel DB?
+    * viene broadcastato?
+    * il destinatario lo riceve?
+    * il mittente riceve l’echo?
+    * il decrypt viene eseguito?
+    * se fallisce, qual è l’eccezione completa?
+7. Chiamate
+    Spiega perché:
+    * il timer parte;
+    * la connessione risulta “P2P - Cifrata - Eccellente”;
+    * ma il telefono non squilla oppure l’audio è muto.
+8. Conclusione
+    Dimmi se esiste una sola root cause oppure più problemi indipendenti.
+
+Per ogni conclusione voglio:
+
+* file;
+* numero di riga;
+* estratto del codice;
+* log che la dimostra.
+
+Non accetto deduzioni non supportate da evidenze. Se una conclusione è solo un’ipotesi, dichiarala esplicitamente come tale. Prima di modificare altro codice, dimostra la causa con prove verificabili.

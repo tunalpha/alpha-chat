@@ -1,0 +1,363 @@
+PROMPT UNICO — IMPLEMENTAZIONE NOTIFICHE PUSH ALPHA CHAT
+
+⸻
+
+⚠️ VINCOLO ASSOLUTO
+
+La logica della messaggistica è stata stabilizzata dopo una lunga attività di debugging.
+
+NON DEVE ESSERE MODIFICATA.
+
+È vietato modificare direttamente o indirettamente:
+
+* Signal Protocol
+* encrypt/decrypt
+* Session Manager
+* Identity Keys
+* PreKeys
+* Message Cache
+* Media Cache
+* BAR 🔥
+* requestPaginated()
+* AuthContext
+* WebSocket della messaggistica
+* useWebSocket (parte messaggi)
+* handleSend()
+* handleVoiceSend()
+* handleFilePick()
+* handleForwardTo()
+* ChatPage (logica messaggi)
+* sincronizzazione realtime
+* typing
+* markRead
+* stato React dei messaggi
+* Conversation Store
+
+Queste parti sono considerate stabili e congelate.
+
+Se durante l’implementazione emerge la necessità di modificarle:
+
+FERMARSI E CHIEDERE CONFERMA.
+
+⸻
+
+OBIETTIVO
+
+Implementare un sistema completo di Web Push Notifications senza modificare l’architettura della chat.
+
+Le Push devono essere un sistema completamente indipendente.
+
+Il WebSocket continuerà ad essere il canale realtime.
+
+Le Push serviranno solo quando:
+
+* browser in background
+* schermo spento
+* PWA installata
+* websocket disconnesso
+* browser chiuso (nei limiti della piattaforma)
+
+⸻
+
+ARCHITETTURA OBBLIGATORIA
+
+Implementare un layer separato.
+
+Message Service
+        │
+        │
+        ├────────────► WebSocket
+        │                 │
+        │                 ▼
+        │            Chat aperta
+        │
+        │
+        └────────────► Push Notification Service
+                              │
+                              ▼
+                      Web Push (VAPID)
+                              │
+                              ▼
+                     Service Worker
+                              │
+                              ▼
+                       Notification API
+
+Il Message Service NON deve sapere come funziona il push.
+
+Deve solamente emettere un evento.
+
+⸻
+
+PATTERN DA UTILIZZARE
+
+Utilizzare Event Driven Architecture.
+
+Mai inserire codice Push dentro:
+
+* ChatPage
+* handleSend
+* WebSocket
+* Signal
+
+Creare invece eventi separati.
+
+Esempio:
+
+message.created
+message.received
+call.started
+call.missed
+friend.request
+security.alert
+
+Il Push Service ascolta questi eventi.
+
+Mai il contrario.
+
+⸻
+
+BACKEND
+
+Creare un modulo completamente nuovo.
+
+services/
+push/
+PushNotificationService
+PushSubscriptionRepository
+PushDispatcher
+PushEvents
+PushQueue
+
+Mai inserire codice Push dentro MessageService.
+
+⸻
+
+DATABASE
+
+Nuova collection
+
+push_subscriptions
+
+Campi:
+
+userId
+endpoint
+p256dh
+auth
+platform
+browser
+device
+createdAt
+updatedAt
+lastUsed
+
+Una subscription per dispositivo.
+
+⸻
+
+SERVICE WORKER
+
+Creare un Service Worker dedicato.
+
+Responsabilità:
+
+* ricezione push
+* click notifica
+* close notifica
+* apertura chat
+* apertura schermata chiamata
+
+Nessuna logica Signal.
+
+Nessuna logica Chat.
+
+⸻
+
+FRONTEND
+
+Creare un modulo
+
+PushManager.ts
+
+Responsabilità:
+
+* richiesta permesso
+* registrazione SW
+* subscribe
+* unsubscribe
+* refresh subscription
+* invio subscription backend
+
+Mai usare ChatPage.
+
+⸻
+
+INVIO PUSH
+
+Il backend deve inviare notifiche solamente quando:
+
+Nuovo messaggio
+
+Chiamata in ingresso
+
+Chiamata persa
+
+Richiesta contatto
+
+Login sospetto
+
+Mai inviare notifiche dal frontend.
+
+⸻
+
+CONTENUTO NOTIFICHE
+
+Messaggio
+
+Titolo
+
+Alpha Chat
+
+Testo
+
+Mario
+
+Nuovo messaggio
+
+oppure preview configurabile.
+
+Mai testo cifrato.
+
+Mai payload Signal.
+
+⸻
+
+CHIAMATE
+
+Push dedicata
+
+Titolo
+
+Chiamata in arrivo
+
+Massima priorità possibile
+
+Vibrazione
+
+Click
+
+Apre schermata chiamata
+
+⸻
+
+PRIVACY
+
+Implementare impostazioni:
+
+Mostra testo notifiche
+
+ON/OFF
+
+Mostra mittente
+
+ON/OFF
+
+Solo
+
+“Nuovo messaggio”
+
+Modalità privacy
+
+⸻
+
+COMPATIBILITÀ
+
+Analizzare e documentare:
+
+Chrome Android
+
+Safari iOS (PWA)
+
+Chrome Desktop
+
+Firefox
+
+Edge
+
+Specificare chiaramente:
+
+cosa è supportato
+
+cosa non è supportato
+
+eventuali limiti di Safari.
+
+⸻
+
+PERFORMANCE
+
+Le Push NON devono rallentare:
+
+messaggi
+
+Signal
+
+decrypt
+
+encrypt
+
+WebSocket
+
+chiamate
+
+typing
+
+Ogni invio Push deve essere asincrono.
+
+Mai attendere il completamento dell’invio Push durante la gestione del messaggio.
+
+Utilizzare un dispatcher o una coda asincrona in modo che un errore nell’invio della notifica non possa bloccare o ritardare il flusso della messaggistica.
+
+⸻
+
+SICUREZZA
+
+Mai salvare:
+
+Identity Keys
+
+Session Keys
+
+Private Keys
+
+JWT
+
+Signal payload
+
+Messaggi cifrati
+
+nelle notifiche.
+
+Le Push devono contenere solo i metadati strettamente necessari.
+
+⸻
+
+MODALITÀ DI SVILUPPO
+
+Prima di scrivere codice:
+
+1. Analizzare l’architettura esistente.
+2. Individuare eventuale codice già presente riutilizzabile.
+3. Elencare tutti i file da creare.
+4. Elencare tutti i file da modificare.
+5. Motivare ogni modifica.
+6. Spiegare perché ogni modifica non può introdurre regressioni nella messaggistica.
+
+Se una modifica coinvolge componenti condivisi con il flusso dei messaggi, fermarsi e chiedere conferma.
+
+⸻
+
+OBIETTIVO FINALE
+
+Realizzare un sistema di notifiche push completamente disaccoppiato dalla logica della chat, basato su eventi, con responsabilità separate e senza alterare il comportamento dei messaggi o delle chiamate già stabilizzati. Prima produrre un documento tecnico con l’architettura proposta e il piano di implementazione; solo dopo approvazione procedere con il codice.

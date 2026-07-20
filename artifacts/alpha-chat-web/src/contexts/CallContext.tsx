@@ -113,6 +113,8 @@ export function CallProvider({ children }: { children: ReactNode }) {
   const callRoleRef        = useRef<"caller" | "callee">("caller");
   const peerIdRef          = useRef<string | null>(null);
   const callTypeRef        = useRef<CallType | null>(null);
+  // Guard contro tap multipli sul verde: true mentre acceptCall() è in volo.
+  const acceptingRef       = useRef<boolean>(false);
 
   // ── Helpers ────────────────────────────────────────────────────────────
 
@@ -331,43 +333,74 @@ export function CallProvider({ children }: { children: ReactNode }) {
 
   const acceptCall = useCallback(async () => {
     if (!incomingCall) return;
-    console.log('[Call] acceptCall() callType=%s from=%s', incomingCall.callType, incomingCall.fromUserId);
+    // Guard anti-re-entry: blocca tap multipli sul verde prima che il primo completi.
+    if (acceptingRef.current) {
+      console.log('[DIAG-ACCEPT] acceptCall() IGNORATO — già in corso');
+      return;
+    }
+    acceptingRef.current = true;
+    // Annulla il timeout di squillo del callee (35s safety net in handleWsCallEvent).
+    clearCallTimeout();
+    console.log('[DIAG-ACCEPT] acceptCall() entered — callType=%s from=%s', incomingCall.callType, incomingCall.fromUserId);
+
+    // ── Timeout totale di 15s su TUTTO il flusso acceptCall ────────────────────
+    // Copre ogni singolo await: getUserMedia, primeRemoteAudio, loadIceConfig,
+    // setRemoteDescription, createAnswer, setLocalDescription.
+    // Su iOS qualsiasi step può bloccarsi per sessione audio in conflitto, rete
+    // assente, o bug WebKit. Senza questo timeout il spinner gira per sempre.
+    let totalTimeoutId: ReturnType<typeof setTimeout> | null = null;
+    const totalTimeout = new Promise<never>((_, reject) => {
+      totalTimeoutId = setTimeout(
+        () => reject(new Error('[acceptCall] timeout 15s — step bloccato (getUserMedia/ICE/negotiate)')),
+        15_000,
+      );
+    });
+    // Helper: applica il timeout totale a qualsiasi promise
+    // Nota: virgola dopo T necessaria in .tsx per disambiguare da JSX tag
+    const raceTimeout = <T,>(p: Promise<T>): Promise<T> => Promise.race([p, totalTimeout]);
+
     try {
       // iOS Safari: getUserMedia DEVE venire prima di qualsiasi await di rete.
       // stopRing() è sync, quindi non consuma il gesture context.
-      // loadIceConfig() viene spostato DOPO getUserMedia per preservare il contesto
-      // e garantire che iOS non muti il microfono per tutta la chiamata.
       stopRing();
 
-      const stream = await getUserMedia(incomingCall.callType);
+      console.log('[DIAG-ACCEPT] step 1 — getUserMedia()');
+      const stream = await raceTimeout(getUserMedia(incomingCall.callType));
+      console.log('[DIAG-ACCEPT] step 1 OK — tracks=%d', stream.getTracks().length);
 
-      // getUserMedia OK → iOS è ora in sessione PlayAndRecord.
-      // ADESSO è sicuro chiamare unlockNotifAudio() (non consuma più il contesto
-      // gesture che getUserMedia aveva bisogno). Il ring è già stato stoppato
-      // da stopRing() in handleAccept — unlock sblocca i futuri suoni notifica.
-      void unlockNotifAudio().catch(() => {});
-
-      // await primeRemoteAudio() PRIMA di loadIceConfig/ICE/negotiate.
-      // Garantisce che l'<audio> element sia sbloccato prima che ontrack arrivi.
-      // void → race condition: se il remote track arriva prima del prime,
-      // el.play() fallisce e iOS non consente retry fuori dal gesture context.
-      await primeRemoteAudio().catch(() => {});
-
-      // ICE config dopo getUserMedia
-      await loadIceConfig();
+      // FIX: assegna il ref IMMEDIATAMENTE dopo getUserMedia, prima di qualsiasi
+      // await successivo. Se un'eccezione viene lanciata nei passi seguenti,
+      // cleanup() trova localStreamRef non-null e chiama track.stop(), evitando
+      // il leak del microfono che causa il prompt "Vuoi interrompere registrazione?"
       localStreamRef.current = stream;
       setLocalStream(stream);
 
+      // getUserMedia OK → iOS è ora in sessione PlayAndRecord.
+      void unlockNotifAudio().catch(() => {});
+
+      console.log('[DIAG-ACCEPT] step 2 — primeRemoteAudio()');
+      await raceTimeout(primeRemoteAudio().catch(() => {}));
+      console.log('[DIAG-ACCEPT] step 2 OK');
+
+      console.log('[DIAG-ACCEPT] step 3 — loadIceConfig()');
+      await raceTimeout(loadIceConfig());
+      console.log('[DIAG-ACCEPT] step 3 OK');
+
+      console.log('[DIAG-ACCEPT] step 4 — buildPC + setRemoteDescription');
       const pc = buildPC(incomingCall.fromUserId);
       addTracksToPC(pc, stream);
+      await raceTimeout(pc.setRemoteDescription(new RTCSessionDescription(incomingCall.sdp)));
+      console.log('[DIAG-ACCEPT] step 4 OK');
 
-      console.log('[Call] setRemoteDescription offer...');
-      await pc.setRemoteDescription(new RTCSessionDescription(incomingCall.sdp));
-      console.log('[Call] createAnswer...');
-      const answer = await pc.createAnswer();
-      console.log('[Call] setLocalDescription answer type=%s', answer.type);
-      await pc.setLocalDescription(answer);
+      console.log('[DIAG-ACCEPT] step 5 — createAnswer');
+      const answer = await raceTimeout(pc.createAnswer());
+      console.log('[DIAG-ACCEPT] step 5 OK — type=%s', answer.type);
 
+      console.log('[DIAG-ACCEPT] step 6 — setLocalDescription');
+      await raceTimeout(pc.setLocalDescription(answer));
+      console.log('[DIAG-ACCEPT] step 6 OK');
+
+      console.log('[DIAG-ACCEPT] step 7 — send call.answer → to=%s', incomingCall.fromUserId);
       wsSend({
         type: "call.answer",
         payload: { to_user_id: incomingCall.fromUserId, sdp: answer },
@@ -384,6 +417,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
       callTypeRef.current       = incomingCall.callType;
       if (!callStartedAtRef.current) callStartedAtRef.current = new Date();
 
+      console.log('[DIAG-ACCEPT] callState = active');
       setCallState("active");
       setCallType(incomingCall.callType);
       setRemoteUserId(incomingCall.fromUserId);
@@ -392,11 +426,14 @@ export function CallProvider({ children }: { children: ReactNode }) {
       startDurationTimer();
 
     } catch (err) {
-      console.error("[Call] acceptCall error", err);
+      console.error("[Call] acceptCall error —", err);
       if (incomingCall) {
         wsSend({ type: "call.reject", payload: { to_user_id: incomingCall.fromUserId, reason: "error" } });
       }
       cleanup("failed");
+    } finally {
+      if (totalTimeoutId !== null) clearTimeout(totalTimeoutId);
+      acceptingRef.current = false;
     }
   }, [incomingCall]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -483,6 +520,12 @@ export function CallProvider({ children }: { children: ReactNode }) {
         // dal ringback del caller (startRingback).
         console.log('[Call] call.incoming → startRing() per callee');
         void startRing().catch(() => {});
+        // Safety net: se il callee non interagisce entro 35s, forza cleanup.
+        // Il server invia call.missed al callee ~30s dopo l'offer (caller timeout);
+        // i 5s extra servono da buffer per garantire che call.missed arrivi prima.
+        // Se cleanup() viene già chiamato (pulsante premuto o call.missed/ended
+        // arrivato), clearCallTimeout() azzera questo timer in anticipo.
+        callTimeoutRef.current = setTimeout(() => { cleanup("missed"); }, 35_000);
         break;
       }
 

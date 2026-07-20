@@ -1,0 +1,193 @@
+Ti suggerisco questo prompt. È molto severo e impone diagnosi prima di qualsiasi modifica, proprio per evitare un’altra regressione.
+
+⸻
+
+🚨 TASK: Diagnosi definitiva problema messaggi vocali (NESSUN FIX)
+
+CONTESTO
+
+Il modulo messaggi è in CODE FREEZE.
+
+In passato sono state introdotte regressioni gravi perché sono stati implementati fix senza dimostrare con precisione la causa.
+
+Da questo momento non è consentito modificare alcun file.
+
+L’obiettivo è individuare con certezza il primo punto della pipeline in cui il formato audio diventa incompatibile.
+
+⸻
+
+DIVIETO ASSOLUTO
+
+NON modificare:
+
+* ChatPage.tsx
+* Signal
+* decrypt
+* encrypt
+* Double Ratchet
+* sessioni
+* cache
+* login
+* logout
+* reconnect
+* WebSocket
+* VoiceRecorder
+* VoiceMessage
+* media.service
+* media repository
+* upload
+* download
+
+Non scrivere una sola riga di codice.
+
+Solo analisi.
+
+⸻
+
+OBIETTIVO
+
+Seguire un unico messaggio vocale dalla registrazione fino alla riproduzione.
+
+Voglio sapere esattamente dove nasce il problema.
+
+⸻
+
+PIPELINE DA ANALIZZARE
+
+1. Registrazione
+
+Mostra:
+
+* recorder.mimeType
+* mimeType richiesto
+* blob.type
+* blob.size
+* primi 16 byte (magic bytes)
+
+⸻
+
+2. Upload HTTP
+
+Mostra:
+
+* Content-Type
+* mime_type nel JSON
+* dimensione file
+
+⸻
+
+3. media.service
+
+Prima della transcodifica:
+
+* MIME dichiarato
+* MIME rilevato dai magic bytes
+* formato reale
+
+Poi:
+
+* ffmpeg viene eseguito?
+* comando completo
+* path dell’eseguibile
+* exit code
+* stderr
+* stdout
+* timeout?
+
+⸻
+
+4. Dopo transcodifica
+
+Mostra:
+
+* MIME finale
+* dimensione finale
+* magic bytes finali
+
+⸻
+
+5. Database
+
+Mostra:
+
+* mime_type
+* filename
+* size
+
+del file realmente salvato.
+
+⸻
+
+6. JSON Signal
+
+Mostra esattamente:
+
+* media.mime_type
+* media.url
+* message_type
+
+⸻
+
+7. Download
+
+Mostra:
+
+Header HTTP:
+
+* Content-Type
+* Content-Length
+
+⸻
+
+8. Client destinatario
+
+Mostra:
+
+* blob.type
+* detectAudioMimeType()
+* Audio.canPlayType()
+* MediaError.code
+* MediaError.message
+
+⸻
+
+MATRICE OBBLIGATORIA
+
+Ripeti la diagnosi completa per:
+
+* ✅ iPhone → iPhone
+* ✅ iPhone → Android
+* ✅ Android → Android
+* ✅ Android → iPhone
+
+⸻
+
+CONSEGNA
+
+Per ogni scenario indica:
+
+Passaggio	MIME	Magic Bytes	Esito
+
+e indica chiaramente:
+
+PRIMO PUNTO DELLA PIPELINE IN CUI IL FORMATO DIVENTA ERRATO
+
+⸻
+
+REGOLE
+
+Non voglio ipotesi.
+
+Non voglio deduzioni.
+
+Non voglio proposte di fix.
+
+Voglio esclusivamente dati reali ricavati dal codice, dai log e dal percorso del file.
+
+⸻
+
+SOLO DOPO
+
+Solo dopo aver individuato con certezza il punto esatto del guasto, proporrai un unico fix minimo, limitato esclusivamente al file responsabile.
+
+Se durante l’analisi ritieni necessario modificare anche un solo file del modulo messaggi, fermati immediatamente e chiedi autorizzazione.

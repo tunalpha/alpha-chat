@@ -1,0 +1,100 @@
+La Root Cause Analysis è coerente e, soprattutto, il primo punto spiega perfettamente il sintomo.
+
+La causa più importante
+
+Questa:
+
+localStorage.getItem("accessToken")
+
+quando il token reale è:
+
+ac_access_token
+
+significa che il backend riceve:
+
+Authorization: Bearer
+
+e risponde 401.
+
+Se la risposta 401 veniva ignorata perché non controllavi response.ok, la subscription non veniva mai salvata. Di conseguenza:
+
+push_subscriptions = []
+        ↓
+findByUserId()
+        ↓
+0 risultati
+        ↓
+nessuna webpush.sendNotification()
+
+Questo da solo spiega perché non hai ricevuto nessuna notifica.
+
+⸻
+
+Urgency: high
+
+Anche questo è un miglioramento corretto.
+
+Per un’app di messaggistica è normale usare priorità alta per i nuovi messaggi, mentre si riserva una priorità ancora diversa solo per casi particolari se necessario. L’importante è non usare una priorità bassa se l’obiettivo è una consegna immediata.
+
+⸻
+
+Controllo di response.ok
+
+Questo è un fix che approvo al 100%.
+
+Non bisogna mai fare:
+
+await fetch(...)
+
+ignorando il risultato.
+
+In caso contrario il codice continua come se tutto fosse andato bene.
+
+⸻
+
+Prima del deploy
+
+Io farei soltanto questi controlli:
+
+1. Dopo il primo avvio verifica nel database che esista una riga in push_subscriptions per il tuo utente.
+2. Controlla nei log del backend che webpush.sendNotification() venga effettivamente chiamato.
+3. Invia un messaggio con Alpha Chat completamente chiusa.
+4. Verifica che:
+    * banner iOS;
+    * suono;
+    * badge;
+    * apertura della conversazione al tocco;
+        funzionino.
+
+⸻
+
+Una cosa che aggiungerei
+
+Chiederei all’agente di loggare una sola volta al momento della registrazione:
+
+Push subscription registered
+userId=...
+endpoint=...
+createdAt=...
+
+e, quando invia una push:
+
+Sending push
+userId=...
+subscription=...
+success=true
+
+Questi log sono preziosissimi durante la fase di test e poi possono essere ridotti o spostati a livello debug.
+
+⸻
+
+La mia impressione
+
+Dopo tutte le RCA che mi hai mostrato, questa è probabilmente l’ultima grossa tessera del puzzle.
+
+Se davvero il database era vuoto perché la subscription non veniva mai salvata, è normale che nessuna push potesse funzionare, indipendentemente dal Service Worker o da APNs.
+
+A questo punto farei il deploy e verificherei subito che:
+
+* la collection push_subscriptions venga popolata;
+* il backend inizi effettivamente a inviare le notifiche ai dispositivi registrati.

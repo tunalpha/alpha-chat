@@ -69,10 +69,12 @@ export default function AppearancePage({ onBack }: Props) {
   const { settings, setTheme, setAccent, setTextSize, setBubbleSize, setMotion, setWallpaper } = useAppSettings();
 
   const themes: { value: Theme; label: string; icon: string }[] = [
-    { value: "dark",   label: t("appearance.dark"),   icon: "🌙" },
-    { value: "light",  label: t("appearance.light"),  icon: "☀️" },
-    { value: "system", label: t("appearance.system"), icon: "📱" },
-    { value: "amoled", label: t("appearance.amoled"), icon: "⚫" },
+    { value: "dark",      label: t("appearance.dark"),   icon: "🌙" },
+    { value: "light",     label: t("appearance.light"),  icon: "☀️" },
+    { value: "system",    label: t("appearance.system"), icon: "📱" },
+    { value: "amoled",    label: t("appearance.amoled"), icon: "⚫" },
+    { value: "whatsapp",  label: "WhatsApp",             icon: "🟢" },
+    { value: "telegram",  label: "Telegram",             icon: "✈️" },
   ];
 
   const textSizes: { value: TextSize; label: string }[] = [
@@ -133,7 +135,7 @@ export default function AppearancePage({ onBack }: Props) {
         <section className="appearance-section">
           <h2 className="appearance-section-title">{t("appearance.theme")}</h2>
           <p className="appearance-section-desc">{t("appearance.themeDesc")}</p>
-          <div className="appearance-grid-4">
+          <div className="appearance-grid-themes">
             {themes.map(th => (
               <button
                 key={th.value}

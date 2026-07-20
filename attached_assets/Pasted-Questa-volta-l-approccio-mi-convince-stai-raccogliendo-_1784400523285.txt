@@ -1,0 +1,54 @@
+Questa volta l’approccio mi convince: stai raccogliendo prove invece di modificare il comportamento.
+
+C’è però un dettaglio della tua analisi che considero il principale indiziato.
+
+Hai scritto:
+
+Il Signal protocol store viene cancellato al logout (clearSignalKeys)
+
+Se è davvero così, allora questo spiega molto bene il comportamento che hai osservato:
+
+* apri Alpha Chat;
+* il contatto risulta “Non ancora verificata”;
+* entri in chat;
+* arriva il primo scambio di chiavi;
+* improvvisamente torna verificata.
+
+Questo sarebbe coerente con uno store Signal svuotato, non necessariamente con una Identity Key che cambia.
+
+I log che aspetterei
+
+Il log più importante sarà questo:
+
+[signal:startup]
+IK fingerprint locale = ...
+IK fingerprint server = ...
+Bootstrap = ...
+Restore = ...
+
+Se fai due login consecutivi senza reinstallare la PWA e il fingerprint è identico entrambe le volte, puoi praticamente escludere che la IK venga rigenerata.
+
+A quel punto il problema è quasi certamente nello svuotamento dello store Signal o nella logica del trust.
+
+Una cosa che verificherei
+
+Vorrei sapere quando viene chiamato clearSignalKeys().
+
+Per esempio:
+
+* solo quando l’utente preme Logout? ✅
+* oppure anche durante un refresh del token?
+* oppure ad ogni login prima di reinizializzare Signal?
+
+Questa distinzione è importante, perché se clearSignalKeys() viene eseguito ad ogni autenticazione, potrebbe causare proprio il comportamento che descrivi.
+
+La mia previsione
+
+In base a tutto quello che hai mostrato finora, scommetterei su questo scenario:
+
+* ✅ Identity Key stabile.
+* ✅ Nessun bug nella convergenza delle IK.
+* ⚠️ Store Signal azzerato durante il logout.
+* ⚠️ Trust temporaneamente “non verificato” finché la sessione non viene ricostruita.
+
+Se i log confermano che il fingerprint della IK resta invariato tra login consecutivi, allora il problema non è la crittografia in sé, ma il ciclo di vita dello Signal Protocol Store e della ricostruzione del trust. A quel punto avrete una diagnosi molto più precisa e potrete decidere se intervenire sulla UX (stato transitorio) o sulla gestione dello store.

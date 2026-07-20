@@ -1,10 +1,13 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
-import { loadAuth, saveAuth, clearAuth, clearRequirePasswordChange, getDeviceId, type StoredAuth } from "../lib/auth";
-import { apiLogin, apiRegister, apiLogout, apiLogoutAll, apiUpdateIdentityKey, type LoginInput, type RegisterInput, type AuthResult } from "../lib/api";
+import { loadAuth, saveAuth, clearAuth, clearRequirePasswordChange, getDeviceId, getRefreshToken as getRefreshTokenAfterAttempt, isAccessTokenExpired, isAccessTokenExpiringSoon, type StoredAuth } from "../lib/auth";
+import { apiLogin, apiRegister, apiLogout, apiLogoutAll, apiUpdateIdentityKey, apiRefreshSession, type LoginInput, type RegisterInput, type AuthResult } from "../lib/api";
 import {
   initSignalKeys, clearSignalKeys,
+  runSignalDiagnostic,
   unwrapIdentityKeyPair,
   generateAndWrapSharedIdentityKey,
+  wrapIdentityKeyPair,
+  getSignalStore,
 } from "../lib/signal";
 import { initMediaCache, clearMediaCache } from "../lib/media-cache";
 
@@ -25,14 +28,15 @@ const AuthContext = createContext<AuthContextValue | null>(null);
 
 function authResultToStored(result: AuthResult): StoredAuth {
   return {
-    accessToken: result.tokens.access_token,
-    refreshToken: result.tokens.refresh_token,
-    userId: result.user.id,
-    username: result.user.username,
-    displayName: result.user.display_name,
-    deviceId: getDeviceId(),
+    accessToken:          result.tokens.access_token,
+    accessTokenExpiresAt: result.tokens.access_token_expires_at,
+    refreshToken:         result.tokens.refresh_token,
+    userId:               result.user.id,
+    username:             result.user.username,
+    displayName:          result.user.display_name,
+    deviceId:             getDeviceId(),
     requirePasswordChange: result.require_password_change ?? result.user.require_password_change ?? false,
-    avatarUrl: result.user.avatar_url ?? null,
+    avatarUrl:            result.user.avatar_url ?? null,
   };
 }
 
@@ -40,24 +44,59 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [auth, setAuth] = useState<StoredAuth | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
+  // ── Startup: restore sessione + refresh proattivo + init Signal ──────────────
+  //
+  // Flusso (come concordato con l'architettura):
+  //   loadAuth() → se access token scaduto → attemptRefresh() → initSignalKeys()
+  //
+  // Signal viene inizializzato DOPO aver stabilito quale token usare.
+  // Se il refresh fallisce per errore di rete (non 401/403), si procede comunque:
+  // l'utente rimane autenticato e la prima richiesta API ritenterà il refresh.
   useEffect(() => {
-    const stored = loadAuth();
-    setAuth(stored);
-    setIsLoading(false);
-    // Re-inizializza Signal se l'utente è già loggato ma l'IDB è stato cancellato
-    // (es. pulizia browser, reinstallazione, switch di profilo).
-    // initSignalKeys è idempotente: no-op se le chiavi esistono già.
-    // Senza questo, un utente loggato con IDB vuoto non può decifrare i messaggi
-    // finché non fa logout + login espliciti.
-    if (stored) {
-      void initSignalKeys(stored.userId, stored.deviceId)
-        .then(() => {
-          localStorage.setItem(`signal_keys_ready:${stored.userId}`, "1");
-          document.body.setAttribute("data-signal-ready", stored.userId);
-          window.dispatchEvent(new CustomEvent("signal:ready", { detail: { userId: stored.userId } }));
-        })
-        .catch(() => {});
-    }
+    void (async () => {
+      const stored = loadAuth();
+
+      if (!stored) {
+        setIsLoading(false);
+        return;
+      }
+
+      // Refresh proattivo se l'access token è scaduto.
+      // Tipico scenario iOS: PWA sospesa per ore → access token (1h) scaduto,
+      // refresh token (90 giorni) ancora valido.
+      let currentStored = stored;
+      if (isAccessTokenExpired()) {
+        const newToken = await apiRefreshSession();
+        if (newToken) {
+          // Rileggi i dati da localStorage: refreshToken ruotato, expiresAt aggiornato.
+          const refreshed = loadAuth();
+          if (refreshed) currentStored = refreshed;
+        }
+        // Se newToken è null per errore di rete → procedi con il token corrente.
+        // La prima richiesta API farà il retry automaticamente.
+        // Se newToken è null per 401/403 → clearAuth() è già stato chiamato
+        // in attemptRefresh() → loadAuth() ritorna null → usciamo.
+        if (!getRefreshTokenAfterAttempt()) {
+          setIsLoading(false);
+          return;
+        }
+      }
+
+      setAuth(currentStored);
+      setIsLoading(false);
+
+      // CRITICAL: initMediaCache DEVE precedere initSignalKeys (e qualsiasi decrypt).
+      await initMediaCache(currentStored.userId, currentStored.deviceId).catch(() => {});
+      // Signal inizializzato dopo aver stabilito quale token usare.
+      try {
+        await initSignalKeys(currentStored.userId, currentStored.deviceId);
+      } catch { /* non critico */ }
+      // DIAGNOSTICA TEMPORANEA — invia stato IDB al server dopo restore sessione
+      void runSignalDiagnostic(currentStored.userId, currentStored.deviceId).catch(() => {});
+      localStorage.setItem(`signal_keys_ready:${currentStored.userId}`, "1");
+      document.body.setAttribute("data-signal-ready", currentStored.userId);
+      window.dispatchEvent(new CustomEvent("signal:ready", { detail: { userId: currentStored.userId } }));
+    })();
   }, []);
 
   useEffect(() => {
@@ -65,6 +104,26 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     window.addEventListener("auth:expired", handler);
     return () => window.removeEventListener("auth:expired", handler);
   }, []);
+
+  // ── visibilitychange: refresh proattivo al ritorno in foreground ─────────────
+  // Quando iOS/Android riporta la PWA in foreground dopo una sospensione,
+  // l'access token potrebbe essere scaduto. Lo rinnoviamo in background
+  // SOLO se scaduto o in scadenza entro 2 minuti — nessuna chiamata inutile.
+  useEffect(() => {
+    if (!auth?.userId) return;
+
+    const handleVisibility = () => {
+      if (document.visibilityState !== "visible") return;
+      if (!isAccessTokenExpiringSoon(2 * 60 * 1000)) return;
+      // Fire-and-forget: aggiorna il token in background senza bloccare l'UI.
+      // Il WebSocket si riconnette automaticamente con il token fresco al prossimo
+      // evento onclose (useWebSocket legge sempre da localStorage).
+      void apiRefreshSession().catch(() => {});
+    };
+
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => document.removeEventListener("visibilitychange", handleVisibility);
+  }, [auth?.userId]);
 
   const login = useCallback(async (input: LoginInput) => {
     const result = await apiLogin(input);
@@ -94,30 +153,67 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       }
     } else {
       // Caso migrazione lazy: utente legacy senza blob.
-      // Genera una nuova IK condivisa (WASM + Curve25519) e la salva sul server.
-      // Attendiamo la generazione (≈100ms) prima di procedere con initSignalKeys
-      // per evitare race condition — la IK deve essere nota prima dell'inizializzazione.
+      //
+      // Sprint 28 fix: se il device ha già una IK nell'IDB, la usiamo come IK canonica
+      // del blob — invece di generarne una nuova. Questo previene la divergenza
+      // blob↔IDB: prima del fix, il blob riceveva una IK nuova mai vista dal device,
+      // mentre l'IDB continuava a usare quella vecchia.
+      //
+      // Se l'IDB è vuoto (device fresco), generiamo una IK nuova che verrà usata
+      // sia per l'IDB (via _firstTimeSetup) sia come contenuto del blob.
       try {
-        const { ikKeyPair, blob, salt } = await generateAndWrapSharedIdentityKey(input.password);
-        resolvedIkKeyPair = ikKeyPair;
-        // Salva il blob in background — non critico se fallisce al primo tentativo
-        void apiUpdateIdentityKey(blob, salt).catch(() => {});
+        const store = getSignalStore(uid, devId);
+        const existingIK = await store.getIdentityKeyPair();
+        if (existingIK) {
+          // Device esistente: la IK corrente nell'IDB diventa la IK canonica
+          console.info("[Sprint28] lazy migration: using existing IDB IK as canonical");
+          resolvedIkKeyPair = existingIK;
+          const { blob, salt } = await wrapIdentityKeyPair(existingIK, input.password);
+          void apiUpdateIdentityKey(blob, salt).catch(() => {});
+        } else {
+          // Device fresco: genera IK nuova (usata da _firstTimeSetup e come blob)
+          console.info("[Sprint28] lazy migration: generating new IK for fresh device");
+          const { ikKeyPair, blob, salt } = await generateAndWrapSharedIdentityKey(input.password);
+          resolvedIkKeyPair = ikKeyPair;
+          void apiUpdateIdentityKey(blob, salt).catch(() => {});
+        }
       } catch {
         // Non critico: senza IK, initSignalKeys genererà una IK locale per questo device
       }
     }
 
-    // Inizializza chiavi Signal in background — passa la IK risolta se disponibile
-    void initSignalKeys(uid, devId, resolvedIkKeyPair)
-      .then(() => {
-        localStorage.setItem(`signal_keys_ready:${uid}`, "1");
-        document.body.setAttribute("data-signal-ready", uid);
-        window.dispatchEvent(new CustomEvent("signal:ready", { detail: { userId: uid } }));
-      })
-      .catch(() => {
-        // Errore non critico — verrà ritentato al prossimo login
-      });
-    void initMediaCache(uid, devId).catch(() => {});
+    // Fix: initMediaCache DEVE completare prima che Signal operi.
+    // Se _ready=false quando arriva il primo decrypt, cacheDecryptedMeta è un no-op silenzioso
+    // → l'OTPK viene consumata senza che il plaintext venga cachato → 🔒 permanente al reload.
+    await initMediaCache(uid, devId).catch(() => {});
+
+    // Scenario reinstallazione PWA: IDB vuota ma IK recuperata dal blob server.
+    // Le sessioni Double Ratchet sono perse → i vecchi messaggi saranno indecifrabili.
+    // È comportamento atteso del protocollo (Forward Secrecy), ma va comunicato all'utente.
+    if (resolvedIkKeyPair) {
+      try {
+        const store = getSignalStore(uid, devId);
+        const wasEmpty = !(await store.isInitialized());
+        if (wasEmpty) localStorage.setItem("signal:reinstall_warning", "1");
+      } catch { /* non critico */ }
+    }
+
+    // Fix race condition: initSignalKeys DEVE completare prima che login() ritorni.
+    // Se fire-and-forget, ChatPage.decryptBatch() può partire prima che le chiavi
+    // siano pronte → tutti i messaggi mostrano "[Messaggio non decifrabile]".
+    // Awaiting qui garantisce che Signal IDB sia inizializzato prima che l'utente
+    // possa aprire una conversazione. In caso di errore la sessione è comunque valida
+    // (l'utente è loggato), ma la decifratura riproverà al prossimo accesso.
+    try {
+      await initSignalKeys(uid, devId, resolvedIkKeyPair);
+    } catch {
+      // Non critico — Signal verrà ritentato al prossimo evento di navigazione
+    }
+    // DIAGNOSTICA TEMPORANEA — invia stato IDB al server dopo login
+    void runSignalDiagnostic(uid, devId).catch(() => {});
+    localStorage.setItem(`signal_keys_ready:${uid}`, "1");
+    document.body.setAttribute("data-signal-ready", uid);
+    window.dispatchEvent(new CustomEvent("signal:ready", { detail: { userId: uid } }));
   }, []);
 
   const register = useCallback(async (input: RegisterInput) => {
@@ -135,28 +231,33 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Inizializza Signal con la IK pre-generata (non ne genera una nuova)
     const devId = getDeviceId();
     const uid = result.user.id;
-    void initSignalKeys(uid, devId, newIkKeyPair)
-      .then(() => {
-        localStorage.setItem(`signal_keys_ready:${uid}`, "1");
-        document.body.setAttribute("data-signal-ready", uid);
-        window.dispatchEvent(new CustomEvent("signal:ready", { detail: { userId: uid } }));
-      })
-      .catch(() => {});
-    void initMediaCache(uid, devId).catch(() => {});
+    // Fix: initMediaCache prima di initSignalKeys (stessa ragione del login)
+    await initMediaCache(uid, devId).catch(() => {});
+    // Anche per register: await garantisce chiavi pronte prima della navigazione
+    try {
+      await initSignalKeys(uid, devId, newIkKeyPair);
+    } catch { /* non critico */ }
+    localStorage.setItem(`signal_keys_ready:${uid}`, "1");
+    document.body.setAttribute("data-signal-ready", uid);
+    window.dispatchEvent(new CustomEvent("signal:ready", { detail: { userId: uid } }));;
     // Sprint 22: restituisce la Recovery Card (presente solo alla prima registrazione)
     return { recovery_card: result.recovery_card };
   }, []);
 
   const logout = useCallback(async () => {
-    const current = loadAuth();
     await apiLogout();
     clearAuth();
     setAuth(null);
-    // Pulisce le chiavi Signal e la media cache locali al logout
-    if (current?.userId && current.deviceId) {
-      void clearSignalKeys(current.userId, current.deviceId).catch(() => {});
-      void clearMediaCache(current.userId, current.deviceId).catch(() => {});
-    }
+    // NON cancella le chiavi Signal al logout singolo: le sessioni Double Ratchet
+    // e la media cache vengono preservate in IDB, così al re-login sullo stesso
+    // dispositivo i messaggi precedenti restano decifrabili.
+    // clearSignalKeys e clearMediaCache vengono chiamati solo da logoutAll
+    // (revoca tutti i dispositivi / wipe del dispositivo).
+    //
+    // NOTA: clearMediaCache era qui per errore — contraddiceva il commento sopra.
+    // Rimuoverla è il fix del bug "tutti i messaggi diventano [Messaggio non decifrabile]
+    // dopo logout → login": il plaintext cache (cacheDecryptedMeta) era cancellato,
+    // rendendo impossibile il re-decrypt via Path C (ratchet già avanzato in sessione precedente).
   }, []);
 
   const logoutAll = useCallback(async () => {

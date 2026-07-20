@@ -1,0 +1,45 @@
+A questo punto mi fermerei un attimo prima di implementare questo fix.
+
+Il motivo è tecnico: c’è una parte del piano con cui sono d’accordo e una parte che invece verificherei meglio.
+
+✅ Condivido
+
+Il controllo in initSignalKeys():
+
+Se isInitialized() == true ma il server non ha più il bundle → ricarica il bundle.
+
+Questo è un miglioramento architetturale corretto. Rende il sistema resiliente a un reset del database del server.
+
+⚠️ Verificherei invece questa parte
+
+“La firma SPK non è in IDB ma posso rigenerare una nuova SPK.”
+
+Questa modifica merita attenzione.
+
+Nel protocollo Signal, Identity Key e Signed PreKey sono correlate: il client remoto scarica il bundle e verifica la firma della Signed PreKey usando l’Identity Key.
+
+Rigenerare una nuova Signed PreKey può essere corretto, ma solo se:
+
+* viene pubblicata correttamente sul server;
+* il bundle risultante è coerente;
+* i client remoti gestiscono normalmente la rotazione della Signed PreKey.
+
+È una cosa che molti client Signal fanno, ma non la introdurrei senza verificare che la tua implementazione gestisca correttamente questa rotazione.
+
+⸻
+
+Io chiederei a Replit una verifica prima del coding
+
+Prima di implementare la rigenerazione della Signed PreKey, verifica se la Signed PreKey corrente (pubblica, privata e firma) è già persistita in IndexedDB in qualche store diverso. Se esiste già, riutilizzarla invece di rigenerarla. Solo se non è recuperabile, motivare perché è necessario generarne una nuova. Nessuna modifica al codice, solo analisi.
+
+Questo evita di introdurre una modifica crittografica quando magari i dati sono già disponibili localmente.
+
+⸻
+
+La mia priorità
+
+1. ✅ Correggere il problema del bundle mancante sul server.
+2. ✅ Far tornare Alpha e Cricco a creare nuove sessioni.
+3. ❌ Evitare, se possibile, di modificare la logica crittografica (rotazione SPK) finché non è strettamente necessario.
+
+Quindi procederei con il fix del re-upload del bundle, ma farei prima questa piccola verifica sulla Signed PreKey. È una verifica veloce che può evitare una modifica crittografica non necessaria.

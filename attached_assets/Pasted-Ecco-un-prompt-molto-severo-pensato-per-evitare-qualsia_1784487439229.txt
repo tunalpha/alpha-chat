@@ -1,0 +1,297 @@
+Ecco un prompt molto severo, pensato per evitare qualsiasi regressione e imporre un approccio forense prima di modificare il codice.
+
+⸻
+
+🚨 TASK — Analisi forense chiamate audio/video (NO REGRESSIONI)
+
+OBIETTIVO
+
+Risolvere esclusivamente i problemi delle chiamate audio e video.
+
+NON voglio fix immediati.
+
+Prima deve essere eseguita un’analisi completa fino all’individuazione della causa reale.
+
+⸻
+
+STATO DEL PROGETTO
+
+Sono già stati risolti e verificati:
+
+* ✅ Signal Protocol
+* ✅ Double Ratchet
+* ✅ Messaggi
+* ✅ Decrypt
+* ✅ Encrypt
+* ✅ Cache
+* ✅ WebSocket messaggi
+* ✅ Presenza Online/Offline
+* ✅ Messaggi vocali Android ↔ iPhone
+
+Questi moduli sono considerati stabili.
+
+⸻
+
+DIVIETO ASSOLUTO
+
+È vietato modificare direttamente o indirettamente:
+
+* Signal
+* Double Ratchet
+* encryptMediaBlob()
+* decryptMediaBlob()
+* ChatPage.tsx
+* WebSocket dei messaggi
+* useWebSocket.ts
+* ws-server
+* ws-manager
+* cache
+* IndexedDB
+* media upload/download
+* backend messaggi
+* database messaggi
+* protocollo E2E
+* VoiceRecorder
+* audioConvert
+* qualsiasi file già corretto nei fix precedenti
+
+Se durante l’analisi ritieni necessario modificarne uno, FERMATI e chiedi autorizzazione.
+
+⸻
+
+LAVORO CHIRURGICO
+
+Le chiamate devono essere trattate come un modulo indipendente.
+
+L’analisi deve limitarsi ai file relativi a:
+
+* WebRTC
+* CallManager
+* signaling chiamate
+* audio call
+* video call
+* ICE
+* STUN
+* TURN
+
+Nient’altro.
+
+⸻
+
+PRIMA FASE — SOLO ANALISI
+
+NON modificare alcun file.
+
+Verifica l’intero flusso.
+
+1.
+
+Ricostruisci il ciclo completo:
+
+Caller
+
+↓
+
+getUserMedia
+
+↓
+
+RTCPeerConnection
+
+↓
+
+offer
+
+↓
+
+signaling
+
+↓
+
+answer
+
+↓
+
+ICE
+
+↓
+
+connected
+
+↓
+
+remote stream
+
+↓
+
+audio/video
+
+Mostra ogni passaggio.
+
+⸻
+
+2.
+
+Per ogni passaggio indica:
+
+* file
+* funzione
+* responsabilità
+* dipendenze
+
+⸻
+
+3.
+
+Verifica se il problema è:
+
+* signaling
+* offer
+* answer
+* ICE candidate
+* STUN
+* TURN
+* codec
+* getUserMedia
+* autoplay browser
+* permessi
+* Safari iOS
+* Chrome Android
+* timeout
+* race condition
+
+Non fare supposizioni.
+
+Mostra prove.
+
+⸻
+
+4.
+
+Indica esattamente dove si interrompe il flusso.
+
+Voglio il punto preciso.
+
+Non risposte generiche.
+
+⸻
+
+5.
+
+Elenca tutti i file coinvolti.
+
+Per ogni file:
+
+* numero righe
+* responsabilità
+* rischio
+
+⸻
+
+6.
+
+Verifica se esistono:
+
+* memory leak
+* peer connection non chiuse
+* stream duplicati
+* listener duplicati
+* reconnect infiniti
+* offer simultanee
+* glare
+* ICE restart mancanti
+
+⸻
+
+7.
+
+Verifica configurazione WebRTC.
+
+Mostra:
+
+* STUN server
+* TURN server
+* iceTransportPolicy
+* bundlePolicy
+* rtcpMuxPolicy
+* codecs
+* transceiver
+
+⸻
+
+8.
+
+Verifica compatibilità:
+
+Android Chrome
+
+↓
+
+iPhone Safari
+
+↓
+
+Desktop Chrome
+
+↓
+
+Firefox
+
+↓
+
+Safari macOS
+
+⸻
+
+SECONDA FASE
+
+Solo dopo aver individuato la causa:
+
+proponi
+
+* soluzione migliore
+* soluzione alternativa
+
+senza implementare.
+
+⸻
+
+DIVIETO DI REGRESSIONI
+
+Ogni soluzione deve dimostrare perché NON modifica:
+
+* Signal
+* Messaggi
+* Vocali
+* WebSocket
+* Cache
+* Database
+* Backend
+* E2E
+* Chat
+
+⸻
+
+IMPLEMENTAZIONE
+
+NON implementare nulla.
+
+Prima voglio un report con:
+
+1. causa reale
+2. prove
+3. file coinvolti
+4. file NON coinvolti
+5. rischio
+6. impatto
+7. strategia di fix
+8. test da eseguire
+9. garanzia di assenza di regressioni
+
+⸻
+
+REGOLA FINALE
+
+Se durante l’analisi scopri che per risolvere il problema è necessario modificare uno dei moduli già stabilizzati, interrompi immediatamente il lavoro, spiega il motivo e chiedi autorizzazione prima di scrivere anche una sola riga di codice.
+
+È vietato fare modifiche speculative o “tentativi”. Ogni cambiamento dovrà essere giustificato da una causa dimostrata e confinato esclusivamente al modulo chiamate.

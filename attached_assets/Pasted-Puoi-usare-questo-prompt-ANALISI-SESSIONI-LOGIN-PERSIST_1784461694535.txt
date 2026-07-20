@@ -1,0 +1,149 @@
+Puoi usare questo prompt:
+
+⸻
+
+ANALISI SESSIONI – LOGIN PERSISTENTE (NESSUNA REGRESSIONE)
+
+Obiettivo
+
+L’utente non deve essere costretto a rifare frequentemente il login.
+
+Voglio un comportamento simile a:
+
+* Signal
+* WhatsApp
+* Telegram
+
+ovvero una sessione persistente che dura settimane o mesi, mantenendo la sicurezza.
+
+⸻
+
+REGOLA ASSOLUTA
+
+NON modificare alcun codice.
+
+Prima esegui esclusivamente un’analisi.
+
+⸻
+
+Perimetro
+
+È vietato modificare:
+
+* Signal Protocol
+* Encrypt
+* Decrypt
+* Sessioni Signal
+* Chat
+* Messaggi
+* Chiamate
+* WebRTC
+* WebSocket
+* UI
+* Database
+
+Questa attività riguarda esclusivamente il sistema di autenticazione e gestione delle sessioni.
+
+⸻
+
+Analisi richiesta
+
+Individua esattamente perché la Web App costringe spesso l’utente a rifare il login.
+
+Verifica:
+
+1. Access Token
+
+* durata attuale;
+* dove viene creato;
+* quando scade;
+* chi controlla la scadenza.
+
+⸻
+
+2. Refresh Token
+
+Verificare:
+
+* esiste?
+* durata attuale;
+* dove viene salvato;
+* quando viene invalidato;
+* quando viene eliminato;
+* viene ruotato?
+
+⸻
+
+3. Refresh automatico
+
+Verificare:
+
+* esiste un refresh automatico;
+* quando viene eseguito;
+* cosa succede se il refresh fallisce;
+* perché l’utente viene riportato alla schermata di login.
+
+⸻
+
+4. Storage
+
+Verificare:
+
+* localStorage
+* IndexedDB
+* cookie
+* Secure Storage
+
+Capire se qualcosa viene cancellato.
+
+⸻
+
+5. iPhone / Safari PWA
+
+Verificare se il logout è dovuto a:
+
+* Safari
+* PWA
+* perdita dello storage
+* cookie
+* background suspend
+* altra limitazione iOS
+
+⸻
+
+6. Logout
+
+Individuare tutte le condizioni che provocano:
+
+logout automatico
+
+oppure
+
+cancellazione dei token.
+
+⸻
+
+Report richiesto
+
+Voglio un report con:
+
+1. durata reale di Access Token;
+2. durata reale di Refresh Token;
+3. motivo per cui oggi il login viene perso;
+4. eventuali bug trovati;
+5. file coinvolti;
+6. nessuna modifica al codice.
+
+⸻
+
+Solo dopo l’analisi
+
+Proponi un piano per ottenere un login persistente simile a Signal/WhatsApp, indicando:
+
+* durata consigliata dell’Access Token;
+* durata consigliata del Refresh Token;
+* meccanismo di rinnovo automatico;
+* impatto sulla sicurezza;
+* eventuali modifiche necessarie.
+
+Non implementare nulla finché il piano non viene approvato.

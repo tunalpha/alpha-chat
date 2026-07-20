@@ -74,19 +74,30 @@ export async function initI18n(lng?: LangCode) {
   if (i18n.isInitialized) return i18n;
 
   const resolved: LangCode = lng ?? getSavedLang();
-  const translations = await loadLocale(resolved);
+
+  // Always load both the selected locale and the Italian fallback so
+  // fallbackLng actually works when a key is missing in the selected locale.
+  const [translations, itTranslations] = await Promise.all([
+    loadLocale(resolved),
+    resolved !== "it" ? loadLocale("it") : Promise.resolve({}),
+  ]);
 
   // Apply dir/lang to <html> immediately
   const lang = SUPPORTED_LANGUAGES.find(l => l.code === resolved);
   document.documentElement.dir  = lang?.dir  ?? "ltr";
   document.documentElement.lang = resolved;
 
+  const resources: Record<string, { translation: Record<string, unknown> }> = {
+    [resolved]: { translation: translations as Record<string, unknown> },
+  };
+  if (resolved !== "it") {
+    resources["it"] = { translation: itTranslations as Record<string, unknown> };
+  }
+
   await i18n
     .use(initReactI18next)
     .init({
-      resources: {
-        [resolved]: { translation: translations },
-      },
+      resources,
       lng:          resolved,
       fallbackLng:  "it",
       interpolation: { escapeValue: false },

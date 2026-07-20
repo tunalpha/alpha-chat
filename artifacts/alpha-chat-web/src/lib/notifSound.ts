@@ -983,22 +983,33 @@ let _unlocked = false;
 // ── Unlock: chiamare nel primo gesture handler ────────────────────────────────
 export async function unlockNotifAudio(): Promise<void> {
   if (_unlocked) return;
-  _unlocked = true;   // setta PRIMA dell'await — playNotifSound non aspetta
+  _unlocked = true;   // setta PRIMA di qualsiasi await — playNotifSound non aspetta
 
-  // Sblocca TUTTI i suoni di notifica — non abbandonare se uno fallisce
+  // CRITICO iOS Safari: tutti i .play() devono essere avviati in modo SINCRONO
+  // nello stesso tick del gesture event. Dopo il primo `await`, il contesto gesture
+  // viene perso e i play() successivi vengono bloccati dall'autoplay policy →
+  // solo il primo elemento viene sbloccato, gli altri (incluso il ring) no.
+  //
+  // Soluzione: raccogliamo tutte le promise di play() PRIMA di qualsiasi await,
+  // poi aspettiamo fuori dal tick sincrono.
+  const toUnlock: Array<{ el: HTMLAudioElement; p: Promise<void> }> = [];
+
   for (const a of Object.values(_sounds)) {
     if (!a) continue;
-    const prev = a.volume;
     a.volume = 0;
-    try { await a.play(); a.pause(); a.currentTime = 0; } catch { /* ignora */ }
-    a.volume = prev > 0 ? prev : 1;
+    toUnlock.push({ el: a, p: a.play().catch(() => {}) });
   }
-
-  // Sblocca TUTTI i ring elements (multi-ringtone)
   for (const el of _ringEls.values()) {
     if (!el) continue;
     el.volume = 0;
-    try { await el.play(); el.pause(); el.currentTime = 0; } catch { /* ignora */ }
+    toUnlock.push({ el, p: el.play().catch(() => {}) });
+  }
+
+  // Ora possiamo awaitare — siamo già usciti dal tick sincrono del gesture
+  await Promise.allSettled(toUnlock.map(({ p }) => p));
+
+  for (const { el } of toUnlock) {
+    try { el.pause(); el.currentTime = 0; } catch { /* ignora */ }
     el.volume = 1;
   }
 
@@ -1188,18 +1199,140 @@ function _currentRingEl(): HTMLAudioElement | null {
   return _ringEls.get(getRingtone()) ?? null;
 }
 
-/** Avvia lo squillo con la suoneria selezionata. */
+/** Avvia lo squillo con la suoneria selezionata.
+ *  Se play() è bloccato da autoplay policy (schermo spento / nessun gesto precedente),
+ *  registra un retry al primo touch/click — l'utente toccherà lo schermo per rispondere. */
 export async function startRing(): Promise<void> {
   const el = _currentRingEl();
-  if (!el) return; // silenziosa
+  if (!el) {
+    console.log('[ring] suoneria=silenziosa — nessun suono');
+    return;
+  }
+  el.muted = false;
+  el.volume = 1;
   el.currentTime = 0;
-  try { await el.play(); } catch { /* non sbloccato */ }
+  console.log('[ring] startRing() → el.paused=%s unlocked=%s ringtone=%s', el.paused, _unlocked, getRingtone());
+  try {
+    await el.play();
+    console.info('[ring] ✓ squillo avviato');
+  } catch (err) {
+    console.warn('[ring] play() bloccato da autoplay policy:', err);
+    // Retry immediato al primo gesto: l'utente toccherà lo schermo per rispondere/rifiutare
+    let retryDone = false;
+    const retryFn = () => {
+      if (retryDone) return;
+      retryDone = true;
+      document.removeEventListener('pointerdown', retryFn, true);
+      document.removeEventListener('click',       retryFn, true);
+      const el2 = _currentRingEl();
+      if (!el2) return;
+      el2.muted = false;
+      el2.volume = 1;
+      el2.currentTime = 0;
+      void el2.play()
+        .then(() => console.info('[ring] ✓ retry squillo ok'))
+        .catch((e) => console.warn('[ring] retry ancora bloccato:', e));
+    };
+    document.addEventListener('pointerdown', retryFn, { once: true, capture: true });
+    document.addEventListener('click',       retryFn, { once: true, capture: true });
+  }
 }
 
 /** Ferma lo squillo (su tutti i toni, per sicurezza). */
 export function stopRing(): void {
+  console.log('[ring] stopRing()');
   for (const el of _ringEls.values()) {
-    if (el && !el.paused) { el.pause(); el.currentTime = 0; }
+    if (!el) continue;
+    if (!el.paused) { el.pause(); el.currentTime = 0; }
+    // Rimuove eventuali retry pendenti non più necessari
+    // (non c'è accesso diretto ai listener, ma el.pause() impedisce l'audio)
+  }
+}
+
+// ── Ringback tone (solo per il chiamante — mentre l'altro squilla) ────────────
+// Standard europeo: 425 Hz, 1 secondo di tono, 3 secondi di silenzio, loop.
+// Completamente diverso dalla suoneria del callee: distingue "sto aspettando
+// che risponda" dalla suoneria personalizzata del destinatario.
+
+function _buildRingbackDataUrl(): string {
+  const sampleRate  = 22050;
+  const freq        = 425;   // Hz — standard europeo
+  const toneDur     = 1.0;   // 1 s di tono
+  const silDur      = 3.0;   // 3 s di silenzio → totale 4 s per ciclo
+  const toneSamples = Math.ceil(sampleRate * toneDur);
+  const silSamples  = Math.ceil(sampleRate * silDur);
+  const total       = toneSamples + silSamples;
+  const dataSize    = total * 2;
+  const ab = new ArrayBuffer(44 + dataSize);
+  const v  = new DataView(ab);
+  const ws = (off: number, s: string) => { for (let i = 0; i < s.length; i++) v.setUint8(off + i, s.charCodeAt(i)); };
+  ws(0, "RIFF"); v.setUint32(4, 36 + dataSize, true);
+  ws(8, "WAVE"); ws(12, "fmt "); v.setUint32(16, 16, true);
+  v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, sampleRate, true); v.setUint32(28, sampleRate * 2, true);
+  v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+  ws(36, "data"); v.setUint32(40, dataSize, true);
+  for (let i = 0; i < total; i++) {
+    let s16 = 0;
+    if (i < toneSamples) {
+      const t   = i / sampleRate;
+      const att = Math.min(1, t / 0.02);                    // 20 ms attack
+      const rel = Math.min(1, (toneDur - t) / 0.05);        // 50 ms release
+      s16 = Math.round(Math.sin(2 * Math.PI * freq * t) * att * rel * 0.30 * 32767);
+    }
+    v.setInt16(44 + i * 2, Math.max(-32767, Math.min(32767, s16)), true);
+  }
+  const bytes = new Uint8Array(ab);
+  let bin = ""; const CHUNK = 8192;
+  for (let i = 0; i < bytes.length; i += CHUNK) bin += String.fromCharCode(...Array.from(bytes.subarray(i, Math.min(i + CHUNK, bytes.length))));
+  return "data:audio/wav;base64," + btoa(bin);
+}
+
+let _ringbackEl: HTMLAudioElement | null = null;
+try {
+  const rb = new Audio(_buildRingbackDataUrl());
+  rb.loop = true;
+  try {
+    rb.style.cssText = 'position:fixed;width:1px;height:1px;opacity:0;pointer-events:none';
+    document.body.appendChild(rb);
+  } catch { /* SSR */ }
+  _ringbackEl = rb;
+} catch { /* SSR */ }
+
+/**
+ * Avvia il tono di ringback per il CHIAMANTE (425 Hz, 1 s on / 3 s off).
+ * NON usare per il callee — quello usa startRing().
+ */
+export async function startRingback(): Promise<void> {
+  const el = _ringbackEl;
+  if (!el) return;
+  el.muted      = false;
+  el.volume     = 0.7;
+  el.currentTime = 0;
+  console.log('[ring] startRingback() → 425 Hz ringback europeo');
+  try {
+    await el.play();
+    console.info('[ring] ✓ ringback avviato');
+  } catch (err) {
+    console.warn('[ring] ringback play() bloccato:', err);
+    const retryFn = () => {
+      if (!_ringbackEl) return;
+      _ringbackEl.currentTime = 0;
+      void _ringbackEl.play()
+        .then(() => console.info('[ring] ✓ ringback retry ok'))
+        .catch((e) => console.warn('[ring] ringback retry bloccato:', e));
+    };
+    document.addEventListener('pointerdown', retryFn, { once: true, capture: true });
+    document.addEventListener('click',       retryFn, { once: true, capture: true });
+  }
+}
+
+/** Ferma il tono di ringback (chiamante). */
+export function stopRingback(): void {
+  console.log('[ring] stopRingback()');
+  if (_ringbackEl && !_ringbackEl.paused) {
+    _ringbackEl.pause();
+    _ringbackEl.currentTime = 0;
   }
 }
 

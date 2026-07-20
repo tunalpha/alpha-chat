@@ -3,14 +3,20 @@
  */
 
 export interface LockSettings {
-  /** Timeout inattività in ms. 0 = mai. */
+  /** Timeout inattività in ms. 0 = blocca subito all'uscita. -1 = mai. */
   autoLockMs: number;
   /** Mostra schermata nera quando l'app va in background. */
   privacyScreen: boolean;
-  /** Biometria abilitata (richiede che sia registrata). */
+  /** Biometria abilitata come metodo aggiuntivo al PIN. */
   biometricEnabled: boolean;
   /** Panic Mode abilitato. */
   panicEnabled: boolean;
+  /**
+   * Modalità biometrica autonoma (senza PIN).
+   * Quando true, l'app si blocca con Face ID / Touch ID indipendentemente
+   * dal PIN. Il PIN non è richiesto.
+   */
+  biometricOnly: boolean;
 }
 
 export const DEFAULT_LOCK_SETTINGS: LockSettings = {
@@ -18,6 +24,7 @@ export const DEFAULT_LOCK_SETTINGS: LockSettings = {
   privacyScreen: true,
   biometricEnabled: false,
   panicEnabled: false,
+  biometricOnly: false,
 };
 
 export const TIMEOUT_OPTIONS = [

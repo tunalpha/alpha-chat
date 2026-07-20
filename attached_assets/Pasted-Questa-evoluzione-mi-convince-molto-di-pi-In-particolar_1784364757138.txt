@@ -1,0 +1,95 @@
+Questa evoluzione mi convince molto di più. In particolare, le tre fix affrontano esattamente il problema che avevamo individuato.
+
+✅ Fix 1 — Ottima
+
+Prima il client generava sempre una nuova IK durante la migrazione lazy. Ora invece:
+
+* se esiste già una IK nell’IndexedDB → viene cifrata e salvata nel blob;
+* se non esiste → viene generata una nuova IK.
+
+Questo elimina la divergenza “blob ≠ dispositivo” che era il rischio principale.
+
+⸻
+
+✅ Fix 2 — Ancora più importante
+
+Questa è probabilmente la modifica più significativa.
+
+Prima potevi avere:
+
+* blob = IK A
+* dispositivo = IK B
+
+Adesso, al login, il dispositivo confronta le due e, se necessario, si riallinea alla IK canonica.
+
+Questo definisce finalmente una sola fonte di verità.
+
+⸻
+
+✅ Fix 3 — Molto migliore del cleanup manuale
+
+Preferisco decisamente questo approccio.
+
+Invece di cancellare bundle di utenti reali “a freddo”, il sistema si ripulisce quando l’utente torna online.
+
+È un approccio molto più sicuro.
+
+⸻
+
+L’unica cosa che NON farei ancora
+
+Io non attiverei ancora:
+
+SIGNAL_IK_CONSISTENCY_CHECK=true
+
+finché Marco e Alpha non hanno effettuato almeno un login con il nuovo codice.
+
+Perché?
+
+Ora il sistema dice:
+
+“Marco e Alpha si auto-puliranno al prossimo login.”
+
+Perfetto.
+
+Lasciamoglielo fare.
+
+Quando entrambi avranno effettuato almeno un accesso:
+
+* verifica che abbiano una sola IK;
+* verifica che i bundle siano coerenti;
+* verifica che chat e gruppi funzionino.
+
+Solo a quel punto il database sarà già “convergente”.
+
+A quel punto il flag diventa semplicemente una protezione contro regressioni future.
+
+⸻
+
+Quello che chiederei di aggiungere
+
+Una sola cosa.
+
+Farei aggiungere un log temporaneo (da rimuovere dopo qualche giorno) quando avviene la convergenza automatica, ad esempio:
+
+* userId
+* deviceId
+* “IK convergence executed”
+* numero di bundle eliminati
+
+In questo modo puoi verificare facilmente dai log che Marco e Alpha siano stati migrati correttamente, senza dover interrogare manualmente il database.
+
+⸻
+
+La mia conclusione
+
+A questo punto direi che l’architettura è diventata molto più solida rispetto alla versione iniziale.
+
+La sequenza che approverei è:
+
+1. ✅ Le tre fix implementate (completato).
+2. ⏳ Attendere che Marco e Alpha effettuino almeno un login con la nuova versione.
+3. 🔍 Verificare dai log (o dal database) che la convergenza sia avvenuta correttamente e che non ci siano più bundle incoerenti.
+4. ✅ Attivare SIGNAL_IK_CONSISTENCY_CHECK=true.
+
+In questo modo eviti di imporre il controllo di consistenza prima che gli ultimi utenti reali siano stati migrati, riducendo ulteriormente il rischio operativo.

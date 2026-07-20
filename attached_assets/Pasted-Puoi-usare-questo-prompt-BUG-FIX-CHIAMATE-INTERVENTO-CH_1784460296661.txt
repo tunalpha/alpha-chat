@@ -1,0 +1,192 @@
+Puoi usare questo prompt:
+
+⸻
+
+BUG FIX CHIAMATE – INTERVENTO CHIRURGICO (ZERO REGRESSIONI)
+
+Stato del progetto
+
+Il sistema Messaggi è considerato stabile e congelato.
+
+Funzionano:
+
+* ✅ Signal Protocol
+* ✅ Encrypt / Decrypt
+* ✅ Sessioni
+* ✅ Ratchet
+* ✅ Invio messaggi
+* ✅ Ricezione messaggi
+* ✅ Media
+* ✅ Reply
+* ✅ Timeline chat
+
+Questa parte NON DEVE ESSERE MODIFICATA.
+
+⸻
+
+Problema da risolvere
+
+Su iPhone (Safari/PWA):
+
+* la chiamata arriva;
+* la schermata viene visualizzata;
+* i pulsanti Accetta e Rifiuta sono visibili;
+* ma non rispondono al tocco.
+
+Il bug riguarda esclusivamente il modulo Chiamate.
+
+⸻
+
+REGOLA ASSOLUTA
+
+È vietato modificare qualsiasi file appartenente al sistema Messaggi.
+
+In particolare è vietato modificare:
+
+* ChatPage
+* MessageBubble
+* MessageList
+* decrypt
+* encrypt
+* Signal
+* sessioni
+* ratchet
+* reply
+* swipe reply
+* media
+* websocket messaggi
+* store della chat
+* hook condivisi della chat
+
+Qualsiasi modifica a questi file interrompe immediatamente il lavoro.
+
+⸻
+
+Prima di modificare il codice
+
+Indica:
+
+1. elenco dei file che intendi modificare;
+2. motivazione tecnica di ciascun file;
+3. conferma esplicita che nessun file del modulo Messaggi verrà toccato.
+
+Attendi l’esito dell’analisi prima di estendere il perimetro.
+
+⸻
+
+Analisi richiesta
+
+Verifica nell’ordine:
+
+1.
+
+Esiste un overlay che intercetta i tocchi?
+
+Controllare:
+
+* z-index
+* pointer-events
+* backdrop
+* modal
+* elementi fixed
+
+⸻
+
+2.
+
+Gli handler dei pulsanti vengono realmente eseguiti?
+
+Verificare:
+
+* onClick
+* onTouchStart
+* onTouchEnd
+* onPointerDown
+
+⸻
+
+3.
+
+Le funzioni vengono chiamate?
+
+Verificare il flusso completo:
+
+Pulsante
+
+↓
+
+handler
+
+↓
+
+acceptCall()
+
+↓
+
+declineCall()
+
+↓
+
+signaling
+
+⸻
+
+4.
+
+Se gli handler non vengono eseguiti,
+
+identificare quale elemento intercetta gli eventi.
+
+⸻
+
+5.
+
+Se gli handler vengono eseguiti,
+
+individuare dove il flusso si interrompe.
+
+⸻
+
+Tipo di intervento
+
+Consentito:
+
+* fix mirato;
+* modifica locale;
+* poche righe di codice;
+* nessun refactoring.
+
+Vietato:
+
+* riscrivere componenti;
+* cambiare architettura;
+* spostare logica condivisa;
+* modificare codice della chat.
+
+⸻
+
+Obiettivo
+
+Correggere esclusivamente il problema dei pulsanti Accetta e Rifiuta nelle chiamate in arrivo.
+
+⸻
+
+Report finale obbligatorio
+
+Indicare:
+
+* causa tecnica del bug;
+* file modificati;
+* numero di righe modificate;
+* motivo della correzione;
+* conferma che:
+
+✅ nessun file del sistema Messaggi è stato modificato;
+
+✅ nessuna logica Signal è stata modificata;
+
+✅ nessuna logica Encrypt/Decrypt è stata modificata;
+
+✅ nessuna regressione è stata introdotta;
+
+✅ il fix è limitato esclusivamente al modulo Chiamate.

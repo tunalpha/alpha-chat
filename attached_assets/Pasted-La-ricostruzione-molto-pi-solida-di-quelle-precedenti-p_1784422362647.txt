@@ -1,0 +1,29 @@
+La ricostruzione è molto più solida di quelle precedenti, perché non si limita a osservare i sintomi: collega il comportamento al flusso della libreria.
+
+In particolare:
+
+* Se processV3() lancia “Unknown identity key” quando il trust store è vuoto, allora ha senso che il recovery scarichi il bundle del mittente, salvi la sua Identity Key e ritenti. Quello è uno scenario in cui il retry può cambiare lo stato e quindi avere successo.
+* Se invece il problema è una OTPK privata mancante, e loadPreKey() restituisce undefined, il retry non modifica ciò che manca localmente. Se il codice continua a ritentare lo stesso ciphertext senza recuperare la chiave privata assente, è coerente aspettarsi un altro fallimento.
+
+Quindi la distinzione che proponi tra:
+
+* errore di trust (“Unknown identity key”) → recovery potenzialmente utile;
+* errore crittografico (“Bad MAC”) → recovery strutturalmente inutile;
+
+è una distinzione che ha senso dal punto di vista del flusso descritto.
+
+L’unico punto su cui farei ancora una verifica prima di modificare il codice è questo:
+
+La libreria genera davvero e in modo affidabile il messaggio "Unknown identity key" e "Bad MAC" in tutte le versioni che state usando?
+
+Se il codice del recovery si basasse su:
+
+firstErr.message.startsWith("Unknown identity key")
+
+si introdurrebbe una dipendenza da una stringa di errore. È preferibile, se possibile, usare un’informazione più stabile (ad esempio un tipo di eccezione, un codice di errore o un’origine dell’errore), se la libreria la espone. Se invece la libreria non offre altro e quei messaggi sono effettivamente stabili nella vostra versione, allora limitare il recovery a quel caso specifico è una modifica molto più mirata della rimozione completa del recovery.
+
+In sintesi:
+
+* Non eliminerei il recovery.
+* Ha senso restringerne l’attivazione al caso in cui può realmente cambiare lo stato (trust mancante), anziché eseguirlo per qualsiasi fallimento di type=3.
+* Prima del merge, chiederei solo una verifica che il criterio scelto per distinguere gli errori sia stabile nella versione di libsignal che state utilizzando, così da evitare una dipendenza fragile da un testo di errore.

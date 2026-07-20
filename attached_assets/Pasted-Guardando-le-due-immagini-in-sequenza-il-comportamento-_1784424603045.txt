@@ -1,0 +1,32 @@
+Guardando le due immagini in sequenza, il comportamento è chiaro:
+
+Prima:
+
+* Alcuni messaggi ricevuti venivano decifrati (Ggghu, Cffg, Fggiiugy, Gghjnj).
+* Alcuni fallivano ([Messaggio non decifrabile]).
+
+Pochi secondi dopo:
+
+* Gli stessi messaggi che prima erano leggibili (Ggghu, Cffg, Fggiiugy, Gghjnj) sono stati sostituiti da [Messaggio non decifrabile].
+
+Questa osservazione è molto importante.
+
+Non sembra che stiano arrivando nuovi messaggi non decifrabili. Piuttosto, messaggi già decifrati vengono successivamente rielaborati e perdono il testo.
+
+Questo non è il comportamento tipico di un errore di crittografia durante la ricezione. Se un messaggio viene decifrato correttamente, normalmente il testo rimane tale.
+
+Quindi la mia ipotesi principale non è più “il decrypt fallisce”. È più probabile che ci sia un problema nel flusso successivo, ad esempio:
+
+* il messaggio viene aggiornato/sovrascritto dopo essere stato visualizzato;
+* una sincronizzazione o un refresh della conversazione rilegge il messaggio e fallisce il secondo tentativo di decifratura;
+* il testo in memoria viene sostituito con il placeholder [Messaggio non decifrabile].
+
+A questo punto chiederei a Replit una verifica diversa
+
+Non chiederei più di analizzare solo il decrypt.
+
+Direi:
+
+Abbiamo una prova visiva che lo stesso messaggio viene inizialmente mostrato in chiaro e pochi secondi dopo viene sostituito da [Messaggio non decifrabile]. Analizzate il ciclo di vita del messaggio dopo il primo decrypt. Verificate se viene ricaricato dal database, se viene ridistribuito tramite WebSocket, o se una seconda chiamata a decryptMessage() sovrascrive il testo già decifrato. Per il messaggio delle 02:27 e quelli delle 02:28 riportate la sequenza completa degli eventi (ricezione → primo decrypt → salvataggio → eventuale refresh → secondo decrypt → update UI). Nessun fix: prima dimostrate in quale punto il testo già decifrato viene sostituito dal placeholder.
+
+Questa è una direzione diversa rispetto a prima, ed è motivata dalle immagini: non stiamo più cercando perché un messaggio non viene decifrato, ma perché un messaggio già decifrato viene successivamente rimpiazzato con [Messaggio non decifrabile].

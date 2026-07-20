@@ -1,8 +1,15 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import { useAppSettings, type NotifPrefs } from "../contexts/AppSettingsContext";
 import { apiUpdateNotificationSettings } from "../lib/api";
 import { savePendingNotif, notifToBackend } from "../hooks/useNotifSync";
+import {
+  isPushSupported,
+  getPermissionStatus,
+  requestAndSubscribe,
+  unsubscribe as pushUnsubscribe,
+  getActiveSubscription,
+} from "../lib/pushManager";
 
 interface Props { onBack: () => void; }
 
@@ -18,6 +25,42 @@ export default function NotificationsPage({ onBack }: Props) {
   const { settings, setNotif } = useAppSettings();
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+
+  // ── Push state ──────────────────────────────────────────────────────────
+  const [pushSupported,   setPushSupported]   = useState(false);
+  const [pushPermission,  setPushPermission]  = useState<NotificationPermission | "unsupported">("default");
+  const [pushSubscribed,  setPushSubscribed]  = useState(false);
+  const [pushWorking,     setPushWorking]     = useState(false);
+
+  useEffect(() => {
+    const supported = isPushSupported();
+    setPushSupported(supported);
+    if (!supported) return;
+    setPushPermission(getPermissionStatus());
+    void getActiveSubscription().then((sub) => setPushSubscribed(!!sub));
+  }, []);
+
+  async function handlePushToggle() {
+    if (pushWorking) return;
+    setPushWorking(true);
+    try {
+      if (pushSubscribed) {
+        await pushUnsubscribe();
+        setPushSubscribed(false);
+        setPushPermission(getPermissionStatus());
+      } else {
+        const result = await requestAndSubscribe();
+        if (result === "granted") {
+          setPushSubscribed(true);
+          setPushPermission("granted");
+        } else {
+          setPushPermission(result as NotificationPermission);
+        }
+      }
+    } finally {
+      setPushWorking(false);
+    }
+  }
 
   const rows: ToggleRow[] = [
     { key: "messages",       label: t("notifications.messages"),       desc: t("notifications.messagesDesc"),       icon: "💬" },
@@ -56,6 +99,14 @@ export default function NotificationsPage({ onBack }: Props) {
     finally { setSaving(false); }
   }
 
+  // Etichetta stato push
+  function pushStatusLabel() {
+    if (!pushSupported) return "Non supportato su questo browser";
+    if (pushPermission === "denied") return "Bloccate dal browser — abilita nelle impostazioni";
+    if (pushSubscribed && pushPermission === "granted") return "Attive ✓";
+    return "Disattivate";
+  }
+
   return (
     <div className="notifications-page">
       {/* Header */}
@@ -69,6 +120,45 @@ export default function NotificationsPage({ onBack }: Props) {
       </div>
 
       <div className="notif-body">
+
+        {/* ── Sezione Push Notifications ───────────────────────────────── */}
+        <div className="notif-section-header">Notifiche Push</div>
+        <div className="notif-row notif-push-row">
+          <span className="notif-row-icon">🔔</span>
+          <div className="notif-row-text">
+            <span className="notif-row-label">Notifiche push</span>
+            <span className="notif-row-desc">{pushStatusLabel()}</span>
+          </div>
+          {pushSupported && pushPermission !== "denied" && (
+            <button
+              className={`notif-toggle ${pushSubscribed ? "on" : "off"}${pushWorking ? " notif-toggle-loading" : ""}`}
+              role="switch"
+              aria-checked={pushSubscribed}
+              disabled={pushWorking}
+              onClick={() => void handlePushToggle()}
+            >
+              <span className="notif-toggle-thumb" />
+            </button>
+          )}
+          {pushPermission === "denied" && (
+            <span style={{ fontSize: "0.75rem", color: "var(--text-secondary, #888)", marginLeft: "auto" }}>
+              Bloccate
+            </span>
+          )}
+        </div>
+
+        {!pushSupported && (
+          <div className="notif-push-compat">
+            <span>⚠️</span>
+            <span>
+              Le notifiche push richiedono Chrome, Firefox o Edge su Android/desktop.
+              Su iOS sono supportate solo dalla PWA installata (≥ iOS 16.4).
+            </span>
+          </div>
+        )}
+
+        {/* ── Impostazioni in-app ──────────────────────────────────────── */}
+        <div className="notif-section-header" style={{ marginTop: "1.5rem" }}>Impostazioni in-app</div>
         {rows.map(row => (
           <div key={row.key} className="notif-row">
             <span className="notif-row-icon">{row.icon}</span>

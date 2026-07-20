@@ -1,0 +1,57 @@
+Questa schermata è ancora più significativa.
+
+Il problema delle notifiche adesso passa in secondo piano: qui c’è un problema con Signal/chiavi di cifratura.
+
+Vedo che:
+
+* la conversazione esiste;
+* i messaggi sono stati scaricati;
+* tutti vengono mostrati come:
+
+[Messaggio non decifrabile]
+
+Questo succede tipicamente quando il client non possiede più le chiavi Signal corrette con cui quei messaggi erano stati cifrati.
+
+Il fatto importante
+
+Hai detto:
+
+“Dopo che ho reinstallato…”
+
+Se hai eliminato la PWA e l’hai reinstallata, molto probabilmente è successo questo:
+
+* la reinstallazione ha cancellato IndexedDB (dove normalmente vengono conservate le chiavi Signal);
+* il server ha ancora i messaggi cifrati;
+* il client ha generato o inizializzato un nuovo set di chiavi;
+* quindi i vecchi messaggi non sono più decifrabili.
+
+Questo è coerente con ciò che avevate già scoperto nelle settimane scorse: la persistenza delle chiavi Signal era un punto critico.
+
+Non continuerei a lavorare sulle push
+
+Prima bisogna capire se le Identity Keys sono sopravvissute alla reinstallazione.
+
+Chiederei all’agente questa RCA
+
+BUG CRITICO – Reinstall PWA → tutti i messaggi diventano [Messaggio non decifrabile]
+
+Verificare:
+
+* le Identity Keys vengono conservate sul server oppure solo in IndexedDB?
+* dopo la reinstallazione della PWA viene generata una nuova Identity Key?
+* initSignalKeys() sta eseguendo un restore oppure un bootstrap?
+* il server restituisce le stesse Identity Keys dell’utente oppure ne registra di nuove?
+* confrontare la fingerprint della Identity Key prima e dopo la reinstallazione.
+
+Non modificare la messaggistica. Prima produrre la Root Cause Analysis.
+
+⸻
+
+Una domanda
+
+Quando hai reinstallato la PWA:
+
+* hai fatto semplicemente “Rimuovi app” e poi l’hai aggiunta di nuovo dalla Home?
+* oppure hai anche effettuato un nuovo login o una nuova registrazione?
+
+Questa risposta è fondamentale per capire se è stato perso solo lo storage locale o se è stata creata una nuova identità crittografica.

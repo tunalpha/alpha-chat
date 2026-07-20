@@ -1,0 +1,37 @@
+Questo report è significativamente più convincente dei precedenti, perché non si basa solo sui sintomi, ma individua un punto preciso del codice dove il comportamento diverge.
+
+In particolare, considero ben supportato quanto segue:
+
+* Se esistono davvero tre percorsi (Path A, Path B, Path C) e solo il Path C non consulta getMetaByMessageId(), allora c’è un’asimmetria reale nel codice.
+* Se hai osservato che i messaggi vengono prima mostrati correttamente e poi sostituiti con [Messaggio non decifrabile], questo è coerente con l’idea che un secondo tentativo di decrypt stia sovrascrivendo un risultato già valido.
+* Il fatto che il useEffect sul reconnect riesegua decryptBatch() su tutti i messaggi è un meccanismo plausibile per innescare quel secondo tentativo.
+
+L’unico punto che verificherei prima del fix
+
+C’è un passaggio che nel report viene dato per acquisito:
+
+signalDecrypt() fallisce perché il ratchet è già avanzato.
+
+Questa è un’ipotesi tecnica plausibile, ma dovrebbe essere confermata dal log dell’eccezione (Bad MAC, MessageCounterError, ecc.). In altre parole, il problema della sovrascrittura è ben dimostrato; la causa precisa del fallimento del secondo decrypt andrebbe comunque confermata dall’errore effettivo.
+
+Sul fix
+
+Il fix proposto mi sembra molto meno invasivo dei precedenti, perché:
+
+* non cambia il protocollo Signal;
+* non cambia la gestione delle chiavi;
+* non cambia la logica del ratchet.
+
+Interviene invece sulla logica dell’applicazione:
+
+1. prima di ritentare il decrypt, verifica se il plaintext è già presente nella cache;
+2. nel catch, evita di sostituire un testo già decifrato con il placeholder.
+
+Questa è una modifica locale e, se implementata correttamente, ha un rischio di regressione inferiore rispetto ai cambiamenti fatti in precedenza sul recovery.
+
+Quindi, sulla base delle informazioni che hai condiviso, io procederei con questo fix, accompagnandolo con un test che riproduca esattamente il caso:
+
+1. decrypt riuscito;
+2. reconnect WebSocket;
+3. nuovo decryptBatch();
+4. verifica che il messaggio già decifrato rimanga in chiaro e non venga sostituito da [Messaggio non decifrabile].

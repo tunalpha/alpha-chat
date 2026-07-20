@@ -47,7 +47,7 @@ export interface JwtPayload {
 // Costanti
 // ---------------------------------------------------------------------------
 
-const ACCESS_TOKEN_TTL_SECONDS = 15 * 60; // 15 minuti
+const ACCESS_TOKEN_TTL_SECONDS = 60 * 60; // 1 ora
 const IS_PRODUCTION = process.env["NODE_ENV"] === "production";
 
 // ---------------------------------------------------------------------------

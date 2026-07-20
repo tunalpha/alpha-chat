@@ -19,6 +19,7 @@ export const ERROR_MESSAGES: Record<string, string> = {
   INVALID_CREDENTIALS: "Username o password non corretti.",
   ACCOUNT_LOCKED: "Account temporaneamente bloccato per troppi tentativi falliti.",
   ACCOUNT_SUSPENDED: "Account sospeso.",
+  ACCOUNT_DELETED: "Account eliminato.",
   TOTP_CODE_INVALID: "Codice di verifica non valido.",
   TOTP_CHALLENGE_EXPIRED: "La sessione di verifica è scaduta. Effettua nuovamente il login.",
   TOTP_TOO_MANY_ATTEMPTS: "Troppi tentativi falliti. Riprova tra qualche minuto.",

@@ -1,0 +1,51 @@
+L’analisi è ben strutturata, ma c’è un punto importante: non dimostra ancora dove si rompe la catena. Alcune conclusioni sono ipotesi plausibili, non prove.
+
+In particolare:
+
+* Link 1: il fatto che arrivi la push dimostra che al momento del call.offer il server ha considerato il callee offline. Questo è supportato.
+* Link 2: è supportato che push.openCall da solo non può ricostruire una chiamata se contiene solo callerId.
+* Link 3: qui manca la prova decisiva. Tutta la nuova architettura (pendingCall + re-delivery) vive o muore su questo passaggio, ma non hai ancora un log che dimostri che il reinvio avvenga o meno.
+* Link 4 e 5: al momento non sono verificati perché i log sono solo lato client.
+
+C’è però un dato molto forte che emerge dai tuoi test
+
+Hai detto che:
+
+* App aperta → arriva solo la notifica.
+* App chiusa → arriva solo la notifica.
+
+Questo è anomalo.
+
+Se il WebSocket permanente fosse davvero connesso quando l’app è aperta, non dovresti ricevere solo la push: il server dovrebbe vedere almeno una connessione aperta (openCount > 0) e inviare call.incoming via WebSocket.
+
+Questo mi fa sospettare una causa ancora più a monte:
+
+* il WebSocket del callee non è realmente connesso o autenticato, anche quando l’app sembra aperta;
+* oppure il server continua a considerare l’utente offline.
+
+Questa ipotesi spiegherebbe contemporaneamente:
+
+* push sempre presente;
+* nessuna modale;
+* nessuna differenza tra foreground e background.
+
+La verifica che farei adesso
+
+Non chiederei altri fix.
+
+Chiederei invece all’agente di dimostrare con i log del server queste tre informazioni durante una chiamata:
+
+1. Quando il callee apre Alpha Chat:
+    * viene eseguito WsManager.register(userId)?
+    * quante connessioni risultano registrate?
+2. Poco prima del call.offer:
+    * valore di openCount;
+    * risultato di isOnline(userId).
+3. Dopo l’autenticazione del WebSocket:
+    * compare davvero il log:
+
+[DIAG-SRV] re-delivering pending call
+
+    * oppure non viene mai eseguito?
+
+Se scopriamo che openCount resta sempre 0 anche con l’app aperta, allora non serve più discutere di callState, IncomingCallModal o acceptCall: il problema è che il client non è mai realmente online dal punto di vista del server, e tutta la catena successiva non può partire. Quello sarebbe il vero root cause da risolvere.

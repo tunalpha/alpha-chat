@@ -1,0 +1,79 @@
+Nel complesso il report è ragionato, ma non metterei sullo stesso piano Fix A e Fix B.
+
+Fix A (pulsanti)
+
+È un’ipotesi plausibile, ma non ancora dimostrata.
+
+Dal codice si può dimostrare che:
+
+* gli handler non sono invertiti;
+* il CSS usa backdrop-filter + pointer-events: none.
+
+Non si può invece dimostrare dal solo codice che sia quella la causa dei tocchi invertiti. Potrebbe esserlo (esistono bug noti di WebKit), ma manca una prova diretta.
+
+Quindi lo classificherei come:
+
+Ipotesi forte da verificare, non causa certa.
+
+⸻
+
+Fix B (audio)
+
+Qui invece sarei più prudente.
+
+Nel report c’è una conclusione che non mi convince completamente:
+
+rimuovere primeRemoteAudio() da handleAccept().
+
+Quella chiamata potrebbe essere stata inserita proprio per sfruttare il gesture context di iOS.
+
+Se la togli senza verificarne il motivo storico, rischi di peggiorare la situazione su altre versioni di iOS.
+
+⸻
+
+Quello che farei io
+
+Prima implementerei solo il Fix A
+
+Perché:
+
+* è completamente separato;
+* riguarda solo il rendering della modale;
+* non tocca WebRTC;
+* non tocca l’audio;
+* non tocca Signal;
+* non tocca CallContext.
+
+⸻
+
+Sul Fix B chiederei prima un’analisi aggiuntiva
+
+Vorrei capire:
+
+Perché esistono due chiamate a primeRemoteAudio()?
+
+Prima di eliminarne una, farei verificare:
+
+* quando è stata introdotta;
+* quale bug risolveva;
+* se è davvero ridondante oppure serve per il gesture context di Safari.
+
+È una differenza importante.
+
+⸻
+
+La mia autorizzazione sarebbe:
+
+✅ Autorizzato
+
+* Fix A (layer separato per il blur)
+
+⛔ Non ancora autorizzato
+
+* Rimozione di primeRemoteAudio() da handleAccept().
+
+Prima chiederei un’ultima analisi molto mirata:
+
+“Dimostra dal codice e dalla sequenza di esecuzione che la chiamata a primeRemoteAudio() in handleAccept() è realmente ridondante e non necessaria per preservare il gesture context di iOS. Se non puoi dimostrarlo, non modificarla.”
+
+Questo mantiene l’approccio che vi ha evitato regressioni finora: modificare solo ciò che è dimostrato essere la causa del problema.

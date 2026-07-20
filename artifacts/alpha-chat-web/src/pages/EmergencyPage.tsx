@@ -42,6 +42,17 @@ export default function EmergencyPage() {
   const [countdown, setCountdown] = useState(10);
   const countdownRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
+  // Override dell'overflow globale (html/body/#root hanno overflow:hidden via CSS).
+  // Usiamo una classe CSS con !important invece di inline styles,
+  // perché su iOS Safari gli inline styles senza !important vengono ignorati
+  // quando il foglio di stile ha selettori ad alta specificità.
+  useEffect(() => {
+    document.documentElement.classList.add("emergency-open");
+    return () => {
+      document.documentElement.classList.remove("emergency-open");
+    };
+  }, []);
+
   // Rileva token nell'URL (link da email)
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);

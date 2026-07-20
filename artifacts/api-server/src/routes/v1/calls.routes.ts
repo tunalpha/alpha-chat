@@ -11,6 +11,49 @@ const VALID_TYPES:   readonly string[] = ["audio", "video"];
 const VALID_STATUSES: readonly string[] = ["missed", "declined", "completed", "failed", "cancelled"];
 
 const router = Router();
+
+// ── Rotta pubblica (PRIMA di authenticate) ────────────────────────────────────
+
+/** GET /api/v1/calls/ice-config — configurazione ICE (STUN + TURN opzionale)
+ *  Pubblica: loadIceConfig() in webrtc.ts la chiama senza header auth. */
+const getIceConfig: RequestHandler = (_req, res) => {
+  interface IceServer { urls: string | string[]; username?: string; credential?: string; }
+  const servers: IceServer[] = [
+    { urls: "stun:stun.l.google.com:19302" },
+    { urls: "stun:stun1.l.google.com:19302" },
+  ];
+
+  // Legge TURN da variabili d'ambiente (opzionali).
+  // Per configurare un server TURN (es. Coturn) impostare:
+  //   TURN_URLS=turn:yourserver.com:3478
+  //   TURN_USERNAME=username
+  //   TURN_PASSWORD=password
+  const turnUrls     = process.env["TURN_URLS"];
+  const turnUsername = process.env["TURN_USERNAME"];
+  const turnPassword = process.env["TURN_PASSWORD"];
+
+  if (turnUrls) {
+    const entry: IceServer = { urls: turnUrls.split(",") };
+    if (turnUsername) entry.username   = turnUsername;
+    if (turnPassword) entry.credential = turnPassword;
+    servers.push(entry);
+  }
+
+  // STUN aggiuntivi opzionali
+  const stunUrls = process.env["STUN_URLS"];
+  if (stunUrls) {
+    for (const url of stunUrls.split(",")) {
+      servers.push({ urls: url.trim() });
+    }
+  }
+
+  res.json({ iceServers: servers });
+};
+
+router.get("/ice-config", getIceConfig);
+
+// ── Rotte autenticate ─────────────────────────────────────────────────────────
+
 router.use(authenticate);
 
 /** POST /api/v1/calls/log */
@@ -71,45 +114,7 @@ const getHistory: RequestHandler = async (req, res, next) => {
   }
 };
 
-/** GET /api/v1/calls/ice-config — configurazione ICE (STUN + TURN opzionale) */
-const getIceConfig: RequestHandler = (_req, res) => {
-  interface IceServer { urls: string | string[]; username?: string; credential?: string; }
-  const servers: IceServer[] = [
-    { urls: "stun:stun.l.google.com:19302" },
-    { urls: "stun:stun1.l.google.com:19302" },
-  ];
-
-  // Legge TURN da variabili d'ambiente (opzionali).
-  // Per configurare un server TURN (es. Coturn) impostare:
-  //   TURN_URLS=turn:yourserver.com:3478
-  //   TURN_USERNAME=username
-  //   TURN_PASSWORD=password
-  const turnUrls     = process.env["TURN_URLS"];
-  const turnUsername = process.env["TURN_USERNAME"];
-  const turnPassword = process.env["TURN_PASSWORD"];
-
-  if (turnUrls) {
-    const entry: IceServer = { urls: turnUrls.split(",") };
-    if (turnUsername) entry.username   = turnUsername;
-    if (turnPassword) entry.credential = turnPassword;
-    servers.push(entry);
-  }
-
-  // STUN aggiuntivi opzionali
-  const stunUrls = process.env["STUN_URLS"];
-  if (stunUrls) {
-    for (const url of stunUrls.split(",")) {
-      servers.push({ urls: url.trim() });
-    }
-  }
-
-  res.json({ iceServers: servers });
-};
-
-router.post("/log",       logCall);
-router.get("/history",    getHistory);
-// ice-config è pubblico (non richiede auth) — le credenziali TURN sono
-// comunque innocue se esposte perché il TURN server le verifica
-router.get("/ice-config", getIceConfig);
+router.post("/log",    logCall);
+router.get("/history", getHistory);
 
 export default router;
