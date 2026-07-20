@@ -16,10 +16,52 @@
 import { diagLog } from "./diagnosticLogger";
 
 let _el: HTMLAudioElement | null = null;
-let _audioCtx: AudioContext | null = null;      // usato SOLO da primeRemoteAudio su Chrome
+let _audioCtx: AudioContext | null = null;      // usato SOLO da primeRemoteAudio su Chrome (MAI su iOS)
 let _currentStream: MediaStream | null = null;
 let _speakerMode = true;
 let _playRetryTimer: ReturnType<typeof setTimeout> | null = null;
+let _silenceBlobUrl: string | null = null;      // WAV silenzioso per blessing iOS (no AudioContext)
+
+// ── iOS detection ─────────────────────────────────────────────────────────────
+// iOS Safari non supporta setSinkId e il suo AudioContext interferisce con
+// la sessione PlayAndRecord di getUserMedia, forzando l'audio sullo speaker.
+// Su iOS evitiamo completamente AudioContext durante le chiamate.
+
+function isIOS(): boolean {
+  if (typeof navigator === "undefined") return false;
+  return /iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+}
+
+/**
+ * Restituisce un blob URL per un WAV di silenzio (46 byte).
+ * Usato su iOS per "benedire" l'<audio> element senza AudioContext.
+ * Creato una sola volta e riutilizzato per tutta la vita della pagina.
+ */
+function getSilenceBlobUrl(): string {
+  if (_silenceBlobUrl) return _silenceBlobUrl;
+  // WAV PCM mono 8000 Hz, 1 sample di silenzio (= 46 byte totali)
+  const buf  = new ArrayBuffer(46);
+  const view = new DataView(buf);
+  const str  = (offset: number, s: string) =>
+    [...s].forEach((c, i) => view.setUint8(offset + i, c.charCodeAt(0)));
+  str(0,  "RIFF");
+  view.setUint32(4,  38,    true);  // chunk size = 46 - 8
+  str(8,  "WAVE");
+  str(12, "fmt ");
+  view.setUint32(16, 16,    true);  // PCM subchunk size
+  view.setUint16(20, 1,     true);  // PCM format
+  view.setUint16(22, 1,     true);  // mono
+  view.setUint32(24, 8000,  true);  // sample rate
+  view.setUint32(28, 16000, true);  // byte rate
+  view.setUint16(32, 2,     true);  // block align
+  view.setUint16(34, 16,    true);  // bits per sample
+  str(36, "data");
+  view.setUint32(40, 2,     true);  // 1 sample × 2 byte
+  view.setInt16(44,  0,     true);  // campione = silenzio
+  _silenceBlobUrl = URL.createObjectURL(new Blob([buf], { type: "audio/wav" }));
+  return _silenceBlobUrl;
+}
 
 // ── Element singleton ─────────────────────────────────────────────────────────
 
@@ -36,10 +78,14 @@ function getEl(): HTMLAudioElement | null {
   return _el;
 }
 
-// ── AudioContext singleton (solo per primeRemoteAudio, non per routing iOS) ──
+// ── AudioContext singleton (solo per primeRemoteAudio, NON su iOS) ───────────
+// Su iOS, AudioContext.create() interferisce con la sessione AVAudioSession
+// aperta da getUserMedia (PlayAndRecord) e forza l'output sullo speaker.
+// Restituisce null su iOS → il chiamante usa il path blob-URL al posto suo.
 
 function getOrCreateAudioCtx(): AudioContext | null {
   if (typeof window === "undefined") return null;
+  if (isIOS()) return null;   // ← iOS: niente AudioContext durante le chiamate
   const AC =
     (typeof AudioContext !== "undefined" && AudioContext) ||
     ((window as Window & { webkitAudioContext?: typeof AudioContext }).webkitAudioContext);
@@ -213,45 +259,67 @@ export async function primeRemoteAudio(callId?: string, source?: string): Promis
     dlog('prime.srcObject', { null: srcNull });
 
     if (srcNull) {
-      // FIX Bug 1 (audio muto): l'elemento deve essere benedetto ("blessed") nel
-      // gesture context anche quando srcObject è ancora null. Senza questo,
-      // applyRouting() chiama el.play() da ontrack (NON un gesture) → iOS lo blocca
-      // silenziosamente → nessun audio per tutta la chiamata.
+      // L'elemento deve essere "blessed" nel gesture context prima che arrivi
+      // il remote stream, altrimenti iOS blocca silenziosamente el.play() da ontrack.
       //
-      // Soluzione: creiamo un MediaStreamDestination silenzioso dal AudioContext
-      // (già in PlayAndRecord se chiamato dopo getUserMedia), lo assegniamo come
-      // srcObject temporaneo, e chiamiamo el.play(). Il play() riesce nel gesture
-      // context → elemento blessed → futuri play() da ontrack funzionano.
-      // Dopo il play() resettiamo srcObject a null — il vero stream arriverà via setRemoteStream().
+      // ── Path iOS (PlayAndRecord, niente AudioContext) ─────────────────────
+      // Su iOS creare AudioContext durante una sessione getUserMedia interferisce
+      // con AVAudioSession e forza l'uscita audio sullo SPEAKER anche se il modo
+      // corretto (PlayAndRecord) userebbe l'auricolare per default.
+      // Fix: usiamo un blob URL WAV silenzioso come srcObject temporaneo per il
+      // blessing → nessun AudioContext creato → la sessione PlayAndRecord rimane
+      // intatta → l'audio del remoto arriverà all'auricolare come atteso.
       //
-      // NOTA: getOrCreateAudioCtx() viene chiamato qui per riutilizzare il ctx già
-      // creato/resumed. Se non esiste ancora, viene creato ora nel gesture context.
-      const ctxForBlessing = getOrCreateAudioCtx();
-      if (ctxForBlessing) {
+      // ── Path Chrome/Edge (AudioContext + MediaStreamDestination) ──────────
+      // Su browser con AudioContext disponibile, il path precedente rimane: il
+      // ctx è già in PlayAndRecord e il MediaStreamDestination è la scelta migliore.
+      if (isIOS()) {
+        // iOS: blessing via blob WAV silenzioso (niente AudioContext)
         try {
-          // Assicurati che il ctx sia running (potrebbe essere suspended prima di getUserMedia)
-          if (ctxForBlessing.state === 'suspended') {
-            await Promise.race([
-              ctxForBlessing.resume(),
-              new Promise<void>(r => setTimeout(r, 500)),
-            ]);
-          }
-          const dest = ctxForBlessing.createMediaStreamDestination();
-          el.srcObject = dest.stream;          // srcObject valido → play() non rigetta
+          const silenceUrl = getSilenceBlobUrl();
+          el.src = silenceUrl;                   // src stringa → no srcObject → no race
           let blessed = false;
           await Promise.race([
             el.play().then(() => { blessed = true; }),
             new Promise<void>(r => setTimeout(r, 1500)),
           ]);
-          dlog('prime.play.after', { ok: blessed, method: 'silent_dest' });
-          if (blessed) el.pause();             // stop subito: non vogliamo audio silenzioso
+          dlog('prime.play.after', { ok: blessed, method: 'ios_blob' });
+          if (blessed) el.pause();
         } catch (err) {
-          dlog('prime.play.error', { err: String(err), method: 'silent_dest' });
+          dlog('prime.play.error', { err: String(err), method: 'ios_blob' });
         } finally {
-          el.srcObject = null;                 // reset: il vero stream arriverà via setRemoteStream()
+          el.removeAttribute('src');             // rimuove src stringa
+          el.srcObject = null;                   // il vero stream arriverà via setRemoteStream()
+          el.load();                             // reset elemento → pronto per srcObject
         }
       } else {
-        dlog('prime.play.skip', { reason: 'no_audioCtx' });
+        // Chrome/Edge: blessing via MediaStreamDestination (AudioContext)
+        const ctxForBlessing = getOrCreateAudioCtx();
+        if (ctxForBlessing) {
+          try {
+            if (ctxForBlessing.state === 'suspended') {
+              await Promise.race([
+                ctxForBlessing.resume(),
+                new Promise<void>(r => setTimeout(r, 500)),
+              ]);
+            }
+            const dest = ctxForBlessing.createMediaStreamDestination();
+            el.srcObject = dest.stream;
+            let blessed = false;
+            await Promise.race([
+              el.play().then(() => { blessed = true; }),
+              new Promise<void>(r => setTimeout(r, 1500)),
+            ]);
+            dlog('prime.play.after', { ok: blessed, method: 'silent_dest' });
+            if (blessed) el.pause();
+          } catch (err) {
+            dlog('prime.play.error', { err: String(err), method: 'silent_dest' });
+          } finally {
+            el.srcObject = null;
+          }
+        } else {
+          dlog('prime.play.skip', { reason: 'no_audioCtx' });
+        }
       }
     } else {
       // srcObject presente: tentiamo il play() con timeout bounded 1500ms.
