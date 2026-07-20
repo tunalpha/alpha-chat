@@ -459,7 +459,18 @@ export function CallProvider({ children }: { children: ReactNode }) {
       _currentStep = 2; _stepStart = Date.now();
       console.log('[DIAG-ACCEPT] step 2 — primeRemoteAudio()');
       diagLog('prime.call.before', { step: 2 }, _acceptCallId);
-      await raceTimeout(primeRemoteAudio(_acceptCallId).catch(() => {}));
+      // FIX: primeRemoteAudio ha già timeout interni (1500ms su el.play e ctx.resume)
+      // quindi è già bounded. Non usiamo raceTimeout (Promise.race con Promise<never>)
+      // perché su iOS Safari può bloccare la catena anche quando la promise interna è
+      // già settled — comportamento confermato dai log: prime.exit compare ma
+      // prime.call.after non appare mai, mentre il timeout 15s scatta regolarmente.
+      // Aggiungiamo un guard indipendente da 3s come safety net.
+      const _primePromise = primeRemoteAudio(_acceptCallId).catch(() => {});
+      _primePromise.then(() => diagLog('prime.inner.resolved', { step: 2 }, _acceptCallId));
+      await Promise.race([
+        _primePromise,
+        new Promise<void>(resolve => setTimeout(resolve, 3_000)),
+      ]);
       diagLog('prime.call.after', { step: 2, elapsed_ms: Date.now() - _stepStart }, _acceptCallId);
       console.log('[DIAG-ACCEPT] step 2 OK elapsed=%dms', Date.now() - _stepStart);
       diagLog('accept.step', { step: 2, ok: true, elapsed_ms: Date.now() - _stepStart }, _acceptCallId);

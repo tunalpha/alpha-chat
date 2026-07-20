@@ -1,0 +1,141 @@
+Finalmente questi log ci danno un’informazione nuova e molto importante.
+
+La parte decisiva è questa:
+
+17:32:10.972  prime.enter
+17:32:10.972  prime.el
+17:32:10.972  prime.srcObject {"null":true}
+17:32:10.972  prime.play.skip {"reason":"srcObject_null"}
+17:32:10.972  prime.ctx.before
+17:32:10.972  prime.ctx.state {"state":"running"}
+17:32:10.972  prime.exit
+
+e nella chiamata precedente:
+
+prime.enter
+...
+prime.ctx.resume.before
+prime.ctx.resume.after {"ok":true}
+prime.exit
+
+Cosa possiamo affermare con certezza
+
+Questo esclude definitivamente le ipotesi precedenti.
+
+primeRemoteAudio() termina correttamente.
+
+Non è:
+
+* ❌ el.play()
+* ❌ ctx.resume()
+* ❌ AudioContext
+* ❌ primeRemoteAudio()
+
+Perché abbiamo il log:
+
+prime.exit
+
+quindi la funzione è uscita.
+
+⸻
+
+Ma allora perché va in timeout allo step 2?
+
+Qui c’è una contraddizione.
+
+Se lo step 2 è davvero:
+
+await raceTimeout(primeRemoteAudio());
+diagLog("accept.step", { step: 2, ok: true });
+
+allora dopo
+
+prime.exit
+
+dovremmo vedere immediatamente
+
+accept.step step:2 ok:true
+
+Invece non compare mai.
+
+Quindi una delle due cose è vera:
+
+Caso A (più probabile)
+
+Lo await non è quello che pensiamo.
+
+Ad esempio:
+
+await raceTimeout(async () => {
+    await primeRemoteAudio();
+    await QUALCOSA_ALTRO();   // <-- blocca qui
+});
+
+oppure
+
+await raceTimeout(
+    Promise.all([
+        primeRemoteAudio(),
+        altroPromise
+    ])
+);
+
+In questo caso primeRemoteAudio() finisce ma il wrapper no.
+
+⸻
+
+Caso B
+
+raceTimeout() è implementato male.
+
+Ad esempio potrebbe:
+
+* non risolvere quando la promise risolve;
+* aspettare anche il timer;
+* avere un bug interno.
+
+⸻
+
+C’è un dettaglio che mi colpisce
+
+Manca completamente:
+
+prime.call.after
+
+Avevate detto di aver aggiunto:
+
+diagLog("prime.call.before");
+await raceTimeout(primeRemoteAudio());
+diagLog("prime.call.after");
+
+Nei log vedo prime.enter e prime.exit.
+
+Non vedo prime.call.after.
+
+Questo è il punto cruciale.
+
+Significa che:
+
+primeRemoteAudio()
+
+ha restituito il controllo,
+
+ma
+
+await raceTimeout(...)
+
+non è mai terminato.
+
+⸻
+
+La mia ipotesi principale adesso
+
+Non guarderei più primeRemoteAudio.
+
+Guarderei solo raceTimeout().
+
+Chiederei all’agente di verificare:
+
+Apri l’implementazione completa di raceTimeout(). Voglio vedere il codice integrale. I log dimostrano che primeRemoteAudio() arriva a prime.exit, ma await raceTimeout(primeRemoteAudio()) non ritorna mai (prime.call.after non compare). Verifica se raceTimeout() aspetta una promise diversa, non risolve correttamente oppure se viene passato qualcosa di diverso da primeRemoteAudio().
+
+A questo punto, sulla base dei log, raceTimeout() è diventato il principale sospettato, non primeRemoteAudio(). I dati supportano questo cambio di direzione molto più delle ipotesi precedenti.
