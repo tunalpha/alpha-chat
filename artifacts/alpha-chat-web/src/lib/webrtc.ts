@@ -18,23 +18,26 @@ let _iceServers: RTCIceServer[] = [
   { urls: "stun:stun.l.google.com:19302" },
   { urls: "stun:stun1.l.google.com:19302" },
 ];
-let _iceLoaded = false;
 
-/** Preleva la configurazione ICE dal backend (STUN + eventuale TURN). */
+/**
+ * Preleva la configurazione ICE dal backend (STUN + eventuale TURN).
+ * NON cachata — viene chiamata una volta per call setup, così ogni chiamata usa
+ * sempre la configurazione aggiornata (inclusi eventuali nuovi server TURN).
+ */
 export async function loadIceConfig(): Promise<void> {
-  if (_iceLoaded) return;
   try {
     const res = await fetch("/api/v1/calls/ice-config");
     if (res.ok) {
       const json = await res.json() as { iceServers: RTCIceServer[] };
       if (Array.isArray(json.iceServers) && json.iceServers.length > 0) {
         _iceServers = json.iceServers;
+        diagLog('ice.config.loaded', { count: json.iceServers.length, hasRelay: json.iceServers.some(s => String(s.urls).includes('turn:') || (Array.isArray(s.urls) && s.urls.some(u => u.startsWith('turn:')))) });
       }
     }
-  } catch {
+  } catch (e) {
     // Fallback silenzioso ai server Google
+    diagLog('ice.config.error', { err: String(e) });
   }
-  _iceLoaded = true;
 }
 
 export async function getUserMedia(callType: CallType, facingMode: FacingMode = "user"): Promise<MediaStream> {

@@ -269,24 +269,6 @@ export function CallProvider({ children }: { children: ReactNode }) {
     pcRef.current = pc;
     setPeerConnection(pc);
 
-    // Flush dei candidati ICE ricevuti prima che il PC esistesse (callee: arrivano
-    // tra call.incoming e il click su Accept). Li applichiamo ora che il PC è pronto.
-    const buffered = iceCandidateBufferRef.current.splice(0);
-    if (buffered.length > 0) {
-      console.log('[Call] buildPC: flush %d ICE candidates bufferizzati', buffered.length);
-      diagLog('ice.candidate.buffered.flush', { count: buffered.length });
-      for (const cand of buffered) {
-        pc.addIceCandidate(new RTCIceCandidate(cand))
-          .then(() => diagLog('ice.candidate.buffered.ok', { type: (cand as { type?: string }).type ?? 'unknown' }))
-          .catch((e) => {
-            console.warn('[Call] addIceCandidate (buffered) error', e);
-            diagLog('ice.candidate.buffered.error', { err: String(e) });
-          });
-      }
-    } else {
-      diagLog('ice.candidate.buffered.flush', { count: 0 });
-    }
-
     return pc;
   }
 
@@ -499,6 +481,25 @@ export function CallProvider({ children }: { children: ReactNode }) {
       await raceTimeout(pc.setRemoteDescription(new RTCSessionDescription(incomingCall.sdp)));
       console.log('[DIAG-ACCEPT] step 4 OK elapsed=%dms', Date.now() - _stepStart);
       diagLog('accept.step', { step: 4, ok: true, elapsed_ms: Date.now() - _stepStart }, _acceptCallId);
+
+      // Flush ICE candidati bufferizzati DOPO setRemoteDescription.
+      // DEVE essere qui: addIceCandidate() richiede una remote description valida,
+      // altrimenti lancia InvalidStateError e i candidati vengono persi.
+      // buildPC() non fa più il flush per questo motivo.
+      const _buffered = iceCandidateBufferRef.current.splice(0);
+      diagLog('ice.candidate.buffered.flush', { count: _buffered.length }, _acceptCallId);
+      if (_buffered.length > 0) {
+        console.log('[DIAG-ACCEPT] flush %d ICE candidates bufferizzati post-setRemoteDescription', _buffered.length);
+        for (const cand of _buffered) {
+          const candType = (cand as { type?: string }).type ?? 'unknown';
+          pc.addIceCandidate(new RTCIceCandidate(cand))
+            .then(() => diagLog('ice.candidate.buffered.ok', { type: candType }, _acceptCallId))
+            .catch((e) => {
+              console.warn('[Call] addIceCandidate (buffered) error', e);
+              diagLog('ice.candidate.buffered.error', { err: String(e), type: candType }, _acceptCallId);
+            });
+        }
+      }
 
       _currentStep = 5; _stepStart = Date.now();
       console.log('[DIAG-ACCEPT] step 5 — createAnswer');

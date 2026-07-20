@@ -27,3 +27,4 @@
 - [Call fixes batch 1](call-fixes-batch1.md) — stream leak/callee timeout/pending-call re-delivery on WS reconnect
 - [Call fixes batch 2](call-fixes-batch2.md) — spinner infinito: timeout totale 15s su acceptCall, safety-net 16s in modal; Phoenix UNAUTHORIZED: chiave localStorage sbagliata
 - [Phoenix localStorage key bug](phoenix-localstorage-key.md) — PhoenixSetupPage usava authFetch custom con chiave "alpha-chat-access-token" (inesistente); chiave reale è "ac_access_token" da KEYS in auth.ts
+- [Call ICE bugs — TURN cache + InvalidStateError](call-ice-bugs.md) — _iceLoaded bloccava TURN post-deploy; flush buffer ICE deve avvenire DOPO setRemoteDescription
