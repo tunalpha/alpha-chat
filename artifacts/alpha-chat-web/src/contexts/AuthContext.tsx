@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { loadAuth, saveAuth, clearAuth, clearRequirePasswordChange, getDeviceId, getAccessToken, getRefreshToken as getRefreshTokenAfterAttempt, isAccessTokenExpired, isAccessTokenExpiringSoon, type StoredAuth } from "../lib/auth";
-import { diagLogger } from "../lib/diagnosticLogger";
+import { diagLogger, diagLog } from "../lib/diagnosticLogger";
 import { apiLogin, apiRegister, apiLogout, apiLogoutAll, apiUpdateIdentityKey, apiRefreshSession, type LoginInput, type RegisterInput, type AuthResult } from "../lib/api";
 import {
   initSignalKeys, clearSignalKeys,
@@ -58,6 +58,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       const stored = loadAuth();
 
       if (!stored) {
+        // Diagnostica: nessun token in localStorage → mostra login
+        diagLog('startup.no_auth', { reason: 'loadAuth_null' });
         setIsLoading(false);
         return;
       }
@@ -66,8 +68,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Tipico scenario iOS: PWA sospesa per ore → access token (1h) scaduto,
       // refresh token (90 giorni) ancora valido.
       let currentStored = stored;
-      if (isAccessTokenExpired()) {
+      const tokenExpired = isAccessTokenExpired();
+      diagLog('startup.auth_found', {
+        expired: tokenExpired,
+        hasRefreshToken: !!getRefreshTokenAfterAttempt(),
+        userId: stored.userId,
+      });
+
+      if (tokenExpired) {
         const newToken = await apiRefreshSession();
+        diagLog('startup.refresh_result', {
+          ok: !!newToken,
+          hasRefreshTokenAfter: !!getRefreshTokenAfterAttempt(),
+        });
         if (newToken) {
           // Rileggi i dati da localStorage: refreshToken ruotato, expiresAt aggiornato.
           const refreshed = loadAuth();
@@ -78,6 +91,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         // Se newToken è null per 401/403 → clearAuth() è già stato chiamato
         // in attemptRefresh() → loadAuth() ritorna null → usciamo.
         if (!getRefreshTokenAfterAttempt()) {
+          diagLog('startup.logout', { reason: 'refresh_token_gone_after_refresh' });
           setIsLoading(false);
           return;
         }

@@ -25,7 +25,7 @@ import {
   resetRemoteAudio,
   primeRemoteAudio,
 } from "../lib/remoteAudio";
-import { startRing, stopRing, startRingback, stopRingback, unlockNotifAudio } from "../lib/notifSound";
+import { startRing, stopRing, startRingback, stopRingback, unlockNotifAudio, releaseRingForCall } from "../lib/notifSound";
 import { apiLogCall } from "../lib/api";
 import { diagLog, diagLogger } from "../lib/diagnosticLogger";
 
@@ -437,8 +437,10 @@ export function CallProvider({ children }: { children: ReactNode }) {
 
     try {
       // iOS Safari: getUserMedia DEVE venire prima di qualsiasi await di rete.
-      // stopRing() è sync, quindi non consuma il gesture context.
-      stopRing();
+      // releaseRingForCall() è sync: pausa il ring E svuota el.src → rilascia
+      // la sessione iOS "Playback" (speaker) in modo che getUserMedia() possa
+      // stabilire "PlayAndRecord" (auricolare) senza interferenze.
+      releaseRingForCall();
 
       _currentStep = 1; _stepStart = Date.now();
       console.log('[DIAG-ACCEPT] step 1 — getUserMedia()');

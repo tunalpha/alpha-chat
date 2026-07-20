@@ -1177,6 +1177,9 @@ export function setRingtone(id: RingtoneId): void {
 }
 
 /** Pre-genera TUTTI e tre i toni sincronamente al caricamento del modulo */
+// _ringDataUrls: cache delle data URL — necessaria per reinizializzare gli elementi
+// dopo releaseRingForCall() che svuota el.src per rilasciare la sessione iOS "Playback".
+const _ringDataUrls = new Map<RingtoneId, string | null>();
 const _ringEls = new Map<RingtoneId, HTMLAudioElement | null>();
 try {
   const mk = (src: string) => {
@@ -1189,9 +1192,17 @@ try {
     } catch { /* SSR guard */ }
     return a;
   };
-  _ringEls.set("classica",   mk(_buildRingDataUrl()));
-  _ringEls.set("digitale",   mk(_buildDigitaleDataUrl()));
-  _ringEls.set("militare",   mk(_buildMilitareDataUrl()));
+  // Genera i data URL una sola volta e li cache per il re-init post-release
+  const classicaUrl  = _buildRingDataUrl();
+  const digitaleUrl  = _buildDigitaleDataUrl();
+  const militareUrl  = _buildMilitareDataUrl();
+  _ringDataUrls.set("classica",   classicaUrl);
+  _ringDataUrls.set("digitale",   digitaleUrl);
+  _ringDataUrls.set("militare",   militareUrl);
+  _ringDataUrls.set("silenziosa", null);
+  _ringEls.set("classica",   mk(classicaUrl));
+  _ringEls.set("digitale",   mk(digitaleUrl));
+  _ringEls.set("militare",   mk(militareUrl));
   _ringEls.set("silenziosa", null);
 } catch { /* SSR */ }
 
@@ -1203,15 +1214,29 @@ function _currentRingEl(): HTMLAudioElement | null {
  *  Se play() è bloccato da autoplay policy (schermo spento / nessun gesto precedente),
  *  registra un retry al primo touch/click — l'utente toccherà lo schermo per rispondere. */
 export async function startRing(): Promise<void> {
+  const id = getRingtone();
   const el = _currentRingEl();
   if (!el) {
     console.log('[ring] suoneria=silenziosa — nessun suono');
     return;
   }
+
+  // FIX Bug 3: se releaseRingForCall() ha svuotato el.src (per rilasciare la sessione
+  // iOS "Playback" → transizione pulita a "PlayAndRecord"), reinizializza dalla cache.
+  // NETWORK_EMPTY=0, NETWORK_NO_SOURCE=3 indicano entrambi che non c'è sorgente.
+  if (el.networkState === 0 || el.networkState === 3) {
+    const dataUrl = _ringDataUrls.get(id);
+    if (dataUrl) {
+      console.log('[ring] startRing: reinit src da cache (networkState=%d)', el.networkState);
+      el.src  = dataUrl;
+      el.loop = true;
+    }
+  }
+
   el.muted = false;
   el.volume = 1;
   el.currentTime = 0;
-  console.log('[ring] startRing() → el.paused=%s unlocked=%s ringtone=%s', el.paused, _unlocked, getRingtone());
+  console.log('[ring] startRing() → el.paused=%s unlocked=%s ringtone=%s', el.paused, _unlocked, id);
   try {
     await el.play();
     console.info('[ring] ✓ squillo avviato');
@@ -1246,6 +1271,32 @@ export function stopRing(): void {
     if (!el.paused) { el.pause(); el.currentTime = 0; }
     // Rimuove eventuali retry pendenti non più necessari
     // (non c'è accesso diretto ai listener, ma el.pause() impedisce l'audio)
+  }
+}
+
+/**
+ * Ferma lo squillo E rilascia completamente la risorsa audio (svuota el.src).
+ *
+ * Da chiamare SOLO al momento di accettare una chiamata — NON per il normale stop.
+ *
+ * Motivo: un <audio> element con el.src impostato (anche se in pausa) può mantenere
+ * attiva la sessione audio iOS in modalità "Playback" (speaker). Quando getUserMedia()
+ * viene chiamato per stabilire "PlayAndRecord", questa sessione residua interferisce
+ * con il routing verso l'auricolare → audio della chiamata rimane sul vivavoce.
+ *
+ * Svuotando el.src + el.load(), iOS rilascia il lock "Playback" e può transitare
+ * pulitamente a "PlayAndRecord" (auricolare) alla prossima getUserMedia().
+ *
+ * startRing() gestisce la reinizializzazione da _ringDataUrls alla prossima chiamata.
+ */
+export function releaseRingForCall(): void {
+  console.log('[ring] releaseRingForCall() — svuoto src per rilasciare sessione Playback iOS');
+  for (const el of _ringEls.values()) {
+    if (!el) continue;
+    el.pause();
+    el.currentTime = 0;
+    el.src  = "";   // rilascia la risorsa audio → iOS può chiudere la sessione "Playback"
+    el.load();      // resettta networkState → NETWORK_EMPTY o NETWORK_NO_SOURCE
   }
 }
 

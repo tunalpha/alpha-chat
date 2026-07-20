@@ -197,12 +197,46 @@ export async function primeRemoteAudio(callId?: string, source?: string): Promis
     dlog('prime.srcObject', { null: srcNull });
 
     if (srcNull) {
-      // Nessuna sorgente ancora disponibile (il remote stream arriva solo dopo ontrack,
-      // cioè dopo buildPC/setRemoteDescription — step 4 di acceptCall).
-      // el.play() su un elemento senza srcObject su iOS Safari può restare pending
-      // indefinitamente senza risolvere né rigettare → causa originale del blocco step 2.
-      // Il priming reale avverrà in applyRouting() quando setRemoteStream() assegnerà lo stream.
-      dlog('prime.play.skip', { reason: 'srcObject_null' });
+      // FIX Bug 1 (audio muto): l'elemento deve essere benedetto ("blessed") nel
+      // gesture context anche quando srcObject è ancora null. Senza questo,
+      // applyRouting() chiama el.play() da ontrack (NON un gesture) → iOS lo blocca
+      // silenziosamente → nessun audio per tutta la chiamata.
+      //
+      // Soluzione: creiamo un MediaStreamDestination silenzioso dal AudioContext
+      // (già in PlayAndRecord se chiamato dopo getUserMedia), lo assegniamo come
+      // srcObject temporaneo, e chiamiamo el.play(). Il play() riesce nel gesture
+      // context → elemento blessed → futuri play() da ontrack funzionano.
+      // Dopo il play() resettiamo srcObject a null — il vero stream arriverà via setRemoteStream().
+      //
+      // NOTA: getOrCreateAudioCtx() viene chiamato qui per riutilizzare il ctx già
+      // creato/resumed. Se non esiste ancora, viene creato ora nel gesture context.
+      const ctxForBlessing = getOrCreateAudioCtx();
+      if (ctxForBlessing) {
+        try {
+          // Assicurati che il ctx sia running (potrebbe essere suspended prima di getUserMedia)
+          if (ctxForBlessing.state === 'suspended') {
+            await Promise.race([
+              ctxForBlessing.resume(),
+              new Promise<void>(r => setTimeout(r, 500)),
+            ]);
+          }
+          const dest = ctxForBlessing.createMediaStreamDestination();
+          el.srcObject = dest.stream;          // srcObject valido → play() non rigetta
+          let blessed = false;
+          await Promise.race([
+            el.play().then(() => { blessed = true; }),
+            new Promise<void>(r => setTimeout(r, 1500)),
+          ]);
+          dlog('prime.play.after', { ok: blessed, method: 'silent_dest' });
+          if (blessed) el.pause();             // stop subito: non vogliamo audio silenzioso
+        } catch (err) {
+          dlog('prime.play.error', { err: String(err), method: 'silent_dest' });
+        } finally {
+          el.srcObject = null;                 // reset: il vero stream arriverà via setRemoteStream()
+        }
+      } else {
+        dlog('prime.play.skip', { reason: 'no_audioCtx' });
+      }
     } else {
       // srcObject presente: tentiamo il play() con timeout bounded 1500ms.
       dlog('prime.play.before');

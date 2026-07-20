@@ -12,7 +12,6 @@
 import { useEffect, useState } from "react";
 import { useCall } from "../contexts/CallContext";
 import { startRing, stopRing, unlockNotifAudio } from "../lib/notifSound";
-import { primeRemoteAudio } from "../lib/remoteAudio";
 import { diagLog } from "../lib/diagnosticLogger";
 
 export default function IncomingCallModal() {
@@ -86,8 +85,17 @@ export default function IncomingCallModal() {
     diagLog('spinner.start', { callId: incomingCall?.callId ?? '', from: incomingCall?.fromUserId ?? '' });
     // 🔑 iOS gesture context: fire-and-forget, NON await.
     // getUserMedia() dentro acceptCall() deve essere nel primo tick del gesture.
-    // primeRemoteAudio/unlockNotifAudio partono in parallelo come side-effect.
-    void primeRemoteAudio(undefined, 'modal').catch(() => {});
+    //
+    // FIX Bug 3 (vivavoce): primeRemoteAudio() NON va chiamato qui.
+    // Chiamarlo PRIMA di getUserMedia() benedice l'<audio> element in sessione
+    // "Playback" (speaker) → l'audio della chiamata resta sul vivavoce anche
+    // dopo che getUserMedia ha stabilito "PlayAndRecord" (auricolare).
+    // acceptCall() chiama già primeRemoteAudio() al passo 2, DOPO getUserMedia(),
+    // nel contesto "PlayAndRecord" corretto → routing verso auricolare.
+    //
+    // FIX Bug 3: unlockNotifAudio() viene mantenuto qui perché i suoni di notifica
+    // (ping messaggi) sono elementi separati che devono essere sbloccati nel gesture.
+    // acceptCall() li sblocca di nuovo dopo getUserMedia come secondo presidio.
     void unlockNotifAudio().catch(() => {});
     stopRing();
     // Cattura il reject: se acceptCall() va in timeout (12s getUserMedia) o lancia

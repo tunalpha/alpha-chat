@@ -1,0 +1,54 @@
+Ecco un prompt unico, chiaro e operativo per il revisore:
+
+⸻
+
+Problemi da risolvere (ordine di priorità):
+
+1. Audio chiamata muto (PRIORITÀ MASSIMA)
+
+La chiamata ora viene stabilita correttamente (il problema era la PWA in cache sul dispositivo). L’accettazione funziona, ma durante la chiamata non si sente alcun audio.
+
+Obiettivo:
+
+* Verificare l’intera pipeline WebRTC audio:
+    * RTCPeerConnection.ontrack
+    * setRemoteDescription()
+    * addTrack()/addTransceiver()
+    * ricezione del MediaStream
+    * assegnazione di audio.srcObject
+    * audio.play()
+    * stato di audio.muted, volume, sink
+    * ICEConnectionState e ConnectionState
+* Individuare con precisione dove il flusso audio si interrompe e correggere definitivamente il problema.
+
+⸻
+
+2. Logout ad ogni chiusura dell’app
+
+Attualmente, quando l’app viene chiusa completamente e riaperta, l’utente deve effettuare nuovamente il login.
+
+Obiettivo:
+
+* Individuare perché la sessione non viene mantenuta.
+* Verificare:
+    * salvataggio di access token e refresh token;
+    * persistenza dello storage;
+    * ripristino automatico della sessione all’avvio;
+    * eventuale cancellazione involontaria dello storage durante cleanup, beforeunload, visibilitychange o startup.
+* L’utente deve rimanere autenticato fino a logout esplicito o scadenza reale della sessione.
+
+⸻
+
+3. Audio dello squillo sempre in vivavoce
+
+Durante lo squillo della chiamata, l’audio viene riprodotto esclusivamente dal vivavoce e non passa all’altoparlante auricolare quando la chiamata viene accettata.
+
+Obiettivo:
+
+* Verificare la configurazione dell’AudioContext e degli elementi <audio>.
+* Controllare la gestione dell’audio tra fase di squillo e chiamata attiva.
+* Su iPhone/Safari assicurarsi che, una volta accettata la chiamata, l’audio venga instradato correttamente come una normale chiamata VoIP e non rimanga forzato sul vivavoce.
+
+⸻
+
+Importante: non introdurre workaround temporanei. Individuare la causa reale di ciascun problema e applicare una correzione definitiva, mantenendo invariata la logica di signaling e WebRTC già funzionante.
