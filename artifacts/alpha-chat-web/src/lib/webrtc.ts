@@ -68,15 +68,30 @@ export function createPeerConnection(
   pc.onicecandidate = (e) => {
     if (e.candidate) {
       console.log('[webrtc] onicecandidate → candidate=%s', e.candidate.type);
+      diagLog('ice.candidate.local', { type: e.candidate.type, protocol: e.candidate.protocol });
       onIceCandidate(e.candidate);
     } else {
       console.log('[webrtc] onicecandidate → gathering complete');
+      diagLog('ice.gathering.complete', {});
     }
   };
 
   pc.ontrack = (e) => {
     console.log('[webrtc] ontrack: kind=%s id=%s enabled=%s readyState=%s streams=%d',
       e.track.kind, e.track.id, e.track.enabled, e.track.readyState, e.streams?.length ?? 0);
+
+    // ── diagLog: visibilità remota via MongoDB ─────────────────────────────────
+    // Punto critico: se questo log non compare, il flusso audio non arriva mai
+    // al client → causa root dell'audio muto è a monte (ICE/SDP), non nel player.
+    diagLog('ontrack', {
+      kind:              e.track.kind,
+      trackId:           e.track.id,
+      enabled:           e.track.enabled,
+      readyState:        e.track.readyState,
+      streamsCount:      e.streams?.length ?? 0,
+      audioTracksInStream: e.streams?.[0]?.getAudioTracks().length ?? 0,
+    });
+    // ──────────────────────────────────────────────────────────────────────────
 
     let stream: MediaStream;
     if (e.streams && e.streams.length > 0) {
@@ -87,6 +102,7 @@ export function createPeerConnection(
     } else {
       // iOS Safari bug: e.streams vuoto anche con addTrack(track, stream) — costruiamo noi
       console.warn('[webrtc] ontrack: e.streams vuoto — fallback MediaStream manuale (iOS Safari bug)');
+      diagLog('ontrack.streams_empty_fallback', { kind: e.track.kind });
       if (!_remoteStream) _remoteStream = new MediaStream();
       _remoteStream.addTrack(e.track);
       stream = _remoteStream;
@@ -96,6 +112,7 @@ export function createPeerConnection(
     // Log dettaglio tracce audio
     stream.getAudioTracks().forEach((t) => {
       console.log('[webrtc] audioTrack: id=%s enabled=%s muted=%s readyState=%s', t.id, t.enabled, t.muted, t.readyState);
+      diagLog('ontrack.audioTrack', { id: t.id, enabled: t.enabled, muted: t.muted, readyState: t.readyState });
     });
 
     onRemoteStream(stream);

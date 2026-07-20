@@ -274,10 +274,17 @@ export function CallProvider({ children }: { children: ReactNode }) {
     const buffered = iceCandidateBufferRef.current.splice(0);
     if (buffered.length > 0) {
       console.log('[Call] buildPC: flush %d ICE candidates bufferizzati', buffered.length);
+      diagLog('ice.candidate.buffered.flush', { count: buffered.length });
       for (const cand of buffered) {
         pc.addIceCandidate(new RTCIceCandidate(cand))
-          .catch((e) => console.warn('[Call] addIceCandidate (buffered) error', e));
+          .then(() => diagLog('ice.candidate.buffered.ok', { type: (cand as { type?: string }).type ?? 'unknown' }))
+          .catch((e) => {
+            console.warn('[Call] addIceCandidate (buffered) error', e);
+            diagLog('ice.candidate.buffered.error', { err: String(e) });
+          });
       }
+    } else {
+      diagLog('ice.candidate.buffered.flush', { count: 0 });
     }
 
     return pc;
@@ -334,7 +341,9 @@ export function CallProvider({ children }: { children: ReactNode }) {
       console.log('[Call] createOffer...');
       const offer = await pc.createOffer();
       console.log('[Call] setLocalDescription offer type=%s', offer.type);
+      diagLog('sdp.setLocal.offer', { type: offer.type, sdpLen: offer.sdp?.length ?? 0 });
       await pc.setLocalDescription(offer);
+      diagLog('sdp.setLocal.offer.ok', {});
 
       // Genera call_id univoco per questa chiamata (M1 — prerequisito dedup/ACK).
       callIdRef.current         = crypto.randomUUID();
@@ -662,13 +671,20 @@ export function CallProvider({ children }: { children: ReactNode }) {
         callAnsweredAtRef.current = new Date();
         // Re-prime AudioContext nel contesto corrente (il caller è in ascolto attivo)
         void primeRemoteAudio(undefined, 'callAnswered').catch(() => {});
-        pc.setRemoteDescription(new RTCSessionDescription(payload["sdp"] as RTCSessionDescriptionInit))
+        const answerSdp = payload["sdp"] as RTCSessionDescriptionInit;
+        diagLog('sdp.setRemote.answer', { type: answerSdp?.type, sdpLen: (answerSdp?.sdp ?? '').length });
+        pc.setRemoteDescription(new RTCSessionDescription(answerSdp))
           .then(() => {
             console.log('[Call] setRemoteDescription answer OK → active');
+            diagLog('sdp.setRemote.answer.ok', {});
             setCallState("active");
             startDurationTimer();
           })
-          .catch((e) => { console.error("[Call] setRemoteDescription answer error", e); cleanup("failed"); });
+          .catch((e) => {
+            console.error("[Call] setRemoteDescription answer error", e);
+            diagLog('sdp.setRemote.answer.error', { err: String(e) });
+            cleanup("failed");
+          });
         break;
       }
 
@@ -683,8 +699,14 @@ export function CallProvider({ children }: { children: ReactNode }) {
           iceCandidateBufferRef.current.push(cand);
           return;
         }
+        const candType = (cand as { type?: string }).type ?? 'unknown';
+        diagLog('ice.candidate.remote', { type: candType });
         pc.addIceCandidate(new RTCIceCandidate(cand))
-          .catch((e) => console.warn("[Call] addIceCandidate error", e));
+          .then(() => diagLog('ice.candidate.remote.ok', { type: candType }))
+          .catch((e) => {
+            console.warn("[Call] addIceCandidate error", e);
+            diagLog('ice.candidate.remote.error', { err: String(e), type: candType });
+          });
         break;
       }
 

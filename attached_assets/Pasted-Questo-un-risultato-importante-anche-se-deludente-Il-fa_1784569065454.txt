@@ -1,0 +1,48 @@
+Questo è un risultato importante, anche se deludente.
+
+Il fatto che la chiamata sia ancora muta significa una cosa precisa:
+
+* ❌ Il problema non era il “blessing” dell’elemento <audio>.
+* ❌ Probabilmente non era nemmeno il routing Playback → PlayAndRecord.
+
+Quindi eviterei di continuare a modificare il codice audio “alla cieca”.
+
+Dai log precedenti sappiamo già che
+
+* ✅ acceptCall() completa tutti gli step.
+* ✅ call.answer.sent e call.answer.received avvengono.
+* ✅ primeRemoteAudio() funziona.
+* ❌ Non abbiamo mai visto un log che confermi la ricezione del flusso remoto (ontrack).
+
+Questa è ancora la pista più forte.
+
+A questo punto chiederei al revisore una verifica mirata
+
+Non modificare altro codice audio.
+
+La chiamata viene instaurata ma l’audio è completamente assente anche dopo i fix del priming e del routing.
+
+Verificare esclusivamente la pipeline WebRTC:
+
+1. pc.ontrack viene chiamato su entrambi i peer?
+2. Quante tracce remote arrivano (event.streams, event.track.kind)?
+3. audio.srcObject viene realmente assegnato quando arriva ontrack?
+4. audio.play() viene invocato dopo l’assegnazione dello stream? Se fallisce, loggare l’eccezione completa.
+5. Gli stati WebRTC raggiungono:
+    * iceConnectionState = connected/completed
+    * connectionState = connected
+6. Verificare che entrambi i peer eseguano con successo:
+    * setLocalDescription()
+    * setRemoteDescription()
+    * addIceCandidate()
+7. Verificare che il chiamante e il chiamato ricevano realmente il candidato ICE finale e che ontrack venga emesso.
+
+Non implementare workaround. Individuare il primo punto della pipeline in cui il flusso audio remoto smette di propagarsi.
+
+Ho un sospetto
+
+Nei log che mi hai mostrato in precedenza, non compare mai pc.ontrack.
+
+Se ontrack non viene mai eseguito, non esiste alcun audio da riprodurre, indipendentemente da play(), AudioContext o routing iOS.
+
+Per questo motivo, secondo me il prossimo obiettivo non è più il player audio: è dimostrare se il flusso remoto arriva davvero oppure no. Se mi fai avere i log con ontrack, addIceCandidate, iceConnectionState e connectionState di entrambi i telefoni durante una chiamata, possiamo capire con precisione se il problema è nella negoziazione WebRTC o nella riproduzione dell’audio.

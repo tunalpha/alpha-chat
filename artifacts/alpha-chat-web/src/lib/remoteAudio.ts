@@ -110,12 +110,28 @@ function applyRouting(): void {
     // in PlayAndRecord senza setSinkId. L'audio viene comunque riprodotto. ✓
     //
     // Chrome speaker mode: <audio> → default output device.
-    if (el.srcObject !== _currentStream) el.srcObject = _currentStream;
+    const srcChanged = el.srcObject !== _currentStream;
+    if (srcChanged) el.srcObject = _currentStream;
+    // ── diagLog: srcObject assegnato + esito el.play() ────────────────────
+    diagLog('applyRouting', {
+      path:           'ios_speaker',
+      srcChanged,
+      hasSinkId,
+      speakerMode:    _speakerMode,
+      elPaused:       el.paused,
+      elMuted:        el.muted,
+      streamAudioTracks: _currentStream?.getAudioTracks().length ?? 0,
+    });
+    // ──────────────────────────────────────────────────────────────────────
 
     void el.play()
-      .then(() => console.info('[remoteAudio] ✓ el.play() OK (speaker/iOS path)'))
-      .catch((err) => {
+      .then(() => {
+        console.info('[remoteAudio] ✓ el.play() OK (speaker/iOS path)');
+        diagLog('applyRouting.play.ok', { path: 'ios_speaker' });
+      })
+      .catch((err: unknown) => {
         console.warn('[remoteAudio] el.play() FAILED (attempt 1):', err, '— retry ogni 400ms');
+        diagLog('applyRouting.play.fail', { path: 'ios_speaker', err: String(err) });
         // Retry progressivo: primeRemoteAudio potrebbe non aver ancora sbloccato l'elemento
         schedulePlayRetry(el, 400, 6); // max 2.4s di tentativi
       });
@@ -290,6 +306,15 @@ export async function primeRemoteAudio(callId?: string, source?: string): Promis
 export function setRemoteStream(stream: MediaStream | null): void {
   console.log('[remoteAudio] setRemoteStream: stream=%s tracks=%s',
     !!stream, stream?.getAudioTracks().length ?? 0);
+  // ── diagLog: conferma che ontrack ha propagato lo stream fino a qui ──────
+  diagLog('setRemoteStream', {
+    hasStream:   !!stream,
+    audioTracks: stream?.getAudioTracks().length ?? 0,
+    tracks:      stream?.getAudioTracks().map(t => ({
+      id: t.id, enabled: t.enabled, muted: t.muted, readyState: t.readyState,
+    })) ?? [],
+  });
+  // ──────────────────────────────────────────────────────────────────────────
   if (stream) {
     const audioTracks = stream.getAudioTracks();
     audioTracks.forEach((t) =>
