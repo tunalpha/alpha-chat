@@ -140,6 +140,8 @@ function applyRouting(): void {
   }
 
   const hasSinkId = typeof (el as HTMLAudioElement & { setSinkId?: unknown }).setSinkId === "function";
+  console.log('[ROUTING-DIAG] t=applyRouting abs=%d speakerMode=%s hasSinkId=%s stream=%s',
+    Date.now(), _speakerMode, hasSinkId, _currentStream ? 'yes' : 'null');
   console.log('[remoteAudio] applyRouting: speakerMode=%s hasSinkId=%s elMuted=%s volume=%s',
     _speakerMode, hasSinkId, el.muted, el.volume);
 
