@@ -15,6 +15,7 @@ import SOC from '@/pages/soc';
 import UsersPage from '@/pages/users';
 import Devices from '@/pages/devices';
 import Audit from '@/pages/audit';
+import Diagnostics from '@/pages/diagnostics';
 
 const queryClient = new QueryClient();
 
@@ -31,6 +32,7 @@ function ProtectedRoutes() {
         <Route path="/users" component={UsersPage} />
         <Route path="/devices" component={Devices} />
         <Route path="/audit" component={Audit} />
+        <Route path="/diagnostics" component={Diagnostics} />
         <Route component={NotFound} />
       </Switch>
     </AppShell>

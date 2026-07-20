@@ -65,4 +65,8 @@ v1Router.use("/signal/audit", signalAuditRoutes);
 import pushRoutes from "./push.routes";
 v1Router.use("/push", pushRoutes);
 
+// Call Diagnostics Center — raccolta eventi dal client
+import diagnosticsRoutes from "./diagnostics.routes";
+v1Router.use("/diagnostics", diagnosticsRoutes);
+
 export default v1Router;

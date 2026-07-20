@@ -411,6 +411,108 @@ export async function revokeDevice(
 // Audit export
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Call Diagnostics Center
+// ---------------------------------------------------------------------------
+
+export interface DiagEvent {
+  id: string;
+  user_id: string;
+  username: string;
+  session_id: string;
+  call_id: string | null;
+  event: string;
+  payload: Record<string, unknown>;
+  elapsed_ms: number | null;
+  device: { user_agent: string; platform: string; network_type: string | null; app_version: string };
+  created_at: string;
+}
+
+export interface DiagCall {
+  call_id: string;
+  participants: string[];
+  event_count: number;
+  first_event_at: string;
+  last_event_at: string;
+  last_event: string | null;
+  duration_ms: number | null;
+  ws_state: string | null;
+  ice_state: string | null;
+  pc_state: string | null;
+  has_cleanup: boolean;
+}
+
+export interface DiagMetrics {
+  range: string;
+  total_events: number;
+  ws_errors: number;
+  ws_closes: number;
+  call_offers: number;
+  call_retries: number;
+  call_cleanups: number;
+  accept_timeouts: number;
+  accept_errors: number;
+  accept_complete: number;
+  spinner_safety: number;
+  gum_errors: number;
+  top_events: Array<{ event: string; count: number }>;
+  by_day: Array<{ date: string; events: number; calls: number; errors: number }>;
+}
+
+export interface DiagTimeline {
+  call_id: string;
+  event_count: number;
+  events: Array<DiagEvent & { gap_ms: number }>;
+}
+
+export async function getDiagEvents(params?: {
+  call_id?: string; username?: string; event_type?: string;
+  q?: string; since?: string; page?: number; limit?: number;
+}): Promise<{ total: number; page: number; limit: number; pages: number; events: DiagEvent[] }> {
+  const qs = new URLSearchParams();
+  if (params?.call_id)    qs.set("call_id",    params.call_id);
+  if (params?.username)   qs.set("username",   params.username);
+  if (params?.event_type) qs.set("event_type", params.event_type);
+  if (params?.q)          qs.set("q",          params.q);
+  if (params?.since)      qs.set("since",      params.since);
+  if (params?.page)       qs.set("page",       String(params.page));
+  if (params?.limit)      qs.set("limit",      String(params.limit));
+  return apiFetch(`/diagnostics/events?${qs}`);
+}
+
+export async function getDiagCalls(since?: string): Promise<{ since: string; calls: DiagCall[] }> {
+  return apiFetch(`/diagnostics/calls${since ? `?since=${since}` : ""}`);
+}
+
+export async function getDiagTimeline(callId: string): Promise<DiagTimeline> {
+  return apiFetch(`/diagnostics/timeline/${encodeURIComponent(callId)}`);
+}
+
+export async function getDiagMetrics(range?: "24h" | "7d" | "30d"): Promise<DiagMetrics> {
+  return apiFetch(`/diagnostics/metrics${range ? `?range=${range}` : ""}`);
+}
+
+export async function downloadDiagExport(params?: {
+  call_id?: string; username?: string; since?: string;
+}): Promise<void> {
+  const token = getToken();
+  const qs = new URLSearchParams();
+  if (params?.call_id)  qs.set("call_id",  params.call_id);
+  if (params?.username) qs.set("username", params.username);
+  qs.set("since", params?.since ?? "24h");
+  const res = await fetch(`${BASE}/diagnostics/export?${qs}`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!res.ok) throw new Error(`Export failed: HTTP ${res.status}`);
+  const blob = await res.blob();
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement("a");
+  a.href     = url;
+  a.download = `diag-export-${new Date().toISOString().slice(0, 10)}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 export async function downloadAuditExport(days: number = 7): Promise<void> {
   const token = getToken();
   const res = await fetch(`${BASE}/audit/export?days=${days}`, {

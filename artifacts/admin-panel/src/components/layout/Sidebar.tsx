@@ -10,7 +10,8 @@ import {
   FileDown, 
   LogOut,
   AlertTriangle,
-  X
+  X,
+  PhoneCall,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 
@@ -24,6 +25,7 @@ const navItems = [
   { href: "/users", label: "Users", icon: Users },
   { href: "/devices", label: "Devices", icon: Smartphone },
   { href: "/audit", label: "Audit Export", icon: FileDown },
+  { href: "/diagnostics", label: "Diagnostics", icon: PhoneCall },
 ];
 
 interface SidebarProps {

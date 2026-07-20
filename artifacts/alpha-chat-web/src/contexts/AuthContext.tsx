@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
-import { loadAuth, saveAuth, clearAuth, clearRequirePasswordChange, getDeviceId, getRefreshToken as getRefreshTokenAfterAttempt, isAccessTokenExpired, isAccessTokenExpiringSoon, type StoredAuth } from "../lib/auth";
+import { loadAuth, saveAuth, clearAuth, clearRequirePasswordChange, getDeviceId, getAccessToken, getRefreshToken as getRefreshTokenAfterAttempt, isAccessTokenExpired, isAccessTokenExpiringSoon, type StoredAuth } from "../lib/auth";
+import { diagLogger } from "../lib/diagnosticLogger";
 import { apiLogin, apiRegister, apiLogout, apiLogoutAll, apiUpdateIdentityKey, apiRefreshSession, type LoginInput, type RegisterInput, type AuthResult } from "../lib/api";
 import {
   initSignalKeys, clearSignalKeys,
@@ -91,6 +92,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       try {
         await initSignalKeys(currentStored.userId, currentStored.deviceId);
       } catch { /* non critico */ }
+      diagLogger.init(currentStored.userId, currentStored.username ?? '', getAccessToken);
       // DIAGNOSTICA TEMPORANEA — invia stato IDB al server dopo restore sessione
       void runSignalDiagnostic(currentStored.userId, currentStored.deviceId).catch(() => {});
       localStorage.setItem(`signal_keys_ready:${currentStored.userId}`, "1");
@@ -209,6 +211,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch {
       // Non critico — Signal verrà ritentato al prossimo evento di navigazione
     }
+    diagLogger.init(uid, result.user.display_name ?? result.user.username ?? '', getAccessToken);
     // DIAGNOSTICA TEMPORANEA — invia stato IDB al server dopo login
     void runSignalDiagnostic(uid, devId).catch(() => {});
     localStorage.setItem(`signal_keys_ready:${uid}`, "1");
@@ -237,6 +240,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       await initSignalKeys(uid, devId, newIkKeyPair);
     } catch { /* non critico */ }
+    diagLogger.init(uid, result.user.display_name ?? result.user.username ?? '', getAccessToken);
     localStorage.setItem(`signal_keys_ready:${uid}`, "1");
     document.body.setAttribute("data-signal-ready", uid);
     window.dispatchEvent(new CustomEvent("signal:ready", { detail: { userId: uid } }));;
@@ -246,6 +250,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const logout = useCallback(async () => {
     await apiLogout();
+    diagLogger.destroy();
     clearAuth();
     setAuth(null);
     // NON cancella le chiavi Signal al logout singolo: le sessioni Double Ratchet

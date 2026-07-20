@@ -4,7 +4,6 @@ import { useCall } from "../contexts/CallContext";
 import { useWs } from "../contexts/WebSocketContext";
 import type { WsEvent } from "../hooks/useWebSocket";
 import type { AppView } from "../App";
-import { diagLogger } from "../lib/diagnosticLogger";
 import {
   apiListConversations,
   apiListMessages,
@@ -627,9 +626,6 @@ export default function ChatPage({ onNavigate }: Props) {
 
   // Archivio — long press su conversazione
   const [convActionSheet, setConvActionSheet] = useState<{ convId: string; displayName: string } | null>(null);
-  // Diagnostics — 5 tap sul logo α per aprire la schermata diagnostics
-  const [diagTaps, setDiagTaps]       = useState(0);
-  const diagTapTimerRef               = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Swipe-to-action su conversazione (mobile)
   const [swipedConvId, setSwipedConvId]       = useState<string | null>(null);
   const swipeStartX = useRef<number>(0);
@@ -2030,18 +2026,7 @@ export default function ChatPage({ onNavigate }: Props) {
           />
         ) : !activeConvId ? (
           <div className="chat-empty">
-            <div
-              className="chat-empty-logo"
-              onClick={() => {
-                if (!diagLogger.enabled) return;
-                const n = diagTaps + 1;
-                setDiagTaps(n);
-                if (diagTapTimerRef.current) clearTimeout(diagTapTimerRef.current);
-                diagTapTimerRef.current = setTimeout(() => setDiagTaps(0), 2000);
-                if (n >= 5) { setDiagTaps(0); onNavigate('diagnostics'); }
-              }}
-              style={{ cursor: diagLogger.enabled ? 'pointer' : undefined }}
-            >α</div>
+            <div className="chat-empty-logo">α</div>
             <h2 className="chat-empty-title">Alpha Chat</h2>
             <p className="chat-empty-text">{t("chat.selectConversation")}</p>
             <div style={{ display: "flex", gap: 10 }}>

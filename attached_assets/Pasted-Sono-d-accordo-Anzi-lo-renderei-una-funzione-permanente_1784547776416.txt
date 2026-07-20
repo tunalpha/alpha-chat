@@ -1,0 +1,166 @@
+Sono d’accordo. Anzi, lo renderei una funzione permanente dell’Admin Panel, non uno strumento temporaneo di debug.
+
+In un’app di messaggistica è normale avere un pannello di diagnostica: aiuta a risolvere problemi anche mesi dopo il rilascio.
+
+Puoi dare questo prompt all’agente:
+
+⸻
+
+Nuova funzionalità permanente: Call Diagnostics Center (Admin)
+
+Obiettivo
+
+Trasformare l’attuale logger diagnostico in una funzionalità permanente dell’Admin Panel di Alpha Chat.
+
+Requisiti
+
+* Non modificare la logica di WebRTC, Signal, WebSocket o delle chiamate.
+* Riutilizzare il DiagnosticLogger già esistente.
+* Nessuna regressione.
+
+Nuova sezione Admin
+
+Aggiungere una voce:
+
+Admin → Diagnostics
+
+con le seguenti schede.
+
+1. Live Events
+
+Visualizza in tempo reale gli ultimi eventi.
+
+Filtri:
+
+* call_id
+* username
+* tipo evento
+* intervallo temporale
+
+Ricerca testuale.
+
+Auto-refresh.
+
+⸻
+
+2. Active Calls
+
+Mostrare per ogni chiamata:
+
+* call_id
+* caller
+* callee
+* durata
+* stato WebSocket
+* stato ICE
+* stato PeerConnection
+* ultimo evento ricevuto
+* tempo dall’ultimo evento
+
+Così si vede immediatamente se una chiamata è bloccata.
+
+⸻
+
+3. Call Timeline
+
+Aprendo una chiamata mostrare la timeline completa:
+
+10:21:11
+call.offer.sent
+10:21:11
+ack
+10:21:12
+incoming
+10:21:13
+getUserMedia OK
+10:21:13
+setRemoteDescription OK
+10:21:14
+createAnswer OK
+10:21:14
+call.answer.sent
+...
+
+con durata di ogni step.
+
+⸻
+
+4. Export
+
+Pulsanti:
+
+* Copia log
+* Esporta JSON
+* Scarica ZIP
+
+⸻
+
+5. Metrics
+
+Statistiche aggregate:
+
+* chiamate iniziate
+* completate
+* fallite
+* timeout
+* retry
+* ACK medi
+* durata media setup
+* durata media chiamata
+* errori WebSocket
+* errori ICE
+* errori getUserMedia
+
+Grafici ultimi:
+
+* 24 ore
+* 7 giorni
+* 30 giorni
+
+⸻
+
+6. Audio Diagnostics
+
+Registrare anche:
+
+* route audio
+* speaker
+* earpiece
+* bluetooth
+* cuffie
+* mute
+* unmute
+
+Molto utile per i problemi del viva voce su iPhone.
+
+⸻
+
+7. Device Info
+
+Per ogni log:
+
+* iOS / Android
+* browser/PWA
+* versione app
+* build
+* versione protocollo
+* tipo rete (Wi-Fi / 4G / 5G se disponibile)
+
+⸻
+
+8. Privacy
+
+* Conservazione log configurabile (es. 7 giorni).
+* Nessun contenuto dei messaggi.
+* Nessun dato delle chiavi Signal.
+* Solo eventi tecnici.
+
+⸻
+
+Obiettivo finale
+
+Creare un Call Diagnostics Center permanente, accessibile solo agli amministratori, che permetta di diagnosticare rapidamente problemi di chiamata in produzione senza dover distribuire build speciali o usare strumenti esterni come Safari Web Inspector.
+
+⸻
+
+Secondo me è un investimento che ripagherà nel tempo: ogni futura anomalia di chiamata, WebSocket o WebRTC potrà essere analizzata direttamente dal pannello di amministrazione, con una cronologia completa degli eventi e metriche utili senza dover preparare ogni volta una build di debug.

@@ -30,6 +30,7 @@ import { MediaModel } from "../../models/media.model";
 import { BlockModel } from "../../models/block.model";
 import { RecoveryContactModel } from "../../models/recovery-contact.model";
 import { callMetrics } from "../../lib/call-metrics";
+import { DiagnosticEventModel } from "../../models/diagnostic-event.model";
 
 const router = Router();
 
@@ -950,5 +951,210 @@ export async function seedAdminIfNeeded(): Promise<void> {
     console.error("[admin-seed] Errore durante seeding admin:", err);
   }
 }
+
+// ── Call Diagnostics Center ────────────────────────────────────────────────────
+
+router.get("/diagnostics/events", requireAdmin("read_only"), async (req, res, next) => {
+  try {
+    const page   = qsInt(req.query.page, 1);
+    const limit  = Math.min(qsInt(req.query.limit, 50), 200);
+    const skip   = (page - 1) * limit;
+    const callId = qs(req.query.call_id);
+    const uname  = qs(req.query.username);
+    const evType = qs(req.query.event_type);
+    const q      = qs(req.query.q);
+    const since  = qs(req.query.since) ?? "1h";
+
+    const hoursMap: Record<string, number> = { "15m": 0.25, "1h": 1, "6h": 6, "24h": 24, "7d": 168 };
+    const fromDate = new Date(Date.now() - (hoursMap[since] ?? 1) * 3600 * 1000);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const filter: Record<string, any> = { created_at: { $gte: fromDate } };
+    if (callId) filter.call_id  = callId;
+    if (uname)  filter.username = new RegExp(uname, "i");
+    if (evType) filter.event    = new RegExp(evType, "i");
+    if (q)      filter.$or      = [{ event: new RegExp(q, "i") }, { username: new RegExp(q, "i") }, { call_id: new RegExp(q, "i") }];
+
+    const [total, events] = await Promise.all([
+      DiagnosticEventModel.countDocuments(filter),
+      DiagnosticEventModel.find(filter).sort({ created_at: -1 }).skip(skip).limit(limit).lean(),
+    ]);
+
+    res.json({
+      page, limit, total, pages: Math.ceil(total / limit),
+      events: events.map((e) => ({
+        id: e._id.toString(), user_id: e.user_id.toString(), username: e.username,
+        session_id: e.session_id, call_id: e.call_id, event: e.event,
+        payload: e.payload, elapsed_ms: e.elapsed_ms, device: e.device,
+        created_at: e.created_at.toISOString(),
+      })),
+    });
+  } catch (err) { next(err); }
+});
+
+router.get("/diagnostics/calls", requireAdmin("read_only"), async (req, res, next) => {
+  try {
+    const since = qs(req.query.since) ?? "2h";
+    const hoursMap: Record<string, number> = { "1h": 1, "2h": 2, "6h": 6, "24h": 24, "7d": 168 };
+    const fromDate = new Date(Date.now() - (hoursMap[since] ?? 2) * 3600 * 1000);
+
+    const groups = await DiagnosticEventModel.aggregate([
+      { $match: { created_at: { $gte: fromDate }, call_id: { $ne: null, $exists: true } } },
+      { $group: {
+        _id: "$call_id",
+        participants: { $addToSet: "$username" },
+        event_count:  { $sum: 1 },
+        first_event_at: { $min: "$created_at" },
+        last_event_at:  { $max: "$created_at" },
+        events_list: { $push: { event: "$event", payload: "$payload", ts: "$created_at" } },
+      }},
+      { $sort: { last_event_at: -1 } },
+      { $limit: 50 },
+    ]);
+
+    const calls = groups.map((g) => {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const sorted = ((g.events_list as any[]) ?? []).sort((a: any, b: any) => new Date(a.ts).getTime() - new Date(b.ts).getTime());
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const last   = sorted[sorted.length - 1] as any;
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const iceLast  = [...sorted].reverse().find((e: any) => e.event === "ice.state");
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const pcLast   = [...sorted].reverse().find((e: any) => e.event === "pc.state");
+      const wsConnected = sorted.some((e: { event: string }) => e.event === "ws.auth.ok");
+      const wsClosed    = sorted.some((e: { event: string }) => e.event === "ws.close");
+      const dur = (g.last_event_at as Date).getTime() - (g.first_event_at as Date).getTime();
+      return {
+        call_id: g._id as string,
+        participants: g.participants as string[],
+        event_count: g.event_count as number,
+        first_event_at: (g.first_event_at as Date).toISOString(),
+        last_event_at:  (g.last_event_at  as Date).toISOString(),
+        last_event:  last?.event ?? null,
+        duration_ms: dur > 0 ? dur : null,
+        ws_state:    wsClosed ? "closed" : wsConnected ? "connected" : null,
+        ice_state:   iceLast?.payload?.state ?? null,
+        pc_state:    pcLast?.payload?.state  ?? null,
+        has_cleanup: sorted.some((e: { event: string }) => e.event === "call.cleanup"),
+      };
+    });
+
+    res.json({ since, calls });
+  } catch (err) { next(err); }
+});
+
+router.get("/diagnostics/timeline/:callId", requireAdmin("read_only"), async (req, res, next) => {
+  try {
+    const events = await DiagnosticEventModel.find({ call_id: req.params.callId })
+      .sort({ created_at: 1 }).limit(500).lean();
+    res.json({
+      call_id: req.params.callId,
+      event_count: events.length,
+      events: events.map((e, i) => ({
+        id: e._id.toString(), username: e.username, event: e.event,
+        payload: e.payload, elapsed_ms: e.elapsed_ms, device: e.device,
+        created_at: e.created_at.toISOString(),
+        gap_ms: i > 0 ? e.created_at.getTime() - events[i - 1].created_at.getTime() : 0,
+      })),
+    });
+  } catch (err) { next(err); }
+});
+
+router.get("/diagnostics/metrics", requireAdmin("read_only"), async (req, res, next) => {
+  try {
+    const range = qs(req.query.range) ?? "24h";
+    const hoursMap: Record<string, number> = { "24h": 24, "7d": 168, "30d": 720 };
+    const fromDate = new Date(Date.now() - (hoursMap[range] ?? 24) * 3600 * 1000);
+
+    const [totals, topEvents, byDay] = await Promise.all([
+      DiagnosticEventModel.aggregate([
+        { $match: { created_at: { $gte: fromDate } } },
+        { $group: { _id: null,
+          total_events:    { $sum: 1 },
+          ws_errors:       { $sum: { $cond: [{ $eq: ["$event", "ws.error"]              }, 1, 0] } },
+          ws_closes:       { $sum: { $cond: [{ $eq: ["$event", "ws.close"]              }, 1, 0] } },
+          call_offers:     { $sum: { $cond: [{ $eq: ["$event", "call.offer.sent"]       }, 1, 0] } },
+          call_retries:    { $sum: { $cond: [{ $eq: ["$event", "call.offer.retry"]      }, 1, 0] } },
+          call_cleanups:   { $sum: { $cond: [{ $eq: ["$event", "call.cleanup"]          }, 1, 0] } },
+          accept_timeouts: { $sum: { $cond: [{ $eq: ["$event", "accept.timeout"]        }, 1, 0] } },
+          accept_errors:   { $sum: { $cond: [{ $eq: ["$event", "accept.error"]          }, 1, 0] } },
+          accept_complete: { $sum: { $cond: [{ $eq: ["$event", "accept.complete"]       }, 1, 0] } },
+          spinner_safety:  { $sum: { $cond: [{ $eq: ["$event", "spinner.stop.safety_net"]}, 1, 0] } },
+          gum_starts:      { $sum: { $cond: [{ $eq: ["$event", "getUserMedia.start"]    }, 1, 0] } },
+          gum_oks:         { $sum: { $cond: [{ $eq: ["$event", "getUserMedia.ok"]       }, 1, 0] } },
+        }},
+      ]),
+      DiagnosticEventModel.aggregate([
+        { $match: { created_at: { $gte: fromDate } } },
+        { $group: { _id: "$event", count: { $sum: 1 } } },
+        { $sort: { count: -1 } }, { $limit: 15 },
+        { $project: { event: "$_id", count: 1, _id: 0 } },
+      ]),
+      DiagnosticEventModel.aggregate([
+        { $match: { created_at: { $gte: fromDate } } },
+        { $group: {
+          _id:    { $dateToString: { format: "%Y-%m-%d", date: "$created_at" } },
+          events: { $sum: 1 },
+          calls:  { $sum: { $cond: [{ $eq: ["$event", "call.offer.sent"] }, 1, 0] } },
+          errors: { $sum: { $cond: [{ $in: ["$event", ["accept.error", "accept.timeout", "ws.error"]] }, 1, 0] } },
+        }},
+        { $sort: { _id: 1 } },
+        { $project: { date: "$_id", events: 1, calls: 1, errors: 1, _id: 0 } },
+      ]),
+    ]);
+
+    const t = (totals[0] as Record<string, number> | undefined) ?? {};
+    res.json({
+      range,
+      total_events:    t.total_events    ?? 0,
+      ws_errors:       t.ws_errors       ?? 0,
+      ws_closes:       t.ws_closes       ?? 0,
+      call_offers:     t.call_offers     ?? 0,
+      call_retries:    t.call_retries    ?? 0,
+      call_cleanups:   t.call_cleanups   ?? 0,
+      accept_timeouts: t.accept_timeouts ?? 0,
+      accept_errors:   t.accept_errors   ?? 0,
+      accept_complete: t.accept_complete ?? 0,
+      spinner_safety:  t.spinner_safety  ?? 0,
+      gum_errors:      (t.gum_starts ?? 0) - (t.gum_oks ?? 0),
+      top_events: topEvents,
+      by_day:     byDay,
+    });
+  } catch (err) { next(err); }
+});
+
+router.get("/diagnostics/export", requireAdmin("read_only"), async (req, res, next) => {
+  try {
+    const callId = qs(req.query.call_id);
+    const uname  = qs(req.query.username);
+    const since  = qs(req.query.since) ?? "24h";
+    const hoursMap: Record<string, number> = { "1h": 1, "6h": 6, "24h": 24, "7d": 168 };
+    const fromDate = new Date(Date.now() - (hoursMap[since] ?? 24) * 3600 * 1000);
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const filter: Record<string, any> = { created_at: { $gte: fromDate } };
+    if (callId) filter.call_id  = callId;
+    if (uname)  filter.username = uname;
+
+    const events = await DiagnosticEventModel.find(filter)
+      .sort({ created_at: 1 }).limit(5000).lean();
+
+    const payload = {
+      exported_at: new Date().toISOString(),
+      event_count: events.length,
+      filters: { call_id: callId ?? null, username: uname ?? null, since },
+      events: events.map((e) => ({
+        id: e._id.toString(), username: e.username, session_id: e.session_id,
+        call_id: e.call_id, event: e.event, payload: e.payload,
+        elapsed_ms: e.elapsed_ms, device: e.device, created_at: e.created_at.toISOString(),
+      })),
+    };
+
+    const date = new Date().toISOString().slice(0, 10);
+    res.setHeader("Content-Type", "application/json");
+    res.setHeader("Content-Disposition", `attachment; filename="diag-${date}.json"`);
+    res.send(JSON.stringify(payload, null, 2));
+  } catch (err) { next(err); }
+});
 
 export default router;

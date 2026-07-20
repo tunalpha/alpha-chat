@@ -1,12 +1,14 @@
 /**
  * DiagnosticLogger — Alpha Chat
  *
- * Buffer circolare (300 eventi) per il debug delle chiamate su iPhone.
- * Completamente passivo: non altera alcun comportamento dell'app.
+ * Buffer circolare (300 eventi) + flush automatico al backend ogni 5 secondi.
+ * Funzione permanente del Call Diagnostics Center (Admin Panel).
  *
- * Attivazione:
- *   1. Build-time:  VITE_DIAGNOSTIC_MODE=true
- *   2. Run-time:    localStorage.setItem('ac_diag', '1')  → ricarica pagina
+ * Attivazione: diagLogger.init() dopo ogni login/restore in AuthContext.
+ * Gli eventi vengono inviati in batch e conservati per 7 giorni (TTL server).
+ *
+ * Privacy: nessun contenuto di messaggi, nessuna chiave Signal.
+ * Solo eventi tecnici di chiamata, WebSocket e WebRTC.
  *
  * Utilizzo:
  *   import { diagLog, diagLogger } from './diagnosticLogger';
@@ -23,15 +25,9 @@ export interface DiagnosticEvent {
   elapsed_ms: number | null; // ms dall'inizio della chiamata corrente
 }
 
-const BUFFER_SIZE = 300;
-
-function checkEnabled(): boolean {
-  try {
-    if ((import.meta.env as Record<string, string>)['VITE_DIAGNOSTIC_MODE'] === 'true') return true;
-    if (typeof localStorage !== 'undefined' && localStorage.getItem('ac_diag') === '1') return true;
-  } catch { /* noop — SSR / private browsing */ }
-  return false;
-}
+const BUFFER_SIZE       = 300;
+const FLUSH_INTERVAL_MS = 5_000;
+const DIAG_ENDPOINT     = '/api/v1/diagnostics/events';
 
 class DiagnosticLoggerClass {
   private _buffer: DiagnosticEvent[] = [];
@@ -39,20 +35,57 @@ class DiagnosticLoggerClass {
   private _callId: string | null = null;
   private _callStart: number | null = null;
 
-  // ── Stato pubblico (read-only) ──────────────────────────────────────────────
+  // Flush state
+  private _userId:     string | null = null;
+  private _getToken:   (() => string | null) | null = null;
+  private _sessionId:  string | null = null;
+  private _flushTimer: ReturnType<typeof setInterval> | null = null;
+  private _lastFlushedId = -1;
 
-  get enabled(): boolean {
-    return checkEnabled();
-  }
+  // ── Stato pubblico ─────────────────────────────────────────────────────────
+
+  /** true dopo init() */
+  enabled = false;
 
   get currentCallId(): string | null {
     return this._callId;
   }
 
+  // ── Inizializzazione ───────────────────────────────────────────────────────
+
+  /**
+   * Inizializza il logger con il contesto utente e avvia il flush automatico.
+   * Chiamare dopo ogni login/restore in AuthContext.
+   */
+  init(userId: string, _username: string, getToken: () => string | null): void {
+    this._userId    = userId;
+    this._getToken  = getToken;
+    this._sessionId = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
+      ? crypto.randomUUID()
+      : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    this.enabled    = true;
+
+    if (this._flushTimer) clearInterval(this._flushTimer);
+    this._flushTimer = setInterval(() => { void this._flush(); }, FLUSH_INTERVAL_MS);
+  }
+
+  /**
+   * Ferma il flush e azzera il contesto. Chiamare al logout.
+   */
+  destroy(): void {
+    void this._flush(); // flush finale
+    if (this._flushTimer) { clearInterval(this._flushTimer); this._flushTimer = null; }
+    this._userId    = null;
+    this._getToken  = null;
+    this._sessionId = null;
+    this._callId    = null;
+    this._callStart = null;
+    this.enabled    = false;
+  }
+
   // ── Gestione chiamata corrente ──────────────────────────────────────────────
 
   setCurrentCall(callId: string, startedAt: number): void {
-    if (!this.enabled) return;
     this._callId    = callId;
     this._callStart = startedAt;
   }
@@ -79,17 +112,68 @@ class DiagnosticLoggerClass {
     this._buffer.push(entry);
   }
 
-  // ── Accesso buffer ─────────────────────────────────────────────────────────
+  // ── Flush al backend ───────────────────────────────────────────────────────
+
+  private async _flush(): Promise<void> {
+    if (!this._userId || !this._getToken) return;
+    const token = this._getToken();
+    if (!token) return;
+
+    const unflushed = this._buffer.filter(e => e.id > this._lastFlushedId);
+    if (unflushed.length === 0) return;
+
+    const lastId = unflushed[unflushed.length - 1].id;
+    try {
+      const res = await fetch(DIAG_ENDPOINT, {
+        method:  'POST',
+        headers: {
+          'Content-Type':  'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          session_id: this._sessionId,
+          device:     this._getDeviceInfo(),
+          events:     unflushed,
+        }),
+      });
+      if (res.ok || res.status === 204) {
+        this._lastFlushedId = lastId;
+      }
+    } catch {
+      // Silently fail — eventi rimangono nel buffer per il prossimo tentativo
+    }
+  }
+
+  private _getDeviceInfo(): Record<string, string | null> {
+    const ua       = typeof navigator !== 'undefined' ? navigator.userAgent : 'unknown';
+    const platform = typeof navigator !== 'undefined'
+      ? ((navigator as unknown as { userAgentData?: { platform?: string } }).userAgentData?.platform
+          ?? navigator.platform
+          ?? 'unknown')
+      : 'unknown';
+    let networkType: string | null = null;
+    try {
+      const conn = (navigator as unknown as { connection?: { effectiveType?: string } }).connection;
+      networkType = conn?.effectiveType ?? null;
+    } catch { /* noop */ }
+    return {
+      user_agent:   ua,
+      platform,
+      network_type: networkType,
+      app_version:  (import.meta.env.VITE_APP_VERSION as string | undefined) ?? 'dev',
+    };
+  }
+
+  // ── Accesso buffer (locale) ────────────────────────────────────────────────
 
   getEvents(): readonly DiagnosticEvent[] {
     return this._buffer;
   }
 
   clear(): void {
-    this._buffer = [];
+    this._buffer        = [];
+    this._lastFlushedId = -1;
   }
-
-  // ── Esportazione ──────────────────────────────────────────────────────────
 
   toText(): string {
     return this._buffer
@@ -105,13 +189,8 @@ class DiagnosticLoggerClass {
 
   toJSON(): string {
     return JSON.stringify(
-      {
-        exported_at: new Date().toISOString(),
-        event_count: this._buffer.length,
-        events:      this._buffer,
-      },
-      null,
-      2,
+      { exported_at: new Date().toISOString(), event_count: this._buffer.length, events: this._buffer },
+      null, 2,
     );
   }
 }
@@ -120,7 +199,7 @@ export const diagLogger = new DiagnosticLoggerClass();
 
 /**
  * Shorthand — registra un evento diagnostico.
- * No-op se la modalità diagnostica è disattivata.
+ * No-op se diagLogger non è ancora inizializzato (prima del login).
  */
 export function diagLog(event: string, payload: Record<string, unknown> = {}): void {
   diagLogger.log(event, payload);
