@@ -531,6 +531,16 @@ export function CallProvider({ children }: { children: ReactNode }) {
       console.log('[DIAG-ACCEPT] step 3 OK elapsed=%dms', Date.now() - _stepStart);
       diagLog('accept.step', { step: 3, ok: true, elapsed_ms: Date.now() - _stepStart }, _acceptCallId);
 
+      // EARPIECE FIX: setSpeakerMode DEVE essere chiamato PRIMA di setRemoteDescription.
+      // ontrack() → setRemoteStream() → applyRouting() scatta durante setRemoteDescription.
+      // Se _speakerMode è true in quel momento, iOS inizia a riprodurre sullo speaker
+      // e le chiamate play() successive (da setSpeakerMode) sono no-op su elemento già
+      // in play → audio bloccato sullo speaker per tutta la chiamata.
+      // Spostandolo qui, il primo applyRouting trova già _speakerMode=false → earpiece.
+      const defaultSpeaker = incomingCall.callType === "video";
+      setIsSpeaker(defaultSpeaker);
+      setSpeakerMode(defaultSpeaker);
+
       _currentStep = 4; _stepStart = Date.now();
       console.log('[DIAG-ACCEPT] step 4 — buildPC + setRemoteDescription');
       const pc = buildPC(incomingCall.fromUserId);
@@ -580,11 +590,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
       });
       diagLog('call.answer.sent', { to: incomingCall.fromUserId, wsReady, call_id: _acceptCallId }, _acceptCallId);
 
-      // Imposta modalità audio iniziale: auricolare per chiamate vocali, speaker per video
-      const defaultSpeaker = incomingCall.callType === "video";
-      setIsSpeaker(defaultSpeaker);
-      setSpeakerMode(defaultSpeaker);
-
+      // setSpeakerMode già chiamato prima di step 4 (earpiece fix — vedi sopra).
       callAnsweredAtRef.current = new Date();
       callRoleRef.current       = "callee";
       peerIdRef.current         = incomingCall.fromUserId;

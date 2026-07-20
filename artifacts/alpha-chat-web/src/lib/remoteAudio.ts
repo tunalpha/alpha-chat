@@ -157,6 +157,11 @@ function applyRouting(): void {
     //
     // Chrome speaker mode: <audio> → default output device.
     const srcChanged = el.srcObject !== _currentStream;
+    // iOS routing fix: il routing audio è fissato al primo play() riuscito.
+    // Se l'elemento è già in play (srcChanged=false, routing change) dobbiamo
+    // pause() prima di play() per forzare iOS a rivalutare l'uscita audio.
+    // Stessa logica se srcObject cambia: pause → assign → play.
+    if (!el.paused) el.pause();
     if (srcChanged) el.srcObject = _currentStream;
     // ── diagLog: srcObject assegnato + esito el.play() ────────────────────
     diagLog('applyRouting', {
@@ -274,24 +279,26 @@ export async function primeRemoteAudio(callId?: string, source?: string): Promis
       // Su browser con AudioContext disponibile, il path precedente rimane: il
       // ctx è già in PlayAndRecord e il MediaStreamDestination è la scelta migliore.
       if (isIOS()) {
-        // iOS: blessing via blob WAV silenzioso (niente AudioContext)
-        try {
-          const silenceUrl = getSilenceBlobUrl();
-          el.src = silenceUrl;                   // src stringa → no srcObject → no race
-          let blessed = false;
-          await Promise.race([
-            el.play().then(() => { blessed = true; }),
-            new Promise<void>(r => setTimeout(r, 1500)),
-          ]);
-          dlog('prime.play.after', { ok: blessed, method: 'ios_blob' });
-          if (blessed) el.pause();
-        } catch (err) {
-          dlog('prime.play.error', { err: String(err), method: 'ios_blob' });
-        } finally {
-          el.removeAttribute('src');             // rimuove src stringa
-          el.srcObject = null;                   // il vero stream arriverà via setRemoteStream()
-          el.load();                             // reset elemento → pronto per srcObject
-        }
+        // iOS: salta completamente il blessing.
+        //
+        // Qualsiasi play() preventivo — blob WAV, AudioContext dest, o altro —
+        // "colora" la sessione AVAudioSession come media/playback e forza
+        // lo speaker anche in modalità PlayAndRecord (che di default usa l'auricolare).
+        //
+        // getUserMedia ha già sbloccato l'audio nella sessione PlayAndRecord corretta.
+        // Il play() in applyRouting() (chiamato da ontrack) funziona senza ulteriore
+        // gesture perché la sessione PlayAndRecord è attiva — e iOS instrada
+        // l'audio all'auricolare automaticamente fin dal primo play().
+        //
+        // TIMING CRITICO: setSpeakerMode() deve essere chiamato PRIMA di
+        // setRemoteDescription() (che triggerà ontrack → applyRouting).
+        // Se _speakerMode=true al primo applyRouting, iOS inizia in speaker mode
+        // e le chiamate play() successive sono no-op → audio bloccato sullo speaker.
+        // Questo è corretto in CallContext.tsx (setSpeakerMode spostato prima di step 4).
+        dlog('prime.skip', { reason: 'ios_no_blessing', note: 'PlayAndRecord already active' });
+        el.muted  = false;
+        el.volume = prev > 0 ? prev : 1;
+        return; // ← uscita anticipata: niente AudioContext, niente play() preventivo
       } else {
         // Chrome/Edge: blessing via MediaStreamDestination (AudioContext)
         const ctxForBlessing = getOrCreateAudioCtx();
