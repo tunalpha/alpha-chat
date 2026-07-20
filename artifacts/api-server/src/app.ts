@@ -82,6 +82,8 @@ app.use("/api", router);
 app.get("/api/webrtc-test", (_req, res) => {
   res.setHeader("Content-Type", "text/html; charset=utf-8");
   res.setHeader("Cache-Control", "no-store");
+  // helmet blocca gli inline script in produzione — questa route di test ne ha bisogno
+  res.setHeader("Content-Security-Policy", "default-src 'self'; script-src 'unsafe-inline'; media-src *; connect-src *");
   res.send(`<!DOCTYPE html>
 <html lang="en">
 <head>
