@@ -69,7 +69,17 @@ function getEl(): HTMLAudioElement | null {
   if (typeof document === "undefined") return null;
   if (!_el) {
     _el = document.createElement("audio");
-    (_el as HTMLAudioElement & { playsInline: boolean }).playsInline = true;
+    // IMPORTANTE: NON impostare playsInline = true su iOS.
+    // playsInline forza la sessione AVAudioSession in modalità "media playback"
+    // che instrada l'audio sullo speaker anche se getUserMedia ha aperto una
+    // sessione PlayAndRecord (che di default usa l'auricolare).
+    // Senza playsInline, iOS tratta il flusso WebRTC come audio da telefonata
+    // e lo instrada all'auricolare automaticamente.
+    // Ref: iOS AVAudioSession — PlayAndRecord + defaultToSpeaker flag
+    if (!isIOS()) {
+      // Su non-iOS playsInline non ha effetti negativi sul routing
+      (_el as HTMLAudioElement & { playsInline: boolean }).playsInline = true;
+    }
     _el.autoplay    = false;
     // iOS Safari richiede che l'elemento sia nel DOM per riprodurre MediaStream
     _el.style.cssText = "position:fixed;width:1px;height:1px;opacity:0;pointer-events:none;top:-2px;left:-2px;";
