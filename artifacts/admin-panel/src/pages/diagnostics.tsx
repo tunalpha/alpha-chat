@@ -5,7 +5,7 @@
  * Dati raccolti automaticamente dal DiagnosticLogger del client.
  */
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, Component, type ReactNode, type ErrorInfo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   getDiagEvents, getDiagCalls, getDiagTimeline, getDiagMetrics, downloadDiagExport, getDiagHealth,
@@ -830,7 +830,50 @@ const TABS = [
   { id: "export",   label: "Export",        icon: Download   },
 ];
 
-export default function Diagnostics() {
+// ---------------------------------------------------------------------------
+// Error Boundary — mostra l'errore invece di pagina bianca
+// ---------------------------------------------------------------------------
+
+interface EBState { error: Error | null }
+
+class DiagErrorBoundary extends Component<{ children: ReactNode }, EBState> {
+  constructor(props: { children: ReactNode }) {
+    super(props);
+    this.state = { error: null };
+  }
+  static getDerivedStateFromError(error: Error): EBState {
+    return { error };
+  }
+  componentDidCatch(error: Error, info: ErrorInfo) {
+    console.error("[DiagEB] crash:", error, info.componentStack);
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="p-6 space-y-4">
+          <div className="flex items-center gap-2 text-red-400">
+            <AlertTriangle className="w-5 h-5" />
+            <h2 className="font-bold font-mono text-sm uppercase tracking-wide">Diagnostics Crash</h2>
+          </div>
+          <pre className="bg-red-500/10 border border-red-500/20 rounded p-4 text-xs font-mono text-red-300 overflow-auto whitespace-pre-wrap break-all">
+            {this.state.error.message}
+            {"\n\n"}
+            {this.state.error.stack}
+          </pre>
+          <button
+            className="px-3 py-1.5 rounded bg-muted text-xs font-mono hover:bg-muted/80"
+            onClick={() => this.setState({ error: null })}
+          >
+            Riprova
+          </button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
+function DiagnosticsInner() {
   const [tab, setTab] = useState("events");
   const [focusedCallId, setFocusedCallId] = useState<string | undefined>();
 
@@ -888,5 +931,13 @@ export default function Diagnostics() {
         {tab === "export"   && <ExportTab />}
       </div>
     </div>
+  );
+}
+
+export default function Diagnostics() {
+  return (
+    <DiagErrorBoundary>
+      <DiagnosticsInner />
+    </DiagErrorBoundary>
   );
 }
