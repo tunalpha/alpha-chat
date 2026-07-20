@@ -512,6 +512,30 @@ export function createWsServer(httpServer: HttpServer): WebSocketServer {
           break;
         }
 
+        // ── Signal session recovery ──────────────────────────────────────────
+        // Il destinatario (recipient) ha ricevuto un WhisperMessage ma non ha
+        // più la sessione Signal in IDB (clear browser, nuovo device, ecc.).
+        // Il messaggio è irrecuperabile, ma il destinatario chiede al mittente
+        // di cancellare la sessione locale: il prossimo signalEncrypt() produrrà
+        // automaticamente un PreKeyWhisperMessage, ri-stabilendo la sessione.
+        case "signal.session.reset": {
+          const p    = (event.payload ?? {}) as Record<string, unknown>;
+          const toId = p["to_user_id"] as string | undefined;
+          if (!toId) break;
+
+          logger.info(
+            { recipient: userId, sender: toId },
+            "[SIGNAL] signal.session.reset — relay al mittente",
+          );
+
+          // Relay al mittente (tutti i suoi device, multi-device safe)
+          wsManager.sendToUser(toId, {
+            type: "signal.session.reset",
+            payload: { from_user_id: userId },
+          });
+          break;
+        }
+
         default:
           safeSend(ws, {
             type: "error",

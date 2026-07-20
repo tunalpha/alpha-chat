@@ -23,6 +23,7 @@ import { createContext, useContext, useEffect, useState, useMemo, type ReactNode
 import { useWebSocket, type WsEvent } from "../hooks/useWebSocket";
 import { useAuth } from "./AuthContext";
 import { apiGetContactsPresence } from "../lib/api";
+import { clearSignalSession } from "../lib/signal";
 
 type WsContextValue = ReturnType<typeof useWebSocket> & {
   onlineUsers: Set<string>;
@@ -50,6 +51,38 @@ export function WebSocketProvider({ children }: { children: ReactNode }) {
       }
     });
   }, [ws.on]);
+
+  // ── Signal session recovery ──────────────────────────────────────────────
+  // Quando il server ci consegna signal.session.reset, un destinatario ha perso
+  // la sessione Signal con noi (IDB cancellato, nuovo device, ecc.).
+  // Cancelliamo la sessione locale verso di lui: il prossimo signalEncrypt()
+  // troverà la sessione assente → chiamerà ensureSession() → produrrà un
+  // PreKeyWhisperMessage → ri-stabilisce la sessione E2E automaticamente.
+  //
+  // Gestito qui (provider globale) perché il WS è sempre aperto, anche quando
+  // l'utente è fuori da ChatPage. Così il reset arriva anche se non si è
+  // nella conversazione con quel mittente in quel momento.
+  useEffect(() => {
+    if (!auth) return;
+    return ws.on((event: WsEvent) => {
+      if (event.type !== "signal.session.reset") return;
+      const fromUserId = (event.payload as { from_user_id?: string } | undefined)?.from_user_id;
+      if (!fromUserId) return;
+
+      // Cancella la sessione locale per il destinatario del reset.
+      // deviceId=1 (default): ensureSession usa sempre recipientDeviceId=1
+      // quindi la sessione è sempre salvata come `fromUserId.1`.
+      void clearSignalSession(auth.userId, auth.deviceId, fromUserId, 1)
+        .then(() => {
+          console.info(
+            `[Signal] session.reset ricevuto da ${fromUserId} → sessione cancellata. Il prossimo invio sarà un PreKey.`,
+          );
+        })
+        .catch((err) => {
+          console.warn("[Signal] clearSignalSession fallito:", err);
+        });
+    });
+  }, [ws.on, auth]);
 
   // ── Presenza: aggiornamento real-time via WS ──────────────────────────────
   // Gli eventi presence.online / presence.offline aggiornano il Set in tempo reale.

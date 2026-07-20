@@ -20,7 +20,9 @@ export type WsInboundEventType =
   | "call.answer"        // Callee → Server: risposta chiamata
   | "call.ice_candidate" // entrambi → Server: candidato ICE
   | "call.reject"        // Callee → Server: rifiuto
-  | "call.end";          // entrambi → Server: fine chiamata
+  | "call.end"           // entrambi → Server: fine chiamata
+  // Signal session recovery
+  | "signal.session.reset"; // Recipient → Server: sessione persa, chiede reset al mittente
 
 export interface WsInboundEvent {
   type: WsInboundEventType;
@@ -70,7 +72,8 @@ export type WsOutboundEventType =
   | "call.ended_elsewhere" // Server → Callee altri device: chiamata risposta altrove
   | "call.missed"          // Server → Callee: chiamata persa (caller ha annullato)
   | "call.signal_ack"      // Server → Sender: conferma consegna del segnale (M2)
-  | "conversation.cleared"; // Server → membri: tutti i messaggi eliminati (Sprint 24)
+  | "conversation.cleared"  // Server → membri: tutti i messaggi eliminati (Sprint 24)
+  | "signal.session.reset"; // Server → Sender: il destinatario ha perso la sessione Signal
 
 export interface WsOutboundEvent {
   type: WsOutboundEventType;

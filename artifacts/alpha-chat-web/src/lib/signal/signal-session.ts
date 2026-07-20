@@ -133,6 +133,33 @@ export async function resetAndRebuildSession(
   await rebuildSession(userId, deviceId, remoteUserId, remoteDeviceId);
 }
 
+// ---------------------------------------------------------------------------
+// clearSignalSession — cancella sessione locale (signal.session.reset)
+// ---------------------------------------------------------------------------
+
+/**
+ * Cancella la sessione Signal locale per un destinatario specifico,
+ * senza scaricare un nuovo bundle né ri-costruire la sessione.
+ *
+ * Chiamata quando il destinatario segnala via `signal.session.reset` che la
+ * sua sessione è andata persa (clear browser, cambio device, IDB svuotato).
+ * Dopo il clear, il prossimo `signalEncrypt()` troverà la sessione assente,
+ * chiamerà `ensureSession()` automaticamente e invierà un PreKeyWhisperMessage
+ * che ri-stabilisce la sessione sul destinatario senza intervento manuale.
+ *
+ * Idempotente: se la sessione non esiste già, deleteSession è un no-op.
+ */
+export async function clearSignalSession(
+  userId: string,
+  deviceId: string,
+  targetUserId: string,
+  targetDeviceId = 1,
+): Promise<void> {
+  const store = getSignalStore(userId, deviceId);
+  const addr  = new SignalProtocolAddress(targetUserId, targetDeviceId);
+  await store.deleteSession(addr.toString());
+}
+
 export async function rebuildSession(
   userId: string,
   deviceId: string,

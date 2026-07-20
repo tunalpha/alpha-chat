@@ -26,6 +26,33 @@ import { getSignalStore } from "./key-store";
 import { ensureSession, rebuildSession } from "./signal-session";
 
 // ---------------------------------------------------------------------------
+// SessionLostError
+// ---------------------------------------------------------------------------
+
+/**
+ * Lanciato quando arriva un WhisperMessage (tipo 1) ma l'IDB locale non ha
+ * la sessione Signal per il mittente (es. dopo clear browser, nuovo device).
+ *
+ * Il messaggio è PERMANENTEMENTE irrecuperabile (Double Ratchet forward-only).
+ * Il caller può però ri-stabilire la sessione per i messaggi futuri:
+ *   1. Mostrare un placeholder informativo
+ *   2. Inviare `signal.session.reset` via WS al mittente
+ *   3. Il mittente cancella la sua sessione locale → il prossimo encrypt()
+ *      produce un PreKeyWhisperMessage → ri-stabilisce la sessione E2E.
+ */
+export class SessionLostError extends Error {
+  readonly senderUserId:   string;
+  readonly senderDeviceId: number;
+
+  constructor(senderUserId: string, senderDeviceId: number, originalMsg: string) {
+    super(`Signal session lost for ${senderUserId}.${senderDeviceId}: ${originalMsg}`);
+    this.name           = "SessionLostError";
+    this.senderUserId   = senderUserId;
+    this.senderDeviceId = senderDeviceId;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // Tipi
 // ---------------------------------------------------------------------------
 
@@ -434,6 +461,24 @@ export async function signalDecrypt(
       totalSessionsPost: _postSessionsFail.totalSessions,
       openBaseKeyPost:   _postSessionsFail.openBaseKey,
     } as Parameters<typeof _reportDecryptFailure>[0]);
+
+    // --- SessionLostError: WhisperMessage senza sessione IDB ---
+    //
+    // Quando un WhisperMessage (tipo 1) arriva ma non esiste alcuna sessione
+    // locale (sessionFound=false), libsignal lancia "No record for device …".
+    // Il messaggio è irrecuperabile, ma possiamo segnalarlo al chiamante con
+    // un errore specifico che attiva il meccanismo signal.session.reset.
+    //
+    // NON attivare per tipo 3 (PreKeyWhisperMessage): un PreKey crea la sessione
+    // durante il decrypt, quindi "No record for device" non può comparire in quel path.
+    if (
+      ciphertextType === 1 &&
+      !_sessionFound &&
+      firstErr instanceof Error &&
+      firstErr.message.startsWith("No record for device")
+    ) {
+      throw new SessionLostError(senderUserId, senderDeviceId, firstErr.message);
+    }
 
     // --- Recovery automatico ---
     //

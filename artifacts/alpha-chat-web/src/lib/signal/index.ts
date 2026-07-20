@@ -14,12 +14,13 @@ export {
   generateAndWrapSharedIdentityKey,
 } from "./ik-crypto";
 export { getSignalStore, SignalProtocolStore } from "./key-store";
-export { ensureSession, rebuildSession } from "./signal-session";
+export { ensureSession, rebuildSession, clearSignalSession } from "./signal-session";
 export {
   signalEncrypt,
   signalDecrypt,
   legacyDecode,
   safeDecodeForPreview,
+  SessionLostError,
   type SignalCiphertext,
 } from "./signal-messenger";
 export type {

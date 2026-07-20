@@ -43,6 +43,7 @@ import {
   signalEncryptMulti,
   signalDecryptFromDeviceCiphertexts,
   maybeReplenishOtpks,
+  SessionLostError,
 } from "../lib/signal";
 import {
   initMediaCache,
@@ -883,13 +884,44 @@ export default function ChatPage({ onNavigate }: Props) {
       // await garantisce che l'IDB write sia completato prima del return,
       // così un reconnect quasi-simultaneo trova già il plaintext in cache.
       await cacheDecryptedMeta(msg.id, text);
-    } catch {
+    } catch (decryptErr) {
       // Controlla IDB per tutti i tipi (testo e media) prima di mostrare errore.
       const cached = await getMetaByMessageId(msg.id);
       if (cached) {
         setDecryptedTexts((prev) => new Map(prev).set(msg.id, cached));
         return;
       }
+
+      // ── Sessione Signal persa (SessionLostError) ──────────────────────────
+      // WhisperMessage (tipo 1) arrivato ma IDB non ha la sessione per il
+      // mittente (es. clear browser, nuovo device). Il messaggio è perso
+      // per sempre, ma possiamo ri-stabilire la sessione per i messaggi futuri:
+      //   1. Mostriamo un placeholder informativo (diverso da "non decifrabile")
+      //   2. Lo cachiamo in IDB per non ritentare il decrypt (OTPK protection)
+      //   3. Inviamo signal.session.reset al mittente via WS:
+      //      - mittente riceve → cancella sessione locale verso di noi
+      //      - prossimo signalEncrypt() → PreKeyWhisperMessage → nuova sessione
+      if (decryptErr instanceof SessionLostError && msg.message_type !== "media") {
+        const placeholder = "[🔄 Sessione Signal rinnovata — richiedi al mittente di reinviare]";
+        setDecryptedTexts((prev) => new Map(prev).set(msg.id, placeholder));
+        // Cache: evita retry futuri sul messaggio irrecuperabile
+        void cacheDecryptedMeta(msg.id, placeholder).catch(() => {});
+        // Notifica il mittente: reset session → prossimo msg sarà PreKey
+        wsSend({
+          type: "signal.session.reset",
+          payload: {
+            to_user_id:       msg.sender_id,
+            sender_device_id: decryptErr.senderDeviceId,
+          },
+        });
+        reportAudit("SESSION-LOST-RESET-SENT", {
+          msgId:          msg.id,
+          senderUserId:   msg.sender_id,
+          senderDeviceId: decryptErr.senderDeviceId,
+        });
+        return;
+      }
+
       if (msg.message_type === "media") {
         // FIX: non usare msg.ciphertext come fallback — produce base64 grezzo nel bubble
         // Lasciare stringa vuota → mediaMeta=null → UI "media non disponibile"
