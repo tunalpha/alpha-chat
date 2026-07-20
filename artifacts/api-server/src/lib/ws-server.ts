@@ -240,8 +240,19 @@ export function createWsServer(httpServer: HttpServer): WebSocketServer {
         // ── WebRTC signaling Sprint 25 — busy/DND/multi-device ───────────
         case "call.offer": {
           const p = (event.payload ?? {}) as Record<string, unknown>;
-          const toId = p["to_user_id"] as string | undefined;
+          const toId   = p["to_user_id"] as string | undefined;
+          const callId = p["call_id"]    as string | undefined;
           if (!toId) break;
+
+          // M4 — Deduplicazione: se questo call_id è già stato elaborato (retry del caller),
+          // restituiamo un ACK silenzioso senza rielaborare l'offer per evitare doppio squillo.
+          if (callId && wsManager.hasProcessedOffer(callId)) {
+            logger.info({ callId, callerId: userId, calleeId: toId }, "[CALL-M4] call.offer duplicato ignorato (stesso call_id)");
+            break;
+          }
+          // Marca subito come elaborato, prima di qualsiasi await, per prevenire
+          // condizioni di gara in caso di retry rapido (es. due ritrasmissioni quasi simultanee).
+          if (callId) wsManager.markOfferProcessed(callId);
 
           // Busy check: callee già in chiamata attiva
           if (wsManager.isInCall(toId)) {

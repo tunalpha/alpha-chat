@@ -45,6 +45,34 @@ class WsManager {
    */
   private readonly pendingCalls = new Map<string, { payload: Record<string, unknown>; expiresAt: number }>();
 
+  /**
+   * M4 — Deduplicazione call.offer per call_id.
+   * Mappa call_id → timestamp di scadenza (60s).
+   * Evita doppia elaborazione dello stesso offer in caso di retry del caller
+   * (es. M3 che invierà di nuovo call.offer se non arriva ACK entro 2s).
+   * TTL 60s: copre l'intera durata di vita di un offer (caller timeout = 30s).
+   * La pulizia è lazy (al prossimo accesso) + esplicita in clearProcessedOffer().
+   */
+  private readonly processedOffers = new Map<string, number>(); // call_id → expiresAt
+
+  /** Restituisce true se il call_id è già stato elaborato e non è scaduto. */
+  hasProcessedOffer(callId: string): boolean {
+    const exp = this.processedOffers.get(callId);
+    if (exp === undefined) return false;
+    if (Date.now() > exp) { this.processedOffers.delete(callId); return false; }
+    return true;
+  }
+
+  /** Segna il call_id come elaborato con TTL 60s. */
+  markOfferProcessed(callId: string): void {
+    this.processedOffers.set(callId, Date.now() + 60_000);
+  }
+
+  /** Rimuove esplicitamente un call_id elaborato (es. al termine della chiamata). */
+  clearProcessedOffer(callId: string): void {
+    this.processedOffers.delete(callId);
+  }
+
   setPendingCall(calleeId: string, payload: Record<string, unknown>): void {
     this.pendingCalls.set(calleeId, { payload, expiresAt: Date.now() + 35_000 });
   }

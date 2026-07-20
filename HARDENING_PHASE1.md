@@ -317,4 +317,23 @@ Build: ✅ compilazione TypeScript pulita, Vite avviato.
 
 ---
 
-*M4, M2, M3 in attesa di approvazione.*
+### M4 — APPLICATA ✅ (2026-07-20)
+**File:** `artifacts/api-server/src/lib/ws-manager.ts` + `ws-server.ts`
+
+`ws-manager.ts` — nuovo `processedOffers: Map<string, number>` con TTL 60s e tre metodi:
+- `hasProcessedOffer(callId)` — check + lazy expiry
+- `markOfferProcessed(callId)` — marca con TTL 60s
+- `clearProcessedOffer(callId)` — rimozione esplicita (uso futuro)
+
+`ws-server.ts` — inizio handler `call.offer`:
+```typescript
+const callId = p["call_id"] as string | undefined;
+if (callId && wsManager.hasProcessedOffer(callId)) { break; }  // duplicato → ignora
+if (callId) wsManager.markOfferProcessed(callId);              // marca prima di ogni await
+```
+`markOfferProcessed` viene chiamato **prima** di qualsiasi `await` per prevenire race condition in caso di retry quasi-simultanei (es. due `call.offer` con stesso `call_id` arrivano a 50ms di distanza: il secondo trova già il flag impostato).  
+Build: ✅ compilazione pulita, server avviato.
+
+---
+
+*M2, M3 in attesa di approvazione.*
