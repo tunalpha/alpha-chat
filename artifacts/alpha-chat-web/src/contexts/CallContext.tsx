@@ -38,6 +38,8 @@ export interface IncomingCallInfo {
   fromDisplayName: string;
   sdp: RTCSessionDescriptionInit;
   callType: CallType;
+  /** Identificatore univoco della chiamata, generato dal caller (UUID v4). */
+  callId: string;
 }
 
 interface CallContextValue {
@@ -115,6 +117,10 @@ export function CallProvider({ children }: { children: ReactNode }) {
   const callTypeRef        = useRef<CallType | null>(null);
   // Guard contro tap multipli sul verde: true mentre acceptCall() è in volo.
   const acceptingRef       = useRef<boolean>(false);
+  /** Identificatore univoco della chiamata corrente (UUID v4).
+   *  Generato dal caller in initiateCall(); copiato dal payload in call.incoming.
+   *  Azzerato in cleanup(). Usato come chiave per dedup/ACK (M4/M2). */
+  const callIdRef          = useRef<string>("");
 
   // ── Helpers ────────────────────────────────────────────────────────────
 
@@ -188,6 +194,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
     callAnsweredAtRef.current = null;
     peerIdRef.current         = null;
     callTypeRef.current       = null;
+    callIdRef.current         = "";
     setLocalStream(null);
     setRemoteStream(null);
     setPeerConnection(null);
@@ -311,15 +318,17 @@ export function CallProvider({ children }: { children: ReactNode }) {
       console.log('[Call] setLocalDescription offer type=%s', offer.type);
       await pc.setLocalDescription(offer);
 
+      // Genera call_id univoco per questa chiamata (M1 — prerequisito dedup/ACK).
+      callIdRef.current = crypto.randomUUID();
       wsSend({
         type: "call.offer",
-        payload: { to_user_id: toUserId, sdp: offer, call_type: type, from_display_name: displayName },
+        payload: { to_user_id: toUserId, sdp: offer, call_type: type, from_display_name: displayName, call_id: callIdRef.current },
       });
-      console.log('[Call] call.offer inviato → in attesa risposta');
+      console.log('[Call] call.offer inviato → call_id=%s, in attesa risposta', callIdRef.current);
 
       // Timeout 30s — se nessuno risponde
       callTimeoutRef.current = setTimeout(() => {
-        wsSend({ type: "call.end", payload: { to_user_id: toUserId, reason: "timeout" } });
+        wsSend({ type: "call.end", payload: { to_user_id: toUserId, reason: "timeout", call_id: callIdRef.current } });
         cleanup("missed");
       }, 30_000);
 
@@ -403,7 +412,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
       console.log('[DIAG-ACCEPT] step 7 — send call.answer → to=%s', incomingCall.fromUserId);
       wsSend({
         type: "call.answer",
-        payload: { to_user_id: incomingCall.fromUserId, sdp: answer },
+        payload: { to_user_id: incomingCall.fromUserId, sdp: answer, call_id: callIdRef.current },
       });
 
       // Imposta modalità audio iniziale: auricolare per chiamate vocali, speaker per video
@@ -428,7 +437,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
     } catch (err) {
       console.error("[Call] acceptCall error —", err);
       if (incomingCall) {
-        wsSend({ type: "call.reject", payload: { to_user_id: incomingCall.fromUserId, reason: "error" } });
+        wsSend({ type: "call.reject", payload: { to_user_id: incomingCall.fromUserId, reason: "error", call_id: callIdRef.current } });
       }
       cleanup("failed");
     } finally {
@@ -441,7 +450,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
 
   const rejectCall = useCallback(() => {
     if (incomingCall) {
-      wsSend({ type: "call.reject", payload: { to_user_id: incomingCall.fromUserId, reason: "declined" } });
+      wsSend({ type: "call.reject", payload: { to_user_id: incomingCall.fromUserId, reason: "declined", call_id: callIdRef.current } });
     }
     cleanup("declined");
   }, [incomingCall]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -450,7 +459,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
 
   const endCall = useCallback(() => {
     const peerId = peerIdRef.current ?? remoteUserId;
-    if (peerId) wsSend({ type: "call.end", payload: { to_user_id: peerId } });
+    if (peerId) wsSend({ type: "call.end", payload: { to_user_id: peerId, call_id: callIdRef.current } });
     cleanup("normal");
   }, [remoteUserId]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -508,11 +517,14 @@ export function CallProvider({ children }: { children: ReactNode }) {
         }
         callStartedAtRef.current = new Date();
         console.log('[DIAG-CP2] setIncomingCall() in esecuzione, from=', payload["from_user_id"]);
+        // Estrai e memorizza il call_id generato dal caller (M1).
+        callIdRef.current = (payload["call_id"] as string | undefined) ?? crypto.randomUUID();
         setIncomingCall({
           fromUserId:      payload["from_user_id"] as string,
           fromDisplayName: payload["from_display_name"] as string,
           sdp:             payload["sdp"] as RTCSessionDescriptionInit,
           callType:        (payload["call_type"] as CallType) ?? "audio",
+          callId:          callIdRef.current,
         });
         setCallState("incoming");
         // ── Suoneria lato callee ──────────────────────────────────────────────

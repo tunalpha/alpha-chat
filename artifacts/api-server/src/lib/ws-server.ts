@@ -286,12 +286,15 @@ export function createWsServer(httpServer: HttpServer): WebSocketServer {
           // Bufferizza per re-delivery se il callee si riconnette entro 35s
           wsManager.setPendingCall(toId, callIncomingPayload);
 
-          // Push per dispositivi offline (PWA installata ma WS non attivo)
+          // Push per dispositivi offline oppure con zombie connection (isOnline=true ma openCount=0)
+          // In entrambi i casi non esiste un socket OPEN → la push è l'unico canale affidabile.
           // Fire-and-forget — non blocca il signaling
-          if (!wsManager.isOnline(toId)) {
+          if (!wsManager.isOnline(toId) || diagBefore.openCount === 0) {
             logger.info(
-              { calleeId: toId, openCount: diagBefore.openCount },
-              "[DIAG-SRV] callee offline (isOnline=false) → push inviata",
+              { calleeId: toId, isOnline: wsManager.isOnline(toId), openCount: diagBefore.openCount },
+              wsManager.isOnline(toId)
+                ? "[CALL-M5] callee isOnline=true ma openCount=0 (zombie) → push inviata"
+                : "[CALL-M5] callee offline → push inviata",
             );
             const { dispatchToOne } = await import("../services/push/PushDispatcher");
             dispatchToOne(toId, {
@@ -304,8 +307,7 @@ export function createWsServer(httpServer: HttpServer): WebSocketServer {
           } else {
             logger.info(
               { calleeId: toId, openCount: diagBefore.openCount },
-              "[DIAG-SRV] callee online (isOnline=true) → push NON inviata; WS delivered=" +
-              diagBefore.openCount + " socket(s)",
+              "[CALL-M5] callee online, openCount=" + diagBefore.openCount + " → WS delivery, push non necessaria",
             );
           }
           break;

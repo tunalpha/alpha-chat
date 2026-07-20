@@ -291,4 +291,30 @@ Per ogni modifica, prima di procedere alla successiva:
 
 ---
 
-*In attesa di approvazione prima di qualsiasi modifica al codice.*
+---
+
+## 7. Log di implementazione
+
+### M5 — APPLICATA ✅ (2026-07-20)
+**File:** `artifacts/api-server/src/lib/ws-server.ts`  
+**Condizione push modificata:**  
+`if (!wsManager.isOnline(toId))` → `if (!wsManager.isOnline(toId) || diagBefore.openCount === 0)`  
+Log differenziato: `[CALL-M5] callee isOnline=true ma openCount=0 (zombie) → push inviata` vs `[CALL-M5] callee online → WS delivery`.  
+Build: ✅ compilazione pulita, server avviato.
+
+### M1 — APPLICATA ✅ (2026-07-20)
+**File:** `artifacts/alpha-chat-web/src/contexts/CallContext.tsx`  
+**Modifiche:**
+- Aggiunto campo `callId: string` a `IncomingCallInfo`
+- Aggiunto `callIdRef = useRef<string>("")`
+- `initiateCall()`: `callIdRef.current = crypto.randomUUID()` prima dell'invio; `call_id` allegato a `call.offer` e al timeout `call.end`
+- `call.incoming` handler: estrae `payload["call_id"]` (fallback `crypto.randomUUID()`) e lo salva in `callIdRef.current`; aggiunto `callId` in `setIncomingCall({...})`
+- `acceptCall()`: `call_id` allegato a `call.answer` (step 7) e a `call.reject` (path di errore)
+- `rejectCall()`: `call_id` allegato a `call.reject`
+- `endCall()`: `call_id` allegato a `call.end`
+- `cleanup()`: `callIdRef.current = ""`  
+Build: ✅ compilazione TypeScript pulita, Vite avviato.
+
+---
+
+*M4, M2, M3 in attesa di approvazione.*
