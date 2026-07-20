@@ -155,7 +155,7 @@ export default function UsersPage() {
                     <TableCell>
                       <div className="flex items-center gap-2 text-muted-foreground">
                         <Shield className={`w-4 h-4 ${user.totp_enabled ? 'text-emerald-500' : 'opacity-30'}`} aria-label="2FA" />
-                        <ShieldAlert className={`w-4 h-4 ${user.has_phoenix ? 'text-amber-500' : 'opacity-30'}`} aria-label="Phoenix" />
+                        <ShieldAlert className={`w-4 h-4 ${user.has_phoenix ? 'text-green-500' : 'opacity-30'}`} aria-label="Phoenix" />
                       </div>
                     </TableCell>
                     <TableCell className="font-mono text-xs text-muted-foreground">
