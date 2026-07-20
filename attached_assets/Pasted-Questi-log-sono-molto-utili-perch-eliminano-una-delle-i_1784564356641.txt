@@ -1,0 +1,62 @@
+Questi log sono molto utili perché eliminano una delle ipotesi che avevamo.
+
+Il dato più importante è questo:
+
+17:17:53.945  accept.step 1 OK
+...
+17:18:07.138  accept.timeout step:2
+17:18:07.141  accept.error step:2
+
+Quindi:
+
+* ❌ La race condition del call_id non era la causa del timeout.
+* ✅ I log di accept.error arrivano comunque.
+* ✅ Il problema reale è ancora che lo step 2 non termina.
+
+Inoltre, i tempi sono coerenti:
+
+* Step 1: ~1,8 s
+* Timeout allo step 2: ~13,2 s
+* Totale ≈ 15 s
+
+Questo indica che il timeout globale continua a scadere mentre il codice è fermo nello step 2.
+
+Cosa cambia nella diagnosi
+
+Ora possiamo scartare con buona confidenza l’idea che fosse “solo un problema di logging” o di clearCurrentCall().
+
+Il problema osservato è ancora funzionale:
+
+* acceptCall() entra nello step 2.
+* Lo step 2 non completa.
+* Scatta il timeout.
+* Entra nel catch.
+
+Il punto da verificare
+
+Se il deploy contiene davvero il fix di primeRemoteAudio(), allora c’è una contraddizione tra ciò che ci aspettiamo e ciò che osserviamo.
+
+Le possibilità principali sono:
+
+1. Lo step 2 esegue ancora una versione diversa di primeRemoteAudio() rispetto a quella che avete modificato (ad esempio import errato, bundle non aggiornato, funzione duplicata).
+2. Dentro primeRemoteAudio() esiste ancora un percorso che resta in attesa, nonostante il fix.
+
+Non sceglierei una delle due senza verificarla.
+
+Il prossimo controllo che farei
+
+Non analizzerei altri log.
+
+Chiederei invece all’agente di verificare esclusivamente questo:
+
+Nel bundle attualmente in esecuzione, aggiungi temporaneamente log all’interno di primeRemoteAudio(), ad esempio:
+
+* ingresso funzione;
+* prima di el.play();
+* dopo el.play();
+* prima di ctx.resume();
+* uscita funzione.
+
+L’obiettivo è capire qual è l’ultima istruzione realmente eseguita prima del timeout.
+
+Siete ormai a un livello di precisione in cui non serve più fare inferenze: serve vedere dove si ferma dentro quella singola funzione. Se il primo log interno compare ma il secondo no, il punto è identificato con certezza.
