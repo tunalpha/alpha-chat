@@ -6,3 +6,9 @@ id = "DOjTQCX4P8fvFnCNnK7LD"
 uri = "file://PRESENCE_AUDIT.md"
 type = "text"
 title = "Audit Presenza v2 — dati misurati + Fix F-1 applicato"
+
+[[outputs]]
+id = "wb6oWDTwsrkjQBjUwZsym"
+uri = "file://HARDENING_PHASE1.md"
+type = "text"
+title = "Hardening Fase 1 — Signaling Affidabile (piano approvazione)"
