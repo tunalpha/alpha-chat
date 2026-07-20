@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>WebRTC Earpiece Test</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #0a0a0f;
+      color: #e0e0e0;
+      min-height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: flex-start;
+      padding: 32px 20px;
+      gap: 20px;
+    }
+    h1 { font-size: 20px; font-weight: 600; color: #fff; text-align: center; }
+    .subtitle { font-size: 13px; color: #888; text-align: center; line-height: 1.5; max-width: 320px; }
+    .card {
+      width: 100%;
+      max-width: 360px;
+      background: #16161e;
+      border: 1px solid #2a2a3a;
+      border-radius: 16px;
+      padding: 20px;
+    }
+    .card-title { font-size: 12px; color: #666; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 12px; }
+    button {
+      width: 100%;
+      padding: 15px;
+      border-radius: 12px;
+      border: none;
+      font-size: 16px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: opacity 0.15s;
+    }
+    button:active { opacity: 0.7; }
+    button:disabled { opacity: 0.35; cursor: default; }
+    #btnStart  { background: #4a90e2; color: #fff; }
+    #btnStop   { background: #e24a4a; color: #fff; display: none; }
+    .status-box {
+      width: 100%;
+      max-width: 360px;
+      background: #16161e;
+      border: 1px solid #2a2a3a;
+      border-radius: 16px;
+      padding: 16px 20px;
+    }
+    #status { font-size: 14px; line-height: 1.6; color: #ccc; white-space: pre-wrap; font-family: monospace; }
+    .note {
+      width: 100%; max-width: 360px;
+      font-size: 12px; color: #666; line-height: 1.6;
+      border-top: 1px solid #1e1e2a; padding-top: 16px;
+    }
+    .tag { display: inline-block; font-size: 11px; padding: 2px 8px; border-radius: 20px; font-weight: 600; }
+    .tag-ok   { background: #1a3a1a; color: #4caf50; }
+    .tag-err  { background: #3a1a1a; color: #e24a4a; }
+    .tag-info { background: #1a2a3a; color: #4a90e2; }
+  </style>
+</head>
+<body>
+  <h1>WebRTC Earpiece Test</h1>
+  <p class="subtitle">Minimal isolated test — no Alpha Chat code, no routing logic, no ringtones.</p>
+
+  <div class="card">
+    <div class="card-title">Test config</div>
+    <div id="config" style="font-size:13px; color:#aaa; margin-bottom:16px; line-height:1.7;">
+      • getUserMedia({ audio: true })<br>
+      • Two local RTCPeerConnections (loopback)<br>
+      • Single &lt;audio&gt; element — no playsInline on iOS<br>
+      • No rings, no app logic
+    </div>
+    <button id="btnStart">▶ Start test</button>
+    <button id="btnStop">■ Stop</button>
+  </div>
+
+  <div class="status-box">
+    <div id="status">Waiting for start…</div>
+  </div>
+
+  <!-- The audio element. On iOS: no playsInline attribute. -->
+  <!-- This matches the current state of Alpha Chat remoteAudio.ts -->
+  <audio id="remoteAudio" autoplay="false"></audio>
+
+  <p class="note">
+    Speak into the mic — you will hear your own voice with a slight delay.<br><br>
+    <strong>If you hear yourself through the earpiece</strong> → iOS can do earpiece with WebRTC; Alpha Chat has a specific bug.<br><br>
+    <strong>If you hear yourself through the speaker</strong> → iOS forces speaker on all PWA WebRTC; it's a platform limit, not an app bug.
+  </p>
+
+  <script>
+    const btnStart = document.getElementById('btnStart');
+    const btnStop  = document.getElementById('btnStop');
+    const statusEl = document.getElementById('status');
+    const audioEl  = document.getElementById('remoteAudio');
+
+    let pc1 = null, pc2 = null, micStream = null;
+
+    function log(msg) {
+      const ts = new Date().toTimeString().slice(0, 8);
+      statusEl.textContent += '\n[' + ts + '] ' + msg;
+      statusEl.scrollTop = statusEl.scrollHeight;
+    }
+
+    function clear() { statusEl.textContent = ''; }
+
+    function isIOS() {
+      return /iPhone|iPad|iPod/.test(navigator.userAgent);
+    }
+
+    function ua() {
+      const m = navigator.userAgent.match(/OS ([\d_]+)/);
+      return m ? 'iOS ' + m[1].replace(/_/g, '.') : navigator.userAgent.slice(0, 60);
+    }
+
+    function cleanup() {
+      if (pc1) { pc1.close(); pc1 = null; }
+      if (pc2) { pc2.close(); pc2 = null; }
+      if (micStream) { micStream.getTracks().forEach(t => t.stop()); micStream = null; }
+      audioEl.srcObject = null;
+      btnStart.style.display = '';
+      btnStop.style.display  = 'none';
+    }
+
+    btnStop.addEventListener('click', () => {
+      log('Stopped.');
+      cleanup();
+    });
+
+    btnStart.addEventListener('click', async () => {
+      clear();
+      btnStart.style.display = 'none';
+      btnStop.style.display  = '';
+
+      log('Device: ' + ua());
+      log('playsInline attr: ' + (audioEl.getAttribute('playsinline') ?? 'not set'));
+      log('el.playsInline prop: ' + audioEl.playsInline);
+      log('---');
+
+      // 1. getUserMedia
+      log('getUserMedia({ audio: true })…');
+      try {
+        micStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+        log('✓ Got mic — tracks: ' + micStream.getAudioTracks().length);
+      } catch (e) {
+        log('✗ getUserMedia failed: ' + e.message);
+        cleanup(); return;
+      }
+
+      // 2. Create two loopback PeerConnections
+      log('Creating loopback RTCPeerConnections…');
+      pc1 = new RTCPeerConnection({ iceServers: [] }); // local-only, no STUN/TURN needed
+      pc2 = new RTCPeerConnection({ iceServers: [] });
+
+      pc1.onicecandidate = e => { if (e.candidate) pc2.addIceCandidate(e.candidate).catch(() => {}); };
+      pc2.onicecandidate = e => { if (e.candidate) pc1.addIceCandidate(e.candidate).catch(() => {}); };
+
+      pc1.oniceconnectionstatechange = () => log('pc1 ICE: ' + pc1.iceConnectionState);
+      pc2.oniceconnectionstatechange = () => log('pc2 ICE: ' + pc2.iceConnectionState);
+
+      // 3. ontrack → attach to audio element
+      pc2.ontrack = e => {
+        log('ontrack: kind=' + e.track.kind + ' streams=' + e.streams.length);
+        const stream = e.streams[0] || new MediaStream([e.track]);
+        audioEl.srcObject = stream;
+        log('audioEl.srcObject set, calling play()…');
+        audioEl.play().then(() => {
+          log('✓ play() resolved — listen for your voice');
+          log('--- RESULT: hear earpiece or speaker? ---');
+        }).catch(err => {
+          log('✗ play() rejected: ' + err.message);
+        });
+      };
+
+      // 4. Add mic track to pc1
+      micStream.getTracks().forEach(t => pc1.addTrack(t, micStream));
+      log('Mic track added to pc1');
+
+      // 5. Offer / Answer
+      try {
+        const offer  = await pc1.createOffer();
+        await pc1.setLocalDescription(offer);
+        await pc2.setRemoteDescription(offer);
+        const answer = await pc2.createAnswer();
+        await pc2.setLocalDescription(answer);
+        await pc1.setRemoteDescription(answer);
+        log('SDP exchange complete');
+      } catch (e) {
+        log('✗ SDP failed: ' + e.message);
+        cleanup(); return;
+      }
+    });
+  </script>
+</body>
+</html>
