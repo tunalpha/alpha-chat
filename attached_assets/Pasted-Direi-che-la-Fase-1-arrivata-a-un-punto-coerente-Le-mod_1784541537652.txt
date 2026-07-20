@@ -1,0 +1,63 @@
+Direi che la Fase 1 è arrivata a un punto coerente. Le modifiche seguono una progressione logica:
+
+* M5 → migliora la consegna quando la presenza è “zombie”.
+* M1 → introduce un identificatore stabile.
+* M4 → rende sicuro il retry.
+* M2 → introduce un ACK con significato ben definito.
+* M3 → usa quell’infrastruttura senza creare loop.
+
+Questa è una sequenza che riduce il rischio di regressioni.
+
+Prima di aprire la Fase 2
+
+Io però non inizierei subito a modificare /presence/contacts.
+
+Prima farei un ciclo di validazione della Fase 1.
+
+Ad esempio testerei almeno questi scenari:
+
+Scenario	Atteso
+Chiamata normale	1 solo call.offer, nessun retry
+ACK ritardato ma entro 2 s	Nessun retry
+ACK assente	Un solo retry
+Retry	Nessun doppio squillo
+Due dispositivi dello stesso utente	Una sola sessione di chiamata
+Zombie connection	Push inviata
+WS chiuso durante la chiamata	Nessun loop infinito
+
+Se tutti questi passano, allora la Fase 1 può essere considerata stabilizzata.
+
+⸻
+
+Sulla Fase 2 (last_seen_at)
+
+L’idea è interessante, ma la considererei solo se avete evidenze che il problema esiste ancora.
+
+La domanda che mi farei è:
+
+Dopo il heartbeat a 15 s e le modifiche M5–M3, la presenza è ancora incoerente in modo osservabile?
+
+Se la risposta è no, eviterei di aggiungere subito un secondo meccanismo di verifica.
+
+Se invece osservate ancora casi come:
+
+* REST dice “Online”;
+* WS dice “Offline”;
+
+oppure
+
+* presenza errata oltre la finestra prevista;
+
+allora un controllo basato su last_seen_at può essere una buona protezione aggiuntiva.
+
+La mia raccomandazione
+
+Io chiuderei formalmente la Fase 1, raccoglierei qualche giorno di log in produzione e verificherei:
+
+* numero di retry;
+* percentuale di retry riusciti;
+* eventuali duplicati;
+* tempi medi degli ACK;
+* casi di delivered=false.
+
+Con questi dati sarà molto più semplice decidere se la Fase 2 è davvero necessaria oppure se il sistema di presenza è già sufficientemente affidabile. Questo approccio riduce il rischio di introdurre complessità non necessaria.

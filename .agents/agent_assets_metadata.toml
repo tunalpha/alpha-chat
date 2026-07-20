@@ -12,3 +12,9 @@ id = "wb6oWDTwsrkjQBjUwZsym"
 uri = "file://HARDENING_PHASE1.md"
 type = "text"
 title = "Hardening Fase 1 — Signaling Affidabile (piano approvazione)"
+
+[[outputs]]
+id = "bkMqjBPDwURKWQUaej2ox"
+uri = "file://HARDENING_VALIDATION.md"
+type = "text"
+title = "Validazione Fase 1 — Piano di Test (7 scenari)"
