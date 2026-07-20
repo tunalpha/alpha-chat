@@ -15,7 +15,10 @@
 /* global self, clients */
 'use strict';
 
-const APP_NAME = 'Alpha Chat';
+const APP_NAME   = 'Alpha Chat';
+// Sostituito da vite plugin 'inject-sw-version' al momento del build.
+// In dev rimane '__SW_VERSION__' (accettabile per debug locale).
+const SW_VERSION = '__SW_VERSION__';
 
 // ── Push event ────────────────────────────────────────────────────────────────
 
@@ -115,4 +118,16 @@ self.addEventListener('pushsubscriptionchange', (event) => {
       }
     }),
   );
+});
+
+// ── Version query ─────────────────────────────────────────────────────────────
+// L'app interroga il SW via MessageChannel per scoprire quale build sta girando.
+// Risponde con { type: 'alpha.pong', version: SW_VERSION }.
+
+self.addEventListener('message', (event) => {
+  if (!event.data || event.data.type !== 'alpha.ping') return;
+  const port = event.ports && event.ports[0];
+  if (port) {
+    port.postMessage({ type: 'alpha.pong', version: SW_VERSION });
+  }
 });

@@ -1,4 +1,5 @@
 import path from 'path';
+import fs from 'node:fs';
 import { execSync } from 'child_process';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
@@ -10,6 +11,7 @@ const BUILD_COMMIT = (() => {
   catch { return 'dev'; }
 })();
 const BUILD_DATE = new Date().toISOString().slice(0, 10).replace(/-/g, '.');
+const BUILD_TIME = new Date().toISOString(); // timestamp ISO completo del momento del build
 
 import runtimeErrorOverlay from '@replit/vite-plugin-runtime-error-modal';
 
@@ -30,6 +32,31 @@ export default defineConfig({
     react(),
     tailwindcss(),
     runtimeErrorOverlay(),
+    // Inietta __SW_VERSION__ in sw.js sia in dev che in produzione
+    {
+      name: 'inject-sw-version',
+      // Dev: intercetta le richieste a /sw.js prima che Vite serva il file statico
+      configureServer(server) {
+        server.middlewares.use((req, res, next) => {
+          if (req.url !== '/sw.js') { next(); return; }
+          try {
+            const src = path.resolve(import.meta.dirname, 'public/sw.js');
+            const content = fs.readFileSync(src, 'utf8').replace(/__SW_VERSION__/g, BUILD_COMMIT);
+            res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+            res.setHeader('Cache-Control', 'no-store');
+            res.end(content);
+          } catch { next(); }
+        });
+      },
+      // Build: post-processa dist/public/sw.js dopo che Vite lo ha copiato
+      closeBundle() {
+        const outSw = path.resolve(import.meta.dirname, 'dist/public/sw.js');
+        if (fs.existsSync(outSw)) {
+          const content = fs.readFileSync(outSw, 'utf8').replace(/__SW_VERSION__/g, BUILD_COMMIT);
+          fs.writeFileSync(outSw, content);
+        }
+      },
+    },
     ...(process.env.NODE_ENV !== 'production' &&
     process.env.REPL_ID !== undefined
       ? [
@@ -59,6 +86,7 @@ export default defineConfig({
   define: {
     __BUILD_COMMIT__:  JSON.stringify(BUILD_COMMIT),
     __BUILD_DATE__:    JSON.stringify(BUILD_DATE),
+    __BUILD_TIME__:    JSON.stringify(BUILD_TIME),
     __APP_VERSION__:   JSON.stringify('1.0'),
     __BUILD_TESTS__:   JSON.stringify('174/174'),
   },

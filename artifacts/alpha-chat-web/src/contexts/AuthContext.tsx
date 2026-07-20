@@ -107,6 +107,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         await initSignalKeys(currentStored.userId, currentStored.deviceId);
       } catch { /* non critico */ }
       diagLogger.init(currentStored.userId, currentStored.username ?? '', getAccessToken);
+      void diagLogger.logAppStart().catch(() => {});
       // DIAGNOSTICA TEMPORANEA — invia stato IDB al server dopo restore sessione
       void runSignalDiagnostic(currentStored.userId, currentStored.deviceId).catch(() => {});
       localStorage.setItem(`signal_keys_ready:${currentStored.userId}`, "1");
@@ -226,6 +227,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // Non critico — Signal verrà ritentato al prossimo evento di navigazione
     }
     diagLogger.init(uid, result.user.display_name ?? result.user.username ?? '', getAccessToken);
+    void diagLogger.logAppStart().catch(() => {});
     // DIAGNOSTICA TEMPORANEA — invia stato IDB al server dopo login
     void runSignalDiagnostic(uid, devId).catch(() => {});
     localStorage.setItem(`signal_keys_ready:${uid}`, "1");
@@ -255,6 +257,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await initSignalKeys(uid, devId, newIkKeyPair);
     } catch { /* non critico */ }
     diagLogger.init(uid, result.user.display_name ?? result.user.username ?? '', getAccessToken);
+    void diagLogger.logAppStart().catch(() => {});
     localStorage.setItem(`signal_keys_ready:${uid}`, "1");
     document.body.setAttribute("data-signal-ready", uid);
     window.dispatchEvent(new CustomEvent("signal:ready", { detail: { userId: uid } }));;

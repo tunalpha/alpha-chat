@@ -21,10 +21,14 @@ export interface IDiagnosticEvent extends Document {
   payload:    Record<string, unknown>;
   elapsed_ms: number | null;
   device: {
-    user_agent:   string;
-    platform:     string;
-    network_type: string | null;
-    app_version:  string;
+    user_agent:             string;
+    platform:               string;
+    network_type:           string | null;
+    app_version:            string;
+    build_time:             string | null;
+    service_worker_version: string | null;
+    ios_version:            string | null;
+    safari_version:         string | null;
   };
   created_at: Date;
 }
@@ -39,10 +43,14 @@ const schema = new Schema<IDiagnosticEvent>(
     payload:    { type: Schema.Types.Mixed, default: {} },
     elapsed_ms: { type: Number,  default: null },
     device: {
-      user_agent:   { type: String, default: "" },
-      platform:     { type: String, default: "" },
-      network_type: { type: String, default: null },
-      app_version:  { type: String, default: "" },
+      user_agent:             { type: String, default: "" },
+      platform:               { type: String, default: "" },
+      network_type:           { type: String, default: null },
+      app_version:            { type: String, default: "" },
+      build_time:             { type: String, default: null },
+      service_worker_version: { type: String, default: null },
+      ios_version:            { type: String, default: null },
+      safari_version:         { type: String, default: null },
     },
     created_at: { type: Date, default: Date.now },
   },

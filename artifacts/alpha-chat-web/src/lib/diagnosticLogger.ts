@@ -29,6 +29,27 @@ const BUFFER_SIZE       = 300;
 const FLUSH_INTERVAL_MS = 5_000;
 const DIAG_ENDPOINT     = '/api/v1/diagnostics/events';
 
+/**
+ * Interroga il Service Worker via MessageChannel per ottenere la sua versione.
+ * Risolve entro 1500ms — fallback a stringa descrittiva in caso di timeout/errore.
+ */
+async function querySwVersion(): Promise<string> {
+  if (typeof navigator === 'undefined' || !('serviceWorker' in navigator)) return 'no-sw';
+  try {
+    const reg = await navigator.serviceWorker.getRegistration();
+    if (!reg?.active) return 'no-active-sw';
+    return await new Promise<string>((resolve) => {
+      const ch = new MessageChannel();
+      ch.port1.onmessage = (e: MessageEvent<{ version?: string }>) =>
+        resolve(e.data?.version ?? 'unknown');
+      reg.active!.postMessage({ type: 'alpha.ping' }, [ch.port2]);
+      setTimeout(() => resolve('sw-timeout'), 1500);
+    });
+  } catch {
+    return 'sw-error';
+  }
+}
+
 class DiagnosticLoggerClass {
   private _buffer: DiagnosticEvent[] = [];
   private _nextId = 0;
@@ -42,6 +63,9 @@ class DiagnosticLoggerClass {
   private _sessionId:  string | null = null;
   private _flushTimer: ReturnType<typeof setInterval> | null = null;
   private _lastFlushedId = -1;
+
+  // Versione del Service Worker (ottenuta via postMessage dopo init)
+  private _swVersion: string = 'unknown';
 
   // ── Stato pubblico ─────────────────────────────────────────────────────────
 
@@ -96,6 +120,26 @@ class DiagnosticLoggerClass {
   clearCurrentCall(): void {
     this._callId    = null;
     this._callStart = null;
+  }
+
+  /** Imposta la versione del Service Worker (chiamare dopo querySwVersion). */
+  setSwVersion(v: string): void {
+    this._swVersion = v;
+  }
+
+  /**
+   * Invia l'evento app.start con tutti i metadati di build.
+   * Interroga il SW via MessageChannel per ottenere la sua versione reale.
+   * Chiamare subito dopo diagLogger.init() in AuthContext.
+   */
+  async logAppStart(): Promise<void> {
+    const swVersion = await querySwVersion();
+    this._swVersion = swVersion;
+    this.log('app.start', {
+      app_version:            __BUILD_COMMIT__,
+      build_time:             __BUILD_TIME__,
+      service_worker_version: swVersion,
+    });
   }
 
   // ── Registrazione eventi ───────────────────────────────────────────────────
@@ -153,7 +197,16 @@ class DiagnosticLoggerClass {
   }
 
   private _getDeviceInfo(): Record<string, string | null> {
-    const ua       = typeof navigator !== 'undefined' ? navigator.userAgent : 'unknown';
+    const ua = typeof navigator !== 'undefined' ? navigator.userAgent : 'unknown';
+
+    // iOS version — "iPhone OS 18_7" → "18.7"
+    const iosMatch   = /(?:iPhone|iPad|iPod) OS (\d+[_\d]*)/.exec(ua);
+    const iosVersion = iosMatch ? iosMatch[1].replace(/_/g, '.') : null;
+
+    // Safari version — "Version/26.5.2" → "26.5.2"
+    const safariMatch   = /Version\/([\d.]+)/.exec(ua);
+    const safariVersion = safariMatch ? safariMatch[1] : null;
+
     const platform = typeof navigator !== 'undefined'
       ? ((navigator as unknown as { userAgentData?: { platform?: string } }).userAgentData?.platform
           ?? navigator.platform
@@ -165,10 +218,14 @@ class DiagnosticLoggerClass {
       networkType = conn?.effectiveType ?? null;
     } catch { /* noop */ }
     return {
-      user_agent:   ua,
+      user_agent:             ua,
       platform,
-      network_type: networkType,
-      app_version:  (import.meta.env.VITE_APP_VERSION as string | undefined) ?? 'dev',
+      network_type:           networkType,
+      app_version:            __BUILD_COMMIT__,
+      build_time:             __BUILD_TIME__,
+      service_worker_version: this._swVersion,
+      ios_version:            iosVersion,
+      safari_version:         safariVersion,
     };
   }
 
