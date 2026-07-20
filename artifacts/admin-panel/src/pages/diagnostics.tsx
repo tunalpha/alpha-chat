@@ -9,7 +9,7 @@ import { useState, useCallback, Component, type ReactNode, type ErrorInfo } from
 import { useQuery } from "@tanstack/react-query";
 import {
   getDiagEvents, getDiagCalls, getDiagTimeline, getDiagMetrics, downloadDiagExport, getDiagHealth,
-  type DiagEvent, type DiagCall, type DiagTimeline, type DiagMetrics, type DiagHealth,
+  type DiagEvent, type DiagCall, type DiagTimeline, type DiagMetrics, type DiagHealth, type DiagCalleeInfo,
 } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -519,11 +519,20 @@ function CallTimelineTab({ initialCallId }: { initialCallId?: string }) {
   const paletteFor = (username: string) =>
     participants.get(username)?.palette ?? PARTICIPANT_PALETTES[0];
 
-  // Detect if callee is silent (has no events, but we know their userId from payload)
-  const calleeId = [...participants.values()][0]?.calleeId ?? null;
-  const callerUsername = [...participants.entries()].find(([, v]) => v.isCaller)?.[0] ?? null;
-  const calleeHasEvents = [...participants.entries()].some(([u, v]) => !v.isCaller && u !== callerUsername);
-  const isSilentCallee = !!calleeId && !calleeHasEvents && participants.size > 0;
+  // Callee silence detection — driven by backend callee_info
+  const calleeInfo: DiagCalleeInfo | null = data?.callee_info ?? null;
+  const isSilentCallee = !!calleeInfo && !calleeInfo.has_events_this_call && participants.size > 0;
+
+  function silentReason(ci: DiagCalleeInfo): string {
+    if (!ci.has_any_events) return "⚠ No init — mai ricevuti eventi da questo device";
+    const age = ci.last_event_age_seconds;
+    if (age !== null) {
+      const mins = Math.floor(age / 60);
+      const label = mins < 2 ? `${age}s fa` : mins < 60 ? `${mins} min fa` : `${Math.floor(mins / 60)}h fa`;
+      return `⚠ Silent su questa call — ultimo flush: ${label}`;
+    }
+    return "⚠ Silent — motivo sconosciuto";
+  }
 
   return (
     <div className="space-y-4">
@@ -563,13 +572,21 @@ function CallTimelineTab({ initialCallId }: { initialCallId?: string }) {
               )}
             </div>
           ))}
-          {isSilentCallee && (
-            <div className="flex items-center gap-2 px-3 py-2 rounded-lg border text-xs font-mono bg-red-500/10 border-red-500/30 text-red-300">
-              <AlertTriangle className="w-3 h-3" />
-              <span className="font-semibold opacity-60">{calleeId?.slice(0, 8)}…</span>
-              <span>CALLEE</span>
-              <span className="opacity-50">·</span>
-              <span className="font-bold text-red-400">SILENT — nessun evento</span>
+          {isSilentCallee && calleeInfo && (
+            <div className="flex flex-col gap-1 px-3 py-2 rounded-lg border text-xs font-mono bg-red-500/10 border-red-500/30 text-red-300 min-w-0">
+              <div className="flex items-center gap-2">
+                <AlertTriangle className="w-3 h-3 shrink-0" />
+                <span className="font-semibold">{calleeInfo.user_id?.slice(0, 8)}…</span>
+                <span className="opacity-60">CALLEE</span>
+                <span className="opacity-40">·</span>
+                <span className="opacity-50">0 eventi questa call</span>
+                {calleeInfo.total_events_ever > 0 && (
+                  <span className="opacity-40">/ {calleeInfo.total_events_ever} totali</span>
+                )}
+              </div>
+              <div className="text-red-400 font-semibold pl-5 text-[11px]">
+                {silentReason(calleeInfo)}
+              </div>
             </div>
           )}
         </div>

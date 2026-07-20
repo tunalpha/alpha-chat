@@ -1073,9 +1073,61 @@ router.get("/diagnostics/timeline/:callId", requireAdmin("read_only"), async (re
   try {
     const events = await DiagnosticEventModel.find({ call_id: req.params.callId })
       .sort({ created_at: 1 }).limit(500).lean();
+
+    // Determine caller/callee from events
+    const offerEvent = events.find(e => e.event === "call.offer.sent");
+    const callerUserId = offerEvent?.user_id?.toString() ?? null;
+    const calleeUserIdFromPayload =
+      (offerEvent?.payload as Record<string, unknown> | undefined)?.to as string | undefined ?? null;
+
+    // Find participants in this call
+    const participantUserIds = [...new Set(events.map(e => e.user_id?.toString()).filter(Boolean))];
+
+    // Callee = in payload "to" OR someone in the call who isn't the caller
+    const calleeUserIdActual =
+      calleeUserIdFromPayload ??
+      participantUserIds.find(id => id !== callerUserId) ??
+      null;
+
+    // Callee status: look up their most recent event (any call) in the last 7 days
+    let callee_info: {
+      user_id: string | null;
+      has_any_events: boolean;
+      total_events_ever: number;
+      last_event_at: string | null;
+      last_event_age_seconds: number | null;
+      has_events_this_call: boolean;
+    } = {
+      user_id: calleeUserIdActual,
+      has_any_events: false,
+      total_events_ever: 0,
+      last_event_at: null,
+      last_event_age_seconds: null,
+      has_events_this_call: false,
+    };
+
+    if (calleeUserIdActual) {
+      const hasEventsThisCall = participantUserIds.includes(calleeUserIdActual);
+      const [countResult, lastEvent] = await Promise.all([
+        DiagnosticEventModel.countDocuments({ user_id: calleeUserIdActual }),
+        DiagnosticEventModel.findOne({ user_id: calleeUserIdActual })
+          .sort({ created_at: -1 }).select("created_at").lean(),
+      ]);
+      const lastAt = lastEvent?.created_at ?? null;
+      callee_info = {
+        user_id: calleeUserIdActual,
+        has_any_events: countResult > 0,
+        total_events_ever: countResult,
+        last_event_at: lastAt ? lastAt.toISOString() : null,
+        last_event_age_seconds: lastAt ? Math.floor((Date.now() - lastAt.getTime()) / 1000) : null,
+        has_events_this_call: hasEventsThisCall,
+      };
+    }
+
     res.json({
       call_id: req.params.callId,
       event_count: events.length,
+      callee_info,
       events: events.map((e, i) => ({
         id: e._id.toString(), username: e.username, event: e.event,
         payload: e.payload, elapsed_ms: e.elapsed_ms, device: e.device,

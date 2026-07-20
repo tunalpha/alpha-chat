@@ -459,9 +459,19 @@ export interface DiagMetrics {
   by_day: Array<{ date: string; events: number; calls: number; errors: number }>;
 }
 
+export interface DiagCalleeInfo {
+  user_id: string | null;
+  has_any_events: boolean;
+  total_events_ever: number;
+  last_event_at: string | null;
+  last_event_age_seconds: number | null;
+  has_events_this_call: boolean;
+}
+
 export interface DiagTimeline {
   call_id: string;
   event_count: number;
+  callee_info: DiagCalleeInfo | null;
   events: Array<DiagEvent & { gap_ms: number }>;
 }
 
