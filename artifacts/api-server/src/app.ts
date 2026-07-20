@@ -76,6 +76,139 @@ app.use(clientVersionMiddleware);
 // ── Application routes ────────────────────────────────────────────────────────
 app.use("/api", router);
 
+// ── WebRTC earpiece diagnostic test page ─────────────────────────────────────
+// Servita dal backend per evitare il rewrite SPA "/* → /index.html"
+// URL: /api/webrtc-test
+app.get("/api/webrtc-test", (_req, res) => {
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  res.setHeader("Cache-Control", "no-store");
+  res.send(`<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>WebRTC Earpiece Test</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #0a0a0f; color: #e0e0e0;
+      min-height: 100dvh; display: flex; flex-direction: column;
+      align-items: center; justify-content: flex-start;
+      padding: 32px 20px; gap: 20px;
+    }
+    h1 { font-size: 20px; font-weight: 600; color: #fff; text-align: center; }
+    .subtitle { font-size: 13px; color: #888; text-align: center; line-height: 1.5; max-width: 320px; }
+    .card {
+      width: 100%; max-width: 360px;
+      background: #16161e; border: 1px solid #2a2a3a;
+      border-radius: 16px; padding: 20px;
+    }
+    .card-title { font-size: 12px; color: #666; text-transform: uppercase; letter-spacing: 0.08em; margin-bottom: 12px; }
+    button {
+      width: 100%; padding: 15px; border-radius: 12px; border: none;
+      font-size: 16px; font-weight: 600; cursor: pointer; transition: opacity 0.15s;
+    }
+    button:active { opacity: 0.7; }
+    button:disabled { opacity: 0.35; cursor: default; }
+    #btnStart { background: #4a90e2; color: #fff; }
+    #btnStop  { background: #e24a4a; color: #fff; display: none; }
+    .status-box {
+      width: 100%; max-width: 360px;
+      background: #16161e; border: 1px solid #2a2a3a;
+      border-radius: 16px; padding: 16px 20px;
+    }
+    #status { font-size: 14px; line-height: 1.6; color: #ccc; white-space: pre-wrap; font-family: monospace; }
+    .note {
+      width: 100%; max-width: 360px; font-size: 12px; color: #666;
+      line-height: 1.6; border-top: 1px solid #1e1e2a; padding-top: 16px;
+    }
+  </style>
+</head>
+<body>
+  <h1>WebRTC Earpiece Test</h1>
+  <p class="subtitle">Minimal isolated test — no Alpha Chat code, no routing logic, no ringtones.</p>
+  <div class="card">
+    <div class="card-title">Test config</div>
+    <div style="font-size:13px; color:#aaa; margin-bottom:16px; line-height:1.7;">
+      &bull; getUserMedia({ audio: true })<br>
+      &bull; Two local RTCPeerConnections (loopback)<br>
+      &bull; Single &lt;audio&gt; element — no playsInline on iOS<br>
+      &bull; No rings, no app logic
+    </div>
+    <button id="btnStart">&#9654; Start test</button>
+    <button id="btnStop">&#9632; Stop</button>
+  </div>
+  <div class="status-box"><div id="status">Waiting for start&hellip;</div></div>
+  <audio id="remoteAudio"></audio>
+  <p class="note">
+    Speak into the mic — you will hear your own voice with a short delay.<br><br>
+    <strong>Earpiece</strong> &rarr; iOS can do it; Alpha Chat has a specific bug to isolate.<br>
+    <strong>Speaker</strong> &rarr; iOS PWA platform limit; no JS can change it.
+  </p>
+  <script>
+    const btnStart = document.getElementById('btnStart');
+    const btnStop  = document.getElementById('btnStop');
+    const statusEl = document.getElementById('status');
+    const audioEl  = document.getElementById('remoteAudio');
+    let pc1 = null, pc2 = null, micStream = null;
+
+    function log(msg) {
+      const ts = new Date().toTimeString().slice(0, 8);
+      statusEl.textContent += '\\n[' + ts + '] ' + msg;
+    }
+    function cleanup() {
+      if (pc1) { pc1.close(); pc1 = null; }
+      if (pc2) { pc2.close(); pc2 = null; }
+      if (micStream) { micStream.getTracks().forEach(t => t.stop()); micStream = null; }
+      audioEl.srcObject = null;
+      btnStart.style.display = ''; btnStop.style.display = 'none';
+    }
+    btnStop.addEventListener('click', () => { log('Stopped.'); cleanup(); });
+    btnStart.addEventListener('click', async () => {
+      statusEl.textContent = '';
+      btnStart.style.display = 'none'; btnStop.style.display = '';
+      const ua = navigator.userAgent;
+      const iosM = ua.match(/OS ([\\d_]+)/);
+      log('Device: ' + (iosM ? 'iOS ' + iosM[1].replace(/_/g, '.') : ua.slice(0, 60)));
+      log('playsInline: ' + audioEl.playsInline);
+      log('---');
+      log('getUserMedia({ audio: true })…');
+      try {
+        micStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+        log('OK mic tracks: ' + micStream.getAudioTracks().length);
+      } catch(e) { log('FAIL getUserMedia: ' + e.message); cleanup(); return; }
+      log('Creating loopback RTCPeerConnections…');
+      pc1 = new RTCPeerConnection({ iceServers: [] });
+      pc2 = new RTCPeerConnection({ iceServers: [] });
+      pc1.onicecandidate = e => { if (e.candidate) pc2.addIceCandidate(e.candidate).catch(()=>{}); };
+      pc2.onicecandidate = e => { if (e.candidate) pc1.addIceCandidate(e.candidate).catch(()=>{}); };
+      pc1.oniceconnectionstatechange = () => log('pc1 ICE: ' + pc1.iceConnectionState);
+      pc2.oniceconnectionstatechange = () => log('pc2 ICE: ' + pc2.iceConnectionState);
+      pc2.ontrack = e => {
+        log('ontrack: ' + e.track.kind);
+        audioEl.srcObject = e.streams[0] || new MediaStream([e.track]);
+        audioEl.play()
+          .then(() => { log('play() OK — listen: earpiece or speaker?'); })
+          .catch(err => { log('play() FAIL: ' + err.message); });
+      };
+      micStream.getTracks().forEach(t => pc1.addTrack(t, micStream));
+      log('Mic track added to pc1');
+      try {
+        const offer = await pc1.createOffer();
+        await pc1.setLocalDescription(offer);
+        await pc2.setRemoteDescription(offer);
+        const answer = await pc2.createAnswer();
+        await pc2.setLocalDescription(answer);
+        await pc1.setRemoteDescription(answer);
+        log('SDP exchange complete');
+      } catch(e) { log('SDP FAIL: ' + e.message); cleanup(); }
+    });
+  </script>
+</body>
+</html>`);
+});
+
 // ── 404 handler ───────────────────────────────────────────────────────────────
 app.use((_req, res) => {
   res.status(404).json({
