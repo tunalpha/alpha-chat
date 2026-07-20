@@ -257,6 +257,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
       },
       (stream) => {
         console.log('[ROUTING-DIAG] t=ontrack abs=%d (→ applyRouting)', Date.now());
+        diagLog('routing.ontrack', { abs: Date.now() });
         setRemoteStream(stream);        // React state → UI
         setRemoteAudioStream(stream);   // singleton <audio> element → audio reale
       },
@@ -502,20 +503,27 @@ export function CallProvider({ children }: { children: ReactNode }) {
       // Se _unlocked=true (già sbloccato da una gesture precedente), unlockNotifAudio
       // ritorna istantaneamente (early-exit sincrono dopo il primo if) → zero latenza.
       console.log('[ROUTING-DIAG] t=0 (riferimento) abs=%d', _t0);
+      diagLog('routing.t0', { abs: _t0 }, _acceptCallId);
+
       console.log('[ROUTING-DIAG] t=unlock-START Δ=%dms', Date.now() - _t0);
+      diagLog('routing.unlock.start', { delta_ms: Date.now() - _t0 }, _acceptCallId);
       await unlockNotifAudio().catch(() => {});
       console.log('[ROUTING-DIAG] t=unlock-END Δ=%dms', Date.now() - _t0);
+      diagLog('routing.unlock.end', { delta_ms: Date.now() - _t0 }, _acceptCallId);
 
       // Rilascia la sessione Playback (svuota el.src dei ring) così getUserMedia
       // può creare PlayAndRecord senza interferenze con elementi <audio src> attivi.
       console.log('[ROUTING-DIAG] t=releaseRingForCall Δ=%dms', Date.now() - _t0);
+      diagLog('routing.releaseRing', { delta_ms: Date.now() - _t0 }, _acceptCallId);
       releaseRingForCall();
 
       _currentStep = 1; _stepStart = Date.now();
       console.log('[DIAG-ACCEPT] step 1 — getUserMedia()');
       console.log('[ROUTING-DIAG] t=getUserMedia-START Δ=%dms', Date.now() - _t0);
+      diagLog('routing.gum.start', { delta_ms: Date.now() - _t0 }, _acceptCallId);
       const stream = await raceTimeout(getUserMedia(incomingCall.callType));
       console.log('[ROUTING-DIAG] t=getUserMedia-END (PlayAndRecord attivo) Δ=%dms', Date.now() - _t0);
+      diagLog('routing.gum.end', { delta_ms: Date.now() - _t0 }, _acceptCallId);
       console.log('[DIAG-ACCEPT] step 1 OK — tracks=%d elapsed=%dms', stream.getTracks().length, Date.now() - _stepStart);
       diagLog('accept.step', { step: 1, ok: true, elapsed_ms: Date.now() - _stepStart }, _acceptCallId);
 
@@ -564,10 +572,12 @@ export function CallProvider({ children }: { children: ReactNode }) {
       _currentStep = 4; _stepStart = Date.now();
       console.log('[DIAG-ACCEPT] step 4 — buildPC + setRemoteDescription');
       console.log('[ROUTING-DIAG] t=setRemoteDescription-START Δ=%dms', Date.now() - _t0);
+      diagLog('routing.srd.start', { delta_ms: Date.now() - _t0 }, _acceptCallId);
       const pc = buildPC(incomingCall.fromUserId);
       addTracksToPC(pc, stream);
       await raceTimeout(pc.setRemoteDescription(new RTCSessionDescription(incomingCall.sdp)));
       console.log('[ROUTING-DIAG] t=setRemoteDescription-END Δ=%dms', Date.now() - _t0);
+      diagLog('routing.srd.end', { delta_ms: Date.now() - _t0 }, _acceptCallId);
       console.log('[DIAG-ACCEPT] step 4 OK elapsed=%dms', Date.now() - _stepStart);
       diagLog('accept.step', { step: 4, ok: true, elapsed_ms: Date.now() - _stepStart }, _acceptCallId);
 
