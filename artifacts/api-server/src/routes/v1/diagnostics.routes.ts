@@ -57,10 +57,14 @@ router.post("/events", authenticate, async (req, res, next) => {
       payload:    typeof e.payload === "object" && e.payload !== null ? e.payload as Record<string, unknown> : {},
       elapsed_ms: typeof e.elapsed_ms === "number" ? e.elapsed_ms : null,
       device: {
-        user_agent:   String(device?.user_agent   ?? "").slice(0, 512),
-        platform:     String(device?.platform     ?? "").slice(0, 64),
-        network_type: device?.network_type ? String(device.network_type).slice(0, 32) : null,
-        app_version:  String(device?.app_version  ?? "").slice(0, 32),
+        user_agent:             String(device?.user_agent             ?? "").slice(0, 512),
+        platform:               String(device?.platform               ?? "").slice(0, 64),
+        network_type:           device?.network_type ? String(device.network_type).slice(0, 32) : null,
+        app_version:            String(device?.app_version            ?? "").slice(0, 32),
+        build_time:             device?.build_time             ? String(device.build_time).slice(0, 64)   : null,
+        service_worker_version: device?.service_worker_version ? String(device.service_worker_version).slice(0, 32) : null,
+        ios_version:            device?.ios_version            ? String(device.ios_version).slice(0, 16)  : null,
+        safari_version:         device?.safari_version         ? String(device.safari_version).slice(0, 16) : null,
       },
       created_at: typeof e.timestamp === "string" ? new Date(e.timestamp) : new Date(),
     }));

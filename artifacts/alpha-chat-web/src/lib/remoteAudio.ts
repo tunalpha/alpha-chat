@@ -15,7 +15,10 @@
 
 import { diagLog } from "./diagnosticLogger";
 
-let _el: HTMLAudioElement | null = null;
+// Su iOS usiamo <video> senza playsInline: iOS tratta i video element come "video call"
+// e potrebbe usare il routing earpiece per stream audio-only, a differenza di <audio>
+// che è sempre trattato come media playback → speaker.
+let _el: HTMLVideoElement | HTMLAudioElement | null = null;
 let _audioCtx: AudioContext | null = null;      // usato SOLO da primeRemoteAudio su Chrome (MAI su iOS)
 let _currentStream: MediaStream | null = null;
 let _speakerMode = true;
@@ -65,25 +68,32 @@ function getSilenceBlobUrl(): string {
 
 // ── Element singleton ─────────────────────────────────────────────────────────
 
-function getEl(): HTMLAudioElement | null {
+function getEl(): HTMLVideoElement | HTMLAudioElement | null {
   if (typeof document === "undefined") return null;
   if (!_el) {
-    _el = document.createElement("audio");
-    // IMPORTANTE: NON impostare playsInline = true su iOS.
-    // playsInline forza la sessione AVAudioSession in modalità "media playback"
-    // che instrada l'audio sullo speaker anche se getUserMedia ha aperto una
-    // sessione PlayAndRecord (che di default usa l'auricolare).
-    // Senza playsInline, iOS tratta il flusso WebRTC come audio da telefonata
-    // e lo instrada all'auricolare automaticamente.
-    // Ref: iOS AVAudioSession — PlayAndRecord + defaultToSpeaker flag
-    if (!isIOS()) {
-      // Su non-iOS playsInline non ha effetti negativi sul routing
-      (_el as HTMLAudioElement & { playsInline: boolean }).playsInline = true;
+    if (isIOS()) {
+      // iOS: <video> senza playsInline.
+      // Su iOS, <video> senza playsInline può attivare il routing audio
+      // "video call" (AVAudioSession .voiceChat → earpiece) invece del
+      // routing "media playback" (speaker) usato da <audio> o <video playsInline>.
+      // Per stream audio-only (nessun video track) iOS non va fullscreen.
+      const v = document.createElement("video");
+      v.playsInline = false;
+      v.autoplay    = false;
+      v.muted       = false;
+      v.removeAttribute("webkit-playsinline");
+      v.style.cssText = "position:fixed;width:1px;height:1px;opacity:0;pointer-events:none;top:-2px;left:-2px;";
+      document.body.appendChild(v);
+      _el = v;
+    } else {
+      // Non-iOS: <audio> standard
+      const a = document.createElement("audio");
+      (a as HTMLAudioElement & { playsInline: boolean }).playsInline = true;
+      a.autoplay    = false;
+      a.style.cssText = "position:fixed;width:1px;height:1px;opacity:0;pointer-events:none;top:-2px;left:-2px;";
+      document.body.appendChild(a);
+      _el = a;
     }
-    _el.autoplay    = false;
-    // iOS Safari richiede che l'elemento sia nel DOM per riprodurre MediaStream
-    _el.style.cssText = "position:fixed;width:1px;height:1px;opacity:0;pointer-events:none;top:-2px;left:-2px;";
-    document.body.appendChild(_el);
   }
   return _el;
 }
