@@ -18,7 +18,10 @@ import { diagLog } from "./diagnosticLogger";
 let _el: HTMLAudioElement | null = null;
 let _audioCtx: AudioContext | null = null;      // usato SOLO da primeRemoteAudio su Chrome (MAI su iOS)
 let _currentStream: MediaStream | null = null;
-let _speakerMode = true;
+// Inizializza a false (auricolare): il default per le chiamate audio è earpiece,
+// non speaker. setSpeakerMode(true) viene chiamato esplicitamente solo per video call
+// o quando l'utente preme il pulsante Vivavoce.
+let _speakerMode = false;
 let _playRetryTimer: ReturnType<typeof setTimeout> | null = null;
 let _silenceBlobUrl: string | null = null;      // WAV silenzioso per blessing iOS (no AudioContext)
 
@@ -150,12 +153,36 @@ function applyRouting(): void {
   if (_speakerMode || !hasSinkId) {
     // ── Speaker  ─  OPPURE  ─  iOS/Safari (no setSinkId) ────────────────────
     //
-    // iOS con getUserMedia attivo (PlayAndRecord): il <audio> element va al
-    // receiver (auricolare) per default. Il pulsante vivavoce su iOS non
-    // cambia il routing perché non esistono web API per forzare lo speaker
-    // in PlayAndRecord senza setSinkId. L'audio viene comunque riprodotto. ✓
+    // Su iOS getSinkId non esiste → questo branch è sempre preso.
+    // Il routing fisico dipende dalla porta di uscita dell'AVAudioSession:
+    //
+    //   speakerMode=false (default auricolare):
+    //     <audio srcObject> in PlayAndRecord → iOS usa il receiver (auricolare)
+    //     a patto che nessun <audio src> stia giocando contemporaneamente.
+    //     Non servono API aggiuntive: il default di PlayAndRecord è earpiece.
+    //
+    //   speakerMode=true (vivavoce):
+    //     iOS non espone setSinkId né API per forzare lo speaker lato web.
+    //     Usiamo il "speaker trick": riproduzione brevissima di un <audio src>
+    //     silenzioso → iOS sovrascrive la porta di uscita su speaker → poi
+    //     el.play() con srcObject va sullo speaker. Questo switch è ONE-WAY
+    //     durante la chiamata: per tornare all'auricolare serve riavviare la
+    //     sessione audio (limitazione platform iOS Safari PWA).
     //
     // Chrome speaker mode: <audio> → default output device.
+
+    // ── iOS vivavoce: forza speaker port prima di assegnare srcObject ─────
+    // Il trick DEVE precedere el.pause()/el.play() perché iOS determina la
+    // porta di uscita al momento del play(). Usiamo un elemento temporaneo
+    // (NON l'elemento principale) per non interrompere il flusso audio.
+    if (isIOS() && _speakerMode) {
+      const silEl = document.createElement("audio");
+      silEl.src    = getSilenceBlobUrl();
+      silEl.volume = 0;
+      void silEl.play().then(() => { silEl.pause(); }).catch(() => {});
+      diagLog('applyRouting.ios.speakertrick', { triggered: true });
+    }
+
     const srcChanged = el.srcObject !== _currentStream;
     // iOS routing fix: il routing audio è fissato al primo play() riuscito.
     // Se l'elemento è già in play (srcChanged=false, routing change) dobbiamo
@@ -165,24 +192,24 @@ function applyRouting(): void {
     if (srcChanged) el.srcObject = _currentStream;
     // ── diagLog: srcObject assegnato + esito el.play() ────────────────────
     diagLog('applyRouting', {
-      path:           'ios_speaker',
+      path:              isIOS() ? (_speakerMode ? 'ios_speaker' : 'ios_earpiece') : 'chrome_speaker',
       srcChanged,
       hasSinkId,
-      speakerMode:    _speakerMode,
-      elPaused:       el.paused,
-      elMuted:        el.muted,
+      speakerMode:       _speakerMode,
+      elPaused:          el.paused,
+      elMuted:           el.muted,
       streamAudioTracks: _currentStream?.getAudioTracks().length ?? 0,
     });
     // ──────────────────────────────────────────────────────────────────────
 
     void el.play()
       .then(() => {
-        console.info('[remoteAudio] ✓ el.play() OK (speaker/iOS path)');
-        diagLog('applyRouting.play.ok', { path: 'ios_speaker' });
+        console.info('[remoteAudio] ✓ el.play() OK path=%s', isIOS() ? (_speakerMode ? 'ios_speaker' : 'ios_earpiece') : 'chrome_speaker');
+        diagLog('applyRouting.play.ok', { path: isIOS() ? (_speakerMode ? 'ios_speaker' : 'ios_earpiece') : 'chrome_speaker' });
       })
       .catch((err: unknown) => {
         console.warn('[remoteAudio] el.play() FAILED (attempt 1):', err, '— retry ogni 400ms');
-        diagLog('applyRouting.play.fail', { path: 'ios_speaker', err: String(err) });
+        diagLog('applyRouting.play.fail', { path: 'ios_routing', err: String(err) });
         // Retry progressivo: primeRemoteAudio potrebbe non aver ancora sbloccato l'elemento
         schedulePlayRetry(el, 400, 6); // max 2.4s di tentativi
       });

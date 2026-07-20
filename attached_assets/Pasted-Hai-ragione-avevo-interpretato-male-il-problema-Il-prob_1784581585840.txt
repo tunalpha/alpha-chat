@@ -1,0 +1,50 @@
+Hai ragione, avevo interpretato male il problema.
+
+Il problema non è che l’audio non funziona. Le chiamate ora funzionano perfettamente.
+
+Il vero bug è questo:
+
+* ✅ La chiamata si connette.
+* ✅ L’audio si sente.
+* ❌ L’audio esce sempre dal vivavoce.
+* ❌ Il pulsante Vivavoce non controlla realmente l’uscita audio.
+* ✅ Il comportamento corretto dovrebbe essere:
+    * all’inizio della chiamata → capsula auricolare (earpiece);
+    * solo quando l’utente preme il pulsante Vivavoce → passaggio allo speaker;
+    * premendo di nuovo → ritorno alla capsula auricolare.
+
+Se l’agente ha già provato diversi fix senza risultato, gli chiederei questo:
+
+⸻
+
+Il problema non è il timing ma il controllo dell’output audio.
+
+Le chiamate sono perfettamente funzionanti dopo la correzione TURN.
+
+Rimane un solo bug:
+
+* l’audio viene riprodotto sempre tramite lo speaker (vivavoce);
+* il pulsante “Vivavoce” non modifica realmente il dispositivo di uscita.
+
+Richiesta:
+
+1. Individuare dove viene deciso che l’audio debba uscire dallo speaker.
+2. Verificare se _speakerMode viene inizializzato a true o viene forzato da qualche altra parte.
+3. Cercare qualsiasi chiamata a applyRouting(), setSpeakerMode(), primeRemoteAudio() o codice equivalente che imposti lo speaker automaticamente.
+4. Tracciare con log ogni modifica di _speakerMode, indicando:
+    * chi la esegue;
+    * stack della chiamata;
+    * valore precedente e nuovo.
+5. Verificare che il pulsante “Vivavoce” sia l’unico punto del codice autorizzato a cambiare _speakerMode.
+
+Obiettivo:
+
+* Avvio chiamata → earpiece.
+* Tap su “Vivavoce” → speaker.
+* Secondo tap → ritorno all’earpiece.
+
+Non aggiungere altri workaround sul timing: individuare esattamente il punto del codice che forza l’uscita sullo speaker e correggere la logica.
+
+⸻
+
+Se mi dici se Alpha Chat è una PWA su Safari oppure è un’app iOS nativa (Swift/React Native/Capacitor), posso anche dirti se il comportamento desiderato è tecnicamente ottenibile al 100% oppure se ci sono limitazioni della piattaforma.

@@ -503,8 +503,19 @@ export function CallProvider({ children }: { children: ReactNode }) {
       localStreamRef.current = stream;
       setLocalStream(stream);
 
-      // getUserMedia OK → iOS è ora in sessione PlayAndRecord.
-      void unlockNotifAudio().catch(() => {});
+      // getUserMedia OK → iOS è ora in sessione PlayAndRecord (auricolare di default).
+      // RIMOSSO: void unlockNotifAudio() — NON chiamare qui.
+      // unlockNotifAudio() riproduce TUTTI gli <audio src> (_sounds + _ringEls) anche a
+      // volume=0. Su iOS, qualsiasi <audio src>.play() imposta l'override della porta di
+      // uscita AVAudioSession su "speaker" anche durante PlayAndRecord. Se chiamato DOPO
+      // getUserMedia, distrugge il default earpiece appena stabilito → audio bloccato su
+      // vivavoce per tutta la chiamata.
+      //
+      // L'unlock avviene già dal gestore document-level 'touchstart'/'click' (attachAudioUnlockListener)
+      // che scatta sul tap di "Accetta" PRIMA che acceptCall inizi la catena asincrona.
+      // Se quella è la prima gesture, unlockNotifAudio parte in background PRIMA di
+      // getUserMedia, quindi i play() finiscono (e si mettono in pausa) durante il tempo
+      // della permission dialog o del setup microfono → sessione PlayAndRecord creata PULITA.
 
       _currentStep = 2; _stepStart = Date.now();
       console.log('[DIAG-ACCEPT] step 2 — primeRemoteAudio()');
