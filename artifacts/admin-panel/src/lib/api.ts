@@ -488,12 +488,13 @@ export async function getDiagHealth(): Promise<DiagHealth> {
 }
 
 export async function getDiagEvents(params?: {
-  call_id?: string; username?: string; event_type?: string;
+  call_id?: string; username?: string; user_id?: string; event_type?: string;
   q?: string; since?: string; page?: number; limit?: number;
 }): Promise<{ total: number; page: number; limit: number; pages: number; events: DiagEvent[] }> {
   const qs = new URLSearchParams();
   if (params?.call_id)    qs.set("call_id",    params.call_id);
   if (params?.username)   qs.set("username",   params.username);
+  if (params?.user_id)    qs.set("user_id",    params.user_id);
   if (params?.event_type) qs.set("event_type", params.event_type);
   if (params?.q)          qs.set("q",          params.q);
   if (params?.since)      qs.set("since",      params.since);

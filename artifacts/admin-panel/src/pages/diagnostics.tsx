@@ -217,7 +217,7 @@ function MetricCard({ label, value, sub, danger }: { label: string; value: numbe
 // ── Tab 1: Live Events ───────────────────────────────────────────────────────
 
 function LiveEventsTab() {
-  const [filters, setFilters] = useState({ call_id: "", username: "", event_type: "", q: "", since: "1h" });
+  const [filters, setFilters] = useState({ call_id: "", username: "", user_id: "", event_type: "", q: "", since: "1h" });
   const [page, setPage] = useState(1);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const [copied, setCopied] = useState(false);
@@ -252,26 +252,39 @@ function LiveEventsTab() {
       {/* Filter bar */}
       <div className="flex flex-wrap gap-2 items-center">
         <Input
-          placeholder="call_id"
-          className="w-40 h-8 font-mono text-xs"
+          placeholder="call_id (UUID)"
+          className="w-44 h-8 font-mono text-xs"
           value={filters.call_id}
-          onChange={e => { setFilters(f => ({ ...f, call_id: e.target.value })); setPage(1); }}
+          onChange={e => {
+            const v = e.target.value;
+            // Bug fix: when a call_id is specified the backend bypasses the time filter,
+            // but we also update the UI badge so the user knows the window is unlimited.
+            setFilters(f => ({ ...f, call_id: v, since: v.trim() ? "7d" : f.since }));
+            setPage(1);
+          }}
         />
         <Input
           placeholder="username"
-          className="w-32 h-8 font-mono text-xs"
+          className="w-28 h-8 font-mono text-xs"
           value={filters.username}
           onChange={e => { setFilters(f => ({ ...f, username: e.target.value })); setPage(1); }}
         />
         <Input
-          placeholder="event type"
+          placeholder="user_id (ObjectId)"
+          title="Filtra per user_id MongoDB (24 char hex). Utile per trovare eventi del callee."
           className="w-36 h-8 font-mono text-xs"
+          value={filters.user_id}
+          onChange={e => { setFilters(f => ({ ...f, user_id: e.target.value })); setPage(1); }}
+        />
+        <Input
+          placeholder="event type"
+          className="w-32 h-8 font-mono text-xs"
           value={filters.event_type}
           onChange={e => { setFilters(f => ({ ...f, event_type: e.target.value })); setPage(1); }}
         />
         <Input
-          placeholder="🔍 search"
-          className="w-36 h-8 text-xs"
+          placeholder="🔍 search (incl. payload)"
+          className="w-40 h-8 text-xs"
           value={filters.q}
           onChange={e => { setFilters(f => ({ ...f, q: e.target.value })); setPage(1); }}
         />

@@ -987,19 +987,47 @@ router.get("/diagnostics/events", requireAdmin("read_only"), async (req, res, ne
     const skip   = (page - 1) * limit;
     const callId = qs(req.query.call_id);
     const uname  = qs(req.query.username);
+    const userId = qs(req.query.user_id);
     const evType = qs(req.query.event_type);
     const q      = qs(req.query.q);
     const since  = qs(req.query.since) ?? "1h";
 
     const hoursMap: Record<string, number> = { "15m": 0.25, "1h": 1, "6h": 6, "24h": 24, "7d": 168 };
+    // Bug fix #1: when a specific call_id is requested, never restrict by time —
+    // the call may have happened hours/days ago and would return 0 inside the default 1h window.
+    const skipDateFilter = !!callId;
     const fromDate = new Date(Date.now() - (hoursMap[since] ?? 1) * 3600 * 1000);
 
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const filter: Record<string, any> = { created_at: { $gte: fromDate } };
-    if (callId) filter.call_id  = callId;
+    const filter: Record<string, any> = skipDateFilter ? {} : { created_at: { $gte: fromDate } };
+    if (callId) filter.call_id  = callId;  // exact UUID match on indexed field
     if (uname)  filter.username = new RegExp(uname, "i");
     if (evType) filter.event    = new RegExp(evType, "i");
-    if (q)      filter.$or      = [{ event: new RegExp(q, "i") }, { username: new RegExp(q, "i") }, { call_id: new RegExp(q, "i") }];
+
+    // Bug fix #2: user_id filter — accepts the 24-char hex ObjectId string
+    if (userId) {
+      try {
+        filter.user_id = new mongoose.Types.ObjectId(userId);
+      } catch {
+        // invalid ObjectId string — ignore silently so the query still runs
+      }
+    }
+
+    // Bug fix #3: free-text q now also searches payload fields (to, from, state, step)
+    // so callee/caller ObjectId values visible in payload.to/from can be found.
+    if (q) {
+      const re = new RegExp(q, "i");
+      filter.$or = [
+        { event:           re },
+        { username:        re },
+        { call_id:         re },
+        { "payload.to":    re },
+        { "payload.from":  re },
+        { "payload.state": re },
+        { "payload.step":  re },
+        { "payload.error": re },
+      ];
+    }
 
     const [total, events] = await Promise.all([
       DiagnosticEventModel.countDocuments(filter),
