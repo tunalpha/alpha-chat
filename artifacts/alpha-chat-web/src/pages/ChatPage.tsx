@@ -807,7 +807,10 @@ export default function ChatPage({ onNavigate }: Props) {
               reportAudit("AUDIT-6-decrypt-ok", { msgId: msg.id, entryType: myEntry.type });
               // Persisti in IDB: l'OTPK è ora consumato, le sessioni future
               // leggeranno da cache invece di ritentare Signal (e ottenere null).
-              void cacheDecryptedMeta(msg.id, found);
+              // await: garantisce che l'IDB write completi prima del return;
+              // senza await, una navigazione rapida via può svuotare il plaintext
+              // dall'IDB → al reload Signal riprova, OTPK assente → 🔒 permanente.
+              await cacheDecryptedMeta(msg.id, found);
               setDecryptedTexts((prev) => new Map(prev).set(msg.id, found));
               return;
             }
