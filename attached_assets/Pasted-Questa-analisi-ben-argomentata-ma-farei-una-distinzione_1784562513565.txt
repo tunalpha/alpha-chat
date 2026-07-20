@@ -1,0 +1,70 @@
+Questa analisi è ben argomentata, ma farei una distinzione tra ciò che è dimostrato dal codice e ciò che è dedotto dal comportamento di Safari.
+
+Quello che è dimostrato
+
+Dai log e dal codice emerge una catena molto forte:
+
+1. accept.step 1 termina con successo (getUserMedia() OK).
+2. Lo step 2 contiene un solo await:
+
+await raceTimeout(primeRemoteAudio().catch(() => {}));
+
+3. Non compare mai accept.step 2 OK.
+4. Compare:
+
+accept.timeout step:2
+accept.error step:2
+
+Quindi è supportato dai dati che:
+
+primeRemoteAudio() non completa entro il timeout.
+
+⸻
+
+Quello che è molto probabile
+
+L’analisi di primeRemoteAudio() mostra inoltre:
+
+* il primo await è await el.play();
+* se el.play() rimane pending, il resto della funzione non viene mai eseguito;
+* il catch intercetta solo un reject, non una Promise che resta pending.
+
+Questa parte è corretta dal punto di vista JavaScript.
+
+⸻
+
+L’unico punto che richiede prudenza
+
+Questa affermazione:
+
+“Su iOS Safari, play() con srcObject=null produce una Promise pending permanente.”
+
+È plausibile, ma non è una proprietà garantita dalla specifica HTML.
+
+Il comportamento di HTMLMediaElement.play() con un elemento senza sorgente può variare tra:
+
+* reject (NotSupportedError);
+* reject (NotAllowedError);
+* pending finché cambia lo stato del media;
+* differenze tra versioni di Safari/iOS.
+
+Quindi eviterei di presentarlo come una certezza universale.
+
+Una formulazione più rigorosa sarebbe:
+
+“I dati sono compatibili con un el.play() che rimane pending nelle condizioni osservate su questo dispositivo/iOS. La documentazione non garantisce che questo accada sempre, ma spiega perfettamente i log raccolti.”
+
+⸻
+
+La RCA è ormai quasi chiusa
+
+A questo punto avete:
+
+* ✔️ escluso il signaling;
+* ✔️ escluso il DND;
+* ✔️ escluso getUserMedia();
+* ✔️ individuato la funzione responsabile (primeRemoteAudio()).
+
+Resta solo un’ultima verifica per trasformare un’ipotesi molto forte in una certezza: accertare che al momento della chiamata a primeRemoteAudio() l’elemento audio abbia effettivamente srcObject === null.
+
+Se questa verifica conferma che srcObject è nullo quando viene eseguito el.play(), allora la root cause è sostanzialmente completa: lo step 2 tenta di “primare” un elemento audio prima che esista uno stream remoto da riprodurre, e in quelle condizioni la Promise di play() non termina entro il timeout osservato su iOS.
