@@ -7,6 +7,8 @@
  *  - ICE restart support via pc.restartIce()
  */
 
+import { diagLog } from "./diagnosticLogger";
+
 export type CallType = "audio" | "video";
 export type FacingMode = "user" | "environment";
 
@@ -41,9 +43,11 @@ export async function getUserMedia(callType: CallType, facingMode: FacingMode = 
       ? { audio: true, video: { width: { ideal: 1280 }, height: { ideal: 720 }, facingMode } }
       : { audio: true, video: false };
   console.log('[webrtc] getUserMedia constraints=%o', constraints);
+  diagLog('getUserMedia.start', { callType });
   const stream = await navigator.mediaDevices.getUserMedia(constraints);
   console.log('[webrtc] getUserMedia ✓ audioTracks=%d videoTracks=%d',
     stream.getAudioTracks().length, stream.getVideoTracks().length);
+  diagLog('getUserMedia.ok', { audioTracks: stream.getAudioTracks().length, videoTracks: stream.getVideoTracks().length });
   stream.getAudioTracks().forEach((t) =>
     console.log('[webrtc]   localAudio id=%s enabled=%s readyState=%s', t.id, t.enabled, t.readyState));
   return stream;
@@ -99,12 +103,14 @@ export function createPeerConnection(
 
   pc.onconnectionstatechange = () => {
     console.log('[webrtc] connectionState → %s', pc.connectionState);
+    diagLog('pc.state', { state: pc.connectionState });
     onConnectionStateChange(pc.connectionState);
   };
 
   if (onIceStateChange) {
     pc.oniceconnectionstatechange = () => {
       console.log('[webrtc] iceConnectionState → %s', pc.iceConnectionState);
+      diagLog('ice.state', { state: pc.iceConnectionState });
       onIceStateChange(pc.iceConnectionState);
     };
   }

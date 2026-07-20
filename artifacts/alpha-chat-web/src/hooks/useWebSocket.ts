@@ -1,5 +1,6 @@
 import { useEffect, useRef, useCallback, useState } from "react";
 import { getAccessToken } from "../lib/auth";
+import { diagLog } from "../lib/diagnosticLogger";
 
 export type WsEvent =
   | { type: "message.new"; payload: Record<string, unknown> }
@@ -124,6 +125,7 @@ export function useWebSocket(accessToken: string | null) {
       ws.onopen = () => {
         if (!mountedRef.current) { ws.close(); return; }
         console.log('[WS] onopen — connessione TCP stabilita');
+        diagLog('ws.open');
         ws.send(JSON.stringify({ type: "auth", payload: { token: freshToken } }));
         console.log('[WS] auth sent — token=' + freshToken.substring(0, 12) + '...');
         reconnectDelay.current = 1000; // reset backoff su connessione riuscita
@@ -142,6 +144,7 @@ export function useWebSocket(accessToken: string | null) {
 
         if (event.type === "auth.ok") {
           console.log('[WS] auth.ok ricevuto — WS autenticata e pronta');
+          diagLog('ws.auth.ok');
           if (mountedRef.current) setConnected(true);
 
           // Flush coda: consegna gli eventi accodati durante la disconnessione,
@@ -164,6 +167,7 @@ export function useWebSocket(accessToken: string | null) {
 
       ws.onclose = (ev) => {
         console.log('[WS] onclose — code=' + ev.code + ' reason=' + (ev.reason || '(none)') + ' wasClean=' + ev.wasClean);
+        diagLog('ws.close', { code: ev.code, reason: ev.reason || '', wasClean: ev.wasClean });
         if (mountedRef.current) setConnected(false);
         if (!mountedRef.current) return;
         const delay = reconnectDelay.current;
@@ -178,6 +182,7 @@ export function useWebSocket(accessToken: string | null) {
 
       ws.onerror = (ev) => {
         console.log('[WS] onerror — type=' + ev.type);
+        diagLog('ws.error', { type: ev.type });
         ws.close();
       };
     }

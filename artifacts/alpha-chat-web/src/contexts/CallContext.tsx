@@ -27,6 +27,7 @@ import {
 } from "../lib/remoteAudio";
 import { startRing, stopRing, startRingback, stopRingback, unlockNotifAudio } from "../lib/notifSound";
 import { apiLogCall } from "../lib/api";
+import { diagLog, diagLogger } from "../lib/diagnosticLogger";
 
 // ── Tipi ─────────────────────────────────────────────────────────────────────
 
@@ -190,6 +191,8 @@ export function CallProvider({ children }: { children: ReactNode }) {
 
   function cleanup(reason: CallEndReason = "normal") {
     console.log('[Call] cleanup reason=%s', reason);
+    diagLog('call.cleanup', { reason });
+    diagLogger.clearCurrentCall();
     stopRing();     // ferma suoneria callee
     stopRingback(); // ferma ringback chiamante
     clearCallTimeout();
@@ -337,6 +340,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
       callIdRef.current         = crypto.randomUUID();
       offerSentAtRef.current    = Date.now();
       retryAttemptedRef.current = false;
+      diagLogger.setCurrentCall(callIdRef.current, offerSentAtRef.current);
 
       const offerPayload = {
         to_user_id:        toUserId,
@@ -349,6 +353,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
 
       wsSend({ type: "call.offer", payload: offerPayload });
       console.log('[Call] call.offer inviato → call_id=%s sent_at=%d', callIdRef.current, offerSentAtRef.current);
+      diagLog('call.offer.sent', { to: toUserId, call_type: type, call_id: callIdRef.current });
 
       // M3 — Timer ACK (2s): un solo retry automatico se call.signal_ack non arriva.
       // Cancellato immediatamente in handleWsCallEvent case "call.signal_ack" per
@@ -364,6 +369,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
         retryAttemptedRef.current = true;
         const elapsed = Date.now() - capturedSentAt;
         console.warn('[CALL_RETRY] call_id=%s attempt=2 reason=no_ack elapsed=%dms', capturedCallId, elapsed);
+        diagLog('call.offer.retry', { call_id: capturedCallId, elapsed_ms: elapsed });
         wsSend({ type: "call.offer", payload: { ...offerPayload, sent_at: Date.now() } });
         // Nessun nuovo ackTimer — un solo retry. Il 30s callTimeoutRef gestisce il cleanup finale.
       }, 2_000);
@@ -409,6 +415,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
         () => {
           const elapsed = Date.now() - _stepStart;
           console.error('[DIAG-ACCEPT] timeout 15s scattato — step bloccato: step=%d elapsed=%dms', _currentStep, elapsed);
+          diagLog('accept.timeout', { step: _currentStep, elapsed_ms: elapsed });
           reject(new Error(`[acceptCall] timeout 15s — step ${_currentStep} bloccato`));
         },
         15_000,
@@ -427,6 +434,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
       console.log('[DIAG-ACCEPT] step 1 — getUserMedia()');
       const stream = await raceTimeout(getUserMedia(incomingCall.callType));
       console.log('[DIAG-ACCEPT] step 1 OK — tracks=%d elapsed=%dms', stream.getTracks().length, Date.now() - _stepStart);
+      diagLog('accept.step', { step: 1, ok: true, elapsed_ms: Date.now() - _stepStart });
 
       // FIX: assegna il ref IMMEDIATAMENTE dopo getUserMedia, prima di qualsiasi
       // await successivo. Se un'eccezione viene lanciata nei passi seguenti,
@@ -442,11 +450,13 @@ export function CallProvider({ children }: { children: ReactNode }) {
       console.log('[DIAG-ACCEPT] step 2 — primeRemoteAudio()');
       await raceTimeout(primeRemoteAudio().catch(() => {}));
       console.log('[DIAG-ACCEPT] step 2 OK elapsed=%dms', Date.now() - _stepStart);
+      diagLog('accept.step', { step: 2, ok: true, elapsed_ms: Date.now() - _stepStart });
 
       _currentStep = 3; _stepStart = Date.now();
       console.log('[DIAG-ACCEPT] step 3 — loadIceConfig()');
       await raceTimeout(loadIceConfig());
       console.log('[DIAG-ACCEPT] step 3 OK elapsed=%dms', Date.now() - _stepStart);
+      diagLog('accept.step', { step: 3, ok: true, elapsed_ms: Date.now() - _stepStart });
 
       _currentStep = 4; _stepStart = Date.now();
       console.log('[DIAG-ACCEPT] step 4 — buildPC + setRemoteDescription');
@@ -454,24 +464,29 @@ export function CallProvider({ children }: { children: ReactNode }) {
       addTracksToPC(pc, stream);
       await raceTimeout(pc.setRemoteDescription(new RTCSessionDescription(incomingCall.sdp)));
       console.log('[DIAG-ACCEPT] step 4 OK elapsed=%dms', Date.now() - _stepStart);
+      diagLog('accept.step', { step: 4, ok: true, elapsed_ms: Date.now() - _stepStart });
 
       _currentStep = 5; _stepStart = Date.now();
       console.log('[DIAG-ACCEPT] step 5 — createAnswer');
       const answer = await raceTimeout(pc.createAnswer());
       console.log('[DIAG-ACCEPT] step 5 OK — type=%s elapsed=%dms', answer.type, Date.now() - _stepStart);
+      diagLog('accept.step', { step: 5, ok: true, elapsed_ms: Date.now() - _stepStart });
 
       _currentStep = 6; _stepStart = Date.now();
       console.log('[DIAG-ACCEPT] step 6 — setLocalDescription');
       await raceTimeout(pc.setLocalDescription(answer));
       console.log('[DIAG-ACCEPT] step 6 OK elapsed=%dms', Date.now() - _stepStart);
+      diagLog('accept.step', { step: 6, ok: true, elapsed_ms: Date.now() - _stepStart });
 
       _currentStep = 7;
       const wsReady = wsSendRef.current !== null;
       console.log('[DIAG-ACCEPT] step 7 — send call.answer → to=%s wsReady=%s', incomingCall.fromUserId, wsReady);
+      diagLog('accept.ws.ready', { wsReady, step: 7 });
       wsSend({
         type: "call.answer",
         payload: { to_user_id: incomingCall.fromUserId, sdp: answer, call_id: callIdRef.current },
       });
+      diagLog('call.answer.sent', { to: incomingCall.fromUserId, wsReady, call_id: callIdRef.current });
 
       // Imposta modalità audio iniziale: auricolare per chiamate vocali, speaker per video
       const defaultSpeaker = incomingCall.callType === "video";
@@ -490,10 +505,12 @@ export function CallProvider({ children }: { children: ReactNode }) {
       setRemoteUserId(incomingCall.fromUserId);
       setRemoteDisplayName(incomingCall.fromDisplayName);
       setIncomingCall(null);
+      diagLog('accept.complete', { call_id: callIdRef.current });
       startDurationTimer();
 
     } catch (err) {
       console.error("[Call] acceptCall error —", err);
+      diagLog('accept.error', { err: String(err), step: _currentStep });
       if (incomingCall) {
         wsSend({ type: "call.reject", payload: { to_user_id: incomingCall.fromUserId, reason: "error", call_id: callIdRef.current } });
       }
@@ -509,6 +526,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
   const rejectCall = useCallback(() => {
     if (incomingCall) {
       wsSend({ type: "call.reject", payload: { to_user_id: incomingCall.fromUserId, reason: "declined", call_id: callIdRef.current } });
+      diagLog('call.reject.sent', { to: incomingCall.fromUserId, call_id: callIdRef.current });
     }
     cleanup("declined");
   }, [incomingCall]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -517,7 +535,10 @@ export function CallProvider({ children }: { children: ReactNode }) {
 
   const endCall = useCallback(() => {
     const peerId = peerIdRef.current ?? remoteUserId;
-    if (peerId) wsSend({ type: "call.end", payload: { to_user_id: peerId, call_id: callIdRef.current } });
+    if (peerId) {
+      wsSend({ type: "call.end", payload: { to_user_id: peerId, call_id: callIdRef.current } });
+      diagLog('call.end.sent', { to: peerId, call_id: callIdRef.current });
+    }
     cleanup("normal");
   }, [remoteUserId]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -577,6 +598,8 @@ export function CallProvider({ children }: { children: ReactNode }) {
         console.log('[DIAG-CP2] setIncomingCall() in esecuzione, from=', payload["from_user_id"]);
         // Estrai e memorizza il call_id generato dal caller (M1).
         callIdRef.current = (payload["call_id"] as string | undefined) ?? crypto.randomUUID();
+        diagLogger.setCurrentCall(callIdRef.current, callStartedAtRef.current?.getTime() ?? Date.now());
+        diagLog('call.incoming.received', { from: payload["from_user_id"] as string, call_type: payload["call_type"] as string });
         setIncomingCall({
           fromUserId:      payload["from_user_id"] as string,
           fromDisplayName: payload["from_display_name"] as string,
@@ -605,6 +628,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
         clearCallTimeout();
         stopRingback(); // callee ha risposto → stop ringback lato caller
         console.log('[Call] call.answered → stopRingback(), primeRemoteAudio(), setRemoteDescription');
+        diagLog('call.answer.received', { call_id: payload["call_id"] as string | undefined ?? '' });
         callAnsweredAtRef.current = new Date();
         // Re-prime AudioContext nel contesto corrente (il caller è in ascolto attivo)
         void primeRemoteAudio().catch(() => {});
@@ -679,6 +703,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
         // Solo call.offer gestito da M3; gli altri event_type sono solo diagnostici.
         if (eventType !== "call.offer" || ackCallId !== callIdRef.current) {
           console.log('[Call] call.signal_ack passthrough — call_id=%s event_type=%s delivered=%s', ackCallId, eventType, delivered);
+          diagLog('call.signal_ack.passthrough', { call_id: ackCallId ?? '', event_type: eventType ?? '', delivered: delivered ?? null });
           break;
         }
 
@@ -690,11 +715,13 @@ export function CallProvider({ children }: { children: ReactNode }) {
         if (delivered === true) {
           // Consegnato a ≥1 socket OPEN del callee — chiamata in corso normalmente.
           console.log('[Call] call.signal_ack delivered=true — call_id=%s rtt=%dms', ackCallId, rtt);
+          diagLog('call.signal_ack', { delivered: true, call_id: ackCallId ?? '', rtt_ms: rtt });
         } else {
           // Condizione 3: delivered=false è già un ACK.
           // Il server ha ricevuto l'offer ma non aveva socket OPEN → push + pendingCalls attivi.
           // Non bisogna ritentare via WS; il 30s callTimeoutRef gestisce il cleanup se nessuno risponde.
           console.warn('[Call] call.signal_ack delivered=false — call_id=%s rtt=%dms; push/pendingCalls in corso, nessun retry WS', ackCallId, rtt);
+          diagLog('call.signal_ack', { delivered: false, call_id: ackCallId ?? '', rtt_ms: rtt });
         }
         break;
       }

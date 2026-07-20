@@ -35,6 +35,7 @@ import AppearancePage from "./pages/AppearancePage";
 import NotificationsPage from "./pages/NotificationsPage";
 import LanguagePage from "./pages/LanguagePage";
 import NuclearDestroyPage from "./pages/NuclearDestroyPage";
+import DiagnosticsPage from "./pages/DiagnosticsPage";
 import { useNotifSync } from "./hooks/useNotifSync";
 import { initServiceWorker, requestAndSubscribe as pushSubscribe } from "./lib/pushManager";
 import SignalReinstallBanner from "./components/SignalReinstallBanner";
@@ -61,7 +62,8 @@ export type AppView =
   | "appearance"
   | "notifications-settings"
   | "language"
-  | "nuclear-destroy";
+  | "nuclear-destroy"
+  | "diagnostics";
 
 /** Controlla se l'URL corrente è la pagina di emergenza (accessibile senza auth). */
 function isEmergencyPath(): boolean {
@@ -233,6 +235,8 @@ function AppContent() {
             return <NotificationsPage onBack={goSettings} />;
           case "language":
             return <LanguagePage onBack={goSettings} />;
+          case "diagnostics":
+            return <DiagnosticsPage onBack={goBack} />;
           // group-info è gestito come overlay dentro ChatPage
           default:
             return <ChatPage onNavigate={setView} />;

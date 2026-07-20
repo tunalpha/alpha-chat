@@ -11,7 +11,7 @@ import { TIMEOUT_OPTIONS } from "../lib/security/lock-settings";
 
 interface Props {
   onBack: () => void;
-  onNavigate?: (view: string) => void;
+  onNavigate?: (view: import("../App").AppView) => void;
 }
 
 type SubView = "main" | "setup-pin-new" | "setup-pin-confirm" | "change-pin-old" | "change-pin-new" | "change-pin-confirm";

@@ -13,6 +13,7 @@ import { useEffect, useState } from "react";
 import { useCall } from "../contexts/CallContext";
 import { startRing, stopRing, unlockNotifAudio } from "../lib/notifSound";
 import { primeRemoteAudio } from "../lib/remoteAudio";
+import { diagLog } from "../lib/diagnosticLogger";
 
 export default function IncomingCallModal() {
   const { incomingCall, callType, acceptCall, rejectCall } = useCall();
@@ -41,7 +42,8 @@ export default function IncomingCallModal() {
   // il reset avviene solo quando cambia l'identità della chiamata.
   useEffect(() => {
     setAccepting(false);
-  }, [incomingCall?.callId]);
+    diagLog('spinner.stop.reset', { callId: incomingCall?.callId ?? 'null' });
+  }, [incomingCall?.callId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Log diagnostico — conferma RCA ──────────────────────────────────────────
   // Permette di verificare se accepting=true prima di qualsiasi tap su "Accetta".
@@ -61,6 +63,7 @@ export default function IncomingCallModal() {
     if (!accepting) return;
     const t = setTimeout(() => {
       console.error('[ICM] safety-net 16s — acceptCall() ancora in corso, forzo rejectCall()');
+      diagLog('spinner.stop.safety_net', { callId: incomingCall?.callId ?? 'null' });
       rejectCall();
       setAccepting(false);
     }, 16_000);
@@ -80,6 +83,7 @@ export default function IncomingCallModal() {
       return;
     }
     setAccepting(true);
+    diagLog('spinner.start', { callId: incomingCall?.callId ?? '', from: incomingCall?.fromUserId ?? '' });
     // 🔑 iOS gesture context: fire-and-forget, NON await.
     // getUserMedia() dentro acceptCall() deve essere nel primo tick del gesture.
     // primeRemoteAudio/unlockNotifAudio partono in parallelo come side-effect.
