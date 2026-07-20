@@ -87,7 +87,7 @@ export default function IncomingCallModal() {
     // 🔑 iOS gesture context: fire-and-forget, NON await.
     // getUserMedia() dentro acceptCall() deve essere nel primo tick del gesture.
     // primeRemoteAudio/unlockNotifAudio partono in parallelo come side-effect.
-    void primeRemoteAudio().catch(() => {});
+    void primeRemoteAudio(undefined, 'modal').catch(() => {});
     void unlockNotifAudio().catch(() => {});
     stopRing();
     // Cattura il reject: se acceptCall() va in timeout (12s getUserMedia) o lancia

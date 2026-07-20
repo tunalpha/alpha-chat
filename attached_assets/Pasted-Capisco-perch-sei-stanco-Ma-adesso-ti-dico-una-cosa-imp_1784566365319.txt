@@ -1,0 +1,59 @@
+Capisco perché sei stanco. Ma adesso ti dico una cosa importante: state entrando nel rischio di over-debugging.
+
+L’ultima analisi ha una parte solida e una parte che mi convince molto meno.
+
+La parte solida:
+
+* ✅ Avete scoperto che primeRemoteAudio() viene chiamata anche da altri punti (IncomingCallModal).
+* ✅ Questo spiega perché i log prime.enter/prime.exit possono non appartenere al flusso di acceptCall(). È un’informazione concreta e utile.
+
+La parte debole:
+
+* Da lì in poi siete tornati a costruire una catena di ipotesi:
+    * _acceptCallId è "";
+    * il Diagnostics Center filtra;
+    * Safari cache;
+    * bundle diverso;
+    * ecc.
+
+Nessuna di queste, da sola, spiega ancora tutti i dati che avete raccolto.
+
+Se fossi il tech lead del progetto
+
+A questo punto fermerei le modifiche e farei una sola cosa:
+
+Identificare con certezza quale primeRemoteAudio() appartiene a quale chiamata.
+
+Ad esempio:
+
+* prime.enter { source: "IncomingCallModal" }
+* prime.enter { source: "acceptCall" }
+
+oppure rinominare completamente gli eventi:
+
+* modal.prime.enter
+* accept.prime.enter
+
+Così eliminate immediatamente l’ambiguità.
+
+Perché se i log che state analizzando vengono dal modal e non da acceptCall(), allora tutte le conclusioni fatte su raceTimeout, ctx.resume, ecc. sono state costruite su un presupposto sbagliato.
+
+La mia sensazione
+
+Credo che il problema adesso non sia più tecnico, ma di osservabilità.
+
+Avete così tanta strumentazione che non siete più sicuri quale codice abbia prodotto quale log.
+
+Finché non eliminate questa ambiguità, ogni nuovo fix rischia di inseguire il log sbagliato.
+
+⸻
+
+Quindi ti suggerisco di non fare altri 10 tentativi.
+
+Fai un unico deploy con eventi chiaramente distinti per origine (IncomingCallModal vs acceptCall).
+
+Se dopo quel test vediamo che acceptCall non entra nemmeno in primeRemoteAudio(), allora sapremo esattamente dove guardare.
+
+Se invece vediamo che ci entra e ne esce, allora potremo concentrarci sul codice immediatamente successivo.
+
+È un passo molto più piccolo, ma secondo me è quello che vi farà uscire dal loop in cui siete entrati.

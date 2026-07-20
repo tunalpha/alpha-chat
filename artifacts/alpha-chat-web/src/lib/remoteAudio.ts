@@ -174,13 +174,16 @@ function applyRouting(): void {
  * associati alla chiamata corretta anche se diagLogger.clearCurrentCall()
  * viene invocato da un WS handler concorrente.
  */
-export async function primeRemoteAudio(callId?: string): Promise<void> {
+export async function primeRemoteAudio(callId?: string, source?: string): Promise<void> {
   // Tutti i checkpoint usano diagLog (non console.log) per essere visibili
   // nel Diagnostics Center senza Safari Web Inspector.
   const dlog = (event: string, payload: Record<string, unknown> = {}) =>
     diagLog(event, payload, callId);
 
-  dlog('prime.enter');
+  // "source" identifica il call site (es. "acceptCall", "modal", "startCall", "callAnswered")
+  // così i log prime.* sono disambiguati senza ambiguità anche quando più flussi
+  // chiamano primeRemoteAudio() in sequenza ravvicinata.
+  dlog('prime.enter', { source: source ?? 'unknown' });
 
   const el = getEl();
   dlog('prime.el', { present: !!el });

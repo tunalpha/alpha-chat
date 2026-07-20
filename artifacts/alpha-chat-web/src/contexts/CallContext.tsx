@@ -319,7 +319,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
       // iOS è ora in PlayAndRecord — l'<audio> element viene sbloccato nella
       // sessione audio corretta. Non await: il remote stream arriva più tardi
       // (ICE + negotiate), dando tempo sufficiente al priming di completarsi.
-      void primeRemoteAudio().catch(() => {});
+      void primeRemoteAudio(undefined, 'startCall').catch(() => {});
 
       // ── Ringback lato chiamante ───────────────────────────────────────────
       // Il chiamante sente un tono di ringback (425 Hz, 1s on/3s off) che indica
@@ -436,15 +436,6 @@ export function CallProvider({ children }: { children: ReactNode }) {
     const raceTimeout = <T,>(p: Promise<T>): Promise<T> => Promise.race([p, totalTimeout]);
 
     try {
-      // ── Probe diagnostico: verifica che il nuovo bundle sia in esecuzione e che
-      // _acceptCallId sia valorizzato correttamente.
-      // accept.probe.noId   → usa diagLogger._callId  (appare sempre se la chiamata è tracciata)
-      // accept.probe.withId → usa _acceptCallId       (appare solo se _acceptCallId è non-vuoto e corretto)
-      // Se accept.probe.noId appare ma accept.probe.withId no → _acceptCallId è "" o errato.
-      // Se nessuno dei due appare → bundle vecchio ancora in cache o diagLogger non inizializzato.
-      diagLog('accept.probe.noId',   { v: 4, callIdSnapshot: _acceptCallId, hasId: !!_acceptCallId });
-      diagLog('accept.probe.withId', { v: 4, callIdSnapshot: _acceptCallId, hasId: !!_acceptCallId }, _acceptCallId);
-
       // iOS Safari: getUserMedia DEVE venire prima di qualsiasi await di rete.
       // stopRing() è sync, quindi non consuma il gesture context.
       stopRing();
@@ -474,7 +465,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
       // già settled — comportamento confermato dai log: prime.exit compare ma
       // prime.call.after non appare mai, mentre il timeout 15s scatta regolarmente.
       // Aggiungiamo un guard indipendente da 3s come safety net.
-      const _primePromise = primeRemoteAudio(_acceptCallId).catch(() => {});
+      const _primePromise = primeRemoteAudio(_acceptCallId, 'acceptCall').catch(() => {});
       _primePromise.then(() => diagLog('prime.inner.resolved', { step: 2 }, _acceptCallId));
       await Promise.race([
         _primePromise,
@@ -668,7 +659,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
         diagLog('call.answer.received', { call_id: payload["call_id"] as string | undefined ?? '' });
         callAnsweredAtRef.current = new Date();
         // Re-prime AudioContext nel contesto corrente (il caller è in ascolto attivo)
-        void primeRemoteAudio().catch(() => {});
+        void primeRemoteAudio(undefined, 'callAnswered').catch(() => {});
         pc.setRemoteDescription(new RTCSessionDescription(payload["sdp"] as RTCSessionDescriptionInit))
           .then(() => {
             console.log('[Call] setRemoteDescription answer OK → active');
