@@ -240,6 +240,9 @@ export function createWsServer(httpServer: HttpServer): WebSocketServer {
 
         // ── WebRTC signaling Sprint 25 — busy/DND/multi-device ───────────
         case "call.offer": {
+          // [TIMING] T0 — ricezione call.offer
+          const _t0 = performance.now();
+
           const p = (event.payload ?? {}) as Record<string, unknown>;
           const toId   = p["to_user_id"] as string | undefined;
           const callId = p["call_id"]    as string | undefined;
@@ -265,8 +268,16 @@ export function createWsServer(httpServer: HttpServer): WebSocketServer {
           }
 
           // DND check: allow_calls_from del destinatario
+          // [TIMING] T1 — inizio UserModel.findById (DND check)
+          const _t1 = performance.now();
           try {
             const callee = await UserModel.findById(toId).select("allow_calls_from").lean() as { allow_calls_from?: string } | null;
+            // [TIMING] T2 — fine UserModel.findById
+            const _t2 = performance.now();
+            logger.info(
+              { callId, calleeId: toId, dnd_lookup_ms: Math.round(_t2 - _t1) },
+              "[TIMING] call.offer DND lookup completato",
+            );
             if (callee) {
               const pref = callee.allow_calls_from ?? "contacts";
               if (pref === "nobody") {
@@ -275,7 +286,14 @@ export function createWsServer(httpServer: HttpServer): WebSocketServer {
               }
               // "contacts" check — semplificato: se non online accetta comunque (server non traccia contatti)
             }
-          } catch { /* non-critical */ }
+          } catch (dndErr) {
+            // [TIMING] T2-err — findById fallito
+            const _t2err = performance.now();
+            logger.warn(
+              { callId, calleeId: toId, dnd_lookup_ms: Math.round(_t2err - _t1), err: dndErr },
+              "[TIMING] call.offer DND lookup fallito (non bloccante)",
+            );
+          }
 
           // [DIAG-SRV] Snapshot dettagliato del WsManager prima di qualsiasi azione
           const diagBefore = wsManager.diagCalleeState(toId);
@@ -298,11 +316,19 @@ export function createWsServer(httpServer: HttpServer): WebSocketServer {
           // Nota: il DND try/catch sopra swallows errori DB → esecuzione sempre qui.
           const callIncomingPayload = { ...p, from_user_id: userId! };
           let offerRelayCount = 0;
+          // [TIMING] T3 — inizio relay WS
+          const _t3 = performance.now();
           try {
             offerRelayCount = wsManager.sendToUser(toId, {
               type: "call.incoming",
               payload: callIncomingPayload,
             });
+            // [TIMING] T4 — fine relay WS
+            const _t4 = performance.now();
+            logger.info(
+              { callId, calleeId: toId, relay_ms: Math.round(_t4 - _t3), delivered_sockets: offerRelayCount },
+              "[TIMING] call.offer relay WS completato",
+            );
 
             // Bufferizza per re-delivery se il callee si riconnette entro 35s
             wsManager.setPendingCall(toId, callIncomingPayload);
@@ -340,6 +366,22 @@ export function createWsServer(httpServer: HttpServer): WebSocketServer {
 
           // M2 — ACK al caller: conferma che almeno un socket OPEN del callee ha ricevuto l'offer
           // (oppure 0 se solo pendingCalls/push). NON significa "callee ha risposto".
+          // [TIMING] T5 — invio call.signal_ack
+          const _t5 = performance.now();
+          logger.info(
+            {
+              callId,
+              callerId:      userId,
+              calleeId:      toId,
+              delivered:     offerRelayCount > 0,
+              t_dnd_ms:      Math.round(_t1 - _t0),
+              t_lookup_ms:   Math.round(_t5 - _t1),   // include DND await + relay
+              t_relay_ms:    Math.round(_t3 - _t1),   // solo DND await
+              t_ack_ms:      Math.round(_t5 - _t3),   // dal relay all'ACK
+              t_total_ms:    Math.round(_t5 - _t0),   // dall'arrivo offer all'ACK
+            },
+            "[TIMING] call.offer → call.signal_ack INVIATO",
+          );
           safeSend(ws, {
             type: "call.signal_ack",
             payload: { call_id: callId, event_type: "call.offer", delivered: offerRelayCount > 0 },

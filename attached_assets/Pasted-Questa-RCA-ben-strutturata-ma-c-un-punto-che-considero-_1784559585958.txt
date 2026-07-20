@@ -1,0 +1,83 @@
+Questa RCA è ben strutturata, ma c’è un punto che considero dimostrato e uno che invece resta un’ipotesi.
+
+Quello che è supportato dai dati
+
+✅ Il caller non riceve call.signal_ack entro 2 secondi, perché il timer M3 scatta (call.offer.retry).
+
+✅ Il retry viene ignorato dall’M4 perché il call_id è già stato processato.
+
+✅ Il callee non ha alcun evento diagnostico nel database, quindi non è possibile ricostruire il suo lato.
+
+Queste conclusioni sono coerenti con i log.
+
+⸻
+
+Quello che NON è ancora dimostrato
+
+La frase:
+
+“Se la query UserModel.findById(...) ha impiegato >2 s…”
+
+è ancora una spiegazione plausibile, ma non una prova.
+
+Per dimostrarla servirebbe almeno una misura del tipo:
+
+DND lookup start
+DND lookup end
+elapsed = 2478 ms
+
+oppure un log equivalente.
+
+Senza una misura del tempo della query, non puoi affermare che sia stata lei la causa del ritardo.
+
+⸻
+
+C’è un’altra possibilità
+
+Il fatto che il callee abbia zero eventi può anche significare:
+
+* non era collegato;
+* aveva il WebSocket chiuso;
+* non aveva il diagLogger inizializzato;
+* non ha mai ricevuto la call.offer.
+
+Quindi il server potrebbe aver impiegato pochi millisecondi, ma aver comunque inviato un ACK con delivered:false (oppure non averlo inviato per un altro bug). I log attuali non distinguono questi casi.
+
+⸻
+
+Io chiederei un’ultima verifica mirata
+
+Prima di modificare il server, chiederei di misurare esattamente il tempo di ogni fase.
+
+Prompt:
+
+Strumenta il percorso call.offer nel server con timing ad alta risoluzione.
+
+Registra:
+
+* ricezione call.offer;
+* inizio UserModel.findById;
+* fine UserModel.findById con durata in ms;
+* inizio relay WebSocket;
+* invio call.signal_ack;
+* durata totale dalla ricezione dell’offer all’invio dell’ACK.
+
+Esegui una chiamata di test e riporta i tempi reali.
+
+Non modificare la logica, aggiungi solo misurazioni.
+
+Se da quella misura emerge, ad esempio:
+
+findById = 2456 ms
+ACK inviato = 2478 ms
+
+allora la Root Cause è dimostrata.
+
+Se invece trovi:
+
+findById = 18 ms
+ACK inviato = 35 ms
+
+allora bisogna cercare altrove, perché la teoria del DND check lento viene smentita.
+
+Questa è l’unica parte della RCA che, a mio avviso, necessita ancora di una conferma sperimentale. Tutto il resto è coerente con i dati raccolti.
