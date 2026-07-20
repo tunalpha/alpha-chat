@@ -25,6 +25,20 @@ export default function IncomingCallModal() {
     return () => stopRing();
   }, [incomingCall]);
 
+  // ── Reset accepting per ogni nuova chiamata ──────────────────────────────────
+  // IncomingCallModal è montato permanentemente in App.tsx (non condizionale),
+  // quindi lo stato locale sopravvive tra chiamate diverse. Senza questo reset,
+  // se una chiamata precedente ha lasciato accepting=true (es. acceptCall() fallito
+  // prima che cleanup() smontasse il modal), la chiamata successiva mostrerebbe
+  // lo spinner immediatamente — prima che l'utente tocchi qualsiasi pulsante.
+  // Usiamo callId (univoco per chiamata, introdotto in M1) come discriminante:
+  // ogni nuovo call_id = nuova chiamata = stato fresco.
+  useEffect(() => {
+    if (incomingCall) {
+      setAccepting(false);
+    }
+  }, [incomingCall?.callId]);
+
   // ── Safety-net: spinner infinito ────────────────────────────────────────────
   // Se acceptCall() si blocca su qualsiasi step (getUserMedia, ICE, negotiate…)
   // e il timeout interno di 15s non scatta (es. bug nella promise), questo

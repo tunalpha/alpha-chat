@@ -1,0 +1,50 @@
+Questo cambia completamente la diagnosi.
+
+Se non hai ancora premuto il pulsante verde e lo spinner è già in rotazione, allora non è acceptCall() che si blocca.
+
+Dalle schermate e da quello che descrivi, il flusso è:
+
+1. ✅ Il chiamante avvia la chiamata.
+2. ✅ Il destinatario riceve il popup.
+3. ❌ Il pulsante verde è già nello stato “loading”.
+4. ❌ Il pulsante rosso diventa inutilizzabile.
+5. L’utente non ha ancora toccato nulla.
+
+Quindi il bug è nella UI della chiamata in arrivo, non nella negoziazione WebRTC.
+
+La prima ipotesi
+
+Molto probabilmente esiste uno stato tipo:
+
+isAccepting = true
+
+oppure
+
+loading = true
+
+che viene impostato quando arriva call.incoming, invece che solo quando l’utente preme “Accetta”.
+
+Il risultato è:
+
+* il bottone verde entra subito nello stato spinner;
+* i pulsanti vengono disabilitati;
+* l’utente non può né accettare né rifiutare.
+
+Cosa chiederei all’agente di verificare
+
+Gli darei un compito molto mirato:
+
+Analizza esclusivamente il componente della schermata di chiamata in arrivo. Verifica dove viene impostato lo stato che mostra lo spinner del pulsante verde (isAccepting, loading, isProcessing o equivalente). Deve diventare true solo nel click handler del pulsante “Accetta” e tornare false in tutti i percorsi di uscita (successo, errore, timeout e annullamento). Non modificare WebRTC, WebSocket o Signal. Individua la causa e proponi una patch minima.
+
+Un’altra cosa che noto
+
+Hai anche detto che il pulsante viva voce non funziona.
+
+Questo potrebbe essere un problema separato:
+
+* il viva voce può essere disabilitato perché la chiamata non è ancora realmente connessa;
+* oppure il controllo non è ancora implementato correttamente su iOS/PWA.
+
+Io però non indagherei il viva voce finché non risolvete il blocco della schermata di chiamata in arrivo, perché se la chiamata non entra mai nello stato “connessa”, anche i controlli audio possono comportarsi in modo anomalo.
+
+Quindi, in base a quello che hai osservato, aprirei una nuova RCA specifica sulla UI della chiamata in arrivo, distinta dalla Fase 1 che avete appena completato.
