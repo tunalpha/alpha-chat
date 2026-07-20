@@ -138,6 +138,7 @@ app.get("/api/webrtc-test", (_req, res) => {
     </div>
     <button id="btnStart">&#9654; Start test</button>
     <button id="btnStop">&#9632; Stop</button>
+    <div id="js-init-indicator" style="margin-top:10px;font-size:11px;color:#555;text-align:center;">JS: not yet executed</div>
   </div>
   <div class="status-box"><div id="status">Waiting for start&hellip;</div></div>
   <audio id="remoteAudio"></audio>
@@ -147,11 +148,28 @@ app.get("/api/webrtc-test", (_req, res) => {
     <strong>Speaker</strong> &rarr; iOS PWA platform limit; no JS can change it.
   </p>
   <script>
+    // ── Diagnostica: cattura qualsiasi errore JS prima che si perda ──────────────
+    window.onerror = function(msg, src, line, col, err) {
+      var el = document.getElementById('status');
+      if (el) el.textContent += '\\n[JS-ERROR] ' + msg + ' (' + src + ':' + line + ':' + col + ')';
+      return false;
+    };
+    window.addEventListener('unhandledrejection', function(e) {
+      var el = document.getElementById('status');
+      if (el) el.textContent += '\\n[PROMISE-ERROR] ' + (e.reason && e.reason.message || e.reason);
+    });
+
     const btnStart = document.getElementById('btnStart');
     const btnStop  = document.getElementById('btnStop');
     const statusEl = document.getElementById('status');
     const audioEl  = document.getElementById('remoteAudio');
     let pc1 = null, pc2 = null, micStream = null;
+
+    // ── Indicatore visibile: conferma che il JS è arrivato fin qui ───────────────
+    (function() {
+      var el = document.getElementById('js-init-indicator');
+      if (el) el.textContent = 'JS: loaded ✓  |  listeners: attaching…';
+    })();
 
     function log(msg) {
       const ts = new Date().toTimeString().slice(0, 8);
