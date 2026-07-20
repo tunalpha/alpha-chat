@@ -466,6 +466,14 @@ function ActiveCallsTab({ onSelectCall }: { onSelectCall: (id: string) => void }
 
 // ── Tab 3: Call Timeline ─────────────────────────────────────────────────────
 
+// Palette colori per partecipanti (max 4, in pratica sempre 2)
+const PARTICIPANT_PALETTES = [
+  { dot: "bg-blue-500 border-blue-400",   badge: "bg-blue-500/15 text-blue-300 border-blue-500/30",  label: "blue"  },
+  { dot: "bg-green-500 border-green-400", badge: "bg-green-500/15 text-green-300 border-green-500/30", label: "green" },
+  { dot: "bg-purple-500 border-purple-400", badge: "bg-purple-500/15 text-purple-300 border-purple-500/30", label: "purple" },
+  { dot: "bg-orange-500 border-orange-400", badge: "bg-orange-500/15 text-orange-300 border-orange-500/30", label: "orange" },
+];
+
 function CallTimelineTab({ initialCallId }: { initialCallId?: string }) {
   const [callId, setCallId] = useState(initialCallId ?? "");
   const [inputVal, setInputVal] = useState(initialCallId ?? "");
@@ -476,6 +484,46 @@ function CallTimelineTab({ initialCallId }: { initialCallId?: string }) {
     enabled: callId.length > 6,
     staleTime: 30_000,
   });
+
+  // Build participants map: username → { eventCount, isCaller, palette, calleeUserId }
+  const participants = (() => {
+    if (!data?.events.length) return new Map<string, { count: number; isCaller: boolean; palette: typeof PARTICIPANT_PALETTES[0]; calleeId: string | null }>();
+    const map = new Map<string, number>();
+    let callerUsername = "";
+    let calleeIdFromPayload: string | null = null;
+
+    for (const e of data.events) {
+      map.set(e.username, (map.get(e.username) ?? 0) + 1);
+      if (e.event === "call.offer.sent") {
+        callerUsername = e.username;
+        const to = (e.payload as Record<string, unknown>)?.to;
+        if (typeof to === "string") calleeIdFromPayload = to;
+      }
+    }
+
+    const result = new Map<string, { count: number; isCaller: boolean; palette: typeof PARTICIPANT_PALETTES[0]; calleeId: string | null }>();
+    let idx = 0;
+    for (const [username, count] of map.entries()) {
+      result.set(username, {
+        count,
+        isCaller: username === callerUsername,
+        palette: PARTICIPANT_PALETTES[idx % PARTICIPANT_PALETTES.length],
+        calleeId: calleeIdFromPayload,
+      });
+      idx++;
+    }
+    return result;
+  })();
+
+  // Palette lookup by username
+  const paletteFor = (username: string) =>
+    participants.get(username)?.palette ?? PARTICIPANT_PALETTES[0];
+
+  // Detect if callee is silent (has no events, but we know their userId from payload)
+  const calleeId = [...participants.values()][0]?.calleeId ?? null;
+  const callerUsername = [...participants.entries()].find(([, v]) => v.isCaller)?.[0] ?? null;
+  const calleeHasEvents = [...participants.entries()].some(([u, v]) => !v.isCaller && u !== callerUsername);
+  const isSilentCallee = !!calleeId && !calleeHasEvents && participants.size > 0;
 
   return (
     <div className="space-y-4">
@@ -498,6 +546,35 @@ function CallTimelineTab({ initialCallId }: { initialCallId?: string }) {
         </p>
       )}
 
+      {/* Participants summary */}
+      {data && participants.size > 0 && (
+        <div className="flex flex-wrap gap-2">
+          {[...participants.entries()].map(([username, info]) => (
+            <div key={username} className={`flex items-center gap-2 px-3 py-2 rounded-lg border text-xs font-mono ${info.palette.badge}`}>
+              <div className={`w-2 h-2 rounded-full ${info.palette.dot}`} />
+              <span className="font-semibold">{username}</span>
+              <span className="opacity-60">{info.isCaller ? "CALLER" : "CALLEE"}</span>
+              <span className="opacity-50">·</span>
+              <span className="opacity-70">{info.count} eventi</span>
+              {info.isCaller && (
+                <span className="text-muted-foreground/40 text-[10px]">
+                  {info.count === 1 ? "" : ""}
+                </span>
+              )}
+            </div>
+          ))}
+          {isSilentCallee && (
+            <div className="flex items-center gap-2 px-3 py-2 rounded-lg border text-xs font-mono bg-red-500/10 border-red-500/30 text-red-300">
+              <AlertTriangle className="w-3 h-3" />
+              <span className="font-semibold opacity-60">{calleeId?.slice(0, 8)}…</span>
+              <span>CALLEE</span>
+              <span className="opacity-50">·</span>
+              <span className="font-bold text-red-400">SILENT — nessun evento</span>
+            </div>
+          )}
+        </div>
+      )}
+
       {data && data.events.length === 0 && (
         <div className="text-center py-8 text-muted-foreground font-mono text-sm">Nessun evento per questa chiamata</div>
       )}
@@ -508,51 +585,61 @@ function CallTimelineTab({ initialCallId }: { initialCallId?: string }) {
           <div className="absolute left-[7.5rem] top-0 bottom-0 w-px bg-border/40 pointer-events-none" />
 
           <div className="space-y-0">
-            {data.events.map((e, i) => (
-              <div key={e.id} className="flex gap-4 group">
-                {/* Timestamp */}
-                <div className="w-28 shrink-0 text-right">
-                  <span className="text-xs font-mono text-muted-foreground/70">{fmtTime(e.created_at)}</span>
-                </div>
+            {data.events.map((e, i) => {
+              const palette = paletteFor(e.username);
+              const dotColor = e.event.includes("error") || e.event.includes("timeout")
+                ? "bg-red-500 border-red-400"
+                : e.event.includes("complete") || e.event === "getUserMedia.ok"
+                ? "bg-green-500 border-green-400"
+                : e.event.startsWith("ws.")
+                ? "bg-yellow-500 border-yellow-400"
+                : palette.dot;
 
-                {/* Dot */}
-                <div className="relative shrink-0 flex items-start pt-1.5">
-                  <div className={`w-3 h-3 rounded-full border-2 z-10 ${
-                    e.event.includes("error") || e.event.includes("timeout") ? "bg-red-500 border-red-400" :
-                    e.event.includes("complete") || e.event === "getUserMedia.ok" ? "bg-green-500 border-green-400" :
-                    e.event.startsWith("ws.") ? "bg-yellow-500 border-yellow-400" :
-                    "bg-sidebar-accent border-sidebar-accent-foreground/50"
-                  }`} />
-                </div>
-
-                {/* Content */}
-                <div className={`flex-1 pb-3 ${i < data.events.length - 1 ? "" : ""}`}>
-                  <div className={`flex items-start gap-2 px-2 py-1.5 rounded border text-xs ${eventBg(e.event)}`}>
-                    <span className={`font-semibold font-mono shrink-0 ${eventColor(e.event)}`}>{e.event}</span>
-                    {Object.keys(e.payload ?? {}).length > 0 && (
-                      <span className="text-muted-foreground/70 font-mono truncate flex-1">
-                        {JSON.stringify(e.payload)}
-                      </span>
-                    )}
-                    <span className="shrink-0 text-muted-foreground/50 font-mono ml-auto">
-                      {e.elapsed_ms !== null ? `+${fmtMs(e.elapsed_ms)}` : ""}
-                    </span>
+              return (
+                <div key={e.id} className="flex gap-4 group">
+                  {/* Timestamp */}
+                  <div className="w-28 shrink-0 text-right">
+                    <span className="text-xs font-mono text-muted-foreground/70">{fmtTime(e.created_at)}</span>
                   </div>
-                  {e.gap_ms > 500 && i > 0 && (
-                    <div className="flex items-center gap-1 mt-1 ml-2">
-                      <div className="w-4 h-px bg-orange-500/50" />
-                      <span className="text-xs font-mono text-orange-400/70">gap {fmtMs(e.gap_ms)}</span>
+
+                  {/* Dot */}
+                  <div className="relative shrink-0 flex items-start pt-1.5">
+                    <div className={`w-3 h-3 rounded-full border-2 z-10 ${dotColor}`} />
+                  </div>
+
+                  {/* Content */}
+                  <div className="flex-1 pb-3">
+                    <div className={`flex items-start gap-2 px-2 py-1.5 rounded border text-xs ${eventBg(e.event)}`}>
+                      {/* Username badge */}
+                      <span className={`inline-flex items-center px-1.5 py-0.5 rounded border text-[10px] font-mono font-semibold shrink-0 ${palette.badge}`}>
+                        {e.username}
+                      </span>
+                      <span className={`font-semibold font-mono shrink-0 ${eventColor(e.event)}`}>{e.event}</span>
+                      {Object.keys(e.payload ?? {}).length > 0 && (
+                        <span className="text-muted-foreground/70 font-mono truncate flex-1">
+                          {JSON.stringify(e.payload)}
+                        </span>
+                      )}
+                      <span className="shrink-0 text-muted-foreground/50 font-mono ml-auto">
+                        {e.elapsed_ms !== null ? `+${fmtMs(e.elapsed_ms)}` : ""}
+                      </span>
                     </div>
-                  )}
-                  {/* Device info on first event */}
-                  {i === 0 && e.device && (
-                    <div className="mt-1 ml-2 text-xs font-mono text-muted-foreground/40 truncate">
-                      {e.device.platform} · {e.device.app_version} · net:{e.device.network_type ?? "unknown"}
-                    </div>
-                  )}
+                    {e.gap_ms > 500 && i > 0 && (
+                      <div className="flex items-center gap-1 mt-1 ml-2">
+                        <div className="w-4 h-px bg-orange-500/50" />
+                        <span className="text-xs font-mono text-orange-400/70">gap {fmtMs(e.gap_ms)}</span>
+                      </div>
+                    )}
+                    {/* Device info on first event per username */}
+                    {i === 0 && e.device && (
+                      <div className="mt-1 ml-2 text-xs font-mono text-muted-foreground/40 truncate">
+                        {e.device.platform} · {e.device.app_version} · net:{e.device.network_type ?? "unknown"}
+                      </div>
+                    )}
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
