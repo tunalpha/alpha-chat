@@ -510,7 +510,12 @@ export function CallProvider({ children }: { children: ReactNode }) {
 
     } catch (err) {
       console.error("[Call] acceptCall error —", err);
-      diagLog('accept.error', { err: String(err), step: _currentStep });
+      diagLog('accept.error', {
+        step:    _currentStep,
+        name:    err instanceof Error ? err.name                       : 'unknown',
+        message: err instanceof Error ? err.message                    : String(err),
+        stack:   err instanceof Error ? (err.stack ?? '').slice(0, 500) : '',
+      });
       if (incomingCall) {
         wsSend({ type: "call.reject", payload: { to_user_id: incomingCall.fromUserId, reason: "error", call_id: callIdRef.current } });
       }
