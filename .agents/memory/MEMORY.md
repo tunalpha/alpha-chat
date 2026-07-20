@@ -29,3 +29,4 @@
 - [Phoenix localStorage key bug](phoenix-localstorage-key.md) — PhoenixSetupPage usava authFetch custom con chiave "alpha-chat-access-token" (inesistente); chiave reale è "ac_access_token" da KEYS in auth.ts
 - [Call ICE bugs — TURN cache + InvalidStateError](call-ice-bugs.md) — _iceLoaded bloccava TURN post-deploy; flush buffer ICE deve avvenire DOPO setRemoteDescription
 - [iOS audio routing — playsInline fix](ios-audio-playsInline.md) — playsInline=true forces speaker on iOS even in PlayAndRecord; omit on iOS for earpiece
+- [iOS audio routing — PWA fundamental limit](ios-audio-routing-pwa-limit.md) — earpiece impossibile su iOS Safari PWA; <video> causa crash; unica fix = Capacitor nativo

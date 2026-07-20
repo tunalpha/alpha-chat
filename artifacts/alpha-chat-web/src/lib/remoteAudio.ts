@@ -15,10 +15,7 @@
 
 import { diagLog } from "./diagnosticLogger";
 
-// Su iOS usiamo <video> senza playsInline: iOS tratta i video element come "video call"
-// e potrebbe usare il routing earpiece per stream audio-only, a differenza di <audio>
-// che è sempre trattato come media playback → speaker.
-let _el: HTMLVideoElement | HTMLAudioElement | null = null;
+let _el: HTMLAudioElement | null = null;
 let _audioCtx: AudioContext | null = null;      // usato SOLO da primeRemoteAudio su Chrome (MAI su iOS)
 let _currentStream: MediaStream | null = null;
 let _speakerMode = true;
@@ -68,32 +65,16 @@ function getSilenceBlobUrl(): string {
 
 // ── Element singleton ─────────────────────────────────────────────────────────
 
-function getEl(): HTMLVideoElement | HTMLAudioElement | null {
+function getEl(): HTMLAudioElement | null {
   if (typeof document === "undefined") return null;
   if (!_el) {
-    if (isIOS()) {
-      // iOS: <video> senza playsInline.
-      // Su iOS, <video> senza playsInline può attivare il routing audio
-      // "video call" (AVAudioSession .voiceChat → earpiece) invece del
-      // routing "media playback" (speaker) usato da <audio> o <video playsInline>.
-      // Per stream audio-only (nessun video track) iOS non va fullscreen.
-      const v = document.createElement("video");
-      v.playsInline = false;
-      v.autoplay    = false;
-      v.muted       = false;
-      v.removeAttribute("webkit-playsinline");
-      v.style.cssText = "position:fixed;width:1px;height:1px;opacity:0;pointer-events:none;top:-2px;left:-2px;";
-      document.body.appendChild(v);
-      _el = v;
-    } else {
-      // Non-iOS: <audio> standard
-      const a = document.createElement("audio");
-      (a as HTMLAudioElement & { playsInline: boolean }).playsInline = true;
-      a.autoplay    = false;
-      a.style.cssText = "position:fixed;width:1px;height:1px;opacity:0;pointer-events:none;top:-2px;left:-2px;";
-      document.body.appendChild(a);
-      _el = a;
+    _el = document.createElement("audio");
+    if (!isIOS()) {
+      (_el as HTMLAudioElement & { playsInline: boolean }).playsInline = true;
     }
+    _el.autoplay    = false;
+    _el.style.cssText = "position:fixed;width:1px;height:1px;opacity:0;pointer-events:none;top:-2px;left:-2px;";
+    document.body.appendChild(_el);
   }
   return _el;
 }
