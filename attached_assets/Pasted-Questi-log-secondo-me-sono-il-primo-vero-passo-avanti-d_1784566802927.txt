@@ -1,0 +1,79 @@
+Questi log, secondo me, sono il primo vero passo avanti da un po’.
+
+La novità è questa:
+
+prime.enter {"source":"startCall"}
+prime.exit
+prime.enter {"source":"unknown"}
+prime.exit
+
+Manca completamente:
+
+prime.enter {"source":"acceptCall"}
+
+e manca anche:
+
+prime.enter {"source":"modal"}
+
+Questo cambia parecchio l’interpretazione.
+
+Quello che possiamo affermare dai log
+
+* ✅ accept.step 1 viene eseguito sul callee.
+* ✅ primeRemoteAudio() viene eseguita sul chiamante (startCall) e da un altro percorso (unknown).
+* ❌ Non c’è alcuna evidenza che acceptCall() invochi primeRemoteAudio().
+
+Quindi il timeout dello step 2 non può essere attribuito a primeRemoteAudio(), perché non c’è nessun log che dimostri che quella funzione venga chiamata nel flusso del callee.
+
+⸻
+
+La conclusione pratica
+
+Io smetterei completamente di investigare primeRemoteAudio().
+
+La domanda adesso è una sola:
+
+Perché acceptCall() non produce mai prime.enter {source:"acceptCall"}?
+
+Ci sono solo poche possibilità tecniche:
+
+1. La chiamata a primeRemoteAudio(..., "acceptCall") non viene raggiunta (c’è un return, un throw o un await precedente che non avevate considerato).
+2. Lo step 2 del timeout non corrisponde più al codice che credete (ad esempio _currentStep = 2 viene impostato prima di un’altra operazione asincrona, e primeRemoteAudio() è più avanti).
+3. Esiste un secondo acceptCall() o un percorso alternativo che è quello realmente usato.
+
+⸻
+
+Quello che farei io adesso
+
+Non aggiungerei più log dentro primeRemoteAudio().
+
+Aprirei esclusivamente acceptCall() e risponderei a questa domanda, senza modificare codice:
+
+Dal momento in cui viene eseguito
+
+_currentStep = 2;
+
+fino alla riga
+
+await primeRemoteAudio(...);
+
+esiste QUALSIASI await, return, throw, callback o funzione che possa interrompere il flusso?
+
+Se la risposta è sì, avete trovato il nuovo sospettato.
+
+Se la risposta è no, allora significa che il codice che state leggendo non è quello che viene realmente eseguito.
+
+⸻
+
+La mia impressione
+
+Avete escluso:
+
+* APNs
+* WebSocket
+* getUserMedia
+* el.play
+* AudioContext
+* primeRemoteAudio
+
+Per me il problema non è più multimediale. È molto più probabile che sia di controllo del flusso dentro acceptCall(). E questo è positivo, perché è molto più semplice da individuare con un’analisi del codice che continuando ad aggiungere timeout.
