@@ -1,0 +1,70 @@
+L’analisi è molto più solida rispetto alle ipotesi precedenti perché è supportata da timestamp e log del server. Distinguerei però ciò che è dimostrato da ciò che è ancora ipotizzato.
+
+Cose dimostrate (alta confidenza)
+
+* ✅ Il callee era offline al momento della call.offer.
+    * connCount=0
+    * openCount=0
+    * isOnline=false
+* ✅ Il server ha completato il DND lookup in circa 15 ms, quindi non è il collo di bottiglia.
+* ✅ Il server ha inviato la push APNs con successo.
+* ✅ Circa 5,6 secondi dopo il callee si è connesso e il server ha rieseguito la consegna della call.incoming.
+* ✅ Il caller ha chiuso la chiamata dopo circa 22 secondi.
+* ✅ Dopo la chiusura è arrivato dal callee un call.reject con reason:"error".
+
+Questi punti sono direttamente supportati dai log.
+
+⸻
+
+Cose probabili ma non ancora dimostrate
+
+L’analisi conclude che:
+
+acceptCall() è crashato.
+
+Questa è una conclusione plausibile, ma dipende da un dettaglio importante:
+
+* se nel codice l’unico punto che invia
+
+call.reject
+reason:"error"
+
+è il catch di acceptCall(), allora la conclusione è praticamente certa.
+
+Se invece esistono altri percorsi che producono reason:"error", allora bisogna verificarli.
+
+⸻
+
+La parte più debole dell’analisi
+
+Questa frase:
+
+“diagLogger.init() non viene chiamato sul device del callee.”
+
+Non è ancora dimostrata.
+
+L’assenza di eventi può dipendere anche da:
+
+* diagLogger.init() eseguito ma flush() fallito;
+* errore di autenticazione del logger;
+* coda locale mai inviata;
+* errore HTTP nel flush;
+* app terminata prima del flush.
+
+Quindi la formulazione più rigorosa sarebbe:
+
+“Il sistema di diagnostica del callee non ha prodotto eventi osservabili. La causa (init non eseguito, flush fallito o altro) non è ancora determinata.”
+
+⸻
+
+La prossima mossa
+
+Con il nuovo codice che avete appena aggiunto (accept.error con name, message, stack e step), non farei altre modifiche.
+
+Farei semplicemente:
+
+1. deploy;
+2. una nuova chiamata di test;
+3. recupero del primo accept.error.
+
+Quell’unico evento dovrebbe dire esattamente se il blocco avviene in getUserMedia(), loadIceConfig(), setRemoteDescription() o altrove, trasformando l’ultima ipotesi rimasta in una causa verificata.
