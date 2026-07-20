@@ -1,0 +1,59 @@
+Questi log cambiano il quadro in modo abbastanza netto.
+
+La parte più importante è questa:
+
+ice.state = checking
+pc.state = connecting
+...
+ice.state = failed
+call.cleanup {"reason":"reconnect_failed"}
+
+Quindi la chiamata WebRTC non riesce mai a stabilire una connessione ICE.
+
+Inoltre vedo ancora:
+
+ice.candidate.local
+type: host
+ice.candidate.local
+type: host
+ice.candidate.local
+type: srflx
+
+Continuo a non vedere alcun candidato relay.
+
+Questo è il punto che non torna.
+
+Se davvero il browser stesse utilizzando i TURN restituiti dal server, normalmente ci si aspetterebbe almeno un candidato relay (salvo casi particolari, ad esempio TURN non raggiungibile o credenziali rifiutate).
+
+Quello che farei verificare adesso
+
+Non aggiungerei altre modifiche “a tentativi”. Chiederei di verificare in modo puntuale questi quattro punti:
+
+1. ice.config.loaded viene effettivamente eseguito?
+    * Se sì, il log deve mostrare hasRelay:true.
+2. Qual è l’oggetto iceServers passato a new RTCPeerConnection()?
+    * Va loggato integralmente (URL, username e credenziali escluse se preferite mascherarle).
+3. Nel browser viene mai generato un candidato relay?
+    * Se no, bisogna capire se:
+        * il TURN non viene usato,
+        * il TURN è irraggiungibile,
+        * oppure il browser lo scarta.
+4. Eseguire pc.getStats() dopo il fallimento
+    * Le statistiche ICE mostrano esattamente quali candidate pair sono state provate e perché sono fallite. Questo è spesso il modo più rapido per capire se il problema è:
+        * connettività,
+        * TURN,
+        * oppure signaling.
+
+La mia valutazione
+
+I log continuano a raccontare una storia coerente:
+
+* ✅ signaling funziona;
+* ✅ offer/answer funzionano;
+* ✅ ontrack arriva;
+* ✅ entrambe le parti ricevono uno stream audio;
+* ❌ ICE resta in checking;
+* ❌ poi passa a failed;
+* ❌ nessun candidato relay visibile.
+
+Finché ICE non arriva a connected, è normale che non si senta audio. A questo punto la priorità non è più il routing audio: è capire perché ICE fallisce nonostante il TURN dovrebbe essere disponibile. Il prossimo passo più utile è ispezionare la configurazione effettivamente passata a RTCPeerConnection e le statistiche ICE (getStats()), anziché continuare a modificare la logica della chiamata.

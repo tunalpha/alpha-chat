@@ -62,6 +62,14 @@ export function createPeerConnection(
   onConnectionStateChange: (state: RTCPeerConnectionState) => void,
   onIceStateChange?: (state: RTCIceConnectionState) => void,
 ): RTCPeerConnection {
+  // Log completo dei server ICE passati al PC — conferma che TURN sia incluso.
+  const _serverSummary = _iceServers.map(s => ({
+    urls: s.urls,
+    hasCredentials: !!(s.username),
+  }));
+  diagLog('rtc.pc.create', { serverCount: _iceServers.length, servers: _serverSummary });
+  console.log('[webrtc] createPeerConnection iceServers=%o', _serverSummary);
+
   const pc = new RTCPeerConnection({ iceServers: _iceServers });
 
   // Fallback stream per iOS Safari — e.streams[] può essere vuoto anche

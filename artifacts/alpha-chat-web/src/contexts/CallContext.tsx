@@ -262,6 +262,43 @@ export function CallProvider({ children }: { children: ReactNode }) {
           setIsReconnecting(false);
           clearReconnectTimer();
         } else if (iceState === "failed") {
+          // Raccogli statistiche ICE prima di cleanup — utile per diagnosticare
+          // quale candidate pair è stato tentato e perché ha fallito.
+          const _pc = pcRef.current;
+          if (_pc) {
+            _pc.getStats().then((stats) => {
+              const pairs: object[] = [];
+              const candidates: object[] = [];
+              stats.forEach((report) => {
+                if (report.type === "candidate-pair") {
+                  pairs.push({
+                    state:          report["state"],
+                    nominated:      report["nominated"],
+                    localCandId:    report["localCandidateId"],
+                    remoteCandId:   report["remoteCandidateId"],
+                    bytesSent:      report["bytesSent"],
+                    bytesReceived:  report["bytesReceived"],
+                    currentRttMs:   report["currentRoundTripTime"] != null
+                                      ? Math.round((report["currentRoundTripTime"] as number) * 1000)
+                                      : null,
+                  });
+                }
+                if (report.type === "local-candidate" || report.type === "remote-candidate") {
+                  candidates.push({
+                    side:       report.type === "local-candidate" ? "local" : "remote",
+                    id:         report.id,
+                    candType:   report["candidateType"],
+                    protocol:   report["protocol"],
+                    address:    report["address"] ?? report["ip"],
+                    port:       report["port"],
+                    relayProto: report["relayProtocol"] ?? null,
+                  });
+                }
+              });
+              diagLog('ice.failed.stats', { pairs, candidates });
+              console.log('[webrtc] ice.failed.stats pairs=%o candidates=%o', pairs, candidates);
+            }).catch(() => {});
+          }
           cleanup("reconnect_failed");
         }
       },
