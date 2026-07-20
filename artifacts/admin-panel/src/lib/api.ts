@@ -465,6 +465,18 @@ export interface DiagTimeline {
   events: Array<DiagEvent & { gap_ms: number }>;
 }
 
+export interface DiagHealth {
+  status: "ok" | "error";
+  total_events: number;
+  events_last_hour: number;
+  last_event: { username: string; event: string; created_at: string; age_seconds: number } | null;
+  collection: string;
+}
+
+export async function getDiagHealth(): Promise<DiagHealth> {
+  return apiFetch("/diagnostics/health");
+}
+
 export async function getDiagEvents(params?: {
   call_id?: string; username?: string; event_type?: string;
   q?: string; since?: string; page?: number; limit?: number;

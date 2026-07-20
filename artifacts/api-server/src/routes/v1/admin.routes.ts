@@ -954,6 +954,32 @@ export async function seedAdminIfNeeded(): Promise<void> {
 
 // ── Call Diagnostics Center ────────────────────────────────────────────────────
 
+router.get("/diagnostics/health", requireAdmin("read_only"), async (req, res, next) => {
+  try {
+    const now        = new Date();
+    const oneHourAgo = new Date(now.getTime() - 3600 * 1000);
+
+    const [totalEvents, recentEvents, lastEvent] = await Promise.all([
+      DiagnosticEventModel.estimatedDocumentCount(),
+      DiagnosticEventModel.countDocuments({ created_at: { $gte: oneHourAgo } }),
+      DiagnosticEventModel.findOne().sort({ created_at: -1 }).select("username event created_at").lean(),
+    ]);
+
+    res.json({
+      status:           "ok",
+      total_events:     totalEvents,
+      events_last_hour: recentEvents,
+      last_event:       lastEvent ? {
+        username:    lastEvent.username,
+        event:       lastEvent.event,
+        created_at:  lastEvent.created_at.toISOString(),
+        age_seconds: Math.round((now.getTime() - lastEvent.created_at.getTime()) / 1000),
+      } : null,
+      collection: "diagnostic_events",
+    });
+  } catch (err) { next(err); }
+});
+
 router.get("/diagnostics/events", requireAdmin("read_only"), async (req, res, next) => {
   try {
     const page   = qsInt(req.query.page, 1);

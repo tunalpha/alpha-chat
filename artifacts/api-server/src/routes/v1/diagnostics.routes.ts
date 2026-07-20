@@ -22,12 +22,10 @@ const router = Router();
 router.post("/events", authenticate, async (req, res, next) => {
   try {
     const userId   = new mongoose.Types.ObjectId(req.user!.userId);
-    // username non è nel JWT payload — lo lasciamo vuoto; il batch lo risolve in bulk
-    // se necessario (il modello lo indicizza per filtri admin)
-    const username = ""; // will be left empty — events are queryable by user_id
 
-    const { session_id, device, events } = req.body as {
+    const { session_id, username: bodyUsername, device, events } = req.body as {
       session_id?: string;
+      username?:   string;
       device?: {
         user_agent?:   string;
         platform?:     string;
@@ -41,6 +39,11 @@ router.post("/events", authenticate, async (req, res, next) => {
       res.status(204).end();
       return;
     }
+
+    // username dal body (inviato dal DiagnosticLogger) — fallback sicuro
+    const username = typeof bodyUsername === "string" && bodyUsername.trim().length > 0
+      ? bodyUsername.trim().slice(0, 64)
+      : "unknown";
 
     // Limita a 100 eventi per batch
     const batch = (events as Record<string, unknown>[]).slice(0, 100);
@@ -63,7 +66,10 @@ router.post("/events", authenticate, async (req, res, next) => {
     }));
 
     await DiagnosticEventModel.insertMany(docs, { ordered: false }).catch((err: unknown) => {
-      if ((err as { code?: number }).code !== 11000) throw err;
+      // ordered:false con bulk duplicati ritorna BulkWriteError code 11000 — ignorare
+      // qualsiasi altro errore (es. ValidationError) viene rilanciato per il logging
+      const code = (err as { code?: number }).code;
+      if (code !== 11000) throw err;
     });
 
     res.status(204).end();

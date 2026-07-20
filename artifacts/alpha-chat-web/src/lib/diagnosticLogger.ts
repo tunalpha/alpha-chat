@@ -37,6 +37,7 @@ class DiagnosticLoggerClass {
 
   // Flush state
   private _userId:     string | null = null;
+  private _username:   string = '';
   private _getToken:   (() => string | null) | null = null;
   private _sessionId:  string | null = null;
   private _flushTimer: ReturnType<typeof setInterval> | null = null;
@@ -57,8 +58,9 @@ class DiagnosticLoggerClass {
    * Inizializza il logger con il contesto utente e avvia il flush automatico.
    * Chiamare dopo ogni login/restore in AuthContext.
    */
-  init(userId: string, _username: string, getToken: () => string | null): void {
+  init(userId: string, username: string, getToken: () => string | null): void {
     this._userId    = userId;
+    this._username  = username || 'unknown';
     this._getToken  = getToken;
     this._sessionId = typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function'
       ? crypto.randomUUID()
@@ -76,6 +78,7 @@ class DiagnosticLoggerClass {
     void this._flush(); // flush finale
     if (this._flushTimer) { clearInterval(this._flushTimer); this._flushTimer = null; }
     this._userId    = null;
+    this._username  = '';
     this._getToken  = null;
     this._sessionId = null;
     this._callId    = null;
@@ -132,6 +135,7 @@ class DiagnosticLoggerClass {
         },
         body: JSON.stringify({
           session_id: this._sessionId,
+          username:   this._username,
           device:     this._getDeviceInfo(),
           events:     unflushed,
         }),

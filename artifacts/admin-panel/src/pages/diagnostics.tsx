@@ -8,8 +8,8 @@
 import { useState, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
-  getDiagEvents, getDiagCalls, getDiagTimeline, getDiagMetrics, downloadDiagExport,
-  type DiagEvent, type DiagCall, type DiagTimeline, type DiagMetrics,
+  getDiagEvents, getDiagCalls, getDiagTimeline, getDiagMetrics, downloadDiagExport, getDiagHealth,
+  type DiagEvent, type DiagCall, type DiagTimeline, type DiagMetrics, type DiagHealth,
 } from "@/lib/api";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -21,7 +21,7 @@ import {
 } from "recharts";
 import {
   Activity, Phone, Download, BarChart2, RefreshCw,
-  ChevronRight, Clock, Wifi, WifiOff, AlertTriangle, CheckCircle, Copy,
+  ChevronRight, Clock, AlertTriangle, CheckCircle, Copy, Database, Zap,
 } from "lucide-react";
 import { format, parseISO, formatDistanceToNow } from "date-fns";
 
@@ -85,6 +85,113 @@ function pcStateBadge(state: string | null) {
   };
   const cls = colors[state] ?? "bg-muted/20 text-muted-foreground border-border/30";
   return <span className={`inline-flex items-center px-1.5 py-0.5 rounded text-xs font-mono border ${cls}`}>{state}</span>;
+}
+
+// ---------------------------------------------------------------------------
+// HealthCard
+// ---------------------------------------------------------------------------
+
+function HealthCard() {
+  const { data, isFetching, refetch, error } = useQuery<DiagHealth>({
+    queryKey: ["diag-health"],
+    queryFn: getDiagHealth,
+    refetchInterval: 15_000,
+    staleTime: 10_000,
+  });
+
+  const hasData = !!data;
+  const hasEvents = (data?.total_events ?? 0) > 0;
+  const recentOk  = (data?.events_last_hour ?? 0) > 0;
+  const ageOk     = data?.last_event ? data.last_event.age_seconds < 300 : false;
+
+  return (
+    <Card className={`border ${error ? "border-red-500/30" : hasEvents ? "border-green-500/20" : "border-yellow-500/20"}`}>
+      <CardContent className="pt-4 pb-4">
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div className="flex items-center gap-2">
+            <Database className={`w-4 h-4 ${hasEvents ? "text-green-400" : "text-yellow-400"}`} />
+            <span className="text-xs font-mono font-semibold uppercase tracking-wide text-muted-foreground">
+              Pipeline Health
+            </span>
+            {isFetching && <RefreshCw className="w-3 h-3 animate-spin text-muted-foreground" />}
+          </div>
+          <Button variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={() => refetch()}>
+            <RefreshCw className="w-3 h-3" />
+          </Button>
+        </div>
+
+        <div className="mt-3 grid grid-cols-2 sm:grid-cols-4 gap-3">
+          {/* Collection totale */}
+          <div className="flex items-center gap-2">
+            {hasData ? (
+              hasEvents
+                ? <CheckCircle className="w-3.5 h-3.5 text-green-400 shrink-0" />
+                : <AlertTriangle className="w-3.5 h-3.5 text-yellow-400 shrink-0" />
+            ) : <div className="w-3.5 h-3.5 rounded-full bg-muted/50 shrink-0 animate-pulse" />}
+            <div>
+              <p className="text-xs font-mono text-muted-foreground">Collection</p>
+              <p className="text-sm font-bold font-mono">
+                {hasData ? (data!.total_events).toLocaleString() : "—"}
+              </p>
+              <p className="text-xs text-muted-foreground/60">eventi totali</p>
+            </div>
+          </div>
+
+          {/* Ultimo ora */}
+          <div className="flex items-center gap-2">
+            {hasData ? (
+              recentOk
+                ? <CheckCircle className="w-3.5 h-3.5 text-green-400 shrink-0" />
+                : <AlertTriangle className="w-3.5 h-3.5 text-yellow-400 shrink-0" />
+            ) : <div className="w-3.5 h-3.5 rounded-full bg-muted/50 shrink-0 animate-pulse" />}
+            <div>
+              <p className="text-xs font-mono text-muted-foreground">Ultima ora</p>
+              <p className="text-sm font-bold font-mono">
+                {hasData ? data!.events_last_hour.toLocaleString() : "—"}
+              </p>
+              <p className="text-xs text-muted-foreground/60">eventi ricevuti</p>
+            </div>
+          </div>
+
+          {/* Ultimo evento */}
+          <div className="flex items-center gap-2 sm:col-span-2">
+            {hasData ? (
+              data!.last_event
+                ? <Zap className={`w-3.5 h-3.5 shrink-0 ${ageOk ? "text-green-400" : "text-blue-400"}`} />
+                : <AlertTriangle className="w-3.5 h-3.5 text-yellow-400 shrink-0" />
+            ) : <div className="w-3.5 h-3.5 rounded-full bg-muted/50 shrink-0 animate-pulse" />}
+            <div className="min-w-0">
+              <p className="text-xs font-mono text-muted-foreground">Ultimo evento</p>
+              {data?.last_event ? (
+                <>
+                  <p className={`text-sm font-bold font-mono truncate ${eventColor(data.last_event.event)}`}>
+                    {data.last_event.event}
+                  </p>
+                  <p className="text-xs text-muted-foreground/60 font-mono truncate">
+                    {data.last_event.username} · {fmtAgo(data.last_event.created_at)}
+                  </p>
+                </>
+              ) : (
+                <p className="text-sm font-bold font-mono text-muted-foreground">—</p>
+              )}
+            </div>
+          </div>
+        </div>
+
+        {!hasEvents && hasData && (
+          <div className="mt-3 px-3 py-2 rounded border border-yellow-500/20 bg-yellow-500/5 text-xs text-yellow-300 font-mono">
+            ⚠ Nessun evento nella collection. Verifica che il client abbia effettuato il login —
+            il logger si attiva automaticamente dopo il login/restore della sessione.
+          </div>
+        )}
+        {error && (
+          <div className="mt-3 px-3 py-2 rounded border border-red-500/20 bg-red-500/5 text-xs text-red-300 font-mono">
+            ✗ Impossibile contattare il backend diagnostics: {String(error)}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
 }
 
 // ---------------------------------------------------------------------------
@@ -746,6 +853,9 @@ export default function Diagnostics() {
           </p>
         </div>
       </div>
+
+      {/* Health card */}
+      <HealthCard />
 
       {/* Tab bar */}
       <div className="flex gap-1 border-b border-border pb-0 overflow-x-auto">
