@@ -184,9 +184,24 @@ app.get("/api/webrtc-test", (_req, res) => {
       audioEl.srcObject = null;
       btnStart.style.display = ''; btnStop.style.display = 'none';
     }
+    // flag: srcObject già assegnato ma play() non ancora tentato
+    let trackReady = false;
+    let iceConnected = false;
+
+    function maybePlay() {
+      if (trackReady && iceConnected) {
+        log('ICE connected + track ready → play()');
+        audioEl.play()
+          .then(() => { log('play() OK — listen: earpiece or speaker?'); })
+          .catch(err => { log('play() FAIL: ' + err.name + ': ' + err.message); });
+      }
+    }
+
     btnStop.addEventListener('click', () => { log('Stopped.'); cleanup(); });
     btnStart.addEventListener('click', async () => {
       statusEl.textContent = '';
+      trackReady = false;
+      iceConnected = false;
       btnStart.style.display = 'none'; btnStop.style.display = '';
       const ua = navigator.userAgent;
       const iosM = ua.match(/OS ([\\d_]+)/);
@@ -198,30 +213,64 @@ app.get("/api/webrtc-test", (_req, res) => {
         micStream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
         log('OK mic tracks: ' + micStream.getAudioTracks().length);
       } catch(e) { log('FAIL getUserMedia: ' + e.message); cleanup(); return; }
-      log('Creating loopback RTCPeerConnections…');
-      pc1 = new RTCPeerConnection({ iceServers: [] });
-      pc2 = new RTCPeerConnection({ iceServers: [] });
-      pc1.onicecandidate = e => { if (e.candidate) pc2.addIceCandidate(e.candidate).catch(()=>{}); };
-      pc2.onicecandidate = e => { if (e.candidate) pc1.addIceCandidate(e.candidate).catch(()=>{}); };
-      pc1.oniceconnectionstatechange = () => log('pc1 ICE: ' + pc1.iceConnectionState);
-      pc2.oniceconnectionstatechange = () => log('pc2 ICE: ' + pc2.iceConnectionState);
-      pc2.ontrack = e => {
-        log('ontrack: ' + e.track.kind);
-        audioEl.srcObject = e.streams[0] || new MediaStream([e.track]);
-        audioEl.play()
-          .then(() => { log('play() OK — listen: earpiece or speaker?'); })
-          .catch(err => { log('play() FAIL: ' + err.message); });
+
+      // FIX 1: STUN server — senza di esso iOS non raccoglie candidati host locali
+      const iceConfig = { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] };
+      log('Creating loopback RTCPeerConnections (STUN: stun.l.google.com)…');
+      pc1 = new RTCPeerConnection(iceConfig);
+      pc2 = new RTCPeerConnection(iceConfig);
+
+      // FIX 2: log candidati per debug
+      pc1.onicecandidate = e => {
+        if (e.candidate) {
+          log('pc1 cand → pc2: ' + e.candidate.type + ' ' + (e.candidate.address || '?'));
+          pc2.addIceCandidate(e.candidate).catch(err => log('addIce pc2 ERR: ' + err.message));
+        } else {
+          log('pc1 gathering complete');
+        }
       };
+      pc2.onicecandidate = e => {
+        if (e.candidate) {
+          log('pc2 cand → pc1: ' + e.candidate.type + ' ' + (e.candidate.address || '?'));
+          pc1.addIceCandidate(e.candidate).catch(err => log('addIce pc1 ERR: ' + err.message));
+        } else {
+          log('pc2 gathering complete');
+        }
+      };
+
+      pc1.oniceconnectionstatechange = () => log('pc1 ICE state: ' + pc1.iceConnectionState);
+      pc2.oniceconnectionstatechange = () => {
+        log('pc2 ICE state: ' + pc2.iceConnectionState);
+        // FIX 3: play() SOLO dopo ICE connected
+        if (pc2.iceConnectionState === 'connected' || pc2.iceConnectionState === 'completed') {
+          iceConnected = true;
+          maybePlay();
+        }
+        if (pc2.iceConnectionState === 'failed') {
+          log('ICE FAILED — nessun audio possibile. Prova con rete attiva o VPN disattivata.');
+        }
+      };
+
+      // FIX 4: srcObject in ontrack ma play() rimandato a dopo ICE connected
+      pc2.ontrack = e => {
+        log('ontrack: ' + e.track.kind + ' readyState=' + e.track.readyState);
+        audioEl.srcObject = e.streams[0] || new MediaStream([e.track]);
+        trackReady = true;
+        maybePlay();
+      };
+
       micStream.getTracks().forEach(t => pc1.addTrack(t, micStream));
       log('Mic track added to pc1');
       try {
         const offer = await pc1.createOffer();
+        log('offer SDP lines: ' + offer.sdp.split('\\n').length);
         await pc1.setLocalDescription(offer);
         await pc2.setRemoteDescription(offer);
         const answer = await pc2.createAnswer();
+        log('answer SDP lines: ' + answer.sdp.split('\\n').length);
         await pc2.setLocalDescription(answer);
         await pc1.setRemoteDescription(answer);
-        log('SDP exchange complete');
+        log('SDP exchange complete — waiting for ICE…');
       } catch(e) { log('SDP FAIL: ' + e.message); cleanup(); }
     });
   </script>
