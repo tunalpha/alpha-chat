@@ -1,0 +1,104 @@
+La RCA è plausibile, ma c’è un punto che vorrei chiarire prima di considerarla confermata.
+
+La parte che mi convince
+
+Se IncomingCallModal è sempre montato e fa semplicemente:
+
+if (!incomingCall) return null;
+
+allora è vero che:
+
+* il componente non viene smontato;
+* lo stato interno (useState) viene conservato;
+* se accepting resta true, la chiamata successiva può riutilizzare quello stato.
+
+Questa è una situazione comune in React.
+
+⸻
+
+Il punto che non darei ancora per dimostrato
+
+Non collegherei automaticamente questo log:
+
+[CALL-M4] call.offer duplicato ignorato
+
+al bug dello spinner.
+
+Quel log dimostra che:
+
+* il retry di M3 è avvenuto;
+* la deduplicazione M4 ha funzionato.
+
+Non dimostra che il modal fosse già in accepting=true.
+
+Sono due fenomeni che potrebbero essere correlati, ma serve una prova diretta.
+
+⸻
+
+Come confermare la RCA
+
+Prima di modificare il codice farei un test molto semplice aggiungendo tre log:
+
+IncomingCallModal render
+accepting=
+callId=
+useEffect(() => {
+  console.log("incomingCall changed", incomingCall?.callId, accepting);
+}, [incomingCall]);
+console.log("Accept pressed");
+
+Se alla seconda chiamata compare qualcosa come:
+
+IncomingCallModal
+callId=abc123
+accepting=true
+
+prima di qualsiasi “Accept pressed”,
+
+allora la RCA è confermata al 100%.
+
+⸻
+
+Sul fix
+
+Il fix proposto:
+
+useEffect(() => {
+    if (incomingCall) {
+        setAccepting(false);
+    }
+}, [incomingCall?.callId]);
+
+mi piace perché è:
+
+* piccolo;
+* isolato;
+* non modifica WebRTC;
+* non modifica WebSocket;
+* non modifica Signal.
+
+Usare callId come discriminante è meglio che dipendere semplicemente da incomingCall, perché il reset avviene solo quando arriva una nuova chiamata.
+
+⸻
+
+Quello che farei
+
+Io approverei questa patch, ma chiederei una cosa in più.
+
+Alla chiusura della chiamata (cleanup, reject, timeout, ended_elsewhere) aggiungerei comunque:
+
+setAccepting(false);
+
+In questo modo hai una doppia protezione:
+
+* quando termina una chiamata → lo stato viene pulito;
+* quando ne arriva una nuova → viene comunque reimpostato.
+
+Le due cose non sono in conflitto e rendono il componente più robusto.
+
+Conclusione
+
+* ✅ La spiegazione sul componente permanentemente montato è tecnicamente solida.
+* ✅ Il fix con useEffect è a basso rischio e coerente con la causa ipotizzata.
+* ⚠️ Non userei il log di M4 come prova della causa: lo considererei solo un elemento di contesto.
+* ✅ Dopo questa correzione rifarei subito il test con due chiamate consecutive, perché è proprio lo scenario che dovrebbe dimostrare se il problema è stato eliminato.

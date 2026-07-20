@@ -25,19 +25,32 @@ export default function IncomingCallModal() {
     return () => stopRing();
   }, [incomingCall]);
 
-  // ── Reset accepting per ogni nuova chiamata ──────────────────────────────────
+  // ── Reset accepting — doppia protezione ─────────────────────────────────────
   // IncomingCallModal è montato permanentemente in App.tsx (non condizionale),
-  // quindi lo stato locale sopravvive tra chiamate diverse. Senza questo reset,
-  // se una chiamata precedente ha lasciato accepting=true (es. acceptCall() fallito
-  // prima che cleanup() smontasse il modal), la chiamata successiva mostrerebbe
-  // lo spinner immediatamente — prima che l'utente tocchi qualsiasi pulsante.
-  // Usiamo callId (univoco per chiamata, introdotto in M1) come discriminante:
-  // ogni nuovo call_id = nuova chiamata = stato fresco.
+  // quindi lo stato locale sopravvive tra chiamate diverse.
+  //
+  // Protezione 1 — terminazione: quando incomingCall diventa null (caller cancella,
+  // timeout, ended_elsewhere, reject) resettiamo subito accepting, così lo stato
+  // è già pulito prima che arrivi la chiamata successiva.
+  //
+  // Protezione 2 — nuova chiamata: quando arriva un nuovo callId resettiamo di
+  // nuovo, come barriera di sicurezza nel caso in cui la protezione 1 non avesse
+  // fatto in tempo (es. due incomingCall consecutivi senza passare per null).
+  //
+  // Usare callId come dipendenza (invece dell'oggetto incomingCall) è più preciso:
+  // il reset avviene solo quando cambia l'identità della chiamata.
   useEffect(() => {
-    if (incomingCall) {
-      setAccepting(false);
-    }
+    setAccepting(false);
   }, [incomingCall?.callId]);
+
+  // ── Log diagnostico — conferma RCA ──────────────────────────────────────────
+  // Permette di verificare se accepting=true prima di qualsiasi tap su "Accetta".
+  // Se nei log appare "incomingCall changed accepting=true" PRIMA di "Accept pressed"
+  // la RCA è confermata al 100%.
+  useEffect(() => {
+    console.log('[ICM-DIAG] incomingCall changed callId=%s accepting=%s', incomingCall?.callId ?? 'null', accepting);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [incomingCall]);
 
   // ── Safety-net: spinner infinito ────────────────────────────────────────────
   // Se acceptCall() si blocca su qualsiasi step (getUserMedia, ICE, negotiate…)
