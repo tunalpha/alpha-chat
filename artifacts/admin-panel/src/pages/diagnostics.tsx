@@ -232,7 +232,7 @@ function LiveEventsTab() {
   const copyAll = useCallback(async () => {
     if (!data?.events) return;
     const text = data.events
-      .map(e => `[${fmtTime(e.created_at)}] [${e.username}] [${e.call_id?.slice(0, 8) ?? "no-call"}] ${e.event}  ${JSON.stringify(e.payload)}`)
+      .map(e => `[${fmtTime(e.created_at)}] [${e.username}] [${e.call_id?.slice(0, 8) ?? "no-call"}] ${e.event}  ${JSON.stringify(e.payload ?? {})}`)
       .join("\n");
     await navigator.clipboard.writeText(text).catch(() => {});
     setCopied(true);
@@ -330,7 +330,7 @@ function LiveEventsTab() {
             <span className="text-muted-foreground/50 w-20 truncate shrink-0">{e.call_id ? callIdShort(e.call_id) : "—"}</span>
             <span className={`font-semibold w-48 truncate shrink-0 ${eventColor(e.event)}`}>{e.event}</span>
             <span className="text-muted-foreground/70 truncate flex-1">
-              {Object.keys(e.payload).length > 0 ? JSON.stringify(e.payload) : ""}
+              {Object.keys(e.payload ?? {}).length > 0 ? JSON.stringify(e.payload) : ""}
             </span>
             {e.elapsed_ms !== null && (
               <span className="text-muted-foreground/50 shrink-0">{fmtMs(e.elapsed_ms)}</span>
@@ -529,7 +529,7 @@ function CallTimelineTab({ initialCallId }: { initialCallId?: string }) {
                 <div className={`flex-1 pb-3 ${i < data.events.length - 1 ? "" : ""}`}>
                   <div className={`flex items-start gap-2 px-2 py-1.5 rounded border text-xs ${eventBg(e.event)}`}>
                     <span className={`font-semibold font-mono shrink-0 ${eventColor(e.event)}`}>{e.event}</span>
-                    {Object.keys(e.payload).length > 0 && (
+                    {Object.keys(e.payload ?? {}).length > 0 && (
                       <span className="text-muted-foreground/70 font-mono truncate flex-1">
                         {JSON.stringify(e.payload)}
                       </span>
