@@ -18,10 +18,7 @@ import { diagLog } from "./diagnosticLogger";
 let _el: HTMLAudioElement | null = null;
 let _audioCtx: AudioContext | null = null;      // usato SOLO da primeRemoteAudio su Chrome (MAI su iOS)
 let _currentStream: MediaStream | null = null;
-// Inizializza a false (auricolare): il default per le chiamate audio è earpiece,
-// non speaker. setSpeakerMode(true) viene chiamato esplicitamente solo per video call
-// o quando l'utente preme il pulsante Vivavoce.
-let _speakerMode = false;
+let _speakerMode = true;
 let _playRetryTimer: ReturnType<typeof setTimeout> | null = null;
 let _silenceBlobUrl: string | null = null;      // WAV silenzioso per blessing iOS (no AudioContext)
 
