@@ -436,6 +436,15 @@ export function CallProvider({ children }: { children: ReactNode }) {
     const raceTimeout = <T,>(p: Promise<T>): Promise<T> => Promise.race([p, totalTimeout]);
 
     try {
+      // ── Probe diagnostico: verifica che il nuovo bundle sia in esecuzione e che
+      // _acceptCallId sia valorizzato correttamente.
+      // accept.probe.noId   → usa diagLogger._callId  (appare sempre se la chiamata è tracciata)
+      // accept.probe.withId → usa _acceptCallId       (appare solo se _acceptCallId è non-vuoto e corretto)
+      // Se accept.probe.noId appare ma accept.probe.withId no → _acceptCallId è "" o errato.
+      // Se nessuno dei due appare → bundle vecchio ancora in cache o diagLogger non inizializzato.
+      diagLog('accept.probe.noId',   { v: 4, callIdSnapshot: _acceptCallId, hasId: !!_acceptCallId });
+      diagLog('accept.probe.withId', { v: 4, callIdSnapshot: _acceptCallId, hasId: !!_acceptCallId }, _acceptCallId);
+
       // iOS Safari: getUserMedia DEVE venire prima di qualsiasi await di rete.
       // stopRing() è sync, quindi non consuma il gesture context.
       stopRing();

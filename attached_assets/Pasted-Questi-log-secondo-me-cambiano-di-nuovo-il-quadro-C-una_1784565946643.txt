@@ -1,0 +1,102 @@
+Questi log, secondo me, cambiano di nuovo il quadro. C’è una contraddizione che va risolta prima di fare altre modifiche.
+
+Fatto 1: primeRemoteAudio() termina
+
+Lo dimostrano i log:
+
+prime.enter
+...
+prime.exit
+
+Quindi non è più il sospettato.
+
+⸻
+
+Fatto 2: mancano ancora i log che avevate dichiarato di aver aggiunto
+
+Tu mi avevi detto che nel nuovo codice esistono anche:
+
+prime.call.before
+prime.inner.resolved
+prime.call.after
+
+In questi log non compare nessuno dei tre.
+
+Compaiono solo quelli interni di primeRemoteAudio().
+
+Questo è il punto che non torna.
+
+⸻
+
+Fatto 3: il timeout continua nello step 2
+
+Quindi la sequenza reale è:
+
+accept.step 1 OK
+↓
+prime.enter
+↓
+prime.exit
+↓
+... niente ...
+↓
+accept.timeout step 2
+
+Questa sequenza è incompatibile con questo pseudocodice:
+
+diagLog("prime.call.before");
+await primeRemoteAudio();
+diagLog("prime.inner.resolved");
+diagLog("prime.call.after");
+diagLog("accept.step", { step:2 });
+
+Perché se prime.exit esiste, almeno uno dei log successivi dovrebbe comparire.
+
+⸻
+
+La mia impressione
+
+A questo punto non credo più che il problema sia dentro primeRemoteAudio() né dentro Promise.race().
+
+Credo che ci sia un problema molto più semplice:
+
+i log che credete di aver deployato non sono quelli che stanno realmente girando.
+
+Lo dico perché:
+
+* vedo i log aggiunti in remoteAudio.ts;
+* non vedo nessuno dei log aggiunti in acceptCall().
+
+È un pattern troppo netto.
+
+⸻
+
+Il controllo che farei adesso
+
+Non farei nessun altro refactoring.
+
+Chiederei all’agente una verifica molto precisa:
+
+Apri il bundle JavaScript servito in produzione (index-DFdLp_1_.js) e cerca letteralmente le stringhe:
+
+* prime.call.before
+* prime.inner.resolved
+* prime.call.after
+
+Dimmi se sono presenti nel bundle realmente distribuito.
+
+Perché se non esistono nel bundle, allora state facendo debug su codice diverso da quello che pensate di aver deployato.
+
+Se invece esistono nel bundle ma non vengono mai emesse, allora significa che l’esecuzione non torna mai da primeRemoteAudio() al codice di acceptCall(), e questo restringe moltissimo il campo.
+
+⸻
+
+Quello che eviterei
+
+Non continuerei a cambiare timeout, Promise.race o AudioContext finché non risolvete questa incongruenza.
+
+In questo momento la domanda più importante non è “perché si blocca?”, ma:
+
+Perché vedo i nuovi log di remoteAudio.ts, ma non vedo i nuovi log che dovrebbero essere immediatamente prima e dopo la chiamata a primeRemoteAudio()?
+
+Questa incongruenza è, a mio avviso, il prossimo nodo da sciogliere prima di qualsiasi altra modifica.
