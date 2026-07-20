@@ -96,16 +96,52 @@ Se il retry WS viene inviato e il server lo riceve con lo stesso `call_id`:
 
 ---
 
+### S8 — Reinstallazione PWA (regressione Signal)
+**Scopo:** Verificare che le modifiche al signaling di Fase 1 non abbiano introdotto effetti collaterali sul protocollo Signal (identity key, sessioni E2E).  
+**Setup:**
+1. Disinstalla Alpha Chat dal dispositivo (o cancella i dati dell'app)
+2. Reinstalla e registra nuovamente lo stesso utente
+3. Ricevi una chiamata e alcuni messaggi da un contatto esistente
+
+**Atteso:**
+- Nessun comportamento anomalo nel signaling di chiamata (nessun `[CALL_RETRY]` anomalo, ACK ricevuto normalmente)
+- Se i messaggi risultano `[Messaggio non decifrabile]` → il problema è **indipendente dalla Fase 1** e va attribuito alla gestione delle identity key (problema noto, congelato per module isolation policy)
+- Se i messaggi sono decifrabili normalmente → nessuna regressione Signal introdotta da M1–M3
+
+**Note:** Questo test non valida una funzionalità di Fase 1, ma esclude effetti collaterali.
+
+---
+
+### S9 — Doppia chiamata consecutiva (reset dei ref M3)
+**Scopo:** Verificare che `callIdRef`, `ackTimerRef`, `retryAttemptedRef`, `offerSentAtRef` vengano correttamente azzerati da `cleanup()` e non "inquinino" la seconda chiamata.
+
+**Setup:**
+1. Effettua una chiamata normale (Caller → Callee risponde → entrambi chiudono)
+2. Avvia immediatamente una seconda chiamata verso lo stesso contatto
+
+**Atteso nel log browser (seconda chiamata):**
+- `call_id` della seconda chiamata è un **nuovo UUID** diverso dalla prima
+- Nessun `[CALL_RETRY]` ereditato dalla prima
+- Nessun `call.signal_ack` della prima chiamata associato alla seconda (il filtro `ackCallId !== callIdRef.current` lo blocca)
+- `ackTimerRef` è un timer fresco (il precedente era già stato cancellato da `cleanup()`)
+
+**Come verificare:** confrontare i due `call_id` nei log; devono essere diversi. Il secondo `call.offer` deve avere `sent_at` coerente con il momento del secondo tentativo.
+
+---
+
 ## Metriche da raccogliere in produzione
 
 Dopo il deploy, monitorare i log per almeno 2-3 giorni:
 
 | Metrica | Come cercarla nel log | Target |
 |---|---|---|
-| Numero di retry | `grep "\[CALL_RETRY\]"` | Raro (<5% delle chiamate) |
+| **Totale `call.offer` inviati** | `grep "call.offer inviato"` (log browser) | baseline |
+| **Totale retry** | `grep "\[CALL_RETRY\]"` | Raro (<5% delle chiamate) |
+| **Percentuale retry** | CALL_RETRY / call.offer × 100 | < 5% target; >20% → investigare |
 | Retry riusciti | `[CALL_RETRY]` seguito da `call.answered` entro 30s | > 80% se retry si verifica |
 | Duplicati bloccati | `[CALL-M4] call.offer duplicato ignorato` | Sempre = numero retry |
-| ACK medi (`delivered=true`) | `call.signal_ack delivered=true rtt=` | < 200ms in condizioni normali |
+| **RTT medio ACK** (`delivered=true`) | `call.signal_ack delivered=true rtt=` — calcolare media | < 200ms condizioni normali |
+| **RTT massimo ACK** | stesso campo, valore massimo osservato | Se > 1800ms → timeout 2s troppo stretto |
 | Casi `delivered=false` | `call.signal_ack delivered=false` | Raro, solo zombie/offline |
 | Push zombie (M5) | `[CALL-M5] callee isOnline=true ma openCount=0` | Presente quando callee in zombie |
 
