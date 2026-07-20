@@ -484,10 +484,25 @@ export function CallProvider({ children }: { children: ReactNode }) {
     const raceTimeout = <T,>(p: Promise<T>): Promise<T> => Promise.race([p, totalTimeout]);
 
     try {
-      // iOS Safari: getUserMedia DEVE venire prima di qualsiasi await di rete.
-      // releaseRingForCall() è sync: pausa il ring E svuota el.src → rilascia
-      // la sessione iOS "Playback" (speaker) in modo che getUserMedia() possa
-      // stabilire "PlayAndRecord" (auricolare) senza interferenze.
+      // iOS audio routing fix (chirurgico):
+      //
+      // PROBLEMA: unlockNotifAudio() gioca tutti gli <audio src> (_sounds e _ringEls)
+      // a volume=0 per sbloccarli. Su iOS, qualsiasi <audio src>.play() durante una
+      // sessione PlayAndRecord imposta l'override della porta di uscita su SPEAKER,
+      // anche a volume=0 → audio bloccato su vivavoce per tutta la chiamata.
+      //
+      // SOLUZIONE: awaitare unlockNotifAudio() PRIMA di releaseRingForCall() e getUserMedia().
+      // In questo momento iOS è ancora in sessione "Playback" (il ring sta suonando).
+      // I play() a volume=0 avvengono durante Playback (già su speaker, non impatta).
+      // Quando unlockNotifAudio completa (tutti in pausa), chiamiamo releaseRingForCall()
+      // e poi getUserMedia() → PlayAndRecord si instaura PULITA → earpiece di default.
+      //
+      // Se _unlocked=true (già sbloccato da una gesture precedente), unlockNotifAudio
+      // ritorna istantaneamente (early-exit sincrono dopo il primo if) → zero latenza.
+      await unlockNotifAudio().catch(() => {});
+
+      // Rilascia la sessione Playback (svuota el.src dei ring) così getUserMedia
+      // può creare PlayAndRecord senza interferenze con elementi <audio src> attivi.
       releaseRingForCall();
 
       _currentStep = 1; _stepStart = Date.now();
@@ -502,9 +517,6 @@ export function CallProvider({ children }: { children: ReactNode }) {
       // il leak del microfono che causa il prompt "Vuoi interrompere registrazione?"
       localStreamRef.current = stream;
       setLocalStream(stream);
-
-      // getUserMedia OK → iOS è ora in sessione PlayAndRecord.
-      void unlockNotifAudio().catch(() => {});
 
       _currentStep = 2; _stepStart = Date.now();
       console.log('[DIAG-ACCEPT] step 2 — primeRemoteAudio()');
