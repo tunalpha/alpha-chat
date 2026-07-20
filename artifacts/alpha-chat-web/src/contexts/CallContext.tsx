@@ -399,10 +399,18 @@ export function CallProvider({ children }: { children: ReactNode }) {
     // setRemoteDescription, createAnswer, setLocalDescription.
     // Su iOS qualsiasi step può bloccarsi per sessione audio in conflitto, rete
     // assente, o bug WebKit. Senza questo timeout il spinner gira per sempre.
+    // [DIAG-ACCEPT] step tracker: aggiornato prima di ogni await, letto nel timeout
+    let _currentStep = 0;
+    let _stepStart   = Date.now();
+
     let totalTimeoutId: ReturnType<typeof setTimeout> | null = null;
     const totalTimeout = new Promise<never>((_, reject) => {
       totalTimeoutId = setTimeout(
-        () => reject(new Error('[acceptCall] timeout 15s — step bloccato (getUserMedia/ICE/negotiate)')),
+        () => {
+          const elapsed = Date.now() - _stepStart;
+          console.error('[DIAG-ACCEPT] timeout 15s scattato — step bloccato: step=%d elapsed=%dms', _currentStep, elapsed);
+          reject(new Error(`[acceptCall] timeout 15s — step ${_currentStep} bloccato`));
+        },
         15_000,
       );
     });
@@ -415,9 +423,10 @@ export function CallProvider({ children }: { children: ReactNode }) {
       // stopRing() è sync, quindi non consuma il gesture context.
       stopRing();
 
+      _currentStep = 1; _stepStart = Date.now();
       console.log('[DIAG-ACCEPT] step 1 — getUserMedia()');
       const stream = await raceTimeout(getUserMedia(incomingCall.callType));
-      console.log('[DIAG-ACCEPT] step 1 OK — tracks=%d', stream.getTracks().length);
+      console.log('[DIAG-ACCEPT] step 1 OK — tracks=%d elapsed=%dms', stream.getTracks().length, Date.now() - _stepStart);
 
       // FIX: assegna il ref IMMEDIATAMENTE dopo getUserMedia, prima di qualsiasi
       // await successivo. Se un'eccezione viene lanciata nei passi seguenti,
@@ -429,29 +438,36 @@ export function CallProvider({ children }: { children: ReactNode }) {
       // getUserMedia OK → iOS è ora in sessione PlayAndRecord.
       void unlockNotifAudio().catch(() => {});
 
+      _currentStep = 2; _stepStart = Date.now();
       console.log('[DIAG-ACCEPT] step 2 — primeRemoteAudio()');
       await raceTimeout(primeRemoteAudio().catch(() => {}));
-      console.log('[DIAG-ACCEPT] step 2 OK');
+      console.log('[DIAG-ACCEPT] step 2 OK elapsed=%dms', Date.now() - _stepStart);
 
+      _currentStep = 3; _stepStart = Date.now();
       console.log('[DIAG-ACCEPT] step 3 — loadIceConfig()');
       await raceTimeout(loadIceConfig());
-      console.log('[DIAG-ACCEPT] step 3 OK');
+      console.log('[DIAG-ACCEPT] step 3 OK elapsed=%dms', Date.now() - _stepStart);
 
+      _currentStep = 4; _stepStart = Date.now();
       console.log('[DIAG-ACCEPT] step 4 — buildPC + setRemoteDescription');
       const pc = buildPC(incomingCall.fromUserId);
       addTracksToPC(pc, stream);
       await raceTimeout(pc.setRemoteDescription(new RTCSessionDescription(incomingCall.sdp)));
-      console.log('[DIAG-ACCEPT] step 4 OK');
+      console.log('[DIAG-ACCEPT] step 4 OK elapsed=%dms', Date.now() - _stepStart);
 
+      _currentStep = 5; _stepStart = Date.now();
       console.log('[DIAG-ACCEPT] step 5 — createAnswer');
       const answer = await raceTimeout(pc.createAnswer());
-      console.log('[DIAG-ACCEPT] step 5 OK — type=%s', answer.type);
+      console.log('[DIAG-ACCEPT] step 5 OK — type=%s elapsed=%dms', answer.type, Date.now() - _stepStart);
 
+      _currentStep = 6; _stepStart = Date.now();
       console.log('[DIAG-ACCEPT] step 6 — setLocalDescription');
       await raceTimeout(pc.setLocalDescription(answer));
-      console.log('[DIAG-ACCEPT] step 6 OK');
+      console.log('[DIAG-ACCEPT] step 6 OK elapsed=%dms', Date.now() - _stepStart);
 
-      console.log('[DIAG-ACCEPT] step 7 — send call.answer → to=%s', incomingCall.fromUserId);
+      _currentStep = 7;
+      const wsReady = wsSendRef.current !== null;
+      console.log('[DIAG-ACCEPT] step 7 — send call.answer → to=%s wsReady=%s', incomingCall.fromUserId, wsReady);
       wsSend({
         type: "call.answer",
         payload: { to_user_id: incomingCall.fromUserId, sdp: answer, call_id: callIdRef.current },

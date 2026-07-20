@@ -1,0 +1,54 @@
+Questa volta il comportamento è diverso, e secondo me è un passo avanti perché la RCA precedente sembra confermata.
+
+Infatti:
+
+* ✅ Il pulsante verde è tornato cliccabile.
+* ✅ Lo spinner parte solo dopo il tap.
+* ❌ Però lo spinner non termina mai.
+* ❌ La chiamata non viene stabilita.
+
+Quindi il bug dello spinner già presente all’arrivo della chiamata sembra risolto. Ora il blocco è dopo aver premuto “Accetta”.
+
+Inoltre, dalle schermate noto un’altra anomalia:
+
+* È comparso un contatto chiamato “Chat” con avatar ?.
+* Non sembra un contatto reale e potrebbe indicare che viene creata una conversazione placeholder o con dati incompleti.
+
+Questa anomalia è probabilmente separata dal problema della chiamata.
+
+La nuova RCA
+
+Adesso indagherei solo il flusso di accettazione. Chiederei al reviewer/agente di verificare dove si interrompe la sequenza dopo il tap su “Accetta”.
+
+Il prompt che userei è:
+
+Nuova RCA – fase di accettazione della chiamata
+
+Il bug dello spinner iniziale è risolto: il pulsante verde è cliccabile e lo spinner compare solo dopo il tap.
+
+Rimane il seguente problema:
+
+* premendo “Accetta”, lo spinner resta infinito;
+* la chiamata non entra mai nello stato connesso;
+* il chiamante resta in “In chiamata…”;
+* il destinatario non può completare la connessione.
+
+Non modificare ancora il codice.
+
+Esegui una Root Cause Analysis completa del flusso:
+
+1. Tap sul pulsante “Accetta”.
+2. Entrata in acceptCall().
+3. Avvio e completamento di getUserMedia().
+4. Creazione della RTCPeerConnection.
+5. Creazione dell’answer SDP.
+6. Invio di call.answer.
+7. Ricezione di call.answer dal chiamante.
+8. ICE connection state (new, checking, connected, failed, disconnected).
+9. Punto esatto in cui la Promise rimane pendente o viene interrotta.
+
+Aggiungi log diagnostici in ogni passaggio, ma non applicare fix finché non è individuata la causa precisa.
+
+Analizza inoltre perché compare un nuovo contatto chiamato “Chat” con avatar ?: verifica se viene creato un placeholder, una conversazione temporanea o un record incompleto, e indica l’origine senza modificarne ancora il comportamento.
+
+Con questo approccio evitate di introdurre un’altra correzione “alla cieca”. Ora avete già isolato il primo bug; il secondo sembra essere un problema diverso e conviene identificarne il punto esatto prima di intervenire.
