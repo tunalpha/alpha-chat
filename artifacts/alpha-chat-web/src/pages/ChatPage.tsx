@@ -2198,9 +2198,24 @@ export default function ChatPage({ onNavigate }: Props) {
                   return <div className="msg-hint">Nessun messaggio trovato per "<strong>{chatSearchQuery}</strong>"</div>;
                 }
 
+                // Determina se ci sono messaggi non decifrabili (reinstall/cambio chiavi)
+                const UNDECIPHERABLE = "[Messaggio non decifrabile]";
+                const hasUndecipherable = filtered.some(
+                  (m) => decryptedTexts.get(m.id) === UNDECIPHERABLE
+                );
+                let undecipherableBannerShown = false;
+
                 return filtered.map((msg) => {
                   const isMine = msg.sender_id === auth?.userId;
                   const text = getDisplayText(msg);
+
+                  // Banner "chiavi cambiate" — mostrato UNA sola volta prima del
+                  // primo messaggio non decifrabile (es. dopo reinstallazione app).
+                  const showKeyLostBanner =
+                    hasUndecipherable &&
+                    !undecipherableBannerShown &&
+                    text === UNDECIPHERABLE &&
+                    (() => { undecipherableBannerShown = true; return true; })();
                   const time = formatTime(msg.sent_at);
                   // Evidenzia la query nel testo
                   const renderText = () => {
@@ -2233,8 +2248,24 @@ export default function ChatPage({ onNavigate }: Props) {
                   const isMedia   = mediaMeta !== null;
 
                   return (
+                    <div key={msg.id}>
+                    {showKeyLostBanner && (
+                      <div className="key-lost-banner">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="18" height="18" style={{ flexShrink: 0, marginTop: 1 }}>
+                          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>
+                          <path d="M7 11V7a5 5 0 0 1 9.9-1"/>
+                        </svg>
+                        <div className="key-lost-banner-text">
+                          <strong>Messaggi precedenti non recuperabili</strong>
+                          <span>
+                            Dopo la reinstallazione dell'app le chiavi crittografiche sono cambiate.
+                            I messaggi cifrati con le vecchie chiavi non possono più essere decifrati.
+                            I <strong>nuovi messaggi</strong> saranno visualizzati normalmente.
+                          </span>
+                        </div>
+                      </div>
+                    )}
                     <div
-                      key={msg.id}
                       className={`msg-row ${isMine ? "mine" : "theirs"}${destroyingIds.has(msg.id) ? " msg-dissolve" : ""}`}
                       onContextMenu={(e) => handleContextMenu(e, msg)}
                       onTouchStart={(e) => handleTouchStart(e, msg)}
@@ -2305,6 +2336,7 @@ export default function ChatPage({ onNavigate }: Props) {
                           )}
                         </div>
                       </div>
+                    </div>
                     </div>
                   );
                 });
