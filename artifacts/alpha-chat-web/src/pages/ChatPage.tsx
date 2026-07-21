@@ -61,6 +61,7 @@ import { attachAudioUnlockListener, playNotifSound, unlockNotifAudio } from "../
 import { primeRemoteAudio } from "../lib/remoteAudio";
 import VoiceMessage from "../components/VoiceMessage";
 import MediaMessage from "../components/MediaMessage";
+import PendingMediaBubble, { type MediaUploadState, type MediaUploadPhase } from "../components/PendingMediaBubble";
 import MediaViewer from "../components/MediaViewer";
 import InviteModal from "../components/InviteModal";
 import CreateGroupModal from "../components/CreateGroupModal";
@@ -634,6 +635,9 @@ export default function ChatPage({ onNavigate }: Props) {
   const convLongPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  /** Stato di avanzamento per i messaggi media in attesa di conferma server.
+   *  Chiave = pendingMsgId ("pending-<clientMessageId>") */
+  const [mediaUploadStates, setMediaUploadStates] = useState<Map<string, MediaUploadState>>(new Map());
   const [viewerMedia, setViewerMedia] = useState<{ url: string; type: "image" | "video" } | null>(null);
   // Sprint 23 — Silenzia + Media condivisi + Cancella chat
   const [showMediaGallery, setShowMediaGallery] = useState(false);
@@ -1130,6 +1134,15 @@ export default function ChatPage({ onNavigate }: Props) {
                 (m) => m.client_message_id === msg.client_message_id && m.id.startsWith("pending-"),
               );
               if (pendingIdx >= 0) {
+                const pendingId = prev[pendingIdx].id;
+                // Cleanup stato upload + revoca objectURL locale
+                setMediaUploadStates((upd) => {
+                  const s = upd.get(pendingId);
+                  if (s?.localUrl) URL.revokeObjectURL(s.localUrl);
+                  const next = new Map(upd);
+                  next.delete(pendingId);
+                  return next;
+                });
                 const next = [...prev];
                 next[pendingIdx] = msg;
                 return next;
@@ -1586,41 +1599,101 @@ export default function ChatPage({ onNavigate }: Props) {
   async function handleVoiceSend(voice: VoiceBlob) {
     setShowVoiceRecorder(false);
     if (!activeConvId || !auth) return;
-    setSending(true);
-    try {
-      // Fase 3: cifra il blob audio con AES-256-GCM prima dell'upload
-      const { encryptedBlob, keyBase64, ivBase64 } = await encryptMediaBlob(voice.blob);
-      const media = await apiUploadEncryptedMedia(activeConvId, encryptedBlob, voice.blob.type || "audio/webm", {
+
+    // ── OPTIMISTIC UPDATE ────────────────────────────────────────────────────
+    const clientMessageId = crypto.randomUUID();
+    const pendingMsgId    = `pending-${clientMessageId}`;
+    const nowIso          = new Date().toISOString();
+    const convId          = activeConvId; // cattura per il retry (l'utente potrebbe cambiare conv)
+    const localUrl        = URL.createObjectURL(voice.blob);
+
+    setMediaUploadStates((prev) =>
+      new Map(prev).set(pendingMsgId, {
+        phase:     "preparing",
+        localUrl,
+        mimeType:  voice.blob.type || "audio/webm",
+        mediaType: "voice",
         durationMs: voice.durationMs,
-        waveform:   voice.waveform,
+        waveform:  voice.waveform,
+      }),
+    );
+    setMessages((prev) => [
+      ...prev,
+      {
+        id:                   pendingMsgId,
+        client_message_id:    clientMessageId,
+        conversation_id:      convId,
+        sender_id:            auth.userId,
+        message_type:         "media",
+        ciphertext:           null,
+        ciphertext_type:      null,
+        sequence_number:      0,
+        sent_at:              nowIso,
+        server_received_at:   nowIso,
+        status:               "sent",
+        deleted_for_everyone: false,
+      },
+    ]);
+    setSending(true);
+
+    /** Aggiorna solo la fase nel map, senza toccare il resto */
+    const updPhase = (phase: MediaUploadPhase, extra?: Partial<MediaUploadState>) =>
+      setMediaUploadStates((prev) => {
+        const s = prev.get(pendingMsgId);
+        if (!s) return prev;
+        return new Map(prev).set(pendingMsgId, { ...s, phase, retryFn: undefined, ...extra });
       });
 
-      // Metadata JSON con chiave AES — verrà Signal-cifrato (server non vede la chiave)
-      // mime_type incluso per compatibilità cross-platform (iOS→Android e viceversa)
-      const metaJson = JSON.stringify({
-        e2e:        true,
-        type:       "voice",
-        media_id:   media.media_id,
-        key:        keyBase64,
-        iv:         ivBase64,
-        duration_ms: media.duration_ms ?? voice.durationMs,
-        waveform:   media.waveform.length > 0 ? media.waveform : voice.waveform,
-        mime_type:  voice.blob.type || "audio/webm",
-      });
+    async function doUpload() {
+      try {
+        // 1. Cifratura
+        updPhase("encrypting");
+        const { encryptedBlob, keyBase64, ivBase64 } = await encryptMediaBlob(voice.blob);
 
-      const clientMessageId = crypto.randomUUID();
-      sentCacheRef.current.set(clientMessageId, metaJson);
-      void cacheOwnMessageMeta(clientMessageId, metaJson);
-      const signal = await encryptForActive(metaJson);
-      await apiSendMediaMessage(
-        activeConvId, media.media_id, signal, clientMessageId, metaJson,
-        signal?.deviceCiphertexts,
-      );
-    } catch (err) {
-      showToast(err instanceof Error ? err.message : "Errore invio vocale");
-    } finally {
-      setSending(false);
+        // 2. Upload
+        updPhase("uploading", { progress: 0 });
+        const media = await apiUploadEncryptedMedia(convId, encryptedBlob, voice.blob.type || "audio/webm", {
+          durationMs: voice.durationMs,
+          waveform:   voice.waveform,
+          onProgress: (pct: number) =>
+            setMediaUploadStates((prev) => {
+              const s = prev.get(pendingMsgId);
+              if (!s) return prev;
+              return new Map(prev).set(pendingMsgId, { ...s, phase: "uploading", progress: Math.round(pct) });
+            }),
+        });
+
+        // 3. Signal-cifra e invia
+        updPhase("sending");
+        const metaJson = JSON.stringify({
+          e2e:         true,
+          type:        "voice",
+          media_id:    media.media_id,
+          key:         keyBase64,
+          iv:          ivBase64,
+          duration_ms: media.duration_ms ?? voice.durationMs,
+          waveform:    media.waveform.length > 0 ? media.waveform : voice.waveform,
+          mime_type:   voice.blob.type || "audio/webm",
+        });
+        sentCacheRef.current.set(clientMessageId, metaJson);
+        void cacheOwnMessageMeta(clientMessageId, metaJson);
+        const signal = await encryptForActive(metaJson);
+        await apiSendMediaMessage(convId, media.media_id, signal, clientMessageId, metaJson, signal?.deviceCiphertexts);
+        // WS confirmation replaces the pending message — nessuna azione necessaria qui
+      } catch (err) {
+        // Mostra stato "failed" con possibilità di riprovare
+        setMediaUploadStates((prev) => {
+          const s = prev.get(pendingMsgId);
+          if (!s) return prev;
+          return new Map(prev).set(pendingMsgId, { ...s, phase: "failed", retryFn: doUpload });
+        });
+        // Non mostrare toast generico — la bolla stessa mostra l'errore
+      } finally {
+        setSending(false);
+      }
     }
+
+    await doUpload();
   }
 
   /** Comprimi un'immagine via Canvas prima del caricamento.
@@ -1675,65 +1748,118 @@ export default function ChatPage({ onNavigate }: Props) {
       return;
     }
 
+    // ── OPTIMISTIC UPDATE ────────────────────────────────────────────────────
+    const clientMessageId = crypto.randomUUID();
+    const pendingMsgId    = `pending-${clientMessageId}`;
+    const nowIso          = new Date().toISOString();
+    const convId          = activeConvId; // cattura per il retry
+    const mtype           = categ === "audio" ? "voice" : categ as "image" | "video" | "document";
+    const localUrl        = URL.createObjectURL(file);
+
+    setMediaUploadStates((prev) =>
+      new Map(prev).set(pendingMsgId, {
+        phase:     "preparing",
+        localUrl,
+        filename:  file.name,
+        mimeType:  file.type,
+        mediaType: mtype,
+        size:      file.size,
+      }),
+    );
+    setMessages((prev) => [
+      ...prev,
+      {
+        id:                   pendingMsgId,
+        client_message_id:    clientMessageId,
+        conversation_id:      convId,
+        sender_id:            auth.userId,
+        message_type:         "media",
+        ciphertext:           null,
+        ciphertext_type:      null,
+        sequence_number:      0,
+        sent_at:              nowIso,
+        server_received_at:   nowIso,
+        status:               "sent",
+        deleted_for_everyone: false,
+      },
+    ]);
     setSending(true);
     setUploadProgress(0);
-    try {
-      // Comprimi immagini prima di cifrare (riduce freeze su iOS con foto grandi)
-      const blobToEncrypt: File | Blob =
-        file.type.startsWith("image/") && file.size > 300_000
-          ? await compressImage(file)
-          : file;
-      // Fase 3: cifra il file con AES-256-GCM prima dell'upload
-      const { encryptedBlob, keyBase64, ivBase64 } = await encryptMediaBlob(blobToEncrypt);
-      setUploadProgress(10);
+    if (fileInputRef.current) fileInputRef.current.value = "";
 
-      const media = await apiUploadEncryptedMedia(activeConvId, encryptedBlob, file.type, {
-        originalFilename: file.name,
-        onProgress: (pct) => setUploadProgress(Math.round(10 + pct * 0.8)),
-      });
-      setUploadProgress(90);
-
-      const mtype = file.type.startsWith("image/")  ? "image"
-                  : file.type.startsWith("video/")   ? "video"
-                  : file.type.startsWith("audio/")   ? "voice"
-                  : "document";
-
-      // Thumbnail: nessun re-processing aggiuntivo — la Fase 4 è rimandata.
-      // FIX: il vecchio codice ri-cifrava l'intero file originale (8MB) e
-      // usava String.fromCharCode(...spread) O(n²) causando freeze totale
-      // su iOS Safari. Il risultato veniva poi scartato → rimosso.
-      const thumbIvBase64: string | undefined = undefined;
-
-      const metaJson = JSON.stringify({
-        e2e:       true,
-        type:      mtype,
-        media_id:  media.media_id,
-        key:       keyBase64,
-        iv:        ivBase64,
-        mime_type: file.type,
-        filename:  file.name,
-        size:      file.size,
-        ...(thumbIvBase64                 ? { thumb_iv: thumbIvBase64 }      : {}),
-        ...(media.duration_ms != null     ? { duration_ms: media.duration_ms }: {}),
-        ...(media.waveform.length > 0     ? { waveform: media.waveform }      : {}),
+    const updPhase = (phase: MediaUploadPhase, extra?: Partial<MediaUploadState>) =>
+      setMediaUploadStates((prev) => {
+        const s = prev.get(pendingMsgId);
+        if (!s) return prev;
+        return new Map(prev).set(pendingMsgId, { ...s, phase, retryFn: undefined, ...extra });
       });
 
-      const clientMessageId = crypto.randomUUID();
-      sentCacheRef.current.set(clientMessageId, metaJson);
-      void cacheOwnMessageMeta(clientMessageId, metaJson);
-      const signal = await encryptForActive(metaJson);
-      await apiSendMediaMessage(
-        activeConvId, media.media_id, signal, clientMessageId, metaJson,
-        signal?.deviceCiphertexts,
-      );
-      setUploadProgress(100);
-    } catch (err) {
-      setSendError(err instanceof Error ? err.message : "Errore upload file");
-    } finally {
-      setSending(false);
-      setUploadProgress(null);
-      if (fileInputRef.current) fileInputRef.current.value = "";
+    async function doUpload() {
+      try {
+        // 1. Compressione (solo immagini grandi)
+        updPhase("preparing");
+        const blobToEncrypt: File | Blob =
+          file.type.startsWith("image/") && file.size > 300_000
+            ? await compressImage(file)
+            : file;
+
+        // 2. Cifratura AES-256-GCM
+        updPhase("encrypting");
+        const { encryptedBlob, keyBase64, ivBase64 } = await encryptMediaBlob(blobToEncrypt);
+        setUploadProgress(10);
+
+        // 3. Upload su R2
+        updPhase("uploading", { progress: 0 });
+        const media = await apiUploadEncryptedMedia(convId, encryptedBlob, file.type, {
+          originalFilename: file.name,
+          onProgress: (pct: number) => {
+            const rounded = Math.round(pct);
+            setUploadProgress(Math.round(10 + pct * 0.8));
+            setMediaUploadStates((prev) => {
+              const s = prev.get(pendingMsgId);
+              if (!s) return prev;
+              return new Map(prev).set(pendingMsgId, { ...s, phase: "uploading", progress: rounded });
+            });
+          },
+        });
+        setUploadProgress(90);
+
+        // 4. Signal-cifra e invia
+        updPhase("sending");
+        const metaJson = JSON.stringify({
+          e2e:       true,
+          type:      mtype,
+          media_id:  media.media_id,
+          key:       keyBase64,
+          iv:        ivBase64,
+          mime_type: file.type,
+          filename:  file.name,
+          size:      file.size,
+          ...(media.duration_ms != null ? { duration_ms: media.duration_ms } : {}),
+          ...(media.waveform.length > 0 ? { waveform:    media.waveform }    : {}),
+        });
+        sentCacheRef.current.set(clientMessageId, metaJson);
+        void cacheOwnMessageMeta(clientMessageId, metaJson);
+        const signal = await encryptForActive(metaJson);
+        await apiSendMediaMessage(convId, media.media_id, signal, clientMessageId, metaJson, signal?.deviceCiphertexts);
+        setUploadProgress(100);
+        // Il WS sostituirà il pending message con quello reale — nessuna azione qui
+      } catch (err) {
+        // Mostra stato "failed" con possibilità di riprovare (non rimuove il messaggio dalla chat)
+        setMediaUploadStates((prev) => {
+          const s = prev.get(pendingMsgId);
+          if (!s) return prev;
+          return new Map(prev).set(pendingMsgId, { ...s, phase: "failed", retryFn: doUpload });
+        });
+        setUploadProgress(null);
+        // Non mostrare setSendError — la bolla stessa mostra l'errore con il pulsante Riprova
+      } finally {
+        setSending(false);
+        setUploadProgress(null);
+      }
     }
+
+    await doUpload();
   }
 
   async function handleConfirmSecureDestroy() {
@@ -2341,7 +2467,10 @@ export default function ChatPage({ onNavigate }: Props) {
                             </span>
                           </div>
                         )}
-                        {voiceMeta ? (
+                        {/* Pending media: upload in corso o fallito — mostra bolla con progresso */}
+                        {msg.id.startsWith("pending-") && msg.message_type === "media" && mediaUploadStates.has(msg.id) ? (
+                          <PendingMediaBubble state={mediaUploadStates.get(msg.id)!} />
+                        ) : voiceMeta ? (
                           <VoiceMessage
                             mediaId={voiceMeta.media_id}
                             durationMs={voiceMeta.duration_ms}
