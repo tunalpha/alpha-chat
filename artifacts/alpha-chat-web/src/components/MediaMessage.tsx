@@ -15,7 +15,7 @@ type NonVoiceMedia = Extract<MediaMeta, { type: "image" | "video" | "document" }
 interface Props {
   meta: NonVoiceMedia;
   isMine: boolean;
-  onView: (blobUrl: string, type: "image" | "video") => void;
+  onView: (blobUrl: string, type: "image" | "video", filename?: string, mimeType?: string) => void;
 }
 
 // ── Icona documento ────────────────────────────────────────────────────────────
@@ -78,7 +78,7 @@ export default function MediaMessage({ meta, isMine, onView }: Props) {
     return (
       <div
         className={`media-bubble-img ${loading ? "loading" : ""}`}
-        onClick={() => blobUrl && onView(blobUrl, "image")}
+        onClick={() => blobUrl && onView(blobUrl, "image", meta.filename, meta.mime_type)}
         title="Tocca per ingrandire"
       >
         {loading && <div className="media-skeleton" />}
@@ -103,7 +103,7 @@ export default function MediaMessage({ meta, isMine, onView }: Props) {
     return (
       <div
         className={`media-bubble-video ${loading ? "loading" : ""}`}
-        onClick={() => blobUrl && onView(blobUrl, "video")}
+        onClick={() => blobUrl && onView(blobUrl, "video", meta.filename, meta.mime_type)}
         title="Tocca per riprodurre"
       >
         {loading && <div className="media-skeleton" />}

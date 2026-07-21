@@ -638,7 +638,7 @@ export default function ChatPage({ onNavigate }: Props) {
   /** Stato di avanzamento per i messaggi media in attesa di conferma server.
    *  Chiave = pendingMsgId ("pending-<clientMessageId>") */
   const [mediaUploadStates, setMediaUploadStates] = useState<Map<string, MediaUploadState>>(new Map());
-  const [viewerMedia, setViewerMedia] = useState<{ url: string; type: "image" | "video" } | null>(null);
+  const [viewerMedia, setViewerMedia] = useState<{ url: string; type: "image" | "video"; filename?: string; mimeType?: string } | null>(null);
   // Sprint 23 — Silenzia + Media condivisi + Cancella chat
   const [showMediaGallery, setShowMediaGallery] = useState(false);
   const [showClearChatModal, setShowClearChatModal] = useState(false);
@@ -2093,21 +2093,47 @@ export default function ChatPage({ onNavigate }: Props) {
               const preview = conv.last_message_preview;
               const previewText = (() => {
                 if (!preview?.ciphertext) return null;
+
+                /** Converte il meta JSON di un media in etichetta leggibile */
+                function mediaLabel(text: string): string | null {
+                  const mm = decodeMediaMeta(text);
+                  if (!mm) return null;
+                  if (mm.type === "voice")    return t("chat.voiceNote");
+                  if (mm.type === "image")    return "📷 Foto";
+                  if (mm.type === "video")    return "🎥 Video";
+                  if (mm.type === "document") return `📄 ${mm.filename ?? "Documento"}`;
+                  return null;
+                }
+
+                // 1. Vocale (decodeVoiceMeta — legacy + nuovo)
                 const vm = decodeVoiceMeta(preview.ciphertext);
                 if (vm) return t("chat.voiceNote");
-                // Per i messaggi ricevuti mostriamo sempre il lucchetto —
-                // non proviamo mai a decodificare: anche i vecchi messaggi
-                // in base64 semplice verrebbero mostrati in chiaro.
+
+                // 2. Media con JSON diretto nel ciphertext (es. invio senza Signal E2E)
+                const directLabel = mediaLabel(preview.ciphertext);
+                if (directLabel) return directLabel;
+
+                // 3. Messaggi ricevuti da altri → lucchetto (ciphertext = binario cifrato)
                 if (preview.sender_id !== auth?.userId) return "🔒 Messaggio cifrato";
-                // Gruppi: il ciphertext è il placeholder "_grp_", non il testo reale.
-                // Cerca prima nella cache decryptedTexts (set al momento del decrypt/invio).
+
+                // 4. Gruppi: cerca prima nella cache dei testi decifrati
                 if (isGroup) {
                   const cached = decryptedTexts.get(preview.message_id);
-                  if (cached && cached !== "🔒 Messaggio cifrato") return cached;
+                  if (cached && cached !== "🔒 Messaggio cifrato") {
+                    return mediaLabel(cached) ?? cached;
+                  }
                   return "📨 Messaggio inviato";
                 }
-                // Per i propri messaggi 1:1 proviamo la decodifica (es. base64 legacy)
-                return safeDecodeForPreview(preview.ciphertext);
+
+                // 5. Proprio messaggio 1:1: cache dei testi decifrati (popolata dopo decrypt)
+                const cachedPlaintext = decryptedTexts.get(preview.message_id);
+                if (cachedPlaintext && cachedPlaintext !== "🔒 Messaggio cifrato") {
+                  return mediaLabel(cachedPlaintext) ?? cachedPlaintext;
+                }
+
+                // 6. Fallback legacy base64
+                const decoded = safeDecodeForPreview(preview.ciphertext);
+                return mediaLabel(decoded) ?? decoded;
               })();
               const previewLabel = previewText
                 ? (preview!.sender_id === auth?.userId ? `${t("chat.youPrefix")}${previewText}` : previewText)
@@ -2484,7 +2510,7 @@ export default function ChatPage({ onNavigate }: Props) {
                           <MediaMessage
                             meta={mediaMeta}
                             isMine={isMine}
-                            onView={(url, type) => setViewerMedia({ url, type })}
+                            onView={(url, type, filename, mimeType) => setViewerMedia({ url, type, filename, mimeType })}
                           />
                         ) : msg.message_type === "media" && !mediaMeta ? (
                           /* FIX: media non decriptabile — placeholder invece di testo garbled */
@@ -2940,6 +2966,8 @@ export default function ChatPage({ onNavigate }: Props) {
         <MediaViewer
           blobUrl={viewerMedia.url}
           type={viewerMedia.type}
+          filename={viewerMedia.filename}
+          mimeType={viewerMedia.mimeType}
           onClose={() => setViewerMedia(null)}
         />
       )}
