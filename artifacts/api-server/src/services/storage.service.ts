@@ -32,6 +32,7 @@ import { r2 } from "../lib/r2-client";
 import { config } from "../config";
 import { logger } from "../lib/logger";
 import { R2EventModel, type R2EventType } from "../models/r2-event.model";
+import { AppError } from "../errors/AppError";
 
 // ---------------------------------------------------------------------------
 // MIME → cartella prefisso
@@ -62,8 +63,12 @@ function sizeLimit(mimeType: string): number {
 // ---------------------------------------------------------------------------
 
 const ALLOWED_MIMES = new Set([
-  "image/jpeg", "image/png", "image/webp", "image/heic",
-  "audio/ogg",  "audio/mpeg", "audio/mp4", "audio/webm", "audio/mp4;codecs=mp4a.40.2",
+  "image/jpeg", "image/png", "image/webp", "image/heic", "image/gif",
+  // audio — include tutti i formati iOS/Android/browser
+  "audio/ogg", "audio/mpeg", "audio/mp4", "audio/webm",
+  "audio/wav", "audio/x-wav", "audio/wave",  // iOS Safari registra come wav
+  "audio/aac", "audio/x-aac",                // iOS AAC
+  "audio/mp4;codecs=mp4a.40.2",
   "video/mp4",  "video/quicktime",
   "application/pdf",
 ]);
@@ -135,10 +140,8 @@ export async function uploadFile(params: {
 
   // Validazione MIME
   if (!isMimeAllowed(mimeType, isAvatar)) {
-    const err = new Error(`MIME_NOT_ALLOWED: ${mimeType}`);
-    (err as NodeJS.ErrnoException).code = "MIME_NOT_ALLOWED";
     logR2Event({ event_type: "UPLOAD", status: "error", uploader_id: uploaderId, conversation_id: conversationId, mime_type: mimeType, file_size: buffer.length, filename, error_message: `MIME_NOT_ALLOWED: ${mimeType}`, error_code: "MIME_NOT_ALLOWED" });
-    throw Object.assign(err, { statusCode: 415 });
+    throw new AppError("MIME_NOT_ALLOWED", 415, mimeType);
   }
 
   // Validazione dimensione
