@@ -87,8 +87,8 @@ function StatusBar() {
   const dash   = useR2Dashboard();
 
   const hStatus = health.data?.status ?? "offline";
-  const hColor  = hStatus === "healthy" ? "text-emerald-500" : hStatus === "warning" ? "text-amber-500" : "text-red-500";
-  const hDot    = hStatus === "healthy" ? "bg-emerald-500" : hStatus === "warning" ? "bg-amber-500" : "bg-red-500";
+  const hColor  = hStatus === "healthy" ? "text-foreground" : hStatus === "warning" ? "text-amber-500" : "text-red-500";
+  const hDot    = hStatus === "healthy" ? "bg-foreground" : hStatus === "warning" ? "bg-amber-500" : "bg-red-500";
   const hLabel  = hStatus === "healthy" ? "Healthy" : hStatus === "warning" ? "Warning" : "Offline";
 
   const encOk  = enc.data?.all_encrypted;
@@ -96,7 +96,7 @@ function StatusBar() {
   const totalGB = cf?.storage_gb ?? 0;
   const freeGB  = cf?.free_storage_gb ?? 10;
   const storagePct = Math.min((totalGB / freeGB) * 100, 999);
-  const storageDot = storagePct < 80 ? "text-emerald-400" : storagePct < 100 ? "text-amber-400" : "text-red-400";
+  const storageDot = storagePct < 80 ? "text-foreground" : storagePct < 100 ? "text-amber-400" : "text-red-400";
   const totalCost = cf?.total_cost ?? 0;
 
   return (
@@ -108,7 +108,7 @@ function StatusBar() {
       </Badge>
 
       {/* Encryption */}
-      <Badge variant="outline" className={`font-mono text-xs gap-1.5 ${enc.isLoading ? "text-muted-foreground" : encOk ? "text-emerald-400" : "text-red-400"}`}>
+      <Badge variant="outline" className={`font-mono text-xs gap-1.5 ${enc.isLoading ? "text-muted-foreground" : encOk ? "text-foreground" : "text-red-400"}`}>
         <Lock className="w-3 h-3" />
         Encryption: {enc.isLoading ? "…" : encOk ? "OK" : "Issues"}
       </Badge>
@@ -120,7 +120,7 @@ function StatusBar() {
       </Badge>
 
       {/* Cost */}
-      <Badge variant="outline" className={`font-mono text-xs gap-1.5 ${totalCost === 0 ? "text-emerald-400" : "text-amber-400"}`}>
+      <Badge variant="outline" className={`font-mono text-xs gap-1.5 ${totalCost === 0 ? "text-foreground" : "text-amber-400"}`}>
         <DollarSign className="w-3 h-3" />
         {dash.isLoading ? "…" : totalCost === 0 ? "Free Tier" : `$${totalCost.toFixed(2)}/mese`}
       </Badge>
