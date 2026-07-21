@@ -1,0 +1,379 @@
+Ecco un prompt completo, pensato per minimizzare il rischio di regressioni e mantenere la qualità del codice.
+
+⸻
+
+Implementazione sistema chiamate “WhatsApp-like” (Zero Regressioni)
+
+Obiettivo
+
+Implementare il sistema di chiamate audio/video affinché si comporti come WhatsApp, Signal o FaceTime.
+
+Attualmente una chiamata arriva come una normale notifica push. Deve invece:
+
+* far squillare il telefono anche con app chiusa
+* mostrare la schermata nativa di chiamata
+* consentire Accetta/Rifiuta
+* collegarsi automaticamente alla stanza Daily solo dopo l’accettazione
+
+⸻
+
+REGOLA FONDAMENTALE
+
+NON modificare alcuna logica esistente di:
+
+* autenticazione
+* Signal Protocol
+* messaggi
+* upload media
+* Cloudflare R2
+* MongoDB
+* scheduler
+* notifiche messaggi
+* encryption
+* chat list
+* backend media
+
+Le chiamate devono essere implementate come modulo separato.
+
+Se una modifica può generare regressioni, creare nuovi file invece di modificare quelli esistenti.
+
+⸻
+
+FASE 1 — Call State Machine (Backend)
+
+Creare un modulo dedicato.
+
+Stati supportati:
+
+IDLE
+↓
+CALLING
+↓
+RINGING
+↓
+ACCEPTED
+↓
+CONNECTED
+↓
+ENDED
+↓
+MISSED
+↓
+REJECTED
+↓
+BUSY
+↓
+CANCELLED
+↓
+TIMEOUT
+
+Creare un model MongoDB dedicato:
+
+call_session
+
+con:
+
+* callerId
+* receiverId
+* conversationId
+* roomId Daily
+* callType (audio/video)
+* state
+* startedAt
+* answeredAt
+* endedAt
+* duration
+* endReason
+
+⸻
+
+FASE 2 — API
+
+Nuove route:
+
+POST /api/v1/calls/start
+POST /api/v1/calls/ringing
+POST /api/v1/calls/accept
+POST /api/v1/calls/reject
+POST /api/v1/calls/end
+POST /api/v1/calls/cancel
+POST /api/v1/calls/busy
+POST /api/v1/calls/timeout
+GET /api/v1/calls/history
+
+NON modificare le route chat.
+
+⸻
+
+FASE 3 — Daily
+
+Quando parte una chiamata:
+
+Creare Room Daily
+
+Salvare roomId
+
+Inviare Push VoIP
+
+NON entrare nella room.
+
+L’utente entra nella room solo dopo Accept.
+
+⸻
+
+FASE 4 — iOS
+
+Implementare
+
+PushKit
+
+CallKit
+
+Quando arriva Push VoIP:
+
+Mostrare schermata nativa iPhone.
+
+Visualizzare:
+
+* Nome
+* Avatar
+* Audio / Video
+* Accetta
+* Rifiuta
+
+Deve funzionare con:
+
+* app chiusa
+* telefono bloccato
+* background
+
+⸻
+
+FASE 5 — Android
+
+Implementare:
+
+Firebase High Priority
+
+Full Screen Intent
+
+Incoming Call Notification Channel
+
+Mostrare schermata chiamata come WhatsApp.
+
+⸻
+
+FASE 6 — Cronologia chiamate
+
+Nuova schermata.
+
+Visualizzare:
+
+* Ricevute
+* Effettuate
+* Perse
+* Rifiutate
+* Durata
+* Data
+* Audio/Video
+
+⸻
+
+FASE 7 — Timeout
+
+Dopo 30 secondi:
+
+state = MISSED
+
+Inviare evento al chiamante.
+
+⸻
+
+FASE 8 — Busy
+
+Se destinatario è già in chiamata:
+
+state = BUSY
+
+Mostrare:
+
+“Utente occupato”
+
+⸻
+
+FASE 9 — Cancel
+
+Se il chiamante annulla prima della risposta:
+
+state = CANCELLED
+
+Chiudere Push.
+
+⸻
+
+FASE 10 — Logging
+
+Creare collection
+
+call_events
+
+Loggare:
+
+CALL_START
+
+CALL_RINGING
+
+CALL_ACCEPT
+
+CALL_REJECT
+
+CALL_TIMEOUT
+
+CALL_END
+
+CALL_CANCEL
+
+CALL_BUSY
+
+CALL_ERROR
+
+Con:
+
+timestamp
+
+duration
+
+latency
+
+device
+
+platform
+
+⸻
+
+FASE 11 — Admin Monitor
+
+Nuovo tab
+
+Call Monitor
+
+Visualizzare:
+
+Chiamate oggi
+
+Chiamate attive
+
+Durata media
+
+Timeout
+
+Busy
+
+Errori
+
+Call success rate
+
+Grafico ultime 24h
+
+⸻
+
+FASE 12 — Regressioni
+
+NON modificare:
+
+* media
+* R2
+* upload
+* scheduler
+* auth
+* Signal
+* encryption
+* MongoDB
+* notifiche messaggi
+
+Se serve creare nuovi service.
+
+Mai sostituire quelli esistenti.
+
+⸻
+
+TEST OBBLIGATORI
+
+Prima del merge eseguire:
+
+✅ Login
+
+✅ Register
+
+✅ Refresh token
+
+✅ Lista chat
+
+✅ Messaggi
+
+✅ Foto
+
+✅ Video
+
+✅ Vocali
+
+✅ Download media
+
+✅ Upload R2
+
+✅ Monitor R2
+
+✅ Search media
+
+✅ Cleanup
+
+✅ Consistency
+
+✅ Encryption Audit
+
+✅ Push messaggi
+
+✅ Chiamata audio
+
+✅ Chiamata video
+
+✅ Accept
+
+✅ Reject
+
+✅ Busy
+
+✅ Timeout
+
+✅ Cancel
+
+✅ End Call
+
+⸻
+
+Performance
+
+Obiettivi:
+
+* Ring < 2 secondi
+* Accettazione < 500 ms
+* Join Daily < 2 secondi
+* Nessun blocco del backend
+* Nessuna query MongoDB inutilmente duplicata
+* Nessuna regressione TypeScript
+* Zero warning
+* Zero memory leak
+
+⸻
+
+Consegna finale
+
+Al termine fornire:
+
+* elenco completo dei file creati e modificati;
+* motivazione di ogni modifica;
+* verifica che nessuna funzionalità esistente sia stata alterata;
+* esito di tutti i test di regressione;
+* conferma che il backend si avvia senza errori e che il sistema di chiamata è isolato dal resto dell’applicazione.
+
+Importante: procedere in più fasi (backend → notifiche → integrazione Daily → frontend), verificando i test di regressione dopo ogni fase prima di passare alla successiva.
