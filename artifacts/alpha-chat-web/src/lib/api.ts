@@ -183,6 +183,29 @@ export type MediaMeta =
  * Fase 3: testo già Signal-decifrato → JSON diretto.
  * Legacy: testo in base64 (pre-Fase 3).
  */
+// ── Location (E2E) ──────────────────────────────────────────────────────────
+
+export interface LocationMeta {
+  e2e:       boolean;
+  type:      "location";
+  latitude:  number;
+  longitude: number;
+  accuracy:  number;
+  timestamp: number;
+}
+
+export function decodeLocationMeta(text: string | null): LocationMeta | null {
+  if (!text) return null;
+  try {
+    const p = JSON.parse(text) as LocationMeta;
+    if (p.type === "location" && typeof p.latitude === "number" && typeof p.longitude === "number")
+      return p;
+  } catch {}
+  return null;
+}
+
+// ────────────────────────────────────────────────────────────────────────────
+
 export function decodeVoiceMeta(text: string | null): VoiceMeta | null {
   if (!text) return null;
   // Fase 3: testo già decodificato da Signal → JSON diretto

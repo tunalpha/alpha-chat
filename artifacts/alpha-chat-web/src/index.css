@@ -2123,6 +2123,164 @@ button:disabled.profile-avatar-edit {
   color: rgba(255,255,255,0.85);
   white-space: nowrap;
 }
+
+/* ── LocationMessage — bolla posizione ─────────────────────────────────── */
+.loc-bubble {
+  display: flex;
+  flex-direction: column;
+  width: 220px;
+  border-radius: 12px;
+  overflow: hidden;
+  cursor: pointer;
+  background: var(--bubble-own-bg, #dcf8c6);
+  box-shadow: 0 1px 3px rgba(0,0,0,.15);
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  transition: opacity .15s;
+}
+.msg-bubble.received .loc-bubble { background: var(--bubble-other-bg, #fff); }
+.loc-bubble:active { opacity: .8; }
+
+.loc-thumb {
+  position: relative;
+  height: 120px;
+  overflow: hidden;
+  background: #c8d8e8;
+}
+.loc-tile-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.loc-tile-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  background: linear-gradient(135deg, #c8d8e8 0%, #a8c0d8 100%);
+}
+.loc-pin {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -60%);
+  font-size: 1.6rem;
+  filter: drop-shadow(0 1px 2px rgba(0,0,0,.4));
+  pointer-events: none;
+}
+
+.loc-info {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 10px 6px;
+}
+.loc-title    { font-size: 0.82rem; font-weight: 600; }
+.loc-coords   { font-size: 0.72rem; opacity: .65; font-family: monospace; }
+.loc-accuracy { font-size: 0.7rem;  opacity: .5; }
+
+/* ── LocationViewer — full-screen ──────────────────────────────────────── */
+.loc-viewer-backdrop {
+  position: fixed;
+  inset: 0;
+  background: #000;
+  z-index: 1500;
+  display: flex;
+  flex-direction: column;
+}
+.loc-viewer-map {
+  flex: 1;
+  border: none;
+  width: 100%;
+}
+.loc-viewer-bottom {
+  background: #111;
+  padding: 12px 20px calc(env(safe-area-inset-bottom,0px) + 12px);
+}
+.loc-viewer-info { display: flex; flex-direction: column; gap: 2px; margin-bottom: 4px; }
+.loc-viewer-coord {
+  font-size: 0.85rem;
+  color: #eee;
+  font-family: monospace;
+}
+.loc-viewer-sub { font-size: 0.72rem; color: #888; }
+
+/* ── Location confirm modal ────────────────────────────────────────────── */
+.loc-confirm-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.55);
+  z-index: 1400;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+.loc-confirm-sheet {
+  background: var(--surface, #fff);
+  width: 100%;
+  max-width: 460px;
+  border-radius: 20px 20px 0 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 0 0 20px;
+}
+.loc-confirm-iframe {
+  width: 100%;
+  height: 220px;
+  border: none;
+  display: block;
+}
+.loc-confirm-status {
+  font-size: 0.95rem;
+  font-weight: 600;
+  margin: 14px 20px 4px;
+  text-align: center;
+}
+.loc-confirm-error { color: var(--color-danger, #e53e3e); }
+.loc-confirm-coords {
+  font-size: 0.75rem;
+  color: var(--text-secondary, #666);
+  font-family: monospace;
+  margin: 0 20px 12px;
+  text-align: center;
+}
+.loc-confirm-actions {
+  display: flex;
+  gap: 10px;
+  padding: 0 20px;
+  width: 100%;
+  box-sizing: border-box;
+}
+.loc-confirm-cancel, .loc-confirm-send {
+  flex: 1;
+  padding: 12px 0;
+  border-radius: 12px;
+  border: none;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: opacity .15s;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+.loc-confirm-cancel { background: var(--surface-2, #f2f2f7); color: var(--text, #1c1c1e); }
+.loc-confirm-send   { background: var(--accent, #6366f1);    color: #fff; }
+.loc-confirm-cancel:active, .loc-confirm-send:active { opacity: .75; }
+
+/* Spinner */
+.loc-confirm-spinner {
+  width: 36px; height: 36px;
+  margin: 20px auto 0;
+  border: 3px solid var(--surface-2, #f2f2f7);
+  border-top-color: var(--accent, #6366f1);
+  border-radius: 50%;
+  animation: spin .8s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
 .media-viewer-img {
   max-width: 96vw;
   max-height: 90vh;

@@ -1,0 +1,129 @@
+Puoi usare questo prompt, pensato per mantenere AlphaChat coerente con il resto dell’architettura E2E.
+
+⸻
+
+Prompt — Implementazione “Invia posizione” (Google Maps / Apple Maps style)
+
+Implementa la funzione Condividi posizione in AlphaChat con UX simile a WhatsApp, ma mantenendo la filosofia E2E dell’app.
+
+Obiettivi
+
+* Aggiungere una nuova voce 📍 Posizione nel menu allegati.
+* Richiedere il permesso di geolocalizzazione solo quando necessario.
+* Ottenere:
+    * latitudine
+    * longitudine
+    * accuratezza
+* Mostrare un’anteprima della mappa prima dell’invio.
+* Consentire all’utente di confermare o annullare.
+
+Sicurezza
+
+La posizione deve essere:
+
+* cifrata end-to-end insieme al resto del messaggio;
+* mai salvata in chiaro nel database;
+* mai inviata a servizi esterni dopo l’invio.
+
+Il payload deve essere simile a:
+
+{
+  "e2e": true,
+  "type": "location",
+  "latitude": 36.8065,
+  "longitude": 10.1815,
+  "accuracy": 8,
+  "timestamp": 1784673900
+}
+
+Anteprima nella chat
+
+La bolla deve mostrare:
+
+📍 Posizione condivisa
+
+con una mini mappa statica.
+
+Premendo la bolla deve aprirsi un viewer con:
+
+* mappa
+* coordinate
+* precisione GPS
+* pulsante “Apri in Mappe”
+
+Apertura
+
+Su iPhone:
+
+* Apple Maps
+
+Su Android:
+
+* Google Maps
+
+Fallback:
+
+browser con OpenStreetMap.
+
+Lista conversazioni
+
+L’anteprima deve mostrare:
+
+📍 Posizione
+
+e mai il JSON.
+
+Menu contestuale
+
+Come per immagini e documenti:
+
+* Condividi posizione
+* Copia coordinate
+* Apri in Mappe
+
+UI
+
+Durante il recupero GPS mostra:
+
+📍 Recupero posizione…
+
+poi
+
+📍 Posizione pronta
+
+e infine
+
+✓ Posizione inviata
+
+Errori
+
+Gestire:
+
+* permesso negato;
+* GPS disattivato;
+* timeout;
+* precisione insufficiente.
+
+Con messaggi chiari all’utente.
+
+Architettura
+
+* Nessuna regressione.
+* Nessuna modifica alla cifratura esistente.
+* Nessuna modifica alla logica WebSocket.
+* Riutilizzare optimistic update già implementato.
+* Riutilizzare il renderer media esistente creando un nuovo renderer location.
+
+Extra
+
+Aggiungere un’impostazione privacy:
+
+Condividi posizione precisa
+
+ON → coordinate complete.
+
+OFF → arrotonda automaticamente le coordinate (≈100–200 metri) prima della cifratura.
+
+⸻
+
+Questa implementazione mantiene la privacy dell’utente e aggiunge una funzione molto richiesta senza compromettere l’architettura E2E di AlphaChat.

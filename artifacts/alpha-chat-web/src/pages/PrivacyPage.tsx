@@ -106,6 +106,9 @@ export default function PrivacyPage({ onBack }: Props) {
   const [saving, setSaving]       = useState(false);
   const [error, setError]         = useState<string | null>(null);
   const [unblockedIds, setUnblockedIds] = useState<Set<string>>(new Set());
+  const [preciseLoc, setPreciseLoc]     = useState(
+    () => localStorage.getItem("ac_precise_location") !== "false"
+  );
 
   useEffect(() => {
     void (async () => {
@@ -208,6 +211,35 @@ export default function PrivacyPage({ onBack }: Props) {
       </header>
 
       <div className="settings-body">
+
+        {/* ── Posizione ──────────────────────────────────────────────────── */}
+        <div className="settings-section">
+          <div className="settings-section-title">Posizione</div>
+          <div className="settings-item">
+            <div className="settings-item-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="20" height="20">
+                <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
+                <circle cx="12" cy="10" r="3"/>
+              </svg>
+            </div>
+            <div className="settings-item-content">
+              <div className="settings-item-label">Posizione precisa</div>
+              <div className="settings-item-value muted">
+                {preciseLoc
+                  ? "Coordinate GPS complete"
+                  : "Arrotondate a ~100 m (più privacy)"}
+              </div>
+            </div>
+            <Toggle
+              checked={preciseLoc}
+              onChange={(on) => {
+                localStorage.setItem("ac_precise_location", on ? "true" : "false");
+                setPreciseLoc(on);
+              }}
+              disabled={saving}
+            />
+          </div>
+        </div>
 
         {/* ── Face ID / Touch ID ─────────────────────────────────────────── */}
         {canUseBiometric && (

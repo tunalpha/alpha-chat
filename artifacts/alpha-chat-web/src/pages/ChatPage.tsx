@@ -24,6 +24,8 @@ import {
   decodeMessage,
   decodeVoiceMeta,
   decodeMediaMeta,
+  decodeLocationMeta,
+  type LocationMeta,
   AuthExpiredError,
   type ConversationItem,
   type MessageItem,
@@ -63,6 +65,8 @@ import VoiceMessage from "../components/VoiceMessage";
 import MediaMessage from "../components/MediaMessage";
 import PendingMediaBubble, { type MediaUploadState, type MediaUploadPhase } from "../components/PendingMediaBubble";
 import MediaViewer from "../components/MediaViewer";
+import LocationMessage from "../components/LocationMessage";
+import LocationViewer from "../components/LocationViewer";
 import InviteModal from "../components/InviteModal";
 import CreateGroupModal from "../components/CreateGroupModal";
 import GroupInfoPage from "./GroupInfoPage";
@@ -340,6 +344,7 @@ function ChatInput({
   onSubmit,
   onVoiceStart,
   onAttach,
+  onLocationRequest,
   disabled,
   burnAfterRead,
   onToggleBurn,
@@ -349,6 +354,7 @@ function ChatInput({
   onSubmit: (e: React.FormEvent) => void;
   onVoiceStart: () => void;
   onAttach?: (files: FileList) => void;
+  onLocationRequest?: () => void;
   disabled: boolean;
   burnAfterRead?: boolean;
   onToggleBurn?: () => void;
@@ -413,6 +419,22 @@ function ChatInput({
           <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
         </svg>
       </button>
+
+      {onLocationRequest && (
+        <button
+          type="button"
+          className="input-icon-btn"
+          aria-label="Condividi posizione"
+          title="Condividi posizione"
+          disabled={disabled}
+          onClick={onLocationRequest}
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="22" height="22">
+            <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
+            <circle cx="12" cy="10" r="3"/>
+          </svg>
+        </button>
+      )}
 
       <textarea
         ref={textareaRef}
@@ -639,6 +661,11 @@ export default function ChatPage({ onNavigate }: Props) {
    *  Chiave = pendingMsgId ("pending-<clientMessageId>") */
   const [mediaUploadStates, setMediaUploadStates] = useState<Map<string, MediaUploadState>>(new Map());
   const [viewerMedia, setViewerMedia] = useState<{ url: string; type: "image" | "video"; filename?: string; mimeType?: string } | null>(null);
+  /** Location sharing */
+  const [locationModal,  setLocationModal]  = useState<"acquiring" | "ready" | "error" | null>(null);
+  const [locationData,   setLocationData]   = useState<{ lat: number; lon: number; accuracy: number } | null>(null);
+  const [locationError,  setLocationError]  = useState<string | null>(null);
+  const [locationViewer, setLocationViewer] = useState<LocationMeta | null>(null);
   // Sprint 23 — Silenzia + Media condivisi + Cancella chat
   const [showMediaGallery, setShowMediaGallery] = useState(false);
   const [showClearChatModal, setShowClearChatModal] = useState(false);
@@ -1862,6 +1889,83 @@ export default function ChatPage({ onNavigate }: Props) {
     await doUpload();
   }
 
+  // ── Location sharing ──────────────────────────────────────────────────────
+
+  function handleLocationRequest() {
+    if (!activeConvId || !auth) return;
+    if (!navigator.geolocation) {
+      showToast("Geolocalizzazione non supportata su questo dispositivo");
+      return;
+    }
+    setLocationModal("acquiring");
+    setLocationError(null);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setLocationData({
+          lat:      pos.coords.latitude,
+          lon:      pos.coords.longitude,
+          accuracy: pos.coords.accuracy,
+        });
+        setLocationModal("ready");
+      },
+      (err) => {
+        const msg =
+          err.code === err.PERMISSION_DENIED
+            ? "Permesso posizione negato. Abilitalo nelle impostazioni del browser."
+          : err.code === err.POSITION_UNAVAILABLE
+            ? "GPS non disponibile. Verifica di essere all'aperto."
+          : err.code === err.TIMEOUT
+            ? "Timeout GPS — riprova in un'area con segnale migliore."
+          : "Impossibile ottenere la posizione.";
+        setLocationError(msg);
+        setLocationModal("error");
+      },
+      { enableHighAccuracy: true, timeout: 15_000, maximumAge: 30_000 },
+    );
+  }
+
+  async function handleSendLocation() {
+    if (!activeConvId || !auth || !locationData) return;
+    setLocationModal(null);
+    const precise  = localStorage.getItem("ac_precise_location") !== "false";
+    const round3   = (n: number) => Math.round(n * 1000) / 1000; // ~100 m
+    const lat      = precise ? locationData.lat : round3(locationData.lat);
+    const lon      = precise ? locationData.lon : round3(locationData.lon);
+    const accuracy = precise ? locationData.accuracy : Math.ceil(locationData.accuracy / 100) * 100;
+    const payload: LocationMeta = {
+      e2e: true, type: "location",
+      latitude: lat, longitude: lon, accuracy,
+      timestamp: Math.floor(Date.now() / 1000),
+    };
+    const locJson         = JSON.stringify(payload);
+    const clientMessageId = crypto.randomUUID();
+    const pendingMsgId    = `pending-${clientMessageId}`;
+    const nowIso          = new Date().toISOString();
+    const convId          = activeConvId;
+    sentCacheRef.current.set(clientMessageId, locJson);
+    void cacheOwnText(clientMessageId, locJson);
+    setDecryptedTexts((prev) => new Map(prev).set(pendingMsgId, locJson));
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: pendingMsgId, client_message_id: clientMessageId,
+        conversation_id: convId, sender_id: auth.userId,
+        message_type: "text", ciphertext: null, ciphertext_type: null,
+        sequence_number: 0, sent_at: nowIso, server_received_at: nowIso,
+        status: "sent", deleted_for_everyone: false,
+      },
+    ]);
+    try {
+      const signal = await encryptForActive(locJson);
+      await apiSendMessage(convId, locJson, { signal, clientMessageId });
+      void playNotifSound("sent");
+    } catch (err) {
+      setMessages((prev) => prev.filter((m) => m.id !== pendingMsgId));
+      setDecryptedTexts((prev) => { const n = new Map(prev); n.delete(pendingMsgId); return n; });
+      showToast(err instanceof Error ? err.message : "Errore invio posizione");
+    }
+  }
+
   async function handleConfirmSecureDestroy() {
     if (!destroyTarget || !activeConvId || destroying) return;
     setDestroying(true);
@@ -2096,6 +2200,8 @@ export default function ChatPage({ onNavigate }: Props) {
 
                 /** Converte il meta JSON di un media in etichetta leggibile */
                 function mediaLabel(text: string): string | null {
+                  const lm = decodeLocationMeta(text);
+                  if (lm) return "📍 Posizione";
                   const mm = decodeMediaMeta(text);
                   if (!mm) return null;
                   if (mm.type === "voice")    return t("chat.voiceNote");
@@ -2451,8 +2557,11 @@ export default function ChatPage({ onNavigate }: Props) {
                   const mediaMeta: MediaMeta | null = msg.message_type === "media"
                     ? decodeMediaMeta(getDisplayText(msg))
                     : null;
-                  const voiceMeta = mediaMeta?.type === "voice" ? mediaMeta : null;
-                  const isMedia   = mediaMeta !== null;
+                  const voiceMeta    = mediaMeta?.type === "voice" ? mediaMeta : null;
+                  const isMedia      = mediaMeta !== null;
+                  const locationMeta: LocationMeta | null = msg.message_type === "text"
+                    ? decodeLocationMeta(text)
+                    : null;
 
                   return (
                     <div key={msg.id}>
@@ -2518,6 +2627,12 @@ export default function ChatPage({ onNavigate }: Props) {
                             <span className="msg-media-unavailable-icon">🔒</span>
                             <span>Media non disponibile</span>
                           </div>
+                        ) : locationMeta ? (
+                          <LocationMessage
+                            meta={locationMeta}
+                            isMine={isMine}
+                            onView={setLocationViewer}
+                          />
                         ) : (
                           renderText()
                         )}
@@ -2622,6 +2737,7 @@ export default function ChatPage({ onNavigate }: Props) {
                   onSubmit={handleSend}
                   onVoiceStart={() => setShowVoiceRecorder(true)}
                   onAttach={handleFilePick}
+                  onLocationRequest={handleLocationRequest}
                   disabled={sending}
                   burnAfterRead={burnAfterRead}
                   onToggleBurn={() => setBurnAfterRead((v) => !v)}
@@ -2674,6 +2790,33 @@ export default function ChatPage({ onNavigate }: Props) {
                 Secure Destroy
               </button>
             )}
+            {/* Location actions — visibili solo su messaggi posizione */}
+            {(() => {
+              const lm = decodeLocationMeta(getDisplayText(contextMenu.msg));
+              if (!lm) return null;
+              const ua = navigator.userAgent;
+              const mapsUrl = /iPhone|iPad|iPod/i.test(ua)
+                ? `https://maps.apple.com/?ll=${lm.latitude},${lm.longitude}`
+                : /Android/i.test(ua)
+                  ? `https://maps.google.com/?q=${lm.latitude},${lm.longitude}`
+                  : `https://www.openstreetmap.org/?mlat=${lm.latitude}&mlon=${lm.longitude}#map=15/${lm.latitude}/${lm.longitude}`;
+              return (
+                <>
+                  <button className="ctx-item" onClick={ctxAction(() => { window.open(mapsUrl, "_blank", "noopener"); closeContextMenu(); })}>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14"><polygon points="3 11 22 2 13 21 11 13 3 11"/></svg>
+                    Apri in Mappe
+                  </button>
+                  <button className="ctx-item" onClick={ctxAction(() => {
+                    void navigator.clipboard.writeText(`${lm.latitude.toFixed(6)}, ${lm.longitude.toFixed(6)}`);
+                    closeContextMenu();
+                    showToast("Coordinate copiate");
+                  })}>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                    Copia coordinate
+                  </button>
+                </>
+              );
+            })()}
           </div>
         </div>
       )}
@@ -2969,6 +3112,68 @@ export default function ChatPage({ onNavigate }: Props) {
           filename={viewerMedia.filename}
           mimeType={viewerMedia.mimeType}
           onClose={() => setViewerMedia(null)}
+        />
+      )}
+
+      {/* ── Location confirm modal ─────────────────────────────────────────── */}
+      {locationModal !== null && (
+        <div
+          className="loc-confirm-backdrop"
+          onClick={() => locationModal !== "acquiring" && setLocationModal(null)}
+        >
+          <div className="loc-confirm-sheet" onClick={(e) => e.stopPropagation()}>
+            {locationModal === "acquiring" && (
+              <>
+                <div className="loc-confirm-spinner" />
+                <p className="loc-confirm-status">📍 Recupero posizione…</p>
+                <button className="loc-confirm-cancel" onClick={() => setLocationModal(null)}>Annulla</button>
+              </>
+            )}
+            {locationModal === "ready" && locationData && (() => {
+              const previewUrl =
+                `https://www.openstreetmap.org/export/embed.html` +
+                `?bbox=${locationData.lon - 0.003},${locationData.lat - 0.003},` +
+                `${locationData.lon + 0.003},${locationData.lat + 0.003}` +
+                `&layer=mapnik&marker=${locationData.lat},${locationData.lon}`;
+              return (
+                <>
+                  <iframe
+                    src={previewUrl}
+                    className="loc-confirm-iframe"
+                    title="Anteprima mappa"
+                    referrerPolicy="no-referrer"
+                    loading="lazy"
+                  />
+                  <p className="loc-confirm-status">📍 Posizione pronta</p>
+                  <p className="loc-confirm-coords">
+                    {locationData.lat.toFixed(5)}° N, {locationData.lon.toFixed(5)}° E
+                    {locationData.accuracy > 0 && ` · ±${Math.round(locationData.accuracy)} m`}
+                  </p>
+                  <div className="loc-confirm-actions">
+                    <button className="loc-confirm-cancel" onClick={() => setLocationModal(null)}>Annulla</button>
+                    <button className="loc-confirm-send"   onClick={() => void handleSendLocation()}>✓ Invia posizione</button>
+                  </div>
+                </>
+              );
+            })()}
+            {locationModal === "error" && (
+              <>
+                <p className="loc-confirm-status loc-confirm-error">⚠ {locationError}</p>
+                <div className="loc-confirm-actions">
+                  <button className="loc-confirm-cancel" onClick={() => setLocationModal(null)}>Chiudi</button>
+                  <button className="loc-confirm-send"   onClick={() => { setLocationModal(null); setTimeout(handleLocationRequest, 100); }}>Riprova</button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ── LocationViewer ────────────────────────────────────────────────── */}
+      {locationViewer && (
+        <LocationViewer
+          meta={locationViewer}
+          onClose={() => setLocationViewer(null)}
         />
       )}
 
