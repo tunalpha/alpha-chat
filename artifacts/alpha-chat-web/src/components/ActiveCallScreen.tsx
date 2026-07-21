@@ -80,12 +80,20 @@ export default function ActiveCallScreen() {
     return () => { /* non stoppiamo qui, cleanup su endCall */ };
   }, [remoteStream]);
 
+  // FIX race condition callee: ontrack scatta durante setRemoteDescription
+  // (callState="incoming", ActiveCallScreen non ancora montata → remoteVideoRef.current=null).
+  // Quando callState→"active" e callType→"video" il <video> monta, ma remoteStream
+  // non è cambiato → useEffect([remoteStream]) non ri-scatta → srcObject mai assegnato.
+  // Aggiungendo callState e callType alle dipendenze il effect ri-scatta al mount del
+  // video element e assegna correttamente srcObject.
   useEffect(() => {
     const video = remoteVideoRef.current;
     if (!video || !remoteStream) return;
-    video.srcObject = remoteStream;
+    if (video.srcObject !== remoteStream) {
+      video.srcObject = remoteStream;
+    }
     void video.play().catch(() => {});
-  }, [remoteStream]);
+  }, [remoteStream, callState, callType]);
 
   useEffect(() => {
     const video = localVideoRef.current;
