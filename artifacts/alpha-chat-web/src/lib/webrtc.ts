@@ -106,18 +106,46 @@ export function createPeerConnection(
 
     let stream: MediaStream;
     if (e.streams && e.streams.length > 0) {
-      // Percorso standard: il sender ha associato il track a un MediaStream
-      stream = e.streams[0];
-      console.log('[webrtc] ontrack: usando e.streams[0] id=%s, audioTracks=%d',
-        stream.id, stream.getAudioTracks().length);
+      // Percorso standard: il sender ha associato il track a un MediaStream.
+      //
+      // PROBLEMA iOS Safari: e.streams[0] è lo stesso oggetto per ogni ontrack.
+      // Quando arriva la video track (secondo ontrack), setRemoteStream riceve lo
+      // stesso riferimento → React non ri-renderizza → useEffect [remoteStream] non
+      // ri-scatta → video.play() non viene ri-chiamato al momento in cui la video
+      // track è effettivamente disponibile nel stream → schermo nero.
+      //
+      // FIX: quando arriva la video track, costruiamo una nuova MediaStream con tutti
+      // i track attuali di e.streams[0]. React vede un nuovo riferimento, ri-renderizza,
+      // il useEffect ri-scatta e video.play() viene chiamato con la video track presente.
+      if (e.track.kind === "video") {
+        stream = new MediaStream(e.streams[0].getTracks());
+        console.log('[webrtc] ontrack: video track → new MediaStream wrapper (iOS re-render fix) tracks=%d',
+          stream.getTracks().length);
+        diagLog('ontrack.video.newStream', { tracks: stream.getTracks().length });
+      } else {
+        stream = e.streams[0];
+        console.log('[webrtc] ontrack: usando e.streams[0] id=%s, audioTracks=%d',
+          stream.id, stream.getAudioTracks().length);
+      }
     } else {
-      // iOS Safari bug: e.streams vuoto anche con addTrack(track, stream) — costruiamo noi
+      // iOS Safari bug: e.streams vuoto anche con addTrack(track, stream) — costruiamo noi.
       console.warn('[webrtc] ontrack: e.streams vuoto — fallback MediaStream manuale (iOS Safari bug)');
       diagLog('ontrack.streams_empty_fallback', { kind: e.track.kind });
       if (!_remoteStream) _remoteStream = new MediaStream();
       _remoteStream.addTrack(e.track);
-      stream = _remoteStream;
-      console.log('[webrtc] ontrack: fallback stream audioTracks=%d', stream.getAudioTracks().length);
+      // Quando arriva la video track: forziamo nuovo riferimento così React ri-renderizza
+      // e il useEffect ri-chiama video.play() con la video track già nel stream.
+      if (e.track.kind === "video") {
+        const newStream = new MediaStream(_remoteStream.getTracks());
+        _remoteStream = newStream;
+        stream = newStream;
+        console.log('[webrtc] ontrack: fallback video track → new MediaStream wrapper tracks=%d',
+          stream.getTracks().length);
+        diagLog('ontrack.video.fallback.newStream', { tracks: stream.getTracks().length });
+      } else {
+        stream = _remoteStream;
+        console.log('[webrtc] ontrack: fallback stream audioTracks=%d', stream.getAudioTracks().length);
+      }
     }
 
     // Log dettaglio tracce audio

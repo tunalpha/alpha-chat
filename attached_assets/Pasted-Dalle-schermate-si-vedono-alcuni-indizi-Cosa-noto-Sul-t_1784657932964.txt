@@ -1,0 +1,104 @@
+Dalle schermate si vedono alcuni indizi.
+
+Cosa noto
+
+Sul tuo iPhone
+
+* ✅ La tua anteprima video è presente (in basso a destra).
+* ✅ La chiamata è attiva.
+* ✅ Lo stato della connessione è “Eccellente”.
+
+Sull’altro iPhone
+
+* ❌ Il riquadro del video remoto è completamente nero.
+* Lo stato è “Buona”, quindi la connessione esiste ma il video non viene visualizzato.
+
+Questo fa pensare che la connessione WebRTC si stabilisce, ma il flusso video non viene mostrato correttamente.
+
+Le cause più probabili
+
+1. Il video remoto non viene agganciato alla UI ⭐⭐⭐⭐⭐
+
+È la causa che ritengo più probabile.
+
+Ad esempio:
+
+* il MediaStream remoto arriva;
+* il track video arriva;
+* ma il componente React non aggiorna il <video>.
+
+⸻
+
+2. Il track video remoto non viene aggiunto
+
+Controllare che:
+
+pc.ontrack
+
+venga chiamato.
+
+E che:
+
+event.streams[0]
+
+contenga realmente una traccia video.
+
+⸻
+
+3. Negoziazione WebRTC incompleta
+
+Verificare:
+
+* ICE Connected
+* ICE Completed
+* Signaling Stable
+
+Se ICE è “connected” ma il video non parte, il problema è probabilmente nella gestione del MediaStream.
+
+⸻
+
+4. Safari iOS
+
+Safari è molto più severo.
+
+Verificare che:
+
+video.playsInline = true
+video.autoplay = true
+video.muted = false
+
+e che venga eseguito
+
+video.srcObject = remoteStream
+
+ogni volta che cambia il track.
+
+⸻
+
+Cosa chiederei all’agente
+
+Gli darei un compito molto specifico:
+
+Analizza il flusso WebRTC della videochiamata tra due iPhone Safari/PWA. La connessione viene stabilita ma il video remoto non viene visualizzato (riquadro nero). Verifica:
+
+* che pc.ontrack venga eseguito;
+* che event.streams[0] contenga una traccia video;
+* che il MediaStream remoto venga assegnato correttamente al componente video (srcObject);
+* che il componente React si aggiorni quando arriva il nuovo stream;
+* che Safari iOS utilizzi playsInline, autoplay e gli attributi necessari;
+* che la negoziazione ICE e SDP sia completa.
+
+Non modificare l’architettura WebRTC né introdurre regressioni. Se trovi il problema, correggilo e fornisci il report con la causa esatta.
+
+Una domanda importante
+
+Nelle schermate vedo la tua immagine, ma sull’altro telefono il riquadro è nero.
+
+Ti chiedo solo questo:
+
+L’altro utente vede te oppure anche lui vede un riquadro nero?
+
+Questa risposta restringe moltissimo il problema:
+
+* solo uno dei due vede nero → è probabilmente un problema di rendering/UI sul dispositivo che riceve;
+* entrambi vedono nero → è più probabile un problema di acquisizione della fotocamera o di trasmissione del video.

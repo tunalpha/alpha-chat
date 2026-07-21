@@ -175,7 +175,9 @@ export default function ActiveCallScreen() {
           <video
             ref={remoteVideoRef}
             className={isVideo ? "acs-remote-video" : "acs-remote-audio-video"}
+            autoPlay
             playsInline
+            muted
           />
         )}
 

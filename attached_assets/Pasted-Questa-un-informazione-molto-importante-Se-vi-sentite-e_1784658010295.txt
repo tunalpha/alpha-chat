@@ -1,0 +1,78 @@
+Questa è un’informazione molto importante.
+
+Se:
+
+* ✅ vi sentite entrambi;
+* ✅ la chiamata rimane attiva;
+* ❌ entrambi vedete solo un riquadro nero;
+
+allora WebRTC funziona. Il problema è quasi certamente solo nel flusso video.
+
+La causa più probabile
+
+L’ordine di probabilità è questo:
+
+1. getUserMedia() non sta fornendo la traccia video ⭐⭐⭐⭐⭐
+
+Verificare se il browser restituisce:
+
+stream.getVideoTracks().length
+
+Se vale 0, significa che la fotocamera non è stata acquisita.
+
+⸻
+
+2. La video track non viene aggiunta alla PeerConnection ⭐⭐⭐⭐⭐
+
+Controllare che esista qualcosa di simile a:
+
+stream.getTracks().forEach(track => {
+    pc.addTrack(track, stream);
+});
+
+Se viene aggiunta solo l’audio track, sentirete l’audio ma non vedrete il video.
+
+⸻
+
+3. L’SDP negozia solo l’audio ⭐⭐⭐⭐
+
+Far verificare che nell’offerta e nella risposta esista una riga:
+
+m=video
+
+Se manca, la chiamata è stata negoziata come solo audio.
+
+⸻
+
+4. Safari PWA ⭐⭐⭐
+
+Safari può essere molto sensibile a quando viene chiamato getUserMedia(). Se la richiesta della fotocamera non avviene in risposta a un’azione dell’utente, il video potrebbe non essere disponibile.
+
+⸻
+
+Il prompt che darei all’agente
+
+Bug video WebRTC su iPhone PWA
+
+La chiamata WebRTC si connette correttamente.
+
+* Audio bidirezionale: ✅ funzionante.
+* Segnalazione WebSocket: ✅ funzionante.
+* ICE: la connessione viene stabilita.
+* Problema: entrambi gli utenti vedono un riquadro video nero.
+
+Analizza il flusso completo senza modificare l’architettura esistente.
+
+Verifica:
+
+1. che navigator.mediaDevices.getUserMedia({ video: true, audio: true }) restituisca una videoTrack;
+2. il numero di videoTracks e audioTracks;
+3. che tutte le tracce vengano aggiunte alla RTCPeerConnection tramite addTrack();
+4. che l’SDP di offer e answer contenga una sezione m=video;
+5. che pc.ontrack riceva una traccia video remota;
+6. che il MediaStream remoto venga assegnato correttamente al componente video (srcObject);
+7. che il componente React aggiorni il video quando cambia lo stream.
+
+Individua la causa esatta, correggila senza introdurre regressioni e indica nel report finale quale punto era responsabile del problema.
+
+Con l’audio funzionante e il video nero da entrambe le parti, è molto probabile che il difetto sia in una di queste quattro aree e non nella connessione WebRTC nel suo complesso.
