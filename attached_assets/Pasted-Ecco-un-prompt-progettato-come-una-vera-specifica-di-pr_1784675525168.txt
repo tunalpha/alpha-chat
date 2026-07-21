@@ -1,0 +1,402 @@
+Ecco un prompt progettato come una vera specifica di prodotto, non come una semplice richiesta di codice.
+
+⸻
+
+PROMPT — Integrazione USDA nativa in AlphaChat
+
+Voglio trasformare USDA in una funzione nativa di AlphaChat.
+
+L’utente NON deve percepire USDA come un’app esterna, un sito web o un servizio separato.
+
+L’esperienza deve essere identica all’invio di una foto, un documento o una posizione.
+
+L’integrazione deve riutilizzare integralmente il backend USDA già esistente, senza duplicare logica o compromettere la sicurezza.
+
+⸻
+
+Obiettivo
+
+Quando un utente apre una chat privata o di gruppo deve poter:
+
+* inviare USDA
+* richiedere USDA
+* vedere pagamenti ricevuti
+* vedere pagamenti inviati
+* vedere stato blockchain
+* vedere ricevute
+* vedere claim
+* vedere refund
+
+tutto come normali messaggi della conversazione.
+
+Il destinatario non deve uscire dalla chat.
+
+⸻
+
+Filosofia
+
+USDA NON deve sembrare un token esterno.
+
+Deve sembrare una funzione nativa di AlphaChat.
+
+Esattamente come:
+
+* foto
+* video
+* posizione
+
+anche USDA deve essere un “tipo messaggio”.
+
+⸻
+
+Menu Allegati
+
+Aggiungere due nuove voci.
+
+📷 Foto / Video
+📄 Documento
+📍 Posizione
+👤 Contatto
+────────────────────
+💰 Invia USDA
+💸 Richiedi USDA
+
+Le due nuove voci devono avere lo stesso stile grafico delle altre.
+
+⸻
+
+Invia USDA
+
+Quando l’utente seleziona
+
+💰 Invia USDA
+
+aprire una Bottom Sheet.
+
+Contenuto:
+
+Invia USDA
+Importo
+[________]
+Nota (opzionale)
+[__________________]
+Saldo disponibile
+4.582,34 USDA
+Commissione
+0,1 %
+Totale
+25 USDA
+──────────────────
+Annulla
+Continua
+
+⸻
+
+Wallet
+
+NON chiedere ogni volta il wallet.
+
+Se AlphaChat conosce già il wallet USDA dell’utente:
+
+utilizzarlo automaticamente.
+
+Se non è configurato:
+
+guidare l’utente alla configurazione.
+
+⸻
+
+Firma
+
+Quando preme Continua:
+
+aprire automaticamente ThirdWeb.
+
+Firma.
+
+Ritornare automaticamente nella chat.
+
+Mai mostrare pagine USDA.
+
+Mai aprire browser.
+
+Mai cambiare applicazione.
+
+⸻
+
+Bubble pagamento
+
+Dopo la firma compare subito (optimistic update):
+
+💰
+Invio USDA
+25 USDA
+a Felix26
+⏳ In attesa...
+
+Quando arriva la conferma:
+
+💰
+Hai inviato
+25 USDA
+✓ Confermato
+
+⸻
+
+Bubble ricevuta
+
+Il destinatario vede
+
+💰
+Hai ricevuto
+25 USDA
+da Alpha
+✓ Disponibile
+
+⸻
+
+Pagamento Pending
+
+Se il destinatario non è registrato:
+
+💰
+25 USDA
+In attesa riscossione
+⏳
+Scadenza
+23 luglio
+
+Quando riscuote
+
+✓
+Riscosso
+
+Se scade
+
+↩
+Rimborsato automaticamente
+
+Il messaggio deve aggiornarsi automaticamente.
+
+⸻
+
+Richiesta pagamento
+
+Nuovo pulsante
+
+💸 Richiedi USDA
+
+Bottom sheet
+
+Importo
+Nota
+Richiedi
+
+In chat compare
+
+💸
+Richiesta pagamento
+18 USDA
+"Cena"
+[Paga]
+
+⸻
+
+Pulsante Paga
+
+Il destinatario preme
+
+Paga
+
+Parte tutto il flusso.
+
+Firma.
+
+Fine.
+
+Nessun browser.
+
+Nessun link.
+
+Nessun copia/incolla.
+
+⸻
+
+Dettaglio pagamento
+
+Toccando la bubble.
+
+Aprire pagina dedicata.
+
+Pagamento USDA
+Importo
+Mittente
+Destinatario
+Data
+Hash
+Commissione
+Stato
+Explorer
+Ricevuta
+
+Hash abbreviato.
+
+Explorer cliccabile.
+
+⸻
+
+Stato dinamico
+
+Ogni pagamento può assumere stati.
+
+Preparazione
+Firma richiesta
+Invio
+Pending blockchain
+Confermato
+Pending Claim
+Riscosso
+Rimborsato
+Fallito
+
+La bubble deve cambiare automaticamente.
+
+Mai creare nuovi messaggi.
+
+Aggiornare sempre quello esistente.
+
+⸻
+
+Chat list
+
+Nella lista conversazioni.
+
+Mai mostrare JSON.
+
+Usare
+
+💰 Hai inviato 25 USDA
+💰 Hai ricevuto 40 USDA
+💸 Richiesta 18 USDA
+↩ Rimborso automatico
+✓ Riscosso
+
+⸻
+
+Gruppi
+
+Supportare anche gruppi.
+
+Esempio
+
+Alpha
+ha inviato
+50 USDA
+a Marco
+
+oppure
+
+Marco
+ha richiesto
+15 USDA
+
+⸻
+
+Viewer
+
+Aprendo un pagamento.
+
+Mostrare una schermata moderna.
+
+Con:
+
+icona USDA
+
+animazione
+
+stato
+
+hash
+
+tempo conferma
+
+indirizzi abbreviati
+
+link explorer
+
+ricevuta
+
+⸻
+
+Storico
+
+Dal profilo chat.
+
+Nuova sezione.
+
+Cronologia USDA
+
+con filtri.
+
+Ricevuti.
+
+Inviati.
+
+Pending.
+
+Refund.
+
+Claim.
+
+⸻
+
+Sicurezza
+
+Riutilizzare integralmente il backend USDA.
+
+NON duplicare:
+
+* wallet custodiali
+* claim
+* refund
+* verify
+* idempotenza
+* RPC
+* blockchain
+* retry
+* fee
+
+Usare esclusivamente le API USDA esistenti quando possibile.
+
+⸻
+
+UX
+
+L’utente deve percepire USDA come una funzione costruita dentro AlphaChat.
+
+Mai dare la sensazione di aprire un servizio esterno.
+
+Le animazioni devono essere fluide.
+
+Le bubble devono avere un design dedicato.
+
+Gli stati devono aggiornarsi in tempo reale tramite WebSocket.
+
+Utilizzare optimistic update.
+
+Mai bloccare la UI durante la firma.
+
+⸻
+
+Architettura
+
+Prima di scrivere codice:
+
+1. analizzare tutte le API USDA disponibili;
+2. indicare quali endpoint vengono riutilizzati;
+3. indicare quali endpoint nuovi sono realmente necessari;
+4. produrre un diagramma completo del flusso;
+5. individuare eventuali problemi di sicurezza o UX;
+6. proporre eventuali miglioramenti mantenendo la piena compatibilità con il backend USDA esistente.
+
+Obiettivo finale: realizzare un’integrazione che faccia percepire USDA come una capacità nativa di AlphaChat, con un’esperienza utente continua, elegante e sicura, senza uscire mai dall’app e sfruttando l’infrastruttura USDA già esistente.
