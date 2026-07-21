@@ -1997,7 +1997,7 @@ export default function ChatPage({ onNavigate }: Props) {
     ]);
     try {
       const signal = await encryptForActive(locJson);
-      await apiSendMessage(convId, locJson, { signal, clientMessageId });
+      await apiSendMessage(convId, locJson, { signal, clientMessageId, deviceCiphertexts: signal?.deviceCiphertexts });
       void playNotifSound("sent");
     } catch (err) {
       setMessages((prev) => prev.filter((m) => m.id !== pendingMsgId));
