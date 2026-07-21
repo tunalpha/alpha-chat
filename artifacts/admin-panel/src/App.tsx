@@ -16,6 +16,7 @@ import UsersPage from '@/pages/users';
 import Devices from '@/pages/devices';
 import Audit from '@/pages/audit';
 import Diagnostics from '@/pages/diagnostics';
+import R2Monitor from '@/pages/r2-monitor';
 
 const queryClient = new QueryClient();
 
@@ -33,6 +34,7 @@ function ProtectedRoutes() {
         <Route path="/devices" component={Devices} />
         <Route path="/audit" component={Audit} />
         <Route path="/diagnostics" component={Diagnostics} />
+        <Route path="/r2-monitor" component={R2Monitor} />
         <Route component={NotFound} />
       </Switch>
     </AppShell>

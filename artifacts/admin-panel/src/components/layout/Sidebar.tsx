@@ -12,6 +12,7 @@ import {
   AlertTriangle,
   X,
   PhoneCall,
+  Cloud,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 
@@ -26,6 +27,7 @@ const navItems = [
   { href: "/devices", label: "Devices", icon: Smartphone },
   { href: "/audit", label: "Audit Export", icon: FileDown },
   { href: "/diagnostics", label: "Diagnostics", icon: PhoneCall },
+  { href: "/r2-monitor",  label: "R2 Monitor",  icon: Cloud },
 ];
 
 interface SidebarProps {

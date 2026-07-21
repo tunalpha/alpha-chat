@@ -2,7 +2,8 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { 
   getStats, getGrowth, getSecurityFeatures, getSystemHealth, getStorage, 
   getSecurityEvents, getUsers, updateUserStatus, updateUserRole, deleteUser, 
-  revokeUserSessions, adminSetTempPassword, getDevices, revokeDevice, downloadAuditExport 
+  revokeUserSessions, adminSetTempPassword, getDevices, revokeDevice, downloadAuditExport,
+  getR2Dashboard, getR2Health, getR2Search, runR2Cleanup, runR2Consistency,
 } from "@/lib/api";
 
 export const useAdminStats = () => useQuery({
@@ -31,6 +32,33 @@ export const useStorage = () => useQuery({
   queryKey: ["storage"],
   queryFn: getStorage,
 });
+
+// ── R2 Monitor hooks ──────────────────────────────────────────────────────────
+
+export const useR2Dashboard = () => useQuery({
+  queryKey: ["r2Dashboard"],
+  queryFn:  getR2Dashboard,
+  staleTime: 30_000,
+});
+
+export const useR2Health = () => useQuery({
+  queryKey: ["r2Health"],
+  queryFn:  getR2Health,
+  staleTime: 5_000,
+});
+
+export const useR2Search = (params: {
+  media_id?: string; username?: string; conversation_id?: string;
+  type?: string; since?: string; until?: string; page?: number; limit?: number;
+}) => useQuery({
+  queryKey: ["r2Search", params],
+  queryFn:  () => getR2Search(params),
+  enabled:  Object.keys(params).some(k => k !== "page" && params[k as keyof typeof params] !== undefined),
+});
+
+export const useR2Cleanup = () => useMutation({ mutationFn: runR2Cleanup });
+
+export const useR2Consistency = () => useMutation({ mutationFn: runR2Consistency });
 
 export const useSecurityEvents = (params: { page?: number; limit?: number; event?: string; user_id?: string; since?: string }) => useQuery({
   queryKey: ["securityEvents", params],

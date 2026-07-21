@@ -14,6 +14,10 @@ import { Router, type Request, type Response, type NextFunction } from "express"
 import mongoose from "mongoose";
 import os from "node:os";
 import argon2 from "argon2";
+import { ListObjectsV2Command, HeadObjectCommand } from "@aws-sdk/client-s3";
+import { r2 } from "../../lib/r2-client";
+import { config } from "../../config";
+import { cleanupTempObjects } from "../../services/storage.service";
 
 import { requireAdmin } from "../../middleware/require-admin.middleware";
 import { signAccessToken } from "../../services/jwt.service";
@@ -1287,6 +1291,303 @@ router.get("/diagnostics/export", requireAdmin("read_only"), async (req, res, ne
     res.setHeader("Content-Type", "application/json");
     res.setHeader("Content-Disposition", `attachment; filename="diag-${date}.json"`);
     res.send(JSON.stringify(payload, null, 2));
+  } catch (err) { next(err); }
+});
+
+// =============================================================================
+// Cloudflare R2 Monitoring Center
+// =============================================================================
+
+// ---------------------------------------------------------------------------
+// GET /admin/r2/dashboard — storage breakdown, growth, analytics 24h, cost
+// ---------------------------------------------------------------------------
+router.get("/r2/dashboard", requireAdmin("support"), async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const now = new Date();
+    const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1_000);
+    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1_000);
+
+    const typeExpr = {
+      $switch: {
+        branches: [
+          { case: { $eq: [{ $substrCP: ["$mime_type", 0, 6] }, "image/"] }, then: "image" },
+          { case: { $eq: [{ $substrCP: ["$mime_type", 0, 6] }, "video/"] }, then: "video" },
+          { case: { $eq: [{ $substrCP: ["$mime_type", 0, 6] }, "audio/"] }, then: "audio" },
+        ],
+        default: "document",
+      },
+    };
+
+    const [typeBreakdown, growth, analytics24h, totalStats] = await Promise.all([
+      // Storage breakdown by type
+      MediaModel.aggregate([
+        { $group: { _id: typeExpr, count: { $sum: 1 }, bytes: { $sum: "$ciphertextSize" } } },
+        { $project: { type: "$_id", count: 1, bytes: 1, _id: 0 } },
+        { $sort: { bytes: -1 } },
+      ]),
+      // Daily growth last 30 days
+      MediaModel.aggregate([
+        { $match: { createdAt: { $gte: thirtyDaysAgo } } },
+        {
+          $group: {
+            _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
+            uploads: { $sum: 1 },
+            bytes: { $sum: "$ciphertextSize" },
+          },
+        },
+        { $sort: { _id: 1 } },
+        { $project: { date: "$_id", uploads: 1, bytes: 1, _id: 0 } },
+      ]),
+      // Analytics last 24h
+      MediaModel.aggregate([
+        { $match: { createdAt: { $gte: yesterday } } },
+        { $group: { _id: typeExpr, count: { $sum: 1 }, bytes: { $sum: "$ciphertextSize" } } },
+        { $project: { type: "$_id", count: 1, bytes: 1, _id: 0 } },
+      ]),
+      // Global totals
+      MediaModel.aggregate([{ $group: { _id: null, count: { $sum: 1 }, bytes: { $sum: "$ciphertextSize" } } }]),
+    ]);
+
+    const totalCount = (totalStats[0] as { count: number } | undefined)?.count ?? 0;
+    const totalBytes = (totalStats[0] as { bytes: number } | undefined)?.bytes ?? 0;
+    const totalGB = totalBytes / 1024 / 1024 / 1024;
+
+    // R2 cost estimate (Cloudflare pricing 2025):
+    // Storage: $0.015/GB/month (first 10 GB free)
+    // Class A ops (write): $4.50/million (first 1M free/month)
+    // Class B ops (read): $0.36/million (first 10M free/month)
+    // Egress: $0 (free forever)
+    const billableGB = Math.max(0, totalGB - 10);
+    const storageCost = billableGB * 0.015;
+    const billableClassA = Math.max(0, totalCount - 1_000_000);
+    const classACost = (billableClassA / 1_000_000) * 4.50;
+    const estimatedDownloads = totalCount * 3; // 3 downloads per file avg
+    const billableClassB = Math.max(0, estimatedDownloads - 10_000_000);
+    const classBCost = (billableClassB / 1_000_000) * 0.36;
+
+    res.json({
+      totals: { count: totalCount, bytes: totalBytes, gb: totalGB },
+      type_breakdown: typeBreakdown,
+      growth_30d: growth,
+      analytics_24h: analytics24h,
+      cost_estimate: {
+        storage_gb: totalGB,
+        billable_gb: billableGB,
+        storage_usd: parseFloat(storageCost.toFixed(4)),
+        class_a_ops: totalCount,
+        class_a_usd: parseFloat(classACost.toFixed(4)),
+        class_b_ops_estimated: estimatedDownloads,
+        class_b_usd: parseFloat(classBCost.toFixed(4)),
+        egress_usd: 0,
+        total_usd: parseFloat((storageCost + classACost + classBCost).toFixed(4)),
+        note: "Stima basata su upload MongoDB. Class B stimato: 3 download/file.",
+      },
+    });
+  } catch (err) { next(err); }
+});
+
+// ---------------------------------------------------------------------------
+// GET /admin/r2/health — ping bucket, misura latenza
+// ---------------------------------------------------------------------------
+router.get("/r2/health", requireAdmin("support"), async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const start = Date.now();
+    let connected = false;
+    let errorMsg: string | null = null;
+
+    try {
+      await r2.send(new HeadObjectCommand({ Bucket: config.r2.bucket, Key: "_health_check_sentinel" }));
+      connected = true;
+    } catch (err: unknown) {
+      const status = (err as { $metadata?: { httpStatusCode?: number } })?.$metadata?.httpStatusCode;
+      // 404 = object not found → bucket exists and R2 is reachable
+      if (status === 404) {
+        connected = true;
+      } else {
+        errorMsg = (err as Error).message ?? String(err);
+      }
+    }
+
+    const latencyMs = Date.now() - start;
+    const status = !connected ? "offline" : latencyMs > 2000 ? "warning" : "healthy";
+
+    res.json({
+      connected,
+      status,
+      latency_ms: latencyMs,
+      bucket: config.r2.bucket,
+      endpoint: config.r2.endpoint,
+      checked_at: new Date().toISOString(),
+      ...(errorMsg ? { error: errorMsg } : {}),
+    });
+  } catch (err) { next(err); }
+});
+
+// ---------------------------------------------------------------------------
+// GET /admin/r2/search — ricerca file per ID, username, conversazione, tipo
+// ---------------------------------------------------------------------------
+router.get("/r2/search", requireAdmin("support"), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const qs = (v: unknown) => (typeof v === "string" && v.length > 0 ? v : undefined);
+    const mediaId      = qs(req.query["media_id"]);
+    const username     = qs(req.query["username"]);
+    const conversId    = qs(req.query["conversation_id"]);
+    const fileType     = qs(req.query["type"]);     // image | video | audio | document
+    const since        = qs(req.query["since"]);
+    const until        = qs(req.query["until"]);
+    const minSize      = qs(req.query["min_size"]);
+    const maxSize      = qs(req.query["max_size"]);
+    const page         = Math.max(1, parseInt(String(req.query["page"] ?? "1")));
+    const limit        = Math.min(100, Math.max(1, parseInt(String(req.query["limit"] ?? "20"))));
+
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const query: Record<string, any> = {};
+
+    if (mediaId && /^[0-9a-fA-F]{24}$/.test(mediaId)) {
+      query["_id"] = new mongoose.Types.ObjectId(mediaId);
+    }
+    if (conversId && /^[0-9a-fA-F]{24}$/.test(conversId)) {
+      query["conversation_id"] = new mongoose.Types.ObjectId(conversId);
+    }
+    if (fileType) {
+      const mimeMap: Record<string, RegExp> = {
+        image:    /^image\//,
+        video:    /^video\//,
+        audio:    /^audio\//,
+        document: /^application\//,
+      };
+      if (mimeMap[fileType]) query["mime_type"] = { $regex: mimeMap[fileType] };
+    }
+    if (since || until) {
+      query["createdAt"] = {};
+      if (since) query["createdAt"]["$gte"] = new Date(since);
+      if (until) query["createdAt"]["$lte"] = new Date(until);
+    }
+    if (minSize || maxSize) {
+      query["ciphertextSize"] = {};
+      if (minSize) query["ciphertextSize"]["$gte"] = parseInt(minSize);
+      if (maxSize) query["ciphertextSize"]["$lte"] = parseInt(maxSize);
+    }
+    if (username) {
+      const user = await UserModel.findOne({ username }, "_id");
+      if (!user) {
+        res.json({ files: [], total: 0, page, limit });
+        return;
+      }
+      query["uploader_id"] = user._id;
+    }
+
+    const skip = (page - 1) * limit;
+    const [total, files] = await Promise.all([
+      MediaModel.countDocuments(query),
+      MediaModel.find(query)
+        .sort({ createdAt: -1 })
+        .skip(skip)
+        .limit(limit)
+        .populate("uploader_id", "username")
+        .lean(),
+    ]);
+
+    const filesOut = files.map((f) => ({
+      media_id:          f._id.toString(),
+      uploader:          (f.uploader_id as unknown as { username?: string } | null)?.username ?? "—",
+      conversation_id:   f.conversation_id.toString(),
+      mime_type:         f.mime_type,
+      original_filename: f.original_filename,
+      storage_key:       f.storageKey,
+      sha256:            f.sha256,
+      ciphertext_size:   f.ciphertextSize,
+      encryption_ver:    f.encryptionVersion,
+      has_thumbnail:     !!f.thumbnailKey,
+      uploaded_at:       f.uploadedAt?.toISOString() ?? f.createdAt.toISOString(),
+    }));
+
+    res.json({ files: filesOut, total, page, limit, pages: Math.ceil(total / limit) });
+  } catch (err) { next(err); }
+});
+
+// ---------------------------------------------------------------------------
+// POST /admin/r2/cleanup — esegui cleanup temp/ manuale
+// ---------------------------------------------------------------------------
+router.post("/r2/cleanup", requireAdmin("security_admin"), async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const start = Date.now();
+    const deleted = await cleanupTempObjects();
+    res.json({
+      deleted,
+      duration_ms: Date.now() - start,
+      ran_at: new Date().toISOString(),
+    });
+  } catch (err) { next(err); }
+});
+
+// ---------------------------------------------------------------------------
+// POST /admin/r2/consistency — verifica integrità MongoDB ↔ R2
+// ---------------------------------------------------------------------------
+router.post("/r2/consistency", requireAdmin("super_admin"), async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const checkedAt = new Date().toISOString();
+    const start = Date.now();
+
+    // 1. Tutti i MongoDB media docs
+    const mongoMedia = await MediaModel.find(
+      {},
+      "storageKey thumbnailKey sha256 ciphertextSize mime_type createdAt",
+    ).lean();
+
+    const mongoMainKeys  = new Set(mongoMedia.map((m) => m.storageKey));
+    const mongoThumbKeys = new Set(mongoMedia.filter((m) => m.thumbnailKey).map((m) => m.thumbnailKey!));
+    const allMongoKeys   = new Set([...mongoMainKeys, ...mongoThumbKeys]);
+
+    // 2. Tutti gli oggetti R2 (paginati, max 30s)
+    const r2Keys = new Set<string>();
+    let continuationToken: string | undefined;
+    do {
+      const resp = await r2.send(new ListObjectsV2Command({
+        Bucket:            config.r2.bucket,
+        ContinuationToken: continuationToken,
+        MaxKeys:           1000,
+      }));
+      for (const obj of (resp.Contents ?? [])) {
+        if (obj.Key) r2Keys.add(obj.Key);
+      }
+      continuationToken = resp.IsTruncated ? (resp.NextContinuationToken ?? undefined) : undefined;
+      // Safety: max 30s
+      if (Date.now() - start > 29_000) break;
+    } while (continuationToken);
+
+    // 3. Analisi
+    // File orfani in R2 (non in MongoDB, fuori da temp/)
+    const orphansInR2 = [...r2Keys]
+      .filter((k) => !allMongoKeys.has(k) && !k.startsWith("temp/"));
+
+    // File mancanti in R2 (in MongoDB ma non in R2)
+    const missingInR2 = mongoMedia.filter((m) => !r2Keys.has(m.storageKey));
+
+    // Thumbnail mancanti in R2
+    const missingThumbs = mongoMedia.filter((m) => m.thumbnailKey && !r2Keys.has(m.thumbnailKey));
+
+    res.json({
+      checked_at:            checkedAt,
+      duration_ms:           Date.now() - start,
+      r2_truncated:          !!continuationToken, // true se il listing è stato interrotto per timeout
+      total_mongodb_docs:    mongoMedia.length,
+      total_r2_objects:      r2Keys.size,
+      orphans_in_r2_count:   orphansInR2.length,
+      missing_in_r2_count:   missingInR2.length,
+      missing_thumbs_count:  missingThumbs.length,
+      // Dettaglio (max 50 per non sovraccaricare)
+      orphan_keys:           orphansInR2.slice(0, 50),
+      missing_media: missingInR2.slice(0, 50).map((m) => ({
+        media_id:    m._id.toString(),
+        storage_key: m.storageKey,
+        mime_type:   m.mime_type,
+        uploaded_at: (m.uploadedAt ?? m.createdAt).toISOString(),
+      })),
+      verdict: orphansInR2.length === 0 && missingInR2.length === 0
+        ? "CONSISTENT"
+        : "INCONSISTENCIES_FOUND",
+    });
   } catch (err) { next(err); }
 });
 

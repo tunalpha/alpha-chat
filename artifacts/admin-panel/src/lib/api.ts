@@ -305,6 +305,78 @@ export async function getStorage(): Promise<StorageResponse> {
 }
 
 // ---------------------------------------------------------------------------
+// R2 Monitor
+// ---------------------------------------------------------------------------
+
+export interface R2TypeBreakdown { type: string; count: number; bytes: number }
+export interface R2GrowthPoint    { date: string; uploads: number; bytes: number }
+export interface R2Analytics24h   { type: string; count: number; bytes: number }
+export interface R2CostEstimate {
+  storage_gb: number; billable_gb: number; storage_usd: number;
+  class_a_ops: number; class_a_usd: number;
+  class_b_ops_estimated: number; class_b_usd: number;
+  egress_usd: number; total_usd: number; note: string;
+}
+export interface R2DashboardData {
+  totals:        { count: number; bytes: number; gb: number };
+  type_breakdown: R2TypeBreakdown[];
+  growth_30d:    R2GrowthPoint[];
+  analytics_24h: R2Analytics24h[];
+  cost_estimate: R2CostEstimate;
+}
+export interface R2HealthData {
+  connected: boolean; status: "healthy" | "warning" | "offline";
+  latency_ms: number; bucket: string; endpoint: string;
+  checked_at: string; error?: string;
+}
+export interface R2FileResult {
+  media_id: string; uploader: string; conversation_id: string;
+  mime_type: string; original_filename: string;
+  storage_key: string; sha256: string; ciphertext_size: number;
+  encryption_ver: number; has_thumbnail: boolean; uploaded_at: string;
+}
+export interface R2SearchData {
+  files: R2FileResult[]; total: number; page: number; limit: number; pages: number;
+}
+export interface R2MissingMedia {
+  media_id: string; storage_key: string; mime_type: string; uploaded_at: string;
+}
+export interface R2ConsistencyData {
+  checked_at: string; duration_ms: number; r2_truncated: boolean;
+  total_mongodb_docs: number; total_r2_objects: number;
+  orphans_in_r2_count: number; missing_in_r2_count: number; missing_thumbs_count: number;
+  orphan_keys: string[]; missing_media: R2MissingMedia[];
+  verdict: "CONSISTENT" | "INCONSISTENCIES_FOUND";
+}
+
+export async function getR2Dashboard(): Promise<R2DashboardData> {
+  return apiFetch("/r2/dashboard");
+}
+
+export async function getR2Health(): Promise<R2HealthData> {
+  return apiFetch("/r2/health");
+}
+
+export async function getR2Search(params: {
+  media_id?: string; username?: string; conversation_id?: string;
+  type?: string; since?: string; until?: string; page?: number; limit?: number;
+}): Promise<R2SearchData> {
+  const qs = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    if (v !== undefined && v !== "") qs.set(k, String(v));
+  }
+  return apiFetch(`/r2/search?${qs.toString()}`);
+}
+
+export async function runR2Cleanup(): Promise<{ deleted: number; duration_ms: number; ran_at: string }> {
+  return apiFetch("/r2/cleanup", { method: "POST" });
+}
+
+export async function runR2Consistency(): Promise<R2ConsistencyData> {
+  return apiFetch("/r2/consistency", { method: "POST" });
+}
+
+// ---------------------------------------------------------------------------
 // Security events (SOC)
 // ---------------------------------------------------------------------------
 
