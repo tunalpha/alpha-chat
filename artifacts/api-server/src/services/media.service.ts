@@ -20,6 +20,7 @@ import { spawn, execSync } from "child_process";
 import { AppError } from "../errors/AppError";
 import { MediaRepository } from "../repositories/media.repository";
 import { ConversationMemberRepository } from "../repositories/conversation-member.repository";
+import { MessageModel } from "../models/message.model";
 import { logAuditEvent } from "../lib/audit";
 import { logger } from "../lib/logger";
 import * as storageService from "./storage.service";
@@ -94,6 +95,27 @@ export interface ThumbnailDownloadInfo {
 
 const mediaRepo  = new MediaRepository();
 const memberRepo = new ConversationMemberRepository();
+
+// ---------------------------------------------------------------------------
+// userHasAccessViaForward — controlla se l'utente ha accesso al media
+// attraverso un messaggio inoltrato in una sua conversazione.
+// Usato come fallback quando l'utente non è membro della conversazione originale.
+// ---------------------------------------------------------------------------
+async function userHasAccessViaForward(
+  userObjectId:  mongoose.Types.ObjectId,
+  mediaObjectId: mongoose.Types.ObjectId,
+): Promise<boolean> {
+  // Tutte le conversazioni attive dell'utente
+  const memberships = await memberRepo.listByUser(userObjectId);
+  if (memberships.length === 0) return false;
+  const convIds = memberships.map((m) => m.conversation_id);
+  // Esiste un messaggio con questo media_id in almeno una di quelle conversazioni?
+  const msg = await MessageModel.findOne(
+    { media_id: mediaObjectId, conversation_id: { $in: convIds } },
+    { _id: 1 },
+  ).lean();
+  return msg !== null;
+}
 
 // ---------------------------------------------------------------------------
 // uploadMedia
@@ -290,7 +312,9 @@ export async function getMediaSignedUrl(
 
   const membership = await memberRepo.findMembership(media.conversation_id, userObjectId);
   if (!membership || membership.left_at !== null) {
-    throw new AppError("NOT_CHAT_MEMBER", 403);
+    // Fallback: accesso tramite messaggio inoltrato
+    const ok = await userHasAccessViaForward(userObjectId, mediaObjectId);
+    if (!ok) throw new AppError("NOT_CHAT_MEMBER", 403);
   }
 
   const url = await storageService.getSignedDownloadUrl(media.storageKey);
@@ -322,7 +346,8 @@ export async function getThumbnailSignedUrl(
 
   const membership = await memberRepo.findMembership(media.conversation_id, userObjectId);
   if (!membership || membership.left_at !== null) {
-    throw new AppError("NOT_CHAT_MEMBER", 403);
+    const ok = await userHasAccessViaForward(userObjectId, mediaObjectId);
+    if (!ok) throw new AppError("NOT_CHAT_MEMBER", 403);
   }
 
   const url = await storageService.getSignedDownloadUrl(media.thumbnailKey);
@@ -349,7 +374,8 @@ export async function downloadMediaBuffer(
 
   const membership = await memberRepo.findMembership(media.conversation_id, userObjectId);
   if (!membership || membership.left_at !== null) {
-    throw new AppError("NOT_CHAT_MEMBER", 403);
+    const ok = await userHasAccessViaForward(userObjectId, mediaObjectId);
+    if (!ok) throw new AppError("NOT_CHAT_MEMBER", 403);
   }
 
   const { buffer } = await storageService.downloadFileBuffer(media.storageKey);
@@ -369,7 +395,8 @@ export async function downloadThumbnailBuffer(
 
   const membership = await memberRepo.findMembership(media.conversation_id, userObjectId);
   if (!membership || membership.left_at !== null) {
-    throw new AppError("NOT_CHAT_MEMBER", 403);
+    const ok = await userHasAccessViaForward(userObjectId, mediaObjectId);
+    if (!ok) throw new AppError("NOT_CHAT_MEMBER", 403);
   }
 
   const { buffer } = await storageService.downloadFileBuffer(media.thumbnailKey);
