@@ -344,7 +344,7 @@ function ChatInput({
   onSubmit,
   onVoiceStart,
   onAttach,
-  onLocationRequest,
+  onAttachMenu,
   disabled,
   burnAfterRead,
   onToggleBurn,
@@ -354,7 +354,8 @@ function ChatInput({
   onSubmit: (e: React.FormEvent) => void;
   onVoiceStart: () => void;
   onAttach?: (files: FileList) => void;
-  onLocationRequest?: () => void;
+  /** Quando fornito, il pulsante 📎 apre il menu allegati invece del file picker diretto */
+  onAttachMenu?: () => void;
   disabled: boolean;
   burnAfterRead?: boolean;
   onToggleBurn?: () => void;
@@ -413,28 +414,12 @@ function ChatInput({
         aria-label="Allega file"
         title="Allega foto, video o documento"
         disabled={disabled}
-        onClick={() => localFileRef.current?.click()}
+        onClick={() => onAttachMenu ? onAttachMenu() : localFileRef.current?.click()}
       >
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="22" height="22">
           <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
         </svg>
       </button>
-
-      {onLocationRequest && (
-        <button
-          type="button"
-          className="input-icon-btn"
-          aria-label="Condividi posizione"
-          title="Condividi posizione"
-          disabled={disabled}
-          onClick={onLocationRequest}
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="22" height="22">
-            <path d="M21 10c0 7-9 13-9 13s-9-6-9-13a9 9 0 0 1 18 0z"/>
-            <circle cx="12" cy="10" r="3"/>
-          </svg>
-        </button>
-      )}
 
       <textarea
         ref={textareaRef}
@@ -633,6 +618,10 @@ export default function ChatPage({ onNavigate }: Props) {
   const [editingMessage, setEditingMessage] = useState<MessageItem | null>(null);
   // forward
   const [forwardingMessage, setForwardingMessage] = useState<MessageItem | null>(null);
+  // attach sheet
+  const [showAttachSheet, setShowAttachSheet] = useState(false);
+  const mediaInputRef = useRef<HTMLInputElement>(null);
+  const docInputRef   = useRef<HTMLInputElement>(null);
   // toast
   const [toastMsg, setToastMsg] = useState<string | null>(null);
   // secure destroy
@@ -2786,8 +2775,7 @@ export default function ChatPage({ onNavigate }: Props) {
                   onChange={handleInputChange}
                   onSubmit={handleSend}
                   onVoiceStart={() => setShowVoiceRecorder(true)}
-                  onAttach={handleFilePick}
-                  onLocationRequest={handleLocationRequest}
+                  onAttachMenu={() => setShowAttachSheet(true)}
                   disabled={sending}
                   burnAfterRead={burnAfterRead}
                   onToggleBurn={() => setBurnAfterRead((v) => !v)}
@@ -2867,6 +2855,54 @@ export default function ChatPage({ onNavigate }: Props) {
                 </>
               );
             })()}
+          </div>
+        </div>
+      )}
+
+      {/* ── Hidden file inputs per attach sheet ──────────────────────────────── */}
+      <input
+        ref={mediaInputRef}
+        type="file"
+        accept="image/*,video/*,audio/*"
+        style={{ display: "none" }}
+        onChange={(e) => { if (e.target.files) handleFilePick(e.target.files); e.target.value = ""; }}
+      />
+      <input
+        ref={docInputRef}
+        type="file"
+        accept="application/pdf,application/msword,application/vnd.openxmlformats-officedocument.*,text/plain"
+        style={{ display: "none" }}
+        onChange={(e) => { if (e.target.files) handleFilePick(e.target.files); e.target.value = ""; }}
+      />
+
+      {/* ── Attach sheet ──────────────────────────────────────────────────────── */}
+      {showAttachSheet && (
+        <div className="modal-backdrop" onClick={() => setShowAttachSheet(false)}>
+          <div className="attach-sheet" onClick={(e) => e.stopPropagation()}>
+            <div className="attach-sheet-title">Condividi</div>
+            <div className="attach-sheet-grid">
+              <button
+                className="attach-sheet-item"
+                onClick={() => { setShowAttachSheet(false); void handleLocationRequest(); }}
+              >
+                <span className="attach-sheet-icon">📍</span>
+                <span>Posizione</span>
+              </button>
+              <button
+                className="attach-sheet-item"
+                onClick={() => { setShowAttachSheet(false); setTimeout(() => mediaInputRef.current?.click(), 80); }}
+              >
+                <span className="attach-sheet-icon">📷</span>
+                <span>Foto / Video</span>
+              </button>
+              <button
+                className="attach-sheet-item"
+                onClick={() => { setShowAttachSheet(false); setTimeout(() => docInputRef.current?.click(), 80); }}
+              >
+                <span className="attach-sheet-icon">📄</span>
+                <span>Documento</span>
+              </button>
+            </div>
           </div>
         </div>
       )}

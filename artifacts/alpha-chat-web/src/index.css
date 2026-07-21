@@ -2271,6 +2271,50 @@ button:disabled.profile-avatar-edit {
 .loc-confirm-send   { background: var(--accent, #6366f1);    color: #fff; }
 .loc-confirm-cancel:active, .loc-confirm-send:active { opacity: .75; }
 
+/* ── Attach Sheet ────────────────────────────────────────────────────────── */
+.attach-sheet {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background: var(--surface);
+  border-radius: 18px 18px 0 0;
+  padding: 16px 16px calc(20px + env(safe-area-inset-bottom));
+  z-index: 300;
+  box-shadow: 0 -4px 28px rgba(0,0,0,.4);
+}
+.attach-sheet-title {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  text-align: center;
+  color: var(--text-secondary);
+  margin-bottom: 14px;
+}
+.attach-sheet-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+}
+.attach-sheet-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+  padding: 16px 6px;
+  border-radius: 14px;
+  background: var(--surface2, rgba(255,255,255,.07));
+  border: none;
+  cursor: pointer;
+  color: inherit;
+  font-size: 0.75rem;
+  font-weight: 500;
+  transition: opacity .12s;
+}
+.attach-sheet-item:active { opacity: .6; }
+.attach-sheet-icon { font-size: 1.9rem; line-height: 1; }
+
 /* ── Forwarded label ────────────────────────────────────────────────────── */
 .msg-forwarded-label {
   display: flex;
