@@ -884,18 +884,36 @@ function CostForecast() {
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
+const MONITOR_VERSION = "1.0";
+
 export default function R2Monitor() {
   const [section, setSection] = useState<keyof typeof SECTION_LABELS>("overview");
+  const { data: pricingCfg }  = useR2Pricing();
+
+  const pricingLabel = pricingCfg?.updated_at
+    ? `Prezzi aggiornati il ${new Date(pricingCfg.updated_at).toLocaleDateString("it-IT")}`
+    : "2025 Official Pricing";
 
   return (
     <div className="space-y-4">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-          <Cloud className="w-6 h-6 text-blue-400" />
-          R2 Monitor
-        </h1>
-        <p className="text-xs text-muted-foreground font-mono mt-1">Cloudflare R2 Object Storage — Enterprise Monitoring Center</p>
+      <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-1">
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+            <Cloud className="w-6 h-6 text-blue-400" />
+            R2 Monitor
+          </h1>
+          <p className="text-xs text-muted-foreground font-mono mt-1">Cloudflare R2 Object Storage — Enterprise Monitoring Center</p>
+        </div>
+        <div className="flex items-center gap-2 shrink-0">
+          <span className="text-xs font-mono text-muted-foreground border rounded px-2 py-0.5">
+            v{MONITOR_VERSION}
+          </span>
+          <span className="text-xs font-mono text-muted-foreground border rounded px-2 py-0.5 flex items-center gap-1">
+            <DollarSign className="w-3 h-3" />
+            {pricingLabel}
+          </span>
+        </div>
       </div>
 
       {/* Status bar — sempre visibile */}
