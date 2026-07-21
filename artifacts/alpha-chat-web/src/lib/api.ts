@@ -806,6 +806,8 @@ export async function apiSendMessage(
     clientMessageId?: string;
     /** Fase 4: array multi-device ciphertexts */
     deviceCiphertexts?: Array<{ device_id: string; body: string; type: number }>;
+    /** Inoltro: usa message_type "forward" */
+    forward?: boolean;
   } = {},
 ): Promise<MessageItem> {
   const ciphertext = options.signal?.body ?? encodeMessage(text);
@@ -815,7 +817,7 @@ export async function apiSendMessage(
     ciphertext,
     ciphertext_type: ciphertextType,
     sender_key_id: 1,
-    message_type: options.replyToMessageId ? "reply" : "text",
+    message_type: options.replyToMessageId ? "reply" : options.forward ? "forward" : "text",
     sent_at: new Date().toISOString(),
     reply_to_message_id: options.replyToMessageId ?? null,
     burn_after_read: options.burnAfterRead ?? false,

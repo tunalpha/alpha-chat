@@ -1606,17 +1606,57 @@ export default function ChatPage({ onNavigate }: Props) {
     if (!forwardingMessage) return;
     const text = getDisplayText(forwardingMessage);
     setForwardingMessage(null);
-    const targetConv = conversations.find((c) => c.conversation_id === targetConvId);
+    const targetConv       = conversations.find((c) => c.conversation_id === targetConvId);
     const targetRecipientId = targetConv?.other_user?.user_id;
+
     try {
       const clientMessageId = crypto.randomUUID();
-      if (text) sentCacheRef.current.set(clientMessageId, text);
-      let signal: { body: string; type: number } | undefined;
-      if (auth && targetRecipientId) {
-        try { signal = await signalEncrypt(auth.userId, auth.deviceId, targetRecipientId, text); }
-        catch { /* fallback legacy */ }
+
+      // ── Media/voice forward ──────────────────────────────────────────────
+      // Il testo decodificato per i messaggi media È il JSON con media_id+key+iv.
+      // Lo re-inviamo come messaggio media corretto invece di testo raw.
+      const fwdMediaMeta = forwardingMessage.message_type === "media" ? decodeMediaMeta(text) : null;
+      const fwdVoiceMeta = forwardingMessage.message_type === "media" ? decodeVoiceMeta(text) : null;
+
+      if (fwdMediaMeta || fwdVoiceMeta) {
+        const metaJson = text; // contiene e2e key+iv intatti
+        const mediaId  = fwdMediaMeta?.media_id ?? fwdVoiceMeta!.media_id;
+
+        // Cache per il WS handler (permette decrypt lato mittente nella conv target)
+        sentCacheRef.current.set(clientMessageId, metaJson);
+        void cacheOwnMessageMeta(clientMessageId, metaJson);
+
+        let signal: { body: string; type: number } | undefined;
+        let dcs:    Array<{ device_id: string; body: string; type: number }> | undefined;
+
+        if (auth && targetRecipientId) {
+          try {
+            const allBundles = await apiGetAllKeyBundles(targetRecipientId);
+            const { primary, deviceCiphertexts } = await signalEncryptMulti(
+              auth.userId, auth.deviceId, targetRecipientId, metaJson, allBundles,
+            );
+            signal = primary;
+            dcs    = deviceCiphertexts;
+          } catch {
+            try {
+              signal = await signalEncrypt(auth.userId, auth.deviceId, targetRecipientId, metaJson);
+            } catch { /* no Signal → fallback legacy */ }
+          }
+        }
+
+        await apiSendMediaMessage(targetConvId, mediaId, signal, clientMessageId, metaJson, dcs);
+
+      } else {
+        // ── Testo forward ──────────────────────────────────────────────────
+        if (text) sentCacheRef.current.set(clientMessageId, text);
+        let signal: { body: string; type: number } | undefined;
+        if (auth && targetRecipientId) {
+          try { signal = await signalEncrypt(auth.userId, auth.deviceId, targetRecipientId, text); }
+          catch { /* fallback legacy */ }
+        }
+        await apiSendMessage(targetConvId, text, { signal, clientMessageId, forward: true });
       }
-      await apiSendMessage(targetConvId, text, { signal, clientMessageId });
+
       showToast("Messaggio inoltrato ✓");
     } catch {
       showToast("Errore durante l'inoltro");
@@ -2602,6 +2642,16 @@ export default function ChatPage({ onNavigate }: Props) {
                             </span>
                           </div>
                         )}
+                        {/* Forwarded indicator */}
+                        {msg.message_type === "forward" && (
+                          <div className="msg-forwarded-label">
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="11" height="11">
+                              <polyline points="15 17 20 12 15 7"/>
+                              <path d="M4 18v-2a4 4 0 0 1 4-4h12"/>
+                            </svg>
+                            Inoltrato
+                          </div>
+                        )}
                         {/* Pending media: upload in corso o fallito — mostra bolla con progresso */}
                         {msg.id.startsWith("pending-") && msg.message_type === "media" && mediaUploadStates.has(msg.id) ? (
                           <PendingMediaBubble state={mediaUploadStates.get(msg.id)!} />
@@ -2834,7 +2884,18 @@ export default function ChatPage({ onNavigate }: Props) {
               </button>
             </div>
             <div className="forward-sheet-preview">
-              "{getDisplayText(forwardingMessage).slice(0, 60)}"
+              {(() => {
+                const t2 = getDisplayText(forwardingMessage);
+                const vm = decodeVoiceMeta(t2);
+                if (vm) return "🎤 Messaggio vocale";
+                const mm = decodeMediaMeta(t2);
+                if (mm?.type === "image")    return `📷 ${mm.filename ?? "Foto"}`;
+                if (mm?.type === "video")    return `🎥 ${mm.filename ?? "Video"}`;
+                if (mm?.type === "document") return `📄 ${mm.filename ?? "Documento"}`;
+                const lm = decodeLocationMeta(t2);
+                if (lm) return "📍 Posizione condivisa";
+                return `"${t2.slice(0, 60)}${t2.length > 60 ? "…" : ""}"`;
+              })()}
             </div>
             <div className="forward-conv-list">
               {conversations

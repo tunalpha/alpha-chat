@@ -2271,6 +2271,18 @@ button:disabled.profile-avatar-edit {
 .loc-confirm-send   { background: var(--accent, #6366f1);    color: #fff; }
 .loc-confirm-cancel:active, .loc-confirm-send:active { opacity: .75; }
 
+/* ── Forwarded label ────────────────────────────────────────────────────── */
+.msg-forwarded-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 0.7rem;
+  font-style: italic;
+  opacity: .65;
+  margin-bottom: 4px;
+  color: inherit;
+}
+
 /* Spinner */
 .loc-confirm-spinner {
   width: 36px; height: 36px;
