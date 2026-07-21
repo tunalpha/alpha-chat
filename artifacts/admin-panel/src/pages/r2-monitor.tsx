@@ -1,10 +1,13 @@
 /**
- * R2 Monitor — Cloudflare R2 Monitoring Center
- * Tabs: Overview · Health · Search · Cleanup · Consistency
+ * R2 Monitor — Cloudflare R2 Monitoring Center (Enterprise)
+ * Tabs: Overview · Health · Encryption Audit · Search · Cleanup · Consistency · Top Users · Live Activity · Error Center
  */
 
 import { useState } from "react";
-import { useR2Dashboard, useR2Health, useR2Search, useR2Cleanup, useR2Consistency } from "@/hooks/use-admin";
+import {
+  useR2Dashboard, useR2Health, useR2Search, useR2Cleanup, useR2Consistency,
+  useR2Encryption, useR2TopUsers, useR2Activity, useR2Errors,
+} from "@/hooks/use-admin";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -16,8 +19,9 @@ import {
 import {
   Cloud, HardDrive, Files, TrendingUp, Search, Trash2, ShieldCheck,
   CheckCircle2, XCircle, AlertCircle, DollarSign, Activity,
+  Lock, Users, Zap, AlertTriangle,
 } from "lucide-react";
-import type { R2FileResult, R2MissingMedia } from "@/lib/api";
+import type { R2FileResult, R2MissingMedia, R2ActivityEvent, R2ErrorEvent } from "@/lib/api";
 
 // ─── helpers ──────────────────────────────────────────────────────────────────
 
@@ -28,14 +32,14 @@ function fmtBytes(bytes: number): string {
   return `${bytes} B`;
 }
 
-function StatCard({ title, value, sub, icon: Icon, color = "" }: {
-  title: string; value: string; sub?: string; icon: React.ElementType; color?: string;
+function StatCard({ title, value, sub, icon: Icon, accent = "" }: {
+  title: string; value: string; sub?: string; icon: React.ElementType; accent?: string;
 }) {
   return (
     <Card>
       <CardHeader className="flex flex-row items-center justify-between pb-2">
         <CardTitle className="text-xs font-mono uppercase text-muted-foreground">{title}</CardTitle>
-        <Icon className={`w-4 h-4 text-muted-foreground ${color}`} />
+        <Icon className={`w-4 h-4 text-muted-foreground ${accent}`} />
       </CardHeader>
       <CardContent>
         <div className="text-2xl font-bold font-mono tracking-tight">{value}</div>
@@ -45,22 +49,33 @@ function StatCard({ title, value, sub, icon: Icon, color = "" }: {
   );
 }
 
-const SECTION_LABELS: Record<string, string> = {
-  overview: "Overview",
-  health:   "Bucket Health",
-  search:   "File Search",
-  cleanup:  "Cleanup",
-  consistency: "Consistency",
+const EVENT_COLORS: Record<string, string> = {
+  UPLOAD:       "text-blue-400",
+  SIGNED_URL:   "text-violet-400",
+  DELETE:       "text-rose-400",
+  CLEANUP:      "text-amber-400",
+  HEALTH_CHECK: "text-emerald-400",
+  CONSISTENCY:  "text-cyan-400",
 };
 
-// ─── Overview tab ─────────────────────────────────────────────────────────────
+const SECTION_LABELS: Record<string, string> = {
+  overview:    "Overview",
+  health:      "Bucket Health",
+  encryption:  "Encryption Audit",
+  search:      "File Search",
+  cleanup:     "Cleanup",
+  consistency: "Consistency",
+  "top-users": "Top Users",
+  activity:    "Live Activity",
+  errors:      "Error Center",
+};
+
+// ─── Overview (includes forecast + top-users preview) ─────────────────────────
 
 function Overview() {
   const { data, isLoading } = useR2Dashboard();
 
-  if (isLoading || !data) {
-    return <div className="h-64 bg-muted animate-pulse rounded-xl" />;
-  }
+  if (isLoading || !data) return <div className="h-64 bg-muted animate-pulse rounded-xl" />;
 
   const typeColors: Record<string, string> = {
     image: "#3b82f6", video: "#8b5cf6", audio: "#10b981", document: "#f59e0b",
@@ -68,45 +83,54 @@ function Overview() {
   const typeTotals = data.type_breakdown as Array<{ type: string; count: number; bytes: number }>;
   const totalBytes = data.totals.bytes as number;
 
+  // Storage Forecast — linear trend from growth_30d
+  const growth = data.growth_30d as Array<{ date: string; uploads: number; bytes: number }>;
+  let avgDailyBytes = 0;
+  let forecastNote = "";
+  if (growth.length >= 3) {
+    const recent = growth.slice(-7); // last 7 data points for trend
+    avgDailyBytes = recent.reduce((s, g) => s + g.bytes, 0) / recent.length;
+    forecastNote = `Media ultimi ${recent.length} giorni`;
+  }
+  const forecast30  = totalBytes + avgDailyBytes * 30;
+  const forecast90  = totalBytes + avgDailyBytes * 90;
+
   return (
     <div className="space-y-6">
-      {/* KPI cards */}
+      {/* KPI */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <StatCard title="File totali" value={String(data.totals.count.toLocaleString())} icon={Files} sub="Blob cifrati E2E" />
-        <StatCard title="Storage totale" value={fmtBytes(data.totals.bytes)} icon={HardDrive} sub={`${data.totals.gb.toFixed(4)} GB`} />
-        <StatCard title="Costo stimato/mese" value={`$${data.cost_estimate.total_usd}`} icon={DollarSign} sub="R2 pricing 2025" />
-        <StatCard title="Upload oggi" value={String(
-          (data.analytics_24h as Array<{ count: number }>).reduce((s, r) => s + r.count, 0).toLocaleString()
-        )} icon={TrendingUp} sub="Ultimi 24h" />
+        <StatCard title="File totali" value={(data.totals.count as number).toLocaleString()} icon={Files} sub="Blob cifrati E2E" />
+        <StatCard title="Storage totale" value={fmtBytes(data.totals.bytes as number)} icon={HardDrive} sub={`${(data.totals.gb as number).toFixed(4)} GB`} />
+        <StatCard title="Costo stimato/mese" value={`$${(data.cost_estimate as { total_usd: number }).total_usd}`} icon={DollarSign} sub="R2 pricing 2025" />
+        <StatCard title="Upload ultimi 24h" value={(data.analytics_24h as Array<{ count: number }>).reduce((s, r) => s + r.count, 0).toLocaleString()} icon={TrendingUp} sub="Ultimi 24h" />
       </div>
 
       {/* Type breakdown */}
       <Card>
         <CardHeader><CardTitle className="text-sm font-mono uppercase text-muted-foreground">Storage per tipo</CardTitle></CardHeader>
         <CardContent>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-            {typeTotals.map((t) => {
-              const pct = totalBytes > 0 ? (t.bytes / totalBytes * 100).toFixed(1) : "0.0";
-              return (
-                <div key={t.type} className="space-y-1">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium capitalize">{t.type}</span>
-                    <span className="text-xs text-muted-foreground font-mono">{pct}%</span>
-                  </div>
-                  <div className="h-2 bg-muted rounded-full overflow-hidden">
-                    <div
-                      className="h-full rounded-full"
-                      style={{ width: `${pct}%`, background: typeColors[t.type] ?? "#6b7280" }}
-                    />
-                  </div>
-                  <p className="text-xs text-muted-foreground">{t.count.toLocaleString()} file · {fmtBytes(t.bytes)}</p>
-                </div>
-              );
-            })}
-            {typeTotals.length === 0 && (
-              <p className="col-span-4 text-sm text-muted-foreground font-mono text-center py-4">Nessun file caricato ancora.</p>
-            )}
-          </div>
+          {typeTotals.length === 0
+            ? <p className="text-sm text-muted-foreground font-mono text-center py-4">Nessun file caricato ancora.</p>
+            : (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {typeTotals.map((t) => {
+                  const pct = totalBytes > 0 ? (t.bytes / totalBytes * 100).toFixed(1) : "0.0";
+                  return (
+                    <div key={t.type} className="space-y-1">
+                      <div className="flex items-center justify-between">
+                        <span className="text-sm font-medium capitalize">{t.type}</span>
+                        <span className="text-xs text-muted-foreground font-mono">{pct}%</span>
+                      </div>
+                      <div className="h-2 bg-muted rounded-full overflow-hidden">
+                        <div className="h-full rounded-full" style={{ width: `${pct}%`, background: typeColors[t.type] ?? "#6b7280" }} />
+                      </div>
+                      <p className="text-xs text-muted-foreground">{t.count.toLocaleString()} file · {fmtBytes(t.bytes)}</p>
+                    </div>
+                  );
+                })}
+              </div>
+            )
+          }
         </CardContent>
       </Card>
 
@@ -114,14 +138,14 @@ function Overview() {
       <Card>
         <CardHeader><CardTitle className="text-sm font-mono uppercase text-muted-foreground">Upload ultimi 30 giorni</CardTitle></CardHeader>
         <CardContent>
-          {(data.growth_30d as unknown[]).length === 0
+          {growth.length === 0
             ? <p className="text-sm text-muted-foreground font-mono text-center py-8">Nessun dato</p>
             : (
               <ResponsiveContainer width="100%" height={200}>
-                <AreaChart data={data.growth_30d as object[]}>
+                <AreaChart data={growth}>
                   <defs>
-                    <linearGradient id="r2uploads" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.3} />
+                    <linearGradient id="r2grad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%"  stopColor="#3b82f6" stopOpacity={0.3} />
                       <stop offset="95%" stopColor="#3b82f6" stopOpacity={0} />
                     </linearGradient>
                   </defs>
@@ -132,7 +156,7 @@ function Overview() {
                     contentStyle={{ fontSize: 12, background: "hsl(var(--card))", border: "1px solid hsl(var(--border))" }}
                     formatter={(v: number, n: string) => n === "bytes" ? fmtBytes(v) : v}
                   />
-                  <Area type="monotone" dataKey="uploads" stroke="#3b82f6" fill="url(#r2uploads)" name="Upload" />
+                  <Area type="monotone" dataKey="uploads" stroke="#3b82f6" fill="url(#r2grad)" name="Upload" />
                 </AreaChart>
               </ResponsiveContainer>
             )
@@ -140,7 +164,35 @@ function Overview() {
         </CardContent>
       </Card>
 
-      {/* Cost estimate detail */}
+      {/* Storage Forecast */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-sm font-mono uppercase text-muted-foreground">Storage Forecast</CardTitle>
+        </CardHeader>
+        <CardContent>
+          {avgDailyBytes === 0
+            ? <p className="text-sm text-muted-foreground font-mono">Dati insufficienti per la previsione (servono ≥ 3 giorni di upload).</p>
+            : (
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                {[
+                  { label: "Storage oggi",       value: fmtBytes(totalBytes) },
+                  { label: "Crescita media/giorno", value: fmtBytes(avgDailyBytes), sub: forecastNote },
+                  { label: "Previsione 30 giorni",  value: fmtBytes(forecast30) },
+                  { label: "Previsione 90 giorni",  value: fmtBytes(forecast90) },
+                ].map((s) => (
+                  <div key={s.label} className="p-3 rounded-lg bg-muted/40 space-y-1">
+                    <p className="text-xs text-muted-foreground font-mono uppercase">{s.label}</p>
+                    <p className="text-xl font-bold font-mono">{s.value}</p>
+                    {s.sub && <p className="text-xs text-muted-foreground">{s.sub}</p>}
+                  </div>
+                ))}
+              </div>
+            )
+          }
+        </CardContent>
+      </Card>
+
+      {/* Cost detail */}
       <Card>
         <CardHeader><CardTitle className="text-sm font-mono uppercase text-muted-foreground">Stima costi R2 (mensile)</CardTitle></CardHeader>
         <CardContent>
@@ -153,33 +205,47 @@ function Overview() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {[
-                { label: "Storage (oltre 10 GB free)", qty: `${data.cost_estimate.billable_gb.toFixed(4)} GB`, usd: data.cost_estimate.storage_usd },
-                { label: "Class A ops (write, oltre 1M free)", qty: data.cost_estimate.class_a_ops.toLocaleString(), usd: data.cost_estimate.class_a_usd },
-                { label: "Class B ops (read, oltre 10M free)", qty: data.cost_estimate.class_b_ops_estimated.toLocaleString(), usd: data.cost_estimate.class_b_usd },
-                { label: "Egress", qty: "Illimitato", usd: 0 },
-              ].map((r) => (
-                <TableRow key={r.label}>
-                  <TableCell className="text-sm">{r.label}</TableCell>
-                  <TableCell className="font-mono text-sm text-right text-muted-foreground">{r.qty}</TableCell>
-                  <TableCell className="font-mono text-sm text-right font-semibold">${r.usd.toFixed(4)}</TableCell>
-                </TableRow>
-              ))}
-              <TableRow className="border-t-2">
-                <TableCell className="font-bold">Totale stimato</TableCell>
-                <TableCell />
-                <TableCell className="font-mono font-bold text-right text-lg">${data.cost_estimate.total_usd}</TableCell>
-              </TableRow>
+              {(() => {
+                const c = data.cost_estimate as {
+                  billable_gb: number; storage_usd: number;
+                  class_a_ops: number; class_a_usd: number;
+                  class_b_ops_estimated: number; class_b_usd: number;
+                  total_usd: number; note: string;
+                };
+                return (
+                  <>
+                    {[
+                      { label: "Storage (oltre 10 GB free)", qty: `${c.billable_gb.toFixed(4)} GB`, usd: c.storage_usd },
+                      { label: "Class A ops (write, oltre 1M free)", qty: c.class_a_ops.toLocaleString(), usd: c.class_a_usd },
+                      { label: "Class B ops (read, oltre 10M free)", qty: c.class_b_ops_estimated.toLocaleString(), usd: c.class_b_usd },
+                      { label: "Egress", qty: "Illimitato", usd: 0 },
+                    ].map((r) => (
+                      <TableRow key={r.label}>
+                        <TableCell className="text-sm">{r.label}</TableCell>
+                        <TableCell className="font-mono text-sm text-right text-muted-foreground">{r.qty}</TableCell>
+                        <TableCell className="font-mono text-sm text-right font-semibold">${r.usd.toFixed(4)}</TableCell>
+                      </TableRow>
+                    ))}
+                    <TableRow className="border-t-2">
+                      <TableCell className="font-bold">Totale stimato</TableCell>
+                      <TableCell />
+                      <TableCell className="font-mono font-bold text-right text-lg">${c.total_usd}</TableCell>
+                    </TableRow>
+                    <TableRow className="border-0">
+                      <TableCell colSpan={3} className="text-xs text-muted-foreground pt-0">{c.note}</TableCell>
+                    </TableRow>
+                  </>
+                );
+              })()}
             </TableBody>
           </Table>
-          <p className="text-xs text-muted-foreground mt-2 font-mono">{data.cost_estimate.note}</p>
         </CardContent>
       </Card>
     </div>
   );
 }
 
-// ─── Health tab ───────────────────────────────────────────────────────────────
+// ─── Health ───────────────────────────────────────────────────────────────────
 
 function Health() {
   const { data, isLoading, refetch, isFetching } = useR2Health();
@@ -189,7 +255,6 @@ function Health() {
     warning: { icon: AlertCircle,  color: "text-amber-500",   label: "Warning", bg: "bg-amber-500/10" },
     offline: { icon: XCircle,      color: "text-red-500",     label: "Offline", bg: "bg-red-500/10" },
   };
-
   const status = (data?.status ?? "offline") as keyof typeof statusConfig;
   const sc = statusConfig[status];
 
@@ -202,38 +267,34 @@ function Health() {
         </Button>
       </div>
 
-      {isLoading ? (
-        <div className="h-40 bg-muted animate-pulse rounded-xl" />
-      ) : (
+      {isLoading ? <div className="h-40 bg-muted animate-pulse rounded-xl" /> : (
         <Card>
-          <CardContent className="pt-6">
-            <div className={`flex items-center gap-4 p-4 rounded-lg mb-6 ${sc.bg}`}>
-              <sc.icon className={`w-10 h-10 ${sc.color}`} />
+          <CardContent className="pt-6 space-y-6">
+            <div className={`flex items-center gap-4 p-4 rounded-lg ${sc.bg}`}>
+              <sc.icon className={`w-10 h-10 ${sc.color} shrink-0`} />
               <div>
                 <p className={`text-2xl font-bold font-mono ${sc.color}`}>{sc.label}</p>
                 <p className="text-sm text-muted-foreground">{data?.error ?? "Connessione al bucket R2 verificata"}</p>
               </div>
             </div>
 
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div>
-                <p className="text-xs text-muted-foreground font-mono uppercase mb-1">Latenza</p>
-                <p className="text-xl font-bold font-mono">{data?.latency_ms ?? "—"} ms</p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground font-mono uppercase mb-1">Bucket</p>
-                <p className="text-xl font-bold font-mono truncate">{data?.bucket ?? "—"}</p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground font-mono uppercase mb-1">Endpoint</p>
-                <p className="text-xs font-mono text-muted-foreground break-all">{data?.endpoint ?? "—"}</p>
-              </div>
-              <div>
-                <p className="text-xs text-muted-foreground font-mono uppercase mb-1">Ultimo check</p>
-                <p className="text-sm font-mono text-muted-foreground">
-                  {data?.checked_at ? new Date(data.checked_at).toLocaleTimeString() : "—"}
-                </p>
-              </div>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+              {[
+                { label: "Latenza (on-demand)", value: data?.latency_ms != null ? `${data.latency_ms} ms` : "—" },
+                { label: "Bucket",              value: data?.bucket ?? "—" },
+                { label: "Ultimo check manuale", value: data?.checked_at ? new Date(data.checked_at).toLocaleTimeString() : "—" },
+                { label: "Ultimo check automatico", value: data?.last_auto_check ? new Date(data.last_auto_check as string).toLocaleTimeString() : "Mai" },
+                { label: "Errori consecutivi",  value: String(data?.consecutive_errors ?? 0), danger: (data?.consecutive_errors ?? 0) > 0 },
+                { label: "Endpoint", value: "", sub: data?.endpoint ?? "—" },
+              ].map((s) => (
+                <div key={s.label} className="p-3 rounded-lg bg-muted/40 space-y-1">
+                  <p className="text-xs text-muted-foreground font-mono uppercase">{s.label}</p>
+                  {s.sub
+                    ? <p className="text-xs font-mono break-all text-muted-foreground">{s.sub}</p>
+                    : <p className={`text-xl font-bold font-mono ${s.danger ? "text-red-500" : ""}`}>{s.value}</p>
+                  }
+                </div>
+              ))}
             </div>
           </CardContent>
         </Card>
@@ -242,7 +303,91 @@ function Health() {
   );
 }
 
-// ─── Search tab ───────────────────────────────────────────────────────────────
+// ─── Encryption Audit ─────────────────────────────────────────────────────────
+
+function EncryptionAudit() {
+  const { data, isLoading, refetch, isFetching } = useR2Encryption();
+
+  return (
+    <div className="space-y-4">
+      <div className="flex justify-end">
+        <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching}>
+          <Lock className="w-4 h-4 mr-2" />
+          {isFetching ? "Analisi…" : "Rianalizza"}
+        </Button>
+      </div>
+
+      {isLoading ? <div className="h-48 bg-muted animate-pulse rounded-xl" /> : data && (
+        <>
+          {/* Verdict banner */}
+          <div className={`flex items-center gap-4 p-4 rounded-lg ${data.all_encrypted ? "bg-emerald-500/10" : "bg-red-500/10"}`}>
+            {data.all_encrypted
+              ? <CheckCircle2 className="w-10 h-10 text-emerald-500 shrink-0" />
+              : <XCircle className="w-10 h-10 text-red-500 shrink-0" />
+            }
+            <div>
+              <p className={`text-2xl font-bold font-mono ${data.all_encrypted ? "text-emerald-500" : "text-red-500"}`}>
+                {data.all_encrypted ? "100% Cifrati" : "Anomalie rilevate"}
+              </p>
+              <p className="text-sm text-muted-foreground">
+                {data.all_encrypted
+                  ? "Tutti i file sono AES-256-GCM con hash SHA-256."
+                  : `${data.unversioned_count} file senza versione cifratura, ${data.missing_hash_count} senza hash.`
+                }
+              </p>
+            </div>
+          </div>
+
+          {/* Metric grid */}
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {[
+              { label: "Totale file",        value: data.total_files.toLocaleString() },
+              { label: "Algoritmo",          value: data.encryption_algo },
+              { label: "AES-256-GCM v1",     value: `${data.v1_count.toLocaleString()} (${data.v1_pct}%)` },
+              { label: "File non cifrati",   value: String(data.unversioned_count), danger: data.unversioned_count > 0 },
+              { label: "Hash mancante",      value: String(data.missing_hash_count), danger: data.missing_hash_count > 0 },
+              { label: "Versioni rilevate",  value: String(data.version_breakdown.length) },
+            ].map((s) => (
+              <div key={s.label} className="p-3 rounded-lg bg-muted/40 space-y-1">
+                <p className="text-xs text-muted-foreground font-mono uppercase">{s.label}</p>
+                <p className={`text-xl font-bold font-mono ${s.danger ? "text-red-500" : ""}`}>{s.value}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Version breakdown */}
+          {data.version_breakdown.length > 0 && (
+            <Card>
+              <CardHeader><CardTitle className="text-sm font-mono uppercase text-muted-foreground">Distribuzione versioni</CardTitle></CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow className="hover:bg-transparent">
+                      <TableHead className="font-mono text-xs uppercase">Versione</TableHead>
+                      <TableHead className="font-mono text-xs uppercase">Algoritmo</TableHead>
+                      <TableHead className="font-mono text-xs uppercase text-right">File</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {data.version_breakdown.map((v) => (
+                      <TableRow key={v.version}>
+                        <TableCell className="font-mono">V{v.version}</TableCell>
+                        <TableCell className="font-mono text-sm text-emerald-500">AES-256-GCM</TableCell>
+                        <TableCell className="font-mono text-right">{v.count.toLocaleString()}</TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+// ─── File Search ──────────────────────────────────────────────────────────────
 
 function FileSearch() {
   const [params, setParams] = useState<{
@@ -266,52 +411,40 @@ function FileSearch() {
 
   return (
     <div className="space-y-4">
-      {/* Search form */}
       <Card>
         <CardHeader><CardTitle className="text-sm font-mono uppercase text-muted-foreground">Filtri ricerca</CardTitle></CardHeader>
         <CardContent className="space-y-3">
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <Input placeholder="Media ID (ObjectId)" value={form.media_id} onChange={e => setForm(f => ({ ...f, media_id: e.target.value }))} className="font-mono text-xs" />
+            <Input placeholder="Media ID" value={form.media_id} onChange={e => setForm(f => ({ ...f, media_id: e.target.value }))} className="font-mono text-xs" />
             <Input placeholder="Username" value={form.username} onChange={e => setForm(f => ({ ...f, username: e.target.value }))} className="font-mono text-xs" />
             <Input placeholder="Conversation ID" value={form.conversation_id} onChange={e => setForm(f => ({ ...f, conversation_id: e.target.value }))} className="font-mono text-xs" />
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <select
-              className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-xs font-mono shadow-sm focus:outline-none"
-              value={form.type}
-              onChange={e => setForm(f => ({ ...f, type: e.target.value }))}
-            >
+            <select className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-xs font-mono shadow-sm focus:outline-none" value={form.type} onChange={e => setForm(f => ({ ...f, type: e.target.value }))}>
               <option value="">Tutti i tipi</option>
               <option value="image">Immagine</option>
               <option value="video">Video</option>
               <option value="audio">Audio</option>
               <option value="document">Documento</option>
             </select>
-            <Input type="date" placeholder="Da" value={form.since} onChange={e => setForm(f => ({ ...f, since: e.target.value }))} className="font-mono text-xs" />
-            <Input type="date" placeholder="A" value={form.until} onChange={e => setForm(f => ({ ...f, until: e.target.value }))} className="font-mono text-xs" />
+            <Input type="date" value={form.since} onChange={e => setForm(f => ({ ...f, since: e.target.value }))} className="font-mono text-xs" />
+            <Input type="date" value={form.until} onChange={e => setForm(f => ({ ...f, until: e.target.value }))} className="font-mono text-xs" />
           </div>
-          <Button onClick={handleSearch} disabled={isFetching} className="w-full md:w-auto">
+          <Button onClick={handleSearch} disabled={isFetching}>
             <Search className="w-4 h-4 mr-2" />
             {isFetching ? "Ricerca…" : "Cerca"}
           </Button>
         </CardContent>
       </Card>
 
-      {/* Results */}
-      {isLoading ? (
-        <div className="h-40 bg-muted animate-pulse rounded-xl" />
-      ) : data && (
+      {isLoading ? <div className="h-40 bg-muted animate-pulse rounded-xl" /> : data && (
         <Card>
           <CardHeader className="flex flex-row items-center justify-between pb-2">
-            <CardTitle className="text-sm font-mono uppercase text-muted-foreground">
-              Risultati: {data.total.toLocaleString()} file
-            </CardTitle>
+            <CardTitle className="text-sm font-mono uppercase text-muted-foreground">Risultati: {data.total.toLocaleString()} file</CardTitle>
             <div className="flex gap-2">
-              <Button variant="outline" size="sm" disabled={params.page <= 1}
-                onClick={() => setParams(p => ({ ...p, page: p.page - 1 }))}>‹ Prec</Button>
+              <Button variant="outline" size="sm" disabled={params.page <= 1} onClick={() => setParams(p => ({ ...p, page: p.page - 1 }))}>‹</Button>
               <span className="text-xs font-mono py-1.5 px-2">{params.page}/{data.pages || 1}</span>
-              <Button variant="outline" size="sm" disabled={params.page >= (data.pages || 1)}
-                onClick={() => setParams(p => ({ ...p, page: p.page + 1 }))}>Succ ›</Button>
+              <Button variant="outline" size="sm" disabled={params.page >= (data.pages || 1)} onClick={() => setParams(p => ({ ...p, page: p.page + 1 }))}>›</Button>
             </div>
           </CardHeader>
           <CardContent className="p-0">
@@ -319,35 +452,25 @@ function FileSearch() {
               <Table>
                 <TableHeader>
                   <TableRow className="hover:bg-transparent">
-                    {["Media ID", "Utente", "Tipo", "Dimensione", "Cifrato", "R2 Key", "Hash SHA-256", "Upload"].map(h => (
+                    {["ID", "Utente", "Tipo", "Dimensione", "Cifratura", "R2 Key", "Hash SHA-256", "Upload"].map(h => (
                       <TableHead key={h} className="font-mono text-xs uppercase whitespace-nowrap">{h}</TableHead>
                     ))}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {data.files.length === 0 && (
-                    <TableRow>
-                      <TableCell colSpan={8} className="text-center py-8 text-muted-foreground font-mono text-sm">
-                        Nessun file trovato
-                      </TableCell>
-                    </TableRow>
+                    <TableRow><TableCell colSpan={8} className="text-center py-8 text-muted-foreground font-mono text-sm">Nessun file trovato</TableCell></TableRow>
                   )}
-                  {data.files.map((f: {
-                    media_id: string; uploader: string; mime_type: string;
-                    ciphertext_size: number; encryption_ver: number; storage_key: string;
-                    sha256: string; uploaded_at: string;
-                  }) => (
+                  {data.files.map((f: R2FileResult) => (
                     <TableRow key={f.media_id}>
                       <TableCell className="font-mono text-xs">{f.media_id.slice(-8)}</TableCell>
                       <TableCell className="font-mono text-sm">@{f.uploader}</TableCell>
                       <TableCell className="font-mono text-xs">{f.mime_type.split("/")[0]}</TableCell>
                       <TableCell className="font-mono text-sm">{fmtBytes(f.ciphertext_size)}</TableCell>
-                      <TableCell className="font-mono text-xs text-emerald-500">AES-256-GCM v{f.encryption_ver}</TableCell>
+                      <TableCell className="font-mono text-xs text-emerald-500">AES-256 v{f.encryption_ver}</TableCell>
                       <TableCell className="font-mono text-xs text-muted-foreground max-w-[120px] truncate">{f.storage_key}</TableCell>
                       <TableCell className="font-mono text-xs text-muted-foreground">{f.sha256.slice(0, 12)}…</TableCell>
-                      <TableCell className="font-mono text-xs text-muted-foreground">
-                        {new Date(f.uploaded_at).toLocaleDateString()}
-                      </TableCell>
+                      <TableCell className="font-mono text-xs text-muted-foreground">{new Date(f.uploaded_at).toLocaleDateString()}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
@@ -360,46 +483,33 @@ function FileSearch() {
   );
 }
 
-// ─── Cleanup tab ──────────────────────────────────────────────────────────────
+// ─── Cleanup ──────────────────────────────────────────────────────────────────
 
 function Cleanup() {
   const { mutate, data, isPending } = useR2Cleanup();
-
   return (
     <div className="space-y-4">
       <Card>
-        <CardHeader>
-          <CardTitle className="text-sm font-mono uppercase text-muted-foreground">Cleanup temp/ manuale</CardTitle>
-        </CardHeader>
+        <CardHeader><CardTitle className="text-sm font-mono uppercase text-muted-foreground">Cleanup temp/ manuale</CardTitle></CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-muted-foreground">
-            Elimina gli oggetti nel prefisso <code className="font-mono text-xs bg-muted px-1 py-0.5 rounded">temp/</code> più
-            vecchi di 24 ore (upload interrotti). Lo scheduler automatico esegue ogni ora.
+            Elimina gli oggetti nel prefisso <code className="font-mono text-xs bg-muted px-1 py-0.5 rounded">temp/</code> più vecchi di 24h.
+            Lo scheduler automatico esegue ogni ora.
           </p>
           <Button variant="destructive" onClick={() => mutate()} disabled={isPending}>
             <Trash2 className="w-4 h-4 mr-2" />
             {isPending ? "Pulizia in corso…" : "Esegui Cleanup ora"}
           </Button>
-
           {data && (
-            <div className="mt-4 p-4 rounded-lg bg-muted/50 space-y-2">
+            <div className="p-4 rounded-lg bg-muted/50 space-y-3">
               <div className="flex items-center gap-2">
                 <CheckCircle2 className="w-5 h-5 text-emerald-500" />
                 <span className="font-semibold">Cleanup completato</span>
               </div>
-              <div className="grid grid-cols-3 gap-4 mt-2">
-                <div>
-                  <p className="text-xs text-muted-foreground font-mono uppercase">File eliminati</p>
-                  <p className="text-2xl font-bold font-mono">{data.deleted}</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground font-mono uppercase">Durata</p>
-                  <p className="text-2xl font-bold font-mono">{data.duration_ms} ms</p>
-                </div>
-                <div>
-                  <p className="text-xs text-muted-foreground font-mono uppercase">Eseguito alle</p>
-                  <p className="text-sm font-mono">{new Date(data.ran_at).toLocaleTimeString()}</p>
-                </div>
+              <div className="grid grid-cols-3 gap-4">
+                <div><p className="text-xs text-muted-foreground font-mono uppercase">File eliminati</p><p className="text-2xl font-bold font-mono">{data.deleted}</p></div>
+                <div><p className="text-xs text-muted-foreground font-mono uppercase">Durata</p><p className="text-2xl font-bold font-mono">{data.duration_ms} ms</p></div>
+                <div><p className="text-xs text-muted-foreground font-mono uppercase">Eseguito alle</p><p className="text-sm font-mono">{new Date(data.ran_at).toLocaleTimeString()}</p></div>
               </div>
             </div>
           )}
@@ -409,35 +519,28 @@ function Cleanup() {
   );
 }
 
-// ─── Consistency tab ──────────────────────────────────────────────────────────
+// ─── Consistency ──────────────────────────────────────────────────────────────
 
 function ConsistencyCheck() {
   const { mutate, data, isPending } = useR2Consistency();
-
   const verdict = data?.verdict as string | undefined;
 
   return (
     <div className="space-y-4">
       <Card>
-        <CardHeader>
-          <CardTitle className="text-sm font-mono uppercase text-muted-foreground">Verifica integrità MongoDB ↔ R2</CardTitle>
-        </CardHeader>
+        <CardHeader><CardTitle className="text-sm font-mono uppercase text-muted-foreground">Verifica integrità MongoDB ↔ R2</CardTitle></CardHeader>
         <CardContent className="space-y-4">
           <p className="text-sm text-muted-foreground">
-            Confronta i metadati MongoDB con gli oggetti presenti su R2. Trova file orfani, oggetti mancanti
-            e inconsistenze. Operazione che può richiedere fino a 30 secondi su bucket grandi.
+            Confronta metadata MongoDB con oggetti R2. Trova orfani e file mancanti. Può richiedere fino a 30 secondi.
           </p>
           <Button onClick={() => mutate()} disabled={isPending}>
             <ShieldCheck className="w-4 h-4 mr-2" />
-            {isPending ? "Analisi in corso…" : "Avvia Verifica Integrità"}
+            {isPending ? "Analisi…" : "Avvia Verifica Integrità"}
           </Button>
 
           {data && (
-            <div className="mt-4 space-y-4">
-              {/* Verdict banner */}
-              <div className={`flex items-center gap-3 p-4 rounded-lg ${
-                verdict === "CONSISTENT" ? "bg-emerald-500/10" : "bg-red-500/10"
-              }`}>
+            <div className="space-y-4 mt-2">
+              <div className={`flex items-center gap-3 p-4 rounded-lg ${verdict === "CONSISTENT" ? "bg-emerald-500/10" : "bg-red-500/10"}`}>
                 {verdict === "CONSISTENT"
                   ? <CheckCircle2 className="w-8 h-8 text-emerald-500 shrink-0" />
                   : <XCircle className="w-8 h-8 text-red-500 shrink-0" />
@@ -448,44 +551,37 @@ function ConsistencyCheck() {
                   </p>
                   <p className="text-xs text-muted-foreground">
                     Analisi completata in {data.duration_ms} ms
-                    {data.r2_truncated ? " · Listing R2 interrotto per timeout (bucket molto grande)" : ""}
+                    {data.r2_truncated ? " · Listing R2 interrotto (bucket grande)" : ""}
                   </p>
                 </div>
               </div>
 
-              {/* Stats grid */}
               <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
                 {[
                   { label: "Docs MongoDB",    value: data.total_mongodb_docs },
                   { label: "Oggetti R2",      value: data.total_r2_objects },
-                  { label: "Orfani in R2",    value: data.orphans_in_r2_count,   danger: data.orphans_in_r2_count > 0 },
-                  { label: "Mancanti in R2",  value: data.missing_in_r2_count,   danger: data.missing_in_r2_count > 0 },
-                  { label: "Thumb mancanti",  value: data.missing_thumbs_count,  danger: data.missing_thumbs_count > 0 },
+                  { label: "Orfani R2",       value: data.orphans_in_r2_count,  danger: data.orphans_in_r2_count > 0 },
+                  { label: "Mancanti R2",     value: data.missing_in_r2_count,  danger: data.missing_in_r2_count > 0 },
+                  { label: "Thumb mancanti",  value: data.missing_thumbs_count, danger: data.missing_thumbs_count > 0 },
                 ].map(s => (
                   <div key={s.label} className="p-3 rounded-lg bg-muted/40 space-y-1">
                     <p className="text-xs text-muted-foreground font-mono uppercase">{s.label}</p>
-                    <p className={`text-2xl font-bold font-mono ${s.danger ? "text-red-500" : ""}`}>
-                      {s.value.toLocaleString()}
-                    </p>
+                    <p className={`text-2xl font-bold font-mono ${s.danger ? "text-red-500" : ""}`}>{s.value.toLocaleString()}</p>
                   </div>
                 ))}
               </div>
 
-              {/* Orphan keys */}
               {data.orphan_keys?.length > 0 && (
                 <Card className="border-red-200">
                   <CardHeader><CardTitle className="text-sm text-red-600 font-mono">File orfani in R2 (max 50)</CardTitle></CardHeader>
                   <CardContent>
                     <div className="space-y-1 max-h-48 overflow-y-auto">
-                      {data.orphan_keys.map((k: string) => (
-                        <p key={k} className="text-xs font-mono text-muted-foreground">{k}</p>
-                      ))}
+                      {data.orphan_keys.map((k: string) => <p key={k} className="text-xs font-mono text-muted-foreground">{k}</p>)}
                     </div>
                   </CardContent>
                 </Card>
               )}
 
-              {/* Missing in R2 */}
               {data.missing_media?.length > 0 && (
                 <Card className="border-amber-200">
                   <CardHeader><CardTitle className="text-sm text-amber-600 font-mono">Doc MongoDB senza oggetto R2 (max 50)</CardTitle></CardHeader>
@@ -493,14 +589,11 @@ function ConsistencyCheck() {
                     <Table>
                       <TableHeader>
                         <TableRow className="hover:bg-transparent">
-                          <TableHead className="font-mono text-xs uppercase">Media ID</TableHead>
-                          <TableHead className="font-mono text-xs uppercase">Storage Key</TableHead>
-                          <TableHead className="font-mono text-xs uppercase">MIME</TableHead>
-                          <TableHead className="font-mono text-xs uppercase">Upload</TableHead>
+                          {["Media ID", "Storage Key", "MIME", "Upload"].map(h => <TableHead key={h} className="font-mono text-xs uppercase">{h}</TableHead>)}
                         </TableRow>
                       </TableHeader>
                       <TableBody>
-                        {data.missing_media.map((m: { media_id: string; storage_key: string; mime_type: string; uploaded_at: string }) => (
+                        {data.missing_media.map((m: R2MissingMedia) => (
                           <TableRow key={m.media_id}>
                             <TableCell className="font-mono text-xs">{m.media_id.slice(-8)}</TableCell>
                             <TableCell className="font-mono text-xs text-muted-foreground max-w-[160px] truncate">{m.storage_key}</TableCell>
@@ -521,28 +614,211 @@ function ConsistencyCheck() {
   );
 }
 
-// ─── Main page ────────────────────────────────────────────────────────────────
+// ─── Top Users ────────────────────────────────────────────────────────────────
+
+function TopUsers() {
+  const { data, isLoading, refetch, isFetching } = useR2TopUsers();
+
+  return (
+    <div className="space-y-4">
+      <div className="flex justify-end">
+        <Button variant="outline" size="sm" onClick={() => refetch()} disabled={isFetching}>
+          <Users className="w-4 h-4 mr-2" />
+          {isFetching ? "Aggiornamento…" : "Aggiorna"}
+        </Button>
+      </div>
+      {isLoading ? <div className="h-48 bg-muted animate-pulse rounded-xl" /> : data && (
+        <Card>
+          <CardHeader><CardTitle className="text-sm font-mono uppercase text-muted-foreground">Top 20 utenti per storage consumato</CardTitle></CardHeader>
+          <CardContent className="p-0">
+            <Table>
+              <TableHeader>
+                <TableRow className="hover:bg-transparent">
+                  {["#", "Username", "GB", "File tot.", "Foto", "Video", "Audio"].map(h => (
+                    <TableHead key={h} className="font-mono text-xs uppercase">{h}</TableHead>
+                  ))}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {data.users.length === 0 && (
+                  <TableRow><TableCell colSpan={7} className="text-center py-8 text-muted-foreground font-mono text-sm">Nessun file caricato.</TableCell></TableRow>
+                )}
+                {data.users.map((u, i) => (
+                  <TableRow key={u.username}>
+                    <TableCell className="font-mono text-xs text-muted-foreground">{i + 1}</TableCell>
+                    <TableCell className="font-mono font-medium">@{u.username}</TableCell>
+                    <TableCell className="font-mono">{u.gb.toFixed(4)}</TableCell>
+                    <TableCell className="font-mono">{u.total.toLocaleString()}</TableCell>
+                    <TableCell className="font-mono text-blue-400">{u.images.toLocaleString()}</TableCell>
+                    <TableCell className="font-mono text-violet-400">{u.videos.toLocaleString()}</TableCell>
+                    <TableCell className="font-mono text-emerald-400">{u.audio.toLocaleString()}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+// ─── Live Activity ────────────────────────────────────────────────────────────
+
+function LiveActivity() {
+  const { data, isLoading, isFetching } = useR2Activity();
+
+  const typeLabel: Record<string, string> = {
+    UPLOAD:       "UPLOAD",
+    SIGNED_URL:   "URL FIRMATA",
+    DELETE:       "DELETE",
+    CLEANUP:      "CLEANUP",
+    HEALTH_CHECK: "HEALTH",
+    CONSISTENCY:  "CONSISTENCY",
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-2">
+        <div className={`w-2 h-2 rounded-full ${isFetching ? "bg-emerald-400 animate-pulse" : "bg-muted-foreground"}`} />
+        <span className="text-xs text-muted-foreground font-mono">Aggiornamento automatico ogni 3s</span>
+      </div>
+
+      {isLoading ? <div className="h-64 bg-muted animate-pulse rounded-xl" /> : (
+        <Card>
+          <CardHeader><CardTitle className="text-sm font-mono uppercase text-muted-foreground">Ultime {data?.total ?? 0} operazioni R2</CardTitle></CardHeader>
+          <CardContent className="p-0">
+            <div className="overflow-x-auto max-h-[520px] overflow-y-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent sticky top-0 bg-card z-10">
+                    {["Ora", "Tipo", "Status", "Utente", "File", "Dimensione", "Durata"].map(h => (
+                      <TableHead key={h} className="font-mono text-xs uppercase whitespace-nowrap">{h}</TableHead>
+                    ))}
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {(!data?.events?.length) && (
+                    <TableRow><TableCell colSpan={7} className="text-center py-12 text-muted-foreground font-mono text-sm">
+                      Nessuna attività registrata. Le operazioni media appariranno qui in tempo reale.
+                    </TableCell></TableRow>
+                  )}
+                  {(data?.events ?? []).map((e: R2ActivityEvent) => (
+                    <TableRow key={e.id} className="font-mono">
+                      <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                        {new Date(e.created_at).toLocaleTimeString()}
+                      </TableCell>
+                      <TableCell>
+                        <span className={`text-xs font-bold ${EVENT_COLORS[e.event_type] ?? "text-muted-foreground"}`}>
+                          {typeLabel[e.event_type] ?? e.event_type}
+                        </span>
+                      </TableCell>
+                      <TableCell>
+                        {e.status === "success"
+                          ? <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+                          : <XCircle className="w-4 h-4 text-red-500" />
+                        }
+                      </TableCell>
+                      <TableCell className="text-xs">{e.uploader ? `@${e.uploader}` : "—"}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground max-w-[100px] truncate">
+                        {e.filename ?? e.storage_key?.split("/").pop() ?? "—"}
+                      </TableCell>
+                      <TableCell className="text-xs">{e.file_size ? fmtBytes(e.file_size) : "—"}</TableCell>
+                      <TableCell className="text-xs">{e.duration_ms != null ? `${e.duration_ms} ms` : "—"}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+// ─── Error Center ─────────────────────────────────────────────────────────────
+
+function ErrorCenter() {
+  const { data, isLoading } = useR2Errors();
+
+  return (
+    <div className="space-y-4">
+      {isLoading ? <div className="h-48 bg-muted animate-pulse rounded-xl" /> : (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-sm font-mono uppercase text-muted-foreground">
+              Ultimi {data?.total ?? 0} errori R2 · aggiornamento ogni 10s
+            </CardTitle>
+          </CardHeader>
+          <CardContent className="p-0">
+            <div className="overflow-x-auto max-h-[520px] overflow-y-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow className="hover:bg-transparent sticky top-0 bg-card z-10">
+                    {["Ora", "Tipo", "Utente", "File", "Errore", "Durata"].map(h => (
+                      <TableHead key={h} className="font-mono text-xs uppercase whitespace-nowrap">{h}</TableHead>
+                    ))}
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {(!data?.errors?.length) && (
+                    <TableRow><TableCell colSpan={6} className="text-center py-12 text-muted-foreground font-mono text-sm">
+                      <CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto mb-2" />
+                      Nessun errore registrato. Sistema operativo.
+                    </TableCell></TableRow>
+                  )}
+                  {(data?.errors ?? []).map((e: R2ErrorEvent) => (
+                    <TableRow key={e.id} className="font-mono">
+                      <TableCell className="text-xs text-muted-foreground whitespace-nowrap">
+                        {new Date(e.created_at).toLocaleTimeString()}
+                      </TableCell>
+                      <TableCell>
+                        <span className={`text-xs font-bold ${EVENT_COLORS[e.event_type] ?? "text-muted-foreground"}`}>
+                          {e.event_type}
+                        </span>
+                      </TableCell>
+                      <TableCell className="text-xs">{e.uploader ? `@${e.uploader}` : "—"}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground max-w-[100px] truncate">
+                        {e.filename ?? e.storage_key?.split("/").pop() ?? "—"}
+                      </TableCell>
+                      <TableCell className="text-xs text-red-400 max-w-[200px] truncate" title={e.error_message}>
+                        {e.error_message ?? "—"}
+                      </TableCell>
+                      <TableCell className="text-xs">{e.duration_ms != null ? `${e.duration_ms} ms` : "—"}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+    </div>
+  );
+}
+
+// ─── Main ─────────────────────────────────────────────────────────────────────
 
 export default function R2Monitor() {
   const [section, setSection] = useState<keyof typeof SECTION_LABELS>("overview");
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
-            <Cloud className="w-6 h-6 text-blue-400" />
-            R2 Monitor
-          </h1>
-          <p className="text-xs text-muted-foreground font-mono mt-1">Cloudflare R2 Object Storage — Monitoring Center</p>
-        </div>
+      <div>
+        <h1 className="text-2xl font-bold tracking-tight flex items-center gap-2">
+          <Cloud className="w-6 h-6 text-blue-400" />
+          R2 Monitor
+        </h1>
+        <p className="text-xs text-muted-foreground font-mono mt-1">Cloudflare R2 Object Storage — Enterprise Monitoring Center</p>
       </div>
 
       <Tabs value={section} onValueChange={(v) => setSection(v as keyof typeof SECTION_LABELS)}>
         <TabsList className="flex-wrap h-auto gap-1">
           {Object.entries(SECTION_LABELS).map(([key, label]) => (
             <TabsTrigger key={key} value={key} className="font-mono text-xs uppercase">
-              {label}
+              {key === "activity" ? <><Zap className="w-3 h-3 mr-1" />{label}</> : label}
+              {key === "errors"   ? <><AlertTriangle className="w-3 h-3 ml-1" /></> : null}
             </TabsTrigger>
           ))}
         </TabsList>
@@ -550,9 +826,13 @@ export default function R2Monitor() {
 
       {section === "overview"     && <Overview />}
       {section === "health"       && <Health />}
+      {section === "encryption"   && <EncryptionAudit />}
       {section === "search"       && <FileSearch />}
       {section === "cleanup"      && <Cleanup />}
       {section === "consistency"  && <ConsistencyCheck />}
+      {section === "top-users"    && <TopUsers />}
+      {section === "activity"     && <LiveActivity />}
+      {section === "errors"       && <ErrorCenter />}
     </div>
   );
 }

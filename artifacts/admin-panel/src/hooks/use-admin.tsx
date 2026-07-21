@@ -4,6 +4,7 @@ import {
   getSecurityEvents, getUsers, updateUserStatus, updateUserRole, deleteUser, 
   revokeUserSessions, adminSetTempPassword, getDevices, revokeDevice, downloadAuditExport,
   getR2Dashboard, getR2Health, getR2Search, runR2Cleanup, runR2Consistency,
+  getR2Encryption, getR2TopUsers, getR2Activity, getR2Errors,
 } from "@/lib/api";
 
 export const useAdminStats = () => useQuery({
@@ -59,6 +60,30 @@ export const useR2Search = (params: {
 export const useR2Cleanup = () => useMutation({ mutationFn: runR2Cleanup });
 
 export const useR2Consistency = () => useMutation({ mutationFn: runR2Consistency });
+
+export const useR2Encryption = () => useQuery({
+  queryKey: ["r2Encryption"],
+  queryFn:  getR2Encryption,
+  staleTime: 60_000,
+});
+
+export const useR2TopUsers = () => useQuery({
+  queryKey: ["r2TopUsers"],
+  queryFn:  getR2TopUsers,
+  staleTime: 30_000,
+});
+
+export const useR2Activity = () => useQuery({
+  queryKey: ["r2Activity"],
+  queryFn:  getR2Activity,
+  refetchInterval: 3_000,
+});
+
+export const useR2Errors = () => useQuery({
+  queryKey: ["r2Errors"],
+  queryFn:  getR2Errors,
+  refetchInterval: 10_000,
+});
 
 export const useSecurityEvents = (params: { page?: number; limit?: number; event?: string; user_id?: string; since?: string }) => useQuery({
   queryKey: ["securityEvents", params],

@@ -209,6 +209,11 @@ export interface StorageResponse {
     objects_count: number;
   };
   collections: CollectionStat[];
+  r2?: {
+    file_count: number; total_bytes: number; total_mb: number; total_gb: number;
+    top_uploaders: Array<{ username: string; bytes: number; count: number }>;
+    top_conversations: Array<{ conversation_id: string; bytes: number; count: number }>;
+  };
 }
 
 export interface SecurityEvent {
@@ -327,7 +332,8 @@ export interface R2DashboardData {
 export interface R2HealthData {
   connected: boolean; status: "healthy" | "warning" | "offline";
   latency_ms: number; bucket: string; endpoint: string;
-  checked_at: string; error?: string;
+  checked_at: string; last_auto_check: string | null;
+  consecutive_errors: number; error?: string;
 }
 export interface R2FileResult {
   media_id: string; uploader: string; conversation_id: string;
@@ -374,6 +380,49 @@ export async function runR2Cleanup(): Promise<{ deleted: number; duration_ms: nu
 
 export async function runR2Consistency(): Promise<R2ConsistencyData> {
   return apiFetch("/r2/consistency", { method: "POST" });
+}
+
+export interface R2EncryptionData {
+  total_files: number; encryption_algo: string;
+  version_breakdown: Array<{ version: number; count: number }>;
+  v1_count: number; v1_pct: number;
+  unversioned_count: number; missing_hash_count: number;
+  all_encrypted: boolean; verdict: "ALL_ENCRYPTED" | "ISSUES_FOUND";
+}
+
+export interface R2TopUser {
+  username: string; bytes: number; gb: number;
+  total: number; images: number; videos: number; audio: number;
+}
+
+export interface R2ActivityEvent {
+  id: string; event_type: string; status: "success" | "error";
+  uploader: string | null; storage_key?: string;
+  file_size?: number; mime_type?: string; filename?: string;
+  duration_ms?: number; error_message?: string; created_at: string;
+}
+
+export interface R2ErrorEvent {
+  id: string; event_type: string;
+  uploader: string | null; storage_key?: string;
+  file_size?: number; mime_type?: string; filename?: string;
+  duration_ms?: number; error_message?: string; error_code?: string; created_at: string;
+}
+
+export async function getR2Encryption(): Promise<R2EncryptionData> {
+  return apiFetch("/r2/encryption");
+}
+
+export async function getR2TopUsers(): Promise<{ users: R2TopUser[]; total: number }> {
+  return apiFetch("/r2/top-users");
+}
+
+export async function getR2Activity(): Promise<{ events: R2ActivityEvent[]; total: number }> {
+  return apiFetch("/r2/activity");
+}
+
+export async function getR2Errors(): Promise<{ errors: R2ErrorEvent[]; total: number }> {
+  return apiFetch("/r2/errors");
 }
 
 // ---------------------------------------------------------------------------

@@ -167,6 +167,9 @@ export async function uploadMedia(
       buffer:          buffer,
       thumbnailBuffer: thumbnailBuf,
       mimeType:        effectiveMimeType,
+      uploaderId:      uploaderId,
+      conversationId:  meta.conversation_id,
+      filename:        meta.original_filename,
     });
   } catch (err) {
     logger.error({ err }, "MEDIA_UPLOAD R2 fallito");

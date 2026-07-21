@@ -6,6 +6,7 @@ import { createWsServer } from "./lib/ws-server";
 import { runDmsScheduler } from "./services/dead-man-switch.service";
 import { seedAdminIfNeeded } from "./routes/v1/admin.routes";
 import { startTempCleanupScheduler } from "./schedulers/temp-cleanup.scheduler";
+import { startR2HealthScheduler } from "./schedulers/r2-health.scheduler";
 
 const port = config.app.port;
 
@@ -32,6 +33,9 @@ async function start(): Promise<void> {
 
   // R2 temp/ cleanup scheduler — ogni ora, elimina upload orfani > 24h
   startTempCleanupScheduler();
+
+  // R2 health scheduler — ping bucket ogni 5 minuti, log in R2EventModel
+  startR2HealthScheduler();
 
   // ── Graceful shutdown ───────────────────────────────────────────────────────
   const shutdown = async (signal: string): Promise<void> => {

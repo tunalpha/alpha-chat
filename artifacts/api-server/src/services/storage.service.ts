@@ -31,6 +31,7 @@ import { createHash, randomUUID } from "crypto";
 import { r2 } from "../lib/r2-client";
 import { config } from "../config";
 import { logger } from "../lib/logger";
+import { R2EventModel, type R2EventType } from "../models/r2-event.model";
 
 // ---------------------------------------------------------------------------
 // MIME → cartella prefisso
@@ -75,6 +76,28 @@ function isMimeAllowed(mimeType: string, forAvatar = false): boolean {
 }
 
 // ---------------------------------------------------------------------------
+// Event logging — fire-and-forget, mai bloccante
+// ---------------------------------------------------------------------------
+
+function logR2Event(params: {
+  event_type:       R2EventType;
+  status:           "success" | "error";
+  uploader_id?:     string;
+  conversation_id?: string;
+  storage_key?:     string;
+  file_size?:       number;
+  mime_type?:       string;
+  filename?:        string;
+  duration_ms?:     number;
+  error_message?:   string;
+  error_code?:      string;
+}): void {
+  R2EventModel.create(params).catch((e) =>
+    logger.warn({ e }, "R2EventModel.create failed (non-fatale)"),
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Virus scan hook — disabilitato, punto di estensione futuro
 // ---------------------------------------------------------------------------
 
@@ -102,13 +125,19 @@ export async function uploadFile(params: {
   mimeType:        string;
   /** true per avatar utente/gruppo (prefisso avatars/, nessuna scadenza data) */
   isAvatar?:       boolean;
+  /** Contesto logging (opzionale) */
+  uploaderId?:     string;
+  conversationId?: string;
+  filename?:       string;
 }): Promise<UploadFileResult> {
-  const { buffer, thumbnailBuffer, mimeType, isAvatar = false } = params;
+  const { buffer, thumbnailBuffer, mimeType, isAvatar = false, uploaderId, conversationId, filename } = params;
+  const t0 = Date.now();
 
   // Validazione MIME
   if (!isMimeAllowed(mimeType, isAvatar)) {
     const err = new Error(`MIME_NOT_ALLOWED: ${mimeType}`);
     (err as NodeJS.ErrnoException).code = "MIME_NOT_ALLOWED";
+    logR2Event({ event_type: "UPLOAD", status: "error", uploader_id: uploaderId, conversation_id: conversationId, mime_type: mimeType, file_size: buffer.length, filename, error_message: `MIME_NOT_ALLOWED: ${mimeType}`, error_code: "MIME_NOT_ALLOWED" });
     throw Object.assign(err, { statusCode: 415 });
   }
 
@@ -116,6 +145,7 @@ export async function uploadFile(params: {
   const limit = sizeLimit(mimeType);
   if (buffer.length > limit) {
     const err = new Error("FILE_TOO_LARGE");
+    logR2Event({ event_type: "UPLOAD", status: "error", uploader_id: uploaderId, conversation_id: conversationId, mime_type: mimeType, file_size: buffer.length, filename, error_message: "FILE_TOO_LARGE", error_code: "FILE_TOO_LARGE" });
     throw Object.assign(err, { statusCode: 413 });
   }
 
@@ -146,6 +176,7 @@ export async function uploadFile(params: {
   }));
 
   logger.info({ storageKey, size: buffer.length, mimeType }, "R2 upload ok");
+  logR2Event({ event_type: "UPLOAD", status: "success", uploader_id: uploaderId, conversation_id: conversationId, storage_key: storageKey, file_size: buffer.length, mime_type: mimeType, filename, duration_ms: Date.now() - t0 });
 
   // Thumbnail (opzionale — piccola, diverso prefisso)
   let thumbnailKey: string | null = null;
@@ -183,7 +214,7 @@ export async function fileExists(key: string): Promise<boolean> {
 // ---------------------------------------------------------------------------
 
 export async function deleteFile(key: string): Promise<void> {
-  // Modifica 6: HEAD prima del DELETE
+  const t0 = Date.now();
   const exists = await fileExists(key);
   if (!exists) {
     logger.warn({ key }, "R2 deleteFile: oggetto non trovato, skip");
@@ -192,8 +223,10 @@ export async function deleteFile(key: string): Promise<void> {
   try {
     await r2.send(new DeleteObjectCommand({ Bucket: config.r2.bucket, Key: key }));
     logger.info({ key }, "R2 delete ok");
+    logR2Event({ event_type: "DELETE", status: "success", storage_key: key, duration_ms: Date.now() - t0 });
   } catch (err) {
     logger.error({ key, err }, "R2 delete fallito");
+    logR2Event({ event_type: "DELETE", status: "error", storage_key: key, duration_ms: Date.now() - t0, error_message: (err as Error).message });
     throw err;
   }
 }
@@ -206,8 +239,16 @@ export async function getSignedDownloadUrl(
   key: string,
   ttlSeconds: number = config.r2.signedUrlTtl,
 ): Promise<string> {
-  const cmd = new GetObjectCommand({ Bucket: config.r2.bucket, Key: key });
-  return getSignedUrl(r2, cmd, { expiresIn: ttlSeconds });
+  const t0 = Date.now();
+  try {
+    const cmd = new GetObjectCommand({ Bucket: config.r2.bucket, Key: key });
+    const url = await getSignedUrl(r2, cmd, { expiresIn: ttlSeconds });
+    logR2Event({ event_type: "SIGNED_URL", status: "success", storage_key: key, duration_ms: Date.now() - t0 });
+    return url;
+  } catch (err) {
+    logR2Event({ event_type: "SIGNED_URL", status: "error", storage_key: key, duration_ms: Date.now() - t0, error_message: (err as Error).message });
+    throw err;
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -215,27 +256,34 @@ export async function getSignedDownloadUrl(
 // ---------------------------------------------------------------------------
 
 export async function cleanupTempObjects(maxAgeMs = 24 * 60 * 60 * 1_000): Promise<number> {
+  const t0 = Date.now();
   const cutoff = new Date(Date.now() - maxAgeMs);
   let deleted = 0;
   let continuationToken: string | undefined;
 
-  do {
-    const resp = await r2.send(new ListObjectsV2Command({
-      Bucket:            config.r2.bucket,
-      Prefix:            "temp/",
-      ContinuationToken: continuationToken,
-    }));
+  try {
+    do {
+      const resp = await r2.send(new ListObjectsV2Command({
+        Bucket:            config.r2.bucket,
+        Prefix:            "temp/",
+        ContinuationToken: continuationToken,
+      }));
 
-    for (const obj of (resp.Contents ?? [])) {
-      if (obj.Key && obj.LastModified && obj.LastModified < cutoff) {
-        await r2.send(new DeleteObjectCommand({ Bucket: config.r2.bucket, Key: obj.Key }));
-        logger.info({ key: obj.Key }, "R2 temp/ cleanup: oggetto eliminato");
-        deleted++;
+      for (const obj of (resp.Contents ?? [])) {
+        if (obj.Key && obj.LastModified && obj.LastModified < cutoff) {
+          await r2.send(new DeleteObjectCommand({ Bucket: config.r2.bucket, Key: obj.Key }));
+          logger.info({ key: obj.Key }, "R2 temp/ cleanup: oggetto eliminato");
+          deleted++;
+        }
       }
-    }
 
-    continuationToken = resp.IsTruncated ? (resp.NextContinuationToken ?? undefined) : undefined;
-  } while (continuationToken);
+      continuationToken = resp.IsTruncated ? (resp.NextContinuationToken ?? undefined) : undefined;
+    } while (continuationToken);
 
-  return deleted;
+    logR2Event({ event_type: "CLEANUP", status: "success", duration_ms: Date.now() - t0, file_size: deleted });
+    return deleted;
+  } catch (err) {
+    logR2Event({ event_type: "CLEANUP", status: "error", duration_ms: Date.now() - t0, error_message: (err as Error).message });
+    throw err;
+  }
 }

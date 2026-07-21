@@ -18,6 +18,7 @@ import { ListObjectsV2Command, HeadObjectCommand } from "@aws-sdk/client-s3";
 import { r2 } from "../../lib/r2-client";
 import { config } from "../../config";
 import { cleanupTempObjects } from "../../services/storage.service";
+import { R2EventModel } from "../../models/r2-event.model";
 
 import { requireAdmin } from "../../middleware/require-admin.middleware";
 import { signAccessToken } from "../../services/jwt.service";
@@ -1387,7 +1388,7 @@ router.get("/r2/dashboard", requireAdmin("support"), async (_req: Request, res: 
 });
 
 // ---------------------------------------------------------------------------
-// GET /admin/r2/health — ping bucket, misura latenza
+// GET /admin/r2/health — ping bucket + consecutive errors + last auto-check
 // ---------------------------------------------------------------------------
 router.get("/r2/health", requireAdmin("support"), async (_req: Request, res: Response, next: NextFunction) => {
   try {
@@ -1399,9 +1400,8 @@ router.get("/r2/health", requireAdmin("support"), async (_req: Request, res: Res
       await r2.send(new HeadObjectCommand({ Bucket: config.r2.bucket, Key: "_health_check_sentinel" }));
       connected = true;
     } catch (err: unknown) {
-      const status = (err as { $metadata?: { httpStatusCode?: number } })?.$metadata?.httpStatusCode;
-      // 404 = object not found → bucket exists and R2 is reachable
-      if (status === 404) {
+      const httpStatus = (err as { $metadata?: { httpStatusCode?: number } })?.$metadata?.httpStatusCode;
+      if (httpStatus === 404) {
         connected = true;
       } else {
         errorMsg = (err as Error).message ?? String(err);
@@ -1409,17 +1409,164 @@ router.get("/r2/health", requireAdmin("support"), async (_req: Request, res: Res
     }
 
     const latencyMs = Date.now() - start;
-    const status = !connected ? "offline" : latencyMs > 2000 ? "warning" : "healthy";
+    const bucketStatus = !connected ? "offline" : latencyMs > 2000 ? "warning" : "healthy";
+
+    // consecutive_errors: conta errori HEALTH_CHECK consecutivi a partire dall'ultimo
+    const recentChecks = await R2EventModel
+      .find({ event_type: "HEALTH_CHECK" })
+      .sort({ created_at: -1 })
+      .limit(20)
+      .lean();
+
+    let consecutiveErrors = 0;
+    for (const hc of recentChecks) {
+      if (hc.status === "error") consecutiveErrors++;
+      else break;
+    }
+    const lastAutoCheck = recentChecks[0]?.created_at?.toISOString() ?? null;
 
     res.json({
       connected,
-      status,
-      latency_ms: latencyMs,
-      bucket: config.r2.bucket,
-      endpoint: config.r2.endpoint,
-      checked_at: new Date().toISOString(),
+      status:              bucketStatus,
+      latency_ms:          latencyMs,
+      bucket:              config.r2.bucket,
+      endpoint:            config.r2.endpoint,
+      checked_at:          new Date().toISOString(),
+      last_auto_check:     lastAutoCheck,
+      consecutive_errors:  consecutiveErrors,
       ...(errorMsg ? { error: errorMsg } : {}),
     });
+  } catch (err) { next(err); }
+});
+
+// ---------------------------------------------------------------------------
+// GET /admin/r2/encryption — audit cifratura su tutti i file
+// ---------------------------------------------------------------------------
+router.get("/r2/encryption", requireAdmin("support"), async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const [versionBreakdown, missingHash, totalCount] = await Promise.all([
+      MediaModel.aggregate([
+        { $group: { _id: "$encryptionVersion", count: { $sum: 1 } } },
+        { $project: { version: "$_id", count: 1, _id: 0 } },
+        { $sort: { version: 1 } },
+      ]),
+      MediaModel.countDocuments({ $or: [{ sha256: { $exists: false } }, { sha256: "" }, { sha256: null }] }),
+      MediaModel.countDocuments({}),
+    ]);
+
+    const v1Count    = (versionBreakdown as Array<{ version: number; count: number }>).find((v) => v.version === 1)?.count ?? 0;
+    const unversioned = totalCount - v1Count;
+    const v1Pct      = totalCount > 0 ? ((v1Count / totalCount) * 100).toFixed(2) : "0.00";
+
+    res.json({
+      total_files:       totalCount,
+      encryption_algo:   "AES-256-GCM",
+      version_breakdown: versionBreakdown,
+      v1_count:          v1Count,
+      v1_pct:            parseFloat(v1Pct),
+      unversioned_count: unversioned,
+      missing_hash_count: missingHash,
+      all_encrypted:     unversioned === 0 && missingHash === 0,
+      verdict:           unversioned === 0 && missingHash === 0 ? "ALL_ENCRYPTED" : "ISSUES_FOUND",
+    });
+  } catch (err) { next(err); }
+});
+
+// ---------------------------------------------------------------------------
+// GET /admin/r2/top-users — top 20 utenti per storage consumato
+// ---------------------------------------------------------------------------
+router.get("/r2/top-users", requireAdmin("support"), async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const topUsers = await MediaModel.aggregate([
+      {
+        $group: {
+          _id:    "$uploader_id",
+          bytes:  { $sum: "$ciphertextSize" },
+          total:  { $sum: 1 },
+          images: { $sum: { $cond: [{ $eq: [{ $substrCP: ["$mime_type", 0, 6] }, "image/"] }, 1, 0] } },
+          videos: { $sum: { $cond: [{ $eq: [{ $substrCP: ["$mime_type", 0, 6] }, "video/"] }, 1, 0] } },
+          audio:  { $sum: { $cond: [{ $eq: [{ $substrCP: ["$mime_type", 0, 6] }, "audio/"] }, 1, 0] } },
+        },
+      },
+      { $sort: { bytes: -1 } },
+      { $limit: 20 },
+      { $lookup: { from: "users", localField: "_id", foreignField: "_id", as: "u" } },
+      { $unwind: { path: "$u", preserveNullAndEmptyArrays: true } },
+      {
+        $project: {
+          _id:      0,
+          username: { $ifNull: ["$u.username", "—"] },
+          bytes:    1,
+          gb:       { $round: [{ $divide: ["$bytes", 1073741824] }, 4] },
+          total:    1,
+          images:   1,
+          videos:   1,
+          audio:    1,
+        },
+      },
+    ]);
+
+    res.json({ users: topUsers, total: topUsers.length });
+  } catch (err) { next(err); }
+});
+
+// ---------------------------------------------------------------------------
+// GET /admin/r2/activity — ultimi 50 eventi R2 (polling Live Activity)
+// ---------------------------------------------------------------------------
+router.get("/r2/activity", requireAdmin("support"), async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const events = await R2EventModel
+      .find({})
+      .sort({ created_at: -1 })
+      .limit(50)
+      .populate("uploader_id", "username")
+      .lean();
+
+    const out = events.map((e) => ({
+      id:           (e._id as { toString(): string }).toString(),
+      event_type:   e.event_type,
+      status:       e.status,
+      uploader:     (e.uploader_id as unknown as { username?: string } | null)?.username ?? null,
+      storage_key:  e.storage_key,
+      file_size:    e.file_size,
+      mime_type:    e.mime_type,
+      filename:     e.filename,
+      duration_ms:  e.duration_ms,
+      error_message: e.error_message,
+      created_at:   e.created_at.toISOString(),
+    }));
+
+    res.json({ events: out, total: out.length });
+  } catch (err) { next(err); }
+});
+
+// ---------------------------------------------------------------------------
+// GET /admin/r2/errors — ultimi 50 errori R2 (Error Center)
+// ---------------------------------------------------------------------------
+router.get("/r2/errors", requireAdmin("support"), async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const errors = await R2EventModel
+      .find({ status: "error" })
+      .sort({ created_at: -1 })
+      .limit(50)
+      .populate("uploader_id", "username")
+      .lean();
+
+    const out = errors.map((e) => ({
+      id:            (e._id as { toString(): string }).toString(),
+      event_type:    e.event_type,
+      uploader:      (e.uploader_id as unknown as { username?: string } | null)?.username ?? null,
+      storage_key:   e.storage_key,
+      file_size:     e.file_size,
+      mime_type:     e.mime_type,
+      filename:      e.filename,
+      duration_ms:   e.duration_ms,
+      error_message: e.error_message,
+      error_code:    e.error_code,
+      created_at:    e.created_at.toISOString(),
+    }));
+
+    res.json({ errors: out, total: out.length });
   } catch (err) { next(err); }
 });
 
