@@ -8,6 +8,7 @@ import { Schema, model, type Document, type Types } from "mongoose";
 export type R2EventType =
   | "UPLOAD"
   | "SIGNED_URL"
+  | "DOWNLOAD"
   | "DELETE"
   | "CLEANUP"
   | "HEALTH_CHECK"
@@ -32,7 +33,7 @@ export interface IR2Event extends Document {
 
 const schema = new Schema<IR2Event>(
   {
-    event_type:      { type: String, enum: ["UPLOAD","SIGNED_URL","DELETE","CLEANUP","HEALTH_CHECK","CONSISTENCY"], required: true },
+    event_type:      { type: String, enum: ["UPLOAD","SIGNED_URL","DOWNLOAD","DELETE","CLEANUP","HEALTH_CHECK","CONSISTENCY"], required: true },
     status:          { type: String, enum: ["success","error"], required: true },
     uploader_id:     { type: Schema.Types.ObjectId, ref: "User" },
     conversation_id: { type: Schema.Types.ObjectId },
