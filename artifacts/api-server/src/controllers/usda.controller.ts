@@ -28,7 +28,19 @@ export const setWalletAddress: RequestHandler = async (req, res, next) => {
   try {
     const parsed = SetWalletAddressSchema.safeParse(req.body);
     if (!parsed.success) throw new AppError("VALIDATION_ERROR", 400, undefined, { issues: parsed.error.issues });
-    const result = await usdaService.setWalletAddress(req.user!.userId, parsed.data.address);
+    const result = await usdaService.setWalletAddress(
+      req.user!.userId,
+      parsed.data.address,
+      parsed.data.chain,
+    );
+    res.status(200).json(successResponse(result, req.requestId));
+  } catch (err) { next(err); }
+};
+
+// GET /api/v1/usda/capabilities
+export const getCapabilities: RequestHandler = async (req, res, next) => {
+  try {
+    const result = await usdaService.checkCapabilities();
     res.status(200).json(successResponse(result, req.requestId));
   } catch (err) { next(err); }
 };

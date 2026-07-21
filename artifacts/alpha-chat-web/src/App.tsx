@@ -16,6 +16,7 @@ import DevicesPage from "./pages/DevicesPage";
 import PrivacyPage from "./pages/PrivacyPage";
 import ComingSoonPage from "./pages/ComingSoonPage";
 import ArchivioPage from "./pages/ArchivioPage";
+import WalletCenterPage from "./pages/WalletCenterPage";
 import EmergencyPage from "./pages/EmergencyPage";
 import SecurityCenterPage from "./pages/SecurityCenterPage";
 import DeadManSwitchPage from "./pages/DeadManSwitchPage";
@@ -61,7 +62,8 @@ export type AppView =
   | "appearance"
   | "notifications-settings"
   | "language"
-  | "nuclear-destroy";
+  | "nuclear-destroy"
+  | "wallet-center";
 
 /** Controlla se l'URL corrente è la pagina di emergenza (accessibile senza auth). */
 function isEmergencyPath(): boolean {
@@ -233,6 +235,8 @@ function AppContent() {
             return <NotificationsPage onBack={goSettings} />;
           case "language":
             return <LanguagePage onBack={goSettings} />;
+          case "wallet-center":
+            return <WalletCenterPage onBack={goBack} />;
           // group-info è gestito come overlay dentro ChatPage
           default:
             return <ChatPage onNavigate={setView} />;

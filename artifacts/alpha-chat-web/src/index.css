@@ -5888,3 +5888,95 @@ html.emergency-open #root {
 .usda-history-status { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; flex-shrink: 0; }
 .usda-history-status-label { font-size: 0.7rem; color: var(--text-3, rgba(255,255,255,0.5)); }
 .usda-history-more { text-align: center; padding: 12px; font-size: 0.8rem; color: var(--text-3, rgba(255,255,255,0.4)); }
+
+/* ─────────────────────────────────────────────────────────────────────────── */
+/* ── Wallet Center Page ───────────────────────────────────────────────────── */
+/* ─────────────────────────────────────────────────────────────────────────── */
+
+.wc-root { display: flex; flex-direction: column; height: 100%; background: var(--surface-1, #12121e); overflow: hidden; }
+
+/* Header */
+.wc-header { display: flex; align-items: center; gap: 10px; padding: 16px 20px; border-bottom: 1px solid rgba(255,255,255,0.07); flex-shrink: 0; }
+.wc-back { background: none; border: none; cursor: pointer; color: var(--text-3, rgba(255,255,255,0.5)); padding: 4px; display: flex; align-items: center; }
+.wc-header-title { flex: 1; display: flex; align-items: center; gap: 8px; font-size: 1rem; font-weight: 700; color: var(--text-1, #fff); }
+.wc-header-icon { font-size: 1.2rem; }
+.wc-version { font-size: 0.7rem; color: var(--text-3, rgba(255,255,255,0.4)); background: rgba(255,255,255,0.06); padding: 2px 8px; border-radius: 999px; }
+
+/* Tab bar */
+.wc-tabs { display: flex; padding: 10px 16px; gap: 8px; border-bottom: 1px solid rgba(255,255,255,0.07); flex-shrink: 0; overflow-x: auto; scrollbar-width: none; }
+.wc-tabs::-webkit-scrollbar { display: none; }
+.wc-tab { white-space: nowrap; padding: 8px 16px; border-radius: 10px; background: rgba(255,255,255,0.05); color: var(--text-2, rgba(255,255,255,0.75)); font-size: 0.83rem; font-weight: 600; border: 1px solid transparent; cursor: pointer; transition: all 0.15s; display: flex; align-items: center; gap: 5px; }
+.wc-tab.active { background: rgba(99,102,241,0.2); border-color: rgba(99,102,241,0.4); color: #818cf8; }
+
+/* Scrollable content */
+.wc-content { flex: 1; overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+.wc-content--history { padding: 0; gap: 0; }
+.wc-loading { text-align: center; padding: 40px; color: var(--text-3, rgba(255,255,255,0.5)); }
+.wc-empty { text-align: center; padding: 40px 20px; color: var(--text-3, rgba(255,255,255,0.5)); font-size: 0.9rem; }
+
+/* Balance card */
+.wc-balance-card { background: linear-gradient(135deg, rgba(99,102,241,0.25) 0%, rgba(79,70,229,0.12) 100%); border: 1px solid rgba(99,102,241,0.25); border-radius: 18px; padding: 24px 20px; text-align: center; }
+.wc-balance-label { font-size: 0.75rem; font-weight: 600; color: rgba(255,255,255,0.5); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 6px; }
+.wc-balance-amount { font-size: 2.4rem; font-weight: 800; color: #fff; }
+.wc-balance-currency { font-size: 1.2rem; color: rgba(255,255,255,0.6); }
+.wc-balance-hint { font-size: 0.78rem; color: rgba(255,255,255,0.4); margin-top: 6px; }
+
+/* Stats grid */
+.wc-stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.wc-stat { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 14px 10px; text-align: center; display: flex; flex-direction: column; gap: 6px; }
+.wc-stat-icon { font-size: 1.4rem; }
+.wc-stat-label { font-size: 0.75rem; color: var(--text-3, rgba(255,255,255,0.5)); }
+
+/* Section title */
+.wc-section-title { font-size: 0.72rem; font-weight: 700; color: var(--text-3, rgba(255,255,255,0.4)); text-transform: uppercase; letter-spacing: 0.06em; margin-top: 4px; }
+
+/* Wallet list (saldo tab) */
+.wc-wallets-list { display: flex; flex-direction: column; gap: 0; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07); border-radius: 14px; overflow: hidden; }
+.wc-wallet-row { display: flex; align-items: center; gap: 12px; padding: 14px 16px; background: none; border: none; border-bottom: 1px solid rgba(255,255,255,0.05); cursor: pointer; width: 100%; text-align: left; transition: background 0.12s; }
+.wc-wallet-row:last-child { border-bottom: none; }
+.wc-wallet-row:active { background: rgba(255,255,255,0.05); }
+.wc-wallet-chain-icon { font-size: 1.4rem; flex-shrink: 0; }
+.wc-wallet-info { flex: 1; min-width: 0; }
+.wc-wallet-chain { font-size: 0.85rem; font-weight: 600; color: var(--text-1, #fff); }
+.wc-wallet-addr { font-size: 0.75rem; color: var(--text-3, rgba(255,255,255,0.5)); margin-top: 1px; }
+.wc-wallet-status { font-size: 0.85rem; font-weight: 700; padding: 4px 10px; border-radius: 999px; }
+.wc-wallet-status.ok { color: #4ade80; background: rgba(74,222,128,0.12); }
+.wc-wallet-status.missing { color: rgba(255,255,255,0.4); background: rgba(255,255,255,0.06); }
+
+/* Chain selector grid in WalletSetupSheet */
+.usda-chain-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+.usda-chain-btn { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 10px 6px; border-radius: 10px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); cursor: pointer; font-size: 0.75rem; color: var(--text-2, rgba(255,255,255,0.75)); transition: all 0.12s; }
+.usda-chain-btn span:first-child { font-size: 1.3rem; }
+.usda-chain-btn.active { background: rgba(99,102,241,0.2); border-color: rgba(99,102,241,0.4); color: #818cf8; }
+
+/* Capabilities grid */
+.wc-caps-grid { display: flex; flex-wrap: wrap; gap: 6px; }
+.wc-cap { display: flex; align-items: center; gap: 4px; padding: 4px 10px; border-radius: 999px; font-size: 0.75rem; font-weight: 600; }
+.wc-cap.ok  { background: rgba(74,222,128,0.10); color: #4ade80; }
+.wc-cap.off { background: rgba(248,113,113,0.10); color: #f87171; }
+
+/* History tab */
+.wc-hist-filters { display: flex; gap: 6px; padding: 12px 16px; overflow-x: auto; border-bottom: 1px solid rgba(255,255,255,0.06); flex-shrink: 0; scrollbar-width: none; }
+.wc-hist-filters::-webkit-scrollbar { display: none; }
+.wc-hist-list { display: flex; flex-direction: column; }
+
+/* Settings tab */
+.wc-settings-row { display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; padding: 14px 16px; border-bottom: 1px solid rgba(255,255,255,0.05); background: rgba(255,255,255,0.02); border-radius: 0; }
+.wc-wallets-list .wc-settings-row:first-child { border-radius: 14px 14px 0 0; }
+.wc-wallets-list .wc-settings-row:last-child { border-bottom: none; border-radius: 0 0 14px 14px; }
+.wc-settings-chain { display: flex; align-items: flex-start; gap: 12px; flex: 1; min-width: 0; }
+.wc-settings-icon { font-size: 1.4rem; flex-shrink: 0; margin-top: 2px; }
+.wc-settings-name { font-size: 0.88rem; font-weight: 600; color: var(--text-1, #fff); margin-bottom: 2px; }
+.wc-settings-addr { font-size: 0.72rem; color: var(--text-3, rgba(255,255,255,0.5)); word-break: break-all; }
+.wc-settings-missing { font-size: 0.75rem; color: rgba(255,255,255,0.35); }
+.wc-settings-verified { font-size: 0.72rem; color: #4ade80; margin-top: 2px; }
+.wc-settings-edit { flex-shrink: 0; padding: 6px 12px; border-radius: 8px; background: rgba(99,102,241,0.15); border: 1px solid rgba(99,102,241,0.25); color: #818cf8; font-size: 0.78rem; font-weight: 600; cursor: pointer; white-space: nowrap; transition: opacity 0.12s; }
+.wc-settings-edit:active { opacity: 0.7; }
+
+/* Backend info */
+.wc-backend-info { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07); border-radius: 14px; overflow: hidden; }
+.wc-backend-row { display: flex; justify-content: space-between; align-items: center; padding: 10px 16px; border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 0.85rem; color: var(--text-3, rgba(255,255,255,0.5)); }
+.wc-backend-row:last-child { border-bottom: none; }
+.wc-backend-val { font-weight: 600; color: var(--text-2, rgba(255,255,255,0.75)); }
+.wc-backend-val.ok  { color: #4ade80; }
+.wc-backend-val.off { color: #f87171; }

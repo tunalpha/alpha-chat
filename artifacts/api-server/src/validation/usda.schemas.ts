@@ -33,7 +33,8 @@ export const PayRequestSchema = z.object({
 });
 
 export const SetWalletAddressSchema = z.object({
-  address: z.string().min(10).max(100),
+  address: z.string().min(10).max(200),
+  chain:   z.enum(["usda", "polygon", "ethereum", "bitcoin", "lightning"]).default("usda"),
 });
 
 export const HistoryQuerySchema = z.object({

@@ -23,6 +23,8 @@ import { logger } from "../lib/logger";
 import type {
   UsdaAdapter,
   WalletInfo,
+  WalletChain,
+  UsdaCapabilities,
   PreparePaymentParams,
   PreparedPayment,
   SubmitPaymentParams,
@@ -32,6 +34,9 @@ import type {
   HistoryResult,
   UsdaPaymentStatus,
 } from "./usda-adapter.interface";
+
+// Capabilities cache (valida 5 minuti)
+let _capabilitiesCache: { data: UsdaCapabilities; expiresAt: number } | null = null;
 
 // ---------------------------------------------------------------------------
 // Errore specifico per adapter non configurato
@@ -103,6 +108,28 @@ async function usdaRequest<T>(
 // ---------------------------------------------------------------------------
 
 export class HttpUsdaAdapter implements UsdaAdapter {
+  // ── Capability Test ─────────────────────────────────────────────────────
+
+  async checkCapabilities(): Promise<UsdaCapabilities> {
+    if (_capabilitiesCache && _capabilitiesCache.expiresAt > Date.now()) {
+      return _capabilitiesCache.data;
+    }
+    try {
+      // TODO: verify — il backend USDA espone GET /capabilities?
+      const data = await usdaRequest<UsdaCapabilities>("GET", "/capabilities");
+      _capabilitiesCache = { data, expiresAt: Date.now() + 5 * 60 * 1000 };
+      logger.info({ version: data.version, supports: data.supports }, "[HttpUSDA] Capabilities loaded");
+      return data;
+    } catch (err) {
+      logger.warn({ err }, "[HttpUSDA] Capability check failed — using defaults");
+      // Fallback conservativo: tutte le feature disponibili
+      return {
+        version: "unknown",
+        supports: { prepare: true, claim: true, refund: true, webhook: false, polling: true, multi_chain: true },
+      };
+    }
+  }
+
   // ── Wallet ──────────────────────────────────────────────────────────────
 
   async getWallet(userId: string): Promise<WalletInfo> {
@@ -110,9 +137,9 @@ export class HttpUsdaAdapter implements UsdaAdapter {
     return usdaRequest<WalletInfo>("GET", `/wallets/${userId}`);
   }
 
-  async setWalletAddress(userId: string, address: string): Promise<WalletInfo> {
+  async setWalletAddress(userId: string, address: string, chain: WalletChain = "usda"): Promise<WalletInfo> {
     // TODO: verify endpoint path and request/response shape
-    return usdaRequest<WalletInfo>("PUT", `/wallets/${userId}/address`, { address });
+    return usdaRequest<WalletInfo>("PUT", `/wallets/${userId}/address`, { address, chain });
   }
 
   // ── Payment preparation ─────────────────────────────────────────────────

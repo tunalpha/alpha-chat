@@ -3,6 +3,45 @@
  * Nessun componente di chat dipende da dettagli blockchain.
  */
 
+// ---------------------------------------------------------------------------
+// Multi-Chain Wallet Identity
+// ---------------------------------------------------------------------------
+
+export type WalletChain = "usda" | "polygon" | "ethereum" | "bitcoin" | "lightning";
+
+export interface WalletEntry {
+  address: string;
+  verifiedAt: string | null;
+}
+
+export const WALLET_CHAIN_LABELS: Record<WalletChain, { label: string; icon: string; placeholder: string }> = {
+  usda:      { label: "USDA",      icon: "💰", placeholder: "0x…"                      },
+  polygon:   { label: "Polygon",   icon: "🟣", placeholder: "0x…"                      },
+  ethereum:  { label: "Ethereum",  icon: "🔷", placeholder: "0x…"                      },
+  bitcoin:   { label: "Bitcoin",   icon: "🟠", placeholder: "bc1…"                     },
+  lightning: { label: "Lightning", icon: "⚡", placeholder: "lnbc…"                    },
+};
+
+// ---------------------------------------------------------------------------
+// USDA Backend Capabilities
+// ---------------------------------------------------------------------------
+
+export interface UsdaCapabilities {
+  version: string;
+  supports: {
+    prepare: boolean;
+    claim: boolean;
+    refund: boolean;
+    webhook: boolean;
+    polling: boolean;
+    multi_chain: boolean;
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Payment types
+// ---------------------------------------------------------------------------
+
 export type UsdaPaymentStatus =
   | "preparing"
   | "signing"
@@ -37,10 +76,11 @@ export interface UsdaPaymentData {
 }
 
 export interface WalletInfo {
-  address: string | null;
+  address: string | null;       // shortcut → wallets.usda?.address
   chain_id: number | null;
   balance_usda: string;
   wallet_enabled: boolean;
+  wallets: Partial<Record<WalletChain, WalletEntry>>;
 }
 
 export interface PreparedPayment {

@@ -224,12 +224,23 @@ export async function getWallet(userId: string) {
   return _adapter.getWallet(userId);
 }
 
-export async function setWalletAddress(userId: string, address: string) {
+export async function setWalletAddress(userId: string, address: string, chain = "usda") {
+  // Aggiorna la struttura wallets multi-chain e mantiene wallet_address legacy
+  const $set: Record<string, unknown> = {
+    [`wallets.${chain}`]: { address, verifiedAt: new Date() },
+    wallet_enabled: true,
+  };
+  if (chain === "usda") $set.wallet_address = address;
+
   await UserModel.updateOne(
     { _id: new mongoose.Types.ObjectId(userId) },
-    { $set: { wallet_address: address, wallet_enabled: true } },
+    { $set },
   );
-  return _adapter.setWalletAddress(userId, address);
+  return _adapter.setWalletAddress(userId, address, chain as import("../usda/usda-adapter.interface").WalletChain);
+}
+
+export async function checkCapabilities() {
+  return _adapter.checkCapabilities();
 }
 
 export async function preparePayment(params: {

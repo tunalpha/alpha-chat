@@ -4,7 +4,7 @@
  */
 
 import { getAccessToken } from "./auth";
-import type { WalletInfo, PreparedPayment, UsdaPaymentData } from "./usda-types";
+import type { WalletInfo, PreparedPayment, UsdaPaymentData, UsdaCapabilities, WalletChain } from "./usda-types";
 
 const BASE = "/api/v1/usda";
 
@@ -38,8 +38,12 @@ export async function apiUsdaGetWallet(): Promise<WalletInfo> {
   return usdaFetch<WalletInfo>("GET", "/wallet");
 }
 
-export async function apiUsdaSetWalletAddress(address: string): Promise<WalletInfo> {
-  return usdaFetch<WalletInfo>("PUT", "/wallet/address", { address });
+export async function apiUsdaSetWalletAddress(address: string, chain: WalletChain = "usda"): Promise<WalletInfo> {
+  return usdaFetch<WalletInfo>("PUT", "/wallet/address", { address, chain });
+}
+
+export async function apiUsdaGetCapabilities(): Promise<UsdaCapabilities> {
+  return usdaFetch<UsdaCapabilities>("GET", "/capabilities");
 }
 
 // ── Payments ────────────────────────────────────────────────────────────────

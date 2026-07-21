@@ -13,6 +13,9 @@ import * as usda from "../../controllers/usda.controller";
 const router = Router();
 router.use(authenticate);
 
+// ── Capabilities ───────────────────────────────────────────────────────────
+router.get("/capabilities", usda.getCapabilities);
+
 // ── Wallet ─────────────────────────────────────────────────────────────────
 router.get ("/wallet",         usda.getWallet);
 router.put ("/wallet/address", usda.setWalletAddress);

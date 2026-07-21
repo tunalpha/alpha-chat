@@ -27,14 +27,38 @@ export type UsdaPaymentStatus =
 export type UsdaPaymentKind = "send" | "request" | "receipt";
 
 // ---------------------------------------------------------------------------
-// Wallet
+// Wallet Multi-Chain
 // ---------------------------------------------------------------------------
 
+export type WalletChain = "usda" | "polygon" | "ethereum" | "bitcoin" | "lightning";
+
+export interface WalletEntry {
+  address: string;
+  verifiedAt: string | null;
+}
+
 export interface WalletInfo {
-  address: string | null;
+  address: string | null;         // shortcut → wallets.usda?.address
   chain_id: number | null;
-  balance_usda: string;       // stringa per precisione decimale
+  balance_usda: string;           // stringa per precisione decimale
   wallet_enabled: boolean;
+  wallets: Partial<Record<WalletChain, WalletEntry>>;
+}
+
+// ---------------------------------------------------------------------------
+// USDA Backend Capabilities (Capability Test)
+// ---------------------------------------------------------------------------
+
+export interface UsdaCapabilities {
+  version: string;
+  supports: {
+    prepare: boolean;
+    claim: boolean;
+    refund: boolean;
+    webhook: boolean;
+    polling: boolean;
+    multi_chain: boolean;
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -132,11 +156,14 @@ export interface HistoryResult {
 // ---------------------------------------------------------------------------
 
 export interface UsdaAdapter {
+  /** Capability Test — verifica versione e funzionalità del backend USDA */
+  checkCapabilities(): Promise<UsdaCapabilities>;
+
   /** Recupera info wallet (saldo, indirizzo) dell'utente */
   getWallet(userId: string): Promise<WalletInfo>;
 
-  /** Configura/aggiorna l'indirizzo wallet dell'utente */
-  setWalletAddress(userId: string, address: string): Promise<WalletInfo>;
+  /** Configura/aggiorna l'indirizzo wallet dell'utente per una chain specifica */
+  setWalletAddress(userId: string, address: string, chain?: WalletChain): Promise<WalletInfo>;
 
   /** Prepara una transazione per la firma (calcola fee, costruisce calldata) */
   preparePayment(params: PreparePaymentParams): Promise<PreparedPayment>;

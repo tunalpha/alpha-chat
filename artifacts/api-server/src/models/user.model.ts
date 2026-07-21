@@ -81,10 +81,19 @@ export interface IUser {
   require_password_change:        boolean;
   last_recovery_at:               Date   | null;
 
-  // Wallet (V2)
+  // Wallet Multi-Chain Identity
   wallet_enabled: boolean;
   wallet_id: string | null;
+  /** @deprecated usa wallets.usda.address */
   wallet_address: string | null;
+  /** Identità wallet multi-chain — ogni chain ha address + verifiedAt */
+  wallets: {
+    usda?:      { address: string; verifiedAt: Date | null };
+    polygon?:   { address: string; verifiedAt: Date | null };
+    ethereum?:  { address: string; verifiedAt: Date | null };
+    bitcoin?:   { address: string; verifiedAt: Date | null };
+    lightning?: { address: string; verifiedAt: Date | null };
+  };
 
   // Admin — Sprint 23
   admin_role: "super_admin" | "security_admin" | "support" | "read_only" | null;
@@ -186,7 +195,17 @@ const userSchema = new Schema<IUserDocument>(
 
     wallet_enabled: { type: Boolean, default: false },
     wallet_id:      { type: String, default: null },
-    wallet_address: { type: String, default: null },
+    wallet_address: { type: String, default: null }, // legacy — mirrors wallets.usda.address
+    wallets: {
+      type: new (require("mongoose").Schema)({
+        usda:      { address: String, verifiedAt: { type: Date, default: null } },
+        polygon:   { address: String, verifiedAt: { type: Date, default: null } },
+        ethereum:  { address: String, verifiedAt: { type: Date, default: null } },
+        bitcoin:   { address: String, verifiedAt: { type: Date, default: null } },
+        lightning: { address: String, verifiedAt: { type: Date, default: null } },
+      }, { _id: false }),
+      default: () => ({}),
+    },
 
     // Admin — Sprint 23
     admin_role: {
