@@ -1,0 +1,271 @@
+Ecco un prompt completo da dare al tuo agente.
+
+⸻
+
+Integrazione Cloudflare R2 per AlphaChat
+
+Abbiamo completato la configurazione iniziale di Cloudflare R2.
+
+Obiettivo
+
+Integrare Cloudflare R2 come storage permanente di AlphaChat.
+
+MongoDB NON dovrà mai contenere file binari.
+
+MongoDB conserverà esclusivamente:
+
+* metadata del file
+* storageKey
+* mimeType
+* size
+* hash
+* width/height (immagini)
+* duration (audio/video)
+* uploader
+* createdAt
+
+I file saranno archiviati esclusivamente su Cloudflare R2.
+
+⸻
+
+Bucket
+
+Bucket:
+
+alphachat
+
+Accesso pubblico:
+
+DISABILITATO
+
+Tutti i download dovranno essere autorizzati.
+
+⸻
+
+Variabili ambiente
+
+Preparare il backend per leggere:
+
+R2_ACCOUNT_ID=
+R2_BUCKET=alphachat
+R2_ENDPOINT=
+R2_ACCESS_KEY_ID=
+R2_SECRET_ACCESS_KEY=
+
+Nessuna credenziale nel codice.
+
+Solo Environment Variables.
+
+⸻
+
+Libreria
+
+Usare AWS SDK v3 compatibile S3.
+
+@aws-sdk/client-s3
+
+e
+
+@aws-sdk/s3-request-presigner
+
+⸻
+
+Creare servizio
+
+Creare
+
+src/services/storage.service.ts
+
+con metodi:
+
+uploadFile()
+deleteFile()
+getSignedDownloadUrl()
+getSignedUploadUrl()   // opzionale
+fileExists()
+
+⸻
+
+Struttura oggetti
+
+Non creare bucket multipli.
+
+Usare un solo bucket.
+
+Organizzazione:
+
+avatars/
+groups/
+images/
+videos/
+audio/
+documents/
+stickers/
+thumbnails/
+temp/
+
+Le cartelle sono logiche tramite prefissi.
+
+⸻
+
+Convenzione chiavi
+
+Mai usare nomi originali.
+
+Generare chiavi casuali UUID.
+
+Esempio:
+
+images/2026/07/21/
+550e8400-e29b-41d4-a716-446655440000.jpg
+
+⸻
+
+Upload
+
+Flusso:
+
+utente
+↓
+backend
+↓
+controllo JWT
+↓
+controllo autorizzazioni
+↓
+validazione MIME
+↓
+validazione dimensione
+↓
+upload R2
+↓
+MongoDB salva metadata
+
+Mai upload diretto senza autorizzazione.
+
+⸻
+
+Download
+
+NON rendere il bucket pubblico.
+
+Il backend dovrà generare Signed URL.
+
+Scadenza consigliata:
+
+5 minuti
+
+⸻
+
+Eliminazione
+
+Quando:
+
+* messaggio eliminato
+* avatar sostituito
+* gruppo eliminato
+
+eliminare automaticamente il file da R2.
+
+Mai lasciare file orfani.
+
+⸻
+
+Metadata MongoDB
+
+Ogni media dovrà contenere:
+
+storageKey
+bucket
+mimeType
+size
+sha256
+uploadedBy
+createdAt
+
+Per immagini:
+
+width
+height
+
+Per audio/video:
+
+duration
+
+⸻
+
+Sicurezza
+
+Consentire solo:
+
+Immagini
+
+image/jpeg
+image/png
+image/webp
+image/heic
+
+Audio
+
+audio/ogg
+audio/mpeg
+audio/mp4
+
+Video
+
+video/mp4
+video/quicktime
+
+Documenti
+
+application/pdf
+
+Rifiutare tutto il resto.
+
+⸻
+
+Limiti
+
+Configurabili tramite ENV.
+
+Ad esempio:
+
+MAX_IMAGE_MB
+MAX_VIDEO_MB
+MAX_AUDIO_MB
+MAX_DOCUMENT_MB
+
+⸻
+
+Hash
+
+Calcolare SHA-256 del file.
+
+Salvare nel metadata.
+
+⸻
+
+Logging
+
+Registrare:
+
+upload riuscito
+upload fallito
+delete riuscita
+delete fallita
+
+Mai loggare credenziali.
+
+⸻
+
+Obiettivo architetturale
+
+AlphaChat dovrà essere progettata in modo che:
+
+* MongoDB gestisca solo dati applicativi.
+* Cloudflare R2 gestisca tutti i contenuti multimediali.
+* Nessun file binario venga salvato nel database.
+* Tutti i download siano autenticati tramite Signed URL.
+* Il sistema sia scalabile per milioni di file senza impattare le prestazioni del database.
+
+Prima di implementare, chiedi all’agente di produrre un breve documento tecnico con l’architettura proposta, l’elenco dei file che intende creare o modificare e il piano di integrazione. Solo dopo l’approvazione procedi con l’implementazione. Questo rende il cambiamento più facile da verificare e riduce il rischio di introdurre regressioni.
