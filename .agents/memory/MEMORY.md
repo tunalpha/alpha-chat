@@ -30,3 +30,4 @@
 - [Call ICE bugs — TURN cache + InvalidStateError](call-ice-bugs.md) — _iceLoaded bloccava TURN post-deploy; flush buffer ICE deve avvenire DOPO setRemoteDescription
 - [iOS audio routing — playsInline fix](ios-audio-playsInline.md) — playsInline=true forces speaker on iOS even in PlayAndRecord; omit on iOS for earpiece
 - [iOS audio routing — PWA fundamental limit](ios-audio-routing-pwa-limit.md) — earpiece impossibile su iOS Safari PWA; <video> causa crash; unica fix = Capacitor nativo
+- [Sprint 29 — Cloudflare R2 Object Storage](sprint-29-r2.md) — migrazione da MongoDB binary a R2; upload multipart; signed URL download; segreti R2 non ancora impostati
