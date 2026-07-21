@@ -87,74 +87,84 @@ export function createPeerConnection(
     }
   };
 
+  // FIX: onRemoteStream deve essere chiamato UNA SOLA VOLTA.
+  // Il browser pre-popola e.streams[0] con TUTTI i track prima di sparare qualsiasi
+  // ontrack (confermato dai diagLog: audioTracksInStream=1 anche quando video arriva
+  // per primo). Chiamare onRemoteStream due volte (audio + video) provoca:
+  //   1. video.srcObject = streamA  → video.play() parte (Promise pending)
+  //   2. video.srcObject = streamB  → play() precedente abortisce (AbortError silenzioso)
+  //   3. video.play() chiamato di nuovo → può fallire su iOS per stato transitorio
+  // Risultato: video nero sporadico sul chiamante.
+  let _onRemoteStreamCalled = false;
+
   pc.ontrack = (e) => {
-    console.log('[webrtc] ontrack: kind=%s id=%s enabled=%s readyState=%s streams=%d',
-      e.track.kind, e.track.id, e.track.enabled, e.track.readyState, e.streams?.length ?? 0);
+    console.log('[webrtc] ontrack: kind=%s id=%s enabled=%s muted=%s readyState=%s streams=%d',
+      e.track.kind, e.track.id, e.track.enabled, e.track.muted, e.track.readyState, e.streams?.length ?? 0);
 
-    // ── diagLog: visibilità remota via MongoDB ─────────────────────────────────
-    // Punto critico: se questo log non compare, il flusso audio non arriva mai
-    // al client → causa root dell'audio muto è a monte (ICE/SDP), non nel player.
     diagLog('ontrack', {
-      kind:              e.track.kind,
-      trackId:           e.track.id,
-      enabled:           e.track.enabled,
-      readyState:        e.track.readyState,
-      streamsCount:      e.streams?.length ?? 0,
+      kind:                e.track.kind,
+      trackId:             e.track.id,
+      enabled:             e.track.enabled,
+      muted:               e.track.muted,
+      readyState:          e.track.readyState,
+      streamsCount:        e.streams?.length ?? 0,
       audioTracksInStream: e.streams?.[0]?.getAudioTracks().length ?? 0,
+      videoTracksInStream: e.streams?.[0]?.getVideoTracks().length ?? 0,
     });
-    // ──────────────────────────────────────────────────────────────────────────
 
+    // Costruisce sempre un nuovo oggetto MediaStream così React vede sempre
+    // un riferimento diverso e il useEffect si ri-scatta.
     let stream: MediaStream;
     if (e.streams && e.streams.length > 0) {
-      // Percorso standard: il sender ha associato il track a un MediaStream.
-      //
-      // PROBLEMA iOS Safari: e.streams[0] è lo stesso oggetto per ogni ontrack.
-      // Quando arriva la video track (secondo ontrack), setRemoteStream riceve lo
-      // stesso riferimento → React non ri-renderizza → useEffect [remoteStream] non
-      // ri-scatta → video.play() non viene ri-chiamato al momento in cui la video
-      // track è effettivamente disponibile nel stream → schermo nero.
-      //
-      // FIX: quando arriva la video track, costruiamo una nuova MediaStream con tutti
-      // i track attuali di e.streams[0]. React vede un nuovo riferimento, ri-renderizza,
-      // il useEffect ri-scatta e video.play() viene chiamato con la video track presente.
-      if (e.track.kind === "video") {
-        stream = new MediaStream(e.streams[0].getTracks());
-        console.log('[webrtc] ontrack: video track → new MediaStream wrapper (iOS re-render fix) tracks=%d',
-          stream.getTracks().length);
-        diagLog('ontrack.video.newStream', { tracks: stream.getTracks().length });
-      } else {
-        stream = e.streams[0];
-        console.log('[webrtc] ontrack: usando e.streams[0] id=%s, audioTracks=%d',
-          stream.id, stream.getAudioTracks().length);
-      }
+      // Percorso standard. e.streams[0] è già popolato con tutti i track
+      // dal browser al momento in cui ontrack scatta (verificato sui log).
+      stream = new MediaStream(e.streams[0].getTracks());
+      console.log('[webrtc] ontrack: new MediaStream da e.streams[0] tracks=%d audio=%d video=%d',
+        stream.getTracks().length,
+        stream.getAudioTracks().length,
+        stream.getVideoTracks().length);
+      diagLog('ontrack.newStream', {
+        kind:        e.track.kind,
+        tracks:      stream.getTracks().length,
+        audioTracks: stream.getAudioTracks().length,
+        videoTracks: stream.getVideoTracks().length,
+      });
     } else {
-      // iOS Safari bug: e.streams vuoto anche con addTrack(track, stream) — costruiamo noi.
-      console.warn('[webrtc] ontrack: e.streams vuoto — fallback MediaStream manuale (iOS Safari bug)');
+      // iOS Safari bug: e.streams vuoto — costruiamo manualmente.
+      console.warn('[webrtc] ontrack: e.streams vuoto — fallback MediaStream manuale');
       diagLog('ontrack.streams_empty_fallback', { kind: e.track.kind });
       if (!_remoteStream) _remoteStream = new MediaStream();
       _remoteStream.addTrack(e.track);
-      // Quando arriva la video track: forziamo nuovo riferimento così React ri-renderizza
-      // e il useEffect ri-chiama video.play() con la video track già nel stream.
-      if (e.track.kind === "video") {
-        const newStream = new MediaStream(_remoteStream.getTracks());
-        _remoteStream = newStream;
-        stream = newStream;
-        console.log('[webrtc] ontrack: fallback video track → new MediaStream wrapper tracks=%d',
-          stream.getTracks().length);
-        diagLog('ontrack.video.fallback.newStream', { tracks: stream.getTracks().length });
-      } else {
-        stream = _remoteStream;
-        console.log('[webrtc] ontrack: fallback stream audioTracks=%d', stream.getAudioTracks().length);
-      }
+      stream = new MediaStream(_remoteStream.getTracks());
+      diagLog('ontrack.fallback.newStream', {
+        kind:        e.track.kind,
+        tracks:      stream.getTracks().length,
+        audioTracks: stream.getAudioTracks().length,
+        videoTracks: stream.getVideoTracks().length,
+      });
     }
 
-    // Log dettaglio tracce audio
+    // Log dettaglio tracce
     stream.getAudioTracks().forEach((t) => {
       console.log('[webrtc] audioTrack: id=%s enabled=%s muted=%s readyState=%s', t.id, t.enabled, t.muted, t.readyState);
       diagLog('ontrack.audioTrack', { id: t.id, enabled: t.enabled, muted: t.muted, readyState: t.readyState });
     });
+    stream.getVideoTracks().forEach((t) => {
+      console.log('[webrtc] videoTrack: id=%s enabled=%s muted=%s readyState=%s', t.id, t.enabled, t.muted, t.readyState);
+      diagLog('ontrack.videoTrack', { id: t.id, enabled: t.enabled, muted: t.muted, readyState: t.readyState });
+    });
 
-    onRemoteStream(stream);
+    // Chiama onRemoteStream UNA SOLA VOLTA: la prima volta che un track arriva.
+    // Poiché e.streams[0] è già completo, la prima chiamata porta già tutto.
+    // Chiamate successive (secondo track) saltano per evitare il double-srcObject
+    // change che su iOS aborta il play() in corso → video nero.
+    if (!_onRemoteStreamCalled) {
+      _onRemoteStreamCalled = true;
+      onRemoteStream(stream);
+    } else {
+      console.log('[webrtc] ontrack: secondo track (%s) — onRemoteStream già chiamato, skip', e.track.kind);
+      diagLog('ontrack.skip.alreadyCalled', { kind: e.track.kind });
+    }
   };
 
   pc.onconnectionstatechange = () => {
