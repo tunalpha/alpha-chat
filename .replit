@@ -45,6 +45,8 @@ TURN_PASSWORD = "F9XpL934VLGNSVzu"
 TURN_URLS = "turn:global.relay.metered.ca:80,turn:global.relay.metered.ca:443,turn:global.relay.metered.ca:443?transport=tcp,turns:global.relay.metered.ca:443"
 TURN_USERNAME = "f7fc746072f543fb8d45dded"
 STUN_URLS = "stun:stun.relay.metered.ca:80"
+R2_ACCOUNT_ID = "fd7b88dda1df65af51258cca0a8c1973"
+R2_ENDPOINT = "https://fd7b88dda1df65af51258cca0a8c1973.r2.cloudflarestorage.com"
 
 [nix]
 channel = "stable-25_05"
