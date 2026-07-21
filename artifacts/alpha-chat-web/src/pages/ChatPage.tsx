@@ -1120,9 +1120,20 @@ export default function ChatPage({ onNavigate }: Props) {
       switch (event.type) {
         case "message.new": {
           const msg = event.payload as unknown as MessageItem & { conversation_id: string };
-          if (!mutedConvIds.has(msg.conversation_id)) void playNotifSound('received');
+          // Suono "received" solo per messaggi altrui (non per conferma dei propri)
+          const isOwnMsg = msg.sender_id === auth?.userId;
+          if (!isOwnMsg && !mutedConvIds.has(msg.conversation_id)) void playNotifSound('received');
           if (msg.conversation_id === activeConvId) {
             setMessages((prev) => {
+              // Sostituisci il messaggio ottimistico (pending-*) con quello reale del server
+              const pendingIdx = prev.findIndex(
+                (m) => m.client_message_id === msg.client_message_id && m.id.startsWith("pending-"),
+              );
+              if (pendingIdx >= 0) {
+                const next = [...prev];
+                next[pendingIdx] = msg;
+                return next;
+              }
               const isDup = prev.some((m) => m.id === msg.id);
               reportAudit("DIAG-WS-NEW", {
                 msgId: msg.id,
@@ -1136,7 +1147,7 @@ export default function ChatPage({ onNavigate }: Props) {
               if (isDup) return prev;
               return [...prev, msg];
             });
-            // Decifra il messaggio appena arrivato
+            // Decifra il messaggio appena arrivato (popola decryptedTexts con id reale)
             void decryptSingleMsg(msg);
             // Marca sempre come letto quando la conversazione è aperta.
             // Debounce 800ms: se arrivano più messaggi in rapida successione
@@ -1424,32 +1435,69 @@ export default function ChatPage({ onNavigate }: Props) {
       } else {
         // Invio normale o risposta — cifra con Signal
         const clientMessageId = crypto.randomUUID();
+        const replyToId      = replyTo?.id ?? null;
+        const currentBurn    = burnAfterRead;
+        const pendingMsgId   = `pending-${clientMessageId}`;
+        const nowIso         = new Date().toISOString();
+
         // Salva il plaintext prima di cifrare (per display dei propri messaggi)
         sentCacheRef.current.set(clientMessageId, text);
         // FIX: persiste il plaintext in IDB — sopravvive al reload
         void cacheOwnText(clientMessageId, text);
-        const signal = await encryptForActive(text);
-        reportAudit("AUDIT-4-send", {
-          convId: activeConvId,
-          signalType: signal?.type,
-          deviceCiphertextsCount: signal?.deviceCiphertexts?.length ?? 0,
-          entries: signal?.deviceCiphertexts?.map((d) => ({ device_id: d.device_id, type: d.type })) ?? [],
-        });
-        await apiSendMessage(activeConvId, text, {
-          replyToMessageId: replyTo?.id,
-          burnAfterRead,
-          signal,
-          clientMessageId,
-          deviceCiphertexts: signal?.deviceCiphertexts,
-        });
-        void playNotifSound('sent');   // suono invio messaggio
+
+        // ── OPTIMISTIC UPDATE ────────────────────────────────────────────────
+        // Mostra il messaggio immediatamente nella UI senza aspettare encrypt+WS.
+        // Il WS handler lo sostituisce con il messaggio reale appena confermato.
+        const optimisticMsg: MessageItem = {
+          id:                  pendingMsgId,
+          client_message_id:   clientMessageId,
+          conversation_id:     activeConvId,
+          sender_id:           auth.userId,
+          message_type:        "text",
+          ciphertext:          null,
+          ciphertext_type:     null,
+          sequence_number:     0,
+          sent_at:             nowIso,
+          server_received_at:  nowIso,
+          status:              "sent",
+          deleted_for_everyone: false,
+          reply_to_message_id: replyToId,
+          burn_after_read:     currentBurn,
+          expires_at:          null,
+        };
+        setDecryptedTexts((prev) => new Map(prev).set(pendingMsgId, text));
+        setMessages((prev) => [...prev, optimisticMsg]);
         setReplyTo(null);
-        if (burnAfterRead) setBurnAfterRead(false); // reset dopo invio BAR
-        // Fase 5: dopo ogni invio, rileggi il trust status dal IDB locale.
-        // Se ensureSession ha rilevato un cambio di Identity Key durante la cifratura,
-        // updateTrustFromBundle avrà già aggiornato il trust IDB → aggiorna la UI.
-        const theirId = conversations.find((c) => c.conversation_id === activeConvId)?.other_user?.user_id;
-        if (theirId) void refreshTrust(theirId);
+        if (currentBurn) setBurnAfterRead(false);
+        void playNotifSound('sent');
+
+        // Encrypt + send in background — se fallisce rimuove il pending
+        try {
+          const signal = await encryptForActive(text);
+          reportAudit("AUDIT-4-send", {
+            convId: activeConvId,
+            signalType: signal?.type,
+            deviceCiphertextsCount: signal?.deviceCiphertexts?.length ?? 0,
+            entries: signal?.deviceCiphertexts?.map((d) => ({ device_id: d.device_id, type: d.type })) ?? [],
+          });
+          await apiSendMessage(activeConvId, text, {
+            replyToMessageId: replyToId ?? undefined,
+            burnAfterRead:    currentBurn,
+            signal,
+            clientMessageId,
+            deviceCiphertexts: signal?.deviceCiphertexts,
+          });
+          // Fase 5: dopo ogni invio, rileggi il trust status dal IDB locale.
+          const theirId = conversations.find((c) => c.conversation_id === activeConvId)?.other_user?.user_id;
+          if (theirId) void refreshTrust(theirId);
+        } catch (sendErr) {
+          // Rimuovi il messaggio ottimistico e ripristina la UI
+          setMessages((prev) => prev.filter((m) => m.id !== pendingMsgId));
+          setDecryptedTexts((prev) => { const next = new Map(prev); next.delete(pendingMsgId); return next; });
+          setReplyTo(replyTo);       // ripristina reply bar (closure cattura il valore originale)
+          if (currentBurn) setBurnAfterRead(true);
+          throw sendErr;             // gestito dall'outer catch (setSendError + setInputText)
+        }
       }
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : "Errore invio";
