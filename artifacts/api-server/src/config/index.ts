@@ -29,6 +29,19 @@ const EnvSchema = z.object({
   // Phone hashing — pepper server-side (HMAC-SHA256)
   // .catch: in development/test può essere assente o corta
   PHONE_HMAC_PEPPER: z.string().min(32).optional().catch(undefined),
+  // ── Cloudflare R2 Object Storage ─────────────────────────────────────────
+  R2_ACCOUNT_ID:        z.string().min(1).optional(),
+  R2_BUCKET:            z.string().min(1).default("alphachat"),
+  R2_ENDPOINT:          z.string().url().optional().catch(undefined),
+  R2_ACCESS_KEY_ID:     z.string().min(1).optional(),
+  R2_SECRET_ACCESS_KEY: z.string().min(1).optional(),
+  /** Scadenza Signed URL in secondi (default 5 min) */
+  R2_SIGNED_URL_TTL: z.coerce.number().min(60).max(3600).default(300),
+  // ── Upload size limits (MB) ───────────────────────────────────────────────
+  MAX_IMAGE_MB:    z.coerce.number().min(1).max(500).default(20),
+  MAX_VIDEO_MB:    z.coerce.number().min(1).max(2000).default(100),
+  MAX_AUDIO_MB:    z.coerce.number().min(1).max(500).default(25),
+  MAX_DOCUMENT_MB: z.coerce.number().min(1).max(500).default(50),
 });
 
 const parsed = EnvSchema.safeParse(process.env);
@@ -65,5 +78,19 @@ export const config = {
   },
   auth: {
     phonePepper: parsed.data.PHONE_HMAC_PEPPER ?? null,
+  },
+  r2: {
+    accountId:       parsed.data.R2_ACCOUNT_ID       ?? null,
+    bucket:          parsed.data.R2_BUCKET,
+    endpoint:        parsed.data.R2_ENDPOINT          ?? null,
+    accessKeyId:     parsed.data.R2_ACCESS_KEY_ID     ?? null,
+    secretAccessKey: parsed.data.R2_SECRET_ACCESS_KEY ?? null,
+    signedUrlTtl:    parsed.data.R2_SIGNED_URL_TTL,
+  },
+  upload: {
+    maxImageMb:    parsed.data.MAX_IMAGE_MB,
+    maxVideoMb:    parsed.data.MAX_VIDEO_MB,
+    maxAudioMb:    parsed.data.MAX_AUDIO_MB,
+    maxDocumentMb: parsed.data.MAX_DOCUMENT_MB,
   },
 } as const;

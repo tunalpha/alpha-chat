@@ -5,6 +5,7 @@ import { connectMongoDB, disconnectMongoDB } from "./lib/mongodb";
 import { createWsServer } from "./lib/ws-server";
 import { runDmsScheduler } from "./services/dead-man-switch.service";
 import { seedAdminIfNeeded } from "./routes/v1/admin.routes";
+import { startTempCleanupScheduler } from "./schedulers/temp-cleanup.scheduler";
 
 const port = config.app.port;
 
@@ -28,6 +29,9 @@ async function start(): Promise<void> {
   const DMS_INTERVAL_MS = 4 * 60 * 60 * 1000;
   setInterval(() => { void runDmsScheduler(); }, DMS_INTERVAL_MS).unref();
   logger.info("DMS scheduler started (interval: 4h)");
+
+  // R2 temp/ cleanup scheduler — ogni ora, elimina upload orfani > 24h
+  startTempCleanupScheduler();
 
   // ── Graceful shutdown ───────────────────────────────────────────────────────
   const shutdown = async (signal: string): Promise<void> => {

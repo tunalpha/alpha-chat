@@ -1,61 +1,36 @@
 /**
  * Schemi di validazione Zod per le API Media.
- * Sprint 11: upload audio per messaggi vocali.
- * Sprint 13: foto, video, documenti — limiti per tipo.
+ *
+ * Upload: multipart/form-data — il file arriva via req.file (multer).
+ * I campi metadata arrivano come text fields nel FormData (req.body).
+ *
+ * Sprint 11: audio vocale. Sprint 13: foto, video, documenti.
+ * Sprint 29: migrazione R2 — rimozione campo data base64.
  */
 
 import { z } from "zod";
 
-// AES-256-GCM aggiunge 16 byte di authentication tag al ciphertext.
-// I limiti vengono applicati al ciphertext (non al plaintext originale),
-// quindi dobbiamo aggiungere 16 B per permettere file esattamente al limite dichiarato.
-const GCM_TAG_BYTES = 16;
+// ---------------------------------------------------------------------------
+// UploadMediaMetaSchema — metadata non-file dal FormData (req.body)
+// ---------------------------------------------------------------------------
 
-// Limiti per tipo MIME (plaintext max + GCM tag)
-const LIMITS: Record<string, number> = {
-  audio:    25  * 1024 * 1024 + GCM_TAG_BYTES,  //  25 MB plaintext
-  image:    50  * 1024 * 1024 + GCM_TAG_BYTES,  //  50 MB plaintext
-  video:    100 * 1024 * 1024 + GCM_TAG_BYTES,  // 100 MB plaintext
-  document: 50  * 1024 * 1024 + GCM_TAG_BYTES,  //  50 MB plaintext (application/*, text/*)
-};
-
-const ALLOWED_MIME_PREFIXES = ["audio/", "image/", "video/", "application/", "text/plain"];
-
-function mimeCategory(mime: string): keyof typeof LIMITS | "document" {
-  if (mime.startsWith("audio/"))  return "audio";
-  if (mime.startsWith("image/"))  return "image";
-  if (mime.startsWith("video/"))  return "video";
-  return "document";
-}
-
-export const UploadMediaSchema = z.object({
+export const UploadMediaMetaSchema = z.object({
   /**
-   * Chiave di idempotenza generata dal client prima dell'upload.
-   * Il server restituisce il documento esistente (HTTP 200) se la chiave è già presente,
-   * prevenendo duplicati in caso di retry dopo un timeout di rete.
-   * Formato: UUID v4 (es. "550e8400-e29b-41d4-a716-446655440000").
+   * Chiave di idempotenza client (UUID v4).
+   * Il server restituisce il documento esistente (HTTP 200) se già presente.
    */
   client_upload_id: z
     .string()
     .uuid("client_upload_id deve essere un UUID v4 valido")
     .optional(),
 
-  /** Base64 del file */
-  data: z
-    .string()
-    .min(1, "data obbligatorio"),
-
-  /** MIME type del file */
+  /** MIME type dichiarato dal client */
   mime_type: z
     .string()
     .min(1)
-    .max(128)
-    .refine(
-      (s) => ALLOWED_MIME_PREFIXES.some((p) => s.startsWith(p)),
-      "Tipo file non supportato",
-    ),
+    .max(128),
 
-  /** ID conversazione */
+  /** ID conversazione (ObjectId MongoDB) */
   conversation_id: z
     .string()
     .regex(/^[0-9a-fA-F]{24}$/, "conversation_id deve essere ObjectId"),
@@ -67,14 +42,20 @@ export const UploadMediaSchema = z.object({
     .optional()
     .default(""),
 
-  /** Thumbnail JPEG (base64) — generata dal client per image/video */
+  /**
+   * Thumbnail cifrata (base64 AES-256-GCM) — generata dal client.
+   * Dimensione piccola (max 240×240 JPEG), trasmessa come text field.
+   */
   thumbnail: z
     .string()
     .optional()
     .default(""),
 
-  /** Durata in millisecondi (per audio/video) */
-  duration_ms: z
+  /**
+   * Durata in ms (audio/video).
+   * FormData invia stringhe — z.coerce converte automaticamente.
+   */
+  duration_ms: z.coerce
     .number()
     .int()
     .min(0)
@@ -83,30 +64,26 @@ export const UploadMediaSchema = z.object({
     .optional()
     .default(null),
 
-  /** 50 valori 0-1 per la waveform (solo audio) */
-  waveform: z
-    .array(z.number().min(0).max(1))
-    .max(100)
-    .optional()
-    .default([]),
-}).superRefine((val, ctx) => {
-  try {
-    const bytes = Buffer.from(val.data, "base64").length;
-    const cat   = mimeCategory(val.mime_type);
-    const limit = LIMITS[cat] ?? LIMITS.document;
-    if (bytes > limit) {
-      ctx.addIssue({
-        code: z.ZodIssueCode.custom,
-        message: `File troppo grande per tipo ${cat} (max ${limit / 1024 / 1024}MB)`,
-        path: ["data"],
-      });
-    }
-  } catch {
-    ctx.addIssue({ code: z.ZodIssueCode.custom, message: "data non è base64 valido", path: ["data"] });
-  }
+  /**
+   * Waveform: 50 valori 0-1.
+   * FormData invia JSON string — preprocessata con JSON.parse.
+   */
+  waveform: z.preprocess(
+    (v) => {
+      if (typeof v === "string" && v.length > 0) {
+        try { return JSON.parse(v); } catch { return []; }
+      }
+      return Array.isArray(v) ? v : [];
+    },
+    z.array(z.number().min(0).max(1)).max(100).optional().default([]),
+  ),
 });
 
-export type UploadMediaInput = z.infer<typeof UploadMediaSchema>;
+export type UploadMediaMeta = z.infer<typeof UploadMediaMetaSchema>;
+
+// ---------------------------------------------------------------------------
+// MediaIdParamSchema — param :mediaId nelle route GET
+// ---------------------------------------------------------------------------
 
 export const MediaIdParamSchema = z.object({
   mediaId: z

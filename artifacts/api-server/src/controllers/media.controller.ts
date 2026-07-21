@@ -1,23 +1,33 @@
 /**
  * MediaController — strato HTTP per upload e download media.
+ *
  * Sprint 11: audio. Sprint 13: foto, video, documenti, thumbnail.
+ * Sprint 29: migrazione R2 — upload via multer multipart, download via Signed URL.
  */
 
 import type { RequestHandler } from "express";
 import * as mediaService from "../services/media.service";
 import { successResponse } from "../utils/response";
-import type { UploadMediaInput, MediaIdParam } from "../validation/media.schemas";
+import type { UploadMediaMeta, MediaIdParam } from "../validation/media.schemas";
 
 // ---------------------------------------------------------------------------
-// POST /api/v1/media
+// POST /api/v1/media — Upload file (multipart/form-data)
 // ---------------------------------------------------------------------------
 
 export const uploadMedia: RequestHandler = async (req, res, next) => {
   try {
-    const input      = req.body as UploadMediaInput;
+    // req.file è popolato da multer (memorystorage)
+    if (!req.file) {
+      res.status(400).json({ error: { code: "FILE_MISSING", message: "Campo 'file' obbligatorio nel multipart" } });
+      return;
+    }
+
+    const meta       = req.body as UploadMediaMeta;
     const uploaderId = req.user!.userId;
 
-    const result = await mediaService.uploadMedia(uploaderId, input, { requestId: req.requestId });
+    const result = await mediaService.uploadMedia(uploaderId, meta, req.file, {
+      requestId: req.requestId,
+    });
 
     // HTTP 200 se il documento esisteva già (retry idempotente), 201 se appena creato.
     const status = result.already_existed ? 200 : 201;
@@ -28,7 +38,7 @@ export const uploadMedia: RequestHandler = async (req, res, next) => {
 };
 
 // ---------------------------------------------------------------------------
-// GET /api/v1/media/:mediaId
+// GET /api/v1/media/:mediaId — Restituisce Signed URL per download diretto da R2
 // ---------------------------------------------------------------------------
 
 export const getMedia: RequestHandler = async (req, res, next) => {
@@ -36,26 +46,16 @@ export const getMedia: RequestHandler = async (req, res, next) => {
     const { mediaId } = req.params as unknown as MediaIdParam;
     const userId      = req.user!.userId;
 
-    const result = await mediaService.getMedia(userId, mediaId);
+    const result = await mediaService.getMediaSignedUrl(userId, mediaId);
 
-    const filename = result.original_filename
-      ? encodeURIComponent(result.original_filename)
-      : "file";
-
-    res
-      .status(200)
-      .setHeader("Content-Type",   result.mime_type)
-      .setHeader("Content-Length", result.size)
-      .setHeader("Cache-Control",  "private, max-age=86400")
-      .setHeader("Content-Disposition", `inline; filename="${filename}"`)
-      .send(result.data);
+    res.status(200).json(successResponse(result, req.requestId));
   } catch (err) {
     next(err);
   }
 };
 
 // ---------------------------------------------------------------------------
-// GET /api/v1/media/:mediaId/thumbnail
+// GET /api/v1/media/:mediaId/thumbnail — Signed URL per la thumbnail
 // ---------------------------------------------------------------------------
 
 export const getMediaThumbnail: RequestHandler = async (req, res, next) => {
@@ -63,14 +63,9 @@ export const getMediaThumbnail: RequestHandler = async (req, res, next) => {
     const { mediaId } = req.params as unknown as MediaIdParam;
     const userId      = req.user!.userId;
 
-    const result = await mediaService.getThumbnail(userId, mediaId);
+    const result = await mediaService.getThumbnailSignedUrl(userId, mediaId);
 
-    res
-      .status(200)
-      .setHeader("Content-Type",   result.mime_type)
-      .setHeader("Content-Length", result.data.length)
-      .setHeader("Cache-Control",  "private, max-age=604800") // 7 giorni — thumbnail stabile
-      .send(result.data);
+    res.status(200).json(successResponse(result, req.requestId));
   } catch (err) {
     next(err);
   }

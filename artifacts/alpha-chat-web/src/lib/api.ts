@@ -822,33 +822,40 @@ export interface MediaUploadResult {
   has_thumbnail:     boolean;
   duration_ms:       number | null;
   waveform:          number[];
+  ciphertext_size?:  number;
 }
 
-/** Upload audio blob come base64 JSON */
+/** Upload audio blob via multipart/form-data */
 export async function apiUploadMedia(
   conversationId: string,
   blob: Blob,
   durationMs: number,
   waveform: number[],
 ): Promise<MediaUploadResult> {
-  const arrayBuffer = await blob.arrayBuffer();
-  const bytes = new Uint8Array(arrayBuffer);
-  let binary = "";
-  for (const b of bytes) binary += String.fromCharCode(b);
-  const base64 = btoa(binary);
+  const token = getAccessToken();
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
 
-  return request<MediaUploadResult>("POST", "/media", {
-    data: base64,
-    mime_type: blob.type || "audio/webm",
-    conversation_id: conversationId,
-    duration_ms: Math.round(durationMs),
-    waveform,
-  });
+  const form = new FormData();
+  form.append("file", blob, "audio.webm");
+  form.append("mime_type", blob.type || "audio/webm");
+  form.append("conversation_id", conversationId);
+  form.append("duration_ms", String(Math.round(durationMs)));
+  if (waveform.length > 0) form.append("waveform", JSON.stringify(waveform));
+
+  const res = await fetch(`${BASE}/media`, { method: "POST", headers, body: form });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({})) as { error?: { code?: string } };
+    throw new Error(body.error?.code ?? `HTTP ${res.status}`);
+  }
+  const json = await res.json() as { data: MediaUploadResult };
+  return json.data;
 }
 
 /**
  * Fase 3: Upload di un blob già cifrato con AES-256-GCM.
  * Il server riceve solo byte opachi — mai il file originale in chiaro.
+ * Sprint 29: multipart/form-data al posto del JSON base64 (meno CPU, stream nativo).
  */
 export async function apiUploadEncryptedMedia(
   conversationId: string,
@@ -866,35 +873,29 @@ export async function apiUploadEncryptedMedia(
   const { onProgress, durationMs, waveform, originalFilename, encryptedThumbnail } = options;
   onProgress?.(5);
 
-  // Usa FileReader.readAsDataURL — gestione nativa (C++) di file grandi.
-  // Il loop manuale con string += era O(n²) e causava freeze/crash su Safari iOS
-  // con foto > 1 MB (3M concatenazioni per una foto da 3 MB).
-  const base64 = await new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => {
-      const dataUrl = reader.result as string;
-      // dataUrl = "data:application/octet-stream;base64,<base64>"
-      resolve(dataUrl.split(",")[1] ?? "");
-    };
-    reader.onerror = () => reject(reader.error);
-    reader.readAsDataURL(encryptedBlob);
-  });
+  const token = getAccessToken();
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const form = new FormData();
+  form.append("file", encryptedBlob, "media.enc");
+  form.append("mime_type", originalMimeType);
+  form.append("conversation_id", conversationId);
+  if (durationMs      != null)  form.append("duration_ms", String(Math.round(durationMs)));
+  if (waveform?.length)         form.append("waveform", JSON.stringify(waveform));
+  if (originalFilename)         form.append("original_filename", originalFilename);
+  if (encryptedThumbnail)       form.append("thumbnail", encryptedThumbnail);
 
   onProgress?.(70);
 
-  const result = await request<MediaUploadResult>("POST", "/media", {
-    data:            base64,
-    mime_type:       originalMimeType,
-    conversation_id: conversationId,
-    encrypted:       true,
-    ...(durationMs         != null  ? { duration_ms: Math.round(durationMs) } : {}),
-    ...(waveform                    ? { waveform }                            : {}),
-    ...(originalFilename            ? { original_filename: originalFilename } : {}),
-    ...(encryptedThumbnail          ? { thumbnail: encryptedThumbnail }       : {}),
-  });
-
+  const res = await fetch(`${BASE}/media`, { method: "POST", headers, body: form });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({})) as { error?: { code?: string } };
+    throw new Error(body.error?.code ?? `HTTP ${res.status}`);
+  }
+  const json = await res.json() as { data: MediaUploadResult };
   onProgress?.(100);
-  return result;
+  return json.data;
 }
 
 /**
@@ -1014,14 +1015,6 @@ export async function apiUploadFile(
 ): Promise<MediaUploadResult> {
   onProgress?.(10);
 
-  const arrayBuffer = await file.arrayBuffer();
-  const bytes  = new Uint8Array(arrayBuffer);
-  let binary   = "";
-  for (const b of bytes) binary += String.fromCharCode(b);
-  const base64 = btoa(binary);
-
-  onProgress?.(40);
-
   let thumbnailBase64 = "";
   if (file.type.startsWith("image/")) {
     thumbnailBase64 = await generateImageThumbnail(file);
@@ -1029,18 +1022,29 @@ export async function apiUploadFile(
     thumbnailBase64 = await generateVideoThumbnail(file);
   }
 
+  onProgress?.(40);
+
+  const token = getAccessToken();
+  const headers: Record<string, string> = {};
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const form = new FormData();
+  form.append("file", file, file.name);
+  form.append("mime_type", file.type || "application/octet-stream");
+  form.append("conversation_id", conversationId);
+  form.append("original_filename", file.name);
+  if (thumbnailBase64) form.append("thumbnail", thumbnailBase64);
+
   onProgress?.(60);
 
-  const result = await request<MediaUploadResult>("POST", "/media", {
-    data:              base64,
-    mime_type:         file.type || "application/octet-stream",
-    conversation_id:   conversationId,
-    original_filename: file.name,
-    thumbnail:         thumbnailBase64,
-  });
-
+  const res = await fetch(`${BASE}/media`, { method: "POST", headers, body: form });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({})) as { error?: { code?: string } };
+    throw new Error(body.error?.code ?? `HTTP ${res.status}`);
+  }
+  const json = await res.json() as { data: MediaUploadResult };
   onProgress?.(100);
-  return result;
+  return json.data;
 }
 
 /**
@@ -1082,21 +1086,27 @@ export async function apiSendFileMessage(
 }
 
 /**
- * Scarica un file media come blob URL autenticato.
- * L'elemento <audio> non può passare il Bearer token — questa funzione
- * fa il fetch con l'header Authorization e crea un objectURL temporaneo.
+ * Scarica un file media come blob URL.
+ * Sprint 29: il backend restituisce un Signed URL R2 (5 min).
+ * Il fetch del blob avviene direttamente da R2, senza proxy server.
  */
 export async function apiFetchMediaBlob(mediaId: string): Promise<string> {
   const token = getAccessToken();
   const headers: Record<string, string> = {};
   if (token) headers["Authorization"] = `Bearer ${token}`;
 
-  const res = await fetch(`${BASE}/media/${mediaId}`, { headers });
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({})) as { error?: { code?: string } };
-    throw new Error(body.error?.code ?? `HTTP ${res.status}`);
+  // 1. Ottieni il Signed URL dal backend
+  const metaRes = await fetch(`${BASE}/media/${mediaId}`, { headers });
+  if (!metaRes.ok) {
+    const body = await metaRes.json().catch(() => ({})) as { error?: { code?: string } };
+    throw new Error(body.error?.code ?? `HTTP ${metaRes.status}`);
   }
-  const blob = await res.blob();
+  const { data } = await metaRes.json() as { data: { url: string; mime_type: string } };
+
+  // 2. Fetch diretto da R2 (Signed URL, nessun header auth necessario)
+  const blobRes = await fetch(data.url);
+  if (!blobRes.ok) throw new Error(`R2 download fallito: ${blobRes.status}`);
+  const blob = await blobRes.blob();
   return URL.createObjectURL(blob);
 }
 
@@ -1153,12 +1163,19 @@ export async function apiFetchAndDecryptMediaBlob(
   const headers: Record<string, string> = {};
   if (token) headers["Authorization"] = `Bearer ${token}`;
 
-  const res = await fetch(`${BASE}/media/${mediaId}`, { headers });
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({})) as { error?: { code?: string } };
-    throw new Error(body.error?.code ?? `HTTP ${res.status}`);
+  // Sprint 29: il backend restituisce un Signed URL R2 — fetch a due fasi.
+  // 1. Ottieni il Signed URL
+  const metaRes = await fetch(`${BASE}/media/${mediaId}`, { headers });
+  if (!metaRes.ok) {
+    const body = await metaRes.json().catch(() => ({})) as { error?: { code?: string } };
+    throw new Error(body.error?.code ?? `HTTP ${metaRes.status}`);
   }
-  const encrypted = await res.arrayBuffer();
+  const { data: metaData } = await metaRes.json() as { data: { url: string } };
+
+  // 2. Fetch del ciphertext da R2 (nessun header auth — Signed URL)
+  const blobRes = await fetch(metaData.url);
+  if (!blobRes.ok) throw new Error(`R2 download fallito: ${blobRes.status}`);
+  const encrypted = await blobRes.arrayBuffer();
 
   // AES-256-GCM decrypt — chiave estratta dal metadata Signal-decifrato
   const binKey = atob(keyBase64);
@@ -1499,11 +1516,11 @@ export async function apiUpdateGroup(
 
 /** Carica un blob come avatar del gruppo. Ritorna il media_id assegnato dal server. */
 export async function apiUploadGroupAvatar(groupId: string, blob: Blob): Promise<string> {
-  const token = localStorage.getItem("accessToken") ?? "";
+  const token = getAccessToken() ?? "";  // fix: usa getAccessToken() (chiave "ac_access_token")
   const form  = new FormData();
   form.append("file", blob, "avatar.jpg");
   form.append("conversation_id", groupId);
-  form.append("message_type", "image");
+  form.append("mime_type", blob.type || "image/jpeg");
   const res = await fetch(`${BASE}/media`, {
     method:  "POST",
     headers: { Authorization: `Bearer ${token}` },

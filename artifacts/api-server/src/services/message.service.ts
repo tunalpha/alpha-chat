@@ -23,6 +23,7 @@ import { logAuditEvent } from "../lib/audit";
 import { logger } from "../lib/logger";
 import { wsManager } from "../lib/ws-manager";
 import { UserRepository } from "../repositories/user.repository";
+import { deleteMediaFiles } from "./media.service";
 import * as PushDispatcher from "../services/push/PushDispatcher";
 import type { SendMessageInput, ListMessagesInput, EditMessageInput, DeleteMessageInput } from "../validation/message.schemas";
 
@@ -503,9 +504,9 @@ export async function secureDestroy(
     throw new AppError("MESSAGE_DELETE_FORBIDDEN", 403);
   }
 
-  // 4a. Hard delete media allegato (foto/audio/video) — nessun file orfano
+  // 4a. Hard delete media allegato — elimina da R2 poi da MongoDB (nessun file orfano)
   if (msg.media_id) {
-    await mediaRepo.hardDeleteById(msg.media_id as mongoose.Types.ObjectId);
+    await deleteMediaFiles(msg.media_id as mongoose.Types.ObjectId);
   }
 
   // 4b. Hard delete del documento messaggio

@@ -426,6 +426,25 @@ router.get("/storage", requireAdmin("support"), async (_req: Request, res: Respo
 
     const stats = dbStats as Record<string, number>;
 
+    // ── R2 media stats (da MongoDB metadata) ──────────────────────────────────
+    const [r2Stats, r2TopUploaders, r2TopConversations] = await Promise.all([
+      MediaModel.aggregate<{ fileCount: number; totalBytes: number }>([
+        { $group: { _id: null, fileCount: { $sum: 1 }, totalBytes: { $sum: "$ciphertextSize" } } },
+      ]).then((r) => r[0] ?? { fileCount: 0, totalBytes: 0 }),
+      MediaModel.aggregate([
+        { $group: { _id: "$uploader_id", bytes: { $sum: "$ciphertextSize" }, count: { $sum: 1 } } },
+        { $sort: { bytes: -1 } }, { $limit: 10 },
+        { $lookup: { from: "users", localField: "_id", foreignField: "_id", as: "u" } },
+        { $unwind: { path: "$u", preserveNullAndEmptyArrays: true } },
+        { $project: { _id: 0, username: { $ifNull: ["$u.username", "unknown"] }, bytes: 1, count: 1 } },
+      ]),
+      MediaModel.aggregate([
+        { $group: { _id: "$conversation_id", bytes: { $sum: "$ciphertextSize" }, count: { $sum: 1 } } },
+        { $sort: { bytes: -1 } }, { $limit: 10 },
+        { $project: { _id: 0, conversation_id: { $toString: "$_id" }, bytes: 1, count: 1 } },
+      ]),
+    ]);
+
     res.json({
       database: {
         size_mb: Math.round(((stats["dataSize"] ?? 0) / 1024 / 1024) * 100) / 100,
@@ -435,6 +454,14 @@ router.get("/storage", requireAdmin("support"), async (_req: Request, res: Respo
         objects_count: stats["objects"] ?? 0,
       },
       collections: collectionStats.sort((a, b) => b.storage_mb - a.storage_mb),
+      r2: {
+        file_count:         r2Stats.fileCount,
+        total_bytes:        r2Stats.totalBytes,
+        total_mb:           Math.round((r2Stats.totalBytes / 1024 / 1024) * 100) / 100,
+        total_gb:           Math.round((r2Stats.totalBytes / 1024 / 1024 / 1024) * 10000) / 10000,
+        top_uploaders:      r2TopUploaders,
+        top_conversations:  r2TopConversations,
+      },
     });
   } catch (err) {
     next(err);
