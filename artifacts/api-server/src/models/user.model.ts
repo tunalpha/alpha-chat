@@ -84,6 +84,7 @@ export interface IUser {
   // Wallet (V2)
   wallet_enabled: boolean;
   wallet_id: string | null;
+  wallet_address: string | null;
 
   // Admin — Sprint 23
   admin_role: "super_admin" | "security_admin" | "support" | "read_only" | null;
@@ -184,7 +185,8 @@ const userSchema = new Schema<IUserDocument>(
     last_recovery_at:                { type: Date,    default: null },
 
     wallet_enabled: { type: Boolean, default: false },
-    wallet_id: { type: String, default: null },
+    wallet_id:      { type: String, default: null },
+    wallet_address: { type: String, default: null },
 
     // Admin — Sprint 23
     admin_role: {

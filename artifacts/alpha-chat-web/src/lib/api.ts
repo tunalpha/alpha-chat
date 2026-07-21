@@ -65,8 +65,10 @@ export interface ConversationPartner {
 export interface LastMessagePreview {
   message_id: string;
   sender_id: string;
-  ciphertext: string;
+  ciphertext: string | null;
   sent_at: string;
+  message_type?: string;
+  system_metadata?: Record<string, unknown> | null;
 }
 
 export interface ConversationItem {
@@ -110,6 +112,8 @@ export interface MessageItem {
   // campi aggiunti Sprint 15
   burn_after_read?: boolean;
   expires_at?: string | null;
+  // USDA Payments — system_metadata contiene i dati del pagamento (ciphertext è null)
+  system_metadata?: Record<string, unknown> | null;
   id: string;
   client_message_id: string;
   conversation_id: string;

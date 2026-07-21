@@ -73,7 +73,8 @@ export type WsOutboundEventType =
   | "call.missed"          // Server → Callee: chiamata persa (caller ha annullato)
   | "call.signal_ack"      // Server → Sender: conferma consegna del segnale (M2)
   | "conversation.cleared"  // Server → membri: tutti i messaggi eliminati (Sprint 24)
-  | "signal.session.reset"; // Server → Sender: il destinatario ha perso la sessione Signal
+  | "signal.session.reset"  // Server → Sender: il destinatario ha perso la sessione Signal
+  | "usda.payment.update";  // Server → mittente+destinatario: stato pagamento USDA aggiornato
 
 export interface WsOutboundEvent {
   type: WsOutboundEventType;

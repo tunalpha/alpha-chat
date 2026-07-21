@@ -1,0 +1,61 @@
+L’agente sta facendo la domanda giusta.
+
+Dal suo punto di vista sta analizzando solo il repository AlphaChat, quindi non trova il backend USDA e ti chiede dove sia.
+
+Io gli risponderei così:
+
+⸻
+
+Il backend USDA non è nello stesso repository di AlphaChat.
+
+Non implementare un nuovo backend USDA.
+
+Considera USDA come un servizio esterno già esistente.
+
+L’obiettivo dell’integrazione è creare un USDA Adapter Layer che consumi il backend USDA senza duplicarne la logica.
+
+L’Adapter dovrà essere progettato in modo da poter collegare il backend USDA non appena saranno disponibili il contratto API e l’URL del servizio.
+
+Nel frattempo:
+
+* non creare endpoint blockchain duplicati;
+* non implementare wallet custodiali;
+* non implementare logica di claim;
+* non implementare logica di refund;
+* non implementare verifica on-chain;
+* non implementare fee;
+* non implementare RPC Polygon.
+
+Progetta invece un’interfaccia astratta chiamata ad esempio UsdaProvider o UsdaAdapter che esponga operazioni come:
+
+* getWallet()
+* getBalance()
+* preparePayment()
+* submitPayment()
+* getPayment()
+* requestPayment()
+* claimPayment()
+* refundPayment()
+* getHistory()
+
+Tutto il resto dovrà dipendere esclusivamente da questa interfaccia.
+
+In questo modo AlphaChat resterà completamente disaccoppiato dal backend USDA e sarà sufficiente implementare un solo adapter quando il backend sarà collegato.
+
+Nel frattempo completa tutta l’integrazione lato AlphaChat:
+
+* nuovi message_type;
+* renderer delle bubble;
+* bottom sheet;
+* optimistic update;
+* aggiornamenti WebSocket;
+* schermata dettaglio pagamento;
+* cronologia;
+* gestione degli stati;
+* Wallet Identity nel profilo utente.
+
+L’integrazione dovrà essere progettata seguendo Dependency Injection e Clean Architecture, in modo che nessun componente della chat conosca dettagli blockchain o RPC.
+
+⸻
+
+Secondo me questa è la direzione migliore: l’agente può completare circa il 90% del lavoro senza conoscere ancora l’URL delle API USDA. Quando il backend sarà disponibile, basterà implementare l’UsdaAdapter concreto e collegarlo, senza dover modificare il resto di AlphaChat.

@@ -15,7 +15,7 @@ import mongoose, { type Document, type Model, Schema } from "mongoose";
 // Types
 // ---------------------------------------------------------------------------
 
-export type MessageType = "text" | "media" | "system" | "reply" | "forward";
+export type MessageType = "text" | "media" | "system" | "reply" | "forward" | "usda_send" | "usda_request" | "usda_receipt";
 
 /**
  * Stato delivery del messaggio (CTO recommendation Sprint 6).
@@ -145,7 +145,7 @@ const messageSchema = new Schema<IMessageDocument>(
 
     message_type: {
       type: String,
-      enum: ["text", "media", "system", "reply", "forward"],
+      enum: ["text", "media", "system", "reply", "forward", "usda_send", "usda_request", "usda_receipt"],
       required: true,
     },
 

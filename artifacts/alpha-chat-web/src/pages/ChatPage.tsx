@@ -1,4 +1,13 @@
 import { useState, useEffect, useRef, useCallback, memo } from "react";
+// ── USDA Payments ─────────────────────────────────────────────────────────
+import { UsdaPaymentBubble } from "../components/usda/UsdaPaymentBubble";
+import { UsdaRequestBubble } from "../components/usda/UsdaRequestBubble";
+import { SendUsdaSheet } from "../components/usda/SendUsdaSheet";
+import { RequestUsdaSheet } from "../components/usda/RequestUsdaSheet";
+import { UsdaPaymentDetail } from "../components/usda/UsdaPaymentDetail";
+import { WalletSetupSheet } from "../components/usda/WalletSetupSheet";
+import { apiUsdaPayRequest } from "../lib/usda-api";
+import type { UsdaPaymentData } from "../lib/usda-types";
 import { useAuth } from "../contexts/AuthContext";
 import { useCall } from "../contexts/CallContext";
 import { useWs } from "../contexts/WebSocketContext";
@@ -650,6 +659,12 @@ export default function ChatPage({ onNavigate }: Props) {
    *  Chiave = pendingMsgId ("pending-<clientMessageId>") */
   const [mediaUploadStates, setMediaUploadStates] = useState<Map<string, MediaUploadState>>(new Map());
   const [viewerMedia, setViewerMedia] = useState<{ url: string; type: "image" | "video"; filename?: string; mimeType?: string } | null>(null);
+  // ── USDA Payments ──────────────────────────────────────────────────────
+  const [showSendUsda,    setShowSendUsda]    = useState(false);
+  const [showRequestUsda, setShowRequestUsda] = useState(false);
+  const [usdaDetailId,    setUsdaDetailId]    = useState<string | null>(null);
+  const [showWalletSetup, setShowWalletSetup] = useState(false);
+
   /** Location sharing */
   const [locationModal,  setLocationModal]  = useState<"acquiring" | "ready" | "error" | null>(null);
   const [locationData,   setLocationData]   = useState<{ lat: number; lon: number; accuracy: number } | null>(null);
@@ -1272,6 +1287,29 @@ export default function ChatPage({ onNavigate }: Props) {
 
         // Sprint 18 — Phoenix Protocol: gestito in AppContent (sempre attivo)
         // Sprint 23 — Call signaling: gestito in AppContent (sempre attivo)
+
+        // USDA Payments — aggiorna stato del pagamento nel messaggio in-place
+        case "usda.payment.update": {
+          const { message_id, conversation_id, status, tx_hash } = event.payload as {
+            payment_id: string;
+            message_id: string | null;
+            conversation_id: string;
+            status: string;
+            tx_hash: string | null;
+          };
+          if (conversation_id !== activeConvId || !message_id) break;
+          setMessages((prev) =>
+            prev.map((m) => {
+              if (m.id !== message_id) return m;
+              const meta = (m.system_metadata as Record<string, unknown>) ?? {};
+              return {
+                ...m,
+                system_metadata: { ...meta, status, tx_hash: tx_hash ?? meta.tx_hash },
+              };
+            }),
+          );
+          break;
+        }
       }
     });
   }, [on, activeConvId]);
@@ -2225,6 +2263,25 @@ export default function ChatPage({ onNavigate }: Props) {
               // Anteprima ultimo messaggio
               const preview = conv.last_message_preview;
               const previewText = (() => {
+                // USDA messages hanno ciphertext null — gestirli prima
+                if (preview && !preview.ciphertext) {
+                  const mt = (preview as { message_type?: string }).message_type;
+                  const sm = (preview as { system_metadata?: Record<string, unknown> }).system_metadata;
+                  if (mt === "usda_send") {
+                    const amount = sm?.amount ?? "";
+                    return preview.sender_id === auth?.userId
+                      ? `💰 Hai inviato ${amount} USDA`
+                      : `💰 Ricevuto ${amount} USDA`;
+                  }
+                  if (mt === "usda_request") {
+                    const amount = sm?.amount ?? "";
+                    return preview.sender_id === auth?.userId
+                      ? `💸 Hai richiesto ${amount} USDA`
+                      : `💸 Richiesta di ${amount} USDA`;
+                  }
+                  if (mt === "usda_receipt") return "💰 Pagamento confermato";
+                  return null;
+                }
                 if (!preview?.ciphertext) return null;
 
                 /** Converte il meta JSON di un media in etichetta leggibile */
@@ -2672,6 +2729,24 @@ export default function ChatPage({ onNavigate }: Props) {
                             isMine={isMine}
                             onView={setLocationViewer}
                           />
+                        ) : msg.message_type === "usda_send" ? (
+                          <UsdaPaymentBubble
+                            data={msg.system_metadata as unknown as UsdaPaymentData}
+                            isMine={isMine}
+                            onDetail={(id) => setUsdaDetailId(id)}
+                          />
+                        ) : msg.message_type === "usda_request" ? (
+                          <UsdaRequestBubble
+                            data={msg.system_metadata as unknown as UsdaPaymentData}
+                            isMine={isMine}
+                            myUserId={auth?.userId ?? ""}
+                            onPay={async (paymentId) => {
+                              try {
+                                await apiUsdaPayRequest(paymentId);
+                              } catch { /* verrà aggiornato via WS */ }
+                            }}
+                            onDetail={(id) => setUsdaDetailId(id)}
+                          />
                         ) : (
                           renderText()
                         )}
@@ -2902,6 +2977,24 @@ export default function ChatPage({ onNavigate }: Props) {
                 <span className="attach-sheet-icon">📄</span>
                 <span>Documento</span>
               </button>
+              {activeConv?.type !== "group" && (
+                <>
+                  <button
+                    className="attach-sheet-item"
+                    onClick={() => { setShowAttachSheet(false); setTimeout(() => setShowSendUsda(true), 80); }}
+                  >
+                    <span className="attach-sheet-icon">💰</span>
+                    <span>Invia USDA</span>
+                  </button>
+                  <button
+                    className="attach-sheet-item"
+                    onClick={() => { setShowAttachSheet(false); setTimeout(() => setShowRequestUsda(true), 80); }}
+                  >
+                    <span className="attach-sheet-icon">💸</span>
+                    <span>Richiedi USDA</span>
+                  </button>
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -3271,6 +3364,39 @@ export default function ChatPage({ onNavigate }: Props) {
         <LocationViewer
           meta={locationViewer}
           onClose={() => setLocationViewer(null)}
+        />
+      )}
+
+      {/* ── USDA Payments ─────────────────────────────────────────────────── */}
+      {showSendUsda && activeConv && auth && activeConv.type !== "group" && (
+        <SendUsdaSheet
+          conversationId={activeConvId ?? ""}
+          toUserId={activeConv.other_user?.user_id ?? ""}
+          toName={activeConv.other_user?.display_name ?? activeConv.other_user?.username ?? "Utente"}
+          onClose={() => setShowSendUsda(false)}
+          onSent={() => setShowSendUsda(false)}
+          onNeedWallet={() => { setShowSendUsda(false); setShowWalletSetup(true); }}
+        />
+      )}
+      {showRequestUsda && activeConv && auth && activeConv.type !== "group" && (
+        <RequestUsdaSheet
+          conversationId={activeConvId ?? ""}
+          toUserId={activeConv.other_user?.user_id ?? ""}
+          toName={activeConv.other_user?.display_name ?? activeConv.other_user?.username ?? "Utente"}
+          onClose={() => setShowRequestUsda(false)}
+          onRequested={() => setShowRequestUsda(false)}
+        />
+      )}
+      {usdaDetailId && (
+        <UsdaPaymentDetail
+          paymentId={usdaDetailId}
+          onClose={() => setUsdaDetailId(null)}
+        />
+      )}
+      {showWalletSetup && (
+        <WalletSetupSheet
+          onClose={() => setShowWalletSetup(false)}
+          onSetup={() => { setShowWalletSetup(false); setShowSendUsda(true); }}
         />
       )}
 

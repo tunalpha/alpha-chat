@@ -73,4 +73,8 @@ v1Router.use("/push", pushRoutes);
 import diagnosticsRoutes from "./diagnostics.routes";
 v1Router.use("/diagnostics", diagnosticsRoutes);
 
+// USDA Payments — adapter-layer (MockAdapter → HttpAdapter quando USDA_API_BASE_URL è configurato)
+import usdaRoutes from "./usda.routes";
+v1Router.use("/usda", usdaRoutes);
+
 export default v1Router;
