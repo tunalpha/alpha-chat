@@ -332,6 +332,51 @@ export async function getThumbnailSignedUrl(
 }
 
 // ---------------------------------------------------------------------------
+// downloadMediaBuffer — proxy server-side: scarica bytes cifrati da R2
+// Richiesto perché Cloudflare R2 non ha CORS configurabile via S3 API —
+// il browser non può fare fetch cross-origin verso signed URL direttamente.
+// ---------------------------------------------------------------------------
+
+export async function downloadMediaBuffer(
+  userId: string,
+  mediaId: string,
+): Promise<{ buffer: Buffer; mimeType: string }> {
+  const userObjectId  = new mongoose.Types.ObjectId(userId);
+  const mediaObjectId = new mongoose.Types.ObjectId(mediaId);
+
+  const media = await mediaRepo.findById(mediaObjectId);
+  if (!media) throw new AppError("MEDIA_NOT_FOUND", 404);
+
+  const membership = await memberRepo.findMembership(media.conversation_id, userObjectId);
+  if (!membership || membership.left_at !== null) {
+    throw new AppError("NOT_CHAT_MEMBER", 403);
+  }
+
+  const { buffer } = await storageService.downloadFileBuffer(media.storageKey);
+  return { buffer, mimeType: "application/octet-stream" }; // sempre opaco (cifrato AES)
+}
+
+export async function downloadThumbnailBuffer(
+  userId: string,
+  mediaId: string,
+): Promise<{ buffer: Buffer; mimeType: string }> {
+  const userObjectId  = new mongoose.Types.ObjectId(userId);
+  const mediaObjectId = new mongoose.Types.ObjectId(mediaId);
+
+  const media = await mediaRepo.findById(mediaObjectId);
+  if (!media) throw new AppError("MEDIA_NOT_FOUND", 404);
+  if (!media.thumbnailKey) throw new AppError("THUMBNAIL_NOT_FOUND", 404);
+
+  const membership = await memberRepo.findMembership(media.conversation_id, userObjectId);
+  if (!membership || membership.left_at !== null) {
+    throw new AppError("NOT_CHAT_MEMBER", 403);
+  }
+
+  const { buffer } = await storageService.downloadFileBuffer(media.thumbnailKey);
+  return { buffer, mimeType: "application/octet-stream" };
+}
+
+// ---------------------------------------------------------------------------
 // deleteMediaFiles — elimina file R2 + documento MongoDB per un mediaId
 // (usato da message.service su Secure Destroy)
 // ---------------------------------------------------------------------------

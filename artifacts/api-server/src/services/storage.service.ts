@@ -235,6 +235,31 @@ export async function deleteFile(key: string): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// downloadFileBuffer — scarica i byte raw da R2 (per proxy server-side)
+// Evita la necessità di CORS configurato sul bucket R2.
+// ---------------------------------------------------------------------------
+
+export async function downloadFileBuffer(key: string): Promise<{ buffer: Buffer; contentType: string }> {
+  const t0 = Date.now();
+  try {
+    const cmd = new GetObjectCommand({ Bucket: config.r2.bucket, Key: key });
+    const resp = await r2.send(cmd);
+    if (!resp.Body) throw new Error("R2 GetObject: body vuoto");
+    // Body è un ReadableStream (Node.js) — convertiamo in Buffer
+    const chunks: Buffer[] = [];
+    for await (const chunk of resp.Body as AsyncIterable<Uint8Array>) {
+      chunks.push(Buffer.from(chunk));
+    }
+    const buffer = Buffer.concat(chunks);
+    logR2Event({ event_type: "DOWNLOAD", status: "success", storage_key: key, file_size: buffer.length, duration_ms: Date.now() - t0 });
+    return { buffer, contentType: resp.ContentType ?? "application/octet-stream" };
+  } catch (err) {
+    logR2Event({ event_type: "DOWNLOAD", status: "error", storage_key: key, duration_ms: Date.now() - t0, error_message: (err as Error).message });
+    throw err;
+  }
+}
+
+// ---------------------------------------------------------------------------
 // getSignedDownloadUrl
 // ---------------------------------------------------------------------------
 

@@ -38,7 +38,7 @@ export const uploadMedia: RequestHandler = async (req, res, next) => {
 };
 
 // ---------------------------------------------------------------------------
-// GET /api/v1/media/:mediaId — Restituisce Signed URL per download diretto da R2
+// GET /api/v1/media/:mediaId — Signed URL per download diretto da R2 (legacy)
 // ---------------------------------------------------------------------------
 
 export const getMedia: RequestHandler = async (req, res, next) => {
@@ -55,7 +55,28 @@ export const getMedia: RequestHandler = async (req, res, next) => {
 };
 
 // ---------------------------------------------------------------------------
-// GET /api/v1/media/:mediaId/thumbnail — Signed URL per la thumbnail
+// GET /api/v1/media/:mediaId/download — Proxy R2 → client (no CORS needed)
+// Scarica i byte cifrati da R2 server-side e li restituisce al browser.
+// ---------------------------------------------------------------------------
+
+export const downloadMedia: RequestHandler = async (req, res, next) => {
+  try {
+    const { mediaId } = req.params as unknown as MediaIdParam;
+    const userId      = req.user!.userId;
+
+    const { buffer, mimeType } = await mediaService.downloadMediaBuffer(userId, mediaId);
+
+    res.setHeader("Content-Type", mimeType);
+    res.setHeader("Content-Length", buffer.length);
+    res.setHeader("Cache-Control", "private, max-age=300, immutable");
+    res.status(200).send(buffer);
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ---------------------------------------------------------------------------
+// GET /api/v1/media/:mediaId/thumbnail — Signed URL per la thumbnail (legacy)
 // ---------------------------------------------------------------------------
 
 export const getMediaThumbnail: RequestHandler = async (req, res, next) => {
@@ -66,6 +87,26 @@ export const getMediaThumbnail: RequestHandler = async (req, res, next) => {
     const result = await mediaService.getThumbnailSignedUrl(userId, mediaId);
 
     res.status(200).json(successResponse(result, req.requestId));
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ---------------------------------------------------------------------------
+// GET /api/v1/media/:mediaId/thumbnail/download — Proxy thumbnail R2 → client
+// ---------------------------------------------------------------------------
+
+export const downloadMediaThumbnail: RequestHandler = async (req, res, next) => {
+  try {
+    const { mediaId } = req.params as unknown as MediaIdParam;
+    const userId      = req.user!.userId;
+
+    const { buffer, mimeType } = await mediaService.downloadThumbnailBuffer(userId, mediaId);
+
+    res.setHeader("Content-Type", mimeType);
+    res.setHeader("Content-Length", buffer.length);
+    res.setHeader("Cache-Control", "private, max-age=300, immutable");
+    res.status(200).send(buffer);
   } catch (err) {
     next(err);
   }

@@ -10,7 +10,7 @@ import multer from "multer";
 import { authenticate } from "../../middleware/authenticate.middleware";
 import { validate } from "../../middleware/validate.middleware";
 import { UploadMediaMetaSchema, MediaIdParamSchema } from "../../validation/media.schemas";
-import { uploadMedia, getMedia, getMediaThumbnail } from "../../controllers/media.controller";
+import { uploadMedia, getMedia, getMediaThumbnail, downloadMedia, downloadMediaThumbnail } from "../../controllers/media.controller";
 
 const router = Router();
 
@@ -33,10 +33,16 @@ router.post(
   uploadMedia,
 );
 
-/** GET /api/v1/media/:mediaId — Signed URL per download diretto da R2 */
+/** GET /api/v1/media/:mediaId — Signed URL per download diretto da R2 (legacy) */
 router.get("/:mediaId", validate("params", MediaIdParamSchema), getMedia);
 
-/** GET /api/v1/media/:mediaId/thumbnail — Signed URL per thumbnail */
+/** GET /api/v1/media/:mediaId/download — Proxy R2 → client (no CORS issues) */
+router.get("/:mediaId/download", validate("params", MediaIdParamSchema), downloadMedia);
+
+/** GET /api/v1/media/:mediaId/thumbnail — Signed URL per thumbnail (legacy) */
 router.get("/:mediaId/thumbnail", validate("params", MediaIdParamSchema), getMediaThumbnail);
+
+/** GET /api/v1/media/:mediaId/thumbnail/download — Proxy thumbnail R2 → client */
+router.get("/:mediaId/thumbnail/download", validate("params", MediaIdParamSchema), downloadMediaThumbnail);
 
 export default router;

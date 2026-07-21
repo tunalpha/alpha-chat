@@ -1095,18 +1095,14 @@ export async function apiFetchMediaBlob(mediaId: string): Promise<string> {
   const headers: Record<string, string> = {};
   if (token) headers["Authorization"] = `Bearer ${token}`;
 
-  // 1. Ottieni il Signed URL dal backend
-  const metaRes = await fetch(`${BASE}/media/${mediaId}`, { headers });
-  if (!metaRes.ok) {
-    const body = await metaRes.json().catch(() => ({})) as { error?: { code?: string } };
-    throw new Error(body.error?.code ?? `HTTP ${metaRes.status}`);
+  // Proxy server-side: il server scarica da R2 e restituisce i byte direttamente.
+  // Evita CORS cross-origin verso R2 signed URL (non configurabile via S3 API su Cloudflare R2).
+  const res = await fetch(`${BASE}/media/${mediaId}/download`, { headers });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({})) as { error?: { code?: string } };
+    throw new Error(body.error?.code ?? `HTTP ${res.status}`);
   }
-  const { data } = await metaRes.json() as { data: { url: string; mime_type: string } };
-
-  // 2. Fetch diretto da R2 (Signed URL, nessun header auth necessario)
-  const blobRes = await fetch(data.url);
-  if (!blobRes.ok) throw new Error(`R2 download fallito: ${blobRes.status}`);
-  const blob = await blobRes.blob();
+  const blob = await res.blob();
   return URL.createObjectURL(blob);
 }
 
@@ -1163,19 +1159,14 @@ export async function apiFetchAndDecryptMediaBlob(
   const headers: Record<string, string> = {};
   if (token) headers["Authorization"] = `Bearer ${token}`;
 
-  // Sprint 29: il backend restituisce un Signed URL R2 — fetch a due fasi.
-  // 1. Ottieni il Signed URL
-  const metaRes = await fetch(`${BASE}/media/${mediaId}`, { headers });
-  if (!metaRes.ok) {
-    const body = await metaRes.json().catch(() => ({})) as { error?: { code?: string } };
-    throw new Error(body.error?.code ?? `HTTP ${metaRes.status}`);
+  // Proxy server-side: evita fetch cross-origin verso R2 (CORS non configurabile via S3 API).
+  // Il server scarica i byte cifrati da R2 e li restituisce direttamente.
+  const res = await fetch(`${BASE}/media/${mediaId}/download`, { headers });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({})) as { error?: { code?: string } };
+    throw new Error(body.error?.code ?? `HTTP ${res.status}`);
   }
-  const { data: metaData } = await metaRes.json() as { data: { url: string } };
-
-  // 2. Fetch del ciphertext da R2 (nessun header auth — Signed URL)
-  const blobRes = await fetch(metaData.url);
-  if (!blobRes.ok) throw new Error(`R2 download fallito: ${blobRes.status}`);
-  const encrypted = await blobRes.arrayBuffer();
+  const encrypted = await res.arrayBuffer();
 
   // AES-256-GCM decrypt — chiave estratta dal metadata Signal-decifrato
   const binKey = atob(keyBase64);
