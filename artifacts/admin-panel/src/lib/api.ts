@@ -706,6 +706,27 @@ export async function downloadDiagExport(params?: {
   URL.revokeObjectURL(url);
 }
 
+// ── Call Monitor — Sprint 30 ───────────────────────────────────────────────────
+
+export interface CallMetrics {
+  calls_today:      number;
+  active_now:       number;
+  avg_duration_sec: number;
+  completed_count:  number;
+  missed_count:     number;
+  rejected_count:   number;
+  busy_count:       number;
+  timeout_count:    number;
+  cancelled_count:  number;
+  error_count:      number;
+  success_rate:     number;
+  chart_24h:        { hour: number; calls: number; avg_duration: number }[];
+}
+
+export async function getCallMetrics(): Promise<CallMetrics> {
+  return apiFetch<CallMetrics>("/calls/metrics");
+}
+
 export async function downloadAuditExport(days: number = 7): Promise<void> {
   const token = getToken();
   const res = await fetch(`${BASE}/audit/export?days=${days}`, {

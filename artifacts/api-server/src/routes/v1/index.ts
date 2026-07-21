@@ -48,6 +48,10 @@ v1Router.use("/groups", groupRoutes);
 import callsRoutes from "./calls.routes";
 v1Router.use("/calls", callsRoutes);
 
+// Chiamate — State Machine REST API — Sprint 30 (modulo separato, zero regressioni)
+import callSessionRoutes from "./call-session.routes";
+v1Router.use("/calls", callSessionRoutes);
+
 // Account Recovery — Sprint 22
 import { recoveryAuthRouter, recoveryAccountRouter } from "./account-recovery.routes";
 v1Router.use("/auth/recover",     recoveryAuthRouter);

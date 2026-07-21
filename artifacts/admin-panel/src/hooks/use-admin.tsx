@@ -6,6 +6,7 @@ import {
   getR2Dashboard, getR2Health, getR2Search, runR2Cleanup, runR2Consistency,
   getR2Encryption, getR2TopUsers, getR2Activity, getR2Errors,
   getR2Pricing, updateR2Pricing,
+  getCallMetrics,
 } from "@/lib/api";
 
 export const useAdminStats = () => useQuery({
@@ -169,3 +170,11 @@ export const useSetTempPassword = () =>
   useMutation({
     mutationFn: adminSetTempPassword,
   });
+
+// ── Call Monitor — Sprint 30 ───────────────────────────────────────────────────
+
+export const useCallMetrics = () => useQuery({
+  queryKey: ["callMetrics"],
+  queryFn:  getCallMetrics,
+  refetchInterval: 30_000,
+});

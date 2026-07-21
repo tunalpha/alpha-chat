@@ -23,6 +23,7 @@ import { wsManager, type ClientConnection } from "./ws-manager";
 import { verifyAccessToken } from "../services/jwt.service";
 import { setOnline, setOffline, setTyping } from "../services/presence.service";
 import { callMetrics } from "./call-metrics";
+import * as callSessionService from "../services/call-session.service";
 import { ConversationMemberRepository } from "../repositories/conversation-member.repository";
 import { UserModel } from "../models/user.model";
 import type {
@@ -264,6 +265,8 @@ export function createWsServer(httpServer: HttpServer): WebSocketServer {
           // Busy check: callee già in chiamata attiva
           if (wsManager.isInCall(toId)) {
             safeSend(ws, { type: "call.busy", payload: { to_user_id: toId } });
+            // Fire-and-forget — non blocca il signaling
+            callSessionService.onCallBusy(callId, userId!, toId);
             break;
           }
 
@@ -332,6 +335,12 @@ export function createWsServer(httpServer: HttpServer): WebSocketServer {
 
             // Bufferizza per re-delivery se il callee si riconnette entro 35s
             wsManager.setPendingCall(toId, callIncomingPayload);
+            // Fire-and-forget state machine — non blocca il signaling
+            callSessionService.onCallOffer(
+              callId, userId!, toId,
+              ((p["call_type"] as string) === "video" ? "video" : "audio"),
+              p["conversation_id"] as string | undefined,
+            );
 
             // Push per dispositivi offline oppure con zombie connection (isOnline=true ma openCount=0)
             // In entrambi i casi non esiste un socket OPEN → la push è l'unico canale affidabile.
@@ -397,6 +406,8 @@ export function createWsServer(httpServer: HttpServer): WebSocketServer {
 
           logger.info({ calleeId: userId, callerId: toId }, "[DIAG-SRV] call.answer ricevuto → callee ha ACCETTATO");
           callMetrics.calls_answered++;
+          // Fire-and-forget state machine
+          callSessionService.onCallAnswer(callId, userId!, toId);
 
           // Chiamata accettata: cancella la pending call (non serve più re-delivery)
           wsManager.clearPendingCall(userId!);
@@ -445,6 +456,8 @@ export function createWsServer(httpServer: HttpServer): WebSocketServer {
 
           logger.info({ calleeId: userId, callerId: toId, reason: p["reason"] }, "[DIAG-SRV] call.reject ricevuto → callee ha RIFIUTATO (o errore acceptCall)");
           callMetrics.calls_failed++;
+          // Fire-and-forget state machine
+          callSessionService.onCallReject(callId, userId!, toId, p["reason"] as string | undefined);
 
           // Chiamata rifiutata: cancella la pending call
           wsManager.clearPendingCall(userId!);
@@ -484,6 +497,8 @@ export function createWsServer(httpServer: HttpServer): WebSocketServer {
           if (p["reason"] === "timeout" || p["reason"] === "cancelled") {
             callMetrics.calls_failed++;
           }
+          // Fire-and-forget state machine
+          callSessionService.onCallEnd(callId, userId!, toId, p["reason"] as string | undefined);
           const endDelivered = wsManager.sendToUser(toId, {
             type: "call.ended",
             payload: { from_user_id: userId },

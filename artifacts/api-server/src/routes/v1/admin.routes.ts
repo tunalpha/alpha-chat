@@ -1841,4 +1841,14 @@ router.post("/r2/consistency", requireAdmin("super_admin"), async (_req: Request
   } catch (err) { next(err); }
 });
 
+// ── Call Monitor metrics — Sprint 30 ──────────────────────────────────────────
+import { getCallMetrics } from "../../services/call-session.service";
+
+router.get("/calls/metrics", requireAdmin("read_only"), async (_req, res, next) => {
+  try {
+    const metrics = await getCallMetrics();
+    res.json(metrics);
+  } catch (err) { next(err); }
+});
+
 export default router;
