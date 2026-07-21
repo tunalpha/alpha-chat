@@ -6,6 +6,7 @@ import { SetDisappearingSchema } from "../../validation/privacy.schemas";
 import {
   clearConversationMessages,
   createConversation,
+  deleteConversation,
   listConversations,
   markConversationRead,
 } from "../../controllers/conversation.controller";
@@ -40,6 +41,14 @@ router.patch("/:id/read", markConversationRead);
  * Abilita/disabilita messaggi a scomparsa per la conversazione (Sprint 15).
  */
 router.patch("/:id/disappearing", validate("body", SetDisappearingSchema), setDisappearingMessages);
+
+/**
+ * DELETE /api/v1/conversations/:id
+ * Elimina la conversazione per l'utente corrente (soft-delete della membership).
+ * L'altro partecipante non viene coinvolto. Se entrambi eliminano, la
+ * conversazione scompare dalla lista di tutti.
+ */
+router.delete("/:id", deleteConversation);
 
 /**
  * DELETE /api/v1/conversations/:id/messages

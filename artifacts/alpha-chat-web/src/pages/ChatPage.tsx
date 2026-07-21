@@ -236,7 +236,7 @@ function ChatHeader({
       </div>
 
       <div className="chat-header-info">
-        <div className="chat-header-name">{isGroup ? (groupName ?? "Gruppo") : (otherUser?.display_name ?? "Chat")}</div>
+        <div className="chat-header-name">{isGroup ? (groupName ?? "Gruppo") : (otherUser?.display_name ?? otherUser?.username ?? "Utente sconosciuto")}</div>
         <div className="chat-header-status-row">
           <div className={`chat-header-status ${isGroup ? "offline" : (isOnline ? "online" : "offline")}`}>
             {isGroup ? `◎ Gruppo` : (isOnline ? `● ${t("chat.online")}` : `○ ${t("chat.offline")}`)}
@@ -1907,8 +1907,13 @@ export default function ChatPage({ onNavigate }: Props) {
               const isOnline  = other ? onlineUsers.has(other.user_id) : false;
               const isActive  = conv.conversation_id === activeConvId;
               const hasUnread = conv.unread_count > 0;
-              const displayName = isGroup ? (conv.name ?? "Gruppo") : (other?.display_name ?? "Chat");
-              const avatarChar  = isGroup ? "👥" : (other?.display_name[0]?.toUpperCase() ?? "?");
+              const displayName = isGroup
+                ? (conv.name ?? "Gruppo")
+                : (other?.display_name ?? other?.username ?? "Utente sconosciuto");
+              if (!isGroup && !other) {
+                console.warn("[ChatPage] other_user null per conversazione diretta — dati incompleti dal backend", conv.conversation_id);
+              }
+              const avatarChar = isGroup ? "👥" : (displayName[0]?.toUpperCase() ?? "?");
 
               // Anteprima ultimo messaggio
               const preview = conv.last_message_preview;
@@ -1955,6 +1960,7 @@ export default function ChatPage({ onNavigate }: Props) {
                       className="conv-swipe-btn conv-swipe-delete"
                       onClick={async () => {
                         setSwipedConvId(null);
+                        // Optimistic update: rimuoviamo subito dalla lista
                         setConversations((prev) => prev.filter((c) => c.conversation_id !== convId));
                         if (activeConvId === convId) { setActiveConvId(null); setMobileShowChat(false); }
                         try {
@@ -1962,10 +1968,11 @@ export default function ChatPage({ onNavigate }: Props) {
                             const { apiLeaveGroup } = await import("../lib/api");
                             await apiLeaveGroup(convId);
                           } else {
-                            const { apiClearConversationMessages } = await import("../lib/api");
-                            await apiClearConversationMessages(convId);
+                            // Vera eliminazione: soft-delete della membership (non solo messaggi)
+                            const { apiDeleteConversation } = await import("../lib/api");
+                            await apiDeleteConversation(convId);
                           }
-                        } catch { /* silenzioso */ }
+                        } catch { /* silenzioso — optimistic update già applicato */ }
                         showToast(isGroup ? "Hai lasciato il gruppo" : "Conversazione eliminata");
                       }}
                     >🗑️</button>
@@ -2496,7 +2503,7 @@ export default function ChatPage({ onNavigate }: Props) {
                     >
                       <div className="forward-conv-avatar">{letter}</div>
                       <div className="forward-conv-info">
-                        <span className="forward-conv-name">{conv.other_user?.display_name ?? conv.other_user?.username ?? "Chat"}</span>
+                        <span className="forward-conv-name">{conv.other_user?.display_name ?? conv.other_user?.username ?? "Utente sconosciuto"}</span>
                         <span className="forward-conv-sub">@{conv.other_user?.username}</span>
                       </div>
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16" style={{ opacity: 0.4 }}>

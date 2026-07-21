@@ -76,6 +76,24 @@ export const markConversationRead: RequestHandler = async (req, res, next) => {
 };
 
 // ---------------------------------------------------------------------------
+// DELETE /api/v1/conversations/:id  — Elimina conversazione (soft-delete membership)
+// ---------------------------------------------------------------------------
+
+export const deleteConversation: RequestHandler = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    if (!mongoose.isValidObjectId(id)) {
+      res.status(400).json({ success: false, error: "Invalid conversation id" });
+      return;
+    }
+    await conversationService.deleteConversation(req.user!.userId, id as string);
+    res.status(204).send();
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ---------------------------------------------------------------------------
 // DELETE /api/v1/conversations/:id/messages  — Cancella tutta la chat (hard)
 // ---------------------------------------------------------------------------
 

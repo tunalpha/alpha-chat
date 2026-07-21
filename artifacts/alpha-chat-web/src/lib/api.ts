@@ -1253,6 +1253,11 @@ export async function apiMarkRead(convId: string): Promise<void> {
   await request<void>("PATCH", `/conversations/${convId}/read`);
 }
 
+/** Elimina la conversazione per l'utente corrente (soft-delete membership). */
+export async function apiDeleteConversation(convId: string): Promise<void> {
+  await request<void>("DELETE", `/conversations/${convId}`);
+}
+
 export async function apiRevokeInvites(): Promise<{ revoked: number }> {
   return request<{ revoked: number }>("DELETE", "/invites/mine");
 }

@@ -235,10 +235,13 @@ export async function listConversations(
   }
 
   // 4. Fetch profili altri utenti (direct chats)
+  // Nota: NON filtriamo per status:"active" — vogliamo mostrare anche utenti
+  // disattivati/eliminati con il loro username, così il frontend può mostrare
+  // "Utente eliminato" invece di null. Il fallback "Chat" era causato da questo filtro.
   const otherUserIds = [...otherMembersMap.values()].map((m) => m.userId);
   const otherUsers =
     otherUserIds.length > 0
-      ? await UserModel.find({ _id: { $in: otherUserIds }, status: "active" }).lean()
+      ? await UserModel.find({ _id: { $in: otherUserIds } }).lean()
       : [];
 
   const otherUserMap = new Map(otherUsers.map((u) => [u._id.toString(), u]));
@@ -302,11 +305,20 @@ export async function listConversations(
         ? {
             user_id: otherUser._id.toString(),
             username: otherUser.username,
-            display_name: otherUser.display_name,
+            display_name: otherUser.display_name ?? otherUser.username ?? null,
             avatar_url: null,
-            is_verified: otherUser.is_verified,
+            is_verified: otherUser.is_verified ?? false,
+            is_deleted: otherUser.status !== "active",
           }
-        : null,
+        : (() => {
+            // other_user null = membro non trovato nel DB (account eliminato hard).
+            // Log per investigazione, poi ritorniamo null — il frontend gestirà il fallback.
+            logger.warn({
+              conversationId: conv._id.toString(),
+              otherMemberInfo: otherMembersMap.get(conv._id.toString()),
+            }, "listConversations: other_user not found in DB for direct conversation");
+            return null;
+          })(),
       last_message_at: conv.last_message_at?.toISOString() ?? null,
       last_activity_at: conv.last_activity_at.toISOString(),
       member_count: conv.member_count,
@@ -444,6 +456,31 @@ function formatConversationResult(
 }
 
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// deleteConversation — elimina la conversazione per l'utente corrente
+// ---------------------------------------------------------------------------
+
+/**
+ * Soft-delete della membership dell'utente: imposta deleted_at = now.
+ * La conversazione rimane visibile agli altri partecipanti.
+ * L'utente non vedrà più la conversazione nella lista.
+ */
+export async function deleteConversation(
+  userId: string,
+  conversationId: string,
+): Promise<void> {
+  const userObjectId = new mongoose.Types.ObjectId(userId);
+  const convObjectId = new mongoose.Types.ObjectId(conversationId);
+
+  const deleted = await memberRepo.softDelete(convObjectId, userObjectId);
+
+  if (!deleted) {
+    throw new AppError("CONVERSATION_NOT_FOUND", 404);
+  }
+
+  logger.info({ userId, conversationId }, "deleteConversation: membership soft-deleted");
+}
+
 // clearConversationMessages — Sprint 24
 // Cancellazione definitiva di tutti i messaggi di una conversazione.
 // Solo per membri attivi. Hard delete da MongoDB.

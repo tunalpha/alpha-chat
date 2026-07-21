@@ -102,6 +102,22 @@ export class ConversationMemberRepository {
   }
 
   /**
+   * Soft-delete della membership dell'utente: imposta deleted_at = now.
+   * La conversazione rimane visibile agli altri partecipanti.
+   * Ritorna true se il documento è stato aggiornato, false se non trovato.
+   */
+  async softDelete(
+    conversationId: mongoose.Types.ObjectId,
+    userId: mongoose.Types.ObjectId,
+  ): Promise<boolean> {
+    const result = await ConversationMemberModel.updateOne(
+      { conversation_id: conversationId, user_id: userId, deleted_at: null },
+      { $set: { deleted_at: new Date() } },
+    );
+    return result.modifiedCount > 0;
+  }
+
+  /**
    * Re-aggiunge un membro che aveva già lasciato il gruppo (reset left_at).
    */
   async rejoinMember(
