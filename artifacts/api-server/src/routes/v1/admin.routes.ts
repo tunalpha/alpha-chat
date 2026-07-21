@@ -19,6 +19,10 @@ import { r2 } from "../../lib/r2-client";
 import { config } from "../../config";
 import { cleanupTempObjects } from "../../services/storage.service";
 import { R2EventModel } from "../../models/r2-event.model";
+import { R2PricingConfigModel, R2_PRICING_DEFAULTS } from "../../models/r2-pricing-config.model";
+
+// 60-second in-memory cache per la dashboard R2 (aggregation pesante)
+let _r2DashboardCache: { data: unknown; expires: number } | null = null;
 
 import { requireAdmin } from "../../middleware/require-admin.middleware";
 import { signAccessToken } from "../../services/jwt.service";
@@ -1300,12 +1304,18 @@ router.get("/diagnostics/export", requireAdmin("read_only"), async (req, res, ne
 // =============================================================================
 
 // ---------------------------------------------------------------------------
-// GET /admin/r2/dashboard — storage breakdown, growth, analytics 24h, cost
+// GET /admin/r2/dashboard — storage breakdown, growth, analytics, cost forecast
 // ---------------------------------------------------------------------------
 router.get("/r2/dashboard", requireAdmin("support"), async (_req: Request, res: Response, next: NextFunction) => {
   try {
+    // Serve dalla cache se valida (60s)
+    if (_r2DashboardCache && Date.now() < _r2DashboardCache.expires) {
+      res.json(_r2DashboardCache.data);
+      return;
+    }
+
     const now = new Date();
-    const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1_000);
+    const yesterday     = new Date(now.getTime() - 24 * 60 * 60 * 1_000);
     const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1_000);
 
     const typeExpr = {
@@ -1319,71 +1329,164 @@ router.get("/r2/dashboard", requireAdmin("support"), async (_req: Request, res: 
       },
     };
 
-    const [typeBreakdown, growth, analytics24h, totalStats] = await Promise.all([
-      // Storage breakdown by type
+    const [typeBreakdown, growth, analytics24h, totalStats, pricingDoc, classBCount] = await Promise.all([
       MediaModel.aggregate([
         { $group: { _id: typeExpr, count: { $sum: 1 }, bytes: { $sum: "$ciphertextSize" } } },
         { $project: { type: "$_id", count: 1, bytes: 1, _id: 0 } },
         { $sort: { bytes: -1 } },
       ]),
-      // Daily growth last 30 days
       MediaModel.aggregate([
         { $match: { createdAt: { $gte: thirtyDaysAgo } } },
-        {
-          $group: {
-            _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } },
-            uploads: { $sum: 1 },
-            bytes: { $sum: "$ciphertextSize" },
-          },
-        },
+        { $group: { _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } }, uploads: { $sum: 1 }, bytes: { $sum: "$ciphertextSize" } } },
         { $sort: { _id: 1 } },
         { $project: { date: "$_id", uploads: 1, bytes: 1, _id: 0 } },
       ]),
-      // Analytics last 24h
       MediaModel.aggregate([
         { $match: { createdAt: { $gte: yesterday } } },
         { $group: { _id: typeExpr, count: { $sum: 1 }, bytes: { $sum: "$ciphertextSize" } } },
         { $project: { type: "$_id", count: 1, bytes: 1, _id: 0 } },
       ]),
-      // Global totals
       MediaModel.aggregate([{ $group: { _id: null, count: { $sum: 1 }, bytes: { $sum: "$ciphertextSize" } } }]),
+      R2PricingConfigModel.findById("default").lean(),
+      // Class B: SIGNED_URL events this month (0 until R2EventModel accumulates data)
+      R2EventModel.countDocuments({ event_type: "SIGNED_URL", status: "success", created_at: { $gte: thirtyDaysAgo } }),
     ]);
 
-    const totalCount = (totalStats[0] as { count: number } | undefined)?.count ?? 0;
-    const totalBytes = (totalStats[0] as { bytes: number } | undefined)?.bytes ?? 0;
-    const totalGB = totalBytes / 1024 / 1024 / 1024;
+    const pricing = pricingDoc ?? R2_PRICING_DEFAULTS;
 
-    // R2 cost estimate (Cloudflare pricing 2025):
-    // Storage: $0.015/GB/month (first 10 GB free)
-    // Class A ops (write): $4.50/million (first 1M free/month)
-    // Class B ops (read): $0.36/million (first 10M free/month)
-    // Egress: $0 (free forever)
-    const billableGB = Math.max(0, totalGB - 10);
-    const storageCost = billableGB * 0.015;
-    const billableClassA = Math.max(0, totalCount - 1_000_000);
-    const classACost = (billableClassA / 1_000_000) * 4.50;
-    const estimatedDownloads = totalCount * 3; // 3 downloads per file avg
-    const billableClassB = Math.max(0, estimatedDownloads - 10_000_000);
-    const classBCost = (billableClassB / 1_000_000) * 0.36;
+    const totalCount    = (totalStats[0] as { count: number }  | undefined)?.count ?? 0;
+    const totalBytes    = (totalStats[0] as { bytes: number }  | undefined)?.bytes ?? 0;
+    const totalStorageGB = totalBytes / 1024 / 1024 / 1024;
 
-    res.json({
-      totals: { count: totalCount, bytes: totalBytes, gb: totalGB },
+    // Class A = total uploads; Class B = logged SIGNED_URL ops (fallback 3× uploads)
+    const classAOps = totalCount;
+    const classBOps = classBCount > 0 ? classBCount : classAOps * 3;
+
+    // ── Cost calculator ───────────────────────────────────────────────────────
+    function calcCost(storageGB: number, classA: number, classB: number) {
+      const billableGB   = Math.max(0, storageGB - pricing.free_storage_gb);
+      const storageCost  = billableGB * pricing.storage_price_per_gb;
+      const billableA    = Math.max(0, classA  - pricing.free_class_a);
+      const classACost   = (billableA / 1_000_000) * pricing.class_a_price_per_million;
+      const billableB    = Math.max(0, classB  - pricing.free_class_b);
+      const classBCost   = (billableB / 1_000_000) * pricing.class_b_price_per_million;
+      const total        = storageCost + classACost + classBCost;
+      return {
+        storage_cost:       parseFloat(storageCost.toFixed(4)),
+        class_a_cost:       parseFloat(classACost.toFixed(4)),
+        class_b_cost:       parseFloat(classBCost.toFixed(4)),
+        egress_cost:        0,
+        total_cost:         parseFloat(total.toFixed(4)),
+        billable_storage_gb: parseFloat(billableGB.toFixed(4)),
+        billable_class_a:   billableA,
+        billable_class_b:   billableB,
+      };
+    }
+
+    const current       = calcCost(totalStorageGB, classAOps, classBOps);
+    const freeTierPct   = totalStorageGB > 0 ? (totalStorageGB / pricing.free_storage_gb) * 100 : 0;
+    const remainingFreeGB = Math.max(0, pricing.free_storage_gb - totalStorageGB);
+
+    // ── Forecast ──────────────────────────────────────────────────────────────
+    const recentPoints  = (growth as Array<{ bytes: number }>).slice(-7);
+    const avgDailyBytes = recentPoints.length > 0
+      ? recentPoints.reduce((s, g) => s + g.bytes, 0) / recentPoints.length
+      : 0;
+    const avgDailyGB = avgDailyBytes / 1024 / 1024 / 1024;
+    const daysToFreeLimit = avgDailyGB > 0 && remainingFreeGB > 0
+      ? Math.ceil(remainingFreeGB / avgDailyGB)
+      : null;
+
+    const payload = {
+      totals:       { count: totalCount, bytes: totalBytes, gb: totalStorageGB },
       type_breakdown: typeBreakdown,
-      growth_30d: growth,
+      growth_30d:   growth,
       analytics_24h: analytics24h,
-      cost_estimate: {
-        storage_gb: totalGB,
-        billable_gb: billableGB,
-        storage_usd: parseFloat(storageCost.toFixed(4)),
-        class_a_ops: totalCount,
-        class_a_usd: parseFloat(classACost.toFixed(4)),
-        class_b_ops_estimated: estimatedDownloads,
-        class_b_usd: parseFloat(classBCost.toFixed(4)),
-        egress_usd: 0,
-        total_usd: parseFloat((storageCost + classACost + classBCost).toFixed(4)),
-        note: "Stima basata su upload MongoDB. Class B stimato: 3 download/file.",
+      cost_forecast: {
+        pricing: {
+          free_storage_gb:           pricing.free_storage_gb,
+          storage_price_per_gb:      pricing.storage_price_per_gb,
+          free_class_a:              pricing.free_class_a,
+          class_a_price_per_million: pricing.class_a_price_per_million,
+          free_class_b:              pricing.free_class_b,
+          class_b_price_per_million: pricing.class_b_price_per_million,
+          egress_price_per_gb:       pricing.egress_price_per_gb,
+        },
+        storage_gb:             parseFloat(totalStorageGB.toFixed(4)),
+        free_storage_gb:        pricing.free_storage_gb,
+        free_tier_pct:          parseFloat(Math.min(freeTierPct, 999).toFixed(2)),
+        is_free_tier:           current.total_cost === 0,
+        ...current,
+        class_a_ops:            classAOps,
+        class_b_ops:            classBOps,
+        class_b_from_log:       classBCount > 0,
+        egress_gb:              0,
+        free_tier_remaining_gb: parseFloat(remainingFreeGB.toFixed(4)),
+        avg_daily_gb:           parseFloat(avgDailyGB.toFixed(6)),
+        days_to_free_limit:     daysToFreeLimit,
+        forecast_30d_gb:        parseFloat((totalStorageGB + avgDailyGB * 30).toFixed(4)),
+        forecast_90d_gb:        parseFloat((totalStorageGB + avgDailyGB * 90).toFixed(4)),
+        forecast_365d_gb:       parseFloat((totalStorageGB + avgDailyGB * 365).toFixed(4)),
+        forecast_30d_cost:      calcCost(totalStorageGB + avgDailyGB * 30,  classAOps, classBOps).total_cost,
+        forecast_90d_cost:      calcCost(totalStorageGB + avgDailyGB * 90,  classAOps, classBOps).total_cost,
+        forecast_365d_cost:     calcCost(totalStorageGB + avgDailyGB * 365, classAOps, classBOps).total_cost,
       },
-    });
+    };
+
+    _r2DashboardCache = { data: payload, expires: Date.now() + 60_000 };
+    res.json(payload);
+  } catch (err) { next(err); }
+});
+
+// ---------------------------------------------------------------------------
+// GET /admin/r2/pricing — leggi configurazione prezzi
+// ---------------------------------------------------------------------------
+router.get("/r2/pricing", requireAdmin("support"), async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const cfg = await R2PricingConfigModel.findById("default").lean();
+    res.json(cfg ?? R2_PRICING_DEFAULTS);
+  } catch (err) { next(err); }
+});
+
+// ---------------------------------------------------------------------------
+// PUT /admin/r2/pricing — aggiorna prezzi (solo super_admin)
+// ---------------------------------------------------------------------------
+router.put("/r2/pricing", requireAdmin("super_admin"), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const fields = [
+      "free_storage_gb", "storage_price_per_gb",
+      "free_class_a", "class_a_price_per_million",
+      "free_class_b", "class_b_price_per_million",
+      "egress_price_per_gb",
+    ] as const;
+
+    const update: Record<string, number> = {};
+    for (const f of fields) {
+      const v = req.body[f];
+      if (v != null) {
+        const n = Number(v);
+        if (isNaN(n) || n < 0) {
+          res.status(400).json({ error: `Campo non valido: ${f}` });
+          return;
+        }
+        update[f] = n;
+      }
+    }
+
+    const updated = await R2PricingConfigModel.findOneAndUpdate(
+      { _id: "default" },
+      {
+        ...update,
+        updated_at: new Date(),
+        updated_by: (req.user as unknown as { userId?: string })?.userId ?? "unknown",
+      },
+      { upsert: true, new: true, setDefaultsOnInsert: true },
+    );
+
+    // Invalida cache dashboard
+    _r2DashboardCache = null;
+
+    res.json(updated);
   } catch (err) { next(err); }
 });
 

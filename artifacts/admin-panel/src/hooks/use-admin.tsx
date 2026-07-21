@@ -5,6 +5,7 @@ import {
   revokeUserSessions, adminSetTempPassword, getDevices, revokeDevice, downloadAuditExport,
   getR2Dashboard, getR2Health, getR2Search, runR2Cleanup, runR2Consistency,
   getR2Encryption, getR2TopUsers, getR2Activity, getR2Errors,
+  getR2Pricing, updateR2Pricing,
 } from "@/lib/api";
 
 export const useAdminStats = () => useQuery({
@@ -84,6 +85,23 @@ export const useR2Errors = () => useQuery({
   queryFn:  getR2Errors,
   refetchInterval: 10_000,
 });
+
+export const useR2Pricing = () => useQuery({
+  queryKey: ["r2Pricing"],
+  queryFn:  getR2Pricing,
+  staleTime: 60_000,
+});
+
+export const useUpdateR2Pricing = () => {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: updateR2Pricing,
+    onSuccess: () => {
+      void qc.invalidateQueries({ queryKey: ["r2Dashboard"] });
+      void qc.invalidateQueries({ queryKey: ["r2Pricing"] });
+    },
+  });
+};
 
 export const useSecurityEvents = (params: { page?: number; limit?: number; event?: string; user_id?: string; since?: string }) => useQuery({
   queryKey: ["securityEvents", params],

@@ -1,0 +1,179 @@
+Sì. Io lo implementerei con i prezzi ufficiali Cloudflare precaricati di default, ma mantenendoli modificabili da Admin nel caso Cloudflare aggiorni il listino. I valori ufficiali attuali per R2 Standard Storage sono: 10 GB/mese gratuiti, $0.015 per GB-mese oltre il free tier, 1 milione di operazioni Class A gratuite poi $4.50/milione, 10 milioni di operazioni Class B gratuite poi $0.36/milione, mentre l’egress è gratuito. 
+
+Questo è il prompt che darei all’agente:
+
+⸻
+
+Implementazione – R2 Cost Forecast (Cloudflare Official Pricing)
+
+Aggiungere una nuova card denominata “Cloudflare R2 Cost Forecast” nella dashboard /admin/r2-monitor.
+
+Obiettivo
+
+Calcolare automaticamente il costo mensile stimato del bucket utilizzando i prezzi ufficiali Cloudflare R2.
+
+Configurazione iniziale (default)
+
+Creare una configurazione modificabile nel backend (r2_pricing_config) con i seguenti valori iniziali:
+
+FREE_STORAGE_GB = 10
+STORAGE_PRICE_PER_GB = 0.015 USD
+FREE_CLASS_A = 1000000
+CLASS_A_PRICE_PER_MILLION = 4.50 USD
+FREE_CLASS_B = 10000000
+CLASS_B_PRICE_PER_MILLION = 0.36 USD
+EGRESS_PRICE_PER_GB = 0.00 USD
+
+I valori devono poter essere modificati dal Super Admin senza deploy.
+
+⸻
+
+Card
+
+Visualizzare:
+
+Cloudflare R2 Cost Forecast
+Storage utilizzato
+13.42 GB
+Storage gratuito
+10.00 GB
+Storage fatturabile
+3.42 GB
+Costo Storage
+0.05 USD
+Class A
+0.00 USD
+Class B
+0.00 USD
+Egress
+0.00 USD
+Totale stimato mese
+0.05 USD
+Stato
+🟡 Paid Tier
+
+Se il bucket è sotto i 10 GB:
+
+Totale stimato
+0.00 USD
+Stato
+🟢 Free Tier
+
+⸻
+
+Barra utilizzo Free Tier
+
+Mostrare una progress bar.
+
+Esempio:
+
+██████████░░░░░░░
+84%
+8.4 / 10 GB
+
+Colori:
+
+* Verde <80%
+* Giallo 80–100%
+* Rosso >100%
+
+⸻
+
+Forecast
+
+Calcolare automaticamente:
+
+* crescita media giornaliera
+* crescita ultimi 30 giorni
+* giorni stimati al raggiungimento dei 10 GB
+* costo previsto tra 30 giorni
+* costo previsto tra 90 giorni
+* costo previsto tra 365 giorni
+
+⸻
+
+Breakdown
+
+Mostrare separatamente:
+
+Storage
+
+Storage fatturabile
+3.42 GB
+×
+0.015 USD
+=
+0.051 USD
+
+Class A
+
+Operazioni
+1.24M
+Free
+1M
+Fatturate
+240000
+Costo
+1.08 USD
+
+Class B
+
+Operazioni
+13.8M
+Free
+10M
+Fatturate
+3.8M
+Costo
+1.37 USD
+
+Egress
+
+Egress
+245 GB
+Costo
+0.00 USD
+
+⸻
+
+Banner
+
+Se si supera il Free Tier:
+
+⚠️ Il bucket ha superato il piano gratuito Cloudflare.
+Costo mensile stimato:
+3.21 USD
+
+⸻
+
+API
+
+Estendere /admin/r2/dashboard aggiungendo:
+
+pricing
+forecast
+freeTierRemaining
+billableStorage
+estimatedMonthlyCost
+estimated30Days
+estimated90Days
+estimated365Days
+classAUsage
+classBUsage
+egressUsage
+
+⸻
+
+Performance
+
+Il calcolo deve essere eseguito server-side.
+
+Risposta API inferiore a 100 ms.
+
+Cache risultati 60 secondi.
+
+Aggiornamento automatico ogni minuto.
+
+⸻
+
+Con questa implementazione, il pannello mostrerà sempre una stima aggiornata dei costi, basata sui parametri ufficiali di Cloudflare, senza richiedere configurazioni manuali iniziali. 

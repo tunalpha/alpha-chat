@@ -322,12 +322,53 @@ export interface R2CostEstimate {
   class_b_ops_estimated: number; class_b_usd: number;
   egress_usd: number; total_usd: number; note: string;
 }
+export interface R2PricingConfig {
+  free_storage_gb:           number;
+  storage_price_per_gb:      number;
+  free_class_a:              number;
+  class_a_price_per_million: number;
+  free_class_b:              number;
+  class_b_price_per_million: number;
+  egress_price_per_gb:       number;
+  updated_at?:               string;
+  updated_by?:               string;
+}
+
+export interface R2CostForecast {
+  pricing:               R2PricingConfig;
+  storage_gb:            number;
+  free_storage_gb:       number;
+  free_tier_pct:         number;
+  is_free_tier:          boolean;
+  storage_cost:          number;
+  class_a_cost:          number;
+  class_b_cost:          number;
+  egress_cost:           number;
+  total_cost:            number;
+  billable_storage_gb:   number;
+  billable_class_a:      number;
+  billable_class_b:      number;
+  class_a_ops:           number;
+  class_b_ops:           number;
+  class_b_from_log:      boolean;
+  egress_gb:             number;
+  free_tier_remaining_gb: number;
+  avg_daily_gb:          number;
+  days_to_free_limit:    number | null;
+  forecast_30d_gb:       number;
+  forecast_90d_gb:       number;
+  forecast_365d_gb:      number;
+  forecast_30d_cost:     number;
+  forecast_90d_cost:     number;
+  forecast_365d_cost:    number;
+}
+
 export interface R2DashboardData {
-  totals:        { count: number; bytes: number; gb: number };
+  totals:         { count: number; bytes: number; gb: number };
   type_breakdown: R2TypeBreakdown[];
-  growth_30d:    R2GrowthPoint[];
-  analytics_24h: R2Analytics24h[];
-  cost_estimate: R2CostEstimate;
+  growth_30d:     R2GrowthPoint[];
+  analytics_24h:  R2Analytics24h[];
+  cost_forecast:  R2CostForecast;
 }
 export interface R2HealthData {
   connected: boolean; status: "healthy" | "warning" | "offline";
@@ -423,6 +464,14 @@ export async function getR2Activity(): Promise<{ events: R2ActivityEvent[]; tota
 
 export async function getR2Errors(): Promise<{ errors: R2ErrorEvent[]; total: number }> {
   return apiFetch("/r2/errors");
+}
+
+export async function getR2Pricing(): Promise<R2PricingConfig> {
+  return apiFetch("/r2/pricing");
+}
+
+export async function updateR2Pricing(data: Partial<Omit<R2PricingConfig, "updated_at" | "updated_by">>): Promise<R2PricingConfig> {
+  return apiFetch("/r2/pricing", { method: "PUT", body: JSON.stringify(data) });
 }
 
 // ---------------------------------------------------------------------------
