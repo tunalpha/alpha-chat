@@ -95,12 +95,19 @@ export default function ActiveCallScreen() {
     void video.play().catch(() => {});
   }, [remoteStream, callState, callType]);
 
+  // Stesso race condition del video remoto: per il callee setLocalStream() viene
+  // chiamato durante acceptCall() (step 1) prima che callState→"active" monti
+  // ActiveCallScreen. Quando il <video> locale monta, localStream non è cambiato
+  // → useEffect([localStream]) non ri-scatta → srcObject mai assegnato → PiP nero.
+  // Aggiungendo callState il effect ri-scatta al mount del componente.
   useEffect(() => {
     const video = localVideoRef.current;
     if (!video || !localStream) return;
-    video.srcObject = localStream;
+    if (video.srcObject !== localStream) {
+      video.srcObject = localStream;
+    }
     void video.play().catch(() => {});
-  }, [localStream]);
+  }, [localStream, callState]);
 
   // ── WebRTC stats ────────────────────────────────────────────────────────
 
