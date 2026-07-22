@@ -40,7 +40,6 @@ import NuclearDestroyPage from "./pages/NuclearDestroyPage";
 import { useNotifSync } from "./hooks/useNotifSync";
 import { initServiceWorker, requestAndSubscribe as pushSubscribe } from "./lib/pushManager";
 import SignalReinstallBanner from "./components/SignalReinstallBanner";
-import WalletSheet from "./components/usda/WalletSheet";
 
 export type AppView =
   | "chat"
@@ -262,7 +261,7 @@ export default function App() {
               <IncomingCallModal />
               <ActiveCallScreen />
               <BusyCallScreen />
-              <WalletSheet />
+
             </CallProvider>
           </WebSocketProvider>
         </LockProvider>

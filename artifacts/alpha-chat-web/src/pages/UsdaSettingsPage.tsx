@@ -13,12 +13,11 @@
  */
 
 import { useState, useCallback } from "react";
-import { useAccount, useChainId, useSwitchChain } from "wagmi";
 import {
   walletModal,
   USDA_CONTRACT_ADDRESS,
   USDA_CHAIN_ID,
-} from "../lib/wallet-client";
+} from "../lib/wallet-stub";
 
 // ── Costanti ─────────────────────────────────────────────────────────────────
 
@@ -52,11 +51,10 @@ interface Props {
 // ── Componente ────────────────────────────────────────────────────────────────
 
 export default function UsdaSettingsPage({ onBack }: Props) {
-  const { address, isConnected } = useAccount();
-  const chainId      = useChainId();
-  const { switchChainAsync } = useSwitchChain();
-
-  const isCorrectNetwork = chainId === USDA_CHAIN_ID;
+  // ── Wallet — stub (in attesa della nuova integrazione) ───────────────────
+  const address: string | undefined = undefined;
+  const isConnected      = false;
+  const isCorrectNetwork = false;
 
   const [copied,       setCopied]       = useState<string | null>(null);
   const [watchStatus,  setWatchStatus]  = useState<"idle" | "loading" | "ok" | "err">("idle");
@@ -70,15 +68,7 @@ export default function UsdaSettingsPage({ onBack }: Props) {
     });
   }, []);
 
-  // ── Switch rete ───────────────────────────────────────────────────────────
-  async function handleSwitchNetwork() {
-    setSwitchError(null);
-    try {
-      await switchChainAsync({ chainId: USDA_CHAIN_ID });
-    } catch {
-      setSwitchError("Impossibile cambiare rete automaticamente. Passa a Polygon Mainnet nel wallet.");
-    }
-  }
+  function handleSwitchNetwork() { walletModal.open(); }
 
   // ── wallet_watchAsset ─────────────────────────────────────────────────────
   async function handleAddToken() {

@@ -1,0 +1,141 @@
+Sono d’accordo con te su una cosa: a questo punto continuare a mettere patch su patch non ha senso.
+
+Dagli screenshot vedo che il comportamento è sempre lo stesso:
+
+* “Connessione a Trust Wallet…”
+* aspetta qualche secondo
+* torna alla lista wallet
+* Trust Wallet non si apre mai
+
+Questo significa che il deep link verso il wallet non viene nemmeno lanciato oppure il connettore non arriva mai a generarlo.
+
+Io farei un reset completo
+
+Non reinstallerei WalletConnect “a pezzi”. Rifarei l’integrazione da zero, usando solo il percorso ufficiale Reown, senza nessun codice ereditato.
+
+La mia architettura sarebbe questa
+
+React
+↓
+wagmi v2
+↓
+@reown/appkit
+↓
+WalletConnect v2 (interno)
+↓
+Trust Wallet / MetaMask
+
+Nient’altro.
+
+Niente:
+
+* WalletSheet personalizzati che gestiscono provider
+* getProvider()
+* disconnect() prima del connect()
+* emitter custom
+* display_uri manuale
+* retry
+* timeout
+* hack su localStorage
+
+Tutto questo sparisce.
+
+⸻
+
+Prima di ricominciare
+
+C’è una cosa che hai detto che secondo me è la chiave.
+
+“Posso chiedere all’agente USDA tutte le info che ha adottato lui su USDA che funziona perfettamente.”
+
+SÌ.
+
+Ed è esattamente quello che farei.
+
+Se esiste già un’app USDA che:
+
+* funziona su iPhone
+* apre Trust Wallet
+* usa Reown/WalletConnect
+
+non ha alcun senso reinventare l’integrazione.
+
+Bisogna copiare la stessa architettura.
+
+⸻
+
+Quello che chiederei all’Agente USDA
+
+Non il codice.
+
+La configurazione completa.
+
+Deve riportare:
+
+package.json
+
+con tutte le versioni.
+
+Poi:
+
+wagmi.ts
+
+oppure
+
+wallet.ts
+
+Poi
+
+main.tsx
+
+Poi
+
+App.tsx
+
+Poi
+
+reown.ts
+
+se esiste.
+
+Poi:
+
+* come viene creato il connector
+* come viene aperto il modal
+* come viene effettuato connect
+* come viene gestito iOS
+* quali package sono installati
+
+Senza omettere nulla.
+
+⸻
+
+Il mio piano
+
+Io ti seguirei personalmente.
+
+Sprint 1
+
+✅ eliminare completamente l’integrazione attuale.
+
+Sprint 2
+
+✅ installare SOLO i package necessari.
+
+Sprint 3
+
+✅ verificare che il modal ufficiale si apra.
+
+Sprint 4
+
+✅ verificare che Trust Wallet si apra.
+
+Sprint 5
+
+✅ verificare il ritorno alla PWA.
+
+Solo dopo passeremo all’integrazione con USDA.
+
+⸻
+
+Secondo me, continuare a correggere questa implementazione ormai è più costoso che rifarla da zero. E se hai già un progetto USDA che funziona perfettamente, la strada più veloce è usarlo come riferimento e ricostruire la connessione wallet in AlphaChat seguendo esattamente la stessa architettura, senza portarsi dietro i workaround accumulati in questi tentativi.

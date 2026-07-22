@@ -11,15 +11,12 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { useAccount, useChainId, useSwitchChain, useWriteContract, usePublicClient } from "wagmi";
-import { erc20Abi, parseUnits } from "viem";
-
 import {
   walletModal,
   USDA_CONTRACT_ADDRESS,
   USDA_CHAIN_ID,
   USDA_DECIMALS,
-} from "../../lib/wallet-client";
+} from "../../lib/wallet-stub";
 import { humanizeUsdaError, isRecipientNoWallet } from "../../lib/usda-errors";
 import { apiUsdaPreparePayment, apiUsdaSubmitPayment } from "../../lib/usda-api";
 
@@ -84,14 +81,10 @@ export function SendUsdaSheet({ conversationId, toUserId, toName, onClose, onSen
   const [signing,           setSigning]           = useState(false);
   const [signingStatus,     setSigningStatus]     = useState<SigningStatus | null>(null);
 
-  // ── Wagmi hooks ─────────────────────────────────────────────────────────
-  const { address, isConnected: isWalletConnected } = useAccount();
-  const chainId      = useChainId();
-  const { switchChainAsync } = useSwitchChain();
-  const { writeContractAsync } = useWriteContract();
-  const publicClient = usePublicClient({ chainId: USDA_CHAIN_ID });
-
-  const isCorrectNetwork = chainId === USDA_CHAIN_ID;
+  // ── Wallet — stub (in attesa della nuova integrazione) ───────────────────
+  const address: string | undefined = undefined;
+  const isWalletConnected = false;
+  const isCorrectNetwork  = false;
 
   const signTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -139,14 +132,7 @@ export function SendUsdaSheet({ conversationId, toUserId, toName, onClose, onSen
     }
   }
 
-  // ── Switch rete automatico ───────────────────────────────────────────────
-  async function handleSwitchNetwork() {
-    try {
-      await switchChainAsync({ chainId: USDA_CHAIN_ID });
-    } catch {
-      setError("Impossibile cambiare rete automaticamente. Cambia a Polygon Mainnet nel wallet.");
-    }
-  }
+  function handleSwitchNetwork() { walletModal.open(); }
 
   // ── Annulla firma ────────────────────────────────────────────────────────
   const handleCancelSigning = useCallback(() => {
@@ -159,89 +145,9 @@ export function SendUsdaSheet({ conversationId, toUserId, toName, onClose, onSen
     setError("Firma annullata. Ripremi «Continua» quando vuoi riprovare.");
   }, []);
 
-  // ── Firma e invio — wagmi + viem ────────────────────────────────────────
+  // ── Firma e invio — stub (wallet non ancora integrato) ───────────────────
   async function handleSign() {
-    if (!prepared || signing) return;
-    if (!address) { setError("Connetti il wallet prima di procedere."); return; }
-    if (!isCorrectNetwork) { setError("⚠️ Passa a Polygon Mainnet nel wallet e riprova."); return; }
-
-    setSigning(true);
-    setStep("signing");
-    setSigningStatus("awaiting_wallet");
-    setError(null);
-
-    signTimerRef.current = setTimeout(() => {
-      sessionStorage.removeItem(INFLIGHT_KEY);
-      setSigning(false);
-      setSigningStatus(null);
-      setPrepared(null);
-      setStep("form");
-      setError("⏱️ La firma ha impiegato troppo tempo. Il wallet è ancora connesso — ripremi «Continua» per riprovare.");
-    }, SIGN_TIMEOUT_MS);
-
-    try {
-      const recipientAddress = prepared.prepared_data.recipientAddress as `0x${string}`;
-      const amountUnits      = prepared.prepared_data.amount_units as string;
-
-      // Invia la transazione ERC-20 transfer
-      setSigningStatus("awaiting_wallet");
-      const hash = await writeContractAsync({
-        address:      USDA_CONTRACT_ADDRESS,
-        abi:          erc20Abi,
-        functionName: "transfer",
-        args:         [recipientAddress, parseUnits(prepared.amount, USDA_DECIMALS)],
-        chainId:      USDA_CHAIN_ID,
-      });
-
-      // Aspetta la conferma on-chain
-      setSigningStatus("broadcasting");
-      const receipt = await publicClient!.waitForTransactionReceipt({ hash });
-
-      if (receipt.status !== "success") {
-        throw new Error("La transazione è fallita on-chain. Controlla PolygonScan per dettagli.");
-      }
-
-      const txHash = receipt.transactionHash;
-      setSigningStatus("verifying");
-      sessionStorage.setItem(INFLIGHT_KEY, prepared.client_payment_id);
-
-      const result = await apiUsdaSubmitPayment({
-        to_user_id:        toUserId,
-        conversation_id:   conversationId,
-        amount:            prepared.amount,
-        fee:               prepared.fee,
-        note:              note || undefined,
-        client_payment_id: prepared.client_payment_id,
-        prepared_data: {
-          ...prepared.prepared_data,
-          amount_units:   amountUnits,
-          sender_address: address,
-        },
-        signature: txHash,
-      });
-
-      sessionStorage.removeItem(INFLIGHT_KEY);
-      onSent({ payment_id: result.payment_id, message_id: result.message_id, amount });
-      onClose();
-
-    } catch (err) {
-      sessionStorage.removeItem(INFLIGHT_KEY);
-      const raw = (err as Error).message ?? "";
-
-      if (/user rejected|user denied|rejected by user/i.test(raw)) {
-        setError("Hai annullato la firma nel wallet. Ripremi «Firma e Invia» quando sei pronto.");
-        setStep("confirm");
-        setSigning(false);
-        return;
-      }
-
-      setError(humanizeUsdaError(raw, { toName }));
-      setPrepared(null);
-      setStep("form");
-    } finally {
-      if (step !== "confirm") { setSigning(false); setSigningStatus(null); }
-      if (signTimerRef.current) { clearTimeout(signTimerRef.current); signTimerRef.current = null; }
-    }
+    setError("Wallet non ancora disponibile. La nuova integrazione sarà presto attiva.");
   }
 
   const signingLabel: Record<SigningStatus, string> = {
@@ -402,7 +308,7 @@ export function SendUsdaSheet({ conversationId, toUserId, toName, onClose, onSen
             {isWalletConnected && !isCorrectNetwork && (
               <div className="usda-network-warning" role="alert">
                 <p>⚠️ Rete non corretta — passa a <strong>Polygon Mainnet</strong>.</p>
-                <p className="usda-network-current">Rete attuale: Chain {chainId}</p>
+                <p className="usda-network-current">Rete attuale: non Polygon Mainnet</p>
                 <button type="button" className="usda-btn-secondary" onClick={handleSwitchNetwork}>
                   🌐 Passa a Polygon
                 </button>
@@ -415,7 +321,7 @@ export function SendUsdaSheet({ conversationId, toUserId, toName, onClose, onSen
                 <div className="usda-wallet-ready">
                   <span className="usda-wallet-dot" aria-hidden="true" />
                   <span className="usda-wallet-addr">
-                    ✅ {address.slice(0, 6)}…{address.slice(-4)} · Polygon
+                    ✅ {(address as string).slice(0, 6)}…{(address as string).slice(-4)} · Polygon
                   </span>
                 </div>
                 <p className="usda-sign-notice">

@@ -1,55 +1,36 @@
 ---
-name: Reown AppKit migration
-description: ThirdWeb v5 rimosso; stack wallet ora wagmi v3 + viem + WalletConnect diretto. Pattern chiave per connessione wallet mobile-safe.
+name: Wallet integration history
+description: Cronologia tentativi wallet e stato attuale — tutto rimosso, in attesa di nuova integrazione
 ---
 
-## Decisione
-ThirdWeb rimosso completamente. Stack finale: wagmi v3 + viem v2 + @walletconnect/ethereum-provider direttamente.
+## Stato attuale (luglio 2026)
 
-**Why:** ThirdWeb v5 ha bug critici su iOS Safari (deep-link bloccato). AppKit v1 chiama cloud registry WalletConnect (api.web3modal.org) che ritorna 403 su .replit.dev — wallet list sempre vuota. La soluzione è un custom WalletSheet con deep link iOS nativi.
+Tutti i package wallet sono stati **completamente disinstallati**:
+- `wagmi` rimosso
+- `viem` rimosso
+- `@reown/appkit` rimosso
+- `@reown/appkit-adapter-wagmi` rimosso
+- `@walletconnect/ethereum-provider` rimosso
+- `WagmiProvider` rimosso da `main.tsx`
 
-## Stack attuale
-- `wagmi` v3 — React hooks (useAccount, useChainId, useSwitchChain, useWriteContract, usePublicClient, useConnect, useConnectors)
-- `viem` v2 — erc20Abi, parseUnits, PublicClient.waitForTransactionReceipt
-- `@walletconnect/ethereum-provider` — dipendenza DIRETTA (NON transitiva)
+## File stub lasciati in posto
 
-## Bug critico: dipendenza WC mancante
-**@walletconnect/ethereum-provider DEVE essere in package.json come dipendenza diretta di alpha-chat-web.**
-In pnpm strict mode, il dynamic import `import('@walletconnect/ethereum-provider')` dentro wagmi/connectors fallisce se non è nella catena di risoluzione del package. La dipendenza transitiva NON basta — serve `pnpm add @walletconnect/ethereum-provider` nel package.
+- `src/lib/wallet-stub.ts` — sole costanti (USDA_CONTRACT_ADDRESS, USDA_CHAIN_ID, USDA_DECIMALS, walletModal no-op)
+- `src/lib/wallet-client.ts` — re-esporta da wallet-stub per retrocompatibilità
+- `src/components/usda/WalletSheet.tsx` — placeholder `return null`
+- `UsdaWalletCard`, `SendUsdaSheet`, `WalletCenterPage`, `UsdaSettingsPage` — stub: isConnected=false, address=undefined, handleSign() → errore UI
 
-**How to apply:** Se la connessione wallet fallisce immediatamente con errore generico, verificare prima che @walletconnect/ethereum-provider sia in package.json di alpha-chat-web.
+## Perché rimosso
 
-## File chiave
-- `src/lib/wallet-client.ts` — wagmiConfig, wcConnector, injectedConnector, walletModal (event dispatcher), polygonPublicClient, costanti USDA
-- `src/components/usda/WalletSheet.tsx` — bottom sheet nativo iOS con deeplink (NO cloud registry)
-- `src/main.tsx` — WagmiProvider + QueryClientProvider (no AppKit)
-- `src/App.tsx` — WalletSheet montato globale
+Tre fasi di tentativi falliti su iOS Safari (ThirdWeb → Reown AppKit → wagmi diretto).
+Root cause finale identificata: wagmi `createConfig` chiama `connector.setup()` in modo incondizionale
+→ `EthereumProvider.init()` → relay WebSocket connesso al caricamento.
+Su 4G mobile il WS cade prima che l'utente tocchi il wallet → "Connection interrupted while trying to subscribe".
+Fix tentato (disconnect() prima di connectAsync) non ha risolto in test reale.
 
-## walletModal.open() — compat layer
-Tutti i caller usano `walletModal.open()`. In wallet-client.ts questo dispatcha `CustomEvent('alpha:open-wallet-sheet')` che WalletSheet intercetta. Zero modifiche ai caller.
+**Why:** Decision presa dall'utente — rifare da zero con architettura di riferimento da progetto USDA funzionante.
 
-## Pattern connect button
-```tsx
-import { walletModal } from '../lib/wallet-client'
-<button onClick={() => walletModal.open()}>🔗 Connetti Wallet</button>
-```
+## Prossimo step
 
-## Deep link iOS wallet (in WalletSheet.tsx)
-- MetaMask: `https://metamask.app.link/wc?uri={encodedUri}`
-- Trust Wallet: `https://link.trustwallet.com/wc?uri={encodedUri}`
-- Coinbase: `https://go.cb-w.com/wc?uri={encodedUri}`
-- Rainbow: `https://rnbwapp.com/wc?uri={encodedUri}`
-
-## Pattern transazione ERC-20
-```ts
-const { writeContractAsync } = useWriteContract()
-const publicClient = usePublicClient({ chainId: 137 })
-const hash = await writeContractAsync({
-  address: USDA_CONTRACT_ADDRESS, abi: erc20Abi,
-  functionName: 'transfer', args: [to, parseUnits(amount, 18)], chainId: 137,
-})
-const receipt = await publicClient!.waitForTransactionReceipt({ hash })
-```
-
-## File eliminati
-- TrustWalletConnector.tsx, WcDebugPanel.tsx, debug-wc.routes.ts, thirdweb-client.ts
+L'utente fornirà configurazione di riferimento da un'app USDA funzionante su iPhone.
+Usare SOLO quei package/versioni esatte, senza codice ereditato.

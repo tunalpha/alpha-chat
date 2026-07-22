@@ -10,11 +10,10 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { useAccount, useChainId, useSwitchChain } from "wagmi";
 import {
   walletModal,
   USDA_CHAIN_ID,
-} from "../lib/wallet-client";
+} from "../lib/wallet-stub";
 import {
   apiUsdaGetWallet,
   apiUsdaGetHistory,
@@ -68,12 +67,13 @@ export default function WalletCenterPage({ onBack }: Props) {
   const abortMount   = useRef<AbortController | null>(null);
   const abortHistory = useRef<AbortController | null>(null);
 
-  // ── Wallet — wagmi + Reown AppKit ───────────────────────────────────────────
-  const { address, isConnected: isWalletConnected } = useAccount();
-  const chainId      = useChainId();
-  const { switchChainAsync } = useSwitchChain();
+  // ── Wallet — stub (in attesa della nuova integrazione) ──────────────────────
+  const address: string | undefined = undefined;
+  const isWalletConnected = false;
+  const isCorrectNetwork  = false;
 
-  const isCorrectNetwork = chainId === USDA_CHAIN_ID;
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  async function handleSwitchNetworkNoop() { /* placeholder */ }
 
   // ── Recovery crash al mount ─────────────────────────────────────────────────
   const [recoveryBanner, setRecoveryBanner] = useState<"found" | "not_found" | null>(null);
@@ -139,14 +139,7 @@ export default function WalletCenterPage({ onBack }: Props) {
 
   const balance = wallet?.balance_usda ?? "—";
 
-  // ── Switch rete automatico ───────────────────────────────────────────────────
-  async function handleSwitchNetwork() {
-    try {
-      await switchChainAsync({ chainId: USDA_CHAIN_ID });
-    } catch {
-      // Ignora — l'utente può cambiare manualmente nel wallet
-    }
-  }
+  function handleSwitchNetwork() { walletModal.open(); }
 
   return (
     <div className="wc-root">
