@@ -207,6 +207,9 @@ export default function UsdaSettingsPage({ onBack }: Props) {
                     },
                   }}
                   connectButton={{ label: "🔗 Collega Wallet" }}
+                  // Su iOS: nasconde Trust Wallet ovunque nel modal (lista + browse)
+                  showAllWallets={!isIOS}
+                  hiddenWallets={isIOS ? ["com.trustwallet.app"] : []}
                 />
               </div>
 

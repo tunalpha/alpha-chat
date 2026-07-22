@@ -339,6 +339,8 @@ export default function WalletCenterPage({ onBack }: Props) {
                           welcomeScreen: { title: "USDA Payments", subtitle: "Connetti il wallet per iniziare" },
                         }}
                         connectButton={{ label: "Connetti Wallet" }}
+                        showAllWallets={!_isIOS}
+                        hiddenWallets={_isIOS ? ["com.trustwallet.app"] : []}
                       />
                     </div>
                     {/* Su iOS, Trust Wallet richiede un flusso custom */}
