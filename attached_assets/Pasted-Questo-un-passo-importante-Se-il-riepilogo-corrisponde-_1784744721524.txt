@@ -1,0 +1,40 @@
+Questo è un passo importante. Se il riepilogo corrisponde a quanto effettivamente implementato e testato, il Payment Engine ha ormai superato la fase di sola progettazione ed è diventato un componente funzionante.
+
+Ci sono alcuni aspetti che considero particolarmente positivi:
+
+* Business logic isolata in chat-payment.service.ts, con le route che fanno principalmente orchestrazione.
+* Verifica on-chain separata tramite _verifyDepositTx(), così la logica blockchain non è sparsa nel codice.
+* Aggiornamento della bolla chat ad ogni cambio di stato, che è coerente con ADR-002 (“il pagamento è un messaggio”).
+* Anti-replay con rollback se la verifica della transazione fallisce, invece di lasciare lo stato incoerente.
+* 99 test passati, senza regressioni rispetto agli sprint precedenti.
+
+Mi piace anche che il frontend sia rimasto completamente fuori dallo Sprint 2: significa che ora esiste un’API stabile su cui costruire l’interfaccia.
+
+Tra Sprint 3 e Sprint 4
+
+Io farei prima Sprint 3 e solo dopo Sprint 4.
+
+Il motivo è pratico:
+
+* lo scheduler completerà il ciclo di vita del trasferimento (scadenza, refund automatico, recovery dopo restart);
+* quando inizierai il frontend, tutti gli stati (awaiting_deposit, pending, accepted, rejected, cancelled, expired, failed, ecc.) saranno già definiti e realmente funzionanti.
+
+Così la UI dovrà solo rappresentarli, senza dover inseguire cambiamenti del backend.
+
+Una prova che farei prima della UI
+
+Prima di iniziare Sprint 4, eseguirei un test end-to-end completo:
+
+1. A crea un trasferimento.
+2. A deposita in escrow.
+3. Riavvia il server.
+4. B accetta il pagamento.
+5. Verifica che:
+    * la chat mostri il nuovo stato;
+    * l’audit contenga tutte le transizioni;
+    * il trasferimento venga rilasciato correttamente;
+    * non si creino duplicati.
+
+Se questo test passa, significa che il motore funziona anche attraverso un riavvio del server, che è uno degli obiettivi principali dell’architettura DB-driven che avete definito.
+
+A quel punto, la parte più complessa del progetto sarà sostanzialmente completata e il lavoro si sposterà soprattutto sull’esperienza utente.
