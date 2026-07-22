@@ -138,20 +138,20 @@ export default function UsdaSettingsPage({ onBack }: Props) {
 
   return (
     <div className="ups-root">
-      {/* ── iOS: pannello floating "Apri wallet" quando ThirdWeb è in attesa ── */}
-      {isIOS && isConnecting && (
+      {/* ── iOS: bottone fisso "Apri wallet" — visibile sopra la modale ThirdWeb ── */}
+      {isIOS && !isConnected && (
         <div style={{
-          position: "fixed", bottom: 100, left: 16, right: 16,
+          position: "fixed", bottom: 96, left: 16, right: 16,
           zIndex: 2147483647,
           background: "rgba(13,13,26,0.97)",
           border: "1px solid rgba(155,64,248,0.45)",
           borderRadius: 20,
-          padding: "16px 16px 12px",
+          padding: "14px 16px 12px",
           boxShadow: "0 12px 40px rgba(0,0,0,0.7)",
-          display: "flex", flexDirection: "column", gap: 10,
+          display: "flex", flexDirection: "column", gap: 8,
         }}>
-          <p style={{ margin: 0, color: "rgba(255,255,255,0.65)", fontSize: "0.78rem", textAlign: "center" }}>
-            📱 Il wallet non si è aperto automaticamente?
+          <p style={{ margin: 0, color: "rgba(255,255,255,0.55)", fontSize: "0.72rem", textAlign: "center" }}>
+            📱 Su iPhone il wallet non si apre da solo — seleziona il wallet sopra, poi:
           </p>
           <button
             type="button"
@@ -159,7 +159,7 @@ export default function UsdaSettingsPage({ onBack }: Props) {
             style={{
               background: "linear-gradient(135deg,#1b6ff8,#0047c8)",
               border: "none", borderRadius: 13, color: "#fff",
-              fontSize: "0.95rem", fontWeight: 700,
+              fontSize: "0.92rem", fontWeight: 700,
               padding: "13px 20px", cursor: "pointer",
               display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
               touchAction: "manipulation", WebkitTapHighlightColor: "transparent",
@@ -174,8 +174,8 @@ export default function UsdaSettingsPage({ onBack }: Props) {
               background: "rgba(255,255,255,0.07)",
               border: "1px solid rgba(255,255,255,0.15)",
               borderRadius: 13, color: "rgba(255,255,255,0.65)",
-              fontSize: "0.85rem", fontWeight: 600,
-              padding: "10px 20px", cursor: "pointer",
+              fontSize: "0.82rem", fontWeight: 600,
+              padding: "9px 20px", cursor: "pointer",
               touchAction: "manipulation", WebkitTapHighlightColor: "transparent",
             }}
           >
