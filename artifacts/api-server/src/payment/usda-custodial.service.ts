@@ -51,6 +51,9 @@ const FALLBACK_RPCS = [
 ];
 const DEFAULT_RPC = FALLBACK_RPCS[0]!;
 
+/** Gas limit per un transfer ERC-20 (buffer sopra i ~65k tipici). */
+const GAS_LIMIT_ERC20 = 80_000n;
+
 /**
  * Restituisce l'URL RPC da usare.
  * Valida che USDA_POLYGON_RPC sia un URL https:// — se no, usa il fallback.
@@ -228,9 +231,32 @@ export async function transferFromCustodial(params: {
     args: [toAddress as `0x${string}`, BigInt(amountUnits)],
   });
 
+  // Imposta gas e fee esplicitamente così l'invio non fallisce al margine di
+  // stima quando il gas price Polygon è volatile. maxFeePerGas/maxPriorityFeePerGas
+  // dalla stima EIP-1559 di viem con buffer 2×.
+  const publicClientForFees = getPublicClient();
+  let feeOverrides: {
+    gas: bigint;
+    maxFeePerGas?: bigint;
+    maxPriorityFeePerGas?: bigint;
+  } = { gas: GAS_LIMIT_ERC20 };
+  try {
+    const fees = await publicClientForFees.estimateFeesPerGas();
+    if (fees.maxFeePerGas != null && fees.maxPriorityFeePerGas != null) {
+      feeOverrides = {
+        gas:                  GAS_LIMIT_ERC20,
+        maxFeePerGas:         fees.maxFeePerGas * 2n,
+        maxPriorityFeePerGas: fees.maxPriorityFeePerGas * 2n,
+      };
+    }
+  } catch (feeErr) {
+    logger.warn({ feeErr }, "[Custodial] estimateFeesPerGas fallita — uso solo gas limit esplicito");
+  }
+
   const txHash = await walletClient.sendTransaction({
     to:   contractAddress,
     data,
+    ...feeOverrides,
   });
 
   logger.info({ txHash, from: account.address, to: toAddress }, "[Custodial] TX inviata");
@@ -266,16 +292,28 @@ export async function transferFromCustodial(params: {
  * prosegue — il trasferimento fallirà se non c'è gas, ma almeno non blocca.
  */
 export async function ensureEscrowGas(escrowAddress: string): Promise<void> {
-  const MIN_MATIC  = parseEther("0.003");  // 0.003 MATIC — soglia minima
-  const TOP_UP     = parseEther("0.01");   // 0.01  MATIC — top-up inviato (~$0.008)
+  // Calcolo DINAMICO del gas necessario.
+  // Il vecchio schema (MIN_MATIC=0.003, TOP_UP=0.01 fisso) falliva quando il
+  // gas price Polygon saliva (~280-540 gwei): 0.01 MATIC copriva solo ~18-35k
+  // gas, sotto i ~65k di un transfer ERC-20 → "gas required exceeds allowance".
+  const GAS_LIMIT_ESTIMATE = GAS_LIMIT_ERC20;    // 80_000 gas (buffer sopra ~65k)
+  const COST_BUFFER        = 2n;                 // 2× sul costo gas stimato
+  const TOP_UP_CAP         = parseEther("0.5");  // cap di sicurezza per singolo top-up
   const rpcUrl = getRpcUrl();
 
   const publicClient = createPublicClient({ chain: polygon, transport: http(rpcUrl) });
 
+  // Costo stimato di un transfer ERC-20 al gas price corrente, con buffer.
+  const gasPrice      = await publicClient.getGasPrice();
+  const estimatedCost = GAS_LIMIT_ESTIMATE * gasPrice * COST_BUFFER;
+
   // Leggi saldo MATIC corrente dell'escrow
   const maticBalance = await publicClient.getBalance({ address: escrowAddress as `0x${string}` });
-  if (maticBalance >= MIN_MATIC) {
-    logger.debug({ escrowAddress, maticBalance: maticBalance.toString() }, "[GasStation] Saldo MATIC sufficiente");
+  if (maticBalance >= estimatedCost) {
+    logger.debug(
+      { escrowAddress, maticBalance: maticBalance.toString(), estimatedCost: estimatedCost.toString(), gasPrice: gasPrice.toString() },
+      "[GasStation] Saldo MATIC sufficiente",
+    );
     return;
   }
 
@@ -288,12 +326,25 @@ export async function ensureEscrowGas(escrowAddress: string): Promise<void> {
     return;
   }
 
+  // Target: portare il saldo a estimatedCost × 2 (margine per gas price in salita
+  // tra il top-up e l'invio del transfer). Top-up = target − saldo attuale.
+  const targetBalance = estimatedCost * 2n;
+  let topUp = targetBalance > maticBalance ? targetBalance - maticBalance : 0n;
+  if (topUp <= 0n) return;
+  if (topUp > TOP_UP_CAP) {
+    logger.warn(
+      { escrowAddress, requestedTopUp: topUp.toString(), cap: TOP_UP_CAP.toString() },
+      "[GasStation] Top-up richiesto oltre il cap — limitato al cap di sicurezza",
+    );
+    topUp = TOP_UP_CAP;
+  }
+
   const normalizedPk = gsPk.startsWith("0x") ? gsPk : `0x${gsPk}`;
   const gsAccount = privateKeyToAccount(normalizedPk as `0x${string}`);
 
   logger.info(
-    { escrowAddress, maticBalance: maticBalance.toString(), topUp: TOP_UP.toString(), gsAddress: gsAccount.address },
-    "[GasStation] Top-up MATIC avviato",
+    { escrowAddress, maticBalance: maticBalance.toString(), topUp: topUp.toString(), estimatedCost: estimatedCost.toString(), gasPrice: gasPrice.toString(), gsAddress: gsAccount.address },
+    "[GasStation] Top-up MATIC avviato (dinamico)",
   );
 
   const walletClient = createWalletClient({
@@ -304,7 +355,7 @@ export async function ensureEscrowGas(escrowAddress: string): Promise<void> {
 
   const txHash = await walletClient.sendTransaction({
     to:    escrowAddress as `0x${string}`,
-    value: TOP_UP,
+    value: topUp,
   });
 
   logger.info({ txHash, escrowAddress }, "[GasStation] TX top-up inviata");
@@ -313,7 +364,7 @@ export async function ensureEscrowGas(escrowAddress: string): Promise<void> {
   // Leggi saldo gas station dopo il top-up
   const gsBalanceAfter    = await publicClient.getBalance({ address: gsAccount.address });
   const gsBalanceAfterStr = formatEther(gsBalanceAfter);
-  const amountMaticStr    = formatEther(TOP_UP);
+  const amountMaticStr    = formatEther(topUp);
 
   logger.info({ txHash, escrowAddress, gsBalanceAfter: gsBalanceAfterStr }, "[GasStation] Top-up MATIC confermato ✓");
 

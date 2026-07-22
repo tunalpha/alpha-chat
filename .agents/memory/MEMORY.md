@@ -43,4 +43,4 @@
 - [Sprint 3 — Payment Scheduler](sprint-3-payment-scheduler.md) — processExpiredTransfers + processStuckTransfers; recovery balance-0 detection; 13 unit test; 112 totali ✓
 - [Sprint 4 — Payment Audit Blockchain + iOS Recovery](sprint-4-payment-audit.md) — detect-deposit endpoint, localStorage iOS recovery, deposit/release block numbers, PolygonScan links in bubble
 - [Polygon RPC getLogs limits](polygon-rpc-getlogs-limits.md) — mai eth_getLogs storico su RPC free; usare alchemy_getAssetTransfers + filtro timestamp, o receipt-by-hash; mai stimare block range dal block time
-- [Gas Station — MATIC top-up automatico](gas-station.md) — ensureEscrowGas in usda-custodial.service.ts; GAS_STATION_PRIVATE_KEY (5.3 MATIC); addr 0x27A5…1AE9; log su gas_station_logs; email top-up + alert <10 MATIC; admin page /gas-station
+- [Gas Station — MATIC top-up automatico](gas-station.md) — top-up ora DINAMICO (80k gas × gasPrice × buffer, cap 0.5 MATIC); mai importi fissi: con gas volatile 0.01 fisso ha rotto i payout (incidente lug 2026); recovery script riutilizzabile in api-server/src/scripts
