@@ -89,6 +89,14 @@ export default defineConfig({
     __BUILD_TIME__:    JSON.stringify(BUILD_TIME),
     __APP_VERSION__:   JSON.stringify('1.0'),
     __BUILD_TESTS__:   JSON.stringify('174/174'),
+    // Inietta i segreti WalletConnect direttamente nel bundle —
+    // garantisce che siano disponibili sia in dev che nel deploy produzione.
+    'import.meta.env.VITE_WALLETCONNECT_PROJECT_ID': JSON.stringify(
+      process.env.VITE_WALLETCONNECT_PROJECT_ID ?? ''
+    ),
+    'import.meta.env.VITE_POLYGON_RPC': JSON.stringify(
+      process.env.VITE_POLYGON_RPC ?? ''
+    ),
   },
   root: path.resolve(import.meta.dirname),
   build: {
