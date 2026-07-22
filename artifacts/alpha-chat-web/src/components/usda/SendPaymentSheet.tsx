@@ -248,11 +248,13 @@ export function SendPaymentSheet({
       });
 
       // ── 4. Polling detect-deposit come unica fonte di verità on-chain ────
-      // Identico al pattern USDA (polling invece di waitForTransactionReceipt).
-      setPhase("confirming");
+      // Pattern USDA: la fase "signing" rimane visibile durante la prima
+      // attesa (10s) — l'utente deve avere tempo di approvare nel wallet.
+      // Solo dopo il primo intervallo si passa a "confirming".
       const POLL_INTERVAL_MS = 10_000; // 10s — come USDA
       const POLL_MAX_MS      = 10 * 60 * 1000; // 10 min timeout totale
       const pollStart        = Date.now();
+      let   pollCount        = 0;
 
       while (Date.now() - pollStart < POLL_MAX_MS) {
         if (pollAborted) {
@@ -260,6 +262,11 @@ export function SendPaymentSheet({
         }
 
         await new Promise<void>((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+        pollCount++;
+
+        // Dopo il primo intervallo l'utente ha avuto tempo di firmare:
+        // aggiorna la label da "Firma nel wallet…" a "Conferma blockchain…"
+        if (pollCount === 1) setPhase("confirming");
 
         if (pollAborted) {
           throw new Error("Firma rifiutata nel wallet. Ripremi «Firma e Invia» per riprovare.");
