@@ -26,6 +26,7 @@ import {
   http,
   encodeFunctionData,
   parseUnits,
+  parseEther,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { polygon } from "viem/chains";
@@ -36,7 +37,7 @@ import { AppError } from "../errors/AppError";
 // Costanti
 // ---------------------------------------------------------------------------
 
-const DEFAULT_RPC = "https://polygon-bor-rpc.publicnode.com";
+const DEFAULT_RPC = "https://rpc.ankr.com/polygon";
 const DEFAULT_USDA_CONTRACT = "0xe714655fD1B3ba96B887DF1F94336c2A78E24001";
 const USDA_DECIMALS = 18;
 
@@ -227,6 +228,71 @@ export async function transferFromCustodial(params: {
 
   return { txHash };
 }
+
+// ---------------------------------------------------------------------------
+// Gas station — top-up automatico MATIC prima di ogni release
+// ---------------------------------------------------------------------------
+
+/**
+ * Garantisce che il wallet escrow abbia abbastanza MATIC per pagare il gas
+ * di un transfer ERC-20 su Polygon (~65k gas).
+ *
+ * Se il saldo MATIC è sotto MIN_MATIC_WEI, invia TOP_UP_MATIC dal wallet
+ * configurato in GAS_STATION_PRIVATE_KEY.
+ *
+ * Se GAS_STATION_PRIVATE_KEY non è configurato, logga un warning e
+ * prosegue — il trasferimento fallirà se non c'è gas, ma almeno non blocca.
+ */
+export async function ensureEscrowGas(escrowAddress: string): Promise<void> {
+  const MIN_MATIC  = parseEther("0.003");  // 0.003 MATIC — soglia minima
+  const TOP_UP     = parseEther("0.01");   // 0.01  MATIC — top-up inviato (~$0.008)
+  const rpcUrl = process.env.USDA_POLYGON_RPC ?? process.env.VITE_POLYGON_RPC ?? DEFAULT_RPC;
+
+  const publicClient = createPublicClient({ chain: polygon, transport: http(rpcUrl) });
+
+  // Leggi saldo MATIC corrente dell'escrow
+  const maticBalance = await publicClient.getBalance({ address: escrowAddress as `0x${string}` });
+  if (maticBalance >= MIN_MATIC) {
+    logger.debug({ escrowAddress, maticBalance: maticBalance.toString() }, "[GasStation] Saldo MATIC sufficiente");
+    return;
+  }
+
+  const gsPk = process.env.GAS_STATION_PRIVATE_KEY;
+  if (!gsPk) {
+    logger.warn(
+      { escrowAddress, maticBalance: maticBalance.toString() },
+      "[GasStation] GAS_STATION_PRIVATE_KEY non configurato — escrow potrebbe non avere gas",
+    );
+    return;
+  }
+
+  const normalizedPk = gsPk.startsWith("0x") ? gsPk : `0x${gsPk}`;
+  const gsAccount = privateKeyToAccount(normalizedPk as `0x${string}`);
+
+  logger.info(
+    { escrowAddress, maticBalance: maticBalance.toString(), topUp: TOP_UP.toString(), gsAddress: gsAccount.address },
+    "[GasStation] Top-up MATIC avviato",
+  );
+
+  const walletClient = createWalletClient({
+    account: gsAccount,
+    chain: polygon,
+    transport: http(rpcUrl),
+  });
+
+  const txHash = await walletClient.sendTransaction({
+    to:    escrowAddress as `0x${string}`,
+    value: TOP_UP,
+  });
+
+  logger.info({ txHash, escrowAddress }, "[GasStation] TX top-up inviata");
+  await publicClient.waitForTransactionReceipt({ hash: txHash, timeout: 30_000 });
+  logger.info({ txHash, escrowAddress }, "[GasStation] Top-up MATIC confermato ✓");
+}
+
+// ---------------------------------------------------------------------------
+// Lettura saldo ERC-20
+// ---------------------------------------------------------------------------
 
 /**
  * Legge il saldo ERC-20 di un wallet escrow.

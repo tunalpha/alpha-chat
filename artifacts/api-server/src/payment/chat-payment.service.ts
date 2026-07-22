@@ -23,7 +23,7 @@ import { UserModel }                                    from "../models/user.mod
 import { ConversationModel }                            from "../models/conversation.model";
 import { MessageModel }                                 from "../models/message.model";
 import { ConversationMemberRepository }                 from "../repositories/conversation-member.repository";
-import { generateEscrowWallet, transferFromCustodial, toAmountUnits } from "./usda-custodial.service";
+import { generateEscrowWallet, transferFromCustodial, toAmountUnits, ensureEscrowGas } from "./usda-custodial.service";
 import { checkAndMarkTx, rollbackTx }                   from "./asset-anti-replay";
 import { acquireLock, writeAudit }                      from "./lock";
 import { emitPaymentStateChanged }                      from "./events";
@@ -587,6 +587,9 @@ export async function acceptTransfer(params: {
 
   const now = new Date();
   try {
+    // Garantisce MATIC per gas prima di inviare la TX ERC-20
+    await ensureEscrowGas(locked.escrow_wallet);
+
     const { txHash } = await transferFromCustodial({
       encryptedPk:  locked.escrow_encrypted_pk,
       toAddress:    locked.recipient_wallet!,
@@ -664,6 +667,8 @@ export async function rejectTransfer(params: {
 
   const now = new Date();
   try {
+    await ensureEscrowGas(locked.escrow_wallet);
+
     const { txHash } = await transferFromCustodial({
       encryptedPk:  locked.escrow_encrypted_pk,
       toAddress:    locked.sender_wallet,
@@ -711,6 +716,8 @@ export async function cancelTransfer(params: {
 
   const now = new Date();
   try {
+    await ensureEscrowGas(locked.escrow_wallet);
+
     const { txHash } = await transferFromCustodial({
       encryptedPk:  locked.escrow_encrypted_pk,
       toAddress:    locked.sender_wallet,
