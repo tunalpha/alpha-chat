@@ -123,9 +123,16 @@ export default function SettingsPage({ onBack, onNavigate }: Props) {
       title: "💰 Pagamenti",
       rows: [
         {
+          icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="20" height="20"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/><path d="M9.09 4.93A10 10 0 0 1 21.17 15"/></svg>,
+          label: "💸 Pagamenti USDA",
+          value: "Wallet, token, guida e sicurezza",
+          onClick: () => onNavigate("usda-settings"),
+          badge: "Nuovo",
+        },
+        {
           icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="20" height="20"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>,
           label: "Wallet Center",
-          value: "Saldo, storico, wallet multi-chain",
+          value: "Saldo, storico, transazioni",
           onClick: () => onNavigate("wallet-center"),
           badge: "USDA",
         },
