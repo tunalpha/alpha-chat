@@ -56,11 +56,11 @@ interface StatusLabel {
   sub?:  string;
 }
 
-function getStatusLabel(status: ChatTransferStatus, isMine: boolean): StatusLabel {
+function getStatusLabel(status: ChatTransferStatus, isMine: boolean, amount?: string, assetSymbol?: string): StatusLabel {
   switch (status) {
     case "awaiting_deposit":
       return isMine
-        ? { icon: "⏳", title: "In attesa del tuo deposito",   sub: `Invia ${0} USDA al wallet escrow per confermare` }
+        ? { icon: "⏳", title: "In attesa del tuo deposito",   sub: `Invia ${amount ?? "?"} ${assetSymbol ?? "USDA"} al wallet escrow per confermare` }
         : { icon: "⏳", title: "In attesa del deposito",        sub: "Il mittente deve inviare i fondi" };
 
     case "pending":
@@ -117,7 +117,7 @@ export const ChatPaymentBubble = memo(function ChatPaymentBubble({ data, isMine 
   const [error, setError] = useState<string | null>(null);
 
   const variant    = getVariant(data.status, isMine);
-  const label      = getStatusLabel(data.status, isMine);
+  const label      = getStatusLabel(data.status, isMine, data.amount, data.asset_symbol);
   const isSpinning = variant === "spinning";
   const isAction   = variant === "action"; // recipient + pending → mostra pulsanti
 
