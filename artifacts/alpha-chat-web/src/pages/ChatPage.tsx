@@ -1,6 +1,8 @@
 import { useState, useEffect, useRef, useCallback, memo } from "react";
 // ── USDA Payments ─────────────────────────────────────────────────────────
-import { UsdaPaymentBubble } from "../components/usda/UsdaPaymentBubble";
+import { UsdaPaymentBubble }    from "../components/usda/UsdaPaymentBubble";
+import { ChatPaymentBubble }    from "../components/usda/ChatPaymentBubble";
+import type { ChatPaymentData } from "../lib/payment-api";
 import { UsdaRequestBubble } from "../components/usda/UsdaRequestBubble";
 import { SendUsdaSheet } from "../components/usda/SendUsdaSheet";
 import { RequestUsdaSheet } from "../components/usda/RequestUsdaSheet";
@@ -1292,7 +1294,43 @@ export default function ChatPage({ onNavigate }: Props) {
         // Sprint 18 — Phoenix Protocol: gestito in AppContent (sempre attivo)
         // Sprint 23 — Call signaling: gestito in AppContent (sempre attivo)
 
-        // USDA Payments — aggiorna stato del pagamento nel messaggio in-place
+        // Chat Payment Engine — aggiorna system_metadata in-place (Sprint 4)
+        case "payment.state_changed": {
+          const {
+            message_id, conversation_id, status,
+            tx_hash_release, amount, expires_at, asset_symbol,
+          } = event.payload as {
+            transfer_id:     string;
+            conversation_id: string;
+            message_id:      string | null;
+            status:          string;
+            asset_symbol:    string;
+            amount:          string;
+            expires_at:      string | null;
+            tx_hash_release: string | null;
+          };
+          if (conversation_id !== activeConvId || !message_id) break;
+          setMessages((prev) =>
+            prev.map((m) => {
+              if (m.id !== message_id) return m;
+              const meta = (m.system_metadata as Record<string, unknown>) ?? {};
+              return {
+                ...m,
+                system_metadata: {
+                  ...meta,
+                  status,
+                  tx_hash_release: tx_hash_release ?? meta.tx_hash_release ?? null,
+                  amount:          amount          ?? meta.amount,
+                  expires_at:      expires_at      ?? meta.expires_at      ?? null,
+                  asset_symbol:    asset_symbol    ?? meta.asset_symbol,
+                },
+              };
+            }),
+          );
+          break;
+        }
+
+        // USDA Payments (getusda.xyz) — aggiorna stato del pagamento nel messaggio in-place
         case "usda.payment.update": {
           const { message_id, conversation_id, status, tx_hash } = event.payload as {
             payment_id: string;
@@ -1523,7 +1561,7 @@ export default function ChatPage({ onNavigate }: Props) {
           id:                  pendingMsgId,
           client_message_id:   clientMessageId,
           conversation_id:     activeConvId,
-          sender_id:           auth.userId,
+          sender_id:           auth?.userId ?? "",
           message_type:        "text",
           ciphertext:          null,
           ciphertext_type:     null,
@@ -2778,6 +2816,11 @@ export default function ChatPage({ onNavigate }: Props) {
                             meta={locationMeta}
                             isMine={isMine}
                             onView={setLocationViewer}
+                          />
+                        ) : msg.message_type === "payment" ? (
+                          <ChatPaymentBubble
+                            data={msg.system_metadata as unknown as ChatPaymentData}
+                            isMine={isMine}
                           />
                         ) : msg.message_type === "usda_send" ? (
                           <UsdaPaymentBubble

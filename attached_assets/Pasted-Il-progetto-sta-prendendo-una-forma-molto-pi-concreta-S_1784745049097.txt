@@ -1,0 +1,73 @@
+Il progetto sta prendendo una forma molto più concreta.
+
+Se il riepilogo riflette fedelmente l’implementazione, il backend del Payment Engine ora copre praticamente tutto il ciclo di vita previsto dall’architettura:
+
+* ✅ Creazione del trasferimento.
+* ✅ Deposito in escrow.
+* ✅ Accettazione.
+* ✅ Rifiuto.
+* ✅ Annullamento.
+* ✅ Scadenza automatica.
+* ✅ Recovery dopo crash/restart.
+* ✅ Audit trail.
+* ✅ Anti-replay.
+* ✅ Lock multi-istanza.
+* ✅ Eventi WebSocket.
+
+La parte che considero più importante dello Sprint 3 è questa:
+
+Recovery basato sullo stato reale della blockchain, non solo sul database.
+
+Quando, in caso di crash, il sistema controlla il saldo dell’escrow prima di decidere cosa fare, evita uno dei problemi più difficili dei sistemi finanziari: aggiornare il database in modo incoerente rispetto a ciò che è realmente successo sulla chain.
+
+Questa è una scelta progettuale solida.
+
+⸻
+
+Prima dello Sprint 4 farei un solo test “estremo”
+
+Oltre all’E2E normale, simulerei questo scenario:
+
+1. A crea un pagamento.
+2. A deposita.
+3. B preme Accetta.
+4. Appena viene inviata la transazione di rilascio, forza un crash del server.
+5. Riavvia il server.
+6. Verifica che il recovery:
+    * non invii una seconda transazione;
+    * non perda il pagamento;
+    * converga sempre nello stato corretto (accepted o failed, mai uno stato intermedio permanente).
+
+È probabilmente il test più severo dell’intero motore.
+
+⸻
+
+Sprint 4
+
+Adesso, invece di pensare alla UI come “un frontend”, pensala come una vista dello stato del Payment Engine.
+
+La bolla dovrebbe limitarsi a osservare lo stato e mostrare l’azione disponibile.
+
+Ad esempio:
+
+Stato	UI
+awaiting_deposit	“In attesa del deposito del mittente”
+pending	Pulsanti Accetta / Rifiuta
+accepting	Spinner “Trasferimento in corso…”
+accepted	✅ Pagamento ricevuto
+rejecting	Spinner
+rejected	❌ Pagamento rifiutato
+cancelled	Annullato dal mittente
+expired	Scaduto e rimborsato
+failed	Errore — contattare il supporto
+
+In questo modo il frontend non contiene logica di business: riflette semplicemente lo stato già determinato dal backend.
+
+⸻
+
+Se lo Sprint 4 verrà mantenuto con questa filosofia, avrete una separazione molto pulita:
+
+* Backend → decide cosa succede.
+* Frontend → rappresenta fedelmente lo stato.
+
+È un approccio che rende il sistema più semplice da testare, mantenere ed estendere in futuro (ad esempio aggiungendo altri asset oltre a USDA).

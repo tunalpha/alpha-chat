@@ -5784,6 +5784,60 @@ html.emergency-open #root {
 /* ── USDA Payment Bubbles ─────────────────────────────────────────────────── */
 /* ─────────────────────────────────────────────────────────────────────────── */
 
+/* ─────────────────────────────────────────────────────────────────────────
+   Chat Payment Engine — bolla cp-bubble (message_type: "payment", Sprint 4)
+   ───────────────────────────────────────────────────────────────────────── */
+.cp-bubble {
+  display: flex; flex-direction: column; gap: 6px;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.10);
+  border-radius: 16px; padding: 14px 16px;
+  min-width: 220px; max-width: 280px;
+  transition: box-shadow 0.2s;
+}
+.cp-bubble.mine    { background: linear-gradient(135deg, rgba(99,102,241,0.20) 0%, rgba(79,70,229,0.12) 100%); border-color: rgba(99,102,241,0.28); }
+.cp-bubble-header  { display: flex; align-items: center; gap: 6px; font-size: 0.70rem; font-weight: 600; color: var(--text-3, rgba(255,255,255,0.45)); text-transform: uppercase; letter-spacing: 0.06em; }
+.cp-coin           { font-size: 1.05rem; }
+.cp-bubble-amount  { font-size: 1.45rem; font-weight: 700; color: var(--text-1, #fff); line-height: 1.1; }
+.cp-bubble-unit    { font-size: 0.85rem; font-weight: 600; color: var(--text-3, rgba(255,255,255,0.45)); }
+.cp-bubble-sub     { font-size: 0.77rem; color: var(--text-3, rgba(255,255,255,0.45)); }
+.cp-bubble-note    { font-size: 0.79rem; color: var(--text-2, rgba(255,255,255,0.72)); font-style: italic; }
+.cp-bubble-divider { height: 1px; background: rgba(255,255,255,0.07); margin: 4px 0; }
+
+/* Stato */
+.cp-bubble-status  { display: flex; align-items: flex-start; gap: 8px; }
+.cp-status-icon    { font-size: 1rem; flex-shrink: 0; margin-top: 1px; }
+.cp-status-text-group { display: flex; flex-direction: column; gap: 2px; }
+.cp-status-title   { font-size: 0.82rem; font-weight: 600; color: var(--text-1, #fff); }
+.cp-status-sub     { font-size: 0.73rem; color: var(--text-3, rgba(255,255,255,0.45)); line-height: 1.4; }
+
+/* Varianti colore */
+.cp-variant-success .cp-status-title { color: #4ade80; }
+.cp-variant-fail    .cp-status-title { color: #f87171; }
+.cp-variant-neutral .cp-status-title { color: var(--text-2, rgba(255,255,255,0.65)); }
+.cp-variant-waiting .cp-status-title { color: #fbbf24; }
+
+/* Spinner */
+.cp-spinner {
+  width: 18px; height: 18px; flex-shrink: 0; margin-top: 1px;
+  border: 2px solid rgba(99,102,241,0.25); border-top-color: #6366f1;
+  border-radius: 50%; animation: cp-spin 0.8s linear infinite;
+}
+@keyframes cp-spin { to { transform: rotate(360deg); } }
+
+/* Pulsanti azione */
+.cp-actions  { display: flex; gap: 8px; margin-top: 4px; }
+.cp-btn      { flex: 1; padding: 9px 4px; border-radius: 10px; font-size: 0.82rem; font-weight: 700; border: none; cursor: pointer; transition: opacity 0.15s; }
+.cp-btn:disabled  { opacity: 0.5; cursor: not-allowed; }
+.cp-btn:active    { opacity: 0.75; }
+.cp-btn-accept    { background: linear-gradient(135deg, #22c55e, #16a34a); color: #fff; }
+.cp-btn-reject    { background: rgba(248,113,113,0.18); color: #f87171; border: 1px solid rgba(248,113,113,0.25); }
+.cp-btn-cancel    { background: rgba(255,255,255,0.07); color: var(--text-2, rgba(255,255,255,0.65)); border: 1px solid rgba(255,255,255,0.10); flex: unset; width: 100%; font-size: 0.79rem; }
+
+/* Errore e TX hash */
+.cp-bubble-error   { font-size: 0.75rem; color: #f87171; background: rgba(248,113,113,0.10); border: 1px solid rgba(248,113,113,0.20); border-radius: 8px; padding: 7px 10px; margin-top: 2px; }
+.cp-bubble-tx      { font-size: 0.68rem; color: var(--text-3, rgba(255,255,255,0.30)); font-family: monospace; margin-top: 2px; }
+
 .usda-bubble {
   border-radius: 14px;
   padding: 12px 14px;

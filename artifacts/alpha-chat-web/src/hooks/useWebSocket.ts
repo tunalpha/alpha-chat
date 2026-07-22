@@ -29,8 +29,12 @@ export type WsEvent =
   | { type: "call.missed";          payload: Record<string, unknown> }
   | { type: "call.ended_elsewhere"; payload: Record<string, unknown> }
   | { type: "call.signal_ack";      payload: Record<string, unknown> }
-  // USDA Payments
-  | { type: "usda.payment.update";  payload: Record<string, unknown> };
+  // USDA Payments (getusda.xyz)
+  | { type: "usda.payment.update";  payload: Record<string, unknown> }
+  // Chat Payment Engine (Sprint 4)
+  | { type: "payment.state_changed"; payload: Record<string, unknown> }
+  // Signal session reset (gestito in WebSocketContext)
+  | { type: "signal.session.reset"; payload: Record<string, unknown> };
 
 type EventHandler = (event: WsEvent) => void;
 
