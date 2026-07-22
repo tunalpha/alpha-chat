@@ -1,0 +1,95 @@
+Sì. A questo punto non serve fare altri tentativi: serve verificare direttamente i dati del contatto Cricco nel database e seguire il flusso completo.
+
+Puoi inviare questo prompt:
+
+⸻
+
+Il problema persiste. “Invia USDA” continua a mostrare “Cricco non può ancora ricevere USDA”.
+
+Non fare modifiche al codice finché non è stata identificata con certezza la causa.
+
+Verifica completa del contatto “Cricco”
+
+1. Recupera dal database il documento completo dell’utente Cricco.
+
+Stampare almeno:
+
+{
+  "_id": "...",
+  "username": "...",
+  "wallet_address": "...",
+  "wallets": {
+    "usda": {
+      "address": "...",
+      "enabled": ...
+    }
+  },
+  "wallet_enabled": ...,
+  "wallet_connected": ...,
+  "wallet_status": ...
+}
+
+Verifica preparePayment()
+
+Seguire passo per passo il backend quando provo a inviare USDA a Cricco.
+
+Loggare:
+
+* recipientId ricevuto
+* query MongoDB eseguita
+* documento trovato
+* valore di:
+    * wallets.usda.address
+    * wallet_address
+* motivo preciso per cui viene restituito RECIPIENT_NO_WALLET.
+
+Verifica query
+
+Mostrare la query esatta usata per recuperare Cricco.
+
+Ad esempio:
+
+findById(...)
+
+oppure
+
+findOne(...)
+
+e verificare che il documento recuperato sia realmente quello di Cricco.
+
+Verifica persistenza
+
+Controllare se apiUsdaSetWalletAddress() viene realmente eseguita.
+
+Loggare:
+
+* address ricevuto
+* update Mongo eseguito
+* numero documenti modificati
+* documento finale salvato.
+
+Verifica sincronizzazione
+
+Se il Wallet Center mostra “✅ Wallet attivo”, spiegare perché il documento Mongo continua a non soddisfare il controllo di preparePayment().
+
+Report finale
+
+Consegnare:
+
+* documento Mongo completo del contatto Cricco;
+* query utilizzata dal backend;
+* motivo esatto del RECIPIENT_NO_WALLET;
+* punto preciso del codice in cui il controllo fallisce.
+
+Non proporre fix finché non è stata identificata con certezza la causa.
+
+⸻
+
+Da quello che hai mostrato finora, il problema potrebbe essere uno di questi:
+
+1. Il wallet non viene realmente salvato su MongoDB.
+2. Il backend sta leggendo un altro documento (ID errato o query errata).
+3. Il wallet viene salvato in un campo diverso da quello letto da preparePayment().
+4. L’aggiornamento del wallet fallisce silenziosamente.
+
+Con il report richiesto si dovrebbe individuare quale di questi casi si sta verificando.
