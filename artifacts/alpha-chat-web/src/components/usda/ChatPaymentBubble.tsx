@@ -337,8 +337,14 @@ export const ChatPaymentBubble = memo(function ChatPaymentBubble({ data, isMine 
       )}
 
       {/* PolygonScan links — audit blockchain.
-           Deposito: visibile da quando lo status >= "pending" (deposito confermato).
-           Rilascio: visibile quando il pagamento è stato completato. */}
+           MITTENTE (isMine): comportamento invariato — vede il link al deposito
+             verso l'escrow (utile per verificare l'invio dei fondi) e, quando il
+             pagamento è completato, anche il link al rilascio.
+           DESTINATARIO (!isMine): nessun link negli stati intermedi (la tx di
+             deposito verso l'escrow lo confonde). Il link compare SOLO quando il
+             pagamento è stato ricevuto (status "accepted") e punta alla tx di
+             release verso il suo wallet. Per failed/refunded/cancelled ecc. il
+             destinatario non vede alcun link (il rimborso riguarda il mittente). */}
       {(() => {
         // Calcola gli URL dinamicamente dall'hash (il backend li include nel meta,
         // ma il calcolo client-side è un fallback universale per i messaggi vecchi).
@@ -347,6 +353,26 @@ export const ChatPaymentBubble = memo(function ChatPaymentBubble({ data, isMine 
         const releaseUrl  = data.release_polygonscan_url
           ?? (data.tx_hash_release  ? `https://polygonscan.com/tx/${data.tx_hash_release}`  : null);
 
+        // --- DESTINATARIO ---
+        if (!isMine) {
+          // Link solo a pagamento ricevuto (release), niente deposito.
+          if (data.status !== "accepted" || !releaseUrl) return null;
+          return (
+            <div className="cp-bubble-scan-links">
+              <a
+                href={releaseUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="cp-scan-link"
+                aria-label="Verifica transazione su PolygonScan"
+              >
+                ↗ Visualizza transazione
+              </a>
+            </div>
+          );
+        }
+
+        // --- MITTENTE (invariato) ---
         if (!depositUrl && !releaseUrl) return null;
         return (
           <div className="cp-bubble-scan-links">
