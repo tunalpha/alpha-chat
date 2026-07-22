@@ -40,6 +40,7 @@ import NuclearDestroyPage from "./pages/NuclearDestroyPage";
 import { useNotifSync } from "./hooks/useNotifSync";
 import { initServiceWorker, requestAndSubscribe as pushSubscribe } from "./lib/pushManager";
 import SignalReinstallBanner from "./components/SignalReinstallBanner";
+import SwUpdateBanner from "./components/SwUpdateBanner";
 
 export type AppView =
   | "chat"
@@ -188,6 +189,7 @@ function AppContent() {
     <>
       {showPrivacy && <PrivacyOverlay />}
       <SignalReinstallBanner />
+      <SwUpdateBanner />
 
       {(() => {
         switch (view) {

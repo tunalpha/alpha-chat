@@ -16,6 +16,21 @@
 'use strict';
 
 const APP_NAME   = 'Alpha Chat';
+
+// ── Lifecycle: aggiornamento automatico ───────────────────────────────────────
+// skipWaiting() forza l'attivazione immediata del nuovo SW senza aspettare
+// che tutte le schede vengano chiuse (risolve il problema reinstallazione PWA).
+
+self.addEventListener('install', (event) => {
+  event.waitUntil(self.skipWaiting());
+});
+
+// clients.claim() fa sì che il nuovo SW prenda subito il controllo di tutte
+// le schede aperte (senza aspettare il prossimo caricamento della pagina).
+
+self.addEventListener('activate', (event) => {
+  event.waitUntil(self.clients.claim());
+});
 // Sostituito da vite plugin 'inject-sw-version' al momento del build.
 // In dev rimane '__SW_VERSION__' (accettabile per debug locale).
 const SW_VERSION = '__SW_VERSION__';

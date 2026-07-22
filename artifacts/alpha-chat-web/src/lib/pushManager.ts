@@ -161,6 +161,21 @@ export async function initServiceWorker(): Promise<void> {
       void subscribe().catch(() => {});
     }
   });
+
+  // ── Rilevamento aggiornamento SW ─────────────────────────────────────────
+  // Quando il nuovo SW chiama skipWaiting() + clients.claim(), il browser
+  // emette "controllerchange" su navigator.serviceWorker.
+  // Viene emesso solo se il controller cambia realmente (primo caricamento
+  // o aggiornamento effettivo) — non ad ogni refresh.
+  let _controllerChangeCount = 0;
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    _controllerChangeCount++;
+    // Il primo controllerchange avviene al caricamento iniziale quando la pagina
+    // non aveva ancora un controller; il secondo (e successivi) indica un update.
+    if (_controllerChangeCount > 1) {
+      window.dispatchEvent(new CustomEvent("pwa:update-ready"));
+    }
+  });
 }
 
 /**
