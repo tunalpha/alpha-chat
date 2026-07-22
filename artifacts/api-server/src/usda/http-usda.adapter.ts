@@ -22,6 +22,7 @@
  */
 
 import { logger } from "../lib/logger";
+import { AppError } from "../errors/AppError";
 import { balanceOfUsda, verifyUsdaTx } from "./polygon-rpc";
 import type {
   UsdaAdapter,
@@ -157,6 +158,11 @@ async function usdaRequest<T>(
   if (!res.ok) {
     const msg = (json?.error as { message?: string } | undefined)?.message
       ?? `USDA API error ${res.status}`;
+    logger.warn({ status: res.status, path, msg }, "[HttpUSDA] upstream error");
+    // 4xx dall'API USDA → AppError con lo stesso status (non 500)
+    if (res.status >= 400 && res.status < 500) {
+      throw new AppError("USDA_API_ERROR", res.status, undefined, { upstream: msg });
+    }
     throw new Error(`[USDA] ${msg}`);
   }
 
