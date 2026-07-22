@@ -62,17 +62,17 @@ AlphaChat deve dotarsi di un **Payment Engine proprio**, che riutilizza la logic
 |---|---|---|---|
 | Autenticazione | ✅ Bearer token | ❌ Phone verify | — |
 | Identificazione utente | ✅ user_id + wallet | ❌ Phone E.164 | — |
-| Custodial wallet creation | ❌ Assente | ✅ `createCustodialWallet()` | ✅ Direttamente |
-| Transfer da custodiale | ❌ Assente | ✅ `transferFromCustodial()` | ✅ Direttamente |
-| Anti-replay (txHash) | ✅ Parziale in `verifyUsdaTx` | ✅ `processed_txs` collection | ✅ Da aggiungere |
-| Lock atomico | ❌ Assente (race condition risk) | ✅ `findOneAndUpdate` state machine | ✅ Pattern da replicare |
-| Escrow | ❌ Assente | ✅ 1 custodiale per transfer | ✅ Schema + logica |
-| Refund automatico | ❌ No-op | ✅ `refund-scheduler.js` | ✅ Da portare |
+| Custodial wallet creation | ❌ Assente | ✅ `createCustodialWallet()` | ✅ Reimplementare algoritmo in TS |
+| Transfer da custodiale | ❌ Assente | ✅ `transferFromCustodial()` | ✅ Reimplementare algoritmo in TS |
+| Anti-replay (txHash) | ✅ Parziale in `verifyUsdaTx` | ✅ `processed_txs` collection | ✅ Reimplementare pattern in TS |
+| Lock atomico | ❌ Assente (race condition risk) | ✅ `findOneAndUpdate` state machine | ✅ Reimplementare pattern in TS |
+| Escrow | ❌ Assente | ✅ 1 custodiale per transfer | ✅ Reimplementare schema + logica |
+| Refund automatico | ❌ No-op | ✅ `refund-scheduler.js` | ✅ Reimplementare scheduler in TS |
 | Messaggi chat | ✅ Completo | ❌ Assente | — |
 | WS real-time | ✅ Completo | ❌ Assente | — |
 | Bubble UI | ✅ Completo | ❌ Assente | — |
 | Verifica on-chain | ✅ `verifyUsdaTx` | ✅ Logs polling | Già presente in AlphaChat |
-| Scheduler persistente | ❌ In-memory solo | ✅ DB-based | ✅ Da portare |
+| Scheduler persistente | ❌ In-memory solo | ✅ DB-based | ✅ Reimplementare scheduler DB-driven |
 
 ---
 
@@ -493,11 +493,13 @@ Job (ogni 5min): trova transfer pending con expires_at < now
 5. **`UsdaChatTransferBubble.tsx`** — bubble frontend con stati + azioni (Accetta / Rifiuta)
 6. **Job scheduler** — `setInterval` ogni 5min (o Cron endpoint)
 
-### Da portare da getusda.xyz (copia o shared package)
+### Algoritmi da reimplementare in TypeScript (ispirati da getusda.xyz — nessun codice copiato)
 
-1. `lib/phone-wallet.js` → rinominare `lib/usda-custodial.ts` — `createCustodialWallet`, `transferFromCustodial`, `getCustodialBalance`
-2. `lib/anti-replay.js` → `lib/usda-anti-replay.ts` — `checkAndMarkTx`, `rollbackTx`
-3. `lib/tx-lock.js` → integrare nel service (pattern, non necessariamente il file)
+getusda.xyz viene usato come **riferimento concettuale**. I seguenti algoritmi vengono riscritti da zero in TypeScript all'interno di AlphaChat, senza copiare codice né creare dipendenze:
+
+1. **`usda-custodial.service.ts`** — generazione wallet escrow usa-e-getta: chiave privata casuale, cifratura AES-256-GCM con master key da env var, firma TX ERC-20 con ethers.js o viem; concettualmente equivalente a `lib/phone-wallet.js`
+2. **`usda-anti-replay.ts`** — `checkAndMarkTx(txHash)` + `rollbackTx(txHash)` con unique index su `processed_txs.tx_hash`; concettualmente equivalente a `lib/anti-replay.js`
+3. **Pattern lock atomico** — `findOneAndUpdate({ status: 'pending' }, { $set: { status: 'accepting' } })` nel service; concettualmente equivalente al pattern in `lib/tx-lock.js`
 
 ### Da riutilizzare invariati (già in AlphaChat)
 
@@ -527,8 +529,8 @@ Job (ogni 5min): trova transfer pending con expires_at < now
 
 ### Fase 1 — Core engine (4-6 giorni)
 
-1. Copia `phone-wallet.js` e `anti-replay.js` in AlphaChat, converti in TypeScript
-2. Crea schema `usda_chat_transfers` + indici
+1. Implementa in TypeScript gli algoritmi di custodial wallet, anti-replay e lock atomico (ispirandosi concettualmente a getusda.xyz, senza copiare codice)
+2. Crea schema `usda_chat_transfers` + indici MongoDB
 3. Implementa `chat-transfer.service.ts`: create + deposit-confirmed + accept + reject
 4. Implementa controller + route
 5. Integra con sistema messaggi esistente
@@ -553,19 +555,57 @@ Job (ogni 5min): trova transfer pending con expires_at < now
 
 ---
 
-## 14. Raccomandazione finale
+## 14. Confronto: Chat Payment Engine nativo vs adattamento alle API phone-based di getusda.xyz
 
-**Architettura consigliata**: _Custodial Wallet per Transfer + State Machine MongoDB + Scheduler DB-driven_
+### Opzione A — Adattare AlphaChat alle API phone-based di getusda.xyz
 
-Questa soluzione:
+Questa strada è stata esplorata ed è risultata impraticabile. I motivi tecnici sono i seguenti:
 
-- **Riusa al massimo** il codice già testato (escrow pattern, anti-replay, lock) da getusda.xyz
-- **Non duplica** infrastruttura blockchain — stesso contratto ERC-20, stesso RPC Polygon
-- **Non rompe** nulla — né le API getusda.xyz né le API AlphaChat esistenti
-- **È sicura** contro replay, double-spend e race condition
-- **È durabile** — sopravvive a crash e restart perché lo stato è su MongoDB
-- **È anonima** — nessun telefono, nessun link pubblico, identità solo via account AlphaChat
-- **È scalabile** — il pattern custodial wallet regge centinaia di transfer concorrenti
-- **È evolvibile** — l'adapter pattern permette di sostituire il custodiale con uno smart contract in futuro senza toccare il service layer
+**Problema 1 — Identificazione del destinatario**
 
-La scelta alternativa (smart contract escrow) è architetturalmente più elegante ma ha costi di sviluppo, audit e gas sproporzionati rispetto al volume attuale. Va rivalutata quando il sistema è maturo e il volume lo giustifica.
+`POST /api/pay/prepare` richiede `recipientPhone` (numero E.164). AlphaChat non raccoglie numeri di telefono e non intende farlo — l'identità è costruita su `userId` e `username`. Non esiste una mappatura tra i due spazi di identità.
+
+**Problema 2 — Flusso incompatibile**
+
+Il flusso di getusda.xyz genera un **link WhatsApp pubblico** che il destinatario clicca per reclamare i fondi. AlphaChat è un'app di messaggistica privata e cifrata. Inserire un link pubblico esterno nella chat rompe il modello di sicurezza e l'esperienza utente.
+
+**Problema 3 — Database separato**
+
+getusda.xyz mantiene la propria collection `phone_users` su un MongoDB separato. AlphaChat non ha accesso a quel database e non deve averlo — i due sistemi devono rimanere indipendenti.
+
+**Problema 4 — Nessun accept/reject**
+
+Il flusso getusda.xyz non prevede un'azione di accettazione da parte del destinatario — i fondi vengono "reclamati" tramite link, non accettati esplicitamente in-chat. Il requisito di AlphaChat (pulsanti Accetta / Rifiuta nella bubble) non può essere soddisfatto tramite questo flusso.
+
+**Conclusione su Opzione A**: non adattabile. Non si tratta di un gap colmabile con un adapter — è un'incompatibilità semantica tra due architetture costruite per scopi diversi.
+
+---
+
+### Opzione B — Chat Payment Engine nativo (questa architettura)
+
+| Criterio | Opzione A (phone-based) | Opzione B (nativo) |
+|---|---|---|
+| Identità destinatario | ❌ `recipientPhone` obbligatorio | ✅ `userId` / `username` AlphaChat |
+| Anonimato | ❌ Richiede numero verificato | ✅ Totale — nessun telefono |
+| Accept / Reject in-chat | ❌ Non supportato | ✅ Pulsanti nativi nella bubble |
+| Dipendenza esterna | ❌ HTTP a getusda.xyz (SPOF) | ✅ Zero dipendenze esterne |
+| getusda.xyz invariato | ✅ Sì | ✅ Sì — zero modifiche |
+| Timeout 48h | ❌ Gestito da scheduler getusda.xyz | ✅ Scheduler interno AlphaChat |
+| Sicurezza (anti-replay, lock) | ❌ Parziale via adapter | ✅ Completa — reimplementata in TS |
+| Coesistenza con portale getusda.xyz | ✅ Sì | ✅ Sì — stesso contratto ERC-20 |
+| Complessità implementativa | ❌ Alta (bridge semantico impossibile) | ⚠️ Media (nuovo modulo standalone) |
+| Manutenibilità a lungo termine | ❌ Dipende da API esterna non controllata | ✅ Codice interno, testabile, versionato |
+
+### Raccomandazione
+
+**L'architettura nativa (Opzione B) è la scelta corretta e l'unica praticabile.**
+
+Non è preferibile "tra due opzioni equivalenti" — è preferibile perché l'opzione A non è un'opzione: il tentativo di adattare AlphaChat alle API phone-based di getusda.xyz è stato già percorso nella fase di debug produzione e ha prodotto un errore `400 "Parametri mancanti"` strutturalmente irrisolvibile senza cambiare l'identità del sistema.
+
+Il Chat Payment Engine nativo:
+
+- rispetta la natura di AlphaChat (anonima, cifrata, account-based)
+- non introduce dipendenze da servizi esterni non controllati
+- implementa la feature richiesta (accept/reject) che getusda.xyz non può fornire
+- lascia getusda.xyz completamente invariato e operativo per il portale web
+- utilizza gli stessi pattern architetturali di getusda.xyz (custodial escrow, lock atomico, anti-replay) reimplementati in TypeScript, garantendo coerenza concettuale senza accoppiamento tecnico

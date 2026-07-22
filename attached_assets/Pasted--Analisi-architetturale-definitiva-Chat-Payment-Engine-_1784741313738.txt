@@ -1,0 +1,359 @@
+# Analisi architetturale definitiva — Chat Payment Engine AlphaChat
+
+NON implementare alcun codice.
+
+Questa attività è esclusivamente di analisi, progettazione e revisione architetturale.
+
+## Vincolo assoluto
+
+Il repository getusda.xyz NON DEVE ESSERE MODIFICATO.
+
+Non devono essere modificati:
+
+- endpoint
+- API
+- database
+- collection
+- scheduler
+- logica phone-based
+- wallet custodiali
+- flussi esistenti
+
+Il repository getusda.xyz deve continuare a funzionare esattamente come oggi.
+
+Può essere utilizzato esclusivamente come riferimento tecnico per comprendere la logica già esistente.
+
+L'obiettivo NON è adattare AlphaChat alle API di getusda.xyz.
+
+L'obiettivo è costruire un motore pagamenti nativo di AlphaChat.
+
+---
+
+## Contesto
+
+L'analisi del codice ha dimostrato che:
+
+POST /api/pay/prepare accetta
+
+- senderWallet
+- recipientPhone
+- amount
+- note
+
+Il destinatario viene identificato tramite recipientPhone.
+
+AlphaChat invece identifica gli utenti tramite:
+
+- userId
+- username
+- wallets.usda.address
+
+Le due architetture sono semanticamente incompatibili.
+
+Non vogliamo più utilizzare le API phone-based di getusda.xyz.
+
+---
+
+## Visione
+
+AlphaChat deve mantenere completamente la propria natura.
+
+Nessun numero di telefono.
+
+Nessun link pubblico.
+
+Nessun recipientPhone.
+
+Nessuna dipendenza dal database phone_users.
+
+L'identità primaria deve essere esclusivamente quella di AlphaChat.
+
+---
+
+## Obiettivo
+
+Progettare un Chat Payment Engine completamente interno al repository AlphaChat.
+
+Il destinatario deve essere identificato tramite:
+
+- userId
+oppure
+- username
+
+Il motore recupererà automaticamente:
+
+wallets.usda.address
+
+dal database AlphaChat.
+
+---
+
+## Flusso desiderato
+
+Utente A
+
+↓
+
+Invia 100 USDA
+
+↓
+
+Chat Payment Engine
+
+↓
+
+Verifica saldo
+
+↓
+
+Escrow
+
+↓
+
+Messaggio nella chat
+
+↓
+
+Utente B riceve
+
+"Hai ricevuto 100 USDA"
+
+↓
+
+Accetta
+
+oppure
+
+Rifiuta
+
+↓
+
+Escrow → wallet B
+
+oppure
+
+Escrow → wallet A
+
+↓
+
+Completato
+
+oppure
+
+Refund
+
+---
+
+## Timeout
+
+Se il destinatario non accetta entro 48 ore
+
+↓
+
+Refund automatico
+
+↓
+
+Messaggio nella chat
+
+"I fondi sono stati restituiti al mittente."
+
+---
+
+## Analisi richiesta
+
+Esplorare completamente entrambi i repository.
+
+### Repository AlphaChat
+
+Individuare:
+
+- wallet USDA
+- chat
+- notifiche
+- utenti
+- autenticazione
+- scheduler
+- MongoDB
+- servizi
+- modelli
+- pattern architetturali
+
+Valutare dove integrare il nuovo motore.
+
+---
+
+### Repository getusda.xyz
+
+Analizzare esclusivamente come riferimento tecnico.
+
+Individuare tutta la logica riutilizzabile concettualmente:
+
+- escrow
+- blockchain
+- invio USDA
+- refund
+- scheduler
+- anti replay
+- audit
+- recovery
+- idempotenza
+- lock
+- verifiche blockchain
+
+NON copiare codice.
+
+NON creare dipendenze.
+
+NON modificare il repository.
+
+Valutare solamente quali algoritmi e pattern possono essere reimplementati in TypeScript all'interno di AlphaChat.
+
+---
+
+## Payment Engine
+
+Valutare la progettazione di un nuovo modulo interno:
+
+Chat Payment Engine
+
+completamente separato da getusda.xyz.
+
+Proporre eventuali endpoint dedicati, ad esempio:
+
+POST /chat-transfer/create
+
+POST /chat-transfer/accept
+
+POST /chat-transfer/reject
+
+POST /chat-transfer/cancel
+
+GET /chat-transfer/status
+
+senza implementare codice.
+
+---
+
+## Database
+
+Proporre nuove collection dedicate.
+
+Non modificare quelle esistenti.
+
+Ad esempio:
+
+usda_chat_transfers
+
+eventuali collection audit
+
+eventuali collection escrow
+
+eventuali collection scheduler
+
+---
+
+## Stati
+
+Definire il diagramma degli stati.
+
+Ad esempio:
+
+CREATED
+
+WAITING_DEPOSIT
+
+PENDING
+
+ACCEPTED
+
+REJECTED
+
+REFUNDED
+
+EXPIRED
+
+FAILED
+
+COMPLETED
+
+Analizzare se servono stati aggiuntivi.
+
+---
+
+## Sicurezza
+
+Analizzare:
+
+- race condition
+- replay attack
+- double spend
+- idempotenza
+- crash recovery
+- deploy recovery
+- scheduler recovery
+- atomicità
+- audit log
+
+---
+
+## Escrow
+
+Analizzare quale architettura sia migliore.
+
+Valutare:
+
+wallet escrow dedicato
+
+oppure
+
+wallet escrow centralizzato
+
+Confrontare:
+
+- sicurezza
+- semplicità
+- costi gas
+- manutenzione
+- recovery
+- scalabilità
+
+Fornire una raccomandazione motivata.
+
+---
+
+## Compatibilità
+
+Verificare che il nuovo Chat Payment Engine possa convivere con:
+
+- AlphaChat
+- getusda.xyz
+- Wallet USDA
+
+senza modificare alcuna API esistente.
+
+---
+
+## Deliverable
+
+Non scrivere codice.
+
+Consegnare un documento tecnico completo contenente:
+
+- architettura proposta;
+- componenti AlphaChat coinvolti;
+- logiche di getusda.xyz riutilizzabili come riferimento;
+- componenti da sviluppare;
+- schema dati;
+- diagramma degli stati;
+- flusso completo del pagamento;
+- gestione escrow;
+- gestione refund;
+- gestione timeout;
+- scheduler;
+- recovery;
+- sicurezza;
+- rischi;
+- roadmap di implementazione.
+
+Concludere indicando se questa architettura è preferibile rispetto al tentativo di adattare AlphaChat alle API phone-based di getusda.xyz e motivare la scelta.
