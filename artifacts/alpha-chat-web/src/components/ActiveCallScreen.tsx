@@ -72,6 +72,38 @@ export default function ActiveCallScreen() {
   const [showMenu, setShowMenu]     = useState(false);
   const [showVerify, setShowVerify] = useState(false);
 
+  // ── PiP drag ────────────────────────────────────────────────────────────
+  const PIP_W = 100;
+  const PIP_H = 140;
+  // Posizione iniziale: angolo in basso a destra, sopra i controlli (≈140 px dal fondo)
+  const [pipPos, setPipPos] = useState<{ x: number; y: number }>(() => ({
+    x: window.innerWidth  - PIP_W - 16,
+    y: window.innerHeight - PIP_H - 140,
+  }));
+  const pipDrag = useRef<{ sx: number; sy: number; ox: number; oy: number } | null>(null);
+
+  const onPipDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    e.currentTarget.setPointerCapture(e.pointerId);
+    pipDrag.current = { sx: e.clientX, sy: e.clientY, ox: pipPos.x, oy: pipPos.y };
+  };
+
+  const onPipMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (!pipDrag.current) return;
+    const dx = e.clientX - pipDrag.current.sx;
+    const dy = e.clientY - pipDrag.current.sy;
+    const nx = pipDrag.current.ox + dx;
+    const ny = pipDrag.current.oy + dy;
+    setPipPos({
+      // Orizzontale: quasi completamente nascondibile (rimangono 10 px visibili)
+      x: Math.max(-(PIP_W - 10), Math.min(window.innerWidth - 10, nx)),
+      // Verticale: resta sempre dentro lo schermo
+      y: Math.max(0, Math.min(window.innerHeight - PIP_H, ny)),
+    });
+  };
+
+  const onPipUp = () => { pipDrag.current = null; };
+
   // ── Media routing ────────────────────────────────────────────────────────
 
   // Audio remoto: usa il singleton pre-primato nel gesture (iOS fix)
@@ -244,14 +276,18 @@ export default function ActiveCallScreen() {
           </div>
         )}
 
-        {/* ── Video locale (PiP) ─ */}
-        {isVideo && (
-          <video
-            ref={localVideoRef}
-            className={`acs-local-video${isCameraOff ? " acs-camera-off" : ""}`}
-            playsInline
-            muted
-          />
+        {/* ── Video locale (PiP, draggabile) ─ */}
+        {isVideo && !isCameraOff && (
+          <div
+            className="acs-pip-wrapper"
+            style={pipPos ? { left: pipPos.x, top: pipPos.y } : undefined}
+            onPointerDown={onPipDown}
+            onPointerMove={onPipMove}
+            onPointerUp={onPipUp}
+            onPointerCancel={onPipUp}
+          >
+            <video ref={localVideoRef} className="acs-pip-video" playsInline muted />
+          </div>
         )}
 
         {/* ── Menu "altro" (emergency lock, verifica identità) ─ */}
