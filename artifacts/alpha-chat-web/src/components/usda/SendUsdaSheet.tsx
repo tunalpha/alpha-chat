@@ -47,6 +47,10 @@ type SigningStatus =
   | "awaiting_confirmation"
   | "verifying";
 
+// ── Feature flags ────────────────────────────────────────────────────────────
+// Per riattivare le commissioni: impostare SHOW_FEE_BREAKDOWN = true
+const SHOW_FEE_BREAKDOWN = false;
+
 // ── Costanti ────────────────────────────────────────────────────────────────
 
 const STEPS: { id: Step; label: string }[] = [
@@ -108,6 +112,7 @@ export function SendUsdaSheet({ conversationId, toUserId, toName, onClose, onSen
   }, []);
 
   const amountNum      = parseFloat(amount) || 0;
+  // Fee kept for backend submission — non mostrata nella UI (SHOW_FEE_BREAKDOWN = false)
   const estimatedFee   = amountNum > 0 ? (amountNum * 0.001).toFixed(4) : "0";
   const estimatedTotal = amountNum > 0 ? (amountNum + parseFloat(estimatedFee)).toFixed(4) : "0";
   const currentStepIdx = STEPS.findIndex((s) => s.id === step);
@@ -340,7 +345,7 @@ export function SendUsdaSheet({ conversationId, toUserId, toName, onClose, onSen
               />
             </div>
 
-            {amountNum > 0 && (
+            {SHOW_FEE_BREAKDOWN && amountNum > 0 && (
               <>
                 <div className="usda-fee-row">Commissione stimata: <strong>{estimatedFee} USDA</strong> <span className="usda-fee-hint">(0.1%)</span></div>
                 <div className="usda-total-row">Totale stimato: <strong>{estimatedTotal} USDA</strong></div>
@@ -363,10 +368,17 @@ export function SendUsdaSheet({ conversationId, toUserId, toName, onClose, onSen
           <>
             <div className="usda-confirm-summary">
               <div className="usda-confirm-row"><span>A</span><strong>{toName}</strong></div>
-              <div className="usda-confirm-row"><span>Importo</span><strong>{prepared.amount} USDA</strong></div>
-              <div className="usda-confirm-row"><span>Commissione</span><strong>{prepared.fee} USDA</strong></div>
-              <div className="usda-confirm-row usda-confirm-total"><span>Totale</span><strong>{prepared.total} USDA</strong></div>
+              <div className="usda-confirm-row usda-confirm-total">
+                <span>💸 Importo da inviare</span>
+                <strong>{prepared.amount} USDA</strong>
+              </div>
               {note && <div className="usda-confirm-row"><span>Nota</span><em>{note}</em></div>}
+              {SHOW_FEE_BREAKDOWN && (
+                <>
+                  <div className="usda-confirm-row"><span>Commissione</span><strong>{prepared.fee} USDA</strong></div>
+                  <div className="usda-confirm-row usda-confirm-total"><span>Totale</span><strong>{prepared.total} USDA</strong></div>
+                </>
+              )}
             </div>
 
             {/* ThirdWeb non configurato */}
