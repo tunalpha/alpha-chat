@@ -53,6 +53,15 @@ export const getBackendInfo: RequestHandler = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// GET /api/v1/usda/health  (non richiede autenticazione — usato dal frontend per graceful degradation)
+export const getHealth: RequestHandler = async (_req, res, next) => {
+  try {
+    const result = await usdaService.checkHealth();
+    const status = result.available ? 200 : 503;
+    res.status(status).json({ available: result.available, timestamp: new Date().toISOString() });
+  } catch (err) { next(err); }
+};
+
 // POST /api/v1/usda/payments/prepare
 export const preparePayment: RequestHandler = async (req, res, next) => {
   try {

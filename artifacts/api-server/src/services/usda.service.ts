@@ -24,22 +24,30 @@ import { logger } from "../lib/logger";
 import { MockUsdaAdapter, setMockStatusChangeCallback } from "../usda/mock-usda.adapter";
 import type { UsdaAdapter, UsdaPaymentStatus } from "../usda/usda-adapter.interface";
 import type { IUsdaPaymentDocument } from "../models/usda-payment.model";
+import { balanceOfUsda } from "../usda/polygon-rpc";
 
 // ---------------------------------------------------------------------------
 // Dependency Injection
 //
 // Se USDA_API_BASE_URL è configurato → HttpUsdaAdapter (backend reale)
 // Altrimenti                         → MockUsdaAdapter (simulazione)
-//
-// Per passare al backend reale: impostare USDA_API_BASE_URL come secret Replit.
 // ---------------------------------------------------------------------------
 
-import { HttpUsdaAdapter, UsdaNotConfiguredError } from "../usda/http-usda.adapter";
+import {
+  HttpUsdaAdapter,
+  UsdaNotConfiguredError,
+  UsdaUnavailableError,
+  setHttpStatusChangeCallback,
+} from "../usda/http-usda.adapter";
+
+let _httpAdapter: HttpUsdaAdapter | null = null;
 
 function _createAdapter(): UsdaAdapter {
   if (process.env.USDA_API_BASE_URL) {
     logger.info("[USDA] Using HttpUsdaAdapter (USDA_API_BASE_URL configured)");
-    return new HttpUsdaAdapter();
+    const adapter = new HttpUsdaAdapter();
+    _httpAdapter = adapter;
+    return adapter;
   }
   logger.info("[USDA] Using MockUsdaAdapter (USDA_API_BASE_URL not set)");
   return new MockUsdaAdapter();
@@ -47,10 +55,11 @@ function _createAdapter(): UsdaAdapter {
 
 let _adapter: UsdaAdapter = _createAdapter();
 
-export { UsdaNotConfiguredError };
+export { UsdaNotConfiguredError, UsdaUnavailableError };
 
 export function setUsdaAdapter(adapter: UsdaAdapter): void {
   _adapter = adapter;
+  _httpAdapter = adapter instanceof HttpUsdaAdapter ? adapter : null;
 }
 
 // ---------------------------------------------------------------------------
@@ -61,10 +70,14 @@ const paymentRepo = new UsdaPaymentRepository();
 const memberRepo  = new ConversationMemberRepository();
 
 // ---------------------------------------------------------------------------
-// Mock status-change callback (auto-conferma simulata)
+// Status-change callback (Mock: auto-conferma / Http: polling USDA)
 // ---------------------------------------------------------------------------
 
 setMockStatusChangeCallback(async (externalPaymentId, status, txHash) => {
+  await _handleExternalStatusChange(externalPaymentId, status, txHash);
+});
+
+setHttpStatusChangeCallback(async (externalPaymentId, status, txHash) => {
   await _handleExternalStatusChange(externalPaymentId, status, txHash);
 });
 
@@ -220,7 +233,46 @@ async function _handleExternalStatusChange(
 // Public API
 // ---------------------------------------------------------------------------
 
+export async function checkHealth(): Promise<{ available: boolean }> {
+  if (_httpAdapter) {
+    const ok = await _httpAdapter._refreshHealth();
+    return { available: ok };
+  }
+  // MockAdapter è sempre disponibile
+  return { available: true };
+}
+
 export async function getWallet(userId: string) {
+  // Se stiamo usando HttpAdapter, leggiamo il saldo reale da ERC-20 via Polygon RPC.
+  // La struttura dei wallet è in MongoDB (il DB di AlphaChat), non sul backend USDA.
+  if (_httpAdapter) {
+    const user = await UserModel.findById(
+      new mongoose.Types.ObjectId(userId),
+      "wallets wallet_address wallet_enabled",
+    ).lean() as { wallets?: Record<string, { address: string; verifiedAt: string | null }>; wallet_address?: string; wallet_enabled?: boolean } | null;
+
+    const wallets = user?.wallets ?? {};
+    const usdaEntry = wallets.usda;
+    const address   = usdaEntry?.address ?? user?.wallet_address ?? null;
+
+    let balance = "0.000000";
+    if (address) {
+      try {
+        balance = await balanceOfUsda(address);
+      } catch (err) {
+        logger.warn({ err, address }, "[USDA] balanceOf failed — using 0");
+      }
+    }
+
+    return {
+      address,
+      chain_id:       parseInt(process.env.USDA_CHAIN_ID ?? "137", 10),
+      balance_usda:   balance,
+      wallet_enabled: !!(usdaEntry ?? (address && user?.wallet_enabled)),
+      wallets:        wallets as Record<string, { address: string; verifiedAt: string | null }>,
+    };
+  }
+
   return _adapter.getWallet(userId);
 }
 

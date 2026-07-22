@@ -11,6 +11,10 @@ import { authenticate } from "../../middleware/authenticate.middleware";
 import * as usda from "../../controllers/usda.controller";
 
 const router = Router();
+
+// ── Health (non richiede autenticazione) ───────────────────────────────────
+router.get("/health", usda.getHealth);
+
 router.use(authenticate);
 
 // ── Discovery ─────────────────────────────────────────────────────────────
