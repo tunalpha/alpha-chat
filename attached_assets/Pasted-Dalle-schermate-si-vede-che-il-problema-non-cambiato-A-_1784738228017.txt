@@ -1,0 +1,102 @@
+Dalle schermate si vede che il problema non è cambiato:
+
+* A sinistra: Wallet attivo con indirizzo Polygon visibile.
+* A destra: “Cricco non può ancora ricevere USDA”.
+
+Questo significa che il deploy del fix da solo non dimostra che MongoDB sia stato aggiornato. Adesso bisogna verificare il risultato, non il codice.
+
+A questo punto chiederei al team di fare una sola verifica definitiva:
+
+⸻
+
+Verifica post-deploy
+
+Il fix è stato deployato ma il problema persiste.
+
+Non modificare altro codice.
+
+1. Verificare che apiUsdaSetWalletAddress() venga realmente chiamata
+
+Per l’utente Cricco loggare:
+
+* la richiesta HTTP parte? (Sì/No)
+* URL
+* metodo
+* payload
+* risposta HTTP
+
+2. Verificare che il controller venga raggiunto
+
+Loggare nel backend:
+
+POST /api/v1/usda/wallet/address
+Authenticated user:
+UserId:
+Wallet address:
+
+3. Loggare l’update MongoDB
+
+Dopo updateOne() stampare:
+
+matchedCount:
+modifiedCount:
+acknowledged:
+
+4. Subito dopo leggere il documento
+
+Eseguire immediatamente:
+
+db.users.findOne(
+  { username: "cricco" },
+  {
+    wallet_enabled: 1,
+    wallet_address: 1,
+    wallets: 1
+  }
+)
+
+Pubblicare il risultato completo.
+
+5. Se il documento è corretto
+
+Seguire preparePayment() e loggare:
+
+recipient._id
+recipient.wallet_enabled
+recipient.wallet_address
+recipient.wallets.usda.address
+recipientWalletAddr
+
+Spiegare perché viene comunque restituito RECIPIENT_NO_WALLET.
+
+6. Verificare l’ambiente
+
+Confermare che:
+
+* il frontend che stai usando;
+* il backend;
+* MongoDB;
+
+puntino tutti allo stesso ambiente (Preview oppure Production).
+
+⸻
+
+Il sospetto principale
+
+Dopo tutti i test che hai fatto, io inizierei a sospettare un problema di ambiente.
+
+Le possibilità rimaste sono poche:
+
+1. Il frontend chiama un backend diverso da quello che pensi (Preview ↔ Production).
+2. Il backend aggiorna un database diverso da quello usato da preparePayment().
+3. L’utente Cricco che vedi nella chat non è lo stesso documento MongoDB che stai ispezionando (ID diversi tra ambienti).
+
+Il prossimo report dovrebbe quindi includere anche:
+
+* APP_URL
+* API_BASE_URL
+* MONGODB_URI (solo host/database, senza credenziali)
+* _id dell’utente Cricco usato da preparePayment()
+* _id del documento MongoDB che viene aggiornato
+
+Se questi valori non coincidono, il problema non è più nella logica del wallet, ma nel fatto che frontend, backend e database stanno lavorando su ambienti diversi.
