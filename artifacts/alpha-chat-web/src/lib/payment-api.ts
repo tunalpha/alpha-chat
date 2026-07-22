@@ -152,6 +152,16 @@ export async function apiPaymentDeposit(
   );
 }
 
+/**
+ * Rileva automaticamente il deposito on-chain senza richiedere il tx_hash.
+ * Usato per il recovery dopo iOS Safari page reload durante la firma wallet.
+ */
+export async function apiPaymentDetectDeposit(
+  transferId: string,
+): Promise<ChatTransferResponse> {
+  return paymentFetch<ChatTransferResponse>("POST", `/${transferId}/detect-deposit`);
+}
+
 // ---------------------------------------------------------------------------
 // Utilità
 // ---------------------------------------------------------------------------

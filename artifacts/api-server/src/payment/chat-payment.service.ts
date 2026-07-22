@@ -15,7 +15,7 @@
 
 import mongoose from "mongoose";
 import { randomUUID } from "crypto";
-import { createPublicClient, http, hexToBigInt } from "viem";
+import { createPublicClient, http, hexToBigInt, parseAbiItem } from "viem";
 import { polygon } from "viem/chains";
 
 import { ChatTransferModel, type ChatTransferDocument } from "../models/chat-transfer.model";
@@ -42,6 +42,8 @@ const DEFAULT_USDA_CONTRACT    = "0xe714655fD1B3ba96B887DF1F94336c2A78E24001";
 const DEFAULT_USDA_SYMBOL      = "USDA";
 /** keccak256("Transfer(address,address,uint256)") — evento ERC-20 standard */
 const ERC20_TRANSFER_TOPIC     = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
+/** ABI event strutturata per viem getLogs (usata in detectDeposit) */
+const ERC20_TRANSFER_EVENT     = parseAbiItem("event Transfer(address indexed from, address indexed to, uint256 value)");
 
 const memberRepo = new ConversationMemberRepository();
 
@@ -435,6 +437,71 @@ export async function confirmDeposit(params: {
 
   logger.info({ transferId: params.transferId, txHash: params.txHash }, "[Payment] Deposito confermato ✓");
   return _format(updated);
+}
+
+/**
+ * Rileva automaticamente il deposito on-chain scannerizzando gli eventi ERC-20
+ * Transfer verso escrow_wallet negli ultimi ~1000 blocchi Polygon (~25 min).
+ *
+ * Caso d'uso principale: iOS Safari PWA ricarica la pagina dopo aver firmato
+ * su MetaMask/Trust — il tx hash viene perso lato frontend.
+ * Il backend trova la tx on-chain e chiama confirmDeposit internamente.
+ */
+export async function detectDeposit(params: {
+  transferId:  string;
+  requesterId: string;
+}): Promise<Record<string, unknown>> {
+  const transfer = await ChatTransferModel.findOne({ transfer_id: params.transferId });
+  if (!transfer) throw new AppError("TRANSFER_NOT_FOUND", 404);
+  if (transfer.sender_id.toString() !== params.requesterId) throw new AppError("TRANSFER_ACCESS_DENIED", 403);
+  if (transfer.status !== "awaiting_deposit")                throw new AppError("TRANSFER_INVALID_TRANSITION", 409);
+
+  if (process.env.PAYMENT_SKIP_CHAIN_VERIFY === "true") {
+    // In dev mode non c'è blockchain reale — non possiamo rilevare nulla
+    throw new AppError("DEPOSIT_TX_NOT_DETECTED", 404);
+  }
+
+  const publicClient = createPublicClient({
+    chain:     polygon,
+    transport: http(process.env.USDA_POLYGON_RPC ?? "https://polygon-bor-rpc.publicnode.com"),
+  });
+
+  // Scansiona ultimi ~1000 blocchi ≈ 25 min su Polygon (block time ~2.5s)
+  const currentBlock = await publicClient.getBlockNumber();
+  const fromBlock    = currentBlock > 1000n ? currentBlock - 1000n : 0n;
+
+  type TransferLog = Awaited<ReturnType<typeof publicClient.getLogs<typeof ERC20_TRANSFER_EVENT>>>[number];
+  let logs: TransferLog[];
+  try {
+    logs = await publicClient.getLogs({
+      address:  transfer.asset_address as `0x${string}`,
+      event:    ERC20_TRANSFER_EVENT,
+      args:     { to: transfer.escrow_wallet as `0x${string}` },
+      fromBlock,
+      toBlock:  "latest",
+    });
+  } catch (rpcErr) {
+    logger.error({ rpcErr, transferId: params.transferId }, "[Payment] detectDeposit RPC error");
+    throw new AppError("DEPOSIT_DETECT_RPC_ERROR", 502);
+  }
+
+  // Cerca la prima tx con importo >= amount_units
+  const minAmount = BigInt(transfer.amount_units);
+  const match     = logs.find((log) => (log.args.value ?? 0n) >= minAmount);
+
+  if (!match?.transactionHash) {
+    logger.info({ transferId: params.transferId, blocksScanned: currentBlock - fromBlock }, "[Payment] detectDeposit: nessun tx trovato");
+    throw new AppError("DEPOSIT_TX_NOT_DETECTED", 404);
+  }
+
+  logger.info({ transferId: params.transferId, txHash: match.transactionHash }, "[Payment] Deposito rilevato automaticamente ✓");
+
+  // Riusa la logica esistente (anti-replay + verifica on-chain + state machine)
+  return confirmDeposit({
+    transferId:  params.transferId,
+    txHash:      match.transactionHash,
+    requesterId: params.requesterId,
+  });
 }
 
 /**

@@ -54,7 +54,7 @@ router.post(
   (async (req, res, next) => {
     try {
       const result = await paymentService.createTransfer({
-        senderId:       req.user.userId,
+        senderId:       req.user!.userId,
         recipientId:    req.body.recipient_id,
         conversationId: req.body.conversation_id,
         amount:         req.body.amount,
@@ -79,9 +79,28 @@ router.post(
   (async (req, res, next) => {
     try {
       const result = await paymentService.confirmDeposit({
-        transferId:  req.params.transferId,
+        transferId:  req.params.transferId as string,
         txHash:      req.body.tx_hash,
-        requesterId: req.user.userId,
+        requesterId: req.user!.userId,
+      });
+      res.json(result);
+    } catch (err) {
+      next(err);
+    }
+  }) as RequestHandler,
+);
+
+// ---------------------------------------------------------------------------
+// POST /api/v1/payments/:transferId/detect-deposit — rileva tx on-chain (iOS recovery)
+// ---------------------------------------------------------------------------
+
+router.post(
+  "/:transferId/detect-deposit",
+  (async (req, res, next) => {
+    try {
+      const result = await paymentService.detectDeposit({
+        transferId:  req.params.transferId as string,
+        requesterId: req.user!.userId,
       });
       res.json(result);
     } catch (err) {
@@ -99,8 +118,8 @@ router.post(
   (async (req, res, next) => {
     try {
       const result = await paymentService.acceptTransfer({
-        transferId:  req.params.transferId,
-        requesterId: req.user.userId,
+        transferId:  req.params.transferId as string,
+        requesterId: req.user!.userId,
         ip:          req.ip,
       });
       res.json(result);
@@ -119,8 +138,8 @@ router.post(
   (async (req, res, next) => {
     try {
       const result = await paymentService.rejectTransfer({
-        transferId:  req.params.transferId,
-        requesterId: req.user.userId,
+        transferId:  req.params.transferId as string,
+        requesterId: req.user!.userId,
         ip:          req.ip,
       });
       res.json(result);
@@ -139,8 +158,8 @@ router.post(
   (async (req, res, next) => {
     try {
       const result = await paymentService.cancelTransfer({
-        transferId:  req.params.transferId,
-        requesterId: req.user.userId,
+        transferId:  req.params.transferId as string,
+        requesterId: req.user!.userId,
         ip:          req.ip,
       });
       res.json(result);
@@ -159,8 +178,8 @@ router.get(
   (async (req, res, next) => {
     try {
       const result = await paymentService.getTransfer({
-        transferId:  req.params.transferId,
-        requesterId: req.user.userId,
+        transferId:  req.params.transferId as string,
+        requesterId: req.user!.userId,
       });
       res.json(result);
     } catch (err) {

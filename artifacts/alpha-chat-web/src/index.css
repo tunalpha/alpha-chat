@@ -5833,6 +5833,8 @@ html.emergency-open #root {
 .cp-btn-accept    { background: linear-gradient(135deg, #22c55e, #16a34a); color: #fff; }
 .cp-btn-reject    { background: rgba(248,113,113,0.18); color: #f87171; border: 1px solid rgba(248,113,113,0.25); }
 .cp-btn-cancel    { background: rgba(255,255,255,0.07); color: var(--text-2, rgba(255,255,255,0.65)); border: 1px solid rgba(255,255,255,0.10); flex: unset; width: 100%; font-size: 0.79rem; }
+.cp-btn-detect    { background: rgba(99,102,241,0.12); color: #818cf8; border: 1px solid rgba(99,102,241,0.25); flex: unset; width: 100%; font-size: 0.79rem; }
+.cp-btn-detect:hover:not(:disabled) { background: rgba(99,102,241,0.22); }
 
 /* Errore e TX hash */
 .cp-bubble-error   { font-size: 0.75rem; color: #f87171; background: rgba(248,113,113,0.10); border: 1px solid rgba(248,113,113,0.20); border-radius: 8px; padding: 7px 10px; margin-top: 2px; }

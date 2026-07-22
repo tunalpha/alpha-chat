@@ -19,7 +19,7 @@
 
 import { useState, useRef, memo } from "react";
 import type { ChatPaymentData, ChatTransferStatus } from "../../lib/payment-api";
-import { apiPaymentAccept, apiPaymentReject, apiPaymentCancel, isLockTransferStatus, isTerminalTransferStatus } from "../../lib/payment-api";
+import { apiPaymentAccept, apiPaymentReject, apiPaymentCancel, apiPaymentDetectDeposit, isLockTransferStatus, isTerminalTransferStatus } from "../../lib/payment-api";
 
 // ---------------------------------------------------------------------------
 // Tipi
@@ -178,6 +178,32 @@ export const ChatPaymentBubble = memo(function ChatPaymentBubble({ data, isMine 
     }
   }
 
+  // Recovery: rileva automaticamente il deposito on-chain.
+  // Usato quando iOS Safari ha ricaricato la pagina dopo la firma wallet
+  // e il tx hash è andato perso nel frontend.
+  async function handleDetectDeposit() {
+    if (busyRef.current) return;
+    busyRef.current = true;
+    setError(null);
+    setBusy(true);
+    try {
+      await apiPaymentDetectDeposit(data.transfer_id);
+      // Lo stato si aggiorna via WS payment.state_changed
+    } catch (e: unknown) {
+      const code = (e as { code?: string }).code;
+      if (code === "DEPOSIT_TX_NOT_DETECTED") {
+        setError("Deposito non ancora rilevato. La transazione potrebbe essere ancora in conferma (1–2 min). Riprova tra poco.");
+      } else if (code === "TRANSFER_INVALID_TRANSITION") {
+        setError("Il deposito risulta già confermato. Aggiorna la chat.");
+      } else {
+        setError(e instanceof Error ? e.message : "Errore — riprova");
+      }
+    } finally {
+      busyRef.current = false;
+      setBusy(false);
+    }
+  }
+
   // ── render ─────────────────────────────────────────────────────────────────
 
   return (
@@ -257,6 +283,22 @@ export const ChatPaymentBubble = memo(function ChatPaymentBubble({ data, isMine 
             aria-label="Annulla il pagamento"
           >
             🚫 Annulla
+          </button>
+        </div>
+      )}
+
+      {/* Pulsante recovery — solo mittente + awaiting_deposit:
+          iOS Safari ricarica la pagina durante la firma → tx hash perso.
+          Il backend scansiona Polygon e conferma il deposito automaticamente. */}
+      {isMine && data.status === "awaiting_deposit" && !busy && (
+        <div className="cp-actions">
+          <button
+            className="cp-btn cp-btn-detect"
+            onClick={handleDetectDeposit}
+            disabled={busy}
+            aria-label="Controlla se il deposito è arrivato on-chain"
+          >
+            🔄 Controlla deposito
           </button>
         </div>
       )}

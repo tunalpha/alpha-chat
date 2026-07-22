@@ -21,6 +21,7 @@ import { client, polygon, wallets } from "../../lib/thirdweb";
 import {
   apiPaymentCreate,
   apiPaymentDeposit,
+  apiPaymentDetectDeposit,
   type CreateTransferResult,
 } from "../../lib/payment-api";
 
@@ -39,6 +40,7 @@ interface Props {
 type Step = "form" | "confirm" | "sending";
 
 type SendPhase =
+  | "recovering"  // recovery automatica dopo iOS page reload
   | "creating"    // POST /api/v1/payments
   | "signing"     // ThirdWeb firma
   | "confirming"  // attesa receipt blockchain
@@ -53,6 +55,7 @@ const STEPS: { id: Step; label: string }[] = [
 ];
 
 const PHASE_LABEL: Record<SendPhase, string> = {
+  recovering: "Ricerca deposito on-chain…",
   creating:   "Creazione trasferimento…",
   signing:    "Firma nel wallet…",
   confirming: "Conferma blockchain…",
@@ -60,6 +63,18 @@ const PHASE_LABEL: Record<SendPhase, string> = {
   done:       "Pagamento inviato ✓",
   error:      "Errore",
 };
+
+// ---------------------------------------------------------------------------
+// Recovery iOS Safari PWA
+// ---------------------------------------------------------------------------
+
+const PENDING_KEY = "ac_pending_payment";
+
+interface PendingPayment {
+  transferId:     string;
+  conversationId: string;
+  timestamp:      number; // ms
+}
 
 // ---------------------------------------------------------------------------
 // Componente
@@ -88,9 +103,47 @@ export function SendPaymentSheet({
   // Auto-chiudi dopo il successo
   useEffect(() => {
     if (phase !== "done") return;
+    localStorage.removeItem(PENDING_KEY); // pulizia recovery state
     const t = setTimeout(() => onSent(), 1800);
     return () => clearTimeout(t);
   }, [phase, onSent]);
+
+  // Recovery automatica dopo iOS Safari page reload durante la firma wallet.
+  // Se c'è un pagamento in sospeso per questa conversazione (< 30 min),
+  // chiede al backend di scansionare la blockchain per rilevare la tx.
+  useEffect(() => {
+    const raw = localStorage.getItem(PENDING_KEY);
+    if (!raw) return;
+    let pending: PendingPayment;
+    try { pending = JSON.parse(raw) as PendingPayment; }
+    catch { localStorage.removeItem(PENDING_KEY); return; }
+
+    // Solo per questa conversazione e non scaduto (30 min)
+    if (pending.conversationId !== conversationId) return;
+    if (Date.now() - pending.timestamp > 30 * 60 * 1000) {
+      localStorage.removeItem(PENDING_KEY);
+      return;
+    }
+
+    // Auto-recovery — vai direttamente allo step "sending"
+    setStep("sending");
+    setPhase("recovering");
+    apiPaymentDetectDeposit(pending.transferId)
+      .then(() => {
+        localStorage.removeItem(PENDING_KEY);
+        setPhase("done");
+      })
+      .catch(() => {
+        // Non rimuovere il pending: la tx potrebbe non essere ancora minata.
+        // L'utente può usare il bottone "Controlla deposito" nella bubble.
+        setPhase("error");
+        setError(
+          "Deposito non ancora rilevato on-chain.\n" +
+          "La transazione potrebbe essere ancora in elaborazione (1-2 min).\n" +
+          "Usa il pulsante «Controlla deposito» nella chat per riprovare.",
+        );
+      });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Step 1 → Step 2 ────────────────────────────────────────────────────────
   function handleContinue() {
@@ -141,6 +194,16 @@ export function SendPaymentSheet({
 
       // ── 3. Firma nel wallet dell'utente ─────────────────────────────────
       setPhase("signing");
+      // Salva lo stato PRIMA della firma: se iOS Safari ricarica la pagina
+      // durante la deep-link a MetaMask/Trust, il recovery effect rileverà
+      // questa entry e chiamerà detect-deposit automaticamente.
+      const pendingSave: PendingPayment = {
+        transferId:     created.transfer_id,
+        conversationId,
+        timestamp:      Date.now(),
+      };
+      localStorage.setItem(PENDING_KEY, JSON.stringify(pendingSave));
+
       const receipt = await sendAndConfirmTransaction({ account, transaction: tx });
       const txHash = receipt.transactionHash;
 
@@ -153,7 +216,7 @@ export function SendPaymentSheet({
       await apiPaymentDeposit(created.transfer_id, txHash);
 
       // ── Successo ────────────────────────────────────────────────────────
-      setPhase("done");
+      setPhase("done"); // localStorage pulito dall'useEffect on "done"
 
     } catch (e: unknown) {
       const msg = (e instanceof Error ? e.message : String(e)) ?? "Errore sconosciuto.";
