@@ -47,7 +47,8 @@ export default function TrustWalletConnector({ onConnected }: Props) {
         client: thirdwebClient,
         chain:  polygonMainnet,
         walletConnect: {
-          projectId:    WC_PROJECT_ID,
+          // Non passare mai stringa vuota — causa fallimento immediato (linea guida USDA)
+          ...(WC_PROJECT_ID ? { projectId: WC_PROJECT_ID } : {}),
           showQrModal:  false,
           onDisplayUri(uri) {
             // L'URI è pronto — aggiorniamo lo stato per mostrare il bottone
