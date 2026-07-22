@@ -1,0 +1,53 @@
+La diagnosi è buona e individua una causa concreta: il server USDA rifiuta il payload perché riceve campi che non riconosce (from_user_id e to_user_id). Tuttavia, non implementerei ancora il fix proposto così com’è, perché c’è una verifica importante da fare.
+
+Il messaggio di errore:
+
+{
+  "error": "Wallet e importo richiesti"
+}
+
+dimostra che l’endpoint si aspetta almeno un campo wallet (o simile) e amount, ma non dimostra che basti sostituire from_user_id con il wallet del mittente.
+
+Prima di modificare il codice farei verificare la firma esatta dell’endpoint /api/pay/request. Ad esempio:
+
+* Il campo si chiama wallet, wallet_address, from_wallet o altro?
+* Per una richiesta di pagamento servono due wallet (from_wallet e to_wallet) oppure uno solo?
+* Chi rappresenta wallet: chi richiede il pagamento o chi dovrà pagare?
+* amount deve essere un numero JSON (1) o una stringa ("1")?
+
+Solo dopo questa verifica implementerei il fix.
+
+Prompt consigliato
+
+⸻
+
+Fix API /api/pay/request
+
+La diagnostica ha individuato che il payload inviato non è compatibile con l’API USDA.
+
+Prima di modificare il codice:
+
+1. Verificare l’implementazione del server USDA (/api/pay/request) e documentare esattamente il payload atteso.
+2. Identificare:
+    * nome esatto dei campi wallet;
+    * se sono richiesti uno o due wallet;
+    * quale wallet rappresenta il richiedente e quale il destinatario;
+    * tipo corretto di amount.
+
+Solo dopo:
+
+* recuperare dal database gli indirizzi wallet Polygon degli utenti coinvolti;
+* costruire il payload usando i nomi dei campi richiesti dall’API;
+* inviare amount nel tipo previsto dall’endpoint;
+* mantenere reference_id invariato;
+* aggiornare i log diagnostici per mostrare il nuovo payload.
+
+Infine eseguire un test end-to-end verificando che:
+
+* la richiesta venga accettata (HTTP 200/201);
+* venga restituito un PaymentResult valido;
+* la richiesta di pagamento venga visualizzata correttamente nella chat.
+
+⸻
+
+In altre parole, la causa è ormai chiara, ma prima di sostituire i campi è bene allinearsi esattamente al contratto dell’API per evitare un secondo ciclo di errori 400 dovuto a nomi dei campi o semantica diversi.
