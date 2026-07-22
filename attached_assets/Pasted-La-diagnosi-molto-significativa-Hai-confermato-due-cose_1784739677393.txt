@@ -1,0 +1,60 @@
+La diagnosi è molto significativa.
+
+Hai confermato due cose importanti:
+
+* ✅ Il problema del wallet è risolto. MongoDB contiene correttamente wallet_address, wallets.usda.address e wallet_enabled: true.
+* ❌ Il nuovo errore è a valle, nella chiamata a https://getusda.xyz/api/pay/prepare.
+
+Quindi non tornerei più a lavorare sulla sincronizzazione del wallet: quella parte sembra funzionare.
+
+L’unica cosa che manca per individuare la causa è il body della risposta dell’API USDA. Dato che avete già aggiunto il logging completo, chiederei all’agente di recuperare quel log invece di fare nuove modifiche.
+
+Puoi usare questo prompt:
+
+⸻
+
+Non modificare il codice.
+
+Il wallet del destinatario è stato correttamente persistito e RECIPIENT_NO_WALLET è risolto.
+
+Ora voglio vedere la risposta completa restituita da https://getusda.xyz/api/pay/prepare.
+
+Recuperare dai log di produzione la voce:
+
+========== USDA RESPONSE ERROR [reqId] ==========
+
+e pubblicare integralmente:
+
+* status
+* statusText
+* rawBody
+* parsedBody
+* reqId
+
+Pubblicare inoltre il payload esatto inviato a POST /api/pay/prepare:
+
+{
+  "from_user_id": "...",
+  "to_user_id": "...",
+  "amount": ...,
+  "note": "..."
+}
+
+Infine confrontare il payload inviato con il contratto reale dell’endpoint /api/pay/prepare implementato su getusda.xyz e indicare:
+
+* quali campi sono attesi;
+* quali campi sono errati o mancanti;
+* se from_user_id e to_user_id sono supportati oppure se devono essere sostituiti da wallet address.
+
+Non proporre fix finché non è stato pubblicato il rawBody completo della risposta dell’API USDA.
+
+⸻
+
+C’è anche un dettaglio che mi salta all’occhio: nel report hai mostrato che per /api/pay/request avevate già scoperto che l’API non accettava gli ObjectId e voleva un requesterWallet. Ora però /api/pay/prepare sta ancora inviando:
+
+{
+  "from_user_id": "...",
+  "to_user_id": "..."
+}
+
+Non posso dire con certezza che sia lo stesso problema, perché dipende da come è implementato l’endpoint prepare, ma è certamente un punto da verificare confrontando il payload con il contratto reale dell’API e con il rawBody della risposta.
