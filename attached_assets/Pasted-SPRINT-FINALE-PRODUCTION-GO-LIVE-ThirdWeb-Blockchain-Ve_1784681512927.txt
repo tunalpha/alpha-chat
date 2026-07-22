@@ -1,0 +1,292 @@
+SPRINT FINALE — PRODUCTION GO-LIVE (ThirdWeb + Blockchain Verification)
+
+L’integrazione USDA è completata.
+
+Da questo momento non modificare UI, UX, database, architettura, WebSocket, Wallet Center, MessageType o Adapter.
+
+L’obiettivo è trasformare l’ambiente attuale in produzione reale.
+
+⸻
+
+1. ThirdWeb Production
+
+Rimuovere completamente la firma simulata.
+
+Integrare ThirdWeb reale.
+
+Il flusso deve diventare:
+
+prepare
+↓
+ThirdWeb Connect
+↓
+firma wallet
+↓
+broadcast Polygon
+↓
+txHash reale
+↓
+confirm
+
+Gestire:
+
+* wallet non connesso
+* wallet bloccato
+* firma rifiutata
+* rete errata
+* gas insufficiente
+* timeout
+* wallet disconnesso
+
+⸻
+
+2. Verifica Blockchain
+
+Non accettare più txHash simulati.
+
+Prima del confirm verificare:
+
+* txHash esistente
+* stato confirmed
+* chainId = 137
+* contratto USDA corretto
+* from corretto
+* to corretto
+* amount corretto
+
+Rifiutare qualsiasi txHash non valido.
+
+⸻
+
+3. Production Wallet
+
+Verificare:
+
+* MetaMask
+* WalletConnect
+* Coinbase Wallet
+* Rainbow
+* Trust Wallet
+
+Desktop e mobile.
+
+⸻
+
+4. Network Guard
+
+Bloccare automaticamente:
+
+Polygon Mumbai
+
+Ethereum
+
+BSC
+
+Arbitrum
+
+Optimism
+
+Avalanche
+
+Accettare esclusivamente:
+
+Polygon Mainnet (137)
+
+⸻
+
+5. Gas Management
+
+Mostrare:
+
+fee stimata
+
+fee reale
+
+errore gas insufficiente
+
+retry
+
+⸻
+
+6. Transaction Verification
+
+Dopo il broadcast:
+
+attendere conferma blockchain
+
+verificare receipt
+
+verificare status
+
+verificare log Transfer USDA
+
+solo dopo chiamare:
+
+POST /api/pay/confirm
+
+⸻
+
+7. Security
+
+Verificare:
+
+firma appartiene al wallet mittente
+
+pendingTransferId non riutilizzabile
+
+nessun replay
+
+nessun double submit
+
+nessun doppio confirm
+
+idempotenza completa
+
+⸻
+
+8. Recovery
+
+Testare:
+
+refresh browser
+
+kill app
+
+logout
+
+crash
+
+loss network
+
+device reboot
+
+durante:
+
+prepare
+
+firma
+
+broadcast
+
+confirm
+
+polling
+
+⸻
+
+9. End-to-End Test
+
+Eseguire pagamenti reali:
+
+utente registrato
+
+utente non registrato
+
+claim
+
+request
+
+refund automatico
+
+history
+
+Wallet Center
+
+PolygonScan
+
+⸻
+
+10. Performance
+
+Misurare:
+
+prepare
+
+firma
+
+broadcast
+
+confirm
+
+polling
+
+aggiornamento bubble
+
+tempo totale
+
+⸻
+
+11. Monitoring
+
+Aggiungere log produzione per:
+
+prepare
+
+confirm
+
+claim
+
+polling
+
+status
+
+error
+
+timeout
+
+wallet rejection
+
+RPC failure
+
+Blockchain failure
+
+⸻
+
+12. Deploy Readiness
+
+Verificare:
+
+nessun mock
+
+nessun TODO
+
+nessun endpoint stimato
+
+nessun txHash simulato
+
+nessuna firma simulata
+
+nessun debug
+
+nessun console.log
+
+⸻
+
+13. Report Finale
+
+Produrre:
+
+PRODUCTION_GO_LIVE_REPORT.md
+
+contenente:
+
+* ThirdWeb integrato
+* Blockchain verificata
+* Wallet supportati
+* Test reali completati
+* Performance
+* Sicurezza
+* Problemi risolti
+* Limiti residui
+* Checklist deploy
+* Go / No-Go finale
+
+⸻
+
+REGOLA ASSOLUTA
+
+Non modificare l’architettura di AlphaChat.
+
+Sono consentite modifiche esclusivamente ai componenti necessari per sostituire la firma simulata con quella reale e completare la verifica blockchain di produzione.
+
+Al termine di questo sprint il sistema dovrà essere pronto per gestire transazioni USDA reali in produzione.

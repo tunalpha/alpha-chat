@@ -5850,6 +5850,26 @@ html.emergency-open #root {
 .usda-wallet-desc { font-size: 0.88rem; color: var(--text-2, rgba(255,255,255,0.75)); line-height: 1.5; margin: 0; }
 .usda-wallet-hint { font-size: 0.78rem; color: var(--text-3, rgba(255,255,255,0.45)); background: rgba(255,255,255,0.04); border-radius: 8px; padding: 8px 12px; }
 
+/* ── ThirdWeb wallet connect section ──────────────────────────────────────── */
+.usda-wallet-section { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 8px 0; }
+.usda-connect-btn-wrap { display: flex; justify-content: center; width: 100%; }
+.usda-wallet-ready { display: flex; align-items: center; gap: 6px; font-size: 0.78rem; color: #22c55e; padding: 4px 0; }
+.usda-wallet-dot { width: 7px; height: 7px; border-radius: 50%; background: #22c55e; flex-shrink: 0; }
+.usda-wallet-addr { font-family: monospace; letter-spacing: 0.02em; }
+
+/* ── Network warning ─────────────────────────────────────────────────────── */
+.usda-network-warning { background: rgba(234,179,8,0.1); border: 1px solid rgba(234,179,8,0.3); border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; }
+.usda-network-warning p { margin: 0; font-size: 0.83rem; color: #ca8a04; }
+.usda-network-current { font-size: 0.75rem !important; opacity: 0.8; }
+.usda-network-warning .usda-btn-secondary { align-self: flex-start; margin-top: 2px; font-size: 0.82rem; padding: 6px 14px; }
+
+/* ── ThirdWeb not configured message ─────────────────────────────────────── */
+.usda-thirdweb-setup { background: rgba(99,102,241,0.08); border: 1px solid rgba(99,102,241,0.25); border-radius: 10px; padding: 14px 16px; }
+.usda-thirdweb-setup p { margin: 0 0 6px; font-size: 0.82rem; color: var(--text-2, rgba(255,255,255,0.75)); }
+.usda-thirdweb-setup p:last-child { margin-bottom: 0; }
+.usda-thirdweb-setup code { background: rgba(255,255,255,0.08); padding: 2px 6px; border-radius: 4px; font-size: 0.78rem; }
+.usda-thirdweb-setup a { color: #818cf8; text-decoration: underline; }
+
 /* ── USDA Detail Modal ─────────────────────────────────────────────────────── */
 
 .usda-detail { background: var(--surface-2, #1e1e2e); border-radius: 20px 20px 0 0; padding: 0 0 32px; width: 100%; max-width: 480px; position: fixed; bottom: 0; left: 50%; transform: translateX(-50%); z-index: 1100; box-shadow: 0 -8px 40px rgba(0,0,0,0.5); display: flex; flex-direction: column; max-height: 85vh; overflow-y: auto; }

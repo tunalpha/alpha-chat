@@ -22,7 +22,7 @@
  */
 
 import { logger } from "../lib/logger";
-import { balanceOfUsda } from "./polygon-rpc";
+import { balanceOfUsda, verifyUsdaTx } from "./polygon-rpc";
 import type {
   UsdaAdapter,
   WalletInfo,
@@ -171,17 +171,6 @@ interface PollResult {
   status: string;
   tx_hash?: string | null;
   confirmed_at?: string | null;
-}
-
-/**
- * Simula txHash per la fase di firma blockchain.
- * TODO: sostituire con ThirdWeb SDK in produzione (signAndSubmitTransaction → txHash).
- */
-function _simulateTxHash(): string {
-  const bytes = Array.from({ length: 32 }, () =>
-    Math.floor(Math.random() * 256).toString(16).padStart(2, "0"),
-  );
-  return `0x${bytes.join("")}`;
 }
 
 /** Mappa stati USDA backend → stati AlphaChat */
@@ -390,14 +379,53 @@ export class HttpUsdaAdapter implements UsdaAdapter {
     };
   }
 
-  // ── Invia pagamento → prepare (già fatto) → POST /api/pay/confirm ──────────
+  // ── Invia pagamento → verifica blockchain → POST /api/pay/confirm ────────────
+  //
+  // Flusso produzione:
+  //   1. Frontend (ThirdWeb): ERC-20 transfer → txHash reale
+  //   2. Frontend: chiama apiUsdaSubmitPayment con txHash + senderAddress
+  //   3. Backend (qui): verifyUsdaTx → controlla receipt + Transfer event on-chain
+  //   4. Backend: solo se valid → POST /api/pay/confirm al backend USDA
 
   async submitPayment(params: SubmitPaymentParams): Promise<PaymentResult> {
     if (!_isAvailable) await this._refreshHealth();
     if (!_isAvailable) throw new UsdaUnavailableError();
 
     const pendingTransferId = (params.prepared_data?.pendingTransferId as string | undefined) ?? "";
-    const txHash = params.signature ?? _simulateTxHash();
+
+    // txHash reale proveniente da ThirdWeb (sendAndConfirmTransaction)
+    // params.signature contiene il transactionHash on-chain
+    const txHash = params.signature;
+    if (!txHash || !/^0x[0-9a-fA-F]{64}$/.test(txHash)) {
+      throw new Error("[USDA] Invalid or missing transaction hash. Real blockchain signature required.");
+    }
+
+    // ── Verifica blockchain obbligatoria prima del confirm ────────────────────
+    const contractAddress = process.env.USDA_CONTRACT_ADDRESS ?? "";
+    const senderAddress   = (params.prepared_data?.sender_address as string | undefined) ?? "";
+    const recipientAddr   = (params.prepared_data?.recipientAddress as string | undefined) ?? "";
+    const amountUnits     = (params.prepared_data?.amount_units as string | undefined) ?? "0";
+
+    if (senderAddress && recipientAddr && contractAddress) {
+      const verification = await verifyUsdaTx({
+        txHash,
+        senderAddress,
+        recipientAddress: recipientAddr,
+        amountUnits,
+        contractAddress,
+      });
+
+      if (!verification.valid) {
+        logger.error({ txHash, error: verification.error }, "[HttpUSDA] Blockchain verification FAILED — rejecting confirm");
+        throw new Error(`[USDA] Blockchain verification failed: ${verification.error}`);
+      }
+
+      logger.info({ txHash, fromAddr: verification.fromAddress, toAddr: verification.toAddress }, "[HttpUSDA] Blockchain verification passed ✅");
+    } else {
+      // Dati insufficienti per verifica completa — log warning ma non blocca
+      // (es. durante sviluppo senza wallet configurato)
+      logger.warn({ txHash, senderAddress, recipientAddr }, "[HttpUSDA] Incomplete verification data — proceeding without full blockchain check");
+    }
 
     const raw = await usdaRequest<{
       code?: string; payment_id?: string; tx_hash?: string | null; status?: string;

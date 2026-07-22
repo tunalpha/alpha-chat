@@ -1,4 +1,5 @@
 import { createRoot } from 'react-dom/client';
+import { ThirdwebProvider } from "thirdweb/react";
 import { initI18n } from './i18n';
 import App from './App';
 import './index.css';
@@ -6,8 +7,15 @@ import './index.css';
 // Inizializza i18n PRIMA del primo render — elimina la race condition
 // e garantisce che t() funzioni dal primo mount.
 initI18n().then(() => {
-  createRoot(document.getElementById('root')!).render(<App />);
+  createRoot(document.getElementById('root')!).render(
+    <ThirdwebProvider>
+      <App />
+    </ThirdwebProvider>
+  );
 }).catch(() => {
-  // Fallback: renderizza comunque anche se i18n fallisce (rete offline)
-  createRoot(document.getElementById('root')!).render(<App />);
+  createRoot(document.getElementById('root')!).render(
+    <ThirdwebProvider>
+      <App />
+    </ThirdwebProvider>
+  );
 });
