@@ -32,6 +32,72 @@ Accettata — Luglio 2026.
 
 ---
 
+## ADR-002 — Payment Message come entità nativa della conversazione
+
+### Decisione
+
+Ogni trasferimento crea automaticamente un **Payment Message** nella conversazione AlphaChat.
+
+Il messaggio è l'**unica rappresentazione visibile del pagamento** per gli utenti. La transazione blockchain e l'escrow sono dettagli implementativi gestiti internamente dal Chat Payment Engine e mai esposti direttamente all'interfaccia.
+
+### Conseguenze vincolanti
+
+- Ogni `chat-transfer/create` genera un documento `messages` nella conversazione con `message_type: 'payment'`.
+- Il Payment Message ha un campo `transfer_id` che lo collega al record in `chat_transfers`.
+- Quando lo stato del trasferimento cambia, il Chat Payment Engine aggiorna il messaggio esistente (non ne crea uno nuovo) e invia un evento WS `payment.state_changed` a tutti i partecipanti della conversazione.
+- Non esiste una schermata separata per seguire lo stato di un pagamento: la conversazione è la fonte di verità visibile.
+- Il Payment Engine e la chat sono disaccoppiati: il motore **emette eventi di stato**, la chat **aggiorna il messaggio corrispondente**. Nessun accoppiamento diretto tra i due moduli.
+
+### Stati del Payment Message
+
+| Stato interno | Label visibile | Icona |
+|---|---|---|
+| `created` / `awaiting_deposit` | In attesa di deposito | ⏳ |
+| `pending` | In attesa di accettazione | ⏳ |
+| `accepting` / `accepted` | Completato | ✅ |
+| `rejecting` / `rejected` | Rifiutato | ❌ |
+| `cancelling` / `cancelled` | Annullato | 🚫 |
+| `refunding` / `refunded` | Rimborsato | ↩️ |
+| `expired` | Scaduto | ⏰ |
+| `failed` | Errore | ⚠️ |
+
+### Esperienza utente
+
+**Mittente (A)**
+```
+💸 Hai inviato 100 USDA a Cricco
+⏳ In attesa di accettazione — scade tra 47 ore
+[Annulla]
+```
+
+**Destinatario (B)**
+```
+💸 Hai ricevuto 100 USDA da Mario
+⏳ In attesa di accettazione
+[Accetta]  [Rifiuta]
+```
+
+**Dopo l'accettazione — entrambi**
+```
+💸 Pagamento completato
+✅ 100 USDA trasferiti a Cricco
+```
+
+Il messaggio si aggiorna in-place tramite evento WS — nessun reload, nessuna notifica separata.
+
+### Benefici
+
+- Tutta la cronologia dei pagamenti rimane nella conversazione, senza schermate dedicate.
+- Esperienza coerente con le principali app di messaggistica con pagamenti integrati.
+- Il Payment Engine rimane testabile in isolamento: gli eventi di stato sono interfacce definite, non chiamate dirette alla chat.
+- Compatibile con la cifratura E2E: il payload del messaggio può essere cifrato con Signal come qualsiasi altro messaggio.
+
+### Stato
+
+Accettata — Luglio 2026.
+
+---
+
 ## 1. Contesto e problema da risolvere
 
 ### 1.1 Lo scontro architetturale

@@ -1,0 +1,62 @@
+Direi che il documento è arrivato a un buon livello di maturità. Le ultime due aggiunte (ADR-001 ed estensibilità multi-asset) rendono la direzione progettuale molto più chiara.
+
+C’è però un’ultima decisione architetturale che ti consiglio di prendere prima di scrivere una riga di codice.
+
+Definire il Payment Message come entità di dominio
+
+Oggi il documento parla di trasferimenti, escrow e stati. Io aggiungerei un’ADR finale che stabilisca che il pagamento è anche un messaggio della chat, non solo una transazione blockchain.
+
+Ad esempio:
+
+⸻
+
+ADR-002 — Payment Message
+
+Decisione
+
+Ogni trasferimento crea automaticamente un Payment Message nella conversazione AlphaChat.
+
+Il messaggio è l’unica rappresentazione visibile del pagamento per gli utenti.
+
+La transazione blockchain e l’escrow sono dettagli implementativi gestiti dal Chat Payment Engine.
+
+Stato del messaggio
+
+Il Payment Message deve aggiornarsi automaticamente durante il ciclo di vita del pagamento.
+
+Stati suggeriti:
+
+* ⏳ In attesa di deposito
+* ⏳ In attesa di accettazione
+* ✅ Completato
+* ❌ Rifiutato
+* ↩️ Rimborsato
+* ⏰ Scaduto
+* ⚠️ Errore
+
+Esperienza utente
+
+Mittente:
+
+* 💸 Hai inviato 100 USDA a Cricco
+* Stato: In attesa di accettazione
+
+Destinatario:
+
+* 💸 Hai ricevuto 100 USDA da Mario
+* Pulsanti:
+    * Accetta
+    * Rifiuta
+
+Il messaggio si aggiorna automaticamente quando cambia lo stato della transazione.
+
+Benefici
+
+* Nessuna schermata separata per seguire il pagamento.
+* Tutta la cronologia rimane nella conversazione.
+* Esperienza simile alle principali app di messaggistica con pagamenti integrati.
+* Il motore dei pagamenti e l’interfaccia della chat restano disaccoppiati: il Payment Engine emette eventi di stato, mentre la chat aggiorna il messaggio corrispondente.
+
+⸻
+
+Questa è una decisione che influenzerà positivamente sia il backend sia il frontend: invece di trattare il pagamento come una funzione “esterna”, lo trasforma in un elemento nativo della conversazione, coerente con la visione di AlphaChat come piattaforma di messaggistica con pagamenti integrati.
