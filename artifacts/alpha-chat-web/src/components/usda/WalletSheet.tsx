@@ -1,248 +1,236 @@
 /**
  * WalletSheet — bottom sheet nativo iOS per connettere wallet.
  *
- * Usa wagmi walletConnect connector + deep link iOS nativi.
- * Nessuna dipendenza da cloud registry (bypassa il 403 su .replit.dev).
- *
- * Attivato da walletModal.open() → evento DOM 'alpha:open-wallet-sheet'
+ * Stack: wagmi v3 walletConnect connector + subscription diretta al provider WC.
+ * Gestisce errori di rete (relay WalletConnect su 4G) con retry automatico.
  */
 
 import { useEffect, useState, useCallback, useRef } from "react";
-import { useConnect, useAccount, useConnectors } from "wagmi";
+import { useAccount, useConnectors, useConnect } from "wagmi";
 import { WC_PROJECT_ID } from "../../lib/wallet-client";
 
-// ── Deep link per wallet mobile ───────────────────────────────────────────────
+// ── Wallet list ───────────────────────────────────────────────────────────────
 
-const MOBILE_WALLETS = [
-  {
-    id:       "metamask"  as const,
-    label:    "MetaMask",
-    icon:     "🦊",
-    deepLink: (uri: string) => `https://metamask.app.link/wc?uri=${uri}`,
-    color:    "#F6851B",
-  },
-  {
-    id:       "trust"     as const,
-    label:    "Trust Wallet",
-    icon:     "🛡️",
-    deepLink: (uri: string) => `https://link.trustwallet.com/wc?uri=${uri}`,
-    color:    "#3375BB",
-  },
-  {
-    id:       "coinbase"  as const,
-    label:    "Coinbase Wallet",
-    icon:     "🔵",
-    deepLink: (uri: string) => `https://go.cb-w.com/wc?uri=${uri}`,
-    color:    "#0052FF",
-  },
-  {
-    id:       "rainbow"   as const,
-    label:    "Rainbow",
-    icon:     "🌈",
-    deepLink: (uri: string) => `https://rnbwapp.com/wc?uri=${uri}`,
-    color:    "#174299",
-  },
-  {
-    id:       "imtoken"   as const,
-    label:    "imToken",
-    icon:     "💙",
-    deepLink: (uri: string) => `imtokenv2://wc?uri=${uri}`,
-    color:    "#11C4D1",
-  },
+const WALLETS = [
+  { id: "metamask" as const, label: "MetaMask",        icon: "🦊", color: "#F6851B", deepLink: (u: string) => `https://metamask.app.link/wc?uri=${u}` },
+  { id: "trust"    as const, label: "Trust Wallet",    icon: "🛡️", color: "#3375BB", deepLink: (u: string) => `https://link.trustwallet.com/wc?uri=${u}` },
+  { id: "coinbase" as const, label: "Coinbase Wallet", icon: "🔵", color: "#0052FF", deepLink: (u: string) => `https://go.cb-w.com/wc?uri=${u}` },
+  { id: "rainbow"  as const, label: "Rainbow",         icon: "🌈", color: "#174299", deepLink: (u: string) => `https://rnbwapp.com/wc?uri=${u}` },
+  { id: "imtoken"  as const, label: "imToken",         icon: "💙", color: "#11C4D1", deepLink: (u: string) => `imtokenv2://wc?uri=${u}` },
 ]
 
-type WalletId = (typeof MOBILE_WALLETS)[number]["id"]
+type WalletId = (typeof WALLETS)[number]["id"]
 
-type SheetState =
-  | { phase: "idle" }
-  | { phase: "connecting"; walletId: WalletId }
-  | { phase: "waiting_app"; walletId: WalletId }
-  | { phase: "error"; message: string }
+type Phase =
+  | { kind: "idle" }
+  | { kind: "connecting"; walletId: WalletId }
+  | { kind: "redirect";   walletId: WalletId }
+  | { kind: "error";      message: string }
+
+// ── Timeout costante ──────────────────────────────────────────────────────────
+
+const CONNECT_TIMEOUT_MS = 25_000   // 25 s — relay WC su mobile può essere lento
 
 // ── Componente ────────────────────────────────────────────────────────────────
 
 export default function WalletSheet() {
   const [open,  setOpen]  = useState(false)
-  const [state, setState] = useState<SheetState>({ phase: "idle" })
+  const [phase, setPhase] = useState<Phase>({ kind: "idle" })
+  const abortRef = useRef<(() => void) | null>(null)
 
-  const { isConnected }     = useAccount()
-  const { connectAsync }    = useConnect()
-  const connectors          = useConnectors()
-  const unsubRef            = useRef<(() => void) | null>(null)
+  const { isConnected }  = useAccount()
+  const connectors       = useConnectors()
+  const { connectAsync } = useConnect()
 
-  // Apri lo sheet via evento DOM (da walletModal.open())
+  // Apri da walletModal.open()
   useEffect(() => {
-    const handler = () => {
-      setState({ phase: "idle" })
-      setOpen(true)
-    }
-    window.addEventListener("alpha:open-wallet-sheet", handler)
-    return () => window.removeEventListener("alpha:open-wallet-sheet", handler)
+    const h = () => { setPhase({ kind: "idle" }); setOpen(true) }
+    window.addEventListener("alpha:open-wallet-sheet", h)
+    return () => window.removeEventListener("alpha:open-wallet-sheet", h)
   }, [])
 
-  // Chiudi automaticamente quando il wallet è connesso
+  // Chiudi quando il wallet risulta connesso
   useEffect(() => {
     if (isConnected && open) {
+      abortRef.current?.()
       setOpen(false)
-      setState({ phase: "idle" })
+      setPhase({ kind: "idle" })
     }
   }, [isConnected, open])
 
   const close = useCallback(() => {
-    unsubRef.current?.()
-    unsubRef.current = null
+    abortRef.current?.()
+    abortRef.current = null
     setOpen(false)
-    setState({ phase: "idle" })
+    setPhase({ kind: "idle" })
   }, [])
 
-  // ── Connessione wallet mobile via deep link ────────────────────────────────
-  const connectMobile = useCallback(async (wallet: typeof MOBILE_WALLETS[number]) => {
-    // Controllo upfront
+  // ── handleConnect ──────────────────────────────────────────────────────────
+  const handleConnect = useCallback(async (wallet: typeof WALLETS[number]) => {
     if (!WC_PROJECT_ID) {
-      setState({ phase: "error", message: "WalletConnect Project ID non configurato. Contatta il supporto." })
+      setPhase({ kind: "error", message: "WalletConnect Project ID non configurato." })
       return
     }
 
     const wcConnector = connectors.find(c => c.type === "walletConnect")
     if (!wcConnector) {
-      setState({ phase: "error", message: "Connettore WalletConnect non trovato. Ricarica l'app." })
+      setPhase({ kind: "error", message: "Connettore WalletConnect non trovato. Ricarica l'app." })
       return
     }
 
-    setState({ phase: "connecting", walletId: wallet.id })
+    setPhase({ kind: "connecting", walletId: wallet.id })
 
-    // Pulisce listener precedenti
-    unsubRef.current?.()
-    unsubRef.current = null
+    // Cancella operazione precedente se esiste
+    abortRef.current?.()
+    let cancelled = false
+    abortRef.current = () => { cancelled = true }
 
-    // Sottoscrivi display_uri PRIMA di chiamare connectAsync
-    let uriReceived = false
-    const onMessage = (data: { type: string; data?: unknown }) => {
-      if (data.type !== "display_uri") return
-      if (uriReceived) return
-      uriReceived = true
-
-      // Rimuovi il listener
-      unsubRef.current?.()
-      unsubRef.current = null
-
-      const uri      = data.data as string
-      const encoded  = encodeURIComponent(uri)
-      const deepLink = wallet.deepLink(encoded)
-
-      console.info("[WalletSheet] URI ricevuto per", wallet.label, "→ deeplink", deepLink.slice(0, 60))
-      setState({ phase: "waiting_app", walletId: wallet.id })
-
+    const handleUri = (uri: unknown) => {
+      if (cancelled) return
+      const uriStr  = String(uri)
+      const encoded = encodeURIComponent(uriStr)
+      console.info("[WalletSheet] display_uri →", uriStr.slice(0, 60))
+      setPhase({ kind: "redirect", walletId: wallet.id })
       setTimeout(() => {
-        window.location.href = deepLink
-      }, 80)
+        if (!cancelled) window.location.href = wallet.deepLink(encoded)
+      }, 60)
     }
 
-    // Abbonamento all'emitter del connettore
-    if (wcConnector.emitter && typeof wcConnector.emitter.on === "function") {
-      const unsubFn = wcConnector.emitter.on("message", onMessage as Parameters<typeof wcConnector.emitter.on>[1])
-      // on() potrebbe restituire una funzione unsubscribe OPPURE void
-      if (typeof unsubFn === "function") {
-        unsubRef.current = unsubFn as () => void
-      } else if (typeof wcConnector.emitter.off === "function") {
-        unsubRef.current = () => wcConnector.emitter.off("message", onMessage as Parameters<typeof wcConnector.emitter.off>[1])
-      }
-    } else {
-      // Fallback: ascolta tramite il provider WC direttamente
-      console.warn("[WalletSheet] emitter non disponibile sul connettore, provo provider")
-      try {
-        const provider = await wcConnector.getProvider?.() as { on?: (e: string, cb: (uri: string) => void) => void } | undefined
-        if (provider?.on) {
-          const cb = (uri: string) => {
-            onMessage({ type: "display_uri", data: uri })
-          }
-          provider.on("display_uri", cb)
-          unsubRef.current = null
-        }
-      } catch {
-        // ignora
-      }
-    }
+    // ── Subscription: PRIMA prova il provider WC direttamente ─────────────
+    //    (più affidabile del doppio-wrap wagmi emitter)
+    type AnyProvider = { on: (e: string, cb: (...a: unknown[]) => void) => void; off: (e: string, cb: (...a: unknown[]) => void) => void }
+    let wcProvider: AnyProvider | null = null
 
-    // Avvia la connessione
     try {
-      await connectAsync({ connector: wcConnector })
-      // Se arriviamo qui senza redirect (es. già connessi), chiudi
-      setState({ phase: "idle" })
+      wcProvider = await (wcConnector as { getProvider?: () => Promise<AnyProvider> }).getProvider?.() ?? null
+      if (wcProvider?.on) {
+        wcProvider.on("display_uri", handleUri)
+        console.info("[WalletSheet] provider subscription OK")
+      }
+    } catch (e) {
+      console.warn("[WalletSheet] getProvider fallito:", e)
+    }
+
+    // ── Fallback: emitter wagmi ────────────────────────────────────────────
+    type MsgEvt = { type: string; data?: unknown }
+    const emitterHandler = (data: MsgEvt) => {
+      if (data.type === "display_uri") handleUri(data.data)
+    }
+    let emitterUnsub: (() => void) | null = null
+    try {
+      if (wcConnector.emitter?.on) {
+        const ret = (wcConnector.emitter.on as (e: string, h: (d: MsgEvt) => void) => unknown)("message", emitterHandler)
+        if (typeof ret === "function") {
+          emitterUnsub = ret as () => void
+        } else if (wcConnector.emitter?.off) {
+          emitterUnsub = () => (wcConnector.emitter.off as (e: string, h: (d: MsgEvt) => void) => void)("message", emitterHandler)
+        }
+      }
+    } catch { /* ignora */ }
+
+    const cleanup = () => {
+      try { wcProvider?.off?.("display_uri", handleUri) } catch { /* */ }
+      try { emitterUnsub?.() } catch { /* */ }
+    }
+
+    // ── Connect con timeout ────────────────────────────────────────────────
+    let timeoutId: ReturnType<typeof setTimeout> | null = null
+
+    const connectPromise = connectAsync({ connector: wcConnector })
+
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeoutId = setTimeout(() => {
+        reject(new Error("Timeout: relay WalletConnect non risponde. Verifica la connessione e riprova."))
+      }, CONNECT_TIMEOUT_MS)
+    })
+
+    try {
+      await Promise.race([connectPromise, timeoutPromise])
+      if (timeoutId) clearTimeout(timeoutId)
+      cleanup()
+      if (!cancelled) setPhase({ kind: "idle" })
     } catch (err) {
-      unsubRef.current?.()
-      unsubRef.current = null
+      if (timeoutId) clearTimeout(timeoutId)
+      cleanup()
+      if (cancelled) return
 
       const msg = (err as Error)?.message ?? String(err)
-      console.error("[WalletSheet] connectAsync errore:", msg, err)
+      console.error("[WalletSheet] errore connessione:", msg)
 
-      if (
+      const isExpected =
         msg.includes("already") ||
         msg.includes("rejected") ||
         msg.includes("User denied") ||
         msg.includes("cancelled") ||
-        // WC lancia questo quando il tab torna dall'app e la sessione è già stabilita
-        msg.includes("session")
-      ) {
-        setState({ phase: "idle" })
+        msg.includes("session") ||
+        // Errori che succedono quando l'utente approva e torna: il connect
+        // lato Safari si considera interrotto anche se la sessione è OK
+        msg.includes("Connection request reset")
+
+      // Errori di rete / relay — mostrare un messaggio chiaro
+      const isNetworkError =
+        msg.includes("Connection interrupted") ||
+        msg.includes("subscribe") ||
+        msg.includes("WebSocket") ||
+        msg.includes("socket")
+
+      if (isExpected) {
+        setPhase({ kind: "idle" })
+      } else if (isNetworkError) {
+        setPhase({
+          kind: "error",
+          message: "Connessione al relay WalletConnect interrotta. Prova con una rete più stabile o riprova.",
+        })
       } else {
-        setState({ phase: "error", message: msg.length > 150 ? msg.slice(0, 147) + "…" : msg })
+        setPhase({ kind: "error", message: msg.length > 160 ? msg.slice(0, 157) + "…" : msg })
       }
     }
   }, [connectors, connectAsync])
 
-  // ── Connessione iniettata (MetaMask browser extension / desktop) ───────────
-  const connectInjected = useCallback(async () => {
+  // ── handleInjected (MetaMask desktop) ─────────────────────────────────────
+  const handleInjected = useCallback(async () => {
     const inj = connectors.find(c => c.type === "injected")
     if (!inj) {
-      // Su mobile non c'è MetaMask iniettato — usa deep link
-      const mm = MOBILE_WALLETS.find(w => w.id === "metamask")!
-      void connectMobile(mm)
+      void handleConnect(WALLETS.find(w => w.id === "metamask")!)
       return
     }
-
-    setState({ phase: "connecting", walletId: "metamask" })
+    setPhase({ kind: "connecting", walletId: "metamask" })
     try {
       await connectAsync({ connector: inj })
-      setState({ phase: "idle" })
+      setPhase({ kind: "idle" })
     } catch (err) {
       const msg = (err as Error)?.message ?? String(err)
-      console.error("[WalletSheet] injected error:", msg)
       if (!msg.includes("rejected") && !msg.includes("denied")) {
-        setState({ phase: "error", message: msg.length > 150 ? msg.slice(0, 147) + "…" : msg })
+        setPhase({ kind: "error", message: msg })
       } else {
-        setState({ phase: "idle" })
+        setPhase({ kind: "idle" })
       }
     }
-  }, [connectors, connectAsync, connectMobile])
+  }, [connectors, connectAsync, handleConnect])
 
   if (!open) return null
 
-  // ── Render ─────────────────────────────────────────────────────────────────
+  const isConnecting = phase.kind === "connecting" || phase.kind === "redirect"
+  const redirectWallet = phase.kind === "redirect" ? WALLETS.find(w => w.id === phase.walletId) : null
+
   return (
     <div
       style={{
-        position:        "fixed",
-        inset:           0,
-        zIndex:          9999,
-        display:         "flex",
-        flexDirection:   "column",
-        justifyContent:  "flex-end",
-        background:      "rgba(0,0,0,0.55)",
-        backdropFilter:  "blur(4px)",
-        WebkitBackdropFilter: "blur(4px)",
-        touchAction:     "none",
+        position: "fixed", inset: 0, zIndex: 9999,
+        display: "flex", flexDirection: "column", justifyContent: "flex-end",
+        background: "rgba(0,0,0,0.55)",
+        backdropFilter: "blur(4px)", WebkitBackdropFilter: "blur(4px)",
+        touchAction: "none",
       }}
       onClick={(e) => { if (e.target === e.currentTarget) close() }}
     >
       <div
         style={{
-          background:   "var(--bg-secondary, #1c1c2e)",
+          background: "var(--bg-secondary, #1c1c2e)",
           borderRadius: "24px 24px 0 0",
-          padding:      "20px 16px 40px",
-          boxShadow:    "0 -8px 40px rgba(0,0,0,0.5)",
-          maxHeight:    "82vh",
-          overflowY:    "auto",
+          padding: "20px 16px 40px",
+          boxShadow: "0 -8px 40px rgba(0,0,0,0.5)",
+          maxHeight: "82vh", overflowY: "auto",
         }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -254,99 +242,44 @@ export default function WalletSheet() {
           <span style={{ fontSize: "1.1rem", fontWeight: 700, color: "var(--text-primary, #fff)" }}>
             Connetti Wallet
           </span>
-          <button
-            onClick={close}
-            style={{
-              background: "none", border: "none", color: "#999",
-              fontSize: "1.4rem", cursor: "pointer", padding: "4px 8px",
-              touchAction: "manipulation",
-            }}
-            aria-label="Chiudi"
-          >
+          <button onClick={close} style={{ background: "none", border: "none", color: "#999", fontSize: "1.4rem", cursor: "pointer", padding: "4px 8px", touchAction: "manipulation" }}>
             ✕
           </button>
         </div>
 
         {/* Banner stato */}
-        {state.phase === "connecting" && (
-          <div style={{
-            background: "#1e2a3a", borderRadius: 12, padding: "12px 14px",
-            marginBottom: 14, color: "#94a3b8", fontSize: "0.88rem", textAlign: "center",
-          }}>
-            ⏳ Connessione in corso…
+        {phase.kind === "connecting" && (
+          <div style={{ background: "#1e2a3a", borderRadius: 12, padding: "12px 14px", marginBottom: 14, color: "#94a3b8", fontSize: "0.88rem", textAlign: "center" }}>
+            ⏳ Connessione in corso… (max 25 s)
           </div>
         )}
-
-        {state.phase === "waiting_app" && (
-          <div style={{
-            background: "#1e293b", borderRadius: 12, padding: "14px 16px",
-            marginBottom: 14, textAlign: "center",
-          }}>
-            <div style={{ fontSize: "1.5rem", marginBottom: 6 }}>
-              {MOBILE_WALLETS.find(w => w.id === state.walletId)?.icon}
-            </div>
+        {phase.kind === "redirect" && redirectWallet && (
+          <div style={{ background: "#1e293b", borderRadius: 12, padding: "14px 16px", marginBottom: 14, textAlign: "center" }}>
+            <div style={{ fontSize: "1.5rem", marginBottom: 6 }}>{redirectWallet.icon}</div>
             <div style={{ color: "#94a3b8", fontSize: "0.88rem" }}>
-              Apertura <strong>{MOBILE_WALLETS.find(w => w.id === state.walletId)?.label}</strong>…
-              <br />
-              <span style={{ color: "#64748b", fontSize: "0.8rem" }}>
-                Approva la connessione nell'app, poi torna qui
-              </span>
+              Apertura <strong>{redirectWallet.label}</strong>…<br />
+              <span style={{ color: "#64748b", fontSize: "0.8rem" }}>Approva nell'app, poi torna qui</span>
             </div>
           </div>
         )}
-
-        {state.phase === "error" && (
-          <div style={{
-            background: "#2d1b1b", borderRadius: 12, padding: "12px 14px",
-            marginBottom: 14, color: "#f87171", fontSize: "0.83rem",
-            wordBreak: "break-word",
-          }}>
-            ⚠️ {state.message}
-            <button
-              onClick={() => setState({ phase: "idle" })}
-              style={{
-                display: "block", marginTop: 8, color: "#f87171",
-                background: "none", border: "none", cursor: "pointer",
-                fontSize: "0.82rem", textDecoration: "underline", padding: 0,
-              }}
-            >
+        {phase.kind === "error" && (
+          <div style={{ background: "#2d1b1b", borderRadius: 12, padding: "12px 14px", marginBottom: 14, color: "#f87171", fontSize: "0.83rem", wordBreak: "break-word" }}>
+            ⚠️ {phase.message}
+            <button onClick={() => setPhase({ kind: "idle" })} style={{ display: "block", marginTop: 8, color: "#f87171", background: "none", border: "none", cursor: "pointer", fontSize: "0.82rem", textDecoration: "underline", padding: 0 }}>
               Riprova
             </button>
           </div>
         )}
 
-        {/* Wallet list — mostrata in tutti gli stati tranne connecting */}
-        {state.phase !== "connecting" && (
-          <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            {/* MetaMask — injected se disponibile, altrimenti deep link */}
-            <WalletButton
-              icon="🦊"
-              label="MetaMask"
-              sublabel="Browser extension o app mobile"
-              color="#F6851B"
-              disabled={state.phase === "waiting_app"}
-              onClick={connectInjected}
-            />
+        {/* Wallet list */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <WBtn icon="🦊" label="MetaMask"        sub="Browser extension o app mobile" color="#F6851B" disabled={isConnecting} onClick={handleInjected} />
+          {WALLETS.filter(w => w.id !== "metamask").map(w => (
+            <WBtn key={w.id} icon={w.icon} label={w.label} sub="Apre l'app wallet sul tuo telefono" color={w.color} disabled={isConnecting} onClick={() => void handleConnect(w)} />
+          ))}
+        </div>
 
-            {MOBILE_WALLETS.filter(w => w.id !== "metamask").map((wallet) => (
-              <WalletButton
-                key={wallet.id}
-                icon={wallet.icon}
-                label={wallet.label}
-                sublabel="Apre l'app wallet sul tuo telefono"
-                color={wallet.color}
-                disabled={state.phase === "waiting_app"}
-                onClick={() => void connectMobile(wallet)}
-              />
-            ))}
-          </div>
-        )}
-
-        {/* Nota */}
-        <div style={{
-          marginTop: 18, textAlign: "center",
-          color: "var(--text-tertiary, #666)", fontSize: "0.76rem", lineHeight: 1.5,
-        }}>
+        <div style={{ marginTop: 18, textAlign: "center", color: "#555", fontSize: "0.76rem", lineHeight: 1.5 }}>
           🔒 Connessione via WalletConnect — nessuna chiave privata condivisa
         </div>
       </div>
@@ -356,54 +289,32 @@ export default function WalletSheet() {
 
 // ── WalletButton ──────────────────────────────────────────────────────────────
 
-interface WalletButtonProps {
-  icon:     string
-  label:    string
-  sublabel: string
-  color:    string
-  disabled: boolean
-  onClick:  () => void
-}
-
-function WalletButton({ icon, label, sublabel, color, disabled, onClick }: WalletButtonProps) {
+function WBtn({ icon, label, sub, color, disabled, onClick }: {
+  icon: string; label: string; sub: string; color: string; disabled: boolean; onClick: () => void
+}) {
   return (
     <button
       type="button"
       onClick={onClick}
       disabled={disabled}
       style={{
-        display:         "flex",
-        alignItems:      "center",
-        gap:             14,
-        background:      "var(--bg-tertiary, #16213e)",
-        border:          "1px solid rgba(255,255,255,0.07)",
-        borderRadius:    14,
-        padding:         "13px 16px",
-        cursor:          disabled ? "not-allowed" : "pointer",
-        opacity:         disabled ? 0.5 : 1,
-        textAlign:       "left",
-        width:           "100%",
-        touchAction:     "manipulation",
-        WebkitTapHighlightColor: "transparent",
+        display: "flex", alignItems: "center", gap: 14,
+        background: "var(--bg-tertiary, #16213e)",
+        border: "1px solid rgba(255,255,255,0.07)",
+        borderRadius: 14, padding: "13px 16px",
+        cursor: disabled ? "not-allowed" : "pointer",
+        opacity: disabled ? 0.5 : 1,
+        textAlign: "left", width: "100%",
+        touchAction: "manipulation", WebkitTapHighlightColor: "transparent",
       }}
     >
-      <span style={{
-        width: 40, height: 40, borderRadius: 12, display: "flex",
-        alignItems: "center", justifyContent: "center", fontSize: "1.4rem",
-        background: `${color}18`, flexShrink: 0,
-      }}>
+      <span style={{ width: 40, height: 40, borderRadius: 12, display: "flex", alignItems: "center", justifyContent: "center", fontSize: "1.4rem", background: `${color}18`, flexShrink: 0 }}>
         {icon}
       </span>
-
       <span style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-        <span style={{ color: "var(--text-primary, #fff)", fontSize: "0.95rem", fontWeight: 600 }}>
-          {label}
-        </span>
-        <span style={{ color: "var(--text-tertiary, #888)", fontSize: "0.78rem" }}>
-          {sublabel}
-        </span>
+        <span style={{ color: "var(--text-primary, #fff)", fontSize: "0.95rem", fontWeight: 600 }}>{label}</span>
+        <span style={{ color: "#888", fontSize: "0.78rem" }}>{sub}</span>
       </span>
-
       <span style={{ marginLeft: "auto", color: "#555", fontSize: "0.9rem" }}>›</span>
     </button>
   )
