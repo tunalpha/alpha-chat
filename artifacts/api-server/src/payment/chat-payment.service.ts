@@ -15,7 +15,7 @@
 
 import mongoose from "mongoose";
 import { randomUUID } from "crypto";
-import { createPublicClient, http, hexToBigInt, parseAbiItem } from "viem";
+import { createPublicClient, http, hexToBigInt } from "viem";
 import { polygon } from "viem/chains";
 import { getRpcUrl } from "./usda-custodial.service";
 
@@ -49,8 +49,6 @@ const DEFAULT_USDA_CONTRACT    = "0xe714655fD1B3ba96B887DF1F94336c2A78E24001";
 const DEFAULT_USDA_SYMBOL      = "USDA";
 /** keccak256("Transfer(address,address,uint256)") — evento ERC-20 standard */
 const ERC20_TRANSFER_TOPIC     = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef";
-/** ABI event strutturata per viem getLogs (usata in detectDeposit) */
-const ERC20_TRANSFER_EVENT     = parseAbiItem("event Transfer(address indexed from, address indexed to, uint256 value)");
 
 const memberRepo = new ConversationMemberRepository();
 
@@ -264,7 +262,9 @@ async function _verifyDepositTx(params: {
     throw new AppError("TRANSFER_TX_NOT_FOUND", 400);
   }
 
-  if (receipt.status === "reverted") {
+  // Verifica esplicita di successo: qualsiasi stato != "success" (reverted o
+  // valore inatteso) è trattato come tx non valida.
+  if (receipt.status !== "success") {
     throw new AppError("TRANSFER_TX_REVERTED", 400);
   }
 
@@ -507,27 +507,28 @@ export async function detectDeposit(params: {
     throw new AppError("DEPOSIT_TX_NOT_DETECTED", 404);
   }
 
-  const publicClient = createPublicClient({
-    chain:     polygon,
-    transport: http(getRpcUrl()),
-  });
-
-  // Calcola il range di blocchi in modo mirato:
-  // partiamo dalla data di creazione del transfer (il deposito non può essere
-  // avvenuto prima) + un piccolo buffer di sicurezza (20 blocchi ≈ 50s).
-  // Cap massimo a 14 400 blocchi (≈ 10h) per evitare RPC overload su transfer
-  // molto vecchi o stuck — lo scheduler li espira comunque prima.
-  const POLYGON_BLOCK_TIME_MS = 2_500;
-  const MAX_SCAN_BLOCKS       = 14_400n; // ~10h cap
-  const SAFETY_BUFFER         = 20n;     // 20 blocchi ≈ 50s
+  // Range di blocchi: NON stimiamo fromBlock dal block time (fragile — Polygon
+  // gira a ~1.5s/blocco e la stima a 2.5s spingeva fromBlock DOPO il blocco del
+  // deposito, escludendolo dalla finestra → falso DEPOSIT_TX_NOT_DETECTED).
+  //
+  // Approccio robusto: fromBlock conservativo calcolato da createdAt assumendo
+  // un block time di 1000ms (SOTTOSTIMA sicura del numero di blocchi trascorsi
+  // → fromBlock resta sempre PRIMA del blocco reale del deposito), senza cap.
+  // Il filtro effettivo avviene poi su metadata.blockTimestamp + importo, quindi
+  // un fromBlock generoso non produce falsi match.
+  const POLYGON_BLOCK_TIME_MS = 1_000; // sottostima: garantisce fromBlock <= blocco deposito
+  const SAFETY_BUFFER         = 120n;  // buffer extra di blocchi
 
   const createdAt  = (transfer as any).createdAt as Date | undefined ?? new Date();
   const ageMs      = BigInt(Math.max(0, Date.now() - createdAt.getTime()));
   const ageBlocks  = ageMs / BigInt(POLYGON_BLOCK_TIME_MS) + SAFETY_BUFFER;
-  const scanRange  = ageBlocks < MAX_SCAN_BLOCKS ? ageBlocks : MAX_SCAN_BLOCKS;
 
+  const publicClient = createPublicClient({
+    chain:     polygon,
+    transport: http(getRpcUrl()),
+  });
   const currentBlock = await publicClient.getBlockNumber();
-  const fromBlock    = currentBlock > scanRange ? currentBlock - scanRange : 0n;
+  const fromBlock    = currentBlock > ageBlocks ? currentBlock - ageBlocks : 0n;
 
   // NON usare eth_getLogs: gli RPC pubblici gratuiti rifiutano getLogs su
   // range storici ("Archive requests require a personal token" su publicnode,
@@ -537,6 +538,7 @@ export async function detectDeposit(params: {
   interface AssetTransfer {
     hash?:        string;
     rawContract?: { value?: string };
+    metadata?:    { blockTimestamp?: string };
   }
   let transfers: AssetTransfer[];
   try {
@@ -553,7 +555,8 @@ export async function detectDeposit(params: {
           toAddress:         transfer.escrow_wallet,
           contractAddresses: [transfer.asset_address],
           category:          ["erc20"],
-          withMetadata:      false,
+          withMetadata:      true,
+          order:             "desc",
           maxCount:          "0x19",
         }],
       }),
@@ -566,11 +569,19 @@ export async function detectDeposit(params: {
     throw new AppError("DEPOSIT_DETECT_RPC_ERROR", 502);
   }
 
-  // Cerca la prima tx con importo >= amount_units
-  const minAmount = BigInt(transfer.amount_units);
+  // Filtra: (a) importo >= amount_units E (b) blockTimestamp >= createdAt - 5min
+  // (buffer). Il filtro temporale evita falsi match se l'escrow venisse riusato
+  // o avesse ricevuto depositi precedenti. order:"desc" → prendiamo il più
+  // recente che soddisfa entrambi i criteri.
+  const minAmount   = BigInt(transfer.amount_units);
+  const minTs       = createdAt.getTime() - 5 * 60 * 1000; // createdAt - 5 minuti
   const match = transfers.find((t) => {
-    try { return t.rawContract?.value != null && BigInt(t.rawContract.value) >= minAmount; }
-    catch { return false; }
+    try {
+      if (t.rawContract?.value == null || BigInt(t.rawContract.value) < minAmount) return false;
+      const ts = t.metadata?.blockTimestamp ? Date.parse(t.metadata.blockTimestamp) : NaN;
+      if (Number.isNaN(ts) || ts < minTs) return false;
+      return true;
+    } catch { return false; }
   });
 
   if (!match?.hash) {
