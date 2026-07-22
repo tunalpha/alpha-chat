@@ -1,0 +1,202 @@
+Ti darei questo prompt. È quello che userei io come Sprint Finale USDA V1.
+ 
+⸻
+ 
+SPRINT FINALE — USDA Native Integration V1
+L’architettura è completata.
+Da questo momento non aggiungere nuove funzionalità.
+L’obiettivo è trasformare l’implementazione attuale in una versione production-ready, rifinendo UX, test e integrazione.
+ 
+⸻
+ 
+1. Demo completa end-to-end
+Verifica l’intero flusso utilizzando il MockUsdaAdapter.
+Scenario A
+* invio USDA
+* optimistic update
+* firma simulata
+* stato pending
+* conferma
+* dettaglio pagamento
+Scenario B
+* richiesta pagamento
+* pagamento
+* aggiornamento automatico della bubble
+Scenario C
+* pagamento pending claim
+Scenario D
+* pagamento fallito
+Scenario E
+* refund
+Ogni scenario deve funzionare senza errori.
+ 
+⸻
+ 
+2. UX
+Rifinire completamente la UI.
+Le bubble USDA devono sembrare parte nativa di AlphaChat.
+Curare:
+* colori
+* animazioni
+* tipografia
+* spaziature
+* stati
+* loading
+* errori
+L’utente deve capire tutto senza leggere documentazione.
+ 
+⸻
+ 
+3. Bubble dinamiche
+Le bubble devono aggiornarsi automaticamente.
+Mai crearne una nuova.
+Stati:
+* Preparazione
+* Firma
+* Invio
+* Blockchain Pending
+* Confermato
+* Pending Claim
+* Riscosso
+* Refund
+* Errore
+ 
+⸻
+ 
+4. Messaggi di sistema
+Le notifiche USDA devono essere messaggi normali della conversazione.
+Esempi:
+✅ Confermato sulla blockchain
+⏳ In attesa della riscossione
+✅ Pagamento riscosso
+↩ Rimborso automatico
+💸 Richiesta pagata
+Mai toast persistenti.
+ 
+⸻
+ 
+5. PolygonScan
+Ogni pagamento confermato deve avere:
+“Apri su PolygonScan”
+Il dettaglio deve mostrare:
+* hash
+* rete
+* blocco
+* data
+* explorer
+Hash abbreviato.
+ 
+⸻
+ 
+6. Viewer
+Il viewer deve sembrare quello di una banca.
+Contenere:
+* importo
+* mittente
+* destinatario
+* stato
+* hash
+* fee
+* explorer
+* ricevuta
+ 
+⸻
+ 
+7. Wallet Center
+Completare la sezione Wallet.
+Mostrare:
+Saldo USDA
+Ricevuti
+Inviati
+Richieste
+Pending
+Refund
+Storico
+Contatti recenti
+Impostazioni Wallet
+ 
+⸻
+ 
+8. WebSocket
+Verificare che tutti gli aggiornamenti USDA arrivino tramite
+usda.payment.update
+La UI non deve effettuare polling.
+L’Adapter può usare polling interno se necessario.
+ 
+⸻
+ 
+9. Test
+Eseguire test completi.
+Verificare:
+invio
+richiesta
+claim
+refund
+riconnessione
+refresh pagina
+reload
+duplicati
+optimistic update
+errori
+ 
+⸻
+ 
+10. Performance
+Verificare:
+nessun render inutile
+nessun memory leak
+nessun listener duplicato
+cleanup corretto
+lazy loading componenti USDA
+ 
+⸻
+ 
+11. Accessibilità
+Verificare:
+focus
+keyboard
+screen reader
+contrasto
+touch target mobile
+ 
+⸻
+ 
+12. Responsive
+Verificare:
+Android
+iPhone
+tablet
+PWA
+dark mode
+light mode
+ 
+⸻
+ 
+13. Code Review Finale
+Analizzare tutto il codice USDA.
+Rimuovere:
+TODO inutili
+console.log
+codice morto
+duplicazioni
+componenti inutilizzati
+ 
+⸻
+ 
+14. Report Finale
+Consegnare un documento finale contenente:
+* file creati
+* file modificati
+* copertura funzionale
+* test eseguiti
+* limitazioni residue
+* bug noti
+* checklist integrazione backend USDA reale
+* checklist deploy produzione
+ 
+⸻
+ 
+Regola fondamentale
+Non aggiungere nuove funzionalità.
+L’obiettivo è trasformare ciò che esiste in una versione production-ready, elegante, stabile e coerente con AlphaChat.
+Alla fine dello sprint, il codice dovrà essere pronto per il collegamento al backend USDA reale, richiedendo solo la configurazione dell’HttpUsdaAdapter e delle variabili d’ambiente, senza modifiche strutturali all’architettura.

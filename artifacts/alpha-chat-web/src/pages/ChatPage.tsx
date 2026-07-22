@@ -3397,6 +3397,7 @@ export default function ChatPage({ onNavigate }: Props) {
         <WalletSetupSheet
           onClose={() => setShowWalletSetup(false)}
           onSetup={() => { setShowWalletSetup(false); setShowSendUsda(true); }}
+          // onSetup callback ignores WalletInfo — wallet state lives in WalletCenter
         />
       )}
 

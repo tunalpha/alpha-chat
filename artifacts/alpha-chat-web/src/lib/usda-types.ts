@@ -119,15 +119,15 @@ export const USDA_STATUS_LABELS: Record<UsdaPaymentStatus, string> = {
 };
 
 export const USDA_STATUS_ICONS: Record<UsdaPaymentStatus, string> = {
-  preparing:     "⏳",
+  preparing:     "🔄",
   signing:       "✍️",
   submitting:    "📡",
-  pending:       "⏳",
-  confirmed:     "✓",
+  pending:       "⛓",
+  confirmed:     "✅",
   pending_claim: "⏳",
-  claimed:       "✓",
-  refunded:      "↩",
-  failed:        "✗",
+  claimed:       "✅",
+  refunded:      "↩️",
+  failed:        "❌",
 };
 
 /** True se il pagamento è in uno stato finale */

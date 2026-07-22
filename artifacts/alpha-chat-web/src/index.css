@@ -5802,10 +5802,7 @@ html.emergency-open #root {
 .usda-bubble-status.pending { color: #fbbf24; }
 .usda-status-icon { font-size: 0.9rem; }
 @keyframes usda-spin { to { transform: rotate(360deg); } }
-.usda-status-spinner { display: inline-block; width: 11px; height: 11px; border: 2px solid rgba(251,191,36,0.3); border-top-color: #fbbf24; border-radius: 50%; animation: usda-spin 1s linear infinite; }
 .usda-bubble-tap-hint { font-size: 0.68rem; color: var(--text-3, rgba(255,255,255,0.35)); text-align: right; margin-top: 6px; }
-.usda-pay-btn { display: block; width: 100%; margin-top: 10px; padding: 9px 0; border-radius: 10px; background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%); color: #fff; font-size: 0.9rem; font-weight: 700; border: none; cursor: pointer; transition: opacity 0.15s; }
-.usda-pay-btn:active { opacity: 0.75; }
 
 /* ── USDA Sheets ────────────────────────────────────────────────────────────── */
 
@@ -5922,8 +5919,6 @@ html.emergency-open #root {
 .wc-balance-hint { font-size: 0.78rem; color: rgba(255,255,255,0.4); margin-top: 6px; }
 
 /* Stats grid */
-.wc-stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-.wc-stat { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 14px 10px; text-align: center; display: flex; flex-direction: column; gap: 6px; }
 .wc-stat-icon { font-size: 1.4rem; }
 .wc-stat-label { font-size: 0.75rem; color: var(--text-3, rgba(255,255,255,0.5)); }
 
@@ -5983,3 +5978,94 @@ html.emergency-open #root {
 
 .wc-backend-link { color: #818cf8; text-decoration: none; font-size: 0.82rem; font-weight: 500; }
 .wc-backend-link:hover { text-decoration: underline; }
+
+/* =========================================================================
+   USDA Sprint Finale — animazioni, nuovi stati, accessibilità
+   ========================================================================= */
+
+/* ── Backdrop fade-in ─────────────────────────────────────────────────────── */
+@keyframes usda-backdrop-in { from { opacity: 0; } to { opacity: 1; } }
+.modal-backdrop { animation: usda-backdrop-in 0.18s ease; }
+
+/* ── Sheet slide-up ───────────────────────────────────────────────────────── */
+@keyframes usda-sheet-up { from { transform: translateX(-50%) translateY(100%); opacity: 0; } to { transform: translateX(-50%) translateY(0); opacity: 1; } }
+.usda-sheet { animation: usda-sheet-up 0.22s cubic-bezier(0.32,0.72,0,1); }
+
+/* ── Nuovi stati bubble ───────────────────────────────────────────────────── */
+.usda-bubble-status.in-progress { color: #818cf8; }
+.usda-bubble-status.blockchain  { color: #fbbf24; }
+.usda-bubble-status.waiting     { color: #fb923c; }
+
+/* ── Status dot animato ───────────────────────────────────────────────────── */
+@keyframes usda-dot-pulse { 0%,100% { opacity: 1; transform: scale(1); } 50% { opacity: 0.4; transform: scale(0.6); } }
+.usda-status-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: currentColor; animation: usda-dot-pulse 1.4s ease-in-out infinite; flex-shrink: 0; }
+
+/* ── Status text ──────────────────────────────────────────────────────────── */
+.usda-status-text { flex: 1; }
+
+/* ── Bubble unit (USDA label piccolo) ────────────────────────────────────── */
+.usda-bubble-unit  { font-size: 0.7em; font-weight: 500; opacity: 0.65; }
+.usda-detail-currency { font-size: 0.6em; font-weight: 500; opacity: 0.55; }
+.usda-detail-mono  { font-family: ui-monospace, SFMono-Regular, monospace; font-size: 0.82rem; color: var(--text-3, rgba(255,255,255,0.5)); word-break: break-all; }
+
+/* ── Fee hint ─────────────────────────────────────────────────────────────── */
+.usda-fee-hint { font-size: 0.72rem; color: var(--text-3, rgba(255,255,255,0.4)); margin-left: 2px; }
+
+/* ── Btn spinner ──────────────────────────────────────────────────────────── */
+@keyframes usda-btn-spin { to { transform: rotate(360deg); } }
+.usda-btn-spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid rgba(255,255,255,0.3); border-top-color: #fff; border-radius: 50%; animation: usda-btn-spin 0.7s linear infinite; vertical-align: middle; margin-right: 5px; }
+
+/* ── Loading dots ─────────────────────────────────────────────────────────── */
+@keyframes usda-dots { 0%,80%,100% { opacity: 0; } 40% { opacity: 1; } }
+.usda-loading-dots { display: inline-block; margin-right: 6px; }
+.usda-loading-dots::before { content: "●●●"; letter-spacing: 0.2em; font-size: 0.6em; animation: usda-dots 1.4s ease-in-out infinite; }
+
+/* ── Pay button — paying state ───────────────────────────────────────────── */
+.usda-pay-btn { display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; margin-top: 10px; padding: 10px 0; border-radius: 10px; background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%); color: #fff; font-size: 0.9rem; font-weight: 700; border: none; cursor: pointer; transition: opacity 0.15s; }
+.usda-pay-btn:active { opacity: 0.75; }
+.usda-pay-btn.paying { opacity: 0.7; cursor: not-allowed; }
+.usda-pay-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+@keyframes usda-pay-spin { to { transform: rotate(360deg); } }
+.usda-pay-spinner { display: inline-block; width: 12px; height: 12px; border: 2px solid rgba(255,255,255,0.3); border-top-color: #fff; border-radius: 50%; animation: usda-pay-spin 0.7s linear infinite; }
+
+/* ── Step bar ─────────────────────────────────────────────────────────────── */
+.usda-step-bar { display: flex; align-items: flex-start; gap: 0; margin: 0 -4px 4px; }
+.usda-step { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 4px; position: relative; }
+.usda-step:not(:last-child)::after { content: ""; position: absolute; top: 12px; left: 60%; width: 80%; height: 2px; background: rgba(255,255,255,0.08); z-index: 0; }
+.usda-step.done::after { background: #4ade80; }
+.usda-step.active::after { background: rgba(99,102,241,0.3); }
+.usda-step-dot { width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 0.7rem; font-weight: 700; position: relative; z-index: 1; background: rgba(255,255,255,0.07); color: rgba(255,255,255,0.35); border: 2px solid rgba(255,255,255,0.12); transition: all 0.2s; }
+.usda-step.done  .usda-step-dot { background: rgba(74,222,128,0.15); color: #4ade80; border-color: #4ade80; }
+.usda-step.active .usda-step-dot { background: rgba(99,102,241,0.2); color: #818cf8; border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99,102,241,0.15); }
+.usda-step-label { font-size: 0.62rem; color: var(--text-3, rgba(255,255,255,0.35)); font-weight: 500; }
+.usda-step.active .usda-step-label { color: #818cf8; }
+.usda-step.done  .usda-step-label { color: #4ade80; }
+
+/* ── Receipt badge ────────────────────────────────────────────────────────── */
+.usda-receipt-badge { text-align: center; padding: 8px 16px; border-radius: 10px; background: rgba(74,222,128,0.08); color: #4ade80; font-size: 0.82rem; font-weight: 600; border: 1px solid rgba(74,222,128,0.15); margin-top: 4px; }
+
+/* ── Contatti recenti (WalletCenter) ─────────────────────────────────────── */
+.wc-recent-contacts { display: flex; gap: 12px; padding: 4px 0; overflow-x: auto; scrollbar-width: none; }
+.wc-recent-contacts::-webkit-scrollbar { display: none; }
+.wc-recent-contact { display: flex; flex-direction: column; align-items: center; gap: 5px; min-width: 60px; cursor: default; }
+.wc-recent-icon { width: 44px; height: 44px; border-radius: 50%; background: rgba(99,102,241,0.12); border: 2px solid rgba(99,102,241,0.2); display: flex; align-items: center; justify-content: center; font-size: 1.1rem; }
+.wc-recent-name { font-size: 0.68rem; color: var(--text-3, rgba(255,255,255,0.5)); text-align: center; max-width: 60px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ── WalletCenter stats grid — now interactive ───────────────────────────── */
+.wc-stats-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.wc-stat { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; padding: 14px 10px; text-align: center; display: flex; flex-direction: column; gap: 6px; cursor: pointer; transition: background 0.12s; }
+.wc-stat:active { background: rgba(255,255,255,0.09); }
+
+/* ── WalletCenter empty state ─────────────────────────────────────────────── */
+.wc-empty { text-align: center; padding: 40px 20px; font-size: 0.88rem; color: var(--text-3, rgba(255,255,255,0.4)); }
+
+/* ── WalletCenter history panel ───────────────────────────────────────────── */
+.wc-content--history { padding: 0; }
+.wc-content--history .wc-hist-list { overflow-y: auto; }
+
+/* ── Detail — bigger touch targets, dark polish ───────────────────────────── */
+.usda-detail-close { min-width: 36px; min-height: 36px; display: flex; align-items: center; justify-content: center; font-size: 1rem; }
+.usda-detail-amount { font-size: 2rem; font-weight: 800; color: var(--text-1, #fff); text-align: center; line-height: 1; }
+
+/* ── Bubble status transition ─────────────────────────────────────────────── */
+.usda-bubble-status { transition: color 0.3s ease; }
