@@ -22,6 +22,7 @@ import {
   polygonMainnet,
   THIRDWEB_READY,
   USDA_CHAIN_ID,
+  WC_PROJECT_ID,
 } from "../lib/thirdweb-client";
 import {
   apiUsdaGetWallet,
@@ -189,11 +190,6 @@ export default function WalletCenterPage({ onBack }: Props) {
 
       {/* ── Header ──────────────────────────────────────────────────────────── */}
       <header className="wc-header">
-        <button type="button" className="wc-back" aria-label="Torna alle impostazioni" onClick={onBack}>
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="20" height="20" aria-hidden="true">
-            <polyline points="15 18 9 12 15 6"/>
-          </svg>
-        </button>
         <div className="wc-header-title">
           <span className="wc-header-icon" aria-hidden="true">💰</span>
           <span>Wallet Center</span>
@@ -203,6 +199,12 @@ export default function WalletCenterPage({ onBack }: Props) {
             {backendInfo.network.split(" ").slice(-1)[0]} · v{backendInfo.version}
           </span>
         )}
+        <button type="button" className="wc-close-btn" aria-label="Chiudi Wallet Center" onClick={onBack}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="20" height="20" aria-hidden="true">
+            <line x1="18" y1="6" x2="6" y2="18"/>
+            <line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
       </header>
 
       {/* ── Tab Bar ─────────────────────────────────────────────────────────── */}

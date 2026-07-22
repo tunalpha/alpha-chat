@@ -12,6 +12,10 @@
 
 import { createThirdwebClient, defineChain } from "thirdweb";
 
+// WalletConnect Cloud projectId — registra un progetto gratuito su cloud.walletconnect.com
+export const WC_PROJECT_ID =
+  (import.meta.env.VITE_WALLETCONNECT_PROJECT_ID as string | undefined) ?? "";
+
 // ── ThirdWeb Client ───────────────────────────────────────────────────────────
 
 const _clientId = import.meta.env.VITE_THIRDWEB_CLIENT_ID as string | undefined;

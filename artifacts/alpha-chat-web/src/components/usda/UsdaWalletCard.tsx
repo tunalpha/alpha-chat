@@ -29,6 +29,7 @@ import {
   USDA_CONTRACT_ADDRESS,
   USDA_CHAIN_ID,
   THIRDWEB_READY,
+  WC_PROJECT_ID,
 } from "../../lib/thirdweb-client";
 import { useWs } from "../../contexts/WebSocketContext";
 

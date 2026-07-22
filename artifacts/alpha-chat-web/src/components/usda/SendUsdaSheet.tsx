@@ -22,6 +22,7 @@ import { createWallet, walletConnect } from "thirdweb/wallets";
 import {
   thirdwebClient,
   polygonMainnet,
+  WC_PROJECT_ID,
   USDA_CONTRACT_ADDRESS,
   USDA_CHAIN_ID,
   THIRDWEB_READY,
