@@ -14,7 +14,6 @@ import {
   useActiveAccount,
   useActiveWalletChain,
   useSwitchActiveWalletChain,
-  useConnect,
   ConnectButton,
 } from "thirdweb/react";
 import { createWallet, walletConnect } from "thirdweb/wallets";
@@ -38,6 +37,7 @@ import type { WalletInfo, UsdaPaymentData, UsdaBackendInfo, UsdaCapabilities } f
 import { USDA_STATUS_LABELS, USDA_STATUS_ICONS } from "../lib/usda-types";
 import { UsdaPaymentDetail } from "../components/usda/UsdaPaymentDetail";
 import WcDebugPanel from "../components/usda/WcDebugPanel";
+import TrustWalletConnector from "../components/usda/TrustWalletConnector";
 
 type Tab = "saldo" | "storico" | "impostazioni";
 type HistoryFilter = "tutti" | "sent" | "received" | "pending" | "claimed" | "refunded";
@@ -57,12 +57,15 @@ const TAB_META: { id: Tab; icon: string; label: string }[] = [
   { id: "impostazioni", icon: "⚙️", label: "Impostazioni" },
 ];
 
+// Su iOS, Trust Wallet viene gestito da TrustWalletConnector (flusso custom).
+const _isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
+
 const SUPPORTED_WALLETS = [
   createWallet("io.metamask"),
   createWallet("com.coinbase.wallet"),
   walletConnect(),
   createWallet("me.rainbow"),
-  createWallet("com.trustwallet.app"),
+  ...(_isIOS ? [] : [createWallet("com.trustwallet.app")]),
 ];
 
 interface Props {
@@ -92,7 +95,6 @@ export default function WalletCenterPage({ onBack }: Props) {
   const account     = useActiveAccount();
   const activeChain = useActiveWalletChain();
   const switchChain = useSwitchActiveWalletChain();
-  const { isConnecting } = useConnect();
 
   const isWalletConnected = !!account;
   const isCorrectNetwork  = activeChain?.id === USDA_CHAIN_ID;
@@ -339,38 +341,10 @@ export default function WalletCenterPage({ onBack }: Props) {
                         connectButton={{ label: "Connetti Wallet" }}
                       />
                     </div>
-                    {/iPhone|iPad|iPod/.test(navigator.userAgent) && (
-                      <div style={{
-                        marginTop: 10,
-                        background: "rgba(255,255,255,0.04)",
-                        border: "1px solid rgba(255,255,255,0.1)",
-                        borderRadius: 12, padding: "10px 12px",
-                        display: "flex", flexDirection: "column", gap: 7,
-                      }}>
-                        <p style={{ margin: 0, fontSize: "0.7rem", color: "rgba(255,255,255,0.4)", textAlign: "center" }}>
-                          📱 Su iPhone, dopo aver selezionato il wallet, aprilo manualmente:
-                        </p>
-                        <a href="trust://" style={{
-                          display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-                          background: "linear-gradient(135deg,#1b6ff8,#0047c8)",
-                          borderRadius: 10, color: "#fff",
-                          fontSize: "0.88rem", fontWeight: 700,
-                          padding: "10px 14px", textDecoration: "none",
-                          touchAction: "manipulation", WebkitTapHighlightColor: "transparent",
-                        }}>
-                          🐦 Apri Trust Wallet →
-                        </a>
-                        <a href="metamask://" style={{
-                          display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
-                          background: "rgba(255,255,255,0.06)",
-                          border: "1px solid rgba(255,255,255,0.12)",
-                          borderRadius: 10, color: "rgba(255,255,255,0.55)",
-                          fontSize: "0.8rem", fontWeight: 600,
-                          padding: "8px 14px", textDecoration: "none",
-                          touchAction: "manipulation", WebkitTapHighlightColor: "transparent",
-                        }}>
-                          🦊 Apri MetaMask
-                        </a>
+                    {/* Su iOS, Trust Wallet richiede un flusso custom */}
+                    {_isIOS && (
+                      <div style={{ marginTop: 8 }}>
+                        <TrustWalletConnector />
                       </div>
                     )}
                   </div>

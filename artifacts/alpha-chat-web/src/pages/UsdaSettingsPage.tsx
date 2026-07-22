@@ -17,7 +17,6 @@ import {
   useActiveAccount,
   useActiveWalletChain,
   useSwitchActiveWalletChain,
-  useConnect,
   ConnectButton,
 } from "thirdweb/react";
 import { createWallet, walletConnect } from "thirdweb/wallets";
@@ -32,6 +31,7 @@ import {
   THIRDWEB_READY,
 } from "../lib/thirdweb-client";
 import WcDebugPanel from "../components/usda/WcDebugPanel";
+import TrustWalletConnector from "../components/usda/TrustWalletConnector";
 
 // ── Costanti ─────────────────────────────────────────────────────────────────
 
@@ -41,12 +41,16 @@ const USDA_NETWORK  = "Polygon Mainnet";
 const USDA_SITE     = "https://getusda.xyz";
 const USDA_LOGO     = "https://getusda.xyz/favicon.ico";
 
+const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
+
+// Su iOS, Trust Wallet viene gestito da TrustWalletConnector (flusso custom)
+// per aggirare il bug ThirdWeb: URL trust:///wc (3 slash) + deeplink async bloccato.
 const SUPPORTED_WALLETS = [
   createWallet("io.metamask"),
   createWallet("com.coinbase.wallet"),
   walletConnect(),
   createWallet("me.rainbow"),
-  createWallet("com.trustwallet.app"),
+  ...(isIOS ? [] : [createWallet("com.trustwallet.app")]),
 ];
 
 const WALLET_CHIPS = [
@@ -72,13 +76,10 @@ interface Props {
 
 // ── Componente ────────────────────────────────────────────────────────────────
 
-const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
-
 export default function UsdaSettingsPage({ onBack }: Props) {
   const account     = useActiveAccount();
   const activeChain = useActiveWalletChain();
   const switchChain = useSwitchActiveWalletChain();
-  const { isConnecting } = useConnect();
 
   const isConnected      = !!account;
   const isCorrectNetwork = activeChain?.id === USDA_CHAIN_ID;
@@ -209,46 +210,9 @@ export default function UsdaSettingsPage({ onBack }: Props) {
                 />
               </div>
 
-              {/* ── iPhone: dopo aver selezionato Trust/MetaMask, aprire manualmente ── */}
-              {isIOS && (
-                <div style={{
-                  background: "rgba(255,255,255,0.04)",
-                  border: "1px solid rgba(255,255,255,0.1)",
-                  borderRadius: 14, padding: "12px 14px",
-                  display: "flex", flexDirection: "column", gap: 8,
-                }}>
-                  <p style={{ margin: 0, fontSize: "0.72rem", color: "rgba(255,255,255,0.45)", textAlign: "center" }}>
-                    📱 Su iPhone, dopo aver selezionato il wallet, aprilo manualmente:
-                  </p>
-                  <a
-                    href="trust://"
-                    style={{
-                      display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-                      background: "linear-gradient(135deg,#1b6ff8,#0047c8)",
-                      borderRadius: 11, color: "#fff",
-                      fontSize: "0.9rem", fontWeight: 700,
-                      padding: "11px 16px", textDecoration: "none",
-                      touchAction: "manipulation", WebkitTapHighlightColor: "transparent",
-                    }}
-                  >
-                    🐦 Apri Trust Wallet →
-                  </a>
-                  <a
-                    href="metamask://"
-                    style={{
-                      display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-                      background: "rgba(255,255,255,0.06)",
-                      border: "1px solid rgba(255,255,255,0.12)",
-                      borderRadius: 11, color: "rgba(255,255,255,0.6)",
-                      fontSize: "0.82rem", fontWeight: 600,
-                      padding: "9px 16px", textDecoration: "none",
-                      touchAction: "manipulation", WebkitTapHighlightColor: "transparent",
-                    }}
-                  >
-                    🦊 Apri MetaMask
-                  </a>
-                </div>
-              )}
+              {/* Su iOS, Trust Wallet richiede un flusso custom (bypass bug ThirdWeb) */}
+              {isIOS && <TrustWalletConnector />}
+
             </div>
           )}
 
