@@ -32,11 +32,32 @@ export const APP_METADATA = {
 export const WC_WALLET_CONNECT_CONFIG: { projectId: string } | undefined =
   WC_PROJECT_ID ? { projectId: WC_PROJECT_ID } : undefined;
 
-// Log diagnostico — rimuovere dopo la verifica
+// ── Debug WalletConnect — rimuovere dopo la verifica ─────────────────────────
 if (typeof window !== "undefined") {
-  console.log("[ThirdWeb] WalletConnect projectId:", WC_PROJECT_ID || "⚠️ UNDEFINED — controlla VITE_WALLETCONNECT_PROJECT_ID");
-  console.log("[ThirdWeb] walletConnect config passato ai ConnectButton:", WC_WALLET_CONNECT_CONFIG ?? "⚠️ undefined → ThirdWeb usa il suo default");
+  // 1. Abilita il logger interno di WalletConnect (mostra display_uri,
+  //    session_proposal, session_settle, session_delete nel browser console).
+  try { localStorage.setItem("debug", "wc*,walletconnect*,@walletconnect*"); } catch { /* private mode */ }
+
+  // 2. Log configurazione ThirdWeb
+  console.log("[ThirdWeb] WalletConnect projectId:", WC_PROJECT_ID || "⚠️ UNDEFINED");
+  console.log("[ThirdWeb] walletConnect config:", WC_WALLET_CONNECT_CONFIG ?? "⚠️ undefined → ThirdWeb usa il suo default");
   console.log("[ThirdWeb] App metadata:", APP_METADATA);
+
+  // 3. Cattura errori JS non gestiti (ThirdWeb lancia spesso Promise reject)
+  window.addEventListener("unhandledrejection", (ev) => {
+    const r = ev.reason;
+    console.error("[WC] unhandledrejection:", r);
+    try { console.error("[WC] JSON:", JSON.stringify(r, null, 2)); } catch { /* non-serializable */ }
+  });
+
+  // 4. Intercetta console.error per evidenziare qualsiasi errore ThirdWeb/WC
+  const _origErr = console.error.bind(console);
+  console.error = (...args: unknown[]) => {
+    _origErr(...args);
+    if (args.some(a => typeof a === "string" && /walletconnect|thirdweb|session|relay/i.test(a))) {
+      try { _origErr("[WC intercepted]", JSON.stringify(args, null, 2)); } catch { /* ok */ }
+    }
+  };
 }
 
 // ── ThirdWeb Client ───────────────────────────────────────────────────────────
