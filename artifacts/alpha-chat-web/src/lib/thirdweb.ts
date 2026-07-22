@@ -1,5 +1,11 @@
 /**
  * lib/thirdweb.ts — ThirdWeb v5 client, chain e wallet identici al progetto USDA.
+ *
+ * IMPORTANTE: usiamo un RPC Alchemy custom per polygonChain.
+ * defineChain(137) senza RPC custom usa il relay ThirdWeb che richiede
+ * il dominio chiamante in whitelist → *.replit.dev NON è whitelisted →
+ * il polling della receipt silenziosamente fallisce.
+ * Stesso pattern del repo USDA (lib/thirdweb.js).
  */
 
 import { createThirdwebClient, defineChain } from "thirdweb";
@@ -9,7 +15,16 @@ export const client = createThirdwebClient({
   clientId: import.meta.env.VITE_THIRDWEB_CLIENT_ID as string,
 });
 
-export const polygon = defineChain(137);
+// RPC Alchemy con fallback — stesso approccio del repo USDA.
+const alchemyKey = (import.meta.env.VITE_ALCHEMY_API_KEY as string | undefined) ?? "tWSFclnh075909w0Dmvvb";
+export const ALCHEMY_RPC = `https://polygon-mainnet.g.alchemy.com/v2/${alchemyKey}`;
+
+export const polygon = defineChain({
+  id:             137,
+  rpc:            ALCHEMY_RPC,
+  nativeCurrency: { name: "POL", symbol: "POL", decimals: 18 },
+  blockExplorers: [{ name: "PolygonScan", url: "https://polygonscan.com", apiUrl: "https://api.polygonscan.com/api" }],
+});
 
 export const USDA_CONTRACT_ADDRESS = "0x23396cF899Ca06c4472205fC903bDB4de249D6f";
 export const USDA_CHAIN_ID  = 137;

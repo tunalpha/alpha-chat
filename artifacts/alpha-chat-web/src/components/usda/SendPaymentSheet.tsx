@@ -2,28 +2,60 @@
  * SendPaymentSheet — Chat Payment Engine, flusso automatico.
  *
  * Step 1 (form):      importo + nota
- * Step 2 (confirm):   riepilogo pulito (nessuna fee, nessun totale) + wallet status
+ * Step 2 (confirm):   riepilogo pulito + wallet status
  * Step 3 (sending):   tutto automatico —
  *   POST /api/v1/payments → escrow_wallet
- *   → ERC-20 transfer ThirdWeb → firma wallet → tx_hash
- *   → POST /api/v1/payments/:id/deposit
+ *   → ERC-20 calldata manuale → sendTransaction fire-and-forget
+ *   → polling detect-deposit ogni 10s come fonte di verità on-chain
  *   → "Pagamento inviato ✓"
  *
- * L'utente non vede mai: indirizzo escrow, tx_hash, contratto.
+ * PATTERN USDA (replicato fedelmente):
+ * • sendTransaction invece di sendAndConfirmTransaction:
+ *   evita wallet_sendCalls (EIP-5792) che causa due popup firma su
+ *   Trust Wallet ("nonce too low" al secondo → tx on-chain ma hash perso).
+ * • calldata ERC-20 encodato manualmente: bypassa il wrapper ThirdWeb.
+ * • detect-deposit come unica fonte di verità on-chain.
+ *
  * ADR-001: zero chiamate a getusda.xyz.
  */
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { getContract, sendAndConfirmTransaction } from "thirdweb";
-import { transfer as erc20Transfer } from "thirdweb/extensions/erc20";
 import { useActiveAccount, ConnectButton } from "thirdweb/react";
 import { client, polygon, wallets } from "../../lib/thirdweb";
 import {
   apiPaymentCreate,
-  apiPaymentDeposit,
   apiPaymentDetectDeposit,
   type CreateTransferResult,
 } from "../../lib/payment-api";
+
+// ---------------------------------------------------------------------------
+// Helpers — encoding ERC-20 transfer calldata manuale.
+// Identico a encodeERC20Transfer() nel repo USDA (app/pay/page.js).
+// ---------------------------------------------------------------------------
+
+/**
+ * Converte un importo USDA (stringa decimale) in BigInt a 18 decimali
+ * senza errori di floating point.
+ */
+function toWei18(amount: string): bigint {
+  const str = Number(amount).toFixed(18);
+  const [int, dec] = str.split(".");
+  return BigInt(int) * BigInt("1000000000000000000") + BigInt(dec);
+}
+
+/**
+ * Encoda il calldata ERC-20 transfer(address,uint256) manualmente.
+ * Bypassa il wrapper ThirdWeb (sendAndConfirmTransaction / getContract)
+ * che tenta wallet_sendCalls (EIP-5792) prima di eth_sendTransaction,
+ * causando due popup firma su Trust Wallet: il primo va a buon fine
+ * ma il secondo fallisce con "nonce too low" → tx on-chain, hash perso.
+ */
+function encodeERC20Transfer(to: string, amountWei: bigint): `0x${string}` {
+  const selector = "a9059cbb";
+  const toHex    = to.toLowerCase().replace("0x", "").padStart(64, "0");
+  const amtHex   = amountWei.toString(16).padStart(64, "0");
+  return `0x${selector}${toHex}${amtHex}` as `0x${string}`;
+}
 
 // ---------------------------------------------------------------------------
 // Tipi
@@ -42,9 +74,8 @@ type Step = "form" | "confirm" | "sending";
 type SendPhase =
   | "recovering"  // recovery automatica dopo iOS page reload
   | "creating"    // POST /api/v1/payments
-  | "signing"     // ThirdWeb firma
-  | "confirming"  // attesa receipt blockchain
-  | "depositing"  // POST /deposit
+  | "signing"     // wallet aperto — in attesa firma
+  | "confirming"  // polling detect-deposit
   | "done"
   | "error";
 
@@ -59,7 +90,6 @@ const PHASE_LABEL: Record<SendPhase, string> = {
   creating:   "Creazione trasferimento…",
   signing:    "Firma nel wallet…",
   confirming: "Conferma blockchain…",
-  depositing: "Finalizzazione…",
   done:       "Pagamento inviato ✓",
   error:      "Errore",
 };
@@ -87,14 +117,14 @@ export function SendPaymentSheet({
   onClose,
   onSent,
 }: Props) {
-  const [step,     setStep]     = useState<Step>("form");
-  const [amount,   setAmount]   = useState("");
-  const [note,     setNote]     = useState("");
-  const [error,    setError]    = useState<string | null>(null);
-  const [phase,    setPhase]    = useState<SendPhase | null>(null);
+  const [step,   setStep]   = useState<Step>("form");
+  const [amount, setAmount] = useState("");
+  const [note,   setNote]   = useState("");
+  const [error,  setError]  = useState<string | null>(null);
+  const [phase,  setPhase]  = useState<SendPhase | null>(null);
   const busyRef = useRef(false);
 
-  const account = useActiveAccount();
+  const account     = useActiveAccount();
   const isConnected = !!account;
 
   const amountNum      = parseFloat(amount) || 0;
@@ -103,14 +133,14 @@ export function SendPaymentSheet({
   // Auto-chiudi dopo il successo
   useEffect(() => {
     if (phase !== "done") return;
-    localStorage.removeItem(PENDING_KEY); // pulizia recovery state
+    localStorage.removeItem(PENDING_KEY);
     const t = setTimeout(() => onSent(), 1800);
     return () => clearTimeout(t);
   }, [phase, onSent]);
 
   // Recovery automatica dopo iOS Safari page reload durante la firma wallet.
   // Se c'è un pagamento in sospeso per questa conversazione (< 30 min),
-  // chiede al backend di scansionare la blockchain per rilevare la tx.
+  // chiede al backend di scansionare la blockchain.
   useEffect(() => {
     const raw = localStorage.getItem(PENDING_KEY);
     if (!raw) return;
@@ -118,14 +148,12 @@ export function SendPaymentSheet({
     try { pending = JSON.parse(raw) as PendingPayment; }
     catch { localStorage.removeItem(PENDING_KEY); return; }
 
-    // Solo per questa conversazione e non scaduto (30 min)
     if (pending.conversationId !== conversationId) return;
     if (Date.now() - pending.timestamp > 30 * 60 * 1000) {
       localStorage.removeItem(PENDING_KEY);
       return;
     }
 
-    // Auto-recovery — vai direttamente allo step "sending"
     setStep("sending");
     setPhase("recovering");
     apiPaymentDetectDeposit(pending.transferId)
@@ -134,8 +162,6 @@ export function SendPaymentSheet({
         setPhase("done");
       })
       .catch(() => {
-        // Non rimuovere il pending: la tx potrebbe non essere ancora minata.
-        // L'utente può usare il bottone "Controlla deposito" nella bubble.
         setPhase("error");
         setError(
           "Deposito non ancora rilevato on-chain.\n" +
@@ -159,7 +185,7 @@ export function SendPaymentSheet({
     setStep("confirm");
   }
 
-  // ── Step 2 → Step 3: flusso automatico ─────────────────────────────────────
+  // ── Step 2 → Step 3: flusso USDA ───────────────────────────────────────────
   const handleSend = useCallback(async () => {
     if (busyRef.current || !account) return;
     busyRef.current = true;
@@ -167,9 +193,10 @@ export function SendPaymentSheet({
     setStep("sending");
 
     let created: CreateTransferResult | null = null;
+    let pollAborted = false;
 
     try {
-      // ── 1. Crea il trasferimento ────────────────────────────────────────
+      // ── 1. Crea il trasferimento ──────────────────────────────────────────
       setPhase("creating");
       created = await apiPaymentCreate({
         recipient_id:    toUserId,
@@ -177,8 +204,6 @@ export function SendPaymentSheet({
         amount:          amount.trim(),
         note:            note.trim() || undefined,
         asset_symbol:    "USDA",
-        // Passa l'indirizzo ThirdWeb come fallback: risolve WALLET_NOT_CONFIGURED
-        // per utenti che non hanno ancora salvato il wallet nel profilo AlphaChat.
         sender_wallet:   account.address,
       });
 
@@ -186,20 +211,18 @@ export function SendPaymentSheet({
         throw new Error("Il backend non ha restituito un indirizzo escrow. Riprova.");
       }
 
-      // ── 2. Prepara la transazione ERC-20 ───────────────────────────────
-      const contractAddress = (created.asset_address ?? "0xe714655fD1B3ba96B887DF1F94336c2A78E24001") as `0x${string}`;
-      const contract = getContract({ client, chain: polygon, address: contractAddress });
-      const tx = erc20Transfer({
-        contract,
-        to:     created.escrow_wallet as `0x${string}`,
-        amount: created.amount, // human-readable, ThirdWeb gestisce i decimali
-      });
+      // ── 2. Calldata ERC-20 encodato manualmente ───────────────────────────
+      // Identico al repo USDA: evita wallet_sendCalls (EIP-5792).
+      const contractAddress = (
+        created.asset_address ?? "0xe714655fD1B3ba96B887DF1F94336c2A78E24001"
+      ) as `0x${string}`;
+      const amountWei = toWei18(created.amount);
+      const calldata  = encodeERC20Transfer(created.escrow_wallet, amountWei);
 
-      // ── 3. Firma nel wallet dell'utente ─────────────────────────────────
+      // ── 3. Firma nel wallet — fire-and-forget ────────────────────────────
+      // NON aspettiamo il txHash da qui: fonte di verità = detect-deposit.
+      // Catturiamo solo il reject esplicito dell'utente per uscire dal polling.
       setPhase("signing");
-      // Salva lo stato PRIMA della firma: se iOS Safari ricarica la pagina
-      // durante la deep-link a MetaMask/Trust, il recovery effect rileverà
-      // questa entry e chiamerà detect-deposit automaticamente.
       const pendingSave: PendingPayment = {
         transferId:     created.transfer_id,
         conversationId,
@@ -207,26 +230,67 @@ export function SendPaymentSheet({
       };
       localStorage.setItem(PENDING_KEY, JSON.stringify(pendingSave));
 
-      const receipt = await sendAndConfirmTransaction({ account, transaction: tx });
-      const txHash = receipt.transactionHash;
+      account.sendTransaction({
+        to:      contractAddress,
+        data:    calldata,
+        gas:     BigInt(100000),
+        value:   BigInt(0),
+        chainId: 137,
+      }).catch((err: unknown) => {
+        const msg = (err as Error)?.message ?? "";
+        // Reject esplicito dell'utente → interrompe il polling
+        if (/reject|cancel|denied|refused|user.*cancel/i.test(msg)) {
+          pollAborted = true;
+        }
+        // Altri errori (network, relay) vengono ignorati:
+        // detect-deposit è la fonte di verità e può trovare la tx
+        // anche se sendTransaction ha dato errore dopo l'invio.
+      });
 
-      // ── 4. Conferma blockchain ──────────────────────────────────────────
+      // ── 4. Polling detect-deposit come unica fonte di verità on-chain ────
+      // Identico al pattern USDA (polling invece di waitForTransactionReceipt).
       setPhase("confirming");
-      // sendAndConfirmTransaction aspetta già 1 conferma — questa fase è visiva
+      const POLL_INTERVAL_MS = 10_000; // 10s — come USDA
+      const POLL_MAX_MS      = 10 * 60 * 1000; // 10 min timeout totale
+      const pollStart        = Date.now();
 
-      // ── 5. Registra il deposito ─────────────────────────────────────────
-      setPhase("depositing");
-      await apiPaymentDeposit(created.transfer_id, txHash);
+      while (Date.now() - pollStart < POLL_MAX_MS) {
+        if (pollAborted) {
+          throw new Error("Firma rifiutata nel wallet. Ripremi «Firma e Invia» per riprovare.");
+        }
 
-      // ── Successo ────────────────────────────────────────────────────────
-      setPhase("done"); // localStorage pulito dall'useEffect on "done"
+        await new Promise<void>((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+
+        if (pollAborted) {
+          throw new Error("Firma rifiutata nel wallet. Ripremi «Firma e Invia» per riprovare.");
+        }
+
+        try {
+          await apiPaymentDetectDeposit(created.transfer_id);
+          // Deposito rilevato on-chain → successo
+          setPhase("done");
+          return;
+        } catch (pollErr: unknown) {
+          const code = (pollErr as Error & { code?: string })?.code;
+          if (code === "DEPOSIT_TX_NOT_DETECTED") {
+            // Ancora non on-chain: continua polling
+            continue;
+          }
+          // Errore reale (RPC, accesso negato, stato invalido, ecc.) → interrompi
+          throw pollErr;
+        }
+      }
+
+      throw new Error(
+        "Timeout: deposito non rilevato dopo 10 minuti.\n" +
+        "Se hai già firmato nella app wallet, usa il pulsante «Controlla deposito» nella bubble di chat.",
+      );
 
     } catch (e: unknown) {
       const msg = (e instanceof Error ? e.message : String(e)) ?? "Errore sconosciuto.";
       console.error("[SendPayment] errore:", e);
-      // Se il transfer era già stato creato, informare l'utente che esiste in attesa
       const detail = created
-        ? "\n\nIl trasferimento è stato creato (ID: " + created.transfer_id.slice(0, 8) + "…) — puoi riprovare la firma aprendo la conversazione."
+        ? "\n\nIl trasferimento è stato creato (ID: " + created.transfer_id.slice(0, 8) + "…) — usa «Controlla deposito» nella chat per riprovare."
         : "";
       setError(msg + detail);
       setPhase("error");
@@ -242,16 +306,14 @@ export function SendPaymentSheet({
       role="dialog"
       aria-modal="true"
       aria-label="Invia USDA"
-      onClick={phase !== "signing" && phase !== "confirming" && phase !== "depositing"
-        ? onClose
-        : undefined}
+      onClick={phase !== "signing" && phase !== "confirming" ? onClose : undefined}
     >
       <div className="usda-sheet" onClick={(e) => e.stopPropagation()}>
 
         {/* Header */}
         <div className="usda-sheet-header">
           <span className="usda-sheet-title">💸 Invia USDA</span>
-          {phase !== "signing" && phase !== "confirming" && phase !== "depositing" && (
+          {phase !== "signing" && phase !== "confirming" && (
             <button type="button" className="usda-sheet-close" aria-label="Chiudi" onClick={onClose}>
               ✕
             </button>
@@ -383,11 +445,10 @@ export function SendPaymentSheet({
           </>
         )}
 
-        {/* ── STEP 3: SENDING — progress automatico ───────────────────────── */}
+        {/* ── STEP 3: SENDING ─────────────────────────────────────────────── */}
         {step === "sending" && (
           <div className="sp-sending" role="status" aria-live="polite">
             {phase === "done" ? (
-              /* Successo */
               <div className="sp-success">
                 <div className="sp-success-icon" aria-hidden="true">✅</div>
                 <p className="sp-success-title">Pagamento inviato!</p>
@@ -396,7 +457,6 @@ export function SendPaymentSheet({
                 </p>
               </div>
             ) : phase === "error" ? (
-              /* Errore */
               <>
                 <div className="sp-err-icon" aria-hidden="true">⚠️</div>
                 <p className="sp-err-title">Si è verificato un problema</p>
@@ -413,7 +473,6 @@ export function SendPaymentSheet({
                 </div>
               </>
             ) : (
-              /* Fasi di invio */
               <>
                 <div className="usda-signing-ring" aria-hidden="true">
                   <div className="usda-signing-spinner" />
@@ -427,7 +486,7 @@ export function SendPaymentSheet({
                     <br />🔒 Sicuro · Solo tu controlli i fondi
                   </p>
                 )}
-                {(phase === "confirming" || phase === "depositing") && (
+                {phase === "confirming" && (
                   <p className="usda-signing-sub">Non chiudere l'app.</p>
                 )}
               </>
