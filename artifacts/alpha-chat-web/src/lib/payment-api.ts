@@ -107,6 +107,48 @@ export async function apiPaymentGet(transferId: string): Promise<ChatTransferRes
   return paymentFetch<ChatTransferResponse>("GET", `/${transferId}`);
 }
 
+/** Risposta di createTransfer — include dati escrow visibili al mittente. */
+export interface CreateTransferResult {
+  transfer_id:     string;
+  status:          ChatTransferStatus;
+  amount:          string;
+  asset_symbol:    string;
+  asset_address:   string | null;
+  sender_id:       string;
+  recipient_id:    string;
+  conversation_id: string;
+  message_id:      string | null;
+  escrow_wallet:   string | null;
+  sender_wallet:   string | null;
+  fee:             string;
+  note:            string | null;
+  expires_at:      string | null;
+  tx_hash_release: string | null;
+}
+
+/** Crea un nuovo trasferimento P2P (nuovo Payment Engine). */
+export async function apiPaymentCreate(params: {
+  recipient_id:    string;
+  conversation_id: string;
+  amount:          string;
+  note?:           string;
+  asset_symbol?:   string;
+}): Promise<CreateTransferResult> {
+  return paymentFetch<CreateTransferResult>("POST", "/", params);
+}
+
+/** Mittente conferma il deposito on-chain fornendo il tx_hash. */
+export async function apiPaymentDeposit(
+  transferId: string,
+  txHash:     string,
+): Promise<ChatTransferResponse> {
+  return paymentFetch<ChatTransferResponse>(
+    "POST",
+    `/${transferId}/deposit`,
+    { tx_hash: txHash },
+  );
+}
+
 // ---------------------------------------------------------------------------
 // Utilità
 // ---------------------------------------------------------------------------

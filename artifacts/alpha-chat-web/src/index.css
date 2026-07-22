@@ -5880,6 +5880,17 @@ html.emergency-open #root {
 .usda-currency { font-size: 0.9rem; font-weight: 700; color: var(--text-3, rgba(255,255,255,0.5)); }
 .usda-note-input { background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12); border-radius: 10px; padding: 10px 14px; font-size: 0.9rem; color: var(--text-1, #fff); outline: none; width: 100%; box-sizing: border-box; }
 .usda-note-input:focus { border-color: #6366f1; }
+
+/* ── SendPaymentSheet extras ──────────────────────────────────────────────── */
+.sp-deposit-intro { display: flex; align-items: flex-start; gap: 10px; font-size: 0.88rem; color: var(--text-2, rgba(255,255,255,0.75)); line-height: 1.4; }
+.sp-deposit-check { font-size: 1.4rem; flex-shrink: 0; }
+.sp-copy-row { display: flex; align-items: center; gap: 8px; background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.12); border-radius: 10px; padding: 10px 12px; }
+.sp-copy-addr { flex: 1; font-family: monospace; font-size: 0.72rem; color: var(--text-2, rgba(255,255,255,0.75)); word-break: break-all; line-height: 1.4; }
+.sp-copy-btn { flex-shrink: 0; background: rgba(99,102,241,0.18); border: 1px solid rgba(99,102,241,0.35); border-radius: 8px; padding: 6px 10px; font-size: 0.78rem; font-weight: 600; color: #818cf8; cursor: pointer; transition: opacity 0.15s; white-space: nowrap; }
+.sp-copy-btn:active { opacity: 0.7; }
+.sp-info-text { font-size: 0.80rem; color: var(--text-3, rgba(255,255,255,0.45)); line-height: 1.45; margin: 0; }
+.sp-info-warning { color: rgba(251,191,36,0.85); }
+.sp-mono-input { font-family: monospace; font-size: 0.82rem !important; letter-spacing: 0.01em; }
 .usda-balance-row, .usda-fee-row, .usda-total-row { font-size: 0.8rem; color: var(--text-3, rgba(255,255,255,0.5)); display: flex; justify-content: space-between; }
 .usda-total-row { font-size: 0.85rem; color: var(--text-1, #fff); font-weight: 600; }
 .usda-error { font-size: 0.8rem; color: #f87171; background: rgba(248,113,113,0.1); border: 1px solid rgba(248,113,113,0.2); border-radius: 8px; padding: 8px 12px; }

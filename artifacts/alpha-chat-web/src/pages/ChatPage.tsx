@@ -5,6 +5,7 @@ import { ChatPaymentBubble }    from "../components/usda/ChatPaymentBubble";
 import type { ChatPaymentData } from "../lib/payment-api";
 import { UsdaRequestBubble } from "../components/usda/UsdaRequestBubble";
 import { SendUsdaSheet } from "../components/usda/SendUsdaSheet";
+import { SendPaymentSheet } from "../components/usda/SendPaymentSheet";
 import { RequestUsdaSheet } from "../components/usda/RequestUsdaSheet";
 import { UsdaPaymentDetail } from "../components/usda/UsdaPaymentDetail";
 
@@ -667,7 +668,8 @@ export default function ChatPage({ onNavigate }: Props) {
   const [mediaUploadStates, setMediaUploadStates] = useState<Map<string, MediaUploadState>>(new Map());
   const [viewerMedia, setViewerMedia] = useState<{ url: string; type: "image" | "video"; filename?: string; mimeType?: string } | null>(null);
   // ── USDA Payments ──────────────────────────────────────────────────────
-  const [showSendUsda,    setShowSendUsda]    = useState(false);
+  const [showSendUsda,    setShowSendUsda]    = useState(false);   // legacy — non più connesso al pulsante
+  const [showSendPayment, setShowSendPayment] = useState(false);   // nuovo Payment Engine
   const [showRequestUsda, setShowRequestUsda] = useState(false);
   const [usdaDetailId,    setUsdaDetailId]    = useState<string | null>(null);
 
@@ -3074,7 +3076,7 @@ export default function ChatPage({ onNavigate }: Props) {
                 <>
                   <button
                     className="attach-sheet-item"
-                    onClick={() => { setShowAttachSheet(false); setTimeout(() => setShowSendUsda(true), 80); }}
+                    onClick={() => { setShowAttachSheet(false); setTimeout(() => setShowSendPayment(true), 80); }}
                   >
                     <span className="attach-sheet-icon">💰</span>
                     <span>Invia USDA</span>
@@ -3461,6 +3463,19 @@ export default function ChatPage({ onNavigate }: Props) {
       )}
 
       {/* ── USDA Payments ─────────────────────────────────────────────────── */}
+
+      {/* Nuovo Payment Engine — entry point principale dal pulsante "Invia USDA" */}
+      {showSendPayment && activeConv && auth && activeConv.type !== "group" && (
+        <SendPaymentSheet
+          conversationId={activeConvId ?? ""}
+          toUserId={activeConv.other_user?.user_id ?? ""}
+          toName={activeConv.other_user?.display_name ?? activeConv.other_user?.username ?? "Utente"}
+          onClose={() => setShowSendPayment(false)}
+          onSent={() => setShowSendPayment(false)}
+        />
+      )}
+
+      {/* Legacy SendUsdaSheet — mantenuto per compatibilità, non più collegato al pulsante */}
       {showSendUsda && activeConv && auth && activeConv.type !== "group" && (
         <SendUsdaSheet
           conversationId={activeConvId ?? ""}
