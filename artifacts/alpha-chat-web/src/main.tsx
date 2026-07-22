@@ -1,7 +1,3 @@
-// wallet-client DEVE essere importato PRIMA di WagmiProvider per registrare
-// createAppKit() come side effect e inizializzare il modal WalletConnect.
-import './lib/wallet-client';
-
 import { createRoot } from 'react-dom/client';
 import { WagmiProvider } from 'wagmi';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
