@@ -36,6 +36,7 @@ import {
 import type { WalletInfo, UsdaPaymentData, UsdaBackendInfo, UsdaCapabilities } from "../lib/usda-types";
 import { USDA_STATUS_LABELS, USDA_STATUS_ICONS } from "../lib/usda-types";
 import { UsdaPaymentDetail } from "../components/usda/UsdaPaymentDetail";
+import WcDebugPanel from "../components/usda/WcDebugPanel";
 
 type Tab = "saldo" | "storico" | "impostazioni";
 type HistoryFilter = "tutti" | "sent" | "received" | "pending" | "claimed" | "refunded";
@@ -550,6 +551,9 @@ export default function WalletCenterPage({ onBack }: Props) {
           onClose={() => setDetailId(null)}
         />
       )}
+
+      {/* Debug WalletConnect — tocca 5 volte "Debug" per aprire */}
+      <WcDebugPanel />
     </div>
   );
 }

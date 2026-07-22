@@ -30,6 +30,7 @@ import {
   USDA_CHAIN_ID,
   THIRDWEB_READY,
 } from "../lib/thirdweb-client";
+import WcDebugPanel from "../components/usda/WcDebugPanel";
 
 // ── Costanti ─────────────────────────────────────────────────────────────────
 
@@ -405,6 +406,10 @@ export default function UsdaSettingsPage({ onBack }: Props) {
 
         {/* Padding bottom */}
         <div style={{ height: 32 }} aria-hidden="true" />
+        {/* Debug WalletConnect — tocca 5 volte "Debug" per aprire */}
+        <div className="ups-section" style={{ paddingBottom: 8 }}>
+          <WcDebugPanel />
+        </div>
       </div>
     </div>
   );
