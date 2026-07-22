@@ -1,0 +1,66 @@
+La traccia è molto chiara e individua un fatto importante:
+
+* Il backend non ha il wallet di Cricco in MongoDB.
+* Il frontend mostra il wallet perché lo legge da ThirdWeb in memoria.
+
+Questo spiega il comportamento che osservi.
+
+L’unico punto che non è ancora dimostrato è la frase:
+
+“PUT /api/v1/usda/wallet/address non compare in nessun log di produzione, quindi il dispositivo esegue ancora il vecchio JavaScript.”
+
+È un’ipotesi plausibile, ma non è l’unica possibile. Ad esempio, la chiamata potrebbe:
+
+* non partire per una condizione del useEffect;
+* fallire prima della richiesta HTTP;
+* essere intercettata da un errore JavaScript;
+* essere inviata a un endpoint diverso.
+
+Per chiudere definitivamente il caso, chiederei una prova di esecuzione sul dispositivo di Cricco.
+
+⸻
+
+Prompt finale
+
+Non fare altre modifiche al codice. Voglio vedere l’esecuzione reale del frontend sul dispositivo di Cricco.
+
+Aggiungere temporaneamente questi log in WalletCenterPage e UsdaSettingsPage:
+
+console.log("[USDA] address:", address);
+console.log("[USDA] useEffect persist triggered");
+try {
+  console.log("[USDA] calling apiUsdaSetWalletAddress", address);
+  await apiUsdaSetWalletAddress(address);
+  console.log("[USDA] apiUsdaSetWalletAddress SUCCESS");
+} catch (e) {
+  console.error("[USDA] apiUsdaSetWalletAddress FAILED", e);
+}
+
+Poi:
+
+1. Aprire AlphaChat sul dispositivo di Cricco.
+2. Aprire Wallet USDA.
+3. Acquisire la console del browser (o i log remoti).
+4. Verificare se compaiono quei log.
+
+In parallelo controllare il backend:
+
+* arriva la richiesta PUT /api/v1/usda/wallet/address?
+* se sì, con quale status?
+* se no, il frontend ha almeno eseguito il console.log("[USDA] calling...")?
+
+Report richiesto
+
+Riportare solo questi dati:
+
+* address letto da ThirdWeb.
+* Il useEffect viene eseguito? (Sì/No)
+* apiUsdaSetWalletAddress() viene chiamata? (Sì/No)
+* La richiesta HTTP parte? (Sì/No)
+* Il backend la riceve? (Sì/No)
+* HTTP status.
+* Documento MongoDB prima e dopo.
+
+⸻
+
+Con questi dati saprai esattamente in quale punto della catena si interrompe il flusso, senza dover fare ulteriori ipotesi.

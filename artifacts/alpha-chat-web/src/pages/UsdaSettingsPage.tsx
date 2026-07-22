@@ -68,13 +68,21 @@ export default function UsdaSettingsPage({ onBack }: Props) {
   // RECIPIENT_NO_WALLET anche se il Wallet Center mostra "✅ Wallet attivo".
   // Confronto case-insensitive (standard EVM) — skip se già salvato in questa sessione.
   useEffect(() => {
+    console.log("[USDA][Settings] address:", address);
     if (!address) return;
     if (lastPersistedRef.current?.toLowerCase() === address.toLowerCase()) return;
     lastPersistedRef.current = address;
-    apiUsdaSetWalletAddress(address).catch(() => {
-      // Reset su errore così il prossimo mount può riprovare
-      lastPersistedRef.current = null;
-    });
+    console.log("[USDA][Settings] useEffect persist triggered");
+    void (async () => {
+      try {
+        console.log("[USDA][Settings] calling apiUsdaSetWalletAddress", address);
+        await apiUsdaSetWalletAddress(address);
+        console.log("[USDA][Settings] apiUsdaSetWalletAddress SUCCESS");
+      } catch (e) {
+        console.error("[USDA][Settings] apiUsdaSetWalletAddress FAILED", e);
+        lastPersistedRef.current = null;
+      }
+    })();
   }, [address]);
 
   const [copied,      setCopied]      = useState<string | null>(null);

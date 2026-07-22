@@ -129,13 +129,21 @@ export default function WalletCenterPage({ onBack }: Props) {
   // tautologicamente falso. Si usa un ref per evitare scritture duplicate
   // nella stessa sessione — identico al pattern di UsdaSettingsPage.
   useEffect(() => {
+    console.log("[USDA][WalletCenter] address:", address);
     if (!address) return;
     if (lastPersistedRef.current?.toLowerCase() === address.toLowerCase()) return;
     lastPersistedRef.current = address;
-    apiUsdaSetWalletAddress(address).catch(() => {
-      // Reset su errore così il prossimo mount può riprovare
-      lastPersistedRef.current = null;
-    });
+    console.log("[USDA][WalletCenter] useEffect persist triggered");
+    void (async () => {
+      try {
+        console.log("[USDA][WalletCenter] calling apiUsdaSetWalletAddress", address);
+        await apiUsdaSetWalletAddress(address);
+        console.log("[USDA][WalletCenter] apiUsdaSetWalletAddress SUCCESS");
+      } catch (e) {
+        console.error("[USDA][WalletCenter] apiUsdaSetWalletAddress FAILED", e);
+        lastPersistedRef.current = null;
+      }
+    })();
   }, [address]);
 
   // ── Storico ─────────────────────────────────────────────────────────────────
