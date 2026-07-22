@@ -32,8 +32,13 @@ export const PayRequestSchema = z.object({
   signature: z.string().optional(),
 });
 
+// Regex: 0x + 40 hex chars = indirizzo EVM standard (Ethereum / Polygon)
+const EVM_ADDRESS_RE = /^0x[0-9a-fA-F]{40}$/;
+
 export const SetWalletAddressSchema = z.object({
-  address: z.string().min(10).max(200),
+  address: z
+    .string()
+    .regex(EVM_ADDRESS_RE, "Indirizzo wallet non valido — deve essere un indirizzo Polygon/Ethereum (0x + 40 caratteri hex)"),
   chain:   z.enum(["usda", "polygon", "ethereum", "bitcoin", "lightning"]).default("usda"),
 });
 

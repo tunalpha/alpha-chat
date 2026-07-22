@@ -1,0 +1,103 @@
+La diagnosi è coerente e il fix affronta la causa individuata. C’è però un ultimo controllo che farei prima del deploy per evitare un’altra fonte di incoerenza.
+
+✅ Causa individuata
+
+Avevi due fonti di verità diverse:
+
+* Frontend
+    * useActiveAccount().address
+    * Mostrava “✅ Wallet attivo”
+* Backend
+    * wallets.usda.address
+    * wallet_address
+    * Decideva se l’utente poteva ricevere USDA
+
+Di conseguenza:
+
+Wallet connesso
+        ↓
+Frontend: ✅ Wallet attivo
+        ↓
+MongoDB: wallet nullo
+        ↓
+preparePayment()
+        ↓
+RECIPIENT_NO_WALLET
+
+Il comportamento osservato negli screenshot è perfettamente spiegato da questa sequenza.
+
+⸻
+
+✅ Il fix è corretto
+
+Persistendo subito il wallet con:
+
+apiUsdaSetWalletAddress(address)
+
+ottieni una sola fonte di verità.
+
+Questo elimina il problema.
+
+⸻
+
+🔍 Un controllo che aggiungerei
+
+Assicurati che il backend validi l’indirizzo ricevuto.
+
+Prima di salvarlo:
+
+* deve iniziare con 0x
+* deve essere lungo 42 caratteri
+* deve essere un address Ethereum/Polygon valido
+
+Ad esempio:
+
+if (!isAddress(address)) {
+    throw new AppError("INVALID_WALLET_ADDRESS");
+}
+
+Così eviti di salvare indirizzi corrotti o incompleti.
+
+⸻
+
+Altro controllo
+
+Evita di chiamare ogni volta:
+
+apiUsdaSetWalletAddress(address)
+
+se il wallet è già salvato.
+
+Meglio:
+
+wallet live
+      ↓
+leggi wallet DB
+      ↓
+sono diversi?
+      ↓
+SI → aggiorna Mongo
+NO → non fare nulla
+
+Eviti chiamate API inutili ad ogni refresh della pagina.
+
+⸻
+
+Test finale
+
+Prima del deploy farei questo ciclo completo:
+
+1. Utente A collega il wallet.
+2. Verificare che MongoDB contenga:
+    * wallets.usda.address
+    * wallet_address
+    * wallet_enabled = true
+3. Utente B apre la chat con A.
+4. “Invia USDA” → deve aprirsi normalmente.
+5. “Richiedi USDA” → deve funzionare.
+6. Riavviare browser/app.
+7. Riprovare invio e richiesta.
+8. Scollegare e ricollegare il wallet.
+9. Verificare che non vengano creati duplicati né scritture inutili.
+
+Se tutti questi test passano, il flusso di attivazione del wallet e quello di invio/richiesta USDA risultano finalmente allineati.

@@ -118,10 +118,18 @@ export default function WalletCenterPage({ onBack }: Props) {
   // e persiste l'indirizzo in MongoDB (fonte di verità per preparePayment)
   useEffect(() => {
     if (!address) return;
-    apiUsdaGetWallet(address).then(setWallet).catch(() => {});
-    // Salva il wallet address nel DB — necessario affinché altri utenti possano
-    // inviare USDA a questo utente (preparePayment legge wallets.usda.address da MongoDB)
-    apiUsdaSetWalletAddress(address).catch(() => {});
+    apiUsdaGetWallet(address).then((info) => {
+      setWallet(info);
+      // Persiste solo se l'indirizzo live è diverso da quello già in MongoDB
+      // (case-insensitive, come da standard EVM) — evita scritture inutili ad ogni refresh
+      const storedAddr = info.address ?? "";
+      if (storedAddr.toLowerCase() !== address.toLowerCase()) {
+        apiUsdaSetWalletAddress(address).catch(() => {});
+      }
+    }).catch(() => {
+      // Se il fetch fallisce non possiamo confrontare — scriviamo per sicurezza
+      apiUsdaSetWalletAddress(address).catch(() => {});
+    });
   }, [address]);
 
   // ── Storico ─────────────────────────────────────────────────────────────────

@@ -12,7 +12,7 @@
  *   5. Sicurezza      — card rassicurante custody
  */
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { useActiveAccount, ConnectButton } from "thirdweb/react";
 import {
   client,
@@ -60,12 +60,21 @@ export default function UsdaSettingsPage({ onBack }: Props) {
   const isConnected      = !!account;
   const isCorrectNetwork = !!account;
 
-  // Persiste il wallet address in MongoDB ogni volta che il wallet si connette.
+  // Traccia l'ultimo indirizzo già persistito per evitare scritture duplicate
+  const lastPersistedRef = useRef<string | null>(null);
+
+  // Persiste il wallet address in MongoDB quando il wallet si connette.
   // Senza questo step, preparePayment non trova il destinatario e restituisce
   // RECIPIENT_NO_WALLET anche se il Wallet Center mostra "✅ Wallet attivo".
+  // Confronto case-insensitive (standard EVM) — skip se già salvato in questa sessione.
   useEffect(() => {
     if (!address) return;
-    apiUsdaSetWalletAddress(address).catch(() => {});
+    if (lastPersistedRef.current?.toLowerCase() === address.toLowerCase()) return;
+    lastPersistedRef.current = address;
+    apiUsdaSetWalletAddress(address).catch(() => {
+      // Reset su errore così il prossimo mount può riprovare
+      lastPersistedRef.current = null;
+    });
   }, [address]);
 
   const [copied,      setCopied]      = useState<string | null>(null);
