@@ -2,7 +2,33 @@
 
 **Versione**: 1.0 — Luglio 2026  
 **Stato**: Documento di progettazione — nessun codice scritto  
-**Scope**: Pagamenti USDA peer-to-peer nativi in AlphaChat, senza dipendenza dalle API phone-based di getusda.xyz
+**Scope**: Chat Payment Engine P2P nativo di AlphaChat — asset-agnostico, indipendente da getusda.xyz
+
+---
+
+## ADR-001 — Indipendenza architetturale tra AlphaChat e getusda.xyz
+
+### Decisione
+
+AlphaChat introduce un **Chat Payment Engine autonomo**.
+
+Il repository getusda.xyz viene considerato una **reference implementation** e non una dipendenza.
+
+### Conseguenze vincolanti
+
+- Nessun endpoint di AlphaChat dipenderà dalle API interne di getusda.xyz.
+- Nessuna modifica sarà apportata al repository getusda.xyz.
+- Nessun codice verrà copiato tra i repository.
+- Gli algoritmi potranno essere reimplementati in TypeScript quando necessario, mantenendo l'equivalenza funzionale ma non condividendo il codice.
+- I due progetti avranno roadmap, deploy e versioning completamente indipendenti.
+
+### Motivazione
+
+getusda.xyz è un sistema phone-based orientato al portale web e ai link WhatsApp. AlphaChat è una piattaforma di messaggistica anonima, cifrata, account-based. Le due architetture hanno semantiche incompatibili e scopi distinti. Un accoppiamento tecnico tra i due sistemi creerebbe un punto di failure singolo, limiterebbe la roadmap di AlphaChat e introdurrebbe una dipendenza su un sistema esterno non controllato.
+
+### Stato
+
+Accettata — Luglio 2026.
 
 ---
 
@@ -609,3 +635,77 @@ Il Chat Payment Engine nativo:
 - implementa la feature richiesta (accept/reject) che getusda.xyz non può fornire
 - lascia getusda.xyz completamente invariato e operativo per il portale web
 - utilizza gli stessi pattern architetturali di getusda.xyz (custodial escrow, lock atomico, anti-replay) reimplementati in TypeScript, garantendo coerenza concettuale senza accoppiamento tecnico
+
+---
+
+## 16. Estensibilità futura — Payment Engine asset-agnostico
+
+### Principio
+
+Il Chat Payment Engine deve essere progettato come un **servizio generico** e non limitato a USDA. L'asset trasferito è un **parametro della transazione**, non un elemento hardcoded nella logica del motore.
+
+### Asset supportati nell'MVP vs futuri
+
+| Asset | MVP | Futuro |
+|---|---|---|
+| USDA (stablecoin proprietaria) | ✅ | ✅ |
+| USDC | — | ✅ |
+| USDT | — | ✅ |
+| Altri token ERC-20 | — | ✅ |
+| NFT (ERC-721 / ERC-1155) | — | ✅ |
+| Token cross-chain | — | ✅ |
+
+### Implicazioni per il design
+
+**Schema `usda_chat_transfers` → rinominare `chat_transfers`**
+
+Il nome della collection deve essere asset-agnostico fin dall'inizio. Rinominare dopo il deploy è costoso.
+
+```
+chat_transfers
+  asset_type:     'ERC-20' | 'ERC-721' | 'ERC-1155'
+  asset_address:  string    // indirizzo contratto ERC-20 / NFT
+  asset_symbol:   string    // 'USDA', 'USDC', 'USDT', ...
+  token_id:       string | null  // solo per ERC-721 / ERC-1155
+  amount:         Decimal128 | null  // null per NFT (amount = 1 implicito)
+```
+
+**Servizio `chat-transfer.service.ts`**
+
+La logica di business (stati, lock, escrow, refund) rimane identica per qualsiasi asset ERC-20. L'unica parte asset-specifica è la chiamata al contratto (`transfer()` su ABI ERC-20 vs `safeTransferFrom()` su ABI ERC-721). Questa va isolata in un modulo `asset-transfer.ts` con dispatch sul tipo:
+
+```
+assetTransfer({ type: 'ERC-20', contractAddress, to, amount })
+assetTransfer({ type: 'ERC-721', contractAddress, to, tokenId })
+```
+
+**Verifica on-chain**
+
+`verifyUsdaTx()` verifica specificamente l'evento `Transfer` del contratto USDA. Va generalizzata in `verifyAssetTx({ contractAddress, assetType, ... })` che sceglie l'ABI e i filtri corretti in base al tipo di asset.
+
+**API — parametri aggiuntivi nella `create`**
+
+```
+POST /chat-transfer/create
+  Body: {
+    conversation_id,
+    asset_address,   // default: indirizzo USDA se omesso
+    asset_symbol,    // 'USDA', 'USDC', ...
+    amount,
+    note?
+  }
+```
+
+Aggiungere `asset_address` e `asset_symbol` fin dall'MVP non aggiunge complessità nell'implementazione iniziale (dove saranno sempre USDA) ma evita una rottura dell'API in futuro.
+
+### Ciò che non cambia
+
+- State machine degli stati (CREATED → PENDING → ACCEPTED / REJECTED / REFUNDED)
+- Logica di escrow con wallet custodiale dedicato
+- Lock atomico e anti-replay
+- Sistema messaggi + WS
+- Bubble UI (mostra `asset_symbol` invece del testo hardcoded "USDA")
+
+### Ciò che non va fatto ora
+
+Non implementare il supporto multi-asset nell'MVP. Il principio guida è: **progettare le interfacce come se multi-asset esistesse, implementare solo USDA**. Nessun `if (asset === 'USDC')` nell'MVP — solo lo slot parametrico che, quando arriverà USDC, non richiederà modifiche strutturali.
