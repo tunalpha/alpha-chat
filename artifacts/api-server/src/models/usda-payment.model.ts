@@ -54,6 +54,9 @@ export interface IUsdaPayment {
   /** ID del pagamento nel backend USDA esterno (quando collegato) */
   external_payment_id: string | null;
 
+  /** Link pubblico per pagare (solo kind="request") — generato da getusda.xyz */
+  share_link: string | null;
+
   claim_expires_at: Date | null;
   claimed_at: Date | null;
   refunded_at: Date | null;
@@ -90,6 +93,7 @@ const usdaPaymentSchema = new Schema<IUsdaPaymentDocument>(
     },
     tx_hash:              { type: String, default: null },
     external_payment_id:  { type: String, default: null },
+    share_link:           { type: String, default: null },
     claim_expires_at:     { type: Date, default: null },
     claimed_at:           { type: Date, default: null },
     refunded_at:          { type: Date, default: null },

@@ -37,3 +37,4 @@
 - [USDA Sprint Finale — ThirdWeb + Blockchain](sprint-usda-finale.md) — ThirdWeb v5 signing reale, verifyUsdaTx on-chain, _simulateTxHash eliminato, VITE_THIRDWEB_CLIENT_ID settato
 - [USDA Fintech Premium UX](usda-fintech-ux.md) — errori umani via humanizeUsdaError(), wallet chips, card no-wallet, success banners, signing premium
 - [Reown AppKit migration](reown-appkit-migration.md) — ThirdWeb rimosso, stack ora: @reown/appkit+wagmi v3+viem; walletModal.open() sostituisce ConnectButton; polygonPublicClient per balanceOf
+- [USDA /api/pay/request contract](usda-request-api-contract.md) — campo obbligatorio è `requesterWallet` (wallet Polygon), non user ID; risposta contiene `shareLink`; semantica link-based non user-to-user

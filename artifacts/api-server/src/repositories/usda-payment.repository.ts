@@ -39,6 +39,7 @@ export class UsdaPaymentRepository {
     note?: string | null;
     status: UsdaPaymentStatus;
     externalPaymentId?: string | null;
+    shareLink?: string | null;
     claimExpiresAt?: Date | null;
   }): Promise<IUsdaPaymentDocument> {
     return UsdaPaymentModel.create({
@@ -53,6 +54,7 @@ export class UsdaPaymentRepository {
       note:                 params.note ?? null,
       status:               params.status,
       external_payment_id:  params.externalPaymentId ?? null,
+      share_link:           params.shareLink ?? null,
       claim_expires_at:     params.claimExpiresAt ?? null,
     });
   }

@@ -87,6 +87,8 @@ export interface UsdaPaymentData {
   refunded_at?: string | null;
   created_at?: string;
   updated_at?: string;
+  /** Link pubblico per pagare la richiesta (kind="request") */
+  share_link?: string | null;
 }
 
 export interface WalletInfo {

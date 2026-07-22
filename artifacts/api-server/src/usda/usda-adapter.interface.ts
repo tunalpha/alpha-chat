@@ -135,6 +135,8 @@ export interface PaymentResult {
   refunded_at: string | null;
   created_at: string;
   updated_at: string;
+  /** Link pubblico per pagare la richiesta (solo kind="request") */
+  share_link?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -142,8 +144,9 @@ export interface PaymentResult {
 // ---------------------------------------------------------------------------
 
 export interface RequestPaymentParams {
-  from_user_id: string;       // chi richiede il pagamento
-  to_user_id: string;         // chi deve pagare
+  from_user_id: string;         // chi richiede il pagamento (AlphaChat userId)
+  to_user_id: string;           // chi deve pagare (AlphaChat userId)
+  requester_wallet: string;     // wallet Polygon del richiedente (obbligatorio per USDA API)
   amount: string;
   note?: string;
   conversation_id: string;

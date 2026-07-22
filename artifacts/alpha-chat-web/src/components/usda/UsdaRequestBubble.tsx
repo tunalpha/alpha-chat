@@ -50,8 +50,11 @@ export const UsdaRequestBubble = memo(function UsdaRequestBubble({ data, isMine,
   const isPendingClaim = data.status === "pending_claim";
   const isAnimated     = ["pending", "preparing", "signing", "submitting"].includes(data.status);
 
-  // Pulsante Paga: visibile solo al destinatario quando la richiesta è attiva
-  const canPay = !isMine && isPendingClaim && myUserId === data.recipient_id;
+  // Pulsante Paga:
+  //   — se share_link presente → apre il link pubblico USDA (getusda.xyz)
+  //   — altrimenti → usa il flusso in-app onPay
+  const canPay      = !isMine && isPendingClaim;
+  const hasShareLink = !!data.share_link;
 
   const requesterName = data.sender_name ?? data.sender_id.slice(0, 8);
 
@@ -103,7 +106,22 @@ export const UsdaRequestBubble = memo(function UsdaRequestBubble({ data, isMine,
         <span className="usda-status-text">{copy}</span>
       </div>
 
-      {canPay && (
+      {canPay && hasShareLink && (
+        /* Paga tramite link pubblico USDA (getusda.xyz) */
+        <a
+          href={data.share_link!}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="usda-pay-btn"
+          aria-label={`Paga ${data.amount} USDA — apre il portale di pagamento`}
+          onClick={(e) => e.stopPropagation()}
+        >
+          🔗 Paga ora · {data.amount} USDA
+        </a>
+      )}
+
+      {canPay && !hasShareLink && (
+        /* Paga tramite flusso in-app (fallback) */
         <button
           type="button"
           className={`usda-pay-btn ${paying ? "paying" : ""}`}
@@ -117,6 +135,20 @@ export const UsdaRequestBubble = memo(function UsdaRequestBubble({ data, isMine,
             <>💸 Paga ora · {data.amount} USDA</>
           )}
         </button>
+      )}
+
+      {isMine && isPendingClaim && hasShareLink && (
+        /* Chi ha inviato la richiesta vede il link da condividere */
+        <a
+          href={data.share_link!}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="usda-pay-btn usda-pay-btn--ghost"
+          aria-label="Apri il link di pagamento"
+          onClick={(e) => e.stopPropagation()}
+        >
+          🔗 Apri link di pagamento
+        </a>
       )}
 
       {!canPay && onDetail && !isMine && !isPendingClaim && (

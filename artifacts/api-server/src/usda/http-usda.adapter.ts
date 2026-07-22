@@ -556,24 +556,38 @@ export class HttpUsdaAdapter implements UsdaAdapter {
   }
 
   // ── Richiesta pagamento → POST /api/pay/request ───────────────────────────
+  //
+  // Contratto API (da source getusda.xyz):
+  //   requesterWallet  — wallet Polygon di chi chiede il pagamento (obbligatorio)
+  //   amount           — importo USDA (numero o stringa parseFloat-compatibile)
+  //   note             — nota opzionale
+  //   lang             — lingua ("it" | "en" | ...)
+  //
+  // Risposta: { code, shareLink, claim_expires_at, ... }
 
   async requestPayment(params: RequestPaymentParams): Promise<PaymentResult> {
     if (!_isAvailable) await this._refreshHealth();
     if (!_isAvailable) throw new UsdaUnavailableError();
 
     const raw = await usdaRequest<{
-      code?: string; payment_id?: string; status?: string;
+      code?:             string;
+      payment_id?:       string;
+      shareLink?:        string;
+      share_link?:       string;
+      status?:           string;
       claim_expires_at?: string | null;
     }>("POST", "/api/pay/request", {
-      from_user_id: params.from_user_id,
-      to_user_id:   params.to_user_id,
-      amount:       params.amount,
-      note:         params.note,
-      reference_id: params.client_payment_id,
+      requesterWallet: params.requester_wallet,
+      amount:          parseFloat(params.amount),
+      note:            params.note,
+      lang:            "it",
     });
 
-    const code = raw.code ?? raw.payment_id ?? params.client_payment_id;
-    const now  = new Date().toISOString();
+    const code      = raw.code ?? raw.payment_id ?? params.client_payment_id;
+    const shareLink = raw.shareLink ?? raw.share_link ?? null;
+    const now       = new Date().toISOString();
+
+    logger.info({ code, shareLink: shareLink ? `${shareLink.slice(0, 40)}…` : null }, "[HttpUSDA] Payment request created");
 
     return {
       payment_id:          params.client_payment_id,
@@ -593,6 +607,7 @@ export class HttpUsdaAdapter implements UsdaAdapter {
       refunded_at:         null,
       created_at:          now,
       updated_at:          now,
+      share_link:          shareLink,
     };
   }
 

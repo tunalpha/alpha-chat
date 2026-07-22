@@ -6076,8 +6076,9 @@ html.emergency-open #root {
 .usda-loading-dots::before { content: "●●●"; letter-spacing: 0.2em; font-size: 0.6em; animation: usda-dots 1.4s ease-in-out infinite; }
 
 /* ── Pay button — paying state ───────────────────────────────────────────── */
-.usda-pay-btn { display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; margin-top: 10px; padding: 10px 0; border-radius: 10px; background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%); color: #fff; font-size: 0.9rem; font-weight: 700; border: none; cursor: pointer; transition: opacity 0.15s; }
+.usda-pay-btn { display: flex; align-items: center; justify-content: center; gap: 6px; width: 100%; margin-top: 10px; padding: 10px 0; border-radius: 10px; background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%); color: #fff; font-size: 0.9rem; font-weight: 700; border: none; cursor: pointer; transition: opacity 0.15s; text-decoration: none; }
 .usda-pay-btn:active { opacity: 0.75; }
+.usda-pay-btn--ghost { background: transparent; border: 1px solid rgba(99,102,241,0.45); color: rgba(165,167,255,0.9); font-weight: 600; margin-top: 6px; }
 .usda-pay-btn.paying { opacity: 0.7; cursor: not-allowed; }
 .usda-pay-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 @keyframes usda-pay-spin { to { transform: rotate(360deg); } }

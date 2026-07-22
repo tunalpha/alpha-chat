@@ -143,6 +143,7 @@ function _formatPayment(doc: IUsdaPaymentDocument): Record<string, unknown> {
     message_id:          doc.message_id?.toString() ?? null,
     tx_hash:             doc.tx_hash,
     external_payment_id: doc.external_payment_id,
+    share_link:          doc.share_link ?? null,
     claim_expires_at:    doc.claim_expires_at?.toISOString() ?? null,
     claimed_at:          doc.claimed_at?.toISOString() ?? null,
     refunded_at:         doc.refunded_at?.toISOString() ?? null,
@@ -510,9 +511,24 @@ export async function requestPayment(params: {
   const membership = await memberRepo.findMembership(convId, senderId);
   if (!membership || membership.left_at !== null) throw new AppError("NOT_CHAT_MEMBER", 403);
 
+  // Recupera il wallet Polygon del richiedente — obbligatorio per il contratto USDA API
+  const requesterUser = await UserModel.findById(
+    new mongoose.Types.ObjectId(params.fromUserId),
+    "wallets wallet_address",
+  ).lean() as { wallets?: Record<string, { address: string }>; wallet_address?: string } | null;
+  const requesterWallet =
+    requesterUser?.wallets?.usda?.address ?? requesterUser?.wallet_address ?? null;
+
+  if (!requesterWallet) {
+    throw new AppError("WALLET_NOT_CONFIGURED", 400, undefined, {
+      detail: "L'utente non ha un wallet USDA configurato. Connetti un wallet prima di richiedere un pagamento.",
+    });
+  }
+
   const adapterResult = await _adapter.requestPayment({
     from_user_id:      params.fromUserId,
     to_user_id:        params.toUserId,
+    requester_wallet:  requesterWallet,
     amount:            params.amount,
     note:              params.note,
     conversation_id:   params.conversationId,
@@ -538,6 +554,7 @@ export async function requestPayment(params: {
     note:              params.note ?? null,
     status:            "pending_claim",
     externalPaymentId: adapterResult.payment_id,
+    shareLink:         adapterResult.share_link ?? null,
     claimExpiresAt,
   });
 
@@ -556,6 +573,7 @@ export async function requestPayment(params: {
       recipient_id:    params.toUserId,
       recipient_name:  recipientName,
       claim_expires_at: claimExpiresAt?.toISOString() ?? null,
+      share_link:      adapterResult.share_link ?? null,
     },
   });
 

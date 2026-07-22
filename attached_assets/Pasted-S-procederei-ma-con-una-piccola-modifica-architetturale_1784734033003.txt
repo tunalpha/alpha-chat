@@ -1,0 +1,121 @@
+Sì, procederei, ma con una piccola modifica architetturale per evitare un problema funzionale.
+
+Il fix che proponi è corretto rispetto al contratto dell’API, ma ricorda che l’endpoint USDA è link-based, non user-to-user. Se il tuo obiettivo è un’esperienza tipo WhatsApp/Telegram, la chat deve gestire il link in modo trasparente.
+
+Ti suggerisco questo prompt finale:
+
+⸻
+
+Fix definitivo integrazione “Richiedi USDA”
+
+La diagnosi è conclusa. Il payload inviato da AlphaChat non è compatibile con il contratto reale dell’API /api/pay/request.
+
+Implementare il fix
+
+1. Payload corretto
+
+Sostituire il payload attuale:
+
+{
+  "from_user_id": "...",
+  "to_user_id": "...",
+  "amount": "...",
+  "reference_id": "..."
+}
+
+con:
+
+{
+  "requesterWallet": "<wallet Polygon dell'utente autenticato>",
+  "amount": 1,
+  "note": "...",
+  "lang": "it"
+}
+
+Inviare amount nel formato previsto dall’API (numero o stringa, in base al contratto).
+
+⸻
+
+2. Recupero wallet
+
+Non usare gli ObjectId MongoDB.
+
+Recuperare il wallet Polygon dell’utente autenticato utilizzando la stessa logica già impiegata in getWallet().
+
+Non duplicare codice: riutilizzare repository/service esistenti.
+
+⸻
+
+3. Gestione risposta
+
+L’endpoint restituisce uno shareLink.
+
+Conservarlo nel PaymentResult:
+
+{
+    kind: "request",
+    shareLink,
+    amount,
+    note,
+    ...
+}
+
+⸻
+
+4. Bubble di chat
+
+La bubble deve rappresentare una richiesta di pagamento.
+
+Visualizzare:
+
+* 💸 Importo
+* 📝 Nota
+* 🔗 Pulsante “Paga ora”
+
+Il pulsante deve aprire direttamente lo shareLink.
+
+Non mostrare URL grezzi.
+
+⸻
+
+5. Compatibilità futura
+
+Strutturare PaymentResult in modo da poter aggiungere successivamente:
+
+* stato (pending / paid / expired)
+* transaction hash
+* expiration
+* payer
+
+senza modificare il frontend.
+
+⸻
+
+6. Logging
+
+Mantenere i log diagnostici aggiunti durante il debug.
+
+In caso di errore:
+
+* HTTP status
+* body risposta
+* payload inviato
+
+⸻
+
+7. Test
+
+Verificare:
+
+* richiesta creata correttamente;
+* shareLink restituito;
+* bubble visualizzata;
+* apertura del link;
+* pagamento completabile;
+* nessuna regressione nelle funzioni Invia USDA e Wallet.
+
+⸻
+
+Osservazione architetturale
+
+C’è però un aspetto da valutare: se il pagamento deve avvenire interamente all’interno di AlphaChat, un endpoint che genera un semplice link pubblico è limitante. Se in futuro vuoi un’esperienza tipo WhatsApp Payments o Telegram Wallet (richiesta diretta tra due utenti della piattaforma), potrebbe essere utile prevedere un endpoint dedicato user-to-user sul server USDA, invece di riutilizzare un endpoint nato per link condivisibili. In questo modo avresti richieste di pagamento native, notifiche di stato e conferme automatiche senza uscire dall’app.
