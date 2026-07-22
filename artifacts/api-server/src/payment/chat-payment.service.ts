@@ -17,6 +17,7 @@ import mongoose from "mongoose";
 import { randomUUID } from "crypto";
 import { createPublicClient, http, hexToBigInt, parseAbiItem } from "viem";
 import { polygon } from "viem/chains";
+import { getRpcUrl } from "./usda-custodial.service";
 
 import { ChatTransferModel, type ChatTransferDocument } from "../models/chat-transfer.model";
 import { UserModel }                                    from "../models/user.model";
@@ -245,11 +246,7 @@ async function _verifyDepositTx(params: {
 
   const publicClient = createPublicClient({
     chain:     polygon,
-    transport: http(
-      process.env.USDA_POLYGON_RPC ??
-      process.env.VITE_POLYGON_RPC ??
-      "https://rpc.ankr.com/polygon"
-    ),
+    transport: http(getRpcUrl()),
   });
 
   let receipt: Awaited<ReturnType<typeof publicClient.getTransactionReceipt>>;
@@ -506,11 +503,7 @@ export async function detectDeposit(params: {
 
   const publicClient = createPublicClient({
     chain:     polygon,
-    transport: http(
-      process.env.USDA_POLYGON_RPC ??
-      process.env.VITE_POLYGON_RPC ??
-      "https://rpc.ankr.com/polygon"
-    ),
+    transport: http(getRpcUrl()),
   });
 
   // Calcola il range di blocchi in modo mirato:
@@ -615,11 +608,7 @@ export async function acceptTransfer(params: {
       try {
         const publicClient = createPublicClient({
           chain:     polygon,
-          transport: http(
-            process.env.USDA_POLYGON_RPC ??
-            process.env.VITE_POLYGON_RPC ??
-            "https://rpc.ankr.com/polygon"
-          ),
+          transport: http(getRpcUrl()),
         });
         const r = await publicClient.getTransactionReceipt({ hash: txHash as `0x${string}` });
         const releaseBlock = Number(r.blockNumber);

@@ -52,7 +52,7 @@ const DEFAULT_RPC = FALLBACK_RPCS[0]!;
  * Restituisce l'URL RPC da usare.
  * Valida che USDA_POLYGON_RPC sia un URL https:// — se no, usa il fallback.
  */
-function getRpcUrl(): string {
+export function getRpcUrl(): string {
   const rpc = process.env.USDA_POLYGON_RPC;
   if (rpc && (rpc.startsWith("https://") || rpc.startsWith("http://"))) return rpc;
   return DEFAULT_RPC;
