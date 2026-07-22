@@ -138,33 +138,69 @@ async function usdaRequest<T>(
   path: string,
   body?: unknown,
 ): Promise<T> {
-  const base = getBaseUrl();
+  const base    = getBaseUrl();
+  const url     = `${base}${path}`;
+  const reqId   = crypto.randomUUID().slice(0, 8);
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
     "Accept":       "application/json",
   };
-  logger.debug({ method, path }, "[HttpUSDA] request");
 
-  const res = await fetchWithRetry(`${base}${path}`, {
+  // ── DIAG: log richiesta uscente ─────────────────────────────────────────
+  logger.info({
+    diag:      "USDA_REQUEST",
+    reqId,
+    method,
+    url,
+    headers:   { "Content-Type": headers["Content-Type"], Accept: headers["Accept"] },
+    body,
+    bodyTypes: body ? Object.fromEntries(Object.entries(body as Record<string,unknown>).map(([k,v]) => [k, typeof v])) : null,
+    timestamp: new Date().toISOString(),
+  }, `========== USDA REQUEST [${reqId}] ==========`);
+
+  const res = await fetchWithRetry(url, {
     method,
     headers,
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
 
-  const json = await res.json() as {
-    data?: T; error?: { message: string }; [k: string]: unknown
-  };
+  // ── DIAG: leggi body sempre (anche in caso di errore) ───────────────────
+  const rawText = await res.text();
+  let json: { data?: T; error?: { message: string }; [k: string]: unknown } = {};
+  try { json = JSON.parse(rawText) as typeof json; } catch { /* non-JSON */ }
 
   if (!res.ok) {
+    const resHeaders: Record<string, string> = {};
+    res.headers.forEach((v, k) => { resHeaders[k] = v; });
+
+    logger.error({
+      diag:        "USDA_RESPONSE_ERROR",
+      reqId,
+      status:      res.status,
+      statusText:  res.statusText,
+      resHeaders,
+      rawBody:     rawText,
+      parsedBody:  json,
+      timestamp:   new Date().toISOString(),
+    }, `========== USDA RESPONSE ERROR [${reqId}] status=${res.status} ==========`);
+
     const msg = (json?.error as { message?: string } | undefined)?.message
+      ?? (json as Record<string, unknown>)?.message as string | undefined
+      ?? rawText
       ?? `USDA API error ${res.status}`;
-    logger.warn({ status: res.status, path, msg }, "[HttpUSDA] upstream error");
-    // 4xx dall'API USDA → AppError con lo stesso status (non 500)
+
     if (res.status >= 400 && res.status < 500) {
-      throw new AppError("USDA_API_ERROR", res.status, undefined, { upstream: msg });
+      throw new AppError("USDA_API_ERROR", res.status, undefined, { upstream: msg, body: json });
     }
     throw new Error(`[USDA] ${msg}`);
   }
+
+  logger.info({
+    diag:      "USDA_RESPONSE_OK",
+    reqId,
+    status:    res.status,
+    timestamp: new Date().toISOString(),
+  }, `========== USDA RESPONSE OK [${reqId}] ==========`);
 
   return (json.data ?? json) as T;
 }

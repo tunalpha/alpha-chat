@@ -1,0 +1,121 @@
+Io non procederei per tentativi. Prima va fatta una diagnosi completa. Un errore generico USDA_API_ERROR non dice nulla.
+
+Farei implementare questo prompt:
+
+⸻
+
+OBIETTIVO: individuare con certezza perché POST /api/pay/request restituisce 4xx. Non modificare alcuna logica finché non è identificata la causa.
+
+1. Loggare integralmente la richiesta uscente
+
+Nel file http-usda.adapter.ts, immediatamente prima della chiamata HTTP, loggare:
+
+* URL completo
+* metodo HTTP
+* headers (escludendo eventuali secret)
+* body JSON completo
+* timestamp
+* request id
+
+Esempio:
+
+========== USDA REQUEST ==========
+POST https://...
+Body:
+{
+  ...
+}
+==================================
+
+⸻
+
+2. Loggare integralmente la risposta
+
+In caso di errore NON limitarsi a:
+
+throw new AppError("USDA_API_ERROR", status)
+
+Prima loggare:
+
+* status code
+* response headers
+* response body completo
+* eventuale stack axios/fetch
+
+Esempio:
+
+========== USDA RESPONSE ==========
+Status: 400
+Body:
+{
+   ...
+}
+===================================
+
+⸻
+
+3. Se la risposta contiene JSON
+
+Stampare il JSON completo.
+
+Non solo:
+
+USDA_API_ERROR
+
+ma
+
+{
+   code: "...",
+   message: "...",
+   errors: ...
+}
+
+⸻
+
+4. Verificare automaticamente il payload
+
+Prima dell’invio stampare:
+
+typeof from_user_id
+typeof to_user_id
+typeof amount
+typeof note
+typeof reference_id
+
+e anche
+
+payload completo
+
+⸻
+
+5. Verificare la documentazione
+
+Confrontare il payload inviato con quello realmente richiesto da /api/pay/request.
+
+Verificare:
+
+* nome esatto dei campi
+* tipi
+* campi obbligatori
+* eventuali campi mancanti
+* eventuale autenticazione richiesta
+* eventuale wallet address richiesto invece dello user id
+
+⸻
+
+6. NON correggere nulla
+
+Al termine produrre un report con:
+
+* payload inviato
+* payload richiesto dall’API
+* differenze
+* body completo della risposta 4xx
+* causa esatta del rifiuto
+* proposta di fix
+
+Non modificare alcuna logica finché la causa non è stata identificata con certezza.
+
+⸻
+
+Questo approccio evita di “indovinare”. Nella mia esperienza, nel 90% dei casi il body della risposta 400 contiene già la spiegazione precisa (ad esempio missing field, invalid wallet address, unknown endpoint, unauthorized o invalid payload), ma al momento il vostro codice la nasconde sostituendola con il generico USDA_API_ERROR.
