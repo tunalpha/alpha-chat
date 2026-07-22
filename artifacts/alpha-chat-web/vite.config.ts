@@ -94,6 +94,36 @@ export default defineConfig({
   build: {
     outDir: path.resolve(import.meta.dirname, 'dist/public'),
     emptyOutDir: true,
+    // Aumenta il limite chunk warning (5.7 MB è normale con thirdweb+Signal)
+    chunkSizeWarningLimit: 6000,
+    rollupOptions: {
+      output: {
+        // Code-splitting manuale: riduce il picco di memoria durante
+        // il passo "rendering chunks" che causava OOM in produzione.
+        manualChunks: (id) => {
+          // thirdweb + crypto pesante → chunk separato
+          if (id.includes('thirdweb') || id.includes('/ox/') || id.includes('viem')) {
+            return 'vendor-thirdweb';
+          }
+          // Signal / crypto
+          if (id.includes('libsignal') || id.includes('curve25519') || id.includes('@privacyresearch')) {
+            return 'vendor-signal';
+          }
+          // React ecosystem
+          if (id.includes('node_modules/react') || id.includes('node_modules/react-dom')) {
+            return 'vendor-react';
+          }
+          // Radix UI
+          if (id.includes('@radix-ui')) {
+            return 'vendor-radix';
+          }
+          // i18n
+          if (id.includes('i18next') || id.includes('react-i18next')) {
+            return 'vendor-i18n';
+          }
+        },
+      },
+    },
   },
   // @privacyresearch/libsignal-protocol-typescript è un pacchetto CJS.
   // Vite lo pre-bundlerà automaticamente quando viene importato via
