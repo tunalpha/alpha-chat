@@ -165,14 +165,22 @@ export async function initServiceWorker(): Promise<void> {
   // ── Rilevamento aggiornamento SW ─────────────────────────────────────────
   // Quando il nuovo SW chiama skipWaiting() + clients.claim(), il browser
   // emette "controllerchange" su navigator.serviceWorker.
-  // Viene emesso solo se il controller cambia realmente (primo caricamento
-  // o aggiornamento effettivo) — non ad ogni refresh.
-  let _controllerChangeCount = 0;
+  //
+  // Logica per distinguere "prima installazione" da "vero update":
+  //   - Se navigator.serviceWorker.controller è già impostato PRIMA della
+  //     registrazione → c'era un SW precedente → qualsiasi controllerchange
+  //     successivo è un aggiornamento reale → mostra banner.
+  //   - Se controller era null → prima installazione → ignora il primo
+  //     controllerchange (sarebbe un falso positivo).
+  //
+  // Questo gestisce correttamente tutti e 4 gli scenari:
+  //   1. Prima installazione            → nessun banner ✓
+  //   2. Deploy nuova versione          → banner ✓
+  //   3. Riapertura senza nuovo deploy  → nessun controllerchange → nessun banner ✓
+  //   4. Due deploy consecutivi         → un banner per ciascuno ✓
+  const hadController = !!navigator.serviceWorker.controller;
   navigator.serviceWorker.addEventListener("controllerchange", () => {
-    _controllerChangeCount++;
-    // Il primo controllerchange avviene al caricamento iniziale quando la pagina
-    // non aveva ancora un controller; il secondo (e successivi) indica un update.
-    if (_controllerChangeCount > 1) {
+    if (hadController) {
       window.dispatchEvent(new CustomEvent("pwa:update-ready"));
     }
   });
