@@ -339,6 +339,40 @@ export default function WalletCenterPage({ onBack }: Props) {
                         connectButton={{ label: "Connetti Wallet" }}
                       />
                     </div>
+                    {/iPhone|iPad|iPod/.test(navigator.userAgent) && (
+                      <div style={{
+                        marginTop: 10,
+                        background: "rgba(255,255,255,0.04)",
+                        border: "1px solid rgba(255,255,255,0.1)",
+                        borderRadius: 12, padding: "10px 12px",
+                        display: "flex", flexDirection: "column", gap: 7,
+                      }}>
+                        <p style={{ margin: 0, fontSize: "0.7rem", color: "rgba(255,255,255,0.4)", textAlign: "center" }}>
+                          📱 Su iPhone, dopo aver selezionato il wallet, aprilo manualmente:
+                        </p>
+                        <a href="trust://" style={{
+                          display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                          background: "linear-gradient(135deg,#1b6ff8,#0047c8)",
+                          borderRadius: 10, color: "#fff",
+                          fontSize: "0.88rem", fontWeight: 700,
+                          padding: "10px 14px", textDecoration: "none",
+                          touchAction: "manipulation", WebkitTapHighlightColor: "transparent",
+                        }}>
+                          🐦 Apri Trust Wallet →
+                        </a>
+                        <a href="metamask://" style={{
+                          display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                          background: "rgba(255,255,255,0.06)",
+                          border: "1px solid rgba(255,255,255,0.12)",
+                          borderRadius: 10, color: "rgba(255,255,255,0.55)",
+                          fontSize: "0.8rem", fontWeight: 600,
+                          padding: "8px 14px", textDecoration: "none",
+                          touchAction: "manipulation", WebkitTapHighlightColor: "transparent",
+                        }}>
+                          🦊 Apri MetaMask
+                        </a>
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
@@ -557,51 +591,6 @@ export default function WalletCenterPage({ onBack }: Props) {
       {/* Debug WalletConnect — tocca 5 volte "Debug" per aprire */}
       <WcDebugPanel />
 
-      {/* ── iOS: bottone fisso "Apri wallet" — visibile sopra la modale ThirdWeb ── */}
-      {/iPhone|iPad|iPod/.test(navigator.userAgent) && !isWalletConnected && (
-        <div style={{
-          position: "fixed", bottom: 96, left: 16, right: 16,
-          zIndex: 2147483647,
-          background: "rgba(13,13,26,0.97)",
-          border: "1px solid rgba(155,64,248,0.45)",
-          borderRadius: 20,
-          padding: "14px 16px 12px",
-          boxShadow: "0 12px 40px rgba(0,0,0,0.7)",
-          display: "flex", flexDirection: "column", gap: 8,
-        }}>
-          <p style={{ margin: 0, color: "rgba(255,255,255,0.55)", fontSize: "0.72rem", textAlign: "center" }}>
-            📱 Su iPhone il wallet non si apre da solo — seleziona il wallet sopra, poi:
-          </p>
-          <button
-            type="button"
-            onClick={() => { window.location.href = "trust://"; }}
-            style={{
-              background: "linear-gradient(135deg,#1b6ff8,#0047c8)",
-              border: "none", borderRadius: 13, color: "#fff",
-              fontSize: "0.92rem", fontWeight: 700,
-              padding: "13px 20px", cursor: "pointer",
-              display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-              touchAction: "manipulation", WebkitTapHighlightColor: "transparent",
-            }}
-          >
-            🐦 Apri Trust Wallet →
-          </button>
-          <button
-            type="button"
-            onClick={() => { window.location.href = "metamask://"; }}
-            style={{
-              background: "rgba(255,255,255,0.07)",
-              border: "1px solid rgba(255,255,255,0.15)",
-              borderRadius: 13, color: "rgba(255,255,255,0.65)",
-              fontSize: "0.82rem", fontWeight: 600,
-              padding: "9px 20px", cursor: "pointer",
-              touchAction: "manipulation", WebkitTapHighlightColor: "transparent",
-            }}
-          >
-            🦊 Apri MetaMask
-          </button>
-        </div>
-      )}
     </div>
   );
 }
