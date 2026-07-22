@@ -37,7 +37,23 @@ import { AppError } from "../errors/AppError";
 // Costanti
 // ---------------------------------------------------------------------------
 
-const DEFAULT_RPC = "https://rpc.ankr.com/polygon";
+// RPC pubblici affidabili (fallback in cascata se USDA_POLYGON_RPC non è un URL valido)
+const FALLBACK_RPCS = [
+  "https://polygon-bor-rpc.publicnode.com",
+  "https://polygon.meowrpc.com",
+  "https://polygon.drpc.org",
+];
+const DEFAULT_RPC = FALLBACK_RPCS[0]!;
+
+/**
+ * Restituisce l'URL RPC da usare.
+ * Valida che USDA_POLYGON_RPC sia un URL https:// — se no, usa il fallback.
+ */
+function getRpcUrl(): string {
+  const rpc = process.env.USDA_POLYGON_RPC;
+  if (rpc && (rpc.startsWith("https://") || rpc.startsWith("http://"))) return rpc;
+  return DEFAULT_RPC;
+}
 const DEFAULT_USDA_CONTRACT = "0xe714655fD1B3ba96B887DF1F94336c2A78E24001";
 const USDA_DECIMALS = 18;
 
@@ -132,7 +148,7 @@ function decryptPrivateKey(encrypted: string): Buffer {
 function getPublicClient() {
   return createPublicClient({
     chain: polygon,
-    transport: http(process.env.USDA_POLYGON_RPC ?? DEFAULT_RPC),
+    transport: http(getRpcUrl()),
   });
 }
 
@@ -197,7 +213,7 @@ export async function transferFromCustodial(params: {
   const walletClient = createWalletClient({
     account,
     chain: polygon,
-    transport: http(process.env.USDA_POLYGON_RPC ?? DEFAULT_RPC),
+    transport: http(getRpcUrl()),
   });
 
   const data = encodeFunctionData({
@@ -246,7 +262,7 @@ export async function transferFromCustodial(params: {
 export async function ensureEscrowGas(escrowAddress: string): Promise<void> {
   const MIN_MATIC  = parseEther("0.003");  // 0.003 MATIC — soglia minima
   const TOP_UP     = parseEther("0.01");   // 0.01  MATIC — top-up inviato (~$0.008)
-  const rpcUrl = process.env.USDA_POLYGON_RPC ?? process.env.VITE_POLYGON_RPC ?? DEFAULT_RPC;
+  const rpcUrl = getRpcUrl();
 
   const publicClient = createPublicClient({ chain: polygon, transport: http(rpcUrl) });
 
