@@ -23,6 +23,7 @@ import {
   thirdwebClient,
   polygonMainnet,
   WC_PROJECT_ID,
+  APP_METADATA,
   USDA_CONTRACT_ADDRESS,
   USDA_CHAIN_ID,
   THIRDWEB_READY,
@@ -413,6 +414,8 @@ export function SendUsdaSheet({ conversationId, toUserId, toName, onClose, onSen
                     client={thirdwebClient}
                     chain={polygonMainnet}
                     wallets={SUPPORTED_WALLETS}
+                    appMetadata={APP_METADATA}
+                    walletConnect={{ projectId: WC_PROJECT_ID }}
                     connectModal={{
                       title: "Connetti Wallet",
                       size: "compact",

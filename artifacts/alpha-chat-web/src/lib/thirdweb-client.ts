@@ -16,6 +16,20 @@ import { createThirdwebClient, defineChain } from "thirdweb";
 export const WC_PROJECT_ID =
   (import.meta.env.VITE_WALLETCONNECT_PROJECT_ID as string | undefined) ?? "";
 
+// Metadati dApp condivisi da tutti i ConnectButton — WalletConnect li mostra nel wallet
+export const APP_METADATA = {
+  name:        "Alpha Chat",
+  description: "AlphaChat Secure Messenger",
+  url:         "https://alphachat.sbs",
+  logoUrl:     "https://alphachat.sbs/icon-512.png",
+} as const;
+
+// Log diagnostico — rimuovere dopo la verifica
+if (typeof window !== "undefined") {
+  console.log("[ThirdWeb] WalletConnect projectId:", WC_PROJECT_ID || "⚠️ undefined — controlla VITE_WALLETCONNECT_PROJECT_ID");
+  console.log("[ThirdWeb] App metadata:", APP_METADATA);
+}
+
 // ── ThirdWeb Client ───────────────────────────────────────────────────────────
 
 const _clientId = import.meta.env.VITE_THIRDWEB_CLIENT_ID as string | undefined;

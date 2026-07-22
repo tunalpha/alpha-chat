@@ -23,6 +23,7 @@ import {
   THIRDWEB_READY,
   USDA_CHAIN_ID,
   WC_PROJECT_ID,
+  APP_METADATA,
 } from "../lib/thirdweb-client";
 import {
   apiUsdaGetWallet,
@@ -306,6 +307,8 @@ export default function WalletCenterPage({ onBack }: Props) {
                         client={thirdwebClient}
                         chain={polygonMainnet}
                         wallets={SUPPORTED_WALLETS}
+                        appMetadata={APP_METADATA}
+                        walletConnect={{ projectId: WC_PROJECT_ID }}
                         detailsButton={{ style: { fontSize: "0.82rem", padding: "6px 14px" } }}
                       />
                     </div>
@@ -322,6 +325,8 @@ export default function WalletCenterPage({ onBack }: Props) {
                         client={thirdwebClient}
                         chain={polygonMainnet}
                         wallets={SUPPORTED_WALLETS}
+                        appMetadata={APP_METADATA}
+                        walletConnect={{ projectId: WC_PROJECT_ID }}
                         connectModal={{
                           title: "Connetti Wallet",
                           size: "compact",
@@ -467,6 +472,8 @@ export default function WalletCenterPage({ onBack }: Props) {
                     client={thirdwebClient}
                     chain={polygonMainnet}
                     wallets={SUPPORTED_WALLETS}
+                    appMetadata={APP_METADATA}
+                    walletConnect={{ projectId: WC_PROJECT_ID }}
                     detailsButton={{ style: { fontSize: "0.82rem", padding: "6px 14px" } }}
                   />
                 </div>
@@ -483,6 +490,8 @@ export default function WalletCenterPage({ onBack }: Props) {
                     client={thirdwebClient}
                     chain={polygonMainnet}
                     wallets={SUPPORTED_WALLETS}
+                    appMetadata={APP_METADATA}
+                    walletConnect={{ projectId: WC_PROJECT_ID }}
                     connectModal={{
                       title: "Connetti Wallet",
                       size: "compact",

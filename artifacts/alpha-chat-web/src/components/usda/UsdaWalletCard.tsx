@@ -30,6 +30,7 @@ import {
   USDA_CHAIN_ID,
   THIRDWEB_READY,
   WC_PROJECT_ID,
+  APP_METADATA,
 } from "../../lib/thirdweb-client";
 import { useWs } from "../../contexts/WebSocketContext";
 
@@ -230,6 +231,8 @@ export function UsdaWalletCard({ onSend, onRequest, onManage }: UsdaWalletCardPr
               client={thirdwebClient}
               chain={polygonMainnet}
               wallets={SUPPORTED_WALLETS}
+              appMetadata={APP_METADATA}
+              walletConnect={{ projectId: WC_PROJECT_ID }}
               connectModal={{
                 title:         "Connetti Wallet",
                 size:          "compact",
