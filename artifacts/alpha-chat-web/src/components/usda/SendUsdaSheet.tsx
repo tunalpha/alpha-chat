@@ -37,6 +37,9 @@ interface Props {
   toName: string;
   onClose: () => void;
   onSent: (paymentData: { payment_id: string; message_id: string; amount: string }) => void;
+  /** Chiamata quando l'utente tocca "Invita" nella card no-wallet.
+   *  Riceve il testo pre-composto da inviare in chat. */
+  onInvite?: (inviteText: string) => void;
 }
 
 type Step = "form" | "confirm" | "signing";
@@ -50,6 +53,10 @@ type SigningStatus =
 // ── Feature flags ────────────────────────────────────────────────────────────
 // Per riattivare le commissioni: impostare SHOW_FEE_BREAKDOWN = true
 const SHOW_FEE_BREAKDOWN = false;
+
+// ── Messaggio invito wallet — inviato automaticamente in chat ────────────────
+const INVITE_MESSAGE =
+  "👋 Ciao! Ho provato a inviarti USDA su AlphaChat, ma prima devi attivare il tuo Wallet USDA. Ci vuole meno di un minuto. 🚀";
 
 // ── Costanti ────────────────────────────────────────────────────────────────
 
@@ -80,7 +87,7 @@ const WALLET_CHIPS = [
 
 // ── Componente ───────────────────────────────────────────────────────────────
 
-export function SendUsdaSheet({ conversationId, toUserId, toName, onClose, onSent }: Props) {
+export function SendUsdaSheet({ conversationId, toUserId, toName, onClose, onSent, onInvite }: Props) {
   const [amount,   setAmount]   = useState("");
   const [note,     setNote]     = useState("");
   const [step,     setStep]     = useState<Step>("form");
@@ -289,27 +296,23 @@ export function SendUsdaSheet({ conversationId, toUserId, toName, onClose, onSen
 
         {/* ── Card: destinatario senza wallet ─────────────────────────────── */}
         {recipientNoWallet && (
-          <div className="usda-no-wallet-card" role="alert">
-            <div className="usda-no-wallet-icon" aria-hidden="true">🔔</div>
-            <div>
-              <p className="usda-no-wallet-title">
-                💸 Hai provato a inviare <strong>{amount} USDA</strong> a <strong>{toName}</strong>
-              </p>
-              <p className="usda-no-wallet-msg">
-                {toName} non ha ancora attivato il wallet USDA.<br />
-                Chiedigli di farlo direttamente in questa chat!
-              </p>
-              <div className="usda-no-wallet-bullets">
-                <p>✨ Una volta attivato, potrete:</p>
-                <ul>
-                  <li>💸 Inviare e ricevere USDA istantaneamente</li>
-                  <li>🔐 Gestire pagamenti in totale sicurezza</li>
-                  <li>📊 Visualizzare il saldo direttamente nell'app</li>
-                </ul>
-              </div>
-            </div>
-            <button type="button" className="usda-btn-secondary usda-no-wallet-close" onClick={onClose}>
-              OK, capito
+          <div className="usda-no-wallet-card" role="alert" aria-live="assertive">
+            <div className="usda-no-wallet-icon" aria-hidden="true">🚫</div>
+            <p className="usda-no-wallet-title">
+              {toName} non può ancora<br />ricevere USDA
+            </p>
+            <p className="usda-no-wallet-msg">
+              Per ricevere pagamenti, {toName} deve prima attivare il proprio Wallet USDA.
+            </p>
+            <button
+              type="button"
+              className="usda-no-wallet-invite-btn"
+              onClick={() => { onInvite?.(INVITE_MESSAGE); onClose(); }}
+            >
+              🚀 Invita {toName}
+            </button>
+            <button type="button" className="usda-no-wallet-dismiss" onClick={onClose}>
+              Chiudi
             </button>
           </div>
         )}

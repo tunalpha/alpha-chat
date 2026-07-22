@@ -6143,21 +6143,48 @@ html.emergency-open #root {
 
 /* ── Card: destinatario senza wallet (premium, non un errore secco) ─────────── */
 .usda-no-wallet-card {
-  margin: 12px 20px;
-  padding: 20px;
-  border-radius: 16px;
-  background: linear-gradient(135deg, rgba(99,102,241,0.12) 0%, rgba(139,92,246,0.08) 100%);
-  border: 1px solid rgba(99,102,241,0.25);
-  display: flex; flex-direction: column; gap: 16px;
+  margin: 20px 20px 8px;
+  padding: 28px 24px 20px;
+  border-radius: 20px;
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.09);
+  display: flex; flex-direction: column; align-items: center; gap: 0;
+  text-align: center;
   animation: slideUp 0.25s ease;
 }
-.usda-no-wallet-icon { font-size: 2rem; text-align: center; }
-.usda-no-wallet-title { font-size: 0.95rem; font-weight: 600; color: var(--text-1, #fff); margin: 0 0 8px; line-height: 1.4; }
-.usda-no-wallet-msg  { font-size: 0.87rem; color: var(--text-2, rgba(255,255,255,0.7)); margin: 0 0 12px; line-height: 1.5; }
-.usda-no-wallet-bullets { font-size: 0.85rem; color: var(--text-2, rgba(255,255,255,0.65)); }
-.usda-no-wallet-bullets p { font-weight: 600; margin: 0 0 6px; color: var(--text-1, #fff); }
-.usda-no-wallet-bullets ul { margin: 0; padding-left: 4px; list-style: none; display: flex; flex-direction: column; gap: 4px; }
-.usda-no-wallet-close { align-self: stretch; margin-top: 4px; }
+.usda-no-wallet-icon {
+  font-size: 2.6rem; margin-bottom: 16px;
+  filter: grayscale(0.1);
+}
+.usda-no-wallet-title {
+  font-size: 1.1rem; font-weight: 700;
+  color: var(--text-1, #fff);
+  margin: 0 0 10px; line-height: 1.35;
+}
+.usda-no-wallet-msg {
+  font-size: 0.88rem; color: var(--text-2, rgba(255,255,255,0.65));
+  margin: 0 0 24px; line-height: 1.55; max-width: 280px;
+}
+/* Pulsante primario "Invita" — pieno, viola */
+.usda-no-wallet-invite-btn {
+  width: 100%; padding: 14px 20px;
+  border-radius: 14px; border: none; cursor: pointer;
+  font-size: 1rem; font-weight: 700;
+  background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+  color: #fff;
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  transition: opacity 0.15s, transform 0.1s;
+  margin-bottom: 12px;
+}
+.usda-no-wallet-invite-btn:active { opacity: 0.85; transform: scale(0.98); }
+/* Link-button "Chiudi" — testo puro, non richiama attenzione */
+.usda-no-wallet-dismiss {
+  background: none; border: none; cursor: pointer;
+  font-size: 0.88rem; color: var(--text-3, rgba(255,255,255,0.38));
+  padding: 8px 16px;
+  transition: color 0.15s;
+}
+.usda-no-wallet-dismiss:active { color: var(--text-2, rgba(255,255,255,0.65)); }
 
 /* ── Bubble: success glow ───────────────────────────────────────────────────── */
 .usda-bubble.success-glow {

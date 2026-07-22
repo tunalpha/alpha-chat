@@ -1580,6 +1580,52 @@ export default function ChatPage({ onNavigate }: Props) {
     }
   }
 
+  /** Invia un messaggio di testo direttamente, senza passare da inputText.
+   *  Usato per il messaggio di invito wallet USDA. */
+  async function sendProgrammatic(text: string) {
+    if (!activeConvId || !text.trim() || sending) return;
+    setSending(true);
+    setSendError(null);
+    const clientMessageId = crypto.randomUUID();
+    const pendingMsgId    = `pending-${clientMessageId}`;
+    const nowIso          = new Date().toISOString();
+    sentCacheRef.current.set(clientMessageId, text);
+    void cacheOwnText(clientMessageId, text);
+    const optimisticMsg: MessageItem = {
+      id:                   pendingMsgId,
+      client_message_id:    clientMessageId,
+      conversation_id:      activeConvId,
+      sender_id:            auth!.userId,
+      message_type:         "text",
+      ciphertext:           null,
+      ciphertext_type:      null,
+      sequence_number:      0,
+      sent_at:              nowIso,
+      server_received_at:   nowIso,
+      status:               "sent",
+      deleted_for_everyone: false,
+      reply_to_message_id:  null,
+      burn_after_read:      false,
+      expires_at:           null,
+    };
+    setDecryptedTexts((prev) => new Map(prev).set(pendingMsgId, text));
+    setMessages((prev) => [...prev, optimisticMsg]);
+    void playNotifSound("sent");
+    try {
+      const signal = await encryptForActive(text);
+      await apiSendMessage(activeConvId, text, {
+        signal,
+        clientMessageId,
+        deviceCiphertexts: signal?.deviceCiphertexts,
+      });
+    } catch {
+      setMessages((prev) => prev.filter((m) => m.id !== pendingMsgId));
+      setDecryptedTexts((prev) => { const next = new Map(prev); next.delete(pendingMsgId); return next; });
+    } finally {
+      setSending(false);
+    }
+  }
+
   function openContextMenuAt(msg: MessageItem, rawX: number, rawY: number) {
     // Evita che il menu esca fuori schermo
     const menuW = 180, menuH = 220;
@@ -3374,6 +3420,7 @@ export default function ChatPage({ onNavigate }: Props) {
           toName={activeConv.other_user?.display_name ?? activeConv.other_user?.username ?? "Utente"}
           onClose={() => setShowSendUsda(false)}
           onSent={() => setShowSendUsda(false)}
+          onInvite={(inviteText) => { setShowSendUsda(false); void sendProgrammatic(inviteText); }}
         />
       )}
       {showRequestUsda && activeConv && auth && activeConv.type !== "group" && (
