@@ -1,13 +1,34 @@
 /**
  * WalletSheet — bottom sheet nativo iOS per connettere wallet.
  *
- * Stack: wagmi v3 walletConnect connector + subscription diretta al provider WC.
- * Gestisce errori di rete (relay WalletConnect su 4G) con retry automatico.
+ * ── Root Cause Analysis (completa) ────────────────────────────────────────────
+ *
+ * Problema: "Connection interrupted while trying to subscribe"
+ *
+ * Causa strutturale:
+ *   wagmi createConfig() chiama setup() → getProvider() → EthereumProvider.init()
+ *   → @walletconnect/core Core.start() → relay WebSocket aperto ALL'AVVIO.
+ *   Quando l'utente preme il wallet (anche 30s dopo, su 4G), il WS relay è già
+ *   caduto (4G idle timeout). provider.connect() tenta waku_subscribe sul WS morto
+ *   → "Connection interrupted while trying to subscribe".
+ *
+ * Fix:
+ *   Prima di ogni connect, chiamare connector.disconnect() che setta:
+ *     provider_       = undefined
+ *     providerPromise = undefined
+ *   Il successivo connectAsync → getProvider() → EthereumProvider.init() fresco
+ *   → nuovo relay WS → subscribe funziona.
+ *
+ * Subscription display_uri:
+ *   wagmi connector.connect() fa provider.on('display_uri', onDisplayUri)
+ *   onDisplayUri → config.emitter.emit('message', { type: 'display_uri', data: uri })
+ *   Noi ascoltiamo wcConnector.emitter.on('message', handler) — sempre corretto
+ *   (dopo il reset il provider è nuovo, l'emitter è lo stesso oggetto wagmi).
  */
 
-import { useEffect, useState, useCallback, useRef } from "react";
-import { useAccount, useConnectors, useConnect } from "wagmi";
-import { WC_PROJECT_ID } from "../../lib/wallet-client";
+import { useEffect, useState, useCallback, useRef } from "react"
+import { useAccount, useConnectors, useConnect }    from "wagmi"
+import { WC_PROJECT_ID }                            from "../../lib/wallet-client"
 
 // ── Wallet list ───────────────────────────────────────────────────────────────
 
@@ -23,20 +44,19 @@ type WalletId = (typeof WALLETS)[number]["id"]
 
 type Phase =
   | { kind: "idle" }
-  | { kind: "connecting"; walletId: WalletId }
+  | { kind: "connecting"; walletId: WalletId; attempt: number }
   | { kind: "redirect";   walletId: WalletId }
   | { kind: "error";      message: string }
 
-// ── Timeout costante ──────────────────────────────────────────────────────────
-
-const CONNECT_TIMEOUT_MS = 25_000   // 25 s — relay WC su mobile può essere lento
+const MAX_RETRIES     = 3
+const CONNECT_TIMEOUT = 25_000
 
 // ── Componente ────────────────────────────────────────────────────────────────
 
 export default function WalletSheet() {
   const [open,  setOpen]  = useState(false)
   const [phase, setPhase] = useState<Phase>({ kind: "idle" })
-  const abortRef = useRef<(() => void) | null>(null)
+  const cancelRef = useRef(false)
 
   const { isConnected }  = useAccount()
   const connectors       = useConnectors()
@@ -49,159 +69,177 @@ export default function WalletSheet() {
     return () => window.removeEventListener("alpha:open-wallet-sheet", h)
   }, [])
 
-  // Chiudi quando il wallet risulta connesso
+  // Chiudi quando connesso
   useEffect(() => {
     if (isConnected && open) {
-      abortRef.current?.()
+      cancelRef.current = true
       setOpen(false)
       setPhase({ kind: "idle" })
     }
   }, [isConnected, open])
 
   const close = useCallback(() => {
-    abortRef.current?.()
-    abortRef.current = null
+    cancelRef.current = true
     setOpen(false)
     setPhase({ kind: "idle" })
   }, [])
 
-  // ── handleConnect ──────────────────────────────────────────────────────────
+  // ── Un singolo tentativo ───────────────────────────────────────────────────
+  const attemptConnect = useCallback(async (
+    wallet:      typeof WALLETS[number],
+    wcConnector: ReturnType<typeof useConnectors>[number],
+    attempt:     number,
+  ): Promise<"success" | "retry" | { error: string }> => {
+
+    // ── 1. Reset provider stantio ─────────────────────────────────────────
+    //   connector.disconnect() → provider_ = undefined, providerPromise = undefined
+    //   Il successivo connectAsync chiamerà EthereumProvider.init() fresco.
+    try {
+      await (wcConnector as unknown as { disconnect(): Promise<void> }).disconnect()
+    } catch {
+      // Normale se non c'è sessione attiva — ignora
+    }
+    // Pausa breve per lasciar propagare il cambio di stato wagmi
+    await new Promise(r => setTimeout(r, 250))
+
+    if (cancelRef.current) return "success"
+
+    // ── 2. Subscription display_uri via emitter wagmi ─────────────────────
+    //   wagmi connector.connect() fa:
+    //     provider.on('display_uri', onDisplayUri)
+    //     onDisplayUri → config.emitter.emit('message', { type: 'display_uri', data: uri })
+    //   Noi ascoltiamo wcConnector.emitter.on('message', ...) — riceve l'evento.
+    let uriHandled = false
+
+    const msgHandler = (data: { type: string; data?: unknown }) => {
+      if (data.type !== "display_uri" || uriHandled || cancelRef.current) return
+      uriHandled = true
+
+      const uri      = String(data.data)
+      const encoded  = encodeURIComponent(uri)
+      console.info("[WalletSheet] ✅ display_uri →", uri.slice(0, 60))
+      setPhase({ kind: "redirect", walletId: wallet.id })
+      setTimeout(() => {
+        if (!cancelRef.current) window.location.href = wallet.deepLink(encoded)
+      }, 60)
+    }
+
+    // wagmi v3 Emitter.on() restituisce la funzione unsub
+    const emitterUnsub = wcConnector.emitter.on(
+      "message" as never,
+      msgHandler as never,
+    ) as unknown as (() => void) | undefined
+    const cleanup = () => {
+      try {
+        if (typeof emitterUnsub === "function") {
+          emitterUnsub()
+        } else {
+          wcConnector.emitter.off?.("message" as never, msgHandler as never)
+        }
+      } catch { /* */ }
+    }
+
+    // ── 3. Connect con timeout ─────────────────────────────────────────────
+    let timeoutId: ReturnType<typeof setTimeout> | null = null
+
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      timeoutId = setTimeout(
+        () => reject(new Error(`Timeout dopo ${CONNECT_TIMEOUT / 1000}s`)),
+        CONNECT_TIMEOUT,
+      )
+    })
+
+    try {
+      await Promise.race([
+        connectAsync({ connector: wcConnector }),
+        timeoutPromise,
+      ])
+      if (timeoutId) clearTimeout(timeoutId)
+      cleanup()
+      return "success"
+    } catch (err) {
+      if (timeoutId) clearTimeout(timeoutId)
+      cleanup()
+
+      if (cancelRef.current) return "success"
+
+      const msg = (err as Error)?.message ?? String(err)
+      console.error(`[WalletSheet] tentativo ${attempt} fallito:`, msg)
+
+      // Errori attesi → chiudi silenziosamente
+      if (
+        msg.includes("already") ||
+        msg.includes("rejected") ||
+        msg.includes("User denied") ||
+        /connection request reset/i.test(msg)
+      ) return { error: "" }
+
+      // Errori relay / rete → retry (risolti dal fresh init al prossimo tentativo)
+      if (
+        msg.includes("Connection interrupted") ||
+        msg.includes("subscribe") ||
+        msg.includes("WebSocket") ||
+        msg.includes("socket")   ||
+        msg.includes("Timeout")
+      ) {
+        if (attempt < MAX_RETRIES) return "retry"
+        return {
+          error:
+            "Il relay WalletConnect non risponde.\n" +
+            "Suggerimento: prova su WiFi o ricarica l'app.",
+        }
+      }
+
+      return { error: msg.length > 200 ? msg.slice(0, 197) + "…" : msg }
+    }
+  }, [connectAsync])
+
+  // ── handleConnect — retry loop ─────────────────────────────────────────────
   const handleConnect = useCallback(async (wallet: typeof WALLETS[number]) => {
     if (!WC_PROJECT_ID) {
-      setPhase({ kind: "error", message: "WalletConnect Project ID non configurato." })
+      setPhase({ kind: "error", message: "VITE_WALLETCONNECT_PROJECT_ID non configurato." })
       return
     }
 
     const wcConnector = connectors.find(c => c.type === "walletConnect")
     if (!wcConnector) {
-      setPhase({ kind: "error", message: "Connettore WalletConnect non trovato. Ricarica l'app." })
+      setPhase({ kind: "error", message: "Connettore WalletConnect non trovato. Ricarica." })
       return
     }
 
-    setPhase({ kind: "connecting", walletId: wallet.id })
+    cancelRef.current = false
 
-    // Cancella operazione precedente se esiste
-    abortRef.current?.()
-    let cancelled = false
-    abortRef.current = () => { cancelled = true }
+    for (let attempt = 1; attempt <= MAX_RETRIES; attempt++) {
+      if (cancelRef.current) return
 
-    const handleUri = (uri: unknown) => {
-      if (cancelled) return
-      const uriStr  = String(uri)
-      const encoded = encodeURIComponent(uriStr)
-      console.info("[WalletSheet] display_uri →", uriStr.slice(0, 60))
-      setPhase({ kind: "redirect", walletId: wallet.id })
-      setTimeout(() => {
-        if (!cancelled) window.location.href = wallet.deepLink(encoded)
-      }, 60)
-    }
+      setPhase({ kind: "connecting", walletId: wallet.id, attempt })
 
-    // ── Subscription: PRIMA prova il provider WC direttamente ─────────────
-    //    (più affidabile del doppio-wrap wagmi emitter)
-    type AnyProvider = { on: (e: string, cb: (...a: unknown[]) => void) => void; off: (e: string, cb: (...a: unknown[]) => void) => void }
-    let wcProvider: AnyProvider | null = null
+      const result = await attemptConnect(wallet, wcConnector, attempt)
 
-    try {
-      wcProvider = await (wcConnector as { getProvider?: () => Promise<AnyProvider> }).getProvider?.() ?? null
-      if (wcProvider?.on) {
-        wcProvider.on("display_uri", handleUri)
-        console.info("[WalletSheet] provider subscription OK")
+      if (result === "success") { setPhase({ kind: "idle" }); return }
+      if (result === "retry") {
+        console.info(`[WalletSheet] retry ${attempt}/${MAX_RETRIES} (provider resettato al prossimo giro)`)
+        // Nessun sleep extra: il reset via disconnect() avviene all'inizio del prossimo attempt
+        continue
       }
-    } catch (e) {
-      console.warn("[WalletSheet] getProvider fallito:", e)
+      setPhase(result.error === "" ? { kind: "idle" } : { kind: "error", message: result.error })
+      return
     }
+  }, [connectors, attemptConnect])
 
-    // ── Fallback: emitter wagmi ────────────────────────────────────────────
-    type MsgEvt = { type: string; data?: unknown }
-    const emitterHandler = (data: MsgEvt) => {
-      if (data.type === "display_uri") handleUri(data.data)
-    }
-    let emitterUnsub: (() => void) | null = null
-    try {
-      if (wcConnector.emitter?.on) {
-        const ret = (wcConnector.emitter.on as (e: string, h: (d: MsgEvt) => void) => unknown)("message", emitterHandler)
-        if (typeof ret === "function") {
-          emitterUnsub = ret as () => void
-        } else if (wcConnector.emitter?.off) {
-          emitterUnsub = () => (wcConnector.emitter.off as (e: string, h: (d: MsgEvt) => void) => void)("message", emitterHandler)
-        }
-      }
-    } catch { /* ignora */ }
-
-    const cleanup = () => {
-      try { wcProvider?.off?.("display_uri", handleUri) } catch { /* */ }
-      try { emitterUnsub?.() } catch { /* */ }
-    }
-
-    // ── Connect con timeout ────────────────────────────────────────────────
-    let timeoutId: ReturnType<typeof setTimeout> | null = null
-
-    const connectPromise = connectAsync({ connector: wcConnector })
-
-    const timeoutPromise = new Promise<never>((_, reject) => {
-      timeoutId = setTimeout(() => {
-        reject(new Error("Timeout: relay WalletConnect non risponde. Verifica la connessione e riprova."))
-      }, CONNECT_TIMEOUT_MS)
-    })
-
-    try {
-      await Promise.race([connectPromise, timeoutPromise])
-      if (timeoutId) clearTimeout(timeoutId)
-      cleanup()
-      if (!cancelled) setPhase({ kind: "idle" })
-    } catch (err) {
-      if (timeoutId) clearTimeout(timeoutId)
-      cleanup()
-      if (cancelled) return
-
-      const msg = (err as Error)?.message ?? String(err)
-      console.error("[WalletSheet] errore connessione:", msg)
-
-      const isExpected =
-        msg.includes("already") ||
-        msg.includes("rejected") ||
-        msg.includes("User denied") ||
-        msg.includes("cancelled") ||
-        msg.includes("session") ||
-        // Errori che succedono quando l'utente approva e torna: il connect
-        // lato Safari si considera interrotto anche se la sessione è OK
-        msg.includes("Connection request reset")
-
-      // Errori di rete / relay — mostrare un messaggio chiaro
-      const isNetworkError =
-        msg.includes("Connection interrupted") ||
-        msg.includes("subscribe") ||
-        msg.includes("WebSocket") ||
-        msg.includes("socket")
-
-      if (isExpected) {
-        setPhase({ kind: "idle" })
-      } else if (isNetworkError) {
-        setPhase({
-          kind: "error",
-          message: "Connessione al relay WalletConnect interrotta. Prova con una rete più stabile o riprova.",
-        })
-      } else {
-        setPhase({ kind: "error", message: msg.length > 160 ? msg.slice(0, 157) + "…" : msg })
-      }
-    }
-  }, [connectors, connectAsync])
-
-  // ── handleInjected (MetaMask desktop) ─────────────────────────────────────
+  // ── handleInjected (MetaMask desktop / extension) ─────────────────────────
   const handleInjected = useCallback(async () => {
     const inj = connectors.find(c => c.type === "injected")
-    if (!inj) {
-      void handleConnect(WALLETS.find(w => w.id === "metamask")!)
-      return
-    }
-    setPhase({ kind: "connecting", walletId: "metamask" })
+    if (!inj) { void handleConnect(WALLETS.find(w => w.id === "metamask")!); return }
+
+    setPhase({ kind: "connecting", walletId: "metamask", attempt: 1 })
     try {
       await connectAsync({ connector: inj })
       setPhase({ kind: "idle" })
     } catch (err) {
-      const msg = (err as Error)?.message ?? String(err)
+      const msg = (err as Error)?.message ?? ""
       if (!msg.includes("rejected") && !msg.includes("denied")) {
-        setPhase({ kind: "error", message: msg })
+        setPhase({ kind: "error", message: msg || "Connessione rifiutata." })
       } else {
         setPhase({ kind: "idle" })
       }
@@ -210,8 +248,10 @@ export default function WalletSheet() {
 
   if (!open) return null
 
-  const isConnecting = phase.kind === "connecting" || phase.kind === "redirect"
-  const redirectWallet = phase.kind === "redirect" ? WALLETS.find(w => w.id === phase.walletId) : null
+  const isConnecting    = phase.kind === "connecting" || phase.kind === "redirect"
+  const activeWallet    = (phase.kind === "connecting" || phase.kind === "redirect")
+    ? WALLETS.find(w => w.id === phase.walletId)
+    : null
 
   return (
     <div
@@ -222,7 +262,7 @@ export default function WalletSheet() {
         backdropFilter: "blur(4px)", WebkitBackdropFilter: "blur(4px)",
         touchAction: "none",
       }}
-      onClick={(e) => { if (e.target === e.currentTarget) close() }}
+      onClick={e => { if (e.target === e.currentTarget) close() }}
     >
       <div
         style={{
@@ -232,38 +272,44 @@ export default function WalletSheet() {
           boxShadow: "0 -8px 40px rgba(0,0,0,0.5)",
           maxHeight: "82vh", overflowY: "auto",
         }}
-        onClick={(e) => e.stopPropagation()}
+        onClick={e => e.stopPropagation()}
       >
-        {/* Handle */}
         <div style={{ width: 40, height: 4, background: "#555", borderRadius: 2, margin: "0 auto 20px" }} />
 
-        {/* Header */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
           <span style={{ fontSize: "1.1rem", fontWeight: 700, color: "var(--text-primary, #fff)" }}>
             Connetti Wallet
           </span>
-          <button onClick={close} style={{ background: "none", border: "none", color: "#999", fontSize: "1.4rem", cursor: "pointer", padding: "4px 8px", touchAction: "manipulation" }}>
-            ✕
-          </button>
+          <button onClick={close} style={{ background: "none", border: "none", color: "#999", fontSize: "1.4rem", cursor: "pointer", padding: "4px 8px", touchAction: "manipulation" }}>✕</button>
         </div>
 
-        {/* Banner stato */}
+        {/* Banner connecting */}
         {phase.kind === "connecting" && (
-          <div style={{ background: "#1e2a3a", borderRadius: 12, padding: "12px 14px", marginBottom: 14, color: "#94a3b8", fontSize: "0.88rem", textAlign: "center" }}>
-            ⏳ Connessione in corso… (max 25 s)
+          <div style={{ background: "#1e2a3a", borderRadius: 12, padding: "14px 16px", marginBottom: 14, textAlign: "center" }}>
+            <div style={{ fontSize: "1.4rem", marginBottom: 4 }}>{activeWallet?.icon}</div>
+            <div style={{ color: "#94a3b8", fontSize: "0.88rem" }}>
+              Connessione a <strong>{activeWallet?.label}</strong>…
+              {phase.attempt > 1 && (
+                <span style={{ color: "#64748b", fontSize: "0.8rem" }}> (tentativo {phase.attempt}/{MAX_RETRIES})</span>
+              )}
+            </div>
           </div>
         )}
-        {phase.kind === "redirect" && redirectWallet && (
+
+        {/* Banner redirect */}
+        {phase.kind === "redirect" && activeWallet && (
           <div style={{ background: "#1e293b", borderRadius: 12, padding: "14px 16px", marginBottom: 14, textAlign: "center" }}>
-            <div style={{ fontSize: "1.5rem", marginBottom: 6 }}>{redirectWallet.icon}</div>
+            <div style={{ fontSize: "1.5rem", marginBottom: 6 }}>{activeWallet.icon}</div>
             <div style={{ color: "#94a3b8", fontSize: "0.88rem" }}>
-              Apertura <strong>{redirectWallet.label}</strong>…<br />
+              Apertura <strong>{activeWallet.label}</strong>…<br />
               <span style={{ color: "#64748b", fontSize: "0.8rem" }}>Approva nell'app, poi torna qui</span>
             </div>
           </div>
         )}
+
+        {/* Banner errore */}
         {phase.kind === "error" && (
-          <div style={{ background: "#2d1b1b", borderRadius: 12, padding: "12px 14px", marginBottom: 14, color: "#f87171", fontSize: "0.83rem", wordBreak: "break-word" }}>
+          <div style={{ background: "#2d1b1b", borderRadius: 12, padding: "12px 14px", marginBottom: 14, color: "#f87171", fontSize: "0.83rem", wordBreak: "break-word", whiteSpace: "pre-line" }}>
             ⚠️ {phase.message}
             <button onClick={() => setPhase({ kind: "idle" })} style={{ display: "block", marginTop: 8, color: "#f87171", background: "none", border: "none", cursor: "pointer", fontSize: "0.82rem", textDecoration: "underline", padding: 0 }}>
               Riprova
