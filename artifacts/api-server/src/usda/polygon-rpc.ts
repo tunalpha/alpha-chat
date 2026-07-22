@@ -90,9 +90,11 @@ export async function balanceOfUsda(address: string): Promise<string> {
   const hex = await ethCall(contract, callData);
 
   const raw      = BigInt(hex === "0x" ? "0x0" : hex);
-  const intPart  = raw / BigInt(10 ** USDA_DECIMALS);
-  const fracPart = raw % BigInt(10 ** USDA_DECIMALS);
-  const balance  = `${intPart}.${fracPart.toString().padStart(USDA_DECIMALS, "0")}`;
+  const divisor  = BigInt(10 ** USDA_DECIMALS);
+  const intPart  = raw / divisor;
+  const fracPart = raw % divisor;
+  const fracStr  = fracPart.toString().padStart(USDA_DECIMALS, "0").slice(0, 2);
+  const balance  = `${intPart}.${fracStr}`;
 
   logger.debug({ address, balance }, "[PolygonRPC] balanceOf");
   return balance;
