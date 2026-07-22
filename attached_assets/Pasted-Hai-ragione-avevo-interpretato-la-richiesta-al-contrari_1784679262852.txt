@@ -1,0 +1,145 @@
+Hai ragione, avevo interpretato la richiesta al contrario.
+
+Questo è il prompt da dare ad AlphaChat, dopo che il team USDA ti avrà fornito URL, API key e altri parametri.
+
+⸻
+
+Sprint — Collegamento Backend USDA Reale
+
+Abbiamo ricevuto dal team USDA tutte le informazioni di connessione (URL API, autenticazione, endpoint e variabili d’ambiente).
+
+L’architettura AlphaChat è conclusa.
+
+Non modificare l’architettura, il database, la UI o i flussi della chat.
+
+L’obiettivo è esclusivamente sostituire il MockUsdaAdapter con il backend USDA reale.
+
+Attività
+
+1. Configurazione
+
+Inserire nei Secrets (Replit/Produzione) tutte le variabili ricevute.
+
+Ad esempio:
+
+USDA_API_BASE_URL=...
+USDA_API_KEY=...
+USDA_API_SECRET=...
+USDA_ENV=...
+
+Non hardcodare alcun valore nel codice.
+
+⸻
+
+2. HttpUsdaAdapter
+
+Configurare l’HttpUsdaAdapter affinché utilizzi le variabili d’ambiente.
+
+Verificare che tutti i metodi utilizzino esclusivamente:
+
+* USDA_API_BASE_URL
+* USDA_API_KEY
+* eventuali altre variabili ricevute
+
+⸻
+
+3. Capability Test
+
+All’avvio dell’app:
+
+* eseguire GET /capabilities;
+* salvare il risultato nella cache prevista;
+* aggiornare automaticamente il Wallet Center.
+
+Se il backend non risponde:
+
+* usare il fallback conservativo già implementato;
+* non compromettere il funzionamento della chat.
+
+⸻
+
+4. Health Check
+
+Verificare la raggiungibilità del backend USDA.
+
+Se il backend non è disponibile:
+
+* mostrare stato “Backend USDA non disponibile”;
+* disabilitare temporaneamente le funzioni di pagamento;
+* mantenere operative tutte le altre funzionalità della chat.
+
+⸻
+
+5. Endpoint
+
+Verificare ogni metodo dell’HttpUsdaAdapter confrontandolo con il contratto API definitivo.
+
+Adeguare esclusivamente:
+
+* URL
+* header
+* payload
+* parsing delle response
+
+Non modificare il UsdaService né la UI, salvo incompatibilità strettamente necessarie.
+
+⸻
+
+6. Webhook / Aggiornamenti
+
+Se il backend USDA supporta webhook:
+
+* configurare il callback;
+* verificare la ricezione degli aggiornamenti;
+* propagare gli eventi tramite usda.payment.update.
+
+Se il backend non supporta webhook:
+
+* utilizzare il polling interno già previsto nell’Adapter.
+
+La UI deve continuare a ricevere solo usda.payment.update.
+
+⸻
+
+7. Test end-to-end
+
+Verificare con pagamenti reali:
+
+* invio;
+* richiesta;
+* conferma blockchain;
+* claim;
+* refund;
+* errore;
+* riconnessione;
+* aggiornamento automatico delle bubble;
+* Wallet Center;
+* storico.
+
+⸻
+
+8. Regression Test
+
+Confermare che il collegamento al backend USDA reale non abbia introdotto regressioni nelle funzionalità della chat:
+
+* messaggi;
+* allegati;
+* gruppi;
+* chiamate;
+* WebSocket;
+* notifiche.
+
+⸻
+
+Deliverable finale
+
+Produrre un documento USDA_BACKEND_CONNECTION_REPORT.md contenente:
+
+* variabili configurate (solo nomi, mai i valori sensibili);
+* endpoint verificati;
+* eventuali differenze rispetto al Mock;
+* test eseguiti;
+* problemi riscontrati e relative soluzioni;
+* conferma che il MockUsdaAdapter può essere rimosso o mantenuto come ambiente di sviluppo.
+
+Regola fondamentale: limitare le modifiche al minimo indispensabile. L’obiettivo è collegare AlphaChat al backend USDA reale preservando integralmente l’architettura e il comportamento della chat.
