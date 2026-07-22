@@ -1,0 +1,92 @@
+Questa diagnosi è solida. Hai una prova concreta:
+
+* ✅ MongoDB contiene correttamente il wallet di Cricco.
+* ✅ preparePayment() viene chiamato.
+* ✅ L’API USDA risponde.
+* ❌ L’API USDA rifiuta il payload con 400 “Parametri mancanti”.
+
+L’unica cosa su cui farei attenzione è la conclusione:
+
+“Si aspetta wallet address Polygon.”
+
+È molto probabile, ma il log da solo dimostra soltanto che il payload attuale è incompatibile. La conferma definitiva deve arrivare dal codice o dalla documentazione dell’endpoint /api/pay/prepare.
+
+Prompt da dare all’agente
+
+⸻
+
+Diagnosi completata. Non fare tentativi. Verificare il contratto reale dell’endpoint /api/pay/prepare sul server getusda.xyz.
+
+Aprire l’implementazione dell’endpoint e pubblicare:
+
+1. Il codice di validazione
+
+Ad esempio:
+
+const {
+  ...
+} = await request.json();
+if (...) {
+   ...
+}
+
+2. Il payload atteso
+
+Indicare esattamente:
+
+* nome dei campi;
+* tipi;
+* quali sono obbligatori;
+* quali wallet vengono richiesti.
+
+3. Confronto
+
+Confrontare:
+
+Payload inviato:
+
+{
+  "from_user_id": "...",
+  "to_user_id": "...",
+  "amount": "1"
+}
+
+con quello realmente atteso dal codice.
+
+4. Se l’endpoint richiede wallet address
+
+Modificare http-usda.adapter.ts affinché invii:
+
+{
+  "senderWallet": "...",
+  "recipientWallet": "...",
+  "amount": 1
+}
+
+oppure i nomi esatti previsti dal contratto.
+
+I wallet devono essere letti da MongoDB:
+
+* mittente → wallets.usda.address
+* destinatario → wallets.usda.address
+
+5. Test finale
+
+Verificare che:
+
+* /api/pay/prepare restituisca 200;
+* venga restituito il payload previsto;
+* il frontend non mostri più USDA_API_ERROR.
+
+⸻
+
+Osservazione
+
+Mi colpisce un aspetto: avete già corretto /api/pay/request sostituendo gli ObjectId con il wallet, mentre /api/pay/prepare continua a inviare:
+
+{
+  "from_user_id": "...",
+  "to_user_id": "..."
+}
+
+Se entrambi gli endpoint appartengono alla stessa API USDA, è plausibile che siano rimasti due flussi con contratti diversi o che il fix sia stato applicato solo a uno dei due. Prima di modificare il codice, però, conviene verificare direttamente il contratto dell’endpoint prepare per usare i nomi dei campi esatti richiesti dal server.
