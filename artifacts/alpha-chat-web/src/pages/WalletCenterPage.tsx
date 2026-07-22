@@ -108,7 +108,9 @@ export default function WalletCenterPage({ onBack }: Props) {
   useEffect(() => {
     abortMount.current = new AbortController();
     Promise.all([
-      apiUsdaGetWallet().then(setWallet).catch(() => {}),
+      // FIX 2: passa l'indirizzo ThirdWeb live (se già disponibile al mount)
+      // per ottenere il saldo del wallet connesso, non di quello in MongoDB
+      apiUsdaGetWallet(account?.address).then(setWallet).catch(() => {}),
       apiUsdaGetInfo().then(setBackendInfo).catch(() => {}),
       apiUsdaGetCapabilities().then(setCapabilities).catch(() => {}),
       apiUsdaGetHistory({ limit: 10 }).then((r) => {
@@ -126,6 +128,16 @@ export default function WalletCenterPage({ onBack }: Props) {
 
     return () => { abortMount.current?.abort(); };
   }, []);
+
+  // ── FIX 2: Re-fetch saldo quando il wallet ThirdWeb cambia ────────────────────
+  // Al mount il wallet potrebbe non essere ancora connesso (ThirdWeb riconnette
+  // in modo asincrono). Questo effect scatta appena account.address diventa
+  // disponibile o cambia, garantendo che il saldo mostrato sia sempre quello
+  // del wallet effettivamente connesso.
+  useEffect(() => {
+    if (!account?.address) return;
+    apiUsdaGetWallet(account.address).then(setWallet).catch(() => {});
+  }, [account?.address]);
 
   // ── Storico ─────────────────────────────────────────────────────────────────
   const loadHistory = useCallback(() => {

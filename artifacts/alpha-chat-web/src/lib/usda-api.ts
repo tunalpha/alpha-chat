@@ -34,8 +34,14 @@ async function usdaFetch<T>(
 
 // ── Wallet ──────────────────────────────────────────────────────────────────
 
-export async function apiUsdaGetWallet(): Promise<WalletInfo> {
-  return usdaFetch<WalletInfo>("GET", "/wallet");
+/**
+ * Recupera saldo e info wallet.
+ * FIX 2: passa liveAddress (account.address ThirdWeb) per ottenere il saldo
+ * del wallet effettivamente connesso, non di quello salvato in MongoDB.
+ */
+export async function apiUsdaGetWallet(liveAddress?: string): Promise<WalletInfo> {
+  const qs = liveAddress ? `?address=${encodeURIComponent(liveAddress)}` : "";
+  return usdaFetch<WalletInfo>("GET", `/wallet${qs}`);
 }
 
 export async function apiUsdaSetWalletAddress(address: string, chain: WalletChain = "usda"): Promise<WalletInfo> {

@@ -18,7 +18,12 @@ import { AppError } from "../errors/AppError";
 // GET /api/v1/usda/wallet
 export const getWallet: RequestHandler = async (req, res, next) => {
   try {
-    const result = await usdaService.getWallet(req.user!.userId);
+    // FIX 2: accetta ?address=0xBBBB per usare l'indirizzo ThirdWeb live come
+    // fonte di verità per il saldo, invece dell'indirizzo salvato in MongoDB.
+    const liveAddress = typeof req.query.address === "string" && req.query.address
+      ? req.query.address
+      : undefined;
+    const result = await usdaService.getWallet(req.user!.userId, liveAddress);
     res.status(200).json(successResponse(result, req.requestId));
   } catch (err) { next(err); }
 };

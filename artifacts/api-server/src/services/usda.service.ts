@@ -275,7 +275,12 @@ export async function checkHealth(): Promise<{ available: boolean }> {
   return { available: true };
 }
 
-export async function getWallet(userId: string) {
+export async function getWallet(
+  userId: string,
+  /** FIX 2: indirizzo ThirdWeb live dal frontend — se presente, usato per il saldo
+   *  invece dell'indirizzo salvato in MongoDB (che potrebbe essere obsoleto). */
+  liveAddress?: string,
+) {
   // Se stiamo usando HttpAdapter, leggiamo il saldo reale da ERC-20 via Polygon RPC.
   // La struttura dei wallet è in MongoDB (il DB di AlphaChat), non sul backend USDA.
   if (_httpAdapter) {
@@ -284,24 +289,31 @@ export async function getWallet(userId: string) {
       "wallets wallet_address wallet_enabled",
     ).lean() as { wallets?: Record<string, { address: string; verifiedAt: string | null }>; wallet_address?: string; wallet_enabled?: boolean } | null;
 
-    const wallets = user?.wallets ?? {};
-    const usdaEntry = wallets.usda;
-    const address   = usdaEntry?.address ?? user?.wallet_address ?? null;
+    const wallets    = user?.wallets ?? {};
+    const usdaEntry  = wallets.usda;
+    const storedAddr = usdaEntry?.address ?? user?.wallet_address ?? null;
+
+    // Priorità: indirizzo live ThirdWeb > indirizzo salvato in MongoDB
+    const addressForBalance = liveAddress ?? storedAddr;
 
     let balance = "0.000000";
-    if (address) {
+    if (addressForBalance) {
       try {
-        balance = await balanceOfUsda(address);
+        balance = await balanceOfUsda(addressForBalance);
       } catch (err) {
-        logger.warn({ err, address }, "[USDA] balanceOf failed — using 0");
+        logger.warn({ err, address: addressForBalance }, "[USDA] balanceOf failed — using 0");
       }
     }
 
+    // wallet_enabled = true se ThirdWeb è connesso (liveAddress presente) OPPURE
+    // se il campo è impostato nel DB
+    const walletEnabled = !!(liveAddress || usdaEntry || (storedAddr && user?.wallet_enabled));
+
     return {
-      address,
+      address:        liveAddress ?? storedAddr,   // live address ha precedenza
       chain_id:       parseInt(process.env.USDA_CHAIN_ID ?? "137", 10),
       balance_usda:   balance,
-      wallet_enabled: !!(usdaEntry ?? (address && user?.wallet_enabled)),
+      wallet_enabled: walletEnabled,
       wallets:        wallets as Record<string, { address: string; verifiedAt: string | null }>,
     };
   }
@@ -339,10 +351,39 @@ export async function preparePayment(params: {
   amount: string;
   note?: string;
 }) {
-  const convId    = new mongoose.Types.ObjectId(params.conversationId);
-  const senderId  = new mongoose.Types.ObjectId(params.fromUserId);
+  const convId   = new mongoose.Types.ObjectId(params.conversationId);
+  const senderId = new mongoose.Types.ObjectId(params.fromUserId);
   const membership = await memberRepo.findMembership(convId, senderId);
   if (!membership || membership.left_at !== null) throw new AppError("NOT_CHAT_MEMBER", 403);
+
+  // FIX 1: Verifica wallet del destinatario PRIMA di chiamare il backend USDA.
+  // Se non ha un wallet registrato in MongoDB, restituisce un errore leggibile
+  // invece del generico "USDA API error 400" del backend esterno.
+  const recipientOid  = new mongoose.Types.ObjectId(params.toUserId);
+  const recipientUser = await UserModel.findById(
+    recipientOid,
+    "username display_name wallets wallet_address wallet_enabled",
+  ).lean() as {
+    username?: string;
+    display_name?: string;
+    wallets?: Record<string, { address: string }>;
+    wallet_address?: string;
+    wallet_enabled?: boolean;
+  } | null;
+
+  if (!recipientUser) throw new AppError("USER_NOT_FOUND", 404);
+
+  const recipientWalletAddr =
+    recipientUser.wallets?.usda?.address ?? recipientUser.wallet_address ?? null;
+
+  if (!recipientWalletAddr) {
+    const recipientName = recipientUser.display_name ?? recipientUser.username ?? "Il destinatario";
+    throw new AppError(
+      "RECIPIENT_NO_WALLET",
+      422,
+      `${recipientName} non ha ancora attivato il wallet USDA. Chiedigli di attivarlo prima di inviargli denaro.`,
+    );
+  }
 
   const clientPaymentId = randomUUID();
   return _adapter.preparePayment({

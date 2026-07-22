@@ -362,7 +362,19 @@ export class HttpUsdaAdapter implements UsdaAdapter {
     const fee     = raw.fee   ?? (amount * 0.001).toFixed(6);
     const total   = raw.total ?? (amount + parseFloat(fee)).toFixed(6);
 
-    logger.info({ pendingTransferId, fee }, "[HttpUSDA] Payment prepared");
+    // FIX 3: Validazione minima del recipientAddress restituito dal backend USDA
+    if (!recipientAddress) {
+      throw new Error("[USDA] Il backend non ha restituito un indirizzo destinatario. L'utente potrebbe non avere un wallet USDA attivo.");
+    }
+    if (!/^0x[0-9a-fA-F]{40}$/.test(recipientAddress)) {
+      logger.error({ recipientAddress }, "[HttpUSDA] Backend returned invalid recipient address");
+      throw new Error(`[USDA] Indirizzo destinatario non valido ricevuto dal backend: ${recipientAddress}`);
+    }
+    if (recipientAddress.toLowerCase() === "0x0000000000000000000000000000000000000000") {
+      throw new Error("[USDA] Il backend ha restituito l'indirizzo zero come destinatario — pagamento annullato.");
+    }
+
+    logger.info({ pendingTransferId, fee, recipientAddress: `${recipientAddress.slice(0,8)}…` }, "[HttpUSDA] Payment prepared");
 
     return {
       client_payment_id: params.client_payment_id,
@@ -405,6 +417,12 @@ export class HttpUsdaAdapter implements UsdaAdapter {
     const senderAddress   = (params.prepared_data?.sender_address as string | undefined) ?? "";
     const recipientAddr   = (params.prepared_data?.recipientAddress as string | undefined) ?? "";
     const amountUnits     = (params.prepared_data?.amount_units as string | undefined) ?? "0";
+
+    // FIX 3: Blocca auto-invio (mittente == destinatario)
+    if (senderAddress && recipientAddr &&
+        senderAddress.toLowerCase() === recipientAddr.toLowerCase()) {
+      throw new Error("[USDA] Non puoi inviare USDA a te stesso.");
+    }
 
     if (senderAddress && recipientAddr && contractAddress) {
       const verification = await verifyUsdaTx({
