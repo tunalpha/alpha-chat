@@ -38,4 +38,5 @@
 - [USDA Fintech Premium UX](usda-fintech-ux.md) — errori umani via humanizeUsdaError(), wallet chips, card no-wallet, success banners, signing premium
 - [Reown AppKit migration](reown-appkit-migration.md) — ThirdWeb rimosso, stack ora: @reown/appkit+wagmi v3+viem; walletModal.open() sostituisce ConnectButton; polygonPublicClient per balanceOf
 - [USDA /api/pay/request contract](usda-request-api-contract.md) — campo obbligatorio è `requesterWallet` (wallet Polygon), non user ID; risposta contiene `shareLink`; semantica link-based non user-to-user
-- [Sprint 1 — Chat Payment Engine](sprint-1-chat-payment-engine.md) — fondazioni: 3 collection, state machine pura, custodial viem, anti-replay, lock atomico, 73 test; ESCROW_MASTER_KEY richiesto per Sprint 2
+- [Sprint 1 — Chat Payment Engine](sprint-1-chat-payment-engine.md) — fondazioni: 3 collection, state machine pura, custodial viem, anti-replay, lock atomico, 73 test
+- [Sprint 2 — Chat Payment Engine API](sprint-2-chat-payment-engine.md) — 6 endpoint REST, chat-payment.service.ts, 26 unit test; PAYMENT_SKIP_CHAIN_VERIFY=true per dev; vi.hoisted per singleton repo nei test

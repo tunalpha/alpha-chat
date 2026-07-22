@@ -74,12 +74,18 @@ export const ERROR_MESSAGES: Record<string, string> = {
   INTERNAL_ERROR: "Errore interno del server. Il team è stato notificato.",
   SERVICE_UNAVAILABLE: "Servizio temporaneamente non disponibile. Riprova tra qualche minuto.",
 
-  // Chat Payment Engine (Sprint 1)
+  // Chat Payment Engine
   TRANSFER_NOT_FOUND:            "Trasferimento non trovato.",
   TRANSFER_ACCESS_DENIED:        "Non sei autorizzato ad accedere a questo trasferimento.",
   TRANSFER_EXPIRED:              "Il trasferimento è scaduto.",
   TRANSFER_INVALID_TRANSITION:   "Operazione non consentita in questo stato del trasferimento.",
   TRANSFER_TX_ALREADY_PROCESSED: "Questa transazione blockchain è già stata registrata.",
+  TRANSFER_TX_NOT_FOUND:         "Transazione blockchain non trovata o non ancora confermata.",
+  TRANSFER_TX_REVERTED:          "La transazione blockchain è stata rifiutata dalla rete.",
+  TRANSFER_TX_INVALID:           "La transazione non corrisponde al trasferimento atteso.",
+  TRANSFER_LOCK_FAILED:          "Operazione già in corso su questo trasferimento. Riprova tra qualche secondo.",
+  TRANSFER_SELF_SEND:            "Non puoi inviare un pagamento a te stesso.",
+  TRANSFER_NOT_MEMBER:           "Non sei membro di questa conversazione.",
   WALLET_NOT_CONFIGURED:         "Devi attivare il tuo Wallet USDA per ricevere questo pagamento.",
   ESCROW_MASTER_KEY_MISSING:     "Chiave master escrow non configurata. Contatta il supporto.",
 };

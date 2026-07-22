@@ -77,6 +77,10 @@ v1Router.use("/diagnostics", diagnosticsRoutes);
 import usdaRoutes from "./usda.routes";
 v1Router.use("/usda", usdaRoutes);
 
+// Chat Payment Engine — P2P nativo, indipendente da getusda.xyz (Sprint 2)
+import paymentRoutes from "./payment.routes";
+v1Router.use("/payments", paymentRoutes);
+
 // WalletConnect debug — temporaneo, rimuovere dopo la diagnosi
 
 export default v1Router;
