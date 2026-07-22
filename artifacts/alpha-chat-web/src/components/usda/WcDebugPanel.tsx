@@ -109,11 +109,14 @@ export default function WcDebugPanel() {
   }, [logs, visible]);
 
   // 5 tap sul trigger per aprire
-  const handleTriggerTap = () => {
+  // Usiamo onTouchEnd + preventDefault su iOS per evitare che lo scroll engine
+  // assorba i tap veloci prima che onClick arrivi.
+  const handleTriggerTap = (e?: React.SyntheticEvent) => {
+    e?.preventDefault();
     setTaps(n => {
       const next = n + 1;
       if (tapTimer.current) clearTimeout(tapTimer.current);
-      tapTimer.current = setTimeout(() => setTaps(0), 2000);
+      tapTimer.current = setTimeout(() => setTaps(0), 3000);
       if (next >= 5) { setVisible(true); return 0; }
       return next;
     });

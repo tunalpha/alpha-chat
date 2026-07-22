@@ -143,6 +143,10 @@ export default defineConfig({
     strictPort: true,
     host: '0.0.0.0',
     allowedHosts: true,
+    hmr: {
+      // Disabilita l'overlay rosso di errore HMR su iOS (blocca l'UI durante WalletConnect)
+      overlay: false,
+    },
     headers: {
       // Impedisce a Safari/iOS di cachare i moduli JS durante lo sviluppo
       'Cache-Control': 'no-store',

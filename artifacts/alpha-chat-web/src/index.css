@@ -6299,9 +6299,13 @@ html.emergency-open #root {
   background: rgba(255,255,255,0.07); border: none;
   color: var(--text-secondary, #a0a0b0); cursor: pointer;
   display: flex; align-items: center; justify-content: center;
-  width: 36px; height: 36px; border-radius: 50%;
+  width: 44px; height: 44px; border-radius: 50%;
   transition: background 0.15s;
   flex-shrink: 0;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  /* zona toccabile più grande su iOS */
+  padding: 4px;
 }
 .ups-close:active { background: rgba(255,255,255,0.14); }
 .ups-header-inner { display: flex; align-items: center; gap: 8px; }
