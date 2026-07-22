@@ -26,6 +26,53 @@ import { getAccessToken } from "./auth";
 
 const BASE = "/api/v1";
 
+// ── Rilevamento aggiornamento SW — a livello di modulo ────────────────────────
+//
+// ⚠️  DEVE stare QUI, al livello di modulo, NON dentro initServiceWorker().
+//
+// Motivo: controllerchange può emettere decine/centinaia di ms PRIMA che
+// initServiceWorker() venga chiamata (che dipende da auth?.userId nel
+// useEffect di App.tsx). Se il listener venisse attaccato nell'effetto,
+// l'evento sarebbe già andato perso → nessun banner.
+//
+// Attaccandolo al momento della valutazione del modulo (sincrono, prima
+// del primo tick), catturiamo QUALSIASI controllerchange emesso nella
+// sessione corrente.
+//
+// Scenari gestiti correttamente:
+//   1. Prima installazione       → _hasBeenControlled=false → nessun banner ✓
+//   2. Deploy nuova versione     → controllerchange catturato → banner ✓
+//   3. Riapertura senza deploy   → nessun controllerchange → nessun banner ✓
+//   4. Deploy durante sessione   → banner immediato ✓
+//   5. Mount tardivo SwUpdateBanner → isSwUpdateReady() = true → visible=true ✓
+
+let _swUpdateReady = false;
+let _hasBeenControlled = false;
+
+if (typeof navigator !== "undefined" && "serviceWorker" in navigator) {
+  // Cattura lo stato del controller PRIMA che qualsiasi evento possa emettere
+  _hasBeenControlled = !!navigator.serviceWorker.controller;
+
+  navigator.serviceWorker.addEventListener("controllerchange", () => {
+    if (_hasBeenControlled) {
+      // Un controller precedente esiste → questo è un vero aggiornamento
+      _swUpdateReady = true;
+      window.dispatchEvent(new CustomEvent("pwa:update-ready"));
+    }
+    // Dopo il primo cambio, qualsiasi cambio successivo è un aggiornamento
+    _hasBeenControlled = true;
+  });
+}
+
+/**
+ * Ritorna true se il browser ha già rilevato un aggiornamento del SW
+ * nella sessione corrente. Usato da SwUpdateBanner per gestire il caso
+ * in cui il componente venga montato DOPO l'evento pwa:update-ready.
+ */
+export function isSwUpdateReady(): boolean {
+  return _swUpdateReady;
+}
+
 // ── Rilevamento browser / piattaforma ────────────────────────────────────────
 
 function detectPlatform(): { platform: string; browser: string } {
@@ -136,7 +183,13 @@ let _swRegistration: ServiceWorkerRegistration | null = null;
 async function getSwRegistration(): Promise<ServiceWorkerRegistration | null> {
   if (_swRegistration) return _swRegistration;
   try {
-    _swRegistration = await navigator.serviceWorker.register("/sw.js", { scope: "/" });
+    // updateViaCache:'none' → il browser verifica SEMPRE se sw.js è cambiato
+    // sul server, ignorando la cache HTTP. Senza questa opzione, in produzione
+    // il browser può servire il vecchio sw.js cachato e non rilevare mai il deploy.
+    _swRegistration = await navigator.serviceWorker.register("/sw.js", {
+      scope: "/",
+      updateViaCache: "none",
+    });
     console.log("[push] Service Worker registrato ✓", _swRegistration.scope);
     return _swRegistration;
   } catch (err) {
@@ -156,32 +209,12 @@ export async function initServiceWorker(): Promise<void> {
   await getSwRegistration();
 
   // Gestisce pushsubscriptionchange dal SW
+  // NOTA: il rilevamento aggiornamento (controllerchange) è gestito a livello
+  // di modulo (vedi in alto) — NON qui — per evitare la race condition con il
+  // ciclo di vita React/auth.
   navigator.serviceWorker.addEventListener("message", (e) => {
     if ((e.data as { type?: string })?.type === "push.subscriptionchange") {
       void subscribe().catch(() => {});
-    }
-  });
-
-  // ── Rilevamento aggiornamento SW ─────────────────────────────────────────
-  // Quando il nuovo SW chiama skipWaiting() + clients.claim(), il browser
-  // emette "controllerchange" su navigator.serviceWorker.
-  //
-  // Logica per distinguere "prima installazione" da "vero update":
-  //   - Se navigator.serviceWorker.controller è già impostato PRIMA della
-  //     registrazione → c'era un SW precedente → qualsiasi controllerchange
-  //     successivo è un aggiornamento reale → mostra banner.
-  //   - Se controller era null → prima installazione → ignora il primo
-  //     controllerchange (sarebbe un falso positivo).
-  //
-  // Questo gestisce correttamente tutti e 4 gli scenari:
-  //   1. Prima installazione            → nessun banner ✓
-  //   2. Deploy nuova versione          → banner ✓
-  //   3. Riapertura senza nuovo deploy  → nessun controllerchange → nessun banner ✓
-  //   4. Due deploy consecutivi         → un banner per ciascuno ✓
-  const hadController = !!navigator.serviceWorker.controller;
-  navigator.serviceWorker.addEventListener("controllerchange", () => {
-    if (hadController) {
-      window.dispatchEvent(new CustomEvent("pwa:update-ready"));
     }
   });
 }
