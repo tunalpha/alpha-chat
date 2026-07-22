@@ -1,0 +1,117 @@
+Dalle schermate si vede una contraddizione evidente:
+
+* Schermata 1 (Invia USDA): “Cricco non può ancora ricevere USDA” → il sistema ritiene che non abbia un wallet attivo.
+* Schermata 2 (Wallet di Cricco): “✅ Wallet attivo” con un indirizzo Polygon 0x5C7C6b...8D3478 → il wallet esiste ed è attivo.
+
+Quindi il problema non è WalletConnect né il wallet, ma la logica che determina se un utente può ricevere USDA.
+
+La causa più probabile
+
+Molto probabilmente il pulsante Invia USDA sta verificando un campo sbagliato nel database.
+
+Ad esempio:
+
+recipient.wallet_connected
+
+oppure
+
+recipient.wallet_status
+
+mentre il Wallet Center usa qualcosa come:
+
+wallet_address
+
+oppure
+
+wallets.usda.address
+
+In pratica due parti dell’app leggono dati diversi.
+
+⸻
+
+Fai eseguire questa diagnosi
+
+Obiettivo
+
+Individuare perché canReceiveUSDA() restituisce false mentre il Wallet Center mostra il wallet come attivo.
+
+Verificare la funzione che decide
+
+recipient.canReceiveUsda
+recipient.hasWallet
+recipient.walletConnected
+recipient.walletStatus
+recipient.walletAddress
+recipient.wallets.usda.address
+
+Stampare tutti questi valori.
+
+⸻
+
+Verificare i dati MongoDB
+
+Per l’utente Cricco stampare il documento completo relativo al wallet.
+
+Ad esempio:
+
+{
+  "_id": "...",
+  "wallet_address": "...",
+  "wallets": {
+      "usda": {
+          ...
+      }
+  },
+  "wallet_connected": ...,
+  "wallet_status": ...
+}
+
+⸻
+
+Verificare il Wallet Center
+
+Individuare quale campo utilizza per mostrare:
+
+✅ Wallet attivo
+
+⸻
+
+Verificare “Invia USDA”
+
+Individuare quale campo usa invece per mostrare:
+
+Cricco non può ancora ricevere USDA
+
+⸻
+
+Confronto
+
+Produrre una tabella:
+
+Campo	Wallet Center	Invia USDA
+wallet_address	✅	❌
+wallets.usda.address	✅	❌
+wallet_connected	❌	✅
+wallet_status	❌	✅
+
+⸻
+
+Correzione
+
+Tutte le funzionalità devono usare la stessa fonte di verità.
+
+L’unica fonte di verità dovrebbe essere la presenza di un wallet USDA valido, ad esempio:
+
+wallets.usda.address
+
+oppure
+
+wallet_address
+
+(non entrambe).
+
+Non devono esistere controlli duplicati o flag che possano andare fuori sincronizzazione.
+
+⸻
+
+A giudicare dagli screenshot, il wallet è stato creato correttamente, ma la schermata “Invia USDA” sta leggendo uno stato diverso da quello usato dal Wallet Center. È molto probabilmente un problema di sincronizzazione o di utilizzo di campi differenti, non un problema del wallet stesso.

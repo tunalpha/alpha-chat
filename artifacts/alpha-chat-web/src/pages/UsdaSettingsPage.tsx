@@ -12,7 +12,7 @@
  *   5. Sicurezza      — card rassicurante custody
  */
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useActiveAccount, ConnectButton } from "thirdweb/react";
 import {
   client,
@@ -21,6 +21,7 @@ import {
   USDA_CONTRACT_ADDRESS,
   USDA_CHAIN_ID,
 } from "../lib/thirdweb";
+import { apiUsdaSetWalletAddress } from "../lib/usda-api";
 
 // ── Costanti ─────────────────────────────────────────────────────────────────
 
@@ -58,6 +59,14 @@ export default function UsdaSettingsPage({ onBack }: Props) {
   const address          = account?.address;
   const isConnected      = !!account;
   const isCorrectNetwork = !!account;
+
+  // Persiste il wallet address in MongoDB ogni volta che il wallet si connette.
+  // Senza questo step, preparePayment non trova il destinatario e restituisce
+  // RECIPIENT_NO_WALLET anche se il Wallet Center mostra "✅ Wallet attivo".
+  useEffect(() => {
+    if (!address) return;
+    apiUsdaSetWalletAddress(address).catch(() => {});
+  }, [address]);
 
   const [copied,      setCopied]      = useState<string | null>(null);
   const [watchStatus, setWatchStatus] = useState<"idle" | "loading" | "ok" | "err">("idle");

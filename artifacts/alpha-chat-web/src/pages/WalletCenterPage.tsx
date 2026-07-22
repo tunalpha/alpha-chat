@@ -19,6 +19,7 @@ import {
 } from "../lib/thirdweb";
 import {
   apiUsdaGetWallet,
+  apiUsdaSetWalletAddress,
   apiUsdaGetHistory,
   apiUsdaGetCapabilities,
   apiUsdaGetInfo,
@@ -114,9 +115,13 @@ export default function WalletCenterPage({ onBack }: Props) {
   }, []);
 
   // Re-fetch saldo quando cambia l'indirizzo del wallet connesso
+  // e persiste l'indirizzo in MongoDB (fonte di verità per preparePayment)
   useEffect(() => {
     if (!address) return;
     apiUsdaGetWallet(address).then(setWallet).catch(() => {});
+    // Salva il wallet address nel DB — necessario affinché altri utenti possano
+    // inviare USDA a questo utente (preparePayment legge wallets.usda.address da MongoDB)
+    apiUsdaSetWalletAddress(address).catch(() => {});
   }, [address]);
 
   // ── Storico ─────────────────────────────────────────────────────────────────
