@@ -19,9 +19,9 @@ import { logger } from "../lib/logger";
 // Costanti
 // ---------------------------------------------------------------------------
 
-const DEFAULT_RPC             = "https://polygon-rpc.com";
-const DEFAULT_USDA_CONTRACT   = "0x23396cF899Ca06c4472205fC903bDB4de249D6f";
-const USDA_DECIMALS = 6;
+const DEFAULT_RPC           = "https://polygon-bor-rpc.publicnode.com";
+const DEFAULT_USDA_CONTRACT = "0xe714655fD1B3ba96B887DF1F94336c2A78E24001";
+const USDA_DECIMALS         = 18;   // AlphaBit USDA è ERC-20 standard a 18 decimali
 const TIMEOUT_MS = 10_000;
 
 // ERC-20 selectors
@@ -53,8 +53,11 @@ async function rpcCall<T>(
       body:    JSON.stringify({ jsonrpc: "2.0", method, params, id: 1 }),
       signal:  controller.signal,
     });
-    const json = await res.json() as { result?: T; error?: { message: string } };
-    if (json.error) throw new Error(`RPC error: ${json.error.message}`);
+    const json = await res.json() as { result?: T; error?: { message?: string } | string };
+    if (json.error) {
+      const msg = typeof json.error === "string" ? json.error : (json.error.message ?? JSON.stringify(json.error));
+      throw new Error(`RPC error: ${msg}`);
+    }
     return json.result ?? null;
   } finally {
     clearTimeout(timer);
