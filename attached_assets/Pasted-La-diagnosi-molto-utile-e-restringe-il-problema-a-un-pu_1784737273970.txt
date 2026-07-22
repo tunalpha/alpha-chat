@@ -1,0 +1,89 @@
+La diagnosi è molto utile e restringe il problema a un punto preciso:
+
+* ✅ Il backend funziona correttamente: legge MongoDB e trova che Cricco non ha alcun wallet salvato.
+* ✅ La query è corretta.
+* ✅ L’errore RECIPIENT_NO_WALLET è giustificato dai dati presenti nel database.
+
+L’unica affermazione che non è ancora dimostrata è questa:
+
+“La API non viene mai chiamata.”
+
+È una buona ipotesi, ma va verificata. Potrebbe anche essere che venga chiamata e fallisca (401, 403, errore CORS, token scaduto, eccezione JavaScript, ecc.) senza aggiornare il database.
+
+Io chiederei questo ultimo controllo:
+
+⸻
+
+Diagnosi finale: verificare perché apiUsdaSetWalletAddress() non aggiorna MongoDB per Cricco.
+
+Non fare modifiche al codice. Seguire il flusso completo.
+
+1. Verificare se la chiamata parte
+
+Quando Cricco collega il wallet, loggare nel frontend:
+
+Wallet connected
+address = ...
+Calling apiUsdaSetWalletAddress(...)
+
+Verificare se il useEffect viene realmente eseguito.
+
+2. Verificare la richiesta HTTP
+
+Aprire Network/DevTools e controllare:
+
+* viene effettuata la chiamata apiUsdaSetWalletAddress?
+* URL
+* metodo HTTP
+* payload
+* headers
+* risposta HTTP
+
+3. Se la chiamata non parte
+
+Spiegare perché:
+
+* useEffect non viene eseguito?
+* address è undefined?
+* condizione sbagliata?
+* hook diverso da quello usato da Thirdweb/Reown?
+
+4. Se la chiamata parte
+
+Verificare nel backend:
+
+* il controller viene raggiunto?
+* userId autenticato è quello di Cricco?
+* address ricevuto è corretto?
+* updateOne() restituisce:
+
+matchedCount
+modifiedCount
+acknowledged
+
+5. Se modifiedCount = 0
+
+Spiegare il motivo:
+
+* utente sbagliato
+* filtro errato
+* middleware
+* validazione Mongoose
+* errore silenzioso
+
+6. Report finale
+
+Consegnare:
+
+* la chiamata HTTP è partita? (Sì/No)
+* status code
+* payload inviato
+* log del controller
+* risultato di updateOne()
+* documento MongoDB prima e dopo
+
+Non proporre fix finché non è identificato il punto esatto in cui la sincronizzazione si interrompe.
+
+⸻
+
+Se il report conferma che la richiesta HTTP non parte, allora il problema è nel frontend. Se invece parte ma updateOne() non modifica il documento, il problema è nel backend. Questo controllo ti darà la causa definitiva.
