@@ -1,0 +1,152 @@
+Implementa una nuova sezione nell'Account utente dedicata ai pagamenti USDA.
+
+Nome sezione:
+
+💸 Pagamenti USDA
+
+Obiettivo:
+
+Consentire all'utente di configurare il proprio wallet Polygon, verificare lo stato dell'attivazione e ricevere tutte le informazioni necessarie per utilizzare USDA.
+
+────────────────────────
+
+La schermata deve essere moderna, premium e in stile fintech (Revolut, PayPal, Wise, Cash App), con card, icone ed emoji eleganti.
+
+Mostrare:
+
+────────────────────────
+
+🟢 STATO WALLET
+
+Se il wallet è collegato:
+
+✅ Wallet attivo
+
+Indirizzo Polygon:
+
+0x1234....ABCD
+
+Pulsante:
+
+👛 Cambia Wallet
+
+oppure
+
+🔄 Ricollega Wallet
+
+────────────────────────
+
+Se il wallet NON è collegato:
+
+🟡 Wallet non configurato
+
+Testo:
+
+Per inviare e ricevere USDA devi collegare un wallet compatibile con Polygon.
+
+Pulsante grande:
+
+🔗 Collega Wallet
+
+che avvia direttamente il flusso Thirdweb Connect.
+
+────────────────────────
+
+📖 GUIDA USDA
+
+Card dedicata con:
+
+Come iniziare
+
+Contenuto:
+
+• collega il tuo wallet
+• passa automaticamente alla rete Polygon
+• aggiungi USDA al wallet
+• ricevi pagamenti tramite AlphaChat
+
+Pulsante:
+
+📚 Scopri come funziona
+
+────────────────────────
+
+🪙 AGGIUNGI USDA AL WALLET
+
+Mostrare una scheda con i dati ufficiali del token.
+
+Visualizzare:
+
+• Contract Address
+• Symbol
+• Decimals
+• Network
+
+Ogni valore deve poter essere copiato con un tap.
+
+Pulsante:
+
+➕ Aggiungi USDA al Wallet
+
+che utilizza il metodo Thirdweb/wallet_addEthereumChain o wallet_watchAsset quando supportato.
+
+────────────────────────
+
+🌐 RISORSE UFFICIALI
+
+Card con:
+
+Scopri di più su USDA.
+
+Pulsante:
+
+🌍 Visita il sito ufficiale USDA
+
+che apre il sito ufficiale.
+
+────────────────────────
+
+🔒 SICUREZZA
+
+Mostrare una card informativa.
+
+Titolo:
+
+La tua sicurezza prima di tutto
+
+Testo:
+
+AlphaChat non custodisce i tuoi fondi.
+
+Le transazioni vengono firmate direttamente dal tuo wallet e restano sempre sotto il tuo controllo.
+
+────────────────────────
+
+✨ ESPERIENZA UTENTE
+
+Utilizzare messaggi positivi, rassicuranti ed emozionali.
+
+Esempi:
+
+🎉 Wallet collegato con successo!
+
+💸 Sei pronto per inviare e ricevere USDA.
+
+oppure
+
+🚀 Attiva il tuo wallet in meno di un minuto.
+
+────────────────────────
+
+DESIGN
+
+- Card moderne
+- Animazioni leggere
+- Icone premium
+- Emoji eleganti
+- Responsive mobile
+- Tema coerente con AlphaChat
+- Nessun linguaggio tecnico
+- Nessun errore HTTP visibile all'utente
+
+L'obiettivo è far percepire la sezione come quella di una moderna applicazione fintech di livello professionale.
