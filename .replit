@@ -50,6 +50,7 @@ R2_ENDPOINT = "https://fd7b88dda1df65af51258cca0a8c1973.r2.cloudflarestorage.com
 USDA_API_BASE_URL = "https://getusda.xyz"
 USDA_CHAIN_ID = "137"
 USDA_CONTRACT_ADDRESS = "0xe714655fD1B3ba96B887DF1F94336c2A78E24001"
+VITE_THIRDWEB_CLIENT_ID = "e09746cb125e976229b09418ce8bd16f"
 
 [nix]
 channel = "stable-25_05"

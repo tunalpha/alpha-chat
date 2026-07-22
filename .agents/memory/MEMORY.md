@@ -34,3 +34,4 @@
 - [Sprint 30 — Call Monitor](sprint-30-call-monitor.md) — state machine chiamate separata (call_session+call_events), hook fire-and-forget in ws-server, REST /calls/*, admin Call Monitor page
 - [Sprint USDA — Native Integration](sprint-usda.md) — adapter layer (Mock→Http), usda_send/request/receipt, system_metadata, WS usda.payment.update; lista Remaining Integration in topic file
 - [USDA Backend Connection](sprint-usda-backend-connection.md) — getusda.xyz: no auth, /api/... (no /v1), health=GET /api/health, polling=poll-tx, claim=POST /api/pay/claim/{code}, balance=ERC-20 balanceOf
+- [USDA Sprint Finale — ThirdWeb + Blockchain](sprint-usda-finale.md) — ThirdWeb v5 signing reale, verifyUsdaTx on-chain, _simulateTxHash eliminato, VITE_THIRDWEB_CLIENT_ID settato
