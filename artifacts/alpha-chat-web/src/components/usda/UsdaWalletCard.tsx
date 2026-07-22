@@ -1,12 +1,10 @@
 /**
  * UsdaWalletCard — card "👛 Wallet USDA" nel profilo utente.
- *
- * Wallet non ancora integrato: mostra lo stato "non collegato"
- * fino a quando la nuova integrazione wallet sarà disponibile.
  */
 
+import { useActiveAccount, ConnectButton } from "thirdweb/react";
 import { useWs } from "../../contexts/WebSocketContext";
-import { walletModal } from "../../lib/wallet-stub";
+import { client, polygon, wallets } from "../../lib/thirdweb";
 
 export interface UsdaWalletCardProps {
   onSend:    () => void;
@@ -15,8 +13,9 @@ export interface UsdaWalletCardProps {
 }
 
 export function UsdaWalletCard({ onManage }: UsdaWalletCardProps) {
-  // Ignoriamo on() — nessun wallet collegato, nessun aggiornamento saldo
   useWs();
+  const account = useActiveAccount();
+  const address = account?.address;
 
   return (
     <div className="uwc-card" aria-label="Wallet USDA">
@@ -27,33 +26,55 @@ export function UsdaWalletCard({ onManage }: UsdaWalletCardProps) {
         </div>
       </div>
 
-      <div className="uwc-disconnected">
-        <div className="uwc-status-badge uwc-status-badge--warn">
-          <span className="uwc-status-dot" aria-hidden="true" />
-          Wallet non collegato
+      {address ? (
+        <div className="uwc-connected">
+          <div className="uwc-status-badge uwc-status-badge--ok">
+            <span className="uwc-status-dot" aria-hidden="true" />
+            Wallet collegato
+          </div>
+          <p className="uwc-addr">{address.slice(0, 6)}…{address.slice(-4)}</p>
+          <div className="uwc-connect-wrap">
+            <ConnectButton
+              client={client}
+              chain={polygon}
+              wallets={wallets}
+            />
+            <button
+              type="button"
+              className="uwc-connect-btn"
+              style={{ marginTop: 8, touchAction: "manipulation", WebkitTapHighlightColor: "transparent" }}
+              onClick={onManage}
+            >
+              ⚙️ Gestisci USDA
+            </button>
+          </div>
         </div>
-        <p className="uwc-disconnect-msg">
-          Per utilizzare USDA collega il tuo Wallet Polygon.
-        </p>
-        <div className="uwc-connect-wrap">
-          <button
-            type="button"
-            className="uwc-connect-btn"
-            style={{ touchAction: "manipulation", WebkitTapHighlightColor: "transparent" }}
-            onClick={() => walletModal.open()}
-          >
-            🔗 Collega Wallet
-          </button>
-          <button
-            type="button"
-            className="uwc-connect-btn"
-            style={{ marginTop: 8, touchAction: "manipulation", WebkitTapHighlightColor: "transparent" }}
-            onClick={onManage}
-          >
-            ⚙️ Gestisci USDA
-          </button>
+      ) : (
+        <div className="uwc-disconnected">
+          <div className="uwc-status-badge uwc-status-badge--warn">
+            <span className="uwc-status-dot" aria-hidden="true" />
+            Wallet non collegato
+          </div>
+          <p className="uwc-disconnect-msg">
+            Per utilizzare USDA collega il tuo Wallet Polygon.
+          </p>
+          <div className="uwc-connect-wrap">
+            <ConnectButton
+              client={client}
+              chain={polygon}
+              wallets={wallets}
+            />
+            <button
+              type="button"
+              className="uwc-connect-btn"
+              style={{ marginTop: 8, touchAction: "manipulation", WebkitTapHighlightColor: "transparent" }}
+              onClick={onManage}
+            >
+              ⚙️ Gestisci USDA
+            </button>
+          </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

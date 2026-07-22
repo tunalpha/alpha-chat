@@ -1,0 +1,216 @@
+STOP.
+
+Da questo momento NON devi progettare una nuova integrazione wallet.
+
+NON devi usare Reown.
+NON devi usare Wagmi.
+NON devi usare Viem.
+NON devi usare AppKit.
+NON devi creare una soluzione alternativa.
+
+L'obiettivo è uno soltanto:
+
+REPLICARE IDENTICAMENTE l'architettura wallet del progetto USDA.
+
+Le regole sono assolute.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+FASE 1
+
+Elimina completamente l'attuale stack wallet.
+
+Rimuovi:
+
+- @reown/*
+- wagmi
+- viem
+- @wagmi/*
+- walletconnect diretto
+- codice WalletSheet
+- connector custom
+- provider custom
+- hook custom
+- qualsiasi wrapper WalletConnect
+
+NON lasciare codice morto.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+FASE 2
+
+Installa ESCLUSIVAMENTE la stessa libreria usata da USDA.
+
+Versione obbligatoria:
+
+thirdweb@5.120.0
+
+Non installare altre librerie wallet.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+FASE 3
+
+Replica IDENTICAMENTE i file USDA.
+
+Crea:
+
+lib/thirdweb.ts
+
+providers.tsx
+
+con la stessa architettura USDA.
+
+NON cambiare il pattern.
+
+NON aggiungere migliorie.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+FASE 4
+
+Replica la configurazione.
+
+createThirdwebClient()
+
+defineChain()
+
+ThirdwebProvider
+
+ConnectButton
+
+createWallet()
+
+useActiveAccount()
+
+Devono seguire lo stesso flusso USDA.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+FASE 5
+
+Per il momento implementa SOLO:
+
+✔ Connessione wallet
+
+NON implementare:
+
+firma
+
+staking
+
+transfer
+
+ERC20
+
+recovery
+
+polling
+
+fire-and-forget
+
+visibilitychange
+
+encodeERC20Transfer
+
+qualsiasi workaround USDA.
+
+Servono solo dopo.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+FASE 6
+
+Usa ESATTAMENTE gli stessi wallet USDA.
+
+createWallet("io.metamask")
+
+createWallet("com.trustwallet.app")
+
+createWallet("com.coinbase.wallet")
+
+createWallet("me.rainbow")
+
+createWallet("io.zerion.wallet")
+
+Nessun altro wallet.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+FASE 7
+
+Il risultato finale deve essere:
+
+utente apre AlphaChat
+
+↓
+
+clicca Connetti Wallet
+
+↓
+
+modal Thirdweb
+
+↓
+
+tap Trust Wallet
+
+↓
+
+Trust Wallet si apre su iPhone
+
+↓
+
+utente approva
+
+↓
+
+ritorno ad AlphaChat
+
+↓
+
+useActiveAccount() contiene address
+
+STOP.
+
+NON implementare altro.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+VINCOLI OBBLIGATORI
+
+NON cambiare l'architettura USDA.
+
+NON fare refactoring.
+
+NON usare librerie differenti.
+
+NON introdurre pattern personali.
+
+NON sostituire ConnectButton.
+
+NON creare WalletSheet personalizzati.
+
+NON creare hook custom.
+
+NON usare window.open.
+
+NON usare WalletConnect direttamente.
+
+NON usare provider Ethereum manuali.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+Alla fine mostra esclusivamente:
+
+1. file eliminati
+
+2. file creati
+
+3. package installati
+
+4. diff completo
+
+5. motivazione tecnica di ogni modifica
+
+Non eseguire nessun'altra modifica.

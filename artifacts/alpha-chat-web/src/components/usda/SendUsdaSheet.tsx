@@ -11,12 +11,15 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useActiveAccount, ConnectButton } from "thirdweb/react";
 import {
-  walletModal,
+  client,
+  polygon,
+  wallets,
   USDA_CONTRACT_ADDRESS,
   USDA_CHAIN_ID,
   USDA_DECIMALS,
-} from "../../lib/wallet-stub";
+} from "../../lib/thirdweb";
 import { humanizeUsdaError, isRecipientNoWallet } from "../../lib/usda-errors";
 import { apiUsdaPreparePayment, apiUsdaSubmitPayment } from "../../lib/usda-api";
 
@@ -81,10 +84,10 @@ export function SendUsdaSheet({ conversationId, toUserId, toName, onClose, onSen
   const [signing,           setSigning]           = useState(false);
   const [signingStatus,     setSigningStatus]     = useState<SigningStatus | null>(null);
 
-  // ── Wallet — stub (in attesa della nuova integrazione) ───────────────────
-  const address: string | undefined = undefined;
-  const isWalletConnected = false;
-  const isCorrectNetwork  = false;
+  const account           = useActiveAccount();
+  const address           = account?.address;
+  const isWalletConnected = !!account;
+  const isCorrectNetwork  = !!account;
 
   const signTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -132,7 +135,6 @@ export function SendUsdaSheet({ conversationId, toUserId, toName, onClose, onSen
     }
   }
 
-  function handleSwitchNetwork() { walletModal.open(); }
 
   // ── Annulla firma ────────────────────────────────────────────────────────
   const handleCancelSigning = useCallback(() => {
@@ -292,14 +294,7 @@ export function SendUsdaSheet({ conversationId, toUserId, toName, onClose, onSen
                   ))}
                 </div>
                 <div className="usda-connect-btn-wrap">
-                  <button
-                    type="button"
-                    className="usda-btn-primary"
-                    style={{ width: "100%", touchAction: "manipulation" }}
-                    onClick={() => walletModal.open()}
-                  >
-                    🔗 Connetti Wallet
-                  </button>
+                  <ConnectButton client={client} chain={polygon} wallets={wallets} />
                 </div>
               </div>
             )}
@@ -309,9 +304,7 @@ export function SendUsdaSheet({ conversationId, toUserId, toName, onClose, onSen
               <div className="usda-network-warning" role="alert">
                 <p>⚠️ Rete non corretta — passa a <strong>Polygon Mainnet</strong>.</p>
                 <p className="usda-network-current">Rete attuale: non Polygon Mainnet</p>
-                <button type="button" className="usda-btn-secondary" onClick={handleSwitchNetwork}>
-                  🌐 Passa a Polygon
-                </button>
+                <ConnectButton client={client} chain={polygon} wallets={wallets} />
               </div>
             )}
 

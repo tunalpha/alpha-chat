@@ -13,11 +13,14 @@
  */
 
 import { useState, useCallback } from "react";
+import { useActiveAccount, ConnectButton } from "thirdweb/react";
 import {
-  walletModal,
+  client,
+  polygon,
+  wallets,
   USDA_CONTRACT_ADDRESS,
   USDA_CHAIN_ID,
-} from "../lib/wallet-stub";
+} from "../lib/thirdweb";
 
 // ── Costanti ─────────────────────────────────────────────────────────────────
 
@@ -51,14 +54,13 @@ interface Props {
 // ── Componente ────────────────────────────────────────────────────────────────
 
 export default function UsdaSettingsPage({ onBack }: Props) {
-  // ── Wallet — stub (in attesa della nuova integrazione) ───────────────────
-  const address: string | undefined = undefined;
-  const isConnected      = false;
-  const isCorrectNetwork = false;
+  const account          = useActiveAccount();
+  const address          = account?.address;
+  const isConnected      = !!account;
+  const isCorrectNetwork = !!account;
 
-  const [copied,       setCopied]       = useState<string | null>(null);
-  const [watchStatus,  setWatchStatus]  = useState<"idle" | "loading" | "ok" | "err">("idle");
-  const [switchError,  setSwitchError]  = useState<string | null>(null);
+  const [copied,      setCopied]      = useState<string | null>(null);
+  const [watchStatus, setWatchStatus] = useState<"idle" | "loading" | "ok" | "err">("idle");
 
   // ── Copy helpers ──────────────────────────────────────────────────────────
   const copy = useCallback((key: string, value: string) => {
@@ -68,7 +70,6 @@ export default function UsdaSettingsPage({ onBack }: Props) {
     });
   }, []);
 
-  function handleSwitchNetwork() { walletModal.open(); }
 
   // ── wallet_watchAsset ─────────────────────────────────────────────────────
   async function handleAddToken() {
@@ -144,14 +145,7 @@ export default function UsdaSettingsPage({ onBack }: Props) {
                 ))}
               </div>
               <div className="ups-connect-wrap">
-                <button
-                  type="button"
-                  className="ups-btn-primary"
-                  style={{ touchAction: "manipulation", WebkitTapHighlightColor: "transparent" }}
-                  onClick={() => walletModal.open()}
-                >
-                  🔗 Collega Wallet
-                </button>
+                <ConnectButton client={client} chain={polygon} wallets={wallets} />
               </div>
             </div>
           )}
@@ -162,19 +156,8 @@ export default function UsdaSettingsPage({ onBack }: Props) {
               <p className="ups-card-body">
                 I pagamenti USDA richiedono <strong>Polygon Mainnet</strong>.
               </p>
-              {switchError && <p className="ups-inline-error">{switchError}</p>}
-              <button type="button" className="ups-btn-primary" onClick={handleSwitchNetwork}>
-                🌐 Passa a Polygon Mainnet
-              </button>
               <div className="ups-connect-wrap" style={{ marginTop: 8 }}>
-                <button
-                  type="button"
-                  className="ups-btn-secondary"
-                  style={{ fontSize: "0.82rem", padding: "6px 14px", touchAction: "manipulation" }}
-                  onClick={() => walletModal.open()}
-                >
-                  ⚙️ Gestisci Wallet
-                </button>
+                <ConnectButton client={client} chain={polygon} wallets={wallets} />
               </div>
             </div>
           )}
@@ -202,14 +185,7 @@ export default function UsdaSettingsPage({ onBack }: Props) {
               </div>
               <div className="ups-wallet-actions">
                 <div className="ups-connect-wrap">
-                  <button
-                    type="button"
-                    className="ups-btn-secondary"
-                    style={{ fontSize: "0.82rem", padding: "6px 14px", touchAction: "manipulation" }}
-                    onClick={() => walletModal.open()}
-                  >
-                    ⚙️ Gestisci Wallet
-                  </button>
+                  <ConnectButton client={client} chain={polygon} wallets={wallets} />
                 </div>
               </div>
             </div>

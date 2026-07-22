@@ -10,10 +10,13 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useActiveAccount, ConnectButton } from "thirdweb/react";
 import {
-  walletModal,
+  client,
+  polygon,
+  wallets,
   USDA_CHAIN_ID,
-} from "../lib/wallet-stub";
+} from "../lib/thirdweb";
 import {
   apiUsdaGetWallet,
   apiUsdaGetHistory,
@@ -67,13 +70,10 @@ export default function WalletCenterPage({ onBack }: Props) {
   const abortMount   = useRef<AbortController | null>(null);
   const abortHistory = useRef<AbortController | null>(null);
 
-  // ── Wallet — stub (in attesa della nuova integrazione) ──────────────────────
-  const address: string | undefined = undefined;
-  const isWalletConnected = false;
-  const isCorrectNetwork  = false;
-
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  async function handleSwitchNetworkNoop() { /* placeholder */ }
+  const account           = useActiveAccount();
+  const address           = account?.address;
+  const isWalletConnected = !!account;
+  const isCorrectNetwork  = !!account;
 
   // ── Recovery crash al mount ─────────────────────────────────────────────────
   const [recoveryBanner, setRecoveryBanner] = useState<"found" | "not_found" | null>(null);
@@ -139,7 +139,6 @@ export default function WalletCenterPage({ onBack }: Props) {
 
   const balance = wallet?.balance_usda ?? "—";
 
-  function handleSwitchNetwork() { walletModal.open(); }
 
   return (
     <div className="wc-root">
@@ -257,27 +256,14 @@ export default function WalletCenterPage({ onBack }: Props) {
                     <div className="wc-tw-chain-row">
                       <span aria-hidden="true">🟣</span>
                       <span>Polygon Mainnet</span>
-                      {isCorrectNetwork ? (
-                        <span className="wc-tw-badge wc-tw-badge--ok">Chain 137 ✓</span>
-                      ) : (
-                        <button type="button" className="wc-tw-badge wc-tw-badge--warn" onClick={handleSwitchNetwork}>
-                          Rete errata — Passa a Polygon
-                        </button>
-                      )}
+                      <span className="wc-tw-badge wc-tw-badge--ok">Chain 137 ✓</span>
                     </div>
                     <div className="wc-tw-addr-row">
                       <span className="wc-tw-addr-label">Indirizzo</span>
                       <span className="wc-tw-addr">{address}</span>
                     </div>
                     <div className="wc-tw-connect-btn">
-                      <button
-                        type="button"
-                        className="wc-tw-manage-btn"
-                        style={{ fontSize: "0.82rem", padding: "6px 14px", touchAction: "manipulation" }}
-                        onClick={() => walletModal.open()}
-                      >
-                        ⚙️ Gestisci Wallet
-                      </button>
+                      <ConnectButton client={client} chain={polygon} wallets={wallets} />
                     </div>
                   </div>
                 ) : (
@@ -288,14 +274,7 @@ export default function WalletCenterPage({ onBack }: Props) {
                       Il tuo indirizzo 0x verrà letto automaticamente.
                     </p>
                     <div className="wc-tw-connect-btn">
-                      <button
-                        type="button"
-                        className="wc-connect-wallet-btn"
-                        style={{ touchAction: "manipulation", WebkitTapHighlightColor: "transparent" }}
-                        onClick={() => walletModal.open()}
-                      >
-                        🔗 Connetti Wallet
-                      </button>
+                      <ConnectButton client={client} chain={polygon} wallets={wallets} />
                     </div>
                   </div>
                 )}
@@ -413,27 +392,14 @@ export default function WalletCenterPage({ onBack }: Props) {
                 <div className="wc-tw-chain-row">
                   <span aria-hidden="true">🟣</span>
                   <span>Polygon Mainnet</span>
-                  {isCorrectNetwork ? (
-                    <span className="wc-tw-badge wc-tw-badge--ok">Chain 137 ✓</span>
-                  ) : (
-                    <button type="button" className="wc-tw-badge wc-tw-badge--warn" onClick={handleSwitchNetwork}>
-                      Rete errata — Passa a Polygon
-                    </button>
-                  )}
+                  <span className="wc-tw-badge wc-tw-badge--ok">Chain 137 ✓</span>
                 </div>
                 <div className="wc-tw-addr-row">
                   <span className="wc-tw-addr-label">Indirizzo (letto dal wallet)</span>
                   <span className="wc-tw-addr">{address}</span>
                 </div>
                 <div className="wc-tw-connect-btn">
-                  <button
-                    type="button"
-                    className="wc-tw-manage-btn"
-                    style={{ fontSize: "0.82rem", padding: "6px 14px", touchAction: "manipulation" }}
-                    onClick={() => walletModal.open()}
-                  >
-                    ⚙️ Gestisci Wallet
-                  </button>
+                  <ConnectButton client={client} chain={polygon} wallets={wallets} />
                 </div>
               </div>
             ) : (
@@ -444,14 +410,7 @@ export default function WalletCenterPage({ onBack }: Props) {
                   Il tuo indirizzo Polygon viene letto automaticamente — non devi inserirlo.
                 </p>
                 <div className="wc-tw-connect-btn">
-                  <button
-                    type="button"
-                    className="wc-connect-wallet-btn"
-                    style={{ touchAction: "manipulation", WebkitTapHighlightColor: "transparent" }}
-                    onClick={() => walletModal.open()}
-                  >
-                    🔗 Connetti Wallet
-                  </button>
+                  <ConnectButton client={client} chain={polygon} wallets={wallets} />
                 </div>
               </div>
             )}
