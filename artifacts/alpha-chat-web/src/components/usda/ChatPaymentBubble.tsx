@@ -310,12 +310,45 @@ export const ChatPaymentBubble = memo(function ChatPaymentBubble({ data, isMine 
         </div>
       )}
 
-      {/* TX hash — solo stati terminali con release */}
-      {isTerminalTransferStatus(data.status) && data.tx_hash_release && (
-        <div className="cp-bubble-tx" aria-label={`Hash transazione: ${data.tx_hash_release}`}>
-          TX: {data.tx_hash_release.slice(0, 10)}…
-        </div>
-      )}
+      {/* PolygonScan links — audit blockchain.
+           Deposito: visibile da quando lo status >= "pending" (deposito confermato).
+           Rilascio: visibile quando il pagamento è stato completato. */}
+      {(() => {
+        // Calcola gli URL dinamicamente dall'hash (il backend li include nel meta,
+        // ma il calcolo client-side è un fallback universale per i messaggi vecchi).
+        const depositUrl  = data.deposit_polygonscan_url
+          ?? (data.tx_hash_deposit  ? `https://polygonscan.com/tx/${data.tx_hash_deposit}`  : null);
+        const releaseUrl  = data.release_polygonscan_url
+          ?? (data.tx_hash_release  ? `https://polygonscan.com/tx/${data.tx_hash_release}`  : null);
+
+        if (!depositUrl && !releaseUrl) return null;
+        return (
+          <div className="cp-bubble-scan-links">
+            {depositUrl && (
+              <a
+                href={depositUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="cp-scan-link"
+                aria-label="Verifica deposito su PolygonScan"
+              >
+                ↗ {releaseUrl ? "Visualizza deposito" : "Visualizza transazione"}
+              </a>
+            )}
+            {releaseUrl && (
+              <a
+                href={releaseUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="cp-scan-link"
+                aria-label="Verifica rilascio su PolygonScan"
+              >
+                ↗ Visualizza rilascio
+              </a>
+            )}
+          </div>
+        );
+      })()}
     </div>
   );
 });

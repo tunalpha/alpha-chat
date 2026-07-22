@@ -46,8 +46,10 @@ export interface IChatTransfer {
   status:              ChatTransferStatus;
 
   // Blockchain
-  tx_hash_deposit:     string | null;
-  tx_hash_release:     string | null;
+  tx_hash_deposit:      string | null;
+  tx_hash_release:      string | null;
+  deposit_block_number: number | null;   // block number Polygon del deposito
+  release_block_number: number | null;   // block number Polygon del rilascio
 
   // Timing
   expires_at:          Date;
@@ -116,8 +118,10 @@ const ChatTransferSchema = new Schema<ChatTransferDocument>(
     },
 
     // Blockchain
-    tx_hash_deposit:  { type: String, default: null },
-    tx_hash_release:  { type: String, default: null },
+    tx_hash_deposit:      { type: String,  default: null },
+    tx_hash_release:      { type: String,  default: null },
+    deposit_block_number: { type: Number,  default: null },
+    release_block_number: { type: Number,  default: null },
 
     // Timing
     expires_at:       { type: Date, required: true },

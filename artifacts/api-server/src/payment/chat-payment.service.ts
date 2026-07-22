@@ -54,30 +54,37 @@ const memberRepo = new ConversationMemberRepository();
 /**
  * Vista pubblica del trasferimento — escrow_encrypted_pk sempre escluso.
  */
+const POLYGONSCAN_TX = (hash: string | null) =>
+  hash ? `https://polygonscan.com/tx/${hash}` : null;
+
 function _format(doc: ChatTransferDocument): Record<string, unknown> {
   return {
-    transfer_id:      doc.transfer_id,
-    status:           doc.status,
-    amount:           doc.amount?.toString() ?? "0",
-    amount_units:     doc.amount_units,
-    asset_symbol:     doc.asset_symbol,
-    asset_address:    doc.asset_address,
-    fee:              doc.fee?.toString() ?? "0",
-    note:             doc.note ?? null,
-    sender_id:        doc.sender_id.toString(),
-    recipient_id:     doc.recipient_id.toString(),
-    conversation_id:  doc.conversation_id.toString(),
-    message_id:       doc.message_id?.toString() ?? null,
-    escrow_wallet:    doc.escrow_wallet,
-    sender_wallet:    doc.sender_wallet,
-    recipient_wallet: doc.recipient_wallet ?? null,
-    tx_hash_deposit:  doc.tx_hash_deposit ?? null,
-    tx_hash_release:  doc.tx_hash_release ?? null,
-    expires_at:       doc.expires_at.toISOString(),
-    confirmed_at:     doc.confirmed_at?.toISOString() ?? null,
-    responded_at:     doc.responded_at?.toISOString() ?? null,
-    completed_at:     doc.completed_at?.toISOString() ?? null,
-    created_at:       (doc as any).createdAt?.toISOString() ?? null,
+    transfer_id:              doc.transfer_id,
+    status:                   doc.status,
+    amount:                   doc.amount?.toString() ?? "0",
+    amount_units:             doc.amount_units,
+    asset_symbol:             doc.asset_symbol,
+    asset_address:            doc.asset_address,
+    fee:                      doc.fee?.toString() ?? "0",
+    note:                     doc.note ?? null,
+    sender_id:                doc.sender_id.toString(),
+    recipient_id:             doc.recipient_id.toString(),
+    conversation_id:          doc.conversation_id.toString(),
+    message_id:               doc.message_id?.toString() ?? null,
+    escrow_wallet:            doc.escrow_wallet,
+    sender_wallet:            doc.sender_wallet,
+    recipient_wallet:         doc.recipient_wallet ?? null,
+    tx_hash_deposit:          doc.tx_hash_deposit ?? null,
+    tx_hash_release:          doc.tx_hash_release ?? null,
+    deposit_block_number:     doc.deposit_block_number ?? null,
+    release_block_number:     doc.release_block_number ?? null,
+    deposit_polygonscan_url:  POLYGONSCAN_TX(doc.tx_hash_deposit ?? null),
+    release_polygonscan_url:  POLYGONSCAN_TX(doc.tx_hash_release ?? null),
+    expires_at:               doc.expires_at.toISOString(),
+    confirmed_at:             doc.confirmed_at?.toISOString() ?? null,
+    responded_at:             doc.responded_at?.toISOString() ?? null,
+    completed_at:             doc.completed_at?.toISOString() ?? null,
+    created_at:               (doc as any).createdAt?.toISOString() ?? null,
   };
 }
 
@@ -86,18 +93,22 @@ function _format(doc: ChatTransferDocument): Record<string, unknown> {
  */
 function _paymentMeta(doc: ChatTransferDocument): Record<string, unknown> {
   return {
-    transfer_id:     doc.transfer_id,
-    status:          doc.status,
-    amount:          doc.amount?.toString() ?? "0",
-    asset_symbol:    doc.asset_symbol,
-    asset_address:   doc.asset_address,
-    note:            doc.note ?? null,
-    sender_id:       doc.sender_id.toString(),
-    recipient_id:    doc.recipient_id.toString(),
-    escrow_wallet:   doc.escrow_wallet,
-    expires_at:      doc.expires_at.toISOString(),
-    tx_hash_deposit: doc.tx_hash_deposit ?? null,
-    tx_hash_release: doc.tx_hash_release ?? null,
+    transfer_id:             doc.transfer_id,
+    status:                  doc.status,
+    amount:                  doc.amount?.toString() ?? "0",
+    asset_symbol:            doc.asset_symbol,
+    asset_address:           doc.asset_address,
+    note:                    doc.note ?? null,
+    sender_id:               doc.sender_id.toString(),
+    recipient_id:            doc.recipient_id.toString(),
+    escrow_wallet:           doc.escrow_wallet,
+    expires_at:              doc.expires_at.toISOString(),
+    tx_hash_deposit:         doc.tx_hash_deposit ?? null,
+    tx_hash_release:         doc.tx_hash_release ?? null,
+    deposit_block_number:    doc.deposit_block_number ?? null,
+    release_block_number:    doc.release_block_number ?? null,
+    deposit_polygonscan_url: POLYGONSCAN_TX(doc.tx_hash_deposit ?? null),
+    release_polygonscan_url: POLYGONSCAN_TX(doc.tx_hash_release ?? null),
   };
 }
 
@@ -196,9 +207,13 @@ async function _updateMessageMeta(transfer: ChatTransferDocument): Promise<void>
       { _id: transfer.message_id },
       {
         $set: {
-          "system_metadata.status":          transfer.status,
-          "system_metadata.tx_hash_deposit": transfer.tx_hash_deposit ?? null,
-          "system_metadata.tx_hash_release": transfer.tx_hash_release ?? null,
+          "system_metadata.status":                  transfer.status,
+          "system_metadata.tx_hash_deposit":         transfer.tx_hash_deposit ?? null,
+          "system_metadata.tx_hash_release":         transfer.tx_hash_release ?? null,
+          "system_metadata.deposit_block_number":    transfer.deposit_block_number ?? null,
+          "system_metadata.release_block_number":    transfer.release_block_number ?? null,
+          "system_metadata.deposit_polygonscan_url": POLYGONSCAN_TX(transfer.tx_hash_deposit ?? null),
+          "system_metadata.release_polygonscan_url": POLYGONSCAN_TX(transfer.tx_hash_release ?? null),
         },
       },
     );
@@ -213,15 +228,19 @@ async function _updateMessageMeta(transfer: ChatTransferDocument): Promise<void>
  *
  * Saltabile in dev/test con PAYMENT_SKIP_CHAIN_VERIFY=true.
  */
+/**
+ * Verifica on-chain e ritorna il block number del tx (per audit).
+ * In dev mode (PAYMENT_SKIP_CHAIN_VERIFY=true) ritorna null.
+ */
 async function _verifyDepositTx(params: {
   txHash:       string;
   escrowWallet: string;
   amountUnits:  string;
   assetAddress: string;
-}): Promise<void> {
+}): Promise<number | null> {
   if (process.env.PAYMENT_SKIP_CHAIN_VERIFY === "true") {
     logger.warn({ txHash: params.txHash }, "[Payment] On-chain verify SKIPPED (dev mode)");
-    return;
+    return null;
   }
 
   const publicClient = createPublicClient({
@@ -258,6 +277,8 @@ async function _verifyDepositTx(params: {
   });
 
   if (!validLog) throw new AppError("TRANSFER_TX_INVALID", 400);
+
+  return Number(receipt.blockNumber);
 }
 
 /**
@@ -410,9 +431,10 @@ export async function confirmDeposit(params: {
   // Anti-replay
   await checkAndMarkTx(params.txHash, "chat-transfer-deposit");
 
-  // Verifica on-chain — rollback anti-replay se fallisce
+  // Verifica on-chain — rollback anti-replay se fallisce; ritorna block number per audit
+  let depositBlockNumber: number | null = null;
   try {
-    await _verifyDepositTx({
+    depositBlockNumber = await _verifyDepositTx({
       txHash:       params.txHash,
       escrowWallet: transfer.escrow_wallet,
       amountUnits:  transfer.amount_units,
@@ -426,7 +448,14 @@ export async function confirmDeposit(params: {
   const now     = new Date();
   const updated = await ChatTransferModel.findOneAndUpdate(
     { transfer_id: params.transferId, status: "awaiting_deposit" },
-    { $set: { status: "pending", tx_hash_deposit: params.txHash, confirmed_at: now } },
+    {
+      $set: {
+        status:               "pending",
+        tx_hash_deposit:      params.txHash,
+        deposit_block_number: depositBlockNumber,
+        confirmed_at:         now,
+      },
+    },
     { returnDocument: "after" },
   );
   if (!updated) throw new AppError("TRANSFER_INVALID_TRANSITION", 409);
@@ -544,6 +573,32 @@ export async function acceptTransfer(params: {
     await writeAudit({ transferId: params.transferId, fromStatus: "accepting", toStatus: "accepted", triggeredBy: "recipient", txHash, ip: params.ip });
     await _updateMessageMeta(accepted);
     emitPaymentStateChanged(accepted);
+
+    // Fire-and-forget: arricchisce il record con il block number del rilascio.
+    // La TX è già confermata (transferFromCustodial aspetta il receipt), quindi
+    // questa getTransactionReceipt ritorna subito senza attesa mining.
+    void (async () => {
+      try {
+        const publicClient = createPublicClient({
+          chain:     polygon,
+          transport: http(process.env.USDA_POLYGON_RPC ?? "https://polygon-bor-rpc.publicnode.com"),
+        });
+        const r = await publicClient.getTransactionReceipt({ hash: txHash as `0x${string}` });
+        const releaseBlock = Number(r.blockNumber);
+        const enriched = await ChatTransferModel.findOneAndUpdate(
+          { transfer_id: params.transferId },
+          { $set: { release_block_number: releaseBlock } },
+          { returnDocument: "after" },
+        );
+        if (enriched) {
+          await _updateMessageMeta(enriched);
+          emitPaymentStateChanged(enriched);
+        }
+        logger.info({ transferId: params.transferId, releaseBlock }, "[Payment] Release block arricchito ✓");
+      } catch (enrichErr) {
+        logger.warn({ enrichErr, transferId: params.transferId }, "[Payment] Non-critical: release block non arricchito");
+      }
+    })();
 
     logger.info({ transferId: params.transferId, txHash }, "[Payment] Trasferimento accettato ✓");
     return _format(accepted);

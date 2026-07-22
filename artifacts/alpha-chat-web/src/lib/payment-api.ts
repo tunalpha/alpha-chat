@@ -34,12 +34,17 @@ export interface ChatPaymentData {
   asset_symbol:    string;
   sender_id:       string;
   recipient_id:    string;
-  expires_at:      string | null;
-  tx_hash_release: string | null;
+  expires_at:           string | null;
+  tx_hash_deposit?:     string | null;   // hash deposito (per PolygonScan)
+  tx_hash_release:      string | null;   // hash rilascio
+  deposit_block_number?:    number | null;  // block number Polygon deposito
+  release_block_number?:    number | null;  // block number Polygon rilascio
+  deposit_polygonscan_url?: string | null;  // link PolygonScan deposito
+  release_polygonscan_url?: string | null;  // link PolygonScan rilascio
   // Nomi display (opzionali — precompilati dal backend se disponibili)
-  sender_name?:    string;
-  recipient_name?: string;
-  note?:           string | null;
+  sender_name?:         string;
+  recipient_name?:      string;
+  note?:                string | null;
 }
 
 export interface ChatTransferResponse {

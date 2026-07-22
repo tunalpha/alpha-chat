@@ -5836,6 +5836,12 @@ html.emergency-open #root {
 .cp-btn-detect    { background: rgba(99,102,241,0.12); color: #818cf8; border: 1px solid rgba(99,102,241,0.25); flex: unset; width: 100%; font-size: 0.79rem; }
 .cp-btn-detect:hover:not(:disabled) { background: rgba(99,102,241,0.22); }
 
+/* PolygonScan audit links */
+.cp-bubble-scan-links { display: flex; flex-direction: column; gap: 4px; padding: 8px 12px 4px; border-top: 1px solid rgba(255,255,255,0.07); margin-top: 4px; }
+.cp-scan-link         { font-size: 0.76rem; color: rgba(139,148,228,0.85); text-decoration: none; line-height: 1.4; transition: color 0.15s; }
+.cp-scan-link:hover   { color: #a5b4fc; text-decoration: underline; }
+.cp-scan-link:active  { color: #818cf8; }
+
 /* Errore e TX hash */
 .cp-bubble-error   { font-size: 0.75rem; color: #f87171; background: rgba(248,113,113,0.10); border: 1px solid rgba(248,113,113,0.20); border-radius: 8px; padding: 7px 10px; margin-top: 2px; }
 .cp-bubble-tx      { font-size: 0.68rem; color: var(--text-3, rgba(255,255,255,0.30)); font-family: monospace; margin-top: 2px; }
