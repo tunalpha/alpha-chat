@@ -19,7 +19,8 @@ import { logger } from "../lib/logger";
 // Costanti
 // ---------------------------------------------------------------------------
 
-const DEFAULT_RPC = "https://polygon-rpc.com";
+const DEFAULT_RPC             = "https://polygon-rpc.com";
+const DEFAULT_USDA_CONTRACT   = "0x23396cF899Ca06c4472205fC903bDB4de249D6f";
 const USDA_DECIMALS = 6;
 const TIMEOUT_MS = 10_000;
 
@@ -78,8 +79,7 @@ export async function ethCall(
 // ---------------------------------------------------------------------------
 
 export async function balanceOfUsda(address: string): Promise<string> {
-  const contract = process.env.USDA_CONTRACT_ADDRESS;
-  if (!contract) throw new Error("USDA_CONTRACT_ADDRESS not set");
+  const contract = process.env.USDA_CONTRACT_ADDRESS ?? DEFAULT_USDA_CONTRACT;
 
   const paddedAddress = address.toLowerCase().replace(/^0x/, "").padStart(64, "0");
   const callData = `${BALANCE_OF_SELECTOR}${paddedAddress}`;
@@ -146,12 +146,8 @@ export async function verifyUsdaTx(params: {
     senderAddress,
     recipientAddress,
     amountUnits,
-    contractAddress = process.env.USDA_CONTRACT_ADDRESS ?? "",
+    contractAddress = process.env.USDA_CONTRACT_ADDRESS ?? DEFAULT_USDA_CONTRACT,
   } = params;
-
-  if (!contractAddress) {
-    return { valid: false, error: "USDA_CONTRACT_ADDRESS not configured" };
-  }
 
   // ── 1. Chain ID check ────────────────────────────────────────────────────
   const chainIdHex = await rpcCall<string>("eth_chainId", []).catch(() => null);
