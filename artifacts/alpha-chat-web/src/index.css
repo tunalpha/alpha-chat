@@ -5891,6 +5891,20 @@ html.emergency-open #root {
 .sp-info-text { font-size: 0.80rem; color: var(--text-3, rgba(255,255,255,0.45)); line-height: 1.45; margin: 0; }
 .sp-info-warning { color: rgba(251,191,36,0.85); }
 .sp-mono-input { font-family: monospace; font-size: 0.82rem !important; letter-spacing: 0.01em; }
+
+/* ── SendPaymentSheet v2 — flusso automatico ──────────────────────────────── */
+.sp-wallet-prompt { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 6px 0; }
+.sp-wallet-prompt-text { font-size: 0.82rem; color: var(--text-3, rgba(255,255,255,0.5)); text-align: center; line-height: 1.4; }
+.sp-wallet-ready { display: flex; align-items: center; gap: 6px; font-size: 0.78rem; color: #22c55e; padding: 4px 0; }
+.sp-wallet-addr { font-family: monospace; font-size: 0.78rem; color: #22c55e; }
+.sp-sending { display: flex; flex-direction: column; align-items: center; gap: 14px; padding: 16px 0 8px; text-align: center; }
+.sp-success { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 12px 0; }
+.sp-success-icon { font-size: 3rem; line-height: 1; }
+.sp-success-title { font-size: 1.15rem; font-weight: 700; color: #4ade80; }
+.sp-success-sub { font-size: 0.85rem; color: var(--text-2, rgba(255,255,255,0.7)); }
+.sp-err-icon { font-size: 2.2rem; line-height: 1; }
+.sp-err-title { font-size: 0.95rem; font-weight: 600; color: #f87171; }
+.sp-err-detail { font-size: 0.78rem; max-width: 100%; text-align: left; white-space: pre-wrap; word-break: break-word; }
 .usda-balance-row, .usda-fee-row, .usda-total-row { font-size: 0.8rem; color: var(--text-3, rgba(255,255,255,0.5)); display: flex; justify-content: space-between; }
 .usda-total-row { font-size: 0.85rem; color: var(--text-1, #fff); font-weight: 600; }
 .usda-error { font-size: 0.8rem; color: #f87171; background: rgba(248,113,113,0.1); border: 1px solid rgba(248,113,113,0.2); border-radius: 8px; padding: 8px 12px; }

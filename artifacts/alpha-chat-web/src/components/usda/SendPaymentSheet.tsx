@@ -1,18 +1,23 @@
 /**
- * SendPaymentSheet — bottom sheet per il nuovo Chat Payment Engine.
+ * SendPaymentSheet — Chat Payment Engine, flusso automatico.
  *
- * Flusso a 3 passi:
- *   1. form    → importo + nota opzionale
- *   2. confirm → riepilogo importo + fee stimata
- *   3. deposit → crea transfer sul backend → mostra indirizzo escrow →
- *                l'utente invia USDA da qualsiasi wallet e incolla il tx_hash →
- *                chiama POST /api/v1/payments/:id/deposit → sheet si chiude
+ * Step 1 (form):      importo + nota
+ * Step 2 (confirm):   riepilogo pulito (nessuna fee, nessun totale) + wallet status
+ * Step 3 (sending):   tutto automatico —
+ *   POST /api/v1/payments → escrow_wallet
+ *   → ERC-20 transfer ThirdWeb → firma wallet → tx_hash
+ *   → POST /api/v1/payments/:id/deposit
+ *   → "Pagamento inviato ✓"
  *
- * Non dipende da alcun SDK blockchain — compatibile con qualsiasi wallet.
- * ADR-001: zero chiamate a getusda.xyz. Usa esclusivamente il nuovo engine.
+ * L'utente non vede mai: indirizzo escrow, tx_hash, contratto.
+ * ADR-001: zero chiamate a getusda.xyz.
  */
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
+import { getContract, sendAndConfirmTransaction } from "thirdweb";
+import { transfer as erc20Transfer } from "thirdweb/extensions/erc20";
+import { useActiveAccount, ConnectButton } from "thirdweb/react";
+import { client, polygon, wallets } from "../../lib/thirdweb";
 import {
   apiPaymentCreate,
   apiPaymentDeposit,
@@ -28,19 +33,33 @@ interface Props {
   toUserId:       string;
   toName:         string;
   onClose:        () => void;
-  /** Chiamata dopo che il deposito è stato confermato con successo. */
   onSent:         () => void;
 }
 
-type Step = "form" | "confirm" | "deposit";
+type Step = "form" | "confirm" | "sending";
 
-const FEE_RATE = 0.001; // 0.1% — solo indicativo nell'UI, il backend calcola il reale
+type SendPhase =
+  | "creating"    // POST /api/v1/payments
+  | "signing"     // ThirdWeb firma
+  | "confirming"  // attesa receipt blockchain
+  | "depositing"  // POST /deposit
+  | "done"
+  | "error";
 
 const STEPS: { id: Step; label: string }[] = [
   { id: "form",    label: "Importo"  },
   { id: "confirm", label: "Conferma" },
-  { id: "deposit", label: "Deposito" },
+  { id: "sending", label: "Invio"    },
 ];
+
+const PHASE_LABEL: Record<SendPhase, string> = {
+  creating:   "Creazione trasferimento…",
+  signing:    "Firma nel wallet…",
+  confirming: "Conferma blockchain…",
+  depositing: "Finalizzazione…",
+  done:       "Pagamento inviato ✓",
+  error:      "Errore",
+};
 
 // ---------------------------------------------------------------------------
 // Componente
@@ -57,17 +76,21 @@ export function SendPaymentSheet({
   const [amount,   setAmount]   = useState("");
   const [note,     setNote]     = useState("");
   const [error,    setError]    = useState<string | null>(null);
-  const [busy,     setBusy]     = useState(false);
-  const [transfer, setTransfer] = useState<CreateTransferResult | null>(null);
-  const [txHash,   setTxHash]   = useState("");
-  const [copied,   setCopied]   = useState(false);
+  const [phase,    setPhase]    = useState<SendPhase | null>(null);
   const busyRef = useRef(false);
 
-  const amountNum = parseFloat(amount) || 0;
-  const fee       = amountNum > 0 ? (amountNum * FEE_RATE).toFixed(6) : "0.000000";
-  const total     = amountNum > 0 ? (amountNum + parseFloat(fee)).toFixed(6) : "0.000000";
+  const account = useActiveAccount();
+  const isConnected = !!account;
 
+  const amountNum      = parseFloat(amount) || 0;
   const currentStepIdx = STEPS.findIndex((s) => s.id === step);
+
+  // Auto-chiudi dopo il successo
+  useEffect(() => {
+    if (phase !== "done") return;
+    const t = setTimeout(() => onSent(), 1800);
+    return () => clearTimeout(t);
+  }, [phase, onSent]);
 
   // ── Step 1 → Step 2 ────────────────────────────────────────────────────────
   function handleContinue() {
@@ -77,66 +100,74 @@ export function SendPaymentSheet({
       return;
     }
     if (!/^\d+(\.\d{1,18})?$/.test(amount.trim())) {
-      setError("Formato importo non valido.");
+      setError("Usa solo cifre (es. 1 oppure 1.5).");
       return;
     }
     setStep("confirm");
   }
 
-  // ── Step 2 → Step 3 (crea transfer) ────────────────────────────────────────
-  async function handleCreate() {
-    if (busyRef.current) return;
+  // ── Step 2 → Step 3: flusso automatico ─────────────────────────────────────
+  const handleSend = useCallback(async () => {
+    if (busyRef.current || !account) return;
     busyRef.current = true;
-    setBusy(true);
     setError(null);
+    setStep("sending");
+
+    let created: CreateTransferResult | null = null;
+
     try {
-      const result = await apiPaymentCreate({
+      // ── 1. Crea il trasferimento ────────────────────────────────────────
+      setPhase("creating");
+      created = await apiPaymentCreate({
         recipient_id:    toUserId,
         conversation_id: conversationId,
         amount:          amount.trim(),
         note:            note.trim() || undefined,
         asset_symbol:    "USDA",
       });
-      setTransfer(result);
-      setStep("deposit");
-    } catch (e) {
-      setError((e as Error).message ?? "Errore nella creazione del trasferimento.");
+
+      if (!created.escrow_wallet) {
+        throw new Error("Il backend non ha restituito un indirizzo escrow. Riprova.");
+      }
+
+      // ── 2. Prepara la transazione ERC-20 ───────────────────────────────
+      const contractAddress = (created.asset_address ?? "0xe714655fD1B3ba96B887DF1F94336c2A78E24001") as `0x${string}`;
+      const contract = getContract({ client, chain: polygon, address: contractAddress });
+      const tx = erc20Transfer({
+        contract,
+        to:     created.escrow_wallet as `0x${string}`,
+        amount: created.amount, // human-readable, ThirdWeb gestisce i decimali
+      });
+
+      // ── 3. Firma nel wallet dell'utente ─────────────────────────────────
+      setPhase("signing");
+      const receipt = await sendAndConfirmTransaction({ account, transaction: tx });
+      const txHash = receipt.transactionHash;
+
+      // ── 4. Conferma blockchain ──────────────────────────────────────────
+      setPhase("confirming");
+      // sendAndConfirmTransaction aspetta già 1 conferma — questa fase è visiva
+
+      // ── 5. Registra il deposito ─────────────────────────────────────────
+      setPhase("depositing");
+      await apiPaymentDeposit(created.transfer_id, txHash);
+
+      // ── Successo ────────────────────────────────────────────────────────
+      setPhase("done");
+
+    } catch (e: unknown) {
+      const msg = (e instanceof Error ? e.message : String(e)) ?? "Errore sconosciuto.";
+      console.error("[SendPayment] errore:", e);
+      // Se il transfer era già stato creato, informare l'utente che esiste in attesa
+      const detail = created
+        ? "\n\nIl trasferimento è stato creato (ID: " + created.transfer_id.slice(0, 8) + "…) — puoi riprovare la firma aprendo la conversazione."
+        : "";
+      setError(msg + detail);
+      setPhase("error");
     } finally {
       busyRef.current = false;
-      setBusy(false);
     }
-  }
-
-  // ── Step 3: conferma deposito on-chain ─────────────────────────────────────
-  async function handleDeposit() {
-    if (!transfer || busyRef.current) return;
-    setError(null);
-    const hash = txHash.trim();
-    if (!hash || !/^0x[a-fA-F0-9]{64}$/.test(hash)) {
-      setError("Hash non valido — deve iniziare con 0x seguito da 64 caratteri esadecimali.");
-      return;
-    }
-    busyRef.current = true;
-    setBusy(true);
-    try {
-      await apiPaymentDeposit(transfer.transfer_id, hash);
-      onSent();
-    } catch (e) {
-      setError((e as Error).message ?? "Errore nella conferma del deposito — riprova.");
-    } finally {
-      busyRef.current = false;
-      setBusy(false);
-    }
-  }
-
-  // ── Copia indirizzo escrow ─────────────────────────────────────────────────
-  const handleCopyAddress = useCallback(() => {
-    if (!transfer?.escrow_wallet) return;
-    void navigator.clipboard.writeText(transfer.escrow_wallet).then(() => {
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
-    });
-  }, [transfer?.escrow_wallet]);
+  }, [account, toUserId, conversationId, amount, note]);
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
@@ -145,40 +176,27 @@ export function SendPaymentSheet({
       role="dialog"
       aria-modal="true"
       aria-label="Invia USDA"
-      onClick={step !== "deposit" ? onClose : undefined}
+      onClick={phase !== "signing" && phase !== "confirming" && phase !== "depositing"
+        ? onClose
+        : undefined}
     >
       <div className="usda-sheet" onClick={(e) => e.stopPropagation()}>
 
         {/* Header */}
         <div className="usda-sheet-header">
           <span className="usda-sheet-title">💸 Invia USDA</span>
-          {step !== "deposit" && (
-            <button
-              type="button"
-              className="usda-sheet-close"
-              aria-label="Chiudi"
-              onClick={onClose}
-            >
+          {phase !== "signing" && phase !== "confirming" && phase !== "depositing" && (
+            <button type="button" className="usda-sheet-close" aria-label="Chiudi" onClick={onClose}>
               ✕
             </button>
           )}
         </div>
 
-        {/* Step progress bar */}
-        <div
-          className="usda-step-bar"
-          role="progressbar"
-          aria-valuenow={currentStepIdx + 1}
-          aria-valuemax={STEPS.length}
-        >
+        {/* Step bar */}
+        <div className="usda-step-bar" role="progressbar" aria-valuenow={currentStepIdx + 1} aria-valuemax={STEPS.length}>
           {STEPS.map((s, i) => (
-            <div
-              key={s.id}
-              className={`usda-step ${i < currentStepIdx ? "done" : i === currentStepIdx ? "active" : ""}`}
-            >
-              <div className="usda-step-dot" aria-hidden="true">
-                {i < currentStepIdx ? "✓" : i + 1}
-              </div>
+            <div key={s.id} className={`usda-step ${i < currentStepIdx ? "done" : i === currentStepIdx ? "active" : ""}`}>
+              <div className="usda-step-dot" aria-hidden="true">{i < currentStepIdx ? "✓" : i + 1}</div>
               <div className="usda-step-label">{s.label}</div>
             </div>
           ))}
@@ -224,9 +242,7 @@ export function SendPaymentSheet({
             {error && <div className="usda-error" role="alert">{error}</div>}
 
             <div className="usda-sheet-actions">
-              <button type="button" className="usda-btn-secondary" onClick={onClose}>
-                Annulla
-              </button>
+              <button type="button" className="usda-btn-secondary" onClick={onClose}>Annulla</button>
               <button type="button" className="usda-btn-primary" onClick={handleContinue}>
                 Continua →
               </button>
@@ -239,32 +255,43 @@ export function SendPaymentSheet({
           <>
             <div className="usda-confirm-summary">
               <div className="usda-confirm-row">
-                <span>A</span><strong>{toName}</strong>
+                <span>A</span>
+                <strong>{toName}</strong>
               </div>
               <div className="usda-confirm-row usda-confirm-total">
-                <span>💸 Importo</span>
-                <strong>{amountNum.toFixed(6)} USDA</strong>
-              </div>
-              <div className="usda-confirm-row">
-                <span>Fee stimata (0.1%)</span>
-                <span>{fee} USDA</span>
+                <span>Importo</span>
+                <strong>{amountNum} USDA</strong>
               </div>
               {note.trim() && (
                 <div className="usda-confirm-row">
-                  <span>Nota</span><em>"{note}"</em>
+                  <span>Nota</span>
+                  <em>"{note}"</em>
                 </div>
               )}
-              <div className="usda-confirm-row" style={{ borderTop: "1px solid rgba(255,255,255,0.08)", paddingTop: 8, fontWeight: 700, color: "#fff" }}>
-                <span>Totale stimato</span>
-                <span>{total} USDA</span>
+              <div className="usda-confirm-row">
+                <span>Commissione</span>
+                <span style={{ color: "#4ade80", fontWeight: 600 }}>Nessuna</span>
               </div>
             </div>
 
-            <p className="sp-info-text">
-              Dopo la conferma riceverai un <strong>indirizzo escrow</strong> su Polygon.
-              Invia esattamente <strong>{amount} USDA</strong> da qualsiasi wallet
-              (MetaMask, Trust, Rainbow, ecc.) e incolla l'hash per completare.
-            </p>
+            {/* Stato wallet */}
+            {!isConnected ? (
+              <div className="sp-wallet-prompt">
+                <p className="sp-wallet-prompt-text">
+                  Connetti il tuo wallet per firmare il pagamento su <strong>Polygon</strong>.
+                </p>
+                <div className="usda-connect-btn-wrap">
+                  <ConnectButton client={client} chain={polygon} wallets={wallets} />
+                </div>
+              </div>
+            ) : (
+              <div className="sp-wallet-ready">
+                <span className="usda-wallet-dot" aria-hidden="true" />
+                <span className="sp-wallet-addr">
+                  {account.address.slice(0, 6)}…{account.address.slice(-4)} · Polygon
+                </span>
+              </div>
+            )}
 
             {error && <div className="usda-error" role="alert">{error}</div>}
 
@@ -273,96 +300,73 @@ export function SendPaymentSheet({
                 type="button"
                 className="usda-btn-secondary"
                 onClick={() => { setStep("form"); setError(null); }}
-                disabled={busy}
               >
                 ← Modifica
               </button>
               <button
                 type="button"
                 className="usda-btn-primary"
-                onClick={handleCreate}
-                disabled={busy}
-                aria-busy={busy}
+                onClick={handleSend}
+                disabled={!isConnected}
+                aria-disabled={!isConnected}
+                title={!isConnected ? "Connetti prima il wallet" : undefined}
               >
-                {busy
-                  ? <><span className="usda-btn-spinner" aria-hidden="true" /> Creazione…</>
-                  : "Conferma"}
+                🔐 Firma e Invia
               </button>
             </div>
           </>
         )}
 
-        {/* ── STEP 3: DEPOSIT ─────────────────────────────────────────────── */}
-        {step === "deposit" && transfer && (
-          <>
-            <div className="sp-deposit-intro">
-              <span className="sp-deposit-check" aria-hidden="true">✅</span>
-              <p>
-                Trasferimento creato. Invia esattamente{" "}
-                <strong>{transfer.amount} USDA</strong> all'indirizzo escrow
-                qui sotto sulla rete <strong>Polygon (PoS)</strong>:
-              </p>
-            </div>
-
-            {/* Indirizzo escrow copyable */}
-            <div className="sp-copy-row">
-              <span className="sp-copy-addr" aria-label="Indirizzo escrow">
-                {transfer.escrow_wallet ?? "—"}
-              </span>
-              <button
-                type="button"
-                className="sp-copy-btn"
-                onClick={handleCopyAddress}
-                aria-label="Copia indirizzo escrow"
-              >
-                {copied ? "✓ Copiato" : "📋 Copia"}
-              </button>
-            </div>
-
-            <p className="sp-info-text sp-info-warning">
-              ⚠️ Invia solo USDA (contratto <code>0xe714655f…24001</code>) su Polygon.
-              Importi errati o reti diverse causeranno la perdita dei fondi.
-            </p>
-
-            {/* TX hash */}
-            <div className="usda-sheet-field">
-              <label htmlFor="sp-txhash">Hash della transazione</label>
-              <input
-                id="sp-txhash"
-                className="usda-note-input sp-mono-input"
-                type="text"
-                placeholder="0x..."
-                spellCheck={false}
-                autoCapitalize="none"
-                value={txHash}
-                onChange={(e) => { setTxHash(e.target.value); setError(null); }}
-              />
-            </div>
-
-            {error && <div className="usda-error" role="alert">{error}</div>}
-
-            <div className="usda-sheet-actions">
-              <button
-                type="button"
-                className="usda-btn-secondary"
-                onClick={onClose}
-                disabled={busy}
-              >
-                Chiudi
-              </button>
-              <button
-                type="button"
-                className="usda-btn-primary"
-                onClick={handleDeposit}
-                disabled={busy || !txHash.trim()}
-                aria-busy={busy}
-              >
-                {busy
-                  ? <><span className="usda-btn-spinner" aria-hidden="true" /> Verifica…</>
-                  : "Conferma deposito"}
-              </button>
-            </div>
-          </>
+        {/* ── STEP 3: SENDING — progress automatico ───────────────────────── */}
+        {step === "sending" && (
+          <div className="sp-sending" role="status" aria-live="polite">
+            {phase === "done" ? (
+              /* Successo */
+              <div className="sp-success">
+                <div className="sp-success-icon" aria-hidden="true">✅</div>
+                <p className="sp-success-title">Pagamento inviato!</p>
+                <p className="sp-success-sub">
+                  {amountNum} USDA → {toName}
+                </p>
+              </div>
+            ) : phase === "error" ? (
+              /* Errore */
+              <>
+                <div className="sp-err-icon" aria-hidden="true">⚠️</div>
+                <p className="sp-err-title">Si è verificato un problema</p>
+                {error && <p className="usda-error sp-err-detail" role="alert">{error}</p>}
+                <div className="usda-sheet-actions" style={{ marginTop: 16 }}>
+                  <button type="button" className="usda-btn-secondary" onClick={onClose}>Chiudi</button>
+                  <button
+                    type="button"
+                    className="usda-btn-primary"
+                    onClick={() => { setStep("confirm"); setPhase(null); setError(null); }}
+                  >
+                    Riprova
+                  </button>
+                </div>
+              </>
+            ) : (
+              /* Fasi di invio */
+              <>
+                <div className="usda-signing-ring" aria-hidden="true">
+                  <div className="usda-signing-spinner" />
+                </div>
+                <p className="usda-signing-label">
+                  {phase ? PHASE_LABEL[phase] : "…"}
+                </p>
+                {phase === "signing" && (
+                  <p className="usda-signing-sub">
+                    Il tuo wallet si è aperto — approva la transazione.
+                    <br />🔒 Sicuro · Solo tu controlli i fondi
+                  </p>
+                )}
+                {(phase === "confirming" || phase === "depositing") && (
+                  <p className="usda-signing-sub">Non chiudere l'app.</p>
+                )}
+              </>
+            )}
+          </div>
         )}
 
       </div>
