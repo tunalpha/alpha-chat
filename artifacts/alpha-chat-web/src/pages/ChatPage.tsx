@@ -5,7 +5,7 @@ import { UsdaRequestBubble } from "../components/usda/UsdaRequestBubble";
 import { SendUsdaSheet } from "../components/usda/SendUsdaSheet";
 import { RequestUsdaSheet } from "../components/usda/RequestUsdaSheet";
 import { UsdaPaymentDetail } from "../components/usda/UsdaPaymentDetail";
-import { WalletSetupSheet } from "../components/usda/WalletSetupSheet";
+
 import { apiUsdaPayRequest } from "../lib/usda-api";
 import type { UsdaPaymentData } from "../lib/usda-types";
 import { useAuth } from "../contexts/AuthContext";
@@ -663,7 +663,6 @@ export default function ChatPage({ onNavigate }: Props) {
   const [showSendUsda,    setShowSendUsda]    = useState(false);
   const [showRequestUsda, setShowRequestUsda] = useState(false);
   const [usdaDetailId,    setUsdaDetailId]    = useState<string | null>(null);
-  const [showWalletSetup, setShowWalletSetup] = useState(false);
 
   /** Location sharing */
   const [locationModal,  setLocationModal]  = useState<"acquiring" | "ready" | "error" | null>(null);
@@ -3375,7 +3374,6 @@ export default function ChatPage({ onNavigate }: Props) {
           toName={activeConv.other_user?.display_name ?? activeConv.other_user?.username ?? "Utente"}
           onClose={() => setShowSendUsda(false)}
           onSent={() => setShowSendUsda(false)}
-          onNeedWallet={() => { setShowSendUsda(false); setShowWalletSetup(true); }}
         />
       )}
       {showRequestUsda && activeConv && auth && activeConv.type !== "group" && (
@@ -3391,13 +3389,6 @@ export default function ChatPage({ onNavigate }: Props) {
         <UsdaPaymentDetail
           paymentId={usdaDetailId}
           onClose={() => setUsdaDetailId(null)}
-        />
-      )}
-      {showWalletSetup && (
-        <WalletSetupSheet
-          onClose={() => setShowWalletSetup(false)}
-          onSetup={() => { setShowWalletSetup(false); setShowSendUsda(true); }}
-          // onSetup callback ignores WalletInfo — wallet state lives in WalletCenter
         />
       )}
 

@@ -5850,12 +5850,28 @@ html.emergency-open #root {
 .usda-wallet-desc { font-size: 0.88rem; color: var(--text-2, rgba(255,255,255,0.75)); line-height: 1.5; margin: 0; }
 .usda-wallet-hint { font-size: 0.78rem; color: var(--text-3, rgba(255,255,255,0.45)); background: rgba(255,255,255,0.04); border-radius: 8px; padding: 8px 12px; }
 
-/* ── ThirdWeb wallet connect section ──────────────────────────────────────── */
+/* ── ThirdWeb wallet connect — SendUsdaSheet ──────────────────────────────── */
 .usda-wallet-section { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 8px 0; }
 .usda-connect-btn-wrap { display: flex; justify-content: center; width: 100%; }
 .usda-wallet-ready { display: flex; align-items: center; gap: 6px; font-size: 0.78rem; color: #22c55e; padding: 4px 0; }
 .usda-wallet-dot { width: 7px; height: 7px; border-radius: 50%; background: #22c55e; flex-shrink: 0; }
 .usda-wallet-addr { font-family: monospace; letter-spacing: 0.02em; }
+
+/* ── ThirdWeb wallet — WalletCenterPage ────────────────────────────────────── */
+.wc-tw-section { padding: 0 0 8px; }
+.wc-tw-card { background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.1); border-radius: 14px; padding: 16px; display: flex; flex-direction: column; gap: 10px; }
+.wc-tw-card--empty { align-items: flex-start; gap: 8px; }
+.wc-tw-card--empty p { margin: 0; font-size: 0.84rem; color: var(--text-2, rgba(255,255,255,0.7)); line-height: 1.5; }
+.wc-tw-card--empty code { background: rgba(255,255,255,0.08); padding: 2px 6px; border-radius: 4px; font-size: 0.8rem; }
+.wc-tw-hint { font-size: 0.76rem !important; color: var(--text-3, rgba(255,255,255,0.45)) !important; }
+.wc-tw-chain-row { display: flex; align-items: center; gap: 6px; font-size: 0.82rem; color: var(--text-1, #fff); flex-wrap: wrap; }
+.wc-tw-badge { font-size: 0.72rem; padding: 3px 8px; border-radius: 20px; font-weight: 600; border: none; cursor: default; }
+.wc-tw-badge--ok { background: rgba(34,197,94,0.15); color: #22c55e; }
+.wc-tw-badge--warn { background: rgba(234,179,8,0.15); color: #ca8a04; cursor: pointer; }
+.wc-tw-addr-row { display: flex; flex-direction: column; gap: 2px; }
+.wc-tw-addr-label { font-size: 0.72rem; color: var(--text-3, rgba(255,255,255,0.45)); }
+.wc-tw-addr { font-family: monospace; font-size: 0.78rem; color: var(--text-2, rgba(255,255,255,0.75)); word-break: break-all; }
+.wc-tw-connect-btn { display: flex; justify-content: flex-start; }
 
 /* ── Network warning ─────────────────────────────────────────────────────── */
 .usda-network-warning { background: rgba(234,179,8,0.1); border: 1px solid rgba(234,179,8,0.3); border-radius: 10px; padding: 12px 14px; display: flex; flex-direction: column; gap: 6px; }

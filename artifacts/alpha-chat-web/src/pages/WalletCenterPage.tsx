@@ -1,12 +1,28 @@
 /**
  * WalletCenterPage — hub completo per i pagamenti USDA.
  *
- * Tab 1 — Saldo:      balance, wallet per chain, rete, contatti recenti
- * Tab 2 — Storico:    filtri + lista pagamenti
- * Tab 3 — Impostazioni: wallet multi-chain + info backend
+ * Tab 1 — Saldo:        balance, wallet ThirdWeb connesso, rete, contatti recenti
+ * Tab 2 — Storico:      filtri + lista pagamenti
+ * Tab 3 — Impostazioni: ThirdWeb wallet connect, info backend
+ *
+ * Il wallet viene collegato automaticamente tramite ThirdWeb Connect.
+ * L'utente non inserisce mai indirizzi 0x né sceglie la blockchain manualmente.
  */
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import {
+  useActiveAccount,
+  useActiveWalletChain,
+  useSwitchActiveWalletChain,
+  ConnectButton,
+} from "thirdweb/react";
+import { createWallet, walletConnect } from "thirdweb/wallets";
+import {
+  thirdwebClient,
+  polygonMainnet,
+  THIRDWEB_READY,
+  USDA_CHAIN_ID,
+} from "../lib/thirdweb-client";
 import {
   apiUsdaGetWallet,
   apiUsdaGetHistory,
@@ -14,9 +30,8 @@ import {
   apiUsdaGetInfo,
   apiUsdaCheckByClientId,
 } from "../lib/usda-api";
-import type { WalletInfo, UsdaPaymentData, UsdaBackendInfo, UsdaCapabilities, WalletChain } from "../lib/usda-types";
-import { WALLET_CHAIN_LABELS, USDA_STATUS_LABELS, USDA_STATUS_ICONS } from "../lib/usda-types";
-import { WalletSetupSheet } from "../components/usda/WalletSetupSheet";
+import type { WalletInfo, UsdaPaymentData, UsdaBackendInfo, UsdaCapabilities } from "../lib/usda-types";
+import { USDA_STATUS_LABELS, USDA_STATUS_ICONS } from "../lib/usda-types";
 import { UsdaPaymentDetail } from "../components/usda/UsdaPaymentDetail";
 
 type Tab = "saldo" | "storico" | "impostazioni";
@@ -37,6 +52,14 @@ const TAB_META: { id: Tab; icon: string; label: string }[] = [
   { id: "impostazioni", icon: "⚙️", label: "Impostazioni" },
 ];
 
+const SUPPORTED_WALLETS = [
+  createWallet("io.metamask"),
+  createWallet("com.coinbase.wallet"),
+  walletConnect(),
+  createWallet("me.rainbow"),
+  createWallet("com.trustwallet.app"),
+];
+
 interface Props {
   onBack: () => void;
 }
@@ -55,49 +78,39 @@ export default function WalletCenterPage({ onBack }: Props) {
   const [histError,   setHistError]   = useState<string | null>(null);
 
   const [recentContacts, setRecentContacts] = useState<{ id: string; name: string; icon: string }[]>([]);
-
-  const [detailId,   setDetailId]   = useState<string | null>(null);
-  const [setupChain, setSetupChain] = useState<WalletChain | null>(null);
+  const [detailId,       setDetailId]       = useState<string | null>(null);
 
   const abortMount   = useRef<AbortController | null>(null);
   const abortHistory = useRef<AbortController | null>(null);
 
-  // Banner di recovery per crash tra sessionStorage.setItem e risposta /confirm
-  const [recoveryBanner, setRecoveryBanner] = useState<
-    "found" | "not_found" | null
-  >(null);
+  // ── ThirdWeb — wallet connesso automaticamente dal provider ─────────────────
+  const account     = useActiveAccount();
+  const activeChain = useActiveWalletChain();
+  const switchChain = useSwitchActiveWalletChain();
 
-  // ── Recovery crash al mount ───────────────────────────────────────────────
-  // Se l'app è crashata tra sessionStorage.setItem e la risposta di /confirm,
-  // WalletCenter rileva la chiave e verifica se il pagamento è già in DB.
+  const isWalletConnected = !!account;
+  const isCorrectNetwork  = activeChain?.id === USDA_CHAIN_ID;
+
+  // ── Recovery crash al mount ─────────────────────────────────────────────────
+  const [recoveryBanner, setRecoveryBanner] = useState<"found" | "not_found" | null>(null);
+
   useEffect(() => {
     const inflightCpi = sessionStorage.getItem("usda_inflight_cpi");
     if (!inflightCpi) return;
-    sessionStorage.removeItem("usda_inflight_cpi"); // gestito qui — non deve ripetirsi
+    sessionStorage.removeItem("usda_inflight_cpi");
 
     apiUsdaCheckByClientId(inflightCpi).then((payment) => {
-      if (payment) {
-        // Il pagamento è in DB: il confirm è arrivato al server prima del crash.
-        // Il polling server-side sta già aggiornando lo stato.
-        setRecoveryBanner("found");
-      } else {
-        // Il confirm non ha raggiunto il server (o il server ha risposto con errore).
-        // Nessun duplicato in DB — l'utente può riprovare normalmente.
-        setRecoveryBanner("not_found");
-      }
-    }).catch(() => {
-      sessionStorage.removeItem("usda_inflight_cpi");
-    });
+      setRecoveryBanner(payment ? "found" : "not_found");
+    }).catch(() => {});
   }, []);
 
-  // ── Caricamento dati al mount ─────────────────────────────────────────────
+  // ── Dati al mount ───────────────────────────────────────────────────────────
   useEffect(() => {
     abortMount.current = new AbortController();
     Promise.all([
       apiUsdaGetWallet().then(setWallet).catch(() => {}),
       apiUsdaGetInfo().then(setBackendInfo).catch(() => {}),
       apiUsdaGetCapabilities().then(setCapabilities).catch(() => {}),
-      // Ultimi 10 pagamenti per "Contatti recenti"
       apiUsdaGetHistory({ limit: 10 }).then((r) => {
         const seen = new Set<string>();
         const contacts: { id: string; name: string; icon: string }[] = [];
@@ -114,7 +127,7 @@ export default function WalletCenterPage({ onBack }: Props) {
     return () => { abortMount.current?.abort(); };
   }, []);
 
-  // ── Caricamento storico ───────────────────────────────────────────────────
+  // ── Storico ─────────────────────────────────────────────────────────────────
   const loadHistory = useCallback(() => {
     abortHistory.current?.abort();
     abortHistory.current = new AbortController();
@@ -134,17 +147,23 @@ export default function WalletCenterPage({ onBack }: Props) {
 
   const balance = wallet?.balance_usda ?? "—";
 
+  // ── Switch rete automatico ───────────────────────────────────────────────────
+  async function handleSwitchNetwork() {
+    try {
+      await switchChain(polygonMainnet);
+    } catch {
+      // Ignora — l'utente può cambiare manualmente nel wallet
+    }
+  }
+
   return (
     <div className="wc-root">
 
-      {/* ── Recovery banner ─────────────────────────────────────────────── */}
+      {/* ── Recovery banner ───────────────────────────────────────────────── */}
       {recoveryBanner === "found" && (
         <div className="wc-recovery-banner wc-recovery-found" role="alert">
           <span>⚠️</span>
-          <span>
-            Un pagamento precedente è stato registrato correttamente prima della chiusura dell'app.
-            Controlla lo storico per verificarne lo stato.
-          </span>
+          <span>Un pagamento precedente è stato registrato correttamente prima della chiusura dell'app. Controlla lo storico.</span>
           <button type="button" aria-label="Chiudi avviso" onClick={() => setRecoveryBanner(null)}>✕</button>
         </div>
       )}
@@ -156,14 +175,9 @@ export default function WalletCenterPage({ onBack }: Props) {
         </div>
       )}
 
-      {/* ── Header ──────────────────────────────────────────────────────── */}
+      {/* ── Header ──────────────────────────────────────────────────────────── */}
       <header className="wc-header">
-        <button
-          type="button"
-          className="wc-back"
-          aria-label="Torna alle impostazioni"
-          onClick={onBack}
-        >
+        <button type="button" className="wc-back" aria-label="Torna alle impostazioni" onClick={onBack}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="20" height="20" aria-hidden="true">
             <polyline points="15 18 9 12 15 6"/>
           </svg>
@@ -179,13 +193,11 @@ export default function WalletCenterPage({ onBack }: Props) {
         )}
       </header>
 
-      {/* ── Tab Bar ─────────────────────────────────────────────────────── */}
+      {/* ── Tab Bar ─────────────────────────────────────────────────────────── */}
       <div className="wc-tabs" role="tablist" aria-label="Sezioni Wallet Center">
         {TAB_META.map((t) => (
           <button
-            key={t.id}
-            type="button"
-            role="tab"
+            key={t.id} type="button" role="tab"
             aria-selected={tab === t.id}
             aria-controls={`wc-panel-${t.id}`}
             id={`wc-tab-${t.id}`}
@@ -197,14 +209,9 @@ export default function WalletCenterPage({ onBack }: Props) {
         ))}
       </div>
 
-      {/* ── Tab: Saldo ──────────────────────────────────────────────────── */}
+      {/* ── Tab: Saldo ──────────────────────────────────────────────────────── */}
       {tab === "saldo" && (
-        <div
-          id="wc-panel-saldo"
-          role="tabpanel"
-          aria-labelledby="wc-tab-saldo"
-          className="wc-content"
-        >
+        <div id="wc-panel-saldo" role="tabpanel" aria-labelledby="wc-tab-saldo" className="wc-content">
           {walletLoading ? (
             <div className="wc-loading" role="status" aria-label="Caricamento saldo">
               <span className="usda-loading-dots" aria-hidden="true" /> Caricamento…
@@ -217,12 +224,9 @@ export default function WalletCenterPage({ onBack }: Props) {
                 <div className="wc-balance-amount">
                   {balance} <span className="wc-balance-currency">USDA</span>
                 </div>
-                {!wallet?.wallet_enabled && (
-                  <div className="wc-balance-hint">Configura un wallet per iniziare</div>
-                )}
               </div>
 
-              {/* Quick actions (go to storico with filter) */}
+              {/* Quick actions */}
               <div className="wc-stats-grid" role="list" aria-label="Accesso rapido">
                 {[
                   { icon: "📤", label: "Inviati",   filter: "sent"     as HistoryFilter },
@@ -233,9 +237,7 @@ export default function WalletCenterPage({ onBack }: Props) {
                   { icon: "📋", label: "Tutti",     filter: "tutti"    as HistoryFilter },
                 ].map((item) => (
                   <button
-                    key={item.filter}
-                    type="button"
-                    role="listitem"
+                    key={item.filter} type="button" role="listitem"
                     className="wc-stat"
                     aria-label={`Mostra ${item.label}`}
                     onClick={() => { setHistFilter(item.filter); setTab("storico"); }}
@@ -261,37 +263,61 @@ export default function WalletCenterPage({ onBack }: Props) {
                 </>
               )}
 
-              {/* Wallet collegati */}
-              <div className="wc-section-title">Wallet collegati</div>
-              <div className="wc-wallets-list" role="list">
-                {(Object.keys(WALLET_CHAIN_LABELS) as WalletChain[]).map((chain) => {
-                  const meta  = WALLET_CHAIN_LABELS[chain];
-                  const entry = wallet?.wallets?.[chain];
-                  return (
-                    <button
-                      key={chain}
-                      type="button"
-                      role="listitem"
-                      className="wc-wallet-row"
-                      aria-label={`${meta.label}: ${entry ? entry.address : "Non configurato"}. Tocca per modificare`}
-                      onClick={() => setSetupChain(chain)}
-                    >
-                      <div className="wc-wallet-chain-icon" aria-hidden="true">{meta.icon}</div>
-                      <div className="wc-wallet-info">
-                        <div className="wc-wallet-chain">{meta.label}</div>
-                        <div className="wc-wallet-addr">
-                          {entry
-                            ? `${entry.address.slice(0, 8)}…${entry.address.slice(-6)}`
-                            : "Non configurato"
-                          }
-                        </div>
-                      </div>
-                      <div className={`wc-wallet-status ${entry ? "ok" : "missing"}`} aria-hidden="true">
-                        {entry ? "✓" : "+"}
-                      </div>
-                    </button>
-                  );
-                })}
+              {/* Wallet ThirdWeb — connesso automaticamente, indirizzo letto dal provider */}
+              <div className="wc-section-title">Wallet</div>
+              <div className="wc-tw-section">
+                {!THIRDWEB_READY ? (
+                  <div className="wc-tw-card wc-tw-card--empty">
+                    <p>⚙️ Configura <code>VITE_THIRDWEB_CLIENT_ID</code> per abilitare i pagamenti USDA.</p>
+                  </div>
+                ) : isWalletConnected ? (
+                  <div className="wc-tw-card">
+                    <div className="wc-tw-chain-row">
+                      <span aria-hidden="true">🟣</span>
+                      <span>Polygon Mainnet</span>
+                      {isCorrectNetwork ? (
+                        <span className="wc-tw-badge wc-tw-badge--ok">Chain 137 ✓</span>
+                      ) : (
+                        <button type="button" className="wc-tw-badge wc-tw-badge--warn" onClick={handleSwitchNetwork}>
+                          Rete errata — Passa a Polygon
+                        </button>
+                      )}
+                    </div>
+                    <div className="wc-tw-addr-row">
+                      <span className="wc-tw-addr-label">Indirizzo</span>
+                      <span className="wc-tw-addr">{account.address}</span>
+                    </div>
+                    <div className="wc-tw-connect-btn">
+                      <ConnectButton
+                        client={thirdwebClient}
+                        chain={polygonMainnet}
+                        wallets={SUPPORTED_WALLETS}
+                        detailsButton={{ style: { fontSize: "0.82rem", padding: "6px 14px" } }}
+                      />
+                    </div>
+                  </div>
+                ) : (
+                  <div className="wc-tw-card wc-tw-card--empty">
+                    <p>Connetti il tuo wallet per inviare e ricevere USDA su Polygon Mainnet.</p>
+                    <p className="wc-tw-hint">
+                      Supporta MetaMask, WalletConnect, Coinbase, Rainbow, Trust Wallet e qualsiasi wallet compatibile.
+                      Il tuo indirizzo 0x verrà letto automaticamente.
+                    </p>
+                    <div className="wc-tw-connect-btn">
+                      <ConnectButton
+                        client={thirdwebClient}
+                        chain={polygonMainnet}
+                        wallets={SUPPORTED_WALLETS}
+                        connectModal={{
+                          title: "Connetti Wallet",
+                          size: "compact",
+                          welcomeScreen: { title: "USDA Payments", subtitle: "Connetti il wallet per iniziare" },
+                        }}
+                        connectButton={{ label: "Connetti Wallet" }}
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Network info */}
@@ -323,12 +349,7 @@ export default function WalletCenterPage({ onBack }: Props) {
                   <div className="wc-section-title">Funzionalità</div>
                   <div className="wc-caps-grid" role="list">
                     {(Object.entries(capabilities.supports) as [string, boolean][]).map(([k, v]) => (
-                      <div
-                        key={k}
-                        role="listitem"
-                        className={`wc-cap ${v ? "ok" : "off"}`}
-                        aria-label={`${k}: ${v ? "supportato" : "non supportato"}`}
-                      >
+                      <div key={k} role="listitem" className={`wc-cap ${v ? "ok" : "off"}`}>
                         <span aria-hidden="true">{v ? "✓" : "✗"}</span>
                         <span>{k}</span>
                       </div>
@@ -341,20 +362,13 @@ export default function WalletCenterPage({ onBack }: Props) {
         </div>
       )}
 
-      {/* ── Tab: Storico ────────────────────────────────────────────────── */}
+      {/* ── Tab: Storico ────────────────────────────────────────────────────── */}
       {tab === "storico" && (
-        <div
-          id="wc-panel-storico"
-          role="tabpanel"
-          aria-labelledby="wc-tab-storico"
-          className="wc-content wc-content--history"
-        >
+        <div id="wc-panel-storico" role="tabpanel" aria-labelledby="wc-tab-storico" className="wc-content wc-content--history">
           <div className="wc-hist-filters" role="tablist" aria-label="Filtra transazioni">
             {HISTORY_FILTERS.map((f) => (
               <button
-                key={f.key}
-                type="button"
-                role="tab"
+                key={f.key} type="button" role="tab"
                 aria-selected={histFilter === f.key}
                 className={`usda-filter-btn ${histFilter === f.key ? "active" : ""}`}
                 onClick={() => setHistFilter(f.key)}
@@ -365,9 +379,7 @@ export default function WalletCenterPage({ onBack }: Props) {
           </div>
 
           {histLoading && (
-            <div className="wc-loading" role="status" aria-label="Caricamento transazioni">
-              <span className="usda-loading-dots" aria-hidden="true" /> Caricamento…
-            </div>
+            <div className="wc-loading" role="status"><span className="usda-loading-dots" aria-hidden="true" /> Caricamento…</div>
           )}
           {histError && (
             <div className="usda-error" style={{ margin: "12px 16px" }} role="alert">{histError}</div>
@@ -379,9 +391,7 @@ export default function WalletCenterPage({ onBack }: Props) {
           <div className="wc-hist-list" role="list">
             {payments.map((p) => (
               <button
-                key={p.payment_id}
-                type="button"
-                role="listitem"
+                key={p.payment_id} type="button" role="listitem"
                 className="usda-history-item"
                 aria-label={`${p.kind === "request" ? "Richiesta" : "Pagamento"} di ${p.amount} USDA — ${USDA_STATUS_LABELS[p.status]}`}
                 onClick={() => setDetailId(p.payment_id)}
@@ -410,52 +420,68 @@ export default function WalletCenterPage({ onBack }: Props) {
         </div>
       )}
 
-      {/* ── Tab: Impostazioni ───────────────────────────────────────────── */}
+      {/* ── Tab: Impostazioni ───────────────────────────────────────────────── */}
       {tab === "impostazioni" && (
-        <div
-          id="wc-panel-impostazioni"
-          role="tabpanel"
-          aria-labelledby="wc-tab-impostazioni"
-          className="wc-content"
-        >
-          <div className="wc-section-title">Indirizzi wallet</div>
-          <div className="wc-wallets-list">
-            {(Object.keys(WALLET_CHAIN_LABELS) as WalletChain[]).map((chain) => {
-              const meta  = WALLET_CHAIN_LABELS[chain];
-              const entry = wallet?.wallets?.[chain];
-              return (
-                <div key={chain} className="wc-settings-row">
-                  <div className="wc-settings-chain">
-                    <span className="wc-settings-icon" aria-hidden="true">{meta.icon}</span>
-                    <div>
-                      <div className="wc-settings-name">{meta.label}</div>
-                      {entry ? (
-                        <>
-                          <div className="wc-settings-addr" aria-label={`Indirizzo: ${entry.address}`}>{entry.address}</div>
-                          {entry.verifiedAt && (
-                            <div className="wc-settings-verified">
-                              ✓ Verificato {new Date(entry.verifiedAt).toLocaleDateString("it-IT")}
-                            </div>
-                          )}
-                        </>
-                      ) : (
-                        <div className="wc-settings-missing">Non configurato</div>
-                      )}
-                    </div>
-                  </div>
-                  <button
-                    type="button"
-                    className="wc-settings-edit"
-                    aria-label={`${entry ? "Modifica" : "Aggiungi"} indirizzo ${meta.label}`}
-                    onClick={() => setSetupChain(chain)}
-                  >
-                    {entry ? "Modifica" : "Aggiungi"}
-                  </button>
+        <div id="wc-panel-impostazioni" role="tabpanel" aria-labelledby="wc-tab-impostazioni" className="wc-content">
+
+          {/* ThirdWeb Wallet Connect */}
+          <div className="wc-section-title">Wallet collegato</div>
+          <div className="wc-tw-section">
+            {!THIRDWEB_READY ? (
+              <div className="wc-tw-card wc-tw-card--empty">
+                <p>⚙️ <code>VITE_THIRDWEB_CLIENT_ID</code> non configurato.</p>
+              </div>
+            ) : isWalletConnected ? (
+              <div className="wc-tw-card">
+                <div className="wc-tw-chain-row">
+                  <span aria-hidden="true">🟣</span>
+                  <span>Polygon Mainnet</span>
+                  {isCorrectNetwork ? (
+                    <span className="wc-tw-badge wc-tw-badge--ok">Chain 137 ✓</span>
+                  ) : (
+                    <button type="button" className="wc-tw-badge wc-tw-badge--warn" onClick={handleSwitchNetwork}>
+                      Rete errata — Passa a Polygon
+                    </button>
+                  )}
                 </div>
-              );
-            })}
+                <div className="wc-tw-addr-row">
+                  <span className="wc-tw-addr-label">Indirizzo (letto dal wallet)</span>
+                  <span className="wc-tw-addr">{account.address}</span>
+                </div>
+                <div className="wc-tw-connect-btn">
+                  <ConnectButton
+                    client={thirdwebClient}
+                    chain={polygonMainnet}
+                    wallets={SUPPORTED_WALLETS}
+                    detailsButton={{ style: { fontSize: "0.82rem", padding: "6px 14px" } }}
+                  />
+                </div>
+              </div>
+            ) : (
+              <div className="wc-tw-card wc-tw-card--empty">
+                <p>Nessun wallet connesso.</p>
+                <p className="wc-tw-hint">
+                  Connetti MetaMask, WalletConnect, Coinbase Wallet, Rainbow o Trust Wallet.
+                  Il tuo indirizzo Polygon viene letto automaticamente — non devi inserirlo.
+                </p>
+                <div className="wc-tw-connect-btn">
+                  <ConnectButton
+                    client={thirdwebClient}
+                    chain={polygonMainnet}
+                    wallets={SUPPORTED_WALLETS}
+                    connectModal={{
+                      title: "Connetti Wallet",
+                      size: "compact",
+                      welcomeScreen: { title: "USDA Payments", subtitle: "Connetti il wallet per continuare" },
+                    }}
+                    connectButton={{ label: "Connetti Wallet" }}
+                  />
+                </div>
+              </div>
+            )}
           </div>
 
+          {/* Backend USDA */}
           {(backendInfo || capabilities) && (
             <>
               <div className="wc-section-title" style={{ marginTop: 24 }}>Backend USDA</div>
@@ -493,14 +519,7 @@ export default function WalletCenterPage({ onBack }: Props) {
         </div>
       )}
 
-      {/* ── Modals ──────────────────────────────────────────────────────── */}
-      {setupChain && (
-        <WalletSetupSheet
-          initialChain={setupChain}
-          onClose={() => setSetupChain(null)}
-          onSetup={(w) => { setWallet(w); setSetupChain(null); }}
-        />
-      )}
+      {/* ── Modals ──────────────────────────────────────────────────────────── */}
       {detailId && (
         <UsdaPaymentDetail
           paymentId={detailId}

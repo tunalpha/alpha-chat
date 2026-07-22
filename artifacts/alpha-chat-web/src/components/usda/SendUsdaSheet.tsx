@@ -1,25 +1,15 @@
 /**
  * SendUsdaSheet — bottom sheet per inviare USDA.
  *
- * Step: form → confirm (+ wallet connect) → signing → (chiude e aggiorna bubble via WS)
+ * Flusso moderno (dApp-style, identico a Uniswap/OpenSea):
+ *   1. Utente inserisce importo e tocca "Continua"
+ *   2. Se il wallet non è connesso → ThirdWeb ConnectButton lo connette
+ *      L'indirizzo 0x viene letto automaticamente dal provider
+ *   3. Se la rete è errata → switch automatico a Polygon Mainnet (137)
+ *   4. Utente tocca "Firma e Invia" → sendAndConfirmTransaction via ThirdWeb
+ *   5. txHash reale → backend verifica on-chain → confirm
  *
- * FLUSSO PRODUZIONE:
- *   prepare (backend AlphaChat)
- *   → wallet connect (ThirdWeb — MetaMask / WalletConnect / Coinbase / Rainbow / Trust)
- *   → network guard  (Polygon Mainnet 137 — switch automatico se errata)
- *   → ERC-20 transfer (ThirdWeb sendAndConfirmTransaction)
- *   → txHash reale
- *   → confirm (backend AlphaChat → verifica blockchain → POST /api/pay/confirm USDA)
- *
- * GUARD IMPLEMENTATI:
- *   1. Firma fully async — setSigning(true) prima di qualsiasi await
- *   2. Annullamento firma — "Annulla firma" resetta a form, pendingTransferId scade server-side
- *   3. Doppio tap — loading (Continua) + signing (Firma e Invia)
- *   4. Timeout 90s — reset a form con messaggio
- *   5. sessionStorage — client_payment_id salvato prima di /confirm, rimosso al successo/cancel
- *   6. Network guard — blocca reti diverse da Polygon 137, propone switch
- *   7. User rejection — messaggio dedicato senza reset completo
- *   8. Gas insufficiente — messaggio MATIC
+ * L'utente NON inserisce mai indirizzi né sceglie la blockchain.
  */
 
 import { useState, useEffect, useRef, useCallback } from "react";
@@ -43,9 +33,7 @@ import {
   USDA_CHAIN_ID,
   THIRDWEB_READY,
 } from "../../lib/thirdweb-client";
-import type { WalletInfo } from "../../lib/usda-types";
 import {
-  apiUsdaGetWallet,
   apiUsdaPreparePayment,
   apiUsdaSubmitPayment,
 } from "../../lib/usda-api";
@@ -58,16 +46,15 @@ interface Props {
   toName: string;
   onClose: () => void;
   onSent: (paymentData: { payment_id: string; message_id: string; amount: string }) => void;
-  onNeedWallet: () => void;
 }
 
 type Step = "form" | "confirm" | "signing";
 
 type SigningStatus =
-  | "awaiting_wallet"       // in attesa che l'utente firmi nel wallet
-  | "broadcasting"          // tx inviata, in attesa di propagazione
-  | "awaiting_confirmation" // attesa conferma blockchain
-  | "verifying";            // verifica backend
+  | "awaiting_wallet"
+  | "broadcasting"
+  | "awaiting_confirmation"
+  | "verifying";
 
 // ── Costanti ────────────────────────────────────────────────────────────────
 
@@ -80,7 +67,6 @@ const STEPS: { id: Step; label: string }[] = [
 const SIGN_TIMEOUT_MS = 90_000;
 const INFLIGHT_KEY    = "usda_inflight_cpi";
 
-// Wallet supportati (Polygon Mainnet)
 const SUPPORTED_WALLETS = [
   createWallet("io.metamask"),
   createWallet("com.coinbase.wallet"),
@@ -91,20 +77,20 @@ const SUPPORTED_WALLETS = [
 
 // ── Componente ───────────────────────────────────────────────────────────────
 
-export function SendUsdaSheet({ conversationId, toUserId, toName, onClose, onSent, onNeedWallet }: Props) {
+export function SendUsdaSheet({ conversationId, toUserId, toName, onClose, onSent }: Props) {
   const [amount,   setAmount]   = useState("");
   const [note,     setNote]     = useState("");
   const [step,     setStep]     = useState<Step>("form");
   const [prepared, setPrepared] = useState<{
-    amount: string; fee: string; total: string; client_payment_id: string; prepared_data: Record<string, unknown>;
+    amount: string; fee: string; total: string;
+    client_payment_id: string; prepared_data: Record<string, unknown>;
   } | null>(null);
-  const [wallet,        setWallet]        = useState<WalletInfo | null>(null);
   const [error,         setError]         = useState<string | null>(null);
   const [loading,       setLoading]       = useState(false);
   const [signing,       setSigning]       = useState(false);
   const [signingStatus, setSigningStatus] = useState<SigningStatus | null>(null);
 
-  // ── ThirdWeb hooks ─────────────────────────────────────────────────────────
+  // ── ThirdWeb hooks — wallet e rete letti automaticamente dal provider ───────
   const account     = useActiveAccount();
   const activeChain = useActiveWalletChain();
   const switchChain = useSwitchActiveWalletChain();
@@ -112,37 +98,30 @@ export function SendUsdaSheet({ conversationId, toUserId, toName, onClose, onSen
   const isWalletConnected = !!account;
   const isCorrectNetwork  = activeChain?.id === USDA_CHAIN_ID;
 
-  const abortRef     = useRef<AbortController | null>(null);
   const signTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── Cleanup al dismount ────────────────────────────────────────────────────
   useEffect(() => {
     return () => {
-      abortRef.current?.abort();
       if (signTimerRef.current) clearTimeout(signTimerRef.current);
       sessionStorage.removeItem(INFLIGHT_KEY);
     };
   }, []);
 
-  // Stima locale fee (0.1% — definitiva arriva dal backend in "confirm")
+  // Stima locale fee (0.1% — definitiva arriva dal backend)
   const amountNum      = parseFloat(amount) || 0;
   const estimatedFee   = amountNum > 0 ? (amountNum * 0.001).toFixed(4) : "0";
   const estimatedTotal = amountNum > 0 ? (amountNum + parseFloat(estimatedFee)).toFixed(4) : "0";
 
   const currentStepIdx = STEPS.findIndex((s) => s.id === step);
 
-  // ── Guard: doppio tap "Continua" ──────────────────────────────────────────
+  // ── Step 1: Continua — solo prepare, nessun wallet check manuale ────────────
   async function handleContinue() {
     if (loading) return;
     if (!amount || amountNum <= 0) { setError("Inserisci un importo valido"); return; }
     setError(null);
     setLoading(true);
-    abortRef.current = new AbortController();
     try {
-      const w = await apiUsdaGetWallet();
-      setWallet(w);
-      if (!w.wallet_enabled) { onNeedWallet(); return; }
-
       const prep = await apiUsdaPreparePayment({
         to_user_id: toUserId, conversation_id: conversationId,
         amount, note: note || undefined,
@@ -156,22 +135,22 @@ export function SendUsdaSheet({ conversationId, toUserId, toName, onClose, onSen
       });
       setStep("confirm");
     } catch (err) {
-      if ((err as Error).name !== "AbortError") setError((err as Error).message);
+      setError((err as Error).message || "Errore durante la preparazione. Riprova.");
     } finally {
       setLoading(false);
     }
   }
 
-  // ── Network switch ────────────────────────────────────────────────────────
+  // ── Switch automatico a Polygon ────────────────────────────────────────────
   async function handleSwitchNetwork() {
     try {
       await switchChain(polygonMainnet);
     } catch {
-      setError("Impossibile cambiare rete. Cambia manualmente a Polygon Mainnet nel tuo wallet.");
+      setError("Impossibile cambiare rete automaticamente. Cambia a Polygon Mainnet nel tuo wallet.");
     }
   }
 
-  // ── Annullamento firma ────────────────────────────────────────────────────
+  // ── Annullamento firma ─────────────────────────────────────────────────────
   const handleCancelSigning = useCallback(() => {
     if (signTimerRef.current) { clearTimeout(signTimerRef.current); signTimerRef.current = null; }
     sessionStorage.removeItem(INFLIGHT_KEY);
@@ -179,26 +158,21 @@ export function SendUsdaSheet({ conversationId, toUserId, toName, onClose, onSen
     setSigningStatus(null);
     setPrepared(null);
     setStep("form");
-    setError("Firma annullata. Premi «Continua» per ricominciare.");
+    setError("Firma annullata. Ripremi «Continua» per ricominciare.");
   }, []);
 
-  // ── FIRMA REALE — ThirdWeb ERC-20 transfer ────────────────────────────────
+  // ── Firma e invio reale via ThirdWeb ───────────────────────────────────────
   async function handleSign() {
-    if (!prepared || signing) return; // guard doppio tap
+    if (!prepared || signing) return;
 
-    // Guard: ThirdWeb non configurato
     if (!THIRDWEB_READY) {
-      setError("ThirdWeb non configurato. Imposta VITE_THIRDWEB_CLIENT_ID nelle variabili d'ambiente.");
+      setError("ThirdWeb non configurato. Imposta VITE_THIRDWEB_CLIENT_ID.");
       return;
     }
-
-    // Guard: wallet non connesso
     if (!account) {
-      setError("Connetti il wallet prima di firmare.");
+      setError("Connetti il wallet prima di procedere.");
       return;
     }
-
-    // Guard: rete errata
     if (!isCorrectNetwork) {
       setError("Connetti a Polygon Mainnet (chain 137) per continuare.");
       return;
@@ -216,30 +190,27 @@ export function SendUsdaSheet({ conversationId, toUserId, toName, onClose, onSen
       setSigningStatus(null);
       setPrepared(null);
       setStep("form");
-      setError("Firma scaduta (90 s). Premi «Continua» per ricominciare.");
+      setError("Firma scaduta (90 s). Ripremi «Continua» per ricominciare.");
     }, SIGN_TIMEOUT_MS);
 
     try {
       const recipientAddress = prepared.prepared_data.recipientAddress as string;
       const amountUnits      = prepared.prepared_data.amount_units as string;
 
-      // ── ERC-20 transfer via ThirdWeb ─────────────────────────────────────
+      // ERC-20 transfer via ThirdWeb — usa l'indirizzo letto automaticamente dal wallet
       const contract = getContract({
         client:  thirdwebClient,
         chain:   polygonMainnet,
         address: USDA_CONTRACT_ADDRESS,
       });
 
-      // transfer() usa il valore human-readable (amount in USDA, non units)
       const tx = transfer({
         contract,
         to:     recipientAddress,
-        amount: prepared.amount, // es. "10.5" → ThirdWeb gestisce la conversione decimali
+        amount: prepared.amount,
       });
 
-      // Apre il popup del wallet (MetaMask / WalletConnect / etc.)
-      // sendAndConfirmTransaction: broadcast + wait receipt in un unico step
-      setSigningStatus("awaiting_wallet");
+      // Apre il popup nativo del wallet (MetaMask / WalletConnect / etc.)
       const receipt = await sendAndConfirmTransaction({ transaction: tx, account });
 
       if (receipt.status !== "success") {
@@ -249,11 +220,9 @@ export function SendUsdaSheet({ conversationId, toUserId, toName, onClose, onSen
       const txHash = receipt.transactionHash;
       setSigningStatus("verifying");
 
-      // ── Salva CPI prima di chiamare /confirm (resilienza crash) ──────────
+      // Salva CPI per crash recovery prima del confirm
       sessionStorage.setItem(INFLIGHT_KEY, prepared.client_payment_id);
 
-      // ── Invia al backend con txHash reale + senderAddress ────────────────
-      // Il backend verifica la transazione on-chain prima di chiamare /api/pay/confirm
       const result = await apiUsdaSubmitPayment({
         to_user_id:        toUserId,
         conversation_id:   conversationId,
@@ -264,9 +233,9 @@ export function SendUsdaSheet({ conversationId, toUserId, toName, onClose, onSen
         prepared_data: {
           ...prepared.prepared_data,
           amount_units:   amountUnits,
-          sender_address: account.address, // per verifica blockchain lato backend
+          sender_address: account.address, // letto automaticamente dal provider ThirdWeb
         },
-        signature: txHash, // txHash reale on-chain
+        signature: txHash,
       });
 
       sessionStorage.removeItem(INFLIGHT_KEY);
@@ -277,21 +246,18 @@ export function SendUsdaSheet({ conversationId, toUserId, toName, onClose, onSen
       sessionStorage.removeItem(INFLIGHT_KEY);
       const msg = (err as Error).message ?? "";
 
-      // Errori specifici ThirdWeb / wallet
       if (/user rejected|user denied|rejected by user/i.test(msg)) {
-        setError("Firma rifiutata dal wallet. Ripremi «Firma e Invia» per riprovare.");
-        setStep("confirm"); // rimane su confirm — prepared è ancora valido
-        setPrepared((p) => p); // mantieni prepared
+        // Rimane su confirm con prepared intatto — l'utente può riprovare senza re-prepare
+        setError("Firma rifiutata. Ripremi «Firma e Invia» per riprovare.");
+        setStep("confirm");
         setSigning(false);
-        return; // non resetta a form
+        return;
       } else if (/insufficient funds|not enough gas/i.test(msg)) {
-        setError("Gas insufficiente. Aggiungi MATIC al wallet per coprire le commissioni di rete.");
+        setError("Gas insufficiente. Aggiungi MATIC al wallet per le commissioni di rete.");
       } else if (/wrong network|wrong chain|unrecognized chain/i.test(msg)) {
         setError("Rete errata. Premi «Passa a Polygon» per cambiare rete.");
       } else if (/locked|access denied/i.test(msg)) {
         setError("Wallet bloccato. Sblocca il wallet e ripremi «Firma e Invia».");
-      } else if (/timeout|timed out/i.test(msg)) {
-        setError("Timeout wallet. Ripremi «Firma e Invia» per riprovare.");
       } else {
         setError(msg || "Errore durante la firma. Riprova.");
       }
@@ -299,7 +265,7 @@ export function SendUsdaSheet({ conversationId, toUserId, toName, onClose, onSen
       setPrepared(null);
       setStep("form");
     } finally {
-      if (step !== "confirm") { // non resettare se siamo rimasti su confirm (rejection)
+      if (step !== "confirm") {
         setSigning(false);
         setSigningStatus(null);
       }
@@ -307,7 +273,6 @@ export function SendUsdaSheet({ conversationId, toUserId, toName, onClose, onSen
     }
   }
 
-  // ── Label stato firma ─────────────────────────────────────────────────────
   const signingLabel: Record<SigningStatus, string> = {
     awaiting_wallet:       "Firma nel tuo wallet…",
     broadcasting:          "Transazione inviata…",
@@ -315,7 +280,7 @@ export function SendUsdaSheet({ conversationId, toUserId, toName, onClose, onSen
     verifying:             "Verifica transazione…",
   };
 
-  // ── Render ────────────────────────────────────────────────────────────────
+  // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <div
       className="modal-backdrop"
@@ -335,13 +300,7 @@ export function SendUsdaSheet({ conversationId, toUserId, toName, onClose, onSen
         </div>
 
         {/* Step progress */}
-        <div
-          className="usda-step-bar"
-          role="progressbar"
-          aria-valuenow={currentStepIdx + 1}
-          aria-valuemax={STEPS.length}
-          aria-label={`Passo ${currentStepIdx + 1} di ${STEPS.length}: ${STEPS[currentStepIdx].label}`}
-        >
+        <div className="usda-step-bar" role="progressbar" aria-valuenow={currentStepIdx + 1} aria-valuemax={STEPS.length}>
           {STEPS.map((s, i) => (
             <div key={s.id} className={`usda-step ${i < currentStepIdx ? "done" : i === currentStepIdx ? "active" : ""}`}>
               <div className="usda-step-dot" aria-hidden="true">{i < currentStepIdx ? "✓" : i + 1}</div>
@@ -383,11 +342,6 @@ export function SendUsdaSheet({ conversationId, toUserId, toName, onClose, onSen
               />
             </div>
 
-            {wallet && (
-              <div className="usda-balance-row" aria-label={`Saldo disponibile: ${wallet.balance_usda} USDA`}>
-                Saldo: <strong>{wallet.balance_usda} USDA</strong>
-              </div>
-            )}
             {amountNum > 0 && (
               <>
                 <div className="usda-fee-row">
@@ -403,13 +357,11 @@ export function SendUsdaSheet({ conversationId, toUserId, toName, onClose, onSen
             {error && <div className="usda-error" role="alert">{error}</div>}
 
             <div className="usda-sheet-actions">
-              <button type="button" className="usda-btn-secondary" onClick={onClose} aria-label="Annulla invio">
-                Annulla
-              </button>
+              <button type="button" className="usda-btn-secondary" onClick={onClose}>Annulla</button>
               <button
                 type="button" className="usda-btn-primary"
                 onClick={handleContinue} disabled={loading}
-                aria-label="Continua alla conferma" aria-busy={loading}
+                aria-busy={loading}
               >
                 {loading ? <><span className="usda-btn-spinner" aria-hidden="true" /> Verifica…</> : "Continua"}
               </button>
@@ -420,9 +372,9 @@ export function SendUsdaSheet({ conversationId, toUserId, toName, onClose, onSen
         {/* ── STEP: Confirm ────────────────────────────────────────────────── */}
         {step === "confirm" && prepared && (
           <>
-            <div className="usda-confirm-summary" aria-label="Riepilogo pagamento">
+            <div className="usda-confirm-summary">
               <div className="usda-confirm-row"><span>A</span><strong>{toName}</strong></div>
-              <div className="usda-confirm-row"><span>Importo</span><strong>{prepared.amount ?? amount} USDA</strong></div>
+              <div className="usda-confirm-row"><span>Importo</span><strong>{prepared.amount} USDA</strong></div>
               <div className="usda-confirm-row"><span>Commissione</span><strong>{prepared.fee} USDA</strong></div>
               <div className="usda-confirm-row usda-confirm-total">
                 <span>Totale</span><strong>{prepared.total} USDA</strong>
@@ -430,25 +382,20 @@ export function SendUsdaSheet({ conversationId, toUserId, toName, onClose, onSen
               {note && <div className="usda-confirm-row"><span>Nota</span><em>{note}</em></div>}
             </div>
 
-            {/* ── ThirdWeb non configurato ──────────────────────────────── */}
+            {/* ThirdWeb non configurato */}
             {!THIRDWEB_READY && (
               <div className="usda-thirdweb-setup" role="alert">
                 <p>⚙️ <strong>Configurazione ThirdWeb richiesta</strong></p>
-                <p>
-                  Imposta <code>VITE_THIRDWEB_CLIENT_ID</code> nelle variabili d'ambiente.
-                  Ottieni un Client ID gratuito su{" "}
-                  <a href="https://thirdweb.com/create-api-key" target="_blank" rel="noopener noreferrer">
-                    thirdweb.com/create-api-key
-                  </a>.
-                </p>
+                <p>Imposta <code>VITE_THIRDWEB_CLIENT_ID</code> nelle variabili d'ambiente.</p>
               </div>
             )}
 
-            {/* ── Wallet non connesso ───────────────────────────────────── */}
+            {/* Wallet non connesso — ThirdWeb ConnectButton, nessun input manuale */}
             {THIRDWEB_READY && !isWalletConnected && (
               <div className="usda-wallet-section">
                 <p className="usda-sign-notice">
-                  Connetti il tuo wallet per firmare la transazione su <strong>Polygon Mainnet</strong>.
+                  Connetti il wallet per firmare su <strong>Polygon Mainnet</strong>.
+                  L'indirizzo verrà letto automaticamente.
                 </p>
                 <div className="usda-connect-btn-wrap">
                   <ConnectButton
@@ -456,9 +403,12 @@ export function SendUsdaSheet({ conversationId, toUserId, toName, onClose, onSen
                     chain={polygonMainnet}
                     wallets={SUPPORTED_WALLETS}
                     connectModal={{
-                      title:  "Connetti Wallet",
-                      size:   "compact",
-                      welcomeScreen: { title: "Paga con USDA", subtitle: "Connetti il wallet per continuare" },
+                      title: "Connetti Wallet",
+                      size: "compact",
+                      welcomeScreen: {
+                        title: "Paga con USDA",
+                        subtitle: "Connetti il wallet per continuare",
+                      },
                     }}
                     connectButton={{ label: "Connetti Wallet" }}
                   />
@@ -466,10 +416,10 @@ export function SendUsdaSheet({ conversationId, toUserId, toName, onClose, onSen
               </div>
             )}
 
-            {/* ── Rete errata ───────────────────────────────────────────── */}
+            {/* Rete errata — switch automatico, nessuna scelta manuale */}
             {THIRDWEB_READY && isWalletConnected && !isCorrectNetwork && (
               <div className="usda-network-warning" role="alert">
-                <p>⚠️ Rete errata: connetti a <strong>Polygon Mainnet</strong> (chain 137).</p>
+                <p>⚠️ Rete errata — passare a <strong>Polygon Mainnet</strong>.</p>
                 <p className="usda-network-current">
                   Rete attuale: {activeChain?.name ?? `Chain ${activeChain?.id}`}
                 </p>
@@ -479,20 +429,19 @@ export function SendUsdaSheet({ conversationId, toUserId, toName, onClose, onSen
               </div>
             )}
 
-            {/* ── Wallet connesso + rete corretta ───────────────────────── */}
+            {/* Wallet connesso + rete corretta — mostra indirizzo letto dal provider */}
             {THIRDWEB_READY && isWalletConnected && isCorrectNetwork && (
-              <div className="usda-wallet-ready">
-                <span className="usda-wallet-dot" aria-hidden="true" />
-                <span className="usda-wallet-addr">
-                  {account.address.slice(0, 6)}…{account.address.slice(-4)} · Polygon
-                </span>
-              </div>
-            )}
-
-            {THIRDWEB_READY && isWalletConnected && isCorrectNetwork && (
-              <div className="usda-sign-notice">
-                Premi <strong>Firma e Invia</strong>: il tuo wallet ti chiederà di confermare il trasferimento.
-              </div>
+              <>
+                <div className="usda-wallet-ready">
+                  <span className="usda-wallet-dot" aria-hidden="true" />
+                  <span className="usda-wallet-addr">
+                    {account.address.slice(0, 6)}…{account.address.slice(-4)} · Polygon
+                  </span>
+                </div>
+                <div className="usda-sign-notice">
+                  Premi <strong>Firma e Invia</strong>: il tuo wallet chiederà di confermare il trasferimento.
+                </div>
+              </>
             )}
 
             {error && <div className="usda-error" role="alert">{error}</div>}
@@ -501,7 +450,6 @@ export function SendUsdaSheet({ conversationId, toUserId, toName, onClose, onSen
               <button
                 type="button" className="usda-btn-secondary"
                 onClick={() => { setPrepared(null); setStep("form"); setError(null); }}
-                aria-label="Modifica importo"
               >
                 Modifica
               </button>
@@ -509,7 +457,7 @@ export function SendUsdaSheet({ conversationId, toUserId, toName, onClose, onSen
                 type="button" className="usda-btn-primary"
                 onClick={handleSign}
                 disabled={signing || !THIRDWEB_READY || !isWalletConnected || !isCorrectNetwork}
-                aria-label="Firma e invia pagamento" aria-busy={signing}
+                aria-busy={signing}
               >
                 {signing
                   ? <><span className="usda-btn-spinner" aria-hidden="true" /> Firma…</>
@@ -521,7 +469,7 @@ export function SendUsdaSheet({ conversationId, toUserId, toName, onClose, onSen
 
         {/* ── STEP: Signing ─────────────────────────────────────────────────── */}
         {step === "signing" && (
-          <div className="usda-signing" role="status" aria-live="polite" aria-label="Firma in corso">
+          <div className="usda-signing" role="status" aria-live="polite">
             <div className="usda-signing-spinner" aria-hidden="true" />
             <p>{signingStatus ? signingLabel[signingStatus] : "Firma in corso…"}</p>
             <p className="usda-signing-sub">Non chiudere l'app</p>
@@ -529,7 +477,7 @@ export function SendUsdaSheet({ conversationId, toUserId, toName, onClose, onSen
             <button
               type="button" className="usda-btn-secondary usda-cancel-sign-btn"
               onClick={handleCancelSigning}
-              aria-label="Annulla la firma e torna all'importo"
+              aria-label="Annulla la firma"
             >
               Annulla firma
             </button>
