@@ -74,13 +74,16 @@ async function paymentFetch<T>(
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
 
-  const json = await res.json() as { data?: T; error?: { code: string; message: string } };
+  // Il backend /api/v1/payments risponde senza wrapper { data: ... } — gestisci entrambi.
+  const json = await res.json() as { data?: T; error?: { code: string; message: string } } | T;
+  const typed = json as { data?: T; error?: { code: string; message: string } };
   if (!res.ok) {
-    const err: Error & { code?: string } = new Error(json.error?.message ?? `Payment API error ${res.status}`);
-    err.code = json.error?.code;
+    const err: Error & { code?: string } = new Error(typed.error?.message ?? `Payment API error ${res.status}`);
+    err.code = typed.error?.code;
     throw err;
   }
-  return json.data as T;
+  // Se la risposta ha un campo data usa quello, altrimenti usa l'oggetto direttamente.
+  return (typed.data !== undefined ? typed.data : json) as T;
 }
 
 // ---------------------------------------------------------------------------
