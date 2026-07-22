@@ -1,0 +1,305 @@
+Ecco un prompt pensato per esplorare e progettare la soluzione migliore, senza far implementare codice subito.
+
+⸻
+
+Analisi architetturale definitiva — Motore Pagamenti AlphaChat
+
+NON implementare alcun codice.
+
+Obiettivo: progettare l’architettura definitiva dei pagamenti peer-to-peer di AlphaChat sfruttando il fatto che hai accesso sia al repository AlphaChat sia al repository getusda.xyz.
+
+Questa è una fase esclusivamente di analisi e progettazione.
+
+⸻
+
+Contesto
+
+Durante la diagnostica è emerso che:
+
+* AlphaChat identifica gli utenti tramite user_id e wallet USDA.
+* getusda.xyz identifica gli utenti tramite numero di telefono (recipientPhone).
+* Le API attuali (/api/pay/prepare, /api/pay/request) sono progettate per il portale getusda.xyz e non per AlphaChat.
+
+Di conseguenza non vogliamo più adattare AlphaChat a queste API.
+
+Vogliamo capire se è possibile creare un’infrastruttura nativa per AlphaChat riutilizzando tutta la logica blockchain già presente nel backend USDA.
+
+⸻
+
+Obiettivo funzionale
+
+AlphaChat deve mantenere completamente la propria natura:
+
+* nessun numero di telefono
+* nessun link pubblico
+* anonimato
+* utenti identificati esclusivamente tramite account AlphaChat
+* wallet USDA associato all’utente
+
+L’esperienza deve essere simile a Telegram Wallet o WhatsApp Payments.
+
+⸻
+
+Flusso desiderato
+
+Scenario:
+
+Utente A invia 100 USDA a Utente B.
+
+Il destinatario non riceve immediatamente i fondi.
+
+Il backend crea un trasferimento in stato PENDING.
+
+I fondi vengono custoditi temporaneamente.
+
+Utente B riceve una notifica nella chat.
+
+Può:
+
+* Accettare
+* Rifiutare
+
+Se accetta:
+
+Escrow → wallet di B
+
+Se rifiuta:
+
+Escrow → wallet di A
+
+Se non risponde entro 48 ore:
+
+refund automatico al mittente.
+
+⸻
+
+Analisi richiesta
+
+1. Esplorare il repository getusda.xyz
+
+Individuare:
+
+* tutta la logica blockchain riutilizzabile
+* invio USDA
+* escrow
+* scheduler
+* refund
+* pending transfer
+* wallet custodiali
+* notifiche
+* audit
+* idempotenza
+* recovery
+
+Specificare cosa può essere riutilizzato senza modifiche.
+
+⸻
+
+2. Esplorare AlphaChat
+
+Individuare:
+
+* chat
+* notifiche
+* messaggi di sistema
+* bubble pagamento
+* wallet USDA
+* autenticazione
+* utenti
+
+Verificare come integrare un motore pagamenti senza rompere l’architettura attuale.
+
+⸻
+
+3. Confrontare le due architetture
+
+Preparare una tabella:
+
+Componente	AlphaChat	getusda.xyz	Riutilizzabile
+
+⸻
+
+4. Valutare la possibilità di creare un unico Payment Engine
+
+Analizzare se conviene creare:
+
+USDA Payment Engine
+
+con due API separate.
+
+API AlphaChat
+
+destinate esclusivamente agli utenti AlphaChat
+
+esempio:
+
+POST /chat-transfer/create
+POST /chat-transfer/accept
+POST /chat-transfer/reject
+POST /chat-transfer/cancel
+GET /chat-transfer/status
+
+⸻
+
+API getusda.xyz
+
+continuano a supportare:
+
+* recipientPhone
+* share link
+* portale web
+
+senza modifiche per gli utenti esistenti.
+
+⸻
+
+5. Escrow
+
+Analizzare se l’escrow possa essere gestito:
+
+* tramite wallet dedicato
+* tramite smart contract
+* tramite wallet custodiale esistente
+
+Valutare:
+
+vantaggi
+
+svantaggi
+
+sicurezza
+
+gas
+
+performance
+
+complessità
+
+⸻
+
+6. Timeout
+
+Analizzare come implementare:
+
+48 ore
+
+senza perdere fondi in caso di:
+
+* crash
+* restart
+* deploy
+* failover
+
+⸻
+
+7. Scheduler
+
+Verificare se esiste già nel repository USDA una logica riutilizzabile per:
+
+* scadenza
+* refund
+* retry
+* recovery
+
+⸻
+
+8. Atomicità
+
+Analizzare come garantire:
+
+mai doppio pagamento
+
+mai doppio rimborso
+
+mai fondi persi
+
+mai race condition
+
+mai perdita dopo restart
+
+⸻
+
+9. Sicurezza
+
+Analizzare:
+
+Replay attack
+
+Double spend
+
+Idempotenza
+
+Lock
+
+Audit log
+
+Firma transazioni
+
+Recovery
+
+⸻
+
+10. UX
+
+Proporre il flusso ideale.
+
+Esempio:
+
+A
+↓
+Invia 100 USDA
+↓
+Messaggio in chat
+"In attesa di accettazione"
+↓
+B riceve
+↓
+Accetta
+↓
+Pagamento completato
+
+oppure
+
+48h
+↓
+Refund automatico
+↓
+Messaggio:
+"I fondi sono stati restituiti al mittente."
+
+⸻
+
+11. Compatibilità
+
+Verificare se questa nuova architettura può convivere con:
+
+* portale getusda.xyz
+* Wallet USDA
+* AlphaChat
+
+senza rompere alcuna API esistente.
+
+⸻
+
+12. Deliverable finale
+
+Non scrivere codice.
+
+Consegnare un documento tecnico completo con:
+
+* architettura consigliata;
+* componenti da riutilizzare;
+* componenti da creare;
+* API consigliate;
+* flussi di stato;
+* schema dati;
+* stati della transazione;
+* gestione escrow;
+* gestione timeout;
+* gestione refund;
+* recovery;
+* sicurezza;
+* rischi;
+* roadmap di implementazione.
+
+Infine indicare chiaramente quale soluzione consiglieresti se dovessi progettare oggi da zero un sistema di pagamenti P2P anonimo, sicuro e scalabile per AlphaChat sfruttando al massimo il codice già esistente nei due repository, minimizzando duplicazioni e mantenendo il backend semplice da evolvere.
