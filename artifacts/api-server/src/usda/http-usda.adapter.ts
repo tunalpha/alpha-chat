@@ -24,6 +24,7 @@ import type {
   UsdaAdapter,
   WalletInfo,
   WalletChain,
+  UsdaBackendInfo,
   UsdaCapabilities,
   PreparePaymentParams,
   PreparedPayment,
@@ -35,8 +36,9 @@ import type {
   UsdaPaymentStatus,
 } from "./usda-adapter.interface";
 
-// Capabilities cache (valida 5 minuti)
+// Cache (valida 5 minuti)
 let _capabilitiesCache: { data: UsdaCapabilities; expiresAt: number } | null = null;
+let _infoCache:         { data: UsdaBackendInfo;  expiresAt: number } | null = null;
 
 // ---------------------------------------------------------------------------
 // Errore specifico per adapter non configurato
@@ -108,6 +110,30 @@ async function usdaRequest<T>(
 // ---------------------------------------------------------------------------
 
 export class HttpUsdaAdapter implements UsdaAdapter {
+  // ── Backend Info ────────────────────────────────────────────────────────
+
+  async getInfo(): Promise<UsdaBackendInfo> {
+    if (_infoCache && _infoCache.expiresAt > Date.now()) return _infoCache.data;
+    try {
+      // TODO: verify — il backend USDA espone GET /info?
+      const data = await usdaRequest<UsdaBackendInfo>("GET", "/info");
+      _infoCache = { data, expiresAt: Date.now() + 5 * 60 * 1000 };
+      logger.info({ network: data.network, chainId: data.chainId }, "[HttpUSDA] Backend info loaded");
+      return data;
+    } catch (err) {
+      logger.warn({ err }, "[HttpUSDA] Backend info fetch failed — using defaults");
+      return {
+        name:        "USDA Backend",
+        version:     "unknown",
+        environment: "unknown",
+        network:     "Polygon Mainnet",
+        chainId:     137,
+        explorer:    "https://polygonscan.com",
+        apiVersion:  "v1",
+      };
+    }
+  }
+
   // ── Capability Test ─────────────────────────────────────────────────────
 
   async checkCapabilities(): Promise<UsdaCapabilities> {

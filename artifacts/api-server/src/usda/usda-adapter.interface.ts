@@ -46,6 +46,20 @@ export interface WalletInfo {
 }
 
 // ---------------------------------------------------------------------------
+// USDA Backend Info (Network metadata — nessun valore hardcoded nel client)
+// ---------------------------------------------------------------------------
+
+export interface UsdaBackendInfo {
+  name:        string;   // "USDA Backend"
+  version:     string;   // "1.3.2"
+  environment: string;   // "production" | "staging" | "development"
+  network:     string;   // "Polygon Mainnet"
+  chainId:     number;   // 137
+  explorer:    string;   // "https://polygonscan.com"
+  apiVersion:  string;   // "v1"
+}
+
+// ---------------------------------------------------------------------------
 // USDA Backend Capabilities (Capability Test)
 // ---------------------------------------------------------------------------
 
@@ -156,6 +170,9 @@ export interface HistoryResult {
 // ---------------------------------------------------------------------------
 
 export interface UsdaAdapter {
+  /** Restituisce metadati di rete — nessun valore hardcoded nel client */
+  getInfo(): Promise<UsdaBackendInfo>;
+
   /** Capability Test — verifica versione e funzionalità del backend USDA */
   checkCapabilities(): Promise<UsdaCapabilities>;
 

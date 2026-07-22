@@ -243,6 +243,10 @@ export async function checkCapabilities() {
   return _adapter.checkCapabilities();
 }
 
+export async function getBackendInfo() {
+  return _adapter.getInfo();
+}
+
 export async function preparePayment(params: {
   fromUserId: string;
   toUserId: string;

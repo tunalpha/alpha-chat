@@ -13,7 +13,8 @@ import * as usda from "../../controllers/usda.controller";
 const router = Router();
 router.use(authenticate);
 
-// ── Capabilities ───────────────────────────────────────────────────────────
+// ── Discovery ─────────────────────────────────────────────────────────────
+router.get("/info",         usda.getBackendInfo);
 router.get("/capabilities", usda.getCapabilities);
 
 // ── Wallet ─────────────────────────────────────────────────────────────────

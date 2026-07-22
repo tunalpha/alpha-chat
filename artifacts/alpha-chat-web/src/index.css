@@ -5980,3 +5980,6 @@ html.emergency-open #root {
 .wc-backend-val { font-weight: 600; color: var(--text-2, rgba(255,255,255,0.75)); }
 .wc-backend-val.ok  { color: #4ade80; }
 .wc-backend-val.off { color: #f87171; }
+
+.wc-backend-link { color: #818cf8; text-decoration: none; font-size: 0.82rem; font-weight: 500; }
+.wc-backend-link:hover { text-decoration: underline; }

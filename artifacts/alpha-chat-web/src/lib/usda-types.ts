@@ -23,6 +23,20 @@ export const WALLET_CHAIN_LABELS: Record<WalletChain, { label: string; icon: str
 };
 
 // ---------------------------------------------------------------------------
+// USDA Backend Info (network metadata — nessun valore hardcoded nel client)
+// ---------------------------------------------------------------------------
+
+export interface UsdaBackendInfo {
+  name:        string;   // "USDA Backend"
+  version:     string;   // "1.3.2"
+  environment: string;   // "production" | "staging" | "development"
+  network:     string;   // "Polygon Mainnet"
+  chainId:     number;   // 137
+  explorer:    string;   // "https://polygonscan.com"
+  apiVersion:  string;   // "v1"
+}
+
+// ---------------------------------------------------------------------------
 // USDA Backend Capabilities
 // ---------------------------------------------------------------------------
 

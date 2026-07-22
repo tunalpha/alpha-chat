@@ -15,6 +15,7 @@ import type {
   UsdaAdapter,
   WalletInfo,
   WalletChain,
+  UsdaBackendInfo,
   UsdaCapabilities,
   PreparePaymentParams,
   PreparedPayment,
@@ -106,6 +107,20 @@ function _scheduleConfirmation(paymentId: string, delayMs = 3000): void {
 // ---------------------------------------------------------------------------
 
 export class MockUsdaAdapter implements UsdaAdapter {
+  // ── Backend Info ────────────────────────────────────────────────────────
+
+  async getInfo(): Promise<UsdaBackendInfo> {
+    return {
+      name:        "USDA Backend (Mock)",
+      version:     "mock-1.0",
+      environment: "development",
+      network:     "Polygon Mumbai Testnet",
+      chainId:     80001,
+      explorer:    "https://mumbai.polygonscan.com",
+      apiVersion:  "v1",
+    };
+  }
+
   // ── Capability Test ─────────────────────────────────────────────────────
 
   async checkCapabilities(): Promise<UsdaCapabilities> {

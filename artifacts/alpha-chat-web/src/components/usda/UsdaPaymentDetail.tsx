@@ -4,8 +4,8 @@
  */
 
 import { useEffect, useState } from "react";
-import { apiUsdaGetPayment } from "../../lib/usda-api";
-import type { UsdaPaymentData } from "../../lib/usda-types";
+import { apiUsdaGetPayment, apiUsdaGetInfo } from "../../lib/usda-api";
+import type { UsdaPaymentData, UsdaBackendInfo } from "../../lib/usda-types";
 import { USDA_STATUS_LABELS, USDA_STATUS_ICONS } from "../../lib/usda-types";
 
 interface Props {
@@ -13,25 +13,29 @@ interface Props {
   onClose: () => void;
 }
 
-// Polygon Explorer base URL (mock — sostituire con la chain reale)
-const EXPLORER_BASE = "https://polygonscan.com/tx/";
-
 function abbrev(s: string, chars = 8): string {
   if (!s || s.length <= chars * 2) return s;
   return `${s.slice(0, chars)}…${s.slice(-4)}`;
 }
 
 export function UsdaPaymentDetail({ paymentId, onClose }: Props) {
-  const [data, setData] = useState<UsdaPaymentData | null>(null);
+  const [data,    setData]    = useState<UsdaPaymentData | null>(null);
+  const [info,    setInfo]    = useState<UsdaBackendInfo | null>(null);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
+  const [error,   setError]   = useState<string | null>(null);
 
   useEffect(() => {
-    apiUsdaGetPayment(paymentId)
-      .then(setData)
+    Promise.all([
+      apiUsdaGetPayment(paymentId),
+      apiUsdaGetInfo().catch(() => null),
+    ])
+      .then(([payment, backendInfo]) => { setData(payment); setInfo(backendInfo); })
       .catch((err: Error) => setError(err.message))
       .finally(() => setLoading(false));
   }, [paymentId]);
+
+  // Explorer URL viene dal backend — nessun valore hardcoded
+  const explorerBase = info ? `${info.explorer}/tx/` : null;
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
@@ -82,18 +86,28 @@ export function UsdaPaymentDetail({ paymentId, onClose }: Props) {
               {data.tx_hash && (
                 <div className="usda-detail-row">
                   <span>Hash</span>
-                  <a
-                    href={`${EXPLORER_BASE}${data.tx_hash}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="usda-detail-hash"
-                  >
-                    {abbrev(data.tx_hash, 10)}
-                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12" style={{ marginLeft: 4 }}>
-                      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
-                      <polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
-                    </svg>
-                  </a>
+                  {explorerBase ? (
+                    <a
+                      href={`${explorerBase}${data.tx_hash}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="usda-detail-hash"
+                    >
+                      {abbrev(data.tx_hash, 10)}
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="12" height="12" style={{ marginLeft: 4 }}>
+                        <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>
+                        <polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/>
+                      </svg>
+                    </a>
+                  ) : (
+                    <span>{abbrev(data.tx_hash, 10)}</span>
+                  )}
+                </div>
+              )}
+              {info && (
+                <div className="usda-detail-row">
+                  <span>Rete</span>
+                  <span>{info.network} (chain {info.chainId})</span>
                 </div>
               )}
               {data.claim_expires_at && (
@@ -122,14 +136,14 @@ export function UsdaPaymentDetail({ paymentId, onClose }: Props) {
               )}
             </div>
 
-            {data.tx_hash && (
+            {data.tx_hash && explorerBase && (
               <a
-                href={`${EXPLORER_BASE}${data.tx_hash}`}
+                href={`${explorerBase}${data.tx_hash}`}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="usda-explorer-btn"
               >
-                🔗 Apri Explorer
+                🔗 Apri {info?.network ?? "Explorer"}
               </a>
             )}
           </>

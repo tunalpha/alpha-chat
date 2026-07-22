@@ -45,6 +45,14 @@ export const getCapabilities: RequestHandler = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// GET /api/v1/usda/info
+export const getBackendInfo: RequestHandler = async (req, res, next) => {
+  try {
+    const result = await usdaService.getBackendInfo();
+    res.status(200).json(successResponse(result, req.requestId));
+  } catch (err) { next(err); }
+};
+
 // POST /api/v1/usda/payments/prepare
 export const preparePayment: RequestHandler = async (req, res, next) => {
   try {

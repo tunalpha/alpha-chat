@@ -8,8 +8,8 @@
  */
 
 import { useState, useEffect } from "react";
-import { apiUsdaGetWallet, apiUsdaGetHistory, apiUsdaGetCapabilities } from "../lib/usda-api";
-import type { WalletInfo, UsdaPaymentData, UsdaCapabilities, WalletChain } from "../lib/usda-types";
+import { apiUsdaGetWallet, apiUsdaGetHistory, apiUsdaGetCapabilities, apiUsdaGetInfo } from "../lib/usda-api";
+import type { WalletInfo, UsdaPaymentData, UsdaBackendInfo, UsdaCapabilities, WalletChain } from "../lib/usda-types";
 import { WALLET_CHAIN_LABELS, USDA_STATUS_LABELS, USDA_STATUS_ICONS } from "../lib/usda-types";
 import { WalletSetupSheet } from "../components/usda/WalletSetupSheet";
 import { UsdaPaymentDetail } from "../components/usda/UsdaPaymentDetail";
@@ -36,6 +36,7 @@ export default function WalletCenterPage({ onBack }: Props) {
   // -- Wallet state
   const [wallet,       setWallet]       = useState<WalletInfo | null>(null);
   const [walletLoading, setWalletLoading] = useState(true);
+  const [backendInfo,  setBackendInfo]  = useState<UsdaBackendInfo | null>(null);
   const [capabilities, setCapabilities] = useState<UsdaCapabilities | null>(null);
 
   // -- History state
@@ -49,10 +50,11 @@ export default function WalletCenterPage({ onBack }: Props) {
   const [detailId,      setDetailId]     = useState<string | null>(null);
   const [setupChain,    setSetupChain]   = useState<WalletChain | null>(null);
 
-  // Load wallet + capabilities on mount
+  // Load wallet + info + capabilities on mount (tutto dal backend — nessun valore hardcoded)
   useEffect(() => {
     Promise.all([
       apiUsdaGetWallet().then(setWallet).catch(() => {}),
+      apiUsdaGetInfo().then(setBackendInfo).catch(() => {}),
       apiUsdaGetCapabilities().then(setCapabilities).catch(() => {}),
     ]).finally(() => setWalletLoading(false));
   }, []);
@@ -87,8 +89,8 @@ export default function WalletCenterPage({ onBack }: Props) {
           <span className="wc-header-icon">💰</span>
           <span>Wallet Center</span>
         </div>
-        {capabilities && (
-          <span className="wc-version">v{capabilities.version}</span>
+        {backendInfo && (
+          <span className="wc-version">{backendInfo.network} · v{backendInfo.version}</span>
         )}
       </header>
 
@@ -167,6 +169,24 @@ export default function WalletCenterPage({ onBack }: Props) {
                   );
                 })}
               </div>
+
+              {/* Network info — letta dal backend */}
+              {backendInfo && (
+                <>
+                  <div className="wc-section-title">Rete</div>
+                  <div className="wc-backend-info">
+                    <div className="wc-backend-row"><span>Network</span><span className="wc-backend-val">{backendInfo.network}</span></div>
+                    <div className="wc-backend-row"><span>Chain ID</span><span className="wc-backend-val">{backendInfo.chainId}</span></div>
+                    <div className="wc-backend-row"><span>Ambiente</span><span className={`wc-backend-val ${backendInfo.environment === "production" ? "ok" : ""}`}>{backendInfo.environment}</span></div>
+                    <div className="wc-backend-row">
+                      <span>Explorer</span>
+                      <a href={backendInfo.explorer} target="_blank" rel="noopener noreferrer" className="wc-backend-link">
+                        {backendInfo.explorer.replace("https://", "")}
+                      </a>
+                    </div>
+                  </div>
+                </>
+              )}
 
               {/* Capabilities */}
               {capabilities && (
@@ -277,15 +297,27 @@ export default function WalletCenterPage({ onBack }: Props) {
             })}
           </div>
 
-          {capabilities && (
+          {(backendInfo || capabilities) && (
             <>
               <div className="wc-section-title" style={{ marginTop: 24 }}>Backend USDA</div>
               <div className="wc-backend-info">
-                <div className="wc-backend-row">
-                  <span>Versione</span>
-                  <span className="wc-backend-val">{capabilities.version}</span>
-                </div>
-                {(Object.entries(capabilities.supports) as [string, boolean][]).map(([k, v]) => (
+                {backendInfo && (
+                  <>
+                    <div className="wc-backend-row"><span>Nome</span><span className="wc-backend-val">{backendInfo.name}</span></div>
+                    <div className="wc-backend-row"><span>Versione</span><span className="wc-backend-val">{backendInfo.version}</span></div>
+                    <div className="wc-backend-row"><span>API</span><span className="wc-backend-val">{backendInfo.apiVersion}</span></div>
+                    <div className="wc-backend-row"><span>Ambiente</span><span className={`wc-backend-val ${backendInfo.environment === "production" ? "ok" : ""}`}>{backendInfo.environment}</span></div>
+                    <div className="wc-backend-row"><span>Network</span><span className="wc-backend-val">{backendInfo.network}</span></div>
+                    <div className="wc-backend-row"><span>Chain ID</span><span className="wc-backend-val">{backendInfo.chainId}</span></div>
+                    <div className="wc-backend-row">
+                      <span>Explorer</span>
+                      <a href={backendInfo.explorer} target="_blank" rel="noopener noreferrer" className="wc-backend-link">
+                        {backendInfo.explorer.replace("https://", "")}
+                      </a>
+                    </div>
+                  </>
+                )}
+                {capabilities && (Object.entries(capabilities.supports) as [string, boolean][]).map(([k, v]) => (
                   <div key={k} className="wc-backend-row">
                     <span>{k}</span>
                     <span className={`wc-backend-val ${v ? "ok" : "off"}`}>{v ? "✓" : "✗"}</span>
