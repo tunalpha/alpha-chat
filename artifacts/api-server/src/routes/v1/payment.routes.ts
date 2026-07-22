@@ -190,4 +190,25 @@ router.get(
   }) as RequestHandler,
 );
 
+// ---------------------------------------------------------------------------
+// POST /api/v1/payments/:transferId/resync — forza WS event (recovery admin)
+// Utile dopo un recovery manuale via script: ri-emette payment.state_changed
+// e aggiorna la system_metadata del messaggio-bolla senza cambiare lo status.
+// ---------------------------------------------------------------------------
+
+router.post(
+  "/:transferId/resync",
+  (async (req, res, next) => {
+    try {
+      const result = await paymentService.resyncTransfer({
+        transferId:  req.params.transferId as string,
+        requesterId: req.user!.userId,
+      });
+      res.json(result);
+    } catch (err) {
+      next(err);
+    }
+  }) as RequestHandler,
+);
+
 export default router;

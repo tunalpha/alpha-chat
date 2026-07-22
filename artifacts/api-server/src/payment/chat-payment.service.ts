@@ -245,7 +245,11 @@ async function _verifyDepositTx(params: {
 
   const publicClient = createPublicClient({
     chain:     polygon,
-    transport: http(process.env.USDA_POLYGON_RPC ?? "https://polygon-bor-rpc.publicnode.com"),
+    transport: http(
+      process.env.USDA_POLYGON_RPC ??
+      process.env.VITE_POLYGON_RPC ??
+      "https://rpc.ankr.com/polygon"
+    ),
   });
 
   let receipt: Awaited<ReturnType<typeof publicClient.getTransactionReceipt>>;
@@ -502,7 +506,11 @@ export async function detectDeposit(params: {
 
   const publicClient = createPublicClient({
     chain:     polygon,
-    transport: http(process.env.USDA_POLYGON_RPC ?? "https://polygon-bor-rpc.publicnode.com"),
+    transport: http(
+      process.env.USDA_POLYGON_RPC ??
+      process.env.VITE_POLYGON_RPC ??
+      "https://rpc.ankr.com/polygon"
+    ),
   });
 
   // Calcola il range di blocchi in modo mirato:
@@ -604,7 +612,11 @@ export async function acceptTransfer(params: {
       try {
         const publicClient = createPublicClient({
           chain:     polygon,
-          transport: http(process.env.USDA_POLYGON_RPC ?? "https://polygon-bor-rpc.publicnode.com"),
+          transport: http(
+            process.env.USDA_POLYGON_RPC ??
+            process.env.VITE_POLYGON_RPC ??
+            "https://rpc.ankr.com/polygon"
+          ),
         });
         const r = await publicClient.getTransactionReceipt({ hash: txHash as `0x${string}` });
         const releaseBlock = Number(r.blockNumber);
@@ -741,6 +753,36 @@ export async function getTransfer(params: {
     transfer.sender_id.toString()    === params.requesterId ||
     transfer.recipient_id.toString() === params.requesterId;
   if (!isParty) throw new AppError("TRANSFER_ACCESS_DENIED", 403);
+
+  return _format(transfer);
+}
+
+/**
+ * Ri-emette il WS event payment.state_changed e aggiorna la system_metadata
+ * del messaggio-bolla. Utile dopo un recovery manuale (script) che ha
+ * aggiornato MongoDB direttamente senza passare per il service layer.
+ * Accessibile da mittente o destinatario.
+ */
+export async function resyncTransfer(params: {
+  transferId:  string;
+  requesterId: string;
+}): Promise<Record<string, unknown>> {
+  const transfer = await ChatTransferModel.findOne({ transfer_id: params.transferId });
+  if (!transfer) throw new AppError("TRANSFER_NOT_FOUND", 404);
+
+  const isParty =
+    transfer.sender_id.toString()    === params.requesterId ||
+    transfer.recipient_id.toString() === params.requesterId;
+  if (!isParty) throw new AppError("TRANSFER_ACCESS_DENIED", 403);
+
+  // Aggiorna system_metadata del messaggio e ri-emette l'evento WS
+  await _updateMessageMeta(transfer);
+  emitPaymentStateChanged(transfer);
+
+  logger.info(
+    { transferId: params.transferId, status: transfer.status },
+    "[Payment] resyncTransfer: WS event e message_meta aggiornati",
+  );
 
   return _format(transfer);
 }
