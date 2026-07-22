@@ -1,8 +1,11 @@
 # Architettura definitiva — Motore Pagamenti P2P AlphaChat
 
 **Versione**: 1.0 — Luglio 2026  
-**Stato**: Documento di progettazione — nessun codice scritto  
+**Stato**: ✅ Approvata — Architettura congelata  
 **Scope**: Chat Payment Engine P2P nativo di AlphaChat — asset-agnostico, indipendente da getusda.xyz
+
+> **Nota di congelamento**  
+> Questo documento è considerato stabile. L'architettura non deve essere modificata per ipotesi progettuali future. Eventuali revisioni sono ammesse esclusivamente se motivate da esigenze emerse durante l'implementazione o dai test, e devono essere registrate come nuova versione (v1.1, v2.0, ecc.) con motivazione esplicita.
 
 ---
 
@@ -775,3 +778,137 @@ Aggiungere `asset_address` e `asset_symbol` fin dall'MVP non aggiunge complessit
 ### Ciò che non va fatto ora
 
 Non implementare il supporto multi-asset nell'MVP. Il principio guida è: **progettare le interfacce come se multi-asset esistesse, implementare solo USDA**. Nessun `if (asset === 'USDC')` nell'MVP — solo lo slot parametrico che, quando arriverà USDC, non richiederà modifiche strutturali.
+
+---
+
+## 17. Checklist di implementazione
+
+Questa sezione traduce l'architettura in unità di lavoro concrete. Ogni sprint è autonomo e consegnabile. L'ordine è vincolante: ogni sprint dipende da quello precedente.
+
+---
+
+### Sprint 1 — Fondazioni
+
+**Obiettivo**: schema dati, state machine, eventi interni. Nessuna API esposta ancora.
+
+- [ ] Creare collection MongoDB `chat_transfers` con tutti i campi definiti in sezione 3.3
+- [ ] Creare collection `chat_transfer_audit` (append-only, mai cancellata)
+- [ ] Creare collection `processed_txs` con unique index su `tx_hash` (anti-replay)
+- [ ] Definire indici: `transfer_id` unique, `status + expires_at` (per lo scheduler), `sender_id`, `recipient_id`, `conversation_id`
+- [ ] Implementare modello Mongoose `ChatTransfer` con typing TypeScript completo
+- [ ] Implementare la state machine come funzione pura: `transition(currentStatus, action) → newStatus | Error`
+- [ ] Implementare `usda-custodial.service.ts`: generazione wallet escrow, cifratura AES-256-GCM PK, `transferFromCustodial()`, `getCustodialBalance()`
+- [ ] Implementare `asset-anti-replay.ts`: `checkAndMarkTx(txHash)` e `rollbackTx(txHash)`
+- [ ] Implementare helper lock atomico: `acquireLock(transferId, fromStatus, toStatus)`
+- [ ] Implementare emissione eventi interni `payment.state_changed` (usato da chat per aggiornare il messaggio)
+- [ ] Scrivere unit test sulla state machine: ogni transizione valida e ogni transizione invalida
+
+---
+
+### Sprint 2 — Backend API
+
+**Obiettivo**: cinque endpoint REST completi con escrow funzionante.
+
+- [ ] `POST /api/v1/chat-transfer/create`
+  - [ ] Validare mittente autenticato, destinatario esistente, wallet di entrambi presenti
+  - [ ] Validare `asset_address` e `asset_symbol` (default USDA)
+  - [ ] Generare wallet escrow e cifrare PK
+  - [ ] Creare record `chat_transfers` in stato `awaiting_deposit`
+  - [ ] Creare Payment Message nella conversazione (ADR-002)
+  - [ ] Rispondere con `{ transfer_id, escrow_address, amount, asset_symbol, expires_at }`
+- [ ] `POST /api/v1/chat-transfer/:id/deposit-confirmed`
+  - [ ] Verificare che il chiamante sia il mittente
+  - [ ] Chiamare `checkAndMarkTx(txHash)` — anti-replay
+  - [ ] Verificare Transfer event on-chain tramite `verifyAssetTx()`
+  - [ ] Verificare importo e destinatario corrispondenti all'escrow
+  - [ ] Transizione `awaiting_deposit → pending`
+  - [ ] Aggiornare Payment Message; emettere WS `payment.state_changed` a entrambi
+- [ ] `POST /api/v1/chat-transfer/:id/accept`
+  - [ ] Verificare che il chiamante sia il destinatario
+  - [ ] `acquireLock(id, 'pending', 'accepting')`
+  - [ ] `transferFromCustodial(encPk, recipientWallet, amount)`
+  - [ ] `checkAndMarkTx(txHash)` sul tx di release
+  - [ ] Transizione `accepting → accepted`
+  - [ ] Aggiornare Payment Message; emettere WS a entrambi
+- [ ] `POST /api/v1/chat-transfer/:id/reject`
+  - [ ] Verificare che il chiamante sia il destinatario
+  - [ ] `acquireLock(id, 'pending', 'rejecting')`
+  - [ ] `transferFromCustodial(encPk, senderWallet, amount)` — rimborso immediato
+  - [ ] Transizione `rejecting → rejected`
+  - [ ] Aggiornare Payment Message; emettere WS a entrambi
+- [ ] `POST /api/v1/chat-transfer/:id/cancel`
+  - [ ] Verificare che il chiamante sia il mittente
+  - [ ] Verificare che lo stato sia `pending` (non accettabile dopo accept/reject)
+  - [ ] `acquireLock(id, 'pending', 'cancelling')`
+  - [ ] `transferFromCustodial(encPk, senderWallet, amount)` — rimborso
+  - [ ] Transizione `cancelling → cancelled`
+  - [ ] Aggiornare Payment Message; emettere WS a entrambi
+- [ ] `GET /api/v1/chat-transfer/:id`
+  - [ ] Accessibile solo da mittente o destinatario
+  - [ ] Non esporre `escrow_encrypted_pk`
+- [ ] Scrivere log su `chat_transfer_audit` ad ogni transizione di stato (tutti gli endpoint)
+- [ ] Test di integrazione su tutti e cinque gli endpoint con MongoDB in-memory
+
+---
+
+### Sprint 3 — Scheduler e Recovery
+
+**Obiettivo**: timeout 48h affidabile, sopravvissuto a crash e deploy.
+
+- [ ] Implementare job `processExpiredTransfers()`
+  - [ ] Query: `{ status: 'pending', expires_at: { $lt: now } }`
+  - [ ] Per ogni record: `acquireLock(id, 'pending', 'refunding')`
+  - [ ] `transferFromCustodial(encPk, senderWallet, amount)`
+  - [ ] Transizione `refunding → refunded`
+  - [ ] Aggiornare Payment Message con stato ⏰ Scaduto; emettere WS
+- [ ] Implementare job `recoverStuckTransfers()`
+  - [ ] Query: stati `accepting | rejecting | cancelling | refunding` con `locked_at < now - 10min`
+  - [ ] Per ogni record: verificare `getCustodialBalance(escrowWallet)`
+  - [ ] Se balance = 0 → fondi già usciti → segnare stato terminale corretto
+  - [ ] Se balance > 0 → riprovare la TX; se fallisce → stato `failed` + alert admin
+- [ ] Configurare `setInterval` ogni 5 minuti nel processo API per entrambi i job
+- [ ] Aggiungere endpoint `POST /api/v1/chat-transfer/internal/process-expired` (auth admin) per trigger manuale e per Cron esterno
+- [ ] Alert automatico su `chat_transfers` con balance custodiale > 0 e status terminale
+- [ ] Test: simulare crash tra lock e TX; verificare che il recovery ripristini lo stato corretto
+
+---
+
+### Sprint 4 — Frontend
+
+**Obiettivo**: Payment Message nativo nella chat con ciclo di vita completo.
+
+- [ ] Creare `PaymentMessageBubble.tsx` (nuovo `message_type: 'payment'`)
+  - [ ] Rendering differenziato per mittente e destinatario
+  - [ ] Label e icona per ogni stato della tabella ADR-002
+  - [ ] Pulsanti Accetta / Rifiuta visibili solo al destinatario in stato `pending`
+  - [ ] Pulsante Annulla visibile solo al mittente in stato `pending`
+  - [ ] Timer countdown visibile ("scade tra X ore") in stato `pending`
+  - [ ] Mostrare `asset_symbol` dal record — non hardcodare "USDA"
+- [ ] Integrare `PaymentMessageBubble` in `ChatPage` tramite dispatch su `message_type`
+- [ ] Gestire evento WS `payment.state_changed`: aggiornare il messaggio in-place senza reload
+- [ ] Aggiornare `SendUsdaSheet` (o equivalente) per usare il nuovo endpoint `create`
+- [ ] Mostrare `escrow_address` e istruzioni al mittente nel flusso di firma TX
+- [ ] Gestire stato `failed` con messaggio di errore leggibile e opzione di retry dove applicabile
+- [ ] Test visivo: verificare tutti gli stati su mobile e desktop
+
+---
+
+### Sprint 5 — Test di robustezza
+
+**Obiettivo**: verificare che il sistema regga i casi limite prima del deploy in produzione.
+
+- [ ] **Race condition accept**: due richieste `accept` simultanee dallo stesso utente → solo una deve riuscire, l'altra riceve errore non ambiguo
+- [ ] **Doppio click**: front-end disabilita i pulsanti dopo il primo tap; back-end respinge il secondo con 409
+- [ ] **Crash recovery**: terminare il processo API tra `acquireLock` e `transferFromCustodial`; riavviare; verificare che il job recovery completi la transazione
+- [ ] **Deploy durante trasferimento**: deploy in produzione con un transfer in stato `pending`; verificare che lo scheduler lo processi correttamente al prossimo avvio
+- [ ] **Idempotenza deposit-confirmed**: inviare lo stesso `txHash` due volte → anti-replay blocca il secondo
+- [ ] **Wallet assente**: creare un transfer verso un utente senza wallet configurato → errore chiaro a `create`, non a `accept`
+- [ ] **Importo on-chain difforme**: inviare una TX con importo diverso da quello del transfer → `deposit-confirmed` rifiuta
+- [ ] **Scadenza durante accept**: transfer scade mentre il destinatario sta premendo Accetta → lock atomico garantisce che solo uno dei due processi (scheduler vs accept) vinca
+- [ ] **Audit log completo**: verificare che ogni transizione di stato produca una riga in `chat_transfer_audit`
+- [ ] **Escrow non svuotato**: dopo ogni test, verificare `getCustodialBalance(escrowWallet) === 0`
+
+---
+
+> **Architettura v1.0 — congelata.**  
+> Ogni modifica a questo documento deve essere motivata da un'evidenza emersa durante l'implementazione o i test, non da ipotesi progettuali. Registrare la versione aggiornata nel frontmatter.
