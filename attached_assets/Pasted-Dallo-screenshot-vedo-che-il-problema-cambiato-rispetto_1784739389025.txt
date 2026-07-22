@@ -1,0 +1,93 @@
+Dallo screenshot vedo che il problema è cambiato rispetto a prima.
+
+Prima avevi:
+
+* ❌ RECIPIENT_NO_WALLET
+
+Ora invece hai:
+
+* ❌ USDA_API_ERROR
+
+Questo significa che il controllo sul wallet probabilmente è stato superato. Se il backend fosse ancora fermo a RECIPIENT_NO_WALLET, vedresti quel messaggio. Adesso l’errore avviene più avanti, durante la chiamata all’API USDA.
+
+Inoltre hai fatto:
+
+* ✅ disinstallazione completa dell’app di Cricco;
+* ✅ reinstallazione;
+* ✅ riconnessione del wallet.
+
+Quindi il problema del vecchio bundle PWA è molto meno probabile.
+
+A questo punto chiederei questa diagnosi
+
+⸻
+
+Il problema non è più RECIPIENT_NO_WALLET, ma USDA_API_ERROR.
+
+Non modificare codice. Individuare la causa esatta.
+
+1. Loggare la chiamata verso il server USDA
+
+Per POST /api/pay/prepare (o l’endpoint usato per l’invio) stampare:
+
+* URL
+* payload completo
+* headers (senza secret)
+
+2. Loggare integralmente la risposta
+
+In caso di errore stampare:
+
+HTTP Status:
+Response body:
+Response headers:
+
+Non limitarsi a:
+
+USDA_API_ERROR
+
+3. Verificare il wallet del destinatario
+
+Stampare il documento MongoDB di Cricco:
+
+{
+  "_id": "...",
+  "wallet_enabled": true,
+  "wallet_address": "...",
+  "wallets": {
+    "usda": {
+      "address": "..."
+    }
+  }
+}
+
+Confermare che il wallet sia ora realmente presente.
+
+4. Seguire preparePayment()
+
+Loggare:
+
+* wallet mittente;
+* wallet destinatario;
+* amount;
+* payload inviato al server USDA.
+
+5. Individuare il punto esatto
+
+Restituire:
+
+* status HTTP;
+* body completo dell’errore;
+* riga di codice che genera USDA_API_ERROR.
+
+Non proporre fix finché non è noto il body completo della risposta dell’API USDA.
+
+⸻
+
+Un’altra anomalia da verificare
+
+Hai scritto che dopo la reinstallazione non compare il banner “Aggiorna”.
+
+Questo è normale: una reinstallazione installa già l’ultima versione disponibile, quindi non ci si aspetta di vedere un banner di aggiornamento. Se invece il problema era che il banner non compariva su un’app già installata, allora è un tema separato (logica del service worker) che vale la pena analizzare, ma non spiega da solo l’attuale USDA_API_ERROR.
+
+In sintesi, il fatto che l’errore sia cambiato è un indizio positivo: significa che il flusso è avanzato e ora va diagnosticata la risposta dell’API USDA, non più il riconoscimento del wallet.
