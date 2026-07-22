@@ -1,0 +1,41 @@
+Da quello che hai riportato, lo Sprint 1 sembra aver raggiunto gli obiettivi previsti dall’architettura.
+
+Le parti che considero più importanti sono:
+
+* ✅ Motore dei pagamenti isolato in src/payment/.
+* ✅ State machine pura (facile da testare).
+* ✅ Audit append-only.
+* ✅ Anti-replay dedicato.
+* ✅ Lock atomico.
+* ✅ Evento WebSocket separato (payment.state_changed).
+* ✅ Nuove collection senza interferire con il sistema esistente.
+* ✅ Test esistenti ancora tutti verdi (73/73).
+
+Questa è una buona base: significa che avete costruito le fondamenta senza toccare il flusso attuale di AlphaChat.
+
+L’unica cosa che verificherei prima dello Sprint 2
+
+Non partirei subito con gli endpoint senza fare una piccola review del servizio custodial.
+
+Controllerei in particolare che:
+
+* ESCROW_MASTER_KEY venga validata all’avvio, non al primo utilizzo. Se la chiave manca o ha lunghezza errata, è preferibile che il server fallisca subito invece di scoprirlo al primo pagamento.
+* La cifratura AES-256-GCM salvi correttamente tutti i metadati necessari (IV/nonce e authentication tag) insieme alla chiave privata cifrata, così la decifratura è sempre possibile.
+* Il wallet escrow venga generato con un CSPRNG (crypto.randomBytes) e che non vengano mai scritte chiavi private o seed nei log, nemmeno in modalità diagnostica.
+
+Se questi aspetti sono già coperti, allora il servizio custodial è in una buona posizione per essere utilizzato dagli endpoint.
+
+Prima di iniziare lo Sprint 2
+
+Io farei solo due operazioni pratiche:
+
+1. Generare ESCROW_MASTER_KEY e salvarla come secret.
+2. Eseguire un test manuale molto semplice:
+    * generazione wallet escrow;
+    * cifratura della chiave;
+    * decifratura;
+    * verifica che l’indirizzo ricostruito sia identico a quello originale.
+
+Se questo test passa, significa che la parte più delicata dello Sprint 1 è affidabile.
+
+A quel punto puoi iniziare lo Sprint 2, che sarà il primo sprint in cui il Payment Engine inizierà realmente a movimentare i trasferimenti attraverso le API.

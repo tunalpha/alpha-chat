@@ -78,6 +78,18 @@ function getMasterKey(): Buffer {
   return _masterKey;
 }
 
+/**
+ * Valida ESCROW_MASTER_KEY all'avvio — fail-fast.
+ * Deve essere chiamata da index.ts durante il boot, prima che qualsiasi
+ * endpoint possa accettare richieste di pagamento.
+ * Se la chiave è assente o malformata il processo termina immediatamente,
+ * evitando di scoprirlo solo al primo pagamento reale.
+ */
+export function initCustodialService(): void {
+  getMasterKey(); // lancia AppError se ESCROW_MASTER_KEY non è valida
+  logger.info("[Custodial] ESCROW_MASTER_KEY validata ✓");
+}
+
 // ---------------------------------------------------------------------------
 // Cifratura / decifratura PK (AES-256-GCM)
 // ---------------------------------------------------------------------------

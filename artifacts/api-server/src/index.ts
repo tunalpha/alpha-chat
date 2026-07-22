@@ -8,6 +8,7 @@ import { seedAdminIfNeeded } from "./routes/v1/admin.routes";
 import { startTempCleanupScheduler } from "./schedulers/temp-cleanup.scheduler";
 import { startR2HealthScheduler } from "./schedulers/r2-health.scheduler";
 import { reconcilePendingPayments } from "./services/usda.service";
+import { initCustodialService } from "./payment/usda-custodial.service";
 
 const port = config.app.port;
 
@@ -24,6 +25,11 @@ async function start(): Promise<void> {
 
   // Attach WebSocket server (shares same port via HTTP upgrade)
   createWsServer(server);
+
+  // Chat Payment Engine — valida ESCROW_MASTER_KEY fail-fast.
+  // Se la chiave è assente o malformata il processo termina qui,
+  // prima di accettare qualsiasi richiesta di pagamento. (ADR-003)
+  initCustodialService();
 
   // Connect to MongoDB after the server is already accepting requests.
   // Individual API handlers will receive a Mongoose "not connected" error if
