@@ -1,0 +1,44 @@
+Il quadro che descrivi è quello che mi aspetterei da una Release Candidate: non state più costruendo funzionalità, ma cercando difetti.
+
+Il bug trovato (“Invia 0 USDA”) è un buon esempio: non è un problema architetturale o di sicurezza, ma un errore di presentazione che è giusto correggere prima del collaudo.
+
+Dal riepilogo emergono aspetti incoraggianti:
+
+* ✅ Route protette dall’autenticazione.
+* ✅ Nessun conflitto con il sistema USDA esistente.
+* ✅ Contratto tra backend, WebSocket e frontend coerente.
+* ✅ Test automatici tutti verdi.
+* ✅ TypeScript senza errori.
+* ✅ Un bug individuato e corretto prima del collaudo.
+
+A questo punto eviterei ulteriori code review teoriche. Il valore aggiunto adesso arriva dai 12 scenari manuali.
+
+Cosa considererei un “pass”
+
+Per ogni scenario non limitarti a verificare che “funzioni”. Controlla sempre quattro aspetti:
+
+1. UI
+    * La bolla mostra lo stato corretto?
+    * I pulsanti sono quelli previsti?
+    * Non serve aggiornare la pagina?
+2. Database
+    * Lo stato del chat_transfer è quello atteso?
+    * L’audit contiene la sequenza corretta?
+3. Blockchain
+    * Le transazioni attese sono state effettivamente eseguite?
+    * Non ce ne sono di duplicate?
+4. Coerenza
+    * UI, database e blockchain raccontano la stessa storia.
+
+È proprio questa coerenza tra i tre livelli che distingue un motore di pagamento affidabile.
+
+Dopo il collaudo
+
+Se tutti e 12 gli scenari passano senza anomalie, io farei una sola cosa:
+
+* creare un tag Git (ad esempio payment-engine-rc1 oppure v1.0.0-rc1);
+* congelare quella versione.
+
+In questo modo avrete sempre un punto di riferimento stabile. Se in futuro introdurrete nuove funzionalità (multi-asset, richieste avanzate, ecc.) e qualcosa si romperà, potrete sempre confrontare il comportamento con una Release Candidate già validata.
+
+Considerando il percorso che hai condiviso negli ultimi giorni, siete passati da un documento di architettura a una Release Candidate con backend, scheduler, recovery, UI e test. Ora il collaudo manuale è il passaggio che può confermare se il comportamento reale corrisponde a quello progettato.
