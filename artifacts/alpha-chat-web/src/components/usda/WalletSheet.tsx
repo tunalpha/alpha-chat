@@ -1,61 +1,55 @@
 /**
  * WalletSheet — bottom sheet nativo iOS per connettere wallet.
  *
- * Sostituisce @reown/appkit che dipende dal cloud registry WalletConnect
- * (blocca su .replit.dev con 403). Questo componente:
- *   • Mostra wallet options con icone
- *   • Usa wagmi `walletConnect` connector + deep link iOS (no cloud)
- *   • Usa `injected` per MetaMask desktop
- *   • Si chiude automaticamente quando l'utente approva in wallet
+ * Usa wagmi walletConnect connector + deep link iOS nativi.
+ * Nessuna dipendenza da cloud registry (bypassa il 403 su .replit.dev).
  *
  * Attivato da walletModal.open() → evento DOM 'alpha:open-wallet-sheet'
  */
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { useConnect, useAccount, useConnectors } from "wagmi";
+import { WC_PROJECT_ID } from "../../lib/wallet-client";
 
-// ── Deep link URL per wallet mobile ──────────────────────────────────────────
-//
-// Usiamo universal links (https) dove possibile — più affidabili su iOS Safari.
-// La variabile {uri} viene sostituita con l'URI WalletConnect encodato.
+// ── Deep link per wallet mobile ───────────────────────────────────────────────
 
 const MOBILE_WALLETS = [
   {
-    id:        "metamask",
-    label:     "MetaMask",
-    icon:      "🦊",
-    deepLink:  (uri: string) => `https://metamask.app.link/wc?uri=${uri}`,
-    color:     "#F6851B",
+    id:       "metamask"  as const,
+    label:    "MetaMask",
+    icon:     "🦊",
+    deepLink: (uri: string) => `https://metamask.app.link/wc?uri=${uri}`,
+    color:    "#F6851B",
   },
   {
-    id:        "trust",
-    label:     "Trust Wallet",
-    icon:      "🛡️",
-    deepLink:  (uri: string) => `https://link.trustwallet.com/wc?uri=${uri}`,
-    color:     "#3375BB",
+    id:       "trust"     as const,
+    label:    "Trust Wallet",
+    icon:     "🛡️",
+    deepLink: (uri: string) => `https://link.trustwallet.com/wc?uri=${uri}`,
+    color:    "#3375BB",
   },
   {
-    id:        "coinbase",
-    label:     "Coinbase Wallet",
-    icon:      "🔵",
-    deepLink:  (uri: string) => `https://go.cb-w.com/wc?uri=${uri}`,
-    color:     "#0052FF",
+    id:       "coinbase"  as const,
+    label:    "Coinbase Wallet",
+    icon:     "🔵",
+    deepLink: (uri: string) => `https://go.cb-w.com/wc?uri=${uri}`,
+    color:    "#0052FF",
   },
   {
-    id:        "rainbow",
-    label:     "Rainbow",
-    icon:      "🌈",
-    deepLink:  (uri: string) => `https://rnbwapp.com/wc?uri=${uri}`,
-    color:     "#174299",
+    id:       "rainbow"   as const,
+    label:    "Rainbow",
+    icon:     "🌈",
+    deepLink: (uri: string) => `https://rnbwapp.com/wc?uri=${uri}`,
+    color:    "#174299",
   },
   {
-    id:        "imtoken",
-    label:     "imToken",
-    icon:      "💙",
-    deepLink:  (uri: string) => `imtokenv2://wc?uri=${uri}`,
-    color:     "#11C4D1",
+    id:       "imtoken"   as const,
+    label:    "imToken",
+    icon:     "💙",
+    deepLink: (uri: string) => `imtokenv2://wc?uri=${uri}`,
+    color:    "#11C4D1",
   },
-] as const
+]
 
 type WalletId = (typeof MOBILE_WALLETS)[number]["id"]
 
@@ -68,118 +62,159 @@ type SheetState =
 // ── Componente ────────────────────────────────────────────────────────────────
 
 export default function WalletSheet() {
-  const [open,       setOpen]       = useState(false)
-  const [state,      setState]      = useState<SheetState>({ phase: "idle" })
-  const unsubRef     = useRef<(() => void) | null>(null)
+  const [open,  setOpen]  = useState(false)
+  const [state, setState] = useState<SheetState>({ phase: "idle" })
 
-  const { isConnected }  = useAccount()
-  const { connect }      = useConnect()
-  const connectors       = useConnectors()
+  const { isConnected }     = useAccount()
+  const { connectAsync }    = useConnect()
+  const connectors          = useConnectors()
+  const unsubRef            = useRef<(() => void) | null>(null)
 
   // Apri lo sheet via evento DOM (da walletModal.open())
   useEffect(() => {
-    const handler = () => { setOpen(true); setState({ phase: "idle" }) }
+    const handler = () => {
+      setState({ phase: "idle" })
+      setOpen(true)
+    }
     window.addEventListener("alpha:open-wallet-sheet", handler)
     return () => window.removeEventListener("alpha:open-wallet-sheet", handler)
   }, [])
 
-  // Chiudi automaticamente quando il wallet viene connesso
+  // Chiudi automaticamente quando il wallet è connesso
   useEffect(() => {
     if (isConnected && open) {
       setOpen(false)
       setState({ phase: "idle" })
-      unsubRef.current?.()
-      unsubRef.current = null
     }
   }, [isConnected, open])
 
   const close = useCallback(() => {
-    setOpen(false)
-    setState({ phase: "idle" })
     unsubRef.current?.()
     unsubRef.current = null
+    setOpen(false)
+    setState({ phase: "idle" })
   }, [])
 
-  // ── Connessione con deep link mobile ───────────────────────────────────────
-  const connectMobile = useCallback((wallet: typeof MOBILE_WALLETS[number]) => {
+  // ── Connessione wallet mobile via deep link ────────────────────────────────
+  const connectMobile = useCallback(async (wallet: typeof MOBILE_WALLETS[number]) => {
+    // Controllo upfront
+    if (!WC_PROJECT_ID) {
+      setState({ phase: "error", message: "WalletConnect Project ID non configurato. Contatta il supporto." })
+      return
+    }
+
     const wcConnector = connectors.find(c => c.type === "walletConnect")
     if (!wcConnector) {
-      setState({ phase: "error", message: "WalletConnect non disponibile. Ricarica l'app." })
+      setState({ phase: "error", message: "Connettore WalletConnect non trovato. Ricarica l'app." })
       return
     }
 
     setState({ phase: "connecting", walletId: wallet.id })
 
-    // Pulisce eventuali listener precedenti
+    // Pulisce listener precedenti
     unsubRef.current?.()
     unsubRef.current = null
 
+    // Sottoscrivi display_uri PRIMA di chiamare connectAsync
+    let uriReceived = false
     const onMessage = (data: { type: string; data?: unknown }) => {
       if (data.type !== "display_uri") return
+      if (uriReceived) return
+      uriReceived = true
 
-      // Rimuovi questo listener
+      // Rimuovi il listener
       unsubRef.current?.()
       unsubRef.current = null
 
-      const uri     = data.data as string
-      const encoded = encodeURIComponent(uri)
+      const uri      = data.data as string
+      const encoded  = encodeURIComponent(uri)
       const deepLink = wallet.deepLink(encoded)
 
+      console.info("[WalletSheet] URI ricevuto per", wallet.label, "→ deeplink", deepLink.slice(0, 60))
       setState({ phase: "waiting_app", walletId: wallet.id })
 
-      // Piccolo delay per dare tempo al DOM di aggiornarsi
       setTimeout(() => {
         window.location.href = deepLink
       }, 80)
     }
 
-    // Ascolta l'URI dal connector prima di chiamare connect
-    // In wagmi v3 il connector estende Emitter
-    const handler = (evt: { type: string; data?: unknown }) => onMessage(evt)
-    wcConnector.emitter.on("message", handler)
-    unsubRef.current = () => wcConnector.emitter.off("message", handler)
-
-    connect(
-      { connector: wcConnector },
-      {
-        onError: (err) => {
-          unsubRef.current?.()
-          unsubRef.current = null
-          // Ignora errori "already connected" o "user rejected"
-          const msg = err.message ?? ""
-          if (msg.includes("already") || msg.includes("rejected")) {
-            setState({ phase: "idle" })
-          } else {
-            setState({ phase: "error", message: "Connessione fallita. Riprova." })
-          }
-        },
+    // Abbonamento all'emitter del connettore
+    if (wcConnector.emitter && typeof wcConnector.emitter.on === "function") {
+      const unsubFn = wcConnector.emitter.on("message", onMessage as Parameters<typeof wcConnector.emitter.on>[1])
+      // on() potrebbe restituire una funzione unsubscribe OPPURE void
+      if (typeof unsubFn === "function") {
+        unsubRef.current = unsubFn as () => void
+      } else if (typeof wcConnector.emitter.off === "function") {
+        unsubRef.current = () => wcConnector.emitter.off("message", onMessage as Parameters<typeof wcConnector.emitter.off>[1])
       }
-    )
-  }, [connectors, connect])
+    } else {
+      // Fallback: ascolta tramite il provider WC direttamente
+      console.warn("[WalletSheet] emitter non disponibile sul connettore, provo provider")
+      try {
+        const provider = await wcConnector.getProvider?.() as { on?: (e: string, cb: (uri: string) => void) => void } | undefined
+        if (provider?.on) {
+          const cb = (uri: string) => {
+            onMessage({ type: "display_uri", data: uri })
+          }
+          provider.on("display_uri", cb)
+          unsubRef.current = null
+        }
+      } catch {
+        // ignora
+      }
+    }
 
-  // ── Connessione iniettata (MetaMask browser extension) ─────────────────────
-  const connectInjected = useCallback(() => {
+    // Avvia la connessione
+    try {
+      await connectAsync({ connector: wcConnector })
+      // Se arriviamo qui senza redirect (es. già connessi), chiudi
+      setState({ phase: "idle" })
+    } catch (err) {
+      unsubRef.current?.()
+      unsubRef.current = null
+
+      const msg = (err as Error)?.message ?? String(err)
+      console.error("[WalletSheet] connectAsync errore:", msg, err)
+
+      if (
+        msg.includes("already") ||
+        msg.includes("rejected") ||
+        msg.includes("User denied") ||
+        msg.includes("cancelled") ||
+        // WC lancia questo quando il tab torna dall'app e la sessione è già stabilita
+        msg.includes("session")
+      ) {
+        setState({ phase: "idle" })
+      } else {
+        setState({ phase: "error", message: msg.length > 150 ? msg.slice(0, 147) + "…" : msg })
+      }
+    }
+  }, [connectors, connectAsync])
+
+  // ── Connessione iniettata (MetaMask browser extension / desktop) ───────────
+  const connectInjected = useCallback(async () => {
     const inj = connectors.find(c => c.type === "injected")
     if (!inj) {
-      // Nessun wallet browser — mostra il deep link MetaMask mobile
+      // Su mobile non c'è MetaMask iniettato — usa deep link
       const mm = MOBILE_WALLETS.find(w => w.id === "metamask")!
-      connectMobile(mm)
+      void connectMobile(mm)
       return
     }
-    connect(
-      { connector: inj },
-      {
-        onError: (err) => {
-          const msg = err.message ?? ""
-          if (!msg.includes("rejected")) {
-            setState({ phase: "error", message: "Connessione rifiutata dal wallet." })
-          } else {
-            setState({ phase: "idle" })
-          }
-        },
+
+    setState({ phase: "connecting", walletId: "metamask" })
+    try {
+      await connectAsync({ connector: inj })
+      setState({ phase: "idle" })
+    } catch (err) {
+      const msg = (err as Error)?.message ?? String(err)
+      console.error("[WalletSheet] injected error:", msg)
+      if (!msg.includes("rejected") && !msg.includes("denied")) {
+        setState({ phase: "error", message: msg.length > 150 ? msg.slice(0, 147) + "…" : msg })
+      } else {
+        setState({ phase: "idle" })
       }
-    )
-  }, [connectors, connect, connectMobile])
+    }
+  }, [connectors, connectAsync, connectMobile])
 
   if (!open) return null
 
@@ -202,12 +237,12 @@ export default function WalletSheet() {
     >
       <div
         style={{
-          background:    "var(--bg-secondary, #1c1c2e)",
-          borderRadius:  "24px 24px 0 0",
-          padding:       "20px 16px 36px",
-          boxShadow:     "0 -8px 40px rgba(0,0,0,0.5)",
-          maxHeight:     "82vh",
-          overflowY:     "auto",
+          background:   "var(--bg-secondary, #1c1c2e)",
+          borderRadius: "24px 24px 0 0",
+          padding:      "20px 16px 40px",
+          boxShadow:    "0 -8px 40px rgba(0,0,0,0.5)",
+          maxHeight:    "82vh",
+          overflowY:    "auto",
         }}
         onClick={(e) => e.stopPropagation()}
       >
@@ -232,22 +267,26 @@ export default function WalletSheet() {
           </button>
         </div>
 
-        {/* Stato */}
+        {/* Banner stato */}
         {state.phase === "connecting" && (
-          <div style={{ textAlign: "center", padding: "12px 0", color: "#aaa", fontSize: "0.9rem" }}>
-            ⏳ Avvio connessione…
+          <div style={{
+            background: "#1e2a3a", borderRadius: 12, padding: "12px 14px",
+            marginBottom: 14, color: "#94a3b8", fontSize: "0.88rem", textAlign: "center",
+          }}>
+            ⏳ Connessione in corso…
           </div>
         )}
+
         {state.phase === "waiting_app" && (
           <div style={{
             background: "#1e293b", borderRadius: 12, padding: "14px 16px",
-            marginBottom: 16, textAlign: "center",
+            marginBottom: 14, textAlign: "center",
           }}>
             <div style={{ fontSize: "1.5rem", marginBottom: 6 }}>
               {MOBILE_WALLETS.find(w => w.id === state.walletId)?.icon}
             </div>
             <div style={{ color: "#94a3b8", fontSize: "0.88rem" }}>
-              Apertura {MOBILE_WALLETS.find(w => w.id === state.walletId)?.label}…
+              Apertura <strong>{MOBILE_WALLETS.find(w => w.id === state.walletId)?.label}</strong>…
               <br />
               <span style={{ color: "#64748b", fontSize: "0.8rem" }}>
                 Approva la connessione nell'app, poi torna qui
@@ -255,29 +294,40 @@ export default function WalletSheet() {
             </div>
           </div>
         )}
+
         {state.phase === "error" && (
           <div style={{
             background: "#2d1b1b", borderRadius: 12, padding: "12px 14px",
-            marginBottom: 16, color: "#f87171", fontSize: "0.88rem",
+            marginBottom: 14, color: "#f87171", fontSize: "0.83rem",
+            wordBreak: "break-word",
           }}>
             ⚠️ {state.message}
+            <button
+              onClick={() => setState({ phase: "idle" })}
+              style={{
+                display: "block", marginTop: 8, color: "#f87171",
+                background: "none", border: "none", cursor: "pointer",
+                fontSize: "0.82rem", textDecoration: "underline", padding: 0,
+              }}
+            >
+              Riprova
+            </button>
           </div>
         )}
 
-        {/* Wallet list */}
-        {(state.phase === "idle" || state.phase === "error") && (
+        {/* Wallet list — mostrata in tutti gli stati tranne connecting */}
+        {state.phase !== "connecting" && (
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-
             {/* MetaMask — injected se disponibile, altrimenti deep link */}
             <WalletButton
               icon="🦊"
               label="MetaMask"
               sublabel="Browser extension o app mobile"
               color="#F6851B"
+              disabled={state.phase === "waiting_app"}
               onClick={connectInjected}
             />
 
-            {/* Mobile wallets */}
             {MOBILE_WALLETS.filter(w => w.id !== "metamask").map((wallet) => (
               <WalletButton
                 key={wallet.id}
@@ -285,19 +335,19 @@ export default function WalletSheet() {
                 label={wallet.label}
                 sublabel="Apre l'app wallet sul tuo telefono"
                 color={wallet.color}
-                onClick={() => connectMobile(wallet)}
+                disabled={state.phase === "waiting_app"}
+                onClick={() => void connectMobile(wallet)}
               />
             ))}
-
           </div>
         )}
 
-        {/* Nota informativa */}
+        {/* Nota */}
         <div style={{
-          marginTop: 20, textAlign: "center",
+          marginTop: 18, textAlign: "center",
           color: "var(--text-tertiary, #666)", fontSize: "0.76rem", lineHeight: 1.5,
         }}>
-          🔒 La connessione avviene via WalletConnect — nessuna chiave privata condivisa
+          🔒 Connessione via WalletConnect — nessuna chiave privata condivisa
         </div>
       </div>
     </div>
@@ -311,14 +361,16 @@ interface WalletButtonProps {
   label:    string
   sublabel: string
   color:    string
+  disabled: boolean
   onClick:  () => void
 }
 
-function WalletButton({ icon, label, sublabel, color, onClick }: WalletButtonProps) {
+function WalletButton({ icon, label, sublabel, color, disabled, onClick }: WalletButtonProps) {
   return (
     <button
       type="button"
       onClick={onClick}
+      disabled={disabled}
       style={{
         display:         "flex",
         alignItems:      "center",
@@ -327,15 +379,14 @@ function WalletButton({ icon, label, sublabel, color, onClick }: WalletButtonPro
         border:          "1px solid rgba(255,255,255,0.07)",
         borderRadius:    14,
         padding:         "13px 16px",
-        cursor:          "pointer",
+        cursor:          disabled ? "not-allowed" : "pointer",
+        opacity:         disabled ? 0.5 : 1,
         textAlign:       "left",
         width:           "100%",
         touchAction:     "manipulation",
         WebkitTapHighlightColor: "transparent",
-        transition:      "background 0.15s",
       }}
     >
-      {/* Icona */}
       <span style={{
         width: 40, height: 40, borderRadius: 12, display: "flex",
         alignItems: "center", justifyContent: "center", fontSize: "1.4rem",
@@ -344,7 +395,6 @@ function WalletButton({ icon, label, sublabel, color, onClick }: WalletButtonPro
         {icon}
       </span>
 
-      {/* Testo */}
       <span style={{ display: "flex", flexDirection: "column", gap: 2 }}>
         <span style={{ color: "var(--text-primary, #fff)", fontSize: "0.95rem", fontWeight: 600 }}>
           {label}
@@ -354,7 +404,6 @@ function WalletButton({ icon, label, sublabel, color, onClick }: WalletButtonPro
         </span>
       </span>
 
-      {/* Freccia */}
       <span style={{ marginLeft: "auto", color: "#555", fontSize: "0.9rem" }}>›</span>
     </button>
   )
