@@ -27,11 +27,14 @@ import {
   encodeFunctionData,
   parseUnits,
   parseEther,
+  formatEther,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { polygon } from "viem/chains";
 import { logger } from "../lib/logger";
 import { AppError } from "../errors/AppError";
+import { GasStationLogModel } from "../models/gas-station-log.model";
+import { sendGasStationTopUpEmail, sendGasStationLowBalanceEmail } from "../services/email.service";
 
 // ---------------------------------------------------------------------------
 // Costanti
@@ -303,7 +306,84 @@ export async function ensureEscrowGas(escrowAddress: string): Promise<void> {
 
   logger.info({ txHash, escrowAddress }, "[GasStation] TX top-up inviata");
   await publicClient.waitForTransactionReceipt({ hash: txHash, timeout: 30_000 });
-  logger.info({ txHash, escrowAddress }, "[GasStation] Top-up MATIC confermato ✓");
+
+  // Leggi saldo gas station dopo il top-up
+  const gsBalanceAfter    = await publicClient.getBalance({ address: gsAccount.address });
+  const gsBalanceAfterStr = formatEther(gsBalanceAfter);
+  const amountMaticStr    = formatEther(TOP_UP);
+
+  logger.info({ txHash, escrowAddress, gsBalanceAfter: gsBalanceAfterStr }, "[GasStation] Top-up MATIC confermato ✓");
+
+  // Log su MongoDB + email (fire-and-forget — non blocca il flusso pagamento)
+  void (async () => {
+    try {
+      await GasStationLogModel.create({
+        escrow_wallet:    escrowAddress,
+        amount_matic:     amountMaticStr,
+        tx_hash:          txHash,
+        gs_balance_after: gsBalanceAfterStr,
+      });
+    } catch (logErr) {
+      logger.warn({ logErr, txHash }, "[GasStation] Log MongoDB fallito (non critico)");
+    }
+
+    // Email top-up
+    try {
+      await sendGasStationTopUpEmail({
+        escrowWallet:    escrowAddress,
+        amountMatic:     amountMaticStr,
+        txHash,
+        gsAddress:       gsAccount.address,
+        gsBalanceAfter:  gsBalanceAfterStr,
+      });
+    } catch (emailErr) {
+      logger.warn({ emailErr }, "[GasStation] Email top-up fallita (non critica)");
+    }
+
+    // Alert saldo basso se < 10 MATIC
+    const LOW_BALANCE_THRESHOLD = parseEther("10");
+    if (gsBalanceAfter < LOW_BALANCE_THRESHOLD) {
+      try {
+        await sendGasStationLowBalanceEmail({
+          gsAddress:           gsAccount.address,
+          currentBalanceMatic: gsBalanceAfterStr,
+          thresholdMatic:      "10",
+        });
+      } catch (alertErr) {
+        logger.warn({ alertErr }, "[GasStation] Email saldo basso fallita (non critica)");
+      }
+    }
+  })();
+}
+
+// ---------------------------------------------------------------------------
+// Gas station info — usata dall'endpoint admin
+// ---------------------------------------------------------------------------
+
+/**
+ * Restituisce indirizzo e saldo MATIC della gas station.
+ * Se GAS_STATION_PRIVATE_KEY non è configurato restituisce null.
+ */
+export async function getGasStationInfo(): Promise<{
+  address:       string;
+  balance_matic: string;
+  low_balance:   boolean;
+} | null> {
+  const gsPk = process.env.GAS_STATION_PRIVATE_KEY;
+  if (!gsPk) return null;
+
+  const normalizedPk = gsPk.startsWith("0x") ? gsPk : `0x${gsPk}`;
+  const gsAccount    = privateKeyToAccount(normalizedPk as `0x${string}`);
+  const publicClient = createPublicClient({ chain: polygon, transport: http(getRpcUrl()) });
+
+  const balance      = await publicClient.getBalance({ address: gsAccount.address });
+  const balanceMatic = formatEther(balance);
+
+  return {
+    address:       gsAccount.address,
+    balance_matic: balanceMatic,
+    low_balance:   balance < parseEther("10"),
+  };
 }
 
 // ---------------------------------------------------------------------------

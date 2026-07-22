@@ -7,7 +7,14 @@ import {
   getR2Encryption, getR2TopUsers, getR2Activity, getR2Errors,
   getR2Pricing, updateR2Pricing,
   getCallMetrics,
+  getGasStation,
 } from "@/lib/api";
+
+export const useGasStation = () => useQuery({
+  queryKey: ["gasStation"],
+  queryFn:  getGasStation,
+  refetchInterval: 30_000,
+});
 
 export const useAdminStats = () => useQuery({
   queryKey: ["adminStats"],

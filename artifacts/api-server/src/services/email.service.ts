@@ -218,6 +218,68 @@ export async function sendEmail(params: GenericEmailParams): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// Gas Station emails (admin alerts)
+// ---------------------------------------------------------------------------
+
+const ADMIN_EMAIL = (): string =>
+  process.env.ADMIN_EMAIL ??
+  process.env.SMTP_FROM?.match(/<(.+)>/)?.at(1) ??
+  process.env.SMTP_USER ??
+  "admin@alphachat.sbs";
+
+export async function sendGasStationTopUpEmail(params: {
+  escrowWallet:  string;
+  amountMatic:   string;
+  txHash:        string;
+  gsAddress:     string;
+  gsBalanceAfter: string;
+}): Promise<void> {
+  const { escrowWallet, amountMatic, txHash, gsAddress, gsBalanceAfter } = params;
+  const polygonScanUrl = `https://polygonscan.com/tx/${txHash}`;
+  const subject = `⛽ Gas Top-up ${amountMatic} MATIC → ${escrowWallet.slice(0, 8)}…`;
+  const html = `
+    <div style="font-family:monospace;background:#0d1117;color:#e6edf3;padding:24px;border-radius:12px;">
+      <h2 style="color:#58a6ff;margin:0 0 16px;">⛽ Gas Station — Top-up eseguito</h2>
+      <table style="border-collapse:collapse;width:100%;font-size:13px;">
+        <tr><td style="color:#8b949e;padding:6px 12px 6px 0;">Escrow wallet</td><td style="color:#e6edf3;">${escrowWallet}</td></tr>
+        <tr><td style="color:#8b949e;padding:6px 12px 6px 0;">Importo</td><td style="color:#3fb950;font-weight:bold;">${amountMatic} MATIC</td></tr>
+        <tr><td style="color:#8b949e;padding:6px 12px 6px 0;">TX Hash</td><td><a href="${polygonScanUrl}" style="color:#58a6ff;">${txHash.slice(0, 20)}…</a></td></tr>
+        <tr><td style="color:#8b949e;padding:6px 12px 6px 0;">Gas station</td><td style="color:#e6edf3;">${gsAddress}</td></tr>
+        <tr><td style="color:#8b949e;padding:6px 12px 6px 0;">Saldo residuo GS</td><td style="color:#${parseFloat(gsBalanceAfter) < 10 ? "f85149" : "3fb950"};font-weight:bold;">${parseFloat(gsBalanceAfter).toFixed(4)} MATIC</td></tr>
+      </table>
+      <p style="color:#8b949e;font-size:11px;margin-top:20px;">Alpha Chat — Payment Engine — ${new Date().toISOString()}</p>
+    </div>`;
+  await _send({ to: ADMIN_EMAIL(), subject, html });
+  logger.info({ escrowWallet, txHash }, "Gas station top-up email sent");
+}
+
+export async function sendGasStationLowBalanceEmail(params: {
+  gsAddress:          string;
+  currentBalanceMatic: string;
+  thresholdMatic:     string;
+}): Promise<void> {
+  const { gsAddress, currentBalanceMatic, thresholdMatic } = params;
+  const subject = `🚨 ALERT — Gas Station saldo basso: ${parseFloat(currentBalanceMatic).toFixed(4)} MATIC`;
+  const html = `
+    <div style="font-family:monospace;background:#0d1117;color:#e6edf3;padding:24px;border-radius:12px;border:2px solid #f85149;">
+      <h2 style="color:#f85149;margin:0 0 16px;">🚨 Gas Station — Saldo basso</h2>
+      <p style="color:#8b949e;margin:0 0 20px;">Il wallet gas station ha meno di ${thresholdMatic} MATIC disponibili. I prossimi top-up potrebbero fallire.</p>
+      <table style="border-collapse:collapse;width:100%;font-size:13px;">
+        <tr><td style="color:#8b949e;padding:6px 12px 6px 0;">Gas station</td><td style="color:#e6edf3;">${gsAddress}</td></tr>
+        <tr><td style="color:#8b949e;padding:6px 12px 6px 0;">Saldo attuale</td><td style="color:#f85149;font-weight:bold;">${parseFloat(currentBalanceMatic).toFixed(6)} MATIC</td></tr>
+        <tr><td style="color:#8b949e;padding:6px 12px 6px 0;">Soglia minima</td><td style="color:#e6edf3;">${thresholdMatic} MATIC</td></tr>
+      </table>
+      <div style="margin-top:20px;padding:12px;background:#1c1206;border:1px solid #9e6a03;border-radius:8px;">
+        <strong style="color:#d29922;">Azione richiesta:</strong>
+        <p style="color:#d29922;margin:4px 0 0;font-size:13px;">Invia MATIC a <code style="background:#0d1117;padding:2px 6px;border-radius:4px;">${gsAddress}</code> su rete Polygon per ripristinare il servizio gas.</p>
+      </div>
+      <p style="color:#8b949e;font-size:11px;margin-top:20px;">Alpha Chat — Payment Engine — ${new Date().toISOString()}</p>
+    </div>`;
+  await _send({ to: ADMIN_EMAIL(), subject, html });
+  logger.warn({ gsAddress, currentBalanceMatic, thresholdMatic }, "Gas station LOW BALANCE email sent");
+}
+
+// ---------------------------------------------------------------------------
 // Core send
 // ---------------------------------------------------------------------------
 

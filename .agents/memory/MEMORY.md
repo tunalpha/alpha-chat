@@ -42,3 +42,4 @@
 - [Sprint 2 — Chat Payment Engine API](sprint-2-chat-payment-engine.md) — 6 endpoint REST, chat-payment.service.ts, 26 unit test; PAYMENT_SKIP_CHAIN_VERIFY=true per dev; vi.hoisted per singleton repo nei test
 - [Sprint 3 — Payment Scheduler](sprint-3-payment-scheduler.md) — processExpiredTransfers + processStuckTransfers; recovery balance-0 detection; 13 unit test; 112 totali ✓
 - [Sprint 4 — Payment Audit Blockchain + iOS Recovery](sprint-4-payment-audit.md) — detect-deposit endpoint, localStorage iOS recovery, deposit/release block numbers, PolygonScan links in bubble
+- [Gas Station — MATIC top-up automatico](gas-station.md) — ensureEscrowGas in usda-custodial.service.ts; GAS_STATION_PRIVATE_KEY (5.3 MATIC); addr 0x27A5…1AE9; log su gas_station_logs; email top-up + alert <10 MATIC; admin page /gas-station

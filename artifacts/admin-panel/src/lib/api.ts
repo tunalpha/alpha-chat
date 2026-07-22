@@ -727,6 +727,29 @@ export async function getCallMetrics(): Promise<CallMetrics> {
   return apiFetch<CallMetrics>("/calls/metrics");
 }
 
+// ── Gas Station Monitor ────────────────────────────────────────────────────────
+
+export interface GasStationTransaction {
+  escrow_wallet:    string;
+  amount_matic:     string;
+  tx_hash:          string;
+  gs_balance_after: string;
+  created_at:       string;
+}
+
+export interface GasStationData {
+  configured:      boolean;
+  address:         string | null;
+  balance_matic:   string;
+  low_balance:     boolean;
+  threshold_matic: string;
+  transactions:    GasStationTransaction[];
+}
+
+export async function getGasStation(): Promise<GasStationData> {
+  return apiFetch<GasStationData>("/gas-station");
+}
+
 export async function downloadAuditExport(days: number = 7): Promise<void> {
   const token = getToken();
   const res = await fetch(`${BASE}/audit/export?days=${days}`, {

@@ -1841,6 +1841,38 @@ router.post("/r2/consistency", requireAdmin("super_admin"), async (_req: Request
   } catch (err) { next(err); }
 });
 
+// ── Gas Station Monitor ────────────────────────────────────────────────────────
+import { GasStationLogModel } from "../../models/gas-station-log.model";
+import { getGasStationInfo }  from "../../payment/usda-custodial.service";
+
+/**
+ * GET /admin/gas-station
+ * Saldo MATIC + indirizzo gas station + storico top-up (ultimi 50).
+ */
+router.get("/gas-station", requireAdmin("read_only"), async (_req, res, next) => {
+  try {
+    const [info, logs] = await Promise.all([
+      getGasStationInfo().catch(() => null),
+      GasStationLogModel.find().sort({ created_at: -1 }).limit(50).lean(),
+    ]);
+
+    res.json({
+      configured:      !!info,
+      address:         info?.address         ?? null,
+      balance_matic:   info?.balance_matic   ?? "0",
+      low_balance:     info?.low_balance     ?? false,
+      threshold_matic: "10",
+      transactions: logs.map((l) => ({
+        escrow_wallet:    l.escrow_wallet,
+        amount_matic:     l.amount_matic,
+        tx_hash:          l.tx_hash,
+        gs_balance_after: l.gs_balance_after,
+        created_at:       l.created_at.toISOString(),
+      })),
+    });
+  } catch (err) { next(err); }
+});
+
 // ── Call Monitor metrics — Sprint 30 ──────────────────────────────────────────
 import { getCallMetrics } from "../../services/call-session.service";
 
