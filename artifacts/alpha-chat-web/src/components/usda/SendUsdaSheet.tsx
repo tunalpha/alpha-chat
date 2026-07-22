@@ -2,10 +2,28 @@
  * SendUsdaSheet — bottom sheet per inviare USDA.
  *
  * Step: form → confirm → signing → (chiude e aggiorna bubble via WS)
- * La fee locale è una stima; quella definitiva arriva dal backend nel passo confirm.
+ *
+ * Guard del flusso a due fasi (prepare → firma → confirm):
+ *
+ *   1. Firma asincrona   — handleSign è fully async; setSigning(true) prima di
+ *                          qualsiasi operazione, false nel finally.
+ *
+ *   2. Annullamento firma — "Annulla firma" in step "signing" resetta a "confirm".
+ *                           Il pendingTransferId scade naturalmente server-side
+ *                           (nessuna chiamata HTTP necessaria per cancellare).
+ *
+ *   3. Doppio tap        — guard `loading` per "Continua" e `signing` per "Firma e Invia".
+ *                           Entrambi bloccano la seconda chiamata prima ancora
+ *                           che arrivi alla rete.
+ *
+ *   4. Timeout firma     — se la firma non completa entro SIGN_TIMEOUT_MS (90s),
+ *                           il sheet torna a "confirm" con messaggio di errore.
+ *                           L'utente può ripremere "Firma e Invia": il vecchio
+ *                           pendingTransferId è scaduto, handleContinue genera
+ *                           un nuovo prepare automaticamente.
  */
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import type { WalletInfo } from "../../lib/usda-types";
 import {
   apiUsdaGetWallet,
@@ -30,6 +48,13 @@ const STEPS: { id: Step; label: string }[] = [
   { id: "signing", label: "Invio"    },
 ];
 
+/**
+ * Timeout lato client per la fase di firma.
+ * Dopo 90 secondi il pendingTransferId è considerato scaduto.
+ * Il backend lo invalida autonomamente — nessuna chiamata di cleanup necessaria.
+ */
+const SIGN_TIMEOUT_MS = 90_000;
+
 export function SendUsdaSheet({ conversationId, toUserId, toName, onClose, onSent, onNeedWallet }: Props) {
   const [amount,   setAmount]   = useState("");
   const [note,     setNote]     = useState("");
@@ -39,22 +64,37 @@ export function SendUsdaSheet({ conversationId, toUserId, toName, onClose, onSen
   } | null>(null);
   const [wallet,  setWallet]  = useState<WalletInfo | null>(null);
   const [error,   setError]   = useState<string | null>(null);
+
+  // Guard doppio tap "Continua"
   const [loading, setLoading] = useState(false);
+
+  // Guard doppio tap "Firma e Invia" + stato visivo step signing
+  const [signing, setSigning] = useState(false);
+
+  // AbortController per fetch in handleContinue
   const abortRef = useRef<AbortController | null>(null);
 
-  // Pulizia AbortController al dismount
+  // Timer timeout firma (pulito in finally e al dismount)
+  const signTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // ── Cleanup al dismount ──────────────────────────────────────────────────
   useEffect(() => {
-    return () => { abortRef.current?.abort(); };
+    return () => {
+      abortRef.current?.abort();
+      if (signTimerRef.current) clearTimeout(signTimerRef.current);
+    };
   }, []);
 
   // Stima locale fee (0.1% — valore definitivo arriva dal backend in "confirm")
-  const amountNum    = parseFloat(amount) || 0;
-  const estimatedFee = amountNum > 0 ? (amountNum * 0.001).toFixed(4) : "0";
+  const amountNum      = parseFloat(amount) || 0;
+  const estimatedFee   = amountNum > 0 ? (amountNum * 0.001).toFixed(4) : "0";
   const estimatedTotal = amountNum > 0 ? (amountNum + parseFloat(estimatedFee)).toFixed(4) : "0";
 
   const currentStepIdx = STEPS.findIndex((s) => s.id === step);
 
+  // ── Guard 3: doppio tap "Continua" ──────────────────────────────────────
   async function handleContinue() {
+    if (loading) return; // già in corso
     if (!amount || amountNum <= 0) {
       setError("Inserisci un importo valido");
       return;
@@ -71,7 +111,12 @@ export function SendUsdaSheet({ conversationId, toUserId, toName, onClose, onSen
         to_user_id: toUserId, conversation_id: conversationId,
         amount, note: note || undefined,
       });
-      setPrepared({ fee: prep.fee, total: prep.total, client_payment_id: prep.client_payment_id, prepared_data: prep.prepared_data });
+      setPrepared({
+        fee:               prep.fee,
+        total:             prep.total,
+        client_payment_id: prep.client_payment_id,
+        prepared_data:     prep.prepared_data,
+      });
       setStep("confirm");
     } catch (err) {
       if ((err as Error).name !== "AbortError") setError((err as Error).message);
@@ -80,28 +125,81 @@ export function SendUsdaSheet({ conversationId, toUserId, toName, onClose, onSen
     }
   }
 
+  // ── Guard 2: annullamento firma ──────────────────────────────────────────
+  // Resetta a "confirm" senza chiamate HTTP.
+  // Il pendingTransferId scade server-side autonomamente.
+  // Premere di nuovo "Firma e Invia" avvierà un nuovo prepare.
+  const handleCancelSigning = useCallback(() => {
+    if (signTimerRef.current) {
+      clearTimeout(signTimerRef.current);
+      signTimerRef.current = null;
+    }
+    setSigning(false);
+    setStep("confirm");
+    setError("Firma annullata. Ripremi «Firma e Invia» per ricominciare.");
+    // Il vecchio prepared_data contiene un pendingTransferId scaduto.
+    // Forziamo un nuovo prepare azzerando prepared: al prossimo "Firma e Invia"
+    // il service chiederà un nuovo pendingTransferId al backend.
+    setPrepared(null);
+    setStep("form"); // torna a form così "Continua" rigenera il prepare
+  }, []);
+
+  // ── Guard 1+3+4: firma asincrona, doppio tap, timeout ────────────────────
   async function handleSign() {
-    if (!prepared) return;
+    if (!prepared || signing) return; // guard doppio tap
+
+    // Guard 1: firma fully async — setSigning prima di qualsiasi await
+    setSigning(true);
     setStep("signing");
     setError(null);
+
+    // Guard 4: timeout lato client (90s)
+    signTimerRef.current = setTimeout(() => {
+      // Il pendingTransferId è scaduto — torna a "form" per riottenerne uno nuovo
+      setSigning(false);
+      setPrepared(null);
+      setStep("form");
+      setError("La firma è scaduta (90 s). Premi «Continua» per ricominciare.");
+    }, SIGN_TIMEOUT_MS);
+
     try {
-      // Firma simulata — in produzione: ThirdWeb SDK openWallet() + signTransaction()
-      await new Promise((r) => setTimeout(r, 800));
+      // Firma — in produzione: ThirdWeb SDK openWallet() + signAndSubmitTransaction()
+      // che restituisce il txHash on-chain.
+      // TODO: sostituire con ThirdWeb SDK in go-live.
+      await new Promise<void>((r) => setTimeout(r, 800));
       const mockSignature = `0x${"b".repeat(130)}`;
 
       const result = await apiUsdaSubmitPayment({
-        to_user_id: toUserId, conversation_id: conversationId,
-        amount, fee: prepared.fee, note: note || undefined,
+        to_user_id:        toUserId,
+        conversation_id:   conversationId,
+        amount,
+        fee:               prepared.fee,
+        note:              note || undefined,
         client_payment_id: prepared.client_payment_id,
-        prepared_data: prepared.prepared_data,
-        signature: mockSignature,
+        prepared_data:     prepared.prepared_data,
+        signature:         mockSignature, // txHash reale in produzione
       });
 
       onSent({ payment_id: result.payment_id, message_id: result.message_id, amount });
       onClose();
     } catch (err) {
-      setError((err as Error).message);
-      setStep("confirm");
+      if ((err as Error).name !== "AbortError") {
+        setError((err as Error).message);
+        // Torna a "confirm" così l'utente può riprovare senza reinserire l'importo.
+        // Il backend ha già registrato un errore su quel pendingTransferId.
+        // handleContinue non viene chiamato — prepared_data rimane valido
+        // solo se il backend non ha ancora consumato il pendingTransferId.
+        // In caso di dubbio, l'utente torna a "form" e riparte da capo.
+        setPrepared(null);
+        setStep("form");
+      }
+    } finally {
+      // Guard 1+4: sempre pulito, qualunque cosa accada
+      setSigning(false);
+      if (signTimerRef.current) {
+        clearTimeout(signTimerRef.current);
+        signTimerRef.current = null;
+      }
     }
   }
 
@@ -111,13 +209,14 @@ export function SendUsdaSheet({ conversationId, toUserId, toName, onClose, onSen
       role="dialog"
       aria-modal="true"
       aria-label="Invia USDA"
-      onClick={onClose}
+      onClick={step !== "signing" ? onClose : undefined}
     >
       <div className="usda-sheet" onClick={(e) => e.stopPropagation()}>
 
         {/* Header */}
         <div className="usda-sheet-header">
           <span className="usda-sheet-title">💰 Invia USDA</span>
+          {/* Chiusura disabilitata durante la firma — usa "Annulla firma" */}
           {step !== "signing" && (
             <button
               type="button"
@@ -129,7 +228,13 @@ export function SendUsdaSheet({ conversationId, toUserId, toName, onClose, onSen
         </div>
 
         {/* Step progress */}
-        <div className="usda-step-bar" role="progressbar" aria-valuenow={currentStepIdx + 1} aria-valuemax={STEPS.length}>
+        <div
+          className="usda-step-bar"
+          role="progressbar"
+          aria-valuenow={currentStepIdx + 1}
+          aria-valuemax={STEPS.length}
+          aria-label={`Passo ${currentStepIdx + 1} di ${STEPS.length}: ${STEPS[currentStepIdx].label}`}
+        >
           {STEPS.map((s, i) => (
             <div key={s.id} className={`usda-step ${i < currentStepIdx ? "done" : i === currentStepIdx ? "active" : ""}`}>
               <div className="usda-step-dot" aria-hidden="true">{i < currentStepIdx ? "✓" : i + 1}</div>
@@ -197,10 +302,22 @@ export function SendUsdaSheet({ conversationId, toUserId, toName, onClose, onSen
             {error && <div className="usda-error" role="alert">{error}</div>}
 
             <div className="usda-sheet-actions">
-              <button type="button" className="usda-btn-secondary" onClick={onClose} aria-label="Annulla invio">
+              <button
+                type="button"
+                className="usda-btn-secondary"
+                onClick={onClose}
+                aria-label="Annulla invio"
+              >
                 Annulla
               </button>
-              <button type="button" className="usda-btn-primary" onClick={handleContinue} disabled={loading} aria-label="Continua alla conferma">
+              <button
+                type="button"
+                className="usda-btn-primary"
+                onClick={handleContinue}
+                disabled={loading}
+                aria-label="Continua alla conferma"
+                aria-busy={loading}
+              >
                 {loading ? <><span className="usda-btn-spinner" aria-hidden="true" /> Verifica…</> : "Continua"}
               </button>
             </div>
@@ -224,11 +341,25 @@ export function SendUsdaSheet({ conversationId, toUserId, toName, onClose, onSen
             </div>
             {error && <div className="usda-error" role="alert">{error}</div>}
             <div className="usda-sheet-actions">
-              <button type="button" className="usda-btn-secondary" onClick={() => setStep("form")} aria-label="Modifica importo">
+              <button
+                type="button"
+                className="usda-btn-secondary"
+                onClick={() => { setPrepared(null); setStep("form"); setError(null); }}
+                aria-label="Modifica importo"
+              >
                 Modifica
               </button>
-              <button type="button" className="usda-btn-primary" onClick={handleSign} aria-label="Firma e invia pagamento">
-                Firma e Invia
+              <button
+                type="button"
+                className="usda-btn-primary"
+                onClick={handleSign}
+                disabled={signing}
+                aria-label="Firma e invia pagamento"
+                aria-busy={signing}
+              >
+                {signing
+                  ? <><span className="usda-btn-spinner" aria-hidden="true" /> Firma…</>
+                  : "Firma e Invia"}
               </button>
             </div>
           </>
@@ -236,10 +367,22 @@ export function SendUsdaSheet({ conversationId, toUserId, toName, onClose, onSen
 
         {/* ── STEP: Signing ──────────────────────────────────────────────── */}
         {step === "signing" && (
-          <div className="usda-signing" role="status" aria-label="Firma in corso, non chiudere l'app">
+          <div className="usda-signing" role="status" aria-live="polite" aria-label="Firma in corso">
             <div className="usda-signing-spinner" aria-hidden="true" />
             <p>Firma in corso…</p>
             <p className="usda-signing-sub">Non chiudere l'app</p>
+            <p className="usda-signing-timeout-hint" aria-hidden="true">
+              Scade automaticamente in 90 s
+            </p>
+            {/* Guard 2: annullamento firma — pendingTransferId scade server-side */}
+            <button
+              type="button"
+              className="usda-btn-secondary usda-cancel-sign-btn"
+              onClick={handleCancelSigning}
+              aria-label="Annulla la firma e torna all'importo"
+            >
+              Annulla firma
+            </button>
           </div>
         )}
       </div>

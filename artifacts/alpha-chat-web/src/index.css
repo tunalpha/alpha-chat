@@ -5837,6 +5837,8 @@ html.emergency-open #root {
 .usda-signing-spinner { width: 48px; height: 48px; border: 4px solid rgba(99,102,241,0.2); border-top-color: #6366f1; border-radius: 50%; animation: usda-signing-spin 1s linear infinite; }
 .usda-signing p { font-weight: 600; color: var(--text-1, #fff); margin: 0; }
 .usda-signing-sub { font-size: 0.8rem; color: var(--text-3, rgba(255,255,255,0.5)); }
+.usda-signing-timeout-hint { font-size: 0.72rem; color: var(--text-3, rgba(255,255,255,0.35)); margin-top: -4px; }
+.usda-cancel-sign-btn { margin-top: 8px; min-width: 140px; }
 .usda-wallet-desc { font-size: 0.88rem; color: var(--text-2, rgba(255,255,255,0.75)); line-height: 1.5; margin: 0; }
 .usda-wallet-hint { font-size: 0.78rem; color: var(--text-3, rgba(255,255,255,0.45)); background: rgba(255,255,255,0.04); border-radius: 8px; padding: 8px 12px; }
 
