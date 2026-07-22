@@ -240,7 +240,7 @@ function AppContent() {
           case "language":
             return <LanguagePage onBack={goSettings} />;
           case "wallet-center":
-            return <WalletCenterPage onBack={goBack} />;
+            return <WalletCenterPage onBack={goSettings} />;
           case "usda-settings":
             return <UsdaSettingsPage onBack={goSettings} />;
           // group-info è gestito come overlay dentro ChatPage

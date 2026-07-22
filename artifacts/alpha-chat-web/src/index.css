@@ -5948,7 +5948,7 @@ html.emergency-open #root {
 /* Header */
 .wc-header { display: flex; align-items: center; gap: 10px; padding: 16px 20px; border-bottom: 1px solid rgba(255,255,255,0.07); flex-shrink: 0; }
 .wc-back { background: none; border: none; cursor: pointer; color: var(--text-3, rgba(255,255,255,0.5)); padding: 4px; display: flex; align-items: center; }
-.wc-close-btn { background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12); border-radius: 50%; cursor: pointer; color: var(--text-2, rgba(255,255,255,0.7)); padding: 7px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: background 0.15s, color 0.15s; min-width: 36px; min-height: 36px; }
+.wc-close-btn { background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12); border-radius: 50%; cursor: pointer; color: var(--text-2, rgba(255,255,255,0.7)); padding: 7px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: background 0.15s, color 0.15s; min-width: 36px; min-height: 36px; position: relative; z-index: 50; pointer-events: auto; }
 .wc-close-btn:active { background: rgba(255,255,255,0.18); color: #fff; }
 .wc-header-title { flex: 1; display: flex; align-items: center; gap: 8px; font-size: 1rem; font-weight: 700; color: var(--text-1, #fff); }
 .wc-header-icon { font-size: 1.2rem; }
