@@ -40,10 +40,13 @@ import { sendGasStationTopUpEmail, sendGasStationLowBalanceEmail } from "../serv
 // Costanti
 // ---------------------------------------------------------------------------
 
-// RPC pubblici affidabili (fallback in cascata se USDA_POLYGON_RPC non è un URL valido)
+// RPC di default: Alchemy (stessa chiave del repo USDA in produzione).
+// NON usare publicnode/meowrpc come default: rifiutano eth_getLogs su
+// range storici ("Archive requests require a personal token") →
+// DEPOSIT_DETECT_RPC_ERROR in detectDeposit.
 const FALLBACK_RPCS = [
+  "https://polygon-mainnet.g.alchemy.com/v2/tWSFclnh075909w0Dmvvb",
   "https://polygon-bor-rpc.publicnode.com",
-  "https://polygon.meowrpc.com",
   "https://polygon.drpc.org",
 ];
 const DEFAULT_RPC = FALLBACK_RPCS[0]!;

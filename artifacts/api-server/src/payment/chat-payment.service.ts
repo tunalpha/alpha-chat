@@ -19,6 +19,12 @@ import { createPublicClient, http, hexToBigInt, parseAbiItem } from "viem";
 import { polygon } from "viem/chains";
 import { getRpcUrl } from "./usda-custodial.service";
 
+// Endpoint Alchemy per alchemy_getAssetTransfers (enhanced API, free tier).
+// Usa USDA_POLYGON_RPC se è un URL Alchemy, altrimenti fallback alla chiave USDA.
+const ALCHEMY_TRANSFERS_URL =
+  (process.env.USDA_POLYGON_RPC?.includes("alchemy.com") ? process.env.USDA_POLYGON_RPC : null) ??
+  "https://polygon-mainnet.g.alchemy.com/v2/tWSFclnh075909w0Dmvvb";
+
 import { ChatTransferModel, type ChatTransferDocument } from "../models/chat-transfer.model";
 import { UserModel }                                    from "../models/user.model";
 import { ConversationModel }                            from "../models/conversation.model";
@@ -523,16 +529,38 @@ export async function detectDeposit(params: {
   const currentBlock = await publicClient.getBlockNumber();
   const fromBlock    = currentBlock > scanRange ? currentBlock - scanRange : 0n;
 
-  type TransferLog = Awaited<ReturnType<typeof publicClient.getLogs<typeof ERC20_TRANSFER_EVENT>>>[number];
-  let logs: TransferLog[];
+  // NON usare eth_getLogs: gli RPC pubblici gratuiti rifiutano getLogs su
+  // range storici ("Archive requests require a personal token" su publicnode,
+  // "ranges over 10000 blocks" su drpc, cap 10 blocchi su Alchemy free).
+  // Usiamo alchemy_getAssetTransfers (enhanced API, free tier, range illimitato)
+  // — stesso approccio del backend USDA per il poll-tx.
+  interface AssetTransfer {
+    hash?:        string;
+    rawContract?: { value?: string };
+  }
+  let transfers: AssetTransfer[];
   try {
-    logs = await publicClient.getLogs({
-      address:  transfer.asset_address as `0x${string}`,
-      event:    ERC20_TRANSFER_EVENT,
-      args:     { to: transfer.escrow_wallet as `0x${string}` },
-      fromBlock,
-      toBlock:  "latest",
+    const res = await fetch(ALCHEMY_TRANSFERS_URL, {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id:      1,
+        method:  "alchemy_getAssetTransfers",
+        params: [{
+          fromBlock:         `0x${fromBlock.toString(16)}`,
+          toBlock:           "latest",
+          toAddress:         transfer.escrow_wallet,
+          contractAddresses: [transfer.asset_address],
+          category:          ["erc20"],
+          withMetadata:      false,
+          maxCount:          "0x19",
+        }],
+      }),
     });
+    const json = await res.json() as { result?: { transfers?: AssetTransfer[] }; error?: unknown };
+    if (json.error) throw new Error(JSON.stringify(json.error));
+    transfers = json.result?.transfers ?? [];
   } catch (rpcErr) {
     logger.error({ rpcErr, transferId: params.transferId }, "[Payment] detectDeposit RPC error");
     throw new AppError("DEPOSIT_DETECT_RPC_ERROR", 502);
@@ -540,19 +568,22 @@ export async function detectDeposit(params: {
 
   // Cerca la prima tx con importo >= amount_units
   const minAmount = BigInt(transfer.amount_units);
-  const match     = logs.find((log) => (log.args.value ?? 0n) >= minAmount);
+  const match = transfers.find((t) => {
+    try { return t.rawContract?.value != null && BigInt(t.rawContract.value) >= minAmount; }
+    catch { return false; }
+  });
 
-  if (!match?.transactionHash) {
+  if (!match?.hash) {
     logger.info({ transferId: params.transferId, blocksScanned: currentBlock - fromBlock }, "[Payment] detectDeposit: nessun tx trovato");
     throw new AppError("DEPOSIT_TX_NOT_DETECTED", 404);
   }
 
-  logger.info({ transferId: params.transferId, txHash: match.transactionHash }, "[Payment] Deposito rilevato automaticamente ✓");
+  logger.info({ transferId: params.transferId, txHash: match.hash }, "[Payment] Deposito rilevato automaticamente ✓");
 
   // Riusa la logica esistente (anti-replay + verifica on-chain + state machine)
   return confirmDeposit({
     transferId:  params.transferId,
-    txHash:      match.transactionHash,
+    txHash:      match.hash,
     requesterId: params.requesterId,
   });
 }
