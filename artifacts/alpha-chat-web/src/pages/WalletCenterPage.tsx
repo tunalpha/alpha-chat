@@ -12,6 +12,7 @@ import {
   apiUsdaGetHistory,
   apiUsdaGetCapabilities,
   apiUsdaGetInfo,
+  apiUsdaCheckByClientId,
 } from "../lib/usda-api";
 import type { WalletInfo, UsdaPaymentData, UsdaBackendInfo, UsdaCapabilities, WalletChain } from "../lib/usda-types";
 import { WALLET_CHAIN_LABELS, USDA_STATUS_LABELS, USDA_STATUS_ICONS } from "../lib/usda-types";
@@ -61,6 +62,34 @@ export default function WalletCenterPage({ onBack }: Props) {
   const abortMount   = useRef<AbortController | null>(null);
   const abortHistory = useRef<AbortController | null>(null);
 
+  // Banner di recovery per crash tra sessionStorage.setItem e risposta /confirm
+  const [recoveryBanner, setRecoveryBanner] = useState<
+    "found" | "not_found" | null
+  >(null);
+
+  // ── Recovery crash al mount ───────────────────────────────────────────────
+  // Se l'app è crashata tra sessionStorage.setItem e la risposta di /confirm,
+  // WalletCenter rileva la chiave e verifica se il pagamento è già in DB.
+  useEffect(() => {
+    const inflightCpi = sessionStorage.getItem("usda_inflight_cpi");
+    if (!inflightCpi) return;
+    sessionStorage.removeItem("usda_inflight_cpi"); // gestito qui — non deve ripetirsi
+
+    apiUsdaCheckByClientId(inflightCpi).then((payment) => {
+      if (payment) {
+        // Il pagamento è in DB: il confirm è arrivato al server prima del crash.
+        // Il polling server-side sta già aggiornando lo stato.
+        setRecoveryBanner("found");
+      } else {
+        // Il confirm non ha raggiunto il server (o il server ha risposto con errore).
+        // Nessun duplicato in DB — l'utente può riprovare normalmente.
+        setRecoveryBanner("not_found");
+      }
+    }).catch(() => {
+      sessionStorage.removeItem("usda_inflight_cpi");
+    });
+  }, []);
+
   // ── Caricamento dati al mount ─────────────────────────────────────────────
   useEffect(() => {
     abortMount.current = new AbortController();
@@ -107,6 +136,26 @@ export default function WalletCenterPage({ onBack }: Props) {
 
   return (
     <div className="wc-root">
+
+      {/* ── Recovery banner ─────────────────────────────────────────────── */}
+      {recoveryBanner === "found" && (
+        <div className="wc-recovery-banner wc-recovery-found" role="alert">
+          <span>⚠️</span>
+          <span>
+            Un pagamento precedente è stato registrato correttamente prima della chiusura dell'app.
+            Controlla lo storico per verificarne lo stato.
+          </span>
+          <button type="button" aria-label="Chiudi avviso" onClick={() => setRecoveryBanner(null)}>✕</button>
+        </div>
+      )}
+      {recoveryBanner === "not_found" && (
+        <div className="wc-recovery-banner wc-recovery-not-found" role="status">
+          <span>ℹ️</span>
+          <span>L'ultimo pagamento non era stato completato. Puoi riprovare normalmente.</span>
+          <button type="button" aria-label="Chiudi avviso" onClick={() => setRecoveryBanner(null)}>✕</button>
+        </div>
+      )}
+
       {/* ── Header ──────────────────────────────────────────────────────── */}
       <header className="wc-header">
         <button

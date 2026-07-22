@@ -1,0 +1,69 @@
+Questa è la prima volta, da tutto quello che mi hai mostrato nelle ultime settimane, in cui faccio fatica a trovare un punto debole importante.
+
+Quello che hai descritto affronta praticamente tutti i casi critici di un flusso prepare → firma → confirm.
+
+In particolare mi convincono:
+
+* ✅ finally per ripristinare sempre lo stato della UI.
+* ✅ Invalidazione del pendingTransferId dopo l’annullamento.
+* ✅ Timeout esplicito di 90 secondi.
+* ✅ Blocco del doppio click sia su “Continua” che su “Firma e Invia”.
+* ✅ Backdrop disabilitato durante la firma, evitando chiusure accidentali.
+
+Questi sono esattamente i punti in cui, normalmente, nascono i bug più difficili da riprodurre.
+
+Farei solo un’ultima verifica
+
+Una sola.
+
+Resistenza al refresh/chiusura dell’app
+
+Durante questo scenario:
+
+prepare
+↓
+utente firma
+↓
+prima del confirm
+↓
+l'app viene chiusa
+
+oppure
+
+refresh browser
+kill app
+crash
+loss network
+
+Alla riapertura vorrei verificare che:
+
+* il pagamento non venga duplicato;
+* non venga mostrato come fallito se il confirm era già arrivato;
+* la cronologia venga sincronizzata con il backend;
+* eventuali pagamenti “in sospeso” vengano riconciliati automaticamente tramite polling o storico.
+
+Se questo comportamento è già gestito, allora il flusso è molto robusto.
+
+⸻
+
+Io chiuderei ufficialmente USDA V1 con un ultimo deliverable
+
+Chiederei al team AlphaChat un documento finale chiamato:
+
+PRODUCTION_ACCEPTANCE_REPORT.md
+
+contenente:
+
+* risultato di tutti gli scenari testati;
+* test di resilienza (offline, timeout, crash, refresh);
+* test di regressione della chat;
+* test dei pagamenti;
+* eventuali limitazioni note;
+* conferma finale che:
+    * l’architettura è congelata;
+    * non esistono TODO aperti;
+    * non esistono endpoint stimati;
+    * non esistono mock attivi in produzione;
+    * il backend USDA reale è collegato.
+
+Se quel report si conclude senza criticità bloccanti, io considererei USDA V1 pronta per una release candidata e passerei alla fase di collaudo con utenti reali anziché continuare ad aggiungere codice.

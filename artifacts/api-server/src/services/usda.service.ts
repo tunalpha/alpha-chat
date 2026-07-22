@@ -233,6 +233,39 @@ async function _handleExternalStatusChange(
 // Public API
 // ---------------------------------------------------------------------------
 
+/**
+ * reconcilePendingPayments — eseguita una sola volta al boot del server.
+ *
+ * Trova tutti i pagamenti in stati non-terminali nel DB AlphaChat e riavvia
+ * il polling per ciascuno. Gestisce il caso in cui il server si riavvia mentre
+ * un pagamento è ancora in attesa di conferma blockchain.
+ *
+ * Solo per HttpUsdaAdapter — il MockAdapter non ha polling persistente.
+ */
+export async function reconcilePendingPayments(): Promise<void> {
+  if (!_httpAdapter) return; // MockAdapter — nessuna riconciliazione necessaria
+
+  try {
+    const pending = await paymentRepo.findNonTerminal();
+    if (pending.length === 0) {
+      logger.info("[USDA] Startup reconciliation: no pending payments");
+      return;
+    }
+
+    logger.info({ count: pending.length }, "[USDA] Startup reconciliation: restarting polling");
+
+    for (const doc of pending) {
+      if (!doc.external_payment_id) continue;
+      _httpAdapter.schedulePollingRestart(doc._id.toString(), doc.external_payment_id);
+    }
+
+    logger.info({ count: pending.length }, "[USDA] Startup reconciliation complete");
+  } catch (err) {
+    // Non blocca il boot — log e prosegui
+    logger.error({ err }, "[USDA] Startup reconciliation failed (non-fatal)");
+  }
+}
+
 export async function checkHealth(): Promise<{ available: boolean }> {
   if (_httpAdapter) {
     const ok = await _httpAdapter._refreshHealth();
@@ -536,6 +569,24 @@ export async function payRequest(params: {
   );
 
   return _formatPayment(updated);
+}
+
+/**
+ * Cerca un pagamento per client_payment_id.
+ * Usato dalla recovery frontend: se sessionStorage contiene un CPI in volo
+ * al momento di un crash, il client verifica qui se il pagamento è già in DB.
+ * Ritorna null se non trovato o se l'utente non è un partecipante.
+ */
+export async function getPaymentByClientId(
+  clientPaymentId: string,
+  userId: string,
+): Promise<Record<string, unknown> | null> {
+  const doc = await paymentRepo.findByClientId(clientPaymentId);
+  if (!doc) return null;
+  const isParticipant =
+    doc.sender_id.toString() === userId || doc.recipient_id.toString() === userId;
+  if (!isParticipant) return null;
+  return _formatPayment(doc);
 }
 
 export async function getPayment(

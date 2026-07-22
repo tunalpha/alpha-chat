@@ -55,6 +55,19 @@ const STEPS: { id: Step; label: string }[] = [
  */
 const SIGN_TIMEOUT_MS = 90_000;
 
+/**
+ * Chiave sessionStorage per il client_payment_id in volo.
+ *
+ * Salviamo il CPI in sessionStorage PRIMA di chiamare POST /api/pay/confirm.
+ * Se l'app crasha/si riavvia in quel preciso momento, WalletCenterPage
+ * rileva la chiave al mount e verifica se il pagamento è già in DB —
+ * impedendo un secondo invio con importo duplicato.
+ *
+ * La chiave viene rimossa al successo, all'annullamento e alla chiusura normale.
+ * Solo in caso di crash rimane: è proprio il segnale che WalletCenter legge.
+ */
+const INFLIGHT_KEY = "usda_inflight_cpi";
+
 export function SendUsdaSheet({ conversationId, toUserId, toName, onClose, onSent, onNeedWallet }: Props) {
   const [amount,   setAmount]   = useState("");
   const [note,     setNote]     = useState("");
@@ -78,10 +91,14 @@ export function SendUsdaSheet({ conversationId, toUserId, toName, onClose, onSen
   const signTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── Cleanup al dismount ──────────────────────────────────────────────────
+  // La rimozione di INFLIGHT_KEY qui copre la chiusura normale del sheet
+  // (utente preme ✕ o Annulla). In caso di crash il cleanup non viene eseguito
+  // e la chiave sopravvive in sessionStorage — è il segnale per WalletCenter.
   useEffect(() => {
     return () => {
       abortRef.current?.abort();
       if (signTimerRef.current) clearTimeout(signTimerRef.current);
+      sessionStorage.removeItem(INFLIGHT_KEY);
     };
   }, []);
 
@@ -134,14 +151,12 @@ export function SendUsdaSheet({ conversationId, toUserId, toName, onClose, onSen
       clearTimeout(signTimerRef.current);
       signTimerRef.current = null;
     }
+    // Pagamento non inviato — rimuovi il CPI dal sessionStorage
+    sessionStorage.removeItem(INFLIGHT_KEY);
     setSigning(false);
-    setStep("confirm");
-    setError("Firma annullata. Ripremi «Firma e Invia» per ricominciare.");
-    // Il vecchio prepared_data contiene un pendingTransferId scaduto.
-    // Forziamo un nuovo prepare azzerando prepared: al prossimo "Firma e Invia"
-    // il service chiederà un nuovo pendingTransferId al backend.
     setPrepared(null);
-    setStep("form"); // torna a form così "Continua" rigenera il prepare
+    setStep("form"); // nuovo prepare richiederà un nuovo pendingTransferId
+    setError("Firma annullata. Premi «Continua» per ricominciare.");
   }, []);
 
   // ── Guard 1+3+4: firma asincrona, doppio tap, timeout ────────────────────
@@ -155,7 +170,7 @@ export function SendUsdaSheet({ conversationId, toUserId, toName, onClose, onSen
 
     // Guard 4: timeout lato client (90s)
     signTimerRef.current = setTimeout(() => {
-      // Il pendingTransferId è scaduto — torna a "form" per riottenerne uno nuovo
+      sessionStorage.removeItem(INFLIGHT_KEY); // pendingTransferId scaduto — nessun invio
       setSigning(false);
       setPrepared(null);
       setStep("form");
@@ -169,6 +184,12 @@ export function SendUsdaSheet({ conversationId, toUserId, toName, onClose, onSen
       await new Promise<void>((r) => setTimeout(r, 800));
       const mockSignature = `0x${"b".repeat(130)}`;
 
+      // ── Resilienza crash: salviamo il CPI PRIMA di chiamare /confirm ────────
+      // Se l'app crasha tra questo punto e la risposta HTTP, WalletCenter
+      // rileverà la chiave al prossimo avvio e verificherà se il pagamento
+      // è già stato registrato, evitando un secondo invio con lo stesso importo.
+      sessionStorage.setItem(INFLIGHT_KEY, prepared.client_payment_id);
+
       const result = await apiUsdaSubmitPayment({
         to_user_id:        toUserId,
         conversation_id:   conversationId,
@@ -180,16 +201,16 @@ export function SendUsdaSheet({ conversationId, toUserId, toName, onClose, onSen
         signature:         mockSignature, // txHash reale in produzione
       });
 
+      // Submit riuscito: rimuovi la chiave prima di notificare il parent
+      sessionStorage.removeItem(INFLIGHT_KEY);
       onSent({ payment_id: result.payment_id, message_id: result.message_id, amount });
       onClose();
     } catch (err) {
       if ((err as Error).name !== "AbortError") {
+        // La chiamata /confirm è fallita: rimuovi la chiave
+        // (il pagamento non è arrivato al server, o il server ha risposto con errore)
+        sessionStorage.removeItem(INFLIGHT_KEY);
         setError((err as Error).message);
-        // Torna a "confirm" così l'utente può riprovare senza reinserire l'importo.
-        // Il backend ha già registrato un errore su quel pendingTransferId.
-        // handleContinue non viene chiamato — prepared_data rimane valido
-        // solo se il backend non ha ancora consumato il pendingTransferId.
-        // In caso di dubbio, l'utente torna a "form" e riparte da capo.
         setPrepared(null);
         setStep("form");
       }

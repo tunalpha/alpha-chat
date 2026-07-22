@@ -26,9 +26,10 @@ router.get ("/wallet",         usda.getWallet);
 router.put ("/wallet/address", usda.setWalletAddress);
 
 // ── Pagamenti ───────────────────────────────────────────────────────────────
-router.post("/payments/prepare",     usda.preparePayment);
-router.post("/payments",             usda.submitPayment);
-router.get ("/payments/:paymentId",  usda.getPayment);
+router.post("/payments/prepare",                        usda.preparePayment);
+router.post("/payments",                                usda.submitPayment);
+router.get ("/payments/check/:clientPaymentId",         usda.getPaymentByClientId); // recovery crash
+router.get ("/payments/:paymentId",                     usda.getPayment);
 
 // ── Richieste pagamento ─────────────────────────────────────────────────────
 router.post("/requests",                  usda.requestPayment);

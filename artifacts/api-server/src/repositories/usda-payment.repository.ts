@@ -77,6 +77,17 @@ export class UsdaPaymentRepository {
     return UsdaPaymentModel.findByIdAndUpdate(id, { $set }, { returnDocument: "after" });
   }
 
+  /**
+   * Pagamenti in stati non-terminali — usato dalla riconciliazione al boot.
+   * Cerca tutti i pagamenti che richiedono ancora polling attivo.
+   */
+  async findNonTerminal(): Promise<IUsdaPaymentDocument[]> {
+    return UsdaPaymentModel.find({
+      status: { $in: ["preparing", "signing", "submitting", "pending"] },
+      external_payment_id: { $ne: null },
+    }).lean();
+  }
+
   async findByUser(
     userId: mongoose.Types.ObjectId,
     filters: {

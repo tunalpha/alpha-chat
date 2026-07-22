@@ -98,6 +98,23 @@ export const submitPayment: RequestHandler = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
+// GET /api/v1/usda/payments/check/:clientPaymentId
+// Recovery endpoint: verifica se un pagamento con dato CPI è già in DB.
+// Usato dal frontend dopo un crash avvenuto tra sessionStorage.setItem e la risposta HTTP.
+export const getPaymentByClientId: RequestHandler = async (req, res, next) => {
+  try {
+    const result = await usdaService.getPaymentByClientId(
+      String(req.params.clientPaymentId),
+      req.user!.userId,
+    );
+    if (!result) {
+      res.status(404).json({ error: { code: "NOT_FOUND", message: "Payment not found" } });
+      return;
+    }
+    res.status(200).json(successResponse(result, req.requestId));
+  } catch (err) { next(err); }
+};
+
 // GET /api/v1/usda/payments/:paymentId
 export const getPayment: RequestHandler = async (req, res, next) => {
   try {

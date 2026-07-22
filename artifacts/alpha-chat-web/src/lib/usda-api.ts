@@ -50,6 +50,25 @@ export async function apiUsdaGetInfo(): Promise<UsdaBackendInfo> {
   return usdaFetch<UsdaBackendInfo>("GET", "/info");
 }
 
+/**
+ * Verifica se esiste un pagamento con il dato client_payment_id.
+ * Usato dalla recovery al mount di WalletCenter per gestire crash
+ * avvenuti tra sessionStorage.setItem e la risposta di /confirm.
+ * Ritorna null se il pagamento non esiste o non appartiene all'utente.
+ */
+export async function apiUsdaCheckByClientId(
+  clientPaymentId: string,
+): Promise<import("./usda-types").UsdaPaymentData | null> {
+  try {
+    return await usdaFetch<import("./usda-types").UsdaPaymentData>(
+      "GET",
+      `/payments/check/${encodeURIComponent(clientPaymentId)}`,
+    );
+  } catch {
+    return null; // 404 o errore → pagamento non registrato
+  }
+}
+
 // ── Payments ────────────────────────────────────────────────────────────────
 
 export async function apiUsdaPreparePayment(params: {
