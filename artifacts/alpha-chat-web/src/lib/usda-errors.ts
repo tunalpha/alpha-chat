@@ -48,6 +48,11 @@ export function humanizeUsdaError(
   if (/NOT_CHAT_MEMBER|403/i.test(raw))
     return "Non sei autorizzato a inviare pagamenti in questa chat.";
 
+  // Codice grezzo non tradotto (es. "USDA_API_ERROR") — mostra messaggio generico
+  // invece del codice tecnico
+  if (/^[A-Z_]{4,}$/.test(raw.trim()))
+    return "Si è verificato un problema temporaneo. Riprova tra qualche secondo.";
+
   // Fallback — restituisci il messaggio originale se non riconosciuto
   return raw;
 }

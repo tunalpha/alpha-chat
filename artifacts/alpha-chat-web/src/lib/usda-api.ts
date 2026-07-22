@@ -25,9 +25,17 @@ async function usdaFetch<T>(
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
 
-  const json = await res.json() as { data?: T; error?: { code: string; message: string } };
+  const json = await res.json() as {
+    data?: T;
+    error?: { code: string; message: string; details?: Record<string, unknown> };
+  };
   if (!res.ok) {
-    throw new Error(json.error?.message ?? `USDA API error ${res.status}`);
+    // details.upstream contiene il messaggio reale dal backend USDA esterno (getusda.xyz).
+    // json.error.message è spesso solo il codice ("USDA_API_ERROR") — non utile.
+    const upstream = json.error?.details?.upstream as string | undefined;
+    const msg = upstream ?? json.error?.message ?? `USDA API error ${res.status}`;
+    console.error("[USDA] API error", res.status, JSON.stringify(json));
+    throw new Error(msg);
   }
   return json.data as T;
 }

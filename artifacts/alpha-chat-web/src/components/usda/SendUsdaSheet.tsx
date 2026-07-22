@@ -138,6 +138,8 @@ export function SendUsdaSheet({ conversationId, toUserId, toName, onClose, onSen
       setStep("confirm");
     } catch (err) {
       const raw = (err as Error).message ?? "";
+      // Diagnosi: mostra il messaggio reale in DevTools anche se l'UI lo umanizza
+      console.error("[USDA] prepare error:", raw, err);
       if (isRecipientNoWallet(raw)) {
         setRecipientNoWallet(true);
       } else {
