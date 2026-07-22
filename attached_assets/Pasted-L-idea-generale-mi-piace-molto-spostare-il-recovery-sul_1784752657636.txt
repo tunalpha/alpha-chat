@@ -1,0 +1,55 @@
+L’idea generale mi piace molto: spostare il recovery sul backend è coerente con l’architettura che avete costruito.
+
+Ci sono però due punti che cambierei.
+
+✅ Ottime scelte
+
+* POST /payments/:id/detect-deposit dedicato.
+* Recovery tramite localStorage dopo il reload.
+* Bottone “Controlla deposito” come fallback manuale.
+* Aggiornamento dello stato via WebSocket una volta trovato il deposito.
+
+Queste scelte rendono il sistema resiliente ai reload della PWA.
+
+⚠️ Il punto che mi preoccupa
+
+Questa parte:
+
+scansiona gli ultimi ~1000 blocchi Polygon con getLogs
+
+Io non la fisserei così.
+
+È meglio che il backend cerchi il deposito in modo mirato usando i dati già noti del transfer:
+
+* escrow_wallet
+* contratto USDA
+* importo atteso
+* stato awaiting_deposit
+
+e limiti la ricerca a un intervallo ragionevole a partire dalla creazione del transfer. Scansionare sempre “gli ultimi 1000 blocchi” può funzionare oggi, ma non è una regola legata al business e potrebbe diventare inefficiente o insufficiente nel tempo.
+
+Un’altra miglioria
+
+Io aggiungerei un meccanismo automatico:
+
+* Quando la chat viene riaperta e trova un pagamento awaiting_deposit, il frontend prova automaticamente una sola volta detect-deposit.
+* Se non trova nulla, allora compare il pulsante “Controlla deposito”.
+
+Così, nella maggior parte dei casi, l’utente non dovrà nemmeno premere il pulsante.
+
+E soprattutto…
+
+Quando detectDeposit() trova la transazione, il backend dovrebbe salvare immediatamente:
+
+* deposit_tx_hash
+* deposit_block
+* deposit_timestamp
+* il link a PolygonScan (oppure calcolarlo dall’hash quando serve)
+
+In questo modo:
+
+* la ChatPaymentBubble può mostrare “Visualizza su PolygonScan”;
+* il Trust Center conserva tutta la cronologia;
+* l’audit rimane completo.
+
+Nel complesso, considero questa una direzione architetturale migliore rispetto a cercare di mantenere in vita una Promise del browser dopo il passaggio a MetaMask. Il backend diventa in grado di recuperare autonomamente lo stato del pagamento anche se il frontend viene interrotto.

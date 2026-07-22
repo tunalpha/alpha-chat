@@ -495,9 +495,22 @@ export async function detectDeposit(params: {
     transport: http(process.env.USDA_POLYGON_RPC ?? "https://polygon-bor-rpc.publicnode.com"),
   });
 
-  // Scansiona ultimi ~1000 blocchi ≈ 25 min su Polygon (block time ~2.5s)
+  // Calcola il range di blocchi in modo mirato:
+  // partiamo dalla data di creazione del transfer (il deposito non può essere
+  // avvenuto prima) + un piccolo buffer di sicurezza (20 blocchi ≈ 50s).
+  // Cap massimo a 14 400 blocchi (≈ 10h) per evitare RPC overload su transfer
+  // molto vecchi o stuck — lo scheduler li espira comunque prima.
+  const POLYGON_BLOCK_TIME_MS = 2_500;
+  const MAX_SCAN_BLOCKS       = 14_400n; // ~10h cap
+  const SAFETY_BUFFER         = 20n;     // 20 blocchi ≈ 50s
+
+  const createdAt  = (transfer as any).createdAt as Date | undefined ?? new Date();
+  const ageMs      = BigInt(Math.max(0, Date.now() - createdAt.getTime()));
+  const ageBlocks  = ageMs / BigInt(POLYGON_BLOCK_TIME_MS) + SAFETY_BUFFER;
+  const scanRange  = ageBlocks < MAX_SCAN_BLOCKS ? ageBlocks : MAX_SCAN_BLOCKS;
+
   const currentBlock = await publicClient.getBlockNumber();
-  const fromBlock    = currentBlock > 1000n ? currentBlock - 1000n : 0n;
+  const fromBlock    = currentBlock > scanRange ? currentBlock - scanRange : 0n;
 
   type TransferLog = Awaited<ReturnType<typeof publicClient.getLogs<typeof ERC20_TRANSFER_EVENT>>>[number];
   let logs: TransferLog[];

@@ -17,7 +17,7 @@
  *   terminali        → esito finale
  */
 
-import { useState, useRef, memo } from "react";
+import { useState, useRef, useEffect, memo } from "react";
 import type { ChatPaymentData, ChatTransferStatus } from "../../lib/payment-api";
 import { apiPaymentAccept, apiPaymentReject, apiPaymentCancel, apiPaymentDetectDeposit, isLockTransferStatus, isTerminalTransferStatus } from "../../lib/payment-api";
 
@@ -117,9 +117,35 @@ export const ChatPaymentBubble = memo(function ChatPaymentBubble({ data, isMine 
   if (!data?.status) return null;
 
   // busyRef è sincrono: impedisce doppio-click anche se il re-render non è ancora avvenuto
-  const busyRef = useRef(false);
+  const busyRef      = useRef(false);
+  const autoCheckRef = useRef(false); // prevent double-trigger (React StrictMode)
   const [busy, setBusy]   = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Auto-check silenzioso al mount della bubble.
+  // Se l'utente è il mittente e il deposito è in attesa, tentiamo subito
+  // detect-deposit una volta: nella maggior parte dei casi (iOS reload) il
+  // backend troverà la TX e lo stato passerà a "pending" via WS senza che
+  // l'utente debba fare nulla. Il bottone manuale compare solo se fallisce.
+  useEffect(() => {
+    if (!isMine || data.status !== "awaiting_deposit" || autoCheckRef.current) return;
+    autoCheckRef.current = true;
+
+    busyRef.current = true;
+    setBusy(true);
+    apiPaymentDetectDeposit(data.transfer_id)
+      .then(() => {
+        // Successo: il WS payment.state_changed aggiornerà la bubble.
+        // Non è necessario alcun setState locale.
+      })
+      .catch(() => {
+        // Non trovato o errore RPC — compare il bottone manuale.
+      })
+      .finally(() => {
+        busyRef.current = false;
+        setBusy(false);
+      });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const variant    = getVariant(data.status, isMine);
   const label      = getStatusLabel(data.status, isMine, data.amount, data.asset_symbol);
