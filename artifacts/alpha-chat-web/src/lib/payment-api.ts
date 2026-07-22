@@ -141,6 +141,9 @@ export async function apiPaymentCreate(params: {
   amount:          string;
   note?:           string;
   asset_symbol?:   string;
+  /** Indirizzo wallet ThirdWeb del mittente — usato se il profilo non ha un
+   *  wallet USDA salvato (WALLET_NOT_CONFIGURED workaround). */
+  sender_wallet?:  string;
 }): Promise<CreateTransferResult> {
   return paymentFetch<CreateTransferResult>("POST", "/", params);
 }

@@ -28,6 +28,7 @@ router.use(authenticate as RequestHandler);
 
 const CreateTransferSchema = z.object({
   recipient_id:    z.string().min(1, "recipient_id obbligatorio"),
+  sender_wallet:   z.string().optional(),   // wallet ThirdWeb del mittente (fallback se non nel profilo)
   conversation_id: z.string().min(1, "conversation_id obbligatorio"),
   amount: z
     .string()
@@ -54,6 +55,7 @@ router.post(
   (async (req, res, next) => {
     try {
       const result = await paymentService.createTransfer({
+        senderWalletOverride: req.body.sender_wallet as string | undefined,
         senderId:       req.user!.userId,
         recipientId:    req.body.recipient_id,
         conversationId: req.body.conversation_id,

@@ -312,13 +312,16 @@ async function _markFailed(
 // ---------------------------------------------------------------------------
 
 export interface CreateTransferParams {
-  senderId:       string;
-  recipientId:    string;
-  conversationId: string;
-  amount:         string;     // decimale leggibile ("100.00")
-  note?:          string;
-  assetAddress?:  string;
-  assetSymbol?:   string;
+  senderId:             string;
+  recipientId:          string;
+  conversationId:       string;
+  amount:               string;     // decimale leggibile ("100.00")
+  note?:                string;
+  assetAddress?:        string;
+  assetSymbol?:         string;
+  /** Indirizzo wallet del mittente fornito dal client (ThirdWeb).
+   *  Usato come fallback se il profilo non ha ancora un wallet salvato. */
+  senderWalletOverride?: string;
 }
 
 /**
@@ -338,10 +341,17 @@ export async function createTransfer(
   const assetAddress = params.assetAddress ?? process.env.USDA_CONTRACT_ADDRESS ?? DEFAULT_USDA_CONTRACT;
   const assetSymbol  = params.assetSymbol  ?? DEFAULT_USDA_SYMBOL;
 
-  // Carica mittente e verifica wallet
+  // Carica mittente e verifica wallet.
+  // Prima sceglie il wallet dal profilo MongoDB; se assente, accetta quello
+  // fornito dal client (account ThirdWeb). Necessario per utenti che hanno
+  // connesso il wallet via ThirdWeb ma non lo hanno ancora salvato nel profilo.
   const sender = await UserModel.findById(senderId).lean() as any;
   if (!sender) throw new AppError("USER_NOT_FOUND", 404);
-  const senderWallet: string | null = sender.wallets?.usda?.address ?? sender.wallet_address ?? null;
+  const senderWallet: string | null =
+    sender.wallets?.usda?.address ??
+    sender.wallet_address ??
+    params.senderWalletOverride ??
+    null;
   if (!senderWallet) throw new AppError("WALLET_NOT_CONFIGURED", 412);
 
   // Carica destinatario (wallet può essere null — ADR-004)

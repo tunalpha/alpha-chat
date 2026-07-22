@@ -177,6 +177,9 @@ export function SendPaymentSheet({
         amount:          amount.trim(),
         note:            note.trim() || undefined,
         asset_symbol:    "USDA",
+        // Passa l'indirizzo ThirdWeb come fallback: risolve WALLET_NOT_CONFIGURED
+        // per utenti che non hanno ancora salvato il wallet nel profilo AlphaChat.
+        sender_wallet:   account.address,
       });
 
       if (!created.escrow_wallet) {
