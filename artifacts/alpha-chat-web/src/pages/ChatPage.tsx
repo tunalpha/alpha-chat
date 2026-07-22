@@ -2820,10 +2820,14 @@ export default function ChatPage({ onNavigate }: Props) {
                             onView={setLocationViewer}
                           />
                         ) : msg.message_type === "payment" ? (
-                          <ChatPaymentBubble
-                            data={msg.system_metadata as unknown as ChatPaymentData}
-                            isMine={isMine}
-                          />
+                          // Guard: system_metadata può essere null se il backend
+                          // ha scritto il messaggio ma non ancora i metadati.
+                          (msg.system_metadata as unknown as ChatPaymentData)?.status
+                            ? <ChatPaymentBubble
+                                data={msg.system_metadata as unknown as ChatPaymentData}
+                                isMine={isMine}
+                              />
+                            : null
                         ) : msg.message_type === "usda_send" ? (
                           <UsdaPaymentBubble
                             data={msg.system_metadata as unknown as UsdaPaymentData}

@@ -111,6 +111,11 @@ function getStatusLabel(status: ChatTransferStatus, isMine: boolean, amount?: st
 // ---------------------------------------------------------------------------
 
 export const ChatPaymentBubble = memo(function ChatPaymentBubble({ data, isMine }: Props) {
+  // Guard: system_metadata potrebbe essere null/undefined se il messaggio arriva
+  // prima che il backend abbia scritto i metadati o in caso di migrazione dati.
+  // Restituisce null invece di crashare l'intera render tree.
+  if (!data?.status) return null;
+
   // busyRef è sincrono: impedisce doppio-click anche se il re-render non è ancora avvenuto
   const busyRef = useRef(false);
   const [busy, setBusy]   = useState(false);
