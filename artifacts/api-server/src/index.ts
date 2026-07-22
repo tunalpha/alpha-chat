@@ -13,16 +13,23 @@ const port = config.app.port;
 
 // ── Boot sequence ─────────────────────────────────────────────────────────────
 async function start(): Promise<void> {
-  // Connect to MongoDB if configured
-  await connectMongoDB();
-
-  // Start HTTP server
+  // Start HTTP server FIRST — before awaiting MongoDB — so that Cloud Run's
+  // startup probe can reach /api/healthz immediately. The healthz handler is
+  // stateless and needs no DB. Delaying listen() until after connectMongoDB()
+  // (which includes serverSelection + connectTimeout + syncIndexes) can easily
+  // exceed the probe timeout and cause a spurious promote-step failure.
   const server = app.listen(port, () => {
     logger.info({ port, env: config.app.env }, "Alpha Chat API listening");
   });
 
   // Attach WebSocket server (shares same port via HTTP upgrade)
   createWsServer(server);
+
+  // Connect to MongoDB after the server is already accepting requests.
+  // Individual API handlers will receive a Mongoose "not connected" error if
+  // they fire before the connection is ready — those fail gracefully with 500
+  // and will work on retry. This is far better than the whole deploy failing.
+  await connectMongoDB();
 
   // Admin seed — promuove "alpha" a super_admin se nessun admin esiste
   await seedAdminIfNeeded();
