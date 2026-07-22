@@ -55,6 +55,8 @@ export interface MessageResult {
   expires_at: string | null;
   /** Fase 4: multi-device — null per messaggi legacy */
   device_ciphertexts: Array<{ device_id: string; body: string; type: number }> | null;
+  /** Payment / USDA — dati strutturati del pagamento (null per messaggi normali) */
+  system_metadata: Record<string, unknown> | null;
 }
 
 export interface MessageListResult {
@@ -365,6 +367,8 @@ function formatMessageResult(
     expires_at?: Date | null;
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     device_ciphertexts?: any; // Fase 4: multi-device (opaco)
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    system_metadata?: Record<string, any> | null; // Payment / USDA bubble data
   },
   isNew: boolean,
 ): MessageResult {
@@ -389,6 +393,7 @@ function formatMessageResult(
     burn_after_read: msg.burn_after_read ?? false,
     expires_at: msg.expires_at?.toISOString() ?? null,
     device_ciphertexts: (msg.device_ciphertexts as Array<{ device_id: string; body: string; type: number }> | null) ?? null,
+    system_metadata: msg.system_metadata ?? null,
   };
 }
 
