@@ -60,3 +60,15 @@ case "payment.state_changed": {
 - `ChatPage.tsx:1564`: `auth.userId` → `auth?.userId ?? ""` (auth possibly null)
 
 ## TypeScript: 0 errori (exit 0 verificato)
+
+## Collaudo — livelli di protezione doppio-click
+
+Due layer indipendenti:
+1. **Frontend** — `busyRef.current` (useRef, sincrono): blocca il secondo click prima ancora del re-render React
+2. **Backend** — state machine: `findOne` restituisce status != "pending" → `TRANSFER_INVALID_TRANSITION` senza toccare blockchain
+
+Entrambi testati e verificati (122 test totali).
+
+## Guida collaudo
+
+`docs/payment-collaudo.md` — 12 scenari con curl commands, esiti attesi e checklist go/no-go.

@@ -17,7 +17,7 @@
  *   terminali        → esito finale
  */
 
-import { useState, memo } from "react";
+import { useState, useRef, memo } from "react";
 import type { ChatPaymentData, ChatTransferStatus } from "../../lib/payment-api";
 import { apiPaymentAccept, apiPaymentReject, apiPaymentCancel, isLockTransferStatus, isTerminalTransferStatus } from "../../lib/payment-api";
 
@@ -111,6 +111,8 @@ function getStatusLabel(status: ChatTransferStatus, isMine: boolean): StatusLabe
 // ---------------------------------------------------------------------------
 
 export const ChatPaymentBubble = memo(function ChatPaymentBubble({ data, isMine }: Props) {
+  // busyRef è sincrono: impedisce doppio-click anche se il re-render non è ancora avvenuto
+  const busyRef = useRef(false);
   const [busy, setBusy]   = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -126,7 +128,8 @@ export const ChatPaymentBubble = memo(function ChatPaymentBubble({ data, isMine 
   // ── azioni ────────────────────────────────────────────────────────────────
 
   async function handleAccept() {
-    if (busy) return;
+    if (busyRef.current) return; // guard sincrono — blocca doppio-click pre-render
+    busyRef.current = true;
     setError(null);
     setBusy(true);
     try {
@@ -135,12 +138,14 @@ export const ChatPaymentBubble = memo(function ChatPaymentBubble({ data, isMine 
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Errore — riprova");
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   }
 
   async function handleReject() {
-    if (busy) return;
+    if (busyRef.current) return;
+    busyRef.current = true;
     setError(null);
     setBusy(true);
     try {
@@ -148,12 +153,14 @@ export const ChatPaymentBubble = memo(function ChatPaymentBubble({ data, isMine 
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Errore — riprova");
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   }
 
   async function handleCancel() {
-    if (busy) return;
+    if (busyRef.current) return;
+    busyRef.current = true;
     setError(null);
     setBusy(true);
     try {
@@ -161,6 +168,7 @@ export const ChatPaymentBubble = memo(function ChatPaymentBubble({ data, isMine 
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Errore — riprova");
     } finally {
+      busyRef.current = false;
       setBusy(false);
     }
   }

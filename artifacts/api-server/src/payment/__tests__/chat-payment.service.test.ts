@@ -510,6 +510,131 @@ describe("cancelTransfer", () => {
 });
 
 // ---------------------------------------------------------------------------
+// Scenari di collaudo — edge case e concorrenza (Sprint 4)
+// ---------------------------------------------------------------------------
+
+describe("Collaudo — idempotenza doppio click (state machine enforcement)", () => {
+  /**
+   * Quando il transfer è già in uno stato "lock" (accepting/rejecting/cancelling),
+   * qualsiasi ulteriore richiesta di azione trova status != "pending" e viene
+   * bloccata da TRANSFER_INVALID_TRANSITION — senza toccare la blockchain.
+   *
+   * Questo è il meccanismo che rende le azioni idempotenti: il doppio click
+   * produce una seconda richiesta che trova lo stato già avanzato e fallisce.
+   */
+  it("[accept] transfer in 'accepting' → TRANSFER_INVALID_TRANSITION, 0 chiamate blockchain", async () => {
+    vi.mocked(ChatTransferModel.findOne).mockResolvedValue(
+      makeTransfer({ status: "accepting" }) as any,
+    );
+
+    await expect(
+      acceptTransfer({ transferId: TRANSFER_ID, requesterId: RECIPIENT_ID }),
+    ).rejects.toMatchObject({ code: "TRANSFER_INVALID_TRANSITION", httpStatus: 409 });
+
+    // La blockchain NON viene toccata
+    expect(lockModule.acquireLock).not.toHaveBeenCalled();
+    expect(custodial.transferFromCustodial).not.toHaveBeenCalled();
+  });
+
+  it("[reject] transfer in 'rejecting' → TRANSFER_INVALID_TRANSITION, 0 chiamate blockchain", async () => {
+    vi.mocked(ChatTransferModel.findOne).mockResolvedValue(
+      makeTransfer({ status: "rejecting" }) as any,
+    );
+
+    await expect(
+      rejectTransfer({ transferId: TRANSFER_ID, requesterId: RECIPIENT_ID }),
+    ).rejects.toMatchObject({ code: "TRANSFER_INVALID_TRANSITION", httpStatus: 409 });
+
+    expect(lockModule.acquireLock).not.toHaveBeenCalled();
+    expect(custodial.transferFromCustodial).not.toHaveBeenCalled();
+  });
+
+  it("[accept] transfer terminale 'accepted' → TRANSFER_INVALID_TRANSITION", async () => {
+    vi.mocked(ChatTransferModel.findOne).mockResolvedValue(
+      makeTransfer({ status: "accepted" }) as any,
+    );
+
+    await expect(
+      acceptTransfer({ transferId: TRANSFER_ID, requesterId: RECIPIENT_ID }),
+    ).rejects.toMatchObject({ code: "TRANSFER_INVALID_TRANSITION" });
+
+    expect(custodial.transferFromCustodial).not.toHaveBeenCalled();
+  });
+
+  it("[cancel] transfer terminale 'rejected' → TRANSFER_INVALID_TRANSITION", async () => {
+    vi.mocked(ChatTransferModel.findOne).mockResolvedValue(
+      makeTransfer({ status: "rejected" }) as any,
+    );
+
+    await expect(
+      cancelTransfer({ transferId: TRANSFER_ID, requesterId: SENDER_ID }),
+    ).rejects.toMatchObject({ code: "TRANSFER_INVALID_TRANSITION" });
+
+    expect(custodial.transferFromCustodial).not.toHaveBeenCalled();
+  });
+});
+
+describe("Collaudo — accesso non autorizzato", () => {
+  it("terzo utente non può accettare", async () => {
+    const thirdParty = new mongoose.Types.ObjectId().toString();
+    await expect(
+      acceptTransfer({ transferId: TRANSFER_ID, requesterId: thirdParty }),
+    ).rejects.toMatchObject({ code: "TRANSFER_ACCESS_DENIED", httpStatus: 403 });
+  });
+
+  it("mittente non può accettare il proprio pagamento", async () => {
+    await expect(
+      acceptTransfer({ transferId: TRANSFER_ID, requesterId: SENDER_ID }),
+    ).rejects.toMatchObject({ code: "TRANSFER_ACCESS_DENIED", httpStatus: 403 });
+  });
+
+  it("destinatario non può annullare", async () => {
+    await expect(
+      cancelTransfer({ transferId: TRANSFER_ID, requesterId: RECIPIENT_ID }),
+    ).rejects.toMatchObject({ code: "TRANSFER_ACCESS_DENIED" });
+  });
+});
+
+describe("Collaudo — anti-replay", () => {
+  it("stesso tx_hash su due deposit diversi → TRANSFER_TX_ALREADY_USED", async () => {
+    const { checkAndMarkTx } = await import("../asset-anti-replay");
+    vi.mocked(checkAndMarkTx).mockRejectedValue(
+      Object.assign(new Error("TX già usata"), { code: "TRANSFER_TX_ALREADY_USED" }),
+    );
+
+    vi.mocked(ChatTransferModel.findOne).mockResolvedValue(
+      makeTransfer({ status: "awaiting_deposit" }) as any,
+    );
+
+    const TX_HASH = "0x" + "a".repeat(64);
+    process.env.PAYMENT_SKIP_CHAIN_VERIFY = "true";
+
+    await expect(
+      confirmDeposit({ transferId: TRANSFER_ID, requesterId: SENDER_ID, txHash: TX_HASH }),
+    ).rejects.toMatchObject({ code: "TRANSFER_TX_ALREADY_USED" });
+
+    // Lo stato non deve essere avanzato
+    expect(ChatTransferModel.findOneAndUpdate).not.toHaveBeenCalled();
+  });
+});
+
+describe("Collaudo — transfer non trovato", () => {
+  it("accept su transfer inesistente → TRANSFER_NOT_FOUND", async () => {
+    vi.mocked(ChatTransferModel.findOne).mockResolvedValue(null);
+    await expect(
+      acceptTransfer({ transferId: "non-esiste", requesterId: RECIPIENT_ID }),
+    ).rejects.toMatchObject({ code: "TRANSFER_NOT_FOUND", httpStatus: 404 });
+  });
+
+  it("deposit su transfer inesistente → TRANSFER_NOT_FOUND", async () => {
+    vi.mocked(ChatTransferModel.findOne).mockResolvedValue(null);
+    await expect(
+      confirmDeposit({ transferId: "non-esiste", requesterId: SENDER_ID, txHash: "0x" + "a".repeat(64) }),
+    ).rejects.toMatchObject({ code: "TRANSFER_NOT_FOUND", httpStatus: 404 });
+  });
+});
+
+// ---------------------------------------------------------------------------
 // getTransfer
 // ---------------------------------------------------------------------------
 
