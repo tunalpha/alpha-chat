@@ -192,7 +192,7 @@ function AppContent() {
       {(() => {
         switch (view) {
           case "profile":
-            return <ProfilePage auth={auth} onBack={goBack} onAuthUpdate={updateAuth} />;
+            return <ProfilePage auth={auth} onBack={goBack} onAuthUpdate={updateAuth} onNavigate={setView} />;
           case "settings":
             return <SettingsPage onBack={goBack} onNavigate={setView} />;
           case "security":

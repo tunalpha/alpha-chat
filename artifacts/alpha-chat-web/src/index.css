@@ -6464,3 +6464,277 @@ html.emergency-open #root {
   display: flex; flex-direction: column; gap: 6px;
 }
 .ups-security-points li { font-size: 0.83rem; color: var(--text-2,rgba(255,255,255,0.65)); }
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   UsdaWalletCard (.uwc-*) — card "👛 Wallet USDA" nel profilo utente
+   ══════════════════════════════════════════════════════════════════════════════ */
+
+/* ── Wrapper nel profilo ────────────────────────────────────────────────────── */
+.profile-usda-card-wrap {
+  padding: 0 16px 4px;
+}
+
+/* ── Card principale ────────────────────────────────────────────────────────── */
+.uwc-card {
+  border-radius: 22px;
+  background: linear-gradient(145deg,
+    rgba(99,102,241,0.13) 0%,
+    rgba(139,92,246,0.08) 50%,
+    rgba(16,16,32,0.95)  100%);
+  border: 1px solid rgba(99,102,241,0.22);
+  padding: 20px 20px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  box-shadow: 0 4px 32px rgba(0,0,0,0.28), 0 1px 0 rgba(255,255,255,0.05) inset;
+  animation: slideUp 0.28s ease;
+  position: relative;
+  overflow: hidden;
+}
+/* glow top-left */
+.uwc-card::before {
+  content: "";
+  position: absolute;
+  top: -40px; left: -40px;
+  width: 160px; height: 160px;
+  background: radial-gradient(circle, rgba(99,102,241,0.18) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+/* ── Header (titolo + refresh) ──────────────────────────────────────────────── */
+.uwc-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.uwc-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.uwc-title-icon { font-size: 1.25rem; }
+.uwc-title {
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--text-1, #fff);
+  letter-spacing: -0.01em;
+}
+
+/* Pulsante refresh */
+.uwc-refresh-btn {
+  background: rgba(255,255,255,0.07);
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 8px;
+  padding: 6px;
+  cursor: pointer;
+  color: var(--text-3, rgba(255,255,255,0.45));
+  display: flex;
+  align-items: center;
+  transition: background 0.15s, color 0.15s;
+}
+.uwc-refresh-btn:active { background: rgba(255,255,255,0.14); }
+.uwc-refresh-btn--spinning svg {
+  animation: uwc-spin 0.9s linear infinite;
+}
+@keyframes uwc-spin {
+  to { transform: rotate(360deg); }
+}
+
+/* ── Status badge ───────────────────────────────────────────────────────────── */
+.uwc-status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px 3px 8px;
+  border-radius: 20px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+}
+.uwc-status-badge--ok {
+  background: rgba(74,222,128,0.13);
+  color: #4ade80;
+  border: 1px solid rgba(74,222,128,0.2);
+}
+.uwc-status-badge--warn {
+  background: rgba(251,191,36,0.12);
+  color: #fbbf24;
+  border: 1px solid rgba(251,191,36,0.2);
+}
+.uwc-status-dot {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  display: inline-block;
+  flex-shrink: 0;
+}
+.uwc-status-badge--ok   .uwc-status-dot { box-shadow: 0 0 6px currentColor; }
+
+/* ── Wallet non collegato ───────────────────────────────────────────────────── */
+.uwc-disconnected {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: flex-start;
+}
+.uwc-disconnect-msg {
+  font-size: 0.87rem;
+  color: var(--text-2, rgba(255,255,255,0.65));
+  margin: 0;
+  line-height: 1.5;
+}
+.uwc-connect-wrap { align-self: stretch; }
+
+/* ── Wallet collegato — header ──────────────────────────────────────────────── */
+.uwc-connected-header {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.uwc-address {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: rgba(255,255,255,0.05);
+  border: 1px solid rgba(255,255,255,0.08);
+  border-radius: 10px;
+  padding: 8px 12px;
+}
+.uwc-address-label {
+  font-size: 0.72rem;
+  color: var(--text-3, rgba(255,255,255,0.4));
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.uwc-address-value {
+  font-family: monospace;
+  font-size: 0.88rem;
+  color: var(--text-1, #fff);
+  letter-spacing: 0.03em;
+}
+
+/* ── Sezione saldo ──────────────────────────────────────────────────────────── */
+.uwc-balance-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 72px;
+}
+.uwc-balance-label {
+  font-size: 0.75rem;
+  color: var(--text-3, rgba(255,255,255,0.45));
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.uwc-balance-value {
+  font-size: 2rem;
+  font-weight: 800;
+  color: var(--text-1, #fff);
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+}
+.uwc-currency {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-2, rgba(255,255,255,0.55));
+  letter-spacing: 0;
+}
+.uwc-zero-msg {
+  font-size: 0.82rem;
+  color: var(--text-3, rgba(255,255,255,0.4));
+  margin-top: 4px;
+}
+.uwc-updated-at {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 0.73rem;
+  color: var(--text-3, rgba(255,255,255,0.35));
+  margin-top: 6px;
+}
+
+/* ── Stato errore saldo ─────────────────────────────────────────────────────── */
+.uwc-balance-error {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.uwc-balance-nd {
+  font-size: 1.8rem;
+  font-weight: 800;
+  color: rgba(255,255,255,0.25);
+  letter-spacing: -0.02em;
+}
+.uwc-balance-error-msg {
+  font-size: 0.78rem;
+  color: rgba(251,191,36,0.7);
+  line-height: 1.4;
+}
+
+/* ── Shimmer / skeleton loading ─────────────────────────────────────────────── */
+.uwc-shimmer-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.uwc-shimmer-label,
+.uwc-shimmer-value,
+.uwc-shimmer-sub {
+  border-radius: 8px;
+  background: linear-gradient(90deg,
+    rgba(255,255,255,0.06) 0%,
+    rgba(255,255,255,0.13) 50%,
+    rgba(255,255,255,0.06) 100%);
+  background-size: 200% 100%;
+  animation: uwc-shimmer 1.4s ease-in-out infinite;
+}
+.uwc-shimmer-label { height: 12px; width: 90px; }
+.uwc-shimmer-value { height: 36px; width: 180px; border-radius: 10px; }
+.uwc-shimmer-sub   { height: 11px; width: 130px; }
+@keyframes uwc-shimmer {
+  0%   { background-position:  200% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* ── Pulsanti azioni ────────────────────────────────────────────────────────── */
+.uwc-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 8px;
+  margin-top: 2px;
+}
+.uwc-action-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 12px 8px 10px;
+  border-radius: 14px;
+  border: none;
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-weight: 700;
+  transition: opacity 0.15s, transform 0.1s;
+  line-height: 1.2;
+}
+.uwc-action-btn span:first-child { font-size: 1.25rem; }
+.uwc-action-btn:active { opacity: 0.82; transform: scale(0.96); }
+
+.uwc-action-btn--primary {
+  background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(99,102,241,0.35);
+}
+.uwc-action-btn--secondary {
+  background: rgba(255,255,255,0.08);
+  border: 1px solid rgba(255,255,255,0.12);
+  color: var(--text-1, #fff);
+}
+.uwc-action-btn--ghost {
+  background: rgba(255,255,255,0.04);
+  border: 1px solid rgba(255,255,255,0.08);
+  color: var(--text-2, rgba(255,255,255,0.65));
+}

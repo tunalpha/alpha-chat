@@ -7,11 +7,14 @@ import { useRef, useState } from "react";
 import type { StoredAuth } from "../lib/auth";
 import { updateStoredAvatarUrl } from "../lib/auth";
 import { apiUpdateMe } from "../lib/api";
+import { UsdaWalletCard } from "../components/usda/UsdaWalletCard";
+import type { AppView } from "../App";
 
 interface Props {
   auth: StoredAuth;
   onBack: () => void;
   onAuthUpdate?: (patch: Partial<StoredAuth>) => void;
+  onNavigate?: (view: AppView) => void;
 }
 
 /** Comprimi immagine a max 256 px, JPEG 80%, con timeout di sicurezza (3 s). */
@@ -60,7 +63,7 @@ async function compressAvatar(file: File): Promise<string> {
   });
 }
 
-export default function ProfilePage({ auth, onBack, onAuthUpdate }: Props) {
+export default function ProfilePage({ auth, onBack, onAuthUpdate, onNavigate }: Props) {
   const initial   = auth.displayName?.[0]?.toUpperCase() ?? "?";
   const fileRef   = useRef<HTMLInputElement>(null);
   const [avatarUrl, setAvatarUrl]   = useState<string | null>(auth.avatarUrl ?? null);
@@ -158,6 +161,15 @@ export default function ProfilePage({ auth, onBack, onAuthUpdate }: Props) {
         {uploadErr && (
           <p className="profile-upload-err">{uploadErr}</p>
         )}
+      </div>
+
+      {/* ── Card Wallet USDA ──────────────────────────────────────────────── */}
+      <div className="profile-usda-card-wrap">
+        <UsdaWalletCard
+          onSend={()    => onNavigate?.("wallet-center")}
+          onRequest={()  => onNavigate?.("wallet-center")}
+          onManage={()   => onNavigate?.("usda-settings")}
+        />
       </div>
 
       <div className="settings-section">

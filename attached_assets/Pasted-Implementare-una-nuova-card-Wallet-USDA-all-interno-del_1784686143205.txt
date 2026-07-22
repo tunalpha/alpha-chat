@@ -1,0 +1,154 @@
+Implementare una nuova card "Wallet USDA" all'interno del profilo/account utente.
+
+OBIETTIVO
+
+Consentire all'utente di vedere immediatamente lo stato del proprio Wallet USDA e il saldo disponibile senza dover aprire schermate dedicate.
+
+────────────────────────
+
+CARD
+
+Titolo
+
+👛 Wallet USDA
+
+────────────────────────
+
+SE IL WALLET È COLLEGATO
+
+Mostrare:
+
+🟢 Wallet collegato
+
+Indirizzo Polygon
+
+0x1234...ABCD
+
+Saldo disponibile
+
+💰 245.7500 USDA
+
+Ultimo aggiornamento
+
+Aggiornato pochi secondi fa
+
+Pulsanti
+
+💸 Invia USDA
+
+📥 Richiedi USDA
+
+⚙️ Gestisci Wallet
+
+────────────────────────
+
+SE IL WALLET NON È COLLEGATO
+
+Mostrare:
+
+🟡 Wallet non collegato
+
+Per utilizzare USDA collega il tuo Wallet Polygon.
+
+Pulsante principale
+
+🔗 Collega Wallet
+
+che avvia direttamente il flusso Thirdweb Connect.
+
+────────────────────────
+
+LETTURA DEL SALDO
+
+Il saldo NON deve essere letto dal database.
+
+Il saldo deve essere letto esclusivamente dalla blockchain Polygon tramite RPC utilizzando:
+
+ERC20.balanceOf(walletAddress)
+
+sul contratto USDA.
+
+Convertire automaticamente il valore utilizzando i decimali del token.
+
+Visualizzare il saldo con massimo 4 decimali.
+
+────────────────────────
+
+AGGIORNAMENTO DEL SALDO
+
+Aggiornare automaticamente il saldo:
+
+• apertura della pagina
+• pull-to-refresh
+• ritorno dell'app in foreground
+• dopo ogni pagamento inviato
+• dopo ogni pagamento ricevuto
+
+Non utilizzare polling continuo.
+
+────────────────────────
+
+GESTIONE ERRORI
+
+Se la chiamata RPC fallisce, va in timeout oppure non è disponibile:
+
+• NON leggere il saldo dal database
+• NON utilizzare cache
+• NON mostrare un saldo potenzialmente non aggiornato
+
+Visualizzare invece:
+
+💰 Saldo USDA
+
+N/D
+
+Sottotitolo:
+
+Impossibile recuperare il saldo in questo momento.
+
+Lo stato del wallet deve comunque rimanere visibile.
+
+────────────────────────
+
+SALDO ZERO
+
+Se il saldo è pari a zero mostrare:
+
+💸 Saldo disponibile
+
+0.0000 USDA
+
+Messaggio:
+
+Ricevi il tuo primo pagamento USDA per iniziare.
+
+────────────────────────
+
+LOADING
+
+Durante il caricamento mostrare uno skeleton/shimmer moderno con animazione fluida.
+
+────────────────────────
+
+DESIGN
+
+La card deve essere moderna, elegante e in stile fintech (Revolut, PayPal, Wise, Cash App).
+
+Utilizzare:
+
+• angoli arrotondati
+• gradienti leggeri
+• ombre morbide
+• icone moderne
+• micro animazioni
+• perfettamente responsive
+
+────────────────────────
+
+IMPORTANTE
+
+La blockchain Polygon è l'unica fonte di verità del saldo USDA.
+
+Il database serve esclusivamente per conoscere il wallet associato all'utente.
+
+Il saldo deve essere sempre ottenuto tramite RPC con chiamata ERC20 balanceOf().
