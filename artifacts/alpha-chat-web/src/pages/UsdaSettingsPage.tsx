@@ -24,6 +24,7 @@ import {
   thirdwebClient,
   polygonMainnet,
   WC_PROJECT_ID,
+  WC_WALLET_CONNECT_CONFIG,
   APP_METADATA,
   USDA_CONTRACT_ADDRESS,
   USDA_CHAIN_ID,
@@ -190,7 +191,7 @@ export default function UsdaSettingsPage({ onBack }: Props) {
                   chain={polygonMainnet}
                   wallets={SUPPORTED_WALLETS}
                   appMetadata={APP_METADATA}
-                  walletConnect={{ projectId: WC_PROJECT_ID }}
+                  walletConnect={WC_WALLET_CONNECT_CONFIG}
                   connectModal={{
                     title: "Connetti Wallet",
                     size: "compact",
@@ -222,7 +223,7 @@ export default function UsdaSettingsPage({ onBack }: Props) {
                   chain={polygonMainnet}
                   wallets={SUPPORTED_WALLETS}
                   appMetadata={APP_METADATA}
-                  walletConnect={{ projectId: WC_PROJECT_ID }}
+                  walletConnect={WC_WALLET_CONNECT_CONFIG}
                   detailsButton={{ style: { fontSize: "0.82rem", padding: "6px 14px" } }}
                 />
               </div>
@@ -259,7 +260,7 @@ export default function UsdaSettingsPage({ onBack }: Props) {
                     chain={polygonMainnet}
                     wallets={SUPPORTED_WALLETS}
                     appMetadata={APP_METADATA}
-                    walletConnect={{ projectId: WC_PROJECT_ID }}
+                    walletConnect={WC_WALLET_CONNECT_CONFIG}
                     detailsButton={{ style: { fontSize: "0.82rem", padding: "6px 14px" } }}
                   />
                 </div>

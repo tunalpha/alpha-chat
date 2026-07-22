@@ -24,9 +24,18 @@ export const APP_METADATA = {
   logoUrl:     "https://alphachat.sbs/icon-512.png",
 } as const;
 
+/**
+ * Passare walletConnect={{ projectId: "" }} sovrascrive il projectId interno di
+ * ThirdWeb con una stringa vuota, causando fallimento immediato della connessione.
+ * Se WC_PROJECT_ID non è impostato, usiamo undefined: ThirdWeb torna al suo default.
+ */
+export const WC_WALLET_CONNECT_CONFIG: { projectId: string } | undefined =
+  WC_PROJECT_ID ? { projectId: WC_PROJECT_ID } : undefined;
+
 // Log diagnostico — rimuovere dopo la verifica
 if (typeof window !== "undefined") {
-  console.log("[ThirdWeb] WalletConnect projectId:", WC_PROJECT_ID || "⚠️ undefined — controlla VITE_WALLETCONNECT_PROJECT_ID");
+  console.log("[ThirdWeb] WalletConnect projectId:", WC_PROJECT_ID || "⚠️ UNDEFINED — controlla VITE_WALLETCONNECT_PROJECT_ID");
+  console.log("[ThirdWeb] walletConnect config passato ai ConnectButton:", WC_WALLET_CONNECT_CONFIG ?? "⚠️ undefined → ThirdWeb usa il suo default");
   console.log("[ThirdWeb] App metadata:", APP_METADATA);
 }
 
