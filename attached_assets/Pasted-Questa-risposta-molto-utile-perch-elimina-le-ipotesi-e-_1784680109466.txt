@@ -1,0 +1,108 @@
+Questa risposta è molto utile perché elimina le ipotesi e chiarisce il contratto API reale.
+
+La buona notizia è che non vedo la necessità di modifiche strutturali all’architettura di AlphaChat. Le modifiche richieste sono limitate al comportamento dell’HttpUsdaAdapter, che è proprio il componente pensato per assorbire differenze di questo tipo.
+
+L’unica differenza architetturale rilevante è che sendPayment() non corrisponde a una singola chiamata HTTP, ma a una sequenza:
+
+UsdaService.sendPayment()
+        │
+        ▼
+POST /api/pay/prepare
+        │
+recipientAddress
+pendingTransferId
+        │
+Firma blockchain lato client
+        │
+txHash
+        ▼
+POST /api/pay/confirm
+
+Per il resto:
+
+* requestPayment() continua a usare un solo endpoint.
+* claimPayment() cambia semplicemente URL (/claim/{code}).
+* Il rimborso diventa uno stato osservato e non un’azione invocabile.
+* Lo storico rimane invariato.
+
+Questa è esattamente la responsabilità dell’adapter: tradurre le operazioni logiche (sendPayment, requestPayment, claimPayment, getHistory) nel protocollo richiesto dal backend, senza che il resto dell’applicazione debba conoscerne i dettagli.
+
+Il prompt che darei ora al team AlphaChat
+
+⸻
+
+Sprint – Adeguamento HttpUsdaAdapter al contratto API definitivo USDA
+
+Abbiamo ricevuto il contratto API definitivo dal team USDA.
+
+Non modificare UsdaService, UI, database, WebSocket, modelli o architettura.
+
+L’obiettivo è adeguare esclusivamente HttpUsdaAdapter al contratto reale.
+
+Modifiche richieste
+
+1. Eliminare completamente POST /api/pay/send.
+
+Implementare sendPayment() come:
+
+* POST /api/pay/prepare
+* attesa della firma blockchain del client
+* POST /api/pay/confirm
+
+L’intera sequenza deve restare incapsulata nell’adapter.
+
+⸻
+
+2. Lasciare invariato:
+
+* POST /api/pay/request
+
+⸻
+
+3. Sostituire:
+
+* POST /api/pay/pay
+
+con:
+
+* POST /api/pay/claim/{code}
+
+Passando txHash nel body quando richiesto dal backend.
+
+⸻
+
+4. Eliminare completamente qualsiasi chiamata a:
+
+* POST /api/pay/refund
+
+Il rimborso non è un’operazione.
+
+È uno stato ottenuto tramite polling.
+
+⸻
+
+5. Continuare a usare:
+
+* GET /api/pay/history
+
+senza modifiche.
+
+⸻
+
+6. Aggiornare il polling affinché riconosca anche:
+
+* pending
+* confirmed
+* claimed
+* refunded
+* failed
+
+aggiornando le bubble tramite usda.payment.update.
+
+⸻
+
+7. Aggiornare la documentazione tecnica eliminando tutti i VERIFY ormai risolti e riportando il contratto API definitivo.
+
+⸻
+
+Regola fondamentale: tutte queste modifiche devono rimanere confinate nell’HttpUsdaAdapter. L’interfaccia UsdaAdapter e il resto dell’architettura di AlphaChat non devono cambiare. In questo modo il backend USDA resta un dettaglio implementativo e la chat continua a usare le stesse operazioni logiche (sendPayment, requestPayment, claimPayment, getHistory).

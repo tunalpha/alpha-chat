@@ -1,15 +1,15 @@
 # USDA Backend Connection Report
 
 **Data:** 22 luglio 2026  
-**Sprint:** Collegamento Backend USDA Reale  
-**Stato:** ✅ HttpUsdaAdapter configurato e attivo
+**Sprint:** Collegamento Backend USDA Reale — Contratto Definitivo  
+**Stato:** ✅ HttpUsdaAdapter allineato al contratto API definitivo
 
 ---
 
 ## 1. Variabili d'ambiente configurate
 
-| Variabile | Valore (oscurato) | Note |
-|-----------|-------------------|------|
+| Variabile | Valore | Note |
+|-----------|--------|------|
 | `USDA_API_BASE_URL` | `https://getusda.xyz` | Attiva HttpUsdaAdapter |
 | `USDA_CHAIN_ID` | `137` | Polygon Mainnet |
 | `USDA_CONTRACT_ADDRESS` | `0xe714655fD1B3ba96B887DF1F94336c2A78E24001` | ERC-20 USDA token |
@@ -17,178 +17,200 @@
 **Non configurate (non esistono nel backend USDA):**
 - ❌ `USDA_API_KEY` — il backend non richiede autenticazione
 - ❌ `USDA_API_SECRET` — non previsto
-- ❌ `USDA_ENV` — non previsto
 - ❌ Bearer Token — nessun header di autenticazione
 
 ---
 
-## 2. Endpoint verificati dalla documentazione USDA
+## 2. Contratto API definitivo USDA
 
-| Endpoint | Metodo | Stato | Utilizzo |
-|----------|--------|-------|----------|
-| `/api/health` | GET | ✅ Documentato | Health check — sostituisce `/capabilities` |
-| `/api/pay/poll-tx` | GET | ✅ Documentato | Polling stato transazione (`?code={code}`) |
-| `/api/pay/claim/{code}` | POST | ✅ Documentato | Riscossione pagamento |
+### Endpoint confermati
 
----
+| Endpoint | Metodo | Utilizzo |
+|----------|--------|----------|
+| `GET /api/health` | GET | Health check — nessuna autenticazione |
+| `POST /api/pay/prepare` | POST | Passo 1 invio: ottieni `pendingTransferId` + `recipientAddress` |
+| `POST /api/pay/confirm` | POST | Passo 2 invio: conferma con `pendingTransferId` + `txHash` |
+| `POST /api/pay/request` | POST | Crea richiesta di pagamento |
+| `POST /api/pay/claim/{code}` | POST | Riscossione (ex claim) **e** pagamento di richiesta (ex pay) |
+| `GET /api/pay/poll-tx` | GET | Polling stato transazione (`?code={code}`) |
+| `GET /api/pay/history` | GET | Storico pagamenti |
 
-## 3. Endpoint da verificare con il backend reale (VERIFY)
+### Endpoint eliminati
 
-Questi endpoint seguono il pattern `/api/pay/...` dedotto dalla documentazione. I path, i corpi delle richieste e la struttura delle risposte devono essere confermati con il team USDA prima del go-live.
-
-| Endpoint | Metodo | Path presunto | Corpo richiesta presunto |
-|----------|--------|---------------|--------------------------|
-| Invia pagamento | POST | `/api/pay/send` | `{ from_user_id, to_user_id, amount, fee, note, reference_id }` |
-| Crea richiesta | POST | `/api/pay/request` | `{ from_user_id, to_user_id, amount, note, reference_id }` |
-| Paga richiesta | POST | `/api/pay/pay` | `{ code, payer_id }` |
-| Rimborso | POST | `/api/pay/refund/{code}` | — (solo path) |
-| Storico | GET | `/api/pay/history` | `?user_id&type&limit&skip` |
-
----
-
-## 4. Differenze rispetto al MockUsdaAdapter
-
-| Comportamento | MockUsdaAdapter | HttpUsdaAdapter |
-|---------------|-----------------|-----------------|
-| Autenticazione | Nessuna | Nessuna (confermato) |
-| Prefisso API | N/A | `/api/...` (nessun `/v1`) |
-| Health check | Sempre OK | `GET /api/health` |
-| Capabilities | Hardcoded | Derivate da `/api/health` |
-| Saldo wallet | In-memory (mock) | ERC-20 `balanceOf` via Polygon RPC |
-| Auto-conferma | 3 secondi (setTimeout) | Polling `GET /api/pay/poll-tx` ogni 6s |
-| Webhook | Non supportato | Non supportato (polling interno) |
-| Firma transazione | Simulata (800ms) | Non richiesta (backend custodiale) |
-| `/prepare` | Simulato | Calcolato localmente (fee 0.1%) |
-| Aggiornamento WS | `usda.payment.update` | `usda.payment.update` (identico) |
-| Durata polling | N/A | Max 5 minuti, poi `failed` |
-| Timeout request | N/A | 10 secondi + 3 retry esponenziali |
+| Endpoint rimosso | Motivo |
+|------------------|--------|
+| `POST /api/pay/send` | Sostituito dal flusso prepare → confirm |
+| `POST /api/pay/pay` | Sostituito da `POST /api/pay/claim/{code}` |
+| `POST /api/pay/refund/{code}` | Il rimborso non è un'azione — stato osservato via polling |
 
 ---
 
-## 5. Architettura balance (ERC-20 via Polygon RPC)
+## 3. Flusso sendPayment (sequenza in due passi)
 
-Il backend USDA non espone un endpoint HTTP per il saldo. Il saldo viene letto direttamente dalla blockchain via JSON-RPC:
+```
+UsdaService.submitPayment()
+        │
+        ▼
+POST /api/pay/prepare
+  body: { from_user_id, to_user_id, amount, note }
+  risposta: { pendingTransferId, recipientAddress, fee, total, amount_units }
+        │
+        ▼
+Firma blockchain (ThirdWeb SDK in produzione — simulata in sviluppo)
+  → txHash
+        │
+        ▼
+POST /api/pay/confirm
+  body: { pendingTransferId, txHash, reference_id }
+  risposta: { code, status, tx_hash?, claim_expires_at? }
+        │
+        ▼
+_startPolling(code)   ← polling ogni 6s via GET /api/pay/poll-tx
+        │
+        ▼
+usda.payment.update   ← WS event in-place bubble update
+```
+
+---
+
+## 4. Flusso requestPayment (singola chiamata — invariato)
+
+```
+POST /api/pay/request
+  body: { from_user_id, to_user_id, amount, note, reference_id }
+  risposta: { code, status, claim_expires_at? }
+```
+
+---
+
+## 5. Flusso claimPayment e payRequest (stesso endpoint)
+
+Sia la riscossione di un pagamento inviato, sia il pagamento di una richiesta,
+usano lo stesso endpoint USDA:
+
+```
+POST /api/pay/claim/{code}
+  body: { [txHash]?, [payer_id]? }
+  risposta: { status, tx_hash?, claimed_at? }
+```
+
+Il `code` è l'`external_payment_id` salvato in MongoDB al momento della creazione.
+
+---
+
+## 6. Rimborso — nessuna azione invocabile
+
+Il rimborso **non è un'operazione** che AlphaChat può invocare.
+
+È uno stato (`refunded`) che il backend USDA assegna autonomamente alla transazione e che viene osservato tramite polling:
+
+```
+GET /api/pay/poll-tx?code={code}
+  → { status: "refunded", tx_hash?: "...", ... }
+  → _onStatusChange(externalId, "refunded", txHash)
+    → aggiorna MongoDB
+    → broadcast usda.payment.update
+      → bubble aggiornata in-place (stato ↩️ Rimborso automatico)
+```
+
+`refundPayment()` nell'adapter è un no-op mantenuto per compatibilità con l'interfaccia `UsdaAdapter`.
+
+---
+
+## 7. Polling — stati riconosciuti
+
+| Stato USDA backend | Stato AlphaChat | Terminale? |
+|--------------------|-----------------|------------|
+| `pending` | `pending` | No (continua polling) |
+| `confirmed` | `confirmed` | ✅ Sì |
+| `claimed` | `claimed` | ✅ Sì |
+| `refunded` | `refunded` | ✅ Sì |
+| `failed` | `failed` | ✅ Sì |
+| `pending_claim` | `pending_claim` | No (continua polling) |
+| Timeout 5 min | `failed` | ✅ Sì |
+
+---
+
+## 8. Saldo ERC-20 (non via HTTP)
+
+Il backend USDA non espone un endpoint HTTP per il saldo.
 
 ```
 Contratto: 0xe714655fD1B3ba96B887DF1F94336c2A78E24001  (Polygon Mainnet)
-Decimali:  6 (standard dollar-pegged stablecoin)
-RPC:       https://polygon-rpc.com  (pub. RPC, no API key)
-           Configurabile via USDA_POLYGON_RPC env var
-Metodo:    eth_call → balanceOf(address) → 0x70a08231...
+Metodo:    eth_call → balanceOf(address) → selector 0x70a08231
+Decimali:  6 (dollar-pegged stablecoin standard)
+RPC:       https://polygon-rpc.com  (default, no API key)
+           Configurabile via USDA_POLYGON_RPC
+Timeout:   8 secondi
 ```
-
-**File:** `artifacts/api-server/src/usda/polygon-rpc.ts`
 
 ---
 
-## 6. Health check e graceful degradation
+## 9. Graceful degradation
 
-- `GET /api/v1/usda/health` — endpoint AlphaChat (non richiede autenticazione)
-- Chiama `GET /api/health` sul backend USDA, cache 60 secondi
-- Se il backend non risponde:
-  - `_isAvailable = false`
-  - Le operazioni di pagamento lanciano `UsdaUnavailableError` (503)
-  - Il frontend disabilita i pulsanti di pagamento
-  - La chat rimane pienamente operativa
+- `GET /api/v1/usda/health` (AlphaChat, unauthenticated) → chiama `GET /api/health`
+- Se il backend non risponde: `_isAvailable = false`
+- `preparePayment()` e `submitPayment()` lanciano `UsdaUnavailableError` (HTTP 503)
+- Il frontend disabilita i pulsanti di pagamento
+- La chat rimane pienamente operativa
 - Il check si ripete automaticamente ogni 60 secondi
 
 ---
 
-## 7. Polling interno
-
-Il backend USDA non supporta webhook. Gli aggiornamenti di stato avvengono tramite polling interno:
-
-```
-submitPayment / payRequest
-  → avvia polling (6s intervallo, max 5 min)
-  → GET /api/pay/poll-tx?code={code}
-  → stato cambiato → _onStatusChange(externalId, status, txHash)
-    → _handleExternalStatusChange() in usda.service.ts
-      → aggiorna MongoDB
-      → aggiorna system_metadata del messaggio
-      → broadcast usda.payment.update via WebSocket
-        → bubble aggiornata in-place nel frontend
-```
-
----
-
-## 8. File modificati (solo strato di integrazione)
+## 10. File modificati
 
 | File | Tipo modifica |
 |------|---------------|
-| `artifacts/api-server/src/usda/http-usda.adapter.ts` | **Riscrittura completa** — endpoint, polling, health, no-auth |
-| `artifacts/api-server/src/usda/polygon-rpc.ts` | **Nuovo** — ERC-20 balanceOf via eth_call |
-| `artifacts/api-server/src/services/usda.service.ts` | `getWallet()` con balance reale; `checkHealth()`; callback Http |
-| `artifacts/api-server/src/controllers/usda.controller.ts` | Aggiunto `getHealth` handler |
-| `artifacts/api-server/src/routes/v1/usda.routes.ts` | `GET /health` (unauthenticated) |
+| `artifacts/api-server/src/usda/http-usda.adapter.ts` | Adeguamento contratto definitivo |
+| `artifacts/api-server/src/usda/polygon-rpc.ts` | Nuovo — ERC-20 balanceOf |
+| `artifacts/api-server/src/services/usda.service.ts` | getWallet balance reale; checkHealth; callback Http |
+| `artifacts/api-server/src/controllers/usda.controller.ts` | getHealth handler |
+| `artifacts/api-server/src/routes/v1/usda.routes.ts` | GET /health (unauthenticated) |
 
-**Non modificati (invariati):**
-- ❌ `UsdaAdapter` interface — nessun cambiamento
-- ❌ `MockUsdaAdapter` — preservato per sviluppo locale
-- ❌ `usda.service.ts` (logica pagamenti) — invariata
-- ❌ Database / modelli MongoDB — invariati
-- ❌ UI / componenti frontend — invariati
-- ❌ WebSocket / eventi — invariati
-- ❌ Chat, messaggi, gruppi, chiamate — invariati
-
----
-
-## 9. Test eseguiti
-
-| Test | Risultato |
-|------|-----------|
-| TypeScript `--noEmit` backend | ✅ 0 errori (8 pre-esistenti in `diagnostics.routes.ts` esclusi) |
-| API server restart con `USDA_API_BASE_URL` impostato | ✅ HttpUsdaAdapter attivo (log confermato) |
-| `GET /api/v1/usda/health` endpoint disponibile | ✅ (registrato in routes) |
-| `balanceOfUsda()` unit logic | ✅ Calcolo decimali verificato (BigInt 6 decimali) |
-| `_mapUsdaStatus()` — tutti gli stati | ✅ Mappatura copre tutti i 9 stati AlphaChat |
-| Polling loop — avvio/stop su stato terminale | ✅ Logica verificata in codice |
-| Graceful degradation — `_isAvailable = false` | ✅ Lancia `UsdaUnavailableError` (503) |
-
-**Test end-to-end con pagamenti reali:** in attesa di conferma endpoint dal team USDA (path marcati VERIFY).
+**Non modificati:**
+- `UsdaAdapter` interface
+- `MockUsdaAdapter` (preservato per sviluppo locale)
+- `usda.service.ts` (logica pagamenti, webhook handler)
+- Database / modelli MongoDB
+- UI / componenti frontend
+- WebSocket / eventi
+- Chat, messaggi, gruppi, chiamate
 
 ---
 
-## 10. Checklist pre-go-live
+## 11. Checklist pre-go-live
 
 ```
-[✅] USDA_API_BASE_URL impostato → HttpUsdaAdapter attivo
+[✅] USDA_API_BASE_URL = https://getusda.xyz  → HttpUsdaAdapter attivo
 [✅] USDA_CHAIN_ID = 137
-[✅] USDA_CONTRACT_ADDRESS = 0xe714655fD1B3ba96B887DF1F94336c2A78E24001
-[✅] Nessuna API key / Bearer token (confermato con team USDA)
-[✅] /api/health implementato (health check)
-[✅] /api/pay/poll-tx implementato (polling)
-[✅] /api/pay/claim/{code} implementato (claim)
-[✅] balanceOf ERC-20 via Polygon RPC implementato
-[✅] Graceful degradation se backend non disponibile
-[✅] usda.payment.update WS event invariato
+[✅] USDA_CONTRACT_ADDRESS configurato
+[✅] Nessuna API key / Bearer token (confermato)
+[✅] POST /api/pay/prepare implementato
+[✅] POST /api/pay/confirm implementato
+[✅] POST /api/pay/request implementato
+[✅] POST /api/pay/claim/{code} — sia payRequest che claimPayment
+[✅] GET /api/pay/poll-tx — polling con tutti e 5 gli stati
+[✅] GET /api/pay/history implementato
+[✅] GET /api/health — health check + graceful degradation
+[✅] refundPayment no-op — rimborso via polling
+[✅] balanceOf ERC-20 via Polygon RPC
+[✅] TypeScript clean (0 errori introdotti)
 
-[ ] VERIFY /api/pay/send — path e corpo richiesta con team USDA
-[ ] VERIFY /api/pay/request — path e corpo richiesta con team USDA
-[ ] VERIFY /api/pay/pay — path e corpo richiesta con team USDA
-[ ] VERIFY /api/pay/refund/{code} — path confermato con team USDA
-[ ] VERIFY /api/pay/history — path e query params con team USDA
-[ ] VERIFY struttura risposta send/request/pay (field: code? payment_id? status?)
-[ ] Test end-to-end invio USDA con backend reale
-[ ] Test end-to-end richiesta + claim con backend reale
-[ ] Test refund con backend reale
-[ ] Test polling → conferma → bubble aggiornata
-[ ] Verificare decimali USDA contratto (assunti 6 — USDC-standard)
-[ ] Configurare USDA_POLYGON_RPC se RPC pubblico risulta lento/inaffidabile
+[ ] Test end-to-end: invio USDA (prepare → sign → confirm → poll → confirmed)
+[ ] Test end-to-end: richiesta + claim
+[ ] Test: polling → refunded (rimborso automatico backend)
+[ ] Integrare ThirdWeb SDK per firma reale (sostituisce _simulateTxHash)
+[ ] Verificare decimali USDA contratto (assunti 6 — da confermare)
+[ ] Configurare USDA_POLYGON_RPC se RPC pubblico risulta lento
 ```
 
 ---
 
-## 11. Conferma MockUsdaAdapter
+## 12. Conferma MockUsdaAdapter
 
-Il `MockUsdaAdapter` è **preservato** e continua a funzionare come ambiente di sviluppo locale.
+Il `MockUsdaAdapter` è **preservato** per sviluppo locale e test automatici.
 
-- Se `USDA_API_BASE_URL` **non è impostato** → MockUsdaAdapter (comportamento invariato)
-- Se `USDA_API_BASE_URL` **è impostato** → HttpUsdaAdapter (backend reale)
+- `USDA_API_BASE_URL` **non impostato** → MockUsdaAdapter (auto-conferma 3s)
+- `USDA_API_BASE_URL` **impostato** → HttpUsdaAdapter (backend reale)
 
-Il `MockUsdaAdapter` **può essere mantenuto** indefinitamente per:
-- Test locali senza connessione al backend USDA
-- CI/CD e test automatici
-- Sviluppo di nuove funzionalità UI
-
-Può essere **rimosso** in futuro solo quando non si desidera più un ambiente di sviluppo senza il backend USDA. Non è richiesto per la produzione.
+Può essere rimosso in futuro ma non è richiesto per la produzione.

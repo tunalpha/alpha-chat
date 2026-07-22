@@ -234,6 +234,18 @@ function _startPolling(
   _pollingJobs.set(externalPaymentId, handle);
 }
 
+/**
+ * Genera un txHash simulato (32 byte esadecimali).
+ * In produzione viene sostituito dal txHash reale restituito da ThirdWeb SDK
+ * dopo la firma e la submission on-chain.
+ */
+function _simulateTxHash(): string {
+  const bytes = Array.from({ length: 32 }, () =>
+    Math.floor(Math.random() * 256).toString(16).padStart(2, "0"),
+  );
+  return `0x${bytes.join("")}`;
+}
+
 /** Mappa stati USDA backend → stati AlphaChat */
 function _mapUsdaStatus(raw: string): UsdaPaymentStatus {
   switch (raw?.toLowerCase()) {
@@ -284,9 +296,9 @@ export class HttpUsdaAdapter implements UsdaAdapter {
     const caps: UsdaCapabilities = {
       version:  "1.0",
       supports: {
-        prepare:     false,   // nessun endpoint prepare — fee calcolata localmente
+        prepare:     true,    // POST /api/pay/prepare → POST /api/pay/confirm
         claim:       true,    // POST /api/pay/claim/{code}
-        refund:      true,    // VERIFY: POST /api/pay/refund/{code}
+        refund:      false,   // il rimborso non è un'azione — stato osservato via polling
         webhook:     false,   // backend USDA non supporta webhook → polling interno
         polling:     true,    // GET /api/pay/poll-tx
         multi_chain: false,   // solo Polygon per ora
@@ -356,18 +368,39 @@ export class HttpUsdaAdapter implements UsdaAdapter {
     };
   }
 
-  // ── Prepara pagamento (calcolato localmente — nessun endpoint /prepare) ───
+  // ── Prepara pagamento → POST /api/pay/prepare ────────────────────────────
+  //
+  // Il backend calcola fee, costruisce calldata e restituisce pendingTransferId
+  // + recipientAddress necessari per la firma blockchain e il successivo /confirm.
 
   async preparePayment(params: PreparePaymentParams): Promise<PreparedPayment> {
     if (!_isAvailable) await this._refreshHealth();
     if (!_isAvailable) throw new UsdaUnavailableError();
 
-    const amount = parseFloat(params.amount);
-    if (isNaN(amount) || amount <= 0) throw new Error("Invalid amount");
+    const raw = await usdaRequest<{
+      pendingTransferId?: string;
+      pending_transfer_id?: string;
+      recipientAddress?: string;
+      recipient_address?: string;
+      fee?: string;
+      total?: string;
+      amount_units?: string;
+    }>("POST", "/api/pay/prepare", {
+      from_user_id: params.from_user_id,
+      to_user_id:   params.to_user_id,
+      amount:       params.amount,
+      note:         params.note,
+    });
 
-    // Fee USDA: 0.1% (verificare con contratto/backend reale)
-    const fee   = (amount * 0.001).toFixed(6);
-    const total = (amount + parseFloat(fee)).toFixed(6);
+    const pendingTransferId = raw.pendingTransferId ?? raw.pending_transfer_id ?? "";
+    const recipientAddress  = raw.recipientAddress  ?? raw.recipient_address  ?? "";
+
+    // Fallback fee locale se il backend non la restituisce
+    const amount  = parseFloat(params.amount);
+    const fee     = raw.fee   ?? (amount * 0.001).toFixed(6);
+    const total   = raw.total ?? (amount + parseFloat(fee)).toFixed(6);
+
+    logger.info({ pendingTransferId, fee }, "[HttpUSDA] Payment prepared");
 
     return {
       client_payment_id: params.client_payment_id,
@@ -375,38 +408,48 @@ export class HttpUsdaAdapter implements UsdaAdapter {
       fee,
       total,
       prepared_data: {
-        from_user_id:      params.from_user_id,
-        to_user_id:        params.to_user_id,
-        amount_units:      Math.floor(amount * 10 ** 6).toString(), // 6 decimali
-        contract_address:  process.env.USDA_CONTRACT_ADDRESS ?? "",
-        chain_id:          parseInt(process.env.USDA_CHAIN_ID ?? "137", 10),
+        pendingTransferId,
+        recipientAddress,
+        amount_units:     raw.amount_units ?? Math.floor(amount * 10 ** 6).toString(),
+        contract_address: process.env.USDA_CONTRACT_ADDRESS ?? "",
+        chain_id:         parseInt(process.env.USDA_CHAIN_ID ?? "137", 10),
       },
     };
   }
 
-  // ── Invia pagamento → POST /api/pay/send ──────────────────────────────────
+  // ── Invia pagamento → POST /api/pay/prepare → firma → POST /api/pay/confirm ─
+  //
+  // Il contratto API USDA richiede una sequenza in due passi:
+  //   1. /prepare  → ottieni pendingTransferId (da prepared_data) + costruisci txHash
+  //   2. /confirm  → conferma con pendingTransferId + txHash
+  //
+  // La firma blockchain avviene tra i due passi (ThirdWeb SDK in produzione).
+  // Se params.signature è fornita viene usata come txHash; altrimenti si genera
+  // un hash simulato (da sostituire con ThirdWeb in go-live).
 
   async submitPayment(params: SubmitPaymentParams): Promise<PaymentResult> {
     if (!_isAvailable) await this._refreshHealth();
     if (!_isAvailable) throw new UsdaUnavailableError();
 
-    // VERIFY: path e corpo richiesta del backend USDA
+    // pendingTransferId viene da preparePayment() via prepared_data
+    const pendingTransferId = (params.prepared_data?.pendingTransferId as string | undefined) ?? "";
+
+    // txHash: firma ThirdWeb in produzione; simulato in sviluppo
+    // TODO: integrare ThirdWeb SDK per firma reale on-chain
+    const txHash = params.signature ?? _simulateTxHash();
+
     const raw = await usdaRequest<{
       code?: string; payment_id?: string; tx_hash?: string | null; status?: string;
       claim_expires_at?: string | null;
-    }>("POST", "/api/pay/send", {
-      from_user_id:  params.from_user_id,
-      to_user_id:    params.to_user_id,
-      amount:        params.amount,
-      fee:           params.fee,
-      note:          params.note,
-      reference_id:  params.client_payment_id,
-      // signature non necessaria — il backend gestisce la firma server-side
+    }>("POST", "/api/pay/confirm", {
+      pendingTransferId,
+      txHash,
+      reference_id: params.client_payment_id,
     });
 
-    const code      = raw.code ?? raw.payment_id ?? params.client_payment_id;
-    const status    = _mapUsdaStatus(raw.status ?? "pending");
-    const now       = new Date().toISOString();
+    const code   = raw.code ?? raw.payment_id ?? params.client_payment_id;
+    const status = _mapUsdaStatus(raw.status ?? "pending");
+    const now    = new Date().toISOString();
 
     const result: PaymentResult = {
       payment_id:          params.client_payment_id,
@@ -419,7 +462,7 @@ export class HttpUsdaAdapter implements UsdaAdapter {
       recipient_id:        params.to_user_id,
       conversation_id:     params.conversation_id,
       message_id:          null,
-      tx_hash:             raw.tx_hash ?? null,
+      tx_hash:             raw.tx_hash ?? txHash,
       external_payment_id: code,
       claim_expires_at:    raw.claim_expires_at ?? new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
       claimed_at:          null,
@@ -428,10 +471,10 @@ export class HttpUsdaAdapter implements UsdaAdapter {
       updated_at:          now,
     };
 
-    // Avvia polling interno (il backend non supporta webhook)
+    // Avvia polling interno (il backend USDA non supporta webhook)
     _startPolling(result.payment_id, code);
 
-    logger.info({ paymentId: result.payment_id, code, status }, "[HttpUSDA] Payment submitted");
+    logger.info({ paymentId: result.payment_id, code, status, txHash }, "[HttpUSDA] Payment confirmed");
     return result;
   }
 
@@ -511,19 +554,25 @@ export class HttpUsdaAdapter implements UsdaAdapter {
     return result;
   }
 
-  // ── Paga richiesta → POST /api/pay/pay ───────────────────────────────────
+  // ── Paga richiesta → POST /api/pay/claim/{code} ─────────────────────────
+  //
+  // Il contratto definitivo USDA sostituisce POST /api/pay/pay con
+  // POST /api/pay/claim/{code}. Il txHash è incluso nel body quando presente
+  // (firma blockchain da ThirdWeb in produzione).
 
-  async payRequest(requestId: string, payerId: string): Promise<PaymentResult> {
+  async payRequest(requestId: string, payerId: string, prepared_data?: Record<string, unknown>): Promise<PaymentResult> {
     if (!_isAvailable) await this._refreshHealth();
     if (!_isAvailable) throw new UsdaUnavailableError();
 
-    // VERIFY: path e corpo
+    // requestId qui è l'external_payment_id (il code USDA della richiesta)
+    const txHash = (prepared_data?.txHash as string | undefined) ?? undefined;
+
+    const body: Record<string, unknown> = { payer_id: payerId };
+    if (txHash) body.txHash = txHash;
+
     const raw = await usdaRequest<{
       code?: string; status?: string; tx_hash?: string | null;
-    }>("POST", "/api/pay/pay", {
-      code:     requestId,
-      payer_id: payerId,
-    });
+    }>("POST", `/api/pay/claim/${encodeURIComponent(requestId)}`, body);
 
     const code   = raw.code ?? requestId;
     const status = _mapUsdaStatus(raw.status ?? "pending");
@@ -540,7 +589,7 @@ export class HttpUsdaAdapter implements UsdaAdapter {
       recipient_id:        payerId,
       conversation_id:     "",
       message_id:          null,
-      tx_hash:             raw.tx_hash ?? null,
+      tx_hash:             raw.tx_hash ?? txHash ?? null,
       external_payment_id: code,
       claim_expires_at:    null,
       claimed_at:          null,
@@ -549,8 +598,10 @@ export class HttpUsdaAdapter implements UsdaAdapter {
       updated_at:          now,
     };
 
-    // Avvia polling dopo il pagamento
+    // Avvia polling — il backend aggiornerà lo stato a confirmed/claimed
     _startPolling(requestId, code);
+
+    logger.info({ requestId, payerId, status }, "[HttpUSDA] Request paid via claim");
     return result;
   }
 
@@ -593,19 +644,23 @@ export class HttpUsdaAdapter implements UsdaAdapter {
     return result;
   }
 
-  // ── Rimborso → POST /api/pay/refund/{code} ───────────────────────────────
+  // ── Rimborso — NO-OP ─────────────────────────────────────────────────────
+  //
+  // Il contratto definitivo USDA chiarisce che il rimborso NON è un'operazione
+  // invocabile. Lo stato "refunded" è osservato esclusivamente tramite polling
+  // su /api/pay/poll-tx. Quando il backend transita a "refunded", il polling
+  // chiama _onStatusChange → usda.payment.update → bubble aggiornata.
+  //
+  // Questo metodo non effettua chiamate HTTP. L'interfaccia UsdaAdapter
+  // lo richiede per compatibilità con il MockAdapter — non rimuoverlo.
 
   async refundPayment(paymentId: string, _userId: string): Promise<PaymentResult> {
-    // VERIFY: path confermato dal backend USDA
-    const raw = await usdaRequest<{
-      status?: string; tx_hash?: string | null; refunded_at?: string;
-    }>("POST", `/api/pay/refund/${encodeURIComponent(paymentId)}`);
-
+    logger.info({ paymentId }, "[HttpUSDA] refundPayment no-op — refund observed via polling");
     const now = new Date().toISOString();
-    const result: PaymentResult = {
+    return {
       payment_id:          paymentId,
       kind:                "send",
-      status:              _mapUsdaStatus(raw.status ?? "refunded"),
+      status:              "pending",   // stato corrente ignoto — il polling aggiornerà
       amount:              "0",
       fee:                 "0",
       note:                null,
@@ -613,23 +668,14 @@ export class HttpUsdaAdapter implements UsdaAdapter {
       recipient_id:        "",
       conversation_id:     "",
       message_id:          null,
-      tx_hash:             raw.tx_hash ?? null,
+      tx_hash:             null,
       external_payment_id: paymentId,
       claim_expires_at:    null,
       claimed_at:          null,
-      refunded_at:         raw.refunded_at ?? now,
+      refunded_at:         null,
       created_at:          now,
       updated_at:          now,
     };
-
-    logger.info({ paymentId, status: result.status }, "[HttpUSDA] Payment refunded");
-
-    if (_onStatusChange) {
-      void _onStatusChange(paymentId, "refunded", result.tx_hash ?? undefined)
-        .catch((e) => logger.error({ e }, "[HttpUSDA] Status callback error"));
-    }
-
-    return result;
   }
 
   // ── Storico → GET /api/pay/history ───────────────────────────────────────

@@ -11,18 +11,16 @@ description: Collegamento HttpUsdaAdapter al backend reale getusda.xyz — env v
 - `USDA_CONTRACT_ADDRESS=0xe714655fD1B3ba96B887DF1F94336c2A78E24001`
 - **Nessuna API key, nessun Bearer token** — il backend USDA non richiede autenticazione
 
-## Endpoint confermati dalla documentazione USDA
-- `GET /api/health` — health check (NON /capabilities)
+## Contratto API definitivo USDA (nessun VERIFY aperto)
+- `GET /api/health` — health check
+- `POST /api/pay/prepare` — passo 1 invio: → `{ pendingTransferId, recipientAddress, fee }`
+- `POST /api/pay/confirm` — passo 2 invio: `{ pendingTransferId, txHash }` → code
+- `POST /api/pay/request` — crea richiesta di pagamento
+- `POST /api/pay/claim/{code}` — sia claimPayment sia payRequest (stesso endpoint, txHash opzionale in body)
 - `GET /api/pay/poll-tx?code={code}` — polling stato tx
-- `POST /api/pay/claim/{code}` — riscossione
-- **Nessun prefisso /v1** — tutti i path sono `/api/...`
-
-## Endpoint da verificare (VERIFY)
-- POST /api/pay/send — invio pagamento
-- POST /api/pay/request — richiesta pagamento
-- POST /api/pay/pay — pagamento richiesta
-- POST /api/pay/refund/{code} — rimborso
-- GET /api/pay/history — storico
+- `GET /api/pay/history` — storico
+- **Nessun /api/pay/send, /pay/pay, /pay/refund** — eliminati
+- **Rimborso = stato polling, NON azione invocabile** — refundPayment() è no-op
 
 ## Balance ERC-20 (non via HTTP)
 - `balanceOf(address)` via eth_call su Polygon RPC pubblico
