@@ -1,0 +1,60 @@
+Sì, questa è un’accortezza importante, soprattutto con un ambiente Autoscale/Cloud Run dove l’istanza può essere terminata quando è inattiva.
+
+Io la formalizzerei come una ADR-003 o comunque come un requisito architetturale obbligatorio.
+
+Puoi aggiungere questa sezione:
+
+⸻
+
+ADR-003 — Recovery automatica dopo restart (Autoscale-safe)
+
+Decisione
+
+Il Chat Payment Engine non deve mai dipendere da timer in memoria (setTimeout, setInterval) per eseguire refund, scadenze o operazioni critiche.
+
+Tutte le operazioni pianificate devono essere DB-driven.
+
+Motivazione
+
+L’infrastruttura Autoscale può:
+
+* sospendere l’istanza quando inattiva;
+* riavviare l’app dopo un deploy;
+* creare una nuova istanza in caso di failover;
+* terminare il processo senza preavviso.
+
+Di conseguenza, qualsiasi timer residente in memoria può andare perso.
+
+Requisiti
+
+Ad ogni avvio dell’applicazione il Scheduler deve eseguire immediatamente un controllo di recovery.
+
+In particolare deve cercare tutte le transazioni con:
+
+* stato PENDING
+* expires_at < now
+* refund_completed = false
+
+e processarle immediatamente.
+
+Lo stesso controllo deve essere eseguito periodicamente durante il normale funzionamento.
+
+Proprietà richiesta
+
+Il sistema deve garantire che:
+
+* nessun rimborso venga perso;
+* nessuna scadenza venga dimenticata;
+* un restart, deploy o sospensione dell’istanza ritardi al massimo l’esecuzione del rimborso, ma non la impedisca.
+
+Idempotenza
+
+Il job di recovery deve essere completamente idempotente.
+
+Se due istanze eseguono contemporaneamente il controllo, una sola deve acquisire il lock atomico ed eseguire il refund.
+
+Le altre devono terminare senza effetti collaterali.
+
+⸻
+
+Questa ADR rende il sistema resiliente all’ambiente Autoscale: anche se l’istanza viene sospesa proprio allo scadere delle 48 ore, al successivo avvio il controllo di recovery individuerà tutte le transazioni scadute non ancora rimborsate e le elaborerà. In questo modo un riavvio non può causare la perdita di fondi o di rimborsi automatici.

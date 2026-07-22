@@ -101,6 +101,74 @@ Accettata — Luglio 2026.
 
 ---
 
+## ADR-003 — Recovery automatica dopo restart (Autoscale-safe)
+
+### Decisione
+
+Il Chat Payment Engine **non deve mai dipendere da timer in memoria** (`setTimeout`, `setInterval`) per eseguire refund, scadenze o operazioni critiche.
+
+Tutte le operazioni pianificate devono essere **DB-driven**: lo stato persiste su MongoDB, non nella memoria del processo.
+
+### Motivazione
+
+L'infrastruttura Autoscale / Cloud Run può in qualsiasi momento:
+
+- sospendere l'istanza quando inattiva;
+- riavviare il processo dopo un deploy;
+- creare una nuova istanza in caso di failover;
+- terminare il processo senza preavviso.
+
+Un timer residente in memoria (`setTimeout` di 48 ore) viene perso in tutti questi scenari. Se l'istanza viene sospesa a T+47h e riavviata a T+49h, il timer non scatta mai. Il rimborso non avviene. I fondi rimangono bloccati nell'escrow.
+
+### Requisiti vincolanti
+
+**All'avvio dell'applicazione**, prima di accettare traffico, lo Scheduler deve eseguire un controllo di recovery immediato:
+
+```
+db.chat_transfers.find({
+  status: 'pending',
+  expires_at: { $lt: now }
+})
+→ processare tutti i record trovati con lock atomico + refund
+```
+
+Lo stesso controllo deve essere eseguito **periodicamente** durante il normale funzionamento (ogni 5 minuti).
+
+**Per i trasferimenti bloccati in stato di transizione** (`accepting`, `rejecting`, `cancelling`, `refunding`) da più di 10 minuti, il job di recovery deve:
+
+1. Leggere `getCustodialBalance(escrowWallet)`
+2. Se balance = 0 → operazione già completata; aggiornare allo stato terminale corretto
+3. Se balance > 0 → riprovare la TX; se fallisce → stato `failed` + alert admin
+
+### Proprietà garantite
+
+| Proprietà | Garanzia |
+|---|---|
+| Nessun rimborso perso | Un restart ritarda al massimo di 5 min l'esecuzione, non la impedisce |
+| Nessuna scadenza dimenticata | `expires_at` persiste su MongoDB — sopravvive a qualsiasi restart |
+| Zero doppio rimborso | Lock atomico `findOneAndUpdate` — idempotente per costruzione |
+| Multi-istanza safe | Se due istanze eseguono il job contemporaneamente, solo una acquisisce il lock; le altre terminano senza effetti collaterali |
+
+### Idempotenza
+
+Il job di recovery è **completamente idempotente**. La sequenza:
+
+```
+1. findOneAndUpdate({ status: 'pending' }, { $set: { status: 'refunding' } })
+   → se null: già acquisito da un'altra istanza → skip
+   → se record: proseguire
+2. transferFromCustodial(...)
+3. Aggiornare status → 'refunded'
+```
+
+garantisce che in ambienti multi-istanza (scaling orizzontale) un solo processo esegua il refund, indipendentemente da quante istanze eseguono il controllo nello stesso momento.
+
+### Stato
+
+Accettata — Luglio 2026.
+
+---
+
 ## 1. Contesto e problema da risolvere
 
 ### 1.1 Lo scontro architetturale
