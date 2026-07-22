@@ -49,7 +49,20 @@ const SHOW_FEE_BREAKDOWN = false;
 // ── Costanti ────────────────────────────────────────────────────────────────
 
 const INVITE_MESSAGE =
-  "👋 Ciao! Ho provato a inviarti USDA su AlphaChat, ma prima devi attivare il tuo Wallet USDA. Ci vuole meno di un minuto. 🚀";
+  "👋 Ciao! Ho provato a inviarti dei fondi in USDA tramite AlphaChat, ma il tuo Wallet USDA non è ancora attivo.\n\n" +
+  "🔐 L'attivazione richiede meno di 1 minuto e crea un wallet decentralizzato di cui solo tu possiedi le chiavi private. AlphaChat non può accedere ai tuoi fondi né recuperarli.\n\n" +
+  "Come attivarlo\n\n" +
+  "1️⃣ Apri AlphaChat e vai su Wallet\n" +
+  "2️⃣ Tocca Attiva Wallet e completa la configurazione guidata.\n\n" +
+  "Se hai già un wallet decentralizzato (Trust Wallet, MetaMask, Rabby, ecc.)\n\n" +
+  "Puoi importare manualmente il token USDA:\n\n" +
+  "🟣 Rete: Polygon (PoS)\n" +
+  "📄 Contratto:\n0xe714655fD1B3ba96B887DF1F94336c2A78E24001\n" +
+  "💲 Nome: USDA\n" +
+  "🔤 Simbolo: USDA\n" +
+  "🔢 Decimali: 18\n\n" +
+  "✅ Una volta completata l'attivazione o aggiunto il token, riapri AlphaChat e potrai ricevere, inviare e conservare USDA in totale sicurezza.\n\n" +
+  "🚀 I fondi che ho tentato di inviarti saranno disponibili non appena il tuo Wallet USDA sarà attivo.";
 
 const STEPS: { id: Step; label: string }[] = [
   { id: "form",    label: "Importo"  },
