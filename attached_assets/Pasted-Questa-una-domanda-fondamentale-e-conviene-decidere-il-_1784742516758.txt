@@ -1,0 +1,82 @@
+Questa è una domanda fondamentale e conviene decidere il comportamento prima di implementare.
+
+La soluzione che ritengo più coerente con AlphaChat è questa:
+
+Caso: B non ha ancora configurato il wallet USDA
+
+1. A invia 100 USDA.
+2. Il Chat Payment Engine crea il trasferimento in PENDING e mette i fondi in escrow.
+3. B riceve il messaggio:
+    💸 Hai ricevuto 100 USDA da Mario.
+4. B preme Accetta.
+
+A questo punto il sistema verifica se wallets.usda.address esiste.
+
+Se il wallet non esiste
+
+Non deve fallire il pagamento.
+
+Invece mostra una schermata tipo:
+
+Per ricevere questi 100 USDA devi prima attivare il tuo Wallet USDA.
+
+Questa operazione richiede meno di un minuto.
+
+Pulsante:
+
+[Configura Wallet]
+
+Una volta completata la configurazione:
+
+* viene creato e associato il wallet;
+* il sistema torna automaticamente al trasferimento pendente;
+* completa l’accettazione;
+* esegue Escrow → Wallet;
+* aggiorna il messaggio a “✅ Hai ricevuto 100 USDA”.
+
+L’utente non deve cercare di nuovo il messaggio né ripetere il flusso.
+
+⸻
+
+Se l’utente chiude l’app
+
+Nessun problema.
+
+Il trasferimento resta:
+
+PENDING
+expires_at = +48h
+
+Alla successiva apertura della chat vedrà ancora:
+
+💸 Hai ricevuto 100 USDA
+
+con il pulsante Configura Wallet oppure Accetta, a seconda dello stato.
+
+⸻
+
+Perché è meglio così
+
+Dal punto di vista dell’utente:
+
+* non perde il pagamento;
+* non riceve errori;
+* viene guidato passo dopo passo.
+
+Dal punto di vista tecnico:
+
+* il trasferimento rimane in escrow;
+* nessun rischio di perdere fondi;
+* il timeout di 48 ore continua a valere.
+
+⸻
+
+Ti suggerisco di aggiungere anche questa regola
+
+Inserire una ADR-004 o una sezione “Wallet Provisioning”:
+
+L’accettazione di un pagamento richiede un wallet USDA attivo.
+
+Se il wallet non è ancora configurato, il Chat Payment Engine non fallisce la transazione, ma sospende l’accettazione e avvia il flusso guidato di configurazione del wallet. Al termine della configurazione, l’accettazione riprende automaticamente senza richiedere ulteriori azioni all’utente.
+
+In questo modo l’esperienza è molto più fluida e il sistema rimane coerente con il principio che il pagamento è un elemento nativo della conversazione, non un’operazione tecnica separata.

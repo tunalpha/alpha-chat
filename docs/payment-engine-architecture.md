@@ -169,6 +169,71 @@ Accettata — Luglio 2026.
 
 ---
 
+## ADR-004 — Wallet Provisioning on Accept
+
+### Decisione
+
+Il Chat Payment Engine **non fallisce** se il destinatario non ha ancora configurato un wallet USDA al momento dell'accettazione.
+
+Se `wallets.usda.address` è assente quando B preme Accetta, il sistema **sospende l'accettazione** e avvia il flusso guidato di configurazione del wallet. Al termine, l'accettazione riprende automaticamente senza richiedere ulteriori azioni all'utente.
+
+### Flusso
+
+```
+B preme [Accetta]
+  ↓
+Chat Payment Engine verifica wallets.usda.address
+  ↓
+  ├── Wallet presente → prosegue normalmente (lock → accepting → accepted)
+  │
+  └── Wallet assente → NON fallisce
+        ↓
+        Mostra schermata:
+        "Per ricevere questi 100 USDA devi prima attivare il tuo Wallet USDA.
+         Questa operazione richiede meno di un minuto."
+        [Configura Wallet]
+        ↓
+        Utente configura wallet (wallets.usda.address scritto su MongoDB)
+        ↓
+        Il sistema torna automaticamente al trasferimento pendente
+        ↓
+        Completa l'accettazione → Escrow → Wallet B → ✅ Completato
+```
+
+### Comportamento al chiusura app
+
+Se B chiude l'app prima di configurare il wallet, il trasferimento rimane `PENDING` con il suo `expires_at` invariato. Alla riapertura della chat il Payment Message è ancora visibile con il pulsante appropriato (`[Configura Wallet]` oppure `[Accetta]`). Nessuna perdita di contesto.
+
+### Conseguenze vincolanti
+
+- L'endpoint `accept` verifica la presenza del wallet **prima** di acquisire il lock.
+- Se il wallet è assente, risponde con un codice specifico (es. `WALLET_NOT_CONFIGURED`) — non un errore generico.
+- Il frontend intercetta questo codice e avvia il flusso di configurazione wallet.
+- Il trasferimento resta `PENDING` durante tutto il flusso di configurazione.
+- Il timeout 48h continua a decorrere normalmente durante la configurazione.
+
+### Motivazione
+
+Un errore generico in questo punto causerebbe la perdita del pagamento dal punto di vista dell'utente. Il principio ADR-002 — il pagamento è un elemento nativo della conversazione — implica che la chat debba guidare l'utente verso il completamento, non terminare con un messaggio di errore tecnico.
+
+### Stato
+
+Accettata — Luglio 2026.
+
+---
+
+## Decisioni di Design Review — Luglio 2026
+
+Le seguenti decisioni sono state prese durante la Design Review di Sprint 1 e sono vincolanti per l'implementazione.
+
+| # | Decisione | Scelta | Note |
+|---|---|---|---|
+| DR-01 | Libreria di firma blockchain backend | `viem` — aggiunta come dipendenza esplicita di `api-server` | Non era presente nel backend. Presente nel frontend solo come dipendenza indiretta tramite wagmi/Reown. Tutta la logica di firma rimane incapsulata in `usda-custodial.service.ts` per permettere sostituzione futura senza toccare il resto. |
+| DR-02 | `message_type` per Payment Message | `'payment'` — aggiunto all'enum in `message.model.ts` Sprint 1 | Contenitore asset-agnostico: USDA, USDC, USDT diventano campi del messaggio, non tipi separati. Evita proliferazione di `usdc_send`, `usdt_send`, ecc. |
+| DR-03 | Evento WebSocket Payment Engine | `payment.state_changed` — nuovo evento dedicato | `usda.payment.update` rimane invariato per il flusso getusda.xyz esistente. Due sistemi separati, zero interferenze. |
+
+---
+
 ## 1. Contesto e problema da risolvere
 
 ### 1.1 Lo scontro architetturale
@@ -855,21 +920,30 @@ Questa sezione traduce l'architettura in unità di lavoro concrete. Ogni sprint 
 
 ---
 
-### Sprint 1 — Fondazioni
+### Sprint 1 — Fondazioni ✅ COMPLETATO
 
 **Obiettivo**: schema dati, state machine, eventi interni. Nessuna API esposta ancora.
 
-- [ ] Creare collection MongoDB `chat_transfers` con tutti i campi definiti in sezione 3.3
-- [ ] Creare collection `chat_transfer_audit` (append-only, mai cancellata)
-- [ ] Creare collection `processed_txs` con unique index su `tx_hash` (anti-replay)
-- [ ] Definire indici: `transfer_id` unique, `status + expires_at` (per lo scheduler), `sender_id`, `recipient_id`, `conversation_id`
-- [ ] Implementare modello Mongoose `ChatTransfer` con typing TypeScript completo
-- [ ] Implementare la state machine come funzione pura: `transition(currentStatus, action) → newStatus | Error`
-- [ ] Implementare `usda-custodial.service.ts`: generazione wallet escrow, cifratura AES-256-GCM PK, `transferFromCustodial()`, `getCustodialBalance()`
-- [ ] Implementare `asset-anti-replay.ts`: `checkAndMarkTx(txHash)` e `rollbackTx(txHash)`
-- [ ] Implementare helper lock atomico: `acquireLock(transferId, fromStatus, toStatus)`
-- [ ] Implementare emissione eventi interni `payment.state_changed` (usato da chat per aggiornare il messaggio)
-- [ ] Scrivere unit test sulla state machine: ogni transizione valida e ogni transizione invalida
+- [x] Creare collection MongoDB `chat_transfers` — `src/models/chat-transfer.model.ts`
+- [x] Creare collection `chat_transfer_audit` — `src/models/chat-transfer-audit.model.ts`
+- [x] Creare collection `processed_txs` con unique index su `tx_hash` — `src/models/processed-tx.model.ts`
+- [x] Definire indici: `transfer_id` unique, `status + expires_at`, `status + locked_at` (recovery), `sender_id`, `recipient_id`, `conversation_id`, `message_id` sparse
+- [x] Implementare modello Mongoose `ChatTransfer` con typing TypeScript completo
+- [x] Implementare la state machine come funzione pura — `src/payment/state-machine.ts`
+- [x] Implementare `usda-custodial.service.ts` con viem: `generateEscrowWallet`, `transferFromCustodial`, `getCustodialBalance`, `toAmountUnits`, `fromAmountUnits`
+- [x] Implementare `asset-anti-replay.ts`: `checkAndMarkTx` e `rollbackTx` — `src/payment/asset-anti-replay.ts`
+- [x] Implementare helper lock atomico + audit log — `src/payment/lock.ts`
+- [x] Implementare emissione eventi `payment.state_changed` — `src/payment/events.ts`
+- [x] Aggiungere `'payment'` al `MessageType` enum in `message.model.ts` (DR-02)
+- [x] Aggiungere `"payment.state_changed"` a `WsOutboundEventType` in `ws-events.ts` (DR-03)
+- [x] Aggiungere codici errore Payment Engine in `error-codes.ts`
+- [x] Installare `viem` come dipendenza esplicita di `api-server` (DR-01)
+- [x] Scrivere unit test sulla state machine: 73 test passati — `src/payment/__tests__/state-machine.test.ts`
+
+**Note post-implementazione**:
+- `ESCROW_MASTER_KEY` (64 hex chars) deve essere impostato come secret prima di Sprint 2
+- Errori TypeScript pre-esistenti in `diagnostics.routes.ts` — non introdotti da Sprint 1
+- ADR-004 (wallet provisioning) gestita nel controller di Sprint 2: `accept` controlla `recipient_wallet` prima del lock
 
 ---
 

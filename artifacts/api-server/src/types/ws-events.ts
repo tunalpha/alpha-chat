@@ -74,7 +74,8 @@ export type WsOutboundEventType =
   | "call.signal_ack"      // Server → Sender: conferma consegna del segnale (M2)
   | "conversation.cleared"  // Server → membri: tutti i messaggi eliminati (Sprint 24)
   | "signal.session.reset"  // Server → Sender: il destinatario ha perso la sessione Signal
-  | "usda.payment.update";  // Server → mittente+destinatario: stato pagamento USDA aggiornato
+  | "usda.payment.update"     // Server → mittente+destinatario: stato pagamento USDA aggiornato
+  | "payment.state_changed"; // Server → mittente+destinatario: stato Chat Payment Engine aggiornato (Sprint 1)
 
 export interface WsOutboundEvent {
   type: WsOutboundEventType;

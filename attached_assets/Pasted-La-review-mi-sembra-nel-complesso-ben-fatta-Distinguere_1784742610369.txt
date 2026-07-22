@@ -1,0 +1,73 @@
+La review mi sembra nel complesso ben fatta. Distinguerei però ciò che è davvero un blocker da ciò che è una decisione progettuale.
+
+1. Libreria di firma → approverei viem ✅
+
+Sono d’accordo con la raccomandazione.
+
+I motivi sono pratici:
+
+* TypeScript-first.
+* Ottimo supporto per ERC-20.
+* encodeFunctionData, privateKeyToAccount, WalletClient coprono esattamente il caso d’uso.
+* Se il frontend già utilizza l’ecosistema wagmi/Reown, usare la stessa famiglia di librerie riduce il numero di API diverse da conoscere.
+
+L’unica accortezza è mantenere tutta la logica blockchain dietro usda-custodial.service.ts, così un domani potrete sostituire viem senza toccare controller, scheduler o Payment Engine.
+
+⸻
+
+2. message_type: payment → approvato ✅
+
+Anzi, questa modifica la farei subito nello Sprint 1.
+
+È coerente con ADR-002:
+
+* payment rappresenta il contenitore logico.
+* USDA, USDC o altri token diventano dati del messaggio, non tipi diversi.
+
+Questo rende il sistema multi-asset senza dover aggiungere:
+
+* usdc_send
+* usdt_send
+* ecc.
+
+⸻
+
+3. Evento WebSocket → nuovo evento dedicato ✅
+
+Anch’io sceglierei:
+
+payment.state_changed
+
+e lascerei intatto:
+
+usda.payment.update
+
+Sono due sistemi differenti.
+
+Questo evita che il vecchio flusso getusda.xyz venga influenzato dal nuovo motore.
+
+⸻
+
+Un’osservazione sulla review
+
+L’unica frase che riformulerei è questa:
+
+“viem è già nel progetto”
+
+In realtà, dalla review emerge che è presente nel frontend come dipendenza indiretta tramite wagmi/Reown, ma non nel backend. Quindi la conclusione corretta è:
+
+“Aggiungere viem come dipendenza esplicita del backend.”
+
+È una piccola distinzione, ma evita confusione.
+
+⸻
+
+Quindi il mio verdetto sarebbe
+
+* ✅ viem nel backend.
+* ✅ message_type = payment.
+* ✅ payment.state_changed.
+* ✅ Nessuna modifica a getusda.xyz.
+* ✅ Nessuna modifica all’architettura.
+
+Dopo queste decisioni, per me Sprint 1 può essere autorizzato. Il blocker non è concettuale: è semplicemente la scelta della libreria di firma, che ora è stata individuata. Una volta aggiunta come dipendenza del backend, non vedo impedimenti tecnici evidenti a iniziare l’implementazione.
