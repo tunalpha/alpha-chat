@@ -1,0 +1,59 @@
+Questa situazione è molto diversa da quella di qualche ora fa.
+
+Da quello che hai mostrato:
+
+* ✅ niente più wagmi
+* ✅ niente più Reown/AppKit
+* ✅ niente più WalletConnect gestito direttamente da voi
+* ✅ un solo ThirdwebProvider
+* ✅ un solo createThirdwebClient()
+* ✅ ConnectButton ovunque
+* ✅ architettura coerente con USDA
+
+Questa è una base molto più semplice e con molte meno possibilità di errori.
+
+Detto questo, non darei ancora per scontato che funzioni finché non viene provato su un iPhone reale. Il report conferma la struttura del codice, ma non dimostra il comportamento runtime.
+
+L’unica cosa che farei ancora fare all’Agent
+
+Non cambiare più codice. Chiedigli solo un controllo finale molto preciso:
+
+ULTIMO AUDIT.
+Non modificare alcun file.
+Verifica soltanto:
+1. Tutte le variabili d'ambiente necessarie sono presenti:
+   - VITE_THIRDWEB_CLIENT_ID
+2. Non esistono errori TypeScript.
+3. Non esistono warning di build.
+4. pnpm build termina con exit code 0.
+5. Nessun componente usa process.env (deve essere solo import.meta.env).
+6. Nessun componente crea createThirdwebClient() dentro un componente React. Deve esistere una sola istanza singleton in src/lib/thirdweb.ts.
+7. Nessun componente ricrea l'array wallets ad ogni render. Deve essere esportato come costante singleton da src/lib/thirdweb.ts.
+Riporta solo PASS o FAIL per ciascun punto.
+Non modificare codice.
+
+Poi fai questa prova sull’iPhone
+
+Apri la Preview e verifica solo questa sequenza:
+
+1. Tocca Connetti Wallet.
+2. Deve comparire il modal Thirdweb.
+3. Tocca Trust Wallet.
+4. Trust Wallet deve aprirsi automaticamente.
+5. Approva la connessione.
+6. Torna automaticamente alla PWA.
+7. Deve comparire l’indirizzo del wallet.
+
+Se questo accade, avete risolto il problema principale.
+
+Se invece Trust Wallet non si apre ancora
+
+A quel punto non fate più patch.
+
+La causa non sarebbe più l’implementazione dell’app, ma qualcosa di esterno, ad esempio:
+
+* il clientId Thirdweb non configurato correttamente nel dashboard;
+* una limitazione o configurazione del progetto Thirdweb;
+* oppure un problema specifico della Preview Replit/PWA su iOS.
+
+In quel caso conviene fermarsi e indagare quella causa specifica, invece di continuare a modificare il codice.
