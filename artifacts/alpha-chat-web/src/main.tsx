@@ -1,21 +1,27 @@
+// wallet-client DEVE essere importato PRIMA di WagmiProvider per registrare
+// createAppKit() come side effect e inizializzare il modal WalletConnect.
+import './lib/wallet-client';
+
 import { createRoot } from 'react-dom/client';
-import { ThirdwebProvider } from "thirdweb/react";
+import { WagmiProvider } from 'wagmi';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { wagmiConfig } from './lib/wallet-client';
 import { initI18n } from './i18n';
 import App from './App';
 import './index.css';
 
-// Inizializza i18n PRIMA del primo render — elimina la race condition
-// e garantisce che t() funzioni dal primo mount.
+const queryClient = new QueryClient();
+
+const Root = () => (
+  <WagmiProvider config={wagmiConfig}>
+    <QueryClientProvider client={queryClient}>
+      <App />
+    </QueryClientProvider>
+  </WagmiProvider>
+);
+
 initI18n().then(() => {
-  createRoot(document.getElementById('root')!).render(
-    <ThirdwebProvider>
-      <App />
-    </ThirdwebProvider>
-  );
+  createRoot(document.getElementById('root')!).render(<Root />);
 }).catch(() => {
-  createRoot(document.getElementById('root')!).render(
-    <ThirdwebProvider>
-      <App />
-    </ThirdwebProvider>
-  );
+  createRoot(document.getElementById('root')!).render(<Root />);
 });

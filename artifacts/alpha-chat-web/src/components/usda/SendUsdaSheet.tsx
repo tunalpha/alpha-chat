@@ -6,29 +6,20 @@
  * • Wallet chips visivi (🦊 MetaMask, 🐦 Trust, 🔐 WalletConnect, 🪙 Coinbase, 🌈 Rainbow)
  * • Card premium "no wallet" quando il destinatario non ha ancora attivato USDA
  * • Signing step con feedback emozionale e rassicurante
+ *
+ * Stack: Reown AppKit + wagmi v3 + viem (sostituisce ThirdWeb)
  */
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import {
-  useActiveAccount,
-  useActiveWalletChain,
-  useSwitchActiveWalletChain,
-  ConnectButton,
-} from "thirdweb/react";
-import { getContract, sendAndConfirmTransaction } from "thirdweb";
-import { transfer } from "thirdweb/extensions/erc20";
-import { createWallet, walletConnect } from "thirdweb/wallets";
+import { useAccount, useChainId, useSwitchChain, useWriteContract, usePublicClient } from "wagmi";
+import { erc20Abi, parseUnits } from "viem";
 
 import {
-  thirdwebClient,
-  polygonMainnet,
-  WC_PROJECT_ID,
-  WC_WALLET_CONNECT_CONFIG,
-  APP_METADATA,
+  walletModal,
   USDA_CONTRACT_ADDRESS,
   USDA_CHAIN_ID,
-  THIRDWEB_READY,
-} from "../../lib/thirdweb-client";
+  USDA_DECIMALS,
+} from "../../lib/wallet-client";
 import { humanizeUsdaError, isRecipientNoWallet } from "../../lib/usda-errors";
 import { apiUsdaPreparePayment, apiUsdaSubmitPayment } from "../../lib/usda-api";
 
@@ -40,8 +31,7 @@ interface Props {
   toName: string;
   onClose: () => void;
   onSent: (paymentData: { payment_id: string; message_id: string; amount: string }) => void;
-  /** Chiamata quando l'utente tocca "Invita" nella card no-wallet.
-   *  Riceve il testo pre-composto da inviare in chat. */
+  /** Chiamata quando l'utente tocca "Invita" nella card no-wallet. */
   onInvite?: (inviteText: string) => void;
 }
 
@@ -54,14 +44,12 @@ type SigningStatus =
   | "verifying";
 
 // ── Feature flags ────────────────────────────────────────────────────────────
-// Per riattivare le commissioni: impostare SHOW_FEE_BREAKDOWN = true
 const SHOW_FEE_BREAKDOWN = false;
 
-// ── Messaggio invito wallet — inviato automaticamente in chat ────────────────
+// ── Costanti ────────────────────────────────────────────────────────────────
+
 const INVITE_MESSAGE =
   "👋 Ciao! Ho provato a inviarti USDA su AlphaChat, ma prima devi attivare il tuo Wallet USDA. Ci vuole meno di un minuto. 🚀";
-
-// ── Costanti ────────────────────────────────────────────────────────────────
 
 const STEPS: { id: Step; label: string }[] = [
   { id: "form",    label: "Importo"  },
@@ -69,24 +57,16 @@ const STEPS: { id: Step; label: string }[] = [
   { id: "signing", label: "Invio"    },
 ];
 
+const WALLET_CHIPS = [
+  { icon: "🦊", name: "MetaMask"      },
+  { icon: "🐦", name: "Trust"         },
+  { icon: "🔐", name: "WalletConnect" },
+  { icon: "🪙", name: "Coinbase"      },
+  { icon: "🌈", name: "Rainbow"       },
+];
+
 const SIGN_TIMEOUT_MS = 90_000;
 const INFLIGHT_KEY    = "usda_inflight_cpi";
-
-const SUPPORTED_WALLETS = [
-  createWallet("io.metamask"),
-  createWallet("com.coinbase.wallet"),
-  walletConnect(),
-  createWallet("me.rainbow"),
-  createWallet("com.trustwallet.app"),
-];
-
-const WALLET_CHIPS = [
-  { icon: "🦊", name: "MetaMask"     },
-  { icon: "🐦", name: "Trust"        },
-  { icon: "🔐", name: "WalletConnect"},
-  { icon: "🪙", name: "Coinbase"     },
-  { icon: "🌈", name: "Rainbow"      },
-];
 
 // ── Componente ───────────────────────────────────────────────────────────────
 
@@ -98,19 +78,20 @@ export function SendUsdaSheet({ conversationId, toUserId, toName, onClose, onSen
     amount: string; fee: string; total: string;
     client_payment_id: string; prepared_data: Record<string, unknown>;
   } | null>(null);
-  const [error,              setError]              = useState<string | null>(null);
-  const [recipientNoWallet,  setRecipientNoWallet]  = useState(false);
-  const [loading,            setLoading]            = useState(false);
-  const [signing,            setSigning]            = useState(false);
-  const [signingStatus,      setSigningStatus]      = useState<SigningStatus | null>(null);
+  const [error,             setError]             = useState<string | null>(null);
+  const [recipientNoWallet, setRecipientNoWallet] = useState(false);
+  const [loading,           setLoading]           = useState(false);
+  const [signing,           setSigning]           = useState(false);
+  const [signingStatus,     setSigningStatus]     = useState<SigningStatus | null>(null);
 
-  // ThirdWeb — indirizzo e rete letti automaticamente dal provider
-  const account     = useActiveAccount();
-  const activeChain = useActiveWalletChain();
-  const switchChain = useSwitchActiveWalletChain();
+  // ── Wagmi hooks ─────────────────────────────────────────────────────────
+  const { address, isConnected: isWalletConnected } = useAccount();
+  const chainId      = useChainId();
+  const { switchChainAsync } = useSwitchChain();
+  const { writeContractAsync } = useWriteContract();
+  const publicClient = usePublicClient({ chainId: USDA_CHAIN_ID });
 
-  const isWalletConnected = !!account;
-  const isCorrectNetwork  = activeChain?.id === USDA_CHAIN_ID;
+  const isCorrectNetwork = chainId === USDA_CHAIN_ID;
 
   const signTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -122,7 +103,6 @@ export function SendUsdaSheet({ conversationId, toUserId, toName, onClose, onSen
   }, []);
 
   const amountNum      = parseFloat(amount) || 0;
-  // Fee kept for backend submission — non mostrata nella UI (SHOW_FEE_BREAKDOWN = false)
   const estimatedFee   = amountNum > 0 ? (amountNum * 0.001).toFixed(4) : "0";
   const estimatedTotal = amountNum > 0 ? (amountNum + parseFloat(estimatedFee)).toFixed(4) : "0";
   const currentStepIdx = STEPS.findIndex((s) => s.id === step);
@@ -162,7 +142,7 @@ export function SendUsdaSheet({ conversationId, toUserId, toName, onClose, onSen
   // ── Switch rete automatico ───────────────────────────────────────────────
   async function handleSwitchNetwork() {
     try {
-      await switchChain(polygonMainnet);
+      await switchChainAsync({ chainId: USDA_CHAIN_ID });
     } catch {
       setError("Impossibile cambiare rete automaticamente. Cambia a Polygon Mainnet nel wallet.");
     }
@@ -179,11 +159,10 @@ export function SendUsdaSheet({ conversationId, toUserId, toName, onClose, onSen
     setError("Firma annullata. Ripremi «Continua» quando vuoi riprovare.");
   }, []);
 
-  // ── Firma e invio reale ThirdWeb ─────────────────────────────────────────
+  // ── Firma e invio — wagmi + viem ────────────────────────────────────────
   async function handleSign() {
     if (!prepared || signing) return;
-    if (!THIRDWEB_READY) { setError("ThirdWeb non configurato. Imposta VITE_THIRDWEB_CLIENT_ID."); return; }
-    if (!account) { setError("Connetti il wallet prima di procedere."); return; }
+    if (!address) { setError("Connetti il wallet prima di procedere."); return; }
     if (!isCorrectNetwork) { setError("⚠️ Passa a Polygon Mainnet nel wallet e riprova."); return; }
 
     setSigning(true);
@@ -201,17 +180,22 @@ export function SendUsdaSheet({ conversationId, toUserId, toName, onClose, onSen
     }, SIGN_TIMEOUT_MS);
 
     try {
-      const recipientAddress = prepared.prepared_data.recipientAddress as string;
+      const recipientAddress = prepared.prepared_data.recipientAddress as `0x${string}`;
       const amountUnits      = prepared.prepared_data.amount_units as string;
 
-      const contract = getContract({
-        client:  thirdwebClient,
-        chain:   polygonMainnet,
-        address: USDA_CONTRACT_ADDRESS,
+      // Invia la transazione ERC-20 transfer
+      setSigningStatus("awaiting_wallet");
+      const hash = await writeContractAsync({
+        address:      USDA_CONTRACT_ADDRESS,
+        abi:          erc20Abi,
+        functionName: "transfer",
+        args:         [recipientAddress, parseUnits(prepared.amount, USDA_DECIMALS)],
+        chainId:      USDA_CHAIN_ID,
       });
 
-      const tx = transfer({ contract, to: recipientAddress, amount: prepared.amount });
-      const receipt = await sendAndConfirmTransaction({ transaction: tx, account });
+      // Aspetta la conferma on-chain
+      setSigningStatus("broadcasting");
+      const receipt = await publicClient!.waitForTransactionReceipt({ hash });
 
       if (receipt.status !== "success") {
         throw new Error("La transazione è fallita on-chain. Controlla PolygonScan per dettagli.");
@@ -231,7 +215,7 @@ export function SendUsdaSheet({ conversationId, toUserId, toName, onClose, onSen
         prepared_data: {
           ...prepared.prepared_data,
           amount_units:   amountUnits,
-          sender_address: account.address,
+          sender_address: address,
         },
         signature: txHash,
       });
@@ -245,7 +229,6 @@ export function SendUsdaSheet({ conversationId, toUserId, toName, onClose, onSen
       const raw = (err as Error).message ?? "";
 
       if (/user rejected|user denied|rejected by user/i.test(raw)) {
-        // Rimane su confirm — prepared è ancora valido, l'utente può riprovare
         setError("Hai annullato la firma nel wallet. Ripremi «Firma e Invia» quando sei pronto.");
         setStep("confirm");
         setSigning(false);
@@ -387,16 +370,8 @@ export function SendUsdaSheet({ conversationId, toUserId, toName, onClose, onSen
               )}
             </div>
 
-            {/* ThirdWeb non configurato */}
-            {!THIRDWEB_READY && (
-              <div className="usda-thirdweb-setup" role="alert">
-                <p>⚙️ <strong>Configurazione ThirdWeb richiesta</strong></p>
-                <p>Imposta <code>VITE_THIRDWEB_CLIENT_ID</code> nelle variabili d'ambiente.</p>
-              </div>
-            )}
-
-            {/* Wallet non connesso — chips + ConnectButton */}
-            {THIRDWEB_READY && !isWalletConnected && (
+            {/* Wallet non connesso */}
+            {!isWalletConnected && (
               <div className="usda-wallet-section">
                 <p className="usda-sign-notice">
                   Connetti il tuo wallet per firmare il pagamento su <strong>Polygon Mainnet</strong>.
@@ -411,28 +386,23 @@ export function SendUsdaSheet({ conversationId, toUserId, toName, onClose, onSen
                   ))}
                 </div>
                 <div className="usda-connect-btn-wrap">
-                  <ConnectButton
-                    client={thirdwebClient}
-                    chain={polygonMainnet}
-                    wallets={SUPPORTED_WALLETS}
-                    appMetadata={APP_METADATA}
-                    walletConnect={WC_WALLET_CONNECT_CONFIG}
-                    connectModal={{
-                      title: "Connetti Wallet",
-                      size: "compact",
-                      welcomeScreen: { title: "Paga con USDA", subtitle: "Connetti il wallet per continuare" },
-                    }}
-                    connectButton={{ label: "🔗 Connetti Wallet" }}
-                  />
+                  <button
+                    type="button"
+                    className="usda-btn-primary"
+                    style={{ width: "100%", touchAction: "manipulation" }}
+                    onClick={() => walletModal.open()}
+                  >
+                    🔗 Connetti Wallet
+                  </button>
                 </div>
               </div>
             )}
 
             {/* Rete errata */}
-            {THIRDWEB_READY && isWalletConnected && !isCorrectNetwork && (
+            {isWalletConnected && !isCorrectNetwork && (
               <div className="usda-network-warning" role="alert">
                 <p>⚠️ Rete non corretta — passa a <strong>Polygon Mainnet</strong>.</p>
-                <p className="usda-network-current">Rete attuale: {activeChain?.name ?? `Chain ${activeChain?.id}`}</p>
+                <p className="usda-network-current">Rete attuale: Chain {chainId}</p>
                 <button type="button" className="usda-btn-secondary" onClick={handleSwitchNetwork}>
                   🌐 Passa a Polygon
                 </button>
@@ -440,12 +410,12 @@ export function SendUsdaSheet({ conversationId, toUserId, toName, onClose, onSen
             )}
 
             {/* Wallet connesso + rete corretta */}
-            {THIRDWEB_READY && isWalletConnected && isCorrectNetwork && (
+            {isWalletConnected && isCorrectNetwork && address && (
               <>
                 <div className="usda-wallet-ready">
                   <span className="usda-wallet-dot" aria-hidden="true" />
                   <span className="usda-wallet-addr">
-                    ✅ {account.address.slice(0, 6)}…{account.address.slice(-4)} · Polygon
+                    ✅ {address.slice(0, 6)}…{address.slice(-4)} · Polygon
                   </span>
                 </div>
                 <p className="usda-sign-notice">
@@ -465,7 +435,7 @@ export function SendUsdaSheet({ conversationId, toUserId, toName, onClose, onSen
               <button
                 type="button" className="usda-btn-primary"
                 onClick={handleSign}
-                disabled={signing || !THIRDWEB_READY || !isWalletConnected || !isCorrectNetwork}
+                disabled={signing || !isWalletConnected || !isCorrectNetwork}
                 aria-busy={signing}
               >
                 {signing ? <><span className="usda-btn-spinner" aria-hidden="true" /> Firma…</> : "🔐 Firma e Invia"}

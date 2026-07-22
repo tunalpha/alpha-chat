@@ -36,3 +36,4 @@
 - [USDA Backend Connection](sprint-usda-backend-connection.md) — getusda.xyz: no auth, /api/... (no /v1), health=GET /api/health, polling=poll-tx, claim=POST /api/pay/claim/{code}, balance=ERC-20 balanceOf
 - [USDA Sprint Finale — ThirdWeb + Blockchain](sprint-usda-finale.md) — ThirdWeb v5 signing reale, verifyUsdaTx on-chain, _simulateTxHash eliminato, VITE_THIRDWEB_CLIENT_ID settato
 - [USDA Fintech Premium UX](usda-fintech-ux.md) — errori umani via humanizeUsdaError(), wallet chips, card no-wallet, success banners, signing premium
+- [Reown AppKit migration](reown-appkit-migration.md) — ThirdWeb rimosso, stack ora: @reown/appkit+wagmi v3+viem; walletModal.open() sostituisce ConnectButton; polygonPublicClient per balanceOf

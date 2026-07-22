@@ -13,25 +13,12 @@
  */
 
 import { useState, useCallback } from "react";
+import { useAccount, useChainId, useSwitchChain } from "wagmi";
 import {
-  useActiveAccount,
-  useActiveWalletChain,
-  useSwitchActiveWalletChain,
-  ConnectButton,
-} from "thirdweb/react";
-import { createWallet, walletConnect } from "thirdweb/wallets";
-import {
-  thirdwebClient,
-  polygonMainnet,
-  WC_PROJECT_ID,
-  WC_WALLET_CONNECT_CONFIG,
-  APP_METADATA,
+  walletModal,
   USDA_CONTRACT_ADDRESS,
   USDA_CHAIN_ID,
-  THIRDWEB_READY,
-} from "../lib/thirdweb-client";
-import WcDebugPanel from "../components/usda/WcDebugPanel";
-import TrustWalletConnector from "../components/usda/TrustWalletConnector";
+} from "../lib/wallet-client";
 
 // ── Costanti ─────────────────────────────────────────────────────────────────
 
@@ -40,18 +27,6 @@ const USDA_DECIMALS = 18;
 const USDA_NETWORK  = "Polygon Mainnet";
 const USDA_SITE     = "https://getusda.xyz";
 const USDA_LOGO     = "https://getusda.xyz/favicon.ico";
-
-const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
-
-// Su iOS, Trust Wallet viene gestito da TrustWalletConnector (flusso custom)
-// per aggirare il bug ThirdWeb: URL trust:///wc (3 slash) + deeplink async bloccato.
-const SUPPORTED_WALLETS = [
-  createWallet("io.metamask"),
-  createWallet("com.coinbase.wallet"),
-  walletConnect(),
-  createWallet("me.rainbow"),
-  ...(isIOS ? [] : [createWallet("com.trustwallet.app")]),
-];
 
 const WALLET_CHIPS = [
   { icon: "🦊", name: "MetaMask"     },
@@ -77,12 +52,11 @@ interface Props {
 // ── Componente ────────────────────────────────────────────────────────────────
 
 export default function UsdaSettingsPage({ onBack }: Props) {
-  const account     = useActiveAccount();
-  const activeChain = useActiveWalletChain();
-  const switchChain = useSwitchActiveWalletChain();
+  const { address, isConnected } = useAccount();
+  const chainId      = useChainId();
+  const { switchChainAsync } = useSwitchChain();
 
-  const isConnected      = !!account;
-  const isCorrectNetwork = activeChain?.id === USDA_CHAIN_ID;
+  const isCorrectNetwork = chainId === USDA_CHAIN_ID;
 
   const [copied,       setCopied]       = useState<string | null>(null);
   const [watchStatus,  setWatchStatus]  = useState<"idle" | "loading" | "ok" | "err">("idle");
@@ -100,7 +74,7 @@ export default function UsdaSettingsPage({ onBack }: Props) {
   async function handleSwitchNetwork() {
     setSwitchError(null);
     try {
-      await switchChain(polygonMainnet);
+      await switchChainAsync({ chainId: USDA_CHAIN_ID });
     } catch {
       setSwitchError("Impossibile cambiare rete automaticamente. Passa a Polygon Mainnet nel wallet.");
     }
@@ -162,17 +136,8 @@ export default function UsdaSettingsPage({ onBack }: Props) {
         ══════════════════════════════════════════════════════════════════ */}
         <section className="ups-section" aria-label="Stato wallet">
 
-          {/* Wallet NON configurato */}
-          {!THIRDWEB_READY && (
-            <div className="ups-card ups-card--neutral">
-              <div className="ups-status-badge ups-status-badge--warn">⚙️ Configurazione richiesta</div>
-              <p className="ups-card-body">
-                Imposta <code>VITE_THIRDWEB_CLIENT_ID</code> per abilitare il wallet.
-              </p>
-            </div>
-          )}
-
-          {THIRDWEB_READY && !isConnected && (
+          {/* Wallet non connesso */}
+          {!isConnected && (
             <div className="ups-card ups-card--cta" aria-label="Collega wallet">
               <div className="ups-status-badge ups-status-badge--warn">🟡 Wallet non configurato</div>
               <p className="ups-card-headline">🚀 Attiva il tuo wallet in meno di un minuto</p>
@@ -180,8 +145,6 @@ export default function UsdaSettingsPage({ onBack }: Props) {
                 Per inviare e ricevere USDA devi collegare un wallet compatibile con Polygon.
                 Il tuo indirizzo viene letto automaticamente — non devi inserirlo.
               </p>
-
-              {/* Wallet chips */}
               <div className="usda-wallet-chips" aria-label="Wallet supportati" role="list">
                 {WALLET_CHIPS.map((w) => (
                   <div key={w.name} className="usda-wallet-chip" role="listitem" aria-label={w.name}>
@@ -190,40 +153,23 @@ export default function UsdaSettingsPage({ onBack }: Props) {
                   </div>
                 ))}
               </div>
-
               <div className="ups-connect-wrap">
-                <ConnectButton
-                  client={thirdwebClient}
-                  chain={polygonMainnet}
-                  wallets={SUPPORTED_WALLETS}
-                  appMetadata={APP_METADATA}
-                  walletConnect={WC_WALLET_CONNECT_CONFIG}
-                  connectModal={{
-                    title: "Connetti Wallet",
-                    size: "compact",
-                    welcomeScreen: {
-                      title: "💸 Pagamenti USDA",
-                      subtitle: "Connetti il wallet per inviare e ricevere USDA in chat",
-                    },
-                  }}
-                  connectButton={{ label: "🔗 Collega Wallet" }}
-                  // Su iOS: nasconde Trust Wallet ovunque nel modal (lista + browse)
-                  showAllWallets={!isIOS}
-                  hiddenWallets={isIOS ? ["com.trustwallet.app"] : []}
-                />
+                <button
+                  type="button"
+                  className="ups-btn-primary"
+                  style={{ touchAction: "manipulation", WebkitTapHighlightColor: "transparent" }}
+                  onClick={() => walletModal.open()}
+                >
+                  🔗 Collega Wallet
+                </button>
               </div>
-
-              {/* Su iOS, Trust Wallet richiede un flusso custom (bypass bug ThirdWeb) */}
-              {isIOS && <TrustWalletConnector />}
-
             </div>
           )}
 
-          {THIRDWEB_READY && isConnected && !isCorrectNetwork && (
+          {isConnected && !isCorrectNetwork && (
             <div className="ups-card ups-card--warn" aria-label="Rete errata">
               <div className="ups-status-badge ups-status-badge--warn">⚠️ Rete non corretta</div>
               <p className="ups-card-body">
-                Sei connesso su {activeChain?.name ?? `chain ${activeChain?.id}`}.
                 I pagamenti USDA richiedono <strong>Polygon Mainnet</strong>.
               </p>
               {switchError && <p className="ups-inline-error">{switchError}</p>}
@@ -231,32 +177,31 @@ export default function UsdaSettingsPage({ onBack }: Props) {
                 🌐 Passa a Polygon Mainnet
               </button>
               <div className="ups-connect-wrap" style={{ marginTop: 8 }}>
-                <ConnectButton
-                  client={thirdwebClient}
-                  chain={polygonMainnet}
-                  wallets={SUPPORTED_WALLETS}
-                  appMetadata={APP_METADATA}
-                  walletConnect={WC_WALLET_CONNECT_CONFIG}
-                  detailsButton={{ style: { fontSize: "0.82rem", padding: "6px 14px" } }}
-                />
+                <button
+                  type="button"
+                  className="ups-btn-secondary"
+                  style={{ fontSize: "0.82rem", padding: "6px 14px", touchAction: "manipulation" }}
+                  onClick={() => walletModal.open()}
+                >
+                  ⚙️ Gestisci Wallet
+                </button>
               </div>
             </div>
           )}
 
-          {THIRDWEB_READY && isConnected && isCorrectNetwork && (
+          {isConnected && isCorrectNetwork && address && (
             <div className="ups-card ups-card--success" aria-label="Wallet attivo">
               <div className="ups-status-badge ups-status-badge--ok">✅ Wallet attivo</div>
               <p className="ups-card-headline">🎉 Sei pronto per inviare e ricevere USDA!</p>
-
               <div className="ups-addr-block">
                 <div className="ups-addr-label">Indirizzo Polygon</div>
                 <button
                   type="button"
                   className="ups-addr-value"
-                  aria-label={`Copia indirizzo ${account.address}`}
-                  onClick={() => copy("addr", account.address)}
+                  aria-label={`Copia indirizzo ${address}`}
+                  onClick={() => copy("addr", address)}
                 >
-                  <span className="ups-addr-text">{abbrev(account.address)}</span>
+                  <span className="ups-addr-text">{abbrev(address)}</span>
                   <span className="ups-copy-icon" aria-hidden="true">
                     {copied === "addr" ? "✓" : "⎘"}
                   </span>
@@ -265,17 +210,16 @@ export default function UsdaSettingsPage({ onBack }: Props) {
                   <span className="ups-copied-hint" aria-live="polite">Copiato!</span>
                 )}
               </div>
-
               <div className="ups-wallet-actions">
                 <div className="ups-connect-wrap">
-                  <ConnectButton
-                    client={thirdwebClient}
-                    chain={polygonMainnet}
-                    wallets={SUPPORTED_WALLETS}
-                    appMetadata={APP_METADATA}
-                    walletConnect={WC_WALLET_CONNECT_CONFIG}
-                    detailsButton={{ style: { fontSize: "0.82rem", padding: "6px 14px" } }}
-                  />
+                  <button
+                    type="button"
+                    className="ups-btn-secondary"
+                    style={{ fontSize: "0.82rem", padding: "6px 14px", touchAction: "manipulation" }}
+                    onClick={() => walletModal.open()}
+                  >
+                    ⚙️ Gestisci Wallet
+                  </button>
                 </div>
               </div>
             </div>
@@ -421,7 +365,6 @@ export default function UsdaSettingsPage({ onBack }: Props) {
         <div style={{ height: 32 }} aria-hidden="true" />
         {/* Debug WalletConnect — tocca 5 volte "Debug" per aprire */}
         <div className="ups-section" style={{ paddingBottom: 8 }}>
-          <WcDebugPanel />
         </div>
       </div>
     </div>

@@ -80,6 +80,8 @@
     "zod": "catalog:"
   },
   "dependencies": {
+    "@reown/appkit": "^1.8.22",
+    "@reown/appkit-adapter-wagmi": "^1.8.22",
     "@types/qrcode": "^1.5.6",
     "@workspace/libsignal-ts": "workspace:*",
     "i18next": "^26.3.6",
@@ -87,6 +89,7 @@
     "jsqr": "^1.4.0",
     "qrcode": "^1.5.4",
     "react-i18next": "^17.0.10",
-    "thirdweb": "^5.120.1"
+    "viem": "^2.55.4",
+    "wagmi": "^3.7.3"
   }
 }

@@ -78,7 +78,5 @@ import usdaRoutes from "./usda.routes";
 v1Router.use("/usda", usdaRoutes);
 
 // WalletConnect debug — temporaneo, rimuovere dopo la diagnosi
-import debugWcRoutes from "./debug-wc.routes";
-v1Router.use("/debug/wc", debugWcRoutes);
 
 export default v1Router;

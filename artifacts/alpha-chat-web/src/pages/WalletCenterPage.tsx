@@ -10,22 +10,11 @@
  */
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useAccount, useChainId, useSwitchChain } from "wagmi";
 import {
-  useActiveAccount,
-  useActiveWalletChain,
-  useSwitchActiveWalletChain,
-  ConnectButton,
-} from "thirdweb/react";
-import { createWallet, walletConnect } from "thirdweb/wallets";
-import {
-  thirdwebClient,
-  polygonMainnet,
-  THIRDWEB_READY,
+  walletModal,
   USDA_CHAIN_ID,
-  WC_PROJECT_ID,
-  WC_WALLET_CONNECT_CONFIG,
-  APP_METADATA,
-} from "../lib/thirdweb-client";
+} from "../lib/wallet-client";
 import {
   apiUsdaGetWallet,
   apiUsdaGetHistory,
@@ -36,8 +25,6 @@ import {
 import type { WalletInfo, UsdaPaymentData, UsdaBackendInfo, UsdaCapabilities } from "../lib/usda-types";
 import { USDA_STATUS_LABELS, USDA_STATUS_ICONS } from "../lib/usda-types";
 import { UsdaPaymentDetail } from "../components/usda/UsdaPaymentDetail";
-import WcDebugPanel from "../components/usda/WcDebugPanel";
-import TrustWalletConnector from "../components/usda/TrustWalletConnector";
 
 type Tab = "saldo" | "storico" | "impostazioni";
 type HistoryFilter = "tutti" | "sent" | "received" | "pending" | "claimed" | "refunded";
@@ -57,16 +44,6 @@ const TAB_META: { id: Tab; icon: string; label: string }[] = [
   { id: "impostazioni", icon: "⚙️", label: "Impostazioni" },
 ];
 
-// Su iOS, Trust Wallet viene gestito da TrustWalletConnector (flusso custom).
-const _isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
-
-const SUPPORTED_WALLETS = [
-  createWallet("io.metamask"),
-  createWallet("com.coinbase.wallet"),
-  walletConnect(),
-  createWallet("me.rainbow"),
-  ...(_isIOS ? [] : [createWallet("com.trustwallet.app")]),
-];
 
 interface Props {
   onBack: () => void;
@@ -91,13 +68,12 @@ export default function WalletCenterPage({ onBack }: Props) {
   const abortMount   = useRef<AbortController | null>(null);
   const abortHistory = useRef<AbortController | null>(null);
 
-  // ── ThirdWeb — wallet connesso automaticamente dal provider ─────────────────
-  const account     = useActiveAccount();
-  const activeChain = useActiveWalletChain();
-  const switchChain = useSwitchActiveWalletChain();
+  // ── Wallet — wagmi + Reown AppKit ───────────────────────────────────────────
+  const { address, isConnected: isWalletConnected } = useAccount();
+  const chainId      = useChainId();
+  const { switchChainAsync } = useSwitchChain();
 
-  const isWalletConnected = !!account;
-  const isCorrectNetwork  = activeChain?.id === USDA_CHAIN_ID;
+  const isCorrectNetwork = chainId === USDA_CHAIN_ID;
 
   // ── Recovery crash al mount ─────────────────────────────────────────────────
   const [recoveryBanner, setRecoveryBanner] = useState<"found" | "not_found" | null>(null);
@@ -118,7 +94,7 @@ export default function WalletCenterPage({ onBack }: Props) {
     Promise.all([
       // FIX 2: passa l'indirizzo ThirdWeb live (se già disponibile al mount)
       // per ottenere il saldo del wallet connesso, non di quello in MongoDB
-      apiUsdaGetWallet(account?.address).then(setWallet).catch(() => {}),
+      apiUsdaGetWallet(address).then(setWallet).catch(() => {}),
       apiUsdaGetInfo().then(setBackendInfo).catch(() => {}),
       apiUsdaGetCapabilities().then(setCapabilities).catch(() => {}),
       apiUsdaGetHistory({ limit: 10 }).then((r) => {
@@ -137,15 +113,11 @@ export default function WalletCenterPage({ onBack }: Props) {
     return () => { abortMount.current?.abort(); };
   }, []);
 
-  // ── FIX 2: Re-fetch saldo quando il wallet ThirdWeb cambia ────────────────────
-  // Al mount il wallet potrebbe non essere ancora connesso (ThirdWeb riconnette
-  // in modo asincrono). Questo effect scatta appena account.address diventa
-  // disponibile o cambia, garantendo che il saldo mostrato sia sempre quello
-  // del wallet effettivamente connesso.
+  // Re-fetch saldo quando cambia l'indirizzo del wallet connesso
   useEffect(() => {
-    if (!account?.address) return;
-    apiUsdaGetWallet(account.address).then(setWallet).catch(() => {});
-  }, [account?.address]);
+    if (!address) return;
+    apiUsdaGetWallet(address).then(setWallet).catch(() => {});
+  }, [address]);
 
   // ── Storico ─────────────────────────────────────────────────────────────────
   const loadHistory = useCallback(() => {
@@ -170,7 +142,7 @@ export default function WalletCenterPage({ onBack }: Props) {
   // ── Switch rete automatico ───────────────────────────────────────────────────
   async function handleSwitchNetwork() {
     try {
-      await switchChain(polygonMainnet);
+      await switchChainAsync({ chainId: USDA_CHAIN_ID });
     } catch {
       // Ignora — l'utente può cambiare manualmente nel wallet
     }
@@ -284,14 +256,10 @@ export default function WalletCenterPage({ onBack }: Props) {
                 </>
               )}
 
-              {/* Wallet ThirdWeb — connesso automaticamente, indirizzo letto dal provider */}
+              {/* Wallet — Reown AppKit */}
               <div className="wc-section-title">Wallet</div>
               <div className="wc-tw-section">
-                {!THIRDWEB_READY ? (
-                  <div className="wc-tw-card wc-tw-card--empty">
-                    <p>⚙️ Configura <code>VITE_THIRDWEB_CLIENT_ID</code> per abilitare i pagamenti USDA.</p>
-                  </div>
-                ) : isWalletConnected ? (
+                {isWalletConnected && address ? (
                   <div className="wc-tw-card">
                     <div className="wc-tw-chain-row">
                       <span aria-hidden="true">🟣</span>
@@ -306,17 +274,17 @@ export default function WalletCenterPage({ onBack }: Props) {
                     </div>
                     <div className="wc-tw-addr-row">
                       <span className="wc-tw-addr-label">Indirizzo</span>
-                      <span className="wc-tw-addr">{account.address}</span>
+                      <span className="wc-tw-addr">{address}</span>
                     </div>
                     <div className="wc-tw-connect-btn">
-                      <ConnectButton
-                        client={thirdwebClient}
-                        chain={polygonMainnet}
-                        wallets={SUPPORTED_WALLETS}
-                        appMetadata={APP_METADATA}
-                        walletConnect={WC_WALLET_CONNECT_CONFIG}
-                        detailsButton={{ style: { fontSize: "0.82rem", padding: "6px 14px" } }}
-                      />
+                      <button
+                        type="button"
+                        className="wc-tw-manage-btn"
+                        style={{ fontSize: "0.82rem", padding: "6px 14px", touchAction: "manipulation" }}
+                        onClick={() => walletModal.open()}
+                      >
+                        ⚙️ Gestisci Wallet
+                      </button>
                     </div>
                   </div>
                 ) : (
@@ -327,28 +295,15 @@ export default function WalletCenterPage({ onBack }: Props) {
                       Il tuo indirizzo 0x verrà letto automaticamente.
                     </p>
                     <div className="wc-tw-connect-btn">
-                      <ConnectButton
-                        client={thirdwebClient}
-                        chain={polygonMainnet}
-                        wallets={SUPPORTED_WALLETS}
-                        appMetadata={APP_METADATA}
-                        walletConnect={WC_WALLET_CONNECT_CONFIG}
-                        connectModal={{
-                          title: "Connetti Wallet",
-                          size: "compact",
-                          welcomeScreen: { title: "USDA Payments", subtitle: "Connetti il wallet per iniziare" },
-                        }}
-                        connectButton={{ label: "Connetti Wallet" }}
-                        showAllWallets={!_isIOS}
-                        hiddenWallets={_isIOS ? ["com.trustwallet.app"] : []}
-                      />
+                      <button
+                        type="button"
+                        className="wc-connect-wallet-btn"
+                        style={{ touchAction: "manipulation", WebkitTapHighlightColor: "transparent" }}
+                        onClick={() => walletModal.open()}
+                      >
+                        🔗 Connetti Wallet
+                      </button>
                     </div>
-                    {/* Su iOS, Trust Wallet richiede un flusso custom */}
-                    {_isIOS && (
-                      <div style={{ marginTop: 8 }}>
-                        <TrustWalletConnector />
-                      </div>
-                    )}
                   </div>
                 )}
               </div>
@@ -457,14 +412,10 @@ export default function WalletCenterPage({ onBack }: Props) {
       {tab === "impostazioni" && (
         <div id="wc-panel-impostazioni" role="tabpanel" aria-labelledby="wc-tab-impostazioni" className="wc-content">
 
-          {/* ThirdWeb Wallet Connect */}
+          {/* Wallet — Reown AppKit */}
           <div className="wc-section-title">Wallet collegato</div>
           <div className="wc-tw-section">
-            {!THIRDWEB_READY ? (
-              <div className="wc-tw-card wc-tw-card--empty">
-                <p>⚙️ <code>VITE_THIRDWEB_CLIENT_ID</code> non configurato.</p>
-              </div>
-            ) : isWalletConnected ? (
+            {isWalletConnected && address ? (
               <div className="wc-tw-card">
                 <div className="wc-tw-chain-row">
                   <span aria-hidden="true">🟣</span>
@@ -479,17 +430,17 @@ export default function WalletCenterPage({ onBack }: Props) {
                 </div>
                 <div className="wc-tw-addr-row">
                   <span className="wc-tw-addr-label">Indirizzo (letto dal wallet)</span>
-                  <span className="wc-tw-addr">{account.address}</span>
+                  <span className="wc-tw-addr">{address}</span>
                 </div>
                 <div className="wc-tw-connect-btn">
-                  <ConnectButton
-                    client={thirdwebClient}
-                    chain={polygonMainnet}
-                    wallets={SUPPORTED_WALLETS}
-                    appMetadata={APP_METADATA}
-                    walletConnect={WC_WALLET_CONNECT_CONFIG}
-                    detailsButton={{ style: { fontSize: "0.82rem", padding: "6px 14px" } }}
-                  />
+                  <button
+                    type="button"
+                    className="wc-tw-manage-btn"
+                    style={{ fontSize: "0.82rem", padding: "6px 14px", touchAction: "manipulation" }}
+                    onClick={() => walletModal.open()}
+                  >
+                    ⚙️ Gestisci Wallet
+                  </button>
                 </div>
               </div>
             ) : (
@@ -500,19 +451,14 @@ export default function WalletCenterPage({ onBack }: Props) {
                   Il tuo indirizzo Polygon viene letto automaticamente — non devi inserirlo.
                 </p>
                 <div className="wc-tw-connect-btn">
-                  <ConnectButton
-                    client={thirdwebClient}
-                    chain={polygonMainnet}
-                    wallets={SUPPORTED_WALLETS}
-                    appMetadata={APP_METADATA}
-                    walletConnect={WC_WALLET_CONNECT_CONFIG}
-                    connectModal={{
-                      title: "Connetti Wallet",
-                      size: "compact",
-                      welcomeScreen: { title: "USDA Payments", subtitle: "Connetti il wallet per continuare" },
-                    }}
-                    connectButton={{ label: "Connetti Wallet" }}
-                  />
+                  <button
+                    type="button"
+                    className="wc-connect-wallet-btn"
+                    style={{ touchAction: "manipulation", WebkitTapHighlightColor: "transparent" }}
+                    onClick={() => walletModal.open()}
+                  >
+                    🔗 Connetti Wallet
+                  </button>
                 </div>
               </div>
             )}
@@ -564,8 +510,6 @@ export default function WalletCenterPage({ onBack }: Props) {
         />
       )}
 
-      {/* Debug WalletConnect — tocca 5 volte "Debug" per aprire */}
-      <WcDebugPanel />
 
     </div>
   );
