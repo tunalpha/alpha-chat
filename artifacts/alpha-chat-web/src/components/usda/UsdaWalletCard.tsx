@@ -37,7 +37,7 @@ import { useWs } from "../../contexts/WebSocketContext";
 
 // ── Costanti ──────────────────────────────────────────────────────────────────
 
-const USDA_DECIMALS   = 1_000_000; // 6 decimali
+const USDA_DECIMALS   = 1e18; // 18 decimali (standard ERC-20)
 const BALANCE_TIMEOUT = 12_000;    // 12 s — poi mostra N/D
 
 const SUPPORTED_WALLETS = [

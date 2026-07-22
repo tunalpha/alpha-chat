@@ -34,7 +34,7 @@ import {
 // ── Costanti ─────────────────────────────────────────────────────────────────
 
 const USDA_SYMBOL   = "USDA";
-const USDA_DECIMALS = 6;
+const USDA_DECIMALS = 18;
 const USDA_NETWORK  = "Polygon Mainnet";
 const USDA_SITE     = "https://getusda.xyz";
 const USDA_LOGO     = "https://getusda.xyz/favicon.ico";
