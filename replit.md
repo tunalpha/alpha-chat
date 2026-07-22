@@ -81,6 +81,21 @@ Prima di iniziare qualsiasi intervento, l'agente deve dichiarare:
 
 ## User preferences
 
+### ESPERIENZA UTENTE PREMIUM FINTECH (USDA)
+Tutte le schermate, notifiche e messaggi relativi ai pagamenti USDA devono avere uno stile moderno,
+emozionale e rassicurante, ispirato alle migliori app fintech (Revolut, PayPal, Cash App, Wise),
+senza risultare infantili.
+- Utilizzare emoji in modo elegante per migliorare la leggibilità
+- Nessun messaggio freddo o tecnico (Error 400, HTTP 404, Wallet missing, Internal server error)
+- Ogni errore va trasformato in un messaggio umano, rassicurante e orientato alla soluzione
+- Wallet chips visivi (🦊 MetaMask, 🐦 Trust, 🔐 WalletConnect, 🪙 Coinbase, 🌈 Rainbow)
+- Messaggi di successo celebrativi (🎉) e stati di firma rassicuranti
+- Card premium "no wallet" quando il destinatario non ha ancora attivato USDA
+- Utility centralizzata: `src/lib/usda-errors.ts` → `humanizeUsdaError()` + `isRecipientNoWallet()`
+- L'interfaccia deve trasmettere fiducia, semplicità ed entusiasmo mantenendo tono professionale
+
+---
+
 - Interventi chirurgici: modificare solo ciò che è strettamente necessario per il task assegnato.
 - Nessun refactoring, nessuna nuova feature, nessun cambio architetturale senza richiesta esplicita.
 - Prima di dichiarare una causa come "bug pre-esistente", fornire log a supporto (es. `DECRYPT-FAILURE`, `SESSION-SELECTION`).

@@ -1,14 +1,14 @@
 /**
  * UsdaPaymentDetail — viewer dettaglio pagamento.
  *
- * Mostra: importo, mittente, destinatario, stato, hash, fee, network, explorer, data.
- * L'URL explorer viene dal backend via /info — nessun valore hardcoded.
+ * Stile fintech premium: success celebration, copy emozionale, nessun errore tecnico.
  */
 
 import { useEffect, useState, useRef } from "react";
 import { apiUsdaGetPayment, apiUsdaGetInfo } from "../../lib/usda-api";
+import { humanizeUsdaError } from "../../lib/usda-errors";
 import type { UsdaPaymentData, UsdaBackendInfo } from "../../lib/usda-types";
-import { USDA_STATUS_LABELS, USDA_STATUS_ICONS } from "../../lib/usda-types";
+import { USDA_STATUS_ICONS } from "../../lib/usda-types";
 
 interface Props {
   paymentId: string;
@@ -28,6 +28,21 @@ function fmtDate(iso: string | null | undefined): string {
   });
 }
 
+function statusLabel(status: string): string {
+  const map: Record<string, string> = {
+    preparing:     "✨ Preparazione…",
+    signing:       "🔐 Firma in corso…",
+    submitting:    "📡 Invio…",
+    pending:       "⛓️ Conferma blockchain…",
+    confirmed:     "🎉 Completato",
+    pending_claim: "⏳ In attesa di riscossione",
+    claimed:       "🎉 Riscosso",
+    refunded:      "↩️ Rimborsato",
+    failed:        "❌ Non riuscito",
+  };
+  return map[status] ?? status;
+}
+
 export function UsdaPaymentDetail({ paymentId, onClose }: Props) {
   const [data,    setData]    = useState<UsdaPaymentData | null>(null);
   const [info,    setInfo]    = useState<UsdaBackendInfo | null>(null);
@@ -42,15 +57,17 @@ export function UsdaPaymentDetail({ paymentId, onClose }: Props) {
       apiUsdaGetInfo().catch(() => null),
     ])
       .then(([payment, backendInfo]) => { setData(payment); setInfo(backendInfo); })
-      .catch((err: Error) => { if (err.name !== "AbortError") setError(err.message); })
+      .catch((err: Error) => {
+        if (err.name !== "AbortError") setError(humanizeUsdaError(err.message));
+      })
       .finally(() => setLoading(false));
     return () => { abortRef.current?.abort(); };
   }, [paymentId]);
 
-  // Explorer URL dal backend — nessun valore hardcoded
   const explorerBase = info?.explorer ? `${info.explorer}/tx/` : null;
-
-  const isConfirmed = data?.status === "confirmed" || data?.status === "claimed";
+  const isSuccess    = data?.status === "confirmed" || data?.status === "claimed";
+  const isFailed     = data?.status === "failed";
+  const isRefunded   = data?.status === "refunded";
 
   return (
     <div
@@ -62,14 +79,9 @@ export function UsdaPaymentDetail({ paymentId, onClose }: Props) {
     >
       <div className="usda-detail" onClick={(e) => e.stopPropagation()}>
         <div className="usda-detail-header">
-          <button
-            type="button"
-            className="usda-detail-close"
-            aria-label="Chiudi dettaglio"
-            onClick={onClose}
-          >✕</button>
+          <button type="button" className="usda-detail-close" aria-label="Chiudi" onClick={onClose}>✕</button>
           <span className="usda-detail-title">
-            {data?.kind === "request" ? "Richiesta USDA" : "Pagamento USDA"}
+            {data?.kind === "request" ? "💸 Richiesta USDA" : "💰 Pagamento USDA"}
           </span>
         </div>
 
@@ -78,10 +90,48 @@ export function UsdaPaymentDetail({ paymentId, onClose }: Props) {
             <span className="usda-loading-dots" aria-hidden="true" /> Caricamento…
           </div>
         )}
-        {error && <div className="usda-error" style={{ margin: "12px 20px" }} role="alert">{error}</div>}
+        {error && (
+          <div className="usda-detail-error-card" role="alert">
+            <span aria-hidden="true">⚠️</span>
+            <span>{error}</span>
+          </div>
+        )}
 
         {data && (
           <>
+            {/* Celebration banner — successo */}
+            {isSuccess && (
+              <div className="usda-detail-success-banner" role="status">
+                <span aria-hidden="true">🎉</span>
+                <div>
+                  <strong>Pagamento completato con successo!</strong>
+                  <p>La ricevuta blockchain è disponibile qui sotto.</p>
+                </div>
+              </div>
+            )}
+
+            {/* Banner rimborso */}
+            {isRefunded && (
+              <div className="usda-detail-refund-banner" role="status">
+                <span aria-hidden="true">↩️</span>
+                <div>
+                  <strong>Importo rimborsato automaticamente</strong>
+                  <p>Il pagamento non è stato riscosso entro la scadenza.</p>
+                </div>
+              </div>
+            )}
+
+            {/* Banner fallito */}
+            {isFailed && (
+              <div className="usda-detail-failed-banner" role="alert">
+                <span aria-hidden="true">❌</span>
+                <div>
+                  <strong>Pagamento non riuscito</strong>
+                  <p>Se il problema persiste, contatta il supporto AlphaChat.</p>
+                </div>
+              </div>
+            )}
+
             {/* Importo + stato */}
             <div className="usda-detail-icon" aria-hidden="true">
               {data.kind === "request" ? "💸" : "💰"}
@@ -89,12 +139,12 @@ export function UsdaPaymentDetail({ paymentId, onClose }: Props) {
             <div className="usda-detail-amount" aria-label={`${data.amount} USDA`}>
               {data.amount} <span className="usda-detail-currency">USDA</span>
             </div>
-            <div className={`usda-detail-status ${data.status}`} aria-label={`Stato: ${USDA_STATUS_LABELS[data.status]}`}>
+            <div className={`usda-detail-status ${data.status}`} aria-label={`Stato: ${statusLabel(data.status)}`}>
               <span aria-hidden="true">{USDA_STATUS_ICONS[data.status]}</span>
-              {USDA_STATUS_LABELS[data.status]}
+              {statusLabel(data.status)}
             </div>
 
-            {/* Ricevuta completa */}
+            {/* Ricevuta */}
             <div className="usda-detail-rows" role="list">
               <div className="usda-detail-row" role="listitem">
                 <span>Tipo</span>
@@ -117,21 +167,18 @@ export function UsdaPaymentDetail({ paymentId, onClose }: Props) {
               {data.note && (
                 <div className="usda-detail-row" role="listitem">
                   <span>Nota</span>
-                  <span>{data.note}</span>
+                  <span>"{data.note}"</span>
                 </div>
               )}
-
-              {/* Blockchain data */}
               {data.tx_hash && (
                 <div className="usda-detail-row" role="listitem">
                   <span>Hash</span>
                   {explorerBase ? (
                     <a
                       href={`${explorerBase}${data.tx_hash}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
+                      target="_blank" rel="noopener noreferrer"
                       className="usda-detail-hash"
-                      aria-label={`Apri transazione ${abbrev(data.tx_hash)} su ${info?.network}`}
+                      aria-label={`Apri transazione su ${info?.network}`}
                     >
                       {abbrev(data.tx_hash, 10)}
                       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="11" height="11" aria-hidden="true">
@@ -147,11 +194,9 @@ export function UsdaPaymentDetail({ paymentId, onClose }: Props) {
               {info && (
                 <div className="usda-detail-row" role="listitem">
                   <span>Rete</span>
-                  <strong>{info.network} (chain {info.chainId})</strong>
+                  <strong>🟣 {info.network}</strong>
                 </div>
               )}
-
-              {/* Date */}
               {data.created_at && (
                 <div className="usda-detail-row" role="listitem">
                   <span>Data</span>
@@ -160,7 +205,7 @@ export function UsdaPaymentDetail({ paymentId, onClose }: Props) {
               )}
               {data.claim_expires_at && (
                 <div className="usda-detail-row" role="listitem">
-                  <span>Scadenza riscossione</span>
+                  <span>⏰ Scadenza</span>
                   <span>{fmtDate(data.claim_expires_at)}</span>
                 </div>
               )}
@@ -172,29 +217,27 @@ export function UsdaPaymentDetail({ paymentId, onClose }: Props) {
               )}
               {data.refunded_at && (
                 <div className="usda-detail-row" role="listitem">
-                  <span>Rimborsato il</span>
+                  <span>↩️ Rimborsato il</span>
                   <span>{fmtDate(data.refunded_at)}</span>
                 </div>
               )}
             </div>
 
-            {/* CTA Explorer — visibile solo se confermato e hash disponibile */}
-            {isConfirmed && data.tx_hash && explorerBase && (
+            {/* CTA Explorer */}
+            {isSuccess && data.tx_hash && explorerBase && (
               <a
                 href={`${explorerBase}${data.tx_hash}`}
-                target="_blank"
-                rel="noopener noreferrer"
+                target="_blank" rel="noopener noreferrer"
                 className="usda-explorer-btn"
                 aria-label={`Apri su ${info?.network ?? "Explorer"}`}
               >
-                🔗 Apri su {info?.network ?? "Explorer"}
+                🔗 Verifica su PolygonScan
               </a>
             )}
 
-            {/* Receipt summary */}
-            {isConfirmed && (
+            {isSuccess && (
               <div className="usda-receipt-badge" aria-label="Pagamento completato con successo">
-                ✅ Ricevuta disponibile
+                ✅ Ricevuta blockchain disponibile
               </div>
             )}
           </>

@@ -1,9 +1,12 @@
 /**
  * RequestUsdaSheet — bottom sheet per richiedere USDA.
+ *
+ * Stile fintech premium: nessun errore tecnico, copy emozionale.
  */
 
 import { useState } from "react";
 import { apiUsdaRequestPayment } from "../../lib/usda-api";
+import { humanizeUsdaError } from "../../lib/usda-errors";
 import type { UsdaPaymentData } from "../../lib/usda-types";
 
 interface Props {
@@ -23,7 +26,7 @@ export function RequestUsdaSheet({ conversationId, toUserId, toName, onClose, on
   async function handleRequest() {
     const num = parseFloat(amount);
     if (!amount || isNaN(num) || num <= 0) {
-      setError("Inserisci un importo valido");
+      setError("💡 Inserisci un importo valido maggiore di zero.");
       return;
     }
     setError(null);
@@ -39,7 +42,7 @@ export function RequestUsdaSheet({ conversationId, toUserId, toName, onClose, on
       onRequested(result);
       onClose();
     } catch (err) {
-      setError((err as Error).message);
+      setError(humanizeUsdaError((err as Error).message, { toName }));
     } finally {
       setLoading(false);
     }
@@ -56,12 +59,7 @@ export function RequestUsdaSheet({ conversationId, toUserId, toName, onClose, on
       <div className="usda-sheet" onClick={(e) => e.stopPropagation()}>
         <div className="usda-sheet-header">
           <span className="usda-sheet-title">💸 Richiedi USDA</span>
-          <button
-            type="button"
-            className="usda-sheet-close"
-            aria-label="Chiudi"
-            onClick={onClose}
-          >✕</button>
+          <button type="button" className="usda-sheet-close" aria-label="Chiudi" onClick={onClose}>✕</button>
         </div>
 
         <div className="usda-sheet-to">Da: <strong>{toName}</strong></div>
@@ -72,11 +70,7 @@ export function RequestUsdaSheet({ conversationId, toUserId, toName, onClose, on
             <input
               id="usda-req-amount"
               className="usda-amount-input"
-              type="number"
-              inputMode="decimal"
-              min="0"
-              step="any"
-              placeholder="0.00"
+              type="number" inputMode="decimal" min="0" step="any" placeholder="0.00"
               value={amount}
               onChange={(e) => setAmount(e.target.value)}
               autoFocus
@@ -92,7 +86,7 @@ export function RequestUsdaSheet({ conversationId, toUserId, toName, onClose, on
             id="usda-req-note"
             className="usda-note-input"
             type="text"
-            placeholder="Es. Cena, affitto…"
+            placeholder="Es. Cena, affitto, regalo…"
             maxLength={200}
             value={note}
             onChange={(e) => setNote(e.target.value)}
@@ -103,22 +97,12 @@ export function RequestUsdaSheet({ conversationId, toUserId, toName, onClose, on
         {error && <div className="usda-error" role="alert">{error}</div>}
 
         <div className="usda-sheet-actions">
+          <button type="button" className="usda-btn-secondary" onClick={onClose}>Annulla</button>
           <button
-            type="button"
-            className="usda-btn-secondary"
-            onClick={onClose}
-            aria-label="Annulla richiesta"
+            type="button" className="usda-btn-primary"
+            onClick={handleRequest} disabled={loading} aria-busy={loading}
           >
-            Annulla
-          </button>
-          <button
-            type="button"
-            className="usda-btn-primary"
-            onClick={handleRequest}
-            disabled={loading}
-            aria-label="Invia richiesta di pagamento"
-          >
-            {loading ? <><span className="usda-btn-spinner" aria-hidden="true" /> Invio…</> : "Richiedi"}
+            {loading ? <><span className="usda-btn-spinner" aria-hidden="true" /> Invio…</> : "💸 Richiedi"}
           </button>
         </div>
       </div>

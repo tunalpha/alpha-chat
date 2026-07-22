@@ -6115,3 +6115,131 @@ html.emergency-open #root {
 
 /* ── Bubble status transition ─────────────────────────────────────────────── */
 .usda-bubble-status { transition: color 0.3s ease; }
+
+/* ══════════════════════════════════════════════════════════════════════════════
+   FINTECH PREMIUM UX — USDA payments
+   Stile ispirato a Revolut / PayPal / Cash App / Wise
+   ══════════════════════════════════════════════════════════════════════════════ */
+
+/* ── Wallet chips — visual hint sopra ConnectButton ────────────────────────── */
+.usda-wallet-section { padding: 0 20px 4px; }
+.usda-wallet-chips {
+  display: flex; flex-wrap: wrap; gap: 8px;
+  margin: 12px 0;
+}
+.usda-wallet-chip {
+  display: flex; align-items: center; gap: 5px;
+  padding: 6px 12px;
+  border-radius: 20px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.1);
+  font-size: 0.78rem; font-weight: 500;
+  color: var(--text-2, rgba(255,255,255,0.7));
+  user-select: none;
+  transition: background 0.15s;
+}
+.usda-wallet-chip span:first-child { font-size: 1rem; }
+.usda-connect-btn-wrap { margin-top: 12px; display: flex; justify-content: center; }
+
+/* ── Card: destinatario senza wallet (premium, non un errore secco) ─────────── */
+.usda-no-wallet-card {
+  margin: 12px 20px;
+  padding: 20px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, rgba(99,102,241,0.12) 0%, rgba(139,92,246,0.08) 100%);
+  border: 1px solid rgba(99,102,241,0.25);
+  display: flex; flex-direction: column; gap: 16px;
+  animation: slideUp 0.25s ease;
+}
+.usda-no-wallet-icon { font-size: 2rem; text-align: center; }
+.usda-no-wallet-title { font-size: 0.95rem; font-weight: 600; color: var(--text-1, #fff); margin: 0 0 8px; line-height: 1.4; }
+.usda-no-wallet-msg  { font-size: 0.87rem; color: var(--text-2, rgba(255,255,255,0.7)); margin: 0 0 12px; line-height: 1.5; }
+.usda-no-wallet-bullets { font-size: 0.85rem; color: var(--text-2, rgba(255,255,255,0.65)); }
+.usda-no-wallet-bullets p { font-weight: 600; margin: 0 0 6px; color: var(--text-1, #fff); }
+.usda-no-wallet-bullets ul { margin: 0; padding-left: 4px; list-style: none; display: flex; flex-direction: column; gap: 4px; }
+.usda-no-wallet-close { align-self: stretch; margin-top: 4px; }
+
+/* ── Bubble: success glow ───────────────────────────────────────────────────── */
+.usda-bubble.success-glow {
+  box-shadow: 0 0 0 1.5px rgba(74,222,128,0.3), 0 4px 24px rgba(74,222,128,0.08);
+}
+
+/* ── Signing step — premium feedback ─────────────────────────────────────────── */
+.usda-signing {
+  display: flex; flex-direction: column; align-items: center;
+  gap: 14px; padding: 32px 24px 24px; text-align: center;
+}
+.usda-signing-ring {
+  width: 64px; height: 64px; position: relative;
+}
+.usda-signing-spinner {
+  width: 100%; height: 100%;
+  border-radius: 50%;
+  border: 3px solid rgba(99,102,241,0.2);
+  border-top-color: #818cf8;
+  animation: spin 0.9s linear infinite;
+}
+.usda-signing-label {
+  font-size: 1.05rem; font-weight: 600;
+  color: var(--text-1, #fff); margin: 0;
+  min-height: 1.5rem;
+}
+.usda-signing-sub {
+  font-size: 0.82rem; color: var(--text-2, rgba(255,255,255,0.6));
+  margin: 0;
+}
+.usda-signing-timeout-hint {
+  font-size: 0.75rem; color: var(--text-3, rgba(255,255,255,0.35));
+  margin: 0;
+}
+.usda-cancel-sign-btn { margin-top: 8px; }
+
+/* ── Detail: status banners ─────────────────────────────────────────────────── */
+.usda-detail-success-banner,
+.usda-detail-refund-banner,
+.usda-detail-failed-banner,
+.usda-detail-error-card {
+  display: flex; align-items: flex-start; gap: 12px;
+  margin: 12px 20px; padding: 14px 16px;
+  border-radius: 14px; font-size: 0.88rem;
+  animation: slideUp 0.2s ease;
+}
+.usda-detail-success-banner {
+  background: rgba(74,222,128,0.10);
+  border: 1px solid rgba(74,222,128,0.2);
+  color: #4ade80;
+}
+.usda-detail-success-banner > span { font-size: 1.4rem; flex-shrink: 0; margin-top: 1px; }
+.usda-detail-success-banner strong { display: block; font-size: 0.95rem; color: var(--text-1,#fff); margin-bottom: 2px; }
+.usda-detail-success-banner p { margin: 0; color: var(--text-2,rgba(255,255,255,0.6)); font-size: 0.82rem; }
+
+.usda-detail-refund-banner {
+  background: rgba(251,191,36,0.08);
+  border: 1px solid rgba(251,191,36,0.2);
+  color: #fbbf24;
+}
+.usda-detail-refund-banner > span { font-size: 1.4rem; flex-shrink: 0; }
+.usda-detail-refund-banner strong { display: block; color: var(--text-1,#fff); margin-bottom: 2px; }
+.usda-detail-refund-banner p { margin: 0; color: var(--text-2,rgba(255,255,255,0.6)); font-size: 0.82rem; }
+
+.usda-detail-failed-banner {
+  background: rgba(239,68,68,0.08);
+  border: 1px solid rgba(239,68,68,0.2);
+  color: #f87171;
+}
+.usda-detail-failed-banner > span { font-size: 1.4rem; flex-shrink: 0; }
+.usda-detail-failed-banner strong { display: block; color: var(--text-1,#fff); margin-bottom: 2px; }
+.usda-detail-failed-banner p { margin: 0; color: var(--text-2,rgba(255,255,255,0.6)); font-size: 0.82rem; }
+
+.usda-detail-error-card {
+  background: rgba(239,68,68,0.08);
+  border: 1px solid rgba(239,68,68,0.2);
+  color: #f87171; border-radius: 12px;
+  align-items: center;
+}
+
+/* ── Slide-up animation (shared) ─────────────────────────────────────────────── */
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}

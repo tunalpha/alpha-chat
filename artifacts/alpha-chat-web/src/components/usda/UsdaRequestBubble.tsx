@@ -1,8 +1,7 @@
 /**
  * UsdaRequestBubble — bubble per message_type: "usda_request"
  *
- * Mostra la richiesta con pulsante [Paga] per il destinatario.
- * Tutti gli stati sono distinti visualmente.
+ * Stile fintech premium: copy emozionale, CTA chiaro, nessun testo tecnico.
  */
 
 import { memo, useState } from "react";
@@ -34,12 +33,12 @@ function getStatusClass(status: UsdaPaymentStatus): StatusClass {
 function requestCopy(status: UsdaPaymentStatus, isMine: boolean): string {
   switch (status) {
     case "pending_claim": return isMine ? "⏳ In attesa che paghi" : "⏳ Richiesta in attesa";
-    case "pending":       return "In pagamento…";
+    case "pending":       return "📡 Pagamento in corso…";
     case "confirmed":
-    case "claimed":       return "💸 Richiesta pagata";
-    case "refunded":      return "↩ Rimborso effettuato";
-    case "failed":        return "❌ Pagamento fallito";
-    default:              return "Elaborazione…";
+    case "claimed":       return "🎉 Richiesta pagata con successo";
+    case "refunded":      return "↩️ Importo rimborsato automaticamente";
+    case "failed":        return "❌ Pagamento non riuscito";
+    default:              return "✨ Elaborazione…";
   }
 }
 
@@ -69,7 +68,7 @@ export const UsdaRequestBubble = memo(function UsdaRequestBubble({ data, isMine,
   return (
     <div
       role="button"
-      tabIndex={canPay ? -1 : 0}   // -1 se c'è il bottone Paga — quello è il target primario
+      tabIndex={canPay ? -1 : 0}
       aria-label={`Richiesta USDA di ${data.amount} da ${requesterName} — ${copy}`}
       className={`usda-bubble usda-request ${isMine ? "mine" : "theirs"}`}
       onClick={() => !canPay && onDetail?.(data.payment_id)}
@@ -80,7 +79,9 @@ export const UsdaRequestBubble = memo(function UsdaRequestBubble({ data, isMine,
         <span className="usda-bubble-title">Richiesta pagamento</span>
       </div>
 
-      <div className="usda-bubble-amount">{data.amount} <span className="usda-bubble-unit">USDA</span></div>
+      <div className="usda-bubble-amount">
+        {data.amount} <span className="usda-bubble-unit">USDA</span>
+      </div>
 
       {!isMine && (
         <div className="usda-bubble-sub">da {requesterName}</div>
@@ -92,7 +93,7 @@ export const UsdaRequestBubble = memo(function UsdaRequestBubble({ data, isMine,
 
       {isPendingClaim && data.claim_expires_at && (
         <div className="usda-bubble-expiry" aria-label={`Scade il ${new Date(data.claim_expires_at).toLocaleDateString("it-IT")}`}>
-          ⏰ Scadenza: {new Date(data.claim_expires_at).toLocaleDateString("it-IT")}
+          ⏰ Scade il {new Date(data.claim_expires_at).toLocaleDateString("it-IT")}
         </div>
       )}
 
@@ -113,7 +114,7 @@ export const UsdaRequestBubble = memo(function UsdaRequestBubble({ data, isMine,
           {paying ? (
             <><span className="usda-pay-spinner" aria-hidden="true" /> Pagamento in corso…</>
           ) : (
-            `Paga ${data.amount} USDA`
+            <>💸 Paga ora · {data.amount} USDA</>
           )}
         </button>
       )}

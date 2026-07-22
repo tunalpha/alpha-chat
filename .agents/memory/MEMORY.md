@@ -35,3 +35,4 @@
 - [Sprint USDA — Native Integration](sprint-usda.md) — adapter layer (Mock→Http), usda_send/request/receipt, system_metadata, WS usda.payment.update; lista Remaining Integration in topic file
 - [USDA Backend Connection](sprint-usda-backend-connection.md) — getusda.xyz: no auth, /api/... (no /v1), health=GET /api/health, polling=poll-tx, claim=POST /api/pay/claim/{code}, balance=ERC-20 balanceOf
 - [USDA Sprint Finale — ThirdWeb + Blockchain](sprint-usda-finale.md) — ThirdWeb v5 signing reale, verifyUsdaTx on-chain, _simulateTxHash eliminato, VITE_THIRDWEB_CLIENT_ID settato
+- [USDA Fintech Premium UX](usda-fintech-ux.md) — errori umani via humanizeUsdaError(), wallet chips, card no-wallet, success banners, signing premium
