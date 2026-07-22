@@ -70,6 +70,9 @@ export default function WalletCenterPage({ onBack }: Props) {
 
   const abortMount   = useRef<AbortController | null>(null);
   const abortHistory = useRef<AbortController | null>(null);
+  // Traccia l'ultimo indirizzo già persistito per evitare scritture duplicate
+  // nella stessa sessione — stesso pattern di UsdaSettingsPage.
+  const lastPersistedRef = useRef<string | null>(null);
 
   const account           = useActiveAccount();
   const address           = account?.address;
@@ -114,21 +117,24 @@ export default function WalletCenterPage({ onBack }: Props) {
     return () => { abortMount.current?.abort(); };
   }, []);
 
-  // Re-fetch saldo quando cambia l'indirizzo del wallet connesso
-  // e persiste l'indirizzo in MongoDB (fonte di verità per preparePayment)
+  // Re-fetch saldo quando cambia l'indirizzo del wallet connesso.
   useEffect(() => {
     if (!address) return;
-    apiUsdaGetWallet(address).then((info) => {
-      setWallet(info);
-      // Persiste solo se l'indirizzo live è diverso da quello già in MongoDB
-      // (case-insensitive, come da standard EVM) — evita scritture inutili ad ogni refresh
-      const storedAddr = info.address ?? "";
-      if (storedAddr.toLowerCase() !== address.toLowerCase()) {
-        apiUsdaSetWalletAddress(address).catch(() => {});
-      }
-    }).catch(() => {
-      // Se il fetch fallisce non possiamo confrontare — scriviamo per sicurezza
-      apiUsdaSetWalletAddress(address).catch(() => {});
+    apiUsdaGetWallet(address).then(setWallet).catch(() => {});
+  }, [address]);
+
+  // Persiste l'indirizzo in MongoDB (fonte di verità per preparePayment).
+  // Non interroga getWallet() per decidere: getWallet() restituisce sempre
+  // l'indirizzo live passato come query param, rendendo qualsiasi confronto
+  // tautologicamente falso. Si usa un ref per evitare scritture duplicate
+  // nella stessa sessione — identico al pattern di UsdaSettingsPage.
+  useEffect(() => {
+    if (!address) return;
+    if (lastPersistedRef.current?.toLowerCase() === address.toLowerCase()) return;
+    lastPersistedRef.current = address;
+    apiUsdaSetWalletAddress(address).catch(() => {
+      // Reset su errore così il prossimo mount può riprovare
+      lastPersistedRef.current = null;
     });
   }, [address]);
 
