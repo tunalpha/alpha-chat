@@ -14,6 +14,7 @@ import {
   useActiveAccount,
   useActiveWalletChain,
   useSwitchActiveWalletChain,
+  useConnect,
   ConnectButton,
 } from "thirdweb/react";
 import { createWallet, walletConnect } from "thirdweb/wallets";
@@ -91,6 +92,7 @@ export default function WalletCenterPage({ onBack }: Props) {
   const account     = useActiveAccount();
   const activeChain = useActiveWalletChain();
   const switchChain = useSwitchActiveWalletChain();
+  const { isConnecting } = useConnect();
 
   const isWalletConnected = !!account;
   const isCorrectNetwork  = activeChain?.id === USDA_CHAIN_ID;
@@ -554,6 +556,52 @@ export default function WalletCenterPage({ onBack }: Props) {
 
       {/* Debug WalletConnect — tocca 5 volte "Debug" per aprire */}
       <WcDebugPanel />
+
+      {/* ── iOS: pannello floating "Apri wallet" quando ThirdWeb è in attesa ── */}
+      {/iPhone|iPad|iPod/.test(navigator.userAgent) && isConnecting && (
+        <div style={{
+          position: "fixed", bottom: 100, left: 16, right: 16,
+          zIndex: 2147483647,
+          background: "rgba(13,13,26,0.97)",
+          border: "1px solid rgba(155,64,248,0.45)",
+          borderRadius: 20,
+          padding: "16px 16px 12px",
+          boxShadow: "0 12px 40px rgba(0,0,0,0.7)",
+          display: "flex", flexDirection: "column", gap: 10,
+        }}>
+          <p style={{ margin: 0, color: "rgba(255,255,255,0.65)", fontSize: "0.78rem", textAlign: "center" }}>
+            📱 Il wallet non si è aperto automaticamente?
+          </p>
+          <button
+            type="button"
+            onClick={() => { window.location.href = "trust://"; }}
+            style={{
+              background: "linear-gradient(135deg,#1b6ff8,#0047c8)",
+              border: "none", borderRadius: 13, color: "#fff",
+              fontSize: "0.95rem", fontWeight: 700,
+              padding: "13px 20px", cursor: "pointer",
+              display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+              touchAction: "manipulation", WebkitTapHighlightColor: "transparent",
+            }}
+          >
+            🐦 Apri Trust Wallet →
+          </button>
+          <button
+            type="button"
+            onClick={() => { window.location.href = "metamask://"; }}
+            style={{
+              background: "rgba(255,255,255,0.07)",
+              border: "1px solid rgba(255,255,255,0.15)",
+              borderRadius: 13, color: "rgba(255,255,255,0.65)",
+              fontSize: "0.85rem", fontWeight: 600,
+              padding: "10px 20px", cursor: "pointer",
+              touchAction: "manipulation", WebkitTapHighlightColor: "transparent",
+            }}
+          >
+            🦊 Apri MetaMask
+          </button>
+        </div>
+      )}
     </div>
   );
 }
