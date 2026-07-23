@@ -5792,10 +5792,23 @@ html.emergency-open #root {
   background: rgba(255,255,255,0.05);
   border: 1px solid rgba(255,255,255,0.10);
   border-radius: 16px; padding: 14px 16px;
-  min-width: 220px; max-width: 280px;
+  width: 100%; max-width: 100%; min-width: 0; box-sizing: border-box;
   transition: box-shadow 0.2s;
 }
-.cp-bubble.mine    { background: linear-gradient(135deg, rgba(99,102,241,0.20) 0%, rgba(79,70,229,0.12) 100%); border-color: rgba(99,102,241,0.28); }
+/* Il messaggio-pagamento riempie il lato della chat come una bolla larga,
+   con la stessa larghezza per mittente e destinatario. */
+.msg-bubble.payment-bubble { width: 340px; max-width: 88%; padding: 0; background: transparent; border: none; box-shadow: none; }
+.msg-bubble.payment-bubble.mine    { background: transparent; }
+.msg-bubble.payment-bubble.theirs  { background: transparent; border: none; }
+
+/* Variante "mia": la bubble poggia sul colore accento del messaggio, quindi
+   applica uno scrim scuro + testo bianco ad alto contrasto (leggibile su
+   qualsiasi tema/accento). */
+.cp-bubble.mine {
+  background: linear-gradient(135deg, rgba(20,16,40,0.42) 0%, rgba(20,16,40,0.30) 100%),
+              linear-gradient(135deg, var(--bubble-mine, #6366f1) 0%, var(--bubble-mine, #4f46e5) 100%);
+  border-color: rgba(255,255,255,0.22);
+}
 .cp-bubble-header  { display: flex; align-items: center; gap: 6px; font-size: 0.70rem; font-weight: 600; color: var(--text-3, rgba(255,255,255,0.45)); text-transform: uppercase; letter-spacing: 0.06em; }
 .cp-coin           { font-size: 1.05rem; }
 .cp-bubble-amount  { font-size: 1.45rem; font-weight: 700; color: var(--text-1, #fff); line-height: 1.1; }
@@ -5803,6 +5816,23 @@ html.emergency-open #root {
 .cp-bubble-sub     { font-size: 0.77rem; color: var(--text-3, rgba(255,255,255,0.45)); }
 .cp-bubble-note    { font-size: 0.79rem; color: var(--text-2, rgba(255,255,255,0.72)); font-style: italic; }
 .cp-bubble-divider { height: 1px; background: rgba(255,255,255,0.07); margin: 4px 0; }
+
+/* Alto contrasto per la variante "mia" (testo su scrim scuro + accento). */
+.cp-bubble.mine .cp-bubble-header,
+.cp-bubble.mine .cp-bubble-unit,
+.cp-bubble.mine .cp-bubble-sub,
+.cp-bubble.mine .cp-status-sub  { color: rgba(255,255,255,0.85); }
+.cp-bubble.mine .cp-bubble-amount,
+.cp-bubble.mine .cp-status-title,
+.cp-bubble.mine .cp-bubble-note { color: #fff; }
+.cp-bubble.mine .cp-bubble-divider { background: rgba(255,255,255,0.18); }
+/* Colori semantici di stato leggibili sullo scrim scuro della variante "mia". */
+.cp-bubble.mine.cp-variant-success .cp-status-title { color: #86efac; }
+.cp-bubble.mine.cp-variant-fail    .cp-status-title { color: #fca5a5; }
+.cp-bubble.mine.cp-variant-waiting .cp-status-title { color: #fcd34d; }
+.cp-bubble.mine.cp-variant-neutral .cp-status-title { color: rgba(255,255,255,0.9); }
+.cp-bubble.mine .cp-scan-link       { color: rgba(199,205,255,0.95); }
+.cp-bubble.mine .cp-scan-link:hover { color: #fff; }
 
 /* Stato */
 .cp-bubble-status  { display: flex; align-items: flex-start; gap: 8px; }

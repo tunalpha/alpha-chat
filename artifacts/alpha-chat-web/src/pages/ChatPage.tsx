@@ -1299,7 +1299,7 @@ export default function ChatPage({ onNavigate }: Props) {
         // Chat Payment Engine — aggiorna system_metadata in-place (Sprint 4)
         case "payment.state_changed": {
           const {
-            message_id, conversation_id, status,
+            transfer_id, message_id, conversation_id, status,
             tx_hash_release, amount, expires_at, asset_symbol,
           } = event.payload as {
             transfer_id:     string;
@@ -1311,11 +1311,16 @@ export default function ChatPage({ onNavigate }: Props) {
             expires_at:      string | null;
             tx_hash_release: string | null;
           };
-          if (conversation_id !== activeConvId || !message_id) break;
+          if (conversation_id !== activeConvId) break;
           setMessages((prev) =>
             prev.map((m) => {
-              if (m.id !== message_id) return m;
               const meta = (m.system_metadata as Record<string, unknown>) ?? {};
+              // Match robusto: per transfer_id (affidabile lato mittente E
+              // destinatario) con fallback al message_id.
+              const isMatch =
+                (meta.transfer_id && meta.transfer_id === transfer_id) ||
+                (message_id != null && m.id === message_id);
+              if (!isMatch) return m;
               return {
                 ...m,
                 system_metadata: {
@@ -2765,7 +2770,7 @@ export default function ChatPage({ onNavigate }: Props) {
                       onTouchMove={handleTouchCancel}
                     >
                       {destroyingIds.has(msg.id) && <BurnParticles />}
-                      <div className={`msg-bubble ${isMine ? "mine" : "theirs"} ${voiceMeta ? "voice-bubble" : ""}`}>
+                      <div className={`msg-bubble ${isMine ? "mine" : "theirs"} ${voiceMeta ? "voice-bubble" : ""} ${msg.message_type === "payment" ? "payment-bubble" : ""}`}>
                         {/* Reply preview */}
                         {msg.reply_to_message_id && (
                           <div className="msg-reply-preview">
@@ -2826,6 +2831,15 @@ export default function ChatPage({ onNavigate }: Props) {
                             ? <ChatPaymentBubble
                                 data={msg.system_metadata as unknown as ChatPaymentData}
                                 isMine={isMine}
+                                onLocalMeta={(transferId, patch) =>
+                                  setMessages((prev) =>
+                                    prev.map((m) => {
+                                      const meta = (m.system_metadata as Record<string, unknown>) ?? {};
+                                      if (meta.transfer_id !== transferId) return m;
+                                      return { ...m, system_metadata: { ...meta, ...patch } };
+                                    }),
+                                  )
+                                }
                               />
                             : null
                         ) : msg.message_type === "usda_send" ? (

@@ -28,6 +28,12 @@ import { apiPaymentAccept, apiPaymentReject, apiPaymentCancel, apiPaymentDetectD
 interface Props {
   data:    ChatPaymentData;
   isMine:  boolean;
+  /**
+   * Aggiornamento ottimistico: chiamato dopo una risposta API riuscita
+   * (accept/reject/cancel) con il nuovo stato, così la bubble si aggiorna
+   * subito senza attendere l'evento WS payment.state_changed.
+   */
+  onLocalMeta?: (transferId: string, patch: Partial<ChatPaymentData>) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -110,7 +116,7 @@ function getStatusLabel(status: ChatTransferStatus, isMine: boolean, amount?: st
 // Componente
 // ---------------------------------------------------------------------------
 
-export const ChatPaymentBubble = memo(function ChatPaymentBubble({ data, isMine }: Props) {
+export const ChatPaymentBubble = memo(function ChatPaymentBubble({ data, isMine, onLocalMeta }: Props) {
   // Guard: system_metadata potrebbe essere null/undefined se il messaggio arriva
   // prima che il backend abbia scritto i metadati o in caso di migrazione dati.
   // Restituisce null invece di crashare l'intera render tree.
@@ -164,8 +170,12 @@ export const ChatPaymentBubble = memo(function ChatPaymentBubble({ data, isMine 
     setError(null);
     setBusy(true);
     try {
-      await apiPaymentAccept(data.transfer_id);
-      // Lo stato si aggiorna via WS payment.state_changed — nessun setState locale
+      const res = await apiPaymentAccept(data.transfer_id);
+      // Aggiornamento ottimistico immediato dalla risposta API (oltre al WS).
+      onLocalMeta?.(data.transfer_id, {
+        status:          res.status,
+        tx_hash_release: res.tx_hash_release ?? null,
+      });
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Errore — riprova");
     } finally {
@@ -180,7 +190,8 @@ export const ChatPaymentBubble = memo(function ChatPaymentBubble({ data, isMine 
     setError(null);
     setBusy(true);
     try {
-      await apiPaymentReject(data.transfer_id);
+      const res = await apiPaymentReject(data.transfer_id);
+      onLocalMeta?.(data.transfer_id, { status: res.status });
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Errore — riprova");
     } finally {
@@ -195,7 +206,8 @@ export const ChatPaymentBubble = memo(function ChatPaymentBubble({ data, isMine 
     setError(null);
     setBusy(true);
     try {
-      await apiPaymentCancel(data.transfer_id);
+      const res = await apiPaymentCancel(data.transfer_id);
+      onLocalMeta?.(data.transfer_id, { status: res.status });
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Errore — riprova");
     } finally {
