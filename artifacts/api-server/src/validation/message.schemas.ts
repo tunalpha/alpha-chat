@@ -149,8 +149,9 @@ export const EditMessageSchema = z.object({
   ciphertext_type: z
     .number()
     .int()
-    .min(1)
-    .max(2),
+    .refine((v) => v === 1 || v === 2 || v === 3, {
+      message: "ciphertext_type deve essere 1, 2 o 3",
+    }),
 });
 
 export type EditMessageInput = z.infer<typeof EditMessageSchema>;
