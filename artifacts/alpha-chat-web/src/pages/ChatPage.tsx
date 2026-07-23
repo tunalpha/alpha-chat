@@ -665,6 +665,9 @@ export default function ChatPage({ onNavigate }: Props) {
   const [destroyTarget, setDestroyTarget] = useState<MessageItem | null>(null);
   const [destroyingIds, setDestroyingIds] = useState<Set<string>>(new Set());
   const [destroying, setDestroying] = useState(false);
+  // multi-select
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedMsgIds, setSelectedMsgIds] = useState<Set<string>>(new Set());
   // voice recorder
   const [typingUsers, setTypingUsers] = useState<Record<string, Set<string>>>({});
   // Utenti che stanno registrando un vocale (per-conversazione) — presenza real-time
@@ -1796,6 +1799,44 @@ export default function ChatPage({ onNavigate }: Props) {
 
   function closeContextMenu() { setContextMenu(null); }
 
+  // ── Multi-select ─────────────────────────────────────────────────────────
+  function exitSelectMode() { setSelectMode(false); setSelectedMsgIds(new Set()); }
+
+  function toggleSelectMsg(id: string) {
+    setSelectedMsgIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  }
+
+  async function handleShare(msgs: MessageItem[]) {
+    const texts = msgs
+      .map((m) => getDisplayText(m))
+      .filter(Boolean)
+      .join("\n\n");
+    if (!texts) { showToast("Nessun testo da condividere"); return; }
+    const nav = navigator as Navigator & { share?: (data: ShareData) => Promise<void> };
+    if (nav.share) {
+      try { await nav.share({ text: texts }); }
+      catch (e) {
+        if ((e as Error).name !== "AbortError") {
+          await navigator.clipboard.writeText(texts);
+          showToast("Copiato negli appunti");
+        }
+      }
+    } else {
+      await navigator.clipboard.writeText(texts);
+      showToast("Copiato negli appunti");
+    }
+  }
+
+  async function handleDeleteSelected() {
+    const toDelete = messages.filter((m) => selectedMsgIds.has(m.id));
+    exitSelectMode();
+    for (const m of toDelete) await handleDeleteForMe(m);
+  }
+
   function showToast(text: string) {
     setToastMsg(text);
     setTimeout(() => setToastMsg(null), 2500);
@@ -2897,12 +2938,21 @@ export default function ChatPage({ onNavigate }: Props) {
                       </div>
                     )}
                     <div
-                      className={`msg-row ${isMine ? "mine" : "theirs"}${destroyingIds.has(msg.id) ? " msg-dissolve" : ""}`}
-                      onContextMenu={(e) => handleContextMenu(e, msg)}
-                      onTouchStart={(e) => handleTouchStart(e, msg)}
-                      onTouchEnd={handleTouchCancel}
-                      onTouchMove={handleTouchCancel}
+                      className={`msg-row ${isMine ? "mine" : "theirs"}${destroyingIds.has(msg.id) ? " msg-dissolve" : ""}${selectMode && selectedMsgIds.has(msg.id) ? " msg-selected" : ""}`}
+                      onContextMenu={(e) => { if (selectMode) { e.preventDefault(); return; } handleContextMenu(e, msg); }}
+                      onTouchStart={(e) => { if (selectMode) return; handleTouchStart(e, msg); }}
+                      onTouchEnd={selectMode ? undefined : handleTouchCancel}
+                      onTouchMove={selectMode ? undefined : handleTouchCancel}
+                      onClick={selectMode ? () => toggleSelectMsg(msg.id) : undefined}
                     >
+                      {/* Checkbox selezione */}
+                      {selectMode && (
+                        <div className={`msg-select-check ${selectedMsgIds.has(msg.id) ? "checked" : ""}`}>
+                          {selectedMsgIds.has(msg.id) && (
+                            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" width="12" height="12"><polyline points="20 6 9 17 4 12"/></svg>
+                          )}
+                        </div>
+                      )}
                       {destroyingIds.has(msg.id) && <BurnParticles />}
                       <div className={`msg-bubble ${isMine ? "mine" : "theirs"} ${voiceMeta ? "voice-bubble" : ""} ${(msg.message_type === "payment" || msg.message_type === "usda_request" || msg.message_type === "usda_send") ? "payment-bubble" : ""}`}>
                         {/* Reply preview */}
@@ -3093,24 +3143,68 @@ export default function ChatPage({ onNavigate }: Props) {
               </div>
             )}
 
-            <div style={{ position: "relative" }}>
-              {uploadProgress !== null && (
-                <div className="upload-progress-wrap">
-                  <div className="upload-progress-bar" style={{ width: `${uploadProgress}%` }} />
+            {/* ── Barra selezione multipla ──────────────────────────────────── */}
+            {selectMode ? (
+              <div className="select-bar">
+                <button className="select-bar-cancel" onClick={exitSelectMode} aria-label="Annulla selezione">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="18" height="18"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                </button>
+                <span className="select-bar-count">
+                  {selectedMsgIds.size === 0 ? "Seleziona messaggi" : `${selectedMsgIds.size} selezionat${selectedMsgIds.size === 1 ? "o" : "i"}`}
+                </span>
+                <div className="select-bar-actions">
+                  <button
+                    className="select-bar-btn"
+                    disabled={selectedMsgIds.size === 0}
+                    onClick={() => { void handleShare(messages.filter((m) => selectedMsgIds.has(m.id))); }}
+                    aria-label="Condividi"
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="20" height="20"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+                    <span>Condividi</span>
+                  </button>
+                  <button
+                    className="select-bar-btn"
+                    disabled={selectedMsgIds.size !== 1}
+                    onClick={() => {
+                      const msg = messages.find((m) => selectedMsgIds.has(m.id));
+                      if (msg) { setForwardingMessage(msg); exitSelectMode(); }
+                    }}
+                    aria-label="Inoltra"
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="20" height="20"><polyline points="15 17 20 12 15 7"/><path d="M4 18v-2a4 4 0 0 1 4-4h12"/></svg>
+                    <span>Inoltra</span>
+                  </button>
+                  <button
+                    className="select-bar-btn danger"
+                    disabled={selectedMsgIds.size === 0}
+                    onClick={() => void handleDeleteSelected()}
+                    aria-label="Elimina"
+                  >
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="20" height="20"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M9 6V4h6v2"/></svg>
+                    <span>Elimina</span>
+                  </button>
                 </div>
-              )}
-              <ChatInput
-                value={inputText}
-                onChange={handleInputChange}
-                onSubmit={handleSend}
-                onVoiceSend={(v) => void handleVoiceSend(v)}
-                onRecordingChange={handleRecordingChange}
-                onAttachMenu={() => setShowAttachSheet(true)}
-                disabled={sending}
-                burnAfterRead={burnAfterRead}
-                onToggleBurn={() => setBurnAfterRead((v) => !v)}
-              />
-            </div>
+              </div>
+            ) : (
+              <div style={{ position: "relative" }}>
+                {uploadProgress !== null && (
+                  <div className="upload-progress-wrap">
+                    <div className="upload-progress-bar" style={{ width: `${uploadProgress}%` }} />
+                  </div>
+                )}
+                <ChatInput
+                  value={inputText}
+                  onChange={handleInputChange}
+                  onSubmit={handleSend}
+                  onVoiceSend={(v) => void handleVoiceSend(v)}
+                  onRecordingChange={handleRecordingChange}
+                  onAttachMenu={() => setShowAttachSheet(true)}
+                  disabled={sending}
+                  burnAfterRead={burnAfterRead}
+                  onToggleBurn={() => setBurnAfterRead((v) => !v)}
+                />
+              </div>
+            )}
           </>
         )}
       </main>
@@ -3123,6 +3217,22 @@ export default function ChatPage({ onNavigate }: Props) {
             style={{ top: contextMenu.y, left: contextMenu.x }}
             onClick={(e) => e.stopPropagation()}
           >
+            {/* Seleziona */}
+            <button className="ctx-item" onClick={ctxAction(() => {
+              setSelectMode(true);
+              setSelectedMsgIds(new Set([contextMenu.msg.id]));
+              closeContextMenu();
+            })}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14"><circle cx="12" cy="12" r="10"/><polyline points="9 12 11 14 15 10"/></svg>
+              Seleziona
+            </button>
+            {/* Condividi — solo messaggi testo */}
+            {(contextMenu.msg.message_type === "text" || contextMenu.msg.message_type === "forward") && getDisplayText(contextMenu.msg) && (
+              <button className="ctx-item" onClick={ctxAction(() => { void handleShare([contextMenu.msg]); closeContextMenu(); })}>
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+                Condividi
+              </button>
+            )}
             <button className="ctx-item" onClick={ctxAction(() => { setReplyTo(contextMenu.msg); closeContextMenu(); })}>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg>
               Rispondi

@@ -552,6 +552,63 @@ a { color: inherit; text-decoration: none; }
 .ctx-item.secure-destroy { color: #a78bfa; border-top: 1px solid rgba(167,139,250,0.15); margin-top: 2px; padding-top: 10px; }
 .ctx-item.secure-destroy:hover { background: rgba(167,139,250,0.12); }
 
+/* ── Multi-select ──────────────────────────────────────────────────────── */
+.msg-row.msg-selected .msg-bubble {
+  outline: 2px solid rgba(124, 58, 237, 0.6);
+  background: rgba(124, 58, 237, 0.08) !important;
+}
+.msg-select-check {
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  border: 2px solid rgba(255,255,255,0.3);
+  background: transparent;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  transition: background 0.15s, border-color 0.15s;
+  margin: auto 6px auto 4px;
+}
+.msg-select-check.checked {
+  background: #7c3aed; border-color: #7c3aed;
+}
+/* Posiziona il check correttamente sia per mine che theirs */
+.msg-row.mine .msg-select-check { order: -1; }
+.msg-row.theirs .msg-select-check { order: 99; }
+
+/* Barra azioni selezione multipla */
+.select-bar {
+  display: flex; align-items: center; gap: 8px;
+  padding: 10px 12px 10px 12px;
+  padding-bottom: calc(10px + env(safe-area-inset-bottom));
+  background: var(--bg-2); border-top: 1px solid var(--border-1);
+  min-height: 60px;
+}
+.select-bar-cancel {
+  background: none; border: none; color: var(--text-2);
+  cursor: pointer; padding: 6px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.select-bar-cancel:hover { background: rgba(255,255,255,0.07); }
+.select-bar-count {
+  flex: 1; font-size: 14px; font-weight: 600; color: var(--text-1);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+.select-bar-actions {
+  display: flex; gap: 4px; align-items: center;
+}
+.select-bar-btn {
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+  background: none; border: none; color: var(--text-2);
+  cursor: pointer; padding: 6px 10px; border-radius: 10px;
+  font-size: 10px; font-weight: 500;
+  transition: background 0.1s, color 0.1s;
+  min-width: 50px;
+}
+.select-bar-btn:hover:not(:disabled) { background: rgba(255,255,255,0.07); color: var(--text-1); }
+.select-bar-btn:disabled { opacity: 0.3; cursor: not-allowed; }
+.select-bar-btn.danger { color: #f87171; }
+.select-bar-btn.danger:hover:not(:disabled) { background: rgba(248,113,113,0.1); }
+
 /* ── Secure Destroy — dissoluzione messaggio stile Telegram ────────────────── */
 @keyframes msg-dissolve {
   0%   { opacity: 1;   filter: blur(0px)  brightness(1);   transform: scale(1); }
