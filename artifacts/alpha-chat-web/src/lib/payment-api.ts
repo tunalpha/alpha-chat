@@ -55,8 +55,11 @@ export interface ChatTransferResponse {
   status:          ChatTransferStatus;
   amount:          string;
   asset_symbol:    string;
+  asset_address?:  string | null;
   sender_id:       string;
   recipient_id:    string;
+  escrow_wallet?:  string | null;
+  sender_wallet?:  string | null;
   expires_at:      string | null;
   tx_hash_release: string | null;
   message_id:      string | null;

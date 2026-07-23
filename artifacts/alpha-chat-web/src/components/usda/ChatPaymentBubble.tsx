@@ -34,6 +34,12 @@ interface Props {
    * subito senza attendere l'evento WS payment.state_changed.
    */
   onLocalMeta?: (transferId: string, patch: Partial<ChatPaymentData>) => void;
+  /**
+   * RETRY FIRMA: mittente + awaiting_deposit. Riapre il flusso di firma per lo
+   * STESSO transfer (stesso escrow, stesso importo) quando la prima firma non è
+   * partita (es. sessione wallet interrotta su iOS). Non crea un nuovo transfer.
+   */
+  onRetryDeposit?: (transferId: string) => void;
 }
 
 // ---------------------------------------------------------------------------
@@ -128,7 +134,7 @@ function getStatusLabel(status: ChatTransferStatus, isMine: boolean, isRequest: 
 // Componente
 // ---------------------------------------------------------------------------
 
-export const ChatPaymentBubble = memo(function ChatPaymentBubble({ data, isMine, onLocalMeta }: Props) {
+export const ChatPaymentBubble = memo(function ChatPaymentBubble({ data, isMine, onLocalMeta, onRetryDeposit }: Props) {
   // Guard: system_metadata potrebbe essere null/undefined se il messaggio arriva
   // prima che il backend abbia scritto i metadati o in caso di migrazione dati.
   // Restituisce null invece di crashare l'intera render tree.
@@ -253,7 +259,11 @@ export const ChatPaymentBubble = memo(function ChatPaymentBubble({ data, isMine,
     } catch (e: unknown) {
       const code = (e as { code?: string }).code;
       if (code === "DEPOSIT_TX_NOT_DETECTED") {
-        setError("Deposito non ancora rilevato. La transazione potrebbe essere ancora in conferma (1–2 min). Riprova tra poco.");
+        setError(
+          "Deposito non ancora rilevato on-chain.\n" +
+          "• Se hai già firmato: la transazione potrebbe essere ancora in conferma (1–2 min), riprova tra poco.\n" +
+          "• Se il wallet non si è aperto o la firma non è partita: usa «Riprova firma» qui sotto per reinviare il deposito.",
+        );
       } else if (code === "TRANSFER_INVALID_TRANSITION") {
         setError("Il deposito risulta già confermato. Aggiorna la chat.");
       } else {
@@ -352,7 +362,7 @@ export const ChatPaymentBubble = memo(function ChatPaymentBubble({ data, isMine,
           iOS Safari ricarica la pagina durante la firma → tx hash perso.
           Il backend scansiona Polygon e conferma il deposito automaticamente. */}
       {isMine && data.status === "awaiting_deposit" && !busy && (
-        <div className="cp-actions">
+        <div className="cp-actions cp-actions-deposit">
           <button
             className="cp-btn cp-btn-detect"
             onClick={handleDetectDeposit}
@@ -361,6 +371,18 @@ export const ChatPaymentBubble = memo(function ChatPaymentBubble({ data, isMine,
           >
             🔄 Controlla deposito
           </button>
+          {/* RETRY FIRMA: reinvia il deposito per lo stesso transfer quando la
+              prima firma non è partita (es. sessione wallet interrotta su iOS). */}
+          {onRetryDeposit && (
+            <button
+              className="cp-btn cp-btn-retry-sign"
+              onClick={() => onRetryDeposit(data.transfer_id)}
+              disabled={busy}
+              aria-label="Riprova la firma e reinvia il deposito"
+            >
+              ✍️ Riprova firma
+            </button>
+          )}
         </div>
       )}
 

@@ -670,6 +670,8 @@ export default function ChatPage({ onNavigate }: Props) {
   const [showSendUsda,    setShowSendUsda]    = useState(false);   // legacy — non più connesso al pulsante
   const [showSendPayment, setShowSendPayment] = useState(false);   // nuovo Payment Engine
   const [sendPrefill, setSendPrefill] = useState<{ amount?: string; requestPaymentId?: string } | null>(null);
+  // RETRY FIRMA: transfer_id per cui riaprire la firma (bolla awaiting_deposit).
+  const [resumeTransferId, setResumeTransferId] = useState<string | null>(null);
   const [showRequestUsda, setShowRequestUsda] = useState(false);
   const [usdaDetailId,    setUsdaDetailId]    = useState<string | null>(null);
 
@@ -2831,6 +2833,11 @@ export default function ChatPage({ onNavigate }: Props) {
                             ? <ChatPaymentBubble
                                 data={msg.system_metadata as unknown as ChatPaymentData}
                                 isMine={isMine}
+                                onRetryDeposit={(transferId) => {
+                                  setShowSendPayment(false);
+                                  setSendPrefill(null);
+                                  setResumeTransferId(transferId);
+                                }}
                                 onLocalMeta={(transferId, patch) =>
                                   setMessages((prev) =>
                                     prev.map((m) => {
@@ -3493,6 +3500,18 @@ export default function ChatPage({ onNavigate }: Props) {
           requestPaymentId={sendPrefill?.requestPaymentId}
           onClose={() => { setShowSendPayment(false); setSendPrefill(null); }}
           onSent={() => { setShowSendPayment(false); setSendPrefill(null); }}
+        />
+      )}
+
+      {/* RETRY FIRMA — riapre la firma per un transfer esistente in awaiting_deposit */}
+      {resumeTransferId && activeConv && auth && activeConv.type !== "group" && (
+        <SendPaymentSheet
+          conversationId={activeConvId ?? ""}
+          toUserId={activeConv.other_user?.user_id ?? ""}
+          toName={activeConv.other_user?.display_name ?? activeConv.other_user?.username ?? "Utente"}
+          resumeTransferId={resumeTransferId}
+          onClose={() => setResumeTransferId(null)}
+          onSent={() => setResumeTransferId(null)}
         />
       )}
 

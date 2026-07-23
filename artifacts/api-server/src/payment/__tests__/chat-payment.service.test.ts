@@ -63,6 +63,7 @@ import * as events                       from "../events";
 import {
   createTransfer,
   confirmDeposit,
+  detectDeposit,
   acceptTransfer,
   rejectTransfer,
   cancelTransfer,
@@ -459,6 +460,44 @@ describe("confirmDeposit", () => {
     })).rejects.toMatchObject({ code: "TRANSFER_TX_NOT_FOUND" });
 
     expect(antiReplay.rollbackTx).toHaveBeenCalledWith(TX_HASH);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// detectDeposit — recovery iOS + idempotenza (RETRY FIRMA)
+// ---------------------------------------------------------------------------
+
+describe("detectDeposit", () => {
+  it("lancia TRANSFER_ACCESS_DENIED se non è il mittente", async () => {
+    await expect(detectDeposit({
+      transferId:  TRANSFER_ID,
+      requesterId: RECIPIENT_ID,
+    })).rejects.toMatchObject({ code: "TRANSFER_ACCESS_DENIED", httpStatus: 403 });
+  });
+
+  it("idempotenza: se il deposito è già confermato (status != awaiting_deposit) → TRANSFER_INVALID_TRANSITION, nessun double-count", async () => {
+    // Scenario RETRY FIRMA: l'utente firma due volte; il primo deposito è già
+    // stato rilevato e il transfer è passato a "pending". Un secondo detect
+    // (o un detect concorrente) NON deve riprocessare lo stato.
+    vi.mocked(ChatTransferModel.findOne).mockResolvedValue(makeTransfer({ status: "pending" }) as any);
+
+    await expect(detectDeposit({
+      transferId:  TRANSFER_ID,
+      requesterId: SENDER_ID,
+    })).rejects.toMatchObject({ code: "TRANSFER_INVALID_TRANSITION", httpStatus: 409 });
+
+    // Guardia PRIMA di qualsiasi lavoro on-chain: nessun consumo anti-replay.
+    expect(antiReplay.checkAndMarkTx).not.toHaveBeenCalled();
+  });
+
+  it("in dev (PAYMENT_SKIP_CHAIN_VERIFY) su awaiting_deposit → DEPOSIT_TX_NOT_DETECTED", async () => {
+    process.env.PAYMENT_SKIP_CHAIN_VERIFY = "true";
+    // default findOne mock = awaiting_deposit
+
+    await expect(detectDeposit({
+      transferId:  TRANSFER_ID,
+      requesterId: SENDER_ID,
+    })).rejects.toMatchObject({ code: "DEPOSIT_TX_NOT_DETECTED", httpStatus: 404 });
   });
 });
 

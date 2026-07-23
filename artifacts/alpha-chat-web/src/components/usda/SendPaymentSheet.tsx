@@ -25,8 +25,10 @@ import { client, polygon, wallets } from "../../lib/thirdweb";
 import {
   apiPaymentCreate,
   apiPaymentDetectDeposit,
+  apiPaymentGet,
   type CreateTransferResult,
 } from "../../lib/payment-api";
+import { humanizeUsdaError } from "../../lib/usda-errors";
 
 // ---------------------------------------------------------------------------
 // Helpers — encoding ERC-20 transfer calldata manuale.
@@ -73,6 +75,11 @@ interface Props {
   /** Se valorizzato, questo invio soddisfa una usda_request: viene inoltrato
    *  al backend per aggiornare la bolla richiesta per entrambi. */
   requestPaymentId?: string;
+  /** RETRY FIRMA: se valorizzato, il foglio NON crea un nuovo transfer ma
+   *  riapre la firma per un transfer già esistente in stato awaiting_deposit
+   *  (stesso escrow, stesso importo). Usato dal pulsante «Riprova firma» sulla
+   *  bolla di chat quando la prima firma non è partita (es. sessione wallet iOS). */
+  resumeTransferId?: string;
 }
 
 type Step = "form" | "confirm" | "sending";
@@ -124,13 +131,18 @@ export function SendPaymentSheet({
   onSent,
   initialAmount,
   requestPaymentId,
+  resumeTransferId,
 }: Props) {
-  const [step,   setStep]   = useState<Step>("form");
+  const isResume = !!resumeTransferId;
+  const [step,   setStep]   = useState<Step>(isResume ? "confirm" : "form");
   const [amount, setAmount] = useState(initialAmount ?? "");
-  const amountLocked = !!initialAmount;
+  const amountLocked = !!initialAmount || isResume;
   const [note,   setNote]   = useState("");
   const [error,  setError]  = useState<string | null>(null);
   const [phase,  setPhase]  = useState<SendPhase | null>(null);
+  const [resumeLoading, setResumeLoading] = useState(isResume);
+  // Dati escrow del transfer esistente (resume): caricati da apiPaymentGet.
+  const resumeRef = useRef<{ escrowWallet: string; amountStr: string; assetAddress: string | null } | null>(null);
   const busyRef = useRef(false);
 
   const account     = useActiveAccount();
@@ -147,10 +159,40 @@ export function SendPaymentSheet({
     return () => clearTimeout(t);
   }, [phase, onSent]);
 
+  // RETRY FIRMA — carica il transfer esistente (escrow, importo, asset) così da
+  // poter ricostruire la calldata e rifirmare senza creare un nuovo transfer.
+  useEffect(() => {
+    if (!resumeTransferId) return;
+    setResumeLoading(true);
+    apiPaymentGet(resumeTransferId)
+      .then((t) => {
+        if (t.status !== "awaiting_deposit") {
+          // Il deposito è già stato rilevato nel frattempo → niente da rifirmare.
+          setStep("sending");
+          setPhase("done");
+          return;
+        }
+        if (!t.escrow_wallet) throw new Error("Indirizzo escrow non disponibile per questo trasferimento.");
+        resumeRef.current = {
+          escrowWallet: t.escrow_wallet,
+          amountStr:    t.amount,
+          assetAddress: t.asset_address ?? null,
+        };
+        setAmount(t.amount);
+      })
+      .catch((e: unknown) => {
+        setError(humanizeUsdaError(e instanceof Error ? e.message : String(e)));
+      })
+      .finally(() => setResumeLoading(false));
+  }, [resumeTransferId]);
+
   // Recovery automatica dopo iOS Safari page reload durante la firma wallet.
   // Se c'è un pagamento in sospeso per questa conversazione (< 30 min),
   // chiede al backend di scansionare la blockchain.
   useEffect(() => {
+    // In modalità retry firma l'utente vuole rifirmare esplicitamente: la
+    // rilevazione automatica è già stata tentata dalla bolla di chat.
+    if (resumeTransferId) return;
     const raw = localStorage.getItem(PENDING_KEY);
     if (!raw) return;
     let pending: PendingPayment;
@@ -194,7 +236,108 @@ export function SendPaymentSheet({
     setStep("confirm");
   }
 
-  // ── Step 2 → Step 3: flusso USDA ───────────────────────────────────────────
+  // ── Firma nel wallet + polling detect-deposit (fonte di verità on-chain) ────
+  // Condiviso tra creazione (handleSend) e retry firma (handleResumeSign).
+  // Ogni interruzione/errore della firma emerge con un messaggio umano e lascia
+  // il flusso ripetibile (lo stato resta awaiting_deposit lato backend).
+  const signAndPoll = useCallback(async (args: {
+    transferId:   string;
+    escrowWallet: string;
+    amountStr:    string;
+    assetAddress: string | null;
+  }): Promise<void> => {
+    if (!account) throw new Error("Wallet non connesso. Connetti il wallet e riprova.");
+
+    // Calldata ERC-20 encodata manualmente — evita wallet_sendCalls (EIP-5792).
+    const contractAddress = (
+      args.assetAddress ?? "0xe714655fD1B3ba96B887DF1F94336c2A78E24001"
+    ) as `0x${string}`;
+    const amountWei = toWei18(args.amountStr);
+    const calldata  = encodeERC20Transfer(args.escrowWallet, amountWei);
+
+    // Firma fire-and-forget. NON aspettiamo il txHash: fonte di verità =
+    // detect-deposit. Catturiamo però OGNI errore per poterlo mostrare se il
+    // deposito non emerge (causa iOS: sessione wallet interrotta → firma mai
+    // partita → nessun deposito, altrimenti stallo silenzioso).
+    setPhase("signing");
+    localStorage.setItem(PENDING_KEY, JSON.stringify({
+      transferId:     args.transferId,
+      conversationId,
+      timestamp:      Date.now(),
+    } satisfies PendingPayment));
+
+    let pollAborted  = false;
+    let signErrorMsg: string | null = null;
+
+    account.sendTransaction({
+      to:      contractAddress,
+      data:    calldata,
+      gas:     BigInt(100000),
+      value:   BigInt(0),
+      chainId: 137,
+    }).catch((err: unknown) => {
+      const msg = (err as Error)?.message ?? "";
+      if (/reject|cancel|denied|refused|user.*cancel|user rejected/i.test(msg)) {
+        // Reject esplicito dell'utente → interrompe subito il polling.
+        pollAborted  = true;
+        signErrorMsg = "Hai annullato la firma nel wallet.";
+      } else {
+        // Altri errori: la tx POTREBBE essere stata comunque trasmessa (relay/
+        // deep-link). Conserviamo il messaggio umano: se dopo una breve grace il
+        // deposito non emerge, lo mostriamo invece di stallare per 10 minuti.
+        signErrorMsg = humanizeUsdaError(msg);
+      }
+    });
+
+    // ── Polling detect-deposit ────────────────────────────────────────────
+    const POLL_INTERVAL_MS       = 10_000;          // 10s — come USDA
+    const POLL_MAX_MS            = 10 * 60 * 1000;  // 10 min timeout totale
+    const SIGN_ERROR_GRACE_POLLS = 3;               // ~30s prima di arrendersi su errore firma
+    const pollStart              = Date.now();
+    let   pollCount              = 0;
+
+    while (Date.now() - pollStart < POLL_MAX_MS) {
+      if (pollAborted) {
+        throw new Error((signErrorMsg ?? "Firma annullata.") + " Ripremi «Firma e Invia» per riprovare.");
+      }
+
+      await new Promise<void>((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
+      pollCount++;
+
+      // Dopo il primo intervallo la label passa a "Conferma blockchain…".
+      if (pollCount === 1) setPhase("confirming");
+
+      if (pollAborted) {
+        throw new Error((signErrorMsg ?? "Firma annullata.") + " Ripremi «Firma e Invia» per riprovare.");
+      }
+
+      try {
+        await apiPaymentDetectDeposit(args.transferId);
+        setPhase("done");
+        return;
+      } catch (pollErr: unknown) {
+        const code = (pollErr as Error & { code?: string })?.code;
+        if (code === "DEPOSIT_TX_NOT_DETECTED") {
+          // Se la firma ha già dato un errore e dopo la grace non emerge nulla
+          // on-chain, la tx quasi certamente non è mai partita → mostra l'errore
+          // reale e lascia riprovare, invece di attendere 10 minuti a vuoto.
+          if (signErrorMsg && !pollAborted && pollCount >= SIGN_ERROR_GRACE_POLLS) {
+            throw new Error(signErrorMsg + "\nNessun deposito rilevato on-chain — ripremi «Firma e Invia» per riprovare.");
+          }
+          continue;
+        }
+        // Errore reale (RPC, accesso negato, stato invalido, ecc.) → interrompi
+        throw pollErr;
+      }
+    }
+
+    throw new Error(
+      "Timeout: deposito non rilevato dopo 10 minuti.\n" +
+      "Se hai già firmato nella app wallet usa «Controlla deposito» nella chat, altrimenti ripremi «Firma e Invia» per riprovare.",
+    );
+  }, [account, conversationId]);
+
+  // ── Step 2 → Step 3: crea trasferimento poi firma ──────────────────────────
   const handleSend = useCallback(async () => {
     if (busyRef.current || !account) return;
     busyRef.current = true;
@@ -202,10 +345,8 @@ export function SendPaymentSheet({
     setStep("sending");
 
     let created: CreateTransferResult | null = null;
-    let pollAborted = false;
 
     try {
-      // ── 1. Crea il trasferimento ──────────────────────────────────────────
       setPhase("creating");
       created = await apiPaymentCreate({
         recipient_id:    toUserId,
@@ -221,100 +362,49 @@ export function SendPaymentSheet({
         throw new Error("Il backend non ha restituito un indirizzo escrow. Riprova.");
       }
 
-      // ── 2. Calldata ERC-20 encodato manualmente ───────────────────────────
-      // Identico al repo USDA: evita wallet_sendCalls (EIP-5792).
-      const contractAddress = (
-        created.asset_address ?? "0xe714655fD1B3ba96B887DF1F94336c2A78E24001"
-      ) as `0x${string}`;
-      const amountWei = toWei18(created.amount);
-      const calldata  = encodeERC20Transfer(created.escrow_wallet, amountWei);
-
-      // ── 3. Firma nel wallet — fire-and-forget ────────────────────────────
-      // NON aspettiamo il txHash da qui: fonte di verità = detect-deposit.
-      // Catturiamo solo il reject esplicito dell'utente per uscire dal polling.
-      setPhase("signing");
-      const pendingSave: PendingPayment = {
-        transferId:     created.transfer_id,
-        conversationId,
-        timestamp:      Date.now(),
-      };
-      localStorage.setItem(PENDING_KEY, JSON.stringify(pendingSave));
-
-      account.sendTransaction({
-        to:      contractAddress,
-        data:    calldata,
-        gas:     BigInt(100000),
-        value:   BigInt(0),
-        chainId: 137,
-      }).catch((err: unknown) => {
-        const msg = (err as Error)?.message ?? "";
-        // Reject esplicito dell'utente → interrompe il polling
-        if (/reject|cancel|denied|refused|user.*cancel/i.test(msg)) {
-          pollAborted = true;
-        }
-        // Altri errori (network, relay) vengono ignorati:
-        // detect-deposit è la fonte di verità e può trovare la tx
-        // anche se sendTransaction ha dato errore dopo l'invio.
+      await signAndPoll({
+        transferId:   created.transfer_id,
+        escrowWallet: created.escrow_wallet,
+        amountStr:    created.amount,
+        assetAddress: created.asset_address,
       });
-
-      // ── 4. Polling detect-deposit come unica fonte di verità on-chain ────
-      // Pattern USDA: la fase "signing" rimane visibile durante la prima
-      // attesa (10s) — l'utente deve avere tempo di approvare nel wallet.
-      // Solo dopo il primo intervallo si passa a "confirming".
-      const POLL_INTERVAL_MS = 10_000; // 10s — come USDA
-      const POLL_MAX_MS      = 10 * 60 * 1000; // 10 min timeout totale
-      const pollStart        = Date.now();
-      let   pollCount        = 0;
-
-      while (Date.now() - pollStart < POLL_MAX_MS) {
-        if (pollAborted) {
-          throw new Error("Firma rifiutata nel wallet. Ripremi «Firma e Invia» per riprovare.");
-        }
-
-        await new Promise<void>((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
-        pollCount++;
-
-        // Dopo il primo intervallo l'utente ha avuto tempo di firmare:
-        // aggiorna la label da "Firma nel wallet…" a "Conferma blockchain…"
-        if (pollCount === 1) setPhase("confirming");
-
-        if (pollAborted) {
-          throw new Error("Firma rifiutata nel wallet. Ripremi «Firma e Invia» per riprovare.");
-        }
-
-        try {
-          await apiPaymentDetectDeposit(created.transfer_id);
-          // Deposito rilevato on-chain → successo
-          setPhase("done");
-          return;
-        } catch (pollErr: unknown) {
-          const code = (pollErr as Error & { code?: string })?.code;
-          if (code === "DEPOSIT_TX_NOT_DETECTED") {
-            // Ancora non on-chain: continua polling
-            continue;
-          }
-          // Errore reale (RPC, accesso negato, stato invalido, ecc.) → interrompi
-          throw pollErr;
-        }
-      }
-
-      throw new Error(
-        "Timeout: deposito non rilevato dopo 10 minuti.\n" +
-        "Se hai già firmato nella app wallet, usa il pulsante «Controlla deposito» nella bubble di chat.",
-      );
-
     } catch (e: unknown) {
-      const msg = (e instanceof Error ? e.message : String(e)) ?? "Errore sconosciuto.";
+      const msg = humanizeUsdaError(e instanceof Error ? e.message : String(e), { toName });
       console.error("[SendPayment] errore:", e);
       const detail = created
-        ? "\n\nIl trasferimento è stato creato (ID: " + created.transfer_id.slice(0, 8) + "…) — usa «Controlla deposito» nella chat per riprovare."
+        ? "\n\nIl trasferimento è stato creato — puoi anche usare «Controlla deposito» o «Riprova firma» nella chat."
         : "";
       setError(msg + detail);
       setPhase("error");
     } finally {
       busyRef.current = false;
     }
-  }, [account, toUserId, conversationId, amount, note]);
+  }, [account, toUserId, conversationId, amount, note, requestPaymentId, signAndPoll]);
+
+  // ── RETRY FIRMA: rifirma un transfer esistente (nessun nuovo transfer) ──────
+  const handleResumeSign = useCallback(async () => {
+    if (busyRef.current || !account || !resumeTransferId) return;
+    const data = resumeRef.current;
+    if (!data) { setError("Trasferimento non ancora caricato — attendi un istante e riprova."); return; }
+    busyRef.current = true;
+    setError(null);
+    setStep("sending");
+    try {
+      await signAndPoll({
+        transferId:   resumeTransferId,
+        escrowWallet: data.escrowWallet,
+        amountStr:    data.amountStr,
+        assetAddress: data.assetAddress,
+      });
+    } catch (e: unknown) {
+      const msg = humanizeUsdaError(e instanceof Error ? e.message : String(e), { toName });
+      console.error("[SendPayment resume] errore:", e);
+      setError(msg);
+      setPhase("error");
+    } finally {
+      busyRef.current = false;
+    }
+  }, [account, resumeTransferId, toName, signAndPoll]);
 
   // ── Render ─────────────────────────────────────────────────────────────────
   return (
@@ -400,6 +490,12 @@ export function SendPaymentSheet({
         {/* ── STEP 2: CONFIRM ─────────────────────────────────────────────── */}
         {step === "confirm" && (
           <>
+            {isResume && (
+              <div className="sp-resume-hint" role="note">
+                🔁 Riprova firma — stesso trasferimento, stesso wallet escrow.
+                Nessun nuovo pagamento verrà creato.
+              </div>
+            )}
             <div className="usda-confirm-summary">
               <div className="usda-confirm-row">
                 <span>A</span>
@@ -446,19 +542,19 @@ export function SendPaymentSheet({
               <button
                 type="button"
                 className="usda-btn-secondary"
-                onClick={() => { setStep("form"); setError(null); }}
+                onClick={isResume ? onClose : () => { setStep("form"); setError(null); }}
               >
-                ← Modifica
+                {isResume ? "Annulla" : "← Modifica"}
               </button>
               <button
                 type="button"
                 className="usda-btn-primary"
-                onClick={handleSend}
-                disabled={!isConnected}
-                aria-disabled={!isConnected}
+                onClick={isResume ? handleResumeSign : handleSend}
+                disabled={!isConnected || (isResume && (resumeLoading || !resumeRef.current))}
+                aria-disabled={!isConnected || (isResume && (resumeLoading || !resumeRef.current))}
                 title={!isConnected ? "Connetti prima il wallet" : undefined}
               >
-                🔐 Firma e Invia
+                {isResume && resumeLoading ? "Caricamento…" : "🔐 Firma e Invia"}
               </button>
             </div>
           </>

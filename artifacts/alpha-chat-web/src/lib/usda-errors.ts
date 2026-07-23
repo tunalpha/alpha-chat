@@ -24,6 +24,10 @@ export function humanizeUsdaError(
   // Wallet / firma
   if (/user rejected|user denied|rejected by user/i.test(raw))
     return "Hai annullato la firma nel wallet. Ripremi «Firma e Invia» quando sei pronto.";
+  // Sessione WalletConnect/deep-link interrotta — causa tipica su iOS: il wallet
+  // non si apre e la firma non parte mai.
+  if (/no.*matching.*(session|key)|session.*(not|expired|topic|deleted|reset)|no active|not connected|pairing|relayer|socket stalled|connection.*(reset|closed|stalled)|request reset|record was recently deleted/i.test(raw))
+    return "🔗 La sessione con il wallet si è interrotta e la firma non è partita. Riconnetti il wallet e riprova a firmare.";
   if (/insufficient funds|not enough gas/i.test(raw))
     return "💡 Non hai abbastanza MATIC per le commissioni di rete. Aggiungi MATIC al wallet e riprova.";
   if (/wrong network|wrong chain|unrecognized chain/i.test(raw))
