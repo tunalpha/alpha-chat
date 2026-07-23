@@ -1240,7 +1240,8 @@
     "step4Desc": "直接在聊天中发送和接收 USDA",
     "guideTitle": "4步入门",
     "supportedWallets": "支持的钱包",
-    "optional": "可选"
+    "optional": "可选",
+    "tabHistory": "历史"
   },
   "pwa": {
     "title": "安装AlphaChat",
@@ -1291,6 +1292,18 @@
     "faqNoInstallAndroid": "Android上不显示安装横幅",
     "faqNoInstallAndroidAns": "尝试通过 ⋮ 菜单 → 添加到主屏幕。如果在那里也不显示，请尝试重新加载页面或清除Chrome的缓存。",
     "faqOpensInBrowser": "仍然在浏览器中打开而不是作为应用",
-    "faqOpensInBrowserAns": "在应用抽屉中查找AlphaChat图标，不要从浏览器打开URL。安装后，始终使用专用图标。"
+    "faqOpensInBrowserAns": "在应用抽屉中查找AlphaChat图标，不要从浏览器打开URL。安装后，始终使用专用图标。",
+    "desktop": "桌面",
+    "choosePlatform": "选择您的设备",
+    "dskStep1Title": "在 Chrome 或 Edge 中打开",
+    "dskStep1Desc": "现代浏览器支持作为桌面应用程序安装。",
+    "dskStep2Title": "找到安装图标",
+    "dskStep2Desc": "点击地址栏中的安装图标。",
+    "dskStep3Title": "安装并使用",
+    "dskStep3Desc": "AlphaChat 将作为独立窗口打开，没有浏览器工具栏。",
+    "alreadyInstalled": "应用已安装",
+    "tipTitle": "提示",
+    "desktopTip": "如果看不到图标，请打开浏览器菜单并找到安装应用。",
+    "note": "AlphaChat 作为 PWA 自动更新，即使连接有限也能正常工作。"
   }
 }

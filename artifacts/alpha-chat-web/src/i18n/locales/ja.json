@@ -1240,7 +1240,8 @@
     "step4Desc": "チャットで直接USDを送受信する",
     "guideTitle": "4ステップで始める",
     "supportedWallets": "対応ウォレット",
-    "optional": "任意"
+    "optional": "任意",
+    "tabHistory": "履歴"
   },
   "pwa": {
     "title": "AlphaChatをインストール",
@@ -1291,6 +1292,18 @@
     "faqNoInstallAndroid": "Androidでインストールバナーが表示されない",
     "faqNoInstallAndroidAns": "⋮メニュー → ホーム画面に追加を試してください。そこにも表示されない場合は、ページを再読み込みするかChromeのキャッシュをクリアしてみてください。",
     "faqOpensInBrowser": "アプリとしてではなくブラウザで開いてしまう",
-    "faqOpensInBrowserAns": "アプリドロワーでAlphaChatのアイコンを探してください。ブラウザからURLを開かないでください。インストール後は常に専用のアイコンを使用してください。"
+    "faqOpensInBrowserAns": "アプリドロワーでAlphaChatのアイコンを探してください。ブラウザからURLを開かないでください。インストール後は常に専用のアイコンを使用してください。",
+    "desktop": "デスクトップ",
+    "choosePlatform": "デバイスを選択",
+    "dskStep1Title": "ChromeまたはEdgeで開く",
+    "dskStep1Desc": "最新のブラウザはデスクトップアプリとしてのインストールをサポートしています。",
+    "dskStep2Title": "インストールアイコンを探す",
+    "dskStep2Desc": "アドレスバーのインストールアイコンをクリックします。",
+    "dskStep3Title": "インストールして使用する",
+    "dskStep3Desc": "AlphaChatはブラウザバーなしの別ウィンドウとして開きます。",
+    "alreadyInstalled": "アプリはすでにインストール済み",
+    "tipTitle": "ヒント",
+    "desktopTip": "アイコンが表示されない場合、ブラウザメニューからアプリをインストールを探してください。",
+    "note": "PWAとしてのAlphaChatは自動更新され、接続が制限されていても動作します。"
   }
 }

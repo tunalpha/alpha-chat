@@ -1,6 +1,6 @@
 /**
  * PwaGuidePage — Sprint 27
- * Guida installazione PWA (iOS Safari + Android Chrome).
+ * Guida installazione PWA (iOS Safari + Android Chrome + Desktop).
  */
 import { useState } from "react";
 import { useTranslation } from "react-i18next";
@@ -25,23 +25,23 @@ export default function PwaGuidePage({ onBack }: Props) {
     (navigator as { standalone?: boolean }).standalone === true;
 
   const PLATFORMS: { key: Platform; icon: string; label: string }[] = [
-    { key: "ios",     icon: "",  label: "iOS" },
-    { key: "android", icon: "🤖", label: "Android" },
+    { key: "ios",     icon: "🍎", label: t("tabIphone") },
+    { key: "android", icon: "🤖", label: t("tabAndroid") },
     { key: "desktop", icon: "🖥️", label: t("desktop") },
   ];
 
   const STEPS_IOS = [
-    { icon: "🧭", title: t("iosStep1Title"), desc: t("iosStep1Desc") },
-    { icon: "📤", title: t("iosStep2Title"), desc: t("iosStep2Desc") },
-    { icon: "🏠", title: t("iosStep3Title"), desc: t("iosStep3Desc") },
-    { icon: "✅", title: t("iosStep4Title"), desc: t("iosStep4Desc") },
+    { icon: "🧭", title: t("iphoneStep1Title"), desc: t("iphoneStep1Desc") },
+    { icon: "📤", title: t("iphoneStep2Title"), desc: t("iphoneStep2Desc") },
+    { icon: "🏠", title: t("iphoneStep3Title"), desc: t("iphoneStep3Desc") },
+    { icon: "✅", title: t("iphoneStep4Title"), desc: t("iphoneStep4Desc") },
   ];
 
   const STEPS_ANDROID = [
-    { icon: "🌐", title: t("andStep1Title"), desc: t("andStep1Desc") },
-    { icon: "⋮",  title: t("andStep2Title"), desc: t("andStep2Desc") },
-    { icon: "📲", title: t("andStep3Title"), desc: t("andStep3Desc") },
-    { icon: "✅", title: t("andStep4Title"), desc: t("andStep4Desc") },
+    { icon: "🌐", title: t("androidStep1Title"), desc: t("androidStep1Desc") },
+    { icon: "⋮",  title: t("androidStep2Title"), desc: t("androidStep2Desc") },
+    { icon: "📲", title: t("androidStep3Title"), desc: t("androidStep3Desc") },
+    { icon: "✅", title: t("androidStep4Title"), desc: t("androidStep4Desc") },
   ];
 
   const STEPS_DESKTOP = [
@@ -56,10 +56,10 @@ export default function PwaGuidePage({ onBack }: Props) {
     STEPS_DESKTOP;
 
   const BENEFITS = [
-    { icon: "⚡", label: t("benefitFast") },
+    { icon: "⚡", label: t("benefitSpeed") },
     { icon: "📵", label: t("benefitOffline") },
-    { icon: "🔔", label: t("benefitNotif") },
-    { icon: "🔒", label: t("benefitSecure") },
+    { icon: "🔔", label: t("benefitNotifs") },
+    { icon: "🔒", label: t("benefitNoTrack") },
   ];
 
   return (
@@ -80,7 +80,7 @@ export default function PwaGuidePage({ onBack }: Props) {
         <div className="pwa-hero">
           <div className="pwa-hero-icon">📲</div>
           <div className="pwa-hero-title">{t("heroTitle")}</div>
-          <div className="pwa-hero-desc">{t("heroDesc")}</div>
+          <div className="pwa-hero-desc">{t("heroSub")}</div>
           {isPwaInstalled && (
             <div className="pwa-installed-badge">✅ {t("alreadyInstalled")}</div>
           )}
@@ -130,7 +130,7 @@ export default function PwaGuidePage({ onBack }: Props) {
           <div className="pwa-tip">
             <div className="pwa-tip-icon">💡</div>
             <div className="pwa-tip-body">
-              <strong>{t("tipTitle")}</strong> {t("iosTip")}
+              <strong>{t("tipTitle")}</strong> {t("iphoneNoteWarn")}
             </div>
           </div>
         )}
@@ -140,7 +140,7 @@ export default function PwaGuidePage({ onBack }: Props) {
           <div className="pwa-tip">
             <div className="pwa-tip-icon">💡</div>
             <div className="pwa-tip-body">
-              <strong>{t("tipTitle")}</strong> {t("androidTip")}
+              <strong>{t("tipTitle")}</strong> {t("androidNoteOk")}
             </div>
           </div>
         )}

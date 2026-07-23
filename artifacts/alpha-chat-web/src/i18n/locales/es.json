@@ -1240,7 +1240,8 @@
     "step4Desc": "Envía y recibe USDA directamente en el chat",
     "guideTitle": "Empieza en 4 pasos",
     "supportedWallets": "Carteras compatibles",
-    "optional": "opcional"
+    "optional": "opcional",
+    "tabHistory": "Historial"
   },
   "pwa": {
     "title": "Instalar AlphaChat",
@@ -1291,6 +1292,18 @@
     "faqNoInstallAndroid": "El banner de instalación no aparece en Android",
     "faqNoInstallAndroidAns": "Prueba vía menú ⋮ → Añadir a pantalla de inicio. Si tampoco aparece ahí, intenta recargar la página o borrar la caché de Chrome.",
     "faqOpensInBrowser": "Todavía se abre en el navegador en vez de como app",
-    "faqOpensInBrowserAns": "Busca el icono de AlphaChat en el cajón de apps, no abras la URL desde el navegador. Una vez instalado, usa siempre el icono dedicado."
+    "faqOpensInBrowserAns": "Busca el icono de AlphaChat en el cajón de apps, no abras la URL desde el navegador. Una vez instalado, usa siempre el icono dedicado.",
+    "desktop": "Escritorio",
+    "choosePlatform": "Elige tu dispositivo",
+    "dskStep1Title": "Abre en Chrome o Edge",
+    "dskStep1Desc": "Los navegadores modernos soportan la instalación como app de escritorio.",
+    "dskStep2Title": "Busca el icono de instalación",
+    "dskStep2Desc": "Haz clic en el icono de instalación en la barra de direcciones.",
+    "dskStep3Title": "Instala y usa",
+    "dskStep3Desc": "AlphaChat se abrirá como una ventana separada sin la barra del navegador.",
+    "alreadyInstalled": "App ya instalada",
+    "tipTitle": "Consejo",
+    "desktopTip": "Si no ves el icono, abre el menú del navegador y busca Instalar app.",
+    "note": "AlphaChat como PWA se actualiza automáticamente y funciona con conexión limitada."
   }
 }

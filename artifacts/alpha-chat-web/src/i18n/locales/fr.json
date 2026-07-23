@@ -1240,7 +1240,8 @@
     "step4Desc": "Envoyez et recevez des USDA directement dans le chat",
     "guideTitle": "Commencer en 4 étapes",
     "supportedWallets": "Portefeuilles pris en charge",
-    "optional": "optionnel"
+    "optional": "optionnel",
+    "tabHistory": "Historique"
   },
   "pwa": {
     "title": "Installer AlphaChat",
@@ -1291,6 +1292,18 @@
     "faqNoInstallAndroid": "La bannière d'installation n'apparaît pas sur Android",
     "faqNoInstallAndroidAns": "Essayez via menu ⋮ → Ajouter à l'écran d'accueil. Si cela n'apparaît pas non plus, essayez de recharger la page ou de vider le cache de Chrome.",
     "faqOpensInBrowser": "Il s'ouvre encore dans le navigateur au lieu de l'app",
-    "faqOpensInBrowserAns": "Cherchez l'icône AlphaChat dans le tiroir d'applications, n'ouvrez pas l'URL depuis le navigateur. Une fois installée, utilisez toujours l'icône dédiée."
+    "faqOpensInBrowserAns": "Cherchez l'icône AlphaChat dans le tiroir d'applications, n'ouvrez pas l'URL depuis le navigateur. Une fois installée, utilisez toujours l'icône dédiée.",
+    "desktop": "Bureau",
+    "choosePlatform": "Choisissez votre appareil",
+    "dskStep1Title": "Ouvrir dans Chrome ou Edge",
+    "dskStep1Desc": "Les navigateurs modernes prennent en charge l'installation comme app de bureau.",
+    "dskStep2Title": "Trouvez l'icône d'installation",
+    "dskStep2Desc": "Cliquez sur l'icône d'installation dans la barre d'adresse.",
+    "dskStep3Title": "Installer et utiliser",
+    "dskStep3Desc": "AlphaChat s'ouvrira dans une fenêtre séparée sans barre de navigateur.",
+    "alreadyInstalled": "App déjà installée",
+    "tipTitle": "Conseil",
+    "desktopTip": "Si vous ne voyez pas l'icône, ouvrez le menu du navigateur et cherchez Installer.",
+    "note": "AlphaChat en tant que PWA se met à jour automatiquement même avec connexion limitée."
   }
 }
