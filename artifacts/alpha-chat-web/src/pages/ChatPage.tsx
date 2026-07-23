@@ -1263,11 +1263,17 @@ export default function ChatPage({ onNavigate }: Props) {
             }, 800);
           }
           setConversations((prev) =>
-            prev.map((c) =>
-              c.conversation_id === msg.conversation_id
-                ? { ...c, last_activity_at: msg.server_received_at }
-                : c,
-            ).sort((a, b) => b.last_activity_at.localeCompare(a.last_activity_at)),
+            prev.map((c) => {
+              if (c.conversation_id !== msg.conversation_id) return c;
+              // Se la conversazione è aperta, il messaggio è già letto (mark-read
+              // parte sotto): niente incremento badge, forziamo unread a 0.
+              const isOpen = msg.conversation_id === activeConvId;
+              return {
+                ...c,
+                last_activity_at: msg.server_received_at,
+                unread_count: isOpen ? 0 : c.unread_count,
+              };
+            }).sort((a, b) => b.last_activity_at.localeCompare(a.last_activity_at)),
           );
           break;
         }
@@ -2355,6 +2361,14 @@ export default function ChatPage({ onNavigate }: Props) {
     setAtBottom(true);
     setShowChatSearch(false);
     setChatSearchQuery("");
+    // Azzeramento OTTIMISTICO del badge non letti: aprire = leggere.
+    // Senza questo il conteggio (calcolato dal server all'ultimo load) resta
+    // visibile finché non si ricarica la lista, anche dopo apiMarkRead.
+    setConversations((prev) =>
+      prev.map((c) => (c.conversation_id === convId && c.unread_count > 0
+        ? { ...c, unread_count: 0 }
+        : c)),
+    );
     // Inizializza read receipt dalla lista conversazioni
     const conv = conversations.find((c) => c.conversation_id === convId);
     if (conv?.other_user_last_read_at) {
