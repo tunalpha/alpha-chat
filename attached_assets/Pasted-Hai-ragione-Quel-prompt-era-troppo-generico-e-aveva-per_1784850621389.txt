@@ -1,0 +1,251 @@
+Hai ragione. Quel prompt era troppo generico e aveva perso il focus che avevamo costruito insieme. Se il documento deve essere il documento ufficiale di AlphaChat, il fondatore e la sua storia devono avere un ruolo centrale.
+
+Io imposterei il prompt così:
+
+⸻
+
+ALPHACHAT – INVESTOR BOOK MASTER PROMPT
+
+Mission
+
+Create the definitive Investor Book for AlphaChat.
+
+This document is not a brochure, not a whitepaper and not a pitch deck.
+
+It is the official institutional book that tells the complete story of AlphaChat, its founder, its technology, its vision and the ecosystem behind it.
+
+The final result should look as if it had been created by the design teams behind Apple, Stripe, Revolut or Notion for an institutional fundraising round.
+
+The reader must finish the book believing that AlphaChat is a serious long-term technology company with a clear vision and professional execution.
+
+⸻
+
+THE FOUNDER COMES FIRST
+
+The book must open with the Founder.
+
+The founder is not a secondary character.
+
+He is the origin of the vision.
+
+Create a strong narrative around the journey of:
+
+Enrico Maria Giaquinta
+
+Known publicly by the alias “Alpha”.
+
+Italian entrepreneur.
+
+Software Architect.
+
+Founder of AlphaBit.
+
+Creator of AlphaChat.
+
+More than 15 years dedicated to blockchain technologies, digital payments and secure communications.
+
+Believes technology must simplify people’s lives while preserving privacy, freedom and security.
+
+Engineering philosophy:
+
+* Simplicity
+* Security
+* Long-term sustainability
+
+Maintains a low public profile and prefers technology to speak louder than personal exposure.
+
+Founder of Felinia, an independent initiative dedicated to helping stray cats.
+
+The biography should feel authentic, human and inspiring while remaining factual. Do not invent achievements, awards, companies, partnerships or financial success.
+
+After the biography, include a Founder Letter written in the first person, explaining why AlphaChat was created, the problems it aims to solve, and the long-term vision for private communication and digital infrastructure.
+
+⸻
+
+THE STORY
+
+Do not start by describing features.
+
+Start by telling the story.
+
+Why AlphaChat exists.
+
+Why communication has become fragmented.
+
+Why privacy matters.
+
+Why digital identity is changing.
+
+Why payments should be integrated into communication.
+
+Only after building this narrative should the product be introduced.
+
+The reader must first understand the mission, then the technology.
+
+⸻
+
+THE MAIN CHARACTER
+
+The protagonist of the entire book is:
+
+AlphaChat
+
+Everything else exists to support AlphaChat.
+
+AlphaBit is the ecosystem.
+
+USDA is the payment layer.
+
+AlphaBit Pay is the merchant infrastructure.
+
+Never present them as separate products competing for attention.
+
+⸻
+
+DESIGN
+
+Create a world-class editorial design.
+
+Inspired by:
+
+Apple
+
+Stripe
+
+Revolut
+
+Linear
+
+Anthropic
+
+Notion
+
+Arc Browser
+
+Use:
+
+Dark premium background
+
+Purple AlphaBit gradients
+
+Soft lighting
+
+Modern fintech illustrations
+
+Large typography
+
+Minimal layouts
+
+Luxury editorial spacing
+
+Premium iconography
+
+Glass effects only where elegant
+
+Architecture diagrams
+
+Technology maps
+
+Journey maps
+
+User flows
+
+Security diagrams
+
+Blockchain diagrams
+
+Timeline graphics
+
+Business model graphics
+
+SWOT matrix
+
+Competitive positioning maps
+
+Feature comparison tables
+
+Roadmaps
+
+Value chain diagrams
+
+Market landscape graphics
+
+Professional fintech charts
+
+Every page should look like it belongs in an Apple keynote or a McKinsey strategy presentation.
+
+⸻
+
+COMPETITIVE ANALYSIS
+
+Include objective comparisons with market categories.
+
+Messaging:
+
+WhatsApp
+
+Signal
+
+Telegram
+
+iMessage
+
+Payments:
+
+Stripe
+
+PayPal
+
+Adyen
+
+Square
+
+Stablecoin ecosystem:
+
+USDC
+
+USDT
+
+EURC
+
+Describe similarities and differences without making unsupported claims or declaring AlphaChat “better.” Focus on positioning, architecture and intended use cases.
+
+⸻
+
+STYLE
+
+Institutional English.
+
+Executive level.
+
+Elegant.
+
+Technical.
+
+Visionary.
+
+Never exaggerated.
+
+Never hype.
+
+Never “the best”.
+
+Never unrealistic promises.
+
+⸻
+
+FINAL GOAL
+
+The finished Investor Book should feel like the official document of a future global technology company.
+
+The reader should remember three things after closing it:
+
+Alpha had a clear vision.
+
+AlphaChat solves a meaningful problem.
+
+The AlphaBit ecosystem provides the technological foundation to support that vision.
+
+⸻
+
+Così il documento non parla solo di un’app: racconta una visione, un fondatore e un ecosistema, mettendo “Alpha” al centro della narrazione senza trasformarlo in una figura romanzata o attribuirgli risultati non verificabili.
