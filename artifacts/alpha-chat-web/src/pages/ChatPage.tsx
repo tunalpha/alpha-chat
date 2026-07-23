@@ -3341,6 +3341,13 @@ export default function ChatPage({ onNavigate }: Props) {
                 <span className="attach-sheet-icon">📄</span>
                 <span>Documento</span>
               </button>
+              <button
+                className="attach-sheet-item"
+                onClick={() => { setShowAttachSheet(false); void handleLocationRequest(); }}
+              >
+                <span className="attach-sheet-icon">📍</span>
+                <span>Posizione</span>
+              </button>
               {activeConv?.type !== "group" && (
                 <>
                   <button
@@ -3359,13 +3366,6 @@ export default function ChatPage({ onNavigate }: Props) {
                   </button>
                 </>
               )}
-              <button
-                className="attach-sheet-item"
-                onClick={() => { setShowAttachSheet(false); void handleLocationRequest(); }}
-              >
-                <span className="attach-sheet-icon">📍</span>
-                <span>Posizione</span>
-              </button>
             </div>
           </div>
         </div>
