@@ -31,6 +31,24 @@ interface TrustStatus {
   audited_at?: string;
 }
 
+/** Mappa check.id → AppView di destinazione per le righe cliccabili */
+const CHECK_NAV: Record<string, string> = {
+  safety_number:        "security-center",
+  two_fa:               "security",
+  email_verified:       "recovery-settings",
+  device_security:      "devices",
+  pin:                  "security",
+  biometric:            "security",
+  timeout:              "security",
+  ghost_mode:           "privacy",
+  phoenix_protocol:     "phoenix",
+  emergency_lock:       "phoenix",
+  secure_destroy:       "nuclear-destroy",
+  recovery_card:        "recovery-dashboard",
+  dead_man_switch:      "dead-man-switch",
+  recovery_contacts:    "recovery-contacts",
+};
+
 const CATEGORY_LABELS: Record<string, string> = {
   encryption: "🔐 Crittografia",
   identity:   "🪪 Identità",
@@ -216,18 +234,37 @@ export default function TrustCenterPage({ onBack, onNavigate }: Props) {
               <div key={group.key} className="tc-category">
                 <div className="tc-category-label">{group.label}</div>
                 <div className="tc-check-list">
-                  {group.checks.map(check => (
-                    <div key={check.id} className={`tc-check tc-check--${check.status}`}>
-                      <div className="tc-check-left">
-                        <span className="tc-check-icon">{STATUS_ICON[check.status]}</span>
-                        <div className="tc-check-info">
-                          <div className="tc-check-label">{check.label}</div>
-                          <div className="tc-check-desc">{check.description}</div>
+                  {group.checks.map(check => {
+                    const dest = CHECK_NAV[check.id] as Parameters<typeof onNavigate>[0] | undefined;
+                    const inner = (
+                      <>
+                        <div className="tc-check-left">
+                          <span className="tc-check-icon">{STATUS_ICON[check.status]}</span>
+                          <div className="tc-check-info">
+                            <div className="tc-check-label">{check.label}</div>
+                            <div className="tc-check-desc">{check.description}</div>
+                          </div>
                         </div>
+                        <div className="tc-check-right">
+                          <span className="tc-check-value">{check.value ?? "—"}</span>
+                          {dest && <span className="tc-check-chevron">›</span>}
+                        </div>
+                      </>
+                    );
+                    return dest ? (
+                      <button
+                        key={check.id}
+                        className={`tc-check tc-check--${check.status} tc-check--nav`}
+                        onClick={() => onNavigate(dest)}
+                      >
+                        {inner}
+                      </button>
+                    ) : (
+                      <div key={check.id} className={`tc-check tc-check--${check.status}`}>
+                        {inner}
                       </div>
-                      <div className="tc-check-value">{check.value ?? "—"}</div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             ))}

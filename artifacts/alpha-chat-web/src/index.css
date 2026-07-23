@@ -3730,10 +3730,15 @@ html.emergency-open #root {
 .tc-check-info { flex:1; min-width:0; }
 .tc-check-label { font-size:14px; font-weight:600; color:var(--text-1); }
 .tc-check-desc { font-size:11px; color:var(--text-3); margin-top:1px; line-height:1.4; }
-.tc-check-value { font-size:12px; color:var(--text-3); white-space:nowrap; flex-shrink:0; }
+.tc-check-right { display:flex; align-items:center; gap:6px; flex-shrink:0; }
+.tc-check-value { font-size:12px; color:var(--text-3); white-space:nowrap; }
+.tc-check-chevron { font-size:18px; color:var(--text-3); line-height:1; }
 .tc-check--ok { }
 .tc-check--warn { background:rgba(245,158,11,0.03); }
 .tc-check--fail { background:rgba(239,68,68,0.04); }
+.tc-check--nav { width:100%; text-align:left; background:inherit; border:none; cursor:pointer; padding:11px 14px; display:flex; align-items:center; justify-content:space-between; gap:10px; transition:background 0.15s; }
+.tc-check--nav:hover { background:var(--bg-3); }
+.tc-check--nav:active { background:var(--bg-4,var(--bg-3)); }
 
 /* Quick actions */
 .tc-actions { display:flex; flex-direction:column; gap:8px; }
