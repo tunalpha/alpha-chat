@@ -234,6 +234,10 @@ export async function sendGasStationTopUpEmail(params: {
   gsAddress:     string;
   gsBalanceAfter: string;
 }): Promise<void> {
+  const { getAdminSettings } = await import("../models/admin-settings.model");
+  const settings = await getAdminSettings();
+  if (!settings.gas_station_emails) return;
+
   const { escrowWallet, amountMatic, txHash, gsAddress, gsBalanceAfter } = params;
   const polygonScanUrl = `https://polygonscan.com/tx/${txHash}`;
   const subject = `⛽ Gas Top-up ${amountMatic} MATIC → ${escrowWallet.slice(0, 8)}…`;
@@ -258,6 +262,10 @@ export async function sendGasStationLowBalanceEmail(params: {
   currentBalanceMatic: string;
   thresholdMatic:     string;
 }): Promise<void> {
+  const { getAdminSettings } = await import("../models/admin-settings.model");
+  const settings = await getAdminSettings();
+  if (!settings.gas_station_emails) return;
+
   const { gsAddress, currentBalanceMatic, thresholdMatic } = params;
   const subject = `🚨 ALERT — Gas Station saldo basso: ${parseFloat(currentBalanceMatic).toFixed(4)} MATIC`;
   const html = `
@@ -277,6 +285,92 @@ export async function sendGasStationLowBalanceEmail(params: {
     </div>`;
   await _send({ to: ADMIN_EMAIL(), subject, html });
   logger.warn({ gsAddress, currentBalanceMatic, thresholdMatic }, "Gas station LOW BALANCE email sent");
+}
+
+// ---------------------------------------------------------------------------
+// USDA Transaction emails (admin alerts)
+// ---------------------------------------------------------------------------
+
+export interface UsdaTransactionEmailParams {
+  type:              "created" | "completed" | "rejected" | "cancelled";
+  transferId:        string;
+  amount:            string;       // es. "100.00"
+  assetSymbol?:      string;       // es. "USDA"
+  senderUserId:      string;
+  recipientUserId:   string;
+  escrowWallet?:     string;
+  txHash?:           string | null;
+}
+
+const USDA_TYPE_LABELS: Record<UsdaTransactionEmailParams["type"], { emoji: string; label: string; color: string }> = {
+  created:   { emoji: "💸", label: "Nuovo pagamento inviato",    color: "#58a6ff" },
+  completed: { emoji: "✅", label: "Pagamento completato",        color: "#3fb950" },
+  rejected:  { emoji: "❌", label: "Pagamento rifiutato",         color: "#f85149" },
+  cancelled: { emoji: "🚫", label: "Pagamento annullato",         color: "#d29922" },
+};
+
+export async function sendUsdaTransactionEmail(params: UsdaTransactionEmailParams): Promise<void> {
+  // Check admin toggle before anything
+  const { getAdminSettings } = await import("../models/admin-settings.model");
+  const settings = await getAdminSettings();
+  if (!settings.usda_emails) return;
+
+  const { type, transferId, amount, assetSymbol = "USDA", senderUserId, recipientUserId, escrowWallet, txHash } = params;
+  const { emoji, label, color } = USDA_TYPE_LABELS[type];
+  const polygonScanUrl = txHash ? `https://polygonscan.com/tx/${txHash}` : null;
+  const subject = `${emoji} USDA — ${label}: ${amount} ${assetSymbol}`;
+
+  const html = `
+    <div style="font-family:monospace;background:#0d1117;color:#e6edf3;padding:24px;border-radius:12px;border:1px solid ${color}33;">
+      <h2 style="color:${color};margin:0 0 16px;">${emoji} ${label}</h2>
+      <table style="border-collapse:collapse;width:100%;font-size:13px;">
+        <tr><td style="color:#8b949e;padding:6px 12px 6px 0;">Transfer ID</td><td style="color:#e6edf3;font-size:11px;">${transferId}</td></tr>
+        <tr><td style="color:#8b949e;padding:6px 12px 6px 0;">Importo</td><td style="color:${color};font-weight:bold;">${amount} ${assetSymbol}</td></tr>
+        <tr><td style="color:#8b949e;padding:6px 12px 6px 0;">Mittente</td><td style="color:#e6edf3;">${senderUserId}</td></tr>
+        <tr><td style="color:#8b949e;padding:6px 12px 6px 0;">Destinatario</td><td style="color:#e6edf3;">${recipientUserId}</td></tr>
+        ${escrowWallet ? `<tr><td style="color:#8b949e;padding:6px 12px 6px 0;">Escrow</td><td style="color:#e6edf3;font-size:11px;">${escrowWallet}</td></tr>` : ""}
+        ${polygonScanUrl ? `<tr><td style="color:#8b949e;padding:6px 12px 6px 0;">TX Hash</td><td><a href="${polygonScanUrl}" style="color:#58a6ff;">${txHash!.slice(0, 20)}…</a></td></tr>` : ""}
+        <tr><td style="color:#8b949e;padding:6px 12px 6px 0;">Stato</td><td style="color:${color};font-weight:bold;">${label.toUpperCase()}</td></tr>
+      </table>
+      <p style="color:#8b949e;font-size:11px;margin-top:20px;">Alpha Chat — USDA Payment Engine — ${new Date().toISOString()}</p>
+    </div>`;
+
+  await _send({ to: ADMIN_EMAIL(), subject, html });
+  logger.info({ transferId, type }, "USDA transaction email sent to admin");
+}
+
+// ---------------------------------------------------------------------------
+// New user registration alert (admin)
+// ---------------------------------------------------------------------------
+
+export interface RegistrationAlertParams {
+  userId:    string;
+  username:  string;
+  email?:    string | null;
+}
+
+export async function sendRegistrationAlertEmail(params: RegistrationAlertParams): Promise<void> {
+  // Check admin toggle
+  const { getAdminSettings } = await import("../models/admin-settings.model");
+  const settings = await getAdminSettings();
+  if (!settings.registration_emails) return;
+
+  const { userId, username, email } = params;
+  const subject = `👤 Nuovo utente registrato: @${username}`;
+  const html = `
+    <div style="font-family:monospace;background:#0d1117;color:#e6edf3;padding:24px;border-radius:12px;border:1px solid #2d419033;">
+      <h2 style="color:#a78bfa;margin:0 0 16px;">👤 Nuovo utente registrato</h2>
+      <table style="border-collapse:collapse;width:100%;font-size:13px;">
+        <tr><td style="color:#8b949e;padding:6px 12px 6px 0;">User ID</td><td style="color:#e6edf3;font-size:11px;">${userId}</td></tr>
+        <tr><td style="color:#8b949e;padding:6px 12px 6px 0;">Username</td><td style="color:#a78bfa;font-weight:bold;">@${username}</td></tr>
+        ${email ? `<tr><td style="color:#8b949e;padding:6px 12px 6px 0;">Email</td><td style="color:#e6edf3;">${email}</td></tr>` : ""}
+        <tr><td style="color:#8b949e;padding:6px 12px 6px 0;">Ora</td><td style="color:#e6edf3;">${new Date().toLocaleString("it-IT")}</td></tr>
+      </table>
+      <p style="color:#8b949e;font-size:11px;margin-top:20px;">Alpha Chat — Auth Service — ${new Date().toISOString()}</p>
+    </div>`;
+
+  await _send({ to: ADMIN_EMAIL(), subject, html });
+  logger.info({ userId, username }, "Registration alert email sent to admin");
 }
 
 // ---------------------------------------------------------------------------

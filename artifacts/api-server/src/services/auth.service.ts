@@ -200,6 +200,14 @@ export async function register(params: RegisterServiceParams): Promise<AuthResul
 
   logger.info({ userId: user._id.toString(), username, deviceId: device_id }, "User registered");
 
+  // Email admin — notifica registrazione (fire-and-forget)
+  void (async () => {
+    try {
+      const { sendRegistrationAlertEmail } = await import("./email.service");
+      await sendRegistrationAlertEmail({ userId: user._id.toString(), username, email: email ?? null });
+    } catch { /* silenzioso */ }
+  })();
+
   // Sprint 22: genera Recovery Card alla registrazione (mostrata una sola volta)
   let recoveryCard: RecoveryCardPayload | undefined;
   try {

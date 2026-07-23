@@ -470,6 +470,21 @@ export async function createTransfer(
   }
 
   emitPaymentStateChanged(transfer);
+  // Email admin — fire-and-forget, non blocca il flusso
+  void (async () => {
+    try {
+      const { sendUsdaTransactionEmail } = await import("../services/email.service");
+      await sendUsdaTransactionEmail({
+        type:            "created",
+        transferId:      transfer.transfer_id,
+        amount:          transfer.amount.toString(),
+        assetSymbol:     transfer.asset_symbol,
+        senderUserId:    transfer.sender_id.toString(),
+        recipientUserId: transfer.recipient_id.toString(),
+        escrowWallet:    transfer.escrow_wallet,
+      });
+    } catch { /* silenzioso — email non critica */ }
+  })();
   logger.info({ transferId, sender: params.senderId, amount: params.amount }, "[Payment] Transfer creato ✓");
   return _format(transfer);
 }
@@ -700,6 +715,20 @@ export async function acceptTransfer(params: {
     await writeAudit({ transferId: params.transferId, fromStatus: "accepting", toStatus: "accepted", triggeredBy: "recipient", txHash, ip: params.ip });
     await _updateMessageMeta(accepted);
     emitPaymentStateChanged(accepted);
+    void (async () => {
+      try {
+        const { sendUsdaTransactionEmail } = await import("../services/email.service");
+        await sendUsdaTransactionEmail({
+          type:            "completed",
+          transferId:      accepted.transfer_id,
+          amount:          accepted.amount.toString(),
+          assetSymbol:     accepted.asset_symbol,
+          senderUserId:    accepted.sender_id.toString(),
+          recipientUserId: accepted.recipient_id.toString(),
+          txHash,
+        });
+      } catch { /* silenzioso */ }
+    })();
 
     if (accepted.request_payment_id) {
       void syncRequestFromTransfer(accepted.request_payment_id.toString(), "confirmed");
@@ -892,6 +921,20 @@ export async function rejectTransfer(params: {
     await writeAudit({ transferId: params.transferId, fromStatus: "rejecting", toStatus: "rejected", triggeredBy: "recipient", txHash, ip: params.ip });
     await _updateMessageMeta(rejected);
     emitPaymentStateChanged(rejected);
+    void (async () => {
+      try {
+        const { sendUsdaTransactionEmail } = await import("../services/email.service");
+        await sendUsdaTransactionEmail({
+          type:            "rejected",
+          transferId:      rejected.transfer_id,
+          amount:          rejected.amount.toString(),
+          assetSymbol:     rejected.asset_symbol,
+          senderUserId:    rejected.sender_id.toString(),
+          recipientUserId: rejected.recipient_id.toString(),
+          txHash,
+        });
+      } catch { /* silenzioso */ }
+    })();
 
     if (rejected.request_payment_id) {
       // Pagamento rifiutato → la richiesta torna pagabile.
@@ -946,6 +989,20 @@ export async function cancelTransfer(params: {
     await writeAudit({ transferId: params.transferId, fromStatus: "cancelling", toStatus: "cancelled", triggeredBy: "sender", txHash, ip: params.ip });
     await _updateMessageMeta(cancelled);
     emitPaymentStateChanged(cancelled);
+    void (async () => {
+      try {
+        const { sendUsdaTransactionEmail } = await import("../services/email.service");
+        await sendUsdaTransactionEmail({
+          type:            "cancelled",
+          transferId:      cancelled.transfer_id,
+          amount:          cancelled.amount.toString(),
+          assetSymbol:     cancelled.asset_symbol,
+          senderUserId:    cancelled.sender_id.toString(),
+          recipientUserId: cancelled.recipient_id.toString(),
+          txHash,
+        });
+      } catch { /* silenzioso */ }
+    })();
 
     if (cancelled.request_payment_id) {
       // Pagamento annullato dal pagante → la richiesta torna pagabile.
