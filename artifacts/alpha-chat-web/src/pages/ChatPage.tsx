@@ -3329,13 +3329,6 @@ export default function ChatPage({ onNavigate }: Props) {
             <div className="attach-sheet-grid">
               <button
                 className="attach-sheet-item"
-                onClick={() => { setShowAttachSheet(false); void handleLocationRequest(); }}
-              >
-                <span className="attach-sheet-icon">📍</span>
-                <span>Posizione</span>
-              </button>
-              <button
-                className="attach-sheet-item"
                 onClick={() => { setShowAttachSheet(false); setTimeout(() => mediaInputRef.current?.click(), 80); }}
               >
                 <span className="attach-sheet-icon">📷</span>
@@ -3366,6 +3359,13 @@ export default function ChatPage({ onNavigate }: Props) {
                   </button>
                 </>
               )}
+              <button
+                className="attach-sheet-item"
+                onClick={() => { setShowAttachSheet(false); void handleLocationRequest(); }}
+              >
+                <span className="attach-sheet-icon">📍</span>
+                <span>Posizione</span>
+              </button>
             </div>
           </div>
         </div>
