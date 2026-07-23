@@ -86,7 +86,13 @@ export function useVoiceRecorder(): VoiceRecorderApi {
   const start = useCallback(async (): Promise<boolean> => {
     cancelledWhileStartingRef.current = false;
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const stream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          echoCancellation: true,
+          noiseSuppression: true,
+          autoGainControl: true,
+        },
+      });
       // Cancel() può essere stato chiamato MENTRE getUserMedia era in volo (race iOS).
       // In quel caso chiudiamo subito lo stream e usciamo.
       if (cancelledWhileStartingRef.current) {
@@ -122,7 +128,14 @@ export function useVoiceRecorder(): VoiceRecorderApi {
       recorder.ondataavailable = (e) => {
         if (e.data.size > 0) chunksRef.current.push(e.data);
       };
-      recorder.start(100); // chunk ogni 100ms
+      // NIENTE timeslice: recorder.start() (non start(100)).
+      // Su iOS Safari il timeslice per audio/mp4 produce chunk che si sovrappongono/
+      // duplicano quando concatenati (new Blob(chunksRef)) → in riproduzione parole
+      // doppie / rimbombo / audio inascoltabile. I chunk qui NON vengono mai
+      // consumati in streaming (solo concatenati alla fine su onstop), quindi il
+      // timeslice non serviva: un unico dataavailable su stop è corretto e sicuro
+      // anche su Android/Chrome.
+      recorder.start();
       mediaRecorderRef.current = recorder;
 
       startTimeRef.current = Date.now();
