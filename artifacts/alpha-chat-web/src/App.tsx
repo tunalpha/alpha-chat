@@ -37,6 +37,7 @@ import AppearancePage from "./pages/AppearancePage";
 import NotificationsPage from "./pages/NotificationsPage";
 import LanguagePage from "./pages/LanguagePage";
 import NuclearDestroyPage from "./pages/NuclearDestroyPage";
+import PwaGuidePage from "./pages/PwaGuidePage";
 import { useNotifSync } from "./hooks/useNotifSync";
 import { initServiceWorker, requestAndSubscribe as pushSubscribe } from "./lib/pushManager";
 import SignalReinstallBanner from "./components/SignalReinstallBanner";
@@ -66,7 +67,8 @@ export type AppView =
   | "language"
   | "nuclear-destroy"
   | "wallet-center"
-  | "usda-settings";
+  | "usda-settings"
+  | "pwa-guide";
 
 /** Controlla se l'URL corrente è la pagina di emergenza (accessibile senza auth). */
 function isEmergencyPath(): boolean {
@@ -243,6 +245,8 @@ function AppContent() {
             return <WalletCenterPage onBack={goSettings} />;
           case "usda-settings":
             return <UsdaSettingsPage onBack={goSettings} />;
+          case "pwa-guide":
+            return <PwaGuidePage onBack={goSettings} />;
           // group-info è gestito come overlay dentro ChatPage
           default:
             return <ChatPage onNavigate={setView} />;

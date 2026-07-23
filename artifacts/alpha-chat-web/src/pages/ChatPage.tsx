@@ -617,6 +617,10 @@ export default function ChatPage({ onNavigate }: Props) {
   const [loadingConvs, setLoadingConvs] = useState(true);
   const [loadingMsgs, setLoadingMsgs] = useState(false);
   const [mobileShowChat, setMobileShowChat] = useState(false);
+  // Ref specchio per il popstate listener (evita closure stale)
+  const mobileShowChatRef = useRef(false);
+  // Traccia se abbiamo fatto un pushState per il tasto back OS
+  const chatHistoryPushedRef = useRef(false);
   const [loggingOut, setLoggingOut] = useState(false);
   const [showInvite, setShowInvite] = useState(false);
   const [showRedeem, setShowRedeem] = useState(false);
@@ -1013,6 +1017,23 @@ export default function ChatPage({ onNavigate }: Props) {
   }, [logout]);
 
   useEffect(() => { void loadConversations(); }, [loadConversations]);
+
+  // Gestione tasto Back hardware (Android) e swipe-back iOS nella PWA.
+  // Quando la chat mobile è aperta e il sistema emette popstate, intercettiamo
+  // la navigazione e chiudiamo la chat anziché uscire dalla PWA.
+  useEffect(() => {
+    function onPopstate() {
+      if (mobileShowChatRef.current) {
+        setMobileShowChat(false);
+        mobileShowChatRef.current = false;
+        chatHistoryPushedRef.current = false;
+        setShowChatSearch(false);
+        setChatSearchQuery("");
+      }
+    }
+    window.addEventListener("popstate", onPopstate);
+    return () => window.removeEventListener("popstate", onPopstate);
+  }, []); // refs — nessuna dipendenza stale
 
   // Sblocca audio al primo gesto utente (necessario su iOS Safari / Chrome iOS)
   useEffect(() => { attachAudioUnlockListener(); }, []);
@@ -2230,12 +2251,36 @@ export default function ChatPage({ onNavigate }: Props) {
     setShowRedeem(false);
     await loadConversations();
     setActiveConvId(conversationId);
+    if (!chatHistoryPushedRef.current) {
+      window.history.pushState({ chatOpen: true }, "");
+      chatHistoryPushedRef.current = true;
+    }
     setMobileShowChat(true);
+    mobileShowChatRef.current = true;
+  }
+
+  /** Chiude la chat mobile sincronizzando anche il history state */
+  function closeChatMobile() {
+    setMobileShowChat(false);
+    mobileShowChatRef.current = false;
+    setShowChatSearch(false);
+    setChatSearchQuery("");
+    if (chatHistoryPushedRef.current) {
+      chatHistoryPushedRef.current = false;
+      // Rimuovi lo stato pushato; se popstate si triggera, mobileShowChatRef è già false → no-op
+      window.history.back();
+    }
   }
 
   function handleSelectConv(convId: string) {
+    // Push history entry così il tasto Back OS chiude la chat invece di uscire dalla PWA
+    if (!chatHistoryPushedRef.current) {
+      window.history.pushState({ chatOpen: true }, "");
+      chatHistoryPushedRef.current = true;
+    }
     setActiveConvId(convId);
     setMobileShowChat(true);
+    mobileShowChatRef.current = true;
     setAtBottom(true);
     setShowChatSearch(false);
     setChatSearchQuery("");
@@ -2441,7 +2486,7 @@ export default function ChatPage({ onNavigate }: Props) {
                         setSwipedConvId(null);
                         archiveConversation(convId);
                         setConversations((prev) => prev.filter((c) => c.conversation_id !== convId));
-                        if (activeConvId === convId) { setActiveConvId(null); setMobileShowChat(false); }
+                        if (activeConvId === convId) { setActiveConvId(null); closeChatMobile(); }
                         showToast("Conversazione archiviata");
                       }}
                     >📦</button>
@@ -2451,7 +2496,7 @@ export default function ChatPage({ onNavigate }: Props) {
                         setSwipedConvId(null);
                         // Optimistic update: rimuoviamo subito dalla lista
                         setConversations((prev) => prev.filter((c) => c.conversation_id !== convId));
-                        if (activeConvId === convId) { setActiveConvId(null); setMobileShowChat(false); }
+                        if (activeConvId === convId) { setActiveConvId(null); closeChatMobile(); }
                         try {
                           if (isGroup) {
                             const { apiLeaveGroup } = await import("../lib/api");
@@ -2576,7 +2621,7 @@ export default function ChatPage({ onNavigate }: Props) {
               isOnline={isOtherOnline}
               isGroup={activeConv?.type === "group"}
               groupName={activeConv?.name ?? undefined}
-              onBack={() => { setMobileShowChat(false); setShowChatSearch(false); setChatSearchQuery(""); }}
+              onBack={closeChatMobile}
               onViewProfile={() => setShowContactProfile(true)}
               onSearchInChat={() => setShowChatSearch((v) => !v)}
               onCallAudio={() => {
@@ -3228,7 +3273,7 @@ export default function ChatPage({ onNavigate }: Props) {
                 setConversations((prev) => prev.filter((c) => c.conversation_id !== convActionSheet.convId));
                 if (activeConvId === convActionSheet.convId) {
                   setActiveConvId(null);
-                  setMobileShowChat(false);
+                  closeChatMobile();
                 }
                 setConvActionSheet(null);
                 showToast("Conversazione archiviata");
@@ -3243,7 +3288,7 @@ export default function ChatPage({ onNavigate }: Props) {
                 const isGrp = conversations.find((c) => c.conversation_id === cid)?.type === "group";
                 setConvActionSheet(null);
                 setConversations((prev) => prev.filter((c) => c.conversation_id !== cid));
-                if (activeConvId === cid) { setActiveConvId(null); setMobileShowChat(false); }
+                if (activeConvId === cid) { setActiveConvId(null); closeChatMobile(); }
                 try {
                   if (isGrp) {
                     const { apiLeaveGroup } = await import("../lib/api");
