@@ -44,4 +44,5 @@
 - [Sprint 4 — Payment Audit Blockchain + iOS Recovery](sprint-4-payment-audit.md) — detect-deposit endpoint, localStorage iOS recovery, deposit/release block numbers, PolygonScan links in bubble
 - [Polygon RPC getLogs limits](polygon-rpc-getlogs-limits.md) — mai eth_getLogs storico su RPC free; usare alchemy_getAssetTransfers + filtro timestamp, o receipt-by-hash; mai stimare block range dal block time
 - [Gas Station — MATIC top-up automatico](gas-station.md) — top-up ora DINAMICO (80k gas × gasPrice × buffer, cap 0.5 MATIC); mai importi fissi: con gas volatile 0.01 fisso ha rotto i payout (incidente lug 2026); recovery script riutilizzabile in api-server/src/scripts
+- [i18n page rewrite regression](i18n-page-rewrite-regression.md) — UsdaSettings/PwaGuide riscritte in Phase 3 persero dialog e stili; ripristinate dal git; per i18n sostituire solo stringhe, mai il markup
 - [i18n Phase 2 — audit hardcoded strings](i18n-phase2.md) — pattern e componenti coinvolti; signAndPoll useCallback richiede t in deps; confirmDesc keys in emergency namespace includono prefisso frase completo
