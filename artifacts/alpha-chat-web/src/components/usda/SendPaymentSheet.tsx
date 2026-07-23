@@ -266,6 +266,19 @@ export function SendPaymentSheet({
       timestamp:      Date.now(),
     } satisfies PendingPayment));
 
+    // ── Pre-sign check ───────────────────────────────────────────────────
+    // Controlla se il deposito è già presente on-chain PRIMA di richiedere una
+    // nuova firma. Evita il doppio-prompt su WalletConnect quando una richiesta
+    // precedente (stale relay) è ancora in coda nel wallet dell'utente.
+    try {
+      await apiPaymentDetectDeposit(args.transferId);
+      // Deposito già rilevato — nessuna firma necessaria.
+      setPhase("done");
+      return;
+    } catch {
+      // Deposito non ancora presente — procediamo con la firma.
+    }
+
     let pollAborted  = false;
     let signErrorMsg: string | null = null;
 
@@ -281,6 +294,12 @@ export function SendPaymentSheet({
         // Reject esplicito dell'utente → interrompe subito il polling.
         pollAborted  = true;
         signErrorMsg = "Hai annullato la firma nel wallet.";
+      } else if (/nonce.*too.*low|nonce.*used|nonce.*already/i.test(msg)) {
+        // "nonce too low" significa che una tx con lo stesso nonce è già stata
+        // inviata e confermata (es. la richiesta stale del WalletConnect relay
+        // dalla prima firma). NON è un errore critico: il deposito sarà rilevato
+        // dal polling. NON settiamo signErrorMsg per evitare l'abort del polling.
+        console.warn("[SendPayment] Nonce already used — tx precedente già on-chain, continuo il polling.");
       } else {
         // Altri errori: la tx POTREBBE essere stata comunque trasmessa (relay/
         // deep-link). Conserviamo il messaggio umano: se dopo una breve grace il
