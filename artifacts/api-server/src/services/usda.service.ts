@@ -24,6 +24,8 @@ import { logger } from "../lib/logger";
 import { MockUsdaAdapter, setMockStatusChangeCallback } from "../usda/mock-usda.adapter";
 import type { UsdaAdapter, UsdaPaymentStatus } from "../usda/usda-adapter.interface";
 import type { IUsdaPaymentDocument } from "../models/usda-payment.model";
+import { ChatTransferModel, type ChatTransferDocument } from "../models/chat-transfer.model";
+import type { ChatTransferStatus } from "../payment/state-machine";
 import { balanceOfUsda } from "../usda/polygon-rpc";
 
 // ---------------------------------------------------------------------------
@@ -698,17 +700,146 @@ export async function getPayment(
   return _formatPayment(doc);
 }
 
+type HistoryType = "sent" | "received" | "pending" | "claimed" | "refunded" | undefined;
+
+// Stati "in volo" del Chat Payment Engine (deposito/rilascio/rimborso in corso).
+const CHAT_TX_PENDING_STATES: ChatTransferStatus[] = [
+  "awaiting_deposit", "pending", "accepting", "rejecting", "cancelling", "refunding",
+];
+// Stati terminali in cui i fondi tornano al mittente (rimborso, a qualsiasi titolo).
+const CHAT_TX_REFUND_STATES: ChatTransferStatus[] = [
+  "rejected", "cancelled", "expired", "refunded",
+];
+
+/**
+ * Mappa un chat_transfer sul formato dello storico USDA (stesso shape di
+ * _formatPayment) così che il frontend possa renderizzarlo senza modifiche.
+ * Lo stato viene tradotto nel vocabolario UsdaPaymentStatus (label/icone già
+ * esistenti) ed è relativo al punto di vista dell'utente corrente.
+ */
+function _formatChatTransfer(
+  t: ChatTransferDocument,
+  userId: mongoose.Types.ObjectId,
+): Record<string, unknown> {
+  const isRecipient = t.recipient_id.toString() === userId.toString();
+
+  let status: UsdaPaymentStatus;
+  if (t.status === "accepted") {
+    // Fondi rilasciati al destinatario: per lui è "riscosso", per il mittente "confermato".
+    status = isRecipient ? "claimed" : "confirmed";
+  } else if (CHAT_TX_REFUND_STATES.includes(t.status)) {
+    status = "refunded";
+  } else if (t.status === "failed") {
+    status = "failed";
+  } else {
+    status = "pending";
+  }
+
+  const txHash = t.tx_hash_release ?? t.tx_hash_deposit ?? null;
+
+  return {
+    payment_id:          `ct_${t.transfer_id}`,
+    kind:                isRecipient ? "receipt" : "send",
+    status,
+    amount:              t.amount.toString(),
+    fee:                 t.fee?.toString() ?? "0",
+    note:                t.note ?? null,
+    sender_id:           t.sender_id.toString(),
+    recipient_id:        t.recipient_id.toString(),
+    conversation_id:     t.conversation_id.toString(),
+    message_id:          t.message_id?.toString() ?? null,
+    tx_hash:             txHash,
+    external_payment_id: null,
+    share_link:          null,
+    claim_expires_at:    null,
+    claimed_at:          t.status === "accepted" ? (t.completed_at?.toISOString() ?? null) : null,
+    refunded_at:         CHAT_TX_REFUND_STATES.includes(t.status) ? (t.completed_at?.toISOString() ?? null) : null,
+    created_at:          t.createdAt.toISOString(),
+    updated_at:          t.updatedAt.toISOString(),
+    source:              "chat_transfer",
+  };
+}
+
+/** Recupera e filtra i chat_transfer dell'utente secondo la stessa semantica dei filtri legacy. */
+async function _chatTransferHistory(
+  userId: mongoose.Types.ObjectId,
+  type: HistoryType,
+): Promise<Record<string, unknown>[]> {
+  const query: Record<string, unknown> = {};
+
+  if (type === "sent") {
+    query.sender_id = userId;
+  } else if (type === "received") {
+    query.recipient_id = userId;
+  } else if (type === "pending") {
+    query.$or    = [{ sender_id: userId }, { recipient_id: userId }];
+    query.status = { $in: CHAT_TX_PENDING_STATES };
+  } else if (type === "claimed") {
+    query.recipient_id = userId;
+    query.status       = "accepted";
+  } else if (type === "refunded") {
+    query.sender_id = userId;
+    query.status    = { $in: CHAT_TX_REFUND_STATES };
+  } else {
+    query.$or = [{ sender_id: userId }, { recipient_id: userId }];
+  }
+
+  const docs = await ChatTransferModel.find(query).sort({ createdAt: -1 }).limit(200);
+  return docs.map((d) => _formatChatTransfer(d, userId));
+}
+
+/**
+ * Storico unificato: unisce i pagamenti legacy (usda_payments / getusda) e i
+ * trasferimenti del Chat Payment Engine (chat_transfer), applicando gli stessi
+ * filtri, ordinando per data desc e arricchendo i nomi delle controparti.
+ */
 export async function getHistory(
   userId: string,
   filters: { type?: string; limit?: number; skip?: number },
 ): Promise<{ payments: Record<string, unknown>[]; total: number }> {
-  const { payments, total } = await paymentRepo.findByUser(
-    new mongoose.Types.ObjectId(userId),
-    {
-      kind:  filters.type as "sent" | "received" | "pending" | "claimed" | "refunded" | undefined,
-      limit: filters.limit,
-      skip:  filters.skip,
-    },
+  const uid  = new mongoose.Types.ObjectId(userId);
+  const type = filters.type as HistoryType;
+
+  // Fonte 1 — legacy usda_payments (senza paginazione: unione + slice a valle).
+  const { payments: legacyDocs } = await paymentRepo.findByUser(uid, {
+    kind:  type,
+    limit: 200,
+    skip:  0,
+  });
+  const legacy = legacyDocs.map(_formatPayment);
+
+  // Fonte 2 — Chat Payment Engine.
+  const chat = await _chatTransferHistory(uid, type);
+
+  // Unione + ordinamento per data desc.
+  const merged = [...legacy, ...chat].sort((a, b) =>
+    String(b.created_at ?? "").localeCompare(String(a.created_at ?? "")),
   );
-  return { payments: payments.map(_formatPayment), total };
+
+  const total = merged.length;
+  const skip  = filters.skip  ?? 0;
+  const limit = filters.limit ?? 20;
+  const page  = merged.slice(skip, skip + limit);
+
+  // Arricchimento nomi controparti (batch unico su UserModel).
+  const ids = new Set<string>();
+  for (const p of page) {
+    ids.add(String(p.sender_id));
+    ids.add(String(p.recipient_id));
+  }
+  const users = await UserModel
+    .find({ _id: { $in: [...ids].map((id) => new mongoose.Types.ObjectId(id)) } })
+    .select("_id display_name username")
+    .lean() as { _id: mongoose.Types.ObjectId; display_name?: string; username?: string }[];
+  const nameById = new Map<string, string>();
+  for (const u of users) nameById.set(u._id.toString(), u.display_name ?? u.username ?? "");
+
+  for (const p of page) {
+    const sName = nameById.get(String(p.sender_id));
+    const rName = nameById.get(String(p.recipient_id));
+    if (sName) p.sender_name    = sName;
+    if (rName) p.recipient_name = rName;
+  }
+
+  return { payments: page, total };
 }

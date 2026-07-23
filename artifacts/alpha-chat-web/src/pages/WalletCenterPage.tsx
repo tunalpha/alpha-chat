@@ -197,7 +197,7 @@ export default function WalletCenterPage({ onBack }: Props) {
             {backendInfo.network.split(" ").slice(-1)[0]} · v{backendInfo.version}
           </span>
         )}
-        <button type="button" className="wc-close-btn" aria-label="Chiudi Wallet Center" onClick={onBack} onPointerUp={(e) => { e.stopPropagation(); onBack(); }}>
+        <button type="button" className="wc-close-btn" aria-label="Chiudi Wallet Center" onClick={onBack}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="20" height="20" aria-hidden="true">
             <line x1="18" y1="6" x2="6" y2="18"/>
             <line x1="6" y1="6" x2="18" y2="18"/>
@@ -381,7 +381,15 @@ export default function WalletCenterPage({ onBack }: Props) {
                 key={p.payment_id} type="button" role="listitem"
                 className="usda-history-item"
                 aria-label={`${p.kind === "request" ? "Richiesta" : "Pagamento"} di ${p.amount} USDA — ${USDA_STATUS_LABELS[p.status]}`}
-                onClick={() => setDetailId(p.payment_id)}
+                onClick={() => {
+                  // I transfer del Chat Payment Engine (id "ct_…") non hanno una
+                  // scheda dettaglio legacy: se c'è un hash apri PolygonScan.
+                  if (p.payment_id.startsWith("ct_")) {
+                    if (p.tx_hash) window.open(`https://polygonscan.com/tx/${p.tx_hash}`, "_blank", "noopener");
+                    return;
+                  }
+                  setDetailId(p.payment_id);
+                }}
               >
                 <div className="usda-history-icon" aria-hidden="true">{p.kind === "request" ? "💸" : "💰"}</div>
                 <div className="usda-history-info">
