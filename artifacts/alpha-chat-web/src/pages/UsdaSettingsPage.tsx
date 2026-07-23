@@ -222,19 +222,24 @@ function ManualAddDialog({ address, onClose }: { address: string; onClose: () =>
           <li>Symbol e decimali si compilano automaticamente → conferma</li>
         </ol>
 
-        {/* Indirizzo contratto + copia */}
+        {/* Indirizzo contratto + copia inline */}
         <div className="mad-addr-row">
-          <span className="mad-addr-label">Contract Address</span>
-          <span className="mad-addr-value">{shortAddr}</span>
+          <div className="mad-addr-text">
+            <span className="mad-addr-label">Contract Address</span>
+            <span className="mad-addr-value">{shortAddr}</span>
+          </div>
+          <button
+            type="button"
+            className={`mad-copy-inline${copied ? " mad-copy-inline--done" : ""}`}
+            onClick={copyAddr}
+            aria-label="Copia indirizzo contratto"
+          >
+            {copied ? "✅" : "📋"}
+          </button>
         </div>
-        <button
-          type="button"
-          className={`mad-copy-btn${copied ? " mad-copy-btn--done" : ""}`}
-          onClick={copyAddr}
-          aria-label="Copia indirizzo contratto"
-        >
-          {copied ? "✅ Indirizzo copiato!" : "📋 Copia indirizzo contratto"}
-        </button>
+        {copied && (
+          <p className="mad-copied-hint" aria-live="polite">✓ Indirizzo copiato negli appunti</p>
+        )}
 
         {/* Dettagli token — tutte le info in un'unica schermata */}
         <div className="mad-meta">
