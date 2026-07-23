@@ -436,8 +436,8 @@ function ChatInput({
       <button
         type="button"
         className="input-icon-btn"
-        aria-label="Allega file"
-        title="Allega foto, video o documento"
+        aria-label={t("chat.attachShare")}
+        title={t("chat.attachShare")}
         disabled={disabled}
         onClick={() => onAttachMenu ? onAttachMenu() : localFileRef.current?.click()}
       >
