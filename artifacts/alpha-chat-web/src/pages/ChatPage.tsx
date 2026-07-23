@@ -1644,6 +1644,11 @@ export default function ChatPage({ onNavigate }: Props) {
         const updated = await apiEditMessage(activeConvId, editingMessage.id, text, signal);
         // Aggiorna il testo decifrato nello state (conosciamo il plaintext)
         setDecryptedTexts((prev) => new Map(prev).set(updated.id, text));
+        // FIX: aggiorna anche i cache (sentCacheRef + localStorage) con il nuovo testo
+        // così quando l'evento WS message.edited chiama decryptSingleMsg, trova il testo
+        // aggiornato invece di quello originale (che sovrascriveva il nuovo testo nello state).
+        sentCacheRef.current.set(editingMessage.client_message_id ?? updated.id, text);
+        cacheOwnTextByServerId(updated.id, text);
         setMessages((prev) => prev.map((m) =>
           m.id === updated.id
             ? { ...m, ciphertext: updated.ciphertext, edited_at: updated.edited_at }
