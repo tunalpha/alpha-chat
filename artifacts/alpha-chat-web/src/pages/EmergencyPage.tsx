@@ -160,6 +160,15 @@ export default function EmergencyPage() {
       <div className="emergency-card">
         {/* Header */}
         <div className="emergency-header">
+          <button
+            className="emergency-close-btn"
+            onClick={() => window.history.length > 1 ? window.history.back() : (window.location.href = "/")}
+            aria-label="Chiudi"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="20" height="20">
+              <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+            </svg>
+          </button>
           <div className="emergency-logo">α</div>
           <div className="emergency-brand">Alpha Chat</div>
           <div className="emergency-tagline">PORTALE DI EMERGENZA</div>

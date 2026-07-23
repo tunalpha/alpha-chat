@@ -3258,11 +3258,21 @@ html.emergency-open #root {
   overflow: hidden;
 }
 .emergency-header {
+  position: relative;
   background: linear-gradient(135deg, rgba(109,40,217,0.3), rgba(192,38,211,0.15));
   padding: 32px 24px 24px;
   text-align: center;
   border-bottom: 1px solid rgba(255,255,255,0.06);
 }
+.emergency-close-btn {
+  position: absolute; top: 14px; right: 14px;
+  background: rgba(255,255,255,0.08); border: none;
+  border-radius: 50%; width: 36px; height: 36px;
+  display: flex; align-items: center; justify-content: center;
+  color: rgba(255,255,255,0.7); cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+.emergency-close-btn:hover { background: rgba(255,255,255,0.15); color: #fff; }
 .emergency-logo {
   font-size: 48px;
   font-weight: 900;
