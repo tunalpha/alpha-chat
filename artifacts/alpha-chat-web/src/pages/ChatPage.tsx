@@ -32,6 +32,7 @@ import {
   apiGetKeyBundle,
   apiGetGroup,
   apiSignalAudit,
+  apiFetchAndDecryptMediaBlob,
   decodeMessage,
   decodeVoiceMeta,
   decodeMediaMeta,
@@ -1831,6 +1832,36 @@ export default function ChatPage({ onNavigate }: Props) {
     }
   }
 
+  /** Condividi un messaggio media (foto/video/documento) via share sheet nativo */
+  async function handleShareMedia(msg: MessageItem) {
+    const meta = decodeMediaMeta(getDisplayText(msg));
+    if (!meta || meta.type === "voice") { showToast("Condivisione non disponibile per i vocali"); return; }
+    if (!meta.key || !meta.iv) { showToast("Chiavi di cifratura non disponibili"); return; }
+    showToast("Preparazione file…");
+    try {
+      const objectUrl = await apiFetchAndDecryptMediaBlob(meta.media_id, meta.key, meta.iv);
+      const res        = await fetch(objectUrl);
+      const blob       = await res.blob();
+      URL.revokeObjectURL(objectUrl);
+      const ext      = meta.mime_type?.split("/")[1] ?? "bin";
+      const filename = meta.filename ?? `media.${ext}`;
+      const file     = new File([blob], filename, { type: meta.mime_type ?? blob.type });
+      const nav = navigator as Navigator & {
+        share?: (d: ShareData) => Promise<void>;
+        canShare?: (d: ShareData) => boolean;
+      };
+      if (nav.share && nav.canShare?.({ files: [file] })) {
+        await nav.share({ files: [file], title: filename });
+      } else if (nav.share) {
+        await nav.share({ text: filename });
+      } else {
+        showToast("Condivisione non supportata su questo browser");
+      }
+    } catch (e) {
+      if ((e as Error).name !== "AbortError") showToast("Errore durante la condivisione");
+    }
+  }
+
   async function handleDeleteSelected() {
     const toDelete = messages.filter((m) => selectedMsgIds.has(m.id));
     exitSelectMode();
@@ -3232,13 +3263,24 @@ export default function ChatPage({ onNavigate }: Props) {
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14"><circle cx="12" cy="12" r="10"/><polyline points="9 12 11 14 15 10"/></svg>
               Seleziona
             </button>
-            {/* Condividi — solo messaggi testo */}
-            {(contextMenu.msg.message_type === "text" || contextMenu.msg.message_type === "forward") && getDisplayText(contextMenu.msg) && (
+            {/* Condividi — testo, forward, media (foto/video/documento) */}
+            {(contextMenu.msg.message_type === "text" || contextMenu.msg.message_type === "forward")
+              && getDisplayText(contextMenu.msg) && (
               <button className="ctx-item" onClick={ctxAction(() => { void handleShare([contextMenu.msg]); closeContextMenu(); })}>
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
                 Condividi
               </button>
             )}
+            {contextMenu.msg.message_type === "media" && (() => {
+              const mm = decodeMediaMeta(getDisplayText(contextMenu.msg));
+              if (!mm || mm.type === "voice") return null;
+              return (
+                <button className="ctx-item" onClick={ctxAction(() => { void handleShareMedia(contextMenu.msg); closeContextMenu(); })}>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg>
+                  Condividi
+                </button>
+              );
+            })()}
             <button className="ctx-item" onClick={ctxAction(() => { setReplyTo(contextMenu.msg); closeContextMenu(); })}>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14"><polyline points="9 17 4 12 9 7"/><path d="M20 18v-2a4 4 0 0 0-4-4H4"/></svg>
               Rispondi
