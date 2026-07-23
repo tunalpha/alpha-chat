@@ -190,6 +190,67 @@ const GUIDE_STEPS = [
   { icon: "💸", title: "Invia e ricevi in chat",    desc: "Usa il tasto 💸 in qualsiasi conversazione per inviare o richiedere USDA." },
 ];
 
+// ── ManualAddDialog ───────────────────────────────────────────────────────────
+
+function ManualAddDialog({ address, onClose }: { address: string; onClose: () => void }) {
+  const [copied, setCopied] = useState(false);
+  function copyAddr() {
+    void navigator.clipboard.writeText(address).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2500);
+    });
+  }
+  function onBackdrop(e: React.MouseEvent) {
+    if ((e.target as HTMLElement).classList.contains("mad-backdrop")) onClose();
+  }
+  const shortAddr = `${address.slice(0, 8)}…${address.slice(-6)}`;
+
+  return (
+    <div className="mad-backdrop" role="dialog" aria-modal="true" aria-label="Come aggiungere USDA" onClick={onBackdrop}>
+      <div className="mad-sheet">
+        <button type="button" className="mad-close" aria-label="Chiudi" onClick={onClose}>✕</button>
+
+        <div className="mad-emoji" aria-hidden="true">🪙</div>
+        <h2 className="mad-title">Aggiungi USDA al wallet</h2>
+        <p className="mad-subtitle">Segui questi passi nel tuo wallet preferito:</p>
+
+        <ol className="mad-steps">
+          <li><strong>Apri Trust Wallet</strong> (o MetaMask) e vai alla sezione <em>Token</em></li>
+          <li>Tocca <strong>Aggiungi token personalizzato</strong></li>
+          <li>Seleziona la rete <strong>Polygon</strong></li>
+          <li>Incolla l'indirizzo del contratto qui sotto</li>
+          <li>Symbol e decimali si compilano automaticamente → conferma</li>
+        </ol>
+
+        <div className="mad-addr-row">
+          <span className="mad-addr-label">Contract Address</span>
+          <button type="button" className="mad-addr-copy" onClick={copyAddr} aria-label="Copia indirizzo contratto">
+            <span className="mad-addr-value">{shortAddr}</span>
+            <span className="mad-addr-icon">{copied ? "✓" : "⎘"}</span>
+          </button>
+        </div>
+        {copied && <p className="mad-copied" aria-live="polite">✓ Indirizzo copiato!</p>}
+
+        <div className="mad-meta">
+          <span>Symbol: <strong>USDA</strong></span>
+          <span>Decimals: <strong>18</strong></span>
+          <span>Rete: <strong>Polygon</strong></span>
+        </div>
+
+        <a
+          href={`https://polygonscan.com/token/${address}`}
+          target="_blank" rel="noopener noreferrer"
+          className="mad-link"
+        >
+          🔗 Contratto su PolygonScan
+        </a>
+
+        <button type="button" className="mad-btn-ok" onClick={onClose}>Fatto ✓</button>
+      </div>
+    </div>
+  );
+}
+
 // ── Tipi ─────────────────────────────────────────────────────────────────────
 
 interface Props {
@@ -229,9 +290,10 @@ export default function UsdaSettingsPage({ onBack }: Props) {
     })();
   }, [address]);
 
-  const [copied,      setCopied]      = useState<string | null>(null);
-  const [watchStatus, setWatchStatus] = useState<"idle" | "loading" | "ok" | "err">("idle");
+  const [copied,         setCopied]         = useState<string | null>(null);
+  const [watchStatus,    setWatchStatus]    = useState<"idle" | "loading" | "ok" | "err">("idle");
   const [showHowItWorks, setShowHowItWorks] = useState(false);
+  const [showManualAdd,  setShowManualAdd]  = useState(false);
 
   // ── Copy helpers ──────────────────────────────────────────────────────────
   const copy = useCallback((key: string, value: string) => {
@@ -243,29 +305,68 @@ export default function UsdaSettingsPage({ onBack }: Props) {
 
 
   // ── wallet_watchAsset ─────────────────────────────────────────────────────
+  // Strategia a 3 livelli:
+  //  1. account.watchAsset() — API nativa ThirdWeb v5, passa per WalletConnect
+  //     → Trust Wallet su iOS riceve il popup nativo nell'app
+  //  2. window.ethereum.request() — MetaMask extension / browser Trust/MM mobile
+  //  3. Fallback manuale → dialog con istruzioni passo-passo + indirizzo copiabile
   async function handleAddToken() {
+    // Se non connesso → mostra subito le istruzioni manuali, non caricare
+    if (!isConnected) {
+      setShowManualAdd(true);
+      return;
+    }
+
     setWatchStatus("loading");
+
+    const watchAssetArg = {
+      type:    "ERC20" as const,
+      options: {
+        address:  USDA_CONTRACT_ADDRESS as `0x${string}`,
+        symbol:   USDA_SYMBOL,
+        decimals: USDA_DECIMALS,
+        image:    USDA_LOGO,
+      },
+    };
+
+    // Livello 1 — ThirdWeb v5 account.watchAsset (→ WC → Trust Wallet iOS popup nativo)
+    if (account?.watchAsset) {
+      try {
+        await account.watchAsset(watchAssetArg);
+        setWatchStatus("ok");
+        setTimeout(() => setWatchStatus("idle"), 3000);
+        return;
+      } catch {
+        // Utente ha rifiutato → errore, senza ulteriori fallback
+        setWatchStatus("err");
+        setTimeout(() => setWatchStatus("idle"), 3000);
+        return;
+      }
+    }
+
+    // Livello 2 — window.ethereum (MetaMask extension / browser interno Trust/MM)
     try {
-      const eth = (window as unknown as { ethereum?: { request: (args: { method: string; params?: unknown }) => Promise<unknown> } }).ethereum;
-      if (!eth) throw new Error("no provider");
-      await eth.request({
-        method: "wallet_watchAsset",
-        params: {
-          type: "ERC20",
-          options: {
-            address:  USDA_CONTRACT_ADDRESS,
-            symbol:   USDA_SYMBOL,
-            decimals: USDA_DECIMALS,
-            image:    USDA_LOGO,
-          },
-        },
-      });
-      setWatchStatus("ok");
-      setTimeout(() => setWatchStatus("idle"), 3000);
+      const eth = (window as unknown as {
+        ethereum?: { request: (args: { method: string; params?: unknown }) => Promise<unknown> };
+      }).ethereum;
+      if (eth?.request) {
+        await eth.request({
+          method: "wallet_watchAsset",
+          params: { type: "ERC20", options: watchAssetArg.options },
+        });
+        setWatchStatus("ok");
+        setTimeout(() => setWatchStatus("idle"), 3000);
+        return;
+      }
     } catch {
       setWatchStatus("err");
       setTimeout(() => setWatchStatus("idle"), 3000);
+      return;
     }
+
+    // Livello 3 — nessun provider disponibile → istruzioni manuali
+    setWatchStatus("idle");
+    setShowManualAdd(true);
   }
 
   // ── Abbrev indirizzo ──────────────────────────────────────────────────────
@@ -431,19 +532,15 @@ export default function UsdaSettingsPage({ onBack }: Props) {
             <button
               type="button"
               className="ups-btn-primary"
-              disabled={watchStatus === "loading" || !isConnected}
+              disabled={watchStatus === "loading"}
               onClick={handleAddToken}
               aria-busy={watchStatus === "loading"}
-              title={!isConnected ? "Connetti il wallet prima" : undefined}
             >
               {watchStatus === "loading" && <><span className="usda-btn-spinner" aria-hidden="true" /> Aggiunta…</>}
               {watchStatus === "ok"      && "✅ Token aggiunto con successo!"}
               {watchStatus === "err"     && "⚠️ Riprova — apri il wallet e accetta"}
-              {watchStatus === "idle"    && "➕ Aggiungi USDA al Wallet"}
+              {watchStatus === "idle"    && (isConnected ? "➕ Aggiungi USDA al Wallet" : "📋 Come aggiungere USDA al wallet")}
             </button>
-            {!isConnected && watchStatus === "idle" && (
-              <p className="ups-inline-hint">Connetti il wallet per aggiungere il token automaticamente.</p>
-            )}
           </div>
         </section>
 
@@ -506,6 +603,14 @@ export default function UsdaSettingsPage({ onBack }: Props) {
 
       {/* ── How It Works Dialog ─────────────────────────────────────────── */}
       {showHowItWorks && <HowItWorksDialog onClose={() => setShowHowItWorks(false)} />}
+
+      {/* ── Manual Add Token Dialog ──────────────────────────────────────── */}
+      {showManualAdd && (
+        <ManualAddDialog
+          address={USDA_CONTRACT_ADDRESS}
+          onClose={() => setShowManualAdd(false)}
+        />
+      )}
     </div>
   );
 }

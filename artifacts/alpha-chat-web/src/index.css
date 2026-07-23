@@ -6782,6 +6782,31 @@ html.emergency-open #root {
 }
 .hiw-btn-primary:active { filter: brightness(0.88); }
 
+/* ─── ManualAddDialog (.mad-*) ─────────────────────────────────────────────── */
+.mad-backdrop { position:fixed; inset:0; background:rgba(0,0,0,0.6); backdrop-filter:blur(4px); display:flex; align-items:flex-end; justify-content:center; z-index:9999; }
+.mad-sheet { background:var(--bg-2); border-radius:24px 24px 0 0; padding:28px 20px 40px; width:100%; max-width:480px; position:relative; display:flex; flex-direction:column; gap:14px; max-height:92dvh; overflow-y:auto; }
+.mad-close { position:absolute; top:14px; right:14px; background:rgba(255,255,255,0.07); border:none; color:var(--text-2); width:32px; height:32px; border-radius:50%; font-size:14px; cursor:pointer; display:flex; align-items:center; justify-content:center; }
+.mad-close:active { background:rgba(255,255,255,0.15); }
+.mad-emoji { font-size:36px; text-align:center; }
+.mad-title { font-size:18px; font-weight:700; color:var(--text-1); text-align:center; margin:0; }
+.mad-subtitle { font-size:13px; color:var(--text-3); text-align:center; margin:0; }
+.mad-steps { margin:0; padding-left:20px; display:flex; flex-direction:column; gap:8px; }
+.mad-steps li { font-size:13px; color:var(--text-2); line-height:1.5; }
+.mad-steps strong { color:var(--text-1); }
+.mad-addr-row { display:flex; flex-direction:column; gap:6px; background:var(--bg-3); border-radius:12px; padding:12px 14px; }
+.mad-addr-label { font-size:11px; color:var(--text-3); text-transform:uppercase; letter-spacing:.05em; }
+.mad-addr-copy { display:flex; align-items:center; justify-content:space-between; background:none; border:none; cursor:pointer; padding:0; gap:8px; width:100%; }
+.mad-addr-value { font-size:13px; font-family:monospace; color:var(--accent); word-break:break-all; text-align:left; }
+.mad-addr-icon { font-size:16px; color:var(--text-3); flex-shrink:0; }
+.mad-copied { font-size:12px; color:#22c55e; text-align:center; margin:0; }
+.mad-meta { display:flex; gap:12px; flex-wrap:wrap; justify-content:center; }
+.mad-meta span { font-size:12px; color:var(--text-3); background:var(--bg-3); border-radius:8px; padding:4px 10px; }
+.mad-meta strong { color:var(--text-1); }
+.mad-link { font-size:13px; color:var(--accent); text-align:center; text-decoration:none; padding:8px 0; }
+.mad-link:hover { text-decoration:underline; }
+.mad-btn-ok { background:var(--accent); color:#fff; border:none; border-radius:14px; padding:14px; font-size:15px; font-weight:600; cursor:pointer; margin-top:4px; }
+.mad-btn-ok:active { filter:brightness(0.88); }
+
 /* ══════════════════════════════════════════════════════════════════════════════
    UsdaWalletCard (.uwc-*) — card "👛 Wallet USDA" nel profilo utente
    ══════════════════════════════════════════════════════════════════════════════ */
