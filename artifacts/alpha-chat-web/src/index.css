@@ -5368,6 +5368,18 @@ html.emergency-open #root {
 .acs-reconnecting-label { color: #fff; font-size: 1rem; font-weight: 600; }
 
 /* Bottom section della schermata chiamata (shield bar + controlli, flex column) */
+/* ── Wrapper nascondibile (tap-to-hide in video mode) ─ */
+.acs-ui-overlay {
+  position: absolute; inset: 0;
+  display: contents; /* non altera il layout dei figli */
+  pointer-events: auto;
+  transition: opacity 0.35s ease;
+}
+.acs-ui-overlay.acs-ui-hidden {
+  opacity: 0;
+  pointer-events: none; /* i tap passano attraverso al video */
+}
+
 .acs-bottom {
   position: absolute; bottom: 0; left: 0; right: 0;
   display: flex; flex-direction: column; align-items: center; gap: 14px;

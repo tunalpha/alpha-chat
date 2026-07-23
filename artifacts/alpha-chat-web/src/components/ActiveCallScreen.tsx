@@ -65,12 +65,15 @@ export default function ActiveCallScreen() {
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
   const localVideoRef  = useRef<HTMLVideoElement>(null);
 
-  const [quality, setQuality]       = useState<Quality>(null);
-  const [showStats, setShowStats]   = useState(false);
-  const [stats, setStats]           = useState<DetailedStats | null>(null);
-  const [connType, setConnType]     = useState<string>("P2P");
-  const [showMenu, setShowMenu]     = useState(false);
-  const [showVerify, setShowVerify] = useState(false);
+  const [quality, setQuality]           = useState<Quality>(null);
+  const [showStats, setShowStats]       = useState(false);
+  const [stats, setStats]               = useState<DetailedStats | null>(null);
+  const [connType, setConnType]         = useState<string>("P2P");
+  const [showMenu, setShowMenu]         = useState(false);
+  const [showVerify, setShowVerify]     = useState(false);
+  // Tap-to-hide UI (solo video mode)
+  const [controlsVisible, setControlsVisible] = useState(true);
+  const autoHideTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── PiP drag ────────────────────────────────────────────────────────────
   const PIP_W = 100;
@@ -206,6 +209,43 @@ export default function ActiveCallScreen() {
     return () => clearInterval(id);
   }, [callState, showStats, sampleStats]);
 
+  // ── Tap-to-hide controls (video only) ──────────────────────────────────
+  const AUTOHIDE_MS = 4000;
+
+  function scheduleAutoHide(isVid: boolean) {
+    if (!isVid) return;
+    if (autoHideTimerRef.current) clearTimeout(autoHideTimerRef.current);
+    autoHideTimerRef.current = setTimeout(() => {
+      setControlsVisible(false);
+    }, AUTOHIDE_MS);
+  }
+
+  // Auto-hide iniziale quando la chiamata video diventa attiva
+  useEffect(() => {
+    if (callType === "video" && callState === "active") {
+      scheduleAutoHide(true);
+    }
+    return () => {
+      if (autoHideTimerRef.current) clearTimeout(autoHideTimerRef.current);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [callType, callState]);
+
+  function handleScreenTap() {
+    if (callType !== "video") return;
+    setControlsVisible((v) => {
+      const next = !v;
+      if (next) scheduleAutoHide(true);
+      else if (autoHideTimerRef.current) { clearTimeout(autoHideTimerRef.current); autoHideTimerRef.current = null; }
+      return next;
+    });
+  }
+
+  function handleControlsInteract(e: React.SyntheticEvent) {
+    e.stopPropagation(); // non far risalire il tap allo schermo
+    scheduleAutoHide(callType === "video"); // reset timer
+  }
+
   if (callState !== "active" && callState !== "calling") return null;
 
   const isVideo      = callType === "video";
@@ -214,7 +254,10 @@ export default function ActiveCallScreen() {
 
   return (
     <>
-      <div className={`acs-overlay${isVideo ? " acs-video-mode" : ""}`}>
+      <div
+        className={`acs-overlay${isVideo ? " acs-video-mode" : ""}`}
+        onClick={isVideo ? handleScreenTap : undefined}
+      >
         {/* Audio remoto gestito da lib/remoteAudio (singleton, primato nel gesture iOS) */}
 
         {/* ── Video remoto (altoparlante / video call) ─ */}
@@ -244,6 +287,12 @@ export default function ActiveCallScreen() {
             <span className="acs-reconnecting-label">Riconnessione…</span>
           </div>
         )}
+
+        {/* ── Wrapper UI nascondibile (tap-to-hide, solo video mode) ─ */}
+        <div
+          className={`acs-ui-overlay${isVideo && !controlsVisible ? " acs-ui-hidden" : ""}`}
+          onClick={handleControlsInteract}
+        >
 
         {/* ── Info: nome, stato, qualità ─ */}
         <div className="acs-info">
@@ -386,6 +435,8 @@ export default function ActiveCallScreen() {
           </button>
         </div>{/* fine acs-controls */}
         </div>{/* fine acs-bottom */}
+
+        </div>{/* fine acs-ui-overlay */}
       </div>
 
       {/* ── CallVerifyModal (portato fuori dall'overlay per z-index corretto) ─ */}
