@@ -69,7 +69,8 @@ import {
   getTextByClientId,
   getTextByServerId,
 } from "../lib/media-cache";
-import VoiceRecorder, { type VoiceBlob } from "../components/VoiceRecorder";
+import { type VoiceBlob } from "../hooks/useVoiceRecorder";
+import VoiceHoldRecorder from "../components/VoiceHoldRecorder";
 import { attachAudioUnlockListener, playNotifSound, unlockNotifAudio } from "../lib/notifSound";
 import { primeRemoteAudio } from "../lib/remoteAudio";
 import VoiceMessage from "../components/VoiceMessage";
@@ -353,7 +354,8 @@ function ChatInput({
   value,
   onChange,
   onSubmit,
-  onVoiceStart,
+  onVoiceSend,
+  onRecordingChange,
   onAttach,
   onAttachMenu,
   disabled,
@@ -363,7 +365,8 @@ function ChatInput({
   value: string;
   onChange: (e: React.ChangeEvent<HTMLTextAreaElement>) => void;
   onSubmit: (e: React.FormEvent) => void;
-  onVoiceStart: () => void;
+  onVoiceSend: (voice: VoiceBlob) => void;
+  onRecordingChange: (active: boolean) => void;
   onAttach?: (files: FileList) => void;
   /** Quando fornito, il pulsante 📎 apre il menu allegati invece del file picker diretto */
   onAttachMenu?: () => void;
@@ -371,9 +374,19 @@ function ChatInput({
   burnAfterRead?: boolean;
   onToggleBurn?: () => void;
 }) {
+  const { t } = useTranslation();
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const localFileRef = useRef<HTMLInputElement>(null);
   const hasText = value.trim().length > 0;
+  const [showHoldHint, setShowHoldHint] = useState(false);
+  const holdHintTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  function flashHoldHint() {
+    setShowHoldHint(true);
+    if (holdHintTimerRef.current) clearTimeout(holdHintTimerRef.current);
+    holdHintTimerRef.current = setTimeout(() => setShowHoldHint(false), 1800);
+  }
+  useEffect(() => () => { if (holdHintTimerRef.current) clearTimeout(holdHintTimerRef.current); }, []);
 
   // Auto-resize textarea up to 6 lines
   useEffect(() => {
@@ -453,12 +466,16 @@ function ChatInput({
           </svg>
         </button>
       ) : (
-        <button type="button" className="send-btn mic-btn" onClick={onVoiceStart} disabled={disabled} aria-label="Messaggio vocale">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" width="20" height="20">
-            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
-            <path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/>
-          </svg>
-        </button>
+        <VoiceHoldRecorder
+          onSend={onVoiceSend}
+          onRecordingChange={onRecordingChange}
+          onTapHint={flashHoldHint}
+          disabled={disabled}
+        />
+      )}
+
+      {showHoldHint && (
+        <div className="voice-hold-hint" role="status">{t("chat.holdToRecord")}</div>
       )}
     </form>
   );
@@ -649,8 +666,9 @@ export default function ChatPage({ onNavigate }: Props) {
   const [destroyingIds, setDestroyingIds] = useState<Set<string>>(new Set());
   const [destroying, setDestroying] = useState(false);
   // voice recorder
-  const [showVoiceRecorder, setShowVoiceRecorder] = useState(false);
   const [typingUsers, setTypingUsers] = useState<Record<string, Set<string>>>({});
+  // Utenti che stanno registrando un vocale (per-conversazione) — presenza real-time
+  const [recordingUsers, setRecordingUsers] = useState<Record<string, Set<string>>>({});
   const [atBottom, setAtBottom] = useState(true);
   // Sprint 21 — Gruppi
   const [showCreateGroup, setShowCreateGroup] = useState(false);
@@ -716,6 +734,9 @@ export default function ChatPage({ onNavigate }: Props) {
   const messagesContainerRef = useRef<HTMLDivElement>(null);
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isTypingRef = useRef(false);
+  // Keep-alive presenza "sta registrando" (il server auto-stoppa typing a 5s)
+  const recordingKeepAliveRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const recordingActiveConvRef = useRef<string | null>(null);
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const ctxOpenedAtRef = useRef<number>(0); // ghost-click guard
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -1177,8 +1198,17 @@ export default function ChatPage({ onNavigate }: Props) {
   // il pallino di scrittura rimarrebbe bloccato. Azzera tutti i typing
   // indicator quando la connessione cade.
   useEffect(() => {
-    if (!connected) setTypingUsers({});
+    if (!connected) { setTypingUsers({}); setRecordingUsers({}); }
   }, [connected]);
+
+  // Ferma il keep-alive presenza registrazione all'unmount / cambio conversazione
+  useEffect(() => {
+    return () => {
+      if (recordingKeepAliveRef.current) { clearInterval(recordingKeepAliveRef.current); recordingKeepAliveRef.current = null; }
+      const cid = recordingActiveConvRef.current;
+      if (cid) { sendTypingStop(cid); recordingActiveConvRef.current = null; }
+    };
+  }, [activeConvId, sendTypingStop]);
 
   // ── WebSocket events ────────────────────────────────────────────────────
   useEffect(() => {
@@ -1242,10 +1272,19 @@ export default function ChatPage({ onNavigate }: Props) {
           break;
         }
         case "typing.start": {
-          const { user_id, conversation_id } = event.payload;
+          const { user_id, conversation_id, activity } = event.payload;
+          const isRecording = activity === "recording";
           setTypingUsers((prev) => {
             const copy = { ...prev };
             copy[conversation_id] = new Set([...(copy[conversation_id] ?? []), user_id]);
+            return copy;
+          });
+          // Retro-compat: activity assente → typing normale (l'utente NON registra).
+          setRecordingUsers((prev) => {
+            const copy = { ...prev };
+            const s = new Set(copy[conversation_id] ?? []);
+            if (isRecording) s.add(user_id); else s.delete(user_id);
+            copy[conversation_id] = s;
             return copy;
           });
           break;
@@ -1253,6 +1292,15 @@ export default function ChatPage({ onNavigate }: Props) {
         case "typing.stop": {
           const { user_id, conversation_id } = event.payload;
           setTypingUsers((prev) => {
+            const copy = { ...prev };
+            if (copy[conversation_id]) {
+              const s = new Set(copy[conversation_id]);
+              s.delete(user_id);
+              copy[conversation_id] = s;
+            }
+            return copy;
+          });
+          setRecordingUsers((prev) => {
             const copy = { ...prev };
             if (copy[conversation_id]) {
               const s = new Set(copy[conversation_id]);
@@ -1809,7 +1857,6 @@ export default function ChatPage({ onNavigate }: Props) {
   }
 
   async function handleVoiceSend(voice: VoiceBlob) {
-    setShowVoiceRecorder(false);
     if (!activeConvId || !auth) return;
 
     // ── OPTIMISTIC UPDATE ────────────────────────────────────────────────────
@@ -2247,6 +2294,30 @@ export default function ChatPage({ onNavigate }: Props) {
     }, 3_000);
   }
 
+  /**
+   * Presenza "sta registrando un vocale". Riusa l'infrastruttura typing
+   * (activity="recording"). Il server auto-stoppa typing dopo 5s, quindi
+   * durante una registrazione lunga ri-inviamo l'evento ogni 3s (keep-alive).
+   * Lo stop viene inviato in tutti i percorsi di uscita (invio/annulla/tap).
+   */
+  function handleRecordingChange(active: boolean) {
+    if (!activeConvId) return;
+    if (active) {
+      sendTypingStart(activeConvId, "recording");
+      recordingActiveConvRef.current = activeConvId;
+      if (recordingKeepAliveRef.current) clearInterval(recordingKeepAliveRef.current);
+      recordingKeepAliveRef.current = setInterval(() => {
+        const cid = recordingActiveConvRef.current;
+        if (cid) sendTypingStart(cid, "recording");
+      }, 3_000);
+    } else {
+      if (recordingKeepAliveRef.current) { clearInterval(recordingKeepAliveRef.current); recordingKeepAliveRef.current = null; }
+      const cid = recordingActiveConvRef.current ?? activeConvId;
+      recordingActiveConvRef.current = null;
+      sendTypingStop(cid);
+    }
+  }
+
   async function handleRedeemSuccess(conversationId: string) {
     setShowRedeem(false);
     await loadConversations();
@@ -2312,6 +2383,8 @@ export default function ChatPage({ onNavigate }: Props) {
   const isOtherOnline = otherUser ? onlineUsers.has(otherUser.user_id) : false;
   const typingInActive = activeConvId ? [...(typingUsers[activeConvId] ?? [])] : [];
   const othersTyping = typingInActive.filter((id) => id !== auth?.userId);
+  const recordingInActive = activeConvId ? [...(recordingUsers[activeConvId] ?? [])] : [];
+  const othersRecording = recordingInActive.filter((id) => id !== auth?.userId);
 
   return (
     <div className="chat-root">
@@ -2947,7 +3020,14 @@ export default function ChatPage({ onNavigate }: Props) {
                 });
               })()}
 
-              {othersTyping.length > 0 && (
+              {othersRecording.length > 0 ? (
+                <div className="msg-row theirs">
+                  <div className="msg-bubble theirs recording-bubble">
+                    <span className="recording-dot" />
+                    <span className="recording-text">{t("chat.recordingVoice")}</span>
+                  </div>
+                </div>
+              ) : othersTyping.length > 0 && (
                 <div className="msg-row theirs">
                   <div className="msg-bubble theirs typing-bubble">
                     <span className="typing-dot" />
@@ -2999,30 +3079,24 @@ export default function ChatPage({ onNavigate }: Props) {
               </div>
             )}
 
-            {showVoiceRecorder ? (
-              <VoiceRecorder
-                onSend={(v) => void handleVoiceSend(v)}
-                onCancel={() => setShowVoiceRecorder(false)}
+            <div style={{ position: "relative" }}>
+              {uploadProgress !== null && (
+                <div className="upload-progress-wrap">
+                  <div className="upload-progress-bar" style={{ width: `${uploadProgress}%` }} />
+                </div>
+              )}
+              <ChatInput
+                value={inputText}
+                onChange={handleInputChange}
+                onSubmit={handleSend}
+                onVoiceSend={(v) => void handleVoiceSend(v)}
+                onRecordingChange={handleRecordingChange}
+                onAttachMenu={() => setShowAttachSheet(true)}
+                disabled={sending}
+                burnAfterRead={burnAfterRead}
+                onToggleBurn={() => setBurnAfterRead((v) => !v)}
               />
-            ) : (
-              <div style={{ position: "relative" }}>
-                {uploadProgress !== null && (
-                  <div className="upload-progress-wrap">
-                    <div className="upload-progress-bar" style={{ width: `${uploadProgress}%` }} />
-                  </div>
-                )}
-                <ChatInput
-                  value={inputText}
-                  onChange={handleInputChange}
-                  onSubmit={handleSend}
-                  onVoiceStart={() => setShowVoiceRecorder(true)}
-                  onAttachMenu={() => setShowAttachSheet(true)}
-                  disabled={sending}
-                  burnAfterRead={burnAfterRead}
-                  onToggleBurn={() => setBurnAfterRead((v) => !v)}
-                />
-              </div>
-            )}
+            </div>
           </>
         )}
       </main>

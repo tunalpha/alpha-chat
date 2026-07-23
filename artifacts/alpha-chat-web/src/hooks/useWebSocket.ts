@@ -4,7 +4,7 @@ import { diagLog } from "../lib/diagnosticLogger";
 
 export type WsEvent =
   | { type: "message.new"; payload: Record<string, unknown> }
-  | { type: "typing.start"; payload: { user_id: string; conversation_id: string } }
+  | { type: "typing.start"; payload: { user_id: string; conversation_id: string; activity?: "typing" | "recording" } }
   | { type: "typing.stop"; payload: { user_id: string; conversation_id: string } }
   | { type: "presence.online"; payload: { user_id: string } }
   | { type: "presence.offline"; payload: { user_id: string; last_seen_at: string } }
@@ -85,8 +85,8 @@ export function useWebSocket(accessToken: string | null) {
     return () => { handlersRef.current.delete(handler); };
   }, []);
 
-  const sendTypingStart = useCallback((conversationId: string) => {
-    send({ type: "typing.start", payload: { conversation_id: conversationId } });
+  const sendTypingStart = useCallback((conversationId: string, activity?: "typing" | "recording") => {
+    send({ type: "typing.start", payload: { conversation_id: conversationId, ...(activity ? { activity } : {}) } });
   }, [send]);
 
   const sendTypingStop = useCallback((conversationId: string) => {

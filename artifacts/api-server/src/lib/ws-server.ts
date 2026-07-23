@@ -209,13 +209,15 @@ export function createWsServer(httpServer: HttpServer): WebSocketServer {
           break;
 
         case "typing.start": {
-          const { conversation_id } = (event.payload ?? {}) as Partial<TypingPayload>;
+          const { conversation_id, activity } = (event.payload ?? {}) as Partial<TypingPayload>;
           if (!conversation_id) break;
 
           void setTyping(userId, conversation_id);
 
-          // Broadcast ai membri della conversazione (escluso il mittente)
-          void broadcastTyping(userId, conversation_id, "typing.start");
+          // Broadcast ai membri della conversazione (escluso il mittente).
+          // activity inoltra "typing" | "recording" così il destinatario può
+          // distinguere "sta scrivendo" da "sta registrando un vocale".
+          void broadcastTyping(userId, conversation_id, "typing.start", activity);
 
           // Auto-stop dopo 5s se il client non resetta
           wsManager.setTypingTimer(userId, conversation_id, () => {
@@ -642,6 +644,7 @@ async function broadcastTyping(
   senderId: string,
   conversationId: string,
   type: "typing.start" | "typing.stop",
+  activity?: "typing" | "recording",
 ): Promise<void> {
   try {
     const members = await memberRepo.listMembers(
@@ -653,7 +656,9 @@ async function broadcastTyping(
 
     wsManager.sendToUsers(recipientIds, {
       type,
-      payload: { user_id: senderId, conversation_id: conversationId },
+      // activity incluso solo su typing.start quando fornito (retro-compat:
+      // se assente, il client lo tratta come "typing" normale).
+      payload: { user_id: senderId, conversation_id: conversationId, ...(activity ? { activity } : {}) },
     });
   } catch (err) {
     logger.warn({ err, senderId, conversationId }, "broadcastTyping failed");

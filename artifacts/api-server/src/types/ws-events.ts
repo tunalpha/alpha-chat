@@ -31,7 +31,11 @@ export interface WsInboundEvent {
 
 // payload di ogni evento inbound
 export interface AuthPayload      { token: string }
-export interface TypingPayload    { conversation_id: string }
+/**
+ * activity: distingue "sta scrivendo" da "sta registrando un vocale".
+ * Opzionale per retro-compatibilità: i client vecchi non lo inviano → typing.
+ */
+export interface TypingPayload    { conversation_id: string; activity?: "typing" | "recording" }
 
 // payload chiamate (tipi plain — il server fa solo relay, non interpreta WebRTC)
 export interface CallOfferPayload       { to_user_id: string; sdp: Record<string, unknown>; call_type: "audio" | "video"; from_display_name: string }
