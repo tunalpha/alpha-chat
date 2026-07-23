@@ -27,10 +27,15 @@ router.post("/events", authenticate, async (req, res, next) => {
       session_id?: string;
       username?:   string;
       device?: {
-        user_agent?:   string;
-        platform?:     string;
-        network_type?: string | null;
-        app_version?:  string;
+        user_agent?:             string;
+        platform?:               string;
+        network_type?:           string | null;
+        app_version?:            string;
+        build_time?:             string;
+        service_worker_version?: string;
+        ios_version?:            string;
+        safari_version?:         string;
+        [key: string]:           unknown;
       };
       events?: unknown[];
     };

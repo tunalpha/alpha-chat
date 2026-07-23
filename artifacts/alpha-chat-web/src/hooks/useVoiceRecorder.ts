@@ -48,6 +48,8 @@ export function useVoiceRecorder(): VoiceRecorderApi {
   const startTimeRef     = useRef<number>(0);
   const waveformDataRef  = useRef<number[]>([]);
   const mimeTypeRef      = useRef<string>("");
+  // Fix race: cancel() chiamato MENTRE getUserMedia è ancora in volo
+  const cancelledWhileStartingRef = useRef(false);
 
   /**
    * Rilascia TUTTE le risorse hardware/timer. Idempotente: i null-check fanno sì
@@ -82,8 +84,15 @@ export function useVoiceRecorder(): VoiceRecorderApi {
   }, []);
 
   const start = useCallback(async (): Promise<boolean> => {
+    cancelledWhileStartingRef.current = false;
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // Cancel() può essere stato chiamato MENTRE getUserMedia era in volo (race iOS).
+      // In quel caso chiudiamo subito lo stream e usciamo.
+      if (cancelledWhileStartingRef.current) {
+        stream.getTracks().forEach((t) => t.stop());
+        return false;
+      }
       streamRef.current = stream;
 
       // Reset stato per una nuova registrazione
@@ -194,6 +203,9 @@ export function useVoiceRecorder(): VoiceRecorderApi {
   }, [teardown, stopRecorderSafe]);
 
   const cancel = useCallback(() => {
+    // Segnala alla start() in volo (se ancora in attesa di getUserMedia) di
+    // chiudere lo stream appena lo ottiene — evita il microfono stuck su iOS.
+    cancelledWhileStartingRef.current = true;
     // Percorso "scarta": rimuovi onstop così lo stop NON produce un blob, poi
     // hard-stop idempotente di recorder + tracce. Nessun doppio stop.
     const r = mediaRecorderRef.current;

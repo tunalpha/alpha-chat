@@ -15,6 +15,7 @@ import {
   Cloud,
   Phone,
   Fuel,
+  Mail,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 
@@ -32,6 +33,7 @@ const navItems = [
   { href: "/r2-monitor",  label: "R2 Monitor",  icon: Cloud },
   { href: "/call-monitor", label: "Call Monitor", icon: Phone },
   { href: "/gas-station",  label: "Gas Station",  icon: Fuel },
+  { href: "/email-settings", label: "Email Notifiche", icon: Mail },
 ];
 
 interface SidebarProps {

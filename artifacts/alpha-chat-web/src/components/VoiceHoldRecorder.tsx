@@ -64,6 +64,14 @@ export default function VoiceHoldRecorder({ onSend, onRecordingChange, onTapHint
     setLockProg(0);
   }, []);
 
+  // ── Mount: cancella qualsiasi registrazione residua da sessioni precedenti ──
+  useEffect(() => {
+    // Se il componente viene montato mentre il recorder è in uno stato non-idle
+    // (es. app riavviata senza unmount pulito), forza il cancel immediato.
+    rec.cancel();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   // ── Cleanup su unmount ─────────────────────────────────────────────────────
   useEffect(() => {
     return () => {
@@ -101,7 +109,8 @@ export default function VoiceHoldRecorder({ onSend, onRecordingChange, onTapHint
     g.startedAt = Date.now();
     g.active = true;
     g.started = false;
-    try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch { /* noop */ }
+    // NON usiamo setPointerCapture: su iOS Safari PWA causa pointerup
+    // inaffidabile / mai ricevuto quando il sistema intercetta il gesto.
 
     setPhase("recording");
     resetVisual();
@@ -133,7 +142,6 @@ export default function VoiceHoldRecorder({ onSend, onRecordingChange, onTapHint
     // Slide verso l'alto → lock (prevale se il movimento verticale domina)
     if (dy <= -LOCK_THRESHOLD && Math.abs(dy) >= Math.abs(dx)) {
       g.active = false;
-      try { (e.currentTarget as HTMLElement).releasePointerCapture(g.pointerId); } catch { /* noop */ }
       resetVisual();
       setPhase("locked");
       return;
@@ -146,14 +154,12 @@ export default function VoiceHoldRecorder({ onSend, onRecordingChange, onTapHint
 
     if (left <= -CANCEL_THRESHOLD) {
       g.active = false;
-      try { (e.currentTarget as HTMLElement).releasePointerCapture(g.pointerId); } catch { /* noop */ }
       doCancel();
     }
   }, [doCancel, resetVisual]);
 
   const onPointerUp = useCallback((e: React.PointerEvent) => {
     const g = gestureRef.current;
-    try { (e.currentTarget as HTMLElement).releasePointerCapture(g.pointerId); } catch { /* noop */ }
     if (!g.active) return; // già gestito (cancel/lock) o non attivo
     g.active = false;
     if (phaseRef.current !== "recording") return;
@@ -172,13 +178,63 @@ export default function VoiceHoldRecorder({ onSend, onRecordingChange, onTapHint
     void doSend();
   }, [doSend, doCancel, onTapHint]);
 
-  const onPointerCancel = useCallback((e: React.PointerEvent) => {
+  const onPointerCancel = useCallback(() => {
     const g = gestureRef.current;
-    try { (e.currentTarget as HTMLElement).releasePointerCapture(g.pointerId); } catch { /* noop */ }
     if (!g.active) return;
     g.active = false;
     if (phaseRef.current === "recording") doCancel();
   }, [doCancel]);
+
+  // ── Timeout massimo registrazione (5 min) — auto-annulla se bloccato ────────
+  useEffect(() => {
+    if (phase === "idle") return;
+    const MAX_MS = 5 * 60 * 1000; // 5 minuti
+    const t = setTimeout(() => {
+      if (phaseRef.current !== "idle") {
+        gestureRef.current.active = false;
+        doCancel();
+      }
+    }, MAX_MS);
+    return () => clearTimeout(t);
+  }, [phase, doCancel]);
+
+  // ── Safety net globale per iOS: intercetta pointerup/touchend su window ────
+  // Su iOS PWA senza setPointerCapture, se il dito esce dal bottone o il sistema
+  // intercetta il gesto, pointerup può non arrivare all'elemento. Ascoltare su
+  // window garantisce che la registrazione finisca comunque.
+  useEffect(() => {
+    if (phase === "idle") return;
+
+    function handleWindowRelease(ev: PointerEvent | TouchEvent) {
+      const g = gestureRef.current;
+      if (!g.active || phaseRef.current !== "recording") return;
+      g.active = false;
+      const elapsed = Date.now() - g.startedAt;
+      // Usa le coordinate dell'evento per stimare lo swipe
+      let clientX = g.startX;
+      if (ev instanceof PointerEvent) clientX = ev.clientX;
+      else if (ev instanceof TouchEvent && ev.changedTouches.length > 0)
+        clientX = ev.changedTouches[0]!.clientX;
+      const dx = clientX - g.startX;
+      if (dx <= -CANCEL_THRESHOLD || elapsed < TAP_MS) {
+        doCancel();
+        if (elapsed < TAP_MS) onTapHint();
+      } else {
+        void doSend();
+      }
+    }
+
+    window.addEventListener("pointerup",   handleWindowRelease as EventListener);
+    window.addEventListener("touchend",    handleWindowRelease as EventListener);
+    window.addEventListener("touchcancel", () => {
+      if (gestureRef.current.active) { gestureRef.current.active = false; doCancel(); }
+    });
+    return () => {
+      window.removeEventListener("pointerup",   handleWindowRelease as EventListener);
+      window.removeEventListener("touchend",     handleWindowRelease as EventListener);
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase]);
 
   // ── Render ──────────────────────────────────────────────────────────────────
   const nearCancel = slideX <= -CANCEL_THRESHOLD * 0.6;
