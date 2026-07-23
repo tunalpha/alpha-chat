@@ -141,6 +141,7 @@ export default function SecuritySettingsPage({ onBack, onNavigate }: Props) {
         </header>
         <div className="settings-body" style={{ justifyContent: "center", alignItems: "center", display: "flex", flex: 1 }}>
           <PinPad
+            key={subView}
             label={label}
             onComplete={onComplete}
             error={pinError}
