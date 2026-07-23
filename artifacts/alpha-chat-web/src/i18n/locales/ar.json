@@ -201,7 +201,8 @@
     "toastSessionError": "خطأ في استعادة الجلسة. حاول مرة أخرى.",
     "toastCoordsCopied": "تم نسخ الإحداثيات",
     "sendError": "خطأ في الإرسال",
-    "editExpiredError": "لا يمكن التعديل: انتهت المهلة (15 دقيقة)"
+    "editExpiredError": "لا يمكن التعديل: انتهت المهلة (15 دقيقة)",
+    "back": "رجوع"
   },
   "settings": {
     "title": "الإعدادات",

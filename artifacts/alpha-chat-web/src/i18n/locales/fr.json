@@ -201,7 +201,8 @@
     "toastSessionError": "Erreur de restauration de session. Réessayez.",
     "toastCoordsCopied": "Coordonnées copiées",
     "sendError": "Erreur d'envoi",
-    "editExpiredError": "Impossible de modifier: délai expiré (15 min)"
+    "editExpiredError": "Impossible de modifier: délai expiré (15 min)",
+    "back": "Retour"
   },
   "settings": {
     "title": "Paramètres",

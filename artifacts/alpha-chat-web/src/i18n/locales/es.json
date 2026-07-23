@@ -201,7 +201,8 @@
     "toastSessionError": "Error al restaurar sesión. Inténtalo de nuevo.",
     "toastCoordsCopied": "Coordenadas copiadas",
     "sendError": "Error de envío",
-    "editExpiredError": "No se puede editar: tiempo agotado (15 min)"
+    "editExpiredError": "No se puede editar: tiempo agotado (15 min)",
+    "back": "Atrás"
   },
   "settings": {
     "title": "Ajustes",

@@ -201,7 +201,8 @@
     "toastSessionError": "Erro ao restaurar sessão. Tente novamente.",
     "toastCoordsCopied": "Coordenadas copiadas",
     "sendError": "Erro de envio",
-    "editExpiredError": "Não é possível editar: tempo expirado (15 min)"
+    "editExpiredError": "Não é possível editar: tempo expirado (15 min)",
+    "back": "Voltar"
   },
   "settings": {
     "title": "Configurações",

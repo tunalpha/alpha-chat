@@ -201,7 +201,8 @@
     "toastSessionError": "会话恢复错误。请重试。",
     "toastCoordsCopied": "坐标已复制",
     "sendError": "发送错误",
-    "editExpiredError": "无法编辑：时间已过（15分钟）"
+    "editExpiredError": "无法编辑：时间已过（15分钟）",
+    "back": "返回"
   },
   "settings": {
     "title": "设置",

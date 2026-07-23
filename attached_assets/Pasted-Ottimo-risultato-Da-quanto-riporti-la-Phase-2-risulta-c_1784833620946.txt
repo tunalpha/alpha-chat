@@ -1,0 +1,68 @@
+Ottimo risultato. Da quanto riporti, la Phase 2 risulta completa e il report è coerente.
+
+Prima del deploy farei però un’unica richiesta finale, molto mirata, per avere la massima garanzia di zero regressioni.
+
+⸻
+
+Prompt finale — Audit “Zero Regressioni” i18n
+
+La Phase 2 dell’internazionalizzazione è terminata.
+
+NON apportare nuove funzionalità e NON modificare alcuna logica.
+
+Esegui esclusivamente un audit tecnico finale dell’intervento.
+
+Obiettivo
+
+Verificare che la sostituzione delle stringhe hardcoded con t() non abbia introdotto regressioni.
+
+Controlli obbligatori
+
+Verifica in particolare:
+
+* tutti gli hook rispettano le Rules of Hooks
+* nessun useCallback, useMemo o useEffect ha dependency errate dopo l’aggiunta di t
+* nessun render loop
+* nessuna chiave i18n mancante
+* nessun namespace errato
+* nessuna chiave duplicata
+* nessuna chiave orfana
+* nessun fallback accidentale all’italiano
+* nessun testo vuoto
+* nessun placeholder rotto
+* nessuna interpolazione ({{...}}) errata
+* nessuna stringa concatenata incompatibile con le traduzioni
+* nessun import inutilizzato
+* nessun warning TypeScript
+* nessun warning ESLint collegato alle modifiche
+* nessun componente renderizza valori undefined
+* nessun componente perde memoizzazione a causa di t
+* nessuna modifica ai flussi USDA
+* nessuna modifica ai flussi Chat
+* nessuna modifica ai flussi Call
+* nessuna modifica alla EmergencyPage
+* nessuna modifica alle API
+* nessuna modifica al backend
+* nessuna modifica ai servizi
+* nessuna modifica allo state management
+
+Build
+
+Esegui inoltre:
+
+* TypeScript compile
+* build di produzione
+* verifica che tutte le importazioni siano corrette
+
+Output finale
+
+Restituisci solo:
+
+* ✅ problemi trovati (se presenti)
+* ✅ eventuali correzioni effettuate
+* ✅ conferma esplicita che l’intervento è limitato esclusivamente all’internazionalizzazione
+* ✅ conferma che non è stata modificata alcuna logica applicativa
+* ✅ conferma che non esistono regressioni funzionali introdotte dall’intervento
+* ✅ conferma che il progetto è pronto per il deploy se tutti i controlli risultano superati.
+
+Questo tipo di audit finale è un’ottima pratica prima del deploy: aumenta la probabilità di intercettare piccoli errori (ad esempio dipendenze degli hook o chiavi mancanti) senza richiedere modifiche funzionali.

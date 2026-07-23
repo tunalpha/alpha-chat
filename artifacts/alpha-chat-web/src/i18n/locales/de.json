@@ -201,7 +201,8 @@
     "toastSessionError": "Fehler bei der Sitzungswiederherstellung. Erneut versuchen.",
     "toastCoordsCopied": "Koordinaten kopiert",
     "sendError": "Sendefehler",
-    "editExpiredError": "Bearbeitung nicht möglich: Zeit abgelaufen (15 Min)"
+    "editExpiredError": "Bearbeitung nicht möglich: Zeit abgelaufen (15 Min)",
+    "back": "Zurück"
   },
   "settings": {
     "title": "Einstellungen",

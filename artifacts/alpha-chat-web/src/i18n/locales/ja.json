@@ -201,7 +201,8 @@
     "toastSessionError": "セッションの復元エラー。もう一度お試しください。",
     "toastCoordsCopied": "座標をコピーしました",
     "sendError": "送信エラー",
-    "editExpiredError": "編集できません: 時間切れ（15分）"
+    "editExpiredError": "編集できません: 時間切れ（15分）",
+    "back": "戻る"
   },
   "settings": {
     "title": "設定",

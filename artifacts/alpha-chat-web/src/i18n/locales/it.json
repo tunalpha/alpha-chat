@@ -201,7 +201,8 @@
     "toastSessionError": "Errore nel ripristino sessione. Riprova.",
     "toastCoordsCopied": "Coordinate copiate",
     "sendError": "Errore invio",
-    "editExpiredError": "Impossibile modificare: tempo scaduto (15 min)"
+    "editExpiredError": "Impossibile modificare: tempo scaduto (15 min)",
+    "back": "Indietro"
   },
   "settings": {
     "title": "Impostazioni",
