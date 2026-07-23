@@ -1,0 +1,136 @@
+Puoi usare questo prompt:
+
+⸻
+
+Prompt — Internazionalizzazione completa componenti (ZERO regressioni)
+
+Hai completato la sincronizzazione dei file locale (523 chiavi in tutte le lingue). Ora devi completare la seconda fase: eliminare tutte le stringhe hardcoded ancora presenti nei componenti React.
+
+OBIETTIVO
+
+Internazionalizzare esclusivamente le stringhe visibili all’utente mantenendo identico il comportamento dell’app.
+
+Componenti da aggiornare (ordine di priorità)
+
+1. UsdaPaymentBubble
+2. ChatPaymentBubble
+3. SendPaymentSheet
+4. UsdaHistory
+5. EmergencyPage
+6. ChatPage (toast)
+7. ActiveCallScreen
+
+⸻
+
+REGOLA ASSOLUTA: ZERO REGRESSIONI
+
+L’app è attualmente stabile e funzionante.
+
+NON È CONSENTITO:
+
+* modificare logica di business
+* modificare flussi USDA
+* modificare wallet
+* modificare API
+* modificare hook
+* modificare state
+* modificare useEffect
+* modificare callback
+* modificare condizioni
+* modificare polling
+* modificare timer
+* modificare websocket
+* modificare Signal
+* modificare WebRTC
+* modificare routing
+* modificare component tree
+* modificare CSS/layout se non strettamente necessario
+* rinominare componenti
+* cambiare comportamento dei toast
+* cambiare comportamento delle payment bubble
+* cambiare comportamento delle chiamate
+* cambiare comportamento della EmergencyPage
+
+L’unica modifica consentita è sostituire:
+
+<Text>Pagamento inviato</Text>
+
+con
+
+<Text>{t("payments.sent")}</Text>
+
+oppure l’equivalente corretto.
+
+⸻
+
+REGOLE
+
+Ogni stringa visibile deve essere sostituita con t(...).
+
+Le nuove chiavi devono essere aggiunte:
+
+* IT (riferimento)
+* EN
+* ES
+* FR
+* DE
+* PT
+* AR
+* JA
+* RU
+* ZH
+
+Mantenendo la stessa struttura dei namespace esistenti.
+
+Non eliminare chiavi esistenti.
+
+Non rinominare chiavi già utilizzate.
+
+Non creare duplicati.
+
+Riutilizzare chiavi già presenti quando il testo è identico.
+
+Creare nuove chiavi solo quando realmente necessario.
+
+⸻
+
+IMPORTANTE
+
+Non modificare:
+
+* import non necessari
+* tipi TypeScript
+* props
+* interfacce
+* servizi
+* backend
+* API
+* test
+* configurazioni
+
+⸻
+
+VALIDAZIONE OBBLIGATORIA
+
+Prima di terminare verifica che:
+
+* non esistano stringhe hardcoded nei componenti indicati
+* TypeScript compili senza errori
+* nessun warning nuovo
+* nessuna regressione funzionale
+* nessuna modifica al comportamento runtime
+* nessuna modifica ai flussi USDA
+* nessuna modifica ai flussi di chiamata
+* nessuna modifica ai flussi chat
+
+⸻
+
+OUTPUT FINALE
+
+Fornisci un report con:
+
+* componenti modificati
+* numero di stringhe sostituite
+* nuove chiavi aggiunte
+* eventuali chiavi riutilizzate
+* conferma esplicita che non è stata modificata alcuna logica applicativa e che l’intervento è stato limitato esclusivamente all’internazionalizzazione delle stringhe utente.

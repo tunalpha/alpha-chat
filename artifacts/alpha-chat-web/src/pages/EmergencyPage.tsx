@@ -11,6 +11,7 @@
  */
 
 import { useState, useEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
 
 type Step = "form" | "email-sent" | "confirm" | "countdown" | "done" | "error";
 
@@ -31,6 +32,7 @@ async function apiPost(path: string, body: object): Promise<Response> {
 }
 
 export default function EmergencyPage() {
+  const { t } = useTranslation();
   const [step, setStep] = useState<Step>("form");
   const [username, setUsername] = useState("");
   const [phoenixCode, setPhoenixCode] = useState("");
@@ -69,14 +71,14 @@ export default function EmergencyPage() {
       const res = await fetch(`${BASE}/confirm?token=${encodeURIComponent(token)}`);
       const data = await res.json();
       if (!res.ok || !data.valid) {
-        setErrorMsg(data.error?.message ?? "Link non valido o scaduto.");
+        setErrorMsg(data.error?.message ?? t("emergency.invalidLink"));
         setStep("error");
         return;
       }
       setConfirmInfo({ username: data.username, action: urlAction, token });
       setStep("confirm");
     } catch {
-      setErrorMsg("Errore di connessione. Riprova.");
+      setErrorMsg(t("emergency.connectionError"));
       setStep("error");
     } finally {
       setLoading(false);
@@ -96,12 +98,12 @@ export default function EmergencyPage() {
       });
       const data = await res.json();
       if (!res.ok) {
-        setErrorMsg(data.error?.message ?? "Errore. Riprova.");
+        setErrorMsg(data.error?.message ?? t("common.error"));
         return;
       }
       setStep("email-sent");
     } catch {
-      setErrorMsg("Errore di connessione. Riprova.");
+      setErrorMsg(t("emergency.connectionError"));
     } finally {
       setLoading(false);
     }
@@ -142,13 +144,13 @@ export default function EmergencyPage() {
       });
       const data = await res.json();
       if (!res.ok) {
-        setErrorMsg(data.error?.message ?? "Errore durante l'esecuzione.");
+        setErrorMsg(data.error?.message ?? t("emergency.executionError"));
         setStep("error");
         return;
       }
       setStep("done");
     } catch {
-      setErrorMsg("Errore di connessione.");
+      setErrorMsg(t("emergency.connectionError"));
       setStep("error");
     } finally {
       setLoading(false);
@@ -163,7 +165,7 @@ export default function EmergencyPage() {
           <button
             className="emergency-close-btn"
             onClick={() => window.history.length > 1 ? window.history.back() : (window.location.href = "/")}
-            aria-label="Chiudi"
+            aria-label={t("common.close")}
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="20" height="20">
               <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
@@ -171,21 +173,20 @@ export default function EmergencyPage() {
           </button>
           <div className="emergency-logo">α</div>
           <div className="emergency-brand">Alpha Chat</div>
-          <div className="emergency-tagline">PORTALE DI EMERGENZA</div>
+          <div className="emergency-tagline">{t("emergency.tagline")}</div>
         </div>
 
         {step === "form" && (
           <form onSubmit={handleSubmit} className="emergency-form">
             <p className="emergency-desc">
-              Usa questo portale se hai perso accesso al tuo dispositivo o sospetti
-              che il tuo account sia compromesso.
+              {t("emergency.desc")}
             </p>
 
-            <label className="emergency-label">Username</label>
+            <label className="emergency-label">{t("emergency.usernameLabel")}</label>
             <input
               className="emergency-input"
               type="text"
-              placeholder="@username"
+              placeholder={t("emergency.usernamePlaceholder")}
               value={username}
               onChange={(e) => setUsername(e.target.value)}
               required
@@ -193,18 +194,18 @@ export default function EmergencyPage() {
               spellCheck={false}
             />
 
-            <label className="emergency-label">Phoenix Code</label>
+            <label className="emergency-label">{t("emergency.phoenixCodeLabel")}</label>
             <input
               className="emergency-input"
               type="password"
-              placeholder="La tua passphrase di emergenza"
+              placeholder={t("emergency.phoenixCodePlaceholder")}
               value={phoenixCode}
               onChange={(e) => setPhoenixCode(e.target.value)}
               required
               autoComplete="off"
             />
 
-            <label className="emergency-label">Azione</label>
+            <label className="emergency-label">{t("emergency.actionLabel")}</label>
             <div className="emergency-actions">
               <button
                 type="button"
@@ -212,8 +213,8 @@ export default function EmergencyPage() {
                 onClick={() => setAction("lock")}
               >
                 <span className="emergency-action-icon">🔒</span>
-                <span className="emergency-action-title">Emergency Lock</span>
-                <span className="emergency-action-desc">Disconnetti tutti i dispositivi. Account recuperabile.</span>
+                <span className="emergency-action-title">{t("emergency.lockTitle")}</span>
+                <span className="emergency-action-desc">{t("emergency.lockDesc")}</span>
               </button>
               <button
                 type="button"
@@ -221,21 +222,21 @@ export default function EmergencyPage() {
                 onClick={() => setAction("destroy")}
               >
                 <span className="emergency-action-icon">🔥</span>
-                <span className="emergency-action-title">Phoenix Protocol</span>
-                <span className="emergency-action-desc">Distruggi account, messaggi e chiavi. IRREVERSIBILE.</span>
+                <span className="emergency-action-title">{t("emergency.phoenixTitle")}</span>
+                <span className="emergency-action-desc">{t("emergency.phoenixDesc")}</span>
               </button>
             </div>
 
             {action === "destroy" && (
               <>
                 <label className="emergency-label">
-                  Emergency ID
-                  <span className="emergency-label-hint"> — dalla tua Recovery Card</span>
+                  {t("emergency.emergencyIdLabel")}
+                  <span className="emergency-label-hint">{t("emergency.emergencyIdHint")}</span>
                 </label>
                 <input
                   className="emergency-input emergency-input--mono"
                   type="text"
-                  placeholder="XXXX-XXXX"
+                  placeholder={t("emergency.emergencyIdPlaceholder")}
                   value={emergencyId}
                   onChange={(e) => setEmergencyId(e.target.value.toUpperCase())}
                   required={action === "destroy"}
@@ -253,7 +254,7 @@ export default function EmergencyPage() {
               className={`emergency-submit${action === "destroy" ? " danger" : ""}`}
               disabled={loading}
             >
-              {loading ? "Verifica in corso…" : "Avvia procedura"}
+              {loading ? t("emergency.verifying") : t("emergency.submit")}
             </button>
           </form>
         )}
@@ -261,12 +262,9 @@ export default function EmergencyPage() {
         {step === "email-sent" && (
           <div className="emergency-state">
             <div className="emergency-state-icon">✉️</div>
-            <h2>Email inviata</h2>
-            <p>
-              Se l'username e il Phoenix Code sono corretti, riceverai a breve
-              un'email con il link di conferma.
-            </p>
-            <p className="emergency-hint">Il link scade in 15 minuti.</p>
+            <h2>{t("emergency.emailSentTitle")}</h2>
+            <p>{t("emergency.emailSentDesc")}</p>
+            <p className="emergency-hint">{t("emergency.emailSentHint")}</p>
           </div>
         )}
 
@@ -276,18 +274,17 @@ export default function EmergencyPage() {
               {confirmInfo.action === "lock" ? "🔒" : "⚠️"}
             </div>
             <h2>
-              {confirmInfo.action === "lock" ? "Emergency Lock" : "Phoenix Protocol"}
+              {confirmInfo.action === "lock" ? t("emergency.lockTitle") : t("emergency.phoenixTitle")}
             </h2>
             <p>
-              Stai per {confirmInfo.action === "lock"
-                ? "disconnettere tutti i dispositivi"
-                : "distruggere definitivamente l'account"}{" "}
-              di <strong>@{confirmInfo.username}</strong>.
+              {confirmInfo.action === "lock"
+                ? t("emergency.confirmDescLock")
+                : t("emergency.confirmDescPhoenix")}{" "}
+              <strong>@{confirmInfo.username}</strong>.
             </p>
             {confirmInfo.action === "destroy" && (
               <div className="emergency-warning">
-                ⚠️ Questa azione è <strong>irreversibile</strong>. Account, messaggi,
-                media e chiavi crittografiche saranno eliminati permanentemente.
+                {t("emergency.confirmWarning")}
               </div>
             )}
             <div className="emergency-confirm-buttons">
@@ -296,13 +293,13 @@ export default function EmergencyPage() {
                 onClick={startCountdown}
                 disabled={loading}
               >
-                Conferma
+                {t("emergency.confirm")}
               </button>
               <button
                 className="emergency-cancel"
                 onClick={() => setStep("form")}
               >
-                Annulla
+                {t("emergency.cancel")}
               </button>
             </div>
           </div>
@@ -313,9 +310,9 @@ export default function EmergencyPage() {
             <div className={`emergency-countdown${confirmInfo.action === "destroy" ? " danger" : ""}`}>
               {countdown}
             </div>
-            <p>La procedura si avvierà automaticamente tra {countdown} secondi.</p>
+            <p>{t("emergency.countdownText", { secs: countdown })}</p>
             <button className="emergency-cancel" onClick={cancelCountdown}>
-              ✕ Annulla
+              {t("emergency.cancelCountdown")}
             </button>
           </div>
         )}
@@ -326,16 +323,16 @@ export default function EmergencyPage() {
               {confirmInfo.action === "lock" ? "✓" : "💀"}
             </div>
             <h2>
-              {confirmInfo.action === "lock" ? "Dispositivi disconnessi" : "Account distrutto"}
+              {confirmInfo.action === "lock" ? t("emergency.doneLockTitle") : t("emergency.donePhoenixTitle")}
             </h2>
             <p>
               {confirmInfo.action === "lock"
-                ? "Tutte le sessioni sono state revocate. L'account è intatto e recuperabile."
-                : "Il Phoenix Protocol è stato eseguito. L'account e tutti i dati associati sono stati eliminati definitivamente."}
+                ? t("emergency.doneLockDesc")
+                : t("emergency.donePhoenixDesc")}
             </p>
             {confirmInfo.action === "lock" && (
               <a href="/" className="emergency-submit" style={{ textDecoration: "none", textAlign: "center" }}>
-                Torna al login
+                {t("emergency.backToLogin")}
               </a>
             )}
           </div>
@@ -344,10 +341,10 @@ export default function EmergencyPage() {
         {step === "error" && (
           <div className="emergency-state">
             <div className="emergency-state-icon">✗</div>
-            <h2>Errore</h2>
-            <p>{errorMsg || "Si è verificato un errore."}</p>
+            <h2>{t("emergency.errorTitle")}</h2>
+            <p>{errorMsg || t("emergency.defaultError")}</p>
             <button className="emergency-submit" onClick={() => setStep("form")}>
-              Riprova
+              {t("emergency.retry")}
             </button>
           </div>
         )}

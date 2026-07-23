@@ -18,6 +18,7 @@
  */
 
 import { useState, useRef, useEffect, memo } from "react";
+import { useTranslation } from "react-i18next";
 import type { ChatPaymentData, ChatTransferStatus } from "../../lib/payment-api";
 import { apiPaymentAccept, apiPaymentReject, apiPaymentCancel, apiPaymentDetectDeposit, isLockTransferStatus, isTerminalTransferStatus } from "../../lib/payment-api";
 
@@ -70,60 +71,69 @@ interface StatusLabel {
   sub?:  string;
 }
 
-function getStatusLabel(status: ChatTransferStatus, isMine: boolean, isRequest: boolean, amount?: string, assetSymbol?: string): StatusLabel {
+type TFunc = (key: string, opts?: Record<string, unknown>) => string;
+
+function getStatusLabel(
+  status: ChatTransferStatus,
+  isMine: boolean,
+  isRequest: boolean,
+  t: TFunc,
+  amount?: string,
+  assetSymbol?: string,
+): StatusLabel {
   // Transfer legato a una richiesta, lato destinatario (richiedente): nessuna
   // decisione da prendere — mostra solo "in arrivo" / accredito automatico.
   if (isRequest && !isMine) {
     switch (status) {
-      case "awaiting_deposit": return { icon: "📡", title: "Pagamento in arrivo",  sub: "Il pagante sta inviando i fondi" };
-      case "pending":          return { icon: "📡", title: "Pagamento in arrivo",  sub: "Accredito automatico in corso…" };
-      case "accepted":         return { icon: "🎉", title: "Richiesta pagata!",    sub: "I fondi sono stati accreditati nel tuo wallet" };
+      case "awaiting_deposit": return { icon: "📡", title: t("usda.payIncoming"),    sub: t("usda.payIncomingFund") };
+      case "pending":          return { icon: "📡", title: t("usda.payIncoming"),    sub: t("usda.payAutoCredit") };
+      case "accepted":         return { icon: "🎉", title: t("usda.payRequestPaid"), sub: t("usda.payRequestPaidSub") };
       default: break; // gli altri stati usano le label standard sotto
     }
   }
   switch (status) {
     case "awaiting_deposit":
       return isMine
-        ? { icon: "⏳", title: "In attesa del tuo deposito",   sub: `Invia ${amount ?? "?"} ${assetSymbol ?? "USDA"} al wallet escrow per confermare` }
-        : { icon: "⏳", title: "In attesa del deposito",        sub: "Il mittente deve inviare i fondi" };
+        ? { icon: "⏳", title: t("usda.payAwaitDepositMine"), sub: t("usda.payAwaitDepositMineSub", { amount: amount ?? "?", asset: assetSymbol ?? "USDA" }) }
+        : { icon: "⏳", title: t("usda.payAwaitDepositTheirs"), sub: t("usda.payAwaitDepositTheirsSub") };
 
     case "pending":
       return isMine
-        ? { icon: "✅", title: "Deposito confermato",           sub: isRequest ? "Rilascio automatico al richiedente in corso…" : "In attesa della risposta del destinatario" }
-        : { icon: "💰", title: "Hai ricevuto una richiesta",    sub: "Scegli se accettare o rifiutare" };
+        ? { icon: "✅", title: t("usda.payPendingMine"), sub: isRequest ? t("usda.payPendingMineSubRequest") : t("usda.payPendingMineSub") }
+        : { icon: "💰", title: t("usda.payPendingTheirs"), sub: t("usda.payPendingTheirsSub") };
 
     case "accepting":
-      return { icon: "⌛", title: "Trasferimento in corso…",   sub: "Attendi qualche istante" };
+      return { icon: "⌛", title: t("usda.payAccepting"), sub: t("usda.payAcceptingSub") };
 
     case "accepted":
       return isMine
-        ? { icon: "✅", title: "Pagamento completato",          sub: "I fondi sono stati inviati al destinatario" }
-        : { icon: "🎉", title: "Pagamento ricevuto!",           sub: "I fondi sono stati accreditati nel tuo wallet" };
+        ? { icon: "✅", title: t("usda.payAcceptedMine"), sub: t("usda.payAcceptedMineSub") }
+        : { icon: "🎉", title: t("usda.payAcceptedTheirs"), sub: t("usda.payAcceptedTheirsSub") };
 
     case "rejecting":
-      return { icon: "⌛", title: "Rifiuto in corso…",          sub: "Rimborso al mittente in elaborazione" };
+      return { icon: "⌛", title: t("usda.payRejecting"), sub: t("usda.payRejectingSub") };
 
     case "rejected":
       return isMine
-        ? { icon: "↩️", title: "Rifiutato",                    sub: "I fondi sono stati rimborsati nel tuo wallet" }
-        : { icon: "❌", title: "Hai rifiutato il pagamento",    sub: "I fondi sono stati restituiti al mittente" };
+        ? { icon: "↩️", title: t("usda.payRejectedMine"), sub: t("usda.payRejectedMineSub") }
+        : { icon: "❌", title: t("usda.payRejectedTheirs"), sub: t("usda.payRejectedTheirsSub") };
 
     case "cancelling":
-      return { icon: "⌛", title: "Annullamento in corso…",     sub: "Rimborso in elaborazione" };
+      return { icon: "⌛", title: t("usda.payCancelling"), sub: t("usda.payCancellingSub") };
 
     case "cancelled":
       return isMine
-        ? { icon: "🚫", title: "Annullato",                     sub: "I fondi sono stati rimborsati nel tuo wallet" }
-        : { icon: "🚫", title: "Annullato dal mittente",        sub: undefined };
+        ? { icon: "🚫", title: t("usda.payCancelledMine"), sub: t("usda.payCancelledMineSub") }
+        : { icon: "🚫", title: t("usda.payCancelledTheirs"), sub: undefined };
 
     case "refunding":
-      return { icon: "⌛", title: "Rimborso in corso…",          sub: "Il pagamento è scaduto, fondi in restituzione" };
+      return { icon: "⌛", title: t("usda.payRefunding"), sub: t("usda.payRefundingSub") };
 
     case "expired":
-      return { icon: "⏰", title: "Scaduto e rimborsato",       sub: "I fondi sono stati restituiti al mittente" };
+      return { icon: "⏰", title: t("usda.payExpired"), sub: t("usda.payExpiredSub") };
 
     case "failed":
-      return { icon: "❌", title: "Errore di pagamento",        sub: "Contatta il supporto se l'importo non è stato rimborsato" };
+      return { icon: "❌", title: t("usda.payFailed"), sub: t("usda.payFailedSub") };
 
     default:
       return { icon: "❓", title: status };
@@ -139,6 +149,8 @@ export const ChatPaymentBubble = memo(function ChatPaymentBubble({ data, isMine,
   // prima che il backend abbia scritto i metadati o in caso di migrazione dati.
   // Restituisce null invece di crashare l'intera render tree.
   if (!data?.status) return null;
+
+  const { t } = useTranslation();
 
   // busyRef è sincrono: impedisce doppio-click anche se il re-render non è ancora avvenuto
   const busyRef      = useRef(false);
@@ -181,15 +193,15 @@ export const ChatPaymentBubble = memo(function ChatPaymentBubble({ data, isMine,
 
   const isRequest  = !!data.is_request;
   const variant    = getVariant(data.status, isMine, isRequest);
-  const label      = getStatusLabel(data.status, isMine, isRequest, data.amount, data.asset_symbol);
+  const label      = getStatusLabel(data.status, isMine, isRequest, t, data.amount, data.asset_symbol);
   const isSpinning = variant === "spinning";
   // recipient + pending → pulsanti Accetta/Rifiuta. MAI per transfer legati a una
   // richiesta: il consenso del richiedente è la richiesta stessa (auto-release).
   const isAction   = variant === "action" && !isRequest;
 
   const counterpart = isMine
-    ? (data.recipient_name ?? "Destinatario")
-    : (data.sender_name    ?? "Mittente");
+    ? (data.recipient_name ?? t("usda.recipient"))
+    : (data.sender_name    ?? t("usda.sender"));
 
   // ── azioni ────────────────────────────────────────────────────────────────
 
@@ -206,7 +218,7 @@ export const ChatPaymentBubble = memo(function ChatPaymentBubble({ data, isMine,
         tx_hash_release: res.tx_hash_release ?? null,
       });
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Errore — riprova");
+      setError(e instanceof Error ? e.message : t("common.error"));
     } finally {
       busyRef.current = false;
       setBusy(false);
@@ -222,7 +234,7 @@ export const ChatPaymentBubble = memo(function ChatPaymentBubble({ data, isMine,
       const res = await apiPaymentReject(data.transfer_id);
       onLocalMeta?.(data.transfer_id, { status: res.status });
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Errore — riprova");
+      setError(e instanceof Error ? e.message : t("common.error"));
     } finally {
       busyRef.current = false;
       setBusy(false);
@@ -238,7 +250,7 @@ export const ChatPaymentBubble = memo(function ChatPaymentBubble({ data, isMine,
       const res = await apiPaymentCancel(data.transfer_id);
       onLocalMeta?.(data.transfer_id, { status: res.status });
     } catch (e: unknown) {
-      setError(e instanceof Error ? e.message : "Errore — riprova");
+      setError(e instanceof Error ? e.message : t("common.error"));
     } finally {
       busyRef.current = false;
       setBusy(false);
@@ -259,15 +271,11 @@ export const ChatPaymentBubble = memo(function ChatPaymentBubble({ data, isMine,
     } catch (e: unknown) {
       const code = (e as { code?: string }).code;
       if (code === "DEPOSIT_TX_NOT_DETECTED") {
-        setError(
-          "Deposito non ancora rilevato on-chain.\n" +
-          "• Se hai già firmato: la transazione potrebbe essere ancora in conferma (1–2 min), riprova tra poco.\n" +
-          "• Se il wallet non si è aperto o la firma non è partita: usa «Riprova firma» qui sotto per reinviare il deposito.",
-        );
+        setError(t("usda.depositNotDetected"));
       } else if (code === "TRANSFER_INVALID_TRANSITION") {
-        setError("Il deposito risulta già confermato. Aggiorna la chat.");
+        setError(t("usda.depositAlreadyConfirmed"));
       } else {
-        setError(e instanceof Error ? e.message : "Errore — riprova");
+        setError(e instanceof Error ? e.message : t("common.error"));
       }
     } finally {
       busyRef.current = false;
@@ -285,7 +293,7 @@ export const ChatPaymentBubble = memo(function ChatPaymentBubble({ data, isMine,
       {/* Header */}
       <div className="cp-bubble-header">
         <span className="cp-coin" aria-hidden="true">{isMine ? "💸" : "💰"}</span>
-        <span className="cp-bubble-title">{isMine ? "Hai inviato" : "Hai ricevuto"}</span>
+        <span className="cp-bubble-title">{isMine ? t("usda.sentTitle") : t("usda.receivedTitle")}</span>
       </div>
 
       {/* Importo */}
@@ -296,7 +304,7 @@ export const ChatPaymentBubble = memo(function ChatPaymentBubble({ data, isMine,
 
       {/* Controparte */}
       <div className="cp-bubble-sub">
-        {isMine ? `a ${counterpart}` : `da ${counterpart}`}
+        {isMine ? `${t("usda.toPrefix")}${counterpart}` : `${t("usda.fromPrefix")}${counterpart}`}
       </div>
 
       {/* Nota opzionale */}
@@ -329,17 +337,17 @@ export const ChatPaymentBubble = memo(function ChatPaymentBubble({ data, isMine,
             className="cp-btn cp-btn-accept"
             onClick={handleAccept}
             disabled={busy}
-            aria-label="Accetta il pagamento"
+            aria-label={t("usda.btnAccept")}
           >
-            ✅ Accetta
+            {t("usda.btnAccept")}
           </button>
           <button
             className="cp-btn cp-btn-reject"
             onClick={handleReject}
             disabled={busy}
-            aria-label="Rifiuta il pagamento"
+            aria-label={t("usda.btnReject")}
           >
-            ❌ Rifiuta
+            {t("usda.btnReject")}
           </button>
         </div>
       )}
@@ -351,9 +359,9 @@ export const ChatPaymentBubble = memo(function ChatPaymentBubble({ data, isMine,
             className="cp-btn cp-btn-cancel"
             onClick={handleCancel}
             disabled={busy}
-            aria-label="Annulla il pagamento"
+            aria-label={t("usda.btnCancel")}
           >
-            🚫 Annulla
+            {t("usda.btnCancel")}
           </button>
         </div>
       )}
@@ -367,9 +375,9 @@ export const ChatPaymentBubble = memo(function ChatPaymentBubble({ data, isMine,
             className="cp-btn cp-btn-detect"
             onClick={handleDetectDeposit}
             disabled={busy}
-            aria-label="Controlla se il deposito è arrivato on-chain"
+            aria-label={t("usda.btnCheckDeposit")}
           >
-            🔄 Controlla deposito
+            {t("usda.btnCheckDeposit")}
           </button>
           {/* RETRY FIRMA: reinvia il deposito per lo stesso transfer quando la
               prima firma non è partita (es. sessione wallet interrotta su iOS). */}
@@ -378,9 +386,9 @@ export const ChatPaymentBubble = memo(function ChatPaymentBubble({ data, isMine,
               className="cp-btn cp-btn-retry-sign"
               onClick={() => onRetryDeposit(data.transfer_id)}
               disabled={busy}
-              aria-label="Riprova la firma e reinvia il deposito"
+              aria-label={t("usda.btnRetrySign")}
             >
-              ✍️ Riprova firma
+              {t("usda.btnRetrySign")}
             </button>
           )}
         </div>
@@ -421,9 +429,9 @@ export const ChatPaymentBubble = memo(function ChatPaymentBubble({ data, isMine,
                 target="_blank"
                 rel="noopener noreferrer"
                 className="cp-scan-link"
-                aria-label="Verifica transazione su PolygonScan"
+                aria-label={t("usda.viewTx")}
               >
-                ↗ Visualizza transazione
+                {t("usda.viewTx")}
               </a>
             </div>
           );
@@ -439,9 +447,9 @@ export const ChatPaymentBubble = memo(function ChatPaymentBubble({ data, isMine,
                 target="_blank"
                 rel="noopener noreferrer"
                 className="cp-scan-link"
-                aria-label="Verifica deposito su PolygonScan"
+                aria-label={releaseUrl ? t("usda.viewDeposit") : t("usda.viewTx")}
               >
-                ↗ {releaseUrl ? "Visualizza deposito" : "Visualizza transazione"}
+                {releaseUrl ? t("usda.viewDeposit") : t("usda.viewTx")}
               </a>
             )}
             {releaseUrl && (
@@ -450,9 +458,9 @@ export const ChatPaymentBubble = memo(function ChatPaymentBubble({ data, isMine,
                 target="_blank"
                 rel="noopener noreferrer"
                 className="cp-scan-link"
-                aria-label="Verifica rilascio su PolygonScan"
+                aria-label={t("usda.viewRelease")}
               >
-                ↗ Visualizza rilascio
+                {t("usda.viewRelease")}
               </a>
             )}
           </div>

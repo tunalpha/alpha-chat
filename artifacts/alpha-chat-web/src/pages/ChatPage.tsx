@@ -1723,11 +1723,11 @@ export default function ChatPage({ onNavigate }: Props) {
         }
       }
     } catch (err) {
-      const errMsg = err instanceof Error ? err.message : "Errore invio";
+      const errMsg = err instanceof Error ? err.message : t("chat.sendError");
       if (editingMessage && (errMsg.includes("EDIT_EXPIRED") || errMsg.includes("EDIT_FORBIDDEN"))) {
         setEditingMessage(null);
         setInputText("");
-        setSendError("Impossibile modificare: tempo scaduto (15 min)");
+        setSendError(t("chat.editExpiredError"));
       } else {
         setSendError(errMsg);
         setInputText(text);
@@ -1842,28 +1842,28 @@ export default function ChatPage({ onNavigate }: Props) {
       .map((m) => getDisplayText(m))
       .filter(Boolean)
       .join("\n\n");
-    if (!texts) { showToast("Nessun testo da condividere"); return; }
+    if (!texts) { showToast(t("chat.toastNoText")); return; }
     const nav = navigator as Navigator & { share?: (data: ShareData) => Promise<void> };
     if (nav.share) {
       try { await nav.share({ text: texts }); }
       catch (e) {
         if ((e as Error).name !== "AbortError") {
           await navigator.clipboard.writeText(texts);
-          showToast("Copiato negli appunti");
+          showToast(t("chat.toastCopied"));
         }
       }
     } else {
       await navigator.clipboard.writeText(texts);
-      showToast("Copiato negli appunti");
+      showToast(t("chat.toastCopied"));
     }
   }
 
   /** Condividi un messaggio media (foto/video/documento) via share sheet nativo */
   async function handleShareMedia(msg: MessageItem) {
     const meta = decodeMediaMeta(getDisplayText(msg));
-    if (!meta || meta.type === "voice") { showToast("Condivisione non disponibile per i vocali"); return; }
-    if (!meta.key || !meta.iv) { showToast("Chiavi di cifratura non disponibili"); return; }
-    showToast("Preparazione file…");
+    if (!meta || meta.type === "voice") { showToast(t("chat.toastShareUnavailable")); return; }
+    if (!meta.key || !meta.iv) { showToast(t("chat.toastNoKeys")); return; }
+    showToast(t("chat.toastPreparing"));
     try {
       const objectUrl = await apiFetchAndDecryptMediaBlob(meta.media_id, meta.key, meta.iv);
       const res        = await fetch(objectUrl);
@@ -1881,10 +1881,10 @@ export default function ChatPage({ onNavigate }: Props) {
       } else if (nav.share) {
         await nav.share({ text: filename });
       } else {
-        showToast("Condivisione non supportata su questo browser");
+        showToast(t("chat.toastShareNotSupported"));
       }
     } catch (e) {
-      if ((e as Error).name !== "AbortError") showToast("Errore durante la condivisione");
+      if ((e as Error).name !== "AbortError") showToast(t("chat.toastShareError"));
     }
   }
 
@@ -1954,9 +1954,9 @@ export default function ChatPage({ onNavigate }: Props) {
         await apiSendMessage(targetConvId, text, { signal, clientMessageId, forward: true });
       }
 
-      showToast("Messaggio inoltrato ✓");
+      showToast(t("chat.toastForwarded"));
     } catch {
-      showToast("Errore durante l'inoltro");
+      showToast(t("chat.toastForwardError"));
     }
   }
 
@@ -2236,7 +2236,7 @@ export default function ChatPage({ onNavigate }: Props) {
   function handleLocationRequest() {
     if (!activeConvId || !auth) return;
     if (!navigator.geolocation) {
-      showToast("Geolocalizzazione non supportata su questo dispositivo");
+      showToast(t("chat.toastGeoNotSupported"));
       return;
     }
     setLocationModal("acquiring");
@@ -2304,7 +2304,7 @@ export default function ChatPage({ onNavigate }: Props) {
     } catch (err) {
       setMessages((prev) => prev.filter((m) => m.id !== pendingMsgId));
       setDecryptedTexts((prev) => { const n = new Map(prev); n.delete(pendingMsgId); return n; });
-      showToast(err instanceof Error ? err.message : "Errore invio posizione");
+      showToast(err instanceof Error ? err.message : t("chat.toastSendPositionError"));
     }
   }
 
@@ -2321,9 +2321,9 @@ export default function ChatPage({ onNavigate }: Props) {
         setMessages((prev) => prev.filter((m) => m.id !== id));
         setDestroyingIds((prev) => { const s = new Set(prev); s.delete(id); return s; });
       }, 600);
-      showToast("🛡 Secure Destroy completato");
+      showToast(t("chat.toastSecureDestroy"));
     } catch (err) {
-      showToast(err instanceof Error ? err.message : "Errore Secure Destroy");
+      showToast(err instanceof Error ? err.message : t("chat.toastSecureDestroyError"));
     } finally {
       setDestroying(false);
       setDestroyTarget(null);
@@ -2338,7 +2338,7 @@ export default function ChatPage({ onNavigate }: Props) {
       else next.add(activeConvId!);
       try { localStorage.setItem("alpha_muted_convs", JSON.stringify([...next])); } catch {}
       const muted = next.has(activeConvId!);
-      showToast(muted ? "🔕 Conversazione silenziata" : "🔔 Notifiche riattivate");
+      showToast(muted ? t("chat.toastMuted") : t("chat.toastUnmuted"));
       return next;
     });
   }
@@ -2356,9 +2356,9 @@ export default function ChatPage({ onNavigate }: Props) {
       setMessages([]);
       setDecryptedTexts(new Map());
       setShowClearChatModal(false);
-      showToast("Chat cancellata definitivamente");
+      showToast(t("chat.toastChatDeleted"));
     } catch (err) {
-      showToast(err instanceof Error ? err.message : "Errore durante la cancellazione");
+      showToast(err instanceof Error ? err.message : t("chat.toastChatDeleteError"));
     } finally {
       setClearChatLoading(false);
     }
@@ -2374,9 +2374,9 @@ export default function ChatPage({ onNavigate }: Props) {
     try {
       const { apiBlockUser } = await import("../lib/api");
       await apiBlockUser(targetId);
-      showToast(`🚫 ${name} bloccato`);
+      showToast(t("chat.toastUserBlocked", { name }));
     } catch {
-      showToast("Errore durante il blocco dell'utente");
+      showToast(t("chat.toastBlockError"));
     }
   }
 
@@ -2678,7 +2678,7 @@ export default function ChatPage({ onNavigate }: Props) {
                         archiveConversation(convId);
                         setConversations((prev) => prev.filter((c) => c.conversation_id !== convId));
                         if (activeConvId === convId) { setActiveConvId(null); closeChatMobile(); }
-                        showToast("Conversazione archiviata");
+                        showToast(t("chat.toastArchived"));
                       }}
                     >📦</button>
                     <button
@@ -2698,7 +2698,7 @@ export default function ChatPage({ onNavigate }: Props) {
                             await apiDeleteConversation(convId);
                           }
                         } catch { /* silenzioso — optimistic update già applicato */ }
-                        showToast(isGroup ? "Hai lasciato il gruppo" : "Conversazione eliminata");
+                        showToast(isGroup ? t("chat.toastLeft") : t("chat.toastDeleted"));
                       }}
                     >🗑️</button>
                   </div>
@@ -2860,9 +2860,9 @@ export default function ChatPage({ onNavigate }: Props) {
                 if (!toId) return;
                 try {
                   await resetAndRebuildSession(auth.userId, auth.deviceId, toId);
-                  showToast("Sessione E2E ripristinata. Invia un messaggio per confermare.");
+                  showToast(t("chat.toastSessionRestored"));
                 } catch {
-                  showToast("Errore nel ripristino sessione. Riprova.");
+                  showToast(t("chat.toastSessionError"));
                 }
               }}
             />
@@ -3370,7 +3370,7 @@ export default function ChatPage({ onNavigate }: Props) {
                   <button className="ctx-item" onClick={ctxAction(() => {
                     void navigator.clipboard.writeText(`${lm.latitude.toFixed(6)}, ${lm.longitude.toFixed(6)}`);
                     closeContextMenu();
-                    showToast("Coordinate copiate");
+                    showToast(t("chat.toastCoordsCopied"));
                   })}>
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
                     Copia coordinate
@@ -3562,7 +3562,7 @@ export default function ChatPage({ onNavigate }: Props) {
                   closeChatMobile();
                 }
                 setConvActionSheet(null);
-                showToast("Conversazione archiviata");
+                showToast(t("chat.toastArchived"));
               }}
             >
               📦 {t("chat.archiveConversation")}
@@ -3584,7 +3584,7 @@ export default function ChatPage({ onNavigate }: Props) {
                     await apiClearConversationMessages(cid);
                   }
                 } catch { /* silenzioso */ }
-                showToast(isGrp ? "Hai lasciato il gruppo" : "Conversazione eliminata");
+                showToast(isGrp ? t("chat.toastLeft") : t("chat.toastDeleted"));
               }}
             >
               🗑️ {conversations.find((c) => c.conversation_id === convActionSheet.convId)?.type === "group" ? "Lascia gruppo" : "Elimina conversazione"}

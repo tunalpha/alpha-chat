@@ -3,6 +3,7 @@
  */
 
 import { useState, useEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import { apiUsdaGetHistory } from "../../lib/usda-api";
 import type { UsdaPaymentData } from "../../lib/usda-types";
 import { USDA_STATUS_LABELS, USDA_STATUS_ICONS } from "../../lib/usda-types";
@@ -14,16 +15,17 @@ interface Props {
   onDetail: (paymentId: string) => void;
 }
 
-const FILTERS: { key: Filter; label: string }[] = [
-  { key: "all",      label: "Tutti"     },
-  { key: "sent",     label: "Inviati"   },
-  { key: "received", label: "Ricevuti"  },
-  { key: "pending",  label: "Pending"   },
-  { key: "claimed",  label: "Riscossi"  },
-  { key: "refunded", label: "Rimborsati"},
+const FILTER_KEYS: { key: Filter; tKey: string }[] = [
+  { key: "all",      tKey: "usda.filterAll"      },
+  { key: "sent",     tKey: "usda.filterSent"      },
+  { key: "received", tKey: "usda.filterReceived"  },
+  { key: "pending",  tKey: "usda.filterPending"   },
+  { key: "claimed",  tKey: "usda.filterClaimed"   },
+  { key: "refunded", tKey: "usda.filterRefunded"  },
 ];
 
 export function UsdaHistory({ onClose, onDetail }: Props) {
+  const { t } = useTranslation();
   const [filter,   setFilter]   = useState<Filter>("all");
   const [payments, setPayments] = useState<UsdaPaymentData[]>([]);
   const [total,    setTotal]    = useState(0);
@@ -47,27 +49,27 @@ export function UsdaHistory({ onClose, onDetail }: Props) {
   }, [filter]);
 
   return (
-    <div className="usda-history-modal" role="dialog" aria-modal="true" aria-label="Cronologia pagamenti USDA">
+    <div className="usda-history-modal" role="dialog" aria-modal="true" aria-label={t("usda.historyTitle")}>
       <div className="usda-history-header">
         <button
           type="button"
           className="usda-history-close"
-          aria-label="Chiudi cronologia"
+          aria-label={t("chat.back")}
           onClick={onClose}
         >
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="16" height="16" aria-hidden="true">
             <line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>
           </svg>
         </button>
-        <span className="usda-history-title">💰 Cronologia USDA</span>
+        <span className="usda-history-title">{t("usda.historyTitle")}</span>
       </div>
 
       <div
         className="usda-history-filters"
         role="tablist"
-        aria-label="Filtri transazioni"
+        aria-label={t("usda.filterAll")}
       >
-        {FILTERS.map((f) => (
+        {FILTER_KEYS.map((f) => (
           <button
             key={f.key}
             type="button"
@@ -76,22 +78,22 @@ export function UsdaHistory({ onClose, onDetail }: Props) {
             className={`usda-filter-btn ${filter === f.key ? "active" : ""}`}
             onClick={() => setFilter(f.key)}
           >
-            {f.label}
+            {t(f.tKey)}
           </button>
         ))}
       </div>
 
       {loading && (
-        <div className="usda-history-empty" role="status" aria-label="Caricamento in corso">
+        <div className="usda-history-empty" role="status" aria-label={t("common.loading")}>
           <span className="usda-loading-dots" aria-hidden="true" />
-          Caricamento…
+          {t("common.loading")}
         </div>
       )}
       {error && (
         <div className="usda-error" style={{ margin: "12px 16px" }} role="alert">{error}</div>
       )}
       {!loading && !error && payments.length === 0 && (
-        <div className="usda-history-empty">Nessuna transazione</div>
+        <div className="usda-history-empty">{t("usda.historyEmpty")}</div>
       )}
 
       <div className="usda-history-list" role="list">
@@ -125,7 +127,7 @@ export function UsdaHistory({ onClose, onDetail }: Props) {
 
       {total > payments.length && (
         <div className="usda-history-more" aria-live="polite">
-          {total - payments.length} altre transazioni
+          {t("usda.historyMore", { count: total - payments.length })}
         </div>
       )}
     </div>

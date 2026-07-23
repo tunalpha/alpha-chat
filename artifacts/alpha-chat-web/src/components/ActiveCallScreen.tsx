@@ -13,6 +13,7 @@
 import {
   useRef, useEffect, useCallback, useState,
 } from "react";
+import { useTranslation } from "react-i18next";
 import { useCall } from "../contexts/CallContext";
 import { useLock } from "../contexts/LockContext";
 import CallVerifyModal from "./CallVerifyModal";
@@ -29,10 +30,11 @@ function formatDuration(sec: number): string {
 }
 
 type Quality = "excellent" | "good" | "poor" | null;
-function qualityLabel(q: Quality): { dot: string; text: string } | null {
-  if (q === "excellent") return { dot: "🟢", text: "Eccellente" };
-  if (q === "good")      return { dot: "🟡", text: "Buona" };
-  if (q === "poor")      return { dot: "🔴", text: "Scarsa" };
+type TFunc = (key: string) => string;
+function qualityLabel(q: Quality, t: TFunc): { dot: string; text: string } | null {
+  if (q === "excellent") return { dot: "🟢", text: t("calls.qualityExcellent") };
+  if (q === "good")      return { dot: "🟡", text: t("calls.qualityGood") };
+  if (q === "poor")      return { dot: "🔴", text: t("calls.qualityPoor") };
   return null;
 }
 
@@ -60,6 +62,7 @@ export default function ActiveCallScreen() {
     endCall, toggleMute, toggleCamera, toggleSpeaker, switchCamera,
   } = useCall();
   const { emergencyLock } = useLock();
+  const { t } = useTranslation();
 
   // remoteAudioRef rimosso — audio remoto gestito da lib/remoteAudio (singleton primato nel gesture)
   const remoteVideoRef = useRef<HTMLVideoElement>(null);
@@ -250,7 +253,7 @@ export default function ActiveCallScreen() {
 
   const isVideo      = callType === "video";
   const isConnecting = callState === "calling";
-  const ql           = qualityLabel(quality);
+  const ql           = qualityLabel(quality, t);
 
   return (
     <>
@@ -284,7 +287,7 @@ export default function ActiveCallScreen() {
         {isReconnecting && (
           <div className="acs-reconnecting-overlay">
             <div className="acs-reconnecting-spinner" />
-            <span className="acs-reconnecting-label">Riconnessione…</span>
+            <span className="acs-reconnecting-label">{t("calls.reconnecting")}</span>
           </div>
         )}
 
@@ -298,13 +301,13 @@ export default function ActiveCallScreen() {
         <div className="acs-info">
           <div className="acs-name">{remoteDisplayName}</div>
           <div className="acs-status">
-            {isConnecting ? "In chiamata…" :
+            {isConnecting ? t("calls.connecting") :
              isVideo      ? `📹 ${formatDuration(callDuration)}` :
                             `📞 ${formatDuration(callDuration)}`}
           </div>
 
           {ql && (
-            <button className="acs-quality-badge" onClick={() => setShowStats((v) => !v)} title="Statistiche">
+            <button className="acs-quality-badge" onClick={() => setShowStats((v) => !v)} title={t("calls.statsTitle")}>
               {ql.dot} {ql.text}
             </button>
           )}
@@ -313,15 +316,15 @@ export default function ActiveCallScreen() {
         {/* ── Pannello statistiche dettagliate ─ */}
         {showStats && stats && (
           <div className="acs-stats-panel">
-            <div className="acs-stats-row"><span>RTT</span><span>{stats.rttMs} ms</span></div>
-            <div className="acs-stats-row"><span>Jitter</span><span>{stats.jitter} ms</span></div>
-            <div className="acs-stats-row"><span>Perdita pacchetti</span><span>{(stats.lossRatio * 100).toFixed(1)}%</span></div>
-            <div className="acs-stats-row"><span>Codec</span><span>{stats.codec || "—"}</span></div>
-            <div className="acs-stats-row"><span>Connessione</span><span>{stats.connType}</span></div>
-            {stats.audioKbps > 0 && <div className="acs-stats-row"><span>Audio</span><span>{stats.audioKbps} kbps</span></div>}
-            {isVideo && stats.videoKbps > 0 && <div className="acs-stats-row"><span>Video</span><span>{stats.videoKbps} kbps</span></div>}
-            {isVideo && stats.fps > 0   && <div className="acs-stats-row"><span>FPS</span><span>{stats.fps}</span></div>}
-            {isVideo && stats.resolution && <div className="acs-stats-row"><span>Risoluzione</span><span>{stats.resolution}</span></div>}
+            <div className="acs-stats-row"><span>{t("calls.statsRtt")}</span><span>{stats.rttMs} ms</span></div>
+            <div className="acs-stats-row"><span>{t("calls.statsJitter")}</span><span>{stats.jitter} ms</span></div>
+            <div className="acs-stats-row"><span>{t("calls.statsPacketLoss")}</span><span>{(stats.lossRatio * 100).toFixed(1)}%</span></div>
+            <div className="acs-stats-row"><span>{t("calls.statsCodec")}</span><span>{stats.codec || "—"}</span></div>
+            <div className="acs-stats-row"><span>{t("calls.statsConn")}</span><span>{stats.connType}</span></div>
+            {stats.audioKbps > 0 && <div className="acs-stats-row"><span>{t("calls.statsAudio")}</span><span>{stats.audioKbps} kbps</span></div>}
+            {isVideo && stats.videoKbps > 0 && <div className="acs-stats-row"><span>{t("calls.statsVideo")}</span><span>{stats.videoKbps} kbps</span></div>}
+            {isVideo && stats.fps > 0   && <div className="acs-stats-row"><span>{t("calls.statsFps")}</span><span>{stats.fps}</span></div>}
+            {isVideo && stats.resolution && <div className="acs-stats-row"><span>{t("calls.statsResolution")}</span><span>{stats.resolution}</span></div>}
           </div>
         )}
 
@@ -343,13 +346,13 @@ export default function ActiveCallScreen() {
         {showMenu && (
           <div className="acs-menu">
             <button className="acs-menu-item" onClick={() => { setShowVerify(true); setShowMenu(false); }}>
-              🔍 Verifica identità
+              🔍 {t("calls.menuVerify")}
             </button>
             <button className="acs-menu-item acs-menu-item-danger" onClick={() => { endCall(); emergencyLock(); setShowMenu(false); }}>
-              🔒 Emergency Lock
+              🔒 {t("calls.menuEmergencyLock")}
             </button>
             <button className="acs-menu-item" onClick={() => setShowMenu(false)}>
-              Annulla
+              {t("common.cancel")}
             </button>
           </div>
         )}
@@ -359,7 +362,7 @@ export default function ActiveCallScreen() {
         {/* Call Shield Bar — sopra i controlli */}
         {callState === "active" && (
           <div className="acs-shield-bar">
-            <span className="acs-shield-enc">🔒 Cifrata</span>
+            <span className="acs-shield-enc">🔒 {t("calls.encrypted")}</span>
             <span className="acs-shield-sep">·</span>
             <span className="acs-shield-conn">
               {connType === "TURN" ? "🟡 Relay" : "🟢 P2P"}
@@ -377,7 +380,7 @@ export default function ActiveCallScreen() {
         <div className="acs-controls">
           {/* Microfono */}
           <button className={`acs-btn${isMuted ? " acs-btn-active" : ""}`} onClick={toggleMute}
-            aria-label={isMuted ? "Riattiva" : "Silenzia"} title={isMuted ? "Riattiva microfono" : "Silenzia"}>
+            aria-label={isMuted ? t("calls.unmute") : t("calls.mute")} title={isMuted ? t("calls.unmuteMic") : t("calls.mute")}>
             {isMuted
               ? <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="24" height="24"><line x1="1" y1="1" x2="23" y2="23"/><path d="M9 9v3a3 3 0 0 0 5.12 2.12M15 9.34V4a3 3 0 0 0-5.94-.6"/><path d="M17 16.95A7 7 0 0 1 5 12v-2m14 0v2a7 7 0 0 1-.11 1.23"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
               : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="24" height="24"><path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="23"/><line x1="8" y1="23" x2="16" y2="23"/></svg>
@@ -386,7 +389,7 @@ export default function ActiveCallScreen() {
 
           {/* Vivavoce */}
           <button className={`acs-btn${isSpeaker ? " acs-btn-active" : ""}`} onClick={toggleSpeaker}
-            aria-label={isSpeaker ? "Auricolare" : "Vivavoce"} title={isSpeaker ? "Auricolare" : "Vivavoce"}>
+            aria-label={isSpeaker ? t("calls.earpiece") : t("calls.speaker")} title={isSpeaker ? t("calls.earpiece") : t("calls.speaker")}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="24" height="24">
               <polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/>
               <path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>
@@ -397,7 +400,7 @@ export default function ActiveCallScreen() {
           {/* Camera toggle — video calls */}
           {isVideo && (
             <button className={`acs-btn${isCameraOff ? " acs-btn-active" : ""}`} onClick={toggleCamera}
-              aria-label={isCameraOff ? "Accendi camera" : "Spegni camera"}>
+              aria-label={isCameraOff ? t("calls.cameraOn") : t("calls.cameraOff")}>
               {isCameraOff
                 ? <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="24" height="24"><line x1="1" y1="1" x2="23" y2="23"/><path d="M21 21H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h3m3-3h6l2 3h4a2 2 0 0 1 2 2v9.34m-7.72-2.06a4 4 0 1 1-5.56-5.56"/></svg>
                 : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="24" height="24"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
@@ -408,7 +411,7 @@ export default function ActiveCallScreen() {
           {/* Camera switch — front/back, solo mobile/video */}
           {isVideo && !isConnecting && (
             <button className="acs-btn acs-btn-switch-cam" onClick={() => void switchCamera()}
-              aria-label="Cambia camera" title="Cambia camera">
+              aria-label={t("calls.switchCamera")} title={t("calls.switchCamera")}>
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="24" height="24">
                 <path d="M20 7h-3.5l-1.5-2h-6L7.5 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2z"/>
                 <circle cx="12" cy="12" r="3"/>
@@ -418,7 +421,7 @@ export default function ActiveCallScreen() {
           )}
 
           {/* Altro / menu */}
-          <button className="acs-btn" onClick={() => setShowMenu((v) => !v)} aria-label="Altro" title="Altro">
+          <button className="acs-btn" onClick={() => setShowMenu((v) => !v)} aria-label={t("common.more")} title={t("common.more")}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="24" height="24">
               <circle cx="12" cy="5" r="1" fill="currentColor"/>
               <circle cx="12" cy="12" r="1" fill="currentColor"/>
@@ -427,7 +430,7 @@ export default function ActiveCallScreen() {
           </button>
 
           {/* Fine chiamata */}
-          <button className="acs-btn acs-btn-end" onClick={endCall} aria-label="Termina">
+          <button className="acs-btn acs-btn-end" onClick={endCall} aria-label={t("calls.end")}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="24" height="24">
               <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.61 3.4 2 2 0 0 1 3.6 1.22h3a2 2 0 0 1 2 1.72c.127.96.361 1.903.7 2.81a2 2 0 0 1-.45 2.11L7.91 8.8a16 16 0 0 0 5.55 5.55l.95-.95a2 2 0 0 1 2.11-.45c.907.339 1.85.573 2.81.7A2 2 0 0 1 22 16.92z"/>
               <line x1="23" y1="1" x2="1" y2="23"/>

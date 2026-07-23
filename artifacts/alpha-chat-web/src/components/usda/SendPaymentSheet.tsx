@@ -20,6 +20,7 @@
  */
 
 import { useState, useRef, useEffect, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { useActiveAccount, ConnectButton } from "thirdweb/react";
 import { client, polygon, wallets } from "../../lib/thirdweb";
 import {
@@ -92,20 +93,7 @@ type SendPhase =
   | "done"
   | "error";
 
-const STEPS: { id: Step; label: string }[] = [
-  { id: "form",    label: "Importo"  },
-  { id: "confirm", label: "Conferma" },
-  { id: "sending", label: "Invio"    },
-];
-
-const PHASE_LABEL: Record<SendPhase, string> = {
-  recovering: "Ricerca deposito on-chain…",
-  creating:   "Creazione trasferimento…",
-  signing:    "Firma nel wallet…",
-  confirming: "Conferma blockchain…",
-  done:       "Pagamento inviato ✓",
-  error:      "Errore",
-};
+// STEPS e PHASE_LABEL sono calcolati dentro il componente per supportare i18n
 
 // ---------------------------------------------------------------------------
 // Recovery iOS Safari PWA
@@ -134,6 +122,7 @@ export function SendPaymentSheet({
   resumeTransferId,
 }: Props) {
   const isResume = !!resumeTransferId;
+  const { t } = useTranslation();
   const [step,   setStep]   = useState<Step>(isResume ? "confirm" : "form");
   const [amount, setAmount] = useState(initialAmount ?? "");
   const amountLocked = !!initialAmount || isResume;
@@ -148,6 +137,21 @@ export function SendPaymentSheet({
   const account     = useActiveAccount();
   const isConnected = !!account;
 
+  const STEPS: { id: Step; label: string }[] = [
+    { id: "form",    label: t("usda.stepAmount")  },
+    { id: "confirm", label: t("usda.stepConfirm") },
+    { id: "sending", label: t("usda.stepSend")    },
+  ];
+
+  const PHASE_LABEL: Record<SendPhase, string> = {
+    recovering: t("usda.phaseRecovering"),
+    creating:   t("usda.phaseCreating"),
+    signing:    t("usda.phaseSigning"),
+    confirming: t("usda.phaseConfirming"),
+    done:       t("usda.phaseDone"),
+    error:      t("common.error"),
+  };
+
   const amountNum      = parseFloat(amount) || 0;
   const currentStepIdx = STEPS.findIndex((s) => s.id === step);
 
@@ -155,8 +159,8 @@ export function SendPaymentSheet({
   useEffect(() => {
     if (phase !== "done") return;
     localStorage.removeItem(PENDING_KEY);
-    const t = setTimeout(() => onSent(), 1800);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => onSent(), 1800);
+    return () => clearTimeout(timer);
   }, [phase, onSent]);
 
   // RETRY FIRMA — carica il transfer esistente (escrow, importo, asset) così da
@@ -293,7 +297,7 @@ export function SendPaymentSheet({
       if (/reject|cancel|denied|refused|user.*cancel|user rejected/i.test(msg)) {
         // Reject esplicito dell'utente → interrompe subito il polling.
         pollAborted  = true;
-        signErrorMsg = "Hai annullato la firma nel wallet.";
+        signErrorMsg = t("usda.signCancelled");
       } else if (/nonce.*too.*low|nonce.*used|nonce.*already/i.test(msg)) {
         // "nonce too low" significa che una tx con lo stesso nonce è già stata
         // inviata e confermata (es. la richiesta stale del WalletConnect relay
@@ -317,7 +321,7 @@ export function SendPaymentSheet({
 
     while (Date.now() - pollStart < POLL_MAX_MS) {
       if (pollAborted) {
-        throw new Error((signErrorMsg ?? "Firma annullata.") + " Ripremi «Firma e Invia» per riprovare.");
+        throw new Error(signErrorMsg ?? t("usda.signAbortedRetry"));
       }
 
       await new Promise<void>((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
@@ -327,7 +331,7 @@ export function SendPaymentSheet({
       if (pollCount === 1) setPhase("confirming");
 
       if (pollAborted) {
-        throw new Error((signErrorMsg ?? "Firma annullata.") + " Ripremi «Firma e Invia» per riprovare.");
+        throw new Error(signErrorMsg ?? t("usda.signAbortedRetry"));
       }
 
       try {
@@ -341,7 +345,7 @@ export function SendPaymentSheet({
           // on-chain, la tx quasi certamente non è mai partita → mostra l'errore
           // reale e lascia riprovare, invece di attendere 10 minuti a vuoto.
           if (signErrorMsg && !pollAborted && pollCount >= SIGN_ERROR_GRACE_POLLS) {
-            throw new Error(signErrorMsg + "\nNessun deposito rilevato on-chain — ripremi «Firma e Invia» per riprovare.");
+            throw new Error(signErrorMsg + "\n" + t("usda.depositNotFound"));
           }
           continue;
         }
@@ -350,11 +354,8 @@ export function SendPaymentSheet({
       }
     }
 
-    throw new Error(
-      "Timeout: deposito non rilevato dopo 10 minuti.\n" +
-      "Se hai già firmato nella app wallet usa «Controlla deposito» nella chat, altrimenti ripremi «Firma e Invia» per riprovare.",
-    );
-  }, [account, conversationId]);
+    throw new Error(t("usda.depositTimeout"));
+  }, [account, conversationId, t]);
 
   // ── Step 2 → Step 3: crea trasferimento poi firma ──────────────────────────
   const handleSend = useCallback(async () => {
@@ -431,16 +432,16 @@ export function SendPaymentSheet({
       className="modal-backdrop"
       role="dialog"
       aria-modal="true"
-      aria-label="Invia USDA"
+      aria-label={t("usda.sendTitle")}
       onClick={phase !== "signing" && phase !== "confirming" ? onClose : undefined}
     >
       <div className="usda-sheet" onClick={(e) => e.stopPropagation()}>
 
         {/* Header */}
         <div className="usda-sheet-header">
-          <span className="usda-sheet-title">💸 Invia USDA</span>
+          <span className="usda-sheet-title">💸 {t("usda.sendTitle")}</span>
           {phase !== "signing" && phase !== "confirming" && (
-            <button type="button" className="usda-sheet-close" aria-label="Chiudi" onClick={onClose}>
+            <button type="button" className="usda-sheet-close" aria-label={t("common.close")} onClick={onClose}>
               ✕
             </button>
           )}
@@ -459,10 +460,10 @@ export function SendPaymentSheet({
         {/* ── STEP 1: FORM ────────────────────────────────────────────────── */}
         {step === "form" && (
           <>
-            <div className="usda-sheet-to">A: <strong>{toName}</strong></div>
+            <div className="usda-sheet-to">{t("usda.toLabel")}: <strong>{toName}</strong></div>
 
             <div className="usda-sheet-field">
-              <label htmlFor="sp-amount">Importo</label>
+              <label htmlFor="sp-amount">{t("usda.amountLabel")}</label>
               <div className="usda-amount-row">
                 <input
                   id="sp-amount"
@@ -483,12 +484,12 @@ export function SendPaymentSheet({
             </div>
 
             <div className="usda-sheet-field">
-              <label htmlFor="sp-note">Nota (opzionale)</label>
+              <label htmlFor="sp-note">{t("usda.noteLabel")}</label>
               <input
                 id="sp-note"
                 className="usda-note-input"
                 type="text"
-                placeholder="Es. Cena, taxi, regalo…"
+                placeholder={t("usda.notePlaceholder")}
                 maxLength={200}
                 value={note}
                 onChange={(e) => setNote(e.target.value)}
@@ -498,9 +499,9 @@ export function SendPaymentSheet({
             {error && <div className="usda-error" role="alert">{error}</div>}
 
             <div className="usda-sheet-actions">
-              <button type="button" className="usda-btn-secondary" onClick={onClose}>Annulla</button>
+              <button type="button" className="usda-btn-secondary" onClick={onClose}>{t("common.cancel")}</button>
               <button type="button" className="usda-btn-primary" onClick={handleContinue}>
-                Continua →
+                {t("usda.stepContinue")} →
               </button>
             </div>
           </>
@@ -512,34 +513,31 @@ export function SendPaymentSheet({
             {isResume && (
               <>
                 <div className="sp-resume-hint" role="note">
-                  🔁 Riprova firma — stesso trasferimento, stesso wallet escrow.
-                  Nessun nuovo pagamento verrà creato.
+                  🔁 {t("usda.resumeHint")}
                 </div>
                 <div className="sp-resume-warn" role="note">
-                  ⚠️ Se il wallet ti mostra più richieste di firma, approvane
-                  solo una e rifiuta le altre. Se ne compare una seconda, il
-                  pagamento è già stato elaborato: puoi chiuderla senza problemi.
+                  ⚠️ {t("usda.resumeWarn")}
                 </div>
               </>
             )}
             <div className="usda-confirm-summary">
               <div className="usda-confirm-row">
-                <span>A</span>
+                <span>{t("usda.toLabel")}</span>
                 <strong>{toName}</strong>
               </div>
               <div className="usda-confirm-row usda-confirm-total">
-                <span>Importo</span>
+                <span>{t("usda.amountLabel")}</span>
                 <strong>{amountNum} USDA</strong>
               </div>
               {note.trim() && (
                 <div className="usda-confirm-row">
-                  <span>Nota</span>
+                  <span>{t("usda.noteLabel")}</span>
                   <em>"{note}"</em>
                 </div>
               )}
               <div className="usda-confirm-row">
-                <span>Commissione</span>
-                <span style={{ color: "#4ade80", fontWeight: 600 }}>Nessuna</span>
+                <span>{t("usda.feeLabel")}</span>
+                <span style={{ color: "#4ade80", fontWeight: 600 }}>{t("usda.feeNone")}</span>
               </div>
             </div>
 
@@ -547,7 +545,7 @@ export function SendPaymentSheet({
             {!isConnected ? (
               <div className="sp-wallet-prompt">
                 <p className="sp-wallet-prompt-text">
-                  Connetti il tuo wallet per firmare il pagamento su <strong>Polygon</strong>.
+                  {t("usda.walletConnectPrompt")}
                 </p>
                 <div className="usda-connect-btn-wrap">
                   <ConnectButton client={client} chain={polygon} wallets={wallets} />
@@ -570,7 +568,7 @@ export function SendPaymentSheet({
                 className="usda-btn-secondary"
                 onClick={isResume ? onClose : () => { setStep("form"); setError(null); }}
               >
-                {isResume ? "Annulla" : "← Modifica"}
+                {isResume ? t("common.cancel") : `← ${t("usda.stepEdit")}`}
               </button>
               <button
                 type="button"
@@ -578,9 +576,9 @@ export function SendPaymentSheet({
                 onClick={isResume ? handleResumeSign : handleSend}
                 disabled={!isConnected || (isResume && (resumeLoading || !resumeRef.current))}
                 aria-disabled={!isConnected || (isResume && (resumeLoading || !resumeRef.current))}
-                title={!isConnected ? "Connetti prima il wallet" : undefined}
+                title={!isConnected ? t("usda.walletConnectFirst") : undefined}
               >
-                {isResume && resumeLoading ? "Caricamento…" : "🔐 Firma e Invia"}
+                {isResume && resumeLoading ? t("common.loading") : `🔐 ${t("usda.btnSignSend")}`}
               </button>
             </div>
           </>
@@ -592,7 +590,7 @@ export function SendPaymentSheet({
             {phase === "done" ? (
               <div className="sp-success">
                 <div className="sp-success-icon" aria-hidden="true">✅</div>
-                <p className="sp-success-title">Pagamento inviato!</p>
+                <p className="sp-success-title">{t("usda.phaseDone")}</p>
                 <p className="sp-success-sub">
                   {amountNum} USDA → {toName}
                 </p>
@@ -600,16 +598,16 @@ export function SendPaymentSheet({
             ) : phase === "error" ? (
               <>
                 <div className="sp-err-icon" aria-hidden="true">⚠️</div>
-                <p className="sp-err-title">Si è verificato un problema</p>
+                <p className="sp-err-title">{t("usda.errorTitle")}</p>
                 {error && <p className="usda-error sp-err-detail" role="alert">{error}</p>}
                 <div className="usda-sheet-actions" style={{ marginTop: 16 }}>
-                  <button type="button" className="usda-btn-secondary" onClick={onClose}>Chiudi</button>
+                  <button type="button" className="usda-btn-secondary" onClick={onClose}>{t("common.close")}</button>
                   <button
                     type="button"
                     className="usda-btn-primary"
                     onClick={() => { setStep("confirm"); setPhase(null); setError(null); }}
                   >
-                    Riprova
+                    {t("common.retry")}
                   </button>
                 </div>
               </>
@@ -623,18 +621,16 @@ export function SendPaymentSheet({
                 </p>
                 {phase === "signing" && (
                   <p className="usda-signing-sub">
-                    Il tuo wallet si è aperto — approva la transazione.
-                    <br />🔒 Sicuro · Solo tu controlli i fondi
+                    {t("usda.signingHint")}
                     {isResume && (
                       <>
-                        <br />⚠️ Se vedi più richieste di firma, approvane solo
-                        una: le altre sono già state elaborate e puoi chiuderle.
+                        <br />{t("usda.resumeSignWarn")}
                       </>
                     )}
                   </p>
                 )}
                 {phase === "confirming" && (
-                  <p className="usda-signing-sub">Non chiudere l'app.</p>
+                  <p className="usda-signing-sub">{t("usda.confirmingHint")}</p>
                 )}
               </>
             )}

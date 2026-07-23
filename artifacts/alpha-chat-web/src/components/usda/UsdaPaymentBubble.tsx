@@ -6,6 +6,7 @@
  */
 
 import { memo } from "react";
+import { useTranslation } from "react-i18next";
 import type { UsdaPaymentData, UsdaPaymentStatus } from "../../lib/usda-types";
 import { USDA_STATUS_ICONS } from "../../lib/usda-types";
 
@@ -33,25 +34,29 @@ function isAnimated(status: UsdaPaymentStatus): boolean {
   return ["preparing", "signing", "submitting", "pending"].includes(status);
 }
 
-function statusCopy(status: UsdaPaymentStatus, isMine: boolean): string {
+type TFunc = (key: string) => string;
+
+function statusCopy(status: UsdaPaymentStatus, isMine: boolean, t: TFunc): string {
   switch (status) {
-    case "preparing":     return "✨ Preparazione in corso…";
-    case "signing":       return "🔐 Firma in corso…";
-    case "submitting":    return "📡 Invio sulla blockchain…";
-    case "pending":       return "⛓️ Conferma blockchain in corso…";
-    case "confirmed":     return isMine ? "🎉 Pagamento completato!" : "🎉 Pagamento ricevuto!";
-    case "pending_claim": return "⏳ In attesa di riscossione";
-    case "claimed":       return "🎉 Riscosso con successo";
-    case "refunded":      return "↩️ Importo rimborsato automaticamente";
-    case "failed":        return "❌ Pagamento non riuscito";
+    case "preparing":     return t("usda.statusPreparing");
+    case "signing":       return t("usda.statusSigning");
+    case "submitting":    return t("usda.statusSubmitting");
+    case "pending":       return t("usda.statusPending");
+    case "confirmed":     return isMine ? t("usda.statusConfirmedMine") : t("usda.statusConfirmedTheirs");
+    case "pending_claim": return t("usda.statusPendingClaim");
+    case "claimed":       return t("usda.statusClaimed");
+    case "refunded":      return t("usda.statusRefunded");
+    case "failed":        return t("usda.statusFailedCopy");
     default:              return status;
   }
 }
 
 export const UsdaPaymentBubble = memo(function UsdaPaymentBubble({ data, isMine, onDetail }: Props) {
+  const { t } = useTranslation();
+
   const statusClass = getStatusClass(data.status);
   const animated    = isAnimated(data.status);
-  const copy        = statusCopy(data.status, isMine);
+  const copy        = statusCopy(data.status, isMine, t);
 
   const recipientName = data.recipient_name ?? data.recipient_id.slice(0, 8);
   const senderName    = data.sender_name    ?? data.sender_id.slice(0, 8);
@@ -62,7 +67,7 @@ export const UsdaPaymentBubble = memo(function UsdaPaymentBubble({ data, isMine,
     <div
       role="button"
       tabIndex={0}
-      aria-label={`Pagamento USDA di ${data.amount} — ${copy}. Tocca per i dettagli`}
+      aria-label={`Pagamento USDA di ${data.amount} — ${copy}. ${t("usda.tapForDetails")}`}
       className={`usda-bubble usda-send ${isMine ? "mine" : "theirs"} ${isSuccess ? "success-glow" : ""}`}
       onClick={() => onDetail?.(data.payment_id)}
       onKeyDown={(e) => e.key === "Enter" && onDetail?.(data.payment_id)}
@@ -72,7 +77,7 @@ export const UsdaPaymentBubble = memo(function UsdaPaymentBubble({ data, isMine,
           {isMine ? "💸" : "💰"}
         </span>
         <span className="usda-bubble-title">
-          {isMine ? "Hai inviato" : "Hai ricevuto"}
+          {isMine ? t("usda.sentTitle") : t("usda.receivedTitle")}
         </span>
       </div>
 
@@ -81,8 +86,8 @@ export const UsdaPaymentBubble = memo(function UsdaPaymentBubble({ data, isMine,
       </div>
 
       {isMine
-        ? <div className="usda-bubble-sub">a {recipientName}</div>
-        : <div className="usda-bubble-sub">da {senderName}</div>
+        ? <div className="usda-bubble-sub">{t("usda.toPrefix")}{recipientName}</div>
+        : <div className="usda-bubble-sub">{t("usda.fromPrefix")}{senderName}</div>
       }
 
       {data.note && (
@@ -96,7 +101,7 @@ export const UsdaPaymentBubble = memo(function UsdaPaymentBubble({ data, isMine,
       </div>
 
       {onDetail && (
-        <div className="usda-bubble-tap-hint" aria-hidden="true">Tocca per i dettagli →</div>
+        <div className="usda-bubble-tap-hint" aria-hidden="true">{t("usda.tapForDetails")}</div>
       )}
     </div>
   );
