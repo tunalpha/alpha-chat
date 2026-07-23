@@ -1,338 +1,162 @@
 /**
- * PwaGuidePage — Come installare AlphaChat come app
- * Guida passo-passo per iPhone (Safari) e Android (Chrome)
- * con illustrazioni emoji e istruzioni per abilitare le notifiche.
+ * PwaGuidePage — Sprint 27
+ * Guida installazione PWA (iOS Safari + Android Chrome).
  */
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 
-interface Props {
-  onBack: () => void;
-}
+interface Props { onBack: () => void }
+
+type Platform = "ios" | "android" | "desktop";
 
 export default function PwaGuidePage({ onBack }: Props) {
-  const [tab, setTab] = useState<"iphone" | "android">("iphone");
+  const { t } = useTranslation("pwa");
+  const [platform, setPlatform] = useState<Platform>(detectPlatform());
+
+  function detectPlatform(): Platform {
+    const ua = navigator.userAgent;
+    if (/iPad|iPhone|iPod/.test(ua)) return "ios";
+    if (/Android/.test(ua)) return "android";
+    return "desktop";
+  }
+
+  const isPwaInstalled =
+    window.matchMedia("(display-mode: standalone)").matches ||
+    (navigator as { standalone?: boolean }).standalone === true;
+
+  const PLATFORMS: { key: Platform; icon: string; label: string }[] = [
+    { key: "ios",     icon: "",  label: "iOS" },
+    { key: "android", icon: "🤖", label: "Android" },
+    { key: "desktop", icon: "🖥️", label: t("desktop") },
+  ];
+
+  const STEPS_IOS = [
+    { icon: "🧭", title: t("iosStep1Title"), desc: t("iosStep1Desc") },
+    { icon: "📤", title: t("iosStep2Title"), desc: t("iosStep2Desc") },
+    { icon: "🏠", title: t("iosStep3Title"), desc: t("iosStep3Desc") },
+    { icon: "✅", title: t("iosStep4Title"), desc: t("iosStep4Desc") },
+  ];
+
+  const STEPS_ANDROID = [
+    { icon: "🌐", title: t("andStep1Title"), desc: t("andStep1Desc") },
+    { icon: "⋮",  title: t("andStep2Title"), desc: t("andStep2Desc") },
+    { icon: "📲", title: t("andStep3Title"), desc: t("andStep3Desc") },
+    { icon: "✅", title: t("andStep4Title"), desc: t("andStep4Desc") },
+  ];
+
+  const STEPS_DESKTOP = [
+    { icon: "🌐", title: t("dskStep1Title"), desc: t("dskStep1Desc") },
+    { icon: "💻", title: t("dskStep2Title"), desc: t("dskStep2Desc") },
+    { icon: "✅", title: t("dskStep3Title"), desc: t("dskStep3Desc") },
+  ];
+
+  const steps =
+    platform === "ios"     ? STEPS_IOS :
+    platform === "android" ? STEPS_ANDROID :
+    STEPS_DESKTOP;
+
+  const BENEFITS = [
+    { icon: "⚡", label: t("benefitFast") },
+    { icon: "📵", label: t("benefitOffline") },
+    { icon: "🔔", label: t("benefitNotif") },
+    { icon: "🔒", label: t("benefitSecure") },
+  ];
 
   return (
-    <div className="settings-root">
+    <div className="pwa-root">
       <header className="settings-header">
-        <button className="settings-back-btn" onClick={onBack} aria-label="Indietro">
+        <button className="settings-back-btn" onClick={onBack} aria-label={t("common:back", "Back")}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
-            strokeLinecap="round" strokeLinejoin="round" width="20" height="20">
-            <polyline points="15 18 9 12 15 6" />
+               strokeLinecap="round" strokeLinejoin="round" width="20" height="20">
+            <polyline points="15 18 9 12 15 6"/>
           </svg>
         </button>
-        <h1 className="settings-title">Installa AlphaChat</h1>
+        <h1 className="settings-title">{t("title")}</h1>
       </header>
 
-      <div className="settings-body">
+      <div className="pwa-body">
 
         {/* Hero */}
         <div className="pwa-hero">
           <div className="pwa-hero-icon">📲</div>
-          <div className="pwa-hero-text">
-            <div className="pwa-hero-title">Esperienza da app nativa</div>
-            <div className="pwa-hero-sub">
-              Aggiungi AlphaChat alla schermata Home e ricevi notifiche istantanee — senza passare dall'App Store.
-            </div>
-          </div>
+          <div className="pwa-hero-title">{t("heroTitle")}</div>
+          <div className="pwa-hero-desc">{t("heroDesc")}</div>
+          {isPwaInstalled && (
+            <div className="pwa-installed-badge">✅ {t("alreadyInstalled")}</div>
+          )}
         </div>
 
         {/* Benefits */}
         <div className="pwa-benefits">
-          <div className="pwa-benefit"><span>⚡</span><span>Avvio istantaneo</span></div>
-          <div className="pwa-benefit"><span>🔔</span><span>Notifiche push</span></div>
-          <div className="pwa-benefit"><span>📴</span><span>Funziona offline</span></div>
-          <div className="pwa-benefit"><span>🔒</span><span>Nessun tracciamento store</span></div>
+          {BENEFITS.map((b, i) => (
+            <div key={i} className="pwa-benefit">
+              <span className="pwa-benefit-icon">{b.icon}</span>
+              <span className="pwa-benefit-label">{b.label}</span>
+            </div>
+          ))}
         </div>
 
-        {/* Tab switcher */}
-        <div className="pwa-tabs">
-          <button
-            className={`pwa-tab${tab === "iphone" ? " pwa-tab--active" : ""}`}
-            onClick={() => setTab("iphone")}
-          >
-            🍎 iPhone
-          </button>
-          <button
-            className={`pwa-tab${tab === "android" ? " pwa-tab--active" : ""}`}
-            onClick={() => setTab("android")}
-          >
-            🤖 Android
-          </button>
+        {/* Platform picker */}
+        <div className="pwa-section-title">{t("choosePlatform")}</div>
+        <div className="pwa-platform-tabs">
+          {PLATFORMS.map(p => (
+            <button
+              key={p.key}
+              className={`pwa-platform-tab${platform === p.key ? " pwa-platform-tab--active" : ""}`}
+              onClick={() => setPlatform(p.key)}
+            >
+              <span>{p.icon}</span>
+              <span>{p.label}</span>
+            </button>
+          ))}
         </div>
 
-        {/* ─── iPhone ─────────────────────────────────────────────── */}
-        {tab === "iphone" && (
-          <div className="pwa-steps">
-
-            <div className="pwa-section-label">📱 Aggiungi alla schermata Home</div>
-
-            <div className="pwa-step">
-              <div className="pwa-step-num">1</div>
+        {/* Steps */}
+        <div className="pwa-steps">
+          {steps.map((s, i) => (
+            <div key={i} className="pwa-step">
+              <div className="pwa-step-num">{i + 1}</div>
+              <div className="pwa-step-icon">{s.icon}</div>
               <div className="pwa-step-body">
-                <div className="pwa-step-title">Apri in Safari</div>
-                <div className="pwa-step-desc">
-                  Assicurati di usare <strong>Safari</strong> — Chrome e altri browser non supportano l'installazione su iPhone.
-                </div>
-                <div className="pwa-phone-mock">
-                  <div className="pwa-mock-bar">
-                    <span className="pwa-mock-dot" />
-                    <span className="pwa-mock-url">🔒 alphachat.app</span>
-                    <span className="pwa-mock-icon">⟳</span>
-                  </div>
-                  <div className="pwa-mock-tip">← Usa questo browser</div>
-                </div>
+                <div className="pwa-step-title">{s.title}</div>
+                <div className="pwa-step-desc">{s.desc}</div>
               </div>
             </div>
+          ))}
+        </div>
 
-            <div className="pwa-step">
-              <div className="pwa-step-num">2</div>
-              <div className="pwa-step-body">
-                <div className="pwa-step-title">Tocca il pulsante Condividi</div>
-                <div className="pwa-step-desc">
-                  In basso al centro di Safari trovi il pulsante <strong>Condividi</strong>.
-                </div>
-                <div className="pwa-phone-mock">
-                  <div className="pwa-mock-toolbar">
-                    <span className="pwa-mock-tb-btn">←</span>
-                    <span className="pwa-mock-tb-btn">→</span>
-                    <span className="pwa-mock-tb-btn pwa-mock-tb-share">⬆</span>
-                    <span className="pwa-mock-tb-btn">⊡</span>
-                    <span className="pwa-mock-tb-btn">≡</span>
-                  </div>
-                  <div className="pwa-mock-arrow">↑ Tocca qui</div>
-                </div>
-              </div>
-            </div>
-
-            <div className="pwa-step">
-              <div className="pwa-step-num">3</div>
-              <div className="pwa-step-body">
-                <div className="pwa-step-title">Scorri e tocca "Aggiungi a schermata Home"</div>
-                <div className="pwa-step-desc">
-                  Nel foglio di condivisione, scorri le opzioni verso il basso e cerca la voce.
-                </div>
-                <div className="pwa-share-sheet">
-                  <div className="pwa-share-row">📬 <span>AirDrop</span></div>
-                  <div className="pwa-share-row">✉️ <span>Mail</span></div>
-                  <div className="pwa-share-row">💬 <span>Messaggi</span></div>
-                  <div className="pwa-share-row pwa-share-row--highlight">
-                    <span>⊞</span>
-                    <span><strong>Aggiungi a schermata Home</strong></span>
-                    <span className="pwa-share-arrow">›</span>
-                  </div>
-                  <div className="pwa-share-row">📋 <span>Copia link</span></div>
-                </div>
-              </div>
-            </div>
-
-            <div className="pwa-step">
-              <div className="pwa-step-num">4</div>
-              <div className="pwa-step-body">
-                <div className="pwa-step-title">Tocca "Aggiungi"</div>
-                <div className="pwa-step-desc">
-                  Puoi modificare il nome oppure toccare direttamente <strong>Aggiungi</strong> in alto a destra.
-                </div>
-                <div className="pwa-confirm-mock">
-                  <div className="pwa-confirm-header">
-                    <span className="pwa-confirm-cancel">Annulla</span>
-                    <span className="pwa-confirm-title">Aggiungi a schermata Home</span>
-                    <span className="pwa-confirm-add">Aggiungi</span>
-                  </div>
-                  <div className="pwa-confirm-icon">🔒</div>
-                  <div className="pwa-confirm-name">AlphaChat</div>
-                </div>
-              </div>
-            </div>
-
-            <div className="pwa-step pwa-step--success">
-              <div className="pwa-step-num">✓</div>
-              <div className="pwa-step-body">
-                <div className="pwa-step-title">AlphaChat è sulla tua Home!</div>
-                <div className="pwa-step-desc">
-                  Troverai l'icona nella schermata Home. Aprila — si avvierà a schermo intero come un'app nativa.
-                </div>
-              </div>
-            </div>
-
-            {/* Notifications iPhone */}
-            <div className="pwa-section-label" style={{ marginTop: 24 }}>🔔 Abilita le notifiche (iPhone)</div>
-
-            <div className="pwa-notif-box">
-              <div className="pwa-notif-row">
-                <span className="pwa-notif-num">1</span>
-                <span>Apri AlphaChat <strong>dalla schermata Home</strong> (non da Safari)</span>
-              </div>
-              <div className="pwa-notif-row">
-                <span className="pwa-notif-num">2</span>
-                <span>Vai su <strong>Impostazioni → Notifiche</strong></span>
-              </div>
-              <div className="pwa-notif-row">
-                <span className="pwa-notif-num">3</span>
-                <span>Tocca <strong>"Abilita notifiche push"</strong></span>
-              </div>
-              <div className="pwa-notif-row">
-                <span className="pwa-notif-num">4</span>
-                <span>Tocca <strong>"Consenti"</strong> nel popup di sistema iOS</span>
-              </div>
-            </div>
-
-            <div className="pwa-note">
-              <span>⚠️</span>
-              <span>Le notifiche push su iPhone funzionano solo se AlphaChat è installata come app dalla schermata Home. Non funzionano da Safari.</span>
+        {/* iOS tip */}
+        {platform === "ios" && (
+          <div className="pwa-tip">
+            <div className="pwa-tip-icon">💡</div>
+            <div className="pwa-tip-body">
+              <strong>{t("tipTitle")}</strong> {t("iosTip")}
             </div>
           </div>
         )}
 
-        {/* ─── Android ─────────────────────────────────────────────── */}
-        {tab === "android" && (
-          <div className="pwa-steps">
-
-            <div className="pwa-section-label">📱 Aggiungi alla schermata Home</div>
-
-            <div className="pwa-step">
-              <div className="pwa-step-num">1</div>
-              <div className="pwa-step-body">
-                <div className="pwa-step-title">Apri in Chrome</div>
-                <div className="pwa-step-desc">
-                  Usa <strong>Google Chrome</strong> per la migliore esperienza di installazione su Android.
-                </div>
-                <div className="pwa-phone-mock">
-                  <div className="pwa-mock-bar">
-                    <span className="pwa-mock-dot" />
-                    <span className="pwa-mock-url">🔒 alphachat.app</span>
-                    <span className="pwa-mock-icon">⋮</span>
-                  </div>
-                  <div className="pwa-mock-tip">← Usa questo browser</div>
-                </div>
-              </div>
-            </div>
-
-            <div className="pwa-step">
-              <div className="pwa-step-num">2</div>
-              <div className="pwa-step-body">
-                <div className="pwa-step-title">Tocca il menu ⋮</div>
-                <div className="pwa-step-desc">
-                  Tocca i <strong>tre puntini verticali</strong> in alto a destra di Chrome.
-                </div>
-                <div className="pwa-phone-mock">
-                  <div className="pwa-mock-bar">
-                    <span className="pwa-mock-url" style={{ flex: 1 }}>🔒 alphachat.app</span>
-                    <span className="pwa-mock-icon pwa-mock-icon--highlight">⋮</span>
-                  </div>
-                  <div className="pwa-mock-arrow" style={{ textAlign: "right" }}>↑ Tocca qui</div>
-                </div>
-              </div>
-            </div>
-
-            <div className="pwa-step">
-              <div className="pwa-step-num">3</div>
-              <div className="pwa-step-body">
-                <div className="pwa-step-title">Tocca "Aggiungi a schermata Home"</div>
-                <div className="pwa-step-desc">
-                  Oppure se vedi il banner <em>"Installa app"</em> in basso, toccalo direttamente.
-                </div>
-                <div className="pwa-share-sheet">
-                  <div className="pwa-share-row">🔖 <span>Aggiungi ai preferiti</span></div>
-                  <div className="pwa-share-row pwa-share-row--highlight">
-                    <span>⊞</span>
-                    <span><strong>Aggiungi a schermata Home</strong></span>
-                    <span className="pwa-share-arrow">›</span>
-                  </div>
-                  <div className="pwa-share-row">🖨️ <span>Stampa</span></div>
-                  <div className="pwa-share-row">ℹ️ <span>Info sito</span></div>
-                </div>
-                <div className="pwa-or-divider">oppure</div>
-                <div className="pwa-install-banner">
-                  <span>🔒</span>
-                  <div>
-                    <div style={{ fontWeight: 600, fontSize: 13 }}>Installa AlphaChat</div>
-                    <div style={{ fontSize: 11, color: "var(--text-3)" }}>alphachat.app</div>
-                  </div>
-                  <button className="pwa-install-btn">Installa</button>
-                </div>
-              </div>
-            </div>
-
-            <div className="pwa-step">
-              <div className="pwa-step-num">4</div>
-              <div className="pwa-step-body">
-                <div className="pwa-step-title">Tocca "Installa"</div>
-                <div className="pwa-step-desc">
-                  Conferma toccando <strong>Installa</strong> nel popup di sistema Android.
-                </div>
-                <div className="pwa-confirm-mock">
-                  <div className="pwa-confirm-icon">🔒</div>
-                  <div className="pwa-confirm-name">AlphaChat</div>
-                  <div className="pwa-confirm-domain">alphachat.app</div>
-                  <div className="pwa-confirm-actions">
-                    <span className="pwa-confirm-cancel-btn">Annulla</span>
-                    <span className="pwa-confirm-install-btn">Installa</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            <div className="pwa-step pwa-step--success">
-              <div className="pwa-step-num">✓</div>
-              <div className="pwa-step-body">
-                <div className="pwa-step-title">AlphaChat è installata!</div>
-                <div className="pwa-step-desc">
-                  Troverai l'icona nel cassetto delle app e nella schermata Home. Si apre come un'app nativa, a schermo intero.
-                </div>
-              </div>
-            </div>
-
-            {/* Notifications Android */}
-            <div className="pwa-section-label" style={{ marginTop: 24 }}>🔔 Abilita le notifiche (Android)</div>
-
-            <div className="pwa-notif-box">
-              <div className="pwa-notif-row">
-                <span className="pwa-notif-num">1</span>
-                <span>Apri AlphaChat installata</span>
-              </div>
-              <div className="pwa-notif-row">
-                <span className="pwa-notif-num">2</span>
-                <span>Vai su <strong>Impostazioni → Notifiche</strong></span>
-              </div>
-              <div className="pwa-notif-row">
-                <span className="pwa-notif-num">3</span>
-                <span>Tocca <strong>"Abilita notifiche push"</strong></span>
-              </div>
-              <div className="pwa-notif-row">
-                <span className="pwa-notif-num">4</span>
-                <span>Tocca <strong>"Consenti"</strong> nel popup Android</span>
-              </div>
-            </div>
-
-            <div className="pwa-note pwa-note--green">
-              <span>✅</span>
-              <span>Su Android le notifiche funzionano in modo affidabile sia da browser che dall'app installata.</span>
+        {/* Android tip */}
+        {platform === "android" && (
+          <div className="pwa-tip">
+            <div className="pwa-tip-icon">💡</div>
+            <div className="pwa-tip-body">
+              <strong>{t("tipTitle")}</strong> {t("androidTip")}
             </div>
           </div>
         )}
 
-        {/* Troubleshooting */}
-        <div className="pwa-section-label" style={{ marginTop: 8 }}>🛠️ Problemi comuni</div>
-        <div className="pwa-faq">
-          <details className="pwa-faq-item">
-            <summary>Non vedo "Aggiungi a schermata Home" su iPhone</summary>
-            <p>Assicurati di usare Safari (non Chrome o Firefox). L'opzione appare solo in Safari.</p>
-          </details>
-          <details className="pwa-faq-item">
-            <summary>Le notifiche non arrivano su iPhone</summary>
-            <p>Apri AlphaChat dalla schermata Home (non da Safari) e vai in Impostazioni → Notifiche. Verifica anche che le notifiche siano abilitate in Impostazioni iOS → AlphaChat.</p>
-          </details>
-          <details className="pwa-faq-item">
-            <summary>Il banner di installazione non appare su Android</summary>
-            <p>Prova via menu ⋮ → Aggiungi a schermata Home. Se non compare nemmeno lì, prova a ricaricare la pagina o a svuotare la cache di Chrome.</p>
-          </details>
-          <details className="pwa-faq-item">
-            <summary>Si apre ancora nel browser invece che come app</summary>
-            <p>Cerca l'icona AlphaChat nel cassetto delle app, non aprire l'URL dal browser. Una volta installata, usa sempre l'icona dedicata.</p>
-          </details>
-        </div>
+        {/* Desktop tip */}
+        {platform === "desktop" && (
+          <div className="pwa-tip">
+            <div className="pwa-tip-icon">💡</div>
+            <div className="pwa-tip-body">
+              <strong>{t("tipTitle")}</strong> {t("desktopTip")}
+            </div>
+          </div>
+        )}
 
+        {/* Bottom note */}
+        <div className="pwa-note">{t("note")}</div>
       </div>
     </div>
   );

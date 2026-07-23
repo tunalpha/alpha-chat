@@ -3,6 +3,7 @@
  * Security Dashboard: score, badge, audit, architettura, PDF.
  */
 import { useState, useEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import { useAuth } from "../contexts/AuthContext";
 import { useLock } from "../contexts/LockContext";
 import { type AppView } from "../App";
@@ -49,14 +50,6 @@ const CHECK_NAV: Record<string, string> = {
   recovery_contacts:    "recovery-contacts",
 };
 
-const CATEGORY_LABELS: Record<string, string> = {
-  encryption: "🔐 Crittografia",
-  identity:   "🪪 Identità",
-  device:     "📱 Dispositivo",
-  recovery:   "🛡️ Recovery",
-  privacy:    "👻 Privacy",
-};
-
 const STATUS_ICON: Record<string, string> = { ok: "🟢", warn: "🟡", fail: "🔴", na: "⚫" };
 const LEVEL_COLOR_MAP: Record<string, string> = {
   green:  "#22c55e",
@@ -65,19 +58,8 @@ const LEVEL_COLOR_MAP: Record<string, string> = {
   red:    "#ef4444",
 };
 
-const ARCHITECTURE = [
-  { name: "Signal Protocol", desc: "Framework crittografico end-to-end. Combina X3DH e Double Ratchet per garantire forward secrecy e break-in recovery." },
-  { name: "X3DH", desc: "Extended Triple Diffie-Hellman. Negozia chiavi di sessione senza che le parti siano online simultaneamente." },
-  { name: "Double Ratchet", desc: "Algoritmo a doppio cricchetto. Ogni messaggio ha una chiave derivata diversa: compromettere una chiave non rivela le altre." },
-  { name: "AES-256-GCM", desc: "Cifratura simmetrica autenticata con 256 bit di chiave. Usata per media e blob cifrati end-to-end." },
-  { name: "Argon2id", desc: "Funzione di hashing delle password vincitrice della Password Hashing Competition 2015. Resistente ad attacchi GPU e time-memory." },
-  { name: "Zero Knowledge", desc: "Il server non può mai leggere i messaggi. Non ha accesso alle chiavi private, che rimangono solo sul dispositivo." },
-  { name: "WebAuthn", desc: "Standard W3C per autenticazione biometrica (Face ID, Touch ID). Le credenziali non lasciano mai il dispositivo." },
-  { name: "Safety Number", desc: "Impronta crittografica dell'identità. Verifica manuale che il canale non sia intercettato (TOFU + verifica attiva)." },
-  { name: "Phoenix Protocol", desc: "Protocollo di emergenza: Emergency Lock reversibile + distruzione sicura con tripla autenticazione anti-coercizione." },
-];
-
 export default function TrustCenterPage({ onBack, onNavigate }: Props) {
+  const { t } = useTranslation("trust");
   const { auth } = useAuth();
   const { hasPINSet, hasBiometricSet, settings } = useLock();
 
@@ -93,11 +75,31 @@ export default function TrustCenterPage({ onBack, onNavigate }: Props) {
   const bioOk     = hasBiometricSet;
   const timeoutOk = !!settings?.autoLockMs && settings.autoLockMs > 0;
 
+  // Category labels and architecture inside component so t() works
+  const CATEGORY_LABELS: Record<string, string> = {
+    encryption: t("catEncryption"),
+    identity:   t("catIdentity"),
+    device:     t("catDevice"),
+    recovery:   t("catRecovery"),
+    privacy:    t("catPrivacy"),
+  };
+
+  const ARCHITECTURE = [
+    { name: "Signal Protocol", desc: t("archSignal") },
+    { name: "X3DH",            desc: t("archX3dh") },
+    { name: "Double Ratchet",  desc: t("archDoubleRatchet") },
+    { name: "AES-256-GCM",     desc: t("archAes") },
+    { name: "Argon2id",        desc: t("archArgon2") },
+    { name: "Zero Knowledge",  desc: t("archZeroKnowledge") },
+    { name: "WebAuthn",        desc: t("archWebauthn") },
+    { name: "Safety Number",   desc: t("archSafetyNumber") },
+    { name: "Phoenix Protocol",desc: t("archPhoenix") },
+  ];
+
   useEffect(() => { void load(); }, []);
 
   useEffect(() => {
     if (!status) return;
-    // Animazione contatore score
     const target = status.score;
     let current = 0;
     const step = Math.ceil(target / 40);
@@ -116,7 +118,7 @@ export default function TrustCenterPage({ onBack, onNavigate }: Props) {
       const url = `/api/v1/trust-center?pin=${pinOk}&biometric=${bioOk}&timeout=${timeoutOk}`;
       const res = await fetch(url, { headers: { Authorization: `Bearer ${auth?.accessToken}` } });
       setStatus(await res.json() as TrustStatus);
-    } catch { setError("Errore di caricamento."); }
+    } catch { setError(t("loadError")); }
     finally { setLoading(false); }
   }
 
@@ -129,7 +131,7 @@ export default function TrustCenterPage({ onBack, onNavigate }: Props) {
         body: JSON.stringify({ pin_configured: pinOk, biometric_configured: bioOk, timeout_configured: timeoutOk }),
       });
       setStatus(await res.json() as TrustStatus);
-    } catch { setError("Errore durante l'audit."); }
+    } catch { setError(t("auditError")); }
     finally { setAuditing(false); }
   }
 
@@ -137,7 +139,6 @@ export default function TrustCenterPage({ onBack, onNavigate }: Props) {
     window.print();
   }
 
-  // Group checks by category
   const categories = Object.keys(CATEGORY_LABELS) as (keyof typeof CATEGORY_LABELS)[];
   const grouped = categories.map(cat => ({
     key: cat,
@@ -149,26 +150,24 @@ export default function TrustCenterPage({ onBack, onNavigate }: Props) {
 
   return (
     <div className="tc-root" id="trust-center-page">
-      {/* Header — nascosto in stampa */}
       <header className="settings-header no-print">
-        <button className="settings-back-btn" onClick={onBack} aria-label="Indietro">
+        <button className="settings-back-btn" onClick={onBack} aria-label={t("common:back", "Back")}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" width="20" height="20"><polyline points="15 18 9 12 15 6"/></svg>
         </button>
-        <h1 className="settings-title">Trust Center</h1>
-        <button className="tc-print-btn no-print" onClick={handlePrint} aria-label="Esporta PDF">
+        <h1 className="settings-title">{t("title")}</h1>
+        <button className="tc-print-btn no-print" onClick={handlePrint} aria-label={t("exportPdf")}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="20" height="20"><polyline points="6 9 6 2 18 2 18 9"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
         </button>
       </header>
 
       <div className="tc-body">
-        {/* Print header */}
         <div className="print-only tc-print-header">
           <div className="tc-print-title">🛡️ Alpha Chat — Security Report</div>
-          <div className="tc-print-date">Generato il {new Date().toLocaleString("it-IT")}</div>
-          <div className="tc-print-user">Utente: @{auth?.username ?? "—"}</div>
+          <div className="tc-print-date">{t("generatedOn")} {new Date().toLocaleString()}</div>
+          <div className="tc-print-user">{t("user")}: @{auth?.username ?? "—"}</div>
         </div>
 
-        {loading && <div className="tc-loading">Caricamento…</div>}
+        {loading && <div className="tc-loading">{t("loading")}</div>}
         {error && <div className="tc-error">{error}</div>}
 
         {status && (
@@ -198,12 +197,12 @@ export default function TrustCenterPage({ onBack, onNavigate }: Props) {
                 <div className="tc-score-level" style={{ color: levelColor }}>{status.level}</div>
                 <div className="tc-score-desc">
                   {status.missing.length === 0
-                    ? "Protezione massima attiva. Ottimo lavoro."
-                    : `${status.missing.length} element${status.missing.length === 1 ? "o" : "i"} da configurare per il massimo.`}
+                    ? t("maxProtection")
+                    : t("missingItems", { count: status.missing.length })}
                 </div>
                 {status.last_audit_at && (
                   <div className="tc-score-audit-time">
-                    Ultimo audit: {new Date(status.last_audit_at).toLocaleString("it-IT")}
+                    {t("lastAudit")}: {new Date(status.last_audit_at).toLocaleString()}
                   </div>
                 )}
               </div>
@@ -212,13 +211,13 @@ export default function TrustCenterPage({ onBack, onNavigate }: Props) {
             {/* ── Audit button ── */}
             <button className="tc-audit-btn no-print" onClick={runAudit} disabled={auditing}>
               <span className="tc-audit-icon">{auditing ? "⏳" : "🔍"}</span>
-              {auditing ? "Audit in corso…" : "Esegui audit sicurezza"}
+              {auditing ? t("auditRunning") : t("auditBtn")}
             </button>
 
             {/* ── Cosa manca ── */}
             {status.missing.length > 0 && (
               <div className="tc-missing">
-                <div className="tc-missing-title">📋 Per raggiungere il 100%</div>
+                <div className="tc-missing-title">📋 {t("toReach100")}</div>
                 <div className="tc-missing-list">
                   {status.missing.map(m => (
                     <div key={m} className="tc-missing-item">
@@ -271,34 +270,34 @@ export default function TrustCenterPage({ onBack, onNavigate }: Props) {
 
             {/* ── Quick actions ── */}
             <div className="tc-actions no-print">
-              <div className="tc-actions-title">Azioni rapide</div>
+              <div className="tc-actions-title">{t("quickActions")}</div>
               <div className="tc-action-grid">
                 {!status.checks.find(c => c.id === "phoenix_protocol")?.points && (
                   <button className="tc-action-card tc-action-card--urgent" onClick={() => onNavigate("phoenix")}>
-                    <span>🔑</span><span>Configura Phoenix</span>
+                    <span>🔑</span><span>{t("configurePhoenix")}</span>
                   </button>
                 )}
                 <button className="tc-action-card" onClick={() => onNavigate("security-timeline")}>
-                  <span>📋</span><span>Timeline sicurezza</span>
+                  <span>📋</span><span>{t("securityTimeline")}</span>
                 </button>
                 <button className="tc-action-card" onClick={() => onNavigate("dead-man-switch")}>
-                  <span>⏱️</span><span>Dead Man Switch</span>
+                  <span>⏱️</span><span>{t("deadManSwitch")}</span>
                 </button>
                 <button className="tc-action-card" onClick={() => onNavigate("recovery-dashboard")}>
-                  <span>🗂️</span><span>Recovery Center</span>
+                  <span>🗂️</span><span>{t("recoveryCenter")}</span>
                 </button>
                 <button className="tc-action-card" onClick={() => onNavigate("devices")}>
-                  <span>📱</span><span>Dispositivi</span>
+                  <span>📱</span><span>{t("devices")}</span>
                 </button>
                 <button className="tc-action-card" onClick={() => onNavigate("security")}>
-                  <span>🔒</span><span>PIN & Biometria</span>
+                  <span>🔒</span><span>{t("pinBiometrics")}</span>
                 </button>
               </div>
             </div>
 
             {/* ── Architettura ── */}
             <div className="tc-arch">
-              <div className="tc-arch-title">🏗️ Architettura di Sicurezza</div>
+              <div className="tc-arch-title">🏗️ {t("architectureTitle")}</div>
               <div className="tc-arch-list">
                 {ARCHITECTURE.map(item => (
                   <div
@@ -325,51 +324,51 @@ export default function TrustCenterPage({ onBack, onNavigate }: Props) {
                   <div className="tc-version-logo">α</div>
                   <div>
                     <div className="tc-version-name">Alpha Chat Security</div>
-                    <div className="tc-version-subtitle">Informazioni build & protocollo</div>
+                    <div className="tc-version-subtitle">{t("versionSubtitle")}</div>
                   </div>
                 </div>
-                <div className="tc-version-badge">ATTIVO</div>
+                <div className="tc-version-badge">{t("active")}</div>
               </div>
 
               <div className="tc-version-rows">
                 <div className="tc-version-row">
-                  <span className="tc-version-key">Versione</span>
+                  <span className="tc-version-key">{t("version")}</span>
                   <span className="tc-version-val">{__APP_VERSION__}</span>
                 </div>
                 <div className="tc-version-row">
-                  <span className="tc-version-key">Build</span>
+                  <span className="tc-version-key">{t("build")}</span>
                   <span className="tc-version-val tc-version-val--mono">{__BUILD_DATE__}</span>
                 </div>
                 <div className="tc-version-row">
-                  <span className="tc-version-key">Commit</span>
+                  <span className="tc-version-key">{t("commit")}</span>
                   <span className="tc-version-val tc-version-val--mono">{__BUILD_COMMIT__}</span>
                 </div>
                 <div className="tc-version-row">
                   <span className="tc-version-key">Signal Protocol</span>
-                  <span className="tc-version-val tc-version-val--ok">✓ Attivo</span>
+                  <span className="tc-version-val tc-version-val--ok">✓ {t("active")}</span>
                 </div>
                 <div className="tc-version-row">
-                  <span className="tc-version-key">Ultimo audit</span>
+                  <span className="tc-version-key">{t("lastAudit")}</span>
                   <span className="tc-version-val tc-version-val--mono">
                     {status.last_audit_at
-                      ? new Date(status.last_audit_at).toLocaleString("it-IT", { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })
-                      : "Mai eseguito"}
+                      ? new Date(status.last_audit_at).toLocaleString(undefined, { day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" })
+                      : t("neverAudited")}
                   </span>
                 </div>
                 <div className="tc-version-row">
-                  <span className="tc-version-key">Test interni</span>
-                  <span className="tc-version-val tc-version-val--ok">✓ {__BUILD_TESTS__} superati</span>
+                  <span className="tc-version-key">{t("internalTests")}</span>
+                  <span className="tc-version-val tc-version-val--ok">✓ {__BUILD_TESTS__} {t("passed")}</span>
                 </div>
               </div>
 
               <p className="tc-version-disclaimer">
-                I test interni verificano il corretto funzionamento delle componenti di sicurezza al momento del rilascio. Non costituiscono una certificazione esterna o un audit indipendente.
+                {t("disclaimer")}
               </p>
             </div>
 
             {/* ── PDF footer ── */}
             <div className="print-only tc-print-footer">
-              <div>Alpha Chat Security Report — Solo dati tecnici, mai contenuti delle conversazioni.</div>
+              <div>{t("printFooter")}</div>
               <div>alphachat.sbs · {new Date().getFullYear()}</div>
             </div>
           </>

@@ -4,6 +4,7 @@
  */
 
 import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import RecoveryCard from "../components/RecoveryCard";
 import {
   apiGetPhoenixRecoveryCard,
@@ -16,6 +17,7 @@ interface Props { onBack: () => void; }
 type View = "main" | "setup" | "change" | "card";
 
 export default function PhoenixSetupPage({ onBack }: Props) {
+  const { t } = useTranslation("phoenix");
   const [view, setView] = useState<View>("main");
   const [recovery, setRecovery] = useState<PhoenixRecoveryData | null>(null);
   const [phoenixCode, setPhoenixCode] = useState("");
@@ -42,22 +44,22 @@ export default function PhoenixSetupPage({ onBack }: Props) {
   async function handleSetup(e: React.FormEvent) {
     e.preventDefault();
     if (phoenixCode.length < 20) {
-      showFeedback("err", "Il Phoenix Code deve essere di almeno 20 caratteri.");
+      showFeedback("err", t("errorMinLen"));
       return;
     }
     if (phoenixCode !== confirmCode) {
-      showFeedback("err", "I due codici non coincidono.");
+      showFeedback("err", t("errorMismatch"));
       return;
     }
     setLoading(true);
     try {
       const data = await apiSetupPhoenixCode(phoenixCode);
-      showFeedback("ok", `Phoenix Code configurato. Emergency ID: ${data.emergency_id}`);
+      showFeedback("ok", `${t("configured")} ${data.emergency_id}`);
       setPhoenixCode(""); setConfirmCode("");
       await loadRecovery();
       setView("card");
     } catch (err) {
-      showFeedback("err", err instanceof Error ? err.message : "Errore di connessione.");
+      showFeedback("err", err instanceof Error ? err.message : t("errorConnection"));
     } finally {
       setLoading(false);
     }
@@ -68,26 +70,23 @@ export default function PhoenixSetupPage({ onBack }: Props) {
     return (
       <div className="settings-root">
         <header className="settings-header">
-          <button className="settings-back-btn" onClick={() => setView("main")} aria-label="Indietro">
+          <button className="settings-back-btn" onClick={() => setView("main")} aria-label={t("common:back", "Back")}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" width="20" height="20">
               <polyline points="15 18 9 12 15 6" />
             </svg>
           </button>
-          <h1 className="settings-title">{view === "change" ? "Cambia Phoenix Code" : "Configura Phoenix Code"}</h1>
+          <h1 className="settings-title">{view === "change" ? t("changeTitle") : t("setupTitle")}</h1>
         </header>
         <div className="settings-body">
-          <div className="phoenix-setup-desc">
-            Il Phoenix Code è una passphrase segreta di almeno 20 caratteri.
-            Salvala in un posto sicuro offline: non è recuperabile e non viene mai trasmessa in chiaro.
-          </div>
+          <div className="phoenix-setup-desc">{t("setupDesc")}</div>
           <form onSubmit={handleSetup} className="phoenix-setup-form">
-            <label className="phoenix-label">Phoenix Code</label>
+            <label className="phoenix-label">{t("code")}</label>
             <input
               type="password"
               className="phoenix-input"
               value={phoenixCode}
               onChange={(e) => setPhoenixCode(e.target.value)}
-              placeholder="Almeno 20 caratteri"
+              placeholder={t("codePlaceholder")}
               autoComplete="off"
               required
             />
@@ -97,16 +96,20 @@ export default function PhoenixSetupPage({ onBack }: Props) {
               />
             </div>
             <div className="phoenix-strength-label">
-              {phoenixCode.length < 10 ? "Troppo corto" : phoenixCode.length < 20 ? `Ancora ${20 - phoenixCode.length} caratteri` : "✓ Lunghezza sufficiente"}
+              {phoenixCode.length < 10
+                ? t("strengthTooShort")
+                : phoenixCode.length < 20
+                  ? t("strengthMore", { n: 20 - phoenixCode.length })
+                  : t("strengthOk")}
             </div>
 
-            <label className="phoenix-label">Conferma Phoenix Code</label>
+            <label className="phoenix-label">{t("confirmPlaceholder")}</label>
             <input
               type="password"
               className="phoenix-input"
               value={confirmCode}
               onChange={(e) => setConfirmCode(e.target.value)}
-              placeholder="Ripeti il codice"
+              placeholder={t("confirmPlaceholder")}
               autoComplete="off"
               required
             />
@@ -120,7 +123,7 @@ export default function PhoenixSetupPage({ onBack }: Props) {
               className="phoenix-btn-primary"
               disabled={loading || phoenixCode.length < 20}
             >
-              {loading ? "Configurazione…" : "Salva Phoenix Code"}
+              {loading ? t("savingBtn") : t("saveBtn")}
             </button>
           </form>
         </div>
@@ -133,16 +136,16 @@ export default function PhoenixSetupPage({ onBack }: Props) {
     return (
       <div className="settings-root">
         <header className="settings-header">
-          <button className="settings-back-btn" onClick={() => setView("main")} aria-label="Indietro">
+          <button className="settings-back-btn" onClick={() => setView("main")} aria-label={t("common:back", "Back")}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" width="20" height="20">
               <polyline points="15 18 9 12 15 6" />
             </svg>
           </button>
-          <h1 className="settings-title">Recovery Card</h1>
+          <h1 className="settings-title">{t("cardTitle")}</h1>
         </header>
         <div className="settings-body" style={{ padding: "16px" }}>
           <p style={{ color: "var(--text-3)", fontSize: 13, marginBottom: 16 }}>
-            Salva o stampa questa card e conservala offline in un posto sicuro.
+            {t("cardSaveHint")}
           </p>
           <RecoveryCard
             username={recovery.username}
@@ -154,7 +157,7 @@ export default function PhoenixSetupPage({ onBack }: Props) {
             style={{ marginTop: 16 }}
             onClick={() => window.print()}
           >
-            🖨 Stampa
+            {t("printBtn")}
           </button>
         </div>
       </div>
@@ -165,12 +168,12 @@ export default function PhoenixSetupPage({ onBack }: Props) {
   return (
     <div className="settings-root">
       <header className="settings-header">
-        <button className="settings-back-btn" onClick={onBack} aria-label="Indietro">
+        <button className="settings-back-btn" onClick={onBack} aria-label={t("common:back", "Back")}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" width="20" height="20">
             <polyline points="15 18 9 12 15 6" />
           </svg>
         </button>
-        <h1 className="settings-title">Phoenix Protocol</h1>
+        <h1 className="settings-title">{t("title")}</h1>
       </header>
 
       {feedback && (
@@ -179,17 +182,13 @@ export default function PhoenixSetupPage({ onBack }: Props) {
 
       <div className="settings-body">
         <div className="settings-section">
-          <div className="settings-section-title">Protocollo di emergenza</div>
+          <div className="settings-section-title">{t("sectionEmergency")}</div>
 
           <div className="phoenix-banner">
             <div className="phoenix-banner-icon">🔥</div>
             <div>
-              <div className="phoenix-banner-title">Phoenix Protocol</div>
-              <div className="phoenix-banner-desc">
-                Se perdi il dispositivo o il tuo account viene compromesso, puoi bloccare o
-                distruggere la tua identità digitale da qualsiasi browser usando il portale
-                di emergenza e il tuo Phoenix Code.
-              </div>
+              <div className="phoenix-banner-title">{t("title")}</div>
+              <div className="phoenix-banner-desc">{t("bannerDesc")}</div>
             </div>
           </div>
 
@@ -205,10 +204,10 @@ export default function PhoenixSetupPage({ onBack }: Props) {
             </div>
             <div className="settings-item-content">
               <div className="settings-item-label">
-                {recovery?.hasPhoenixCode ? "Cambia Phoenix Code" : "Configura Phoenix Code"}
+                {recovery?.hasPhoenixCode ? t("changeCode") : t("codeSetup")}
               </div>
               <div className="settings-item-value muted">
-                {recovery?.hasPhoenixCode ? "Phoenix Code attivo ✓" : "Non configurato — richiesto per il portale di emergenza"}
+                {recovery?.hasPhoenixCode ? t("codeActive") : t("codeNotConfigured")}
               </div>
             </div>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16" className="settings-item-chevron"><polyline points="9 18 15 12 9 6"/></svg>
@@ -226,7 +225,7 @@ export default function PhoenixSetupPage({ onBack }: Props) {
                 </svg>
               </div>
               <div className="settings-item-content">
-                <div className="settings-item-label">Recovery Card</div>
+                <div className="settings-item-label">{t("cardTitle")}</div>
                 <div className="settings-item-value muted">
                   ID: {recovery.emergencyId}
                 </div>
@@ -246,7 +245,7 @@ export default function PhoenixSetupPage({ onBack }: Props) {
               </svg>
             </div>
             <div className="settings-item-content">
-              <div className="settings-item-label">Portale di emergenza</div>
+              <div className="settings-item-label">{t("portalLabel")}</div>
               <div className="settings-item-value muted">alphachat.sbs/emergency</div>
             </div>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16" className="settings-item-chevron"><polyline points="9 18 15 12 9 6"/></svg>

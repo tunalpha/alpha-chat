@@ -3,7 +3,8 @@
  * Impostazioni PIN, biometria, timeout, panic mode.
  */
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { useLock } from "../contexts/LockContext";
 import { useAuth } from "../contexts/AuthContext";
 import PinPad from "../components/PinPad";
@@ -17,6 +18,7 @@ interface Props {
 type SubView = "main" | "setup-pin-new" | "setup-pin-confirm" | "change-pin-old" | "change-pin-new" | "change-pin-confirm";
 
 export default function SecuritySettingsPage({ onBack, onNavigate }: Props) {
+  const { t } = useTranslation("security");
   const { auth } = useAuth();
   const {
     hasPINSet,
@@ -52,7 +54,7 @@ export default function SecuritySettingsPage({ onBack, onNavigate }: Props) {
 
   const handleConfirmPIN = async (pin: string) => {
     if (pin !== pendingPIN) {
-      setPinError("I PIN non coincidono. Riprova.");
+      setPinError(t("pinMismatch"));
       setSubView("setup-pin-new");
       setPendingPIN("");
       return;
@@ -60,8 +62,7 @@ export default function SecuritySettingsPage({ onBack, onNavigate }: Props) {
     await setupNewPIN(pin);
     setPendingPIN("");
     setSubView("main");
-    showFeedback("PIN impostato con successo ✓");
-    // Blocca subito l'app per confermare il funzionamento
+    showFeedback(t("pinSetSuccess"));
     setTimeout(() => lock(), 800);
   };
 
@@ -70,7 +71,7 @@ export default function SecuritySettingsPage({ onBack, onNavigate }: Props) {
     if (!auth?.userId) return;
     const ok = await tryUnlockWithPIN(pin);
     if (!ok) {
-      setPinError("PIN errato.");
+      setPinError(t("pinWrong"));
       return;
     }
     setPinError(null);
@@ -85,7 +86,7 @@ export default function SecuritySettingsPage({ onBack, onNavigate }: Props) {
 
   const handleChangePINConfirm = async (pin: string) => {
     if (pin !== pendingPIN) {
-      setPinError("I PIN non coincidono.");
+      setPinError(t("pinMismatch2"));
       setSubView("change-pin-new");
       setPendingPIN("");
       return;
@@ -93,22 +94,22 @@ export default function SecuritySettingsPage({ onBack, onNavigate }: Props) {
     await setupNewPIN(pin);
     setPendingPIN("");
     setSubView("main");
-    showFeedback("PIN aggiornato ✓");
+    showFeedback(t("pinUpdated"));
   };
 
   // --- Biometria ---
   const handleBioToggle = async () => {
     if (hasBiometricSet) {
       disableBiometric();
-      showFeedback("Biometria disabilitata");
+      showFeedback(t("biometricDisabled"));
     } else {
       setBioLoading(true);
       const ok = await enableBiometric();
       setBioLoading(false);
       if (ok) {
-        showFeedback("Biometria abilitata ✓");
+        showFeedback(t("biometricEnabled"));
       } else {
-        showFeedback("Biometria non disponibile su questo dispositivo");
+        showFeedback(t("biometricNotAvailable"));
       }
     }
   };
@@ -116,11 +117,11 @@ export default function SecuritySettingsPage({ onBack, onNavigate }: Props) {
   // --- Sub-views (PIN pad) ---
   if (subView !== "main") {
     const config: Record<SubView, { label: string; onComplete: (p: string) => void }> = {
-      "setup-pin-new":     { label: "Scegli un PIN a 6 cifre", onComplete: handleNewPIN },
-      "setup-pin-confirm": { label: "Conferma il PIN",          onComplete: handleConfirmPIN },
-      "change-pin-old":    { label: "Inserisci il PIN attuale", onComplete: handleOldPIN },
-      "change-pin-new":    { label: "Scegli il nuovo PIN",      onComplete: handleChangePINNew },
-      "change-pin-confirm":{ label: "Conferma il nuovo PIN",    onComplete: handleChangePINConfirm },
+      "setup-pin-new":     { label: t("setupPinNew", "Choose a 6-digit PIN"), onComplete: handleNewPIN },
+      "setup-pin-confirm": { label: t("setupPinConfirm", "Confirm the PIN"),    onComplete: handleConfirmPIN },
+      "change-pin-old":    { label: t("changePinOld", "Enter current PIN"),     onComplete: handleOldPIN },
+      "change-pin-new":    { label: t("changePinNew", "Choose new PIN"),        onComplete: handleChangePINNew },
+      "change-pin-confirm":{ label: t("changePinConfirm", "Confirm new PIN"),   onComplete: handleChangePINConfirm },
       main: { label: "", onComplete: () => {} },
     };
     const { label, onComplete } = config[subView];
@@ -131,13 +132,13 @@ export default function SecuritySettingsPage({ onBack, onNavigate }: Props) {
           <button
             className="settings-back-btn"
             onClick={() => { setSubView("main"); setPinError(null); setPendingPIN(""); }}
-            aria-label="Indietro"
+            aria-label={t("common:back", "Back")}
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" width="20" height="20">
               <polyline points="15 18 9 12 15 6" />
             </svg>
           </button>
-          <h1 className="settings-title">Sicurezza</h1>
+          <h1 className="settings-title">{t("title")}</h1>
         </header>
         <div className="settings-body" style={{ justifyContent: "center", alignItems: "center", display: "flex", flex: 1 }}>
           <PinPad
@@ -155,12 +156,12 @@ export default function SecuritySettingsPage({ onBack, onNavigate }: Props) {
   return (
     <div className="settings-root">
       <header className="settings-header">
-        <button className="settings-back-btn" onClick={onBack} aria-label="Indietro">
+        <button className="settings-back-btn" onClick={onBack} aria-label={t("common:back", "Back")}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" width="20" height="20">
             <polyline points="15 18 9 12 15 6" />
           </svg>
         </button>
-        <h1 className="settings-title">Sicurezza dispositivo</h1>
+        <h1 className="settings-title">{t("title")}</h1>
       </header>
 
       {feedback && <div className="security-feedback">{feedback}</div>}
@@ -169,7 +170,7 @@ export default function SecuritySettingsPage({ onBack, onNavigate }: Props) {
 
         {/* PIN */}
         <div className="settings-section">
-          <div className="settings-section-title">Blocco app</div>
+          <div className="settings-section-title">{t("sectionLock")}</div>
 
           <div
             className="settings-item"
@@ -184,9 +185,9 @@ export default function SecuritySettingsPage({ onBack, onNavigate }: Props) {
               </svg>
             </div>
             <div className="settings-item-content">
-              <div className="settings-item-label">{hasPINSet ? "Cambia PIN" : "Imposta PIN"}</div>
+              <div className="settings-item-label">{hasPINSet ? t("changePIN") : t("setPIN")}</div>
               <div className="settings-item-value muted">
-                {hasPINSet ? "PIN di sblocco attivo" : "Proteggi l'app con un PIN a 6 cifre"}
+                {hasPINSet ? t("pinActive") : t("pinDesc")}
               </div>
             </div>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16" className="settings-item-chevron">
@@ -197,7 +198,7 @@ export default function SecuritySettingsPage({ onBack, onNavigate }: Props) {
           {hasPINSet && (
             <div
               className="settings-item danger"
-              onClick={() => { if (confirm("Rimuovere il PIN? L'app non sarà più protetta.")) { clearPIN(); showFeedback("PIN rimosso"); } }}
+              onClick={() => { if (confirm(t("removePINConfirm"))) { clearPIN(); showFeedback(t("pinRemoved")); } }}
               role="button"
               tabIndex={0}
             >
@@ -207,7 +208,7 @@ export default function SecuritySettingsPage({ onBack, onNavigate }: Props) {
                 </svg>
               </div>
               <div className="settings-item-content">
-                <div className="settings-item-label">Rimuovi PIN</div>
+                <div className="settings-item-label">{t("removePIN")}</div>
               </div>
             </div>
           )}
@@ -216,7 +217,7 @@ export default function SecuritySettingsPage({ onBack, onNavigate }: Props) {
         {/* Biometria — solo se il PIN è impostato */}
         {hasPINSet && canUseBiometric && (
           <div className="settings-section">
-            <div className="settings-section-title">Biometria</div>
+            <div className="settings-section-title">{t("sectionBiometrics")}</div>
             <div className="settings-item" onClick={handleBioToggle} role="button" tabIndex={0}>
               <div className="settings-item-icon">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="20" height="20">
@@ -228,9 +229,9 @@ export default function SecuritySettingsPage({ onBack, onNavigate }: Props) {
                 </svg>
               </div>
               <div className="settings-item-content">
-                <div className="settings-item-label">Face ID / Touch ID</div>
+                <div className="settings-item-label">{t("biometrics")}</div>
                 <div className="settings-item-value muted">
-                  {bioLoading ? "Configurazione…" : hasBiometricSet ? "Attivo" : "Non configurato"}
+                  {bioLoading ? t("biometricConfiguring") : hasBiometricSet ? t("biometricActive") : t("biometricNone")}
                 </div>
               </div>
               <div className={`security-toggle${hasBiometricSet ? " on" : ""}`} aria-checked={hasBiometricSet} role="switch">
@@ -243,9 +244,9 @@ export default function SecuritySettingsPage({ onBack, onNavigate }: Props) {
         {/* Timeout */}
         {hasPINSet && (
           <div className="settings-section">
-            <div className="settings-section-title">Blocco automatico</div>
+            <div className="settings-section-title">{t("sectionAutoLock")}</div>
             <div className="settings-item" style={{ flexDirection: "column", alignItems: "flex-start", gap: 8 }}>
-              <div className="settings-item-label">Blocca dopo</div>
+              <div className="settings-item-label">{t("lockAfter")}</div>
               <div className="security-timeout-grid">
                 {TIMEOUT_OPTIONS.map((opt) => (
                   <button
@@ -267,8 +268,8 @@ export default function SecuritySettingsPage({ onBack, onNavigate }: Props) {
                 </svg>
               </div>
               <div className="settings-item-content">
-                <div className="settings-item-label">Schermata privacy</div>
-                <div className="settings-item-value muted">Nascondi contenuto in background</div>
+                <div className="settings-item-label">{t("privacyScreenLabel")}</div>
+                <div className="settings-item-value muted">{t("privacyScreenDesc")}</div>
               </div>
               <button
                 className={`security-toggle${settings.privacyScreen ? " on" : ""}`}
@@ -285,7 +286,7 @@ export default function SecuritySettingsPage({ onBack, onNavigate }: Props) {
         {/* Emergency Lock */}
         {hasPINSet && (
           <div className="settings-section">
-            <div className="settings-section-title">Emergency Lock</div>
+            <div className="settings-section-title">{t("emergencyLockTitle", "Emergency Lock")}</div>
             <div className="settings-item">
               <div className="settings-item-icon">
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="20" height="20">
@@ -293,10 +294,9 @@ export default function SecuritySettingsPage({ onBack, onNavigate }: Props) {
                 </svg>
               </div>
               <div className="settings-item-content">
-                <div className="settings-item-label">Blocco rapido</div>
+                <div className="settings-item-label">{t("quickLock", "Quick lock")}</div>
                 <div className="settings-item-value muted">
-                  Tieni premuto il lucchetto 3s per revocare la sessione e cancellare le chiavi locali.
-                  L'account rimane recuperabile.
+                  {t("quickLockDesc", "Hold the lock for 3s to revoke the session and clear local keys. Account remains recoverable.")}
                 </div>
               </div>
               <button
@@ -309,16 +309,14 @@ export default function SecuritySettingsPage({ onBack, onNavigate }: Props) {
               </button>
             </div>
             <div className="security-phoenix-note">
-              Per la distruzione irreversibile dell'account usa il{" "}
-              <strong>Phoenix Protocol</strong> nelle impostazioni account,
-              oppure usa il Protocollo Nucleare qui sotto.
+              {t("phoenixNote", "For irreversible account destruction use the Phoenix Protocol in account settings, or use the Nuclear Protocol below.")}
             </div>
             {onNavigate && (
               <button
                 className="security-nuclear-btn"
                 onClick={() => onNavigate("nuclear-destroy")}
               >
-                ☢ Protocollo Nucleare — Distruggi Account
+                {t("nuclearBtn", "☢ Nuclear Protocol — Destroy Account")}
               </button>
             )}
           </div>
@@ -326,7 +324,7 @@ export default function SecuritySettingsPage({ onBack, onNavigate }: Props) {
 
         {!hasPINSet && (
           <div className="security-empty-hint">
-            Imposta un PIN per abilitare il blocco automatico, la biometria e la schermata privacy.
+            {t("emptyHint", "Set a PIN to enable auto-lock, biometrics and privacy screen.")}
           </div>
         )}
       </div>

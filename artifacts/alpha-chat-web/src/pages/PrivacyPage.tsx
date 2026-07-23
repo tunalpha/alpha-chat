@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import {
   apiGetPrivacySettings,
   apiUpdatePrivacySettings,
@@ -14,12 +15,6 @@ interface Props { onBack: () => void; }
 
 type Visibility = "everyone" | "contacts" | "nobody";
 
-const VISIBILITY_LABELS: Record<Visibility, string> = {
-  everyone: "Tutti",
-  contacts: "Contatti",
-  nobody:   "Nessuno",
-};
-
 function VisibilitySelect({
   value,
   onChange,
@@ -29,6 +24,12 @@ function VisibilitySelect({
   onChange: (v: Visibility) => void;
   disabled?: boolean;
 }) {
+  const { t } = useTranslation("privacy");
+  const VISIBILITY_LABELS: Record<Visibility, string> = {
+    everyone: t("everyone"),
+    contacts: t("contacts"),
+    nobody:   t("nobody"),
+  };
   return (
     <select
       className="privacy-select"
@@ -72,6 +73,8 @@ const FACE_ID_TIMEOUT_OPTIONS = TIMEOUT_OPTIONS.filter((o) =>
 );
 
 export default function PrivacyPage({ onBack }: Props) {
+  const { t } = useTranslation("privacy");
+
   // ── Lock / biometria ──────────────────────────────────────────────────────
   const {
     canUseBiometric,
@@ -88,14 +91,13 @@ export default function PrivacyPage({ onBack }: Props) {
     setBioFeedback(null);
     if (biometricOnlyEnabled) {
       disableBiometricOnly();
-      setBioFeedback("Face ID disabilitato");
+      setBioFeedback(t("faceIdDisabled"));
       setTimeout(() => setBioFeedback(null), 2500);
     } else {
       setBioLoading(true);
       const ok = await enableBiometricOnly();
       setBioLoading(false);
-      if (!ok) setBioFeedback("Face ID non disponibile su questo dispositivo");
-      // Se ok=true l'app si è già bloccata — l'utente sblocca con Face ID
+      if (!ok) setBioFeedback(t("faceIdNotAvailable"));
     }
   }
 
@@ -121,7 +123,7 @@ export default function PrivacyPage({ onBack }: Props) {
         setSettings(priv);
         setBlocked(bl);
       } catch {
-        setError("Impossibile caricare le impostazioni privacy");
+        setError(t("errorLoad"));
       } finally {
         setLoading(false);
       }
@@ -136,7 +138,7 @@ export default function PrivacyPage({ onBack }: Props) {
       const updated = await apiUpdatePrivacySettings(partial);
       setSettings(updated);
     } catch {
-      setError("Salvataggio fallito — riprova");
+      setError(t("errorSave"));
     } finally {
       setSaving(false);
     }
@@ -153,7 +155,7 @@ export default function PrivacyPage({ onBack }: Props) {
       setBlocked((prev) => prev.filter((b) => b.user_id !== userId));
     } catch {
       setUnblockedIds((prev) => { const s = new Set(prev); s.delete(userId); return s; });
-      setError("Impossibile sbloccare l'utente");
+      setError(t("errorUnblock"));
     }
   }
 
@@ -161,12 +163,12 @@ export default function PrivacyPage({ onBack }: Props) {
     return (
       <div className="settings-root">
         <header className="settings-header">
-          <button className="settings-back-btn" onClick={onBack} aria-label="Indietro">
+          <button className="settings-back-btn" onClick={onBack} aria-label={t("common:back", "Back")}>
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" width="20" height="20">
               <polyline points="15 18 9 12 15 6" />
             </svg>
           </button>
-          <h1 className="settings-title">Privacy e Sicurezza</h1>
+          <h1 className="settings-title">{t("titleFull")}</h1>
         </header>
         <div className="settings-body" style={{ display: "flex", justifyContent: "center", paddingTop: 48 }}>
           <div className="privacy-loading-dots">
@@ -186,11 +188,11 @@ export default function PrivacyPage({ onBack }: Props) {
               <polyline points="15 18 9 12 15 6" />
             </svg>
           </button>
-          <h1 className="settings-title">Privacy e Sicurezza</h1>
+          <h1 className="settings-title">{t("titleFull")}</h1>
         </header>
         <div className="settings-body">
           <p style={{ color: "var(--danger)", textAlign: "center", paddingTop: 32 }}>
-            {error ?? "Errore sconosciuto"}
+            {error ?? t("errorUnknown")}
           </p>
         </div>
       </div>
@@ -202,19 +204,19 @@ export default function PrivacyPage({ onBack }: Props) {
   return (
     <div className="settings-root">
       <header className="settings-header">
-        <button className="settings-back-btn" onClick={onBack} aria-label="Indietro">
+        <button className="settings-back-btn" onClick={onBack} aria-label={t("common:back", "Back")}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" width="20" height="20">
             <polyline points="15 18 9 12 15 6" />
           </svg>
         </button>
-        <h1 className="settings-title">Privacy e Sicurezza</h1>
+        <h1 className="settings-title">{t("titleFull")}</h1>
       </header>
 
       <div className="settings-body">
 
         {/* ── Posizione ──────────────────────────────────────────────────── */}
         <div className="settings-section">
-          <div className="settings-section-title">Posizione</div>
+          <div className="settings-section-title">{t("sectionLocation")}</div>
           <div className="settings-item">
             <div className="settings-item-icon">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="20" height="20">
@@ -223,11 +225,11 @@ export default function PrivacyPage({ onBack }: Props) {
               </svg>
             </div>
             <div className="settings-item-content">
-              <div className="settings-item-label">Posizione precisa</div>
+              <div className="settings-item-label">{t("preciseLocation")}</div>
               <div className="settings-item-value muted">
                 {preciseLoc
-                  ? "Coordinate GPS complete"
-                  : "Arrotondate a ~100 m (più privacy)"}
+                  ? t("locationGps")
+                  : t("locationRounded")}
               </div>
             </div>
             <Toggle
@@ -244,7 +246,7 @@ export default function PrivacyPage({ onBack }: Props) {
         {/* ── Face ID / Touch ID ─────────────────────────────────────────── */}
         {canUseBiometric && (
           <div className="settings-section">
-            <div className="settings-section-title">Face ID / Touch ID</div>
+            <div className="settings-section-title">{t("sectionFaceId")}</div>
 
             {bioFeedback && (
               <div className="privacy-error-banner" style={{ background: "var(--accent-alpha, rgba(99,102,241,.12))", borderColor: "var(--accent)" }}>
@@ -265,13 +267,13 @@ export default function PrivacyPage({ onBack }: Props) {
                 </svg>
               </div>
               <div className="settings-item-content">
-                <div className="settings-item-label">Abilita Face ID</div>
+                <div className="settings-item-label">{t("enableFaceId")}</div>
                 <div className="settings-item-value muted">
                   {bioLoading
-                    ? "Configurazione…"
+                    ? t("faceIdConfiguring")
                     : biometricOnlyEnabled
-                      ? "Attivo — richiesto all'apertura"
-                      : "Sblocca l'app con il volto o l'impronta"}
+                      ? t("faceIdActive")
+                      : t("faceIdSubtitle")}
                 </div>
               </div>
               <Toggle
@@ -284,7 +286,7 @@ export default function PrivacyPage({ onBack }: Props) {
             {/* Timeout — visibile solo quando Face ID è attivo */}
             {biometricOnlyEnabled && (
               <div className="settings-item" style={{ flexDirection: "column", alignItems: "flex-start", gap: 8 }}>
-                <div className="settings-item-label">Richiedi dopo inattività</div>
+                <div className="settings-item-label">{t("requireAfterInactivity")}</div>
                 <div className="security-timeout-grid">
                   {FACE_ID_TIMEOUT_OPTIONS.map((opt) => (
                     <button
@@ -300,7 +302,7 @@ export default function PrivacyPage({ onBack }: Props) {
             )}
 
             <div className="privacy-faceid-note">
-              La chiave biometrica rimane sul dispositivo. Nessun dato biometrico viene inviato ai server.
+              {t("faceIdNote")}
             </div>
           </div>
         )}
@@ -319,11 +321,11 @@ export default function PrivacyPage({ onBack }: Props) {
             {ghostMode ? "👻" : "🔮"}
           </div>
           <div className="privacy-ghost-content">
-            <div className="privacy-ghost-title">Modalità Ghost</div>
+            <div className="privacy-ghost-title">{t("ghostModeTitle")}</div>
             <div className="privacy-ghost-desc">
               {ghostMode
-                ? "Sei invisibile — nessuno può vedere la tua presenza, letture o stato"
-                : "Attiva per diventare completamente invisibile in un click"}
+                ? t("ghostModeActive")
+                : t("ghostModeInactive")}
             </div>
           </div>
           <Toggle
@@ -335,7 +337,7 @@ export default function PrivacyPage({ onBack }: Props) {
 
         {/* ── Visibilità ─────────────────────────────────────────────────── */}
         <div className="settings-section">
-          <div className="settings-section-title">Visibilità</div>
+          <div className="settings-section-title">{t("sectionVisibility")}</div>
 
           <div className="settings-item">
             <div className="settings-item-icon">
@@ -344,8 +346,8 @@ export default function PrivacyPage({ onBack }: Props) {
               </svg>
             </div>
             <div className="settings-item-content">
-              <div className="settings-item-label">Ultimo accesso</div>
-              <div className="settings-item-value muted">Chi può vedere quando sei stato online</div>
+              <div className="settings-item-label">{t("lastSeen")}</div>
+              <div className="settings-item-value muted">{t("lastSeenDesc")}</div>
             </div>
             <VisibilitySelect
               value={settings.show_last_seen}
@@ -362,8 +364,8 @@ export default function PrivacyPage({ onBack }: Props) {
               </svg>
             </div>
             <div className="settings-item-content">
-              <div className="settings-item-label">Stato online</div>
-              <div className="settings-item-value muted">Chi può vedere che sei online ora</div>
+              <div className="settings-item-label">{t("onlineStatus")}</div>
+              <div className="settings-item-value muted">{t("onlineStatusDesc")}</div>
             </div>
             <VisibilitySelect
               value={settings.show_online_status}
@@ -380,8 +382,8 @@ export default function PrivacyPage({ onBack }: Props) {
               </svg>
             </div>
             <div className="settings-item-content">
-              <div className="settings-item-label">Ricevute di lettura</div>
-              <div className="settings-item-value muted">Mostra ✓✓ quando leggi i messaggi</div>
+              <div className="settings-item-label">{t("readReceipts")}</div>
+              <div className="settings-item-value muted">{t("readReceiptsDesc")}</div>
             </div>
             <Toggle
               checked={settings.show_read_receipts}
@@ -393,7 +395,7 @@ export default function PrivacyPage({ onBack }: Props) {
 
         {/* ── Permessi ───────────────────────────────────────────────────── */}
         <div className="settings-section">
-          <div className="settings-section-title">Permessi</div>
+          <div className="settings-section-title">{t("sectionPermissions")}</div>
 
           <div className="settings-item">
             <div className="settings-item-icon">
@@ -405,8 +407,8 @@ export default function PrivacyPage({ onBack }: Props) {
               </svg>
             </div>
             <div className="settings-item-content">
-              <div className="settings-item-label">Aggiunta ai gruppi</div>
-              <div className="settings-item-value muted">Chi può aggiungerti nei gruppi</div>
+              <div className="settings-item-label">{t("addToGroups")}</div>
+              <div className="settings-item-value muted">{t("addToGroupsDesc")}</div>
             </div>
             <VisibilitySelect
               value={settings.allow_adding_to_groups}
@@ -422,8 +424,8 @@ export default function PrivacyPage({ onBack }: Props) {
               </svg>
             </div>
             <div className="settings-item-content">
-              <div className="settings-item-label">Chiamate</div>
-              <div className="settings-item-value muted">Chi può chiamarti</div>
+              <div className="settings-item-label">{t("callsTitle")}</div>
+              <div className="settings-item-value muted">{t("callsDesc")}</div>
             </div>
             <VisibilitySelect
               value={settings.allow_calls_from}
@@ -436,7 +438,7 @@ export default function PrivacyPage({ onBack }: Props) {
         {/* ── Utenti bloccati ────────────────────────────────────────────── */}
         <div className="settings-section">
           <div className="settings-section-title">
-            Utenti bloccati
+            {t("sectionBlocked")}
             {blocked.length > 0 && (
               <span className="privacy-blocked-count">{blocked.length}</span>
             )}
@@ -447,7 +449,7 @@ export default function PrivacyPage({ onBack }: Props) {
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" width="32" height="32" style={{ opacity: 0.3 }}>
                 <circle cx="12" cy="12" r="10"/><line x1="4.93" y1="4.93" x2="19.07" y2="19.07"/>
               </svg>
-              <span>Nessun utente bloccato</span>
+              <span>{t("noBlocked")}</span>
             </div>
           ) : (
             blocked.map((b) => (
@@ -464,7 +466,7 @@ export default function PrivacyPage({ onBack }: Props) {
                   onClick={() => void handleUnblock(b.user_id)}
                   disabled={unblockedIds.has(b.user_id)}
                 >
-                  Sblocca
+                  {t("unblock")}
                 </button>
               </div>
             ))
@@ -477,7 +479,7 @@ export default function PrivacyPage({ onBack }: Props) {
             <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
           </svg>
           <p className="privacy-hero-text">
-            Le tue conversazioni sono protette con crittografia end-to-end. Il server non legge mai i tuoi messaggi.
+            {t("e2eNote")}
           </p>
         </div>
 

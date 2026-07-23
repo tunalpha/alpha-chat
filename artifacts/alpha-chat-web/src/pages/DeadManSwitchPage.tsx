@@ -3,6 +3,7 @@
  * Configurazione del Dead Man Switch.
  */
 import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { useAuth } from "../contexts/AuthContext";
 
 interface Props { onBack: () => void }
@@ -20,26 +21,22 @@ interface DmsStatus {
 }
 
 const PERIOD_OPTIONS = [
-  { value: 30,  label: "30 giorni" },
-  { value: 60,  label: "60 giorni" },
-  { value: 90,  label: "90 giorni" },
-  { value: 180, label: "180 giorni" },
+  { value: 30,  label: "30" },
+  { value: 60,  label: "60" },
+  { value: 90,  label: "90" },
+  { value: 180, label: "180" },
 ];
 const GRACE_OPTIONS = [
-  { value: 3,  label: "3 giorni" },
-  { value: 7,  label: "7 giorni" },
-  { value: 14, label: "14 giorni" },
-  { value: 30, label: "30 giorni" },
-];
-const ACTION_OPTIONS = [
-  { value: "notify_only", label: "Solo notifica email",          desc: "Invia un avviso. Nessuna azione automatica." },
-  { value: "lock",        label: "Emergency Lock automatico",    desc: "Disconnette tutti i dispositivi. Account recuperabile." },
-  { value: "none",        label: "Disattivato",                  desc: "Nessuna azione, nessun avviso." },
+  { value: 3,  label: "3" },
+  { value: 7,  label: "7" },
+  { value: 14, label: "14" },
+  { value: 30, label: "30" },
 ];
 
 const BASE = "/api/v1/dead-man-switch";
 
 export default function DeadManSwitchPage({ onBack }: Props) {
+  const { t } = useTranslation("dms");
   const { auth } = useAuth();
   const [status, setStatus] = useState<DmsStatus | null>(null);
   const [loading, setLoading] = useState(true);
@@ -51,6 +48,13 @@ export default function DeadManSwitchPage({ onBack }: Props) {
   const [periodDays, setPeriodDays] = useState(90);
   const [graceDays, setGraceDays]   = useState(7);
   const [action, setAction]         = useState<"none" | "lock" | "notify_only">("notify_only");
+
+  // ACTION_OPTIONS inside component so t() works
+  const ACTION_OPTIONS = [
+    { value: "notify_only", label: t("optNotifyOnly"),  desc: t("optNotifyOnlyDesc") },
+    { value: "lock",        label: t("optLock"),         desc: t("optLockDesc") },
+    { value: "none",        label: t("optNone"),         desc: t("optNoneDesc") },
+  ];
 
   useEffect(() => {
     void load();
@@ -66,7 +70,7 @@ export default function DeadManSwitchPage({ onBack }: Props) {
       setPeriodDays(data.period_days);
       setGraceDays(data.grace_days);
       setAction(data.action);
-    } catch { setError("Errore di caricamento."); }
+    } catch { setError(t("loadError")); }
     finally { setLoading(false); }
   }
 
@@ -81,41 +85,41 @@ export default function DeadManSwitchPage({ onBack }: Props) {
       if (!res.ok) throw new Error();
       const data = await res.json() as DmsStatus;
       setStatus(data);
-      setSuccess("Configurazione salvata.");
-    } catch { setError("Errore durante il salvataggio."); }
+      setSuccess(t("saved"));
+    } catch { setError(t("saveError")); }
     finally { setSaving(false); }
   }
 
   function stateLabel(s: DmsStatus["state"]) {
     if (!enabled) return null;
-    const map = { inactive: null, active: "🟢 Attivo", warning_sent: "🟡 Avviso inviato", grace_period: "🔴 Periodo di grazia" } as const;
-    return map[s];
+    const map: Record<string, string | null> = {
+      inactive: null,
+      active: t("stateActive"),
+      warning_sent: t("stateWarning"),
+      grace_period: t("stateGrace"),
+    };
+    return map[s] ?? null;
   }
 
   return (
     <div className="dms-root">
       <header className="settings-header">
-        <button className="settings-back-btn" onClick={onBack} aria-label="Indietro">
+        <button className="settings-back-btn" onClick={onBack} aria-label={t("common:back", "Back")}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" width="20" height="20"><polyline points="15 18 9 12 15 6"/></svg>
         </button>
-        <h1 className="settings-title">Dead Man Switch</h1>
+        <h1 className="settings-title">{t("title")}</h1>
       </header>
 
       <div className="dms-body">
         {/* Hero */}
         <div className="dms-hero">
           <div className="dms-hero-icon">⏱️</div>
-          <p className="dms-hero-text">
-            Se non accedi ad Alpha Chat entro il periodo configurato, il sistema invia un avviso
-            e — dopo un periodo di grazia — esegue l'azione scelta.
-          </p>
-          <div className="dms-warning-box">
-            ⚠️ La <strong>distruzione definitiva</strong> dell'account richiede sempre conferma manuale tramite Phoenix Protocol. Il Dead Man Switch non può avviarla automaticamente.
-          </div>
+          <p className="dms-hero-text">{t("heroText")}</p>
+          <div className="dms-warning-box">{t("warningBox")}</div>
         </div>
 
         {loading ? (
-          <div className="dms-loading">Caricamento…</div>
+          <div className="dms-loading">{t("loading")}</div>
         ) : (
           <>
             {/* Stato attuale */}
@@ -124,9 +128,9 @@ export default function DeadManSwitchPage({ onBack }: Props) {
             )}
             {status?.days_until_warning !== null && status?.days_until_warning !== undefined && (
               <div className="dms-countdown">
-                Avviso tra <strong>{status.days_until_warning} giorni</strong>
+                {t("warningSentIn")} <strong>{status.days_until_warning} {t("days")}</strong>
                 {status.last_check_in_at && (
-                  <span> · Ultimo accesso: {new Date(status.last_check_in_at).toLocaleDateString("it-IT")}</span>
+                  <span> · {t("lastAccess")} {new Date(status.last_check_in_at).toLocaleDateString()}</span>
                 )}
               </div>
             )}
@@ -135,8 +139,8 @@ export default function DeadManSwitchPage({ onBack }: Props) {
             <div className="dms-section">
               <div className="dms-toggle-row">
                 <div>
-                  <div className="dms-toggle-label">Dead Man Switch</div>
-                  <div className="dms-toggle-desc">Attiva il monitoraggio di inattività</div>
+                  <div className="dms-toggle-label">{t("enableLabel")}</div>
+                  <div className="dms-toggle-desc">{t("enableDesc")}</div>
                 </div>
                 <button
                   className={`dms-toggle${enabled ? " dms-toggle--on" : ""}`}
@@ -152,35 +156,35 @@ export default function DeadManSwitchPage({ onBack }: Props) {
               <>
                 {/* Periodo di inattività */}
                 <div className="dms-section">
-                  <div className="dms-section-title">Periodo di inattività</div>
+                  <div className="dms-section-title">{t("sectionPeriod")}</div>
                   <div className="dms-options">
                     {PERIOD_OPTIONS.map(opt => (
                       <button
                         key={opt.value}
                         className={`dms-option${periodDays === opt.value ? " dms-option--selected" : ""}`}
                         onClick={() => setPeriodDays(opt.value)}
-                      >{opt.label}</button>
+                      >{opt.label} {t("days")}</button>
                     ))}
                   </div>
                 </div>
 
                 {/* Periodo di grazia */}
                 <div className="dms-section">
-                  <div className="dms-section-title">Periodo di grazia (dopo l'avviso)</div>
+                  <div className="dms-section-title">{t("sectionGrace")}</div>
                   <div className="dms-options">
                     {GRACE_OPTIONS.map(opt => (
                       <button
                         key={opt.value}
                         className={`dms-option${graceDays === opt.value ? " dms-option--selected" : ""}`}
                         onClick={() => setGraceDays(opt.value)}
-                      >{opt.label}</button>
+                      >{opt.label} {t("days")}</button>
                     ))}
                   </div>
                 </div>
 
                 {/* Azione */}
                 <div className="dms-section">
-                  <div className="dms-section-title">Azione dopo il periodo di grazia</div>
+                  <div className="dms-section-title">{t("sectionAction")}</div>
                   <div className="dms-action-list">
                     {ACTION_OPTIONS.map(opt => (
                       <button
@@ -201,7 +205,7 @@ export default function DeadManSwitchPage({ onBack }: Props) {
             {success && <div className="dms-success">{success}</div>}
 
             <button className="dms-save-btn" onClick={save} disabled={saving}>
-              {saving ? "Salvataggio…" : "Salva configurazione"}
+              {saving ? t("savingBtn") : t("saveBtn")}
             </button>
           </>
         )}

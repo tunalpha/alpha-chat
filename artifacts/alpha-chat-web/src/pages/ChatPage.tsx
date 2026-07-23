@@ -542,7 +542,7 @@ function SidebarMenu({
       icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>,
     },
     {
-      label: "💸 Pagamenti USDA",
+      label: t("nav.usdaPayments"),
       view: "usda-settings",
       icon: null,
     },
@@ -609,7 +609,7 @@ function SidebarMenu({
               onClick={() => { setOpen(false); onNavigate("nuclear-destroy"); }}
             >
               ☢
-              Protocollo Nucleare
+              {t("nav.nuclearProtocol")}
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="14" height="14" className="menu-chevron"><polyline points="9 18 15 12 9 6"/></svg>
             </button>
           </div>
@@ -2620,13 +2620,13 @@ export default function ChatPage({ onNavigate }: Props) {
                 /** Converte il meta JSON di un media in etichetta leggibile */
                 function mediaLabel(text: string): string | null {
                   const lm = decodeLocationMeta(text);
-                  if (lm) return "📍 Posizione";
+                  if (lm) return t("chat.mediaLocation");
                   const mm = decodeMediaMeta(text);
                   if (!mm) return null;
                   if (mm.type === "voice")    return t("chat.voiceNote");
-                  if (mm.type === "image")    return "📷 Foto";
-                  if (mm.type === "video")    return "🎥 Video";
-                  if (mm.type === "document") return `📄 ${mm.filename ?? "Documento"}`;
+                  if (mm.type === "image")    return t("chat.mediaPhoto");
+                  if (mm.type === "video")    return t("chat.mediaVideo");
+                  if (mm.type === "document") return `📄 ${mm.filename ?? t("chat.mediaDocument")}`;
                   return null;
                 }
 
@@ -3403,28 +3403,28 @@ export default function ChatPage({ onNavigate }: Props) {
       {showAttachSheet && (
         <div className="modal-backdrop" onClick={() => setShowAttachSheet(false)}>
           <div className="attach-sheet" onClick={(e) => e.stopPropagation()}>
-            <div className="attach-sheet-title">Condividi</div>
+            <div className="attach-sheet-title">{t("chat.attachShare")}</div>
             <div className="attach-sheet-grid">
               <button
                 className="attach-sheet-item"
                 onClick={() => { setShowAttachSheet(false); setTimeout(() => mediaInputRef.current?.click(), 80); }}
               >
                 <span className="attach-sheet-icon">📷</span>
-                <span>Foto / Video</span>
+                <span>{t("chat.attachPhoto")}</span>
               </button>
               <button
                 className="attach-sheet-item"
                 onClick={() => { setShowAttachSheet(false); setTimeout(() => docInputRef.current?.click(), 80); }}
               >
                 <span className="attach-sheet-icon">📄</span>
-                <span>Documento</span>
+                <span>{t("chat.attachDocument")}</span>
               </button>
               <button
                 className="attach-sheet-item"
                 onClick={() => { setShowAttachSheet(false); void handleLocationRequest(); }}
               >
                 <span className="attach-sheet-icon">📍</span>
-                <span>Posizione</span>
+                <span>{t("chat.attachLocation")}</span>
               </button>
               {activeConv?.type !== "group" && (
                 <>
@@ -3433,14 +3433,14 @@ export default function ChatPage({ onNavigate }: Props) {
                     onClick={() => { setShowAttachSheet(false); setSendPrefill(null); setTimeout(() => setShowSendPayment(true), 80); }}
                   >
                     <span className="attach-sheet-icon">💰</span>
-                    <span>Invia USDA</span>
+                    <span>{t("chat.attachSendUsda")}</span>
                   </button>
                   <button
                     className="attach-sheet-item"
                     onClick={() => { setShowAttachSheet(false); setTimeout(() => setShowRequestUsda(true), 80); }}
                   >
                     <span className="attach-sheet-icon">💸</span>
-                    <span>Richiedi USDA</span>
+                    <span>{t("chat.attachRequestUsda")}</span>
                   </button>
                 </>
               )}
@@ -3465,13 +3465,13 @@ export default function ChatPage({ onNavigate }: Props) {
               {(() => {
                 const t2 = getDisplayText(forwardingMessage);
                 const vm = decodeVoiceMeta(t2);
-                if (vm) return "🎤 Messaggio vocale";
+                if (vm) return t("chat.mediaVoiceForward");
                 const mm = decodeMediaMeta(t2);
-                if (mm?.type === "image")    return `📷 ${mm.filename ?? "Foto"}`;
+                if (mm?.type === "image")    return `📷 ${mm.filename ?? t("chat.attachPhoto")}`;
                 if (mm?.type === "video")    return `🎥 ${mm.filename ?? "Video"}`;
-                if (mm?.type === "document") return `📄 ${mm.filename ?? "Documento"}`;
+                if (mm?.type === "document") return `📄 ${mm.filename ?? t("chat.mediaDocument")}`;
                 const lm = decodeLocationMeta(t2);
-                if (lm) return "📍 Posizione condivisa";
+                if (lm) return t("chat.mediaSharedLocation");
                 return `"${t2.slice(0, 60)}${t2.length > 60 ? "…" : ""}"`;
               })()}
             </div>
@@ -3687,7 +3687,7 @@ export default function ChatPage({ onNavigate }: Props) {
                         {isDoc ? (
                           <>
                             <div className="media-gallery-doc-icon">📄</div>
-                            <div className="media-gallery-doc-name">{"filename" in meta! ? (meta as {filename:string}).filename : "Documento"}</div>
+                            <div className="media-gallery-doc-name">{"filename" in meta! ? (meta as {filename:string}).filename : t("chat.mediaDocument")}</div>
                           </>
                         ) : (
                           <div className="media-gallery-thumb-placeholder">
@@ -3786,7 +3786,7 @@ export default function ChatPage({ onNavigate }: Props) {
                     referrerPolicy="no-referrer"
                     loading="lazy"
                   />
-                  <p className="loc-confirm-status">📍 Posizione pronta</p>
+                  <p className="loc-confirm-status">{t("chat.locationReady")}</p>
                   <p className="loc-confirm-coords">
                     {locationData.lat.toFixed(5)}° N, {locationData.lon.toFixed(5)}° E
                     {locationData.accuracy > 0 && ` · ±${Math.round(locationData.accuracy)} m`}

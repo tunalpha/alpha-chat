@@ -87,11 +87,26 @@ export async function initI18n(lng?: LangCode) {
   document.documentElement.dir  = lang?.dir  ?? "ltr";
   document.documentElement.lang = resolved;
 
-  const resources: Record<string, { translation: Record<string, unknown> }> = {
-    [resolved]: { translation: translations as Record<string, unknown> },
+  // Build resources: each locale gets a "translation" bundle (flat dotted keys)
+  // PLUS every top-level key is also registered as its own named namespace so
+  // pages using useTranslation("privacy") / useTranslation("usdaSettings") etc. work.
+  function buildBundles(data: Record<string, unknown>): Record<string, Record<string, unknown>> {
+    const bundles: Record<string, Record<string, unknown>> = {
+      translation: data,
+    };
+    for (const [ns, val] of Object.entries(data)) {
+      if (val && typeof val === "object" && !Array.isArray(val)) {
+        bundles[ns] = val as Record<string, unknown>;
+      }
+    }
+    return bundles;
+  }
+
+  const resources: Record<string, Record<string, Record<string, unknown>>> = {
+    [resolved]: buildBundles(translations as Record<string, unknown>),
   };
   if (resolved !== "it") {
-    resources["it"] = { translation: itTranslations as Record<string, unknown> };
+    resources["it"] = buildBundles(itTranslations as Record<string, unknown>);
   }
 
   await i18n
@@ -100,6 +115,8 @@ export async function initI18n(lng?: LangCode) {
       resources,
       lng:          resolved,
       fallbackLng:  "it",
+      defaultNS:    "translation",
+      ns:           Object.keys(buildBundles(translations as Record<string, unknown>)),
       interpolation: { escapeValue: false },
       react:        { useSuspense: false },
     });
@@ -109,8 +126,14 @@ export async function initI18n(lng?: LangCode) {
 
 export async function changeLanguage(lng: LangCode) {
   if (!i18n.hasResourceBundle(lng, "translation")) {
-    const translations = await loadLocale(lng);
+    const translations = await loadLocale(lng) as Record<string, unknown>;
+    // Register "translation" bundle plus every top-level key as its own namespace
     i18n.addResourceBundle(lng, "translation", translations, true, true);
+    for (const [ns, val] of Object.entries(translations)) {
+      if (val && typeof val === "object" && !Array.isArray(val)) {
+        i18n.addResourceBundle(lng, ns, val as Record<string, unknown>, true, true);
+      }
+    }
   }
   const lang = SUPPORTED_LANGUAGES.find(l => l.code === lng);
   document.documentElement.dir = lang?.dir ?? "ltr";

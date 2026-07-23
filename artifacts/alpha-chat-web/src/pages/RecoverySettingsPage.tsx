@@ -1,10 +1,10 @@
 /**
  * RecoverySettingsPage — Sprint 22
  * Dashboard recovery + impostazioni (email, rigenera card).
- * Accessibile da Impostazioni → Sicurezza.
  */
 
 import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import {
   apiGetRecoveryStatus,
   apiSetRecoveryEmail,
@@ -19,6 +19,7 @@ interface Props {
 }
 
 export default function RecoverySettingsPage({ onBack }: Props) {
+  const { t } = useTranslation("recovery");
   const { auth } = useAuth();
   const [status, setStatus]           = useState<RecoveryStatus | null>(null);
   const [loading, setLoading]         = useState(true);
@@ -43,7 +44,7 @@ export default function RecoverySettingsPage({ onBack }: Props) {
       setEmailSuccess(true);
       setStatus((prev) => prev ? { ...prev, has_recovery_email: true } : prev);
     } catch (err) {
-      setEmailError(err instanceof Error ? err.message : "Errore");
+      setEmailError(err instanceof Error ? err.message : t("error"));
     } finally {
       setEmailLoading(false);
     }
@@ -69,7 +70,7 @@ export default function RecoverySettingsPage({ onBack }: Props) {
         card_generated_at: payload.generated_at,
       } : prev);
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Errore rigenerazione");
+      alert(err instanceof Error ? err.message : t("regenError"));
     } finally {
       setRegenLoading(false);
       setConfirmRegen(false);
@@ -80,9 +81,9 @@ export default function RecoverySettingsPage({ onBack }: Props) {
     <div className="settings-page">
       <div className="settings-header">
         <button className="back-btn" onClick={onBack}>←</button>
-        <span>Recovery</span>
+        <span>{t("title")}</span>
       </div>
-      <div style={{ padding: 32, color: "var(--text-3)" }}>Caricamento…</div>
+      <div style={{ padding: 32, color: "var(--text-3)" }}>{t("loading")}</div>
     </div>
   );
 
@@ -91,36 +92,35 @@ export default function RecoverySettingsPage({ onBack }: Props) {
       {/* Header */}
       <div className="settings-header">
         <button className="back-btn" onClick={onBack}>←</button>
-        <span>🔑 Recovery Account</span>
+        <span>🔑 {t("title")}</span>
       </div>
 
       <div className="settings-body" style={{ display: "flex", flexDirection: "column", gap: 16, padding: 16 }}>
 
         {/* Dashboard stato */}
         <div className="rs-section">
-          <div className="rs-section-title">Stato Recovery</div>
+          <div className="rs-section-title">{t("statusTitle")}</div>
           <div className="rs-status-grid">
-            <StatusItem icon={status?.has_recovery_card ? "✅" : "❌"} label="Recovery Card" value={status?.has_recovery_card ? `v${status.card_version ?? "?"}` : "Non configurata"} />
-            <StatusItem icon={status?.has_recovery_email ? "✅" : "⚠️"} label="Email recupero" value={status?.has_recovery_email ? (status.recovery_email_masked ?? "Configurata") : "Non configurata"} />
-            <StatusItem icon={status?.has_phoenix_code ? "✅" : "⚪"} label="Phoenix Code" value={status?.has_phoenix_code ? "Configurato" : "Non configurato"} />
+            <StatusItem icon={status?.has_recovery_card ? "✅" : "❌"} label={t("recoveryCard")} value={status?.has_recovery_card ? `v${status.card_version ?? "?"}` : t("notConfigured")} />
+            <StatusItem icon={status?.has_recovery_email ? "✅" : "⚠️"} label={t("recoveryEmail")} value={status?.has_recovery_email ? (status.recovery_email_masked ?? t("configured")) : t("notConfigured")} />
+            <StatusItem icon={status?.has_phoenix_code ? "✅" : "⚪"} label={t("phoenixCode")} value={status?.has_phoenix_code ? t("configured") : t("notConfigured")} />
             {status?.card_generated_at && (
-              <StatusItem icon="🕐" label="Ultima card" value={new Date(status.card_generated_at).toLocaleDateString("it-IT")} />
+              <StatusItem icon="🕐" label={t("lastCard")} value={new Date(status.card_generated_at).toLocaleDateString()} />
             )}
             {status?.last_recovery_at && (
-              <StatusItem icon="🛡️" label="Ultimo recupero" value={new Date(status.last_recovery_at).toLocaleDateString("it-IT")} />
+              <StatusItem icon="🛡️" label={t("lastRecovery")} value={new Date(status.last_recovery_at).toLocaleDateString()} />
             )}
           </div>
         </div>
 
         {/* Email recupero */}
         <div className="rs-section">
-          <div className="rs-section-title">Email di recupero <span className="rs-optional">(opzionale)</span></div>
+          <div className="rs-section-title">{t("emailTitle")} <span className="rs-optional">({t("optional")})</span></div>
           <p className="rs-desc">
-            L'email serve esclusivamente come metodo aggiuntivo di recupero.<br />
-            Alpha Chat continua a funzionare anche senza email.
+            {t("emailDesc")}
           </p>
           {emailSuccess ? (
-            <div className="rs-success">✅ Email di recupero salvata.</div>
+            <div className="rs-success">✅ {t("emailSaved")}</div>
           ) : (
             <form onSubmit={handleSetEmail} className="rs-email-form">
               <input
@@ -132,7 +132,7 @@ export default function RecoverySettingsPage({ onBack }: Props) {
                 required
               />
               <button type="submit" className="rs-btn" disabled={emailLoading}>
-                {emailLoading ? "…" : "Salva"}
+                {emailLoading ? "…" : t("saveBtn")}
               </button>
             </form>
           )}
@@ -141,29 +141,27 @@ export default function RecoverySettingsPage({ onBack }: Props) {
 
         {/* Rigenera Recovery Card */}
         <div className="rs-section rs-section-danger">
-          <div className="rs-section-title">Rigenera Recovery Card</div>
+          <div className="rs-section-title">{t("regenTitle")}</div>
           <p className="rs-desc">
-            La card attuale diventerà <strong>immediatamente invalida</strong>.
-            La nuova card sarà mostrata una sola volta.
+            {t("regenDesc")}
           </p>
           {!confirmRegen ? (
             <button className="rs-btn-danger" onClick={() => setConfirmRegen(true)}>
-              🔄 Rigenera Recovery Card
+              🔄 {t("regenBtn")}
             </button>
           ) : (
             <div className="rs-confirm">
-              <span>Sei sicuro? La vecchia card sarà invalidata.</span>
+              <span>{t("regenConfirm")}</span>
               <button className="rs-confirm-yes" onClick={handleRegenerate} disabled={regenLoading}>
-                {regenLoading ? "Rigenerazione…" : "Sì, rigenera"}
+                {regenLoading ? t("regenLoading") : t("regenYes")}
               </button>
-              <button className="rs-confirm-no" onClick={() => setConfirmRegen(false)}>Annulla</button>
+              <button className="rs-confirm-no" onClick={() => setConfirmRegen(false)}>{t("cancel")}</button>
             </div>
           )}
         </div>
 
       </div>
 
-      {/* Modal nuova card */}
       {newCard && (
         <RecoveryCardModal
           card={newCard}

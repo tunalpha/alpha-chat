@@ -1,48 +1,45 @@
 ---
 name: i18n Phase 2 — audit hardcoded strings
-description: Pattern, decisioni e residui dell'audit i18n Phase 2 su Alpha Chat PWA (luglio 2026)
+description: Pattern e componenti per le fasi 2 e 3 dell'internazionalizzazione
 ---
 
-## Componenti completati (Phase 2)
+# i18n Phase 2 & 3 — Completed
 
-| Componente | Tecnica usata |
-|---|---|
-| `UsdaPaymentBubble.tsx` | `statusCopy(t)` — t passato come parametro alla pure function |
-| `UsdaHistory.tsx` | `FILTER_KEYS` con `tKey` stringhe, rendered con `t(f.tKey)` |
-| `ChatPaymentBubble.tsx` | `getStatusLabel(status, isMine, isRequest, t, ...)` — t passato come parametro |
-| `SendPaymentSheet.tsx` | STEPS e PHASE_LABEL calcolati dentro il componente (non più module-level) |
-| `EmergencyPage.tsx` | Aggiunto `useTranslation()` da zero |
-| `ActiveCallScreen.tsx` | `qualityLabel(q, t)` — t passato come parametro; import `useTranslation` aggiunto |
-| `ChatPage.tsx` | Solo toast: 25 `showToast("...")` → `showToast(t("chat.toast*"))` |
+## Fase 2 (completata in sessione precedente)
+Pattern per sostituire stringhe hardcoded in componenti esistenti:
+- `signAndPoll useCallback` richiede `t` in deps array
+- `confirmDesc` keys in emergency namespace includono prefisso frase completo
 
-## Regole critiche
+## Fase 3 (completata in questa sessione)
+378 chiavi aggiunte a tutti i 10 file lingua (it, en, es, fr, de, pt, ar, ja, ru, zh).
 
-**Pure functions fuori componente che hanno bisogno di t:** passare `t` come parametro `(key: string) => string` — stabilito come pattern per `statusCopy`, `getStatusLabel`, `qualityLabel`.
+### 16 pagine editate — tutte con `useTranslation("namespace")`
+| Pagina | Namespace | Note |
+|---|---|---|
+| PrivacyPage | privacy | VisibilitySelect ha il proprio hook |
+| SecuritySettingsPage | security | — |
+| CallSettingsPage | calls | — |
+| CallHistoryPage | calls | Status labels in t() |
+| GroupInfoPage | group | — |
+| RecoverySettingsPage | recovery | — |
+| TrustCenterPage | trust | CATEGORY_LABELS + ARCHITECTURE dentro component |
+| SecurityTimelinePage | timeline | EVENT_LABELS dentro component |
+| DeadManSwitchPage | dms | ACTION_OPTIONS dentro component |
+| PhoenixSetupPage | phoenix | — |
+| NuclearDestroyPage | nuclear | Solo stringhe italiane; military aesthetic English intenzionalmente invariato |
+| RecoveryContactsPage | recoveryContacts | — |
+| RecoveryPage | recoveryPage | onNavigate opzionale (LandingPage non lo passa) |
+| WalletCenterPage | walletCenter | Usa thirdweb (non @reown/appkit) |
+| UsdaSettingsPage | usdaSettings | HOW_SLIDES/GUIDE_STEPS/WALLET_CHIPS dentro component; pagamenti solo da chat |
+| PwaGuidePage | pwa | — |
 
-**Costanti module-level con stringhe UI:** devono diventare computed dentro il componente con `t()`. Esempio: `STEPS` e `PHASE_LABEL` in `SendPaymentSheet`.
+## Decisioni architetturali chiave
+- Costanti array/object che usano `t()` devono stare DENTRO il corpo del componente
+- `NuclearDestroyPage`: stringhe military-aesthetic restano English by design
+- `UsdaSettingsPage`: i pagamenti richiedono `conversation_id` (sono chat-based); la pagina è info+wallet, non un form di invio diretto
+- `RecoveryStatus` non ha `recovery_contacts_count` — campo non esposto dall'API
+- WalletCenter e UsdaSettings usano `thirdweb/react` (useActiveAccount), non `@reown/appkit`
+- `apiUsdaGetHistory` ritorna `{ payments, total }`, non array diretto
 
-**`useCallback` che usa `t`:** aggiungere `t` alle deps. La funzione `t` di i18next è stabile tra i render (non cambia se la lingua non cambia), quindi non causa loop.
-
-**`confirmDesc*` in emergency namespace:** i valori includono il prefisso frase completo (es. IT: "Stai per disconnettere tutti i dispositivi di") perché la struttura grammaticale varia troppo tra le lingue per spezzarli.
-
-## Residui NON nel perimetro Phase 2 (ChatPage.tsx)
-
-Le sotto-componenti inline di `ChatPage.tsx` (ChatHeader, InputBar, timer ExpiryBadge) hanno ancora stringhe italiane:
-- Menu items: "Info gruppo", "Aggiungi membri"
-- Trust badge titles: "Identità verificata", "Non verificata…", "Chiave cambiata…"
-- Header fallbacks: "Gruppo", "Utente sconosciuto"
-- Placeholder: "Scrivi un messaggio…"
-- Burn After Read title
-- "scaduto" nel timer
-
-Questi NON erano nel scope Phase 2 (ChatPage.tsx era "toasts only"). Lasciati per un futuro audit.
-
-**Why:** Module isolation policy (Messaggi CONGELATO) limita i cambi a ChatPage. Le modifiche ai toast erano esplicitamente approvate; le sotto-componenti no.
-
-## Namespace aggiunti ai 10 file locale
-
-- `usda.*` — ~120 chiavi: stati pagamento, label form, step UI, hint firma, error messages, bubble labels
-- `emergency.*` — ~30 chiavi: tutti gli stati UI dell'EmergencyPage
-- `calls.*` ext — ~25 nuove chiavi: qualità, statistiche, pulsanti, menu, label connessione
-- `chat.toast*` — ~25 chiavi: tutti i toast di ChatPage
-- `common.cancel`, `common.retry`, `common.more`, `common.close`, `common.error`, `common.loading`
+## TypeScript — zero errori confermati
+`npx tsc --noEmit` → exit 0 dopo fase 3.

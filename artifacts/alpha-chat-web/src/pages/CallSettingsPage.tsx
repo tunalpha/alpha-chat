@@ -3,6 +3,7 @@
  * Impostazioni chiamate: chi può chiamarmi, suoneria, modalità silenziosa.
  */
 import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { useAuth } from "../contexts/AuthContext";
 import { apiGetPrivacySettings, apiUpdatePrivacySettings } from "../lib/api";
 import { getRingtone, setRingtone, RINGTONES, playRingPreview, type RingtoneId } from "../lib/notifSound";
@@ -12,6 +13,7 @@ interface Props {
 }
 
 export default function CallSettingsPage({ onBack }: Props) {
+  const { t } = useTranslation("calls");
   const { auth } = useAuth();
   const [allowCallsFrom, setAllowCallsFrom] = useState<"everyone" | "contacts" | "nobody">("contacts");
   const [ringtone, setRingtoneState]         = useState<RingtoneId>(getRingtone());
@@ -43,50 +45,48 @@ export default function CallSettingsPage({ onBack }: Props) {
     void playRingPreview(id);
   }
 
+  const WHO_OPTIONS = [
+    { value: "everyone" as const, icon: "🌐", label: t("whoEveryone"), desc: t("whoEveryoneDesc") },
+    { value: "contacts" as const, icon: "👥", label: t("whoContacts"),  desc: t("whoContactsDesc") },
+    { value: "nobody"   as const, icon: "🚫", label: t("whoNobody"),    desc: t("whoNobodyDesc") },
+  ];
+
   return (
     <div className="settings-root">
       <header className="settings-header">
-        <button className="settings-back-btn" onClick={onBack} aria-label="Indietro">
+        <button className="settings-back-btn" onClick={onBack} aria-label={t("common:back", "Back")}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
                strokeLinecap="round" strokeLinejoin="round" width="20" height="20">
             <polyline points="15 18 9 12 15 6" />
           </svg>
         </button>
-        <h1 className="settings-title">Impostazioni chiamate</h1>
-        {saved && <span className="settings-saved-badge">✓ Salvato</span>}
+        <h1 className="settings-title">{t("settingsTitle")}</h1>
+        {saved && <span className="settings-saved-badge">✓ {t("saved", "Saved")}</span>}
       </header>
 
       {/* Chi può chiamarmi */}
       <div className="settings-section">
-        <div className="settings-section-title">Chi può chiamarmi</div>
-        {(["everyone", "contacts", "nobody"] as const).map((opt) => (
+        <div className="settings-section-title">{t("whoCanCall")}</div>
+        {WHO_OPTIONS.map((opt) => (
           <button
-            key={opt}
-            className={`settings-item settings-item-radio${allowCallsFrom === opt ? " selected" : ""}`}
-            onClick={() => void saveCallsFrom(opt)}
+            key={opt.value}
+            className={`settings-item settings-item-radio${allowCallsFrom === opt.value ? " selected" : ""}`}
+            onClick={() => void saveCallsFrom(opt.value)}
             disabled={saving}
           >
-            <div className="settings-item-icon">
-              {opt === "everyone" ? "🌐" : opt === "contacts" ? "👥" : "🚫"}
-            </div>
+            <div className="settings-item-icon">{opt.icon}</div>
             <div className="settings-item-content">
-              <div className="settings-item-label">
-                {opt === "everyone" ? "Tutti" : opt === "contacts" ? "Solo contatti" : "Nessuno"}
-              </div>
-              <div className="settings-item-value muted">
-                {opt === "everyone"  ? "Chiunque può chiamarti" :
-                 opt === "contacts"  ? "Solo utenti con cui hai conversato" :
-                 "Nessuno può chiamarti"}
-              </div>
+              <div className="settings-item-label">{opt.label}</div>
+              <div className="settings-item-value muted">{opt.desc}</div>
             </div>
-            {allowCallsFrom === opt && <span className="settings-check">✓</span>}
+            {allowCallsFrom === opt.value && <span className="settings-check">✓</span>}
           </button>
         ))}
       </div>
 
       {/* Suoneria */}
       <div className="settings-section">
-        <div className="settings-section-title">Suoneria</div>
+        <div className="settings-section-title">{t("ringtone")}</div>
         {RINGTONES.map((rt) => (
           <button
             key={rt.id}
@@ -104,7 +104,7 @@ export default function CallSettingsPage({ onBack }: Props) {
 
       {/* Modalità silenziosa */}
       <div className="settings-section">
-        <div className="settings-section-title">Modalità silenziosa</div>
+        <div className="settings-section-title">{t("dndTitle")}</div>
         <button
           className={`settings-item settings-item-radio${allowCallsFrom === "nobody" ? " selected" : ""}`}
           onClick={() => void saveCallsFrom("nobody")}
@@ -112,8 +112,8 @@ export default function CallSettingsPage({ onBack }: Props) {
         >
           <div className="settings-item-icon">🌙</div>
           <div className="settings-item-content">
-            <div className="settings-item-label">Non disturbare</div>
-            <div className="settings-item-value muted">Blocca tutte le chiamate in arrivo</div>
+            <div className="settings-item-label">{t("dndLabel")}</div>
+            <div className="settings-item-value muted">{t("dndDesc")}</div>
           </div>
           {allowCallsFrom === "nobody" && <span className="settings-check">✓</span>}
         </button>

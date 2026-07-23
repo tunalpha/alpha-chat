@@ -120,19 +120,19 @@ export default function SettingsPage({ onBack, onNavigate }: Props) {
       ],
     },
     {
-      title: "💰 Pagamenti",
+      title: t("settings.payments"),
       rows: [
         {
           icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="20" height="20"><circle cx="12" cy="12" r="10"/><path d="M12 8v4l3 3"/><path d="M9.09 4.93A10 10 0 0 1 21.17 15"/></svg>,
-          label: "💸 Pagamenti USDA",
-          value: "Wallet, token, guida e sicurezza",
+          label: t("settings.usdaPayments"),
+          value: t("settings.usdaPaymentsValue"),
           onClick: () => onNavigate("usda-settings"),
-          badge: "Nuovo",
+          badge: t("common.new"),
         },
         {
           icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="20" height="20"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/></svg>,
-          label: "Wallet Center",
-          value: "Saldo, storico, transazioni",
+          label: t("settings.walletCenter"),
+          value: t("settings.walletCenterValue"),
           onClick: () => onNavigate("wallet-center"),
           badge: "USDA",
         },
@@ -150,8 +150,8 @@ export default function SettingsPage({ onBack, onNavigate }: Props) {
         },
         {
           icon: <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="20" height="20"><rect x="5" y="2" width="14" height="20" rx="2"/><line x1="12" y1="18" x2="12" y2="18"/></svg>,
-          label: "📲 Installa come App",
-          value: "Aggiungi alla schermata Home",
+          label: t("settings.installApp"),
+          value: t("settings.installAppValue"),
           onClick: () => onNavigate("pwa-guide"),
         },
       ],

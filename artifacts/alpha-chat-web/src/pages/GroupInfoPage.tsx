@@ -4,6 +4,7 @@
  */
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import { useAuth } from "../contexts/AuthContext";
 import {
   apiGetGroup,
@@ -28,13 +29,14 @@ interface Props {
   groupId: string;
   onBack: () => void;
   onNavigate: (view: AppView) => void;
-  onLeft?: () => void; // chiamato dopo leaveGroup/deleteGroup
+  onLeft?: () => void;
   onGroupRenamed?: (groupId: string, newName: string, avatarUrl?: string | null) => void;
   contacts?: Contact[];
-  onlineUsers?: Set<string>; // userId → online
+  onlineUsers?: Set<string>;
 }
 
 export default function GroupInfoPage({ groupId, onBack, onLeft, onGroupRenamed, contacts = [], onlineUsers = new Set() }: Props) {
+  const { t } = useTranslation("group");
   const { auth } = useAuth();
   const [group, setGroup]             = useState<GroupDetail | null>(null);
   const [loading, setLoading]         = useState(true);
@@ -60,7 +62,7 @@ export default function GroupInfoPage({ groupId, onBack, onLeft, onGroupRenamed,
       setGroup(g);
       setNameInput(g.name);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Errore caricamento gruppo");
+      setError(e instanceof Error ? e.message : t("loadError"));
     } finally {
       setLoading(false);
     }
@@ -70,9 +72,6 @@ export default function GroupInfoPage({ groupId, onBack, onLeft, onGroupRenamed,
 
   const isAdmin = group?.my_role === "admin";
 
-  // ── Avatar upload ─────────────────────────────────────────────────────────
-
-  /** Ridimensiona l'immagine a maxW×maxH con crop centrale, restituisce un Blob JPEG. */
   function resizeImageToBlob(file: File, maxW: number, maxH: number): Promise<Blob> {
     return new Promise((resolve, reject) => {
       const img = new Image();
@@ -101,7 +100,7 @@ export default function GroupInfoPage({ groupId, onBack, onLeft, onGroupRenamed,
   async function handleAvatarChange(e: React.ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (!file.type.startsWith("image/")) { alert("Seleziona un'immagine (jpg, png, webp)"); return; }
+    if (!file.type.startsWith("image/")) { alert(t("avatarTypeError")); return; }
     setAvatarLoading(true);
     try {
       const resized  = await resizeImageToBlob(file, 256, 256);
@@ -110,7 +109,7 @@ export default function GroupInfoPage({ groupId, onBack, onLeft, onGroupRenamed,
       setGroup(updated);
       onGroupRenamed?.(groupId, updated.name, updated.avatar_url);
     } catch (err) {
-      alert(err instanceof Error ? err.message : "Errore upload avatar");
+      alert(err instanceof Error ? err.message : t("avatarUploadError"));
     } finally {
       setAvatarLoading(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -127,14 +126,14 @@ export default function GroupInfoPage({ groupId, onBack, onLeft, onGroupRenamed,
       setGroup((g) => g ? { ...g, members: [...g.members, member], member_count: g.member_count + 1 } : g);
       setAddUsername("");
     } catch (e) {
-      setAddError(e instanceof Error ? e.message : "Errore aggiunta membro");
+      setAddError(e instanceof Error ? e.message : t("addMemberError"));
     } finally {
       setAddLoading(false);
     }
   }
 
   async function handleRemove(member: GroupMemberInfo) {
-    if (!confirm(`Rimuovere ${member.display_name} dal gruppo?`)) return;
+    if (!confirm(t("removeConfirm", { name: member.display_name }))) return;
     try {
       await apiRemoveGroupMember(groupId, member.user_id);
       setGroup((g) => g ? {
@@ -143,7 +142,7 @@ export default function GroupInfoPage({ groupId, onBack, onLeft, onGroupRenamed,
         member_count: g.member_count - 1,
       } : g);
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Errore rimozione membro");
+      alert(e instanceof Error ? e.message : t("removeError"));
     }
   }
 
@@ -155,7 +154,7 @@ export default function GroupInfoPage({ groupId, onBack, onLeft, onGroupRenamed,
         members: g.members.map((m) => m.user_id === member.user_id ? { ...m, role } : m),
       } : g);
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Errore cambio ruolo");
+      alert(e instanceof Error ? e.message : t("roleChangeError"));
     }
   }
 
@@ -166,7 +165,7 @@ export default function GroupInfoPage({ groupId, onBack, onLeft, onGroupRenamed,
       onLeft?.();
       onBack();
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Errore uscita gruppo");
+      alert(e instanceof Error ? e.message : t("leaveError"));
     } finally {
       setActionLoading(false);
       setConfirmLeave(false);
@@ -180,7 +179,7 @@ export default function GroupInfoPage({ groupId, onBack, onLeft, onGroupRenamed,
       onLeft?.();
       onBack();
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Errore eliminazione gruppo");
+      alert(e instanceof Error ? e.message : t("deleteError"));
     } finally {
       setActionLoading(false);
       setConfirmDelete(false);
@@ -190,14 +189,14 @@ export default function GroupInfoPage({ groupId, onBack, onLeft, onGroupRenamed,
   if (loading) return (
     <div className="gi-root">
       <div className="gi-header"><button className="back-btn" onClick={onBack}>←</button></div>
-      <div className="gi-body"><div className="gi-loading">Caricamento…</div></div>
+      <div className="gi-body"><div className="gi-loading">{t("loading")}</div></div>
     </div>
   );
 
   if (error || !group) return (
     <div className="gi-root">
       <div className="gi-header"><button className="back-btn" onClick={onBack}>←</button></div>
-      <div className="gi-body"><div className="gi-error">{error ?? "Gruppo non trovato"}</div></div>
+      <div className="gi-body"><div className="gi-error">{error ?? t("notFound")}</div></div>
     </div>
   );
 
@@ -206,17 +205,16 @@ export default function GroupInfoPage({ groupId, onBack, onLeft, onGroupRenamed,
       {/* Header */}
       <div className="gi-header">
         <button className="back-btn" onClick={onBack}>←</button>
-        <span className="gi-title">Info gruppo</span>
+        <span className="gi-title">{t("title")}</span>
       </div>
 
       <div className="gi-body">
         {/* Avatar + nome gruppo */}
         <div className="gi-hero">
-          {/* Avatar cliccabile (solo admin) per cambio foto */}
           <div
             className={`gi-avatar${isAdmin ? " gi-avatar-editable" : ""}`}
             onClick={isAdmin ? () => fileInputRef.current?.click() : undefined}
-            title={isAdmin ? "Cambia foto gruppo" : undefined}
+            title={isAdmin ? t("changeAvatar") : undefined}
           >
             {group.avatar_url ? (
               <img src={group.avatar_url} alt={group.name} className="gi-avatar-img" />
@@ -229,7 +227,6 @@ export default function GroupInfoPage({ groupId, onBack, onLeft, onGroupRenamed,
               </div>
             )}
           </div>
-          {/* Input file nascosto */}
           <input
             ref={fileInputRef}
             type="file"
@@ -244,7 +241,7 @@ export default function GroupInfoPage({ groupId, onBack, onLeft, onGroupRenamed,
                 onSubmit={async (e) => {
                   e.preventDefault();
                   const trimmed = nameInput.trim();
-                  if (!trimmed) { setNameError("Il nome non può essere vuoto"); return; }
+                  if (!trimmed) { setNameError(t("nameEmpty")); return; }
                   setNameError(null);
                   try {
                     const updated = await apiUpdateGroup(groupId, { name: trimmed });
@@ -252,7 +249,7 @@ export default function GroupInfoPage({ groupId, onBack, onLeft, onGroupRenamed,
                     setEditName(false);
                     onGroupRenamed?.(groupId, updated.name, updated.avatar_url);
                   } catch (err) {
-                    setNameError(err instanceof Error ? err.message : "Errore salvataggio");
+                    setNameError(err instanceof Error ? err.message : t("saveError"));
                   }
                 }}
                 style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "stretch" }}
@@ -274,34 +271,33 @@ export default function GroupInfoPage({ groupId, onBack, onLeft, onGroupRenamed,
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                 <span className="gi-group-name">{group.name}</span>
                 {isAdmin && (
-                  <button className="gi-edit-btn" onClick={() => { setEditName(true); setNameInput(group.name); }} title="Modifica nome">✏️</button>
+                  <button className="gi-edit-btn" onClick={() => { setEditName(true); setNameInput(group.name); }} title={t("editName")}>✏️</button>
                 )}
               </div>
             )}
           </div>
           {group.description && <p className="gi-description">{group.description}</p>}
           <div className="gi-meta">
-            {group.member_count} di {group.max_members} partecipanti · Il tuo ruolo: <strong>{group.my_role === "admin" ? "👑 Admin" : "Membro"}</strong>
+            {group.member_count} / {group.max_members} {t("participants")} · {t("yourRole")}: <strong>{group.my_role === "admin" ? `👑 ${t("roleAdmin")}` : t("roleMember")}</strong>
           </div>
         </div>
 
         {/* Aggiungi membro (solo admin) */}
         {isAdmin && (
           <div className="gi-section">
-            <div className="gi-section-title">Aggiungi partecipante</div>
+            <div className="gi-section-title">{t("addMemberTitle")}</div>
             <form onSubmit={handleAddMember} className="gi-add-form">
               <div className="gi-add-input-wrap">
                 <input
                   className="gi-add-input"
                   type="text"
-                  placeholder="Username o nome…"
+                  placeholder={t("addMemberPlaceholder")}
                   value={addUsername}
                   autoComplete="off"
                   onChange={(e) => { setAddUsername(e.target.value); setAddError(null); setShowSuggestions(true); }}
                   onFocus={() => setShowSuggestions(true)}
                   onBlur={() => setTimeout(() => setShowSuggestions(false), 150)}
                 />
-                {/* Suggestion dropdown — contatti esistenti filtrati */}
                 {showSuggestions && addUsername.trim().length > 0 && (() => {
                   const q = addUsername.trim().toLowerCase();
                   const alreadyIn = new Set(group.members.map((m) => m.username));
@@ -328,7 +324,7 @@ export default function GroupInfoPage({ groupId, onBack, onLeft, onGroupRenamed,
                 })()}
               </div>
               <button type="submit" className="gi-add-btn" disabled={addLoading}>
-                {addLoading ? "…" : "Aggiungi"}
+                {addLoading ? "…" : t("addMemberBtn")}
               </button>
             </form>
             {addError && <div className="gi-add-error">{addError}</div>}
@@ -337,12 +333,11 @@ export default function GroupInfoPage({ groupId, onBack, onLeft, onGroupRenamed,
 
         {/* Lista membri */}
         <div className="gi-section">
-          <div className="gi-section-title">{group.member_count} Partecipanti</div>
+          <div className="gi-section-title">{group.member_count} {t("participantsLabel")}</div>
           <div className="gi-members-list">
             {group.members.map((m) => {
               const isSelf    = m.user_id === auth?.userId;
               const isMemAdmin = m.role === "admin";
-
               const isOnline = onlineUsers.has(m.user_id);
               return (
                 <div key={m.user_id} className="gi-member-row">
@@ -353,30 +348,30 @@ export default function GroupInfoPage({ groupId, onBack, onLeft, onGroupRenamed,
                   <div className="gi-member-info">
                     <div className="gi-member-name">
                       {m.display_name}
-                      {isSelf && <span className="gi-member-you"> (tu)</span>}
+                      {isSelf && <span className="gi-member-you"> ({t("you")})</span>}
                     </div>
                     <div className="gi-member-username">
                       @{m.username}
                       {isOnline
-                        ? <span className="gi-member-status online"> · Online</span>
-                        : <span className="gi-member-status offline"> · Offline</span>}
+                        ? <span className="gi-member-status online"> · {t("online")}</span>
+                        : <span className="gi-member-status offline"> · {t("offline")}</span>}
                     </div>
                   </div>
                   <div className="gi-member-actions">
-                    {isMemAdmin && <span className="gi-badge-admin">👑 Admin</span>}
+                    {isMemAdmin && <span className="gi-badge-admin">👑 {t("roleAdmin")}</span>}
                     {isAdmin && !isSelf && (
                       <>
                         <button
                           className="gi-action-btn"
                           onClick={() => handleRoleChange(m, isMemAdmin ? "member" : "admin")}
-                          title={isMemAdmin ? "Rimuovi admin" : "Rendi admin"}
+                          title={isMemAdmin ? t("demoteAdmin") : t("promoteAdmin")}
                         >
                           {isMemAdmin ? "↓" : "↑"}
                         </button>
                         <button
                           className="gi-action-btn gi-action-remove"
                           onClick={() => handleRemove(m)}
-                          title="Rimuovi dal gruppo"
+                          title={t("removeFromGroup")}
                         >✕</button>
                       </>
                     )}
@@ -391,30 +386,30 @@ export default function GroupInfoPage({ groupId, onBack, onLeft, onGroupRenamed,
         <div className="gi-danger-zone">
           {!confirmLeave ? (
             <button className="gi-danger-btn" onClick={() => setConfirmLeave(true)}>
-              🚪 Lascia il gruppo
+              🚪 {t("leaveGroup")}
             </button>
           ) : (
             <div className="gi-confirm">
-              <span>Sei sicuro di voler lasciare il gruppo?</span>
+              <span>{t("leaveConfirm")}</span>
               <button className="gi-confirm-yes" onClick={handleLeave} disabled={actionLoading}>
-                {actionLoading ? "…" : "Sì, lascia"}
+                {actionLoading ? "…" : t("leaveYes")}
               </button>
-              <button className="gi-confirm-no" onClick={() => setConfirmLeave(false)}>Annulla</button>
+              <button className="gi-confirm-no" onClick={() => setConfirmLeave(false)}>{t("cancel")}</button>
             </div>
           )}
 
           {isAdmin && (
             !confirmDelete ? (
               <button className="gi-danger-btn gi-danger-delete" onClick={() => setConfirmDelete(true)}>
-                🗑️ Elimina gruppo
+                🗑️ {t("deleteGroup")}
               </button>
             ) : (
               <div className="gi-confirm">
-                <span>Eliminare definitivamente il gruppo?</span>
+                <span>{t("deleteConfirm")}</span>
                 <button className="gi-confirm-yes" onClick={handleDelete} disabled={actionLoading}>
-                  {actionLoading ? "…" : "Sì, elimina"}
+                  {actionLoading ? "…" : t("deleteYes")}
                 </button>
-                <button className="gi-confirm-no" onClick={() => setConfirmDelete(false)}>Annulla</button>
+                <button className="gi-confirm-no" onClick={() => setConfirmDelete(false)}>{t("cancel")}</button>
               </div>
             )
           )}

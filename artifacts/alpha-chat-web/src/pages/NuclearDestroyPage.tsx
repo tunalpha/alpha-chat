@@ -3,6 +3,7 @@
  * Hold-to-arm su iOS: usa onTouchStart/End nativi.
  */
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { apiDestroyAccountDirect } from "../lib/api";
 import { clearAuth } from "../lib/auth";
 
@@ -226,6 +227,7 @@ interface Props { onBack:()=>void }
 const CIRCUMF = 2 * Math.PI * 70; // r=70
 
 export default function NuclearDestroyPage({ onBack }: Props) {
+  const { t } = useTranslation("nuclear");
   const [phase, setPhase]         = useState<Phase>("idle");
   const [holdPct, setHoldPct]     = useState(0);
   const [isHolding, setIsHolding] = useState(false);
@@ -316,16 +318,16 @@ export default function NuclearDestroyPage({ onBack }: Props) {
       {phase==="destroyed" && (
         <div className="nk-destroyed">
           <div className="nk-d-skull">💀</div>
-          <div className="nk-d-title">ACCOUNT ELIMINATO</div>
+          <div className="nk-d-title">{t("destroyedTitle")}</div>
           <div className="nk-d-line" />
-          <div className="nk-d-sub">Tutti i dati sono stati distrutti definitivamente.<br/>Nessun recupero è possibile.</div>
+          <div className="nk-d-sub">{t("destroyedSub")}</div>
           <div className="nk-d-time">{nowStr}</div>
         </div>
       )}
 
       <div className={`nk${phase==="countdown"?" shaking":""}`}>
 
-        {/* Header */}
+        {/* Header — aesthetic military text stays in English intentionally */}
         <div className="nk-hdr">
           <button className="nk-hdr-back" onClick={onBack}>‹</button>
           <div className="nk-hdr-badge">⚠ TOP SECRET</div>
@@ -348,9 +350,9 @@ export default function NuclearDestroyPage({ onBack }: Props) {
             <>
               <div style={{flex:1}} />
               <div className="nk-cntdwn-num">{countdown}</div>
-              <div className="nk-cntdwn-lbl">DETONAZIONE IN CORSO</div>
+              <div className="nk-cntdwn-lbl">{t("detonating")}</div>
               <div style={{flex:1}} />
-              <button className="nk-cancel" onClick={cancel}>✕ ANNULLA</button>
+              <button className="nk-cancel" onClick={cancel}>{t("cancelBtn")}</button>
             </>
           ) : phase==="exploding" ? (
             <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",fontSize:80}}>💥</div>
@@ -358,17 +360,16 @@ export default function NuclearDestroyPage({ onBack }: Props) {
             <>
               {/* Warning */}
               <div className="nk-warn">
-                <div className="nk-warn-ttl">⚠ PUNTO DI NON RITORNO</div>
+                <div className="nk-warn-ttl">{t("warningTitle")}</div>
                 <div className="nk-warn-body">
-                  Questa procedura distruggerà <strong>permanentemente</strong> l'account,
-                  tutti i messaggi, le chiavi crittografiche e ogni dato associato.<br/><br/>
-                  <strong>L'operazione è irreversibile.</strong>
+                  {t("warningBody")}<br/><br/>
+                  <strong>{t("warningIrreversible")}</strong>
                 </div>
               </div>
 
               {/* Industrial panel */}
               <div className="nk-panel">
-                {/* Danger labels */}
+                {/* Danger labels — DANGER stays English (military aesthetic) */}
                 <div className="nk-panel-labels">
                   <div className="nk-danger-label">
                     <span>☢️</span>
@@ -376,8 +377,8 @@ export default function NuclearDestroyPage({ onBack }: Props) {
                   </div>
                   <div className="nk-panel-center">
                     <div className="nk-panel-label">
-                      <strong>Tieni premuto 5 secondi</strong><br/>
-                      <span style={{color:"#666",fontSize:12}}>Rilascia per annullare</span>
+                      <strong>{t("holdToDestroy")}</strong><br/>
+                      <span style={{color:"#666",fontSize:12}}>{t("releaseToCancel")}</span>
                     </div>
                   </div>
                   <div className="nk-danger-label">
@@ -407,7 +408,7 @@ export default function NuclearDestroyPage({ onBack }: Props) {
                     onMouseDown={startHold}
                     onMouseUp={stopHold}
                     onMouseLeave={stopHold}
-                    aria-label="Tieni premuto per distruggere l'account"
+                    aria-label={t("ariaLabel")}
                   >
                     <div className="nk-btn-label">AVVIA</div>
                     <div className="nk-btn-sub">HOLD TO ARM</div>
@@ -417,10 +418,10 @@ export default function NuclearDestroyPage({ onBack }: Props) {
                 </div>
 
                 <div className={`nk-status${isHolding?" on":""}`}>
-                  {isHolding ? "⚡ SISTEMA IN ARMAMENTO…" : "● IN ATTESA"}
+                  {isHolding ? t("arming") : t("standby")}
                 </div>
 
-                {/* Bottom plate */}
+                {/* Bottom plate — military identifiers stay English */}
                 <div className="nk-plate">
                   <div className="nk-plate-top">▲ LAUNCH PROTOCOL ▲</div>
                   <div className="nk-plate-main">NUCLEAR MODE</div>
@@ -428,7 +429,7 @@ export default function NuclearDestroyPage({ onBack }: Props) {
                 </div>
               </div>
 
-              <button className="nk-back-link" onClick={onBack}>Annulla — torna indietro</button>
+              <button className="nk-back-link" onClick={onBack}>{t("backLink")}</button>
             </>
           ) : null}
         </div>
