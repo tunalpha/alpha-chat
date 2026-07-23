@@ -14,6 +14,150 @@
 
 import { useState, useCallback, useEffect, useRef } from "react";
 import { useActiveAccount, ConnectButton } from "thirdweb/react";
+
+// ── HowItWorksDialog ─────────────────────────────────────────────────────────
+
+const HOW_SLIDES = [
+  {
+    emoji: "💬",
+    accent: "#6366f1",
+    title: "Pagamenti nati per la chat",
+    body: "Invia e ricevi USDA direttamente in una conversazione, come un messaggio — senza app esterne, senza commissioni nascoste.",
+    visual: (
+      <div className="hiw-chat-preview" aria-hidden="true">
+        <div className="hiw-bubble hiw-bubble--out">
+          <span className="hiw-bubble-pill">💸 HAI INVIATO</span>
+          <strong>5 USDA</strong>
+          <span className="hiw-bubble-sub">a Marco</span>
+        </div>
+        <div className="hiw-bubble hiw-bubble--in">
+          <span className="hiw-bubble-pill">🎉 RICEVUTO</span>
+          <strong>5 USDA</strong>
+          <span className="hiw-bubble-sub">da Giulia</span>
+        </div>
+      </div>
+    ),
+  },
+  {
+    emoji: "🔐",
+    accent: "#10b981",
+    title: "Sicuro per design",
+    body: "I tuoi fondi passano per un escrow on-chain su Polygon. AlphaChat non può toccarli — vengono rilasciati solo dopo la conferma blockchain.",
+    visual: (
+      <div className="hiw-flow" aria-hidden="true">
+        <div className="hiw-flow-node hiw-flow-node--you">Tu</div>
+        <div className="hiw-flow-arrow">
+          <span className="hiw-flow-label">escrow</span>
+          <span className="hiw-flow-line" />
+          <span className="hiw-flow-label">⛓️</span>
+        </div>
+        <div className="hiw-flow-node hiw-flow-node--dest">Destinatario</div>
+      </div>
+    ),
+  },
+  {
+    emoji: "⚡",
+    accent: "#f59e0b",
+    title: "In pochi secondi",
+    body: "Firma con il tuo wallet, AlphaChat rileva il deposito on-chain e notifica il destinatario — tutto automatico, in tempo reale.",
+    visual: (
+      <div className="hiw-steps-vis" aria-hidden="true">
+        {[
+          { icon: "✍️", label: "Firma" },
+          { icon: "⛓️", label: "Blockchain" },
+          { icon: "🔔", label: "Notifica" },
+          { icon: "✅", label: "Ricevuto" },
+        ].map((s, i) => (
+          <div key={i} className="hiw-step-vis">
+            <div className="hiw-step-vis-dot">{s.icon}</div>
+            <div className="hiw-step-vis-label">{s.label}</div>
+            {i < 3 && <div className="hiw-step-vis-line" aria-hidden="true" />}
+          </div>
+        ))}
+      </div>
+    ),
+  },
+  {
+    emoji: "📩",
+    accent: "#8b5cf6",
+    title: "Richiedi USDA ai tuoi contatti",
+    body: "Usa il tasto 💸 in chat e scegli «Richiedi». Il pagamento arriva direttamente nel tuo wallet non appena l'altro firma.",
+    visual: (
+      <div className="hiw-chat-preview" aria-hidden="true">
+        <div className="hiw-bubble hiw-bubble--req">
+          <span className="hiw-bubble-pill">📩 RICHIESTA</span>
+          <strong>10 USDA</strong>
+          <div className="hiw-bubble-btn">Paga ora →</div>
+        </div>
+        <div className="hiw-bubble hiw-bubble--in hiw-bubble--small">
+          <span className="hiw-bubble-pill">✅ PAGATA</span>
+          <strong>Richiesta pagata!</strong>
+        </div>
+      </div>
+    ),
+  },
+];
+
+function HowItWorksDialog({ onClose }: { onClose: () => void }) {
+  const [slide, setSlide] = useState(0);
+  const total = HOW_SLIDES.length;
+  const s = HOW_SLIDES[slide];
+  const isLast = slide === total - 1;
+
+  // Dismiss on backdrop click
+  function onBackdrop(e: React.MouseEvent) {
+    if ((e.target as HTMLElement).classList.contains("hiw-backdrop")) onClose();
+  }
+
+  return (
+    <div className="hiw-backdrop" role="dialog" aria-modal="true" aria-label="Come funzionano i pagamenti" onClick={onBackdrop}>
+      <div className="hiw-sheet" style={{ "--hiw-accent": s.accent } as React.CSSProperties}>
+
+        {/* Close */}
+        <button type="button" className="hiw-close" aria-label="Chiudi" onClick={onClose}>✕</button>
+
+        {/* Emoji accent */}
+        <div className="hiw-emoji" aria-hidden="true">{s.emoji}</div>
+
+        {/* Visual scene */}
+        <div className="hiw-visual">{s.visual}</div>
+
+        {/* Text */}
+        <h2 className="hiw-title">{s.title}</h2>
+        <p className="hiw-body">{s.body}</p>
+
+        {/* Dots */}
+        <div className="hiw-dots" role="tablist" aria-label="Slide">
+          {HOW_SLIDES.map((_, i) => (
+            <button
+              key={i}
+              type="button"
+              role="tab"
+              aria-selected={i === slide}
+              aria-label={`Slide ${i + 1}`}
+              className={`hiw-dot ${i === slide ? "hiw-dot--active" : ""}`}
+              onClick={() => setSlide(i)}
+            />
+          ))}
+        </div>
+
+        {/* Navigation */}
+        <div className="hiw-nav">
+          {slide > 0 ? (
+            <button type="button" className="hiw-btn-ghost" onClick={() => setSlide(slide - 1)}>← Indietro</button>
+          ) : (
+            <button type="button" className="hiw-btn-ghost" onClick={onClose}>Salta</button>
+          )}
+          {isLast ? (
+            <button type="button" className="hiw-btn-primary" onClick={onClose}>🚀 Inizia ora</button>
+          ) : (
+            <button type="button" className="hiw-btn-primary" onClick={() => setSlide(slide + 1)}>Avanti →</button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
 import {
   client,
   polygon,
@@ -87,6 +231,7 @@ export default function UsdaSettingsPage({ onBack }: Props) {
 
   const [copied,      setCopied]      = useState<string | null>(null);
   const [watchStatus, setWatchStatus] = useState<"idle" | "loading" | "ok" | "err">("idle");
+  const [showHowItWorks, setShowHowItWorks] = useState(false);
 
   // ── Copy helpers ──────────────────────────────────────────────────────────
   const copy = useCallback((key: string, value: string) => {
@@ -238,14 +383,13 @@ export default function UsdaSettingsPage({ onBack }: Props) {
                 </div>
               ))}
             </div>
-            <a
-              href="https://getusda.xyz"
-              target="_blank" rel="noopener noreferrer"
+            <button
+              type="button"
               className="ups-btn-secondary"
-              aria-label="Scopri come funziona USDA sul sito ufficiale"
+              onClick={() => setShowHowItWorks(true)}
             >
               📚 Scopri come funziona
-            </a>
+            </button>
           </div>
         </section>
 
@@ -359,6 +503,9 @@ export default function UsdaSettingsPage({ onBack }: Props) {
         <div className="ups-section" style={{ paddingBottom: 8 }}>
         </div>
       </div>
+
+      {/* ── How It Works Dialog ─────────────────────────────────────────── */}
+      {showHowItWorks && <HowItWorksDialog onClose={() => setShowHowItWorks(false)} />}
     </div>
   );
 }

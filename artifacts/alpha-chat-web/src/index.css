@@ -6622,6 +6622,161 @@ html.emergency-open #root {
 .ups-security-points li { font-size: 0.83rem; color: var(--text-2,rgba(255,255,255,0.65)); }
 
 /* ══════════════════════════════════════════════════════════════════════════════
+   HowItWorksDialog (.hiw-*) — dialog in-app "Come funzionano i pagamenti"
+   ══════════════════════════════════════════════════════════════════════════════ */
+
+.hiw-backdrop {
+  position: fixed; inset: 0; z-index: 9000;
+  background: rgba(0,0,0,0.72);
+  display: flex; align-items: flex-end; justify-content: center;
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+  animation: hiw-fade-in 0.18s ease;
+}
+@keyframes hiw-fade-in { from { opacity:0 } to { opacity:1 } }
+
+.hiw-sheet {
+  position: relative;
+  width: 100%; max-width: 480px;
+  background: #13131f;
+  border-radius: 28px 28px 0 0;
+  padding: 28px 24px 32px;
+  display: flex; flex-direction: column; align-items: center; gap: 0;
+  animation: hiw-slide-up 0.28s cubic-bezier(0.34,1.36,0.64,1);
+  border-top: 1px solid rgba(255,255,255,0.08);
+}
+@keyframes hiw-slide-up { from { transform:translateY(60px); opacity:0 } to { transform:translateY(0); opacity:1 } }
+
+/* Accent bar */
+.hiw-sheet::before {
+  content: '';
+  position: absolute; top: 10px; left: 50%; transform: translateX(-50%);
+  width: 36px; height: 4px; border-radius: 2px;
+  background: rgba(255,255,255,0.18);
+}
+
+.hiw-close {
+  position: absolute; top: 20px; right: 20px;
+  background: rgba(255,255,255,0.08); border: none; color: rgba(255,255,255,0.55);
+  width: 32px; height: 32px; border-radius: 50%;
+  font-size: 0.85rem; cursor: pointer; display: flex; align-items: center; justify-content: center;
+  touch-action: manipulation;
+}
+.hiw-close:active { background: rgba(255,255,255,0.15); }
+
+.hiw-emoji {
+  font-size: 2.6rem; line-height: 1; margin-bottom: 16px; margin-top: 8px;
+  filter: drop-shadow(0 0 12px var(--hiw-accent, #6366f1));
+  transition: filter 0.3s;
+}
+
+/* ── Visual scenes ─────────────────────────────────────────────────────────── */
+.hiw-visual {
+  width: 100%; margin-bottom: 20px; min-height: 110px;
+  display: flex; align-items: center; justify-content: center;
+}
+
+/* Chat bubbles preview */
+.hiw-chat-preview { display: flex; flex-direction: column; gap: 10px; width: 100%; max-width: 280px; }
+.hiw-bubble {
+  border-radius: 18px; padding: 10px 14px;
+  display: flex; flex-direction: column; gap: 3px;
+}
+.hiw-bubble--out {
+  align-self: flex-end;
+  background: linear-gradient(135deg, rgba(99,102,241,0.35), rgba(139,92,246,0.25));
+  border: 1px solid rgba(99,102,241,0.3);
+}
+.hiw-bubble--in {
+  align-self: flex-start;
+  background: rgba(255,255,255,0.07);
+  border: 1px solid rgba(255,255,255,0.1);
+}
+.hiw-bubble--req {
+  align-self: flex-start;
+  background: linear-gradient(135deg, rgba(139,92,246,0.25), rgba(99,102,241,0.15));
+  border: 1px solid rgba(139,92,246,0.3);
+  width: 90%;
+}
+.hiw-bubble--small { padding: 8px 12px; }
+.hiw-bubble-pill {
+  font-size: 0.62rem; font-weight: 700; letter-spacing: 0.06em;
+  color: var(--hiw-accent, #6366f1); text-transform: uppercase;
+}
+.hiw-bubble strong { font-size: 1.1rem; color: #fff; font-weight: 700; }
+.hiw-bubble-sub { font-size: 0.75rem; color: rgba(255,255,255,0.5); }
+.hiw-bubble-btn {
+  margin-top: 6px; padding: 6px 12px; border-radius: 10px;
+  background: var(--hiw-accent, #6366f1); color: #fff;
+  font-size: 0.78rem; font-weight: 600; text-align: center;
+}
+
+/* Flow diagram */
+.hiw-flow { display: flex; align-items: center; gap: 8px; width: 100%; justify-content: center; }
+.hiw-flow-node {
+  padding: 10px 18px; border-radius: 14px; font-size: 0.85rem; font-weight: 700; color: #fff;
+  white-space: nowrap;
+}
+.hiw-flow-node--you  { background: linear-gradient(135deg, rgba(99,102,241,0.5), rgba(139,92,246,0.3)); border: 1px solid rgba(99,102,241,0.4); }
+.hiw-flow-node--dest { background: rgba(16,185,129,0.25); border: 1px solid rgba(16,185,129,0.35); }
+.hiw-flow-arrow { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 2px; min-width: 60px; }
+.hiw-flow-label { font-size: 0.65rem; color: rgba(255,255,255,0.4); }
+.hiw-flow-line { height: 2px; width: 100%; background: linear-gradient(90deg, rgba(99,102,241,0.6), rgba(16,185,129,0.6)); border-radius: 1px; }
+
+/* Steps timeline */
+.hiw-steps-vis { display: flex; align-items: center; width: 100%; justify-content: center; position: relative; }
+.hiw-step-vis { display: flex; flex-direction: column; align-items: center; gap: 4px; position: relative; flex-shrink: 0; }
+.hiw-step-vis-dot {
+  width: 40px; height: 40px; border-radius: 50%;
+  background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.12);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.1rem;
+}
+.hiw-step-vis-label { font-size: 0.6rem; color: rgba(255,255,255,0.45); font-weight: 600; white-space: nowrap; }
+.hiw-step-vis-line {
+  position: absolute; top: 20px; left: 100%;
+  width: 20px; height: 2px;
+  background: linear-gradient(90deg, rgba(245,158,11,0.5), transparent);
+  z-index: 1;
+}
+
+/* ── Text ──────────────────────────────────────────────────────────────────── */
+.hiw-title {
+  font-size: 1.2rem; font-weight: 800; color: #fff; text-align: center;
+  margin: 0 0 10px; line-height: 1.3;
+}
+.hiw-body {
+  font-size: 0.88rem; color: rgba(255,255,255,0.6); text-align: center;
+  margin: 0 0 22px; line-height: 1.6; max-width: 320px;
+}
+
+/* ── Dots ──────────────────────────────────────────────────────────────────── */
+.hiw-dots { display: flex; gap: 6px; margin-bottom: 24px; }
+.hiw-dot {
+  width: 6px; height: 6px; border-radius: 3px; border: none;
+  background: rgba(255,255,255,0.18); cursor: pointer; padding: 0;
+  transition: width 0.25s, background 0.25s;
+}
+.hiw-dot--active {
+  width: 20px; background: var(--hiw-accent, #6366f1);
+}
+
+/* ── Navigation ────────────────────────────────────────────────────────────── */
+.hiw-nav { display: flex; gap: 10px; width: 100%; }
+.hiw-btn-ghost {
+  flex: 1; padding: 13px; border-radius: 14px; border: 1px solid rgba(255,255,255,0.1);
+  background: transparent; color: rgba(255,255,255,0.55); font-size: 0.9rem; font-weight: 600;
+  cursor: pointer; touch-action: manipulation;
+}
+.hiw-btn-ghost:active { background: rgba(255,255,255,0.05); }
+.hiw-btn-primary {
+  flex: 1.6; padding: 13px; border-radius: 14px; border: none;
+  background: var(--hiw-accent, #6366f1); color: #fff; font-size: 0.9rem; font-weight: 700;
+  cursor: pointer; touch-action: manipulation;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+}
+.hiw-btn-primary:active { filter: brightness(0.88); }
+
+/* ══════════════════════════════════════════════════════════════════════════════
    UsdaWalletCard (.uwc-*) — card "👛 Wallet USDA" nel profilo utente
    ══════════════════════════════════════════════════════════════════════════════ */
 
