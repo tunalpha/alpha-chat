@@ -1421,12 +1421,23 @@ a { color: inherit; text-decoration: none; }
   flex-shrink: 0;
 }
 .settings-back-btn {
-  width: 36px; height: 36px; border-radius: 50%;
+  width: 44px; height: 44px; border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
   color: var(--text-2); transition: background 0.15s;
   min-height: unset; min-width: unset;
+  touch-action: manipulation; -webkit-tap-highlight-color: transparent;
 }
 .settings-back-btn:hover { background: var(--bg-hover); color: var(--text-1); }
+/* back-btn generico (RecoverySettingsPage) — stessa UX di settings-back-btn */
+.back-btn {
+  width: 44px; height: 44px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: none; border: none;
+  color: var(--text-2); font-size: 20px; cursor: pointer;
+  touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+  transition: background 0.15s;
+}
+.back-btn:hover { background: var(--bg-hover); color: var(--text-1); }
 .settings-title { font-size: 18px; font-weight: 700; color: var(--text-1); }
 .settings-body { flex: 1; overflow-y: auto; padding-bottom: calc(24px + var(--sab)); }
 
@@ -3379,14 +3390,17 @@ html.emergency-open #root {
 .sc-topbar {
   display: flex; align-items: center; gap: 12px;
   padding: 14px 16px 12px;
+  padding-top: calc(14px + var(--sat));
   border-bottom: 1px solid var(--border-1);
   background: var(--bg-2);
   flex-shrink: 0;
 }
 .sc-close-btn {
   background: none; border: none; color: var(--text-1); cursor: pointer;
-  padding: 4px; border-radius: 8px; display: flex; align-items: center;
+  min-width: 44px; min-height: 44px; padding: 10px; border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
   transition: background 0.15s;
+  touch-action: manipulation; -webkit-tap-highlight-color: transparent;
 }
 .sc-close-btn:hover { background: rgba(255,255,255,0.07); }
 .sc-topbar-title { font-size: 16px; font-weight: 600; color: var(--text-1); }
@@ -4896,6 +4910,7 @@ html.emergency-open #root {
   align-items: center;
   gap: 12px;
   padding: 16px 20px;
+  padding-top: calc(16px + var(--sat));
   border-bottom: 1px solid rgba(255,255,255,0.07);
 }
 .archivio-back-btn {
@@ -4903,9 +4918,12 @@ html.emergency-open #root {
   border: none;
   color: var(--text-1, #fff);
   cursor: pointer;
-  padding: 4px;
+  min-width: 44px; min-height: 44px;
+  padding: 10px;
   display: flex;
   align-items: center;
+  justify-content: center;
+  touch-action: manipulation; -webkit-tap-highlight-color: transparent;
 }
 .archivio-title {
   font-size: 18px;
@@ -6451,6 +6469,7 @@ html.emergency-open #root {
 .ups-topbar {
   display: flex; align-items: center; justify-content: space-between;
   padding: 20px 16px 4px;
+  padding-top: calc(20px + var(--sat));
 }
 .ups-close {
   background: rgba(255,255,255,0.07); border: none;

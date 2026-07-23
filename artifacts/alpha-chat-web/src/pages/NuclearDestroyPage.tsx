@@ -17,11 +17,13 @@ const STYLES = `
         color:#eee; position:relative; }
 
   /* ── Header ── */
-  .nk-hdr { width:100%; padding:10px 16px; background:#111; border-bottom:2px solid #1a1a1a;
+  .nk-hdr { width:100%; padding:10px 16px; padding-top:calc(10px + env(safe-area-inset-top,0px));
+             background:#111; border-bottom:2px solid #1a1a1a;
              display:flex; align-items:center; gap:10px; }
   .nk-hdr-back { background:transparent; border:none; color:#cc3333; font-size:26px;
-                  cursor:pointer; padding:0 8px 0 0; line-height:1;
-                  -webkit-tap-highlight-color:transparent; }
+                  cursor:pointer; padding:8px 8px 8px 0; line-height:1;
+                  min-width:44px; min-height:44px; display:flex; align-items:center;
+                  touch-action:manipulation; -webkit-tap-highlight-color:transparent; }
   .nk-hdr-badge { background:#cc0000; color:#fff; font-size:9px; font-weight:bold;
                    padding:3px 8px; border-radius:2px; letter-spacing:1px; white-space:nowrap; }
   .nk-hdr-title { font-size:12px; letter-spacing:3px; color:#ff7777;
