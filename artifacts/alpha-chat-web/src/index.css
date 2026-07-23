@@ -524,6 +524,9 @@ a { color: inherit; text-decoration: none; }
 /* ── Context menu ──────────────────────────────────────────────────────────── */
 .ctx-overlay {
   position: fixed; inset: 0; z-index: 200;
+  /* iOS Safari emette `click` sui <div> solo se "cliccabili": senza questo il
+     backdrop trasparente non si chiudeva al tap e bloccava il tasto indietro. */
+  cursor: pointer;
 }
 .ctx-menu {
   position: fixed; z-index: 201;
@@ -5462,6 +5465,8 @@ html.emergency-open #root {
   position: fixed; inset: 0; z-index: 9000;
   background: rgba(0,0,0,0.45);
   display: flex; align-items: flex-end; justify-content: center;
+  /* iOS: garantisce il dispatch del click sul backdrop per la chiusura al tap. */
+  cursor: pointer;
 }
 .conv-action-sheet {
   width: 100%; max-width: 480px;

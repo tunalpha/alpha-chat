@@ -1137,6 +1137,27 @@ export default function ChatPage({ onNavigate }: Props) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeConvId]);
 
+  // ── Robustezza navigazione: nessun overlay/timer può bloccare il back ──────
+  // Bug intermittente iOS PWA: un timer long-press (messaggio o conversazione)
+  // poteva scattare DOPO che si era già cambiato/aperto una chat, montando un
+  // overlay full-screen (ctx-overlay trasparente z-200 / action-sheet) sopra
+  // l'header → tasto indietro non cliccabile. Ad ogni cambio conversazione
+  // azzeriamo i timer pendenti e chiudiamo eventuali overlay residui.
+  useEffect(() => {
+    if (longPressTimerRef.current) { clearTimeout(longPressTimerRef.current); longPressTimerRef.current = null; }
+    if (convLongPressTimerRef.current) { clearTimeout(convLongPressTimerRef.current); convLongPressTimerRef.current = null; }
+    setContextMenu(null);
+    setConvActionSheet(null);
+  }, [activeConvId]);
+
+  // Cleanup timer long-press su unmount (evita che scattino a componente smontato).
+  useEffect(() => {
+    return () => {
+      if (longPressTimerRef.current) clearTimeout(longPressTimerRef.current);
+      if (convLongPressTimerRef.current) clearTimeout(convLongPressTimerRef.current);
+    };
+  }, []);
+
   // ── Refetch messaggi alla riconnessione WS ────────────────────────────────
   // Quando il WS si disconnette e rientra (iOS bg, network flap, ecc.)
   // i messaggi arrivati durante l'assenza non vengono consegnati via WS.
@@ -3248,7 +3269,17 @@ export default function ChatPage({ onNavigate }: Props) {
 
       {/* ── Context menu ───────────────────────────────────────────────────── */}
       {contextMenu && (
-        <div className="ctx-overlay" onClick={closeContextMenu}>
+        <div
+          className="ctx-overlay"
+          onClick={closeContextMenu}
+          // iOS Safari NON emette sempre `click` sui <div> non interattivi →
+          // il backdrop trasparente poteva restare montato sopra l'header e
+          // bloccare il tasto indietro. touchend sul solo backdrop garantisce
+          // la chiusura anche quando il click sintetico non parte.
+          onTouchEnd={(e) => {
+            if (e.target === e.currentTarget) { e.preventDefault(); closeContextMenu(); }
+          }}
+        >
           <div
             className="ctx-menu"
             style={{ top: contextMenu.y, left: contextMenu.x }}
@@ -3510,6 +3541,9 @@ export default function ChatPage({ onNavigate }: Props) {
         <div
           className="conv-action-overlay"
           onClick={() => setConvActionSheet(null)}
+          onTouchEnd={(e) => {
+            if (e.target === e.currentTarget) { e.preventDefault(); setConvActionSheet(null); }
+          }}
         >
           <div className="conv-action-sheet" onClick={(e) => e.stopPropagation()}>
             <div className="conv-action-title">{convActionSheet.displayName}</div>
