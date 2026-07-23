@@ -13,92 +13,94 @@
  */
 
 import { useState, useCallback, useEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import { useActiveAccount, ConnectButton } from "thirdweb/react";
 
 // ── HowItWorksDialog ─────────────────────────────────────────────────────────
 
-const HOW_SLIDES = [
-  {
-    emoji: "💬",
-    accent: "#6366f1",
-    title: "Pagamenti nati per la chat",
-    body: "Invia e ricevi USDA direttamente in una conversazione, come un messaggio — senza app esterne, senza commissioni nascoste.",
-    visual: (
-      <div className="hiw-chat-preview" aria-hidden="true">
-        <div className="hiw-bubble hiw-bubble--out">
-          <span className="hiw-bubble-pill">💸 HAI INVIATO</span>
-          <strong>5 USDA</strong>
-          <span className="hiw-bubble-sub">a Marco</span>
-        </div>
-        <div className="hiw-bubble hiw-bubble--in">
-          <span className="hiw-bubble-pill">🎉 RICEVUTO</span>
-          <strong>5 USDA</strong>
-          <span className="hiw-bubble-sub">da Giulia</span>
-        </div>
-      </div>
-    ),
-  },
-  {
-    emoji: "🔐",
-    accent: "#10b981",
-    title: "Sicuro per design",
-    body: "I tuoi fondi passano per un escrow on-chain su Polygon. AlphaChat non può toccarli — vengono rilasciati solo dopo la conferma blockchain.",
-    visual: (
-      <div className="hiw-flow" aria-hidden="true">
-        <div className="hiw-flow-node hiw-flow-node--you">Tu</div>
-        <div className="hiw-flow-arrow">
-          <span className="hiw-flow-label">escrow</span>
-          <span className="hiw-flow-line" />
-          <span className="hiw-flow-label">⛓️</span>
-        </div>
-        <div className="hiw-flow-node hiw-flow-node--dest">Destinatario</div>
-      </div>
-    ),
-  },
-  {
-    emoji: "⚡",
-    accent: "#f59e0b",
-    title: "In pochi secondi",
-    body: "Firma con il tuo wallet, AlphaChat rileva il deposito on-chain e notifica il destinatario — tutto automatico, in tempo reale.",
-    visual: (
-      <div className="hiw-steps-vis" aria-hidden="true">
-        {[
-          { icon: "✍️", label: "Firma" },
-          { icon: "⛓️", label: "Blockchain" },
-          { icon: "🔔", label: "Notifica" },
-          { icon: "✅", label: "Ricevuto" },
-        ].map((s, i) => (
-          <div key={i} className="hiw-step-vis">
-            <div className="hiw-step-vis-dot">{s.icon}</div>
-            <div className="hiw-step-vis-label">{s.label}</div>
-            {i < 3 && <div className="hiw-step-vis-line" aria-hidden="true" />}
-          </div>
-        ))}
-      </div>
-    ),
-  },
-  {
-    emoji: "📩",
-    accent: "#8b5cf6",
-    title: "Richiedi USDA ai tuoi contatti",
-    body: "Usa il tasto 💸 in chat e scegli «Richiedi». Il pagamento arriva direttamente nel tuo wallet non appena l'altro firma.",
-    visual: (
-      <div className="hiw-chat-preview" aria-hidden="true">
-        <div className="hiw-bubble hiw-bubble--req">
-          <span className="hiw-bubble-pill">📩 RICHIESTA</span>
-          <strong>10 USDA</strong>
-          <div className="hiw-bubble-btn">Paga ora →</div>
-        </div>
-        <div className="hiw-bubble hiw-bubble--in hiw-bubble--small">
-          <span className="hiw-bubble-pill">✅ PAGATA</span>
-          <strong>Richiesta pagata!</strong>
-        </div>
-      </div>
-    ),
-  },
-];
-
 function HowItWorksDialog({ onClose }: { onClose: () => void }) {
+  const { t } = useTranslation("usdaSettings");
+  const HOW_SLIDES = [
+    {
+      emoji: "💬",
+      accent: "#6366f1",
+      title: t("hiwSlide1Title"),
+      body: t("hiwSlide1Body"),
+      visual: (
+        <div className="hiw-chat-preview" aria-hidden="true">
+          <div className="hiw-bubble hiw-bubble--out">
+            <span className="hiw-bubble-pill">{t("hiwSent")}</span>
+            <strong>5 USDA</strong>
+            <span className="hiw-bubble-sub">{t("hiwToMarco")}</span>
+          </div>
+          <div className="hiw-bubble hiw-bubble--in">
+            <span className="hiw-bubble-pill">{t("hiwReceived")}</span>
+            <strong>5 USDA</strong>
+            <span className="hiw-bubble-sub">{t("hiwFromGiulia")}</span>
+          </div>
+        </div>
+      ),
+    },
+    {
+      emoji: "🔐",
+      accent: "#10b981",
+      title: t("hiwSlide2Title"),
+      body: t("hiwSlide2Body"),
+      visual: (
+        <div className="hiw-flow" aria-hidden="true">
+          <div className="hiw-flow-node hiw-flow-node--you">{t("hiwYou")}</div>
+          <div className="hiw-flow-arrow">
+            <span className="hiw-flow-label">{t("hiwEscrow")}</span>
+            <span className="hiw-flow-line" />
+            <span className="hiw-flow-label">⛓️</span>
+          </div>
+          <div className="hiw-flow-node hiw-flow-node--dest">{t("hiwRecipient")}</div>
+        </div>
+      ),
+    },
+    {
+      emoji: "⚡",
+      accent: "#f59e0b",
+      title: t("hiwSlide3Title"),
+      body: t("hiwSlide3Body"),
+      visual: (
+        <div className="hiw-steps-vis" aria-hidden="true">
+          {[
+            { icon: "✍️", label: t("hiwVisSign") },
+            { icon: "⛓️", label: t("hiwVisBlockchain") },
+            { icon: "🔔", label: t("hiwVisNotify") },
+            { icon: "✅", label: t("hiwVisReceived") },
+          ].map((s, i) => (
+            <div key={i} className="hiw-step-vis">
+              <div className="hiw-step-vis-dot">{s.icon}</div>
+              <div className="hiw-step-vis-label">{s.label}</div>
+              {i < 3 && <div className="hiw-step-vis-line" aria-hidden="true" />}
+            </div>
+          ))}
+        </div>
+      ),
+    },
+    {
+      emoji: "📩",
+      accent: "#8b5cf6",
+      title: t("hiwSlide4Title"),
+      body: t("hiwSlide4Body"),
+      visual: (
+        <div className="hiw-chat-preview" aria-hidden="true">
+          <div className="hiw-bubble hiw-bubble--req">
+            <span className="hiw-bubble-pill">{t("hiwRequest")}</span>
+            <strong>10 USDA</strong>
+            <div className="hiw-bubble-btn">{t("hiwPayNow")}</div>
+          </div>
+          <div className="hiw-bubble hiw-bubble--in hiw-bubble--small">
+            <span className="hiw-bubble-pill">{t("hiwPaid")}</span>
+            <strong>{t("hiwRequestPaid")}</strong>
+          </div>
+        </div>
+      ),
+    },
+  ];
+
   const [slide, setSlide] = useState(0);
   const total = HOW_SLIDES.length;
   const s = HOW_SLIDES[slide];
@@ -110,11 +112,11 @@ function HowItWorksDialog({ onClose }: { onClose: () => void }) {
   }
 
   return (
-    <div className="hiw-backdrop" role="dialog" aria-modal="true" aria-label="Come funzionano i pagamenti" onClick={onBackdrop}>
+    <div className="hiw-backdrop" role="dialog" aria-modal="true" aria-label={t("hiwDialogAriaLabel")} onClick={onBackdrop}>
       <div className="hiw-sheet" style={{ "--hiw-accent": s.accent } as React.CSSProperties}>
 
         {/* Close */}
-        <button type="button" className="hiw-close" aria-label="Chiudi" onClick={onClose}>✕</button>
+        <button type="button" className="hiw-close" aria-label={t("closeAriaLabel")} onClick={onClose}>✕</button>
 
         {/* Emoji accent */}
         <div className="hiw-emoji" aria-hidden="true">{s.emoji}</div>
@@ -127,14 +129,14 @@ function HowItWorksDialog({ onClose }: { onClose: () => void }) {
         <p className="hiw-body">{s.body}</p>
 
         {/* Dots */}
-        <div className="hiw-dots" role="tablist" aria-label="Slide">
+        <div className="hiw-dots" role="tablist" aria-label={t("hiwSlideAriaLabel")}>
           {HOW_SLIDES.map((_, i) => (
             <button
               key={i}
               type="button"
               role="tab"
               aria-selected={i === slide}
-              aria-label={`Slide ${i + 1}`}
+              aria-label={t("hiwSlideNumAriaLabel", { num: i + 1 })}
               className={`hiw-dot ${i === slide ? "hiw-dot--active" : ""}`}
               onClick={() => setSlide(i)}
             />
@@ -144,14 +146,14 @@ function HowItWorksDialog({ onClose }: { onClose: () => void }) {
         {/* Navigation */}
         <div className="hiw-nav">
           {slide > 0 ? (
-            <button type="button" className="hiw-btn-ghost" onClick={() => setSlide(slide - 1)}>← Indietro</button>
+            <button type="button" className="hiw-btn-ghost" onClick={() => setSlide(slide - 1)}>{t("hiwBack")}</button>
           ) : (
-            <button type="button" className="hiw-btn-ghost" onClick={onClose}>Salta</button>
+            <button type="button" className="hiw-btn-ghost" onClick={onClose}>{t("hiwSkip")}</button>
           )}
           {isLast ? (
-            <button type="button" className="hiw-btn-primary" onClick={onClose}>🚀 Inizia ora</button>
+            <button type="button" className="hiw-btn-primary" onClick={onClose}>{t("hiwStartNow")}</button>
           ) : (
-            <button type="button" className="hiw-btn-primary" onClick={() => setSlide(slide + 1)}>Avanti →</button>
+            <button type="button" className="hiw-btn-primary" onClick={() => setSlide(slide + 1)}>{t("hiwNext")}</button>
           )}
         </div>
       </div>
@@ -175,24 +177,10 @@ const USDA_NETWORK  = "Polygon Mainnet";
 const USDA_SITE     = "https://getusda.xyz";
 const USDA_LOGO     = "https://getusda.xyz/favicon.ico";
 
-const WALLET_CHIPS = [
-  { icon: "🦊", name: "MetaMask"     },
-  { icon: "🐦", name: "Trust"        },
-  { icon: "🔐", name: "WalletConnect"},
-  { icon: "🪙", name: "Coinbase"     },
-  { icon: "🌈", name: "Rainbow"      },
-];
-
-const GUIDE_STEPS = [
-  { icon: "🔗", title: "Collega il wallet",         desc: "Connetti MetaMask, Trust Wallet, WalletConnect o qualsiasi wallet compatibile." },
-  { icon: "🌐", title: "Rete Polygon automatica",   desc: "AlphaChat passa automaticamente a Polygon Mainnet — non devi fare nulla." },
-  { icon: "🪙", title: "Aggiungi USDA al wallet",   desc: "Tocca «Aggiungi USDA» qui sotto per aggiungere il token in un clic." },
-  { icon: "💸", title: "Invia e ricevi in chat",    desc: "Usa il tasto 💸 in qualsiasi conversazione per inviare o richiedere USDA." },
-];
-
 // ── ManualAddDialog ───────────────────────────────────────────────────────────
 
 function ManualAddDialog({ address, onClose }: { address: string; onClose: () => void }) {
+  const { t } = useTranslation("usdaSettings");
   const [copied, setCopied] = useState(false);
   function copyAddr() {
     void navigator.clipboard.writeText(address).then(() => {
@@ -206,20 +194,20 @@ function ManualAddDialog({ address, onClose }: { address: string; onClose: () =>
   const shortAddr = `${address.slice(0, 8)}…${address.slice(-6)}`;
 
   return (
-    <div className="mad-backdrop" role="dialog" aria-modal="true" aria-label="Come aggiungere USDA" onClick={onBackdrop}>
+    <div className="mad-backdrop" role="dialog" aria-modal="true" aria-label={t("madDialogAriaLabel")} onClick={onBackdrop}>
       <div className="mad-sheet">
-        <button type="button" className="mad-close" aria-label="Chiudi" onClick={onClose}>✕</button>
+        <button type="button" className="mad-close" aria-label={t("closeAriaLabel")} onClick={onClose}>✕</button>
 
         <div className="mad-emoji" aria-hidden="true">🪙</div>
-        <h2 className="mad-title">Aggiungi USDA al wallet</h2>
-        <p className="mad-subtitle">Segui questi passi nel tuo wallet preferito:</p>
+        <h2 className="mad-title">{t("madTitle")}</h2>
+        <p className="mad-subtitle">{t("madSubtitle")}</p>
 
         <ol className="mad-steps">
-          <li><strong>Apri Trust Wallet</strong> (o MetaMask) e vai alla sezione <em>Token</em></li>
-          <li>Tocca <strong>Aggiungi token personalizzato</strong></li>
-          <li>Seleziona la rete <strong>Polygon</strong></li>
-          <li>Incolla l'indirizzo del contratto qui sotto</li>
-          <li>Symbol e decimali si compilano automaticamente → conferma</li>
+          <li><strong>{t("madStep1Strong")}</strong>{t("madStep1A")}<em>{t("madStep1Em")}</em></li>
+          <li>{t("madStep2A")}<strong>{t("madStep2Strong")}</strong></li>
+          <li>{t("madStep3A")}<strong>{t("madStep3Strong")}</strong></li>
+          <li>{t("madStep4")}</li>
+          <li>{t("madStep5")}</li>
         </ol>
 
         {/* Indirizzo contratto + copia inline */}
@@ -232,21 +220,21 @@ function ManualAddDialog({ address, onClose }: { address: string; onClose: () =>
             type="button"
             className={`mad-copy-inline${copied ? " mad-copy-inline--done" : ""}`}
             onClick={copyAddr}
-            aria-label="Copia indirizzo contratto"
+            aria-label={t("madCopyAriaLabel")}
           >
             {copied ? "✅" : "📋"}
           </button>
         </div>
         {copied && (
-          <p className="mad-copied-hint" aria-live="polite">✓ Indirizzo copiato negli appunti</p>
+          <p className="mad-copied-hint" aria-live="polite">{t("madCopiedHint")}</p>
         )}
 
         {/* Dettagli token — tutte le info in un'unica schermata */}
         <div className="mad-meta">
-          <span>Nome: <strong>USDA</strong></span>
-          <span>Simbolo: <strong>USDA</strong></span>
-          <span>Decimali: <strong>18</strong></span>
-          <span>Rete: <strong>Polygon</strong></span>
+          <span>{t("madMetaName")} <strong>USDA</strong></span>
+          <span>{t("madMetaSymbol")} <strong>USDA</strong></span>
+          <span>{t("madMetaDecimals")} <strong>18</strong></span>
+          <span>{t("madMetaNetwork")} <strong>Polygon</strong></span>
         </div>
 
         <a
@@ -254,10 +242,10 @@ function ManualAddDialog({ address, onClose }: { address: string; onClose: () =>
           target="_blank" rel="noopener noreferrer"
           className="mad-link"
         >
-          🔗 Contratto su PolygonScan
+          {t("madPolygonScan")}
         </a>
 
-        <button type="button" className="mad-btn-ok" onClick={onClose}>Fatto ✓</button>
+        <button type="button" className="mad-btn-ok" onClick={onClose}>{t("madDone")}</button>
       </div>
     </div>
   );
@@ -272,6 +260,23 @@ interface Props {
 // ── Componente ────────────────────────────────────────────────────────────────
 
 export default function UsdaSettingsPage({ onBack }: Props) {
+  const { t } = useTranslation("usdaSettings");
+
+  const WALLET_CHIPS = [
+    { icon: "🦊", name: "MetaMask"     },
+    { icon: "🐦", name: "Trust"        },
+    { icon: "🔐", name: "WalletConnect"},
+    { icon: "🪙", name: "Coinbase"     },
+    { icon: "🌈", name: "Rainbow"      },
+  ];
+
+  const GUIDE_STEPS = [
+    { icon: "🔗", title: t("guideStep1Title"), desc: t("guideStep1Desc") },
+    { icon: "🌐", title: t("guideStep2Title"), desc: t("guideStep2Desc") },
+    { icon: "🪙", title: t("guideStep3Title"), desc: t("guideStep3Desc") },
+    { icon: "💸", title: t("guideStep4Title"), desc: t("guideStep4Desc") },
+  ];
+
   const account          = useActiveAccount();
   const address          = account?.address;
   const isConnected      = !!account;
@@ -394,10 +399,10 @@ export default function UsdaSettingsPage({ onBack }: Props) {
         <div className="ups-topbar">
           <div className="ups-header-inner">
             <span className="ups-header-icon" aria-hidden="true">💸</span>
-            <h1 className="ups-header-title">Pagamenti USDA</h1>
+            <h1 className="ups-header-title">{t("headerTitle")}</h1>
           </div>
           <button
-            type="button" className="ups-close" aria-label="Chiudi"
+            type="button" className="ups-close" aria-label={t("closeAriaLabel")}
             onClick={onBack}
           >
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="18" height="18" aria-hidden="true">
@@ -409,18 +414,17 @@ export default function UsdaSettingsPage({ onBack }: Props) {
         {/* ══════════════════════════════════════════════════════════════════
             1. STATO WALLET
         ══════════════════════════════════════════════════════════════════ */}
-        <section className="ups-section" aria-label="Stato wallet">
+        <section className="ups-section" aria-label={t("walletStatusAriaLabel")}>
 
           {/* Wallet non connesso */}
           {!isConnected && (
-            <div className="ups-card ups-card--cta" aria-label="Collega wallet">
-              <div className="ups-status-badge ups-status-badge--warn">🟡 Wallet non configurato</div>
-              <p className="ups-card-headline">🚀 Attiva il tuo wallet in meno di un minuto</p>
+            <div className="ups-card ups-card--cta" aria-label={t("connectWalletAriaLabel")}>
+              <div className="ups-status-badge ups-status-badge--warn">{t("walletNotConfigured")}</div>
+              <p className="ups-card-headline">{t("ctaHeadline")}</p>
               <p className="ups-card-body">
-                Per inviare e ricevere USDA devi collegare un wallet compatibile con Polygon.
-                Il tuo indirizzo viene letto automaticamente — non devi inserirlo.
+                {t("ctaDesc")}
               </p>
-              <div className="usda-wallet-chips" aria-label="Wallet supportati" role="list">
+              <div className="usda-wallet-chips" aria-label={t("supportedWallets")} role="list">
                 {WALLET_CHIPS.map((w) => (
                   <div key={w.name} className="usda-wallet-chip" role="listitem" aria-label={w.name}>
                     <span aria-hidden="true">{w.icon}</span>
@@ -435,10 +439,10 @@ export default function UsdaSettingsPage({ onBack }: Props) {
           )}
 
           {isConnected && !isCorrectNetwork && (
-            <div className="ups-card ups-card--warn" aria-label="Rete errata">
-              <div className="ups-status-badge ups-status-badge--warn">⚠️ Rete non corretta</div>
+            <div className="ups-card ups-card--warn" aria-label={t("wrongNetworkAriaLabel")}>
+              <div className="ups-status-badge ups-status-badge--warn">{t("wrongNetwork")}</div>
               <p className="ups-card-body">
-                I pagamenti USDA richiedono <strong>Polygon Mainnet</strong>.
+                {t("wrongNetworkDescA")}<strong>Polygon Mainnet</strong>{t("wrongNetworkDescB")}
               </p>
               <div className="ups-connect-wrap" style={{ marginTop: 8 }}>
                 <ConnectButton client={client} chain={polygon} wallets={wallets} />
@@ -447,15 +451,15 @@ export default function UsdaSettingsPage({ onBack }: Props) {
           )}
 
           {isConnected && isCorrectNetwork && address && (
-            <div className="ups-card ups-card--success" aria-label="Wallet attivo">
-              <div className="ups-status-badge ups-status-badge--ok">✅ Wallet attivo</div>
-              <p className="ups-card-headline">🎉 Sei pronto per inviare e ricevere USDA!</p>
+            <div className="ups-card ups-card--success" aria-label={t("walletActiveAriaLabel")}>
+              <div className="ups-status-badge ups-status-badge--ok">{t("walletActive")}</div>
+              <p className="ups-card-headline">{t("walletReady")}</p>
               <div className="ups-addr-block">
-                <div className="ups-addr-label">Indirizzo Polygon</div>
+                <div className="ups-addr-label">{t("polygonAddress")}</div>
                 <button
                   type="button"
                   className="ups-addr-value"
-                  aria-label={`Copia indirizzo ${address}`}
+                  aria-label={t("copyAddressAriaLabel", { address })}
                   onClick={() => copy("addr", address)}
                 >
                   <span className="ups-addr-text">{abbrev(address)}</span>
@@ -464,7 +468,7 @@ export default function UsdaSettingsPage({ onBack }: Props) {
                   </span>
                 </button>
                 {copied === "addr" && (
-                  <span className="ups-copied-hint" aria-live="polite">Copiato!</span>
+                  <span className="ups-copied-hint" aria-live="polite">{t("copied")}</span>
                 )}
               </div>
               <div className="ups-wallet-actions">
@@ -479,8 +483,8 @@ export default function UsdaSettingsPage({ onBack }: Props) {
         {/* ══════════════════════════════════════════════════════════════════
             2. GUIDA USDA
         ══════════════════════════════════════════════════════════════════ */}
-        <section className="ups-section" aria-label="Guida USDA">
-          <div className="ups-section-title">📖 Come iniziare</div>
+        <section className="ups-section" aria-label={t("guideAriaLabel")}>
+          <div className="ups-section-title">{t("sectionGetStarted")}</div>
           <div className="ups-card ups-card--guide">
             <div className="ups-guide-steps" role="list">
               {GUIDE_STEPS.map((step, i) => (
@@ -501,7 +505,7 @@ export default function UsdaSettingsPage({ onBack }: Props) {
               className="ups-btn-secondary"
               onClick={() => setShowHowItWorks(true)}
             >
-              📚 Scopri come funziona
+              {t("discoverHow")}
             </button>
           </div>
         </section>
@@ -509,8 +513,8 @@ export default function UsdaSettingsPage({ onBack }: Props) {
         {/* ══════════════════════════════════════════════════════════════════
             3. AGGIUNGI USDA AL WALLET
         ══════════════════════════════════════════════════════════════════ */}
-        <section className="ups-section" aria-label="Token USDA">
-          <div className="ups-section-title">🪙 Token USDA</div>
+        <section className="ups-section" aria-label={t("tokenAriaLabel")}>
+          <div className="ups-section-title">{t("sectionToken")}</div>
           <div className="ups-card ups-card--token">
             <div className="ups-token-rows" role="list">
               {[
@@ -524,7 +528,7 @@ export default function UsdaSettingsPage({ onBack }: Props) {
                   type="button"
                   role="listitem"
                   className="ups-token-row"
-                  aria-label={`Copia ${row.label}: ${row.value}`}
+                  aria-label={t("copyTokenAriaLabel", { label: row.label, value: row.value })}
                   onClick={() => copy(row.key, row.value)}
                 >
                   <span className="ups-token-label">{row.label}</span>
@@ -538,7 +542,7 @@ export default function UsdaSettingsPage({ onBack }: Props) {
               ))}
             </div>
             {copied && (
-              <p className="ups-copied-hint ups-copied-hint--center" aria-live="polite">✓ Copiato negli appunti</p>
+              <p className="ups-copied-hint ups-copied-hint--center" aria-live="polite">{t("copiedClipboard")}</p>
             )}
 
             <button
@@ -548,10 +552,10 @@ export default function UsdaSettingsPage({ onBack }: Props) {
               onClick={handleAddToken}
               aria-busy={watchStatus === "loading"}
             >
-              {watchStatus === "loading" && <><span className="usda-btn-spinner" aria-hidden="true" /> Aggiunta…</>}
-              {watchStatus === "ok"      && "✅ Token aggiunto con successo!"}
-              {watchStatus === "err"     && "⚠️ Riprova — apri il wallet e accetta"}
-              {watchStatus === "idle"    && (isConnected ? "➕ Aggiungi USDA al Wallet" : "📋 Come aggiungere USDA al wallet")}
+              {watchStatus === "loading" && <><span className="usda-btn-spinner" aria-hidden="true" /> {t("addTokenLoading")}</>}
+              {watchStatus === "ok"      && t("addTokenOk")}
+              {watchStatus === "err"     && t("addTokenErr")}
+              {watchStatus === "idle"    && (isConnected ? t("addTokenConnected") : t("addTokenNotConnected"))}
             </button>
           </div>
         </section>
@@ -559,27 +563,27 @@ export default function UsdaSettingsPage({ onBack }: Props) {
         {/* ══════════════════════════════════════════════════════════════════
             4. RISORSE UFFICIALI
         ══════════════════════════════════════════════════════════════════ */}
-        <section className="ups-section" aria-label="Risorse ufficiali">
-          <div className="ups-section-title">🌐 Risorse ufficiali</div>
+        <section className="ups-section" aria-label={t("resourcesAriaLabel")}>
+          <div className="ups-section-title">{t("sectionResources")}</div>
           <div className="ups-card ups-card--resources">
             <p className="ups-card-body">
-              Scopri di più su USDA: token, ecosistema e casi d'uso sulla rete Polygon.
+              {t("resourcesDesc")}
             </p>
             <a
               href={USDA_SITE}
               target="_blank" rel="noopener noreferrer"
               className="ups-btn-primary ups-btn-link"
-              aria-label="Visita il sito ufficiale USDA"
+              aria-label={t("visitSiteAriaLabel")}
             >
-              🌍 Visita il sito ufficiale USDA
+              {t("visitSite")}
             </a>
             <a
               href={`https://polygonscan.com/token/${USDA_CONTRACT_ADDRESS}`}
               target="_blank" rel="noopener noreferrer"
               className="ups-btn-secondary ups-btn-link"
-              aria-label="Visualizza il contratto USDA su PolygonScan"
+              aria-label={t("viewContractAriaLabel")}
             >
-              🔗 Contratto su PolygonScan
+              {t("madPolygonScan")}
             </a>
           </div>
         </section>
@@ -587,20 +591,19 @@ export default function UsdaSettingsPage({ onBack }: Props) {
         {/* ══════════════════════════════════════════════════════════════════
             5. SICUREZZA
         ══════════════════════════════════════════════════════════════════ */}
-        <section className="ups-section" aria-label="Sicurezza">
-          <div className="ups-section-title">🔒 La tua sicurezza prima di tutto</div>
+        <section className="ups-section" aria-label={t("securityAriaLabel")}>
+          <div className="ups-section-title">{t("sectionSecurity")}</div>
           <div className="ups-card ups-card--security">
             <div className="ups-security-icon" aria-hidden="true">🛡️</div>
             <div className="ups-security-body">
-              <p className="ups-security-title">AlphaChat non custodisce i tuoi fondi.</p>
+              <p className="ups-security-title">{t("securityTitle")}</p>
               <p className="ups-security-desc">
-                Le transazioni vengono firmate direttamente dal tuo wallet e restano sempre
-                sotto il tuo controllo esclusivo.
+                {t("securityDesc")}
               </p>
               <ul className="ups-security-points">
-                <li>🔐 Chiavi private sempre nel tuo dispositivo</li>
-                <li>⛓️ Ogni transazione verificata on-chain su Polygon</li>
-                <li>👁️ Zero accesso ai tuoi fondi da parte di AlphaChat</li>
+                <li>{t("securityPoint1")}</li>
+                <li>{t("securityPoint2")}</li>
+                <li>{t("securityPoint3")}</li>
               </ul>
             </div>
           </div>
