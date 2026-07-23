@@ -510,10 +510,17 @@ export function SendPaymentSheet({
         {step === "confirm" && (
           <>
             {isResume && (
-              <div className="sp-resume-hint" role="note">
-                🔁 Riprova firma — stesso trasferimento, stesso wallet escrow.
-                Nessun nuovo pagamento verrà creato.
-              </div>
+              <>
+                <div className="sp-resume-hint" role="note">
+                  🔁 Riprova firma — stesso trasferimento, stesso wallet escrow.
+                  Nessun nuovo pagamento verrà creato.
+                </div>
+                <div className="sp-resume-warn" role="note">
+                  ⚠️ Se il wallet ti mostra più richieste di firma, approvane
+                  solo una e rifiuta le altre. Se ne compare una seconda, il
+                  pagamento è già stato elaborato: puoi chiuderla senza problemi.
+                </div>
+              </>
             )}
             <div className="usda-confirm-summary">
               <div className="usda-confirm-row">
@@ -618,6 +625,12 @@ export function SendPaymentSheet({
                   <p className="usda-signing-sub">
                     Il tuo wallet si è aperto — approva la transazione.
                     <br />🔒 Sicuro · Solo tu controlli i fondi
+                    {isResume && (
+                      <>
+                        <br />⚠️ Se vedi più richieste di firma, approvane solo
+                        una: le altre sono già state elaborate e puoi chiuderle.
+                      </>
+                    )}
                   </p>
                 )}
                 {phase === "confirming" && (
