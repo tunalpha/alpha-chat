@@ -318,6 +318,43 @@ describe("processStuckTransfers", () => {
     }));
   });
 
+  it("[accepting + request] transfer legato a richiesta → NON failed, ripristina pending per retry", async () => {
+    const reqId = new mongoose.Types.ObjectId();
+    const stuck = makeTransfer({
+      status:             "accepting",
+      locked_at:          staleTime,
+      request_payment_id: reqId,
+      recipient_wallet:   "0xRECIPIENT",
+    });
+    vi.mocked(ChatTransferModel.find).mockReturnValue({
+      limit: vi.fn().mockResolvedValue([stuck]),
+    } as any);
+    vi.mocked(ChatTransferModel.findOneAndUpdate).mockResolvedValue(
+      makeTransfer({ status: "pending", request_payment_id: reqId, locked_at: null }) as any,
+    );
+
+    await processStuckTransfers();
+
+    // Nessun tentativo di release/balance da questo ciclo (lo fa l'auto-release)
+    expect(custodial.getCustodialBalance).not.toHaveBeenCalled();
+    expect(custodial.transferFromCustodial).not.toHaveBeenCalled();
+    // Ripristina pending (unlock)
+    expect(ChatTransferModel.findOneAndUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ transfer_id: TRANSFER_ID, status: "accepting" }),
+      expect.objectContaining({ $set: expect.objectContaining({ status: "pending", locked_at: null }) }),
+      expect.anything(),
+    );
+    // Mai marcato failed
+    const setFailed = vi.mocked(ChatTransferModel.findOneAndUpdate).mock.calls
+      .some((c) => JSON.stringify(c[1]).includes('"failed"'));
+    expect(setFailed).toBe(false);
+    expect(lockModule.writeAudit).toHaveBeenCalledWith(expect.objectContaining({
+      fromStatus:  "accepting",
+      toStatus:    "pending",
+      triggeredBy: "recovery",
+    }));
+  });
+
   it("[accepting] recipient_wallet assente → marca failed senza tentare release", async () => {
     const stuck = makeTransfer({ status: "accepting", locked_at: staleTime, recipient_wallet: null });
     vi.mocked(ChatTransferModel.find).mockReturnValue({

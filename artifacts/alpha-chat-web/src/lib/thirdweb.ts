@@ -15,9 +15,16 @@ export const client = createThirdwebClient({
   clientId: import.meta.env.VITE_THIRDWEB_CLIENT_ID as string,
 });
 
-// RPC Alchemy con fallback — stesso approccio del repo USDA.
-const alchemyKey = (import.meta.env.VITE_ALCHEMY_API_KEY as string | undefined) ?? "tWSFclnh075909w0Dmvvb";
-export const ALCHEMY_RPC = `https://polygon-mainnet.g.alchemy.com/v2/${alchemyKey}`;
+// RPC Polygon per il polling delle receipt. SICUREZZA: nessuna chiave Alchemy
+// hardcoded nel sorgente — va fornita via env (VITE_ALCHEMY_API_KEY, oppure
+// l'URL completo in VITE_POLYGON_RPC_URL). In assenza si usa un RPC pubblico
+// diretto (nessuna chiave): sufficiente per eth_getTransactionReceipt, evita il
+// relay ThirdWeb non-whitelisted.
+const alchemyKey = import.meta.env.VITE_ALCHEMY_API_KEY as string | undefined;
+const rpcUrlEnv  = import.meta.env.VITE_POLYGON_RPC_URL as string | undefined;
+export const ALCHEMY_RPC =
+  rpcUrlEnv ??
+  (alchemyKey ? `https://polygon-mainnet.g.alchemy.com/v2/${alchemyKey}` : "https://polygon-bor-rpc.publicnode.com");
 
 export const polygon = defineChain({
   id:             137,

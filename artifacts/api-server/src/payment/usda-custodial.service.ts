@@ -40,28 +40,22 @@ import { sendGasStationTopUpEmail, sendGasStationLowBalanceEmail } from "../serv
 // Costanti
 // ---------------------------------------------------------------------------
 
-// RPC di default: Alchemy (stessa chiave del repo USDA in produzione).
-// NON usare publicnode/meowrpc come default: rifiutano eth_getLogs su
-// range storici ("Archive requests require a personal token") →
-// DEPOSIT_DETECT_RPC_ERROR in detectDeposit.
-const FALLBACK_RPCS = [
-  "https://polygon-mainnet.g.alchemy.com/v2/tWSFclnh075909w0Dmvvb",
-  "https://polygon-bor-rpc.publicnode.com",
-  "https://polygon.drpc.org",
-];
-const DEFAULT_RPC = FALLBACK_RPCS[0]!;
-
 /** Gas limit per un transfer ERC-20 (buffer sopra i ~65k tipici). */
 const GAS_LIMIT_ERC20 = 80_000n;
 
 /**
- * Restituisce l'URL RPC da usare.
- * Valida che USDA_POLYGON_RPC sia un URL https:// — se no, usa il fallback.
+ * Restituisce l'URL RPC Polygon da usare per le operazioni on-chain.
+ *
+ * SICUREZZA: nessun fallback con chiave hardcoded nel sorgente. L'URL RPC
+ * (che contiene la chiave Alchemy) DEVE arrivare esclusivamente dalla env var
+ * condivisa USDA_POLYGON_RPC. Se assente o non valida → errore operativo
+ * esplicito (nessuna chiave letterale in repo).
  */
 export function getRpcUrl(): string {
   const rpc = process.env.USDA_POLYGON_RPC;
   if (rpc && (rpc.startsWith("https://") || rpc.startsWith("http://"))) return rpc;
-  return DEFAULT_RPC;
+  logger.error("[Custodial] USDA_POLYGON_RPC non configurata o non valida — operazioni on-chain non disponibili");
+  throw new AppError("RPC_NOT_CONFIGURED", 503);
 }
 const DEFAULT_USDA_CONTRACT = "0xe714655fD1B3ba96B887DF1F94336c2A78E24001";
 const USDA_DECIMALS = 18;

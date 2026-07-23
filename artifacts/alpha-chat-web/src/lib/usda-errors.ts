@@ -16,6 +16,11 @@ export function humanizeUsdaError(
   if (/non ha ancora attivato|non hai ancora attivato|Chiedigli/i.test(raw)) return raw;
   if (/Non puoi inviare.*a te stesso/i.test(raw)) return "💡 Non puoi inviare USDA a te stesso.";
 
+  // Il richiedente non ha un wallet USDA: serve per ricevere l'accredito
+  // automatico quando qualcuno paga la richiesta.
+  if (/WALLET_NOT_CONFIGURED/i.test(raw))
+    return "💳 Per richiedere USDA devi prima attivare il tuo wallet: chi paga la richiesta ti accredita i fondi automaticamente lì. Collega il wallet e riprova.";
+
   // Wallet / firma
   if (/user rejected|user denied|rejected by user/i.test(raw))
     return "Hai annullato la firma nel wallet. Ripremi «Firma e Invia» quando sei pronto.";

@@ -26,6 +26,8 @@ import { MessageModel }                                  from "../models/message
 import { acquireLock, writeAudit }                       from "./lock";
 import { transferFromCustodial, getCustodialBalance }     from "./usda-custodial.service";
 import { emitPaymentStateChanged }                        from "./events";
+import { autoReleaseForRequest }                          from "./chat-payment.service";
+import { syncRequestFromTransfer }                        from "../services/usda.service";
 import { logger }                                         from "../lib/logger";
 import type { ChatTransferStatus }                        from "./state-machine";
 import type { AuditTriggeredBy }                          from "../models/chat-transfer-audit.model";
@@ -45,6 +47,23 @@ const RECOVERY_INTERVAL_MS = 10 * 60 * 1000; // 10 minuti
 
 /** Batch massimo per passata (evita timeout lunghi). */
 const BATCH_SIZE = 100;
+
+/**
+ * Soglia oltre la quale un transfer legato a una richiesta ancora `pending`
+ * (deposito confermato ma release non completato) viene ri-tentato. Deve essere
+ * abbastanza ampia da dare tempo all'auto-release immediato di confirmDeposit.
+ */
+const REQUEST_RELEASE_STALE_MS = 5 * 60 * 1000; // 5 minuti
+
+/** Intervallo del retry auto-release richieste. */
+const REQUEST_RELEASE_INTERVAL_MS = 5 * 60 * 1000; // 5 minuti
+
+/** Mappa lo stato terminale del transfer allo stato della bolla richiesta. */
+function _requestStatusForTerminal(terminal: ChatTransferStatus): "confirmed" | "pending_claim" {
+  // Solo "accepted" (release al richiedente) = richiesta pagata; ogni altro
+  // esito terminale (rimborso/rifiuto) rende la richiesta di nuovo pagabile.
+  return terminal === "accepted" ? "confirmed" : "pending_claim";
+}
 
 // ---------------------------------------------------------------------------
 // Helper privati
@@ -155,6 +174,10 @@ export async function processExpiredTransfers(): Promise<void> {
       });
       await _updateMsg(done);
       emitPaymentStateChanged(done);
+      if (done.request_payment_id) {
+        // Richiesta rimasta scaduta senza pagamento: torna pagabile.
+        void syncRequestFromTransfer(done.request_payment_id.toString(), "pending_claim");
+      }
 
       logger.info({ transferId, txHash }, "[Scheduler] Transfer scaduto rimborsato ✓");
     } catch (err) {
@@ -213,6 +236,34 @@ export async function processStuckTransfers(): Promise<void> {
     const lockedStatus = transfer.status as keyof typeof RECOVERY_CONFIG;
     const config       = RECOVERY_CONFIG[lockedStatus];
     if (!config) continue;
+
+    // Transfer legato a una richiesta bloccato in "accepting": NON marcarlo mai
+    // failed da questo ciclo. Riportalo a "pending" (unlock) e lascia il retry
+    // sicuro/balance-checked a processPendingRequestReleases → autoReleaseForRequest
+    // (che riconosce anche il caso escrow-già-svuotato senza re-inviare).
+    if (lockedStatus === "accepting" && transfer.request_payment_id) {
+      const reverted = await ChatTransferModel.findOneAndUpdate(
+        { transfer_id: transfer.transfer_id, status: "accepting" },
+        { $set: { status: "pending", locked_at: null } },
+        { returnDocument: "after" },
+      );
+      if (reverted) {
+        await writeAudit({
+          transferId:  transfer.transfer_id,
+          fromStatus:  "accepting",
+          toStatus:    "pending",
+          triggeredBy: "recovery",
+          note:        "Auto-release richiesta bloccato: ripristino pending per retry",
+        });
+        await _updateMsg(reverted);
+        emitPaymentStateChanged(reverted);
+      }
+      logger.warn(
+        { transferId: transfer.transfer_id },
+        "[Scheduler] Recovery: transfer-richiesta bloccato in accepting → pending (retry via auto-release)",
+      );
+      continue;
+    }
 
     const { terminalStatus, recipient: recipientKey } = config;
     const toAddress = recipientKey === "sender"
@@ -279,6 +330,10 @@ export async function processStuckTransfers(): Promise<void> {
       });
       await _updateMsg(done);
       emitPaymentStateChanged(done);
+      if (done.request_payment_id) {
+        // Aggiorna la bolla-richiesta collegata al termine del recovery.
+        void syncRequestFromTransfer(done.request_payment_id.toString(), _requestStatusForTerminal(terminalStatus));
+      }
 
       logger.info(
         { transferId: transfer.transfer_id, from: lockedStatus, to: terminalStatus },
@@ -287,6 +342,49 @@ export async function processStuckTransfers(): Promise<void> {
     } catch (err) {
       logger.error({ err, transferId: transfer.transfer_id }, "[Scheduler] Errore recovery transfer bloccato");
       await _failTransfer(transfer.transfer_id, lockedStatus, String(err), "recovery");
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
+// processPendingRequestReleases
+// ---------------------------------------------------------------------------
+
+/**
+ * Ri-tenta l'auto-release dei transfer legati a una richiesta rimasti `pending`
+ * dopo la conferma del deposito (release fallito per gas/RPC, oppure mai partito
+ * per un crash tra confirmDeposit e l'auto-release fire-and-forget).
+ *
+ * Delega a autoReleaseForRequest(), che è idempotente e balance-checked
+ * (nessun rischio di double-spend anche se un tentativo precedente era andato
+ * a buon fine ma non aveva aggiornato lo stato DB).
+ *
+ * Sicuro multi-istanza: autoReleaseForRequest usa acquireLock atomico.
+ */
+export async function processPendingRequestReleases(): Promise<void> {
+  const staleThreshold = new Date(Date.now() - REQUEST_RELEASE_STALE_MS);
+
+  const candidates = await ChatTransferModel.find(
+    {
+      status:             "pending",
+      request_payment_id: { $ne: null },
+      tx_hash_deposit:    { $ne: null },      // deposito confermato on-chain
+      confirmed_at:       { $lt: staleThreshold },
+    },
+    { transfer_id: 1 },
+  ).limit(BATCH_SIZE).lean();
+
+  if (candidates.length === 0) return;
+
+  logger.info({ count: candidates.length }, "[Scheduler] Auto-release richieste in sospeso da completare");
+
+  for (const candidate of candidates) {
+    const transferId = candidate.transfer_id as string;
+    try {
+      await autoReleaseForRequest(transferId);
+    } catch (err) {
+      // autoReleaseForRequest non lancia mai; questo è solo un guard difensivo.
+      logger.error({ err, transferId }, "[Scheduler] Errore auto-release richiesta in sospeso");
     }
   }
 }
@@ -311,6 +409,7 @@ export async function startPaymentScheduler(): Promise<void> {
     try {
       await processStuckTransfers();
       await processExpiredTransfers();
+      await processPendingRequestReleases();
       logger.info("[Scheduler] Passata iniziale completata ✓");
     } catch (err) {
       logger.error({ err }, "[Scheduler] Errore passata iniziale — server continua normalmente");
@@ -323,8 +422,15 @@ export async function startPaymentScheduler(): Promise<void> {
   // Recovery lock states — ogni 10 minuti
   setInterval(() => { void processStuckTransfers(); }, RECOVERY_INTERVAL_MS).unref();
 
+  // Retry auto-release richieste rimaste pending — ogni 5 minuti
+  setInterval(() => { void processPendingRequestReleases(); }, REQUEST_RELEASE_INTERVAL_MS).unref();
+
   logger.info(
-    { expireIntervalMin: EXPIRE_INTERVAL_MS / 60_000, recoveryIntervalMin: RECOVERY_INTERVAL_MS / 60_000 },
+    {
+      expireIntervalMin:         EXPIRE_INTERVAL_MS / 60_000,
+      recoveryIntervalMin:       RECOVERY_INTERVAL_MS / 60_000,
+      requestReleaseIntervalMin: REQUEST_RELEASE_INTERVAL_MS / 60_000,
+    },
     "[Scheduler] Payment Engine scheduler avviato",
   );
 }

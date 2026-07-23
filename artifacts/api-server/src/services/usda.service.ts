@@ -511,16 +511,19 @@ export async function requestPayment(params: {
   const membership = await memberRepo.findMembership(convId, senderId);
   if (!membership || membership.left_at !== null) throw new AppError("NOT_CHAT_MEMBER", 403);
 
-  // Wallet del richiedente — best-effort. NON è più obbligatorio: la richiesta
-  // è un semplice messaggio in-app; il pagamento avviene tramite il Chat Payment
-  // Engine interno (escrow custodial), non più tramite getusda.xyz. Il wallet
-  // serve solo al momento in cui il richiedente riscuote (accept del transfer).
+  // Wallet del richiedente — OBBLIGATORIO alla creazione della richiesta.
+  // Il pagamento avviene tramite il Chat Payment Engine interno (escrow
+  // custodial): quando il pagante paga, i fondi vengono RILASCIATI
+  // AUTOMATICAMENTE al wallet del richiedente (nessun "Accetta" manuale).
+  // Richiedere il wallet qui garantisce che l'auto-release non possa fallire
+  // per wallet mancante. (Il frontend mostra un messaggio chiaro se assente.)
   const requesterUser = await UserModel.findById(
     new mongoose.Types.ObjectId(params.fromUserId),
     "wallets wallet_address",
   ).lean() as { wallets?: Record<string, { address: string }>; wallet_address?: string } | null;
   const requesterWallet =
     requesterUser?.wallets?.usda?.address ?? requesterUser?.wallet_address ?? null;
+  if (!requesterWallet) throw new AppError("WALLET_NOT_CONFIGURED", 412);
 
   const [senderName, recipientName] = await Promise.all([
     _getUserName(senderId),

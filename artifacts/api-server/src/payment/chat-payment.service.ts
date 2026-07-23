@@ -19,18 +19,13 @@ import { createPublicClient, http, hexToBigInt } from "viem";
 import { polygon } from "viem/chains";
 import { getRpcUrl } from "./usda-custodial.service";
 
-// Endpoint Alchemy per alchemy_getAssetTransfers (enhanced API, free tier).
-// Usa USDA_POLYGON_RPC se è un URL Alchemy, altrimenti fallback alla chiave USDA.
-const ALCHEMY_TRANSFERS_URL =
-  (process.env.USDA_POLYGON_RPC?.includes("alchemy.com") ? process.env.USDA_POLYGON_RPC : null) ??
-  "https://polygon-mainnet.g.alchemy.com/v2/tWSFclnh075909w0Dmvvb";
-
 import { ChatTransferModel, type ChatTransferDocument } from "../models/chat-transfer.model";
+import { UsdaPaymentModel }                             from "../models/usda-payment.model";
 import { UserModel }                                    from "../models/user.model";
 import { ConversationModel }                            from "../models/conversation.model";
 import { MessageModel }                                 from "../models/message.model";
 import { ConversationMemberRepository }                 from "../repositories/conversation-member.repository";
-import { generateEscrowWallet, transferFromCustodial, toAmountUnits, ensureEscrowGas } from "./usda-custodial.service";
+import { generateEscrowWallet, transferFromCustodial, toAmountUnits, ensureEscrowGas, getCustodialBalance } from "./usda-custodial.service";
 import { checkAndMarkTx, rollbackTx }                   from "./asset-anti-replay";
 import { acquireLock, writeAudit }                      from "./lock";
 import { emitPaymentStateChanged }                      from "./events";
@@ -107,6 +102,10 @@ function _paymentMeta(doc: ChatTransferDocument): Record<string, unknown> {
     note:                    doc.note ?? null,
     sender_id:               doc.sender_id.toString(),
     recipient_id:            doc.recipient_id.toString(),
+    // Se il transfer soddisfa una richiesta (usda_request), il consenso del
+    // richiedente È la richiesta stessa: nessun "Accetta/Rifiuta" manuale, il
+    // rilascio è automatico. Il frontend usa questo flag per nascondere i bottoni.
+    is_request:              !!doc.request_payment_id,
     escrow_wallet:           doc.escrow_wallet,
     expires_at:              doc.expires_at.toISOString(),
     tx_hash_deposit:         doc.tx_hash_deposit ?? null,
@@ -384,6 +383,41 @@ export async function createTransfer(
   const amountUnits = toAmountUnits(params.amount);
   const amount      = mongoose.Types.Decimal128.fromString(params.amount);
 
+  // ── VALIDAZIONE RICHIESTA (denaro reale) ────────────────────────────────
+  // Se il transfer dichiara di soddisfare una usda_request, la richiesta va
+  // validata OBBLIGATORIAMENTE server-side: un client non deve poter agganciare
+  // un transfer arbitrario a una richiesta altrui e farla risultare pagata pur
+  // pagando verso un altro wallet. Ogni mismatch → errore esplicito.
+  if (params.requestPaymentId) {
+    if (!mongoose.isValidObjectId(params.requestPaymentId)) {
+      throw new AppError("REQUEST_NOT_FOUND", 404);
+    }
+    const reqDoc = await UsdaPaymentModel
+      .findById(new mongoose.Types.ObjectId(params.requestPaymentId))
+      .lean() as {
+        kind: string; status: string;
+        conversation_id: mongoose.Types.ObjectId;
+        sender_id: mongoose.Types.ObjectId;
+        recipient_id: mongoose.Types.ObjectId;
+        amount: mongoose.Types.Decimal128;
+      } | null;
+
+    if (!reqDoc || reqDoc.kind !== "request")               throw new AppError("REQUEST_NOT_FOUND", 404);
+    if (reqDoc.status !== "pending_claim")                   throw new AppError("REQUEST_NOT_PAYABLE", 409);
+    if (reqDoc.conversation_id.toString() !== convId.toString())
+      throw new AppError("REQUEST_CONVERSATION_MISMATCH", 422);
+    // Il PAGANTE (sender del transfer) deve essere il destinatario della richiesta.
+    if (reqDoc.recipient_id.toString() !== senderId.toString())
+      throw new AppError("REQUEST_PAYER_MISMATCH", 422);
+    // Il RICHIEDENTE (sender della richiesta) deve essere il recipient del transfer.
+    if (reqDoc.sender_id.toString() !== recipientId.toString())
+      throw new AppError("REQUEST_RECIPIENT_MISMATCH", 422);
+    // L'importo del transfer deve combaciare con quello della richiesta
+    // (confronto in unità on-chain per essere immune al formato decimale).
+    if (toAmountUnits(reqDoc.amount.toString()) !== amountUnits)
+      throw new AppError("REQUEST_AMOUNT_MISMATCH", 422);
+  }
+
   // Genera wallet escrow (fail-fast se ESCROW_MASTER_KEY mancante)
   const escrow = generateEscrowWallet();
 
@@ -494,7 +528,13 @@ export async function confirmDeposit(params: {
   emitPaymentStateChanged(updated);
 
   if (updated.request_payment_id) {
+    // Transfer legato a una richiesta: il consenso del richiedente È la richiesta
+    // stessa → nessun secondo "Accetta". Rilascio automatico verso il suo wallet.
+    // Fire-and-forget: confirmDeposit risponde subito (stato "pending"); le bolle
+    // si aggiornano via WS quando il release completa. Se l'auto-release fallisce
+    // il transfer resta "pending" e lo scheduler lo ricompleta (non va in failed).
     void syncRequestFromTransfer(updated.request_payment_id.toString(), "pending");
+    void autoReleaseForRequest(updated.transfer_id);
   }
 
   logger.info({ transferId: params.transferId, txHash: params.txHash }, "[Payment] Deposito confermato ✓");
@@ -558,7 +598,9 @@ export async function detectDeposit(params: {
   }
   let transfers: AssetTransfer[];
   try {
-    const res = await fetch(ALCHEMY_TRANSFERS_URL, {
+    // Enhanced API alchemy_getAssetTransfers: usa l'URL RPC configurato
+    // (USDA_POLYGON_RPC). getRpcUrl() lancia RPC_NOT_CONFIGURED se assente.
+    const res = await fetch(getRpcUrl(), {
       method:  "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -695,6 +737,119 @@ export async function acceptTransfer(params: {
     logger.error({ err, transferId: params.transferId }, "[Payment] Errore in acceptTransfer");
     await _markFailed(params.transferId, "accepting", String(err), "system");
     throw err instanceof AppError ? err : new AppError("INTERNAL_ERROR", 500);
+  }
+}
+
+/**
+ * Fire-and-forget: arricchisce il record con il block number del rilascio.
+ * La TX è già confermata (transferFromCustodial aspetta il receipt).
+ */
+function _enrichReleaseBlock(transferId: string, txHash: string): void {
+  void (async () => {
+    try {
+      const publicClient = createPublicClient({ chain: polygon, transport: http(getRpcUrl()) });
+      const r = await publicClient.getTransactionReceipt({ hash: txHash as `0x${string}` });
+      const releaseBlock = Number(r.blockNumber);
+      const enriched = await ChatTransferModel.findOneAndUpdate(
+        { transfer_id: transferId },
+        { $set: { release_block_number: releaseBlock } },
+        { returnDocument: "after" },
+      );
+      if (enriched) {
+        await _updateMessageMeta(enriched);
+        emitPaymentStateChanged(enriched);
+      }
+    } catch (enrichErr) {
+      logger.warn({ enrichErr, transferId }, "[Payment] Non-critical: release block non arricchito");
+    }
+  })();
+}
+
+/**
+ * AUTO-RELEASE per i transfer legati a una richiesta (request_payment_id).
+ *
+ * Decisione UX approvata: per un pagamento che soddisfa una richiesta NON serve
+ * un secondo "Accetta" — il consenso del richiedente È la richiesta stessa.
+ * Dopo il deposito in escrow i fondi vengono rilasciati automaticamente al
+ * wallet del richiedente (recipient).
+ *
+ * Chiamato server-side: salta SOLO il check di chi chiama (requesterId);
+ * mantiene i check di stato/scadenza/wallet e la verifica on-chain implicita.
+ *
+ * IDEMPOTENTE / SAFE-RETRY (no double-spend): prima di inviare controlla il
+ * saldo escrow on-chain — se è già 0 significa che un tentativo precedente ha
+ * già rilasciato i fondi (ma lo stato DB non era stato aggiornato) → ripristina
+ * "accepted" senza re-inviare.
+ *
+ * GESTIONE FALLIMENTO (gas/RPC): il transfer NON va mai in `failed`. In caso di
+ * errore lo stato viene riportato a `pending` (lock rilasciato) così che un
+ * tentativo successivo — chiamata diretta o scheduler processPendingRequestReleases()
+ * — possa completarlo. Un eventuale crash mid-release lascia lo stato in
+ * `accepting`, coperto dal recovery processStuckTransfers().
+ */
+export async function autoReleaseForRequest(transferId: string): Promise<void> {
+  const transfer = await ChatTransferModel.findOne({ transfer_id: transferId });
+  if (!transfer)                     { logger.warn({ transferId }, "[Payment] Auto-release: transfer non trovato"); return; }
+  if (!transfer.request_payment_id)  return;                    // solo transfer legati a richiesta
+  if (transfer.status !== "pending") return;                    // idempotente: già rilasciato/in corso
+  if (transfer.expires_at < new Date()) {
+    logger.warn({ transferId }, "[Payment] Auto-release: transfer scaduto — lo gestirà l'expiry job");
+    return;
+  }
+  if (!transfer.recipient_wallet) {
+    // Non dovrebbe accadere: il wallet è obbligatorio alla creazione della richiesta.
+    // Non fallire: resta pending, il payer può annullare o si gestisce a scadenza.
+    logger.error({ transferId }, "[Payment] Auto-release: wallet richiedente assente — resta pending");
+    return;
+  }
+
+  const locked = await acquireLock(transferId, "pending", "accepting");
+  if (!locked) { logger.info({ transferId }, "[Payment] Auto-release: lock non acquisito, salto"); return; }
+
+  const now = new Date();
+  try {
+    // Guardia anti-double-spend: se l'escrow è già vuoto, un tentativo precedente
+    // ha già rilasciato → ripristina "accepted" senza re-inviare la TX.
+    const balanceStr = await getCustodialBalance({ address: locked.escrow_wallet, assetAddress: locked.asset_address });
+    const alreadyReleased = BigInt(balanceStr) < BigInt(locked.amount_units);
+
+    let txHash = locked.tx_hash_release ?? undefined;
+    if (!alreadyReleased) {
+      await ensureEscrowGas(locked.escrow_wallet);
+      const res = await transferFromCustodial({
+        encryptedPk:  locked.escrow_encrypted_pk,
+        toAddress:    locked.recipient_wallet!,
+        amountUnits:  locked.amount_units,
+        assetAddress: locked.asset_address,
+      });
+      txHash = res.txHash;
+    } else {
+      logger.warn({ transferId }, "[Payment] Auto-release: escrow già vuoto — ripristino accepted senza re-invio");
+    }
+
+    const accepted = await ChatTransferModel.findOneAndUpdate(
+      { transfer_id: transferId, status: "accepting" },
+      { $set: { status: "accepted", tx_hash_release: txHash ?? null, responded_at: now, completed_at: now, locked_at: null } },
+      { returnDocument: "after" },
+    );
+    if (!accepted) throw new Error("findOneAndUpdate post-release restituito null");
+
+    await writeAudit({ transferId, fromStatus: "accepting", toStatus: "accepted", triggeredBy: "system", txHash, note: "Auto-release richiesta (nessun accept manuale)" });
+    await _updateMessageMeta(accepted);
+    emitPaymentStateChanged(accepted);
+    if (accepted.request_payment_id) {
+      void syncRequestFromTransfer(accepted.request_payment_id.toString(), "confirmed");
+    }
+    if (txHash) _enrichReleaseBlock(transferId, txHash);
+
+    logger.info({ transferId, txHash }, "[Payment] Auto-release richiesta completato ✓");
+  } catch (err) {
+    // NON marcare failed: ripristina pending per un retry sicuro (balance-checked).
+    logger.error({ err, transferId }, "[Payment] Auto-release fallito — ripristino stato 'pending' per retry");
+    await ChatTransferModel.findOneAndUpdate(
+      { transfer_id: transferId, status: "accepting" },
+      { $set: { status: "pending", locked_at: null } },
+    );
   }
 }
 

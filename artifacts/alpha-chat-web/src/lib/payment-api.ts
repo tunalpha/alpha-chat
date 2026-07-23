@@ -34,6 +34,9 @@ export interface ChatPaymentData {
   asset_symbol:    string;
   sender_id:       string;
   recipient_id:    string;
+  // Se true il transfer soddisfa una richiesta (usda_request): il consenso del
+  // richiedente è la richiesta stessa → rilascio automatico, nessun Accetta/Rifiuta.
+  is_request?:     boolean;
   expires_at:           string | null;
   tx_hash_deposit?:     string | null;   // hash deposito (per PolygonScan)
   tx_hash_release:      string | null;   // hash rilascio

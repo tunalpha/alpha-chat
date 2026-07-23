@@ -42,11 +42,13 @@ interface Props {
 
 type StatusVariant = "waiting" | "action" | "spinning" | "success" | "fail" | "neutral";
 
-function getVariant(status: ChatTransferStatus, isMine: boolean): StatusVariant {
+function getVariant(status: ChatTransferStatus, isMine: boolean, isRequest: boolean): StatusVariant {
   if (isLockTransferStatus(status))   return "spinning";
   switch (status) {
     case "awaiting_deposit": return "waiting";
-    case "pending":          return isMine ? "waiting" : "action";
+    // Transfer legato a una richiesta: il destinatario (richiedente) non decide
+    // nulla → nessuna variante "action" (niente pulsanti), solo attesa/arrivo.
+    case "pending":          return isMine ? "waiting" : (isRequest ? "waiting" : "action");
     case "accepted":         return "success";
     case "rejected":
     case "failed":           return "fail";
@@ -62,7 +64,17 @@ interface StatusLabel {
   sub?:  string;
 }
 
-function getStatusLabel(status: ChatTransferStatus, isMine: boolean, amount?: string, assetSymbol?: string): StatusLabel {
+function getStatusLabel(status: ChatTransferStatus, isMine: boolean, isRequest: boolean, amount?: string, assetSymbol?: string): StatusLabel {
+  // Transfer legato a una richiesta, lato destinatario (richiedente): nessuna
+  // decisione da prendere — mostra solo "in arrivo" / accredito automatico.
+  if (isRequest && !isMine) {
+    switch (status) {
+      case "awaiting_deposit": return { icon: "📡", title: "Pagamento in arrivo",  sub: "Il pagante sta inviando i fondi" };
+      case "pending":          return { icon: "📡", title: "Pagamento in arrivo",  sub: "Accredito automatico in corso…" };
+      case "accepted":         return { icon: "🎉", title: "Richiesta pagata!",    sub: "I fondi sono stati accreditati nel tuo wallet" };
+      default: break; // gli altri stati usano le label standard sotto
+    }
+  }
   switch (status) {
     case "awaiting_deposit":
       return isMine
@@ -71,7 +83,7 @@ function getStatusLabel(status: ChatTransferStatus, isMine: boolean, amount?: st
 
     case "pending":
       return isMine
-        ? { icon: "✅", title: "Deposito confermato",           sub: "In attesa della risposta del destinatario" }
+        ? { icon: "✅", title: "Deposito confermato",           sub: isRequest ? "Rilascio automatico al richiedente in corso…" : "In attesa della risposta del destinatario" }
         : { icon: "💰", title: "Hai ricevuto una richiesta",    sub: "Scegli se accettare o rifiutare" };
 
     case "accepting":
@@ -161,10 +173,13 @@ export const ChatPaymentBubble = memo(function ChatPaymentBubble({ data, isMine,
     if (TERMINAL.includes(data.status)) setError(null);
   }, [data.status]);
 
-  const variant    = getVariant(data.status, isMine);
-  const label      = getStatusLabel(data.status, isMine, data.amount, data.asset_symbol);
+  const isRequest  = !!data.is_request;
+  const variant    = getVariant(data.status, isMine, isRequest);
+  const label      = getStatusLabel(data.status, isMine, isRequest, data.amount, data.asset_symbol);
   const isSpinning = variant === "spinning";
-  const isAction   = variant === "action"; // recipient + pending → mostra pulsanti
+  // recipient + pending → pulsanti Accetta/Rifiuta. MAI per transfer legati a una
+  // richiesta: il consenso del richiedente è la richiesta stessa (auto-release).
+  const isAction   = variant === "action" && !isRequest;
 
   const counterpart = isMine
     ? (data.recipient_name ?? "Destinatario")

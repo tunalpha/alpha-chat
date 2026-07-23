@@ -19,6 +19,7 @@ import { AppError } from "../../errors/AppError";
 
 vi.mock("../../models/chat-transfer.model");
 vi.mock("../../models/user.model");
+vi.mock("../../models/usda-payment.model");
 vi.mock("../../models/conversation.model");
 vi.mock("../../models/message.model");
 // ConversationMemberRepository è un singleton a livello di modulo — usiamo vi.hoisted
@@ -36,6 +37,9 @@ vi.mock("../usda-custodial.service");
 vi.mock("../asset-anti-replay");
 vi.mock("../lock");
 vi.mock("../events");
+// usda.service è importata da chat-payment.service solo per syncRequestFromTransfer
+// (aggiornamento bolla-richiesta). Mock esplicito per evitare accessi DB reali.
+vi.mock("../../services/usda.service", () => ({ syncRequestFromTransfer: vi.fn() }));
 vi.mock("../../lib/ws-manager", () => ({ wsManager: { sendToUsers: vi.fn() } }));
 vi.mock("../../lib/logger", () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
@@ -47,6 +51,7 @@ vi.mock("../../lib/logger", () => ({
 
 import { ChatTransferModel }             from "../../models/chat-transfer.model";
 import { UserModel }                     from "../../models/user.model";
+import { UsdaPaymentModel }              from "../../models/usda-payment.model";
 import { ConversationModel }             from "../../models/conversation.model";
 import { MessageModel }                  from "../../models/message.model";
 import { ConversationMemberRepository }  from "../../repositories/conversation-member.repository";
@@ -62,6 +67,7 @@ import {
   rejectTransfer,
   cancelTransfer,
   getTransfer,
+  autoReleaseForRequest,
 } from "../chat-payment.service";
 
 // ---------------------------------------------------------------------------
@@ -285,6 +291,98 @@ describe("createTransfer", () => {
 
     expect(result).toHaveProperty("status", "awaiting_deposit");
     expect(result).toHaveProperty("recipient_wallet", null);
+  });
+
+  // ── Validazione request_payment_id (denaro reale) ────────────────────────
+  describe("validazione request_payment_id", () => {
+    const REQ_ID = new mongoose.Types.ObjectId().toString();
+
+    // Richiesta valida: richiedente = recipient del transfer, pagante = sender.
+    function makeRequest(overrides: Record<string, unknown> = {}): any {
+      return {
+        kind:            "request",
+        status:          "pending_claim",
+        conversation_id: new mongoose.Types.ObjectId(CONV_ID),
+        sender_id:       new mongoose.Types.ObjectId(RECIPIENT_ID), // richiedente
+        recipient_id:    new mongoose.Types.ObjectId(SENDER_ID),    // pagante
+        amount:          { toString: () => "100" },
+        ...overrides,
+      };
+    }
+
+    function mockRequest(doc: any) {
+      vi.mocked(UsdaPaymentModel.findById).mockReturnValue({
+        lean: () => Promise.resolve(doc),
+      } as any);
+    }
+
+    const baseParams = {
+      senderId:         SENDER_ID,
+      recipientId:      RECIPIENT_ID,
+      conversationId:   CONV_ID,
+      amount:           "100",
+      requestPaymentId: REQ_ID,
+    };
+
+    it("accetta e collega una richiesta valida", async () => {
+      mockRequest(makeRequest());
+      await createTransfer(baseParams);
+      expect(ChatTransferModel.create).toHaveBeenCalledWith(
+        expect.objectContaining({ request_payment_id: expect.anything() }),
+      );
+    });
+
+    it("REQUEST_NOT_FOUND se l'ObjectId non è valido", async () => {
+      await expect(createTransfer({ ...baseParams, requestPaymentId: "non-un-oid" }))
+        .rejects.toMatchObject({ code: "REQUEST_NOT_FOUND", httpStatus: 404 });
+    });
+
+    it("REQUEST_NOT_FOUND se la richiesta non esiste", async () => {
+      mockRequest(null);
+      await expect(createTransfer(baseParams))
+        .rejects.toMatchObject({ code: "REQUEST_NOT_FOUND", httpStatus: 404 });
+    });
+
+    it("REQUEST_NOT_FOUND se il documento non è di tipo request", async () => {
+      mockRequest(makeRequest({ kind: "send" }));
+      await expect(createTransfer(baseParams))
+        .rejects.toMatchObject({ code: "REQUEST_NOT_FOUND", httpStatus: 404 });
+    });
+
+    it("REQUEST_NOT_PAYABLE se lo stato non è pending_claim", async () => {
+      mockRequest(makeRequest({ status: "claimed" }));
+      await expect(createTransfer(baseParams))
+        .rejects.toMatchObject({ code: "REQUEST_NOT_PAYABLE", httpStatus: 409 });
+    });
+
+    it("REQUEST_CONVERSATION_MISMATCH se la conversation differisce", async () => {
+      mockRequest(makeRequest({ conversation_id: new mongoose.Types.ObjectId() }));
+      await expect(createTransfer(baseParams))
+        .rejects.toMatchObject({ code: "REQUEST_CONVERSATION_MISMATCH", httpStatus: 422 });
+    });
+
+    it("REQUEST_PAYER_MISMATCH se il pagante non è il destinatario della richiesta", async () => {
+      // recipient_id della richiesta (chi deve pagare) diverso dal sender del transfer
+      mockRequest(makeRequest({ recipient_id: new mongoose.Types.ObjectId() }));
+      await expect(createTransfer(baseParams))
+        .rejects.toMatchObject({ code: "REQUEST_PAYER_MISMATCH", httpStatus: 422 });
+    });
+
+    it("REQUEST_RECIPIENT_MISMATCH se il richiedente non è il recipient del transfer", async () => {
+      // sender_id della richiesta (richiedente) diverso dal recipient del transfer
+      mockRequest(makeRequest({ sender_id: new mongoose.Types.ObjectId() }));
+      await expect(createTransfer(baseParams))
+        .rejects.toMatchObject({ code: "REQUEST_RECIPIENT_MISMATCH", httpStatus: 422 });
+    });
+
+    it("REQUEST_AMOUNT_MISMATCH se l'importo non combacia", async () => {
+      // toAmountUnits distingue "100" (transfer) da "50" (richiesta)
+      vi.mocked(custodial.toAmountUnits).mockImplementation((a: string) =>
+        a === "100" ? "100000000000000000000" : "50000000000000000000");
+      mockRequest(makeRequest({ amount: { toString: () => "50" } }));
+      await expect(createTransfer(baseParams))
+        .rejects.toMatchObject({ code: "REQUEST_AMOUNT_MISMATCH", httpStatus: 422 });
+    });
   });
 });
 
@@ -660,5 +758,92 @@ describe("getTransfer", () => {
     const thirdParty = new mongoose.Types.ObjectId().toString();
     await expect(getTransfer({ transferId: TRANSFER_ID, requesterId: thirdParty }))
       .rejects.toMatchObject({ code: "TRANSFER_ACCESS_DENIED", httpStatus: 403 });
+  });
+});
+
+// ---------------------------------------------------------------------------
+// autoReleaseForRequest — rilascio automatico per transfer legati a richiesta
+// ---------------------------------------------------------------------------
+
+describe("autoReleaseForRequest", () => {
+  const REQ_OID = new mongoose.Types.ObjectId();
+  const RELEASE_HASH = "0x" + "f".repeat(64);
+
+  beforeEach(() => {
+    // Transfer pending legato a una richiesta, deposito confermato.
+    vi.mocked(ChatTransferModel.findOne).mockResolvedValue(
+      makeTransfer({
+        status:             "pending",
+        request_payment_id: REQ_OID,
+        tx_hash_deposit:    "0x" + "a".repeat(64),
+        confirmed_at:       new Date(),
+      }) as any,
+    );
+    // Lock pending -> accepting.
+    vi.mocked(lockModule.acquireLock).mockResolvedValue(
+      makeTransfer({ status: "accepting", request_payment_id: REQ_OID }) as any,
+    );
+    // Escrow con fondi sufficienti (== amount_units).
+    vi.mocked(custodial.getCustodialBalance).mockResolvedValue("100000000000000000000");
+    vi.mocked(custodial.ensureEscrowGas).mockResolvedValue(undefined as any);
+    // Stato finale accepted.
+    vi.mocked(ChatTransferModel.findOneAndUpdate).mockResolvedValue(
+      makeTransfer({ status: "accepted", request_payment_id: REQ_OID, tx_hash_release: RELEASE_HASH }) as any,
+    );
+  });
+
+  it("rilascia automaticamente al wallet del richiedente e passa ad accepted", async () => {
+    await autoReleaseForRequest(TRANSFER_ID);
+    expect(lockModule.acquireLock).toHaveBeenCalledWith(TRANSFER_ID, "pending", "accepting");
+    expect(custodial.transferFromCustodial).toHaveBeenCalledTimes(1);
+    expect(custodial.transferFromCustodial).toHaveBeenCalledWith(
+      expect.objectContaining({ toAddress: RECIPIENT_WALLET }),
+    );
+    expect(ChatTransferModel.findOneAndUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ transfer_id: TRANSFER_ID, status: "accepting" }),
+      expect.objectContaining({ $set: expect.objectContaining({ status: "accepted" }) }),
+      expect.anything(),
+    );
+  });
+
+  it("NON ri-invia se l'escrow è già vuoto (anti-double-spend)", async () => {
+    vi.mocked(custodial.getCustodialBalance).mockResolvedValue("0");
+    await autoReleaseForRequest(TRANSFER_ID);
+    expect(custodial.transferFromCustodial).not.toHaveBeenCalled();
+    // Ripristina comunque lo stato accepted (release già avvenuto in un tentativo precedente).
+    expect(ChatTransferModel.findOneAndUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ status: "accepting" }),
+      expect.objectContaining({ $set: expect.objectContaining({ status: "accepted" }) }),
+      expect.anything(),
+    );
+  });
+
+  it("in caso di errore release ripristina 'pending' (mai failed)", async () => {
+    vi.mocked(custodial.transferFromCustodial).mockRejectedValue(new Error("gas boom"));
+    await autoReleaseForRequest(TRANSFER_ID);
+    expect(ChatTransferModel.findOneAndUpdate).toHaveBeenCalledWith(
+      expect.objectContaining({ transfer_id: TRANSFER_ID, status: "accepting" }),
+      expect.objectContaining({ $set: expect.objectContaining({ status: "pending", locked_at: null }) }),
+    );
+    const setFailed = vi.mocked(ChatTransferModel.findOneAndUpdate).mock.calls
+      .some((c) => JSON.stringify(c[1]).includes('"failed"'));
+    expect(setFailed).toBe(false);
+  });
+
+  it("salta i transfer NON legati a una richiesta", async () => {
+    vi.mocked(ChatTransferModel.findOne).mockResolvedValue(
+      makeTransfer({ status: "pending", request_payment_id: null }) as any,
+    );
+    await autoReleaseForRequest(TRANSFER_ID);
+    expect(lockModule.acquireLock).not.toHaveBeenCalled();
+    expect(custodial.transferFromCustodial).not.toHaveBeenCalled();
+  });
+
+  it("è idempotente: salta se non è più pending", async () => {
+    vi.mocked(ChatTransferModel.findOne).mockResolvedValue(
+      makeTransfer({ status: "accepted", request_payment_id: REQ_OID }) as any,
+    );
+    await autoReleaseForRequest(TRANSFER_ID);
+    expect(lockModule.acquireLock).not.toHaveBeenCalled();
   });
 });
