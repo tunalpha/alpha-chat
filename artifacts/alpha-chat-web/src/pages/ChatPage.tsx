@@ -2040,132 +2040,138 @@ export default function ChatPage({ onNavigate }: Props) {
 
   async function handleFilePick(files: FileList) {
     if (!activeConvId || !auth || files.length === 0) return;
-    const file = files[0];
+    const convId = activeConvId;
 
     // Limiti client-side (backend li rifiuta comunque)
     const LIMIT: Record<string, number> = { image: 10, video: 15, audio: 5, document: 10 };
-    const categ = file.type.startsWith("image/") ? "image"
-                : file.type.startsWith("video/") ? "video"
-                : file.type.startsWith("audio/") ? "audio"
-                : "document";
-    const maxBytes = (LIMIT[categ] ?? 10) * 1024 * 1024;
-    if (file.size > maxBytes) {
-      setSendError(`File troppo grande (max ${maxBytes / 1024 / 1024} MB per ${categ})`);
-      return;
-    }
 
-    // ── OPTIMISTIC UPDATE ────────────────────────────────────────────────────
-    const clientMessageId = crypto.randomUUID();
-    const pendingMsgId    = `pending-${clientMessageId}`;
-    const nowIso          = new Date().toISOString();
-    const convId          = activeConvId; // cattura per il retry
-    const mtype           = categ === "audio" ? "voice" : categ as "image" | "video" | "document";
-    const localUrl        = URL.createObjectURL(file);
-
-    setMediaUploadStates((prev) =>
-      new Map(prev).set(pendingMsgId, {
-        phase:     "preparing",
-        localUrl,
-        filename:  file.name,
-        mimeType:  file.type,
-        mediaType: mtype,
-        size:      file.size,
-      }),
-    );
-    setMessages((prev) => [
-      ...prev,
-      {
-        id:                   pendingMsgId,
-        client_message_id:    clientMessageId,
-        conversation_id:      convId,
-        sender_id:            auth.userId,
-        message_type:         "media",
-        ciphertext:           null,
-        ciphertext_type:      null,
-        sequence_number:      0,
-        sent_at:              nowIso,
-        server_received_at:   nowIso,
-        status:               "sent",
-        deleted_for_everyone: false,
-      },
-    ]);
-    setSending(true);
-    setUploadProgress(0);
-    if (fileInputRef.current) fileInputRef.current.value = "";
-
-    const updPhase = (phase: MediaUploadPhase, extra?: Partial<MediaUploadState>) =>
-      setMediaUploadStates((prev) => {
-        const s = prev.get(pendingMsgId);
-        if (!s) return prev;
-        return new Map(prev).set(pendingMsgId, { ...s, phase, retryFn: undefined, ...extra });
-      });
-
-    async function doUpload() {
-      try {
-        // 1. Compressione (solo immagini grandi)
-        updPhase("preparing");
-        const blobToEncrypt: File | Blob =
-          file.type.startsWith("image/") && file.size > 300_000
-            ? await compressImage(file)
-            : file;
-
-        // 2. Cifratura AES-256-GCM
-        updPhase("encrypting");
-        const { encryptedBlob, keyBase64, ivBase64 } = await encryptMediaBlob(blobToEncrypt);
-        setUploadProgress(10);
-
-        // 3. Upload su R2
-        updPhase("uploading", { progress: 0 });
-        const media = await apiUploadEncryptedMedia(convId, encryptedBlob, file.type, {
-          originalFilename: file.name,
-          onProgress: (pct: number) => {
-            const rounded = Math.round(pct);
-            setUploadProgress(Math.round(10 + pct * 0.8));
-            setMediaUploadStates((prev) => {
-              const s = prev.get(pendingMsgId);
-              if (!s) return prev;
-              return new Map(prev).set(pendingMsgId, { ...s, phase: "uploading", progress: rounded });
-            });
-          },
-        });
-        setUploadProgress(90);
-
-        // 4. Signal-cifra e invia
-        updPhase("sending");
-        const metaJson = JSON.stringify({
-          e2e:       true,
-          type:      mtype,
-          media_id:  media.media_id,
-          key:       keyBase64,
-          iv:        ivBase64,
-          mime_type: file.type,
-          filename:  file.name,
-          size:      file.size,
-          ...(media.duration_ms != null ? { duration_ms: media.duration_ms } : {}),
-          ...(media.waveform.length > 0 ? { waveform:    media.waveform }    : {}),
-        });
-        sentCacheRef.current.set(clientMessageId, metaJson);
-        void cacheOwnMessageMeta(clientMessageId, metaJson);
-        const signal = await encryptForActive(metaJson);
-        await apiSendMediaMessage(convId, media.media_id, signal, clientMessageId, metaJson, signal?.deviceCiphertexts);
-        setUploadProgress(100);
-        // Il WS sostituirà il pending message con quello reale — nessuna azione qui
-      } catch (err) {
-        // Mostra stato "failed" con possibilità di riprovare (non rimuove il messaggio dalla chat)
-        setMediaUploadStates((prev) => {
-          const s = prev.get(pendingMsgId);
-          if (!s) return prev;
-          return new Map(prev).set(pendingMsgId, { ...s, phase: "failed", retryFn: doUpload });
-        });
-        setUploadProgress(null);
-        // Non mostrare setSendError — la bolla stessa mostra l'errore con il pulsante Riprova
-      } finally {
-        setSending(false);
-        setUploadProgress(null);
+    // Valida tutti i file prima di iniziare
+    for (const file of Array.from(files)) {
+      const categ = file.type.startsWith("image/") ? "image"
+                  : file.type.startsWith("video/") ? "video"
+                  : file.type.startsWith("audio/") ? "audio"
+                  : "document";
+      const maxBytes = (LIMIT[categ] ?? 10) * 1024 * 1024;
+      if (file.size > maxBytes) {
+        setSendError(`"${file.name}" troppo grande (max ${maxBytes / 1024 / 1024} MB per ${categ})`);
+        return;
       }
     }
 
-    await doUpload();
+    setSending(true);
+
+    // Invia i file in sequenza (Signal è stateful, la cifratura è seriale)
+    for (const file of Array.from(files)) {
+      const categ = file.type.startsWith("image/") ? "image"
+                  : file.type.startsWith("video/") ? "video"
+                  : file.type.startsWith("audio/") ? "audio"
+                  : "document";
+      const mtype = categ === "audio" ? "voice" : categ as "image" | "video" | "document";
+
+      // ── OPTIMISTIC UPDATE per questo file ──────────────────────────────────
+      const clientMessageId = crypto.randomUUID();
+      const pendingMsgId    = `pending-${clientMessageId}`;
+      const nowIso          = new Date().toISOString();
+      const localUrl        = URL.createObjectURL(file);
+
+      setMediaUploadStates((prev) =>
+        new Map(prev).set(pendingMsgId, {
+          phase: "preparing", localUrl,
+          filename: file.name, mimeType: file.type,
+          mediaType: mtype, size: file.size,
+        }),
+      );
+      setMessages((prev) => [
+        ...prev,
+        {
+          id:                   pendingMsgId,
+          client_message_id:    clientMessageId,
+          conversation_id:      convId,
+          sender_id:            auth.userId,
+          message_type:         "media",
+          ciphertext:           null,
+          ciphertext_type:      null,
+          sequence_number:      0,
+          sent_at:              nowIso,
+          server_received_at:   nowIso,
+          status:               "sent",
+          deleted_for_everyone: false,
+        },
+      ]);
+      setUploadProgress(0);
+
+      const updPhase = (phase: MediaUploadPhase, extra?: Partial<MediaUploadState>) =>
+        setMediaUploadStates((prev) => {
+          const s = prev.get(pendingMsgId);
+          if (!s) return prev;
+          return new Map(prev).set(pendingMsgId, { ...s, phase, retryFn: undefined, ...extra });
+        });
+
+      async function doUpload() {
+        try {
+          // 1. Compressione (solo immagini grandi)
+          updPhase("preparing");
+          const blobToEncrypt: File | Blob =
+            file.type.startsWith("image/") && file.size > 300_000
+              ? await compressImage(file)
+              : file;
+
+          // 2. Cifratura AES-256-GCM
+          updPhase("encrypting");
+          const { encryptedBlob, keyBase64, ivBase64 } = await encryptMediaBlob(blobToEncrypt);
+          setUploadProgress(10);
+
+          // 3. Upload su R2
+          updPhase("uploading", { progress: 0 });
+          const media = await apiUploadEncryptedMedia(convId, encryptedBlob, file.type, {
+            originalFilename: file.name,
+            onProgress: (pct: number) => {
+              const rounded = Math.round(pct);
+              setUploadProgress(Math.round(10 + pct * 0.8));
+              setMediaUploadStates((prev) => {
+                const s = prev.get(pendingMsgId);
+                if (!s) return prev;
+                return new Map(prev).set(pendingMsgId, { ...s, phase: "uploading", progress: rounded });
+              });
+            },
+          });
+          setUploadProgress(90);
+
+          // 4. Signal-cifra e invia
+          updPhase("sending");
+          const metaJson = JSON.stringify({
+            e2e:       true,
+            type:      mtype,
+            media_id:  media.media_id,
+            key:       keyBase64,
+            iv:        ivBase64,
+            mime_type: file.type,
+            filename:  file.name,
+            size:      file.size,
+            ...(media.duration_ms != null ? { duration_ms: media.duration_ms } : {}),
+            ...(media.waveform.length > 0 ? { waveform:    media.waveform }    : {}),
+          });
+          sentCacheRef.current.set(clientMessageId, metaJson);
+          void cacheOwnMessageMeta(clientMessageId, metaJson);
+          const signal = await encryptForActive(metaJson);
+          await apiSendMediaMessage(convId, media.media_id, signal, clientMessageId, metaJson, signal?.deviceCiphertexts);
+          setUploadProgress(100);
+        } catch {
+          setMediaUploadStates((prev) => {
+            const s = prev.get(pendingMsgId);
+            if (!s) return prev;
+            return new Map(prev).set(pendingMsgId, { ...s, phase: "failed", retryFn: doUpload });
+          });
+          setUploadProgress(null);
+        }
+      }
+
+      await doUpload();
+    }
+
+    setSending(false);
+    setUploadProgress(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
   // ── Location sharing ──────────────────────────────────────────────────────
@@ -3303,6 +3309,7 @@ export default function ChatPage({ onNavigate }: Props) {
         ref={mediaInputRef}
         type="file"
         accept="image/*,video/*,audio/*"
+        multiple
         style={{ display: "none" }}
         onChange={(e) => { if (e.target.files) handleFilePick(e.target.files); e.target.value = ""; }}
       />
