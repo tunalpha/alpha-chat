@@ -74,7 +74,7 @@ export default function UsdaSettingsPage({ onBack, onNavigate }: Props) {
             <polyline points="15 18 9 12 15 6"/>
           </svg>
         </button>
-        <h1 className="settings-title">💵 {t("title")}</h1>
+        <h1 className="settings-title">{t("title")}</h1>
       </header>
 
       {/* Tab bar */}

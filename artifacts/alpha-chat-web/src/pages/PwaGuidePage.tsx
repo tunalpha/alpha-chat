@@ -25,8 +25,8 @@ export default function PwaGuidePage({ onBack }: Props) {
     (navigator as { standalone?: boolean }).standalone === true;
 
   const PLATFORMS: { key: Platform; icon: string; label: string }[] = [
-    { key: "ios",     icon: "🍎", label: t("tabIphone") },
-    { key: "android", icon: "🤖", label: t("tabAndroid") },
+    { key: "ios",     icon: "", label: t("tabIphone") },
+    { key: "android", icon: "", label: t("tabAndroid") },
     { key: "desktop", icon: "🖥️", label: t("desktop") },
   ];
 
