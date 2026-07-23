@@ -37,6 +37,7 @@ const CreateTransferSchema = z.object({
   note:          z.string().max(200).optional(),
   asset_address: z.string().optional(),
   asset_symbol:  z.string().optional(),
+  request_payment_id: z.string().optional(),  // se il transfer soddisfa una usda_request
 });
 
 const DepositSchema = z.object({
@@ -63,6 +64,7 @@ router.post(
         note:           req.body.note,
         assetAddress:   req.body.asset_address,
         assetSymbol:    req.body.asset_symbol,
+        requestPaymentId: req.body.request_payment_id,
       });
       res.status(201).json(result);
     } catch (err) {

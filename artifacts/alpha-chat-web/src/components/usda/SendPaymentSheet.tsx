@@ -67,6 +67,12 @@ interface Props {
   toName:         string;
   onClose:        () => void;
   onSent:         () => void;
+  /** Importo pre-compilato (es. pagamento di una richiesta). Se presente,
+   *  l'importo è bloccato in sola lettura. */
+  initialAmount?: string;
+  /** Se valorizzato, questo invio soddisfa una usda_request: viene inoltrato
+   *  al backend per aggiornare la bolla richiesta per entrambi. */
+  requestPaymentId?: string;
 }
 
 type Step = "form" | "confirm" | "sending";
@@ -116,9 +122,12 @@ export function SendPaymentSheet({
   toName,
   onClose,
   onSent,
+  initialAmount,
+  requestPaymentId,
 }: Props) {
   const [step,   setStep]   = useState<Step>("form");
-  const [amount, setAmount] = useState("");
+  const [amount, setAmount] = useState(initialAmount ?? "");
+  const amountLocked = !!initialAmount;
   const [note,   setNote]   = useState("");
   const [error,  setError]  = useState<string | null>(null);
   const [phase,  setPhase]  = useState<SendPhase | null>(null);
@@ -205,6 +214,7 @@ export function SendPaymentSheet({
         note:            note.trim() || undefined,
         asset_symbol:    "USDA",
         sender_wallet:   account.address,
+        request_payment_id: requestPaymentId,
       });
 
       if (!created.escrow_wallet) {
@@ -355,7 +365,9 @@ export function SendPaymentSheet({
                   placeholder="0.00"
                   value={amount}
                   onChange={(e) => { setAmount(e.target.value); setError(null); }}
-                  autoFocus
+                  autoFocus={!amountLocked}
+                  readOnly={amountLocked}
+                  aria-readonly={amountLocked}
                 />
                 <span className="usda-currency" aria-hidden="true">USDA</span>
               </div>

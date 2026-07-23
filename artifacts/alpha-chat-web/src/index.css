@@ -5834,6 +5834,25 @@ html.emergency-open #root {
 .cp-bubble.mine .cp-scan-link       { color: rgba(199,205,255,0.95); }
 .cp-bubble.mine .cp-scan-link:hover { color: #fff; }
 
+/* ── Bolle USDA (send / request): stessa larghezza e contrasto delle bolle pagamento ── */
+.msg-bubble.payment-bubble .usda-bubble {
+  width: 100%; max-width: 100%; min-width: 0; box-sizing: border-box;
+}
+/* Variante "mia": scrim scuro sull'accento del messaggio + testo bianco ad alto
+   contrasto (leggibile su qualsiasi tema/accento), come .cp-bubble.mine. */
+.usda-bubble.mine {
+  background: linear-gradient(135deg, rgba(20,16,40,0.42) 0%, rgba(20,16,40,0.30) 100%),
+              linear-gradient(135deg, var(--bubble-mine, #6366f1) 0%, var(--bubble-mine, #4f46e5) 100%);
+  border-color: rgba(255,255,255,0.22);
+}
+.usda-bubble.mine .usda-bubble-header,
+.usda-bubble.mine .usda-bubble-sub,
+.usda-bubble.mine .usda-bubble-unit,
+.usda-bubble.mine .usda-bubble-tap-hint { color: rgba(255,255,255,0.85); }
+.usda-bubble.mine .usda-bubble-amount,
+.usda-bubble.mine .usda-bubble-note     { color: #fff; }
+.usda-bubble.mine .usda-bubble-status   { border-top-color: rgba(255,255,255,0.18); }
+
 /* Stato */
 .cp-bubble-status  { display: flex; align-items: flex-start; gap: 8px; }
 .cp-status-icon    { font-size: 1rem; flex-shrink: 0; margin-top: 1px; }

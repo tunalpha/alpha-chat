@@ -9,7 +9,6 @@ import { SendPaymentSheet } from "../components/usda/SendPaymentSheet";
 import { RequestUsdaSheet } from "../components/usda/RequestUsdaSheet";
 import { UsdaPaymentDetail } from "../components/usda/UsdaPaymentDetail";
 
-import { apiUsdaPayRequest } from "../lib/usda-api";
 import type { UsdaPaymentData } from "../lib/usda-types";
 import { useAuth } from "../contexts/AuthContext";
 import { useCall } from "../contexts/CallContext";
@@ -670,6 +669,7 @@ export default function ChatPage({ onNavigate }: Props) {
   // ── USDA Payments ──────────────────────────────────────────────────────
   const [showSendUsda,    setShowSendUsda]    = useState(false);   // legacy — non più connesso al pulsante
   const [showSendPayment, setShowSendPayment] = useState(false);   // nuovo Payment Engine
+  const [sendPrefill, setSendPrefill] = useState<{ amount?: string; requestPaymentId?: string } | null>(null);
   const [showRequestUsda, setShowRequestUsda] = useState(false);
   const [usdaDetailId,    setUsdaDetailId]    = useState<string | null>(null);
 
@@ -2770,7 +2770,7 @@ export default function ChatPage({ onNavigate }: Props) {
                       onTouchMove={handleTouchCancel}
                     >
                       {destroyingIds.has(msg.id) && <BurnParticles />}
-                      <div className={`msg-bubble ${isMine ? "mine" : "theirs"} ${voiceMeta ? "voice-bubble" : ""} ${msg.message_type === "payment" ? "payment-bubble" : ""}`}>
+                      <div className={`msg-bubble ${isMine ? "mine" : "theirs"} ${voiceMeta ? "voice-bubble" : ""} ${(msg.message_type === "payment" || msg.message_type === "usda_request" || msg.message_type === "usda_send") ? "payment-bubble" : ""}`}>
                         {/* Reply preview */}
                         {msg.reply_to_message_id && (
                           <div className="msg-reply-preview">
@@ -2853,10 +2853,11 @@ export default function ChatPage({ onNavigate }: Props) {
                             data={msg.system_metadata as unknown as UsdaPaymentData}
                             isMine={isMine}
                             myUserId={auth?.userId ?? ""}
-                            onPay={async (paymentId) => {
-                              try {
-                                await apiUsdaPayRequest(paymentId);
-                              } catch { /* verrà aggiornato via WS */ }
+                            onPay={(reqData) => {
+                              // Apre il flusso interno pre-compilato: destinatario = il
+                              // richiedente (in una chat 1:1 è l'altro utente), importo bloccato.
+                              setSendPrefill({ amount: reqData.amount, requestPaymentId: reqData.payment_id });
+                              setShowSendPayment(true);
                             }}
                             onDetail={(id) => setUsdaDetailId(id)}
                           />
@@ -3094,7 +3095,7 @@ export default function ChatPage({ onNavigate }: Props) {
                 <>
                   <button
                     className="attach-sheet-item"
-                    onClick={() => { setShowAttachSheet(false); setTimeout(() => setShowSendPayment(true), 80); }}
+                    onClick={() => { setShowAttachSheet(false); setSendPrefill(null); setTimeout(() => setShowSendPayment(true), 80); }}
                   >
                     <span className="attach-sheet-icon">💰</span>
                     <span>Invia USDA</span>
@@ -3488,8 +3489,10 @@ export default function ChatPage({ onNavigate }: Props) {
           conversationId={activeConvId ?? ""}
           toUserId={activeConv.other_user?.user_id ?? ""}
           toName={activeConv.other_user?.display_name ?? activeConv.other_user?.username ?? "Utente"}
-          onClose={() => setShowSendPayment(false)}
-          onSent={() => setShowSendPayment(false)}
+          initialAmount={sendPrefill?.amount}
+          requestPaymentId={sendPrefill?.requestPaymentId}
+          onClose={() => { setShowSendPayment(false); setSendPrefill(null); }}
+          onSent={() => { setShowSendPayment(false); setSendPrefill(null); }}
         />
       )}
 

@@ -511,7 +511,10 @@ export async function requestPayment(params: {
   const membership = await memberRepo.findMembership(convId, senderId);
   if (!membership || membership.left_at !== null) throw new AppError("NOT_CHAT_MEMBER", 403);
 
-  // Recupera il wallet Polygon del richiedente — obbligatorio per il contratto USDA API
+  // Wallet del richiedente — best-effort. NON è più obbligatorio: la richiesta
+  // è un semplice messaggio in-app; il pagamento avviene tramite il Chat Payment
+  // Engine interno (escrow custodial), non più tramite getusda.xyz. Il wallet
+  // serve solo al momento in cui il richiedente riscuote (accept del transfer).
   const requesterUser = await UserModel.findById(
     new mongoose.Types.ObjectId(params.fromUserId),
     "wallets wallet_address",
@@ -519,29 +522,13 @@ export async function requestPayment(params: {
   const requesterWallet =
     requesterUser?.wallets?.usda?.address ?? requesterUser?.wallet_address ?? null;
 
-  if (!requesterWallet) {
-    throw new AppError("WALLET_NOT_CONFIGURED", 400, undefined, {
-      detail: "L'utente non ha un wallet USDA configurato. Connetti un wallet prima di richiedere un pagamento.",
-    });
-  }
-
-  const adapterResult = await _adapter.requestPayment({
-    from_user_id:      params.fromUserId,
-    to_user_id:        params.toUserId,
-    requester_wallet:  requesterWallet,
-    amount:            params.amount,
-    note:              params.note,
-    conversation_id:   params.conversationId,
-    client_payment_id: params.clientPaymentId,
-  });
-
   const [senderName, recipientName] = await Promise.all([
     _getUserName(senderId),
     _getUserName(recipientId),
   ]);
 
-  const claimExpiresAt = adapterResult.claim_expires_at
-    ? new Date(adapterResult.claim_expires_at) : null;
+  // Scadenza claim di default: 7 giorni (nessuna dipendenza esterna).
+  const claimExpiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
 
   const doc = await paymentRepo.create({
     clientPaymentId:   params.clientPaymentId,
@@ -553,8 +540,8 @@ export async function requestPayment(params: {
     fee:               "0",
     note:              params.note ?? null,
     status:            "pending_claim",
-    externalPaymentId: adapterResult.payment_id,
-    shareLink:         adapterResult.share_link ?? null,
+    externalPaymentId: null,
+    shareLink:         null,
     claimExpiresAt,
   });
 
@@ -570,16 +557,16 @@ export async function requestPayment(params: {
       status:          "pending_claim",
       sender_id:       params.fromUserId,
       sender_name:     senderName,
+      sender_wallet:   requesterWallet,   // wallet del richiedente (per riferimento)
       recipient_id:    params.toUserId,
       recipient_name:  recipientName,
-      claim_expires_at: claimExpiresAt?.toISOString() ?? null,
-      share_link:      adapterResult.share_link ?? null,
+      claim_expires_at: claimExpiresAt.toISOString(),
+      share_link:      null,              // flusso in-app: nessun link esterno getusda.xyz
     },
   });
 
   await paymentRepo.updateStatus(doc._id, "pending_claim", {
     messageId:         message._id,
-    externalPaymentId: adapterResult.payment_id,
   });
 
   const members = await memberRepo.listMembers(convId);
@@ -589,6 +576,52 @@ export async function requestPayment(params: {
   );
 
   return { ..._formatPayment(doc), message_id: message._id.toString() };
+}
+
+/**
+ * Sincronizza lo stato di una usda_request quando il Chat Payment Engine
+ * interno la soddisfa (il pagante paga via escrow custodial).
+ * Aggiorna il doc usda_payments + il meta del messaggio-bolla ed emette
+ * usda.payment.update a mittente (richiedente) e destinatario (pagante),
+ * così la bolla richiesta si aggiorna per ENTRAMBI.
+ *
+ * Fire-and-forget: non lancia — un errore qui non deve bloccare il transfer.
+ */
+export async function syncRequestFromTransfer(
+  requestPaymentId: string,
+  status: UsdaPaymentStatus,
+): Promise<void> {
+  try {
+    const doc = await paymentRepo.findById(new mongoose.Types.ObjectId(requestPaymentId));
+    if (!doc || doc.kind !== "request") return;
+    // Non regredire da uno stato terminale (confirmed/claimed/refunded/failed).
+    if (["confirmed", "claimed", "refunded", "failed"].includes(doc.status)) return;
+
+    await paymentRepo.updateStatus(doc._id, status);
+    if (doc.message_id) {
+      await MessageModel.updateOne(
+        { _id: doc.message_id },
+        { $set: { "system_metadata.status": status } },
+      );
+    }
+
+    wsManager.sendToUsers(
+      [doc.sender_id.toString(), doc.recipient_id.toString()],
+      {
+        type: "usda.payment.update",
+        payload: {
+          payment_id:      doc._id.toString(),
+          message_id:      doc.message_id?.toString() ?? null,
+          conversation_id: doc.conversation_id.toString(),
+          status,
+          tx_hash:         null,
+        },
+      },
+    );
+    logger.info({ requestPaymentId, status }, "[USDA] Richiesta sincronizzata da transfer interno");
+  } catch (err) {
+    logger.warn({ err, requestPaymentId, status }, "[USDA] syncRequestFromTransfer fallita (non critica)");
+  }
 }
 
 export async function payRequest(params: {

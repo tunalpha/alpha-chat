@@ -4,7 +4,7 @@
  * Stile fintech premium: copy emozionale, CTA chiaro, nessun testo tecnico.
  */
 
-import { memo, useState } from "react";
+import { memo } from "react";
 import type { UsdaPaymentData, UsdaPaymentStatus } from "../../lib/usda-types";
 import { USDA_STATUS_ICONS } from "../../lib/usda-types";
 
@@ -12,7 +12,8 @@ interface Props {
   data: UsdaPaymentData;
   isMine: boolean;
   myUserId: string;
-  onPay?: (paymentId: string) => Promise<void>;
+  /** Apre il flusso di pagamento interno (Chat Payment Engine) pre-compilato. */
+  onPay?: (data: UsdaPaymentData) => void;
   onDetail?: (paymentId: string) => void;
 }
 
@@ -43,29 +44,19 @@ function requestCopy(status: UsdaPaymentStatus, isMine: boolean): string {
 }
 
 export const UsdaRequestBubble = memo(function UsdaRequestBubble({ data, isMine, myUserId, onPay, onDetail }: Props) {
-  const [paying, setPaying] = useState(false);
-
   const statusClass    = getStatusClass(data.status);
   const copy           = requestCopy(data.status, isMine);
   const isPendingClaim = data.status === "pending_claim";
   const isAnimated     = ["pending", "preparing", "signing", "submitting"].includes(data.status);
 
-  // Pulsante Paga:
-  //   — se share_link presente → apre il link pubblico USDA (getusda.xyz)
-  //   — altrimenti → usa il flusso in-app onPay
-  const canPay      = !isMine && isPendingClaim;
-  const hasShareLink = !!data.share_link;
+  // Il pagamento avviene sempre tramite il flusso interno (Chat Payment Engine),
+  // pre-compilato con importo + destinatario = il richiedente. Nessun link esterno.
+  const canPay = !isMine && isPendingClaim;
 
   const requesterName = data.sender_name ?? data.sender_id.slice(0, 8);
 
-  async function handlePay() {
-    if (!onPay || paying) return;
-    setPaying(true);
-    try {
-      await onPay(data.payment_id);
-    } finally {
-      setPaying(false);
-    }
+  function handlePay() {
+    onPay?.(data);
   }
 
   return (
@@ -106,49 +97,16 @@ export const UsdaRequestBubble = memo(function UsdaRequestBubble({ data, isMine,
         <span className="usda-status-text">{copy}</span>
       </div>
 
-      {canPay && hasShareLink && (
-        /* Paga tramite link pubblico USDA (getusda.xyz) */
-        <a
-          href={data.share_link!}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="usda-pay-btn"
-          aria-label={`Paga ${data.amount} USDA — apre il portale di pagamento`}
-          onClick={(e) => e.stopPropagation()}
-        >
-          🔗 Paga ora · {data.amount} USDA
-        </a>
-      )}
-
-      {canPay && !hasShareLink && (
-        /* Paga tramite flusso in-app (fallback) */
+      {canPay && (
+        /* Paga tramite flusso interno (Chat Payment Engine) pre-compilato */
         <button
           type="button"
-          className={`usda-pay-btn ${paying ? "paying" : ""}`}
+          className="usda-pay-btn"
           aria-label={`Paga ${data.amount} USDA a ${requesterName}`}
-          disabled={paying}
-          onClick={(e) => { e.stopPropagation(); void handlePay(); }}
+          onClick={(e) => { e.stopPropagation(); handlePay(); }}
         >
-          {paying ? (
-            <><span className="usda-pay-spinner" aria-hidden="true" /> Pagamento in corso…</>
-          ) : (
-            <>💸 Paga ora · {data.amount} USDA</>
-          )}
+          💸 Paga ora · {data.amount} USDA
         </button>
-      )}
-
-      {isMine && isPendingClaim && hasShareLink && (
-        /* Chi ha inviato la richiesta vede il link da condividere */
-        <a
-          href={data.share_link!}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="usda-pay-btn usda-pay-btn--ghost"
-          aria-label="Apri il link di pagamento"
-          onClick={(e) => e.stopPropagation()}
-        >
-          🔗 Apri link di pagamento
-        </a>
       )}
 
       {!canPay && onDetail && !isMine && !isPendingClaim && (

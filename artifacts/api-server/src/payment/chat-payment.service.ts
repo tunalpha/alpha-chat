@@ -35,6 +35,7 @@ import { checkAndMarkTx, rollbackTx }                   from "./asset-anti-repla
 import { acquireLock, writeAudit }                      from "./lock";
 import { emitPaymentStateChanged }                      from "./events";
 import { wsManager }                                    from "../lib/ws-manager";
+import { syncRequestFromTransfer }                      from "../services/usda.service";
 import { AppError }                                     from "../errors/AppError";
 import { logger }                                       from "../lib/logger";
 import type { ChatTransferStatus }                      from "./state-machine";
@@ -309,6 +310,11 @@ async function _markFailed(
     await writeAudit({ transferId, fromStatus: lockedStatus, toStatus: "failed", triggeredBy, note: reason });
     await _updateMessageMeta(doc);
     emitPaymentStateChanged(doc);
+
+    if (doc.request_payment_id) {
+      // Transfer fallito → la richiesta torna pagabile.
+      void syncRequestFromTransfer(doc.request_payment_id.toString(), "pending_claim");
+    }
   } catch (innerErr) {
     logger.error({ innerErr, transferId }, "[Payment] Errore in _markFailed");
   }
@@ -329,6 +335,9 @@ export interface CreateTransferParams {
   /** Indirizzo wallet del mittente fornito dal client (ThirdWeb).
    *  Usato come fallback se il profilo non ha ancora un wallet salvato. */
   senderWalletOverride?: string;
+  /** Se valorizzato, questo transfer soddisfa una usda_request in chat:
+   *  al deposito/accept la bolla richiesta viene aggiornata per entrambi. */
+  requestPaymentId?:     string;
 }
 
 /**
@@ -389,6 +398,9 @@ export async function createTransfer(
     recipient_id:        recipientId,
     conversation_id:     convId,
     message_id:          null,
+    request_payment_id:  params.requestPaymentId
+      ? new mongoose.Types.ObjectId(params.requestPaymentId)
+      : null,
     asset_type:          "ERC-20",
     asset_address:       assetAddress,
     asset_symbol:        assetSymbol,
@@ -480,6 +492,10 @@ export async function confirmDeposit(params: {
   await writeAudit({ transferId: params.transferId, fromStatus: "awaiting_deposit", toStatus: "pending", triggeredBy: "sender", txHash: params.txHash });
   await _updateMessageMeta(updated);
   emitPaymentStateChanged(updated);
+
+  if (updated.request_payment_id) {
+    void syncRequestFromTransfer(updated.request_payment_id.toString(), "pending");
+  }
 
   logger.info({ transferId: params.transferId, txHash: params.txHash }, "[Payment] Deposito confermato ✓");
   return _format(updated);
@@ -643,6 +659,10 @@ export async function acceptTransfer(params: {
     await _updateMessageMeta(accepted);
     emitPaymentStateChanged(accepted);
 
+    if (accepted.request_payment_id) {
+      void syncRequestFromTransfer(accepted.request_payment_id.toString(), "confirmed");
+    }
+
     // Fire-and-forget: arricchisce il record con il block number del rilascio.
     // La TX è già confermata (transferFromCustodial aspetta il receipt), quindi
     // questa getTransactionReceipt ritorna subito senza attesa mining.
@@ -718,6 +738,11 @@ export async function rejectTransfer(params: {
     await _updateMessageMeta(rejected);
     emitPaymentStateChanged(rejected);
 
+    if (rejected.request_payment_id) {
+      // Pagamento rifiutato → la richiesta torna pagabile.
+      void syncRequestFromTransfer(rejected.request_payment_id.toString(), "pending_claim");
+    }
+
     logger.info({ transferId: params.transferId, txHash }, "[Payment] Trasferimento rifiutato ✓");
     return _format(rejected);
   } catch (err) {
@@ -766,6 +791,11 @@ export async function cancelTransfer(params: {
     await writeAudit({ transferId: params.transferId, fromStatus: "cancelling", toStatus: "cancelled", triggeredBy: "sender", txHash, ip: params.ip });
     await _updateMessageMeta(cancelled);
     emitPaymentStateChanged(cancelled);
+
+    if (cancelled.request_payment_id) {
+      // Pagamento annullato dal pagante → la richiesta torna pagabile.
+      void syncRequestFromTransfer(cancelled.request_payment_id.toString(), "pending_claim");
+    }
 
     logger.info({ transferId: params.transferId, txHash }, "[Payment] Trasferimento annullato ✓");
     return _format(cancelled);

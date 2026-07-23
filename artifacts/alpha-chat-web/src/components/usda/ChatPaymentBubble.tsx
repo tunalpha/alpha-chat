@@ -153,6 +153,14 @@ export const ChatPaymentBubble = memo(function ChatPaymentBubble({ data, isMine,
       });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Pulisce un errore locale "stantìo" quando il trasferimento raggiunge uno
+  // stato terminale/di successo (es. "accepted" via WS): senza questo, un errore
+  // di un'azione precedente resterebbe visibile sotto la bolla "Pagamento ricevuto!".
+  useEffect(() => {
+    const TERMINAL: ChatTransferStatus[] = ["accepted", "rejected", "cancelled", "expired", "failed"];
+    if (TERMINAL.includes(data.status)) setError(null);
+  }, [data.status]);
+
   const variant    = getVariant(data.status, isMine);
   const label      = getStatusLabel(data.status, isMine, data.amount, data.asset_symbol);
   const isSpinning = variant === "spinning";

@@ -23,6 +23,7 @@ export interface IChatTransfer {
   recipient_id:        mongoose.Types.ObjectId;
   conversation_id:     mongoose.Types.ObjectId;
   message_id:          mongoose.Types.ObjectId | null;  // impostato dopo la create del messaggio
+  request_payment_id:  mongoose.Types.ObjectId | null;  // se il transfer soddisfa una usda_request in chat
 
   // Asset (multi-asset ready — Sezione 16)
   asset_type:          "ERC-20";            // estendibile a ERC-721, ERC-1155
@@ -78,6 +79,7 @@ const ChatTransferSchema = new Schema<ChatTransferDocument>(
     recipient_id:        { type: Schema.Types.ObjectId, ref: "User", required: true },
     conversation_id:     { type: Schema.Types.ObjectId, ref: "Conversation", required: true },
     message_id:          { type: Schema.Types.ObjectId, ref: "Message", default: null },
+    request_payment_id:  { type: Schema.Types.ObjectId, ref: "UsdaPayment", default: null },
 
     // Asset
     asset_type:          { type: String, enum: ["ERC-20"], default: "ERC-20" },
