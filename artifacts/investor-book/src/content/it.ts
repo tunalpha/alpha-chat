@@ -7,7 +7,7 @@ export const it = {
   },
   cover: {
     title: "AlphaChat",
-    badge: "Investor Book",
+    badge: "Investor Book 2026",
     subtitle: "Comunicazione privata. Pagamenti integrati. Un unico ecosistema.",
   },
   founder: {

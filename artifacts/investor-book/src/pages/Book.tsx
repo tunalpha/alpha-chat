@@ -14,6 +14,7 @@ import ArchitectureSection from '@/components/sections/ArchitectureSection';
 import CompetitiveSection from '@/components/sections/CompetitiveSection';
 import BusinessModelSection from '@/components/sections/BusinessModelSection';
 import MarketSection from '@/components/sections/MarketSection';
+import KpiSection from '@/components/sections/KpiSection';
 import SwotSection from '@/components/sections/SwotSection';
 import RoadmapSection from '@/components/sections/RoadmapSection';
 import ClosingSection from '@/components/sections/ClosingSection';
@@ -42,6 +43,7 @@ export default function Book({ lang, theme, toggleTheme }: BookProps) {
           <LetterSection dict={dict} />
           <StorySection dict={dict} />
           <ProductSection dict={dict} />
+          <KpiSection dict={dict} />
           <PaymentSection dict={dict} />
           <EcosystemSection dict={dict} />
           <ArchitectureSection dict={dict} />
