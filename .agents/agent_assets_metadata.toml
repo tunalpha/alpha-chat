@@ -48,3 +48,9 @@ id = "CKIG2d04g6AwsjEUbTZhg"
 uri = "file://artifacts/alpha-chat-web/public/master-flat.svg"
 type = "image"
 title = "AlphaChat Logo — Flat SVG (colore corretto)"
+
+[[outputs]]
+id = "ru3EeC-rLzxoztcYJGEiR"
+uri = "file://alphachat-logo-flat.png"
+type = "image"
+title = "AlphaChat Logo Flat — 1024×1024 PNG"
