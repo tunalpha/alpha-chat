@@ -70,9 +70,9 @@ export default function PortalLayout({ children, investorName, sessionExpiry }: 
           {/* Logo */}
           <Link href="/home" className="portal-logo">
             <img
-              src={`${import.meta.env.BASE_URL}ac-icon.png`}
+              src={`${import.meta.env.BASE_URL}ac-logo.png`}
               alt="AlphaChat"
-              style={{ height: 32, width: 32, objectFit: 'contain', borderRadius: 8, flexShrink: 0 }}
+              style={{ height: 30, width: 'auto', objectFit: 'contain', flexShrink: 0 }}
             />
             <span className="portal-logo-text">AlphaChat</span>
             <span className="portal-logo-vdr">VDR</span>

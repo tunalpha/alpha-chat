@@ -281,9 +281,9 @@ function UnlockAnimation({ investorName, onComplete }: { investorName: string; o
         <LockIcon open />
         <div className="ig-unlock-logo">
           <img
-            src={`${import.meta.env.BASE_URL}ac-icon.png`}
+            src={`${import.meta.env.BASE_URL}ac-logo.png`}
             alt="AlphaChat"
-            style={{ height: 40, width: 40, objectFit: 'contain', borderRadius: 10 }}
+            style={{ height: 44, width: 'auto', objectFit: 'contain' }}
           />
           <span className="ig-logo-text">AlphaChat</span>
         </div>
@@ -337,9 +337,9 @@ function GateCover({ onVerified }: { onVerified: (name: string, expiry: string) 
       <header className="ig-topbar">
         <div className="ig-topbar-logo">
           <img
-            src={`${import.meta.env.BASE_URL}ac-icon.png`}
+            src={`${import.meta.env.BASE_URL}ac-logo.png`}
             alt="AlphaChat"
-            style={{ height: 28, width: 28, objectFit: 'contain', borderRadius: 7 }}
+            style={{ height: 26, width: 'auto', objectFit: 'contain' }}
           />
           <span style={{ fontWeight: 700, fontSize: 15, letterSpacing: '-0.3px' }}>AlphaChat</span>
         </div>
