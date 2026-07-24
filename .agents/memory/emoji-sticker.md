@@ -12,7 +12,19 @@ description: Architettura e decisioni chiave per emoji picker e sticker in Alpha
 - `src/types/sticker.ts` — StickerPayload, encode/decode, STICKER_MARKER
 - `src/data/stickerPacks.ts` — pack Twemoji CDN
 
+## BUG CRITICO POST-DEPLOY (risolto)
+
+**Sintomo:** pulsante 😊 visibile ma picker mai mostrato; su iOS apriva solo la tastiera.
+
+**Causa 1 — transform breaking fixed:** `.chat-area` ha `transform: translateX()` per le animazioni mobile. Un elemento con `transform` diventa un nuovo containing block per `position: fixed`. Il pannello si posizionava relativo a `.chat-area`, non al viewport → visivamente fuori schermo.
+
+**Causa 2 — race condition style:** lo style era calcolato in `useEffect` (dopo il paint). Al primo frame il pannello aveva `style={}` (position: static) dentro `chat-input-bar` con `overflow: hidden` → clippato immediatamente.
+
+**Fix:** `ReactDOM.createPortal(panel, document.body)` — il pannello vive in `<body>`, sfugge a tutti gli ancestor con transform/overflow. Posizione calcolata inline (non in useEffect), nessuna race condition.
+
 ## Decisioni chiave
+
+**Portal obbligatorio:** qualsiasi overlay/pannello che deve apparire sopra tutto in Alpha Chat va renderizzato via `createPortal(el, document.body)`. Il motivo è `transform: translateX()` su `.chat-area` che rompe `position: fixed` per tutti i discendenti.
 
 **Lazy load:** `emoji-picker-react` è importato con `React.lazy()` — chunk separato da 309KB, non caricato finché non si apre il picker.
 

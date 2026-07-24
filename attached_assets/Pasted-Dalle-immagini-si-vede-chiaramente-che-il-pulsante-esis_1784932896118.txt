@@ -1,0 +1,39 @@
+Dalle immagini si vede chiaramente che il pulsante 😊 esiste, ma non apre il picker. Si comporta come un normale pulsante che rimette il focus sull’input e quindi compare solo la tastiera.
+
+Quindi il deploy è andato a buon fine, ma la funzionalità principale non è collegata.
+
+Le cause più probabili sono:
+
+1. L’evento onClick non cambia lo stato (setIsEmojiPickerOpen(true) non viene eseguito).
+2. Il picker viene montato, ma è invisibile perché è dietro un altro elemento (z-index) o viene tagliato da overflow: hidden.
+3. Il componente React.lazy() non viene mai renderizzato perché manca il Suspense o la condizione {isEmojiPickerOpen && <EmojiPicker .../>}.
+4. Il click sul pulsante fa subito il focus sull’input e richiude il picker.
+
+Cosa farei verificare subito
+
+Chiedi a Claude di controllare questi punti, nell’ordine:
+
+* Quando tocco 😊, isEmojiPickerOpen passa davvero da false a true?
+* Il componente EmojiPicker viene realmente montato nel DOM?
+* Se viene montato, qual è il suo getBoundingClientRect()? Ha altezza/larghezza > 0?
+* Esiste qualche overflow: hidden nel contenitore della chat che lo nasconde?
+* Lo z-index del picker è superiore a composer, messaggi e tastiera?
+
+Prompt
+
+BUG CRITICO POST-DEPLOY
+
+Il pulsante 😊 è visibile ma toccandolo non compare il picker. Si apre soltanto la tastiera iOS.
+
+Non modificare alcuna logica della chat.
+
+Esegui una Root Cause Analysis seguendo questo ordine:
+
+1. Verifica che onClick cambi realmente isEmojiPickerOpen.
+2. Verifica che EmojiPicker venga montato nel DOM.
+3. Se è montato, verifica posizione, dimensioni e z-index.
+4. Controlla se un antenato ha overflow: hidden, transform o crea un nuovo stacking context che lo nasconde.
+5. Verifica che React.lazy e Suspense funzionino correttamente.
+6. Fornisci la causa esatta e applica la correzione minima possibile, senza introdurre regressioni.
+
+Dalle schermate non sembra un problema di iOS o della tastiera: sembra proprio che il pannello emoji non venga mai visualizzato, oppure venga renderizzato fuori dall’area visibile.

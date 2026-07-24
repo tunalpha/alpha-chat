@@ -1,13 +1,14 @@
 /**
  * EmojiPickerButton — pulsante 😊 con pannello emoji + sticker.
  *
- * Caratteristiche:
- *  - Lazy import del picker emoji (non blocca il bundle principale)
- *  - Posizionamento ancorato al pulsante (getBoundingClientRect, nessun keyboard-inset-height)
- *  - preventDefault su mousedown/pointerdown: il focus rimane sulla textarea su iOS
- *  - Inserimento emoji nella posizione del cursore (selectionStart/End)
- *  - Due tab: Emoji | Sticker
- *  - Click-outside per chiudere
+ * FIX CRITICO: il pannello è renderizzato via ReactDOM.createPortal in document.body.
+ * Questo è necessario perché .chat-area ha transform: translateX() che crea un
+ * nuovo containing block per position:fixed, rompendo il posizionamento.
+ * Con il portal il pannello vive direttamente nel <body>, fuori da qualsiasi
+ * overflow:hidden o transform ancestor.
+ *
+ * Posizione calcolata inline (non in useEffect) → nessuna race condition,
+ * il pannello ha coordinate corrette sin dal primo frame.
  */
 
 import {
@@ -20,6 +21,7 @@ import {
   type CSSProperties,
   type RefObject,
 } from "react";
+import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import type { StickerPayload } from "../../types/sticker";
 
@@ -36,16 +38,15 @@ const GAP           = 8;
 
 function computePickerStyle(
   anchorRef: RefObject<HTMLButtonElement | null>,
-): CSSProperties {
-  if (!anchorRef.current) return { display: "none" };
+): CSSProperties | null {
+  if (!anchorRef.current) return null;
   const rect = anchorRef.current.getBoundingClientRect();
   const vw   = window.innerWidth;
   const vh   = window.innerHeight;
 
   // Posiziona sopra il pulsante; se non c'è spazio, sotto
-  const spaceAbove = rect.top - GAP;
-  const fitsAbove  = spaceAbove >= PICKER_HEIGHT;
-  const top        = fitsAbove
+  const fitsAbove = rect.top - GAP >= PICKER_HEIGHT;
+  const top       = fitsAbove
     ? rect.top - PICKER_HEIGHT - GAP
     : Math.min(rect.bottom + GAP, vh - PICKER_HEIGHT - GAP);
 
@@ -58,18 +59,15 @@ function computePickerStyle(
     top,
     left,
     width: PICKER_WIDTH,
-    zIndex: 1100,
+    zIndex: 9999,
   };
 }
 
 // ── Componente ───────────────────────────────────────────────────────────────
 
 interface Props {
-  /** Ref alla textarea — usato per inserire l'emoji alla posizione del cursore */
   textareaRef: RefObject<HTMLTextAreaElement | null>;
-  /** Callback testo: inserisce l'emoji nel valore corrente */
   onEmojiInsert: (native: string) => void;
-  /** Callback sticker: avvia l'invio */
   onStickerSend: (payload: StickerPayload) => void;
   disabled?: boolean;
 }
@@ -83,21 +81,18 @@ export default function EmojiPickerButton({
   disabled = false,
 }: Props) {
   const { t } = useTranslation();
-  const [open, setOpen]   = useState(false);
-  const [tab, setTab]     = useState<Tab>("emoji");
-  const buttonRef         = useRef<HTMLButtonElement>(null);
-  const panelRef          = useRef<HTMLDivElement>(null);
-  const [style, setStyle] = useState<CSSProperties>({});
+  const [open, setOpen] = useState(false);
+  const [tab, setTab]   = useState<Tab>("emoji");
+  const buttonRef       = useRef<HTMLButtonElement>(null);
+  const panelRef        = useRef<HTMLDivElement>(null);
 
-  // Ricalcola posizione ogni volta che si apre
-  useEffect(() => {
-    if (open) setStyle(computePickerStyle(buttonRef));
-  }, [open]);
+  // Posizione calcolata inline — nessun useEffect, nessuna race condition
+  const panelStyle = open ? computePickerStyle(buttonRef) : null;
 
-  // Click-outside per chiudere
+  // Chiudi se si tocca/clicca fuori dal pannello o dal pulsante
   useEffect(() => {
     if (!open) return;
-    function handleOutside(e: MouseEvent | TouchEvent) {
+    function onOutside(e: MouseEvent | TouchEvent) {
       if (
         !panelRef.current?.contains(e.target as Node) &&
         !buttonRef.current?.contains(e.target as Node)
@@ -105,28 +100,23 @@ export default function EmojiPickerButton({
         setOpen(false);
       }
     }
-    document.addEventListener("mousedown", handleOutside, true);
-    document.addEventListener("touchstart", handleOutside, true);
+    // touchstart per iOS (click ha 300 ms delay su Safari)
+    document.addEventListener("mousedown", onOutside, true);
+    document.addEventListener("touchstart", onOutside, { capture: true, passive: true });
     return () => {
-      document.removeEventListener("mousedown", handleOutside, true);
-      document.removeEventListener("touchstart", handleOutside, true);
+      document.removeEventListener("mousedown", onOutside, true);
+      document.removeEventListener("touchstart", onOutside, true);
     };
   }, [open]);
 
-  /** Inserisce l'emoji nella posizione del cursore della textarea */
   const handleEmojiClick = useCallback(
     (emojiData: { emoji: string }) => {
       const emoji = emojiData.emoji;
       const ta    = textareaRef.current;
-      if (!ta) {
-        onEmojiInsert(emoji);
-        return;
-      }
+      if (!ta) { onEmojiInsert(emoji); return; }
       const start = ta.selectionStart ?? ta.value.length;
       const end   = ta.selectionEnd   ?? ta.value.length;
-      // Inserisce e notifica il parent
       onEmojiInsert(emoji);
-      // Ripristina la posizione del cursore dopo il render
       requestAnimationFrame(() => {
         ta.focus();
         const newPos = start + emoji.length;
@@ -143,6 +133,68 @@ export default function EmojiPickerButton({
     },
     [onStickerSend],
   );
+
+  // Pannello renderizzato via portal in document.body:
+  // sfugge a transform/overflow di qualsiasi ancestor nella gerarchia React
+  const panel = open && panelStyle ? createPortal(
+    <div
+      ref={panelRef}
+      className="emoji-picker-panel"
+      style={panelStyle}
+      /**
+       * preventDefault su mousedown/pointerdown: impedisce a Safari/iOS
+       * di togliere il focus alla textarea quando si tocca il pannello.
+       */
+      onMouseDown={(e) => e.preventDefault()}
+      onPointerDown={(e) => e.preventDefault()}
+    >
+      {/* Tab selector */}
+      <div className="emoji-picker-tabs" role="tablist">
+        <button
+          role="tab"
+          type="button"
+          aria-selected={tab === "emoji"}
+          className={`emoji-picker-tab${tab === "emoji" ? " active" : ""}`}
+          onClick={() => setTab("emoji")}
+          onMouseDown={(e) => e.preventDefault()}
+        >
+          {t("chat.emojiTab")}
+        </button>
+        <button
+          role="tab"
+          type="button"
+          aria-selected={tab === "sticker"}
+          className={`emoji-picker-tab${tab === "sticker" ? " active" : ""}`}
+          onClick={() => setTab("sticker")}
+          onMouseDown={(e) => e.preventDefault()}
+        >
+          {t("chat.stickerTab")}
+        </button>
+      </div>
+
+      {/* Contenuto */}
+      <div className="emoji-picker-content">
+        <Suspense fallback={
+          <div className="emoji-picker-loading">
+            <div className="emoji-picker-spinner" />
+          </div>
+        }>
+          {tab === "emoji" ? (
+            <EmojiPickerLazy
+              onEmojiClick={handleEmojiClick}
+              lazyLoadEmojis
+              searchPlaceholder={t("chat.emojiPickerLabel")}
+              width={PICKER_WIDTH}
+              height={PICKER_HEIGHT - 48}
+            />
+          ) : (
+            <StickerPickerLazy onSelect={handleStickerSelect} />
+          )}
+        </Suspense>
+      </div>
+    </div>,
+    document.body,
+  ) : null;
 
   return (
     <>
@@ -164,63 +216,8 @@ export default function EmojiPickerButton({
         </svg>
       </button>
 
-      {/* Pannello picker */}
-      {open && (
-        <div
-          ref={panelRef}
-          className="emoji-picker-panel"
-          style={style}
-          /**
-           * Impedisce che Safari tolga il focus alla textarea.
-           * preventDefault su mousedown/pointerdown è il metodo più affidabile.
-           */
-          onMouseDown={(e) => e.preventDefault()}
-          onPointerDown={(e) => e.preventDefault()}
-        >
-          {/* Tab selector */}
-          <div className="emoji-picker-tabs" role="tablist">
-            <button
-              role="tab"
-              aria-selected={tab === "emoji"}
-              className={`emoji-picker-tab${tab === "emoji" ? " active" : ""}`}
-              onClick={() => setTab("emoji")}
-              onMouseDown={(e) => e.preventDefault()}
-            >
-              {t("chat.emojiTab")}
-            </button>
-            <button
-              role="tab"
-              aria-selected={tab === "sticker"}
-              className={`emoji-picker-tab${tab === "sticker" ? " active" : ""}`}
-              onClick={() => setTab("sticker")}
-              onMouseDown={(e) => e.preventDefault()}
-            >
-              {t("chat.stickerTab")}
-            </button>
-          </div>
-
-          {/* Contenuto */}
-          <div className="emoji-picker-content">
-            <Suspense fallback={
-              <div className="emoji-picker-loading">
-                <div className="emoji-picker-spinner" />
-              </div>
-            }>
-              {tab === "emoji" ? (
-                <EmojiPickerLazy
-                  onEmojiClick={handleEmojiClick}
-                  lazyLoadEmojis
-                  searchPlaceholder={t("chat.emojiPickerLabel")}
-                  width={PICKER_WIDTH}
-                  height={PICKER_HEIGHT - 48} /* -48 per i tab */
-                />
-              ) : (
-                <StickerPickerLazy onSelect={handleStickerSelect} />
-              )}
-            </Suspense>
-          </div>
-        </div>
-      )}
+      {/* Portal — montato in document.body, fuori da ogni ancestor transform/overflow */}
+      {panel}
     </>
   );
 }
