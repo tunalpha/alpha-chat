@@ -75,7 +75,7 @@ export default function PortalHome() {
         <div className="ph-stat"><span className="ph-stat-value">7</span><span className="ph-stat-label">{t.availableDocs}</span></div>
         <div className="ph-stat"><span className="ph-stat-value">2</span><span className="ph-stat-label">{t.languages}</span></div>
         <div className="ph-stat"><span className="ph-stat-value">Jul 2025</span><span className="ph-stat-label">{t.lastUpdated}</span></div>
-        <div className="ph-stat"><span className="ph-stat-value">NDA</span><span className="ph-stat-label">{t.ndaProtected}</span></div>
+        <div className="ph-stat"><span className="ph-stat-value" style={{fontSize:16,paddingTop:4}}>Restricted</span><span className="ph-stat-label">{t.ndaProtected}</span></div>
       </div>
 
       <div className="portal-section-divider" />

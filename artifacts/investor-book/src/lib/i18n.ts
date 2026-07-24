@@ -58,9 +58,9 @@ export const home = {
     availableDocs:   'Documents Available',
     languages:       'Languages',
     lastUpdated:     'Last Updated',
-    ndaProtected:    'NDA Protected',
+    ndaProtected:    'Restricted Access',
     docsSection:     'Available Documents',
-    noticeText:      'These documents are strictly confidential and subject to NDA. By accessing this portal you agree not to disclose, reproduce or distribute any information contained herein without prior written consent from AlphaChat.',
+    noticeText:      'These documents are strictly confidential and for authorized investors only. By accessing this portal you agree not to disclose, reproduce or distribute any information contained herein without prior written consent from AlphaChat.',
     sections: [
       { title: 'Investor Book',       body: 'Complete overview of AlphaChat — vision, product, financials, market and team. Available in EN and IT.', tag: 'Core Document', updated: 'Jul 2025', pages: '48 pages' },
       { title: 'Technology',          body: 'E2E encryption (Signal Protocol), USDA payment layer, WebRTC calls, React Native mobile — a full deep-dive.', tag: 'Technical', updated: 'Jul 2025' },
@@ -82,9 +82,9 @@ export const home = {
     availableDocs:   'Documenti Disponibili',
     languages:       'Lingue',
     lastUpdated:     'Ultimo Aggiornamento',
-    ndaProtected:    'Protetto da NDA',
+    ndaProtected:    'Accesso Riservato',
     docsSection:     'Documenti Disponibili',
-    noticeText:      'Questi documenti sono strettamente riservati e soggetti a NDA. Accedendo a questo portale accetti di non divulgare, riprodurre o distribuire alcuna informazione in essi contenuta senza il previo consenso scritto di AlphaChat.',
+    noticeText:      'Questi documenti sono strettamente riservati e destinati esclusivamente a investitori autorizzati. Accedendo a questo portale accetti di non divulgare, riprodurre o distribuire alcuna informazione in essi contenuta senza il previo consenso scritto di AlphaChat.',
     sections: [
       { title: 'Investor Book',         body: 'Panoramica completa di AlphaChat — visione, prodotto, finanza, mercato e team. Disponibile in EN e IT.', tag: 'Documento Core', updated: 'Lug 2025', pages: '48 pagine' },
       { title: 'Tecnologia',            body: 'Crittografia E2E (Signal Protocol), layer di pagamento USDA, chiamate WebRTC, app React Native — un approfondimento completo.', tag: 'Tecnico', updated: 'Lug 2025' },
