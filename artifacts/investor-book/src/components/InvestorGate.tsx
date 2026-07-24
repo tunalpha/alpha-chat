@@ -18,7 +18,7 @@ import { loadPortalSession, savePortalSession, type PortalSession } from '@/lib/
 import './investor-gate.css';
 
 // ─────────────────────────────────────────────────────────────────────────────
-const API_BASE = '/api-server/api/v1/investor';
+const API_BASE = '/api/v1/investor';
 type GatePhase = 'gate' | 'decrypting' | 'unlocking' | 'granted';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -181,7 +181,7 @@ function AdminLoginModal({ onClose }: { onClose: () => void }) {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault(); setError(''); setLoading(true);
     try {
-      const r = await fetch('/api-server/api/v1/admin/auth/login', {
+      const r = await fetch('/api/v1/admin/auth/login', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password }),
       });
