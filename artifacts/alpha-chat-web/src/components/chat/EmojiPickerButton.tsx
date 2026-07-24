@@ -160,8 +160,17 @@ export default function EmojiPickerButton({
        * preventDefault su mousedown/pointerdown: impedisce a Safari/iOS
        * di togliere il focus alla textarea quando si tocca il pannello.
        */
-      onMouseDown={(e) => e.preventDefault()}
-      onPointerDown={(e) => e.preventDefault()}
+      onMouseDown={(e) => {
+        // Previeni il furto di focus dalla textarea SOLO se l'utente non sta
+        // toccando un elemento interattivo (input ricerca, pulsanti tab, ecc.).
+        // Senza questo check, la barra di ricerca non riceve il focus su iOS.
+        const tag = (e.target as HTMLElement).tagName;
+        if (tag !== "INPUT" && tag !== "TEXTAREA") e.preventDefault();
+      }}
+      onPointerDown={(e) => {
+        const tag = (e.target as HTMLElement).tagName;
+        if (tag !== "INPUT" && tag !== "TEXTAREA") e.preventDefault();
+      }}
     >
       {/* Tab selector */}
       <div className="emoji-picker-tabs" role="tablist">

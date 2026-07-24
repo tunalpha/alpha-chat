@@ -7561,7 +7561,7 @@ html.emergency-open #root {
   flex: 1;
   overflow: hidden;
 }
-/* Override minimi emoji-picker-react — solo bordi/ombre per evitare conflitti con le icone categoria */
+/* Override emoji-picker-react — solo ciò che non rompe le icone categoria */
 .EmojiPickerReact {
   border: none !important;
   box-shadow: none !important;
@@ -7569,6 +7569,24 @@ html.emergency-open #root {
   /* Scroll fluido su iOS */
   -webkit-overflow-scrolling: touch;
   touch-action: pan-y;
+}
+/* Testo e input di ricerca visibili (senza sovrascrivere le icone categoria) */
+.EmojiPickerReact input.epr-search {
+  color: #111827 !important;
+  background: #f3f4f6 !important;
+  border: 1px solid #e5e7eb !important;
+  border-radius: 8px !important;
+}
+.EmojiPickerReact input.epr-search::placeholder {
+  color: #9ca3af !important;
+}
+/* Label categorie leggibili */
+.EmojiPickerReact .epr-category-nav button {
+  opacity: 0.7;
+}
+.EmojiPickerReact .epr-category-nav button.epr-active,
+.EmojiPickerReact .epr-category-nav button:hover {
+  opacity: 1;
 }
 /* Scroll fluido anche sull'area emoji interna */
 .EmojiPickerReact .epr-body {
