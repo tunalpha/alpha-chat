@@ -26,6 +26,7 @@ import {
   sendInvestorCodeEmail,
   sendInvestorRequestConfirmation,
   sendInvestorRequestNotification,
+  sendInvestorContactMessage,
 } from "../services/email.service";
 
 // ---------------------------------------------------------------------------
@@ -388,6 +389,34 @@ export const getAccessLog: RequestHandler = async (req, res, next) => {
 // GET  /api/investor/settings          — pubblico, restituisce { gateEnabled }
 // PATCH /api/investor/admin/settings   — admin, aggiorna il toggle
 // ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// POST /api/v1/investor/contact
+// ---------------------------------------------------------------------------
+
+export const submitContactMessage: RequestHandler = async (req, res, next) => {
+  try {
+    const { investorName, subject, message, investorEmail } = req.body as {
+      investorName?: string;
+      subject?: string;
+      message?: string;
+      investorEmail?: string;
+    };
+    if (!investorName || !subject || !message)
+      throw new AppError("MISSING_FIELDS", 400);
+    if (message.length > 4000)
+      throw new AppError("MESSAGE_TOO_LONG", 400);
+
+    await sendInvestorContactMessage({
+      investorName: investorName.trim(),
+      subject: subject.trim(),
+      message: message.trim(),
+      investorEmail: investorEmail?.trim(),
+    });
+
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+};
 
 export const getGateSettings: RequestHandler = async (_req, res, next) => {
   try {

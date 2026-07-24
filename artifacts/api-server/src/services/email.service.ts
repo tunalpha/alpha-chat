@@ -506,6 +506,60 @@ export async function sendInvestorCodeEmail(params: InvestorCodeEmailParams): Pr
 }
 
 // ---------------------------------------------------------------------------
+// Investor Contact Message (from ContactPage form)
+// ---------------------------------------------------------------------------
+
+export interface InvestorContactMessageParams {
+  investorName: string;
+  subject: string;
+  message: string;
+  investorEmail?: string;
+}
+
+export async function sendInvestorContactMessage(params: InvestorContactMessageParams): Promise<void> {
+  const { investorName, subject, message, investorEmail } = params;
+  const adminTo = ADMIN_EMAIL();
+
+  const subjectMap: Record<string, string> = {
+    meeting: "Meeting Request",
+    diligence: "Due Diligence",
+    financials: "Financial Models",
+    partnership: "Partnership",
+    other: "Other",
+  };
+  const subjectLabel = subjectMap[subject] ?? subject;
+
+  const body = `
+    <div style="background:#0d0d1a;border:1px solid #2d1b69;border-radius:12px;padding:24px;">
+      <h2 style="margin:0 0 8px;font-size:20px;color:#fff;">📩 Investor Portal — New Message</h2>
+      <p style="color:#bbb;font-size:14px;margin:0 0 20px;">A message was submitted via the Investor Contact Form.</p>
+      <table style="border-collapse:collapse;width:100%;font-size:14px;margin-bottom:20px;">
+        <tr>
+          <td style="color:#a78bfa;padding:6px 16px 6px 0;font-weight:600;white-space:nowrap;">From</td>
+          <td style="color:#e6edf3;">${investorName}${investorEmail ? ` &lt;${investorEmail}&gt;` : ""}</td>
+        </tr>
+        <tr>
+          <td style="color:#a78bfa;padding:6px 16px 6px 0;font-weight:600;white-space:nowrap;">Subject</td>
+          <td style="color:#e6edf3;">${subjectLabel}</td>
+        </tr>
+        <tr>
+          <td style="color:#a78bfa;padding:6px 16px 6px 0;font-weight:600;vertical-align:top;white-space:nowrap;">Message</td>
+          <td style="color:#e6edf3;line-height:1.6;">${message.replace(/\n/g, "<br>")}</td>
+        </tr>
+      </table>
+      <div style="background:#111;border-radius:8px;padding:12px;">
+        <p style="color:#6b7280;font-size:11px;margin:0;">
+          Received: ${new Date().toUTCString()} · AlphaChat Investor Portal
+        </p>
+      </div>
+    </div>`;
+
+  const html = wrapEmailHtml({ lang: "en", title: "AlphaChat — Investor Contact Message", body });
+  await _send({ to: adminTo, subject: `📩 Investor Message: ${subjectLabel} — ${investorName}`, html });
+  logger.info({ investorName, subject }, "Investor contact message email sent");
+}
+
+// ---------------------------------------------------------------------------
 // Core send
 // ---------------------------------------------------------------------------
 

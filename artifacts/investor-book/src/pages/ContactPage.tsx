@@ -16,9 +16,27 @@ export default function ContactPage() {
   const handleSend = async () => {
     if (!form.subject || !form.message || !form.name) return;
     setSending(true);
-    await new Promise(r => setTimeout(r, 800));
-    setSending(false);
-    setSent(true);
+    try {
+      const base = import.meta.env.BASE_URL.replace(/\/$/, '');
+      const r = await fetch(`${base}/api/v1/investor/contact`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          investorName: form.name,
+          subject: form.subject,
+          message: form.message,
+        }),
+      });
+      if (!r.ok) {
+        const data = await r.json().catch(() => ({}));
+        throw new Error((data as Record<string, string>).message || 'Send failed');
+      }
+      setSent(true);
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Could not send message. Try again.');
+    } finally {
+      setSending(false);
+    }
   };
 
   return (

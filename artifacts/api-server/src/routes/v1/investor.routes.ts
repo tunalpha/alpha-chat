@@ -26,6 +26,7 @@ const router = Router();
 router.get( "/settings", investor.getGateSettings);
 router.post("/verify",   investor.verifyAccessCode);
 router.post("/request",  investor.submitAccessRequest);
+router.post("/contact",  investor.submitContactMessage);
 
 // ── Admin ────────────────────────────────────────────────────────────────────
 router.get( "/admin/requests",               requireAdmin(), investor.listRequests);
