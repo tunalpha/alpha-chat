@@ -4,30 +4,47 @@ import { loadPortalSession } from '@/lib/portalSession';
 import { en } from '@/content/en';
 import '@/components/portal-layout.css';
 
+interface RoadmapPhase {
+  name?: string;
+  status?: string;
+  desc?: string;
+  // legacy fallback fields
+  phase?: string;
+  period?: string;
+  items?: string[];
+}
+
+const STATUS_COLORS: Record<string, string> = {
+  complete:    '#6ee7b7',
+  completed:   '#6ee7b7',
+  active:      '#a78bfa',
+  'in-progress': '#a78bfa',
+  upcoming:    'rgba(232,232,240,0.35)',
+  planned:     'rgba(232,232,240,0.35)',
+};
+
+const STATUS_LABELS: Record<string, string> = {
+  complete:    '✓ Completato',
+  completed:   '✓ Completato',
+  active:      '⟳ In corso',
+  'in-progress': '⟳ In corso',
+  upcoming:    '◯ Pianificato',
+  planned:     '◯ Pianificato',
+};
+
 export default function RoadmapPage() {
   const session = loadPortalSession();
-  const phases = en.roadmap?.phases ?? [];
+  const rawPhases: RoadmapPhase[] = (en.roadmap?.phases ?? []) as RoadmapPhase[];
 
-  const fallbackPhases = [
-    { phase: 'Phase 1 — Foundation', period: 'Q1–Q2 2025', status: 'completed', items: ['Signal E2E encryption', 'Multi-device sync', 'Phoenix Protocol', 'React Native app'] },
-    { phase: 'Phase 2 — Payments', period: 'Q3 2025', status: 'completed', items: ['USDA P2P transfers', 'Escrow system', 'Gas Station automation', 'Wallet integration'] },
-    { phase: 'Phase 3 — Scale', period: 'Q4 2025', status: 'in-progress', items: ['Group E2E encryption', 'WebRTC secure calls', 'Cloudflare R2 migration', 'i18n (10 languages)'] },
-    { phase: 'Phase 4 — Growth', period: 'Q1–Q2 2026', status: 'planned', items: ['Enterprise tier', 'SDK for developers', 'Compliance suite (GDPR, SOC2)', 'Marketplace launch'] },
-    { phase: 'Phase 5 — Global', period: 'H2 2026', status: 'planned', items: ['Series A fundraise', 'US & EU regulatory approval', 'White-label offering', 'Global expansion'] },
+  const fallbackPhases: RoadmapPhase[] = [
+    { name: 'Phase 1 — Foundation', status: 'complete',  desc: 'Signal E2E encryption, multi-device sync, Phoenix Protocol, React Native app.' },
+    { name: 'Phase 2 — Payments',   status: 'complete',  desc: 'USDA P2P transfers, escrow system, Gas Station automation, wallet integration.' },
+    { name: 'Phase 3 — Scale',      status: 'active',    desc: 'Group E2E encryption, WebRTC secure calls, Cloudflare R2 migration, i18n (10 lingue).' },
+    { name: 'Phase 4 — Growth',     status: 'upcoming',  desc: 'Enterprise tier, SDK for developers, GDPR/SOC2 compliance, Marketplace launch.' },
+    { name: 'Phase 5 — Global',     status: 'upcoming',  desc: 'Series A fundraise, US & EU regulatory approval, white-label offering, global expansion.' },
   ];
 
-  const displayPhases = phases.length > 0 ? phases : fallbackPhases;
-
-  const statusColors: Record<string, string> = {
-    completed: '#6ee7b7',
-    'in-progress': '#a78bfa',
-    planned: 'rgba(232,232,240,0.25)',
-  };
-  const statusLabels: Record<string, string> = {
-    completed: '✓ Completed',
-    'in-progress': '⟳ In Progress',
-    planned: '◯ Planned',
-  };
+  const phases = rawPhases.length > 0 ? rawPhases : fallbackPhases;
 
   return (
     <PortalLayout investorName={session?.investorName} sessionExpiry={session?.sessionExpiry}>
@@ -35,54 +52,83 @@ export default function RoadmapPage() {
         <p className="portal-page-eyebrow">Product Roadmap</p>
         <h1 className="portal-page-title">Execution, Not Promises</h1>
         <p className="portal-page-sub">
-          A phased approach from cryptographic foundation to global financial messaging platform.
-          Each phase is self-funding through the previous milestone.
+          Un approccio per fasi dalla crittografia di base alla piattaforma di
+          messaggistica finanziaria globale. Ogni fase si autofinanzia con quella precedente.
         </p>
       </div>
 
       <div style={{ position: 'relative', marginBottom: 48 }}>
-        {displayPhases.map((phase: Record<string, unknown>, i: number) => {
-          const status = (phase.status as string) ?? 'planned';
-          const color = statusColors[status] ?? statusColors.planned;
+        {phases.map((p, i) => {
+          const status = p.status ?? 'upcoming';
+          const color  = STATUS_COLORS[status] ?? STATUS_COLORS.upcoming;
+          const label  = STATUS_LABELS[status] ?? status;
+          // Support both new (name/desc) and legacy (phase/items) field shapes
+          const title  = p.name  ?? p.phase ?? `Phase ${i + 1}`;
+          const period = p.period ?? null;
+
           return (
-            <div key={i} style={{ display: 'flex', gap: 24, marginBottom: 8 }}>
+            <div key={i} style={{ display: 'flex', gap: 20, marginBottom: 8 }}>
               {/* Timeline */}
               <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', width: 24, flexShrink: 0 }}>
-                <div style={{ width: 12, height: 12, borderRadius: '50%', background: color, boxShadow: `0 0 8px ${color}`, flexShrink: 0, marginTop: 20 }} />
-                {i < displayPhases.length - 1 && <div style={{ width: 2, flex: 1, background: `linear-gradient(${color}, rgba(139,92,246,0.2))`, minHeight: 32 }} />}
+                <div style={{
+                  width: 12, height: 12, borderRadius: '50%',
+                  background: color, boxShadow: `0 0 8px ${color}`,
+                  flexShrink: 0, marginTop: 22,
+                }} />
+                {i < phases.length - 1 && (
+                  <div style={{
+                    width: 2, flex: 1,
+                    background: `linear-gradient(${color}, rgba(139,92,246,0.2))`,
+                    minHeight: 32,
+                  }} />
+                )}
               </div>
+
               {/* Card */}
               <div className="portal-card" style={{ flex: 1, marginBottom: 16 }}>
-                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
-                  <h3 className="portal-card-title" style={{ margin: 0 }}>{phase.phase as string}</h3>
-                  <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
-                    <span style={{ fontSize: 11, color: 'rgba(232,232,240,0.4)' }}>{phase.period as string}</span>
-                    <span style={{ fontSize: 11, fontWeight: 600, color }}>
-                      {statusLabels[status] ?? status}
-                    </span>
+                <div style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', flexWrap: 'wrap', gap: 8, marginBottom: 10 }}>
+                  <h3 className="portal-card-title" style={{ margin: 0, flex: 1 }}>{title}</h3>
+                  <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 2, flexShrink: 0 }}>
+                    {period && (
+                      <span style={{ fontSize: 11, color: 'rgba(232,232,240,0.45)' }}>{period}</span>
+                    )}
+                    <span style={{ fontSize: 11, fontWeight: 700, color }}>{label}</span>
                   </div>
                 </div>
-                <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8 }}>
-                  {((phase.items as string[]) ?? []).map((item: string) => (
-                    <span key={item} style={{
-                      fontSize: 12, padding: '4px 10px', borderRadius: 100,
-                      background: 'rgba(139,92,246,0.08)',
-                      border: '1px solid rgba(139,92,246,0.15)',
-                      color: 'rgba(232,232,240,0.65)',
-                    }}>{item}</span>
-                  ))}
-                </div>
+
+                {/* Description (new content shape) */}
+                {p.desc && (
+                  <p className="portal-card-body">{p.desc}</p>
+                )}
+
+                {/* Items list (legacy content shape) */}
+                {p.items && p.items.length > 0 && (
+                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
+                    {p.items.map((item: string) => (
+                      <span key={item} style={{
+                        fontSize: 12, padding: '4px 10px', borderRadius: 100,
+                        background: 'rgba(139,92,246,0.08)',
+                        border: '1px solid rgba(139,92,246,0.15)',
+                        color: 'rgba(232,232,240,0.75)',
+                      }}>{item}</span>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
           );
         })}
       </div>
 
-      <div style={{ background: 'rgba(139,92,246,0.06)', border: '1px solid rgba(139,92,246,0.2)', borderRadius: 16, padding: '20px 24px' }}>
-        <p style={{ fontSize: 13, color: 'rgba(232,232,240,0.5)', lineHeight: 1.7, margin: 0 }}>
-          📋 Full roadmap with delivery dates, KPIs and resource allocation is available in the
-          <a href="../book/en" style={{ color: '#a78bfa' }}> Investor Book → Roadmap section</a>.
-          A detailed 12-month execution plan is available upon NDA signature.
+      <div style={{
+        background: 'rgba(139,92,246,0.06)',
+        border: '1px solid rgba(139,92,246,0.2)',
+        borderRadius: 16, padding: '20px 24px',
+      }}>
+        <p style={{ fontSize: 13, color: 'rgba(232,232,240,0.55)', lineHeight: 1.7, margin: 0 }}>
+          📋 Roadmap completa con date di consegna, KPI e allocazione risorse disponibile nell'
+          <a href="../book/en" style={{ color: '#a78bfa' }}>Investor Book → Roadmap section</a>.
+          Un piano di esecuzione dettagliato su 12 mesi è disponibile previa firma NDA.
         </p>
       </div>
     </PortalLayout>

@@ -69,7 +69,7 @@ async function verifyCode(plain: string, hash: string): Promise<boolean> {
 export const verifyAccessCode: RequestHandler = async (req, res, next) => {
   try {
     const { code } = req.body as { code?: string };
-    if (!code || typeof code !== "string") throw new AppError(400, "Access code is required");
+    if (!code || typeof code !== "string") throw new AppError("ACCESS_CODE_REQUIRED", 400);
 
     const ip = clientIp(req);
     const ua = req.headers["user-agent"] ?? "";
@@ -90,7 +90,7 @@ export const verifyAccessCode: RequestHandler = async (req, res, next) => {
       await InvestorAccessLogModel.create({
         ip, userAgent: ua, outcome: "denied", reason: "Code not found",
       });
-      throw new AppError(401, "Invalid access code");
+      throw new AppError("INVALID_ACCESS_CODE", 401);
     }
 
     // Check expiry
@@ -104,7 +104,7 @@ export const verifyAccessCode: RequestHandler = async (req, res, next) => {
         investorEmail: matchedCode.investorEmail,
         outcome: "expired", reason: "Code expired",
       });
-      throw new AppError(403, "Access code has expired");
+      throw new AppError("ACCESS_CODE_EXPIRED", 403);
     }
 
     // Check revoked
@@ -114,7 +114,7 @@ export const verifyAccessCode: RequestHandler = async (req, res, next) => {
         investorEmail: matchedCode.investorEmail,
         outcome: "revoked", reason: "Code revoked",
       });
-      throw new AppError(403, "Access code has been revoked");
+      throw new AppError("ACCESS_CODE_REVOKED", 403);
     }
 
     // Update usage stats
@@ -151,9 +151,9 @@ export const submitAccessRequest: RequestHandler = async (req, res, next) => {
     const { name, company, email, message } = req.body as {
       name?: string; company?: string; email?: string; message?: string;
     };
-    if (!name?.trim())    throw new AppError(400, "Name is required");
-    if (!company?.trim()) throw new AppError(400, "Company is required");
-    if (!email?.trim())   throw new AppError(400, "Email is required");
+    if (!name?.trim())    throw new AppError("NAME_REQUIRED", 400);
+    if (!company?.trim()) throw new AppError("COMPANY_REQUIRED", 400);
+    if (!email?.trim())   throw new AppError("EMAIL_REQUIRED", 400);
 
     await InvestorAccessRequestModel.create({ name, company, email, message });
 
@@ -215,7 +215,7 @@ export const approveRequest: RequestHandler = async (req, res, next) => {
     };
 
     const request = await InvestorAccessRequestModel.findById(id);
-    if (!request) throw new AppError(404, "Request not found");
+    if (!request) throw new AppError("NOT_FOUND", 404);
 
     const plainCode = customCode?.trim().toUpperCase() || generateCode();
     const hash = await hashCode(plainCode);
@@ -260,7 +260,7 @@ export const rejectRequest: RequestHandler = async (req, res, next) => {
   try {
     const { id } = req.params;
     const request = await InvestorAccessRequestModel.findById(id);
-    if (!request) throw new AppError(404, "Request not found");
+    if (!request) throw new AppError("NOT_FOUND", 404);
 
     request.status = "rejected";
     request.reviewedAt = new Date();
@@ -303,7 +303,7 @@ export const regenerateCode: RequestHandler = async (req, res, next) => {
   try {
     const { id } = req.params;
     const code = await InvestorAccessCodeModel.findById(id);
-    if (!code) throw new AppError(404, "Code not found");
+    if (!code) throw new AppError("NOT_FOUND", 404);
 
     const plainCode = generateCode();
     code.codeHash = await hashCode(plainCode);
@@ -331,7 +331,7 @@ export const updateCode: RequestHandler = async (req, res, next) => {
     };
 
     const code = await InvestorAccessCodeModel.findById(id);
-    if (!code) throw new AppError(404, "Code not found");
+    if (!code) throw new AppError("NOT_FOUND", 404);
 
     if (validityDays !== undefined) {
       code.expiresAt = validityDays > 0
@@ -399,7 +399,7 @@ export const getGateSettings: RequestHandler = async (_req, res, next) => {
 export const updateGateSettings: RequestHandler = async (req, res, next) => {
   try {
     const { gateEnabled } = req.body as { gateEnabled?: boolean };
-    if (typeof gateEnabled !== "boolean") throw new AppError(400, "gateEnabled must be boolean");
+    if (typeof gateEnabled !== "boolean") throw new AppError("VALIDATION_ERROR", 400);
     const settings = await setInvestorSettings({ gateEnabled });
     res.json({ ok: true, ...settings });
   } catch (err) { next(err); }
