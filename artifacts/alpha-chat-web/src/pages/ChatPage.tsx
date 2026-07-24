@@ -101,6 +101,13 @@ import ConfirmModal from "../components/ConfirmModal";
 import { apiClearConversationMessages } from "../lib/api";
 import { archiveConversation } from "./ArchivioPage";
 import { useTranslation } from "react-i18next";
+import EmojiPickerButton from "../components/chat/EmojiPickerButton";
+import StickerMessage from "../components/chat/StickerMessage";
+import {
+  encodeStickerPayload,
+  decodeStickerPayload,
+  type StickerPayload,
+} from "../types/sticker";
 
 interface Props {
   onNavigate: (view: AppView) => void;
@@ -359,6 +366,8 @@ function ChatInput({
   onRecordingChange,
   onAttach,
   onAttachMenu,
+  onEmojiInsert,
+  onStickerSend,
   disabled,
   burnAfterRead,
   onToggleBurn,
@@ -371,6 +380,10 @@ function ChatInput({
   onAttach?: (files: FileList) => void;
   /** Quando fornito, il pulsante 📎 apre il menu allegati invece del file picker diretto */
   onAttachMenu?: () => void;
+  /** Callback per inserire un'emoji nella posizione del cursore */
+  onEmojiInsert?: (emoji: string) => void;
+  /** Callback per inviare uno sticker */
+  onStickerSend?: (payload: StickerPayload) => void;
   disabled: boolean;
   burnAfterRead?: boolean;
   onToggleBurn?: () => void;
@@ -445,6 +458,16 @@ function ChatInput({
           <path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>
         </svg>
       </button>
+
+      {/* Pulsante 😊 Emoji + Sticker — ordine: 🔥 | 📎 | 😊 | textarea | invia/🎤 */}
+      {onEmojiInsert && onStickerSend && (
+        <EmojiPickerButton
+          textareaRef={textareaRef}
+          onEmojiInsert={onEmojiInsert}
+          onStickerSend={onStickerSend}
+          disabled={disabled}
+        />
+      )}
 
       <textarea
         ref={textareaRef}
@@ -1734,6 +1757,80 @@ export default function ChatPage({ onNavigate }: Props) {
       }
     } finally {
       setSending(false);
+    }
+  }
+
+  // ── Emoji insert (cursore) ───────────────────────────────────────────────────
+  /**
+   * Inserisce l'emoji nella posizione del cursore all'interno di inputText.
+   * L'inserimento fisico nella textarea è gestito da EmojiPickerButton.
+   * Qui aggiorniamo lo state React in modo coerente.
+   */
+  const handleEmojiInsert = useCallback((emoji: string) => {
+    // Aggiorniamo lo state — EmojiPickerButton ripristinerà il cursore con rAF
+    setInputText((prev) => {
+      // Otteniamo selectionStart dalla textarea via ref — già disponibile perché
+      // il picker preserva il focus con preventDefault
+      const ta = document.activeElement as HTMLTextAreaElement | null;
+      const start = (ta?.tagName === "TEXTAREA" ? ta.selectionStart : null) ?? prev.length;
+      const end   = (ta?.tagName === "TEXTAREA" ? ta.selectionEnd   : null) ?? prev.length;
+      return prev.slice(0, start) + emoji + prev.slice(end);
+    });
+  }, []);
+
+  // ── Sticker send ─────────────────────────────────────────────────────────────
+  /**
+   * Invia uno sticker come messaggio con message_type "sticker".
+   * Il payload è serializzato con encodeStickerPayload e cifrato Signal
+   * esattamente come un messaggio di testo normale — E2E invariato.
+   *
+   * Compatibilità: client senza supporto sticker leggono il body decifrato
+   * e lo mostrano come "📎 Sticker" (il marker STICKER_MARKER è human-readable).
+   */
+  async function handleStickerSend(payload: StickerPayload) {
+    if (!activeConvId || sending) return;
+    const body = encodeStickerPayload(payload);
+    const clientMessageId = crypto.randomUUID();
+    const pendingMsgId    = `pending-${clientMessageId}`;
+    const nowIso          = new Date().toISOString();
+
+    // Cache del plaintext (marker + JSON) per display dei propri messaggi
+    sentCacheRef.current.set(clientMessageId, body);
+    void cacheOwnText(clientMessageId, body);
+
+    // Optimistic update — bolla sticker visibile immediatamente
+    const optimisticMsg: MessageItem = {
+      id:                   pendingMsgId,
+      client_message_id:    clientMessageId,
+      conversation_id:      activeConvId,
+      sender_id:            auth?.userId ?? "",
+      message_type:         "sticker",
+      ciphertext:           null,
+      ciphertext_type:      null,
+      sequence_number:      0,
+      sent_at:              nowIso,
+      server_received_at:   nowIso,
+      status:               "sent",
+      deleted_for_everyone: false,
+      reply_to_message_id:  null,
+      burn_after_read:      false,
+      expires_at:           null,
+    };
+    setDecryptedTexts((prev) => new Map(prev).set(pendingMsgId, body));
+    setMessages((prev) => [...prev, optimisticMsg]);
+    void playNotifSound("sent");
+
+    try {
+      const signal = await encryptForActive(body);
+      await apiSendMessage(activeConvId, body, {
+        signal,
+        clientMessageId,
+        deviceCiphertexts: signal?.deviceCiphertexts,
+        messageType: "sticker",
+      });
+    } catch {
+      setMessages((prev) => prev.filter((m) => m.id !== pendingMsgId));
+      setDecryptedTexts((prev) => { const next = new Map(prev); next.delete(pendingMsgId); return next; });
     }
   }
 
@@ -3113,6 +3210,9 @@ export default function ChatPage({ onNavigate }: Props) {
                             }}
                             onDetail={(id) => setUsdaDetailId(id)}
                           />
+                        ) : msg.message_type === "sticker" ? (
+                          /* Sticker — payload cifrato, decodificato in StickerMessage */
+                          <StickerMessage body={decryptedTexts.get(msg.id) ?? ""} />
                         ) : (
                           renderText()
                         )}
@@ -3262,6 +3362,8 @@ export default function ChatPage({ onNavigate }: Props) {
                   onVoiceSend={(v) => void handleVoiceSend(v)}
                   onRecordingChange={handleRecordingChange}
                   onAttachMenu={() => setShowAttachSheet(true)}
+                  onEmojiInsert={handleEmojiInsert}
+                  onStickerSend={(p) => void handleStickerSend(p)}
                   disabled={sending}
                   burnAfterRead={burnAfterRead}
                   onToggleBurn={() => setBurnAfterRead((v) => !v)}

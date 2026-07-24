@@ -217,7 +217,14 @@
     "mediaLocation": "📍 Местоположение",
     "mediaSharedLocation": "📍 Общий адрес",
     "mediaVoiceForward": "🎤 Голосовое сообщение",
-    "locationReady": "📍 Местоположение готово"
+    "locationReady": "📍 Местоположение готово",
+    "emojiButtonLabel": "Вставить эмодзи",
+    "emojiTab": "Эмодзи",
+    "stickerTab": "Стикеры",
+    "emojiPickerLabel": "Найти эмодзи…",
+    "stickerPickerLabel": "Выбрать стикер",
+    "stickerSent": "📎 Стикер",
+    "stickerAlt": "Стикер"
   },
   "settings": {
     "title": "Настройки",

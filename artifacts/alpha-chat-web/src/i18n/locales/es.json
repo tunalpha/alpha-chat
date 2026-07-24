@@ -217,7 +217,14 @@
     "mediaLocation": "📍 Ubicación",
     "mediaSharedLocation": "📍 Ubicación compartida",
     "mediaVoiceForward": "🎤 Mensaje de voz",
-    "locationReady": "📍 Ubicación lista"
+    "locationReady": "📍 Ubicación lista",
+    "emojiButtonLabel": "Insertar emoji",
+    "emojiTab": "Emoji",
+    "stickerTab": "Stickers",
+    "emojiPickerLabel": "Buscar emoji…",
+    "stickerPickerLabel": "Elige un sticker",
+    "stickerSent": "📎 Sticker",
+    "stickerAlt": "Sticker"
   },
   "settings": {
     "title": "Ajustes",

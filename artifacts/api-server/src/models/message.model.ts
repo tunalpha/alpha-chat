@@ -15,7 +15,7 @@ import mongoose, { type Document, type Model, Schema } from "mongoose";
 // Types
 // ---------------------------------------------------------------------------
 
-export type MessageType = "text" | "media" | "system" | "reply" | "forward" | "usda_send" | "usda_request" | "usda_receipt" | "payment";
+export type MessageType = "text" | "media" | "system" | "reply" | "forward" | "usda_send" | "usda_request" | "usda_receipt" | "payment" | "sticker";
 
 /**
  * Stato delivery del messaggio (CTO recommendation Sprint 6).

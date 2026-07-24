@@ -48,3 +48,4 @@
 - [PDF export + print CSS](pdf-export-print-css.md) — chromium da /nix/store per print-to-pdf; in @media print forzare nero anche le varianti opacity (text-foreground/80) e overflow visible sulle tabelle
 - [i18n Phase 2 — audit hardcoded strings](i18n-phase2.md) — pattern e componenti coinvolti; signAndPoll useCallback richiede t in deps; confirmDesc keys in emergency namespace includono prefisso frase completo
 - [Investor Secure Access](investor-secure-access.md) — VDR gate investor-book: argon2id codes, sessionStorage session, admin 3-tab panel, email delivery
+- [Emoji Picker + Sticker system](emoji-sticker.md) — lazy emoji-picker-react, posizionamento anchor (no keyboard-inset-height), preventDefault focus iOS, sticker cifrato Signal, retrocompat "📎 Sticker"

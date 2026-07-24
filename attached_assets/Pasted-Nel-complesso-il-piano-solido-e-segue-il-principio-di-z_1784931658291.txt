@@ -1,0 +1,103 @@
+Nel complesso il piano è solido e segue il principio di zero regressioni. C’è però qualche punto che modificherei prima di implementarlo.
+
+👍 Va bene
+
+* Componenti completamente isolati.
+* Nessuna modifica a Signal Protocol, WebSocket o crittografia.
+* Sticker trattati come payload cifrato (quindi E2E rimane invariata).
+* MongoDB senza migrazioni.
+* Nessuna modifica ai pagamenti o al wallet.
+
+⚠️ Migliorerei questi punti
+
+1. Evita di dipendere da env(keyboard-inset-height)
+
+Su iOS non è supportato in modo uniforme (soprattutto PWA/Safari).
+
+Chiedi invece:
+
+Il posizionamento del picker deve utilizzare Floating UI/Popper ancorato al composer. Se le Keyboard API sono disponibili usarle, altrimenti effettuare fallback automatico senza coordinate fisse o dipendenza da keyboard-inset-height.
+
+È molto più robusto.
+
+⸻
+
+2. Non modificare il MessageType esistente
+
+Invece di cambiare l’enum direttamente, usa un’estensione compatibile.
+
+Esempio:
+
+type: "text"
+payloadType: "sticker"
+
+oppure
+
+type: "sticker"
+
+solo se tutto il parser è già forward-compatible.
+
+Questo evita regressioni su client meno aggiornati.
+
+⸻
+
+3. Aggiungi lazy import
+
+Il picker emoji pesa parecchio.
+
+Richiedi esplicitamente:
+
+const EmojiPicker = React.lazy(...)
+
+oppure
+
+dynamic import()
+
+Così non aumenta il tempo di apertura della chat.
+
+⸻
+
+4. Non perdere il focus
+
+Oltre a ripristinare selectionStart e selectionEnd, aggiungi anche:
+
+preventDefault() su mousedown/pointerdown
+
+prima del click.
+
+È il metodo più affidabile per evitare che Safari tolga il focus all’input.
+
+⸻
+
+5. Compatibilità con i client vecchi
+
+Se un client riceve uno sticker ma non lo supporta:
+
+Mostrare:
+"📎 Sticker"
+
+anziché un messaggio vuoto o un errore.
+
+È importante per la retrocompatibilità.
+
+⸻
+
+6. Limiti di sicurezza
+
+Aggiungi validazione:
+
+* massimo 250 KB
+* solo image/webp
+* solo image/png
+* larghezza ≤ 512 px
+* altezza ≤ 512 px
+
+per evitare payload anomali.
+
+⸻
+
+Valutazione
+
+Direi 9,8/10.
+
+Con questi piccoli accorgimenti il task è davvero pronto per la produzione e mantiene il rischio di regressioni estremamente basso, soprattutto su iPhone/PWA, che è la piattaforma su cui avete riscontrato più problemi.

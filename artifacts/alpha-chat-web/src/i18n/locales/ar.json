@@ -217,7 +217,14 @@
     "mediaLocation": "📍 الموقع",
     "mediaSharedLocation": "📍 الموقع المشترك",
     "mediaVoiceForward": "🎤 رسالة صوتية",
-    "locationReady": "📍 الموقع جاهز"
+    "locationReady": "📍 الموقع جاهز",
+    "emojiButtonLabel": "إدراج رمز تعبيري",
+    "emojiTab": "إيموجي",
+    "stickerTab": "ملصقات",
+    "emojiPickerLabel": "ابحث عن إيموجي…",
+    "stickerPickerLabel": "اختر ملصقًا",
+    "stickerSent": "📎 ملصق",
+    "stickerAlt": "ملصق"
   },
   "settings": {
     "title": "الإعدادات",

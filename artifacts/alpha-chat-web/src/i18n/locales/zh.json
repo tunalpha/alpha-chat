@@ -217,7 +217,14 @@
     "mediaLocation": "📍 位置",
     "mediaSharedLocation": "📍 共享位置",
     "mediaVoiceForward": "🎤 语音消息",
-    "locationReady": "📍 位置已就绪"
+    "locationReady": "📍 位置已就绪",
+    "emojiButtonLabel": "插入表情符号",
+    "emojiTab": "表情",
+    "stickerTab": "贴纸",
+    "emojiPickerLabel": "搜索表情符号…",
+    "stickerPickerLabel": "选择贴纸",
+    "stickerSent": "📎 贴纸",
+    "stickerAlt": "贴纸"
   },
   "settings": {
     "title": "设置",

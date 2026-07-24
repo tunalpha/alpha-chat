@@ -812,16 +812,20 @@ export async function apiSendMessage(
     deviceCiphertexts?: Array<{ device_id: string; body: string; type: number }>;
     /** Inoltro: usa message_type "forward" */
     forward?: boolean;
+    /** Override esplicito del message_type (es. "sticker") */
+    messageType?: string;
   } = {},
 ): Promise<MessageItem> {
   const ciphertext = options.signal?.body ?? encodeMessage(text);
   const ciphertextType = options.signal?.type ?? 1;
+  const messageType = options.messageType
+    ?? (options.replyToMessageId ? "reply" : options.forward ? "forward" : "text");
   return request<MessageItem>("POST", `/conversations/${conversationId}/messages`, {
     client_message_id: options.clientMessageId ?? crypto.randomUUID(),
     ciphertext,
     ciphertext_type: ciphertextType,
     sender_key_id: 1,
-    message_type: options.replyToMessageId ? "reply" : options.forward ? "forward" : "text",
+    message_type: messageType,
     sent_at: new Date().toISOString(),
     reply_to_message_id: options.replyToMessageId ?? null,
     burn_after_read: options.burnAfterRead ?? false,

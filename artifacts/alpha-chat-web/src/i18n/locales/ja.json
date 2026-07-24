@@ -217,7 +217,14 @@
     "mediaLocation": "📍 位置情報",
     "mediaSharedLocation": "📍 共有位置情報",
     "mediaVoiceForward": "🎤 音声メッセージ",
-    "locationReady": "📍 位置情報の準備完了"
+    "locationReady": "📍 位置情報の準備完了",
+    "emojiButtonLabel": "絵文字を挿入",
+    "emojiTab": "絵文字",
+    "stickerTab": "スタンプ",
+    "emojiPickerLabel": "絵文字を検索…",
+    "stickerPickerLabel": "スタンプを選ぶ",
+    "stickerSent": "📎 スタンプ",
+    "stickerAlt": "スタンプ"
   },
   "settings": {
     "title": "設定",
