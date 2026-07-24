@@ -46,6 +46,7 @@ export const STICKER_PACKS: StickerPack[] = [
 /** Converte una StickerMeta in StickerPayload pronto per l'invio */
 export function stickerMetaToPayload(meta: StickerMeta, packId: string): StickerPayload {
   return {
+    v: 1,
     stickerId: meta.id,
     packId,
     url: `${BASE}/${meta.hex}.png`,

@@ -12,6 +12,11 @@
  *   - width, height: ≤ 512 px
  */
 export interface StickerPayload {
+  /** Versione del payload — consente evoluzione futura senza rompere client esistenti.
+   *  v1: payload base (stickerId, packId, url, width, height)
+   *  v2+ (futuro): sticker animati, thumbnail, checksum, firma digitale, ecc.
+   */
+  v: 1;
   stickerId: string;
   packId: string;
   url: string;
@@ -29,11 +34,16 @@ export function encodeStickerPayload(payload: StickerPayload): string {
   return `${STICKER_MARKER}${JSON.stringify(payload)}`;
 }
 
-/** Deserializza il payload sticker dal corpo decifrato */
+/** Deserializza il payload sticker dal corpo decifrato.
+ *  Verifica che v sia riconosciuto; i payload con v futura vengono mostrati
+ *  come "📎 Sticker" finché il client non viene aggiornato. */
 export function decodeStickerPayload(body: string): StickerPayload | null {
   if (!body.startsWith(STICKER_MARKER)) return null;
   try {
-    return JSON.parse(body.slice(STICKER_MARKER.length)) as StickerPayload;
+    const parsed = JSON.parse(body.slice(STICKER_MARKER.length)) as StickerPayload;
+    // Supportiamo solo v:1; versioni future vengono gestite dal fallback
+    if (parsed.v !== 1) return null;
+    return parsed;
   } catch {
     return null;
   }
