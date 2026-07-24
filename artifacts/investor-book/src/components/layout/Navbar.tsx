@@ -50,7 +50,7 @@ export default function Navbar({ lang, theme, toggleTheme }: NavbarProps) {
         <div className="flex items-center gap-3 ml-auto">
 
           {/* Language toggle */}
-          <div className="flex bg-white/5 p-1 rounded-full border border-border/30 text-xs font-medium">
+          <div className="flex bg-muted/20 p-1 rounded-full border border-border/30 text-xs font-medium">
             <Link
               href="/en"
               className={`px-3 py-1.5 rounded-full transition-all ${lang === 'en' ? 'bg-primary text-white shadow-lg' : 'text-muted-foreground hover:text-foreground'}`}
@@ -69,29 +69,19 @@ export default function Navbar({ lang, theme, toggleTheme }: NavbarProps) {
           <button
             onClick={toggleTheme}
             aria-label="Toggle theme"
-            className="w-9 h-9 rounded-full flex items-center justify-center border border-border/30 bg-white/5 text-muted-foreground hover:text-foreground hover:bg-white/10 transition-all"
+            className="w-9 h-9 rounded-full flex items-center justify-center border border-border/30 bg-muted/20 text-muted-foreground hover:text-foreground hover:bg-white/10 transition-all"
           >
             {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
           </button>
 
-          {/* PDF download */}
+          {/* PDF download — visible on all screen sizes */}
           <a
             href={pdfFile}
             download={pdfName}
-            className="hidden sm:flex items-center gap-2 px-4 py-2 rounded-full border border-primary/40 bg-primary/10 text-primary hover:bg-primary/20 text-sm font-medium transition-all"
+            className="flex items-center gap-2 px-3 py-2 sm:px-4 rounded-full border border-primary/40 bg-primary/10 text-primary hover:bg-primary/20 text-sm font-medium transition-all"
           >
             <DownloadIcon />
-            {dict.nav.download}
-          </a>
-
-          {/* Mobile download (icon only) */}
-          <a
-            href={pdfFile}
-            download={pdfName}
-            aria-label="Download PDF"
-            className="sm:hidden w-9 h-9 rounded-full flex items-center justify-center border border-primary/40 bg-primary/10 text-primary hover:bg-primary/20 transition-all"
-          >
-            <DownloadIcon />
+            <span>{dict.nav.download}</span>
           </a>
 
           {/* Contact */}

@@ -11,10 +11,10 @@ export default function FounderSection({ dict }: { dict: any }) {
       <div className="grid md:grid-cols-12 gap-12">
         <div className="md:col-span-5 space-y-6">
           <div>
-            <h3 className="text-4xl md:text-5xl font-serif text-white mb-2">{dict.founder.name}</h3>
+            <h3 className="text-4xl md:text-5xl font-serif text-foreground mb-2">{dict.founder.name}</h3>
             <p className="text-lg text-muted-foreground font-mono text-sm">{dict.founder.alias}</p>
           </div>
-          <div className="inline-block px-3 py-1 bg-white/5 border border-white/10 rounded text-sm text-primary">
+          <div className="inline-block px-3 py-1 bg-muted/20 border border-border rounded text-sm text-primary">
             {dict.founder.role}
           </div>
         </div>
@@ -26,8 +26,8 @@ export default function FounderSection({ dict }: { dict: any }) {
         </div>
       </div>
 
-      <div className="mt-20 p-8 border border-white/10 bg-white/[0.02] rounded-2xl backdrop-blur-sm">
-        <h4 className="text-xl font-serif text-white mb-8">{dict.founder.philosophyTitle}</h4>
+      <div className="mt-20 p-8 border border-border bg-muted/20 rounded-2xl backdrop-blur-sm">
+        <h4 className="text-xl font-serif text-foreground mb-8">{dict.founder.philosophyTitle}</h4>
         <div className="grid md:grid-cols-3 gap-8">
           {dict.founder.philosophy.map((item: any, i: number) => (
             <div key={i} className="space-y-3">
@@ -39,7 +39,7 @@ export default function FounderSection({ dict }: { dict: any }) {
       </div>
 
       <div className="mt-20 text-center">
-        <blockquote className="text-2xl md:text-3xl font-serif italic text-white/90 leading-snug max-w-3xl mx-auto">
+        <blockquote className="text-2xl md:text-3xl font-serif italic text-foreground/90 leading-snug max-w-3xl mx-auto">
           "{dict.founder.quote}"
         </blockquote>
       </div>

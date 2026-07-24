@@ -15,7 +15,7 @@ export default function CoverSection({ dict }: { dict: any }) {
         />
         
         <div className="space-y-4">
-          <div className="inline-flex items-center rounded-full border border-white/10 bg-white/5 px-4 py-1.5 text-sm font-medium text-muted-foreground backdrop-blur-md">
+          <div className="inline-flex items-center rounded-full border border-border bg-muted/20 px-4 py-1.5 text-sm font-medium text-muted-foreground backdrop-blur-md">
             <span className="flex w-2 h-2 rounded-full bg-primary mr-2 animate-pulse" />
             {dict.cover.badge}
           </div>
@@ -25,7 +25,7 @@ export default function CoverSection({ dict }: { dict: any }) {
           </h1>
         </div>
         
-        <p className="max-w-xl text-xl md:text-2xl text-muted-foreground font-light tracking-wide pt-8 border-t border-white/10">
+        <p className="max-w-xl text-xl md:text-2xl text-muted-foreground font-light tracking-wide pt-8 border-t border-border">
           {dict.cover.subtitle}
         </p>
       </div>
