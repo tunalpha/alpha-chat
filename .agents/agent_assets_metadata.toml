@@ -36,3 +36,9 @@ id = "8Bes1MUPHecrT4lNmblhL"
 uri = "file://artifacts/alpha-chat-web/public/logo.png"
 type = "image"
 title = "AlphaChat Logo — A viola"
+
+[[outputs]]
+id = "atIjDwPVZkPoq5AqRyXoL"
+uri = "file://artifacts/alpha-chat-web/public/logo.svg"
+type = "image"
+title = "AlphaChat Logo — SVG vettoriale"
