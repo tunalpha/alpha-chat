@@ -59,7 +59,7 @@ const growthData = {
     { label: 'WhatsApp', value: 2000, color: '#a855f7', suffix: 'M' },
     { label: 'Telegram', value: 900, color: '#8b5cf6', suffix: 'M' },
     { label: 'Signal', value: 40, color: '#7c3aed', suffix: 'M' },
-    { label: 'AlphaChat', value: 12, color: '#6d28d9', suffix: 'M target' },
+    { label: 'AlphaChat', value: 12, color: '#6d28d9', suffix: 'M users by 2036' },
   ],
   stablecoins: [
     { label: 'USDT', value: 115, color: '#34d399', suffix: 'B' },
