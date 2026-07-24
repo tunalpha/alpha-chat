@@ -354,9 +354,15 @@
 
 /* ── Responsive ──────────────────────────────────────────── */
 @media (max-width: 900px) {
-  .portal-links { display: none; }
+  .portal-links         { display: none; }
   .portal-session-label { display: none; }
-  .portal-hamburger { display: flex; }
+  .portal-lang-btn      { display: none; }
+  .portal-theme-btn     { display: none; }
+  .portal-session-badge { display: none; }
+  .portal-logout-btn    { display: none; }
+  .portal-hamburger     { display: flex; }
+  .portal-nav-inner     { gap: 12px; padding: 0 16px; }
+  .portal-logo-subtitle { display: none; }  /* nasconde il sottotitolo su mobile per risparmiare spazio */
 }
 @media (max-width: 600px) {
   .portal-content { padding: 24px 16px 48px; }
@@ -383,6 +389,12 @@
   background-clip: text;
   line-height: 1.1;
   margin: 0 0 12px;
+}
+/* Light mode: testo scuro leggibile */
+.portal-light .portal-page-title {
+  background: linear-gradient(135deg, #1a1830 0%, #7c3aed 55%);
+  -webkit-background-clip: text;
+  background-clip: text;
 }
 .portal-page-sub {
   font-size: 16px;

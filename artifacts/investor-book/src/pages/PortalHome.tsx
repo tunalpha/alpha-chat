@@ -329,6 +329,44 @@ export default function PortalHome() {
           font-size: 12px; color: rgba(232,232,240,0.4);
           line-height: 1.6; margin: 0;
         }
+
+        /* ── Light mode overrides ─────────────────────── */
+        .portal-light .ph-title {
+          background: linear-gradient(135deg, #1a1830 0%, #7c3aed 55%);
+          -webkit-background-clip: text;
+          background-clip: text;
+          -webkit-text-fill-color: transparent;
+        }
+        .portal-light .ph-sub { color: rgba(26,24,48,0.6); }
+        .portal-light .ph-meta-item { color: rgba(26,24,48,0.65); }
+        .portal-light .ph-meta-label { color: rgba(26,24,48,0.45); }
+        .portal-light .ph-meta-value { color: rgba(26,24,48,0.75); }
+        .portal-light .ph-shield {
+          background: rgba(139,92,246,0.05);
+          border-color: rgba(139,92,246,0.18);
+        }
+        .portal-light .ph-shield-line { color: rgba(26,24,48,0.65); border-color: rgba(139,92,246,0.12); }
+        .portal-light .ph-stat { background: rgba(139,92,246,0.05); border-color: rgba(139,92,246,0.15); }
+        .portal-light .ph-stat-label { color: rgba(26,24,48,0.5); }
+        .portal-light .ph-section-title { color: #1a1830; }
+        .portal-light .ph-card {
+          background: #fff;
+          border-color: rgba(139,92,246,0.14);
+        }
+        .portal-light .ph-card:hover {
+          background: #faf9ff;
+          border-color: rgba(139,92,246,0.35);
+        }
+        .portal-light .ph-card-title { color: #1a1830; }
+        .portal-light .ph-card-body { color: rgba(26,24,48,0.6); }
+        .portal-light .ph-card-footer { border-color: rgba(139,92,246,0.1); }
+        .portal-light .ph-card-updated { color: rgba(26,24,48,0.4); }
+        .portal-light .ph-notice {
+          background: rgba(239,68,68,0.04);
+          border-color: rgba(239,68,68,0.15);
+        }
+        .portal-light .ph-notice p { color: rgba(26,24,48,0.5); }
+        .portal-light .ph-eyebrow { color: rgba(109,40,217,0.7); }
       `}</style>
     </PortalLayout>
   );

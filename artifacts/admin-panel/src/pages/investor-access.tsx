@@ -18,8 +18,11 @@ function GateToggle() {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    invFetch<{ gateEnabled: boolean }>("/settings")
-      .then(d => setEnabled(d.gateEnabled))
+    // Usa l'endpoint pubblico (GET /api/v1/investor/settings) perché
+    // GET /api/v1/investor/admin/settings non esiste come route separata.
+    fetch("/api/v1/investor/settings")
+      .then(r => r.json())
+      .then((d: { gateEnabled: boolean }) => setEnabled(d.gateEnabled))
       .catch(() => {});
   }, []);
 
