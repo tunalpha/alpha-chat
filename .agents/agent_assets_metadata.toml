@@ -18,3 +18,15 @@ id = "bkMqjBPDwURKWQUaej2ox"
 uri = "file://HARDENING_VALIDATION.md"
 type = "text"
 title = "Validazione Fase 1 — Piano di Test (7 scenari)"
+
+[[outputs]]
+id = "A3Ng8Hv_iDBGsXrciIt6j"
+uri = "file://.agents/outputs/AlphaChat-Investor-Book-EN.pdf"
+type = "pdf"
+title = "AlphaChat Investor Book — English (PDF, final)"
+
+[[outputs]]
+id = "TvtLrQbtJSmNnm6aENnRS"
+uri = "file://.agents/outputs/AlphaChat-Investor-Book-IT.pdf"
+type = "pdf"
+title = "AlphaChat Investor Book — Italiano (PDF, finale)"

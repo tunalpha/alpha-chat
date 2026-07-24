@@ -1,0 +1,27 @@
+kind = "web"
+previewPath = "/investor-book/"
+title = "AlphaChat Investor Book"
+version = "1.0.0"
+id = "artifacts/investor-book"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/investor-book/" ]
+localPort = 21067
+
+[services.development]
+run = "pnpm --filter @workspace/investor-book run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/investor-book", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/investor-book/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "21067"
+BASE_PATH = "/investor-book/"

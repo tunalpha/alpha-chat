@@ -1,0 +1,249 @@
+@import url('https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Fraunces:ital,opsz,wght@0,9..144,300;0,9..144,400;0,9..144,600;1,9..144,300;1,9..144,400&family=JetBrains+Mono:wght@400;500&display=swap');
+@import 'tailwindcss';
+@import 'tw-animate-css';
+@plugin "@tailwindcss/typography";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+  --color-card-border: hsl(var(--card-border));
+
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+  --color-popover-border: hsl(var(--popover-border));
+
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+  --color-primary-border: var(--primary-border);
+
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+  --color-secondary-border: var(--secondary-border);
+
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+  --color-muted-border: var(--muted-border);
+
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+  --color-accent-border: var(--accent-border);
+
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+  --color-destructive-border: var(--destructive-border);
+
+  --font-sans: 'Outfit', sans-serif;
+  --font-serif: 'Fraunces', serif;
+  --font-mono: 'JetBrains Mono', monospace;
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+:root {
+  /* Default to Dark Mode as per brief for premium feel */
+  --background: 240 10% 4%;
+  --foreground: 0 0% 98%;
+  --border: 240 5% 15%;
+  --input: 240 5% 15%;
+  --ring: 271 81% 56%;
+
+  --card: 240 10% 6%;
+  --card-foreground: 0 0% 98%;
+  --card-border: 240 5% 15%;
+
+  --popover: 240 10% 6%;
+  --popover-foreground: 0 0% 98%;
+  --popover-border: 240 5% 15%;
+
+  --primary: 271 81% 56%;
+  --primary-foreground: 0 0% 100%;
+
+  --secondary: 240 5% 15%;
+  --secondary-foreground: 0 0% 98%;
+
+  --muted: 240 5% 12%;
+  --muted-foreground: 240 5% 65%;
+
+  --accent: 271 81% 56%;
+  --accent-foreground: 0 0% 100%;
+
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 0 0% 98%;
+
+  --radius: 0.5rem;
+
+  --button-outline: rgba(255, 255, 255, 0.1);
+  --badge-outline: rgba(255, 255, 255, 0.05);
+  --opaque-button-border-intensity: 9;
+  --elevate-1: rgba(255, 255, 255, 0.04);
+  --elevate-2: rgba(255, 255, 255, 0.09);
+  
+  --primary-border: hsl(from hsl(var(--primary)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+  --secondary-border: hsl(from hsl(var(--secondary)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+  --muted-border: hsl(from hsl(var(--muted)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+  --accent-border: hsl(from hsl(var(--accent)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+  --destructive-border: hsl(from hsl(var(--destructive)) h s calc(l + var(--opaque-button-border-intensity)) / alpha);
+}
+
+.light {
+  --background: 0 0% 100%;
+  --foreground: 240 10% 4%;
+  --border: 240 5% 90%;
+  --input: 240 5% 90%;
+  --ring: 271 81% 56%;
+
+  --card: 0 0% 100%;
+  --card-foreground: 240 10% 4%;
+  --card-border: 240 5% 90%;
+
+  --popover: 0 0% 100%;
+  --popover-foreground: 240 10% 4%;
+  --popover-border: 240 5% 90%;
+
+  --primary: 271 81% 56%;
+  --primary-foreground: 0 0% 100%;
+
+  --secondary: 240 5% 96%;
+  --secondary-foreground: 240 10% 4%;
+
+  --muted: 240 5% 96%;
+  --muted-foreground: 240 5% 45%;
+
+  --accent: 271 81% 56%;
+  --accent-foreground: 0 0% 100%;
+
+  --destructive: 0 84% 60%;
+  --destructive-foreground: 0 0% 98%;
+
+  --button-outline: rgba(0, 0, 0, 0.1);
+  --badge-outline: rgba(0, 0, 0, 0.05);
+  --opaque-button-border-intensity: -8;
+  --elevate-1: rgba(0, 0, 0, 0.03);
+  --elevate-2: rgba(0, 0, 0, 0.08);
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply font-sans antialiased bg-background text-foreground selection:bg-primary/30;
+    /* Soft premium grid background for screen */
+    background-image: radial-gradient(hsl(var(--border) / 0.5) 1px, transparent 1px);
+    background-size: 40px 40px;
+    background-attachment: fixed;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-serif tracking-tight;
+  }
+}
+
+/* Print CSS Requirements */
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 20mm;
+  }
+
+  body {
+    background: white !important;
+    color: black !important;
+    background-image: none !important;
+  }
+
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    text-shadow: none !important;
+    box-shadow: none !important;
+  }
+
+  nav, .no-print {
+    display: none !important;
+  }
+
+  /* Dark-theme text utilities become invisible on white paper — force legible ink */
+  .text-white,
+  .text-foreground,
+  [class*='text-white/'],
+  [class*='text-foreground'] {
+    color: black !important;
+  }
+
+  /* Tables: no horizontal scroll containers on paper */
+  .overflow-x-auto {
+    overflow: visible !important;
+  }
+  table {
+    min-width: 0 !important;
+    width: 100% !important;
+    font-size: 9pt;
+  }
+  .text-muted-foreground,
+  [class*='text-zinc'],
+  [class*='text-gray'],
+  [class*='text-neutral'] {
+    color: #374151 !important;
+  }
+  .text-transparent {
+    color: hsl(271 81% 40%) !important;
+    background: none !important;
+    -webkit-background-clip: initial !important;
+    background-clip: initial !important;
+  }
+
+  section {
+    /* Start each chapter on a new page, but let long chapters flow across pages
+       instead of forcing avoid (which clips content-heavy sections). */
+    page-break-before: always;
+    page-break-inside: auto;
+    padding: 0 !important;
+    margin: 0 0 2rem 0 !important;
+  }
+
+  section:first-of-type {
+    page-break-before: auto;
+  }
+
+  table, tr {
+    page-break-inside: avoid;
+  }
+  
+  /* Ensure last section doesn't force a blank page */
+  section:last-of-type {
+    page-break-after: auto;
+  }
+
+  h1, h2, h3 {
+    page-break-after: avoid;
+  }
+
+  img, svg {
+    page-break-inside: avoid;
+    max-width: 100% !important;
+  }
+}
+
+@layer utilities {
+  input[type='search']::-webkit-search-cancel-button {
+    @apply hidden;
+  }
+  [contenteditable][data-placeholder]:empty::before {
+    content: attr(data-placeholder);
+    color: hsl(var(--muted-foreground));
+    pointer-events: none;
+  }
+}
