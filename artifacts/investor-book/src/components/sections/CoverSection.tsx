@@ -13,7 +13,7 @@ export default function CoverSection({ dict }: { dict: any }) {
         <img
           src={logoSrc}
           alt="AlphaChat Logo"
-          className="w-36 h-36 md:w-44 md:h-44 drop-shadow-[0_0_40px_rgba(168,85,247,0.6)]"
+          className="w-36 h-36 md:w-44 md:h-44 drop-shadow-[0_0_60px_rgba(226,71,255,0.8)]"
         />
 
         <div className="space-y-5">
