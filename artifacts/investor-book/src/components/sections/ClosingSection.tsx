@@ -1,5 +1,5 @@
 import React from 'react';
-import logoSrc from '@/assets/alphachat-logo.png';
+import logoSrc from '@/assets/alphachat-logo.svg';
 
 export default function ClosingSection({ dict, lang }: { dict: any, lang?: 'en' | 'it' }) {
   return (

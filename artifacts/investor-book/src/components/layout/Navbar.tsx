@@ -1,7 +1,7 @@
 import { Link } from 'wouter';
 import { en } from '@/content/en';
 import { it } from '@/content/it';
-import logoSrc from '@/assets/alphachat-logo.png';
+import logoSrc from '@/assets/alphachat-logo.svg';
 
 interface NavbarProps {
   lang: 'en' | 'it';
