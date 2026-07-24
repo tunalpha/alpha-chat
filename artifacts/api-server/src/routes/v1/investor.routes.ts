@@ -23,8 +23,9 @@ import * as investor from "../../controllers/investor.controller";
 const router = Router();
 
 // ── Public ──────────────────────────────────────────────────────────────────
-router.post("/verify",  investor.verifyAccessCode);
-router.post("/request", investor.submitAccessRequest);
+router.get( "/settings", investor.getGateSettings);
+router.post("/verify",   investor.verifyAccessCode);
+router.post("/request",  investor.submitAccessRequest);
 
 // ── Admin ────────────────────────────────────────────────────────────────────
 router.get( "/admin/requests",               requireAdmin(), investor.listRequests);
@@ -37,5 +38,6 @@ router.patch("/admin/codes/:id",             requireAdmin(), investor.updateCode
 router.delete("/admin/codes/:id",            requireAdmin(), investor.deleteCode);
 
 router.get( "/admin/log",                    requireAdmin(), investor.getAccessLog);
+router.patch("/admin/settings",              requireAdmin(), investor.updateGateSettings);
 
 export default router;

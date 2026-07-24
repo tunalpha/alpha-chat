@@ -266,6 +266,7 @@ export async function getCallMetrics(): Promise<CallMetricsResult> {
 
     CallSessionModel.countDocuments({
       state: { $in: ["CALLING", "RINGING", "ACCEPTED", "CONNECTED"] },
+      startedAt: { $gte: new Date(Date.now() - 4 * 60 * 60 * 1000) }, // max 4h
     }),
 
     CallSessionModel.aggregate([

@@ -412,6 +412,27 @@ export default function InvestorGate({ children }: InvestorGateProps) {
   });
   const [investorName, setInvestorName] = useState(() => loadPortalSession()?.investorName ?? '');
 
+  // Controlla se il gate è abilitato. Se disabilitato dall'admin, entra direttamente.
+  useEffect(() => {
+    fetch(`${API_BASE}/settings`)
+      .then(r => r.json())
+      .then((d: { gateEnabled?: boolean }) => {
+        if (d.gateEnabled === false) {
+          // Gate OFF → accesso diretto senza codice
+          const session = loadPortalSession();
+          if (!session) {
+            savePortalSession({
+              investorName: 'Guest',
+              sessionExpiry: new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString(),
+              grantedAt: Date.now(),
+            });
+          }
+          setPhase('granted');
+        }
+      })
+      .catch(() => {}); // fallback: gate rimane attivo
+  }, []);
+
   const handleVerified = useCallback((name: string, expiry: string) => {
     setInvestorName(name);
     savePortalSession({ investorName: name, sessionExpiry: expiry, grantedAt: Date.now() });

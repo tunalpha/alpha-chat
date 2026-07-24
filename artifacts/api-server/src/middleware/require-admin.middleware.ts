@@ -77,7 +77,9 @@ export function requireAdmin(minRole: AdminRole = "read_only") {
 
       next();
     } catch (err) {
-      next(err);
+      // JWT verification errors (JWSInvalid, JWTExpired, etc.) → 401
+      if (err instanceof AppError) { next(err); return; }
+      next(new AppError("INVALID_TOKEN", 401));
     }
   };
 }

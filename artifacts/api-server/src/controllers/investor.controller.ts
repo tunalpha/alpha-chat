@@ -20,6 +20,7 @@ import argon2 from "argon2";
 import { InvestorAccessRequestModel } from "../models/investor-access-request.model";
 import { InvestorAccessCodeModel } from "../models/investor-access-code.model";
 import { InvestorAccessLogModel } from "../models/investor-access-log.model";
+import { getInvestorSettings, setInvestorSettings } from "../models/investor-settings.model";
 import { AppError } from "../errors/AppError";
 import {
   sendInvestorCodeEmail,
@@ -383,5 +384,25 @@ export const getAccessLog: RequestHandler = async (req, res, next) => {
   } catch (err) { next(err); }
 };
 
-// Add missing type import
+// ---------------------------------------------------------------------------
+// GET  /api/investor/settings          — pubblico, restituisce { gateEnabled }
+// PATCH /api/investor/admin/settings   — admin, aggiorna il toggle
+// ---------------------------------------------------------------------------
+
+export const getGateSettings: RequestHandler = async (_req, res, next) => {
+  try {
+    const settings = await getInvestorSettings();
+    res.json({ ok: true, ...settings });
+  } catch (err) { next(err); }
+};
+
+export const updateGateSettings: RequestHandler = async (req, res, next) => {
+  try {
+    const { gateEnabled } = req.body as { gateEnabled?: boolean };
+    if (typeof gateEnabled !== "boolean") throw new AppError(400, "gateEnabled must be boolean");
+    const settings = await setInvestorSettings({ gateEnabled });
+    res.json({ ok: true, ...settings });
+  } catch (err) { next(err); }
+};
+
 import type { IInvestorAccessCode } from "../models/investor-access-code.model";

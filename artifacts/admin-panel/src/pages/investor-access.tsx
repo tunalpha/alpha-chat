@@ -10,6 +10,63 @@ import { useState, useEffect, useCallback } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { getToken } from "@/lib/api";
 
+// ─── Gate Toggle ─────────────────────────────────────────────────────────────
+
+function GateToggle() {
+  const { toast } = useToast();
+  const [enabled, setEnabled] = useState<boolean | null>(null);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    invFetch<{ gateEnabled: boolean }>("/settings")
+      .then(d => setEnabled(d.gateEnabled))
+      .catch(() => {});
+  }, []);
+
+  const toggle = async () => {
+    if (enabled === null) return;
+    setSaving(true);
+    try {
+      const d = await invFetch<{ gateEnabled: boolean }>("/settings", {
+        method: "PATCH",
+        body: JSON.stringify({ gateEnabled: !enabled }),
+      });
+      setEnabled(d.gateEnabled);
+      toast({ title: d.gateEnabled ? "Gate abilitato" : "Gate disabilitato", description: d.gateEnabled ? "Gli investitori devono inserire il codice" : "Il portale è accessibile senza codice" });
+    } catch {
+      toast({ title: "Errore", variant: "destructive" });
+    } finally { setSaving(false); }
+  };
+
+  if (enabled === null) return null;
+
+  return (
+    <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-sidebar-accent/50 border border-sidebar-border">
+      <div className="flex-1">
+        <p className="text-sm font-semibold text-white">Gate accesso investitori</p>
+        <p className="text-xs text-sidebar-foreground/50 mt-0.5">
+          {enabled ? "ON — richiede codice accesso" : "OFF — portale aperto senza codice"}
+        </p>
+      </div>
+      <button
+        onClick={toggle}
+        disabled={saving}
+        className={`relative inline-flex h-6 w-11 flex-shrink-0 cursor-pointer rounded-full border-2 transition-colors duration-200 focus:outline-none ${
+          enabled ? "bg-violet-600 border-violet-600" : "bg-zinc-600 border-zinc-600"
+        } ${saving ? "opacity-50 cursor-not-allowed" : ""}`}
+        role="switch"
+        aria-checked={enabled}
+      >
+        <span
+          className={`pointer-events-none inline-block h-4 w-4 rounded-full bg-white shadow transform transition-transform duration-200 ${
+            enabled ? "translate-x-5" : "translate-x-0"
+          }`}
+        />
+      </button>
+    </div>
+  );
+}
+
 // Investor endpoints live at /api/v1/investor/admin (NOT under /api/v1/admin)
 const INV_BASE = "/api/v1/investor/admin";
 
@@ -558,15 +615,18 @@ export default function InvestorAccessPage() {
   return (
     <div className="p-6 max-w-7xl mx-auto space-y-6">
       {/* Header */}
-      <div className="flex items-center gap-4">
-        <div className="w-12 h-12 rounded-2xl bg-violet-600/20 border border-violet-500/30 flex items-center justify-center text-2xl">
+      <div className="flex items-start gap-4">
+        <div className="w-12 h-12 rounded-2xl bg-violet-600/20 border border-violet-500/30 flex items-center justify-center text-2xl shrink-0">
           🔐
         </div>
-        <div>
+        <div className="flex-1 min-w-0">
           <h1 className="text-2xl font-bold text-white">Investor Access</h1>
           <p className="text-sm text-sidebar-foreground/50">Virtual Data Room — access control management</p>
         </div>
       </div>
+
+      {/* Gate Toggle */}
+      <GateToggle />
 
       {/* Tabs */}
       <div className="border-b border-sidebar-border">
