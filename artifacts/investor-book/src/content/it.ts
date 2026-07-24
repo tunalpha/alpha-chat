@@ -337,6 +337,68 @@ export const it = {
       }
     ]
   },
+  heroPrivate: {
+    badge: "Signal Protocol · Crittografia E2E",
+    headline: "Conversazioni private.",
+    headline2: "Protette by design.",
+    sub: "Ogni messaggio è crittografato end-to-end con il Protocollo Signal. Nessun testo in chiaro tocca mai i nostri server.",
+    chat: [
+      { side: "left",  text: "Hai revisionato il contratto?" },
+      { side: "right", text: "Sì — tutto in ordine. Procediamo." },
+      { side: "left",  text: "Ti mando il pagamento adesso." },
+      { side: "right", text: "Ricevuto. Grazie!", usda: false },
+    ],
+    lock: "Crittografato end-to-end",
+  },
+  heroPayment: {
+    badge: "USDA · Polygon L2",
+    headline: "Il denaro si muove alla",
+    headline2: "velocità di una conversazione.",
+    tagline: ["Nessuna banca.", "Nessun confine.", "Nessuna attesa."],
+    sub: "Invia stablecoin direttamente in una chat. Garantito crittograficamente. Verificato on-chain.",
+    amount: "+$250 USDA",
+    status: "Pagamento completato",
+    escrow: "Protetto da Escrow",
+  },
+  heroTransfer: {
+    badge: "Peer-to-Peer · On-Chain",
+    headline: "Invia. Ricevi.",
+    headline2: "Istantaneamente.",
+    sub: "Escrow crittograficamente sicuro su Polygon. Anti-replay. Atomico. Verificato.",
+    fromLabel: "Mittente",
+    toLabel: "Destinatario",
+    steps: ["Deposito", "Escrow", "Incasso"],
+    network: "Polygon PoS",
+  },
+  heroWallet: {
+    badge: "Wallet Non-Custodiale",
+    headline: "Il tuo denaro,",
+    headline2: "matematicamente tuo.",
+    sub: "Auto-sovrano. Non-custodiale. Sempre sotto il tuo controllo — non il nostro.",
+    balance: "2.480,00",
+    currency: "USDA",
+    actions: ["Invia", "Ricevi", "Richiedi", "QR"],
+    history: [
+      { label: "Pagamento ricevuto", amount: "+250,00", date: "Oggi, 14:32" },
+      { label: "Inviato al merchant", amount: "-75,00",  date: "Oggi, 11:08" },
+      { label: "Escrow rilasciato",   amount: "+500,00", date: "Ieri" },
+    ],
+  },
+  heroMerchant: {
+    badge: "AlphaBit Pay · Merchant Rails",
+    headline: "Pagamenti che vivono",
+    headline2: "dentro la conversazione.",
+    sub: "Dal cliente al merchant. In-chat. On-chain. Istantaneo.",
+    steps: [
+      { label: "Cliente",  icon: "👤" },
+      { label: "Chat",     icon: "💬" },
+      { label: "Pagamento",icon: "💸" },
+      { label: "Escrow",   icon: "🔒" },
+      { label: "Merchant", icon: "🏪" },
+      { label: "Completato",icon: "✅" },
+    ],
+    note: "La stessa infrastruttura che alimenta Stripe — costruita nativamente dentro la conversazione.",
+  },
   closing: {
     title: "La Visione Futura",
     takeaways: [

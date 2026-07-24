@@ -337,6 +337,68 @@ export const en = {
       }
     ]
   },
+  heroPrivate: {
+    badge: "Signal Protocol · E2E Encrypted",
+    headline: "Private conversations.",
+    headline2: "Protected by design.",
+    sub: "Every message is end-to-end encrypted using the Signal Protocol. Zero plaintext ever touches our servers.",
+    chat: [
+      { side: "left",  text: "Hey, did you review the contract?" },
+      { side: "right", text: "Yes — everything looks solid. Let's move." },
+      { side: "left",  text: "I'll send the payment now." },
+      { side: "right", text: "Received. Thanks!", usda: false },
+    ],
+    lock: "End-to-end encrypted",
+  },
+  heroPayment: {
+    badge: "USDA · Polygon L2",
+    headline: "Money moves at the",
+    headline2: "speed of conversation.",
+    tagline: ["No banks.", "No borders.", "No waiting."],
+    sub: "Send stablecoins directly inside a chat thread. Cryptographically secured. On-chain verified.",
+    amount: "+$250 USDA",
+    status: "Payment completed",
+    escrow: "Escrow Protected",
+  },
+  heroTransfer: {
+    badge: "Peer-to-Peer · On-Chain",
+    headline: "Send. Receive.",
+    headline2: "Instantly.",
+    sub: "Cryptographically secured escrow on Polygon. Anti-replay. Atomic. Verified.",
+    fromLabel: "Sender",
+    toLabel: "Recipient",
+    steps: ["Deposit", "Escrow", "Claim"],
+    network: "Polygon PoS",
+  },
+  heroWallet: {
+    badge: "Non-Custodial Wallet",
+    headline: "Your money,",
+    headline2: "mathematically yours.",
+    sub: "Self-sovereign. Non-custodial. Always in your control — not ours.",
+    balance: "2,480.00",
+    currency: "USDA",
+    actions: ["Send", "Receive", "Request", "QR"],
+    history: [
+      { label: "Payment received", amount: "+250.00", date: "Today, 14:32" },
+      { label: "Sent to merchant", amount: "-75.00",  date: "Today, 11:08" },
+      { label: "Escrow released",  amount: "+500.00", date: "Yesterday" },
+    ],
+  },
+  heroMerchant: {
+    badge: "AlphaBit Pay · Merchant Rails",
+    headline: "Payments that live",
+    headline2: "inside the conversation.",
+    sub: "From customer to merchant. In-chat. On-chain. Instant.",
+    steps: [
+      { label: "Customer", icon: "👤" },
+      { label: "Chat",     icon: "💬" },
+      { label: "Payment",  icon: "💸" },
+      { label: "Escrow",   icon: "🔒" },
+      { label: "Merchant", icon: "🏪" },
+      { label: "Settled",  icon: "✅" },
+    ],
+    note: "The same infrastructure that powers Stripe — built natively inside conversation.",
+  },
   closing: {
     title: "The Vision Forward",
     takeaways: [

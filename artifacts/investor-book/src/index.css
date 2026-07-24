@@ -158,6 +158,23 @@
     margin: 20mm;
   }
 
+  /* ── Font override: swap Google Fonts for system fonts to avoid
+     corrupted/missing glyphs (￾ ￿) in headless-Chromium PDF export.
+     System fonts are always available and embed cleanly. ── */
+  * {
+    font-family: Arial, Helvetica, sans-serif !important;
+  }
+  h1, h2, h3, h4, h5, h6,
+  .font-serif,
+  [class*='font-serif'] {
+    font-family: Georgia, 'Times New Roman', Times, serif !important;
+  }
+  code, pre, kbd, samp,
+  .font-mono,
+  [class*='font-mono'] {
+    font-family: 'Courier New', Courier, monospace !important;
+  }
+
   body {
     background: white !important;
     color: black !important;
