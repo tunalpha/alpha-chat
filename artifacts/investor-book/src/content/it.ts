@@ -44,6 +44,7 @@ export const it = {
       "Ho iniziato a costruire AlphaChat perché il modo in cui comunichiamo digitalmente è fondamentalmente rotto. Abbiamo accettato una realtà in cui le nostre conversazioni più intime vengono analizzate per estrarre dati, in cui l'identità digitale viene affittata anziché posseduta, e in cui inviare valore a un amico richiede di uscire dalla conversazione per utilizzare un sistema finanziario disconnesso e spesso arcaico.",
       "Il livello di comunicazione e il livello transazionale dovrebbero essere lo stesso spazio.",
       "Con AlphaChat, non stiamo solo costruendo un'altra app di messaggistica. Stiamo costruendo un ambiente digitale sicuro e sovrano. Integrando il protocollo Signal per la crittografia end-to-end e Polygon per transazioni istantanee basate su stablecoin, abbiamo creato un'esperienza fluida. I tuoi messaggi sono matematicamente tuoi. Il tuo denaro è crittograficamente tuo.",
+      "USDA non è solo un token di pagamento — è la prova che il denaro può muoversi alla velocità della conversazione. Con getusda.xyz, chiunque nel mondo può richiedere o ricevere dollari digitali istantaneamente, senza banche, senza confini, senza intermediari.",
       "L'ecosistema AlphaBit è progettato per il lungo termine. Si fonda sulla convinzione che la privacy sia un diritto, non una funzionalità, e che i pagamenti appartengano al luogo in cui nascono le relazioni: all'interno della conversazione.",
       "Questo documento descrive in dettaglio l'architettura, il posizionamento di mercato e la visione. Vi invitiamo a osservare da vicino le fondamenta che abbiamo costruito.",
       "— Alpha"
@@ -111,24 +112,24 @@ export const it = {
   },
   paymentLayer: {
     title: "Il Livello di Pagamento: USDA",
-    subtitle: "Dollari digitali, integrati nativamente.",
-    desc: "USDA è una stablecoin ERC-20 ancorata al dollaro digitale che opera sulla blockchain Polygon, fungendo da asset di regolamento nativo all'interno di AlphaChat.",
+    subtitle: "Dollari digitali alla velocità della conversazione.",
+    desc: "USDA non è una stablecoin qualsiasi — è il ponte mancante tra comunicazione privata e finanza globale. Un dollaro digitale ERC-20 costruito su Polygon, progettato come asset di regolamento nativo all'interno di AlphaChat. Mentre le app di messaggistica del mondo trattano i pagamenti come un ripensamento, noi li abbiamo integrati nel DNA di ogni conversazione.",
     features: [
       {
         title: "Motore di Escrow in Chat",
-        desc: "Invia e richiedi fondi direttamente nella conversazione. Presenta un flusso di deposito → reclamo/rilascio con verifica on-chain, protezione anti-replay e blocco atomico."
+        desc: "Invia e richiedi fondi direttamente nella conversazione. Un flusso di deposito → reclamo/rilascio crittograficamente sicuro con verifica on-chain, protezione anti-replay e blocco atomico. Nessuna banca. Nessun ritardo. Nessun intermediario."
       },
       {
         title: "Wallet Non Custodial",
-        desc: "Gli utenti mantengono il controllo completo sui propri fondi. Profonda integrazione tramite WalletConnect/Reown che supporta MetaMask, Rainbow, Coinbase, Trust e Phantom."
+        desc: "Gli utenti mantengono il controllo completo e sovrano sui propri fondi. Integrazione profonda con WalletConnect/Reown — MetaMask, Rainbow, Coinbase, Trust e Phantom — così il tuo denaro è sempre tuo, non nostro."
       },
       {
         title: "Gas Station Automatizzata",
-        desc: "UX senza attriti con ricariche automatizzate di MATIC, astraendo le complessità delle commissioni di rete blockchain."
+        desc: "Zero frizione blockchain. La nostra Gas Station ricarica automaticamente MATIC quando necessario, rendendo le transazioni on-chain semplici quanto inviare un messaggio. Gli utenti non toccano mai le commissioni di rete."
       },
       {
-        title: "Link di Pagamento Esterni",
-        desc: "Richieste di pagamento basate su link alimentate da getusda.xyz, collegando gli utenti esterni al livello di pagamento di AlphaChat."
+        title: "getusda.xyz — Link di Pagamento Globali",
+        desc: "Richieste di pagamento che funzionano per chiunque, ovunque, senza un account AlphaChat. Condividi un link. Ricevi pagamenti in stablecoin. Nessun confine. Nessun conto bancario richiesto. Il gateway verso l'adozione di massa."
       }
     ]
   },
@@ -211,20 +212,129 @@ export const it = {
       }
     ]
   },
+  market: {
+    title: "Opportunità di Mercato",
+    subtitle: "Tre mercati enormi. Una sola piattaforma unificata.",
+    intro: "AlphaChat si trova all'intersezione di tre dei settori in più rapida crescita nell'economia digitale globale. La tempistica non è casuale — è architettonica.",
+    segments: [
+      {
+        icon: "💬",
+        label: "Messaggistica",
+        stat: "3,1 mld",
+        unit: "utenti attivi giornalieri",
+        color: "purple",
+        points: [
+          "WhatsApp conta oltre 2 miliardi di utenti mensili attivi",
+          "Telegram ha superato 900 milioni di utenti nel 2024",
+          "Mercato globale OTT messaging proiettato a 340 miliardi di dollari entro il 2030",
+          "L'85% degli utenti internet vuole maggiore privacy sui propri dati (Pew Research)",
+          "Signal è cresciuto del 1.200% in una settimana durante i picchi di preoccupazione sulla privacy"
+        ]
+      },
+      {
+        icon: "💵",
+        label: "Stablecoin",
+        stat: "$180 mld+",
+        unit: "capitalizzazione totale",
+        color: "green",
+        points: [
+          "Il volume di transazioni stablecoin ha superato 10,8 trilioni di dollari nel 2023 — più di Visa",
+          "USDT: ~115 miliardi di dollari. USDC: ~35 miliardi. Il mercato è in rapida espansione",
+          "L'adozione di stablecoin cresce 3x anno su anno nei mercati emergenti (Chainalysis)",
+          "Le rimesse transfrontaliere in stablecoin costano l'80-90% in meno dei bonifici tradizionali",
+          "Quadri normativi (MiCA in Europa, leggi USA) stanno legittimando il commercio in stablecoin"
+        ]
+      },
+      {
+        icon: "🌐",
+        label: "Pagamenti Digitali",
+        stat: "$14T+",
+        unit: "volume globale transazioni",
+        color: "blue",
+        points: [
+          "Il mercato globale dei pagamenti digitali raggiungerà 29 trilioni di dollari entro il 2030 (CAGR 11,5%)",
+          "Oltre 420 milioni di utenti crypto nel mondo (Triple-A, 2024), +15% all'anno",
+          "Il mercato P2P dei pagamenti digitali supererà 9 trilioni di dollari entro il 2030",
+          "Il mercato gateway crypto cresce a un CAGR del 16,5% (2023–2030)",
+          "Il 60% di Gen Z e Millennial preferisce pagamenti digitali istantanei al sistema bancario tradizionale"
+        ]
+      }
+    ],
+    conclusion: "Nessuna piattaforma oggi cattura simultaneamente tutti e tre i livelli — comunicazione privata, regolamento in stablecoin e infrastruttura di pagamento per merchant. AlphaChat è progettato per possedere questa intersezione."
+  },
   swot: {
     title: "Analisi SWOT",
-    s: { title: "Punti di Forza", items: ["Stack tecnologico profondamente integrato", "Profondità E2E e rigore crittografico", "Chiara visione guidata dal fondatore"] },
-    w: { title: "Punti di Debolezza", items: ["Adozione in fase iniziale", "Mancanza di effetti di rete esistenti", "Onboarding complesso per i non esperti di criptovalute"] },
-    o: { title: "Opportunità", items: ["Crescente domanda globale di privacy", "Adozione di massa delle stablecoin", "Rischi di de-platforming sulle reti principali"] },
-    t: { title: "Minacce", items: ["Clonazione delle funzionalità da parte degli incumbent", "Quadri normativi in evoluzione", "Frizione legata alla dipendenza dai wallet"] }
+    s: {
+      title: "Punti di Forza",
+      items: [
+        "Stack tecnologico profondamente integrato — comunicazione + pagamenti in un unico ambiente sovrano",
+        "Crittografia E2E di livello militare (protocollo Signal) — lo stesso standard usato dai governi",
+        "USDA: stablecoin proprietaria progettata per il regolamento in-chat su Polygon",
+        "Onboarding guidato — UX crypto-native che funziona per utenti comuni, non solo per esperti",
+        "Chiara visione guidata dal fondatore con oltre 15 anni di profondità architetturale"
+      ]
+    },
+    w: {
+      title: "Punti di Debolezza",
+      items: [
+        "Adozione in fase iniziale — effetti di rete ancora in costruzione",
+        "Mancanza di effetti di rete su larga scala già esistenti",
+        "Dipendenza dall'ecosistema WalletConnect per le integrazioni wallet esterne"
+      ]
+    },
+    o: {
+      title: "Opportunità",
+      items: [
+        "Crescente domanda globale di piattaforme di comunicazione orientate alla privacy",
+        "Adozione di massa delle stablecoin nei mercati emergenti e sviluppati",
+        "Rischi di de-platforming che spingono utenti verso reti sovrane e indipendenti",
+        "Chiarezza normativa (MiCA, quadri USA) che legittima il commercio in stablecoin",
+        "Espansione di USDA via getusda.xyz nei flussi di merchant e rimesse globali"
+      ]
+    },
+    t: {
+      title: "Minacce",
+      items: [
+        "Clonazione delle funzionalità da parte degli incumbent (WhatsApp, Telegram, big tech)",
+        "Quadri normativi frammentati e in evoluzione tra le giurisdizioni",
+        "Frizione legata alla dipendenza dai wallet per utenti non-crypto"
+      ]
+    }
   },
   roadmap: {
     title: "Roadmap Strategica",
+    subtitle: "Dove siamo stati. Dove stiamo andando.",
     phases: [
-      { name: "Fase 1: Fondazione", desc: "Protocollo E2E core, distribuzione PWA, sincronizzazione multi-dispositivo e integrazione USDA di base." },
-      { name: "Fase 2: Crescita dell'Ecosistema", desc: "Funzionalità avanzate del Protocollo Phoenix, integrazioni più profonde di WalletConnect e acquisizione utenti." },
-      { name: "Fase 3: Rete di Commercianti", desc: "Lancio degli strumenti AlphaBit Pay, link di pagamento esterni e API di escrow commerciale." },
-      { name: "Fase 4: Piattaforma Aperta", desc: "SDK per sviluppatori, federazione di identità decentralizzata e livelli di regolamento cross-chain." }
+      {
+        name: "Fase 1 — Fondazione ✅",
+        status: "complete",
+        desc: "Protocollo E2E core (Signal X3DH + Double Ratchet), distribuzione PWA, sincronizzazione multi-dispositivo, notifiche push VAPID e integrazione iniziale del wallet USDA. Le fondamenta sono live."
+      },
+      {
+        name: "Fase 2 — Fortezza della Sicurezza ✅",
+        status: "complete",
+        desc: "Protocollo Phoenix (blocco/distruzione emergenza account), autenticazione biometrica (Face ID), Recovery Cards, Dead Man Switch, verifica identità multi-dispositivo, Safety Numbers e audit completo della timeline di sicurezza."
+      },
+      {
+        name: "Fase 3 — Infrastruttura di Pagamento ✅",
+        status: "complete",
+        desc: "Motore escrow in-chat completo (deposito → reclamo/rilascio con verifica on-chain), Gas Station automatizzata con ricariche MATIC dinamiche, link di pagamento globali getusda.xyz, rail merchant AlphaBit Pay e protezione anti-replay."
+      },
+      {
+        name: "Fase 4 — Espansione USDA 🔄",
+        status: "active",
+        desc: "Integrazioni off-ramp e on-ramp USDA per la conversione in valuta fiat, ecosistema di link di pagamento esteso tramite getusda.xyz, routing multi-stablecoin e API pubblica USDA per integrazioni di terze parti. Trasformare USDA in una primitiva finanziaria aperta."
+      },
+      {
+        name: "Fase 5 — Crescita della Rete",
+        status: "upcoming",
+        desc: "Campagne strutturate di acquisizione utenti per i segmenti privacy-first, onboarding commerciale merchant AlphaBit Pay, partnership con operatori fintech e corridoi di rimesse transfrontaliere, traguardo di 100K utenti attivi."
+      },
+      {
+        name: "Fase 6 — Piattaforma Aperta",
+        status: "upcoming",
+        desc: "SDK per sviluppatori e API aperte, federazione di identità decentralizzata, livelli di regolamento cross-chain oltre Polygon e framework di governance dell'ecosistema AlphaBit. La piena infrastruttura sovrana di comunicazione e pagamento per l'internet aperto."
+      }
     ]
   },
   closing: {

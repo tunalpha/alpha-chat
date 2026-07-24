@@ -1,27 +1,58 @@
 import React from 'react';
 
+const statusStyle: Record<string, { dot: string; label: string; name: string }> = {
+  complete: {
+    dot: 'bg-primary shadow-[0_0_10px_rgba(168,85,247,0.8)]',
+    label: '',
+    name: 'text-primary',
+  },
+  active: {
+    dot: 'bg-primary/80 ring-2 ring-primary/40 ring-offset-1 ring-offset-background animate-pulse',
+    label: 'bg-primary/20 text-primary border border-primary/40',
+    name: 'text-primary',
+  },
+  upcoming: {
+    dot: 'bg-muted-foreground/30 border border-border',
+    label: '',
+    name: 'text-foreground',
+  },
+};
+
 export default function RoadmapSection({ dict }: { dict: any }) {
   return (
     <section>
-      <div className="flex items-center gap-4 mb-16">
-        <div className="h-px bg-primary/50 w-12" />
-        <h2 className="text-sm uppercase tracking-[0.2em] text-primary font-semibold">{dict.roadmap.title}</h2>
+      <div className="text-center mb-16 space-y-4">
+        <h2 className="text-4xl md:text-5xl font-serif text-foreground">{dict.roadmap.title}</h2>
+        {dict.roadmap.subtitle && (
+          <p className="text-xl text-primary font-light">{dict.roadmap.subtitle}</p>
+        )}
       </div>
 
       <div className="relative border-l border-border ml-4 md:ml-6 space-y-12 pb-8">
-        {dict.roadmap.phases.map((phase: any, i: number) => (
-          <div key={i} className="relative pl-8 md:pl-12">
-            {/* Timeline Dot */}
-            <div className={`absolute -left-[5px] top-1.5 w-[9px] h-[9px] rounded-full ${i === 0 ? 'bg-primary shadow-[0_0_10px_rgba(168,85,247,0.8)]' : 'bg-white/20 border border-white/30'}`} />
-            
-            <h3 className={`text-xl font-medium mb-3 ${i === 0 ? 'text-primary' : 'text-foreground'}`}>
-              {phase.name}
-            </h3>
-            <p className="text-muted-foreground leading-relaxed max-w-xl">
-              {phase.desc}
-            </p>
-          </div>
-        ))}
+        {dict.roadmap.phases.map((phase: any, i: number) => {
+          const status: string = phase.status ?? (i === 0 ? 'complete' : 'upcoming');
+          const styles = statusStyle[status] ?? statusStyle.upcoming;
+
+          return (
+            <div key={i} className="relative pl-8 md:pl-12">
+              {/* Timeline Dot */}
+              <div className={`absolute -left-[5px] top-2 w-[10px] h-[10px] rounded-full ${styles.dot}`} />
+
+              <div className="flex flex-wrap items-center gap-3 mb-3">
+                <h3 className={`text-xl font-medium ${styles.name}`}>{phase.name}</h3>
+                {status === 'active' && (
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-semibold ${styles.label}`}>
+                    In Progress
+                  </span>
+                )}
+              </div>
+
+              <p className="text-muted-foreground leading-relaxed max-w-2xl">
+                {phase.desc}
+              </p>
+            </div>
+          );
+        })}
       </div>
     </section>
   );
