@@ -20,7 +20,7 @@ export default function CoverSection({ dict }: { dict: any }) {
             {dict.cover.badge}
           </div>
           
-          <h1 className="text-6xl md:text-8xl font-serif tracking-tight text-white">
+          <h1 className="text-6xl md:text-8xl font-serif tracking-tight text-foreground">
             {dict.cover.title}
           </h1>
         </div>

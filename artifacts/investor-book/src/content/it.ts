@@ -3,6 +3,7 @@ export const it = {
     readEn: "EN",
     readIt: "IT",
     contact: "Contatti",
+    download: "Scarica PDF",
   },
   cover: {
     title: "AlphaChat",

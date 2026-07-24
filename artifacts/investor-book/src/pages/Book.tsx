@@ -17,7 +17,13 @@ import SwotSection from '@/components/sections/SwotSection';
 import RoadmapSection from '@/components/sections/RoadmapSection';
 import ClosingSection from '@/components/sections/ClosingSection';
 
-export default function Book({ lang }: { lang: 'en' | 'it' }) {
+interface BookProps {
+  lang: 'en' | 'it';
+  theme: 'dark' | 'light';
+  toggleTheme: () => void;
+}
+
+export default function Book({ lang, theme, toggleTheme }: BookProps) {
   const dict = lang === 'en' ? en : it;
 
   React.useEffect(() => {
@@ -26,7 +32,7 @@ export default function Book({ lang }: { lang: 'en' | 'it' }) {
 
   return (
     <div className="min-h-screen text-foreground selection:bg-primary/30">
-      <Navbar lang={lang} />
+      <Navbar lang={lang} theme={theme} toggleTheme={toggleTheme} />
       
       <main className="pb-32">
         <CoverSection dict={dict} />
