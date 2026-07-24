@@ -132,10 +132,14 @@ export default function PortalHome() {
         .ph-meta-label { color: rgba(232,232,240,0.35); font-size: 12px; min-width: 90px; }
         .ph-meta-value { color: rgba(232,232,240,0.7); font-size: 12px; }
 
-        .ph-hero-right { flex-shrink: 0; }
+        .ph-hero-right { flex-shrink: 0; width: 100%; }
         .ph-shield {
           background: rgba(139,92,246,0.06); border: 1px solid rgba(139,92,246,0.2);
-          border-radius: 16px; padding: 24px; min-width: 220px;
+          border-radius: 16px; padding: 24px; width: 100%; box-sizing: border-box;
+        }
+        @media (min-width: 640px) {
+          .ph-hero-right { width: auto; flex-shrink: 0; }
+          .ph-shield { width: auto; min-width: 220px; }
         }
         .ph-shield-icon { font-size: 32px; display: block; margin-bottom: 16px; }
         .ph-shield-lines { display: flex; flex-direction: column; gap: 8px; }
