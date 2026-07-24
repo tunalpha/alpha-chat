@@ -356,7 +356,7 @@ function GateCover({ onVerified }: { onVerified: (name: string, expiry: string) 
           <div className="ig-card-header">
             <span className="ig-card-icon">🔐</span>
             <h2>Access Reserved</h2>
-            <p>Enter your investor access code to unlock the portal.</p>
+            <p>Enter your investor access code to access the portal.</p>
           </div>
           <form className="ig-form" onSubmit={handleUnlock}>
             <div className="ig-field"><label>Access Code</label>
