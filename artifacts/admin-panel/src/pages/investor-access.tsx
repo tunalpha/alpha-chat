@@ -8,13 +8,31 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useToast } from "@/hooks/use-toast";
-import { apiFetch as _apiFetch } from "@/lib/api";
+import { getToken } from "@/lib/api";
 
-// We call investor endpoints via the same BASE but different path
+// Investor endpoints live at /api/v1/investor/admin (NOT under /api/v1/admin)
 const INV_BASE = "/api/v1/investor/admin";
 
 async function invFetch<T>(path: string, opts?: RequestInit): Promise<T> {
-  return _apiFetch<T>(`/investor/admin${path}`, opts);
+  const token = getToken();
+  const headers: Record<string, string> = {
+    "Content-Type": "application/json",
+    ...(opts?.headers as Record<string, string> | undefined),
+  };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${INV_BASE}${path}`, { ...opts, headers });
+
+  if (res.status === 401 || res.status === 403) {
+    window.location.href = "/admin/login";
+    throw new Error("Unauthorized");
+  }
+  if (!res.ok) {
+    let message = `HTTP ${res.status}`;
+    try { const b = await res.json(); message = b?.message ?? b?.error?.message ?? message; } catch {}
+    throw new Error(message);
+  }
+  return res.json() as Promise<T>;
 }
 
 // ─── Types ─────────────────────────────────────────────────────────────────

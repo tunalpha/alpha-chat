@@ -27,15 +27,15 @@ router.post("/verify",  investor.verifyAccessCode);
 router.post("/request", investor.submitAccessRequest);
 
 // ── Admin ────────────────────────────────────────────────────────────────────
-router.get( "/admin/requests",               requireAdmin, investor.listRequests);
-router.post("/admin/requests/:id/approve",   requireAdmin, investor.approveRequest);
-router.post("/admin/requests/:id/reject",    requireAdmin, investor.rejectRequest);
+router.get( "/admin/requests",               requireAdmin(), investor.listRequests);
+router.post("/admin/requests/:id/approve",   requireAdmin(), investor.approveRequest);
+router.post("/admin/requests/:id/reject",    requireAdmin(), investor.rejectRequest);
 
-router.get( "/admin/codes",                  requireAdmin, investor.listCodes);
-router.post("/admin/codes/:id/regenerate",   requireAdmin, investor.regenerateCode);
-router.patch("/admin/codes/:id",             requireAdmin, investor.updateCode);
-router.delete("/admin/codes/:id",            requireAdmin, investor.deleteCode);
+router.get( "/admin/codes",                  requireAdmin(), investor.listCodes);
+router.post("/admin/codes/:id/regenerate",   requireAdmin(), investor.regenerateCode);
+router.patch("/admin/codes/:id",             requireAdmin(), investor.updateCode);
+router.delete("/admin/codes/:id",            requireAdmin(), investor.deleteCode);
 
-router.get( "/admin/log",                    requireAdmin, investor.getAccessLog);
+router.get( "/admin/log",                    requireAdmin(), investor.getAccessLog);
 
 export default router;
