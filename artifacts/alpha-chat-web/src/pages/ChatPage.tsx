@@ -103,11 +103,18 @@ import { archiveConversation } from "./ArchivioPage";
 import { useTranslation } from "react-i18next";
 import EmojiPickerButton from "../components/chat/EmojiPickerButton";
 import StickerMessage from "../components/chat/StickerMessage";
+import AnimatedStickerMessage from "../components/chat/AnimatedStickerMessage";
 import {
   encodeStickerPayload,
   decodeStickerPayload,
   type StickerPayload,
+  STICKER_MARKER,
 } from "../types/sticker";
+import {
+  encodeAnimatedStickerPayload,
+  type AnimatedStickerPayload,
+  ANIMATED_STICKER_MARKER,
+} from "../types/animatedSticker";
 
 interface Props {
   onNavigate: (view: AppView) => void;
@@ -368,6 +375,7 @@ function ChatInput({
   onAttachMenu,
   onEmojiInsert,
   onStickerSend,
+  onAnimatedStickerSend,
   disabled,
   burnAfterRead,
   onToggleBurn,
@@ -382,8 +390,10 @@ function ChatInput({
   onAttachMenu?: () => void;
   /** Callback per inserire un'emoji nella posizione del cursore */
   onEmojiInsert?: (emoji: string) => void;
-  /** Callback per inviare uno sticker */
+  /** Callback per inviare uno sticker statico */
   onStickerSend?: (payload: StickerPayload) => void;
+  /** Callback per inviare uno sticker animato */
+  onAnimatedStickerSend?: (payload: AnimatedStickerPayload) => void;
   disabled: boolean;
   burnAfterRead?: boolean;
   onToggleBurn?: () => void;
@@ -460,11 +470,12 @@ function ChatInput({
       </button>
 
       {/* Pulsante 😊 Emoji + Sticker — ordine: 🔥 | 📎 | 😊 | textarea | invia/🎤 */}
-      {onEmojiInsert && onStickerSend && (
+      {onEmojiInsert && onStickerSend && onAnimatedStickerSend && (
         <EmojiPickerButton
           textareaRef={textareaRef}
           onEmojiInsert={onEmojiInsert}
           onStickerSend={onStickerSend}
+          onAnimatedStickerSend={onAnimatedStickerSend}
           disabled={disabled}
         />
       )}
@@ -1828,6 +1839,57 @@ export default function ChatPage({ onNavigate }: Props) {
       // message_type "text" per compatibilità con il server di produzione:
       // lo sticker è identificato dal STICKER_MARKER nel plaintext decifrato,
       // non dal campo message_type (che il server vede cifrato/opaco).
+      await apiSendMessage(activeConvId, body, {
+        signal,
+        clientMessageId,
+        deviceCiphertexts: signal?.deviceCiphertexts,
+        messageType: "text",
+      });
+    } catch {
+      setMessages((prev) => prev.filter((m) => m.id !== pendingMsgId));
+      setDecryptedTexts((prev) => { const next = new Map(prev); next.delete(pendingMsgId); return next; });
+    }
+  }
+
+  /**
+   * Invia uno sticker animato (Lottie v:2).
+   * Stesso pattern di handleStickerSend — E2E invariato.
+   * Compatibilità: client senza supporto v:2 mostrano "🎬 Sticker animato".
+   */
+  async function handleAnimatedStickerSend(payload: AnimatedStickerPayload) {
+    if (!activeConvId) return;
+    const body = encodeAnimatedStickerPayload(payload);
+    const clientMessageId = crypto.randomUUID();
+    const pendingMsgId    = `pending-${clientMessageId}`;
+    const nowIso          = new Date().toISOString();
+
+    sentCacheRef.current.set(clientMessageId, body);
+    void cacheOwnText(clientMessageId, body);
+
+    const optimisticMsg: MessageItem = {
+      id:                   pendingMsgId,
+      client_message_id:    clientMessageId,
+      conversation_id:      activeConvId,
+      sender_id:            auth?.userId ?? "",
+      message_type:         "text",
+      ciphertext:           null,
+      ciphertext_type:      null,
+      sequence_number:      0,
+      sent_at:              nowIso,
+      server_received_at:   nowIso,
+      status:               "sent",
+      deleted_for_everyone: false,
+      reply_to_message_id:  null,
+      burn_after_read:      false,
+      expires_at:           null,
+    };
+    setDecryptedTexts((prev) => new Map(prev).set(pendingMsgId, body));
+    setMessages((prev) => [...prev, optimisticMsg]);
+    setAtBottom(true);
+    void playNotifSound("sent");
+
+    try {
+      const signal = await encryptForActive(body);
       await apiSendMessage(activeConvId, body, {
         signal,
         clientMessageId,
@@ -3216,9 +3278,11 @@ export default function ChatPage({ onNavigate }: Props) {
                             }}
                             onDetail={(id) => setUsdaDetailId(id)}
                           />
+                        ) : (decryptedTexts.get(msg.id) ?? "").startsWith(ANIMATED_STICKER_MARKER) ? (
+                          /* Sticker animato Lottie v:2 — rilevato da ANIMATED_STICKER_MARKER */
+                          <AnimatedStickerMessage body={decryptedTexts.get(msg.id) ?? ""} />
                         ) : (msg.message_type === "sticker" || (decryptedTexts.get(msg.id) ?? "").startsWith(STICKER_MARKER)) ? (
-                          /* Sticker — rilevato da message_type O da STICKER_MARKER nel plaintext
-                             (il server riceve message_type:"text" per compatibilità produzione) */
+                          /* Sticker statico — rilevato da message_type O da STICKER_MARKER nel plaintext */
                           <StickerMessage body={decryptedTexts.get(msg.id) ?? ""} />
                         ) : (
                           renderText()
@@ -3371,6 +3435,7 @@ export default function ChatPage({ onNavigate }: Props) {
                   onAttachMenu={() => setShowAttachSheet(true)}
                   onEmojiInsert={handleEmojiInsert}
                   onStickerSend={(p) => void handleStickerSend(p)}
+                  onAnimatedStickerSend={(p) => void handleAnimatedStickerSend(p)}
                   disabled={sending}
                   burnAfterRead={burnAfterRead}
                   onToggleBurn={() => setBurnAfterRead((v) => !v)}

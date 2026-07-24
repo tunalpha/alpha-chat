@@ -7681,3 +7681,66 @@ html.emergency-open #root {
   font-size: 14px;
   color: var(--text-2, #6b7280);
 }
+
+/* ── Animated Sticker Picker ────────────────────────────────────────────── */
+.animated-sticker-picker {
+  /* altezza gestita via --sp-height, stesso meccanismo del sticker-picker */
+}
+
+.animated-sticker-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+  padding: 4px 0;
+}
+
+.animated-sticker-cell {
+  aspect-ratio: 1;
+  border: none;
+  background: transparent;
+  border-radius: 10px;
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.animated-sticker-cell:hover,
+.animated-sticker-cell:active {
+  background: var(--bg-hover, rgba(0,0,0,0.07));
+}
+
+.animated-sticker-cell-placeholder {
+  width: 64px;
+  height: 64px;
+  border-radius: 8px;
+  background: var(--bg-0, #f3f4f6);
+  animation: as-shimmer 1.4s infinite;
+}
+
+@keyframes as-shimmer {
+  0%   { opacity: 0.5; }
+  50%  { opacity: 1;   }
+  100% { opacity: 0.5; }
+}
+
+/* ── Animated Sticker — bolla in chat ──────────────────────────────────── */
+.animated-sticker-msg {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  padding: 4px;
+}
+
+.animated-sticker-msg-player {
+  border-radius: 12px;
+}
+
+.animated-sticker-placeholder {
+  border-radius: 12px;
+  background: var(--bg-0, #f3f4f6);
+  animation: as-shimmer 1.4s infinite;
+}

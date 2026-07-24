@@ -24,11 +24,15 @@ import {
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import type { StickerPayload } from "../../types/sticker";
+import type { AnimatedStickerPayload } from "../../types/animatedSticker";
 
-// Lazy load del picker — non aumenta il tempo di apertura della chat
+// Lazy load dei picker — non entrano nel bundle principale
 const EmojiPickerLazy = lazy(() => import("emoji-picker-react"));
 const StickerPickerLazy = lazy(() =>
   import("./StickerPicker").then((m) => ({ default: m.default })),
+);
+const AnimatedStickerPickerLazy = lazy(() =>
+  import("./AnimatedStickerPicker").then((m) => ({ default: m.default })),
 );
 
 // ── Calcola posizione pannello ancorata al pulsante ──────────────────────────
@@ -84,15 +88,17 @@ interface Props {
   textareaRef: RefObject<HTMLTextAreaElement | null>;
   onEmojiInsert: (native: string) => void;
   onStickerSend: (payload: StickerPayload) => void;
+  onAnimatedStickerSend: (payload: AnimatedStickerPayload) => void;
   disabled?: boolean;
 }
 
-type Tab = "emoji" | "sticker";
+type Tab = "emoji" | "sticker" | "animated";
 
 export default function EmojiPickerButton({
   textareaRef,
   onEmojiInsert,
   onStickerSend,
+  onAnimatedStickerSend,
   disabled = false,
 }: Props) {
   const { t } = useTranslation();
@@ -149,6 +155,14 @@ export default function EmojiPickerButton({
     [onStickerSend],
   );
 
+  const handleAnimatedStickerSelect = useCallback(
+    (payload: AnimatedStickerPayload) => {
+      setOpen(false);
+      onAnimatedStickerSend(payload);
+    },
+    [onAnimatedStickerSend],
+  );
+
   // Pannello renderizzato via portal in document.body:
   // sfugge a transform/overflow di qualsiasi ancestor nella gerarchia React
   const panel = open && layout ? createPortal(
@@ -194,6 +208,16 @@ export default function EmojiPickerButton({
         >
           {t("chat.stickerTab")}
         </button>
+        <button
+          role="tab"
+          type="button"
+          aria-selected={tab === "animated"}
+          className={`emoji-picker-tab${tab === "animated" ? " active" : ""}`}
+          onClick={() => setTab("animated")}
+          onMouseDown={(e) => e.preventDefault()}
+        >
+          🎬 Animati
+        </button>
       </div>
 
       {/* Contenuto — altezza adattiva al viewport */}
@@ -211,10 +235,14 @@ export default function EmojiPickerButton({
               width={PICKER_WIDTH}
               height={layout.contentHeight}
             />
-          ) : (
-            /* CSS var --sp-height controlla l'altezza scroll dello sticker picker */
+          ) : tab === "sticker" ? (
             <div style={{ "--sp-height": `${layout.contentHeight}px` } as React.CSSProperties}>
               <StickerPickerLazy onSelect={handleStickerSelect} />
+            </div>
+          ) : (
+            /* Sticker animati — lottie-react caricato lazy solo qui */
+            <div style={{ "--sp-height": `${layout.contentHeight}px` } as React.CSSProperties}>
+              <AnimatedStickerPickerLazy onSelect={handleAnimatedStickerSelect} />
             </div>
           )}
         </Suspense>
