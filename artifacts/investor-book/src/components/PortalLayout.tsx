@@ -69,11 +69,11 @@ export default function PortalLayout({ children, investorName, sessionExpiry }: 
         <div className="portal-nav-inner">
           {/* Logo */}
           <Link href="/home" className="portal-logo">
-            <span className="portal-logo-alpha">α</span>
-            <div className="portal-logo-titles">
-              <span className="portal-logo-text">AlphaChat</span>
-              <span className="portal-logo-subtitle">{t.subtitle}</span>
-            </div>
+            <img
+              src={`${import.meta.env.BASE_URL}alphachat-logo.png`}
+              alt="AlphaChat"
+              style={{ height: 32, width: 'auto', objectFit: 'contain', flexShrink: 0 }}
+            />
             <span className="portal-logo-vdr">VDR</span>
           </Link>
 
