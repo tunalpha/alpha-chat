@@ -1,0 +1,324 @@
+Ecco una versione più completa e orientata alla crescita del prodotto. In questo caso gli sticker animati sono una nuova sezione, senza modificare quelli statici già implementati.
+
+⸻
+
+TASK #15 — Sezione Sticker Animati (V2) — ZERO REGRESSIONI
+
+OBIETTIVO
+
+Implementare una nuova sezione dedicata agli Sticker Animati, completamente separata dagli sticker statici già esistenti.
+
+Gli attuali 208 sticker statici suddivisi in 13 pack NON devono essere modificati.
+
+La nuova funzionalità deve essere un’estensione della chat, non una sostituzione.
+
+⸻
+
+REGOLA PRINCIPALE
+
+ZERO REGRESSIONI.
+
+NON modificare:
+
+* Signal Protocol
+* WebSocket
+* crittografia E2E
+* API esistenti
+* Wallet
+* USDA
+* notifiche
+* service worker
+* messaggi testo
+* immagini
+* video
+* audio
+* sticker statici già implementati
+* i18n
+* layout attuale della chat
+
+L’intera funzionalità deve essere completamente isolata.
+
+⸻
+
+ORGANIZZAZIONE DEL PICKER
+
+Il picker dovrà avere due sezioni distinte.
+
+😊 Sticker Statici
+
+(conservare esattamente quelli esistenti)
+
+* 208 sticker
+* 13 pack
+* comportamento invariato
+
+⸻
+
+🎬 Sticker Animati (NUOVO)
+
+Creare una seconda sezione indipendente.
+
+Non sostituisce la prima.
+
+L’utente deve poter passare facilmente tra:
+
+😊 Statici
+🎬 Animati
+
+senza perdere lo stato.
+
+⸻
+
+TECNOLOGIA
+
+Per gli sticker animati utilizzare esclusivamente:
+
+* Lottie JSON
+    oppure
+* .lottie
+
+NON utilizzare:
+
+* GIF
+* MP4
+* WEBM
+
+⸻
+
+RENDERER
+
+Creare un renderer dedicato:
+
+AnimatedStickerMessage.tsx
+
+senza modificare
+
+StickerMessage.tsx
+
+I due renderer devono convivere.
+
+⸻
+
+NUOVA STRUTTURA
+
+components/chat/
+EmojiPickerButton.tsx
+StickerPicker.tsx
+AnimatedStickerPicker.tsx
+StickerMessage.tsx
+AnimatedStickerMessage.tsx
+AnimatedStickerPlayer.tsx
+
+⸻
+
+NUOVI PACK
+
+Creare una sezione “Animated Packs”.
+
+Versione iniziale:
+
+🎉 Celebration
+
+❤️ Love
+
+😂 Funny
+
+🙌 Reactions
+
+🚀 Digital Life
+
+🐱 Cute Pets
+
+🌍 Travel
+
+🎮 Gaming
+
+Totale iniziale:
+
+circa 80–120 sticker animati.
+
+⸻
+
+PLAYER
+
+Utilizzare
+
+lottie-react
+
+oppure
+
+@lottiefiles/dotlottie-react
+
+con:
+
+* autoplay
+* loop
+* trasparenza
+* alta qualità
+
+⸻
+
+LAZY LOADING
+
+Il player Lottie NON deve entrare nel bundle principale.
+
+Caricarlo solamente quando:
+
+Utente apre
+↓
+Sticker Animati
+
+Usare:
+
+React.lazy()
+
+oppure
+
+dynamic import()
+
+⸻
+
+PERFORMANCE
+
+Le animazioni NON devono:
+
+* rallentare lo scrolling
+* bloccare React
+* provocare re-render della chat
+
+Utilizzare:
+
+* memo
+* lazy rendering
+* IntersectionObserver
+
+Quando lo sticker esce dal viewport
+
+↓
+
+mettere automaticamente in pausa.
+
+⸻
+
+PROTOCOLLO
+
+NON modificare il protocollo esistente.
+
+Estenderlo.
+
+Esempio:
+
+{
+  "v": 2,
+  "messageType": "animated_sticker",
+  "packId": "...",
+  "stickerId": "...",
+  "url": "...",
+  "width": 160,
+  "height": 160
+}
+
+⸻
+
+RETROCOMPATIBILITÀ
+
+Client aggiornati
+
+↓
+
+riproducono l’animazione.
+
+Client vecchi
+
+↓
+
+mostrano
+
+📎 Sticker animato
+
+senza errori.
+
+⸻
+
+SICUREZZA
+
+Validare:
+
+* HTTPS
+* MIME consentiti
+* dimensione massima
+* larghezza
+* altezza
+* versione protocollo
+
+⸻
+
+FUTURA ESPANSIONE
+
+L’architettura deve essere già pronta per:
+
+* sticker Premium
+* Marketplace
+* Sticker ufficiali Alpha Chat
+* Sticker creati dagli utenti
+* Download automatico dei pack
+* Aggiornamento dei pack senza aggiornare l’app
+* Pacchetti stagionali (Natale, Halloween, Estate)
+
+⸻
+
+UI/UX
+
+Nel picker visualizzare due schede ben distinte:
+
+😊 Sticker
+🎬 Animati
+
+Lo stile deve essere coerente con il design di Alpha Chat.
+
+Il passaggio tra le due schede deve essere immediato e fluido.
+
+⸻
+
+TEST OBBLIGATORI
+
+Verificare:
+
+✅ Sticker statici invariati
+
+✅ Sticker animati funzionanti
+
+✅ Invio
+
+✅ Ricezione
+
+✅ Crittografia E2E invariata
+
+✅ Bundle principale invariato
+
+✅ Lazy loading corretto
+
+✅ Safari iOS
+
+✅ PWA
+
+✅ Android
+
+✅ Desktop
+
+✅ Nessun warning React
+
+✅ Build TypeScript pulita
+
+⸻
+
+CRITERI DI ACCETTAZIONE
+
+L’implementazione sarà considerata completata solo se:
+
+* i 208 sticker statici continuano a funzionare esattamente come oggi;
+* viene aggiunta una nuova sezione “Sticker Animati” senza alterare quella esistente;
+* il player Lottie viene caricato solo quando necessario;
+* le animazioni sono fluide e non impattano sulle prestazioni della chat;
+* non vengono introdotte regressioni funzionali o visive;
+* il sistema è pronto per futuri pack ufficiali Alpha Chat, premium e creati dagli utenti senza richiedere modifiche strutturali.

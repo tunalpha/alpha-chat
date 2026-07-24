@@ -1825,11 +1825,14 @@ export default function ChatPage({ onNavigate }: Props) {
 
     try {
       const signal = await encryptForActive(body);
+      // message_type "text" per compatibilità con il server di produzione:
+      // lo sticker è identificato dal STICKER_MARKER nel plaintext decifrato,
+      // non dal campo message_type (che il server vede cifrato/opaco).
       await apiSendMessage(activeConvId, body, {
         signal,
         clientMessageId,
         deviceCiphertexts: signal?.deviceCiphertexts,
-        messageType: "sticker",
+        messageType: "text",
       });
     } catch {
       setMessages((prev) => prev.filter((m) => m.id !== pendingMsgId));
@@ -3213,8 +3216,9 @@ export default function ChatPage({ onNavigate }: Props) {
                             }}
                             onDetail={(id) => setUsdaDetailId(id)}
                           />
-                        ) : msg.message_type === "sticker" ? (
-                          /* Sticker — payload cifrato, decodificato in StickerMessage */
+                        ) : (msg.message_type === "sticker" || (decryptedTexts.get(msg.id) ?? "").startsWith(STICKER_MARKER)) ? (
+                          /* Sticker — rilevato da message_type O da STICKER_MARKER nel plaintext
+                             (il server riceve message_type:"text" per compatibilità produzione) */
                           <StickerMessage body={decryptedTexts.get(msg.id) ?? ""} />
                         ) : (
                           renderText()
