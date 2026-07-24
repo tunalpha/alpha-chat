@@ -1,0 +1,344 @@
+Ecco un prompt pensato per Claude Code/GPT-5.5 con un vincolo esplicito di zero regressioni, adatto ad Alpha Chat.
+
+⸻
+
+TASK — Implementazione Emoji Picker + Sticker (ZERO REGRESSIONI)
+
+OBIETTIVO
+
+Implementare in Alpha Chat un sistema moderno di:
+
+* Emoji Picker completo
+* Sticker statici (WebP/PNG)
+* Reazioni future compatibili
+
+senza modificare il comportamento esistente della chat.
+
+L’implementazione deve essere completamente retrocompatibile.
+
+⸻
+
+REGOLA PRINCIPALE
+
+ZERO REGRESSIONI.
+
+Non modificare alcuna logica esistente relativa a:
+
+* websocket
+* Signal Protocol
+* E2E encryption
+* invio messaggi
+* ricezione messaggi
+* upload allegati
+* audio
+* immagini
+* video
+* wallet
+* USDA
+* notifiche
+* i18n
+* keyboard iOS
+* scrolling
+* virtualizzazione lista
+* cache
+
+Tutto deve continuare a funzionare identicamente.
+
+⸻
+
+IMPLEMENTAZIONE
+
+1. Emoji Button
+
+Aggiungere un pulsante 😊 accanto alla graffetta.
+
+Ordine:
+
+🔥
+📎
+😊
+campo testo
+🎤
+
+Il layout deve rimanere identico.
+
+⸻
+
+2. Emoji Picker
+
+Utilizzare una libreria stabile.
+
+Preferenza:
+
+emoji-mart
+
+oppure
+
+emoji-picker-react
+
+Requisiti:
+
+* ricerca emoji
+* categorie
+* recenti
+* skin tone
+* supporto Unicode 15+
+
+⸻
+
+3. Apertura
+
+Tap su 😊
+
+↓
+
+apre popup sopra la tastiera.
+
+NON deve:
+
+chiudere la tastiera
+
+NON deve:
+
+perdere il focus del TextField
+
+Su iOS il cursore deve rimanere nel campo testo.
+
+⸻
+
+4. Inserimento
+
+Tap emoji
+
+↓
+
+inserire emoji nella posizione del cursore.
+
+NON in fondo.
+
+Mantenere:
+
+cursor position
+
+selectionStart
+
+selectionEnd
+
+⸻
+
+5. Sticker
+
+Creare nuovo tipo messaggio:
+
+type: "sticker"
+
+payload:
+
+{
+   stickerId,
+   packId,
+   url,
+   width,
+   height
+}
+
+Le chat esistenti NON devono cambiare.
+
+⸻
+
+6. Rendering
+
+Se
+
+message.type=="sticker"
+
+mostrare sticker.
+
+Altrimenti
+
+render attuale.
+
+Nessuna modifica agli altri renderer.
+
+⸻
+
+7. Compressione
+
+Sticker:
+
+WebP
+
+max 250 KB
+
+trasparenza supportata.
+
+⸻
+
+8. Cache
+
+Gli sticker devono essere cacheabili.
+
+Usare lazy loading.
+
+Nessun preload globale.
+
+⸻
+
+9. Compatibilità
+
+Desktop
+
+Android
+
+iPhone Safari
+
+iPhone PWA
+
+iPad
+
+⸻
+
+10. i18n
+
+Tutte le stringhe:
+
+IT
+
+EN
+
+FR
+
+AR
+
+nessuna stringa hardcoded.
+
+⸻
+
+ACCESSIBILITÀ
+
+Emoji button:
+
+aria-label="Emoji"
+
+Sticker:
+
+aria-label="Sticker"
+
+Supportare navigazione tastiera.
+
+⸻
+
+PERFORMANCE
+
+L’apertura del picker NON deve:
+
+bloccare rendering
+
+fare fetch inutili
+
+ricaricare la chat
+
+provocare re-render completi.
+
+Utilizzare memoization.
+
+⸻
+
+ARCHITETTURA
+
+Creare componenti separati:
+
+components/chat/
+EmojiButton.tsx
+EmojiPicker.tsx
+StickerPicker.tsx
+StickerMessage.tsx
+StickerPack.ts
+
+Non inserire codice direttamente dentro Chat.tsx.
+
+⸻
+
+FUTURA ESTENSIONE
+
+Preparare il codice per:
+
+* GIF
+* sticker animati
+* emoji animate
+* reazioni
+* sticker premium
+
+senza modifiche strutturali.
+
+⸻
+
+TEST OBBLIGATORI
+
+Verificare:
+
+✅ invio testo
+
+✅ invio emoji
+
+✅ invio sticker
+
+✅ ricezione testo
+
+✅ ricezione emoji
+
+✅ ricezione sticker
+
+✅ scrolling
+
+✅ virtualizzazione
+
+✅ keyboard iOS
+
+✅ keyboard Android
+
+✅ tema chiaro
+
+✅ tema scuro
+
+✅ PWA
+
+✅ Desktop
+
+✅ nessun warning React
+
+✅ nessun errore TypeScript
+
+✅ build pulita
+
+⸻
+
+DIVIETI
+
+NON modificare:
+
+* backend
+* API
+* websocket protocol
+* Signal Protocol
+* schema MongoDB esistente (eccetto aggiunta opzionale del tipo sticker)
+* logica di cifratura
+* gestione wallet
+* pagamenti USDA
+* notifiche push
+* service worker
+
+⸻
+
+CRITERI DI ACCETTAZIONE
+
+L’implementazione sarà considerata completata solo se:
+
+* ✅ Nessuna regressione funzionale.
+* ✅ Nessun cambiamento visivo della chat, eccetto l’aggiunta dei pulsanti Emoji e Sticker.
+* ✅ Nessun impatto misurabile sulle prestazioni di apertura della conversazione o sull’invio dei messaggi.
+* ✅ Compatibilità completa con iOS (Safari e PWA), Android e Desktop.
+* ✅ Build TypeScript senza errori e lint senza nuovi warning.
+* ✅ Tutti i test esistenti continuano a passare e i nuovi test per emoji/sticker sono aggiunti con successo.
+
+Questa impostazione mantiene la funzionalità isolata, minimizza il rischio di regressioni e lascia già pronta l’architettura per introdurre in futuro GIF, sticker animati e reazioni ai messaggi senza dover rifattorizzare la chat.
