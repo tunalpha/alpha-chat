@@ -21,7 +21,7 @@ export default function TechnologyPage() {
     { layer: 'Frontend',    tech: 'React Native (Expo) · React (Vite) · TypeScript' },
     { layer: 'Backend',     tech: 'Node.js · Express · TypeScript · MongoDB (Mongoose)' },
     { layer: 'Crypto',      tech: 'Signal Protocol · AES-256-GCM · Argon2id · X25519' },
-    { layer: 'Blockchain',  tech: 'Polygon · Viem · Reown AppKit · ERC-20 (USDA)' },
+    { layer: 'Blockchain',  tech: 'Polygon · Viem · ThirdWeb v5 · ERC-20 (USDA)' },
     { layer: 'Infra',       tech: 'Cloudflare R2 · Nodemailer SMTP · WebRTC · VAPID Push' },
     { layer: 'Auth',        tech: 'JWT ES256 · Session tokens · Biometrics · PKCE' },
   ];

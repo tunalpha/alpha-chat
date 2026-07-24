@@ -1,31 +1,41 @@
 /**
  * PortalLayout — wrapper per tutte le pagine del portale investitori.
- * Mostra la topnav e gestisce la sessione.
  */
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link, useLocation } from 'wouter';
 
 interface PortalLayoutProps {
   children: React.ReactNode;
-  lang?: 'en' | 'it';
   investorName?: string;
   sessionExpiry?: string;
 }
 
 const navLinks = [
-  { href: '/home',     label: 'Home',         icon: '⌂' },
-  { href: '/book/en',  label: 'Investor Book', icon: '📄' },
-  { href: '/technology', label: 'Technology',  icon: '⚡' },
-  { href: '/security', label: 'Security',      icon: '🔒' },
-  { href: '/roadmap',  label: 'Roadmap',       icon: '🗺' },
-  { href: '/market',   label: 'Market',        icon: '📈' },
-  { href: '/team',     label: 'Team',          icon: '👥' },
-  { href: '/contact',  label: 'Contact',       icon: '✉' },
+  { href: '/home',       label: 'Home',          icon: '🏠', highlight: false },
+  { href: '/book/en',    label: 'Investor Book',  icon: '📘', highlight: true  },
+  { href: '/technology', label: 'Technology',     icon: '⚡', highlight: false },
+  { href: '/security',   label: 'Security',       icon: '🔒', highlight: false },
+  { href: '/roadmap',    label: 'Roadmap',        icon: '🗺', highlight: false },
+  { href: '/market',     label: 'Market',         icon: '📈', highlight: false },
+  { href: '/team',       label: 'Team',           icon: '👥', highlight: false },
+  { href: '/contact',    label: 'Contact',        icon: '✉',  highlight: false },
 ];
 
 export default function PortalLayout({ children, investorName, sessionExpiry }: PortalLayoutProps) {
   const [location] = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [theme, setTheme] = useState<'dark' | 'light'>(() => {
+    try { return (localStorage.getItem('ib-theme') as 'dark' | 'light') ?? 'dark'; } catch { return 'dark'; }
+  });
+
+  useEffect(() => {
+    const root = document.documentElement;
+    if (theme === 'light') { root.classList.add('ib-light'); root.classList.remove('ib-dark'); }
+    else { root.classList.add('ib-dark'); root.classList.remove('ib-light'); }
+    try { localStorage.setItem('ib-theme', theme); } catch {}
+  }, [theme]);
+
+  const toggleTheme = () => setTheme(t => t === 'dark' ? 'light' : 'dark');
 
   const handleLogout = () => {
     try { sessionStorage.removeItem('ib_secure_session'); } catch {}
@@ -37,15 +47,20 @@ export default function PortalLayout({ children, investorName, sessionExpiry }: 
     ? (expiry.getFullYear() > 2090 ? 'No expiry' : expiry.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }))
     : '—';
 
+  const isLight = theme === 'light';
+
   return (
-    <div className="portal-root">
+    <div className={`portal-root${isLight ? ' portal-light' : ''}`}>
       {/* Topnav */}
       <nav className="portal-nav">
         <div className="portal-nav-inner">
           {/* Logo */}
           <Link href="/home" className="portal-logo">
             <span className="portal-logo-alpha">α</span>
-            <span className="portal-logo-text">AlphaChat</span>
+            <div className="portal-logo-titles">
+              <span className="portal-logo-text">AlphaChat</span>
+              <span className="portal-logo-subtitle">Confidential Investor Portal</span>
+            </div>
             <span className="portal-logo-vdr">VDR</span>
           </Link>
 
@@ -53,7 +68,7 @@ export default function PortalLayout({ children, investorName, sessionExpiry }: 
           <div className="portal-links">
             {navLinks.map(l => (
               <Link key={l.href} href={l.href}
-                className={`portal-link${location === l.href ? ' portal-link-active' : ''}`}>
+                className={`portal-link${location === l.href ? ' portal-link-active' : ''}${l.highlight ? ' portal-link-book' : ''}`}>
                 {l.label}
               </Link>
             ))}
@@ -61,13 +76,22 @@ export default function PortalLayout({ children, investorName, sessionExpiry }: 
 
           {/* Right side */}
           <div className="portal-nav-right">
+            {/* Theme toggle */}
+            <button
+              className="portal-theme-btn"
+              onClick={toggleTheme}
+              title={isLight ? 'Switch to dark mode' : 'Switch to light mode'}
+            >
+              {isLight ? '🌙' : '☀️'}
+            </button>
+
             <div className="portal-session-badge">
               <span className="portal-session-dot" />
               <span className="portal-session-label">
-                {investorName ? `${investorName}` : 'Secure Session'}
+                {investorName ? investorName : 'Secure Session'}
               </span>
             </div>
-            <button className="portal-logout-btn" onClick={handleLogout} title="End session">
+            <button className="portal-logout-btn" onClick={handleLogout} title="Secure Logout">
               ⎋
             </button>
             {/* Hamburger */}
@@ -82,17 +106,23 @@ export default function PortalLayout({ children, investorName, sessionExpiry }: 
           <div className="portal-mobile-menu">
             {navLinks.map(l => (
               <Link key={l.href} href={l.href}
-                className={`portal-mobile-link${location === l.href ? ' active' : ''}`}
+                className={`portal-mobile-link${location === l.href ? ' active' : ''}${l.highlight ? ' portal-mobile-link-book' : ''}`}
                 onClick={() => setMenuOpen(false)}>
                 <span>{l.icon}</span> {l.label}
               </Link>
             ))}
             <div className="portal-mobile-session">
-              Session valid until: {expiryLabel}
+              <span className="portal-mobile-session-key">Authorized until</span>
+              <span className="portal-mobile-session-val">{expiryLabel}</span>
             </div>
-            <button className="portal-mobile-logout" onClick={handleLogout}>
-              End Session
-            </button>
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button className="portal-mobile-theme" onClick={toggleTheme}>
+                {isLight ? '🌙 Dark Mode' : '☀️ Light Mode'}
+              </button>
+              <button className="portal-mobile-logout" onClick={handleLogout}>
+                🔒 Secure Logout
+              </button>
+            </div>
           </div>
         )}
       </nav>
@@ -107,11 +137,11 @@ export default function PortalLayout({ children, investorName, sessionExpiry }: 
         <div className="portal-footer-inner">
           <div className="portal-footer-left">
             <span className="portal-logo-alpha" style={{ fontSize: 16 }}>α</span>
-            <span style={{ color: 'rgba(232,232,240,0.3)', fontSize: 12 }}>AlphaChat Investor Data Room</span>
+            <span className="portal-footer-name">AlphaChat · Confidential Investor Data Room</span>
           </div>
           <div className="portal-footer-right">
             <span className="portal-footer-badge">🔒 Encrypted · Monitored · Confidential</span>
-            <span className="portal-footer-expiry">Session: {expiryLabel}</span>
+            <span className="portal-footer-expiry">Authorized until: {expiryLabel}</span>
           </div>
         </div>
       </footer>
