@@ -33,7 +33,7 @@ export default function ArchitectureSection({ dict }: { dict: any }) {
 
           {/* Connectors Down */}
           <div className="flex flex-col md:flex-row justify-between items-center gap-8 px-32 hidden md:flex">
-            <div className="w-px h-8 bg-gradient-to-b from-white/20 to-primary/50" />
+            <div className="w-px h-8 bg-gradient-to-b from-border to-primary/50" />
             <div className="w-px h-8 bg-gradient-to-b from-[#8247E5]/30 to-primary/50" />
           </div>
 
@@ -41,14 +41,14 @@ export default function ArchitectureSection({ dict }: { dict: any }) {
           <div className="w-full bg-primary/20 border border-primary/40 rounded-xl p-6 text-center backdrop-blur-md shadow-[0_0_30px_rgba(168,85,247,0.15)] relative">
             <div className="absolute -left-2 -right-2 top-1/2 -translate-y-1/2 h-px bg-primary/50 blur-[2px]" />
             <div className="relative z-10">
-              <div className="text-primary-foreground font-medium text-lg mb-1">{dict.architecture.labels.e2e}</div>
-              <div className="text-sm text-primary-foreground/70 font-mono">X3DH • Double Ratchet • AES-256-GCM</div>
+              <div className="text-primary font-semibold text-lg mb-1">{dict.architecture.labels.e2e}</div>
+              <div className="text-sm text-primary/70 font-mono">X3DH • Double Ratchet • AES-256-GCM</div>
             </div>
           </div>
 
           {/* Connectors Down */}
           <div className="flex justify-center hidden md:flex">
-            <div className="w-px h-8 bg-gradient-to-b from-primary/50 to-white/20" />
+            <div className="w-px h-8 bg-gradient-to-b from-primary/50 to-border" />
           </div>
 
           {/* Bottom Level: Backend & DB */}
@@ -58,7 +58,7 @@ export default function ArchitectureSection({ dict }: { dict: any }) {
               <div className="text-xs text-muted-foreground font-mono">Blind Relays (No Plaintext)</div>
             </div>
 
-            <div className="hidden md:block w-8 h-px bg-white/20" />
+            <div className="hidden md:block w-8 h-px bg-border" />
 
             <div className="w-full md:w-72 bg-muted/20 border border-border rounded-xl p-6 text-center backdrop-blur-md">
               <div className="text-foreground font-medium mb-1">{dict.architecture.labels.db}</div>
