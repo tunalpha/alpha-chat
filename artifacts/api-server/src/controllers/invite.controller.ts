@@ -75,6 +75,12 @@ export async function redeemInvite(
       meta: { request_id: req.requestId },
     });
   } catch (err) {
+    // Aggiunge Retry-After per i 429 — il frontend lo usa per mostrare il countdown
+    const { AppError: AE } = await import("../errors/AppError");
+    if (err instanceof AE && err.httpStatus === 429) {
+      const seconds = (err.details?.retryAfterSeconds as number | undefined) ?? 60;
+      res.setHeader("Retry-After", String(seconds));
+    }
     next(err);
   }
 }

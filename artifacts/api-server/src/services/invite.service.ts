@@ -28,9 +28,14 @@ const CODE_LENGTH = 16;
 const DEFAULT_EXPIRES_SECONDS = 900; // 15 minuti
 const MAX_EXPIRES_SECONDS = 3600;    // 1 ora max
 
-/** Rate limit: max 5 tentativi di riscatto per IP ogni 10 minuti */
+/**
+ * Rate limit riscatto codici invito:
+ *   - 10 tentativi per IP ogni 10 minuti
+ *   - Si conta SOLO su codice inesistente (brute-force protection)
+ *   - Codice scaduto/già usato → errore specifico, senza consumare quota
+ */
 const REDEEM_WINDOW_SECONDS = 600;
-const REDEEM_MAX_ATTEMPTS = 5;
+const REDEEM_MAX_ATTEMPTS = 10;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -50,14 +55,31 @@ export function hashCode(raw: string): string {
   return createHash("sha256").update(raw.toUpperCase().replace(/[^A-Z0-9]/g, "")).digest("hex");
 }
 
-async function checkRedeemRateLimit(ipHash: string): Promise<void> {
+/**
+ * Controlla se l'IP ha superato la quota di tentativi falliti.
+ * @returns secondi rimanenti nella finestra se bloccato, 0 altrimenti
+ */
+async function getRateLimitRetryAfter(ipHash: string): Promise<number> {
+  const redis = await getRedisOrFallback();
+  const key = `invite_redeem:${ipHash}`;
+  const raw = await redis.get(key);
+  const count = parseInt(raw ?? "0", 10);
+  if (count >= REDEEM_MAX_ATTEMPTS) {
+    const remaining = await redis.ttl(key);
+    return remaining > 0 ? remaining : REDEEM_WINDOW_SECONDS;
+  }
+  return 0;
+}
+
+/**
+ * Incrementa il contatore dei tentativi falliti per questo IP.
+ * Chiamato SOLO quando il codice non esiste (brute-force).
+ */
+async function incrementFailedAttempt(ipHash: string): Promise<void> {
   const redis = await getRedisOrFallback();
   const key = `invite_redeem:${ipHash}`;
   const count = await redis.incr(key);
   if (count === 1) await redis.expire(key, REDEEM_WINDOW_SECONDS);
-  if (count > REDEEM_MAX_ATTEMPTS) {
-    throw new AppError("RATE_LIMIT_EXCEEDED", 429);
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -121,23 +143,58 @@ export class InviteService {
     ipHash: string;
     requestId?: string;
   }): Promise<{ conversation_id: string; is_new: boolean }> {
-    await checkRedeemRateLimit(params.ipHash);
+    // ── 1. Controlla rate limit (senza incrementare ancora) ──────────────────
+    const retryAfter = await getRateLimitRetryAfter(params.ipHash);
+    if (retryAfter > 0) {
+      throw new AppError("RATE_LIMIT_EXCEEDED", 429, undefined, { retryAfterSeconds: retryAfter });
+    }
 
     const codeHash = hashCode(params.rawCode);
-    const invite = await inviteRepo.findValidByHash(codeHash);
 
-    if (!invite) {
+    // ── 2. Cerca il codice (qualsiasi stato) ─────────────────────────────────
+    const anyInvite = await inviteRepo.findAnyByHash(codeHash);
+
+    if (!anyInvite) {
+      // Codice inesistente → consuma quota (potenziale brute-force)
+      await incrementFailedAttempt(params.ipHash);
       logAuditEvent({
         event: "INVITE_REDEEM_FAILED",
         user_id: params.redeemerId,
         request_id: params.requestId,
         ip_hash: params.ipHash,
         created_at: new Date().toISOString(),
-        metadata: { reason: "not_found_or_expired" },
+        metadata: { reason: "not_found" },
       });
-      // Risposta generica — non rivelare se il codice esiste
       throw new AppError("INVITE_INVALID", 400);
     }
+
+    // ── 3. Codice trovato: distingui i casi senza consumare quota ─────────────
+    const now = new Date();
+    if (anyInvite.used) {
+      logAuditEvent({
+        event: "INVITE_REDEEM_FAILED",
+        user_id: params.redeemerId,
+        request_id: params.requestId,
+        ip_hash: params.ipHash,
+        created_at: new Date().toISOString(),
+        metadata: { reason: "already_used" },
+      });
+      throw new AppError("INVITE_ALREADY_USED", 400);
+    }
+    if (anyInvite.expires_at <= now) {
+      logAuditEvent({
+        event: "INVITE_REDEEM_FAILED",
+        user_id: params.redeemerId,
+        request_id: params.requestId,
+        ip_hash: params.ipHash,
+        created_at: new Date().toISOString(),
+        metadata: { reason: "expired" },
+      });
+      throw new AppError("INVITE_EXPIRED", 400);
+    }
+
+    // ── 4. Codice valido ─────────────────────────────────────────────────────
+    const invite = anyInvite; // a questo punto è non-usato e non scaduto
 
     // Non si può riscattare il proprio codice
     if (invite.owner_id.toString() === params.redeemerId) {

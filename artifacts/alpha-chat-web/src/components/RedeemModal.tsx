@@ -9,7 +9,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import jsQR from "jsqr";
-import { apiRedeemInvite } from "../lib/api";
+import { apiRedeemInvite, RateLimitError } from "../lib/api";
 
 interface Props {
   onClose: () => void;
@@ -24,6 +24,9 @@ export default function RedeemModal({ onClose, onSuccess }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState(false);
+  /** Secondi rimanenti per il rate limit — 0 = non bloccato */
+  const [rateLimitSecs, setRateLimitSecs] = useState(0);
+  const rateLimitTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // QR Scanner
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -41,6 +44,26 @@ export default function RedeemModal({ onClose, onSuccess }: Props) {
   }
 
   useEffect(() => () => cleanup(), []);
+
+  /** Avvia il countdown del rate limit */
+  const startRateLimitCountdown = useCallback((seconds: number) => {
+    if (rateLimitTimerRef.current) clearInterval(rateLimitTimerRef.current);
+    setRateLimitSecs(seconds);
+    rateLimitTimerRef.current = setInterval(() => {
+      setRateLimitSecs((prev) => {
+        if (prev <= 1) {
+          if (rateLimitTimerRef.current) clearInterval(rateLimitTimerRef.current);
+          setError(null);
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  }, []);
+
+  useEffect(() => () => {
+    if (rateLimitTimerRef.current) clearInterval(rateLimitTimerRef.current);
+  }, []);
 
   const startCamera = useCallback(async () => {
     setCameraError(null);
@@ -96,6 +119,7 @@ export default function RedeemModal({ onClose, onSuccess }: Props) {
       setError("Codice troppo corto. Controlla e riprova.");
       return;
     }
+    if (rateLimitSecs > 0) return; // bloccato — il bottone è già disabilitato
     setLoading(true);
     setError(null);
     try {
@@ -105,7 +129,12 @@ export default function RedeemModal({ onClose, onSuccess }: Props) {
         onSuccess(result.conversation_id, result.is_new);
       }, 1400);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Codice non valido o scaduto.");
+      if (err instanceof RateLimitError) {
+        startRateLimitCountdown(err.retryAfterSeconds);
+        setError(null); // il countdown sostituisce il testo di errore
+      } else {
+        setError(err instanceof Error ? err.message : "Codice non valido o scaduto.");
+      }
     } finally {
       setLoading(false);
     }
@@ -183,13 +212,29 @@ export default function RedeemModal({ onClose, onSuccess }: Props) {
                     disabled={loading}
                     autoFocus
                   />
-                  {error && <div className="invite-error">{error}</div>}
+                  {rateLimitSecs > 0 ? (
+                    <div className="invite-error" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16" style={{ flexShrink: 0 }}>
+                        <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+                      </svg>
+                      <span>
+                        Troppi tentativi — riprova tra{" "}
+                        <strong>
+                          {rateLimitSecs >= 60
+                            ? `${Math.ceil(rateLimitSecs / 60)} min`
+                            : `${rateLimitSecs} s`}
+                        </strong>
+                      </span>
+                    </div>
+                  ) : (
+                    error && <div className="invite-error">{error}</div>
+                  )}
                   <button
                     type="submit"
                     className="redeem-submit-btn"
-                    disabled={loading || code.trim().length < 6}
+                    disabled={loading || code.trim().length < 6 || rateLimitSecs > 0}
                   >
-                    {loading ? "Verifica in corso…" : "Connetti"}
+                    {loading ? "Verifica in corso…" : rateLimitSecs > 0 ? `Riprova tra ${rateLimitSecs >= 60 ? `${Math.ceil(rateLimitSecs / 60)} min` : `${rateLimitSecs} s`}` : "Connetti"}
                   </button>
                 </form>
               )}

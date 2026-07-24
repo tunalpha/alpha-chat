@@ -1,0 +1,88 @@
+L’analisi è nel complesso coerente, ma distinguerei ciò che è supportato dai dati da ciò che è un’ipotesi plausibile.
+
+1. “Sessione Signal rinnovata” (2 volte)
+
+Questa parte è plausibile.
+
+Se Alpha ha visualizzato due placeholder “Sessione Signal rinnovata”, significa che sono arrivati due messaggi che non è stato possibile decifrare con la sessione Signal corrente.
+
+Le cause possono essere:
+
+* riavvio del server o perdita di stato lato client;
+* nuova sessione Signal avviata dall’altro dispositivo;
+* cambio dispositivo/reinstallazione;
+* perdita della chain del Double Ratchet.
+
+Se dopo quei placeholder i messaggi successivi vengono inviati e ricevuti normalmente, il meccanismo di recovery ha funzionato come previsto.
+
+L’unica affermazione che non puoi dare per certa è:
+
+“verosimilmente subito dopo il riavvio del server”
+
+È una buona ipotesi temporale, ma senza log Signal che colleghino i due eventi non può essere affermata come fatto.
+
+⸻
+
+2. “Troppe richieste” (429)
+
+Questa invece è quasi certamente corretta.
+
+Se il limite è:
+
+* 5 tentativi
+* finestra di 10 minuti
+* storage in memoria
+
+allora dopo il quinto tentativo il server risponde con:
+
+429 Too Many Requests
+
+Se inoltre manca Redis:
+
+UPSTASH_REDIS_URL not configured
+
+significa che il rate limiter non è distribuito e il contatore vive solo nella RAM del processo.
+
+Questo è un limite architetturale, non un bug critico.
+
+⸻
+
+3. Task proposto
+
+Le modifiche sono sensate.
+
+✔ aumentare da 5 → 10 tentativi
+
+✔ aggiungere
+
+Retry-After: 420
+
+(o il valore corretto)
+
+✔ mostrare un countdown nella UI
+
+migliora molto l’esperienza utente.
+
+⸻
+
+Una cosa che aggiungerei
+
+Più che aumentare semplicemente il limite, valuterei anche di distinguere i casi:
+
+* codice inesistente → conta nel rate limit;
+* codice corretto ma già usato/scaduto → messaggio specifico;
+* stesso codice riprovato più volte dalla stessa persona → eventualmente non incrementare il contatore ogni volta.
+
+Questo riduce i falsi blocchi durante i test.
+
+⸻
+
+Conclusione
+
+Nel complesso la diagnosi è credibile:
+
+* ✅ i placeholder “Sessione Signal rinnovata” sono compatibili con un normale recupero della sessione Signal e non indicano necessariamente un bug;
+* ✅ il 429 è coerente con il rate limiter configurato;
+* ✅ il task di miglioramento del rate limit e dell’UX è una buona evoluzione.
+
+L’unica frase che trasformerei è quella che collega direttamente il problema Signal al riavvio del server: la definirei come ipotesi plausibile, non come una causa già dimostrata.

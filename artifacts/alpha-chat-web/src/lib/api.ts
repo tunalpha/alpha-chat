@@ -1259,8 +1259,43 @@ export async function apiGenerateInvite(
 }
 
 /** Riscatta un codice invito ricevuto */
+/** Errore speciale per 429 — include il tempo di attesa esatto */
+export class RateLimitError extends Error {
+  constructor(message: string, public readonly retryAfterSeconds: number) {
+    super(message);
+    this.name = "RateLimitError";
+  }
+}
+
 export async function apiRedeemInvite(code: string): Promise<RedeemResult> {
-  return request<RedeemResult>("POST", "/invites/redeem", { code });
+  const token = getAccessToken();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(`${BASE}/invites/redeem`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify({ code }),
+  });
+
+  let jsonBody: unknown;
+  try { jsonBody = await res.json(); } catch { jsonBody = null; }
+
+  if (res.status === 429) {
+    const retryAfterHeader = res.headers.get("Retry-After");
+    const seconds = retryAfterHeader ? parseInt(retryAfterHeader, 10) : 60;
+    const msg = extractErrorMessage(jsonBody, "Troppe richieste. Riprova tra qualche momento.");
+    throw new RateLimitError(msg, isNaN(seconds) ? 60 : seconds);
+  }
+
+  if (!res.ok) {
+    throw new Error(extractErrorMessage(jsonBody, `Errore ${res.status}`));
+  }
+
+  if (jsonBody && typeof jsonBody === "object" && "data" in (jsonBody as object)) {
+    return (jsonBody as { data: RedeemResult }).data;
+  }
+  return jsonBody as RedeemResult;
 }
 
 /** Controlla se esiste già un invite attivo lato server (non espone il codice) */

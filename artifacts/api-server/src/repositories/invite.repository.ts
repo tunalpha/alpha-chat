@@ -31,6 +31,15 @@ export class InviteRepository {
   }
 
   /**
+   * Trova un codice per hash INDIPENDENTEMENTE dallo stato (usato/scaduto).
+   * Usato per distinguere "codice inesistente" da "codice valido ma esaurito".
+   */
+  async findAnyByHash(codeHash: string): Promise<IInvite | null> {
+    const doc = await InviteModel.findOne({ code_hash: codeHash }).lean();
+    return doc ?? null;
+  }
+
+  /**
    * Marca un codice come usato in modo atomico.
    * Restituisce il documento aggiornato, o null se già usato/scaduto.
    */

@@ -18,6 +18,8 @@ export interface RedisClient {
   incr(key: string): Promise<number>;
   expire(key: string, seconds: number): Promise<number>;
   exists(...keys: string[]): Promise<number>;
+  /** Secondi rimanenti prima della scadenza. -2 = non esiste, -1 = no expire. */
+  ttl(key: string): Promise<number>;
 }
 
 let _client: RedisClient | null = null;
@@ -109,6 +111,14 @@ export class InMemoryRedis implements RedisClient {
 
   async exists(...keys: string[]): Promise<number> {
     return keys.filter((k) => !this.isExpired(k) && this.store.has(k)).length;
+  }
+
+  async ttl(key: string): Promise<number> {
+    if (this.isExpired(key)) return -2;
+    const entry = this.store.get(key);
+    if (!entry) return -2;
+    if (entry.expiresAt === null) return -1;
+    return Math.max(0, Math.ceil((entry.expiresAt - Date.now()) / 1000));
   }
 }
 

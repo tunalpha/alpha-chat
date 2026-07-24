@@ -64,7 +64,9 @@ export const ERROR_MESSAGES: Record<string, string> = {
   RATE_LIMIT_EXCEEDED: "Troppe richieste. Riprova tra qualche momento.",
 
   // Inviti
-  INVITE_INVALID: "Codice non valido, già usato o scaduto.",
+  INVITE_INVALID: "Codice non valido o inesistente.",
+  INVITE_EXPIRED: "Il codice invito è scaduto. Chiedi all'altra persona di generarne uno nuovo.",
+  INVITE_ALREADY_USED: "Questo codice invito è già stato usato.",
   INVITE_SELF_REDEEM: "Non puoi usare il tuo stesso codice invito.",
 
   // Payload
