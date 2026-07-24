@@ -70,6 +70,17 @@ app.use(
 app.use(express.json({ limit: "145mb" }));
 app.use(express.urlencoded({ extended: true, limit: "145mb" }));
 
+// ── Hostname redirect: investors.alphachat.sbs → /investor-book/en ────────────
+// Quando il custom domain investors.alphachat.sbs è puntato a questo deploy,
+// qualsiasi richiesta alla root viene mandata direttamente all'Investor Book.
+app.use((req, res, next) => {
+  const host = req.hostname ?? "";
+  if (host === "investors.alphachat.sbs" && !req.path.startsWith("/investor-book")) {
+    return res.redirect(301, "/investor-book/en");
+  }
+  next();
+});
+
 // ── Client version check ──────────────────────────────────────────────────────
 app.use(clientVersionMiddleware);
 
