@@ -83,8 +83,6 @@ export default function EcosystemSection({ dict }: { dict: any }) {
 
         </div>
 
-        {/* Connecting line for mobile */}
-        <div className="md:hidden absolute top-0 bottom-0 left-1/2 w-px bg-border -translate-x-1/2 z-0" />
       </div>
     </section>
   );
