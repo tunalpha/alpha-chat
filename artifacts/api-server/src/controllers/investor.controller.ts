@@ -21,7 +21,11 @@ import { InvestorAccessRequestModel } from "../models/investor-access-request.mo
 import { InvestorAccessCodeModel } from "../models/investor-access-code.model";
 import { InvestorAccessLogModel } from "../models/investor-access-log.model";
 import { AppError } from "../errors/AppError";
-import { sendInvestorCodeEmail } from "../services/email.service";
+import {
+  sendInvestorCodeEmail,
+  sendInvestorRequestConfirmation,
+  sendInvestorRequestNotification,
+} from "../services/email.service";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -151,6 +155,16 @@ export const submitAccessRequest: RequestHandler = async (req, res, next) => {
     if (!email?.trim())   throw new AppError(400, "Email is required");
 
     await InvestorAccessRequestModel.create({ name, company, email, message });
+
+    // Fire-and-forget: conferma all'investitore + notifica all'admin
+    Promise.all([
+      sendInvestorRequestConfirmation({ to: email, name, company }),
+      sendInvestorRequestNotification({ name, company, email, message }),
+    ]).catch(err => {
+      // Non blocca la risposta, logga solo l'errore email
+      console.error("[Investor] Email error on request submit:", err);
+    });
+
     res.json({ ok: true });
   } catch (err) { next(err); }
 };

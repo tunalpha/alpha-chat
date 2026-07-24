@@ -374,6 +374,91 @@ export async function sendRegistrationAlertEmail(params: RegistrationAlertParams
 }
 
 // ---------------------------------------------------------------------------
+// Investor Request Confirmation (sent to investor on submit)
+// ---------------------------------------------------------------------------
+
+export interface InvestorRequestConfirmationParams {
+  to: string;
+  name: string;
+  company: string;
+}
+
+export async function sendInvestorRequestConfirmation(params: InvestorRequestConfirmationParams): Promise<void> {
+  const { to, name, company } = params;
+
+  const body = `
+    <div style="background:#0d0d1a;border:1px solid #2d1b69;border-radius:12px;padding:24px;">
+      <h2 style="margin:0 0 8px;font-size:20px;color:#fff;">Access Request Received</h2>
+      <p style="color:#bbb;font-size:14px;margin:0 0 20px;">Dear ${name},</p>
+      <p style="color:#bbb;font-size:14px;margin:0 0 16px;">
+        Thank you for your interest in AlphaChat. We have received your access request
+        to the Investor Data Room from <strong style="color:#e6edf3;">${company}</strong>.
+      </p>
+      <div style="background:#111827;border-left:3px solid #7c3aed;border-radius:6px;padding:16px;margin-bottom:20px;">
+        <p style="margin:0;color:#a78bfa;font-size:13px;text-transform:uppercase;letter-spacing:1px;font-weight:600;">What happens next</p>
+        <p style="margin:8px 0 0;color:#d1d5db;font-size:14px;line-height:1.6;">
+          Our investment team will review your request within 24–48 hours.
+          If approved, you will receive a unique access code at this email address.
+        </p>
+      </div>
+      <div style="background:#111;border-radius:8px;padding:12px;">
+        <p style="color:#6b7280;font-size:12px;margin:0;">All access to the AlphaChat Data Room is strictly monitored and logged.
+        This is a confidential communication — please do not forward it.</p>
+      </div>
+    </div>`;
+
+  const html = wrapEmailHtml({ lang: "en", title: "AlphaChat – Access Request Received", body });
+  await _send({ to, subject: "📩 AlphaChat Investor Access Request Received", html });
+  logger.info({ to, name }, "Investor request confirmation email sent");
+}
+
+// ---------------------------------------------------------------------------
+// Investor Request Admin Notification (sent to admin on new request)
+// ---------------------------------------------------------------------------
+
+export interface InvestorRequestNotificationParams {
+  name: string;
+  company: string;
+  email: string;
+  message?: string;
+}
+
+export async function sendInvestorRequestNotification(params: InvestorRequestNotificationParams): Promise<void> {
+  const { name, company, email, message } = params;
+
+  const msgBlock = message
+    ? `<div style="background:#111827;border-left:3px solid #374151;border-radius:6px;padding:12px;margin-top:16px;">
+         <p style="margin:0 0 4px;color:#6b7280;font-size:12px;text-transform:uppercase;letter-spacing:1px;">Message</p>
+         <p style="margin:0;color:#d1d5db;font-size:14px;white-space:pre-wrap;">${message}</p>
+       </div>`
+    : '';
+
+  const body = `
+    <div style="background:#0d0d1a;border:1px solid #2d1b69;border-radius:12px;padding:24px;">
+      <h2 style="margin:0 0 8px;font-size:20px;color:#fff;">🔔 New Investor Access Request</h2>
+      <p style="color:#bbb;font-size:14px;margin:0 0 20px;">A new investor access request has been submitted.</p>
+      <table style="width:100%;border-collapse:collapse;margin-bottom:16px;">
+        <tr><td style="padding:8px 0;color:#6b7280;font-size:13px;width:100px;">Name</td>
+            <td style="padding:8px 0;color:#e6edf3;font-size:14px;font-weight:600;">${name}</td></tr>
+        <tr><td style="padding:8px 0;color:#6b7280;font-size:13px;">Company</td>
+            <td style="padding:8px 0;color:#e6edf3;font-size:14px;">${company}</td></tr>
+        <tr><td style="padding:8px 0;color:#6b7280;font-size:13px;">Email</td>
+            <td style="padding:8px 0;color:#a78bfa;font-size:14px;">${email}</td></tr>
+      </table>
+      ${msgBlock}
+      <a href="${BASE_URL}/admin/investor-access"
+         style="display:block;text-align:center;background:#7c3aed;color:#fff;text-decoration:none;
+                border-radius:8px;padding:14px;font-weight:600;font-size:15px;margin-top:20px;">
+        Review Request in Admin Panel →
+      </a>
+    </div>`;
+
+  const html = wrapEmailHtml({ lang: "en", title: "New Investor Access Request", body });
+  await _send({ to: ADMIN_EMAIL(), subject: `🔔 New Investor Request: ${name} (${company})`, html });
+  logger.info({ name, company, email }, "Investor request admin notification sent");
+}
+
+// ---------------------------------------------------------------------------
 // Investor Access Code Email
 // ---------------------------------------------------------------------------
 
