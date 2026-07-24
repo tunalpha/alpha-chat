@@ -493,7 +493,7 @@
   font-size: 11px;
   font-weight: 600;
   letter-spacing: 1px;
-  color: rgba(232,232,240,0.4);
+  color: var(--portal-text-faint);
   text-transform: uppercase;
   margin-top: 4px;
   display: block;
