@@ -6,7 +6,7 @@
  * Tab C: Log accessi
  */
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useToast } from "@/hooks/use-toast";
 import { getToken } from "@/lib/api";
 
@@ -290,6 +290,86 @@ function ApproveModal({
   );
 }
 
+// ─── SwipeableCard ───────────────────────────────────────────────────────────
+
+function SwipeableCard({
+  children,
+  onDelete,
+}: {
+  children: React.ReactNode;
+  onDelete: () => void;
+}) {
+  const THRESHOLD = 80; // px per confermare il delete
+  const containerRef = useRef<HTMLDivElement>(null);
+  const startXRef = useRef(0);
+  const currentXRef = useRef(0);
+  const [offset, setOffset] = useState(0);
+  const [confirmed, setConfirmed] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+
+  const onTouchStart = (e: React.TouchEvent) => {
+    startXRef.current = e.touches[0].clientX;
+    currentXRef.current = 0;
+    setConfirmed(false);
+  };
+
+  const onTouchMove = (e: React.TouchEvent) => {
+    const dx = e.touches[0].clientX - startXRef.current;
+    if (dx > 0) { setOffset(0); return; } // ignora swipe a destra
+    const clamped = Math.max(dx, -120);
+    currentXRef.current = clamped;
+    setOffset(clamped);
+    setConfirmed(clamped <= -THRESHOLD);
+  };
+
+  const onTouchEnd = () => {
+    if (confirmed) {
+      // Anima via + esegui delete
+      setDeleting(true);
+      setOffset(-400);
+      setTimeout(() => onDelete(), 300);
+    } else {
+      setOffset(0);
+    }
+  };
+
+  const deleteWidth = Math.min(Math.abs(offset), 120);
+  const deleteOpacity = Math.min(Math.abs(offset) / THRESHOLD, 1);
+
+  return (
+    <div
+      className="relative overflow-hidden rounded-xl"
+      style={{ transition: deleting ? "max-height 0.3s, opacity 0.3s" : undefined }}
+    >
+      {/* Sfondo rosso delete */}
+      <div
+        className="absolute inset-y-0 right-0 flex items-center justify-end bg-red-600 rounded-xl"
+        style={{ width: `${deleteWidth}px`, opacity: deleteOpacity, transition: "width 0.05s, opacity 0.1s" }}
+      >
+        <div className="flex flex-col items-center justify-center pr-4 gap-1">
+          <span className="text-white text-lg">🗑</span>
+          {confirmed && <span className="text-white text-[10px] font-semibold uppercase tracking-wide">Elimina</span>}
+        </div>
+      </div>
+
+      {/* Card principale */}
+      <div
+        ref={containerRef}
+        onTouchStart={onTouchStart}
+        onTouchMove={onTouchMove}
+        onTouchEnd={onTouchEnd}
+        style={{
+          transform: `translateX(${offset}px)`,
+          transition: offset === 0 || deleting ? "transform 0.25s cubic-bezier(0.25,1,0.5,1)" : "none",
+          willChange: "transform",
+        }}
+      >
+        {children}
+      </div>
+    </div>
+  );
+}
+
 // ─── Tab A: Richieste ────────────────────────────────────────────────────────
 
 const FILTER_REQUESTS = [
@@ -329,6 +409,17 @@ function RequestsTab() {
     }
   };
 
+  const deleteRequest = async (id: string) => {
+    try {
+      await invFetch(`/requests/${id}`, { method: "DELETE" });
+      toast({ title: "Richiesta eliminata" });
+      setRequests(prev => prev.filter(r => r._id !== id));
+    } catch {
+      toast({ title: "Errore durante l'eliminazione", variant: "destructive" });
+      load();
+    }
+  };
+
   return (
     <div className="space-y-4">
       {approving && (
@@ -363,40 +454,45 @@ function RequestsTab() {
         </div>
       ) : (
         <div className="space-y-3">
+          <p className="text-[11px] text-zinc-500 flex items-center gap-1.5">
+            <span>←</span> Scorri a sinistra su una richiesta per eliminarla
+          </p>
           {requests.map((r) => (
-            <div key={r._id} className="rounded-xl border border-white/10 bg-zinc-800 p-4 space-y-3">
-              {/* Riga principale */}
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-white truncate">{r.name}</p>
-                  <p className="text-xs text-zinc-400 truncate">{r.company}</p>
-                  <p className="text-xs text-zinc-500 font-mono truncate mt-0.5">{r.email}</p>
+            <SwipeableCard key={r._id} onDelete={() => deleteRequest(r._id)}>
+              <div className="rounded-xl border border-white/10 bg-zinc-800 p-4 space-y-3">
+                {/* Riga principale */}
+                <div className="flex items-start justify-between gap-3">
+                  <div className="flex-1 min-w-0">
+                    <p className="font-semibold text-white truncate">{r.name}</p>
+                    <p className="text-xs text-zinc-400 truncate">{r.company}</p>
+                    <p className="text-xs text-zinc-500 font-mono truncate mt-0.5">{r.email}</p>
+                  </div>
+                  <StatusBadge status={r.status} />
                 </div>
-                <StatusBadge status={r.status} />
-              </div>
-              {/* Data + messaggio */}
-              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-zinc-500">
-                <span>📅 {fmtDate(r.requestedAt)}</span>
-                {r.message && (
-                  <span className="italic text-zinc-500 truncate max-w-[200px]" title={r.message}>
-                    💬 {r.message}
-                  </span>
+                {/* Data + messaggio */}
+                <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-zinc-500">
+                  <span>📅 {fmtDate(r.requestedAt)}</span>
+                  {r.message && (
+                    <span className="italic text-zinc-500 truncate max-w-[200px]" title={r.message}>
+                      💬 {r.message}
+                    </span>
+                  )}
+                </div>
+                {/* Azioni */}
+                {r.status === "pending" && (
+                  <div className="flex gap-2 pt-1">
+                    <button onClick={() => setApproving(r)}
+                      className="flex-1 text-xs py-1.5 rounded-lg bg-green-700/30 text-green-400 border border-green-500/30 hover:bg-green-700/50 font-semibold">
+                      ✓ Approva
+                    </button>
+                    <button onClick={() => reject(r._id)}
+                      className="flex-1 text-xs py-1.5 rounded-lg bg-red-700/30 text-red-400 border border-red-500/30 hover:bg-red-700/50 font-semibold">
+                      ✕ Rifiuta
+                    </button>
+                  </div>
                 )}
               </div>
-              {/* Azioni */}
-              {r.status === "pending" && (
-                <div className="flex gap-2 pt-1">
-                  <button onClick={() => setApproving(r)}
-                    className="flex-1 text-xs py-1.5 rounded-lg bg-green-700/30 text-green-400 border border-green-500/30 hover:bg-green-700/50 font-semibold">
-                    ✓ Approva
-                  </button>
-                  <button onClick={() => reject(r._id)}
-                    className="flex-1 text-xs py-1.5 rounded-lg bg-red-700/30 text-red-400 border border-red-500/30 hover:bg-red-700/50 font-semibold">
-                    ✕ Rifiuta
-                  </button>
-                </div>
-              )}
-            </div>
+            </SwipeableCard>
           ))}
         </div>
       )}

@@ -351,6 +351,17 @@ export const updateCode: RequestHandler = async (req, res, next) => {
 };
 
 // ---------------------------------------------------------------------------
+// DELETE /api/investor/admin/requests/:id
+// ---------------------------------------------------------------------------
+
+export const deleteRequest: RequestHandler = async (req, res, next) => {
+  try {
+    const { id } = req.params;
+    await InvestorAccessRequestModel.findByIdAndDelete(id);
+    res.json({ ok: true });
+  } catch (err) { next(err); }
+};
+
 // DELETE /api/investor/admin/codes/:id
 // ---------------------------------------------------------------------------
 

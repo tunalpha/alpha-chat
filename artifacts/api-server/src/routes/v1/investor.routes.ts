@@ -29,9 +29,10 @@ router.post("/request",  investor.submitAccessRequest);
 router.post("/contact",  investor.submitContactMessage);
 
 // ── Admin ────────────────────────────────────────────────────────────────────
-router.get( "/admin/requests",               requireAdmin(), investor.listRequests);
-router.post("/admin/requests/:id/approve",   requireAdmin(), investor.approveRequest);
-router.post("/admin/requests/:id/reject",    requireAdmin(), investor.rejectRequest);
+router.get(   "/admin/requests",               requireAdmin(), investor.listRequests);
+router.post(  "/admin/requests/:id/approve",   requireAdmin(), investor.approveRequest);
+router.post(  "/admin/requests/:id/reject",    requireAdmin(), investor.rejectRequest);
+router.delete("/admin/requests/:id",           requireAdmin(), investor.deleteRequest);
 
 router.get( "/admin/codes",                  requireAdmin(), investor.listCodes);
 router.post("/admin/codes/:id/regenerate",   requireAdmin(), investor.regenerateCode);
