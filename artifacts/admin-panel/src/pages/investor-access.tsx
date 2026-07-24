@@ -361,21 +361,21 @@ function RequestsTab() {
       ) : (
         <div className="space-y-3">
           {requests.map((r) => (
-            <div key={r._id} className="rounded-xl border border-sidebar-border bg-sidebar-accent/20 p-4 space-y-3">
+            <div key={r._id} className="rounded-xl border border-white/10 bg-zinc-800 p-4 space-y-3">
               {/* Riga principale */}
               <div className="flex items-start justify-between gap-3">
                 <div className="flex-1 min-w-0">
                   <p className="font-semibold text-white truncate">{r.name}</p>
-                  <p className="text-xs text-sidebar-foreground/60 truncate">{r.company}</p>
-                  <p className="text-xs text-sidebar-foreground/50 font-mono truncate mt-0.5">{r.email}</p>
+                  <p className="text-xs text-zinc-400 truncate">{r.company}</p>
+                  <p className="text-xs text-zinc-500 font-mono truncate mt-0.5">{r.email}</p>
                 </div>
                 <StatusBadge status={r.status} />
               </div>
               {/* Data + messaggio */}
-              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-sidebar-foreground/40">
+              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-zinc-500">
                 <span>📅 {fmtDate(r.requestedAt)}</span>
                 {r.message && (
-                  <span className="italic text-sidebar-foreground/50 truncate max-w-[200px]" title={r.message}>
+                  <span className="italic text-zinc-500 truncate max-w-[200px]" title={r.message}>
                     💬 {r.message}
                   </span>
                 )}
@@ -509,15 +509,15 @@ function CodesTab() {
       ) : (
         <div className="space-y-3">
           {codes.map((c) => (
-            <div key={c._id} className="rounded-xl border border-sidebar-border bg-sidebar-accent/20 p-4 space-y-3">
+            <div key={c._id} className="rounded-xl border border-white/10 bg-zinc-800 p-4 space-y-3">
               <div className="flex items-start justify-between gap-3">
                 <div className="flex-1 min-w-0">
                   <p className="font-semibold text-white truncate">{c.investorName}</p>
-                  <p className="text-xs text-sidebar-foreground/50 font-mono truncate">{c.investorEmail}</p>
+                  <p className="text-xs text-zinc-500 font-mono truncate">{c.investorEmail}</p>
                 </div>
                 <StatusBadge status={c.status} />
               </div>
-              <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-sidebar-foreground/40">
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-zinc-500">
                 <span>📅 Creato: {fmtDate(c.createdAt)}</span>
                 <span>⏳ Scade: {c.expiresAt ? fmtDate(c.expiresAt) : "Mai"}</span>
                 <span>🕐 Ultimo uso: {fmtDate(c.lastUsedAt)}</span>
@@ -531,7 +531,7 @@ function CodesTab() {
                   </button>
                 )}
                 <button onClick={() => regenerate(c._id)}
-                  className="text-xs px-3 py-1.5 rounded-lg border border-sidebar-border text-sidebar-foreground/60 hover:text-white">
+                  className="text-xs px-3 py-1.5 rounded-lg border border-zinc-600 text-zinc-400 hover:text-white">
                   ↻ Rigenera
                 </button>
                 <button onClick={() => del(c._id)}
@@ -601,15 +601,15 @@ function LogTab() {
       ) : (
         <div className="space-y-3">
           {logs.map((l) => (
-            <div key={l._id} className="rounded-xl border border-sidebar-border bg-sidebar-accent/20 p-4 space-y-2">
+            <div key={l._id} className="rounded-xl border border-white/10 bg-zinc-800 p-4 space-y-2">
               <div className="flex items-center justify-between gap-3">
-                <p className="text-xs text-sidebar-foreground/50 font-mono">{l.ip ?? "—"}</p>
+                <p className="text-xs text-zinc-400 font-mono">{l.ip ?? "—"}</p>
                 <StatusBadge status={l.outcome} />
               </div>
-              <p className="text-xs text-sidebar-foreground/60 truncate">
+              <p className="text-xs text-zinc-400 truncate">
                 {l.investorEmail ? `📧 ${l.investorEmail}` : "Utente sconosciuto"}
               </p>
-              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-sidebar-foreground/40">
+              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-zinc-500">
                 <span>📅 {fmtDate(l.attemptedAt)}</span>
                 {l.reason && <span>💬 {l.reason}</span>}
               </div>
