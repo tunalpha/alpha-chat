@@ -577,7 +577,7 @@ function LiveActivity() {
                   {(!data?.events?.length) && <TableRow><TableCell colSpan={7} className="text-center py-12 text-muted-foreground font-mono text-sm">Nessuna attività. Le operazioni appariranno qui in tempo reale.</TableCell></TableRow>}
                   {(data?.events ?? []).map((e: R2ActivityEvent) => (
                     <TableRow key={e.id} className="font-mono">
-                      <TableCell className="text-xs text-muted-foreground whitespace-nowrap">{new Date(e.created_at).toLocaleTimeString()}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground whitespace-nowrap">{new Date(e.created_at).toLocaleString("it-IT",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit",second:"2-digit"})}</TableCell>
                       <TableCell><span className={`text-xs font-bold ${EVENT_COLORS[e.event_type] ?? "text-muted-foreground"}`}>{e.event_type}</span></TableCell>
                       <TableCell>{e.status === "success" ? <CheckCircle2 className="w-4 h-4 text-emerald-500" /> : <XCircle className="w-4 h-4 text-red-500" />}</TableCell>
                       <TableCell className="text-xs">{e.uploader ? `@${e.uploader}` : "—"}</TableCell>
@@ -613,7 +613,7 @@ function ErrorCenter() {
                   {(!data?.errors?.length) && <TableRow><TableCell colSpan={6} className="text-center py-12 text-muted-foreground font-mono text-sm"><CheckCircle2 className="w-8 h-8 text-emerald-500 mx-auto mb-2" />Nessun errore. Sistema operativo.</TableCell></TableRow>}
                   {(data?.errors ?? []).map((e: R2ErrorEvent) => (
                     <TableRow key={e.id} className="font-mono">
-                      <TableCell className="text-xs text-muted-foreground whitespace-nowrap">{new Date(e.created_at).toLocaleTimeString()}</TableCell>
+                      <TableCell className="text-xs text-muted-foreground whitespace-nowrap">{new Date(e.created_at).toLocaleString("it-IT",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit",second:"2-digit"})}</TableCell>
                       <TableCell><span className={`text-xs font-bold ${EVENT_COLORS[e.event_type] ?? "text-muted-foreground"}`}>{e.event_type}</span></TableCell>
                       <TableCell className="text-xs">{e.uploader ? `@${e.uploader}` : "—"}</TableCell>
                       <TableCell className="text-xs text-muted-foreground max-w-[100px] truncate">{e.filename ?? e.storage_key?.split("/").pop() ?? "—"}</TableCell>
