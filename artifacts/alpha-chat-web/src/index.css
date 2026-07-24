@@ -7561,16 +7561,19 @@ html.emergency-open #root {
   flex: 1;
   overflow: hidden;
 }
-/* Override emoji-picker-react per usare variabili tema */
+/* Override minimi emoji-picker-react — solo bordi/ombre per evitare conflitti con le icone categoria */
 .EmojiPickerReact {
-  --epr-bg-color: var(--bg-1, #fff) !important;
-  --epr-category-label-bg-color: var(--bg-0, #f9fafb) !important;
-  --epr-text-color: var(--text-1, #111827) !important;
-  --epr-search-input-bg-color: var(--bg-0, #f9fafb) !important;
-  --epr-highlight-color: var(--accent, #8b5cf6) !important;
   border: none !important;
   box-shadow: none !important;
   border-radius: 0 !important;
+  /* Scroll fluido su iOS */
+  -webkit-overflow-scrolling: touch;
+  touch-action: pan-y;
+}
+/* Scroll fluido anche sull'area emoji interna */
+.EmojiPickerReact .epr-body {
+  -webkit-overflow-scrolling: touch !important;
+  touch-action: pan-y !important;
 }
 
 .emoji-picker-loading {
@@ -7591,8 +7594,13 @@ html.emergency-open #root {
 /* ── Sticker Picker ──────────────────────────────────────────────────── */
 .sticker-picker {
   padding: 8px;
-  max-height: 332px;
   overflow-y: auto;
+  /* altezza gestita via JS (var --sp-height) in base al viewport */
+  height: var(--sp-height, 280px);
+  /* Scroll fluido su iOS — fondamentale per PWA */
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
 }
 .sticker-pack-name {
   font-size: 11px;

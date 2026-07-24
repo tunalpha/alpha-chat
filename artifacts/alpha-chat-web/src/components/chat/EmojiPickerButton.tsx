@@ -32,34 +32,49 @@ const StickerPickerLazy = lazy(() =>
 );
 
 // ── Calcola posizione pannello ancorata al pulsante ──────────────────────────
-const PICKER_WIDTH  = 320;
-const PICKER_HEIGHT = 380;
-const GAP           = 8;
+const PICKER_WIDTH   = 320;
+const PICKER_MIN_H   = 280;  // minimo su schermi piccoli
+const PICKER_MAX_H   = 420;  // massimo su schermi grandi
+const TAB_HEIGHT     = 48;
+const GAP            = 8;
 
-function computePickerStyle(
+interface PickerLayout {
+  style: CSSProperties;
+  /** Altezza effettiva del contenuto (senza tab) in px */
+  contentHeight: number;
+}
+
+function computePickerLayout(
   anchorRef: RefObject<HTMLButtonElement | null>,
-): CSSProperties | null {
+): PickerLayout | null {
   if (!anchorRef.current) return null;
   const rect = anchorRef.current.getBoundingClientRect();
   const vw   = window.innerWidth;
   const vh   = window.innerHeight;
 
+  // Altezza adattiva: massimo 55% del viewport, clampata tra min e max
+  const pickerHeight = Math.min(PICKER_MAX_H, Math.max(PICKER_MIN_H, vh * 0.55));
+
   // Posiziona sopra il pulsante; se non c'è spazio, sotto
-  const fitsAbove = rect.top - GAP >= PICKER_HEIGHT;
+  const fitsAbove = rect.top - GAP >= pickerHeight;
   const top       = fitsAbove
-    ? rect.top - PICKER_HEIGHT - GAP
-    : Math.min(rect.bottom + GAP, vh - PICKER_HEIGHT - GAP);
+    ? rect.top - pickerHeight - GAP
+    : Math.min(rect.bottom + GAP, vh - pickerHeight - GAP);
 
   // Centra orizzontalmente sull'ancoraggio, clampa ai margini
   let left = rect.left + rect.width / 2 - PICKER_WIDTH / 2;
   left = Math.max(GAP, Math.min(left, vw - PICKER_WIDTH - GAP));
 
   return {
-    position: "fixed",
-    top,
-    left,
-    width: PICKER_WIDTH,
-    zIndex: 9999,
+    style: {
+      position: "fixed",
+      top,
+      left,
+      width: PICKER_WIDTH,
+      height: pickerHeight,
+      zIndex: 9999,
+    },
+    contentHeight: pickerHeight - TAB_HEIGHT,
   };
 }
 
@@ -86,8 +101,8 @@ export default function EmojiPickerButton({
   const buttonRef       = useRef<HTMLButtonElement>(null);
   const panelRef        = useRef<HTMLDivElement>(null);
 
-  // Posizione calcolata inline — nessun useEffect, nessuna race condition
-  const panelStyle = open ? computePickerStyle(buttonRef) : null;
+  // Layout calcolato inline — nessun useEffect, nessuna race condition
+  const layout = open ? computePickerLayout(buttonRef) : null;
 
   // Chiudi se si tocca/clicca fuori dal pannello o dal pulsante
   useEffect(() => {
@@ -136,11 +151,11 @@ export default function EmojiPickerButton({
 
   // Pannello renderizzato via portal in document.body:
   // sfugge a transform/overflow di qualsiasi ancestor nella gerarchia React
-  const panel = open && panelStyle ? createPortal(
+  const panel = open && layout ? createPortal(
     <div
       ref={panelRef}
       className="emoji-picker-panel"
-      style={panelStyle}
+      style={layout.style}
       /**
        * preventDefault su mousedown/pointerdown: impedisce a Safari/iOS
        * di togliere il focus alla textarea quando si tocca il pannello.
@@ -172,7 +187,7 @@ export default function EmojiPickerButton({
         </button>
       </div>
 
-      {/* Contenuto */}
+      {/* Contenuto — altezza adattiva al viewport */}
       <div className="emoji-picker-content">
         <Suspense fallback={
           <div className="emoji-picker-loading">
@@ -185,10 +200,13 @@ export default function EmojiPickerButton({
               lazyLoadEmojis
               searchPlaceholder={t("chat.emojiPickerLabel")}
               width={PICKER_WIDTH}
-              height={PICKER_HEIGHT - 48}
+              height={layout.contentHeight}
             />
           ) : (
-            <StickerPickerLazy onSelect={handleStickerSelect} />
+            /* CSS var --sp-height controlla l'altezza scroll dello sticker picker */
+            <div style={{ "--sp-height": `${layout.contentHeight}px` } as React.CSSProperties}>
+              <StickerPickerLazy onSelect={handleStickerSelect} />
+            </div>
           )}
         </Suspense>
       </div>

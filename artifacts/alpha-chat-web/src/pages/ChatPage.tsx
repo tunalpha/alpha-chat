@@ -1788,7 +1788,7 @@ export default function ChatPage({ onNavigate }: Props) {
    * e lo mostrano come "📎 Sticker" (il marker STICKER_MARKER è human-readable).
    */
   async function handleStickerSend(payload: StickerPayload) {
-    if (!activeConvId || sending) return;
+    if (!activeConvId) return;
     const body = encodeStickerPayload(payload);
     const clientMessageId = crypto.randomUUID();
     const pendingMsgId    = `pending-${clientMessageId}`;
@@ -1818,6 +1818,9 @@ export default function ChatPage({ onNavigate }: Props) {
     };
     setDecryptedTexts((prev) => new Map(prev).set(pendingMsgId, body));
     setMessages((prev) => [...prev, optimisticMsg]);
+    // Forza scroll-to-bottom: lo sticker è appena aggiunto in fondo
+    // (se l'utente era scrollato in alto, la bolla sarebbe fuori view)
+    setAtBottom(true);
     void playNotifSound("sent");
 
     try {
