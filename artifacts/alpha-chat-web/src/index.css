@@ -7580,9 +7580,17 @@ html.emergency-open #root {
 .EmojiPickerReact input.epr-search::placeholder {
   color: #9ca3af !important;
 }
+/* Barra categoria scorrevole orizzontalmente (su mobile le icone vanno fuori schermo) */
+.EmojiPickerReact .epr-category-nav {
+  overflow-x: auto !important;
+  -webkit-overflow-scrolling: touch !important;
+  scrollbar-width: none !important;
+}
+.EmojiPickerReact .epr-category-nav::-webkit-scrollbar { display: none; }
 /* Label categorie leggibili */
 .EmojiPickerReact .epr-category-nav button {
   opacity: 0.7;
+  flex-shrink: 0;
 }
 .EmojiPickerReact .epr-category-nav button.epr-active,
 .EmojiPickerReact .epr-category-nav button:hover {

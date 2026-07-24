@@ -15,7 +15,7 @@ export const SendMessageSchema = z.object({
     .string()
     .uuid("client_message_id deve essere UUID v4"),
 
-  message_type: z.enum(["text", "media", "reply", "forward"], {
+  message_type: z.enum(["text", "media", "reply", "forward", "sticker"], {
     errorMap: () => ({ message: "message_type non valido" }),
   }),
 
