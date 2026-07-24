@@ -1,9 +1,9 @@
 /**
- * Investor Access — Admin Page
+ * Investor Access — Pagina Admin
  *
- * Tab A: Access Requests
- * Tab B: Access Codes
- * Tab C: Access Log
+ * Tab A: Richieste di accesso
+ * Tab B: Codici di accesso
+ * Tab C: Log accessi
  */
 
 import { useState, useEffect, useCallback } from "react";
@@ -32,7 +32,12 @@ function GateToggle() {
         body: JSON.stringify({ gateEnabled: !enabled }),
       });
       setEnabled(d.gateEnabled);
-      toast({ title: d.gateEnabled ? "Gate abilitato" : "Gate disabilitato", description: d.gateEnabled ? "Gli investitori devono inserire il codice" : "Il portale è accessibile senza codice" });
+      toast({
+        title: d.gateEnabled ? "Gate abilitato" : "Gate disabilitato",
+        description: d.gateEnabled
+          ? "Gli investitori devono inserire il codice di accesso"
+          : "Il portale è accessibile senza codice",
+      });
     } catch {
       toast({ title: "Errore", variant: "destructive" });
     } finally { setSaving(false); }
@@ -45,7 +50,7 @@ function GateToggle() {
       <div className="flex-1">
         <p className="text-sm font-semibold text-white">Gate accesso investitori</p>
         <p className="text-xs text-sidebar-foreground/50 mt-0.5">
-          {enabled ? "ON — richiede codice accesso" : "OFF — portale aperto senza codice"}
+          {enabled ? "ON — richiede codice di accesso" : "OFF — portale aperto senza codice"}
         </p>
       </div>
       <button
@@ -67,7 +72,7 @@ function GateToggle() {
   );
 }
 
-// Investor endpoints live at /api/v1/investor/admin (NOT under /api/v1/admin)
+// Endpoint investitori su /api/v1/investor/admin
 const INV_BASE = "/api/v1/investor/admin";
 
 async function invFetch<T>(path: string, opts?: RequestInit): Promise<T> {
@@ -82,7 +87,7 @@ async function invFetch<T>(path: string, opts?: RequestInit): Promise<T> {
 
   if (res.status === 401 || res.status === 403) {
     window.location.href = "/admin/login";
-    throw new Error("Unauthorized");
+    throw new Error("Non autorizzato");
   }
   if (!res.ok) {
     let message = `HTTP ${res.status}`;
@@ -92,7 +97,7 @@ async function invFetch<T>(path: string, opts?: RequestInit): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-// ─── Types ─────────────────────────────────────────────────────────────────
+// ─── Tipi ─────────────────────────────────────────────────────────────────
 
 interface AccessRequest {
   _id: string;
@@ -130,19 +135,30 @@ interface AccessLog {
 }
 
 const VALIDITY_OPTIONS = [
-  { label: "7 days",        value: 7   },
-  { label: "15 days",       value: 15  },
-  { label: "30 days",       value: 30  },
-  { label: "60 days",       value: 60  },
-  { label: "90 days",       value: 90  },
-  { label: "180 days",      value: 180 },
-  { label: "365 days",      value: 365 },
-  { label: "No expiry",     value: 0   },
+  { label: "7 giorni",       value: 7   },
+  { label: "15 giorni",      value: 15  },
+  { label: "30 giorni",      value: 30  },
+  { label: "60 giorni",      value: 60  },
+  { label: "90 giorni",      value: 90  },
+  { label: "180 giorni",     value: 180 },
+  { label: "365 giorni",     value: 365 },
+  { label: "Nessuna scadenza", value: 0 },
 ];
+
+const STATUS_LABEL: Record<string, string> = {
+  pending:  "IN ATTESA",
+  approved: "APPROVATO",
+  rejected: "RIFIUTATO",
+  active:   "ATTIVO",
+  revoked:  "REVOCATO",
+  expired:  "SCADUTO",
+  success:  "SUCCESSO",
+  denied:   "NEGATO",
+};
 
 function fmtDate(d?: string) {
   if (!d) return "—";
-  return new Date(d).toLocaleString("en-GB", { dateStyle: "medium", timeStyle: "short" });
+  return new Date(d).toLocaleString("it-IT", { dateStyle: "medium", timeStyle: "short" });
 }
 
 function StatusBadge({ status }: { status: string }) {
@@ -158,12 +174,12 @@ function StatusBadge({ status }: { status: string }) {
   };
   return (
     <span className={`text-xs font-semibold px-2 py-0.5 rounded-full border ${colors[status] ?? "bg-zinc-700 text-zinc-300"}`}>
-      {status.toUpperCase()}
+      {STATUS_LABEL[status] ?? status.toUpperCase()}
     </span>
   );
 }
 
-// ─── Approve Modal ──────────────────────────────────────────────────────────
+// ─── Modal Approvazione ──────────────────────────────────────────────────────
 
 function ApproveModal({
   request,
@@ -196,11 +212,11 @@ function ApproveModal({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ customCode: code, investorName: name, email, validityDays: validity, sendEmail }),
       });
-      toast({ title: "Code generated", description: `Code: ${res.code}` });
+      toast({ title: "Codice generato", description: `Codice: ${res.code}` });
       onDone();
       onClose();
     } catch {
-      toast({ title: "Error", description: "Failed to generate code", variant: "destructive" });
+      toast({ title: "Errore", description: "Impossibile generare il codice", variant: "destructive" });
     } finally { setLoading(false); }
   };
 
@@ -208,14 +224,18 @@ function ApproveModal({
     <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
       <div className="bg-sidebar border border-sidebar-border rounded-2xl w-full max-w-md p-6 space-y-4 shadow-2xl">
         <div className="flex items-center justify-between">
-          <h3 className="text-lg font-bold text-white">Generate Investor Access Code</h3>
+          <h3 className="text-lg font-bold text-white">Genera codice di accesso</h3>
           <button onClick={onClose} className="text-sidebar-foreground/40 hover:text-white">✕</button>
         </div>
-        <p className="text-sm text-sidebar-foreground/60">Approving request from <strong className="text-white">{request.name}</strong> · {request.company}</p>
+        <p className="text-sm text-sidebar-foreground/60">
+          Approvazione richiesta di <strong className="text-white">{request.name}</strong> · {request.company}
+        </p>
 
         <div className="space-y-3">
           <div>
-            <label className="text-xs font-semibold text-sidebar-foreground/50 uppercase tracking-wider">Access Code (auto-generated, editable)</label>
+            <label className="text-xs font-semibold text-sidebar-foreground/50 uppercase tracking-wider">
+              Codice di accesso (generato automaticamente, modificabile)
+            </label>
             <div className="flex gap-2 mt-1">
               <input
                 value={code} onChange={e => setCode(e.target.value.toUpperCase())}
@@ -228,7 +248,7 @@ function ApproveModal({
             </div>
           </div>
           <div>
-            <label className="text-xs font-semibold text-sidebar-foreground/50 uppercase tracking-wider">Investor Name</label>
+            <label className="text-xs font-semibold text-sidebar-foreground/50 uppercase tracking-wider">Nome investitore</label>
             <input value={name} onChange={e => setName(e.target.value)}
               className="w-full mt-1 bg-sidebar-accent border border-sidebar-border rounded-lg px-3 py-2 text-white text-sm" />
           </div>
@@ -238,7 +258,7 @@ function ApproveModal({
               className="w-full mt-1 bg-sidebar-accent border border-sidebar-border rounded-lg px-3 py-2 text-white text-sm" />
           </div>
           <div>
-            <label className="text-xs font-semibold text-sidebar-foreground/50 uppercase tracking-wider">Validity</label>
+            <label className="text-xs font-semibold text-sidebar-foreground/50 uppercase tracking-wider">Validità</label>
             <select value={validity} onChange={e => setValidity(Number(e.target.value))}
               className="w-full mt-1 bg-sidebar-accent border border-sidebar-border rounded-lg px-3 py-2 text-white text-sm">
               {VALIDITY_OPTIONS.map(o => (
@@ -249,17 +269,17 @@ function ApproveModal({
           <label className="flex items-center gap-3 cursor-pointer">
             <input type="checkbox" checked={sendEmail} onChange={e => setSendEmail(e.target.checked)}
               className="w-4 h-4 rounded border-sidebar-border accent-violet-500" />
-            <span className="text-sm text-sidebar-foreground/80">Send code automatically via email</span>
+            <span className="text-sm text-sidebar-foreground/80">Invia il codice automaticamente via email</span>
           </label>
         </div>
 
         <div className="flex gap-3 pt-2">
           <button onClick={onClose} className="flex-1 py-2 rounded-lg border border-sidebar-border text-sm text-sidebar-foreground/60 hover:text-white">
-            Cancel
+            Annulla
           </button>
           <button onClick={submit} disabled={loading}
             className="flex-1 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-sm font-semibold disabled:opacity-50">
-            {loading ? "Generating…" : "Generate Access Code"}
+            {loading ? "Generazione…" : "Genera codice di accesso"}
           </button>
         </div>
       </div>
@@ -267,7 +287,14 @@ function ApproveModal({
   );
 }
 
-// ─── Tab A: Requests ────────────────────────────────────────────────────────
+// ─── Tab A: Richieste ────────────────────────────────────────────────────────
+
+const FILTER_REQUESTS = [
+  { id: "all",      label: "Tutte" },
+  { id: "pending",  label: "In attesa" },
+  { id: "approved", label: "Approvate" },
+  { id: "rejected", label: "Rifiutate" },
+];
 
 function RequestsTab() {
   const { toast } = useToast();
@@ -282,20 +309,20 @@ function RequestsTab() {
       const res = await invFetch<{ requests: AccessRequest[] }>(`/requests${filter !== "all" ? `?status=${filter}` : ""}`);
       setRequests(res.requests);
     } catch {
-      toast({ title: "Error loading requests", variant: "destructive" });
+      toast({ title: "Errore nel caricamento delle richieste", variant: "destructive" });
     } finally { setLoading(false); }
   }, [filter]);
 
   useEffect(() => { load(); }, [load]);
 
   const reject = async (id: string) => {
-    if (!confirm("Reject this request?")) return;
+    if (!confirm("Rifiutare questa richiesta?")) return;
     try {
       await invFetch(`/requests/${id}/reject`, { method: "POST" });
-      toast({ title: "Request rejected" });
+      toast({ title: "Richiesta rifiutata" });
       load();
     } catch {
-      toast({ title: "Error", variant: "destructive" });
+      toast({ title: "Errore", variant: "destructive" });
     }
   };
 
@@ -309,78 +336,79 @@ function RequestsTab() {
         />
       )}
 
-      {/* Filter */}
-      <div className="flex gap-2">
-        {["all","pending","approved","rejected"].map(s => (
-          <button key={s} onClick={() => setFilter(s)}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold capitalize transition-colors ${
-              filter === s ? "bg-violet-600 text-white" : "bg-sidebar-accent text-sidebar-foreground/60 hover:text-white border border-sidebar-border"
+      {/* Filtri */}
+      <div className="flex gap-2 flex-wrap">
+        {FILTER_REQUESTS.map(s => (
+          <button key={s.id} onClick={() => setFilter(s.id)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+              filter === s.id ? "bg-violet-600 text-white" : "bg-sidebar-accent text-sidebar-foreground/60 hover:text-white border border-sidebar-border"
             }`}>
-            {s}
+            {s.label}
           </button>
         ))}
         <button onClick={load} className="ml-auto px-3 py-1.5 rounded-lg text-xs border border-sidebar-border text-sidebar-foreground/60 hover:text-white">
-          ↻ Refresh
+          ↻ Aggiorna
         </button>
       </div>
 
       {loading ? (
-        <p className="text-sidebar-foreground/50 text-sm">Loading…</p>
+        <p className="text-sidebar-foreground/50 text-sm">Caricamento…</p>
       ) : requests.length === 0 ? (
         <div className="text-center py-12 text-sidebar-foreground/40">
           <p className="text-4xl mb-2">📋</p>
-          <p>No requests found</p>
+          <p>Nessuna richiesta trovata</p>
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-sidebar-border">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-sidebar-border bg-sidebar-accent/50">
-                {["Name","Company","Email","Date","Status","Actions"].map(h => (
-                  <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-sidebar-foreground/50 uppercase tracking-wider">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {requests.map((r, i) => (
-                <tr key={r._id} className={`border-b border-sidebar-border/50 transition-colors hover:bg-sidebar-accent/30 ${i % 2 === 0 ? "" : "bg-sidebar-accent/10"}`}>
-                  <td className="px-4 py-3 font-medium text-white">{r.name}</td>
-                  <td className="px-4 py-3 text-sidebar-foreground/70">{r.company}</td>
-                  <td className="px-4 py-3 text-sidebar-foreground/70 font-mono text-xs">{r.email}</td>
-                  <td className="px-4 py-3 text-sidebar-foreground/50 text-xs">{fmtDate(r.requestedAt)}</td>
-                  <td className="px-4 py-3"><StatusBadge status={r.status} /></td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-2">
-                      {r.message && (
-                        <button title={r.message} className="text-xs text-sidebar-foreground/40 hover:text-white px-2 py-1 rounded border border-sidebar-border">
-                          View
-                        </button>
-                      )}
-                      {r.status === "pending" && (
-                        <>
-                          <button onClick={() => setApproving(r)}
-                            className="text-xs px-2 py-1 rounded bg-green-700/30 text-green-400 border border-green-500/30 hover:bg-green-700/50">
-                            Approve
-                          </button>
-                          <button onClick={() => reject(r._id)}
-                            className="text-xs px-2 py-1 rounded bg-red-700/30 text-red-400 border border-red-500/30 hover:bg-red-700/50">
-                            Reject
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="space-y-3">
+          {requests.map((r) => (
+            <div key={r._id} className="rounded-xl border border-sidebar-border bg-sidebar-accent/20 p-4 space-y-3">
+              {/* Riga principale */}
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-white truncate">{r.name}</p>
+                  <p className="text-xs text-sidebar-foreground/60 truncate">{r.company}</p>
+                  <p className="text-xs text-sidebar-foreground/50 font-mono truncate mt-0.5">{r.email}</p>
+                </div>
+                <StatusBadge status={r.status} />
+              </div>
+              {/* Data + messaggio */}
+              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-sidebar-foreground/40">
+                <span>📅 {fmtDate(r.requestedAt)}</span>
+                {r.message && (
+                  <span className="italic text-sidebar-foreground/50 truncate max-w-[200px]" title={r.message}>
+                    💬 {r.message}
+                  </span>
+                )}
+              </div>
+              {/* Azioni */}
+              {r.status === "pending" && (
+                <div className="flex gap-2 pt-1">
+                  <button onClick={() => setApproving(r)}
+                    className="flex-1 text-xs py-1.5 rounded-lg bg-green-700/30 text-green-400 border border-green-500/30 hover:bg-green-700/50 font-semibold">
+                    ✓ Approva
+                  </button>
+                  <button onClick={() => reject(r._id)}
+                    className="flex-1 text-xs py-1.5 rounded-lg bg-red-700/30 text-red-400 border border-red-500/30 hover:bg-red-700/50 font-semibold">
+                    ✕ Rifiuta
+                  </button>
+                </div>
+              )}
+            </div>
+          ))}
         </div>
       )}
     </div>
   );
 }
 
-// ─── Tab B: Codes ───────────────────────────────────────────────────────────
+// ─── Tab B: Codici ───────────────────────────────────────────────────────────
+
+const FILTER_CODES = [
+  { id: "all",     label: "Tutti" },
+  { id: "active",  label: "Attivi" },
+  { id: "revoked", label: "Revocati" },
+  { id: "expired", label: "Scaduti" },
+];
 
 function CodesTab() {
   const { toast } = useToast();
@@ -395,133 +423,124 @@ function CodesTab() {
       const res = await invFetch<{ codes: AccessCode[] }>(`/codes${filter !== "all" ? `?status=${filter}` : ""}`);
       setCodes(res.codes);
     } catch {
-      toast({ title: "Error loading codes", variant: "destructive" });
+      toast({ title: "Errore nel caricamento dei codici", variant: "destructive" });
     } finally { setLoading(false); }
   }, [filter]);
 
   useEffect(() => { load(); }, [load]);
 
   const regenerate = async (id: string) => {
-    if (!confirm("Regenerate this code? The old code will stop working immediately.")) return;
+    if (!confirm("Rigenerare questo codice? Il vecchio codice smetterà di funzionare immediatamente.")) return;
     try {
       const res = await invFetch<{ code: string }>(`/codes/${id}/regenerate`, { method: "POST" });
       setShowNewCode(res.code);
       load();
     } catch {
-      toast({ title: "Error", variant: "destructive" });
+      toast({ title: "Errore", variant: "destructive" });
     }
   };
 
   const revoke = async (id: string) => {
-    if (!confirm("Revoke this access code?")) return;
+    if (!confirm("Revocare questo codice di accesso?")) return;
     try {
       await invFetch(`/codes/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status: "revoked" }) });
-      toast({ title: "Code revoked" });
+      toast({ title: "Codice revocato" });
       load();
     } catch {
-      toast({ title: "Error", variant: "destructive" });
+      toast({ title: "Errore", variant: "destructive" });
     }
   };
 
   const del = async (id: string) => {
-    if (!confirm("Permanently delete this code?")) return;
+    if (!confirm("Eliminare definitivamente questo codice?")) return;
     try {
       await invFetch(`/codes/${id}`, { method: "DELETE" });
-      toast({ title: "Code deleted" });
+      toast({ title: "Codice eliminato" });
       load();
     } catch {
-      toast({ title: "Error", variant: "destructive" });
+      toast({ title: "Errore", variant: "destructive" });
     }
   };
 
   const copy = (text: string) => {
     navigator.clipboard.writeText(text).then(() =>
-      toast({ title: "Copied to clipboard" })
+      toast({ title: "Copiato negli appunti" })
     );
   };
 
   return (
     <div className="space-y-4">
       {showNewCode && (
-        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center">
+        <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
           <div className="bg-sidebar border border-sidebar-border rounded-2xl p-6 max-w-sm w-full text-center">
             <p className="text-xl mb-2">✅</p>
-            <p className="font-semibold text-white mb-1">New Access Code</p>
+            <p className="font-semibold text-white mb-1">Nuovo codice di accesso</p>
             <p className="font-mono text-2xl font-bold text-violet-400 tracking-widest my-4 select-all">{showNewCode}</p>
-            <p className="text-xs text-sidebar-foreground/50 mb-4">Save this code — it won't be shown again.</p>
+            <p className="text-xs text-sidebar-foreground/50 mb-4">Salva questo codice — non verrà mostrato di nuovo.</p>
             <div className="flex gap-2">
-              <button onClick={() => copy(showNewCode)} className="flex-1 py-2 rounded-lg border border-sidebar-border text-sm hover:text-white">Copy</button>
-              <button onClick={() => setShowNewCode(null)} className="flex-1 py-2 rounded-lg bg-violet-600 text-white text-sm font-semibold">Done</button>
+              <button onClick={() => copy(showNewCode)} className="flex-1 py-2 rounded-lg border border-sidebar-border text-sm hover:text-white">Copia</button>
+              <button onClick={() => setShowNewCode(null)} className="flex-1 py-2 rounded-lg bg-violet-600 text-white text-sm font-semibold">Fatto</button>
             </div>
           </div>
         </div>
       )}
 
-      <div className="flex gap-2">
-        {["all","active","revoked","expired"].map(s => (
-          <button key={s} onClick={() => setFilter(s)}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold capitalize transition-colors ${
-              filter === s ? "bg-violet-600 text-white" : "bg-sidebar-accent text-sidebar-foreground/60 hover:text-white border border-sidebar-border"
+      <div className="flex gap-2 flex-wrap">
+        {FILTER_CODES.map(s => (
+          <button key={s.id} onClick={() => setFilter(s.id)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+              filter === s.id ? "bg-violet-600 text-white" : "bg-sidebar-accent text-sidebar-foreground/60 hover:text-white border border-sidebar-border"
             }`}>
-            {s}
+            {s.label}
           </button>
         ))}
         <button onClick={load} className="ml-auto px-3 py-1.5 rounded-lg text-xs border border-sidebar-border text-sidebar-foreground/60 hover:text-white">
-          ↻ Refresh
+          ↻ Aggiorna
         </button>
       </div>
 
       {loading ? (
-        <p className="text-sidebar-foreground/50 text-sm">Loading…</p>
+        <p className="text-sidebar-foreground/50 text-sm">Caricamento…</p>
       ) : codes.length === 0 ? (
         <div className="text-center py-12 text-sidebar-foreground/40">
           <p className="text-4xl mb-2">🔑</p>
-          <p>No codes found</p>
+          <p>Nessun codice trovato</p>
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-sidebar-border">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-sidebar-border bg-sidebar-accent/50">
-                {["Investor","Email","Created","Expires","Last Used","Uses","Status","Actions"].map(h => (
-                  <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-sidebar-foreground/50 uppercase tracking-wider whitespace-nowrap">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {codes.map((c, i) => (
-                <tr key={c._id} className={`border-b border-sidebar-border/50 hover:bg-sidebar-accent/30 ${i % 2 === 0 ? "" : "bg-sidebar-accent/10"}`}>
-                  <td className="px-4 py-3 font-medium text-white whitespace-nowrap">{c.investorName}</td>
-                  <td className="px-4 py-3 text-sidebar-foreground/70 font-mono text-xs">{c.investorEmail}</td>
-                  <td className="px-4 py-3 text-sidebar-foreground/50 text-xs whitespace-nowrap">{fmtDate(c.createdAt)}</td>
-                  <td className="px-4 py-3 text-sidebar-foreground/50 text-xs whitespace-nowrap">{c.expiresAt ? fmtDate(c.expiresAt) : "∞ Never"}</td>
-                  <td className="px-4 py-3 text-sidebar-foreground/50 text-xs whitespace-nowrap">{fmtDate(c.lastUsedAt)}</td>
-                  <td className="px-4 py-3 text-center">{c.accessCount}</td>
-                  <td className="px-4 py-3"><StatusBadge status={c.status} /></td>
-                  <td className="px-4 py-3">
-                    <div className="flex items-center gap-1.5 flex-wrap">
-                      {c.status === "active" && (
-                        <>
-                          <button onClick={() => revoke(c._id)}
-                            className="text-xs px-2 py-1 rounded bg-red-700/30 text-red-400 border border-red-500/30 hover:bg-red-700/50 whitespace-nowrap">
-                            Revoke
-                          </button>
-                        </>
-                      )}
-                      <button onClick={() => regenerate(c._id)}
-                        className="text-xs px-2 py-1 rounded border border-sidebar-border text-sidebar-foreground/60 hover:text-white whitespace-nowrap">
-                        Regen
-                      </button>
-                      <button onClick={() => del(c._id)}
-                        className="text-xs px-2 py-1 rounded border border-red-500/20 text-red-400/60 hover:text-red-400 whitespace-nowrap">
-                        Delete
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="space-y-3">
+          {codes.map((c) => (
+            <div key={c._id} className="rounded-xl border border-sidebar-border bg-sidebar-accent/20 p-4 space-y-3">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex-1 min-w-0">
+                  <p className="font-semibold text-white truncate">{c.investorName}</p>
+                  <p className="text-xs text-sidebar-foreground/50 font-mono truncate">{c.investorEmail}</p>
+                </div>
+                <StatusBadge status={c.status} />
+              </div>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-sidebar-foreground/40">
+                <span>📅 Creato: {fmtDate(c.createdAt)}</span>
+                <span>⏳ Scade: {c.expiresAt ? fmtDate(c.expiresAt) : "Mai"}</span>
+                <span>🕐 Ultimo uso: {fmtDate(c.lastUsedAt)}</span>
+                <span>🔢 Accessi: {c.accessCount}</span>
+              </div>
+              <div className="flex gap-2 flex-wrap pt-1">
+                {c.status === "active" && (
+                  <button onClick={() => revoke(c._id)}
+                    className="text-xs px-3 py-1.5 rounded-lg bg-red-700/30 text-red-400 border border-red-500/30 hover:bg-red-700/50 font-semibold">
+                    Revoca
+                  </button>
+                )}
+                <button onClick={() => regenerate(c._id)}
+                  className="text-xs px-3 py-1.5 rounded-lg border border-sidebar-border text-sidebar-foreground/60 hover:text-white">
+                  ↻ Rigenera
+                </button>
+                <button onClick={() => del(c._id)}
+                  className="text-xs px-3 py-1.5 rounded-lg border border-red-500/20 text-red-400/60 hover:text-red-400">
+                  Elimina
+                </button>
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>
@@ -529,6 +548,14 @@ function CodesTab() {
 }
 
 // ─── Tab C: Log ─────────────────────────────────────────────────────────────
+
+const FILTER_LOG = [
+  { id: "all",     label: "Tutti" },
+  { id: "success", label: "Successo" },
+  { id: "denied",  label: "Negati" },
+  { id: "expired", label: "Scaduti" },
+  { id: "revoked", label: "Revocati" },
+];
 
 function LogTab() {
   const { toast } = useToast();
@@ -542,7 +569,7 @@ function LogTab() {
       const res = await invFetch<{ logs: AccessLog[] }>(`/log${filter !== "all" ? `?outcome=${filter}` : ""}`);
       setLogs(res.logs);
     } catch {
-      toast({ title: "Error loading log", variant: "destructive" });
+      toast({ title: "Errore nel caricamento del log", variant: "destructive" });
     } finally { setLoading(false); }
   }, [filter]);
 
@@ -551,55 +578,50 @@ function LogTab() {
   return (
     <div className="space-y-4">
       <div className="flex gap-2 flex-wrap">
-        {["all","success","denied","expired","revoked"].map(s => (
-          <button key={s} onClick={() => setFilter(s)}
-            className={`px-3 py-1.5 rounded-lg text-xs font-semibold capitalize transition-colors ${
-              filter === s ? "bg-violet-600 text-white" : "bg-sidebar-accent text-sidebar-foreground/60 hover:text-white border border-sidebar-border"
+        {FILTER_LOG.map(s => (
+          <button key={s.id} onClick={() => setFilter(s.id)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+              filter === s.id ? "bg-violet-600 text-white" : "bg-sidebar-accent text-sidebar-foreground/60 hover:text-white border border-sidebar-border"
             }`}>
-            {s}
+            {s.label}
           </button>
         ))}
         <button onClick={load} className="ml-auto px-3 py-1.5 rounded-lg text-xs border border-sidebar-border text-sidebar-foreground/60 hover:text-white">
-          ↻ Refresh
+          ↻ Aggiorna
         </button>
       </div>
 
       {loading ? (
-        <p className="text-sidebar-foreground/50 text-sm">Loading…</p>
+        <p className="text-sidebar-foreground/50 text-sm">Caricamento…</p>
       ) : logs.length === 0 ? (
         <div className="text-center py-12 text-sidebar-foreground/40">
           <p className="text-4xl mb-2">📊</p>
-          <p>No access log entries</p>
+          <p>Nessun accesso registrato</p>
         </div>
       ) : (
-        <div className="overflow-x-auto rounded-xl border border-sidebar-border">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-sidebar-border bg-sidebar-accent/50">
-                {["Date","IP","Email","Outcome","Reason"].map(h => (
-                  <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-sidebar-foreground/50 uppercase tracking-wider whitespace-nowrap">{h}</th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {logs.map((l, i) => (
-                <tr key={l._id} className={`border-b border-sidebar-border/50 hover:bg-sidebar-accent/30 ${i % 2 === 0 ? "" : "bg-sidebar-accent/10"}`}>
-                  <td className="px-4 py-3 text-sidebar-foreground/50 text-xs whitespace-nowrap">{fmtDate(l.attemptedAt)}</td>
-                  <td className="px-4 py-3 text-sidebar-foreground/70 font-mono text-xs whitespace-nowrap">{l.ip ?? "—"}</td>
-                  <td className="px-4 py-3 text-sidebar-foreground/70 font-mono text-xs">{l.investorEmail ?? "—"}</td>
-                  <td className="px-4 py-3"><StatusBadge status={l.outcome} /></td>
-                  <td className="px-4 py-3 text-sidebar-foreground/50 text-xs">{l.reason ?? "—"}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+        <div className="space-y-3">
+          {logs.map((l) => (
+            <div key={l._id} className="rounded-xl border border-sidebar-border bg-sidebar-accent/20 p-4 space-y-2">
+              <div className="flex items-center justify-between gap-3">
+                <p className="text-xs text-sidebar-foreground/50 font-mono">{l.ip ?? "—"}</p>
+                <StatusBadge status={l.outcome} />
+              </div>
+              <p className="text-xs text-sidebar-foreground/60 truncate">
+                {l.investorEmail ? `📧 ${l.investorEmail}` : "Utente sconosciuto"}
+              </p>
+              <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-sidebar-foreground/40">
+                <span>📅 {fmtDate(l.attemptedAt)}</span>
+                {l.reason && <span>💬 {l.reason}</span>}
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>
   );
 }
 
-// ─── Main Page ──────────────────────────────────────────────────────────────
+// ─── Pagina principale ──────────────────────────────────────────────────────
 
 type Tab = "requests" | "codes" | "log";
 
@@ -607,48 +629,48 @@ export default function InvestorAccessPage() {
   const [tab, setTab] = useState<Tab>("requests");
 
   const tabs: { id: Tab; label: string; icon: string }[] = [
-    { id: "requests", label: "Access Requests", icon: "📋" },
-    { id: "codes",    label: "Access Codes",    icon: "🔑" },
-    { id: "log",      label: "Access Log",       icon: "📊" },
+    { id: "requests", label: "Richieste",  icon: "📋" },
+    { id: "codes",    label: "Codici",     icon: "🔑" },
+    { id: "log",      label: "Log",        icon: "📊" },
   ];
 
   return (
-    <div className="p-6 max-w-7xl mx-auto space-y-6">
-      {/* Header */}
+    <div className="p-4 sm:p-6 max-w-7xl mx-auto space-y-5">
+      {/* Intestazione */}
       <div className="flex items-start gap-4">
         <div className="w-12 h-12 rounded-2xl bg-violet-600/20 border border-violet-500/30 flex items-center justify-center text-2xl shrink-0">
           🔐
         </div>
         <div className="flex-1 min-w-0">
-          <h1 className="text-2xl font-bold text-white">Investor Access</h1>
-          <p className="text-sm text-sidebar-foreground/50">Virtual Data Room — access control management</p>
+          <h1 className="text-2xl font-bold text-white">Accesso Investitori</h1>
+          <p className="text-sm text-sidebar-foreground/50">Virtual Data Room — gestione controllo accessi</p>
         </div>
       </div>
 
-      {/* Gate Toggle */}
+      {/* Toggle gate */}
       <GateToggle />
 
-      {/* Tabs */}
+      {/* Tab */}
       <div className="border-b border-sidebar-border">
-        <div className="flex gap-1">
+        <div className="flex">
           {tabs.map(t => (
             <button
               key={t.id}
               onClick={() => setTab(t.id)}
-              className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors ${
+              className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors flex-1 sm:flex-none justify-center sm:justify-start ${
                 tab === t.id
                   ? "border-violet-500 text-white"
                   : "border-transparent text-sidebar-foreground/50 hover:text-white hover:border-sidebar-border"
               }`}
             >
               <span>{t.icon}</span>
-              {t.label}
+              <span className="hidden sm:inline">{t.label}</span>
             </button>
           ))}
         </div>
       </div>
 
-      {/* Content */}
+      {/* Contenuto */}
       <div>
         {tab === "requests" && <RequestsTab />}
         {tab === "codes"    && <CodesTab />}
