@@ -12,6 +12,7 @@ import MarketPage from '@/pages/MarketPage';
 import TeamPage from '@/pages/TeamPage';
 import ContactPage from '@/pages/ContactPage';
 import InvestorGate from '@/components/InvestorGate';
+import { LanguageProvider } from '@/context/LanguageContext';
 import { Route, Switch, Router as WouterRouter, Redirect } from 'wouter';
 
 const queryClient = new QueryClient();
@@ -66,11 +67,13 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        {/* InvestorGate è DENTRO WouterRouter per poter usare useLocation */}
-        <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}>
-          <AppRoutes theme={theme} toggleTheme={toggleTheme} />
-        </WouterRouter>
-        <Toaster />
+        <LanguageProvider>
+          {/* InvestorGate è DENTRO WouterRouter per poter usare useLocation */}
+          <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}>
+            <AppRoutes theme={theme} toggleTheme={toggleTheme} />
+          </WouterRouter>
+          <Toaster />
+        </LanguageProvider>
       </TooltipProvider>
     </QueryClientProvider>
   );

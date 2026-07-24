@@ -1,11 +1,15 @@
 import React from 'react';
 import PortalLayout from '@/components/PortalLayout';
 import { loadPortalSession } from '@/lib/portalSession';
+import { useLang } from '@/context/LanguageContext';
+import { team as T } from '@/lib/i18n';
 import { en } from '@/content/en';
 import '@/components/portal-layout.css';
 
 export default function TeamPage() {
   const session = loadPortalSession();
+  const { lang } = useLang();
+  const t = T[lang];
   const founder = en.founder;
   const letter  = en.founderLetter;
   const story   = en.story;
@@ -13,25 +17,14 @@ export default function TeamPage() {
   return (
     <PortalLayout investorName={session?.investorName} sessionExpiry={session?.sessionExpiry}>
       <div className="portal-page-header">
-        <p className="portal-page-eyebrow">Team & Vision</p>
-        <h1 className="portal-page-title">Built by Practitioners</h1>
-        <p className="portal-page-sub">
-          Not academics building privacy theory — engineers who experienced first-hand why it matters.
-        </p>
+        <p className="portal-page-eyebrow">{t.eyebrow}</p>
+        <h1 className="portal-page-title">{t.title}</h1>
+        <p className="portal-page-sub">{t.sub}</p>
       </div>
 
       {/* Founder card */}
       {founder && (
-        <div style={{
-          background: 'rgba(10,8,25,0.7)',
-          border: '1px solid rgba(139,92,246,0.25)',
-          borderRadius: 20,
-          padding: '32px',
-          marginBottom: 32,
-          display: 'flex',
-          gap: 32,
-          flexWrap: 'wrap',
-        }}>
+        <div className="portal-card" style={{ display: 'flex', gap: 32, flexWrap: 'wrap', marginBottom: 32, borderRadius: 20, padding: 32, borderColor: 'rgba(139,92,246,0.25)' }}>
           <div style={{
             width: 80, height: 80, borderRadius: '50%',
             background: 'linear-gradient(135deg, #7c3aed, #4f46e5)',
@@ -43,11 +36,11 @@ export default function TeamPage() {
           </div>
           <div style={{ flex: 1 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 8 }}>
-              <h2 style={{ fontSize: 22, fontWeight: 800, color: '#fff', margin: 0 }}>{founder.name}</h2>
+              <h2 className="portal-founder-name">{founder.name}</h2>
               <span className="portal-tag portal-tag-purple">{founder.role}</span>
             </div>
-            {founder.tagline && <p style={{ fontSize: 14, color: 'rgba(167,139,250,0.8)', fontStyle: 'italic', margin: '0 0 12px' }}>"{founder.tagline}"</p>}
-            {founder.bio && <p style={{ fontSize: 14, color: 'rgba(232,232,240,0.55)', lineHeight: 1.7, margin: 0 }}>{founder.bio}</p>}
+            {founder.tagline && <p className="portal-founder-tagline">"{founder.tagline}"</p>}
+            {founder.bio && <p className="portal-card-body" style={{ margin: 0 }}>{founder.bio}</p>}
             {founder.skills && (
               <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 16 }}>
                 {(founder.skills as string[]).map((s: string) => (
@@ -59,21 +52,14 @@ export default function TeamPage() {
         </div>
       )}
 
-      {/* Founder letter excerpt */}
+      {/* Founder letter */}
       {letter && (
         <>
           <div className="portal-section-divider" />
-          <h2 style={{ fontSize: 20, fontWeight: 700, color: '#fff', marginBottom: 16 }}>Letter from the Founder</h2>
-          <div style={{
-            background: 'rgba(139,92,246,0.05)',
-            border: '1px solid rgba(139,92,246,0.2)',
-            borderRadius: 16,
-            padding: '28px 32px',
-            marginBottom: 32,
-            borderLeft: '3px solid rgba(139,92,246,0.5)',
-          }}>
+          <h2 className="portal-section-h2">{t.letterTitle}</h2>
+          <div className="portal-quote-box" style={{ marginBottom: 32 }}>
             {letter.paragraphs && (letter.paragraphs as string[]).slice(0, 3).map((p: string, i: number) => (
-              <p key={i} style={{ fontSize: 14, color: 'rgba(232,232,240,0.65)', lineHeight: 1.8, margin: i < 2 ? '0 0 16px' : 0 }}>{p}</p>
+              <p key={i} className="portal-quote-p" style={{ marginBottom: i < 2 ? 16 : 0 }}>{p}</p>
             ))}
           </div>
         </>
@@ -83,21 +69,14 @@ export default function TeamPage() {
       {story?.milestones && (
         <>
           <div className="portal-section-divider" />
-          <h2 style={{ fontSize: 20, fontWeight: 700, color: '#fff', marginBottom: 20 }}>The Journey</h2>
+          <h2 className="portal-section-h2">{t.journeyTitle}</h2>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16, marginBottom: 40 }}>
             {(story.milestones as Array<Record<string, string>>).map((m, i) => (
               <div key={i} style={{ display: 'flex', gap: 20, alignItems: 'flex-start' }}>
-                <div style={{
-                  background: 'rgba(139,92,246,0.15)',
-                  border: '1px solid rgba(139,92,246,0.3)',
-                  borderRadius: 8,
-                  padding: '4px 10px',
-                  fontSize: 11, fontWeight: 700, color: '#a78bfa',
-                  flexShrink: 0, whiteSpace: 'nowrap', marginTop: 2,
-                }}>{m.year}</div>
+                <div className="portal-year-badge">{m.year}</div>
                 <div>
-                  {m.title && <p style={{ fontSize: 14, fontWeight: 600, color: '#fff', margin: '0 0 4px' }}>{m.title}</p>}
-                  {m.body && <p style={{ fontSize: 13, color: 'rgba(232,232,240,0.5)', margin: 0, lineHeight: 1.6 }}>{m.body}</p>}
+                  {m.title && <p className="portal-milestone-title">{m.title}</p>}
+                  {m.body && <p className="portal-card-body" style={{ margin: 0 }}>{m.body}</p>}
                 </div>
               </div>
             ))}

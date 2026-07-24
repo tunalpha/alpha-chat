@@ -3,6 +3,8 @@
  */
 import React, { useState, useEffect } from 'react';
 import { Link, useLocation } from 'wouter';
+import { useLang } from '@/context/LanguageContext';
+import { nav as T } from '@/lib/i18n';
 
 interface PortalLayoutProps {
   children: React.ReactNode;
@@ -10,57 +12,14 @@ interface PortalLayoutProps {
   sessionExpiry?: string;
 }
 
-type Lang = 'en' | 'it';
-
-const T = {
-  en: {
-    subtitle: 'Confidential Investor Portal',
-    home:     'Home',
-    book:     'Investor Book',
-    tech:     'Technology',
-    security: 'Security',
-    roadmap:  'Roadmap',
-    market:   'Market',
-    team:     'Team',
-    contact:  'Contact',
-    secureSession: 'Secure Session',
-    authorizedUntil: 'Authorized until',
-    noExpiry: 'No expiry',
-    secureLogout: 'Secure Logout',
-    darkMode: 'Dark Mode',
-    lightMode: 'Light Mode',
-    confidential: '🔒 Encrypted · Monitored · Confidential',
-    dataRoom: 'AlphaChat · Confidential Investor Data Room',
-  },
-  it: {
-    subtitle: 'Portale Investitori Riservato',
-    home:     'Home',
-    book:     'Investor Book',
-    tech:     'Tecnologia',
-    security: 'Sicurezza',
-    roadmap:  'Roadmap',
-    market:   'Mercato',
-    team:     'Team',
-    contact:  'Contatti',
-    secureSession: 'Sessione Sicura',
-    authorizedUntil: 'Autorizzato fino al',
-    noExpiry: 'Nessuna scadenza',
-    secureLogout: 'Logout Sicuro',
-    darkMode: 'Modalità Scura',
-    lightMode: 'Modalità Chiara',
-    confidential: '🔒 Cifrato · Monitorato · Riservato',
-    dataRoom: 'AlphaChat · Data Room Investitori Riservata',
-  },
-};
-
 export default function PortalLayout({ children, investorName, sessionExpiry }: PortalLayoutProps) {
   const [location] = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
+  const { lang, toggleLang } = useLang();
+  const t = T[lang];
+
   const [theme, setTheme] = useState<'dark' | 'light'>(() => {
     try { return (localStorage.getItem('ib-theme') as 'dark' | 'light') ?? 'dark'; } catch { return 'dark'; }
-  });
-  const [lang, setLang] = useState<Lang>(() => {
-    try { return (localStorage.getItem('ib-lang') as Lang) ?? 'en'; } catch { return 'en'; }
   });
 
   useEffect(() => {
@@ -70,25 +29,24 @@ export default function PortalLayout({ children, investorName, sessionExpiry }: 
     try { localStorage.setItem('ib-theme', theme); } catch {}
   }, [theme]);
 
-  const toggleTheme = () => setTheme(t => t === 'dark' ? 'light' : 'dark');
-  const toggleLang  = () => {
-    const next = lang === 'en' ? 'it' : 'en';
-    setLang(next);
-    try { localStorage.setItem('ib-lang', next); } catch {}
-  };
-
-  const t = T[lang];
+  const toggleTheme = () => setTheme(th => th === 'dark' ? 'light' : 'dark');
 
   const navLinks = [
-    { href: '/home',       label: t.home,     icon: '🏠', highlight: false },
-    { href: `/book/${lang}`,label: t.book,    icon: '📘', highlight: true  },
-    { href: '/technology', label: t.tech,     icon: '⚡', highlight: false },
-    { href: '/security',   label: t.security, icon: '🔒', highlight: false },
-    { href: '/roadmap',    label: t.roadmap,  icon: '🗺', highlight: false },
-    { href: '/market',     label: t.market,   icon: '📈', highlight: false },
-    { href: '/team',       label: t.team,     icon: '👥', highlight: false },
-    { href: '/contact',    label: t.contact,  icon: '✉',  highlight: false },
+    { href: '/home',         label: t.home,     highlight: false },
+    { href: `/book/${lang}`, label: t.book,     highlight: true  },
+    { href: '/technology',   label: t.tech,     highlight: false },
+    { href: '/security',     label: t.security, highlight: false },
+    { href: '/roadmap',      label: t.roadmap,  highlight: false },
+    { href: '/market',       label: t.market,   highlight: false },
+    { href: '/team',         label: t.team,     highlight: false },
+    { href: '/contact',      label: t.contact,  highlight: false },
   ];
+
+  const mobileIcons: Record<string, string> = {
+    '/home': '🏠', [`/book/${lang}`]: '📘', '/technology': '⚡',
+    '/security': '🔒', '/roadmap': '🗺', '/market': '📈',
+    '/team': '👥', '/contact': '✉',
+  };
 
   const handleLogout = () => {
     try { sessionStorage.removeItem('ib_secure_session'); } catch {}
@@ -97,7 +55,9 @@ export default function PortalLayout({ children, investorName, sessionExpiry }: 
 
   const expiry = sessionExpiry ? new Date(sessionExpiry) : null;
   const expiryLabel = expiry
-    ? (expiry.getFullYear() > 2090 ? t.noExpiry : expiry.toLocaleDateString(lang === 'it' ? 'it-IT' : 'en-GB', { day: 'numeric', month: 'short', year: 'numeric' }))
+    ? (expiry.getFullYear() > 2090
+        ? t.noExpiry
+        : expiry.toLocaleDateString(lang === 'it' ? 'it-IT' : 'en-GB', { day: 'numeric', month: 'short', year: 'numeric' }))
     : '—';
 
   const isLight = theme === 'light';
@@ -127,30 +87,24 @@ export default function PortalLayout({ children, investorName, sessionExpiry }: 
             ))}
           </div>
 
-          {/* Right side */}
+          {/* Right side — hidden on mobile, shown via hamburger */}
           <div className="portal-nav-right">
-            {/* Language toggle */}
             <button className="portal-lang-btn" onClick={toggleLang} title="Switch language">
               {lang === 'en' ? '🇮🇹' : '🇬🇧'}
             </button>
-
-            {/* Theme toggle */}
             <button className="portal-theme-btn" onClick={toggleTheme}
-              title={isLight ? 'Switch to dark mode' : 'Switch to light mode'}>
+              title={isLight ? 'Dark mode' : 'Light mode'}>
               {isLight ? '🌙' : '☀️'}
             </button>
-
             <div className="portal-session-badge">
               <span className="portal-session-dot" />
               <span className="portal-session-label">
-                {investorName ? investorName : t.secureSession}
+                {investorName ?? t.secureSession}
               </span>
             </div>
-            <button className="portal-logout-btn" onClick={handleLogout} title={t.secureLogout}>
-              ⎋
-            </button>
+            <button className="portal-logout-btn" onClick={handleLogout} title={t.secureLogout}>⎋</button>
             {/* Hamburger */}
-            <button className="portal-hamburger" onClick={() => setMenuOpen(v => !v)}>
+            <button className="portal-hamburger" onClick={() => setMenuOpen(v => !v)} aria-label="Menu">
               <span /><span /><span />
             </button>
           </div>
@@ -163,19 +117,19 @@ export default function PortalLayout({ children, investorName, sessionExpiry }: 
               <Link key={l.href} href={l.href}
                 className={`portal-mobile-link${location === l.href ? ' active' : ''}${l.highlight ? ' portal-mobile-link-book' : ''}`}
                 onClick={() => setMenuOpen(false)}>
-                <span>{l.icon}</span> {l.label}
+                <span>{mobileIcons[l.href] ?? '•'}</span> {l.label}
               </Link>
             ))}
             <div className="portal-mobile-session">
               <span className="portal-mobile-session-key">{t.authorizedUntil}</span>
               <span className="portal-mobile-session-val">{expiryLabel}</span>
             </div>
-            <div style={{ display: 'flex', gap: 8 }}>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <button className="portal-mobile-theme" onClick={toggleLang}>
                 {lang === 'en' ? '🇮🇹 Italiano' : '🇬🇧 English'}
               </button>
               <button className="portal-mobile-theme" onClick={toggleTheme}>
-                {isLight ? '🌙' : '☀️'} {isLight ? (lang === 'it' ? 'Scuro' : 'Dark') : (lang === 'it' ? 'Chiaro' : 'Light')}
+                {isLight ? '🌙' : '☀️'} {isLight ? t.dark : t.light}
               </button>
               <button className="portal-mobile-logout" onClick={handleLogout}>
                 🔒 {t.secureLogout}
@@ -186,9 +140,7 @@ export default function PortalLayout({ children, investorName, sessionExpiry }: 
       </nav>
 
       {/* Content */}
-      <main className="portal-content">
-        {children}
-      </main>
+      <main className="portal-content">{children}</main>
 
       {/* Footer */}
       <footer className="portal-footer">
