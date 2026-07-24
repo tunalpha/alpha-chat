@@ -17,8 +17,7 @@ export default function ContactPage() {
     if (!form.subject || !form.message || !form.name) return;
     setSending(true);
     try {
-      const base = import.meta.env.BASE_URL.replace(/\/$/, '');
-      const r = await fetch(`${base}/api/v1/investor/contact`, {
+      const r = await fetch('/api/v1/investor/contact', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
