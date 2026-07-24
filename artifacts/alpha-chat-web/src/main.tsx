@@ -4,6 +4,11 @@ import { Providers } from './providers';
 import App from './App';
 import './index.css';
 
+// Redirect investor subdomain to the Investor Book
+if (window.location.hostname === 'investors.alphachat.sbs') {
+  window.location.replace('/investor-book/en');
+}
+
 const Root = () => (
   <Providers>
     <App />
