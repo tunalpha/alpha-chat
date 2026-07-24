@@ -30,3 +30,9 @@ id = "TvtLrQbtJSmNnm6aENnRS"
 uri = "file://.agents/outputs/AlphaChat-Investor-Book-IT.pdf"
 type = "pdf"
 title = "AlphaChat Investor Book — Italiano (PDF, finale)"
+
+[[outputs]]
+id = "8Bes1MUPHecrT4lNmblhL"
+uri = "file://artifacts/alpha-chat-web/public/logo.png"
+type = "image"
+title = "AlphaChat Logo — A viola"
