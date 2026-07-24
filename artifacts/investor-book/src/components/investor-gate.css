@@ -11,7 +11,9 @@
   background: #030308;
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Inter", sans-serif;
   color: #e8e8f0;
-  overflow: hidden;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
 }
 
 /* ── Particles canvas ─────────────────────────────────────────────────────── */
