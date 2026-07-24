@@ -38,7 +38,7 @@ export const STICKER_PACKS: StickerPack[] = [
       { id: "cry",           alt: "😢 Triste",           hex: "1f622" },
       { id: "angry",         alt: "😡 Arrabbiato",       hex: "1f621" },
       { id: "skull",         alt: "💀 Morto dal ridere",  hex: "1f480" },
-      { id: "clown",         alt: "🤡 Clown",            hex: "1f921" },
+      { id: "clown",         alt: "🤡 Pagliaccio",        hex: "1f921" },
       { id: "cowboy",        alt: "🤠 Cowboy",           hex: "1f920" },
       { id: "nerd",          alt: "🤓 Nerd",             hex: "1f913" },
     ],
@@ -197,7 +197,7 @@ export const STICKER_PACKS: StickerPack[] = [
       { id: "soccer",        alt: "⚽ Calcio",            hex: "26bd"  },
       { id: "basketball",    alt: "🏀 Basket",           hex: "1f3c0" },
       { id: "tennis",        alt: "🎾 Tennis",           hex: "1f3be" },
-      { id: "gaming",        alt: "🎮 Gaming",           hex: "1f3ae" },
+      { id: "gaming",        alt: "🎮 Videogiochi",       hex: "1f3ae" },
       { id: "dart",          alt: "🎯 Nel segno",        hex: "1f3af" },
       { id: "medal_gold",    alt: "🥇 Oro",              hex: "1f947" },
       { id: "volleyball",    alt: "🏐 Pallavolo",        hex: "1f3d0" },
@@ -215,7 +215,7 @@ export const STICKER_PACKS: StickerPack[] = [
   // ── 9. Party e celebrazioni ───────────────────────────────────────────────
   {
     packId: "party",
-    name: "Party 🎉",
+    name: "Festa 🎉",
     stickers: [
       { id: "party_popper",  alt: "🎉 Festa",            hex: "1f389" },
       { id: "confetti",      alt: "🎊 Coriandoli",       hex: "1f38a" },
@@ -230,7 +230,7 @@ export const STICKER_PACKS: StickerPack[] = [
       { id: "tada",          alt: "🎊 Evviva",            hex: "1f38a" },
       { id: "face_party",    alt: "🥳 Festeggiando",     hex: "1f973" },
       { id: "disco",         alt: "🪩 Discoteca",        hex: "1fa69" },
-      { id: "microphone",    alt: "🎤 Mic",              hex: "1f3a4" },
+      { id: "microphone",    alt: "🎤 Microfono",         hex: "1f3a4" },
       { id: "notes",         alt: "🎶 Note musicali",    hex: "1f3b6" },
       { id: "guitar",        alt: "🎸 Chitarra",         hex: "1f3b8" },
     ],
@@ -263,16 +263,16 @@ export const STICKER_PACKS: StickerPack[] = [
   // ── 11. Tecnologia ────────────────────────────────────────────────────────
   {
     packId: "tech",
-    name: "Tech 💻",
+    name: "Tecnologia 💻",
     stickers: [
       { id: "laptop",        alt: "💻 Laptop",           hex: "1f4bb" },
       { id: "phone",         alt: "📱 Telefono",         hex: "1f4f1" },
       { id: "robot",         alt: "🤖 Robot",            hex: "1f916" },
-      { id: "alien",         alt: "👾 Alieno pixel",     hex: "1f47e" },
+      { id: "alien",         alt: "👾 Alieno",            hex: "1f47e" },
       { id: "headphones",    alt: "🎧 Cuffie",           hex: "1f3a7" },
       { id: "camera",        alt: "📷 Fotocamera",       hex: "1f4f7" },
       { id: "rocket",        alt: "🚀 Razzo",            hex: "1f680" },
-      { id: "satellite",     alt: "🛸 UFO",              hex: "1f6f8" },
+      { id: "satellite",     alt: "🛸 Disco volante",     hex: "1f6f8" },
       { id: "joystick",      alt: "🕹️ Joystick",         hex: "1f579" },
       { id: "magnet",        alt: "🧲 Magnete",          hex: "1f9f2" },
       { id: "crystal_ball",  alt: "🔮 Sfera di cristallo",hex:"1f52e"  },
