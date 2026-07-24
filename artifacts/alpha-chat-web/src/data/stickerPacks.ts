@@ -331,6 +331,30 @@ export const STICKER_PACKS: StickerPack[] = [
       { id: "infinity",      alt: "♾️ Infinito",           hex: "267e"  },
     ],
   },
+
+  // ── 14. USDA — Pagamenti & Crypto ─────────────────────────────────────────
+  {
+    packId: "usda",
+    name: "USDA 💸",
+    stickers: [
+      { id: "money_wings",   alt: "💸 Soldi che volano",  hex: "1f4b8" },
+      { id: "money_bag",     alt: "💰 Sacchetto soldi",   hex: "1f4b0" },
+      { id: "coin",          alt: "🪙 Moneta",            hex: "1fa99" },
+      { id: "credit_card",   alt: "💳 Carta di credito",  hex: "1f4b3" },
+      { id: "bank",          alt: "🏦 Banca",             hex: "1f3e6" },
+      { id: "dollar",        alt: "💵 Dollaro",           hex: "1f4b5" },
+      { id: "euro",          alt: "💶 Euro",              hex: "1f4b6" },
+      { id: "chart_up",      alt: "📈 Grafico in salita", hex: "1f4c8" },
+      { id: "chart_bar",     alt: "📊 Statistiche",       hex: "1f4ca" },
+      { id: "chart_green",   alt: "💹 Al rialzo",         hex: "1f4b9" },
+      { id: "moneymouth",    alt: "🤑 Ricco",             hex: "1f911" },
+      { id: "gem2",          alt: "💎 Diamante",          hex: "1f48e" },
+      { id: "lock_key",      alt: "🔐 Protetto",          hex: "1f510" },
+      { id: "chain",         alt: "⛓️ Blockchain",        hex: "26d3"  },
+      { id: "globe2",        alt: "🌐 Rete globale",      hex: "1f310" },
+      { id: "rocket2",       alt: "🚀 Al rialzo",         hex: "1f680" },
+    ],
+  },
 ];
 
 /** Converte una StickerMeta in StickerPayload pronto per l'invio */
