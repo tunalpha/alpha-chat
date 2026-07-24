@@ -25,15 +25,17 @@ export default function TeamPage() {
       {/* Founder card */}
       {founder && (
         <div className="portal-card" style={{ display: 'flex', gap: 32, flexWrap: 'wrap', marginBottom: 32, borderRadius: 20, padding: 32, borderColor: 'rgba(139,92,246,0.25)' }}>
-          <div style={{
-            width: 80, height: 80, borderRadius: '50%',
-            background: 'linear-gradient(135deg, #7c3aed, #4f46e5)',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            fontSize: 36, flexShrink: 0,
-            boxShadow: '0 0 30px rgba(124,58,237,0.4)',
-          }}>
-            {founder.emoji ?? '👤'}
-          </div>
+          <img
+            src={`${import.meta.env.BASE_URL}founder.png`}
+            alt="Enrico Maria Giaquinta — Founder"
+            style={{
+              width: 100, height: 100, borderRadius: '50%',
+              objectFit: 'cover', objectPosition: 'center top',
+              flexShrink: 0,
+              boxShadow: '0 0 30px rgba(124,58,237,0.45)',
+              border: '2px solid rgba(139,92,246,0.35)',
+            }}
+          />
           <div style={{ flex: 1 }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap', marginBottom: 8 }}>
               <h2 className="portal-founder-name">{founder.name}</h2>
