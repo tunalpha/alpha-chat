@@ -1,0 +1,70 @@
+Sono d’accordo. Dal punto di vista dell’esperienza utente è molto più elegante.
+
+L’accesso deve proteggere l’intero portale investitori, non un singolo PDF.
+
+Puoi dare questo aggiornamento all’agente:
+
+⸻
+
+Modifica flusso Investor Secure Access
+
+Cambiare il comportamento del sistema.
+
+Attualmente, dopo la verifica del codice, viene aperto direttamente l’Investor Book.
+
+Nuovo comportamento richiesto:
+
+Il codice di accesso deve autorizzare l’ingresso all’intero portale investors.alphachat.sbs, non ad un singolo documento.
+
+Nuovo flusso
+
+1. L’investitore apre investors.alphachat.sbs.
+2. Visualizza la schermata Investor Secure Access.
+3. Inserisce il codice.
+4. Il backend verifica il codice.
+5. Se valido:
+    * crea la sessione;
+    * registra il login nell’Access Log;
+    * mostra l’animazione “Access Granted”;
+    * reindirizza alla Home del portale investitori.
+6. Da quel momento l’investitore può navigare liberamente tutte le pagine autorizzate senza reinserire il codice, fino alla scadenza della sessione.
+
+Home del portale
+
+La Home deve avere un aspetto premium e fungere da dashboard.
+
+Esempio:
+
+* Welcome, Investor
+* Secure Session Active
+* Last Update
+* Available Documents
+* Investor Book
+* Technology
+* Security Architecture
+* Product Roadmap
+* Market Opportunity
+* Team
+* Contact
+
+Ogni sezione è accessibile tramite card moderne.
+
+Controllo accessi
+
+Tutte le pagine del portale devono essere protette.
+
+Se un utente prova ad aprire direttamente un URL (ad esempio /technology o /roadmap) senza una sessione valida, deve essere automaticamente reindirizzato alla schermata Investor Secure Access.
+
+Sessione
+
+La sessione rimane valida fino a:
+
+* chiusura del browser (sessionStorage);
+* scadenza del codice;
+* revoca del codice da parte dell’amministratore.
+
+Sicurezza
+
+L’Investor Book diventa semplicemente una pagina del portale, non la destinazione iniziale dopo il login.
+
+L’intero sito deve essere considerato un’area riservata protetta da un unico sistema di autenticazione basato sul codice di accesso. Questo rende l’esperienza molto più simile a una vera Virtual Data Room professionale utilizzata per condividere documentazione riservata con investitori.

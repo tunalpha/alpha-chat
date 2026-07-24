@@ -1,54 +1,25 @@
 /**
  * InvestorGate — Virtual Data Room access control
  *
+ * DEVE essere montato DENTRO WouterRouter per poter usare useLocation.
+ *
  * Flow:
  *   1. GateCover  — fullscreen dark premium cover + access card
  *   2. DecryptingScreen — cinematic "verifying credentials" animation
  *   3. UnlockAnimation  — lock opening + folder + logo
- *   4. → Book renders
+ *   4. → naviga a /home
  *
- * Session is stored in sessionStorage so refresh within the same tab doesn't
- * re-ask for the code.
+ * Sessione in sessionStorage via portalSession.ts
  */
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useLocation } from 'wouter';
+import { loadPortalSession, savePortalSession, type PortalSession } from '@/lib/portalSession';
 import './investor-gate.css';
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Constants
-// ─────────────────────────────────────────────────────────────────────────────
-
-const SESSION_KEY = 'ib_secure_session';
-const API_BASE    = '/api-server/api/v1/investor';
-
-// ─────────────────────────────────────────────────────────────────────────────
-// Types
-// ─────────────────────────────────────────────────────────────────────────────
-
+const API_BASE = '/api-server/api/v1/investor';
 type GatePhase = 'gate' | 'decrypting' | 'unlocking' | 'granted';
-
-interface SecureSession {
-  investorName: string;
-  sessionExpiry: string;
-  grantedAt: number;
-}
-
-function loadSession(): SecureSession | null {
-  try {
-    const raw = sessionStorage.getItem(SESSION_KEY);
-    if (!raw) return null;
-    const s = JSON.parse(raw) as SecureSession;
-    if (new Date(s.sessionExpiry) < new Date()) {
-      sessionStorage.removeItem(SESSION_KEY);
-      return null;
-    }
-    return s;
-  } catch { return null; }
-}
-
-function saveSession(s: SecureSession) {
-  try { sessionStorage.setItem(SESSION_KEY, JSON.stringify(s)); } catch {}
-}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Particle canvas
@@ -61,26 +32,16 @@ function ParticleCanvas() {
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext('2d')!;
-
     let w = canvas.width  = window.innerWidth;
     let h = canvas.height = window.innerHeight;
-
-    const onResize = () => {
-      w = canvas.width  = window.innerWidth;
-      h = canvas.height = window.innerHeight;
-    };
+    const onResize = () => { w = canvas.width = window.innerWidth; h = canvas.height = window.innerHeight; };
     window.addEventListener('resize', onResize);
 
-    interface Particle { x: number; y: number; vx: number; vy: number; r: number; alpha: number; da: number; }
-
-    const particles: Particle[] = Array.from({ length: 120 }, () => ({
-      x: Math.random() * w,
-      y: Math.random() * h,
-      vx: (Math.random() - 0.5) * 0.4,
-      vy: (Math.random() - 0.5) * 0.4,
-      r: Math.random() * 1.5 + 0.5,
-      alpha: Math.random() * 0.6 + 0.1,
-      da: (Math.random() - 0.5) * 0.005,
+    interface P { x: number; y: number; vx: number; vy: number; r: number; alpha: number; da: number; }
+    const particles: P[] = Array.from({ length: 120 }, () => ({
+      x: Math.random() * w, y: Math.random() * h,
+      vx: (Math.random() - 0.5) * 0.4, vy: (Math.random() - 0.5) * 0.4,
+      r: Math.random() * 1.5 + 0.5, alpha: Math.random() * 0.6 + 0.1, da: (Math.random() - 0.5) * 0.005,
     }));
 
     let raf: number;
@@ -91,24 +52,18 @@ function ParticleCanvas() {
         if (p.x < 0) p.x = w; if (p.x > w) p.x = 0;
         if (p.y < 0) p.y = h; if (p.y > h) p.y = 0;
         if (p.alpha < 0.05 || p.alpha > 0.75) p.da *= -1;
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
-        ctx.fillStyle = `rgba(139,92,246,${p.alpha})`;
-        ctx.fill();
+        ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2);
+        ctx.fillStyle = `rgba(139,92,246,${p.alpha})`; ctx.fill();
       }
-      // Draw connections
       for (let i = 0; i < particles.length; i++) {
         for (let j = i + 1; j < particles.length; j++) {
-          const dx = particles[i].x - particles[j].x;
-          const dy = particles[i].y - particles[j].y;
+          const dx = particles[i].x - particles[j].x, dy = particles[i].y - particles[j].y;
           const dist = Math.sqrt(dx * dx + dy * dy);
           if (dist < 100) {
             ctx.beginPath();
             ctx.strokeStyle = `rgba(139,92,246,${0.12 * (1 - dist / 100)})`;
             ctx.lineWidth = 0.5;
-            ctx.moveTo(particles[i].x, particles[i].y);
-            ctx.lineTo(particles[j].x, particles[j].y);
-            ctx.stroke();
+            ctx.moveTo(particles[i].x, particles[i].y); ctx.lineTo(particles[j].x, particles[j].y); ctx.stroke();
           }
         }
       }
@@ -130,23 +85,15 @@ function LockIcon({ open = false }: { open?: boolean }) {
     <svg className={`ig-lock-icon${open ? ' ig-lock-open' : ''}`} viewBox="0 0 64 64" fill="none">
       <defs>
         <linearGradient id="lg1" x1="0%" y1="0%" x2="100%" y2="100%">
-          <stop offset="0%" stopColor="#a78bfa"/>
-          <stop offset="100%" stopColor="#7c3aed"/>
+          <stop offset="0%" stopColor="#a78bfa"/><stop offset="100%" stopColor="#7c3aed"/>
         </linearGradient>
-        <filter id="glow">
-          <feGaussianBlur stdDeviation="2" result="coloredBlur"/>
-          <feMerge><feMergeNode in="coloredBlur"/><feMergeNode in="SourceGraphic"/></feMerge>
-        </filter>
+        <filter id="glow"><feGaussianBlur stdDeviation="2" result="coloredBlur"/>
+          <feMerge><feMergeNode in="coloredBlur"/><feMergeNode in="SourceGraphic"/></feMerge></filter>
       </defs>
-      {/* Shackle */}
-      <path
-        className={`ig-shackle${open ? ' ig-shackle-open' : ''}`}
+      <path className={`ig-shackle${open ? ' ig-shackle-open' : ''}`}
         d="M20 28 V20 C20 11.2 44 11.2 44 20 V28"
-        stroke="url(#lg1)" strokeWidth="5" strokeLinecap="round" fill="none" filter="url(#glow)"
-      />
-      {/* Body */}
+        stroke="url(#lg1)" strokeWidth="5" strokeLinecap="round" fill="none" filter="url(#glow)"/>
       <rect x="14" y="28" width="36" height="26" rx="6" fill="url(#lg1)" filter="url(#glow)"/>
-      {/* Keyhole */}
       <circle cx="32" cy="40" r="4" fill="rgba(0,0,0,0.5)"/>
       <rect x="30" y="40" width="4" height="6" rx="2" fill="rgba(0,0,0,0.5)"/>
     </svg>
@@ -164,20 +111,17 @@ function RequestAccessModal({ onClose }: { onClose: () => void }) {
   const [error, setError] = useState('');
 
   const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
+    e.preventDefault(); setError('');
     if (!form.email.trim()) { setError('Email is required'); return; }
     setLoading(true);
     try {
       const r = await fetch(`${API_BASE}/request`, {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(form),
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(form),
       });
       if (!r.ok) throw new Error();
       setDone(true);
-    } catch {
-      setError('Failed to submit. Please try again.');
-    } finally { setLoading(false); }
+    } catch { setError('Failed to submit. Please try again.'); }
+    finally { setLoading(false); }
   };
 
   return (
@@ -201,27 +145,18 @@ function RequestAccessModal({ onClose }: { onClose: () => void }) {
               <p>Fill in your details to request access to the Investor Data Room.</p>
             </div>
             <form className="ig-form" onSubmit={submit}>
-              <div className="ig-field">
-                <label>Full Name</label>
+              <div className="ig-field"><label>Full Name</label>
                 <input type="text" placeholder="John Smith" value={form.name}
-                  onChange={e => setForm(f => ({...f, name: e.target.value}))} required />
-              </div>
-              <div className="ig-field">
-                <label>Company / Organization</label>
+                  onChange={e => setForm(f => ({...f, name: e.target.value}))} required /></div>
+              <div className="ig-field"><label>Company / Organization</label>
                 <input type="text" placeholder="Acme Capital Partners" value={form.company}
-                  onChange={e => setForm(f => ({...f, company: e.target.value}))} required />
-              </div>
-              <div className="ig-field">
-                <label>Email Address <span className="ig-required">*</span></label>
+                  onChange={e => setForm(f => ({...f, company: e.target.value}))} required /></div>
+              <div className="ig-field"><label>Email Address <span className="ig-required">*</span></label>
                 <input type="email" placeholder="j.smith@acmecapital.com" value={form.email}
-                  onChange={e => setForm(f => ({...f, email: e.target.value}))} required />
-              </div>
-              <div className="ig-field">
-                <label>Message <span className="ig-optional">(optional)</span></label>
-                <textarea placeholder="Brief introduction and investment interest…" rows={3}
-                  value={form.message}
-                  onChange={e => setForm(f => ({...f, message: e.target.value}))} />
-              </div>
+                  onChange={e => setForm(f => ({...f, email: e.target.value}))} required /></div>
+              <div className="ig-field"><label>Message <span className="ig-optional">(optional)</span></label>
+                <textarea placeholder="Brief introduction…" rows={3} value={form.message}
+                  onChange={e => setForm(f => ({...f, message: e.target.value}))} /></div>
               {error && <p className="ig-error">{error}</p>}
               <button type="submit" className="ig-btn-primary" disabled={loading}>
                 {loading ? 'Submitting…' : 'Submit Request'}
@@ -244,20 +179,16 @@ function AdminLoginModal({ onClose }: { onClose: () => void }) {
   const [error, setError] = useState('');
 
   const submit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setError('');
-    setLoading(true);
+    e.preventDefault(); setError(''); setLoading(true);
     try {
-      // Use the existing admin login endpoint
       const r = await fetch('/api-server/api/v1/admin/auth/login', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password }),
       });
       const data = await r.json();
       if (!r.ok) throw new Error(data.message || 'Invalid password');
-      // Store the token and redirect to admin panel
       if (data.token) localStorage.setItem('alpha_admin_token', data.token);
-      window.location.href = '/admin-panel/';
+      window.location.href = '/admin/';
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Authentication failed');
     } finally { setLoading(false); }
@@ -273,11 +204,9 @@ function AdminLoginModal({ onClose }: { onClose: () => void }) {
           <p>This area is restricted to authorized administrators only.</p>
         </div>
         <form className="ig-form" onSubmit={submit}>
-          <div className="ig-field">
-            <label>Admin Password</label>
+          <div className="ig-field"><label>Admin Password</label>
             <input type="password" placeholder="••••••••••••" value={password}
-              onChange={e => setPassword(e.target.value)} required autoFocus />
-          </div>
+              onChange={e => setPassword(e.target.value)} required autoFocus /></div>
           {error && <p className="ig-error">{error}</p>}
           <button type="submit" className="ig-btn-primary" disabled={loading}>
             {loading ? 'Authenticating…' : 'Login'}
@@ -301,37 +230,19 @@ const DECRYPT_STEPS = [
 ];
 
 function DecryptingScreen({ onComplete }: { onComplete: () => void }) {
-  const [step, setStep] = useState(0);
-  const [progress, setProgress] = useState(0);
-  const [visibleSteps, setVisibleSteps] = useState<string[]>([]);
+  const [step, setStep]             = useState(0);
+  const [progress, setProgress]     = useState(0);
+  const [visibleSteps, setVisible]  = useState<string[]>([]);
 
   useEffect(() => {
-    const totalMs = 2800;
-    const stepMs  = totalMs / DECRYPT_STEPS.length;
+    const totalMs = 2800, stepMs = totalMs / DECRYPT_STEPS.length;
     let elapsed = 0;
-    const pInterval = setInterval(() => {
-      elapsed += 40;
-      setProgress(Math.min((elapsed / totalMs) * 100, 100));
-    }, 40);
-
-    const stepTimers: ReturnType<typeof setTimeout>[] = [];
-    DECRYPT_STEPS.forEach((s, i) => {
-      stepTimers.push(setTimeout(() => {
-        setStep(i);
-        setVisibleSteps(prev => [...prev, s]);
-      }, i * stepMs));
-    });
-
-    const done = setTimeout(() => {
-      clearInterval(pInterval);
-      onComplete();
-    }, totalMs + 600);
-
-    return () => {
-      clearInterval(pInterval);
-      stepTimers.forEach(clearTimeout);
-      clearTimeout(done);
-    };
+    const pInterval = setInterval(() => { elapsed += 40; setProgress(Math.min((elapsed / totalMs) * 100, 100)); }, 40);
+    const stepTimers = DECRYPT_STEPS.map((s, i) =>
+      setTimeout(() => { setStep(i); setVisible(prev => [...prev, s]); }, i * stepMs)
+    );
+    const done = setTimeout(() => { clearInterval(pInterval); onComplete(); }, totalMs + 600);
+    return () => { clearInterval(pInterval); stepTimers.forEach(clearTimeout); clearTimeout(done); };
   }, [onComplete]);
 
   return (
@@ -361,11 +272,7 @@ function DecryptingScreen({ onComplete }: { onComplete: () => void }) {
 // ─────────────────────────────────────────────────────────────────────────────
 
 function UnlockAnimation({ investorName, onComplete }: { investorName: string; onComplete: () => void }) {
-  useEffect(() => {
-    const t = setTimeout(onComplete, 2400);
-    return () => clearTimeout(t);
-  }, [onComplete]);
-
+  useEffect(() => { const t = setTimeout(onComplete, 2400); return () => clearTimeout(t); }, [onComplete]);
   return (
     <div className="ig-unlock">
       <ParticleCanvas />
@@ -377,24 +284,20 @@ function UnlockAnimation({ investorName, onComplete }: { investorName: string; o
           <span className="ig-logo-text">AlphaChat</span>
         </div>
         <p className="ig-unlock-name">Welcome, {investorName}</p>
-        <p className="ig-unlock-sub">Access Granted · Investor Data Room</p>
-        <div className="ig-unlock-badge">
-          <span>🔒</span> END-TO-END ENCRYPTED SESSION
-        </div>
+        <p className="ig-unlock-sub">Access Granted · Investor Portal</p>
+        <div className="ig-unlock-badge"><span>🔒</span> END-TO-END ENCRYPTED SESSION</div>
       </div>
     </div>
   );
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// Main Gate Cover
+// Gate Cover
 // ─────────────────────────────────────────────────────────────────────────────
 
-function GateCover({
-  onVerified,
-}: {
-  onVerified: (name: string, expiry: string) => void;
-}) {
+const BADGES = ['TOP SECRET', 'STRICTLY CONFIDENTIAL', 'PRIVATE INVESTOR DOCUMENTS'];
+
+function GateCover({ onVerified }: { onVerified: (name: string, expiry: string) => void }) {
   const [code, setCode]           = useState('');
   const [email, setEmail]         = useState('');
   const [error, setError]         = useState('');
@@ -403,18 +306,12 @@ function GateCover({
   const [showAdmin, setShowAdmin]     = useState(false);
   const [badgePulse, setBadgePulse]   = useState(0);
 
-  // Rotate the badge text
-  const badges = ['TOP SECRET', 'STRICTLY CONFIDENTIAL', 'PRIVATE INVESTOR DOCUMENTS'];
-  useEffect(() => {
-    const t = setInterval(() => setBadgePulse(p => (p + 1) % badges.length), 3000);
-    return () => clearInterval(t);
-  }, []);
+  useEffect(() => { const t = setInterval(() => setBadgePulse(p => (p + 1) % BADGES.length), 3000); return () => clearInterval(t); }, []);
 
   const handleUnlock = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!code.trim()) { setError('Please enter an access code.'); return; }
-    setError('');
-    setLoading(true);
+    setError(''); setLoading(true);
     try {
       const r = await fetch(`${API_BASE}/verify`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
@@ -431,110 +328,67 @@ function GateCover({
   return (
     <div className="ig-gate">
       <ParticleCanvas />
+      <div className="ig-orb ig-orb-1" /><div className="ig-orb ig-orb-2" /><div className="ig-orb ig-orb-3" />
 
-      {/* Background glow orbs */}
-      <div className="ig-orb ig-orb-1" />
-      <div className="ig-orb ig-orb-2" />
-      <div className="ig-orb ig-orb-3" />
-
-      {/* Top bar */}
       <header className="ig-topbar">
-        <div className="ig-topbar-logo">
-          <span className="ig-logo-ac">α</span>
-          <span>AlphaChat</span>
-        </div>
-        <div className="ig-topbar-badge">
-          <span className="ig-badge-dot" />
-          SECURE CONNECTION
-        </div>
+        <div className="ig-topbar-logo"><span className="ig-logo-ac">α</span><span>AlphaChat</span></div>
+        <div className="ig-topbar-badge"><span className="ig-badge-dot" />SECURE CONNECTION</div>
       </header>
 
-      {/* Centre content */}
       <main className="ig-center">
-        {/* Lock + hero */}
         <div className="ig-hero">
           <LockIcon />
           <div className="ig-confidential-badge">
-            <span className="ig-badge-pulse">{badges[badgePulse]}</span>
+            <span className="ig-badge-pulse">{BADGES[badgePulse]}</span>
           </div>
           <h1 className="ig-title">INVESTOR SECURE ACCESS</h1>
-          <p className="ig-subtitle">
-            Confidential documents reserved exclusively for authorized investors.
-          </p>
+          <p className="ig-subtitle">Confidential documents reserved exclusively for authorized investors.</p>
           <div className="ig-texture-tag">
-            <span>VIRTUAL DATA ROOM</span>
-            <span className="ig-sep">·</span>
-            <span>INSTITUTIONAL GRADE</span>
-            <span className="ig-sep">·</span>
+            <span>VIRTUAL DATA ROOM</span><span className="ig-sep">·</span>
+            <span>INSTITUTIONAL GRADE</span><span className="ig-sep">·</span>
             <span>256-BIT ENCRYPTED</span>
           </div>
         </div>
 
-        {/* Access card */}
         <div className="ig-card">
-          <div className="ig-card-corner ig-card-corner-tl" />
-          <div className="ig-card-corner ig-card-corner-tr" />
-          <div className="ig-card-corner ig-card-corner-bl" />
-          <div className="ig-card-corner ig-card-corner-br" />
-
+          <div className="ig-card-corner ig-card-corner-tl" /><div className="ig-card-corner ig-card-corner-tr" />
+          <div className="ig-card-corner ig-card-corner-bl" /><div className="ig-card-corner ig-card-corner-br" />
           <div className="ig-card-header">
             <span className="ig-card-icon">🔐</span>
             <h2>Access Reserved</h2>
-            <p>Enter your investor access code to unlock the documents.</p>
+            <p>Enter your investor access code to unlock the portal.</p>
           </div>
-
           <form className="ig-form" onSubmit={handleUnlock}>
-            <div className="ig-field">
-              <label>Access Code</label>
-              <input
-                type="text" placeholder="XXXX-XXXX-XXXX"
-                value={code} onChange={e => setCode(e.target.value.toUpperCase())}
-                className="ig-code-input" autoComplete="off" spellCheck={false}
-              />
-            </div>
-            <div className="ig-field">
-              <label>Email <span className="ig-optional">(optional)</span></label>
-              <input type="email" placeholder="your@email.com"
-                value={email} onChange={e => setEmail(e.target.value)} />
-            </div>
+            <div className="ig-field"><label>Access Code</label>
+              <input type="text" placeholder="XXXX-XXXX-XXXX" value={code}
+                onChange={e => setCode(e.target.value.toUpperCase())}
+                className="ig-code-input" autoComplete="off" spellCheck={false} /></div>
+            <div className="ig-field"><label>Email <span className="ig-optional">(optional)</span></label>
+              <input type="email" placeholder="your@email.com" value={email}
+                onChange={e => setEmail(e.target.value)} /></div>
             {error && <p className="ig-error">⚠ {error}</p>}
             <button type="submit" className="ig-btn-primary ig-btn-unlock" disabled={loading}>
-              {loading ? (
-                <><span className="ig-spinner" /> Verifying…</>
-              ) : (
-                <>🔓 Unlock Investor Documents</>
-              )}
+              {loading ? <><span className="ig-spinner" /> Verifying…</> : <>🔓 Unlock Investor Portal</>}
             </button>
           </form>
-
           <div className="ig-divider"><span>OR</span></div>
-
-          <button className="ig-btn-secondary" onClick={() => setShowRequest(true)}>
-            📩 Request Access Code
-          </button>
-
+          <button className="ig-btn-secondary" onClick={() => setShowRequest(true)}>📩 Request Access Code</button>
           <div className="ig-admin-link-wrap">
-            <button className="ig-admin-link" onClick={() => setShowAdmin(true)}>
-              Administrator Access
-            </button>
+            <button className="ig-admin-link" onClick={() => setShowAdmin(true)}>Administrator Access</button>
           </div>
         </div>
 
-        {/* Trust signals */}
         <div className="ig-trust">
-          <span>🔒 End-to-end encrypted</span>
-          <span className="ig-sep">·</span>
-          <span>📋 All access logged</span>
-          <span className="ig-sep">·</span>
+          <span>🔒 End-to-end encrypted</span><span className="ig-sep">·</span>
+          <span>📋 All access logged</span><span className="ig-sep">·</span>
           <span>🛡️ NDA protected</span>
         </div>
       </main>
 
-      {/* Footer */}
       <footer className="ig-footer">
         <span>© 2025 AlphaChat. All rights reserved.</span>
         <span className="ig-sep">·</span>
-        <span>Unauthorized access is strictly prohibited and may be prosecuted.</span>
+        <span>Unauthorized access is strictly prohibited.</span>
       </footer>
 
       {showRequest && <RequestAccessModal onClose={() => setShowRequest(false)} />}
@@ -547,25 +401,29 @@ function GateCover({
 // Main Export
 // ─────────────────────────────────────────────────────────────────────────────
 
-interface InvestorGateProps {
-  children: React.ReactNode;
-}
+interface InvestorGateProps { children: React.ReactNode; }
 
 export default function InvestorGate({ children }: InvestorGateProps) {
+  const [, setLocation] = useLocation();
+
   const [phase, setPhase] = useState<GatePhase>(() => {
-    const s = loadSession();
+    const s = loadPortalSession();
     return s ? 'granted' : 'gate';
   });
-  const [investorName, setInvestorName] = useState(() => loadSession()?.investorName ?? '');
+  const [investorName, setInvestorName] = useState(() => loadPortalSession()?.investorName ?? '');
 
   const handleVerified = useCallback((name: string, expiry: string) => {
     setInvestorName(name);
-    saveSession({ investorName: name, sessionExpiry: expiry, grantedAt: Date.now() });
+    savePortalSession({ investorName: name, sessionExpiry: expiry, grantedAt: Date.now() });
     setPhase('decrypting');
   }, []);
 
-  const handleDecryptDone  = useCallback(() => setPhase('unlocking'), []);
-  const handleUnlockDone   = useCallback(() => setPhase('granted'),   []);
+  const handleDecryptDone = useCallback(() => setPhase('unlocking'), []);
+
+  const handleUnlockDone = useCallback(() => {
+    setPhase('granted');
+    setLocation('/home');
+  }, [setLocation]);
 
   if (phase === 'granted')    return <>{children}</>;
   if (phase === 'decrypting') return <DecryptingScreen onComplete={handleDecryptDone} />;
