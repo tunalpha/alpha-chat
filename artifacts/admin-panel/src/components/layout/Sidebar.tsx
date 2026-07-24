@@ -16,6 +16,7 @@ import {
   Phone,
   Fuel,
   Mail,
+  BookLock,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 
@@ -34,6 +35,7 @@ const navItems = [
   { href: "/call-monitor", label: "Call Monitor", icon: Phone },
   { href: "/gas-station",  label: "Gas Station",  icon: Fuel },
   { href: "/email-settings", label: "Email Notifiche", icon: Mail },
+  { href: "/investor-access", label: "Investor Access", icon: BookLock },
 ];
 
 interface SidebarProps {

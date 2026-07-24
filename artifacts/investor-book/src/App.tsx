@@ -4,6 +4,7 @@ import { Toaster } from '@/components/ui/toaster';
 import { TooltipProvider } from '@/components/ui/tooltip';
 import NotFound from '@/pages/not-found';
 import Book from '@/pages/Book';
+import InvestorGate from '@/components/InvestorGate';
 import { Route, Switch, Router as WouterRouter, Redirect } from 'wouter';
 
 const queryClient = new QueryClient();
@@ -47,9 +48,11 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}>
-          <Router theme={theme} toggleTheme={toggleTheme} />
-        </WouterRouter>
+        <InvestorGate>
+          <WouterRouter base={import.meta.env.BASE_URL.replace(/\/$/, '')}>
+            <Router theme={theme} toggleTheme={toggleTheme} />
+          </WouterRouter>
+        </InvestorGate>
         <Toaster />
       </TooltipProvider>
     </QueryClientProvider>

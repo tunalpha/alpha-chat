@@ -33,7 +33,7 @@ export function clearToken(): void {
 
 const BASE = "/api/v1/admin";
 
-async function apiFetch<T>(
+export async function apiFetch<T>(
   path: string,
   options?: RequestInit & { skipAuth?: boolean },
 ): Promise<T> {

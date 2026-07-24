@@ -20,6 +20,7 @@ import R2Monitor from '@/pages/r2-monitor';
 import CallMonitor from '@/pages/call-monitor';
 import GasStationMonitor from '@/pages/gas-station';
 import EmailSettings from '@/pages/email-settings';
+import InvestorAccess from '@/pages/investor-access';
 
 const queryClient = new QueryClient();
 
@@ -41,6 +42,7 @@ function ProtectedRoutes() {
         <Route path="/call-monitor" component={CallMonitor} />
         <Route path="/gas-station" component={GasStationMonitor} />
         <Route path="/email-settings" component={EmailSettings} />
+        <Route path="/investor-access" component={InvestorAccess} />
         <Route component={NotFound} />
       </Switch>
     </AppShell>

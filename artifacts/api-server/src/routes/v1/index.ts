@@ -81,6 +81,10 @@ v1Router.use("/usda", usdaRoutes);
 import paymentRoutes from "./payment.routes";
 v1Router.use("/payments", paymentRoutes);
 
+// Investor Secure Access — Virtual Data Room gate
+import investorRoutes from "./investor.routes";
+v1Router.use("/investor", investorRoutes);
+
 // WalletConnect debug — temporaneo, rimuovere dopo la diagnosi
 
 export default v1Router;

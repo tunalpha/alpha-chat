@@ -1,0 +1,402 @@
+Prompt – Sistema “Investor Secure Access” per AlphaChat
+
+Implementa un sistema professionale di controllo accessi per il sito investors.alphachat.sbs, ispirato alle Virtual Data Rooms (VDR) utilizzate da Goldman Sachs, Morgan Stanley, JP Morgan, Datasite e Intralinks.
+
+L’obiettivo è far percepire immediatamente che l’utente sta entrando in un’area estremamente riservata.
+
+⸻
+
+1. Schermata iniziale (NON mostrare subito il sito)
+
+Prima dell’Investor Book mostra una copertina fullscreen.
+
+Design
+
+* Tema dark premium
+* Nero + viola AlphaChat
+* Effetto vetro
+* Luci soffuse
+* Animazione particelle
+* Effetto glow
+* Lucchetto 3D
+* Cartella classificata
+* Texture “confidential”
+* Altissima definizione
+* Stile Apple + Palantir + OpenAI
+
+Grande titolo
+
+INVESTOR SECURE ACCESS
+
+Sottotitolo
+
+Confidential documents reserved exclusively for authorized investors.
+
+Badge rosso
+
+TOP SECRET
+
+oppure
+
+STRICTLY CONFIDENTIAL
+
+oppure
+
+PRIVATE INVESTOR DOCUMENTS
+
+con piccola animazione pulsante.
+
+⸻
+
+2. Card principale
+
+Al centro della pagina.
+
+Titolo
+
+Access Reserved
+
+Campi
+
+Codice di accesso
+
+Email (opzionale)
+
+Pulsante
+
+Unlock Investor Documents
+
+Separatore
+
+──────── OR ────────
+
+Secondo pulsante
+
+Request Access Code
+
+Sotto
+
+Administrator Access
+
+(link molto piccolo)
+
+⸻
+
+3. Accesso Admin
+
+NON utilizzare codici.
+
+Alla pressione del link
+
+Administrator Access
+
+aprire popup.
+
+Titolo
+
+Administrator Authentication
+
+Campo
+
+Password
+
+Pulsante
+
+Login
+
+Il backend verifica esclusivamente la password admin.
+
+Se corretta
+
+accesso diretto al pannello Admin.
+
+⸻
+
+4. Richiesta codice
+
+NON generare alcun codice automaticamente.
+
+Alla pressione di
+
+Request Access Code
+
+aprire popup.
+
+Campi
+
+Nome
+
+Società
+
+Email (obbligatoria)
+
+Messaggio
+
+Pulsante
+
+Submit Request
+
+Messaggio finale
+
+Your request has been received.
+
+Our investment team will review your request.
+
+If approved, you will receive an access code via email.
+
+⸻
+
+5. Backend
+
+Creare collezione
+
+access_requests
+
+Campi
+
+id
+
+name
+
+company
+
+email
+
+message
+
+status
+
+requested_at
+
+reviewed_at
+
+reviewed_by
+
+approved_code_id
+
+⸻
+
+6. Admin AlphaChat
+
+Nuovo menu
+
+Investor Access
+
+con tre sezioni.
+
+A)
+
+Access Requests
+
+Tabella
+
+Nome
+
+Società
+
+Email
+
+Data
+
+Stato
+
+Azioni
+
+Visualizza
+
+Approva
+
+Rifiuta
+
+⸻
+
+Quando Admin clicca
+
+Approve
+
+aprire popup.
+
+Titolo
+
+Generate Investor Access Code
+
+Campi
+
+Codice
+
+(autogenerato ma modificabile)
+
+Nome investitore
+
+Email
+
+Validità
+
+Dropdown
+
+7 giorni
+
+15 giorni
+
+30 giorni
+
+60 giorni
+
+90 giorni
+
+180 giorni
+
+365 giorni
+
+Nessuna scadenza
+
+Checkbox
+
+Send code automatically via email
+
+Pulsante
+
+Generate Access Code
+
+Il backend:
+
+* genera codice univoco
+* salva scadenza
+* collega il codice alla richiesta
+* cambia stato in Approved
+* invia email (se selezionato)
+
+⸻
+
+B)
+
+Access Codes
+
+Tabella
+
+Codice
+
+Investitore
+
+Email
+
+Creato
+
+Scadenza
+
+Ultimo utilizzo
+
+Numero accessi
+
+Stato
+
+Azioni
+
+Copia
+
+Rigenera
+
+Modifica scadenza
+
+Disattiva
+
+Elimina
+
+Revoca
+
+⸻
+
+C)
+
+Access Log
+
+Storico completo
+
+Data
+
+IP
+
+Browser
+
+Paese
+
+Codice utilizzato
+
+Documento aperto
+
+Esito
+
+Success
+
+Denied
+
+Expired
+
+Revoked
+
+⸻
+
+7. Sicurezza
+
+I codici devono essere:
+
+* hashati nel database
+* casuali (crypto secure)
+* impossibili da prevedere
+* verificati lato server
+* mai verificati lato frontend
+
+La pagina Investor Book deve essere totalmente irraggiungibile senza codice valido.
+
+⸻
+
+8. UX
+
+Durante il controllo del codice mostrare una schermata cinematografica.
+
+Animazione:
+
+🔒 Decrypting secure archive…
+
+Checking authorization…
+
+Verifying credentials…
+
+Establishing encrypted session…
+
+Access granted.
+
+con effetti luminosi e progress bar.
+
+⸻
+
+9. Transizione
+
+Solo dopo la validazione del codice:
+
+* dissolvenza
+* apertura della cartella riservata
+* animazione del lucchetto che si sblocca
+* comparsa del logo AlphaChat
+
+e soltanto allora caricare l’Investor Book.
+
+⸻
+
+10. Requisiti grafici
+
+Le schermate devono sembrare quelle di una Virtual Data Room utilizzata per operazioni di M&A da centinaia di milioni di euro.
+
+Ispirazioni:
+
+* Datasite
+* Intralinks
+* Merrill Datasite
+* Palantir
+* Apple
+* OpenAI
+* Stripe
+
+Nessun effetto amatoriale.
+
+Ogni schermata deve sembrare un prodotto enterprise di altissima qualità, con rendering ad alta definizione, animazioni fluide, micro-interazioni eleganti e un forte senso di esclusività e riservatezza.

@@ -374,6 +374,53 @@ export async function sendRegistrationAlertEmail(params: RegistrationAlertParams
 }
 
 // ---------------------------------------------------------------------------
+// Investor Access Code Email
+// ---------------------------------------------------------------------------
+
+export interface InvestorCodeEmailParams {
+  to: string;
+  investorName: string;
+  code: string;
+  expiresAt?: Date;
+}
+
+export async function sendInvestorCodeEmail(params: InvestorCodeEmailParams): Promise<void> {
+  const { to, investorName, code, expiresAt } = params;
+
+  const expiryText = expiresAt
+    ? `<p style="color:#bbb;font-size:13px;margin:4px 0 0;">Valid until: <strong style="color:#e6edf3;">${expiresAt.toUTCString()}</strong></p>`
+    : `<p style="color:#bbb;font-size:13px;margin:4px 0 0;">This code does not expire.</p>`;
+
+  const body = `
+    <div style="background:#0d0d1a;border:1px solid #2d1b69;border-radius:12px;padding:24px;">
+      <h2 style="margin:0 0 8px;font-size:20px;color:#fff;">Your Investor Access Code</h2>
+      <p style="color:#bbb;font-size:14px;margin:0 0 20px;">Dear ${investorName},</p>
+      <p style="color:#bbb;font-size:14px;margin:0 0 16px;">
+        Your access request to the AlphaChat Investor Data Room has been approved.
+        Use the code below to access the confidential investor documents.
+      </p>
+      <div style="background:#1a0a3a;border:2px solid #7c3aed;border-radius:10px;padding:20px;text-align:center;margin-bottom:20px;">
+        <p style="margin:0 0 4px;color:#a78bfa;font-size:12px;text-transform:uppercase;letter-spacing:2px;">Access Code</p>
+        <p style="margin:0;font-family:monospace;font-size:28px;font-weight:700;color:#fff;letter-spacing:6px;">${code}</p>
+        ${expiryText}
+      </div>
+      <a href="${BASE_URL}/investor-book/en"
+         style="display:block;text-align:center;background:#7c3aed;color:#fff;text-decoration:none;
+                border-radius:8px;padding:14px;font-weight:600;font-size:15px;margin-bottom:16px;">
+        Access Investor Documents →
+      </a>
+      <div style="background:#111;border-radius:8px;padding:12px;">
+        <p style="color:#ef4444;font-size:12px;margin:0;font-weight:600;">⚠ STRICTLY CONFIDENTIAL</p>
+        <p style="color:#8b949e;font-size:11px;margin:4px 0 0;">Do not share this code. It is uniquely assigned to you and all access is logged.</p>
+      </div>
+    </div>`;
+
+  const html = wrapEmailHtml({ lang: "en", title: "AlphaChat Investor Access Code", body });
+  await _send({ to, subject: "🔐 Your AlphaChat Investor Access Code", html });
+  logger.info({ to, investorName }, "Investor access code email sent");
+}
+
+// ---------------------------------------------------------------------------
 // Core send
 // ---------------------------------------------------------------------------
 
