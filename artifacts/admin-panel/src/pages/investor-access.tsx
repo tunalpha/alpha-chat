@@ -46,10 +46,10 @@ function GateToggle() {
   if (enabled === null) return null;
 
   return (
-    <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-sidebar-accent/50 border border-sidebar-border">
+    <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-violet-50 border border-gray-200">
       <div className="flex-1">
-        <p className="text-sm font-semibold text-white">Gate accesso investitori</p>
-        <p className="text-xs text-sidebar-foreground/50 mt-0.5">
+        <p className="text-sm font-semibold text-gray-900">Gate accesso investitori</p>
+        <p className="text-xs text-gray-500 mt-0.5">
           {enabled ? "ON — richiede codice di accesso" : "OFF — portale aperto senza codice"}
         </p>
       </div>
@@ -222,45 +222,45 @@ function ApproveModal({
 
   return (
     <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-sidebar border border-sidebar-border rounded-2xl w-full max-w-md p-6 space-y-4 shadow-2xl">
+      <div className="bg-sidebar border border-gray-200 rounded-2xl w-full max-w-md p-6 space-y-4 shadow-2xl">
         <div className="flex items-center justify-between">
           <h3 className="text-lg font-bold text-white">Genera codice di accesso</h3>
-          <button onClick={onClose} className="text-sidebar-foreground/40 hover:text-white">✕</button>
+          <button onClick={onClose} className="text-gray-400 hover:text-white">✕</button>
         </div>
-        <p className="text-sm text-sidebar-foreground/60">
+        <p className="text-sm text-gray-600">
           Approvazione richiesta di <strong className="text-white">{request.name}</strong> · {request.company}
         </p>
 
         <div className="space-y-3">
           <div>
-            <label className="text-xs font-semibold text-sidebar-foreground/50 uppercase tracking-wider">
+            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
               Codice di accesso (generato automaticamente, modificabile)
             </label>
             <div className="flex gap-2 mt-1">
               <input
                 value={code} onChange={e => setCode(e.target.value.toUpperCase())}
-                className="flex-1 bg-sidebar-accent border border-sidebar-border rounded-lg px-3 py-2 text-white font-mono text-sm tracking-widest"
+                className="flex-1 bg-gray-100 border border-gray-200 rounded-lg px-3 py-2 text-white font-mono text-sm tracking-widest"
               />
               <button onClick={() => setCode(generateFrontendCode())}
-                className="px-3 py-2 rounded-lg border border-sidebar-border text-xs text-sidebar-foreground/60 hover:text-white hover:border-white/20">
+                className="px-3 py-2 rounded-lg border border-gray-200 text-xs text-gray-600 hover:text-white hover:border-white/20">
                 ↻
               </button>
             </div>
           </div>
           <div>
-            <label className="text-xs font-semibold text-sidebar-foreground/50 uppercase tracking-wider">Nome investitore</label>
+            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Nome investitore</label>
             <input value={name} onChange={e => setName(e.target.value)}
-              className="w-full mt-1 bg-sidebar-accent border border-sidebar-border rounded-lg px-3 py-2 text-white text-sm" />
+              className="w-full mt-1 bg-gray-100 border border-gray-200 rounded-lg px-3 py-2 text-white text-sm" />
           </div>
           <div>
-            <label className="text-xs font-semibold text-sidebar-foreground/50 uppercase tracking-wider">Email</label>
+            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Email</label>
             <input type="email" value={email} onChange={e => setEmail(e.target.value)}
-              className="w-full mt-1 bg-sidebar-accent border border-sidebar-border rounded-lg px-3 py-2 text-white text-sm" />
+              className="w-full mt-1 bg-gray-100 border border-gray-200 rounded-lg px-3 py-2 text-white text-sm" />
           </div>
           <div>
-            <label className="text-xs font-semibold text-sidebar-foreground/50 uppercase tracking-wider">Validità</label>
+            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Validità</label>
             <select value={validity} onChange={e => setValidity(Number(e.target.value))}
-              className="w-full mt-1 bg-sidebar-accent border border-sidebar-border rounded-lg px-3 py-2 text-white text-sm">
+              className="w-full mt-1 bg-gray-100 border border-gray-200 rounded-lg px-3 py-2 text-white text-sm">
               {VALIDITY_OPTIONS.map(o => (
                 <option key={o.value} value={o.value}>{o.label}</option>
               ))}
@@ -268,13 +268,13 @@ function ApproveModal({
           </div>
           <label className="flex items-center gap-3 cursor-pointer">
             <input type="checkbox" checked={sendEmail} onChange={e => setSendEmail(e.target.checked)}
-              className="w-4 h-4 rounded border-sidebar-border accent-violet-500" />
-            <span className="text-sm text-sidebar-foreground/80">Invia il codice automaticamente via email</span>
+              className="w-4 h-4 rounded border-gray-200 accent-violet-500" />
+            <span className="text-sm text-gray-700">Invia il codice automaticamente via email</span>
           </label>
         </div>
 
         <div className="flex gap-3 pt-2">
-          <button onClick={onClose} className="flex-1 py-2 rounded-lg border border-sidebar-border text-sm text-sidebar-foreground/60 hover:text-white">
+          <button onClick={onClose} className="flex-1 py-2 rounded-lg border border-gray-200 text-sm text-gray-600 hover:text-white">
             Annulla
           </button>
           <button onClick={submit} disabled={loading}
@@ -341,20 +341,20 @@ function RequestsTab() {
         {FILTER_REQUESTS.map(s => (
           <button key={s.id} onClick={() => setFilter(s.id)}
             className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
-              filter === s.id ? "bg-violet-600 text-white" : "bg-sidebar-accent text-sidebar-foreground/60 hover:text-white border border-sidebar-border"
+              filter === s.id ? "bg-violet-600 text-white" : "bg-gray-100 text-gray-600 hover:text-gray-900 border border-gray-200"
             }`}>
             {s.label}
           </button>
         ))}
-        <button onClick={load} className="ml-auto px-3 py-1.5 rounded-lg text-xs border border-sidebar-border text-sidebar-foreground/60 hover:text-white">
+        <button onClick={load} className="ml-auto px-3 py-1.5 rounded-lg text-xs border border-gray-300 bg-white text-gray-600 hover:text-gray-900 hover:border-gray-400">
           ↻ Aggiorna
         </button>
       </div>
 
       {loading ? (
-        <p className="text-sidebar-foreground/50 text-sm">Caricamento…</p>
+        <p className="text-gray-500 text-sm">Caricamento…</p>
       ) : requests.length === 0 ? (
-        <div className="text-center py-12 text-sidebar-foreground/40">
+        <div className="text-center py-12 text-gray-400">
           <p className="text-4xl mb-2">📋</p>
           <p>Nessuna richiesta trovata</p>
         </div>
@@ -472,13 +472,13 @@ function CodesTab() {
     <div className="space-y-4">
       {showNewCode && (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
-          <div className="bg-sidebar border border-sidebar-border rounded-2xl p-6 max-w-sm w-full text-center">
+          <div className="bg-sidebar border border-gray-200 rounded-2xl p-6 max-w-sm w-full text-center">
             <p className="text-xl mb-2">✅</p>
             <p className="font-semibold text-white mb-1">Nuovo codice di accesso</p>
             <p className="font-mono text-2xl font-bold text-violet-400 tracking-widest my-4 select-all">{showNewCode}</p>
-            <p className="text-xs text-sidebar-foreground/50 mb-4">Salva questo codice — non verrà mostrato di nuovo.</p>
+            <p className="text-xs text-gray-500 mb-4">Salva questo codice — non verrà mostrato di nuovo.</p>
             <div className="flex gap-2">
-              <button onClick={() => copy(showNewCode)} className="flex-1 py-2 rounded-lg border border-sidebar-border text-sm hover:text-white">Copia</button>
+              <button onClick={() => copy(showNewCode)} className="flex-1 py-2 rounded-lg border border-gray-200 text-sm hover:text-white">Copia</button>
               <button onClick={() => setShowNewCode(null)} className="flex-1 py-2 rounded-lg bg-violet-600 text-white text-sm font-semibold">Fatto</button>
             </div>
           </div>
@@ -489,20 +489,20 @@ function CodesTab() {
         {FILTER_CODES.map(s => (
           <button key={s.id} onClick={() => setFilter(s.id)}
             className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
-              filter === s.id ? "bg-violet-600 text-white" : "bg-sidebar-accent text-sidebar-foreground/60 hover:text-white border border-sidebar-border"
+              filter === s.id ? "bg-violet-600 text-white" : "bg-gray-100 text-gray-600 hover:text-gray-900 border border-gray-200"
             }`}>
             {s.label}
           </button>
         ))}
-        <button onClick={load} className="ml-auto px-3 py-1.5 rounded-lg text-xs border border-sidebar-border text-sidebar-foreground/60 hover:text-white">
+        <button onClick={load} className="ml-auto px-3 py-1.5 rounded-lg text-xs border border-gray-300 bg-white text-gray-600 hover:text-gray-900 hover:border-gray-400">
           ↻ Aggiorna
         </button>
       </div>
 
       {loading ? (
-        <p className="text-sidebar-foreground/50 text-sm">Caricamento…</p>
+        <p className="text-gray-500 text-sm">Caricamento…</p>
       ) : codes.length === 0 ? (
-        <div className="text-center py-12 text-sidebar-foreground/40">
+        <div className="text-center py-12 text-gray-400">
           <p className="text-4xl mb-2">🔑</p>
           <p>Nessun codice trovato</p>
         </div>
@@ -581,20 +581,20 @@ function LogTab() {
         {FILTER_LOG.map(s => (
           <button key={s.id} onClick={() => setFilter(s.id)}
             className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
-              filter === s.id ? "bg-violet-600 text-white" : "bg-sidebar-accent text-sidebar-foreground/60 hover:text-white border border-sidebar-border"
+              filter === s.id ? "bg-violet-600 text-white" : "bg-gray-100 text-gray-600 hover:text-gray-900 border border-gray-200"
             }`}>
             {s.label}
           </button>
         ))}
-        <button onClick={load} className="ml-auto px-3 py-1.5 rounded-lg text-xs border border-sidebar-border text-sidebar-foreground/60 hover:text-white">
+        <button onClick={load} className="ml-auto px-3 py-1.5 rounded-lg text-xs border border-gray-300 bg-white text-gray-600 hover:text-gray-900 hover:border-gray-400">
           ↻ Aggiorna
         </button>
       </div>
 
       {loading ? (
-        <p className="text-sidebar-foreground/50 text-sm">Caricamento…</p>
+        <p className="text-gray-500 text-sm">Caricamento…</p>
       ) : logs.length === 0 ? (
-        <div className="text-center py-12 text-sidebar-foreground/40">
+        <div className="text-center py-12 text-gray-400">
           <p className="text-4xl mb-2">📊</p>
           <p>Nessun accesso registrato</p>
         </div>
@@ -643,7 +643,7 @@ export default function InvestorAccessPage() {
         </div>
         <div className="flex-1 min-w-0">
           <h1 className="text-2xl font-bold text-white">Accesso Investitori</h1>
-          <p className="text-sm text-sidebar-foreground/50">Virtual Data Room — gestione controllo accessi</p>
+          <p className="text-sm text-gray-500">Virtual Data Room — gestione controllo accessi</p>
         </div>
       </div>
 
@@ -651,7 +651,7 @@ export default function InvestorAccessPage() {
       <GateToggle />
 
       {/* Tab */}
-      <div className="border-b border-sidebar-border">
+      <div className="border-b border-gray-200">
         <div className="flex">
           {tabs.map(t => (
             <button
@@ -660,7 +660,7 @@ export default function InvestorAccessPage() {
               className={`flex items-center gap-2 px-4 py-3 text-sm font-medium border-b-2 transition-colors flex-1 sm:flex-none justify-center sm:justify-start ${
                 tab === t.id
                   ? "border-violet-500 text-white"
-                  : "border-transparent text-sidebar-foreground/50 hover:text-white hover:border-sidebar-border"
+                  : "border-transparent text-gray-500 hover:text-white hover:border-gray-400"
               }`}
             >
               <span>{t.icon}</span>
