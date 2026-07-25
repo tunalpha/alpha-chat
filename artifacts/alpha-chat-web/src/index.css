@@ -377,17 +377,9 @@ a { color: inherit; text-decoration: none; }
 }
 .user-menu-nuclear:hover { background: rgba(180,0,0,0.12) !important; color: #ff3333 !important; }
 
-/* ── Avatar chevron (menu impostazioni) ────────────────────────────────────── */
-.avatar-menu-chevron {
-  position: absolute; bottom: -4px; left: 50%; transform: translateX(-50%);
-  width: 18px; height: 14px; border-radius: 6px;
-  background: var(--bg-menu); border: 1px solid var(--border-2);
-  display: flex; align-items: center; justify-content: center;
-  color: var(--text-3); padding: 0; min-height: unset; min-width: unset;
-  transition: color 0.15s, background 0.15s;
-  box-shadow: 0 1px 4px rgba(0,0,0,0.25);
-}
-.avatar-menu-chevron:hover { color: var(--text-1); background: var(--bg-hover); }
+/* ── Avatar tappabile (contatti) ───────────────────────────────────────────── */
+.avatar-tapable { position: relative; }
+.avatar-tapable:active .avatar { box-shadow: 0 0 0 2px var(--brand-3); }
 
 /* ── Profile photo fullscreen modal ────────────────────────────────────────── */
 .profile-photo-overlay {

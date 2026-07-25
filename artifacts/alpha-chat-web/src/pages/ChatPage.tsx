@@ -210,7 +210,7 @@ function ChatHeader({
   onSessionReset,
   onGroupInfo,
 }: {
-  otherUser: { display_name: string; username: string } | null | undefined;
+  otherUser: { display_name: string; username: string; avatar_url?: string | null } | null | undefined;
   isOnline: boolean;
   isGroup?: boolean;
   groupName?: string;
@@ -232,6 +232,7 @@ function ChatHeader({
 }) {
   const { t } = useTranslation();
   const [menuOpen, setMenuOpen] = useState(false);
+  const [showContactPhoto, setShowContactPhoto] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -280,9 +281,31 @@ function ChatHeader({
         </svg>
       </button>
 
-      <div className={`avatar avatar-md${isGroup ? " avatar-group" : ""}`}>
+      <button
+        className={`avatar avatar-md${isGroup ? " avatar-group" : ""} avatar-tapable`}
+        onClick={() => { if (!isGroup) setShowContactPhoto(true); }}
+        aria-label={isGroup ? undefined : "Vedi foto profilo"}
+        style={{ cursor: isGroup ? "default" : "pointer" }}
+      >
         {isGroup ? "👥" : (otherUser?.display_name[0]?.toUpperCase() ?? "?")}
-      </div>
+      </button>
+
+      {showContactPhoto && !isGroup && otherUser && (
+        <ProfilePhotoModal
+          avatarUrl={otherUser.avatar_url}
+          displayName={otherUser.display_name}
+          username={otherUser.username}
+          connected={isOnline}
+          onClose={() => setShowContactPhoto(false)}
+          onAction={onViewProfile}
+          actionLabel={t("profile.title")}
+          actionIcon={
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="15" height="15">
+              <circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
+            </svg>
+          }
+        />
+      )}
 
       <div className="chat-header-info">
         <div className="chat-header-name">{isGroup ? (groupName ?? "Gruppo") : (otherUser?.display_name ?? otherUser?.username ?? "Utente sconosciuto")}</div>
@@ -540,17 +563,20 @@ function ProfilePhotoModal({
   username,
   connected,
   onClose,
-  onNavigate,
+  onAction,
+  actionLabel,
+  actionIcon,
 }: {
   avatarUrl?: string | null;
   displayName: string;
   username: string;
   connected: boolean;
   onClose: () => void;
-  onNavigate: (v: AppView) => void;
+  onAction?: () => void;
+  actionLabel?: string;
+  actionIcon?: React.ReactNode;
 }) {
   const { t } = useTranslation();
-  // close on Escape
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
     document.addEventListener("keydown", handler);
@@ -560,14 +586,12 @@ function ProfilePhotoModal({
   return createPortal(
     <div className="profile-photo-overlay" onClick={onClose}>
       <div className="profile-photo-modal" onClick={(e) => e.stopPropagation()}>
-        {/* Close */}
         <button className="profile-photo-close" onClick={onClose} aria-label="Chiudi">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="20" height="20">
             <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
           </svg>
         </button>
 
-        {/* Photo */}
         <div className="profile-photo-img-wrap">
           {avatarUrl
             ? <img src={avatarUrl} alt={displayName} className="profile-photo-img" />
@@ -575,7 +599,6 @@ function ProfilePhotoModal({
           }
         </div>
 
-        {/* Info */}
         <div className="profile-photo-info">
           <div className="profile-photo-name">{displayName}</div>
           <div className="profile-photo-username">@{username}</div>
@@ -584,17 +607,12 @@ function ProfilePhotoModal({
           </div>
         </div>
 
-        {/* Edit shortcut */}
-        <button
-          className="profile-photo-edit-btn"
-          onClick={() => { onClose(); onNavigate("profile"); }}
-        >
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="15" height="15">
-            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
-            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
-          </svg>
-          {t("nav.profile")}
-        </button>
+        {onAction && actionLabel && (
+          <button className="profile-photo-edit-btn" onClick={() => { onClose(); onAction(); }}>
+            {actionIcon}
+            {actionLabel}
+          </button>
+        )}
       </div>
     </div>,
     document.body
@@ -623,7 +641,6 @@ function SidebarMenu({
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
-  const [showPhoto, setShowPhoto] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -675,41 +692,18 @@ function SidebarMenu({
 
   return (
     <div className="user-menu-wrapper" ref={ref}>
-      {/* Avatar → apre photo viewer */}
+      {/* Avatar → apre menu impostazioni (comportamento originale) */}
       <button
         className="avatar-menu-btn"
-        onClick={() => setShowPhoto(true)}
-        aria-label="Vedi foto profilo"
+        onClick={() => setOpen((v) => !v)}
+        aria-label={t("nav.settings")}
+        aria-expanded={open}
       >
         {avatarUrl
           ? <img src={avatarUrl} alt={displayName} className="avatar avatar-sm" style={{ objectFit: "cover", borderRadius: "50%" }} />
           : <div className="avatar avatar-sm">{displayName[0]?.toUpperCase()}</div>
         }
       </button>
-
-      {/* Piccolo chevron per aprire il menu impostazioni */}
-      <button
-        className="avatar-menu-chevron"
-        onClick={() => setOpen((v) => !v)}
-        aria-label={t("nav.settings")}
-        aria-expanded={open}
-      >
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="10" height="10">
-          <polyline points="6 9 12 15 18 9"/>
-        </svg>
-      </button>
-
-      {/* Photo viewer fullscreen */}
-      {showPhoto && (
-        <ProfilePhotoModal
-          avatarUrl={avatarUrl}
-          displayName={displayName}
-          username={username}
-          connected={connected}
-          onClose={() => setShowPhoto(false)}
-          onNavigate={onNavigate}
-        />
-      )}
 
       {open && (
         <div className="user-menu-dropdown">
@@ -823,6 +817,13 @@ export default function ChatPage({ onNavigate }: Props) {
   const [showGroupInfo, setShowGroupInfo]     = useState(false);
   const [groupInfoId, setGroupInfoId]         = useState<string | null>(null);
 
+  // Photo viewer contatti (lista conversazioni)
+  const [convPhotoModal, setConvPhotoModal] = useState<{
+    avatarUrl: string | null;
+    displayName: string;
+    username: string;
+    isOnline: boolean;
+  } | null>(null);
   // Archivio — long press su conversazione
   const [convActionSheet, setConvActionSheet] = useState<{ convId: string; displayName: string } | null>(null);
   // Swipe-to-action su conversazione (mobile)
@@ -3016,12 +3017,27 @@ export default function ChatPage({ onNavigate }: Props) {
                       setConvActionSheet({ convId, displayName: convDisplayName });
                     }}
                   >
-                    <div className="avatar-wrapper">
+                    <button
+                      className="avatar-wrapper avatar-tapable"
+                      onClick={(e) => {
+                        if (!isGroup && other) {
+                          e.stopPropagation();
+                          setConvPhotoModal({
+                            avatarUrl: other.avatar_url,
+                            displayName,
+                            username: other.username,
+                            isOnline,
+                          });
+                        }
+                      }}
+                      aria-label={isGroup ? undefined : "Vedi foto profilo"}
+                      style={{ background: "none", border: "none", padding: 0, cursor: isGroup ? "default" : "pointer" }}
+                    >
                       <div className={`avatar avatar-md${hasUnread ? " avatar-unread" : ""}${isGroup ? " avatar-group" : ""}`}>
                         {avatarChar}
                       </div>
                       {!isGroup && isOnline && <div className="presence-dot" />}
-                    </div>
+                    </button>
                     <div className="conv-info">
                       <div className="conv-row-top">
                         <div className={`conv-name${hasUnread ? " conv-name-bold" : ""}`}>
@@ -3823,6 +3839,17 @@ export default function ChatPage({ onNavigate }: Props) {
       {/* ── Toast ──────────────────────────────────────────────────────────── */}
       {toastMsg && (
         <div className="toast-msg">{toastMsg}</div>
+      )}
+
+      {/* ── Photo viewer contatti (da lista conversazioni) ─────────────────── */}
+      {convPhotoModal && (
+        <ProfilePhotoModal
+          avatarUrl={convPhotoModal.avatarUrl}
+          displayName={convPhotoModal.displayName}
+          username={convPhotoModal.username}
+          connected={convPhotoModal.isOnline}
+          onClose={() => setConvPhotoModal(null)}
+        />
       )}
 
       {/* ── Archivio action sheet (long press su conversazione) ────────────── */}
