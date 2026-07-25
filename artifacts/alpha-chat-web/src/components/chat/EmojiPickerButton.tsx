@@ -130,6 +130,74 @@ export default function EmojiPickerButton({
     };
   }, [open]);
 
+  /**
+   * FIX DEFINITIVO scroll iOS PWA: emoji-picker-react (.epr-body) non riceve
+   * il pan gesture su iOS Safari standalone, nonostante overflow/touch-action.
+   * Soluzione deterministica: guidiamo lo scroll manualmente con listener
+   * touch nativi non-passive (preventDefault + scrollTop), con momentum.
+   * La tab Sticker (div nostro) scrolla nativamente e non è toccata.
+   */
+  useEffect(() => {
+    if (!open || tab !== "emoji") return;
+    let body: HTMLElement | null = null;
+    let startY = 0, startTop = 0, lastY = 0, lastT = 0, vel = 0, raf = 0;
+
+    const onTS = (e: TouchEvent) => {
+      cancelAnimationFrame(raf);
+      startY = lastY = e.touches[0].clientY;
+      startTop = body?.scrollTop ?? 0;
+      lastT = e.timeStamp;
+      vel = 0;
+    };
+    const onTM = (e: TouchEvent) => {
+      if (!body) return;
+      e.preventDefault();
+      const y = e.touches[0].clientY;
+      body.scrollTop = startTop + (startY - y);
+      const dt = e.timeStamp - lastT || 1;
+      vel = (lastY - y) / dt;
+      lastY = y;
+      lastT = e.timeStamp;
+    };
+    const onTE = () => {
+      const step = () => {
+        if (!body || Math.abs(vel) < 0.02) return;
+        body.scrollTop += vel * 16;
+        vel *= 0.95;
+        raf = requestAnimationFrame(step);
+      };
+      raf = requestAnimationFrame(step);
+    };
+
+    const attach = (): boolean => {
+      body = panelRef.current?.querySelector<HTMLElement>(".epr-body") ?? null;
+      if (!body) return false;
+      body.addEventListener("touchstart", onTS, { passive: true });
+      body.addEventListener("touchmove", onTM, { passive: false });
+      body.addEventListener("touchend", onTE, { passive: true });
+      return true;
+    };
+
+    // Il picker è lazy-loaded: riprova finché .epr-body non esiste nel DOM
+    let iv = 0;
+    if (!attach()) {
+      iv = window.setInterval(() => {
+        if (attach()) window.clearInterval(iv);
+      }, 150);
+      window.setTimeout(() => window.clearInterval(iv), 6000);
+    }
+
+    return () => {
+      window.clearInterval(iv);
+      cancelAnimationFrame(raf);
+      if (body) {
+        body.removeEventListener("touchstart", onTS);
+        body.removeEventListener("touchmove", onTM);
+        body.removeEventListener("touchend", onTE);
+      }
+    };
+  }, [open, tab]);
+
   const handleEmojiClick = useCallback(
     (emojiData: { emoji: string }) => {
       const emoji = emojiData.emoji;

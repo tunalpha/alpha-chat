@@ -49,4 +49,5 @@
 - [i18n Phase 2 — audit hardcoded strings](i18n-phase2.md) — pattern e componenti coinvolti; signAndPoll useCallback richiede t in deps; confirmDesc keys in emergency namespace includono prefisso frase completo
 - [Investor Secure Access](investor-secure-access.md) — VDR gate investor-book: argon2id codes, sessionStorage session, admin 3-tab panel, email delivery
 - [Emoji Picker + Sticker system](emoji-sticker.md) — lazy emoji-picker-react, posizionamento anchor (no keyboard-inset-height), preventDefault focus iOS, sticker cifrato Signal, retrocompat "📎 Sticker"
+- [emoji-picker-react iOS scroll](emoji-picker-ios-scroll.md) — epr-body non scrolla su iOS PWA; CSS inutile, serve scroll manuale JS non-passive
 - [Animated Sticker system (Lottie v2)](animated-sticker.md) — Google Noto CDN, lottie-react lazy chunk, IntersectionObserver pause, ANIMATED_STICKER_MARKER, send as message_type:"text" for prod compat
