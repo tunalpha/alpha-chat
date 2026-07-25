@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef, useCallback, memo } from "react";
+import { createPortal } from "react-dom";
 // ── USDA Payments ─────────────────────────────────────────────────────────
 import { UsdaPaymentBubble }    from "../components/usda/UsdaPaymentBubble";
 import { ChatPaymentBubble }    from "../components/usda/ChatPaymentBubble";
@@ -556,7 +557,7 @@ function ProfilePhotoModal({
     return () => document.removeEventListener("keydown", handler);
   }, [onClose]);
 
-  return (
+  return createPortal(
     <div className="profile-photo-overlay" onClick={onClose}>
       <div className="profile-photo-modal" onClick={(e) => e.stopPropagation()}>
         {/* Close */}
@@ -595,7 +596,8 @@ function ProfilePhotoModal({
           {t("nav.profile")}
         </button>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
