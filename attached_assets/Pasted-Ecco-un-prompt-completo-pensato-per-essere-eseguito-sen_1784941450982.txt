@@ -1,0 +1,315 @@
+Ecco un prompt completo, pensato per essere eseguito senza introdurre regressioni.
+
+⸻
+
+TASK #16 — Nuovi Pack Sticker + Barra Pack Scorrevole (ZERO REGRESSIONI)
+
+OBIETTIVO
+
+Espandere il sistema Sticker di Alpha Chat aggiungendo nuove sezioni tematiche, mantenendo intatti i 13 pack esistenti (208 sticker).
+
+Inoltre rendere la barra superiore dei pack orizzontalmente scrollabile, come Telegram, in modo da poter aggiungere un numero illimitato di categorie senza compromettere la UI.
+
+⸻
+
+REGOLA FONDAMENTALE
+
+ZERO REGRESSIONI.
+
+NON modificare:
+
+* Signal Protocol
+* WebSocket
+* Crittografia E2E
+* API
+* Wallet
+* USDA
+* Notifiche
+* Service Worker
+* Sticker esistenti
+* Emoji Picker
+* Layout della chat
+* i18n
+* Performance della chat
+
+Tutto deve essere implementato come estensione del sistema attuale.
+
+⸻
+
+MANTENERE
+
+Lasciare invariati gli attuali 13 pack con i relativi 208 sticker.
+
+NON rimuovere.
+
+NON rinominare.
+
+NON modificare.
+
+⸻
+
+AGGIUNGERE NUOVE SEZIONI
+
+Creare nuovi pack dedicati.
+
+🤖 AI Mood
+
+* Thinking
+* Loading
+* Brain Freeze
+* Genius
+* Prompt Accepted
+* Error 404
+* AI Smile
+* AI Love
+* AI Shock
+* AI Laugh
+
+⸻
+
+💸 Crypto Life
+
+* To The Moon
+* WAGMI
+* NGMI
+* Diamond Hands
+* Paper Hands
+* Bull
+* Bear
+* Whale
+* HODL
+* GM
+* GN
+* Pump
+* Dump
+
+⸻
+
+🚀 Startup Life
+
+* Ship It
+* Deploy
+* Bug Fixed
+* Coffee First
+* Works On My Machine
+* MVP Ready
+* Merge Approved
+* Coding
+* Deadline
+* Success
+
+⸻
+
+😂 Internet Memes
+
+* Bruh
+* Cringe
+* Sus
+* Sigma
+* NPC
+* Rizz
+* GG
+* EZ
+* Cooked
+* Sheesh
+
+⸻
+
+🐱 Alpha Pets
+
+Creare una mascotte Alpha Chat.
+
+Animazioni e pose:
+
+* Hello
+* Bye
+* Love
+* Thanks
+* LOL
+* Angry
+* Sleep
+* Party
+* Victory
+* Wow
+
+⸻
+
+🎮 Gaming
+
+* Victory
+* Headshot
+* Respawn
+* AFK
+* Noob
+* GG
+* Boss Fight
+* Level Up
+* Mission Complete
+* Rage Quit
+
+⸻
+
+☕ Everyday Mood
+
+* Coffee
+* Monday
+* Weekend
+* Sleep
+* Hungry
+* Relax
+* Late
+* Busy
+* Vacation
+* Home
+
+⸻
+
+🎬 Mini Reactions
+
+Piccole animazioni:
+
+* Applause
+* Facepalm
+* Mic Drop
+* Popcorn
+* Fire
+* Explosion
+* Confetti
+* Happy Dance
+* Heart Rain
+* Celebration
+
+⸻
+
+💜 Alpha Originals
+
+Pack esclusivo Alpha Chat.
+
+Creare sticker proprietari con stile coerente al brand.
+
+Esempi:
+
+* Welcome
+* Thank You
+* Congratulations
+* Mission Complete
+* Secure Chat
+* Payment Sent
+* Payment Received
+* Let’s Go
+* Awesome
+* Stay Safe
+
+⸻
+
+BARRA PACK
+
+L’attuale barra dei pack deve diventare:
+
+Scroll orizzontale
+
+Come Telegram.
+
+L’utente deve poter scorrere lateralmente tutti i pack.
+
+⸻
+
+Requisiti UI
+
+* scrolling fluido
+* momentum scrolling su iOS
+* snap morbido
+* scrollbar nascosta
+* completamente touch friendly
+
+⸻
+
+Evidenziazione
+
+Il pack selezionato deve:
+
+* essere evidenziato
+* restare visibile
+* andare automaticamente in vista se selezionato
+
+⸻
+
+PERFORMANCE
+
+Caricare gli sticker del pack solo quando viene aperto.
+
+NON precaricare tutti i pack.
+
+Usare:
+
+* lazy loading
+* memoization
+* virtualizzazione se necessaria
+
+⸻
+
+ARCHITETTURA
+
+Ogni pack deve essere indipendente.
+
+Esempio:
+
+stickerPacks/
+emotions/
+animals/
+crypto/
+gaming/
+startup/
+alpha/
+memes/
+daily/
+ai/
+mini/
+
+L’aggiunta di un nuovo pack dovrà richiedere soltanto:
+
+* nuova cartella
+* file manifest
+* nessuna modifica al codice del picker
+
+⸻
+
+FUTURO
+
+Preparare il sistema per:
+
+* Pack Premium
+* Marketplace
+* Download dinamico
+* Aggiornamento pack senza deploy
+* Sticker creati dagli utenti
+* Sticker ufficiali Alpha Chat
+* Sticker stagionali (Natale, Halloween, Estate)
+
+⸻
+
+TEST OBBLIGATORI
+
+Verificare:
+
+* ✅ Tutti i 13 pack esistenti continuano a funzionare.
+* ✅ I nuovi pack vengono caricati correttamente.
+* ✅ La barra dei pack scorre fluidamente su iOS, Android e Desktop.
+* ✅ Nessun impatto sulle prestazioni della chat.
+* ✅ Nessun aumento significativo del bundle iniziale.
+* ✅ Nessun warning React.
+* ✅ Build TypeScript pulita.
+* ✅ Nessuna regressione funzionale o grafica.
+
+⸻
+
+CRITERI DI ACCETTAZIONE
+
+Il task sarà considerato completato solo se:
+
+* i pack esistenti rimangono invariati;
+* vengono aggiunte le nuove sezioni sticker;
+* la barra superiore dei pack diventa orizzontalmente scrollabile in stile Telegram;
+* i nuovi pack sono caricati in modo lazy;
+* l’architettura consente di aggiungere futuri pack senza modificare il codice del picker;
+* non viene introdotta alcuna regressione nelle funzionalità già presenti.

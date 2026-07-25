@@ -7686,24 +7686,82 @@ aside.epr-skin-tones {
 @keyframes spin { to { transform: rotate(360deg); } }
 
 /* ── Sticker Picker ──────────────────────────────────────────────────── */
+/* ── Sticker Picker — layout colonna con nav pack orizzontale ── */
 .sticker-picker {
-  padding: 8px;
-  overflow-y: auto;
-  /* altezza gestita via JS (var --sp-height) in base al viewport */
+  display: flex;
+  flex-direction: column;
   height: var(--sp-height, 280px);
-  /* Scroll fluido su iOS — fondamentale per PWA */
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior: contain;
-  touch-action: pan-y;
+  overflow: hidden;
 }
+
+/* Barra pack orizzontale scrollabile (stile Telegram) */
+.sticker-pack-nav {
+  display: flex;
+  flex-direction: row;
+  flex-shrink: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-behavior: smooth;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+  border-bottom: 1px solid var(--border, #e5e7eb);
+  background: var(--bg-0, #f9fafb);
+  padding: 4px 2px;
+  gap: 2px;
+  /* snap morbido: each pack button snaps */
+  scroll-snap-type: x proximity;
+}
+.sticker-pack-nav::-webkit-scrollbar { display: none; }
+
+.sticker-pack-nav-item {
+  flex-shrink: 0;
+  scroll-snap-align: center;
+  width: 38px;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  line-height: 1;
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background: none;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, transform 0.1s;
+  padding: 0;
+}
+.sticker-pack-nav-item:hover {
+  background: var(--bg-hover, #f3f4f6);
+}
+.sticker-pack-nav-item.active {
+  background: color-mix(in srgb, var(--accent, #8b5cf6) 15%, transparent);
+  border-color: var(--accent, #8b5cf6);
+  transform: scale(1.1);
+}
+
+/* Nome del pack selezionato */
 .sticker-pack-name {
   font-size: 11px;
   font-weight: 600;
   color: var(--text-2, #6b7280);
   text-transform: uppercase;
   letter-spacing: .05em;
-  margin: 4px 4px 6px;
+  padding: 5px 8px 3px;
+  margin: 0;
+  flex-shrink: 0;
 }
+
+/* Area griglia scrollabile — prende lo spazio rimanente */
+.sticker-pack-grid-area {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+  padding: 0 8px 8px;
+}
+
 .sticker-grid {
   display: grid;
   grid-template-columns: repeat(4, 1fr);

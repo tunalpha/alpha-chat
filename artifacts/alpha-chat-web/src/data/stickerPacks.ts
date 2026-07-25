@@ -16,6 +16,8 @@ interface StickerMeta {
 interface StickerPack {
   packId: string;
   name: string;
+  /** Emoji usata come icona nella barra di navigazione pack */
+  icon: string;
   stickers: StickerMeta[];
 }
 
@@ -24,6 +26,7 @@ export const STICKER_PACKS: StickerPack[] = [
   {
     packId: "emotions",
     name: "Emozioni 😂",
+    icon: "😂",
     stickers: [
       { id: "joy",           alt: "😂 Ridere",          hex: "1f602" },
       { id: "rofl",          alt: "🤣 Rotolo dal ridere",hex: "1f923" },
@@ -48,6 +51,7 @@ export const STICKER_PACKS: StickerPack[] = [
   {
     packId: "modern_faces",
     name: "Visi trendy 🥺",
+    icon: "🥺",
     stickers: [
       { id: "pleading",      alt: "🥺 Ti prego",         hex: "1f97a" },
       { id: "melting",       alt: "🫠 Sciogliersi",       hex: "1fae0" },
@@ -72,6 +76,7 @@ export const STICKER_PACKS: StickerPack[] = [
   {
     packId: "hearts",
     name: "Cuori ❤️",
+    icon: "❤️",
     stickers: [
       { id: "red_heart",     alt: "❤️ Cuore rosso",       hex: "2764"  },
       { id: "orange_heart",  alt: "🧡 Cuore arancione",   hex: "1f9e1" },
@@ -96,6 +101,7 @@ export const STICKER_PACKS: StickerPack[] = [
   {
     packId: "reactions",
     name: "Reazioni 👍",
+    icon: "👍",
     stickers: [
       { id: "thumbs_up",     alt: "👍 Ok",               hex: "1f44d" },
       { id: "thumbs_down",   alt: "👎 No",               hex: "1f44e" },
@@ -120,6 +126,7 @@ export const STICKER_PACKS: StickerPack[] = [
   {
     packId: "gestures",
     name: "Gesti ✌️",
+    icon: "✌️",
     stickers: [
       { id: "pinched_fin",   alt: "🤌 Perfetto (it)",    hex: "1f90c" },
       { id: "heart_hands",   alt: "🫶 Cuore con mani",   hex: "1faf6" },
@@ -144,6 +151,7 @@ export const STICKER_PACKS: StickerPack[] = [
   {
     packId: "food",
     name: "Cibo 🍕",
+    icon: "🍕",
     stickers: [
       { id: "pizza",         alt: "🍕 Pizza",            hex: "1f355" },
       { id: "burger",        alt: "🍔 Burger",           hex: "1f354" },
@@ -168,6 +176,7 @@ export const STICKER_PACKS: StickerPack[] = [
   {
     packId: "animals",
     name: "Animali 🐶",
+    icon: "🐶",
     stickers: [
       { id: "dog",           alt: "🐶 Cane",             hex: "1f436" },
       { id: "cat",           alt: "🐱 Gatto",            hex: "1f431" },
@@ -192,6 +201,7 @@ export const STICKER_PACKS: StickerPack[] = [
   {
     packId: "sports",
     name: "Sport 🏆",
+    icon: "🏆",
     stickers: [
       { id: "trophy",        alt: "🏆 Trofeo",           hex: "1f3c6" },
       { id: "soccer",        alt: "⚽ Calcio",            hex: "26bd"  },
@@ -216,6 +226,7 @@ export const STICKER_PACKS: StickerPack[] = [
   {
     packId: "party",
     name: "Festa 🎉",
+    icon: "🎉",
     stickers: [
       { id: "party_popper",  alt: "🎉 Festa",            hex: "1f389" },
       { id: "confetti",      alt: "🎊 Coriandoli",       hex: "1f38a" },
@@ -240,6 +251,7 @@ export const STICKER_PACKS: StickerPack[] = [
   {
     packId: "nature",
     name: "Natura 🌸",
+    icon: "🌸",
     stickers: [
       { id: "cherry",        alt: "🌸 Ciliegio",         hex: "1f338" },
       { id: "sunflower",     alt: "🌻 Girasole",         hex: "1f33b" },
@@ -264,6 +276,7 @@ export const STICKER_PACKS: StickerPack[] = [
   {
     packId: "tech",
     name: "Tecnologia 💻",
+    icon: "💻",
     stickers: [
       { id: "laptop",        alt: "💻 Laptop",           hex: "1f4bb" },
       { id: "phone",         alt: "📱 Telefono",         hex: "1f4f1" },
@@ -288,6 +301,7 @@ export const STICKER_PACKS: StickerPack[] = [
   {
     packId: "travel",
     name: "Viaggi ✈️",
+    icon: "✈️",
     stickers: [
       { id: "airplane",      alt: "✈️ Aereo",             hex: "2708"  },
       { id: "beach",         alt: "🏖️ Spiaggia",          hex: "1f3d6" },
@@ -312,6 +326,7 @@ export const STICKER_PACKS: StickerPack[] = [
   {
     packId: "symbols",
     name: "Simboli ✨",
+    icon: "✨",
     stickers: [
       { id: "diamond",       alt: "💎 Diamante",          hex: "1f48e" },
       { id: "crown",         alt: "👑 Corona",            hex: "1f451" },
@@ -336,6 +351,7 @@ export const STICKER_PACKS: StickerPack[] = [
   {
     packId: "usda",
     name: "USDA 💸",
+    icon: "💸",
     stickers: [
       { id: "money_wings",   alt: "💸 Soldi che volano",  hex: "1f4b8" },
       { id: "money_bag",     alt: "💰 Sacchetto soldi",   hex: "1f4b0" },
@@ -353,6 +369,180 @@ export const STICKER_PACKS: StickerPack[] = [
       { id: "chain",         alt: "⛓️ Blockchain",        hex: "26d3"  },
       { id: "globe2",        alt: "🌐 Rete globale",      hex: "1f310" },
       { id: "rocket2",       alt: "🚀 Al rialzo",         hex: "1f680" },
+    ],
+  },
+
+  // ── 15. AI Mood ───────────────────────────────────────────────────────────
+  {
+    packId: "ai_mood",
+    name: "AI Mood 🤖",
+    icon: "🤖",
+    stickers: [
+      { id: "thinking",     alt: "🤔 Thinking",        hex: "1f914" },
+      { id: "loading",      alt: "⌛ Loading",          hex: "231b"  },
+      { id: "brain_freeze", alt: "🧊 Brain Freeze",     hex: "1f9ca" },
+      { id: "genius",       alt: "💡 Genius",           hex: "1f4a1" },
+      { id: "prompt_ok",    alt: "✅ Prompt Accepted",  hex: "2705"  },
+      { id: "error_404",    alt: "❌ Error 404",        hex: "274c"  },
+      { id: "ai_smile",     alt: "🤖 AI Smile",         hex: "1f916" },
+      { id: "ai_love",      alt: "🤍 AI Love",          hex: "1f90d" },
+      { id: "ai_shock",     alt: "😲 AI Shock",         hex: "1f632" },
+      { id: "ai_laugh",     alt: "😄 AI Laugh",         hex: "1f604" },
+    ],
+  },
+
+  // ── 16. Crypto Life ───────────────────────────────────────────────────────
+  {
+    packId: "crypto_life",
+    name: "Crypto Life 🚀",
+    icon: "🚀",
+    stickers: [
+      { id: "moon",          alt: "🌕 To The Moon",    hex: "1f315" },
+      { id: "wagmi",         alt: "💪 WAGMI",           hex: "1f4aa" },
+      { id: "ngmi",          alt: "😭 NGMI",            hex: "1f62d" },
+      { id: "diamond_hands", alt: "💎 Diamond Hands",  hex: "1f48e" },
+      { id: "paper_hands",   alt: "📄 Paper Hands",    hex: "1f4c4" },
+      { id: "bull",          alt: "🐂 Bull",            hex: "1f402" },
+      { id: "bear",          alt: "🐻 Bear",            hex: "1f43b" },
+      { id: "whale",         alt: "🐋 Whale",           hex: "1f40b" },
+      { id: "hodl",          alt: "🔒 HODL",            hex: "1f512" },
+      { id: "gm",            alt: "🌅 GM",              hex: "1f305" },
+      { id: "gn",            alt: "🌙 GN",              hex: "1f319" },
+      { id: "pump",          alt: "📈 Pump",            hex: "1f4c8" },
+      { id: "dump",          alt: "📉 Dump",            hex: "1f4c9" },
+    ],
+  },
+
+  // ── 17. Startup Life ──────────────────────────────────────────────────────
+  {
+    packId: "startup_life",
+    name: "Startup Life 💡",
+    icon: "💡",
+    stickers: [
+      { id: "ship_it",    alt: "🚢 Ship It",              hex: "1f6a2" },
+      { id: "deploy",     alt: "🚀 Deploy",               hex: "1f680" },
+      { id: "bug_fixed",  alt: "🐛 Bug Fixed",            hex: "1f41b" },
+      { id: "coffee",     alt: "☕ Coffee First",          hex: "2615"  },
+      { id: "works_omm",  alt: "💻 Works On My Machine",  hex: "1f4bb" },
+      { id: "mvp_ready",  alt: "🏆 MVP Ready",            hex: "1f3c6" },
+      { id: "merge_ok",   alt: "✅ Merge Approved",       hex: "2705"  },
+      { id: "coding",     alt: "📝 Coding",               hex: "1f4dd" },
+      { id: "deadline",   alt: "⏰ Deadline",              hex: "23f0"  },
+      { id: "success",    alt: "🎉 Success",              hex: "1f389" },
+    ],
+  },
+
+  // ── 18. Internet Memes ────────────────────────────────────────────────────
+  {
+    packId: "internet_memes",
+    name: "Internet Memes 🗿",
+    icon: "🗿",
+    stickers: [
+      { id: "bruh",    alt: "🗿 Bruh",   hex: "1f5ff" },
+      { id: "cringe",  alt: "😬 Cringe", hex: "1f62c" },
+      { id: "sus",     alt: "🔴 Sus",    hex: "1f534" },
+      { id: "sigma",   alt: "👑 Sigma",  hex: "1f451" },
+      { id: "npc",     alt: "🤖 NPC",   hex: "1f916" },
+      { id: "rizz",    alt: "😎 Rizz",  hex: "1f60e" },
+      { id: "gg",      alt: "🎮 GG",    hex: "1f3ae" },
+      { id: "ez",      alt: "😏 EZ",    hex: "1f60f" },
+      { id: "cooked",  alt: "🔥 Cooked",hex: "1f525" },
+      { id: "sheesh",  alt: "🥶 Sheesh",hex: "1f976" },
+    ],
+  },
+
+  // ── 19. Alpha Pets ────────────────────────────────────────────────────────
+  {
+    packId: "alpha_pets",
+    name: "Alpha Pets 😺",
+    icon: "😺",
+    stickers: [
+      { id: "hello",   alt: "😺 Hello",   hex: "1f63a" },
+      { id: "bye",     alt: "😸 Bye",     hex: "1f638" },
+      { id: "love",    alt: "😻 Love",    hex: "1f63b" },
+      { id: "thanks",  alt: "🙏 Thanks",  hex: "1f64f" },
+      { id: "lol",     alt: "😹 LOL",     hex: "1f639" },
+      { id: "angry",   alt: "😾 Angry",   hex: "1f63e" },
+      { id: "sleep",   alt: "😴 Sleep",   hex: "1f634" },
+      { id: "party",   alt: "🎊 Party",   hex: "1f38a" },
+      { id: "victory", alt: "🏅 Victory", hex: "1f3c5" },
+      { id: "wow",     alt: "🙀 Wow",     hex: "1f640" },
+    ],
+  },
+
+  // ── 20. Gaming ────────────────────────────────────────────────────────────
+  {
+    packId: "gaming",
+    name: "Gaming 🎮",
+    icon: "🎮",
+    stickers: [
+      { id: "victory",  alt: "🏆 Victory",        hex: "1f3c6" },
+      { id: "headshot", alt: "🎯 Headshot",        hex: "1f3af" },
+      { id: "respawn",  alt: "💫 Respawn",          hex: "1f4ab" },
+      { id: "afk",      alt: "🛌 AFK",             hex: "1f6cc" },
+      { id: "noob",     alt: "🍼 Noob",            hex: "1f37c" },
+      { id: "gg",       alt: "🎮 GG",              hex: "1f3ae" },
+      { id: "boss",     alt: "👊 Boss Fight",       hex: "1f44a" },
+      { id: "level_up", alt: "🆙 Level Up",         hex: "1f199" },
+      { id: "mission",  alt: "✅ Mission Complete", hex: "2705"  },
+      { id: "rage",     alt: "💢 Rage Quit",        hex: "1f4a2" },
+    ],
+  },
+
+  // ── 21. Everyday Mood ─────────────────────────────────────────────────────
+  {
+    packId: "everyday_mood",
+    name: "Everyday Mood ☕",
+    icon: "☕",
+    stickers: [
+      { id: "coffee",  alt: "☕ Coffee",   hex: "2615"  },
+      { id: "monday",  alt: "😩 Monday",   hex: "1f629" },
+      { id: "weekend", alt: "🎉 Weekend",  hex: "1f389" },
+      { id: "sleep",   alt: "😴 Sleep",    hex: "1f634" },
+      { id: "hungry",  alt: "🍕 Hungry",   hex: "1f355" },
+      { id: "relax",   alt: "🛁 Relax",    hex: "1f6c1" },
+      { id: "late",    alt: "⏰ Late",      hex: "23f0"  },
+      { id: "busy",    alt: "📱 Busy",     hex: "1f4f1" },
+      { id: "vacation",alt: "🌴 Vacation", hex: "1f334" },
+      { id: "home",    alt: "🏠 Home",     hex: "1f3e0" },
+    ],
+  },
+
+  // ── 22. Mini Reactions ────────────────────────────────────────────────────
+  {
+    packId: "mini_reactions",
+    name: "Mini Reactions 🎬",
+    icon: "🎬",
+    stickers: [
+      { id: "applause",    alt: "👏 Applause",    hex: "1f44f" },
+      { id: "facepalm",    alt: "🤦 Facepalm",    hex: "1f926" },
+      { id: "mic_drop",    alt: "🎤 Mic Drop",    hex: "1f3a4" },
+      { id: "popcorn",     alt: "🍿 Popcorn",     hex: "1f37f" },
+      { id: "fire",        alt: "🔥 Fire",         hex: "1f525" },
+      { id: "explosion",   alt: "💥 Explosion",   hex: "1f4a5" },
+      { id: "confetti",    alt: "🎊 Confetti",    hex: "1f38a" },
+      { id: "happy_dance", alt: "💃 Happy Dance", hex: "1f483" },
+      { id: "heart_rain",  alt: "💝 Heart Rain",  hex: "1f49d" },
+      { id: "celebration", alt: "🥳 Celebration", hex: "1f973" },
+    ],
+  },
+
+  // ── 23. Alpha Originals ───────────────────────────────────────────────────
+  {
+    packId: "alpha_originals",
+    name: "Alpha Originals 💜",
+    icon: "💜",
+    stickers: [
+      { id: "welcome",     alt: "🤝 Welcome",          hex: "1f91d" },
+      { id: "thank_you",   alt: "🙏 Thank You",         hex: "1f64f" },
+      { id: "congrats",    alt: "🎊 Congratulations",  hex: "1f38a" },
+      { id: "mission",     alt: "✅ Mission Complete",  hex: "2705"  },
+      { id: "secure",      alt: "🔐 Secure Chat",       hex: "1f510" },
+      { id: "pay_sent",    alt: "💸 Payment Sent",      hex: "1f4b8" },
+      { id: "pay_recv",    alt: "💰 Payment Received",  hex: "1f4b0" },
+      { id: "lets_go",     alt: "🚀 Let's Go",          hex: "1f680" },
+      { id: "awesome",     alt: "⭐ Awesome",            hex: "2b50"  },
+      { id: "stay_safe",   alt: "🔒 Stay Safe",         hex: "1f512" },
     ],
   },
 ];
