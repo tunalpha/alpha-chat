@@ -139,12 +139,12 @@ export const technology = {
       { icon: '🛡️', title: 'Phoenix Protocol', body: 'Protezione d\'emergenza: trigger di distruzione protetto da argon2id, Dead Man Switch, Recovery Card, sincronizzazione chiavi multi-device.', tag: 'Sicurezza' },
     ],
     stack: [
-      { layer: 'Frontend',   tech: 'React Native (Expo) · React (Vite) · TypeScript' },
-      { layer: 'Backend',    tech: 'Node.js · Express · TypeScript · MongoDB (Mongoose)' },
-      { layer: 'Crypto',     tech: 'Signal Protocol · AES-256-GCM · Argon2id · X25519' },
-      { layer: 'Blockchain', tech: 'Polygon · Viem · ThirdWeb v5 · ERC-20 (USDA)' },
-      { layer: 'Infra',      tech: 'Cloudflare R2 · Nodemailer SMTP · WebRTC · VAPID Push' },
-      { layer: 'Auth',       tech: 'JWT ES256 · Token di sessione · Biometria · PKCE' },
+      { layer: 'Frontend',       tech: 'React Native (Expo) · React (Vite) · TypeScript' },
+      { layer: 'Backend',        tech: 'Node.js · Express · TypeScript · MongoDB (Mongoose)' },
+      { layer: 'Crittografia',   tech: 'Signal Protocol · AES-256-GCM · Argon2id · X25519' },
+      { layer: 'Blockchain',     tech: 'Polygon · Viem · ThirdWeb v5 · ERC-20 (USDA)' },
+      { layer: 'Infrastruttura', tech: 'Cloudflare R2 · Nodemailer SMTP · WebRTC · VAPID Push' },
+      { layer: 'Autenticazione', tech: 'JWT ES256 · Token di sessione · Biometria · PKCE' },
     ],
   },
 };
