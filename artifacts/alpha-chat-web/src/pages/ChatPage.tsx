@@ -793,6 +793,12 @@ export default function ChatPage({ onNavigate }: Props) {
   const docInputRef   = useRef<HTMLInputElement>(null);
   // toast
   const [toastMsg, setToastMsg] = useState<string | null>(null);
+  // Banner "messaggi non decifrabili" — persiste nella sessione fino a dismiss
+  const [showUndecifrableAlert, setShowUndecifrableAlert] = useState<boolean>(
+    () => sessionStorage.getItem("undecifrable_alert_dismissed") !== "1" &&
+          sessionStorage.getItem("undecifrable_detected") === "1"
+  );
+  const undecifrableAlertShownRef = useRef(false);
   // secure destroy
   const [destroyTarget, setDestroyTarget] = useState<MessageItem | null>(null);
   const [destroyingIds, setDestroyingIds] = useState<Set<string>>(new Set());
@@ -1142,13 +1148,42 @@ export default function ChatPage({ onNavigate }: Props) {
         setDecryptedTexts((prev) =>
           new Map(prev).set(msg.id, "[Messaggio non decifrabile]"),
         );
+        // Mostra banner sidebar persistente la prima volta in questa sessione.
+        // undecifrableAlertShownRef evita setState ripetuti per ogni msg fallito.
+        if (!undecifrableAlertShownRef.current &&
+            sessionStorage.getItem("undecifrable_alert_dismissed") !== "1") {
+          undecifrableAlertShownRef.current = true;
+          sessionStorage.setItem("undecifrable_detected", "1");
+          setShowUndecifrableAlert(true);
+        }
       }
     }
   }
 
   /** Decifra un batch di messaggi (caricamento conversazione) */
+  /**
+   * Attende che Signal sia pronto (initSignalKeys completato).
+   * Ritorna subito se le chiavi sono già inizializzate.
+   * Safety timeout 10s per non bloccare indefinitamente.
+   */
+  function waitForSignalReady(userId: string): Promise<void> {
+    if (localStorage.getItem(`signal_keys_ready:${userId}`) === "1") {
+      return Promise.resolve();
+    }
+    return new Promise((resolve) => {
+      const timeout = setTimeout(resolve, 10_000);
+      const handler = () => { clearTimeout(timeout); resolve(); };
+      window.addEventListener("signal:ready", handler, { once: true });
+    });
+  }
+
   async function decryptBatch(msgs: MessageItem[]): Promise<void> {
     if (!auth) return;
+    // FIX race condition: attende che Signal sia inizializzato prima di
+    // tentare qualsiasi decrypt. Senza questo guard, setAuth() nel loadAuth()
+    // di AuthContext monta ChatPage mentre initSignalKeys() è ancora in esecuzione
+    // → decrypt fallisce → [Messaggio non decifrabile] per alcuni utenti dopo deploy.
+    await waitForSignalReady(auth.userId);
     // Messaggi PROPRI: lookup in cache (localStorage/IDB), nessuno stato Signal →
     //   parallelo sicuro.
     // Messaggi RICEVUTI: il Double Ratchet è stateful (IDB).
@@ -2837,6 +2872,33 @@ export default function ChatPage({ onNavigate }: Props) {
               {t("chat.redeemBanner")}
               <span className="redeem-banner-arrow">›</span>
             </button>
+
+            {/* Banner messaggi non decifrabili — appare quando Signal fallisce
+                dopo un deploy/aggiornamento. Persiste finché l'utente non chiude. */}
+            {showUndecifrableAlert && (
+              <div className="undecifrable-alert">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16" style={{ flexShrink: 0 }}>
+                  <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+                  <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+                </svg>
+                <div className="undecifrable-alert-text">
+                  <strong>Aggiornamento app completato</strong>
+                  <span>Alcuni messaggi ricevuti prima dell'aggiornamento potrebbero non essere decifrabili. I nuovi messaggi funzioneranno normalmente.</span>
+                </div>
+                <button
+                  className="undecifrable-alert-close"
+                  onClick={() => {
+                    sessionStorage.setItem("undecifrable_alert_dismissed", "1");
+                    setShowUndecifrableAlert(false);
+                  }}
+                  aria-label="Chiudi"
+                >
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="14" height="14">
+                    <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+                  </svg>
+                </button>
+              </div>
+            )}
 
             {loadingConvs && <div className="conv-hint">{t("common.loading")}</div>}
             {!loadingConvs && conversations.length === 0 && (
