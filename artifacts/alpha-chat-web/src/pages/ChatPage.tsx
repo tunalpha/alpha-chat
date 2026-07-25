@@ -3182,7 +3182,7 @@ export default function ChatPage({ onNavigate }: Props) {
                         </div>
                       )}
                       {destroyingIds.has(msg.id) && <BurnParticles />}
-                      <div className={`msg-bubble ${isMine ? "mine" : "theirs"} ${voiceMeta ? "voice-bubble" : ""} ${(msg.message_type === "payment" || msg.message_type === "usda_request" || msg.message_type === "usda_send") ? "payment-bubble" : ""}`}>
+                      <div className={`msg-bubble ${isMine ? "mine" : "theirs"} ${voiceMeta ? "voice-bubble" : ""} ${(msg.message_type === "payment" || msg.message_type === "usda_request" || msg.message_type === "usda_send") ? "payment-bubble" : ""} ${(msg.message_type === "sticker" || msg.message_type === "animated_sticker" || (decryptedTexts.get(msg.id) ?? "").startsWith(STICKER_MARKER) || (decryptedTexts.get(msg.id) ?? "").startsWith(ANIMATED_STICKER_MARKER)) ? "sticker-bubble" : ""}`}>
                         {/* Reply preview */}
                         {msg.reply_to_message_id && (
                           <div className="msg-reply-preview">

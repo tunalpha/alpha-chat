@@ -6008,6 +6008,20 @@ html.emergency-open #root {
 .msg-bubble.payment-bubble { width: 340px; max-width: 88%; padding: 0; background: transparent; border: none; box-shadow: none; }
 .msg-bubble.payment-bubble.mine    { background: transparent; }
 .msg-bubble.payment-bubble.theirs  { background: transparent; border: none; }
+/* Sticker: nessuna bolla — solo immagine + meta timestamp */
+.msg-bubble.sticker-bubble,
+.msg-bubble.sticker-bubble.mine,
+.msg-bubble.sticker-bubble.theirs {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+.msg-bubble.sticker-bubble .msg-meta {
+  /* timestamp leggibile senza sfondo bolla */
+  background: transparent;
+  padding: 2px 0 0;
+}
 
 /* Variante "mia": la bubble poggia sul colore accento del messaggio, quindi
    applica uno scrim scuro + testo bianco ad alto contrasto (leggibile su
