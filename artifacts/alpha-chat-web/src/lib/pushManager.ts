@@ -30,37 +30,74 @@ const BASE = "/api/v1";
 //
 // ⚠️  DEVE stare QUI, al livello di modulo, NON dentro initServiceWorker().
 //
-// Motivo: controllerchange può emettere decine/centinaia di ms PRIMA che
-// initServiceWorker() venga chiamata (che dipende da auth?.userId nel
-// useEffect di App.tsx). Se il listener venisse attaccato nell'effetto,
-// l'evento sarebbe già andato perso → nessun banner.
+// Motivo: controllerchange / message possono emettere decine/centinaia di ms
+// PRIMA che initServiceWorker() venga chiamata. Se i listener fossero dentro
+// l'effetto, l'evento sarebbe già andato perso → nessun banner.
 //
-// Attaccandolo al momento della valutazione del modulo (sincrono, prima
-// del primo tick), catturiamo QUALSIASI controllerchange emesso nella
-// sessione corrente.
+// Due segnali complementari (entrambi necessari per coprire tutti gli scenari):
 //
-// Scenari gestiti correttamente:
-//   1. Prima installazione       → _hasBeenControlled=false → nessun banner ✓
-//   2. Deploy nuova versione     → controllerchange catturato → banner ✓
-//   3. Riapertura senza deploy   → nessun controllerchange → nessun banner ✓
-//   4. Deploy durante sessione   → banner immediato ✓
+//  1. controllerchange  — copre: app aperta durante il deploy (SW swap live)
+//
+//  2. postMessage SW_UPDATED + confronto versione (NUOVO) — copre:
+//       a. Deploy mentre la PWA era chiusa/sospesa:
+//          il nuovo SW si attiva PRIMA del primo JS tick → controllerchange
+//          non catturato → solo postMessage garantisce il banner.
+//       b. iOS cold start: navigator.serviceWorker.controller è null al momento
+//          della valutazione del modulo (il claim non è ancora avvenuto) →
+//          _hasBeenControlled=false → controllerchange ignorato →
+//          solo postMessage salva la situazione.
+//       c. Riapertura senza deploy: stessa versione → nessun banner ✓
+//       d. Prima installazione: nessuna versione in localStorage → nessun banner ✓
+//
+// Scenari gestiti correttamente (combinato):
+//   1. Prima installazione       → nessuna sw_version in LS → nessun banner ✓
+//   2. Deploy nuova versione     → controllerchange OPPURE postMessage → banner ✓
+//   3. Riapertura senza deploy   → stessa versione in postMessage → nessun banner ✓
+//   4. Deploy durante sessione   → banner immediato (entrambi i segnali) ✓
 //   5. Mount tardivo SwUpdateBanner → isSwUpdateReady() = true → visible=true ✓
+//   6. App sospesa poi riapertura → postMessage dall'SW già attivo → banner ✓  ← NEW
+//   7. iOS cold start con nuova versione → postMessage → banner ✓              ← NEW
+
+const SW_VERSION_KEY = "sw_version";
+
+function _fireSwUpdateReady(): void {
+  _swUpdateReady = true;
+  window.dispatchEvent(new CustomEvent("pwa:update-ready"));
+}
 
 let _swUpdateReady = false;
 let _hasBeenControlled = false;
 
 if (typeof navigator !== "undefined" && "serviceWorker" in navigator) {
+  // ── Segnale 1: controllerchange ──────────────────────────────────────────
   // Cattura lo stato del controller PRIMA che qualsiasi evento possa emettere
   _hasBeenControlled = !!navigator.serviceWorker.controller;
 
   navigator.serviceWorker.addEventListener("controllerchange", () => {
     if (_hasBeenControlled) {
       // Un controller precedente esiste → questo è un vero aggiornamento
-      _swUpdateReady = true;
-      window.dispatchEvent(new CustomEvent("pwa:update-ready"));
+      _fireSwUpdateReady();
     }
     // Dopo il primo cambio, qualsiasi cambio successivo è un aggiornamento
     _hasBeenControlled = true;
+  });
+
+  // ── Segnale 2: postMessage SW_UPDATED + confronto versione ───────────────
+  // Il SW invia questo messaggio dopo clients.claim() su ogni attivazione.
+  // Confrontiamo la versione ricevuta con quella salvata in localStorage:
+  //   - versione diversa + versione precedente presente → deploy → banner
+  //   - stessa versione → nessuna azione (riapertura senza deploy)
+  //   - nessuna versione in LS → prima installazione → salva e basta
+  navigator.serviceWorker.addEventListener("message", (event: MessageEvent) => {
+    if (event.data?.type !== "SW_UPDATED") return;
+    const newVersion  = String(event.data.version ?? "");
+    const prevVersion = localStorage.getItem(SW_VERSION_KEY) ?? "";
+    if (prevVersion && prevVersion !== newVersion && !_swUpdateReady) {
+      // Versione cambiata rispetto all'ultima sessione → nuovo deploy
+      _fireSwUpdateReady();
+    }
+    // Aggiorna sempre la versione in localStorage (anche prima installazione)
+    if (newVersion) localStorage.setItem(SW_VERSION_KEY, newVersion);
   });
 }
 

@@ -29,7 +29,20 @@ self.addEventListener('install', (event) => {
 // le schede aperte (senza aspettare il prossimo caricamento della pagina).
 
 self.addEventListener('activate', (event) => {
-  event.waitUntil(self.clients.claim());
+  event.waitUntil(
+    self.clients.claim().then(() => {
+      // Notifica tutte le schede aperte della nuova versione SW.
+      // Questo copre i casi che controllerchange non può gestire:
+      //   - Deploy mentre la PWA era chiusa/sospesa (SW già attivo al caricamento)
+      //   - iOS cold start dove navigator.serviceWorker.controller è null durante
+      //     la valutazione del modulo ma il SW si attiva pochi ms dopo
+      return self.clients.matchAll({ type: 'window' }).then((clients) => {
+        clients.forEach((client) => {
+          client.postMessage({ type: 'SW_UPDATED', version: SW_VERSION });
+        });
+      });
+    })
+  );
 });
 // Sostituito da vite plugin 'inject-sw-version' al momento del build.
 // In dev rimane '__SW_VERSION__' (accettabile per debug locale).
