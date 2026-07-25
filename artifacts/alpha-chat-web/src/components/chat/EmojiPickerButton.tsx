@@ -234,6 +234,7 @@ export default function EmojiPickerButton({
               searchPlaceholder={t("chat.emojiPickerLabel")}
               width={PICKER_WIDTH}
               height={layout.contentHeight}
+              skinTonesDisabled
             />
           ) : tab === "sticker" ? (
             <div style={{ "--sp-height": `${layout.contentHeight}px` } as React.CSSProperties}>

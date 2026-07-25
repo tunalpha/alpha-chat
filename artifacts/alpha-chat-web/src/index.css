@@ -7570,6 +7570,16 @@ html.emergency-open #root {
   -webkit-overflow-scrolling: touch;
   touch-action: pan-y;
 }
+/* ── Skin-tone selector: nascosto (quadrato giallo inutile) ── */
+.EmojiPickerReact .epr-skin-tones,
+.EmojiPickerReact .epr-skin-tone-select,
+aside.epr-skin-tones {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  overflow: hidden !important;
+  pointer-events: none !important;
+}
 /* Testo e input di ricerca visibili (senza sovrascrivere le icone categoria) */
 .EmojiPickerReact input.epr-search {
   color: #111827 !important;
@@ -7610,10 +7620,20 @@ html.emergency-open #root {
 .EmojiPickerReact .epr-category-nav button:hover {
   opacity: 1;
 }
-/* Scroll fluido anche sull'area emoji interna */
+/* ── Scroll griglia emoji su iOS (PWA): overflow:scroll obbligatorio) ── */
 .EmojiPickerReact .epr-body {
+  overflow-y: scroll !important;
   -webkit-overflow-scrolling: touch !important;
   touch-action: pan-y !important;
+  /* Impedisce al gesto di scroll di propagarsi e chiudere il picker */
+  overscroll-behavior: contain !important;
+}
+/* Ogni riga emoji deve permettere il touch scroll */
+.EmojiPickerReact .epr-emoji-list {
+  touch-action: pan-y !important;
+}
+.EmojiPickerReact ul.epr-emoji-list {
+  -webkit-overflow-scrolling: touch !important;
 }
 
 .emoji-picker-loading {
