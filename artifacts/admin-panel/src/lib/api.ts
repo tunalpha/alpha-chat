@@ -767,6 +767,71 @@ export async function downloadAuditExport(days: number = 7): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// ---------------------------------------------------------------------------
+// Access Log
+// ---------------------------------------------------------------------------
+
+export interface AccessLogItem {
+  user_id:       string;
+  username:      string;
+  display_name:  string | null;
+  status:        string;
+  last_login_at: string | null;
+  total_logins:  number;
+  avg_per_day:   number;
+  daily_counts:  { day: string; count: number }[];
+}
+
+export interface AccessLogResponse {
+  period_days: number;
+  since:       string;
+  total:       number;
+  page:        number;
+  limit:       number;
+  pages:       number;
+  items:       AccessLogItem[];
+}
+
+export async function getAccessLog(params?: {
+  days?:   number;
+  page?:   number;
+  limit?:  number;
+  search?: string;
+}): Promise<AccessLogResponse> {
+  const q = new URLSearchParams();
+  if (params?.days)   q.set("days",   String(params.days));
+  if (params?.page)   q.set("page",   String(params.page));
+  if (params?.limit)  q.set("limit",  String(params.limit));
+  if (params?.search) q.set("search", params.search);
+  const qs = q.toString();
+  return apiFetch<AccessLogResponse>(`/access-log${qs ? "?" + qs : ""}`);
+}
+
+// ---------------------------------------------------------------------------
+// Performance metrics
+// ---------------------------------------------------------------------------
+
+export interface PerformanceSummary {
+  online_now:       number;
+  active_sessions:  number;
+  logins_30d:       number;
+  failed_30d:       number;
+  success_rate_pct: number;
+  unique_users_7d:  number;
+}
+
+export interface PerformanceData {
+  summary:          PerformanceSummary;
+  daily_series:     { date: string; logins: number; failed: number }[];
+  hourly_today:     { hour: number; count: number }[];
+  new_users_by_day: { date: string; count: number }[];
+}
+
+export async function getPerformance(): Promise<PerformanceData> {
+  return apiFetch<PerformanceData>("/performance");
+}
+
+// ---------------------------------------------------------------------------
 // Admin Notification Settings (email toggles)
 // ---------------------------------------------------------------------------
 

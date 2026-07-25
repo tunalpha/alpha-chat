@@ -21,6 +21,8 @@ import CallMonitor from '@/pages/call-monitor';
 import GasStationMonitor from '@/pages/gas-station';
 import EmailSettings from '@/pages/email-settings';
 import InvestorAccess from '@/pages/investor-access';
+import AccessLogPage from '@/pages/access-log';
+import PerformancePage from '@/pages/performance';
 
 const queryClient = new QueryClient();
 
@@ -43,6 +45,8 @@ function ProtectedRoutes() {
         <Route path="/gas-station" component={GasStationMonitor} />
         <Route path="/email-settings" component={EmailSettings} />
         <Route path="/investor-access" component={InvestorAccess} />
+        <Route path="/access-log" component={AccessLogPage} />
+        <Route path="/performance" component={PerformancePage} />
         <Route component={NotFound} />
       </Switch>
     </AppShell>

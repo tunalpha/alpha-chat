@@ -8,6 +8,8 @@ import {
   getR2Pricing, updateR2Pricing,
   getCallMetrics,
   getGasStation,
+  getAccessLog,
+  getPerformance,
 } from "@/lib/api";
 
 export const useGasStation = () => useQuery({
@@ -183,5 +185,23 @@ export const useSetTempPassword = () =>
 export const useCallMetrics = () => useQuery({
   queryKey: ["callMetrics"],
   queryFn:  getCallMetrics,
+  refetchInterval: 30_000,
+});
+
+// ── Access Log ────────────────────────────────────────────────────────────────
+
+export const useAccessLog = (params?: {
+  days?: number; page?: number; limit?: number; search?: string;
+}) => useQuery({
+  queryKey: ["accessLog", params],
+  queryFn:  () => getAccessLog(params),
+  staleTime: 30_000,
+});
+
+// ── Performance metrics ───────────────────────────────────────────────────────
+
+export const usePerformance = () => useQuery({
+  queryKey: ["performance"],
+  queryFn:  getPerformance,
   refetchInterval: 30_000,
 });

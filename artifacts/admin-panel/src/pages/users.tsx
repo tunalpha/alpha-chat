@@ -116,6 +116,7 @@ export default function UsersPage() {
                 <TableHead className="font-mono text-xs uppercase">Role</TableHead>
                 <TableHead className="font-mono text-xs uppercase">Status</TableHead>
                 <TableHead className="font-mono text-xs uppercase">Security</TableHead>
+                <TableHead className="font-mono text-xs uppercase">Ultimo accesso</TableHead>
                 <TableHead className="font-mono text-xs uppercase">Created</TableHead>
                 <TableHead className="font-mono text-xs uppercase text-right">Actions</TableHead>
               </TableRow>
@@ -123,11 +124,11 @@ export default function UsersPage() {
             <TableBody>
               {isLoading ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center py-12 text-muted-foreground font-mono text-sm">Loading users...</TableCell>
+                  <TableCell colSpan={7} className="text-center py-12 text-muted-foreground font-mono text-sm">Loading users...</TableCell>
                 </TableRow>
               ) : data?.users.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={6} className="text-center py-12 text-muted-foreground font-mono text-sm">No users found.</TableCell>
+                  <TableCell colSpan={7} className="text-center py-12 text-muted-foreground font-mono text-sm">No users found.</TableCell>
                 </TableRow>
               ) : (
                 data?.users.map(user => (
@@ -157,6 +158,11 @@ export default function UsersPage() {
                         <Shield className={`w-4 h-4 ${user.totp_enabled ? 'text-emerald-500' : 'opacity-30'}`} aria-label="2FA" />
                         <ShieldAlert className={`w-4 h-4 ${user.has_phoenix ? 'text-green-500' : 'opacity-30'}`} aria-label="Phoenix" />
                       </div>
+                    </TableCell>
+                    <TableCell className="font-mono text-xs text-muted-foreground">
+                      {user.last_login_at
+                        ? format(parseISO(user.last_login_at), "dd MMM yyyy HH:mm")
+                        : <span className="opacity-30">—</span>}
                     </TableCell>
                     <TableCell className="font-mono text-xs text-muted-foreground">
                       {format(parseISO(user.created_at), "MMM d, yyyy")}

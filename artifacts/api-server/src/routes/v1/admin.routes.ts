@@ -1924,4 +1924,207 @@ router.patch("/notification-settings", requireAdmin("super_admin"), async (req, 
   } catch (err) { next(err); }
 });
 
+// ---------------------------------------------------------------------------
+// GET /admin/access-log
+// Accessi per utente: ultimo login + conteggio giornaliero dal log audit.
+// Login event types: USER_LOGIN, NEW_DEVICE_LOGIN, TEMP_PASSWORD_LOGIN
+// ---------------------------------------------------------------------------
+
+router.get("/access-log", requireAdmin("read_only"), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const rawDays  = parseInt(String(req.query["days"] ?? "30"), 10);
+    const days     = isNaN(rawDays) ? 30 : Math.min(Math.max(rawDays, 1), 90);
+    const rawPage  = parseInt(String(req.query["page"] ?? "1"), 10);
+    const page     = isNaN(rawPage)  ? 1  : Math.max(rawPage, 1);
+    const rawLimit = parseInt(String(req.query["limit"] ?? "50"), 10);
+    const limit    = isNaN(rawLimit) ? 50 : Math.min(Math.max(rawLimit, 1), 100);
+    const skip     = (page - 1) * limit;
+    const search   = qs(req.query["search"]);
+
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000);
+
+    // Login events per user per giorno
+    const loginStats = await AuditEventModel.aggregate([
+      {
+        $match: {
+          event:      { $in: ["USER_LOGIN", "NEW_DEVICE_LOGIN", "TEMP_PASSWORD_LOGIN"] },
+          created_at: { $gte: since },
+          user_id:    { $ne: null },
+        },
+      },
+      {
+        $group: {
+          _id: {
+            user_id: "$user_id",
+            day:     { $dateToString: { format: "%Y-%m-%d", date: "$created_at" } },
+          },
+          count: { $sum: 1 },
+        },
+      },
+      {
+        $group: {
+          _id:          "$_id.user_id",
+          total_logins: { $sum: "$count" },
+          daily_counts: { $push: { day: "$_id.day", count: "$count" } },
+        },
+      },
+      { $sort: { total_logins: -1 } },
+    ]);
+
+    const allUserIds  = loginStats.map((s) => s._id).filter(Boolean);
+    const total       = allUserIds.length;
+
+    // Recupera dettagli utente — applica filtro ricerca qui
+    const userFilter: Record<string, unknown> = { _id: { $in: allUserIds } };
+    if (search) {
+      userFilter["$or"] = [
+        { username:     { $regex: search, $options: "i" } },
+        { display_name: { $regex: search, $options: "i" } },
+      ];
+    }
+
+    const users = await UserModel.find(userFilter)
+      .select("_id username display_name status last_login_at")
+      .lean();
+
+    const userMap = new Map(users.map((u) => [u._id.toString(), u]));
+
+    // Se c'è ricerca, filtra loginStats per i soli utenti trovati
+    const filtered = search
+      ? loginStats.filter((s) => userMap.has(s._id))
+      : loginStats;
+
+    const items = filtered.slice(skip, skip + limit).map((stat) => {
+      const user = userMap.get(stat._id);
+      return {
+        user_id:       stat._id,
+        username:      user?.username      ?? "unknown",
+        display_name:  user?.display_name  ?? null,
+        status:        user?.status        ?? "unknown",
+        last_login_at: user?.last_login_at ?? null,
+        total_logins:  stat.total_logins   as number,
+        avg_per_day:   Math.round((stat.total_logins as number) / days * 10) / 10,
+        daily_counts:  (stat.daily_counts  as { day: string; count: number }[])
+          .sort((a, b) => a.day.localeCompare(b.day)),
+      };
+    });
+
+    res.json({
+      period_days: days,
+      since:       since.toISOString(),
+      total:       filtered.length,
+      page,
+      limit,
+      pages:       Math.ceil(filtered.length / limit),
+      items,
+    });
+  } catch (err) { next(err); }
+});
+
+// ---------------------------------------------------------------------------
+// GET /admin/performance
+// Metriche prestazionali: login trend, fallimenti, distribuzione oraria,
+// nuovi utenti, sessioni attive, tasso di successo.
+// ---------------------------------------------------------------------------
+
+router.get("/performance", requireAdmin("read_only"), async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const now    = new Date();
+    const today  = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+    const last30 = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    const last7  = new Date(now.getTime() - 7  * 24 * 60 * 60 * 1000);
+
+    const LOGIN_EVENTS = ["USER_LOGIN", "NEW_DEVICE_LOGIN", "TEMP_PASSWORD_LOGIN"];
+
+    const [
+      loginsByDay,
+      failedByDay,
+      hourlyToday,
+      newUsersByDay,
+      activeSessions,
+      totalLogins30d,
+      totalFailed30d,
+      uniqueUsers7d,
+    ] = await Promise.all([
+      // Login riusciti per giorno (ultimi 30gg)
+      AuditEventModel.aggregate([
+        { $match: { event: { $in: LOGIN_EVENTS }, created_at: { $gte: last30 }, user_id: { $ne: null } } },
+        { $group: { _id: { $dateToString: { format: "%Y-%m-%d", date: "$created_at" } }, count: { $sum: 1 } } },
+        { $sort: { _id: 1 } },
+      ]),
+      // Login falliti per giorno
+      AuditEventModel.aggregate([
+        { $match: { event: "USER_LOGIN_FAILED", created_at: { $gte: last30 } } },
+        { $group: { _id: { $dateToString: { format: "%Y-%m-%d", date: "$created_at" } }, count: { $sum: 1 } } },
+        { $sort: { _id: 1 } },
+      ]),
+      // Distribuzione oraria oggi
+      AuditEventModel.aggregate([
+        { $match: { event: { $in: LOGIN_EVENTS }, created_at: { $gte: today }, user_id: { $ne: null } } },
+        { $group: { _id: { $hour: "$created_at" }, count: { $sum: 1 } } },
+        { $sort: { _id: 1 } },
+      ]),
+      // Nuovi utenti per giorno (ultimi 30gg)
+      UserModel.aggregate([
+        { $match: { createdAt: { $gte: last30 } } },
+        { $group: { _id: { $dateToString: { format: "%Y-%m-%d", date: "$createdAt" } }, count: { $sum: 1 } } },
+        { $sort: { _id: 1 } },
+      ]),
+      // Sessioni attive ora
+      SessionModel.countDocuments({ deleted_at: null, expires_at: { $gt: now } }),
+      // Totale login 30gg
+      AuditEventModel.countDocuments({ event: { $in: LOGIN_EVENTS }, created_at: { $gte: last30 } }),
+      // Totale falliti 30gg
+      AuditEventModel.countDocuments({ event: "USER_LOGIN_FAILED", created_at: { $gte: last30 } }),
+      // Utenti unici attivi 7gg
+      AuditEventModel.aggregate([
+        { $match: { event: { $in: LOGIN_EVENTS }, created_at: { $gte: last7 }, user_id: { $ne: null } } },
+        { $group: { _id: "$user_id" } },
+        { $count: "total" },
+      ]).then((r) => (r[0] as { total?: number } | undefined)?.total ?? 0),
+    ]);
+
+    const totalAll      = totalLogins30d + totalFailed30d;
+    const successRatePct = totalAll > 0
+      ? Math.round((totalLogins30d / totalAll) * 1000) / 10
+      : 100;
+
+    // Costruisce serie giornaliera unificata (login + failed sullo stesso giorno)
+    const daySet = new Set([
+      ...loginsByDay.map((d: { _id: string }) => d._id),
+      ...failedByDay.map((d: { _id: string }) => d._id),
+    ]);
+    const loginMap  = new Map(loginsByDay.map((d: { _id: string; count: number }) => [d._id, d.count]));
+    const failedMap = new Map(failedByDay.map((d: { _id: string; count: number }) => [d._id, d.count]));
+    const dailySeries = [...daySet].sort().map((day) => ({
+      date:    day,
+      logins:  loginMap.get(day)  ?? 0,
+      failed:  failedMap.get(day) ?? 0,
+    }));
+
+    // Distribuzione oraria (0–23)
+    const hourMap = new Map((hourlyToday as { _id: number; count: number }[]).map((h) => [h._id, h.count]));
+    const hourlySeries = Array.from({ length: 24 }, (_, h) => ({
+      hour:  h,
+      count: hourMap.get(h) ?? 0,
+    }));
+
+    res.json({
+      summary: {
+        online_now:       wsManager.getOnlineCount(),
+        active_sessions:  activeSessions,
+        logins_30d:       totalLogins30d,
+        failed_30d:       totalFailed30d,
+        success_rate_pct: successRatePct,
+        unique_users_7d:  uniqueUsers7d,
+      },
+      daily_series:   dailySeries,
+      hourly_today:   hourlySeries,
+      new_users_by_day: (newUsersByDay as { _id: string; count: number }[]).map((d) => ({
+        date: d._id, count: d.count,
+      })),
+    });
+  } catch (err) { next(err); }
+});
+
 export default router;
