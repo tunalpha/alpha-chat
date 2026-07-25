@@ -7542,9 +7542,12 @@ html.emergency-open #root {
   border: 1px solid var(--border, #e5e7eb);
   border-radius: 12px;
   box-shadow: 0 8px 32px rgba(0,0,0,.18);
-  overflow: hidden;
+  /* overflow:visible permette all'epr-body di ricevere i touch su iOS */
+  overflow: visible;
   display: flex;
   flex-direction: column;
+  /* Clip visuale senza creare scroll container: solo su Safari 16+ ma inoffensivo altrove */
+  clip-path: inset(0 round 12px);
 }
 
 .emoji-picker-tabs {
@@ -7573,7 +7576,8 @@ html.emergency-open #root {
 
 .emoji-picker-content {
   flex: 1;
-  overflow: hidden;
+  /* NON overflow:hidden — su iOS blocca i touch verso l'epr-body */
+  overflow: visible;
 }
 /* Override emoji-picker-react — solo ciò che non rompe le icone categoria */
 .EmojiPickerReact {

@@ -185,6 +185,13 @@ export default function EmojiPickerButton({
         const tag = (e.target as HTMLElement).tagName;
         if (tag !== "INPUT" && tag !== "TEXTAREA") e.preventDefault();
       }}
+      /**
+       * FIX SCROLL iOS PWA: stopPropagation su touchmove impedisce al body
+       * (overflow:hidden) di catturare il gesto prima che arrivi all'epr-body.
+       * Senza questo, iOS annulla lo scroll perché il body non può scorrere.
+       */
+      onTouchMove={(e) => { e.stopPropagation(); }}
+      onTouchStart={(e) => { e.stopPropagation(); }}
     >
       {/* Tab selector */}
       <div className="emoji-picker-tabs" role="tablist">
