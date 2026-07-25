@@ -1,0 +1,111 @@
+Sì, questo approccio è coerente e affronta entrambe le cause senza introdurre modifiche invasive.
+
+1. Race condition (priorità alta)
+
+L’idea di introdurre waitForSignalReady() all’inizio di decryptBatch() è quella giusta.
+
+La sequenza diventerebbe:
+
+Login
+↓
+setAuth()
+↓
+initSignalKeys()
+↓
+Signal READY
+↓
+ChatPage monta
+↓
+decryptBatch()
+↓
+waitForSignalReady()
+↓
+decrypt()
+
+In questo modo, anche se ChatPage parte leggermente prima, il decrypt rimane in attesa invece di fallire.
+
+L’importante è che waitForSignalReady():
+
+* abbia un timeout (es. 5–10 secondi);
+* non rimanga in attesa infinita;
+* ritorni un errore controllato se Signal non diventa pronto.
+
+⸻
+
+2. Banner persistente
+
+Questo è probabilmente il miglior miglioramento UX.
+
+Attualmente:
+
+Chat A
+ └── banner
+Chat B
+ └── nessun banner
+Sidebar
+ └── nessuna indicazione
+
+Se il messaggio corrotto è in Chat A ma l’utente apre Chat B, non scopre mai che esiste un problema.
+
+Con il nuovo approccio:
+
+Sidebar
+⚠ Alcuni messaggi non possono essere decifrati
+Chat A
+...
+Chat B
+...
+
+è molto più affidabile.
+
+⸻
+
+3. SessionStorage
+
+Usarlo per lo stato del banner è una scelta sensata.
+
+Ad esempio:
+
+sessionStorage:
+keyLostDetected = true
+
+Il banner:
+
+* compare appena viene rilevato il primo decrypt failure;
+* rimane visibile durante la sessione;
+* è dismissibile;
+* non ricompare dopo il dismiss finché non si verifica un nuovo evento di perdita chiavi.
+
+⸻
+
+4. Evitare falsi positivi
+
+Un’accortezza importante è non impostare il banner al primo errore generico.
+
+Dovrebbe comparire solo per errori che indicano realmente chiavi mancanti, ad esempio:
+
+* No session
+* Session not found
+* Identity key changed
+* Cannot decrypt
+* Invalid message
+
+Non dovrebbe apparire per:
+
+* timeout di rete;
+* Signal ancora in inizializzazione;
+* IndexedDB temporaneamente occupato;
+* errori HTTP;
+* eccezioni non correlate alla crittografia.
+
+⸻
+
+5. Zero regressioni
+
+Se implementato in questo modo, il rischio è basso perché:
+
+* waitForSignalReady() aggiunge solo una sincronizzazione prima del decrypt;
+* il banner legge uno stato già esistente senza modificare il flusso di crittografia;
+* nessun cambiamento al protocollo Signal, ai messaggi o al backend.
+
+Nel complesso considero questo un intervento mirato e con un buon rapporto tra beneficio e rischio: risolve sia la race condition all’avvio sia il problema di visibilità dei messaggi non decifrabili senza alterare la logica di cifratura end-to-end.

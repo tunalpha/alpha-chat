@@ -793,11 +793,12 @@ export default function ChatPage({ onNavigate }: Props) {
   const docInputRef   = useRef<HTMLInputElement>(null);
   // toast
   const [toastMsg, setToastMsg] = useState<string | null>(null);
-  // Banner "messaggi non decifrabili" — persiste nella sessione fino a dismiss
-  const [showUndecifrableAlert, setShowUndecifrableAlert] = useState<boolean>(
-    () => sessionStorage.getItem("undecifrable_alert_dismissed") !== "1" &&
-          sessionStorage.getItem("undecifrable_detected") === "1"
-  );
+  // Banner "messaggi non decifrabili" — mostra se c'è un evento non ancora dismissal
+  const [showUndecifrableAlert, setShowUndecifrableAlert] = useState<boolean>(() => {
+    const eventTs     = sessionStorage.getItem("undecifrable_event_ts") ?? "";
+    const dismissedTs = sessionStorage.getItem("undecifrable_dismissed_ts") ?? "";
+    return eventTs !== "" && eventTs !== dismissedTs;
+  });
   const undecifrableAlertShownRef = useRef(false);
   // secure destroy
   const [destroyTarget, setDestroyTarget] = useState<MessageItem | null>(null);
@@ -903,6 +904,37 @@ export default function ChatPage({ onNavigate }: Props) {
     // Fase 3: media messages also go through Signal decrypt → decryptedTexts
     // FIX: non usare decodeMessage come fallback — produce garbled text dal binary Signal
     return decryptedTexts.get(msg.id) ?? "";
+  }
+
+  /**
+   * Ritorna true SOLO se l'errore è un fallimento crittografico genuino
+   * (Bad MAC, sessione mancante, chiave cambiata, ecc.).
+   * Ritorna false per errori IDB, rete, timeout, AbortError, ecc.
+   * Usato per evitare falsi positivi nel banner "messaggi non decifrabili".
+   */
+  function isCryptoDecryptError(err: unknown): boolean {
+    if (!(err instanceof Error)) return false;
+    // DOMException copre: AbortError, QuotaExceededError, InvalidStateError, UnknownError
+    if (err instanceof DOMException) return false;
+    // Altri nomi noti di errori non-crittografici
+    const nonCryptoNames = [
+      "AbortError", "QuotaExceededError", "InvalidStateError",
+      "UnknownError", "NotSupportedError", "NetworkError",
+      "TypeError", "SyntaxError", "RangeError",
+    ];
+    if (nonCryptoNames.includes(err.name)) return false;
+    // Pattern di rete/timeout/IDB nel messaggio
+    const msg = err.message.toLowerCase();
+    if (
+      msg.includes("timeout")  || msg.includes("network")  ||
+      msg.includes("fetch")    || msg.includes("http")     ||
+      msg.includes("indexeddb")|| msg.includes("idb")      ||
+      msg.includes("database") || msg.includes("quota")    ||
+      msg.includes("abort")
+    ) return false;
+    // Tutto il resto è considerato un errore crittografico
+    // (Bad MAC, No record for device, Unknown identity key, ecc.)
+    return true;
   }
 
   /** Decifra un singolo messaggio e aggiorna lo state */
@@ -1148,13 +1180,27 @@ export default function ChatPage({ onNavigate }: Props) {
         setDecryptedTexts((prev) =>
           new Map(prev).set(msg.id, "[Messaggio non decifrabile]"),
         );
-        // Mostra banner sidebar persistente la prima volta in questa sessione.
-        // undecifrableAlertShownRef evita setState ripetuti per ogni msg fallito.
-        if (!undecifrableAlertShownRef.current &&
-            sessionStorage.getItem("undecifrable_alert_dismissed") !== "1") {
+        // Mostra banner sidebar SOLO se l'errore è genuinamente crittografico
+        // (Bad MAC, No record for device, Unknown identity key, ecc.).
+        // NON mostrarlo per: errori IDB, AbortError, timeout, network error.
+        // Condizione 4 del documento: evitare falsi positivi.
+        if (!undecifrableAlertShownRef.current && isCryptoDecryptError(decryptErr)) {
           undecifrableAlertShownRef.current = true;
-          sessionStorage.setItem("undecifrable_detected", "1");
-          setShowUndecifrableAlert(true);
+          // Marca la sessione corrente come "nuovo evento crittografico"
+          // con timestamp per distinguere eventi diversi → riappare dopo dismiss
+          // se il timestamp è cambiato (nuovo deploy/nuovo evento chiave).
+          const nowTs = String(Math.floor(Date.now() / 60_000)); // granularità 1 minuto
+          const lastDismissedTs = sessionStorage.getItem("undecifrable_dismissed_ts") ?? "";
+          const lastEventTs     = sessionStorage.getItem("undecifrable_event_ts") ?? "";
+          if (lastEventTs !== nowTs) {
+            // Nuovo evento (diverso dal precedente dismiss) → reset e mostra
+            sessionStorage.setItem("undecifrable_event_ts", nowTs);
+            sessionStorage.removeItem("undecifrable_dismissed_ts");
+            setShowUndecifrableAlert(true);
+          } else if (lastDismissedTs !== nowTs) {
+            // Stesso minuto ma non ancora dismissal → mostra
+            setShowUndecifrableAlert(true);
+          }
         }
       }
     }
@@ -2888,7 +2934,11 @@ export default function ChatPage({ onNavigate }: Props) {
                 <button
                   className="undecifrable-alert-close"
                   onClick={() => {
-                    sessionStorage.setItem("undecifrable_alert_dismissed", "1");
+                    // Salva il timestamp dell'evento corrente come "dismissal".
+                    // Se arriva un NUOVO evento crittografico (timestamp diverso),
+                    // il banner riapparirà — Condizione 3 del documento.
+                    const eventTs = sessionStorage.getItem("undecifrable_event_ts") ?? "";
+                    sessionStorage.setItem("undecifrable_dismissed_ts", eventTs);
                     setShowUndecifrableAlert(false);
                   }}
                   aria-label="Chiudi"
