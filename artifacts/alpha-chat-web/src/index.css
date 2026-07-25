@@ -7803,7 +7803,17 @@ aside.epr-skin-tones {
 
 /* ── Animated Sticker Picker ────────────────────────────────────────────── */
 .animated-sticker-picker {
-  /* altezza gestita via --sp-height, stesso meccanismo del sticker-picker */
+  /*
+   * OVERRIDE obbligatorio: .sticker-picker (classe condivisa) imposta
+   * overflow:hidden per contenere la sua nav-bar + grid-area separata.
+   * Il picker animato non ha una grid-area interna — l'intero container
+   * deve scorrere verticalmente, quindi sovrascriviamo con !important.
+   */
+  overflow-y: auto !important;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
 }
 
 .animated-sticker-grid {
