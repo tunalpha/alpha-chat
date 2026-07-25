@@ -74,6 +74,14 @@ app.use(express.urlencoded({ extended: true, limit: "145mb" }));
 app.use(clientVersionMiddleware);
 
 // ── Application routes ────────────────────────────────────────────────────────
+
+// Replit deployment healthcheck hits GET /api (not /api/healthz).
+// This handler must be BEFORE the main router and must be 100% stateless
+// (no DB access) so it responds 200 even during the MongoDB connect phase.
+app.get("/api", (_req, res) => {
+  res.json({ status: "ok", service: "alpha-chat-api" });
+});
+
 app.use("/api", router);
 
 // ── WebRTC earpiece diagnostic test page ─────────────────────────────────────
