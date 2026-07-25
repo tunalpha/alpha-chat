@@ -4,15 +4,17 @@ import { loadPortalSession } from '@/lib/portalSession';
 import { useLang } from '@/context/LanguageContext';
 import { team as T } from '@/lib/i18n';
 import { en } from '@/content/en';
+import { it } from '@/content/it';
 import '@/components/portal-layout.css';
 
 export default function TeamPage() {
   const session = loadPortalSession();
   const { lang } = useLang();
   const t = T[lang];
-  const founder = en.founder;
-  const letter  = en.founderLetter;
-  const story   = en.story;
+  const content = lang === 'it' ? it : en;
+  const founder = content.founder;
+  const letter  = content.founderLetter;
+  const story   = content.story;
 
   return (
     <PortalLayout investorName={session?.investorName} sessionExpiry={session?.sessionExpiry}>

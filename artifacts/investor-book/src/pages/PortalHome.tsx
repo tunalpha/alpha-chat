@@ -61,10 +61,10 @@ export default function PortalHome() {
           <div className="ph-shield">
             <span className="ph-shield-icon">🔐</span>
             <div className="ph-shield-lines">
-              <div className="ph-shield-line"><span>Encryption</span><span className="ph-ok">AES-256 ✓</span></div>
-              <div className="ph-shield-line"><span>Protocol</span><span className="ph-ok">Signal ✓</span></div>
-              <div className="ph-shield-line"><span>Session</span><span className="ph-ok">Active ✓</span></div>
-              <div className="ph-shield-line"><span>Monitoring</span><span className="ph-ok">On ✓</span></div>
+              <div className="ph-shield-line"><span>{lang === 'it' ? 'Cifratura' : 'Encryption'}</span><span className="ph-ok">AES-256 ✓</span></div>
+              <div className="ph-shield-line"><span>{lang === 'it' ? 'Protocollo' : 'Protocol'}</span><span className="ph-ok">Signal ✓</span></div>
+              <div className="ph-shield-line"><span>{lang === 'it' ? 'Sessione' : 'Session'}</span><span className="ph-ok">{lang === 'it' ? 'Attiva ✓' : 'Active ✓'}</span></div>
+              <div className="ph-shield-line"><span>{lang === 'it' ? 'Monitoraggio' : 'Monitoring'}</span><span className="ph-ok">{lang === 'it' ? 'On ✓' : 'On ✓'}</span></div>
             </div>
           </div>
         </div>
