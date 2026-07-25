@@ -532,6 +532,73 @@ function ChatInput({
   );
 }
 
+// ── Profile photo fullscreen viewer ──────────────────────────────────────────
+function ProfilePhotoModal({
+  avatarUrl,
+  displayName,
+  username,
+  connected,
+  onClose,
+  onNavigate,
+}: {
+  avatarUrl?: string | null;
+  displayName: string;
+  username: string;
+  connected: boolean;
+  onClose: () => void;
+  onNavigate: (v: AppView) => void;
+}) {
+  const { t } = useTranslation();
+  // close on Escape
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    document.addEventListener("keydown", handler);
+    return () => document.removeEventListener("keydown", handler);
+  }, [onClose]);
+
+  return (
+    <div className="profile-photo-overlay" onClick={onClose}>
+      <div className="profile-photo-modal" onClick={(e) => e.stopPropagation()}>
+        {/* Close */}
+        <button className="profile-photo-close" onClick={onClose} aria-label="Chiudi">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="20" height="20">
+            <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+
+        {/* Photo */}
+        <div className="profile-photo-img-wrap">
+          {avatarUrl
+            ? <img src={avatarUrl} alt={displayName} className="profile-photo-img" />
+            : <div className="avatar avatar-xl profile-photo-initial">{displayName[0]?.toUpperCase()}</div>
+          }
+        </div>
+
+        {/* Info */}
+        <div className="profile-photo-info">
+          <div className="profile-photo-name">{displayName}</div>
+          <div className="profile-photo-username">@{username}</div>
+          <div className={`profile-photo-status ${connected ? "online" : "offline"}`}>
+            {connected ? `● ${t("chat.online")}` : `○ ${t("chat.offline")}`}
+          </div>
+        </div>
+
+        {/* Edit shortcut */}
+        <button
+          className="profile-photo-edit-btn"
+          onClick={() => { onClose(); onNavigate("profile"); }}
+        >
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="15" height="15">
+            <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+            <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+          </svg>
+          {t("nav.profile")}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── Sidebar user menu ────────────────────────────────────────────────────────
 function SidebarMenu({
   displayName,
@@ -554,6 +621,7 @@ function SidebarMenu({
 }) {
   const { t } = useTranslation();
   const [open, setOpen] = useState(false);
+  const [showPhoto, setShowPhoto] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -605,17 +673,41 @@ function SidebarMenu({
 
   return (
     <div className="user-menu-wrapper" ref={ref}>
+      {/* Avatar → apre photo viewer */}
       <button
         className="avatar-menu-btn"
-        onClick={() => setOpen((v) => !v)}
-        aria-label={t("nav.settings")}
-        aria-expanded={open}
+        onClick={() => setShowPhoto(true)}
+        aria-label="Vedi foto profilo"
       >
         {avatarUrl
           ? <img src={avatarUrl} alt={displayName} className="avatar avatar-sm" style={{ objectFit: "cover", borderRadius: "50%" }} />
           : <div className="avatar avatar-sm">{displayName[0]?.toUpperCase()}</div>
         }
       </button>
+
+      {/* Piccolo chevron per aprire il menu impostazioni */}
+      <button
+        className="avatar-menu-chevron"
+        onClick={() => setOpen((v) => !v)}
+        aria-label={t("nav.settings")}
+        aria-expanded={open}
+      >
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="10" height="10">
+          <polyline points="6 9 12 15 18 9"/>
+        </svg>
+      </button>
+
+      {/* Photo viewer fullscreen */}
+      {showPhoto && (
+        <ProfilePhotoModal
+          avatarUrl={avatarUrl}
+          displayName={displayName}
+          username={username}
+          connected={connected}
+          onClose={() => setShowPhoto(false)}
+          onNavigate={onNavigate}
+        />
+      )}
 
       {open && (
         <div className="user-menu-dropdown">

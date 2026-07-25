@@ -377,6 +377,84 @@ a { color: inherit; text-decoration: none; }
 }
 .user-menu-nuclear:hover { background: rgba(180,0,0,0.12) !important; color: #ff3333 !important; }
 
+/* ── Avatar chevron (menu impostazioni) ────────────────────────────────────── */
+.avatar-menu-chevron {
+  position: absolute; bottom: -4px; left: 50%; transform: translateX(-50%);
+  width: 18px; height: 14px; border-radius: 6px;
+  background: var(--bg-menu); border: 1px solid var(--border-2);
+  display: flex; align-items: center; justify-content: center;
+  color: var(--text-3); padding: 0; min-height: unset; min-width: unset;
+  transition: color 0.15s, background 0.15s;
+  box-shadow: 0 1px 4px rgba(0,0,0,0.25);
+}
+.avatar-menu-chevron:hover { color: var(--text-1); background: var(--bg-hover); }
+
+/* ── Profile photo fullscreen modal ────────────────────────────────────────── */
+.profile-photo-overlay {
+  position: fixed; inset: 0; z-index: 9999;
+  background: rgba(0,0,0,0.85);
+  display: flex; align-items: center; justify-content: center;
+  backdrop-filter: blur(8px);
+  animation: profile-overlay-in 0.18s ease;
+}
+@keyframes profile-overlay-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.profile-photo-modal {
+  position: relative; display: flex; flex-direction: column; align-items: center;
+  gap: 16px; padding: 32px 28px 24px;
+  background: var(--bg-panel, #1a1040);
+  border: 1px solid var(--border-2);
+  border-radius: var(--r-xl, 20px);
+  box-shadow: 0 24px 64px rgba(0,0,0,0.6);
+  min-width: 260px; max-width: 340px; width: 90%;
+  animation: profile-modal-in 0.2s cubic-bezier(0.34,1.56,0.64,1);
+}
+@keyframes profile-modal-in {
+  from { opacity: 0; transform: scale(0.88) translateY(12px); }
+  to   { opacity: 1; transform: scale(1) translateY(0); }
+}
+.profile-photo-close {
+  position: absolute; top: 12px; right: 12px;
+  width: 32px; height: 32px; border-radius: 50%;
+  background: rgba(255,255,255,0.08); color: var(--text-2);
+  display: flex; align-items: center; justify-content: center;
+  transition: background 0.15s, color 0.15s;
+  padding: 0; min-height: unset; min-width: unset;
+}
+.profile-photo-close:hover { background: rgba(255,255,255,0.16); color: var(--text-1); }
+
+.profile-photo-img-wrap {
+  width: 120px; height: 120px; border-radius: 50%;
+  overflow: hidden; flex-shrink: 0;
+  border: 3px solid var(--brand-2, #7c3aed);
+  box-shadow: 0 0 0 4px rgba(124,58,237,0.25);
+}
+.profile-photo-img {
+  width: 100%; height: 100%; object-fit: cover; display: block;
+}
+.profile-photo-initial {
+  width: 120px !important; height: 120px !important;
+  font-size: 44px !important;
+}
+.profile-photo-info { text-align: center; display: flex; flex-direction: column; gap: 4px; }
+.profile-photo-name { font-size: 19px; font-weight: 700; color: var(--text-1); }
+.profile-photo-username { font-size: 13px; color: var(--text-2); }
+.profile-photo-status { font-size: 12px; margin-top: 2px; }
+.profile-photo-status.online { color: #4ADE80; }
+.profile-photo-status.offline { color: var(--text-3); }
+
+.profile-photo-edit-btn {
+  display: flex; align-items: center; gap: 7px;
+  padding: 9px 20px; border-radius: var(--r-lg, 12px);
+  background: var(--bg-hover); color: var(--text-2);
+  font-size: 13px; font-weight: 500;
+  transition: background 0.15s, color 0.15s;
+  min-height: unset;
+}
+.profile-photo-edit-btn:hover { background: var(--brand-2); color: #fff; }
+
 /* ── Chat area ─────────────────────────────────────────────────────────────── */
 .chat-area {
   flex: 1; display: flex; flex-direction: column;
