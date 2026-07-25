@@ -157,6 +157,22 @@ const BurnParticles = memo(function BurnParticles() {
 });
 
 // ── Helpers ─────────────────────────────────────────────────────────────────
+
+/**
+ * Ritorna true se il testo contiene SOLO emoji (max ~5) senza testo alfanumerico.
+ * Usato per mostrare emoji-only senza bolla, stile Telegram/WhatsApp.
+ */
+function isEmojiOnly(text: string): boolean {
+  const trimmed = text.trim();
+  if (!trimmed || trimmed.length > 28) return false;
+  // \p{Extended_Pictographic} cattura emoji reali senza includere cifre/punteggiatura
+  const nonEmoji = trimmed.replace(
+    /[\p{Extended_Pictographic}\p{Emoji_Modifier}\uFE0F\u20E3\u200D\s]/gu,
+    "",
+  );
+  return nonEmoji.length === 0;
+}
+
 function formatTime(iso: string): string {
   return new Date(iso).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" });
 }
@@ -3182,7 +3198,7 @@ export default function ChatPage({ onNavigate }: Props) {
                         </div>
                       )}
                       {destroyingIds.has(msg.id) && <BurnParticles />}
-                      <div className={`msg-bubble ${isMine ? "mine" : "theirs"} ${voiceMeta ? "voice-bubble" : ""} ${(msg.message_type === "payment" || msg.message_type === "usda_request" || msg.message_type === "usda_send") ? "payment-bubble" : ""} ${(msg.message_type === "sticker" || msg.message_type === "animated_sticker" || (decryptedTexts.get(msg.id) ?? "").startsWith(STICKER_MARKER) || (decryptedTexts.get(msg.id) ?? "").startsWith(ANIMATED_STICKER_MARKER)) ? "sticker-bubble" : ""}`}>
+                      <div className={`msg-bubble ${isMine ? "mine" : "theirs"} ${voiceMeta ? "voice-bubble" : ""} ${(msg.message_type === "payment" || msg.message_type === "usda_request" || msg.message_type === "usda_send") ? "payment-bubble" : ""} ${(msg.message_type === "sticker" || msg.message_type === "animated_sticker" || (decryptedTexts.get(msg.id) ?? "").startsWith(STICKER_MARKER) || (decryptedTexts.get(msg.id) ?? "").startsWith(ANIMATED_STICKER_MARKER)) ? "sticker-bubble" : ""} ${(msg.message_type === "text" || msg.message_type === "forward") && !voiceMeta && isEmojiOnly(decryptedTexts.get(msg.id) ?? "") ? "emoji-only-bubble" : ""}`}>
                         {/* Reply preview */}
                         {msg.reply_to_message_id && (
                           <div className="msg-reply-preview">

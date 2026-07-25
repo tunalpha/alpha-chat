@@ -6018,7 +6018,23 @@ html.emergency-open #root {
   padding: 0 !important;
 }
 .msg-bubble.sticker-bubble .msg-meta {
-  /* timestamp leggibile senza sfondo bolla */
+  background: transparent;
+  padding: 2px 0 0;
+}
+/* Emoji-only: grande e senza bolla (stile Telegram/WhatsApp) */
+.msg-bubble.emoji-only-bubble,
+.msg-bubble.emoji-only-bubble.mine,
+.msg-bubble.emoji-only-bubble.theirs {
+  background: transparent !important;
+  border: none !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+.msg-bubble.emoji-only-bubble .msg-text {
+  font-size: 48px !important;
+  line-height: 1.15 !important;
+}
+.msg-bubble.emoji-only-bubble .msg-meta {
   background: transparent;
   padding: 2px 0 0;
 }
