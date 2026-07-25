@@ -26,6 +26,22 @@ import { useTranslation } from "react-i18next";
 import type { StickerPayload } from "../../types/sticker";
 import type { AnimatedStickerPayload } from "../../types/animatedSticker";
 
+// Categories enum — importato eagerly (solo enum, ~0 KB aggiuntivi al bundle)
+import { Categories } from "emoji-picker-react";
+
+// Nomi categorie in italiano
+const ITALIAN_CATEGORIES = [
+  { category: Categories.SUGGESTED,      name: "Usati di recente"   },
+  { category: Categories.SMILEYS_PEOPLE, name: "Visi e persone"     },
+  { category: Categories.ANIMALS_NATURE, name: "Animali e natura"   },
+  { category: Categories.FOOD_DRINK,     name: "Cibo e bevande"     },
+  { category: Categories.TRAVEL_PLACES,  name: "Viaggi e luoghi"    },
+  { category: Categories.ACTIVITIES,     name: "Attività"           },
+  { category: Categories.OBJECTS,        name: "Oggetti"            },
+  { category: Categories.SYMBOLS,        name: "Simboli"            },
+  { category: Categories.FLAGS,          name: "Bandiere"           },
+];
+
 // Lazy load dei picker — non entrano nel bundle principale
 const EmojiPickerLazy = lazy(() => import("emoji-picker-react"));
 const StickerPickerLazy = lazy(() =>
@@ -131,25 +147,54 @@ export default function EmojiPickerButton({
   }, [open]);
 
   /**
-   * FIX DEFINITIVO scroll iOS PWA: emoji-picker-react (.epr-body) non riceve
-   * il pan gesture su iOS Safari standalone, nonostante overflow/touch-action.
-   * Soluzione deterministica: guidiamo lo scroll manualmente con listener
-   * touch nativi non-passive (preventDefault + scrollTop), con momentum.
-   * La tab Sticker (div nostro) scrolla nativamente e non è toccata.
+   * SCROLL iOS PWA — approccio definitivo v3.
+   *
+   * Causa radice: la libreria emoji-picker-react applica overflow:hidden al
+   * proprio root (.epr-main = .EmojiPickerReact). Su iOS Safari PWA questo
+   * impedisce al browser di riconoscere .epr-body come scroll target valido,
+   * quindi i gesture di pan non arrivano mai all'elemento.
+   *
+   * Strategia:
+   * 1. CSS: .EmojiPickerReact { overflow: visible !important } — rimuove il
+   *    blocco che fa fallire il riconoscimento nativo.
+   * 2. JS (fallback): listener in CAPTURE PHASE sul PANEL (sempre nel DOM),
+   *    non su .epr-body (lazy-loaded). Il flag `active` garantisce che
+   *    preventDefault() venga chiamato SOLO per tocchi che partono da .epr-body,
+   *    senza interferire con sticker picker o barra categorie.
    */
   useEffect(() => {
     if (!open || tab !== "emoji") return;
-    let body: HTMLElement | null = null;
+    const panel = panelRef.current;
+    if (!panel) return;
+
+    let active = false;
     let startY = 0, startTop = 0, lastY = 0, lastT = 0, vel = 0, raf = 0;
 
+    const getBody = (): HTMLElement | null =>
+      panel.querySelector<HTMLElement>(".epr-body");
+    const getCatNav = (): HTMLElement | null =>
+      panel.querySelector<HTMLElement>(".epr-category-nav");
+
     const onTS = (e: TouchEvent) => {
+      const body = getBody();
+      if (!body) { active = false; return; }
+      const target = e.target as Node;
+      // Tocco fuori da .epr-body → non gestiamo
+      if (!body.contains(target)) { active = false; return; }
+      // Barra categorie orizzontale → scroll nativo (non intercettare)
+      const nav = getCatNav();
+      if (nav?.contains(target)) { active = false; return; }
       cancelAnimationFrame(raf);
+      active = true;
       startY = lastY = e.touches[0].clientY;
-      startTop = body?.scrollTop ?? 0;
+      startTop = body.scrollTop;
       lastT = e.timeStamp;
       vel = 0;
     };
+
     const onTM = (e: TouchEvent) => {
+      if (!active) return;
+      const body = getBody();
       if (!body) return;
       e.preventDefault();
       const y = e.touches[0].clientY;
@@ -159,7 +204,11 @@ export default function EmojiPickerButton({
       lastY = y;
       lastT = e.timeStamp;
     };
+
     const onTE = () => {
+      if (!active) return;
+      active = false;
+      const body = getBody();
       const step = () => {
         if (!body || Math.abs(vel) < 0.02) return;
         body.scrollTop += vel * 16;
@@ -169,32 +218,16 @@ export default function EmojiPickerButton({
       raf = requestAnimationFrame(step);
     };
 
-    const attach = (): boolean => {
-      body = panelRef.current?.querySelector<HTMLElement>(".epr-body") ?? null;
-      if (!body) return false;
-      body.addEventListener("touchstart", onTS, { passive: true });
-      body.addEventListener("touchmove", onTM, { passive: false });
-      body.addEventListener("touchend", onTE, { passive: true });
-      return true;
-    };
-
-    // Il picker è lazy-loaded: riprova finché .epr-body non esiste nel DOM
-    let iv = 0;
-    if (!attach()) {
-      iv = window.setInterval(() => {
-        if (attach()) window.clearInterval(iv);
-      }, 150);
-      window.setTimeout(() => window.clearInterval(iv), 6000);
-    }
+    // Capture phase: intercettiamo PRIMA che la libreria veda gli eventi
+    panel.addEventListener("touchstart", onTS, { capture: true, passive: true });
+    panel.addEventListener("touchmove",  onTM, { capture: true, passive: false });
+    panel.addEventListener("touchend",   onTE, { capture: false, passive: true });
 
     return () => {
-      window.clearInterval(iv);
       cancelAnimationFrame(raf);
-      if (body) {
-        body.removeEventListener("touchstart", onTS);
-        body.removeEventListener("touchmove", onTM);
-        body.removeEventListener("touchend", onTE);
-      }
+      panel.removeEventListener("touchstart", onTS, true);
+      panel.removeEventListener("touchmove",  onTM, true);
+      panel.removeEventListener("touchend",   onTE);
     };
   }, [open, tab]);
 
@@ -310,6 +343,7 @@ export default function EmojiPickerButton({
               width={PICKER_WIDTH}
               height={layout.contentHeight}
               skinTonesDisabled
+              categories={ITALIAN_CATEGORIES}
             />
           ) : tab === "sticker" ? (
             <div style={{ "--sp-height": `${layout.contentHeight}px` } as React.CSSProperties}>

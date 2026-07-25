@@ -7600,7 +7600,14 @@ html.emergency-open #root {
   border: none !important;
   box-shadow: none !important;
   border-radius: 0 !important;
-  /* Scroll fluido su iOS */
+  /*
+   * CAUSA RADICE SCROLL iOS: la libreria applica overflow:hidden su .epr-main
+   * (= .EmojiPickerReact) via il suo sistema CSS-in-JS. Su iOS Safari PWA
+   * questo blocca il riconoscimento di .epr-body come scroll target valido.
+   * overflow:visible !important sovrascrive lo stile iniettato dalla libreria
+   * e permette al browser di trovare .epr-body come contenitore scrollabile.
+   */
+  overflow: visible !important;
   -webkit-overflow-scrolling: touch;
   touch-action: pan-y;
 }
