@@ -75,7 +75,7 @@ interface Props {
 
 const AnimatedStickerPicker = memo(function AnimatedStickerPicker({ onSelect }: Props) {
   return (
-    <div className="sticker-picker animated-sticker-picker" role="dialog" aria-label="Sticker animati">
+    <div className="animated-sticker-picker" role="dialog" aria-label="Sticker animati">
       {ANIMATED_STICKER_PACKS.map((pack) => (
         <div key={pack.packId} className="sticker-pack">
           <p className="sticker-pack-name">{pack.name}</p>

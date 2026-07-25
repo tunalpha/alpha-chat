@@ -7802,18 +7802,21 @@ aside.epr-skin-tones {
 }
 
 /* ── Animated Sticker Picker ────────────────────────────────────────────── */
+/*
+ * Il picker animato NON usa .sticker-picker — ha il proprio layout autonomo.
+ * .sticker-picker ha display:flex+overflow:hidden per la sua nav bar;
+ * se ereditato, i flex children si comprimono e non overflowano → niente scroll.
+ * Qui il container è un semplice block con overflow-y:scroll nativo iOS.
+ */
 .animated-sticker-picker {
-  /*
-   * OVERRIDE obbligatorio: .sticker-picker (classe condivisa) imposta
-   * overflow:hidden per contenere la sua nav-bar + grid-area separata.
-   * Il picker animato non ha una grid-area interna — l'intero container
-   * deve scorrere verticalmente, quindi sovrascriviamo con !important.
-   */
-  overflow-y: auto !important;
+  display: block;                         /* NO flex — i figli devono overflow naturalmente */
+  height: var(--sp-height, 280px);        /* altezza fissa = scroll trigger */
+  overflow-y: scroll;                     /* scroll (non auto) per massima compatibilità iOS */
   overflow-x: hidden;
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior: contain;
-  touch-action: pan-y;
+  -webkit-overflow-scrolling: touch;      /* momentum scroll iOS legacy */
+  overscroll-behavior: contain;           /* impedisce propagazione al body */
+  touch-action: pan-y;                    /* iOS: solo pan verticale */
+  padding: 0 8px 8px;
 }
 
 .animated-sticker-grid {
