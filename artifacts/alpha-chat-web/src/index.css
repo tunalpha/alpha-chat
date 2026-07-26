@@ -797,7 +797,10 @@ a { color: inherit; text-decoration: none; }
   margin-bottom: 5px;
   background: rgba(0,0,0,0.25); border-radius: 6px;
   padding: 5px 8px; overflow: hidden;
+  cursor: pointer;
+  transition: background 0.15s;
 }
+.msg-reply-preview:active { background: rgba(0,0,0,0.4); }
 .msg-reply-bar {
   width: 3px; border-radius: 2px; flex-shrink: 0;
   background: var(--brand-3); align-self: stretch;

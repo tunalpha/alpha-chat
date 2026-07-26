@@ -2283,6 +2283,18 @@ export default function ChatPage({ onNavigate }: Props) {
     }
   }
 
+  /** Scrolla al messaggio con l'id dato e lo evidenzia brevemente. */
+  function scrollToMessage(targetId: string) {
+    const el = document.querySelector<HTMLElement>(`[data-msg-id="${targetId}"]`);
+    if (!el) return;
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    el.classList.remove("msg-highlighted");
+    // force reflow per far ripartire l'animazione anche se è già la classe presente
+    void el.offsetWidth;
+    el.classList.add("msg-highlighted");
+    setTimeout(() => el.classList.remove("msg-highlighted"), 1900);
+  }
+
   function closeContextMenu() { setContextMenu(null); }
 
   // ── Multi-select ─────────────────────────────────────────────────────────
@@ -3506,6 +3518,7 @@ export default function ChatPage({ onNavigate }: Props) {
                       </div>
                     )}
                     <div
+                      data-msg-id={msg.id}
                       className={`msg-row ${isMine ? "mine" : "theirs"}${destroyingIds.has(msg.id) ? " msg-dissolve" : ""}${selectMode && selectedMsgIds.has(msg.id) ? " msg-selected" : ""}`}
                       onContextMenu={(e) => { if (selectMode) { e.preventDefault(); return; } handleContextMenu(e, msg); }}
                       onTouchStart={(e) => handleMsgTouchStart(e, msg)}
@@ -3531,9 +3544,15 @@ export default function ChatPage({ onNavigate }: Props) {
                       )}
                       {destroyingIds.has(msg.id) && <BurnParticles />}
                       <div className={`msg-bubble ${isMine ? "mine" : "theirs"} ${voiceMeta ? "voice-bubble" : ""} ${(msg.message_type === "payment" || msg.message_type === "usda_request" || msg.message_type === "usda_send") ? "payment-bubble" : ""} ${(msg.message_type === "sticker" || msg.message_type === "animated_sticker" || (decryptedTexts.get(msg.id) ?? "").startsWith(STICKER_MARKER) || (decryptedTexts.get(msg.id) ?? "").startsWith(ANIMATED_STICKER_MARKER)) ? "sticker-bubble" : ""} ${(msg.message_type === "text" || msg.message_type === "forward") && !voiceMeta && isEmojiOnly(decryptedTexts.get(msg.id) ?? "") ? "emoji-only-bubble" : ""}`}>
-                        {/* Reply preview */}
+                        {/* Reply preview — cliccabile per scrollare al messaggio originale */}
                         {msg.reply_to_message_id && (
-                          <div className="msg-reply-preview">
+                          <div
+                            className="msg-reply-preview"
+                            onClick={(e) => { e.stopPropagation(); if (msg.reply_to_message_id) scrollToMessage(msg.reply_to_message_id); }}
+                            role="button"
+                            tabIndex={0}
+                            onKeyDown={(e) => { if (e.key === "Enter" && msg.reply_to_message_id) scrollToMessage(msg.reply_to_message_id); }}
+                          >
                             <span className="msg-reply-bar" />
                             <span className="msg-reply-text">
                               {repliedMsg
