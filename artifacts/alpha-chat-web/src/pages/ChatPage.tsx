@@ -887,6 +887,16 @@ export default function ChatPage({ onNavigate }: Props) {
   const recordingKeepAliveRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const recordingActiveConvRef = useRef<string | null>(null);
   const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const msgSwipeState = useRef<{
+    el: HTMLElement | null;
+    bubble: HTMLElement | null;
+    hint: HTMLElement | null;
+    startX: number;
+    startY: number;
+    msgId: string;
+    active: boolean;
+    triggered: boolean;
+  } | null>(null);
   const ctxOpenedAtRef = useRef<number>(0); // ghost-click guard
   const fileInputRef = useRef<HTMLInputElement>(null);
   // Debounce ref per apiMarkRead — evita chiamate multiple in rapida successione
@@ -904,6 +914,31 @@ export default function ChatPage({ onNavigate }: Props) {
     // Fase 3: media messages also go through Signal decrypt → decryptedTexts
     // FIX: non usare decodeMessage come fallback — produce garbled text dal binary Signal
     return decryptedTexts.get(msg.id) ?? "";
+  }
+
+  /**
+   * Restituisce un'etichetta leggibile per reply preview e reply bar.
+   * Per messaggi media/sticker/payment mostra emoji + tipo invece del JSON interno.
+   */
+  function getReplyPreviewText(msg: MessageItem): string {
+    const raw = getDisplayText(msg);
+    if (raw.startsWith(ANIMATED_STICKER_MARKER) || msg.message_type === "animated_sticker") return "🎬 Sticker animato";
+    if (raw.startsWith(STICKER_MARKER) || msg.message_type === "sticker") return "🎭 Sticker";
+    if (msg.message_type === "payment")      return "💸 Pagamento";
+    if (msg.message_type === "usda_send")    return "💵 USDA inviato";
+    if (msg.message_type === "usda_request") return "💵 Richiesta USDA";
+    if (msg.message_type === "media") {
+      const meta = decodeMediaMeta(raw);
+      if (!meta) return "📎 Media";
+      if (meta.type === "voice") return "🎙 Vocale";
+      const mime = (meta as { mime_type?: string }).mime_type ?? "";
+      if (mime.startsWith("video/")) return "🎥 Video";
+      if (mime.startsWith("image/")) return "📷 Foto";
+      return "📄 Documento";
+    }
+    if (msg.message_type === "text" && decodeLocationMeta(raw)) return "📍 Posizione";
+    if (msg.message_type === "forward") return raw || "↪ Inoltrato";
+    return raw || "💬 Messaggio";
   }
 
   /**
@@ -2174,6 +2209,80 @@ export default function ChatPage({ onNavigate }: Props) {
     }
   }
 
+  // ── Swipe-to-reply su messaggi ───────────────────────────────────────────
+  function handleMsgTouchStart(e: React.TouchEvent, msg: MessageItem) {
+    if (selectMode) return;
+    const touch = e.touches[0];
+    if (!touch) return;
+    const el = e.currentTarget as HTMLElement;
+    msgSwipeState.current = {
+      el,
+      bubble: el.querySelector<HTMLElement>('.msg-bubble'),
+      hint:   el.querySelector<HTMLElement>('.msg-swipe-hint'),
+      startX: touch.clientX,
+      startY: touch.clientY,
+      msgId:  msg.id,
+      active:    false,
+      triggered: false,
+    };
+    // Avvia long-press per context menu
+    handleTouchStart(e, msg);
+  }
+
+  function handleMsgTouchMove(e: React.TouchEvent) {
+    if (selectMode || !msgSwipeState.current) return;
+    const touch = e.touches[0];
+    if (!touch) return;
+    const state = msgSwipeState.current;
+    const dx = touch.clientX - state.startX;
+    const dy = Math.abs(touch.clientY - state.startY);
+
+    if (!state.active) {
+      if (Math.abs(dx) > 10 && Math.abs(dx) > dy) {
+        // Swipe orizzontale confermato: entra in swipe mode e cancella long-press
+        state.active = true;
+        if (longPressTimerRef.current) { clearTimeout(longPressTimerRef.current); longPressTimerRef.current = null; }
+      }
+      return;
+    }
+
+    if (dx <= 0) {
+      if (state.bubble) state.bubble.style.transform = '';
+      if (state.hint)   state.hint.style.opacity = '0';
+      return;
+    }
+
+    const clamped = Math.min(dx, 72);
+    const opacity = Math.min(clamped / 56, 1);
+    if (state.bubble) state.bubble.style.transform = `translateX(${clamped}px)`;
+    if (state.hint)   state.hint.style.opacity  = String(opacity);
+
+    if (dx >= 64 && !state.triggered) {
+      state.triggered = true;
+      if (navigator.vibrate) navigator.vibrate(20);
+    }
+  }
+
+  function handleMsgTouchEnd(_e: React.TouchEvent) {
+    if (longPressTimerRef.current) { clearTimeout(longPressTimerRef.current); longPressTimerRef.current = null; }
+    const state = msgSwipeState.current;
+    msgSwipeState.current = null;
+    if (!state) return;
+
+    // Animazione di ritorno della bolla
+    if (state.bubble) {
+      state.bubble.style.transition = 'transform 0.22s ease';
+      state.bubble.style.transform  = '';
+      setTimeout(() => { if (state.bubble) state.bubble.style.transition = ''; }, 230);
+    }
+    if (state.hint) state.hint.style.opacity = '0';
+
+    if (state.triggered) {
+      const target = messages.find(m => m.id === state.msgId);
+      if (target) setReplyTo(target);
+    }
+  }
+
   function closeContextMenu() { setContextMenu(null); }
 
   // ── Multi-select ─────────────────────────────────────────────────────────
@@ -3399,11 +3508,19 @@ export default function ChatPage({ onNavigate }: Props) {
                     <div
                       className={`msg-row ${isMine ? "mine" : "theirs"}${destroyingIds.has(msg.id) ? " msg-dissolve" : ""}${selectMode && selectedMsgIds.has(msg.id) ? " msg-selected" : ""}`}
                       onContextMenu={(e) => { if (selectMode) { e.preventDefault(); return; } handleContextMenu(e, msg); }}
-                      onTouchStart={(e) => { if (selectMode) return; handleTouchStart(e, msg); }}
-                      onTouchEnd={selectMode ? undefined : handleTouchCancel}
-                      onTouchMove={selectMode ? undefined : handleTouchCancel}
+                      onTouchStart={(e) => handleMsgTouchStart(e, msg)}
+                      onTouchMove={selectMode ? undefined : handleMsgTouchMove}
+                      onTouchEnd={selectMode ? undefined : handleMsgTouchEnd}
                       onClick={selectMode ? () => toggleSelectMsg(msg.id) : undefined}
                     >
+                      {/* Swipe-to-reply hint icon */}
+                      {!selectMode && (
+                        <div className="msg-swipe-hint" aria-hidden="true">
+                          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="14" height="14">
+                            <polyline points="9 17 4 12 9 7"/><line x1="20" y1="12" x2="4" y2="12"/>
+                          </svg>
+                        </div>
+                      )}
                       {/* Checkbox selezione */}
                       {selectMode && (
                         <div className={`msg-select-check ${selectedMsgIds.has(msg.id) ? "checked" : ""}`}>
@@ -3420,7 +3537,7 @@ export default function ChatPage({ onNavigate }: Props) {
                             <span className="msg-reply-bar" />
                             <span className="msg-reply-text">
                               {repliedMsg
-                                ? getDisplayText(repliedMsg)
+                                ? getReplyPreviewText(repliedMsg)
                                 : <em className="msg-reply-destroyed">🛡 Messaggio non più disponibile</em>
                               }
                             </span>
@@ -3593,7 +3710,7 @@ export default function ChatPage({ onNavigate }: Props) {
               <div className="reply-bar">
                 <span className="reply-bar-icon">↩</span>
                 <span className="reply-bar-text">
-                  {getDisplayText(replyTo)}
+                  {getReplyPreviewText(replyTo)}
                 </span>
                 <button className="reply-bar-close" onClick={() => setReplyTo(null)} aria-label="Annulla risposta">✕</button>
               </div>

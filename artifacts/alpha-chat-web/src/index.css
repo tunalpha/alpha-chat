@@ -811,16 +811,20 @@ a { color: inherit; text-decoration: none; }
 /* ── Swipe-to-reply hint icon ─────────────────────────────────────────────── */
 .msg-swipe-hint {
   position: absolute;
-  left: 10px;
   top: 50%; transform: translateY(-50%);
-  width: 30px; height: 30px;
+  width: 32px; height: 32px;
   background: var(--surface-3);
   border-radius: 50%;
   display: flex; align-items: center; justify-content: center;
   color: var(--brand-3);
   pointer-events: none;
   z-index: 1;
+  opacity: 0;
+  /* posizionamento: a sinistra della bolla per entrambi (theirs e mine) */
+  left: 6px;
 }
+/* Per "mine" (bolla a destra): l'icona appare a sinistra del 30% residuo */
+.msg-row.mine .msg-swipe-hint { left: 6px; }
 
 /* ── Highlight post scroll-to-message ─────────────────────────────────────── */
 @keyframes msg-flash {
