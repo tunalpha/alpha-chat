@@ -2295,24 +2295,17 @@ export default function ChatPage({ onNavigate }: Props) {
     const container = messagesContainerRef.current;
     if (!el || !container) return;
 
-    // Calcola offset relativo al container tramite getBoundingClientRect.
-    // Non usare scrollIntoView (scorre il viewport invece del container interno).
-    // Non usare container.scrollTo() su iOS PWA: preferire scrollTop diretto.
-    const elRect        = el.getBoundingClientRect();
-    const containerRect = container.getBoundingClientRect();
-    const targetTop     = container.scrollTop
-                          + (elRect.top - containerRect.top)
-                          - container.clientHeight / 2
-                          + el.offsetHeight / 2;
-    container.scrollTop = Math.max(0, targetTop);
+    // scrollIntoView scorre l'antenato scrollable più vicino (il container overflow-y)
+    // senza toccare il viewport — più affidabile del calcolo manuale scrollTop su iOS PWA.
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
 
     // Flash evidenziazione
-    requestAnimationFrame(() => {
+    setTimeout(() => {
       el.classList.remove("msg-highlighted");
       void el.offsetWidth; // force reflow
       el.classList.add("msg-highlighted");
       setTimeout(() => el.classList.remove("msg-highlighted"), 1900);
-    });
+    }, 350); // aspetta che lo smooth scroll sia quasi completato
   }
 
   function closeContextMenu() { setContextMenu(null); }
@@ -3572,11 +3565,8 @@ export default function ChatPage({ onNavigate }: Props) {
                             tabIndex={0}
                             onClick={(e) => { e.stopPropagation(); if (msg.reply_to_message_id) scrollToMessage(msg.reply_to_message_id); }}
                             onTouchEnd={(e) => {
-                              // Su iOS PWA il click arriva con ~300ms delay; usiamo
-                              // onTouchEnd per risposta immediata. stopPropagation
-                              // impedisce che il touch-end del msg-row (swipe handler)
-                              // interferisca.
                               e.stopPropagation();
+                              e.preventDefault(); // blocca momentum iOS che potrebbe annullare scrollIntoView
                               if (msg.reply_to_message_id) scrollToMessage(msg.reply_to_message_id);
                             }}
                             onKeyDown={(e) => { if (e.key === "Enter" && msg.reply_to_message_id) scrollToMessage(msg.reply_to_message_id); }}
