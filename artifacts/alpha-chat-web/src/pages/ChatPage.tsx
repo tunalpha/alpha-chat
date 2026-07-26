@@ -1944,7 +1944,12 @@ export default function ChatPage({ onNavigate }: Props) {
         };
         setDecryptedTexts((prev) => new Map(prev).set(pendingMsgId, text));
         setMessages((prev) => [...prev, optimisticMsg]);
-        setAtBottom(true);   // forza auto-scroll al fondo dopo invio (anche se l'utente era scrollato su)
+        setAtBottom(true);
+        // Scroll diretto al fondo — non aspetta il re-render dell'effect
+        requestAnimationFrame(() => {
+          const c = messagesContainerRef.current;
+          if (c) c.scrollTop = c.scrollHeight;
+        });
         setReplyTo(null);
         if (currentBurn) setBurnAfterRead(false);
         void playNotifSound('sent');
@@ -2290,20 +2295,24 @@ export default function ChatPage({ onNavigate }: Props) {
     const container = messagesContainerRef.current;
     if (!el || !container) return;
 
-    // Calcolo offset relativo al container (non al viewport) per supportare
-    // scroll containers nidificati (il default scrollIntoView scorre la pagina
-    // intera e non funziona dentro un div overflow:scroll).
+    // Calcola offset relativo al container tramite getBoundingClientRect.
+    // Non usare scrollIntoView (scorre il viewport invece del container interno).
+    // Non usare container.scrollTo() su iOS PWA: preferire scrollTop diretto.
     const elRect        = el.getBoundingClientRect();
     const containerRect = container.getBoundingClientRect();
-    const targetTop     = container.scrollTop + elRect.top - containerRect.top
-                          - container.clientHeight / 2 + el.offsetHeight / 2;
-    container.scrollTo({ top: Math.max(0, targetTop), behavior: "smooth" });
+    const targetTop     = container.scrollTop
+                          + (elRect.top - containerRect.top)
+                          - container.clientHeight / 2
+                          + el.offsetHeight / 2;
+    container.scrollTop = Math.max(0, targetTop);
 
     // Flash evidenziazione
-    el.classList.remove("msg-highlighted");
-    void el.offsetWidth; // force reflow per ripartire animazione CSS
-    el.classList.add("msg-highlighted");
-    setTimeout(() => el.classList.remove("msg-highlighted"), 1900);
+    requestAnimationFrame(() => {
+      el.classList.remove("msg-highlighted");
+      void el.offsetWidth; // force reflow
+      el.classList.add("msg-highlighted");
+      setTimeout(() => el.classList.remove("msg-highlighted"), 1900);
+    });
   }
 
   function closeContextMenu() { setContextMenu(null); }
@@ -3559,9 +3568,17 @@ export default function ChatPage({ onNavigate }: Props) {
                         {msg.reply_to_message_id && (
                           <div
                             className="msg-reply-preview"
-                            onClick={(e) => { e.stopPropagation(); if (msg.reply_to_message_id) scrollToMessage(msg.reply_to_message_id); }}
                             role="button"
                             tabIndex={0}
+                            onClick={(e) => { e.stopPropagation(); if (msg.reply_to_message_id) scrollToMessage(msg.reply_to_message_id); }}
+                            onTouchEnd={(e) => {
+                              // Su iOS PWA il click arriva con ~300ms delay; usiamo
+                              // onTouchEnd per risposta immediata. stopPropagation
+                              // impedisce che il touch-end del msg-row (swipe handler)
+                              // interferisca.
+                              e.stopPropagation();
+                              if (msg.reply_to_message_id) scrollToMessage(msg.reply_to_message_id);
+                            }}
                             onKeyDown={(e) => { if (e.key === "Enter" && msg.reply_to_message_id) scrollToMessage(msg.reply_to_message_id); }}
                           >
                             <span className="msg-reply-bar" />
