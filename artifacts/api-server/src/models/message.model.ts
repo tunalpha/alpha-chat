@@ -145,7 +145,7 @@ const messageSchema = new Schema<IMessageDocument>(
 
     message_type: {
       type: String,
-      enum: ["text", "media", "system", "reply", "forward", "usda_send", "usda_request", "usda_receipt", "payment"],
+      enum: ["text", "media", "system", "reply", "forward", "usda_send", "usda_request", "usda_receipt", "payment", "sticker", "payment_notification"],
       required: true,
     },
 

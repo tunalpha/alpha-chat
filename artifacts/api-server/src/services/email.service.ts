@@ -454,7 +454,9 @@ export async function sendInvestorRequestNotification(params: InvestorRequestNot
     </div>`;
 
   const html = wrapEmailHtml({ lang: "en", title: "New Investor Access Request", body });
-  await _send({ to: ADMIN_EMAIL(), subject: `🔔 New Investor Request: ${name} (${company})`, html });
+  // Safety net: Gmail rejects subjects > 32768 bytes; cap to 200 chars
+  const safeSubject = `🔔 New Investor Request: ${name} (${company})`.slice(0, 200);
+  await _send({ to: ADMIN_EMAIL(), subject: safeSubject, html });
   logger.info({ name, company, email }, "Investor request admin notification sent");
 }
 

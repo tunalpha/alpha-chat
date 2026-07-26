@@ -149,12 +149,17 @@ export const verifyAccessCode: RequestHandler = async (req, res, next) => {
 
 export const submitAccessRequest: RequestHandler = async (req, res, next) => {
   try {
-    const { name, company, email, message } = req.body as {
-      name?: string; company?: string; email?: string; message?: string;
-    };
-    if (!name?.trim())    throw new AppError("NAME_REQUIRED", 400);
-    if (!company?.trim()) throw new AppError("COMPANY_REQUIRED", 400);
-    if (!email?.trim())   throw new AppError("EMAIL_REQUIRED", 400);
+    const raw = req.body as { name?: string; company?: string; email?: string; message?: string; };
+
+    if (!raw.name?.trim())    throw new AppError("NAME_REQUIRED", 400);
+    if (!raw.company?.trim()) throw new AppError("COMPANY_REQUIRED", 400);
+    if (!raw.email?.trim())   throw new AppError("EMAIL_REQUIRED", 400);
+
+    // Truncate fields to prevent oversized email subjects / DB bloat
+    const name    = raw.name.trim().slice(0, 120);
+    const company = raw.company.trim().slice(0, 120);
+    const email   = raw.email.trim().slice(0, 254);
+    const message = raw.message ? raw.message.slice(0, 2000) : undefined;
 
     await InvestorAccessRequestModel.create({ name, company, email, message });
 
