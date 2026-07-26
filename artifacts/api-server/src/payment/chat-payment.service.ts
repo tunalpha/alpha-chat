@@ -228,11 +228,99 @@ async function _updateMessageMeta(transfer: ChatTransferDocument): Promise<void>
 }
 
 /**
- * Verifica on-chain che txHash contenga un evento Transfer ERC-20
- * verso escrowWallet per almeno amountUnits.
+ * Invia un messaggio di notifica nella conversazione quando il trasferimento
+ * è completato (status "accepted"). Compare in coda ai nuovi messaggi così
+ * entrambe le parti vedono subito l'esito senza dover scorrere su.
  *
- * Saltabile in dev/test con PAYMENT_SKIP_CHAIN_VERIFY=true.
+ * Fire-and-forget — non blocca la pipeline di pagamento.
  */
+async function _sendCompletedNotification(transfer: ChatTransferDocument): Promise<void> {
+  try {
+    const now   = new Date();
+    const convId = transfer.conversation_id;
+
+    // Acquisisce sequence_number atomicamente (stesso pattern di MessageRepository.create)
+    const updatedConv = await ConversationModel.findOneAndUpdate(
+      { _id: convId, deleted_at: null },
+      {
+        $inc: { sequence_counter: 1 },
+        $set: { last_message_at: now, last_activity_at: now },
+      },
+      { returnDocument: "after" },
+    );
+    if (!updatedConv) return;
+
+    const seqNum = updatedConv.sequence_counter;
+
+    const msg = await MessageModel.create({
+      client_message_id:  randomUUID(),
+      conversation_id:    convId,
+      sender_id:          transfer.sender_id,
+      ciphertext:         null,
+      ciphertext_type:    null,
+      sender_key_id:      null,
+      message_type:       "payment_notification",
+      sent_at:            now,
+      server_received_at: now,
+      sequence_number:    seqNum,
+      status:             "sent",
+      deleted_for_everyone: false,
+      burn_after_read:    false,
+      system_metadata: {
+        event:        "payment_completed",
+        transfer_id:  transfer.transfer_id,
+        amount:       transfer.amount?.toString() ?? "0",
+        asset_symbol: transfer.asset_symbol ?? "USDA",
+        sender_id:    transfer.sender_id.toString(),
+        recipient_id: transfer.recipient_id.toString(),
+      },
+    });
+
+    await ConversationModel.updateOne(
+      { _id: convId },
+      { $set: { last_message_id: msg._id } },
+    );
+
+    // Notifica realtime a tutti i membri della conversazione
+    const members   = await memberRepo.listMembers(convId);
+    const memberIds = members.map((m) => m.user_id.toString());
+
+    wsManager.sendToUsers(memberIds, {
+      type: "message.new",
+      payload: {
+        id:                   msg._id.toString(),
+        client_message_id:    msg.client_message_id,
+        conversation_id:      convId.toString(),
+        sender_id:            transfer.sender_id.toString(),
+        message_type:         "payment_notification",
+        ciphertext:           null,
+        ciphertext_type:      null,
+        sender_key_id:        null,
+        sequence_number:      seqNum,
+        sent_at:              now.toISOString(),
+        server_received_at:   now.toISOString(),
+        status:               "sent",
+        reply_to_message_id:  null,
+        media_id:             null,
+        deleted_for_everyone: false,
+        edited_at:            null,
+        is_new:               true,
+        burn_after_read:      false,
+        expires_at:           null,
+        device_ciphertexts:   null,
+        system_metadata:      msg.system_metadata,
+      },
+    });
+
+    logger.info(
+      { transferId: transfer.transfer_id, conversationId: convId.toString() },
+      "[Payment] Notifica completamento inviata nella chat ✓",
+    );
+  } catch (err) {
+    logger.warn({ err, transferId: transfer.transfer_id }, "[Payment] _sendCompletedNotification fallito — non critico");
+  }
+}
+
 /**
  * Verifica on-chain e ritorna il block number del tx (per audit).
  * In dev mode (PAYMENT_SKIP_CHAIN_VERIFY=true) ritorna null.
@@ -730,6 +818,7 @@ export async function acceptTransfer(params: {
     await writeAudit({ transferId: params.transferId, fromStatus: "accepting", toStatus: "accepted", triggeredBy: "recipient", txHash, ip: params.ip });
     await _updateMessageMeta(accepted);
     emitPaymentStateChanged(accepted);
+    void _sendCompletedNotification(accepted);
     void (async () => {
       try {
         const { sendUsdaTransactionEmail } = await import("../services/email.service");
@@ -890,6 +979,7 @@ export async function autoReleaseForRequest(transferId: string): Promise<void> {
     await writeAudit({ transferId, fromStatus: "accepting", toStatus: "accepted", triggeredBy: "system", txHash, note: "Auto-release richiesta (nessun accept manuale)" });
     await _updateMessageMeta(accepted);
     emitPaymentStateChanged(accepted);
+    void _sendCompletedNotification(accepted);
     if (accepted.request_payment_id) {
       void syncRequestFromTransfer(accepted.request_payment_id.toString(), "confirmed");
     }

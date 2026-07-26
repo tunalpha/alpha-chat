@@ -924,9 +924,10 @@ export default function ChatPage({ onNavigate }: Props) {
     const raw = getDisplayText(msg);
     if (raw.startsWith(ANIMATED_STICKER_MARKER) || msg.message_type === "animated_sticker") return "🎬 Sticker animato";
     if (raw.startsWith(STICKER_MARKER) || msg.message_type === "sticker") return "🎭 Sticker";
-    if (msg.message_type === "payment")      return "💸 Pagamento";
-    if (msg.message_type === "usda_send")    return "💵 USDA inviato";
-    if (msg.message_type === "usda_request") return "💵 Richiesta USDA";
+    if (msg.message_type === "payment")             return "💸 Pagamento";
+    if (msg.message_type === "payment_notification") return "✅ Pagamento completato";
+    if (msg.message_type === "usda_send")           return "💵 USDA inviato";
+    if (msg.message_type === "usda_request")        return "💵 Richiesta USDA";
     if (msg.message_type === "media") {
       const meta = decodeMediaMeta(raw);
       if (!meta) return "📎 Media";
@@ -3532,7 +3533,7 @@ export default function ChatPage({ onNavigate }: Props) {
                     )}
                     <div
                       data-msg-id={msg.id}
-                      className={`msg-row ${isMine ? "mine" : "theirs"}${destroyingIds.has(msg.id) ? " msg-dissolve" : ""}${selectMode && selectedMsgIds.has(msg.id) ? " msg-selected" : ""}`}
+                      className={`msg-row ${msg.message_type === "payment_notification" ? "system" : isMine ? "mine" : "theirs"}${destroyingIds.has(msg.id) ? " msg-dissolve" : ""}${selectMode && selectedMsgIds.has(msg.id) ? " msg-selected" : ""}`}
                       onContextMenu={(e) => { if (selectMode) { e.preventDefault(); return; } handleContextMenu(e, msg); }}
                       onTouchStart={(e) => handleMsgTouchStart(e, msg)}
                       onTouchMove={selectMode ? undefined : handleMsgTouchMove}
@@ -3556,7 +3557,7 @@ export default function ChatPage({ onNavigate }: Props) {
                         </div>
                       )}
                       {destroyingIds.has(msg.id) && <BurnParticles />}
-                      <div className={`msg-bubble ${isMine ? "mine" : "theirs"} ${voiceMeta ? "voice-bubble" : ""} ${(msg.message_type === "payment" || msg.message_type === "usda_request" || msg.message_type === "usda_send") ? "payment-bubble" : ""} ${(msg.message_type === "sticker" || msg.message_type === "animated_sticker" || (decryptedTexts.get(msg.id) ?? "").startsWith(STICKER_MARKER) || (decryptedTexts.get(msg.id) ?? "").startsWith(ANIMATED_STICKER_MARKER)) ? "sticker-bubble" : ""} ${(msg.message_type === "text" || msg.message_type === "forward") && !voiceMeta && isEmojiOnly(decryptedTexts.get(msg.id) ?? "") ? "emoji-only-bubble" : ""}`}>
+                      <div className={`msg-bubble ${msg.message_type === "payment_notification" ? "payment-notification-bubble" : isMine ? "mine" : "theirs"} ${voiceMeta ? "voice-bubble" : ""} ${(msg.message_type === "payment" || msg.message_type === "usda_request" || msg.message_type === "usda_send") ? "payment-bubble" : ""} ${(msg.message_type === "sticker" || msg.message_type === "animated_sticker" || (decryptedTexts.get(msg.id) ?? "").startsWith(STICKER_MARKER) || (decryptedTexts.get(msg.id) ?? "").startsWith(ANIMATED_STICKER_MARKER)) ? "sticker-bubble" : ""} ${(msg.message_type === "text" || msg.message_type === "forward") && !voiceMeta && isEmojiOnly(decryptedTexts.get(msg.id) ?? "") ? "emoji-only-bubble" : ""}`}>
                         {/* Reply preview — cliccabile per scrollare al messaggio originale */}
                         {msg.reply_to_message_id && (
                           <div
@@ -3663,6 +3664,26 @@ export default function ChatPage({ onNavigate }: Props) {
                             }}
                             onDetail={(id) => setUsdaDetailId(id)}
                           />
+                        ) : msg.message_type === "payment_notification" ? (
+                          (() => {
+                            const meta = (msg.system_metadata ?? {}) as Record<string, string>;
+                            const amount = meta.amount ?? "?";
+                            const symbol = meta.asset_symbol ?? "USDA";
+                            const isISender = meta.sender_id === auth?.userId;
+                            return (
+                              <div className="payment-completed-notification">
+                                <span className="pcn-icon">✅</span>
+                                <div className="pcn-body">
+                                  <span className="pcn-title">Pagamento completato</span>
+                                  <span className="pcn-sub">
+                                    {isISender
+                                      ? `${amount} ${symbol} inviati con successo`
+                                      : `Hai ricevuto ${amount} ${symbol}`}
+                                  </span>
+                                </div>
+                              </div>
+                            );
+                          })()
                         ) : (decryptedTexts.get(msg.id) ?? "").startsWith(ANIMATED_STICKER_MARKER) ? (
                           /* Sticker animato Lottie v:2 — rilevato da ANIMATED_STICKER_MARKER */
                           <AnimatedStickerMessage body={decryptedTexts.get(msg.id) ?? ""} />
