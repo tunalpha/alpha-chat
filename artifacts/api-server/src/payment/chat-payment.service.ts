@@ -688,7 +688,22 @@ export async function acceptTransfer(params: {
   if (transfer.recipient_id.toString() !== params.requesterId) throw new AppError("TRANSFER_ACCESS_DENIED", 403);
   if (transfer.status !== "pending")                           throw new AppError("TRANSFER_INVALID_TRANSITION", 409);
   if (transfer.expires_at < new Date())                        throw new AppError("TRANSFER_EXPIRED", 410);
-  if (!transfer.recipient_wallet)                              throw new AppError("WALLET_NOT_CONFIGURED", 412);
+
+  // ADR-004 lazy-resolve: il transfer può essere stato creato prima che il
+  // destinatario salvasse il wallet. Ri-leggiamo il profilo corrente e, se ora
+  // ha un wallet, lo salviamo nel documento prima di procedere.
+  if (!transfer.recipient_wallet) {
+    const recipientUser = await UserModel.findById(transfer.recipient_id).lean() as any;
+    const resolvedWallet: string | null =
+      recipientUser?.wallets?.usda?.address ?? recipientUser?.wallet_address ?? null;
+    if (!resolvedWallet) throw new AppError("WALLET_NOT_CONFIGURED", 412);
+    // Aggiorna il documento e la variabile locale in-memory
+    await ChatTransferModel.updateOne(
+      { transfer_id: params.transferId },
+      { $set: { recipient_wallet: resolvedWallet } },
+    );
+    transfer.recipient_wallet = resolvedWallet;
+  }
 
   const locked = await acquireLock(params.transferId, "pending", "accepting");
   if (!locked) throw new AppError("TRANSFER_LOCK_FAILED", 409);
@@ -826,10 +841,19 @@ export async function autoReleaseForRequest(transferId: string): Promise<void> {
     return;
   }
   if (!transfer.recipient_wallet) {
-    // Non dovrebbe accadere: il wallet è obbligatorio alla creazione della richiesta.
-    // Non fallire: resta pending, il payer può annullare o si gestisce a scadenza.
-    logger.error({ transferId }, "[Payment] Auto-release: wallet richiedente assente — resta pending");
-    return;
+    // Lazy-resolve: il richiedente potrebbe aver salvato il wallet dopo la creazione.
+    const recipientUser = await UserModel.findById(transfer.recipient_id).lean() as any;
+    const resolvedWallet: string | null =
+      recipientUser?.wallets?.usda?.address ?? recipientUser?.wallet_address ?? null;
+    if (!resolvedWallet) {
+      logger.error({ transferId }, "[Payment] Auto-release: wallet richiedente assente — resta pending");
+      return;
+    }
+    await ChatTransferModel.updateOne(
+      { transfer_id: transferId },
+      { $set: { recipient_wallet: resolvedWallet } },
+    );
+    transfer.recipient_wallet = resolvedWallet;
   }
 
   const locked = await acquireLock(transferId, "pending", "accepting");
