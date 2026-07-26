@@ -1944,6 +1944,7 @@ export default function ChatPage({ onNavigate }: Props) {
         };
         setDecryptedTexts((prev) => new Map(prev).set(pendingMsgId, text));
         setMessages((prev) => [...prev, optimisticMsg]);
+        setAtBottom(true);   // forza auto-scroll al fondo dopo invio (anche se l'utente era scrollato su)
         setReplyTo(null);
         if (currentBurn) setBurnAfterRead(false);
         void playNotifSound('sent');
@@ -2285,12 +2286,22 @@ export default function ChatPage({ onNavigate }: Props) {
 
   /** Scrolla al messaggio con l'id dato e lo evidenzia brevemente. */
   function scrollToMessage(targetId: string) {
-    const el = document.querySelector<HTMLElement>(`[data-msg-id="${targetId}"]`);
-    if (!el) return;
-    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    const el        = document.querySelector<HTMLElement>(`[data-msg-id="${targetId}"]`);
+    const container = messagesContainerRef.current;
+    if (!el || !container) return;
+
+    // Calcolo offset relativo al container (non al viewport) per supportare
+    // scroll containers nidificati (il default scrollIntoView scorre la pagina
+    // intera e non funziona dentro un div overflow:scroll).
+    const elRect        = el.getBoundingClientRect();
+    const containerRect = container.getBoundingClientRect();
+    const targetTop     = container.scrollTop + elRect.top - containerRect.top
+                          - container.clientHeight / 2 + el.offsetHeight / 2;
+    container.scrollTo({ top: Math.max(0, targetTop), behavior: "smooth" });
+
+    // Flash evidenziazione
     el.classList.remove("msg-highlighted");
-    // force reflow per far ripartire l'animazione anche se è già la classe presente
-    void el.offsetWidth;
+    void el.offsetWidth; // force reflow per ripartire animazione CSS
     el.classList.add("msg-highlighted");
     setTimeout(() => el.classList.remove("msg-highlighted"), 1900);
   }
