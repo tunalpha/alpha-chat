@@ -5400,9 +5400,11 @@ html.emergency-open #root {
 .ch-filters {
   display: flex;
   gap: 6px;
-  padding: 10px 16px 4px;
+  padding: 10px 16px 8px;
   overflow-x: auto;
   scrollbar-width: none;
+  flex-shrink: 0;          /* non si comprime nel flex-column di settings-root */
+  border-bottom: 1px solid var(--border-1, rgba(255,255,255,0.07));
 }
 .ch-filters::-webkit-scrollbar { display: none; }
 .ch-filter-btn {
