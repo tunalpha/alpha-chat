@@ -119,6 +119,10 @@ import {
 
 interface Props {
   onNavigate: (view: AppView) => void;
+  /** Quando impostato, apre direttamente quella conversazione (es. da cronologia chiamate). */
+  requestedConvId?: string | null;
+  /** Chiamato dopo aver aperto la conversazione richiesta, per azzerare il valore nel parent. */
+  onConvOpened?: () => void;
 }
 
 // ── BurnParticles — scintille stile Telegram per dissoluzione BAR ────────────
@@ -761,7 +765,7 @@ function SidebarMenu({
 }
 
 // ── Main ChatPage ────────────────────────────────────────────────────────────
-export default function ChatPage({ onNavigate }: Props) {
+export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: Props) {
   const { auth, logout, logoutAll } = useAuth();
   const { connected, on, send: wsSend, sendTypingStart, sendTypingStop, onlineUsers } = useWs();
   const { initiateCall } = useCall();
@@ -1307,6 +1311,19 @@ export default function ChatPage({ onNavigate }: Props) {
   }, [logout]);
 
   useEffect(() => { void loadConversations(); }, [loadConversations]);
+
+  // Apre direttamente una conversazione richiesta dall'esterno (es. da cronologia chiamate).
+  // handleSelectConv è una function declaration → è hoistata, accessibile qui.
+  useEffect(() => {
+    if (requestedConvId) {
+      // Assicurati che le conversazioni siano caricate prima di aprirla
+      void loadConversations().then(() => {
+        handleSelectConv(requestedConvId);
+        onConvOpened?.(); // azzera requestedConvId nel parent → evita re-trigger
+      });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [requestedConvId]);
 
   // Gestione tasto Back hardware (Android) e swipe-back iOS nella PWA.
   // Quando la chat mobile è aperta e il sistema emette popstate, intercettiamo

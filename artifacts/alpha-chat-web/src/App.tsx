@@ -84,6 +84,7 @@ function AppContent() {
   const { setWsSend, handleWsCallEvent } = useCall();
   const [view, setView] = useState<AppView>("chat");
   const [peerMap, setPeerMap] = useState<Record<string, PeerInfo>>({});
+  const [requestedConvId, setRequestedConvId] = useState<string | null>(null);
 
   // ── Registra il sender WS nel CallContext ─────────────────────────────────
   useEffect(() => { setWsSend(wsSend); }, [wsSend, setWsSend]);
@@ -255,7 +256,16 @@ function AppContent() {
           case "recovery-settings":
             return <RecoverySettingsPage onBack={goSettings} />;
           case "call-history":
-            return <CallHistoryPage onBack={goBack} peerMap={peerMap} />;
+            return (
+              <CallHistoryPage
+                onBack={goBack}
+                peerMap={peerMap}
+                onOpenConversation={(convId) => {
+                  setRequestedConvId(convId);
+                  goBack();
+                }}
+              />
+            );
           case "call-settings":
             return <CallSettingsPage onBack={goBack} />;
           case "appearance":
@@ -272,7 +282,13 @@ function AppContent() {
             return <PwaGuidePage onBack={goSettings} />;
           // group-info è gestito come overlay dentro ChatPage
           default:
-            return <ChatPage onNavigate={setView} />;
+            return (
+              <ChatPage
+                onNavigate={setView}
+                requestedConvId={requestedConvId}
+                onConvOpened={() => setRequestedConvId(null)}
+              />
+            );
         }
       })()}
     </>

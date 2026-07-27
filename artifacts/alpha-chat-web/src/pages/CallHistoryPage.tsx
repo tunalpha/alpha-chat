@@ -18,6 +18,8 @@ export interface PeerInfo {
 interface Props {
   onBack: () => void;
   peerMap: Record<string, PeerInfo>;
+  /** Apre direttamente una conversazione nella chat (da "Manda messaggio"). */
+  onOpenConversation: (conversationId: string) => void;
 }
 
 type FilterType = "all" | "missed" | "outgoing" | "incoming";
@@ -161,7 +163,7 @@ function CallActionSheet({ entry, onClose, onCall, onMessage }: ActionSheetProps
 
 /* ─── main component ─────────────────────────────────────────────────────── */
 
-export default function CallHistoryPage({ onBack, peerMap }: Props) {
+export default function CallHistoryPage({ onBack, peerMap, onOpenConversation }: Props) {
   const { t } = useTranslation("calls");
   const { auth } = useAuth();
   const { initiateCall } = useCall();
@@ -209,11 +211,8 @@ export default function CallHistoryPage({ onBack, peerMap }: Props) {
   }
 
   function handleMessage(conversationId: string) {
-    // Dispatcha evento intercettato da ChatPage per aprire la conversazione
-    window.dispatchEvent(
-      new CustomEvent("push:open-conversation", { detail: { convId: conversationId } }),
-    );
-    onBack();
+    onOpenConversation(conversationId); // imposta requestedConvId in App.tsx
+    onBack();                           // torna alla view "chat"
   }
 
   return (
