@@ -431,7 +431,11 @@
     "directionOut": "↑ 発信",
     "directionIn": "↓ 着信",
     "timeNow": "今",
-    "timeMinAgo": "{{count}}分前"
+    "timeMinAgo": "{{count}}分前",
+    "filterAll": "すべて",
+    "filterMissed": "不在着信",
+    "filterOutgoing": "発信",
+    "filterIncoming": "着信"
   },
   "privacy": {
     "title": "プライバシー",

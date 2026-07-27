@@ -431,7 +431,11 @@
     "directionOut": "↑ صادرة",
     "directionIn": "↓ واردة",
     "timeNow": "الآن",
-    "timeMinAgo": "منذ {{count}} دقيقة"
+    "timeMinAgo": "منذ {{count}} دقيقة",
+    "filterAll": "الكل",
+    "filterMissed": "الفائتة",
+    "filterOutgoing": "الصادرة",
+    "filterIncoming": "الواردة"
   },
   "privacy": {
     "title": "الخصوصية",

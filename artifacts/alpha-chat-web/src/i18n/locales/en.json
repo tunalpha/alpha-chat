@@ -431,7 +431,11 @@
     "directionOut": "↑ Outgoing",
     "directionIn": "↓ Incoming",
     "timeNow": "Now",
-    "timeMinAgo": "{{count}} min ago"
+    "timeMinAgo": "{{count}} min ago",
+    "filterAll": "All",
+    "filterMissed": "Missed",
+    "filterOutgoing": "Outgoing",
+    "filterIncoming": "Incoming"
   },
   "privacy": {
     "title": "Privacy",

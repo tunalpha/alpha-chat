@@ -431,7 +431,11 @@
     "directionOut": "↑ Исходящий",
     "directionIn": "↓ Входящий",
     "timeNow": "Сейчас",
-    "timeMinAgo": "{{count}} мин назад"
+    "timeMinAgo": "{{count}} мин назад",
+    "filterAll": "Все",
+    "filterMissed": "Пропущенные",
+    "filterOutgoing": "Исходящие",
+    "filterIncoming": "Входящие"
   },
   "privacy": {
     "title": "Конфиденциальность",

@@ -431,7 +431,11 @@
     "directionOut": "↑ Uscita",
     "directionIn": "↓ Entrata",
     "timeNow": "Ora",
-    "timeMinAgo": "{{count}} min fa"
+    "timeMinAgo": "{{count}} min fa",
+    "filterAll": "Tutte",
+    "filterMissed": "Perse",
+    "filterOutgoing": "Effettuate",
+    "filterIncoming": "Ricevute"
   },
   "privacy": {
     "title": "Privacy",

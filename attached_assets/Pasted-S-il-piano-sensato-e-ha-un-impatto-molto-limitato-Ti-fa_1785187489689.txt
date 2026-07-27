@@ -1,0 +1,98 @@
+Sì, il piano è sensato e ha un impatto molto limitato. Ti farei però un paio di piccoli aggiustamenti per renderlo più robusto.
+
+Valutazione del piano
+
+1. Aggiungere la voce “Chiamate” nel menu
+
+* ✅ Ottimo.
+* Rischio regressioni: praticamente nullo.
+* Tocca solo la configurazione della sidebar.
+
+2. Registro chiamate
+
+* ✅ Già esiste.
+* Se backend, router, CSS e traduzioni sono già presenti, è solo una funzionalità “nascosta”.
+
+3. Risolvere il nome del contatto
+
+* ⚠️ Qui farei una piccola modifica.
+
+Invece di passare una funzione getPeerName() attraverso App.tsx, preferirei passare direttamente la mappa dei contatti già disponibile.
+
+Per esempio:
+
+peerMap = {
+   userId1: "Mario",
+   userId2: "Luca"
+}
+
+La CallHistoryPage diventa completamente indipendente e non deve conoscere la logica di risoluzione dei nomi.
+
+Vantaggi:
+
+* meno prop drilling;
+* meno render inutili;
+* componente più semplice.
+
+4. i18n
+
+Assolutamente da fare.
+
+È una correzione puramente di presentazione.
+
+Nessuna logica viene modificata.
+
+⸻
+
+Io aggiungerei anche una quinta correzione
+
+Guardando la pagina, probabilmente conviene aggiungere:
+
+* filtro Tutte
+* Perse
+* Effettuate
+* Ricevute
+
+Sono solo filtri lato client sull’array già ricevuto.
+
+Non serve nessuna API nuova.
+
+Nessuna modifica al backend.
+
+L’impatto è praticamente nullo e rende il registro molto più utile.
+
+⸻
+
+Controllo da fare
+
+Prima di considerare il lavoro concluso verificherei anche che ogni record mostri:
+
+* ✅ Avatar
+* ✅ Nome contatto
+* ✅ Direzione (entrante/uscente)
+* ✅ Stato (persa, completata, rifiutata…)
+* ✅ Durata
+* ✅ Data/Ora
+* ✅ Icona audio/video
+
+Se qualcuno di questi campi è già presente nel payload del backend ma non viene mostrato, vale la pena visualizzarlo.
+
+⸻
+
+Valutazione rischio
+
+Backend: 🟢 Nessuna modifica.
+
+WebSocket: 🟢 Nessuna modifica.
+
+Signal Protocol: 🟢 Nessuna modifica.
+
+Messaggi: 🟢 Nessuna modifica.
+
+Database: 🟢 Nessuna modifica.
+
+Chiamate: 🟢 Nessuna modifica al flusso.
+
+UI: 🟢 Solo navigazione e rendering.
+
+Direi che è un intervento a rischio molto basso, purché si limiti davvero ai tre file indicati (più eventuali soli miglioramenti di visualizzazione come i filtri) e non venga toccata alcuna logica delle chiamate o della chat.

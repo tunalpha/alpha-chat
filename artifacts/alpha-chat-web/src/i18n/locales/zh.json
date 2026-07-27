@@ -431,7 +431,11 @@
     "directionOut": "↑ 呼出",
     "directionIn": "↓ 呼入",
     "timeNow": "刚才",
-    "timeMinAgo": "{{count}}分钟前"
+    "timeMinAgo": "{{count}}分钟前",
+    "filterAll": "全部",
+    "filterMissed": "未接",
+    "filterOutgoing": "已拨",
+    "filterIncoming": "已接"
   },
   "privacy": {
     "title": "隐私",

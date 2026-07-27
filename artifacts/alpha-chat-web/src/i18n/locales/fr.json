@@ -431,7 +431,11 @@
     "directionOut": "↑ Sortant",
     "directionIn": "↓ Entrant",
     "timeNow": "Maintenant",
-    "timeMinAgo": "Il y a {{count}} min"
+    "timeMinAgo": "Il y a {{count}} min",
+    "filterAll": "Toutes",
+    "filterMissed": "Manquées",
+    "filterOutgoing": "Émises",
+    "filterIncoming": "Reçues"
   },
   "privacy": {
     "title": "Confidentialité",

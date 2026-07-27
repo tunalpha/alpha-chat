@@ -31,7 +31,8 @@ import ForcePasswordChangePage from "./pages/ForcePasswordChangePage";
 import LockScreen from "./components/LockScreen";
 import PrivacyOverlay from "./components/PrivacyOverlay";
 import BusyCallScreen from "./components/BusyCallScreen";
-import CallHistoryPage from "./pages/CallHistoryPage";
+import CallHistoryPage, { type PeerInfo } from "./pages/CallHistoryPage";
+import { apiListConversations } from "./lib/api";
 import CallSettingsPage from "./pages/CallSettingsPage";
 import AppearancePage from "./pages/AppearancePage";
 import NotificationsPage from "./pages/NotificationsPage";
@@ -82,6 +83,7 @@ function AppContent() {
   const { on, send: wsSend } = useWs();
   const { setWsSend, handleWsCallEvent } = useCall();
   const [view, setView] = useState<AppView>("chat");
+  const [peerMap, setPeerMap] = useState<Record<string, PeerInfo>>({});
 
   // ── Registra il sender WS nel CallContext ─────────────────────────────────
   useEffect(() => { setWsSend(wsSend); }, [wsSend, setWsSend]);
@@ -113,6 +115,26 @@ function AppContent() {
       }
     });
   }, [on, handleWsCallEvent, logout]);
+
+  // ── Costruisce peerMap (userId → nome+avatar) dalle conversazioni ────────
+  // Usata da CallHistoryPage per mostrare nomi leggibili al posto degli ID.
+  useEffect(() => {
+    if (!auth?.userId) return;
+    apiListConversations()
+      .then((result) => {
+        const map: Record<string, PeerInfo> = {};
+        for (const conv of result.items) {
+          if (conv.other_user) {
+            map[conv.other_user.user_id] = {
+              name: conv.other_user.display_name,
+              avatarUrl: conv.other_user.avatar_url ?? null,
+            };
+          }
+        }
+        setPeerMap(map);
+      })
+      .catch(() => {/* silenzioso — fallback a ID troncato */});
+  }, [auth?.userId]);
 
   // Sincronizza le impostazioni notifiche dal backend quando l'utente è autenticato
   useNotifSync(auth?.userId ?? null);
@@ -232,7 +254,7 @@ function AppContent() {
           case "recovery-settings":
             return <RecoverySettingsPage onBack={goSettings} />;
           case "call-history":
-            return <CallHistoryPage onBack={goBack} />;
+            return <CallHistoryPage onBack={goBack} peerMap={peerMap} />;
           case "call-settings":
             return <CallSettingsPage onBack={goBack} />;
           case "appearance":

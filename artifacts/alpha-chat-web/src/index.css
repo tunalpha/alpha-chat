@@ -5396,6 +5396,34 @@ html.emergency-open #root {
 .busy-btn-cancel  { background: rgba(255,255,255,0.1); color: var(--text-1, #fff); }
 
 /* ── Call History Page ──────────────────────────────────────────────────── */
+/* ── Call History — filtri ─────────────────────────────────────────────── */
+.ch-filters {
+  display: flex;
+  gap: 6px;
+  padding: 10px 16px 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+.ch-filters::-webkit-scrollbar { display: none; }
+.ch-filter-btn {
+  flex-shrink: 0;
+  padding: 5px 14px;
+  border-radius: 20px;
+  border: 1px solid var(--border-1, rgba(255,255,255,0.1));
+  background: transparent;
+  color: var(--text-2, #aaa);
+  font-size: 0.82rem;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.ch-filter-btn:hover { background: rgba(255,255,255,0.05); color: var(--text-1, #eee); }
+.ch-filter-btn.active {
+  background: var(--accent, #7c3aed);
+  border-color: var(--accent, #7c3aed);
+  color: #fff;
+}
+
+/* ── Call History — lista ──────────────────────────────────────────────── */
 .ch-body  { padding: 8px 0 40px; }
 .ch-item  {
   display: flex; align-items: center; gap: 12px;
