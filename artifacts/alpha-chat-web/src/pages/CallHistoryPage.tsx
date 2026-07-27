@@ -87,7 +87,10 @@ export default function CallHistoryPage({ onBack, peerMap }: Props) {
     if (filter === "all") return calls;
     return calls.filter((c) => {
       const isCaller = c.caller_id === auth?.userId;
-      if (filter === "missed")   return c.status === "missed";
+      // "Perse" include: chiamate "missed" + chiamate "cancelled" uscenti
+      // (caller ha riattaccato prima che l'altro rispondesse)
+      if (filter === "missed")   return c.status === "missed" ||
+        (c.status === "cancelled" && c.caller_id === auth?.userId);
       if (filter === "outgoing") return isCaller;
       if (filter === "incoming") return !isCaller;
       return true;
@@ -145,7 +148,10 @@ export default function CallHistoryPage({ onBack, peerMap }: Props) {
           const peerName = info?.name ?? `…${peerId.slice(-6)}`;
 
           return (
-            <div key={String(c._id)} className={`ch-item${c.status === "missed" ? " ch-item--missed" : ""}`}>
+            <div key={String(c._id)} className={`ch-item${
+              c.status === "missed" ||
+              (c.status === "cancelled" && c.caller_id === auth?.userId)
+                ? " ch-item--missed" : ""}`}>
               {/* avatar */}
               <div className="ch-item-avatar">
                 <PeerAvatar info={info} />

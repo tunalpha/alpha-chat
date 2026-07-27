@@ -674,7 +674,10 @@ export function CallProvider({ children }: { children: ReactNode }) {
       wsSend({ type: "call.end", payload: { to_user_id: peerId, call_id: callIdRef.current } });
       diagLog('call.end.sent', { to: peerId, call_id: callIdRef.current });
     }
-    cleanup("normal");
+    // Se la chiamata non è mai stata risposta (callAnsweredAtRef = null), il caller
+    // ha premuto "fine" durante il squillo → "cancelled", non "completed".
+    const wasAnswered = callAnsweredAtRef.current !== null;
+    cleanup(wasAnswered ? "normal" : "cancelled");
   }, [remoteUserId]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Mute / Camera / Speaker ────────────────────────────────────────────────
