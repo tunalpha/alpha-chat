@@ -812,7 +812,10 @@ export function CallProvider({ children }: { children: ReactNode }) {
       }
 
       case "call.ended": {
-        cleanup("normal");
+        // Se callAnsweredAtRef è null la chiamata non è mai stata risposta:
+        // dal nostro punto di vista è "persa", non "completata".
+        const wasAnswered = callAnsweredAtRef.current !== null;
+        cleanup(wasAnswered ? "normal" : "missed");
         break;
       }
 
