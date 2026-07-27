@@ -5451,6 +5451,9 @@ html.emergency-open #root {
 .ch-date       { font-size: 0.78rem; color: var(--text-3, #888); }
 .ch-duration   { font-size: 0.78rem; color: var(--text-2, #aaa); margin-top: 3px; }
 .ch-empty      { text-align: center; padding: 40px 20px; color: var(--text-3, #888); }
+/* Chiamate senza risposta — nome e freccia in rosso (pattern iOS/WhatsApp) */
+.ch-item--missed .ch-peer-name,
+.ch-item--missed .ch-direction { color: var(--accent-red, #ef4444); }
 .ch-error      { color: var(--accent-red, #ef4444); }
 .ch-empty-state{ text-align: center; padding: 60px 20px; color: var(--text-3, #888); }
 .ch-empty-icon { font-size: 3rem; margin-bottom: 12px; }

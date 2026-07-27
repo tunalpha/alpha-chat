@@ -145,7 +145,7 @@ export default function CallHistoryPage({ onBack, peerMap }: Props) {
           const peerName = info?.name ?? `…${peerId.slice(-6)}`;
 
           return (
-            <div key={String(c._id)} className="ch-item">
+            <div key={String(c._id)} className={`ch-item${c.status === "missed" ? " ch-item--missed" : ""}`}>
               {/* avatar */}
               <div className="ch-item-avatar">
                 <PeerAvatar info={info} />
