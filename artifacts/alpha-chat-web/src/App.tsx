@@ -128,6 +128,7 @@ function AppContent() {
             map[conv.other_user.user_id] = {
               name: conv.other_user.display_name,
               avatarUrl: conv.other_user.avatar_url ?? null,
+              conversationId: conv.conversation_id,
             };
           }
         }

@@ -1,17 +1,18 @@
 /**
  * CallHistoryPage — registro chiamate completo
- * Filtri client-side: Tutte / Perse / Effettuate / Ricevute
- * Mostra: avatar, nome contatto, direzione, tipo (audio/video), stato, durata, data/ora.
+ * Tap su una riga → action sheet con "Richiama" e "Manda messaggio".
  * Zero regressioni: nessuna logica chat o Signal toccata.
  */
 import { useState, useEffect, useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import { useAuth } from "../contexts/AuthContext";
+import { useCall } from "../contexts/CallContext";
 import { apiGetCallHistory, type CallLogEntry } from "../lib/api";
 
 export interface PeerInfo {
   name: string;
   avatarUrl: string | null;
+  conversationId?: string;
 }
 
 interface Props {
@@ -64,16 +65,112 @@ function CallStatusBadge({ status, t }: { status: string; t: (k: string, fb?: st
   return <span className={`ch-status ${cls}`}>{label}</span>;
 }
 
+/* ─── action sheet ───────────────────────────────────────────────────────── */
+
+interface SheetEntry {
+  peerId: string;
+  peerName: string;
+  callType: "audio" | "video";
+  conversationId?: string;
+}
+
+interface ActionSheetProps {
+  entry: SheetEntry;
+  onClose: () => void;
+  onCall: (peerId: string, peerName: string, callType: "audio" | "video") => void;
+  onMessage: (conversationId: string) => void;
+}
+
+function CallActionSheet({ entry, onClose, onCall, onMessage }: ActionSheetProps) {
+  return (
+    <>
+      {/* backdrop */}
+      <div className="ch-sheet-backdrop" onClick={onClose} />
+
+      <div className="ch-sheet" role="dialog" aria-modal="true">
+        {/* handle bar */}
+        <div className="ch-sheet-handle" />
+
+        {/* header: avatar + nome */}
+        <div className="ch-sheet-header">
+          <div className="ch-sheet-avatar-wrap">
+            <PeerAvatar info={{ name: entry.peerName, avatarUrl: null }} />
+          </div>
+          <span className="ch-sheet-peer-name">{entry.peerName}</span>
+        </div>
+
+        {/* azioni */}
+        <button
+          className="ch-sheet-action"
+          onClick={() => { onCall(entry.peerId, entry.peerName, entry.callType); onClose(); }}
+        >
+          <span className="ch-sheet-action-icon">
+            {entry.callType === "video"
+              ? <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+                     strokeLinecap="round" strokeLinejoin="round" width="22" height="22">
+                  <polygon points="23 7 16 12 23 17 23 7" />
+                  <rect x="1" y="5" width="15" height="14" rx="2" />
+                </svg>
+              : <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+                     strokeLinecap="round" strokeLinejoin="round" width="22" height="22">
+                  <path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07
+                           A19.5 19.5 0 0 1 4.69 12 19.79 19.79 0 0 1 1.63 3.38
+                           2 2 0 0 1 3.6 1h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0
+                           .7 2.81 2 2 0 0 1-.45 2.11L7.91 8.4a16 16 0 0 0 6 6
+                           l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0
+                           2.81.7A2 2 0 0 1 22 16.92z" />
+                </svg>
+            }
+          </span>
+          <span className="ch-sheet-action-label">Richiama</span>
+          <svg className="ch-sheet-action-chevron" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"
+               strokeLinejoin="round" width="16" height="16">
+            <polyline points="9 18 15 12 9 6" />
+          </svg>
+        </button>
+
+        <button
+          className="ch-sheet-action"
+          disabled={!entry.conversationId}
+          onClick={() => {
+            if (entry.conversationId) { onMessage(entry.conversationId); onClose(); }
+          }}
+        >
+          <span className="ch-sheet-action-icon">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
+                 strokeLinecap="round" strokeLinejoin="round" width="22" height="22">
+              <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+            </svg>
+          </span>
+          <span className="ch-sheet-action-label">Manda messaggio</span>
+          <svg className="ch-sheet-action-chevron" viewBox="0 0 24 24" fill="none"
+               stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"
+               strokeLinejoin="round" width="16" height="16">
+            <polyline points="9 18 15 12 9 6" />
+          </svg>
+        </button>
+
+        <button className="ch-sheet-cancel" onClick={onClose}>
+          Annulla
+        </button>
+      </div>
+    </>
+  );
+}
+
 /* ─── main component ─────────────────────────────────────────────────────── */
 
 export default function CallHistoryPage({ onBack, peerMap }: Props) {
   const { t } = useTranslation("calls");
   const { auth } = useAuth();
+  const { initiateCall } = useCall();
 
-  const [calls, setCalls]     = useState<CallLogEntry[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError]     = useState<string | null>(null);
-  const [filter, setFilter]   = useState<FilterType>("all");
+  const [calls, setCalls]           = useState<CallLogEntry[]>([]);
+  const [loading, setLoading]       = useState(true);
+  const [error, setError]           = useState<string | null>(null);
+  const [filter, setFilter]         = useState<FilterType>("all");
+  const [sheetEntry, setSheetEntry] = useState<SheetEntry | null>(null);
 
   useEffect(() => {
     if (!auth) return;
@@ -103,6 +200,21 @@ export default function CallHistoryPage({ onBack, peerMap }: Props) {
     { key: "outgoing", label: t("filterOutgoing", "Effettuate") },
     { key: "incoming", label: t("filterIncoming", "Ricevute") },
   ];
+
+  /* ── handlers action sheet ──────────────────────────────────────────────── */
+
+  function handleCallBack(peerId: string, peerName: string, callType: "audio" | "video") {
+    void initiateCall(peerId, peerName, callType);
+    onBack(); // torna alla chat view (la UI chiamata si sovrappone)
+  }
+
+  function handleMessage(conversationId: string) {
+    // Dispatcha evento intercettato da ChatPage per aprire la conversazione
+    window.dispatchEvent(
+      new CustomEvent("push:open-conversation", { detail: { convId: conversationId } }),
+    );
+    onBack();
+  }
 
   return (
     <div className="settings-root">
@@ -146,12 +258,23 @@ export default function CallHistoryPage({ onBack, peerMap }: Props) {
           const peerId   = isCaller ? c.callee_id : c.caller_id;
           const info     = peerMap[peerId];
           const peerName = info?.name ?? `…${peerId.slice(-6)}`;
+          const isMissed =
+            c.status === "missed" ||
+            (c.status === "cancelled" && c.caller_id === auth?.userId);
 
           return (
-            <div key={String(c._id)} className={`ch-item${
-              c.status === "missed" ||
-              (c.status === "cancelled" && c.caller_id === auth?.userId)
-                ? " ch-item--missed" : ""}`}>
+            <button
+              key={String(c._id)}
+              className={`ch-item ch-item--btn${isMissed ? " ch-item--missed" : ""}`}
+              onClick={() =>
+                setSheetEntry({
+                  peerId,
+                  peerName,
+                  callType: c.call_type as "audio" | "video",
+                  conversationId: info?.conversationId,
+                })
+              }
+            >
               {/* avatar */}
               <div className="ch-item-avatar">
                 <PeerAvatar info={info} />
@@ -178,10 +301,27 @@ export default function CallHistoryPage({ onBack, peerMap }: Props) {
                   <div className="ch-duration">{formatDuration(c.duration_sec)}</div>
                 ) : null}
               </div>
-            </div>
+
+              {/* chevron tap hint */}
+              <svg className="ch-item-chevron" viewBox="0 0 24 24" fill="none"
+                   stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"
+                   strokeLinejoin="round" width="14" height="14">
+                <polyline points="9 18 15 12 9 6" />
+              </svg>
+            </button>
           );
         })}
       </div>
+
+      {/* ── action sheet ───────────────────────────────────────────────────── */}
+      {sheetEntry && (
+        <CallActionSheet
+          entry={sheetEntry}
+          onClose={() => setSheetEntry(null)}
+          onCall={handleCallBack}
+          onMessage={handleMessage}
+        />
+      )}
     </div>
   );
 }
