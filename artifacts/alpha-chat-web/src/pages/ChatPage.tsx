@@ -4031,27 +4031,39 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
             if (e.target === e.currentTarget) { e.preventDefault(); closeContextMenu(); }
           }}
         >
+          {/* ── Floating emoji quick-bar (sopra il menu, come WhatsApp) ── */}
+          {(() => {
+            const isMineMsg = contextMenu.msg.sender_id === auth?.userId;
+            const barTop = Math.max(8, contextMenu.y - 70);
+            return (
+              <div
+                className="emoji-quick-bar"
+                style={isMineMsg
+                  ? { top: barTop, right: 12 }
+                  : { top: barTop, left: Math.max(8, Math.min(contextMenu.x, window.innerWidth - 280)) }}
+                onClick={(e) => e.stopPropagation()}
+              >
+                {["👍","❤️","😂","😮","😢","🙏","🔥","👏","😍","💯","🤔","😭","🥳","👎","😡"].map((emoji) => {
+                  const reacted = (contextMenu.msg.reactions?.[emoji] ?? []).includes(auth?.userId ?? "");
+                  return (
+                    <button
+                      key={emoji}
+                      className={`emoji-quick-btn${reacted ? " active" : ""}`}
+                      onClick={ctxAction(() => { void handleToggleReaction(contextMenu.msg, emoji); closeContextMenu(); })}
+                    >
+                      {emoji}
+                    </button>
+                  );
+                })}
+              </div>
+            );
+          })()}
+
           <div
             className="ctx-menu"
             style={{ top: contextMenu.y, left: contextMenu.x }}
             onClick={(e) => e.stopPropagation()}
           >
-            {/* ── Emoji reaction bar ── */}
-            <div className="ctx-reaction-bar">
-              {["👍","❤️","😂","😮","😢","🙏"].map((emoji) => {
-                const reacted = (contextMenu.msg.reactions?.[emoji] ?? []).includes(auth?.userId ?? "");
-                return (
-                  <button
-                    key={emoji}
-                    className={`ctx-reaction-btn${reacted ? " active" : ""}`}
-                    onClick={ctxAction(() => { void handleToggleReaction(contextMenu.msg, emoji); closeContextMenu(); })}
-                  >
-                    {emoji}
-                  </button>
-                );
-              })}
-            </div>
-            <div className="ctx-divider" />
             {/* Seleziona */}
             <button className="ctx-item" onClick={ctxAction(() => {
               setSelectMode(true);
