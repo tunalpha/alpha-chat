@@ -548,7 +548,7 @@ a { color: inherit; text-decoration: none; }
   flex: 1; overflow-y: auto; overflow-x: hidden;
   padding: 16px 12px 8px;
   display: flex; flex-direction: column; gap: 2px;
-  scroll-behavior: smooth;
+  /* scroll-behavior gestito via JS per garantire scroll istantaneo su iOS Safari PWA */
 }
 .messages::-webkit-scrollbar { width: 4px; }
 .messages::-webkit-scrollbar-track { background: transparent; }

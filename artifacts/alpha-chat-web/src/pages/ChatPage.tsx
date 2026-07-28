@@ -1503,7 +1503,9 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
     if (!atBottom) return;
     requestAnimationFrame(() => {
       const c = messagesContainerRef.current;
-      if (c) c.scrollTop = c.scrollHeight;
+      if (!c) return;
+      c.style.scrollBehavior = 'auto'; // ignora scroll-behavior CSS → istantaneo
+      c.scrollTop = c.scrollHeight;
     });
   }, [messages, atBottom]);
 
