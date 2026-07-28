@@ -178,6 +178,34 @@ function isEmojiOnly(text: string): boolean {
   return nonEmoji.length === 0;
 }
 
+/** Converte il testo grezzo in nodi React con URL cliccabili. */
+const URL_RE = /https?:\/\/[^\s<>"']+/g;
+function linkifyText(text: string): React.ReactNode[] {
+  const result: React.ReactNode[] = [];
+  let last = 0;
+  let m: RegExpExecArray | null;
+  URL_RE.lastIndex = 0;
+  while ((m = URL_RE.exec(text)) !== null) {
+    if (m.index > last) result.push(text.slice(last, m.index));
+    const url = m[0].replace(/[.,;!?)]+$/, ""); // strip trailing punctuation
+    result.push(
+      <a
+        key={m.index}
+        href={url}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="msg-link"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {url}
+      </a>
+    );
+    last = m.index + url.length + (m[0].length - url.length);
+  }
+  if (last < text.length) result.push(text.slice(last));
+  return result;
+}
+
 function formatTime(iso: string): string {
   return new Date(iso).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" });
 }
@@ -3557,14 +3585,14 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
                   const time = formatTime(msg.sent_at);
                   // Evidenzia la query nel testo
                   const renderText = () => {
-                    if (!q) return <span className="msg-text">{text}</span>;
+                    if (!q) return <span className="msg-text">{linkifyText(text)}</span>;
                     const idx = text.toLowerCase().indexOf(q);
-                    if (idx === -1) return <span className="msg-text">{text}</span>;
+                    if (idx === -1) return <span className="msg-text">{linkifyText(text)}</span>;
                     return (
                       <span className="msg-text">
-                        {text.slice(0, idx)}
+                        {linkifyText(text.slice(0, idx))}
                         <mark className="msg-search-highlight">{text.slice(idx, idx + q.length)}</mark>
-                        {text.slice(idx + q.length)}
+                        {linkifyText(text.slice(idx + q.length))}
                       </span>
                     );
                   };
