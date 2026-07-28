@@ -212,7 +212,7 @@ export default function InviteModal({ onClose }: Props) {
               </div>
 
               <div className="invite-code-wrap">
-                <div className="invite-code" style={{ letterSpacing: "4px", wordBreak: "keep-all", whiteSpace: "nowrap" }}>{formatCode(invite.code)}</div>
+                <div className="invite-code">{formatCode(invite.code)}</div>
                 <button
                   className={`invite-copy-btn${copied ? " copied" : ""}`}
                   onClick={handleCopy}
