@@ -4034,8 +4034,8 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
           {/* ── Floating emoji quick-bar (in basso al messaggio) ── */}
           {(() => {
             const isMineMsg = contextMenu.msg.sender_id === auth?.userId;
-            // Posizionato SOTTO il punto di tocco, in basso a destra/sinistra del messaggio
-            const barTop = Math.min(contextMenu.y + 16, window.innerHeight - 72);
+            // Posizionato SOPRA il punto di tocco (come prima)
+            const barTop = Math.max(8, contextMenu.y - 70);
             const QUICK_EMOJIS = [
               "👍","❤️","😂","😮","😢","🙏","🔥","👏","😍","💯",
               "🤔","😭","🥳","👎","😡","🤝","🤯","🤷‍♂️","🤦‍♂️","🎂",

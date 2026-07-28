@@ -692,35 +692,36 @@ a { color: inherit; text-decoration: none; }
   overflow-x: auto; overflow-y: hidden;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: none;
-  background: #1e1535;
-  border: 1px solid rgba(255,255,255,0.12);
-  border-radius: 999px;
-  padding: 4px 6px; gap: 0;
-  box-shadow: 0 6px 24px rgba(0,0,0,0.55);
-  /* Larghezza fissa: mostra ~6 emoji alla volta */
-  width: 220px;
+  /* Nessun sfondo, nessun bordo, nessun cerchio — solo emoji */
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  border-radius: 0;
+  padding: 2px 4px; gap: 2px;
+  /* Larghezza fissa: ~6 emoji visibili alla volta */
+  width: 228px;
   animation: fade-in 0.12s ease;
 }
 .emoji-quick-bar::-webkit-scrollbar { display: none; }
 .emoji-quick-btn {
-  /* Solo emoji, nessun cerchio né sfondo */
-  font-size: 26px;
+  font-size: 28px;
   background: none;
   border: none;
   cursor: pointer;
-  padding: 4px 5px;
+  padding: 2px 3px;
   line-height: 1;
   flex-shrink: 0;
-  border-radius: 6px;
+  border-radius: 4px;
   transition: transform 0.12s;
   -webkit-tap-highlight-color: transparent;
+  /* Nessun cerchio, nessun sfondo */
 }
-.emoji-quick-btn:hover  { transform: scale(1.3); }
-.emoji-quick-btn:active { transform: scale(0.85); }
+.emoji-quick-btn:hover  { transform: scale(1.35); }
+.emoji-quick-btn:active { transform: scale(0.82); }
 .emoji-quick-btn.active {
-  /* Solo scala leggermente, nessun sfondo circolare */
+  /* Reazione già data: solo glow viola, nessun cerchio */
   transform: scale(1.2);
-  filter: drop-shadow(0 0 4px rgba(109,40,217,0.8));
+  filter: drop-shadow(0 0 5px rgba(139,92,246,0.9));
 }
 
 /* ── Multi-select ──────────────────────────────────────────────────────── */
