@@ -895,6 +895,9 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+  // Timestamp dell'ultimo handleSelectConv — usato per aspettare la fine della
+  // CSS transition (300ms slide-in su mobile) prima di scrollare al fondo.
+  const convOpenedAtRef = useRef<number>(0);
   const typingTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const isTypingRef = useRef(false);
   // Keep-alive presenza "sta registrando" (il server auto-stoppa typing a 5s)
@@ -1411,15 +1414,21 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
           });
           return msgs;
         });
-        // Scroll immediato al fondo dopo il caricamento iniziale.
-        // Doppio rAF: il primo attende il commit React, il secondo attende
-        // il reflow del layout (necessario su iOS Safari PWA con molti messaggi).
-        requestAnimationFrame(() => {
+        // Scroll al fondo dopo il caricamento iniziale.
+        // Su mobile la chat-area ha una CSS transition di 300ms (slide-in).
+        // iOS Safari azzera scrollTop se lo impostiamo durante la transition.
+        // Soluzione: aspettiamo che la transition sia finita prima di scrollare.
+        const TRANSITION_MS = 340; // 300ms + 40ms buffer
+        const elapsed = Date.now() - convOpenedAtRef.current;
+        const scrollDelay = Math.max(0, TRANSITION_MS - elapsed);
+        setTimeout(() => {
           requestAnimationFrame(() => {
             const c = messagesContainerRef.current;
-            if (c) c.scrollTop = c.scrollHeight;
+            if (!c) return;
+            c.style.scrollBehavior = 'auto';
+            c.scrollTop = c.scrollHeight;
           });
-        });
+        }, scrollDelay);
         // Decifra tutti i messaggi in background (Signal + legacy)
         void decryptBatch(msgs);
       })
@@ -2987,6 +2996,7 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
       window.history.pushState({ chatOpen: true }, "");
       chatHistoryPushedRef.current = true;
     }
+    convOpenedAtRef.current = Date.now(); // traccia inizio slide-in transition
     setActiveConvId(convId);
     setMobileShowChat(true);
     mobileShowChatRef.current = true;
