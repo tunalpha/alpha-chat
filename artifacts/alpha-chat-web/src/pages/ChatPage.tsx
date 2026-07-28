@@ -4031,23 +4031,50 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
             if (e.target === e.currentTarget) { e.preventDefault(); closeContextMenu(); }
           }}
         >
-          {/* ── Floating emoji quick-bar (sopra il menu, come WhatsApp) ── */}
+          {/* ── Floating emoji quick-bar (in basso al messaggio) ── */}
           {(() => {
             const isMineMsg = contextMenu.msg.sender_id === auth?.userId;
-            const barTop = Math.max(8, contextMenu.y - 70);
+            // Posizionato SOTTO il punto di tocco, in basso a destra/sinistra del messaggio
+            const barTop = Math.min(contextMenu.y + 16, window.innerHeight - 72);
+            const QUICK_EMOJIS = [
+              "👍","❤️","😂","😮","😢","🙏","🔥","👏","😍","💯",
+              "🤔","😭","🥳","👎","😡","🤝","🤯","🤷‍♂️","🤦‍♂️","🎂",
+              "🎉","🎊","🥹","😎","🫶","💪","🤌","👀","💀","🥰",
+              "😴","🤮","🫡","🤑","😤","🫠","🥶","😈","🤡","🫣",
+            ];
+            // Triplica la lista per lo scroll infinito
+            const tripled = [...QUICK_EMOJIS, ...QUICK_EMOJIS, ...QUICK_EMOJIS];
             return (
               <div
                 className="emoji-quick-bar"
                 style={isMineMsg
-                  ? { top: barTop, right: 12 }
-                  : { top: barTop, left: Math.max(8, Math.min(contextMenu.x, window.innerWidth - 280)) }}
+                  ? { top: barTop, right: 8 }
+                  : { top: barTop, left: 8 }}
                 onClick={(e) => e.stopPropagation()}
+                ref={(el) => {
+                  if (!el) return;
+                  // Inizia al centro del triplo array
+                  const third = el.scrollWidth / 3;
+                  if (Math.abs(el.scrollLeft - third) > 4) el.scrollLeft = third;
+                }}
+                onScroll={(e) => {
+                  const el = e.currentTarget;
+                  const third = el.scrollWidth / 3;
+                  // Wrap-around: se vicino al bordo destro salta al centro
+                  if (el.scrollLeft >= third * 2 - 10) {
+                    el.scrollLeft = third + (el.scrollLeft - third * 2);
+                  }
+                  // Wrap-around: se vicino al bordo sinistro salta al centro
+                  if (el.scrollLeft <= 10) {
+                    el.scrollLeft = third + el.scrollLeft;
+                  }
+                }}
               >
-                {["👍","❤️","😂","😮","😢","🙏","🔥","👏","😍","💯","🤔","😭","🥳","👎","😡"].map((emoji) => {
+                {tripled.map((emoji, i) => {
                   const reacted = (contextMenu.msg.reactions?.[emoji] ?? []).includes(auth?.userId ?? "");
                   return (
                     <button
-                      key={emoji}
+                      key={`${emoji}-${i}`}
                       className={`emoji-quick-btn${reacted ? " active" : ""}`}
                       onClick={ctxAction(() => { void handleToggleReaction(contextMenu.msg, emoji); closeContextMenu(); })}
                     >
