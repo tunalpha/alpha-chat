@@ -1411,6 +1411,15 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
           });
           return msgs;
         });
+        // Scroll immediato al fondo dopo il caricamento iniziale.
+        // Doppio rAF: il primo attende il commit React, il secondo attende
+        // il reflow del layout (necessario su iOS Safari PWA con molti messaggi).
+        requestAnimationFrame(() => {
+          requestAnimationFrame(() => {
+            const c = messagesContainerRef.current;
+            if (c) c.scrollTop = c.scrollHeight;
+          });
+        });
         // Decifra tutti i messaggi in background (Signal + legacy)
         void decryptBatch(msgs);
       })
@@ -1486,11 +1495,16 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeConvId]);
 
-  // ── Auto-scroll only when at bottom ────────────────────────────────────
+  // ── Auto-scroll when at bottom ─────────────────────────────────────────
+  // Usa scrollTop diretto invece di scrollIntoView({smooth}) — su iOS Safari PWA
+  // la smooth animation parte da 0 e spesso non raggiunge il fondo prima che
+  // l'utente veda il top della chat.
   useEffect(() => {
-    if (atBottom) {
-      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-    }
+    if (!atBottom) return;
+    requestAnimationFrame(() => {
+      const c = messagesContainerRef.current;
+      if (c) c.scrollTop = c.scrollHeight;
+    });
   }, [messages, atBottom]);
 
   function handleScroll() {
