@@ -115,6 +115,10 @@ export interface IMessage {
    */
   burn_after_read: boolean;
 
+  // --- Emoji Reactions ---
+  /** emoji → array di userId che hanno reagito */
+  reactions: Record<string, string[]>;
+
   createdAt: Date;
   updatedAt: Date;
 }
@@ -178,6 +182,9 @@ const messageSchema = new Schema<IMessageDocument>(
     destroy_at: { type: Date, default: null },
 
     burn_after_read: { type: Boolean, default: false },
+
+    // Emoji reactions — emoji → userId[]
+    reactions: { type: Schema.Types.Mixed, default: {} },
 
     // Fase 4: multi-device — array opaco al server
     device_ciphertexts: { type: Schema.Types.Mixed, default: null },

@@ -25,7 +25,8 @@ import { wsManager } from "../lib/ws-manager";
 import { UserRepository } from "../repositories/user.repository";
 import { deleteMediaFiles } from "./media.service";
 import * as PushDispatcher from "../services/push/PushDispatcher";
-import type { SendMessageInput, ListMessagesInput, EditMessageInput, DeleteMessageInput } from "../validation/message.schemas";
+import type { SendMessageInput, ListMessagesInput, EditMessageInput, DeleteMessageInput, ToggleReactionInput } from "../validation/message.schemas";
+import { MessageModel } from "../models/message.model";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -57,6 +58,8 @@ export interface MessageResult {
   device_ciphertexts: Array<{ device_id: string; body: string; type: number }> | null;
   /** Payment / USDA — dati strutturati del pagamento (null per messaggi normali) */
   system_metadata: Record<string, unknown> | null;
+  /** Emoji reactions — emoji → userId[] */
+  reactions: Record<string, string[]>;
 }
 
 export interface MessageListResult {
@@ -394,7 +397,85 @@ function formatMessageResult(
     expires_at: msg.expires_at?.toISOString() ?? null,
     device_ciphertexts: (msg.device_ciphertexts as Array<{ device_id: string; body: string; type: number }> | null) ?? null,
     system_metadata: msg.system_metadata ?? null,
+    reactions: (msg as { reactions?: Record<string, string[]> }).reactions ?? {},
   };
+}
+
+// ---------------------------------------------------------------------------
+// toggleReaction
+// ---------------------------------------------------------------------------
+
+/**
+ * Aggiunge o rimuove una reaction emoji su un messaggio.
+ * Toggle: se userId già presente → rimuove; altrimenti aggiunge.
+ */
+export async function toggleReaction(
+  userId: string,
+  conversationId: string,
+  messageId: string,
+  input: ToggleReactionInput,
+): Promise<{ message_id: string; conversation_id: string; reactions: Record<string, string[]> }> {
+  const userObjectId = new mongoose.Types.ObjectId(userId);
+  const convObjectId = new mongoose.Types.ObjectId(conversationId);
+  const msgObjectId  = new mongoose.Types.ObjectId(messageId);
+  const { emoji }    = input;
+
+  // 1. Verifica membership
+  const membership = await memberRepo.findMembership(convObjectId, userObjectId);
+  if (!membership || membership.left_at !== null) {
+    throw new AppError("NOT_CHAT_MEMBER", 403);
+  }
+
+  // 2. Trova il messaggio
+  const msg = await MessageModel.findOne({ _id: msgObjectId, conversation_id: convObjectId });
+  if (!msg) throw new AppError("MESSAGE_NOT_FOUND", 404);
+
+  const existing: string[] = (msg.reactions as Record<string, string[]>)[emoji] ?? [];
+  const alreadyReacted = existing.includes(userId);
+
+  let updated: typeof msg | null;
+  if (alreadyReacted) {
+    // Rimuovi userId
+    updated = await MessageModel.findByIdAndUpdate(
+      msgObjectId,
+      { $pull: { [`reactions.${emoji}`]: userId } },
+      { new: true },
+    );
+    // Se la lista diventa vuota, rimuovi la chiave emoji
+    const afterPull = (updated?.reactions as Record<string, string[]>)?.[emoji] ?? [];
+    if (afterPull.length === 0) {
+      await MessageModel.findByIdAndUpdate(msgObjectId, {
+        $unset: { [`reactions.${emoji}`]: 1 },
+      });
+      updated = await MessageModel.findById(msgObjectId);
+    }
+  } else {
+    // Aggiungi userId
+    updated = await MessageModel.findByIdAndUpdate(
+      msgObjectId,
+      { $addToSet: { [`reactions.${emoji}`]: userId } },
+      { new: true },
+    );
+  }
+
+  const finalReactions: Record<string, string[]> =
+    (updated?.reactions as Record<string, string[]>) ?? {};
+
+  // 3. Broadcast message.reaction a tutti i membri
+  void (async () => {
+    try {
+      const members = await memberRepo.listMembers(convObjectId);
+      const memberIds = members.map((m) => m.user_id.toString());
+      wsManager.sendToUsers(memberIds, {
+        type: "message.reaction",
+        payload: { message_id: messageId, conversation_id: conversationId, reactions: finalReactions },
+      });
+    } catch (err) {
+      logger.warn({ err }, "WS broadcast message.reaction failed");
+    }
+  })();
+
+  return { message_id: messageId, conversation_id: conversationId, reactions: finalReactions };
 }
 
 // ---------------------------------------------------------------------------

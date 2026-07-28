@@ -23,6 +23,7 @@ import {
   apiEditMessage,
   apiDeleteMessage,
   apiSecureDestroy,
+  apiToggleReaction,
   apiSendVoiceMessage,
   apiSendFileMessage,
   apiUploadEncryptedMedia,
@@ -1714,6 +1715,17 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
           }
           break;
         }
+        case "message.reaction": {
+          const { message_id, conversation_id, reactions } = event.payload as {
+            message_id: string; conversation_id: string; reactions: Record<string, string[]>;
+          };
+          if (conversation_id === activeConvId) {
+            setMessages((prev) =>
+              prev.map((m) => m.id === message_id ? { ...m, reactions } : m),
+            );
+          }
+          break;
+        }
         case "message.destroyed": {
           const { message_id, conversation_id } = event.payload;
           if (conversation_id === activeConvId) {
@@ -1935,6 +1947,37 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
         stack: err instanceof Error ? err.stack : undefined,
       });
       return undefined;
+    }
+  }
+
+  // ── Emoji Reactions ──────────────────────────────────────────────────────
+  async function handleToggleReaction(msg: MessageItem, emoji: string) {
+    if (!activeConvId) return;
+    const userId = auth?.userId ?? "";
+    // Optimistic update
+    setMessages((prev) =>
+      prev.map((m) => {
+        if (m.id !== msg.id) return m;
+        const cur = m.reactions ?? {};
+        const users = cur[emoji] ?? [];
+        const already = users.includes(userId);
+        const next: Record<string, string[]> = { ...cur,
+          [emoji]: already ? users.filter((u) => u !== userId) : [...users, userId],
+        };
+        Object.keys(next).forEach((k) => { if (next[k].length === 0) delete next[k]; });
+        return { ...m, reactions: next };
+      }),
+    );
+    try {
+      const result = await apiToggleReaction(activeConvId, msg.id, emoji);
+      setMessages((prev) =>
+        prev.map((m) => m.id === msg.id ? { ...m, reactions: result.reactions } : m),
+      );
+    } catch {
+      // revert
+      setMessages((prev) =>
+        prev.map((m) => m.id === msg.id ? { ...m, reactions: msg.reactions ?? {} } : m),
+      );
     }
   }
 
@@ -3821,6 +3864,26 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
                           )}
                         </div>
                       </div>
+                      {/* ── Reaction pills ── */}
+                      {(() => {
+                        const reacts = msg.reactions ?? {};
+                        const entries = Object.entries(reacts).filter(([, users]) => users.length > 0);
+                        if (!entries.length) return null;
+                        return (
+                          <div className={`msg-reactions-row ${isMine ? "mine" : "theirs"}`}>
+                            {entries.map(([emoji, users]) => (
+                              <button
+                                key={emoji}
+                                className={`msg-reaction-pill${users.includes(auth?.userId ?? "") ? " active" : ""}`}
+                                onClick={(e) => { e.stopPropagation(); void handleToggleReaction(msg, emoji); }}
+                              >
+                                {emoji}
+                                {users.length > 1 && <span className="msg-reaction-count">{users.length}</span>}
+                              </button>
+                            ))}
+                          </div>
+                        );
+                      })()}
                     </div>
                     </div>
                   );
@@ -3973,6 +4036,22 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
             style={{ top: contextMenu.y, left: contextMenu.x }}
             onClick={(e) => e.stopPropagation()}
           >
+            {/* ── Emoji reaction bar ── */}
+            <div className="ctx-reaction-bar">
+              {["👍","❤️","😂","😮","😢","🙏"].map((emoji) => {
+                const reacted = (contextMenu.msg.reactions?.[emoji] ?? []).includes(auth?.userId ?? "");
+                return (
+                  <button
+                    key={emoji}
+                    className={`ctx-reaction-btn${reacted ? " active" : ""}`}
+                    onClick={ctxAction(() => { void handleToggleReaction(contextMenu.msg, emoji); closeContextMenu(); })}
+                  >
+                    {emoji}
+                  </button>
+                );
+              })}
+            </div>
+            <div className="ctx-divider" />
             {/* Seleziona */}
             <button className="ctx-item" onClick={ctxAction(() => {
               setSelectMode(true);

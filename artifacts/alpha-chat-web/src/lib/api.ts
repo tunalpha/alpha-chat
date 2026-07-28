@@ -128,6 +128,8 @@ export interface MessageItem {
   deleted_for_everyone: boolean;
   /** Fase 4: un ciphertext per device del destinatario (null per messaggi legacy) */
   device_ciphertexts?: Array<{ device_id: string; body: string; type: number }> | null;
+  /** Emoji reactions — emoji → userId[] */
+  reactions?: Record<string, string[]>;
 }
 
 /** Informazioni dispositivo (Device Manager) */
@@ -1237,6 +1239,18 @@ export async function apiSecureDestroy(
   messageId: string,
 ): Promise<void> {
   await request<void>("DELETE", `/conversations/${conversationId}/messages/${messageId}/destroy`);
+}
+
+export async function apiToggleReaction(
+  conversationId: string,
+  messageId: string,
+  emoji: string,
+): Promise<{ message_id: string; conversation_id: string; reactions: Record<string, string[]> }> {
+  return request<{ message_id: string; conversation_id: string; reactions: Record<string, string[]> }>(
+    "POST",
+    `/conversations/${conversationId}/messages/${messageId}/reactions`,
+    { emoji },
+  );
 }
 
 // ---------------------------------------------------------------------------

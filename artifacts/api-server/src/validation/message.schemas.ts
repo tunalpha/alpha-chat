@@ -186,3 +186,13 @@ export const MessageIdParamSchema = z.object({
 });
 
 export type MessageIdParam = z.infer<typeof MessageIdParamSchema>;
+
+// ---------------------------------------------------------------------------
+// POST /api/v1/conversations/:conversationId/messages/:messageId/reactions
+// ---------------------------------------------------------------------------
+
+export const ToggleReactionSchema = z.object({
+  emoji: z.string().min(1).max(12),
+});
+
+export type ToggleReactionInput = z.infer<typeof ToggleReactionSchema>;

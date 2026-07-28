@@ -15,6 +15,7 @@ import type {
   EditMessageInput,
   DeleteMessageInput,
   MessageIdParam,
+  ToggleReactionInput,
 } from "../validation/message.schemas";
 
 // ---------------------------------------------------------------------------
@@ -132,6 +133,23 @@ export const secureDestroyMessage: RequestHandler = async (req, res, next) => {
     );
 
     res.status(204).send();
+  } catch (err) {
+    next(err);
+  }
+};
+
+// ---------------------------------------------------------------------------
+// POST /api/v1/conversations/:conversationId/messages/:messageId/reactions
+// ---------------------------------------------------------------------------
+
+export const toggleReaction: RequestHandler = async (req, res, next) => {
+  try {
+    const { conversationId, messageId } = req.params as unknown as MessageIdParam;
+    const input = req.body as ToggleReactionInput;
+    const userId = req.user!.userId;
+
+    const result = await messageService.toggleReaction(userId, conversationId, messageId, input);
+    res.status(200).json(successResponse(result, req.requestId));
   } catch (err) {
     next(err);
   }

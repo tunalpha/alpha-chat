@@ -13,8 +13,9 @@ import {
   EditMessageSchema,
   DeleteMessageSchema,
   MessageIdParamSchema,
+  ToggleReactionSchema,
 } from "../../validation/message.schemas";
-import { sendMessage, listMessages, editMessage, deleteMessage, secureDestroyMessage } from "../../controllers/message.controller";
+import { sendMessage, listMessages, editMessage, deleteMessage, secureDestroyMessage, toggleReaction } from "../../controllers/message.controller";
 
 const router = Router({ mergeParams: true });
 
@@ -66,6 +67,17 @@ router.delete(
   "/:messageId/destroy",
   validate("params", MessageIdParamSchema),
   secureDestroyMessage,
+);
+
+/**
+ * POST /api/v1/conversations/:conversationId/messages/:messageId/reactions
+ * Aggiunge o rimuove una reaction emoji (toggle). Qualsiasi membro può reagire.
+ */
+router.post(
+  "/:messageId/reactions",
+  validate("params", MessageIdParamSchema),
+  validate("body", ToggleReactionSchema),
+  toggleReaction,
 );
 
 export default router;
