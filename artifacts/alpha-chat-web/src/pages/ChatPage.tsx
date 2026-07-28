@@ -895,6 +895,7 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const chatAreaRef = useRef<HTMLElement>(null);
   // Timestamp dell'ultimo handleSelectConv — usato per aspettare la fine della
   // CSS transition (300ms slide-in su mobile) prima di scrollare al fondo.
   const convOpenedAtRef = useRef<number>(0);
@@ -1415,20 +1416,28 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
           return msgs;
         });
         // Scroll al fondo dopo il caricamento iniziale.
-        // Su mobile la chat-area ha una CSS transition di 300ms (slide-in).
-        // iOS Safari azzera scrollTop se lo impostiamo durante la transition.
-        // Soluzione: aspettiamo che la transition sia finita prima di scrollare.
-        const TRANSITION_MS = 340; // 300ms + 40ms buffer
-        const elapsed = Date.now() - convOpenedAtRef.current;
-        const scrollDelay = Math.max(0, TRANSITION_MS - elapsed);
-        setTimeout(() => {
+        // Su mobile, chat-area ha una CSS transition di 300ms (translateX 100%→0).
+        // iOS Safari può azzerare scrollTop se lo si imposta durante la transition.
+        // Fix: usiamo transitionend sull'elemento chat-area se la transition è attiva,
+        // altrimenti (desktop / conv già aperta) scrolliamo subito.
+        const doScrollBottom = () => {
           requestAnimationFrame(() => {
             const c = messagesContainerRef.current;
             if (!c) return;
             c.style.scrollBehavior = 'auto';
             c.scrollTop = c.scrollHeight;
           });
-        }, scrollDelay);
+        };
+        const area = chatAreaRef.current;
+        if (area && getComputedStyle(area).transform !== 'matrix(1, 0, 0, 1, 0, 0)') {
+          // La chat-area è ancora in transizione (translateX != 0) — aspetta transitionend
+          area.addEventListener('transitionend', doScrollBottom, { once: true });
+          // Fallback: se transitionend non arriva entro 400ms, scrolla comunque
+          setTimeout(doScrollBottom, 400);
+        } else {
+          // Desktop o conv già visibile: scrolla subito
+          doScrollBottom();
+        }
         // Decifra tutti i messaggi in background (Signal + legacy)
         void decryptBatch(msgs);
       })
@@ -3373,7 +3382,7 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
       {/* ── Chat area ─────────────────────────────────────────────────────── */}
       {/* Group Info — renderizzata dentro chat-area (stessa slide-in usata per la chat)
           per evitare tutti i problemi di position:fixed su iOS Safari */}
-      <main className={`chat-area${(!mobileShowChat && !showGroupInfo) ? " chat-area-mobile-hidden" : ""}`}>
+      <main ref={chatAreaRef} className={`chat-area${(!mobileShowChat && !showGroupInfo) ? " chat-area-mobile-hidden" : ""}`}>
         {showGroupInfo && groupInfoId ? (
           <GroupInfoPage
             groupId={groupInfoId}
