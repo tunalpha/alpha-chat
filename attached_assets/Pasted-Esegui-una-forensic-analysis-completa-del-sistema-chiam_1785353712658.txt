@@ -1,0 +1,94 @@
+Esegui una forensic analysis completa del sistema chiamate vocali/video di Alpha Chat.
+
+Problema:
+Le chiamate hanno qualità audio eccellente ma, in modo apparentemente casuale, si interrompono improvvisamente. Non voglio fix basati su ipotesi: voglio identificare con certezza la causa.
+
+Obiettivi:
+
+1. Analizza l'intero flusso delle chiamate:
+- Signaling
+- WebSocket
+- WebRTC
+- RTCPeerConnection
+- ICE
+- STUN/TURN
+- Daily.co SDK (se utilizzato)
+- Eventi di lifecycle
+- Gestione background iOS/Android
+- Reconnection logic
+
+2. Individua tutti i punti in cui una chiamata può terminare automaticamente.
+
+3. Aggiungi una diagnostica completa SENZA modificare la logica esistente e SENZA introdurre regressioni.
+
+Per ogni chiamata registra:
+
+- Call ID
+- Timestamp inizio/fine
+- Durata
+- Motivo della terminazione
+- Chi ha chiuso la chiamata
+- Stato ICE
+- connectionState
+- iceConnectionState
+- signalingState
+- WebSocket state
+- Network type
+- RTT
+- Packet loss
+- Jitter
+- Selected ICE candidate
+- TURN o STUN utilizzato
+- Eventuali errori Daily
+- Eventuali eccezioni JavaScript
+- Eventuali timeout
+- Cambio rete Wi-Fi ↔ LTE ↔ 5G
+- Background/Foreground dell'app
+- Eventuali reconnect tentati
+- Esito del reconnect
+
+4. Verifica che non esistano:
+
+- timeout lato client
+- timeout lato server
+- timer che chiudono la call
+- cleanup prematuri
+- dispose anticipati
+- listener duplicati
+- race condition
+- memory leak
+- heartbeat mancanti
+- ping/pong mancanti
+- WebSocket che scade
+- token Daily in scadenza
+- TURN credentials in scadenza
+
+5. Controlla se la chiusura è causata da:
+
+- failed
+- disconnected
+- closed
+- network lost
+- signaling lost
+- peer disconnected
+- Daily SDK
+- browser
+- sistema operativo
+
+6. Verifica che tutti gli eventi Daily e WebRTC vengano loggati.
+
+7. Produci un report finale con:
+
+- Root Cause individuata
+- Livello di certezza (%)
+- File coinvolti
+- Sequenza temporale degli eventi
+- Eventuali fix necessari
+- Rischio regressioni
+- Piano di correzione
+
+IMPORTANTE:
+
+NON modificare alcuna logica fino a quando la causa non sarà individuata con certezza.
+
+Prima raccogli tutte le prove, poi proponi la correzione più sicura possibile, mantenendo compatibilità totale con il codice esistente e garantendo zero regressioni.
