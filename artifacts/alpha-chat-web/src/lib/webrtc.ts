@@ -181,6 +181,14 @@ export function createPeerConnection(
     };
   }
 
+  // signalingState — diagnostica: permette di vedere se un offer/answer è in corso
+  // quando la chiamata cade (es. signalingState="have-remote-offer" + iceState="failed"
+  // indica problema nel setup; "stable" + iceState="disconnected" indica cambio rete).
+  pc.onsignalingstatechange = () => {
+    console.log('[webrtc] signalingState → %s', pc.signalingState);
+    diagLog('pc.signalingState', { state: pc.signalingState });
+  };
+
   return pc;
 }
 
@@ -235,6 +243,7 @@ export function closePeerConnection(pc: RTCPeerConnection | null, stream: MediaS
     pc.ontrack = null;
     pc.onconnectionstatechange = null;
     pc.oniceconnectionstatechange = null;
+    pc.onsignalingstatechange = null;
     pc.close();
   }
 }

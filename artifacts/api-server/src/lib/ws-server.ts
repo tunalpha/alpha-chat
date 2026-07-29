@@ -135,6 +135,10 @@ export function createWsServer(httpServer: HttpServer): WebSocketServer {
 
       if (userId) {
         wsManager.unregister(conn);
+        // Fix #3 — libera sempre lo stato inCall su disconnect WS.
+        // Se la connessione cade senza call.end (crash, iOS background, rete assente),
+        // l'utente restava in inCallUsers indefinitamente → prossima chiamata = call.busy.
+        wsManager.clearInCall(userId);
         if (!wsManager.isOnline(userId)) {
           // Ultimo device disconnesso → offline
           await setOffline(userId);

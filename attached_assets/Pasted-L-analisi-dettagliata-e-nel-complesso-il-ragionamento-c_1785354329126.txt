@@ -1,0 +1,96 @@
+L’analisi è dettagliata e, nel complesso, il ragionamento è coerente. Farei però una distinzione tra ciò che appare quasi certo e ciò che è ancora un’ipotesi da verificare.
+
+Direi con elevata confidenza
+
+✅ Root Cause #2 (stale closure)
+
+Questo è un bug reale. Se il callback cattura isReconnecting = false e non viene mai ricreato, il comportamento descritto è quello tipico delle closure React. È un fix a basso rischio e vale la pena correggerlo indipendentemente dal problema delle chiamate.
+
+✅ Root Cause #3 (clearInCall)
+
+Anche questo sembra un miglioramento corretto. Se la connessione WebSocket termina e non viene liberato lo stato “inCall”, è plausibile che alcuni utenti rimangano erroneamente occupati.
+
+⸻
+
+Quella su cui sarei più prudente
+
+⚠️ Root Cause #1 (ICE Restart)
+
+Qui farei attenzione.
+
+Il fatto che:
+
+* restartIce() non venga chiamato;
+* esista un commento che parla di ICE restart;
+* esista un timer di 15 secondi;
+
+non dimostra automaticamente che sia la causa principale.
+
+Bisogna prima verificare nei log se, quando la chiamata cade, succede davvero questa sequenza:
+
+connected
+↓
+disconnected
+↓
+failed
+↓
+cleanup()
+
+Se invece i log mostrano:
+
+connected
+↓
+closed
+
+oppure
+
+call.ended
+
+allora l’ICE restart non c’entra.
+
+⸻
+
+Quello che farei prima di modificare WebRTC
+
+Chiederei di aggiungere una diagnostica molto precisa.
+
+Per ogni chiamata salvare:
+
+timestamp
+iceConnectionState
+connectionState
+signalingState
+candidatePair
+networkType
+reason
+
+e soprattutto la timeline:
+
+18:10:04 connected
+18:10:41 disconnected
+18:10:42 checking
+18:10:44 failed
+18:10:44 cleanup(reconnect_failed)
+
+oppure
+
+connected
+closed
+cleanup(failed)
+
+oppure
+
+call.ended ricevuto
+
+Questa timeline confermerebbe senza ambiguità quale evento provoca realmente la chiusura.
+
+⸻
+
+Ordine che seguirei
+
+1. Fix #2 (stale closure) → Basso rischio, lo farei subito.
+2. Fix #3 (clearInCall) → Basso rischio, lo farei subito.
+3. Aggiungere logging dettagliato degli stati WebRTC.
+4. Solo se i log confermano che il problema nasce da iceConnectionState = disconnected, implementare l’ICE Restart completo.
+
+In questo modo si riduce il rischio di introdurre regressioni nella parte più delicata del sistema (WebRTC) e si ha la certezza che l’ICE restart stia risolvendo il problema giusto.

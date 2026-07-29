@@ -128,6 +128,14 @@ export function CallProvider({ children }: { children: ReactNode }) {
   const retryAttemptedRef  = useRef<boolean>(false);
   /** M3 — Timestamp (ms) dell'invio originale di call.offer: usato per RTT nel log CALL_RETRY. */
   const offerSentAtRef     = useRef<number>(0);
+  /**
+   * Fix #2 — Mirror ref di isReconnecting, sempre aggiornato.
+   * I callback in buildPC() vengono creati UNA SOLA VOLTA per chiamata e
+   * catturano il valore di isReconnecting al momento della creazione (sempre false).
+   * Questo ref viene letto al posto del React state nei callback WebRTC, dove
+   * una closure stale causerebbe sempre la branch "failed" invece di "reconnect_failed".
+   */
+  const isReconnectingRef  = useRef(false);
 
   // ── Helpers ────────────────────────────────────────────────────────────
 
@@ -190,8 +198,27 @@ export function CallProvider({ children }: { children: ReactNode }) {
   }
 
   function cleanup(reason: CallEndReason = "normal") {
-    console.log('[Call] cleanup reason=%s', reason);
-    diagLog('call.cleanup', { reason });
+    // Snapshot degli stati WebRTC PRIMA di chiudere il PC — fondamentale per la
+    // diagnostica forense: permette di distinguere se la chiamata è caduta per
+    // ICE failure, per call.ended ricevuto via WS, o per un timeout interno.
+    const _pc   = pcRef.current;
+    const _conn = _pc?.connectionState    ?? 'no-pc';
+    const _ice  = _pc?.iceConnectionState ?? 'no-pc';
+    const _sig  = _pc?.signalingState     ?? 'no-pc';
+    const _net  = (navigator as unknown as { connection?: { effectiveType?: string } })
+                    .connection?.effectiveType ?? 'unknown';
+    console.log(
+      '[Call] cleanup reason=%s connectionState=%s iceState=%s signalingState=%s wasReconnecting=%s net=%s',
+      reason, _conn, _ice, _sig, isReconnectingRef.current, _net,
+    );
+    diagLog('call.cleanup', {
+      reason,
+      connectionState:    _conn,
+      iceConnectionState: _ice,
+      signalingState:     _sig,
+      wasReconnecting:    isReconnectingRef.current,
+      networkType:        _net,
+    });
 
     // Se la chiamata era stata stabilita (server ha entrambi in inCallUsers via call.answer)
     // e il cleanup non viene da endCall/rejectCall (che mandano call.end/call.reject da soli),
@@ -245,12 +272,21 @@ export function CallProvider({ children }: { children: ReactNode }) {
     setIsMuted(false);
     setIsCameraOff(false);
     setIsSpeaker(false);
+    isReconnectingRef.current = false; // Fix #2: resetta il ref in sincronia con lo state
     setIsReconnecting(false);
     setFacingMode("user");
     resetRemoteAudio(); // disconnette AudioContext e resetta routing
   }
 
   function buildPC(toUserId: string) {
+    /** Legge il tipo di rete corrente per la diagnostica (es. "4g", "wifi"). */
+    function _getNetType(): string {
+      try {
+        return (navigator as unknown as { connection?: { effectiveType?: string } })
+          .connection?.effectiveType ?? 'unknown';
+      } catch { return 'unknown'; }
+    }
+
     const pc = createPeerConnection(
       (candidate) => {
         wsSend({ type: "call.ice_candidate", payload: { to_user_id: toUserId, candidate: candidate.toJSON() } });
@@ -262,47 +298,119 @@ export function CallProvider({ children }: { children: ReactNode }) {
         setRemoteAudioStream(stream);   // singleton <audio> element → audio reale
       },
       (state) => {
-        // connectionState change — failed/closed → cleanup
+        // connectionState change — log completo per timeline diagnostica
+        const _iceAtEvent  = pc.iceConnectionState;
+        const _sigAtEvent  = pc.signalingState;
+        const _net         = _getNetType();
+        // Fix #2: legge isReconnectingRef.current — mai stale.
+        // La closure cattura isReconnecting React state al momento della creazione
+        // di buildPC (sempre false); il ref è sempre il valore corrente.
+        const _wasReconn   = isReconnectingRef.current;
+        console.log(
+          '[Call] connectionState=%s iceState=%s signalingState=%s wasReconnecting=%s net=%s',
+          state, _iceAtEvent, _sigAtEvent, _wasReconn, _net,
+        );
+        diagLog('pc.connectionState.change', {
+          connectionState:    state,
+          iceConnectionState: _iceAtEvent,
+          signalingState:     _sigAtEvent,
+          wasReconnecting:    _wasReconn,
+          networkType:        _net,
+        });
         if (state === "failed" || state === "closed") {
-          if (isReconnecting) {
-            // Già in riconnessione — abbandona
-            cleanup("reconnect_failed");
-          } else {
-            cleanup("failed");
-          }
+          cleanup(_wasReconn ? "reconnect_failed" : "failed");
         }
       },
       (iceState) => {
-        // ICE connection state — riconnessione intelligente
+        // ICE connection state — log completo + riconnessione intelligente
+        const _connAtEvent = pc.connectionState;
+        const _sigAtEvent  = pc.signalingState;
+        const _net         = _getNetType();
+        console.log(
+          '[Call] iceConnectionState=%s connectionState=%s signalingState=%s net=%s',
+          iceState, _connAtEvent, _sigAtEvent, _net,
+        );
+        diagLog('ice.connectionState.change', {
+          iceConnectionState: iceState,
+          connectionState:    _connAtEvent,
+          signalingState:     _sigAtEvent,
+          networkType:        _net,
+        });
+
         if (iceState === "disconnected") {
+          // Fix #2: aggiorna il ref in sincronia con lo state
+          isReconnectingRef.current = true;
           setIsReconnecting(true);
+          // Snapshot candidate pair attivo al momento della disconnessione —
+          // chiave per capire se era STUN (fallisce al cambio IP) o TURN (relay, più robusto)
+          // e per confermare/escludere Root Cause #1 (ICE restart mancante).
+          const _pcDisc = pcRef.current;
+          if (_pcDisc) {
+            _pcDisc.getStats().then((stats) => {
+              const _cMap = new Map<string, RTCStats>();
+              stats.forEach((r) => _cMap.set(r.id, r));
+              const activePair: Record<string, unknown>[] = [];
+              const localCands: Record<string, unknown>[] = [];
+              const remoteCands: Record<string, unknown>[] = [];
+              stats.forEach((r) => {
+                if (r.type === "candidate-pair" && r["nominated"]) {
+                  const lc = r["localCandidateId"]  ? _cMap.get(r["localCandidateId"]  as string) : null;
+                  const rc = r["remoteCandidateId"] ? _cMap.get(r["remoteCandidateId"] as string) : null;
+                  activePair.push({
+                    pairState:   r["state"],
+                    bytesSent:   r["bytesSent"],
+                    bytesRcv:    r["bytesReceived"],
+                    rttMs:       r["currentRoundTripTime"] != null
+                                   ? Math.round((r["currentRoundTripTime"] as number) * 1000) : null,
+                    localType:   (lc as Record<string, unknown>)?.["candidateType"] ?? null,
+                    remoteType:  (rc as Record<string, unknown>)?.["candidateType"] ?? null,
+                    localProto:  (lc as Record<string, unknown>)?.["protocol"]      ?? null,
+                    localAddr:   (lc as Record<string, unknown>)?.["address"]
+                                   ?? (lc as Record<string, unknown>)?.["ip"] ?? null,
+                    remoteAddr:  (rc as Record<string, unknown>)?.["address"]
+                                   ?? (rc as Record<string, unknown>)?.["ip"] ?? null,
+                  });
+                }
+                if (r.type === "local-candidate") {
+                  localCands.push({ candType: r["candidateType"], proto: r["protocol"],
+                    addr: r["address"] ?? r["ip"] });
+                }
+                if (r.type === "remote-candidate") {
+                  remoteCands.push({ candType: r["candidateType"], proto: r["protocol"],
+                    addr: r["address"] ?? r["ip"] });
+                }
+              });
+              diagLog('ice.disconnected.stats', { activePair, localCands, remoteCands, networkType: _net });
+              console.log('[Call] ice.disconnected.stats activePair=%o net=%s', activePair, _net);
+            }).catch(() => {});
+          }
           // Dopo 15s senza recupero → abbandona
           reconnectTimerRef.current = setTimeout(() => {
             cleanup("reconnect_failed");
           }, 15_000);
         } else if (iceState === "connected" || iceState === "completed") {
+          // Fix #2: aggiorna il ref in sincronia con lo state
+          isReconnectingRef.current = false;
           setIsReconnecting(false);
           clearReconnectTimer();
         } else if (iceState === "failed") {
-          // Raccogli statistiche ICE prima di cleanup — utile per diagnosticare
-          // quale candidate pair è stato tentato e perché ha fallito.
-          const _pc = pcRef.current;
-          if (_pc) {
-            _pc.getStats().then((stats) => {
+          // Raccogli statistiche ICE prima di cleanup
+          const _pcFailed = pcRef.current;
+          if (_pcFailed) {
+            _pcFailed.getStats().then((stats) => {
               const pairs: object[] = [];
               const candidates: object[] = [];
               stats.forEach((report) => {
                 if (report.type === "candidate-pair") {
                   pairs.push({
-                    state:          report["state"],
-                    nominated:      report["nominated"],
-                    localCandId:    report["localCandidateId"],
-                    remoteCandId:   report["remoteCandidateId"],
-                    bytesSent:      report["bytesSent"],
-                    bytesReceived:  report["bytesReceived"],
-                    currentRttMs:   report["currentRoundTripTime"] != null
-                                      ? Math.round((report["currentRoundTripTime"] as number) * 1000)
-                                      : null,
+                    state:         report["state"],
+                    nominated:     report["nominated"],
+                    localCandId:   report["localCandidateId"],
+                    remoteCandId:  report["remoteCandidateId"],
+                    bytesSent:     report["bytesSent"],
+                    bytesReceived: report["bytesReceived"],
+                    currentRttMs:  report["currentRoundTripTime"] != null
+                                     ? Math.round((report["currentRoundTripTime"] as number) * 1000) : null,
                   });
                 }
                 if (report.type === "local-candidate" || report.type === "remote-candidate") {
@@ -317,7 +425,7 @@ export function CallProvider({ children }: { children: ReactNode }) {
                   });
                 }
               });
-              diagLog('ice.failed.stats', { pairs, candidates });
+              diagLog('ice.failed.stats', { pairs, candidates, networkType: _net });
               console.log('[webrtc] ice.failed.stats pairs=%o candidates=%o', pairs, candidates);
             }).catch(() => {});
           }
@@ -818,6 +926,26 @@ export function CallProvider({ children }: { children: ReactNode }) {
         // Se callAnsweredAtRef è null la chiamata non è mai stata risposta:
         // dal nostro punto di vista è "persa", non "completata".
         const wasAnswered = callAnsweredAtRef.current !== null;
+        // Diagnostica forense: log stato WebRTC al momento di call.ended.
+        // Permette di distinguere nella timeline:
+        //   "connected + call.ended" → normale riagganciata dal peer
+        //   "disconnected + call.ended" → peer ha perso rete e poi WS ha notificato
+        //   "no-pc + call.ended" → ricezione dopo cleanup locale già avvenuto
+        const _pcEnded = pcRef.current;
+        diagLog('ws.call.ended.received', {
+          wasAnswered,
+          connectionState:    _pcEnded?.connectionState    ?? 'no-pc',
+          iceConnectionState: _pcEnded?.iceConnectionState ?? 'no-pc',
+          signalingState:     _pcEnded?.signalingState     ?? 'no-pc',
+          wasReconnecting:    isReconnectingRef.current,
+          networkType:        (navigator as unknown as { connection?: { effectiveType?: string } })
+                                .connection?.effectiveType ?? 'unknown',
+        });
+        console.log('[Call] call.ended received connectionState=%s iceState=%s wasReconnecting=%s',
+          _pcEnded?.connectionState ?? 'no-pc',
+          _pcEnded?.iceConnectionState ?? 'no-pc',
+          isReconnectingRef.current,
+        );
         cleanup(wasAnswered ? "normal" : "missed");
         break;
       }
