@@ -1,0 +1,36 @@
+Nel complesso mi sembra un buon set di modifiche: sono mirate e, sulla carta, non dovrebbero alterare il comportamento della chat, ma ridurre lavoro inutile.
+
+Valutazione dei singoli fix:
+
+* ✅ A (.unref()): è corretto se quel timer non è necessario per mantenere vivo il processo. Il fatto che esegua run() all’avvio riduce il rischio di saltare il primo cleanup dopo un riavvio.
+* ✅ B (logger.info → logger.debug): è probabilmente il fix con il miglior rapporto beneficio/rischio. Cambia solo il livello di logging.
+* ✅ C (customLogLevel per /api e /api/healthz): è una soluzione migliore rispetto a disabilitare completamente il logging. Continuate a vedere gli errori, ma eliminate il rumore dei probe di successo.
+* ✅ D (R2 Health): scrivere sul DB solo quando cambia lo stato o come heartbeat orario è una pratica comune e riduce I/O senza perdere la capacità di monitoraggio.
+
+Prima del deploy
+
+Io chiederei ancora un’ultima verifica all’agente:
+
+Esegui una regression analysis completa confrontando il comportamento prima e dopo i fix A+B+C+D. Verifica che nessuna funzionalità sia cambiata e che:
+
+* WebSocket rimangano stabili per almeno 30 minuti.
+* Il cleanup continui a essere eseguito.
+* /api/healthz restituisca sempre lo stesso payload.
+* Il monitor R2 segnali correttamente sia il passaggio da OK→KO sia da KO→OK.
+* Nessun log di errore sia stato silenziato accidentalmente.
+* Nessuna eccezione venga generata da customLogLevel.
+
+Se trovi differenze funzionali, elencale. Se non ne trovi, dichiara esplicitamente che i fix sono funzionalmente equivalenti.
+
+Le prossime 24 ore saranno decisive
+
+La cosa più importante adesso è misurare, non fare altre ottimizzazioni. Confronta:
+
+* Compute Units/giorno.
+* Numero di istanze attive.
+* Tempo effettivo in idle (se disponibile nelle metriche di Replit).
+* CPU media.
+* Numero di connessioni WebSocket.
+* Errori applicativi.
+
+Se davvero passi da circa 275.000 CU/giorno a 150.000–190.000 CU/giorno, avrai una conferma concreta che questi interventi hanno avuto un impatto significativo. Se invece il consumo cala poco, allora il principale responsabile sarà probabilmente l’architettura (ad esempio le connessioni WebSocket persistenti) più che queste ottimizzazioni.
