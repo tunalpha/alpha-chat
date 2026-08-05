@@ -123,7 +123,7 @@ export function createWsServer(httpServer: HttpServer): WebSocketServer {
         isAlive = false;
         conn.isAlive = false;
         lastPingSentAt = Date.now();
-        logger.info({ userId, lastPingSentAt }, "[WS] ping sent");
+        logger.debug({ userId, lastPingSentAt }, "[WS] ping sent");
         safeSend(ws, { type: "ping" });
       }, PING_INTERVAL_MS);
     }
@@ -570,7 +570,7 @@ export function createWsServer(httpServer: HttpServer): WebSocketServer {
       isAlive = true;
       conn.isAlive = true;
       lastPongAt = Date.now();
-      logger.info(
+      logger.debug(
         { userId, lastPongAt, rttMs: lastPingSentAt ? lastPongAt - lastPingSentAt : null },
         "[WS] pong received",
       );

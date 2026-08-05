@@ -41,12 +41,29 @@ app.use(
 app.use(requestIdMiddleware);
 
 // ── HTTP request logger ───────────────────────────────────────────────────────
+// I probe di Replit Autoscale (GET /api e GET /api/healthz) vengono eseguiti
+// ogni ~15-30s e non portano informazione operativa quando rispondono 200.
+// Usiamo customLogLevel per abbassarli a 'trace' (no-op con LOG_LEVEL=info),
+// mantenendo però piena visibilità in caso di errore (status ≥ 400).
+// Nota: autoLogging.ignore in pino-http v10 riceve solo (req) senza res —
+// non si può leggere il statusCode lì; customLogLevel è chiamato dopo la risposta.
 app.use(
   pinoHttp({
     logger,
     customProps: (req) => ({
       requestId: req.requestId,
     }),
+    customLogLevel: (req, res, err) => {
+      const url = (req as { url?: string }).url ?? '';
+      const isProbe = url === '/api' || url === '/api/' ||
+                      url === '/api/healthz' || url === '/api/healthz/';
+      // Probe 2xx/3xx → 'trace' (soppressa da LOG_LEVEL=info in produzione)
+      // Probe 4xx/5xx o con errore → log normale (warn/error)
+      if (isProbe && !err && res.statusCode < 400) return 'trace';
+      if (err || res.statusCode >= 500) return 'error';
+      if (res.statusCode >= 400) return 'warn';
+      return 'info';
+    },
     serializers: {
       req(req) {
         return {

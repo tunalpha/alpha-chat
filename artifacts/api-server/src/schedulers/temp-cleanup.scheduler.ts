@@ -24,8 +24,11 @@ export function startTempCleanupScheduler(): void {
     }
   };
 
-  // Prima esecuzione subito, poi ogni ora
+  // Prima esecuzione subito, poi ogni ora.
+  // .unref() consente al processo Node di uscire cleanly (scale-to-zero Autoscale)
+  // anche se l'interval è ancora pendente. Il cleanup è difensivo, non critico:
+  // i file orfani in temp/ non causano danni se eliminati in ritardo di qualche ora.
   void run();
-  setInterval(() => { void run(); }, INTERVAL_MS);
+  setInterval(() => { void run(); }, INTERVAL_MS).unref();
   logger.info("R2 temp/ cleanup scheduler avviato (intervallo: 1h)");
 }
