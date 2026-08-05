@@ -1,0 +1,147 @@
+L’audit mi sembra ben strutturato e, se le osservazioni sono corrette, i tre interventi P1 sono quelli che hanno il miglior rapporto beneficio/tempo.
+
+C’è però un aspetto che aggiungerei: 5,5 milioni di Compute Units in 20 giorni sono comunque tanti. Le anomalie individuate spiegano una parte del consumo, ma potrebbero non spiegare tutto. Per questo farei eseguire un secondo audit focalizzato esclusivamente sul consumo reale di Compute Units.
+
+Ecco il prompt.
+
+⸻
+
+PROMPT – Audit Forense Replit Compute Units (Livello Esperto)
+
+Hai già eseguito un primo audit e individuato 9 ottimizzazioni.
+
+Ora NON devi cercare altri piccoli miglioramenti.
+
+Devi trovare la causa principale del consumo di 5.503.711 Compute Units.
+
+Assumi che il consumo sia anomalo fino a prova contraria.
+
+Obiettivo
+
+Identificare quale componente genera il maggior numero di Compute Units.
+
+Non fare supposizioni.
+
+Basati esclusivamente sul codice.
+
+⸻
+
+Analisi richiesta
+
+Analizza tutto il progetto.
+
+Determina il costo percentuale di:
+
+* HTTP Requests
+* WebSocket
+* Scheduler
+* MongoDB
+* R2
+* Redis (se presente)
+* Blockchain RPC
+* USDA
+* AI
+* Background Tasks
+* Cron
+* Polling
+* Logging
+* Compression
+* Static assets
+* Authentication
+* Middleware
+* Startup
+* Cold Start
+
+⸻
+
+Per ogni componente calcola
+
+* frequenza di esecuzione
+* durata media
+* CPU utilizzata
+* I/O
+* DB Reads
+* DB Writes
+* HTTP esterne
+* memoria
+* Compute Units stimate
+
+⸻
+
+Cerca obbligatoriamente
+
+* while(true)
+* setInterval
+* setTimeout
+* scheduler duplicati
+* heartbeat
+* websocket ping
+* websocket pong
+* reconnect loop
+* polling loop
+* retry loop
+* Promise mai risolte
+* await dimenticati
+* task zombie
+* EventEmitter multipli
+* listener duplicati
+* middleware eseguiti inutilmente
+* richieste duplicate
+* MongoDB scansioni complete
+* aggregate senza indice
+* populate inutili
+* syncIndexes
+* createIndex
+* watch()
+* change streams
+* file watcher
+* cron concorrenti
+* startup hook
+* shutdown hook
+
+⸻
+
+Replit Autoscale
+
+Verifica se esiste qualsiasi codice che impedisce al container di andare realmente in idle.
+
+Controlla:
+
+* timer permanenti
+* socket aperti
+* keep alive
+* interval
+* cron
+* websocket
+* health monitor
+* diagnostic monitor
+* metriche
+* cache refresher
+* polling
+
+⸻
+
+Calcolo finale
+
+Costruisci una tabella.
+
+| Componente | CU stimate | % del totale | Priorità |
+
+La somma deve essere vicina ai 5.503.711 Compute Units osservati.
+
+Se non riesci a giustificare almeno l’80% del consumo, continua l’analisi fino a trovare altre cause.
+
+⸻
+
+Output finale
+
+Rispondi soltanto con:
+
+1. Le 10 principali fonti di Compute Units.
+2. La percentuale di consumo di ciascuna.
+3. Il risparmio stimato correggendola.
+4. Una roadmap ordinata per ROI.
+
+Non proporre micro-ottimizzazioni.
+
+L’obiettivo è individuare il 20% del codice responsabile dell’80% delle Compute Units (principio di Pareto).
