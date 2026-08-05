@@ -1,0 +1,99 @@
+Ecco un prompt dettagliato da dare a un agente AI (Replit Agent, Claude Code, Cursor o simili):
+
+⸻
+
+PROMPT
+
+Sei un ingegnere software senior esperto di Replit Autoscale, Python/FastAPI, Node.js, performance tuning e cloud optimization.
+
+Il tuo compito è individuare con precisione perché il deployment sta consumando un numero anomalo di Compute Units su Replit Autoscale.
+
+Obiettivo
+
+Ridurre il consumo di Compute Units del 70-90% senza modificare il comportamento funzionale dell’applicazione.
+
+Analisi richiesta
+
+Effettua una revisione completa del progetto e individua:
+
+* endpoint chiamati troppo frequentemente;
+* loop infiniti;
+* polling inutili;
+* task asincroni che non terminano;
+* scheduler che restano sempre attivi;
+* websocket o SSE mantenuti aperti;
+* background task che impediscono al container di andare in idle;
+* richieste duplicate;
+* chiamate RPC ripetitive;
+* query MongoDB inefficienti;
+* accessi ripetuti al database;
+* chiamate HTTP esterne non cacheate;
+* logging eccessivo;
+* middleware pesanti;
+* funzioni CPU intensive;
+* memory leak;
+* thread o coroutine mai terminate.
+
+Per ogni problema individua
+
+* file interessato
+* funzione
+* numero di riga
+* motivo del consumo
+* impatto stimato
+* soluzione consigliata
+
+Verifica inoltre
+
+* scheduler
+* cron
+* polling
+* websocket
+* websocket heartbeat
+* timers
+* asyncio.create_task()
+* while True
+* setInterval
+* setTimeout
+* BackgroundTasks
+* startup events
+* shutdown events
+
+Controlla anche
+
+Verifica che tutte le chiamate esterne utilizzino:
+
+* timeout
+* retry limitati
+* cache
+* connection pooling
+* keep-alive corretto
+
+Replit Autoscale
+
+Verifica che il progetto possa realmente andare in idle.
+
+Individua qualsiasi elemento che mantenga il container attivo anche quando non arrivano richieste HTTP.
+
+Ottimizzazioni
+
+Per ogni ottimizzazione fornisci:
+
+* codice originale
+* codice corretto
+* spiegazione
+* risparmio stimato di Compute Units
+
+Report finale
+
+Produci una tabella con:
+
+| Priorità | Problema | Compute Units sprecate | Soluzione | Beneficio |
+
+Infine assegna un punteggio da 0 a 100 sull’efficienza del progetto e indica se il consumo attuale è:
+
+* normale;
+* elevato;
+* critico.
+
+Non fermarti alla prima anomalia: analizza l’intero codice sorgente fino a individuare tutte le possibili cause dell’elevato consumo di Compute Units su Replit Autoscale.
