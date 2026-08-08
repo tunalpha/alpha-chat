@@ -1,26 +1,40 @@
 /**
  * multichain-scheduler.ts — Recovery & Expiry Scheduler per il Multi-Chain Payment Engine
  *
- * ═══════════════════════════════════════════════════════════
- *  PRINCIPIO FONDAMENTALE (mai derogare):
- *  MAI inviare una seconda TX se tx_hash_release è già impostato.
- *  Verificare PRIMA lo stato on-chain del txid esistente.
- * ═══════════════════════════════════════════════════════════
+ * ═══════════════════════════════════════════════════════════════════════════
+ *  HARDENING C-2 — REGOLA ASSOLUTA (mai derogare):
+ *  Se tx_hash_release è valorizzato, NON fare mai rollback a pending.
+ *  Questo è vero indipendentemente dalle feature flags.
+ *  Una rete disabilitata → defer (rinova lock), mai cancella stato.
+ * ═══════════════════════════════════════════════════════════════════════════
  *
- * Job:
- *   processStuckMCTransfers()
- *     Trova trasferimenti bloccati in "releasing" o "refunding" con
- *     locked_at > LOCK_STALE_MS (10 min).
- *     - Se tx_hash presente: verifica on-chain → confirmed → mark terminale
- *     - Se tx_hash assente:  rollback a stato precedente per retry
+ *  HARDENING M-2 — SINGLETON GUARD:
+ *  startMultiChainScheduler() è idempotente: una seconda chiamata è ignorata.
+ * ═══════════════════════════════════════════════════════════════════════════
  *
- *   processExpiredMCTransfers()
- *     Trova trasferimenti "awaiting_deposit" con expires_at < now.
- *     Lock → "expired".
+ *  HARDENING H-3 — PENDING EXPIRY:
+ *  processExpiredPendingTransfers() gestisce trasferimenti "pending"
+ *  (depositati ma mai rilasciati) scaduti. Rimborso solo se tx_hash_release:null.
+ * ═══════════════════════════════════════════════════════════════════════════
  *
- *   startMultiChainScheduler()
- *     Passata iniziale all'avvio + setInterval periodici.
- *     Tutti i job sono idempotenti e multi-istanza safe via lock atomico MongoDB.
+ *  Job:
+ *    processStuckReleasingTransfers()
+ *      Trasferimenti bloccati in "releasing" con lock stale (10 min).
+ *      - tx_hash presente: verifica on-chain → confirmed → complete/retry TX2
+ *      - tx_hash assente:  rollback a "pending" per retry
+ *
+ *    processStuckRefundingTransfers()
+ *      Trasferimenti bloccati in "refunding".
+ *
+ *    processExpiredMCTransfers()
+ *      "awaiting_deposit" con expires_at < now → expired.
+ *
+ *    processExpiredPendingTransfers()  [H-3]
+ *      "pending" con expires_at < now + tx_hash_release:null → refund.
+ *
+ *    startMultiChainScheduler()
+ *      Passata iniziale all'avvio + setInterval periodici.
+ *      Singleton guard: seconda chiamata ignorata (M-2).
  *
  * ISOLAMENTO: non tocca ChatTransferModel, usda-custodial.service.ts o altri file USDA.
  */
@@ -32,29 +46,39 @@ import { logger }                   from "../lib/logger";
 
 // ─── Costanti ──────────────────────────────────────────────────────────────────
 
-/** Lock considerato bloccato oltre questo tempo (10 minuti) */
-const LOCK_STALE_MS = 10 * 60 * 1000;
+/** Lock considerato stale oltre 10 minuti */
+const LOCK_STALE_MS = 10 * 60_000;
 
 /** Intervallo recovery (ogni 10 min) */
-const RECOVERY_INTERVAL_MS = 10 * 60 * 1000;
+const RECOVERY_INTERVAL_MS = 10 * 60_000;
 
 /** Intervallo scadenze (ogni 5 min) */
-const EXPIRE_INTERVAL_MS = 5 * 60 * 1000;
+const EXPIRE_INTERVAL_MS = 5 * 60_000;
 
 /** Batch max per passata */
 const BATCH_SIZE = 50;
 
+// ─── Singleton guard (M-2) ─────────────────────────────────────────────────────
+
+let _schedulerStarted = false;
+
 // ─── Recovery: releasing ──────────────────────────────────────────────────────
 
 /**
- * Recupera trasferimenti bloccati in stato "releasing".
+ * Recupera trasferimenti bloccati in "releasing".
+ *
+ * REGOLA C-2: se tx_hash_release è impostato, MAI fare rollback a pending.
+ * Neanche se la feature flag è disabilitata.
  *
  * Logica:
- *   1. Se tx_hash_release esiste → verificare on-chain:
- *      - "confirmed" → mark "released" (la TX è passata, evita doppio invio)
- *      - "pending"   → lasciar stare (ancora in corso)
- *      - "failed"/"unknown" → rollback a "pending" per retry
- *   2. Se tx_hash_release assente → rollback a "pending" (crash prima dell'invio)
+ *   1. tx_hash_release assente → crash pre-TX1 → rollback a "pending" ✓ safe
+ *   2. tx_hash_release presente:
+ *      a. Feature disabilitata → defer (rinova lock), NO rollback [C-2]
+ *      b. Feature abilitata → verifica on-chain
+ *         - confirmed + tx_hash_fee null + fee_wallet → retry TX2 only [C-1 recovery]
+ *         - confirmed + tx_hash_fee set (o no fee_wallet) → mark released
+ *         - pending   → rinova lock (ancora in corso)
+ *         - failed/unknown → rollback a "pending" per retry
  */
 export async function processStuckReleasingTransfers(): Promise<void> {
   const staleThreshold = new Date(Date.now() - LOCK_STALE_MS);
@@ -69,63 +93,92 @@ export async function processStuckReleasingTransfers(): Promise<void> {
 
   for (const doc of stuck) {
     try {
-      if (doc.tx_hash_release) {
-        // TX già inviata — verificare on-chain PRIMA di qualsiasi azione
-        const featureEnabled = _isEnabled(doc.network as any);
-        if (!featureEnabled) {
-          // Feature disabilitata: non possiamo verificare — rollback sicuro
-          await _rollbackToStatus(doc.transfer_id, "releasing", "pending");
-          continue;
-        }
+      if (!doc.tx_hash_release) {
+        // Caso 1: crash prima di TX1 — rollback sicuro
+        await _rollbackToStatus(doc.transfer_id, "releasing", "pending");
+        logger.info(
+          { transferId: doc.transfer_id },
+          "[MCScheduler] tx_hash_release assente → rollback a pending (crash pre-TX1)",
+        );
+        continue;
+      }
 
-        let txStatus: "confirmed" | "pending" | "failed" | "unknown";
-        try {
-          const adapter = adapterRegistry.get(doc.network as any);
-          txStatus = await adapter.getTransactionStatus(doc.tx_hash_release);
-        } catch {
-          txStatus = "unknown";
-        }
+      // Caso 2: tx_hash_release impostato — TX1 già inviata
+      // C-2: NON fare rollback indipendentemente dalla feature flag
 
-        if (txStatus === "confirmed") {
-          // TX confermata — mark released (idempotente)
+      const featureEnabled = _isEnabled(doc.network as any);
+      if (!featureEnabled) {
+        // C-2 FIX: rete disabilitata MA tx_hash_release presente → defer, mai rollback
+        // Rinova locked_at per evitare ripetizioni frequenti, ma preserva lo stato.
+        await MultiChainTransferModel.findOneAndUpdate(
+          { transfer_id: doc.transfer_id, status: "releasing" },
+          { $set: { locked_at: new Date() } },
+        );
+        logger.warn(
+          { transferId: doc.transfer_id, network: doc.network, txHash: doc.tx_hash_release },
+          "[MCScheduler] C-2: rete disabilitata ma tx_hash_release set — defer senza rollback",
+        );
+        continue;
+      }
+
+      // Verifica stato on-chain di TX1
+      let txStatus: "confirmed" | "pending" | "failed" | "unknown";
+      try {
+        const adapter = adapterRegistry.get(doc.network as any);
+        txStatus = await adapter.getTransactionStatus(doc.tx_hash_release);
+      } catch {
+        txStatus = "unknown";
+      }
+
+      if (txStatus === "confirmed") {
+        // TX1 confermata — determina se TX2 (fee) è ancora da inviare
+        const isBtcNetwork = doc.network === "bitcoin";
+        const needsFeeTx = (
+          !isBtcNetwork &&
+          !!doc.fee_wallet &&
+          !doc.tx_hash_fee &&
+          BigInt(doc.project_fee) > 0n
+        );
+
+        if (needsFeeTx) {
+          // Stato parziale EVM (C-1 recovery): TX1 confermata, TX2 non ancora inviata
+          logger.info(
+            { transferId: doc.transfer_id, tx1: doc.tx_hash_release },
+            "[MCScheduler] C-1 recovery: TX1 confermata, retry TX2 (fee)",
+          );
+          const { retryEVMFeeTx } = await import("./multichain-payment.service");
+          await retryEVMFeeTx(doc.transfer_id);
+        } else {
+          // Completo (BTC, EVM senza fee wallet, o entrambe le TX già fatte)
           await MultiChainTransferModel.findOneAndUpdate(
             { transfer_id: doc.transfer_id, status: "releasing" },
-            {
-              $set: {
-                status:       "released",
-                completed_at: new Date(),
-                locked_at:    null,
-              },
-            },
+            { $set: { status: "released", completed_at: new Date(), locked_at: null } },
           );
           logger.info(
             { transferId: doc.transfer_id, txHash: doc.tx_hash_release },
             "[MCScheduler] TX confermata on-chain → released",
           );
-        } else if (txStatus === "pending") {
-          // TX ancora in mempool — prolungare il lock_at per evitare falsi allarmi
-          await MultiChainTransferModel.findOneAndUpdate(
-            { transfer_id: doc.transfer_id, status: "releasing" },
-            { $set: { locked_at: new Date() } },
-          );
-          logger.debug(
-            { transferId: doc.transfer_id, txHash: doc.tx_hash_release },
-            "[MCScheduler] TX ancora pending — lock rinnovato",
-          );
-        } else {
-          // TX fallita o sconosciuta — rollback a pending per retry
-          await _rollbackToStatus(doc.transfer_id, "releasing", "pending");
-          logger.warn(
-            { transferId: doc.transfer_id, txHash: doc.tx_hash_release, txStatus },
-            "[MCScheduler] TX fallita → rollback a pending",
-          );
         }
+      } else if (txStatus === "pending") {
+        // TX ancora in mempool — rinova lock per evitare falsi allarmi
+        await MultiChainTransferModel.findOneAndUpdate(
+          { transfer_id: doc.transfer_id, status: "releasing" },
+          { $set: { locked_at: new Date() } },
+        );
+        logger.debug(
+          { transferId: doc.transfer_id, txHash: doc.tx_hash_release },
+          "[MCScheduler] TX1 ancora pending — lock rinnovato",
+        );
       } else {
-        // Nessuna TX inviata — crash pre-invio → rollback sicuro
+        // TX1 fallita o sconosciuta.
+        // tx_hash_release è impostato ma la TX non risulta on-chain.
+        // NOTA: questo è un caso ambiguo per BTC (broadcast timeout).
+        // Rollback a pending per permettere retry dal service.
+        // Il service userà broadcastTxSafe che verificherà il txid prima di ri-broadcastare.
         await _rollbackToStatus(doc.transfer_id, "releasing", "pending");
-        logger.info(
-          { transferId: doc.transfer_id },
-          "[MCScheduler] Nessuna TX inviata → rollback a pending",
+        logger.warn(
+          { transferId: doc.transfer_id, txHash: doc.tx_hash_release, txStatus },
+          "[MCScheduler] TX1 failed/unknown → rollback a pending per retry",
         );
       }
     } catch (err) {
@@ -137,8 +190,9 @@ export async function processStuckReleasingTransfers(): Promise<void> {
 // ─── Recovery: refunding ──────────────────────────────────────────────────────
 
 /**
- * Recupera trasferimenti bloccati in stato "refunding".
- * Stessa logica di releasing ma per tx_hash_refund.
+ * Recupera trasferimenti bloccati in "refunding".
+ *
+ * C-2 applicata anche qui: se tx_hash_refund impostato + rete disabilitata → defer.
  */
 export async function processStuckRefundingTransfers(): Promise<void> {
   const staleThreshold = new Date(Date.now() - LOCK_STALE_MS);
@@ -153,45 +207,54 @@ export async function processStuckRefundingTransfers(): Promise<void> {
 
   for (const doc of stuck) {
     try {
-      if (doc.tx_hash_refund) {
-        const featureEnabled = _isEnabled(doc.network as any);
-        let txStatus: "confirmed" | "pending" | "failed" | "unknown" = "unknown";
+      if (!doc.tx_hash_refund) {
+        // Nessuna TX inviata — rollback a pending
+        await _rollbackToStatus(doc.transfer_id, "refunding", "pending");
+        logger.info({ transferId: doc.transfer_id }, "[MCScheduler] Nessuna refund TX → rollback a pending");
+        continue;
+      }
 
-        if (featureEnabled) {
-          try {
-            const adapter = adapterRegistry.get(doc.network as any);
-            txStatus = await adapter.getTransactionStatus(doc.tx_hash_refund);
-          } catch {
-            txStatus = "unknown";
-          }
-        }
+      const featureEnabled = _isEnabled(doc.network as any);
+      if (!featureEnabled) {
+        // C-2: tx_hash_refund presente + rete disabilitata → defer
+        await MultiChainTransferModel.findOneAndUpdate(
+          { transfer_id: doc.transfer_id, status: "refunding" },
+          { $set: { locked_at: new Date() } },
+        );
+        logger.warn(
+          { transferId: doc.transfer_id, network: doc.network },
+          "[MCScheduler] C-2: rete disabilitata ma tx_hash_refund set — defer",
+        );
+        continue;
+      }
 
-        if (txStatus === "confirmed") {
-          await MultiChainTransferModel.findOneAndUpdate(
-            { transfer_id: doc.transfer_id, status: "refunding" },
-            { $set: { status: "refunded", completed_at: new Date(), locked_at: null } },
-          );
-          logger.info(
-            { transferId: doc.transfer_id, txHash: doc.tx_hash_refund },
-            "[MCScheduler] Refund TX confermata → refunded",
-          );
-        } else if (txStatus === "pending") {
-          await MultiChainTransferModel.findOneAndUpdate(
-            { transfer_id: doc.transfer_id, status: "refunding" },
-            { $set: { locked_at: new Date() } },
-          );
-        } else {
-          await _rollbackToStatus(doc.transfer_id, "refunding", "pending");
-          logger.warn(
-            { transferId: doc.transfer_id, txHash: doc.tx_hash_refund, txStatus },
-            "[MCScheduler] Refund TX fallita → rollback a pending",
-          );
-        }
+      let txStatus: "confirmed" | "pending" | "failed" | "unknown" = "unknown";
+      try {
+        const adapter = adapterRegistry.get(doc.network as any);
+        txStatus = await adapter.getTransactionStatus(doc.tx_hash_refund);
+      } catch {
+        txStatus = "unknown";
+      }
+
+      if (txStatus === "confirmed") {
+        await MultiChainTransferModel.findOneAndUpdate(
+          { transfer_id: doc.transfer_id, status: "refunding" },
+          { $set: { status: "refunded", completed_at: new Date(), locked_at: null } },
+        );
+        logger.info(
+          { transferId: doc.transfer_id, txHash: doc.tx_hash_refund },
+          "[MCScheduler] Refund TX confermata → refunded",
+        );
+      } else if (txStatus === "pending") {
+        await MultiChainTransferModel.findOneAndUpdate(
+          { transfer_id: doc.transfer_id, status: "refunding" },
+          { $set: { locked_at: new Date() } },
+        );
       } else {
         await _rollbackToStatus(doc.transfer_id, "refunding", "pending");
-        logger.info(
-          { transferId: doc.transfer_id },
-          "[MCScheduler] Nessuna refund TX → rollback a pending",
+        logger.warn(
+          { transferId: doc.transfer_id, txHash: doc.tx_hash_refund, txStatus },
+          "[MCScheduler] Refund TX failed → rollback a pending",
         );
       }
     } catch (err) {
@@ -200,11 +263,10 @@ export async function processStuckRefundingTransfers(): Promise<void> {
   }
 }
 
-// ─── Expiry ───────────────────────────────────────────────────────────────────
+// ─── Expiry: awaiting_deposit ─────────────────────────────────────────────────
 
 /**
- * Marca "expired" i trasferimenti awaiting_deposit con expires_at < now.
- * Lock atomico — safe in multi-istanza.
+ * Marca "expired" i trasferimenti awaiting_deposit scaduti.
  */
 export async function processExpiredMCTransfers(): Promise<void> {
   const now = new Date();
@@ -215,7 +277,7 @@ export async function processExpiredMCTransfers(): Promise<void> {
   }).limit(BATCH_SIZE).lean();
 
   if (expired.length === 0) return;
-  logger.info({ count: expired.length }, "[MCScheduler] Transfer in scadenza");
+  logger.info({ count: expired.length }, "[MCScheduler] Transfer awaiting_deposit scaduti");
 
   for (const doc of expired) {
     try {
@@ -227,7 +289,58 @@ export async function processExpiredMCTransfers(): Promise<void> {
         logger.info({ transferId: doc.transfer_id }, "[MCScheduler] Transfer → expired");
       }
     } catch (err) {
-      logger.error({ err, transferId: doc.transfer_id }, "[MCScheduler] Errore expiry");
+      logger.error({ err, transferId: doc.transfer_id }, "[MCScheduler] Errore expiry awaiting_deposit");
+    }
+  }
+}
+
+// ─── Expiry: pending (H-3) ────────────────────────────────────────────────────
+
+/**
+ * H-3: Gestisce trasferimenti "pending" scaduti.
+ *
+ * Un transfer passa a "pending" quando il deposito è rilevato. Se il release
+ * non avviene entro expires_at, i fondi restano nell'escrow indefinitamente.
+ *
+ * Condizioni di sicurezza (non fare mai doppio payout):
+ *   - tx_hash_release:null → nessun payout inviato → rimborso sicuro
+ *   - tx_hash_fee:null     → idem (coerente con il precedente per EVM)
+ *
+ * Delega il rimborso a refundMultiChainTransfer() che acquisisce il lock atomico.
+ */
+export async function processExpiredPendingTransfers(): Promise<void> {
+  const now = new Date();
+
+  // Cerca transfer pending scaduti senza alcuna TX di payout
+  const expired = await MultiChainTransferModel.find({
+    status:          "pending",
+    expires_at:      { $lt: now },
+    tx_hash_release: null, // nessun payout mai inviato
+    tx_hash_fee:     null,
+  }).limit(BATCH_SIZE).lean();
+
+  if (expired.length === 0) return;
+  logger.info({ count: expired.length }, "[MCScheduler] H-3: Transfer pending scaduti — avvio rimborso");
+
+  for (const doc of expired) {
+    try {
+      logger.info(
+        { transferId: doc.transfer_id, expiresAt: doc.expires_at, network: doc.network },
+        "[MCScheduler] H-3: rimborso transfer pending scaduto",
+      );
+      // Il service acquisisce il lock da "pending" → "refunding" in modo atomico.
+      // La condizione del service include un controllo on-chain del saldo.
+      const { refundMultiChainTransfer } = await import("./multichain-payment.service");
+      await refundMultiChainTransfer(doc.transfer_id);
+      logger.info(
+        { transferId: doc.transfer_id },
+        "[MCScheduler] H-3: rimborso completato",
+      );
+    } catch (err) {
+      logger.error(
+        { err, transferId: doc.transfer_id },
+        "[MCScheduler] H-3: errore rimborso pending scaduto — riproverà al prossimo ciclo",
+      );
     }
   }
 }
@@ -236,31 +349,42 @@ export async function processExpiredMCTransfers(): Promise<void> {
 
 /**
  * Avvia il Multi-Chain scheduler.
- * Passata iniziale immediata + setInterval periodici.
- * Non blocca il boot: tutti i job sono fire-and-forget.
+ *
+ * M-2 SINGLETON GUARD: una seconda chiamata è ignorata silenziosamente.
+ * Questo previene interval multipli in caso di hot-reload o chiamate duplicate.
  */
 export function startMultiChainScheduler(): void {
-  // Passata iniziale
+  // M-2: singleton guard
+  if (_schedulerStarted) {
+    logger.warn("[MCScheduler] startMultiChainScheduler() chiamata più volte — ignorata (M-2 singleton)");
+    return;
+  }
+  _schedulerStarted = true;
+
+  // Passata iniziale all'avvio (fire-and-forget)
   void _runAll();
 
-  // Recovery ogni 10 min
+  // Recovery stuck releasing/refunding — ogni 10 min
   setInterval(() => {
     void processStuckReleasingTransfers();
     void processStuckRefundingTransfers();
   }, RECOVERY_INTERVAL_MS).unref();
 
-  // Expiry ogni 5 min
+  // Expiry awaiting_deposit + pending — ogni 5 min
   setInterval(() => {
     void processExpiredMCTransfers();
+    void processExpiredPendingTransfers();
   }, EXPIRE_INTERVAL_MS).unref();
 
   logger.info(
-    {
-      recoveryIntervalMs: RECOVERY_INTERVAL_MS,
-      expireIntervalMs:   EXPIRE_INTERVAL_MS,
-    },
-    "[MCScheduler] Multi-Chain scheduler avviato",
+    { recoveryIntervalMs: RECOVERY_INTERVAL_MS, expireIntervalMs: EXPIRE_INTERVAL_MS },
+    "[MCScheduler] Multi-Chain scheduler avviato (M-2 singleton)",
   );
+}
+
+/** Esposta per i test — resetta il singleton guard */
+export function _resetSchedulerForTesting(): void {
+  _schedulerStarted = false;
 }
 
 // ─── Helpers privati ──────────────────────────────────────────────────────────
@@ -270,6 +394,7 @@ async function _runAll(): Promise<void> {
     processStuckReleasingTransfers(),
     processStuckRefundingTransfers(),
     processExpiredMCTransfers(),
+    processExpiredPendingTransfers(),
   ]);
 }
 

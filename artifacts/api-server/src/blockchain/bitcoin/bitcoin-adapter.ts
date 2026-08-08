@@ -151,7 +151,8 @@ export class BitcoinAdapter implements BlockchainAdapter {
     const selection = sel({ utxos, outputs, feeRateSatVb: feeRate, changeAddress: escrowAddress });
 
     const signed = buildAndSignTx({ signerPkBytes: pkBytes, selection, outputs, changeAddress: escrowAddress });
-    const txid   = await this.api.broadcastTx(signed.rawHex);
+    // H-2: usa broadcastTxSafe — mai duplicare una TX già accettata
+    const txid   = await this.api.broadcastTxSafe(signed.rawHex, signed.txid);
 
     logger.info({ txid, to: params.to, amount: params.amount.toString() }, "[BitcoinAdapter] sendNative OK");
     return { txHash: txid, networkFee: selection.estimatedFee };
@@ -269,8 +270,8 @@ export class BitcoinAdapter implements BlockchainAdapter {
       changeAddress: params.escrowAddress,
     });
 
-    // Broadcast
-    const txid = await this.api.broadcastTx(signed.rawHex);
+    // H-2: broadcastTxSafe — lookup pre/post broadcast per evitare TX duplicate su timeout/5xx
+    const txid = await this.api.broadcastTxSafe(signed.rawHex, signed.txid);
 
     logger.info(
       { txid, netAmount: params.netAmount.toString(), projectFee: params.projectFee.toString(), minerFee: selection.estimatedFee.toString() },

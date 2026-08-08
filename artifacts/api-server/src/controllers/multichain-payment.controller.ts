@@ -22,7 +22,7 @@ import {
   getMultiChainTransfer,
   findByClientRef,
 } from "../payment/multichain-payment.service";
-import { FEATURE_FLAGS, FEE_WALLETS, TOKEN_CONTRACTS } from "../blockchain/multichain-config";
+import { FEATURE_FLAGS } from "../blockchain/multichain-config";
 import { AppError } from "../errors/AppError";
 
 // ─── GET /multichain/config ───────────────────────────────────────────────────
@@ -33,52 +33,16 @@ export async function getMultiChainConfig(
   next: NextFunction,
 ): Promise<void> {
   try {
+    // M-6: espone solo i dati necessari al frontend.
+    // Rimossi: fee wallet addresses, token contract addresses (non necessari al client).
     res.json({
-      featureFlags:    FEATURE_FLAGS,
       supportedAssets: [
-        {
-          network: "polygon",
-          asset:   "USDT",
-          enabled: FEATURE_FLAGS.ENABLE_POLYGON_USDT,
-          contract: TOKEN_CONTRACTS.polygon.USDT,
-          decimals: 6,
-        },
-        {
-          network: "polygon",
-          asset:   "USDA",
-          enabled: FEATURE_FLAGS.ENABLE_POLYGON_USDT, // same flag for now
-          contract: TOKEN_CONTRACTS.polygon.USDA,
-          decimals: 18,
-        },
-        {
-          network: "ethereum",
-          asset:   "USDT",
-          enabled: FEATURE_FLAGS.ENABLE_ETHEREUM_USDT,
-          contract: TOKEN_CONTRACTS.ethereum.USDT,
-          decimals: 6,
-        },
-        {
-          network: "bsc",
-          asset:   "USDT",
-          enabled: FEATURE_FLAGS.ENABLE_BSC_USDT,
-          contract: TOKEN_CONTRACTS.bsc.USDT,
-          decimals: 18,
-        },
-        {
-          network: "bitcoin",
-          asset:   "BTC",
-          enabled: FEATURE_FLAGS.ENABLE_BITCOIN,
-          contract: "native",
-          decimals: 8,
-        },
+        { network: "polygon",  asset: "USDT", enabled: FEATURE_FLAGS.ENABLE_POLYGON_USDT,  decimals: 6  },
+        { network: "polygon",  asset: "USDA", enabled: FEATURE_FLAGS.ENABLE_POLYGON_USDT,  decimals: 18 },
+        { network: "ethereum", asset: "USDT", enabled: FEATURE_FLAGS.ENABLE_ETHEREUM_USDT, decimals: 6  },
+        { network: "bsc",      asset: "USDT", enabled: FEATURE_FLAGS.ENABLE_BSC_USDT,      decimals: 18 },
+        { network: "bitcoin",  asset: "BTC",  enabled: FEATURE_FLAGS.ENABLE_BITCOIN,       decimals: 8  },
       ],
-      // Espone solo indirizzi pubblici — mai private key
-      feeWallets: {
-        polygon:  FEE_WALLETS.polygon,
-        ethereum: FEE_WALLETS.ethereum,
-        bsc:      FEE_WALLETS.bsc,
-        bitcoin:  FEE_WALLETS.bitcoin,
-      },
     });
   } catch (err) {
     next(err);

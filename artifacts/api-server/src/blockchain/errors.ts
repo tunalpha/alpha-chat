@@ -24,7 +24,8 @@ export type MultichainErrorCode =
   | "UTXO_LOCKED"               // UTXO Bitcoin già usato/locked
   | "FEE_CALCULATION_ERROR"     // errore nel calcolo fee
   | "ADAPTER_NOT_FOUND"         // nessun adapter registrato per questo networkId
-  | "FEATURE_DISABLED";         // feature flag disabilitato per questa rete
+  | "FEATURE_DISABLED"          // feature flag disabilitato per questa rete
+  | "BTC_PROJECT_FEE_BELOW_DUST"; // project fee BTC < dust threshold (546 sat) — rifiuta il transfer
 
 // ─── HTTP status map ──────────────────────────────────────────────────────────
 
@@ -42,8 +43,9 @@ const STATUS_MAP: Record<MultichainErrorCode, number> = {
   DUPLICATE_TRANSACTION:   409,
   UTXO_LOCKED:             409,
   FEE_CALCULATION_ERROR:   500,
-  ADAPTER_NOT_FOUND:       501,
-  FEATURE_DISABLED:        501,
+  ADAPTER_NOT_FOUND:            501,
+  FEATURE_DISABLED:             501,
+  BTC_PROJECT_FEE_BELOW_DUST:   422,
 };
 
 // ─── Factory ──────────────────────────────────────────────────────────────────

@@ -15,13 +15,17 @@
 import { Router, type Request, type Response, type NextFunction } from "express";
 import { MultiChainTransferModel } from "../../models/multichain-transfer.model";
 import { authenticate }            from "../../middleware/authenticate.middleware";
+import { requireAdmin }            from "../../middleware/require-admin.middleware";
 import { logger }                  from "../../lib/logger";
 
 const router = Router();
 
 // ─── Middleware ────────────────────────────────────────────────────────────────
 
+// H-1: richiede JWT valido + ruolo admin (minimo read_only)
+// unauthenticated → 401 | non-admin → 403 | admin ✓ → 200
 router.use(authenticate);
+router.use(requireAdmin("read_only"));
 
 // ─── GET /transfers ───────────────────────────────────────────────────────────
 

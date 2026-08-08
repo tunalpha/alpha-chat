@@ -1,29 +1,32 @@
 /**
  * multichain-payment.service.ts — Multi-Chain Payment Engine
  *
- * Service per pagamenti P2P multi-chain con commissione 0.10%.
+ * ═══════════════════════════════════════════════════════════════════════════
+ *  HARDENING C-1 — EVM DOUBLE-PAY FIX
+ * ═══════════════════════════════════════════════════════════════════════════
+ *  EVM release usa 2 TX separate. Per impedire doppio pagamento al destinatario:
  *
- * Supporto corrente: Polygon USDT, Bitcoin BTC (feature-flagged)
- * Supporto futuro:   Ethereum USDT, BSC USDT (feature-flagged)
+ *    TX1 (netAmount → recipient)
+ *      ↓ IMMEDIATE DB PERSIST tx_hash_release
+ *    TX2 (projectFee → feeWallet)
+ *      ↓ FINAL DB UPDATE status=released
  *
- * ═══════════════════════════════════════════════════════
- *  BTC vs EVM — differenza fondamentale
- * ═══════════════════════════════════════════════════════
- *  EVM: saldo in token ERC-20, gas pagato da gas wallet separato.
- *       Release = 2 TX distinte: netAmount → recipient, projectFee → feeWallet.
+ *  Il catch/rollback ha condizione { tx_hash_release: null }:
+ *    - TX1 non inviata → tx_hash_release è null → rollback a pending ✓ safe
+ *    - TX1 inviata     → tx_hash_release SET    → rollback non esegue ✓ no double-pay
  *
- *  BTC: saldo in UTXO nativi, miner fee pagata dall'UTXO stesso.
- *       Release = 1 TX unica multi-output: recipient + feeWallet + change.
- *       La miner fee è detratta dal saldo UTXO automaticamente.
+ *  Lo scheduler vede { status:"releasing", tx_hash_release:SET, tx_hash_fee:null }
+ *  e chiama retryEVMFeeTx() per inviare solo TX2.
+ * ═══════════════════════════════════════════════════════════════════════════
  *
- *  Questa distinzione è cruciale per:
- *    - detectDeposit: getBalance (BTC) vs getTokenBalance (EVM)
- *    - releaseTransfer: buildAndBroadcastPayout (BTC) vs sendToken×2 (EVM)
- *    - refundTransfer: sendNative (BTC) vs sendToken (EVM)
- *    - createTransfer: minDepositAmount per BTC (include buffer miner fee)
- * ═══════════════════════════════════════════════════════
+ *  HARDENING M-1 — BTC DUST FEE
+ * ═══════════════════════════════════════════════════════════════════════════
+ *  Se projectFee BTC < 546 sat (dust threshold), rifiuta il transfer in
+ *  fase di creazione con BTC_PROJECT_FEE_BELOW_DUST (422).
+ *  Così projectFee ≠ networkFee — mai confuse, mai perse silenziosamente.
+ * ═══════════════════════════════════════════════════════════════════════════
  *
- * ISOLAMENTO: Non modifica USDA, chat_transfers, usda-custodial.service.ts.
+ *  ISOLAMENTO: Non modifica USDA, chat_transfers, usda-custodial.service.ts.
  */
 
 import { randomUUID } from "crypto";
@@ -36,7 +39,13 @@ import {
   type MCAssetSymbol,
 } from "../models/multichain-transfer.model";
 import { adapterRegistry }          from "../blockchain/adapter-registry";
-import { FEATURE_FLAGS, TOKEN_CONTRACTS, TOKEN_DECIMALS, buildDefaultFeeRegistry } from "../blockchain/multichain-config";
+import {
+  FEATURE_FLAGS,
+  TOKEN_CONTRACTS,
+  TOKEN_DECIMALS,
+  buildDefaultFeeRegistry,
+  BTC_FEE_CONFIG,
+} from "../blockchain/multichain-config";
 import { calculateFee, assertFeeInvariant } from "../blockchain/fee-config";
 import { generateEscrowWallet, decryptEscrowKeyHex } from "../blockchain/escrow-crypto";
 import { multichainError }          from "../blockchain/errors";
@@ -50,52 +59,53 @@ const feeRegistry = buildDefaultFeeRegistry();
 
 // ─── Constants ─────────────────────────────────────────────────────────────────
 
-/** Fee rate conservativo per stima miner fee BTC (sat/vbyte) */
-const BTC_CONSERVATIVE_FEE_RATE = 20;
-
-/** Buffer di sicurezza per la miner fee BTC (satoshi) */
-const BTC_MINER_FEE_BUFFER_SAT = 2_000n;
+/**
+ * Dust threshold Bitcoin in satoshi.
+ * Un output sotto questa soglia viene rifiutato dai nodi come "non-standard".
+ * M-1: projectFee BTC < DUST → rifiutare il transfer, non silenziarlo.
+ */
+const BTC_DUST_THRESHOLD_SAT = 546n;
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
 export interface CreateMultiChainTransferParams {
-  senderId:       string;
-  recipientId:    string;
-  conversationId: string;
-  senderWallet:   string;
+  senderId:        string;
+  recipientId:     string;
+  conversationId:  string;
+  senderWallet:    string;
   recipientWallet: string;
-  network:        MCNetworkId;
-  asset:          MCAssetSymbol;
+  network:         MCNetworkId;
+  asset:           MCAssetSymbol;
   /** Importo lordo in base units (BigInt come stringa) */
   grossAmountUnits: string;
-  /** Chiave idempotenza — usare UUID generato dal client */
-  clientRef:      string;
+  /** Chiave idempotenza — UUID generato dal client */
+  clientRef:       string;
   /** Scadenza in ore (default: 24) */
   expiresInHours?: number;
 }
 
 export interface MultiChainTransferInfo {
-  transferId:        string;
-  clientRef:         string;
-  escrowWallet:      string;
-  network:           MCNetworkId;
-  asset:             MCAssetSymbol;
-  grossAmount:       string;
-  projectFee:        string;
-  netAmount:         string;
-  feeBps:            number;
-  feeWallet:         string | null;
-  status:            MultiChainTransferStatus;
-  expiresAt:         Date;
-  txHashDeposit:     string | null;
-  txHashRelease:     string | null;
-  txHashFee:         string | null;
+  transferId:       string;
+  clientRef:        string;
+  escrowWallet:     string;
+  network:          MCNetworkId;
+  asset:            MCAssetSymbol;
+  grossAmount:      string;
+  projectFee:       string;
+  netAmount:        string;
+  feeBps:           number;
+  feeWallet:        string | null;
+  status:           MultiChainTransferStatus;
+  expiresAt:        Date;
+  txHashDeposit:    string | null;
+  txHashRelease:    string | null;
+  txHashFee:        string | null;
   /**
-   * Solo per Bitcoin: importo minimo che il mittente deve depositare
-   * nell'escrow (= grossAmount + estimatedMinerFee + buffer).
-   * Null per chain EVM (gas pagato separatamente).
+   * Solo per Bitcoin: importo minimo che il mittente deve depositare.
+   * = grossAmount + estimatedMinerFee@BTC_FEE_CONFIG.ESTIMATE_RATE + buffer.
+   * Null per chain EVM (gas pagato separatamente dal gas wallet).
    */
-  minDepositAmount:  string | null;
+  minDepositAmount: string | null;
 }
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
@@ -128,13 +138,12 @@ function getAssetAddress(network: MCNetworkId, asset: MCAssetSymbol): string {
   }
   if (network === "ethereum" && asset === "USDT") return TOKEN_CONTRACTS.ethereum.USDT;
   if (network === "bsc"      && asset === "USDT") return TOKEN_CONTRACTS.bsc.USDT;
-  // Bitcoin non ha asset_address (native)
   if (network === "bitcoin"  && asset === "BTC")  return "native";
   throw multichainError("INVALID_ASSET", { network, asset });
 }
 
 function getDecimals(network: MCNetworkId, asset: MCAssetSymbol): number {
-  if (network === "bitcoin") return 8; // satoshi
+  if (network === "bitcoin") return 8;
   const address = getAssetAddress(network, asset);
   return TOKEN_DECIMALS[address.toLowerCase()] ?? 18;
 }
@@ -154,8 +163,8 @@ function assertFeatureEnabled(network: MCNetworkId, asset: MCAssetSymbol): void 
   }
 }
 
-/** True se la chain usa UTXO nativo (Bitcoin) — false se EVM (ERC-20) */
-function isBitcoin(network: MCNetworkId): boolean {
+/** True se la chain usa UTXO nativo (Bitcoin) */
+export function isBitcoin(network: MCNetworkId): boolean {
   return network === "bitcoin";
 }
 
@@ -182,26 +191,19 @@ async function acquireMCLock(
 // ─── Bitcoin minimum deposit estimation ────────────────────────────────────────
 
 /**
- * Per Bitcoin: calcola il deposito minimo richiesto nell'escrow.
+ * Stima il deposito minimo BTC richiesto nell'escrow.
+ * Usa BTC_FEE_CONFIG.ESTIMATE_RATE (configurabile via env) per la stima.
  *
  * Formula:
- *   minDeposit = grossAmount + estimatedMinerFee + buffer
+ *   minDeposit = grossAmount + estimatedMinerFee + BTC_FEE_CONFIG.BUFFER_SAT
  *
- * La miner fee è stimata per una TX tipica (1 input, 3 output) al tasso
- * conservativo di BTC_CONSERVATIVE_FEE_RATE sat/vbyte.
- *
- * Nota: il `grossAmount` del mittente è già stato diviso in
- * netAmount (99.90%) + projectFee (0.10%) = grossAmount.
- * La miner fee è un COSTO AGGIUNTIVO dedotto dall'UTXO dell'escrow,
- * quindi il mittente deve depositare più del grossAmount.
+ * La miner fee è stimata per: 1 input, 3 output (recipient + feeWallet + change).
  */
 async function estimateBtcMinDeposit(grossAmount: bigint): Promise<string> {
   const { estimateTxVbytes, calcMinerFee } = await import("../blockchain/bitcoin/bitcoin-utxo");
-  // Tipica TX BTC: 1 input (dall'escrow), 3 output (recipient + feeWallet + change)
   const vbytes    = estimateTxVbytes(1, 3);
-  const minerFee  = calcMinerFee(vbytes, BTC_CONSERVATIVE_FEE_RATE);
-  const minDeposit = grossAmount + minerFee + BTC_MINER_FEE_BUFFER_SAT;
-  return minDeposit.toString();
+  const minerFee  = calcMinerFee(vbytes, BTC_FEE_CONFIG.ESTIMATE_RATE);
+  return (grossAmount + minerFee + BTC_FEE_CONFIG.BUFFER_SAT).toString();
 }
 
 // ─── Service functions ─────────────────────────────────────────────────────────
@@ -209,9 +211,8 @@ async function estimateBtcMinDeposit(grossAmount: bigint): Promise<string> {
 /**
  * Crea un trasferimento multi-chain.
  *
- * Calcola project fee (0.10%), genera wallet escrow, persiste in DB.
- * Restituisce l'indirizzo escrow a cui il mittente deve inviare i fondi.
- * Per Bitcoin: include `minDepositAmount` per garantire copertura della miner fee.
+ * M-1: per Bitcoin, rifiuta se projectFee < 546 sat (dust threshold).
+ * Questo garantisce che projectFee ≠ networkFee e non viene mai persa silenziosamente.
  */
 export async function createMultiChainTransfer(
   params: CreateMultiChainTransferParams,
@@ -227,10 +228,23 @@ export async function createMultiChainTransfer(
   const feeResult = calculateFee(grossAmount, feeConfig.feeBps, feeConfig.feeWallet);
   assertFeeInvariant(feeResult);
 
+  // M-1: Dust check per Bitcoin
+  // projectFee < 546 sat non può essere un output P2WPKH valido.
+  // Rifiutiamo qui (creazione) invece di perdere la fee silenziosamente al release.
+  if (isBitcoin(params.network) && feeResult.projectFee < BTC_DUST_THRESHOLD_SAT) {
+    throw multichainError("BTC_PROJECT_FEE_BELOW_DUST", {
+      projectFee:     feeResult.projectFee.toString(),
+      dustThreshold:  BTC_DUST_THRESHOLD_SAT.toString(),
+      grossAmount:    grossAmount.toString(),
+      hint:           `Aumenta grossAmountUnits oppure riduci la fee rate. ` +
+                      `projectFee minima: ${BTC_DUST_THRESHOLD_SAT} sat`,
+    });
+  }
+
   // Wallet escrow
   const escrow = generateEscrowWallet();
 
-  // Deposito minimo (solo BTC — EVM ha gas wallet separato)
+  // Deposito minimo per BTC (include buffer miner fee)
   const minDepositAmount = isBitcoin(params.network)
     ? await estimateBtcMinDeposit(grossAmount)
     : null;
@@ -292,10 +306,8 @@ export async function createMultiChainTransfer(
 /**
  * Rileva il deposito on-chain nel wallet escrow.
  *
- * EVM: controlla saldo token ERC-20 via getTokenBalance.
- * BTC: controlla saldo UTXO nativo via getBalance.
- *      Confronta con minDepositAmount (se disponibile) per garantire
- *      che ci sia abbastanza per coprire anche la miner fee.
+ * BTC: controlla saldo UTXO nativo (getBalance) vs minDepositAmount.
+ * EVM: controlla saldo token ERC-20 (getTokenBalance) vs grossAmount.
  */
 export async function detectMultiChainDeposit(transferId: string): Promise<MultiChainTransferInfo> {
   const doc = await MultiChainTransferModel.findOne({ transfer_id: transferId });
@@ -306,25 +318,19 @@ export async function detectMultiChainDeposit(transferId: string): Promise<Multi
 
   const adapter = adapterRegistry.get(doc.network);
 
-  // BTC: saldo nativo; EVM: saldo token ERC-20
   const balance = isBitcoin(doc.network)
     ? await adapter.getBalance(doc.escrow_wallet)
     : await adapter.getTokenBalance(doc.asset_address, doc.escrow_wallet);
 
-  // Soglia: per BTC usa minDepositAmount (garantisce copertura miner fee);
-  // per EVM usa grossAmount.
+  // BTC: usa minDepositAmount (include buffer miner fee)
+  // EVM: usa grossAmount (gas pagato separatamente)
   const required = isBitcoin(doc.network) && doc.min_deposit_amount
     ? BigInt(doc.min_deposit_amount)
     : BigInt(doc.gross_amount);
 
   if (balance < required) {
     logger.debug(
-      {
-        transferId,
-        balance:  balance.toString(),
-        required: required.toString(),
-        network:  doc.network,
-      },
+      { transferId, balance: balance.toString(), required: required.toString(), network: doc.network },
       "[MCPayment] Deposito insufficiente — in attesa",
     );
     return toInfo(doc);
@@ -349,11 +355,13 @@ export async function detectMultiChainDeposit(transferId: string): Promise<Multi
 /**
  * Rilascia il trasferimento.
  *
- * EVM: 2 TX separate (netAmount → recipient, projectFee → feeWallet).
- * BTC: 1 TX unica multi-output (recipient + feeWallet + change, miner fee dedotta dall'UTXO).
- *      ATOMICA — nessun rischio di inviare metà dei fondi.
+ * EVM — 2 TX con persistenza progressiva (C-1 fix):
+ *   TX1 → recipient  →  PERSIST tx_hash_release  →  TX2 → feeWallet  →  FINAL released
+ *   Se TX2 fallisce: tx_hash_release è già in DB → il catch non fa rollback.
+ *   Lo scheduler chiama retryEVMFeeTx() per completare solo TX2.
  *
- * Lock atomico per prevenire doppio payout.
+ * BTC — 1 TX multi-output (atomica):
+ *   buildAndBroadcastPayout → txid → PERSIST tx_hash_release + tx_hash_fee + released
  */
 export async function releaseMultiChainTransfer(transferId: string): Promise<MultiChainTransferInfo> {
   const locked = await acquireMCLock(transferId, "pending", "releasing");
@@ -371,22 +379,26 @@ export async function releaseMultiChainTransfer(transferId: string): Promise<Mul
     }
     return await _releaseEvm(locked);
   } catch (err) {
-    // Rollback atomico a pending per retry.
-    // La condizione { tx_hash_release: null } garantisce che non si fa rollback
-    // se una TX è già stata inviata (lo scheduler verificherà lo stato on-chain).
+    // Rollback atomico solo se TX1 NON è stata ancora inviata (C-1 fix).
+    // La condizione { tx_hash_release: null } impedisce il rollback se TX1 è già in DB.
+    // In quel caso lo scheduler completerà TX2 via retryEVMFeeTx().
     await MultiChainTransferModel.findOneAndUpdate(
       { transfer_id: transferId, status: "releasing", tx_hash_release: null },
       { $set: { status: "pending", locked_at: null } },
     );
-    logger.error({ err, transferId }, "[MCPayment] Release fallita — rollback a pending tentato");
+    logger.error(
+      { err, transferId },
+      "[MCPayment] Release fallita — rollback tentato (solo se tx_hash_release era null)",
+    );
     throw err;
   }
 }
 
 /**
- * Release EVM: 2 TX separate via sendToken.
- * TX 1: netAmount → recipient
- * TX 2: projectFee → feeWallet (se configurato)
+ * Release EVM: 2 TX separate con persistenza progressiva (C-1 fix).
+ *
+ * Invariante post-TX1: tx_hash_release è in DB prima di tentare TX2.
+ * Questo rende il sistema sicuro rispetto a crash/retry.
  */
 async function _releaseEvm(doc: MultiChainTransferDocument): Promise<MultiChainTransferInfo> {
   const adapter    = adapterRegistry.get(doc.network);
@@ -398,7 +410,7 @@ async function _releaseEvm(doc: MultiChainTransferDocument): Promise<MultiChainT
   // TX 1: netAmount → destinatario
   logger.info(
     { transferId: doc.transfer_id, to: doc.recipient_wallet, amount: netAmount.toString() },
-    "[MCPayment] EVM: invio netAmount",
+    "[MCPayment] EVM: invio TX1 netAmount",
   );
   const releaseResult = await adapter.sendToken({
     signerPk,
@@ -408,12 +420,22 @@ async function _releaseEvm(doc: MultiChainTransferDocument): Promise<MultiChainT
   });
   totalNetworkFee += releaseResult.networkFee;
 
-  // TX 2: projectFee → feeWallet
+  // ★ C-1 FIX: INTERMEDIATE PERSIST tx_hash_release DOPO TX1, PRIMA DI TX2 ★
+  // Se TX2 fallisce e il catch tenta rollback con { tx_hash_release: null },
+  // questa write fa sì che la condizione NON corrisponda → no rollback → no double-pay.
+  // Lo scheduler vedrà { status:"releasing", tx_hash_release:SET, tx_hash_fee:null }
+  // e chiamerà retryEVMFeeTx() per inviare solo TX2.
+  await MultiChainTransferModel.findOneAndUpdate(
+    { transfer_id: doc.transfer_id, status: "releasing" },
+    { $set: { tx_hash_release: releaseResult.txHash } },
+  );
+
+  // TX 2: projectFee → feeWallet (se configurato)
   let txHashFee: string | null = null;
   if (doc.fee_wallet && projectFee > 0n) {
     logger.info(
       { transferId: doc.transfer_id, to: doc.fee_wallet, amount: projectFee.toString() },
-      "[MCPayment] EVM: invio projectFee",
+      "[MCPayment] EVM: invio TX2 projectFee",
     );
     const feeResult = await adapter.sendToken({
       signerPk,
@@ -426,19 +448,22 @@ async function _releaseEvm(doc: MultiChainTransferDocument): Promise<MultiChainT
   } else if (projectFee > 0n) {
     logger.warn(
       { transferId: doc.transfer_id, projectFee: projectFee.toString() },
-      "[MCPayment] Fee wallet non configurato — projectFee non inviata",
+      "[MCPayment] Fee wallet non configurato — TX2 saltata",
     );
   }
 
+  // FINAL UPDATE: mark released
+  // tx_hash_release è già in DB dall'intermediate persist — lo riconfermiamo per coerenza.
   const completed = await MultiChainTransferModel.findOneAndUpdate(
-    { transfer_id: doc.transfer_id },
+    { transfer_id: doc.transfer_id, status: "releasing" },
     {
       $set: {
         status:          "released",
-        tx_hash_release: releaseResult.txHash,
+        tx_hash_release: releaseResult.txHash, // ridondante ma safe
         tx_hash_fee:     txHashFee,
         network_fee:     totalNetworkFee.toString(),
         completed_at:    new Date(),
+        locked_at:       null,
       },
     },
     { returnDocument: "after" },
@@ -453,16 +478,10 @@ async function _releaseEvm(doc: MultiChainTransferDocument): Promise<MultiChainT
 }
 
 /**
- * Release Bitcoin: 1 TX unica multi-output via buildAndBroadcastPayout.
+ * Release Bitcoin: 1 TX unica multi-output (atomica per design UTXO).
  *
- * La singola TX include:
- *   - output 1: netAmount → recipient
- *   - output 2: projectFee → feeWallet (se configurato e > dust)
- *   - output 3: change → escrow address (se residuo > 546 sat)
- *   - miner fee: dedotta automaticamente dall'UTXO
- *
- * tx_hash_release e tx_hash_fee puntano allo stesso txid (stessa TX).
- * ATOMICA: o entrambi gli output vengono creati o nessuno.
+ * Output: recipient + feeWallet + change (miner fee dedotta dall'UTXO).
+ * tx_hash_release = tx_hash_fee = stesso txid (stessa TX).
  */
 async function _releaseBitcoin(doc: MultiChainTransferDocument): Promise<MultiChainTransferInfo> {
   const btcAdapter = adapterRegistry.get("bitcoin") as BitcoinAdapter;
@@ -488,28 +507,24 @@ async function _releaseBitcoin(doc: MultiChainTransferDocument): Promise<MultiCh
     projectFee:    BigInt(doc.project_fee),
   });
 
-  // tx_hash_release e tx_hash_fee puntano allo STESSO txid (1 TX unica)
+  // BTC: 1 TX unica → tx_hash_release e tx_hash_fee puntano allo stesso txid
   const completed = await MultiChainTransferModel.findOneAndUpdate(
     { transfer_id: doc.transfer_id },
     {
       $set: {
         status:          "released",
         tx_hash_release: result.txid,
-        tx_hash_fee:     result.txid, // stessa TX contiene l'output per feeWallet
+        tx_hash_fee:     result.txid,
         network_fee:     result.networkFee.toString(),
         completed_at:    new Date(),
+        locked_at:       null,
       },
     },
     { returnDocument: "after" },
   );
 
   logger.info(
-    {
-      transferId:  doc.transfer_id,
-      txid:        result.txid,
-      networkFee:  result.networkFee.toString(),
-      outputs:     result.outputs.length,
-    },
+    { transferId: doc.transfer_id, txid: result.txid, networkFee: result.networkFee.toString() },
     "[MCPayment] BTC release completato (1 TX unica)",
   );
 
@@ -517,14 +532,101 @@ async function _releaseBitcoin(doc: MultiChainTransferDocument): Promise<MultiCh
 }
 
 /**
+ * Retry TX2 (fee wallet) per trasferimenti EVM con TX1 già confermata.
+ *
+ * Chiamato dallo scheduler quando rileva:
+ *   { status:"releasing", tx_hash_release:SET, tx_hash_fee:null, fee_wallet:SET }
+ *
+ * Questo è il percorso di recovery per il caso C-1:
+ *   TX1 → Bob ✓ | crash/TX2 failure | scheduler → retryEVMFeeTx → TX2 → fee wallet
+ *
+ * Idempotente: se il doc non è più in stato atteso, è un no-op.
+ */
+export async function retryEVMFeeTx(transferId: string): Promise<void> {
+  const doc = await MultiChainTransferModel.findOne({
+    transfer_id:     transferId,
+    status:          "releasing",
+    tx_hash_release: { $ne: null },
+    tx_hash_fee:     null,
+  });
+
+  if (!doc) {
+    logger.debug({ transferId }, "[MCPayment] retryEVMFeeTx: doc non trovato o già completato");
+    return;
+  }
+
+  if (isBitcoin(doc.network)) {
+    // BTC non usa 2 TX — non dovremmo mai arrivare qui
+    logger.warn({ transferId }, "[MCPayment] retryEVMFeeTx chiamato su Bitcoin — ignorato");
+    return;
+  }
+
+  const projectFee = BigInt(doc.project_fee);
+  if (!doc.fee_wallet || projectFee === 0n) {
+    // Nessun fee da inviare — finalizza direttamente
+    await MultiChainTransferModel.findOneAndUpdate(
+      { transfer_id: transferId, status: "releasing" },
+      { $set: { status: "released", completed_at: new Date(), locked_at: null } },
+    );
+    logger.info({ transferId }, "[MCPayment] retryEVMFeeTx: nessun fee wallet — released direttamente");
+    return;
+  }
+
+  try {
+    const adapter  = adapterRegistry.get(doc.network);
+    const signerPk = decryptEscrowKeyHex(doc.escrow_encrypted_pk);
+
+    logger.info(
+      { transferId, to: doc.fee_wallet, amount: projectFee.toString() },
+      "[MCPayment] retryEVMFeeTx: invio TX2 fee",
+    );
+
+    const feeResult = await adapter.sendToken({
+      signerPk,
+      tokenAddress: doc.asset_address,
+      to:           doc.fee_wallet,
+      amount:       projectFee,
+    });
+
+    const prevFee = BigInt(doc.network_fee ?? "0");
+
+    await MultiChainTransferModel.findOneAndUpdate(
+      { transfer_id: transferId, status: "releasing" },
+      {
+        $set: {
+          status:       "released",
+          tx_hash_fee:  feeResult.txHash,
+          network_fee:  (prevFee + feeResult.networkFee).toString(),
+          completed_at: new Date(),
+          locked_at:    null,
+        },
+      },
+    );
+
+    logger.info(
+      { transferId, txHash: feeResult.txHash },
+      "[MCPayment] retryEVMFeeTx: TX2 completata → released",
+    );
+  } catch (err) {
+    logger.error({ err, transferId }, "[MCPayment] retryEVMFeeTx: TX2 fallita — lo scheduler riproverà");
+    // Non aggiorniamo lo stato: resta "releasing" con tx_hash_release impostato.
+    // Il scheduler rinoverà il lock e riproverà al prossimo ciclo.
+    throw err;
+  }
+}
+
+/**
  * Rimborsa il mittente.
  *
- * EVM: sendToken (balance token ERC-20 → sender)
- * BTC: sendNative (UTXO → sender, miner fee dedotta automaticamente)
+ * EVM: sendToken (saldo token ERC-20 → sender)
+ * BTC: sendNative (UTXO → sender, miner fee dedotta)
+ *
+ * Verifica saldo reale dell'escrow prima di inviare (evita TX con importo 0).
  */
 export async function refundMultiChainTransfer(transferId: string): Promise<MultiChainTransferInfo> {
   const locked = await acquireMCLock(transferId, "pending", "refunding");
   if (!locked) {
+    // Prova anche da awaiting_deposit (transfer scaduti con deposito parziale)
     const fromAwaiting = await acquireMCLock(transferId, "awaiting_deposit", "refunding");
     if (!fromAwaiting) {
       const doc = await MultiChainTransferModel.findOne({ transfer_id: transferId });
@@ -557,7 +659,7 @@ async function _doRefund(doc: MultiChainTransferDocument): Promise<MultiChainTra
   }
 
   try {
-    // BTC: rimborso nativo; EVM: rimborso token ERC-20
+    // BTC: rimborso nativo (sendNative); EVM: rimborso token (sendToken)
     const result = isBitcoin(doc.network)
       ? await adapter.sendNative({ signerPk, to: doc.sender_wallet, amount: balance })
       : await adapter.sendToken({
@@ -575,6 +677,7 @@ async function _doRefund(doc: MultiChainTransferDocument): Promise<MultiChainTra
           tx_hash_refund: result.txHash,
           network_fee:    result.networkFee.toString(),
           completed_at:   new Date(),
+          locked_at:      null,
         },
       },
       { returnDocument: "after" },
@@ -587,6 +690,7 @@ async function _doRefund(doc: MultiChainTransferDocument): Promise<MultiChainTra
 
     return toInfo(completed!);
   } catch (err) {
+    // Rollback a pending per retry
     await MultiChainTransferModel.findOneAndUpdate(
       { transfer_id: doc.transfer_id, status: "refunding" },
       { $set: { status: "pending", locked_at: null } },

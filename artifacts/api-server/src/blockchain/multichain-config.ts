@@ -145,6 +145,35 @@ export const TOKEN_DECIMALS: Readonly<Record<string, number>> = {
   [TOKEN_CONTRACTS.bsc.USDT.toLowerCase()]:         18,
 };
 
+// ─── BTC fee rate configuration ───────────────────────────────────────────────
+
+/**
+ * Parametri configurabili per la gestione del fee rate BTC (M-3).
+ * Tutti i valori sono letti da env vars con fallback sicuri.
+ *
+ * ESTIMATE_RATE — tasso usato per stimare min_deposit_amount alla creazione (sat/vbyte)
+ * MAX_RATE      — cap massimo accettato da Blockstream (evita fee spike inattesi)
+ * MIN_RATE      — floor minimo (evita TX non-relay per fee troppo bassa)
+ * BUFFER_SAT    — buffer aggiuntivo sopra la miner fee stimata per min_deposit
+ */
+function parseIntEnv(key: string, defaultVal: number): number {
+  const v = env(key);
+  if (!v) return defaultVal;
+  const n = parseInt(v, 10);
+  return Number.isFinite(n) && n > 0 ? n : defaultVal;
+}
+
+export const BTC_FEE_CONFIG = {
+  /** Tasso stimato per minDepositAmount (sat/vbyte) — default 20 */
+  ESTIMATE_RATE: parseIntEnv("BTC_ESTIMATE_FEE_RATE_SAT_VB", 20),
+  /** Cap massimo fee rate da Blockstream (sat/vbyte) — default 200 */
+  MAX_RATE:      parseIntEnv("BTC_MAX_FEE_RATE_SAT_VB", 200),
+  /** Floor minimo fee rate (sat/vbyte) — default 2 */
+  MIN_RATE:      parseIntEnv("BTC_MIN_FEE_RATE_SAT_VB", 2),
+  /** Buffer sicurezza per min_deposit (sat) — default 5000 */
+  BUFFER_SAT:    BigInt(parseIntEnv("BTC_MINER_FEE_BUFFER_SAT", 5_000)),
+} as const;
+
 // ─── Default fee registry ─────────────────────────────────────────────────────
 
 /**

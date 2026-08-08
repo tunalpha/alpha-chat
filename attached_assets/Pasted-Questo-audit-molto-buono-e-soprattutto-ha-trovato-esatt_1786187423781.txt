@@ -1,0 +1,687 @@
+Questo audit è molto buono e soprattutto ha trovato esattamente i problemi che volevamo evitare. Io prenderei sul serio il risultato: non farei il go-live adesso.
+
+La priorità è:
+
+🔴 Bloccanti assoluti
+
+C-1 è il problema più grave.
+Con le due TX EVM attuali può succedere:
+
+TX1 → Bob ✅
+TX2 → Fee Wallet ❌ / timeout
+        ↓
+DB non ha ancora tx_hash_release
+        ↓
+scheduler retry
+        ↓
+TX1 → Bob ✅
+        ↓
+BOB RICEVE DUE VOLTE
+
+Questo va corretto prima di qualsiasi test con fondi significativi.
+
+C-2 è altrettanto importante: se tx_hash_release esiste, nessun componente deve mai riportare il pagamento a pending solo perché una feature flag è disabilitata.
+
+⸻
+
+🟠 Io risolverei anche tutti gli H prima del testnet
+
+In particolare H-4 è importante: un payment endpoint senza validation schema non dovrebbe arrivare in produzione.
+
+E H-3 va risolto perché un sistema escrow non può lasciare fondi in pending indefinitamente.
+
+⸻
+
+🟡 Poi farei gli M
+
+M-1 è particolarmente interessante per BTC: se la fee dello 0,10% è sotto dust, non deve sparire silenziosamente.
+
+Per me la scelta migliore è:
+
+se la project fee BTC non può essere rappresentata come output valido, rifiutare il transfer prima di accettarlo, anziché trasformare la commissione in miner fee.
+
+Così il modello contabile rimane sempre:
+
+projectFee ≠ networkFee
+
+⸻
+
+Io darei ora all’agente questo comando
+
+MULTI-CHAIN PRODUCTION HARDENING — FIX AUDIT FINDINGS
+
+Hai completato la Production Readiness Audit del Multi-Chain Payment Engine.
+
+L’audit ha identificato:
+
+* C-1 CRITICAL — EVM double-pay
+* C-2 CRITICAL — scheduler rollback con tx_hash presente
+* H-1 HIGH — admin routes authorization
+* H-2 HIGH — ambiguous BTC broadcast
+* H-3 HIGH — pending transfers senza expiry/recovery
+* H-4 HIGH — assenza input validation
+* M-1 MEDIUM — BTC project fee sotto dust
+* M-2 MEDIUM — scheduler singleton guard
+* M-3 MEDIUM — BTC fee spike / buffer
+* M-4 MEDIUM — feature flags caricati solo al boot
+* M-5 MEDIUM — detect senza rate limiting
+* M-6 MEDIUM — config endpoint troppo esposto
+
+REGOLA ASSOLUTA
+
+NON MODIFICARE IL CODICE USDA ESISTENTE.
+
+USDA è una zona protetta.
+
+Non alterare:
+
+* USDA payment flow
+* USDA payout
+* USDA wallet management
+* USDA scheduler
+* USDA authentication
+* USDA transaction model
+* USDA monitoring
+
+Il Multi-Chain Payment Engine deve rimanere isolato.
+
+Se una correzione richiede di modificare una componente condivisa con USDA:
+
+STOP e chiedi conferma prima di procedere.
+
+L’obiettivo è mantenere:
+
+USDA regression = ZERO
+
+⸻
+
+FASE 0 — BASELINE
+
+Prima di modificare il codice:
+
+Esegui:
+
+typecheck
+lint
+unit tests
+integration tests
+build
+startup test
+USDA regression tests
+
+Conserva il risultato come baseline.
+
+Non modificare i 3 test pre-esistenti failing se non sono direttamente collegati ai fix.
+
+⸻
+
+C-1 — EVM DOUBLE-PAY — CRITICAL
+
+Problema:
+
+La release EVM attualmente esegue:
+
+TX1 → recipient
+TX2 → fee wallet
+
+Se TX1 viene confermata ma TX2 fallisce/va in timeout, tx_hash_release può rimanere null.
+
+Un retry può quindi inviare nuovamente TX1.
+
+Questo è un rischio di doppio pagamento.
+
+Correzione richiesta
+
+Implementare una persistenza progressiva dello stato della release.
+
+Dopo che TX1 è stata effettivamente broadcastata/confermata secondo la policy esistente:
+
+persist tx_hash_release
+
+prima di tentare TX2.
+
+Il database deve quindi sapere che TX1 è già stata eseguita anche se TX2 non è ancora completata.
+
+Non usare un singolo stato booleano che nasconda la differenza tra:
+
+TX1 pending
+TX1 confirmed
+TX2 pending
+TX2 confirmed
+
+Se necessario introdurre campi separati, ad esempio:
+
+tx_hash_recipient
+tx_hash_fee
+recipient_transfer_status
+fee_transfer_status
+
+oppure equivalente coerente con il modello esistente.
+
+Obiettivo
+
+Scenario:
+
+TX1 → Bob ✅
+TX2 → Fee ❌
+server crash
+restart
+scheduler
+
+Il sistema deve riconoscere:
+
+recipient already paid
+
+e NON inviare nuovamente TX1.
+
+Deve completare solamente ciò che manca.
+
+IMPORTANTE
+
+Non risolvere C-1 semplicemente facendo rollback a pending.
+
+Il rollback NON deve mai cancellare la conoscenza di una TX già broadcastata.
+
+⸻
+
+C-2 — SCHEDULER — CRITICAL
+
+Regola assoluta:
+
+Se tx_hash_release è valorizzato, NON effettuare mai rollback a pending sulla base di una feature flag disabilitata.
+
+Questo deve essere vero indipendentemente da:
+
+ENABLE_BITCOIN
+ENABLE_POLYGON_USDT
+ENABLE_ETHEREUM_USDT
+ENABLE_BSC_USDT
+
+Prima di qualsiasi rollback:
+
+if tx_hash exists:
+    NEVER rollback
+
+La verifica dello stato deve essere conservativa.
+
+Se la rete è disabilitata:
+
+* non effettuare nuove operazioni;
+* non creare nuovi payout;
+* non cancellare lo stato;
+* non fare rollback di una TX già esistente.
+
+Il sistema deve poter essere riavviato e riprendere successivamente.
+
+⸻
+
+H-1 — ADMIN AUTHORIZATION
+
+Verificare admin-multichain.routes.ts.
+
+Le route:
+
+GET /api/v1/admin/multichain/transfers
+GET /api/v1/admin/multichain/stats
+
+devono essere accessibili esclusivamente a utenti autorizzati come admin.
+
+Se esiste già requireAdmin, utilizzarlo.
+
+NON creare un secondo sistema di authorization.
+
+Testare:
+
+unauthenticated → 401
+authenticated non-admin → 403
+admin → 200
+
+⸻
+
+H-2 — BTC AMBIGUOUS BROADCAST
+
+Problema:
+
+Il provider può aver accettato una TX ma la risposta può essere persa.
+
+NON assumere:
+
+HTTP failure = transaction not broadcast
+
+Dopo un broadcast ambiguo:
+
+1. calcolare/ottenere il TXID dalla transaction firmata;
+2. cercare il TXID tramite provider;
+3. verificare mempool/chain;
+4. solo se la TX non risulta esistente, tentare il fallback broadcast;
+5. dopo broadcast, persistere immediatamente il TXID.
+
+Obiettivo:
+
+timeout ≠ automatic retry
+
+Mai creare una seconda transazione se la prima potrebbe essere già stata accettata.
+
+⸻
+
+H-3 — PENDING DEPOSIT EXPIRY
+
+Attualmente vengono gestiti solo:
+
+awaiting_deposit
+
+Aggiungere una policy per trasferimenti che sono già stati finanziati ma rimangono pending oltre una soglia ragionevole.
+
+Prima di implementare il comportamento automatico:
+
+* distinguere chiaramente deposit pending;
+* release pending;
+* errore tecnico;
+* escrow funded.
+
+NON effettuare refund automatici se esiste rischio di double payout.
+
+Il recovery deve verificare on-chain prima di qualsiasi refund.
+
+Prevedere eventualmente:
+
+pending → recovery
+pending → refund
+
+solo quando è dimostrato che nessun payout è stato effettuato.
+
+⸻
+
+H-4 — INPUT VALIDATION
+
+Aggiungere schema validation coerente con il progetto esistente.
+
+Preferire il validator già utilizzato dal repository.
+
+Validare:
+
+network
+asset
+grossAmountUnits
+senderWallet
+recipientWallet
+expiresInHours
+clientRef
+
+expiresInHours
+
+Rifiutare:
+
+negative
+Infinity
+NaN
+zero se non consentito
+valori eccessivi
+
+grossAmountUnits
+
+Deve essere:
+
+* intero;
+* positivo;
+* valido per l’asset;
+* compatibile con decimals.
+
+Wallet
+
+Validare in base alla rete:
+
+Ethereum/Polygon/BSC → EVM address
+Bitcoin → Bitcoin address
+
+Non affidarsi a regex generiche quando esiste una validazione blockchain appropriata.
+
+⸻
+
+M-1 — BTC DUST FEE
+
+Se:
+
+projectFee < dust threshold
+
+NON eliminare silenziosamente l’output della commissione.
+
+Preferenza:
+
+rifiutare il transfer in fase di creazione con errore esplicito.
+
+Esempio:
+
+BTC_PROJECT_FEE_BELOW_DUST
+
+In questo modo:
+
+projectFee
+
+non viene mai confusa con:
+
+networkFee
+
+e non viene persa.
+
+Aggiungere test specifici.
+
+⸻
+
+M-2 — SCHEDULER SINGLETON
+
+Implementare un singleton guard per:
+
+startMultiChainScheduler()
+
+Una seconda chiamata non deve creare un secondo set di interval.
+
+Testare:
+
+start()
+start()
+start()
+
+risultato:
+
+one scheduler only
+
+⸻
+
+M-3 — BTC FEE SPIKE
+
+Migliorare la gestione del fee rate BTC.
+
+Distinguere:
+
+estimated fee
+maximum acceptable fee
+actual miner fee
+
+Il sistema non deve assumere che 20 sat/vbyte sia sempre sufficiente.
+
+Durante la creazione del deposito minimo:
+
+grossAmount
++
+projectFee
++
+estimated miner fee
++
+safety buffer
+
+deve essere sufficiente per la policy configurata.
+
+Se il fee rate reale supera il budget disponibile:
+
+non creare una TX non economicamente valida.
+
+Evitare inoltre fallback eccessivamente bassi che producano transazioni potenzialmente non relayabili.
+
+Rendere configurabili i parametri.
+
+⸻
+
+M-4 — FEATURE FLAGS
+
+Le feature flag possono continuare a richiedere restart se questo è il comportamento architetturale scelto.
+
+NON introdurre un sistema dinamico complesso solo per questo audit.
+
+Però assicurarsi che:
+
+feature disabled
+
+non provochi:
+
+* rollback distruttivo;
+* cancellazione stato;
+* doppio payout.
+
+La sicurezza di C-2 ha priorità.
+
+⸻
+
+M-5 — RATE LIMIT /detect
+
+Proteggere:
+
+POST /transfers/:id/detect
+
+con rate limiting coerente con l’infrastruttura esistente.
+
+Obiettivo:
+
+impedire che un client utilizzi l’endpoint per generare query RPC illimitate.
+
+Considerare anche:
+
+* per user;
+* per IP;
+* per transfer ID.
+
+Non introdurre un rate limiter incompatibile con l’infrastruttura attuale.
+
+⸻
+
+M-6 — CONFIG ENDPOINT
+
+Valutare GET /config.
+
+Esporre al client solamente ciò che è realmente necessario.
+
+Gli indirizzi pubblici blockchain non sono segreti, ma evitare esposizione inutile di:
+
+* configurazioni interne;
+* feature flag non necessarie;
+* dettagli infrastrutturali.
+
+Se l’endpoint è usato dal frontend, mantenere esclusivamente i dati necessari.
+
+⸻
+
+TEST OBBLIGATORI C-1
+
+Creare un test specifico:
+
+TX1 succeeds
+TX2 fails
+retry
+
+Verificare:
+
+recipient receives exactly once
+fee transfer can be retried
+recipient TX is never duplicated
+
+⸻
+
+TEST OBBLIGATORI C-2
+
+Test:
+
+tx_hash_release exists
+network disabled
+scheduler runs
+
+Expected:
+
+NO rollback
+
+⸻
+
+TEST BTC BROADCAST
+
+Simulare:
+
+provider accepts TX
+response timeout
+
+Expected:
+
+lookup TXID
+TX detected
+NO duplicate broadcast
+
+⸻
+
+TEST CRASH RECOVERY
+
+Simulare almeno:
+
+Scenario A
+
+before broadcast
+→ crash
+→ restart
+
+Scenario B
+
+after recipient TX
+before fee TX
+→ crash
+→ restart
+
+Scenario C
+
+after fee TX
+before DB finalization
+→ crash
+→ restart
+
+Scenario D BTC
+
+after BTC broadcast
+→ response lost
+→ restart
+
+In nessun caso devono verificarsi doppi pagamenti.
+
+⸻
+
+TEST USDA — OBBLIGATORI
+
+Dopo tutte le modifiche:
+
+typecheck
+lint
+unit tests
+integration tests
+build
+startup
+USDA regression suite
+
+Risultato richiesto:
+
+USDA REGRESSION = ZERO
+
+I 3 test pre-esistenti failing devono rimanere documentati separatamente e non devono essere conteggiati come regressioni.
+
+⸻
+
+REGRESSION SAFETY
+
+Prima di iniziare crea un checkpoint.
+
+Dopo i fix C/H:
+
+checkpoint-multichain-security-hardening
+
+Non modificare USDA.
+
+Se emerge una regressione:
+
+STOP
+ROLLBACK
+ANALYZE
+FIX
+RETEST
+
+Non procedere oltre una regressione.
+
+⸻
+
+NON FARE
+
+NON:
+
+* riscrivere USDA;
+* cambiare il wallet USDA;
+* cambiare il payout USDA;
+* cambiare scheduler USDA;
+* cambiare transaction model USDA senza necessità;
+* fare refactoring generale;
+* aggiornare dipendenze non necessarie;
+* cambiare RPC esistenti senza necessità;
+* introdurre nuove architetture non richieste;
+* modificare il comportamento funzionante per “pulire” il codice.
+
+Questa è una security hardening phase, non una nuova riscrittura.
+
+⸻
+
+CRITERIO DI COMPLETAMENTO
+
+Il lavoro è completato solo quando:
+
+CRITICAL
+
+C-1 FIXED
+C-2 FIXED
+
+HIGH
+
+H-1 FIXED
+H-2 FIXED
+H-3 FIXED
+H-4 FIXED
+
+MEDIUM
+
+M-1 FIXED
+M-2 FIXED
+M-3 FIXED
+M-4 REVIEWED
+M-5 FIXED
+M-6 REVIEWED
+
+e:
+
+TypeCheck = clean except pre-existing errors
+Tests = no new failures
+USDA regression = ZERO
+Build = PASS
+Startup = PASS
+
+⸻
+
+OUTPUT FINALE
+
+Al termine NON limitarti a dire “done”.
+
+Restituisci:
+
+1. ogni finding C/H/M;
+2. cosa è stato modificato;
+3. file modificati;
+4. test aggiunti;
+5. test eseguiti;
+6. risultati;
+7. eventuali finding non risolti;
+8. eventuali rischi residui;
+9. conferma esplicita che USDA non è stato alterato;
+10. conferma esplicita che il rollback al checkpoint precedente è possibile.
+
+Se anche un solo CRITICAL rimane aperto, il risultato deve essere:
+
+NOT PRODUCTION READY.
+
+Non dichiarare il sistema production-ready solamente perché i test automatici passano.
+
+Una precisazione importante
+
+Io non chiederei all’agente di correggere solo C-1 e C-2. Visto che sta già facendo l’hardening e che H-1/H-2/H-4 sono relativamente circoscritti, conviene chiudere tutti i C + H + M in questo passaggio.
+
+Dopo questo, la prossima tappa non dovrebbe essere altro sviluppo: dovrebbe essere testnet con transazioni reali di piccolo importo + simulazione dei crash/retry. Solo dopo quella verifica prenderei in considerazione il go-live.
+
+E soprattutto: non toccare USDA. Il fatto che l’audit abbia confermato zero regressioni USDA è ora una delle proprietà più preziose dell’architettura.

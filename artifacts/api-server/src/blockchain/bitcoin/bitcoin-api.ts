@@ -71,16 +71,36 @@ export class BitcoinApiClient {
    * Stima fee rate attuale (sat/vbyte).
    * target=6 = ~1 ora, target=1 = next block.
    */
-  async estimateFeeRate(target: 1 | 3 | 6 | 144 = 6): Promise<number> {
+  /**
+   * Stima fee rate (sat/vbyte) con cap/floor configurabili (M-3).
+   *
+   * @param target    Conferme target: 1=next block, 6=~1h, 144=~24h
+   * @param minRate   Floor minimo (default: BTC_FEE_CONFIG.MIN_RATE)
+   * @param maxRate   Cap massimo (default: BTC_FEE_CONFIG.MAX_RATE)
+   */
+  async estimateFeeRate(
+    target: 1 | 3 | 6 | 144 = 6,
+    minRate?: number,
+    maxRate?: number,
+  ): Promise<number> {
+    // Importa BTC_FEE_CONFIG lazy per evitare dipendenza circolare al boot
+    const { BTC_FEE_CONFIG } = await import("../multichain-config");
+    const floor = minRate ?? BTC_FEE_CONFIG.MIN_RATE;
+    const cap   = maxRate ?? BTC_FEE_CONFIG.MAX_RATE;
+    const SAFE_FALLBACK = Math.max(floor, Math.min(cap, 10));
+
     try {
       const estimates = await this._fetch<BlockstreamFeeEstimates>("/fee-estimates");
       const rate = estimates[String(target) as keyof BlockstreamFeeEstimates];
-      if (rate && rate > 0) return Math.ceil(rate);
+      if (rate && rate > 0) {
+        const capped = Math.max(floor, Math.min(cap, Math.ceil(rate)));
+        logger.debug({ rawRate: rate, capped, floor, cap }, "[BitcoinAPI] fee rate stimato");
+        return capped;
+      }
     } catch (err) {
       logger.warn({ err }, "[BitcoinAPI] fee-estimates fallita — uso fallback");
     }
-    // Fallback conservativo
-    return 10; // 10 sat/vbyte
+    return SAFE_FALLBACK;
   }
 
   // ─── Transaction ──────────────────────────────────────────────────────────────
@@ -93,6 +113,50 @@ export class BitcoinApiClient {
     }
     logger.info({ txid }, "[BitcoinAPI] TX broadcast");
     return txid;
+  }
+
+  /**
+   * H-2: Broadcast con lookup di sicurezza.
+   *
+   * Non assume mai che "HTTP error = TX non inviata".
+   * Un timeout o 5xx del provider potrebbe nascondere una TX già accettata.
+   *
+   * Algoritmo:
+   *   1. Pre-check: se txid già in mempool/chain → ritorna txid (idempotente)
+   *   2. Broadcast TX
+   *   3. Se broadcast fallisce con errore ambiguo:
+   *      → cerca txid in mempool
+   *      → se trovato: TX già accettata, ritorna txid (non duplicare)
+   *      → se non trovato: rilancia l'errore originale
+   *
+   * @param rawHex  TX firmata in hex
+   * @param txid    TXID deterministico calcolato dalla TX firmata PRIMA del broadcast
+   */
+  async broadcastTxSafe(rawHex: string, txid: string): Promise<string> {
+    // Pre-check: idempotency (riavvio, retry esplicito, ecc.)
+    const existing = await this.getTx(txid);
+    if (existing) {
+      logger.info({ txid }, "[BitcoinAPI] TX già in mempool/chain — broadcast saltato (idempotente)");
+      return txid;
+    }
+
+    try {
+      return await this.broadcastTx(rawHex);
+    } catch (broadcastErr) {
+      // Errore ambiguo: il provider potrebbe aver accettato la TX ma la risposta è andata persa.
+      // Aspettiamo brevemente e poi verifichiamo.
+      await new Promise((r) => setTimeout(r, 2_000));
+      const afterBroadcast = await this.getTx(txid);
+      if (afterBroadcast) {
+        logger.info(
+          { txid },
+          "[BitcoinAPI] TX accettata nonostante errore risposta — txid recuperato (H-2)",
+        );
+        return txid;
+      }
+      // TX genuinamente non broadcastata
+      throw broadcastErr;
+    }
   }
 
   /** Dettagli di una transazione */
