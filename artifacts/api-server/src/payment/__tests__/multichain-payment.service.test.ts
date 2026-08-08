@@ -97,13 +97,16 @@ import {
   createMultiChainTransfer,
   detectMultiChainDeposit,
   releaseMultiChainTransfer,
+  releaseFromWaitingForGas,
   refundMultiChainTransfer,
   getMultiChainTransfer,
   findByClientRef,
   retryEVMFeeTx,
+  GasReserveDepletedError,
 } from "../multichain-payment.service";
 import { MultiChainTransferModel } from "../../models/multichain-transfer.model";
 import { adapterRegistry } from "../../blockchain/adapter-registry";
+import { createPublicClient, createWalletClient } from "viem";
 
 // ─── Fixtures ──────────────────────────────────────────────────────────────────
 
@@ -958,6 +961,249 @@ describe("EVM Network Fee Model — toInfo / field exposure", () => {
     expect(info.networkFeeCharged).toBeNull();
     expect(info.networkFeeAsset).toBeNull();
     expect(info.networkFeeActual).toBe("0"); // network_fee=0 in baseTransferDoc
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Gas Reserve Protection (STEP 2) — Tests B, F, H
+// ─────────────────────────────────────────────────────────────────────────────
+//
+// Il mock viem di default: getBalance = 1 POL (sufficiente → nessun top-up).
+// Per i test di gas insufficiente, sovrascriviamo getBalance sul mockPublicClient
+// per simulare: (1a) escrow senza gas, (1b) gas station vuoto.
+//
+// Stima costo:
+//   80_000n (gas/TX) × 2n (TX) × 30_000_000_000n (30 Gwei) × 2n (buffer) = 9_600_000_000_000_000n
+//   Quindi: escrowBalance < 9_600_000_000_000_000n → top-up richiesto.
+//   Se anche gsBalance < topUp → GasReserveDepletedError.
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("Gas Reserve Protection — waiting_for_gas", () => {
+  // Costo stimato per 2 TX EVM con 30 Gwei, buffer 2×
+  const ESTIMATED_COST = 80_000n * 2n * 30_000_000_000n * 2n; // 9_600_000_000_000_000n
+
+  // Fixture per un transfer già depositato e pronto al release
+  const pendingDoc = {
+    ...baseTransferDoc,
+    status:              "pending" as const,
+    network_fee_charged: "500000",
+    min_deposit_amount:  "100500000",
+    gas_retry_count:     0,
+  };
+
+  // Fixture per waiting_for_gas
+  const waitingDoc = {
+    ...pendingDoc,
+    status:          "waiting_for_gas" as const,
+    gas_retry_count: 1,
+  };
+
+  // Doc restituito dopo _transitionToWaitingForGas
+  const waitingDocUpdated = {
+    ...waitingDoc,
+    gas_retry_count: 1,
+    locked_at:       null,
+  };
+
+  /**
+   * TEST B — Gas station con fondi insufficienti → transfer va in waiting_for_gas.
+   *
+   * - Nessuna TX inviata (TX1 / TX2 non devono essere chiamate)
+   * - status finale = "waiting_for_gas" (mai "failed")
+   * - project_fee, net_amount, network_fee_charged invarianti
+   * - Nessuna eccezione propagata al caller (response graceful)
+   */
+  it("TEST B: gas station insufficiente → waiting_for_gas (no TX, fee invarianti)", async () => {
+    // Simula escrow senza gas (forza top-up) e gas station vuoto (GasReserveDepletedError)
+    const mockGetBalance = vi.fn()
+      .mockResolvedValueOnce(0n)                  // escrow balance = 0 → top-up needed
+      .mockResolvedValueOnce(0n);                 // gas station balance = 0 → GasReserveDepletedError
+
+    vi.mocked(createPublicClient).mockReturnValue({
+      getGasPrice:               vi.fn().mockResolvedValue(30_000_000_000n),
+      getBalance:                mockGetBalance,
+      waitForTransactionReceipt: vi.fn(),
+    } as any);
+
+    const mockSendTx = vi.fn(); // non deve essere chiamata
+    vi.mocked(createWalletClient).mockReturnValue({
+      sendTransaction: mockSendTx,
+    } as any);
+
+    // acquireLock (pending → releasing) → waitingDoc post-transition
+    vi.mocked(MultiChainTransferModel.findOneAndUpdate)
+      .mockResolvedValueOnce({ ...pendingDoc, status: "releasing", locked_at: new Date() } as any)
+      .mockResolvedValueOnce(waitingDocUpdated as any);
+
+    // sendToken del adapter non deve essere chiamato
+    const mockSendToken = vi.fn();
+    vi.mocked(adapterRegistry.get).mockReturnValue({
+      networkId: "polygon",
+      sendToken:  mockSendToken,
+    } as any);
+
+    const result = await releaseMultiChainTransfer(TRANSFER_ID);
+
+    // TX non inviata
+    expect(mockSendTx).not.toHaveBeenCalled();
+    expect(mockSendToken).not.toHaveBeenCalled();
+
+    // Status = waiting_for_gas (mai "failed")
+    expect(result.status).toBe("waiting_for_gas");
+
+    // Fee invarianti: project_fee e net_amount non sono stati toccati
+    expect(result.projectFee).toBe(pendingDoc.project_fee);
+    expect(result.netAmount).toBe(pendingDoc.net_amount);
+
+    // Nessuna eccezione lanciata al caller
+    // (il test non lancia → la funzione è graceful)
+  });
+
+  /**
+   * TEST F — Gas station completamente vuoto (0 wei) → waiting_for_gas, non "failed".
+   *
+   * Questo test verifica che anche con gas station = 0 il transfer sia preservato.
+   */
+  it("TEST F: gas station completamente vuoto (0 wei) → waiting_for_gas, non failed", async () => {
+    const mockGetBalance = vi.fn()
+      .mockResolvedValueOnce(500n)                // escrow: quasi vuoto (< estimatedCost)
+      .mockResolvedValueOnce(0n);                 // gas station: completamente vuoto
+
+    vi.mocked(createPublicClient).mockReturnValue({
+      getGasPrice: vi.fn().mockResolvedValue(30_000_000_000n),
+      getBalance:  mockGetBalance,
+      waitForTransactionReceipt: vi.fn(),
+    } as any);
+
+    vi.mocked(createWalletClient).mockReturnValue({
+      sendTransaction: vi.fn(),
+    } as any);
+
+    vi.mocked(MultiChainTransferModel.findOneAndUpdate)
+      .mockResolvedValueOnce({ ...pendingDoc, status: "releasing", locked_at: new Date() } as any)
+      .mockResolvedValueOnce(waitingDocUpdated as any);
+
+    vi.mocked(adapterRegistry.get).mockReturnValue({
+      networkId: "polygon",
+      sendToken:  vi.fn(),
+    } as any);
+
+    const result = await releaseMultiChainTransfer(TRANSFER_ID);
+
+    expect(result.status).toBe("waiting_for_gas");
+    // gas_retry_count incrementato
+    expect(result.gasRetryCount).toBeGreaterThanOrEqual(1);
+  });
+
+  /**
+   * TEST H — Il caller riceve status "waiting_for_gas" senza eccezione tecnica.
+   *
+   * Verifica che il servizio NON propaghi GasReserveDepletedError né altri errori
+   * tecnici al caller: nessuna eccezione, status chiaramente "waiting_for_gas".
+   */
+  it("TEST H: nessuna eccezione tecnica propagata al caller (response graceful)", async () => {
+    const mockGetBalance = vi.fn()
+      .mockResolvedValueOnce(0n)    // escrow senza gas
+      .mockResolvedValueOnce(100n); // gas station con pochissimi fondi (< topUp)
+
+    vi.mocked(createPublicClient).mockReturnValue({
+      getGasPrice: vi.fn().mockResolvedValue(30_000_000_000n),
+      getBalance:  mockGetBalance,
+      waitForTransactionReceipt: vi.fn(),
+    } as any);
+
+    vi.mocked(createWalletClient).mockReturnValue({
+      sendTransaction: vi.fn(),
+    } as any);
+
+    vi.mocked(MultiChainTransferModel.findOneAndUpdate)
+      .mockResolvedValueOnce({ ...pendingDoc, status: "releasing", locked_at: new Date() } as any)
+      .mockResolvedValueOnce(waitingDocUpdated as any);
+
+    vi.mocked(adapterRegistry.get).mockReturnValue({
+      networkId: "polygon",
+      sendToken:  vi.fn(),
+    } as any);
+
+    // Deve risolvere (no throw), il status deve essere waiting_for_gas
+    await expect(releaseMultiChainTransfer(TRANSFER_ID)).resolves.toMatchObject({
+      status: "waiting_for_gas",
+    });
+  });
+
+  /**
+   * TEST A (smoke) — Gas sufficiente → release completa (baseline invariato).
+   *
+   * Verifica che la protezione GAS_RESERVE NON interrompa il path normale.
+   * Il mock di default di createPublicClient (1 POL) è sufficiente → no top-up.
+   */
+  it("TEST A: gas sufficiente → release normale (path felice invariato)", async () => {
+    // Restore the default viem mock (1 POL = sufficiente)
+    vi.mocked(createPublicClient).mockReturnValue({
+      getGasPrice: vi.fn().mockResolvedValue(30_000_000_000n),
+      getBalance:  vi.fn().mockResolvedValue(1_000_000_000_000_000_000n), // 1 POL
+      waitForTransactionReceipt: vi.fn().mockResolvedValue({ status: "success", blockHash: "0x0" }),
+    } as any);
+
+    vi.mocked(createWalletClient).mockReturnValue({
+      sendTransaction: vi.fn().mockResolvedValue("0xGASSTATION_TX_HASH"),
+    } as any);
+
+    const releasingDoc = { ...pendingDoc, status: "releasing" as const, locked_at: new Date() };
+    const releasedDoc  = { ...pendingDoc, status: "released" as const, tx_hash_release: "0xTX1", tx_hash_fee: "0xTX2" };
+
+    vi.mocked(MultiChainTransferModel.findOneAndUpdate)
+      .mockResolvedValueOnce(releasingDoc as any)    // acquireLock
+      .mockResolvedValueOnce(releasingDoc as any)    // persist tx_hash_release (C-1)
+      .mockResolvedValueOnce(releasedDoc as any);    // mark released
+
+    vi.mocked(MultiChainTransferModel.findOne)
+      .mockResolvedValue(releasedDoc as any);
+
+    vi.mocked(adapterRegistry.get).mockReturnValue({
+      networkId: "polygon",
+      sendToken:  vi.fn().mockResolvedValue({ txHash: "0xTX1", networkFee: 1000n }),
+    } as any);
+
+    const result = await releaseMultiChainTransfer(TRANSFER_ID);
+    expect(result.status).toBe("released");
+    expect(result.gasRetryCount).toBe(0);
+  });
+
+  /**
+   * TEST B2 — releaseFromWaitingForGas: gas ancora insufficiente → torna a waiting_for_gas.
+   *
+   * Verifica che il retry dallo scheduler funzioni correttamente quando il gas station
+   * è ancora vuoto: gas_retry_count++ e status rimane waiting_for_gas.
+   */
+  it("TEST B2: releaseFromWaitingForGas con gas ancora insufficiente → waiting_for_gas, retry_count++", async () => {
+    const mockGetBalance = vi.fn()
+      .mockResolvedValueOnce(0n)    // escrow senza gas
+      .mockResolvedValueOnce(0n);   // gas station ancora vuoto
+
+    vi.mocked(createPublicClient).mockReturnValue({
+      getGasPrice: vi.fn().mockResolvedValue(30_000_000_000n),
+      getBalance:  mockGetBalance,
+      waitForTransactionReceipt: vi.fn(),
+    } as any);
+
+    vi.mocked(createWalletClient).mockReturnValue({ sendTransaction: vi.fn() } as any);
+
+    const waitingDoc2 = { ...waitingDoc, gas_retry_count: 2, locked_at: null };
+
+    vi.mocked(MultiChainTransferModel.findOneAndUpdate)
+      .mockResolvedValueOnce({ ...waitingDoc, status: "releasing", locked_at: new Date() } as any) // acquireLock
+      .mockResolvedValueOnce(waitingDoc2 as any);    // _transitionToWaitingForGas
+
+    vi.mocked(adapterRegistry.get).mockReturnValue({
+      networkId: "polygon",
+      sendToken:  vi.fn(),
+    } as any);
+
+    const result = await releaseFromWaitingForGas(TRANSFER_ID);
+
+    expect(result.status).toBe("waiting_for_gas");
+    expect(result.gasRetryCount).toBeGreaterThanOrEqual(2);
   });
 });
 

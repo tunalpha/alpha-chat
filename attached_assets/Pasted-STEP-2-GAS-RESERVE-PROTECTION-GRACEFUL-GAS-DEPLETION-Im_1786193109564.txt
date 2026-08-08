@@ -1,0 +1,409 @@
+STEP 2 — GAS RESERVE PROTECTION / GRACEFUL GAS DEPLETION
+
+Implementa esclusivamente la protezione quando la riserva di gas EVM della piattaforma è insufficiente.
+
+OBIETTIVO
+
+Se il wallet owner/gas station non dispone di POL, ETH o BNB sufficienti per completare un payout EVM:
+
+* il pagamento NON deve fallire;
+* il deposito NON deve essere perso;
+* il cliente NON deve vedere errori tecnici;
+* il transfer deve entrare in uno stato recuperabile;
+* il sistema deve riprovare automaticamente quando il gas torna disponibile;
+* la project fee dello 0,10% deve rimanere completamente protetta.
+
+⸻
+
+1. ESPERIENZA CLIENTE
+
+NON mostrare al cliente:
+
+* insufficient funds;
+* insufficient POL;
+* insufficient ETH;
+* insufficient BNB;
+* gas station error;
+* RPC error;
+* wallet balance error;
+* stack trace;
+* dettagli tecnici dell’infrastruttura.
+
+Mostrare invece un messaggio non tecnico, ad esempio:
+
+“Pagamento ricevuto — elaborazione in corso.”
+
+Il cliente deve capire che il pagamento è stato ricevuto e non è stato perso.
+
+⸻
+
+2. STATO WAITING FOR GAS
+
+Se il deposito è confermato ma non è disponibile gas sufficiente, introdurre/utilizzare uno stato equivalente a:
+
+waiting_for_gas
+
+La scelta deve essere coerente con la state machine esistente.
+
+Conservare integralmente:
+
+* transfer_id;
+* escrow_wallet;
+* gross_amount;
+* project_fee;
+* network_fee_charged;
+* net_amount;
+* fee_wallet;
+* network;
+* asset;
+* expires_at;
+* tx_hash_release;
+* tx_hash_fee.
+
+NON effettuare rollback distruttivi.
+
+NON fare refund automatico semplicemente perché manca gas.
+
+⸻
+
+3. GAS CHECK
+
+Prima del payout EVM verificare che l’escrow disponga del native asset necessario.
+
+Network:
+
+* Polygon → POL;
+* Ethereum → ETH;
+* BSC → BNB.
+
+Il controllo deve considerare il gas necessario per TUTTE le TX previste dal payout.
+
+Non utilizzare importi hardcoded.
+
+Utilizzare la configurazione esistente e i parametri environment.
+
+⸻
+
+4. GAS STATION
+
+Utilizzare il wallet owner/gas station come riserva della piattaforma.
+
+Il cliente NON deve possedere POL/ETH/BNB per effettuare un pagamento USDT.
+
+Se l’escrow non dispone del gas:
+
+Owner/Gas Reserve
+       ↓
+Escrow
+       ↓
+Payout
+
+Il gas top-up deve rimanere completamente separato dalla project fee.
+
+NON utilizzare mai project_fee per finanziare il gas.
+
+⸻
+
+5. GAS INSUFFICIENTE
+
+Se il top-up non è possibile perché la riserva owner/gas station è insufficiente:
+
+deposit confirmed
+        ↓
+waiting_for_gas
+
+NON:
+
+* failed;
+* cancelled;
+* refund;
+* rollback del deposito;
+* modifica di project_fee;
+* modifica di network_fee_charged;
+* modifica di net_amount.
+
+⸻
+
+6. ADMIN ALERT
+
+Quando un transfer entra in waiting_for_gas, generare un alert Admin.
+
+L’alert deve contenere:
+
+* transfer_id;
+* network;
+* asset;
+* escrow wallet;
+* native asset richiesto;
+* importo;
+* motivo;
+* timestamp;
+* eventuale retry count.
+
+NON inserire mai:
+
+* private key;
+* seed phrase;
+* encrypted private key;
+* GAS_STATION_PRIVATE_KEY;
+* altri secret.
+
+Se possibile, aggiungere nel Multi-Chain Monitor:
+
+Waiting for Gas
+
+come status/filtro/KPI.
+
+⸻
+
+7. RECOVERY AUTOMATICO
+
+Estendere lo scheduler esistente.
+
+Periodicamente:
+
+waiting_for_gas
+       ↓
+controllo riserva/gas
+       ↓
+gas disponibile?
+   │           │
+  NO          YES
+   │           │
+wait        release
+               ↓
+              TX1
+               ↓
+       persist tx_hash_release
+               ↓
+              TX2
+               ↓
+            released
+
+Il cliente NON deve intervenire.
+
+⸻
+
+8. IDEMPOTENZA OBBLIGATORIA
+
+Riutilizzare tutte le protezioni già esistenti.
+
+Se:
+
+tx_hash_release != null
+
+NON inviare nuovamente TX1.
+
+Se:
+
+tx_hash_fee != null
+
+NON inviare nuovamente TX2.
+
+La recovery deve essere compatibile con C-1 e C-2 già implementati.
+
+⸻
+
+9. PROJECT FEE — PROTEZIONE ASSOLUTA
+
+NON modificare:
+
+projectFee = grossAmount × 0.001
+netAmount = grossAmount - projectFee
+
+network_fee_charged è completamente separata.
+
+Il gas insufficiente NON deve mai causare:
+
+* riduzione della project fee;
+* utilizzo della project fee per pagare il gas;
+* modifica del netAmount;
+* modifica del fee wallet;
+* modifica retroattiva delle fee.
+
+⸻
+
+10. NETWORK FEE CHARGED
+
+NON modificare il modello già implementato.
+
+Esempio Polygon:
+
+grossAmount          100.00 USDT
+projectFee             0.10 USDT
+netAmount             99.90 USDT
+networkFeeCharged      0.50 USDT
+minDepositAmount     100.50 USDT
+
+La network fee charged rimane immutabile per il transfer.
+
+Il gas reale continua a essere registrato separatamente come network_fee / networkFeeActual.
+
+⸻
+
+11. GAS RESERVE THRESHOLD
+
+Implementare, se necessario, configurazioni environment per:
+
+* minimum reserve;
+* top-up amount;
+* maximum top-up;
+* safety multiplier.
+
+NON hardcodare valori operativi critici.
+
+L’obiettivo è generare l’alert PRIMA che la riserva arrivi completamente a zero.
+
+⸻
+
+12. TEST OBBLIGATORI
+
+A — Gas sufficiente
+
+deposit
+→ gas check OK
+→ TX1
+→ TX2
+→ released
+
+B — Gas insufficiente
+
+deposit
+→ insufficient gas
+→ waiting_for_gas
+
+Verificare:
+
+* nessuna TX payout;
+* nessun refund;
+* nessuna perdita;
+* project fee invariata;
+* network fee charged invariata.
+
+C — Gas ripristinato
+
+waiting_for_gas
+→ gas disponibile
+→ TX1
+→ TX2
+→ released
+
+D — Crash dopo TX1
+
+Se tx_hash_release esiste:
+
+recovery
+→ SOLO TX2
+
+Mai duplicare TX1.
+
+E — Crash dopo TX2
+
+Se tx_hash_fee esiste:
+
+recovery
+→ nessuna seconda TX2
+
+F — Gas station completamente vuota
+
+Simulare owner/gas station senza sufficiente native balance.
+
+Risultato obbligatorio:
+
+waiting_for_gas
+
+NON failed.
+
+G — Gas ripristinato dopo attesa
+
+Simulare:
+
+waiting_for_gas
+→ owner replenished
+→ scheduler
+→ automatic release
+
+H — Client response
+
+Verificare che il client riceva un messaggio non tecnico e non allarmante.
+
+⸻
+
+13. TESTNET FIRST
+
+Implementare e testare inizialmente SOLO su:
+
+Polygon Amoy / MockUSDT
+
+Ethereum e BSC devono rimanere disabled.
+
+NON modificare BTC in questo step.
+
+⸻
+
+14. USDA — BLOCCO ASSOLUTO
+
+NON modificare:
+
+* usda-custodial.service.ts;
+* ensureEscrowGas USDA;
+* USDA scheduler;
+* USDA wallet management;
+* chat payment;
+* chat_transfers;
+* USDA authentication;
+* USDA payout flow.
+
+Il Gas Reserve Protection deve essere isolato nel Multi-Chain Engine.
+
+Obiettivo:
+
+ZERO USDA REGRESSIONS.
+
+⸻
+
+15. CHECKPOINT OBBLIGATORIO
+
+Prima di considerare completato lo step, eseguire:
+
+* typecheck;
+* test completi;
+* test nuovi;
+* build;
+* verifica startup;
+* verifica che i 3 fail pre-existing rimangano invariati.
+
+Non procedere a production.
+
+⸻
+
+16. REPORT FINALE
+
+Restituire:
+
+1. file modificati;
+2. eventuali nuovi status;
+3. modifiche scheduler;
+4. configurazioni environment;
+5. logica gas check;
+6. logica waiting_for_gas;
+7. logica Admin Alert;
+8. recovery automatico;
+9. test aggiunti;
+10. risultati completi;
+11. conferma zero modifiche USDA;
+12. rischi residui.
+
+NON implementare altre funzionalità della roadmap in questo step.
+
+In particolare NON implementare ancora:
+
+* modalità “destinatario riceve esattamente X”;
+* Ethereum;
+* BSC;
+* modifiche BTC;
+* UI completa multi-chain;
+* Paymaster;
+* swap automatico del gas.
+
+Attendere il checkpoint finale prima di procedere allo STEP successivo.

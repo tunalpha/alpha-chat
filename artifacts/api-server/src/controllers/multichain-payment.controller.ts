@@ -157,6 +157,18 @@ export async function handleReleaseTransfer(
 ): Promise<void> {
   try {
     const transfer = await releaseMultiChainTransfer(req.params["id"] as string);
+
+    // Gas Reserve Protection: il transfer è stato ricevuto ma il release
+    // è temporaneamente in attesa di gas. Il deposito è al sicuro.
+    // Restituire un messaggio non tecnico — MAI esporre "insufficient gas" al client.
+    if (transfer.status === "waiting_for_gas") {
+      res.json({
+        transfer,
+        message: "Pagamento ricevuto — elaborazione in corso. Riceverai conferma a breve.",
+      });
+      return;
+    }
+
     res.json({ transfer });
   } catch (err) {
     next(err);

@@ -24,6 +24,7 @@ import { apiFetch } from "@/lib/api";
 
 type MCStatus =
   | "awaiting_deposit" | "pending" | "releasing" | "released"
+  | "waiting_for_gas"
   | "refunding" | "refunded" | "expired" | "failed" | "cancelled";
 
 interface MCTransfer {
@@ -65,13 +66,14 @@ interface MCListResponse {
 interface MCStats {
   byStatus: Record<string, number>;
   totals: {
-    total:      number;
-    active:     number;
-    releasing:  number;
-    completed:  number;
-    refunded:   number;
-    expired:    number;
-    failed:     number;
+    total:          number;
+    active:         number;
+    releasing:      number;
+    completed:      number;
+    refunded:       number;
+    expired:        number;
+    failed:         number;
+    waitingForGas:  number;
   };
   byNetwork: Array<{
     _id:               string;
@@ -108,6 +110,7 @@ const STATUS_COLORS: Record<MCStatus, string> = {
   pending:          "bg-blue-500/10 text-blue-400 border-blue-500/20",
   releasing:        "bg-orange-500/10 text-orange-400 border-orange-500/20",
   released:         "bg-green-500/10 text-green-400 border-green-500/20",
+  waiting_for_gas:  "bg-amber-500/10 text-amber-300 border-amber-500/30",
   refunding:        "bg-orange-500/10 text-orange-400 border-orange-500/20",
   refunded:         "bg-gray-500/10 text-gray-400 border-gray-500/20",
   expired:          "bg-gray-500/10 text-gray-400 border-gray-500/20",
@@ -318,17 +321,18 @@ export default function MultichainMonitor() {
       </div>
 
       {/* KPI row */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-8 gap-3">
         {statsQuery.isLoading ? (
-          Array.from({ length: 7 }).map((_, i) => (
+          Array.from({ length: 8 }).map((_, i) => (
             <Card key={i}><CardContent className="pt-4 pb-4"><Skeleton className="h-12 w-full" /></CardContent></Card>
           ))
         ) : stats ? (
           <>
-            <KpiCard icon={ArrowRightLeft} label="Totali"      value={stats.totals.total}      />
+            <KpiCard icon={ArrowRightLeft} label="Totali"      value={stats.totals.total}                       />
             <KpiCard icon={Clock}          label="Attivi"       value={stats.totals.active}      color="text-blue-400"   />
             <KpiCard icon={AlertTriangle}  label="In corso"    value={stats.totals.releasing}   color="text-orange-400" />
             <KpiCard icon={CheckCircle2}   label="Released"    value={stats.totals.completed}   color="text-green-400"  />
+            <KpiCard icon={AlertTriangle}  label="⛽ Attesa Gas" value={stats.totals.waitingForGas ?? 0} color="text-amber-300"  />
             <KpiCard icon={RefreshCw}      label="Rimborsati"  value={stats.totals.refunded}    color="text-gray-400"   />
             <KpiCard icon={XCircle}        label="Scaduti"     value={stats.totals.expired}     color="text-yellow-400" />
             <KpiCard icon={XCircle}        label="Falliti"     value={stats.totals.failed}      color="text-red-400"    />
@@ -394,6 +398,7 @@ export default function MultichainMonitor() {
                   <SelectItem value="pending">Pending</SelectItem>
                   <SelectItem value="releasing">Releasing 🔶</SelectItem>
                   <SelectItem value="released">Released ✅</SelectItem>
+                  <SelectItem value="waiting_for_gas">Waiting for Gas ⛽</SelectItem>
                   <SelectItem value="refunding">Refunding 🔶</SelectItem>
                   <SelectItem value="refunded">Refunded</SelectItem>
                   <SelectItem value="expired">Expired</SelectItem>

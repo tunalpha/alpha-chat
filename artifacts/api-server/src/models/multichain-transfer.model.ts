@@ -25,6 +25,7 @@ export type MultiChainTransferStatus =
   | "pending"            // deposito rilevato on-chain, in attesa di azione
   | "releasing"          // release in corso (lock state)
   | "released"           // netAmount → recipient, projectFee → feeWallet ✓
+  | "waiting_for_gas"    // deposito confermato, gas station insufficiente — recovery automatica
   | "refunding"          // refund in corso (lock state)
   | "refunded"           // rimborso al mittente ✓
   | "cancelling"         // cancellazione in corso (lock state)
@@ -104,6 +105,13 @@ export interface IMultiChainTransfer {
   completed_at:  Date | null;   // quando lo status raggiunge un terminale
 
   /**
+   * Contatore tentativi di release falliti per gas insufficiente.
+   * Incrementato ogni volta che il transfer entra/rientra in waiting_for_gas.
+   * Usato negli admin alert e per diagnostica.
+   */
+  gas_retry_count: number;
+
+  /**
    * Importo minimo che il mittente DEVE depositare nell'escrow.
    *
    * BTC: gross_amount + estimatedMinerFee + buffer (miner fee inclusa nel deposito).
@@ -159,6 +167,7 @@ const MultiChainTransferSchema = new Schema<MultiChainTransferDocument>(
         "pending",
         "releasing",
         "released",
+        "waiting_for_gas",
         "refunding",
         "refunded",
         "cancelling",
@@ -181,6 +190,7 @@ const MultiChainTransferSchema = new Schema<MultiChainTransferDocument>(
     locked_at:          { type: Date, default: null },
     completed_at:       { type: Date, default: null },
     min_deposit_amount: { type: String, default: null },
+    gas_retry_count:    { type: Number, default: 0 },
   },
   {
     collection:  "multichain_transfers",
@@ -197,6 +207,7 @@ MultiChainTransferSchema.index({ sender_id:   1, createdAt: -1 });
 MultiChainTransferSchema.index({ recipient_id: 1, createdAt: -1 });
 MultiChainTransferSchema.index({ status: 1, expires_at: 1 });  // scheduler
 MultiChainTransferSchema.index({ status: 1, locked_at: 1 });   // recovery
+MultiChainTransferSchema.index({ status: 1, network: 1 });     // waiting_for_gas recovery by network
 MultiChainTransferSchema.index({ escrow_wallet: 1 }, { sparse: true });
 MultiChainTransferSchema.index({ tx_hash_deposit: 1 }, { sparse: true });
 MultiChainTransferSchema.index({ tx_hash_release: 1 }, { sparse: true });

@@ -23,12 +23,14 @@ const {
   mockAdapterGet,
   mockRefund,
   mockRetryEVMFee,
+  mockReleaseFromWaitingForGas,
 } = vi.hoisted(() => ({
-  mockFind:             vi.fn(),
-  mockFindOneAndUpdate: vi.fn(),
-  mockAdapterGet:       vi.fn(),
-  mockRefund:           vi.fn(),
-  mockRetryEVMFee:      vi.fn(),
+  mockFind:                    vi.fn(),
+  mockFindOneAndUpdate:        vi.fn(),
+  mockAdapterGet:              vi.fn(),
+  mockRefund:                  vi.fn(),
+  mockRetryEVMFee:             vi.fn(),
+  mockReleaseFromWaitingForGas: vi.fn(),
 }));
 
 // ─── Mock prima degli import ───────────────────────────────────────────────────
@@ -61,8 +63,16 @@ vi.mock("../../blockchain/multichain-config", async () => {
 
 // Mock del service importato dinamicamente dal scheduler
 vi.mock("../multichain-payment.service", () => ({
-  refundMultiChainTransfer: mockRefund,
-  retryEVMFeeTx:            mockRetryEVMFee,
+  refundMultiChainTransfer:  mockRefund,
+  retryEVMFeeTx:             mockRetryEVMFee,
+  releaseFromWaitingForGas:  mockReleaseFromWaitingForGas,
+  GasReserveDepletedError:   class GasReserveDepletedError extends Error {
+    code = "GAS_RESERVE_DEPLETED" as const;
+    constructor(public network: string, public escrowAddress: string, public required: bigint, public available: bigint) {
+      super(`gas depleted: required ${required}, available ${available}`);
+      this.name = "GasReserveDepletedError";
+    }
+  },
 }));
 
 // Import dopo i mock
@@ -71,6 +81,7 @@ import {
   processStuckRefundingTransfers,
   processExpiredMCTransfers,
   processExpiredPendingTransfers,
+  processWaitingForGasTransfers,
   startMultiChainScheduler,
   _resetSchedulerForTesting,
 } from "../multichain-scheduler";
@@ -482,5 +493,119 @@ describe("processStuckRefundingTransfers", () => {
       (c: any[]) => (c[1] as any)?.$set?.status === "pending",
     );
     expect(rollbackCalls).toHaveLength(0);
+  });
+});
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Gas Reserve Protection — processWaitingForGasTransfers (Tests C e G)
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("processWaitingForGasTransfers", () => {
+
+  const baseWaitingDoc = {
+    transfer_id:     "waiting-gas-001",
+    status:          "waiting_for_gas",
+    network:         "polygon",
+    asset:           "USDT",
+    gas_retry_count: 1,
+  };
+
+  /**
+   * TEST C — Gas station ripristinato → processWaitingForGasTransfers → release completata.
+   *
+   * Simula: gas station rifornito → releaseFromWaitingForGas() ha successo → status = "released".
+   * Verifica che lo scheduler chiami releaseFromWaitingForGas per ogni waiting_for_gas transfer.
+   */
+  it("TEST C: gas ripristinato → scheduler chiama releaseFromWaitingForGas → status released", async () => {
+    mockFindChain([baseWaitingDoc]);
+
+    // Gas station ripristinato → release ha successo
+    mockReleaseFromWaitingForGas.mockResolvedValue({
+      transferId:       "waiting-gas-001",
+      status:           "released",
+      gasRetryCount:    1,
+      network:          "polygon",
+      asset:            "USDT",
+      grossAmount:      "100000000",
+      projectFee:       "100000",
+      netAmount:        "99900000",
+      networkFeeCharged: "500000",
+      networkFeeActual: "2000",
+      networkFeeAsset:  "POL",
+    });
+
+    await processWaitingForGasTransfers();
+
+    expect(mockReleaseFromWaitingForGas).toHaveBeenCalledWith("waiting-gas-001");
+    expect(mockReleaseFromWaitingForGas).toHaveBeenCalledTimes(1);
+  });
+
+  /**
+   * TEST G — Gas station ancora vuoto → scheduler lascia il transfer in waiting_for_gas.
+   *
+   * Simula: gas station ancora insufficiente → releaseFromWaitingForGas() ritorna
+   * status "waiting_for_gas" (GasReserveDepletedError intercettata internamente dal service).
+   * Lo scheduler NON lancia eccezioni e NON cambia status a "failed".
+   */
+  it("TEST G: gas ancora insufficiente → transfer rimane in waiting_for_gas (retry al prossimo ciclo)", async () => {
+    mockFindChain([baseWaitingDoc]);
+
+    // Gas ancora insufficiente → service ritorna waiting_for_gas (non lancia)
+    mockReleaseFromWaitingForGas.mockResolvedValue({
+      transferId:    "waiting-gas-001",
+      status:        "waiting_for_gas",
+      gasRetryCount: 2,  // incrementato
+      network:       "polygon",
+    });
+
+    await processWaitingForGasTransfers();
+
+    // Lo scheduler ha tentato il release
+    expect(mockReleaseFromWaitingForGas).toHaveBeenCalledWith("waiting-gas-001");
+
+    // NON ha cambiato status a failed (findOneAndUpdate non chiamato con "failed")
+    const failedCalls = mockFindOneAndUpdate.mock.calls.filter(
+      (c: any[]) => (c[1] as any)?.$set?.status === "failed",
+    );
+    expect(failedCalls).toHaveLength(0);
+  });
+
+  /**
+   * TEST G2 — Nessun transfer in waiting_for_gas → funzione è no-op.
+   */
+  it("TEST G2: nessun transfer waiting_for_gas → no-op (nessuna chiamata al service)", async () => {
+    mockFindChain([]);
+
+    await processWaitingForGasTransfers();
+
+    expect(mockReleaseFromWaitingForGas).not.toHaveBeenCalled();
+    expect(mockFindOneAndUpdate).not.toHaveBeenCalled();
+  });
+
+  /**
+   * TEST C2 — Errore inatteso nel service → scheduler logga e continua (non propaga).
+   *
+   * Se releaseFromWaitingForGas lancia per un errore non previsto (RPC, DB),
+   * lo scheduler deve continuare a processare gli altri transfer.
+   */
+  it("TEST C2: errore imprevisto nel service → scheduler logga ma non propaga", async () => {
+    const multiDoc = [
+      { ...baseWaitingDoc, transfer_id: "waiting-001" },
+      { ...baseWaitingDoc, transfer_id: "waiting-002" },
+    ];
+    mockFindChain(multiDoc);
+
+    // Primo: lancia errore imprevisto; Secondo: successo
+    mockReleaseFromWaitingForGas
+      .mockRejectedValueOnce(new Error("RPC timeout"))
+      .mockResolvedValueOnce({ status: "released", gasRetryCount: 1 });
+
+    // Non deve lanciare
+    await expect(processWaitingForGasTransfers()).resolves.not.toThrow();
+
+    // Deve aver tentato entrambi i transfer
+    expect(mockReleaseFromWaitingForGas).toHaveBeenCalledTimes(2);
+    expect(mockReleaseFromWaitingForGas).toHaveBeenCalledWith("waiting-001");
+    expect(mockReleaseFromWaitingForGas).toHaveBeenCalledWith("waiting-002");
   });
 });

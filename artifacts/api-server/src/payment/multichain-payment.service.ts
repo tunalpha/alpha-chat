@@ -90,6 +90,33 @@ export interface CreateMultiChainTransferParams {
   expiresInHours?: number;
 }
 
+/**
+ * GasReserveDepletedError — lanciata da ensureMultiChainEscrowGas quando il wallet
+ * del gas station non ha fondi nativi sufficienti per il top-up dell'escrow.
+ *
+ * Intercettata da releaseMultiChainTransfer/releaseFromWaitingForGas per transizionare
+ * il transfer a "waiting_for_gas" invece di "failed". Il deposito è preservato.
+ *
+ * NOTA: non contiene mai PK, seed, o altri secret.
+ */
+export class GasReserveDepletedError extends Error {
+  readonly code = "GAS_RESERVE_DEPLETED" as const;
+
+  constructor(
+    public readonly network: MCNetworkId,
+    public readonly escrowAddress: string,
+    public readonly required: bigint,
+    public readonly available: bigint,
+  ) {
+    super(
+      `Gas station reserve depleted on ${network}: ` +
+      `required ${required} wei, available ${available} wei — transfer → waiting_for_gas`,
+    );
+    this.name = "GasReserveDepletedError";
+    Object.setPrototypeOf(this, GasReserveDepletedError.prototype);
+  }
+}
+
 export interface MultiChainTransferInfo {
   transferId:       string;
   clientRef:        string;
@@ -131,6 +158,11 @@ export interface MultiChainTransferInfo {
    * Null per transfer pre-modifica.
    */
   networkFeeAsset:    string | null;
+  /**
+   * Numero di tentativi di release falliti per gas insufficiente.
+   * 0 = nessun problema di gas. >0 = in waiting_for_gas o uscito da waiting_for_gas.
+   */
+  gasRetryCount:      number;
 }
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
@@ -156,6 +188,7 @@ function toInfo(doc: MultiChainTransferDocument): MultiChainTransferInfo {
     networkFeeCharged: doc.network_fee_charged ?? null,
     networkFeeActual:  doc.network_fee,
     networkFeeAsset:   doc.network_fee_asset ?? null,
+    gasRetryCount:     doc.gas_retry_count ?? 0,
   };
 }
 
@@ -253,6 +286,19 @@ const MC_CHAIN_MAP: Partial<Record<MCNetworkId, Chain>> = {
   // bsc: bsc,           // aggiungere con BSC import quando abilitato
 };
 
+/**
+ * Garantisce che il wallet escrow EVM abbia abbastanza gas nativo per TX1 + TX2.
+ *
+ * Comportamento Gas Reserve Protection (STEP 2):
+ *   - Se GAS_STATION_PRIVATE_KEY non configurato → warning + continua (dev/test)
+ *   - Se escrow ha già gas sufficiente → skip top-up
+ *   - Se gas station NON ha fondi per il top-up → throw GasReserveDepletedError
+ *     (mai "failed", mai rollback del deposito)
+ *   - Se la TX di top-up fallisce post-check (race condition) → throw GasReserveDepletedError
+ *
+ * Il caller (releaseMultiChainTransfer / releaseFromWaitingForGas) intercetta
+ * GasReserveDepletedError e transiziona il transfer a "waiting_for_gas".
+ */
 async function ensureMultiChainEscrowGas(
   network: MCNetworkId,
   escrowAddress: string,
@@ -267,7 +313,7 @@ async function ensureMultiChainEscrowGas(
       { network, escrowAddress },
       "[MCGasStation] GAS_STATION_PRIVATE_KEY non configurato — l'escrow potrebbe non avere gas per il release",
     );
-    return;
+    return; // Dev/test: non bloccante
   }
 
   const chain = MC_CHAIN_MAP[network];
@@ -282,10 +328,13 @@ async function ensureMultiChainEscrowGas(
     return;
   }
 
+  const normalizedPk = gsPk.startsWith("0x") ? gsPk : `0x${gsPk}`;
+  const gsAccount    = privateKeyToAccount(normalizedPk as `0x${string}`);
+
   const publicClient = createPublicClient({ chain, transport: http(rpcConfig.primary) });
 
-  // Leggi gas price corrente e saldo nativo dell'escrow in parallelo
-  const [gasPrice, nativeBalance] = await Promise.all([
+  // Leggi gas price + saldo escrow in parallelo
+  const [gasPrice, escrowNativeBalance] = await Promise.all([
     publicClient.getGasPrice(),
     publicClient.getBalance({ address: escrowAddress as `0x${string}` }),
   ]);
@@ -293,16 +342,16 @@ async function ensureMultiChainEscrowGas(
   // Costo stimato: 2 ERC-20 transfer × 80k gas × gasPrice × buffer 2×
   const estimatedCost = MC_GAS_LIMIT_PER_TX * MC_GAS_TX_COUNT * gasPrice * MC_GAS_STATION_BUFFER;
 
-  if (nativeBalance >= estimatedCost) {
+  if (escrowNativeBalance >= estimatedCost) {
     logger.debug(
-      { network, escrowAddress, nativeBalance: nativeBalance.toString(), estimatedCost: estimatedCost.toString() },
-      "[MCGasStation] Saldo nativo sufficiente — skip top-up",
+      { network, escrowAddress, nativeBalance: escrowNativeBalance.toString(), estimatedCost: estimatedCost.toString() },
+      "[MCGasStation] Saldo nativo escrow sufficiente — skip top-up",
     );
     return;
   }
 
-  // Top-up: porta il saldo a estimatedCost (non al doppio — estimatedCost include già il buffer 2×)
-  let topUp = estimatedCost - nativeBalance;
+  // Top-up necessario — calcola importo
+  let topUp = estimatedCost - escrowNativeBalance;
   if (topUp > MC_GAS_STATION_CAP) {
     logger.warn(
       { network, escrowAddress, topUp: topUp.toString(), cap: MC_GAS_STATION_CAP.toString() },
@@ -311,26 +360,63 @@ async function ensureMultiChainEscrowGas(
     topUp = MC_GAS_STATION_CAP;
   }
 
-  const normalizedPk = gsPk.startsWith("0x") ? gsPk : `0x${gsPk}`;
-  const gsAccount    = privateKeyToAccount(normalizedPk as `0x${string}`);
+  // ★ GAS RESERVE CHECK: verifica saldo gas station PRIMA di tentare la TX ★
+  // Se il gas station non ha fondi, lanciamo GasReserveDepletedError invece di
+  // lasciare che sendTransaction fallisca con un errore tecnico non gestito.
+  const gsBalance = await publicClient.getBalance({ address: gsAccount.address });
+
+  if (gsBalance < topUp) {
+    const err = new GasReserveDepletedError(network, escrowAddress, topUp, gsBalance);
+    logger.warn(
+      {
+        network,
+        escrowAddress,
+        gsAddress:    gsAccount.address,
+        required:     topUp.toString(),
+        available:    gsBalance.toString(),
+        estimatedCost: estimatedCost.toString(),
+        gasPrice:     gasPrice.toString(),
+      },
+      "[MCGasStation] ⚠️  Riserva gas insufficiente — GasReserveDepletedError",
+    );
+    throw err;
+  }
+
+  const walletClient = createWalletClient({ account: gsAccount, chain, transport: http(rpcConfig.primary) });
 
   logger.info(
-    { network, escrowAddress, topUp: topUp.toString(), estimatedCost: estimatedCost.toString(), gasPrice: gasPrice.toString(), gsAddress: gsAccount.address },
+    {
+      network,
+      escrowAddress,
+      gsAddress:     gsAccount.address,
+      topUp:         topUp.toString(),
+      gsBalance:     gsBalance.toString(),
+      estimatedCost: estimatedCost.toString(),
+      gasPrice:      gasPrice.toString(),
+    },
     "[MCGasStation] Top-up nativo in corso",
   );
 
-  const walletClient = createWalletClient({ account: gsAccount, chain, transport: http(rpcConfig.primary) });
-  const txHash = await walletClient.sendTransaction({
-    to:    escrowAddress as `0x${string}`,
-    value: topUp,
-  });
-
-  await publicClient.waitForTransactionReceipt({ hash: txHash, timeout: 30_000 });
-
-  logger.info(
-    { network, escrowAddress, txHash, topUp: topUp.toString() },
-    "[MCGasStation] Top-up nativo confermato ✓",
-  );
+  try {
+    const txHash = await walletClient.sendTransaction({
+      to:    escrowAddress as `0x${string}`,
+      value: topUp,
+    });
+    await publicClient.waitForTransactionReceipt({ hash: txHash, timeout: 30_000 });
+    logger.info(
+      { network, escrowAddress, txHash, topUp: topUp.toString() },
+      "[MCGasStation] Top-up nativo confermato ✓",
+    );
+  } catch (txErr: unknown) {
+    // TX fallita dopo il balance check (race condition, gas price spike, ecc.)
+    // Wrappare come GasReserveDepletedError per attivare la protezione waiting_for_gas.
+    const wrapped = new GasReserveDepletedError(network, escrowAddress, topUp, gsBalance);
+    logger.warn(
+      { err: txErr, network, escrowAddress, gsAddress: gsAccount.address },
+      "[MCGasStation] Top-up TX fallita (race condition?) — GasReserveDepletedError",
+    );
+    throw wrapped;
+  }
 }
 
 // ─── Bitcoin minimum deposit estimation ────────────────────────────────────────
@@ -546,8 +632,15 @@ export async function releaseMultiChainTransfer(transferId: string): Promise<Mul
     }
     return await _releaseEvm(locked);
   } catch (err) {
-    // Rollback atomico solo se TX1 NON è stata ancora inviata (C-1 fix).
-    // La condizione { tx_hash_release: null } impedisce il rollback se TX1 è già in DB.
+    // ★ GAS RESERVE PROTECTION: se il gas station è vuoto, NON fallire il transfer. ★
+    // Il deposito è al sicuro nell'escrow. Il transfer va in "waiting_for_gas" e
+    // viene ripristinato automaticamente dallo scheduler quando il gas torna disponibile.
+    if (err instanceof GasReserveDepletedError) {
+      return await _transitionToWaitingForGas(transferId, locked, err);
+    }
+
+    // Errore non gas-related: rollback atomico (C-1 safe).
+    // { tx_hash_release: null } impedisce il rollback se TX1 è già in DB.
     // In quel caso lo scheduler completerà TX2 via retryEVMFeeTx().
     await MultiChainTransferModel.findOneAndUpdate(
       { transfer_id: transferId, status: "releasing", tx_hash_release: null },
@@ -555,11 +648,132 @@ export async function releaseMultiChainTransfer(transferId: string): Promise<Mul
     );
     logger.error(
       { err, transferId },
-      "[MCPayment] Release fallita — rollback tentato (solo se tx_hash_release era null)",
+      "[MCPayment] Release fallita — rollback (solo se tx_hash_release era null)",
     );
     throw err;
   }
 }
+
+/**
+ * Ritenta il release di un transfer in stato "waiting_for_gas".
+ *
+ * Chiamato dallo scheduler quando rileva transfer in waiting_for_gas.
+ * La logica è identica a releaseMultiChainTransfer ma acquisisce il lock
+ * da "waiting_for_gas" invece che da "pending".
+ *
+ * Idempotenza garantita:
+ *   - tx_hash_release presente → C-1 recovery via retryEVMFeeTx
+ *   - Gas ancora insufficiente → torna a waiting_for_gas, gas_retry_count++
+ *   - Errore non-gas → torna a waiting_for_gas (conservativo)
+ */
+export async function releaseFromWaitingForGas(transferId: string): Promise<MultiChainTransferInfo> {
+  const locked = await acquireMCLock(transferId, "waiting_for_gas", "releasing");
+  if (!locked) {
+    const doc = await MultiChainTransferModel.findOne({ transfer_id: transferId });
+    if (!doc) throw new AppError("TRANSFER_NOT_FOUND", 404);
+    return toInfo(doc);
+  }
+
+  assertFeatureEnabled(locked.network, locked.asset);
+
+  try {
+    if (isBitcoin(locked.network)) {
+      return await _releaseBitcoin(locked);
+    }
+    return await _releaseEvm(locked);
+  } catch (err) {
+    if (err instanceof GasReserveDepletedError) {
+      // Gas ancora insufficiente — torna a waiting_for_gas con retry count++
+      return await _transitionToWaitingForGas(transferId, locked, err);
+    }
+
+    // Errore non gas-related (RPC, TX, ecc.).
+    // C-1: se tx_hash_release è già impostato, non tornare indietro.
+    // Torna a waiting_for_gas (conservativo) se TX1 non era ancora partita.
+    await MultiChainTransferModel.findOneAndUpdate(
+      { transfer_id: transferId, status: "releasing", tx_hash_release: null },
+      { $set: { status: "waiting_for_gas", locked_at: null } },
+    );
+    logger.error(
+      { err, transferId },
+      "[MCPayment] releaseFromWaitingForGas: errore non-gas — torno a waiting_for_gas",
+    );
+    throw err;
+  }
+}
+
+// ─── Gas Reserve Protection — Helpers ────────────────────────────────────────
+
+/**
+ * Trasla il transfer in "waiting_for_gas" quando il gas station è esaurito.
+ *
+ * Incrementa gas_retry_count, azzera locked_at (il transfer non è più in lock state),
+ * e lancia _fireGasDepletedAlert per avvisare l'admin.
+ *
+ * Restituisce toInfo() del documento aggiornato senza lanciare eccezioni.
+ * Il caller (releaseMultiChainTransfer / releaseFromWaitingForGas) ritorna
+ * direttamente questa risposta: nessun 5xx verso il client.
+ */
+async function _transitionToWaitingForGas(
+  transferId: string,
+  doc: MultiChainTransferDocument,
+  err: GasReserveDepletedError,
+): Promise<MultiChainTransferInfo> {
+  const updated = await MultiChainTransferModel.findOneAndUpdate(
+    { transfer_id: transferId, status: "releasing" },
+    {
+      $set: { status: "waiting_for_gas", locked_at: null },
+      $inc: { gas_retry_count: 1 },
+    },
+    { returnDocument: "after" },
+  );
+
+  const retryCount = updated?.gas_retry_count ?? 1;
+  _fireGasDepletedAlert(transferId, doc, err, retryCount);
+
+  return toInfo(updated ?? doc);
+}
+
+/**
+ * Emette un alert strutturato quando il gas station è esaurito.
+ *
+ * SICUREZZA: non includere mai private_key, escrow_encrypted_pk,
+ * GAS_STATION_PRIVATE_KEY o altri secret nell'oggetto di log.
+ *
+ * L'alert è scritto a livello "error" dal logger pino (JSON structured)
+ * per essere intercettato da qualsiasi sistema di monitoring.
+ */
+function _fireGasDepletedAlert(
+  transferId: string,
+  doc: MultiChainTransferDocument,
+  err: GasReserveDepletedError,
+  gasRetryCount: number,
+): void {
+  const nativeUnit = NATIVE_ASSET_SYMBOL[doc.network] ?? doc.network.toUpperCase();
+  // NOTA: non includere escrow_encrypted_pk, private_key, seed phrase o chiavi crittografiche
+  const alert = {
+    transferId,
+    network:          doc.network,
+    asset:            doc.asset,
+    escrowWallet:     doc.escrow_wallet,
+    nativeRequired:   err.required.toString(),
+    nativeAvailable:  err.available.toString(),
+    nativeUnit,
+    reason:           "Gas station reserve insufficient for EVM payout TX",
+    depositPreserved: true,      // il deposito è al sicuro nell'escrow
+    autoRecovery:     true,      // lo scheduler ritenta automaticamente
+    timestamp:        new Date().toISOString(),
+    gasRetryCount,
+  };
+
+  logger.error(
+    alert,
+    "[MCPayment:ALERT] ⚠️  GAS RESERVE DEPLETED — transfer → waiting_for_gas (recovery automatica)",
+  );
+  // Hook futuro: email/webhook/Telegram alert qui
+}
+
+// ─── Release EVM ──────────────────────────────────────────────────────────────
 
 /**
  * Release EVM: 2 TX separate con persistenza progressiva (C-1 fix).

@@ -155,13 +155,15 @@ router.get("/stats", async (_req: Request, res: Response, next: NextFunction): P
       byStatus:  statusMap,
       byNetwork: byNetwork,
       totals: {
-        total:    byStatus.reduce((s, r) => s + (r.count as number), 0),
-        active:   (statusMap["awaiting_deposit"] ?? 0) + (statusMap["pending"] ?? 0),
-        releasing:(statusMap["releasing"] ?? 0) + (statusMap["refunding"] ?? 0),
-        completed:(statusMap["released"] ?? 0),
-        refunded: (statusMap["refunded"] ?? 0),
-        expired:  (statusMap["expired"] ?? 0),
-        failed:   (statusMap["failed"] ?? 0),
+        total:          byStatus.reduce((s, r) => s + (r.count as number), 0),
+        active:         (statusMap["awaiting_deposit"] ?? 0) + (statusMap["pending"] ?? 0),
+        releasing:      (statusMap["releasing"] ?? 0) + (statusMap["refunding"] ?? 0),
+        completed:      (statusMap["released"] ?? 0),
+        refunded:       (statusMap["refunded"] ?? 0),
+        expired:        (statusMap["expired"] ?? 0),
+        failed:         (statusMap["failed"] ?? 0),
+        // Gas Reserve Protection: transfer con deposito confermato in attesa di gas
+        waitingForGas:  (statusMap["waiting_for_gas"] ?? 0),
       },
     });
   } catch (err) {

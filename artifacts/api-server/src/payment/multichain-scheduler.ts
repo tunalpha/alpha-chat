@@ -17,6 +17,13 @@
  *  (depositati ma mai rilasciati) scaduti. Rimborso solo se tx_hash_release:null.
  * ═══════════════════════════════════════════════════════════════════════════
  *
+ *  GAS RESERVE PROTECTION (STEP 2):
+ *  processWaitingForGasTransfers() gestisce trasferimenti in "waiting_for_gas".
+ *  - Deposito preservato nell'escrow (mai perso).
+ *  - Scheduler controlla gas station; se disponibile → retry release automatico.
+ *  - gas_retry_count++ ad ogni fallimento.
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
  *  Job:
  *    processStuckReleasingTransfers()
  *      Trasferimenti bloccati in "releasing" con lock stale (10 min).
@@ -31,6 +38,9 @@
  *
  *    processExpiredPendingTransfers()  [H-3]
  *      "pending" con expires_at < now + tx_hash_release:null → refund.
+ *
+ *    processWaitingForGasTransfers()  [Gas Reserve Protection]
+ *      "waiting_for_gas" → retry release se gas station ripristinato.
  *
  *    startMultiChainScheduler()
  *      Passata iniziale all'avvio + setInterval periodici.
@@ -345,6 +355,65 @@ export async function processExpiredPendingTransfers(): Promise<void> {
   }
 }
 
+// ─── Gas Reserve Protection: waiting_for_gas ──────────────────────────────────
+
+/**
+ * Ritenta il release dei transfer in "waiting_for_gas".
+ *
+ * Quando il gas station viene rifornito, questa funzione tenta di fare
+ * releaseFromWaitingForGas() per ogni transfer in attesa.
+ *
+ * Comportamento:
+ *   - Gas ora disponibile → release completa (TX1 + TX2) → "released"
+ *   - Gas ancora insufficiente → GasReserveDepletedError intercettata dal service
+ *     → transfer torna a "waiting_for_gas" con gas_retry_count++
+ *   - Errore non-gas → logga, salta questo transfer, il prossimo ciclo riprova
+ *   - Transfer non più in "waiting_for_gas" (race condition) → ignorato
+ *
+ * NON rimborsa mai automaticamente i waiting_for_gas: il deposito è al sicuro
+ * e il rimborso richiede azione manuale dell'admin.
+ */
+export async function processWaitingForGasTransfers(): Promise<void> {
+  const docs = await MultiChainTransferModel.find({
+    status: "waiting_for_gas",
+  }).limit(BATCH_SIZE).lean();
+
+  if (docs.length === 0) return;
+
+  logger.info(
+    { count: docs.length },
+    "[MCScheduler] Gas Reserve Recovery: trovati transfer waiting_for_gas — tentativo release",
+  );
+
+  for (const doc of docs) {
+    try {
+      const { releaseFromWaitingForGas, GasReserveDepletedError } =
+        await import("./multichain-payment.service");
+
+      const result = await releaseFromWaitingForGas(doc.transfer_id);
+
+      if (result.status === "released") {
+        logger.info(
+          { transferId: doc.transfer_id, network: doc.network },
+          "[MCScheduler] Gas Reserve Recovery: release completata ✓",
+        );
+      } else if (result.status === "waiting_for_gas") {
+        logger.info(
+          { transferId: doc.transfer_id, network: doc.network, gasRetryCount: result.gasRetryCount },
+          "[MCScheduler] Gas Reserve Recovery: gas ancora insufficiente — waiting_for_gas (retry al prossimo ciclo)",
+        );
+      }
+    } catch (err: unknown) {
+      // GasReserveDepletedError è intercettata internamente dal service e non rilancata.
+      // Qualsiasi errore qui è un problema diverso (RPC, DB, feature flag).
+      logger.error(
+        { err, transferId: doc.transfer_id, network: doc.network },
+        "[MCScheduler] Gas Reserve Recovery: errore release — riproverà al prossimo ciclo",
+      );
+    }
+  }
+}
+
 // ─── Start ────────────────────────────────────────────────────────────────────
 
 /**
@@ -376,8 +445,17 @@ export function startMultiChainScheduler(): void {
     void processExpiredPendingTransfers();
   }, EXPIRE_INTERVAL_MS).unref();
 
+  // Gas Reserve Recovery: waiting_for_gas → retry release — ogni 5 min
+  setInterval(() => {
+    void processWaitingForGasTransfers();
+  }, EXPIRE_INTERVAL_MS).unref();
+
   logger.info(
-    { recoveryIntervalMs: RECOVERY_INTERVAL_MS, expireIntervalMs: EXPIRE_INTERVAL_MS },
+    {
+      recoveryIntervalMs: RECOVERY_INTERVAL_MS,
+      expireIntervalMs:   EXPIRE_INTERVAL_MS,
+      gasRecoveryIntervalMs: EXPIRE_INTERVAL_MS,
+    },
     "[MCScheduler] Multi-Chain scheduler avviato (M-2 singleton)",
   );
 }
@@ -395,6 +473,7 @@ async function _runAll(): Promise<void> {
     processStuckRefundingTransfers(),
     processExpiredMCTransfers(),
     processExpiredPendingTransfers(),
+    processWaitingForGasTransfers(),
   ]);
 }
 
