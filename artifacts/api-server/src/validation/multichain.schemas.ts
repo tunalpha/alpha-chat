@@ -157,6 +157,7 @@ export const CreateMultiChainTransferSchema = z
     recipientId:      z.string().regex(OBJECT_ID_RE, "recipientId non valido"),
     conversationId:   z.string().regex(OBJECT_ID_RE, "conversationId non valido"),
     clientRef:        z.string().min(1).max(128),
+    note:             z.string().max(200).optional(),
     expiresInHours:   z
       .number()
       .int("Deve essere un intero")
@@ -268,6 +269,7 @@ export const RequestMultiChainTransferSchema = z
     grossAmountUnits:     z.string().regex(POSITIVE_BIGINT_STR, "Deve essere un intero positivo non zero").optional(),
     targetNetAmountUnits: z.string().regex(POSITIVE_BIGINT_STR, "Deve essere un intero positivo non zero").optional(),
     clientRef:            z.string().min(1).max(128),
+    note:                 z.string().max(200).optional(),
     expiresInHours:       z.number().int().min(1).max(168).optional(),
   })
   .superRefine((data, ctx) => {

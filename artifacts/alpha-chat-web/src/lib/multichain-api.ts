@@ -43,6 +43,8 @@ export interface MCSystemMeta {
   tx_hash_release:     string | null;
   /** true = la bubble è una richiesta di pagamento (requester = message.sender_id) */
   is_request:          boolean;
+  /** Causale / nota opzionale inserita dal mittente */
+  note:                string | null;
 }
 
 export interface MCTransfer {
@@ -99,6 +101,7 @@ export interface MCCreateParams {
   grossAmountUnits?:    string;        // obbligatorio per send_amount
   targetNetAmountUnits?: string;       // obbligatorio per recipient_exact
   clientRef:            string;
+  note?:                string;        // causale opzionale (max 200 char)
   expiresInHours?:      number;
 }
 
@@ -111,6 +114,7 @@ export interface MCRequestParams {
   grossAmountUnits?:    string;        // obbligatorio per send_amount
   targetNetAmountUnits?: string;       // obbligatorio per recipient_exact
   clientRef:            string;
+  note?:                string;        // causale opzionale (max 200 char)
   expiresInHours?:      number;
 }
 
@@ -130,6 +134,8 @@ export interface MCQuote {
   networkFeeCharged:  string;
   feeBps:             number;
   amountMode:         MCAmountMode;
+  /** true quando la BTC project fee è stata elevata al dust floor (546 sat) */
+  btcFeeFloorApplied?: boolean;
 }
 
 /** Crea un transfer dove il chiamante è il mittente (paga). */
