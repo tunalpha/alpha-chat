@@ -24,7 +24,6 @@ import {
   MC_ASSET,
   toSmallestUnit,
   fmtDisplay,
-  mcFeeLabel,
   type MCNetwork,
   type MCQuote,
   type MCAmountMode,
@@ -366,7 +365,7 @@ export function MultiChainRequestSheet({ conversationId, toUserId, toName, onClo
                     <span>{isBtc ? fmtUnits(quote.grossAmount, 8, 8) + " BTC" : fmtUnits(quote.grossAmount, rawDec, dispDec) + " " + ticker}</span>
                   </div>
                   <div className="mc-confirm-row mc-confirm-fee">
-                    <span>{mcFeeLabel(network)}</span>
+                    <span>Fee</span>
                     <span>−{(() => { const tot = totalFeeUnits(quote); return isBtc ? fmtUnits(tot.toString(), 8, 8) + " BTC" : fmtUnits(tot.toString(), rawDec, dispDec) + " " + ticker; })()}</span>
                   </div>
                   <div className="mc-confirm-row mc-confirm-net">
@@ -381,7 +380,7 @@ export function MultiChainRequestSheet({ conversationId, toUserId, toName, onClo
                     <strong>{isBtc ? fmtUnits(quote.netAmount, 8, 8) + " BTC" : fmtUnits(quote.netAmount, rawDec, dispDec) + " " + ticker}</strong>
                   </div>
                   <div className="mc-confirm-row mc-confirm-fee">
-                    <span>{mcFeeLabel(network)}</span>
+                    <span>Fee</span>
                     <span>+{(() => { const tot = totalFeeUnits(quote); return isBtc ? fmtUnits(tot.toString(), 8, 8) + " BTC" : fmtUnits(tot.toString(), rawDec, dispDec) + " " + ticker; })()}</span>
                   </div>
                   <div className="mc-confirm-row">

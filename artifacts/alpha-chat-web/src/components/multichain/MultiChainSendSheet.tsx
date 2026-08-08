@@ -22,7 +22,6 @@ import {
   MC_ASSET,
   toSmallestUnit,
   fmtDisplay,
-  mcFeeLabel,
   type MCNetwork,
   type MCTransfer,
   type MCQuote,
@@ -369,7 +368,7 @@ export function MultiChainSendSheet({
                 <span>{fmtQ(quote.grossAmount)}</span>
               </div>
               <div className="mc-confirm-row mc-confirm-fee">
-                <span>{mcFeeLabel(network)}</span>
+                <span>Fee</span>
                 <span>
                   −{totalFeeQ(quote)}
                   {quote.btcFeeFloorApplied && (
