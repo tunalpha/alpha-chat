@@ -223,6 +223,44 @@ export function fromSmallestUnit(units: string, decimals: number): string {
   }
 }
 
+/**
+ * Decimali massimi da visualizzare per ogni rete.
+ * BSC USDT ha 18 decimali interni ma ne mostriamo solo 6 (come le altre reti USDT).
+ */
+export const MC_DISPLAY_DECIMALS: Record<MCNetwork, number> = {
+  polygon:  6,
+  ethereum: 6,
+  bsc:      6,   // raw 18 → display max 6
+  bitcoin:  8,
+};
+
+/**
+ * Formatta unità minima → stringa human-readable con troncamento a displayDecimals.
+ * Usa BigInt puro — nessun errore floating-point.
+ * Tronca (floor) anziché arrotondare: non mostra mai importi maggiori del reale.
+ *
+ * Esempi (BSC USDT 18 dec → display 6):
+ *   "1000000000000000001" → "1"
+ *   "1001001001001001002" → "1.001001"
+ */
+export function fmtDisplay(units: string, rawDecimals: number, displayDecimals: number): string {
+  if (rawDecimals <= displayDecimals) {
+    return fromSmallestUnit(units, rawDecimals);
+  }
+  const diff  = rawDecimals - displayDecimals;
+  const scale = BigInt(10) ** BigInt(diff);          // es. 10^12 per BSC USDT
+  const scaled = BigInt(units) / scale;              // tronca sub-display precision
+  return fromSmallestUnit(scaled.toString(), displayDecimals);
+}
+
+/**
+ * Etichetta fee per network (uso nell'interfaccia — nessuna voce "Commissione AlphaChat").
+ * EVM-style chains: "Gas fee". UTXO/Polygon: "Fee rete".
+ */
+export function mcFeeLabel(network: MCNetwork): string {
+  return (network === "ethereum" || network === "bsc") ? "Gas fee" : "Fee rete";
+}
+
 // ─── Costanti display ────────────────────────────────────────────────────────
 
 export const MC_NETWORK_LABELS: Record<MCNetwork, string> = {

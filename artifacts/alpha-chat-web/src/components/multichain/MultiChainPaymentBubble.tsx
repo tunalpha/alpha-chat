@@ -21,10 +21,11 @@ import {
   apiMCGet,
   apiMCDetect,
   isMCTerminal,
-  fromSmallestUnit,
+  fmtDisplay,
   MC_NETWORK_LABELS,
   MC_NETWORK_ICONS,
   MC_DECIMALS,
+  MC_DISPLAY_DECIMALS,
   type MCSystemMeta,
   type MCStatus,
 } from "../../lib/multichain-api";
@@ -74,33 +75,16 @@ interface Props {
 // ─── Componente ───────────────────────────────────────────────────────────────
 
 export const MultiChainPaymentBubble = memo(function MultiChainPaymentBubble({ data, isMine }: Props) {
-  // Guard: metadati incompleti (messaggio scritto prima dei metadati)
-  if (!data?.transfer_id || !data?.status) return null;
-
+  // ── Tutti gli hook PRIMA di qualsiasi early return (React Rules of Hooks) ──
   const { t } = useTranslation();
-  const [status,  setStatus]  = useState<MCStatus>(data.status);
-  const [txHash,  setTxHash]  = useState<string | null>(data.tx_hash_release ?? data.tx_hash_deposit ?? null);
+  const [status,  setStatus]  = useState<MCStatus>(data?.status ?? "awaiting_deposit");
+  const [txHash,  setTxHash]  = useState<string | null>(data?.tx_hash_release ?? data?.tx_hash_deposit ?? null);
   const [copied,  setCopied]  = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  const isRequest = data.is_request === true;
-  /**
-   * isPayer = true → l'utente corrente deve inviare i fondi all'escrow.
-   * Casi:
-   *   - Non-request, isMine:  io ho avviato il send → sono il payer.
-   *   - Request,     !isMine: l'altro ha richiesto   → io devo pagare.
-   */
-  const isPayer = isRequest ? !isMine : isMine;
-
   // Auto-poll e detect ogni 30 s finché non terminale.
-  //
-  // Quando status === "awaiting_deposit": chiama apiMCDetect (verifica on-chain
-  // se il deposito è arrivato) — identico al comportamento USDA che chiama
-  // detect-deposit ogni 10 s. Rate limit: 10 req/min per utente+transfer,
-  // quindi 2 req/min (ogni 30 s) è ampiamente entro i limiti.
-  //
-  // Negli altri stati non-terminali: chiama apiMCGet (solo lettura DB).
   useEffect(() => {
+    if (!data?.transfer_id) return;          // guard: metadati incompleti
     if (isMCTerminal(status)) return;
     pollRef.current = setInterval(async () => {
       try {
@@ -119,7 +103,19 @@ export const MultiChainPaymentBubble = memo(function MultiChainPaymentBubble({ d
     return () => {
       if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
     };
-  }, [status, data.transfer_id]);
+  }, [status, data?.transfer_id]);
+
+  // Guard DOPO tutti gli hook — metadati incompleti (messaggio ancora in transito)
+  if (!data?.transfer_id || !data?.status) return null;
+
+  const isRequest = data.is_request === true;
+  /**
+   * isPayer = true → l'utente corrente deve inviare i fondi all'escrow.
+   * Casi:
+   *   - Non-request, isMine:  io ho avviato il send → sono il payer.
+   *   - Request,     !isMine: l'altro ha richiesto   → io devo pagare.
+   */
+  const isPayer = isRequest ? !isMine : isMine;
 
   async function handleCopy() {
     await navigator.clipboard.writeText(data.escrow_wallet);
@@ -129,12 +125,13 @@ export const MultiChainPaymentBubble = memo(function MultiChainPaymentBubble({ d
 
   const networkLabel = MC_NETWORK_LABELS[data.network] ?? data.network;
   const networkIcon  = MC_NETWORK_ICONS[data.network]  ?? "🔗";
-  const decimals     = MC_DECIMALS[data.network] ?? 6;
+  const rawDec  = MC_DECIMALS[data.network] ?? 6;
+  const dispDec = MC_DISPLAY_DECIMALS[data.network] ?? 6;
 
-  const grossDisplay = fromSmallestUnit(data.gross_amount, decimals);
-  const netDisplay   = fromSmallestUnit(data.net_amount,   decimals);
+  const grossDisplay  = fmtDisplay(data.gross_amount, rawDec, dispDec);
+  const netDisplay    = fmtDisplay(data.net_amount,   rawDec, dispDec);
   const minDepDisplay = data.min_deposit_amount
-    ? fromSmallestUnit(data.min_deposit_amount, decimals)
+    ? fmtDisplay(data.min_deposit_amount, rawDec, dispDec)
     : grossDisplay;
 
   // Importo visualizzato: per il destinatario dopo il pagamento mostra il netto

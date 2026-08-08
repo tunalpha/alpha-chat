@@ -20,9 +20,11 @@ import {
   apiMCQuote,
   apiMCNetworks,
   MC_DECIMALS,
+  MC_DISPLAY_DECIMALS,
   MC_ASSET,
   toSmallestUnit,
-  fromSmallestUnit,
+  fmtDisplay,
+  mcFeeLabel,
   type MCNetwork,
   type MCQuote,
   type MCAmountMode,
@@ -63,10 +65,16 @@ interface Props {
 
 type Step = "form" | "confirm";
 
-// ─── Helper ───────────────────────────────────────────────────────────────────
+// ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function fmtUnits(units: string, decimals: number): string {
-  return fromSmallestUnit(units, decimals);
+/** Formatta unità minima con troncamento al numero massimo di decimali display. */
+function fmtUnits(units: string, rawDec: number, dispDec: number): string {
+  return fmtDisplay(units, rawDec, dispDec);
+}
+
+/** Fee totale (projectFee + networkFeeCharged) da mostrare come singola voce. */
+function totalFeeUnits(quote: MCQuote): bigint {
+  return BigInt(quote.projectFee) + BigInt(quote.networkFeeCharged ?? "0");
 }
 
 // ─── Componente ───────────────────────────────────────────────────────────────
@@ -99,7 +107,8 @@ export function MultiChainRequestSheet({ conversationId, toUserId, toName, onClo
 
   const ALL_NETWORKS = [...availableUsdtNets, BTC_NETWORK];
   const selectedNet  = ALL_NETWORKS.find(n => n.id === network) ?? ALL_NETWORKS[0]!;
-  const decimals     = MC_DECIMALS[network];
+  const rawDec       = MC_DECIMALS[network];
+  const dispDec      = MC_DISPLAY_DECIMALS[network];
   const isBtc        = mode === "btc";
   const fiatSymbol   = FIAT_SYMBOLS[currency];
   const ticker       = selectedNet.ticker;
@@ -124,7 +133,7 @@ export function MultiChainRequestSheet({ conversationId, toUserId, toName, onClo
     setError(null);
     setLoading(true);
     try {
-      const units = isBtc ? satoshi!.toString() : toSmallestUnit(amount, decimals);
+      const units = isBtc ? satoshi!.toString() : toSmallestUnit(amount, rawDec);
       const res = await apiMCQuote({
         network,
         asset:    MC_ASSET[network],
@@ -354,42 +363,30 @@ export function MultiChainRequestSheet({ conversationId, toUserId, toName, onClo
                 <>
                   <div className="mc-confirm-row">
                     <span>{toName} paga (lordo)</span>
-                    <span>{isBtc ? satoshiToBtcStr(BigInt(quote.grossAmount)) + " BTC" : fmtUnits(quote.grossAmount, decimals) + " " + ticker}</span>
+                    <span>{isBtc ? fmtUnits(quote.grossAmount, 8, 8) + " BTC" : fmtUnits(quote.grossAmount, rawDec, dispDec) + " " + ticker}</span>
                   </div>
                   <div className="mc-confirm-row mc-confirm-fee">
-                    <span>{t("multichain.projectFeeLabel")}</span>
-                    <span>−{isBtc ? satoshiToBtcStr(BigInt(quote.projectFee)) + " BTC" : fmtUnits(quote.projectFee, decimals) + " " + ticker}</span>
+                    <span>{mcFeeLabel(network)}</span>
+                    <span>−{(() => { const tot = totalFeeUnits(quote); return isBtc ? fmtUnits(tot.toString(), 8, 8) + " BTC" : fmtUnits(tot.toString(), rawDec, dispDec) + " " + ticker; })()}</span>
                   </div>
-                  {isBtc && BigInt(quote.networkFeeCharged) > 0n && (
-                    <div className="mc-confirm-row mc-confirm-fee">
-                      <span>Miner fee</span>
-                      <span>−{satoshiToBtcStr(BigInt(quote.networkFeeCharged))} BTC</span>
-                    </div>
-                  )}
                   <div className="mc-confirm-row mc-confirm-net">
                     <span>{t("multichain.netLabel")}</span>
-                    <strong>{isBtc ? satoshiToBtcStr(BigInt(quote.netAmount)) + " BTC" : fmtUnits(quote.netAmount, decimals) + " " + ticker}</strong>
+                    <strong>{isBtc ? fmtUnits(quote.netAmount, 8, 8) + " BTC" : fmtUnits(quote.netAmount, rawDec, dispDec) + " " + ticker}</strong>
                   </div>
                 </>
               ) : (
                 <>
                   <div className="mc-confirm-row mc-confirm-net">
                     <span>Tu ricevi (esatto)</span>
-                    <strong>{isBtc ? satoshiToBtcStr(BigInt(quote.netAmount)) + " BTC" : fmtUnits(quote.netAmount, decimals) + " " + ticker}</strong>
+                    <strong>{isBtc ? fmtUnits(quote.netAmount, 8, 8) + " BTC" : fmtUnits(quote.netAmount, rawDec, dispDec) + " " + ticker}</strong>
                   </div>
                   <div className="mc-confirm-row mc-confirm-fee">
-                    <span>{t("multichain.projectFeeLabel")}</span>
-                    <span>+{isBtc ? satoshiToBtcStr(BigInt(quote.projectFee)) + " BTC" : fmtUnits(quote.projectFee, decimals) + " " + ticker}</span>
+                    <span>{mcFeeLabel(network)}</span>
+                    <span>+{(() => { const tot = totalFeeUnits(quote); return isBtc ? fmtUnits(tot.toString(), 8, 8) + " BTC" : fmtUnits(tot.toString(), rawDec, dispDec) + " " + ticker; })()}</span>
                   </div>
-                  {isBtc && BigInt(quote.networkFeeCharged) > 0n && (
-                    <div className="mc-confirm-row mc-confirm-fee">
-                      <span>Miner fee</span>
-                      <span>+{satoshiToBtcStr(BigInt(quote.networkFeeCharged))} BTC</span>
-                    </div>
-                  )}
                   <div className="mc-confirm-row">
                     <span>{toName} paga (totale)</span>
-                    <span>{isBtc ? satoshiToBtcStr(BigInt(quote.grossAmount)) + " BTC" : fmtUnits(quote.grossAmount, decimals) + " " + ticker}</span>
+                    <span>{isBtc ? fmtUnits(quote.grossAmount, 8, 8) + " BTC" : fmtUnits(quote.grossAmount, rawDec, dispDec) + " " + ticker}</span>
                   </div>
                 </>
               )}

@@ -18,9 +18,11 @@ import {
   apiMCQuote,
   apiMCNetworks,
   MC_DECIMALS,
+  MC_DISPLAY_DECIMALS,
   MC_ASSET,
   toSmallestUnit,
-  fromSmallestUnit,
+  fmtDisplay,
+  mcFeeLabel,
   type MCNetwork,
   type MCTransfer,
   type MCQuote,
@@ -106,11 +108,12 @@ export function MultiChainSendSheet({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode]);
 
-  const isBtc      = mode === "btc";
+  const isBtc       = mode === "btc";
   const selectedNet = [...availableUsdtNets, BTC_NETWORK].find((n) => n.id === network) ?? availableUsdtNets[0]!;
-  const decimals   = MC_DECIMALS[network];
-  const fiatSymbol = FIAT_SYMBOLS[currency];
-  const ticker     = selectedNet.ticker;
+  const rawDec      = MC_DECIMALS[network];
+  const dispDec     = MC_DISPLAY_DECIMALS[network];
+  const fiatSymbol  = FIAT_SYMBOLS[currency];
+  const ticker      = selectedNet.ticker;
 
   // Controvalore BTC in tempo reale
   const fiatNum = parseFloat(amount.replace(",", ".")) || 0;
@@ -132,7 +135,7 @@ export function MultiChainSendSheet({
     setError(null);
     setLoading(true);
     try {
-      const grossUnits = isBtc ? satoshi!.toString() : toSmallestUnit(amount, decimals);
+      const grossUnits = isBtc ? satoshi!.toString() : toSmallestUnit(amount, rawDec);
       const res = await apiMCQuote({
         network,
         asset:           MC_ASSET[network],
@@ -183,16 +186,24 @@ export function MultiChainSendSheet({
 
   // Importo da depositare (inclusa eventuale network fee)
   const depositDisplay = transfer?.minDepositAmount
-    ? fromSmallestUnit(transfer.minDepositAmount, decimals)
+    ? fmtDisplay(transfer.minDepositAmount, rawDec, dispDec)
     : quote
-      ? fromSmallestUnit(quote.grossAmount, decimals)
+      ? fmtDisplay(quote.grossAmount, rawDec, dispDec)
       : "0";
 
-  // Testi per il confirm step
+  // Formatta unità minima per il confirm step
   const fmtQ = (units: string) =>
     isBtc
-      ? satoshiToBtcStr(BigInt(units)) + " BTC"
-      : fromSmallestUnit(units, decimals) + " " + ticker;
+      ? fmtDisplay(units, 8, 8) + " BTC"
+      : fmtDisplay(units, rawDec, dispDec) + " " + ticker;
+
+  // Fee totale (AlphaChat + rete) da mostrare come singola voce
+  const totalFeeQ = (q: typeof quote) => {
+    if (!q) return "";
+    const tot = BigInt(q.projectFee) + BigInt(q.networkFeeCharged ?? "0");
+    return isBtc ? fmtDisplay(tot.toString(), 8, 8) + " BTC"
+                 : fmtDisplay(tot.toString(), rawDec, dispDec) + " " + ticker;
+  };
 
   // ─── Render ───────────────────────────────────────────────────────────────
 
@@ -358,21 +369,14 @@ export function MultiChainSendSheet({
                 <span>{fmtQ(quote.grossAmount)}</span>
               </div>
               <div className="mc-confirm-row mc-confirm-fee">
-                <span>{t("multichain.projectFeeLabel")}</span>
+                <span>{mcFeeLabel(network)}</span>
                 <span>
-                  −{fmtQ(quote.projectFee)}
+                  −{totalFeeQ(quote)}
                   {quote.btcFeeFloorApplied && (
                     <em style={{ fontSize: "0.72em", opacity: 0.7, marginLeft: 4 }}>(min 546 sat)</em>
                   )}
                 </span>
               </div>
-              {/* Miner fee BTC (quando networkFeeCharged > 0) */}
-              {isBtc && BigInt(quote.networkFeeCharged) > 0n && (
-                <div className="mc-confirm-row mc-confirm-fee">
-                  <span>Miner fee</span>
-                  <span>−{satoshiToBtcStr(BigInt(quote.networkFeeCharged))} BTC</span>
-                </div>
-              )}
               <div className="mc-confirm-row mc-confirm-net">
                 <span>{t("multichain.netLabel")}</span>
                 <strong>{fmtQ(quote.netAmount)}</strong>
