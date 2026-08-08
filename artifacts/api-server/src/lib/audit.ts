@@ -113,7 +113,11 @@ export type AuditEventType =
   | "TEMP_PASSWORD_EXPIRED"
   | "CONVERSATION_CLEARED"
   // Sprint 28 — Shared Identity Key
-  | "IDENTITY_KEY_UPDATED";
+  | "IDENTITY_KEY_UPDATED"
+  // Admin Multi-Chain Actions
+  | "MC_ADMIN_CANCEL"
+  | "MC_ADMIN_REFUND"
+  | "MC_ADMIN_RETRY";
 
 export interface AuditEvent {
   event: AuditEventType;

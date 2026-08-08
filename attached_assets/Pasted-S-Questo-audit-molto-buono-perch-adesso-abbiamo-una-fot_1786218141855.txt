@@ -1,0 +1,199 @@
+Sì. Questo audit è molto buono perché adesso abbiamo una fotografia precisa e soprattutto sappiamo cosa NON bisogna rompere.
+
+La situazione è migliore di quanto sembrasse dalle schermate: il Multi-Chain Monitor esiste già ed è funzionante. Quello che manca è completare il livello operativo dell’Admin.
+
+Io procederei esattamente così
+
+FASE 1 — Transaction Control 🔴
+Prima completerei il monitor:
+
+* filtro Asset: USDT / BTC
+* filtro Data: from / to
+* click sulla transazione → dettaglio completo
+* visualizzazione separata di:
+    * deposit TX
+    * payment TX
+    * fee TX
+    * refund TX
+* TX hash cliccabili verso l’explorer corretto
+* BTC con 8 decimali e Bitcoin explorer
+
+Questo diventa il vero centro di controllo delle transazioni.
+
+FASE 2 — Azioni amministrative 🟠
+
+Poi aggiungerei:
+
+* Retry
+* Refund
+* Cancel
+
+Ma qui farei molta attenzione: non darei all’Admin un semplice pulsante che chiama direttamente sendNative().
+
+Ogni azione deve avere:
+
+Admin action
+     ↓
+authorization
+     ↓
+audit log
+     ↓
+idempotency check
+     ↓
+business validation
+     ↓
+blockchain operation
+     ↓
+TX hash
+     ↓
+status update
+
+Per BTC questo è particolarmente importante.
+
+⸻
+
+FASE 3 — Gas Station
+
+Non eliminarla.
+
+L’audit conferma esattamente quello che sospettavamo:
+
+GAS_STATION_PRIVATE_KEY è ancora attivo e lo scheduler utilizza il sistema per il top-up automatico MATIC/POL.
+
+Quindi:
+
+vecchia UI ≠ vecchio backend.
+
+Il backend va conservato.
+
+Successivamente la UI può diventare:
+
+⛽ Network Operations
+Polygon
+POL/MATIC
+Balance
+Gas threshold
+Auto top-up
+Status
+Ethereum
+ETH
+Balance
+Gas threshold
+Auto top-up
+Status
+BSC
+BNB
+Balance
+Gas threshold
+Auto top-up
+Status
+
+E BTC fuori da Gas Station.
+
+⸻
+
+FASE 4 — Bitcoin Operations
+
+Qui farei una sezione separata:
+
+₿ Bitcoin Operations
+
+Con:
+
+* BTC balance
+* escrow balance
+* UTXO
+* confirmed UTXO
+* pending UTXO
+* confirmations
+* fee rate corrente
+* fee estimate
+* ultimo deposito
+* ultimo payout
+* TXID
+* eventuali refund
+* stato Blockstream
+* provider/fallback status
+
+Perché Bitcoin non ha gas.
+
+Ha invece transaction fee basata sulla dimensione della transazione e sul fee rate.
+
+⸻
+
+Quindi darei all’agente questo ordine
+
+Procedi con l’implementazione dell’Admin Multi-Chain in questo ordine, senza modificare o rimuovere il backend Gas Station esistente.
+
+STEP 1 — Transaction Control
+
+Completa multichain-monitor.tsx:
+
+* filtro asset
+* filtro data from/to
+* dettaglio transfer tramite click/modal/panel
+* visualizzazione di tutti i TX hash disponibili: deposit, payment, fee, refund
+* explorer link corretto per ogni network
+* BTC distinto chiaramente come BTC — Bitcoin nativo
+
+Estendi il backend /api/v1/admin/multichain/transfers per supportare from e to.
+
+STEP 2 — Admin Actions
+
+Progettare e implementare refund/retry/cancel con:
+
+* autorizzazione Super Admin
+* audit log
+* idempotency
+* validazione dello stato della transazione
+* protezione dal doppio payout/refund
+* TX hash salvato dopo l’operazione
+* conferma UI prima dell’azione.
+
+Per BTC verificare esplicitamente che refund/retry utilizzino il percorso Bitcoin nativo e non quello EVM.
+
+STEP 3 — Gas Station
+
+NON eliminare né modificare la logica backend esistente.
+
+L’attuale Gas Station Polygon/MATIC è ancora utilizzata dallo scheduler tramite GAS_STATION_PRIVATE_KEY.
+
+Aggiornare successivamente la UI per supportare:
+
+* Polygon/POL
+* Ethereum/ETH
+* BSC/BNB
+
+Non trattare BTC come gas.
+
+STEP 4 — Bitcoin Operations
+
+Creare una sezione Admin dedicata a Bitcoin con:
+
+* BTC escrow balance
+* UTXO
+* confirmed/pending
+* confirmations
+* fee rate
+* fee estimates
+* deposits
+* payouts
+* refunds
+* TXID
+* Blockstream status
+
+IMPORTANTE: prima di implementare Step 2, verificare l’attuale modello di stato e le funzioni esistenti per evitare di creare un secondo sistema parallelo di refund/retry.
+
+Eseguire typecheck, build e test dopo ogni fase.
+
+Alla fine fornire un report dei file modificati e delle API nuove/modificate.
+
+Una cosa che aggiungerei
+
+Visto che BTC è appena stato abilitato, io darei priorità a:
+
+Transaction Control → Bitcoin Operations → Admin Actions → Gas Station multi-chain.
+
+Così prima possiamo vedere perfettamente cosa succede con i BTC, poi introduciamo le operazioni manuali dell’Admin.
+
+In altre parole, non avete bisogno di rifare l’Admin: avete già il motore e il monitor; ora bisogna trasformare il monitor in un vero Operations Center multi-chain.

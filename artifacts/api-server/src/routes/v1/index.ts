@@ -93,6 +93,8 @@ v1Router.use("/multichain", multichainPaymentRoutes);
 import adminMultichainRoutes from "./admin-multichain.routes";
 v1Router.use("/admin/multichain", adminMultichainRoutes);
 
-// WalletConnect debug — temporaneo, rimuovere dopo la diagnosi
+// Bitcoin Admin endpoints — Bitcoin Operations panel
+import adminBitcoinRoutes from "./admin-bitcoin.routes";
+v1Router.use("/admin/bitcoin", adminBitcoinRoutes);
 
 export default v1Router;

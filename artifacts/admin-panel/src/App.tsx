@@ -24,6 +24,7 @@ import InvestorAccess from '@/pages/investor-access';
 import AccessLogPage from '@/pages/access-log';
 import PerformancePage from '@/pages/performance';
 import MultichainMonitor from '@/pages/multichain-monitor';
+import BitcoinOps from '@/pages/bitcoin-ops';
 
 const queryClient = new QueryClient();
 
@@ -47,6 +48,7 @@ function ProtectedRoutes() {
         <Route path="/email-settings" component={EmailSettings} />
         <Route path="/investor-access" component={InvestorAccess} />
         <Route path="/multichain-monitor" component={MultichainMonitor} />
+        <Route path="/bitcoin-ops" component={BitcoinOps} />
         <Route path="/access-log" component={AccessLogPage} />
         <Route path="/performance" component={PerformancePage} />
         <Route component={NotFound} />
