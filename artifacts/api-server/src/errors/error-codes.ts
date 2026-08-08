@@ -79,7 +79,7 @@ export const ERROR_MESSAGES: Record<string, string> = {
   // Multi-Chain Payment Engine
   FEATURE_DISABLED:           "Questa rete non è ancora disponibile. Riprova più tardi.",
   ADAPTER_NOT_FOUND:          "Rete blockchain non supportata.",
-  BTC_PROJECT_FEE_BELOW_DUST: "Importo troppo basso per Bitcoin: la commissione (0.10%) risulterebbe inferiore al minimo tecnico di 546 satoshi. Aumenta l'importo.",
+  BTC_PROJECT_FEE_BELOW_DUST: "Importo minimo BTC non raggiunto. Aumenta l'importo e riprova.",
   INVALID_AMOUNT:             "Importo non valido. Inserisci un valore maggiore di zero.",
   WAITING_FOR_GAS:            "Operazione sospesa: saldo gas insufficiente. Il sistema riproverà automaticamente.",
   GAS_RESERVE_DEPLETED:       "Riserva gas esaurita. Contatta il supporto.",

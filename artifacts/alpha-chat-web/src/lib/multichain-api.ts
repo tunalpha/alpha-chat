@@ -76,10 +76,11 @@ async function mcFetch<T>(method: string, path: string, body?: unknown): Promise
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
 
-  const json = await res.json() as { transfer?: T; data?: T; error?: { code: string; message: string } };
+  const json = await res.json() as { transfer?: T; data?: T; error?: { code: string; message: string; details?: Record<string, unknown> } };
   if (!res.ok) {
-    const err: Error & { code?: string } = new Error(json.error?.message ?? `MC API error ${res.status}`);
-    err.code = json.error?.code;
+    const err: Error & { code?: string; details?: Record<string, unknown> } = new Error(json.error?.message ?? `MC API error ${res.status}`);
+    err.code    = json.error?.code;
+    err.details = json.error?.details ?? undefined;
     throw err;
   }
   return (json.transfer ?? json.data ?? json) as T;

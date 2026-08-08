@@ -557,12 +557,15 @@ export async function createMultiChainTransfer(
   // projectFee < 546 sat non può essere un output P2WPKH valido.
   // Rifiutiamo qui (creazione) invece di perdere la fee silenziosamente al release.
   if (isBitcoin(params.network) && projectFee < BTC_DUST_THRESHOLD_SAT) {
+    // Importo minimo lordo affinché la projectFee superi la dust threshold
+    // ceil(dustThreshold * BASIS_POINTS / feeBps)
+    const feeBpsBI         = BigInt(feeConfig.feeBps);
+    const minGrossAmountSat = (BTC_DUST_THRESHOLD_SAT * 10000n + feeBpsBI - 1n) / feeBpsBI;
     throw multichainError("BTC_PROJECT_FEE_BELOW_DUST", {
-      projectFee:    projectFee.toString(),
-      dustThreshold: BTC_DUST_THRESHOLD_SAT.toString(),
-      grossAmount:   grossAmount.toString(),
-      hint:          `Aumenta grossAmountUnits oppure riduci la fee rate. ` +
-                     `projectFee minima: ${BTC_DUST_THRESHOLD_SAT} sat`,
+      projectFee:        projectFee.toString(),
+      dustThreshold:     BTC_DUST_THRESHOLD_SAT.toString(),
+      grossAmount:       grossAmount.toString(),
+      minGrossAmountSat: minGrossAmountSat.toString(),
     });
   }
 

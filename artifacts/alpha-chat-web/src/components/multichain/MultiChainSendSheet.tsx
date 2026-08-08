@@ -141,10 +141,19 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
       setTransfer(result);
       setStep("address");
     } catch (e: unknown) {
-      setError((e as Error).message ?? t("common.error"));
+      const err = e as Error & { code?: string; details?: Record<string, unknown> };
+      if (err.code === "BTC_PROJECT_FEE_BELOW_DUST") {
+        const minSat  = Number(err.details?.minGrossAmountSat ?? 546000);
+        const minFiat = price ? Math.ceil(minSat / 1e8 * price[currency]) : null;
+        setError(minFiat != null
+          ? `Importo minimo per BTC: ${fiatSymbol}${minFiat.toLocaleString("it-IT")} (${(minSat / 1e8).toFixed(5).replace(/0+$/, "").replace(/\.$/, "")} BTC)`
+          : `Importo minimo: ${(minSat / 1e8).toFixed(5)} BTC`);
+      } else {
+        setError(err.message ?? t("common.error"));
+      }
     } finally { setLoading(false); }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [amount, decimals, toUserId, conversationId, network, t, isBtc, satoshi]);
+  }, [amount, decimals, toUserId, conversationId, network, t, isBtc, satoshi, price, currency, fiatSymbol]);
 
   async function handleCopy() {
     if (!transfer?.escrowWallet) return;
