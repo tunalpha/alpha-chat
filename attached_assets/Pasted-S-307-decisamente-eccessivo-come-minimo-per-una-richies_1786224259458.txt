@@ -1,0 +1,56 @@
+Sì. €307 è decisamente eccessivo come minimo per una richiesta BTC, soprattutto se viene giustificato dal problema dust.
+
+Dallo screenshot:
+
+* €10 → 0,00017785 BTC
+* minimo richiesto: 0,00546 BTC ≈ €307
+* quindi il minimo è circa 30,7× la richiesta che hai inserito.
+
+E soprattutto: 0,00546 BTC = 546.000 satoshi. Questa non è una normale dust threshold Bitcoin. La dust threshold è nell’ordine di poche centinaia di satoshi, non 546 mila.
+
+Quindi non accetterei questo risultato senza vedere il calcolo.
+
+Cosa deve spiegare l’agente
+
+Digli:
+
+Il minimo BTC di €307 / 0,00546 BTC è palesemente da verificare. Non considerarlo un valore corretto solo perché supera la dust threshold.
+
+Voglio il breakdown matematico esatto che produce 0.00546 BTC:
+
+BTC minimum amount = ?
+Project fee = ? satoshi
+Miner fee = ? satoshi
+Dust threshold = ? satoshi
+Safety margin = ? satoshi
+
+Mostrami anche:
+
+fee rate Blockstream = ? sat/vByte
+estimated transaction size = ? vBytes
+estimated miner fee = ? satoshi
+project fee rate = 0.10%
+
+Spiega esattamente quale formula produce 546.000 satoshi.
+
+Non aumentare o diminuire arbitrariamente il minimum BTC.
+
+La dust protection deve impedire output sotto dust, ma non deve trasformarsi automaticamente in un minimo di €307.
+
+Verifica se il valore 0.00546 BTC deriva da:
+
+* miner fee moltiplicata erroneamente;
+* project fee calcolata con unità sbagliate;
+* BTC/satoshi/wei conversion;
+* decimals errati;
+* minimum fee configurata;
+* safety margin eccessiva;
+* oppure una regola intenzionale del business.
+
+Confronta inoltre il calcolo con un transfer da €10, €50, €100, €300 e €500 e restituisci la tabella dei valori calcolati.
+
+Non fare deploy di questo comportamento finché non è spiegato matematicamente.
+
+La cosa più importante è questa: non dobbiamo fissare un minimo arbitrario per far sparire l’errore. Dobbiamo capire perché il motore arriva a 546.000 satoshi.
+
+Se mi manda il breakdown dell’agente, posso controllarlo numericamente con te e capire subito dove sta l’errore.
