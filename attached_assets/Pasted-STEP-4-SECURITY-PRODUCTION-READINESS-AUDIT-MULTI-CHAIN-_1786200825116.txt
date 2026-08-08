@@ -1,0 +1,729 @@
+STEP 4 — SECURITY & PRODUCTION READINESS AUDIT
+
+MULTI-CHAIN PAYMENT ENGINE
+
+Esegui una Security & Production Readiness Review completa del Multi-Chain Payment Engine.
+
+REGOLA PRINCIPALE
+
+QUESTO È UN AUDIT STATICO. NON MODIFICARE IL CODICE.
+
+Non implementare fix durante questo step.
+
+Devi analizzare il codice esistente, tracciare i percorsi critici e produrre un report dettagliato con:
+
+* PASS;
+* WARNING;
+* HIGH;
+* CRITICAL;
+* eventuali fix necessari.
+
+Dopo il report decideremo separatamente quali correzioni implementare.
+
+⸻
+
+1. USDA — ISOLAMENTO ASSOLUTO
+
+Verificare che il Multi-Chain Engine non abbia introdotto regressioni o dipendenze indesiderate su:
+
+* usda-custodial.service.ts
+* USDA wallet management
+* USDA scheduler
+* USDA payment flow
+* chat_transfers
+* chat payment
+* USDA authentication
+* USDA gas flow
+
+Confermare esplicitamente:
+
+USDA ZERO REGRESSIONS / ZERO MODIFICHE FUNZIONALI.
+
+⸻
+
+2. PROJECT FEE 0,10%
+
+Verificare matematicamente e tramite code path che:
+
+projectFee = grossAmount × 10 / 10_000
+netAmount = grossAmount - projectFee
+
+rimanga invariata per:
+
+* Polygon USDT;
+* Ethereum USDT;
+* BSC USDT;
+* BTC;
+* send_amount;
+* recipient_exact.
+
+Verificare che:
+
+networkFeeCharged
+
+NON alteri mai:
+
+projectFee
+
+o:
+
+netAmount.
+
+Verificare inoltre che il fee wallet riceva correttamente la project fee.
+
+⸻
+
+3. RECIPIENT EXACT
+
+Analizzare:
+
+calculatePaymentQuote()
+
+e verificare:
+
+gross = ceil(targetNet × 10_000 / (10_000 - feeBps))
+
+e:
+
+netAmount >= targetNetAmount
+
+Verificare:
+
+* BigInt;
+* rounding;
+* decimals;
+* importi piccoli;
+* importi grandi;
+* overflow;
+* project fee;
+* network fee;
+* minDepositAmount;
+* coerenza tra /quote e create.
+
+La quote preview e la transazione reale devono utilizzare la stessa logica.
+
+⸻
+
+4. NETWORK FEE
+
+Verificare separatamente:
+
+project_fee
+network_fee_charged
+network_fee_actual
+
+Devono rappresentare tre concetti distinti.
+
+Verificare:
+
+* Polygon → POL;
+* Ethereum → ETH;
+* BSC → BNB;
+* BTC → miner fee.
+
+Verificare che network_fee_charged rimanga immutabile per il transfer dopo la creazione.
+
+Verificare che il cambio successivo dell’ENV non alteri transfer già creati.
+
+⸻
+
+5. EVM PAYOUT — DOUBLE PAYMENT
+
+Analizzare completamente:
+
+TX1 → recipient
+TX2 → fee wallet
+
+Verificare tutti i crash point:
+
+A
+
+Crash prima di TX1.
+
+B
+
+TX1 broadcast → crash prima del persist tx_hash_release.
+
+C
+
+TX1 persistita → crash prima di TX2.
+
+D
+
+TX2 broadcast → crash prima del persist tx_hash_fee.
+
+Per ogni scenario stabilire:
+
+* cosa contiene il DB;
+* cosa vede lo scheduler;
+* quale TX viene eventualmente ritentata;
+* se è possibile un double-pay;
+* se è possibile una double-fee.
+
+Identificare qualsiasi rischio residuo.
+
+⸻
+
+6. BTC — ATOMICITÀ E DOUBLE SPEND
+
+Analizzare il flusso BTC completo:
+
+deposit
+→ UTXO detection
+→ UTXO selection
+→ PSBT
+→ signing
+→ broadcast
+→ persist
+→ confirmation
+
+Verificare:
+
+* TX singola;
+* recipient output;
+* fee wallet output;
+* change;
+* miner fee;
+* dust;
+* UTXO selection;
+* deterministic TXID;
+* crash prima/dopo broadcast;
+* mempool;
+* retry;
+* refund;
+* double broadcast;
+* double refund.
+
+Verificare specificamente il rischio:
+
+nuovi UTXO arrivati nell’escrow tra crash e retry.
+
+Classificarlo correttamente.
+
+⸻
+
+7. REFUND SAFETY
+
+Analizzare tutti i percorsi:
+
+pending
+→ expired
+→ refund
+
+e:
+
+refunding
+→ crash
+→ recovery
+
+Verificare il caso critico:
+
+refund broadcast
+→ TX ancora in mempool
+→ server crash
+→ retry
+
+Determinare se può verificarsi un doppio refund.
+
+Analizzare separatamente:
+
+* EVM;
+* BTC.
+
+⸻
+
+8. WAITING_FOR_GAS
+
+Analizzare completamente il nuovo stato:
+
+waiting_for_gas
+
+Verificare:
+
+* gas insufficiente;
+* gas station vuota;
+* gas top-up fallito;
+* scheduler;
+* retry;
+* gas_retry_count;
+* ritorno a releasing;
+* idempotenza;
+* alert Admin;
+* comportamento cliente;
+* comportamento dopo restart server.
+
+Verificare che:
+
+gas insufficiente NON possa causare perdita del deposito.
+
+Verificare che:
+
+gas insufficiente NON possa modificare project fee o net amount.
+
+⸻
+
+9. GAS STATION
+
+Analizzare:
+
+ensureMultiChainEscrowGas()
+
+Verificare:
+
+* POL;
+* ETH;
+* BNB;
+* balance check;
+* top-up;
+* safety multiplier;
+* max top-up;
+* insufficient owner balance;
+* RPC failure;
+* timeout;
+* crash dopo top-up;
+* crash prima del payout.
+
+Verificare che il cliente non debba possedere il native gas asset.
+
+Verificare che private key e secret non siano mai restituiti/loggati.
+
+⸻
+
+10. SCHEDULER
+
+Audit completo dello scheduler Multi-Chain.
+
+Verificare:
+
+* singleton guard;
+* intervalli;
+* lock;
+* stale locks;
+* releasing;
+* refunding;
+* waiting_for_gas;
+* pending;
+* expired;
+* feature flags;
+* network disabled;
+* restart;
+* crash recovery.
+
+Verificare che due istanze dello scheduler non possano creare payout concorrenti per lo stesso transfer.
+
+⸻
+
+11. FEATURE FLAGS
+
+Verificare:
+
+* Polygon;
+* Bitcoin;
+* Ethereum;
+* BSC.
+
+Quando una rete viene disabilitata:
+
+* nessun nuovo transfer deve essere accettato se non previsto;
+* transfer già in corso non devono essere corrotti;
+* tx_hash_release presente non deve mai essere cancellato;
+* nessun rollback distruttivo;
+* recovery corretta alla riattivazione.
+
+⸻
+
+12. INPUT VALIDATION
+
+Audit di tutte le API Multi-Chain.
+
+Verificare:
+
+* network;
+* asset;
+* amount;
+* amountMode;
+* grossAmount;
+* targetNetAmount;
+* decimals;
+* wallet addresses;
+* expiresInHours;
+* clientRef;
+* transferId.
+
+Cercare:
+
+* NaN;
+* Infinity;
+* valori negativi;
+* zero;
+* overflow;
+* precision loss;
+* address invalide;
+* network/asset mismatch;
+* duplicate clientRef;
+* injection;
+* bypass della validation.
+
+⸻
+
+13. AUTHORIZATION
+
+Verificare che:
+
+* endpoint utente richiedano autenticazione;
+* endpoint Admin richiedano realmente Admin authorization;
+* utenti normali non possano leggere dati di altri utenti;
+* Admin read-only non possa eseguire operazioni che richiedono privilegi superiori;
+* endpoint di monitoring non espongano informazioni sensibili.
+
+Verificare in particolare le route:
+
+/api/v1/admin/multichain/*
+
+⸻
+
+14. RATE LIMITING / ABUSE
+
+Audit:
+
+* /detect;
+* /quote;
+* /create;
+* /release;
+* /refund;
+* endpoint Admin.
+
+Verificare possibilità di:
+
+* RPC abuse;
+* spam transfer;
+* brute force transferId;
+* repeated detect;
+* repeated quote;
+* resource exhaustion.
+
+⸻
+
+15. SECRETS / PRIVATE KEYS
+
+Cercare nel codice e nei log:
+
+* private keys;
+* seed phrase;
+* encrypted private keys;
+* master keys;
+* GAS_STATION_PRIVATE_KEY;
+* escrow keys.
+
+Verificare che nessun secret venga:
+
+* restituito via API;
+* inserito nei log;
+* esposto nel frontend;
+* incluso negli errori;
+* incluso negli alert Admin.
+
+⸻
+
+16. MONGODB / ATOMICITÀ
+
+Verificare tutti gli update critici.
+
+Particolare attenzione a:
+
+* findOneAndUpdate;
+* CAS;
+* lock;
+* unique indexes;
+* tx_hash_release;
+* tx_hash_fee;
+* status transitions.
+
+Verificare che le transizioni siano protette da condizioni atomiche.
+
+Cercare race condition tra:
+
+* API;
+* scheduler;
+* retry;
+* Admin.
+
+⸻
+
+17. RECONCILIATION
+
+Per ogni transfer deve essere possibile riconciliare:
+
+grossAmount
+projectFee
+networkFeeCharged
+netAmount
+networkFeeActual
+minDepositAmount
+
+con:
+
+* deposito blockchain;
+* TX recipient;
+* TX fee wallet;
+* gas/miner fee;
+* change BTC.
+
+Verificare che non esista una situazione in cui:
+
+DB says released
+
+ma blockchain non contiene il payout.
+
+E viceversa.
+
+⸻
+
+18. ADMIN MONITOR
+
+Verificare che Admin Monitor mostri correttamente:
+
+* pending;
+* releasing;
+* waiting_for_gas;
+* released;
+* refunded;
+* failed;
+* expired.
+
+Verificare KPI, filtri, pagination e explorer links.
+
+Non devono essere esposti secret.
+
+⸻
+
+19. ERROR HANDLING
+
+Classificare gli errori:
+
+Recuperabili
+
+* gas insufficiente;
+* RPC temporaneamente unavailable;
+* timeout;
+* mempool uncertainty.
+
+Non recuperabili
+
+* invalid address;
+* invalid amount;
+* unsupported asset;
+* invalid configuration.
+
+Verificare che gli errori recuperabili non causino inutilmente failed.
+
+⸻
+
+20. BTC DUST
+
+Verificare:
+
+* project fee sotto dust;
+* recipient sotto dust;
+* change sotto dust;
+* miner fee;
+* min deposit.
+
+Nessuna fee del progetto deve sparire silenziosamente.
+
+⸻
+
+21. DECIMALS
+
+Verificare esplicitamente:
+
+Polygon USDT
+Ethereum USDT
+BSC USDT
+BTC
+
+Prestare particolare attenzione a:
+
+BSC USDT = 18 decimals
+
+e verificare che tutte le flat fee siano espresse correttamente nelle base units.
+
+⸻
+
+22. LOGGING / PRIVACY
+
+Analizzare:
+
+* Pino logs;
+* error logs;
+* transaction logs;
+* wallet addresses;
+* amounts;
+* tx hashes.
+
+Determinare se il livello di logging production sia appropriato.
+
+Mai loggare secret/private key.
+
+⸻
+
+23. CONFIGURATION AUDIT
+
+Verificare tutti gli ENV necessari per:
+
+* Polygon;
+* Amoy/testnet;
+* Ethereum;
+* BSC;
+* BTC;
+* fee wallet;
+* gas station;
+* network fee;
+* feature flags;
+* RPC.
+
+Segnalare:
+
+* default pericolosi;
+* configurazioni mancanti;
+* fallback pubblici;
+* valori hardcoded;
+* mismatch decimals.
+
+⸻
+
+24. TEST QUALITY
+
+Analizzare i test esistenti.
+
+Verificare che i test coprano:
+
+* happy path;
+* crash/recovery;
+* gas depletion;
+* double payout;
+* refund;
+* exact recipient;
+* network fee;
+* project fee;
+* idempotency.
+
+I failure pre-existing devono essere identificati precisamente.
+
+NON classificare automaticamente un nuovo failure come “pre-existing”.
+
+Confrontare con il baseline disponibile.
+
+⸻
+
+25. PRODUZIONE
+
+Determinare quali reti sono realmente pronte.
+
+Per ciascuna:
+
+Network	Asset	Code Ready	Security Ready	Config Ready	Go/No-Go
+Polygon	USDT	?	?	?	?
+Ethereum	USDT	?	?	?	?
+BSC	USDT	?	?	?	?
+Bitcoin	BTC	?	?	?	?
+
+NON considerare una rete “production ready” solo perché l’adapter esiste.
+
+⸻
+
+26. CRITERI CRITICAL
+
+Classificare come CRITICAL / GO-LIVE BLOCKER qualsiasi possibilità concreta di:
+
+* doppio payout;
+* perdita del deposito;
+* perdita della project fee;
+* doppio refund;
+* private key exposure;
+* bypass authorization;
+* accounting inconsistency;
+* stato DB irreversibile;
+* payout non riconciliabile;
+* gas depletion con perdita fondi.
+
+⸻
+
+27. OUTPUT FINALE OBBLIGATORIO
+
+Restituire un report strutturato:
+
+A. Executive Summary
+
+Verdetto:
+
+🟢 READY
+
+🟡 READY WITH CONDITIONS
+
+oppure
+
+🔴 NOT READY
+
+B. Critical Findings
+
+ID	Severity	Problema	File	Rischio	Fix necessario
+
+C. High Findings
+
+stessa struttura.
+
+D. Medium / Low
+
+stessa struttura.
+
+E. Network Readiness
+
+Polygon / BTC / Ethereum / BSC.
+
+F. Fee Integrity
+
+Dimostrare che:
+
+project fee 0,10% è protetta.
+
+G. Crash/Recovery Matrix
+
+Elencare tutti i crash point rilevanti e il comportamento.
+
+H. USDA Isolation
+
+Conferma esplicita:
+
+ZERO USDA REGRESSION.
+
+I. Test Baseline
+
+Riportare:
+
+* TypeScript;
+* test totali;
+* pass;
+* fail;
+* quali fail sono realmente pre-existing;
+* build.
+
+J. Production Checklist
+
+Checklist completa di ciò che manca prima del deploy.
+
+⸻
+
+REGOLA FINALE
+
+NON MODIFICARE CODICE DURANTE QUESTO AUDIT.
+
+NON implementare automaticamente i fix.
+
+NON fare deployment.
+
+NON attivare Ethereum/BSC/BTC in production.
+
+Dopo il report fermati e attendi istruzioni.
+
+Il prossimo step sarà decidere, punto per punto, quali findings correggere prima del Production GO/NO-GO.
