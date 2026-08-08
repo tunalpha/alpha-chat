@@ -109,8 +109,8 @@ export interface CreateMultiChainTransferParams {
   senderId:        string;
   recipientId:     string;
   conversationId:  string;
-  senderWallet:    string;
-  recipientWallet: string;
+  senderWallet?:    string;
+  recipientWallet?: string;
   network:         MCNetworkId;
   asset:           MCAssetSymbol;
   /**

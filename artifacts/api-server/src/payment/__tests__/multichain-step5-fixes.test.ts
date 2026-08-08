@@ -149,7 +149,7 @@ describe("C-01 — tx_hash_release persist before TX1 broadcast", () => {
     const releasingDoc = { ...baseDoc, status: "releasing" as const, locked_at: new Date() };
 
     let updateCount = 0;
-    vi.mocked(MultiChainTransferModel.findOneAndUpdate).mockImplementation(async (_f: any, update: any) => {
+    (vi.mocked(MultiChainTransferModel.findOneAndUpdate) as any).mockImplementation(async (_f: any, update: any) => {
       const idx = updateCount++;
       if (idx === 0) return releasingDoc as any; // acquireLock
       const set = update?.$set ?? {};
@@ -217,7 +217,7 @@ describe("C-03 — tx_hash_refund persist before refund broadcast", () => {
     const refundingDoc = { ...baseDoc, status: "refunding" as const, locked_at: new Date() };
 
     let updateCount = 0;
-    vi.mocked(MultiChainTransferModel.findOneAndUpdate).mockImplementation(async (_f: any, update: any) => {
+    (vi.mocked(MultiChainTransferModel.findOneAndUpdate) as any).mockImplementation(async (_f: any, update: any) => {
       const idx = updateCount++;
       if (idx === 0) return refundingDoc as any; // acquireLock
       const set = update?.$set ?? {};

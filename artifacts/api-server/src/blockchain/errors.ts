@@ -25,7 +25,8 @@ export type MultichainErrorCode =
   | "FEE_CALCULATION_ERROR"     // errore nel calcolo fee
   | "ADAPTER_NOT_FOUND"         // nessun adapter registrato per questo networkId
   | "FEATURE_DISABLED"          // feature flag disabilitato per questa rete
-  | "BTC_PROJECT_FEE_BELOW_DUST"; // project fee BTC < dust threshold (546 sat) — rifiuta il transfer
+  | "BTC_PROJECT_FEE_BELOW_DUST"  // project fee BTC < dust threshold (546 sat) — rifiuta il transfer
+  | "INVALID_AMOUNT";             // importo non valido (zero, negativo, non parsabile)
 
 // ─── HTTP status map ──────────────────────────────────────────────────────────
 
@@ -46,6 +47,7 @@ const STATUS_MAP: Record<MultichainErrorCode, number> = {
   ADAPTER_NOT_FOUND:            501,
   FEATURE_DISABLED:             501,
   BTC_PROJECT_FEE_BELOW_DUST:   422,
+  INVALID_AMOUNT:               400,
 };
 
 // ─── Factory ──────────────────────────────────────────────────────────────────

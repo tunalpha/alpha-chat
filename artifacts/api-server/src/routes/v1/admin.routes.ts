@@ -2034,7 +2034,7 @@ router.get("/performance", requireAdmin("read_only"), async (_req: Request, res:
     const last30 = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
     const last7  = new Date(now.getTime() - 7  * 24 * 60 * 60 * 1000);
 
-    const LOGIN_EVENTS = ["USER_LOGIN", "NEW_DEVICE_LOGIN", "TEMP_PASSWORD_LOGIN"];
+    const LOGIN_EVENTS = ["USER_LOGIN", "NEW_DEVICE_LOGIN", "TEMP_PASSWORD_LOGIN"] as const;
 
     const [
       loginsByDay,

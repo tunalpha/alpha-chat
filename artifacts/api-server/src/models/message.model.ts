@@ -15,7 +15,7 @@ import mongoose, { type Document, type Model, Schema } from "mongoose";
 // Types
 // ---------------------------------------------------------------------------
 
-export type MessageType = "text" | "media" | "system" | "reply" | "forward" | "usda_send" | "usda_request" | "usda_receipt" | "payment" | "sticker" | "payment_notification";
+export type MessageType = "text" | "media" | "system" | "reply" | "forward" | "usda_send" | "usda_request" | "usda_receipt" | "payment" | "sticker" | "animated_sticker" | "payment_notification" | "mc_payment";
 
 /**
  * Stato delivery del messaggio (CTO recommendation Sprint 6).
@@ -149,7 +149,7 @@ const messageSchema = new Schema<IMessageDocument>(
 
     message_type: {
       type: String,
-      enum: ["text", "media", "system", "reply", "forward", "usda_send", "usda_request", "usda_receipt", "payment", "sticker", "payment_notification"],
+      enum: ["text", "media", "system", "reply", "forward", "usda_send", "usda_request", "usda_receipt", "payment", "sticker", "animated_sticker", "payment_notification", "mc_payment"],
       required: true,
     },
 
