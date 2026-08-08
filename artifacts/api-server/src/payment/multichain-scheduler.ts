@@ -8,6 +8,16 @@
  *  Una rete disabilitata → defer (rinova lock), mai cancella stato.
  * ═══════════════════════════════════════════════════════════════════════════
  *
+ *  HARDENING SCHED-03 — ANTI-DOUBLE-PAY (mai derogare):
+ *  Se tx_hash_release è valorizzato e TX1 risulta "failed/unknown" (inclusi
+ *  errori RPC → catch → txStatus="unknown"):
+ *    - NON fare rollback a "pending". Un rollback aprirebbe la strada a un
+ *      secondo TX1 con nonce diverso. Se TX1 originale è ancora in mempool
+ *      e viene minata → DOUBLE PAY.
+ *    - Azione: rinnova il lock + logger.error strutturato (alert admin).
+ *    - I fondi sono sicuri nell'escrow. Admin verifica on-chain manualmente.
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
  *  HARDENING M-2 — SINGLETON GUARD:
  *  startMultiChainScheduler() è idempotente: una seconda chiamata è ignorata.
  * ═══════════════════════════════════════════════════════════════════════════
@@ -88,7 +98,8 @@ let _schedulerStarted = false;
  *         - confirmed + tx_hash_fee null + fee_wallet → retry TX2 only [C-1 recovery]
  *         - confirmed + tx_hash_fee set (o no fee_wallet) → mark released
  *         - pending   → rinova lock (ancora in corso)
- *         - failed/unknown → rollback a "pending" per retry
+ *         - failed/unknown → SCHED-03: NON rollback (rischio double pay).
+ *                            Rinnova lock + logger.error strutturato. Intervento admin.
  */
 export async function processStuckReleasingTransfers(): Promise<void> {
   const staleThreshold = new Date(Date.now() - LOCK_STALE_MS);
@@ -225,15 +236,38 @@ export async function processStuckReleasingTransfers(): Promise<void> {
           "[MCScheduler] TX1 ancora pending — lock rinnovato",
         );
       } else {
-        // TX1 fallita o sconosciuta.
-        // tx_hash_release è impostato ma la TX non risulta on-chain.
-        // NOTA: questo è un caso ambiguo per BTC (broadcast timeout).
-        // Rollback a pending per permettere retry dal service.
-        // Il service userà broadcastTxSafe che verificherà il txid prima di ri-broadcastare.
-        await _rollbackToStatus(doc.transfer_id, "releasing", "pending");
-        logger.warn(
-          { transferId: doc.transfer_id, txHash: doc.tx_hash_release, txStatus },
-          "[MCScheduler] TX1 failed/unknown → rollback a pending per retry",
+        // ── SCHED-03 HARDENING: TX1 failed/unknown + tx_hash_release PRESENTE ──
+        //
+        // A questo punto del codice tx_hash_release è SEMPRE non-null:
+        // il caso null è gestito in cima con `continue` (linea ~106).
+        //
+        // NON fare rollback a "pending":
+        //   Un rollback permetterebbe un secondo TX1 con nuovo nonce.
+        //   Se TX1 originale è ancora in mempool e viene minata mentre il
+        //   secondo TX1 è già in volo → DOUBLE PAY.
+        //
+        // Azione sicura:
+        //   1. Rinnova il lock (defer al prossimo ciclo).
+        //   2. Genera logger.error strutturato per alert admin.
+        //   3. I fondi restano nell'escrow — nessuna perdita.
+        //   4. Admin verifica on-chain e decide:
+        //      (a) attendere che la TX venga minata (potrebbe ancora riuscire)
+        //      (b) usare il panel admin per marcare manualmente come released/failed
+        await MultiChainTransferModel.findOneAndUpdate(
+          { transfer_id: doc.transfer_id, status: "releasing" },
+          { $set: { locked_at: new Date() } },
+        );
+        logger.error(
+          {
+            transferId: doc.transfer_id,
+            network:    doc.network,
+            asset:      doc.asset,
+            txHash:     doc.tx_hash_release,
+            txStatus,
+            alert:      "SCHED-03",
+          },
+          "[MCScheduler] ⚠️ SCHED-03: tx_hash_release SET + TX1 failed/unknown — " +
+          "NON faccio rollback (rischio double pay). Lock rinnovato. Intervento admin richiesto.",
         );
       }
     } catch (err) {

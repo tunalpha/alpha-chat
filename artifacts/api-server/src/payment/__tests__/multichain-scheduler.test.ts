@@ -293,10 +293,14 @@ describe("processStuckReleasingTransfers", () => {
     expect(rollbackCalls).toHaveLength(0);
   });
 
-  it("TX1 failed on-chain → rollback a pending per retry", async () => {
+  // ── SCHED-03 (aggiornato): TX1 failed on-chain + tx_hash_release SET → NON rollback ──
+  // Questo test verifica il comportamento CORRETTO dopo il fix SCHED-03.
+  // Prima del fix: rollback a "pending" (rischio double pay).
+  // Dopo il fix: rinnova lock + logger.error strutturato. Nessun rollback.
+  it("SCHED-03 (ex 'TX1 failed'): tx_hash_release SET + TX1 failed → NON rollback, rinnova lock", async () => {
     const doc = {
       ...baseReleasingDoc,
-      tx_hash_release: "0xTX1",
+      tx_hash_release: "0xTX1_HASH",
       tx_hash_fee:     null,
       fee_wallet:      null,
       project_fee:     "0",
@@ -311,10 +315,241 @@ describe("processStuckReleasingTransfers", () => {
 
     await processStuckReleasingTransfers();
 
+    // SCHED-03: NESSUN rollback a "pending"
+    const rollbackCalls = mockFindOneAndUpdate.mock.calls.filter(
+      (c: any[]) => (c[1] as any)?.$set?.status === "pending",
+    );
+    expect(rollbackCalls).toHaveLength(0);
+
+    // Deve rinnovare il lock (defer)
+    expect(mockFindOneAndUpdate).toHaveBeenCalledWith(
+      { transfer_id: doc.transfer_id, status: "releasing" as any },
+      { $set: { locked_at: expect.any(Date) } },
+    );
+  });
+});
+
+// ─── SCHED-03: Anti Double-Pay Tests ──────────────────────────────────────────
+//
+// Verifica che il fix SCHED-03 prevenga il rischio di double-pay in tutti
+// i casi in cui TX1 risulta failed/unknown ma tx_hash_release è già in DB.
+//
+// Test A: txStatus=unknown + tx_hash_release=null → rollback consentito (pre-TX1 crash)
+// Test B: txStatus=unknown + tx_hash_release=SET  → NO rollback (SCHED-03 hardening)
+// Test C: txStatus=failed  + tx_hash_release=SET  → NO rollback (SCHED-03 hardening)
+// Test D: nessun secondo TX1 — acquireMCLock non viene chiamato (nessun rollback a "pending")
+// Test E: scenario RPC error (catch→unknown) + tx_hash_release=SET → NO rollback
+// ─────────────────────────────────────────────────────────────────────────────
+
+describe("SCHED-03 — Anti Double-Pay Hardening", () => {
+
+  /**
+   * Test A — txStatus=unknown + tx_hash_release=null
+   *
+   * Caso: crash prima che TX1 fosse firmata/broadcast → tx_hash_release=null.
+   * Questo caso NON raggiunge il branch SCHED-03 (gestito in cima con `continue`).
+   * Il rollback a "pending" è consentito: nessuna TX è stata inviata.
+   */
+  it("Test A: txStatus=unknown + tx_hash_release=null → rollback CONSENTITO (pre-TX1 crash)", async () => {
+    const doc = {
+      ...baseReleasingDoc,
+      tx_hash_release: null,          // ← hash assente: pre-TX1 crash
+      tx_hash_fee:     null,
+    };
+    mockFindChain([doc]);
+    mockFindOneAndUpdate.mockResolvedValue(null);
+
+    // Nessuna chiamata all'adapter necessaria: il caso null è gestito prima del check on-chain
+    await processStuckReleasingTransfers();
+
+    // Rollback a "pending" è safe
     expect(mockFindOneAndUpdate).toHaveBeenCalledWith(
       { transfer_id: doc.transfer_id, status: "releasing" as any },
       { $set: { status: "pending" as any, locked_at: null } },
     );
+
+    // Nessuna chiamata all'adapter: si esce con `continue` prima del getTransactionStatus
+    expect(mockAdapterGet).not.toHaveBeenCalled();
+  });
+
+  /**
+   * Test B — txStatus=unknown + tx_hash_release=SET
+   *
+   * Caso: getTransactionStatus restituisce "unknown" (RPC glitch, receipt non trovata).
+   * tx_hash_release è in DB → TX1 potrebbe essere ancora in mempool.
+   * SCHED-03: NON fare rollback. Rinnova lock + alert strutturato.
+   */
+  it("Test B: txStatus=unknown + tx_hash_release=SET → NO rollback (SCHED-03)", async () => {
+    const doc = {
+      ...baseReleasingDoc,
+      tx_hash_release: "0xTX1_STAGED",  // ← hash presente: TX inviata o staged
+      tx_hash_fee:     null,
+      fee_wallet:      null,
+      project_fee:     "0",
+    };
+    mockFindChain([doc]);
+    mockFindOneAndUpdate.mockResolvedValue(null);
+
+    // Simula getTransactionStatus che restituisce "unknown"
+    mockAdapterGet.mockReturnValue({
+      networkId:            "polygon",
+      getTransactionStatus: vi.fn().mockResolvedValue("unknown"),
+    });
+
+    await processStuckReleasingTransfers();
+
+    // SCHED-03: NESSUN rollback a "pending" (rischio double pay)
+    const rollbackCalls = mockFindOneAndUpdate.mock.calls.filter(
+      (c: any[]) => (c[1] as any)?.$set?.status === "pending",
+    );
+    expect(rollbackCalls).toHaveLength(0);
+
+    // Deve rinnovare il lock (safe defer)
+    expect(mockFindOneAndUpdate).toHaveBeenCalledWith(
+      { transfer_id: doc.transfer_id, status: "releasing" as any },
+      { $set: { locked_at: expect.any(Date) } },
+    );
+  });
+
+  /**
+   * Test C — txStatus=failed + tx_hash_release=SET
+   *
+   * Caso: getTransactionStatus restituisce "failed" (TX minata ma reverted, o RPC glitch).
+   * tx_hash_release è in DB → TX1 potrebbe essere ancora in mempool o avere avuto problemi.
+   * SCHED-03: NON fare rollback. Rinnova lock + alert strutturato.
+   */
+  it("Test C: txStatus=failed + tx_hash_release=SET → NO rollback (SCHED-03)", async () => {
+    const doc = {
+      ...baseReleasingDoc,
+      tx_hash_release: "0xTX1_FAILED",
+      tx_hash_fee:     null,
+      fee_wallet:      null,
+      project_fee:     "0",
+    };
+    mockFindChain([doc]);
+    mockFindOneAndUpdate.mockResolvedValue(null);
+
+    mockAdapterGet.mockReturnValue({
+      networkId:            "polygon",
+      getTransactionStatus: vi.fn().mockResolvedValue("failed"),
+    });
+
+    await processStuckReleasingTransfers();
+
+    // SCHED-03: NESSUN rollback
+    const rollbackCalls = mockFindOneAndUpdate.mock.calls.filter(
+      (c: any[]) => (c[1] as any)?.$set?.status === "pending",
+    );
+    expect(rollbackCalls).toHaveLength(0);
+
+    // Solo rinnovo del lock
+    expect(mockFindOneAndUpdate).toHaveBeenCalledWith(
+      { transfer_id: doc.transfer_id, status: "releasing" as any },
+      { $set: { locked_at: expect.any(Date) } },
+    );
+  });
+
+  /**
+   * Test D — Nessun secondo TX1 possibile
+   *
+   * Verifica che, dopo il fix SCHED-03, il transfer NON torni mai a "pending"
+   * quando tx_hash_release è SET. Se non torna a "pending", acquireMCLock
+   * ("pending"→"releasing") non può mai essere acquisito per un secondo TX1.
+   *
+   * Simula il caso peggiore: 3 cicli dello scheduler con TX1 "unknown" ogni volta.
+   * Il transfer deve restare in "releasing" con lock rinnovato — mai in "pending".
+   */
+  it("Test D: nessun secondo TX1 possibile — 3 cicli scheduler con TX1 unknown, transfer resta in releasing", async () => {
+    const doc = {
+      ...baseReleasingDoc,
+      tx_hash_release: "0xTX1_ORIGINAL",
+      tx_hash_fee:     null,
+      fee_wallet:      null,
+      project_fee:     "0",
+    };
+
+    const getTransactionStatus = vi.fn().mockResolvedValue("unknown");
+    mockAdapterGet.mockReturnValue({ networkId: "polygon", getTransactionStatus });
+
+    // Simula 3 cicli del scheduler
+    for (let cycle = 0; cycle < 3; cycle++) {
+      mockFindChain([doc]);
+      mockFindOneAndUpdate.mockResolvedValue(null);
+      await processStuckReleasingTransfers();
+    }
+
+    // Il transfer non è MAI tornato a "pending"
+    const allPendingRollbacks = mockFindOneAndUpdate.mock.calls.filter(
+      (c: any[]) => (c[1] as any)?.$set?.status === "pending",
+    );
+    expect(allPendingRollbacks).toHaveLength(0);
+
+    // Il transfer non è stato rilasciato (nessun "released")
+    const releasedCalls = mockFindOneAndUpdate.mock.calls.filter(
+      (c: any[]) => (c[1] as any)?.$set?.status === "released",
+    );
+    expect(releasedCalls).toHaveLength(0);
+
+    // 3 rinnovi del lock — uno per ciclo
+    const lockRenewals = mockFindOneAndUpdate.mock.calls.filter(
+      (c: any[]) => (c[1] as any)?.$set?.locked_at instanceof Date &&
+                    !(c[1] as any)?.$set?.status,
+    );
+    expect(lockRenewals).toHaveLength(3);
+
+    // getTransactionStatus chiamato 3 volte (una per ciclo)
+    expect(getTransactionStatus).toHaveBeenCalledTimes(3);
+
+    // L'adapter per un nuovo TX1 NON deve essere chiamato con operazioni di firma
+    // (la firma avverrebbe nel service, non nello scheduler — ma il rollback è
+    // il prerequisito. Senza rollback, nessun nuovo TX1 è possibile.)
+    expect(mockRetryEVMFee).not.toHaveBeenCalled();
+  });
+
+  /**
+   * Test E — RPC error (catch → txStatus="unknown") + tx_hash_release=SET
+   *
+   * Il caso più pericoloso per SCHED-03: getTransactionStatus lancia un'eccezione
+   * (RPC down, timeout, errore di rete). Il catch del scheduler imposta
+   * txStatus = "unknown". Con tx_hash_release SET, NON deve essere fatto rollback.
+   *
+   * Questo è esattamente lo scenario che SCHED-03 protegge: l'RPC è intermittente,
+   * la TX è in mempool, ma il catch porta a txStatus="unknown".
+   */
+  it("Test E: RPC throws (catch→txStatus=unknown) + tx_hash_release=SET → NO rollback", async () => {
+    const doc = {
+      ...baseReleasingDoc,
+      tx_hash_release: "0xTX1_IN_MEMPOOL",  // TX inviata, potenzialmente in mempool
+      tx_hash_fee:     null,
+      fee_wallet:      null,
+      project_fee:     "0",
+    };
+    mockFindChain([doc]);
+    mockFindOneAndUpdate.mockResolvedValue(null);
+
+    // RPC lancia eccezione → il catch del scheduler imposta txStatus="unknown"
+    mockAdapterGet.mockReturnValue({
+      networkId:            "polygon",
+      getTransactionStatus: vi.fn().mockRejectedValue(new Error("RPC timeout: connection refused")),
+    });
+
+    // Non deve lanciare eccezioni (gestite internamente)
+    await expect(processStuckReleasingTransfers()).resolves.not.toThrow();
+
+    // SCHED-03: NESSUN rollback — TX1 potrebbe essere ancora in mempool!
+    const rollbackCalls = mockFindOneAndUpdate.mock.calls.filter(
+      (c: any[]) => (c[1] as any)?.$set?.status === "pending",
+    );
+    expect(rollbackCalls).toHaveLength(0);
+
+    // Rinnova lock (safe defer)
+    expect(mockFindOneAndUpdate).toHaveBeenCalledWith(
+      { transfer_id: doc.transfer_id, status: "releasing" as any },
+      { $set: { locked_at: expect.any(Date) } },
+    );
+
+    // Nessun retry TX2 (TX1 non confermata, impossibile procedere)
+    expect(mockRetryEVMFee).not.toHaveBeenCalled();
   });
 });
 
