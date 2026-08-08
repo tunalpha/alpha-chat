@@ -85,6 +85,10 @@ v1Router.use("/payments", paymentRoutes);
 import investorRoutes from "./investor.routes";
 v1Router.use("/investor", investorRoutes);
 
+// Multi-Chain Payment Engine — Phase 2+ (additivo, zero regressioni USDA)
+import multichainPaymentRoutes from "./multichain-payment.routes";
+v1Router.use("/multichain", multichainPaymentRoutes);
+
 // WalletConnect debug — temporaneo, rimuovere dopo la diagnosi
 
 export default v1Router;
