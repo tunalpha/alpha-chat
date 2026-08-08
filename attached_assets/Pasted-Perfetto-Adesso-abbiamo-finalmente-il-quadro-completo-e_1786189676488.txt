@@ -1,0 +1,551 @@
+Perfetto. Adesso abbiamo finalmente il quadro completo, e c’è un punto importante: la tua scelta B non è ancora implementata su EVM.
+
+Situazione attuale
+
+BTC: ✅ il cliente paga già la network fee.
+EVM: ❌ la network fee è ancora a carico del progetto tramite gas station.
+
+La project fee 0,10% invece è corretta e separata in entrambi i casi.
+
+Il problema quindi non è il calcolo dello 0,10%. Quello va lasciato esattamente com’è.
+
+Il problema è proteggere il margine del progetto dalle network fee EVM.
+
+⸻
+
+La soluzione che adotterei
+
+Per EVM farei:
+
+PROJECT FEE
+0,10%
+↓
+sempre nostra
+
+e
+
+NETWORK FEE
+variabile
+↓
+sempre a carico del cliente
+
+Però c’è una particolarità: USDT non può pagare direttamente il gas. Il gas su Polygon è in POL, Ethereum in ETH, BSC in BNB.
+
+Quindi non farei una modifica semplicistica del tipo:
+
+“aggiungiamo il gas al grossAmount USDT”
+
+senza progettare il flusso.
+
+La soluzione più pulita con la tua architettura custodial è:
+
+Cliente paga
+
+100 USDT
++
+network fee EVM calcolata/quotata
+
+Il sistema continua tecnicamente a usare la gas station per pagare POL/ETH/BNB all’escrow, ma recupera dal cliente il costo della network fee come voce separata.
+
+Quindi economicamente:
+
+100 USDT
+   │
+   ├── 0,10 USDT → PROJECT FEE
+   │
+   └── 99,90 USDT → DESTINATARIO
++ network fee → COSTO BLOCKCHAIN
+
+In questo modo la tua commissione dello 0,10% non viene mai erosa dal gas.
+
+⸻
+
+Ma c’è una cosa che NON farei
+
+Non farei:
+
+100 USDT
+↓
+0,10 USDT fee
+↓
+99,90 USDT recipient
+↓
+gas sottratto dai 0,10
+
+❌ Questo è esattamente ciò che vogliamo evitare.
+
+E neppure farei una network fee fissa arbitraria.
+
+Deve esserci:
+
+estimatedNetworkFee
+actualNetworkFee
+
+e possibilmente un piccolo buffer controllato.
+
+⸻
+
+Quindi darei ora all’agente queste disposizioni
+
+Non modificare ancora USDA.
+
+MULTI-CHAIN FEE MODEL — FINAL ECONOMIC RULES
+
+Abbiamo completato l’analisi statica del modello fee attuale.
+
+DECISIONE COMMERCIALE DEFINITIVA
+
+La commissione del progetto è:
+
+0,10% su tutti gli asset/reti
+
+e deve rimanere economicamente intatta.
+
+Applicare:
+
+projectFee = grossAmount × 0.001
+netAmount = grossAmount - projectFee
+
+La projectFee NON deve mai essere utilizzata per pagare gas/miner fee.
+
+⸻
+
+1. PROJECT FEE — PROTECTED
+
+La project fee deve essere sempre:
+
+0,10%
+
+per:
+
+Polygon / USDA
+Polygon / USDT
+Bitcoin / BTC
+Ethereum / USDT
+BSC / USDT
+
+La formula attualmente presente in fee-config.ts è corretta.
+
+NON modificarla.
+
+Deve rimanere:
+
+projectFee = grossAmount × feeBps / 10_000
+
+con:
+
+feeBps = 10
+
+⸻
+
+2. PROJECT FEE ≠ NETWORK FEE
+
+Devono rimanere due concetti completamente separati.
+
+projectFee
+networkFee
+
+NON sommare networkFee a projectFee.
+
+NON sottrarre networkFee da projectFee.
+
+NON ridurre netAmount a causa della networkFee.
+
+Il destinatario deve continuare a ricevere:
+
+netAmount = grossAmount - projectFee
+
+⸻
+
+3. ECONOMIC MODEL — DECISIONE B
+
+La network fee deve essere economicamente a carico del cliente, non del progetto.
+
+Questo vale per:
+
+* Polygon
+* Ethereum
+* BSC
+* Bitcoin
+
+Il progetto deve quindi mantenere il proprio margine dello 0,10% anche quando il costo blockchain aumenta.
+
+⸻
+
+4. BITCOIN
+
+L’attuale modello BTC è già coerente con questa decisione.
+
+Il cliente deposita:
+
+grossAmount
++
+estimatedMinerFee
++
+buffer
+
+Il release produce:
+
+recipient → netAmount
+fee wallet → projectFee
+miner → networkFee
+change → escrow
+
+NON modificare la formula BTC già funzionante senza necessità.
+
+Verificare solamente che:
+
+projectFee
+
+rimanga sempre separata dalla:
+
+networkFee
+
+e che la project fee non venga mai utilizzata per coprire il miner fee.
+
+⸻
+
+5. EVM — ATTUALE PROBLEMA
+
+Attualmente:
+
+CLIENT
+  ↓
+grossAmount USDT
+  ↓
+ESCROW
+GAS STATION
+  ↓
+POL / ETH / BNB
+  ↓
+ESCROW
+ESCROW
+  ↓
+recipient
+  ↓
+fee wallet
+
+Quindi il gas EVM è attualmente sostenuto economicamente dal progetto.
+
+Questo NON è più il modello desiderato.
+
+⸻
+
+6. EVM — NUOVO MODELLO
+
+Per Polygon / Ethereum / BSC il cliente deve sostenere economicamente la network fee.
+
+ATTENZIONE:
+
+USDT non può pagare direttamente il gas.
+
+Il gas deve comunque essere materialmente pagato in:
+
+Polygon → POL
+Ethereum → ETH
+BSC → BNB
+
+Pertanto non implementare una soluzione semplicistica che presupponga che USDT possa pagare direttamente il gas.
+
+⸻
+
+7. GAS STATION
+
+La gas station può continuare a essere utilizzata tecnicamente per finanziare l’escrow con:
+
+POL
+ETH
+BNB
+
+prima del payout.
+
+Ma il costo della gas station deve essere recuperato economicamente dal cliente come:
+
+networkFee
+
+se questo è il modello scelto dall’architettura.
+
+La gas station è quindi:
+
+technical gas payer
+
+e NON:
+
+economic cost bearer.
+
+⸻
+
+8. NETWORK FEE QUOTATION
+
+Prima di finalizzare il pagamento EVM, il sistema deve poter determinare una:
+
+estimatedNetworkFee
+
+appropriata alla rete.
+
+La fee deve tenere conto almeno di:
+
+gas estimate
+gas price / fee market
+numero di transazioni necessarie
+
+Nel modello EVM attuale ci sono due TX:
+
+TX1 → recipient
+TX2 → fee wallet
+
+quindi la stima deve considerare il costo totale delle operazioni necessarie.
+
+NON assumere che una sola TX rappresenti il costo totale.
+
+⸻
+
+9. ATTENZIONE ALLE UNITÀ
+
+La network fee EVM nasce in:
+
+POL
+ETH
+BNB
+
+ma il pagamento principale può essere:
+
+USDT
+
+Quindi, se la network fee viene addebitata economicamente in USDT, serve una conversione trasparente:
+
+networkFeeNative
+↓
+conversion rate
+↓
+networkFeeCharged
+
+Non utilizzare valori arbitrari.
+
+Riutilizzare il sistema di fiat/crypto pricing già presente se affidabile.
+
+Se non esiste un sistema appropriato, NON inventarne uno senza prima documentare la scelta.
+
+⸻
+
+10. FEE BUFFER
+
+La network fee addebitata al cliente può includere un buffer ragionevole per evitare che:
+
+estimatedNetworkFee < actualNetworkFee
+
+ma il buffer deve essere:
+
+* configurabile;
+* documentato;
+* separato dalla project fee;
+* contabilizzato separatamente.
+
+NON nascondere il buffer dentro lo 0,10%.
+
+⸻
+
+11. ECONOMIC INVARIANT
+
+Questa deve essere una proprietà verificabile:
+
+projectFee = grossAmount × 0.001
+
+e:
+
+netAmount = grossAmount - projectFee
+
+indipendentemente dal costo blockchain.
+
+La network fee deve essere aggiuntiva.
+
+Esempio:
+
+Gross payment        100 USDT
+Project fee           0.10 USDT
+Recipient             99.90 USDT
+Network fee           X USDT-equivalent
+
+Il progetto deve ricevere economicamente:
+
+0.10 USDT
+
+di project fee, senza che la network fee venga sottratta da questo importo.
+
+⸻
+
+12. IMPORTANTISSIMO — NON CAMBIARE ANCORA IL CODICE ALLA CIECA
+
+Prima di implementare questa modifica:
+
+1. analizza l’attuale payment flow;
+2. analizza come viene creato il transfer;
+3. analizza come il client riceve grossAmount;
+4. analizza il frontend/payment preparation;
+5. analizza il sistema di pricing già esistente;
+6. analizza il gas station;
+7. analizza come viene registrata network_fee;
+8. identifica dove mostrare al cliente la network fee;
+9. identifica come evitare che il cliente paghi due volte la network fee.
+
+Poi proponi il minimo cambiamento architetturale necessario.
+
+NON modificare USDA.
+
+⸻
+
+13. ADMIN
+
+Nel pannello Admin devono essere distinguibili:
+
+Project Fee
+Network Fee
+
+e non devono mai essere rappresentate come un’unica commissione.
+
+Configurazione indicativa:
+
+Project Fee
+0.10%
+Network Fee
+Dynamic
+
+⸻
+
+14. DATABASE
+
+Mantenere separati:
+
+gross_amount
+project_fee
+network_fee
+net_amount
+
+Per EVM specificare, se necessario:
+
+network_fee_native
+network_fee_asset
+network_fee_charged
+
+in modo da sapere:
+
+* quanto gas è stato realmente consumato;
+* in quale asset;
+* quanto è stato addebitato economicamente al cliente.
+
+⸻
+
+15. RECONCILIATION
+
+Ogni payout deve permettere di verificare:
+
+PROJECT FEE
+        ↓
+Fee Wallet
+NETWORK FEE
+        ↓
+Gas Station / blockchain
+NET AMOUNT
+        ↓
+Recipient
+
+Il database deve permettere di riconciliare questi tre flussi separatamente.
+
+⸻
+
+16. TEST OBBLIGATORI
+
+Creare test per dimostrare:
+
+Test 1
+
+100 USDT
+projectFee = 0.10
+netAmount = 99.90
+
+Test 2
+
+Aumentando drasticamente la network fee:
+
+projectFee rimane 0.10 USDT
+netAmount rimane 99.90 USDT
+
+Test 3
+
+Network fee zero/errore:
+
+La project fee non cambia.
+
+Test 4
+
+Network fee superiore alla stima:
+
+La project fee non cambia.
+
+Test 5
+
+BTC:
+
+projectFee = 0.10%
+minerFee = separata
+
+Test 6
+
+Ethereum/BSC/Polygon:
+
+Verificare che la network fee non venga sottratta dalla project fee.
+
+⸻
+
+17. USDA
+
+REGOLA ASSOLUTA:
+
+NON MODIFICARE USDA.
+
+Questa modifica riguarda esclusivamente il Multi-Chain Payment Engine.
+
+Non modificare:
+
+* USDA payout;
+* USDA gas station;
+* USDA wallet management;
+* USDA scheduler;
+* USDA transaction flow.
+
+Se una componente è condivisa e una modifica potrebbe alterare USDA:
+
+STOP e chiedi conferma.
+
+⸻
+
+18. OUTPUT RICHIESTO PRIMA DI IMPLEMENTARE
+
+Prima di scrivere codice restituisci:
+
+1. architettura attuale del fee flow;
+2. punto esatto in cui viene calcolata la network fee;
+3. punto esatto in cui viene pagato il gas;
+4. punto esatto in cui il cliente viene addebitato;
+5. punto esatto in cui viene registrata la fee;
+6. proposta di modifica;
+7. eventuali nuovi campi DB;
+8. eventuali nuove API/frontend changes;
+9. impatto su EVM;
+10. conferma esplicita che USDA non verrà modificato.
+
+Solo dopo approvazione procedere all’implementazione.
+
+CRITERIO FINALE
+
+La proprietà economica fondamentale deve essere:
+
+LO 0,10% DEL PROGETTO NON DEVE ESSERE EROSO DALLA NETWORK FEE.
+
+La network fee è un costo separato, a carico del cliente secondo il modello B.
+
+NON sacrificare questa proprietà per semplicità implementativa.
+
+Questa è la direzione che prenderei. E hai fatto bene a farmi leggere prima l’analisi: adesso sappiamo con certezza che non dobbiamo toccare il calcolo dello 0,10%, che è già corretto. Dobbiamo intervenire solamente sul chi sostiene economicamente il gas EVM.
+
+E soprattutto non farei partire l’agente direttamente a modificare il codice: il prompt gli impone prima di presentarci la soluzione tecnica concreta. La guardiamo insieme e solo dopo gli diamo il via libera.
