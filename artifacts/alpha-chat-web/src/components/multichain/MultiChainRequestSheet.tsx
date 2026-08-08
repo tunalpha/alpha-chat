@@ -87,6 +87,8 @@ export function MultiChainRequestSheet({ conversationId, toUserId, toName, onClo
   const [loading,           setLoading]           = useState(false);
   const [error,             setError]             = useState<string | null>(null);
   const [quote,             setQuote]             = useState<MCQuote | null>(null);
+  /** Unità minime del target netto inserito dall'utente (solo recipient_exact). */
+  const [targetNetUnits,    setTargetNetUnits]    = useState<string | null>(null);
   const [availableUsdtNets, setAvailableUsdtNets] = useState<NetOption[]>(ALL_USDT_OPTIONS);
 
   // Prezzo BTC live (solo per BTC mode)
@@ -133,6 +135,10 @@ export function MultiChainRequestSheet({ conversationId, toUserId, toName, onClo
     setLoading(true);
     try {
       const units = isBtc ? satoshi!.toString() : toSmallestUnit(amount, rawDec);
+      // Conserva il target netto esatto inserito dall'utente (usato nel confirm step
+      // al posto di quote.netAmount che può avere +1 unit per il ceiling del backend).
+      if (amountMode === "recipient_exact") setTargetNetUnits(units);
+      else setTargetNetUnits(null);
       const res = await apiMCQuote({
         network,
         asset:    MC_ASSET[network],
@@ -170,8 +176,8 @@ export function MultiChainRequestSheet({ conversationId, toUserId, toName, onClo
         asset:         MC_ASSET[network],
         amountMode,
         ...(amountMode === "send_amount"
-          ? { grossAmountUnits:    quote.grossAmount }
-          : { targetNetAmountUnits: quote.netAmount }),
+          ? { grossAmountUnits:     quote.grossAmount }
+          : { targetNetAmountUnits: targetNetUnits ?? quote.netAmount }),
         clientRef:     crypto.randomUUID(),
         expiresInHours: 24,
       });
@@ -377,7 +383,8 @@ export function MultiChainRequestSheet({ conversationId, toUserId, toName, onClo
                 <>
                   <div className="mc-confirm-row mc-confirm-net">
                     <span>Tu ricevi (esatto)</span>
-                    <strong>{isBtc ? fmtUnits(quote.netAmount, 8, 8) + " BTC" : fmtUnits(quote.netAmount, rawDec, dispDec) + " " + ticker}</strong>
+                    {/* Mostra il target inserito dall'utente, non quote.netAmount che ha +1 unit per ceiling */}
+                    <strong>{isBtc ? fmtUnits(targetNetUnits ?? quote.netAmount, 8, 8) + " BTC" : fmtUnits(targetNetUnits ?? quote.netAmount, rawDec, dispDec) + " " + ticker}</strong>
                   </div>
                   <div className="mc-confirm-row mc-confirm-fee">
                     <span>Fee</span>

@@ -105,8 +105,11 @@ export const MultiChainPaymentBubble = memo(function MultiChainPaymentBubble({ d
     };
   }, [status, data?.transfer_id]);
 
-  // Guard DOPO tutti gli hook — metadati incompleti (messaggio ancora in transito)
-  if (!data?.transfer_id || !data?.status) return null;
+  // Guard DOPO tutti gli hook — metadati incompleti o malformati.
+  // IMPORTANTE: gross_amount/net_amount devono essere presenti prima di chiamare
+  // fmtDisplay()/BigInt() più sotto — un valore undefined causerebbe TypeError e
+  // abbatterebbe l'intera ChatPage (nessun error boundary).
+  if (!data?.transfer_id || !data?.status || !data?.gross_amount || !data?.net_amount) return null;
 
   const isRequest = data.is_request === true;
   /**
