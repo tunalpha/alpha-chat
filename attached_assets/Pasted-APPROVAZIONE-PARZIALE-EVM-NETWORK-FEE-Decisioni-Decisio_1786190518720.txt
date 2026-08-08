@@ -1,0 +1,219 @@
+APPROVAZIONE PARZIALE — EVM NETWORK FEE
+
+Decisioni:
+
+Decisione 1
+
+Approvato Approccio A — Flat Network Fee USDT configurabile per il TESTNET.
+
+NON utilizzare un valore hardcoded.
+
+Utilizzare una configurazione:
+
+POLYGON_FLAT_NETWORK_FEE_USDT
+
+Il valore iniziale deve essere configurabile e facilmente modificabile senza modificare il codice.
+
+NON introdurre Chainlink, Oracle o pricing esterno in questa fase.
+
+Decisione 2
+
+Per il testnet abilitare esclusivamente:
+
+Polygon USDT = ENABLED
+
+Mantenere:
+
+Ethereum USDT = DISABLED
+BSC USDT = DISABLED
+
+Ethereum e BSC saranno configurati successivamente con le rispettive gas station.
+
+⸻
+
+IMPORTANTE — NETWORK FEE CHARGED
+
+Prima di implementare, correggere un punto della proposta precedente.
+
+Se il cliente deposita:
+
+grossAmount + networkFeeCharged
+
+la parte networkFeeCharged non può rimanere non contabilizzata nell’escrow.
+
+Esempio:
+
+Cliente deposita 101 USDT
+grossAmount = 100 USDT
+networkFeeCharged = 1 USDT
+
+Il payout deve essere concettualmente:
+
+99,90 USDT → recipient
+0,10 USDT → project fee wallet
+1,00 USDT → network fee reimbursement
+
+Quindi il sistema deve definire esplicitamente la destinazione del network fee reimbursement.
+
+⸻
+
+SEPARAZIONE CONTABILE OBBLIGATORIA
+
+Mantenere sempre:
+
+projectFee
+networkFeeCharged
+networkFeeActual
+
+completamente separati.
+
+Esempio:
+
+grossAmount          100.00 USDT
+projectFee             0.10 USDT
+netAmount             99.90 USDT
+networkFeeCharged      1.00 USDT
+depositRequired       101.00 USDT
+
+La project fee NON deve mai essere utilizzata per coprire il network fee.
+
+⸻
+
+NETWORK FEE WALLET
+
+Prima di implementare la terza destinazione, presentare una breve proposta tecnica.
+
+Possibili modelli:
+
+Modello A
+
+Project Fee Wallet e Network Fee Wallet separati.
+
+Preferito.
+
+Modello B
+
+Stesso wallet fisico, ma contabilità completamente separata.
+
+Accettabile se evita una TX aggiuntiva e mantiene una riconciliazione chiara.
+
+NON scegliere automaticamente uno dei due senza documentare l’impatto sulle TX e sul gas.
+
+⸻
+
+ATTENZIONE AL NUMERO DI TRANSAZIONI
+
+Attualmente EVM utilizza:
+
+TX1 → recipient
+TX2 → project fee wallet
+
+Se il network fee reimbursement richiede una terza TX:
+
+TX3 → network fee wallet
+
+la network fee stimata deve includere anche il gas della terza TX.
+
+NON utilizzare:
+
+2 × gas estimate
+
+se vengono effettivamente eseguite 3 TX.
+
+Prima di implementare, determinare il numero definitivo di TX.
+
+⸻
+
+PROPRIETÀ ECONOMICA OBBLIGATORIA
+
+Deve essere sempre vero:
+
+projectFee = grossAmount × 0.10%
+
+e:
+
+netAmount = grossAmount - projectFee
+
+La network fee è aggiuntiva.
+
+La network fee NON deve ridurre:
+
+projectFee
+
+e NON deve ridurre:
+
+netAmount
+
+⸻
+
+GAS STATION
+
+La gas station può continuare a pagare materialmente:
+
+POL
+
+per Polygon.
+
+Ma il costo economico deve essere recuperato tramite:
+
+networkFeeCharged
+
+secondo il modello B scelto.
+
+La gas station è quindi il technical gas payer, non il soggetto che deve assorbire definitivamente il costo.
+
+⸻
+
+TEST OBBLIGATORI
+
+Prima di dichiarare completata la modifica, dimostrare:
+
+100 USDT gross
+0.10 USDT project fee
+99.90 USDT recipient
+X USDT network fee charged
+100 + X USDT deposit required
+
+e dimostrare separatamente:
+
+project_fee
+network_fee_charged
+network_fee_actual
+
+Nessuno dei tre valori deve essere confuso con gli altri.
+
+⸻
+
+USDA
+
+NON MODIFICARE:
+
+* USDA custodial service
+* USDA scheduler
+* USDA wallet management
+* USDA payout
+* USDA authentication
+* chat payment
+* USDA gas flow
+
+Il Multi-Chain Engine deve rimanere completamente isolato.
+
+⸻
+
+PRIMA DI SCRIVERE CODICE
+
+Non implementare immediatamente.
+
+Prima restituisci:
+
+1. quale modello scegli per il Network Fee Wallet;
+2. quante TX EVM saranno necessarie;
+3. come verrà contabilizzato il network fee reimbursement;
+4. come verrà calcolata la flat fee;
+5. come verrà garantito che la project fee 0,10% rimanga intatta;
+6. impatto sul modello MongoDB;
+7. impatto sulle API;
+8. impatto sul frontend futuro;
+9. conferma che USDA non verrà modificato.
+
+Solo dopo questa conferma procedere con l’implementazione.
