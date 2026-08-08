@@ -888,8 +888,10 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
   const [showSendUsda,    setShowSendUsda]    = useState(false);   // legacy — non più connesso al pulsante
   const [showSendPayment, setShowSendPayment] = useState(false);   // nuovo Payment Engine
   // ── Multi-Chain Payments ─────────────────────────────────────────────
-  const [showMCPay,     setShowMCPay]     = useState(false);
-  const [showMCRequest, setShowMCRequest] = useState(false);
+  const [showMCPay,      setShowMCPay]      = useState(false);
+  const [showMCRequest,  setShowMCRequest]  = useState(false);
+  const [showBTCPay,     setShowBTCPay]     = useState(false);
+  const [showBTCRequest, setShowBTCRequest] = useState(false);
   const [sendPrefill, setSendPrefill] = useState<{ amount?: string; requestPaymentId?: string } | null>(null);
   // RETRY FIRMA: transfer_id per cui riaprire la firma (bolla awaiting_deposit).
   const [resumeTransferId, setResumeTransferId] = useState<string | null>(null);
@@ -4276,6 +4278,20 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
                     <span className="attach-sheet-icon">🪙</span>
                     <span>{t("chat.attachRequestMultichain")}</span>
                   </button>
+                  <button
+                    className="attach-sheet-item"
+                    onClick={() => { setShowAttachSheet(false); setTimeout(() => setShowBTCPay(true), 80); }}
+                  >
+                    <span className="attach-sheet-icon">₿</span>
+                    <span>{t("chat.attachSendBtc")}</span>
+                  </button>
+                  <button
+                    className="attach-sheet-item"
+                    onClick={() => { setShowAttachSheet(false); setTimeout(() => setShowBTCRequest(true), 80); }}
+                  >
+                    <span className="attach-sheet-icon">🟠</span>
+                    <span>{t("chat.attachRequestBtc")}</span>
+                  </button>
                 </>
               )}
             </div>
@@ -4721,6 +4737,7 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
       {/* ── Multi-Chain Payment Sheets ───────────────────────────────────── */}
       {showMCPay && activeConv && auth && activeConv.type !== "group" && (
         <MultiChainSendSheet
+          mode="usdt"
           conversationId={activeConvId ?? ""}
           toUserId={activeConv.other_user?.user_id ?? ""}
           toName={activeConv.other_user?.display_name ?? activeConv.other_user?.username ?? "Utente"}
@@ -4730,11 +4747,32 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
       )}
       {showMCRequest && activeConv && auth && activeConv.type !== "group" && (
         <MultiChainRequestSheet
+          mode="usdt"
           conversationId={activeConvId ?? ""}
           toUserId={activeConv.other_user?.user_id ?? ""}
           toName={activeConv.other_user?.display_name ?? activeConv.other_user?.username ?? "Utente"}
           onClose={() => setShowMCRequest(false)}
           onRequested={() => setShowMCRequest(false)}
+        />
+      )}
+      {showBTCPay && activeConv && auth && activeConv.type !== "group" && (
+        <MultiChainSendSheet
+          mode="btc"
+          conversationId={activeConvId ?? ""}
+          toUserId={activeConv.other_user?.user_id ?? ""}
+          toName={activeConv.other_user?.display_name ?? activeConv.other_user?.username ?? "Utente"}
+          onClose={() => setShowBTCPay(false)}
+          onSent={() => setShowBTCPay(false)}
+        />
+      )}
+      {showBTCRequest && activeConv && auth && activeConv.type !== "group" && (
+        <MultiChainRequestSheet
+          mode="btc"
+          conversationId={activeConvId ?? ""}
+          toUserId={activeConv.other_user?.user_id ?? ""}
+          toName={activeConv.other_user?.display_name ?? activeConv.other_user?.username ?? "Utente"}
+          onClose={() => setShowBTCRequest(false)}
+          onRequested={() => setShowBTCRequest(false)}
         />
       )}
 

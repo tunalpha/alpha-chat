@@ -213,6 +213,8 @@
     "attachRequestUsda": "طلب USDA",
     "attachSendMultichain": "إرسال USDT",
     "attachRequestMultichain": "طلب USDT",
+    "attachSendBtc": "إرسال BTC",
+    "attachRequestBtc": "طلب BTC",
     "mediaPhoto": "📷 صورة",
     "mediaVideo": "🎥 فيديو",
     "mediaDocument": "وثيقة",

@@ -45,16 +45,18 @@ interface Props {
   toName:         string;
   onClose:        () => void;
   onSent:         () => void;
+  /** "usdt" → mostra solo reti EVM; "btc" → solo Bitcoin, nessuna selezione rete */
+  mode?: "usdt" | "btc";
 }
 
 type Step = "form" | "confirm" | "address";
 
 // ─── Componente ───────────────────────────────────────────────────────────────
 
-export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose, onSent }: Props) {
+export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose, onSent, mode = "usdt" }: Props) {
   const { t } = useTranslation();
   const [step,     setStep]     = useState<Step>("form");
-  const [network,  setNetwork]  = useState<MCNetwork>("polygon");
+  const [network,  setNetwork]  = useState<MCNetwork>(mode === "btc" ? "bitcoin" : "polygon");
   const [amount,   setAmount]   = useState("");
   const [loading,  setLoading]  = useState(false);
   const [error,    setError]    = useState<string | null>(null);
@@ -135,40 +137,36 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
           <>
             <div className="usda-sheet-to">{t("multichain.toLabel")} <strong>{toName}</strong></div>
 
-            <div className="mc-section-label">{t("multichain.selectNetwork")}</div>
-
-            {/* USDT su reti EVM */}
-            <div className="mc-token-group-label">USDT <span className="mc-token-group-desc">· ERC-20 / BEP-20</span></div>
-            <div className="mc-network-grid">
-              {USDT_NETWORKS.map(n => (
-                <button
-                  key={n.id}
-                  type="button"
-                  className={`mc-network-item${network === n.id ? " selected" : ""}`}
-                  onClick={() => { setNetwork(n.id); setAmount(""); setError(null); }}
-                >
-                  <span className="mc-network-icon">{n.icon}</span>
-                  <span className="mc-network-label">{n.label}</span>
-                  <span className="mc-network-sublabel">{n.sublabel}</span>
-                </button>
-              ))}
-            </div>
-
-            {/* Bitcoin — separatore visivo */}
-            <div className="mc-btc-divider"><span>oppure</span></div>
-
-            {/* BTC nativo — card distinta */}
-            <button
-              type="button"
-              className={`mc-btc-card${network === "bitcoin" ? " selected" : ""}`}
-              onClick={() => { setNetwork("bitcoin"); setAmount(""); setError(null); }}
-            >
-              <span className="mc-btc-symbol">₿</span>
-              <div className="mc-btc-text">
-                <span className="mc-btc-name">BTC <em>— Bitcoin nativo</em></span>
-                <span className="mc-btc-net">Bitcoin Network</span>
+            {mode === "btc" ? (
+              /* BTC mode: nessuna selezione rete — mostra solo header Bitcoin */
+              <div className="mc-btc-card selected" style={{ cursor: "default", marginBottom: 14 }}>
+                <span className="mc-btc-symbol">₿</span>
+                <div className="mc-btc-text">
+                  <span className="mc-btc-name">BTC <em>— Bitcoin nativo</em></span>
+                  <span className="mc-btc-net">Bitcoin Network</span>
+                </div>
               </div>
-            </button>
+            ) : (
+              /* USDT mode: solo reti EVM */
+              <>
+                <div className="mc-section-label">{t("multichain.selectNetwork")}</div>
+                <div className="mc-token-group-label">USDT <span className="mc-token-group-desc">· ERC-20 / BEP-20</span></div>
+                <div className="mc-network-grid">
+                  {USDT_NETWORKS.map(n => (
+                    <button
+                      key={n.id}
+                      type="button"
+                      className={`mc-network-item${network === n.id ? " selected" : ""}`}
+                      onClick={() => { setNetwork(n.id); setAmount(""); setError(null); }}
+                    >
+                      <span className="mc-network-icon">{n.icon}</span>
+                      <span className="mc-network-label">{n.label}</span>
+                      <span className="mc-network-sublabel">{n.sublabel}</span>
+                    </button>
+                  ))}
+                </div>
+              </>
+            )}
 
             <div className="usda-sheet-field">
               <label htmlFor="mc-send-amount">{t("multichain.amountLabel")}</label>

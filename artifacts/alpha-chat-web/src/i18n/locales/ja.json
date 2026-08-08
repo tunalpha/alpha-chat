@@ -213,6 +213,8 @@
     "attachRequestUsda": "USDA リクエスト",
     "attachSendMultichain": "USDT を送る",
     "attachRequestMultichain": "USDT をリクエスト",
+    "attachSendBtc": "BTC送金",
+    "attachRequestBtc": "BTC請求",
     "mediaPhoto": "📷 写真",
     "mediaVideo": "🎥 動画",
     "mediaDocument": "ドキュメント",
