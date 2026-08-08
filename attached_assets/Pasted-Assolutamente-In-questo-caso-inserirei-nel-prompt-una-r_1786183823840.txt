@@ -1,0 +1,1067 @@
+Assolutamente. In questo caso inserirei nel prompt una regola di non regressione molto più rigida: il vecchio USDA deve rimanere intatto a livello funzionale e il nuovo engine deve essere additivo, isolato e facilmente reversibile. In particolare, l’agente deve creare checkpoint/commit logici per ogni fase, così se una fase crea problemi si può fare rollback senza toccare le fasi precedenti.
+
+Ecco il prompt completo definitivo:
+
+FINAL MASTER PROMPT
+
+Multi-Chain Payment Engine — USDA ZERO-REGRESSION / ROLLBACK-SAFE IMPLEMENTATION
+
+Agisci come Senior Blockchain Engineer + Senior TypeScript Backend Engineer + Software Architect.
+
+Devi implementare nel progetto esistente un Multi-Chain Payment Engine che estenda l’attuale sistema USDA senza introdurre alcuna regressione.
+
+REGOLA ASSOLUTA
+
+L’attuale sistema USDA in produzione deve continuare a funzionare ESATTAMENTE come prima.
+
+Il nuovo Multi-Chain Payment Engine deve essere additivo, isolato, backward-compatible e rollback-safe.
+
+NON devi riscrivere l’attuale USDA.
+
+NON devi modificare la logica USDA funzionante se non è strettamente indispensabile per creare un’astrazione compatibile.
+
+NON devi introdurre modifiche speculative.
+
+NON devi fare refactoring massivi del codice esistente.
+
+Se una modifica può essere fatta senza toccare USDA, DEVE essere fatta senza toccare USDA.
+
+⸻
+
+1. OBIETTIVO
+
+Creare progressivamente:
+
+                    PAYMENT ENGINE
+                          │
+             ┌────────────┴────────────┐
+             │                         │
+         EVM ADAPTER              BITCOIN ADAPTER
+             │                         │
+       ┌─────┼─────┐                   │
+       │     │     │                   │
+    Polygon ETH   BSC                 BTC
+       │     │     │                   │
+   USDA/USDT USDT USDT                BTC
+
+Supporto finale:
+
+Polygon
+
+* USDA
+* USDT
+
+Ethereum Mainnet
+
+* USDT ERC-20
+
+BNB Smart Chain
+
+* USDT BEP-20
+
+Bitcoin
+
+* BTC nativo
+* UTXO
+* HD wallet
+* NON EVM
+* NON ERC-20
+
+Tron
+
+ESCLUSO.
+
+⸻
+
+2. PRINCIPIO ZERO-REGRESSION
+
+Prima di modificare qualsiasi file devi:
+
+1. analizzare l’intero repository;
+2. identificare l’architettura USDA attuale;
+3. identificare tutti i servizi utilizzati da USDA;
+4. identificare payout;
+5. identificare wallet management;
+6. identificare private-key management;
+7. identificare scheduler;
+8. identificare RPC provider;
+9. identificare transaction model;
+10. identificare lock/idempotency;
+11. identificare monitoring;
+12. identificare test esistenti;
+13. identificare entry point dell’applicazione.
+
+Crea una mappa delle dipendenze.
+
+Prima di modificare USDA devi sapere esattamente:
+
+* quali file vengono utilizzati;
+* quali funzioni vengono chiamate;
+* quali collection/database model vengono utilizzati;
+* quali environment variables sono necessarie;
+* quali servizi esterni sono coinvolti;
+* quali test garantiscono il funzionamento attuale.
+
+⸻
+
+3. USDA BASELINE
+
+Prima di iniziare la Fase 1 crea una baseline funzionale USDA.
+
+Esegui tutti i test disponibili.
+
+Esegui:
+
+typecheck
+lint
+unit tests
+integration tests
+build
+startup test
+
+Se esistono test specifici USDA/payout, eseguili esplicitamente.
+
+Documenta il risultato.
+
+Questa baseline diventa il riferimento per tutte le fasi successive.
+
+IMPORTANTE
+
+Se la baseline iniziale non è pulita:
+
+NON attribuire automaticamente eventuali problemi al nuovo sviluppo.
+
+Documenta prima i problemi già esistenti.
+
+⸻
+
+4. ROLLBACK STRATEGY
+
+L’intero sviluppo deve essere organizzato in checkpoint indipendenti.
+
+Struttura concettuale:
+
+BASELINE USDA
+     │
+     ▼
+CHECKPOINT 1
+FASE 1
+     │
+     ▼
+CHECKPOINT 2
+FASE 2
+     │
+     ▼
+CHECKPOINT 3
+FASE 3
+     │
+     ▼
+CHECKPOINT 4
+FASE 4
+     │
+     ▼
+CHECKPOINT 5
+FASE 5
+
+Ogni fase deve essere reversibile.
+
+REGOLA:
+
+Se una fase introduce una regressione:
+
+ROLLBACK
+   ↓
+ultima versione stabile
+   ↓
+USDA invariato
+
+NON procedere alla fase successiva.
+
+NON accumulare modifiche non testate.
+
+NON fare più fasi contemporaneamente.
+
+⸻
+
+5. GIT / VERSION CONTROL
+
+Se il repository utilizza Git:
+
+crea un commit/checkpoint logico alla fine di ogni fase stabile.
+
+Esempio:
+
+baseline-usda-stable
+multichain-phase-1-stable
+multichain-phase-2-stable
+multichain-phase-3-stable
+multichain-phase-4-stable
+multichain-phase-5-stable
+
+I nomi possono essere adattati alle convenzioni del repository.
+
+Ogni checkpoint deve rappresentare una versione che:
+
+* compila;
+* supera typecheck;
+* supera test;
+* supera build;
+* avvia correttamente il server;
+* non introduce regressioni USDA.
+
+Se Git non è disponibile, creare comunque checkpoint/versioning equivalente secondo gli strumenti disponibili.
+
+⸻
+
+6. NON MODIFICARE USDA
+
+Questa è una regola fondamentale.
+
+L’attuale codice USDA deve essere considerato legacy stable / protected code.
+
+Non modificare:
+
+* formule USDA;
+* payout USDA;
+* wallet USDA;
+* transaction flow USDA;
+* scheduler USDA;
+* conferma transazioni USDA;
+* monitoring USDA;
+* authentication USDA;
+* admin USDA;
+
+a meno che sia tecnicamente indispensabile.
+
+Se devi modificare una parte condivisa:
+
+1. documenta perché;
+2. dimostra che è necessaria;
+3. mantieni il comportamento USDA invariato;
+4. aggiungi regression test specifici;
+5. verifica il comportamento prima/dopo.
+
+⸻
+
+7. NUOVA ABSTRACTION LAYER
+
+Creare una nuova astrazione:
+
+BlockchainAdapter
+
+e, dove appropriato:
+
+EvmAdapter
+
+L’obiettivo è che il nuovo Payment Engine possa supportare più blockchain senza duplicare business logic.
+
+Struttura:
+
+BlockchainAdapter
+       │
+       ├── EvmAdapter
+       │      ├── Polygon
+       │      ├── Ethereum
+       │      └── BSC
+       │
+       └── BitcoinAdapter
+
+BTC NON deve ereditare comportamenti EVM.
+
+⸻
+
+8. FASE 1 — ADAPTER REFACTORING
+
+La prima fase deve essere solo architetturale.
+
+Obiettivo:
+
+creare l’astrazione senza modificare il comportamento USDA.
+
+Prima:
+
+USDA → existing Polygon service
+
+Dopo:
+
+USDA → adapter abstraction → existing Polygon implementation
+
+Il risultato funzionale deve essere identico.
+
+NON:
+
+* riscrivere USDA;
+* riscrivere payout;
+* cambiare wallet;
+* cambiare RPC;
+* cambiare transaction flow.
+
+Se possibile, utilizzare un adapter/facade wrapper intorno al codice esistente anziché modificarlo.
+
+⸻
+
+9. TEST FASE 1
+
+Dopo Fase 1:
+
+typecheck
+lint
+unit tests
+integration tests
+build
+startup test
+USDA regression tests
+
+Confrontare il comportamento prima/dopo.
+
+Solo se tutto è stabile:
+
+CHECKPOINT PHASE 1
+
+e procedere alla Fase 2.
+
+⸻
+
+10. COMMISSIONE
+
+La commissione iniziale sarà:
+
+0,10%
+
+Formula:
+
+projectFee = grossAmount × 0.001
+netAmount = grossAmount - projectFee
+
+Esempio:
+
+100 USDT
+99,90 USDT → destinatario
+0,10 USDT → fee wallet
+
+La commissione deve essere completamente distinta dalla network fee.
+
+grossAmount
+projectFee
+networkFee
+netAmount
+
+NON utilizzare floating point.
+
+Utilizzare:
+
+* BigInt;
+* integer base units;
+* Decimal appropriato;
+
+in funzione dell’asset.
+
+⸻
+
+11. FEE CONFIGURATION
+
+La fee NON deve essere hardcoded.
+
+Deve essere configurabile.
+
+Configurazione concettuale:
+
+network
+asset
+feeRate
+feeWallet
+enabled
+
+Esempio:
+
+Polygon / USDT / 0.10%
+Polygon / USDA / 0.10%
+Ethereum / USDT / 0.10%
+BSC / USDT / 0.10%
+Bitcoin / BTC / 0.10%
+
+⸻
+
+12. ADMIN — WALLET CONFIGURATION
+
+Creare una nuova sezione:
+
+Admin
+  ↓
+Wallet Configuration
+
+Questa sezione deve permettere agli amministratori autorizzati di configurare i fee wallet pubblici.
+
+NON deve mai richiedere private key o seed phrase.
+
+⸻
+
+13. EVM FEE WALLET
+
+Per:
+
+* Polygon;
+* Ethereum;
+* BSC;
+
+supportare un wallet EVM.
+
+È possibile utilizzare lo stesso indirizzo pubblico EVM su tutte e tre le reti.
+
+Esempio:
+
+0xABC...
+
+Può essere lo stesso indirizzo del proprio Trust Wallet EVM.
+
+IMPORTANTE
+
+Nonostante l’indirizzo possa essere identico:
+
+Polygon ≠ Ethereum ≠ BSC
+
+perché sono reti differenti.
+
+Il sistema deve quindi conservare separatamente:
+
+Polygon fee wallet
+Ethereum fee wallet
+BSC fee wallet
+
+anche quando hanno lo stesso indirizzo.
+
+Deve essere possibile in futuro impostare indirizzi diversi.
+
+⸻
+
+14. TRUST WALLET
+
+L’amministratore può utilizzare un indirizzo pubblico EVM proveniente da Trust Wallet.
+
+Il sistema deve memorizzare solamente:
+
+public address
+
+NON:
+
+seed phrase
+private key
+password
+recovery phrase
+
+Il fee wallet è principalmente un wallet di ricezione delle commissioni.
+
+Il sistema non deve richiedere la private key del fee wallet per ricevere fondi.
+
+⸻
+
+15. BTC FEE WALLET
+
+BTC utilizza un wallet completamente separato.
+
+Nel pannello Admin:
+
+Bitcoin Fee Wallet
+[ bc1... ]
+
+Il sistema deve validare l’indirizzo Bitcoin.
+
+Non permettere:
+
+EVM address → BTC wallet
+
+BTC deve avere il proprio fee wallet.
+
+⸻
+
+16. ADMIN SECURITY
+
+Solo ruoli amministrativi autorizzati possono modificare i wallet.
+
+Ogni modifica deve generare audit log:
+
+adminUserId
+network
+asset
+oldWallet
+newWallet
+timestamp
+action
+
+NON loggare segreti.
+
+Aggiungere conferma prima del salvataggio.
+
+⸻
+
+17. STORAGE WALLET CONFIGURATION
+
+I fee wallet sono indirizzi pubblici.
+
+Possono essere salvati nel database/configuration service esistente.
+
+NON memorizzare private key nel database.
+
+NON memorizzare seed phrase.
+
+NON utilizzare il database per custodire segreti se esiste già un sistema sicuro di secret management.
+
+Riutilizzare l’infrastruttura esistente.
+
+⸻
+
+18. FASE 2 — POLYGON USDT
+
+Implementare:
+
+Polygon
+USDT
+0,10% project fee
+
+Riutilizzare il Polygon service esistente.
+
+Non creare un secondo Polygon engine.
+
+La nuova funzionalità deve essere un’estensione del sistema esistente.
+
+Testare:
+
+* USDT balance;
+* transfer;
+* fee;
+* gas;
+* transaction;
+* receipt;
+* confirmation;
+* idempotency;
+* retry;
+* RPC timeout.
+
+Dopo test completi:
+
+CHECKPOINT PHASE 2
+
+⸻
+
+19. FASE 3 — BITCOIN
+
+BTC deve essere:
+
+custodial, come il modello escrow attuale.
+
+Creare:
+
+BitcoinAdapter
+
+completamente indipendente dall’EVM.
+
+BTC deve utilizzare:
+
+* UTXO;
+* HD wallet;
+* deposit addresses;
+* UTXO selection;
+* UTXO locking;
+* change;
+* miner fee;
+* transaction signing;
+* broadcast;
+* confirmations.
+
+NON utilizzare:
+
+viem
+ERC-20
+EVM
+
+⸻
+
+20. BTC DEPOSIT
+
+Implementare wallet HD con indirizzi di deposito dedicati quando appropriato.
+
+Concettualmente:
+
+BTC Master Wallet
+      │
+      ├── Deposit Address #001
+      ├── Deposit Address #002
+      ├── Deposit Address #003
+      └── ...
+
+Il sistema deve essere in grado di associare il deposito al pagamento/utente/transaction record corretto.
+
+⸻
+
+21. BTC PAYOUT
+
+Esempio:
+
+Alice → 0.01000000 BTC
+
+Commissione:
+
+0.00001000 BTC
+
+Net:
+
+0.00999000 BTC
+
+La transazione può avere:
+
+Input UTXO
+   │
+   ├── Bob
+   │   0.00999000 BTC
+   │
+   ├── BTC Fee Wallet
+   │   0.00001000 BTC
+   │
+   └── Change
+
+La miner fee è separata.
+
+⸻
+
+22. BTC SAFETY
+
+Gestire:
+
+* UTXO locking;
+* duplicate payout prevention;
+* transaction idempotency;
+* insufficient balance;
+* insufficient UTXO;
+* fee estimation;
+* dust;
+* change;
+* confirmation timeout;
+* transaction already broadcast;
+* server restart;
+* concurrent payout.
+
+Mai creare una seconda transazione semplicemente perché la prima non è stata immediatamente confermata.
+
+Prima verificare lo stato on-chain.
+
+⸻
+
+23. FASE 4 — ETHEREUM
+
+Implementare:
+
+Ethereum Mainnet
+USDT ERC-20
+
+Riutilizzare EvmAdapter.
+
+Configurare separatamente:
+
+chainId
+RPC
+USDT contract
+decimals
+gas
+confirmation policy
+
+Test completi.
+
+Checkpoint.
+
+⸻
+
+24. FASE 5 — BSC
+
+Implementare:
+
+BNB Smart Chain
+USDT BEP-20
+
+Gestire:
+
+BNB gas
+RPC
+chain ID
+USDT contract
+confirmation
+retry
+idempotency
+
+Test completi.
+
+Checkpoint.
+
+⸻
+
+25. GAS WALLET ≠ FEE WALLET
+
+Distinguere sempre:
+
+Project Fee Wallet
+
+Riceve:
+
+0,10%
+
+Gas Wallet
+
+Fornisce:
+
+POL
+ETH
+BNB
+
+per pagare le network fees dei wallet operativi.
+
+Non confondere i due sistemi.
+
+⸻
+
+26. TRANSACTION MODEL
+
+Estendere il modello esistente solo quando necessario.
+
+Campi concettuali:
+
+network
+asset
+grossAmount
+projectFee
+networkFee
+netAmount
+feeWallet
+sender
+recipient
+txHash
+status
+confirmations
+createdAt
+completedAt
+
+NON creare un secondo transaction system se ne esiste già uno utilizzabile.
+
+⸻
+
+27. IDEMPOTENCY
+
+Ogni payout deve essere idempotente.
+
+In caso di:
+
+* retry;
+* timeout;
+* server restart;
+* RPC failure;
+* request duplicata;
+
+il sistema deve prima verificare se una transazione è già stata creata/broadcast.
+
+NON inviare due volte lo stesso payout.
+
+Riutilizzare gli existing locks se già affidabili.
+
+⸻
+
+28. RPC
+
+Non hardcodare RPC.
+
+Utilizzare configuration/environment variables.
+
+Prevedere:
+
+* timeout;
+* retry controllato;
+* failover;
+* logging tecnico senza dati sensibili.
+
+Riutilizzare il sistema RPC/failover esistente quando possibile.
+
+⸻
+
+29. SECURITY
+
+Non loggare mai:
+
+* private keys;
+* seed phrase;
+* mnemonic;
+* decrypted secrets;
+* wallet credentials.
+
+Non introdurre nuove superfici di rischio inutili.
+
+Riutilizzare il sistema di key management esistente.
+
+⸻
+
+30. REGRESSION TEST OBBLIGATORI
+
+Dopo OGNI fase rieseguire i test USDA.
+
+Non basta testare la nuova funzionalità.
+
+Devi verificare anche:
+
+USDA deposit
+USDA payout
+USDA confirmation
+USDA balance
+USDA scheduler
+USDA transaction history
+USDA wallet management
+USDA admin functionality
+
+nella misura in cui questi test sono presenti/automatizzabili nel progetto.
+
+⸻
+
+31. NO BIG-BANG DEPLOYMENT
+
+NON implementare tutte le blockchain contemporaneamente.
+
+Procedere esclusivamente:
+
+BASELINE
+↓
+FASE 1
+↓
+TEST
+↓
+CHECKPOINT
+↓
+FASE 2
+↓
+TEST
+↓
+CHECKPOINT
+↓
+FASE 3
+↓
+TEST
+↓
+CHECKPOINT
+↓
+FASE 4
+↓
+TEST
+↓
+CHECKPOINT
+↓
+FASE 5
+↓
+TEST
+↓
+FINAL
+
+⸻
+
+32. REGOLA DI STOP
+
+Se durante qualsiasi fase emerge una regressione USDA:
+
+STOP IMMEDIATO.
+
+Non cercare di “coprirla” continuando con altre modifiche.
+
+Procedere:
+
+STOP
+ ↓
+identifica regressione
+ ↓
+rollback all'ultimo checkpoint stabile
+ ↓
+verifica USDA
+ ↓
+analizza causa
+ ↓
+correggi isolatamente
+ ↓
+ripeti test
+
+⸻
+
+33. REGOLA DI ROLLBACK
+
+Il rollback deve poter rimuovere il nuovo Multi-Chain Payment Engine senza compromettere il vecchio USDA.
+
+Idealmente:
+
+NEW MULTICHAIN CODE
+       │
+       ├── Phase 1
+       ├── Phase 2
+       ├── Phase 3
+       ├── Phase 4
+       └── Phase 5
+
+deve essere separabile dal:
+
+EXISTING USDA CORE
+
+Se necessario, utilizza feature flags/configuration flags per disabilitare le nuove reti senza disabilitare USDA.
+
+Esempio:
+
+ENABLE_POLYGON_USDT=false
+ENABLE_BITCOIN=false
+ENABLE_ETHEREUM_USDT=false
+ENABLE_BSC_USDT=false
+
+USDA deve rimanere operativo anche con tutte le nuove funzionalità disabilitate.
+
+⸻
+
+34. FEATURE FLAGS
+
+Implementare feature flags per le nuove funzionalità quando compatibile con l’architettura esistente.
+
+In particolare:
+
+ENABLE_POLYGON_USDT
+ENABLE_BITCOIN
+ENABLE_ETHEREUM_USDT
+ENABLE_BSC_USDT
+
+Il valore iniziale deve essere sicuro.
+
+Le nuove funzionalità non devono diventare operative accidentalmente durante il deployment.
+
+⸻
+
+35. DATABASE MIGRATIONS
+
+Ogni modifica database deve essere:
+
+* reversibile quando possibile;
+* documentata;
+* compatibile con il sistema esistente;
+* separata per fase.
+
+NON modificare distruttivamente dati USDA.
+
+NON rinominare collection USDA senza necessità.
+
+NON eliminare campi USDA.
+
+NON cambiare tipi esistenti senza migration sicura.
+
+⸻
+
+36. OUTPUT OBBLIGATORIO PRIMA DI OGNI FASE
+
+Prima di iniziare una fase successiva, restituisci:
+
+PHASE:
+STATUS:
+FILES CREATED:
+...
+FILES MODIFIED:
+...
+DATABASE CHANGES:
+...
+CONFIGURATION:
+...
+TESTS:
+...
+TYPECHECK:
+PASS/FAIL
+LINT:
+PASS/FAIL
+BUILD:
+PASS/FAIL
+STARTUP:
+PASS/FAIL
+USDA REGRESSION:
+PASS/FAIL
+ROLLBACK CHECKPOINT:
+...
+RISKS:
+...
+
+⸻
+
+37. OUTPUT FINALE
+
+Alla fine dell’intero progetto restituisci:
+
+1. architettura finale;
+2. tutti i file creati;
+3. tutti i file modificati;
+4. database changes;
+5. environment variables;
+6. admin configuration;
+7. fee wallet configuration;
+8. feature flags;
+9. blockchain adapters;
+10. BTC architecture;
+11. test eseguiti;
+12. risultati typecheck;
+13. risultati build;
+14. risultati startup;
+15. risultati regression test USDA;
+16. checkpoint disponibili;
+17. procedura di rollback;
+18. rischi residui;
+19. eventuali attività necessarie prima del production deployment.
+
+⸻
+
+38. CRITERIO DI SUCCESSO
+
+Il progetto è considerato completato SOLO se:
+
+USDA
+
+BEHAVIOR = UNCHANGED
+REGRESSION = ZERO
+
+Nuovo Payment Engine
+
+Polygon USDT      = WORKING
+Bitcoin BTC       = WORKING
+Ethereum USDT     = WORKING
+BSC USDT          = WORKING
+
+Commissioni
+
+Project Fee       = 0.10%
+Network Fee       = SEPARATE
+
+Admin
+
+Fee wallets       = CONFIGURABLE
+Audit log         = ENABLED
+Private keys      = NEVER STORED/EXPOSED
+
+Reliability
+
+Idempotency       = ENABLED
+RPC failover      = ENABLED/REUSED
+Rollback          = AVAILABLE
+Feature flags     = AVAILABLE
+
+REGOLA FINALE E PIÙ IMPORTANTE
+
+NON ALTERARE NESSUNA REGRESSIONE O COMPORTAMENTO DELL’ATTUALE USDA.
+
+L’attuale USDA è la parte stabile e protetta del sistema.
+
+Il nuovo Multi-Chain Payment Engine deve essere costruito intorno ad esso, non al suo posto.
+
+Se una scelta architetturale richiede di modificare significativamente USDA, FERMATI e chiedi conferma prima di procedere.
+
+Priorità assolute:
+
+1. USDA stability
+2. Rollback safety
+3. Backward compatibility
+4. Security
+5. Idempotency
+6. Multi-chain functionality
+7. Performance
+
+Non sacrificare mai USDA stability per velocizzare l’implementazione del Multi-Chain Payment Engine.
+
+Questo prompt è molto più sicuro del precedente: soprattutto la frase “se una modifica può essere fatta senza toccare USDA, DEVE essere fatta senza toccare USDA” e i checkpoint per fase riducono parecchio il rischio che l’agente faccia un refactoring enorme e poi sia difficile capire cosa abbia rotto.
