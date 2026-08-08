@@ -227,10 +227,14 @@ export function fromSmallestUnit(units: string, decimals: number): string {
  * Decimali massimi da visualizzare per ogni rete.
  * BSC USDT ha 18 decimali interni ma ne mostriamo solo 6 (come le altre reti USDT).
  */
+/** Decimali mostrati in UI (puramente grafici — backend usa sempre raw).
+ *  EVM/USDT → 2 (es. 1,50 USDT; 0,50 fee)
+ *  BTC      → 8 (necessari per importi piccoli: 0.00018332 BTC)
+ */
 export const MC_DISPLAY_DECIMALS: Record<MCNetwork, number> = {
-  polygon:  6,
-  ethereum: 6,
-  bsc:      6,   // raw 18 → display max 6
+  polygon:  2,
+  ethereum: 2,
+  bsc:      2,   // raw 18 → display 2 (grafico)
   bitcoin:  8,
 };
 
@@ -239,18 +243,36 @@ export const MC_DISPLAY_DECIMALS: Record<MCNetwork, number> = {
  * Usa BigInt puro — nessun errore floating-point.
  * Tronca (floor) anziché arrotondare: non mostra mai importi maggiori del reale.
  *
- * Esempi (BSC USDT 18 dec → display 6):
- *   "1000000000000000001" → "1"
- *   "1001001001001001002" → "1.001001"
+ * Padding fisso: quando displayDecimals ≤ 2 (USDT/EVM) la stringa è sempre
+ * allineata a dispDec cifre decimali (es. "1" → "1.00", "0.5" → "0.50").
+ * Per BTC (displayDecimals=8) gli zeri finali vengono rimossi ("fino a 8").
+ *
+ * Esempi:
+ *   Polygon USDT (raw=6, disp=2): "1000001" → "1.00"   "501003" → "0.50"
+ *   BSC USDT    (raw=18, disp=2): "1000000000000000000" → "1.00"
+ *   BTC         (raw=8,  disp=8): "18332" → "0.00018332"
  */
 export function fmtDisplay(units: string, rawDecimals: number, displayDecimals: number): string {
+  let str: string;
   if (rawDecimals <= displayDecimals) {
-    return fromSmallestUnit(units, rawDecimals);
+    str = fromSmallestUnit(units, rawDecimals);
+  } else {
+    const diff   = rawDecimals - displayDecimals;
+    const scale  = BigInt(10) ** BigInt(diff);
+    const scaled = BigInt(units) / scale;            // tronca sub-display precision
+    str = fromSmallestUnit(scaled.toString(), displayDecimals);
   }
-  const diff  = rawDecimals - displayDecimals;
-  const scale = BigInt(10) ** BigInt(diff);          // es. 10^12 per BSC USDT
-  const scaled = BigInt(units) / scale;              // tronca sub-display precision
-  return fromSmallestUnit(scaled.toString(), displayDecimals);
+  // Padding fisso per valute "commerciali" (dispDec ≤ 2).
+  // BTC (dispDec=8) mantiene il comportamento "fino a N decimali" (no trailing zeros).
+  if (displayDecimals <= 2) {
+    const dot = str.indexOf(".");
+    if (dot === -1) {
+      str += displayDecimals > 0 ? "." + "0".repeat(displayDecimals) : "";
+    } else {
+      str = str.padEnd(dot + 1 + displayDecimals, "0");
+    }
+  }
+  return str;
 }
 
 /**
