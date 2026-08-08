@@ -1,0 +1,651 @@
+Certo. Ti preparo un prompt finale da dare all’agente di sviluppo, includendo Polygon, BTC, Ethereum e BSC, con commissione 0,10% e architettura estendibile.
+
+IMPLEMENTAZIONE MULTI-CHAIN PAYMENT ENGINE — FINAL PROMPT
+
+Agisci come Senior Blockchain Engineer + Senior TypeScript Backend Engineer.
+
+Devi implementare nel progetto esistente un’architettura multi-chain payment engine, mantenendo intatta la compatibilità con le funzionalità attualmente operative.
+
+OBIETTIVO
+
+Il sistema deve supportare progressivamente:
+
+1. Polygon
+    * USDA
+    * USDT
+    * già prioritario / produzione
+2. Bitcoin
+    * BTC nativo
+    * NON WBTC
+    * adapter Bitcoin separato dall’EVM
+3. Ethereum Mainnet
+    * USDT ERC-20
+4. BNB Smart Chain
+    * USDT BEP-20
+
+Tron NON deve essere implementato in questa fase.
+
+⸻
+
+1. ARCHITETTURA
+
+Creare un’astrazione comune:
+
+PaymentService
+      │
+      └── BlockchainAdapter
+             │
+             ├── EvmAdapter
+             │     ├── PolygonAdapter
+             │     ├── EthereumAdapter
+             │     └── BscAdapter
+             │
+             └── BitcoinAdapter
+
+L’obiettivo è permettere di aggiungere nuove blockchain senza modificare la business logic principale.
+
+Ogni adapter deve esporre un’interfaccia coerente, ad esempio:
+
+getBalance()
+getTokenBalance()
+estimateFee()
+sendNative()
+sendToken()
+getTransaction()
+getTransactionStatus()
+validateAddress()
+
+Adattare i nomi alla struttura reale del progetto.
+
+NON duplicare la business logic tra le blockchain.
+
+⸻
+
+2. COMMISSIONE DEL PROGETTO
+
+Implementare una commissione configurabile dello:
+
+0,10%
+
+Formula:
+
+fee = grossAmount × 0.001
+netAmount = grossAmount - fee
+
+La commissione deve essere configurabile e NON hardcoded nella business logic.
+
+Configurazione prevista:
+
+feeRate = 0.001
+feeWallet = ...
+
+Prevedere configurazione distinta per network/asset se l’architettura lo consente.
+
+Esempio:
+
+100 USDT
+→ 99.90 USDT al destinatario
+→ 0.10 USDT al fee wallet
+
+⸻
+
+3. ACCOUNTING DELLA TRANSAZIONE
+
+Ogni pagamento deve registrare almeno:
+
+grossAmount
+feeAmount
+netAmount
+asset
+network
+sender
+recipient
+feeWallet
+networkFee
+txHash
+status
+createdAt
+completedAt
+
+La commissione deve essere sempre riconciliabile con la blockchain.
+
+NON utilizzare floating point per gli importi finanziari.
+
+Utilizzare integer/base units oppure Decimal appropriato per l’asset.
+
+⸻
+
+4. POLYGON
+
+Polygon rimane la prima rete da implementare.
+
+Supportare:
+
+USDA
+USDT
+
+Riutilizzare l’infrastruttura EVM esistente quando possibile.
+
+Non introdurre una seconda implementazione se esiste già un servizio Polygon funzionante.
+
+Verificare:
+
+* RPC
+* chain ID
+* token contract
+* decimals
+* balance
+* gas estimation
+* transaction signing
+* broadcast
+* confirmation
+* receipt
+* timeout
+* retry
+* idempotency
+
+Mantenere compatibilità con l’attuale sistema USDA.
+
+⸻
+
+5. BITCOIN
+
+Implementare BTC come BitcoinAdapter indipendente.
+
+NON usare:
+
+* viem
+* ERC-20
+* EVM
+* WBTC
+
+BTC deve essere nativo Bitcoin.
+
+Gestire correttamente il modello UTXO.
+
+Funzionalità richieste:
+
+validateAddress()
+getBalance()
+getUTXOs()
+estimateFee()
+createTransaction()
+signTransaction()
+broadcastTransaction()
+getTransaction()
+getConfirmations()
+
+Gestire correttamente:
+
+* UTXO selection
+* inputs
+* outputs
+* change address
+* miner/network fee
+* confirmation count
+* transaction ID
+* insufficient balance
+* dust
+* fee estimation
+* transaction replacement/retry dove applicabile
+* idempotency
+
+⸻
+
+6. COMMISSIONE BTC
+
+Per BTC utilizzare la stessa commissione commerciale:
+
+0,10%
+
+Esempio:
+
+Alice → 0.01000000 BTC
+Project fee:
+0.00001000 BTC
+Bob:
+0.00999000 BTC
+
+Quando tecnicamente appropriato, preferire una singola transazione Bitcoin con più output:
+
+Input UTXO
+   │
+   ├── Bob
+   │   0.00999000 BTC
+   │
+   ├── Fee wallet
+   │   0.00001000 BTC
+   │
+   └── Change
+
+La miner/network fee deve essere contabilizzata separatamente dalla commissione dello 0,10%.
+
+Quindi:
+
+grossAmount
+feeAmount
+networkFee
+netAmount
+
+devono rimanere concetti distinti.
+
+⸻
+
+7. ETHEREUM
+
+Implementare Ethereum Mainnet come rete EVM.
+
+Supportare:
+
+USDT ERC-20
+
+Riutilizzare il più possibile l’astrazione EVM.
+
+Configurare separatamente:
+
+chainId
+RPC
+USDT contract
+gas configuration
+
+Prevedere timeout e fallback RPC.
+
+⸻
+
+8. BSC
+
+Implementare BNB Smart Chain.
+
+Supportare:
+
+USDT BEP-20
+
+Gestire:
+
+BSC RPC
+chain ID
+USDT contract
+BNB gas
+gas estimation
+transaction signing
+broadcast
+confirmation
+
+Se il sistema è custodial, prevedere una gas station BSC per garantire BNB sufficiente ai wallet che devono effettuare transfer.
+
+⸻
+
+9. NETWORK FEE VS PROJECT FEE
+
+NON confondere mai:
+
+Project fee
+
+0.10%
+
+con:
+
+Blockchain/network fee
+
+Determinata dalla blockchain.
+
+Il database deve permettere di distinguere chiaramente:
+
+projectFee
+networkFee
+
+La project fee appartiene al progetto.
+
+La network fee appartiene alla blockchain/miner/validator.
+
+⸻
+
+10. SICUREZZA
+
+Non memorizzare private key in chiaro.
+
+Riutilizzare l’attuale sistema sicuro di gestione/decrittazione delle chiavi se già presente.
+
+Non stampare mai nei log:
+
+* private keys
+* seed phrase
+* mnemonic
+* decrypted secrets
+* API secrets
+
+Implementare:
+
+* idempotency
+* transaction locks
+* replay protection
+* nonce management per EVM
+* UTXO locking per Bitcoin
+* confirmation thresholds
+* transaction status tracking
+* safe retry
+* timeout
+* RPC failover
+
+Non creare doppie transazioni in caso di retry.
+
+⸻
+
+11. CONFIGURAZIONE
+
+Non hardcodare:
+
+* RPC
+* private key
+* fee wallet
+* token contract
+* API key
+* chain ID
+* gas parameters
+
+Utilizzare environment variables/configuration service già presente nel progetto.
+
+Struttura indicativa:
+
+POLYGON_RPC_URL
+ETHEREUM_RPC_URL
+BSC_RPC_URL
+BTC_RPC_URL
+PROJECT_FEE_RATE=0.001
+POLYGON_FEE_WALLET
+ETHEREUM_FEE_WALLET
+BSC_FEE_WALLET
+BTC_FEE_WALLET
+
+Adattare i nomi alle convenzioni esistenti.
+
+⸻
+
+12. DATABASE
+
+Non creare nuove collection/tabelle inutilmente.
+
+Prima analizzare lo schema esistente.
+
+Se necessario estendere il modello transaction esistente con:
+
+network
+asset
+grossAmount
+feeAmount
+networkFee
+netAmount
+feeWallet
+txHash
+confirmations
+status
+
+Creare gli indici necessari per:
+
+* txHash
+* network
+* asset
+* status
+* sender
+* recipient
+* createdAt
+
+Garantire idempotenza tramite identificatori univoci appropriati.
+
+⸻
+
+13. PAYMENT FLOW
+
+Il flow generale deve diventare:
+
+User
+  ↓
+PaymentService
+  ↓
+Validate network
+  ↓
+Validate asset
+  ↓
+Validate address
+  ↓
+Calculate project fee
+  ↓
+Calculate network fee
+  ↓
+Check balance
+  ↓
+Create transaction
+  ↓
+Sign
+  ↓
+Broadcast
+  ↓
+Store TX hash
+  ↓
+Monitor confirmations
+  ↓
+Mark completed
+  ↓
+Reconciliation
+
+La business logic non deve conoscere i dettagli UTXO o EVM.
+
+Questi dettagli devono rimanere negli adapter.
+
+⸻
+
+14. ERROR HANDLING
+
+Implementare errori espliciti per:
+
+INSUFFICIENT_BALANCE
+INSUFFICIENT_GAS
+INVALID_ADDRESS
+INVALID_NETWORK
+INVALID_ASSET
+RPC_TIMEOUT
+RPC_ERROR
+TRANSACTION_FAILED
+TRANSACTION_REPLACED
+CONFIRMATION_TIMEOUT
+DUPLICATE_TRANSACTION
+UTXO_LOCKED
+FEE_CALCULATION_ERROR
+
+Utilizzare il sistema di error handling già presente nel progetto quando possibile.
+
+⸻
+
+15. TEST
+
+Prima di modificare codice:
+
+1. Analizza l’architettura esistente.
+2. Individua payment service.
+3. Individua blockchain services.
+4. Individua wallet/key management.
+5. Individua transaction model.
+6. Individua scheduler/polling.
+7. Individua RPC provider/failover.
+8. Individua sistemi di lock/idempotency.
+
+NON riscrivere codice funzionante senza necessità.
+
+Creare test per:
+
+Fee
+
+100 → 99.90 + 0.10
+1000 → 999 + 1
+
+Polygon
+
+* USDT transfer
+* USDA transfer
+* balance
+* gas
+* confirmation
+
+Bitcoin
+
+* address validation
+* UTXO selection
+* fee calculation
+* change
+* multiple outputs
+* transaction creation
+* broadcast
+* confirmation
+
+Ethereum
+
+* USDT transfer
+* gas
+* confirmation
+
+BSC
+
+* USDT transfer
+* BNB gas
+* confirmation
+
+Reliability
+
+* RPC timeout
+* RPC failover
+* duplicate request
+* retry
+* transaction already broadcast
+* server restart durante payout
+* concurrent payout
+* insufficient balance
+
+⸻
+
+16. COMPATIBILITÀ
+
+Questa implementazione deve essere backward compatible.
+
+Non rompere:
+
+* USDA
+* payout esistenti
+* merchant functionality
+* wallet functionality
+* authentication
+* scheduler
+* transaction history
+* admin functionality
+* monitoring
+* reconciliation
+
+Prima di ogni modifica identificare eventuali dipendenze.
+
+⸻
+
+17. IMPLEMENTAZIONE IN FASI
+
+Non implementare tutto indiscriminatamente in un’unica modifica.
+
+Procedere:
+
+FASE 1
+
+Refactoring/astrazione:
+
+BlockchainAdapter
+EvmAdapter
+
+senza modificare il comportamento esistente.
+
+FASE 2
+
+Polygon USDT + commissione 0,10%.
+
+FASE 3
+
+BitcoinAdapter + BTC.
+
+FASE 4
+
+Ethereum USDT.
+
+FASE 5
+
+BSC USDT.
+
+Dopo ogni fase:
+
+typecheck
+lint
+unit tests
+integration tests
+build
+startup test
+
+e verificare che le funzionalità precedenti continuino a funzionare.
+
+⸻
+
+18. IMPORTANTISSIMO
+
+Prima di scrivere codice:
+
+ANALIZZA IL CODICE ESISTENTE.
+
+Non assumere nomi di file, collection, servizi o funzioni.
+
+Non creare duplicati.
+
+Non modificare componenti non necessari.
+
+Mantieni le convenzioni architetturali già presenti.
+
+Se trovi una parte dell’architettura che impedisce una corretta implementazione multi-chain, fermati e spiegala prima di fare un refactoring distruttivo.
+
+⸻
+
+RISULTATO FINALE ATTESO
+
+Il sistema deve diventare un vero multi-chain payment engine:
+
+                 PAYMENT ENGINE
+                       │
+        ┌──────────────┴──────────────┐
+        │                             │
+       EVM                         BITCOIN
+        │                             │
+ ┌──────┼──────┐                      │
+ │      │      │                      │
+Polygon ETH    BSC                    BTC
+ │      │      │
+USDA   USDT   USDT
+USDT
+
+con:
+
+Project fee = 0,10%
+
+separata dalla:
+
+Blockchain network fee
+
+e con accounting completo, idempotenza, sicurezza, failover RPC e monitoraggio delle conferme.
+
+L’implementazione deve essere production-ready, modulare, estendibile e backward compatible.
+
+Alla fine restituisci:
+
+1. file modificati;
+2. file creati;
+3. schema architetturale finale;
+4. nuove environment variables;
+5. database changes;
+6. test eseguiti;
+7. risultati dei test;
+8. eventuali rischi residui;
+9. eventuali attività necessarie prima del deployment in produzione.
+
+NON dichiarare l’implementazione completata se typecheck, test e build non sono stati effettivamente eseguiti e superati.
+
+Questo è il prompt che userei come specifica definitiva per l’agente, soprattutto perché evita che aggiunga BTC come se fosse semplicemente un’altra chain EVM.

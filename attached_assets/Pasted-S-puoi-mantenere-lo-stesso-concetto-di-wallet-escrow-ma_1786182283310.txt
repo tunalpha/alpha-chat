@@ -1,0 +1,179 @@
+Sì, puoi mantenere lo stesso concetto di wallet escrow, ma BTC avrà una gestione tecnica diversa rispetto a USDT/USDA.
+
+Come funzionerebbe BTC
+
+Il modello sarebbe:
+
+                 ALICE
+                   │
+                   │ BTC
+                   ▼
+             BTC ESCROW
+                   │
+          Payment Service
+                   │
+          ┌────────┴────────┐
+          ▼                 ▼
+        BOB          FEE WALLET BTC
+      99,90%             0,10%
+
+Per esempio, Alice paga 0,01 BTC.
+
+La transazione di pagamento potrebbe essere costruita così:
+
+Alice
+  │
+  ▼
+Escrow / wallet operativo
+  │
+  ├──► Bob:       0,00999 BTC
+  │
+  └──► Fee wallet: 0,00001 BTC
+
+Ma attenzione a una cosa importante
+
+Con BTC non userei necessariamente un unico indirizzo escrow permanente.
+
+Bitcoin funziona con UTXO, quindi per un sistema serio sarebbe preferibile utilizzare un wallet BTC HD con derivazione di indirizzi.
+
+Potresti avere:
+
+BTC Master Wallet
+        │
+        ├── Deposit address #001
+        ├── Deposit address #002
+        ├── Deposit address #003
+        └── ...
+
+Ogni deposito può avere un indirizzo dedicato, mentre il backend mantiene il controllo del wallet.
+
+Quando arriva il momento del payout, il sistema seleziona gli UTXO disponibili e costruisce la transazione.
+
+⸻
+
+E la commissione dove va?
+
+Qui hai due possibilità.
+
+Opzione 1 — Fee wallet dedicato
+
+Creerei un BTC Fee Wallet separato dal wallet operativo.
+
+Per esempio:
+
+BTC OPERATING / ESCROW WALLET
+        │
+        └── gestisce depositi e payout
+BTC FEE WALLET
+        │
+        └── riceve tutte le commissioni 0,10%
+
+Quindi ogni transazione può avere:
+
+Output 1 → Bob
+Output 2 → Fee Wallet
+Output 3 → eventuale Change
+
+Il fee wallet non dovrebbe essere lo stesso indirizzo utilizzato per l’escrow operativo.
+
+Questo rende molto più semplice anche la contabilità.
+
+⸻
+
+Opzione 2 — Fee wallet per network
+
+Io preferirei questa.
+
+Avresti:
+
+Polygon Fee Wallet
+       ↓
+USDT / USDA
+Ethereum Fee Wallet
+       ↓
+USDT
+BSC Fee Wallet
+       ↓
+USDT
+Bitcoin Fee Wallet
+       ↓
+BTC
+
+Sono wallet separati, configurati tramite environment variables/configuration.
+
+Per BTC:
+
+BTC_FEE_WALLET = xxxxxxxxx
+
+L’indirizzo reale lo scegli tu, non viene generato automaticamente dal sistema.
+
+⸻
+
+Una cosa ancora più importante: escrow
+
+Se vuoi mantenere il concetto attuale:
+
+Alice → Escrow → Bob
+
+è assolutamente possibile.
+
+Ma per BTC io distinguerei:
+
+Deposit wallet/address
+
+da
+
+Payout/escrow wallet
+
+perché il modello UTXO rende questa separazione molto più pulita.
+
+Potremmo quindi avere:
+
+                    BTC WALLET SYSTEM
+                           │
+             ┌─────────────┴─────────────┐
+             │                           │
+       DEPOSIT WALLET              FEE WALLET
+             │                           │
+       indirizzi HD                   BTC
+             │
+             ▼
+          ESCROW
+             │
+             ▼
+        PAYOUT ENGINE
+             │
+        ┌────┴────┐
+        ▼         ▼
+       Bob       Change
+
+E soprattutto
+
+La commissione dello 0,10% non viene inviata al fee wallet durante il deposito.
+
+La commissione viene contabilizzata quando il pagamento viene eseguito/released, esattamente come nel modello che hai descritto inizialmente.
+
+Esempio:
+
+Alice deposita:
+
+1 BTC
+
+Il sistema registra:
+
+grossAmount = 1 BTC
+projectFee  = 0.001 BTC
+netAmount   = 0.999 BTC
+
+Al release:
+
+Bob       → 0.999 BTC
+Fee       → 0.001 BTC
+
+meno la network fee, che viene calcolata separatamente.
+
+Questa architettura è molto più pulita perché puoi vedere immediatamente nel database:
+
+1 BTC ricevuto → 0,001 BTC commissione → 0,999 BTC al beneficiario → X BTC network fee.
+
+E il BTC Fee Wallet sarà un indirizzo completamente sotto il tuo controllo, configurato nel sistema.
