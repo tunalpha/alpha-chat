@@ -164,8 +164,8 @@ const MultiChainTransferSchema = new Schema<MultiChainTransferDocument>(
     fee_bps:      { type: Number, required: true },
     fee_wallet:   { type: String, default: null },
 
-    sender_wallet:       { type: String, required: true },
-    recipient_wallet:    { type: String, required: true },
+    sender_wallet:       { type: String, default: null },
+    recipient_wallet:    { type: String, default: null },
     escrow_wallet:       { type: String, required: true },
     escrow_encrypted_pk: { type: String, required: true },
 

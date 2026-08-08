@@ -58,3 +58,4 @@
 - [Sprint STEP 3 — Payment Quote Mode](sprint-step3-payment-quote.md) — calculatePaymentQuote() pura condivisa da /quote e create; recipient_exact con BigInt ceiling; amountMode nel DB
 - [Sprint Multi-Chain STEP 5 — Production Blockers](sprint-multichain-step5.md) — pre-broadcast persist pattern (sign→persist hash→broadcast); SplitTxAdapter cast; logger named export; AppError.httpStatus
 - [Multi-Chain Chat UI Integration](sprint-multichain-chat-ui.md) — sheet Send/Request, bubble mc_payment con polling, isPayer logic, backend /transfers/request, recipientId in MultiChainTransferInfo
+- [MultiChain wallet required bug](multichain-wallet-required-bug.md) — sender_wallet/recipient_wallet devono essere default:null NON required:true; causa 500 per tutti i network non-Polygon
