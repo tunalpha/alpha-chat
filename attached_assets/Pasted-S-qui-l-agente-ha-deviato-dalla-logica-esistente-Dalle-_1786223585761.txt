@@ -1,0 +1,185 @@
+Sì, qui l’agente ha deviato dalla logica esistente. Dalle schermate si vede che il problema non è più solo un singolo bug: è stato modificato il flusso “Richiedi Cripto” senza mantenere la logica già funzionante di “Invia Cripto”.
+
+La cosa che hai scritto all’agente è corretta: doveva riutilizzare la stessa identica logica di calcolo/creazione che già funziona, adattandola al caso “richiesta”.
+
+Il comportamento corretto che vuoi
+
+Devono esserci due modalità:
+
+1. Il destinatario deve ricevere esattamente X
+
+Esempio:
+
+Voglio che Giancarlo riceva 100 USDT netti
+
+Il sistema deve calcolare:
+
+Destinatario riceve       100.00 USDT
+Commissione AlphaChat       0.10%
+Network fee                  X
+────────────────────────────────
+Io devo pagare             Y USDT
+
+Quindi il sistema fa il gross-up.
+
+2. Io pago X complessivi
+
+Esempio:
+
+Voglio pagare 100 USDT totali
+
+Allora:
+
+Io pago                   100.00 USDT
+Commissione                0.10%
+Network fee                  X
+────────────────────────────────
+Destinatario riceve       Y USDT
+
+Questa è la logica che avevamo già definito.
+
+⸻
+
+E soprattutto: “Crea indirizzo”
+
+Qui vedo un’altra cosa importante.
+
+Il pulsante:
+
+Crea indirizzo →
+
+non dovrebbe inventarsi un nuovo meccanismo di pagamento.
+
+Deve utilizzare la stessa identica pipeline già funzionante di Invia Cripto per quanto riguarda:
+
+* asset
+* network
+* importo
+* fee calculation
+* exchange rate
+* wallet/address resolution
+* validation
+* transaction/request creation
+
+con l’unica differenza che nel caso Richiedi si sta creando una richiesta di pagamento, non effettuando immediatamente un payout.
+
+Mandagli questo adesso
+
+STOP. Non fare altri deploy. Il flusso “Richiedi Cripto” è stato implementato in modo non coerente con la logica esistente.
+
+Voglio che venga ripristinata/riutilizzata la stessa identica business logic già funzionante del flusso “Invia Cripto”, senza duplicare o reinventare i calcoli.
+
+Il flusso “Richiedi Cripto” deve differire da “Invia Cripto” solo per il fatto che crea una payment request/indirizzo di deposito invece di eseguire immediatamente il payout.
+
+Devono esistere DUE modalità di calcolo:
+
+A — Destinatario riceve esattamente
+
+Esempio:
+Il destinatario deve ricevere 100 USDT
+
+Il sistema deve effettuare il gross-up e calcolare automaticamente:
+
+* importo lordo;
+* commissione AlphaChat 0,10%;
+* eventuale network/miner fee;
+* totale che deve pagare il richiedente.
+
+B — Importo totale pagato
+
+Esempio:
+Il pagatore deve pagare 100 USDT
+
+Il sistema deve calcolare:
+
+* importo lordo;
+* commissione;
+* network/miner fee;
+* importo netto che riceverà il destinatario.
+
+IMPORTANTE
+
+Non creare una nuova implementazione della fee logic.
+
+Individua nel codice la funzione/business logic già utilizzata da “Invia Cripto”, che è stata verificata e funziona correttamente, e riutilizzala come unica source of truth per:
+
+* conversione fiat/crypto;
+* project fee;
+* network fee;
+* gross/net calculation;
+* rounding;
+* decimals;
+* validation.
+
+Il flusso “Richiedi” deve chiamare la stessa logica.
+
+“Crea indirizzo”
+
+Il pulsante Crea indirizzo deve utilizzare la pipeline esistente e funzionante per la creazione del payment request/address.
+
+Non deve richiedere sender_wallet o recipient_wallet se questi non sono disponibili al momento della creazione della richiesta.
+
+Questi wallet devono essere risolti nel momento corretto del successivo deposito/pagamento.
+
+ERRORE ATTUALE
+
+Dopo il deploy:
+
+1 USDT Polygon
+
+arriva correttamente alla schermata di conferma, ma premendo Crea indirizzo restituisce:
+
+“Uno o più campi non sono validi.”
+
+Questo deve essere diagnosticato confrontando payload e schema della API usata da “Invia Cripto”, non risolto rendendo casualmente campi opzionali.
+
+Voglio prima un confronto:
+
+INVIA CRIPTO
+→ endpoint
+→ payload
+→ validation
+→ fee calculation
+→ service
+
+contro
+
+RICHIEDI CRIPTO
+→ endpoint
+→ payload
+→ validation
+→ fee calculation
+→ service
+
+Identifica esattamente dove divergono.
+
+Non modificare il flusso funzionante “Invia Cripto”.
+
+Dopo il fix testa:
+
+* Request USDT Polygon
+* Request USDT Ethereum
+* Request USDT BSC
+* Request BTC nativo
+* modalità “destinatario riceve esattamente”
+* modalità “importo totale pagato”
+* creazione indirizzo
+* successivo deposito
+
+Esegui typecheck/build/test prima del deploy.
+
+Non considerare il lavoro completato finché “Crea indirizzo” non crea realmente la richiesta senza errore.
+
+Una cosa che vedo chiaramente dalla schermata
+
+La prima schermata dice:
+
+Importo lordo 1.00 USDT
+Commissione AlphaChat 0.10% -0.00 USDT
+Il destinatario riceve ≈1.00 USDT
+
+Ma non c’è nessuna scelta tra “riceve netto” e “paga totale”.
+
+Quindi hai ragione: la nuova UI è incompleta rispetto alla specifica che avevamo stabilito.
+
+Io non farei aggiungere altre patch una sopra l’altra. Farei fare all’agente il confronto diretto con il percorso “Invia Cripto” funzionante, riutilizzando quelle funzioni come source of truth. È il modo più sicuro per evitare che continui a rompere una cosa mentre ne sistema un’altra.

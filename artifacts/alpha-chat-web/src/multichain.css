@@ -260,6 +260,43 @@
   letter-spacing: 0.02em;
 }
 
+/* ── Mode toggle (Io pago il totale / Riceve esattamente) ───────────────────── */
+
+.mc-mode-toggle {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 4px;
+}
+.mc-mode-btn {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1.5px solid rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.55);
+  border-radius: 10px;
+  padding: 9px 8px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
+  text-align: center;
+  line-height: 1.35;
+}
+.mc-mode-btn:hover {
+  background: rgba(255, 255, 255, 0.09);
+  color: rgba(255, 255, 255, 0.8);
+}
+.mc-mode-btn.selected {
+  background: rgba(99, 102, 241, 0.22);
+  border-color: rgba(99, 102, 241, 0.55);
+  color: #a78bfa;
+}
+.mc-mode-hint {
+  font-size: 0.70rem;
+  opacity: 0.50;
+  margin: 0;
+  line-height: 1.5;
+}
+
 /* ── Confirm summary ────────────────────────────────────────────────────────── */
 
 .mc-confirm-summary {

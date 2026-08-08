@@ -1,11 +1,8 @@
 /**
  * MultiChainSendSheet — Flusso "Invia USDT/BTC" via Multi-Chain Payment Engine.
  *
- * BTC mode: l'utente inserisce l'importo in EUR/USD e vede il controvalore BTC
- * in tempo reale. Il backend riceve l'importo in satoshi (calcolato dal prezzo live).
- *
- * Step 1 (form):    selezione rete + importo
- * Step 2 (confirm): riepilogo fee
+ * Step 1 (form):    selezione rete + importo + modalità (tu paghi / riceve esattamente)
+ * Step 2 (confirm): breakdown fee reale dal backend (stessa source of truth del service)
  * Step 3 (address): indirizzo escrow da copiare + istruzioni deposito
  *
  * ISOLAMENTO: nessuna dipendenza da USDA, ThirdWeb, o Reown.
@@ -15,6 +12,7 @@ import { useState, useCallback, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import {
   apiMCCreate,
+  apiMCQuote,
   apiMCNetworks,
   MC_DECIMALS,
   MC_ASSET,
@@ -22,6 +20,8 @@ import {
   fromSmallestUnit,
   type MCNetwork,
   type MCTransfer,
+  type MCQuote,
+  type MCAmountMode,
 } from "../../lib/multichain-api";
 import {
   useBtcPrice,
@@ -59,6 +59,13 @@ interface Props {
 
 type Step = "form" | "confirm" | "address";
 
+// ─── Helper ───────────────────────────────────────────────────────────────────
+
+/** Formatta un importo in unità minima come stringa decimale. */
+function fmtUnits(units: string, decimals: number): string {
+  return fromSmallestUnit(units, decimals);
+}
+
 // ─── Componente ───────────────────────────────────────────────────────────────
 
 export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose, onSent, mode = "usdt" }: Props) {
@@ -66,8 +73,10 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
   const [step,              setStep]              = useState<Step>("form");
   const [network,           setNetwork]           = useState<MCNetwork>(mode === "btc" ? "bitcoin" : "polygon");
   const [amount,            setAmount]            = useState("");
+  const [amountMode,        setAmountMode]        = useState<MCAmountMode>("send_amount");
   const [loading,           setLoading]           = useState(false);
   const [error,             setError]             = useState<string | null>(null);
+  const [quote,             setQuote]             = useState<MCQuote | null>(null);
   const [transfer,          setTransfer]          = useState<MCTransfer | null>(null);
   const [copied,            setCopied]            = useState(false);
   const [availableUsdtNets, setAvailableUsdtNets] = useState<NetOption[]>(ALL_USDT_OPTIONS);
@@ -98,14 +107,9 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
   const satoshi  = isBtc ? fiatToSatoshi(amount, currency, price) : null;
   const btcStr   = satoshi != null ? satoshiToBtcStr(satoshi) : null;
 
-  // Stima fee (0.10%) — per USDT. Per BTC il backend calcola miner fee separata.
-  const amountNum  = isBtc ? (satoshi ? Number(satoshi) / 1e8 : 0) : (parseFloat(amount.replace(",", ".")) || 0);
-  const feeEst     = amountNum * 0.001;
-  const netEst     = Math.max(0, amountNum - feeEst);
-  const fmt        = (n: number) => isBtc ? n.toFixed(8) : n.toFixed(2);
-  const displayLabel = isBtc ? "₿ BTC — Bitcoin nativo" : `${selectedNet.label} · ${selectedNet.sublabel}`;
+  // ── Step 1: validazione locale + fetch quote dal backend ─────────────────
 
-  function handleContinue() {
+  async function handleContinue() {
     if (isBtc) {
       if (!amount.trim() || fiatNum <= 0) { setError(t("multichain.invalidAmount")); return; }
       if (!price) { setError("Prezzo BTC non disponibile. Riprova tra qualche secondo."); return; }
@@ -115,28 +119,52 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
       if (!amount.trim() || isNaN(num) || num <= 0) { setError(t("multichain.invalidAmount")); return; }
     }
     setError(null);
-    setStep("confirm");
+    setLoading(true);
+    try {
+      // Usa la stessa source of truth del backend per il breakdown fee
+      const units = isBtc ? satoshi!.toString() : toSmallestUnit(amount, decimals);
+      const res = await apiMCQuote({
+        network,
+        asset:    MC_ASSET[network],
+        amountMode,
+        ...(amountMode === "send_amount"
+          ? { grossAmountUnits:    units }
+          : { targetNetAmountUnits: units }),
+      });
+      setQuote(res.quote);
+      setStep("confirm");
+    } catch (e: unknown) {
+      const err = e as Error & { code?: string; details?: Record<string, unknown> };
+      if (err.code === "BTC_PROJECT_FEE_BELOW_DUST") {
+        const minSat  = Number(err.details?.minGrossAmountSat ?? 546000);
+        const minFiat = price ? Math.ceil(minSat / 1e8 * price[currency]) : null;
+        setError(minFiat != null
+          ? `Importo minimo per BTC: ${fiatSymbol}${minFiat.toLocaleString("it-IT")} (${(minSat / 1e8).toFixed(5).replace(/0+$/, "").replace(/\.$/, "")} BTC)`
+          : `Importo minimo: ${(minSat / 1e8).toFixed(5)} BTC`);
+      } else {
+        setError(err.message ?? t("common.error"));
+      }
+    } finally { setLoading(false); }
   }
 
+  // ── Step 3: crea il transfer usando i valori confermati dalla quote ───────
+
   const handleCreate = useCallback(async () => {
+    if (!quote) return;
     setLoading(true); setError(null);
     try {
-      let units: string;
-      if (isBtc) {
-        if (!satoshi || satoshi <= 0n) throw new Error(t("multichain.invalidAmount"));
-        units = satoshi.toString();
-      } else {
-        units = toSmallestUnit(amount, decimals);
-      }
       const result = await apiMCCreate({
-        recipientId:      toUserId,
+        recipientId:   toUserId,
         conversationId,
         network,
-        asset:            MC_ASSET[network],
-        amountMode:       "send_amount",
-        grossAmountUnits: units,
-        clientRef:        crypto.randomUUID(),
-        expiresInHours:   24,
+        asset:         MC_ASSET[network],
+        amountMode,
+        // Passa il campo corretto in base alla modalità scelta
+        ...(amountMode === "send_amount"
+          ? { grossAmountUnits:    quote.grossAmount }
+          : { targetNetAmountUnits: quote.netAmount }),
+        clientRef:     crypto.randomUUID(),
+        expiresInHours: 24,
       });
       setTransfer(result);
       setStep("address");
@@ -153,7 +181,7 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
       }
     } finally { setLoading(false); }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [amount, decimals, toUserId, conversationId, network, t, isBtc, satoshi, price, currency, fiatSymbol]);
+  }, [quote, toUserId, conversationId, network, amountMode, t, price, currency, fiatSymbol]);
 
   async function handleCopy() {
     if (!transfer?.escrowWallet) return;
@@ -162,9 +190,15 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
     setTimeout(() => setCopied(false), 2500);
   }
 
+  // ─── Dati per il confirm step ─────────────────────────────────────────────
+
+  const ticker        = selectedNet.ticker;
+  const displayLabel  = isBtc ? "₿ BTC — Bitcoin nativo" : `${selectedNet.label} · ${selectedNet.sublabel}`;
   const minDepDisplay = transfer?.minDepositAmount
-    ? fromSmallestUnit(transfer.minDepositAmount, decimals)
-    : fmt(amountNum);
+    ? fmtUnits(transfer.minDepositAmount, decimals)
+    : (quote ? fmtUnits(quote.grossAmount, decimals) : "0");
+
+  // ─── Render ───────────────────────────────────────────────────────────────
 
   return (
     <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label={t("multichain.sendTitle")} onClick={onClose}>
@@ -181,6 +215,7 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
           <>
             <div className="usda-sheet-to">{t("multichain.toLabel")} <strong>{toName}</strong></div>
 
+            {/* Selezione rete */}
             {isBtc ? (
               <div className="mc-btc-card selected" style={{ cursor: "default", marginBottom: 14 }}>
                 <span className="mc-btc-symbol">₿</span>
@@ -197,7 +232,7 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
                   {availableUsdtNets.map(n => (
                     <button key={n.id} type="button"
                       className={`mc-network-item${network === n.id ? " selected" : ""}`}
-                      onClick={() => { setNetwork(n.id); setAmount(""); setError(null); }}
+                      onClick={() => { setNetwork(n.id); setAmount(""); setError(null); setQuote(null); }}
                     >
                       <span className="mc-network-icon">{n.icon}</span>
                       <span className="mc-network-label">{n.label}</span>
@@ -208,10 +243,31 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
               </>
             )}
 
+            {/* Modalità calcolo */}
+            <div className="mc-section-label" style={{ marginBottom: 6 }}>Modalità</div>
+            <div className="mc-mode-toggle">
+              <button
+                type="button"
+                className={`mc-mode-btn${amountMode === "send_amount" ? " selected" : ""}`}
+                onClick={() => { setAmountMode("send_amount"); setError(null); setQuote(null); }}
+              >
+                Io pago il totale
+              </button>
+              <button
+                type="button"
+                className={`mc-mode-btn${amountMode === "recipient_exact" ? " selected" : ""}`}
+                onClick={() => { setAmountMode("recipient_exact"); setError(null); setQuote(null); }}
+              >
+                {isBtc ? "Riceve esattamente" : "Riceve esattamente"}
+              </button>
+            </div>
+
+            {/* Input importo */}
             {isBtc ? (
-              /* BTC: input fiat + controvalore live */
               <div className="usda-sheet-field">
-                <label htmlFor="mc-send-amount">{t("multichain.amountLabel")}</label>
+                <label htmlFor="mc-send-amount">
+                  {amountMode === "send_amount" ? t("multichain.amountLabel") : "Il destinatario riceve (fiat)"}
+                </label>
                 <div className="usda-amount-row">
                   <input
                     id="mc-send-amount"
@@ -219,7 +275,7 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
                     type="number" inputMode="decimal" min="0" step="any"
                     placeholder="0,00"
                     value={amount}
-                    onChange={e => { setAmount(e.target.value); setError(null); }}
+                    onChange={e => { setAmount(e.target.value); setError(null); setQuote(null); }}
                     autoFocus
                   />
                   <select
@@ -228,11 +284,11 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
                     onChange={e => setCurrency(e.target.value as FiatCurrency)}
                     aria-label="Valuta fiat"
                   >
-                    <option value="eur">EUR</option>
-                    <option value="usd">USD</option>
+                    {(Object.keys(FIAT_LABELS) as FiatCurrency[]).map(c => (
+                      <option key={c} value={c}>{c.toUpperCase()}</option>
+                    ))}
                   </select>
                 </div>
-
                 <div className="mc-btc-equiv">
                   {priceLoading && !price ? (
                     <span className="mc-btc-equiv-loading">Caricamento prezzo…</span>
@@ -251,21 +307,29 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
                 </div>
               </div>
             ) : (
-              /* USDT: input diretto */
               <div className="usda-sheet-field">
-                <label htmlFor="mc-send-amount">{t("multichain.amountLabel")}</label>
+                <label htmlFor="mc-send-amount">
+                  {amountMode === "send_amount" ? t("multichain.amountLabel") : `Il destinatario riceve (${ticker})`}
+                </label>
                 <div className="usda-amount-row">
                   <input
                     id="mc-send-amount"
                     className="usda-amount-input"
                     type="number" inputMode="decimal" min="0" step="any" placeholder="0.00"
                     value={amount}
-                    onChange={e => { setAmount(e.target.value); setError(null); }}
+                    onChange={e => { setAmount(e.target.value); setError(null); setQuote(null); }}
                     autoFocus
                   />
-                  <span className="usda-currency">{selectedNet.ticker}</span>
+                  <span className="usda-currency">{ticker}</span>
                 </div>
               </div>
+            )}
+
+            {amountMode === "send_amount" && (
+              <p className="mc-mode-hint">La commissione è detratta dall'importo inviato. Il destinatario riceve il netto.</p>
+            )}
+            {amountMode === "recipient_exact" && (
+              <p className="mc-mode-hint">Il destinatario riceverà esattamente questo importo. La commissione è aggiunta al totale che paghi.</p>
             )}
 
             {error && <div className="usda-error" role="alert">{error}</div>}
@@ -275,56 +339,73 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
               <button
                 type="button" className="usda-btn-primary"
                 onClick={handleContinue}
-                disabled={isBtc && priceLoading && !price}
+                disabled={loading || (isBtc && priceLoading && !price)}
+                aria-busy={loading}
               >
-                {t("multichain.continueBtn")}
+                {loading ? <><span className="usda-btn-spinner" aria-hidden="true" /> Calcolo…</> : t("multichain.continueBtn")}
               </button>
             </div>
           </>
         )}
 
         {/* ── Step 2: confirm ── */}
-        {step === "confirm" && (
+        {step === "confirm" && quote && (
           <>
             <div className="mc-confirm-summary">
               <div className="mc-confirm-row">
                 <span>{t("multichain.networkLabel")}</span>
                 <span>{displayLabel}</span>
               </div>
-              {isBtc ? (
+
+              {amountMode === "send_amount" ? (
                 <>
                   <div className="mc-confirm-row">
-                    <span>Importo fiat</span>
-                    <span>{fiatSymbol}{amount} {currency.toUpperCase()}</span>
-                  </div>
-                  <div className="mc-confirm-row mc-confirm-net">
-                    <span>{t("multichain.grossLabel")} (BTC)</span>
-                    <strong>{btcStr} BTC</strong>
+                    <span>{t("multichain.grossLabel")}</span>
+                    <span>{isBtc ? satoshiToBtcStr(BigInt(quote.grossAmount)) + " BTC" : fmtUnits(quote.grossAmount, decimals) + " " + ticker}</span>
                   </div>
                   <div className="mc-confirm-row mc-confirm-fee">
-                    <span>Miner fee</span>
-                    <span>calcolata al momento dell'invio</span>
+                    <span>{t("multichain.projectFeeLabel")}</span>
+                    <span>−{isBtc ? satoshiToBtcStr(BigInt(quote.projectFee)) + " BTC" : fmtUnits(quote.projectFee, decimals) + " " + ticker}</span>
                   </div>
-                  <div className="mc-confirm-row">
-                    <span>Tasso usato</span>
-                    <span>1 BTC ≈ {fiatSymbol}{price?.[currency].toLocaleString("it-IT", { maximumFractionDigits: 0 })}</span>
+                  {isBtc && BigInt(quote.networkFeeCharged) > 0n && (
+                    <div className="mc-confirm-row mc-confirm-fee">
+                      <span>Miner fee</span>
+                      <span>−{satoshiToBtcStr(BigInt(quote.networkFeeCharged))} BTC</span>
+                    </div>
+                  )}
+                  <div className="mc-confirm-row mc-confirm-net">
+                    <span>{t("multichain.netLabel")}</span>
+                    <strong>{isBtc ? satoshiToBtcStr(BigInt(quote.netAmount)) + " BTC" : fmtUnits(quote.netAmount, decimals) + " " + ticker}</strong>
                   </div>
                 </>
               ) : (
                 <>
-                  <div className="mc-confirm-row">
-                    <span>{t("multichain.grossLabel")}</span>
-                    <span>{fmt(amountNum)} {selectedNet.ticker}</span>
+                  <div className="mc-confirm-row mc-confirm-net">
+                    <span>Il destinatario riceve</span>
+                    <strong>{isBtc ? satoshiToBtcStr(BigInt(quote.netAmount)) + " BTC" : fmtUnits(quote.netAmount, decimals) + " " + ticker}</strong>
                   </div>
                   <div className="mc-confirm-row mc-confirm-fee">
                     <span>{t("multichain.projectFeeLabel")}</span>
-                    <span>−{fmt(feeEst)} {selectedNet.ticker}</span>
+                    <span>+{isBtc ? satoshiToBtcStr(BigInt(quote.projectFee)) + " BTC" : fmtUnits(quote.projectFee, decimals) + " " + ticker}</span>
                   </div>
-                  <div className="mc-confirm-row mc-confirm-net">
-                    <span>{t("multichain.netLabel")}</span>
-                    <strong>≈{fmt(netEst)} {selectedNet.ticker}</strong>
+                  {isBtc && BigInt(quote.networkFeeCharged) > 0n && (
+                    <div className="mc-confirm-row mc-confirm-fee">
+                      <span>Miner fee</span>
+                      <span>+{satoshiToBtcStr(BigInt(quote.networkFeeCharged))} BTC</span>
+                    </div>
+                  )}
+                  <div className="mc-confirm-row">
+                    <span>Tu invii (totale)</span>
+                    <span>{isBtc ? satoshiToBtcStr(BigInt(quote.grossAmount)) + " BTC" : fmtUnits(quote.grossAmount, decimals) + " " + ticker}</span>
                   </div>
                 </>
+              )}
+
+              {isBtc && price && (
+                <div className="mc-confirm-row" style={{ opacity: 0.6, fontSize: "0.8em" }}>
+                  <span>Tasso usato</span>
+                  <span>1 BTC ≈ {fiatSymbol}{price[currency].toLocaleString("it-IT", { maximumFractionDigits: 0 })}</span>
+                </div>
               )}
               <div className="mc-confirm-row">
                 <span>{t("multichain.depositDeadline")}</span>
@@ -336,7 +417,7 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
             {error && <div className="usda-error" role="alert">{error}</div>}
 
             <div className="usda-sheet-actions">
-              <button type="button" className="usda-btn-secondary" onClick={() => setStep("form")} disabled={loading}>
+              <button type="button" className="usda-btn-secondary" onClick={() => { setStep("form"); setError(null); }} disabled={loading}>
                 {t("multichain.backBtn")}
               </button>
               <button type="button" className="usda-btn-primary" onClick={handleCreate} disabled={loading} aria-busy={loading}>

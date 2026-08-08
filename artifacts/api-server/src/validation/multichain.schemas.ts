@@ -77,8 +77,8 @@ function validateNetworkAssetWallet(
   data: {
     network: string;
     asset: string;
-    senderWallet: string;
-    recipientWallet: string;
+    senderWallet?: string;
+    recipientWallet?: string;
   },
   ctx: z.RefinementCtx,
 ): void {
@@ -91,23 +91,27 @@ function validateNetworkAssetWallet(
     });
   }
 
-  const isBtc    = data.network === "bitcoin";
-  const walletRe = isBtc ? BTC_ADDRESS_RE : EVM_ADDRESS_RE;
-  const netLabel = isBtc ? "Bitcoin (bech32/legacy)" : "EVM (0x... 40 hex)";
+  // Wallet format validation — solo se forniti. Al momento della creazione
+  // possono essere assenti: vengono risolti al momento del deposito/release.
+  if (data.senderWallet || data.recipientWallet) {
+    const isBtc    = data.network === "bitcoin";
+    const walletRe = isBtc ? BTC_ADDRESS_RE : EVM_ADDRESS_RE;
+    const netLabel = isBtc ? "Bitcoin (bech32/legacy)" : "EVM (0x... 40 hex)";
 
-  if (!walletRe.test(data.senderWallet)) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: `senderWallet non valido per ${data.network} — atteso: ${netLabel}`,
-      path: ["senderWallet"],
-    });
-  }
-  if (!walletRe.test(data.recipientWallet)) {
-    ctx.addIssue({
-      code: z.ZodIssueCode.custom,
-      message: `recipientWallet non valido per ${data.network} — atteso: ${netLabel}`,
-      path: ["recipientWallet"],
-    });
+    if (data.senderWallet && !walletRe.test(data.senderWallet)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `senderWallet non valido per ${data.network} — atteso: ${netLabel}`,
+        path: ["senderWallet"],
+      });
+    }
+    if (data.recipientWallet && !walletRe.test(data.recipientWallet)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `recipientWallet non valido per ${data.network} — atteso: ${netLabel}`,
+        path: ["recipientWallet"],
+      });
+    }
   }
 }
 
@@ -145,8 +149,11 @@ export const CreateMultiChainTransferSchema = z
      * Il service calcola il gross amount minimo tale che netAmount ≥ targetNetAmount.
      */
     targetNetAmountUnits: z.string().regex(POSITIVE_BIGINT_STR, "Deve essere un intero positivo non zero").optional(),
-    senderWallet:     z.string().min(1, "senderWallet obbligatorio"),
-    recipientWallet:  z.string().min(1, "recipientWallet obbligatorio"),
+    // Wallet opzionali: non disponibili al momento della creazione.
+    // Vengono risolti nel momento corretto (deposito/release).
+    // Se forniti, il formato viene validato.
+    senderWallet:     z.string().min(1).optional(),
+    recipientWallet:  z.string().min(1).optional(),
     recipientId:      z.string().regex(OBJECT_ID_RE, "recipientId non valido"),
     conversationId:   z.string().regex(OBJECT_ID_RE, "conversationId non valido"),
     clientRef:        z.string().min(1).max(128),

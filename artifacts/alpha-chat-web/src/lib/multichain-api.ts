@@ -88,26 +88,48 @@ async function mcFetch<T>(method: string, path: string, body?: unknown): Promise
 
 // ─── API pubbliche ────────────────────────────────────────────────────────────
 
+export type MCAmountMode = "send_amount" | "recipient_exact";
+
 export interface MCCreateParams {
-  recipientId:      string;
-  conversationId:   string;
-  network:          MCNetwork;
-  asset:            MCAsset;
-  amountMode:       "send_amount";
-  grossAmountUnits: string;   // intero in unità minima (es. "10000000" = 10 USDT 6-dec)
-  clientRef:        string;
-  expiresInHours?:  number;
+  recipientId:          string;
+  conversationId:       string;
+  network:              MCNetwork;
+  asset:                MCAsset;
+  amountMode:           MCAmountMode;
+  grossAmountUnits?:    string;        // obbligatorio per send_amount
+  targetNetAmountUnits?: string;       // obbligatorio per recipient_exact
+  clientRef:            string;
+  expiresInHours?:      number;
 }
 
 export interface MCRequestParams {
-  payerId:          string;   // chi depositerà
-  conversationId:   string;
-  network:          MCNetwork;
-  asset:            MCAsset;
-  amountMode:       "send_amount";
-  grossAmountUnits: string;
-  clientRef:        string;
-  expiresInHours?:  number;
+  payerId:              string;        // chi depositerà
+  conversationId:       string;
+  network:              MCNetwork;
+  asset:                MCAsset;
+  amountMode:           MCAmountMode;
+  grossAmountUnits?:    string;        // obbligatorio per send_amount
+  targetNetAmountUnits?: string;       // obbligatorio per recipient_exact
+  clientRef:            string;
+  expiresInHours?:      number;
+}
+
+/** Breakdow fee preventivo — stessa logica del service, senza creare il transfer. */
+export interface MCQuoteParams {
+  network:              MCNetwork;
+  asset:                MCAsset;
+  amountMode:           MCAmountMode;
+  grossAmountUnits?:    string;
+  targetNetAmountUnits?: string;
+}
+
+export interface MCQuote {
+  grossAmount:        string;
+  netAmount:          string;
+  projectFee:         string;
+  networkFeeCharged:  string;
+  feeBps:             number;
+  amountMode:         MCAmountMode;
 }
 
 /** Crea un transfer dove il chiamante è il mittente (paga). */
@@ -118,6 +140,11 @@ export async function apiMCCreate(params: MCCreateParams): Promise<MCTransfer> {
 /** Crea un transfer dove il chiamante è il destinatario (richiede). */
 export async function apiMCRequest(params: MCRequestParams): Promise<MCTransfer> {
   return mcFetch<MCTransfer>("POST", "/transfers/request", params);
+}
+
+/** Calcolo preventivo fee — stessa source of truth del backend. */
+export async function apiMCQuote(params: MCQuoteParams): Promise<{ quote: MCQuote }> {
+  return mcFetch<{ quote: MCQuote }>("POST", "/transfers/quote", params);
 }
 
 /** Recupera lo stato corrente di un transfer. */
