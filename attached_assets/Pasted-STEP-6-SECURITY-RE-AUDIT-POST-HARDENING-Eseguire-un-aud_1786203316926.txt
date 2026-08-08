@@ -1,0 +1,171 @@
+STEP 6 — SECURITY RE-AUDIT POST HARDENING
+
+Eseguire un audit statico approfondito del Multi-Chain Payment Engine dopo STEP 5.
+
+OBIETTIVO:
+verificare che C-01, C-02 e C-03 siano realmente chiusi e che STEP 5 non abbia introdotto nuovi rischi.
+
+NESSUNA MODIFICA AL CODICE IN QUESTO STEP.
+
+USDA DEVE RIMANERE COMPLETAMENTE FUORI DALL'AUDIT OPERATIVO.
+
+VERIFICARE OBBLIGATORIAMENTE:
+
+1. C-01 — EVM TX1
+Tracing completo:
+sign → hash → DB persist → broadcast → receipt → recovery.
+
+Dimostrare cosa succede in caso di crash:
+- prima della firma;
+- dopo la firma;
+- dopo persist hash ma prima broadcast;
+- dopo broadcast ma prima receipt;
+- dopo receipt ma prima final DB update.
+
+Verificare che nessuno scenario possa causare intenzionalmente una seconda TX1.
+
+2. C-02 — EVM TX2
+Stesso tracing completo per TX2.
+
+Verificare:
+- tx_hash_fee;
+- staging state;
+- scheduler;
+- retryEVMFeeTx;
+- comportamento "unknown";
+- pending;
+- confirmed;
+- failed.
+
+ATTENZIONE:
+non accettare come prova di idempotenza il semplice fatto che una seconda TX potrebbe fallire per saldo insufficiente.
+
+3. C-03 — REFUND
+Tracing completo:
+sign → persist → broadcast → receipt → final DB.
+
+Verificare crash prima/dopo broadcast.
+
+Dimostrare che un refund già broadcastato non possa essere reinviato.
+
+Verificare anche BTC refund separatamente e documentare eventuali limiti residui.
+
+4. SCHEDULER
+Analizzare tutti gli stati:
+- pending
+- releasing
+- refunding
+- waiting_for_gas
+- released
+- refunded
+- failed
+
+Verificare che nessun ramo possa fare rollback quando esiste già una TX potenzialmente broadcastata.
+
+5. GAS STATION
+Verificare:
+- key presente;
+- key assente;
+- saldo insufficiente;
+- top-up riuscito;
+- top-up fallito;
+- crash dopo top-up;
+- retry successivo.
+
+Il cliente non deve mai ricevere un errore tecnico relativo alla gas station.
+
+6. OWNERSHIP
+Verificare GET/detect/release/refund con:
+User A → transfer A
+User A → transfer B
+User B → transfer A
+
+Verificare che non siano esposti dati del transfer appartenente a un altro utente.
+
+7. FEE INTEGRITY
+Verificare matematicamente che:
+
+projectFee = gross × 0.10%
+netAmount = gross − projectFee
+
+e che:
+networkFeeCharged
+
+NON modifichi MAI projectFee o netAmount.
+
+Verificare anche recipient_exact:
+il destinatario deve ricevere esattamente l'importo richiesto, mentre il sistema calcola automaticamente gross + project fee + network fee.
+
+8. DOUBLE FEE
+Verificare che il fee wallet non possa ricevere due volte:
+projectFee + networkFeeCharged.
+
+9. BTC
+Analizzare:
+- UTXO selection;
+- crash recovery;
+- deterministic TXID;
+- nuovi UTXO durante recovery;
+- refund;
+- miner fee;
+- project fee 0.10%.
+
+BTC non deve essere dichiarato production-ready se esistono ancora rischi non risolti.
+
+10. RATE LIMITING
+Verificare /quote, /create, /detect, /release e /refund.
+
+11. DATABASE
+Verificare:
+- idempotenza client_ref;
+- unique index;
+- race condition;
+- atomic locks;
+- stale locks;
+- recovery.
+
+12. CONFIGURATION
+Verificare che:
+- GAS_STATION_PRIVATE_KEY mancante;
+- fee wallet mancante;
+- RPC mancante;
+- token contract mancante;
+- network disabilitata
+
+non possano provocare payout incontrollati.
+
+13. USDA ISOLATION
+Confermare nuovamente:
+ZERO modifiche USDA.
+ZERO dipendenze Multi-Chain → USDA.
+ZERO regressioni nei flussi USDA.
+
+OUTPUT OBBLIGATORIO:
+
+Tabella:
+
+ID | Finding | Stato | Evidenza | Rischio residuo | Go/No-Go
+
+Classificare:
+CRITICAL
+HIGH
+MEDIUM
+LOW
+INFO
+
+NON dichiarare "production ready" se rimane anche un solo CRITICAL finanziario.
+
+Alla fine fornire:
+
+A) GO/NO-GO Multi-Chain
+B) reti realmente production-ready
+C) reti da lasciare OFF
+D) problemi ancora da correggere
+E) test mancanti
+F) configurazioni ENV mancanti
+G) eventuale ultimo hardening necessario
+
+IMPORTANTE:
+Nessun deploy.
+Nessuna modifica al codice.
+Questo STEP serve esclusivamente a verificare indipendentemente i fix dello STEP 5.
