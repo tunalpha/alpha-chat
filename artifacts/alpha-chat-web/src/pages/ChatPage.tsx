@@ -2529,8 +2529,11 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
       // ── Media/voice forward ──────────────────────────────────────────────
       // Il testo decodificato per i messaggi media È il JSON con media_id+key+iv.
       // Lo re-inviamo come messaggio media corretto invece di testo raw.
-      const fwdMediaMeta = forwardingMessage.message_type === "media" ? decodeMediaMeta(text) : null;
-      const fwdVoiceMeta = forwardingMessage.message_type === "media" ? decodeVoiceMeta(text) : null;
+      // Include "forward": un messaggio già inoltrato può essere ri-inoltrato
+      // (in quel caso message_type è già "forward" ma contiene comunque media meta).
+      const isFwdMedia = forwardingMessage.message_type === "media" || forwardingMessage.message_type === "forward";
+      const fwdMediaMeta = isFwdMedia ? decodeMediaMeta(text) : null;
+      const fwdVoiceMeta = isFwdMedia ? decodeVoiceMeta(text) : null;
 
       if (fwdMediaMeta || fwdVoiceMeta) {
         const metaJson = text; // contiene e2e key+iv intatti
@@ -2558,7 +2561,7 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
           }
         }
 
-        await apiSendMediaMessage(targetConvId, mediaId, signal, clientMessageId, metaJson, dcs);
+        await apiSendMediaMessage(targetConvId, mediaId, signal, clientMessageId, metaJson, dcs, true);
 
       } else {
         // ── Testo forward ──────────────────────────────────────────────────
@@ -3650,7 +3653,9 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
 
                   // Media meta (audio, immagine, video, documento)
                   // Fase 3: usa il testo Signal-decifrato (contiene key AES per E2E)
-                  const mediaMeta: MediaMeta | null = msg.message_type === "media"
+                  // Include "forward": i media inoltrati usano message_type="forward"
+                  // ma contengono comunque i metadati media nel ciphertext.
+                  const mediaMeta: MediaMeta | null = (msg.message_type === "media" || msg.message_type === "forward")
                     ? decodeMediaMeta(getDisplayText(msg))
                     : null;
                   const voiceMeta    = mediaMeta?.type === "voice" ? mediaMeta : null;
@@ -3756,7 +3761,7 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
                             isMine={isMine}
                             onView={(url, type, filename, mimeType) => setViewerMedia({ url, type, filename, mimeType })}
                           />
-                        ) : msg.message_type === "media" && !mediaMeta ? (
+                        ) : (msg.message_type === "media" || msg.message_type === "forward") && !mediaMeta ? (
                           /* FIX: media non decriptabile — placeholder invece di testo garbled */
                           <div className="msg-media-unavailable">
                             <span className="msg-media-unavailable-icon">🔒</span>

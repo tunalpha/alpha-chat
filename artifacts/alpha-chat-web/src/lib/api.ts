@@ -944,6 +944,7 @@ export async function apiSendMediaMessage(
   clientMessageId?: string,
   plaintextMetaFallback?: string,
   deviceCiphertexts?: Array<{ device_id: string; body: string; type: number }>,
+  forward?: boolean,
 ): Promise<MessageItem> {
   const ciphertext = signal?.body
     ?? (plaintextMetaFallback ? btoa(plaintextMetaFallback) : "");
@@ -952,7 +953,9 @@ export async function apiSendMediaMessage(
     ciphertext,
     ciphertext_type: signal?.type ?? 1,
     sender_key_id:   1,
-    message_type:    "media",
+    // Inoltro media: "forward" per mostrare indicatore "Inoltrato" nel bubble.
+    // Il backend accetta "forward" + media_id (schema Zod già compatibile).
+    message_type:    forward ? "forward" : "media",
     media_id:        mediaId,
     sent_at:         new Date().toISOString(),
     device_ciphertexts: deviceCiphertexts ?? [],
