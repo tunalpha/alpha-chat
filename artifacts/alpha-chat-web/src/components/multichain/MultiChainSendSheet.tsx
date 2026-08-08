@@ -23,14 +23,19 @@ import {
 
 // ─── Reti disponibili ─────────────────────────────────────────────────────────
 
-interface NetOption { id: MCNetwork; label: string; icon: string; ticker: string; }
+interface NetOption { id: MCNetwork; label: string; sublabel: string; icon: string; ticker: string; }
 
-const NETWORKS: NetOption[] = [
-  { id: "polygon",  label: "USDT · Polygon",  icon: "🔵", ticker: "USDT" },
-  { id: "ethereum", label: "USDT · Ethereum", icon: "⬡",  ticker: "USDT" },
-  { id: "bsc",      label: "USDT · BSC",      icon: "🟡", ticker: "USDT" },
-  { id: "bitcoin",  label: "Bitcoin",         icon: "🟠", ticker: "BTC"  },
+const USDT_NETWORKS: NetOption[] = [
+  { id: "polygon",  label: "USDT",     sublabel: "Polygon",  icon: "🔵", ticker: "USDT" },
+  { id: "ethereum", label: "USDT",     sublabel: "Ethereum", icon: "⬡",  ticker: "USDT" },
+  { id: "bsc",      label: "USDT",     sublabel: "BSC",      icon: "🟡", ticker: "USDT" },
 ];
+
+const BTC_NETWORK: NetOption = {
+  id: "bitcoin", label: "BTC", sublabel: "Bitcoin Network", icon: "₿", ticker: "BTC",
+};
+
+const ALL_NETWORKS = [...USDT_NETWORKS, BTC_NETWORK];
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
@@ -56,14 +61,17 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
   const [transfer, setTransfer] = useState<MCTransfer | null>(null);
   const [copied,   setCopied]   = useState(false);
 
-  const selectedNet = NETWORKS.find(n => n.id === network)!;
-  const decimals    = MC_DECIMALS[network];
+  const selectedNet  = ALL_NETWORKS.find(n => n.id === network)!;
+  const decimals     = MC_DECIMALS[network];
+  const isBtc        = selectedNet.ticker === "BTC";
+  const displayLabel = isBtc
+    ? "₿ BTC — Bitcoin nativo"
+    : `${selectedNet.label} · ${selectedNet.sublabel}`;
 
   // Stima fee lato client (0.10%) per il riepilogo — il valore esatto lo calcola il backend.
   const amountNum = parseFloat(amount.replace(",", ".")) || 0;
   const feeEst    = amountNum * 0.001;
   const netEst    = Math.max(0, amountNum - feeEst);
-  const isBtc     = selectedNet.ticker === "BTC";
   const fmt       = (n: number) => n.toFixed(isBtc ? 8 : 2);
 
   function handleContinue() {
@@ -128,8 +136,11 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
             <div className="usda-sheet-to">{t("multichain.toLabel")} <strong>{toName}</strong></div>
 
             <div className="mc-section-label">{t("multichain.selectNetwork")}</div>
+
+            {/* USDT su reti EVM */}
+            <div className="mc-token-group-label">USDT <span className="mc-token-group-desc">· ERC-20 / BEP-20</span></div>
             <div className="mc-network-grid">
-              {NETWORKS.map(n => (
+              {USDT_NETWORKS.map(n => (
                 <button
                   key={n.id}
                   type="button"
@@ -138,9 +149,26 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
                 >
                   <span className="mc-network-icon">{n.icon}</span>
                   <span className="mc-network-label">{n.label}</span>
+                  <span className="mc-network-sublabel">{n.sublabel}</span>
                 </button>
               ))}
             </div>
+
+            {/* Bitcoin — separatore visivo */}
+            <div className="mc-btc-divider"><span>oppure</span></div>
+
+            {/* BTC nativo — card distinta */}
+            <button
+              type="button"
+              className={`mc-btc-card${network === "bitcoin" ? " selected" : ""}`}
+              onClick={() => { setNetwork("bitcoin"); setAmount(""); setError(null); }}
+            >
+              <span className="mc-btc-symbol">₿</span>
+              <div className="mc-btc-text">
+                <span className="mc-btc-name">BTC <em>— Bitcoin nativo</em></span>
+                <span className="mc-btc-net">Bitcoin Network</span>
+              </div>
+            </button>
 
             <div className="usda-sheet-field">
               <label htmlFor="mc-send-amount">{t("multichain.amountLabel")}</label>
@@ -172,7 +200,7 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
             <div className="mc-confirm-summary">
               <div className="mc-confirm-row">
                 <span>{t("multichain.networkLabel")}</span>
-                <span>{selectedNet.icon} {selectedNet.label}</span>
+                <span>{displayLabel}</span>
               </div>
               <div className="mc-confirm-row">
                 <span>{t("multichain.grossLabel")}</span>
@@ -216,7 +244,7 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
                 {t("multichain.depositInstructions", {
                   amount: minDepDisplay,
                   asset:  selectedNet.ticker,
-                  network: selectedNet.label,
+                  network: displayLabel,
                 })}
               </p>
 
