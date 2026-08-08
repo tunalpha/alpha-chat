@@ -10,40 +10,50 @@
  * eliminando la possibilità di divergenze (spec §8).
  *
  * ═══════════════════════════════════════════════════════════════════════
- *  MODALITÀ A — SEND AMOUNT (comportamento attuale, invariato)
+ *  MODALITÀ A — SEND AMOUNT
  *
  *  Input:  grossAmountUnits (importo lordo inserito dal mittente)
  *  Output: projectFee, netAmount
  *
- *  projectFee = floor(grossAmount × feeBps / 10_000)
- *  netAmount  = grossAmount − projectFee
+ *  EVM:  projectFee = floor(grossAmount × feeBps / 10_000)
+ *        netAmount  = grossAmount − projectFee
+ *
+ *  BTC:  projectFee = max(floor(grossAmount × feeBps / 10_000), BTC_FEE_FLOOR)
+ *        netAmount  = grossAmount − projectFee
+ *        → Il fee floor (546 sat) garantisce che l'output on-chain sia
+ *          sempre sopra la P2WPKH dust threshold, senza richiedere un
+ *          importo minimo di €307.
  *
  * ═══════════════════════════════════════════════════════════════════════
- *  MODALITÀ B — RECIPIENT EXACT (nuova, BigInt, ZERO floating point)
+ *  MODALITÀ B — RECIPIENT EXACT
  *
  *  Input:  targetNetAmountUnits (importo che il destinatario deve ricevere)
  *  Output: grossAmount tale che netAmount ≥ targetNetAmount SEMPRE
  *
- *  Formula inversa:
- *    grossAmount = ceil(targetNetAmount × 10_000 / (10_000 − feeBps))
+ *  EVM:    grossAmount = ceil(targetNetAmount × 10_000 / (10_000 − feeBps))
  *
- *  Con integer ceiling: ceil(a/b) = (a + b − 1) / b  (BigInt, a,b > 0)
+ *  BTC:    se fee-standard ≥ 546 sat → stessa formula EVM
+ *          se fee-standard < 546 sat → gross = net + BTC_FEE_FLOOR (546 sat)
+ *          → netto esatto garantito senza gross-up sproporzionato
  *
- *  Regola di rounding: grossAmount arrotondato AL MINIMO INTERO superiore
- *  necessario per garantire il target netto (spec §2: round up).
+ * ═══════════════════════════════════════════════════════════════════════
+ *  BTC FEE FLOOR — RAZIONALE
  *
- *  Esempio (feeBps=10, target=100 USDT @ 6 dec = 100_000_000):
- *    denominator = 10_000 − 10 = 9_990
- *    grossAmount = ceil(100_000_000 × 10_000 / 9_990)
- *               = ceil(1_000_000_000_000 / 9_990)
- *               = 100_100_101
- *    projectFee  = floor(100_100_101 × 10 / 10_000) = 100_100
- *    netAmount   = 100_100_101 − 100_100 = 100_000_001 ≥ 100_000_000 ✓
+ *  La projectFee BTC viene inviata come output on-chain separato (TX2).
+ *  Bitcoin rifiuta output < 546 sat (P2WPKH dust threshold).
+ *  Invece di imporre un minimo commerciale di ~€307, il fee floor porta
+ *  la commissione al minimo necessario (546 sat = ~€0.31) senza toccare
+ *  il netto del destinatario o cambiare l'architettura custodial.
+ *
+ *  Regola:
+ *    projectFeeSat = max(floor(gross × feeBps / 10_000), 546)
+ *
+ *  Non modifica il comportamento EVM/Polygon/Ethereum/BSC.
  *
  * ═══════════════════════════════════════════════════════════════════════
  *  SEPARAZIONE TRE VALORI (spec §10)
  *
- *    projectFee      → ricavo piattaforma (0.10% di grossAmount)
+ *    projectFee      → ricavo piattaforma (0.10% o fee floor per BTC piccoli)
  *    networkFeeCharged → costo network addebitato al cliente (flat, env-configurabile)
  *    networkFeeActual  → gas reale in wei (calcolato al momento del release)
  *
@@ -85,14 +95,14 @@ export interface PaymentQuote {
   amountMode:         AmountMode;
   /** Importo lordo in base units (stringa) */
   grossAmount:        string;
-  /** Commissione progetto 0.10% in base units — va al progetto */
+  /** Commissione progetto in base units — 0.10% o fee floor BTC 546 sat */
   projectFee:         string;
   /** Importo che riceve il destinatario in base units */
   netAmount:          string;
   /**
    * Commissione rete flat in base units, addebitata al cliente.
    * EVM: valore configurato da POLYGON_FLAT_NETWORK_FEE_USDT o equivalente.
-   * BTC: "0" — il costo miner è nell'escrow buffer (minDepositAmount).
+   * BTC: "0" — il costo miner è nell'escrow buffer (minDepositAmount, calcolato async).
    */
   networkFeeCharged:  string;
   /**
@@ -103,8 +113,50 @@ export interface PaymentQuote {
    * Invariante: totalDeposit = grossAmount + networkFeeCharged
    */
   totalDeposit:       string;
-  /** Fee rate applicata (basis points, es. 10 = 0.10%) */
+  /** Fee rate nominale applicata (basis points, es. 10 = 0.10%) */
   feeBps:             number;
+  /**
+   * true se il fee floor BTC (546 sat) è stato applicato invece dello 0.10%.
+   * Solo rilevante per BTC; false per EVM.
+   */
+  btcFeeFloorApplied: boolean;
+}
+
+// ─── BTC Fee Floor ──────────────────────────────────────────────────────────────
+
+/**
+ * Soglia dust P2WPKH — ogni output Bitcoin deve essere ≥ 546 sat.
+ * Applicata SOLO alla projectFee BTC (output on-chain separato TX2).
+ * NON modifica miner fee, dust threshold rete, o importi EVM.
+ */
+const BTC_FEE_FLOOR_SAT = 546n;
+
+/**
+ * Applica il fee floor BTC.
+ * Se la fee percentuale è < BTC_FEE_FLOOR_SAT, usa il floor.
+ *
+ * @param grossAmount   Importo lordo in satoshi
+ * @param standardFee   Fee calcolata con la % standard (floor(gross × bps / 10000))
+ * @returns { projectFee, netAmount, floorApplied }
+ * @throws  se grossAmount < BTC_FEE_FLOOR_SAT (impossibile sottrarre anche solo la fee minima)
+ */
+function applyBtcFeeFloor(
+  grossAmount: bigint,
+  standardFee: bigint,
+): { projectFee: bigint; netAmount: bigint; floorApplied: boolean } {
+  const floorApplied = standardFee < BTC_FEE_FLOOR_SAT;
+  const projectFee   = floorApplied ? BTC_FEE_FLOOR_SAT : standardFee;
+  const netAmount    = grossAmount - projectFee;
+
+  if (netAmount < 0n) {
+    // Importo lordo inferiore alla fee minima di 546 sat: ~€0.31
+    throw new Error(
+      `QUOTE_ERROR: grossAmount (${grossAmount} sat) inferiore alla commissione minima BTC (${BTC_FEE_FLOOR_SAT} sat). ` +
+      `Importo minimo assoluto: ${BTC_FEE_FLOOR_SAT + 1n} sat.`,
+    );
+  }
+
+  return { projectFee, netAmount, floorApplied };
 }
 
 // ─── Inverse formula (recipient_exact) ────────────────────────────────────────
@@ -162,16 +214,18 @@ export function computeGrossFromNet(
  * Invarianti garantite (spec §9):
  *   ✓ netAmount + projectFee === grossAmount        (identità contabile)
  *   ✓ netAmount ≥ targetNetAmount                  (per recipient_exact, §2)
- *   ✓ projectFee ≠ 0 (sempre > 0 per importi > 0 e feeBps > 0)
+ *   ✓ projectFee ≥ BTC_FEE_FLOOR_SAT per BTC       (dust compliance)
  *   ✓ totalDeposit = grossAmount + networkFeeCharged (EVM)
  *   ✓ Tutti i valori BigInt — MAI floating point    (spec §1)
  *
  * @throws se i parametri sono invalidi (amountMode/importo mancante o ≤ 0)
+ * @throws se BTC grossAmount < 546 sat (inferiore alla fee minima assoluta)
  */
 export function calculatePaymentQuote(params: PaymentQuoteParams): PaymentQuote {
   const feeBps    = params.feeBps    ?? DEFAULT_FEE_BPS;
   const feeWallet = params.feeWallet ?? null;
   const mode      = params.amountMode;
+  const isBtc     = params.network === "bitcoin";
 
   // ── Step 1: determina gross amount ────────────────────────────────────────
   let grossAmount: bigint;
@@ -185,18 +239,57 @@ export function calculatePaymentQuote(params: PaymentQuoteParams): PaymentQuote 
       throw new Error("QUOTE_ERROR: grossAmountUnits deve essere > 0");
     }
   } else {
-    // recipient_exact: calcola gross inverso con ceiling
+    // recipient_exact
     if (!params.targetNetAmountUnits) {
       throw new Error("QUOTE_ERROR: targetNetAmountUnits richiesto per amountMode=recipient_exact");
     }
     const targetNet = BigInt(params.targetNetAmountUnits);
-    grossAmount = computeGrossFromNet(targetNet, feeBps);
+
+    if (isBtc) {
+      // BTC recipient_exact: verifica se il fee floor cambia la formula di gross-up.
+      // Standard gross-up: ceil(net × 10000 / (10000 − feeBps))
+      const standardGross = computeGrossFromNet(targetNet, feeBps);
+      const standardFee   = (standardGross * feeBps) / BASIS_POINTS_DENOMINATOR;
+
+      if (standardFee < BTC_FEE_FLOOR_SAT) {
+        // Fee floor si applica: gross = net + 546 sat (fee fissa, netto esatto)
+        grossAmount = targetNet + BTC_FEE_FLOOR_SAT;
+      } else {
+        // Standard formula — fee > 546 sat, nessun floor necessario
+        grossAmount = standardGross;
+      }
+    } else {
+      // EVM: formula standard invariata
+      grossAmount = computeGrossFromNet(targetNet, feeBps);
+    }
   }
 
-  // ── Step 2: calcola projectFee e netAmount (formula invariata) ────────────
-  // La formula NON cambia tra le due modalità — solo grossAmount è diverso.
-  const feeResult = calculateFee(grossAmount, feeBps, feeWallet);
-  assertFeeInvariant(feeResult);
+  // ── Step 2: calcola projectFee e netAmount ────────────────────────────────
+  let projectFee: bigint;
+  let netAmount:  bigint;
+  let btcFeeFloorApplied = false;
+
+  if (isBtc) {
+    // BTC: applica fee floor se necessario
+    const standardFee = (grossAmount * feeBps) / BASIS_POINTS_DENOMINATOR;
+    const btcResult   = applyBtcFeeFloor(grossAmount, standardFee);
+    projectFee         = btcResult.projectFee;
+    netAmount          = btcResult.netAmount;
+    btcFeeFloorApplied = btcResult.floorApplied;
+
+    // Invariante manuale (non passa per assertFeeInvariant perché la formula è diversa)
+    if (netAmount + projectFee !== grossAmount) {
+      throw new Error(
+        `QUOTE_INVARIANT_ERROR (BTC): net(${netAmount}) + fee(${projectFee}) ≠ gross(${grossAmount})`,
+      );
+    }
+  } else {
+    // EVM: calcolo standard, invariante verificata automaticamente
+    const feeResult = calculateFee(grossAmount, feeBps, feeWallet);
+    assertFeeInvariant(feeResult);
+    projectFee = feeResult.projectFee;
+    netAmount  = feeResult.netAmount;
+  }
 
   // ── Step 3: network fee — SEPARATA da projectFee (spec §10) ──────────────
   // EVM: flat fee configurata da env (es. POLYGON_FLAT_NETWORK_FEE_USDT)
@@ -204,17 +297,16 @@ export function calculatePaymentQuote(params: PaymentQuoteParams): PaymentQuote 
   const networkFeeCharged = getEVMFlatNetworkFee(params.network);
 
   // ── Step 4: total deposit ─────────────────────────────────────────────────
-  // EVM: il mittente deposita gross + network fee nell'escrow
-  // BTC: gross (la miner fee è gestita da estimateBtcMinDeposit, async, nel create flow)
-  const totalDeposit = feeResult.grossAmount + networkFeeCharged;
+  const totalDeposit = grossAmount + networkFeeCharged;
 
   return {
-    amountMode:        mode,
-    grossAmount:       feeResult.grossAmount.toString(),
-    projectFee:        feeResult.projectFee.toString(),
-    netAmount:         feeResult.netAmount.toString(),
-    networkFeeCharged: networkFeeCharged.toString(),
-    totalDeposit:      totalDeposit.toString(),
-    feeBps:            Number(feeBps),
+    amountMode:         mode,
+    grossAmount:        grossAmount.toString(),
+    projectFee:         projectFee.toString(),
+    netAmount:          netAmount.toString(),
+    networkFeeCharged:  networkFeeCharged.toString(),
+    totalDeposit:       totalDeposit.toString(),
+    feeBps:             Number(feeBps),
+    btcFeeFloorApplied,
   };
 }

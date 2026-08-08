@@ -94,13 +94,6 @@ const feeRegistry = buildDefaultFeeRegistry();
 
 // ─── Constants ─────────────────────────────────────────────────────────────────
 
-/**
- * Dust threshold Bitcoin in satoshi.
- * Un output sotto questa soglia viene rifiutato dai nodi come "non-standard".
- * M-1: projectFee BTC < DUST → rifiutare il transfer, non silenziarlo.
- */
-const BTC_DUST_THRESHOLD_SAT = 546n;
-
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
 export { AmountMode, PaymentQuote, calculatePaymentQuote, computeGrossFromNet };
@@ -517,8 +510,10 @@ async function estimateBtcMinDeposit(grossAmount: bigint): Promise<string> {
 /**
  * Crea un trasferimento multi-chain.
  *
- * M-1: per Bitcoin, rifiuta se projectFee < 546 sat (dust threshold).
- * Questo garantisce che projectFee ≠ networkFee e non viene mai persa silenziosamente.
+ * Il fee floor BTC (546 sat) è gestito interamente in calculatePaymentQuote:
+ * projectFee = max(floor(gross × feeBps / 10_000), 546 sat).
+ * Questo garantisce che l'output on-chain sia sempre sopra la dust threshold
+ * senza imporre un minimo commerciale di ~€307.
  */
 export async function createMultiChainTransfer(
   params: CreateMultiChainTransferParams,
@@ -530,13 +525,22 @@ export async function createMultiChainTransfer(
   // Nessuna logica di calcolo fee duplicata.
   const effectiveMode: AmountMode = params.amountMode ?? "send_amount";
 
-  // Rifiuta zero-amount prima di passare al motore di quote (che lancerebbe QUOTE_ERROR generico)
-  const rawGross = params.grossAmountUnits ?? "0";
-  if (BigInt(rawGross) === 0n) {
-    throw multichainError("INVALID_AMOUNT", { grossAmountUnits: rawGross });
+  // Rifiuta zero-amount prima di passare al motore di quote.
+  // Per send_amount: verifica grossAmountUnits.
+  // Per recipient_exact: verifica targetNetAmountUnits.
+  if (effectiveMode === "send_amount") {
+    const rawGross = params.grossAmountUnits ?? "0";
+    if (BigInt(rawGross) === 0n) {
+      throw multichainError("INVALID_AMOUNT", { grossAmountUnits: rawGross });
+    }
+  } else {
+    const rawNet = params.targetNetAmountUnits ?? "0";
+    if (BigInt(rawNet) === 0n) {
+      throw multichainError("INVALID_AMOUNT", { targetNetAmountUnits: rawNet });
+    }
   }
 
-  const feeConfig   = feeRegistry.resolve(params.network, params.asset);
+  const feeConfig = feeRegistry.resolve(params.network, params.asset);
 
   const quote = calculatePaymentQuote({
     amountMode:           effectiveMode,
@@ -552,22 +556,6 @@ export async function createMultiChainTransfer(
   const projectFee        = BigInt(quote.projectFee);
   const networkFeeCharged = BigInt(quote.networkFeeCharged);
   const networkFeeAsset   = NATIVE_ASSET_SYMBOL[params.network];
-
-  // M-1: Dust check per Bitcoin
-  // projectFee < 546 sat non può essere un output P2WPKH valido.
-  // Rifiutiamo qui (creazione) invece di perdere la fee silenziosamente al release.
-  if (isBitcoin(params.network) && projectFee < BTC_DUST_THRESHOLD_SAT) {
-    // Importo minimo lordo affinché la projectFee superi la dust threshold
-    // ceil(dustThreshold * BASIS_POINTS / feeBps)
-    const feeBpsBI         = BigInt(feeConfig.feeBps);
-    const minGrossAmountSat = (BTC_DUST_THRESHOLD_SAT * 10000n + feeBpsBI - 1n) / feeBpsBI;
-    throw multichainError("BTC_PROJECT_FEE_BELOW_DUST", {
-      projectFee:        projectFee.toString(),
-      dustThreshold:     BTC_DUST_THRESHOLD_SAT.toString(),
-      grossAmount:       grossAmount.toString(),
-      minGrossAmountSat: minGrossAmountSat.toString(),
-    });
-  }
 
   // Wallet escrow usa-e-getta
   const escrow = generateEscrowWallet();

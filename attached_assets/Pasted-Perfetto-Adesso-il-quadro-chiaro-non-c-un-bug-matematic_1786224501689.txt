@@ -1,0 +1,108 @@
+Perfetto. Adesso il quadro è chiaro: non c’è un bug matematico. Il minimo di €307 è una conseguenza diretta dell’architettura scelta.
+
+Ma io non sceglierei l’opzione €307: commercialmente è troppo penalizzante per AlphaChat.
+
+La scelta che farei
+
+Opzione 2 — Fee floor a 546 satoshi.
+
+In pratica:
+
+* commissione standard: 0,10%
+* se lo 0,10% produce meno di 546 satoshi, la commissione viene portata al minimo di 546 satoshi
+* il sistema fa il gross-up necessario
+* la commissione continua a essere un output Bitcoin on-chain separato
+* non cambiamo l’architettura custodial
+* non introduciamo accumuli off-chain e sweep successivi
+
+Quindi:
+
+Importo	Situazione
+€10	possibile, con fee minima 546 sat
+€50	possibile
+€100	possibile
+€300	possibile
+€307	possibile
+€500	fee già > 546 sat → torna allo 0,10%
+
+Questo è molto più sensato.
+
+L’opzione 1 sarebbe ancora più efficiente economicamente, ma introduce una nuova contabilità off-chain delle commissioni BTC, accumulo e sweep. Per ora non ne vale la pena: aumenta la complessità proprio mentre stiamo ancora validando il motore.
+
+Però c’è una precisazione importante
+
+Non voglio che l’agente interpreti “546 sat minimum” come:
+
+commissione sempre 546 sat.
+
+No.
+
+La logica deve essere:
+
+feePercent = 0,10%
+fee = grossAmount × 0,10%
+se fee < 546 sat
+    fee = 546 sat
+altrimenti
+    fee = grossAmount × 0,10%
+
+E il gross amount deve essere ricalcolato affinché la modalità scelta dall’utente rimanga corretta.
+
+Quindi, se l’utente sceglie:
+
+“Riceve esattamente 10 EUR”
+
+il sistema non deve semplicemente aggiungere 546 sat al totale in modo arbitrario: deve fare il gross-up completo e mostrare chiaramente:
+
+Destinatario riceve: X BTC
+Commissione AlphaChat: X sat
+Miner fee: X sat
+Totale da pagare: X BTC / X EUR
+
+Manderei all’agente:
+
+Scelgo OPZIONE 2 — FEE FLOOR 546 SATOSHI.
+
+Mantieni la project fee come output Bitcoin on-chain separato.
+
+Implementa il minimo di 546 satoshi solo quando lo 0,10% risulta inferiore a 546 satoshi.
+
+Non trasformare 546 sat in una commissione fissa per tutti i transfer.
+
+La formula deve essere:
+
+projectFeeSat = max(ceil(grossAmountSat × 10 / 10000), 546)
+
+e il gross amount deve essere ricalcolato correttamente nelle due modalità:
+
+1. Io pago il totale
+2. Il destinatario riceve esattamente
+
+La UI deve mostrare separatamente:
+
+* importo lordo;
+* commissione AlphaChat;
+* miner fee;
+* netto destinatario;
+* totale pagatore.
+
+Per BTC non mostrare più “Importo minimo €307”.
+
+Il sistema deve consentire importi inferiori a €307, purché il risultato della transazione sia compatibile con dust.
+
+NON modificare la dust threshold di Bitcoin.
+NON modificare la miner fee.
+NON introdurre accumulo off-chain.
+NON modificare Polygon/Ethereum/BSC.
+
+Dopo il fix esegui test numerici almeno con:
+
+€10 / €50 / €100 / €300 / €500
+
+e riportami per ciascuno:
+
+gross BTC | project fee sat | miner fee sat | net BTC | totale BTC
+
+Poi testa entrambe le modalità NET/GROSS.
+
+Questa secondo me è la soluzione più equilibrata per il V1: manteniamo l’architettura Bitcoin pulita e on-chain, ma eliminiamo quel minimo commerciale assurdo di €307.
