@@ -1,0 +1,378 @@
+IMPLEMENTAZIONE — OTTIMIZZAZIONE FEE BSC 0,10% CON LEDGER + SWEEP
+
+OBIETTIVO
+
+Ottimizzare il sistema BSC eliminando il trasferimento on-chain della project fee (0,10%) ad ogni singolo pagamento.
+
+IMPORTANTE:
+NON modificare il comportamento funzionale di recipient_exact.
+
+Il destinatario deve continuare a ricevere esattamente l'importo richiesto.
+
+La project fee dello 0,10% deve continuare ad essere calcolata, contabilizzata e incassata integralmente da AlphaChat.
+
+==================================================
+1. MODELLO ATTUALE
+==================================================
+
+Attualmente il flusso BSC è:
+
+Cliente → Escrow
+
+TX #1:
+Escrow → Recipient
+netAmount
+
+TX #2:
+Escrow → BSC_FEE_WALLET
+projectFee + networkFeeCharged
+
+Questo modello deve essere modificato.
+
+==================================================
+2. NUOVO MODELLO
+==================================================
+
+Per ogni pagamento BSC:
+
+Cliente
+ ↓
+Escrow
+ ↓
+Recipient
+
+Deve essere eseguita una sola transazione USDT verso il destinatario.
+
+NON eseguire più una TX separata per trasferire immediatamente la project fee al BSC_FEE_WALLET.
+
+La project fee deve essere registrata nel ledger MongoDB.
+
+==================================================
+3. LEDGER FEE
+==================================================
+
+Creare/aggiornare una collection MongoDB dedicata alle fee.
+
+Esempio:
+
+fee_ledger
+
+Campi minimi:
+
+_id
+transaction_id
+chain
+token
+gross_amount
+project_fee
+network_fee_charged
+fee_wallet
+status
+created_at
+swept_at
+sweep_tx_hash
+
+Status possibili:
+
+pending
+swept
+failed
+
+Per ogni pagamento completato:
+
+project_fee = fee calcolata allo 0,10%
+
+deve essere registrata come:
+
+status = pending
+
+NON deve essere considerata incassata on-chain fino all'effettivo sweep.
+
+==================================================
+4. RECIPIENT EXACT
+==================================================
+
+NON modificare la logica recipient_exact.
+
+Se il cliente specifica:
+
+"Il destinatario deve ricevere 1 USDT"
+
+il sistema deve continuare a calcolare automaticamente:
+
+grossAmount
+projectFee
+netAmount
+
+Il destinatario deve ricevere esattamente:
+
+1 USDT
+
+Evitare il +1 wei causato dall'arrotondamento attuale quando tecnicamente possibile.
+
+Implementare un rounding matematicamente corretto senza diminuire l'importo richiesto dal destinatario.
+
+==================================================
+5. NETWORK FEE
+==================================================
+
+Analizzare e correggere:
+
+BSC_FLAT_NETWORK_FEE_USDT
+
+ATTENZIONE:
+
+USDT BSC utilizza 18 decimali.
+
+L'attuale:
+
+1_000_000
+
+equivale praticamente a zero USDT.
+
+NON modificare automaticamente il valore senza prima verificare tutte le configurazioni esistenti.
+
+Proporre nel report il valore corretto in raw units per l'importo di network fee desiderato.
+
+Esempio:
+
+0,50 USDT =
+500_000_000_000_000_000 raw units
+
+Non assumere che 0,50 USDT sia necessariamente il valore finale: mostrare chiaramente la configurazione attuale e quella proposta.
+
+==================================================
+6. GAS STATION / ESCROW
+==================================================
+
+Analizzare il meccanismo attuale di:
+
+GAS_STATION_PRIVATE_KEY
+
+e del finanziamento BNB degli escrow.
+
+NON rimuoverlo senza verificare il flusso completo.
+
+Obiettivo:
+
+finanziare l'escrow solamente con il BNB necessario per effettuare il pagamento USDT.
+
+Non utilizzare una stima artificiale di 320.000 gas per una normale transazione BNB.
+
+Calcolare correttamente:
+
+gas necessario
+×
+gasPrice
+×
+buffer
+
+considerando il gas necessario per le transazioni effettivamente previste.
+
+==================================================
+7. SWEEP DELLE FEE
+==================================================
+
+Implementare uno sweep aggregato delle fee pending.
+
+Esempio:
+
+Fee A = 0,001001 USDT
+Fee B = 0,025000 USDT
+Fee C = 0,500000 USDT
+Fee D = 1,200000 USDT
+
+Invece di:
+
+4 transazioni on-chain
+
+creare una singola operazione di sweep quando viene raggiunta una soglia configurabile.
+
+Esempio configurabile:
+
+BSC_FEE_SWEEP_THRESHOLD_USDT
+
+Quando:
+
+pending fees >= threshold
+
+eseguire lo sweep verso:
+
+BSC_FEE_WALLET
+
+==================================================
+8. SWEEP SICURO
+==================================================
+
+Lo sweep deve essere:
+
+- idempotente
+- protetto da race condition
+- protetto da double-spend
+- retryable
+- tracciato nel database
+- associato al relativo tx_hash
+
+NON marcare una fee come swept prima della conferma on-chain.
+
+Sequenza:
+
+pending
+↓
+sweep in progress
+↓
+TX broadcast
+↓
+TX confirmed
+↓
+swept
+
+In caso di errore:
+
+sweep_failed
+
+e deve essere possibile ritentare senza duplicare l'incasso.
+
+==================================================
+9. GAS DELLO SWEEP
+==================================================
+
+Lo sweep deve avere BNB sufficiente per pagare il gas.
+
+Non creare inutilmente un nuovo escrow.
+
+Analizzare se il BNB residuo degli escrow può essere utilizzato per lo sweep oppure se è preferibile utilizzare una wallet operativa dedicata.
+
+Scegliere la soluzione più economica e sicura.
+
+NON trasferire automaticamente tutti i fondi degli escrow senza una verifica di sicurezza.
+
+==================================================
+10. NETWORK FEE VS PROJECT FEE
+==================================================
+
+Mantenere separate logicamente:
+
+projectFee
+networkFeeCharged
+
+Anche se eventualmente possono essere trasferite nello stesso sweep.
+
+MongoDB deve continuare a registrare separatamente:
+
+project_fee
+network_fee_charged
+
+Il ledger deve permettere di sapere esattamente:
+
+quanto appartiene ad AlphaChat come project fee
+
+e
+
+quanto è stato addebitato al cliente per la network fee.
+
+==================================================
+11. COMPATIBILITÀ
+==================================================
+
+NON rompere:
+
+- recipient_exact
+- send crypto
+- confirm
+- release
+- escrow
+- wallet generation
+- BSC
+- Polygon
+- altre chain
+- fee calculation esistente
+- MongoDB
+- scheduler
+- admin dashboard
+
+La modifica deve riguardare esclusivamente il meccanismo di incasso/settlement della fee BSC.
+
+NON applicare automaticamente il nuovo modello alle altre blockchain.
+
+==================================================
+12. BACKWARD COMPATIBILITY
+==================================================
+
+Le transazioni già completate con il vecchio modello devono rimanere integre.
+
+NON modificare:
+
+tx_hash
+project_fee
+fee_wallet
+transaction records storici.
+
+Il nuovo ledger deve poter convivere con i dati storici.
+
+==================================================
+13. TEST OBBLIGATORI
+==================================================
+
+Creare test per almeno:
+
+1. recipient_exact = 1 USDT
+2. recipient_exact = 100 USDT
+3. calcolo project fee = 0,10%
+4. network fee
+5. ledger pending
+6. sweep threshold
+7. sweep sotto threshold
+8. sweep sopra threshold
+9. sweep duplicato
+10. sweep fallito
+11. retry sweep
+12. conferma blockchain
+13. crash durante sweep
+14. race condition tra due scheduler
+15. escrow senza BNB sufficiente
+16. pagamento BSC normale
+17. transazione storica vecchio modello
+
+==================================================
+14. NON FARE
+==================================================
+
+NON:
+
+- eliminare MongoDB
+- reintrodurre PostgreSQL
+- modificare recipient_exact
+- modificare la fee dello 0,10% senza autorizzazione
+- eliminare il BSC_FEE_WALLET
+- eliminare i record storici
+- effettuare sweep prima della conferma del pagamento
+- marcare fee come swept prima della conferma on-chain
+- creare più sweep contemporanei
+- modificare Polygon o altre chain
+
+==================================================
+15. REPORT FINALE
+==================================================
+
+Prima di considerare il lavoro concluso, produrre un report con:
+
+A. File modificati
+B. File nuovi
+C. Schema MongoDB fee ledger
+D. Vecchio flusso
+E. Nuovo flusso
+F. Numero medio di TX risparmiate
+G. Costo gas stimato prima
+H. Costo gas stimato dopo
+I. Break-even stimato
+J. Valore attuale BSC_FLAT_NETWORK_FEE_USDT
+K. Valore proposto in raw units
+L. Test eseguiti
+M. Risultato dei test
+N. Conferma che recipient_exact non è cambiato
+O. Conferma che il destinatario riceve esattamente l'importo richiesto
+P. Conferma che la project fee dello 0,10% viene contabilizzata integralmente
+Q. Conferma che le fee non vengono perse in caso di errore/retry.
+
+NON dichiarare la migrazione completata se rimangono errori TypeScript, test falliti o possibilità di doppio incasso.

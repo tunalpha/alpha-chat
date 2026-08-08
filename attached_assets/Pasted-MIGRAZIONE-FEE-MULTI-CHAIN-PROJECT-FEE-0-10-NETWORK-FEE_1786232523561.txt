@@ -1,0 +1,545 @@
+MIGRAZIONE FEE MULTI-CHAIN — PROJECT FEE 0,10% + NETWORK FEE
+
+ATTENZIONE:
+QUESTA È UNA MODIFICA ECONOMICA CRITICA.
+
+Un errore può causare perdite ad AlphaChat.
+
+NON modificare il codice alla cieca.
+Prima analizzare completamente l'implementazione attuale e produrre un report.
+Solo dopo l'analisi implementare le modifiche.
+
+==================================================
+OBIETTIVO GENERALE
+==================================================
+
+AlphaChat applica una PROJECT FEE dello 0,10%.
+
+Il cliente deve inoltre pagare la NETWORK FEE necessaria a coprire il costo della blockchain.
+
+Le due fee devono essere SEMPRE separate.
+
+PROJECT FEE:
+- 0,10%
+- ricavo AlphaChat
+- contabilizzata nel fee ledger
+- trasferita al fee wallet secondo il modello di settlement della chain
+
+NETWORK FEE:
+- costo della blockchain
+- pagata dal cliente
+- NON è ricavo AlphaChat
+- deve essere sufficiente a coprire il costo blockchain previsto
+
+Il destinatario deve sempre ricevere esattamente l'importo richiesto.
+
+==================================================
+CHAIN DA GESTIRE
+==================================================
+
+1. POLYGON
+2. BSC
+3. ETHEREUM / ERC-20
+
+REGOLA FONDAMENTALE:
+
+POLYGON NON DEVE ESSERE MODIFICATA.
+
+Polygon ha costi di rete molto bassi e il modello attuale è considerato economicamente accettabile.
+
+NON introdurre ledger/sweep per Polygon.
+
+NON cambiare:
+- fee calculation Polygon
+- network fee Polygon
+- release flow Polygon
+- numero di transazioni Polygon
+- wallet Polygon
+
+Le modifiche di accumulo/sweep riguardano ESCLUSIVAMENTE:
+
+BSC
+ETHEREUM / ERC-20
+
+==================================================
+RECIPIENT EXACT
+==================================================
+
+NON modificare la logica:
+
+recipient_exact
+
+Se il cliente specifica:
+
+Recipient receives = 100 USDT
+
+il destinatario deve ricevere:
+
+100 USDT ESATTI.
+
+Il sistema deve calcolare:
+
+recipient amount
++
+project fee
++
+network fee
+
+e determinare il gross amount necessario.
+
+NON ridurre mai l'importo ricevuto dal destinatario.
+
+Gestire correttamente i decimali specifici del token sulla rispettiva chain.
+
+==================================================
+PROJECT FEE
+==================================================
+
+Project fee:
+
+0,10% = 10 basis points.
+
+La project fee appartiene ad AlphaChat.
+
+Deve essere calcolata in modo identico al comportamento attuale.
+
+NON modificare la percentuale.
+
+NON usare la project fee per coprire il gas.
+
+NON confondere project fee e network fee.
+
+==================================================
+NETWORK FEE
+==================================================
+
+La network fee viene pagata dal CLIENTE.
+
+Serve a coprire il costo reale della blockchain.
+
+Deve essere calcolata separatamente per ogni chain.
+
+Formula concettuale:
+
+network fee =
+costo blockchain stimato
++
+buffer ragionevole
+
+Considerare:
+
+- gas estimate
+- gas price
+- numero di transazioni necessarie
+- eventuale top-up BNB/ETH dell'escrow
+- buffer configurabile
+
+NON usare valori arbitrari senza prima confrontarli con il costo reale.
+
+==================================================
+REGOLA ANTI-PERDITA
+==================================================
+
+Prima del pagamento verificare:
+
+networkFeeCharged >= estimatedNetworkCost
+
+Se:
+
+networkFeeCharged < estimatedNetworkCost
+
+NON consentire silenziosamente il pagamento.
+
+Il sistema deve:
+
+- ricalcolare la quote
+OPPURE
+- aumentare la network fee secondo la configurazione
+OPPURE
+- bloccare il pagamento indicando che la network fee non è sufficiente.
+
+AlphaChat NON deve assorbire inconsapevolmente il costo della rete.
+
+==================================================
+BSC
+==================================================
+
+BSC deve utilizzare:
+
+- recipient_exact
+- project fee 0,10%
+- network fee pagata dal cliente
+- fee ledger
+- accumulo project fee
+- sweep aggregato
+
+NON trasferire la project fee ad ogni pagamento con una TX separata.
+
+Esempio:
+
+Pagamento A → project fee
+Pagamento B → project fee
+Pagamento C → project fee
+Pagamento D → project fee
+
+Tutte:
+
+status = pending
+
+Quando viene raggiunta la soglia configurata:
+
+BSC_FEE_SWEEP_THRESHOLD_USDT
+
+effettuare uno sweep aggregato verso:
+
+BSC_FEE_WALLET
+
+Dopo conferma blockchain:
+
+status = swept
+
+salvare sweep_tx_hash.
+
+==================================================
+ETHEREUM / ERC-20
+==================================================
+
+Applicare lo STESSO PRINCIPIO di BSC.
+
+Ethereum/ERC-20 può avere costi di gas molto elevati.
+
+Quindi è particolarmente importante evitare:
+
+una TX separata per incassare lo 0,10%
+per ogni singolo pagamento.
+
+Utilizzare:
+
+fee ledger
++
+accumulo
++
+sweep aggregato
+
+verso il fee wallet Ethereum.
+
+Configurare una soglia separata:
+
+ETH_FEE_SWEEP_THRESHOLD_USDT
+
+NON usare necessariamente la stessa soglia di BSC.
+
+La soglia deve essere configurabile.
+
+==================================================
+POLYGON
+==================================================
+
+NON CAMBIARE.
+
+Continuare con il comportamento attuale.
+
+NON introdurre:
+
+fee ledger
+sweep
+fee batching
+
+su Polygon.
+
+==================================================
+FEE LEDGER
+==================================================
+
+Creare/aggiornare una collection MongoDB:
+
+fee_ledger
+
+Campi:
+
+transaction_id
+chain
+token
+project_fee
+network_fee_charged
+estimated_network_cost
+actual_network_cost
+project_fee_status
+network_fee_status
+fee_wallet
+sweep_tx_hash
+created_at
+swept_at
+
+Status project fee:
+
+pending
+sweep_in_progress
+swept
+sweep_failed
+
+La network fee deve essere contabilizzata separatamente.
+
+==================================================
+SWEEP
+==================================================
+
+Per BSC ed Ethereum:
+
+NON effettuare una TX fee per ogni pagamento.
+
+Accumularle nel ledger.
+
+Quando la soglia configurata viene raggiunta:
+
+eseguire uno sweep.
+
+Lo sweep deve essere:
+
+- idempotente
+- atomicamente protetto
+- retryable
+- resistente ai crash
+- resistente a race condition
+- tracciato
+- confermato on-chain prima dello stato "swept"
+
+NON creare due sweep contemporaneamente.
+
+NON permettere double payment.
+
+==================================================
+GAS
+==================================================
+
+Analizzare il meccanismo attuale:
+
+GAS_STATION_PRIVATE_KEY
+
+e gli escrow.
+
+Per BSC:
+
+considerare il costo BNB necessario.
+
+Per Ethereum:
+
+considerare il costo ETH necessario.
+
+Per Polygon:
+
+NON MODIFICARE il comportamento esistente.
+
+NON assumere un gas fisso.
+
+Utilizzare le stime reali disponibili.
+
+==================================================
+DECIMALI
+==================================================
+
+Verificare i decimals di ogni token.
+
+In particolare:
+
+BSC USDT = 18 decimals
+
+Ethereum USDT/ERC-20 = verificare il token effettivamente configurato
+
+Polygon = verificare configurazione esistente e NON modificarla.
+
+NON utilizzare lo stesso valore raw fee su chain con decimals differenti.
+
+Esempio:
+
+1_000_000 raw units
+
+NON significa necessariamente la stessa quantità in USDT su tutte le chain.
+
+==================================================
+NETWORK FEE CONFIGURATION
+==================================================
+
+Analizzare tutte le configurazioni attuali:
+
+BSC_FLAT_NETWORK_FEE_USDT
+ETH_FLAT_NETWORK_FEE_USDT
+POLYGON_FLAT_NETWORK_FEE_USDT
+
+Per ogni chain mostrare:
+
+- valore raw attuale
+- decimals
+- valore reale in USDT
+- costo gas stimato
+- eventuale differenza
+
+NON modificare automaticamente i valori.
+
+Se una network fee è insufficiente:
+
+segnalarlo nel report prima di modificarla.
+
+==================================================
+ESEMPIO OBBLIGATORIO
+==================================================
+
+Calcolare per:
+
+1 USDT
+10 USDT
+100 USDT
+500 USDT
+1.000 USDT
+
+e per:
+
+BSC
+Ethereum
+Polygon
+
+Per ogni combinazione mostrare:
+
+recipient amount
+project fee
+network fee
+gross amount
+gas stimato
+costo blockchain
+ricavo AlphaChat
+costo AlphaChat
+margine netto
+
+==================================================
+REGOLA ECONOMICA FINALE
+==================================================
+
+Per BSC ed Ethereum:
+
+CLIENTE PAGA:
+
+recipient amount
++
+project fee
++
+network fee
+
+DESTINATARIO RICEVE:
+
+recipient amount esatto
+
+ALPHACHAT INCASSA:
+
+project fee 0,10%
+
+NETWORK FEE:
+
+serve a coprire il costo blockchain.
+
+Polygon:
+
+MANTENERE IL MODELLO ATTUALE.
+
+==================================================
+TEST
+==================================================
+
+Eseguire test separati per:
+
+POLYGON:
+- assicurarsi che il comportamento non sia cambiato.
+
+BSC:
+- recipient exact
+- project fee
+- network fee
+- ledger
+- sweep
+- retry
+- double sweep
+- gas insufficiente
+- gas spike
+
+ETHEREUM:
+- recipient exact
+- project fee
+- network fee
+- ledger
+- sweep
+- retry
+- double sweep
+- gas insufficiente
+- gas spike
+
+==================================================
+NON FARE
+==================================================
+
+NON:
+
+- modificare Polygon
+- modificare lo 0,10%
+- eliminare recipient_exact
+- confondere project fee e network fee
+- far pagare ad AlphaChat la rete senza accorgersene
+- trasferire la project fee ad ogni pagamento su BSC/Ethereum
+- eliminare i dati storici
+- modificare i pagamenti già completati
+- cambiare wallet senza autorizzazione
+- modificare altri flussi non necessari
+
+==================================================
+STOP CONDITION
+==================================================
+
+Se durante l'analisi emerge che una network fee non copre il costo reale della blockchain:
+
+STOP.
+
+NON implementare automaticamente una nuova fee.
+
+Mostrare:
+
+chain
+network fee attuale
+costo blockchain
+perdita per transazione
+network fee necessaria
+impatto sul cliente
+
+e attendere conferma.
+
+==================================================
+REPORT FINALE
+==================================================
+
+Produrre un report completo:
+
+1. Stato attuale
+2. Modifiche BSC
+3. Modifiche Ethereum/ERC-20
+4. Conferma che Polygon NON è stata modificata
+5. Project fee
+6. Network fee
+7. Fee ledger
+8. Sweep
+9. Gas station
+10. Configurazioni decimals
+11. Esempi economici
+12. Test eseguiti
+13. File modificati
+14. Rischi residui
+15. Risparmio stimato sul gas
+16. Conferma finale:
+
+"Il cliente paga la network fee."
+
+"AlphaChat incassa lo 0,10%."
+
+"Il destinatario riceve l'importo esatto."
+
+"Polygon mantiene il comportamento precedente."
+
+"BSC ed Ethereum utilizzano accumulo e sweep della project fee."
+
+NON dichiarare completato il lavoro se una di queste condizioni non è verificata.
