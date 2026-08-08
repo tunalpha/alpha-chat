@@ -48,25 +48,96 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
-// ─── EVM Coming Soon Card ─────────────────────────────────────────────────────
+// ─── EVM Gas Card (live) ──────────────────────────────────────────────────────
 
-function EvmComingSoon({ chain, token, color }: { chain: string; token: string; color: string }) {
+interface EvmGasCardProps {
+  chain:    string;
+  token:    string;
+  color:    string;     // tailwind text-color class
+  network:  string;     // rete per l'explorer URL
+  balance:  string | null;  // null = fetch fallita
+  isLow:    boolean;
+  threshold: string;
+  scanUrl:  (addr: string) => string;
+  address:  string | null;
+}
+
+function EvmGasCard({ chain, token, color, balance, isLow, threshold, scanUrl, address }: EvmGasCardProps) {
+  const fetchFailed = balance === null;
+  const balanceNum  = parseFloat(balance ?? "0");
+
   return (
-    <Card className="border-dashed border-border/40 opacity-60">
+    <Card className={fetchFailed ? "opacity-60 border-dashed border-border/40" : isLow ? "border-red-500/30" : ""}>
       <CardHeader className="flex flex-row items-center justify-between pb-3">
-        <CardTitle className="text-xs font-mono uppercase text-muted-foreground flex items-center gap-2">
+        <CardTitle className={`text-xs font-mono uppercase flex items-center gap-2 ${fetchFailed ? "text-muted-foreground" : ""}`}>
           <Fuel className={`w-4 h-4 ${color}`} />
           Wallet Gas — {chain}
         </CardTitle>
-        <span className="text-xs text-muted-foreground border border-dashed border-border rounded px-2 py-0.5">
-          Coming Soon
-        </span>
+        {fetchFailed ? (
+          <span className="text-xs text-muted-foreground border border-dashed border-border rounded px-2 py-0.5">
+            RPC unavailable
+          </span>
+        ) : (
+          <span className={`text-xs font-mono px-2 py-0.5 rounded border ${
+            isLow
+              ? "bg-red-500/10 text-red-400 border-red-500/20"
+              : "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+          }`}>
+            <span className={`inline-block w-1.5 h-1.5 rounded-full mr-1.5 ${isLow ? "bg-red-400 animate-pulse" : "bg-emerald-400"}`} />
+            {isLow ? "SALDO BASSO" : "Operativo"}
+          </span>
+        )}
       </CardHeader>
-      <CardContent>
-        <p className="text-xs text-muted-foreground">
-          Gas {token} per {chain}. Verrà abilitato quando USDT {chain} sarà attivo in produzione.
-          Il top-up automatico seguirà lo stesso pattern del Gas Station Polygon.
-        </p>
+      <CardContent className="space-y-4">
+        {address && (
+          <div>
+            <p className="text-xs text-muted-foreground mb-1.5">Indirizzo {chain}</p>
+            <div className="flex items-center gap-2 font-mono text-sm bg-muted/40 rounded-lg px-3 py-2.5 border border-border">
+              <span className="break-all">{address}</span>
+              <CopyButton text={address} />
+            </div>
+            <p className="text-xs text-muted-foreground mt-1.5">
+              Invia {token} a questo indirizzo su rete {chain} per ricaricare.{" "}
+              <a href={scanUrl(address)} target="_blank" rel="noopener noreferrer"
+                className="text-blue-400 hover:text-blue-300 inline-flex items-center gap-1">
+                Explorer <ExternalLink className="w-3 h-3" />
+              </a>
+            </p>
+          </div>
+        )}
+        {fetchFailed ? (
+          <p className="text-xs text-muted-foreground">
+            Impossibile contattare il nodo RPC {chain}. Il wallet gas è configurato ma il saldo non è disponibile.
+          </p>
+        ) : (
+          <div className="flex items-end justify-between pt-2 border-t border-border">
+            <div>
+              <p className="text-xs text-muted-foreground mb-1">Saldo {token}</p>
+              <div className="flex items-baseline gap-2">
+                <span className={`text-3xl font-bold font-mono tracking-tight ${isLow ? "text-red-400" : "text-foreground"}`}>
+                  {balanceNum.toFixed(4)}
+                </span>
+                <span className="text-sm text-muted-foreground font-medium">{token}</span>
+              </div>
+            </div>
+            <div className="text-right text-xs text-muted-foreground space-y-1">
+              <div className="flex items-center gap-1.5 justify-end">
+                <span>Soglia alert</span>
+                <span className="font-mono font-medium text-foreground">{threshold} {token}</span>
+              </div>
+              <div className="flex items-center gap-1.5 justify-end">
+                <span>Gas/tx stimato</span>
+                <span className="font-mono font-medium text-foreground">~{token === "ETH" ? "0.003" : "0.0003"} {token}</span>
+              </div>
+              <div className="flex items-center gap-1.5 justify-end">
+                <span>Tx rimanenti ~</span>
+                <span className={`font-mono font-medium ${isLow ? "text-red-400" : "text-emerald-400"}`}>
+                  {Math.floor(balanceNum / (token === "ETH" ? 0.003 : 0.0003)).toLocaleString()}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
       </CardContent>
     </Card>
   );
@@ -211,22 +282,76 @@ export default function GasStationMonitor() {
         )}
       </div>
 
-      {/* ══ ETHEREUM — Coming Soon ══ */}
+      {/* ══ ETHEREUM ══ */}
       <div>
         <div className="flex items-center gap-2 mb-3">
-          <div className="w-2 h-2 rounded-full bg-blue-400 opacity-50" />
-          <h2 className="text-sm font-semibold text-blue-400/60 uppercase tracking-wider">Ethereum — ETH</h2>
+          <div className={`w-2 h-2 rounded-full ${data?.low_balance_eth ? "bg-red-400 animate-pulse" : "bg-blue-400"}`} />
+          <h2 className="text-sm font-semibold text-blue-400 uppercase tracking-wider">Ethereum — ETH</h2>
+          {!isLoading && isConfigured && data?.balance_eth !== null && (
+            <span className={`text-xs font-mono px-2 py-0.5 rounded border ${
+              data?.low_balance_eth
+                ? "bg-red-500/10 text-red-400 border-red-500/20"
+                : "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+            }`}>
+              {data?.low_balance_eth ? "SALDO BASSO" : "Operativo"}
+            </span>
+          )}
         </div>
-        <EvmComingSoon chain="Ethereum" token="ETH" color="text-blue-400" />
+        {isLoading ? (
+          <div className="h-44 rounded-xl bg-muted animate-pulse" />
+        ) : isConfigured ? (
+          <EvmGasCard
+            chain="Ethereum" token="ETH" color="text-blue-400" network="ethereum"
+            balance={data?.balance_eth ?? null}
+            isLow={data?.low_balance_eth ?? false}
+            threshold={data?.threshold_eth ?? "0.05"}
+            address={data?.address ?? null}
+            scanUrl={(addr) => `https://etherscan.io/address/${addr}`}
+          />
+        ) : (
+          <Card>
+            <CardContent className="py-8 text-center text-muted-foreground text-sm">
+              <Fuel className="w-10 h-10 mx-auto mb-3 opacity-30" />
+              <p>GAS_STATION_PRIVATE_KEY non configurato.</p>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
-      {/* ══ BSC — Coming Soon ══ */}
+      {/* ══ BSC ══ */}
       <div>
         <div className="flex items-center gap-2 mb-3">
-          <div className="w-2 h-2 rounded-full bg-yellow-400 opacity-50" />
-          <h2 className="text-sm font-semibold text-yellow-400/60 uppercase tracking-wider">BSC — BNB</h2>
+          <div className={`w-2 h-2 rounded-full ${data?.low_balance_bnb ? "bg-red-400 animate-pulse" : "bg-yellow-400"}`} />
+          <h2 className="text-sm font-semibold text-yellow-400 uppercase tracking-wider">BSC — BNB</h2>
+          {!isLoading && isConfigured && data?.balance_bnb !== null && (
+            <span className={`text-xs font-mono px-2 py-0.5 rounded border ${
+              data?.low_balance_bnb
+                ? "bg-red-500/10 text-red-400 border-red-500/20"
+                : "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
+            }`}>
+              {data?.low_balance_bnb ? "SALDO BASSO" : "Operativo"}
+            </span>
+          )}
         </div>
-        <EvmComingSoon chain="BSC" token="BNB" color="text-yellow-400" />
+        {isLoading ? (
+          <div className="h-44 rounded-xl bg-muted animate-pulse" />
+        ) : isConfigured ? (
+          <EvmGasCard
+            chain="BSC" token="BNB" color="text-yellow-400" network="bsc"
+            balance={data?.balance_bnb ?? null}
+            isLow={data?.low_balance_bnb ?? false}
+            threshold={data?.threshold_bnb ?? "0.1"}
+            address={data?.address ?? null}
+            scanUrl={(addr) => `https://bscscan.com/address/${addr}`}
+          />
+        ) : (
+          <Card>
+            <CardContent className="py-8 text-center text-muted-foreground text-sm">
+              <Fuel className="w-10 h-10 mx-auto mb-3 opacity-30" />
+              <p>GAS_STATION_PRIVATE_KEY non configurato.</p>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       {/* ── Storico Top-up Polygon ── */}

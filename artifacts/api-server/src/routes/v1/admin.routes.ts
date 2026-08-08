@@ -1844,10 +1844,13 @@ router.post("/r2/consistency", requireAdmin("super_admin"), async (_req: Request
 // ── Gas Station Monitor ────────────────────────────────────────────────────────
 import { GasStationLogModel } from "../../models/gas-station-log.model";
 import { getGasStationInfo }  from "../../payment/usda-custodial.service";
+import { createPublicClient, http, formatEther } from "viem";
+import { mainnet as _ethMainnet, bsc as _bscChain } from "viem/chains";
 
 /**
  * GET /admin/gas-station
- * Saldo MATIC + indirizzo gas station + storico top-up (ultimi 50).
+ * Saldo MATIC/ETH/BNB + indirizzo gas station + storico top-up (ultimi 50).
+ * La stessa chiave GAS_STATION_PRIVATE_KEY è usata per tutte le reti EVM.
  */
 router.get("/gas-station", requireAdmin("read_only"), async (_req, res, next) => {
   try {
@@ -1856,12 +1859,54 @@ router.get("/gas-station", requireAdmin("read_only"), async (_req, res, next) =>
       GasStationLogModel.find().sort({ created_at: -1 }).limit(50).lean(),
     ]);
 
+    // Fetch ETH and BSC native balances (stesso indirizzo GAS_STATION per tutte le reti)
+    let balance_eth: string | null = null;
+    let balance_bnb: string | null = null;
+    let low_balance_eth = false;
+    let low_balance_bnb = false;
+
+    if (info?.address) {
+      const addr = info.address as `0x${string}`;
+      const ETH_LOW_THRESHOLD = 50_000_000_000_000_000n;  // 0.05 ETH
+      const BNB_LOW_THRESHOLD = 100_000_000_000_000_000n; // 0.10 BNB
+
+      const [ethResult, bscResult] = await Promise.allSettled([
+        (async () => {
+          const ethRpc = process.env.ETHEREUM_RPC_URL ?? "https://ethereum.publicnode.com";
+          const client = createPublicClient({ chain: _ethMainnet, transport: http(ethRpc, { timeout: 8_000 }) });
+          const bal = await client.getBalance({ address: addr });
+          return { balance: formatEther(bal), low: bal < ETH_LOW_THRESHOLD };
+        })(),
+        (async () => {
+          const bscRpc = process.env.BSC_RPC_URL ?? "https://bsc-dataseed.binance.org";
+          const client = createPublicClient({ chain: _bscChain, transport: http(bscRpc, { timeout: 8_000 }) });
+          const bal = await client.getBalance({ address: addr });
+          return { balance: formatEther(bal), low: bal < BNB_LOW_THRESHOLD };
+        })(),
+      ]);
+
+      if (ethResult.status === "fulfilled") {
+        balance_eth     = ethResult.value.balance;
+        low_balance_eth = ethResult.value.low;
+      }
+      if (bscResult.status === "fulfilled") {
+        balance_bnb     = bscResult.value.balance;
+        low_balance_bnb = bscResult.value.low;
+      }
+    }
+
     res.json({
       configured:      !!info,
       address:         info?.address         ?? null,
       balance_matic:   info?.balance_matic   ?? "0",
       low_balance:     info?.low_balance     ?? false,
       threshold_matic: "10",
+      balance_eth,
+      balance_bnb,
+      low_balance_eth,
+      low_balance_bnb,
+      threshold_eth:   "0.05",
+      threshold_bnb:   "0.1",
       transactions: logs.map((l) => ({
         escrow_wallet:    l.escrow_wallet,
         amount_matic:     l.amount_matic,

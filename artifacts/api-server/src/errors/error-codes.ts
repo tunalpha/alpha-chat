@@ -76,6 +76,14 @@ export const ERROR_MESSAGES: Record<string, string> = {
   INTERNAL_ERROR: "Errore interno del server. Il team è stato notificato.",
   SERVICE_UNAVAILABLE: "Servizio temporaneamente non disponibile. Riprova tra qualche minuto.",
 
+  // Multi-Chain Payment Engine
+  FEATURE_DISABLED:           "Questa rete non è ancora disponibile. Riprova più tardi.",
+  ADAPTER_NOT_FOUND:          "Rete blockchain non supportata.",
+  BTC_PROJECT_FEE_BELOW_DUST: "Importo troppo basso per Bitcoin: la commissione (0.10%) risulterebbe inferiore al minimo tecnico di 546 satoshi. Aumenta l'importo.",
+  INVALID_AMOUNT:             "Importo non valido. Inserisci un valore maggiore di zero.",
+  WAITING_FOR_GAS:            "Operazione sospesa: saldo gas insufficiente. Il sistema riproverà automaticamente.",
+  GAS_RESERVE_DEPLETED:       "Riserva gas esaurita. Contatta il supporto.",
+
   // Chat Payment Engine
   TRANSFER_NOT_FOUND:            "Trasferimento non trovato.",
   TRANSFER_ACCESS_DENIED:        "Non sei autorizzato ad accedere a questo trasferimento.",

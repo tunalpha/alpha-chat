@@ -743,6 +743,12 @@ export interface GasStationData {
   balance_matic:   string;
   low_balance:     boolean;
   threshold_matic: string;
+  balance_eth:     string | null;
+  balance_bnb:     string | null;
+  low_balance_eth: boolean;
+  low_balance_bnb: boolean;
+  threshold_eth:   string;
+  threshold_bnb:   string;
   transactions:    GasStationTransaction[];
 }
 
