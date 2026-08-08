@@ -1,0 +1,259 @@
+Perfetto. Questo report cambia lo stato del progetto in modo significativo. I 12 finding dell’audit sono stati chiusi e non risultano regressioni USDA.
+
+🟢 Stato attuale
+
+Area	Stato
+USDA esistente	🟢 Protetto / zero regressioni
+Multi-chain architecture	🟢
+Polygon USDT	🟢 Implementato
+BTC	🟢 Implementato
+Ethereum USDT	🟢 Implementato
+BSC USDT	🟢 Implementato
+Commissione 0,10%	🟢
+EVM double-pay C-1	🟢 Risolto
+Scheduler C-2	🟢 Risolto
+Admin authorization	🟢
+BTC ambiguous broadcast	🟢
+Pending expiry	🟢
+Input validation	🟢
+BTC dust	🟢
+Scheduler singleton	🟢
+BTC fee cap/buffer	🟢
+Feature flags	🟢
+/detect rate limit	🟢
+Config exposure	🟢
+Test	512 pass / 3 pre-existing fail
+TypeCheck	solo 2 errori pre-existing
+
+Quindi non siamo più nella fase di sviluppo/hardening.
+
+Siamo nella fase:
+
+🟡 PRE-TESTNET / QA OPERATIVO
+
+E NON farei ancora il deploy in produzione.
+
+⸻
+
+La prossima cosa che voglio dall’agente
+
+Adesso non gli farei aggiungere altre funzionalità.
+
+Gli farei fare una verifica finale statica + preparazione testnet, senza modificare USDA.
+
+Gli chiederei soprattutto di verificare questi punti:
+
+1. C-1: verificare realmente il recovery EVM
+
+Non basta il test unitario.
+
+Voglio conferma del percorso:
+
+TX1 → recipient ✅
+DB → tx_hash_release salvato ✅
+TX2 → fee wallet ❌
+        ↓
+scheduler
+        ↓
+retryEVMFeeTx()
+        ↓
+solo TX2
+
+Mai TX1 una seconda volta.
+
+⸻
+
+2. BTC: verifica reale della 1-TX
+
+Voglio una transazione testnet che dimostri:
+
+INPUT
+ │
+ ├── Recipient
+ ├── Fee Wallet 0,10%
+ └── Change
+
+e che:
+
+input = recipient + projectFee + change + minerFee
+
+sia matematicamente corretto.
+
+⸻
+
+3. BTC crash/recovery
+
+Questo per me è il test più importante prima dei soldi veri.
+
+Simulare:
+
+BTC TX costruita
+       ↓
+broadcast
+       ↓
+server crash
+       ↓
+restart
+       ↓
+scheduler
+
+Il sistema deve riconoscere la TX esistente tramite TXID e non crearne un’altra.
+
+⸻
+
+4. EVM crash/recovery
+
+Stesso test per Polygon/Ethereum/BSC:
+
+TX1 riuscita
+TX2 non riuscita
+server crash
+       ↓
+restart
+       ↓
+scheduler
+       ↓
+TX1 NON viene ripetuta
+TX2 viene recuperata
+
+⸻
+
+5. H-3: attenzione al refund automatico
+
+Questa modifica è corretta come concetto, ma la voglio verificare molto bene.
+
+Il refund automatico deve essere possibile solo se è dimostrabile che nessun payout è stato effettuato.
+
+Il filtro che hai riportato:
+
+tx_hash_release:null
+tx_hash_fee:null
+
+è un buon controllo.
+
+Ma voglio anche verificare il comportamento se:
+
+refund TX
+↓
+server crash
+
+perché non dobbiamo creare un doppio refund.
+
+⸻
+
+E poi: TESTNET
+
+Dopo questa verifica, passiamo alla vera prova.
+
+Non ancora produzione.
+
+Ordine che ti consiglio
+
+1️⃣ Polygon USDT
+
+Test completo:
+
+deposit
+→ detect
+→ pending/funded
+→ release
+→ recipient
+→ fee wallet
+→ confirmation
+→ completed
+
+2️⃣ BTC
+
+deposit
+→ detect
+→ minimum deposit
+→ release
+→ 1 TX
+→ recipient
+→ fee wallet
+→ change
+→ confirmations
+
+3️⃣ Ethereum USDT
+
+Stesso ciclo.
+
+4️⃣ BSC USDT
+
+Stesso ciclo.
+
+⸻
+
+E soprattutto testeremo la tua commissione
+
+Per tutti:
+
+USDA Polygon    → 0,10%
+USDT Polygon    → 0,10%
+BTC             → 0,10%
+USDT Ethereum   → 0,10%
+USDT BSC        → 0,10%
+
+La commissione del progetto deve sempre essere separata dalla network fee.
+
+⸻
+
+Una cosa che voglio controllare prima del testnet
+
+Nel report c’è una frase interessante:
+
+M-4 risolto: i feature flag sono letti live ad ogni ciclo
+
+Questo è positivo, perché ora puoi fare una cosa molto importante:
+
+ENABLE_BTC = false
+
+e disabilitare BTC senza dover necessariamente fare un nuovo deployment.
+
+Ma voglio verificare cosa succede ai transfer già in corso quando una rete viene disabilitata.
+
+Grazie a C-2 sappiamo che almeno non viene fatto rollback distruttivo con tx_hash_release presente. Dobbiamo verificare l’intero lifecycle.
+
+⸻
+
+Quindi il mio ordine ufficiale da questo momento
+
+                USDA
+                 🟢
+          ZERO REGRESSION
+                 │
+                 ▼
+       HARDENING COMPLETATO
+                 🟢
+                 │
+                 ▼
+       QA CRASH / RECOVERY
+                 │
+                 ▼
+             TESTNET
+                 │
+      ┌──────────┼──────────┐
+      ▼          ▼          ▼
+   Polygon      BTC       ETH/BSC
+     USDT
+      │
+      ▼
+  FULL QA
+      │
+      ▼
+ SECURITY REVIEW
+      │
+      ▼
+ PRODUCTION READINESS
+      │
+      ▼
+    🟢 GO
+      │
+      ▼
+ DEPLOY PRODUCTION
+
+🚫 Per ora: niente deploy.
+
+Il prossimo checkpoint che voglio vedere è il risultato dei test crash/recovery e dei testnet, non altro codice.
+
+Quando l’agente ti consegna il prossimo report, incollamelo integralmente qui. Lo controllerò punto per punto e ti dirò io se passiamo al testnet, se serve un altro fix oppure, più avanti, se siamo finalmente a GO FOR PRODUCTION.
