@@ -1,0 +1,90 @@
+Esatto. Questo è un errore di UX/funzionalità importante.
+
+Nella schermata Invia Cripto attuale c’è solo:
+
+Importo lordo 1.00 USDT
+Fee −0.50 USDT
+Il destinatario riceve 0.99 USDT
+
+Ma deve esserci la stessa doppia modalità prevista per Richiedi Cripto:
+
+Modalità A — Io pago il totale
+
+Invia 1,00 USDT
+
+* Importo totale: 1,00 USDT
+* Fee: 0,50 USDT
+* Destinatario riceve: 0,50 USDT
+
+Modalità B — Il destinatario riceve esattamente
+
+Invia esattamente 1,00 USDT
+
+* Destinatario riceve: 1,00 USDT
+* Fee: 0,50 USDT
+* Io pago: 1,50 USDT
+
+E soprattutto la modalità B deve usare esattamente la stessa recipient_exact logic già funzionante in Richiedi, non una nuova formula.
+
+Prompt da dare all’agente
+
+STOP. Non modificare il backend né la matematica esistente.
+
+Il flusso Invia Cripto / MultiChainSendSheet è incompleto: attualmente mostra solo la modalità send_amount, mentre deve avere le stesse due modalità di Richiedi Cripto.
+
+Implementa nella schermata Invia Cripto lo stesso identico comportamento già funzionante in MultiChainRequestSheet:
+
+MODALITÀ
+
+1. Io pago il totale
+    * amountMode = send_amount
+    * l’importo inserito è il totale lordo che paga il mittente
+    * il destinatario riceve gross - projectFee
+2. Il destinatario riceve esattamente
+    * amountMode = recipient_exact
+    * l’importo inserito è l’importo NETTO che deve ricevere il destinatario
+    * il backend deve calcolare automaticamente il gross necessario
+    * il mittente paga gross
+    * il destinatario riceve esattamente il target richiesto
+
+CRITICO: non duplicare la logica di calcolo nel frontend. Usare la stessa /transfers/quote e la stessa calculatePaymentQuote già utilizzata da MultiChainRequestSheet.
+
+Il comportamento deve essere identico a Richiedi Cripto, cambiando esclusivamente il soggetto del flusso.
+
+Esempio BSC:
+
+Io pago il totale
+
+* Pago: 1,00 USDT
+* Fee: 0,50 USDT
+* Destinatario riceve: 0,50 USDT
+
+Destinatario riceve esattamente
+
+* Destinatario riceve: 1,00 USDT
+* Fee: 0,50 USDT
+* Io pago: 1,50 USDT
+
+La UI deve mostrare gli importi in formato leggibile, senza decimali tecnici inutili.
+
+NON modificare:
+
+* la matematica backend
+* projectFee
+* networkFeeCharged
+* BTC dust floor
+* lifecycle
+* detect
+* websocket
+* escrow
+* release
+
+Prima di concludere eseguire test dimostrabili per entrambe le modalità su Polygon, BSC, Ethereum e BTC e verificare l’invariante:
+
+gross = net + projectFee
+
+Per recipient_exact, verificare inoltre che il destinatario riceva esattamente il valore inserito dall’utente, senza +1 unità causata dal ceiling.
+
+Non dichiarare il lavoro concluso finché entrambe le modalità non sono realmente testate end-to-end.
+
+Questa è la modifica giusta. Non bisogna inventare un nuovo sistema: bisogna portare in Invia Cripto lo stesso identico modello A/B che avete già costruito e verificato in Richiedi Cripto.
