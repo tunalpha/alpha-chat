@@ -7,8 +7,9 @@
  * API di riferimento: https://github.com/Blockstream/esplora/blob/master/API.md
  *
  * Env vars:
- *   BTC_RPC_URL          — URL base API Bitcoin (default: Blockstream mainnet)
- *   BTC_RPC_FALLBACK_URLS — URL fallback separati da virgola
+ *   BTC_API_URL          — URL base API Bitcoin (default: https://blockstream.info/api)
+ *   BTC_RPC_URL          — URL secondario opzionale (legacy, usato solo se BTC_API_URL assente)
+ *   BTC_RPC_FALLBACK_URLS — URL fallback aggiuntivi separati da virgola
  *   BTC_NETWORK          — "mainnet" | "testnet" (default: "mainnet")
  */
 

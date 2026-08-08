@@ -35,8 +35,9 @@
  *   ETHEREUM_RPC_FALLBACK_URLS=https://...
  *   BSC_RPC_URL=https://...
  *   BSC_RPC_FALLBACK_URLS=https://...
- *   BTC_RPC_URL=https://...
- *   BTC_RPC_FALLBACK_URLS=https://...
+ *   BTC_API_URL=https://...             (primary — default: https://blockstream.info/api)
+ *   BTC_RPC_URL=https://...             (opzionale — legacy secondario, usato solo se BTC_API_URL assente)
+ *   BTC_RPC_FALLBACK_URLS=https://...   (opzionale — fallback aggiuntivi)
  *
  * Token contracts (override degli indirizzi di default):
  *   POLYGON_USDT_CONTRACT=0x...
@@ -93,7 +94,9 @@ export const RPC_CONFIGS: Record<NetworkId, RpcConfig> = {
   polygon:  parseRpcConfig("POLYGON_RPC_URL",  "POLYGON_RPC_FALLBACK_URLS",  "USDA_POLYGON_RPC"),
   ethereum: parseRpcConfig("ETHEREUM_RPC_URL", "ETHEREUM_RPC_FALLBACK_URLS"),
   bsc:      parseRpcConfig("BSC_RPC_URL",      "BSC_RPC_FALLBACK_URLS"),
-  bitcoin:  parseRpcConfig("BTC_RPC_URL",      "BTC_RPC_FALLBACK_URLS"),
+  // Bitcoin: primary = BTC_API_URL (Blockstream REST API), fallback legacy = BTC_RPC_URL (opzionale).
+  // Se entrambi assenti, BitcoinApiClient usa il default hardcoded https://blockstream.info/api.
+  bitcoin:  parseRpcConfig("BTC_API_URL", "BTC_RPC_FALLBACK_URLS", "BTC_RPC_URL"),
 };
 
 // ─── Fee wallets ──────────────────────────────────────────────────────────────
