@@ -1,0 +1,228 @@
+Certo. Io lo imposterei in modo molto rigido, perché deve capire che non deve reinventare il sistema.
+
+Prompt da dare all’agente
+
+STOP AI NUOVI REFactor. RIFERIMENTO OBBLIGATORIO: USA LA STESSA IDENTICA LOGICA GIÀ FUNZIONANTE DEL FLUSSO USDA.
+
+Voglio correggere il Multi-Chain Payment Engine prendendo come source of truth il flusso USDA già funzionante, non creando una nuova business logic.
+
+REGOLA PRINCIPALE
+
+USDA è il modello di riferimento.
+
+Prima di modificare qualsiasi cosa, individua nel codice il percorso completo già funzionante di:
+
+USDA → richiesta → calcolo importo → commissione → creazione richiesta/indirizzo → deposito → conferma → payout.
+
+Riutilizza la stessa identica struttura, funzioni, ordine delle operazioni, validazioni e gestione degli stati.
+
+L’unica differenza del Multi-Chain rispetto a USDA deve essere:
+
+la commissione AlphaChat = 0,10%
+
+e il supporto alle diverse chain/asset:
+
+* USDT Polygon
+* USDT Ethereum
+* USDT BSC
+* BTC nativo
+
+⸻
+
+NON TOCCARE “INVIA CRIPTO”
+
+Il flusso Invia Cripto che funzionava prima di questa sessione deve essere considerato FROZEN.
+
+Non modificarne:
+
+* UI
+* amount mode
+* fee calculation
+* endpoint
+* payload
+* wallet logic
+* payout logic
+
+Se le modifiche recenti hanno alterato Invia Cripto, ripristinalo prima.
+
+⸻
+
+RICHIEDI CRIPTO
+
+“Richiedi Cripto” deve comportarsi come USDA.
+
+L’utente deve poter scegliere:
+
+A — Io pago il totale
+
+Esempio:
+
+100 USDT
+
+Il sistema determina automaticamente quanto riceve il destinatario dopo la commissione.
+
+B — Il destinatario riceve esattamente
+
+Esempio:
+
+Il destinatario deve ricevere 100 USDT
+
+Il sistema calcola automaticamente il lordo necessario, includendo:
+
+* commissione AlphaChat 0,10%;
+* eventuale network fee/miner fee;
+* eventuali vincoli tecnici della chain.
+
+Il totale da pagare deve essere mostrato prima della conferma.
+
+⸻
+
+COMMISSIONE
+
+Non duplicare il fee calculation tra frontend e backend.
+
+Deve esistere una sola source of truth, come nel flusso USDA.
+
+La UI deve ricevere dal backend:
+
+importo richiesto
+importo lordo
+commissione AlphaChat
+network/miner fee
+importo netto destinatario
+totale pagatore
+
+Il frontend deve soltanto visualizzare questi valori.
+
+⸻
+
+BTC
+
+BTC è Bitcoin nativo, non un token EVM.
+
+Mantenere:
+
+* 8 decimals;
+* satoshi;
+* PSBT;
+* P2WPKH;
+* miner fee;
+* Blockstream;
+* UTXO;
+* dust protection.
+
+Per la project fee BTC mantenere l’output on-chain separato.
+
+Se la fee 0,10% è inferiore a 546 satoshi, utilizzare il fee floor di 546 satoshi.
+
+Non usare più il minimo artificiale di €307.
+
+La formula deve essere applicata correttamente sia in modalità:
+
+Io pago il totale
+
+sia:
+
+Il destinatario riceve esattamente.
+
+⸻
+
+CREA INDIRIZZO
+
+Il pulsante Crea indirizzo deve seguire la stessa identica pipeline di USDA.
+
+Non inventare un nuovo endpoint o una nuova logica se esiste già una funzione equivalente funzionante.
+
+Il fatto che senderWallet / recipientWallet non siano disponibili alla creazione della richiesta non deve causare validation error.
+
+I wallet devono essere risolti nel momento previsto dal workflow, esattamente come avviene nel modello USDA.
+
+⸻
+
+PRIMA DI SCRIVERE CODICE
+
+Fammi un confronto esplicito:
+
+USDA
+├── endpoint
+├── payload
+├── quote/calculation
+├── commission
+├── request creation
+├── address/escrow
+├── deposit
+├── confirmation
+└── payout
+MULTI-CHAIN
+├── endpoint
+├── payload
+├── quote/calculation
+├── commission
+├── request creation
+├── address/escrow
+├── deposit
+├── confirmation
+└── payout
+
+Identifica esattamente le differenze.
+
+Non iniziare il fix finché non hai identificato queste differenze.
+
+⸻
+
+TEST OBBLIGATORI
+
+Dopo l’implementazione NON dichiarare “funzionante” sulla base del solo build/typecheck.
+
+Testare:
+
+USDT Polygon
+
+* paga totale
+* riceve esattamente
+
+USDT Ethereum
+
+* paga totale
+* riceve esattamente
+
+USDT BSC
+
+* paga totale
+* riceve esattamente
+
+BTC nativo
+
+* paga totale
+* riceve esattamente
+* importi inferiori a €307
+* fee floor 546 sat
+
+Per ogni test mostra:
+
+input
+exchange rate
+gross
+project fee
+network/miner fee
+net recipient
+total payer
+resulting status
+
+E per i test blockchain:
+
+deposit TX
+payout TX
+fee TX
+explorer
+amount actually received
+
+NON fare deploy finché questi test non sono completati.
+
+Obiettivo finale:
+
+Multi-Chain deve comportarsi come USDA, con la sola variante della commissione AlphaChat 0,10% e il supporto multi-chain.
+
+Nessuna nuova architettura. Nessuna duplicazione della fee logic. Nessuna modifica al flusso Invia Cripto.
+
+Questo è il prompt che userei. La parola chiave è “USDA come reference implementation”: così l’agente non deve più inventarsi come dovrebbe funzionare il sistema, ma deve replicare un percorso che avete già verificato e aggiungere solamente la variante della commissione.

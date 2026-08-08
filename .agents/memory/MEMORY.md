@@ -59,3 +59,5 @@
 - [Sprint Multi-Chain STEP 5 — Production Blockers](sprint-multichain-step5.md) — pre-broadcast persist pattern (sign→persist hash→broadcast); SplitTxAdapter cast; logger named export; AppError.httpStatus
 - [Multi-Chain Chat UI Integration](sprint-multichain-chat-ui.md) — sheet Send/Request, bubble mc_payment con polling, isPayer logic, backend /transfers/request, recipientId in MultiChainTransferInfo
 - [MultiChain wallet required bug](multichain-wallet-required-bug.md) — sender_wallet/recipient_wallet devono essere default:null NON required:true; causa 500 per tutti i network non-Polygon
+- [BTC fee floor 546 sat](btc-fee-floor.md) — projectFee = max(0.10%, 546 sat); rimosso BTC_PROJECT_FEE_BELOW_DUST; recipient_exact: se fee < 546 → gross=net+546; zero-guard fix per recipient_exact mode
+- [BSC USDT 18 decimali](bsc-usdt-decimals.md) — BSC USDT ha 18 dec (non 6); MC_DECIMALS["bsc"]=18; test/display devono usare 10^18 non 10^6; raw API values corretti
