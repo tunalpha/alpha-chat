@@ -40,6 +40,35 @@ export async function loadIceConfig(): Promise<void> {
   }
 }
 
+// ── Mic permission pre-warm ────────────────────────────────────────────────────
+// iOS Safari PWA: dopo che tutti i track getUserMedia vengono fermati (fine
+// chiamata), la sessione audio viene chiusa. La PROSSIMA chiamata getUserMedia
+// mostrerebbe di nuovo il dialog. Soluzione: tenere traccia se il permesso è
+// già stato concesso in questa sessione. Al primo "Chiama" o "Accetta" il
+// dialog appare una sola volta; tutti i successivi getUserMedia nella stessa
+// sessione sono silenziosi.
+let _micPermissionWarmed = false;
+
+/**
+ * Assicura che il permesso microfono sia già stato concesso PRIMA di chiamare
+ * getUserMedia nella vera sequenza di setup chiamata. Deve essere invocato
+ * dentro un handler di user gesture (click, touchend).
+ *
+ * Se il permesso è già stato concesso in questa sessione è un no-op istantaneo.
+ * Alla prima invocazione chiama getUserMedia({audio:true}) e ferma subito i
+ * track: iOS registra la concessione per tutta la sessione corrente.
+ */
+export async function ensureMicPermission(): Promise<void> {
+  if (_micPermissionWarmed) return;
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: true, video: false });
+    stream.getTracks().forEach(t => t.stop());
+    _micPermissionWarmed = true;
+  } catch {
+    // Negato o non supportato — getUserMedia nella chiamata reale gestirà l'errore.
+  }
+}
+
 export async function getUserMedia(callType: CallType, facingMode: FacingMode = "user"): Promise<MediaStream> {
   const constraints: MediaStreamConstraints =
     callType === "video"

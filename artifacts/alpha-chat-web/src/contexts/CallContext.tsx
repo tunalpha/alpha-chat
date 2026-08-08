@@ -15,10 +15,11 @@ import {
   type ReactNode,
 } from "react";
 import {
-  getUserMedia, createPeerConnection, addTracksToPC,
+  getUserMedia, ensureMicPermission, createPeerConnection, addTracksToPC,
   closePeerConnection, switchCameraTrack, loadIceConfig,
   type CallType, type FacingMode,
 } from "../lib/webrtc";
+import { useAuth } from "./AuthContext";
 import {
   setRemoteStream as setRemoteAudioStream,
   setSpeakerMode,
@@ -86,6 +87,8 @@ export function useCall(): CallContextValue {
 // ── Provider ──────────────────────────────────────────────────────────────────
 
 export function CallProvider({ children }: { children: ReactNode }) {
+  const { auth } = useAuth();
+
   const [callState, setCallState]             = useState<CallState>("idle");
   const [callType, setCallType]               = useState<CallType | null>(null);
   const [remoteUserId, setRemoteUserId]       = useState<string | null>(null);
@@ -444,9 +447,15 @@ export function CallProvider({ children }: { children: ReactNode }) {
   const initiateCall = useCallback(async (toUserId: string, displayName: string, type: CallType) => {
     if (callState !== "idle") return;
     try {
-      // iOS Safari: getUserMedia DEVE essere il primo await nel gesture context.
-      // Ogni await che lo precede consuma il contesto e iOS può consegnare il
-      // microfono in stato muto permanente per tutta la chiamata.
+      // Pre-warm permesso microfono: se questa è la prima chiamata della sessione
+      // iOS mostrerà il dialog qui (gesture context attivo). Tutte le chiamate
+      // successive nella stessa sessione troveranno il flag già impostato → no-op.
+      // Deve essere il PRIMO await — il gesture context è ancora fresco.
+      await ensureMicPermission();
+
+      // iOS Safari: getUserMedia DEVE essere subito dopo il pre-warm, nel gesture context.
+      // Ogni await non-gesture che lo precede può consegnare il microfono in stato
+      // muto permanente per tutta la chiamata.
       const stream = await getUserMedia(type);
       localStreamRef.current = stream;
       setLocalStream(stream);
@@ -504,7 +513,10 @@ export function CallProvider({ children }: { children: ReactNode }) {
         to_user_id:        toUserId,
         sdp:               offer,
         call_type:         type,
-        from_display_name: displayName,
+        // Bug fix: from_display_name deve essere il nome del CHIAMANTE (noi),
+        // non del destinatario. Il ricevente mostrava il proprio nome invece
+        // del nome di chi stava chiamando.
+        from_display_name: auth?.displayName ?? auth?.username ?? "",
         call_id:           callIdRef.current,
         sent_at:           offerSentAtRef.current,   // M3 — timestamp per RTT futuro
       };
@@ -595,6 +607,11 @@ export function CallProvider({ children }: { children: ReactNode }) {
     const raceTimeout = <T,>(p: Promise<T>): Promise<T> => Promise.race([p, totalTimeout]);
 
     try {
+      // Pre-warm permesso microfono (stesso pattern di initiateCall):
+      // Se già concesso in questa sessione è un no-op istantaneo.
+      // In caso contrario il dialog appare qui — gesture context ancora attivo.
+      await raceTimeout(ensureMicPermission());
+
       // iOS audio routing fix (chirurgico):
       //
       // PROBLEMA: unlockNotifAudio() gioca tutti gli <audio src> (_sounds e _ringEls)
