@@ -133,33 +133,78 @@ export async function processStuckReleasingTransfers(): Promise<void> {
 
       // Verifica stato on-chain di TX1
       let txStatus: "confirmed" | "pending" | "failed" | "unknown";
+      let stuckAdapter: ReturnType<typeof adapterRegistry.get> | null = null;
       try {
-        const adapter = adapterRegistry.get(doc.network as any);
-        txStatus = await adapter.getTransactionStatus(doc.tx_hash_release);
+        stuckAdapter = adapterRegistry.get(doc.network as any);
+        txStatus = await stuckAdapter.getTransactionStatus(doc.tx_hash_release);
       } catch {
         txStatus = "unknown";
       }
 
       if (txStatus === "confirmed") {
-        // TX1 confermata — determina se TX2 (fee) è ancora da inviare
+        // TX1 confermata — valuta stato TX2
         const isBtcNetwork = doc.network === "bitcoin";
-        const needsFeeTx = (
-          !isBtcNetwork &&
-          !!doc.fee_wallet &&
-          !doc.tx_hash_fee &&
-          BigInt(doc.project_fee) > 0n
-        );
+        const tx2Amount    = BigInt(doc.project_fee) + BigInt((doc as any).network_fee_charged ?? "0");
+        const hasFeeSetup  = !isBtcNetwork && !!doc.fee_wallet && tx2Amount > 0n;
+        const needsFeeTx   = hasFeeSetup && !doc.tx_hash_fee;
+        const tx2Staged    = hasFeeSetup && !!doc.tx_hash_fee;
 
         if (needsFeeTx) {
-          // Stato parziale EVM (C-1 recovery): TX1 confermata, TX2 non ancora inviata
+          // C-01 recovery: TX1 confermata, TX2 non ancora iniziata
           logger.info(
             { transferId: doc.transfer_id, tx1: doc.tx_hash_release },
-            "[MCScheduler] C-1 recovery: TX1 confermata, retry TX2 (fee)",
+            "[MCScheduler] C-01 recovery: TX1 confermata, TX2 non inviata → retryEVMFeeTx",
           );
           const { retryEVMFeeTx } = await import("./multichain-payment.service");
           await retryEVMFeeTx(doc.transfer_id);
+        } else if (tx2Staged) {
+          // C-02 recovery: TX2 hash è staged in DB — verifica on-chain
+          // Questo copre il caso in cui il processo è crashato dopo il pre-broadcast persist
+          // ma prima che il broadcast completasse (o prima della receipt).
+          let tx2Status: "confirmed" | "pending" | "failed" | "unknown" = "unknown";
+          try {
+            tx2Status = await stuckAdapter!.getTransactionStatus(doc.tx_hash_fee!);
+          } catch {
+            tx2Status = "unknown";
+          }
+
+          if (tx2Status === "confirmed") {
+            // Entrambe le TX confermate → mark released
+            await MultiChainTransferModel.findOneAndUpdate(
+              { transfer_id: doc.transfer_id, status: "releasing" },
+              { $set: { status: "released", completed_at: new Date(), locked_at: null } },
+            );
+            logger.info(
+              { transferId: doc.transfer_id, tx1: doc.tx_hash_release, tx2: doc.tx_hash_fee },
+              "[MCScheduler] C-02 recovery: TX1+TX2 confermate on-chain → released",
+            );
+          } else if (tx2Status === "pending") {
+            // TX2 in mempool — rinnova lock e attendi
+            await MultiChainTransferModel.findOneAndUpdate(
+              { transfer_id: doc.transfer_id, status: "releasing" },
+              { $set: { locked_at: new Date() } },
+            );
+            logger.debug(
+              { transferId: doc.transfer_id, tx2Hash: doc.tx_hash_fee },
+              "[MCScheduler] C-02 recovery: TX2 pending — lock rinnovato",
+            );
+          } else {
+            // TX2 hash staged ma non trovata on-chain (non broadcastata o dropped).
+            // Safe: azzera tx_hash_fee → al prossimo ciclo needsFeeTx=true → retryEVMFeeTx.
+            // Se la TX originale arriva dal mempool dopo il clear, avrà stesso nonce →
+            // solo una andrà a buon fine → nessun double-fee.
+            logger.warn(
+              { transferId: doc.transfer_id, tx2Hash: doc.tx_hash_fee, tx2Status },
+              "[MCScheduler] C-02: TX2 hash staged ma non trovata on-chain — clear per retry",
+            );
+            await MultiChainTransferModel.findOneAndUpdate(
+              { transfer_id: doc.transfer_id, status: "releasing" },
+              { $set: { tx_hash_fee: null, locked_at: null } },
+            );
+            // Il prossimo ciclo troverà needsFeeTx=true e chiamerà retryEVMFeeTx
+          }
         } else {
-          // Completo (BTC, EVM senza fee wallet, o entrambe le TX già fatte)
+          // Nessuna TX2 necessaria (BTC, no fee wallet, tx2Amount=0) → released
           await MultiChainTransferModel.findOneAndUpdate(
             { transfer_id: doc.transfer_id, status: "releasing" },
             { $set: { status: "released", completed_at: new Date(), locked_at: null } },

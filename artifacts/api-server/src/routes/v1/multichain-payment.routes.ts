@@ -50,7 +50,8 @@ function buildDetectRateLimiter(): RequestHandler {
   }, 5 * 60_000).unref();
 
   return (req: Request, res: Response, next: NextFunction): void => {
-    const userId     = (req as Request & { user?: { id: string } }).user?.id ?? req.ip ?? "anon";
+    // H-06: usa req.user?.userId (non req.user?.id)
+    const userId     = req.user?.userId ?? req.ip ?? "anon";
     const transferId = req.params["id"] ?? "unknown";
     const key        = `${userId}:${transferId}`;
     const now        = Date.now();

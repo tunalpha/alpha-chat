@@ -5,12 +5,16 @@
  * Tutti i metodi sono async e usano il sistema di error handling esistente.
  *
  * Endpoint esposti:
- *   POST   /multichain/transfers           → createMultiChainTransfer
- *   GET    /multichain/transfers/:id       → getMultiChainTransfer
+ *   POST   /multichain/transfers             → createMultiChainTransfer
+ *   GET    /multichain/transfers/:id         → getMultiChainTransfer
  *   POST   /multichain/transfers/:id/detect  → detectMultiChainDeposit
  *   POST   /multichain/transfers/:id/release → releaseMultiChainTransfer
  *   POST   /multichain/transfers/:id/refund  → refundMultiChainTransfer
- *   GET    /multichain/config              → getMultiChainConfig (status + fee info)
+ *   GET    /multichain/config                → getMultiChainConfig (status + fee info)
+ *
+ * SECURITY:
+ *   H-06: userId letto da req.user?.userId (non req.user?.id — vedi authenticate.middleware.ts)
+ *   H-02: ogni handler autenticato verifica che transfer.senderId === userId (→ 404, non 403)
  */
 
 import type { Request, Response, NextFunction } from "express";
@@ -25,6 +29,31 @@ import {
 } from "../payment/multichain-payment.service";
 import { FEATURE_FLAGS, getEVMFlatNetworkFee, NATIVE_ASSET_SYMBOL } from "../blockchain/multichain-config";
 import { AppError } from "../errors/AppError";
+
+// ─── Helper: extract authenticated userId (H-06) ──────────────────────────────
+//
+// authenticate.middleware.ts imposta req.user.userId (non req.user.id).
+// Usare sempre questa helper per leggere l'ID utente autenticato.
+
+function requireUserId(req: Request): string {
+  const userId = req.user?.userId;
+  if (!userId) throw new AppError("UNAUTHORIZED", 401);
+  return userId;
+}
+
+// ─── Helper: ownership check (H-02) ──────────────────────────────────────────
+//
+// Risponde 404 (non 403) per non rivelare l'esistenza del transfer ad altri utenti.
+// Il transfer info viene restituito per evitare una seconda fetch nel caller.
+
+async function getOwnedTransfer(transferId: string, userId: string) {
+  const transfer = await getMultiChainTransfer(transferId);
+  // H-02: solo il mittente può operare sul proprio transfer
+  if (transfer.senderId !== userId) {
+    throw new AppError("TRANSFER_NOT_FOUND", 404);
+  }
+  return transfer;
+}
 
 // ─── GET /multichain/config ───────────────────────────────────────────────────
 
@@ -108,8 +137,8 @@ export async function handleCreateTransfer(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const userId = (req as Request & { user?: { id: string } }).user?.id;
-    if (!userId) throw new AppError("UNAUTHORIZED", 401);
+    // H-06: usa req.user?.userId (non req.user?.id)
+    const userId = requireUserId(req);
 
     const {
       recipientId,
@@ -128,6 +157,12 @@ export async function handleCreateTransfer(
     // Idempotency: se clientRef già usato, restituisce il transfer esistente
     const existing = await findByClientRef(clientRef);
     if (existing) {
+      // H-02: restituiamo il transfer solo se appartiene all'utente
+      if (existing.senderId !== userId) {
+        // clientRef già usato da un altro utente — trattare come conflitto silenzioso
+        // Non rivelare che il clientRef esiste (per sicurezza), risponde 409 generico
+        throw new AppError("CLIENT_REF_CONFLICT", 409);
+      }
       res.status(200).json({ transfer: existing, idempotent: true });
       return;
     }
@@ -161,7 +196,9 @@ export async function handleGetTransfer(
   next: NextFunction,
 ): Promise<void> {
   try {
-    const transfer = await getMultiChainTransfer(req.params["id"] as string);
+    // H-06: usa req.user?.userId; H-02: check ownership
+    const userId   = requireUserId(req);
+    const transfer = await getOwnedTransfer(req.params["id"] as string, userId);
     res.json({ transfer });
   } catch (err) {
     next(err);
@@ -176,6 +213,10 @@ export async function handleDetectDeposit(
   next: NextFunction,
 ): Promise<void> {
   try {
+    // H-06 + H-02: verifica ownership prima del detect RPC
+    const userId = requireUserId(req);
+    await getOwnedTransfer(req.params["id"] as string, userId);
+
     const transfer = await detectMultiChainDeposit(req.params["id"] as string);
     res.json({ transfer });
   } catch (err) {
@@ -191,6 +232,10 @@ export async function handleReleaseTransfer(
   next: NextFunction,
 ): Promise<void> {
   try {
+    // H-06 + H-02: verifica ownership prima del release
+    const userId = requireUserId(req);
+    await getOwnedTransfer(req.params["id"] as string, userId);
+
     const transfer = await releaseMultiChainTransfer(req.params["id"] as string);
 
     // Gas Reserve Protection: il transfer è stato ricevuto ma il release
@@ -218,6 +263,10 @@ export async function handleRefundTransfer(
   next: NextFunction,
 ): Promise<void> {
   try {
+    // H-06 + H-02: verifica ownership prima del refund
+    const userId = requireUserId(req);
+    await getOwnedTransfer(req.params["id"] as string, userId);
+
     const transfer = await refundMultiChainTransfer(req.params["id"] as string);
     res.json({ transfer });
   } catch (err) {

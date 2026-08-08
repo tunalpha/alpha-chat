@@ -1,0 +1,434 @@
+STEP 5 — FIX PRODUCTION BLOCKERS
+
+C-01 / C-02 / C-03 + H-01 / H-02 / H-03 / H-06 / H-07
+
+Implementare esclusivamente i fix identificati nello STEP 4 Security Audit.
+
+Questo step è finalizzato a eliminare i rischi finanziari e di autorizzazione prima del production deployment.
+
+⸻
+
+REGOLA ASSOLUTA
+
+NON modificare:
+
+* USDA;
+* usda-custodial.service.ts;
+* USDA scheduler;
+* USDA wallet management;
+* chat_transfers;
+* chat payment;
+* USDA authentication;
+* USDA payout logic.
+
+Il Multi-Chain Engine deve rimanere completamente isolato.
+
+Prima di modificare qualsiasi cosa, creare/aggiornare test che riproducano i problemi identificati.
+
+⸻
+
+C-01 — EVM TX1 DOUBLE PAYMENT
+
+Problema:
+
+TX1 broadcast
+↓
+crash prima di persist tx_hash_release
+↓
+scheduler rollback/retry
+↓
+TX1 nuovamente inviata
+
+Questo è un GO-LIVE BLOCKER.
+
+Obiettivo
+
+Eliminare il rischio di doppio invio di TX1.
+
+Preferire una soluzione realmente idempotente, non una semplice riduzione della finestra temporale.
+
+Soluzione preferita
+
+Separare:
+
+1. costruzione della transaction;
+2. firma;
+3. persistenza dello stato/hash;
+4. broadcast;
+5. receipt confirmation.
+
+Il sistema deve poter conoscere il transaction hash deterministico della TX firmata prima del broadcast.
+
+Persistire uno staging state/hash prima di effettuare il broadcast.
+
+Esempio concettuale:
+
+build TX
+↓
+sign TX
+↓
+txHash deterministico
+↓
+persist tx_hash_release + stato broadcast_pending
+↓
+broadcast
+↓
+confirmation
+↓
+released / continue TX2
+
+Se il processo crasha dopo il broadcast ma prima della receipt:
+
+tx_hash_release != null
+
+il recovery deve verificare lo stato on-chain e NON costruire una nuova TX1.
+
+NON utilizzare un semplice “try/catch” come meccanismo di idempotenza.
+
+⸻
+
+C-02 — EVM TX2 DOUBLE FEE
+
+Applicare lo stesso principio alla TX2.
+
+Attualmente:
+
+TX2 broadcast
+↓
+crash
+↓
+tx_hash_fee non persistito
+↓
+retryEVMFeeTx
+↓
+TX2 duplicata
+
+Eliminare questo rischio.
+
+La TX2 deve avere:
+
+build
+→ sign
+→ deterministic txHash
+→ persist staging hash
+→ broadcast
+→ confirmation
+→ final DB state
+
+Se tx_hash_fee esiste:
+
+NON inviare una nuova TX2.
+
+Verificare prima on-chain:
+
+* pending;
+* confirmed;
+* failed/replaced;
+* not found.
+
+Il recovery deve agire diversamente a seconda dello stato.
+
+⸻
+
+C-03 — DOUBLE REFUND
+
+Il refund deve diventare idempotente come il payout.
+
+Gestire separatamente:
+
+Caso A
+
+Errore prima del broadcast:
+
+NO tx broadcast
+→ rollback/retry consentito
+
+Caso B
+
+Broadcast effettuato:
+
+txHash disponibile
+→ persist hash
+→ crash
+→ recovery
+→ verifica on-chain
+→ NON creare un secondo refund
+
+Aggiungere, se necessario:
+
+tx_hash_refund
+
+e/o uno staging status appropriato.
+
+Applicare il principio:
+
+dopo che una TX può essere stata broadcastata, il sistema non deve mai assumere che non sia stata inviata solo perché non ha ricevuto una risposta.
+
+Questo vale sia per EVM sia per BTC dove applicabile.
+
+⸻
+
+H-01 — REFUND STUCK LOCK
+
+Spostare la balance query del refund dentro una gestione try/catch completa.
+
+Qualsiasi eccezione durante:
+
+* getBalance;
+* getTokenBalance;
+* adapter call;
+* RPC;
+
+non deve lasciare permanentemente:
+
+status = refunding
+locked_at = ...
+
+Aggiungere recovery scheduler per eventuali refunding stale.
+
+La recovery deve essere idempotente.
+
+NON fare rollback cieco se esiste già un tx_hash_refund.
+
+⸻
+
+H-02 — OWNERSHIP VALIDATION
+
+Aggiungere controllo ownership per:
+
+* GET transfer;
+* detect;
+* release;
+* refund.
+
+Un utente deve poter operare solo sui propri transfer.
+
+Utilizzare il campo effettivamente presente nell’authenticated request.
+
+Il controllo deve essere eseguito lato backend e NON affidarsi al frontend.
+
+Admin routes devono mantenere le proprie autorizzazioni Admin.
+
+Aggiungere test:
+
+User A → transfer A → allowed
+User A → transfer B → 403/404
+User B → transfer A → 403/404
+
+Non rivelare informazioni sul transfer al proprietario errato.
+
+⸻
+
+H-03 — GAS STATION KEY
+
+GAS_STATION_PRIVATE_KEY mancante NON deve essere un warning che permette al payout di proseguire.
+
+Deve essere una configurazione non valida per le reti che richiedono gas station.
+
+Comportamento:
+
+missing key
+↓
+configuration error
+↓
+NO TX payout
+↓
+transfer recuperabile
+
+NON esporre mai il nome del secret o il suo contenuto al cliente.
+
+Aggiungere startup/config validation dove appropriato.
+
+ATTENZIONE:
+
+Non bloccare USDA se la configurazione Multi-Chain manca.
+
+La validazione deve essere isolata al Multi-Chain Engine.
+
+⸻
+
+H-06 — AUTH USER ID
+
+Verificare definitivamente il contratto tra:
+
+authenticate.middleware.ts
+
+e:
+
+multichain-payment.controller.ts
+
+Determinare se il campo canonico è:
+
+req.user.id
+
+oppure:
+
+req.user.userId
+
+Non fare assunzioni.
+
+Creare una AuthenticatedRequest type-safe condivisa se appropriato.
+
+Aggiungere almeno un test HTTP reale del percorso autenticato.
+
+Verificare:
+
+* create;
+* quote;
+* get transfer;
+* detect;
+* release;
+* refund.
+
+⸻
+
+H-07 — ZERO BALANCE REFUND
+
+Nel caso:
+
+escrow balance = 0
+
+e il transfer viene marcato refunded:
+
+impostare esplicitamente:
+
+locked_at = null
+
+Verificare che non rimangano lock fantasma.
+
+Aggiungere test dedicato.
+
+⸻
+
+TEST CRITICI OBBLIGATORI
+
+Aggiungere test per simulare crash/failure nei punti esatti.
+
+C-01
+
+TX1 signed
+→ hash persisted
+→ broadcast
+→ simulated crash
+→ recovery
+
+Risultato:
+
+una sola TX1 on-chain.
+
+C-02
+
+TX2 signed
+→ hash persisted
+→ broadcast
+→ simulated crash
+→ recovery
+
+Risultato:
+
+una sola TX2 on-chain.
+
+C-03
+
+refund signed
+→ hash persisted
+→ broadcast
+→ simulated crash
+→ recovery
+
+Risultato:
+
+un solo refund.
+
+H-01
+
+Simulare RPC failure durante balance check.
+
+Risultato:
+
+nessun refunding lock permanente.
+
+H-02
+
+Testare ownership cross-user.
+
+H-03
+
+Rimuovere temporaneamente la gas station key.
+
+Risultato:
+
+nessun payout e nessuna TX parziale.
+
+H-06
+
+Test HTTP reale con JWT e verifica user identity.
+
+H-07
+
+Balance zero.
+
+Risultato:
+
+status = refunded
+locked_at = null
+
+⸻
+
+REQUISITO DI IDEMPOTENZA
+
+Non considerare il problema risolto semplicemente perché una seconda TX probabilmente fallirebbe per saldo insufficiente.
+
+L’idempotenza deve essere garantita logicamente:
+
+TX hash known
+→ verify on-chain
+→ never intentionally broadcast duplicate
+
+⸻
+
+TEST REGRESSION
+
+Dopo le modifiche eseguire:
+
+* TypeScript;
+* tutti i test;
+* nuovi test;
+* build.
+
+Confrontare con baseline.
+
+NON dichiarare automaticamente un nuovo failure come pre-existing senza verificarlo.
+
+⸻
+
+CHECKPOINT
+
+Restituire:
+
+1. file modificati;
+2. C-01 fix;
+3. C-02 fix;
+4. C-03 fix;
+5. H-01 fix;
+6. H-02 fix;
+7. H-03 fix;
+8. H-06 fix;
+9. H-07 fix;
+10. nuovi test;
+11. risultati test;
+12. TypeScript;
+13. build;
+14. eventuali rischi residui;
+15. conferma ZERO modifiche USDA.
+
+NON implementare ancora:
+
+* Ethereum production;
+* BSC production;
+* BTC production;
+* automatic gas swap;
+* nuove funzionalità;
+* deploy.
+
+Dopo questo checkpoint ci fermeremo e faremo un nuovo Security Audit STEP 6 per verificare che C-01/C-02/C-03 siano realmente chiusi e che non siano state introdotte regressioni.

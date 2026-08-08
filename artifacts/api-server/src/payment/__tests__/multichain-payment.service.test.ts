@@ -338,68 +338,116 @@ describe("detectMultiChainDeposit", () => {
   });
 });
 
+// ─── Helper: crea adapter mock con buildAndSignToken + broadcastAndWait ───────
+// Usato da release/retry/refund tests (C-01/C-02/C-03: split sign+broadcast pattern)
+function makeEvmAdapter(opts: {
+  tx1Hash?: string;
+  tx2Hash?: string;
+  refundHash?: string;
+  tx1Fee?: bigint;
+  tx2Fee?: bigint;
+  refundFee?: bigint;
+  broadcastError?: Error;  // se impostato, broadcastAndWait lancia al N-esimo call
+  broadcastErrorOnCall?: number; // 0-based index di quale broadcastAndWait call fallisce
+  signError?: Error; // se impostato, buildAndSignToken lancia al N-esimo call
+  signErrorOnCall?: number;
+} = {}) {
+  const tx1Hash    = opts.tx1Hash    ?? "0xTX1_HASH";
+  const tx2Hash    = opts.tx2Hash    ?? "0xTX2_HASH";
+  const refundHash = opts.refundHash ?? "0xREFUND_HASH";
+  const tx1Fee     = opts.tx1Fee     ?? 1000n;
+  const tx2Fee     = opts.tx2Fee     ?? 800n;
+  const refundFee  = opts.refundFee  ?? 500n;
+
+  let buildCallCount    = 0;
+  let broadcastCallCount = 0;
+
+  const mockBuildAndSign = vi.fn().mockImplementation(async (params: { to: string }) => {
+    const idx = buildCallCount++;
+    if (opts.signError && idx === (opts.signErrorOnCall ?? 0)) {
+      throw opts.signError;
+    }
+    if (idx === 0 && !params.to.startsWith("0xSENDER")) {
+      // Primo call: potrebbe essere TX1 (recipient) o refund (sender) — decide dal to
+    }
+    const hashByIdx = [tx1Hash, tx2Hash, refundHash][idx] ?? tx1Hash;
+    return { rawTx: `0xRAW_${idx}`, txHash: hashByIdx };
+  });
+
+  const mockBroadcast = vi.fn().mockImplementation(async (_rawTx: string, _txHash: string) => {
+    const idx = broadcastCallCount++;
+    if (opts.broadcastError && idx === (opts.broadcastErrorOnCall ?? 0)) {
+      throw opts.broadcastError;
+    }
+    const feeByIdx = [tx1Fee, tx2Fee, refundFee][idx] ?? tx1Fee;
+    return { networkFee: feeByIdx };
+  });
+
+  return {
+    networkId:         "polygon",
+    buildAndSignToken: mockBuildAndSign,
+    broadcastAndWait:  mockBroadcast,
+    _mockBuildAndSign: mockBuildAndSign,
+    _mockBroadcast:    mockBroadcast,
+  };
+}
+
 describe("releaseMultiChainTransfer", () => {
   it("invia netAmount al destinatario e projectFee al feeWallet", async () => {
     const pendingDoc   = { ...baseTransferDoc, status: "pending"   as const };
     const releasingDoc = { ...pendingDoc,      status: "releasing" as const };
-    const releasedDoc  = { ...pendingDoc,      status: "released"  as const, tx_hash_release: "0xREL", tx_hash_fee: "0xFEE" };
+    const releasedDoc  = { ...pendingDoc,      status: "released"  as const, tx_hash_release: "0xTX1_HASH", tx_hash_fee: "0xTX2_HASH" };
 
-    // C-1 fix: 3 findOneAndUpdate calls
+    // C-01/C-02: 4 findOneAndUpdate calls
     //   1. acquireLock (pending → releasing)
-    //   2. INTERMEDIATE PERSIST tx_hash_release dopo TX1
-    //   3. FINAL UPDATE status = released + tx_hash_fee
+    //   2. PERSIST tx_hash_release PRIMA del broadcast TX1
+    //   3. PERSIST tx_hash_fee PRIMA del broadcast TX2
+    //   4. FINAL UPDATE status = released
     vi.mocked(MultiChainTransferModel.findOneAndUpdate)
       .mockResolvedValueOnce(releasingDoc as any)  // acquireLock
-      .mockResolvedValueOnce(releasingDoc as any)  // intermediate persist tx_hash_release
+      .mockResolvedValueOnce(releasingDoc as any)  // persist tx_hash_release (C-01)
+      .mockResolvedValueOnce(releasingDoc as any)  // persist tx_hash_fee (C-02)
       .mockResolvedValueOnce(releasedDoc  as any); // final update → released
 
-    const mockSendToken = vi.fn()
-      .mockResolvedValueOnce({ txHash: "0xREL", networkFee: 1000n })   // TX1: netAmount
-      .mockResolvedValueOnce({ txHash: "0xFEE", networkFee: 1000n });  // TX2: fee
-
-    vi.mocked(adapterRegistry.get).mockReturnValue({
-      networkId: "polygon",
-      sendToken:  mockSendToken,
-    } as any);
+    const adapter = makeEvmAdapter();
+    vi.mocked(adapterRegistry.get).mockReturnValue(adapter as any);
 
     const result = await releaseMultiChainTransfer(TRANSFER_ID);
     expect(result.status).toBe("released");
 
-    // sendToken chiamato 2 volte: 1 per netAmount, 1 per projectFee
-    expect(mockSendToken).toHaveBeenCalledTimes(2);
+    // buildAndSignToken chiamato 2 volte: TX1 (netAmount) e TX2 (fee)
+    expect(adapter._mockBuildAndSign).toHaveBeenCalledTimes(2);
+    expect(adapter._mockBroadcast).toHaveBeenCalledTimes(2);
 
-    // Prima chiamata: netAmount al destinatario
-    expect(mockSendToken.mock.calls[0][0]).toMatchObject({
+    // Prima chiamata sign: netAmount al destinatario
+    expect(adapter._mockBuildAndSign.mock.calls[0][0]).toMatchObject({
       to:     "0xRECIPIENT00000000000000000000000000000",
       amount: BigInt(NET_UNITS),
     });
 
-    // Seconda chiamata: projectFee al feeWallet
-    expect(mockSendToken.mock.calls[1][0]).toMatchObject({
+    // Seconda chiamata sign: projectFee al feeWallet
+    expect(adapter._mockBuildAndSign.mock.calls[1][0]).toMatchObject({
       to:     "0xFEEWALLET00000000000000000000000000000",
       amount: BigInt(FEE_UNITS),
     });
 
-    // C-1: verifica che l'intermediate persist sia avvenuto dopo TX1
-    // (la seconda chiamata a findOneAndUpdate setta solo tx_hash_release)
+    // C-01: verifica che tx_hash_release sia persistito (call indice 1)
     const allCalls = vi.mocked(MultiChainTransferModel.findOneAndUpdate).mock.calls;
-    const intermediatePersistCall = allCalls[1]; // indice 1 = seconda call
-    expect(intermediatePersistCall[1]).toMatchObject({ $set: { tx_hash_release: "0xREL" } });
+    expect(allCalls[1][1]).toMatchObject({ $set: { tx_hash_release: "0xTX1_HASH" } });
+    // C-02: verifica che tx_hash_fee sia persistito (call indice 2)
+    expect(allCalls[2][1]).toMatchObject({ $set: { tx_hash_fee: "0xTX2_HASH" } });
   });
 
-  it("rollback a pending se TX1 fallisce — condizione include tx_hash_release:null", async () => {
-    // Quando TX1 fallisce, tx_hash_release non è ancora stato persistito.
-    // Il catch esegue rollback con { tx_hash_release: null } come condizione.
-    // Questo significa: "rollback solo se nessuna TX è stata inviata" — safe.
+  it("rollback a pending se buildAndSignToken TX1 fallisce — condizione include tx_hash_release:null", async () => {
+    // Quando buildAndSignToken fallisce PRIMA del persist, tx_hash_release non è in DB.
+    // Il catch esegue rollback con { tx_hash_release: null } come condizione — safe.
     const releasingDoc = { ...baseTransferDoc, status: "releasing" as const };
     vi.mocked(MultiChainTransferModel.findOneAndUpdate)
       .mockResolvedValueOnce(releasingDoc as any)  // acquireLock
       .mockResolvedValueOnce(releasingDoc as any); // rollback (condizione con tx_hash_release:null)
 
-    vi.mocked(adapterRegistry.get).mockReturnValue({
-      networkId: "polygon",
-      sendToken:  vi.fn().mockRejectedValue(new Error("RPC error")),
-    } as any);
+    const adapter = makeEvmAdapter({ signError: new Error("Sign error"), signErrorOnCall: 0 });
+    vi.mocked(adapterRegistry.get).mockReturnValue(adapter as any);
 
     await expect(releaseMultiChainTransfer(TRANSFER_ID)).rejects.toThrow();
 
@@ -419,135 +467,114 @@ describe("releaseMultiChainTransfer", () => {
     const releasingDoc = { ...pendingDoc,      status: "releasing" as const };
     const releasedDoc  = { ...pendingDoc,      status: "released"  as const };
 
-    // C-1: anche senza fee_wallet, il tx_hash_release viene persistito dopo TX1
+    // Senza fee_wallet: nessun PERSIST tx_hash_fee → 3 call totali
     vi.mocked(MultiChainTransferModel.findOneAndUpdate)
       .mockResolvedValueOnce(releasingDoc as any)  // acquireLock
-      .mockResolvedValueOnce(releasingDoc as any)  // intermediate persist tx_hash_release
+      .mockResolvedValueOnce(releasingDoc as any)  // persist tx_hash_release (C-01)
       .mockResolvedValueOnce(releasedDoc  as any); // final update → released
 
-    const mockSendToken = vi.fn().mockResolvedValue({ txHash: "0xREL", networkFee: 1000n });
-    vi.mocked(adapterRegistry.get).mockReturnValue({
-      networkId: "polygon",
-      sendToken:  mockSendToken,
-    } as any);
+    const adapter = makeEvmAdapter();
+    vi.mocked(adapterRegistry.get).mockReturnValue(adapter as any);
 
     await releaseMultiChainTransfer(TRANSFER_ID);
     // Solo TX1 (netAmount) — fee wallet null → TX2 saltata
-    expect(mockSendToken).toHaveBeenCalledTimes(1);
-    // 3 findOneAndUpdate: acquireLock + persist_tx1 + final
+    expect(adapter._mockBuildAndSign).toHaveBeenCalledTimes(1);
+    expect(adapter._mockBroadcast).toHaveBeenCalledTimes(1);
+    // 3 findOneAndUpdate: acquireLock + persist_tx1 + final (no persist_tx2)
     expect(MultiChainTransferModel.findOneAndUpdate).toHaveBeenCalledTimes(3);
   });
 
-  // ─── C-1: ANTI DOUBLE-PAY ──────────────────────────────────────────────────
+  // ─── C-01: ANTI DOUBLE-PAY (pre-persist before broadcast) ──────────────────
 
-  it("C-1: TX1 succeed TX2 fallisce — tx_hash_release persiste, il catch NON fa rollback", async () => {
-    // Scenario C-1:
-    //   TX1 → Bob ✓  (netAmount inviato)
-    //   PERSIST tx_hash_release ✓
-    //   TX2 → fee wallet ✗  (fallisce)
-    //   catch: rollback con { tx_hash_release: null } → condizione non soddisfatta → NO rollback
-    //
-    // Il catch CHIAMA findOneAndUpdate ma la condizione include tx_hash_release:null.
-    // Siccome tx_hash_release è già settato, MongoDB non trova niente → no-op.
-    // Lo scheduler vedrà { status:"releasing", tx_hash_release:SET, tx_hash_fee:null }
-    // e chiamerà retryEVMFeeTx() per inviare solo TX2.
+  it("C-01: broadcastAndWait TX2 fallisce — tx_hash_release E tx_hash_fee già in DB, catch NON fa rollback", async () => {
+    // Scenario C-01/C-02:
+    //   buildAndSignToken TX1 → { rawTx, txHash: "0xTX1_HASH" }
+    //   PERSIST tx_hash_release = "0xTX1_HASH" ✓
+    //   broadcastAndWait TX1 → succede ✓
+    //   buildAndSignToken TX2 → { rawTx, txHash: "0xTX2_HASH" }
+    //   PERSIST tx_hash_fee = "0xTX2_HASH" ✓
+    //   broadcastAndWait TX2 → FALLISCE ✗
+    //   catch: rollback con { tx_hash_release: null } → non corrisponde → NO rollback
 
     const releasingDoc = { ...baseTransferDoc, status: "releasing" as const };
 
-    let sendTokenCallCount = 0;
-    const mockSendToken = vi.fn().mockImplementation(() => {
-      sendTokenCallCount++;
-      if (sendTokenCallCount === 1) {
-        // TX1 succede
-        return Promise.resolve({ txHash: "0xTX1", networkFee: 1000n });
-      }
-      // TX2 fallisce
-      return Promise.reject(new Error("Gas error — TX2 fallita"));
-    });
+    // broadcastError sul secondo call (TX2 broadcast)
+    const adapter = makeEvmAdapter({ broadcastError: new Error("TX2 network error"), broadcastErrorOnCall: 1 });
 
     vi.mocked(MultiChainTransferModel.findOneAndUpdate)
-      .mockResolvedValueOnce(releasingDoc as any)   // acquireLock
-      .mockResolvedValueOnce(releasingDoc as any)   // intermediate persist tx_hash_release (dopo TX1)
-      .mockResolvedValueOnce(null as any);          // rollback catch: condizione non soddisfatta → null
+      .mockResolvedValueOnce(releasingDoc as any)  // acquireLock
+      .mockResolvedValueOnce(releasingDoc as any)  // PERSIST tx_hash_release (C-01)
+      .mockResolvedValueOnce(releasingDoc as any)  // PERSIST tx_hash_fee (C-02)
+      .mockResolvedValueOnce(null as any);         // rollback catch: condizione non soddisfatta → no-op
 
-    vi.mocked(adapterRegistry.get).mockReturnValue({
-      networkId: "polygon",
-      sendToken:  mockSendToken,
-    } as any);
+    vi.mocked(adapterRegistry.get).mockReturnValue(adapter as any);
 
-    // Il release deve lanciare (TX2 fallita)
-    await expect(releaseMultiChainTransfer(TRANSFER_ID)).rejects.toThrow("Gas error");
+    await expect(releaseMultiChainTransfer(TRANSFER_ID)).rejects.toThrow("TX2 network error");
 
-    // TX1 inviata UNA sola volta
-    expect(mockSendToken).toHaveBeenCalledTimes(2); // TX1 ok + TX2 fail
-
-    // L'intermediate persist è avvenuto (seconda call)
     const allCalls = vi.mocked(MultiChainTransferModel.findOneAndUpdate).mock.calls;
-    const intermediatePersist = allCalls[1];
-    expect(intermediatePersist[1]).toMatchObject({ $set: { tx_hash_release: "0xTX1" } });
 
-    // Il rollback ha usato la condizione sicura { tx_hash_release: null }
-    // (la condizione non ha matchato perché tx_hash_release = "0xTX1", ma la call è avvenuta)
-    const rollbackCall = allCalls[2];
-    expect(rollbackCall[0]).toMatchObject({
+    // Verify persist tx_hash_release PRIMA del broadcast
+    expect(allCalls[1][1]).toMatchObject({ $set: { tx_hash_release: "0xTX1_HASH" } });
+
+    // C-02: verify persist tx_hash_fee PRIMA del broadcast TX2
+    expect(allCalls[2][1]).toMatchObject({ $set: { tx_hash_fee: "0xTX2_HASH" } });
+
+    // Rollback ha condizione { tx_hash_release: null } — non matcherà in produzione
+    expect(allCalls[3][0]).toMatchObject({
       transfer_id:     TRANSFER_ID,
       status:          "releasing",
-      tx_hash_release: null,          // ← condizione che previene il rollback se TX1 è già in DB
+      tx_hash_release: null,
     });
-    expect(rollbackCall[1]).toMatchObject({ $set: { status: "pending" } });
   });
 });
 
 describe("retryEVMFeeTx", () => {
-  it("invia TX2 (fee) quando il doc è in releasing con tx_hash_release set e tx_hash_fee null", async () => {
-    // Stato post-C-1: TX1 inviata, tx_hash_release in DB, TX2 non ancora inviata
+  it("C-02: persiste tx_hash_fee PRIMA del broadcast e invia TX2 al fee wallet", async () => {
+    // Stato post-C-01: TX1 inviata, tx_hash_release in DB, TX2 non ancora inviata
     const partialDoc = {
       ...baseTransferDoc,
       status:          "releasing",
       tx_hash_release: "0xTX1",
       tx_hash_fee:     null,
-      network_fee:     "1000",        // dalla TX1
+      network_fee:     "1000",
     };
 
     vi.mocked(MultiChainTransferModel.findOne).mockResolvedValue(partialDoc as any);
-    vi.mocked(MultiChainTransferModel.findOneAndUpdate).mockResolvedValue(null as any); // final update
+    // 2 findOneAndUpdate: persist_tx_hash_fee (C-02) + final update
+    vi.mocked(MultiChainTransferModel.findOneAndUpdate)
+      .mockResolvedValueOnce(null as any)  // persist tx_hash_fee (C-02)
+      .mockResolvedValueOnce(null as any); // final update
 
-    const mockSendToken = vi.fn().mockResolvedValue({ txHash: "0xTX2", networkFee: 800n });
-    vi.mocked(adapterRegistry.get).mockReturnValue({
-      networkId: "polygon",
-      sendToken:  mockSendToken,
-    } as any);
+    // NOTA: buildAndSignToken è chiamato UNA volta (TX2 retry) → è il primo call (idx=0) → usa tx1Hash
+    const adapter = makeEvmAdapter({ tx1Hash: "0xTX2_RETRY", tx1Fee: 800n });
+    vi.mocked(adapterRegistry.get).mockReturnValue(adapter as any);
 
     await retryEVMFeeTx(TRANSFER_ID);
 
-    // TX2 inviata al fee wallet
-    expect(mockSendToken).toHaveBeenCalledWith(
+    // buildAndSignToken chiamato con il fee wallet
+    expect(adapter._mockBuildAndSign).toHaveBeenCalledWith(
       expect.objectContaining({
         to:     "0xFEEWALLET00000000000000000000000000000",
         amount: BigInt(FEE_UNITS),
       }),
     );
 
-    // DB aggiornato: status=released, tx_hash_fee=0xTX2
-    expect(MultiChainTransferModel.findOneAndUpdate).toHaveBeenCalledWith(
-      expect.objectContaining({ transfer_id: TRANSFER_ID, status: "releasing" }),
-      expect.objectContaining({
-        $set: expect.objectContaining({
-          status:      "released",
-          tx_hash_fee: "0xTX2",
-        }),
-      }),
-    );
+    const allCalls = vi.mocked(MultiChainTransferModel.findOneAndUpdate).mock.calls;
+    // C-02: prima call = persist tx_hash_fee PRIMA del broadcast
+    expect(allCalls[0][1]).toMatchObject({ $set: { tx_hash_fee: "0xTX2_RETRY" } });
+    // Seconda call = final update status=released
+    expect(allCalls[1][1]).toMatchObject({
+      $set: expect.objectContaining({ status: "released", tx_hash_fee: "0xTX2_RETRY" }),
+    });
   });
 
   it("è un no-op se il doc non esiste o è già completato", async () => {
     vi.mocked(MultiChainTransferModel.findOne).mockResolvedValue(null);
-
-    const mockSendToken = vi.fn();
-    vi.mocked(adapterRegistry.get).mockReturnValue({ sendToken: mockSendToken } as any);
+    const adapter = makeEvmAdapter();
+    vi.mocked(adapterRegistry.get).mockReturnValue(adapter as any);
 
     await retryEVMFeeTx(TRANSFER_ID); // non deve lanciare
-    expect(mockSendToken).not.toHaveBeenCalled();
+    expect(adapter._mockBuildAndSign).not.toHaveBeenCalled();
   });
 
   it("finalizza direttamente se fee_wallet è null (senza inviare TX2)", async () => {
@@ -562,13 +589,14 @@ describe("retryEVMFeeTx", () => {
     vi.mocked(MultiChainTransferModel.findOne).mockResolvedValue(partialDoc as any);
     vi.mocked(MultiChainTransferModel.findOneAndUpdate).mockResolvedValue(null as any);
 
-    const mockSendToken = vi.fn();
-    vi.mocked(adapterRegistry.get).mockReturnValue({ sendToken: mockSendToken } as any);
+    const adapter = makeEvmAdapter();
+    vi.mocked(adapterRegistry.get).mockReturnValue(adapter as any);
 
     await retryEVMFeeTx(TRANSFER_ID);
 
     // Nessuna TX inviata
-    expect(mockSendToken).not.toHaveBeenCalled();
+    expect(adapter._mockBuildAndSign).not.toHaveBeenCalled();
+    expect(adapter._mockBroadcast).not.toHaveBeenCalled();
     // Stato aggiornato direttamente a released
     expect(MultiChainTransferModel.findOneAndUpdate).toHaveBeenCalledWith(
       expect.objectContaining({ transfer_id: TRANSFER_ID, status: "releasing" }),
@@ -578,51 +606,138 @@ describe("retryEVMFeeTx", () => {
 });
 
 describe("refundMultiChainTransfer", () => {
-  it("rimborsa il saldo reale dell'escrow al mittente", async () => {
-    const pendingDoc  = { ...baseTransferDoc, status: "pending" as const };
-    const refundingDoc = { ...pendingDoc, status: "refunding" as const };
-    const refundedDoc  = { ...pendingDoc, status: "refunded" as const, tx_hash_refund: "0xREFUND" };
+  it("C-03: persiste tx_hash_refund PRIMA del broadcast e rimborsa il mittente", async () => {
+    const pendingDoc   = { ...baseTransferDoc, status: "pending"   as const };
+    const refundingDoc = { ...pendingDoc,      status: "refunding" as const };
+    const refundedDoc  = { ...pendingDoc,      status: "refunded"  as const, tx_hash_refund: "0xREFUND_HASH" };
 
+    // 3 findOneAndUpdate: acquireLock + persist_tx_hash_refund (C-03) + final
     vi.mocked(MultiChainTransferModel.findOneAndUpdate)
-      .mockResolvedValueOnce(refundingDoc as any)   // acquireLock
-      .mockResolvedValueOnce(refundedDoc as any);   // update refunded
+      .mockResolvedValueOnce(refundingDoc as any)  // acquireLock
+      .mockResolvedValueOnce(refundingDoc as any)  // persist tx_hash_refund (C-03)
+      .mockResolvedValueOnce(refundedDoc  as any); // update refunded
 
-    const mockSendToken = vi.fn().mockResolvedValue({ txHash: "0xREFUND", networkFee: 500n });
+    // NOTA: buildAndSignToken è chiamato UNA volta (refund TX) → primo call (idx=0) → usa tx1Hash
+    const adapter = makeEvmAdapter({ tx1Hash: "0xREFUND_HASH", tx1Fee: 500n });
     vi.mocked(adapterRegistry.get).mockReturnValue({
-      networkId:       "polygon",
+      ...adapter,
       getTokenBalance: vi.fn().mockResolvedValue(BigInt(GROSS_UNITS)),
-      sendToken:       mockSendToken,
     } as any);
 
     const result = await refundMultiChainTransfer(TRANSFER_ID);
     expect(result.status).toBe("refunded");
-    expect(mockSendToken).toHaveBeenCalledWith(
+
+    // buildAndSignToken chiamato con il sender wallet
+    expect(adapter._mockBuildAndSign).toHaveBeenCalledWith(
       expect.objectContaining({
         to:     "0xSENDER000000000000000000000000000000000",
         amount: BigInt(GROSS_UNITS),
       }),
     );
+
+    // C-03: verifica che tx_hash_refund sia persistito PRIMA del broadcast
+    const allCalls = vi.mocked(MultiChainTransferModel.findOneAndUpdate).mock.calls;
+    expect(allCalls[1][1]).toMatchObject({ $set: { tx_hash_refund: "0xREFUND_HASH" } });
   });
 
-  it("non invia TX se saldo escrow è 0", async () => {
-    const pendingDoc  = { ...baseTransferDoc, status: "pending" as const };
-    const refundingDoc = { ...pendingDoc, status: "refunding" as const };
-    const refundedDoc  = { ...pendingDoc, status: "refunded" as const };
+  it("H-07: non invia TX se saldo escrow è 0 — locked_at viene azzerato", async () => {
+    const pendingDoc   = { ...baseTransferDoc, status: "pending"   as const };
+    const refundingDoc = { ...pendingDoc,      status: "refunding" as const };
+    const refundedDoc  = { ...pendingDoc,      status: "refunded"  as const };
 
     vi.mocked(MultiChainTransferModel.findOneAndUpdate)
-      .mockResolvedValueOnce(refundingDoc as any)
-      .mockResolvedValueOnce(refundedDoc as any);
+      .mockResolvedValueOnce(refundingDoc as any)  // acquireLock
+      .mockResolvedValueOnce(refundedDoc  as any); // update refunded
 
-    const mockSendToken = vi.fn();
+    const adapter = makeEvmAdapter();
     vi.mocked(adapterRegistry.get).mockReturnValue({
-      networkId:       "polygon",
-      getTokenBalance: vi.fn().mockResolvedValue(0n), // escrow vuoto
-      sendToken:       mockSendToken,
+      ...adapter,
+      getTokenBalance: vi.fn().mockResolvedValue(0n),
     } as any);
 
     const result = await refundMultiChainTransfer(TRANSFER_ID);
     expect(result.status).toBe("refunded");
-    expect(mockSendToken).not.toHaveBeenCalled();
+    expect(adapter._mockBuildAndSign).not.toHaveBeenCalled(); // no TX inviata
+    expect(adapter._mockBroadcast).not.toHaveBeenCalled();
+
+    // H-07: locked_at: null DEVE essere nel $set del zero-balance update
+    expect(MultiChainTransferModel.findOneAndUpdate).toHaveBeenLastCalledWith(
+      expect.objectContaining({ transfer_id: expect.any(String) }),
+      expect.objectContaining({
+        $set: expect.objectContaining({ status: "refunded", locked_at: null }),
+      }),
+      expect.any(Object),
+    );
+  });
+
+  it("H-01: RPC getTokenBalance fallisce — catch usa condizione { tx_hash_refund: null } e rollback a pending", async () => {
+    // H-01: balance query DENTRO il try block.
+    // Se l'RPC lancia, il catch usa { tx_hash_refund: null } come condizione.
+    // Siccome tx_hash_refund non era mai stato persistito (la balance query è fallita prima del sign),
+    // il rollback a pending avviene correttamente.
+    const pendingDoc   = { ...baseTransferDoc, status: "pending"   as const };
+    const refundingDoc = { ...pendingDoc,      status: "refunding" as const };
+
+    vi.mocked(MultiChainTransferModel.findOneAndUpdate)
+      .mockResolvedValueOnce(refundingDoc as any)  // acquireLock
+      .mockResolvedValueOnce(refundingDoc as any); // rollback
+
+    const adapter = makeEvmAdapter();
+    vi.mocked(adapterRegistry.get).mockReturnValue({
+      ...adapter,
+      getTokenBalance: vi.fn().mockRejectedValue(new Error("RPC connection refused")),
+    } as any);
+
+    await expect(refundMultiChainTransfer(TRANSFER_ID)).rejects.toThrow("RPC connection refused");
+
+    // Il rollback usa { tx_hash_refund: null } come condizione sicura
+    expect(MultiChainTransferModel.findOneAndUpdate).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        transfer_id:    TRANSFER_ID,
+        status:         "refunding",
+        tx_hash_refund: null,  // condizione: rollback solo se hash non ancora in DB
+      }),
+      { $set: { status: "pending", locked_at: null } },
+    );
+    // buildAndSignToken NON deve essere chiamato (la balance query ha fallito prima)
+    expect(adapter._mockBuildAndSign).not.toHaveBeenCalled();
+  });
+
+  it("C-03: broadcastAndWait refund fallisce — tx_hash_refund già in DB, catch NON fa rollback", async () => {
+    // Scenario C-03 crash simulation:
+    // buildAndSignToken succede → persist tx_hash_refund → broadcastAndWait fallisce
+    // catch: { tx_hash_refund: null } condizione NON corrisponde → no rollback
+    const pendingDoc   = { ...baseTransferDoc, status: "pending"   as const };
+    const refundingDoc = { ...pendingDoc,      status: "refunding" as const };
+
+    // NOTA: buildAndSignToken è il primo call (idx=0) → usa tx1Hash per "0xSTAGED_REFUND"
+    // broadcastAndWait fallisce al primo call (refund TX)
+    const adapter = makeEvmAdapter({
+      tx1Hash:        "0xSTAGED_REFUND",
+      broadcastError: new Error("Network timeout"),
+      broadcastErrorOnCall: 0,
+    });
+
+    vi.mocked(MultiChainTransferModel.findOneAndUpdate)
+      .mockResolvedValueOnce(refundingDoc as any)  // acquireLock
+      .mockResolvedValueOnce(refundingDoc as any)  // persist tx_hash_refund (C-03)
+      .mockResolvedValueOnce(null as any);         // rollback catch: condizione non corrisponde → no-op
+
+    vi.mocked(adapterRegistry.get).mockReturnValue({
+      ...adapter,
+      getTokenBalance: vi.fn().mockResolvedValue(BigInt(GROSS_UNITS)),
+    } as any);
+
+    await expect(refundMultiChainTransfer(TRANSFER_ID)).rejects.toThrow("Network timeout");
+
+    const allCalls = vi.mocked(MultiChainTransferModel.findOneAndUpdate).mock.calls;
+    // C-03: tx_hash_refund staggiato PRIMA del broadcast (call indice 1)
+    expect(allCalls[1][1]).toMatchObject({ $set: { tx_hash_refund: "0xSTAGED_REFUND" } });
+    // Rollback: condizione include { tx_hash_refund: null } — non corrisponde in produzione
+    expect(allCalls[2][0]).toMatchObject({
+      status:         "refunding",
+      tx_hash_refund: null,
+    });
   });
 });
 
@@ -812,62 +927,52 @@ describe("EVM Network Fee Model — releaseMultiChainTransfer", () => {
   it("TX1 = netAmount (invariato), TX2 = projectFee + networkFeeCharged", async () => {
     const docWithFee   = { ...baseTransferDoc, status: "pending", network_fee_charged: NETWORK_FEE_CHARGED, network_fee_asset: "POL" };
     const releasingDoc = { ...docWithFee, status: "releasing" };
-    const releasedDoc  = { ...docWithFee, status: "released", tx_hash_release: "0xREL", tx_hash_fee: "0xFEE2" };
+    const releasedDoc  = { ...docWithFee, status: "released", tx_hash_release: "0xTX1_HASH", tx_hash_fee: "0xTX2_HASH" };
 
+    // C-01/C-02: 4 calls (acquireLock + persist_tx1 + persist_tx2 + final)
     vi.mocked(MultiChainTransferModel.findOneAndUpdate)
-      .mockResolvedValueOnce(releasingDoc as any) // acquireLock
-      .mockResolvedValueOnce(releasingDoc as any) // intermediate persist tx_hash_release
-      .mockResolvedValueOnce(releasedDoc  as any); // final update → released
+      .mockResolvedValueOnce(releasingDoc as any)
+      .mockResolvedValueOnce(releasingDoc as any)
+      .mockResolvedValueOnce(releasingDoc as any)
+      .mockResolvedValueOnce(releasedDoc  as any);
 
-    const mockSendToken = vi.fn()
-      .mockResolvedValueOnce({ txHash: "0xREL",  networkFee: 1000n })  // TX1: netAmount
-      .mockResolvedValueOnce({ txHash: "0xFEE2", networkFee: 900n });   // TX2: projectFee + fee
-
-    vi.mocked(adapterRegistry.get).mockReturnValue({
-      networkId: "polygon",
-      sendToken:  mockSendToken,
-    } as any);
+    const adapter = makeEvmAdapter({ tx1Fee: 1000n, tx2Fee: 900n });
+    vi.mocked(adapterRegistry.get).mockReturnValue(adapter as any);
 
     const result = await releaseMultiChainTransfer(TRANSFER_ID);
     expect(result.status).toBe("released");
 
-    // TX1: netAmount al destinatario — INVARIATO rispetto alla formula 0.10%
-    expect(mockSendToken.mock.calls[0][0]).toMatchObject({
+    // TX1: netAmount al destinatario
+    expect(adapter._mockBuildAndSign.mock.calls[0][0]).toMatchObject({
       to:     "0xRECIPIENT00000000000000000000000000000",
       amount: BigInt(NET_UNITS),
     });
 
     // TX2: projectFee (100_000) + networkFeeCharged (500_000) = 600_000
-    expect(mockSendToken.mock.calls[1][0]).toMatchObject({
+    expect(adapter._mockBuildAndSign.mock.calls[1][0]).toMatchObject({
       to:     "0xFEEWALLET00000000000000000000000000000",
       amount: BigInt(TX2_AMOUNT_UNITS), // 600000n
     });
   });
 
   it("backward compat: network_fee_charged=null → TX2 = projectFee solo", async () => {
-    // Documento pre-modifica: network_fee_charged=null → tx2Amount = projectFee (100000)
-    const pendingDoc   = { ...baseTransferDoc, status: "pending"   as const }; // network_fee_charged: null
+    const pendingDoc   = { ...baseTransferDoc, status: "pending"   as const };
     const releasingDoc = { ...pendingDoc,      status: "releasing" as const };
-    const releasedDoc  = { ...pendingDoc,      status: "released"  as const, tx_hash_release: "0xREL", tx_hash_fee: "0xFEE" };
+    const releasedDoc  = { ...pendingDoc,      status: "released"  as const };
 
     vi.mocked(MultiChainTransferModel.findOneAndUpdate)
       .mockResolvedValueOnce(releasingDoc as any)
       .mockResolvedValueOnce(releasingDoc as any)
+      .mockResolvedValueOnce(releasingDoc as any)
       .mockResolvedValueOnce(releasedDoc  as any);
 
-    const mockSendToken = vi.fn()
-      .mockResolvedValueOnce({ txHash: "0xREL", networkFee: 1000n })
-      .mockResolvedValueOnce({ txHash: "0xFEE", networkFee: 1000n });
-
-    vi.mocked(adapterRegistry.get).mockReturnValue({
-      networkId: "polygon",
-      sendToken:  mockSendToken,
-    } as any);
+    const adapter = makeEvmAdapter();
+    vi.mocked(adapterRegistry.get).mockReturnValue(adapter as any);
 
     await releaseMultiChainTransfer(TRANSFER_ID);
 
     // TX2 = projectFee solo (network_fee_charged=null → networkFeeCharged=0n)
-    expect(mockSendToken.mock.calls[1][0]).toMatchObject({
+    expect(adapter._mockBuildAndSign.mock.calls[1][0]).toMatchObject({
       amount: BigInt(FEE_UNITS), // 100000n solo projectFee
     });
   });
@@ -885,18 +990,17 @@ describe("EVM Network Fee Model — retryEVMFeeTx", () => {
     };
 
     vi.mocked(MultiChainTransferModel.findOne).mockResolvedValue(partialDoc as any);
-    vi.mocked(MultiChainTransferModel.findOneAndUpdate).mockResolvedValue(null as any);
+    vi.mocked(MultiChainTransferModel.findOneAndUpdate)
+      .mockResolvedValueOnce(null as any)  // persist tx_hash_fee (C-02)
+      .mockResolvedValueOnce(null as any); // final update
 
-    const mockSendToken = vi.fn().mockResolvedValue({ txHash: "0xTX2", networkFee: 800n });
-    vi.mocked(adapterRegistry.get).mockReturnValue({
-      networkId: "polygon",
-      sendToken:  mockSendToken,
-    } as any);
+    const adapter = makeEvmAdapter({ tx2Hash: "0xTX2", tx2Fee: 800n });
+    vi.mocked(adapterRegistry.get).mockReturnValue(adapter as any);
 
     await retryEVMFeeTx(TRANSFER_ID);
 
     // TX2 = projectFee (100_000) + networkFeeCharged (500_000) = 600_000
-    expect(mockSendToken).toHaveBeenCalledWith(
+    expect(adapter._mockBuildAndSign).toHaveBeenCalledWith(
       expect.objectContaining({
         to:     "0xFEEWALLET00000000000000000000000000000",
         amount: BigInt(TX2_AMOUNT_UNITS), // 600000n
@@ -905,27 +1009,26 @@ describe("EVM Network Fee Model — retryEVMFeeTx", () => {
   });
 
   it("backward compat: network_fee_charged=null → TX2 = projectFee solo", async () => {
-    // Documento pre-modifica con network_fee_charged=null
     const partialDoc = {
-      ...baseTransferDoc, // network_fee_charged: null
+      ...baseTransferDoc,
       status:          "releasing",
       tx_hash_release: "0xTX1",
       tx_hash_fee:     null,
     };
 
     vi.mocked(MultiChainTransferModel.findOne).mockResolvedValue(partialDoc as any);
-    vi.mocked(MultiChainTransferModel.findOneAndUpdate).mockResolvedValue(null as any);
+    vi.mocked(MultiChainTransferModel.findOneAndUpdate)
+      .mockResolvedValueOnce(null as any)
+      .mockResolvedValueOnce(null as any);
 
-    const mockSendToken = vi.fn().mockResolvedValue({ txHash: "0xTX2", networkFee: 800n });
-    vi.mocked(adapterRegistry.get).mockReturnValue({
-      networkId: "polygon",
-      sendToken:  mockSendToken,
-    } as any);
+    // NOTA: buildAndSignToken è il primo call (idx=0) → usa tx1Hash
+    const adapter = makeEvmAdapter({ tx1Hash: "0xTX2_BACK", tx1Fee: 800n });
+    vi.mocked(adapterRegistry.get).mockReturnValue(adapter as any);
 
     await retryEVMFeeTx(TRANSFER_ID);
 
     // TX2 = projectFee solo (networkFeeCharged=0n)
-    expect(mockSendToken).toHaveBeenCalledWith(
+    expect(adapter._mockBuildAndSign).toHaveBeenCalledWith(
       expect.objectContaining({
         amount: BigInt(FEE_UNITS), // 100000n — solo projectFee, backward compat
       }),
@@ -1138,7 +1241,7 @@ describe("Gas Reserve Protection — waiting_for_gas", () => {
    * Il mock di default di createPublicClient (1 POL) è sufficiente → no top-up.
    */
   it("TEST A: gas sufficiente → release normale (path felice invariato)", async () => {
-    // Restore the default viem mock (1 POL = sufficiente)
+    // Restore the default viem mock (1 POL = sufficiente → nessun top-up gas station)
     vi.mocked(createPublicClient).mockReturnValue({
       getGasPrice: vi.fn().mockResolvedValue(30_000_000_000n),
       getBalance:  vi.fn().mockResolvedValue(1_000_000_000_000_000_000n), // 1 POL
@@ -1150,24 +1253,26 @@ describe("Gas Reserve Protection — waiting_for_gas", () => {
     } as any);
 
     const releasingDoc = { ...pendingDoc, status: "releasing" as const, locked_at: new Date() };
-    const releasedDoc  = { ...pendingDoc, status: "released" as const, tx_hash_release: "0xTX1", tx_hash_fee: "0xTX2" };
+    const releasedDoc  = { ...pendingDoc, status: "released"  as const, tx_hash_release: "0xTX1_HASH", tx_hash_fee: "0xTX2_HASH" };
 
+    // C-01/C-02: 4 calls (acquireLock + persist_tx1 + persist_tx2 + final)
     vi.mocked(MultiChainTransferModel.findOneAndUpdate)
-      .mockResolvedValueOnce(releasingDoc as any)    // acquireLock
-      .mockResolvedValueOnce(releasingDoc as any)    // persist tx_hash_release (C-1)
-      .mockResolvedValueOnce(releasedDoc as any);    // mark released
+      .mockResolvedValueOnce(releasingDoc as any)  // acquireLock
+      .mockResolvedValueOnce(releasingDoc as any)  // persist tx_hash_release (C-01)
+      .mockResolvedValueOnce(releasingDoc as any)  // persist tx_hash_fee (C-02)
+      .mockResolvedValueOnce(releasedDoc  as any); // final update → released
 
     vi.mocked(MultiChainTransferModel.findOne)
       .mockResolvedValue(releasedDoc as any);
 
-    vi.mocked(adapterRegistry.get).mockReturnValue({
-      networkId: "polygon",
-      sendToken:  vi.fn().mockResolvedValue({ txHash: "0xTX1", networkFee: 1000n }),
-    } as any);
+    const adapter = makeEvmAdapter({ tx1Hash: "0xTX1_HASH", tx2Hash: "0xTX2_HASH" });
+    vi.mocked(adapterRegistry.get).mockReturnValue(adapter as any);
 
     const result = await releaseMultiChainTransfer(TRANSFER_ID);
     expect(result.status).toBe("released");
     expect(result.gasRetryCount).toBe(0);
+    // buildAndSignToken chiamato 2 volte (TX1 + TX2)
+    expect(adapter._mockBuildAndSign).toHaveBeenCalledTimes(2);
   });
 
   /**

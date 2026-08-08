@@ -25,10 +25,13 @@ import {
   isAddress,
   getAddress,
   encodeFunctionData,
+  keccak256,
   type Chain,
   type PublicClient,
   type WalletClient,
   type Transport,
+  type Hex,
+  type Hash,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { logger } from "../../lib/logger";
@@ -316,6 +319,116 @@ export abstract class EvmAdapter implements BlockchainAdapter {
     } catch (err) {
       if (err instanceof Error && "code" in err) throw err;
       this._handleRpcError(err, "sendToken");
+    }
+  }
+
+  // ─── Split-TX methods for idempotent payout / refund (C-01, C-02, C-03) ─────
+  //
+  // Separano la firma dal broadcast, permettendo di persistere il txHash deterministico
+  // PRIMA di inviare la TX on-chain. Il recovery usa il hash già noto senza ricostruire
+  // una nuova transazione, eliminando il rischio di doppio invio.
+
+  /**
+   * Costruisce e firma un trasferimento ERC-20 senza broadcastarlo.
+   *
+   * Restituisce rawTx (tx firmata serializzata) e txHash deterministico.
+   * Il caller deve:
+   *   1. Persistere txHash nel DB (pre-broadcast staging)
+   *   2. Chiamare broadcastAndWait(rawTx, txHash) per inviare e attendere conferma
+   *
+   * Questo pattern elimina il rischio di doppio payout (C-01/C-02/C-03):
+   * se il processo crasha DOPO il broadcast ma PRIMA della conferma, il txHash
+   * è già nel DB — il recovery verifica on-chain invece di costruire una nuova TX.
+   */
+  async buildAndSignToken(params: {
+    signerPk:     string;
+    tokenAddress: string;
+    to:           string;
+    amount:       bigint;
+  }): Promise<{ rawTx: Hex; txHash: Hash }> {
+    this._assertValidAddress(params.to);
+    this._assertValidAddress(params.tokenAddress);
+    try {
+      const walletClient = this.getWalletClient(params.signerPk);
+      const publicClient = this.getPublicClient();
+
+      const data = encodeFunctionData({
+        abi:          ERC20_ABI,
+        functionName: "transfer",
+        args:         [getAddress(params.to) as `0x${string}`, params.amount],
+      });
+
+      // prepareTransactionRequest riempie nonce, gas, gasPrice — rende la TX deterministica
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const request = await (walletClient as any).prepareTransactionRequest({
+        to:   getAddress(params.tokenAddress) as `0x${string}`,
+        data,
+      });
+
+      // Firma deterministica: stessa key + stessi parametri = stesso rawTx = stesso hash
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const rawTx = (await (walletClient as any).signTransaction(request)) as Hex;
+
+      // txHash = keccak256(rawTx firmata) — deterministic EIP-2718 / EIP-1559
+      const txHash = keccak256(rawTx);
+
+      logger.debug(
+        { network: this.networkId, to: params.to, txHash },
+        `[EvmAdapter:${this.networkId}] buildAndSignToken — TX firmata, hash pre-broadcast`,
+      );
+
+      return { rawTx, txHash };
+    } catch (err) {
+      if (err instanceof Error && "code" in err) throw err;
+      this._handleRpcError(err, "buildAndSignToken");
+    }
+  }
+
+  /**
+   * Broadcast di una TX pre-firmata e attesa conferma.
+   *
+   * Idempotente: se il txHash è già on-chain (mempool o confermato),
+   * sendRawTransaction può rispondere con "already known" o simile —
+   * l'attesa della receipt restituisce la conferma correttamente.
+   *
+   * Chiamato dopo aver persistito txHash nel DB (via buildAndSignToken).
+   */
+  async broadcastAndWait(rawTx: Hex, txHash: Hash): Promise<{ networkFee: bigint }> {
+    try {
+      const publicClient = this.getPublicClient();
+
+      // Broadcast — può fallire se la TX è già nota al nodo (idempotente per design)
+      await publicClient.sendRawTransaction({ serializedTransaction: rawTx }).catch((err: unknown) => {
+        // "already known" o "nonce already used" = TX già in mempool/minata — non è un errore
+        const msg = err instanceof Error ? err.message.toLowerCase() : "";
+        const isKnown = msg.includes("already known") || msg.includes("nonce too low") || msg.includes("replacement transaction underpriced");
+        if (!isKnown) throw err;
+        logger.debug({ txHash, network: this.networkId }, "[EvmAdapter] TX già nota al nodo — skip broadcast");
+      });
+
+      // Attendi conferma usando il hash noto (non dipende dal risultato del broadcast)
+      const receipt = await publicClient.waitForTransactionReceipt({
+        hash:            txHash,
+        confirmations:   this.confirmations,
+        timeout:         this.receiptTimeoutMs,
+        pollingInterval: 4_000,
+      });
+
+      if (receipt.status === "reverted") {
+        throw multichainError("TRANSACTION_FAILED", { txHash, network: this.networkId });
+      }
+
+      const networkFee = receipt.gasUsed * (receipt.effectiveGasPrice ?? 0n);
+
+      logger.info(
+        { txHash, network: this.networkId },
+        `[EvmAdapter:${this.networkId}] broadcastAndWait — confermato`,
+      );
+
+      return { networkFee };
+    } catch (err) {
+      if (err instanceof Error && "code" in err) throw err;
+      this._handleRpcError(err, "broadcastAndWait");
     }
   }
 

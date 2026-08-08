@@ -65,6 +65,29 @@ import { createPublicClient, createWalletClient, http, type Chain } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { polygon, polygonAmoy } from "viem/chains";
 
+// ─── SplitTxAdapter — C-01/C-02/C-03 ─────────────────────────────────────────
+
+/**
+ * SplitTxAdapter — interfaccia minima per adapter EVM che supportano
+ * il pattern build+sign / broadcast separato (C-01, C-02, C-03).
+ *
+ * Implementata da EvmAdapter. Non richiesta da BitcoinAdapter (UTXO atomico).
+ * Usata nel service per la type-narrowing locale senza importare EvmAdapter
+ * direttamente (evita dipendenze circolari).
+ */
+interface SplitTxAdapter {
+  buildAndSignToken(params: {
+    signerPk:     string;
+    tokenAddress: string;
+    to:           string;
+    amount:       bigint;
+  }): Promise<{ rawTx: `0x${string}`; txHash: `0x${string}` }>;
+  broadcastAndWait(
+    rawTx:  `0x${string}`,
+    txHash: `0x${string}`,
+  ): Promise<{ networkFee: bigint }>;
+}
+
 // ─── Fee registry (singleton) ──────────────────────────────────────────────────
 
 const feeRegistry = buildDefaultFeeRegistry();
@@ -193,6 +216,11 @@ export interface MultiChainTransferInfo {
    * Null per transfer pre-STEP 3 (backward compat — si comportano come send_amount).
    */
   amountMode:         AmountMode | null;
+  /**
+   * ID MongoDB del mittente — usato per ownership validation lato controller (H-02).
+   * Non esporre mai nei log o nelle risposte JSON pubbliche al client.
+   */
+  senderId:           string;
 }
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
@@ -220,6 +248,7 @@ function toInfo(doc: MultiChainTransferDocument): MultiChainTransferInfo {
     networkFeeAsset:   doc.network_fee_asset ?? null,
     gasRetryCount:     doc.gas_retry_count ?? 0,
     amountMode:        (doc.amount_mode as AmountMode | null) ?? null,
+    senderId:          doc.sender_id?.toString() ?? "",
   };
 }
 
@@ -340,11 +369,15 @@ async function ensureMultiChainEscrowGas(
   // Verifica configurazione prima di qualsiasi chiamata RPC
   const gsPk = process.env.GAS_STATION_PRIVATE_KEY;
   if (!gsPk) {
+    // H-03: KEY MANCANTE = gas non disponibile. Il transfer va a waiting_for_gas (recuperabile).
+    // MAI continuare senza chiave gas station su reti EVM: il payout fallirebbe silenziosamente
+    // lasciando l'escrow bloccato. L'admin configura GAS_STATION_PRIVATE_KEY e il transfer
+    // si recupera automaticamente via processWaitingForGasTransfers().
     logger.warn(
       { network, escrowAddress },
-      "[MCGasStation] GAS_STATION_PRIVATE_KEY non configurato — l'escrow potrebbe non avere gas per il release",
+      "[MCGasStation] ⚠️  GAS_STATION_PRIVATE_KEY non configurato — GasReserveDepletedError (H-03)",
     );
-    return; // Dev/test: non bloccante
+    throw new GasReserveDepletedError(network, escrowAddress, 1n, 0n);
   }
 
   const chain = MC_CHAIN_MAP[network];
@@ -485,6 +518,13 @@ export async function createMultiChainTransfer(
   // calculatePaymentQuote gestisce entrambe le modalità in modo centralizzato.
   // Nessuna logica di calcolo fee duplicata.
   const effectiveMode: AmountMode = params.amountMode ?? "send_amount";
+
+  // Rifiuta zero-amount prima di passare al motore di quote (che lancerebbe QUOTE_ERROR generico)
+  const rawGross = params.grossAmountUnits ?? "0";
+  if (BigInt(rawGross) === 0n) {
+    throw multichainError("INVALID_AMOUNT", { grossAmountUnits: rawGross });
+  }
+
   const feeConfig   = feeRegistry.resolve(params.network, params.asset);
 
   const quote = calculatePaymentQuote({
@@ -833,52 +873,73 @@ async function _releaseEvm(doc: MultiChainTransferDocument): Promise<MultiChainT
   // Non-blocking: se GAS_STATION_PRIVATE_KEY non è configurato, logga warning e continua
   await ensureMultiChainEscrowGas(doc.network, doc.escrow_wallet);
 
+  const splitAdapter = adapter as unknown as SplitTxAdapter;
+
   // TX 1: netAmount → destinatario
+  // ★ C-01 FIX: sign → PERSIST tx_hash_release → broadcast
+  // Il hash è in DB PRIMA del broadcast: se crash dopo broadcast ma prima di
+  // questa write, il catch { tx_hash_release: null } non fa rollback.
+  // Lo scheduler verifica on-chain e completa il recovery.
   logger.info(
     { transferId: doc.transfer_id, to: doc.recipient_wallet, amount: netAmount.toString() },
-    "[MCPayment] EVM: invio TX1 netAmount",
+    "[MCPayment] EVM: costruzione e firma TX1 (C-01)",
   );
-  const releaseResult = await adapter.sendToken({
+  const { rawTx: tx1Raw, txHash: tx1Hash } = await splitAdapter.buildAndSignToken({
     signerPk,
     tokenAddress: doc.asset_address,
     to:           doc.recipient_wallet,
     amount:       netAmount,
   });
-  totalNetworkFee += releaseResult.networkFee;
 
-  // ★ C-1 FIX: INTERMEDIATE PERSIST tx_hash_release DOPO TX1, PRIMA DI TX2 ★
-  // Se TX2 fallisce e il catch tenta rollback con { tx_hash_release: null },
-  // questa write fa sì che la condizione NON corrisponda → no rollback → no double-pay.
-  // Lo scheduler vedrà { status:"releasing", tx_hash_release:SET, tx_hash_fee:null }
-  // e chiamerà retryEVMFeeTx() per inviare solo TX2.
+  // PERSIST tx_hash_release PRIMA del broadcast
   await MultiChainTransferModel.findOneAndUpdate(
     { transfer_id: doc.transfer_id, status: "releasing" },
-    { $set: { tx_hash_release: releaseResult.txHash } },
+    { $set: { tx_hash_release: tx1Hash } },
   );
 
+  logger.info(
+    { transferId: doc.transfer_id, tx1Hash, to: doc.recipient_wallet },
+    "[MCPayment] EVM: TX1 hash persistito — broadcast in corso",
+  );
+  const { networkFee: fee1 } = await splitAdapter.broadcastAndWait(tx1Raw, tx1Hash);
+  totalNetworkFee += fee1;
+
   // TX 2: (projectFee + networkFeeCharged) → feeWallet
-  // Entrambi i valori sono separati in DB; in on-chain vanno insieme al feeWallet.
-  // Se fee_wallet è null → TX2 saltata (warning).
+  // ★ C-02 FIX: sign → PERSIST tx_hash_fee → broadcast
+  // Lo scheduler (processStuckReleasingTransfers) vede tx_hash_fee impostato →
+  // verifica on-chain → se confermato marca released; se non trovato → clears hash → retry.
   let txHashFee: string | null = null;
   if (doc.fee_wallet && tx2Amount > 0n) {
     logger.info(
       {
-        transferId:         doc.transfer_id,
-        to:                 doc.fee_wallet,
-        tx2Amount:          tx2Amount.toString(),
-        projectFee:         projectFee.toString(),
-        networkFeeCharged:  networkFeeCharged.toString(),
+        transferId:        doc.transfer_id,
+        to:                doc.fee_wallet,
+        tx2Amount:         tx2Amount.toString(),
+        projectFee:        projectFee.toString(),
+        networkFeeCharged: networkFeeCharged.toString(),
       },
-      "[MCPayment] EVM: invio TX2 (projectFee + networkFeeCharged) → feeWallet",
+      "[MCPayment] EVM: costruzione e firma TX2 (C-02)",
     );
-    const feeResult = await adapter.sendToken({
+    const { rawTx: tx2Raw, txHash: tx2Hash } = await splitAdapter.buildAndSignToken({
       signerPk,
       tokenAddress: doc.asset_address,
       to:           doc.fee_wallet,
       amount:       tx2Amount,
     });
-    totalNetworkFee += feeResult.networkFee;
-    txHashFee = feeResult.txHash;
+
+    // PERSIST tx_hash_fee PRIMA del broadcast
+    await MultiChainTransferModel.findOneAndUpdate(
+      { transfer_id: doc.transfer_id, status: "releasing" },
+      { $set: { tx_hash_fee: tx2Hash } },
+    );
+
+    logger.info(
+      { transferId: doc.transfer_id, tx2Hash, to: doc.fee_wallet },
+      "[MCPayment] EVM: TX2 hash persistito — broadcast in corso",
+    );
+    const { networkFee: fee2 } = await splitAdapter.broadcastAndWait(tx2Raw, tx2Hash);
+    totalNetworkFee += fee2;
+    txHashFee = tx2Hash;
   } else if (tx2Amount > 0n) {
     logger.warn(
       { transferId: doc.transfer_id, tx2Amount: tx2Amount.toString() },
@@ -886,15 +947,14 @@ async function _releaseEvm(doc: MultiChainTransferDocument): Promise<MultiChainT
     );
   }
 
-  // FINAL UPDATE: mark released
-  // tx_hash_release è già in DB dall'intermediate persist — lo riconfermiamo per coerenza.
+  // FINAL UPDATE: hashes già in DB dal pre-broadcast persist — aggiorniamo status + fees
   const completed = await MultiChainTransferModel.findOneAndUpdate(
     { transfer_id: doc.transfer_id, status: "releasing" },
     {
       $set: {
         status:          "released",
-        tx_hash_release: releaseResult.txHash, // ridondante ma safe
-        tx_hash_fee:     txHashFee,
+        tx_hash_release: tx1Hash,   // ridondante ma safe (idempotent)
+        tx_hash_fee:     txHashFee, // ridondante ma safe (idempotent)
         network_fee:     totalNetworkFee.toString(),
         completed_at:    new Date(),
         locked_at:       null,
@@ -904,7 +964,7 @@ async function _releaseEvm(doc: MultiChainTransferDocument): Promise<MultiChainT
   );
 
   logger.info(
-    { transferId: doc.transfer_id, txRelease: releaseResult.txHash, txFee: txHashFee },
+    { transferId: doc.transfer_id, tx1Hash, txFee: txHashFee },
     "[MCPayment] EVM release completato",
   );
 
@@ -1012,26 +1072,40 @@ export async function retryEVMFeeTx(transferId: string): Promise<void> {
   }
 
   try {
-    const adapter  = adapterRegistry.get(doc.network);
-    const signerPk = decryptEscrowKeyHex(doc.escrow_encrypted_pk);
+    const adapter      = adapterRegistry.get(doc.network);
+    const splitAdapter = adapter as unknown as SplitTxAdapter;
+    const signerPk     = decryptEscrowKeyHex(doc.escrow_encrypted_pk);
 
     logger.info(
       {
         transferId,
-        to:                 doc.fee_wallet,
-        tx2Amount:          tx2Amount.toString(),
-        projectFee:         projectFee.toString(),
-        networkFeeCharged:  networkFeeCharged.toString(),
+        to:                doc.fee_wallet,
+        tx2Amount:         tx2Amount.toString(),
+        projectFee:        projectFee.toString(),
+        networkFeeCharged: networkFeeCharged.toString(),
       },
-      "[MCPayment] retryEVMFeeTx: invio TX2 (projectFee + networkFeeCharged)",
+      "[MCPayment] retryEVMFeeTx: costruzione e firma TX2 (C-02)",
     );
 
-    const feeResult = await adapter.sendToken({
+    // ★ C-02 FIX: sign → PERSIST tx_hash_fee → broadcast
+    const { rawTx: tx2Raw, txHash: tx2Hash } = await splitAdapter.buildAndSignToken({
       signerPk,
       tokenAddress: doc.asset_address,
       to:           doc.fee_wallet,
       amount:       tx2Amount,
     });
+
+    // PERSIST tx_hash_fee PRIMA del broadcast
+    await MultiChainTransferModel.findOneAndUpdate(
+      { transfer_id: transferId, status: "releasing" },
+      { $set: { tx_hash_fee: tx2Hash } },
+    );
+
+    logger.info(
+      { transferId, tx2Hash, to: doc.fee_wallet },
+      "[MCPayment] retryEVMFeeTx: TX2 hash persistito — broadcast in corso",
+    );
+    const { networkFee: fee2 } = await splitAdapter.broadcastAndWait(tx2Raw, tx2Hash);
 
     const prevFee = BigInt(doc.network_fee ?? "0");
 
@@ -1040,8 +1114,8 @@ export async function retryEVMFeeTx(transferId: string): Promise<void> {
       {
         $set: {
           status:       "released",
-          tx_hash_fee:  feeResult.txHash,
-          network_fee:  (prevFee + feeResult.networkFee).toString(),
+          tx_hash_fee:  tx2Hash,  // ridondante (già persistito sopra)
+          network_fee:  (prevFee + fee2).toString(),
           completed_at: new Date(),
           locked_at:    null,
         },
@@ -1049,7 +1123,7 @@ export async function retryEVMFeeTx(transferId: string): Promise<void> {
     );
 
     logger.info(
-      { transferId, txHash: feeResult.txHash },
+      { transferId, txHash: tx2Hash },
       "[MCPayment] retryEVMFeeTx: TX2 completata → released",
     );
   } catch (err) {
@@ -1086,41 +1160,72 @@ export async function refundMultiChainTransfer(transferId: string): Promise<Mult
 async function _doRefund(doc: MultiChainTransferDocument): Promise<MultiChainTransferInfo> {
   assertFeatureEnabled(doc.network, doc.asset);
 
-  const adapter  = adapterRegistry.get(doc.network);
-  const signerPk = decryptEscrowKeyHex(doc.escrow_encrypted_pk);
-
-  // Saldo reale dell'escrow
-  const balance = isBitcoin(doc.network)
-    ? await adapter.getBalance(doc.escrow_wallet)
-    : await adapter.getTokenBalance(doc.asset_address, doc.escrow_wallet);
-
-  if (balance === 0n) {
-    const completed = await MultiChainTransferModel.findOneAndUpdate(
-      { transfer_id: doc.transfer_id },
-      { $set: { status: "refunded", completed_at: new Date() } },
-      { returnDocument: "after" },
-    );
-    return toInfo(completed!);
-  }
-
   try {
-    // BTC: rimborso nativo (sendNative); EVM: rimborso token (sendToken)
-    const result = isBitcoin(doc.network)
-      ? await adapter.sendNative({ signerPk, to: doc.sender_wallet, amount: balance })
-      : await adapter.sendToken({
-          signerPk,
-          tokenAddress: doc.asset_address,
-          to:           doc.sender_wallet,
-          amount:       balance,
-        });
+    const adapter  = adapterRegistry.get(doc.network);
+    const signerPk = decryptEscrowKeyHex(doc.escrow_encrypted_pk);
+
+    // H-01: saldo reale dell'escrow — DENTRO il try block.
+    // Se getBalance/getTokenBalance lancia un'eccezione RPC, il catch intercetta.
+    // Il catch usa { tx_hash_refund: null } come condizione → nessun rollback se il
+    // hash è già staged. processStuckRefundingTransfers() recupera al prossimo ciclo.
+    const balance = isBitcoin(doc.network)
+      ? await adapter.getBalance(doc.escrow_wallet)
+      : await adapter.getTokenBalance(doc.asset_address, doc.escrow_wallet);
+
+    // H-07: saldo zero → refunded immediato, locked_at azzerato
+    if (balance === 0n) {
+      const completed = await MultiChainTransferModel.findOneAndUpdate(
+        { transfer_id: doc.transfer_id },
+        { $set: { status: "refunded", completed_at: new Date(), locked_at: null } }, // locked_at: null (H-07)
+        { returnDocument: "after" },
+      );
+      return toInfo(completed!);
+    }
+
+    let refundTxHash: string;
+    let networkFee: bigint;
+
+    if (isBitcoin(doc.network)) {
+      // BTC: 1 TX atomica — TXID disponibile solo post-broadcast (UTXO-based, non pre-firmabile)
+      // Per BTC il rischio di double-refund è minore (UTXO già speso = TX fallisce)
+      // Rimane priorità per Sprint futuro se BTC viene abilitato in produzione.
+      const result = await adapter.sendNative({ signerPk, to: doc.sender_wallet, amount: balance });
+      refundTxHash = result.txHash;
+      networkFee   = result.networkFee;
+    } else {
+      // EVM: ★ C-03 FIX: sign → PERSIST tx_hash_refund → broadcast ★
+      // Se crash dopo broadcast ma prima di questa write → hash è in DB →
+      // catch { tx_hash_refund: null } NON fa rollback → processStuckRefundingTransfers verifica on-chain.
+      const splitAdapter = adapter as unknown as SplitTxAdapter;
+      const { rawTx, txHash } = await splitAdapter.buildAndSignToken({
+        signerPk,
+        tokenAddress: doc.asset_address,
+        to:           doc.sender_wallet,
+        amount:       balance,
+      });
+
+      // PERSIST tx_hash_refund PRIMA del broadcast
+      await MultiChainTransferModel.findOneAndUpdate(
+        { transfer_id: doc.transfer_id, status: "refunding" },
+        { $set: { tx_hash_refund: txHash } },
+      );
+
+      logger.info(
+        { transferId: doc.transfer_id, txHash, to: doc.sender_wallet },
+        "[MCPayment] EVM: refund hash persistito — broadcast in corso (C-03)",
+      );
+      const result = await splitAdapter.broadcastAndWait(rawTx, txHash);
+      refundTxHash = txHash;
+      networkFee   = result.networkFee;
+    }
 
     const completed = await MultiChainTransferModel.findOneAndUpdate(
       { transfer_id: doc.transfer_id },
       {
         $set: {
           status:         "refunded",
-          tx_hash_refund: result.txHash,
-          network_fee:    result.networkFee.toString(),
+          tx_hash_refund: refundTxHash,
+          network_fee:    networkFee.toString(),
           completed_at:   new Date(),
           locked_at:      null,
         },
@@ -1129,15 +1234,17 @@ async function _doRefund(doc: MultiChainTransferDocument): Promise<MultiChainTra
     );
 
     logger.info(
-      { transferId: doc.transfer_id, txHash: result.txHash, amount: balance.toString(), network: doc.network },
+      { transferId: doc.transfer_id, txHash: refundTxHash, amount: balance.toString(), network: doc.network },
       "[MCPayment] Refund completato",
     );
 
     return toInfo(completed!);
   } catch (err) {
-    // Rollback a pending per retry
+    // C-03: rollback SOLO se tx_hash_refund è ancora null.
+    // Se il hash è già in DB (pre-broadcast staging), NON fare rollback:
+    // processStuckRefundingTransfers() verificherà on-chain al prossimo ciclo.
     await MultiChainTransferModel.findOneAndUpdate(
-      { transfer_id: doc.transfer_id, status: "refunding" },
+      { transfer_id: doc.transfer_id, status: "refunding", tx_hash_refund: null },
       { $set: { status: "pending", locked_at: null } },
     );
     throw err;
