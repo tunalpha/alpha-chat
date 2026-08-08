@@ -1,0 +1,493 @@
+STEP 7 — FINAL PRODUCTION READINESS 360° + DEPLOY PREPARATION
+
+SCHED-03 è CLOSED e il codice ha superato STEP 6B.
+
+Ora esegui un audit finale COMPLETO dell'intero Multi-Chain Payment Engine prima del deploy.
+
+IMPORTANTE:
+NON modificare alcun codice USDA.
+NON modificare:
+- usda-custodial.service.ts
+- USDA scheduler
+- USDA wallet management
+- chat payment
+- chat_transfers
+- USDA authentication
+- projectFee 0.10%
+- recipient_exact
+- send_amount
+- networkFeeCharged
+- waiting_for_gas
+
+OBIETTIVO:
+Portare il Multi-Chain Engine a una condizione di Production Readiness verificabile a 360°.
+
+==================================================
+1. FINANCIAL / FEE INTEGRITY
+==================================================
+
+Verifica matematicamente e tramite test:
+
+projectFee = grossAmount × 0.10%
+netAmount = grossAmount - projectFee
+
+Verifica che:
+
+netAmount + projectFee = grossAmount
+
+Verifica separatamente:
+
+networkFeeCharged
+
+e:
+
+networkFeeActual
+
+NON devono mai alterare projectFee o netAmount.
+
+Verifica anche recipient_exact:
+
+il cliente specifica quanto deve ricevere il destinatario
+→ sistema calcola automaticamente gross amount
+→ project fee
+→ network fee
+→ total deposit
+
+Esempio:
+
+Destinatario deve ricevere 100 USDT netti.
+
+Il sistema deve mostrare prima della conferma:
+
+Recipient: 100 USDT
+Project fee: 0.10%
+Network fee: X USDT
+Total deposit: X USDT
+
+Il cliente deve poter scegliere entrambe le modalità:
+
+1. SEND AMOUNT
+   "Invio 100 USDT"
+
+2. RECIPIENT EXACT
+   "Il destinatario deve ricevere esattamente 100 USDT"
+
+La preview /quote e la create devono utilizzare la STESSA funzione di calcolo.
+
+==================================================
+2. TRANSACTION HISTORY / ADMIN
+==================================================
+
+Verifica che esista una sezione Admin completa per Multi-Chain.
+
+Deve consentire almeno:
+
+- cronologia transazioni
+- transfer ID
+- client reference
+- network
+- asset
+- status
+- amount
+- gross amount
+- project fee
+- network fee charged
+- actual network fee
+- recipient
+- sender
+- escrow wallet
+- fee wallet
+- TX release hash
+- TX fee hash
+- TX refund hash
+- created_at
+- updated_at
+- completed_at
+- waiting_for_gas
+- recovery/retry information
+
+Filtri:
+
+- network
+- asset
+- status
+- date range
+- transfer ID
+- client reference
+
+Pagination obbligatoria.
+
+Explorer links per:
+
+PolygonScan
+Etherscan
+BscScan
+Blockstream
+
+NON esporre private key o secret.
+
+==================================================
+3. GAS MANAGEMENT
+==================================================
+
+Verifica il comportamento quando finiscono:
+
+- POL
+- ETH
+- BNB
+
+Il cliente NON deve ricevere errori tecnici tipo:
+
+"insufficient funds"
+"insufficient gas"
+"gas station depleted"
+
+Deve ricevere un messaggio generico e rassicurante, ad esempio:
+
+"Pagamento ricevuto — elaborazione in corso. Riceverai conferma a breve."
+
+Il transfer deve entrare in:
+
+waiting_for_gas
+
+e NON:
+
+failed
+
+Il sistema deve:
+
+- preservare il deposito
+- non perdere il pagamento
+- non inviare TX parziali
+- ritentare automaticamente quando la gas reserve viene rifornita
+- generare alert amministrativo
+
+Verificare separatamente Polygon / Ethereum / BSC.
+
+==================================================
+4. GAS STATION
+==================================================
+
+Verificare che le gas station siano separate dalla fee wallet.
+
+La gas station serve esclusivamente a finanziare il gas.
+
+La project fee 0.10% deve continuare ad andare al:
+
+POLYGON_FEE_WALLET
+ETHEREUM_FEE_WALLET
+BSC_FEE_WALLET
+
+quando configurati.
+
+NON utilizzare il wallet gas station come fee wallet.
+
+Verificare inoltre che:
+
+GAS_STATION_PRIVATE_KEY
+
+sia obbligatoria per una rete abilitata.
+
+==================================================
+5. NETWORKS
+==================================================
+
+Il codice deve essere pronto per:
+
+Polygon USDT
+Ethereum USDT ERC20
+BSC USDT BEP20
+Bitcoin BTC
+
+MA:
+
+NON abilitare automaticamente reti non configurate.
+
+Feature flag iniziali:
+
+ENABLE_POLYGON_USDT=true
+ENABLE_ETHEREUM_USDT=false
+ENABLE_BSC_USDT=false
+ENABLE_BITCOIN=false
+
+Verificare che ETH/BSC/BTC possano essere attivati successivamente senza modifiche architetturali invasive.
+
+Verificare BSC decimals = 18 correttamente.
+
+==================================================
+6. SECURITY
+==================================================
+
+Verificare:
+
+- authentication
+- ownership
+- admin-only routes
+- rate limiting
+- input validation
+- clientRef idempotency
+- duplicate key handling
+- request ID
+- MongoDB atomic locks
+- stale locks
+- scheduler recovery
+- error handling
+- secret leakage nei log
+- private key leakage
+- wallet address exposure
+- API authorization
+
+Se trovi un problema CRITICAL/HIGH, NON dichiarare GO.
+
+==================================================
+7. CRASH / RECOVERY
+==================================================
+
+Verificare tutti i principali crash point:
+
+EVM:
+
+TX1 pre-send
+TX1 post-sign
+TX1 post-persist
+TX1 post-broadcast
+TX1 post-confirmation
+
+TX2:
+
+post-sign
+post-persist
+post-broadcast
+post-confirmation
+final DB update
+
+Refund:
+
+pre-broadcast
+post-broadcast
+post-confirmation
+final DB update
+
+Verificare che nessuno scenario possa causare:
+
+double payout
+double project fee
+double refund
+
+BTC deve essere analizzato separatamente e rimanere OFF se non sufficientemente sicuro.
+
+==================================================
+8. NOTIFICHE
+==================================================
+
+Verificare l'attuale sistema di notifiche.
+
+Se le notifiche email non sono ancora implementate, NON inventare che lo siano.
+
+Indicare chiaramente:
+
+EMAIL CLIENTE:
+- pagamento ricevuto
+- pagamento completato
+- refund
+- eventuale attesa
+
+EMAIL ADMIN:
+- gas depleted
+- transfer stuck
+- recovery
+- failed transaction
+- anomalie finanziarie
+
+Se non implementate, classificare come POST-DEPLOY HARDENING e specificare cosa manca.
+
+==================================================
+9. RECONCILIATION
+==================================================
+
+Verificare che per ogni transfer sia possibile ricostruire:
+
+CLIENT DEPOSIT
+↓
+GROSS AMOUNT
+↓
+PROJECT FEE 0.10%
+↓
+NET AMOUNT
+↓
+NETWORK FEE CHARGED
+↓
+ACTUAL NETWORK FEE
+↓
+RECIPIENT
+↓
+FEE WALLET
+↓
+BLOCKCHAIN TX HASH
+
+Deve essere possibile confrontare DB ↔ blockchain.
+
+==================================================
+10. OBSERVABILITY
+==================================================
+
+Verificare:
+
+- structured logs
+- transfer ID nei log
+- TX hash
+- network
+- status
+- retry count
+- gas retry count
+- error code
+- scheduler activity
+
+Mai loggare:
+
+private keys
+seed phrase
+GAS_STATION_PRIVATE_KEY
+escrow private keys
+
+==================================================
+11. TEST SUITE
+==================================================
+
+Eseguire:
+
+pnpm tsc --noEmit
+test suite completa
+pnpm build
+
+Reportare chiaramente:
+
+- test totali
+- pass
+- fail
+- quali fail sono realmente pre-existing
+- nuovi errori TypeScript
+- build
+
+NON chiamare "pre-existing" un errore senza dimostrare che esisteva già nel baseline.
+
+==================================================
+12. DEPLOY READINESS
+==================================================
+
+NON fare ancora il deploy automaticamente.
+
+Preparare una checklist finale:
+
+A. CODE
+B. DATABASE
+C. SECURITY
+D. BLOCKCHAIN
+E. GAS
+F. FEES
+G. ADMIN
+H. NOTIFICATIONS
+I. RECOVERY
+J. MONITORING
+K. ENV
+L. BUILD
+
+Per ogni voce:
+
+✅ READY
+⚠️ WARNING
+🔴 BLOCKER
+
+==================================================
+13. ENV PRODUCTION POLYGON
+==================================================
+
+Verificare la presenza/necessità di:
+
+ENABLE_POLYGON_USDT
+GAS_STATION_PRIVATE_KEY
+POLYGON_FEE_WALLET
+POLYGON_RPC_URL
+POLYGON_FLAT_NETWORK_FEE_USDT
+POLYGON_USDT_CONTRACT
+
+NON mostrare mai il valore della private key.
+
+Verificare anche che il RPC Multi-Chain non dipenda accidentalmente dal RPC USDA.
+
+==================================================
+14. DEPLOY STRATEGY
+==================================================
+
+Preparare il progetto per un DEPLOY COMPLETO del codice Multi-Chain.
+
+NON significa abilitare tutte le reti.
+
+Il deployment deve contenere l'architettura completa:
+
+Polygon
+Ethereum
+BSC
+Bitcoin
+
+ma inizialmente solo Polygon può essere ENABLED.
+
+Dopo il deploy faremo test reali progressivi:
+
+1. Polygon USDT
+2. Ethereum USDT ERC20
+3. BSC USDT BEP20
+4. Bitcoin BTC
+
+con importi piccoli e verificando ogni volta:
+
+deposit
+detect
+quote
+release
+fee
+network fee
+recipient
+admin history
+TX hash
+reconciliation
+recovery
+
+==================================================
+15. USDA ISOLATION — FINAL CHECK
+==================================================
+
+Confermare esplicitamente:
+
+USDA code untouched
+USDA scheduler untouched
+USDA wallet management untouched
+USDA auth untouched
+chat_transfers untouched
+no new dependency Multi-Chain → USDA
+
+================================================== FINAL REPORT
+==================================================
+
+Restituire esclusivamente un report strutturato:
+
+1. Production Readiness Score
+2. Critical blockers
+3. High blockers
+4. Medium risks
+5. Low risks
+6. Admin readiness
+7. Notification readiness
+8. Fee integrity
+9. Gas management
+10. Crash recovery
+11. Network readiness
+12. USDA isolation
+13. Test results
+14. Build result
+15. Required ENV
+16. FINAL GO / NO-GO
+
+NON fare deploy.
+
+Attendere il mio GO dopo questo audit finale.
