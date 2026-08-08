@@ -22,7 +22,7 @@ import {
   getMultiChainTransfer,
   findByClientRef,
 } from "../payment/multichain-payment.service";
-import { FEATURE_FLAGS } from "../blockchain/multichain-config";
+import { FEATURE_FLAGS, getEVMFlatNetworkFee, NATIVE_ASSET_SYMBOL } from "../blockchain/multichain-config";
 import { AppError } from "../errors/AppError";
 
 // ─── GET /multichain/config ───────────────────────────────────────────────────
@@ -37,11 +37,31 @@ export async function getMultiChainConfig(
     // Rimossi: fee wallet addresses, token contract addresses (non necessari al client).
     res.json({
       supportedAssets: [
-        { network: "polygon",  asset: "USDT", enabled: FEATURE_FLAGS.ENABLE_POLYGON_USDT,  decimals: 6  },
-        { network: "polygon",  asset: "USDA", enabled: FEATURE_FLAGS.ENABLE_POLYGON_USDT,  decimals: 18 },
-        { network: "ethereum", asset: "USDT", enabled: FEATURE_FLAGS.ENABLE_ETHEREUM_USDT, decimals: 6  },
-        { network: "bsc",      asset: "USDT", enabled: FEATURE_FLAGS.ENABLE_BSC_USDT,      decimals: 18 },
-        { network: "bitcoin",  asset: "BTC",  enabled: FEATURE_FLAGS.ENABLE_BITCOIN,       decimals: 8  },
+        {
+          network: "polygon",  asset: "USDT", enabled: FEATURE_FLAGS.ENABLE_POLYGON_USDT,  decimals: 6,
+          defaultNetworkFeeCharged: getEVMFlatNetworkFee("polygon").toString(),
+          networkFeeAsset: NATIVE_ASSET_SYMBOL.polygon,
+        },
+        {
+          network: "polygon",  asset: "USDA", enabled: FEATURE_FLAGS.ENABLE_POLYGON_USDT,  decimals: 18,
+          defaultNetworkFeeCharged: getEVMFlatNetworkFee("polygon").toString(),
+          networkFeeAsset: NATIVE_ASSET_SYMBOL.polygon,
+        },
+        {
+          network: "ethereum", asset: "USDT", enabled: FEATURE_FLAGS.ENABLE_ETHEREUM_USDT, decimals: 6,
+          defaultNetworkFeeCharged: getEVMFlatNetworkFee("ethereum").toString(),
+          networkFeeAsset: NATIVE_ASSET_SYMBOL.ethereum,
+        },
+        {
+          network: "bsc",      asset: "USDT", enabled: FEATURE_FLAGS.ENABLE_BSC_USDT,      decimals: 18,
+          defaultNetworkFeeCharged: getEVMFlatNetworkFee("bsc").toString(),
+          networkFeeAsset: NATIVE_ASSET_SYMBOL.bsc,
+        },
+        {
+          network: "bitcoin",  asset: "BTC",  enabled: FEATURE_FLAGS.ENABLE_BITCOIN,       decimals: 8,
+          defaultNetworkFeeCharged: "0", // incluso nel minDepositAmount
+          networkFeeAsset: NATIVE_ASSET_SYMBOL.bitcoin,
+        },
       ],
     });
   } catch (err) {

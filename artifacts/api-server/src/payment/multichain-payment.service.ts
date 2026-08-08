@@ -45,6 +45,9 @@ import {
   TOKEN_DECIMALS,
   buildDefaultFeeRegistry,
   BTC_FEE_CONFIG,
+  RPC_CONFIGS,
+  getEVMFlatNetworkFee,
+  NATIVE_ASSET_SYMBOL,
 } from "../blockchain/multichain-config";
 import { calculateFee, assertFeeInvariant } from "../blockchain/fee-config";
 import { generateEscrowWallet, decryptEscrowKeyHex } from "../blockchain/escrow-crypto";
@@ -52,6 +55,9 @@ import { multichainError }          from "../blockchain/errors";
 import { AppError }                 from "../errors/AppError";
 import { logger }                   from "../lib/logger";
 import type { BitcoinAdapter }      from "../blockchain/bitcoin/bitcoin-adapter";
+import { createPublicClient, createWalletClient, http, type Chain } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
+import { polygon } from "viem/chains";
 
 // ─── Fee registry (singleton) ──────────────────────────────────────────────────
 
@@ -101,33 +107,55 @@ export interface MultiChainTransferInfo {
   txHashRelease:    string | null;
   txHashFee:        string | null;
   /**
-   * Solo per Bitcoin: importo minimo che il mittente deve depositare.
-   * = grossAmount + estimatedMinerFee@BTC_FEE_CONFIG.ESTIMATE_RATE + buffer.
-   * Null per chain EVM (gas pagato separatamente dal gas wallet).
+   * Importo minimo che il mittente deve depositare nell'escrow.
+   *   BTC: grossAmount + estimatedMinerFee + buffer
+   *   EVM: grossAmount + networkFeeCharged (se > 0)
+   *   Null se nessuna fee aggiuntiva configurata.
    */
-  minDepositAmount: string | null;
+  minDepositAmount:   string | null;
+  /**
+   * Commissione flat addebitata al cliente per la network fee EVM.
+   * Calcolata al create time e immutabile — invariante rispetto a cambi di configurazione.
+   * Null per BTC (inclusa nel minDepositAmount tramite buffer miner fee).
+   *
+   * SEPARAZIONE: networkFeeCharged ≠ projectFee ≠ networkFeeActual
+   */
+  networkFeeCharged:  string | null;
+  /**
+   * Gas effettivamente consumato in unità native (wei POL/ETH/BNB o satoshi BTC).
+   * Popolato dopo il release. Separato da networkFeeCharged (quanto addebitato al cliente).
+   */
+  networkFeeActual:   string;
+  /**
+   * Asset nativo usato per il gas: "POL" | "ETH" | "BNB" | "BTC".
+   * Null per transfer pre-modifica.
+   */
+  networkFeeAsset:    string | null;
 }
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 
 function toInfo(doc: MultiChainTransferDocument): MultiChainTransferInfo {
   return {
-    transferId:       doc.transfer_id,
-    clientRef:        doc.client_ref,
-    escrowWallet:     doc.escrow_wallet,
-    network:          doc.network,
-    asset:            doc.asset,
-    grossAmount:      doc.gross_amount,
-    projectFee:       doc.project_fee,
-    netAmount:        doc.net_amount,
-    feeBps:           doc.fee_bps,
-    feeWallet:        doc.fee_wallet,
-    status:           doc.status,
-    expiresAt:        doc.expires_at,
-    txHashDeposit:    doc.tx_hash_deposit,
-    txHashRelease:    doc.tx_hash_release,
-    txHashFee:        doc.tx_hash_fee,
-    minDepositAmount: doc.min_deposit_amount ?? null,
+    transferId:        doc.transfer_id,
+    clientRef:         doc.client_ref,
+    escrowWallet:      doc.escrow_wallet,
+    network:           doc.network,
+    asset:             doc.asset,
+    grossAmount:       doc.gross_amount,
+    projectFee:        doc.project_fee,
+    netAmount:         doc.net_amount,
+    feeBps:            doc.fee_bps,
+    feeWallet:         doc.fee_wallet,
+    status:            doc.status,
+    expiresAt:         doc.expires_at,
+    txHashDeposit:     doc.tx_hash_deposit,
+    txHashRelease:     doc.tx_hash_release,
+    txHashFee:         doc.tx_hash_fee,
+    minDepositAmount:  doc.min_deposit_amount ?? null,
+    networkFeeCharged: doc.network_fee_charged ?? null,
+    networkFeeActual:  doc.network_fee,
+    networkFeeAsset:   doc.network_fee_asset ?? null,
   };
 }
 
@@ -188,6 +216,110 @@ async function acquireMCLock(
   return result;
 }
 
+// ─── Multi-Chain Gas Station ───────────────────────────────────────────────────
+
+/**
+ * Garantisce che il wallet escrow EVM abbia abbastanza gas nativo per TX1 + TX2.
+ *
+ * Usa GAS_STATION_PRIVATE_KEY per inviare POL/ETH/BNB all'escrow prima del release.
+ * ISOLAMENTO: funzione indipendente da usda-custodial.service.ts e da ensureEscrowGas.
+ * Per Polygon utilizza lo stesso GAS_STATION_PRIVATE_KEY env var (wallet condiviso).
+ *
+ * Se GAS_STATION_PRIVATE_KEY non è configurato → warning + continua (il release
+ * fallirà con "insufficient gas" se l'escrow non ha già il gas).
+ */
+const MC_GAS_LIMIT_PER_TX  = 80_000n;   // gas per ERC-20 transfer (con buffer su ~65k)
+const MC_GAS_TX_COUNT       = 2n;        // TX1 (recipient) + TX2 (feeWallet)
+const MC_GAS_STATION_BUFFER = 2n;        // 2× safety margin per gas price in salita
+const MC_GAS_STATION_CAP    = 500_000_000_000_000_000n; // 0.5 native coin cap
+
+/** Map chain EVM per createPublicClient (solo catene abilitate nel testnet) */
+const MC_CHAIN_MAP: Partial<Record<MCNetworkId, Chain>> = {
+  polygon: polygon,
+  // ethereum: mainnet,  // aggiungere con ETH import quando abilitato
+  // bsc: bsc,           // aggiungere con BSC import quando abilitato
+};
+
+async function ensureMultiChainEscrowGas(
+  network: MCNetworkId,
+  escrowAddress: string,
+): Promise<void> {
+  // BTC non richiede gas nativo dal gas station — il miner fee è nell'UTXO
+  if (isBitcoin(network)) return;
+
+  // Verifica configurazione prima di qualsiasi chiamata RPC
+  const gsPk = process.env.GAS_STATION_PRIVATE_KEY;
+  if (!gsPk) {
+    logger.warn(
+      { network, escrowAddress },
+      "[MCGasStation] GAS_STATION_PRIVATE_KEY non configurato — l'escrow potrebbe non avere gas per il release",
+    );
+    return;
+  }
+
+  const chain = MC_CHAIN_MAP[network];
+  if (!chain) {
+    logger.warn({ network }, "[MCGasStation] Chain non ancora supportata — skip gas top-up");
+    return;
+  }
+
+  const rpcConfig = RPC_CONFIGS[network];
+  if (!rpcConfig.primary) {
+    logger.warn({ network, escrowAddress }, "[MCGasStation] RPC primario non configurato — skip gas top-up");
+    return;
+  }
+
+  const publicClient = createPublicClient({ chain, transport: http(rpcConfig.primary) });
+
+  // Leggi gas price corrente e saldo nativo dell'escrow in parallelo
+  const [gasPrice, nativeBalance] = await Promise.all([
+    publicClient.getGasPrice(),
+    publicClient.getBalance({ address: escrowAddress as `0x${string}` }),
+  ]);
+
+  // Costo stimato: 2 ERC-20 transfer × 80k gas × gasPrice × buffer 2×
+  const estimatedCost = MC_GAS_LIMIT_PER_TX * MC_GAS_TX_COUNT * gasPrice * MC_GAS_STATION_BUFFER;
+
+  if (nativeBalance >= estimatedCost) {
+    logger.debug(
+      { network, escrowAddress, nativeBalance: nativeBalance.toString(), estimatedCost: estimatedCost.toString() },
+      "[MCGasStation] Saldo nativo sufficiente — skip top-up",
+    );
+    return;
+  }
+
+  // Top-up: porta il saldo a estimatedCost (non al doppio — estimatedCost include già il buffer 2×)
+  let topUp = estimatedCost - nativeBalance;
+  if (topUp > MC_GAS_STATION_CAP) {
+    logger.warn(
+      { network, escrowAddress, topUp: topUp.toString(), cap: MC_GAS_STATION_CAP.toString() },
+      "[MCGasStation] Top-up oltre il cap — limitato al cap di sicurezza",
+    );
+    topUp = MC_GAS_STATION_CAP;
+  }
+
+  const normalizedPk = gsPk.startsWith("0x") ? gsPk : `0x${gsPk}`;
+  const gsAccount    = privateKeyToAccount(normalizedPk as `0x${string}`);
+
+  logger.info(
+    { network, escrowAddress, topUp: topUp.toString(), estimatedCost: estimatedCost.toString(), gasPrice: gasPrice.toString(), gsAddress: gsAccount.address },
+    "[MCGasStation] Top-up nativo in corso",
+  );
+
+  const walletClient = createWalletClient({ account: gsAccount, chain, transport: http(rpcConfig.primary) });
+  const txHash = await walletClient.sendTransaction({
+    to:    escrowAddress as `0x${string}`,
+    value: topUp,
+  });
+
+  await publicClient.waitForTransactionReceipt({ hash: txHash, timeout: 30_000 });
+
+  logger.info(
+    { network, escrowAddress, txHash, topUp: topUp.toString() },
+    "[MCGasStation] Top-up nativo confermato ✓",
+  );
+}
+
 // ─── Bitcoin minimum deposit estimation ────────────────────────────────────────
 
 /**
@@ -241,13 +373,29 @@ export async function createMultiChainTransfer(
     });
   }
 
-  // Wallet escrow
+  // ── Network fee charged to client (SEPARATA da projectFee) ──────────────────
+  // EVM: flat fee configurabile via env (es. POLYGON_FLAT_NETWORK_FEE_USDT).
+  //      Letta al create time e salvata nel transfer — immutabile per quel record.
+  //      Il gas station paga materialmente il gas in POL/ETH/BNB,
+  //      ma il costo economico è recuperato tramite networkFeeCharged addebitato al cliente.
+  // BTC: 0n — il costo miner è incluso nel buffer di estimateBtcMinDeposit.
+  //
+  // INVARIANTE: projectFee = grossAmount × 0.10% — INVARIATO, non dipende da networkFeeCharged.
+  const networkFeeCharged = getEVMFlatNetworkFee(params.network); // 0n per BTC
+  const networkFeeAsset   = NATIVE_ASSET_SYMBOL[params.network];
+
+  // Wallet escrow usa-e-getta
   const escrow = generateEscrowWallet();
 
-  // Deposito minimo per BTC (include buffer miner fee)
+  // Deposito minimo:
+  //   BTC: gross + estimatedMinerFee + buffer (il cliente finanzia i miner)
+  //   EVM: gross + networkFeeCharged (se > 0 — il cliente copre il gas station)
+  //   EVM senza fee: null → detect usa grossAmount come soglia (backward compat)
   const minDepositAmount = isBitcoin(params.network)
     ? await estimateBtcMinDeposit(grossAmount)
-    : null;
+    : networkFeeCharged > 0n
+      ? (grossAmount + networkFeeCharged).toString()
+      : null;
 
   const transferId   = randomUUID();
   const expiresAt    = new Date(Date.now() + (params.expiresInHours ?? 24) * 3_600_000);
@@ -280,6 +428,10 @@ export async function createMultiChainTransfer(
     tx_hash_release:      null,
     tx_hash_fee:          null,
     tx_hash_refund:       null,
+    // Network fee charged to client — immutabile per questo transfer
+    // Separato da project_fee (0.10%) e da network_fee (gas reale in native wei)
+    network_fee_charged:  networkFeeCharged > 0n ? networkFeeCharged.toString() : null,
+    network_fee_asset:    networkFeeCharged > 0n ? networkFeeAsset : null,
     expires_at:           expiresAt,
     locked_at:            null,
     completed_at:         null,
@@ -322,9 +474,11 @@ export async function detectMultiChainDeposit(transferId: string): Promise<Multi
     ? await adapter.getBalance(doc.escrow_wallet)
     : await adapter.getTokenBalance(doc.asset_address, doc.escrow_wallet);
 
-  // BTC: usa minDepositAmount (include buffer miner fee)
-  // EVM: usa grossAmount (gas pagato separatamente)
-  const required = isBitcoin(doc.network) && doc.min_deposit_amount
+  // Usa min_deposit_amount se impostato nel DB (incluso sia per BTC che per EVM con fee flat).
+  // Null → fallback a grossAmount (backward compat per transfer pre-modifica senza fee flat).
+  //   BTC: min_deposit_amount = gross + estimatedMinerFee + buffer
+  //   EVM: min_deposit_amount = gross + network_fee_charged (se > 0)
+  const required = doc.min_deposit_amount
     ? BigInt(doc.min_deposit_amount)
     : BigInt(doc.gross_amount);
 
@@ -405,7 +559,17 @@ async function _releaseEvm(doc: MultiChainTransferDocument): Promise<MultiChainT
   const signerPk   = decryptEscrowKeyHex(doc.escrow_encrypted_pk);
   const netAmount  = BigInt(doc.net_amount);
   const projectFee = BigInt(doc.project_fee);
+
+  // TX2 amount = projectFee + networkFeeCharged (entrambe vanno al feeWallet — separati in DB)
+  // Se network_fee_charged è null (transfer pre-modifica o fee = 0), tx2Amount = projectFee
+  const networkFeeCharged = BigInt(doc.network_fee_charged ?? "0");
+  const tx2Amount = projectFee + networkFeeCharged;
+
   let totalNetworkFee = 0n;
+
+  // Gas station: garantisce che l'escrow abbia gas nativo sufficiente per TX1 + TX2
+  // Non-blocking: se GAS_STATION_PRIVATE_KEY non è configurato, logga warning e continua
+  await ensureMultiChainEscrowGas(doc.network, doc.escrow_wallet);
 
   // TX 1: netAmount → destinatario
   logger.info(
@@ -430,24 +594,32 @@ async function _releaseEvm(doc: MultiChainTransferDocument): Promise<MultiChainT
     { $set: { tx_hash_release: releaseResult.txHash } },
   );
 
-  // TX 2: projectFee → feeWallet (se configurato)
+  // TX 2: (projectFee + networkFeeCharged) → feeWallet
+  // Entrambi i valori sono separati in DB; in on-chain vanno insieme al feeWallet.
+  // Se fee_wallet è null → TX2 saltata (warning).
   let txHashFee: string | null = null;
-  if (doc.fee_wallet && projectFee > 0n) {
+  if (doc.fee_wallet && tx2Amount > 0n) {
     logger.info(
-      { transferId: doc.transfer_id, to: doc.fee_wallet, amount: projectFee.toString() },
-      "[MCPayment] EVM: invio TX2 projectFee",
+      {
+        transferId:         doc.transfer_id,
+        to:                 doc.fee_wallet,
+        tx2Amount:          tx2Amount.toString(),
+        projectFee:         projectFee.toString(),
+        networkFeeCharged:  networkFeeCharged.toString(),
+      },
+      "[MCPayment] EVM: invio TX2 (projectFee + networkFeeCharged) → feeWallet",
     );
     const feeResult = await adapter.sendToken({
       signerPk,
       tokenAddress: doc.asset_address,
       to:           doc.fee_wallet,
-      amount:       projectFee,
+      amount:       tx2Amount,
     });
     totalNetworkFee += feeResult.networkFee;
     txHashFee = feeResult.txHash;
-  } else if (projectFee > 0n) {
+  } else if (tx2Amount > 0n) {
     logger.warn(
-      { transferId: doc.transfer_id, projectFee: projectFee.toString() },
+      { transferId: doc.transfer_id, tx2Amount: tx2Amount.toString() },
       "[MCPayment] Fee wallet non configurato — TX2 saltata",
     );
   }
@@ -561,8 +733,13 @@ export async function retryEVMFeeTx(transferId: string): Promise<void> {
     return;
   }
 
-  const projectFee = BigInt(doc.project_fee);
-  if (!doc.fee_wallet || projectFee === 0n) {
+  const projectFee        = BigInt(doc.project_fee);
+  // tx2Amount = projectFee + networkFeeCharged (deve coincidere con _releaseEvm)
+  // Per transfer pre-modifica (network_fee_charged = null), tx2Amount = projectFee
+  const networkFeeCharged = BigInt(doc.network_fee_charged ?? "0");
+  const tx2Amount         = projectFee + networkFeeCharged;
+
+  if (!doc.fee_wallet || tx2Amount === 0n) {
     // Nessun fee da inviare — finalizza direttamente
     await MultiChainTransferModel.findOneAndUpdate(
       { transfer_id: transferId, status: "releasing" },
@@ -577,15 +754,21 @@ export async function retryEVMFeeTx(transferId: string): Promise<void> {
     const signerPk = decryptEscrowKeyHex(doc.escrow_encrypted_pk);
 
     logger.info(
-      { transferId, to: doc.fee_wallet, amount: projectFee.toString() },
-      "[MCPayment] retryEVMFeeTx: invio TX2 fee",
+      {
+        transferId,
+        to:                 doc.fee_wallet,
+        tx2Amount:          tx2Amount.toString(),
+        projectFee:         projectFee.toString(),
+        networkFeeCharged:  networkFeeCharged.toString(),
+      },
+      "[MCPayment] retryEVMFeeTx: invio TX2 (projectFee + networkFeeCharged)",
     );
 
     const feeResult = await adapter.sendToken({
       signerPk,
       tokenAddress: doc.asset_address,
       to:           doc.fee_wallet,
-      amount:       projectFee,
+      amount:       tx2Amount,
     });
 
     const prevFee = BigInt(doc.network_fee ?? "0");

@@ -62,8 +62,33 @@ vi.mock("../../blockchain/multichain-config", async () => {
       bitcoin:  null,
     },
     buildDefaultFeeRegistry: actual.buildDefaultFeeRegistry,
-    TOKEN_CONTRACTS: actual.TOKEN_CONTRACTS,
-    TOKEN_DECIMALS:  actual.TOKEN_DECIMALS,
+    TOKEN_CONTRACTS:         actual.TOKEN_CONTRACTS,
+    TOKEN_DECIMALS:          actual.TOKEN_DECIMALS,
+    // Test default: 500_000 = 0.50 USDT (6 decimali) per Polygon
+    // Sovrascriviamo con la funzione reale (legge env POLYGON_FLAT_NETWORK_FEE_USDT).
+    // Nei test l'env non è impostato → usa il default 500_000.
+    getEVMFlatNetworkFee:    actual.getEVMFlatNetworkFee,
+    NATIVE_ASSET_SYMBOL:     actual.NATIVE_ASSET_SYMBOL,
+  };
+});
+
+// Mock viem: previene chiamate RPC reali da ensureMultiChainEscrowGas nei unit test.
+// GAS_STATION_PRIVATE_KEY è impostato come segreto Replit → la funzione non fa short-circuit
+// sul controllo gsPk. Simuliamo un client con saldo nativo sufficiente → no top-up.
+vi.mock("viem", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("viem")>();
+  const mockPublicClient = {
+    getGasPrice:              vi.fn().mockResolvedValue(30_000_000_000n), // 30 Gwei
+    getBalance:               vi.fn().mockResolvedValue(1_000_000_000_000_000_000n), // 1 POL — sufficiente → no top-up
+    waitForTransactionReceipt: vi.fn().mockResolvedValue({ status: "success", blockHash: "0x0" }),
+  };
+  const mockWalletClient = {
+    sendTransaction: vi.fn().mockResolvedValue("0xGASSTATION_TX_HASH"),
+  };
+  return {
+    ...actual,
+    createPublicClient: vi.fn(() => mockPublicClient),
+    createWalletClient: vi.fn(() => mockWalletClient),
   };
 });
 
@@ -121,6 +146,10 @@ const baseTransferDoc = {
   tx_hash_release:      null,
   tx_hash_fee:          null,
   tx_hash_refund:       null,
+  // Nuovi campi (nullable per backward compat con test pre-modifica)
+  min_deposit_amount:   null,
+  network_fee_charged:  null,
+  network_fee_asset:    null,
   expires_at:           new Date(Date.now() + 86_400_000),
   locked_at:            null,
   completed_at:         null,
@@ -621,6 +650,314 @@ describe("findByClientRef", () => {
     vi.mocked(MultiChainTransferModel.findOne).mockResolvedValue(baseTransferDoc as any);
     const result = await findByClientRef(CLIENT_REF);
     expect(result?.clientRef).toBe(CLIENT_REF);
+  });
+});
+
+// ─── NUOVI TEST: EVM Network Fee Model ────────────────────────────────────────
+//
+// Verifica:
+//   1. projectFee invariante (0.10%) indipendente da networkFeeCharged
+//   2. networkFeeCharged salvata in DB separatamente da projectFee
+//   3. minDepositAmount = grossAmount + networkFeeCharged per EVM
+//   4. detectMultiChainDeposit usa min_deposit_amount quando impostato
+//   5. TX2 = projectFee + networkFeeCharged nel release
+//   6. retryEVMFeeTx TX2 = projectFee + networkFeeCharged
+//   7. Backward compat: doc con network_fee_charged=null → tx2Amount = projectFee
+//   8. toInfo espone networkFeeCharged, networkFeeActual, networkFeeAsset
+
+const NETWORK_FEE_CHARGED  = "500000"; // 0.50 USDT (default Polygon)
+const TX2_AMOUNT_UNITS     = (BigInt(FEE_UNITS) + BigInt(NETWORK_FEE_CHARGED)).toString(); // "600000"
+const MIN_DEPOSIT_UNITS    = (BigInt(GROSS_UNITS) + BigInt(NETWORK_FEE_CHARGED)).toString(); // "100500000"
+
+describe("EVM Network Fee Model — createMultiChainTransfer", () => {
+  it("networkFeeCharged salvata in DB separatamente da projectFee", async () => {
+    // Cattura gli argomenti passati a MultiChainTransferModel.create
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let capturedArgs: any = null;
+    vi.mocked(MultiChainTransferModel.create).mockImplementation(async (args) => {
+      capturedArgs = args;
+      return baseTransferDoc as any;
+    });
+
+    await createMultiChainTransfer({
+      senderId: SENDER_ID, recipientId: RECIPIENT_ID, conversationId: CONVERSATION_ID,
+      senderWallet: "0xSENDER", recipientWallet: "0xRECIPIENT",
+      network: "polygon", asset: "USDT",
+      grossAmountUnits: GROSS_UNITS,
+      clientRef: "ref-fee-separation",
+    });
+
+    // network_fee_charged salvata nel DB (default Polygon env: 500_000)
+    expect(capturedArgs?.network_fee_charged).toBe(NETWORK_FEE_CHARGED);
+    expect(capturedArgs?.network_fee_asset).toBe("POL");
+
+    // SEPARAZIONE OBBLIGATORIA:
+    //   project_fee     = gross × 0.10% = 100_000        — INVARIATO
+    //   net_amount      = gross − projectFee = 99_900_000 — INVARIATO
+    //   network_fee_charged = 500_000                    — ADDITIVO, non sottrae da projectFee/netAmount
+    expect(capturedArgs?.project_fee).toBe(FEE_UNITS);   // 100000
+    expect(capturedArgs?.net_amount).toBe(NET_UNITS);     // 99900000
+
+    // Invariante contabile: gross = net + projectFee (networkFeeCharged NON inclusa)
+    const gross = BigInt(capturedArgs?.gross_amount as string);
+    const fee   = BigInt(capturedArgs?.project_fee   as string);
+    const net   = BigInt(capturedArgs?.net_amount    as string);
+    expect(net + fee).toBe(gross);
+  });
+
+  it("min_deposit_amount = grossAmount + networkFeeCharged per Polygon USDT", async () => {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let capturedArgs: any = null;
+    vi.mocked(MultiChainTransferModel.create).mockImplementation(async (args) => {
+      capturedArgs = args;
+      return baseTransferDoc as any;
+    });
+
+    await createMultiChainTransfer({
+      senderId: SENDER_ID, recipientId: RECIPIENT_ID, conversationId: CONVERSATION_ID,
+      senderWallet: "0xA", recipientWallet: "0xB",
+      network: "polygon", asset: "USDT",
+      grossAmountUnits: GROSS_UNITS,
+      clientRef: "ref-min-deposit",
+    });
+
+    // min_deposit_amount = 100_000_000 + 500_000 = 100_500_000
+    expect(capturedArgs?.min_deposit_amount).toBe(MIN_DEPOSIT_UNITS);
+  });
+
+  it("projectFee (0.10%) invariante — networkFeeCharged non lo altera", async () => {
+    // Verifica esplicita che modificare POLYGON_FLAT_NETWORK_FEE_USDT (se lo facessimo)
+    // non cambierebbe mai projectFee. In questo test usiamo il valore default env.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    let capturedArgs: any = null;
+    vi.mocked(MultiChainTransferModel.create).mockImplementation(async (args) => {
+      capturedArgs = args;
+      return baseTransferDoc as any;
+    });
+
+    await createMultiChainTransfer({
+      senderId: SENDER_ID, recipientId: RECIPIENT_ID, conversationId: CONVERSATION_ID,
+      senderWallet: "0xA", recipientWallet: "0xB",
+      network: "polygon", asset: "USDT",
+      grossAmountUnits: GROSS_UNITS,
+      clientRef: "ref-invariant",
+    });
+
+    // projectFee = 100_000_000 × 10 / 10000 = 100_000 — formula 0.10% invariata
+    expect(capturedArgs?.project_fee).toBe(FEE_UNITS);
+    // Qualunque networkFeeCharged: gross = net + projectFee (NON gross = net + projectFee + networkFeeCharged)
+    const gross = BigInt(capturedArgs?.gross_amount as string);
+    const pFee  = BigInt(capturedArgs?.project_fee  as string);
+    const net   = BigInt(capturedArgs?.net_amount   as string);
+    expect(net + pFee).toBe(gross);
+    // E networkFeeCharged è SEPARATO (≠ 0) ma non intacca la formula sopra
+    const nfc = BigInt((capturedArgs?.network_fee_charged as string | null) ?? "0");
+    expect(nfc).toBe(500_000n); // presente ma separato
+    expect(net + pFee + nfc).toBe(gross + nfc); // networkFeeCharged NON è incluso nel bilancio interno
+  });
+});
+
+describe("EVM Network Fee Model — detectMultiChainDeposit", () => {
+  it("usa min_deposit_amount come soglia quando impostato (EVM con networkFeeCharged)", async () => {
+    // Saldo escrow = grossAmount < min_deposit_amount (gross + fee) → deposito insufficiente
+    const docWithFee = { ...baseTransferDoc, min_deposit_amount: MIN_DEPOSIT_UNITS };
+    vi.mocked(MultiChainTransferModel.findOne).mockResolvedValue(docWithFee as any);
+
+    vi.mocked(adapterRegistry.get).mockReturnValue({
+      networkId:       "polygon",
+      getTokenBalance: vi.fn().mockResolvedValue(BigInt(GROSS_UNITS)), // saldo = gross solo
+    } as any);
+
+    const result = await detectMultiChainDeposit(TRANSFER_ID);
+    expect(result.status).toBe("awaiting_deposit"); // deposito insufficiente
+    expect(MultiChainTransferModel.findOneAndUpdate).not.toHaveBeenCalled();
+  });
+
+  it("aggiorna a pending quando saldo >= min_deposit_amount (gross + networkFeeCharged)", async () => {
+    const docWithFee = { ...baseTransferDoc, min_deposit_amount: MIN_DEPOSIT_UNITS };
+    const updatedDoc = { ...docWithFee, status: "pending" };
+    vi.mocked(MultiChainTransferModel.findOne).mockResolvedValue(docWithFee as any);
+    vi.mocked(MultiChainTransferModel.findOneAndUpdate).mockResolvedValue(updatedDoc as any);
+
+    vi.mocked(adapterRegistry.get).mockReturnValue({
+      networkId:       "polygon",
+      getTokenBalance: vi.fn().mockResolvedValue(BigInt(MIN_DEPOSIT_UNITS)), // saldo = minDeposit
+    } as any);
+
+    const result = await detectMultiChainDeposit(TRANSFER_ID);
+    expect(result.status).toBe("pending");
+    expect(MultiChainTransferModel.findOneAndUpdate).toHaveBeenCalled();
+  });
+
+  it("backward compat: min_deposit_amount=null → usa grossAmount come soglia", async () => {
+    // Documento pre-modifica: min_deposit_amount=null → comportamento invariato
+    vi.mocked(MultiChainTransferModel.findOne).mockResolvedValue(baseTransferDoc as any); // min_deposit_amount: null
+
+    vi.mocked(adapterRegistry.get).mockReturnValue({
+      networkId:       "polygon",
+      getTokenBalance: vi.fn().mockResolvedValue(BigInt(GROSS_UNITS)), // saldo = grossAmount
+    } as any);
+    const updatedDoc = { ...baseTransferDoc, status: "pending" };
+    vi.mocked(MultiChainTransferModel.findOneAndUpdate).mockResolvedValue(updatedDoc as any);
+
+    const result = await detectMultiChainDeposit(TRANSFER_ID);
+    expect(result.status).toBe("pending"); // grossAmount sufficiente (no fee charged)
+  });
+});
+
+describe("EVM Network Fee Model — releaseMultiChainTransfer", () => {
+  it("TX1 = netAmount (invariato), TX2 = projectFee + networkFeeCharged", async () => {
+    const docWithFee   = { ...baseTransferDoc, status: "pending", network_fee_charged: NETWORK_FEE_CHARGED, network_fee_asset: "POL" };
+    const releasingDoc = { ...docWithFee, status: "releasing" };
+    const releasedDoc  = { ...docWithFee, status: "released", tx_hash_release: "0xREL", tx_hash_fee: "0xFEE2" };
+
+    vi.mocked(MultiChainTransferModel.findOneAndUpdate)
+      .mockResolvedValueOnce(releasingDoc as any) // acquireLock
+      .mockResolvedValueOnce(releasingDoc as any) // intermediate persist tx_hash_release
+      .mockResolvedValueOnce(releasedDoc  as any); // final update → released
+
+    const mockSendToken = vi.fn()
+      .mockResolvedValueOnce({ txHash: "0xREL",  networkFee: 1000n })  // TX1: netAmount
+      .mockResolvedValueOnce({ txHash: "0xFEE2", networkFee: 900n });   // TX2: projectFee + fee
+
+    vi.mocked(adapterRegistry.get).mockReturnValue({
+      networkId: "polygon",
+      sendToken:  mockSendToken,
+    } as any);
+
+    const result = await releaseMultiChainTransfer(TRANSFER_ID);
+    expect(result.status).toBe("released");
+
+    // TX1: netAmount al destinatario — INVARIATO rispetto alla formula 0.10%
+    expect(mockSendToken.mock.calls[0][0]).toMatchObject({
+      to:     "0xRECIPIENT00000000000000000000000000000",
+      amount: BigInt(NET_UNITS),
+    });
+
+    // TX2: projectFee (100_000) + networkFeeCharged (500_000) = 600_000
+    expect(mockSendToken.mock.calls[1][0]).toMatchObject({
+      to:     "0xFEEWALLET00000000000000000000000000000",
+      amount: BigInt(TX2_AMOUNT_UNITS), // 600000n
+    });
+  });
+
+  it("backward compat: network_fee_charged=null → TX2 = projectFee solo", async () => {
+    // Documento pre-modifica: network_fee_charged=null → tx2Amount = projectFee (100000)
+    const pendingDoc   = { ...baseTransferDoc, status: "pending"   as const }; // network_fee_charged: null
+    const releasingDoc = { ...pendingDoc,      status: "releasing" as const };
+    const releasedDoc  = { ...pendingDoc,      status: "released"  as const, tx_hash_release: "0xREL", tx_hash_fee: "0xFEE" };
+
+    vi.mocked(MultiChainTransferModel.findOneAndUpdate)
+      .mockResolvedValueOnce(releasingDoc as any)
+      .mockResolvedValueOnce(releasingDoc as any)
+      .mockResolvedValueOnce(releasedDoc  as any);
+
+    const mockSendToken = vi.fn()
+      .mockResolvedValueOnce({ txHash: "0xREL", networkFee: 1000n })
+      .mockResolvedValueOnce({ txHash: "0xFEE", networkFee: 1000n });
+
+    vi.mocked(adapterRegistry.get).mockReturnValue({
+      networkId: "polygon",
+      sendToken:  mockSendToken,
+    } as any);
+
+    await releaseMultiChainTransfer(TRANSFER_ID);
+
+    // TX2 = projectFee solo (network_fee_charged=null → networkFeeCharged=0n)
+    expect(mockSendToken.mock.calls[1][0]).toMatchObject({
+      amount: BigInt(FEE_UNITS), // 100000n solo projectFee
+    });
+  });
+});
+
+describe("EVM Network Fee Model — retryEVMFeeTx", () => {
+  it("TX2 = projectFee + networkFeeCharged quando entrambi impostati", async () => {
+    const partialDoc = {
+      ...baseTransferDoc,
+      status:              "releasing",
+      tx_hash_release:     "0xTX1",
+      tx_hash_fee:         null,
+      network_fee:         "1000",
+      network_fee_charged: NETWORK_FEE_CHARGED, // 500000
+    };
+
+    vi.mocked(MultiChainTransferModel.findOne).mockResolvedValue(partialDoc as any);
+    vi.mocked(MultiChainTransferModel.findOneAndUpdate).mockResolvedValue(null as any);
+
+    const mockSendToken = vi.fn().mockResolvedValue({ txHash: "0xTX2", networkFee: 800n });
+    vi.mocked(adapterRegistry.get).mockReturnValue({
+      networkId: "polygon",
+      sendToken:  mockSendToken,
+    } as any);
+
+    await retryEVMFeeTx(TRANSFER_ID);
+
+    // TX2 = projectFee (100_000) + networkFeeCharged (500_000) = 600_000
+    expect(mockSendToken).toHaveBeenCalledWith(
+      expect.objectContaining({
+        to:     "0xFEEWALLET00000000000000000000000000000",
+        amount: BigInt(TX2_AMOUNT_UNITS), // 600000n
+      }),
+    );
+  });
+
+  it("backward compat: network_fee_charged=null → TX2 = projectFee solo", async () => {
+    // Documento pre-modifica con network_fee_charged=null
+    const partialDoc = {
+      ...baseTransferDoc, // network_fee_charged: null
+      status:          "releasing",
+      tx_hash_release: "0xTX1",
+      tx_hash_fee:     null,
+    };
+
+    vi.mocked(MultiChainTransferModel.findOne).mockResolvedValue(partialDoc as any);
+    vi.mocked(MultiChainTransferModel.findOneAndUpdate).mockResolvedValue(null as any);
+
+    const mockSendToken = vi.fn().mockResolvedValue({ txHash: "0xTX2", networkFee: 800n });
+    vi.mocked(adapterRegistry.get).mockReturnValue({
+      networkId: "polygon",
+      sendToken:  mockSendToken,
+    } as any);
+
+    await retryEVMFeeTx(TRANSFER_ID);
+
+    // TX2 = projectFee solo (networkFeeCharged=0n)
+    expect(mockSendToken).toHaveBeenCalledWith(
+      expect.objectContaining({
+        amount: BigInt(FEE_UNITS), // 100000n — solo projectFee, backward compat
+      }),
+    );
+  });
+});
+
+describe("EVM Network Fee Model — toInfo / field exposure", () => {
+  it("espone networkFeeCharged, networkFeeActual, networkFeeAsset in toInfo", async () => {
+    const docWithFee = {
+      ...baseTransferDoc,
+      network_fee:         "2000",        // gas reale consumato post-release (native wei)
+      network_fee_charged: NETWORK_FEE_CHARGED,   // 500000 — flat fee addebitata al cliente
+      network_fee_asset:   "POL",
+    };
+    vi.mocked(MultiChainTransferModel.findOne).mockResolvedValue(docWithFee as any);
+
+    const info = await getMultiChainTransfer(TRANSFER_ID);
+
+    expect(info.networkFeeCharged).toBe(NETWORK_FEE_CHARGED); // "500000" — addebitata al cliente
+    expect(info.networkFeeActual).toBe("2000");               // gas reale (in native wei)
+    expect(info.networkFeeAsset).toBe("POL");                 // asset nativo usato per gas
+
+    // SEPARAZIONE: networkFeeCharged ≠ networkFeeActual ≠ projectFee
+    expect(info.networkFeeCharged).not.toBe(info.networkFeeActual);
+    expect(info.networkFeeCharged).not.toBe(info.projectFee);
+  });
+
+  it("networkFeeCharged=null e networkFeeAsset=null per doc pre-modifica (backward compat)", async () => {
+    vi.mocked(MultiChainTransferModel.findOne).mockResolvedValue(baseTransferDoc as any); // null fields
+
+    const info = await getMultiChainTransfer(TRANSFER_ID);
+    expect(info.networkFeeCharged).toBeNull();
+    expect(info.networkFeeAsset).toBeNull();
+    expect(info.networkFeeActual).toBe("0"); // network_fee=0 in baseTransferDoc
   });
 });
 

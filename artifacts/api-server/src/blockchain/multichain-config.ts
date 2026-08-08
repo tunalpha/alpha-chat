@@ -197,6 +197,42 @@ export function buildDefaultFeeRegistry(): FeeConfigRegistry {
   return registry;
 }
 
+// ─── EVM Flat Network Fee ─────────────────────────────────────────────────────
+
+/**
+ * Commissione flat addebitata al cliente per coprire il costo gas delle TX EVM.
+ *
+ * Configurabile via env in base units dell'asset (USDT = 6 decimali):
+ *   POLYGON_FLAT_NETWORK_FEE_USDT  — default 500_000 = 0.50 USDT
+ *   ETHEREUM_FLAT_NETWORK_FEE_USDT — default 5_000_000 = 5.00 USDT
+ *   BSC_FLAT_NETWORK_FEE_USDT      — default 1_000_000 (USDT BSC ha 18 dec! ⚠️)
+ *
+ * Il valore viene letto al create time e salvato nel transfer.
+ * Cambi successivi all'env non modificano transfer già creati (immutabile per record).
+ *
+ * BTC: restituisce 0n — il costo miner è incluso nel buffer di minDepositAmount.
+ */
+export function getEVMFlatNetworkFee(network: NetworkId): bigint {
+  switch (network) {
+    case "polygon":  return BigInt(parseIntEnv("POLYGON_FLAT_NETWORK_FEE_USDT",  500_000));
+    case "ethereum": return BigInt(parseIntEnv("ETHEREUM_FLAT_NETWORK_FEE_USDT", 5_000_000));
+    case "bsc":      return BigInt(parseIntEnv("BSC_FLAT_NETWORK_FEE_USDT",      1_000_000));
+    case "bitcoin":  return 0n;
+    default:         return 0n;
+  }
+}
+
+/**
+ * Asset nativo usato per pagare il gas su ogni network.
+ * Usato come valore informativo in DB/API (network_fee_asset).
+ */
+export const NATIVE_ASSET_SYMBOL: Record<NetworkId, string> = {
+  polygon:  "POL",
+  ethereum: "ETH",
+  bsc:      "BNB",
+  bitcoin:  "BTC",
+};
+
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 /**

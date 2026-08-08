@@ -1,0 +1,211 @@
+APPROVAZIONE IMPLEMENTAZIONE — POLYGON USDT NETWORK FEE
+
+Approvata la proposta con le seguenti condizioni obbligatorie.
+
+1. PROJECT FEE
+
+NON modificare la formula:
+
+projectFee = grossAmount × 0.10%
+netAmount = grossAmount - projectFee
+
+La project fee deve rimanere completamente indipendente dalla network fee.
+
+2. TESTNET POLYGON
+
+Abilitare esclusivamente:
+
+Polygon USDT = ENABLED
+
+Mantenere:
+
+Ethereum USDT = DISABLED
+BSC USDT = DISABLED
+
+BTC rimane invariato in questa modifica.
+
+3. NETWORK FEE
+
+Utilizzare:
+
+POLYGON_FLAT_NETWORK_FEE_USDT
+
+Default testnet:
+
+0.50 USDT
+
+Configurabile via environment.
+
+Il valore deve essere salvato nel transfer al momento della creazione, in modo che un successivo cambio della configurazione non modifichi i transfer già creati.
+
+4. ESEMPIO OBBLIGATORIO
+
+Per:
+
+grossAmount = 100 USDT
+
+deve risultare:
+
+projectFee          = 0.10 USDT
+netAmount           = 99.90 USDT
+networkFeeCharged   = 0.50 USDT
+minDepositAmount    = 100.50 USDT
+
+Il cliente deposita:
+
+100.50 USDT
+
+Il release deve produrre:
+
+TX1:
+99.90 USDT → recipient
+TX2:
+0.60 USDT → feeWallet
+
+con DB:
+
+project_fee = 0.10 USDT
+network_fee_charged = 0.50 USDT
+
+I due componenti della TX2 devono rimanere separati contabilmente anche se on-chain sono un unico transfer.
+
+5. IMPORTANTE — GAS
+
+NON sommare mai USDT e POL.
+
+La riconciliazione deve essere separata:
+
+USDT
+
+100.50 depositati
+=
+99.90 recipient
++
+0.60 feeWallet
+
+POL
+
+gas station
+→ escrow
+→ gas TX1 + TX2
+
+network_fee nel DB continua a rappresentare il gas reale in native units.
+
+6. NETWORK FEE CHARGED ≠ ACTUAL GAS COST
+
+Non chiamare network_fee_charged “actual network fee”.
+
+Usare concettualmente:
+
+network_fee_charged
+=
+quanto viene addebitato al cliente
+network_fee
+=
+quanto è realmente costato il gas
+
+Se necessario, nell’API/UI usare nomi espliciti:
+
+networkFeeCharged
+networkFeeActual
+
+7. FEE WALLET
+
+Utilizzare il medesimo fee wallet per:
+
+projectFee
+networkFeeCharged
+
+ma mantenere i due importi separati nel DB.
+
+NON creare una terza TX.
+
+TX2 deve essere:
+
+projectFee + networkFeeCharged
+
+8. GAS STATION
+
+Implementare ensureMultiChainEscrowGas() separatamente dal codice USDA.
+
+Per Polygon utilizzare il gas station già configurato, senza modificare:
+
+usda-custodial.service.ts
+
+Il Multi-Chain Engine deve avere il proprio percorso di gas funding.
+
+9. USCITA DA ESCROW
+
+La riconciliazione USDT deve essere:
+
+grossAmount + networkFeeCharged
+=
+netAmount + projectFee + networkFeeCharged
+
+quindi:
+
+grossAmount
+=
+netAmount + projectFee
+
+e il network fee charged è semplicemente un importo aggiuntivo che attraversa l’escrow per essere trasferito al fee wallet.
+
+10. TEST
+
+Aggiungere test per:
+
+* project fee invariata a 0,10%;
+* network fee 0,50 USDT;
+* minDeposit = gross + network fee;
+* TX1 = netAmount;
+* TX2 = projectFee + networkFeeCharged;
+* DB project_fee separato da network_fee_charged;
+* actual gas separato da network_fee_charged;
+* cambio env dopo la creazione non modifica il transfer esistente;
+* nessuna modifica al BTC flow;
+* nessuna modifica al USDA flow.
+
+11. REGRESSIONE
+
+Dopo l’implementazione:
+
+typecheck
+tests
+build
+startup
+USDA regression
+
+Obiettivo:
+
+ZERO nuove regressioni USDA
+
+12. NON IMPLEMENTARE ANCORA
+
+Non implementare:
+
+* Ethereum network fee;
+* BSC network fee;
+* Chainlink;
+* dynamic oracle pricing;
+* modifica BTC;
+* nuove funzionalità non richieste.
+
+Questa modifica riguarda esclusivamente:
+
+Polygon USDT — EVM Network Fee charged to customer.
+
+13. OUTPUT FINALE
+
+Restituire:
+
+1. file modificati;
+2. schema DB modificato;
+3. esempio 100 USDT;
+4. flusso TX1/TX2;
+5. funzionamento gas station;
+6. test aggiunti;
+7. risultati test;
+8. conferma zero modifiche USDA;
+9. eventuali problemi residui.
+
+NON dichiarare production-ready: questa è una modifica per il testnet Polygon USDT.

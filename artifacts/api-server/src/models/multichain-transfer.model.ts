@@ -79,6 +79,25 @@ export interface IMultiChainTransfer {
   tx_hash_fee:      string | null;  // release projectFee → feeWallet
   tx_hash_refund:   string | null;  // refund → sender
 
+  // ── Network Fee Charged ────────────────────────────────────────────────────
+  /**
+   * Commissione flat addebitata al cliente per la network fee.
+   * Calcolata e salvata al create time — invariante per quel transfer.
+   *   EVM: flat fee in base units dell'asset (es. 0.50 USDT = 500_000 su Polygon)
+   *   BTC: null (il costo miner è incluso nel buffer di min_deposit_amount)
+   *
+   * SEPARAZIONE OBBLIGATORIA:
+   *   network_fee_charged ≠ project_fee ≠ network_fee (actual gas in native wei)
+   */
+  network_fee_charged: string | null;
+
+  /**
+   * Asset nativo usato materialmente per pagare il gas: "POL" | "ETH" | "BNB" | "BTC".
+   * Informativo — il gas è materialmente pagato dal gas station, ma il costo economico
+   * è recuperato tramite network_fee_charged addebitato al cliente.
+   */
+  network_fee_asset: string | null;
+
   // ── Timing ─────────────────────────────────────────────────────────────────
   expires_at:    Date;
   locked_at:     Date | null;   // per recovery lock scaduto
@@ -86,9 +105,12 @@ export interface IMultiChainTransfer {
 
   /**
    * Importo minimo che il mittente DEVE depositare nell'escrow.
-   * Null per EVM (la miner fee viene da un gas wallet separato).
-   * Per Bitcoin: gross_amount + estimatedMinerFee + buffer.
-   * Esposto nella API response per guidare il mittente.
+   *
+   * BTC: gross_amount + estimatedMinerFee + buffer (miner fee inclusa nel deposito).
+   * EVM: gross_amount + network_fee_charged (commissione flat per gas, se configurata).
+   * Null se nessuna commissione aggiuntiva (backward compat per EVM pre-modifica).
+   *
+   * Esposto nella API response per guidare il mittente sull'importo esatto da inviare.
    */
   min_deposit_amount: string | null;
 }
@@ -151,6 +173,9 @@ const MultiChainTransferSchema = new Schema<MultiChainTransferDocument>(
     tx_hash_release: { type: String, default: null },
     tx_hash_fee:     { type: String, default: null },
     tx_hash_refund:  { type: String, default: null },
+
+    network_fee_charged: { type: String, default: null },
+    network_fee_asset:   { type: String, default: null },
 
     expires_at:         { type: Date, required: true },
     locked_at:          { type: Date, default: null },
