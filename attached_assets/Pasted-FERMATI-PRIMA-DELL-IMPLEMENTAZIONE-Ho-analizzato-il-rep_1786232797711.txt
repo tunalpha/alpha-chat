@@ -1,0 +1,283 @@
+FERMATI PRIMA DELL'IMPLEMENTAZIONE.
+
+Ho analizzato il report e NON approvo ancora come valori definitivi:
+
+BSC = 1.00 USDT
+Ethereum = 15.00 USDT
+
+Prima di implementare dobbiamo correggere l'analisi economica.
+
+==================================================
+1. NETWORK FEE = TUTTO IL COSTO DEL PAGAMENTO
+==================================================
+
+La network fee pagata dal cliente deve coprire TUTTI i costi blockchain necessari per completare il suo pagamento.
+
+Non considerare soltanto:
+
+TX #1 escrow → recipient
+
+Devi includere anche:
+
+TX #0 gas station → escrow
+
+quando il top-up è necessario.
+
+Quindi calcolare:
+
+network_cost_per_payment =
+gas(TX0)
++
+gas(TX1)
+
+convertiti nella valuta/token di addebito.
+
+Se l'escrow possiede già gas sufficiente, TX0 può essere zero per quel pagamento.
+
+Il modello deve tenere conto di entrambe le situazioni.
+
+==================================================
+2. PROJECT FEE E SWEEP
+==================================================
+
+La project fee dello 0,10% NON deve pagare il gas del pagamento.
+
+La project fee viene:
+
+payment
+→ fee ledger
+→ pending
+→ accumulo
+→ sweep
+→ BSC_FEE_WALLET / ETH_FEE_WALLET
+
+Il costo del singolo sweep deve essere analizzato separatamente.
+
+NON assumere che lo sweep sia gratuito.
+
+==================================================
+3. COSTO DELLO SWEEP
+==================================================
+
+Calcolare:
+
+gas dello sweep
+×
+gas price
+=
+costo sweep
+
+Poi calcolare il costo medio dello sweep per pagamento:
+
+sweep_cost_per_payment =
+sweep gas cost / numero di fee aggregate nello sweep
+
+Esempio:
+
+100 pagamenti
+→ 100 fee nel ledger
+→ 1 sweep
+
+Il costo dello sweep deve essere distribuito economicamente sui 100 pagamenti, non ignorato.
+
+==================================================
+4. NETWORK FEE DINAMICA
+==================================================
+
+Prima di scegliere una flat fee definitiva, verificare se il sistema può calcolare dinamicamente il costo della rete.
+
+Preferenza:
+
+networkFee =
+estimated gas cost
++
+buffer
+
+con un minimo configurabile.
+
+Il sistema deve conoscere:
+
+gas estimate
+gas price corrente
+eventuale TX0
+TX1
+buffer
+
+e produrre la network fee prima della conferma del cliente.
+
+==================================================
+5. ANTI-LOSS
+==================================================
+
+Regola obbligatoria:
+
+networkFeeCharged >= expectedBlockchainCost
+
+Se non è così:
+
+NON eseguire il pagamento.
+
+Ricalcolare la quote oppure bloccare il pagamento.
+
+NON permettere che AlphaChat assorba inconsapevolmente il costo.
+
+==================================================
+6. GAS SPIKE
+==================================================
+
+Fare simulazioni con:
+
+BSC:
+1 gwei
+3 gwei
+5 gwei
+10 gwei
+
+Ethereum:
+10 gwei
+20 gwei
+30 gwei
+50 gwei
+75 gwei
+100 gwei
+
+Per ogni scenario calcolare:
+
+TX0 gas
+TX1 gas
+costo totale
+network fee
+eventuale perdita
+eventuale margine
+
+==================================================
+7. ESCROW CON E SENZA GAS
+==================================================
+
+Fare due simulazioni separate.
+
+Scenario A:
+escrow ha già gas sufficiente.
+
+Scenario B:
+escrow deve essere finanziato dalla gas station.
+
+Il cliente deve pagare una network fee sufficiente in entrambi gli scenari, secondo la politica configurata.
+
+==================================================
+8. BSC
+==================================================
+
+BSC:
+
+- recipient_exact invariato
+- project fee 0,10%
+- network fee pagata dal cliente
+- project fee ledger
+- project fee sweep aggregato
+- nessuna TX separata per project fee ad ogni pagamento
+
+Prima di scegliere il valore flat definitivo, mostrare il costo reale.
+
+==================================================
+9. ETHEREUM / ERC-20
+==================================================
+
+Stessa architettura BSC.
+
+Ma Ethereum deve essere trattata separatamente perché il gas è molto più volatile.
+
+NON assumere che:
+
+15 USDT
+
+sia sempre sufficiente.
+
+Dimostrare matematicamente a quale gas price diventa insufficiente.
+
+==================================================
+10. POLYGON
+==================================================
+
+NESSUNA MODIFICA.
+
+Polygon deve rimanere esattamente con il comportamento attuale.
+
+Non introdurre ledger/sweep su Polygon.
+
+==================================================
+11. PROJECT FEE SWEEP THRESHOLD
+==================================================
+
+La soglia di sweep deve essere configurabile.
+
+Creare separatamente:
+
+BSC_FEE_SWEEP_THRESHOLD_USDT
+
+ETH_FEE_SWEEP_THRESHOLD_USDT
+
+Non usare necessariamente la stessa soglia.
+
+La soglia deve essere scelta anche considerando il costo del gas dello sweep.
+
+Obiettivo:
+
+minimizzare il costo medio dello sweep.
+
+==================================================
+12. IMPORTANTE — NON PERDERE SOLDI
+==================================================
+
+Non implementare ancora.
+
+Prima produrre una tabella definitiva:
+
+Chain | Gas price | TX0 | TX1 | Sweep allocato | Network fee | Costo totale | Margine
+
+Per:
+
+BSC:
+1 / 3 / 5 / 10 gwei
+
+Ethereum:
+10 / 20 / 30 / 50 / 75 / 100 gwei
+
+e per:
+
+1 USDT
+10 USDT
+100 USDT
+500 USDT
+1.000 USDT
+
+==================================================
+13. DECISIONE FINALE
+
+Dopo questi calcoli proporre:
+
+A) network fee dinamica consigliata
+
+oppure
+
+B) flat fee con massimo gas price coperto
+
+oppure
+
+C) modello ibrido:
+
+dynamic gas fee
++
+minimum network fee
+
+Indicare chiaramente quale soluzione protegge meglio AlphaChat dalle perdite.
+
+NON modificare il codice prima di questo report.
+
+NON modificare Polygon.
+
+NON modificare lo 0,10%.
+
+NON modificare recipient_exact.
+
+NON procedere con BSC=1 USDT o ETH=15 USDT senza dimostrare che coprono effettivamente tutti i costi previsti.
