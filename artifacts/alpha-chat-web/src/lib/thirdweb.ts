@@ -15,10 +15,15 @@ export const client = createThirdwebClient({
   clientId: import.meta.env.VITE_THIRDWEB_CLIENT_ID as string,
 });
 
-// RPC Polygon per il polling delle receipt — fornito via env VITE_POLYGON_RPC (dRPC).
-// Nessun URL hardcoded: evita il relay ThirdWeb non-whitelisted su *.replit.dev.
+// RPC Polygon per il polling delle receipt.
+// Priorità: Alchemy (VITE_ALCHEMY_API_KEY) → dRPC (VITE_POLYGON_RPC)
+// Evita il relay ThirdWeb non-whitelisted su *.replit.dev.
+const _alchemyKey = import.meta.env.VITE_ALCHEMY_API_KEY as string | undefined;
+const _drpcUrl    = import.meta.env.VITE_POLYGON_RPC     as string | undefined;
 export const ALCHEMY_RPC =
-  (import.meta.env.VITE_POLYGON_RPC as string | undefined) ?? "";
+  (_alchemyKey ? `https://polygon-mainnet.g.alchemy.com/v2/${_alchemyKey}` : null)
+  ?? _drpcUrl
+  ?? "";
 
 export const polygon = defineChain({
   id:             137,

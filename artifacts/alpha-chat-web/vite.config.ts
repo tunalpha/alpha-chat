@@ -97,6 +97,11 @@ export default defineConfig({
     'import.meta.env.VITE_POLYGON_RPC': JSON.stringify(
       process.env.VITE_POLYGON_RPC ?? ''
     ),
+    // Alchemy API key — iniettata dal secret ALCHEMY_API_KEY (non VITE_ prefixed)
+    // Usata da thirdweb.ts per costruire l'URL Alchemy a runtime nel bundle.
+    'import.meta.env.VITE_ALCHEMY_API_KEY': JSON.stringify(
+      process.env.ALCHEMY_API_KEY ?? ''
+    ),
   },
   root: path.resolve(import.meta.dirname),
   build: {

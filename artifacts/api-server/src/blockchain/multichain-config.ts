@@ -75,6 +75,20 @@ export interface RpcConfig {
   fallbacks: string[];
 }
 
+/**
+ * Costruisce l'URL Alchemy per un network EVM usando ALCHEMY_API_KEY.
+ * Restituisce null se la chiave non è configurata.
+ * Alchemy NON supporta BSC — per BSC usare dRPC.
+ */
+function buildAlchemyUrl(network: "polygon" | "ethereum"): string | null {
+  const key = env("ALCHEMY_API_KEY");
+  if (!key) return null;
+  const host = network === "polygon"
+    ? "polygon-mainnet.g.alchemy.com"
+    : "eth-mainnet.g.alchemy.com";
+  return `https://${host}/v2/${key}`;
+}
+
 function parseRpcConfig(primaryEnvKey: string, fallbackEnvKey?: string, fallbackPrimaryEnvKey?: string): RpcConfig {
   const primary =
     env(primaryEnvKey) ??
@@ -89,13 +103,38 @@ function parseRpcConfig(primaryEnvKey: string, fallbackEnvKey?: string, fallback
   return { primary, fallbacks };
 }
 
+/**
+ * Costruisce RpcConfig con Alchemy come primario (se ALCHEMY_API_KEY presente)
+ * e il valore del secret come fallback. Per BSC usa solo dRPC.
+ */
+function alchemyFirstConfig(
+  alchemyNetwork: "polygon" | "ethereum" | null,
+  secretEnvKey: string,
+  extraFallbackKey?: string,
+): RpcConfig {
+  const alchemyUrl = alchemyNetwork ? buildAlchemyUrl(alchemyNetwork) : null;
+  const secretUrl  = env(secretEnvKey) ?? null;
+
+  const primary   = alchemyUrl ?? secretUrl ?? null;
+  const rawExtra  = extraFallbackKey ? env(extraFallbackKey) : undefined;
+  const extra     = rawExtra ? rawExtra.split(",").map((s) => s.trim()).filter(Boolean) : [];
+
+  // Se Alchemy è primario, aggiungi il secret come primo fallback
+  const fallbacks = alchemyUrl && secretUrl
+    ? [secretUrl, ...extra]
+    : extra;
+
+  return { primary, fallbacks };
+}
+
 export const RPC_CONFIGS: Record<NetworkId, RpcConfig> = {
-  // Polygon: fallback a USDA_POLYGON_RPC (env già esistente) se POLYGON_RPC_URL assente
-  polygon:  parseRpcConfig("POLYGON_RPC_URL",  "POLYGON_RPC_FALLBACK_URLS",  "USDA_POLYGON_RPC"),
-  ethereum: parseRpcConfig("ETHEREUM_RPC_URL", "ETHEREUM_RPC_FALLBACK_URLS"),
-  bsc:      parseRpcConfig("BSC_RPC_URL",      "BSC_RPC_FALLBACK_URLS"),
-  // Bitcoin: primary = BTC_API_URL (Blockstream REST API), fallback legacy = BTC_RPC_URL (opzionale).
-  // Se entrambi assenti, BitcoinApiClient usa il default hardcoded https://blockstream.info/api.
+  // Polygon: Alchemy primario → POLYGON_RPC_URL (dRPC) fallback → POLYGON_RPC_FALLBACK_URLS
+  polygon:  alchemyFirstConfig("polygon",  "POLYGON_RPC_URL",  "POLYGON_RPC_FALLBACK_URLS"),
+  // Ethereum: Alchemy primario → ETHEREUM_RPC_URL (dRPC) fallback
+  ethereum: alchemyFirstConfig("ethereum", "ETHEREUM_RPC_URL", "ETHEREUM_RPC_FALLBACK_URLS"),
+  // BSC: Alchemy non supporta BSC → dRPC (BSC_RPC_URL) come primario
+  bsc:      parseRpcConfig("BSC_RPC_URL", "BSC_RPC_FALLBACK_URLS"),
+  // Bitcoin: Blockstream REST API primario, fallback opzionali
   bitcoin:  parseRpcConfig("BTC_API_URL", "BTC_RPC_FALLBACK_URLS", "BTC_RPC_URL"),
 };
 

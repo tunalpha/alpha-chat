@@ -19,11 +19,18 @@ import { logger } from "../lib/logger";
 // Costanti
 // ---------------------------------------------------------------------------
 
-// RPC URL risolto da env (USDA_POLYGON_RPC oppure POLYGON_RPC_URL come fallback).
-// Nessun URL pubblico hardcoded: tutti i provider devono essere configurati via secret.
+// RPC URL risolto in ordine di priorità:
+//   1. Alchemy (da ALCHEMY_API_KEY) — primario
+//   2. USDA_POLYGON_RPC — secret dRPC configurato
+//   3. POLYGON_RPC_URL  — fallback ulteriore
+// Nessun URL pubblico hardcoded: tutti i provider via secret.
 function resolveDefaultRpc(): string {
+  const alchemyKey = process.env.ALCHEMY_API_KEY;
+  if (alchemyKey && alchemyKey.trim()) {
+    return `https://polygon-mainnet.g.alchemy.com/v2/${alchemyKey.trim()}`;
+  }
   const url = process.env.USDA_POLYGON_RPC ?? process.env.POLYGON_RPC_URL ?? null;
-  if (!url) throw new Error("[PolygonRPC] Nessun RPC Polygon configurato: impostare USDA_POLYGON_RPC o POLYGON_RPC_URL");
+  if (!url) throw new Error("[PolygonRPC] Nessun RPC Polygon configurato: impostare ALCHEMY_API_KEY, USDA_POLYGON_RPC o POLYGON_RPC_URL");
   return url;
 }
 const DEFAULT_USDA_CONTRACT = "0xe714655fD1B3ba96B887DF1F94336c2A78E24001";

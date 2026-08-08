@@ -46,15 +46,16 @@ const GAS_LIMIT_ERC20 = 80_000n;
 /**
  * Restituisce l'URL RPC Polygon da usare per le operazioni on-chain.
  *
- * SICUREZZA: nessun fallback con chiave hardcoded nel sorgente. L'URL RPC
- * (che contiene la chiave Alchemy) DEVE arrivare esclusivamente dalla env var
- * condivisa USDA_POLYGON_RPC. Se assente o non valida → errore operativo
- * esplicito (nessuna chiave letterale in repo).
+ * SICUREZZA: nessun URL hardcoded nel sorgente.
+ * Priorità: ALCHEMY_API_KEY → USDA_POLYGON_RPC → POLYGON_RPC_URL
+ * Se nessuno è configurato → errore operativo esplicito.
  */
 export function getRpcUrl(): string {
-  const rpc = process.env.USDA_POLYGON_RPC;
+  const alchemyKey = process.env.ALCHEMY_API_KEY?.trim();
+  if (alchemyKey) return `https://polygon-mainnet.g.alchemy.com/v2/${alchemyKey}`;
+  const rpc = process.env.USDA_POLYGON_RPC ?? process.env.POLYGON_RPC_URL;
   if (rpc && (rpc.startsWith("https://") || rpc.startsWith("http://"))) return rpc;
-  logger.error("[Custodial] USDA_POLYGON_RPC non configurata o non valida — operazioni on-chain non disponibili");
+  logger.error("[Custodial] Nessun RPC Polygon configurato — impostare ALCHEMY_API_KEY o USDA_POLYGON_RPC");
   throw new AppError("RPC_NOT_CONFIGURED", 503);
 }
 const DEFAULT_USDA_CONTRACT = "0xe714655fD1B3ba96B887DF1F94336c2A78E24001";
