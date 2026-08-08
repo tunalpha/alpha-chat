@@ -1,0 +1,185 @@
+Ho letto tutto. Questo report è molto utile perché finalmente ci mostra anche i punti che l’agente considera “residui” e non li nasconde.
+
+La mia decisione è:
+
+🟢 Possiamo passare al TESTNET
+
+Ma non al production deploy.
+
+Il consiglio dell’agente di partire da Polygon USDT è corretto. Prima di BTC, Ethereum e BSC farei un ciclo completo su Polygon.
+
+Stato che vedo io
+
+Area	Giudizio
+USDA	🟢 Intoccato
+C-1 principale	🟢 Risolto
+C-2	🟢 Risolto
+BTC 1-TX	🟢 Corretto
+BTC TXID recovery	🟢 Buono
+Input validation	🟢
+Admin security	🟢
+Test automatici	🟢 512 pass
+EVM crash B	🟡 Da hardening pre-produzione
+EVM crash D	🟡 Da hardening pre-produzione
+BTC refund mempool	🟡 Da hardening pre-produzione
+Feature disabled + pending refund	🟡 Da sistemare
+
+Quindi TESTNET sì, DEPLOY NO.
+
+⸻
+
+E ora veniamo alla cosa che mi avevi chiesto: proteggere lo 0,10%
+
+Qui voglio essere molto preciso.
+
+Non darei ancora all’agente istruzioni sulla fee.
+
+Prima dobbiamo verificare il codice effettivo di:
+
+* fee-config.ts
+* multichain-payment.service.ts
+* createMultiChainTransfer
+* _releaseEvm
+* retryEVMFeeTx
+* buildAndBroadcastPayout
+* selectUtxos
+* networkFee
+* grossAmount
+* netAmount
+
+Perché il report dimostra che:
+
+projectFee
+
+e
+
+networkFee
+
+sono tecnicamente separati.
+
+Ma questo non ci dice ancora chi economicamente paga la network fee.
+
+E tu hai scelto:
+
+B — la network fee deve essere a carico del cliente.
+
+Quindi prima di modificare qualsiasi cosa voglio vedere come è attualmente costruito il pricing/payment flow.
+
+⸻
+
+Cosa dobbiamo ottenere
+
+Il comportamento finale che vogliamo è:
+
+Esempio USDT
+
+Cliente vuole inviare:
+
+100 USDT
+
+La commissione progetto è:
+
+0,10 USDT
+
+Destinatario:
+
+99,90 USDT
+
+La network fee è aggiuntiva, non deve essere sottratta dai tuoi 0,10 USDT.
+
+Concettualmente:
+
+CLIENTE
+   │
+   │ 100,00 USDT
+   │
+   │ + network fee
+   ▼
+PAYMENT ENGINE
+   │
+   ├── 99,90 USDT → destinatario
+   │
+   └── 0,10 USDT → TUO FEE WALLET
+
+La network fee invece viene pagata separatamente secondo il modello che implementeremo.
+
+BTC
+
+Stesso principio:
+
+Gross
+  │
+  ├── 0,10% → Project Fee Wallet
+  │
+  ├── Net → destinatario
+  │
+  └── Miner fee → blockchain
+
+La miner fee non deve mai essere presa dalla project fee.
+
+⸻
+
+Una cosa importante sul report
+
+Hai visto questo:
+
+Crash D → TX2 fee wallet può essere inviata due volte.
+
+Paradossalmente questo non protegge la commissione: la duplica.
+
+È un problema contabile per noi, anche se non danneggia il cliente.
+
+Prima del production dovremo quindi fare in modo che anche la TX della commissione sia idempotente.
+
+L’obiettivo finale deve essere:
+
+Destinatario       → pagato UNA volta
+Fee Wallet         → commissione ricevuta UNA volta
+Network fee        → pagata secondo policy
+
+⸻
+
+Testnet: partirei proprio da Polygon USDT
+
+E farei un test estremamente semplice, ad esempio:
+
+10 USDT
+
+per verificare:
+
+Gross
+Project fee = 0,01 USDT
+Net = 9,99 USDT
+Network fee = separata
+
+Poi controlliamo on-chain:
+
+1. quanto è partito dall’escrow;
+2. quanto è arrivato al destinatario;
+3. quanto è arrivato al fee wallet;
+4. quanto è stato speso per gas;
+5. cosa ha registrato MongoDB.
+
+Così possiamo confrontare:
+
+DATABASE
+        VS
+BLOCKCHAIN
+
+e verificare che i numeri coincidano.
+
+⸻
+
+Quindi per ora la disposizione è:
+
+NON modificare ancora il codice della fee.
+
+Il prossimo passo è:
+
+analizzare l’implementazione attuale del calcolo e addebito di projectFee e networkFee, senza modificarla, e restituire esattamente come viene calcolato il costo finale per il cliente e quanto viene effettivamente inviato a destinatario e fee wallet per EVM e BTC.
+
+Poi, con quel risultato, gli daremo la disposizione definitiva per garantire lo 0,10% netto e separare la network fee a carico del cliente.
+
+E sì: il primo testnet sarà Polygon USDT, non BTC. È il modo più prudente per validare il nuovo motore senza introdurre subito la complessità UTXO di Bitcoin.
+
+USDA rimane completamente fuori da questo test.
