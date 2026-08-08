@@ -3,6 +3,7 @@ import { initI18n } from './i18n';
 import { Providers } from './providers';
 import App from './App';
 import './index.css';
+import './multichain.css';
 
 // Redirect investor subdomain to the Investor Book
 if (window.location.hostname === 'investors.alphachat.sbs') {

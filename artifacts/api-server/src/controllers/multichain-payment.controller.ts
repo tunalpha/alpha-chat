@@ -17,7 +17,9 @@
  *   H-02: ogni handler autenticato verifica che transfer.senderId === userId (→ 404, non 403)
  */
 
-import type { Request, Response, NextFunction } from "express";
+import { randomUUID }                              from "crypto";
+import type { Request, Response, NextFunction }    from "express";
+import mongoose                                    from "mongoose";
 import {
   createMultiChainTransfer,
   detectMultiChainDeposit,
@@ -26,9 +28,18 @@ import {
   getMultiChainTransfer,
   findByClientRef,
   calculatePaymentQuote,
+  setTransferMessageId,
+  type MultiChainTransferInfo,
 } from "../payment/multichain-payment.service";
 import { FEATURE_FLAGS, getEVMFlatNetworkFee, NATIVE_ASSET_SYMBOL } from "../blockchain/multichain-config";
-import { AppError } from "../errors/AppError";
+import { AppError }                                from "../errors/AppError";
+import { MessageModel }                            from "../models/message.model";
+import { ConversationModel }                       from "../models/conversation.model";
+import { ConversationMemberRepository }            from "../repositories/conversation-member.repository";
+import { wsManager }                               from "../lib/ws-manager";
+import { logger }                                  from "../lib/logger";
+
+const memberRepo = new ConversationMemberRepository();
 
 // ─── Helper: extract authenticated userId (H-06) ──────────────────────────────
 //
@@ -41,18 +52,131 @@ function requireUserId(req: Request): string {
   return userId;
 }
 
-// ─── Helper: ownership check (H-02) ──────────────────────────────────────────
+// ─── Helper: ownership check (H-02, esteso) ──────────────────────────────────
 //
 // Risponde 404 (non 403) per non rivelare l'esistenza del transfer ad altri utenti.
-// Il transfer info viene restituito per evitare una seconda fetch nel caller.
+// Accetta sia il sender (payer) sia il recipient (richiedente nel flow mc_request).
 
 async function getOwnedTransfer(transferId: string, userId: string) {
   const transfer = await getMultiChainTransfer(transferId);
-  // H-02: solo il mittente può operare sul proprio transfer
-  if (transfer.senderId !== userId) {
+  // H-02 esteso: sia sender che recipient possono leggere il proprio transfer
+  if (transfer.senderId !== userId && transfer.recipientId !== userId) {
     throw new AppError("TRANSFER_NOT_FOUND", 404);
   }
   return transfer;
+}
+
+// ─── System message helpers ───────────────────────────────────────────────────
+
+function _mcMsgMeta(transfer: MultiChainTransferInfo, isRequest: boolean) {
+  return {
+    transfer_id:         transfer.transferId,
+    sender_id:           transfer.senderId,
+    recipient_id:        transfer.recipientId,
+    network:             transfer.network,
+    asset:               transfer.asset,
+    gross_amount:        transfer.grossAmount,
+    net_amount:          transfer.netAmount,
+    project_fee:         transfer.projectFee,
+    status:              transfer.status,
+    escrow_wallet:       transfer.escrowWallet,
+    expires_at:          transfer.expiresAt.toISOString(),
+    min_deposit_amount:  transfer.minDepositAmount,
+    network_fee_charged: transfer.networkFeeCharged,
+    tx_hash_deposit:     transfer.txHashDeposit,
+    tx_hash_release:     transfer.txHashRelease,
+    is_request:          isRequest,
+  };
+}
+
+/**
+ * Crea il messaggio di sistema "mc_payment" nella conversazione.
+ * Non-fatal: se fallisce, il transfer è già stato creato e ritorna 201.
+ */
+async function _createMCMessage(
+  transfer:       MultiChainTransferInfo,
+  messageSenderId: string,  // sender del messaggio in chat (chi ha avviato l'azione)
+  conversationId:  string,
+  isRequest:       boolean,
+): Promise<string | null> {
+  try {
+    const convOid   = new mongoose.Types.ObjectId(conversationId);
+    const senderOid = new mongoose.Types.ObjectId(messageSenderId);
+
+    const updatedConv = await ConversationModel.findOneAndUpdate(
+      { _id: convOid },
+      {
+        $inc: { sequence_counter: 1 },
+        $set: { last_message_at: new Date(), last_activity_at: new Date() },
+      },
+      { new: true },
+    );
+    if (!updatedConv) return null;
+
+    const msg = await MessageModel.create({
+      client_message_id:  randomUUID(),
+      conversation_id:    convOid,
+      sender_id:          senderOid,
+      ciphertext:         null,
+      ciphertext_type:    null,
+      sender_key_id:      null,
+      message_type:       "mc_payment",
+      sent_at:            new Date(),
+      sequence_number:    updatedConv.sequence_counter,
+      status:             "sent",
+      burn_after_read:    false,
+      system_event:       "mc_payment",
+      system_metadata:    _mcMsgMeta(transfer, isRequest),
+      device_ciphertexts: null,
+    });
+
+    await ConversationModel.findByIdAndUpdate(convOid, { $set: { last_message_id: msg._id } });
+
+    // Aggiorna il message_id nel transfer — best-effort
+    await setTransferMessageId(transfer.transferId, (msg._id as mongoose.Types.ObjectId).toString());
+
+    return (msg._id as mongoose.Types.ObjectId).toString();
+  } catch (err) {
+    logger.error({ err, transferId: transfer.transferId }, "[MCPayment] _createMCMessage failed (non-fatal)");
+    return null;
+  }
+}
+
+async function _broadcastMCMessage(
+  messageId:      string,
+  transfer:       MultiChainTransferInfo,
+  conversationId: string,
+  msgSenderId:    string,
+  isRequest:      boolean,
+): Promise<void> {
+  try {
+    const convOid = new mongoose.Types.ObjectId(conversationId);
+    const members = await memberRepo.listMembers(convOid);
+    const memberIds = members.map((m: { user_id: { toString(): string } }) => m.user_id.toString());
+
+    wsManager.sendToUsers(memberIds, {
+      type: "message.new",
+      payload: {
+        id:              messageId,
+        client_message_id: randomUUID(),
+        conversation_id: conversationId,
+        sender_id:       msgSenderId,
+        message_type:    "mc_payment",
+        ciphertext:      null,
+        ciphertext_type: null,
+        status:          "sent",
+        system_event:    "mc_payment",
+        system_metadata: _mcMsgMeta(transfer, isRequest),
+        sequence_number: 0,
+        sent_at:         new Date().toISOString(),
+        deleted:         false,
+        burn_after_read: false,
+        device_ciphertexts: null,
+      },
+    });
+  } catch (err) {
+    logger.error({ err, transferId: transfer.transferId }, "[MCPayment] _broadcastMCMessage failed (non-fatal)");
+  }
 }
 
 // ─── GET /multichain/config ───────────────────────────────────────────────────
@@ -181,6 +305,71 @@ export async function handleCreateTransfer(
       clientRef,
       expiresInHours,
     });
+
+    // Crea messaggio in chat e WS broadcast — non-fatal (il transfer è già creato)
+    if (conversationId) {
+      const msgId = await _createMCMessage(transfer, userId, conversationId, false);
+      if (msgId) await _broadcastMCMessage(msgId, transfer, conversationId, userId, false);
+    }
+
+    res.status(201).json({ transfer });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ─── POST /multichain/transfers/request ──────────────────────────────────────
+//
+// Crea un "mc_request": il chiamante è il destinatario (richiedente),
+// il campo payerId del body è il mittente (chi deposita).
+
+export async function handleRequestTransfer(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const userId = requireUserId(req);
+
+    const {
+      payerId,
+      conversationId,
+      network,
+      asset,
+      amountMode,
+      grossAmountUnits,
+      targetNetAmountUnits,
+      clientRef,
+      expiresInHours,
+    } = req.body;
+
+    // Idempotency
+    const existing = await findByClientRef(clientRef);
+    if (existing) {
+      if (existing.recipientId !== userId) throw new AppError("CLIENT_REF_CONFLICT", 409);
+      res.status(200).json({ transfer: existing, idempotent: true });
+      return;
+    }
+
+    // Il richiedente (userId) è il recipient; il pagante (payerId) è il sender
+    const transfer = await createMultiChainTransfer({
+      senderId:             payerId,
+      recipientId:          userId,
+      conversationId,
+      network,
+      asset,
+      amountMode: amountMode ?? "send_amount",
+      grossAmountUnits,
+      targetNetAmountUnits,
+      clientRef,
+      expiresInHours,
+    });
+
+    // Messaggio in chat (is_request=true): il messaggio sender = userId (richiedente)
+    if (conversationId) {
+      const msgId = await _createMCMessage(transfer, userId, conversationId, true);
+      if (msgId) await _broadcastMCMessage(msgId, transfer, conversationId, userId, true);
+    }
 
     res.status(201).json({ transfer });
   } catch (err) {

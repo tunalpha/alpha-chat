@@ -18,15 +18,16 @@ import { Router, type Request, type Response, type NextFunction, type RequestHan
 import {
   getMultiChainConfig,
   handleCreateTransfer,
+  handleRequestTransfer,
   handlePaymentQuote,
   handleGetTransfer,
   handleDetectDeposit,
   handleReleaseTransfer,
   handleRefundTransfer,
 } from "../../controllers/multichain-payment.controller";
-import { authenticate }                                           from "../../middleware/authenticate.middleware";
-import { validate }                                               from "../../middleware/validate.middleware";
-import { CreateMultiChainTransferSchema, PaymentQuoteSchema }     from "../../validation/multichain.schemas";
+import { authenticate }                                                                     from "../../middleware/authenticate.middleware";
+import { validate }                                                                         from "../../middleware/validate.middleware";
+import { CreateMultiChainTransferSchema, RequestMultiChainTransferSchema, PaymentQuoteSchema } from "../../validation/multichain.schemas";
 
 const router = Router();
 
@@ -98,6 +99,15 @@ router.post(
   authenticate,
   validate("body", CreateMultiChainTransferSchema),
   handleCreateTransfer,
+);
+
+// Richiedi pagamento — il chiamante è il recipient (richiedente), payerId dal body è il sender.
+// IMPORTANTE: questa route deve stare PRIMA di /:id per evitare conflitti di routing.
+router.post(
+  "/transfers/request",
+  authenticate,
+  validate("body", RequestMultiChainTransferSchema),
+  handleRequestTransfer,
 );
 
 router.get("/transfers/:id",          authenticate, handleGetTransfer);

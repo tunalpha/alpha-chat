@@ -179,6 +179,8 @@ export interface MultiChainTransferInfo {
   txHashDeposit:    string | null;
   txHashRelease:    string | null;
   txHashFee:        string | null;
+  /** ID del recipient — necessario per ownership check chat (H-02 esteso) */
+  recipientId:      string;
   /**
    * Importo minimo che il mittente deve depositare nell'escrow.
    *   BTC: grossAmount + estimatedMinerFee + buffer
@@ -249,7 +251,16 @@ function toInfo(doc: MultiChainTransferDocument): MultiChainTransferInfo {
     gasRetryCount:     doc.gas_retry_count ?? 0,
     amountMode:        (doc.amount_mode as AmountMode | null) ?? null,
     senderId:          doc.sender_id?.toString() ?? "",
+    recipientId:       doc.recipient_id?.toString() ?? "",
   };
+}
+
+/** Aggiorna il message_id del transfer dopo che il messaggio chat è stato creato. */
+export async function setTransferMessageId(transferId: string, messageId: string): Promise<void> {
+  await MultiChainTransferModel.findOneAndUpdate(
+    { transfer_id: transferId },
+    { $set: { message_id: messageId } },
+  );
 }
 
 function getAssetAddress(network: MCNetworkId, asset: MCAssetSymbol): string {

@@ -241,3 +241,58 @@ export const PaymentQuoteSchema = z
   });
 
 export type PaymentQuoteInput = z.infer<typeof PaymentQuoteSchema>;
+
+// ─── Schema: Richiedi Pagamento (richiedente = recipient) ─────────────────────
+
+/**
+ * Validazione request body per POST /multichain/transfers/request
+ *
+ * Il chiamante è il recipient (richiedente).
+ * payerId = chi deve depositare nell'escrow.
+ * Nessun wallet richiesto — l'escrow è generato dal backend.
+ */
+export const RequestMultiChainTransferSchema = z
+  .object({
+    payerId:              z.string().regex(OBJECT_ID_RE, "payerId deve essere un ObjectId valido"),
+    conversationId:       z.string().regex(OBJECT_ID_RE, "conversationId deve essere un ObjectId valido"),
+    network:              z.enum(VALID_NETWORKS),
+    asset:                z.enum(VALID_ASSETS),
+    amountMode:           z.enum(["send_amount", "recipient_exact"]).default("send_amount"),
+    grossAmountUnits:     z.string().regex(POSITIVE_BIGINT_STR, "Deve essere un intero positivo non zero").optional(),
+    targetNetAmountUnits: z.string().regex(POSITIVE_BIGINT_STR, "Deve essere un intero positivo non zero").optional(),
+    clientRef:            z.string().min(1).max(128),
+    expiresInHours:       z.number().int().min(1).max(168).optional(),
+  })
+  .superRefine((data, ctx) => {
+    const combo = `${data.network}:${data.asset}`;
+    if (!VALID_COMBOS.has(combo)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: `Combinazione non supportata: ${combo}. Valide: ${[...VALID_COMBOS].join(", ")}`,
+        path: ["asset"],
+      });
+    }
+    if (data.amountMode === "send_amount") {
+      if (!data.grossAmountUnits) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "grossAmountUnits obbligatorio per amountMode=send_amount",
+          path: ["grossAmountUnits"],
+        });
+      } else {
+        validateBigIntAmount(data.grossAmountUnits, "grossAmountUnits", ctx);
+      }
+    } else {
+      if (!data.targetNetAmountUnits) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: "targetNetAmountUnits obbligatorio per amountMode=recipient_exact",
+          path: ["targetNetAmountUnits"],
+        });
+      } else {
+        validateBigIntAmount(data.targetNetAmountUnits, "targetNetAmountUnits", ctx);
+      }
+    }
+  });
+
+export type RequestMultiChainTransferInput = z.infer<typeof RequestMultiChainTransferSchema>;

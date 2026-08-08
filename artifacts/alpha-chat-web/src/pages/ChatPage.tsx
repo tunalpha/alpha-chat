@@ -9,6 +9,10 @@ import { SendUsdaSheet } from "../components/usda/SendUsdaSheet";
 import { SendPaymentSheet } from "../components/usda/SendPaymentSheet";
 import { RequestUsdaSheet } from "../components/usda/RequestUsdaSheet";
 import { UsdaPaymentDetail } from "../components/usda/UsdaPaymentDetail";
+import { MultiChainSendSheet }      from "../components/multichain/MultiChainSendSheet";
+import { MultiChainRequestSheet }   from "../components/multichain/MultiChainRequestSheet";
+import { MultiChainPaymentBubble }  from "../components/multichain/MultiChainPaymentBubble";
+import type { MCSystemMeta }        from "../lib/multichain-api";
 
 import type { UsdaPaymentData } from "../lib/usda-types";
 import { useAuth } from "../contexts/AuthContext";
@@ -883,6 +887,9 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
   // ── USDA Payments ──────────────────────────────────────────────────────
   const [showSendUsda,    setShowSendUsda]    = useState(false);   // legacy — non più connesso al pulsante
   const [showSendPayment, setShowSendPayment] = useState(false);   // nuovo Payment Engine
+  // ── Multi-Chain Payments ─────────────────────────────────────────────
+  const [showMCPay,     setShowMCPay]     = useState(false);
+  const [showMCRequest, setShowMCRequest] = useState(false);
   const [sendPrefill, setSendPrefill] = useState<{ amount?: string; requestPaymentId?: string } | null>(null);
   // RETRY FIRMA: transfer_id per cui riaprire la firma (bolla awaiting_deposit).
   const [resumeTransferId, setResumeTransferId] = useState<string | null>(null);
@@ -3835,6 +3842,13 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
                               </div>
                             );
                           })()
+                        ) : msg.message_type === "mc_payment" ? (
+                          (msg.system_metadata as unknown as MCSystemMeta)?.transfer_id
+                            ? <MultiChainPaymentBubble
+                                data={msg.system_metadata as unknown as MCSystemMeta}
+                                isMine={isMine}
+                              />
+                            : null
                         ) : (decryptedTexts.get(msg.id) ?? "").startsWith(ANIMATED_STICKER_MARKER) ? (
                           /* Sticker animato Lottie v:2 — rilevato da ANIMATED_STICKER_MARKER */
                           <AnimatedStickerMessage body={decryptedTexts.get(msg.id) ?? ""} />
@@ -4247,6 +4261,20 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
                   >
                     <span className="attach-sheet-icon">💸</span>
                     <span>{t("chat.attachRequestUsda")}</span>
+                  </button>
+                  <button
+                    className="attach-sheet-item"
+                    onClick={() => { setShowAttachSheet(false); setTimeout(() => setShowMCPay(true), 80); }}
+                  >
+                    <span className="attach-sheet-icon">💎</span>
+                    <span>{t("chat.attachSendMultichain")}</span>
+                  </button>
+                  <button
+                    className="attach-sheet-item"
+                    onClick={() => { setShowAttachSheet(false); setTimeout(() => setShowMCRequest(true), 80); }}
+                  >
+                    <span className="attach-sheet-icon">🪙</span>
+                    <span>{t("chat.attachRequestMultichain")}</span>
                   </button>
                 </>
               )}
@@ -4687,6 +4715,26 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
         <UsdaPaymentDetail
           paymentId={usdaDetailId}
           onClose={() => setUsdaDetailId(null)}
+        />
+      )}
+
+      {/* ── Multi-Chain Payment Sheets ───────────────────────────────────── */}
+      {showMCPay && activeConv && auth && activeConv.type !== "group" && (
+        <MultiChainSendSheet
+          conversationId={activeConvId ?? ""}
+          toUserId={activeConv.other_user?.user_id ?? ""}
+          toName={activeConv.other_user?.display_name ?? activeConv.other_user?.username ?? "Utente"}
+          onClose={() => setShowMCPay(false)}
+          onSent={() => setShowMCPay(false)}
+        />
+      )}
+      {showMCRequest && activeConv && auth && activeConv.type !== "group" && (
+        <MultiChainRequestSheet
+          conversationId={activeConvId ?? ""}
+          toUserId={activeConv.other_user?.user_id ?? ""}
+          toName={activeConv.other_user?.display_name ?? activeConv.other_user?.username ?? "Utente"}
+          onClose={() => setShowMCRequest(false)}
+          onRequested={() => setShowMCRequest(false)}
         />
       )}
 

@@ -57,3 +57,4 @@
 - [Gas Reserve Protection — waiting_for_gas](sprint-gas-reserve-protection.md) — GasReserveDepletedError, waiting_for_gas status, scheduler recovery, alert strutturato, client response graceful
 - [Sprint STEP 3 — Payment Quote Mode](sprint-step3-payment-quote.md) — calculatePaymentQuote() pura condivisa da /quote e create; recipient_exact con BigInt ceiling; amountMode nel DB
 - [Sprint Multi-Chain STEP 5 — Production Blockers](sprint-multichain-step5.md) — pre-broadcast persist pattern (sign→persist hash→broadcast); SplitTxAdapter cast; logger named export; AppError.httpStatus
+- [Multi-Chain Chat UI Integration](sprint-multichain-chat-ui.md) — sheet Send/Request, bubble mc_payment con polling, isPayer logic, backend /transfers/request, recipientId in MultiChainTransferInfo

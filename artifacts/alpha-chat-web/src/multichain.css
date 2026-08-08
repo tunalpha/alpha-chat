@@ -1,0 +1,242 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   Multi-Chain Payment — Bubble & Sheet styles
+   Importato da main.tsx dopo index.css.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* ── Bubble container ──────────────────────────────────────────────────────── */
+
+.mc-bubble {
+  border-radius: 16px;
+  padding: 12px 14px;
+  max-width: 280px;
+  min-width: 190px;
+  font-size: 0.83rem;
+  background: rgba(80, 80, 110, 0.2);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(4px);
+}
+.mc-bubble.mine   { align-self: flex-end; }
+.mc-bubble.theirs { align-self: flex-start; }
+
+/* Header */
+.mc-bubble-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 5px;
+  gap: 6px;
+}
+.mc-bubble-network { font-size: 0.73rem; opacity: 0.65; font-weight: 500; }
+
+/* Amount */
+.mc-bubble-amount { font-size: 1.25rem; font-weight: 700; margin: 2px 0 3px; }
+.mc-bubble-asset  { font-size: 0.82rem; font-weight: 500; opacity: 0.75; }
+
+/* Subtitle */
+.mc-bubble-sub { font-size: 0.72rem; opacity: 0.6; margin-bottom: 8px; }
+
+/* ── Status badge ──────────────────────────────────────────────────────────── */
+
+.mc-status-badge {
+  font-size: 0.67rem;
+  font-weight: 600;
+  padding: 2px 7px;
+  border-radius: 99px;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+.mc-status-awaiting_deposit { background: rgba(234,179,8,0.18);  color: #eab308; }
+.mc-status-detecting        { background: rgba(59,130,246,0.18); color: #60a5fa; }
+.mc-status-releasing        { background: rgba(99,102,241,0.18); color: #a78bfa; }
+.mc-status-released         { background: rgba(34,197,94,0.18);  color: #4ade80; }
+.mc-status-refunding        { background: rgba(249,115,22,0.18); color: #fb923c; }
+.mc-status-refunded         { background: rgba(107,114,128,0.2); color: #9ca3af; }
+.mc-status-expired          { background: rgba(107,114,128,0.2); color: #9ca3af; }
+.mc-status-failed           { background: rgba(239,68,68,0.18);  color: #f87171; }
+.mc-status-waiting_for_gas  { background: rgba(234,179,8,0.18);  color: #eab308; }
+
+/* ── Escrow address section (dentro la bubble) ─────────────────────────────── */
+
+.mc-address-section {
+  margin-top: 8px;
+  background: rgba(0, 0, 0, 0.18);
+  border-radius: 10px;
+  padding: 9px 10px;
+}
+.mc-address-label {
+  font-size: 0.70rem;
+  opacity: 0.8;
+  margin: 0 0 5px;
+  line-height: 1.4;
+}
+.mc-address-box-small {
+  background: rgba(0, 0, 0, 0.22);
+  border-radius: 7px;
+  padding: 7px 8px;
+  word-break: break-all;
+  margin-bottom: 6px;
+}
+.mc-address-text-small {
+  font-family: ui-monospace, "Cascadia Code", monospace;
+  font-size: 0.67rem;
+  opacity: 0.9;
+  line-height: 1.5;
+}
+.mc-copy-btn-small {
+  width: 100%;
+  font-size: 0.70rem;
+  background: rgba(99, 102, 241, 0.22);
+  border: 1px solid rgba(99, 102, 241, 0.38);
+  color: #a78bfa;
+  border-radius: 7px;
+  padding: 5px 8px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: background 0.15s;
+  text-align: center;
+}
+.mc-copy-btn-small:hover { background: rgba(99, 102, 241, 0.38); }
+
+.mc-address-expiry-small {
+  font-size: 0.67rem;
+  opacity: 0.55;
+  margin: 5px 0 0;
+  text-align: center;
+}
+
+/* ── Explorer link ─────────────────────────────────────────────────────────── */
+
+.mc-explorer-link {
+  display: inline-block;
+  font-size: 0.70rem;
+  margin-top: 7px;
+  color: #818cf8;
+  text-decoration: none;
+  opacity: 0.85;
+}
+.mc-explorer-link:hover { text-decoration: underline; opacity: 1; }
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   Sheet styles — reusan la struttura .usda-sheet, aggiungono solo i delta.
+   ══════════════════════════════════════════════════════════════════════════ */
+
+.mc-sheet { max-height: 92vh; overflow-y: auto; }
+
+/* Etichetta sezione */
+.mc-section-label {
+  font-size: 0.73rem;
+  font-weight: 600;
+  opacity: 0.55;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin: 12px 0 6px;
+}
+
+/* ── Network grid ──────────────────────────────────────────────────────────── */
+
+.mc-network-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.mc-network-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 10px 6px;
+  border-radius: 12px;
+  border: 1.5px solid rgba(255, 255, 255, 0.09);
+  background: rgba(255, 255, 255, 0.035);
+  cursor: pointer;
+  font-size: 0.72rem;
+  transition: background 0.14s, border-color 0.14s;
+  -webkit-tap-highlight-color: transparent;
+}
+.mc-network-item:hover { background: rgba(255, 255, 255, 0.07); }
+.mc-network-item.selected {
+  border-color: var(--accent, #6366f1);
+  background: rgba(99, 102, 241, 0.13);
+}
+.mc-network-icon  { font-size: 1.45rem; }
+.mc-network-label {
+  font-size: 0.70rem;
+  font-weight: 500;
+  text-align: center;
+  opacity: 0.82;
+  line-height: 1.3;
+}
+
+/* ── Confirm summary ────────────────────────────────────────────────────────── */
+
+.mc-confirm-summary {
+  background: rgba(0, 0, 0, 0.15);
+  border-radius: 12px;
+  padding: 14px;
+  margin: 10px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+.mc-confirm-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 0.82rem;
+}
+.mc-confirm-fee { opacity: 0.65; }
+.mc-confirm-net {
+  padding-top: 9px;
+  border-top: 1px solid rgba(255, 255, 255, 0.09);
+  font-weight: 600;
+}
+.mc-confirm-note {
+  font-size: 0.71rem;
+  opacity: 0.55;
+  margin: 0 0 10px;
+  line-height: 1.55;
+}
+
+/* ── Address block (step 3) ─────────────────────────────────────────────────── */
+
+.mc-address-block { margin: 8px 0 14px; }
+
+.mc-address-instructions {
+  font-size: 0.80rem;
+  margin: 0 0 12px;
+  line-height: 1.55;
+  opacity: 0.85;
+}
+.mc-address-box {
+  background: rgba(0, 0, 0, 0.25);
+  border-radius: 10px;
+  padding: 12px;
+  word-break: break-all;
+  margin-bottom: 10px;
+}
+.mc-address-text {
+  font-family: ui-monospace, "Cascadia Code", monospace;
+  font-size: 0.77rem;
+  line-height: 1.65;
+}
+.mc-copy-btn {
+  width: 100%;
+  background: rgba(99, 102, 241, 0.22);
+  border: 1.5px solid rgba(99, 102, 241, 0.42);
+  color: #a78bfa;
+  font-size: 0.82rem;
+  font-weight: 600;
+  padding: 9px;
+  border-radius: 10px;
+  cursor: pointer;
+  transition: background 0.15s;
+  text-align: center;
+}
+.mc-copy-btn:hover { background: rgba(99, 102, 241, 0.38); }
+.mc-address-expiry {
+  font-size: 0.73rem;
+  opacity: 0.52;
+  margin: 8px 0 0;
+  text-align: center;
+}
