@@ -1,0 +1,156 @@
+Certo. Dagli questo prompt senza modificare il codice prima dei test:
+
+TEST END-TO-END MULTI-CHAIN — NON MODIFICARE IL CODICE
+
+Ora che i fix sono stati completati, voglio esclusivamente una verifica runtime completa. Non fare altri refactor o modifiche funzionali prima dei test.
+
+1. TEST UI — Richiedi Cripto
+
+Testare tutte le reti:
+
+USDT Polygon
+
+* modalità “Io pago il totale”
+* modalità “Riceve esattamente”
+
+USDT Ethereum
+
+* entrambe le modalità
+
+USDT BSC
+
+* entrambe le modalità
+
+BTC nativo
+
+* entrambe le modalità
+
+Verificare:
+
+* nessuna schermata nera;
+* sheet si chiude correttamente;
+* bolla viene creata immediatamente;
+* stato iniziale awaiting_deposit;
+* nessun riavvio/chiusura della PWA necessario;
+* decimali corretti;
+* nessuna visualizzazione di Commissione AlphaChat;
+* deve apparire una sola voce:
+    * BTC / Polygon → Fee rete
+    * Ethereum / BSC → Gas fee.
+
+2. TEST MATEMATICO QUOTE
+
+Per ogni rete verificare che il valore mostrato dalla UI sia identico a quello restituito dall’API /transfers/quote.
+
+Verificare:
+
+gross
+project fee
+network fee
+total fee
+net recipient
+total payer
+
+L’invariante deve essere verificata:
+
+gross = net + projectFee
+
+e la network/gas fee deve essere contabilizzata separatamente nel totale pagatore secondo la logica esistente.
+
+3. BTC
+
+Testare almeno:
+
+* €10
+* €100
+* €500
+
+In entrambe le modalità.
+
+Verificare:
+
+* BTC = 8 decimali;
+* project fee = max(0,10%, 546 sat);
+* nessun errore BTC_PROJECT_FEE_BELOW_DUST;
+* nessun minimo artificiale di €307;
+* fee mostrata all’utente come Fee rete, non come Commissione AlphaChat.
+
+4. DEPOSITO REALE — TEST CRITICO
+
+Per almeno USDT Polygon effettuare un deposito on-chain reale di test.
+
+Verificare l’intero ciclo:
+
+Richiesta
+↓
+Bolla
+↓
+awaiting_deposit
+↓
+deposito blockchain
+↓
+detect
+↓
+pending
+↓
+release
+↓
+released
+↓
+TX hash
+↓
+explorer
+
+La bolla deve aggiornarsi automaticamente tramite il lifecycle Multi-Chain/WS, senza chiudere e riaprire l’app.
+
+Verificare che il TX hash mostrato nella bolla sia quello reale della blockchain.
+
+5. BTC ON-CHAIN
+
+Prima del test verificare che ENABLE_BITCOIN_BTC=true sia configurato nell’ambiente corretto.
+
+Poi effettuare un piccolo deposito BTC reale di test e verificare:
+
+* rilevamento UTXO;
+* conferma;
+* cambio stato;
+* TXID;
+* link Blockstream;
+* importo contabilizzato correttamente.
+
+6. TEST DI REGRESSIONE
+
+Verificare che Invia Cripto non sia stato alterato dai recenti cambiamenti.
+
+Testare almeno:
+
+* USDT Polygon;
+* BTC se abilitato.
+
+Il flusso Send deve mantenere la sua logica originale.
+
+7. REPORT FINALE OBBLIGATORIO
+
+Non rispondere semplicemente “tutto funziona”.
+
+Restituire questa tabella:
+
+Test	Risultato	Evidenza
+Polygon Request	✅/❌	
+Ethereum Request	✅/❌	
+BSC Request	✅/❌	
+BTC Request	✅/❌	
+NET/GROSS	✅/❌	
+Fee unica UI	✅/❌	
+Decimali	✅/❌	
+Nessuna schermata nera	✅/❌	
+Polygon deposito reale	✅/❌	TX hash
+Polygon state transition	✅/❌	
+Polygon release	✅/❌	TX hash
+BTC deposito reale	✅/❌	TXID
+BTC state transition	✅/❌	
+Send regression	✅/❌	
+
+IMPORTANTE: build e typecheck non sono sufficienti. Voglio prove runtime e, per i test blockchain, TX hash/ID verificabili.
+
+Se un test fallisce, NON modificare immediatamente il codice. Prima riportare errore, endpoint, payload, risposta e root cause.
