@@ -19,6 +19,7 @@ import {
   BookLock,
   Clock,
   Gauge,
+  Layers,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 
@@ -39,7 +40,8 @@ const navItems = [
   { href: "/email-settings", label: "Email Notifiche", icon: Mail },
   { href: "/investor-access", label: "Investor Access", icon: BookLock },
   { href: "/access-log",     label: "Access Log",      icon: Clock },
-  { href: "/performance",    label: "Performance",      icon: Gauge },
+  { href: "/performance",        label: "Performance",      icon: Gauge  },
+  { href: "/multichain-monitor", label: "Multi-Chain",      icon: Layers },
 ];
 
 interface SidebarProps {

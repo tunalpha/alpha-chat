@@ -23,6 +23,7 @@ import EmailSettings from '@/pages/email-settings';
 import InvestorAccess from '@/pages/investor-access';
 import AccessLogPage from '@/pages/access-log';
 import PerformancePage from '@/pages/performance';
+import MultichainMonitor from '@/pages/multichain-monitor';
 
 const queryClient = new QueryClient();
 
@@ -45,6 +46,7 @@ function ProtectedRoutes() {
         <Route path="/gas-station" component={GasStationMonitor} />
         <Route path="/email-settings" component={EmailSettings} />
         <Route path="/investor-access" component={InvestorAccess} />
+        <Route path="/multichain-monitor" component={MultichainMonitor} />
         <Route path="/access-log" component={AccessLogPage} />
         <Route path="/performance" component={PerformancePage} />
         <Route component={NotFound} />

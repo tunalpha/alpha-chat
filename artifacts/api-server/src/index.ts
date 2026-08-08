@@ -9,7 +9,8 @@ import { startTempCleanupScheduler } from "./schedulers/temp-cleanup.scheduler";
 import { startR2HealthScheduler } from "./schedulers/r2-health.scheduler";
 import { reconcilePendingPayments } from "./services/usda.service";
 import { initCustodialService }    from "./payment/usda-custodial.service";
-import { startPaymentScheduler }   from "./payment/payment-scheduler.service";
+import { startPaymentScheduler }      from "./payment/payment-scheduler.service";
+import { startMultiChainScheduler }   from "./payment/multichain-scheduler";
 
 const port = config.app.port;
 
@@ -60,6 +61,10 @@ async function start(): Promise<void> {
   // Chat Payment Engine scheduler — recovery + expiry (ADR-003: DB-driven, nessun timer critico).
   // Avviato dopo un breve delay per garantire che syncIndexes sia completato.
   setTimeout(() => { void startPaymentScheduler(); }, 8_000);
+
+  // Multi-Chain Payment Engine scheduler — recovery lock bloccati + scadenze
+  // Avviato dopo 12s per garantire che tutti gli indici siano pronti.
+  setTimeout(() => { startMultiChainScheduler(); }, 12_000);
 
   // ── Graceful shutdown ───────────────────────────────────────────────────────
   const shutdown = async (signal: string): Promise<void> => {

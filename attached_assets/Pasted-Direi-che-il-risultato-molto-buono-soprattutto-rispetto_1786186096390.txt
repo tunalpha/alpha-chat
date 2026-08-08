@@ -1,0 +1,120 @@
+Direi che il risultato è molto buono, soprattutto rispetto al requisito principale: USDA non è stato modificato e i test di regressione sono a zero.
+
+Però io non dichiarerei ancora BTC/Multichain “production-ready”. I tre follow-up proposti dall’agente sono importanti, e li farei in quest’ordine:
+
+Priorità
+
+1. #20 — Recovery scheduler 🔴
+È il più importante.
+
+Se il server cade dopo che un pagamento entra in:
+
+releasing
+
+deve esistere un meccanismo che, al riavvio, riconosca la transazione e verifichi se è stata:
+
+* già trasmessa;
+* confermata;
+* fallita;
+* ancora da completare.
+
+Mai creare un secondo payout semplicemente perché il processo è crashato.
+
+⸻
+
+2. #22 — Deposito minimo BTC 🔴
+Anche questo è fondamentale prima di usare BTC realmente.
+
+Il sistema deve impedire depositi troppo piccoli per coprire:
+
+netAmount
++
+0,10% project fee
++
+miner fee
++
+eventuale buffer
+
+Altrimenti rischi di ricevere BTC ma non riuscire a effettuare correttamente il release.
+
+⸻
+
+3. #21 — Admin Panel 🟠
+Molto utile, ma può venire dopo la sicurezza operativa.
+
+Deve permetterti di vedere almeno:
+
+Transfer ID
+Network
+Asset
+Sender
+Recipient
+Gross
+Project Fee
+Network Fee
+Net
+TX Hash
+Status
+Confirmations
+Created
+Released
+
+e soprattutto lo stato:
+
+detected
+funded
+releasing
+completed
+refunded
+failed
+
+Una cosa che controllerei immediatamente
+
+Hai scritto:
+
+release (2 TX)
+
+Per BTC avevamo previsto idealmente una singola transazione con più output:
+
+INPUT UTXO
+   │
+   ├── Bob
+   ├── Fee Wallet
+   └── Change
+
+Se invece il codice fa realmente due transazioni Bitcoin separate, chiederei all’agente di spiegare perché.
+
+Per BTC preferirei normalmente una sola transaction, con:
+
+* output destinatario;
+* output fee wallet;
+* output change;
+* miner fee separata.
+
+Non è necessariamente un bug che siano 2 TX, ma va verificato prima della produzione, perché cambia costi, gestione UTXO e atomicità.
+
+Altra verifica importante
+
+L’agente usa:
+
+Blockstream.info API
+
+per BTC.
+
+Per un ambiente production-critical io verificherei bene il livello di dipendenza da un singolo servizio esterno. Idealmente il BitcoinAdapter dovrebbe essere astratto in modo da poter cambiare provider/API senza riscrivere la logica UTXO.
+
+⸻
+
+Io darei ora questo ordine all’agente
+
+#20 → #22 → verifica BTC 1-TX → #21
+
+E soprattutto gli direi:
+
+Non modificare nuovamente USDA.
+
+La cosa più positiva del report è infatti:
+
+488 test passing, +72 nuovi, zero regressioni USDA.
+
+Questa è esattamente la condizione che volevamo ottenere: il nuovo sistema è isolato dall’USDA, quindi se qualcosa nel multichain dovesse andare storto possiamo intervenire o fare rollback senza compromettere il sistema USDA esistente.

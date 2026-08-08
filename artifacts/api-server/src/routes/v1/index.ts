@@ -89,6 +89,10 @@ v1Router.use("/investor", investorRoutes);
 import multichainPaymentRoutes from "./multichain-payment.routes";
 v1Router.use("/multichain", multichainPaymentRoutes);
 
+// Multi-Chain Admin endpoints — monitoraggio e gestione trasferimenti
+import adminMultichainRoutes from "./admin-multichain.routes";
+v1Router.use("/admin/multichain", adminMultichainRoutes);
+
 // WalletConnect debug — temporaneo, rimuovere dopo la diagnosi
 
 export default v1Router;

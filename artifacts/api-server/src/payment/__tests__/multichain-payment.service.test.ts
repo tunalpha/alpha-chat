@@ -314,9 +314,10 @@ describe("releaseMultiChainTransfer", () => {
     } as any);
 
     await expect(releaseMultiChainTransfer(TRANSFER_ID)).rejects.toThrow();
-    // Verifica che il rollback a pending sia stato tentato
+    // Verifica che il rollback a pending sia stato tentato.
+    // La condizione include tx_hash_release: null per sicurezza (non doppio-invio).
     expect(MultiChainTransferModel.findOneAndUpdate).toHaveBeenCalledWith(
-      { transfer_id: TRANSFER_ID, status: "releasing" },
+      expect.objectContaining({ transfer_id: TRANSFER_ID, status: "releasing" }),
       { $set: { status: "pending", locked_at: null } },
     );
   });

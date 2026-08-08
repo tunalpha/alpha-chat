@@ -83,6 +83,14 @@ export interface IMultiChainTransfer {
   expires_at:    Date;
   locked_at:     Date | null;   // per recovery lock scaduto
   completed_at:  Date | null;   // quando lo status raggiunge un terminale
+
+  /**
+   * Importo minimo che il mittente DEVE depositare nell'escrow.
+   * Null per EVM (la miner fee viene da un gas wallet separato).
+   * Per Bitcoin: gross_amount + estimatedMinerFee + buffer.
+   * Esposto nella API response per guidare il mittente.
+   */
+  min_deposit_amount: string | null;
 }
 
 export interface MultiChainTransferDocument extends IMultiChainTransfer, Document {
@@ -144,9 +152,10 @@ const MultiChainTransferSchema = new Schema<MultiChainTransferDocument>(
     tx_hash_fee:     { type: String, default: null },
     tx_hash_refund:  { type: String, default: null },
 
-    expires_at:   { type: Date, required: true },
-    locked_at:    { type: Date, default: null },
-    completed_at: { type: Date, default: null },
+    expires_at:         { type: Date, required: true },
+    locked_at:          { type: Date, default: null },
+    completed_at:       { type: Date, default: null },
+    min_deposit_amount: { type: String, default: null },
   },
   {
     collection:  "multichain_transfers",

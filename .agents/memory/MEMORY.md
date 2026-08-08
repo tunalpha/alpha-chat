@@ -51,4 +51,4 @@
 - [Emoji Picker + Sticker system](emoji-sticker.md) — lazy emoji-picker-react, posizionamento anchor (no keyboard-inset-height), preventDefault focus iOS, sticker cifrato Signal, retrocompat "📎 Sticker"
 - [emoji-picker-react iOS scroll](emoji-picker-ios-scroll.md) — epr-body non scrolla su iOS PWA; CSS inutile, serve scroll manuale JS non-passive
 - [Animated Sticker system (Lottie v2)](animated-sticker.md) — Google Noto CDN, lottie-react lazy chunk, IntersectionObserver pause, ANIMATED_STICKER_MARKER, send as message_type:"text" for prod compat
-- [Multi-Chain Payment Engine](sprint-multichain.md) — feature flags OFF by default; Bitcoin UTXO separato da EVM; FeeConfigRegistry set("*","*") bug risolto; PSBT usa bigint in bitcoinjs-lib v7
+- [Multi-Chain Payment Engine](sprint-multichain.md) — feature flags OFF by default; Bitcoin UTXO separato da EVM; FeeConfigRegistry set("*","*") bug risolto; PSBT usa bigint in bitcoinjs-lib v7; BTC 1-TX release via buildAndBroadcastPayout; recovery scheduler; admin panel /multichain-monitor; mock leftover bug: vi.clearAllMocks() NON resetta once queue → sempre consumare tutti i mock findOneAndUpdate nei test
