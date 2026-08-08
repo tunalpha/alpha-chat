@@ -1,0 +1,172 @@
+Sì, hai ragione. Dalle schermate si vede una cosa abbastanza chiara: l’Admin Center non sembra ancora riflettere completamente il nuovo sistema Multi-Chain/BTC.
+
+1. Manca un vero controllo transazioni
+
+Nel menu vedo:
+
+* Dashboard
+* Growth
+* Security
+* System Health
+* Storage
+* SOC
+* Users
+* Devices
+* Audit Export
+* Diagnostics
+* R2 Monitor
+* Call Monitor
+* Gas Station
+* Email Notifiche
+* Investor Access
+* Access Log
+* Performance
+* Multi-Chain
+
+Ma non vedo una sezione dedicata al controllo/monitoraggio delle transazioni Multi-Chain.
+
+Per un sistema che ora gestisce:
+
+* USDT Polygon
+* USDT Ethereum
+* USDT BSC
+* BTC nativo
+* depositi
+* payout
+* refund
+* fee
+* TX hash
+* stato on-chain
+
+questa sezione è importante.
+
+2. Sì: il “Gas Station” sembra quello vecchio
+
+Lo screenshot mostra chiaramente riferimenti come:
+
+10 MATIC
+0.01 MATIC
+
+Quindi è evidentemente costruito intorno al vecchio modello Polygon/MATIC.
+
+Con il nuovo Multi-Chain non dovrebbe essere semplicemente una pagina Polygon chiamata “Gas Station”.
+
+Dovrebbe diventare qualcosa tipo:
+
+⛽ Gas & Network Operations
+
+Polygon
+
+* MATIC/POL balance
+* gas reserve
+* alert threshold
+* top-up
+* operazioni pending
+
+Ethereum
+
+* ETH balance
+* gas reserve
+* threshold
+
+BSC
+
+* BNB balance
+* gas reserve
+* threshold
+
+Bitcoin
+
+* nessun “gas”
+* fee rate BTC
+* fee estimates
+* UTXO/fee management
+
+Quindi BTC non deve essere trattato come una chain EVM con gas.
+
+⸻
+
+Io farei fare ora un audit specifico all’agente
+
+Copiagli questo:
+
+AUDIT ADMIN CENTER — MULTI-CHAIN
+
+Dalle ultime verifiche risulta che l’Admin Operations Center non sembra essere stato aggiornato completamente per riflettere il nuovo Multi-Chain Payment Engine.
+
+Esegui un audit completo dell’area Admin senza modificare codice inizialmente.
+
+Verifica in particolare:
+
+1. TRANSACTIONS CONTROL
+
+* Esiste una pagina/sezione Admin per il controllo centralizzato delle transazioni Multi-Chain?
+* Deve permettere di visualizzare almeno:
+    * transaction ID interno
+    * user/sender/recipient
+    * asset
+    * network
+    * amount
+    * fee
+    * status
+    * TX hash on-chain
+    * created/updated
+    * eventuale refund
+    * eventuali errori
+* Deve distinguere chiaramente:
+    * USDT / Polygon
+    * USDT / Ethereum
+    * USDT / BSC
+    * BTC / Bitcoin native
+* Deve consentire filtri per network, asset, status e periodo.
+
+2. GAS STATION
+Verifica se l’attuale “Gas Station” è una vecchia implementazione specifica Polygon/MATIC.
+
+Se contiene hardcoded o UI riferita esclusivamente a MATIC/Polygon, non considerarla sufficiente per il nuovo Multi-Chain.
+
+Progettare/aggiornare la sezione in modo chain-aware:
+
+* Polygon → POL/MATIC gas
+* Ethereum → ETH gas
+* BSC → BNB gas
+* Bitcoin → Bitcoin network fee / fee rate, NON gas
+
+Non utilizzare il concetto EVM gas per Bitcoin.
+
+3. MULTI-CHAIN ADMIN
+Verificare che la pagina “Multi-Chain” sia realmente collegata alle nuove API e ai nuovi modelli di transazione e non sia soltanto una pagina informativa.
+
+4. BTC ADMIN
+Verificare che l’Admin possa monitorare:
+
+* BTC deposits
+* BTC payouts
+* confirmations
+* UTXO
+* TXID
+* fee
+* refund
+* errori
+* stato del transfer
+
+5. SOURCE OF TRUTH
+Cercare nel repository eventuali vecchie pagine/componenti Admin relative a Polygon, MATIC, Gas Station o transaction monitoring e verificare se sono ancora utilizzate.
+
+IMPORTANTE: prima non modificare nulla. Restituisci un audit con:
+
+FEATURE | ESISTE | FUNZIONA | VECCHIA/NUOVA | FILE | API UTILIZZATA | AZIONE NECESSARIA
+
+Voglio sapere esattamente cosa è già presente e cosa manca prima di procedere con le modifiche.
+
+In particolare
+
+Non farei cancellare subito la Gas Station. Prima voglio sapere dall’agente se quella pagina viene ancora utilizzata da qualche servizio backend per il funding automatico del wallet gas.
+
+Potrebbe essere vecchia solo nella UI, oppure potrebbe esserci ancora una logica backend importante dietro.
+
+Quindi la sequenza corretta è:
+
+Audit → identificazione vecchio/nuovo → integrazione → test → eventuale sostituzione.
+
+E sì: un vero “Transaction Control” nell’Admin Center lo considero necessario per il livello che sta raggiungendo Alpha Chat.
