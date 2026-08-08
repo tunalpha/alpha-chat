@@ -19,7 +19,13 @@ import { logger } from "../lib/logger";
 // Costanti
 // ---------------------------------------------------------------------------
 
-const DEFAULT_RPC           = "https://polygon-bor-rpc.publicnode.com";
+// RPC URL risolto da env (USDA_POLYGON_RPC oppure POLYGON_RPC_URL come fallback).
+// Nessun URL pubblico hardcoded: tutti i provider devono essere configurati via secret.
+function resolveDefaultRpc(): string {
+  const url = process.env.USDA_POLYGON_RPC ?? process.env.POLYGON_RPC_URL ?? null;
+  if (!url) throw new Error("[PolygonRPC] Nessun RPC Polygon configurato: impostare USDA_POLYGON_RPC o POLYGON_RPC_URL");
+  return url;
+}
 const DEFAULT_USDA_CONTRACT = "0xe714655fD1B3ba96B887DF1F94336c2A78E24001";
 const USDA_DECIMALS         = 18;   // AlphaBit USDA è ERC-20 standard a 18 decimali
 const TIMEOUT_MS = 10_000;
@@ -42,7 +48,7 @@ const RECEIPT_RETRY_MS     = 4_000;
 async function rpcCall<T>(
   method: string,
   params: unknown[],
-  rpcUrl = process.env.USDA_POLYGON_RPC ?? DEFAULT_RPC,
+  rpcUrl = resolveDefaultRpc(),
 ): Promise<T | null> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), TIMEOUT_MS);
@@ -71,7 +77,7 @@ async function rpcCall<T>(
 export async function ethCall(
   to: string,
   data: string,
-  rpcUrl = process.env.USDA_POLYGON_RPC ?? DEFAULT_RPC,
+  rpcUrl = resolveDefaultRpc(),
 ): Promise<string> {
   const result = await rpcCall<string>("eth_call", [{ to, data }, "latest"], rpcUrl);
   return result ?? "0x0";
