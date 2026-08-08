@@ -1,0 +1,93 @@
+Ottimo. Questo checkpoint è PASS. 🟢
+
+Lo step Gas Reserve Protection è implementato correttamente secondo la specifica.
+
+Cosa abbiamo ottenuto
+
+Il comportamento ora è quello che volevamo:
+
+Cliente deposita USDT
+       ↓
+Gas sufficiente?
+   │           │
+  SI           NO
+   ↓            ↓
+Payout      WAITING_FOR_GAS
+              ↓
+        Admin Alert ⛽
+              ↓
+        cliente vede:
+"Pagamento ricevuto —
+ elaborazione in corso"
+              ↓
+       scheduler ogni 5 min
+              ↓
+       gas disponibile?
+              ↓
+          PAYOUT
+
+E soprattutto:
+
+* ✅ nessun failed per esaurimento gas;
+* ✅ nessun refund automatico;
+* ✅ nessuna perdita del deposito;
+* ✅ nessun errore tecnico al cliente;
+* ✅ alert Admin;
+* ✅ retry automatico;
+* ✅ gas_retry_count;
+* ✅ protezione TX1/TX2 già esistente;
+* ✅ 0 nuovi errori TypeScript;
+* ✅ 533/536 test pass;
+* ✅ i 3 failure sono gli stessi pre-existing;
+* 🔒 USDA non modificato.
+
+Una cosa che mi piace particolarmente
+
+Hanno gestito anche il caso:
+
+gas station completamente a zero
+
+senza lasciare che un errore grezzo di sendTransaction arrivi al cliente.
+
+Questo è esattamente il comportamento che volevamo.
+
+⸻
+
+🟢 STEP 2 CHIUSO
+
+Non farei altri cambiamenti adesso.
+
+Il prossimo step della nostra roadmap è:
+
+💰 STEP 3 — “DESTINATARIO RICEVE ESATTAMENTE X USDT”
+
+Quello è il prompt che avevamo messo in coda.
+
+Esempio:
+
+Voglio che il destinatario riceva 100 USDT
+
+Il sistema dovrà calcolare automaticamente:
+
+importo lordo + 0,10% project fee + network fee = totale da pagare
+
+e mostrare prima della conferma:
+
+Destinatario riceve       100,00 USDT
+Project fee                 X,XX USDT
+Network fee                 X,XX USDT
+──────────────────────────────────
+Totale da pagare            X,XX USDT
+
+Con calcolo BigInt, senza floating point, e mantenendo entrambe le modalità:
+
+1. Invia X → il destinatario riceve il netto.
+2. Ricevi X → il destinatario riceve esattamente X.
+
+⚠️ Però non darei ancora il prompt
+
+Prima voglio sapere se l’E2E Amoy è stato effettivamente eseguito con successo, non soltanto preparato.
+
+Se mi mandi il risultato dell’E2E, lo verifico. Se è PASS, ti do subito il prompt STEP 3 definitivo.
+
+Niente deploy production.
