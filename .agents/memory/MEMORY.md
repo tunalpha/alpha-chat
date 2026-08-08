@@ -61,3 +61,4 @@
 - [MultiChain wallet required bug](multichain-wallet-required-bug.md) — sender_wallet/recipient_wallet devono essere default:null NON required:true; causa 500 per tutti i network non-Polygon
 - [BTC fee floor 546 sat](btc-fee-floor.md) — projectFee = max(0.10%, 546 sat); rimosso BTC_PROJECT_FEE_BELOW_DUST; recipient_exact: se fee < 546 → gross=net+546; zero-guard fix per recipient_exact mode
 - [BSC USDT 18 decimali](bsc-usdt-decimals.md) — BSC USDT ha 18 dec (non 6); MC_DECIMALS["bsc"]=18; test/display devono usare 10^18 non 10^6; raw API values corretti
+- [Multi-Chain Lifecycle Alignment](multichain-lifecycle.md) — bolla chiama apiMCDetect (non apiMCGet) ogni 30s; WS mc_payment.state_changed emesso su detect/release/refund; ChatPage handler in-place

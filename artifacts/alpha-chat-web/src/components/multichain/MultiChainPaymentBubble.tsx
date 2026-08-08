@@ -19,6 +19,7 @@ import { memo, useState, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import {
   apiMCGet,
+  apiMCDetect,
   isMCTerminal,
   fromSmallestUnit,
   MC_NETWORK_LABELS,
@@ -91,12 +92,21 @@ export const MultiChainPaymentBubble = memo(function MultiChainPaymentBubble({ d
    */
   const isPayer = isRequest ? !isMine : isMine;
 
-  // Auto-poll stato ogni 30 s finché non terminale
+  // Auto-poll e detect ogni 30 s finché non terminale.
+  //
+  // Quando status === "awaiting_deposit": chiama apiMCDetect (verifica on-chain
+  // se il deposito è arrivato) — identico al comportamento USDA che chiama
+  // detect-deposit ogni 10 s. Rate limit: 10 req/min per utente+transfer,
+  // quindi 2 req/min (ogni 30 s) è ampiamente entro i limiti.
+  //
+  // Negli altri stati non-terminali: chiama apiMCGet (solo lettura DB).
   useEffect(() => {
     if (isMCTerminal(status)) return;
     pollRef.current = setInterval(async () => {
       try {
-        const updated = await apiMCGet(data.transfer_id);
+        const updated = status === "awaiting_deposit"
+          ? await apiMCDetect(data.transfer_id)   // chiama blockchain
+          : await apiMCGet(data.transfer_id);      // solo DB
         setStatus(updated.status);
         if (updated.txHashRelease) setTxHash(updated.txHashRelease);
         else if (updated.txHashDeposit) setTxHash(updated.txHashDeposit);

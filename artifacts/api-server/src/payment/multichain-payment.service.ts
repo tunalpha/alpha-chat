@@ -60,6 +60,7 @@ import { generateEscrowWallet, decryptEscrowKeyHex } from "../blockchain/escrow-
 import { multichainError }          from "../blockchain/errors";
 import { AppError }                 from "../errors/AppError";
 import { logger }                   from "../lib/logger";
+import { emitMCPaymentStateChanged } from "./multichain-events";
 import type { BitcoinAdapter }      from "../blockchain/bitcoin/bitcoin-adapter";
 import { createPublicClient, createWalletClient, http, type Chain } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
@@ -679,6 +680,7 @@ export async function detectMultiChainDeposit(transferId: string): Promise<Multi
     "[MCPayment] Deposito rilevato — status → pending",
   );
 
+  emitMCPaymentStateChanged(updated);
   return toInfo(updated);
 }
 
@@ -808,6 +810,7 @@ async function _transitionToWaitingForGas(
   const retryCount = updated?.gas_retry_count ?? 1;
   _fireGasDepletedAlert(transferId, doc, err, retryCount);
 
+  if (updated) emitMCPaymentStateChanged(updated);
   return toInfo(updated ?? doc);
 }
 
@@ -970,6 +973,7 @@ async function _releaseEvm(doc: MultiChainTransferDocument): Promise<MultiChainT
     "[MCPayment] EVM release completato",
   );
 
+  emitMCPaymentStateChanged(completed!);
   return toInfo(completed!);
 }
 
@@ -1024,6 +1028,7 @@ async function _releaseBitcoin(doc: MultiChainTransferDocument): Promise<MultiCh
     "[MCPayment] BTC release completato (1 TX unica)",
   );
 
+  emitMCPaymentStateChanged(completed!);
   return toInfo(completed!);
 }
 
@@ -1181,6 +1186,7 @@ async function _doRefund(doc: MultiChainTransferDocument): Promise<MultiChainTra
         { $set: { status: "refunded", completed_at: new Date(), locked_at: null } }, // locked_at: null (H-07)
         { returnDocument: "after" },
       );
+      emitMCPaymentStateChanged(completed!);
       return toInfo(completed!);
     }
 
@@ -1240,6 +1246,7 @@ async function _doRefund(doc: MultiChainTransferDocument): Promise<MultiChainTra
       "[MCPayment] Refund completato",
     );
 
+    emitMCPaymentStateChanged(completed!);
     return toInfo(completed!);
   } catch (err) {
     // C-03: rollback SOLO se tx_hash_refund è ancora null.

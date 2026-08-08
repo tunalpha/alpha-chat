@@ -1,0 +1,76 @@
+Sì. E secondo me va richiesto esplicitamente, perché il flusso BTC/USDT Multi-Chain deve essere coerente con quello USDA dal punto di vista UX e degli stati.
+
+Puoi mandargli questo:
+
+VERIFICA E ALLINEA IL FLUSSO MULTI-CHAIN AL FLUSSO USDA GIÀ FUNZIONANTE.
+
+Non voglio una semplice creazione del transfer nel database. Voglio che il comportamento lato utente sia identico al flusso USDA, cambiando solamente la logica specifica della rete/asset.
+
+Flusso richiesto
+
+1. L’utente crea una richiesta di pagamento.
+2. Si apre la bolla/conversazione della richiesta, come avviene già con USDA.
+3. La richiesta inizialmente deve avere stato awaiting_deposit.
+4. Deve essere mostrato chiaramente che il pagamento è in attesa.
+5. Quando il mittente effettua realmente il pagamento on-chain, il backend deve rilevarlo.
+6. Lo stato della richiesta deve aggiornarsi automaticamente seguendo la stessa macchina a stati utilizzata da USDA.
+7. Deve essere mostrato il TX hash reale della transazione ricevuta.
+8. Il TX hash deve essere cliccabile e aprire l’explorer corretto:
+    * BTC → Blockstream
+    * Polygon → PolygonScan
+    * Ethereum → Etherscan
+    * BSC → BscScan
+9. La bolla deve mostrare chiaramente:
+    * importo richiesto
+    * importo ricevuto
+    * commissione AlphaChat
+    * network fee/miner fee quando disponibile
+    * stato
+    * TX hash
+    * timestamp
+10. Dopo il pagamento, la UI non deve rimanere semplicemente su “awaiting_deposit”: deve ricevere l’aggiornamento e mostrare il nuovo stato senza richiedere all’utente di ricreare la richiesta.
+
+IMPORTANTISSIMO
+
+Non reinventare il flusso.
+
+Prima individua nel codice il flusso USDA completo e funzionante:
+
+creazione richiesta → bolla → awaiting_deposit → rilevamento pagamento → aggiornamento stato → TX hash → completamento
+
+Poi riutilizza la stessa identica architettura/eventi/polling/socket/query invalidation/UI state management per Multi-Chain.
+
+Cambia soltanto:
+
+* asset
+* network
+* provider blockchain
+* modalità di rilevamento della transazione
+* explorer URL
+* fee specifiche della rete.
+
+NON creare una seconda implementazione parallela se quella USDA già risolve il problema.
+
+Test obbligatorio
+
+Non dichiarare il lavoro completato con build o tsc.
+
+Esegui almeno un test runtime completo:
+
+BTC
+
+crea richiesta → bolla → awaiting_deposit → pagamento BTC reale/test → rilevamento → stato aggiornato → TXID visibile → explorer
+
+E un test equivalente:
+
+USDT Polygon
+
+per dimostrare che il flusso Multi-Chain segue realmente il comportamento USDA.
+
+Voglio una verifica finale esplicita:
+
+“Il flusso Multi-Chain utilizza la stessa logica di lifecycle della richiesta USDA”
+
+oppure, se non è così, indica esattamente quale differenza rimane e perché.
+
+Questo è importante perché non basta che /transfers/request ritorni awaiting_deposit: dobbiamo verificare tutta la vita della richiesta fino al pagamento effettivamente rilevato e TX hash mostrato nella bolla.

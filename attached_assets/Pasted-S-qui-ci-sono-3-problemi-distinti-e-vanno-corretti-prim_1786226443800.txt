@@ -1,0 +1,153 @@
+Sì, qui ci sono 3 problemi distinti e vanno corretti prima di qualsiasi altro deploy:
+
+1. Schermata nera dopo “Richiedi” → il flusso non deve richiedere chiusura/riapertura dell’app. La nuova richiesta deve aprire/aggiornare immediatamente la bolla, esattamente come USDA.
+2. Decimali lunghissimi → è un problema esclusivamente di formattazione UI, non di precisione interna. Il backend deve mantenere i raw units, ma l’interfaccia deve mostrare valori leggibili.
+3. Fee AlphaChat → nella UI non voglio una riga separata “Commissione AlphaChat”. Deve esserci una sola voce relativa ai costi, denominata dinamicamente “Fee rete” oppure “Gas fee” in base alla blockchain. La commissione AlphaChat può continuare a essere calcolata internamente, ma non deve comparire come voce separata nel breakdown.
+
+Mandagli questo prompt, senza fargli toccare altro:
+
+FIX CRITICO — RICHIEDI CRIPTO / REQUEST FLOW
+
+Gli screenshot mostrano ancora tre problemi. Non fare altri cambiamenti architetturali finché questi non sono risolti e testati.
+
+1. SCHERMATA NERA DOPO “RICHIEDI”
+
+Quando clicco Richiedi nella richiesta USDT/BSC, l’app diventa completamente nera e devo chiuderla e riaprirla.
+
+Questo è inaccettabile.
+
+Il comportamento deve essere identico al flusso USDA già funzionante:
+
+Richiedi → creazione request → apertura/aggiornamento conversazione → bolla della richiesta → stato awaiting_deposit
+
+Non deve esserci nessun crash, blank screen, route invalida, modal bloccata o stato React inconsistente.
+
+Dopo la risposta positiva del backend, la UI deve:
+
+* chiudere correttamente lo sheet;
+* aggiornare la conversazione;
+* mostrare immediatamente la nuova bolla;
+* mostrare Attesa deposito;
+* mantenere la schermata della chat perfettamente funzionante;
+* senza chiudere/riaprire la PWA.
+
+Prima di modificare il codice, confronta il lifecycle completo USDA con quello Multi-Chain e riutilizza la stessa identica logica di navigazione/state update/query invalidation.
+
+⸻
+
+2. DECIMALI — CORREGGERE SOLO LA PRESENTAZIONE
+
+Nella bolla USDT/BSC viene mostrato:
+
+1.000000000000000001 USDT
+
+e:
+
+1.001001001001001002 USDT
+
+Questo NON deve mai apparire nella UI.
+
+I raw units e la precisione blockchain devono rimanere corretti internamente.
+
+La UI deve invece usare una funzione centralizzata di formatting per asset/network.
+
+Regola:
+
+* BTC → massimo 8 decimali
+* USDT → massimo 6 decimali visualizzati
+* altri token EVM → usare i decimals dell’asset, ma eliminare gli zeri inutili
+* mai visualizzare una coda artificiale di zeri
+* mai introdurre errori floating-point
+
+Esempi:
+
+1.000000000000000001 USDT → 1 USDT
+
+1.001001001001001002 USDT → 1.001001 USDT
+
+100.000000 USDT → 100 USDT
+
+0.000177850000 BTC → 0.00017785 BTC
+
+La matematica interna NON deve essere modificata per ottenere questo risultato. È soltanto formatting.
+
+⸻
+
+3. NON MOSTRARE “COMMISSIONE ALPHACHAT”
+
+Nel confirm e nella bolla non voglio più questa voce:
+
+Commissione AlphaChat (0.10%)
+
+Deve esserci una sola voce di costo, coerente con la rete:
+
+* BTC → Fee rete
+* Polygon → Fee rete
+* BSC → Gas fee
+* Ethereum → Gas fee
+
+Quindi niente doppia esposizione:
+
+❌ Commissione AlphaChat
+❌ Fee rete
+
+Deve diventare:
+
+✅ Fee rete / Gas fee
+
+ATTENZIONE: non alterare arbitrariamente la matematica delle quote già corretta. La modifica richiesta qui riguarda la presentazione del breakdown. La logica economica interna deve rimanere coerente con la quote API e con l’invariante già verificata.
+
+⸻
+
+TEST OBBLIGATORI
+
+Non dichiarare concluso il lavoro con una semplice build.
+
+Devi eseguire test runtime reali per:
+
+USDT Polygon
+
+* Richiedi
+* apertura bolla
+* awaiting_deposit
+* nessuna schermata nera
+* decimali corretti
+* una sola voce fee
+
+USDT BSC
+
+* Richiedi
+* apertura bolla
+* awaiting_deposit
+* nessuna schermata nera
+* 1 USDT, non 1.000000000000000001
+* una sola voce Gas fee
+
+BTC
+
+* Richiedi
+* apertura bolla
+* awaiting_deposit
+* massimo 8 decimali
+* una sola voce Fee rete
+
+E soprattutto verifica il lifecycle:
+
+Richiedi → POST request → risposta backend → chiusura sheet → aggiornamento chat → nuova bolla → awaiting_deposit
+
+senza reload dell’app.
+
+Non considerare il lavoro completato finché questo flusso non è dimostrato funzionante end-to-end.
+
+Alla fine dammi una tabella:
+
+Test	Risultato
+USDT Polygon	✅/❌
+USDT BSC	✅/❌
+BTC	✅/❌
+Nessuna schermata nera	✅/❌
+Decimali corretti	✅/❌
+Una sola voce fee	✅/❌
+Lifecycle identico a USDA	✅/❌
+
+Io non farei ancora un altro deploy dopo questo prompt finché non ha terminato e mostrato i test runtime. Prima vogliamo vedere che la logica è realmente funzionante; poi deploy e test sulla PWA.

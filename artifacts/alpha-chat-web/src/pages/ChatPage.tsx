@@ -1804,6 +1804,42 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
           break;
         }
 
+        // Multi-Chain Payment Engine — aggiorna system_metadata bolla mc_payment in-place
+        // Speculare a payment.state_changed (Chat Payment Engine) — stessa architettura WS.
+        case "mc_payment.state_changed": {
+          const {
+            transfer_id, message_id, conversation_id, status,
+            tx_hash_release, tx_hash_deposit,
+          } = event.payload as {
+            transfer_id:     string;
+            conversation_id: string;
+            message_id:      string | null;
+            status:          string;
+            tx_hash_release: string | null;
+            tx_hash_deposit: string | null;
+          };
+          if (conversation_id !== activeConvId) break;
+          setMessages((prev) =>
+            prev.map((m) => {
+              const meta = (m.system_metadata as Record<string, unknown>) ?? {};
+              const isMatch =
+                (meta.transfer_id && meta.transfer_id === transfer_id) ||
+                (message_id != null && m.id === message_id);
+              if (!isMatch) return m;
+              return {
+                ...m,
+                system_metadata: {
+                  ...meta,
+                  status,
+                  tx_hash_release: tx_hash_release ?? meta.tx_hash_release ?? null,
+                  tx_hash_deposit: tx_hash_deposit ?? meta.tx_hash_deposit ?? null,
+                },
+              };
+            }),
+          );
+          break;
+        }
+
         // USDA Payments (getusda.xyz) — aggiorna stato del pagamento nel messaggio in-place
         case "usda.payment.update": {
           const { message_id, conversation_id, status, tx_hash } = event.payload as {
