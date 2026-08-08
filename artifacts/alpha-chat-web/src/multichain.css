@@ -332,3 +332,57 @@
   margin: 8px 0 0;
   text-align: center;
 }
+
+/* ── Selettore valuta fiat (EUR / USD) ────────────────────────────────────── */
+.mc-fiat-select {
+  background: rgba(255,255,255,0.08);
+  border: 1.5px solid rgba(255,255,255,0.14);
+  border-radius: 10px;
+  color: #fff;
+  font-size: 0.9rem;
+  font-weight: 700;
+  padding: 10px 10px;
+  cursor: pointer;
+  outline: none;
+  min-width: 68px;
+  text-align: center;
+  appearance: none;
+  -webkit-appearance: none;
+}
+.mc-fiat-select:focus { border-color: #f7931a; }
+.mc-fiat-select option { background: #1e1e2e; color: #fff; }
+
+/* ── Controvalore BTC live ────────────────────────────────────────────────── */
+.mc-btc-equiv {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 6px;
+  min-height: 20px;
+}
+.mc-btc-equiv-value {
+  font-size: 1.05rem;
+  font-weight: 700;
+  font-family: ui-monospace, "Cascadia Code", monospace;
+  color: #f7931a;
+  letter-spacing: -0.02em;
+}
+.mc-btc-equiv-rate {
+  font-size: 0.72rem;
+  color: rgba(255,255,255,0.38);
+  font-variant-numeric: tabular-nums;
+}
+.mc-btc-equiv-loading {
+  font-size: 0.78rem;
+  color: rgba(255,255,255,0.38);
+  animation: mc-pulse 1.2s ease-in-out infinite;
+}
+.mc-btc-equiv-error {
+  font-size: 0.78rem;
+  color: rgba(255, 80, 80, 0.75);
+}
+@keyframes mc-pulse {
+  0%, 100% { opacity: 0.38; }
+  50%       { opacity: 0.7;  }
+}
