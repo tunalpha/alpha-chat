@@ -1,0 +1,106 @@
+FINAL CONFIGURATION — ENABLE ALL 4 MAINNET NETWORKS
+
+The final audit is complete.
+
+Polygon USDT: GO
+Bitcoin BTC: GO
+Ethereum USDT: currently blocked only by missing configuration
+BSC USDT: currently blocked only by missing configuration + incorrect default fee units
+
+DO NOT DEPLOY YET.
+
+I want to complete the configuration for ALL FOUR networks and then run one final audit.
+
+Required configuration:
+
+ETHEREUM:
+- ETHEREUM_RPC_URL = secure Ethereum Mainnet RPC
+- ETHEREUM_FEE_WALLET = valid Ethereum/EVM address receiving the 0.10% project fee
+- ENABLE_ETHEREUM_USDT=true
+- Ethereum Mainnet chainId=1
+- Ethereum USDT contract remains the verified mainnet USDT contract
+- ETHEREUM_FLAT_NETWORK_FEE_USDT must be explicitly configured, do not silently rely on the default without reporting it
+
+BSC:
+- BSC_RPC_URL = secure BSC Mainnet RPC
+- BSC_FEE_WALLET = valid BSC/EVM address receiving the 0.10% project fee
+- BSC_FLAT_NETWORK_FEE_USDT=500000000000000000
+  This represents 0.50 USDT with 18 decimals.
+- ENABLE_BSC_USDT=true
+- BSC Mainnet chainId=56
+- BSC USDT contract remains the verified mainnet USDT contract
+
+GAS:
+The existing GAS_STATION_PRIVATE_KEY is shared by EVM networks.
+Do NOT create or expose another private key unless the architecture explicitly requires it.
+
+Verify that the gas-station wallet is correctly derived from the existing secret.
+
+IMPORTANT SECURITY RULES:
+- Ask for missing secrets ONLY through the secure Replit Secrets form.
+- Never ask me to paste private keys, API keys or secrets into chat.
+- Never print secret values.
+- Never log secret values.
+- Fee wallet addresses may be entered as secrets as currently designed.
+- Do not expose any secret in the final report.
+
+For RPC providers:
+- Ask me for the secure RPC URLs through the Replit Secret form.
+- Do not invent RPC URLs.
+- Do not use USDA_POLYGON_RPC for Ethereum or BSC.
+- Each network must use its own RPC configuration.
+- Fallback URLs are optional unless the code requires them.
+
+Before enabling each network, validate:
+1. RPC URL is reachable.
+2. Correct chainId is returned.
+3. Mainnet is confirmed.
+4. USDT contract exists on that chain.
+5. USDT decimals are correct.
+6. Fee wallet address is valid.
+7. Gas station wallet address is valid.
+8. Fee calculation uses BigInt.
+9. Network fee uses correct decimals.
+10. No USDA dependency exists.
+
+For BSC specifically verify that:
+500000000000000000 = 0.50 USDT
+and that the value is interpreted using 18 decimals.
+
+After configuration:
+- Run Ethereum tests.
+- Run BSC tests.
+- Run Polygon tests.
+- Run Bitcoin tests.
+- Run scheduler tests.
+- Run complete test suite.
+- Run TypeScript/typecheck.
+- Run production build.
+- Restart server and verify clean startup.
+- Verify all four ENABLE flags are true.
+
+Then perform the FINAL READ-ONLY production audit again.
+
+DO NOT DEPLOY.
+
+Final report must contain:
+
+Polygon: GO/NO-GO
+Ethereum: GO/NO-GO
+BSC: GO/NO-GO
+Bitcoin: GO/NO-GO
+
+Missing secrets: names ONLY
+Tests
+Typecheck
+Build
+Security
+Admin readiness
+Notification readiness
+Remaining risks
+
+If all four networks are GO and there are zero critical/high blockers, state:
+
+"READY FOR COMPLETE 4-NETWORK MAINNET DEPLOYMENT — WAITING FOR EXPLICIT USER GO."
+
+STOP. DO NOT DEPLOY.
