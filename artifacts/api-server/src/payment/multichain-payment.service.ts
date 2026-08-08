@@ -57,7 +57,7 @@ import { logger }                   from "../lib/logger";
 import type { BitcoinAdapter }      from "../blockchain/bitcoin/bitcoin-adapter";
 import { createPublicClient, createWalletClient, http, type Chain } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { polygon } from "viem/chains";
+import { polygon, polygonAmoy } from "viem/chains";
 
 // ─── Fee registry (singleton) ──────────────────────────────────────────────────
 
@@ -233,9 +233,22 @@ const MC_GAS_TX_COUNT       = 2n;        // TX1 (recipient) + TX2 (feeWallet)
 const MC_GAS_STATION_BUFFER = 2n;        // 2× safety margin per gas price in salita
 const MC_GAS_STATION_CAP    = 500_000_000_000_000_000n; // 0.5 native coin cap
 
-/** Map chain EVM per createPublicClient (solo catene abilitate nel testnet) */
+/**
+ * Map chain EVM per createPublicClient / createWalletClient nel gas station.
+ *
+ * POLYGON_CHAIN_ID=80002 → Polygon Amoy testnet (per test script)
+ * POLYGON_CHAIN_ID=137   → Polygon Mainnet (default produzione)
+ *
+ * Viene letto al caricamento del modulo → impostare POLYGON_CHAIN_ID
+ * PRIMA dell'import dinamico nei testnet scripts.
+ */
+const _polygonChain: Chain = (() => {
+  const chainId = parseInt(process.env.POLYGON_CHAIN_ID ?? "137", 10);
+  return chainId === 80002 ? polygonAmoy : polygon;
+})();
+
 const MC_CHAIN_MAP: Partial<Record<MCNetworkId, Chain>> = {
-  polygon: polygon,
+  polygon: _polygonChain,
   // ethereum: mainnet,  // aggiungere con ETH import quando abilitato
   // bsc: bsc,           // aggiungere con BSC import quando abilitato
 };

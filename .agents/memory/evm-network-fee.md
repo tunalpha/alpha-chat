@@ -47,3 +47,22 @@ Pattern: check `GAS_STATION_PRIVATE_KEY` → check chain/rpc → `createPublicCl
 
 - 527 totali, 524 pass, 3 fallimenti pre-esistenti (chat-payment WALLET_NOT_CONFIGURED, jwt expiry, refresh-token expiry)
 - 12 nuovi test aggiunti in `multichain-payment.service.test.ts`
+
+## Testnet E2E infrastruttura (Polygon Amoy, chainId 80002)
+
+**Pattern env-var-before-dynamic-import (obbligatorio per testnet scripts):**
+Tutti gli env var testnet (`POLYGON_RPC_URL`, `POLYGON_CHAIN_ID=80002`, `POLYGON_USDT_CONTRACT`, `ENABLE_POLYGON_USDT`, `POLYGON_FEE_WALLET`, `POLYGON_FLAT_NETWORK_FEE_USDT`) devono essere settati PRIMA dei `await import(...)` dei moduli production. Questi moduli leggono env var a caricamento (module-level `const`).
+
+**Why:** `feeRegistry = buildDefaultFeeRegistry()`, `TOKEN_CONTRACTS`, `FEATURE_FLAGS`, `MC_CHAIN_MAP` sono tutti module-level — valutati una sola volta al caricamento del modulo. Se il dynamic import precede il set degli env var, i valori di produzione vengono letti invece di quelli testnet.
+
+**`POLYGON_CHAIN_ID=80002` → MC_CHAIN_MAP usa `polygonAmoy`:**
+`ensureMultiChainEscrowGas` usa `MC_CHAIN_MAP[network]` per firmare le TX. Se `POLYGON_CHAIN_ID` è 80002, usa `polygonAmoy` (chainId 80002) invece di `polygon` (137). Senza questo, le TX firmate con chainId mainnet vengono rifiutate da Amoy.
+
+**`PolygonAmoyAdapter` (src/blockchain/evm/polygon-amoy.adapter.ts):**
+Extend di `EvmAdapter` con `polygonAmoy` chain e 1 confirmation. Registrato nel registry con `adapterRegistry.register("polygon", factory)` prima delle chiamate ai service. NON importa `multichain-config` a runtime → sicuro come static import nel testnet script.
+
+**File testnet:**
+- `src/blockchain/evm/polygon-amoy.adapter.ts` — adapter Amoy
+- `src/scripts/testnet-e2e-polygon.ts` — script E2E 12 step
+- `TESTNET_SETUP.md` — guida deploy mock USDT su Amoy + istruzioni faucet
+- `pnpm testnet:e2e` — npm script
