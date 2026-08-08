@@ -18,14 +18,15 @@ import { Router, type Request, type Response, type NextFunction, type RequestHan
 import {
   getMultiChainConfig,
   handleCreateTransfer,
+  handlePaymentQuote,
   handleGetTransfer,
   handleDetectDeposit,
   handleReleaseTransfer,
   handleRefundTransfer,
 } from "../../controllers/multichain-payment.controller";
-import { authenticate }                    from "../../middleware/authenticate.middleware";
-import { validate }                        from "../../middleware/validate.middleware";
-import { CreateMultiChainTransferSchema }  from "../../validation/multichain.schemas";
+import { authenticate }                                           from "../../middleware/authenticate.middleware";
+import { validate }                                               from "../../middleware/validate.middleware";
+import { CreateMultiChainTransferSchema, PaymentQuoteSchema }     from "../../validation/multichain.schemas";
 
 const router = Router();
 
@@ -79,7 +80,18 @@ const detectRateLimit = buildDetectRateLimiter();
 // Configurazione pubblica — M-6: solo dati necessari al frontend (senza fee wallets/contracts)
 router.get("/config", getMultiChainConfig);
 
+// Quote / Preview — calcolo preventivo SENZA creare un transfer nel DB.
+// IMPORTANTE: questa route deve stare PRIMA di /:id per evitare conflitti di routing.
+// Il client chiama questo endpoint per mostrare il breakdown prima della conferma.
+router.post(
+  "/transfers/quote",
+  authenticate,
+  validate("body", PaymentQuoteSchema),
+  handlePaymentQuote,
+);
+
 // Crea trasferimento — H-4: validazione Zod prima del controller
+// STEP 3: supporta amountMode ("send_amount" | "recipient_exact") + targetNetAmountUnits.
 router.post(
   "/transfers",
   authenticate,

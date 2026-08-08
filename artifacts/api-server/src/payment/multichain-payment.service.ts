@@ -49,7 +49,13 @@ import {
   getEVMFlatNetworkFee,
   NATIVE_ASSET_SYMBOL,
 } from "../blockchain/multichain-config";
-import { calculateFee, assertFeeInvariant } from "../blockchain/fee-config";
+import { calculateFee, assertFeeInvariant, DEFAULT_FEE_BPS } from "../blockchain/fee-config";
+import {
+  calculatePaymentQuote,
+  computeGrossFromNet,
+  type AmountMode,
+  type PaymentQuote,
+} from "./payment-quote";
 import { generateEscrowWallet, decryptEscrowKeyHex } from "../blockchain/escrow-crypto";
 import { multichainError }          from "../blockchain/errors";
 import { AppError }                 from "../errors/AppError";
@@ -74,6 +80,8 @@ const BTC_DUST_THRESHOLD_SAT = 546n;
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
+export { AmountMode, PaymentQuote, calculatePaymentQuote, computeGrossFromNet };
+
 export interface CreateMultiChainTransferParams {
   senderId:        string;
   recipientId:     string;
@@ -82,8 +90,23 @@ export interface CreateMultiChainTransferParams {
   recipientWallet: string;
   network:         MCNetworkId;
   asset:           MCAssetSymbol;
-  /** Importo lordo in base units (BigInt come stringa) */
-  grossAmountUnits: string;
+  /**
+   * Modalità importo (default: "send_amount" per backward compat).
+   *   "send_amount"     — grossAmountUnits è il lordo inserito dal mittente
+   *   "recipient_exact" — targetNetAmountUnits è il netto che il destinatario deve ricevere
+   */
+  amountMode?:          AmountMode;
+  /**
+   * Importo lordo in base units (BigInt come stringa).
+   * Obbligatorio per amountMode=send_amount (default).
+   */
+  grossAmountUnits?:    string;
+  /**
+   * Importo netto target in base units (BigInt come stringa).
+   * Obbligatorio per amountMode=recipient_exact.
+   * Il service calcola il gross amount minimo garantendo netAmount ≥ targetNetAmount.
+   */
+  targetNetAmountUnits?: string;
   /** Chiave idempotenza — UUID generato dal client */
   clientRef:       string;
   /** Scadenza in ore (default: 24) */
@@ -163,6 +186,13 @@ export interface MultiChainTransferInfo {
    * 0 = nessun problema di gas. >0 = in waiting_for_gas o uscito da waiting_for_gas.
    */
   gasRetryCount:      number;
+  /**
+   * Modalità importo scelta dal mittente:
+   *   "send_amount"     — gross inserito direttamente (comportamento classico)
+   *   "recipient_exact" — net target inserito; gross calcolato inversamente
+   * Null per transfer pre-STEP 3 (backward compat — si comportano come send_amount).
+   */
+  amountMode:         AmountMode | null;
 }
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
@@ -189,6 +219,7 @@ function toInfo(doc: MultiChainTransferDocument): MultiChainTransferInfo {
     networkFeeActual:  doc.network_fee,
     networkFeeAsset:   doc.network_fee_asset ?? null,
     gasRetryCount:     doc.gas_retry_count ?? 0,
+    amountMode:        (doc.amount_mode as AmountMode | null) ?? null,
   };
 }
 
@@ -450,38 +481,39 @@ export async function createMultiChainTransfer(
 ): Promise<MultiChainTransferInfo> {
   assertFeatureEnabled(params.network, params.asset);
 
-  const grossAmount = BigInt(params.grossAmountUnits);
-  if (grossAmount <= 0n) {
-    throw new AppError("INVALID_AMOUNT", 400, "grossAmountUnits");
-  }
+  // ── Determina modalità e calcola quote (funzione PURA, invariata tra preview e create) ──
+  // calculatePaymentQuote gestisce entrambe le modalità in modo centralizzato.
+  // Nessuna logica di calcolo fee duplicata.
+  const effectiveMode: AmountMode = params.amountMode ?? "send_amount";
+  const feeConfig   = feeRegistry.resolve(params.network, params.asset);
 
-  const feeConfig = feeRegistry.resolve(params.network, params.asset);
-  const feeResult = calculateFee(grossAmount, feeConfig.feeBps, feeConfig.feeWallet);
-  assertFeeInvariant(feeResult);
+  const quote = calculatePaymentQuote({
+    amountMode:           effectiveMode,
+    grossAmountUnits:     params.grossAmountUnits,
+    targetNetAmountUnits: params.targetNetAmountUnits,
+    network:              params.network,
+    asset:                params.asset,
+    feeBps:               feeConfig.feeBps,
+    feeWallet:            feeConfig.feeWallet,
+  });
+
+  const grossAmount       = BigInt(quote.grossAmount);
+  const projectFee        = BigInt(quote.projectFee);
+  const networkFeeCharged = BigInt(quote.networkFeeCharged);
+  const networkFeeAsset   = NATIVE_ASSET_SYMBOL[params.network];
 
   // M-1: Dust check per Bitcoin
   // projectFee < 546 sat non può essere un output P2WPKH valido.
   // Rifiutiamo qui (creazione) invece di perdere la fee silenziosamente al release.
-  if (isBitcoin(params.network) && feeResult.projectFee < BTC_DUST_THRESHOLD_SAT) {
+  if (isBitcoin(params.network) && projectFee < BTC_DUST_THRESHOLD_SAT) {
     throw multichainError("BTC_PROJECT_FEE_BELOW_DUST", {
-      projectFee:     feeResult.projectFee.toString(),
-      dustThreshold:  BTC_DUST_THRESHOLD_SAT.toString(),
-      grossAmount:    grossAmount.toString(),
-      hint:           `Aumenta grossAmountUnits oppure riduci la fee rate. ` +
-                      `projectFee minima: ${BTC_DUST_THRESHOLD_SAT} sat`,
+      projectFee:    projectFee.toString(),
+      dustThreshold: BTC_DUST_THRESHOLD_SAT.toString(),
+      grossAmount:   grossAmount.toString(),
+      hint:          `Aumenta grossAmountUnits oppure riduci la fee rate. ` +
+                     `projectFee minima: ${BTC_DUST_THRESHOLD_SAT} sat`,
     });
   }
-
-  // ── Network fee charged to client (SEPARATA da projectFee) ──────────────────
-  // EVM: flat fee configurabile via env (es. POLYGON_FLAT_NETWORK_FEE_USDT).
-  //      Letta al create time e salvata nel transfer — immutabile per quel record.
-  //      Il gas station paga materialmente il gas in POL/ETH/BNB,
-  //      ma il costo economico è recuperato tramite networkFeeCharged addebitato al cliente.
-  // BTC: 0n — il costo miner è incluso nel buffer di estimateBtcMinDeposit.
-  //
-  // INVARIANTE: projectFee = grossAmount × 0.10% — INVARIATO, non dipende da networkFeeCharged.
-  const networkFeeCharged = getEVMFlatNetworkFee(params.network); // 0n per BTC
-  const networkFeeAsset   = NATIVE_ASSET_SYMBOL[params.network];
 
   // Wallet escrow usa-e-getta
   const escrow = generateEscrowWallet();
@@ -512,12 +544,12 @@ export async function createMultiChainTransfer(
     asset:                params.asset,
     asset_address:        assetAddress,
     decimals,
-    gross_amount:         feeResult.grossAmount.toString(),
-    project_fee:          feeResult.projectFee.toString(),
-    net_amount:           feeResult.netAmount.toString(),
+    gross_amount:         quote.grossAmount,
+    project_fee:          quote.projectFee,
+    net_amount:           quote.netAmount,
     network_fee:          "0",
-    fee_bps:              Number(feeResult.feeBps),
-    fee_wallet:           feeResult.feeWallet,
+    fee_bps:              quote.feeBps,
+    fee_wallet:           feeConfig.feeWallet,
     sender_wallet:        params.senderWallet,
     recipient_wallet:     params.recipientWallet,
     escrow_wallet:        escrow.address,
@@ -527,7 +559,7 @@ export async function createMultiChainTransfer(
     tx_hash_release:      null,
     tx_hash_fee:          null,
     tx_hash_refund:       null,
-    // Network fee charged to client — immutabile per questo transfer
+    // Network fee charged to client — immutabile per questo transfer (§10)
     // Separato da project_fee (0.10%) e da network_fee (gas reale in native wei)
     network_fee_charged:  networkFeeCharged > 0n ? networkFeeCharged.toString() : null,
     network_fee_asset:    networkFeeCharged > 0n ? networkFeeAsset : null,
@@ -535,6 +567,8 @@ export async function createMultiChainTransfer(
     locked_at:            null,
     completed_at:         null,
     min_deposit_amount:   minDepositAmount,
+    // STEP 3: modalità importo — preservata nel DB per audit e display
+    amount_mode:          effectiveMode,
   });
 
   logger.info(
@@ -542,9 +576,10 @@ export async function createMultiChainTransfer(
       transferId,
       network:          params.network,
       asset:            params.asset,
-      grossAmount:      feeResult.grossAmount.toString(),
-      projectFee:       feeResult.projectFee.toString(),
-      netAmount:        feeResult.netAmount.toString(),
+      amountMode:       effectiveMode,
+      grossAmount:      quote.grossAmount,
+      projectFee:       quote.projectFee,
+      netAmount:        quote.netAmount,
       minDepositAmount: minDepositAmount ?? "N/A (EVM)",
       escrow:           escrow.address,
     },

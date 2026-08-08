@@ -1,0 +1,426 @@
+STEP 3 — PAYMENT MODE: SEND AMOUNT / RECIPIENT RECEIVES EXACT AMOUNT
+
+Implementare una nuova modalità di calcolo dell’importo nel Multi-Chain Payment Engine.
+
+OBIETTIVO
+
+Il cliente deve poter scegliere liberamente tra due modalità:
+
+MODALITÀ A — INVIO IMPORTO
+
+Il cliente inserisce:
+
+“Voglio inviare 100 USDT”
+
+Il sistema mantiene il comportamento attuale.
+
+grossAmount = 100 USDT
+projectFee = 0,10 USDT
+netAmount  = 99,90 USDT
++ networkFeeCharged
+
+Il destinatario riceve:
+
+99,90 USDT
+
+Il cliente vede prima della conferma:
+
+Importo inviato       100,00 USDT
+Project fee             0,10 USDT
+Network fee             X,XX USDT
+──────────────────────────────
+Totale deposito         X,XX USDT
+Destinatario riceve    99,90 USDT
+
+NON modificare il comportamento esistente della modalità A.
+
+⸻
+
+MODALITÀ B — DESTINATARIO RICEVE ESATTAMENTE
+
+Il cliente seleziona:
+
+“Il destinatario deve ricevere esattamente”
+
+e inserisce, ad esempio:
+
+100 USDT
+
+Il sistema deve calcolare automaticamente il gross amount necessario affinché il destinatario riceva esattamente:
+
+100 USDT
+
+dopo la project fee.
+
+⸻
+
+1. FORMULA
+
+La project fee rimane sempre:
+
+projectFee = grossAmount × feeBps / 10_000
+
+con:
+
+feeBps = 10
+
+La formula esistente NON deve essere modificata.
+
+Per ottenere un netAmount target:
+
+targetNetAmount = 100 USDT
+
+calcolare il gross amount inverso utilizzando esclusivamente integer arithmetic / BigInt.
+
+Concettualmente:
+
+grossAmount - projectFee = targetNetAmount
+
+quindi:
+
+grossAmount ≈ targetNetAmount / (1 - 0.001)
+
+MAI utilizzare floating point.
+
+Gestire correttamente eventuali arrotondamenti.
+
+⸻
+
+2. REGOLA DI ARROTONDAMENTO
+
+Il risultato deve garantire SEMPRE:
+
+netAmount >= targetNetAmount
+
+Non permettere mai che il destinatario riceva meno dell’importo richiesto a causa di arrotondamenti.
+
+Utilizzare BigInt e definire chiaramente la policy di rounding.
+
+Preferenza:
+
+round up del gross amount al minimo valore intero necessario per garantire il target netto.
+
+⸻
+
+3. NETWORK FEE
+
+Dopo aver determinato il gross amount:
+
+networkFeeCharged
+
+rimane completamente separata dalla project fee.
+
+Per Polygon, utilizzare il valore configurato:
+
+POLYGON_FLAT_NETWORK_FEE_USDT
+
+Per le altre reti utilizzare la configurazione specifica già prevista.
+
+NON modificare la logica BTC in questo step.
+
+⸻
+
+4. ESEMPIO OBBLIGATORIO
+
+Target:
+
+Destinatario riceve = 100 USDT
+
+Il sistema deve calcolare un gross amount sufficiente affinché:
+
+netAmount >= 100 USDT
+
+e mostrare:
+
+Destinatario riceve       100,00 USDT
+Project fee                 X,XX USDT
+Network fee                 0,50 USDT
+────────────────────────────────
+Totale cliente              X,XX USDT
+
+Il valore esatto della project fee deve derivare dalla formula esistente e non essere hardcoded.
+
+⸻
+
+5. UI / API — SCELTA DEL CLIENTE
+
+NON eliminare la modalità attuale.
+
+L’API deve supportare un parametro esplicito, ad esempio:
+
+amountMode:
+  "send_amount"
+  "recipient_exact"
+
+oppure un nome equivalente coerente con l’architettura esistente.
+
+La scelta deve essere esplicita e validata.
+
+send_amount
+
+Il valore inserito rappresenta:
+
+gross amount
+
+recipient_exact
+
+Il valore inserito rappresenta:
+
+target net amount
+
+⸻
+
+6. PREVIEW PRIMA DELLA CONFERMA
+
+Prima della creazione definitiva del transfer, il client deve poter visualizzare:
+
+Modalità SEND
+
+Invii                     100,00 USDT
+Project fee                 0,10 USDT
+Network fee                 0,50 USDT
+────────────────────────────────
+Totale                      100,50 USDT
+Destinatario riceve          99,90 USDT
+
+Modalità RECIPIENT EXACT
+
+Destinatario riceve         100,00 USDT
+Project fee                   X,XX USDT
+Network fee                   0,50 USDT
+────────────────────────────────
+Totale da pagare              X,XX USDT
+
+Il cliente deve vedere chiaramente il totale prima della conferma.
+
+Nessuna fee nascosta.
+
+⸻
+
+7. API
+
+Mantenere backward compatibility.
+
+Le richieste esistenti senza amountMode devono continuare a funzionare come:
+
+send_amount
+
+Aggiungere, se necessario:
+
+amountMode
+targetNetAmount
+grossAmount
+projectFee
+netAmount
+networkFeeCharged
+minDepositAmount
+
+NON duplicare la logica di calcolo delle fee.
+
+Creare una funzione centrale di quote/calculation riutilizzabile dal service e dall’API.
+
+⸻
+
+8. QUOTE / PREVIEW
+
+Preferire una funzione di calcolo separata dalla creazione effettiva del transfer.
+
+Concettualmente:
+
+calculatePaymentQuote(...)
+
+deve restituire:
+
+amountMode
+grossAmount
+projectFee
+netAmount
+networkFeeCharged
+totalDeposit
+
+La quote NON deve creare un transfer né modificare il DB.
+
+La creazione definitiva deve utilizzare la stessa logica per evitare differenze tra preview e pagamento reale.
+
+⸻
+
+9. PROJECT FEE — PROTEZIONE ASSOLUTA
+
+NON modificare la formula:
+
+projectFee = grossAmount × 0.10%
+
+NON usare la network fee per alterare la project fee.
+
+NON usare la project fee per pagare il gas.
+
+La project fee deve rimanere contabilmente separata.
+
+⸻
+
+10. NETWORK FEE — SEPARATA
+
+Mantenere:
+
+networkFeeCharged
+
+separato da:
+
+projectFee
+
+e da:
+
+networkFeeActual
+
+Quindi:
+
+projectFee
+    ↓
+ricavo piattaforma
+networkFeeCharged
+    ↓
+costo/reimbursement network addebitato al cliente
+networkFeeActual
+    ↓
+costo reale gas/miner
+
+Non confondere i tre valori.
+
+⸻
+
+11. BTC
+
+NON modificare il meccanismo BTC in questo step.
+
+La modalità recipient_exact deve essere progettata in modo compatibile con BTC, ma l’implementazione/test BTC può essere effettuata nello STEP BTC dedicato.
+
+Non alterare:
+
+* UTXO selection;
+* miner fee;
+* minDeposit BTC;
+* singola TX BTC;
+* fee wallet BTC.
+
+⸻
+
+12. VALIDAZIONE
+
+Aggiungere validation per:
+
+* amountMode obbligatorio/valido;
+* importo > 0;
+* targetNetAmount > 0;
+* precisione compatibile con i decimals dell’asset;
+* overflow;
+* BigInt conversion;
+* combinazioni network/asset valide.
+
+Nessun floating point per gli importi finanziari.
+
+⸻
+
+13. TEST OBBLIGATORI
+
+Aggiungere test almeno per:
+
+A — Backward compatibility
+
+Request senza amountMode:
+
+→ send_amount
+
+B — Send amount
+
+100 USDT gross
+→ project fee 0,10
+→ net 99,90
+
+C — Recipient exact
+
+target = 100 USDT
+→ gross calcolato
+→ project fee calcolata
+→ netAmount >= 100 USDT
+
+D — Rounding
+
+Verificare che il destinatario non riceva MAI meno del target.
+
+E — Network fee
+
+Verificare che networkFeeCharged:
+
+* sia separata;
+* non modifichi projectFee;
+* venga inclusa nel totale da depositare.
+
+F — Quote consistency
+
+La quote preview e la creazione definitiva devono produrre gli stessi valori.
+
+G — Large amounts
+
+Testare importi elevati senza overflow.
+
+H — Small amounts
+
+Testare importi piccoli e verificare correttamente dust/decimals.
+
+I — Different decimals
+
+Testare correttamente asset con decimals differenti.
+
+J — USDA regression
+
+Confermare zero modifiche/regressioni USDA.
+
+⸻
+
+14. NON IMPLEMENTARE ALTRE FUNZIONALITÀ
+
+Questo step riguarda esclusivamente:
+
+SEND AMOUNT vs RECIPIENT EXACT AMOUNT
+
+NON implementare ora:
+
+* Ethereum activation;
+* BSC activation;
+* BTC redesign;
+* Paymaster;
+* automatic token swap;
+* nuove commissioni;
+* modifiche USDA;
+* production deployment.
+
+⸻
+
+15. CHECKPOINT FINALE
+
+Prima di dichiarare completato:
+
+* typecheck;
+* test completi;
+* nuovi test;
+* build;
+* verifica API;
+* verifica quote;
+* verifica backward compatibility;
+* conferma zero regressioni USDA.
+
+Restituire:
+
+1. file modificati;
+2. API modificata;
+3. nuovo amountMode;
+4. formula utilizzata;
+5. esempi numerici;
+6. test aggiunti;
+7. risultati test;
+8. eventuali rischi residui;
+9. conferma esplicita USDA intoccato.
+
+NON procedere al production deploy.
+
+Attendere il checkpoint prima del prossimo step.

@@ -55,3 +55,4 @@
 - [Multi-Chain Hardening (C-1..M-6)](sprint-multichain-hardening.md) — intermediate persist tx_hash_release (C-1); scheduler no-rollback with tx_hash (C-2); requireAdmin (H-1); broadcastTxSafe (H-2); pending expiry refund (H-3); Zod validation (H-4); BTC dust 546 sat (M-1); scheduler singleton (M-2); BTC_FEE_CONFIG env (M-3); /detect rate limit (M-5); /config trim (M-6)
 - [EVM Network Fee Model + Testnet E2E](evm-network-fee.md) — flat fee, TX2 combined, vi.mock("viem"); testnet: env-before-dynamic-import, POLYGON_CHAIN_ID=80002, PolygonAmoyAdapter
 - [Gas Reserve Protection — waiting_for_gas](sprint-gas-reserve-protection.md) — GasReserveDepletedError, waiting_for_gas status, scheduler recovery, alert strutturato, client response graceful
+- [Sprint STEP 3 — Payment Quote Mode](sprint-step3-payment-quote.md) — calculatePaymentQuote() pura condivisa da /quote e create; recipient_exact con BigInt ceiling; amountMode nel DB

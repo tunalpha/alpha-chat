@@ -112,6 +112,15 @@ export interface IMultiChainTransfer {
   gas_retry_count: number;
 
   /**
+   * Modalità importo scelta dal mittente al momento della creazione.
+   *   "send_amount"      — il mittente ha inserito il gross amount (comportamento classico)
+   *   "recipient_exact"  — il mittente ha inserito il net target; il gross è calcolato inversamente
+   *
+   * Null per transfer creati prima di STEP 3 (backward compat — si comportano come send_amount).
+   */
+  amount_mode: "send_amount" | "recipient_exact" | null;
+
+  /**
    * Importo minimo che il mittente DEVE depositare nell'escrow.
    *
    * BTC: gross_amount + estimatedMinerFee + buffer (miner fee inclusa nel deposito).
@@ -191,6 +200,7 @@ const MultiChainTransferSchema = new Schema<MultiChainTransferDocument>(
     completed_at:       { type: Date, default: null },
     min_deposit_amount: { type: String, default: null },
     gas_retry_count:    { type: Number, default: 0 },
+    amount_mode:        { type: String, enum: ["send_amount", "recipient_exact"], default: null },
   },
   {
     collection:  "multichain_transfers",

@@ -21,6 +21,7 @@ import {
   refundMultiChainTransfer,
   getMultiChainTransfer,
   findByClientRef,
+  calculatePaymentQuote,
 } from "../payment/multichain-payment.service";
 import { FEATURE_FLAGS, getEVMFlatNetworkFee, NATIVE_ASSET_SYMBOL } from "../blockchain/multichain-config";
 import { AppError } from "../errors/AppError";
@@ -69,6 +70,36 @@ export async function getMultiChainConfig(
   }
 }
 
+// ─── POST /multichain/transfers/quote ────────────────────────────────────────
+//
+// Preview preventivo — nessun DB, nessuna RPC.
+// Il client può vedere gross, projectFee, netAmount, networkFeeCharged, totalDeposit
+// prima di confermare la creazione del transfer.
+//
+// Spec §8: stessa logica di calculatePaymentQuote usata poi nel create → zero divergenze.
+
+export async function handlePaymentQuote(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const { network, asset, amountMode, grossAmountUnits, targetNetAmountUnits } = req.body;
+
+    const quote = calculatePaymentQuote({
+      amountMode:           amountMode ?? "send_amount",
+      grossAmountUnits,
+      targetNetAmountUnits,
+      network,
+      asset,
+    });
+
+    res.json({ quote });
+  } catch (err) {
+    next(err);
+  }
+}
+
 // ─── POST /multichain/transfers ───────────────────────────────────────────────
 
 export async function handleCreateTransfer(
@@ -87,7 +118,9 @@ export async function handleCreateTransfer(
       recipientWallet,
       network,
       asset,
+      amountMode,
       grossAmountUnits,
+      targetNetAmountUnits,
       clientRef,
       expiresInHours,
     } = req.body;
@@ -100,14 +133,16 @@ export async function handleCreateTransfer(
     }
 
     const transfer = await createMultiChainTransfer({
-      senderId:        userId,
+      senderId:             userId,
       recipientId,
       conversationId,
       senderWallet,
       recipientWallet,
       network,
       asset,
+      amountMode,
       grossAmountUnits,
+      targetNetAmountUnits,
       clientRef,
       expiresInHours,
     });
