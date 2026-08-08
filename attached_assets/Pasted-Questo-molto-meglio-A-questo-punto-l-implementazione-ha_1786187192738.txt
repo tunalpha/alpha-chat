@@ -1,0 +1,160 @@
+Questo è molto meglio. A questo punto l’implementazione ha raggiunto una struttura che considero solida per passare alla fase di staging/test controllato, non ancora direttamente a un deployment finanziario live senza una prova reale.
+
+Le parti più importanti sono state risolte correttamente:
+
+* USDA invariato: zero regressioni.
+* Recovery scheduler: verifica on-chain prima di agire e impedisce il doppio invio se esiste già tx_hash_*.
+* BTC minimum deposit: tiene conto di importo + miner fee + buffer.
+* BTC 1-TX: finalmente coerente con il modello che avevamo progettato:
+    * destinatario
+    * fee wallet
+    * change
+    * una sola transazione.
+* Refund BTC: corretto separatamente dal percorso EVM.
+* Admin monitor: ora hai visibilità operativa sui multichain.
+* Rollback atomico: findOneAndUpdate elimina il rischio del findOne → update intermedio.
+* TypeCheck pulito: i due errori rimasti sono preesistenti.
+* 488 test passing: e i 3 failure non sono stati introdotti dal nuovo codice.
+
+Prima del production, farei però 5 verifiche finali
+
+1. Testnet reale BTC
+
+Fare un ciclo completo:
+
+BTC deposit
+↓
+detectDeposit
+↓
+funded
+↓
+release
+↓
+1 TX
+↓
+Bob + Fee Wallet + Change
+↓
+confirmations
+↓
+completed
+
+Controllando soprattutto che la somma degli output + miner fee = input UTXO.
+
+2. Test crash/recovery
+
+Simulare:
+
+releasing
+↓
+TX broadcast
+↓
+server crash
+↓
+restart
+↓
+scheduler
+
+Il sistema deve trovare la TX già esistente e non inviarne una seconda.
+
+Poi fare anche:
+
+releasing
+↓
+server crash
+↓
+NESSUNA TX broadcastata
+↓
+restart
+↓
+scheduler
+↓
+nuovo broadcast
+
+Questo è uno dei test più importanti.
+
+3. Verifica fee wallet
+
+Fai una transazione reale di importo piccolo e verifica che:
+
+gross
+− projectFee
+− eventuale network fee
+
+sia coerente con quanto effettivamente arriva.
+
+E soprattutto verifica che BTC Fee Wallet sia quello configurato dall’Admin, non un indirizzo hardcoded.
+
+4. Test Admin
+
+Verifica:
+
+* cambio fee wallet EVM;
+* cambio BTC fee wallet;
+* salvataggio;
+* validazione indirizzo;
+* audit log;
+* riavvio server;
+* configurazione ancora presente.
+
+5. Test feature flags
+
+Questo per me è fondamentale per il rollback.
+
+Metti tutte le nuove reti a:
+
+false
+
+e verifica che USDA continui a funzionare normalmente.
+
+Poi:
+
+ENABLE_POLYGON_USDT=true
+
+senza attivare BTC/ETH/BSC.
+
+Poi BTC soltanto.
+
+Questo dimostra concretamente che il nuovo engine è isolabile.
+
+⸻
+
+Una cosa che mi piace particolarmente
+
+La modifica:
+
+findOneAndUpdate({ tx_hash_release: null })
+
+è importante perché rende il recupero atomico.
+
+In un sistema di pagamento è esattamente il tipo di dettaglio che vuoi evitare:
+
+processo A → legge
+processo B → legge
+A → invia
+B → invia
+
+Il controllo atomico riduce molto questo rischio.
+
+Quindi il mio giudizio
+
+Architettura: ✅
+
+Isolamento USDA: ✅
+
+Rollback: ✅
+
+BTC UTXO: ✅
+
+BTC 1-TX: ✅
+
+Recovery: ✅
+
+Admin monitoring: ✅
+
+Test automatici: ✅
+
+Production live: 🟡 ancora da validare con transazioni reali/testnet e crash-recovery.
+
+Io adesso non farei altre modifiche architetturali. Farei una fase di QA/staging controllata, perché continuare a rifattorizzare dopo questo checkpoint aumenta inutilmente il rischio di introdurre proprio quelle regressioni che abbiamo evitato.
+
+Se vuoi dare un ultimo comando all’agente, gli direi di non sviluppare altro, ma di eseguire esclusivamente una Production Readiness Audit del Multi-Chain Engine, senza modificare USDA né il codice, e restituire eventuali criticità prima del deployment.
