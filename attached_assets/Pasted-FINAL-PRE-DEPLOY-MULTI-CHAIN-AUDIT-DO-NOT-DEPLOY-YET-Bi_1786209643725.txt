@@ -1,0 +1,177 @@
+FINAL PRE-DEPLOY MULTI-CHAIN AUDIT — DO NOT DEPLOY YET
+
+Bitcoin is now confirmed:
+- ENABLE_BITCOIN=true
+- BTC_API_URL=https://blockstream.info/api
+- BTC_NETWORK=mainnet
+- BTC_FEE_WALLET configured
+- BTC_RPC_URL optional
+- Bitcoin tests: 24/24 PASS
+- Scheduler tests: 28/28 PASS
+- Server starts cleanly
+
+TARGET: COMPLETE LIVE PRODUCTION DEPLOYMENT
+
+All 4 networks must be enabled and ready for MAINNET:
+
+1. POLYGON USDT
+2. ETHEREUM USDT
+3. BSC USDT
+4. BITCOIN BTC
+
+Perform a FINAL READ-ONLY production readiness audit.
+
+DO NOT:
+- deploy
+- disable any network
+- revert any ENABLE flag
+- modify Bitcoin configuration
+- ask for BTC_RPC_URL
+- expose or print private keys/secrets
+- print secret values in logs or the report
+- make unnecessary architectural changes
+
+VERIFY FOR EACH NETWORK:
+
+A) ENABLEMENT
+- ENABLE flag is TRUE
+- Mainnet is selected
+- No testnet configuration can accidentally be used
+
+B) PROVIDERS
+- Primary RPC/API exists
+- Fallback exists where configured/required
+- Provider URL is valid
+- Network-specific provider is NOT accidentally using USDA RPC
+
+C) GAS STATION
+- Correct gas-station private key secret exists
+- Correct gas-station wallet/address is derived/validated
+- Private key is never printed or logged
+
+D) FEE WALLET
+- Correct fee wallet exists
+- Address format is valid
+- Project fee can actually be sent to it
+
+E) FEES
+- Network fee configuration is correct
+- Correct token decimals are used
+- No floating-point arithmetic
+- Fee invariant remains valid
+- /quote and /create use the same fee calculation
+
+F) ASSET
+For Ethereum, BSC and Polygon:
+- Correct USDT contract address
+- Correct chain ID
+- Correct network
+- Correct token decimals
+- No USDA dependency
+
+For Bitcoin:
+- Blockstream API is primary
+- BTC_API_URL works
+- BTC_RPC_URL remains optional
+- BTC mainnet only
+
+G) TRANSACTION ENGINE
+Verify:
+- create
+- release
+- refund
+- retry
+- scheduler
+- crash recovery
+- idempotency
+- anti-double-pay protection
+- waiting_for_gas handling
+- transaction status tracking
+
+H) ADMIN
+Verify the admin transaction history/monitoring provides:
+- transferId
+- clientRef
+- network
+- asset
+- amount
+- status
+- tx hash
+- timestamps
+- explorer link
+- error/recovery state
+
+Verify whether date-range filtering and transferId/clientRef search are implemented.
+If missing, classify as NON-BLOCKING unless it prevents operational monitoring.
+
+I) NOTIFICATIONS
+Verify current implementation for:
+- waiting_for_gas admin alert
+- failed/recovery alert
+- customer post-release notification
+- email/webhook readiness
+
+Do not block deployment solely because email/webhook notifications are not implemented unless they are required by the actual transaction safety logic.
+
+J) SECURITY
+Verify:
+- no private key in source code
+- no private key in logs
+- no secret in API responses
+- Replit Secrets are used
+- secrets are only read server-side
+- no secret values appear in test output
+
+K) TESTS
+Run:
+- Bitcoin tests
+- Polygon tests
+- Ethereum tests
+- BSC tests
+- scheduler tests
+- complete test suite
+- TypeScript/typecheck
+- production build
+
+Report exact results.
+
+IMPORTANT:
+If a required secret is missing, report ONLY:
+MISSING SECRET: VARIABLE_NAME
+
+Never report its value.
+
+FINAL REPORT FORMAT:
+
+POLYGON USDT: GO / NO-GO
+ETHEREUM USDT: GO / NO-GO
+BSC USDT: GO / NO-GO
+BITCOIN BTC: GO / NO-GO
+
+CRITICAL BLOCKERS: 0 / list
+HIGH RISKS: 0 / list
+MEDIUM RISKS: list
+LOW RISKS: list
+
+SECRETS:
+- present/missing by VARIABLE NAME ONLY
+
+TESTS:
+- network tests
+- scheduler
+- full suite
+- typecheck
+- build
+
+ADMIN READINESS: READY / NOT READY
+NOTIFICATION READINESS: READY / POST-DEPLOY
+SECURITY: PASS / FAIL
+
+FINAL DEPLOYMENT RECOMMENDATION:
+GO / NO-GO
+
+If ALL FOUR networks are GO and there are ZERO critical/high blockers, explicitly state:
+
+"READY FOR COMPLETE MAINNET DEPLOYMENT — WAITING FOR EXPLICIT USER GO."
+
+STOP HERE. DO NOT DEPLOY.
