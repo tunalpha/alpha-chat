@@ -63,7 +63,7 @@ import { logger }                   from "../lib/logger";
 import type { BitcoinAdapter }      from "../blockchain/bitcoin/bitcoin-adapter";
 import { createPublicClient, createWalletClient, http, type Chain } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { polygon, polygonAmoy } from "viem/chains";
+import { polygon, polygonAmoy, mainnet, bsc } from "viem/chains";
 
 // ─── SplitTxAdapter — C-01/C-02/C-03 ─────────────────────────────────────────
 
@@ -352,9 +352,9 @@ const _polygonChain: Chain = (() => {
 })();
 
 const MC_CHAIN_MAP: Partial<Record<MCNetworkId, Chain>> = {
-  polygon: _polygonChain,
-  // ethereum: mainnet,  // aggiungere con ETH import quando abilitato
-  // bsc: bsc,           // aggiungere con BSC import quando abilitato
+  polygon:  _polygonChain,
+  ethereum: mainnet,
+  bsc:      bsc,
 };
 
 /**
