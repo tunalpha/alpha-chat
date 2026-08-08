@@ -17,6 +17,7 @@
 import { Router, type Request, type Response, type NextFunction, type RequestHandler } from "express";
 import {
   getMultiChainConfig,
+  handleGetNetworks,
   handleCreateTransfer,
   handleRequestTransfer,
   handlePaymentQuote,
@@ -103,6 +104,9 @@ router.post(
 
 // Richiedi pagamento — il chiamante è il recipient (richiedente), payerId dal body è il sender.
 // IMPORTANTE: questa route deve stare PRIMA di /:id per evitare conflitti di routing.
+// GET /networks — reti e asset abilitati (no auth, usato dal frontend per filtrare la UI)
+router.get("/networks", handleGetNetworks);
+
 router.post(
   "/transfers/request",
   authenticate,

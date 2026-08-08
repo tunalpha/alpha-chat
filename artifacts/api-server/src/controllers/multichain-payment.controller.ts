@@ -31,7 +31,7 @@ import {
   setTransferMessageId,
   type MultiChainTransferInfo,
 } from "../payment/multichain-payment.service";
-import { FEATURE_FLAGS, getEVMFlatNetworkFee, NATIVE_ASSET_SYMBOL } from "../blockchain/multichain-config";
+import { FEATURE_FLAGS, getEVMFlatNetworkFee, NATIVE_ASSET_SYMBOL, TOKEN_CONTRACTS } from "../blockchain/multichain-config";
 import { AppError }                                from "../errors/AppError";
 import { MessageModel }                            from "../models/message.model";
 import { ConversationModel }                       from "../models/conversation.model";
@@ -176,6 +176,39 @@ async function _broadcastMCMessage(
     });
   } catch (err) {
     logger.error({ err, transferId: transfer.transferId }, "[MCPayment] _broadcastMCMessage failed (non-fatal)");
+  }
+}
+
+// ─── GET /multichain/networks ─────────────────────────────────────────────────
+//
+// Endpoint pubblico (no auth) che restituisce solo le reti abilitate via FEATURE_FLAGS.
+// Il frontend filtra la lista reti in base a questa risposta → nessun errore 501.
+
+export async function handleGetNetworks(
+  _req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    type NetEntry = { id: string; asset: string; label: string; decimals: number };
+    const networks: NetEntry[] = [];
+
+    if (FEATURE_FLAGS.ENABLE_POLYGON_USDT) {
+      networks.push({ id: "polygon",  asset: "USDT", label: "Polygon",         decimals: 6  });
+    }
+    if (FEATURE_FLAGS.ENABLE_ETHEREUM_USDT) {
+      networks.push({ id: "ethereum", asset: "USDT", label: "Ethereum",        decimals: 6  });
+    }
+    if (FEATURE_FLAGS.ENABLE_BSC_USDT) {
+      networks.push({ id: "bsc",      asset: "USDT", label: "BSC",             decimals: 18 });
+    }
+    if (FEATURE_FLAGS.ENABLE_BITCOIN) {
+      networks.push({ id: "bitcoin",  asset: "BTC",  label: "Bitcoin Network", decimals: 8  });
+    }
+
+    res.json({ networks });
+  } catch (err) {
+    next(err);
   }
 }
 

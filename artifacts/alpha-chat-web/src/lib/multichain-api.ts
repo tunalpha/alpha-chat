@@ -129,6 +129,32 @@ export async function apiMCDetect(transferId: string): Promise<MCTransfer> {
   return mcFetch<MCTransfer>("POST", `/transfers/${transferId}/detect`);
 }
 
+// ─── GET /networks — reti abilitate ──────────────────────────────────────────
+
+export interface MCNetworkEntry {
+  id:       MCNetwork;
+  asset:    MCAsset;
+  label:    string;
+  decimals: number;
+}
+
+/**
+ * Reti e asset attivi (filtrati da FEATURE_FLAGS lato backend).
+ * Chiamata senza auth. Cache in-memory per 5 minuti.
+ */
+let _networksCache: { data: MCNetworkEntry[]; at: number } | null = null;
+
+export async function apiMCNetworks(): Promise<MCNetworkEntry[]> {
+  if (_networksCache && Date.now() - _networksCache.at < 5 * 60 * 1000) {
+    return _networksCache.data;
+  }
+  const res = await fetch(`${BASE}/networks`);
+  if (!res.ok) throw new Error("Failed to fetch available networks");
+  const json = await res.json() as { networks: MCNetworkEntry[] };
+  _networksCache = { data: json.networks, at: Date.now() };
+  return json.networks;
+}
+
 // ─── Utilities ────────────────────────────────────────────────────────────────
 
 export function isMCTerminal(status: MCStatus): boolean {

@@ -8,10 +8,11 @@
  * ISOLAMENTO: nessuna dipendenza da USDA, ThirdWeb, o Reown.
  */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import {
   apiMCRequest,
+  apiMCNetworks,
   MC_DECIMALS,
   MC_ASSET,
   toSmallestUnit,
@@ -20,7 +21,7 @@ import {
 
 interface NetOption { id: MCNetwork; label: string; sublabel: string; icon: string; ticker: string; }
 
-const USDT_NETWORKS: NetOption[] = [
+const ALL_USDT_OPTIONS: NetOption[] = [
   { id: "polygon",  label: "USDT", sublabel: "Polygon",  icon: "🔵", ticker: "USDT" },
   { id: "ethereum", label: "USDT", sublabel: "Ethereum", icon: "⬡",  ticker: "USDT" },
   { id: "bsc",      label: "USDT", sublabel: "BSC",      icon: "🟡", ticker: "USDT" },
@@ -29,8 +30,6 @@ const USDT_NETWORKS: NetOption[] = [
 const BTC_NETWORK: NetOption = {
   id: "bitcoin", label: "BTC", sublabel: "Bitcoin Network", icon: "₿", ticker: "BTC",
 };
-
-const ALL_NETWORKS = [...USDT_NETWORKS, BTC_NETWORK];
 
 interface Props {
   conversationId: string;
@@ -44,12 +43,28 @@ interface Props {
 
 export function MultiChainRequestSheet({ conversationId, toUserId, toName, onClose, onRequested, mode = "usdt" }: Props) {
   const { t } = useTranslation();
-  const [network,  setNetwork]  = useState<MCNetwork>(mode === "btc" ? "bitcoin" : "polygon");
-  const [amount,   setAmount]   = useState("");
-  const [loading,  setLoading]  = useState(false);
-  const [error,    setError]    = useState<string | null>(null);
+  const [network,           setNetwork]           = useState<MCNetwork>(mode === "btc" ? "bitcoin" : "polygon");
+  const [amount,            setAmount]            = useState("");
+  const [loading,           setLoading]           = useState(false);
+  const [error,             setError]             = useState<string | null>(null);
+  const [availableUsdtNets, setAvailableUsdtNets] = useState<NetOption[]>(ALL_USDT_OPTIONS);
 
-  const selectedNet  = ALL_NETWORKS.find(n => n.id === network)!;
+  // Fetch reti abilitate dal backend al mount — filtra la lista per non mostrare reti disabilitate
+  useEffect(() => {
+    if (mode !== "usdt") return;
+    apiMCNetworks().then((nets) => {
+      const enabledIds = new Set(nets.map(n => n.id));
+      const filtered   = ALL_USDT_OPTIONS.filter(n => enabledIds.has(n.id));
+      setAvailableUsdtNets(filtered.length > 0 ? filtered : ALL_USDT_OPTIONS);
+      if (filtered.length > 0 && !enabledIds.has(network)) {
+        setNetwork(filtered[0]!.id);
+      }
+    }).catch(() => { /* mantieni fallback statico */ });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode]);
+
+  const ALL_NETWORKS = [...availableUsdtNets, BTC_NETWORK];
+  const selectedNet  = ALL_NETWORKS.find(n => n.id === network) ?? ALL_NETWORKS[0]!;
   const decimals     = MC_DECIMALS[network];
   const isBtc        = selectedNet.ticker === "BTC";
 
@@ -107,7 +122,7 @@ export function MultiChainRequestSheet({ conversationId, toUserId, toName, onClo
             <div className="mc-section-label">{t("multichain.selectNetwork")}</div>
             <div className="mc-token-group-label">USDT <span className="mc-token-group-desc">· ERC-20 / BEP-20</span></div>
             <div className="mc-network-grid">
-              {USDT_NETWORKS.map(n => (
+              {availableUsdtNets.map(n => (
                 <button
                   key={n.id}
                   type="button"
