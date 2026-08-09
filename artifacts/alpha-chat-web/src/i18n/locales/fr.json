@@ -1521,6 +1521,7 @@
     "bubbleReceived": "Crypto entrante",
     "bubbleRequested": "Demande envoyée",
     "bubbleIncoming": "Paiement demandé",
+    "statusTitle_pending": "Dépôt détecté",
     "statusTitle_awaiting_deposit": "En attente du dépôt",
     "statusTitle_detecting": "Détection en cours",
     "statusTitle_releasing": "Libération en cours",

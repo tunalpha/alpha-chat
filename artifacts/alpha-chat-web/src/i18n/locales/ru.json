@@ -1521,6 +1521,7 @@
     "bubbleReceived": "Крипто получено",
     "bubbleRequested": "Запрос отправлен",
     "bubbleIncoming": "Запрос платежа",
+    "statusTitle_pending": "Депозит обнаружен",
     "statusTitle_awaiting_deposit": "Ожидание депозита",
     "statusTitle_detecting": "Обнаружение платежа",
     "statusTitle_releasing": "Высвобождение средств",

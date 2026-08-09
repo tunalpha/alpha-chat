@@ -1521,6 +1521,7 @@
     "bubbleReceived": "加密货币即将到账",
     "bubbleRequested": "请求已发送",
     "bubbleIncoming": "收到付款请求",
+    "statusTitle_pending": "已检测到存款",
     "statusTitle_awaiting_deposit": "等待存款",
     "statusTitle_detecting": "检测中",
     "statusTitle_releasing": "释放资金",

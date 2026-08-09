@@ -1521,6 +1521,7 @@
     "bubbleReceived": "كريبتو وارد",
     "bubbleRequested": "تم إرسال الطلب",
     "bubbleIncoming": "تم طلب دفع",
+    "statusTitle_pending": "تم اكتشاف الإيداع",
     "statusTitle_awaiting_deposit": "في انتظار الإيداع",
     "statusTitle_detecting": "جارٍ الكشف",
     "statusTitle_releasing": "جارٍ الإفراج",

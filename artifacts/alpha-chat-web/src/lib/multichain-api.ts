@@ -43,12 +43,14 @@ export type MCAsset   = "USDT" | "BTC";
 export type MCStatus  =
   | "awaiting_deposit"
   | "detecting"
+  | "pending"           // deposito rilevato, release schedulata
   | "releasing"
   | "released"
   | "refunding"
   | "refunded"
   | "expired"
   | "failed"
+  | "cancelled"
   | "waiting_for_gas";
 
 /** Shape di system_metadata per message_type: "mc_payment" */
@@ -266,11 +268,11 @@ export async function apiMCNetworks(): Promise<MCNetworkEntry[]> {
 // ─── Utilities ────────────────────────────────────────────────────────────────
 
 export function isMCTerminal(status: MCStatus): boolean {
-  return ["released", "refunded", "expired", "failed"].includes(status);
+  return ["released", "refunded", "expired", "failed", "cancelled"].includes(status);
 }
 
 export function isMCPending(status: MCStatus): boolean {
-  return ["detecting", "releasing", "refunding", "waiting_for_gas"].includes(status);
+  return ["pending", "detecting", "releasing", "refunding", "waiting_for_gas"].includes(status);
 }
 
 /**

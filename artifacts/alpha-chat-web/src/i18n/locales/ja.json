@@ -1521,6 +1521,7 @@
     "bubbleReceived": "暗号資産受信予定",
     "bubbleRequested": "要求を送信",
     "bubbleIncoming": "支払いを要求されました",
+    "statusTitle_pending": "入金を検出しました",
     "statusTitle_awaiting_deposit": "入金待ち",
     "statusTitle_detecting": "検出中",
     "statusTitle_releasing": "送金中",

@@ -1521,6 +1521,7 @@
     "bubbleReceived": "Krypto eingehend",
     "bubbleRequested": "Anfrage gesendet",
     "bubbleIncoming": "Zahlung angefordert",
+    "statusTitle_pending": "Einzahlung erkannt",
     "statusTitle_awaiting_deposit": "Warte auf Einzahlung",
     "statusTitle_detecting": "Erkennung läuft",
     "statusTitle_releasing": "Freigabe läuft",

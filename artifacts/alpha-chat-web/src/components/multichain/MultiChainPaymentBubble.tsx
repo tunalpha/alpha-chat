@@ -51,16 +51,17 @@ function getVariant(status: MCStatus): CpVariant {
     case "cancelled":       return "neutral";
     case "refunding":
     case "refunded":        return "refund";
-    default:                return "waiting"; // awaiting_deposit, detecting, releasing, waiting_for_gas
+    default:                return "waiting"; // awaiting_deposit, pending, detecting, releasing, waiting_for_gas
   }
 }
 
 function isAnimated(status: MCStatus): boolean {
-  return ["awaiting_deposit", "detecting", "releasing", "refunding", "waiting_for_gas"].includes(status);
+  return ["awaiting_deposit", "pending", "detecting", "releasing", "refunding", "waiting_for_gas"].includes(status);
 }
 
 const STATUS_ICONS: Record<MCStatus, string> = {
   awaiting_deposit: "⏳",
+  pending:          "🔍",
   detecting:        "🔍",
   releasing:        "⚡",
   released:         "✅",
@@ -68,6 +69,7 @@ const STATUS_ICONS: Record<MCStatus, string> = {
   refunded:         "↩️",
   expired:          "⏱",
   failed:           "❌",
+  cancelled:        "🚫",
   waiting_for_gas:  "⛽",
 };
 
@@ -91,6 +93,25 @@ export const MultiChainPaymentBubble = memo(function MultiChainPaymentBubble({ d
   const [waitingForGasReason, setWaitingForGasReason] = useState<string | null>(data?.waiting_for_gas_reason ?? null);
   const [copied,              setCopied]              = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  // Sincronizza lo stato interno con gli aggiornamenti esterni (eventi WS via ChatPage).
+  // Il parent aggiorna `data.status` quando riceve mc_payment.state_changed, ma
+  // useState() si inizializza una sola volta al mount e non reagisce ai prop change.
+  // Questo effetto garantisce che WS "released", "pending", ecc. si riflettano subito
+  // nella bolla senza aspettare il prossimo ciclo di polling (30 s).
+  useEffect(() => {
+    if (data?.status && data.status !== status) {
+      setStatus(data.status as MCStatus);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data?.status]);
+
+  // Sincronizza txHash dall'esterno (WS può portare tx_hash_release/deposit).
+  useEffect(() => {
+    const externalHash = data?.tx_hash_release ?? data?.tx_hash_deposit ?? null;
+    if (externalHash && externalHash !== txHash) setTxHash(externalHash);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data?.tx_hash_release, data?.tx_hash_deposit]);
 
   // Auto-poll ogni 30 s finché non terminale.
   useEffect(() => {
