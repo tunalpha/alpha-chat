@@ -69,6 +69,7 @@ import { multichainError }          from "../blockchain/errors";
 import { AppError }                 from "../errors/AppError";
 import { logger }                   from "../lib/logger";
 import { emitMCPaymentStateChanged } from "./multichain-events";
+import { MessageModel }              from "../models/message.model";
 import type { BitcoinAdapter }      from "../blockchain/bitcoin/bitcoin-adapter";
 import { createPublicClient, createWalletClient, http, type Chain } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
@@ -743,6 +744,9 @@ export async function detectMultiChainDeposit(transferId: string): Promise<Multi
   );
 
   emitMCPaymentStateChanged(updated);
+  // OBIETTIVO 4: persiste lo stato aggiornato nel documento messaggio MongoDB,
+  // così il ricaricamento della chat non mostra lo status originale "awaiting_deposit".
+  void _syncTransferMessageMeta(updated);
   return toInfo(updated);
 }
 
@@ -1076,6 +1080,38 @@ const TX3_GAS_UNITS = 21_000n;
  *   - Persistito in reclaim_error per retry dello scheduler (processFailedReclaims)
  *   - Eccezioni dalla persistenza dell'errore stesso sono ignorate silenziosamente
  */
+/**
+ * _syncTransferMessageMeta — OBIETTIVO 4
+ *
+ * Persiste lo stato aggiornato del transfer nel documento messaggio MongoDB.
+ * Senza questa scrittura, il ricaricamento della chat mostra lo status originale
+ * (es. "awaiting_deposit") invece di quello corrente (es. "pending", "released").
+ *
+ * Fire-and-forget: non blocca il caller, gli errori sono loggati silenziosamente.
+ */
+async function _syncTransferMessageMeta(doc: MultiChainTransferDocument): Promise<void> {
+  try {
+    if (!doc.message_id) return; // messaggio non ancora creato (race normale)
+    await MessageModel.updateOne(
+      { _id: doc.message_id },
+      {
+        $set: {
+          "system_metadata.status":          doc.status,
+          "system_metadata.tx_hash_release": doc.tx_hash_release  ?? null,
+          "system_metadata.tx_hash_deposit": doc.tx_hash_deposit  ?? null,
+          "system_metadata.tx_hash_refund":  doc.tx_hash_refund   ?? null,
+        },
+      },
+    );
+    logger.debug(
+      { transferId: doc.transfer_id, messageId: doc.message_id.toString(), status: doc.status },
+      "[MCPayment] system_metadata messaggio sincronizzato",
+    );
+  } catch (err) {
+    logger.warn({ err, transferId: doc.transfer_id }, "[MCPayment] _syncTransferMessageMeta fallita (ignorato)");
+  }
+}
+
 async function _reclaimEscrowGas(
   doc: MultiChainTransferDocument,
   signerPk: string,
@@ -1468,6 +1504,7 @@ async function _releaseEvm(doc: MultiChainTransferDocument): Promise<MultiChainT
   );
 
   emitMCPaymentStateChanged(completed!);
+  void _syncTransferMessageMeta(completed!); // persiste status "released" nel doc messaggio
 
   // TX3 — reclaim POL/ETH/BNB residuo escrow → Gas Station (fire-and-forget).
   // Avviata DOPO che il transfer è confermato released (status aggiornato, evento emesso).
@@ -1529,6 +1566,7 @@ async function _releaseBitcoin(doc: MultiChainTransferDocument): Promise<MultiCh
   );
 
   emitMCPaymentStateChanged(completed!);
+  void _syncTransferMessageMeta(completed!); // persiste status "released" nel doc messaggio (BTC)
   return toInfo(completed!);
 }
 

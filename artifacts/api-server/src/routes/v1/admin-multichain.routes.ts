@@ -693,8 +693,13 @@ router.post(
     try {
       const { olderThanMinutes = 0 } = req.body as { olderThanMinutes?: number };
 
-      // Filtra per stato cancellabile
-      const filter: Record<string, unknown> = { status: { $in: ["awaiting_deposit", "pending"] } };
+      // ── OBIETTIVO 3: solo "awaiting_deposit" è cancellabile in bulk ────────
+      // "pending" significa deposito on-chain CONFERMATO dalla blockchain.
+      // Cancellare "pending" in DB senza sweep on-chain lascia fondi bloccati
+      // nell'escrow senza possibilità di recovery automatica.
+      // Regola: cancel-stale cancella SOLO awaiting_deposit (nessun deposito).
+      //         I transfer "pending" devono essere gestiti manualmente via /refund.
+      const filter: Record<string, unknown> = { status: "awaiting_deposit" };
       if (olderThanMinutes > 0) {
         const cutoff = new Date(Date.now() - olderThanMinutes * 60 * 1000);
         filter["createdAt"] = { $lt: cutoff };

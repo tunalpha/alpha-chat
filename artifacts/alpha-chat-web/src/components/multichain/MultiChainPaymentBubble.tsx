@@ -122,7 +122,13 @@ export const MultiChainPaymentBubble = memo(function MultiChainPaymentBubble({ d
         const updated = status === "awaiting_deposit"
           ? await apiMCDetect(data.transfer_id)
           : await apiMCGet(data.transfer_id);
-        setStatus(updated.status);
+        // OBIETTIVO 4b: mai regredire a "awaiting_deposit" se lo stato interno
+        // è già avanzato (es. WS ha portato "pending" ma poll vecchio risponde ancora).
+        // La regressione causava: WS → "pending" → bolla mostra "Deposito rilevato"
+        //                         → poll → apiMCDetect → 200 con "awaiting_deposit" → regressione.
+        setStatus(prev =>
+          prev !== "awaiting_deposit" && updated.status === "awaiting_deposit" ? prev : updated.status
+        );
         if (updated.waitingForGasReason !== undefined) setWaitingForGasReason(updated.waitingForGasReason);
         if (updated.txHashRelease) setTxHash(updated.txHashRelease);
         else if (updated.txHashDeposit) setTxHash(updated.txHashDeposit);

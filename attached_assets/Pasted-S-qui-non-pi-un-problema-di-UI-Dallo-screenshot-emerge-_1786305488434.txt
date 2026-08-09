@@ -1,0 +1,160 @@
+Sì, qui non è più un problema di UI. Dallo screenshot emerge un problema operativo concreto:
+
+* l’escrow BSC contiene circa 1.007277 USDT reali on-chain;
+* il transfer è rimasto pending;
+* sender_wallet = null, quindi non esiste un indirizzo del mittente salvato a cui fare un refund;
+* il pulsante “Cancella pending” ha cancellato/modificato solo il DB, lasciando i fondi sull’escrow;
+* l’agente si è fermato perché chiede conferma prima di fare una transazione on-chain.
+
+Quindi gli direi di smettere di fare modifiche casuali e di gestire prima questo caso reale, poi correggere definitivamente il sistema.
+
+Prompt unico da mandare all’agente
+
+🚨 INCIDENTE BSC — FONDI BLOCCATI ON-CHAIN
+
+STOP. Non modificare UI o fare altri tentativi.
+
+Abbiamo un transfer BSC pending con USDT realmente presenti sull’escrow.
+
+Dai controlli già effettuati:
+
+* escrow BSC contiene circa 1.007277 USDT
+* sender_wallet = null
+* il transfer non può essere rimborsato al sender perché il sender wallet non è stato salvato
+* “Cancella pending” ha modificato soltanto il DB
+* i fondi sono ancora on-chain sull’escrow
+
+OBIETTIVO 1 — RECUPERARE I FONDI BLOCCATI
+
+Prima identifica esattamente:
+
+1. transferId
+2. escrow address
+3. token contract USDT BSC
+4. saldo USDT on-chain
+5. saldo BNB dell’escrow
+6. stato DB attuale
+7. eventuale transaction hash del deposito
+8. eventuale transaction hash di release/refund
+9. configured fee_wallet BSC
+
+NON inventare nessun indirizzo.
+
+Se sender_wallet è realmente null, non tentare un refund verso un indirizzo inesistente.
+
+Prima di qualsiasi TX on-chain mostra:
+
+ESCROW
+
+USDT BALANCE
+
+BNB BALANCE
+
+SENDER WALLET
+
+FEE WALLET CONFIGURATO
+
+DEPOSIT TX
+
+e indica chiaramente quale destinazione verrebbe utilizzata.
+
+RECOVERY
+
+Se e solo se:
+
+* il transfer è definitivamente cancellato/abbandonato;
+* non esiste sender wallet;
+* non esiste una release già effettuata;
+* l’USDT è effettivamente ancora nell’escrow;
+* il fee_wallet BSC è quello ufficialmente configurato dalla piattaforma;
+
+allora prepara il recupero dell’USDT dall’escrow verso il fee_wallet BSC configurato, utilizzando il normale meccanismo di sweep/recovery già presente nel progetto.
+
+NON creare un nuovo wallet.
+
+NON hardcodare indirizzi.
+
+NON utilizzare il sender wallet di un altro transfer.
+
+NON inviare fondi a un indirizzo derivato dal localStorage.
+
+Prima della TX verifica che il token contract sia esattamente USDT BSC.
+
+OBIETTIVO 2 — CORREGGERE LA CAUSA
+
+Dopo aver gestito l’incidente, analizza perché è stato possibile creare un transfer BSC senza sender_wallet.
+
+Regola obbligatoria:
+
+Un transfer EVM che richiede firma non deve poter essere creato/avanzato fino a uno stato operativo se il wallet del sender non è disponibile.
+
+Il backend deve avere il sender wallet associato al transfer prima della fase di firma.
+
+Se sender_wallet == null:
+
+* non consentire refund automatico al sender;
+* non consentire release;
+* non consentire completion;
+* stato esplicito failed / refund_required / equivalente già previsto dall’architettura;
+* mai lasciare fondi senza destinazione recuperabile.
+
+OBIETTIVO 3 — CANCEL NON DEVE SIGNIFICARE “SOLO DB”
+
+Il pulsante “Cancella pending” attualmente modifica il DB ma può lasciare fondi on-chain.
+
+Questo comportamento deve essere corretto.
+
+La cancellazione deve distinguere:
+
+A. Nessun deposito on-chain
+→ cancellazione normale.
+
+B. Deposito presente + sender wallet disponibile
+→ avviare il normale refund al sender.
+
+C. Deposito presente + sender wallet NULL
+→ refund_required / recovery amministrativo, mai falso “cancelled” con fondi abbandonati.
+
+OBIETTIVO 4 — REGOLA DEFINITIVA
+
+Mai più:
+
+DB = cancelled
+
+mentre:
+
+BLOCKCHAIN = fondi presenti
+
+senza una procedura di recovery.
+
+Il database deve rappresentare sempre la realtà on-chain.
+
+TEST OBBLIGATORI
+
+Verifica:
+
+1. BSC senza deposito → cancel → nessun fondo.
+2. BSC con deposito + sender wallet → refund sender.
+3. BSC con deposito + sender wallet NULL → recovery amministrativo.
+4. Refund fallito → stato refund_required, mai cancelled definitivo.
+5. Escrow con saldo USDT → recovery/sweep verificabile on-chain.
+6. Dopo recovery → saldo USDT escrow = 0, salvo eventuale dust non trasferibile.
+7. Nessun altro transfer può utilizzare l’escrow o i suoi fondi.
+
+IMPORTANTE:
+
+Prima esegui SOLO diagnosi e restituisci i valori reali.
+
+Se devi effettuare una TX on-chain, usa esclusivamente gli indirizzi/configurazioni già presenti nel progetto e mostra prima:
+
+FROM → TO → TOKEN → AMOUNT → GAS → TX PURPOSE
+
+Non procedere con un indirizzo inventato.
+
+Dopo il recovery verifica nuovamente il saldo on-chain dell’escrow e del fee wallet.
+
+NON toccare USDA, BTC, EVM signing, fee calculation o UI finché questo incidente BSC non è risolto e verificato on-chain.
+
+La cosa più importante è questa: non dobbiamo far sparire il transfer dal DB e considerare risolto il problema. I circa 1.007277 USDT sono ancora on-chain e devono avere una destinazione precisa.
+
+E soprattutto, non va fatto un altro refund da 0.003 BNB come quello precedente: per il recupero deve essere usata la logica dinamica di gas/sweep già corretta.
