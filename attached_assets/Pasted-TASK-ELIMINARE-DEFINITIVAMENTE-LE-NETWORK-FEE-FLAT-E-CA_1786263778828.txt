@@ -1,0 +1,397 @@
+TASK — ELIMINARE DEFINITIVAMENTE LE NETWORK FEE FLAT E CALCOLARE IL COSTO PER OGNI SINGOLO INVIO
+
+OBIETTIVO
+
+Voglio eliminare completamente le network fee fisse/flat per:
+
+- Polygon
+- BSC
+- Ethereum
+
+NON voglio più valori commerciali arbitrari come:
+
+- Polygon = 0.01 USDT
+- BSC = 0.50 USDT
+- BSC = 1.00 USDT
+- Ethereum = 15.00 USDT
+
+La network fee deve essere calcolata DINAMICAMENTE PER OGNI SINGOLO INVIO sulla base del costo gas effettivo/realisticamente stimato per quel pagamento.
+
+IMPORTANTE:
+Prima ANALIZZA il codice.
+NON implementare finché non hai ricostruito esattamente il flusso.
+Se trovi ambiguità, fermati e segnalale.
+
+==================================================
+1. DISTINZIONE OBBLIGATORIA
+==================================================
+
+Devono rimanere due commissioni completamente separate:
+
+A) PROJECT FEE
+B) NETWORK FEE
+
+PROJECT FEE:
+
+- default = 0,10%
+- DEFAULT_FEE_BPS = 10
+- può essere modificata separatamente per ogni rete tramite Admin Panel
+- Polygon può avere una percentuale diversa da BSC
+- BSC può avere una percentuale diversa da Ethereum
+- cambiare una rete NON deve modificare le altre
+
+NETWORK FEE:
+
+NON deve essere una percentuale dell'importo.
+NON deve essere un valore flat fisso.
+NON deve dipendere dal valore inviato.
+
+Deve rappresentare il costo blockchain del singolo pagamento.
+
+==================================================
+2. NETWORK FEE DINAMICA
+==================================================
+
+Per ogni singolo pagamento EVM:
+
+1. leggere il gasPrice / fee data LIVE della rete;
+2. stimare il gas reale delle operazioni necessarie;
+3. considerare tutte le TX necessarie al flusso;
+4. calcolare il costo in native token;
+5. convertire il costo in USDT usando il prezzo corrente del native token;
+6. applicare esclusivamente un eventuale safety margin configurabile;
+7. produrre networkFeeCharged specifica per QUEL pagamento.
+
+NON usare:
+
+BSC_FLAT_NETWORK_FEE_USDT
+POLYGON_FLAT_NETWORK_FEE_USDT
+ETHEREUM_FLAT_NETWORK_FEE_USDT
+
+come network fee del cliente.
+
+Se queste ENV esistono ancora, analizzane l'utilizzo e indicami tutti i punti in cui vengono lette.
+
+NON eliminarle automaticamente senza approvazione.
+
+==================================================
+3. COSTO DA CONSIDERARE
+==================================================
+
+Analizza il flusso reale attuale.
+
+Gas Station:
+TX0 = native token → Escrow
+
+Escrow:
+TX1 = USDT → Recipient
+TX2 = USDT → Fee Wallet
+
+Dopo il completamento:
+TX3 = reclaim native token → Gas Station
+
+Il reclaim TX3 è già implementato.
+
+La network fee dinamica deve essere progettata tenendo conto del costo reale dell'intero ciclo economico.
+
+NON assumere che MC_ANTI_LOSS_GAS_UNITS = costo reale.
+
+NON usare automaticamente 341.000 gas come costo finale.
+
+NON usare 80.000 × 2 × 2 come consumo reale.
+
+Il sistema deve distinguere:
+
+- gas stimato TX0;
+- gas stimato TX1;
+- gas stimato TX2;
+- gas stimato TX3;
+- eventuale native token recuperabile dal reclaim;
+- costo netto previsto.
+
+==================================================
+4. IMPORTANTISSIMO — TX3 RECLAIM
+==================================================
+
+Il reclaim avviene DOPO il pagamento.
+
+Quindi analizza attentamente come calcolare la network fee PRIMA della conferma del pagamento.
+
+Voglio una soluzione matematicamente coerente:
+
+NETWORK FEE QUOTATA =
+costo gas previsto del ciclo
++
+eventuale safety margin
+
+senza trasformare il margine in una fee flat.
+
+Dopo il pagamento:
+
+il sistema deve registrare:
+
+- gasUsed TX0;
+- gasUsed TX1;
+- gasUsed TX2;
+- gasUsed TX3;
+- gasPrice effettivo;
+- native token consumato;
+- native token recuperato;
+- costo netto reale;
+- networkFeeCharged;
+- eventuale differenza tra fee stimata e costo reale.
+
+Questo servirà per il futuro audit economico.
+
+==================================================
+5. RECIPIENT EXACT
+==================================================
+
+NON modificare il comportamento recipient_exact.
+
+Esempio:
+
+Destinatario deve ricevere:
+
+100 USDT
+
+Il sistema deve calcolare:
+
+Recipient receives = 100 USDT
+
+Project fee = 0,10% del gross secondo la logica esistente
+
+Network fee = costo dinamico della blockchain
+
+Totale pagato =
+gross amount
++
+network fee
+
+Il destinatario deve continuare a ricevere esattamente l'importo richiesto.
+
+NON confondere network fee con project fee.
+
+==================================================
+6. DISPLAY DELLA QUOTE
+==================================================
+
+Il confirm deve mostrare chiaramente:
+
+Rete
+Destinatario riceve
+Project fee
+Network fee
+Totale pagato
+
+Esempio concettuale:
+
+Crikko riceve       1.00 USDT
+Project fee         0.001 USDT
+Network fee         0.XX USDT
+────────────────────────────
+Totale pagato       X.XXX USDT
+
+NON mostrare una generica "Fee" sommando tutto senza distinguere le due componenti.
+
+Se oggi il frontend mostra:
+
+Fee = projectFee + networkFee
+
+mantieni la compatibilità backend se necessaria, ma visualizza separatamente le due componenti.
+
+==================================================
+7. NESSUN VALORE FLAT
+==================================================
+
+Questo requisito è categorico.
+
+NON deve più esistere una logica del tipo:
+
+if BSC:
+    networkFee = 0.50
+
+if Ethereum:
+    networkFee = 15
+
+if Polygon:
+    networkFee = 0.01
+
+La network fee deve cambiare naturalmente in funzione di:
+
+- gas price;
+- gas stimato;
+- native token price;
+- operazioni effettivamente necessarie.
+
+Due transazioni BSC effettuate in momenti diversi possono quindi avere network fee diverse.
+
+Due transazioni Ethereum effettuate in momenti diversi possono avere network fee diverse.
+
+Due transazioni Polygon effettuate in momenti diversi possono avere network fee diverse.
+
+==================================================
+8. ADMIN PANEL
+==================================================
+
+NON eliminare la gestione della PROJECT FEE per rete già implementata nel task #45.
+
+Deve rimanere:
+
+Polygon → project fee configurabile
+BSC → project fee configurabile
+Ethereum → project fee configurabile
+Bitcoin → invariato
+
+La NETWORK FEE invece NON deve essere configurata come importo fisso.
+
+Se vuoi dare all'Admin un controllo, deve essere esclusivamente su parametri tecnici come:
+
+- safety margin %
+- minimum safety reserve
+- eventualmente max allowed network fee
+
+ma NON su una network fee flat.
+
+Prima di introdurre questi parametri verifica se esistono già configurazioni equivalenti.
+
+==================================================
+9. ANTI-LOSS
+==================================================
+
+NON disabilitare anti-loss.
+
+NON modificare:
+
+MC_ANTI_LOSS_GAS_UNITS
+waiting_for_gas
+fail-closed RPC
+
+senza prima analizzare la compatibilità con la nuova network fee dinamica.
+
+La network fee dinamica serve a calcolare il costo da addebitare al cliente.
+
+L'anti-loss serve a impedire che la piattaforma esegua un pagamento in perdita.
+
+Sono due funzioni diverse.
+
+==================================================
+10. FALLBACK E RPC
+==================================================
+
+Se il prezzo gas o il native token price non è disponibile:
+
+NON inventare un valore.
+
+NON usare una fee flat vecchia come fallback silenzioso.
+
+Il pagamento deve:
+
+- entrare in waiting_for_gas
+oppure
+- fallire in modo sicuro
+
+secondo la logica fail-closed già esistente.
+
+==================================================
+11. DATI REALI
+==================================================
+
+Usare ove possibile:
+
+- eth_estimateGas
+- gasPrice / EIP-1559 fee data
+- gasUsed dai receipt
+- native token price già utilizzato dal sistema
+- reclaim effettivamente registrato
+
+NON usare stime teoriche come costo finale quando è disponibile il dato on-chain.
+
+==================================================
+12. TEST OBBLIGATORI
+
+Creare/verificare test per:
+
+1. BSC gas basso
+2. BSC gas alto
+3. Ethereum gas basso
+4. Ethereum gas alto
+5. Polygon gas basso
+6. Polygon gas alto
+7. due transazioni identiche con gasPrice diversi → network fee diversa
+8. project fee invariata mentre cambia network fee
+9. cambio project fee BSC non modifica Polygon
+10. recipient_exact mantiene esattamente l'importo destinatario
+11. network fee non viene calcolata come percentuale dell'importo
+12. nessun fallback 0.50 BSC
+13. nessun fallback 1.00 BSC
+14. nessun fallback 15.00 ETH
+15. nessun fallback 0.01 Polygon
+16. RPC price failure → fail closed
+17. reclaim failure → payment non fallisce
+18. networkFeeCharged viene salvata correttamente
+19. totalPaid viene calcolato correttamente
+20. projectFee + networkFee vengono visualizzate separatamente
+
+==================================================
+13. PRIMA FASE — SOLO ANALISI
+==================================================
+
+Prima di modificare qualsiasi cosa:
+
+mostrami:
+
+A) dove viene calcolata oggi la network fee;
+B) quali ENV vengono utilizzate;
+C) quali default esistono;
+D) come viene calcolato il gas;
+E) quali dati live sono già disponibili;
+F) come integrare TX3 reclaim nel calcolo;
+G) eventuali problemi di precisione/decimali;
+H) eventuali problemi con recipient_exact;
+I) eventuali problemi con il quote;
+J) eventuali problemi frontend.
+
+NON modificare codice durante questa fase.
+
+==================================================
+14. DOPO L'ANALISI
+==================================================
+
+Fermati e mostrami:
+
+NETWORK FEE ATTUALE
+→ origine
+
+NETWORK FEE DINAMICA PROPOSTA
+→ formula
+
+Esempio BSC
+→ costo stimato reale
+
+Esempio Polygon
+→ costo stimato reale
+
+Esempio Ethereum
+→ costo stimato reale
+
+PROJECT FEE
+→ conferma che rimane separata
+
+TOTAL PAID
+→ formula corretta
+
+RISCHI
+→ elenco
+
+FILE DA MODIFICARE
+→ elenco preciso
+
+Poi STOP.
+
+NON IMPLEMENTARE.
+NON CAMBIARE ENV.
+NON CAMBIARE FEE.
+NON FARE DEPLOY.
+
+Aspetta la mia approvazione esplicita.
