@@ -21,7 +21,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useTranslation } from "react-i18next";
-import { useActiveAccount, ConnectButton } from "thirdweb/react";
+import { useActiveAccount, useActiveWalletChain, useSwitchActiveWalletChain, ConnectButton } from "thirdweb/react";
 import { client, polygon, wallets } from "../../lib/thirdweb";
 import {
   apiPaymentCreate,
@@ -134,8 +134,10 @@ export function SendPaymentSheet({
   const resumeRef = useRef<{ escrowWallet: string; amountStr: string; assetAddress: string | null } | null>(null);
   const busyRef = useRef(false);
 
-  const account     = useActiveAccount();
-  const isConnected = !!account;
+  const account           = useActiveAccount();
+  const isConnected       = !!account;
+  const activeWalletChain = useActiveWalletChain();
+  const switchChain       = useSwitchActiveWalletChain();
 
   const STEPS: { id: Step; label: string }[] = [
     { id: "form",    label: t("usda.stepAmount")  },
@@ -288,6 +290,27 @@ export function SendPaymentSheet({
       // Deposito non ancora presente — procediamo con la firma.
     }
 
+    // ── Chain switch esplicito (awaited) ────────────────────────────────────
+    //
+    // NON usare sendTransaction({ chainId }) come meccanismo di switch implicito:
+    // causa "Missing or invalid chainId" su Trust Wallet iOS via WalletConnect.
+    // Pattern identico a MultiChainSendSheet.tsx (BSC/ETH che funzionano).
+    //
+    // Se il wallet è già su Polygon (137) lo switch è un no-op velocissimo.
+    // Se è su BSC o altra chain: WalletConnect invia wallet_switchEthereumChain,
+    // Trust Wallet mostra la conferma, poi torna all'app con la chain corretta.
+    if (activeWalletChain?.id !== 137) {
+      try {
+        await switchChain(polygon);
+      } catch (switchErr: unknown) {
+        const switchMsg = (switchErr as Error)?.message ?? "";
+        if (/reject|cancel|denied|refused|user rejected/i.test(switchMsg)) {
+          throw new Error("Cambio rete rifiutato. Premi «Firma e Invia» e accetta il cambio a Polygon nel wallet.");
+        }
+        throw new Error(`Impossibile passare a Polygon: ${switchMsg || "Errore sconosciuto."}`);
+      }
+    }
+
     let pollAborted  = false;
     let signErrorMsg: string | null = null;
 
@@ -296,7 +319,7 @@ export function SendPaymentSheet({
       data:    calldata,
       gas:     BigInt(100000),
       value:   BigInt(0),
-      chainId: 137,
+      chainId: 137, // no-op: chain già corretta dopo switchChain; rafforza per ThirdWeb
     }).catch((err: unknown) => {
       const msg = (err as Error)?.message ?? "";
       if (/reject|cancel|denied|refused|user.*cancel|user rejected/i.test(msg)) {
@@ -360,7 +383,7 @@ export function SendPaymentSheet({
     }
 
     throw new Error(t("usda.depositTimeout"));
-  }, [account, conversationId, t]);
+  }, [account, activeWalletChain, switchChain, conversationId, t]);
 
   // ── Step 2 → Step 3: crea trasferimento poi firma ──────────────────────────
   const handleSend = useCallback(async () => {

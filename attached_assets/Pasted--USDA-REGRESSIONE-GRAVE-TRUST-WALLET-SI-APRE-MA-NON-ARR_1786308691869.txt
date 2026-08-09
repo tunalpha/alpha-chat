@@ -1,0 +1,294 @@
+🚨 USDA — REGRESSIONE GRAVE: TRUST WALLET SI APRE MA NON ARRIVA LA TRANSAZIONE DA FIRMARE
+
+STOP. NON TOCCARE MULTICHAIN.
+
+Il test reale mostra:
+
+USDA
+→ Continua
+→ Conferma
+→ apertura Trust Wallet
+→ Trust Wallet mostra il wallet BSC
+→ NESSUNA schermata "Firma transazione"
+
+Quindi WalletConnect/deep-link sembra funzionare, ma la richiesta eth_sendTransaction NON arriva correttamente al wallet oppure viene interrotta prima dell'invio.
+
+QUESTO È UN BUG DEL FLUSSO USDA E VA ANALIZZATO IN SOLA LETTURA PRIMA DI MODIFICARE CODICE.
+
+==================================================
+1. CONFRONTO CON IL FLUSSO BSC MULTICHAIN CHE FUNZIONA
+==================================================
+
+Abbiamo appena verificato che il flusso MultiChain BSC riesce a:
+
+wallet
+→ switch chain BSC
+→ eth_sendTransaction
+→ Trust Wallet mostra la TX
+→ firma
+→ TX on-chain
+
+USDA invece:
+
+wallet
+→ Trust Wallet si apre
+→ nessuna TX da firmare
+
+Confronta ESATTAMENTE i due percorsi.
+
+Non assumere che siano equivalenti.
+
+Voglio sapere:
+
+A) quale hook/account viene utilizzato da USDA;
+
+B) quale funzione invia la transazione;
+
+C) quale provider/account viene passato;
+
+D) quale chainId viene utilizzato;
+
+E) se viene eseguito uno switch di rete;
+
+F) se viene effettivamente chiamato `sendTransaction`;
+
+G) se la Promise di `sendTransaction` viene attesa oppure viene persa;
+
+H) se esiste un `return`, `setPhase`, `setState`, `window.location`, deep-link o unmount che interrompe la chiamata.
+
+==================================================
+2. TRACE OBBLIGATORIO DI SendPaymentSheet
+==================================================
+
+Segui il percorso reale:
+
+handleConfirm
+↓
+prepare payment
+↓
+wallet/account
+↓
+chain check
+↓
+sendTransaction
+↓
+WalletConnect
+↓
+Trust Wallet
+
+Inserisci SOLO diagnostica temporanea se necessaria.
+
+Voglio sapere se il codice arriva realmente a:
+
+`account.sendTransaction(...)`
+
+oppure alla funzione equivalente USDA.
+
+Se NON arriva a sendTransaction:
+ROOT CAUSE = frontend USDA prima della firma.
+
+Se arriva a sendTransaction ma Trust Wallet si apre senza richiesta:
+ROOT CAUSE = provider/account/WalletConnect/request transaction.
+
+Se sendTransaction restituisce errore:
+cattura l'errore COMPLETO, non solo `error.message`.
+
+==================================================
+3. CONFRONTA LA TRANSAZIONE USDA CON UNA BSC MULTICHAIN FUNZIONANTE
+==================================================
+
+Confronta:
+
+chainId
+from
+to
+data
+value
+gas
+maxFeePerGas
+maxPriorityFeePerGas
+nonce
+account
+provider
+
+Non modificare ancora nulla.
+
+Voglio il confronto tecnico.
+
+==================================================
+4. CONTROLLO CRITICO: CHAIN ID
+==================================================
+
+USDA è su Polygon.
+
+Quindi verifica che il flusso USDA stia inviando la richiesta sulla chain prevista da USDA.
+
+NON aggiungere switch di rete arbitrariamente.
+
+Confronta:
+
+activeWalletChain.id
+vs
+USDA chainId
+
+Se il wallet è su BSC ma USDA richiede Polygon, deve essere gestito esplicitamente come nel flusso corretto.
+
+Il semplice fatto che Trust Wallet si apra NON significa che la richiesta di firma sia stata correttamente costruita.
+
+==================================================
+5. CONTROLLO CRITICO: TRANSAZIONE VUOTA / INVALIDA
+==================================================
+
+Prima di inviare, stampa/controlla:
+
+{
+  from,
+  to,
+  data,
+  value,
+  chainId
+}
+
+Verifica che:
+
+from != null
+to != null
+data != null
+data.length > 0
+chainId corretto
+value valido
+
+Per USDA deve essere una vera transazione contract call, non un semplice open-wallet/deep-link.
+
+==================================================
+6. CONTROLLO CRITICO: NON CONFONDERE OPEN WALLET CON SIGN
+==================================================
+
+La schermata dimostra:
+
+Trust Wallet OPEN = sì
+
+ma:
+
+Transaction request = NO
+
+Quindi NON considerare il flusso riuscito semplicemente perché Trust Wallet è stato aperto.
+
+Il criterio corretto è:
+
+`eth_sendTransaction`/request equivalente inviato
+↓
+Trust Wallet mostra la transazione
+↓
+utente firma
+↓
+hash TX ricevuto
+
+==================================================
+7. LOCALSTORAGE
+==================================================
+
+La modifica precedente a:
+
+`ac_pending_payment`
+
+va mantenuta SOLO per evitare recovery stale.
+
+NON deve interferire con il normale percorso:
+
+form
+→ confirm
+→ signing
+
+Verifica che durante una nuova transazione USDA non venga eseguito:
+
+setPhase("error")
+setPhase("done")
+reset
+cancel
+recovery
+
+prima dell'invio della transazione.
+
+==================================================
+8. NON TOCCARE QUESTE PARTI
+==================================================
+
+NON modificare:
+
+- MultiChainPaymentSheet
+- MultiChainPaymentBubble
+- BSC signing
+- ETH signing
+- BTC
+- escrow
+- gas reclaim
+- sweep
+- detect
+- WS multichain
+- cancel-stale
+- recipient wallet logic
+
+USDA deve essere diagnosticato separatamente.
+
+==================================================
+9. PRIMA DEL FIX
+==================================================
+
+NON modificare codice.
+
+Restituisci:
+
+1. funzione esatta USDA che dovrebbe chiamare sendTransaction;
+2. riga/punto in cui viene chiamata;
+3. se viene effettivamente raggiunta;
+4. parametri della transaction request;
+5. chainId attivo;
+6. chainId USDA;
+7. provider/account utilizzato;
+8. eventuale errore completo;
+9. confronto con il percorso BSC MultiChain che sappiamo funzionare.
+
+Poi indica una sola:
+
+ROOT CAUSE A:
+sendTransaction non viene chiamato
+
+ROOT CAUSE B:
+sendTransaction viene chiamato ma request WalletConnect è errata
+
+ROOT CAUSE C:
+sendTransaction viene chiamato correttamente ma Trust Wallet rifiuta/non presenta la request
+
+ROOT CAUSE D:
+chain/account mismatch
+
+ROOT CAUSE E:
+stato/recovery USDA interrompe il flusso prima della firma
+
+Solo dopo la diagnosi fai il fix MINIMO.
+
+==================================================
+CRITERIO DI ACCETTAZIONE
+==================================================
+
+USDA deve fare:
+
+Continua
+→ Conferma
+→ verifica chain
+→ eventuale switch corretto
+→ sendTransaction
+→ Trust Wallet
+→ schermata con la transazione USDA
+→ Firma
+→ ritorno all'app
+→ hash
+→ polling
+→ completamento.
+
+Il fatto che Trust Wallet si apra da solo NON è sufficiente.
+
+Voglio vedere la vera richiesta di firma.
+
+STOP ALLE MODIFICHE CASUALI.

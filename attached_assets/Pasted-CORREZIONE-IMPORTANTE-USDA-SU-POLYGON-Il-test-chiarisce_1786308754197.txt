@@ -1,0 +1,96 @@
+CORREZIONE IMPORTANTE — USDA È SU POLYGON
+
+Il test chiarisce ulteriormente il problema:
+
+Trust Wallet si apre, MA NON MOSTRA ALCUNA RICHIESTA DI FIRMA POLYGON/USDA.
+
+Quindi non considerare sufficiente che Trust Wallet venga aperto.
+
+USDA deve eseguire una vera transaction request sulla rete:
+
+Polygon
+chainId = 137
+
+La transazione deve essere presentata da Trust Wallet come richiesta di firma.
+
+DIAGNOSI OBBLIGATORIA:
+
+1. Verifica `activeWalletChain?.id`.
+
+2. Verifica che il flusso USDA richieda esplicitamente:
+
+chainId = 137
+
+3. Verifica il contratto USDA destinatario della transaction.
+
+4. Verifica che la transaction abbia realmente:
+
+from = wallet USDA del mittente
+to = contratto USDA corretto
+data = calldata non vuoto
+value = valore corretto
+chainId = 137
+
+5. Verifica che venga effettivamente chiamato:
+
+account.sendTransaction(...)
+
+o l'equivalente ThirdWeb utilizzato da SendPaymentSheet.
+
+6. Se il wallet è su una chain diversa da Polygon, esegui lo switch esplicito a Polygon PRIMA della transaction, nello stesso modo in cui è stato risolto BSC.
+
+7. ATTENDI realmente lo switch prima di chiamare sendTransaction.
+
+Sequenza obbligatoria:
+
+activeWalletChain
+→ se !== 137
+→ switchChain(137)
+→ attendi completamento
+→ verifica nuovamente chain = 137
+→ costruisci transaction
+→ sendTransaction
+→ Trust Wallet mostra "Firma transazione USDA"
+→ firma
+→ ricevi txHash.
+
+NON fare semplicemente:
+
+open wallet
+→ aspettare
+→ considerare riuscito.
+
+Trust Wallet aperto senza transaction request = FALLIMENTO.
+
+IMPORTANTE:
+
+NON TOCCARE MULTICHAIN.
+
+NON TOCCARE BSC.
+NON TOCCARE ETH.
+NON TOCCARE BTC.
+NON TOCCARE ESCROW.
+NON TOCCARE DETECT.
+NON TOCCARE WS.
+
+Modifica esclusivamente il percorso USDA necessario per far arrivare la vera transaction request Polygon a Trust Wallet.
+
+Prima del fix restituisci:
+
+- active chain effettiva
+- USDA chainId configurato
+- contratto USDA
+- from
+- to
+- data length
+- value
+- punto esatto in cui viene chiamato sendTransaction
+- eventuale errore completo
+
+Poi applica il fix minimo.
+
+CRITERIO DI SUCCESSO:
+
+Trust Wallet deve mostrare una schermata di firma con la transazione USDA sulla rete Polygon.
+
+Il solo fatto che Trust Wallet venga aperto NON è considerato successo.
