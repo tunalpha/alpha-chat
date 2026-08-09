@@ -17,7 +17,7 @@
  * NON modificare USDA.
  */
 
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import QRCode from "qrcode";
 import { useActiveAccount, useActiveWalletChain, useSwitchActiveWalletChain, ConnectButton } from "thirdweb/react";
@@ -173,6 +173,10 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
 
   const { price, loading: priceLoading, error: priceError, currency, setCurrency } = useBtcPrice();
 
+  // Aborting stale recovery polling when a new transfer is created or session resets.
+  // A plain object (not state) — mutations don't need re-renders.
+  const recoveryAbortRef = useRef<{ aborted: boolean }>({ aborted: false });
+
   const isBtc       = mode === "btc" || network === "bitcoin";
   const isEvm       = !isBtc;
   const selectedNet = [...availableNets, BTC_NET].find(n => n.id === network) ?? availableNets[0]!;
@@ -256,7 +260,11 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
       if (t.network === "bitcoin") {
         setStep("address");
         setSignPhase("confirming");
-        void pollDetect(pending.transferId).catch((e: unknown) => {
+        // Fresca abort-ref per questo poll: sarà invalidata da handleCreate/handleReset
+        const abort = { aborted: false };
+        recoveryAbortRef.current = abort;
+        void pollDetect(pending.transferId, abort).catch((e: unknown) => {
+          if (abort.aborted) return; // session già superata — ignora
           setSignPhase("error");
           setSignError((e as Error)?.message ?? "Errore verifica deposito.");
         });
@@ -264,7 +272,10 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
         setStep("sign");
         if (pending.signed) {
           setSignPhase("confirming");
-          void pollDetect(pending.transferId).catch((e: unknown) => {
+          const abort = { aborted: false };
+          recoveryAbortRef.current = abort;
+          void pollDetect(pending.transferId, abort).catch((e: unknown) => {
+            if (abort.aborted) return;
             setSignPhase("error");
             setSignError((e as Error)?.message ?? "Errore verifica deposito.");
           });
@@ -392,14 +403,21 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
 
       if (isBtc) {
         // BTC: avvia subito il polling — l'utente invierà dal wallet Bitcoin
+        // Invalida qualsiasi recovery poll stale prima di avviarne uno nuovo.
+        recoveryAbortRef.current.aborted = true;
         setStep("address");
         setSignPhase("confirming");
-        void pollDetect(result.transferId).catch((e: unknown) => {
+        const abort = { aborted: false };
+        recoveryAbortRef.current = abort;
+        void pollDetect(result.transferId, abort).catch((e: unknown) => {
+          if (abort.aborted) return;
           setSignPhase("error");
           setSignError((e as Error)?.message ?? "Errore verifica deposito.");
         });
       } else {
-        // EVM: mostra step firma (il polling inizia dopo sendTransaction)
+        // EVM: invalida recovery poll stale, poi mostra step firma
+        // (il polling EVM inizia solo dopo che l'utente preme "Firma transazione")
+        recoveryAbortRef.current.aborted = true;
         setStep("sign");
         setSignPhase("ready");
       }
@@ -578,7 +596,15 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
 
   // ── Polling BTC e recovery EVM (senza la logica firma) ───────────────────
 
-  async function pollDetect(transferId: string): Promise<void> {
+  /**
+   * pollDetect — polling backend finché il deposito è rilevato.
+   *
+   * @param transferId  Transfer da monitorare.
+   * @param abort       Oggetto condiviso: se `abort.aborted === true` il loop si ferma
+   *                    silenziosamente (usato per interrompere il recovery in background
+   *                    quando l'utente crea un nuovo transfer o resetta il flusso).
+   */
+  async function pollDetect(transferId: string, abort?: { aborted: boolean }): Promise<void> {
     const POLL_INTERVAL_MS = 10_000;
     const POLL_MAX_MS      = 10 * 60 * 1000;
     const pollStart        = Date.now();
@@ -587,8 +613,15 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
     while (Date.now() - pollStart < POLL_MAX_MS) {
       await new Promise<void>(r => setTimeout(r, first ? 2000 : POLL_INTERVAL_MS));
       first = false;
+
+      // Se il flusso è stato resettato / un nuovo transfer è stato creato,
+      // interrompi silenziosamente questo poll stale.
+      if (abort?.aborted) return;
+
       try {
         await apiMCDetect(transferId);
+        // Guard finale: controlla ancora prima di aggiornare UI
+        if (abort?.aborted) return;
         setSignPhase("done");
         return;
       } catch (pollErr: unknown) {
@@ -609,6 +642,8 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
   // riporta la sheet allo step 1.
 
   async function handleReset() {
+    // Interrompi qualsiasi poll in background (recovery o BTC) prima di resettare
+    recoveryAbortRef.current.aborted = true;
     setCancelling(true);
     try {
       if (transfer?.transferId && transfer.status === "awaiting_deposit") {
@@ -785,7 +820,9 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
                       {" "}<em style={{ fontSize: "0.76em", opacity: 0.65 }}>(+ fee miner BTC)</em>
                     </>
                   ) : (
-                    fmtQ(totalPaidUnits(quote).toString())
+                    /* fmtFee usa Math.max(dispDec,4) → mostra decimali sufficienti
+                       per evidenziare la differenza rispetto al netto (es. 1.0082 USDT) */
+                    fmtFee(totalPaidUnits(quote).toString())
                   )}
                 </span>
               </div>
