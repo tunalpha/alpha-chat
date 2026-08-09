@@ -1,0 +1,62 @@
+Hai ragione. Ho sbagliato io. Hai chiesto di intervenire sulla bolla del messaggio, rendendola uguale allo stile USDA, e io ho generato un’immagine invece di darti la cosa utile.
+
+Quello che devi far fare all’agente è questo:
+
+MODIFICA SOLO LA UI DELLE BOLLE MULTICHAIN — NON TOCCARE LOGICA, BACKEND, PAGAMENTI, FIRMA, POLLING O USDA.
+
+La bolla Multichain attuale è esteticamente diversa e molto più brutta rispetto alla bolla USDA.
+
+Obiettivo: rendere la bolla Multichain visivamente identica alla bolla USDA, riutilizzando lo stesso componente, layout, CSS, spacing, typography, badge di stato, bordi, colori e struttura già utilizzati da USDA.
+
+Regole
+
+1. NON creare un nuovo design.
+2. NON inventare nuovi componenti grafici.
+3. Cercare nel codice la bubble/card utilizzata da USDA per:
+    * Pagamento completato
+    * Pagamento ricevuto
+    * Pagamento in attesa
+    * stato cancelled/failed
+    * link “Visualizza transazione”
+4. Riutilizzare esattamente lo stesso componente/stile USDA per Multichain.
+5. Cambiare soltanto i dati dinamici:
+    * rete: BSC / Ethereum / Polygon / Bitcoin
+    * asset: USDT / BTC
+    * importo
+    * stato
+    * escrow address
+    * TX hash / link explorer
+6. La bolla deve avere la stessa gerarchia visiva USDA: badge rete + stato, importo grande, descrizione, contenuto operativo, separatori, link transazione, timestamp e check.
+7. NON modificare SendPaymentSheet.tsx né alcuna logica USDA.
+8. NON modificare il funzionamento della firma EVM.
+9. NON modificare il funzionamento BTC.
+10. NON modificare il polling o il backend.
+
+Stati Multichain da rappresentare
+
+Pending: stesso aspetto della card USDA in attesa.
+
+Completed: stesso aspetto della card USDA completata, con:
+✅ Pagamento ricevuto / COMPLETATO
+1.00 USDT
+Transazione confermata sulla blockchain
+Visualizza transazione ↗
+
+Cancelled: stesso stile USDA per stato annullato, senza creare una grafica differente.
+
+IMPORTANTE
+
+Prima di modificare il codice, individuare il componente esatto che USDA usa per visualizzare la propria bolla di pagamento e riutilizzarlo per Multichain.
+
+Non fare un redesign. Deve sembrare la stessa identica bolla USDA, semplicemente con dati Multichain.
+
+Dopo la modifica:
+
+* TypeScript clean
+* build clean
+* test esistenti invariati
+* USDA invariato
+* nessuna modifica backend
+* nessuna modifica alla logica di pagamento.
+
+Questo è il prompt corretto. Niente altro deve essere toccato.

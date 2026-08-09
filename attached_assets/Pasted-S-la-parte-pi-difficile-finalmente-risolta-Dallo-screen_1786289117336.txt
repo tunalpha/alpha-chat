@@ -1,0 +1,106 @@
+Sì: la parte più difficile è finalmente risolta. Dallo screenshot vedo che la transazione è stata realmente firmata e broadcastata su BSC: Trust Wallet mostra infatti Transazione completata e l’hash che hai fornito.
+
+Il problema adesso è un altro, e non riguarda più la firma.
+
+Cosa sta succedendo
+
+Il frontend è rimasto su:
+
+Transazione inviata — Stiamo verificando il pagamento sulla blockchain…
+
+mentre la chat continua a mostrare:
+
+Attesa deposito
+
+Quindi:
+
+Wallet
+  ↓
+firma ✅
+  ↓
+broadcast BSC ✅
+  ↓
+TX hash esiste ✅
+  ↓
+backend detect deposito ❌ / non riconosciuto
+  ↓
+bubble rimane "Attesa deposito"
+
+Il click “Ho inviato” che hai fatto non è il problema: serve solo a uscire dalla sheet. Il vero problema è che il backend non sta associando quella TX al transfer.
+
+C’è un dettaglio molto importante nello screenshot
+
+Trust Wallet mostra:
+
+1.007278657001001002 USDT (BEP20)
+
+mentre la UI dice:
+
+Invia esattamente 1.00 USDT
+
+Questo è perfettamente compatibile con il modello recipient_exact: il cliente deve depositare il gross amount, non semplicemente 1.00.
+
+Quindi dobbiamo verificare esattamente quale importo il backend ha registrato come minDepositAmount e quale importo/token/escrow sono stati realmente trasferiti dalla TX.
+
+Non farei nessun altro cambiamento alla cieca.
+
+Il prossimo controllo deve essere questo
+
+Bisogna confrontare questi 5 valori:
+
+1. Transfer ID
+2. escrowWallet
+3. minDepositAmount
+4. TX hash
+    0xbe3d53c024e9cc402ccf8d3b08fb46a9246e0179664d1ff8da43ba0864e1a13b
+5. Transfer effettivo BSC:
+    * token USDT
+    * recipient escrow
+    * amount
+    * status/confirmations
+
+Se la TX contiene effettivamente 1.007278657 USDT verso 0xf553..., allora abbiamo la prova che il pagamento è arrivato ma apiMCDetect() non lo sta riconoscendo.
+
+E questo sarebbe il prossimo bug da correggere: la detection, non il wallet.
+
+Quindi adesso NON toccare
+
+* ❌ ThirdWeb
+* ❌ Trust Wallet
+* ❌ firma
+* ❌ chain switch
+* ❌ BTC
+* ❌ fee calculation
+
+La firma BSC adesso funziona. 🎯
+
+Il prossimo prompt all’agente deve essere esclusivamente:
+
+DIAGNOSI SOLA LETTURA — BSC DEPOSIT DETECTION
+
+Non modificare alcun file.
+
+La TX BSC reale è:
+0xbe3d53c024e9cc402ccf8d3b08fb46a9246e0179664d1ff8da43ba0864e1a13b
+
+La wallet ha confermato il trasferimento di 1.007278657001001002 USDT (BEP20).
+
+Il frontend rimane però su Transazione inviata / Attesa deposito.
+
+Ricostruisci il transfer associato e verifica esclusivamente:
+
+1. transferId;
+2. escrowWallet;
+3. minDepositAmount;
+4. token contract USDT BSC;
+5. amount realmente trasferito dalla TX;
+6. recipient della TX;
+7. numero di conferme;
+8. motivo preciso per cui apiMCDetect() non riconosce il deposito;
+9. quale condizione nel backend impedisce il passaggio a confirmed.
+
+Non applicare fix e non modificare codice.
+
+Voglio una diagnosi basata sulla TX reale e sul transfer reale, non ipotesi.
+
+Questa è la strada corretta adesso. Abbiamo finalmente dimostrato che firma + broadcast EVM funzionano. Ora dobbiamo trovare perché il backend non vede il deposito.
