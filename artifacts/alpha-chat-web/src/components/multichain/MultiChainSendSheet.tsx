@@ -441,6 +441,9 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
       } else if (/nonce.*too.*low|nonce.*used|nonce.*already/i.test(msg)) {
         // TX già inviata con questo nonce (relay WalletConnect stale) → polling continua
         console.warn("[MCSign] Nonce already used — tx precedente già on-chain, continuo il polling.");
+      } else if (/chain.*not.*add|switch.*chain|addEthereumChain|unrecognized.*chain|chain.*not.*support|does not support/i.test(msg)) {
+        pollAborted  = true;
+        signErrorMsg = `La rete non è configurata nel tuo wallet.\n\nAggiungi la rete ${network.toUpperCase()} (chainId ${chainId}) al wallet e riconnetti.`;
       } else {
         signErrorMsg = msg || "Errore durante la firma.";
       }
@@ -473,6 +476,13 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
               throw new Error(signErrorMsg + "\n\nSe hai firmato nel wallet, attendi qualche minuto e controlla la bolla in chat.");
             }
             continue;
+          }
+          if (code === "ADAPTER_NOT_FOUND") {
+            // Rete non abilitata lato backend — mostra fallback manuale
+            throw new Error(
+              "La rete non è ancora disponibile per il rilevamento automatico.\n\n" +
+              "Usa \"Invia manualmente\" qui sotto per copiare l'indirizzo escrow e invia dal tuo wallet."
+            );
           }
           throw pollErr;
         }
@@ -810,29 +820,62 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
         )}
 
         {/* ── Step 3 BTC: indirizzo escrow (inalterato) ── */}
-        {step === "address" && transfer && (
-          <>
-            <div className="mc-address-block">
-              <p className="mc-address-instructions">
-                {t("multichain.depositInstructions", {
-                  amount:  depositDisplay,
-                  asset:   ticker,
-                  network: "Bitcoin",
-                })}
-              </p>
-              <div className="mc-address-box">
-                <span className="mc-address-text">{transfer.escrowWallet}</span>
+        {step === "address" && transfer && (() => {
+          const btcAmount = satoshisToUriAmount(transfer.minDepositAmount);
+          const bitcoinUri = btcAmount
+            ? `bitcoin:${transfer.escrowWallet}?amount=${btcAmount}`
+            : `bitcoin:${transfer.escrowWallet}`;
+          return (
+            <>
+              {/* Importo da inviare */}
+              <div className="mc-confirm-summary">
+                <div className="mc-confirm-row">
+                  <span>Rete</span>
+                  <span>Bitcoin</span>
+                </div>
+                <div className="mc-confirm-row mc-confirm-total">
+                  <span>Invia esattamente</span>
+                  <strong>{depositDisplay} BTC</strong>
+                </div>
               </div>
-              <button type="button" className="mc-copy-btn" onClick={handleCopy}>
-                {copied ? t("multichain.addressCopied") : t("multichain.copyAddress")}
-              </button>
-              <p className="mc-address-expiry">⏰ {t("multichain.expiresIn24h")}</p>
-            </div>
-            <div className="usda-sheet-actions">
-              <button type="button" className="usda-btn-primary" onClick={onSent}>{t("multichain.doneBtn")}</button>
-            </div>
-          </>
-        )}
+
+              {/* Azione principale: apri wallet BTC */}
+              <a
+                href={bitcoinUri}
+                className="usda-btn-primary"
+                style={{ display: "block", textAlign: "center", textDecoration: "none", padding: "13px", borderRadius: "12px" }}
+                onClick={() => { /* deep link — iOS/Android aprono il wallet di default */ }}
+              >
+                📲 Apri wallet Bitcoin
+              </a>
+
+              {/* QR code per desktop o scan */}
+              {qrDataUrl && (
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
+                  <img src={qrDataUrl} alt="QR Bitcoin URI" style={{ width: 160, height: 160, borderRadius: 12 }} />
+                  <p style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.4)", margin: 0 }}>
+                    Scansiona con il wallet Bitcoin
+                  </p>
+                </div>
+              )}
+
+              {/* Indirizzo escrow + copia (fallback) */}
+              <div className="mc-address-block">
+                <div className="mc-address-box">
+                  <span className="mc-address-text">{transfer.escrowWallet}</span>
+                </div>
+                <button type="button" className="mc-copy-btn" onClick={handleCopy}>
+                  {copied ? t("multichain.addressCopied") : "📋 Copia indirizzo"}
+                </button>
+                <p className="mc-address-expiry">⏰ {t("multichain.expiresIn24h")}</p>
+              </div>
+
+              <div className="usda-sheet-actions">
+                <button type="button" className="usda-btn-primary" onClick={onSent}>{t("multichain.doneBtn")}</button>
+              </div>
+            </>
+          );
+        })()}
 
       </div>
     </div>
