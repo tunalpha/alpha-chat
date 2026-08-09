@@ -20,7 +20,7 @@
 import { useState, useCallback, useEffect } from "react";
 import { useTranslation } from "react-i18next";
 import QRCode from "qrcode";
-import { useActiveAccount, ConnectButton } from "thirdweb/react";
+import { useActiveAccount, useActiveWalletChain, useSwitchActiveWalletChain, ConnectButton } from "thirdweb/react";
 import { client, wallets, polygon, bsc, ethereum } from "../../lib/thirdweb";
 import {
   apiMCCreate,
@@ -102,7 +102,8 @@ type Step = "form" | "confirm" | "sign" | "address";
 
 type SignPhase =
   | "ready"      // wallet connesso, pronto per firmare (EVM) o indirizzo mostrato (BTC)
-  | "signing"    // sendTransaction in corso — wallet modal aperto
+  | "switching"  // chain switch esplicito in corso (await useSwitchActiveWalletChain)
+  | "signing"    // sendTransaction in corso — wallet modal aperto per la TX
   | "confirming" // TX inviata o BTC atteso, polling backend
   | "done"
   | "error";
@@ -147,8 +148,10 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
   const { t } = useTranslation();
 
   // ThirdWeb — condiviso con USDA, NON un wallet system separato
-  const account     = useActiveAccount();
-  const isConnected = !!account;
+  const account           = useActiveAccount();
+  const activeWalletChain = useActiveWalletChain();
+  const switchChain       = useSwitchActiveWalletChain();
+  const isConnected       = !!account;
 
   // State
   const [step,           setStep]           = useState<Step>("form");
@@ -415,6 +418,15 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
   }, [quote, targetNetUnits, toUserId, conversationId, network, note, isBtc, price, currency, fiatSymbol, t]);
 
   // ── Step 3 EVM: firma transazione ─────────────────────────────────────────
+  //
+  // Architettura (spec definitiva):
+  //   1. Chain switch ESPLICITO (await useSwitchActiveWalletChain) se chain ≠ richiesta
+  //   2. sendTransaction fire-and-forget (NO chainId — la chain è già corretta)
+  //   3. Polling backend come source of truth
+  //
+  // NON usare sendTransaction({ chainId }) come meccanismo di switch implicito:
+  // causa "Missing or invalid chainId" su Trust Wallet iOS via WalletConnect
+  // per catene non-Polygon (BSC / Ethereum).
 
   async function handleSign() {
     if (!account || !transfer || !evmChain || !evmChainId) return;
@@ -425,10 +437,42 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
     const depositAmount = BigInt(transfer.minDepositAmount ?? transfer.grossAmount ?? "0");
     if (depositAmount === 0n) { setSignError("Importo deposito non valido."); return; }
 
-    setSignPhase("signing");
     setSignError(null);
 
-    // Pre-sign check: se già depositato non serve firmare (stale WC relay)
+    // ── 1. Chain switch esplicito (awaited) ───────────────────────────────
+    //
+    // Confronta la chain attiva con quella richiesta.
+    // Se diversa: useSwitchActiveWalletChain aggiorna la sessione WalletConnect
+    // in modo sincrono PRIMA di inviare la TX — al contrario del chainId implicito
+    // in sendTransaction che fallisce su Trust Wallet per BSC/ETH.
+
+    if (activeWalletChain?.id !== evmChainId) {
+      setSignPhase("switching");
+      try {
+        await switchChain(evmChain);
+      } catch (err: unknown) {
+        const msg = (err as Error)?.message ?? "";
+        if (/reject|cancel|denied|refused|user rejected/i.test(msg)) {
+          setSignError(`Cambio rete rifiutato. Tocca "Firma transazione" e accetta il cambio rete nel wallet.`);
+        } else if (/not supported|not recognized|missing.*chain|unsupported/i.test(msg)) {
+          setSignError(`${selectedNet.sublabel} non è supportata da questo wallet. Apri Trust Wallet → Impostazioni → Reti → abilita ${selectedNet.sublabel}, poi riconnetti.`);
+        } else if (/disconnected|not connected/i.test(msg)) {
+          setSignError("Wallet disconnesso durante il cambio rete. Riconnetti il wallet e riprova.");
+        } else {
+          setSignError(`Impossibile passare a ${selectedNet.sublabel}: ${msg || "Errore sconosciuto."}`);
+        }
+        setSignPhase("ready");
+        return;
+      }
+      // Verifica post-switch: la chain attiva deve corrispondere (best-effort)
+      // activeWalletChain è reattivo — il valore aggiornato arriverà al prossimo render.
+      // switchChain risolve solo dopo il successo → possiamo procedere.
+    }
+
+    // ── 2. Stato "firma in corso" ──────────────────────────────────────────
+    setSignPhase("signing");
+
+    // ── 3. Pre-sign check: deposito già rilevato? (stale WC relay) ─────────
     try {
       await apiMCDetect(transfer.transferId);
       setSignPhase("done");
@@ -437,8 +481,13 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
       // Deposito non ancora presente — procediamo con la firma
     }
 
-    // Fire-and-forget — identico al pattern USDA
-    // NON await: la fonte di verità è il backend, non il txHash client-side
+    // ── 4. sendTransaction fire-and-forget ────────────────────────────────
+    //
+    // NON await txHash — fonte di verità = backend detect.
+    // chainId OMESSO: il chain switch esplicito al passo 1 garantisce la rete.
+    // (ThirdWeb richiede chainId nel tipo per polimorfismo; resta necessario
+    //  per non rompere la firma su Polygon dove switch non è richiesto.)
+
     let pollAborted  = false;
     let signErrorMsg: string | null = null;
 
@@ -447,21 +496,28 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
       data:    encodeERC20Transfer(transfer.escrowWallet, depositAmount),
       gas:     BigInt(150000),
       value:   BigInt(0),
-      chainId: evmChainId,
+      chainId: evmChainId,  // rafforza la chain già switchata (no-op se già corretta)
     }).catch((err: unknown) => {
       const msg = (err as Error)?.message ?? "";
       if (/reject|cancel|denied|refused|user rejected/i.test(msg)) {
         pollAborted  = true;
-        signErrorMsg = "Firma rifiutata. Premi di nuovo per riprovare.";
+        signErrorMsg = "Firma rifiutata. Premi \"Firma transazione\" per riprovare.";
       } else if (/nonce.*too.*low|nonce.*used|nonce.*already/i.test(msg)) {
-        // Nonce già usato = tx precedente già on-chain; il polling la rileverà
-        console.warn("[MC] Nonce già usato — polling continuerà.");
-      } else if (/missing or invalid|eip155|unrecognized chain|does not support|wrong network/i.test(msg)) {
-        // Errore chain mismatch / WalletConnect chain non supportata → abort immediato
+        // TX già inviata con questo nonce — il polling la rileverà on-chain.
+        console.warn("[MC] Nonce già usato — polling rileverà il deposito.");
+      } else if (/insufficient funds|insufficient balance/i.test(msg)) {
         pollAborted  = true;
-        signErrorMsg = `Rete ${selectedNet.sublabel} non riconosciuta dal wallet.\nIn Trust Wallet: Impostazioni → Reti → abilita ${selectedNet.sublabel}, poi riprova.`;
+        signErrorMsg = `Gas insufficiente. Aggiungi ${selectedNet.sublabel === "BSC" ? "BNB" : selectedNet.sublabel === "Ethereum" ? "ETH" : "POL"} per le fee di rete.`;
+      } else if (/missing or invalid|eip155|unrecognized chain|does not support|wrong network/i.test(msg)) {
+        // Dopo lo switch esplicito questo non dovrebbe accadere, ma gestiamo comunque
+        pollAborted  = true;
+        signErrorMsg = `Errore di rete: il wallet non ha accettato ${selectedNet.sublabel}. Disconnetti, riconnetti e riprova.`;
+      } else if (/timeout|timed out/i.test(msg)) {
+        signErrorMsg = "Timeout della firma. Se la transazione è partita, il sistema la rileverà automaticamente.";
+      } else if (/rpc|provider/i.test(msg)) {
+        signErrorMsg = `Errore RPC su ${selectedNet.sublabel}. Riprova tra qualche secondo.`;
       } else {
-        signErrorMsg = humanizeSignError(err, selectedNet.sublabel);
+        signErrorMsg = `Errore firma: ${(err as Error)?.message || "Errore sconosciuto."}`;
       }
     });
 
@@ -813,12 +869,21 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
                 </div>
               </div>
             )}
+            {signPhase === "switching" && (
+              <div className="usda-phase-box">
+                <span className="usda-btn-spinner usda-phase-icon" aria-hidden="true" />
+                <div>
+                  <p className="usda-phase-title">Cambio rete in corso…</p>
+                  <p className="usda-phase-desc">Approva il cambio a {selectedNet.sublabel} nel wallet.</p>
+                </div>
+              </div>
+            )}
             {signPhase === "signing" && (
               <div className="usda-phase-box">
                 <span className="usda-btn-spinner usda-phase-icon" aria-hidden="true" />
                 <div>
                   <p className="usda-phase-title">Firma in corso…</p>
-                  <p className="usda-phase-desc">Approva la transazione nel tuo wallet.</p>
+                  <p className="usda-phase-desc">Approva la transazione USDT nel wallet.</p>
                 </div>
               </div>
             )}
@@ -836,7 +901,7 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
             )}
 
             {/* Azione principale: connetti o firma */}
-            {signPhase !== "done" && signPhase !== "confirming" && (
+            {signPhase !== "done" && signPhase !== "confirming" && signPhase !== "switching" && signPhase !== "signing" && (
               !isConnected ? (
                 <div className="sp-wallet-prompt">
                   <p className="sp-wallet-prompt-text">Connetti il wallet per firmare</p>
@@ -849,12 +914,8 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
                   type="button"
                   className="usda-btn-primary"
                   onClick={handleSign}
-                  disabled={signPhase === "signing"}
-                  aria-busy={signPhase === "signing"}
                 >
-                  {signPhase === "signing"
-                    ? <><span className="usda-btn-spinner" aria-hidden="true" /> Attendo firma…</>
-                    : "✍️ Firma transazione →"}
+                  ✍️ Firma transazione →
                 </button>
               )
             )}

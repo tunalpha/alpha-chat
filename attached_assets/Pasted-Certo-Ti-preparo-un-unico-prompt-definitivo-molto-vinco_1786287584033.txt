@@ -1,0 +1,312 @@
+Certo. Ti preparo un unico prompt definitivo, molto vincolante, così l’agente non torna a fare workaround diversi per ogni rete.
+
+PROMPT DEFINITIVO — FIX WALLET EVM MULTICHAIN
+
+OBIETTIVO
+
+Correggere definitivamente il flusso di firma delle transazioni EVM nel MultiChainSendSheet.tsx.
+
+Il problema attuale è stato osservato su BSC: il wallet si apre, ma non viene presentata alcuna transazione da firmare e l’app restituisce erroneamente:
+
+“Rete BSC non riconosciuta dal wallet.”
+
+Questo messaggio NON deve più essere utilizzato come errore generico. BSC è una rete EVM valida e configurata.
+
+IMPORTANTE: non fare un fix specifico solo per BSC. Il meccanismo deve funzionare allo stesso modo per tutte le reti EVM supportate:
+
+* Polygon → chainId 137
+* BSC → chainId 56
+* Ethereum → chainId 1
+
+⸻
+
+1. NON MODIFICARE
+
+Prima di iniziare:
+
+* ❌ non modificare il backend;
+* ❌ non modificare fee/network-fee;
+* ❌ non modificare il modello economico;
+* ❌ non modificare recovery;
+* ❌ non modificare BTC;
+* ❌ non modificare SendPaymentSheet.tsx;
+* ❌ non modificare USDA;
+* ❌ non introdurre un secondo wallet system;
+* ❌ non introdurre EIP-5792;
+* ❌ non introdurre nuove SDK wallet.
+
+Il lavoro riguarda solo il wallet signing EVM del Multichain.
+
+⸻
+
+2. ARCHITETTURA CORRETTA
+
+Usare esattamente il pattern già funzionante di USDA:
+
+useActiveAccount()
+      ↓
+wallet connesso
+      ↓
+verifica chain attiva
+      ↓
+switch esplicito alla chain richiesta
+      ↓
+verifica nuovamente chain
+      ↓
+account.sendTransaction()
+      ↓
+wallet mostra la transazione
+      ↓
+utente firma
+      ↓
+backend polling/source of truth
+
+Non usare sendTransaction({ chainId }) come meccanismo implicito per effettuare il cambio rete.
+
+⸻
+
+3. CHAIN SWITCH
+
+Utilizzare le API ThirdWeb v5 appropriate:
+
+* useActiveAccount()
+* useActiveWalletChain()
+* useSwitchActiveWalletChain()
+
+La chain richiesta deve essere derivata dalla rete selezionata:
+
+Polygon → 137
+BSC     → 56
+Ethereum → 1
+
+Procedura:
+
+1. leggere la chain attiva;
+2. confrontarla con la chain richiesta;
+3. se diversa, eseguire switch esplicito;
+4. attendere il completamento dello switch;
+5. verificare nuovamente che la chain attiva sia quella richiesta;
+6. solo allora preparare e inviare la transazione.
+
+Se la chain è già corretta, non effettuare alcuno switch.
+
+⸻
+
+4. TRANSAZIONE USDT
+
+Mantenere il calldata ERC-20 già implementato.
+
+Non cambiare:
+
+* token contract;
+* escrow wallet;
+* minDepositAmount;
+* decimals;
+* encoding ERC-20.
+
+La transazione deve essere:
+
+USDT contract
+     ↓
+transfer(escrowWallet, minDepositAmount)
+
+Utilizzare:
+
+account.sendTransaction(...)
+
+con il pattern fire-and-forget già utilizzato da USDA.
+
+⸻
+
+5. CRITERIO DI SUCCESSO
+
+Il semplice fatto che Trust Wallet/MetaMask/Coinbase Wallet si apra NON è sufficiente.
+
+Il risultato corretto deve essere:
+
+Click "Firma transazione"
+       ↓
+eventuale richiesta cambio rete
+       ↓
+wallet corretto
+       ↓
+schermata di conferma transazione
+       ↓
+USDT transfer verso escrowWallet
+       ↓
+utente firma
+
+Se il wallet si apre ma non compare una transazione da firmare, il test è da considerarsi FALLITO.
+
+⸻
+
+6. GESTIONE ERRORI
+
+Eliminare il comportamento attuale che trasforma errori diversi in:
+
+“Rete BSC non riconosciuta dal wallet.”
+
+Distinguere almeno:
+
+* switch rete rifiutato;
+* utente annulla lo switch;
+* wallet disconnesso;
+* firma rifiutata;
+* wallet non supporta lo switch;
+* errore WalletConnect;
+* errore sendTransaction;
+* errore RPC.
+
+Messaggi specifici e comprensibili.
+
+Non avviare polling inutile quando la firma non è mai avvenuta.
+
+⸻
+
+7. FALLBACK MANUALE
+
+Il fallback:
+
+“Problemi con il wallet? → Invia manualmente”
+
+deve rimanere disponibile ma secondario.
+
+Non deve diventare il percorso principale.
+
+Il percorso principale deve essere sempre:
+
+Firma transazione → wallet → firma.
+
+⸻
+
+8. BTC — NON TOCCARE
+
+Bitcoin è completamente separato dall’EVM.
+
+Non applicare a BTC:
+
+* useActiveWalletChain;
+* useSwitchActiveWalletChain;
+* account.sendTransaction;
+* chainId EVM;
+* ThirdWeb EVM signing.
+
+BTC deve rimanere:
+
+bc1... escrow
+↓
+QR / bitcoin URI / share sheet
+↓
+wallet Bitcoin
+↓
+invio
+↓
+backend detect
+
+Non modificare il codice BTC durante questo intervento.
+
+⸻
+
+9. POLYGON
+
+Polygon deve continuare a funzionare come USDA.
+
+Non rompere il comportamento già funzionante di Polygon.
+
+Se Polygon è già la chain attiva:
+
+click Firma
+↓
+nessuno switch
+↓
+sendTransaction
+↓
+popup firma
+
+⸻
+
+10. TEST OBBLIGATORI
+
+Prima di dichiarare completato il lavoro verificare:
+
+Polygon
+
+* wallet connesso su Polygon;
+* firma USDT;
+* popup transazione presente.
+
+BSC
+
+* wallet connesso su Polygon;
+* selezione BSC;
+* switch a BSC;
+* apertura wallet;
+* transazione USDT realmente visualizzata;
+* firma.
+
+Ethereum
+
+* wallet connesso su Polygon;
+* selezione Ethereum;
+* switch a Ethereum;
+* apertura wallet;
+* transazione USDT realmente visualizzata;
+* firma.
+
+Errori
+
+Verificare:
+
+* annullamento switch;
+* annullamento firma;
+* wallet disconnesso;
+* errore RPC.
+
+⸻
+
+11. TEST REGRESSIONE
+
+Verificare:
+
+* TypeScript;
+* build frontend;
+* test suite esistente;
+* nessun nuovo errore;
+* USDA invariato;
+* BTC invariato;
+* backend invariato.
+
+⸻
+
+12. REGOLA FONDAMENTALE
+
+NON dichiarare “fix completato” perché il wallet si apre.
+
+Il fix è completato solo quando il wallet mostra effettivamente la transazione USDT da firmare per:
+
+Polygon + BSC + Ethereum.
+
+Se BSC funziona ma Ethereum no, il lavoro NON è completato.
+
+Se il wallet si apre ma non mostra la transazione, il lavoro NON è completato.
+
+Se viene nuovamente proposto il copia/incolla come soluzione principale, il lavoro NON è conforme.
+
+⸻
+
+REPORT FINALE OBBLIGATORIO
+
+Alla fine riportare esclusivamente:
+
+1. file modificati;
+2. causa tecnica esatta;
+3. fix applicato;
+4. comportamento BSC;
+5. comportamento Ethereum;
+6. comportamento Polygon;
+7. conferma che BTC non è stato modificato;
+8. conferma che USDA non è stato modificato;
+9. TypeScript/build/test;
+10. eventuali problemi residui.
+
+Non fare altre modifiche oltre a quelle necessarie per questo fix.
