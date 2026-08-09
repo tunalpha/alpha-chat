@@ -32,6 +32,7 @@ import { useTranslation } from "react-i18next";
 import { useActiveAccount, ConnectButton } from "thirdweb/react";
 import type { Chain } from "thirdweb";
 import { client, wallets, polygon, bsc, ethereum } from "../../lib/thirdweb";
+import QRCode from "qrcode";
 import {
   apiMCCreate,
   apiMCDetect,
@@ -170,7 +171,8 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
    *  +1 unit di ceiling del backend in quote.netAmount. */
   const [targetNetUnits, setTargetNetUnits] = useState<string | null>(null);
 
-  const busyRef = useRef(false);
+  const busyRef   = useRef(false);
+  const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
 
   const { price, loading: priceLoading, error: priceError, currency, setCurrency } = useBtcPrice();
 
@@ -208,6 +210,20 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode]);
 
+  // Genera QR code quando si arriva allo step "address" (BTC)
+  useEffect(() => {
+    if (step !== "address" || !transfer?.escrowWallet) return;
+    const btcAmount = satoshisToUriAmount(transfer.minDepositAmount);
+    const uri = btcAmount
+      ? `bitcoin:${transfer.escrowWallet}?amount=${btcAmount}`
+      : `bitcoin:${transfer.escrowWallet}`;
+    void QRCode.toDataURL(uri, {
+      width:  200,
+      margin: 2,
+      color:  { dark: "#a855f7", light: "#0F0A1E" },
+    }).then(setQrDataUrl).catch(() => setQrDataUrl(null));
+  }, [step, transfer]);
+
   // Recovery iOS: se c'è un pagamento MC in sospeso per questa conversazione
   // (< 30 min) avvia il polling senza richiedere nuova firma.
   useEffect(() => {
@@ -237,6 +253,21 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
   }, [signPhase, onSent]);
 
   // ── Helpers display ─────────────────────────────────────────────────────────
+
+  /** Converte satoshi (raw units stringa) in importo BTC per BIP-21 URI.
+   *  Usa il valore esatto del backend — nessun ricalcolo frontend. */
+  function satoshisToUriAmount(satStr: string | null | undefined): string | null {
+    if (!satStr) return null;
+    try {
+      const sat = BigInt(satStr);
+      if (sat <= 0n) return null;
+      // satoshi → BTC: divide per 10^8 mantenendo 8 decimali
+      const whole = sat / 100_000_000n;
+      const rem   = sat % 100_000_000n;
+      const remStr = rem.toString().padStart(8, "0").replace(/0+$/, "");
+      return remStr ? `${whole}.${remStr}` : `${whole}`;
+    } catch { return null; }
+  }
 
   const fmtQ = (units: string) =>
     isBtc ? fmtDisplay(units, 8, 8) + " BTC" : fmtDisplay(units, rawDec, dispDec) + " " + ticker;
