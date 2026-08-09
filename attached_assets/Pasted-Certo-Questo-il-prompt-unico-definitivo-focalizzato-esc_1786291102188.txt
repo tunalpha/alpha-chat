@@ -1,0 +1,143 @@
+Certo. Questo è il prompt unico definitivo, focalizzato esclusivamente sullo sweep automatico del saldo residuo BNB/ETH dopo ogni transazione BSC/ETH.
+
+FIX PRE-LIVE — ESCROW BSC/ETH: SWEEP AUTOMATICO DEL SALDO RESIDUO
+
+Obiettivo: dopo il completamento di ogni transazione BSC o Ethereum, il wallet escrow utilizzato per quella transazione deve essere automaticamente svuotato e il saldo nativo residuo (BNB su BSC / ETH su Ethereum) deve tornare al wallet della piattaforma/gas station.
+
+Comportamento obbligatorio
+
+Flusso:
+
+Gas Station → Escrow → Recipient
+
+Dopo che Escrow → Recipient è confermata on-chain, eseguire automaticamente:
+
+Escrow → Gas Station / Platform Wallet
+
+trasferendo tutto il saldo nativo residuo possibile, lasciando esclusivamente il gas necessario per effettuare questa stessa transazione di sweep.
+
+Il risultato finale desiderato è:
+
+Escrow BSC: ~0 BNB
+Escrow ETH: ~0 ETH
+
+Non devono rimanere saldi inutilizzati negli escrow.
+
+⸻
+
+Regole tecniche
+
+1. NON usare importi hardcoded (0.003 BNB, 0.001 ETH, ecc.).
+2. Dopo la conferma del payout, leggere il saldo nativo reale on-chain dell’escrow.
+3. Stimare il gas della transazione di sweep usando il gas price corrente e un buffer di sicurezza ragionevole.
+4. Calcolare:
+
+sweepAmount = escrowBalance - estimatedSweepGasCost
+
+5. Se sweepAmount > 0, inviarlo automaticamente al wallet della gas station/piattaforma.
+6. Se il saldo è troppo basso per effettuare economicamente lo sweep, non creare una transazione fallimentare.
+7. Il payout USDT non deve essere ripetuto se lo sweep fallisce.
+8. Se lo sweep fallisce per RPC, timeout o errore transitorio, il sistema deve poter riprovare solo lo sweep, senza ripetere il payout.
+9. Implementare idempotenza/lock: lo stesso escrow non deve poter essere sottoposto a due sweep contemporaneamente.
+10. Prima di eseguire lo sweep verificare che il payout precedente sia realmente confermato on-chain.
+11. Dopo lo sweep verificare nuovamente il saldo on-chain dell’escrow.
+12. Il risultato deve essere registrato nel transfer:
+
+* nativeBalanceBeforeSweep
+* nativeSweepAmount
+* nativeSweepGasCost
+* nativeSweepTxHash
+* nativeSweepStatus
+* nativeBalanceAfterSweep
+
+⸻
+
+Stati
+
+Non considerare definitivamente completato il lifecycle dell’escrow finché lo sweep non è stato gestito.
+
+Se necessario introdurre uno stato intermedio:
+
+released → sweeping_native → completed
+
+In caso di errore:
+
+released → sweeping_native → sweep_failed
+
+con retry sicuro dello sweep.
+
+⸻
+
+BSC
+
+Applicare alla rete BSC:
+
+BNB escrow → payout USDT → sweep BNB residuo → gas station
+
+Verificare che al termine il saldo BNB dell’escrow sia praticamente zero, compatibilmente con il gas necessario alla sweep TX.
+
+Ethereum
+
+Applicare lo stesso identico principio:
+
+ETH escrow → payout USDT → sweep ETH residuo → gas station
+
+Nessuna logica separata con importi fissi.
+
+⸻
+
+IMPORTANTE — NON TOCCARE
+
+NON modificare:
+
+* USDA
+* Bitcoin
+* Polygon
+* frontend
+* UX
+* firma WalletConnect
+* polling deposito
+* fee calculation
+* logica di creazione del payout
+
+Limitare il lavoro esclusivamente al lifecycle dell’escrow BSC/ETH e al recupero automatico del native-token residuo.
+
+⸻
+
+Prima di modificare
+
+Prima analizza il codice esistente e verifica se esiste già una funzione di sweep/refund nativo.
+
+Se esiste, riutilizzala e correggila invece di crearne una seconda.
+
+Verifica anche che non possa entrare in conflitto con:
+
+* gas station
+* payout
+* scheduler
+* retry
+* lock/idempotency
+
+⸻
+
+Test obbligatori
+
+Testare almeno:
+
+* BSC payout normale + sweep
+* BSC payout con gas basso
+* BSC payout con gas alto
+* Ethereum payout + sweep
+* escrow con residuo minimo
+* sweep fallito e retry
+* timeout RPC e retry
+* doppio trigger simultaneo
+* verifica saldo finale on-chain
+
+Condizione di accettazione principale:
+
+Dopo ogni payout BSC/ETH completato, il wallet escrow deve automaticamente restituire il saldo nativo residuo alla gas station/piattaforma e il saldo finale dell’escrow deve risultare ~0 BNB / ~0 ETH.
+
+Nessun importo hardcoded. Nessun doppio payout. Nessun doppio sweep. Nessun residuo lasciato inutilmente negli escrow.
+
+Prima analizza, poi implementa, poi testa. Non effettuare transazioni reali di produzione durante i test senza autorizzazione.

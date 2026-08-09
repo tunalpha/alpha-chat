@@ -66,3 +66,4 @@
 - [TX3 Escrow Gas Reclaim](sprint-tx3-reclaim.md) — fire-and-forget dopo released; privateKeyToAccount DENTRO try-catch; INSUFFICIENT_BALANCE=permanente; scheduler retry 30min
 - [Dynamic Network Fee — EVM](sprint-dynamic-fee.md) — formula BigInt gasPrice×nativePrice, CoinGecko server-side, safetyMargin DB, calculatePaymentQuote ora riceve fee come parametro
 - [Chat Feature Flags — USDT/BTC toggle](chat-feature-flags.md) — toggle admin per nascondere USDT/BTC in chat; endpoint pubblico /admin/app-feature-flags; fail-open; AdminSettings singleton
+- [Native Sweep Audit Trail (TX3)](sprint-native-sweep-audit.md) — 6 nuovi campi audit su IMultiChainTransfer; try/catch obbligatorio su best-effort findOneAndUpdate; getBalance chiamato 2× (pre+post sweep)

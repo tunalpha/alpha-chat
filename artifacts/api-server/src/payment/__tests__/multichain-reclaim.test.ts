@@ -242,7 +242,7 @@ describe("R-01 — Happy path: TX3 completata", () => {
 
     expect(mockFindOneAndUpdate).toHaveBeenCalledWith(
       { transfer_id: TRANSFER_ID, tx_hash_reclaim: null },
-      { $set: { tx_hash_reclaim_submitted: "0xTX3_RECLAIM_HASH" } },
+      { $set: expect.objectContaining({ tx_hash_reclaim_submitted: "0xTX3_RECLAIM_HASH" }) },
     );
   });
 
@@ -252,13 +252,64 @@ describe("R-01 — Happy path: TX3 completata", () => {
     expect(mockFindOneAndUpdate).toHaveBeenCalledWith(
       { transfer_id: TRANSFER_ID, tx_hash_reclaim: null },
       {
-        $set: {
+        $set: expect.objectContaining({
           tx_hash_reclaim: "0xTX3_RECLAIM_HASH",
           pol_reclaimed:   TRANSFER_AMOUNT.toString(),
           reclaim_error:   null,
-        },
+        }),
       },
     );
+  });
+
+  it("persiste i nuovi campi audit sweep al successo", async () => {
+    await reclaimEscrowGasById(TRANSFER_ID);
+
+    expect(mockFindOneAndUpdate).toHaveBeenCalledWith(
+      { transfer_id: TRANSFER_ID, tx_hash_reclaim: null },
+      {
+        $set: expect.objectContaining({
+          native_sweep_tx_hash:  "0xTX3_RECLAIM_HASH",
+          native_sweep_amount:   TRANSFER_AMOUNT.toString(),
+          native_sweep_status:   "completed",
+          native_sweep_gas_cost: expect.any(String),
+        }),
+      },
+    );
+  });
+
+  it("persiste native_balance_before_sweep e lo stato pending prima di inviare TX3", async () => {
+    await reclaimEscrowGasById(TRANSFER_ID);
+    // Verifica che uno degli update contenga native_balance_before_sweep
+    const pendingCall = mockFindOneAndUpdate.mock.calls.find(
+      (call: unknown[]) => {
+        const upd = call[1] as { $set: Record<string, unknown> };
+        return upd?.$set?.native_balance_before_sweep !== undefined;
+      },
+    );
+    expect(pendingCall).toBeDefined();
+    expect((pendingCall![1] as { $set: Record<string, unknown> }).$set.native_balance_before_sweep)
+      .toBe(BALANCE_SUFFICIENT.toString());
+  });
+
+  it("legge il saldo post-sweep on-chain (seconda chiamata getBalance)", async () => {
+    // Prima call: BALANCE_SUFFICIENT (initial), seconda call: 0n (post-sweep)
+    mockGetBalance
+      .mockResolvedValueOnce(BALANCE_SUFFICIENT)
+      .mockResolvedValueOnce(0n);
+    await reclaimEscrowGasById(TRANSFER_ID);
+    // getBalance chiamata almeno 2 volte (initial check + post-sweep audit)
+    expect(mockGetBalance).toHaveBeenCalledTimes(2);
+  });
+
+  it("persiste native_sweep_status: sweeping dopo sendTransaction", async () => {
+    await reclaimEscrowGasById(TRANSFER_ID);
+    const sweepingCall = mockFindOneAndUpdate.mock.calls.find(
+      (call: unknown[]) => {
+        const upd = call[1] as { $set: Record<string, unknown> };
+        return upd?.$set?.native_sweep_status === "sweeping";
+      },
+    );
+    expect(sweepingCall).toBeDefined();
   });
 
   it("chiama waitForTransactionReceipt con il hash TX3", async () => {
@@ -272,10 +323,14 @@ describe("R-01 — Happy path: TX3 completata", () => {
     await expect(reclaimEscrowGasById(TRANSFER_ID)).resolves.toBeUndefined();
   });
 
-  it("legge gasPrice, balance e nonce in parallelo (3 chiamate RPC)", async () => {
+  it("legge gasPrice, balance e nonce in parallelo; getBalance chiamato 2× (pre + post-sweep)", async () => {
+    // Pre-sweep: in Promise.all. Post-sweep: dopo la receipt per audit native_balance_after_sweep.
+    mockGetBalance
+      .mockResolvedValueOnce(BALANCE_SUFFICIENT)
+      .mockResolvedValueOnce(0n); // post-sweep balance
     await reclaimEscrowGasById(TRANSFER_ID);
     expect(mockGetGasPrice).toHaveBeenCalledTimes(1);
-    expect(mockGetBalance).toHaveBeenCalledTimes(1);
+    expect(mockGetBalance).toHaveBeenCalledTimes(2); // pre-sweep + post-sweep
     expect(mockGetTransactionCount).toHaveBeenCalledTimes(1);
   });
 });
@@ -293,11 +348,11 @@ describe("R-02 — Saldo escrow insufficiente", () => {
     expect(mockSendTransaction).not.toHaveBeenCalled();
   });
 
-  it("persiste INSUFFICIENT_BALANCE in reclaim_error", async () => {
+  it("persiste INSUFFICIENT_BALANCE in reclaim_error e native_sweep_status:skipped", async () => {
     await reclaimEscrowGasById(TRANSFER_ID);
     expect(mockFindOneAndUpdate).toHaveBeenCalledWith(
       { transfer_id: TRANSFER_ID, tx_hash_reclaim: null },
-      { $set: { reclaim_error: "INSUFFICIENT_BALANCE" } },
+      { $set: expect.objectContaining({ reclaim_error: "INSUFFICIENT_BALANCE", native_sweep_status: "skipped" }) },
     );
   });
 
@@ -317,11 +372,11 @@ describe("R-03 — RPC failure (getBalance)", () => {
     await expect(reclaimEscrowGasById(TRANSFER_ID)).resolves.toBeUndefined();
   });
 
-  it("persiste il messaggio di errore in reclaim_error", async () => {
+  it("persiste il messaggio di errore in reclaim_error e native_sweep_status:failed", async () => {
     await reclaimEscrowGasById(TRANSFER_ID);
     expect(mockFindOneAndUpdate).toHaveBeenCalledWith(
       { transfer_id: TRANSFER_ID, tx_hash_reclaim: null },
-      { $set: { reclaim_error: expect.stringContaining("RPC timeout") } },
+      { $set: expect.objectContaining({ reclaim_error: expect.stringContaining("RPC timeout"), native_sweep_status: "failed" }) },
     );
   });
 
@@ -342,11 +397,11 @@ describe("R-04 — sendTransaction failure", () => {
     await expect(reclaimEscrowGasById(TRANSFER_ID)).resolves.toBeUndefined();
   });
 
-  it("persiste l'errore in reclaim_error", async () => {
+  it("persiste l'errore in reclaim_error e native_sweep_status:failed", async () => {
     await reclaimEscrowGasById(TRANSFER_ID);
     expect(mockFindOneAndUpdate).toHaveBeenCalledWith(
       { transfer_id: TRANSFER_ID, tx_hash_reclaim: null },
-      { $set: { reclaim_error: expect.stringContaining("nonce too low") } },
+      { $set: expect.objectContaining({ reclaim_error: expect.stringContaining("nonce too low"), native_sweep_status: "failed" }) },
     );
   });
 
@@ -375,11 +430,11 @@ describe("R-05 — waitForTransactionReceipt timeout", () => {
     await expect(reclaimEscrowGasById(TRANSFER_ID)).resolves.toBeUndefined();
   });
 
-  it("persiste l'errore in reclaim_error", async () => {
+  it("persiste l'errore in reclaim_error e native_sweep_status:failed", async () => {
     await reclaimEscrowGasById(TRANSFER_ID);
     expect(mockFindOneAndUpdate).toHaveBeenCalledWith(
       { transfer_id: TRANSFER_ID, tx_hash_reclaim: null },
-      { $set: { reclaim_error: expect.stringContaining("30 seconds") } },
+      { $set: expect.objectContaining({ reclaim_error: expect.stringContaining("30 seconds"), native_sweep_status: "failed" }) },
     );
   });
 });
@@ -395,11 +450,11 @@ describe("R-06 — TX3 revertita on-chain", () => {
     await expect(reclaimEscrowGasById(TRANSFER_ID)).resolves.toBeUndefined();
   });
 
-  it("persiste l'errore con menzione della revert", async () => {
+  it("persiste l'errore con menzione della revert e native_sweep_status:failed", async () => {
     await reclaimEscrowGasById(TRANSFER_ID);
     expect(mockFindOneAndUpdate).toHaveBeenCalledWith(
       { transfer_id: TRANSFER_ID, tx_hash_reclaim: null },
-      { $set: { reclaim_error: expect.stringContaining("revertita") } },
+      { $set: expect.objectContaining({ reclaim_error: expect.stringContaining("revertita"), native_sweep_status: "failed" }) },
     );
   });
 
@@ -748,7 +803,7 @@ describe("R-17 — Gap #2 crash recovery: tx_hash_reclaim_submitted set + TX3 no
     await reclaimEscrowGasById(TRANSFER_ID);
     expect(mockFindOneAndUpdate).toHaveBeenCalledWith(
       { transfer_id: TRANSFER_ID, tx_hash_reclaim: null },
-      { $set: { tx_hash_reclaim_submitted: "0xTX3_RECLAIM_HASH" } },
+      { $set: expect.objectContaining({ tx_hash_reclaim_submitted: "0xTX3_RECLAIM_HASH" }) },
     );
   });
 

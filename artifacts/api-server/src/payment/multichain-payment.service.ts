@@ -1138,9 +1138,12 @@ async function _reclaimEscrowGas(
             { transfer_id: doc.transfer_id, tx_hash_reclaim: null },
             {
               $set: {
-                tx_hash_reclaim: doc.tx_hash_reclaim_submitted,
-                pol_reclaimed:   polRecovered,
-                reclaim_error:   null,
+                tx_hash_reclaim:    doc.tx_hash_reclaim_submitted,
+                pol_reclaimed:      polRecovered,
+                reclaim_error:      null,
+                // Audit sweep (best-effort in crash recovery — balance pre-sweep non disponibile)
+                native_sweep_tx_hash:  doc.tx_hash_reclaim_submitted,
+                native_sweep_status:   "completed",
               },
             },
           );
@@ -1173,6 +1176,15 @@ async function _reclaimEscrowGas(
     // Costo esatto TX3: 21.000 gas × gasPrice corrente
     const tx3GasCost = TX3_GAS_UNITS * gasPrice;
 
+    // Audit: salva il saldo nativo prima dello sweep e marca come "pending"
+    // (non-bloccante: se il DB update fallisce, lo sweep prosegue comunque)
+    try {
+      await MultiChainTransferModel.findOneAndUpdate(
+        { transfer_id: doc.transfer_id, tx_hash_reclaim: null },
+        { $set: { native_balance_before_sweep: escrowBalance.toString(), native_sweep_status: "pending" } },
+      );
+    } catch { /* non critico — audit trail best-effort */ }
+
     if (escrowBalance <= tx3GasCost) {
       // Saldo insufficiente — non ha senso riprovare finché il saldo non cambia
       logger.info(
@@ -1187,7 +1199,7 @@ async function _reclaimEscrowGas(
       );
       await MultiChainTransferModel.findOneAndUpdate(
         { transfer_id: doc.transfer_id, tx_hash_reclaim: null },
-        { $set: { reclaim_error: "INSUFFICIENT_BALANCE" } },
+        { $set: { reclaim_error: "INSUFFICIENT_BALANCE", native_sweep_status: "skipped" } },
       );
       return;
     }
@@ -1233,7 +1245,7 @@ async function _reclaimEscrowGas(
     // valorizzato e può verificare la receipt senza re-inviare la TX.
     await MultiChainTransferModel.findOneAndUpdate(
       { transfer_id: doc.transfer_id, tx_hash_reclaim: null },
-      { $set: { tx_hash_reclaim_submitted: txHash } },
+      { $set: { tx_hash_reclaim_submitted: txHash, native_sweep_status: "sweeping" } },
     );
 
     const receipt = await publicClient.waitForTransactionReceipt({
@@ -1246,15 +1258,32 @@ async function _reclaimEscrowGas(
       throw new Error(`TX3 revertita on-chain: ${txHash}`);
     }
 
+    // Verifica saldo post-sweep on-chain (audit trail — best-effort)
+    const balanceAfterSweep = await publicClient.getBalance({
+      address: escrowAccount.address,
+    }).catch(() => null);
+
+    // Costo gas effettivo TX3 (gasUsed × gasPrice — usa stima se receipt.gasUsed non disponibile)
+    const actualGasCost = receipt.gasUsed
+      ? receipt.gasUsed * gasPrice
+      : tx3GasCost;
+
     // Persist successo — condizione { tx_hash_reclaim: null } garantisce idempotenza
     // (se due thread concorrenti completano la stessa TX, solo il primo scrive)
     await MultiChainTransferModel.findOneAndUpdate(
       { transfer_id: doc.transfer_id, tx_hash_reclaim: null },
       {
         $set: {
+          // Campi legacy (backward compat)
           tx_hash_reclaim: txHash,
           pol_reclaimed:   transferAmount.toString(),
           reclaim_error:   null,
+          // Nuovi campi audit sweep
+          native_sweep_tx_hash:       txHash,
+          native_sweep_amount:        transferAmount.toString(),
+          native_sweep_gas_cost:      actualGasCost.toString(),
+          native_sweep_status:        "completed",
+          native_balance_after_sweep: balanceAfterSweep !== null ? balanceAfterSweep.toString() : null,
         },
       },
     );
@@ -1280,7 +1309,7 @@ async function _reclaimEscrowGas(
     try {
       await MultiChainTransferModel.findOneAndUpdate(
         { transfer_id: doc.transfer_id, tx_hash_reclaim: null },
-        { $set: { reclaim_error: errMsg.slice(0, 500) } },
+        { $set: { reclaim_error: errMsg.slice(0, 500), native_sweep_status: "failed" } },
       );
     } catch {
       /* fallback silenzioso — errore durante persistenza dell'errore */

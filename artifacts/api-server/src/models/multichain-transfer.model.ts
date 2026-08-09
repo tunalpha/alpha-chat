@@ -184,6 +184,31 @@ export interface IMultiChainTransfer {
    */
   reclaim_error: string | null;
 
+  // ── Native Sweep Audit Trail ────────────────────────────────────────────────
+  /**
+   * Campi di audit del ciclo di sweep nativo (TX3 BNB/ETH/POL escrow → Gas Station).
+   * Popolati progressivamente durante l'esecuzione di _reclaimEscrowGas.
+   *
+   * native_balance_before_sweep: saldo nativo letto on-chain prima dello sweep (wei, str BigInt)
+   * native_sweep_amount:         importo nativo trasferito alla Gas Station (wei, str BigInt)
+   *                              = native_balance_before_sweep - gas TX3
+   * native_sweep_gas_cost:       costo gas TX3 effettivo (gasUsed × gasPrice, wei, str BigInt)
+   * native_sweep_tx_hash:        hash TX3 confermata (uguale a tx_hash_reclaim)
+   * native_sweep_status:         stato corrente dello sweep
+   *   "pending"   → balance letto, TX3 non ancora inviata
+   *   "sweeping"  → TX3 in mempool (submitted), attesa conferma
+   *   "completed" → TX3 confermata on-chain ✓
+   *   "failed"    → errore transitorio — scheduler riprova
+   *   "skipped"   → saldo insufficiente per coprire il gas TX3 (non riprova)
+   * native_balance_after_sweep:  saldo nativo letto on-chain DOPO la conferma TX3 (audit)
+   */
+  native_balance_before_sweep: string | null;
+  native_sweep_amount:         string | null;
+  native_sweep_gas_cost:       string | null;
+  native_sweep_tx_hash:        string | null;
+  native_sweep_status:         "pending" | "sweeping" | "completed" | "failed" | "skipped" | null;
+  native_balance_after_sweep:  string | null;
+
   /**
    * Importo minimo che il mittente DEVE depositare nell'escrow.
    *
@@ -285,6 +310,18 @@ const MultiChainTransferSchema = new Schema<MultiChainTransferDocument>(
     tx_hash_reclaim:           { type: String, default: null },  // C-01: confirmed on-chain
     pol_reclaimed:             { type: String, default: null },
     reclaim_error:             { type: String, default: null },
+
+    // ── Native Sweep Audit Trail ─────────────────────────────────────────────
+    native_balance_before_sweep: { type: String, default: null },
+    native_sweep_amount:         { type: String, default: null },
+    native_sweep_gas_cost:       { type: String, default: null },
+    native_sweep_tx_hash:        { type: String, default: null },
+    native_sweep_status: {
+      type:    String,
+      enum:    ["pending", "sweeping", "completed", "failed", "skipped", null],
+      default: null,
+    },
+    native_balance_after_sweep:  { type: String, default: null },
   },
   {
     collection:  "multichain_transfers",
