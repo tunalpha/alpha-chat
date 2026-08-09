@@ -771,19 +771,42 @@ export async function releaseMultiChainTransfer(transferId: string): Promise<Mul
 
   assertFeatureEnabled(locked.network, locked.asset);
 
-  // Validazione recipient_wallet per EVM: richiesto al momento del release (non alla creazione).
-  // Il modello escrow permette di creare il transfer senza wallet del destinatario,
-  // ma il release EVM richiede un indirizzo on-chain valido per TX1.
-  // Bitcoin non richiede questa validazione: il recipient_wallet è l'indirizzo BTC
-  // derivato dal flusso PSBT, sempre presente se il trasferimento è stato creato.
+  // Risoluzione recipient_wallet per EVM.
+  //
+  // Il modello escrow permette di creare il transfer senza wallet del destinatario.
+  // Al momento del release, se recipient_wallet è null, tentiamo di risolverlo dal
+  // profilo utente del destinatario (wallet_address è l'indirizzo EVM valido su
+  // Polygon, BSC, ed Ethereum — stessa derivazione chiave su tutte le chain EVM).
+  //
+  // Bitcoin non richiede questa logica: il recipient_wallet BTC è sempre presente.
   if (!isBitcoin(locked.network) && !locked.recipient_wallet) {
-    // Rollback: torna a "pending" perché il transfer non può essere rilasciato senza destinazione.
-    await MultiChainTransferModel.findOneAndUpdate(
-      { transfer_id: transferId, status: "releasing" },
-      { $set: { status: "pending", locked_at: null } },
-    );
-    throw new AppError("RECIPIENT_WALLET_REQUIRED_FOR_RELEASE", 422,
-      "Il wallet del destinatario non è disponibile. Il destinatario deve collegare il proprio wallet prima che i fondi possano essere rilasciati.");
+    const { UserModel } = await import("../models/user.model");
+    const recipientUser = await UserModel.findOne(
+      { _id: locked.recipient_id },
+      { wallet_address: 1 },
+    ).lean();
+
+    if (recipientUser?.wallet_address) {
+      // Persisti il wallet nel transfer per evitare il lookup ad ogni retry.
+      await MultiChainTransferModel.findOneAndUpdate(
+        { transfer_id: transferId, status: "releasing" },
+        { $set: { recipient_wallet: recipientUser.wallet_address } },
+      );
+      locked.recipient_wallet = recipientUser.wallet_address;
+      logger.info(
+        { transferId, recipientWallet: recipientUser.wallet_address, network: locked.network },
+        "[MCPayment] recipient_wallet risolto dal profilo utente",
+      );
+    } else {
+      // Nessun wallet disponibile — rollback a pending, ritenterà al prossimo ciclo.
+      // Il deposito è al sicuro nell'escrow.
+      await MultiChainTransferModel.findOneAndUpdate(
+        { transfer_id: transferId, status: "releasing" },
+        { $set: { status: "pending", locked_at: null } },
+      );
+      throw new AppError("RECIPIENT_WALLET_REQUIRED_FOR_RELEASE", 422,
+        "Il wallet del destinatario non è disponibile. Il destinatario deve collegare il proprio wallet prima che i fondi possano essere rilasciati.");
+    }
   }
 
   try {

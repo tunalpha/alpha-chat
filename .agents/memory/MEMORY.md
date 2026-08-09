@@ -70,3 +70,4 @@
 - [AdapterRegistry not initialized bug](adapter-registry-not-init.md) — registerDefaultAdapters() non era chiamata in index.ts → ADAPTER_NOT_FOUND 501 su tutte le detect BSC/ETH in produzione; fix: aggiungere call in index.ts prima di qualsiasi richiesta
 - [MultiChain cancel-stale and recovery](multichain-cancel-stale-and-recovery.md) — cancel-stale solo su awaiting_deposit; pending=fondi reali; EVM richiede sender+recipient wallet; recovery sweep → fee_wallet; _syncTransferMessageMeta per persistenza messaggio
 - [MC detect false-positive](detect-status-check-bug.md) — backend HTTP 200 sia con che senza deposito; frontend deve controllare t.status !== "awaiting_deposit" prima di avanzare
+- [MultiChain Release Flow](multichain-release-flow.md) — auto-release in detect controller + scheduler; recipient_wallet lookup da UserModel se null; sendTransaction chainId implicito rompe Trust Wallet iOS

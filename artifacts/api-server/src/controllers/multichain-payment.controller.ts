@@ -511,6 +511,23 @@ export async function handleDetectDeposit(
     await getOwnedTransfer(req.params["id"] as string, userId);
 
     const transfer = await detectMultiChainDeposit(req.params["id"] as string);
+
+    // Auto-release fire-and-forget: se il deposito è appena stato rilevato
+    // (status = "pending"), avvia immediatamente il release senza aspettare
+    // il prossimo ciclo scheduler. In questo modo la bubble passa da
+    // "Deposito rilevato" a "Pagamento completato" in pochi secondi.
+    //
+    // Il releaseMultiChainTransfer è idempotente: se è già in corso
+    // (lock acquisito da un'altra istanza) ritorna senza doppio payout.
+    if (transfer.status === "pending") {
+      void releaseMultiChainTransfer(transfer.transferId).catch((err: unknown) => {
+        logger.warn(
+          { err, transferId: transfer.transferId },
+          "[MCDetect] Auto-release fire-and-forget fallita — scheduler riproverà",
+        );
+      });
+    }
+
     res.json({ transfer });
   } catch (err) {
     next(err);

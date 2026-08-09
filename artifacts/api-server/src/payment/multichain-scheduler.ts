@@ -493,6 +493,53 @@ export async function processWaitingForGasTransfers(): Promise<void> {
   }
 }
 
+// ─── Auto-release: pending freschi ───────────────────────────────────────────
+
+/**
+ * Safety-net: rilascia automaticamente i transfer "pending" che non hanno ancora
+ * un tx_hash_release (deposito rilevato ma release mai avviata).
+ *
+ * Questo compensa i casi in cui il detect fire-and-forget del controller fallisce
+ * (RPC lento, riavvio server, timeout) o in cui il transfer era già "pending"
+ * prima dell'introduzione dell'auto-release nel controller.
+ *
+ * Sicurezza:
+ *   - Acquisisce il lock atomico via acquireMCLock("pending" → "releasing"):
+ *     nessun doppio payout se il controller ha già avviato il release.
+ *   - Salta i transfer scaduti (gestiti da processExpiredPendingTransfers → refund).
+ *   - Salta i transfer con tx_hash_release già impostato (TX1 già inviata).
+ */
+export async function processNewPendingTransfers(): Promise<void> {
+  const docs = await MultiChainTransferModel.find({
+    status:          "pending",
+    tx_hash_release: null,
+    expires_at:      { $gt: new Date() },
+  }).limit(BATCH_SIZE).lean();
+
+  if (docs.length === 0) return;
+
+  logger.info(
+    { count: docs.length },
+    "[MCScheduler] Auto-release: transfer pending senza tx_hash_release — avvio release",
+  );
+
+  for (const doc of docs) {
+    try {
+      const { releaseMultiChainTransfer } = await import("./multichain-payment.service");
+      const result = await releaseMultiChainTransfer(doc.transfer_id);
+      logger.info(
+        { transferId: doc.transfer_id, status: result.status, network: doc.network },
+        "[MCScheduler] Auto-release completata ✓",
+      );
+    } catch (err: unknown) {
+      logger.error(
+        { err, transferId: doc.transfer_id, network: doc.network },
+        "[MCScheduler] Auto-release fallita — riproverà al prossimo ciclo",
+      );
+    }
+  }
+}
+
 // ─── Gas Reclaim Retry ────────────────────────────────────────────────────────
 
 /** Finestra massima per il retry del reclaim (7 giorni dalla completed_at) */
@@ -592,6 +639,11 @@ export function startMultiChainScheduler(): void {
     void processWaitingForGasTransfers();
   }, EXPIRE_INTERVAL_MS).unref();
 
+  // Auto-release pending freschi (safety-net per i detect fire-and-forget) — ogni 2 min
+  setInterval(() => {
+    void processNewPendingTransfers();
+  }, 2 * 60_000).unref();
+
   // Reclaim retry: TX3 fallite precedentemente — ogni 30 min
   setInterval(() => {
     void processFailedReclaims();
@@ -621,6 +673,7 @@ async function _runAll(): Promise<void> {
     processExpiredMCTransfers(),
     processExpiredPendingTransfers(),
     processWaitingForGasTransfers(),
+    processNewPendingTransfers(), // auto-release pending senza tx_hash_release
     processFailedReclaims(),
   ]);
 }
