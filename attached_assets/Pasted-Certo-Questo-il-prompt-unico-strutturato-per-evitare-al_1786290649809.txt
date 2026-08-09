@@ -1,0 +1,178 @@
+Certo. Questo è il prompt unico, strutturato per evitare altri tentativi casuali e includere anche il recupero dei BNB già eccedenti:
+
+TASK UNICO — DIAGNOSI + FIX GAS BSC + RECUPERO BNB RESIDUI
+
+STOP a qualsiasi altra modifica.
+Intervenire esclusivamente sul problema del BNB utilizzato per finanziare gli escrow BSC e sul recupero dei BNB residui già inviati agli escrow.
+
+1. PROBLEMA OSSERVATO
+
+Nella transazione reale di rimborso USDT è stato inviato all’escrow:
+
+0,003 BNB
+
+mentre la fee effettivamente consumata dalla transazione è risultata:
+
+0,00000105 BNB
+
+Quindi il funding dell’escrow è enormemente superiore al gas realmente necessario.
+
+Non assumere che 0,003 BNB sia il costo reale. Trovare nel codice esattamente perché viene trasferito questo importo.
+
+⸻
+
+2. FASE 1 — SOLO DIAGNOSI
+
+Prima di modificare qualsiasi file:
+
+1. Individuare la funzione backend che finanzia l’escrow BSC con BNB.
+2. Individuare l’origine esatta di 0.003 BNB.
+3. Stabilire se deriva da:
+    * valore hardcoded;
+    * gasLimit;
+    * minimum gas balance;
+    * buffer fisso;
+    * fallback;
+    * stima errata;
+    * altro.
+4. Ricostruire il flusso completo:
+    gas station → escrow → recipient → eventuale sweep
+5. Calcolare quanto BNB è realmente necessario per ogni operazione.
+6. Analizzare la transazione reale fornita come esempio.
+
+Non modificare nulla durante questa fase.
+
+⸻
+
+3. FASE 2 — NUOVO CALCOLO DINAMICO
+
+Eliminare il modello che finanzia automaticamente l’escrow con 0.003 BNB se non è realmente necessario.
+
+Il funding deve essere calcolato dinamicamente in base a:
+
+gasPrice corrente × gas necessario × safety buffer
+
+Il buffer deve essere ragionevole e documentato.
+
+Non sostituire 0,003 con un altro numero fisso arbitrario.
+
+Il sistema deve evitare di immobilizzare BNB inutilmente negli escrow.
+
+⸻
+
+4. FASE 3 — RECUPERO DEI BNB GIÀ INVIATI
+
+Questa parte è obbligatoria.
+
+Cercare tutti gli escrow BSC già finanziati dal sistema con BNB in eccesso.
+
+Per ogni escrow:
+
+1. identificare il relativo transfer;
+2. leggere il saldo BNB attuale on-chain;
+3. determinare quanto BNB è stato effettivamente consumato;
+4. determinare il surplus recuperabile;
+5. verificare se l’escrow è ancora controllato dalla piattaforma;
+6. verificare se il transfer è:
+    * completed;
+    * cancelled;
+    * expired;
+    * refunded;
+    * failed;
+    * altro stato terminale.
+
+5. RECUPERO
+
+Per ogni escrow terminale che contiene BNB residuo:
+
+recuperare il surplus verso il gas station / wallet operativo della piattaforma, mantenendo sull’escrow soltanto l’eventuale quantità necessaria per una transazione ancora pendente.
+
+NON trasferire fondi a caso.
+
+Prima verificare ownership/chiave dell’escrow e destinazione corretta.
+
+Per gli escrow già completamente conclusi, se non sono necessarie altre operazioni on-chain, recuperare il BNB residuo.
+
+⸻
+
+6. SICUREZZA
+
+Il recupero deve essere:
+
+* idempotente;
+* tracciato nei log;
+* associato al transfer_id;
+* impossibile da eseguire due volte sullo stesso surplus;
+* con controllo del saldo prima dell’invio;
+* con controllo del gas necessario alla transazione di recovery.
+
+Mai tentare di recuperare il 100% del saldo se serve BNB per pagare la transazione di recovery.
+
+Calcolare:
+
+recoverable = balance - gas_required_for_recovery - safety_buffer
+
+⸻
+
+7. CASO SPECIFICO DA VERIFICARE
+
+Analizzare anche l’escrow della transazione reale mostrata nello screenshot:
+
+0xf553B29E0a5F95158e133b5154af5Bea9225e596
+
+È stato finanziato con circa:
+
+0,003 BNB
+
+Verificare on-chain:
+
+* saldo BNB attuale;
+* funding TX;
+* TX USDT;
+* eventuali TX successive;
+* eventuale sweep;
+* eventuale BNB già recuperato.
+
+Determinare esattamente quanti BNB sono ancora recuperabili.
+
+⸻
+
+8. IMPORTANTISSIMO — NON TOCCARE ALTRO
+
+Non modificare:
+
+* USDA;
+* BTC;
+* frontend;
+* MultiChainPaymentBubble;
+* firma EVM;
+* WalletConnect;
+* polling;
+* UI;
+* fee visualizzate;
+* logica di detect;
+* altri network.
+
+L’intervento riguarda solo BSC escrow funding + recovery dei BNB residui.
+
+⸻
+
+9. ORDINE OBBLIGATORIO
+
+Procedere in questo ordine:
+
+A. Diagnosi completa → B. elenco escrow con BNB residuo → C. calcolo surplus → D. proposta algoritmo dinamico → E. implementazione → F. test → G. recovery dei residui → H. verifica on-chain.
+
+Non fare modifiche speculative.
+
+Alla fine produrre una tabella:
+
+Transfer	Escrow	BNB finanziati	BNB consumati	BNB residui	BNB recuperati	Stato
+
+E riportare separatamente:
+
+Totale BNB recuperabili
+Totale BNB effettivamente recuperati
+Totale costo gas del recovery
+
+Obiettivo finale: smettere di sovrafinanziare gli escrow e recuperare tutti i BNB residui realmente recuperabili dagli escrow già conclusi.

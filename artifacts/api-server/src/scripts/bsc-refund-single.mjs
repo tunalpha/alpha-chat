@@ -18,10 +18,12 @@ const MONGODB_URI    = process.env.MONGODB_URI;
 const MASTER_KEY_HEX = process.env.ESCROW_MASTER_KEY;
 const GS_PK_HEX      = process.env.GAS_STATION_PRIVATE_KEY;
 
-// 0.001 BNB soglia gas
-const BNB_GAS_THRESHOLD = 1_000_000_000_000_000n;
-// 0.003 BNB top-up
-const BNB_TOP_UP        = 3_000_000_000_000_000n;
+// Soglia: se l'escrow ha già questa quantità di BNB → skip top-up
+// Formula produzione: 80_000 gas × 2 TX × gasPrice × 2 safety = 320_000 × gasPrice
+// A 0.05 Gwei (BSC tipico) = 0.000016 BNB. Usiamo la stessa formula al momento dell'esecuzione.
+// Calcolato dinamicamente in main() dopo aver letto il gas price on-chain.
+let BNB_GAS_THRESHOLD = 0n; // popolato in main()
+let BNB_TOP_UP        = 0n; // popolato in main()
 
 // ─── JSON-RPC helpers ─────────────────────────────────────────────────────────
 
@@ -146,10 +148,14 @@ async function main() {
     console.log("\n4. BNB sufficiente — skip top-up");
   }
 
-  // 5. Gas price
+  // 5. Gas price — letto on-chain (formula produzione: 320_000 × gasPrice)
   const gasPriceHex = await rpc("eth_gasPrice");
   const gasPrice    = hexToBigInt(gasPriceHex);
+  // Imposta threshold e top-up dinamici (identici alla formula ensureMultiChainEscrowGas)
+  BNB_GAS_THRESHOLD = 80_000n * 2n * gasPrice * 2n;   // = 320_000 × gasPrice
+  BNB_TOP_UP        = BNB_GAS_THRESHOLD;               // top-up esattamente il necessario
   console.log(`\n5. Gas price: ${gasPrice} wei (${Number(gasPrice) / 1e9} Gwei)`);
+  console.log(`   Gas top-up dinamico: ${BNB_TOP_UP} wei = ${Number(BNB_TOP_UP) / 1e18} BNB`);
 
   // 6. Invia USDT al mittente
   console.log(`\n6. Invio ${Number(usdtBal) / 1e18} USDT → ${SENDER_WALLET}...`);
