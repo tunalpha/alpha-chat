@@ -1,0 +1,102 @@
+PROCEDI CON TASK #47 — TABELLA ECONOMICA REALE
+
+NESSUN DEPLOY.
+
+Voglio esclusivamente una verifica economica reale della nuova
+NETWORK FEE DINAMICA appena implementata.
+
+Non modificare la logica delle fee.
+Non modificare ENV.
+Non modificare project fee.
+Non modificare safety margin.
+Non modificare reclaim.
+Non modificare anti-loss.
+
+OBIETTIVO:
+
+Produrre una tabella reale per:
+
+Polygon
+BSC
+Ethereum
+
+utilizzando i valori effettivamente restituiti dai provider/RPC e dal
+nuovo codice.
+
+Per ogni rete mostra:
+
+- gasPrice live
+- prezzo native token utilizzato
+- TX0 gas
+- TX1 gas stimato
+- TX2 gas stimato
+- TX3 gas
+- gas totale
+- costo nativo
+- costo equivalente USDT
+- safety margin configurato
+- networkFeeCharged finale
+
+Poi calcola il costo per:
+
+1 USDT
+10 USDT
+100 USDT
+1000 USDT
+
+Verifica esplicitamente che la network fee non venga moltiplicata
+erroneamente per l'importo.
+
+MOSTRA ANCHE:
+
+Network fee attuale precedente
+vs
+Network fee dinamica nuova
+
+e la percentuale di risparmio/aumento.
+
+IMPORTANTE:
+
+Non utilizzare valori teorici inventati.
+
+Se un dato è ottenuto da RPC dichiararlo.
+
+Se un dato proviene da CoinGecko dichiararlo.
+
+Se un dato è un fallback dichiararlo chiaramente.
+
+Se non è possibile ottenere un dato reale, NON inventarlo:
+indicare "NON DISPONIBILE".
+
+VERIFICA PARTICOLARE BSC:
+
+USDT = 18 decimals.
+
+Verifica che il risultato finale sia matematicamente corretto
+e che non ci siano errori di 10^12.
+
+VERIFICA PARTICOLARE POLYGON:
+
+Controlla che NON esista più il vecchio valore 0,50 USDT.
+
+VERIFICA PARTICOLARE ETHEREUM:
+
+Controlla che NON venga applicato automaticamente il vecchio
+valore 5/15 USDT.
+
+Alla fine dammi una conclusione semplice:
+
+POLYGON → network fee reale ≈ X USDT
+BSC → network fee reale ≈ X USDT
+ETHEREUM → network fee reale ≈ X USDT
+
+e:
+
+"Questi valori sono sufficientemente realistici per procedere al deploy"
+oppure
+"NON procedere al deploy perché è necessario correggere X".
+
+NON fare deploy.
+
+NON modificare codice salvo eventuali bug matematici bloccanti:
+se trovi un bug, fermati e segnalamelo prima di correggerlo.
