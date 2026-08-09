@@ -1,37 +1,19 @@
 /**
  * MultiChainSendSheet — "Invia Cripto"
  *
- * UX:
- *   Step 1 (Importo):  rete + importo che il destinatario deve ricevere + nota
- *   Step 2 (Conferma): breakdown dal backend (quote)
- *   Step 3 EVM:        Firma transazione via ThirdWeb (fire-and-forget)
- *                      Stessa architettura di SendPaymentSheet (USDA).
- *   Step 3 BTC:        Indirizzo escrow da copiare — inalterato (non è EVM).
+ * UX (flusso unico EVM + BTC):
+ *   Step 1 (Importo):   rete + importo netto destinatario + nota
+ *   Step 2 (Conferma):  breakdown quote (singola riga "Network fee")
+ *   Step 3 (Indirizzo): indirizzo escrow + QR code + polling automatico
  *
- * Modalità fissa: recipient_exact — l'utente specifica quanto
- * vuole che arrivi al destinatario; il backend calcola il gross.
- *
- * ── Pattern firma EVM ────────────────────────────────────────────────────────
- *  1. useActiveAccount() → account ThirdWeb
- *  2. ConnectButton per rete corretta se non connesso
- *  3. encodeERC20Transfer(escrowWallet, minDepositAmount)
- *     - minDepositAmount è già in raw units → nessuna conversione
- *     - Polygon USDT (6 dec) / BSC USDT (18 dec) / Ethereum USDT (6 dec)
- *  4. account.sendTransaction() fire-and-forget (NO await del txHash)
- *  5. Polling apiMCDetect() ogni 10s — il backend è source of truth
- *
- * ── Differenze da USDA ──────────────────────────────────────────────────────
- *  - signAndPoll usa apiMCDetect invece di apiPaymentDetectDeposit
- *  - L'importo è già in raw units (BigInt(minDepositAmount)), no toWei18
- *  - La chain cambia per rete (polygon/bsc/ethereum)
- *  - BTC rimane copia-indirizzo (non è EVM)
+ * Modalità fissa: recipient_exact.
+ * Nessun wallet connect richiesto — l'utente invia da qualsiasi wallet
+ * esterno (Trust Wallet, MetaMask, ecc.) all'indirizzo escrow mostrato.
+ * Il backend rileva il deposito via polling apiMCDetect() ogni 10s.
  */
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback } from "react";
 import { useTranslation } from "react-i18next";
-import { useActiveAccount, ConnectButton } from "thirdweb/react";
-import type { Chain } from "thirdweb";
-import { client, wallets, polygon, bsc, ethereum } from "../../lib/thirdweb";
 import QRCode from "qrcode";
 import {
   apiMCCreate,
@@ -42,7 +24,6 @@ import {
   MC_DECIMALS,
   MC_DISPLAY_DECIMALS,
   MC_ASSET,
-  MC_TOKEN_CONTRACT,
   toSmallestUnit,
   fmtDisplay,
   type MCNetwork,
@@ -59,34 +40,7 @@ import {
 } from "../../hooks/useBtcPrice";
 import { useEffect } from "react";
 
-// ─── Chain mapping ────────────────────────────────────────────────────────────
-
-const EVM_CHAIN: Partial<Record<MCNetwork, Chain>> = {
-  polygon,
-  bsc,
-  ethereum,
-};
-
-const EVM_CHAIN_ID: Partial<Record<MCNetwork, number>> = {
-  polygon:  137,
-  bsc:      56,
-  ethereum: 1,
-};
-
-// ─── ERC-20 calldata (identico a SendPaymentSheet) ────────────────────────────
-
-/**
- * Encoda il calldata ERC-20 transfer(address,uint256) manualmente.
- * Bypassa il wrapper ThirdWeb (sendAndConfirmTransaction / getContract)
- * che tenta wallet_sendCalls (EIP-5792) prima di eth_sendTransaction,
- * causando due popup firma su Trust Wallet.
- */
-function encodeERC20Transfer(to: string, amountRaw: bigint): `0x${string}` {
-  const selector = "a9059cbb";
-  const toHex    = to.toLowerCase().replace("0x", "").padStart(64, "0");
-  const amtHex   = amountRaw.toString(16).padStart(64, "0");
-  return `0x${selector}${toHex}${amtHex}` as `0x${string}`;
-}
+// (EVM e BTC usano entrambi l'approccio indirizzo escrow + QR — nessuna firma wallet richiesta)
 
 // ─── iOS recovery (stesso pattern USDA) ──────────────────────────────────────
 
@@ -151,10 +105,6 @@ function totalPaidUnits(q: MCQuote): bigint {
 export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose, onSent, mode = "usdt" }: Props) {
   const { t } = useTranslation();
 
-  // ── Wallet (ThirdWeb v5) ────────────────────────────────────────────────────
-  const account     = useActiveAccount();
-  const isConnected = !!account;
-
   // ── State ───────────────────────────────────────────────────────────────────
   const [step,           setStep]           = useState<Step>("form");
   const [network,        setNetwork]        = useState<MCNetwork>(mode === "btc" ? "bitcoin" : "polygon");
@@ -172,7 +122,6 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
    *  +1 unit di ceiling del backend in quote.netAmount. */
   const [targetNetUnits, setTargetNetUnits] = useState<string | null>(null);
 
-  const busyRef   = useRef(false);
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
 
   const { price, loading: priceLoading, error: priceError, currency, setCurrency } = useBtcPrice();
@@ -185,13 +134,11 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
   const fiatSymbol  = FIAT_SYMBOLS[currency];
   const ticker      = selectedNet.ticker;
 
-  // Step bar: EVM mostra "Firma", BTC mostra "Indirizzo"
+  // Step bar: step 3 è sempre "Indirizzo" (EVM e BTC mostrano entrambi l'indirizzo escrow)
   const STEPS: { id: Step; label: string }[] = [
-    { id: "form",    label: "Importo"           },
-    { id: "confirm", label: "Conferma"          },
-    isEvm
-      ? { id: "sign",    label: "Firma"    }
-      : { id: "address", label: "Indirizzo" },
+    { id: "form",    label: "Importo"   },
+    { id: "confirm", label: "Conferma" },
+    { id: isEvm ? "sign" : "address", label: "Indirizzo" },
   ];
   const stepIdx = STEPS.findIndex(s => s.id === step);
 
@@ -211,19 +158,26 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode]);
 
-  // Genera QR code quando si arriva allo step "address" (BTC)
+  // Genera QR code all'arrivo allo step 3 (address = BTC, sign = EVM)
   useEffect(() => {
-    if (step !== "address" || !transfer?.escrowWallet) return;
-    const btcAmount = satoshisToUriAmount(transfer.minDepositAmount);
-    const uri = btcAmount
-      ? `bitcoin:${transfer.escrowWallet}?amount=${btcAmount}`
-      : `bitcoin:${transfer.escrowWallet}`;
+    if (!transfer?.escrowWallet) return;
+    if (step !== "address" && step !== "sign") return;
+    let uri: string;
+    if (isBtc) {
+      const btcAmount = satoshisToUriAmount(transfer.minDepositAmount);
+      uri = btcAmount
+        ? `bitcoin:${transfer.escrowWallet}?amount=${btcAmount}`
+        : `bitcoin:${transfer.escrowWallet}`;
+    } else {
+      // EVM: QR del solo indirizzo — l'utente lo scansiona nel proprio wallet USDT
+      uri = transfer.escrowWallet;
+    }
     void QRCode.toDataURL(uri, {
       width:  200,
       margin: 2,
       color:  { dark: "#a855f7", light: "#0F0A1E" },
     }).then(setQrDataUrl).catch(() => setQrDataUrl(null));
-  }, [step, transfer]);
+  }, [step, transfer, isBtc]);
 
   // Recovery iOS: se c'è un pagamento EVM in sospeso per questa conversazione
   // (< 30 min) recupera il transfer e riavvia il polling senza richiedere nuova firma.
@@ -246,10 +200,13 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
         // BTC: torna allo step indirizzo (l'utente deve inviare manualmente)
         setStep("address");
       } else {
-        // EVM: riprendi il polling firma
+        // EVM: riprendi il polling indirizzo escrow
         setStep("sign");
         setSignPhase("confirming");
-        void pollDetect(pending.transferId, false);
+        void pollDetect(pending.transferId, false).catch((e: unknown) => {
+          setSignPhase("error");
+          setSignError((e as Error)?.message ?? "Errore verifica deposito.");
+        });
       }
     }).catch(() => {
       // Transfer scaduto o eliminato — pulisci e torna al form
@@ -348,9 +305,18 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
         expiresInHours:       24,
       });
       setTransfer(result);
-      // EVM → step firma; BTC → step copia indirizzo
       setStep(isEvm ? "sign" : "address");
-      if (isEvm) setSignPhase("ready");
+      // Salva recovery e avvia il polling per tutti i network (backend rileva il deposito)
+      localStorage.setItem(MC_PENDING_KEY, JSON.stringify({
+        transferId:     result.transferId,
+        conversationId,
+        timestamp:      Date.now(),
+      } satisfies MCPendingPayment));
+      setSignPhase("confirming");
+      void pollDetect(result.transferId, false).catch((e: unknown) => {
+        setSignPhase("error");
+        setSignError((e as Error)?.message ?? "Errore verifica deposito.");
+      });
     } catch (e: unknown) {
       const err = e as Error & { code?: string; details?: Record<string, unknown> };
       if (err.code === "BTC_PROJECT_FEE_BELOW_DUST") {
@@ -384,132 +350,15 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
         return;
       } catch (pollErr: unknown) {
         const code = (pollErr as Error & { code?: string })?.code;
-        if (code === "DEPOSIT_TX_NOT_DETECTED") continue;
-        // Errore reale (es. transfer expired, RPC error)
+        // Retryable: deposit non ancora on-chain o adapter in attesa di abilitazione
+        if (code === "DEPOSIT_TX_NOT_DETECTED" || code === "ADAPTER_NOT_FOUND") continue;
+        // Errore reale (es. transfer expired, RPC irraggiungibile)
         throw pollErr;
       }
     }
     throw new Error("Timeout: deposito non rilevato in 10 minuti. Controlla la transazione nel tuo wallet.");
   }
 
-  // ── Firma EVM fire-and-forget + polling ────────────────────────────────────
-
-  const handleSign = useCallback(async () => {
-    if (busyRef.current || !account || !transfer) return;
-    busyRef.current = true;
-    setSignError(null);
-
-    const tokenContract = MC_TOKEN_CONTRACT[network];
-    const chainId       = EVM_CHAIN_ID[network];
-    if (!tokenContract || !chainId) {
-      setSignError("Rete non supportata per la firma.");
-      busyRef.current = false;
-      return;
-    }
-
-    // Importo da inviare: minDepositAmount (raw units) oppure grossAmount come fallback
-    const rawAmount = transfer.minDepositAmount ?? transfer.grossAmount;
-    if (!rawAmount || BigInt(rawAmount) === 0n) {
-      setSignError("Importo deposito non disponibile. Riprova.");
-      busyRef.current = false;
-      return;
-    }
-
-    // Calldata ERC-20 (transfer(escrowWallet, rawAmount))
-    const calldata = encodeERC20Transfer(transfer.escrowWallet as `0x${string}`, BigInt(rawAmount));
-
-    // Salva recovery iOS prima di aprire il wallet
-    localStorage.setItem(MC_PENDING_KEY, JSON.stringify({
-      transferId:     transfer.transferId,
-      conversationId,
-      timestamp:      Date.now(),
-    } satisfies MCPendingPayment));
-
-    setSignPhase("signing");
-
-    // Pre-check: il deposito è già stato rilevato? (es. richiesta stale WalletConnect)
-    try {
-      await apiMCDetect(transfer.transferId);
-      setSignPhase("done");
-      busyRef.current = false;
-      return;
-    } catch {
-      // Non ancora rilevato — procediamo con la firma
-    }
-
-    let pollAborted  = false;
-    let signErrorMsg: string | null = null;
-
-    // fire-and-forget — stessa strategia di USDA
-    account.sendTransaction({
-      to:      tokenContract as `0x${string}`,
-      data:    calldata,
-      gas:     BigInt(100_000),
-      value:   BigInt(0),
-      chainId,
-    }).catch((err: unknown) => {
-      const msg = (err as Error)?.message ?? "";
-      if (/reject|cancel|denied|refused|user.*cancel|user rejected/i.test(msg)) {
-        pollAborted  = true;
-        signErrorMsg = "Firma rifiutata. Riprova quando vuoi.";
-      } else if (/nonce.*too.*low|nonce.*used|nonce.*already/i.test(msg)) {
-        // TX già inviata con questo nonce (relay WalletConnect stale) → polling continua
-        console.warn("[MCSign] Nonce already used — tx precedente già on-chain, continuo il polling.");
-      } else if (/chain.*not.*add|switch.*chain|addEthereumChain|unrecognized.*chain|chain.*not.*support|does not support/i.test(msg)) {
-        pollAborted  = true;
-        signErrorMsg = `La rete non è configurata nel tuo wallet.\n\nAggiungi la rete ${network.toUpperCase()} (chainId ${chainId}) al wallet e riconnetti.`;
-      } else {
-        signErrorMsg = msg || "Errore durante la firma.";
-      }
-    });
-
-    // ── Polling ──────────────────────────────────────────────────────────────
-    const POLL_INTERVAL_MS       = 10_000;
-    const POLL_MAX_MS            = 10 * 60 * 1000;
-    const SIGN_ERROR_GRACE_POLLS = 3;
-    const pollStart              = Date.now();
-    let   pollCount              = 0;
-
-    try {
-      while (Date.now() - pollStart < POLL_MAX_MS) {
-        if (pollAborted) throw new Error(signErrorMsg ?? "Firma annullata.");
-
-        await new Promise<void>(r => setTimeout(r, POLL_INTERVAL_MS));
-        pollCount++;
-        if (pollCount === 1) setSignPhase("confirming");
-        if (pollAborted) throw new Error(signErrorMsg ?? "Firma annullata.");
-
-        try {
-          await apiMCDetect(transfer.transferId);
-          setSignPhase("done");
-          return;
-        } catch (pollErr: unknown) {
-          const code = (pollErr as Error & { code?: string })?.code;
-          if (code === "DEPOSIT_TX_NOT_DETECTED") {
-            if (signErrorMsg && !pollAborted && pollCount >= SIGN_ERROR_GRACE_POLLS) {
-              throw new Error(signErrorMsg + "\n\nSe hai firmato nel wallet, attendi qualche minuto e controlla la bolla in chat.");
-            }
-            continue;
-          }
-          if (code === "ADAPTER_NOT_FOUND") {
-            // Rete non abilitata lato backend — mostra fallback manuale
-            throw new Error(
-              "La rete non è ancora disponibile per il rilevamento automatico.\n\n" +
-              "Usa \"Invia manualmente\" qui sotto per copiare l'indirizzo escrow e invia dal tuo wallet."
-            );
-          }
-          throw pollErr;
-        }
-      }
-      throw new Error("Timeout: deposito non rilevato. Controlla la transazione nel tuo wallet.");
-    } catch (e: unknown) {
-      const msg = (e as Error)?.message ?? "Errore sconosciuto.";
-      setSignPhase("error");
-      setSignError(msg);
-    } finally {
-      busyRef.current = false;
-    }
-  }, [account, transfer, network, conversationId]);
 
   // ── BTC: copia indirizzo ─────────────────────────────────────────────────
 
@@ -521,8 +370,6 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
   }
 
   // ── Render ────────────────────────────────────────────────────────────────
-
-  const chain = EVM_CHAIN[network];
 
   return (
     <div className="modal-backdrop" role="dialog" aria-modal="true" aria-label={t("multichain.sendTitle")} onClick={onClose}>
@@ -660,22 +507,13 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
               </div>
 
               <div className="mc-confirm-row mc-confirm-fee">
-                <span>Fee progetto</span>
                 <span>
-                  +{fmtQ(quote.projectFee)}
+                  Network fee
+                  {!isBtc && <em style={{ fontSize: "0.72em", opacity: 0.7, marginLeft: 4 }}>(stima gas)</em>}
                   {quote.btcFeeFloorApplied && <em style={{ fontSize: "0.72em", opacity: 0.7, marginLeft: 4 }}>(min 546 sat)</em>}
                 </span>
+                <span>+{fmtQ(totalFeeUnits(quote).toString())}</span>
               </div>
-
-              {!isBtc && BigInt(quote.networkFeeCharged ?? "0") > 0n && (
-                <div className="mc-confirm-row mc-confirm-fee" style={{ opacity: 0.85 }}>
-                  <span>
-                    Network fee
-                    <em style={{ fontSize: "0.72em", opacity: 0.7, marginLeft: 4 }}>(stima gas)</em>
-                  </span>
-                  <span>+{fmtQ(quote.networkFeeCharged)}</span>
-                </div>
-              )}
 
               <div className="mc-confirm-row mc-confirm-total">
                 <span>Totale pagato</span>
@@ -730,150 +568,77 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
           </>
         )}
 
-        {/* ── Step 3 EVM: firma transazione ── */}
-        {step === "sign" && transfer && (
-          <>
-            <div className="usda-sheet-to">{t("multichain.toLabel")} <strong>{toName}</strong></div>
+        {/* ── Step 3: indirizzo escrow (EVM e BTC — flusso unificato) ── */}
+        {(step === "sign" || step === "address") && transfer && (() => {
+          const isBtcStep  = step === "address";
+          const btcAmount  = isBtcStep ? satoshisToUriAmount(transfer.minDepositAmount) : null;
+          const bitcoinUri = isBtcStep
+            ? (btcAmount
+                ? `bitcoin:${transfer.escrowWallet}?amount=${btcAmount}`
+                : `bitcoin:${transfer.escrowWallet}`)
+            : null;
 
-            {/* Riepilogo importo da firmare */}
-            <div className="mc-confirm-summary">
-              <div className="mc-confirm-row">
-                <span>Rete</span>
-                <span>{selectedNet.label} · {selectedNet.sublabel}</span>
-              </div>
-              <div className="mc-confirm-row mc-confirm-net">
-                <span>{toName} riceve</span>
-                <strong>{fmtDisplay(targetNetUnits ?? transfer.netAmount, rawDec, dispDec)} {ticker}</strong>
-              </div>
-              <div className="mc-confirm-row mc-confirm-total">
-                <span>Totale da firmare</span>
-                <strong>{depositDisplay} {ticker}</strong>
-              </div>
-            </div>
-
-            {/* Fasi: done */}
-            {signPhase === "done" && (
-              <div className="usda-phase-box">
-                <span className="usda-phase-icon">✅</span>
-                <div>
-                  <p className="usda-phase-title">Pagamento confermato!</p>
-                  <p className="usda-phase-desc">Il deposito è stato rilevato. La chat verrà aggiornata.</p>
-                </div>
-              </div>
-            )}
-
-            {/* Fasi: signing / confirming */}
-            {(signPhase === "signing" || signPhase === "confirming") && (
-              <div className="usda-phase-box">
-                <span className="usda-btn-spinner usda-phase-icon" aria-hidden="true" />
-                <div>
-                  <p className="usda-phase-title">
-                    {signPhase === "signing" ? "In attesa della firma…" : "Verifica deposito in corso…"}
-                  </p>
-                  <p className="usda-phase-desc">
-                    {signPhase === "signing"
-                      ? "Conferma la transazione nel tuo wallet."
-                      : "Stiamo verificando il pagamento sulla blockchain. Attendi qualche istante."}
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {/* Errore firma */}
-            {signPhase === "error" && signError && (
-              <div className="usda-error" role="alert" style={{ whiteSpace: "pre-line" }}>{signError}</div>
-            )}
-
-            {/* Wallet connect / firma — mostrato solo se non in corso */}
-            {(signPhase === "ready" || signPhase === "error") && (
-              <>
-                {!isConnected ? (
-                  <div className="mc-wallet-connect-wrap">
-                    <p className="mc-wallet-connect-label">Connetti il wallet per firmare la transazione:</p>
-                    <ConnectButton
-                      client={client}
-                      chain={chain}
-                      wallets={wallets}
-                    />
-                  </div>
-                ) : (
-                  <div className="usda-sheet-actions" style={{ flexDirection: "column", gap: 10 }}>
-                    <button
-                      type="button"
-                      className="usda-btn-primary"
-                      onClick={() => void handleSign()}
-                      disabled={busyRef.current}
-                    >
-                      {signPhase === "error" ? "🔄 Riprova firma" : "✍️ Firma transazione →"}
-                    </button>
-                    {/* Fallback: mostra indirizzo per invio manuale */}
-                    <details className="mc-fallback-details">
-                      <summary className="mc-fallback-summary">Invia manualmente</summary>
-                      <div className="mc-address-box" style={{ marginTop: 8 }}>
-                        <span className="mc-address-text">{transfer.escrowWallet}</span>
-                      </div>
-                      <button type="button" className="mc-copy-btn" onClick={handleCopy} style={{ marginTop: 6 }}>
-                        {copied ? "✓ Copiato!" : "📋 Copia indirizzo"}
-                      </button>
-                      <p className="mc-address-expiry" style={{ marginTop: 4 }}>⏰ {t("multichain.expiresIn24h")}</p>
-                    </details>
-                  </div>
-                )}
-              </>
-            )}
-
-            {/* Pulsante Chiudi dopo done */}
-            {signPhase === "done" && (
-              <div className="usda-sheet-actions">
-                <button type="button" className="usda-btn-primary" onClick={onSent}>
-                  {t("multichain.doneBtn")}
-                </button>
-              </div>
-            )}
-          </>
-        )}
-
-        {/* ── Step 3 BTC: indirizzo escrow (inalterato) ── */}
-        {step === "address" && transfer && (() => {
-          const btcAmount = satoshisToUriAmount(transfer.minDepositAmount);
-          const bitcoinUri = btcAmount
-            ? `bitcoin:${transfer.escrowWallet}?amount=${btcAmount}`
-            : `bitcoin:${transfer.escrowWallet}`;
           return (
             <>
-              {/* Importo da inviare */}
+              <div className="usda-sheet-to">{t("multichain.toLabel")} <strong>{toName}</strong></div>
+
+              {/* Riepilogo importo */}
               <div className="mc-confirm-summary">
                 <div className="mc-confirm-row">
                   <span>Rete</span>
-                  <span>Bitcoin</span>
+                  <span>{isBtcStep ? "Bitcoin" : `${selectedNet.label} · ${selectedNet.sublabel}`}</span>
                 </div>
                 <div className="mc-confirm-row mc-confirm-total">
                   <span>Invia esattamente</span>
-                  <strong>{depositDisplay} BTC</strong>
+                  <strong>{depositDisplay} {isBtcStep ? "BTC" : ticker}</strong>
                 </div>
               </div>
 
-              {/* Azione principale: apri wallet BTC */}
-              <a
-                href={bitcoinUri}
-                className="usda-btn-primary"
-                style={{ display: "block", textAlign: "center", textDecoration: "none", padding: "13px", borderRadius: "12px" }}
-                onClick={() => { /* deep link — iOS/Android aprono il wallet di default */ }}
-              >
-                📲 Apri wallet Bitcoin
-              </a>
+              {/* Stato polling */}
+              {signPhase === "done" && (
+                <div className="usda-phase-box">
+                  <span className="usda-phase-icon">✅</span>
+                  <div>
+                    <p className="usda-phase-title">Pagamento confermato!</p>
+                    <p className="usda-phase-desc">Il deposito è stato rilevato. La chat verrà aggiornata.</p>
+                  </div>
+                </div>
+              )}
+              {signPhase === "confirming" && (
+                <div className="usda-phase-box">
+                  <span className="usda-btn-spinner usda-phase-icon" aria-hidden="true" />
+                  <div>
+                    <p className="usda-phase-title">In attesa del deposito…</p>
+                    <p className="usda-phase-desc">Invia dal tuo wallet all'indirizzo qui sotto. Rileveremo il pagamento automaticamente.</p>
+                  </div>
+                </div>
+              )}
+              {signPhase === "error" && signError && (
+                <div className="usda-error" role="alert" style={{ whiteSpace: "pre-line" }}>{signError}</div>
+              )}
 
-              {/* QR code per desktop o scan */}
+              {/* Azione principale BTC: deep link wallet */}
+              {isBtcStep && bitcoinUri && (
+                <a
+                  href={bitcoinUri}
+                  className="usda-btn-primary"
+                  style={{ display: "block", textAlign: "center", textDecoration: "none", padding: "13px", borderRadius: "12px" }}
+                >
+                  📲 Apri wallet Bitcoin
+                </a>
+              )}
+
+              {/* QR code */}
               {qrDataUrl && (
                 <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
-                  <img src={qrDataUrl} alt="QR Bitcoin URI" style={{ width: 160, height: 160, borderRadius: 12 }} />
+                  <img src={qrDataUrl} alt="QR indirizzo" style={{ width: 160, height: 160, borderRadius: 12 }} />
                   <p style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.4)", margin: 0 }}>
-                    Scansiona con il wallet Bitcoin
+                    {isBtcStep ? "Scansiona con il wallet Bitcoin" : "Scansiona per copiare l'indirizzo"}
                   </p>
                 </div>
               )}
 
-              {/* Indirizzo escrow + copia (fallback) */}
+              {/* Indirizzo escrow + copia */}
               <div className="mc-address-block">
                 <div className="mc-address-box">
                   <span className="mc-address-text">{transfer.escrowWallet}</span>
@@ -885,7 +650,9 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
               </div>
 
               <div className="usda-sheet-actions">
-                <button type="button" className="usda-btn-primary" onClick={onSent}>{t("multichain.doneBtn")}</button>
+                <button type="button" className="usda-btn-primary" onClick={onSent}>
+                  {signPhase === "done" ? t("multichain.doneBtn") : "Ho inviato →"}
+                </button>
               </div>
             </>
           );
