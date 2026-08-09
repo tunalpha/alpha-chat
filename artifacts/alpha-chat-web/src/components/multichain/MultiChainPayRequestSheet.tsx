@@ -217,18 +217,27 @@ export function MultiChainPayRequestSheet({
         setPhase("done");
         return;
       } catch (err: unknown) {
-        const code = (err as Error & { code?: string })?.code;
-        if (code === "DEPOSIT_TX_NOT_DETECTED" || code === "ADAPTER_NOT_FOUND") {
-          if (signErrRef?.msg && pollCount >= SIGN_ERROR_GRACE_POLLS) {
+        const code    = (err as Error & { code?: string })?.code;
+        const message = (err as Error)?.message ?? "";
+        const is429   = message.includes("429") || code === "RATE_LIMIT_EXCEEDED" || code === "TOO_MANY_REQUESTS";
+
+        if (is429 || code === "DEPOSIT_TX_NOT_DETECTED" || code === "ADAPTER_NOT_FOUND") {
+          // Errori transitori/rate-limit: aspetta il prossimo ciclo senza fallire.
+          // Il 429 si verifica quando la bolla e lo sheet pollano /detect in contemporanea.
+          if (!is429 && signErrRef?.msg && pollCount >= SIGN_ERROR_GRACE_POLLS) {
             setPhase("error");
             setError(signErrRef.msg);
             return;
+          }
+          if (is429) {
+            // Attendi il doppio del normale interval per ridurre la pressione sul rate limit
+            await new Promise<void>(r => setTimeout(r, POLL_INTERVAL_MS));
           }
           continue;
         }
         // Errore reale (rete, auth, ecc.)
         setPhase("error");
-        setError((err as Error)?.message ?? "Errore verifica deposito.");
+        setError(message || "Errore verifica deposito.");
         return;
       }
     }
@@ -474,39 +483,54 @@ export function MultiChainPayRequestSheet({
         {/* ── Azioni ── */}
         {!isDone && (
           <div className="usda-sheet-actions" style={{ marginTop: 16 }}>
-            <button
-              type="button"
-              className="usda-btn-secondary"
-              onClick={onClose}
-              disabled={phase === "signing"}
-              aria-label="Annulla"
-            >
-              {phase === "confirming" ? "Chiudi (continua in background)" : "Annulla"}
-            </button>
-
-            {!isConnected ? (
-              /* Wallet non connesso — mostra ConnectButton (UX spec) */
-              <ConnectButton
-                client={client}
-                wallets={wallets}
-                connectButton={{ label: "🔗 Collega wallet per pagare" }}
-                connectModal={{ size: "compact" }}
-              />
-            ) : (
-              /* Wallet connesso — pulsante firma principale */
+            {/* In fase "confirming" mostra solo "Chiudi" a piena larghezza —
+                lo spinner sopra già comunica lo stato. Evita il doppio pulsante troncato. */}
+            {phase === "confirming" ? (
               <button
                 type="button"
-                className="usda-btn-primary"
-                onClick={handlePay}
-                disabled={isWorking}
-                aria-busy={isWorking}
+                className="usda-btn-secondary"
+                onClick={onClose}
+                style={{ width: "100%" }}
               >
-                {isWorking ? (
-                  <><span className="usda-btn-spinner" aria-hidden="true" />{" "}{phaseLabel()}</>
-                ) : (
-                  `💸 Paga ${depositDisplay} ${asset}`
-                )}
+                Chiudi (continua in background)
               </button>
+            ) : (
+              <>
+                <button
+                  type="button"
+                  className="usda-btn-secondary"
+                  onClick={onClose}
+                  disabled={phase === "signing"}
+                  aria-label="Annulla"
+                >
+                  Annulla
+                </button>
+
+                {!isConnected ? (
+                  /* Wallet non connesso — mostra ConnectButton (UX spec) */
+                  <ConnectButton
+                    client={client}
+                    wallets={wallets}
+                    connectButton={{ label: "🔗 Collega wallet per pagare" }}
+                    connectModal={{ size: "compact" }}
+                  />
+                ) : (
+                  /* Wallet connesso — pulsante firma principale */
+                  <button
+                    type="button"
+                    className="usda-btn-primary"
+                    onClick={handlePay}
+                    disabled={isWorking}
+                    aria-busy={isWorking}
+                  >
+                    {isWorking ? (
+                      <><span className="usda-btn-spinner" aria-hidden="true" />{" "}{phaseLabel()}</>
+                    ) : (
+                      `💸 Paga ${depositDisplay} ${asset}`
+                    )}
+                  </button>
+                )}
+              </>
             )}
           </div>
         )}
