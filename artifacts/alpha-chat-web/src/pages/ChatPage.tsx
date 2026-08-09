@@ -1653,7 +1653,7 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
                 last_activity_at: msg.server_received_at,
                 unread_count: isOpen ? 0 : c.unread_count,
               };
-            }).sort((a, b) => b.last_activity_at.localeCompare(a.last_activity_at)),
+            }).sort((a, b) => (b.last_activity_at ?? "").localeCompare(a.last_activity_at ?? "")),
           );
           break;
         }

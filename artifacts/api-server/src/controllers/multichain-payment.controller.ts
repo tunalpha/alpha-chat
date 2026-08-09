@@ -168,10 +168,11 @@ async function _broadcastMCMessage(
         system_event:    "mc_payment",
         system_metadata: _mcMsgMeta(transfer, isRequest),
         sequence_number: 0,
-        sent_at:         new Date().toISOString(),
-        deleted:         false,
-        burn_after_read: false,
-        device_ciphertexts: null,
+        sent_at:             new Date().toISOString(),
+        server_received_at:  new Date().toISOString(),
+        deleted:             false,
+        burn_after_read:     false,
+        device_ciphertexts:  null,
       },
     });
   } catch (err) {
