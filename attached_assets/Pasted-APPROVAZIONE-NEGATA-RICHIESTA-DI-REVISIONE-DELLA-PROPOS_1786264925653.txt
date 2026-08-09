@@ -1,0 +1,326 @@
+APPROVAZIONE NEGATA — RICHIESTA DI REVISIONE DELLA PROPOSTA
+
+L'analisi è utile, ma NON approvo ancora l'implementazione.
+
+Il problema è economico: la network fee viene pagata dal cliente e deve coprire il costo reale della piattaforma senza trasformarsi in una fee arbitraria o non competitiva.
+
+Prima di modificare codice voglio una REVISIONE ARCHITETTURALE.
+
+==================================================
+OBIETTIVO
+==================================================
+
+Voglio:
+
+PROJECT FEE
+→ percentuale configurabile per rete, già implementata nel task #45.
+
+NETWORK FEE
+→ costo dinamico del singolo pagamento.
+
+Non voglio più:
+
+Polygon = valore fisso
+BSC = valore fisso
+Ethereum = valore fisso
+
+==================================================
+1. CORREGGI IL MODELLO ECONOMICO
+==================================================
+
+NON assumere automaticamente:
+
+TX1 = 65.000
+TX2 = 65.000
+
+Se il codice utilizza eth_estimateGas / prepareTransactionRequest, voglio capire come ottenere una stima REALISTICA prima della creazione definitiva dell'escrow.
+
+Analizza se è possibile:
+
+A) creare/generare l'escrow prima del quote;
+B) utilizzare l'indirizzo escrow reale per estimateGas;
+C) simulare TX1 e TX2;
+D) utilizzare eth_estimateGas con parametri realistici;
+E) usare dati storici reali delle transazioni già effettuate.
+
+Indica quale soluzione è più accurata.
+
+NON usare un "dummy address" senza dimostrare che la stima è equivalente.
+
+==================================================
+2. TX0
+==================================================
+
+Calcola separatamente:
+
+Gas Station → Escrow
+
+Non confondere:
+
+- valore inviato all'escrow;
+- gas consumato dalla TX0;
+- gas riservato;
+- costo economico.
+
+==================================================
+3. TX1 + TX2
+==================================================
+
+Voglio il gas stimato REALMENTE necessario.
+
+Analizza:
+
+- recipient già esistente;
+- recipient first-time;
+- fee wallet;
+- eventuale differenza storage;
+- eventuale differenza tra estimateGas e gasUsed reale.
+
+Non utilizzare automaticamente 80.000.
+
+==================================================
+4. TX3 RECLAIM
+==================================================
+
+Il reclaim è già implementato.
+
+La network fee NON deve però basarsi su un recupero teorico che potrebbe fallire.
+
+Quindi:
+
+- il cliente deve pagare un costo sufficiente a coprire il pagamento;
+- il reclaim deve migliorare il margine della piattaforma;
+- il reclaim non deve essere considerato come denaro garantito prima che sia realmente recuperato.
+
+Spiega chiaramente quale parte del costo viene addebitata e quale parte diventa risparmio operativo.
+
+==================================================
+5. GAS PRICE
+==================================================
+
+Usare dati live.
+
+Per ogni quote:
+
+gasPrice live
++
+gas estimate realistico
+
+NON usare una flat fee.
+
+Se il gas cambia:
+
+Transazione A → network fee A
+Transazione B → network fee B
+
+anche sulla stessa rete.
+
+==================================================
+6. PREZZO NATIVE TOKEN
+==================================================
+
+Questo è il punto più importante.
+
+Oggi:
+
+BNB price → ENV
+ETH price → ENV
+POL price → assente
+
+NON approvo una network fee "dinamica" che in realtà è dinamica solo sul gasPrice ma utilizza un prezzo nativo arbitrario/manuale.
+
+Analizza le opzioni:
+
+1. prezzo live già disponibile nell'app;
+2. price API già utilizzata dal progetto;
+3. oracle;
+4. altra fonte affidabile.
+
+Cerca nel codice se esiste già una funzione di conversione fiat/crypto o price provider che possiamo riutilizzare.
+
+NON introdurre una nuova API esterna se esiste già un sistema interno.
+
+==================================================
+7. SAFETY MARGIN
+==================================================
+
+NON decidere arbitrariamente 1.5×.
+
+Produci una tabella:
+
+Margin 10%
+Margin 15%
+Margin 20%
+Margin 25%
+
+e mostra l'impatto sul cliente per:
+
+Polygon
+BSC
+Ethereum
+
+usando dati realistici.
+
+Voglio scegliere il margine dopo aver visto i numeri.
+
+==================================================
+8. ANTI-LOSS
+==================================================
+
+Anti-loss deve rimanere come ultima protezione.
+
+Se:
+
+networkFeeCharged < costo reale stimato al release
+
+→ waiting_for_gas
+
+NON consentire perdita silenziosa.
+
+Non eliminare né indebolire il fail-closed.
+
+==================================================
+9. QUOTE → CREATE
+==================================================
+
+Voglio evitare che il cliente veda:
+
+Quote = 0,10 USDT
+
+e poi:
+
+Create = 0,25 USDT
+
+senza spiegazione.
+
+Proponi il modello UX migliore:
+
+A) quote ricalcolata alla conferma;
+B) quote con validità temporale;
+C) limite massimo;
+D) altro.
+
+Voglio una soluzione prevedibile per il cliente.
+
+==================================================
+10. RECIPIENT EXACT
+==================================================
+
+NON modificare.
+
+Se il cliente indica:
+
+"Destinatario riceve esattamente 1 USDT"
+
+deve continuare a ricevere:
+
+1.000000 USDT
+
+La network fee deve essere aggiunta al totale pagato dal mittente e NON sottratta al recipient.
+
+==================================================
+11. FRONTEND
+==================================================
+
+La UI deve mostrare separatamente:
+
+Destinatario riceve
+Project fee
+Network fee
+Totale pagato
+
+NON:
+
+Fee = 0.501 USDT
+
+senza distinzione.
+
+==================================================
+12. OBIETTIVO COMMERCIALE
+
+Il sistema deve essere competitivo.
+
+Non voglio che il cliente paghi:
+
+0.50 USDT per una normale transazione BSC
+0.50 USDT per Polygon
+15 USDT per una normale transazione Ethereum
+
+solo perché sono valori flat configurati.
+
+La network fee deve seguire il costo reale della rete.
+
+==================================================
+13. OUTPUT RICHIESTO
+
+Prima di qualsiasi implementazione produci:
+
+A) formula definitiva proposta;
+
+B) dati reali disponibili nel codice;
+
+C) fonte prezzo BNB/ETH/POL;
+
+D) metodo migliore per stimare TX0/TX1/TX2;
+
+E) trattamento TX3;
+
+F) safety margin consigliato;
+
+G) esempio realistico:
+
+1 USDT BSC
+10 USDT BSC
+100 USDT BSC
+
+1 USDT Polygon
+10 USDT Polygon
+100 USDT Polygon
+
+1 USDT Ethereum
+10 USDT Ethereum
+100 USDT Ethereum
+
+Per ogni esempio:
+
+Recipient
+Project fee
+Network fee
+Totale pagato
+Costo stimato piattaforma
+Margine stimato
+
+H) confronto con le fee attuali:
+
+Polygon 0.50
+BSC 0.50
+Ethereum 5.00
+
+I) rischio massimo per la piattaforma;
+
+J) comportamento in caso di gas spike;
+
+K) comportamento in caso di RPC unavailable.
+
+==================================================
+14. VINCOLO ASSOLUTO
+
+NON modificare:
+
+- codice
+- ENV
+- fee
+- database
+- Admin Panel
+- anti-loss
+- reclaim
+
+durante questa fase.
+
+Voglio SOLO il progetto economico/tecnico definitivo.
+
+Alla fine:
+
+STOP.
+
+Aspetta la mia approvazione esplicita prima di implementare.
