@@ -1,0 +1,476 @@
+PROMPT UNICO — FIX DEFINITIVO MULTICHAIN PAYMENT UX
+
+OBIETTIVO
+
+Portare il flusso "Invia Cripto" Multichain a un comportamento corretto e coerente con USDA, eliminando il modello copia/incolla per EVM e rendendo la payment sheet non bloccante.
+
+NON modificare USDA.
+NON modificare il backend se non strettamente necessario per supportare il flusso già esistente.
+NON introdurre un secondo sistema wallet.
+NON fare modifiche speculative.
+
+==================================================
+1. STEP 1 — IMPORTO
+==================================================
+
+Mantenere invariato:
+
+Importo → Conferma → Step 3
+
+La modalità è recipient_exact:
+il destinatario deve ricevere esattamente l'importo indicato.
+
+==================================================
+2. STEP 2 — CONFERMA E FEE
+==================================================
+
+Mostrare:
+
+Rete
+Destinatario riceve
+Network fee
+Totale pagato
+Scadenza
+
+"Network fee" deve rappresentare il costo complessivo già calcolato dal backend secondo il modello dinamico:
+
+project fee + network/gas fee
+
+NON mostrare una seconda riga separata "Fee progetto".
+
+IMPORTANTE:
+
+La UI NON deve mostrare "+0.00 USDT" quando il backend ha già calcolato una fee.
+
+Il valore mostrato deve essere quello effettivamente restituito dal quote backend.
+
+Se la fee reale è 0.007 USDT, mostrare 0.007 USDT, non 0.00.
+
+NON inventare valori.
+
+==================================================
+3. STEP 3 — EVM: FIRMA TRANSAZIONE
+==================================================
+
+Per:
+
+Polygon USDT
+BSC USDT
+Ethereum USDT
+
+NON mostrare come percorso principale:
+
+"Copia indirizzo"
+"Apri il wallet manualmente"
+"Invia dal wallet esterno"
+
+Questo modello deve essere eliminato come UX principale.
+
+Il percorso principale deve essere:
+
+Step 3 — Firma
+
+Mostrare:
+
+"Invia esattamente X USDT"
+
+rete
+
+pulsante:
+
+"✍️ Firma transazione →"
+
+La transazione deve essere costruita automaticamente usando:
+
+escrowWallet
+minDepositAmount
+USDT token contract della rete
+chainId corretto
+
+ERC-20 calldata:
+
+transfer(escrowWallet, minDepositAmount)
+
+Usare lo stesso pattern già funzionante nel flusso USDA:
+
+account.sendTransaction(...)
+
+fire-and-forget.
+
+NON aspettare il TX hash client-side come prerequisito per continuare.
+
+Il backend rimane source of truth.
+
+==================================================
+4. WALLET EVM
+==================================================
+
+Riutilizzare ESATTAMENTE l'infrastruttura ThirdWeb già utilizzata da USDA.
+
+NON creare un wallet system parallelo.
+
+Usare:
+
+useActiveAccount()
+ConnectButton
+client
+chain corretta
+
+Reti:
+
+Polygon = chainId 137
+BSC = chainId 56
+Ethereum = chainId 1
+
+Se il wallet non è connesso:
+
+mostrare ConnectButton.
+
+Dopo la connessione:
+
+mostrare "✍️ Firma transazione →"
+
+Premendo il pulsante:
+
+1. verificare account
+2. verificare chain
+3. costruire calldata ERC-20
+4. chiamare account.sendTransaction()
+5. salvare lo stato pending in localStorage per recovery iOS
+6. avviare/continuare il monitoraggio backend
+7. NON bloccare la ChatPage.
+
+==================================================
+5. CHAIN SWITCH
+==================================================
+
+Se il wallet non supporta automaticamente la rete:
+
+mostrare un messaggio chiaro:
+
+"Seleziona la rete BSC nel tuo wallet e riconnetti."
+
+oppure equivalente per Polygon/Ethereum.
+
+NON mostrare errori raw come:
+
+ADAPTER_NOT_FOUND
+unrecognized chain
+does not support
+
+Gestire gli errori in modo leggibile.
+
+==================================================
+6. BTC — NIENTE FIRMA EVM
+==================================================
+
+Bitcoin NON usa ERC-20 e quindi non deve essere trattato come EVM.
+
+Per BTC mantenere il modello escrow Bitcoin corretto.
+
+L'indirizzo DEVE essere un vero indirizzo Bitcoin:
+
+bc1...
+
+MAI:
+
+0x...
+
+Il backend deve utilizzare generateBtcEscrowWallet() per i transfer BTC.
+
+Step 3 BTC:
+
+"Invia esattamente X BTC"
+
+"Apri wallet Bitcoin"
+
+QR code
+
+"Copia indirizzo"
+
+L'azione principale "Apri wallet Bitcoin" deve usare:
+
+bitcoin:<address>?amount=<amount>
+
+Su iOS, se il deep link apre direttamente un solo wallet, usare il native share sheet tramite:
+
+navigator.share({
+  url: bitcoinUri
+})
+
+così l'utente può scegliere il wallet disponibile.
+
+Il QR code deve contenere l'URI Bitcoin completo con importo.
+
+Polling backend invariato.
+
+==================================================
+7. FALLBACK
+==================================================
+
+Per EVM il copia-indirizzo può esistere SOLO come fallback secondario.
+
+Deve essere nascosto dentro una sezione tipo:
+
+"Problemi con il wallet?"
+
+→ "Invia manualmente"
+
+NON deve essere il percorso principale.
+
+Per BTC:
+
+"Copia indirizzo" rimane visibile come fallback normale.
+
+==================================================
+8. PAYMENT SHEET NON DEVE BLOCCARE LA CHAT
+==================================================
+
+QUESTO È CRITICO.
+
+Quando il pagamento è stato creato e il monitoraggio è iniziato:
+
+la X deve SEMPRE essere utilizzabile.
+
+L'utente deve poter chiudere la sheet in qualsiasi momento.
+
+NON disabilitare X durante:
+
+firma
+attesa firma
+attesa deposito
+polling
+conferma blockchain.
+
+Quando l'utente chiude:
+
+→ torna immediatamente alla ChatPage.
+
+NON cancellare il transfer.
+
+NON cancellare l'escrow.
+
+NON cancellare lo stato pending.
+
+NON interrompere il monitoraggio backend.
+
+==================================================
+9. POLLING
+==================================================
+
+Il pagamento deve continuare a essere monitorato anche dopo la chiusura della sheet.
+
+Il MultiChainPaymentBubble deve essere la source of truth per lo stato:
+
+⏳ In attesa del deposito
+↓
+🔄 Verifica blockchain
+↓
+✅ Pagamento confermato
+
+oppure:
+
+❌ Scaduto
+
+NON obbligare l'utente a tenere aperta la sheet per 10 minuti.
+
+Il polling deve essere separato dal ciclo di vita visuale della modal.
+
+==================================================
+10. RECOVERY
+==================================================
+
+Usare localStorage per il recovery iOS/PWA.
+
+Salvare almeno:
+
+transferId
+network
+stato pending
+timestamp
+
+Alla riapertura della sheet:
+
+se esiste un transfer pending valido:
+
+→ recuperarlo dal backend
+→ mostrare lo stato corretto
+→ NON creare un nuovo transfer.
+
+Se il transfer è scaduto/eliminato:
+
+→ pulire localStorage
+→ tornare al form.
+
+NON impostare arbitrariamente:
+
+step = "sign"
+
+senza prima recuperare il transfer.
+
+BTC deve sempre recuperare lo step BTC corretto.
+
+==================================================
+11. DOPO LA FIRMA EVM
+==================================================
+
+Dopo sendTransaction():
+
+NON mostrare semplicemente "In attesa della firma..." indefinitamente.
+
+Mostrare:
+
+"Transazione inviata"
+"Stiamo verificando il pagamento sulla blockchain..."
+
+Poi:
+
+"Pagamento confermato ✓"
+
+quando apiMCDetect() / backend rileva il deposito.
+
+Se l'utente chiude la sheet:
+
+il monitoraggio continua nella chat.
+
+==================================================
+12. IMPORTANTE — AMOUNT
+==================================================
+
+Per EVM usare esattamente:
+
+minDepositAmount
+
+restituito dal backend.
+
+NON ricostruire arbitrariamente l'importo dal valore visualizzato.
+
+Rispettare i decimals della rete/token:
+
+Polygon USDT = 6
+Ethereum USDT = 6
+BSC USDT = 18
+
+La transazione deve inviare esattamente il gross amount richiesto dal backend.
+
+==================================================
+13. FILE DA CONTROLLARE
+==================================================
+
+Controllare principalmente:
+
+artifacts/alpha-chat-web/src/lib/thirdweb.ts
+
+artifacts/alpha-chat-web/src/lib/multichain-api.ts
+
+artifacts/alpha-chat-web/src/components/multichain/MultiChainSendSheet.tsx
+
+artifacts/alpha-chat-web/src/components/multichain/MultiChainPaymentBubble.tsx
+
+artifacts/alpha-chat-web/src/index.css
+
+e solo se necessario i file backend relativi a:
+
+multichain transfer
+BSC adapter
+BTC escrow generation
+deposit detection
+
+NON modificare USDA.
+
+==================================================
+14. TEST OBBLIGATORI
+==================================================
+
+Prima di dichiarare completato:
+
+A) Polygon USDT
+- Step 1
+- Step 2
+- fee reale visibile
+- Step 3 Firma
+- wallet richiesto
+- sendTransaction
+- backend detect
+- conferma
+
+B) BSC USDT
+- Step 3 Firma
+- chainId 56
+- USDT decimals 18
+- sendTransaction
+- backend detect
+- conferma
+
+C) Ethereum USDT
+- Step 3 Firma
+- chainId 1
+- USDT decimals 6
+- sendTransaction
+- backend detect
+
+D) Bitcoin
+- indirizzo bc1...
+- QR corretto
+- bitcoin URI corretto
+- native share su iOS
+- copia indirizzo fallback
+- backend detect
+
+E) CHIUSURA SHEET
+Durante "In attesa del deposito":
+
+premere X.
+
+RISULTATO OBBLIGATORIO:
+
+la sheet si chiude immediatamente
+la chat torna utilizzabile
+il pagamento continua a essere monitorato
+il bubble mostra lo stato.
+
+F) REOPEN
+Riaprendo lo stesso pagamento:
+
+NON creare un nuovo transfer.
+
+Recuperare quello esistente.
+
+==================================================
+15. REGOLA FINALE
+==================================================
+
+NON dichiarare "completato" basandoti solamente su:
+
+TypeScript clean
+Build clean
+test unitari
+
+È necessario verificare il comportamento reale della UI.
+
+In particolare devono essere verificati realmente:
+
+1. firma EVM
+2. apertura wallet
+3. invio della transazione
+4. detection backend
+5. chiusura sheet durante pending
+6. ritorno alla chat
+7. polling in background
+8. recovery
+9. BTC bc1...
+10. QR/Bitcoin URI
+
+Obiettivo finale:
+
+USDT EVM → FIRMA DIRETTA DAL WALLET
+
+BTC → APRI/SCEGLI WALLET + QR
+
+Entrambi → PAYMENT SHEET NON BLOCCANTE
+
+Entrambi → BACKEND SOURCE OF TRUTH
+
+Entrambi → PAGAMENTO CONTINUA ANCHE DOPO LA CHIUSURA DELLA SHEET
+
+USDA → COMPLETAMENTE INVARIATO.
