@@ -24,6 +24,7 @@ import { useActiveAccount, ConnectButton } from "thirdweb/react";
 import { client, wallets, polygon, bsc, ethereum } from "../../lib/thirdweb";
 import {
   apiMCCreate,
+  apiMCCancel,
   apiMCDetect,
   apiMCGet,
   apiMCQuote,
@@ -165,6 +166,7 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
   const [signError,      setSignError]      = useState<string | null>(null);
   const [targetNetUnits, setTargetNetUnits] = useState<string | null>(null);
   const [qrDataUrl,      setQrDataUrl]      = useState<string | null>(null);
+  const [cancelling,     setCancelling]     = useState(false);
 
   const { price, loading: priceLoading, error: priceError, currency, setCurrency } = useBtcPrice();
 
@@ -232,6 +234,21 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
       localStorage.removeItem(MC_PENDING_KEY); return;
     }
     void apiMCGet(pending.transferId).then(t => {
+      // ── Validazione 1: stato terminale → non ripristinare ──────────────────
+      const terminal = ["cancelled", "expired", "released", "refunded", "failed"];
+      if (terminal.includes(t.status)) {
+        localStorage.removeItem(MC_PENDING_KEY);
+        return;
+      }
+
+      // ── Validazione 2: BTC con indirizzo EVM (transfer pre-fix) → scarta ──
+      // Prima del fix generateBtcEscrowWallet(), tutti i BTC transfer avevano
+      // un escrow 0x... (Ethereum) invece di bc1... (SegWit). Non recuperare.
+      if (t.network === "bitcoin" && /^0x/i.test(t.escrowWallet)) {
+        localStorage.removeItem(MC_PENDING_KEY);
+        return;
+      }
+
       setTransfer(t);
       if (t.network === "bitcoin") {
         setStep("address");
@@ -253,6 +270,7 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
         }
       }
     }).catch(() => {
+      // 404 o errore → transfer non più disponibile, ricomincia da capo
       localStorage.removeItem(MC_PENDING_KEY);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -524,6 +542,32 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
       }
     }
     throw new Error("Timeout: deposito non rilevato in 10 minuti.");
+  }
+
+  // ── Cancella transfer e ricomincia ────────────────────────────────────────
+  //
+  // Usato quando l'utente è bloccato (transfer pre-fix, errore rete, timeout).
+  // Chiama il backend per segnare "cancelled", poi pulisce localStorage e
+  // riporta la sheet allo step 1.
+
+  async function handleReset() {
+    setCancelling(true);
+    try {
+      if (transfer?.transferId && transfer.status === "awaiting_deposit") {
+        await apiMCCancel(transfer.transferId).catch(() => {}); // best-effort
+      }
+    } finally {
+      localStorage.removeItem(MC_PENDING_KEY);
+      setTransfer(null);
+      setStep("form");
+      setSignPhase("ready");
+      setSignError(null);
+      setError(null);
+      setQuote(null);
+      setTargetNetUnits(null);
+      setQrDataUrl(null);
+      setCancelling(false);
+    }
   }
 
   // ── Copia indirizzo ────────────────────────────────────────────────────────
@@ -851,6 +895,18 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
             <p className="mc-address-expiry" style={{ marginTop: 8 }}>⏰ {t("multichain.expiresIn24h")}</p>
 
             <div className="usda-sheet-actions" style={{ marginTop: 8 }}>
+              {/* Pulsante escape: visibile quando bloccato (confirming/error) — permette di ricominciare */}
+              {(signPhase === "confirming" || signPhase === "error") && (
+                <button
+                  type="button"
+                  className="usda-btn-secondary"
+                  onClick={handleReset}
+                  disabled={cancelling}
+                  style={{ fontSize: "0.82em" }}
+                >
+                  {cancelling ? "…" : "✕ Nuova transazione"}
+                </button>
+              )}
               <button type="button" className="usda-btn-primary" onClick={onSent}>
                 {signPhase === "done" ? t("multichain.doneBtn") : "Ho inviato →"}
               </button>
@@ -942,6 +998,18 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
               </div>
 
               <div className="usda-sheet-actions">
+                {/* Escape: ricomincia con un transfer pulito */}
+                {(signPhase === "confirming" || signPhase === "error") && (
+                  <button
+                    type="button"
+                    className="usda-btn-secondary"
+                    onClick={handleReset}
+                    disabled={cancelling}
+                    style={{ fontSize: "0.82em" }}
+                  >
+                    {cancelling ? "…" : "✕ Nuova transazione"}
+                  </button>
+                )}
                 <button type="button" className="usda-btn-primary" onClick={onSent}>
                   {signPhase === "done" ? t("multichain.doneBtn") : "Ho inviato →"}
                 </button>

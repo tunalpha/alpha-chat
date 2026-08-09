@@ -25,6 +25,7 @@ import {
   handleDetectDeposit,
   handleReleaseTransfer,
   handleRefundTransfer,
+  handleCancelTransfer,
 } from "../../controllers/multichain-payment.controller";
 import { authenticate }                                                                     from "../../middleware/authenticate.middleware";
 import { validate }                                                                         from "../../middleware/validate.middleware";
@@ -115,6 +116,7 @@ router.post(
 );
 
 router.get("/transfers/:id",          authenticate, handleGetTransfer);
+router.post("/transfers/:id/cancel",  authenticate, handleCancelTransfer);
 router.post("/transfers/:id/detect",  authenticate, detectRateLimit, handleDetectDeposit);
 router.post("/transfers/:id/release", authenticate, handleReleaseTransfer);
 router.post("/transfers/:id/refund",  authenticate, handleRefundTransfer);

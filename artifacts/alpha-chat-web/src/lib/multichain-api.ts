@@ -197,6 +197,11 @@ export async function apiMCDetect(transferId: string): Promise<MCTransfer> {
   return mcFetch<MCTransfer>("POST", `/transfers/${transferId}/detect`);
 }
 
+/** Annulla un transfer in stato awaiting_deposit (solo il sender). */
+export async function apiMCCancel(transferId: string): Promise<void> {
+  await mcFetch<unknown>("POST", `/transfers/${transferId}/cancel`);
+}
+
 // ─── GET /networks — reti abilitate ──────────────────────────────────────────
 
 export interface MCNetworkEntry {

@@ -36,6 +36,7 @@ import { estimateDynamicNetworkFee }                from "../blockchain/dynamic-
 import { PriceUnavailableError }                    from "../blockchain/native-price-provider";
 import { DynamicFeeError }                          from "../blockchain/dynamic-fee-estimator";
 import { AppError }                                from "../errors/AppError";
+import { MultiChainTransferModel }                 from "../models/multichain-transfer.model";
 import { MessageModel }                            from "../models/message.model";
 import { ConversationModel }                       from "../models/conversation.model";
 import { ConversationMemberRepository }            from "../repositories/conversation-member.repository";
@@ -532,6 +533,42 @@ export async function handleReleaseTransfer(
     }
 
     res.json({ transfer });
+  } catch (err) {
+    next(err);
+  }
+}
+
+// ─── POST /multichain/transfers/:id/cancel (user-facing) ─────────────────────
+//
+// Permette al SENDER di annullare il proprio transfer in stato awaiting_deposit.
+// Risponde 404 se non trovato o non di proprietà (H-02: non rivelare esistenza).
+
+export async function handleCancelTransfer(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const userId     = requireUserId(req);
+    const transferId = req.params["id"] as string;
+
+    // Verifica ownership: solo il sender può cancellare
+    const transfer = await getMultiChainTransfer(transferId);
+    if (transfer.senderId !== userId) throw new AppError("TRANSFER_NOT_FOUND", 404);
+
+    // Solo awaiting_deposit → cancellabile dall'utente
+    if (transfer.status !== "awaiting_deposit") {
+      throw new AppError("INVALID_STATE", 409,
+        `Cannot cancel transfer in status '${transfer.status}'.`);
+    }
+
+    await MultiChainTransferModel.findOneAndUpdate(
+      { transfer_id: transferId },
+      { $set: { status: "cancelled", locked_at: null, updatedAt: new Date() } },
+    );
+
+    logger.info({ transferId, userId }, "[MC] Transfer cancelled by sender");
+    res.json({ ok: true, transfer_id: transferId, new_status: "cancelled" });
   } catch (err) {
     next(err);
   }
