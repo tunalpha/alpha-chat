@@ -6,6 +6,7 @@
  */
 
 import { getAccessToken } from "./auth";
+import { apiRefreshSession } from "./api";
 
 const BASE = "/api/v1/multichain";
 
@@ -101,20 +102,54 @@ export interface MCTransfer {
 
 // ─── Helper fetch ─────────────────────────────────────────────────────────────
 
-async function mcFetch<T>(method: string, path: string, body?: unknown): Promise<T> {
-  const token   = getAccessToken();
+/**
+ * Esegue la richiesta con il token corrente.
+ * Restituisce { res, json } — il chiamante decide se riprovare.
+ */
+async function mcDoFetch<T>(
+  method: string,
+  path: string,
+  body: unknown | undefined,
+  token: string | null,
+): Promise<{ res: Response; json: { transfer?: T; data?: T; error?: { code: string; message: string; details?: Record<string, unknown> } } }> {
   const headers: Record<string, string> = { "Content-Type": "application/json" };
   if (token) headers["Authorization"] = `Bearer ${token}`;
-
-  const res  = await fetch(`${BASE}${path}`, {
+  const res = await fetch(`${BASE}${path}`, {
     method,
     headers,
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
-
   const json = await res.json() as { transfer?: T; data?: T; error?: { code: string; message: string; details?: Record<string, unknown> } };
+  return { res, json };
+}
+
+/**
+ * Wrapper fetch autenticato per le API multichain.
+ * — Legge il token da localStorage.
+ * — Se il backend risponde 401, prova a rinnovare il token tramite apiRefreshSession()
+ *   e ritenta la chiamata UNA sola volta (stesso pattern di request() in api.ts).
+ * — Non forza il logout in caso di doppio 401 (la sessione rimane, è l'endpoint a rifiutare).
+ */
+async function mcFetch<T>(method: string, path: string, body?: unknown): Promise<T> {
+  let token = getAccessToken();
+  let { res, json } = await mcDoFetch<T>(method, path, body, token);
+
+  // Primo tentativo: 401 → refresh e riprova (una volta sola)
+  if (res.status === 401) {
+    try {
+      token = await apiRefreshSession();
+    } catch {
+      // refresh fallito → usa il token originale per la segnalazione di errore
+    }
+    if (token) {
+      ({ res, json } = await mcDoFetch<T>(method, path, body, token));
+    }
+  }
+
   if (!res.ok) {
-    const err: Error & { code?: string; details?: Record<string, unknown> } = new Error(json.error?.message ?? `MC API error ${res.status}`);
+    const err: Error & { code?: string; details?: Record<string, unknown> } = new Error(
+      json.error?.message ?? `MC API error ${res.status}`,
+    );
     err.code    = json.error?.code;
     err.details = json.error?.details ?? undefined;
     throw err;
