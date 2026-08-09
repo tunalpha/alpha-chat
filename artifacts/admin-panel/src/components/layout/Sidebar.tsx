@@ -39,7 +39,7 @@ const navItems = [
   { href: "/r2-monitor",  label: "R2 Monitor",  icon: Cloud },
   { href: "/call-monitor", label: "Call Monitor", icon: Phone },
   { href: "/gas-station",  label: "Gas Station",  icon: Fuel },
-  { href: "/email-settings", label: "Email Notifiche", icon: Mail },
+  { href: "/email-settings", label: "Impostazioni", icon: Mail },
   { href: "/investor-access", label: "Investor Access", icon: BookLock },
   { href: "/access-log",     label: "Access Log",      icon: Clock },
   { href: "/performance",        label: "Performance",      icon: Gauge  },
