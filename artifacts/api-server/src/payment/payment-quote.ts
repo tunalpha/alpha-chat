@@ -67,7 +67,6 @@ import {
   DEFAULT_FEE_BPS,
   BASIS_POINTS_DENOMINATOR,
 } from "../blockchain/fee-config";
-import { getEVMFlatNetworkFee } from "../blockchain/multichain-config";
 import type { MCNetworkId, MCAssetSymbol } from "../models/multichain-transfer.model";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
@@ -218,10 +217,19 @@ export function computeGrossFromNet(
  *   ✓ totalDeposit = grossAmount + networkFeeCharged (EVM)
  *   ✓ Tutti i valori BigInt — MAI floating point    (spec §1)
  *
+ * @param params             Parametri del quote
+ * @param networkFeeCharged  Fee network dinamica pre-calcolata in raw USDT units.
+ *                           Per EVM: obbligatoria, calcolata da estimateDynamicNetworkFee().
+ *                           Per BTC: ignorata (sempre 0n — miner fee nel buffer separato).
+ *                           Default 0n per retrocompatibilità con test e chiamate legacy.
+ *
  * @throws se i parametri sono invalidi (amountMode/importo mancante o ≤ 0)
  * @throws se BTC grossAmount < 546 sat (inferiore alla fee minima assoluta)
  */
-export function calculatePaymentQuote(params: PaymentQuoteParams): PaymentQuote {
+export function calculatePaymentQuote(
+  params: PaymentQuoteParams,
+  networkFeeCharged: bigint = 0n,
+): PaymentQuote {
   const feeBps    = params.feeBps    ?? DEFAULT_FEE_BPS;
   const feeWallet = params.feeWallet ?? null;
   const mode      = params.amountMode;
@@ -292,19 +300,19 @@ export function calculatePaymentQuote(params: PaymentQuoteParams): PaymentQuote 
   }
 
   // ── Step 3: network fee — SEPARATA da projectFee (spec §10) ──────────────
-  // EVM: flat fee configurata da env (es. POLYGON_FLAT_NETWORK_FEE_USDT)
-  // BTC: 0n — la miner fee è inclusa nel buffer asincrono di minDepositAmount
-  const networkFeeCharged = getEVMFlatNetworkFee(params.network);
+  // EVM: fee dinamica pre-calcolata e iniettata dal caller (estimateDynamicNetworkFee).
+  // BTC: sempre 0n — la miner fee è inclusa nel buffer asincrono di minDepositAmount.
+  const effectiveNetworkFeeCharged = isBtc ? 0n : networkFeeCharged;
 
   // ── Step 4: total deposit ─────────────────────────────────────────────────
-  const totalDeposit = grossAmount + networkFeeCharged;
+  const totalDeposit = grossAmount + effectiveNetworkFeeCharged;
 
   return {
     amountMode:         mode,
     grossAmount:        grossAmount.toString(),
     projectFee:         projectFee.toString(),
     netAmount:          netAmount.toString(),
-    networkFeeCharged:  networkFeeCharged.toString(),
+    networkFeeCharged:  effectiveNetworkFeeCharged.toString(),
     totalDeposit:       totalDeposit.toString(),
     feeBps:             Number(feeBps),
     btcFeeFloorApplied,

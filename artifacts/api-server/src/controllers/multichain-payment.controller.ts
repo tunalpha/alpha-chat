@@ -31,7 +31,10 @@ import {
   setTransferMessageId,
   type MultiChainTransferInfo,
 } from "../payment/multichain-payment.service";
-import { FEATURE_FLAGS, getEVMFlatNetworkFee, NATIVE_ASSET_SYMBOL, TOKEN_CONTRACTS } from "../blockchain/multichain-config";
+import { FEATURE_FLAGS, NATIVE_ASSET_SYMBOL, TOKEN_CONTRACTS, FEE_WALLETS, TOKEN_DECIMALS } from "../blockchain/multichain-config";
+import { estimateDynamicNetworkFee }                from "../blockchain/dynamic-fee-estimator";
+import { PriceUnavailableError }                    from "../blockchain/native-price-provider";
+import { DynamicFeeError }                          from "../blockchain/dynamic-fee-estimator";
 import { AppError }                                from "../errors/AppError";
 import { MessageModel }                            from "../models/message.model";
 import { ConversationModel }                       from "../models/conversation.model";
@@ -227,22 +230,22 @@ export async function getMultiChainConfig(
       supportedAssets: [
         {
           network: "polygon",  asset: "USDT", enabled: FEATURE_FLAGS.ENABLE_POLYGON_USDT,  decimals: 6,
-          defaultNetworkFeeCharged: getEVMFlatNetworkFee("polygon").toString(),
+          networkFeeIsDynamic: true,  // fee calcolata live al momento del quote
           networkFeeAsset: NATIVE_ASSET_SYMBOL.polygon,
         },
         {
           network: "polygon",  asset: "USDA", enabled: FEATURE_FLAGS.ENABLE_POLYGON_USDT,  decimals: 18,
-          defaultNetworkFeeCharged: getEVMFlatNetworkFee("polygon").toString(),
+          networkFeeIsDynamic: true,
           networkFeeAsset: NATIVE_ASSET_SYMBOL.polygon,
         },
         {
           network: "ethereum", asset: "USDT", enabled: FEATURE_FLAGS.ENABLE_ETHEREUM_USDT, decimals: 6,
-          defaultNetworkFeeCharged: getEVMFlatNetworkFee("ethereum").toString(),
+          networkFeeIsDynamic: true,
           networkFeeAsset: NATIVE_ASSET_SYMBOL.ethereum,
         },
         {
           network: "bsc",      asset: "USDT", enabled: FEATURE_FLAGS.ENABLE_BSC_USDT,      decimals: 18,
-          defaultNetworkFeeCharged: getEVMFlatNetworkFee("bsc").toString(),
+          networkFeeIsDynamic: true,
           networkFeeAsset: NATIVE_ASSET_SYMBOL.bsc,
         },
         {
@@ -273,16 +276,72 @@ export async function handlePaymentQuote(
   try {
     const { network, asset, amountMode, grossAmountUnits, targetNetAmountUnits } = req.body;
 
-    const quote = calculatePaymentQuote({
-      amountMode:           amountMode ?? "send_amount",
-      grossAmountUnits,
-      targetNetAmountUnits,
-      network,
-      asset,
-    });
+    const isBtc = (network as string) === "bitcoin";
 
-    res.json({ quote });
+    // ── Fee dinamica EVM ───────────────────────────────────────────────────────
+    // Per il quote non conosciamo il recipient wallet → TX1 usa fallback 80k.
+    // La fee è una STIMA — il create ricomputa sempre live con estimateGas reale.
+    // BTC: nessuna fee dinamica (miner fee nel buffer minDeposit separato).
+    let networkFeeCharged = 0n;
+    let dynFeeResult: import("../blockchain/dynamic-fee-estimator").DynamicFeeResult | null = null;
+
+    if (!isBtc) {
+      // Risolvi l'asset address per il network specificato
+      const contracts = TOKEN_CONTRACTS[network as keyof typeof TOKEN_CONTRACTS] ?? {};
+      const assetAddress =
+        (contracts[asset as keyof typeof contracts] as string | undefined) ?? "";
+
+      // Importo lordo stimato: per send_amount usa il gross fornito,
+      // per recipient_exact approssima con il target (il quote è conservativo).
+      const grossForEstimate = BigInt(grossAmountUnits ?? targetNetAmountUnits ?? "0");
+
+      dynFeeResult = await estimateDynamicNetworkFee({
+        network:      network as import("../models/multichain-transfer.model").MCNetworkId,
+        assetAddress,
+        grossAmount:  grossForEstimate,
+        // recipientWallet assente al quote → TX1 usa fallback 80k
+        recipientWallet: null,
+        feeWallet:       FEE_WALLETS[network as keyof typeof FEE_WALLETS] ?? null,
+      });
+
+      networkFeeCharged = dynFeeResult.networkFeeCharged;
+    }
+
+    const quote = calculatePaymentQuote(
+      {
+        amountMode:           amountMode ?? "send_amount",
+        grossAmountUnits,
+        targetNetAmountUnits,
+        network,
+        asset,
+      },
+      networkFeeCharged,
+    );
+
+    res.json({
+      quote,
+      // Segnale al client che la fee è una stima (mancanza recipient wallet nel quote)
+      networkFeeIsEstimate: !isBtc,
+      // Dati diagnostici per il client avanzato (audit trail §14)
+      feeDetail: dynFeeResult
+        ? {
+            gasPriceWei:     dynFeeResult.gasPriceWei.toString(),
+            nativePriceUsd:  dynFeeResult.nativePriceUsd,
+            tx0Gas:          dynFeeResult.tx0Gas,
+            tx1Gas:          dynFeeResult.tx1Gas,
+            tx2Gas:          dynFeeResult.tx2Gas,
+            tx3Gas:          dynFeeResult.tx3Gas,
+            safetyMarginBps: dynFeeResult.safetyMarginBps,
+            isLiveEstimate:  dynFeeResult.isLiveEstimate,
+          }
+        : null,
+    });
   } catch (err) {
+    // Errori di infrastruttura (RPC down, CoinGecko stale) → 503 esplicito
+    if (err instanceof DynamicFeeError || err instanceof PriceUnavailableError) {
+      next(err);  // AppError-like con httpStatus 503
+      return;
+    }
     next(err);
   }
 }

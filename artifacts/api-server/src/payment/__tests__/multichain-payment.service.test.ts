@@ -35,6 +35,47 @@ vi.mock("../../blockchain/adapter-registry", () => ({
   },
 }));
 
+// Mock: dynamic fee estimator — restituisce la stessa fee del vecchio flat fee (500_000)
+// in modo che i test EVM Network Fee Model continuino a passare senza modifiche.
+// La logica del calcolo dinamico è testata separatamente in dynamic-network-fee.test.ts.
+vi.mock("../../blockchain/dynamic-fee-estimator", () => ({
+  estimateDynamicNetworkFee: vi.fn().mockResolvedValue({
+    networkFeeCharged: 500_000n,
+    gasPriceWei:       30_000_000_000n,
+    nativePriceUsd:    0.30,
+    tx0Gas:            21_000,
+    tx1Gas:            80_000,
+    tx2Gas:            50_000,
+    tx3Gas:            21_000,
+    safetyMarginBps:   12_000,
+    isLiveEstimate:    false,
+  }),
+  DynamicFeeError: class DynamicFeeError extends Error {
+    readonly code       = "DYNAMIC_FEE_ERROR" as const;
+    readonly httpStatus = 503;
+    constructor(msg: string) { super(msg); this.name = "DynamicFeeError"; }
+  },
+}));
+
+// Mock: native price provider — evita chiamate CoinGecko reali
+vi.mock("../../blockchain/native-price-provider", () => ({
+  getNativePriceUsd:            vi.fn().mockResolvedValue(0.30),
+  PriceUnavailableError:        class PriceUnavailableError extends Error {
+    readonly code       = "PRICE_UNAVAILABLE" as const;
+    readonly httpStatus = 503;
+    constructor(network: string, reason: string) { super(`${network}: ${reason}`); }
+  },
+  warmupNativePrices:           vi.fn().mockResolvedValue(undefined),
+  getNativePriceCacheStatus:    vi.fn().mockReturnValue({}),
+}));
+
+// Mock: mc-network-fee-config — evita query DB nei test unit
+vi.mock("../../models/mc-network-fee-config.model", () => ({
+  McNetworkFeeConfigModel:   { findOne: vi.fn(), findOneAndUpdate: vi.fn(), findOneAndDelete: vi.fn() },
+  getNetworkFeeConfig:       vi.fn().mockResolvedValue({ safetyMarginBps: 12_000, maxNetworkFeeRaw: null }),
+  DEFAULT_SAFETY_MARGIN_BPS: 12_000,
+}));
+
 vi.mock("../../blockchain/escrow-crypto", () => ({
   generateEscrowWallet: vi.fn(() => ({
     address:     "0xESCROW000000000000000000000000000000000",

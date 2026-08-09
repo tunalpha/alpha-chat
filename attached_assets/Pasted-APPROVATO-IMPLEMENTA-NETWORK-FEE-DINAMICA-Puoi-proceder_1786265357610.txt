@@ -1,0 +1,447 @@
+APPROVATO — IMPLEMENTA NETWORK FEE DINAMICA
+
+Puoi procedere all'implementazione della network fee dinamica sulla base
+dell'analisi appena completata.
+
+IMPORTANTE:
+non introdurre nuovamente fee flat arbitrarie.
+
+OBIETTIVO:
+
+Per OGNI singolo pagamento EVM:
+
+networkFeeCharged =
+costo stimato reale delle operazioni necessarie
++
+margine di sicurezza configurabile
+
+La fee deve quindi cambiare automaticamente da transazione a transazione
+in base alle condizioni reali della rete.
+
+==================================================
+CHAIN
+==================================================
+
+Polygon
+BSC
+Ethereum
+
+Bitcoin NON coinvolto.
+
+==================================================
+1. NETWORK FEE DINAMICA
+==================================================
+
+Eliminare l'utilizzo delle flat fee come fonte della networkFeeCharged.
+
+Non usare più come fee cliente:
+
+POLYGON_FLAT_NETWORK_FEE_USDT
+BSC_FLAT_NETWORK_FEE_USDT
+ETHEREUM_FLAT_NETWORK_FEE_USDT
+
+Non eliminarle ancora dall'ENV: possono rimanere presenti per compatibilità
+ma NON devono più determinare la network fee dinamica.
+
+==================================================
+2. COSTO DA CONSIDERARE
+==================================================
+
+La network fee deve coprire:
+
+TX0:
+Gas Station → Escrow
+
+TX1:
+Escrow → Recipient
+
+TX2:
+Escrow → Fee Wallet
+
+TX3:
+Escrow → Gas Station reclaim
+
+TX3 deve essere considerata nel costo della network fee perché è parte
+del ciclo operativo necessario al modello escrow/reclaim.
+
+NON utilizzare automaticamente 80.000 gas come gas realmente consumato.
+
+==================================================
+3. GAS
+==================================================
+
+TX0 = 21.000 gas.
+
+TX3 = 21.000 gas.
+
+TX1:
+utilizzare estimateGas realistico per il recipient specifico.
+
+TX2:
+utilizzare una stima conservativa verificata per il fee wallet,
+oppure estimateGas se tecnicamente possibile.
+
+Non usare valori arbitrari senza documentazione nel codice.
+
+Utilizzare gasPrice live tramite RPC.
+
+Tutti i calcoli devono essere BigInt-safe.
+
+==================================================
+4. PREZZO NATIVE
+==================================================
+
+Utilizzare un price provider server-side.
+
+Il progetto utilizza già CoinGecko per BTC.
+
+Riutilizzare lo stesso meccanismo/provider ove possibile per:
+
+POL
+BNB
+ETH
+
+NON utilizzare float JavaScript per i calcoli monetari.
+
+Utilizzare conversioni intere/BigInt.
+
+Implementare cache del prezzo per evitare chiamate inutili.
+
+Se il prezzo non è disponibile e la cache è scaduta:
+
+FAIL CLOSED.
+
+Non utilizzare un prezzo arbitrario.
+
+==================================================
+5. SAFETY MARGIN
+==================================================
+
+Implementare il safety margin come parametro configurabile PER RETE.
+
+Default iniziale:
+
+20%
+
+ma NON hardcodare questo valore in più punti.
+
+Esempio:
+
+Polygon → 20%
+BSC → 20%
+Ethereum → 20%
+
+La configurazione deve essere modificabile separatamente dall'Admin Panel.
+
+Non confondere:
+
+PROJECT FEE BPS
+con
+NETWORK FEE SAFETY MARGIN.
+
+Sono due configurazioni completamente diverse.
+
+==================================================
+6. PROJECT FEE
+==================================================
+
+NON modificare il sistema #45.
+
+Il project fee continua a essere:
+
+effectiveFeeBps =
+override rete Admin
+oppure
+DEFAULT_FEE_BPS = 10
+
+Quindi:
+
+Polygon può avere 1%
+BSC 0,10%
+Ethereum 0,50%
+
+indipendentemente.
+
+==================================================
+7. RECIPIENT EXACT
+==================================================
+
+NON MODIFICARE.
+
+Se l'utente richiede:
+
+1 USDT
+
+il recipient deve ricevere:
+
+1.000000 USDT
+
+La network fee è sempre aggiuntiva.
+
+Formula:
+
+grossAmount =
+ceil(targetNet × 10000 / (10000 - projectFeeBps))
+
+totalDeposit =
+grossAmount + networkFeeCharged
+
+==================================================
+8. QUOTE
+==================================================
+
+Il quote deve calcolare una network fee dinamica.
+
+La fee del quote è una STIMA.
+
+Al momento della creazione definitiva:
+
+ricalcolare la network fee live.
+
+Non utilizzare ciecamente la fee del quote precedente.
+
+Il backend deve sempre usare il valore ricalcolato al create time.
+
+==================================================
+9. UX
+==================================================
+
+NON mostrare:
+
+Fee +0.340 USDT
+
+Mostrare separatamente:
+
+Destinatario riceve       1.000000 USDT
+Project fee               0.001001 USDT
+Network fee               0.339000 USDT
+Totale pagato             1.340001 USDT
+
+La network fee nel quote deve avere indicazione:
+
+"Stima"
+
+Se cambia al momento della creazione, restituire il nuovo valore
+in modo esplicito al frontend.
+
+==================================================
+10. GAS SPIKE
+==================================================
+
+Mantenere l'anti-loss esistente.
+
+NON eliminarlo.
+
+NON indebolirlo.
+
+Se al release:
+
+costo stimato reale > networkFeeCharged
+
+→ waiting_for_gas
+
+→ nessuna perdita economica silenziosa.
+
+RPC unavailable al release:
+
+→ fail closed
+→ waiting_for_gas.
+
+==================================================
+11. RECLAIM
+==================================================
+
+NON modificare il sistema reclaim già implementato.
+
+TX3 deve continuare a essere:
+
+fire-and-forget
+idempotente
+pre-persist hash
+recovery scheduler
+crash-safe.
+
+Il reclaim deve migliorare il margine operativo ma NON essere trattato
+come ricavo garantito.
+
+==================================================
+12. MINIMUM FEE
+==================================================
+
+NON introdurre una minimum fee arbitraria.
+
+In particolare NON impostare automaticamente:
+
+Polygon = 0,01
+BSC = 0,10
+Ethereum = 5/10/15
+
+se il costo reale è inferiore.
+
+Se viene ritenuto necessario un floor commerciale, deve essere:
+
+- separato dal costo reale;
+- configurabile dall'Admin;
+- esplicitamente chiamato MINIMUM_NETWORK_FEE;
+- disabilitato di default.
+
+Prima di introdurlo chiedere conferma.
+
+==================================================
+13. MASSIMO
+==================================================
+
+Implementare un eventuale MAX_NETWORK_FEE solo se necessario per
+proteggere l'utente da anomalie RPC/oracle.
+
+Se il costo dinamico supera il limite:
+
+NON applicare automaticamente una fee enorme.
+
+Restituire:
+
+NETWORK_COST_TOO_HIGH
+
+e impedire la creazione.
+
+Il limite deve essere configurabile per rete.
+
+==================================================
+14. AUDIT LOG
+==================================================
+
+Per ogni pagamento registrare, quando disponibile:
+
+network
+gasPrice
+nativePrice
+TX0 gas
+TX1 estimated gas
+TX2 estimated gas
+TX3 gas
+safety margin
+networkFeeCharged
+gasUsed reale TX1
+gasUsed reale TX2
+costo reale complessivo
+reclaim amount
+reclaim gas
+costo netto finale
+
+Questo è fondamentale perché in futuro la fee potrà essere calibrata
+sui DATI REALI e non sulle supposizioni.
+
+==================================================
+15. TEST OBBLIGATORI
+==================================================
+
+Creare test per:
+
+- Polygon gas basso
+- Polygon gas alto
+- BSC gas basso
+- BSC gas alto
+- Ethereum gas basso
+- Ethereum gas alto
+- gasPrice spike
+- native price conversion
+- BSC 18 decimals
+- Polygon/ETH 6 decimals
+- recipient_exact
+- project fee per rete
+- network fee indipendente dal project fee
+- quote vs create
+- RPC unavailable
+- price provider unavailable
+- BigInt overflow
+- MAX_NETWORK_FEE
+- anti-loss
+- waiting_for_gas
+- reclaim
+- crash/restart
+
+==================================================
+16. REGRESSIONI VIETATE
+==================================================
+
+NON modificare il comportamento di:
+
+recipient_exact
+project fee #45
+reclaim #44
+anti-loss
+waiting_for_gas
+BTC
+fee ledger
+
+==================================================
+17. VERIFICA ECONOMICA PRIMA DEL DEPLOY
+==================================================
+
+Prima del deploy produci una tabella con valori REALI ottenuti dal
+nuovo codice:
+
+Polygon
+BSC
+Ethereum
+
+Per ciascuna:
+
+gasPrice
+native price
+gas stimato
+costo reale stimato
+safety margin
+network fee finale
+
+Esempio:
+
+1 USDT
+10 USDT
+100 USDT
+
+La network fee deve essere IDENTICA per importo quando il costo gas
+è identico, perché il gas della transazione è indipendente dall'importo
+in modo sostanziale.
+
+==================================================
+18. DEPLOY
+==================================================
+
+NON fare deploy automaticamente.
+
+Prima:
+
+1. TypeScript clean
+2. test completi
+3. report economico
+4. verifica frontend
+5. verifica Admin Panel
+6. verifica quote
+7. verifica create
+8. STOP
+
+Aspetta la mia approvazione esplicita per il deploy.
+
+==================================================
+
+OBIETTIVO FINALE:
+
+Il cliente deve vedere una network fee:
+
+DINAMICA
+TRASPARENTE
+PROPORZIONATA AL COSTO REALE
+COMPETITIVA
+
+e il sistema deve continuare a essere protetto da:
+
+gas spike
+RPC failure
+price failure
+reclaim failure
+crash/restart
+
+NON tornare a una flat fee.
+
+Procedi con l'implementazione ma FERMATI prima del deploy.

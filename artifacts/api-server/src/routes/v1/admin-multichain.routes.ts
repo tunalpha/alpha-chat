@@ -18,12 +18,18 @@
 import { Router, type Request, type Response, type NextFunction } from "express";
 import { MultiChainTransferModel } from "../../models/multichain-transfer.model";
 import { McFeeOverrideModel }      from "../../models/mc-fee-override.model";
+import {
+  McNetworkFeeConfigModel,
+  getNetworkFeeConfig,
+  DEFAULT_SAFETY_MARGIN_BPS,
+}                                  from "../../models/mc-network-fee-config.model";
 import { DEFAULT_FEE_BPS }         from "../../blockchain/fee-config";
 import { authenticate }            from "../../middleware/authenticate.middleware";
 import { requireAdmin }            from "../../middleware/require-admin.middleware";
 import { logger }                  from "../../lib/logger";
 import { AppError }                from "../../errors/AppError";
 import { AuditEventModel }         from "../../models/audit-event.model";
+import { getNativePriceCacheStatus } from "../../blockchain/native-price-provider";
 
 // ─── Reti supportate ─────────────────────────────────────────────────────────
 
@@ -324,6 +330,188 @@ router.delete(
     }
   },
 );
+
+// ─── GET /network-fee-config ──────────────────────────────────────────────────
+//
+// Restituisce la configurazione safety margin per ogni rete EVM.
+// Separata dalla project fee (fee-config). BTC: non applicabile (no gas).
+// Espone anche lo stato della cache prezzi nativi per diagnostica.
+
+router.get("/network-fee-config", async (_req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const evmNetworks: SupportedNetwork[] = ["polygon", "ethereum", "bsc"];
+    const docs = await McNetworkFeeConfigModel.find({ network: { $in: evmNetworks } }).lean();
+    const overrideMap = new Map(docs.map(d => [d.network, d]));
+
+    const networks = evmNetworks.map((network: SupportedNetwork) => {
+      const doc = overrideMap.get(network);
+      return {
+        network,
+        label:               network.charAt(0).toUpperCase() + network.slice(1),
+        safety_margin_bps:   doc?.safety_margin_bps   ?? DEFAULT_SAFETY_MARGIN_BPS,
+        max_network_fee_raw: doc?.max_network_fee_raw  ?? null,
+        is_override:         !!doc,
+        updated_at:          doc?.updated_at?.toISOString() ?? null,
+        updated_by:          doc?.updated_by_admin_id       ?? null,
+        note:                doc?.note                      ?? null,
+      };
+    });
+
+    // Aggiunge diagnostica cache prezzi (utile per debug)
+    const priceCache = getNativePriceCacheStatus();
+
+    res.json({
+      networks,
+      default_safety_margin_bps: DEFAULT_SAFETY_MARGIN_BPS,
+      price_cache: priceCache,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ─── PUT /network-fee-config/:network — super_admin ───────────────────────────
+//
+// Aggiorna la configurazione safety margin per una rete specifica.
+// Body: { safety_margin_bps: number [10000–50000], max_network_fee_raw?: string|null, note?: string }
+
+router.put(
+  "/network-fee-config/:network",
+  requireAdmin("super_admin"),
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const network = req.params["network"] as string;
+      const evmNetworks = ["polygon", "ethereum", "bsc"];
+
+      if (!evmNetworks.includes(network)) {
+        throw new AppError("INVALID_NETWORK", 400,
+          `Safety margin supportato solo per reti EVM: ${evmNetworks.join(", ")}. BTC non ha gas dinamico.`);
+      }
+
+      const { safety_margin_bps, max_network_fee_raw, note } =
+        req.body as { safety_margin_bps?: unknown; max_network_fee_raw?: unknown; note?: unknown };
+
+      if (safety_margin_bps === undefined || safety_margin_bps === null) {
+        throw new AppError("MISSING_FIELD", 400, "Il campo 'safety_margin_bps' è obbligatorio");
+      }
+
+      const marginBps = Number(safety_margin_bps);
+      if (!Number.isInteger(marginBps) || marginBps < 10_000 || marginBps > 50_000) {
+        throw new AppError("INVALID_SAFETY_MARGIN", 400,
+          `safety_margin_bps deve essere un intero in [10000, 50000] (= tra 0% e 400%), ricevuto: ${safety_margin_bps}`);
+      }
+
+      // max_network_fee_raw: opzionale, stringa BigInt o null
+      let maxFeeRaw: string | null = null;
+      if (max_network_fee_raw !== undefined && max_network_fee_raw !== null && max_network_fee_raw !== "") {
+        // Valida che sia una stringa BigInt valida
+        try {
+          BigInt(max_network_fee_raw as string);
+          maxFeeRaw = String(max_network_fee_raw);
+        } catch {
+          throw new AppError("INVALID_MAX_FEE", 400,
+            `max_network_fee_raw deve essere una stringa BigInt valida (o null), ricevuto: ${max_network_fee_raw}`);
+        }
+      }
+
+      const adminId = req.adminUser!.userId;
+      const now     = new Date();
+
+      await McNetworkFeeConfigModel.findOneAndUpdate(
+        { network } as Record<string, unknown>,
+        {
+          $set: {
+            safety_margin_bps:   marginBps,
+            max_network_fee_raw: maxFeeRaw,
+            updated_at:          now,
+            updated_by_admin_id: adminId,
+            note: typeof note === "string" ? note.trim().slice(0, 500) || null : null,
+          },
+        },
+        { upsert: true, new: true },
+      ).lean();
+
+      await AuditEventModel.create({
+        event:      "MC_ADMIN_NETWORK_FEE_CONFIG_UPDATE",
+        user_id:    adminId,
+        created_at: now.toISOString(),
+        metadata:   {
+          network,
+          safety_margin_bps: marginBps,
+          max_network_fee_raw: maxFeeRaw,
+          admin_role: req.adminUser!.adminRole,
+        },
+      });
+
+      logger.info(
+        { network, safety_margin_bps: marginBps, max_network_fee_raw: maxFeeRaw, adminUserId: adminId },
+        "[Admin] MC network fee config aggiornata",
+      );
+
+      res.json({
+        ok:                  true,
+        network,
+        safety_margin_bps:   marginBps,
+        max_network_fee_raw: maxFeeRaw,
+        updated_at:          now.toISOString(),
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// ─── DELETE /network-fee-config/:network — ripristina default safety margin ───
+
+router.delete(
+  "/network-fee-config/:network",
+  requireAdmin("super_admin"),
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const network = req.params["network"] as string;
+      const evmNetworks = ["polygon", "ethereum", "bsc"];
+
+      if (!evmNetworks.includes(network)) {
+        throw new AppError("INVALID_NETWORK", 400, `Rete non valida: ${network}`);
+      }
+
+      await McNetworkFeeConfigModel.findOneAndDelete({ network } as Record<string, unknown>);
+
+      await AuditEventModel.create({
+        event:      "MC_ADMIN_NETWORK_FEE_CONFIG_RESET",
+        user_id:    req.adminUser!.userId,
+        created_at: new Date().toISOString(),
+        metadata:   { network, reset_to_default: true, admin_role: req.adminUser!.adminRole },
+      });
+
+      logger.info({ network, adminUserId: req.adminUser!.userId }, "[Admin] MC network fee config reset → default");
+
+      res.json({
+        ok:                            true,
+        network,
+        reset_to_default:              true,
+        default_safety_margin_bps:     DEFAULT_SAFETY_MARGIN_BPS,
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// ─── GET /network-fee-config/prices — stato cache prezzi nativi ───────────────
+//
+// Per diagnostica: mostra l'età della cache CoinGecko per ogni rete.
+// Utile per verificare che il provider sia healthy prima di creare transfer.
+
+router.get("/network-fee-config/prices", async (_req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const status = getNativePriceCacheStatus();
+    const allHealthy = Object.values(status).every(s => s !== null && s.ageSeconds < 300);
+    res.json({ prices: status, healthy: allHealthy });
+  } catch (err) {
+    next(err);
+  }
+});
 
 // ─── Admin Actions (super_admin only) ─────────────────────────────────────────
 

@@ -132,6 +132,29 @@ export interface IMultiChainTransfer {
    */
   amount_mode: "send_amount" | "recipient_exact" | null;
 
+  // ── Dynamic Fee Audit Trail (§14 spec) ────────────────────────────────────
+  /**
+   * Campi di audit della fee dinamica — popolati al create time.
+   * Usati per calibrare il modello nel tempo con dati reali.
+   *
+   * gas_price_at_create:    gasPrice in wei al momento della stima (BigInt str)
+   * native_price_at_create: prezzo USD del token nativo (intero, es. 600 per BNB)
+   * tx1_gas_estimated:      gas stimato per TX1 (live o fallback 80k)
+   * tx2_gas_estimated:      gas stimato per TX2 (sempre 50k)
+   * safety_margin_bps_used: margin usato per questa transazione
+   *
+   * Campi post-release (popolati da _releaseEvm dopo TX1+TX2):
+   * gas_used_tx1:           gasUsed reale TX1 (BigInt str)
+   * gas_used_tx2:           gasUsed reale TX2 (BigInt str)
+   */
+  gas_price_at_create:    string | null;
+  native_price_at_create: number | null;
+  tx1_gas_estimated:      number | null;
+  tx2_gas_estimated:      number | null;
+  safety_margin_bps_used: number | null;
+  gas_used_tx1:           string | null;
+  gas_used_tx2:           string | null;
+
   // ── Gas Reclaim TX3 ────────────────────────────────────────────────────────
   /**
    * TX3: reclaim del POL/ETH/BNB residuo nell'escrow verso la Gas Station.
@@ -247,6 +270,15 @@ const MultiChainTransferSchema = new Schema<MultiChainTransferDocument>(
       enum: ["GAS_STATION_DEPLETED", "NETWORK_COST_TOO_HIGH", "RPC_UNAVAILABLE", null],
       default: null,
     },
+
+    // ── Dynamic Fee Audit Trail ──────────────────────────────────────────────
+    gas_price_at_create:    { type: String, default: null },
+    native_price_at_create: { type: Number, default: null },
+    tx1_gas_estimated:      { type: Number, default: null },
+    tx2_gas_estimated:      { type: Number, default: null },
+    safety_margin_bps_used: { type: Number, default: null },
+    gas_used_tx1:           { type: String, default: null },
+    gas_used_tx2:           { type: String, default: null },
 
     // ── Gas Reclaim TX3 ──────────────────────────────────────────────────────
     tx_hash_reclaim_submitted: { type: String, default: null },  // C-01: submitted, not yet confirmed

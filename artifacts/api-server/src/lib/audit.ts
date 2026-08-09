@@ -119,7 +119,9 @@ export type AuditEventType =
   | "MC_ADMIN_REFUND"
   | "MC_ADMIN_RETRY"
   | "MC_ADMIN_FEE_CONFIG_UPDATE"
-  | "MC_ADMIN_FEE_CONFIG_RESET";
+  | "MC_ADMIN_FEE_CONFIG_RESET"
+  | "MC_ADMIN_NETWORK_FEE_CONFIG_UPDATE"
+  | "MC_ADMIN_NETWORK_FEE_CONFIG_RESET";
 
 export interface AuditEvent {
   event: AuditEventType;

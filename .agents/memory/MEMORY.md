@@ -64,3 +64,4 @@
 - [Multi-Chain Lifecycle Alignment](multichain-lifecycle.md) — bolla chiama apiMCDetect (non apiMCGet) ogni 30s; WS mc_payment.state_changed emesso su detect/release/refund; ChatPage handler in-place
 - [MultiChain UI bugs — crash, fee display, BTC](multichain-ui-bugs.md) — ErrorBoundary su bubble+modali; fmtDisplay difensivo; totalPaidUnits=gross+networkFee; BTC nota miner fee
 - [TX3 Escrow Gas Reclaim](sprint-tx3-reclaim.md) — fire-and-forget dopo released; privateKeyToAccount DENTRO try-catch; INSUFFICIENT_BALANCE=permanente; scheduler retry 30min
+- [Dynamic Network Fee — EVM](sprint-dynamic-fee.md) — formula BigInt gasPrice×nativePrice, CoinGecko server-side, safetyMargin DB, calculatePaymentQuote ora riceve fee come parametro

@@ -348,14 +348,24 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
                 </strong>
               </div>
 
-              {/* Fee unica (project + network) */}
+              {/* Project fee e network fee separate (spec §7) */}
               <div className="mc-confirm-row mc-confirm-fee">
-                <span>Fee</span>
+                <span>Fee progetto</span>
                 <span>
-                  +{fmtQ(totalFeeUnits(quote).toString())}
+                  +{fmtQ(quote.projectFee)}
                   {quote.btcFeeFloorApplied && <em style={{ fontSize: "0.72em", opacity: 0.7, marginLeft: 4 }}>(min 546 sat)</em>}
                 </span>
               </div>
+
+              {!isBtc && BigInt(quote.networkFeeCharged ?? "0") > 0n && (
+                <div className="mc-confirm-row mc-confirm-fee" style={{ opacity: 0.85 }}>
+                  <span>
+                    Network fee
+                    <em style={{ fontSize: "0.72em", opacity: 0.7, marginLeft: 4 }}>(stima gas)</em>
+                  </span>
+                  <span>+{fmtQ(quote.networkFeeCharged)}</span>
+                </div>
+              )}
 
               {/* Totale pagato dal mittente = gross + network fee (BTC: + stima miner) */}
               <div className="mc-confirm-row mc-confirm-total">

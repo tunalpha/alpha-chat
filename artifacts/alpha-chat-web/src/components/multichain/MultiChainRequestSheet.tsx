@@ -362,11 +362,17 @@ export function MultiChainRequestSheet({ conversationId, toUserId, toName, onClo
                     </span>
                   </div>
                   <div className="mc-confirm-row mc-confirm-fee">
-                    <span>Fee</span>
-                    <span>−{fmtQ(totalFeeUnits(quote).toString())}
+                    <span>Fee progetto</span>
+                    <span>−{fmtQ(quote.projectFee)}
                       {quote.btcFeeFloorApplied && <em style={{ fontSize: "0.72em", opacity: 0.7, marginLeft: 4 }}>(min 546 sat)</em>}
                     </span>
                   </div>
+                  {!isBtc && BigInt(quote.networkFeeCharged ?? "0") > 0n && (
+                    <div className="mc-confirm-row mc-confirm-fee" style={{ opacity: 0.85 }}>
+                      <span>Network fee <em style={{ fontSize: "0.72em", opacity: 0.7 }}>(stima)</em></span>
+                      <span>−{fmtQ(quote.networkFeeCharged)}</span>
+                    </div>
+                  )}
                   <div className="mc-confirm-row mc-confirm-net">
                     <span>Tu ricevi</span>
                     <strong>{fmtQ(quote.netAmount)}</strong>
@@ -384,11 +390,17 @@ export function MultiChainRequestSheet({ conversationId, toUserId, toName, onClo
                     </strong>
                   </div>
                   <div className="mc-confirm-row mc-confirm-fee">
-                    <span>Fee</span>
-                    <span>+{fmtQ(totalFeeUnits(quote).toString())}
+                    <span>Fee progetto</span>
+                    <span>+{fmtQ(quote.projectFee)}
                       {quote.btcFeeFloorApplied && <em style={{ fontSize: "0.72em", opacity: 0.7, marginLeft: 4 }}>(min 546 sat)</em>}
                     </span>
                   </div>
+                  {!isBtc && BigInt(quote.networkFeeCharged ?? "0") > 0n && (
+                    <div className="mc-confirm-row mc-confirm-fee" style={{ opacity: 0.85 }}>
+                      <span>Network fee <em style={{ fontSize: "0.72em", opacity: 0.7 }}>(stima)</em></span>
+                      <span>+{fmtQ(quote.networkFeeCharged)}</span>
+                    </div>
+                  )}
                   {/* Totale che pagherà il richiedente — la parte più importante per la UX */}
                   <div className="mc-confirm-row mc-confirm-total">
                     <span>{toName} pagherà</span>

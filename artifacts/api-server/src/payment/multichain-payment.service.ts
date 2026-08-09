@@ -46,11 +46,15 @@ import {
   buildDefaultFeeRegistry,
   BTC_FEE_CONFIG,
   RPC_CONFIGS,
-  getEVMFlatNetworkFee,
   NATIVE_ASSET_SYMBOL,
   getNativePriceUSDT,
   MC_ANTI_LOSS_GAS_UNITS,
+  FEE_WALLETS,
 } from "../blockchain/multichain-config";
+import {
+  estimateDynamicNetworkFee,
+  type DynamicFeeResult,
+} from "../blockchain/dynamic-fee-estimator";
 import { calculateFee, assertFeeInvariant, DEFAULT_FEE_BPS } from "../blockchain/fee-config";
 import { getDbNetworkFeeBps } from "../models/mc-fee-override.model";
 import {
@@ -563,15 +567,46 @@ export async function createMultiChainTransfer(
   const dbFeeBps       = await getDbNetworkFeeBps(params.network as MCNetworkId);
   const effectiveFeeBps = dbFeeBps ?? feeConfig.feeBps;
 
-  const quote = calculatePaymentQuote({
-    amountMode:           effectiveMode,
-    grossAmountUnits:     params.grossAmountUnits,
-    targetNetAmountUnits: params.targetNetAmountUnits,
-    network:              params.network,
-    asset:                params.asset,
-    feeBps:               effectiveFeeBps,
-    feeWallet:            feeConfig.feeWallet,
-  });
+  // ── Fee network dinamica (EVM only) ──────────────────────────────────────────
+  // Calcolata PRIMA del quote per iniettarla come parametro puro.
+  // Per BTC: nessuna fee dinamica (miner fee nel buffer separato).
+  // FAIL-CLOSED: se RPC o CoinGecko non disponibili → lancia eccezione (503).
+  const isBtcTransfer = isBitcoin(params.network);
+  let dynFee: DynamicFeeResult | null = null;
+  let injectedNetworkFee = 0n;
+
+  if (!isBtcTransfer) {
+    const assetAddress = getAssetAddress(params.network, params.asset);
+    const feeWallet    = FEE_WALLETS[params.network];
+
+    // Stima il gross (approssimativo) per il context dell'estimateGas.
+    // Per send_amount: usa il gross diretto.
+    // Per recipient_exact: non abbiamo ancora il gross → si usa il target (conservativo).
+    const grossForEst = BigInt(params.grossAmountUnits ?? params.targetNetAmountUnits ?? "0");
+
+    dynFee = await estimateDynamicNetworkFee({
+      network:         params.network as MCNetworkId,
+      assetAddress,
+      grossAmount:     grossForEst,
+      recipientWallet: params.recipientWallet ?? null,
+      feeWallet:       feeWallet ?? null,
+    });
+
+    injectedNetworkFee = dynFee.networkFeeCharged;
+  }
+
+  const quote = calculatePaymentQuote(
+    {
+      amountMode:           effectiveMode,
+      grossAmountUnits:     params.grossAmountUnits,
+      targetNetAmountUnits: params.targetNetAmountUnits,
+      network:              params.network,
+      asset:                params.asset,
+      feeBps:               effectiveFeeBps,
+      feeWallet:            feeConfig.feeWallet,
+    },
+    injectedNetworkFee,
+  );
 
   const grossAmount       = BigInt(quote.grossAmount);
   const projectFee        = BigInt(quote.projectFee);
@@ -632,6 +667,12 @@ export async function createMultiChainTransfer(
     min_deposit_amount:   minDepositAmount,
     // STEP 3: modalità importo — preservata nel DB per audit e display
     amount_mode:          effectiveMode,
+    // Dynamic fee audit trail (§14 spec) — solo per EVM
+    gas_price_at_create:    dynFee?.gasPriceWei.toString()       ?? null,
+    native_price_at_create: dynFee?.nativePriceUsd               ?? null,
+    tx1_gas_estimated:      dynFee?.tx1Gas                       ?? null,
+    tx2_gas_estimated:      dynFee?.tx2Gas                       ?? null,
+    safety_margin_bps_used: dynFee?.safetyMarginBps              ?? null,
   });
 
   logger.info(
