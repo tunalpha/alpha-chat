@@ -1,0 +1,139 @@
+Sì. Non manderei in produzione una network fee Ethereum fissa di 15 USDT senza prima verificare il costo reale del tuo flusso. Sarebbe poco competitiva.
+
+Ti consiglio questo prompt, che ordina all’agente di rivedere la fee in modo aggressivo ma senza permettere perdite:
+
+URGENTE — RIVEDERE NETWORK FEE ETHEREUM/BSC PER COMPETITIVITÀ
+NON aumentare ulteriormente le fee.
+L'obiettivo è rendere AlphaChat competitivo, mantenendo contemporaneamente una protezione anti-perdita.
+La network fee di 15 USDT su Ethereum NON deve essere considerata un valore definitivo.
+PRIMA DI MODIFICARE IL CODICE:
+1. Analizza il costo REALE del nostro flusso Ethereum:
+   Gas Station → Escrow → Recipient → eventuale Fee Wallet.
+2. Verifica concretamente:
+   - gasPrice attuale;
+   - gas estimate reale;
+   - ETH effettivamente inviato dalla Gas Station;
+   - ETH effettivamente consumato dalla TX;
+   - ETH residuo nell'escrow;
+   - ETH recuperabile;
+   - ETH NON recuperabile;
+   - costo reale complessivo per pagamento.
+3. NON assumere automaticamente che 341.000 gas rappresentino il costo necessario.
+   Verifica se il top-up dell'escrow è sovradimensionato.
+4. Determina il MINIMO costo necessario per completare il pagamento in sicurezza.
+==================================================
+OBIETTIVO
+==================================================
+Vogliamo:
+CLIENTE:
+recipient amount
++
+project fee 0,10%
++
+network fee competitiva
+DESTINATARIO:
+riceve esattamente l'importo richiesto.
+ALPHACHAT:
+incassa lo 0,10%.
+NETWORK FEE:
+deve coprire il costo reale della blockchain con un piccolo buffer.
+NON vogliamo sovraccaricare il cliente.
+==================================================
+NETWORK FEE DINAMICA
+==================================================
+Proporre preferibilmente:
+networkFee =
+costo reale stimato
++
+buffer ragionevole
+NON utilizzare automaticamente una flat fee di 15 USDT.
+Se una flat fee è necessaria, trovare il valore minimo che protegga AlphaChat nelle normali condizioni di rete.
+Considerare un eventuale:
+MIN_NETWORK_FEE
+ma mantenerlo il più basso possibile.
+==================================================
+ANTI-LOSS
+==================================================
+Mantenere il controllo anti-loss.
+Al momento del release:
+networkFeeCharged >= estimatedBlockchainCost
+→ RELEASE
+networkFeeCharged < estimatedBlockchainCost
+→ waiting_for_gas
+RPC non disponibile:
+→ waiting_for_gas
+NON permettere mai un pagamento in perdita.
+==================================================
+COMPETITIVITÀ
+==================================================
+Calcolare la network fee per:
+1 USDT
+10 USDT
+50 USDT
+100 USDT
+500 USDT
+1.000 USDT
+per:
+BSC
+Ethereum
+Polygon
+Mostrare:
+recipient
+project fee
+network fee
+totale cliente
+costo reale AlphaChat
+margine AlphaChat
+==================================================
+IMPORTANTISSIMO
+==================================================
+Non confondere:
+GAS RESERVE
+con
+GAS ACTUALLY CONSUMED.
+Se il sistema invia 320.000 gas equivalenti all'escrow ma ne consuma realmente 65.000, verificare se il residuo può essere recuperato.
+Se il residuo viene realmente perso perché l'escrow è single-use, documentarlo.
+Ma verificare anche se possiamo ridurre il top-up senza compromettere il pagamento.
+==================================================
+BSC
+==================================================
+BSC network fee attuale proposta:
+1 USDT.
+Verificare se può essere ridotta sulla base del costo reale.
+Non modificare Polygon.
+==================================================
+ETHEREUM
+==================================================
+La network fee di 15 USDT è TEMPORANEA e NON approvata come valore definitivo.
+Determinare un valore competitivo.
+Se il costo reale permette una fee di 1, 2, 3, 5 USDT ecc., proporre il valore più basso che mantenga un buffer sufficiente.
+==================================================
+NON TOCCARE
+==================================================
+NON modificare:
+- project fee 0,10%
+- recipient_exact
+- Polygon
+- escrow architecture
+- TX2
+- fee wallet
+- wallet generation
+finché il nuovo calcolo economico non è completato.
+==================================================
+REPORT PRIMA DEL CODICE
+==================================================
+Produrre una tabella:
+CHAIN | GAS REALE | COSTO REALE | BUFFER | NETWORK FEE PROPOSTA | MARGINE
+e una seconda:
+IMPORTO | ETH FEE | BSC FEE | POLYGON FEE | TOTALE CLIENTE
+per:
+1 / 10 / 50 / 100 / 500 / 1000 USDT.
+Obiettivo finale:
+NETWORK FEE PIÙ BASSA POSSIBILE
++
+NESSUNA PERDITA PER ALPHACHAT
++
+PREZZO COMPETITIVO.
+NON implementare nuove fee finché il report non è approvato.
+
+La cosa più importante è che l’agente controlli il top-up dell’escrow. Se scopriamo che il sistema sta inviando molto più ETH/BNB del necessario e poi lo lascia bloccato, possiamo intervenire lì e abbassare drasticamente il costo senza scaricarlo sul cliente.
