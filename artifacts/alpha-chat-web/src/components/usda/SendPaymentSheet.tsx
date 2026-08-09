@@ -291,7 +291,7 @@ export function SendPaymentSheet({
     let pollAborted  = false;
     let signErrorMsg: string | null = null;
 
-    console.log("[USDA-DIAG] sendTransaction START", { to: contractAddress.slice(0, 10), chainId: 137 });
+    fetch("/api/v1/diagnostics/events", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event: "USDA-DIAG:START", chainId: 137 }) });
     account.sendTransaction({
       to:      contractAddress,
       data:    calldata,
@@ -299,9 +299,9 @@ export function SendPaymentSheet({
       value:   BigInt(0),
       chainId: 137,
     }).then((r: unknown) => {
-      console.log("[USDA-DIAG] RESOLVED", r);
+      fetch("/api/v1/diagnostics/events", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event: "USDA-DIAG:RESOLVED", result: String(r) }) });
     }).catch((err: unknown) => {
-      console.log("[USDA-DIAG] REJECTED", (err as Error)?.message);
+      fetch("/api/v1/diagnostics/events", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ event: "USDA-DIAG:REJECTED", error: (err as Error)?.message ?? String(err) }) });
       const msg = (err as Error)?.message ?? "";
       if (/reject|cancel|denied|refused|user.*cancel|user rejected/i.test(msg)) {
         // Reject esplicito dell'utente → interrompe subito il polling.
