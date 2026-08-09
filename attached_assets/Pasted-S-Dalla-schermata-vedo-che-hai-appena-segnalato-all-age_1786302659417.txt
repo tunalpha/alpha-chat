@@ -1,0 +1,128 @@
+Sì. Dalla schermata vedo che hai appena segnalato all’agente il problema corretto: “transazione completata senza firma”.
+
+A questo punto non deve fare altri tentativi casuali. Gli darei questo prompt, molto rigido:
+
+STOP. NON MODIFICARE CODICE FINCHÉ NON HAI IDENTIFICATO LA CAUSA ESATTA.
+
+Abbiamo un bug critico: una transazione Multichain risulta/comunica come completata senza che l’utente abbia effettuato la firma nel wallet.
+
+Questo comportamento è INACCETTABILE. La regola deve essere assoluta:
+
+NESSUNA transazione EVM può essere considerata inviata, confermata, rilasciata o completata se sendTransaction() non ha restituito un transaction hash valido generato dal wallet dopo la firma dell’utente.
+
+1. Diagnosi obbligatoria — sola lettura
+
+Analizza end-to-end:
+
+MultiChainSendSheet.tsx
+→ handleSign()
+→ account.sendTransaction()
+→ WalletConnect / Trust Wallet
+→ transaction hash
+→ localStorage recovery
+→ polling frontend
+→ apiMCDetect
+→ backend transfer state machine
+→ blockchain confirmation
+→ stato visualizzato nella chat/bolla.
+
+Devi stabilire esattamente quale evento sta facendo avanzare lo stato senza firma.
+
+In particolare verifica se:
+
+* il click su “Firma transazione” può modificare lo stato prima della firma;
+* sendTransaction() viene eseguito fire-and-forget e il codice considera erroneamente la Promise come successo;
+* signed=true viene scritto in localStorage prima di ricevere il vero TX hash;
+* il polling può partire come se la transazione fosse stata firmata;
+* apiMCDetect può trovare un deposito precedente/diretto e far avanzare il transfer senza la firma corrente;
+* il backend può passare a detecting/releasing/released senza tx_hash della transazione sender;
+* il recovery può riutilizzare un vecchio signed=true;
+* Ho inviato può chiudere/avanzare lo stato senza una firma reale;
+* una transazione manuale o un deposito precedente può essere associato erroneamente al transfer corrente.
+
+2. Regola di sicurezza da implementare
+
+Per EVM creare una macchina a stati rigorosa:
+
+ready
+→ switching
+→ signing
+→ signed
+→ detecting
+→ confirmed
+
+Mai saltare signing → signed senza TX hash reale.
+
+signed = true deve essere scritto solo dopo aver ottenuto un transaction hash valido da account.sendTransaction().
+
+Se l’utente:
+
+* chiude Trust Wallet;
+* rifiuta;
+* annulla;
+* non firma;
+* WalletConnect fallisce;
+* timeout;
+* perde la connessione;
+
+allora NON deve risultare inviata, non deve partire un polling di conferma come se fosse stata firmata e non deve essere mostrato “Transazione inviata”.
+
+3. Backend source of truth
+
+Il backend deve accettare il passaggio a stato detecting/releasing/released soltanto quando esiste una prova verificabile della transazione corrente.
+
+Non usare semplicemente:
+
+deposit trovato → transfer completato
+
+senza verificare che il deposito corrisponda al transfer corrente e ai parametri attesi.
+
+4. Protezione contro vecchi transfer
+
+Verifica anche:
+
+* transferId;
+* escrow address;
+* token contract;
+* chainId;
+* sender;
+* recipient;
+* amount;
+* transaction hash;
+* block/confirmation;
+* timestamp;
+* stato corrente.
+
+Un deposito precedente o una TX di un altro transfer non deve mai completare il transfer corrente.
+
+5. Test obbligatori
+
+Prima di dichiarare il fix concluso devi simulare/verificare:
+
+1. Trust Wallet aperto → utente firma → TX hash → successo.
+2. Trust Wallet aperto → utente rifiuta → nessun successo.
+3. Trust Wallet aperto → utente chiude senza firmare → nessun successo.
+4. WalletConnect errore → nessun successo.
+5. PWA riaperta con recovery → nessun falso signed.
+6. Vecchio deposito presente → non deve completare un nuovo transfer.
+7. TX hash reale → detect → confirmation → release.
+
+Non modificare USDA.
+
+Non modificare BTC.
+
+Non cambiare fee, gas, sweep o backend non correlato al problema.
+
+Prima restituisci:
+
+ROOT CAUSE: cosa sta facendo avanzare il transfer senza firma.
+
+FILE RESPONSABILE: file e funzione esatta.
+
+FIX MINIMO: modifica necessaria.
+
+TEST: come hai dimostrato che senza firma il transfer non può più risultare completato.
+
+Solo dopo questa diagnosi puoi modificare il codice.
+
+Questo è il prompt che userei adesso: prima deve dimostrare perché succede, poi correggere. Non deve più “provare” soluzioni alla cieca.

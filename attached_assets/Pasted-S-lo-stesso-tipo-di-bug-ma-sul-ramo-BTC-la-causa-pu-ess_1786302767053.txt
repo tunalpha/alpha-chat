@@ -1,0 +1,288 @@
+Sì. È lo stesso tipo di bug, ma sul ramo BTC la causa può essere diversa: qui non esiste una firma EVM. Il problema evidente dalla schermata è che il frontend mostra “Pagamento confermato!” senza che sia stata necessariamente effettuata una nuova transazione BTC.
+
+Non farei modificare nulla alla cieca. Manderei questo prompt unico e definitivo:
+
+🚨 BUG CRITICO BTC — FALSE PAYMENT CONFIRMED
+
+La schermata mostra:
+
+“Pagamento confermato! — Il deposito Bitcoin è stato rilevato.”
+
+ma l’utente non ha necessariamente effettuato un nuovo deposito.
+
+Abbiamo già avuto lo stesso problema concettuale su EVM: lo stato del transfer viene fatto avanzare senza una prova certa dell’azione relativa a quel transfer.
+
+STOP: prima diagnosi, poi codice
+
+NON modificare ancora alcun file.
+
+Devi prima individuare la ROOT CAUSE esatta del falso confirmed/released BTC.
+
+⸻
+
+1. Ricostruisci il flusso BTC completo
+
+Analizza:
+
+MultiChainSendSheet.tsx
+→ creazione transfer BTC
+→ escrowWallet
+→ minDepositAmount
+→ polling frontend
+→ apiMCDetect
+→ detectMultiChainDeposit
+→ BTC adapter
+→ blockchain BTC
+→ stato MongoDB
+→ MultiChainPaymentBubble
+
+Individua esattamente chi decide che il pagamento è confermato.
+
+⸻
+
+2. Regola fondamentale BTC
+
+Per BTC NON esiste una firma nell’app.
+
+Quindi il sistema deve considerare il pagamento confermato SOLO dopo avere trovato sulla blockchain Bitcoin una transazione reale che appartenga inequivocabilmente al transfer corrente.
+
+Non è sufficiente:
+
+* esistenza dell’escrow address;
+* saldo attuale dell’escrow;
+* minDepositAmount;
+* stato precedente del transfer;
+* localStorage;
+* polling riuscito;
+* una transazione vecchia;
+* un deposito appartenente a un altro transfer.
+
+⸻
+
+3. Verifica obbligatoria della transazione
+
+Per ogni detect BTC devi verificare almeno:
+
+transferId
+
+escrowWallet
+
+BTC network
+
+amount atteso
+
+transaction ID reale
+
+output della TX verso l’escrow
+
+importo dell’output
+
+block/confirmation
+
+timestamp compatibile con il transfer
+
+La TX rilevata deve essere associabile univocamente al transfer corrente.
+
+Una transazione precedente sullo stesso address non deve poter completare un nuovo transfer.
+
+⸻
+
+4. Controlla immediatamente il problema più probabile
+
+Verifica se detectMultiChainDeposit sta facendo qualcosa di simile a:
+
+balance >= minDepositAmount
+
+e poi:
+
+confirmed = true
+
+Se sì, questo è insufficiente.
+
+Un escrow Bitcoin può avere un saldo proveniente da una transazione precedente.
+
+Devi distinguere:
+
+saldo storico dell’escrow
+
+da
+
+nuovo deposito appartenente a questo transfer.
+
+⸻
+
+5. Snapshot iniziale obbligatorio
+
+Quando viene creato un nuovo transfer BTC, salva uno snapshot del deposito iniziale:
+
+btc_balance_before
+
+e, se possibile, l’insieme/ultimo stato degli UTXO già presenti sull’address.
+
+La detect successiva deve cercare nuovi UTXO / nuova TX rispetto allo snapshot.
+
+Non deve usare semplicemente il saldo totale dell’address.
+
+⸻
+
+6. Importo corretto
+
+Verifica anche le unità:
+
+BTC → satoshi
+
+satoshi → BTC
+
+Non devono mai essere confusi:
+
+BTC amount
+
+satoshi amount
+
+minDepositAmount
+
+network fee
+
+L’importo mostrato nella UI deve provenire dal valore corretto del transfer, non da una conversione errata del backend.
+
+⸻
+
+7. Recovery
+
+Controlla anche localStorage.
+
+Un transfer BTC recuperato dal browser deve essere validato contro il backend.
+
+Se:
+
+* transfer terminale;
+* transfer cancellato;
+* transfer scaduto;
+* escrow non valido;
+* transfer non più esistente;
+* transfer già completato;
+
+allora deve essere eliminato dal recovery locale.
+
+Mai mostrare “Pagamento confermato” solo perché esiste un vecchio transfer in localStorage.
+
+⸻
+
+8. Stato corretto
+
+La macchina BTC deve essere:
+
+awaiting_deposit
+
+↓
+
+detecting
+
+↓
+
+TX BTC reale trovata
+
+↓
+
+deposit_detected
+
+↓
+
+conferme blockchain richieste
+
+↓
+
+confirmed
+
+↓
+
+releasing
+
+↓
+
+released
+
+Se non esiste una TX BTC reale:
+
+NON può mai apparire “Pagamento confermato”.
+
+⸻
+
+9. Attenzione alla bolla
+
+MultiChainPaymentBubble deve essere solamente una rappresentazione dello stato reale del backend.
+
+Non deve autonomamente trasformare:
+
+awaiting_deposit → confirmed
+
+sulla base del polling frontend.
+
+Il frontend deve chiedere lo stato al backend e rappresentarlo.
+
+⸻
+
+10. Test obbligatori
+
+Prima di dichiarare il lavoro concluso devi verificare questi casi:
+
+BTC-01 — nuovo transfer, nessun deposito → resta awaiting_deposit.
+
+BTC-02 — escrow contiene già BTC da un vecchio transfer → NON confermare il nuovo transfer.
+
+BTC-03 — nuova TX BTC verso escrow con importo corretto → rilevare il nuovo deposito.
+
+BTC-04 — TX verso altro address → ignorare.
+
+BTC-05 — importo inferiore al minimo → ignorare.
+
+BTC-06 — TX vecchia precedente alla creazione del transfer → ignorare.
+
+BTC-07 — nuova TX corretta ma ancora senza conferme sufficienti → stato intermedio, NON confirmed.
+
+BTC-08 — conferme sufficienti → confirmed.
+
+BTC-09 — recovery dopo chiusura PWA → deve recuperare correttamente lo stesso transfer senza falsi positivi.
+
+BTC-10 — nessuna TX reale → impossibile arrivare a confirmed/released.
+
+⸻
+
+11. NON TOCCARE
+
+Non modificare:
+
+* USDA;
+* EVM signing;
+* fee;
+* gas station;
+* sweep BNB/ETH;
+* Trust Wallet;
+* WalletConnect;
+* altre chain.
+
+Modifica esclusivamente ciò che è necessario per correggere BTC deposit detection / recovery / state transition.
+
+⸻
+
+RISPOSTA OBBLIGATORIA PRIMA DEL CODICE
+
+Restituisci prima:
+
+ROOT CAUSE: …
+
+FUNZIONE CHE GENERA IL FALSE CONFIRMED: …
+
+CONDIZIONE ERRATA: …
+
+COME VIENE ASSOCIATA LA TX AL TRANSFER: …
+
+FIX MINIMO: …
+
+Solo dopo questa diagnosi puoi modificare il codice.
+
+Alla fine dimostra con test che un transfer BTC nuovo senza una nuova TX Bitcoin reale non può più diventare “Pagamento confermato”.
+
+NON dichiarare “completato” semplicemente perché TypeScript compila.
+
+Questa volta il punto fondamentale è non usare il saldo dell’indirizzo come prova del pagamento. Per Bitcoin bisogna identificare la nuova transazione/UTXO relativo a quello specifico transfer. Altrimenti basta un residuo o un deposito precedente sull’escrow per generare esattamente il falso “Pagamento confermato” che stai vedendo.

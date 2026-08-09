@@ -501,12 +501,23 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
     setSignPhase("signing");
 
     // ── 3. Pre-sign check: deposito già rilevato? (stale WC relay) ─────────
+    //
+    // IMPORTANTE: il backend restituisce HTTP 200 in ENTRAMBI i casi:
+    //   • balance < required  → status "awaiting_deposit"  (non ancora trovato)
+    //   • balance >= required → status "pending"           (trovato)
+    // Dobbiamo controllare t.status, NON solo il fatto che la chiamata non abbia
+    // lanciato un'eccezione.  Ignorare questo controllo causa "Pagamento confermato!"
+    // immediato anche con escrow vuoto (bug critico BTC + EVM).
     try {
-      await apiMCDetect(transfer.transferId);
-      setSignPhase("done");
-      return;
+      const preCheck = await apiMCDetect(transfer.transferId);
+      if (preCheck.status !== "awaiting_deposit") {
+        // Deposito già rilevato on-chain prima della firma (stale WC relay)
+        setSignPhase("done");
+        return;
+      }
+      // status === "awaiting_deposit" → deposito non ancora arrivato, procedi con firma
     } catch {
-      // Deposito non ancora presente — procediamo con la firma
+      // Errore di rete / 401 / non trovato — procedi con la firma
     }
 
     // ── 4. sendTransaction fire-and-forget ────────────────────────────────
@@ -580,7 +591,18 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
       }
 
       try {
-        await apiMCDetect(transfer.transferId);
+        const t = await apiMCDetect(transfer.transferId);
+        // Il backend risponde 200 sia quando il deposito è assente (status "awaiting_deposit")
+        // che quando è rilevato (status "pending" o successivo).
+        // Solo lo status post-"awaiting_deposit" costituisce una conferma reale.
+        if (t.status === "awaiting_deposit") {
+          if (signErrorMsg && pollCount >= SIGN_ERROR_GRACE_POLLS) {
+            setSignPhase("error");
+            setSignError(signErrorMsg);
+            return;
+          }
+          continue; // Deposito non ancora presente — ripolla
+        }
         setSignPhase("done");
         return;
       } catch (pollErr: unknown) {
@@ -629,8 +651,12 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
       if (abort?.aborted) return;
 
       try {
-        await apiMCDetect(transferId);
-        // Guard finale: controlla ancora prima di aggiornare UI
+        const t = await apiMCDetect(transferId);
+        // Il backend risponde 200 sia quando il deposito è assente ("awaiting_deposit")
+        // che quando è rilevato ("pending" o successivo).
+        // Avanzare a "done" solo se il deposito è stato realmente confermato.
+        if (t.status === "awaiting_deposit") continue; // ancora in attesa — ripolla
+        // Guard finale: un nuovo transfer o un reset potrebbe essere avvenuto durante l'await
         if (abort?.aborted) return;
         setSignPhase("done");
         return;
