@@ -244,10 +244,17 @@ export function buildDefaultFeeRegistry(): FeeConfigRegistry {
 /**
  * Commissione flat addebitata al cliente per coprire il costo gas delle TX EVM.
  *
- * Configurabile via env in base units dell'asset (USDT = 6 decimali):
- *   POLYGON_FLAT_NETWORK_FEE_USDT  — default 500_000 = 0.50 USDT
- *   ETHEREUM_FLAT_NETWORK_FEE_USDT — default 5_000_000 = 5.00 USDT
- *   BSC_FLAT_NETWORK_FEE_USDT      — default 1_000_000 (USDT BSC ha 18 dec! ⚠️)
+ * Configurabile via env in base units dell'asset (USDT):
+ *   POLYGON_FLAT_NETWORK_FEE_USDT  — default 500_000        = 0.50 USDT (6 dec Polygon)
+ *   ETHEREUM_FLAT_NETWORK_FEE_USDT — default 15_000_000     = 15.00 USDT (6 dec ETH)
+ *   BSC_FLAT_NETWORK_FEE_USDT      — default 1000000000000000000 = 1.00 USDT (18 dec BSC!)
+ *
+ * IMPORTANTE — BSC USDT ha 18 decimali (non 6):
+ *   1 USDT BSC = 1_000_000_000_000_000_000 raw units
+ *   Il vecchio default 1_000_000 era ~$0.000000000001 (bug decimali, ora corretto).
+ *
+ * La funzione usa BigInt() direttamente sulla stringa env per evitare perdita di
+ * precisione float con valori > 2^53 (necessario per BSC 18-dec).
  *
  * Il valore viene letto al create time e salvato nel transfer.
  * Cambi successivi all'env non modificano transfer già creati (immutabile per record).
@@ -255,12 +262,68 @@ export function buildDefaultFeeRegistry(): FeeConfigRegistry {
  * BTC: restituisce 0n — il costo miner è incluso nel buffer di minDepositAmount.
  */
 export function getEVMFlatNetworkFee(network: NetworkId): bigint {
+  /** Legge un env come BigInt con fallback stringa. Più sicuro di parseIntEnv per valori > 2^53. */
+  function envBigInt(key: string, defaultStr: string): bigint {
+    const v = env(key);
+    if (!v) return BigInt(defaultStr);
+    try {
+      const n = BigInt(v);
+      return n > 0n ? n : BigInt(defaultStr);
+    } catch {
+      return BigInt(defaultStr);
+    }
+  }
+
   switch (network) {
-    case "polygon":  return BigInt(parseIntEnv("POLYGON_FLAT_NETWORK_FEE_USDT",  500_000));
-    case "ethereum": return BigInt(parseIntEnv("ETHEREUM_FLAT_NETWORK_FEE_USDT", 5_000_000));
-    case "bsc":      return BigInt(parseIntEnv("BSC_FLAT_NETWORK_FEE_USDT",      1_000_000));
+    // Polygon: 6 decimali, default 0.50 USDT — NON MODIFICARE
+    case "polygon":  return envBigInt("POLYGON_FLAT_NETWORK_FEE_USDT",  "500000");
+    // Ethereum: 6 decimali, default 15.00 USDT (copre ~10 gwei; anti-loss check è il safety net)
+    case "ethereum": return envBigInt("ETHEREUM_FLAT_NETWORK_FEE_USDT", "15000000");
+    // BSC: 18 decimali! default 1.00 USDT = 1e18 raw units (fix bug decimali)
+    case "bsc":      return envBigInt("BSC_FLAT_NETWORK_FEE_USDT",      "1000000000000000000");
     case "bitcoin":  return 0n;
     default:         return 0n;
+  }
+}
+
+// ─── Anti-Loss Check configuration ───────────────────────────────────────────
+
+/**
+ * Gas units totali stimati per un release EVM completo (TX1 + TX2).
+ *
+ * Formula: MC_GAS_LIMIT_PER_TX × MC_GAS_TX_COUNT × MC_GAS_STATION_BUFFER + GAS_NATIVE_TX
+ *   = 80_000 × 2 × 2 + 21_000 = 341_000
+ *
+ * Usato dall'anti-loss check in _releaseEvm per stimare il costo blockchain
+ * al momento del release (gasPrice live × questo valore).
+ */
+export const MC_ANTI_LOSS_GAS_UNITS = 341_000n;
+
+/**
+ * Prezzo del token nativo (BNB o ETH) in USDT, configurato dall'admin.
+ *
+ * Usato dall'anti-loss check per convertire il costo gas (in native wei) in USDT
+ * e confrontarlo con il networkFeeCharged incassato dal cliente.
+ *
+ * Configurabile via env (aggiornare periodicamente o al cambio significativo del prezzo):
+ *   BSC_NATIVE_PRICE_USDT  — prezzo BNB in USDT (es. 800 per BNB a $800)
+ *   ETH_NATIVE_PRICE_USDT  — prezzo ETH in USDT (es. 5000 per ETH a $3500 + buffer)
+ *
+ * Consiglio: impostare il 30-50% sopra il prezzo di mercato corrente per avere
+ * un margine di sicurezza contro volatilità del prezzo nativo.
+ *
+ * Se non configurato: l'anti-loss check è skippato (warning log). Il sistema rimane
+ * operativo ma senza protezione automatica contro gas spike + price spike.
+ *
+ * NON disponibile per Polygon (gas trascurabile) e Bitcoin (miner fee nel buffer BTC).
+ *
+ * @returns prezzo intero in USDT, o null se non configurato
+ */
+export function getNativePriceUSDT(network: NetworkId): number | null {
+  switch (network) {
+    case "bsc":      return parseIntEnv("BSC_NATIVE_PRICE_USDT",  0) || null;
+    case "ethereum": return parseIntEnv("ETH_NATIVE_PRICE_USDT",  0) || null;
+    default:         return null;
   }
 }
 

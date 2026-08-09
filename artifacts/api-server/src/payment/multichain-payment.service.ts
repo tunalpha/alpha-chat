@@ -48,6 +48,8 @@ import {
   RPC_CONFIGS,
   getEVMFlatNetworkFee,
   NATIVE_ASSET_SYMBOL,
+  getNativePriceUSDT,
+  MC_ANTI_LOSS_GAS_UNITS,
 } from "../blockchain/multichain-config";
 import { calculateFee, assertFeeInvariant, DEFAULT_FEE_BPS } from "../blockchain/fee-config";
 import {
@@ -853,6 +855,118 @@ function _fireGasDepletedAlert(
   // Hook futuro: email/webhook/Telegram alert qui
 }
 
+// ─── Anti-Loss Check ──────────────────────────────────────────────────────────
+
+/**
+ * _checkNetworkFeeAdequacy — Anti-Loss Check per BSC e Ethereum.
+ *
+ * Prima del release, verifica che il networkFeeCharged incassato dal cliente
+ * al momento della creazione del transfer sia sufficiente a coprire il costo
+ * gas stimato al gasPrice corrente di mercato.
+ *
+ * Se la fee è insufficiente (gas price salito dopo la creazione del transfer),
+ * lancia GasReserveDepletedError → il transfer va in waiting_for_gas.
+ * Il release viene ritentato dallo scheduler quando il gas scende.
+ *
+ * Questo check è SOLO per BSC e Ethereum:
+ *   - Polygon: gas trascurabile (~$0.001), check non necessario.
+ *   - Bitcoin: costo miner gestito separatamente nel buffer BTC.
+ *
+ * Prerequisiti env (configurare dall'admin):
+ *   BSC_NATIVE_PRICE_USDT  — prezzo BNB in USDT intero (es. 800)
+ *   ETH_NATIVE_PRICE_USDT  — prezzo ETH in USDT intero (es. 5000)
+ *   Se non configurati: check skippato con warning log.
+ *
+ * @throws GasReserveDepletedError se networkFeeCharged < costo stimato
+ */
+async function _checkNetworkFeeAdequacy(
+  doc: MultiChainTransferDocument,
+): Promise<void> {
+  // Solo BSC e Ethereum — Polygon e Bitcoin esclusi
+  if (doc.network === "polygon" || isBitcoin(doc.network)) return;
+
+  const nativePrice = getNativePriceUSDT(doc.network);
+  if (!nativePrice) {
+    logger.warn(
+      { network: doc.network, transferId: doc.transfer_id },
+      "[AntiLoss] BSC_NATIVE_PRICE_USDT / ETH_NATIVE_PRICE_USDT non configurato — anti-loss check skippato",
+    );
+    return;
+  }
+
+  const networkFeeCharged = BigInt(doc.network_fee_charged ?? "0");
+  if (networkFeeCharged === 0n) {
+    // Transfer creato prima dell'introduzione della network fee — skip silenzioso
+    return;
+  }
+
+  // Recupera gasPrice live dall'RPC primario
+  const chain   = MC_CHAIN_MAP[doc.network];
+  const rpcUrls = RPC_CONFIGS[doc.network];
+  if (!chain || !rpcUrls?.primary) {
+    logger.warn({ network: doc.network }, "[AntiLoss] RPC non configurato — skip");
+    return;
+  }
+
+  let gasPrice: bigint;
+  try {
+    const pc = createPublicClient({ chain, transport: http(rpcUrls.primary) });
+    gasPrice = await pc.getGasPrice();
+  } catch (rpcErr) {
+    // RPC non raggiungibile: non bloccare il release, logga e continua
+    logger.warn(
+      { network: doc.network, transferId: doc.transfer_id, err: String(rpcErr) },
+      "[AntiLoss] Impossibile leggere gasPrice — anti-loss check skippato (RPC error)",
+    );
+    return;
+  }
+
+  // Stima costo totale in wei:  341_000 gas × gasPrice
+  // Conversione in raw USDT:  wei / 1e18 × nativePrice × 10^tokenDec
+  const tokenDec = 10n ** BigInt(TOKEN_DECIMALS[doc.asset_address.toLowerCase()] ?? 6);
+  const estimatedCostRaw =
+    (gasPrice * MC_ANTI_LOSS_GAS_UNITS * BigInt(nativePrice) * tokenDec) /
+    (10n ** 18n);
+
+  if (networkFeeCharged < estimatedCostRaw) {
+    const scale        = Number(tokenDec);
+    const chargedUSDT  = Number(networkFeeCharged)  / scale;
+    const estimatedUSDT = Number(estimatedCostRaw)  / scale;
+
+    logger.warn(
+      {
+        transferId:       doc.transfer_id,
+        network:          doc.network,
+        gasPrice:         gasPrice.toString(),
+        estimatedGasUnits: MC_ANTI_LOSS_GAS_UNITS.toString(),
+        nativePriceUSDT:  nativePrice,
+        networkFeeCharged: chargedUSDT.toFixed(6),
+        estimatedCostUSDT: estimatedUSDT.toFixed(6),
+      },
+      "[AntiLoss] ⛔ Network fee insufficiente al release — transfer → waiting_for_gas",
+    );
+
+    // Riusa GasReserveDepletedError: intercettata dal caller → waiting_for_gas
+    // required = estimatedCostRaw in wei, available = networkFeeCharged in wei (approx)
+    throw new GasReserveDepletedError(
+      doc.network,
+      doc.escrow_wallet,
+      gasPrice * MC_ANTI_LOSS_GAS_UNITS,
+      (networkFeeCharged * (10n ** 18n)) / tokenDec,
+    );
+  }
+
+  logger.debug(
+    {
+      transferId:        doc.transfer_id,
+      network:           doc.network,
+      networkFeeCharged: (Number(networkFeeCharged) / Number(tokenDec)).toFixed(6),
+      estimatedCostUSDT: (Number(estimatedCostRaw)  / Number(tokenDec)).toFixed(6),
+    },
+    "[AntiLoss] Network fee sufficiente ✓",
+  );
+}
+
 // ─── Release EVM ──────────────────────────────────────────────────────────────
 
 /**
@@ -873,6 +987,10 @@ async function _releaseEvm(doc: MultiChainTransferDocument): Promise<MultiChainT
   const tx2Amount = projectFee + networkFeeCharged;
 
   let totalNetworkFee = 0n;
+
+  // Anti-loss check: verifica che networkFeeCharged copra il costo gas corrente.
+  // Solo BSC e Ethereum. Se insufficiente → GasReserveDepletedError → waiting_for_gas.
+  await _checkNetworkFeeAdequacy(doc);
 
   // Gas station: garantisce che l'escrow abbia gas nativo sufficiente per TX1 + TX2
   // Non-blocking: se GAS_STATION_PRIVATE_KEY non è configurato, logga warning e continua
