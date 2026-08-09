@@ -10,7 +10,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
-    "testnet:e2e": "tsx src/scripts/testnet-e2e-polygon.ts"
+    "testnet:e2e": "tsx src/scripts/testnet-e2e-polygon.ts",
+    "list-users": "tsx src/scripts/list-users.mts"
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1090.0",
