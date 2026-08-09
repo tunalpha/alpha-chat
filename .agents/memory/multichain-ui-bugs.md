@@ -3,6 +3,18 @@ name: MultiChain UI bugs — crash, fee display, BTC alignment
 description: Tre bug risolti nel flow BTC/MultiChain: black screen, Totale pagato, BTC alignment
 ---
 
+## Bug 0 — Polygon network fee default sbagliato (500_000 = 0.50 USDT invece di centesimi)
+
+**Causa**: Phase 1 ha introdotto `POLYGON_FLAT_NETWORK_FEE_USDT` con default `"500000"` (0.50 USDT, 6 dec). Il segreto non era impostato, quindi il default errato era attivo. Polygon gas costa ~$0.001 per TX — 0.50 USDT è 500× troppo.
+
+**Fix**: default cambiato a `"10000"` = 0.01 USDT (10× il costo reale → margine ragionevole). Override via env `POLYGON_FLAT_NETWORK_FEE_USDT`. Server riavviato.
+
+**Why**: BSC e ETH hanno costi elevati e default alti giustificati. Polygon è ultra-economica. Mai usare lo stesso ordine di grandezza per tutte le EVM chain.
+
+**How to apply**: configurare sempre fee per network nell'ordine di grandezza reale: Polygon ~0.01 USDT, BSC ~0.50-1 USDT, ETH ~5-15 USDT.
+
+---
+
 ## Bug 1 — Black screen crash in Richiedi BTC (definitivamente risolto)
 
 **Causa radice**: `fmtDisplay()` in `multichain-api.ts` chiamava `BigInt(units)` direttamente senza try/catch. Se il backend restituiva una stringa con punto decimale (es. "0.00018332") invece di un intero satoshi puro ("18332"), il SyntaxError propagava fino a ChatPage (nessun error boundary) abbattendo l'intera app → schermo nero.

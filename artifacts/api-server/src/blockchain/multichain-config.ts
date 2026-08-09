@@ -245,13 +245,14 @@ export function buildDefaultFeeRegistry(): FeeConfigRegistry {
  * Commissione flat addebitata al cliente per coprire il costo gas delle TX EVM.
  *
  * Configurabile via env in base units dell'asset (USDT):
- *   POLYGON_FLAT_NETWORK_FEE_USDT  — default 500_000        = 0.50 USDT (6 dec Polygon)
- *   ETHEREUM_FLAT_NETWORK_FEE_USDT — default 15_000_000     = 15.00 USDT (6 dec ETH)
- *   BSC_FLAT_NETWORK_FEE_USDT      — default 1000000000000000000 = 1.00 USDT (18 dec BSC!)
+ *   POLYGON_FLAT_NETWORK_FEE_USDT  — override Polygon-specifico; fallback a
+ *                                     ETHEREUM_FLAT_NETWORK_FEE_USDT (backwards compat);
+ *                                     default 10_000 = 0.01 USDT (Polygon gas costa ~$0.001)
+ *   ETHEREUM_FLAT_NETWORK_FEE_USDT — Ethereum; default 15_000_000 = 15.00 USDT
+ *   BSC_FLAT_NETWORK_FEE_USDT      — BSC 18 dec; default 1e18 = 1.00 USDT
  *
  * IMPORTANTE — BSC USDT ha 18 decimali (non 6):
  *   1 USDT BSC = 1_000_000_000_000_000_000 raw units
- *   Il vecchio default 1_000_000 era ~$0.000000000001 (bug decimali, ora corretto).
  *
  * La funzione usa BigInt() direttamente sulla stringa env per evitare perdita di
  * precisione float con valori > 2^53 (necessario per BSC 18-dec).
@@ -275,11 +276,13 @@ export function getEVMFlatNetworkFee(network: NetworkId): bigint {
   }
 
   switch (network) {
-    // Polygon: 6 decimali, default 0.50 USDT — NON MODIFICARE
-    case "polygon":  return envBigInt("POLYGON_FLAT_NETWORK_FEE_USDT",  "500000");
-    // Ethereum: 6 decimali, default 15.00 USDT (copre ~10 gwei; anti-loss check è il safety net)
+    // Polygon: 6 decimali, gas ~$0.001 per TX → default 0.01 USDT = 10_000 raw
+    // Override: POLYGON_FLAT_NETWORK_FEE_USDT (env var dedicato Polygon)
+    case "polygon":  return envBigInt("POLYGON_FLAT_NETWORK_FEE_USDT",  "10000");
+    // Ethereum: 6 decimali, default 15.00 USDT (anti-loss check è il safety net)
+    // Override: ETHEREUM_FLAT_NETWORK_FEE_USDT
     case "ethereum": return envBigInt("ETHEREUM_FLAT_NETWORK_FEE_USDT", "15000000");
-    // BSC: 18 decimali! default 1.00 USDT = 1e18 raw units (fix bug decimali)
+    // BSC: 18 decimali! default 1.00 USDT = 1e18 raw units
     case "bsc":      return envBigInt("BSC_FLAT_NETWORK_FEE_USDT",      "1000000000000000000");
     case "bitcoin":  return 0n;
     default:         return 0n;
