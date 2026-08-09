@@ -1,0 +1,71 @@
+Sì. Questo test è decisivo: il rollback di SendPaymentSheet.tsx non ha ripristinato la firma USDA.
+
+Dalle schermate vedo due cose importanti:
+
+1. Il backend funziona almeno fino alla creazione del pagamento: arriva la notifica “USDA — Nuovo pagamento inviato”.
+2. Il frontend arriva a “Firma nel wallet…” e dice che il wallet è stato aperto, ma Trust Wallet non mostra la richiesta eth_sendTransaction.
+
+Quindi non dobbiamo più toccare a caso chainId, switchChain o il flusso MultiChain.
+
+Punto da verificare adesso
+
+Il passaggio critico è esattamente:
+
+SendPaymentSheet
+   ↓
+account.sendTransaction(...)
+   ↓
+Thirdweb
+   ↓
+WalletConnect
+   ↓
+Trust Wallet
+   ↓
+eth_sendTransaction
+   ↓
+FIRMA
+
+La schermata dimostra che il codice arriva almeno allo stato signing, ma non abbiamo ancora la prova che una richiesta eth_sendTransaction venga effettivamente consegnata a Trust Wallet.
+
+E questo è diverso dal precedente problema del switchChain.
+
+Importantissimo
+
+Non modificare ancora nulla.
+
+Non voglio che l’agente faccia un altro tentativo di fix. Deve prima confrontare la versione attuale con l’ultima versione realmente funzionante di USDA e tracciare:
+
+* account.sendTransaction()
+* tipo di transazione generata
+* eventuale transaction.to
+* chainId
+* WalletConnect request ID
+* eventuale errore/rejection
+* deep-link verso Trust Wallet
+* eventuale richiesta eth_sendTransaction
+* eventuale richiesta wallet_switchEthereumChain
+* stato della sessione WalletConnect
+* ThirdwebProvider e configurazione wallet
+
+E soprattutto deve rispondere a una domanda:
+
+La chiamata eth_sendTransaction parte realmente verso Trust Wallet oppure il problema avviene prima?
+
+La cosa più importante
+
+USDA è ora congelato.
+
+Niente altre modifiche a:
+
+* SendPaymentSheet
+* ThirdwebProvider
+* WalletConnect
+* configurazione Trust Wallet
+* MultiChain
+* MultiChainPayRequestSheet
+
+finché non abbiamo la root cause.
+
+Il fatto che anche dopo il rollback esatto del commit incriminato USDA non mostri la firma significa che la precedente diagnosi “era solo switchChain” non era sufficiente.
+
+Se l’agente è ancora in esecuzione, lascialo terminare la diagnosi statica senza modifiche. Poi mandami il report e lo analizziamo prima di autorizzare qualsiasi altro fix.
