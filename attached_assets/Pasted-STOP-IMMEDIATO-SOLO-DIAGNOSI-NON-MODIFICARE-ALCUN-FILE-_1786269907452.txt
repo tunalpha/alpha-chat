@@ -1,0 +1,234 @@
+STOP IMMEDIATO — SOLO DIAGNOSI. NON MODIFICARE ALCUN FILE.
+
+Abbiamo identificato un problema funzionale indipendente dalla network fee.
+
+Il nuovo flusso "Invia Cripto" MULTICHAIN NON si comporta come il flusso
+USDA già esistente.
+
+ATTUALE MULTICHAIN:
+
+Chat
+→ Conferma
+→ Indirizzo
+→ "Copia indirizzo"
+→ l'utente deve effettuare manualmente una transazione dal wallet esterno.
+
+QUESTO NON È IL COMPORTAMENTO DESIDERATO.
+
+DESIDERATO:
+
+Chat
+→ Conferma
+→ "Paga / Firma transazione"
+→ apertura wallet / wallet connector
+→ utente firma la transazione
+→ ritorno automatico in AlphaChat
+→ TX hash
+→ monitoraggio on-chain
+→ stato pagamento aggiornato nella chat.
+
+Il comportamento deve essere equivalente, per quanto tecnicamente
+possibile, al flusso USDA già funzionante.
+
+==================================================
+1. NON TOCCARE NULLA
+==================================================
+
+NON modificare:
+
+- codice
+- ENV
+- fee
+- network fee
+- project fee
+- reclaim
+- anti-loss
+- database
+- deployment
+
+SOLO ANALISI.
+
+==================================================
+2. CONFRONTA USDA VS MULTICHAIN
+==================================================
+
+Ricostruisci dal codice il flusso USDA completo:
+
+1. pulsante utilizzato dall'utente;
+2. componente frontend;
+3. wallet connector;
+4. ThirdWeb;
+5. WalletConnect;
+6. chain/network;
+7. preparazione transaction;
+8. apertura wallet;
+9. firma;
+10. broadcast;
+11. TX hash;
+12. polling;
+13. conferma;
+14. aggiornamento UI;
+15. gestione errore/cancel.
+
+Poi ricostruisci lo stesso percorso per MULTICHAIN.
+
+Produci una tabella:
+
+| Funzione | USDA | Multichain | Stato |
+|----------|------|------------|-------|
+| Wallet connect | | | |
+| Wallet signing | | | |
+| Transaction preparation | | | |
+| External wallet | | | |
+| TX broadcast | | | |
+| TX hash | | | |
+| Polling | | | |
+| Confirmation | | | |
+| Chat status | | | |
+
+==================================================
+3. IDENTIFICA ESATTAMENTE DOVE SI ROMPE IL MODELLO
+==================================================
+
+Voglio sapere perché Multichain arriva a:
+
+"Copia indirizzo"
+
+invece di:
+
+"Firma / Paga"
+
+Individuare il file e la funzione responsabile.
+
+NON correggerli.
+
+==================================================
+4. VERIFICA IL MODELLO USDA
+==================================================
+
+Verifica se possiamo riutilizzare la stessa infrastruttura wallet già
+funzionante per USDA.
+
+In particolare verificare:
+
+- ThirdWeb v5;
+- ThirdWebProvider;
+- WalletConnect;
+- MetaMask;
+- Trust Wallet;
+- Coinbase Wallet;
+- Rainbow;
+- Zerion;
+- gestione iOS/PWA;
+- fire-and-forget sendTransaction;
+- polling;
+- gestione nonce;
+- chainId.
+
+NON creare un secondo sistema wallet se quello USDA può essere riutilizzato.
+
+==================================================
+5. IMPORTANTE — ARCHITETTURA MULTICHAIN
+==================================================
+
+Il backend Multichain usa escrow custodial per il pagamento ricevuto.
+
+Questo NON significa che il CLIENT debba copiare manualmente
+l'indirizzo escrow.
+
+Il client deve poter firmare la propria transazione USDT dal wallet
+collegato.
+
+Il flusso deve quindi essere:
+
+CLIENT WALLET
+      ↓
+firma TX USDT
+      ↓
+ESCROW ADDRESS
+      ↓
+backend rileva deposito
+      ↓
+TX1 → recipient
+      ↓
+TX2 → fee wallet
+      ↓
+TX3 → reclaim gas
+      ↓
+completed
+
+Verificare se questa architettura è già supportata dal backend.
+
+==================================================
+6. VERIFICA IMPORTANTE
+==================================================
+
+Non confondere:
+
+A) transazione CLIENT → ESCROW
+
+con
+
+B) transazioni custodial ESCROW → RECIPIENT/FEE WALLET.
+
+La firma richiesta all'utente deve essere soltanto quella necessaria
+alla transazione CLIENT → ESCROW.
+
+TX1/TX2/TX3 rimangono gestite dal backend custodial come oggi.
+
+==================================================
+7. RECIPIENT EXACT
+==================================================
+
+Il client deve firmare esattamente l'importo richiesto dal pagamento.
+
+Esempio:
+
+Recipient riceve:
+1.000000 USDT
+
+Il cliente deve essere informato chiaramente dell'importo che deve
+inviare al pagamento.
+
+Verificare dal codice se oggi il valore visualizzato e quello realmente
+richiesto dalla transaction coincidono.
+
+NON modificare.
+
+==================================================
+8. OUTPUT OBBLIGATORIO
+==================================================
+
+Restituisci esclusivamente:
+
+A) flusso USDA reale
+
+B) flusso Multichain reale
+
+C) differenze
+
+D) file/funzioni responsabili
+
+E) perché compare "Copia indirizzo"
+
+F) quale componente USDA può essere riutilizzato
+
+G) architettura minima necessaria per ottenere:
+
+"Firma transazione"
+
+invece di:
+
+"Copia indirizzo"
+
+H) eventuali rischi tecnici iOS/PWA/WalletConnect
+
+I) elenco esatto dei file che dovrebbero essere modificati
+
+NON modificare nulla.
+
+NON fare test che richiedano modifiche.
+
+NON fare deploy.
+
+STOP dopo il report.
