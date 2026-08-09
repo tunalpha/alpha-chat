@@ -683,6 +683,49 @@ router.post(
   },
 );
 
+// POST /transfers/cancel-stale — bulk cancel tutti gli awaiting_deposit (cleanup test/phantom)
+// NOTA: aggiunto PRIMA di /transfers/:id/refund per evitare che Express interpreti
+// "cancel-stale" come un :id param.
+router.post(
+  "/transfers/cancel-stale",
+  superAdminMiddleware,
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const { olderThanMinutes = 0 } = req.body as { olderThanMinutes?: number };
+
+      // Filtra per stato cancellabile
+      const filter: Record<string, unknown> = { status: { $in: ["awaiting_deposit", "pending"] } };
+      if (olderThanMinutes > 0) {
+        const cutoff = new Date(Date.now() - olderThanMinutes * 60 * 1000);
+        filter["createdAt"] = { $lt: cutoff };
+      }
+
+      const docs = await MultiChainTransferModel.find(filter, { transfer_id: 1, network: 1, asset: 1 }).lean();
+      if (docs.length === 0) {
+        res.json({ ok: true, cancelled: 0, ids: [] });
+        return;
+      }
+
+      const ids = docs.map(d => d.transfer_id);
+      await MultiChainTransferModel.updateMany(filter, {
+        $set: { status: "cancelled", locked_at: null, updatedAt: new Date() },
+      });
+
+      await AuditEventModel.create({
+        event:      "MC_ADMIN_CANCEL_STALE",
+        user_id:    req.adminUser!.userId,
+        created_at: new Date().toISOString(),
+        metadata:   { count: docs.length, olderThanMinutes, ids, admin_role: req.adminUser!.adminRole },
+      });
+
+      logger.info({ count: docs.length, adminUserId: req.adminUser!.userId }, "[Admin] MC bulk cancel-stale");
+      res.json({ ok: true, cancelled: docs.length, ids });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
 // POST /transfers/:id/refund
 router.post(
   "/transfers/:id/refund",

@@ -905,3 +905,16 @@ export interface RevenueData {
 export async function getMultichainRevenue(days = 90): Promise<RevenueData> {
   return apiFetch<RevenueData>(`/multichain/revenue?days=${days}`);
 }
+
+export interface CancelStaleResult {
+  ok: boolean;
+  cancelled: number;
+  ids: string[];
+}
+
+export async function cancelStaleTransfers(olderThanMinutes = 0): Promise<CancelStaleResult> {
+  return apiFetch<CancelStaleResult>("/multichain/transfers/cancel-stale", {
+    method: "POST",
+    body:   JSON.stringify({ olderThanMinutes }),
+  });
+}

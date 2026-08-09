@@ -116,6 +116,7 @@ export type AuditEventType =
   | "IDENTITY_KEY_UPDATED"
   // Admin Multi-Chain Actions
   | "MC_ADMIN_CANCEL"
+  | "MC_ADMIN_CANCEL_STALE"
   | "MC_ADMIN_REFUND"
   | "MC_ADMIN_RETRY"
   | "MC_ADMIN_FEE_CONFIG_UPDATE"

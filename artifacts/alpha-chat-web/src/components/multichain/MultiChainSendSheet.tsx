@@ -241,6 +241,16 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
       localStorage.removeItem(MC_PENDING_KEY); return;
     }
     void apiMCGet(pending.transferId).then(t => {
+      // ── Validazione 0: race condition guard ─────────────────────────────────
+      // handleCreate o handleReset potrebbero essere stati chiamati MENTRE
+      // apiMCGet era in volo (l'utente ha già riempito il form e premuto Continua).
+      // Se localStorage non ha più lo stesso transferId (handleCreate → nuovo ID)
+      // o è stato rimosso (handleReset), questa sessione recovery è obsoleta.
+      // Abort senza toccare lo state: il nuovo transfer gestisce da solo la sua UI.
+      let postCheckPending: MCPendingPayment | null = null;
+      try { postCheckPending = JSON.parse(localStorage.getItem(MC_PENDING_KEY) ?? "") as MCPendingPayment; } catch {}
+      if (!postCheckPending || postCheckPending.transferId !== pending.transferId) return;
+
       // ── Validazione 1: stato terminale → non ripristinare ──────────────────
       const terminal = ["cancelled", "expired", "released", "refunded", "failed"];
       if (terminal.includes(t.status)) {

@@ -15,14 +15,14 @@ import {
   Layers, ArrowRightLeft, Clock, CheckCircle2, XCircle,
   AlertTriangle, RefreshCw, ExternalLink, ChevronLeft, ChevronRight,
   Bitcoin, Coins, Filter, X, Copy, Check, Ban, Undo2, RotateCcw,
-  Wallet, Hash,
+  Wallet, Hash, Trash2,
 } from "lucide-react";
 import { Badge }   from "@/components/ui/badge";
 import { Button }  from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { apiFetch } from "@/lib/api";
+import { apiFetch, cancelStaleTransfers } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
@@ -573,6 +573,62 @@ function TransferRow({ t, onClick }: { t: MCTransfer; onClick: () => void }) {
   );
 }
 
+// ─── CancelStaleButton ────────────────────────────────────────────────────────
+
+function CancelStaleButton({ onDone }: { onDone: () => void }) {
+  const { toast } = useToast();
+  const [confirming, setConfirming] = useState(false);
+  const [loading, setLoading]       = useState(false);
+
+  async function handleCancel() {
+    setLoading(true);
+    try {
+      const res = await cancelStaleTransfers(0); // olderThanMinutes=0 → tutti
+      toast({
+        title:       `✅ ${res.cancelled} transfer cancellati`,
+        description: "Tutti gli awaiting_deposit sono stati annullati.",
+        duration:    5000,
+      });
+      setConfirming(false);
+      onDone();
+    } catch (err: unknown) {
+      toast({
+        title:       "Errore",
+        description: (err as Error)?.message ?? "Impossibile cancellare i transfer.",
+        variant:     "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  if (!confirming) {
+    return (
+      <Button
+        variant="outline"
+        size="sm"
+        className="gap-1.5 text-xs text-red-400 border-red-500/30 hover:bg-red-500/10"
+        onClick={() => setConfirming(true)}
+      >
+        <Trash2 className="w-3.5 h-3.5" />
+        Cancella Pending
+      </Button>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-1.5">
+      <span className="text-xs text-red-400 font-medium">Cancellare tutti gli awaiting_deposit?</span>
+      <Button size="sm" variant="destructive" className="text-xs h-7 px-2.5" onClick={handleCancel} disabled={loading}>
+        {loading ? <RefreshCw className="w-3 h-3 animate-spin" /> : "Sì, cancella"}
+      </Button>
+      <Button size="sm" variant="outline" className="text-xs h-7 px-2" onClick={() => setConfirming(false)} disabled={loading}>
+        No
+      </Button>
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function MultichainMonitor() {
@@ -626,10 +682,13 @@ export default function MultichainMonitor() {
             Multi-Chain Operations Center · Polygon · Bitcoin · Ethereum · BSC
           </p>
         </div>
-        <Button variant="outline" size="sm" onClick={handleRefresh} className="gap-2 text-xs">
-          <RefreshCw className={`w-3.5 h-3.5 ${listQuery.isFetching ? "animate-spin" : ""}`} />
-          Aggiorna
-        </Button>
+        <div className="flex items-center gap-2">
+          <CancelStaleButton onDone={handleRefresh} />
+          <Button variant="outline" size="sm" onClick={handleRefresh} className="gap-2 text-xs">
+            <RefreshCw className={`w-3.5 h-3.5 ${listQuery.isFetching ? "animate-spin" : ""}`} />
+            Aggiorna
+          </Button>
+        </div>
       </div>
 
       {/* KPIs */}
