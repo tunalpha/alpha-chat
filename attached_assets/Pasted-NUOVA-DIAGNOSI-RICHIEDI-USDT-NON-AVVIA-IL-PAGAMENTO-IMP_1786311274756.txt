@@ -1,0 +1,530 @@
+NUOVA DIAGNOSI — "RICHIEDI USDT" NON AVVIA IL PAGAMENTO
+
+IMPORTANTE:
+NON MODIFICARE ANCORA NESSUN FILE.
+
+Solo analisi e diagnosi.
+Alla fine dammi root cause esatta e proposta di fix.
+
+NON toccare:
+- USDA
+- BTC
+- BSC/ETH auto-release già in lavorazione
+- wallet connection già funzionante
+- altri flussi funzionanti
+
+==================================================
+OBIETTIVO PRINCIPALE
+==================================================
+
+Il flusso "Richiedi Cripto → USDT" deve permettere al destinatario della richiesta di PAGARLA direttamente dall'app.
+
+NON voglio un semplice messaggio informativo con:
+
+"Invia i fondi all'indirizzo escrow"
+
+Voglio un vero flusso di pagamento integrato.
+
+COME RIFERIMENTO UX/FLOW:
+
+COPIARE IL COMPORTAMENTO GIÀ FUNZIONANTE DEL FLUSSO "RICHIEDI USDT" DI USDA.
+
+ATTENZIONE:
+
+NON copiare o modificare il backend USDA.
+
+NON collegare MultiChain alle API USDA.
+
+NON modificare SendPaymentSheet.tsx.
+
+Devi invece analizzare il flusso USDA esistente che già consente:
+
+Richiesta di pagamento
+↓
+l'altra persona apre la richiesta
+↓
+visualizza l'importo
+↓
+vede l'azione per pagare
+↓
+prepara il pagamento
+↓
+apre il wallet
+↓
+firma la transazione
+↓
+ritorna all'app
+↓
+pagamento verificato
+
+Questo comportamento deve diventare il MODELLO UX/FUNZIONALE
+per "Richiedi USDT MultiChain".
+
+Riutilizzare dove possibile:
+- struttura UX
+- stato del pagamento
+- gestione del pulsante "Paga"
+- preparazione della transazione
+- gestione del wallet
+- apertura wallet
+- gestione della firma
+- gestione del txHash
+- gestione degli errori
+- ritorno dall'app wallet
+
+MA adattando tutto al backend e al modello escrow MultiChain già esistente.
+
+==================================================
+PROBLEMA OSSERVATO
+==================================================
+
+Nel flusso:
+
+"Richiedi Cripto" → USDT BSC
+
+la richiesta viene creata correttamente.
+
+La bolla mostra:
+
+PAGAMENTO RICHIESTO
+BSC · USDT
+1.00 USDT
+[escrow address]
+Scade...
+Attesa deposito
+
+ma non compare/parte un vero flusso:
+
+"Paga"
+
+e il destinatario deve manualmente copiare l'indirizzo escrow.
+
+Questo NON è il comportamento desiderato.
+
+==================================================
+MODELLO CORRETTO
+==================================================
+
+RICHIEDENTE
+= persona che crea la richiesta
+= persona che deve ricevere gli USDT
+
+PAGATORE
+= persona che riceve la richiesta
+= persona che deve inviare gli USDT
+
+ESCROW
+= wallet temporaneo della piattaforma
+
+Flusso:
+
+RICHIEDENTE
+  ↓
+crea richiesta 1 USDT
+  ↓
+ESCROW creato
+  ↓
+PAGATORE vede la richiesta
+  ↓
+PAGATORE preme "Paga 1 USDT"
+  ↓
+wallet del PAGATORE
+  ↓
+firma
+  ↓
+PAGATORE WALLET → ESCROW
+  ↓
+backend detect
+  ↓
+pending
+  ↓
+auto-release già implementato
+  ↓
+ESCROW → RICHIEDENTE WALLET
+  ↓
+released
+  ↓
+sweep residuo BNB/ETH/POL
+  ↓
+ESCROW ≈ 0
+
+==================================================
+IMPORTANTE — FIRMA
+==================================================
+
+"Automatico" NON significa firma automatica.
+
+NON è consentito firmare una transazione senza consenso dell'utente.
+
+Il comportamento corretto è:
+
+Paga 1.00 USDT
+↓
+preparazione TX
+↓
+switch chain se necessario
+↓
+apertura Trust Wallet
+↓
+schermata FIRMA
+↓
+utente approva
+↓
+txHash
+↓
+ritorno all'app
+
+==================================================
+1. ANALIZZARE IL FLUSSO USDA
+==================================================
+
+Prima di qualsiasi modifica:
+
+individua esattamente il componente che gestisce il pagamento di una richiesta USDA.
+
+Studia:
+
+- come viene visualizzata la richiesta
+- come viene mostrato il pulsante Paga
+- cosa succede al click
+- come viene identificato il pagatore
+- come viene identificato il destinatario
+- come viene recuperato il wallet
+- come viene preparata la TX
+- come viene effettuato lo switch chain
+- come viene aperto Trust Wallet
+- come viene gestita la firma
+- come viene ricevuto il txHash
+- come viene gestito il ritorno dall'app
+- come viene mostrato lo stato durante la firma
+
+NON modificare USDA.
+
+Usarlo esclusivamente come REFERENCE IMPLEMENTATION.
+
+==================================================
+2. CONFRONTO CON MULTICHAIN
+==================================================
+
+Confrontare il flow USDA con:
+
+"Richiedi Cripto → USDT"
+
+Individuare esattamente cosa manca nel MultiChain.
+
+Verificare se manca:
+
+- pulsante Paga
+- handler
+- wallet lookup
+- prepare transaction
+- token contract
+- amount conversion
+- chain selection
+- switch chain
+- sendTransaction
+- firma
+- txHash
+- polling
+- stato UI
+- ritorno dal wallet
+
+==================================================
+3. RIUTILIZZARE IL FLUSSO DI PAGAMENTO MULTICHAIN ESISTENTE
+==================================================
+
+NON reinventare la transazione USDT.
+
+Cercare il codice già funzionante di:
+
+"Invia Cripto → USDT"
+
+che già sa fare:
+
+- token contract
+- amount
+- chain
+- decimals
+- sendTransaction
+- Trust Wallet
+- WalletConnect
+- switch chain
+- gestione firma
+
+Il pagamento della richiesta deve riutilizzare questa logica.
+
+La differenza è SOLO la destinazione:
+
+Invia normale:
+
+PAGATORE
+→ destinatario
+
+Richiesta:
+
+PAGATORE
+→ ESCROW
+
+==================================================
+4. CHAIN SWITCH
+==================================================
+
+NON usare:
+
+sendTransaction({ chainId: ... })
+
+come meccanismo implicito di switch.
+
+Questo ha già causato problemi con Trust Wallet iOS.
+
+Usare il pattern già verificato funzionante:
+
+useActiveWalletChain()
+useSwitchActiveWalletChain()
+
+Sequenza:
+
+activeWalletChain?.id
+
+↓
+
+se diverso dalla chain richiesta:
+
+await switchChain(targetChain)
+
+↓
+
+attendere completamento
+
+↓
+
+sendTransaction()
+
+↓
+
+firma
+
+Questo vale per:
+
+BSC = 56
+Ethereum = 1
+Polygon = 137
+
+==================================================
+5. WALLET DEL PAGATORE
+==================================================
+
+Il PAGATORE non deve essere obbligato ad avere il wallet collegato quando la richiesta viene CREATA.
+
+Il wallet serve al momento del pagamento.
+
+Se il wallet è già collegato:
+
+mostrare:
+
+"Paga 1.00 USDT"
+
+Se non è collegato:
+
+mostrare:
+
+"Collega wallet per pagare"
+
+NON mostrare un errore generico.
+
+NON bloccare la creazione della richiesta.
+
+==================================================
+6. DATI DA VERIFICARE
+==================================================
+
+Verificare che siano disponibili:
+
+- transferId
+- requester userId
+- payer userId
+- senderWallet
+- recipientWallet
+- escrow address
+- chainId
+- token contract
+- token decimals
+- amount
+- status
+- expiry
+- txHash deposit
+- txHash release
+
+Verificare attentamente la semantica:
+
+senderWallet = WALLET DEL PAGATORE
+
+recipientWallet = WALLET DEL RICHIEDENTE
+
+escrow = WALLET TEMPORANEO
+
+NON confondere questi tre ruoli.
+
+==================================================
+7. PULSANTE "PAGA"
+==================================================
+
+Verificare se la bolla attuale è semplicemente informativa.
+
+Se manca il pulsante:
+
+"Paga 1.00 USDT"
+
+questa potrebbe essere la root cause UX principale.
+
+Il comportamento desiderato è analogo alla richiesta USDA:
+
+PAGAMENTO RICHIESTO
+BSC · USDT
+1.00 USDT
+
+[Paga 1.00 USDT]
+
+↓
+
+switch rete se necessario
+
+↓
+
+Trust Wallet
+
+↓
+
+Firma transazione
+
+==================================================
+8. TRANSAZIONE
+==================================================
+
+La TX del pagatore deve essere:
+
+TOKEN USDT
+PAGATORE WALLET
+→
+ESCROW ADDRESS
+
+NON:
+
+PAGATORE → RICHIEDENTE
+
+Il pagamento passa SEMPRE dall'escrow.
+
+==================================================
+9. DOPO LA FIRMA
+==================================================
+
+Dopo la firma:
+
+1. ottenere txHash
+2. salvarlo dove previsto
+3. backend detecta il deposito
+4. awaiting_deposit → pending
+5. auto-release già implementato
+6. pending → releasing
+7. escrow → requester wallet
+8. released
+9. sweep residuo gas
+10. escrow ≈ 0
+
+NON duplicare la logica di auto-release se è già presente.
+
+==================================================
+10. SICUREZZA
+==================================================
+
+NON firmare automaticamente.
+
+NON inviare una TX senza click/consenso dell'utente.
+
+NON usare private key dell'utente.
+
+NON bypassare Trust Wallet.
+
+La firma deve sempre avvenire nel wallet dell'utente.
+
+==================================================
+11. DIAGNOSI DEL PROBLEMA ATTUALE
+==================================================
+
+Determinare con precisione perché oggi:
+
+"Richiedi USDT"
+
+rimane:
+
+"Attesa deposito"
+
+e obbliga l'utente a:
+
+Copia indirizzo
+→ aprire wallet
+→ incollare indirizzo
+→ inserire importo manualmente.
+
+Voglio sapere se la causa è:
+
+A. manca pulsante Paga
+B. manca handler frontend
+C. manca wallet lookup
+D. manca prepare transaction
+E. manca sendTransaction
+F. manca chain switch
+G. manca integrazione WalletConnect
+H. backend non espone l'azione di pagamento
+I. problema di stato/UI
+J. combinazione di più problemi
+
+==================================================
+12. NESSUNA MODIFICA
+==================================================
+
+Durante questa fase:
+
+NON modificare file.
+
+NON fare refactor.
+
+NON correggere ancora.
+
+NON modificare USDA.
+
+NON modificare BTC.
+
+NON modificare auto-release BSC/ETH/Polygon.
+
+NON modificare fee.
+
+NON modificare escrow.
+
+Solo diagnosi.
+
+==================================================
+REPORT FINALE
+==================================================
+
+Restituire:
+
+A. Root cause esatta
+B. File responsabili
+C. Componente USDA utilizzato come reference
+D. Componente MultiChain "Richiedi USDT" attuale
+E. Differenze tra i due flussi
+F. Funzioni esistenti riutilizzabili
+G. Punto esatto dove manca il pagamento
+H. Flusso corretto proposto
+I. Modifiche minime necessarie
+J. Conferma che USDA NON verrà modificato
+K. Conferma che BTC NON verrà modificato
+L. Conferma che auto-release MultiChain NON verrà alterato
+M. Conferma che la firma rimarrà sempre sotto controllo dell'utente
+
+NON scrivere codice.
+
+NON applicare modifiche.
+
+Aspetta la mia conferma prima di implementare qualsiasi cosa.

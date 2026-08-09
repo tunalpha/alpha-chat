@@ -71,7 +71,7 @@ import { logger }                   from "../lib/logger";
 import { emitMCPaymentStateChanged } from "./multichain-events";
 import { MessageModel }              from "../models/message.model";
 import type { BitcoinAdapter }      from "../blockchain/bitcoin/bitcoin-adapter";
-import { createPublicClient, createWalletClient, http, type Chain } from "viem";
+import { createPublicClient, createWalletClient, http, isAddress, type Chain } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { polygon, polygonAmoy, mainnet, bsc } from "viem/chains";
 
@@ -786,7 +786,21 @@ export async function releaseMultiChainTransfer(transferId: string): Promise<Mul
       { wallet_address: 1 },
     ).lean();
 
+    // Helper: rollback a pending — deposito al sicuro nell'escrow, ritenterà al prossimo ciclo
+    const _rollbackToPending = () => MultiChainTransferModel.findOneAndUpdate(
+      { transfer_id: transferId, status: "releasing" },
+      { $set: { status: "pending", locked_at: null } },
+    );
+
     if (recipientUser?.wallet_address) {
+      // Valida formato indirizzo EVM prima di usarlo (difesa in profondità).
+      // wallet_address arriva dal profilo utente e potrebbe essere malformato.
+      if (!isAddress(recipientUser.wallet_address)) {
+        await _rollbackToPending();
+        throw new AppError("RECIPIENT_WALLET_INVALID_FORMAT", 422,
+          `Il wallet del destinatario ha un formato non valido: ${recipientUser.wallet_address}`);
+      }
+
       // Persisti il wallet nel transfer per evitare il lookup ad ogni retry.
       await MultiChainTransferModel.findOneAndUpdate(
         { transfer_id: transferId, status: "releasing" },
@@ -800,9 +814,10 @@ export async function releaseMultiChainTransfer(transferId: string): Promise<Mul
     } else {
       // Nessun wallet disponibile — rollback a pending, ritenterà al prossimo ciclo.
       // Il deposito è al sicuro nell'escrow.
-      await MultiChainTransferModel.findOneAndUpdate(
-        { transfer_id: transferId, status: "releasing" },
-        { $set: { status: "pending", locked_at: null } },
+      await _rollbackToPending();
+      logger.info(
+        { transferId, recipientId: locked.recipient_id, network: locked.network },
+        "[MCPayment] Recipient wallet not available — waiting for recipient wallet",
       );
       throw new AppError("RECIPIENT_WALLET_REQUIRED_FOR_RELEASE", 422,
         "Il wallet del destinatario non è disponibile. Il destinatario deve collegare il proprio wallet prima che i fondi possano essere rilasciati.");

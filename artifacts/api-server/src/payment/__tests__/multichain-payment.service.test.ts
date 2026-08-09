@@ -15,6 +15,15 @@ import mongoose from "mongoose";
 
 // ─── Mock tutti i moduli esterni prima dell'import del service ────────────────
 
+// Mock: UserModel — per test risoluzione recipient_wallet da profilo utente (S05/S06/S07)
+const { mockUserFindOne } = vi.hoisted(() => ({
+  mockUserFindOne: vi.fn(),
+}));
+
+vi.mock("../../models/user.model", () => ({
+  UserModel: { findOne: mockUserFindOne },
+}));
+
 vi.mock("../../models/multichain-transfer.model", () => {
   const mockCreate = vi.fn();
   const mockFindOne = vi.fn();
@@ -206,6 +215,9 @@ const baseTransferDoc = {
 
 beforeEach(() => {
   vi.clearAllMocks();
+  // Default: UserModel.findOne non trovato — non interferisce con i test esistenti
+  // (quelli usano recipient_wallet già impostato, mai il lookup UserModel)
+  mockUserFindOne.mockReturnValue({ lean: vi.fn().mockResolvedValue(null) });
 });
 
 afterEach(() => {
@@ -571,6 +583,125 @@ describe("releaseMultiChainTransfer", () => {
       status:          "releasing",
       tx_hash_release: null,
     });
+  });
+
+  // ─── S05: recipient_wallet null, nessun wallet utente → pending (no loop) ──
+
+  it("S05 — recipient_wallet null + user senza wallet_address → rollback pending, nessun release", async () => {
+    // Simula transfer con recipient_wallet null (destinatario non ha collegato wallet).
+    // NOTA: usa network "polygon" (abilitato nel mock) — "bsc" è disabilitato e causerebbe
+    // FEATURE_DISABLED prima del lookup wallet, provocando una "once queue leak" nei test successivi.
+    const pendingDocNoWallet   = { ...baseTransferDoc, status: "pending"   as const, recipient_wallet: null };
+    const releasingDocNoWallet = { ...pendingDocNoWallet, status: "releasing" as const };
+
+    vi.mocked(MultiChainTransferModel.findOneAndUpdate)
+      .mockResolvedValueOnce(releasingDocNoWallet as any)  // acquireLock: pending → releasing
+      .mockResolvedValueOnce(releasingDocNoWallet as any); // rollback: releasing → pending
+
+    // UserModel.findOne non trova wallet
+    mockUserFindOne.mockReturnValue({ lean: vi.fn().mockResolvedValue(null) });
+
+    const adapter = makeEvmAdapter();
+    vi.mocked(adapterRegistry.get).mockReturnValue(adapter as any);
+
+    // Deve lanciare RECIPIENT_WALLET_REQUIRED_FOR_RELEASE
+    await expect(releaseMultiChainTransfer(TRANSFER_ID)).rejects.toMatchObject({
+      code: "RECIPIENT_WALLET_REQUIRED_FOR_RELEASE",
+    });
+
+    // Nessuna TX inviata — deposito al sicuro nell'escrow
+    expect(adapter._mockBuildAndSign).not.toHaveBeenCalled();
+    expect(adapter._mockBroadcast).not.toHaveBeenCalled();
+
+    // Rollback eseguito: releasing → pending
+    const calls = vi.mocked(MultiChainTransferModel.findOneAndUpdate).mock.calls;
+    expect(calls[1][1]).toMatchObject({ $set: { status: "pending", locked_at: null } });
+  });
+
+  // ─── S06: recipient_wallet null, wallet risolto da UserModel → release OK ──
+
+  it("S06 — recipient_wallet null + wallet_address utente valido → risolto e release completato", async () => {
+    const RESOLVED_WALLET = "0x5C7C6b6eB4B4383cC63Bf12047476386098D3478"; // indirizzo EVM valido
+    const pendingDocNoWallet   = { ...baseTransferDoc, status: "pending"   as const, recipient_wallet: null };
+    const releasingDocNoWallet = { ...pendingDocNoWallet, status: "releasing" as const };
+    const releasingDocWallet   = { ...releasingDocNoWallet, recipient_wallet: RESOLVED_WALLET };
+    const releasedDoc          = { ...releasingDocWallet,  status: "released" as const, tx_hash_release: "0xTX1_HASH", tx_hash_fee: "0xTX2_HASH" };
+
+    vi.mocked(MultiChainTransferModel.findOneAndUpdate)
+      .mockResolvedValueOnce(releasingDocNoWallet as any) // acquireLock: pending → releasing
+      .mockResolvedValueOnce(releasingDocWallet   as any) // persist recipient_wallet
+      .mockResolvedValueOnce(releasingDocWallet   as any) // persist tx_hash_release (C-01)
+      .mockResolvedValueOnce(releasingDocWallet   as any) // persist tx_hash_fee (C-02)
+      .mockResolvedValueOnce(releasedDoc          as any); // final update → released
+
+    // UserModel restituisce wallet valido
+    mockUserFindOne.mockReturnValue({
+      lean: vi.fn().mockResolvedValue({ wallet_address: RESOLVED_WALLET }),
+    });
+
+    const adapter = makeEvmAdapter();
+    vi.mocked(adapterRegistry.get).mockReturnValue(adapter as any);
+
+    const result = await releaseMultiChainTransfer(TRANSFER_ID);
+    expect(result.status).toBe("released");
+
+    // TX1 e TX2 inviate
+    expect(adapter._mockBuildAndSign).toHaveBeenCalledTimes(2);
+    // TX1 al wallet risolto da UserModel
+    expect(adapter._mockBuildAndSign.mock.calls[0][0]).toMatchObject({
+      to: RESOLVED_WALLET,
+    });
+  });
+
+  // ─── S07: indirizzo EVM non valido nel profilo utente → rollback pending ──
+
+  it("S07 — wallet_address utente con formato non valido → rollback pending, errore RECIPIENT_WALLET_INVALID_FORMAT", async () => {
+    const pendingDocNoWallet   = { ...baseTransferDoc, status: "pending"   as const, recipient_wallet: null };
+    const releasingDocNoWallet = { ...pendingDocNoWallet, status: "releasing" as const };
+
+    vi.mocked(MultiChainTransferModel.findOneAndUpdate)
+      .mockResolvedValueOnce(releasingDocNoWallet as any) // acquireLock
+      .mockResolvedValueOnce(releasingDocNoWallet as any); // rollback
+
+    // UserModel restituisce indirizzo non valido
+    mockUserFindOne.mockReturnValue({
+      lean: vi.fn().mockResolvedValue({ wallet_address: "not-a-valid-evm-address" }),
+    });
+
+    const adapter = makeEvmAdapter();
+    vi.mocked(adapterRegistry.get).mockReturnValue(adapter as any);
+
+    await expect(releaseMultiChainTransfer(TRANSFER_ID)).rejects.toMatchObject({
+      code: "RECIPIENT_WALLET_INVALID_FORMAT",
+    });
+
+    // Nessuna TX inviata
+    expect(adapter._mockBuildAndSign).not.toHaveBeenCalled();
+    // Rollback a pending
+    const calls = vi.mocked(MultiChainTransferModel.findOneAndUpdate).mock.calls;
+    expect(calls[1][1]).toMatchObject({ $set: { status: "pending", locked_at: null } });
+  });
+
+  // ─── S09: lock già acquisito da altro processo → idempotenza, nessuna 2a TX ──
+
+  it("S09 — acquireLock ritorna null (transfer già in releasing) → nessuna TX inviata", async () => {
+    const releasingDoc = { ...baseTransferDoc, status: "releasing" as const };
+
+    // acquireLock: findOneAndUpdate ritorna null (status già "releasing" — lock già preso)
+    // getMultiChainTransfer (fallback): findOne ritorna il doc in releasing
+    vi.mocked(MultiChainTransferModel.findOneAndUpdate).mockResolvedValue(null as any);
+    vi.mocked(MultiChainTransferModel.findOne).mockResolvedValue(releasingDoc as any);
+
+    const adapter = makeEvmAdapter();
+    vi.mocked(adapterRegistry.get).mockReturnValue(adapter as any);
+
+    // Nessun errore — idempotente
+    const result = await releaseMultiChainTransfer(TRANSFER_ID);
+    expect(result.status).toBe("releasing");
+
+    // Nessuna TX inviata — il lock era già acquisito
+    expect(adapter._mockBuildAndSign).not.toHaveBeenCalled();
+    expect(adapter._mockBroadcast).not.toHaveBeenCalled();
   });
 });
 

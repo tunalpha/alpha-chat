@@ -1,0 +1,407 @@
+FIX DEFINITIVO — AUTO-RELEASE MULTICHAIN BSC / ETH / POLYGON
+
+OBIETTIVO
+
+Voglio che tutti i pagamenti MultiChain EVM funzionino automaticamente:
+
+awaiting_deposit
+→ deposito rilevato
+→ pending
+→ recupero recipient_wallet
+→ releasing
+→ TX escrow → recipient
+→ released
+→ sweep automatico del residuo native BNB/ETH/POL
+→ escrow con saldo residuo ≈ ZERO
+
+Nessun intervento manuale deve essere necessario dopo che il deposito on-chain è stato rilevato.
+
+IMPORTANTE — NON TOCCARE USDA
+
+USDA è un flusso completamente separato e FUNZIONANTE.
+
+NON modificare:
+- SendPaymentSheet.tsx
+- USDA payment flow
+- ThirdwebProvider
+- wallet connection USDA
+- USDA signing
+- USDA polling
+- endpoint /api/v1/payments
+- logica USDA
+- UI USDA
+
+NON modificare BTC signing.
+
+NON modificare la logica già funzionante di switch chain BSC/ETH.
+
+Lavorare esclusivamente sul MultiChain EVM backend/release flow, salvo test strettamente necessari.
+
+==================================================
+1. AUTO-RELEASE DOPO DETECT
+==================================================
+
+Quando detectMultiChainDeposit rileva realmente il deposito:
+
+balance >= required
+
+il transfer deve passare a:
+
+pending
+
+e subito dopo deve essere avviato:
+
+releaseMultiChainTransfer(transferId)
+
+in modalità fire-and-forget, ma con gestione completa degli errori.
+
+NON considerare "HTTP 200" sufficiente.
+
+Il release deve partire SOLO se:
+
+t.status !== "awaiting_deposit"
+
+e il deposito è realmente confermato on-chain.
+
+==================================================
+2. RECUPERO RECIPIENT WALLET
+==================================================
+
+NON richiedere recipientWallet al momento della CREATE.
+
+Questo è fondamentale.
+
+Il modello corretto è:
+
+CREATE
+senderWallet: opzionale
+recipientWallet: opzionale/null
+
+Il destinatario può ricevere il deposito anche se NON ha ancora collegato il wallet.
+
+Il deposito arriva comunque nell'ESCROW.
+
+Solo al momento del RELEASE bisogna recuperare il wallet del destinatario.
+
+Ordine:
+
+1. transfer.recipient_wallet
+2. se null, recuperare wallet_address dal profilo utente destinatario
+3. validare che sia un indirizzo EVM valido
+4. verificare che sia compatibile con la chain del transfer
+5. solo allora procedere al release
+
+Se il destinatario NON ha ancora un wallet:
+
+NON fallire definitivamente.
+NON fare loop pending ↔ releasing.
+NON cancellare il transfer.
+NON fare refund.
+
+Lasciare il transfer in:
+
+pending
+
+con motivo/log:
+
+"Recipient wallet not available — waiting for recipient wallet"
+
+Il scheduler dovrà riprovare successivamente.
+
+==================================================
+3. PREVENIRE IL LOOP PENDING ↔ RELEASING
+==================================================
+
+La transizione deve essere atomica:
+
+pending → releasing
+
+Solo una richiesta può vincere.
+
+Possibili concorrenti:
+
+- detect handler
+- scheduler
+- retry
+- recovery dopo restart
+
+Devono essere idempotenti.
+
+Se un processo ha già portato il transfer a:
+
+releasing
+
+gli altri devono uscire senza inviare una seconda TX.
+
+ASSOLUTAMENTE VIETATO inviare due release TX per lo stesso transfer.
+
+Usare il lock/atomic transition già presente nel progetto, se disponibile.
+
+NON creare un secondo sistema di lock se quello esistente è già sufficiente.
+
+==================================================
+4. SAFETY NET SCHEDULER
+==================================================
+
+Mantenere/implementare:
+
+processNewPendingTransfers()
+
+frequenza:
+
+ogni 2 minuti
+
+e anche una esecuzione all'avvio del server.
+
+Deve cercare esclusivamente transfer:
+
+status = "pending"
+
+e:
+
+tx_hash_release assente/null
+
+Per ogni transfer:
+
+1. verificare nuovamente che il deposito sia realmente presente on-chain
+2. recuperare recipient wallet
+3. se wallet assente → lasciare pending
+4. se wallet presente → tentare release
+5. se già releasing/released → NON fare nulla
+
+Il scheduler deve essere idempotente.
+
+==================================================
+5. RELEASE
+==================================================
+
+Quando il wallet è disponibile:
+
+pending
+→ atomic transition
+→ releasing
+→ escrow → recipient
+
+Dopo receipt confermata:
+
+released
+
+salvare:
+
+tx_hash_release
+
+release timestamp
+
+eventuali dati gas/receipt già previsti dal modello.
+
+NON impostare "released" prima della conferma on-chain.
+
+==================================================
+6. SWEEP DEL RESIDUO NATIVE
+==================================================
+
+Dopo il release EVM confermato:
+
+recuperare il saldo BNB/ETH/POL residuo dell'escrow.
+
+Il wallet escrow deve essere riportato il più vicino possibile a:
+
+0
+
+MAI usare un top-up fisso tipo:
+
+0.003 BNB
+
+MAI hardcodare quantità elevate.
+
+Il gas station deve finanziare solo il necessario.
+
+Il reclaim/sweep deve utilizzare:
+
+balance - gasNeededForSweep
+
+con gas price dinamico e safety buffer ragionevole.
+
+Il risultato deve essere:
+
+escrow native balance ≈ 0
+
+e il residuo deve tornare al fee/gas wallet.
+
+Mantenere l'audit già implementato:
+
+native_balance_before_sweep
+native_sweep_amount
+native_sweep_gas_cost
+native_sweep_tx_hash
+native_sweep_status
+native_balance_after_sweep
+
+NON modificare il meccanismo già funzionante se è corretto.
+
+==================================================
+7. STATI E WEBSOCKET
+==================================================
+
+Mantenere la sincronizzazione:
+
+pending
+→ releasing
+→ released
+
+tramite il sistema WS esistente:
+
+mc_payment.state_changed
+
+La bolla deve aggiornarsi senza regredire:
+
+awaiting_deposit
+→ pending
+→ releasing
+→ released
+
+MAI:
+
+pending → awaiting_deposit
+
+MAI:
+
+released → pending
+
+La persistenza MongoDB deve rimanere sincronizzata con lo stato reale del transfer.
+
+==================================================
+8. CANCEL STALE
+==================================================
+
+NON cancellare automaticamente:
+
+pending
+
+perché pending significa:
+
+DEPOSITO ON-CHAIN REALE RILEVATO.
+
+Il cancel-stale automatico deve riguardare esclusivamente:
+
+awaiting_deposit
+
+Mai cancellare un transfer con fondi già presenti nell'escrow senza una procedura esplicita di refund/sweep.
+
+==================================================
+9. ANTI-DUPLICATE TRANSACTION
+==================================================
+
+Questo è CRITICO.
+
+Prima di ogni release verificare:
+
+- status
+- tx_hash_release
+- eventuale release tx già submitted
+- lock atomico
+
+Non devono mai esistere due release TX per lo stesso transfer.
+
+Prima di ogni sweep verificare:
+
+- native_sweep_status
+- native_sweep_tx_hash
+- saldo attuale
+
+Non devono mai essere generati due sweep contemporaneamente.
+
+==================================================
+10. ERROR HANDLING
+==================================================
+
+Se release fallisce:
+
+NON perdere il transfer.
+
+NON cancellarlo.
+
+NON dichiararlo released.
+
+Mantenere uno stato coerente e consentire retry sicuro.
+
+Distinguere almeno:
+
+- recipient wallet assente
+- saldo escrow insufficiente
+- gas insufficiente
+- RPC failure
+- transaction reverted
+- timeout
+- nonce error
+- duplicate/already processing
+
+Il retry NON deve creare una seconda TX se una TX precedente è già stata submitted.
+
+==================================================
+11. TEST OBBLIGATORI
+==================================================
+
+Prima di dichiarare completato il lavoro eseguire test per almeno questi casi:
+
+S01 — deposito BSC rilevato → release automatico
+S02 — deposito ETH rilevato → release automatico
+S03 — deposito Polygon rilevato → release automatico
+S04 — recipient wallet già presente
+S05 — recipient wallet assente → pending
+S06 — recipient collega wallet → scheduler esegue release
+S07 — detect + scheduler contemporanei → UNA SOLA release TX
+S08 — server restart mentre transfer è pending
+S09 — release TX già submitted → nessuna seconda TX
+S10 — release confermata → status released
+S11 — sweep residuo native dopo release
+S12 — sweep retry senza doppio sweep
+S13 — cancel-stale NON cancella pending
+S14 — bolla WS non regredisce
+S15 — DB reload mantiene lo stato corretto
+S16 — USDA completamente invariato
+
+Controllare anche TypeScript/build/test suite.
+
+==================================================
+12. REGOLA FONDAMENTALE
+==================================================
+
+NON fare modifiche "preventive" ad altri flussi.
+
+NON rifattorizzare codice non necessario.
+
+NON modificare USDA.
+
+NON modificare BTC.
+
+NON modificare UI se non strettamente necessario per mostrare gli stati già esistenti.
+
+NON modificare fee calculation.
+
+NON modificare wallet connection.
+
+NON modificare chain switching.
+
+Implementare esclusivamente ciò che serve per rendere il MultiChain EVM auto-release, idempotente e sicuro.
+
+==================================================
+REPORT FINALE OBBLIGATORIO
+==================================================
+
+Alla fine fornire:
+
+1. File modificati
+2. File NON modificati
+3. Root cause
+4. Modifiche eseguite
+5. Flusso finale completo
+6. Test eseguiti e risultati
+7. Conferma esplicita che USDA non è stato modificato
+8. Conferma che recipientWallet NON è richiesto alla CREATE
+9. Conferma che pending non viene cancellato automaticamente
+10. Conferma che detect + scheduler non possono generare doppia release
+11. Conferma che dopo release l'escrow recupera automaticamente il residuo native
+12. TypeScript/build/test status
+
+NON dichiarare "completato" se uno dei punti sopra non è verificato.

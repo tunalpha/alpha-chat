@@ -24,13 +24,15 @@ const {
   mockRefund,
   mockRetryEVMFee,
   mockReleaseFromWaitingForGas,
+  mockReleaseMultiChainTransfer,
 } = vi.hoisted(() => ({
-  mockFind:                    vi.fn(),
-  mockFindOneAndUpdate:        vi.fn(),
-  mockAdapterGet:              vi.fn(),
-  mockRefund:                  vi.fn(),
-  mockRetryEVMFee:             vi.fn(),
+  mockFind:                     vi.fn(),
+  mockFindOneAndUpdate:         vi.fn(),
+  mockAdapterGet:               vi.fn(),
+  mockRefund:                   vi.fn(),
+  mockRetryEVMFee:              vi.fn(),
   mockReleaseFromWaitingForGas: vi.fn(),
+  mockReleaseMultiChainTransfer: vi.fn(),
 }));
 
 // ─── Mock prima degli import ───────────────────────────────────────────────────
@@ -63,9 +65,10 @@ vi.mock("../../blockchain/multichain-config", async () => {
 
 // Mock del service importato dinamicamente dal scheduler
 vi.mock("../multichain-payment.service", () => ({
-  refundMultiChainTransfer:  mockRefund,
-  retryEVMFeeTx:             mockRetryEVMFee,
-  releaseFromWaitingForGas:  mockReleaseFromWaitingForGas,
+  refundMultiChainTransfer:      mockRefund,
+  retryEVMFeeTx:                 mockRetryEVMFee,
+  releaseFromWaitingForGas:      mockReleaseFromWaitingForGas,
+  releaseMultiChainTransfer:     mockReleaseMultiChainTransfer,
   GasReserveDepletedError:   class GasReserveDepletedError extends Error {
     code = "GAS_RESERVE_DEPLETED" as const;
     constructor(public network: string, public escrowAddress: string, public required: bigint, public available: bigint) {
@@ -82,6 +85,7 @@ import {
   processExpiredMCTransfers,
   processExpiredPendingTransfers,
   processWaitingForGasTransfers,
+  processNewPendingTransfers,
   startMultiChainScheduler,
   _resetSchedulerForTesting,
 } from "../multichain-scheduler";
@@ -129,6 +133,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockRefund.mockResolvedValue({ status: "refunded" });
   mockRetryEVMFee.mockResolvedValue(undefined);
+  mockReleaseMultiChainTransfer.mockResolvedValue({ status: "released" });
   _resetSchedulerForTesting();
 });
 
@@ -842,5 +847,164 @@ describe("processWaitingForGasTransfers", () => {
     expect(mockReleaseFromWaitingForGas).toHaveBeenCalledTimes(2);
     expect(mockReleaseFromWaitingForGas).toHaveBeenCalledWith("waiting-001");
     expect(mockReleaseFromWaitingForGas).toHaveBeenCalledWith("waiting-002");
+  });
+});
+
+// ─── processNewPendingTransfers — S01/S02/S03/S05/S06/S07/S08 ────────────────
+
+/**
+ * S01-S08: Safety-net scheduler per auto-release transfer EVM pending.
+ *
+ * processNewPendingTransfers():
+ *   - Cerca transfer status="pending" con tx_hash_release=null e expires_at > now
+ *   - Chiama releaseMultiChainTransfer per ciascuno (idempotente via lock)
+ *   - Non lancia eccezioni — logga gli errori e continua
+ */
+
+const basePendingDoc = {
+  transfer_id:         "pending-001",
+  status:              "pending",
+  network:             "polygon",
+  asset:               "USDT",
+  tx_hash_release:     null,
+  expires_at:          FUTURE_DATE,
+  locked_at:           null,
+};
+
+describe("processNewPendingTransfers", () => {
+  // S01: BSC USDT pending → auto-release
+  it("S01 — BSC pending senza tx_hash_release → chiama releaseMultiChainTransfer", async () => {
+    const bscDoc = { ...basePendingDoc, transfer_id: "bsc-pending-001", network: "bsc" };
+    mockFindChain([bscDoc]);
+    mockReleaseMultiChainTransfer.mockResolvedValue({ status: "released", transferId: "bsc-pending-001" });
+
+    await processNewPendingTransfers();
+
+    expect(mockReleaseMultiChainTransfer).toHaveBeenCalledTimes(1);
+    expect(mockReleaseMultiChainTransfer).toHaveBeenCalledWith("bsc-pending-001");
+  });
+
+  // S02: ETH USDT pending → auto-release
+  it("S02 — ETH pending senza tx_hash_release → chiama releaseMultiChainTransfer", async () => {
+    const ethDoc = { ...basePendingDoc, transfer_id: "eth-pending-001", network: "ethereum" };
+    mockFindChain([ethDoc]);
+
+    await processNewPendingTransfers();
+
+    expect(mockReleaseMultiChainTransfer).toHaveBeenCalledWith("eth-pending-001");
+  });
+
+  // S03: Polygon USDT pending → auto-release
+  it("S03 — Polygon pending senza tx_hash_release → chiama releaseMultiChainTransfer", async () => {
+    const polyDoc = { ...basePendingDoc, transfer_id: "poly-pending-001", network: "polygon" };
+    mockFindChain([polyDoc]);
+
+    await processNewPendingTransfers();
+
+    expect(mockReleaseMultiChainTransfer).toHaveBeenCalledWith("poly-pending-001");
+  });
+
+  // S04 (via S06): se release ritorna "released" → log successo
+  it("S04/S10 — release completata con successo → status released", async () => {
+    mockFindChain([basePendingDoc]);
+    mockReleaseMultiChainTransfer.mockResolvedValue({ status: "released" });
+
+    await expect(processNewPendingTransfers()).resolves.not.toThrow();
+
+    expect(mockReleaseMultiChainTransfer).toHaveBeenCalledWith("pending-001");
+  });
+
+  // S05: recipient wallet assente → service lancia RECIPIENT_WALLET_REQUIRED → scheduler non propaga
+  it("S05 — recipient_wallet assente → service lancia, scheduler non propaga (lascia pending)", async () => {
+    mockFindChain([basePendingDoc]);
+
+    const walletErr = Object.assign(new Error("wallet required"), { code: "RECIPIENT_WALLET_REQUIRED_FOR_RELEASE" });
+    mockReleaseMultiChainTransfer.mockRejectedValue(walletErr);
+
+    // Scheduler non deve lanciare — gestisce l'errore e lascia il transfer in pending
+    await expect(processNewPendingTransfers()).resolves.not.toThrow();
+
+    expect(mockReleaseMultiChainTransfer).toHaveBeenCalledWith("pending-001");
+  });
+
+  // S06: nessun transfer pending → no-op
+  it("S06/S08 — nessun transfer pending → no-op (nessuna chiamata al service)", async () => {
+    mockFindChain([]);
+
+    await processNewPendingTransfers();
+
+    expect(mockReleaseMultiChainTransfer).not.toHaveBeenCalled();
+  });
+
+  // S07: detect + scheduler concorrenti → lock idempotente (acquireLock ritorna null dal service)
+  it("S07 — detect e scheduler concorrenti → releaseMultiChainTransfer chiamato per ogni pending (lock interno è idempotente)", async () => {
+    // Il service gestisce la concorrenza via acquireMCLock (atomic pending→releasing).
+    // Lo scheduler chiama releaseMultiChainTransfer, che ritorna lo stato corrente
+    // se il lock è già preso (idempotente — nessuna seconda TX).
+    const twoDoc = [
+      { ...basePendingDoc, transfer_id: "pending-001" },
+      { ...basePendingDoc, transfer_id: "pending-002" },
+    ];
+    mockFindChain(twoDoc);
+
+    // Simula: primo acquisisce il lock, secondo trova lock già preso → ritorna releasing
+    mockReleaseMultiChainTransfer
+      .mockResolvedValueOnce({ status: "released" })         // primo: completa
+      .mockResolvedValueOnce({ status: "releasing" });       // secondo: lock già preso, idempotente
+
+    await processNewPendingTransfers();
+
+    // Scheduler ha tentato entrambi — il service gestisce idempotenza internamente
+    expect(mockReleaseMultiChainTransfer).toHaveBeenCalledTimes(2);
+    expect(mockReleaseMultiChainTransfer).toHaveBeenCalledWith("pending-001");
+    expect(mockReleaseMultiChainTransfer).toHaveBeenCalledWith("pending-002");
+  });
+
+  // S08: server restart con transfer pending → processNewPendingTransfers in _runAll li recupera
+  it("S08 — batch di transfer pending (post-restart) → tutti processati senza eccezioni", async () => {
+    const pending = [
+      { ...basePendingDoc, transfer_id: "restart-001", network: "polygon" },
+      { ...basePendingDoc, transfer_id: "restart-002", network: "bsc" },
+      { ...basePendingDoc, transfer_id: "restart-003", network: "ethereum" },
+    ];
+    mockFindChain(pending);
+
+    // Terzo: errore transitorio (es. RPC down) — scheduler non propaga
+    mockReleaseMultiChainTransfer
+      .mockResolvedValueOnce({ status: "released" })
+      .mockResolvedValueOnce({ status: "released" })
+      .mockRejectedValueOnce(new Error("RPC timeout"));
+
+    await expect(processNewPendingTransfers()).resolves.not.toThrow();
+
+    expect(mockReleaseMultiChainTransfer).toHaveBeenCalledTimes(3);
+  });
+
+  // S13: cancel-stale NON cancella pending — già coperto da admin-routes, confermato per completezza
+  it("S13 — processNewPendingTransfers non cancella mai i transfer: chiama solo releaseMultiChainTransfer", async () => {
+    mockFindChain([basePendingDoc]);
+    mockReleaseMultiChainTransfer.mockResolvedValue({ status: "released" });
+
+    await processNewPendingTransfers();
+
+    // Non chiama refund/cancel — solo release
+    expect(mockRefund).not.toHaveBeenCalled();
+    expect(mockReleaseMultiChainTransfer).toHaveBeenCalledWith("pending-001");
+  });
+
+  // Query correttezza: include solo pending senza tx_hash_release e non scaduti
+  it("query correttezza — verifica campi status, tx_hash_release:null, expires_at", async () => {
+    mockFindChain([]);
+
+    await processNewPendingTransfers();
+
+    // Verifica la query passata a find()
+    const findCall = mockFind.mock.calls[0]?.[0];
+    expect(findCall).toMatchObject({
+      status:          "pending",
+      tx_hash_release: null,
+    });
+    // expires_at deve avere $gt (non scaduti)
+    expect(findCall?.expires_at?.$gt).toBeInstanceOf(Date);
   });
 });
