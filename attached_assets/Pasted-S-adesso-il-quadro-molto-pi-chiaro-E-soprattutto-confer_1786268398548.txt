@@ -1,0 +1,76 @@
+Sì: adesso il quadro è molto più chiaro. E soprattutto conferma la cosa che volevi ottenere: la network fee non è più una cifra fissa assurda come 0,50 BSC, ma viene calcolata in funzione del costo gas della singola transazione.
+
+I valori attuali
+
+Con i dati appena rilevati:
+
+* Polygon: ~0,0073 USDT
+* BSC: ~0,0062 USDT
+* Ethereum: ~0,0289 USDT
+
+E la fee resta flat per singolo pagamento, cioè:
+
+1 USDT → stessa network fee
+10 USDT → stessa network fee
+100 USDT → stessa network fee
+1.000 USDT → stessa network fee
+
+Non è una percentuale dell’importo.
+
+Però c’è una cosa che NON farei
+
+Non metterei un cap ETH di 3–5 USDT senza prima ragionare sul suo effetto.
+
+Se Ethereum arriva a un gas molto alto, un cap significa potenzialmente:
+
+costo reale $20 → cliente paga massimo $5 → la differenza la assorbe AlphaChat.
+
+Quindi il cap può proteggere il cliente, ma non protegge economicamente AlphaChat.
+
+La soluzione più coerente per il tuo modello è:
+
+gas basso → fee bassa
+gas alto → fee alta
+gas eccessivo → non procedere / waiting_for_gas, invece di far pagare ad AlphaChat la differenza.
+
+Questo è particolarmente importante perché hai già l’anti-loss e il meccanismo waiting_for_gas.
+
+Quindi io farei così
+
+NON aggiungere il cap ETH adesso.
+
+Prima farei una verifica finale del comportamento:
+
+1. Quote con gas normale → fee dinamica.
+2. Quote con gas alto → fee aumenta proporzionalmente.
+3. Nessuna fee flat residua.
+4. Nessuna fee che dipende dall’importo.
+5. Project fee 0,10% rimane separata.
+6. Reclaim TX3 rimane attivo.
+7. Anti-loss rimane come protezione.
+8. Se il costo diventa eccessivo, il sistema non deve vendere una transazione in perdita.
+
+E soprattutto: non toccherei più i valori manualmente.
+
+Una precisazione importante
+
+Il report dice che Polygon è a 279 Gwei, quindi il dato è effettivamente anomalo rispetto a condizioni normali. Ma proprio questo è un buon test: se anche con 279 Gwei la fee calcolata è solo ~0,007 USDT, significa che il modello sta reagendo al gas reale invece di applicare arbitrariamente 0,50 USDT.
+
+BSC ~0,006 USDT è invece esattamente il tipo di risultato competitivo che cercavamo.
+
+Ethereum ~0,029 USDT in questo momento è eccezionalmente economico; non va però preso come costo garantito quando il gas sarà alto.
+
+La mia decisione
+
+#47 ✅ APPROVATO
+
+#44 ✅ reclaim/hardening
+#45 ✅ project fee per rete
+#46 ✅ network fee dinamica
+#47 ✅ verifica economica completata
+
+Cap ETH ❌ NON aggiungerlo per ora.
+
+A questo punto, se i 4 test dichiarati pre-esistenti sono realmente gli stessi già documentati e non ci sono errori TypeScript/build, puoi procedere al deploy.
+
+Dopo il deploy, però, farei subito alcune transazioni di prova su Polygon e BSC e controlleremmo il breakdown reale prima di considerare la nuova struttura definitivamente chiusa.

@@ -842,11 +842,13 @@ export async function getPerformance(): Promise<PerformanceData> {
 // ---------------------------------------------------------------------------
 
 export interface AdminNotifSettings {
-  gas_station_emails:  boolean;
-  usda_emails:         boolean;
-  registration_emails: boolean;
-  updated_at:          string | null;
-  updated_by:          string | null;
+  gas_station_emails:          boolean;
+  usda_emails:                 boolean;
+  registration_emails:         boolean;
+  /** Feature flag: mostra/nasconde USDT e BTC nella chat */
+  multichain_payments_enabled: boolean;
+  updated_at:                  string | null;
+  updated_by:                  string | null;
 }
 
 export async function getNotifSettings(): Promise<AdminNotifSettings> {
@@ -854,7 +856,7 @@ export async function getNotifSettings(): Promise<AdminNotifSettings> {
 }
 
 export async function patchNotifSettings(
-  patch: Partial<Pick<AdminNotifSettings, "gas_station_emails" | "usda_emails" | "registration_emails">>,
+  patch: Partial<Pick<AdminNotifSettings, "gas_station_emails" | "usda_emails" | "registration_emails" | "multichain_payments_enabled">>,
 ): Promise<AdminNotifSettings> {
   return apiFetch<AdminNotifSettings>("/notification-settings", {
     method: "PATCH",

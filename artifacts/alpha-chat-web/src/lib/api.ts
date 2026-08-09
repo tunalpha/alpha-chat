@@ -1733,3 +1733,23 @@ export async function apiGetContactsPresence(): Promise<{ online_user_ids: strin
 export async function apiDestroyAccountDirect(): Promise<{ success: boolean }> {
   return request<{ success: boolean }>("POST", "/phoenix/destroy-direct");
 }
+
+// ── App Feature Flags ─────────────────────────────────────────────────────────
+
+export interface AppFeatureFlags {
+  /** Quando false: USDT e BTC nascosti nella chat, rimane solo USDA nativo */
+  multichain_payments_enabled: boolean;
+}
+
+/**
+ * Legge i feature flag dall'admin (endpoint senza auth, fail-open).
+ * In caso di errore restituisce il default sicuro (tutti abilitati).
+ */
+export async function apiGetAppFeatureFlags(): Promise<AppFeatureFlags> {
+  try {
+    return await request<AppFeatureFlags>("GET", "/admin/app-feature-flags");
+  } catch {
+    // Fail-open: se l'endpoint non è raggiungibile, mostra tutto
+    return { multichain_payments_enabled: true };
+  }
+}

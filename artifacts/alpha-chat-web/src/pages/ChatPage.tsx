@@ -44,6 +44,7 @@ import {
   decodeVoiceMeta,
   decodeMediaMeta,
   decodeLocationMeta,
+  apiGetAppFeatureFlags,
   type LocationMeta,
   AuthExpiredError,
   type ConversationItem,
@@ -899,6 +900,9 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
   const [showRequestUsda, setShowRequestUsda] = useState(false);
   const [usdaDetailId,    setUsdaDetailId]    = useState<string | null>(null);
 
+  /** Feature flag admin: mostra/nasconde USDT e BTC in chat (default ON, fail-open) */
+  const [multichainEnabled, setMultichainEnabled] = useState(true);
+
   /** Location sharing */
   const [locationModal,  setLocationModal]  = useState<"acquiring" | "ready" | "error" | null>(null);
   const [locationData,   setLocationData]   = useState<{ lat: number; lon: number; accuracy: number } | null>(null);
@@ -1387,6 +1391,13 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
 
   // Sblocca audio al primo gesto utente (necessario su iOS Safari / Chrome iOS)
   useEffect(() => { attachAudioUnlockListener(); }, []);
+
+  // Carica i feature flag admin al mount (fail-open: default ON)
+  useEffect(() => {
+    void apiGetAppFeatureFlags().then((flags) => {
+      setMultichainEnabled(flags.multichain_payments_enabled);
+    });
+  }, []);
 
   // iOS Safari keyboard: gestito con interactive-widget=resizes-content nel viewport meta
   // (nessun listener JS necessario — 100dvh si aggiorna automaticamente)
@@ -4303,34 +4314,39 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
                     <span className="attach-sheet-icon">💸</span>
                     <span>{t("chat.attachRequestUsda")}</span>
                   </button>
-                  <button
-                    className="attach-sheet-item"
-                    onClick={() => { setShowAttachSheet(false); setTimeout(() => setShowMCPay(true), 80); }}
-                  >
-                    <span className="attach-sheet-icon">💎</span>
-                    <span>{t("chat.attachSendMultichain")}</span>
-                  </button>
-                  <button
-                    className="attach-sheet-item"
-                    onClick={() => { setShowAttachSheet(false); setTimeout(() => setShowMCRequest(true), 80); }}
-                  >
-                    <span className="attach-sheet-icon">🪙</span>
-                    <span>{t("chat.attachRequestMultichain")}</span>
-                  </button>
-                  <button
-                    className="attach-sheet-item"
-                    onClick={() => { setShowAttachSheet(false); setTimeout(() => setShowBTCPay(true), 80); }}
-                  >
-                    <span className="attach-sheet-icon">₿</span>
-                    <span>{t("chat.attachSendBtc")}</span>
-                  </button>
-                  <button
-                    className="attach-sheet-item"
-                    onClick={() => { setShowAttachSheet(false); setTimeout(() => setShowBTCRequest(true), 80); }}
-                  >
-                    <span className="attach-sheet-icon">🟠</span>
-                    <span>{t("chat.attachRequestBtc")}</span>
-                  </button>
+                  {/* USDT + BTC: visibili solo se il flag admin è ON */}
+                  {multichainEnabled && (
+                    <>
+                      <button
+                        className="attach-sheet-item"
+                        onClick={() => { setShowAttachSheet(false); setTimeout(() => setShowMCPay(true), 80); }}
+                      >
+                        <span className="attach-sheet-icon">💎</span>
+                        <span>{t("chat.attachSendMultichain")}</span>
+                      </button>
+                      <button
+                        className="attach-sheet-item"
+                        onClick={() => { setShowAttachSheet(false); setTimeout(() => setShowMCRequest(true), 80); }}
+                      >
+                        <span className="attach-sheet-icon">🪙</span>
+                        <span>{t("chat.attachRequestMultichain")}</span>
+                      </button>
+                      <button
+                        className="attach-sheet-item"
+                        onClick={() => { setShowAttachSheet(false); setTimeout(() => setShowBTCPay(true), 80); }}
+                      >
+                        <span className="attach-sheet-icon">₿</span>
+                        <span>{t("chat.attachSendBtc")}</span>
+                      </button>
+                      <button
+                        className="attach-sheet-item"
+                        onClick={() => { setShowAttachSheet(false); setTimeout(() => setShowBTCRequest(true), 80); }}
+                      >
+                        <span className="attach-sheet-icon">🟠</span>
+                        <span>{t("chat.attachRequestBtc")}</span>
+                      </button>
+                    </>
+                  )}
                 </>
               )}
             </div>

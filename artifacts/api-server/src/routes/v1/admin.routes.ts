@@ -1931,16 +1931,17 @@ router.get("/calls/metrics", requireAdmin("read_only"), async (_req, res, next) 
 // ── Admin Notification Settings — Email Toggles ───────────────────────────────
 import { AdminSettingsModel, getAdminSettings } from "../../models/admin-settings.model";
 
-/** GET /api/v1/admin/notification-settings — legge le preferenze email admin */
+/** GET /api/v1/admin/notification-settings — legge le preferenze email admin + feature flags */
 router.get("/notification-settings", requireAdmin("read_only"), async (_req, res, next) => {
   try {
     const settings = await getAdminSettings();
     res.json({
-      gas_station_emails:  settings.gas_station_emails,
-      usda_emails:         settings.usda_emails,
-      registration_emails: settings.registration_emails,
-      updated_at:          settings.updated_at ?? null,
-      updated_by:          settings.updated_by ?? null,
+      gas_station_emails:          settings.gas_station_emails,
+      usda_emails:                 settings.usda_emails,
+      registration_emails:         settings.registration_emails,
+      multichain_payments_enabled: settings.multichain_payments_enabled ?? true,
+      updated_at:                  settings.updated_at ?? null,
+      updated_by:                  settings.updated_by ?? null,
     });
   } catch (err) { next(err); }
 });
@@ -1948,11 +1949,12 @@ router.get("/notification-settings", requireAdmin("read_only"), async (_req, res
 /** PATCH /api/v1/admin/notification-settings — aggiorna uno o più toggle */
 router.patch("/notification-settings", requireAdmin("super_admin"), async (req, res, next) => {
   try {
-    const { gas_station_emails, usda_emails, registration_emails } = req.body as Record<string, unknown>;
+    const { gas_station_emails, usda_emails, registration_emails, multichain_payments_enabled } = req.body as Record<string, unknown>;
     const update: Record<string, unknown> = { updated_at: new Date(), updated_by: (req as unknown as { user?: { userId?: string } }).user?.userId };
-    if (typeof gas_station_emails  === "boolean") update.gas_station_emails  = gas_station_emails;
-    if (typeof usda_emails          === "boolean") update.usda_emails          = usda_emails;
-    if (typeof registration_emails  === "boolean") update.registration_emails  = registration_emails;
+    if (typeof gas_station_emails          === "boolean") update.gas_station_emails          = gas_station_emails;
+    if (typeof usda_emails                  === "boolean") update.usda_emails                  = usda_emails;
+    if (typeof registration_emails          === "boolean") update.registration_emails          = registration_emails;
+    if (typeof multichain_payments_enabled  === "boolean") update.multichain_payments_enabled  = multichain_payments_enabled;
 
     const doc = await AdminSettingsModel.findOneAndUpdate(
       { _id: "default" },
@@ -1960,11 +1962,22 @@ router.patch("/notification-settings", requireAdmin("super_admin"), async (req, 
       { upsert: true, returnDocument: "after" },
     );
     res.json({
-      gas_station_emails:  doc!.gas_station_emails,
-      usda_emails:         doc!.usda_emails,
-      registration_emails: doc!.registration_emails,
-      updated_at:          doc!.updated_at ?? null,
-      updated_by:          doc!.updated_by ?? null,
+      gas_station_emails:          doc!.gas_station_emails,
+      usda_emails:                 doc!.usda_emails,
+      registration_emails:         doc!.registration_emails,
+      multichain_payments_enabled: doc!.multichain_payments_enabled ?? true,
+      updated_at:                  doc!.updated_at ?? null,
+      updated_by:                  doc!.updated_by ?? null,
+    });
+  } catch (err) { next(err); }
+});
+
+/** GET /api/v1/admin/app-feature-flags — endpoint pubblico per la chat app (no auth) */
+router.get("/app-feature-flags", async (_req, res, next) => {
+  try {
+    const settings = await getAdminSettings();
+    res.json({
+      multichain_payments_enabled: settings.multichain_payments_enabled ?? true,
     });
   } catch (err) { next(err); }
 });

@@ -11,7 +11,7 @@ import {
   getNotifSettings, patchNotifSettings,
   type AdminNotifSettings,
 } from "@/lib/api";
-import { Mail, Fuel, Wallet, UserPlus, RefreshCw } from "lucide-react";
+import { Mail, Fuel, Wallet, UserPlus, RefreshCw, Layers } from "lucide-react";
 
 // ── Toggle component ──────────────────────────────────────────────────────────
 
@@ -34,9 +34,9 @@ function Toggle({ on, onChange, disabled }: { on: boolean; onChange: (v: boolean
 
 // ── Page ─────────────────────────────────────────────────────────────────────
 
-type ToggleKey = "gas_station_emails" | "usda_emails" | "registration_emails";
+type ToggleKey = "gas_station_emails" | "usda_emails" | "registration_emails" | "multichain_payments_enabled";
 
-const ROWS: { key: ToggleKey; icon: React.ReactNode; label: string; desc: string }[] = [
+const EMAIL_ROWS: { key: ToggleKey; icon: React.ReactNode; label: string; desc: string }[] = [
   {
     key:   "gas_station_emails",
     icon:  <Fuel className="w-5 h-5 text-yellow-400" />,
@@ -54,6 +54,17 @@ const ROWS: { key: ToggleKey; icon: React.ReactNode; label: string; desc: string
     icon:  <UserPlus className="w-5 h-5 text-blue-400" />,
     label: "Registrazioni utenti",
     desc:  "Email quando un nuovo utente si registra su AlphaChat",
+  },
+];
+
+const FEATURE_ROWS: { key: ToggleKey; icon: React.ReactNode; label: string; desc: string; onLabel: string; offLabel: string }[] = [
+  {
+    key:      "multichain_payments_enabled",
+    icon:     <Layers className="w-5 h-5 text-emerald-400" />,
+    label:    "Pagamenti USDT / BTC in chat",
+    desc:     "Mostra i pulsanti Invia/Richiedi USDT e Invia/Richiedi BTC nel menu condivisione. Se OFF, rimane solo USDA nativo.",
+    onLabel:  "VISIBILI",
+    offLabel: "NASCOSTI",
   },
 ];
 
@@ -90,10 +101,10 @@ export default function EmailSettings() {
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
             <Mail className="w-6 h-6 text-primary" />
-            Email Notifiche Admin
+            Impostazioni & Feature Flag
           </h1>
           <p className="text-muted-foreground text-sm mt-1">
-            Controlla quali email automatiche ricevi come amministratore.
+            Controlla le email automatiche e le funzionalità visibili agli utenti.
           </p>
         </div>
         <button
@@ -106,13 +117,54 @@ export default function EmailSettings() {
         </button>
       </div>
 
-      {/* Toggles */}
-      <Card>
+      {/* ── Sezione: Feature Flag Chat ──────────────────────────────────────── */}
+      <Card className="border-emerald-500/20 bg-emerald-500/5">
         <CardHeader className="pb-2">
-          <CardTitle className="text-base">Configurazione</CardTitle>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Layers className="w-4 h-4 text-emerald-400" />
+            Funzionalità Chat
+          </CardTitle>
         </CardHeader>
         <CardContent className="divide-y divide-border">
-          {ROWS.map((row) => {
+          {FEATURE_ROWS.map((row) => {
+            const isOn = data?.[row.key] ?? true;
+            const isSavingThis = saving === row.key;
+            return (
+              <div key={row.key} className="flex items-center justify-between py-4 first:pt-2 last:pb-2">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-lg bg-muted/60 shrink-0">{row.icon}</div>
+                  <div>
+                    <p className="font-medium text-sm">{row.label}</p>
+                    <p className="text-xs text-muted-foreground mt-0.5">{row.desc}</p>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2 ml-4 shrink-0">
+                  {isSavingThis && <RefreshCw className="w-3 h-3 animate-spin text-muted-foreground" />}
+                  <Toggle
+                    on={isOn}
+                    onChange={(v) => toggle(row.key, v)}
+                    disabled={isLoading || saving !== null}
+                  />
+                  <span className={`text-xs font-mono font-semibold w-16 text-right ${isOn ? "text-emerald-400" : "text-muted-foreground"}`}>
+                    {isOn ? row.onLabel : row.offLabel}
+                  </span>
+                </div>
+              </div>
+            );
+          })}
+        </CardContent>
+      </Card>
+
+      {/* ── Sezione: Email Notifiche ─────────────────────────────────────────── */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base flex items-center gap-2">
+            <Mail className="w-4 h-4 text-primary" />
+            Email Notifiche Admin
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="divide-y divide-border">
+          {EMAIL_ROWS.map((row) => {
             const isOn = data?.[row.key] ?? true;
             const isSavingThis = saving === row.key;
             return (

@@ -7,31 +7,39 @@
 import { Schema, model } from "mongoose";
 
 export interface IAdminSettings {
-  _id:                    string;
+  _id:                          string;
   /** Email automatiche per eventi Gas Station (top-up, saldo basso) */
-  gas_station_emails:     boolean;
+  gas_station_emails:           boolean;
   /** Email automatiche per transazioni USDA (invio, ricezione, rifiuto, annullamento) */
-  usda_emails:            boolean;
+  usda_emails:                  boolean;
   /** Email automatiche quando un nuovo utente si registra */
-  registration_emails:    boolean;
-  updated_at?:            Date;
-  updated_by?:            string;
+  registration_emails:          boolean;
+  /**
+   * Feature flag: mostra/nasconde i pulsanti USDT e BTC nella chat.
+   * Quando false → la UI mostra solo USDA nativo (Invia/Richiedi USDA).
+   * Default: true (abilitato).
+   */
+  multichain_payments_enabled:  boolean;
+  updated_at?:                  Date;
+  updated_by?:                  string;
 }
 
 export const ADMIN_SETTINGS_DEFAULTS: Omit<IAdminSettings, "_id" | "updated_at" | "updated_by"> = {
-  gas_station_emails:  true,
-  usda_emails:         true,
-  registration_emails: true,
+  gas_station_emails:          true,
+  usda_emails:                 true,
+  registration_emails:         true,
+  multichain_payments_enabled: true,
 };
 
 const schema = new Schema<IAdminSettings>(
   {
-    _id:                 { type: String, default: "default" },
-    gas_station_emails:  { type: Boolean, default: true },
-    usda_emails:         { type: Boolean, default: true },
-    registration_emails: { type: Boolean, default: true },
-    updated_at:          Date,
-    updated_by:          String,
+    _id:                         { type: String, default: "default" },
+    gas_station_emails:          { type: Boolean, default: true },
+    usda_emails:                 { type: Boolean, default: true },
+    registration_emails:         { type: Boolean, default: true },
+    multichain_payments_enabled: { type: Boolean, default: true },
+    updated_at:                  Date,
+    updated_by:                  String,
   },
   { versionKey: false, timestamps: false, _id: false },
 );
