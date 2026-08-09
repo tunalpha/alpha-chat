@@ -1,0 +1,260 @@
+Hai ragione su entrambi i punti. Qui c’è una regressione che va fermata subito.
+
+🚨 1. USDA: non doveva essere toccato
+
+Se USDA prima arrivava normalmente alla schermata di firma e ora non arriva più alla firma, non bisogna fare altri fix “a tentativi”.
+
+Il MultiChain è un flusso separato da USDA. L’agente deve verificare immediatamente se ha modificato:
+
+* SendPaymentSheet.tsx
+* useWallet / ThirdWeb provider
+* api.ts
+* wallet connection/context
+* componenti condivisi
+* routing della schermata firma
+* handleCreate o funzioni comuni utilizzate anche da USDA
+* eventuali feature flag/global state
+
+Prima cosa: git diff e confronto con l’ultimo commit funzionante di USDA.
+
+⸻
+
+🚨 2. Hai ragione: recipientWallet = null NON deve impedire il pagamento
+
+Nel modello che stiamo costruendo:
+
+Mittente
+→ firma/paga
+→ fondi entrano nell’escrow
+
+Destinatario
+→ può anche essere offline
+→ non deve necessariamente avere il wallet collegato
+→ quando sarà disponibile/collegherà il wallet, il sistema potrà procedere al release.
+
+Quindi il controllo introdotto:
+
+senderWallet OR recipientWallet null → HTTP 400
+
+è sbagliato per il recipient.
+
+La regola corretta è:
+
+Campo	Necessario per creare il transfer?
+senderWallet	Dipende dal tipo di flusso, ma se il mittente deve firmare EVM, sì
+recipientWallet	NO
+escrowWallet	SÌ
+recipient identifier	SÌ
+recipient wallet	Può essere collegato successivamente
+
+Il fatto che il destinatario non abbia ancora collegato il wallet è perfettamente compatibile con l’escrow.
+
+⸻
+
+🔴 Mandagli subito questo prompt
+
+🚨 STOP IMMEDIATO — REGRESSIONE GRAVE USDA + LOGICA RECIPIENT WALLET ERRATA
+NON fare altri fix e NON modificare altro codice finché non hai completato questa diagnosi.
+Abbiamo due problemi distinti e devi trattarli separatamente.
+==================================================
+1. REGRESSIONE USDA — GRAVISSIMA
+==================================================
+Prima delle ultime modifiche il flusso USDA funzionava e arrivava regolarmente alla schermata:
+"Firma transazione"
+Ora la firma USDA NON viene più raggiunta.
+USDA NON doveva essere toccato.
+Prima cosa da fare:
+- esegui git diff
+- identifica TUTTI i file modificati nelle ultime modifiche
+- confrontali con l'ultimo stato funzionante USDA
+- identifica qualsiasi modifica diretta o indiretta che possa aver alterato USDA
+Controlla in particolare:
+- SendPaymentSheet.tsx
+- wallet context/provider
+- ThirdWeb hooks
+- api.ts
+- auth/session logic
+- wallet connection logic
+- componenti condivisi
+- funzioni condivise
+- routing
+- handleCreate / handleSign
+- feature flags
+- env
+- eventuali modifiche a tipi o hook globali
+NON assumere che "USDA.tsx non è stato modificato" significhi che USDA non sia stato influenzato.
+Una modifica a un componente condiviso può rompere USDA senza modificare SendPaymentSheet.tsx.
+OBIETTIVO:
+Ripristinare ESATTAMENTE il comportamento USDA precedente:
+USDA
+→ prepara pagamento
+→ connessione wallet
+→ Firma transazione
+→ Trust Wallet
+→ firma
+→ polling
+→ completamento
+NON modificare la logica USDA per adattarla al nuovo MultiChain.
+USDA deve tornare identico al comportamento precedente.
+==================================================
+2. ERRORE LOGICO: RECIPIENT WALLET OBBLIGATORIO
+==================================================
+La modifica:
+"handleCreateTransfer rifiuta HTTP 400 se senderWallet O recipientWallet sono null su EVM"
+È ERRATA.
+Nel nostro modello escrow il destinatario NON deve necessariamente avere il wallet collegato.
+Esempio perfettamente valido:
+Mittente
+↓
+firma 1 USDT
+↓
+USDT → escrow
+↓
+destinatario offline
+↓
+destinatario collega successivamente il proprio wallet
+↓
+escrow → recipient
+Quindi:
+recipientWallet = null
+NON deve impedire la creazione del transfer.
+Il destinatario può essere identificato tramite il meccanismo previsto dall'app e collegare il wallet successivamente.
+==================================================
+3. REGOLA CORRETTA
+==================================================
+NON introdurre una validazione globale:
+if (!senderWallet || !recipientWallet) reject
+Devi distinguere chiaramente:
+SENDER WALLET
+=
+wallet del soggetto che deve effettivamente firmare/pagare.
+RECIPIENT WALLET
+=
+destinazione finale del release.
+Il recipient wallet può essere NULL durante la fase:
+awaiting_deposit
+pending
+e può essere valorizzato successivamente prima del release.
+L'escrow è proprio ciò che consente questo modello.
+==================================================
+4. NON ROMPERE IL MODELLO ESCROW
+==================================================
+Il flusso desiderato è:
+CREATE TRANSFER
+↓
+escrow creato
+↓
+recipient può NON avere wallet collegato
+↓
+sender effettua pagamento
+↓
+deposito rilevato on-chain
+↓
+pending
+↓
+recipient collega/fornisce wallet
+↓
+release
+↓
+escrow → recipient
+↓
+sweep residuo native gas
+↓
+escrow = 0
+Questo comportamento DEVE rimanere possibile.
+==================================================
+5. IMPORTANTE — NON TOCCARE LE PARTI GIÀ RISOLTE
+==================================================
+NON modificare senza necessità:
+- Trust Wallet / WalletConnect signing BSC
+- switch chain EVM
+- BTC flow
+- BSC detect
+- ETH detect
+- escrow sweep
+- gas reclaim
+- MultiChain bubble
+- WS state synchronization
+- cancel stale
+- recovery logic
+Queste parti sono state appena corrette.
+==================================================
+6. USDA E MULTICHAIN DEVONO ESSERE ISOLATI
+==================================================
+Voglio una verifica architetturale esplicita:
+USDA
+=
+flusso esistente e stabile
+MultiChain
+=
+nuovo flusso separato
+Non utilizzare una modifica MultiChain per cambiare il comportamento USDA.
+Se esiste codice condiviso, NON modificarlo alla cieca.
+==================================================
+7. PRIMA DI MODIFICARE
+==================================================
+Restituisci prima questo report:
+A. Ultimo commit/versione in cui USDA funzionava
+B. File modificati dopo quel punto
+C. Quale modifica ha causato la regressione USDA
+D. Stack/path esatto che impedisce di arrivare a "Firma transazione"
+E. Quale modifica ha introdotto recipientWallet obbligatorio
+F. Qual è il punto corretto in cui il recipient wallet deve essere richiesto:
+   - create transfer?
+   - prima del release?
+   - solo quando il destinatario effettua claim?
+NON modificare il codice prima di aver identificato questi punti.
+==================================================
+8. FIX RICHIESTO
+==================================================
+Dopo la diagnosi:
+1. ripristina USDA al comportamento funzionante precedente;
+2. rimuovi il requisito recipientWallet obbligatorio;
+3. mantieni solo le validazioni realmente necessarie per il sender/signing;
+4. verifica che un transfer EVM possa essere creato con:
+senderWallet = valido
+recipientWallet = null
+5. verifica che il transfer possa arrivare:
+awaiting_deposit
+→ pending
+anche con recipientWallet null;
+6. il release deve essere consentito SOLO quando esiste una destinazione recipient valida;
+7. il recipient wallet deve poter essere associato successivamente;
+8. esegui test USDA + BSC + ETH + escrow.
+==================================================
+CRITERIO DI ACCETTAZIONE
+==================================================
+USDA:
+Continua
+→ Firma transazione
+→ Trust Wallet
+→ firma
+→ completamento
+DEVE FUNZIONARE COME PRIMA.
+MULTICHAIN EVM:
+sender wallet disponibile
++
+recipient wallet NULL
+=
+TRANSFER VALIDO
+Il deposito deve poter andare:
+escrow
+→ pending
+senza richiedere il wallet del destinatario.
+Il wallet del destinatario deve essere necessario SOLO al momento in cui bisogna effettuare il release verso il destinatario.
+STOP ALLE MODIFICHE CASUALI.
+Prima diagnosi, poi fix chirurgico.
+A fine lavoro forniscimi:
+- file modificati
+- file ripristinati
+- root cause USDA
+- root cause recipientWallet
+- test eseguiti
+- risultati
+- conferma esplicita che USDA non è stato alterato funzionalmente.
+
+La cosa più importante adesso
+
+Non manderei altri prompt di miglioramento all’agente finché non risolve questa regressione. Deve prima riportare USDA allo stato funzionante e correggere la logica recipientWallet.
+
+E soprattutto: non è corretto bloccare l’invio perché il destinatario non ha ancora collegato il wallet. Il tuo modello escrow serve esattamente a separare ricezione dei fondi dalla disponibilità immediata del wallet del destinatario.

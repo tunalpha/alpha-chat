@@ -771,6 +771,21 @@ export async function releaseMultiChainTransfer(transferId: string): Promise<Mul
 
   assertFeatureEnabled(locked.network, locked.asset);
 
+  // Validazione recipient_wallet per EVM: richiesto al momento del release (non alla creazione).
+  // Il modello escrow permette di creare il transfer senza wallet del destinatario,
+  // ma il release EVM richiede un indirizzo on-chain valido per TX1.
+  // Bitcoin non richiede questa validazione: il recipient_wallet è l'indirizzo BTC
+  // derivato dal flusso PSBT, sempre presente se il trasferimento è stato creato.
+  if (!isBitcoin(locked.network) && !locked.recipient_wallet) {
+    // Rollback: torna a "pending" perché il transfer non può essere rilasciato senza destinazione.
+    await MultiChainTransferModel.findOneAndUpdate(
+      { transfer_id: transferId, status: "releasing" },
+      { $set: { status: "pending", locked_at: null } },
+    );
+    throw new AppError("RECIPIENT_WALLET_REQUIRED_FOR_RELEASE", 422,
+      "Il wallet del destinatario non è disponibile. Il destinatario deve collegare il proprio wallet prima che i fondi possano essere rilasciati.");
+  }
+
   try {
     if (isBitcoin(locked.network)) {
       return await _releaseBitcoin(locked);

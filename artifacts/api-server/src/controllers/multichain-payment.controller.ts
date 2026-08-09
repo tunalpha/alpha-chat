@@ -372,23 +372,15 @@ export async function handleCreateTransfer(
       expiresInHours,
     } = req.body;
 
-    // ── OBIETTIVO 2: validazione wallet obbligatoria per reti EVM ─────────────
-    // Per le reti EVM (polygon, bsc, ethereum) entrambi i wallet sono necessari:
-    //   • senderWallet   → rimborso al mittente in caso di refund
-    //   • recipientWallet→ destinazione del release (TX1)
-    // Senza questi campi il transfer non può essere rimborsato né rilasciato,
-    // e i fondi resterebbero bloccati nell'escrow senza recupero automatico.
-    // Bitcoin non è incluso: il mittente invia on-chain direttamente senza firma app.
-    if ((network as string) !== "bitcoin") {
-      if (!senderWallet) {
-        throw new AppError("SENDER_WALLET_REQUIRED", 400,
-          "Il wallet del mittente è obbligatorio per i pagamenti EVM. Collega un wallet prima di procedere.");
-      }
-      if (!recipientWallet) {
-        throw new AppError("RECIPIENT_WALLET_REQUIRED", 400,
-          "Il wallet del destinatario non è disponibile. Il destinatario deve aver collegato un wallet EVM.");
-      }
-    }
+    // Nota architetturale: wallet validation NON avviene alla creazione del transfer.
+    //
+    // Modello escrow: il recipient può essere offline e collegare il wallet
+    // successivamente. Il senderWallet può non essere disponibile in tutti i flow.
+    //   • senderWallet   → necessario per la firma dell'utente (enforced nel client)
+    //   • recipientWallet→ necessario SOLO al momento del release (enforced in releaseMultiChainTransfer)
+    //
+    // Il transfer viene creato con i wallet disponibili al momento; la validazione
+    // bloccante avviene dove i wallet sono effettivamente necessari.
 
     // Idempotency: se clientRef già usato, restituisce il transfer esistente
     const existing = await findByClientRef(clientRef);

@@ -217,11 +217,16 @@ export function SendPaymentSheet({
         setPhase("done");
       })
       .catch(() => {
-        setPhase("error");
+        // Pulisce la chiave in modo che riaprendo il foglio non scatti
+        // di nuovo il recovery automatico (che causerebbe un loop errore→chiudi→riapri→errore).
+        localStorage.removeItem(PENDING_KEY);
+        // Torna allo step firma così l'utente può riprovare manualmente.
+        setStep("confirm");
+        setPhase(null);
         setError(
           "Deposito non ancora rilevato on-chain.\n" +
-          "La transazione potrebbe essere ancora in elaborazione (1-2 min).\n" +
-          "Usa il pulsante «Controlla deposito» nella chat per riprovare.",
+          "La transazione potrebbe essere in elaborazione (1-2 min).\n" +
+          "Premi «🔐 Firma e Invia» per riprovare la firma, oppure chiudi e usa «Controlla deposito» nella chat.",
         );
       });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
