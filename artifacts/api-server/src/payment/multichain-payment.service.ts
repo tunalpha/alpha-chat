@@ -692,6 +692,21 @@ export async function createMultiChainTransfer(
     "[MCPayment] Transfer creato",
   );
 
+  // Email admin: transfer creato (fire-and-forget — non blocca mai il return)
+  void import("../services/email.service").then(({ sendMultiChainTransactionEmail }) =>
+    sendMultiChainTransactionEmail({
+      type:            "created",
+      transferId:      doc.transfer_id,
+      network:         doc.network,
+      asset:           doc.asset,
+      grossAmount:     doc.gross_amount,
+      decimals:        doc.decimals,
+      senderUserId:    doc.sender_id.toString(),
+      recipientUserId: doc.recipient_id.toString(),
+      escrowWallet:    doc.escrow_wallet,
+    }).catch(() => {}),
+  ).catch(() => {});
+
   return toInfo(doc);
 }
 
@@ -747,6 +762,23 @@ export async function detectMultiChainDeposit(transferId: string): Promise<Multi
   // OBIETTIVO 4: persiste lo stato aggiornato nel documento messaggio MongoDB,
   // così il ricaricamento della chat non mostra lo status originale "awaiting_deposit".
   void _syncTransferMessageMeta(updated);
+
+  // Email admin: deposito rilevato (fire-and-forget)
+  void import("../services/email.service").then(({ sendMultiChainTransactionEmail }) =>
+    sendMultiChainTransactionEmail({
+      type:            "deposit_detected",
+      transferId:      updated.transfer_id,
+      network:         updated.network,
+      asset:           updated.asset,
+      grossAmount:     updated.gross_amount,
+      decimals:        updated.decimals,
+      senderUserId:    updated.sender_id.toString(),
+      recipientUserId: updated.recipient_id.toString(),
+      escrowWallet:    updated.escrow_wallet,
+      txHash:          updated.tx_hash_deposit,
+    }).catch(() => {}),
+  ).catch(() => {});
+
   return toInfo(updated);
 }
 
@@ -1564,6 +1596,21 @@ async function _releaseEvm(doc: MultiChainTransferDocument): Promise<MultiChainT
   // Errori gestiti internamente — mai propagati. Mai blocca il return.
   void _reclaimEscrowGas(doc, signerPk);
 
+  // Email admin: pagamento completato (fire-and-forget)
+  void import("../services/email.service").then(({ sendMultiChainTransactionEmail }) =>
+    sendMultiChainTransactionEmail({
+      type:            "released",
+      transferId:      completed!.transfer_id,
+      network:         completed!.network,
+      asset:           completed!.asset,
+      grossAmount:     completed!.gross_amount,
+      decimals:        completed!.decimals,
+      senderUserId:    completed!.sender_id.toString(),
+      recipientUserId: completed!.recipient_id.toString(),
+      txHash:          completed!.tx_hash_release,
+    }).catch(() => {}),
+  ).catch(() => {});
+
   return toInfo(completed!);
 }
 
@@ -1620,6 +1667,22 @@ async function _releaseBitcoin(doc: MultiChainTransferDocument): Promise<MultiCh
 
   emitMCPaymentStateChanged(completed!);
   void _syncTransferMessageMeta(completed!); // persiste status "released" nel doc messaggio (BTC)
+
+  // Email admin: BTC pagamento completato (fire-and-forget)
+  void import("../services/email.service").then(({ sendMultiChainTransactionEmail }) =>
+    sendMultiChainTransactionEmail({
+      type:            "released",
+      transferId:      completed!.transfer_id,
+      network:         completed!.network,
+      asset:           completed!.asset,
+      grossAmount:     completed!.gross_amount,
+      decimals:        completed!.decimals,
+      senderUserId:    completed!.sender_id.toString(),
+      recipientUserId: completed!.recipient_id.toString(),
+      txHash:          completed!.tx_hash_release,
+    }).catch(() => {}),
+  ).catch(() => {});
+
   return toInfo(completed!);
 }
 
@@ -1838,6 +1901,22 @@ async function _doRefund(doc: MultiChainTransferDocument): Promise<MultiChainTra
     );
 
     emitMCPaymentStateChanged(completed!);
+
+    // Email admin: rimborso completato (fire-and-forget)
+    void import("../services/email.service").then(({ sendMultiChainTransactionEmail }) =>
+      sendMultiChainTransactionEmail({
+        type:            "refunded",
+        transferId:      completed!.transfer_id,
+        network:         completed!.network,
+        asset:           completed!.asset,
+        grossAmount:     completed!.gross_amount,
+        decimals:        completed!.decimals,
+        senderUserId:    completed!.sender_id.toString(),
+        recipientUserId: completed!.recipient_id.toString(),
+        txHash:          completed!.tx_hash_refund,
+      }).catch(() => {}),
+    ).catch(() => {});
+
     return toInfo(completed!);
   } catch (err) {
     // C-03: rollback SOLO se tx_hash_refund è ancora null.

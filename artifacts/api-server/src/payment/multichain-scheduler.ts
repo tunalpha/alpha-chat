@@ -189,6 +189,20 @@ export async function processStuckReleasingTransfers(): Promise<void> {
               { transferId: doc.transfer_id, tx1: doc.tx_hash_release, tx2: doc.tx_hash_fee },
               "[MCScheduler] C-02 recovery: TX1+TX2 confermate on-chain → released",
             );
+            // Email admin: pagamento completato via recovery scheduler (fire-and-forget)
+            void import("../services/email.service").then(({ sendMultiChainTransactionEmail }) =>
+              sendMultiChainTransactionEmail({
+                type:            "released",
+                transferId:      doc.transfer_id,
+                network:         doc.network,
+                asset:           doc.asset,
+                grossAmount:     doc.gross_amount,
+                decimals:        doc.decimals,
+                senderUserId:    doc.sender_id.toString(),
+                recipientUserId: doc.recipient_id.toString(),
+                txHash:          doc.tx_hash_release,
+              }).catch(() => {}),
+            ).catch(() => {});
           } else if (tx2Status === "pending") {
             // TX2 in mempool — rinnova lock e attendi
             await MultiChainTransferModel.findOneAndUpdate(
@@ -224,6 +238,20 @@ export async function processStuckReleasingTransfers(): Promise<void> {
             { transferId: doc.transfer_id, txHash: doc.tx_hash_release },
             "[MCScheduler] TX confermata on-chain → released",
           );
+          // Email admin: pagamento completato via recovery scheduler (fire-and-forget)
+          void import("../services/email.service").then(({ sendMultiChainTransactionEmail }) =>
+            sendMultiChainTransactionEmail({
+              type:            "released",
+              transferId:      doc.transfer_id,
+              network:         doc.network,
+              asset:           doc.asset,
+              grossAmount:     doc.gross_amount,
+              decimals:        doc.decimals,
+              senderUserId:    doc.sender_id.toString(),
+              recipientUserId: doc.recipient_id.toString(),
+              txHash:          doc.tx_hash_release,
+            }).catch(() => {}),
+          ).catch(() => {});
         }
       } else if (txStatus === "pending") {
         // TX ancora in mempool — rinova lock per evitare falsi allarmi
@@ -334,6 +362,20 @@ export async function processStuckRefundingTransfers(): Promise<void> {
           { transferId: doc.transfer_id, txHash: doc.tx_hash_refund },
           "[MCScheduler] Refund TX confermata → refunded",
         );
+        // Email admin: rimborso completato via recovery scheduler (fire-and-forget)
+        void import("../services/email.service").then(({ sendMultiChainTransactionEmail }) =>
+          sendMultiChainTransactionEmail({
+            type:            "refunded",
+            transferId:      doc.transfer_id,
+            network:         doc.network,
+            asset:           doc.asset,
+            grossAmount:     doc.gross_amount,
+            decimals:        doc.decimals,
+            senderUserId:    doc.sender_id.toString(),
+            recipientUserId: doc.recipient_id.toString(),
+            txHash:          doc.tx_hash_refund,
+          }).catch(() => {}),
+        ).catch(() => {});
       } else if (txStatus === "pending") {
         await MultiChainTransferModel.findOneAndUpdate(
           { transfer_id: doc.transfer_id, status: "refunding" },
@@ -376,6 +418,20 @@ export async function processExpiredMCTransfers(): Promise<void> {
       );
       if (result) {
         logger.info({ transferId: doc.transfer_id }, "[MCScheduler] Transfer → expired");
+        // Email admin: transfer scaduto (fire-and-forget)
+        void import("../services/email.service").then(({ sendMultiChainTransactionEmail }) =>
+          sendMultiChainTransactionEmail({
+            type:            "expired",
+            transferId:      doc.transfer_id,
+            network:         doc.network,
+            asset:           doc.asset,
+            grossAmount:     doc.gross_amount,
+            decimals:        doc.decimals,
+            senderUserId:    doc.sender_id.toString(),
+            recipientUserId: doc.recipient_id.toString(),
+            escrowWallet:    doc.escrow_wallet,
+          }).catch(() => {}),
+        ).catch(() => {});
       }
     } catch (err) {
       logger.error({ err, transferId: doc.transfer_id }, "[MCScheduler] Errore expiry awaiting_deposit");

@@ -14,6 +14,8 @@ export interface IAdminSettings {
   usda_emails:                  boolean;
   /** Email automatiche quando un nuovo utente si registra */
   registration_emails:          boolean;
+  /** Email automatiche per transazioni MultiChain (USDT Polygon/BSC/Ethereum + BTC): creazione, deposito, release, rimborso, scadenza */
+  multichain_emails:            boolean;
   /**
    * Feature flag: mostra/nasconde i pulsanti USDT e BTC nella chat.
    * Quando false → la UI mostra solo USDA nativo (Invia/Richiedi USDA).
@@ -28,6 +30,7 @@ export const ADMIN_SETTINGS_DEFAULTS: Omit<IAdminSettings, "_id" | "updated_at" 
   gas_station_emails:          true,
   usda_emails:                 true,
   registration_emails:         true,
+  multichain_emails:           true,
   multichain_payments_enabled: true,
 };
 
@@ -37,6 +40,7 @@ const schema = new Schema<IAdminSettings>(
     gas_station_emails:          { type: Boolean, default: true },
     usda_emails:                 { type: Boolean, default: true },
     registration_emails:         { type: Boolean, default: true },
+    multichain_emails:           { type: Boolean, default: true },
     multichain_payments_enabled: { type: Boolean, default: true },
     updated_at:                  Date,
     updated_by:                  String,

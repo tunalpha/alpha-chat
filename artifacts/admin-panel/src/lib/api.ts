@@ -845,6 +845,8 @@ export interface AdminNotifSettings {
   gas_station_emails:          boolean;
   usda_emails:                 boolean;
   registration_emails:         boolean;
+  /** Email automatiche per transazioni MultiChain (USDT Polygon/BSC/Ethereum + BTC) */
+  multichain_emails:           boolean;
   /** Feature flag: mostra/nasconde USDT e BTC nella chat */
   multichain_payments_enabled: boolean;
   updated_at:                  string | null;
@@ -856,7 +858,7 @@ export async function getNotifSettings(): Promise<AdminNotifSettings> {
 }
 
 export async function patchNotifSettings(
-  patch: Partial<Pick<AdminNotifSettings, "gas_station_emails" | "usda_emails" | "registration_emails" | "multichain_payments_enabled">>,
+  patch: Partial<Pick<AdminNotifSettings, "gas_station_emails" | "usda_emails" | "registration_emails" | "multichain_emails" | "multichain_payments_enabled">>,
 ): Promise<AdminNotifSettings> {
   return apiFetch<AdminNotifSettings>("/notification-settings", {
     method: "PATCH",

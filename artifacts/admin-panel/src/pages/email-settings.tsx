@@ -1,6 +1,6 @@
 /**
  * email-settings.tsx — Admin Email Notification Settings
- * Tre toggle on/off: Gas Station, Transazioni USDA, Registrazioni utenti.
+ * Toggle on/off: Gas Station, Transazioni USDA, MultiChain (USDT/BTC), Registrazioni utenti.
  */
 
 import { useState } from "react";
@@ -11,7 +11,7 @@ import {
   getNotifSettings, patchNotifSettings,
   type AdminNotifSettings,
 } from "@/lib/api";
-import { Mail, Fuel, Wallet, UserPlus, RefreshCw, Layers } from "lucide-react";
+import { Mail, Fuel, Wallet, UserPlus, RefreshCw, Layers, Link2 } from "lucide-react";
 
 // ── Toggle component ──────────────────────────────────────────────────────────
 
@@ -34,7 +34,7 @@ function Toggle({ on, onChange, disabled }: { on: boolean; onChange: (v: boolean
 
 // ── Page ─────────────────────────────────────────────────────────────────────
 
-type ToggleKey = "gas_station_emails" | "usda_emails" | "registration_emails" | "multichain_payments_enabled";
+type ToggleKey = "gas_station_emails" | "usda_emails" | "registration_emails" | "multichain_emails" | "multichain_payments_enabled";
 
 const EMAIL_ROWS: { key: ToggleKey; icon: React.ReactNode; label: string; desc: string }[] = [
   {
@@ -48,6 +48,12 @@ const EMAIL_ROWS: { key: ToggleKey; icon: React.ReactNode; label: string; desc: 
     icon:  <Wallet className="w-5 h-5 text-purple-400" />,
     label: "Transazioni USDA",
     desc:  "Email per ogni pagamento inviato, completato, rifiutato o annullato",
+  },
+  {
+    key:   "multichain_emails",
+    icon:  <Link2 className="w-5 h-5 text-cyan-400" />,
+    label: "Transazioni MultiChain (USDT / BTC)",
+    desc:  "Email per ogni transfer creato, deposito rilevato, pagamento completato, rimborso e scadenza (Polygon · BSC · Ethereum · Bitcoin)",
   },
   {
     key:   "registration_emails",

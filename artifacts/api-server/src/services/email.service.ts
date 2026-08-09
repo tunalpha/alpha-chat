@@ -340,6 +340,94 @@ export async function sendUsdaTransactionEmail(params: UsdaTransactionEmailParam
 }
 
 // ---------------------------------------------------------------------------
+// MultiChain Transaction emails (admin alerts — USDT + BTC)
+// ---------------------------------------------------------------------------
+
+/** Explorer base URL per rete MultiChain */
+const MC_EXPLORER_BASE: Record<string, string> = {
+  polygon:  "https://polygonscan.com/tx/",
+  bsc:      "https://bscscan.com/tx/",
+  ethereum: "https://etherscan.io/tx/",
+  bitcoin:  "https://mempool.space/tx/",
+};
+
+/** Label/colore per ogni tipo di evento MultiChain */
+const MC_TYPE_META = {
+  created:          { emoji: "💸", label: "Transfer creato",      color: "#58a6ff" },
+  deposit_detected: { emoji: "🔍", label: "Deposito rilevato",    color: "#d29922" },
+  released:         { emoji: "✅", label: "Pagamento completato", color: "#3fb950" },
+  refunded:         { emoji: "🔄", label: "Rimborso completato",  color: "#a78bfa" },
+  expired:          { emoji: "⏰", label: "Transfer scaduto",     color: "#8b949e" },
+} as const;
+
+export type MCEmailEventType = keyof typeof MC_TYPE_META;
+
+export interface MultiChainTransactionEmailParams {
+  type:            MCEmailEventType;
+  transferId:      string;
+  network:         string;   // "polygon" | "bsc" | "ethereum" | "bitcoin"
+  asset:           string;   // "USDT" | "BTC"
+  grossAmount:     string;   // importo in unità minime (es. "1000000" per 1 USDT)
+  decimals:        number;   // decimali per il display (6 per USDT EVM/BTC, 18 per BSC USDT)
+  senderUserId:    string;
+  recipientUserId: string;
+  escrowWallet?:   string;
+  txHash?:         string | null;
+}
+
+/** Formatta unità minime → stringa decimale leggibile (BigInt-safe). */
+function _fmtMCAmount(units: string, decimals: number): string {
+  try {
+    const raw = BigInt(units);
+    if (decimals === 0) return raw.toString();
+    const divisor = 10n ** BigInt(decimals);
+    const whole   = raw / divisor;
+    const rem     = raw % divisor;
+    if (rem === 0n) return whole.toString();
+    const remStr  = rem.toString().padStart(decimals, "0").replace(/0+$/, "");
+    return `${whole}.${remStr}`;
+  } catch { return units; }
+}
+
+export async function sendMultiChainTransactionEmail(params: MultiChainTransactionEmailParams): Promise<void> {
+  // Controlla il toggle admin prima di fare qualsiasi altra cosa
+  const { getAdminSettings } = await import("../models/admin-settings.model");
+  const settings = await getAdminSettings();
+  if (!settings.multichain_emails) return;
+
+  const {
+    type, transferId, network, asset, grossAmount, decimals,
+    senderUserId, recipientUserId, escrowWallet, txHash,
+  } = params;
+
+  const { emoji, label, color } = MC_TYPE_META[type];
+  const explorerBase = MC_EXPLORER_BASE[network] ?? null;
+  const explorerUrl  = txHash && explorerBase ? `${explorerBase}${txHash}` : null;
+  const amount       = _fmtMCAmount(grossAmount, decimals);
+  const networkLabel = network.toUpperCase();
+  const subject      = `${emoji} MultiChain — ${label}: ${amount} ${asset} [${networkLabel}]`;
+
+  const html = `
+    <div style="font-family:monospace;background:#0d1117;color:#e6edf3;padding:24px;border-radius:12px;border:1px solid ${color}33;">
+      <h2 style="color:${color};margin:0 0 16px;">${emoji} ${label}</h2>
+      <table style="border-collapse:collapse;width:100%;font-size:13px;">
+        <tr><td style="color:#8b949e;padding:6px 12px 6px 0;">Transfer ID</td><td style="color:#e6edf3;font-size:11px;">${transferId}</td></tr>
+        <tr><td style="color:#8b949e;padding:6px 12px 6px 0;">Rete</td><td style="color:#e6edf3;">${networkLabel} · ${asset}</td></tr>
+        <tr><td style="color:#8b949e;padding:6px 12px 6px 0;">Importo</td><td style="color:${color};font-weight:bold;">${amount} ${asset}</td></tr>
+        <tr><td style="color:#8b949e;padding:6px 12px 6px 0;">Mittente</td><td style="color:#e6edf3;">${senderUserId}</td></tr>
+        <tr><td style="color:#8b949e;padding:6px 12px 6px 0;">Destinatario</td><td style="color:#e6edf3;">${recipientUserId}</td></tr>
+        ${escrowWallet ? `<tr><td style="color:#8b949e;padding:6px 12px 6px 0;">Escrow</td><td style="color:#e6edf3;font-size:11px;">${escrowWallet}</td></tr>` : ""}
+        ${explorerUrl ? `<tr><td style="color:#8b949e;padding:6px 12px 6px 0;">TX Hash</td><td><a href="${explorerUrl}" style="color:#58a6ff;">${txHash!.slice(0, 20)}…</a></td></tr>` : ""}
+        <tr><td style="color:#8b949e;padding:6px 12px 6px 0;">Stato</td><td style="color:${color};font-weight:bold;">${label.toUpperCase()}</td></tr>
+      </table>
+      <p style="color:#8b949e;font-size:11px;margin-top:20px;">Alpha Chat — MultiChain Payment Engine — ${new Date().toISOString()}</p>
+    </div>`;
+
+  await _send({ to: ADMIN_EMAIL(), subject, html });
+  logger.info({ transferId, type, network, asset }, "MultiChain transaction email sent to admin");
+}
+
+// ---------------------------------------------------------------------------
 // New user registration alert (admin)
 // ---------------------------------------------------------------------------
 
