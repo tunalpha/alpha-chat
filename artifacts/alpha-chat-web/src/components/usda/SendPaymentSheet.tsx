@@ -291,13 +291,17 @@ export function SendPaymentSheet({
     let pollAborted  = false;
     let signErrorMsg: string | null = null;
 
+    console.log("[USDA-DIAG] sendTransaction START", { to: contractAddress.slice(0, 10), chainId: 137 });
     account.sendTransaction({
       to:      contractAddress,
       data:    calldata,
       gas:     BigInt(100000),
       value:   BigInt(0),
       chainId: 137,
+    }).then((r: unknown) => {
+      console.log("[USDA-DIAG] RESOLVED", r);
     }).catch((err: unknown) => {
+      console.log("[USDA-DIAG] REJECTED", (err as Error)?.message);
       const msg = (err as Error)?.message ?? "";
       if (/reject|cancel|denied|refused|user.*cancel|user rejected/i.test(msg)) {
         // Reject esplicito dell'utente → interrompe subito il polling.
