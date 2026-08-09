@@ -10,6 +10,7 @@ import {
   getGasStation,
   getAccessLog,
   getPerformance,
+  getMultichainRevenue,
 } from "@/lib/api";
 
 export const useGasStation = () => useQuery({
@@ -204,4 +205,13 @@ export const usePerformance = () => useQuery({
   queryKey: ["performance"],
   queryFn:  getPerformance,
   refetchInterval: 30_000,
+});
+
+// ── Revenue Monitor ───────────────────────────────────────────────────────────
+
+export const useMultichainRevenue = (days = 90) => useQuery({
+  queryKey:        ["multichainRevenue", days],
+  queryFn:         () => getMultichainRevenue(days),
+  refetchInterval: 60_000,
+  staleTime:       30_000,
 });

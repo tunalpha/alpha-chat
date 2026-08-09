@@ -863,3 +863,45 @@ export async function patchNotifSettings(
     body: JSON.stringify(patch),
   });
 }
+
+// ── Revenue Monitor ───────────────────────────────────────────────────────────
+
+export interface RevenueByNetwork {
+  network:     string;
+  asset:       string;
+  total_fee:   string; // raw smallest-unit string
+  total_gross: string;
+  count:       number;
+  last_at:     string | null;
+}
+
+export interface RevenueDailyPoint {
+  date:    string; // "YYYY-MM-DD"
+  network: string;
+  asset:   string;
+  fee:     string; // raw smallest-unit string
+  count:   number;
+}
+
+export interface RevenueHistoryItem {
+  transfer_id:     string;
+  network:         string;
+  asset:           string;
+  project_fee:     string;
+  gross_amount:    string;
+  fee_bps:         number;
+  completed_at:    string | null;
+  tx_hash_release: string | null;
+  fee_wallet:      string | null;
+}
+
+export interface RevenueData {
+  by_network:  RevenueByNetwork[];
+  daily_chart: RevenueDailyPoint[];
+  history:     RevenueHistoryItem[];
+  period_days: number;
+}
+
+export async function getMultichainRevenue(days = 90): Promise<RevenueData> {
+  return apiFetch<RevenueData>(`/multichain/revenue?days=${days}`);
+}

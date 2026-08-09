@@ -22,6 +22,7 @@ import {
   Layers,
   Bitcoin,
   Percent,
+  TrendingUp,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 
@@ -43,9 +44,10 @@ const navItems = [
   { href: "/investor-access", label: "Investor Access", icon: BookLock },
   { href: "/access-log",     label: "Access Log",      icon: Clock },
   { href: "/performance",        label: "Performance",      icon: Gauge  },
-  { href: "/multichain-monitor", label: "Multi-Chain",      icon: Layers  },
-  { href: "/bitcoin-ops",        label: "Bitcoin Ops",      icon: Bitcoin },
-  { href: "/fee-config",         label: "Fee per Rete",     icon: Percent },
+  { href: "/multichain-monitor", label: "Multi-Chain",      icon: Layers     },
+  { href: "/bitcoin-ops",        label: "Bitcoin Ops",      icon: Bitcoin    },
+  { href: "/fee-config",         label: "Fee per Rete",     icon: Percent    },
+  { href: "/revenue-monitor",    label: "Revenue",          icon: TrendingUp },
 ];
 
 interface SidebarProps {

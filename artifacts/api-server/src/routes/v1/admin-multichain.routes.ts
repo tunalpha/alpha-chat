@@ -186,6 +186,132 @@ router.get("/stats", async (_req: Request, res: Response, next: NextFunction): P
   }
 });
 
+// ─── GET /revenue ─────────────────────────────────────────────────────────────
+//
+// Guadagni della piattaforma: project_fee incassata sui trasferimenti "released".
+// Query params: ?days=90 (default 90, max 365) per il grafico giornaliero.
+
+router.get("/revenue", async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const days = Math.min(Math.max(parseInt(req.query["days"] as string || "90", 10) || 90, 1), 365);
+    const since = new Date(Date.now() - days * 24 * 3600_000);
+
+    const [byNetwork, dailyRaw, historyRaw] = await Promise.all([
+      // ── Totali per rete (solo released) ────────────────────────────────────
+      MultiChainTransferModel.aggregate([
+        { $match: { status: "released" } },
+        {
+          $group: {
+            _id:         "$network",
+            asset:       { $first: "$asset" },
+            total_fee:   { $sum: { $toLong: "$project_fee" } },
+            total_gross: { $sum: { $toLong: "$gross_amount" } },
+            count:       { $sum: 1 },
+            last_at:     { $max: { $ifNull: ["$completed_at", "$updatedAt"] } },
+          },
+        },
+        { $sort: { _id: 1 } },
+      ]),
+
+      // ── Grafico giornaliero (periodo selezionato) ───────────────────────────
+      MultiChainTransferModel.aggregate([
+        {
+          $match: {
+            status:       "released",
+            completed_at: { $gte: since },
+          },
+        },
+        {
+          $addFields: {
+            _day: {
+              $dateToString: {
+                format: "%Y-%m-%d",
+                date: { $ifNull: ["$completed_at", "$updatedAt"] },
+              },
+            },
+          },
+        },
+        {
+          $group: {
+            _id:   { date: "$_day", network: "$network" },
+            fee:   { $sum: { $toLong: "$project_fee" } },
+            count: { $sum: 1 },
+            asset: { $first: "$asset" },
+          },
+        },
+        { $sort: { "_id.date": 1, "_id.network": 1 } },
+      ]),
+
+      // ── Cronologia ultimi 100 released ────────────────────────────────────
+      MultiChainTransferModel.find(
+        { status: "released" },
+        {
+          transfer_id:      1,
+          network:          1,
+          asset:            1,
+          project_fee:      1,
+          gross_amount:     1,
+          completed_at:     1,
+          updatedAt:        1,
+          tx_hash_release:  1,
+          fee_wallet:       1,
+          fee_bps:          1,
+        },
+      )
+        .sort({ completed_at: -1, updatedAt: -1 })
+        .limit(100)
+        .lean(),
+    ]);
+
+    // ── Serializazione sicura (BigInt → string) ──────────────────────────────
+    // MongoDB $toLong restituisce Number per valori ≤ Number.MAX_SAFE_INTEGER;
+    // per BSC (18 dec) somme grandi potrebbero eccedere — li serializziamo come stringa.
+    const safeNum = (v: unknown): string => (v != null ? String(v) : "0");
+
+    const byNetworkOut = (byNetwork as {
+      _id: string; asset: string; total_fee: number; total_gross: number; count: number; last_at: Date | null;
+    }[]).map((row) => ({
+      network:     row._id,
+      asset:       row.asset,
+      total_fee:   safeNum(row.total_fee),
+      total_gross: safeNum(row.total_gross),
+      count:       row.count,
+      last_at:     row.last_at ?? null,
+    }));
+
+    const dailyOut = (dailyRaw as {
+      _id: { date: string; network: string }; fee: number; count: number; asset: string;
+    }[]).map((row) => ({
+      date:    row._id.date,
+      network: row._id.network,
+      asset:   row.asset,
+      fee:     safeNum(row.fee),
+      count:   row.count,
+    }));
+
+    const historyOut = historyRaw.map((h) => ({
+      transfer_id:     h.transfer_id,
+      network:         h.network,
+      asset:           h.asset,
+      project_fee:     h.project_fee,
+      gross_amount:    h.gross_amount,
+      fee_bps:         h.fee_bps,
+      completed_at:    (h.completed_at as Date | null) ?? (h.updatedAt as Date | null),
+      tx_hash_release: h.tx_hash_release,
+      fee_wallet:      h.fee_wallet,
+    }));
+
+    res.json({
+      by_network: byNetworkOut,
+      daily_chart: dailyOut,
+      history:     historyOut,
+      period_days: days,
+    });
+  } catch (err) {
+    next(err);
+  }
+});
+
 // ─── GET /fee-config ──────────────────────────────────────────────────────────
 
 /**
