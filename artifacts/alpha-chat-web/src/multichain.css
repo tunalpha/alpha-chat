@@ -104,6 +104,49 @@
   text-align: center;
 }
 
+/* ── Pulsante primario "Paga" — visibile al pagatore di una richiesta ─────── */
+
+.mc-pay-btn-primary {
+  width: 100%;
+  background: linear-gradient(135deg, #7c3aed 0%, #4f46e5 100%);
+  border: none;
+  border-radius: 10px;
+  color: #fff;
+  font-size: 0.92rem;
+  font-weight: 700;
+  padding: 11px 14px;
+  cursor: pointer;
+  text-align: center;
+  letter-spacing: 0.01em;
+  transition: opacity 0.15s, transform 0.1s;
+  margin-bottom: 8px;
+  box-shadow: 0 2px 10px rgba(124, 58, 237, 0.38);
+}
+.mc-pay-btn-primary:hover  { opacity: 0.92; }
+.mc-pay-btn-primary:active { transform: scale(0.98); }
+
+/* ── Fallback manuale (details/summary) ────────────────────────────────────── */
+
+.mc-address-fallback {
+  margin-top: 4px;
+}
+.mc-address-fallback-toggle {
+  font-size: 0.70rem;
+  color: #a78bfa;
+  opacity: 0.75;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+  padding: 3px 0;
+}
+.mc-address-fallback-toggle::-webkit-details-marker { display: none; }
+.mc-address-fallback-toggle::before { content: "▸ "; }
+details[open] .mc-address-fallback-toggle::before { content: "▾ "; }
+
+.mc-address-fallback-body {
+  margin-top: 6px;
+}
+
 /* ── Explorer link ─────────────────────────────────────────────────────────── */
 
 .mc-explorer-link {

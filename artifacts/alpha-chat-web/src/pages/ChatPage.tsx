@@ -9,9 +9,10 @@ import { SendUsdaSheet } from "../components/usda/SendUsdaSheet";
 import { SendPaymentSheet } from "../components/usda/SendPaymentSheet";
 import { RequestUsdaSheet } from "../components/usda/RequestUsdaSheet";
 import { UsdaPaymentDetail } from "../components/usda/UsdaPaymentDetail";
-import { MultiChainSendSheet }      from "../components/multichain/MultiChainSendSheet";
-import { MultiChainRequestSheet }   from "../components/multichain/MultiChainRequestSheet";
-import { MultiChainPaymentBubble }  from "../components/multichain/MultiChainPaymentBubble";
+import { MultiChainSendSheet }        from "../components/multichain/MultiChainSendSheet";
+import { MultiChainRequestSheet }     from "../components/multichain/MultiChainRequestSheet";
+import { MultiChainPaymentBubble }    from "../components/multichain/MultiChainPaymentBubble";
+import { MultiChainPayRequestSheet }  from "../components/multichain/MultiChainPayRequestSheet";
 import { ErrorBoundary }             from "../components/ErrorBoundary";
 import type { MCSystemMeta }        from "../lib/multichain-api";
 
@@ -894,6 +895,8 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
   const [showMCRequest,  setShowMCRequest]  = useState(false);
   const [showBTCPay,     setShowBTCPay]     = useState(false);
   const [showBTCRequest, setShowBTCRequest] = useState(false);
+  /** Dati del transfer mc_payment richiesta da pagare — apre MultiChainPayRequestSheet */
+  const [mcPayRequest,   setMcPayRequest]   = useState<MCSystemMeta | null>(null);
   const [sendPrefill, setSendPrefill] = useState<{ amount?: string; requestPaymentId?: string } | null>(null);
   // RETRY FIRMA: transfer_id per cui riaprire la firma (bolla awaiting_deposit).
   const [resumeTransferId, setResumeTransferId] = useState<string | null>(null);
@@ -3934,6 +3937,7 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
                                 <MultiChainPaymentBubble
                                   data={msg.system_metadata as unknown as MCSystemMeta}
                                   isMine={isMine}
+                                  onPay={() => setMcPayRequest(msg.system_metadata as unknown as MCSystemMeta)}
                                 />
                               </ErrorBoundary>
                             : null
@@ -4871,6 +4875,24 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
             toName={activeConv.other_user?.display_name ?? activeConv.other_user?.username ?? "Utente"}
             onClose={() => setShowBTCRequest(false)}
             onRequested={() => setShowBTCRequest(false)}
+          />
+        </ErrorBoundary>
+      )}
+
+      {/* ── MultiChain Pay Request Sheet ─────────────────────────────────── */}
+      {mcPayRequest && activeConvId && (
+        <ErrorBoundary fallback={null} onError={() => setMcPayRequest(null)}>
+          <MultiChainPayRequestSheet
+            transferId={mcPayRequest.transfer_id}
+            escrowWallet={mcPayRequest.escrow_wallet}
+            grossAmount={mcPayRequest.gross_amount}
+            minDepositAmount={mcPayRequest.min_deposit_amount}
+            network={mcPayRequest.network}
+            asset={mcPayRequest.asset}
+            expiresAt={mcPayRequest.expires_at}
+            conversationId={activeConvId}
+            onClose={() => setMcPayRequest(null)}
+            onPaid={() => setMcPayRequest(null)}
           />
         </ErrorBoundary>
       )}

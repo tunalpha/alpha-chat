@@ -1,0 +1,379 @@
+AUTORIZZATO — IMPLEMENTA IL FIX "RICHIEDI USDT → PAGA → FIRMA"
+
+La diagnosi è approvata.
+
+Implementa il flusso usando ESATTAMENTE queste reference:
+
+1. USDA UsdaRequestBubble
+   → reference per UX "Paga ora"
+
+2. USDA SendPaymentSheet
+   → reference per il comportamento wallet/firma
+
+3. MultiChainSendSheet
+   → reference tecnica per BSC / Ethereum / Polygon:
+      - useActiveAccount()
+      - useActiveWalletChain()
+      - useSwitchActiveWalletChain()
+      - switchChain()
+      - encodeERC20Transfer()
+      - MC_TOKEN_CONTRACT
+      - MC_DECIMALS
+      - account.sendTransaction()
+      - fire-and-forget
+      - polling
+      - recovery iOS
+
+IMPORTANTE:
+NON modificare il flusso USDA.
+USDA è SOLO una reference.
+
+NON creare una seconda implementazione divergente della logica di firma MultiChain.
+
+Riutilizza/estrai le funzioni esistenti da MultiChainSendSheet dove possibile.
+Se serve un nuovo MultiChainPayRequestSheet, deve essere leggero e utilizzare la stessa logica già verificata.
+
+==================================================
+FLUSSO DESIDERATO
+==================================================
+
+RICHIEDI USDT
+
+Richiedente:
+→ crea richiesta
+→ escrow creato
+→ richiesta appare nella chat
+
+Pagatore:
+→ vede:
+
+"PAGAMENTO RICHIESTO
+BSC · USDT
+1.00 USDT"
+
+→ pulsante principale:
+
+"💸 Paga 1.00 USDT"
+
+NON deve essere obbligato a copiare l'indirizzo.
+
+==================================================
+SE WALLET NON CONNESSO
+==================================================
+
+Mostrare:
+
+"Collega wallet per pagare"
+
+con ConnectButton.
+
+NON mostrare errore generico.
+
+NON bloccare la richiesta.
+
+==================================================
+SE WALLET CONNESSO
+==================================================
+
+Click:
+
+"Paga 1.00 USDT"
+
+↓
+
+controllo stato transfer
+
+↓
+
+apiMCDetect(transferId)
+
+Se già depositato:
+→ non inviare una seconda TX
+→ mostra "Deposito già rilevato"
+
+Se awaiting_deposit:
+
+↓
+
+verifica chain attiva:
+
+useActiveWalletChain()
+
+↓
+
+se chain diversa:
+
+await switchChain(EVM_CHAIN[network])
+
+↓
+
+solo dopo switch riuscito:
+
+encodeERC20Transfer(
+    escrowWallet,
+    amount
+)
+
+↓
+
+account.sendTransaction()
+
+con:
+
+to = MC_TOKEN_CONTRACT[network]
+data = calldata ERC-20
+value = 0
+
+NON usare chainId come meccanismo implicito di switch.
+
+La chain deve essere già corretta prima di sendTransaction.
+
+==================================================
+TRANSAZIONE
+==================================================
+
+La TX deve essere:
+
+PAGATORE WALLET
+        ↓
+USDT
+        ↓
+ESCROW WALLET
+
+MAI direttamente:
+
+PAGATORE → RICHIEDENTE
+
+L'escrow rimane il source of truth del pagamento.
+
+==================================================
+FIRMA
+==================================================
+
+Dopo "Paga":
+
+Trust Wallet / MetaMask / wallet compatibile deve mostrare:
+
+"Firma transazione USDT"
+
+L'utente deve confermare personalmente.
+
+NON effettuare mai una firma automatica.
+
+==================================================
+DOPO sendTransaction
+==================================================
+
+Usare lo stesso pattern fire-and-forget già verificato in MultiChainSendSheet.
+
+Non bloccare l'UI aspettando inutilmente il txHash.
+
+Salvare il recovery state:
+
+MC_PENDING_KEY
+
+con almeno:
+
+transferId
+network
+signed: true/false
+
+per consentire recovery su iOS/PWA.
+
+==================================================
+POLLING
+==================================================
+
+Dopo la firma:
+
+apiMCDetect(transferId)
+
+ogni 10 secondi.
+
+IMPORTANTE:
+
+HTTP 200 NON significa automaticamente deposito.
+
+Controllare SEMPRE:
+
+status
+
+Solo quando:
+
+status !== "awaiting_deposit"
+
+considerare il deposito rilevato.
+
+Non ripetere il vecchio bug:
+
+200 + awaiting_deposit → "Pagamento confermato"
+
+Questo è VIETATO.
+
+==================================================
+AUTO-RELEASE
+==================================================
+
+NON implementare una nuova logica di release nel frontend.
+
+Il backend già fa:
+
+awaiting_deposit
+→ pending
+→ releasing
+→ released
+
+e dispone già del safety-net scheduler.
+
+Dopo il deposito:
+
+ESCROW
+→ RICHIEDENTE WALLET
+
+Poi:
+
+sweep residuo gas
+→ escrow ≈ 0
+
+NON modificare questa parte.
+
+==================================================
+BOLLA
+==================================================
+
+Per il pagatore, quando:
+
+isPayer && status === "awaiting_deposit"
+
+la bolla deve mostrare come azione principale:
+
+💸 Paga 1.00 USDT
+
+Il vecchio:
+
+"Copia indirizzo"
+
+può rimanere come FALLBACK secondario, non come percorso principale.
+
+La UX deve essere analoga a:
+
+UsdaRequestBubble → "💸 Paga ora"
+
+==================================================
+CHIUSURA / RECOVERY
+==================================================
+
+La sheet non deve bloccare la chat.
+
+X sempre cliccabile.
+
+Se l'utente chiude dopo aver firmato:
+
+- transfer NON viene cancellato
+- recovery rimane
+- polling/status bubble può continuare
+- al ritorno deve poter riprendere
+
+==================================================
+RETI
+==================================================
+
+Implementare lo stesso comportamento per:
+
+Polygon 137
+BSC 56
+Ethereum 1
+
+USDT contract e decimals devono provenire dalle mappe MultiChain già esistenti.
+
+BTC NON deve essere coinvolto.
+
+Bitcoin mantiene il suo flusso separato.
+
+==================================================
+FILE
+==================================================
+
+Puoi modificare SOLO ciò che è necessario per questo flusso.
+
+Probabili file:
+
+MultiChainPaymentBubble.tsx
+ChatPage.tsx
+MultiChainPayRequestSheet.tsx
+
+Se per evitare duplicazione è necessario estrarre una funzione condivisa da MultiChainSendSheet, fallo in modo minimale e sicuro.
+
+NON modificare:
+
+SendPaymentSheet.tsx
+USDA backend
+USDA frontend
+BTC flow
+auto-release backend
+scheduler
+fee calculation
+gas reclaim
+escrow logic
+
+a meno che sia tecnicamente indispensabile.
+
+==================================================
+TEST OBBLIGATORI
+==================================================
+
+Prima di dichiarare completato:
+
+1. TypeScript clean
+2. Build clean
+3. Test esistenti invariati
+4. Verificare che USDA continui a compilare
+5. Verificare che MultiChainSendSheet continui a funzionare
+
+Testare almeno mentalmente/automaticamente:
+
+A. BSC wallet già su BSC
+B. BSC wallet su Polygon → switch BSC → firma
+C. Ethereum wallet su altra chain → switch ETH → firma
+D. Polygon wallet su altra chain → switch Polygon → firma
+E. wallet non collegato
+F. utente rifiuta firma
+G. deposito già presente
+H. sheet chiusa dopo firma
+I. recovery iOS
+J. 200 + awaiting_deposit NON deve risultare "pagamento confermato"
+
+==================================================
+REPORT FINALE
+==================================================
+
+Alla fine riportami:
+
+- file modificati
+- cosa è stato riutilizzato da USDA
+- cosa è stato riutilizzato da MultiChainSendSheet
+- come funziona "Paga"
+- come viene effettuato chain switch
+- come viene firmata la TX
+- come viene rilevato il deposito
+- conferma auto-release invariato
+- conferma sweep invariato
+- conferma BTC invariato
+- conferma USDA invariato
+- test/build risultati
+
+NON dichiarare completato se il pulsante "Paga" non apre realmente il percorso wallet → firma.
+
+Il requisito fondamentale è:
+
+RICHIESTA
+→ PAGA
+→ SWITCH CHAIN se necessario
+→ WALLET
+→ FIRMA
+→ USDT → ESCROW
+→ DETECT
+→ AUTO-RELEASE
+→ RICHIEDENTE
+→ SWEEP
+→ ESCROW ≈ 0

@@ -80,13 +80,15 @@ function isAntiLossReason(reason?: string | null): boolean {
 // ─── Props ────────────────────────────────────────────────────────────────────
 
 interface Props {
-  data:   MCSystemMeta;
-  isMine: boolean;
+  data:    MCSystemMeta;
+  isMine:  boolean;
+  /** Apre il flusso di pagamento integrato — visibile al pagatore quando awaiting_deposit. */
+  onPay?:  () => void;
 }
 
 // ─── Componente ───────────────────────────────────────────────────────────────
 
-export const MultiChainPaymentBubble = memo(function MultiChainPaymentBubble({ data, isMine }: Props) {
+export const MultiChainPaymentBubble = memo(function MultiChainPaymentBubble({ data, isMine, onPay }: Props) {
   const { t } = useTranslation();
   const [status,              setStatus]              = useState<MCStatus>(data?.status ?? "awaiting_deposit");
   const [txHash,              setTxHash]              = useState<string | null>(data?.tx_hash_release ?? data?.tx_hash_deposit ?? null);
@@ -227,18 +229,43 @@ export const MultiChainPaymentBubble = memo(function MultiChainPaymentBubble({ d
       {/* Istruzioni escrow — visibile al payer quando awaiting_deposit */}
       {isPayer && status === "awaiting_deposit" && (
         <div className="mc-address-section">
-          <p className="mc-address-label">
-            {t("multichain.depositInstructionsBubble", {
-              amount: minDepDisplay,
-              asset:  data.asset,
-            })}
-          </p>
-          <div className="mc-address-box-small">
-            <span className="mc-address-text-small">{data.escrow_wallet}</span>
-          </div>
-          <button type="button" className="mc-copy-btn-small" onClick={handleCopy}>
-            {copied ? t("multichain.addressCopied") : t("multichain.copyAddress")}
-          </button>
+          {/* ── Pulsante primario "Paga" (integrazione wallet/firma) ── */}
+          {onPay && (
+            <button
+              type="button"
+              className="mc-pay-btn-primary"
+              onClick={onPay}
+              aria-label={`Paga ${minDepDisplay} ${data.asset}`}
+            >
+              💸 {t("multichain.payNow", {
+                amount: minDepDisplay,
+                asset:  data.asset,
+                defaultValue: `Paga ${minDepDisplay} ${data.asset}`,
+              })}
+            </button>
+          )}
+
+          {/* ── Fallback manuale: copia indirizzo (secondario) ── */}
+          <details className="mc-address-fallback">
+            <summary className="mc-address-fallback-toggle">
+              {t("multichain.manualFallback", { defaultValue: "Invia manualmente…" })}
+            </summary>
+            <div className="mc-address-fallback-body">
+              <p className="mc-address-label">
+                {t("multichain.depositInstructionsBubble", {
+                  amount: minDepDisplay,
+                  asset:  data.asset,
+                })}
+              </p>
+              <div className="mc-address-box-small">
+                <span className="mc-address-text-small">{data.escrow_wallet}</span>
+              </div>
+              <button type="button" className="mc-copy-btn-small" onClick={handleCopy}>
+                {copied ? t("multichain.addressCopied") : t("multichain.copyAddress")}
+              </button>
+            </div>
+          </details>
+
           {data.expires_at && (
             <p className="mc-address-expiry-small">
               ⏰ {t("multichain.expiresAt")}{" "}
