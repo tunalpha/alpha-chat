@@ -3674,6 +3674,30 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
                 );
                 let undecipherableBannerShown = false;
 
+                // ── Separatori di data ────────────────────────────────────
+                let lastDateKey = "";
+
+                /** Restituisce la label "Oggi" / "Ieri" / "DD MMMM YYYY" */
+                function getDateLabel(isoOrMs: string | number): string {
+                  const d = new Date(isoOrMs);
+                  if (isNaN(d.getTime())) return "";
+                  const now   = new Date();
+                  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                  const msgD  = new Date(d.getFullYear(), d.getMonth(), d.getDate());
+                  const diff  = today.getTime() - msgD.getTime();
+                  if (diff < 86_400_000)   return "Oggi";
+                  if (diff < 172_800_000)  return "Ieri";
+                  return d.toLocaleDateString("it-IT", { day: "numeric", month: "long", year: "numeric" });
+                }
+
+                /** Chiave unica per giorno: YYYY-MM-DD */
+                function dayKey(isoOrMs: string | number): string {
+                  const d = new Date(isoOrMs);
+                  if (isNaN(d.getTime())) return "";
+                  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}-${String(d.getDate()).padStart(2,"0")}`;
+                }
+                // ─────────────────────────────────────────────────────────
+
                 return filtered.map((msg) => {
                   const isMine = msg.sender_id === auth?.userId;
                   const text = getDisplayText(msg);
@@ -3686,6 +3710,12 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
                     text === UNDECIPHERABLE &&
                     (() => { undecipherableBannerShown = true; return true; })();
                   const time = formatTime(msg.sent_at);
+
+                  // Separatore di data: mostrato quando il giorno cambia rispetto al msg precedente
+                  const msgDayKey   = dayKey(msg.sent_at);
+                  const showDateSep = msgDayKey !== lastDateKey && msgDayKey !== "";
+                  if (showDateSep) lastDateKey = msgDayKey;
+                  const dateLabel = showDateSep ? getDateLabel(msg.sent_at) : null;
                   // Evidenzia la query nel testo
                   const renderText = () => {
                     if (!q) return <span className="msg-text">{linkifyText(text)}</span>;
@@ -3723,6 +3753,12 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
 
                   return (
                     <div key={msg.id}>
+                    {/* Separatore di data — "Oggi", "Ieri", o "DD MMMM YYYY" */}
+                    {dateLabel && (
+                      <div className="msg-date-separator" aria-hidden="true">
+                        <span>{dateLabel}</span>
+                      </div>
+                    )}
                     {showKeyLostBanner && (
                       <div className="key-lost-banner">
                         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="18" height="18" style={{ flexShrink: 0, marginTop: 1 }}>
