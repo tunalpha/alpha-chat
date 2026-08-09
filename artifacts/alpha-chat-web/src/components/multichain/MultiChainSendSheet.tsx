@@ -36,6 +36,7 @@ import QRCode from "qrcode";
 import {
   apiMCCreate,
   apiMCDetect,
+  apiMCGet,
   apiMCQuote,
   apiMCNetworks,
   MC_DECIMALS,
@@ -224,8 +225,8 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
     }).then(setQrDataUrl).catch(() => setQrDataUrl(null));
   }, [step, transfer]);
 
-  // Recovery iOS: se c'è un pagamento MC in sospeso per questa conversazione
-  // (< 30 min) avvia il polling senza richiedere nuova firma.
+  // Recovery iOS: se c'è un pagamento EVM in sospeso per questa conversazione
+  // (< 30 min) recupera il transfer e riavvia il polling senza richiedere nuova firma.
   useEffect(() => {
     const raw = localStorage.getItem(MC_PENDING_KEY);
     if (!raw) return;
@@ -237,10 +238,23 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
       localStorage.removeItem(MC_PENDING_KEY);
       return;
     }
-    // Riprendi il polling
-    setStep("sign");
-    setSignPhase("confirming");
-    void pollDetect(pending.transferId, false);
+    // Recupera il transfer dal backend per avere il dato completo e capire la rete
+    void apiMCGet(pending.transferId).then(t => {
+      const isBtcTransfer = t.network === "bitcoin";
+      setTransfer(t);
+      if (isBtcTransfer) {
+        // BTC: torna allo step indirizzo (l'utente deve inviare manualmente)
+        setStep("address");
+      } else {
+        // EVM: riprendi il polling firma
+        setStep("sign");
+        setSignPhase("confirming");
+        void pollDetect(pending.transferId, false);
+      }
+    }).catch(() => {
+      // Transfer scaduto o eliminato — pulisci e torna al form
+      localStorage.removeItem(MC_PENDING_KEY);
+    });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
