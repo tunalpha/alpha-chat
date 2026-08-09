@@ -1,0 +1,217 @@
+STOP. LA DIAGNOSI PRECEDENTE NON È SUFFICIENTE.
+
+Ho completamente disconnesso alphachat.sbs da Trust Wallet e ho riconnesso il wallet.
+
+RISULTATO:
+USDA continua ad aprire Trust Wallet, ma NON compare alcuna richiesta di firma.
+
+Quindi:
+- non è sufficiente la spiegazione "WalletConnect aveva una richiesta BSC pendente";
+- disconnect/reconnect NON risolve;
+- NON implementare wallet.disconnect();
+- NON modificare USDA.
+
+Abbiamo una regressione REALE nel meccanismo che genera/invia la richiesta di firma a WalletConnect.
+
+NON MODIFICARE NULLA.
+NON FARE DEPLOY.
+SOLO DIAGNOSI.
+
+OBIETTIVO:
+trovare perché:
+
+account.sendTransaction(...)
+        ↓
+WalletConnect
+        ↓
+Trust Wallet si apre
+        ↓
+❌ nessuna richiesta di firma
+
+### 1. USDA È IL TEST DI RIFERIMENTO
+
+USDA funzionava prima delle modifiche recenti.
+
+Confronta il codice attuale con l'ULTIMA VERSIONE/GIT COMMIT in cui USDA funzionava realmente.
+
+Non fare supposizioni.
+
+Voglio sapere esattamente cosa è cambiato nel percorso:
+
+SendPaymentSheet
+→ account.sendTransaction
+→ Thirdweb
+→ WalletConnect
+→ Trust Wallet
+
+### 2. VERIFICA sendTransaction
+
+Devi verificare se `account.sendTransaction()` viene realmente chiamato.
+
+Log diagnostici temporanei, SENZA modificare la logica:
+
+[USDA] sendTransaction START
+[USDA] account address
+[USDA] chainId
+[USDA] to
+[USDA] value
+[USDA] calldata length
+[USDA] sendTransaction RESOLVED
+[USDA] sendTransaction REJECTED
+
+Se compare START ma non RESOLVED/REJECTED:
+la Promise è pending.
+
+Se compare REJECTED:
+voglio l'errore completo.
+
+Se compare RESOLVED:
+voglio il risultato/txHash.
+
+### 3. VERIFICA WALLETCONNECT
+
+Se sendTransaction viene chiamato, verifica se Thirdweb crea realmente la richiesta JSON-RPC.
+
+Voglio sapere se arriva:
+
+eth_sendTransaction
+
+alla sessione WalletConnect.
+
+NON basta verificare che Trust Wallet venga aperto.
+
+Il deep link che apre Trust Wallet dimostra soltanto che il collegamento/app launch funziona.
+
+Dobbiamo verificare che la REQUEST DI FIRMA venga effettivamente inviata.
+
+### 4. CONFRONTA VERSIONE FUNZIONANTE
+
+Fai un diff preciso tra:
+
+ULTIMO USDA FUNZIONANTE
+vs
+USDA ATTUALE
+
+in particolare:
+
+- SendPaymentSheet
+- providers.tsx
+- ThirdwebProvider
+- wallet connector
+- WalletConnect configuration
+- active wallet
+- active account
+- active chain
+- switchChain
+- sendTransaction
+- eventuali wrapper/provider
+- eventuali modifiche globali all'app
+
+Voglio la prima modifica che può spiegare:
+
+"Trust Wallet si apre ma non riceve eth_sendTransaction".
+
+### 5. CONTROLLO CRITICO: chain switch
+
+Verifica l'attuale codice USDA.
+
+Voglio sapere se oggi fa:
+
+switchChain(polygon)
+→ sendTransaction
+
+oppure:
+
+sendTransaction({ chainId: 137 })
+
+e soprattutto se questa parte è stata modificata recentemente.
+
+NON modificare il codice.
+
+### 6. CONTROLLO CRITICO: ACCOUNT
+
+Verifica che `useActiveAccount()` restituisca effettivamente un account valido al momento della firma.
+
+Voglio:
+
+account.address
+activeWallet
+activeWalletChain?.id
+
+Se account è undefined/null, spiegare perché il deep link può comunque aprire Trust Wallet.
+
+### 7. CONTROLLO CRITICO: FIRE-AND-FORGET
+
+Verifica se la modifica recente ha cambiato il comportamento da:
+
+account.sendTransaction(...)
+
+a qualche wrapper/await/catch/funzione intermedia.
+
+Voglio sapere ESATTAMENTE cosa succede alla Promise.
+
+NON cambiare il pattern finché non sappiamo dove si rompe.
+
+### 8. CONFRONTO CON MULTICHAIN SEND
+
+MultiChainSendSheet era il riferimento funzionante.
+
+Confronta la chiamata effettiva a:
+
+account.sendTransaction()
+
+tra:
+
+USDA
+Invia USDT
+Richiedi USDT
+
+Voglio una tabella:
+
+                    USDA    INVIA    RICHIEDI
+account valido        ?       ?         ?
+active chain          ?       ?         ?
+switchChain           ?       ?         ?
+sendTransaction       ?       ?         ?
+RPC eth_sendTx        ?       ?         ?
+WC request             ?       ?         ?
+Trust Wallet open      ?       ?         ?
+firma mostrata         ?       ?         ?
+
+### 9. NON ACCETTO QUESTA CONCLUSIONE
+
+NON dire:
+
+"Trust Wallet si apre quindi sendTransaction funziona."
+
+È falso.
+
+Il problema specifico è:
+
+Trust Wallet APRE
+ma
+la TRANSAZIONE DA FIRMARE NON APPARE.
+
+Quindi bisogna tracciare la request WalletConnect.
+
+### 10. REPORT FINALE
+
+Dammi:
+
+A. ultimo punto funzionante
+B. primo punto che fallisce
+C. se `sendTransaction()` viene chiamato
+D. se `eth_sendTransaction` viene creato
+E. se la request arriva a WalletConnect
+F. eventuale errore/rejection
+G. modifica esatta che ha introdotto la regressione
+H. commit/versione USDA funzionante
+I. fix minimo necessario
+
+NON IMPLEMENTARE NESSUN FIX.
+
+NON FARE DEPLOY.
+
+NON TOCCARE USDA.
+
+Prima voglio la prova tecnica della causa.
