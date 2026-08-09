@@ -593,7 +593,9 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
         return;
       } catch (pollErr: unknown) {
         const code = (pollErr as Error & { code?: string })?.code;
-        if (code === "DEPOSIT_TX_NOT_DETECTED" || code === "ADAPTER_NOT_FOUND") continue;
+        // ADAPTER_NOT_FOUND e FEATURE_DISABLED sono transitori (deploy in corso, env var mancante):
+        // continua il polling invece di interrompere il recovery.
+        if (code === "DEPOSIT_TX_NOT_DETECTED" || code === "ADAPTER_NOT_FOUND" || code === "FEATURE_DISABLED") continue;
         throw pollErr;
       }
     }

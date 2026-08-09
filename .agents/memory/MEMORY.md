@@ -67,3 +67,4 @@
 - [Dynamic Network Fee — EVM](sprint-dynamic-fee.md) — formula BigInt gasPrice×nativePrice, CoinGecko server-side, safetyMargin DB, calculatePaymentQuote ora riceve fee come parametro
 - [Chat Feature Flags — USDT/BTC toggle](chat-feature-flags.md) — toggle admin per nascondere USDT/BTC in chat; endpoint pubblico /admin/app-feature-flags; fail-open; AdminSettings singleton
 - [Native Sweep Audit Trail (TX3)](sprint-native-sweep-audit.md) — 6 nuovi campi audit su IMultiChainTransfer; try/catch obbligatorio su best-effort findOneAndUpdate; getBalance chiamato 2× (pre+post sweep)
+- [AdapterRegistry not initialized bug](adapter-registry-not-init.md) — registerDefaultAdapters() non era chiamata in index.ts → ADAPTER_NOT_FOUND 501 su tutte le detect BSC/ETH in produzione; fix: aggiungere call in index.ts prima di qualsiasi richiesta

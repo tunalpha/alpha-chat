@@ -11,6 +11,7 @@ import { reconcilePendingPayments } from "./services/usda.service";
 import { initCustodialService }    from "./payment/usda-custodial.service";
 import { startPaymentScheduler }      from "./payment/payment-scheduler.service";
 import { startMultiChainScheduler }   from "./payment/multichain-scheduler";
+import { registerDefaultAdapters }    from "./blockchain/adapter-registry";
 
 const port = config.app.port;
 
@@ -32,6 +33,11 @@ async function start(): Promise<void> {
   // Se la chiave è assente o malformata il processo termina qui,
   // prima di accettare qualsiasi richiesta di pagamento. (ADR-003)
   initCustodialService();
+
+  // Registra le factory degli adapter blockchain (Polygon, ETH, BSC, BTC).
+  // DEVE essere chiamato prima di qualsiasi richiesta di pagamento multi-chain.
+  // Le factory sono lazy: l'adapter viene istanziato solo alla prima richiesta.
+  registerDefaultAdapters();
 
   // Connect to MongoDB after the server is already accepting requests.
   // Individual API handlers will receive a Mongoose "not connected" error if
