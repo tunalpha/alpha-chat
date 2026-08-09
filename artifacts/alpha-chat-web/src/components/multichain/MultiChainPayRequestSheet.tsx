@@ -283,20 +283,33 @@ export function MultiChainPayRequestSheet({
       // Errore rete → continua con la firma (meglio inviare che bloccare)
     }
 
-    // ── 2. Chain switch ESPLICITO (awaited) ───────────────────────────────────
+    // ── 2. Chain switch ESPLICITO (awaited, con timeout 45 s) ────────────────
     //
     // NON usare sendTransaction({ chainId }) come meccanismo implicito di switch:
     // causa "Missing or invalid chainId" su Trust Wallet iOS via WalletConnect
     // per BSC ed Ethereum. Pattern verificato funzionante in MultiChainSendSheet.
     //
     // Se il wallet è già sulla chain corretta lo switch è un no-op velocissimo.
+    // Timeout 45 s: se il dialog di cambio rete non appare in Trust Wallet
+    // (push notification persa, app in background) il flusso non resta bloccato.
     if (activeWalletChain?.id !== evmChainId) {
       setPhase("switching");
       try {
-        await switchChain(evmChain);
+        const SWITCH_TIMEOUT_MS = 45_000;
+        await Promise.race([
+          switchChain(evmChain),
+          new Promise<never>((_, reject) =>
+            setTimeout(
+              () => reject(new Error("__switch_timeout__")),
+              SWITCH_TIMEOUT_MS,
+            )
+          ),
+        ]);
       } catch (err: unknown) {
         const msg = (err as Error)?.message ?? "";
-        if (/reject|cancel|denied|refused|user rejected/i.test(msg)) {
+        if (msg === "__switch_timeout__") {
+          setError(`Apri Trust Wallet e accetta il cambio rete a ${networkLabel}, poi premi di nuovo "Paga".`);
+        } else if (/reject|cancel|denied|refused|user rejected/i.test(msg)) {
           setError(`Cambio rete rifiutato. Premi "Paga" e accetta il cambio a ${networkLabel} nel wallet.`);
         } else if (/not supported|not recognized|missing.*chain|unsupported/i.test(msg)) {
           setError(`${networkLabel} non è supportata da questo wallet. Apri Trust Wallet → Impostazioni → Reti → abilita ${networkLabel}, poi riconnetti.`);
@@ -385,6 +398,13 @@ export function MultiChainPayRequestSheet({
     }
   }
 
+  /** Hint aggiuntivo mostrato sotto lo spinner durante switching e signing */
+  function phaseHint(): string | null {
+    if (phase === "switching") return `Apri Trust Wallet e accetta il cambio a ${networkLabel}`;
+    if (phase === "signing")   return "Apri Trust Wallet e firma la transazione";
+    return null;
+  }
+
   return (
     <div
       className="modal-backdrop"
@@ -451,13 +471,21 @@ export function MultiChainPayRequestSheet({
 
         {/* ── Stato: working ── */}
         {isWorking && (
-          <div
-            className="cp-bubble-status"
-            aria-live="polite"
-            style={{ justifyContent: "center", padding: "14px 0", gap: 10 }}
-          >
-            <span className="cp-spinner" aria-hidden="true" />
-            <span style={{ fontWeight: 500 }}>{phaseLabel()}</span>
+          <div aria-live="polite" style={{ padding: "14px 0" }}>
+            <div className="cp-bubble-status" style={{ justifyContent: "center", gap: 10 }}>
+              <span className="cp-spinner" aria-hidden="true" />
+              <span style={{ fontWeight: 500 }}>{phaseLabel()}</span>
+            </div>
+            {phaseHint() && (
+              <p style={{
+                textAlign: "center",
+                fontSize: "0.8rem",
+                opacity: 0.6,
+                margin: "6px 0 0",
+              }}>
+                {phaseHint()}
+              </p>
+            )}
           </div>
         )}
 

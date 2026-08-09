@@ -1,0 +1,160 @@
+STOP. È COMPARSA UNA REGRESSIONE CRITICA.
+
+NON MODIFICARE NULLA.
+NON FARE DEPLOY.
+SOLO DIAGNOSI.
+
+Problema osservato:
+
+Anche il normale flusso "Invia USDT" non funziona più come prima.
+
+PRIMA:
+Invia USDT
+→ conferma
+→ switch rete se necessario
+→ Trust Wallet / WalletConnect
+→ notifica della transazione
+→ schermata FIRMA
+→ utente firma
+
+ORA:
+il flusso "Invia" non arriva più correttamente alla notifica/schermata di firma del wallet.
+
+Questo è GRAVE perché "Invia" era il flusso EVM funzionante di riferimento che abbiamo usato per costruire "Richiedi USDT".
+
+OBIETTIVO:
+trovare esattamente quale modifica ha introdotto la regressione.
+
+NON toccare:
+- USDA
+- BTC
+- auto-release
+- escrow
+- fee
+- scheduler
+- email
+- backend multichain
+- gas reclaim
+
+FASE 1 — CONFRONTO
+
+Confronta il codice ATTUALE con il comportamento precedente funzionante di:
+
+1. MultiChainSendSheet
+2. handleSign / handlePay / signAndPoll
+3. useActiveWalletChain
+4. useSwitchActiveWalletChain
+5. switchChain
+6. account.sendTransaction
+7. WalletConnect / Trust Wallet
+8. eventuale fire-and-forget della sendTransaction
+9. gestione degli errori di firma
+10. localStorage/recovery
+
+Voglio sapere esattamente cosa è cambiato rispetto alla versione funzionante.
+
+FASE 2 — TRACCIARE "INVIA"
+
+Segui il flusso reale:
+
+click "Invia"
+→ apertura sheet
+→ conferma
+→ controllo wallet
+→ controllo chain
+→ switchChain?
+→ signing
+→ sendTransaction()
+→ WalletConnect
+→ Trust Wallet
+
+Determina ESATTAMENTE l'ultimo punto raggiunto.
+
+Aggiungi, se necessario, SOLO log diagnostici temporanei:
+
+[MC-SEND] sheet opened
+[MC-SEND] active chain
+[MC-SEND] target chain
+[MC-SEND] switch START
+[MC-SEND] switch RESOLVED
+[MC-SEND] switch REJECTED
+[MC-SEND] sendTransaction START
+[MC-SEND] sendTransaction RESOLVED
+[MC-SEND] sendTransaction REJECTED
+
+NON cambiare la logica.
+
+FASE 3 — CONFRONTO CON "RICHIEDI"
+
+Abbiamo ora due problemi:
+
+A) Richiedi USDT:
+rimane su "Cambio rete a BSC..."
+
+B) Invia USDT:
+non arriva più correttamente alla notifica/schermata di firma.
+
+Questo suggerisce una possibile regressione condivisa nella logica EVM/WalletConnect/switchChain.
+
+Verifica se i due flussi ora condividono codice, hook, provider, stato o gestione della chain che prima non condividevano.
+
+FASE 4 — CONTROLLO CRITICO
+
+Verifica se una delle modifiche recenti ha:
+
+- modificato MultiChainSendSheet
+- modificato hook Thirdweb
+- modificato active wallet
+- modificato switchChain
+- modificato provider/context
+- modificato account
+- modificato sendTransaction
+- modificato gestione WalletConnect
+- modificato stato "signing"
+- modificato fire-and-forget
+- modificato chainId
+- modificato reconnect/recovery
+
+NON assumere che "MultiChainSendSheet non è stato toccato" significhi automaticamente che il flusso non sia stato influenzato.
+
+Cerca anche dipendenze condivise.
+
+FASE 5 — SCADENZA
+
+Nel test precedente "Richiedi USDT" era inoltre comparsa una richiesta con:
+
+Scade il 10/08/26, 22:27
+
+mentre il test era alle 23:42.
+
+Verifica anche che il test attuale di "Invia" non sia influenzato da uno stato stale/recovery/localStorage.
+
+FASE 6 — ROOT CAUSE
+
+Alla fine dammi:
+
+A. ultimo punto raggiunto dal flusso "Invia"
+B. ultimo punto raggiunto da "Richiedi"
+C. file che hanno introdotto la regressione
+D. modifica esatta responsabile
+E. confronto con l'implementazione precedentemente funzionante
+F. fix minimo necessario
+G. quali file dovrebbero essere ripristinati, se necessario
+H. conferma che USDA/BTC/backend/auto-release non verranno toccati
+
+IMPORTANTISSIMO:
+
+NON IMPLEMENTARE IL FIX.
+
+NON FARE DEPLOY.
+
+Prima voglio la root cause verificata.
+
+Il requisito è ripristinare innanzitutto il flusso già funzionante:
+
+INVIА USDT
+→ Trust Wallet
+→ NOTIFICA
+→ FIRMA
+
+Solo dopo averlo ripristinato e verificato, torniamo a "Richiedi USDT".

@@ -1,0 +1,188 @@
+STOP IMMEDIATO.
+
+REGRESSIONE CRITICA GLOBALE.
+
+Ora non funziona più neanche USDA.
+
+Prima:
+USDA → Trust Wallet → compariva la richiesta di firma → utente firmava.
+
+ORA:
+USDA → Trust Wallet si apre → NON compare alcuna notifica/richiesta di firma.
+
+Contemporaneamente:
+Invia USDT → Trust Wallet si apre → nessuna richiesta di firma.
+Richiedi USDT → Trust Wallet si apre/cambio rete → nessuna richiesta di firma.
+
+Questo dimostra che il problema NON è specifico di MultiChain.
+
+È molto probabilmente una regressione in un componente/livello CONDIVISO del wallet flow:
+- ThirdwebProvider
+- WalletConnect
+- active wallet
+- account
+- switchChain
+- provider
+- sendTransaction
+- WalletConnect session/context
+- chain switching
+- gestione delle request JSON-RPC
+- eventuale modifica globale a provider/context/hooks
+
+IMPORTANTISSIMO:
+
+NON MODIFICARE NULLA.
+
+NON FARE DEPLOY.
+
+NON MODIFICARE USDA.
+
+NON modificare SendPaymentSheet.
+NON modificare MultiChainSendSheet.
+NON modificare WalletConnect.
+NON modificare ThirdwebProvider.
+
+Prima individua la causa.
+
+### OBIETTIVO
+
+Dobbiamo trovare perché Trust Wallet viene aperto ma NON riceve/mostra più la richiesta di firma.
+
+Il fatto che Trust Wallet si apra è importante:
+
+Deep link / WalletConnect:
+        FUNZIONA
+              ↓
+Trust Wallet si apre
+              ↓
+        ❌ eth_sendTransaction
+        NON ARRIVA / viene rifiutata / viene persa
+
+Quindi dobbiamo tracciare la request RPC effettiva.
+
+### TEST 1 — USDA
+
+Usa USDA come REGRESSION TEST.
+
+NON modificarlo.
+
+Traccia:
+
+SendPaymentSheet
+→ signAndPoll
+→ switchChain
+→ account.sendTransaction
+→ WalletConnect
+→ eth_sendTransaction
+
+Voglio sapere:
+
+1. sendTransaction viene effettivamente chiamato?
+2. con quale account?
+3. con quale chainId?
+4. con quale to?
+5. viene generata una request WalletConnect?
+6. la Promise viene pending, resolved o rejected?
+7. quale errore restituisce eventualmente?
+8. Trust Wallet riceve la request?
+9. esiste un requestId/session topic?
+10. la request viene effettivamente inviata al relay?
+
+NON modificare il codice per risolverlo.
+
+### TEST 2 — INVIA USDT
+
+Fai la stessa identica traccia.
+
+Confronta USDA vs Invia USDT.
+
+### TEST 3 — RICHIEDI USDT
+
+Fai la stessa traccia.
+
+Confronta i tre flussi.
+
+### PUNTO DECISIVO
+
+Voglio una tabella:
+
+                    USDA     INVIA USDT     RICHIEDI USDT
+Wallet connected       ?
+Active chain            ?
+switchChain             ?
+sendTransaction called  ?
+RPC request created     ?
+eth_sendTransaction     ?
+WalletConnect relay     ?
+Trust Wallet opened     ?
+Signature request       ?
+Promise                  ?
+
+### CERCA LE MODIFICHE RECENTI
+
+Analizza git diff / working tree e individua TUTTI i file modificati nelle ultime modifiche.
+
+In particolare cerca modifiche a:
+
+- providers.tsx
+- ThirdwebProvider
+- WalletConnect
+- wallet hooks
+- useActiveWallet
+- useActiveWalletChain
+- useSwitchActiveWalletChain
+- account
+- sendTransaction
+- chainId
+- connector
+- WalletConnect session
+- deep link
+- PWA recovery
+- localStorage
+- request/transport
+
+NON limitarti ai file che riguardano USDA.
+
+Una modifica apparentemente "isolata" può avere rotto un provider condiviso.
+
+### REGOLA FONDAMENTALE
+
+NON fare il ragionamento:
+
+"USDA non è stato modificato → USDA non può essere rotto."
+
+È esattamente quello che dobbiamo verificare.
+
+Un componente condiviso può essere stato modificato senza modificare SendPaymentSheet.tsx.
+
+### PRIORITÀ
+
+1. RIPRISTINARE IL MECCANISMO DI FIRMA.
+2. Verificare USDA.
+3. Verificare INVIA USDT.
+4. Verificare RICHIEDI USDT.
+5. Solo dopo tornare ad auto-release / escrow / sweep.
+
+NON correggere ora i singoli sintomi.
+
+Voglio prima la ROOT CAUSE COMUNE.
+
+### REPORT FINALE OBBLIGATORIO
+
+Dammi:
+
+A. Root cause esatta
+B. Primo file/modifica che ha introdotto la regressione
+C. Componente condiviso responsabile
+D. Perché Trust Wallet si apre ma non riceve la firma
+E. Differenza tra versione funzionante e attuale
+F. Fix minimo
+G. Eventuale file da ripristinare
+H. Conferma che USDA deve tornare esattamente al comportamento precedente
+I. Conferma che MultiChain non deve rompere il flusso USDA
+J. Nessuna modifica finché non do conferma
+
+NON IMPLEMENTARE.
+NON DEPLOYARE.
+
+Prima diagnosi.
