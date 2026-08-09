@@ -8,6 +8,7 @@ import { Component, type ReactNode } from "react";
 interface Props {
   children: ReactNode;
   fallback?: ReactNode;
+  onError?: (error: Error) => void;
 }
 interface State { hasError: boolean; }
 
@@ -21,6 +22,7 @@ export class ErrorBoundary extends Component<Props, State> {
   componentDidCatch(error: Error, info: { componentStack: string }) {
     // Log silently — don't surface to user
     console.error("[ErrorBoundary]", error, info.componentStack?.slice(0, 300));
+    this.props.onError?.(error);
   }
 
   render() {

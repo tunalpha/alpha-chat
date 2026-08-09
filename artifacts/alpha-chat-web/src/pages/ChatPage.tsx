@@ -4775,24 +4775,28 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
 
       {/* ── Multi-Chain Payment Sheets ───────────────────────────────────── */}
       {showMCPay && activeConv && auth && activeConv.type !== "group" && (
-        <MultiChainSendSheet
-          mode="usdt"
-          conversationId={activeConvId ?? ""}
-          toUserId={activeConv.other_user?.user_id ?? ""}
-          toName={activeConv.other_user?.display_name ?? activeConv.other_user?.username ?? "Utente"}
-          onClose={() => setShowMCPay(false)}
-          onSent={() => setShowMCPay(false)}
-        />
+        <ErrorBoundary fallback={null} onError={() => setShowMCPay(false)}>
+          <MultiChainSendSheet
+            mode="usdt"
+            conversationId={activeConvId ?? ""}
+            toUserId={activeConv.other_user?.user_id ?? ""}
+            toName={activeConv.other_user?.display_name ?? activeConv.other_user?.username ?? "Utente"}
+            onClose={() => setShowMCPay(false)}
+            onSent={() => setShowMCPay(false)}
+          />
+        </ErrorBoundary>
       )}
       {showMCRequest && activeConv && auth && activeConv.type !== "group" && (
-        <MultiChainRequestSheet
-          mode="usdt"
-          conversationId={activeConvId ?? ""}
-          toUserId={activeConv.other_user?.user_id ?? ""}
-          toName={activeConv.other_user?.display_name ?? activeConv.other_user?.username ?? "Utente"}
-          onClose={() => setShowMCRequest(false)}
-          onRequested={() => setShowMCRequest(false)}
-        />
+        <ErrorBoundary fallback={null} onError={() => setShowMCRequest(false)}>
+          <MultiChainRequestSheet
+            mode="usdt"
+            conversationId={activeConvId ?? ""}
+            toUserId={activeConv.other_user?.user_id ?? ""}
+            toName={activeConv.other_user?.display_name ?? activeConv.other_user?.username ?? "Utente"}
+            onClose={() => setShowMCRequest(false)}
+            onRequested={() => setShowMCRequest(false)}
+          />
+        </ErrorBoundary>
       )}
       {showBTCPay && activeConv && auth && activeConv.type !== "group" && (
         <ErrorBoundary fallback={null}>
