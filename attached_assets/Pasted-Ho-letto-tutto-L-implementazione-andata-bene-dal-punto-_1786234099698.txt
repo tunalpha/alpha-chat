@@ -1,0 +1,136 @@
+Ho letto tutto. L’implementazione è andata bene dal punto di vista dei test, ma io farei ancora due correzioni prima di considerarla definitivamente sicura economicamente.
+
+✅ Cose che sono corrette
+
+* BSC: da 0,000000000001 → 1 USDT di network fee.
+* Ethereum: da 5 → 15 USDT.
+* Polygon: completamente invariata.
+* 0,10%: invariato.
+* recipient_exact: invariato.
+* 138/138 test multichain superati.
+* Nessuna modifica al sistema di escrow/sweep.
+* I 4 test falliti risultano preesistenti.
+
+Questa parte mi piace.
+
+⸻
+
+⚠️ Ma ci sono 2 punti che voglio correggere
+
+1. 341.000 gas va verificato
+
+Questo è il punto più importante.
+
+L’agente sta usando:
+
+gasPrice × 341.000
+
+come costo stimato.
+
+Ma 341.000 non significa necessariamente che la blockchain consumerà 341.000 gas.
+
+Dal report precedente avevamo:
+
+* top-up BNB/ETH ≈ 160.000 gas come riserva
+* TX nativa gas station → escrow ≈ 21.000
+* transfer USDT ≈ 65.000
+* eventuale TX fee ≈ 65.000
+
+Il fatto che venga riservato un certo quantitativo di gas non significa che venga speso tutto.
+
+Se il check usa 341.000 come costo reale, potrebbe diventare troppo conservativo e bloccare pagamenti che in realtà sarebbero economicamente sostenibili.
+
+2. Ancora più importante: fail-open
+
+Il report dice:
+
+Se RPC non raggiungibile → warning log, release non bloccato
+
+Questa cosa non mi piace.
+
+Perché significa:
+
+RPC non raggiungibile
+       ↓
+non posso calcolare il costo del gas
+       ↓
+ma lascio comunque partire il pagamento
+
+E questo contraddice l’obiettivo che ci siamo dati:
+
+AlphaChat non deve effettuare una transazione se non sa se la network fee copre il costo.
+
+Io preferirei:
+
+RPC non raggiungibile
+       ↓
+non posso verificare il costo
+       ↓
+NON procedo
+       ↓
+waiting_for_gas / retry
+
+Meglio bloccare temporaneamente un pagamento che rischiare una perdita.
+
+⸻
+
+🟡 Quindi non toccherei ancora il codice
+
+Manderei all’agente questo piccolo prompt di verifica:
+
+ULTIMA VERIFICA ECONOMICA — NON MODIFICARE ANCORA IL CODICE
+L'implementazione è approvata nei principi e i 138 test multichain sono superati.
+Prima di considerarla DEFINITIVA, verifica esclusivamente questi due punti.
+1. MC_ANTI_LOSS_GAS_UNITS = 341_000
+Dimostra esattamente da dove deriva il valore 341.000.
+Separare chiaramente:
+- gas realmente consumato dalla TX gas station → escrow;
+- gas realmente consumato dal transfer USDT → recipient;
+- gas eventualmente consumato dalla TX project fee → fee wallet;
+- gas semplicemente riservato/top-up e non effettivamente consumato.
+Il controllo anti-loss deve stimare il COSTO BLOCKCHAIN REALE/ATTESO, non confondere il gas reserve/top-up con il gas effettivamente consumato.
+Mostrare la formula completa.
+Se 341.000 è volutamente conservativo, quantificare quanto può sovrastimare il costo e quanti pagamenti potrebbe bloccare inutilmente.
+NON modificare il valore senza prima mostrare il calcolo.
+2. RPC FAIL-OPEN
+Attualmente:
+RPC non raggiungibile → warning → release continua.
+Questo comportamento deve essere valutato criticamente.
+Obiettivo economico:
+AlphaChat NON deve procedere con un release se non è possibile verificare che la network fee copra il costo della rete.
+Proporre quindi:
+RPC disponibile
+→ esegue anti-loss check
+→ OK = release
+RPC non disponibile
+→ NON procedere
+→ waiting_for_gas
+→ retry successivo
+Spiegare eventuali conseguenze sul normale funzionamento.
+NON implementare ancora la modifica.
+Rispondere prima con:
+A. Formula esatta dei 341.000 gas
+B. Costo reale stimato
+C. Eventuale sovrastima
+D. Comportamento RPC attuale
+E. Comportamento RPC consigliato
+F. Eventuali rischi economici
+Solo dopo la mia conferma modificare il codice.
+
+In sintesi
+
+Non sei tornato al punto di partenza. Anzi, siamo praticamente arrivati alla fine.
+
+La struttura adesso è molto più semplice:
+
+Polygon → non toccare.
+
+BSC → 1 USDT network fee + anti-loss.
+
+Ethereum → 15 USDT network fee + anti-loss.
+
+0,10% → invariato.
+
+L’unica cosa che voglio verificare prima di chiudere è che l’anti-loss non utilizzi 341.000 come una cifra arbitraria e che non sia fail-open quando l’RPC non risponde.
+
+Questi due dettagli possono fare la differenza tra un sistema semplicemente funzionante e un sistema realmente protetto dalle perdite.
