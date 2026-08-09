@@ -132,6 +132,28 @@ export interface IMultiChainTransfer {
    */
   amount_mode: "send_amount" | "recipient_exact" | null;
 
+  // ── Gas Reclaim TX3 ────────────────────────────────────────────────────────
+  /**
+   * TX3: reclaim del POL/ETH/BNB residuo nell'escrow verso la Gas Station.
+   * Eseguita in fire-and-forget dopo TX1+TX2 completate. Solo EVM — BTC never.
+   *
+   * null         = mai tentata (o BTC, o no GAS_STATION_PRIVATE_KEY)
+   * "0x..."      = TX3 confermata con successo
+   * (vedere reclaim_error per failure)
+   */
+  tx_hash_reclaim: string | null;
+
+  /** Importo nativo recuperato via TX3 (in wei, BigInt serializzato come stringa). */
+  pol_reclaimed: string | null;
+
+  /**
+   * Ultimo errore della TX3.
+   * null                  = mai tentata o successo
+   * "INSUFFICIENT_BALANCE" = saldo escrow ≤ costo gas TX3 (non riprova)
+   * altro                  = errore transitorio — scheduler riprova
+   */
+  reclaim_error: string | null;
+
   /**
    * Importo minimo che il mittente DEVE depositare nell'escrow.
    *
@@ -218,6 +240,11 @@ const MultiChainTransferSchema = new Schema<MultiChainTransferDocument>(
       enum: ["GAS_STATION_DEPLETED", "NETWORK_COST_TOO_HIGH", "RPC_UNAVAILABLE", null],
       default: null,
     },
+
+    // ── Gas Reclaim TX3 ──────────────────────────────────────────────────────
+    tx_hash_reclaim: { type: String, default: null },
+    pol_reclaimed:   { type: String, default: null },
+    reclaim_error:   { type: String, default: null },
   },
   {
     collection:  "multichain_transfers",
@@ -239,6 +266,11 @@ MultiChainTransferSchema.index({ escrow_wallet: 1 }, { sparse: true });
 MultiChainTransferSchema.index({ tx_hash_deposit: 1 }, { sparse: true });
 MultiChainTransferSchema.index({ tx_hash_release: 1 }, { sparse: true });
 MultiChainTransferSchema.index({ network: 1, asset: 1, createdAt: -1 }); // reconciliation
+// Reclaim retry: released + no reclaim + ha errore → processFailedReclaims
+MultiChainTransferSchema.index(
+  { status: 1, tx_hash_reclaim: 1, reclaim_error: 1, completed_at: 1 },
+  { sparse: true },
+);
 
 // ─── Export ───────────────────────────────────────────────────────────────────
 

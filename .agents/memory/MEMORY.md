@@ -63,3 +63,4 @@
 - [BSC USDT 18 decimali](bsc-usdt-decimals.md) — BSC USDT ha 18 dec (non 6); MC_DECIMALS["bsc"]=18; test/display devono usare 10^18 non 10^6; raw API values corretti
 - [Multi-Chain Lifecycle Alignment](multichain-lifecycle.md) — bolla chiama apiMCDetect (non apiMCGet) ogni 30s; WS mc_payment.state_changed emesso su detect/release/refund; ChatPage handler in-place
 - [MultiChain UI bugs — crash, fee display, BTC](multichain-ui-bugs.md) — ErrorBoundary su bubble+modali; fmtDisplay difensivo; totalPaidUnits=gross+networkFee; BTC nota miner fee
+- [TX3 Escrow Gas Reclaim](sprint-tx3-reclaim.md) — fire-and-forget dopo released; privateKeyToAccount DENTRO try-catch; INSUFFICIENT_BALANCE=permanente; scheduler retry 30min

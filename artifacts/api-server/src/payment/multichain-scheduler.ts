@@ -493,6 +493,56 @@ export async function processWaitingForGasTransfers(): Promise<void> {
   }
 }
 
+// ─── Gas Reclaim Retry ────────────────────────────────────────────────────────
+
+/** Finestra massima per il retry del reclaim (7 giorni dalla completed_at) */
+const RECLAIM_RETRY_WINDOW_MS = 7 * 24 * 60 * 60_000;
+
+/**
+ * Ritenta la TX3 reclaim per i transfer "released" con un errore transitorio.
+ *
+ * Seleziona:
+ *   status = "released"
+ *   tx_hash_reclaim = null    (non ancora reclamato con successo)
+ *   reclaim_error ≠ null E ≠ "INSUFFICIENT_BALANCE"   (errore transitorio, non permanente)
+ *   completed_at > 7 giorni fa   (la chiave escrow è ancora disponibile in DB)
+ *   network ≠ "bitcoin"   (BTC non ha gas nativo da recuperare)
+ *
+ * "INSUFFICIENT_BALANCE" è considerato permanente: il saldo escrow è sotto il costo
+ * della TX3 e non tornerà mai. Non ha senso riprovare.
+ *
+ * Non può interferire con TX1/TX2: il transfer è già "released" quando questo
+ * scheduler gira. Non tocca status, tx_hash_release, tx_hash_fee.
+ */
+export async function processFailedReclaims(): Promise<void> {
+  const since = new Date(Date.now() - RECLAIM_RETRY_WINDOW_MS);
+
+  const docs = await MultiChainTransferModel.find({
+    status:          "released",
+    tx_hash_reclaim: null,
+    reclaim_error:   { $nin: [null, "INSUFFICIENT_BALANCE"] },
+    completed_at:    { $gt: since },
+    network:         { $ne: "bitcoin" },
+  }).limit(BATCH_SIZE).lean();
+
+  if (docs.length === 0) return;
+
+  logger.info({ count: docs.length }, "[MCReclaim] Retry reclaim falliti precedentemente");
+
+  for (const doc of docs) {
+    try {
+      const { reclaimEscrowGasById } = await import("./multichain-payment.service");
+      await reclaimEscrowGasById(doc.transfer_id);
+    } catch (err) {
+      // reclaimEscrowGasById non dovrebbe mai lanciare, ma guard difensivo
+      logger.error(
+        { err, transferId: doc.transfer_id, network: doc.network },
+        "[MCReclaim] Errore inatteso durante retry reclaim",
+      );
+    }
+  }
+}
+
 // ─── Start ────────────────────────────────────────────────────────────────────
 
 /**
@@ -529,6 +579,11 @@ export function startMultiChainScheduler(): void {
     void processWaitingForGasTransfers();
   }, EXPIRE_INTERVAL_MS).unref();
 
+  // Reclaim retry: TX3 fallite precedentemente — ogni 30 min
+  setInterval(() => {
+    void processFailedReclaims();
+  }, 30 * 60_000).unref();
+
   logger.info(
     {
       recoveryIntervalMs: RECOVERY_INTERVAL_MS,
@@ -553,6 +608,7 @@ async function _runAll(): Promise<void> {
     processExpiredMCTransfers(),
     processExpiredPendingTransfers(),
     processWaitingForGasTransfers(),
+    processFailedReclaims(),
   ]);
 }
 

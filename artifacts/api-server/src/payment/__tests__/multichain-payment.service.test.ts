@@ -72,14 +72,15 @@ vi.mock("../../blockchain/multichain-config", async () => {
   };
 });
 
-// Mock viem: previene chiamate RPC reali da ensureMultiChainEscrowGas nei unit test.
-// GAS_STATION_PRIVATE_KEY è impostato come segreto Replit → la funzione non fa short-circuit
-// sul controllo gsPk. Simuliamo un client con saldo nativo sufficiente → no top-up.
+// Mock viem: previene chiamate RPC reali da ensureMultiChainEscrowGas e _reclaimEscrowGas
+// nei unit test. GAS_STATION_PRIVATE_KEY è impostato come segreto Replit → la funzione
+// non fa short-circuit sul controllo gsPk. Simuliamo un client con saldo sufficiente.
 vi.mock("viem", async (importOriginal) => {
   const actual = await importOriginal<typeof import("viem")>();
   const mockPublicClient = {
     getGasPrice:              vi.fn().mockResolvedValue(30_000_000_000n), // 30 Gwei
     getBalance:               vi.fn().mockResolvedValue(1_000_000_000_000_000_000n), // 1 POL — sufficiente → no top-up
+    getTransactionCount:      vi.fn().mockResolvedValue(5),               // nonce per TX3
     waitForTransactionReceipt: vi.fn().mockResolvedValue({ status: "success", blockHash: "0x0" }),
   };
   const mockWalletClient = {
@@ -462,16 +463,17 @@ describe("releaseMultiChainTransfer", () => {
     );
   });
 
-  it("non invia fee se fee_wallet è null — 3 findOneAndUpdate (lock + persist_tx1 + final)", async () => {
+  it("non invia fee se fee_wallet è null — 4 findOneAndUpdate (lock + persist_tx1 + final + reclaim TX3)", async () => {
     const pendingDoc   = { ...baseTransferDoc, status: "pending"   as const, fee_wallet: null };
     const releasingDoc = { ...pendingDoc,      status: "releasing" as const };
     const releasedDoc  = { ...pendingDoc,      status: "released"  as const };
 
-    // Senza fee_wallet: nessun PERSIST tx_hash_fee → 3 call totali
+    // Senza fee_wallet: nessun PERSIST tx_hash_fee → 3 call release + 1 reclaim TX3
     vi.mocked(MultiChainTransferModel.findOneAndUpdate)
       .mockResolvedValueOnce(releasingDoc as any)  // acquireLock
       .mockResolvedValueOnce(releasingDoc as any)  // persist tx_hash_release (C-01)
-      .mockResolvedValueOnce(releasedDoc  as any); // final update → released
+      .mockResolvedValueOnce(releasedDoc  as any)  // final update → released
+      .mockResolvedValueOnce({} as any);           // TX3 reclaim persist (fire-and-forget)
 
     const adapter = makeEvmAdapter();
     vi.mocked(adapterRegistry.get).mockReturnValue(adapter as any);
@@ -480,8 +482,11 @@ describe("releaseMultiChainTransfer", () => {
     // Solo TX1 (netAmount) — fee wallet null → TX2 saltata
     expect(adapter._mockBuildAndSign).toHaveBeenCalledTimes(1);
     expect(adapter._mockBroadcast).toHaveBeenCalledTimes(1);
-    // 3 findOneAndUpdate: acquireLock + persist_tx1 + final (no persist_tx2)
-    expect(MultiChainTransferModel.findOneAndUpdate).toHaveBeenCalledTimes(3);
+    // 4 findOneAndUpdate: acquireLock + persist_tx1 + final + reclaim TX3
+    expect(MultiChainTransferModel.findOneAndUpdate).toHaveBeenCalledTimes(4);
+    // Il 4° call è il reclaim: condizione { tx_hash_reclaim: null }
+    const calls = vi.mocked(MultiChainTransferModel.findOneAndUpdate).mock.calls;
+    expect(calls[3][0]).toMatchObject({ tx_hash_reclaim: null });
   });
 
   // ─── C-01: ANTI DOUBLE-PAY (pre-persist before broadcast) ──────────────────

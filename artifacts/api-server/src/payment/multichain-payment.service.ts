@@ -994,6 +994,217 @@ async function _checkNetworkFeeAdequacy(
   );
 }
 
+// ─── Gas Reclaim TX3 ──────────────────────────────────────────────────────────
+
+/**
+ * Gas units fissi per una TX nativa EVM (POL/ETH/BNB transfer).
+ * Non stimabile via estimateGas perché non è un contratto — è sempre 21.000 esatto.
+ */
+const TX3_GAS_UNITS = 21_000n;
+
+/**
+ * Esegue TX3: reclaim del nativo residuo (POL/ETH/BNB) dall'escrow verso la Gas Station.
+ *
+ * ═══════════════════════════════════════════════════════════════════════════
+ *  REGOLA ASSOLUTA: questa funzione NON lancia mai eccezioni verso il caller.
+ *  TX1 e TX2 sono già confermate. TX3 è un'ottimizzazione, non un requisito.
+ *  Un fallimento della TX3 NON deve MAI invalidare o bloccare il pagamento.
+ * ═══════════════════════════════════════════════════════════════════════════
+ *
+ * Precondizioni (verificate internamente):
+ *   - network ≠ "bitcoin" (BTC usa UTXO, nessun gas nativo da recuperare)
+ *   - GAS_STATION_PRIVATE_KEY configurato (serve come destinatario)
+ *   - tx_hash_reclaim ancora null (idempotenza — nessun double-reclaim)
+ *   - saldo escrow > costo gas TX3 (altrimenti INSUFFICIENT_BALANCE)
+ *
+ * Idempotenza:
+ *   - Fast-path: se doc.tx_hash_reclaim è già valorizzato → skip immediato
+ *   - DB guard: findOneAndUpdate con condizione { tx_hash_reclaim: null } assicura
+ *     che solo il primo thread che completa la TX3 possa scrivere il risultato
+ *   - Nonce esplicito: previene invio di due TX3 concorrenti con nonce diversi
+ *
+ * Fallimento:
+ *   - Logicato con logger.warn (non error — non è un problema critico)
+ *   - Persistito in reclaim_error per retry dello scheduler (processFailedReclaims)
+ *   - Eccezioni dalla persistenza dell'errore stesso sono ignorate silenziosamente
+ */
+async function _reclaimEscrowGas(
+  doc: MultiChainTransferDocument,
+  signerPk: string,
+): Promise<void> {
+  // Guard 1: BTC non ha gas nativo nell'escrow
+  if (doc.network === "bitcoin") return;
+
+  // Guard 2: fast-path idempotenza (ottimizzazione, il DB guard è quello vero)
+  if (doc.tx_hash_reclaim) return;
+
+  // Guard 3: GAS_STATION_PRIVATE_KEY richiesto come destinatario del reclaim
+  const gsPk = process.env.GAS_STATION_PRIVATE_KEY;
+  if (!gsPk) {
+    logger.warn(
+      { transferId: doc.transfer_id },
+      "[MCReclaim] GAS_STATION_PRIVATE_KEY assente — skip TX3",
+    );
+    return;
+  }
+
+  const chain     = MC_CHAIN_MAP[doc.network as MCNetworkId];
+  const rpcConfig = RPC_CONFIGS[doc.network as MCNetworkId];
+  if (!chain || !rpcConfig?.primary) {
+    logger.warn({ transferId: doc.transfer_id, network: doc.network }, "[MCReclaim] Chain/RPC non configurati — skip TX3");
+    return;
+  }
+
+  try {
+    // privateKeyToAccount dentro il try: se la chiave è malformata l'errore è catturato
+    // e loggato senza propagare al caller (regola fondamentale: TX3 non blocca mai il pagamento)
+    const normalizedEscrowPk = (signerPk.startsWith("0x") ? signerPk : `0x${signerPk}`) as `0x${string}`;
+    const normalizedGsPk     = (gsPk.startsWith("0x") ? gsPk : `0x${gsPk}`) as `0x${string}`;
+    const escrowAccount      = privateKeyToAccount(normalizedEscrowPk);
+    const gsAccount          = privateKeyToAccount(normalizedGsPk);
+    const publicClient       = createPublicClient({ chain, transport: http(rpcConfig.primary) });
+    // Leggi gasPrice, saldo escrow e nonce in parallelo per minimizzare latenza
+    const [gasPrice, escrowBalance, nonce] = await Promise.all([
+      publicClient.getGasPrice(),
+      publicClient.getBalance({ address: escrowAccount.address }),
+      publicClient.getTransactionCount({ address: escrowAccount.address }),
+    ]);
+
+    // Costo esatto TX3: 21.000 gas × gasPrice corrente
+    const tx3GasCost = TX3_GAS_UNITS * gasPrice;
+
+    if (escrowBalance <= tx3GasCost) {
+      // Saldo insufficiente — non ha senso riprovare finché il saldo non cambia
+      logger.info(
+        {
+          transferId:    doc.transfer_id,
+          network:       doc.network,
+          escrowAddress: escrowAccount.address,
+          escrowBalance: escrowBalance.toString(),
+          tx3GasCost:    tx3GasCost.toString(),
+        },
+        "[MCReclaim] Saldo escrow ≤ gas TX3 — reclaim non conveniente (INSUFFICIENT_BALANCE)",
+      );
+      await MultiChainTransferModel.findOneAndUpdate(
+        { transfer_id: doc.transfer_id, tx_hash_reclaim: null },
+        { $set: { reclaim_error: "INSUFFICIENT_BALANCE" } },
+      );
+      return;
+    }
+
+    // Importo da trasferire: tutto il saldo meno il costo esatto della TX3
+    const transferAmount = escrowBalance - tx3GasCost;
+
+    logger.info(
+      {
+        transferId:     doc.transfer_id,
+        network:        doc.network,
+        escrowAddress:  escrowAccount.address,
+        gsAddress:      gsAccount.address,
+        escrowBalance:  escrowBalance.toString(),
+        tx3GasCost:     tx3GasCost.toString(),
+        transferAmount: transferAmount.toString(),
+        gasPrice:       gasPrice.toString(),
+        nonce,
+      },
+      "[MCReclaim] TX3 reclaim avviata",
+    );
+
+    const walletClient = createWalletClient({
+      account:   escrowAccount,
+      chain,
+      transport: http(rpcConfig.primary),
+    });
+
+    // Parametri espliciti: gas + gasPrice + nonce forzano la TX identica in caso di retry
+    // concorrente → lo stesso hash → waitForTransactionReceipt idempotente.
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const txHash: `0x${string}` = await (walletClient as any).sendTransaction({
+      to:       gsAccount.address,
+      value:    transferAmount,
+      gas:      TX3_GAS_UNITS,
+      gasPrice: gasPrice,
+      nonce,
+    });
+
+    const receipt = await publicClient.waitForTransactionReceipt({
+      hash:            txHash,
+      timeout:         30_000,
+      pollingInterval: 4_000,
+    });
+
+    if (receipt.status === "reverted") {
+      throw new Error(`TX3 revertita on-chain: ${txHash}`);
+    }
+
+    // Persist successo — condizione { tx_hash_reclaim: null } garantisce idempotenza
+    // (se due thread concorrenti completano la stessa TX, solo il primo scrive)
+    await MultiChainTransferModel.findOneAndUpdate(
+      { transfer_id: doc.transfer_id, tx_hash_reclaim: null },
+      {
+        $set: {
+          tx_hash_reclaim: txHash,
+          pol_reclaimed:   transferAmount.toString(),
+          reclaim_error:   null,
+        },
+      },
+    );
+
+    logger.info(
+      {
+        transferId:  doc.transfer_id,
+        network:     doc.network,
+        txHash,
+        polReclaimed: transferAmount.toString(),
+        gsAddress:   gsAccount.address,
+      },
+      "[MCReclaim] TX3 reclaim completata ✓ — nativo recuperato alla Gas Station",
+    );
+  } catch (err) {
+    // CRITICO: non propagare MAI verso il caller — il pagamento è già completed.
+    const errMsg = err instanceof Error ? err.message : String(err);
+    logger.warn(
+      { err, transferId: doc.transfer_id, network: doc.network },
+      "[MCReclaim] TX3 fallita — pagamento già released, nessuna regressione",
+    );
+    // Persisti errore per retry schedulato — ignora eventuali errori di DB qui
+    try {
+      await MultiChainTransferModel.findOneAndUpdate(
+        { transfer_id: doc.transfer_id, tx_hash_reclaim: null },
+        { $set: { reclaim_error: errMsg.slice(0, 500) } },
+      );
+    } catch {
+      /* fallback silenzioso — errore durante persistenza dell'errore */
+    }
+  }
+}
+
+/**
+ * Esegue o ritenta il reclaim TX3 per un transfer già "released".
+ *
+ * Usato da:
+ *   - processFailedReclaims() nello scheduler (retry automatico)
+ *   - Admin panel (retry manuale)
+ *
+ * Idempotente: se tx_hash_reclaim è già valorizzato → no-op silenzioso.
+ */
+export async function reclaimEscrowGasById(transferId: string): Promise<void> {
+  const doc = await MultiChainTransferModel.findOne({
+    transfer_id:     transferId,
+    status:          "released",
+    tx_hash_reclaim: null,
+    network:         { $ne: "bitcoin" },
+  }).lean();
+
+  if (!doc) {
+    logger.debug({ transferId }, "[MCReclaim] Transfer non trovato o già reclamato — skip");
+    return;
+  }
+
+  const signerPk = decryptEscrowKeyHex(doc.escrow_encrypted_pk);
+  await _reclaimEscrowGas(doc as unknown as MultiChainTransferDocument, signerPk);
+}
+
 // ─── Release EVM ──────────────────────────────────────────────────────────────
 
 /**
@@ -1119,6 +1330,12 @@ async function _releaseEvm(doc: MultiChainTransferDocument): Promise<MultiChainT
   );
 
   emitMCPaymentStateChanged(completed!);
+
+  // TX3 — reclaim POL/ETH/BNB residuo escrow → Gas Station (fire-and-forget).
+  // Avviata DOPO che il transfer è confermato released (status aggiornato, evento emesso).
+  // Errori gestiti internamente — mai propagati. Mai blocca il return.
+  void _reclaimEscrowGas(doc, signerPk);
+
   return toInfo(completed!);
 }
 
