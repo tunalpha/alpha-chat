@@ -267,14 +267,21 @@ export const MC_DISPLAY_DECIMALS: Record<MCNetwork, number> = {
  *   BTC         (raw=8,  disp=8): "18332" → "0.00018332"
  */
 export function fmtDisplay(units: string, rawDecimals: number, displayDecimals: number): string {
+  // Guard: se units è una stringa decimale (es. "0.00018332") o non valida,
+  // BigInt() lancerebbe SyntaxError. Gestiamo il fallback con fromSmallestUnit.
   let str: string;
-  if (rawDecimals <= displayDecimals) {
-    str = fromSmallestUnit(units, rawDecimals);
-  } else {
-    const diff   = rawDecimals - displayDecimals;
-    const scale  = BigInt(10) ** BigInt(diff);
-    const scaled = BigInt(units) / scale;            // tronca sub-display precision
-    str = fromSmallestUnit(scaled.toString(), displayDecimals);
+  try {
+    if (rawDecimals <= displayDecimals) {
+      str = fromSmallestUnit(units, rawDecimals);
+    } else {
+      const diff   = rawDecimals - displayDecimals;
+      const scale  = BigInt(10) ** BigInt(diff);
+      const scaled = BigInt(units) / scale;            // tronca sub-display precision
+      str = fromSmallestUnit(scaled.toString(), displayDecimals);
+    }
+  } catch {
+    // Fallback: stringa grezza (meglio mostrare qualcosa che crashare la UI)
+    return units;
   }
   // Padding fisso per valute "commerciali" (dispDec ≤ 2).
   // BTC (dispDec=8) mantiene il comportamento "fino a N decimali" (no trailing zeros).

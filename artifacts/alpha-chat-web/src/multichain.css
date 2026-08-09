@@ -320,6 +320,12 @@
   border-top: 1px solid rgba(255, 255, 255, 0.09);
   font-weight: 600;
 }
+.mc-confirm-total {
+  padding-top: 9px;
+  border-top: 1px solid rgba(255, 255, 255, 0.15);
+  font-weight: 700;
+  font-size: 0.88rem;
+}
 .mc-confirm-note {
   font-size: 0.71rem;
   opacity: 0.55;

@@ -66,8 +66,17 @@ interface Props {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function totalFeeUnits(quote: MCQuote): bigint {
-  return BigInt(quote.projectFee) + BigInt(quote.networkFeeCharged ?? "0");
+function totalFeeUnits(q: MCQuote): bigint {
+  try {
+    return BigInt(q.projectFee ?? "0") + BigInt(q.networkFeeCharged ?? "0");
+  } catch { return 0n; }
+}
+
+/** grossAmount + networkFeeCharged = totale che il pagatore depositerà */
+function totalPaidUnits(q: MCQuote): bigint {
+  try {
+    return BigInt(q.grossAmount ?? "0") + BigInt(q.networkFeeCharged ?? "0");
+  } catch { return 0n; }
 }
 
 // ─── Componente ───────────────────────────────────────────────────────────────
@@ -344,10 +353,13 @@ export function MultiChainRequestSheet({ conversationId, toUserId, toName, onClo
 
               {amountMode === "send_amount" ? (
                 <>
-                  {/* send_amount: mostra solo ciò che riguarda il richiedente */}
+                  {/* send_amount: lordo fisso depositato dal pagatore */}
                   <div className="mc-confirm-row">
-                    <span>Importo richiesto</span>
-                    <span>{fmtQ(quote.grossAmount)}</span>
+                    <span>{toName} deposita</span>
+                    <span>
+                      {fmtQ(totalPaidUnits(quote).toString())}
+                      {isBtc && <em style={{ fontSize: "0.76em", opacity: 0.65, marginLeft: 4 }}>(+ fee miner BTC)</em>}
+                    </span>
                   </div>
                   <div className="mc-confirm-row mc-confirm-fee">
                     <span>Fee</span>
@@ -362,7 +374,7 @@ export function MultiChainRequestSheet({ conversationId, toUserId, toName, onClo
                 </>
               ) : (
                 <>
-                  {/* recipient_exact: mostra solo il netto garantito e la fee */}
+                  {/* recipient_exact: tu ricevi esattamente, il pagatore paga gross + fee rete */}
                   <div className="mc-confirm-row mc-confirm-net">
                     <span>Tu ricevi (esatto)</span>
                     <strong>
@@ -376,6 +388,20 @@ export function MultiChainRequestSheet({ conversationId, toUserId, toName, onClo
                     <span>+{fmtQ(totalFeeUnits(quote).toString())}
                       {quote.btcFeeFloorApplied && <em style={{ fontSize: "0.72em", opacity: 0.7, marginLeft: 4 }}>(min 546 sat)</em>}
                     </span>
+                  </div>
+                  {/* Totale che pagherà il richiedente — la parte più importante per la UX */}
+                  <div className="mc-confirm-row mc-confirm-total">
+                    <span>{toName} pagherà</span>
+                    <strong>
+                      {isBtc ? (
+                        <>
+                          {fmtQ(totalPaidUnits(quote).toString())}
+                          {" "}<em style={{ fontSize: "0.76em", opacity: 0.65 }}>(+ fee miner BTC)</em>
+                        </>
+                      ) : (
+                        fmtQ(totalPaidUnits(quote).toString())
+                      )}
+                    </strong>
                   </div>
                 </>
               )}

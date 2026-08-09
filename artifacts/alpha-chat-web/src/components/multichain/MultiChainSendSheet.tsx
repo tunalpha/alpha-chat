@@ -68,7 +68,16 @@ interface Props {
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function totalFeeUnits(q: MCQuote): bigint {
-  return BigInt(q.projectFee) + BigInt(q.networkFeeCharged ?? "0");
+  try {
+    return BigInt(q.projectFee ?? "0") + BigInt(q.networkFeeCharged ?? "0");
+  } catch { return 0n; }
+}
+
+/** grossAmount + networkFeeCharged = importo totale depositato dal mittente */
+function totalPaidUnits(q: MCQuote): bigint {
+  try {
+    return BigInt(q.grossAmount ?? "0") + BigInt(q.networkFeeCharged ?? "0");
+  } catch { return 0n; }
 }
 
 // ─── Componente ───────────────────────────────────────────────────────────────
@@ -348,10 +357,19 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
                 </span>
               </div>
 
-              {/* Totale pagato dal mittente */}
-              <div className="mc-confirm-row">
+              {/* Totale pagato dal mittente = gross + network fee (BTC: + stima miner) */}
+              <div className="mc-confirm-row mc-confirm-total">
                 <span>Totale pagato</span>
-                <span>{fmtQ(quote.grossAmount)}</span>
+                <span>
+                  {isBtc ? (
+                    <>
+                      {fmtQ(totalPaidUnits(quote).toString())}
+                      {" "}<em style={{ fontSize: "0.76em", opacity: 0.65 }}>(+ fee miner BTC)</em>
+                    </>
+                  ) : (
+                    fmtQ(totalPaidUnits(quote).toString())
+                  )}
+                </span>
               </div>
 
               {isBtc && price && (

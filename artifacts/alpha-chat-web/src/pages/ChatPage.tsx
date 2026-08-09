@@ -12,6 +12,7 @@ import { UsdaPaymentDetail } from "../components/usda/UsdaPaymentDetail";
 import { MultiChainSendSheet }      from "../components/multichain/MultiChainSendSheet";
 import { MultiChainRequestSheet }   from "../components/multichain/MultiChainRequestSheet";
 import { MultiChainPaymentBubble }  from "../components/multichain/MultiChainPaymentBubble";
+import { ErrorBoundary }             from "../components/ErrorBoundary";
 import type { MCSystemMeta }        from "../lib/multichain-api";
 
 import type { UsdaPaymentData } from "../lib/usda-types";
@@ -3882,10 +3883,12 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
                           })()
                         ) : msg.message_type === "mc_payment" ? (
                           (msg.system_metadata as unknown as MCSystemMeta)?.transfer_id
-                            ? <MultiChainPaymentBubble
-                                data={msg.system_metadata as unknown as MCSystemMeta}
-                                isMine={isMine}
-                              />
+                            ? <ErrorBoundary fallback={<div style={{ fontSize: "0.78rem", opacity: 0.5, padding: "8px 12px" }}>⚠ Pagamento non visualizzabile</div>}>
+                                <MultiChainPaymentBubble
+                                  data={msg.system_metadata as unknown as MCSystemMeta}
+                                  isMine={isMine}
+                                />
+                              </ErrorBoundary>
                             : null
                         ) : (decryptedTexts.get(msg.id) ?? "").startsWith(ANIMATED_STICKER_MARKER) ? (
                           /* Sticker animato Lottie v:2 — rilevato da ANIMATED_STICKER_MARKER */
@@ -4792,24 +4795,28 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
         />
       )}
       {showBTCPay && activeConv && auth && activeConv.type !== "group" && (
-        <MultiChainSendSheet
-          mode="btc"
-          conversationId={activeConvId ?? ""}
-          toUserId={activeConv.other_user?.user_id ?? ""}
-          toName={activeConv.other_user?.display_name ?? activeConv.other_user?.username ?? "Utente"}
-          onClose={() => setShowBTCPay(false)}
-          onSent={() => setShowBTCPay(false)}
-        />
+        <ErrorBoundary fallback={null}>
+          <MultiChainSendSheet
+            mode="btc"
+            conversationId={activeConvId ?? ""}
+            toUserId={activeConv.other_user?.user_id ?? ""}
+            toName={activeConv.other_user?.display_name ?? activeConv.other_user?.username ?? "Utente"}
+            onClose={() => setShowBTCPay(false)}
+            onSent={() => setShowBTCPay(false)}
+          />
+        </ErrorBoundary>
       )}
       {showBTCRequest && activeConv && auth && activeConv.type !== "group" && (
-        <MultiChainRequestSheet
-          mode="btc"
-          conversationId={activeConvId ?? ""}
-          toUserId={activeConv.other_user?.user_id ?? ""}
-          toName={activeConv.other_user?.display_name ?? activeConv.other_user?.username ?? "Utente"}
-          onClose={() => setShowBTCRequest(false)}
-          onRequested={() => setShowBTCRequest(false)}
-        />
+        <ErrorBoundary fallback={null}>
+          <MultiChainRequestSheet
+            mode="btc"
+            conversationId={activeConvId ?? ""}
+            toUserId={activeConv.other_user?.user_id ?? ""}
+            toName={activeConv.other_user?.display_name ?? activeConv.other_user?.username ?? "Utente"}
+            onClose={() => setShowBTCRequest(false)}
+            onRequested={() => setShowBTCRequest(false)}
+          />
+        </ErrorBoundary>
       )}
 
       {/* ── Fase 5: Safety Number Modal ─────────────────────────────────── */}
