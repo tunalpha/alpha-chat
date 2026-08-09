@@ -12,6 +12,32 @@ const BASE = "/api/v1/multichain";
 // ─── Tipi ─────────────────────────────────────────────────────────────────────
 
 export type MCNetwork = "polygon" | "ethereum" | "bsc" | "bitcoin";
+
+/**
+ * Indirizzi ufficiali del token USDT per ogni rete EVM.
+ * Verificati su CoinGecko / BSCScan / Etherscan / PolygonScan.
+ *   Polygon USDT  (6 dec)  : 0xc2132D05D31c914a87C6611C10748AEb04B58e8F
+ *   BSC USDT      (18 dec) : 0x55d398326f99059fF775485246999027B3197955
+ *   Ethereum USDT (6 dec)  : 0xdAC17F958D2ee523a2206206994597C13D831ec7
+ *
+ * USATO SOLO per costruire la calldata ERC-20 lato client (firma wallet).
+ * NON modifica alcuna logica backend o fee.
+ * Bitcoin non è EVM → null.
+ */
+export const MC_TOKEN_CONTRACT: Record<MCNetwork, string | null> = {
+  polygon:  "0xc2132D05D31c914a87C6611C10748AEb04B58e8F",
+  bsc:      "0x55d398326f99059fF775485246999027B3197955",
+  ethereum: "0xdAC17F958D2ee523a2206206994597C13D831ec7",
+  bitcoin:  null,
+};
+
+/** ChainId EVM per ogni rete. Bitcoin non è EVM → null. */
+export const MC_CHAIN_ID: Record<MCNetwork, number | null> = {
+  polygon:  137,
+  bsc:      56,
+  ethereum: 1,
+  bitcoin:  null,
+};
 export type MCAsset   = "USDT" | "BTC";
 export type MCStatus  =
   | "awaiting_deposit"

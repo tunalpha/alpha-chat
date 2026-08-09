@@ -1,0 +1,219 @@
+Perfetto. Adesso abbiamo individuato il problema vero. E il report conferma che non devi cancellare il progetto.
+
+La situazione è:
+
+* ✅ Backend Multichain: già predisposto per ricevere il deposito sull’escrow.
+* ✅ Reclaim TX3 / hardening #44: fatto.
+* ✅ Project fee per rete #45: fatto.
+* ✅ Network fee dinamica: implementata e testata.
+* ❌ Frontend Multichain: manca completamente la firma dal wallet.
+* ❌ Per questo oggi ti porta a “Copia indirizzo”.
+* ✅ USDA dimostra già che ThirdWeb + useActiveAccount() + sendTransaction() + polling funzionano nel tuo ambiente, compreso il caso iOS/PWA.
+
+Quindi non è necessario rifare l’architettura. Bisogna portare il pattern USDA dentro Multichain.
+
+Cosa farei adesso
+
+Io farei modificare solo questi 3 file per il primo passaggio:
+
+1. thirdweb.ts → supporto BSC/Ethereum oltre Polygon.
+2. multichain-api.ts → indirizzo USDT corretto per ogni rete.
+3. MultiChainSendSheet.tsx → sostituire lo step Copia indirizzo con Firma transazione.
+
+BTC rimane separato: essendo Bitcoin, non può utilizzare lo stesso sendTransaction() EVM.
+
+E soprattutto: non toccherei più fee, reclaim, scheduler o backend payment logic. Quella parte adesso va congelata.
+
+Prompt da dare all’agente
+
+APPROVAZIONE ESPLICITA — IMPLEMENTA SOLO IL WALLET SIGNING MULTICHAIN
+Il report di diagnosi è confermato.
+OBIETTIVO:
+Rendere il flusso Multichain EVM equivalente al flusso USDA:
+Chat
+→ Importo
+→ Conferma
+→ Firma transazione
+→ wallet esterno
+→ firma
+→ broadcast
+→ backend detect
+→ stato aggiornato in chat.
+NON vogliamo più che il flusso EVM obblighi l'utente a:
+"Copia indirizzo → apri wallet manualmente → incolla indirizzo → invia".
+IMPORTANTE:
+Il backend escrow/payment flow esistente NON deve essere modificato.
+NON modificare:
+- network fee
+- project fee
+- #44 reclaim
+- #45 fee override
+- #46 network fee calculation
+- scheduler
+- database model
+- payment quote
+- anti-loss
+- gas calculation
+- deployment config
+MODIFICARE SOLO IL FRONTEND WALLET FLOW.
+==================================================
+FILE 1
+==================================================
+artifacts/alpha-chat-web/src/lib/thirdweb.ts
+Aggiungere il supporto alle chain EVM necessarie:
+Polygon = 137
+BSC = 56
+Ethereum = 1
+RIUTILIZZARE lo stesso client ThirdWeb e lo stesso sistema wallets
+già utilizzato da USDA.
+NON creare un secondo wallet system.
+Preservare:
+- MetaMask
+- Trust Wallet
+- Coinbase Wallet
+- Rainbow
+- Zerion
+- comportamento iOS/PWA già funzionante con USDA.
+Usare gli RPC già configurati dal progetto/ENV.
+==================================================
+FILE 2
+==================================================
+artifacts/alpha-chat-web/src/lib/multichain-api.ts
+Aggiungere una mappa esclusivamente per i token USDT EVM:
+Polygon USDT
+BSC USDT
+Ethereum USDT
+Usare gli indirizzi ufficialmente già presenti/configurati nel progetto.
+NON inventare indirizzi.
+NON modificare gli indirizzi backend.
+Verificare decimals per rete:
+Polygon USDT = 6
+Ethereum USDT = 6
+BSC USDT = 18
+==================================================
+FILE 3
+==================================================
+artifacts/alpha-chat-web/src/components/multichain/MultiChainSendSheet.tsx
+Sostituire il comportamento attuale:
+Step 3 → "Copia indirizzo"
+con:
+Step 3 → "Firma transazione"
+Per reti EVM:
+1. usare useActiveAccount()
+2. se non esiste account:
+   mostrare ConnectButton
+3. utilizzare la chain corrispondente alla rete selezionata
+4. preparare calldata ERC-20 transfer:
+to = USDT token contract
+data = transfer(escrowWallet, minDepositAmount)
+value = 0
+5. utilizzare account.sendTransaction()
+6. replicare ESATTAMENTE il pattern fire-and-forget già utilizzato
+   da SendPaymentSheet.tsx USDA
+7. NON aspettare necessariamente il TX hash client-side se USDA non lo fa
+8. dopo la firma/broadcast:
+   avviare/continuare apiMCDetect()
+9. il backend rimane source of truth
+10. aggiornare la chat quando il deposito viene rilevato.
+==================================================
+IMPORTANTE — IMPORTO DA FIRMARE
+==================================================
+NON usare semplicemente targetNetAmount.
+La transaction deve inviare l'importo richiesto dal backend:
+minDepositAmount
+oppure il valore equivalente restituito dalla create response.
+Verificare esattamente il significato di:
+- minDepositAmount
+- grossAmount
+- networkFeeCharged
+Prima di implementare la calldata, assicurarsi che il valore inviato
+dal wallet sia esattamente quello che il backend si aspetta per
+considerare il deposito valido.
+NON modificare il backend per adattarlo al frontend.
+==================================================
+RECIPIENT EXACT
+==================================================
+Il destinatario deve continuare a ricevere esattamente l'importo
+richiesto.
+Esempio:
+Cricko riceve 1.00 USDT
+Il wallet dell'utente deve firmare il deposito richiesto dal backend,
+che comprende correttamente project fee/network fee secondo il modello
+già implementato.
+NON cambiare la formula recipient_exact.
+==================================================
+UX
+Step 2:
+Destinatario riceve
+Project fee
+Network fee (stima gas)
+Totale pagato
+Step 3 EVM:
+"Invia esattamente X USDT alla transazione"
+[Connect wallet] se necessario
+oppure
+[Firma transazione →]
+Dopo la firma:
+"Transazione inviata"
+"Stiamo verificando il pagamento..."
+NON mostrare più "Copia indirizzo" come percorso principale.
+Può rimanere SOLO come fallback tecnico secondario se necessario.
+==================================================
+IOS / PWA
+RIUTILIZZARE il comportamento già funzionante di USDA.
+Aggiungere, se necessario, lo stesso:
+localStorage recovery state
+usato da:
+SendPaymentSheet.tsx
+Non inventare un nuovo sistema di deep linking.
+==================================================
+POLLING
+Riutilizzare apiMCDetect() come source of truth.
+NON cambiare il backend.
+Il polling può essere avviato dopo sendTransaction fire-and-forget.
+Gestire:
+- firma riuscita
+- firma rifiutata
+- wallet non connesso
+- chain errata
+- wallet switch chain
+- reload PWA
+- ritorno dal wallet
+- timeout
+- pagamento rilevato
+- pagamento non rilevato
+==================================================
+BTC
+NON modificare il percorso Bitcoin.
+Bitcoin rimane:
+indirizzo → copia → wallet esterno
+perché non è una transazione ERC-20 EVM.
+==================================================
+TEST OBBLIGATORI
+Prima di dichiarare completato:
+1. TypeScript clean
+2. build frontend clean
+3. test esistenti clean
+4. verificare che USDA non sia stato modificato
+5. verificare che backend non sia stato modificato
+6. verificare che #44/#45/#46 non siano stati modificati.
+Poi fare un test reale EVM, preferibilmente BSC con piccolo importo.
+==================================================
+REGOLA FONDAMENTALE
+NON fare modifiche "migliorative" fuori scope.
+NON toccare fee.
+NON toccare backend.
+NON toccare database.
+NON toccare reclaim.
+NON toccare scheduler.
+NON fare deploy.
+Al termine restituisci:
+- file modificati
+- diff funzionale
+- test
+- comportamento USDA invariato
+- comportamento Multichain EVM nuovo
+- eventuali problemi residui
+STOP prima del deploy.
+
+Questo è il passaggio giusto. Prima facciamo funzionare BSC/Polygon/Ethereum con “Firma transazione” esattamente come USDA, poi facciamo una prova reale con un importo minimo. Solo se quella prova funziona, si parla di deploy.
