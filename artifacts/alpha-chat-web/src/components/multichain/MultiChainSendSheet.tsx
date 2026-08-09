@@ -438,9 +438,10 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
       } else if (/nonce.*too.*low|nonce.*used|nonce.*already/i.test(msg)) {
         // Nonce già usato = tx precedente già on-chain; il polling la rileverà
         console.warn("[MC] Nonce già usato — polling continuerà.");
-      } else if (msg.includes("unrecognized chain") || msg.includes("does not support")) {
+      } else if (/missing or invalid|eip155|unrecognized chain|does not support|wrong network/i.test(msg)) {
+        // Errore chain mismatch / WalletConnect chain non supportata → abort immediato
         pollAborted  = true;
-        signErrorMsg = `Seleziona la rete ${selectedNet.sublabel} nel tuo wallet e riprova.`;
+        signErrorMsg = `Rete ${selectedNet.sublabel} non riconosciuta dal wallet.\nIn Trust Wallet: Impostazioni → Reti → abilita ${selectedNet.sublabel}, poi riprova.`;
       } else {
         signErrorMsg = humanizeSignError(err, selectedNet.sublabel);
       }
