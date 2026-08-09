@@ -617,15 +617,21 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
                 <div className="usda-error" role="alert" style={{ whiteSpace: "pre-line" }}>{signError}</div>
               )}
 
-              {/* Azione principale BTC: deep link wallet */}
+              {/* Azione principale BTC: share sheet (mostra tutti i wallet disponibili) */}
               {isBtcStep && bitcoinUri && (
-                <a
-                  href={bitcoinUri}
+                <button
+                  type="button"
                   className="usda-btn-primary"
-                  style={{ display: "block", textAlign: "center", textDecoration: "none", padding: "13px", borderRadius: "12px" }}
+                  onClick={() => {
+                    if (navigator.share) {
+                      void navigator.share({ url: bitcoinUri });
+                    } else {
+                      window.open(bitcoinUri, "_blank");
+                    }
+                  }}
                 >
-                  📲 Apri wallet Bitcoin
-                </a>
+                  📲 Apri con wallet Bitcoin
+                </button>
               )}
 
               {/* QR code */}

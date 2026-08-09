@@ -64,6 +64,7 @@ import {
   type PaymentQuote,
 } from "./payment-quote";
 import { generateEscrowWallet, decryptEscrowKeyHex } from "../blockchain/escrow-crypto";
+import { generateBtcEscrowWallet } from "../blockchain/bitcoin/bitcoin-wallet";
 import { multichainError }          from "../blockchain/errors";
 import { AppError }                 from "../errors/AppError";
 import { logger }                   from "../lib/logger";
@@ -613,8 +614,8 @@ export async function createMultiChainTransfer(
   const networkFeeCharged = BigInt(quote.networkFeeCharged);
   const networkFeeAsset   = NATIVE_ASSET_SYMBOL[params.network];
 
-  // Wallet escrow usa-e-getta
-  const escrow = generateEscrowWallet();
+  // Wallet escrow usa-e-getta: BTC → P2WPKH (bc1...), EVM → Ethereum (0x...)
+  const escrow = isBtcTransfer ? generateBtcEscrowWallet() : generateEscrowWallet();
 
   // Deposito minimo:
   //   BTC: gross + estimatedMinerFee + buffer (il cliente finanzia i miner)

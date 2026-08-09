@@ -3,7 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { build as esbuild } from "esbuild";
 import esbuildPluginPino from "esbuild-plugin-pino";
-import { rm } from "node:fs/promises";
+import { rm, copyFile } from "node:fs/promises";
 
 // Plugins (e.g. 'esbuild-plugin-pino') may use `require` to resolve dependencies
 globalThis.require = createRequire(import.meta.url);
@@ -117,6 +117,22 @@ globalThis.__filename = __bannerUrl.fileURLToPath(import.meta.url);
 globalThis.__dirname = __bannerPath.dirname(globalThis.__filename);
     `,
     },
+  });
+
+  await copyWasmFiles(distDir);
+}
+
+// Copy WASM file needed by tiny-secp256k1 (used by bitcoin-wallet.ts / bitcoinjs-lib)
+async function copyWasmFiles(distDir) {
+  const wasmSrc = new URL(
+    "../../node_modules/.pnpm/tiny-secp256k1@2.2.4/node_modules/tiny-secp256k1/lib/secp256k1.wasm",
+    import.meta.url,
+  );
+  await copyFile(wasmSrc, path.join(distDir, "secp256k1.wasm")).catch(() => {
+    // Fallback: resolve via require for monorepo hoisting
+    const req  = createRequire(import.meta.url);
+    const base = path.dirname(req.resolve("tiny-secp256k1/lib/wasm_loader.js"));
+    return copyFile(path.join(base, "secp256k1.wasm"), path.join(distDir, "secp256k1.wasm"));
   });
 }
 
