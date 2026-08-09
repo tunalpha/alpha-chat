@@ -499,17 +499,24 @@ export async function processWaitingForGasTransfers(): Promise<void> {
 const RECLAIM_RETRY_WINDOW_MS = 7 * 24 * 60 * 60_000;
 
 /**
- * Ritenta la TX3 reclaim per i transfer "released" con un errore transitorio.
+ * Recupera tutti i transfer "released" che non hanno ancora un reclaim confermato.
  *
- * Seleziona:
+ * Seleziona (query unificata — copre sia "mai tentati" che "falliti con errore transitorio"):
  *   status = "released"
- *   tx_hash_reclaim = null    (non ancora reclamato con successo)
- *   reclaim_error ≠ null E ≠ "INSUFFICIENT_BALANCE"   (errore transitorio, non permanente)
- *   completed_at > 7 giorni fa   (la chiave escrow è ancora disponibile in DB)
- *   network ≠ "bitcoin"   (BTC non ha gas nativo da recuperare)
+ *   tx_hash_reclaim = null         (non ancora confermato con successo)
+ *   reclaim_error ≠ "INSUFFICIENT_BALANCE"   (esclude errori PERMANENTI; include null → mai tentati)
+ *   completed_at > 7 giorni fa     (chiave escrow ancora disponibile in DB)
+ *   network ≠ "bitcoin"            (BTC non ha gas nativo da recuperare)
  *
- * "INSUFFICIENT_BALANCE" è considerato permanente: il saldo escrow è sotto il costo
- * della TX3 e non tornerà mai. Non ha senso riprovare.
+ * Questa query risolve il Gap #1:
+ *   PRIMA (bug): reclaim_error: { $nin: [null, "INSUFFICIENT_BALANCE"] }
+ *     → escludeva null → i transfer mai tentati (server crash dopo release ma prima
+ *       di avviare TX3) erano invisibili allo scheduler per sempre.
+ *   ORA: reclaim_error: { $ne: "INSUFFICIENT_BALANCE" }
+ *     → include null (mai tentati) + include errori transitori → nessun escrow silente.
+ *
+ * "INSUFFICIENT_BALANCE" è considerato permanente: il saldo escrow non tornerà mai.
+ * Non ha senso riprovare. Tutti gli altri errori sono transitori e vengono ritentati.
  *
  * Non può interferire con TX1/TX2: il transfer è già "released" quando questo
  * scheduler gira. Non tocca status, tx_hash_release, tx_hash_fee.
@@ -520,14 +527,20 @@ export async function processFailedReclaims(): Promise<void> {
   const docs = await MultiChainTransferModel.find({
     status:          "released",
     tx_hash_reclaim: null,
-    reclaim_error:   { $nin: [null, "INSUFFICIENT_BALANCE"] },
+    // GAP #1 FIX: $ne invece di $nin — include null (mai tentati) + errori transitori
+    reclaim_error:   { $ne: "INSUFFICIENT_BALANCE" },
     completed_at:    { $gt: since },
     network:         { $ne: "bitcoin" },
   }).limit(BATCH_SIZE).lean();
 
   if (docs.length === 0) return;
 
-  logger.info({ count: docs.length }, "[MCReclaim] Retry reclaim falliti precedentemente");
+  const neverTried = docs.filter(d => !d.reclaim_error).length;
+  const failedRetry = docs.length - neverTried;
+  logger.info(
+    { count: docs.length, neverTried, failedRetry },
+    "[MCReclaim] Reclaim da processare (mai tentati + errori transitori)",
+  );
 
   for (const doc of docs) {
     try {

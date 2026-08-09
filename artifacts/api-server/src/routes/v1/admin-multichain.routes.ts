@@ -17,11 +17,18 @@
 
 import { Router, type Request, type Response, type NextFunction } from "express";
 import { MultiChainTransferModel } from "../../models/multichain-transfer.model";
+import { McFeeOverrideModel }      from "../../models/mc-fee-override.model";
+import { DEFAULT_FEE_BPS }         from "../../blockchain/fee-config";
 import { authenticate }            from "../../middleware/authenticate.middleware";
 import { requireAdmin }            from "../../middleware/require-admin.middleware";
 import { logger }                  from "../../lib/logger";
 import { AppError }                from "../../errors/AppError";
 import { AuditEventModel }         from "../../models/audit-event.model";
+
+// ─── Reti supportate ─────────────────────────────────────────────────────────
+
+const SUPPORTED_NETWORKS = ["polygon", "ethereum", "bsc", "bitcoin"] as const;
+type SupportedNetwork = typeof SUPPORTED_NETWORKS[number];
 
 const router = Router();
 
@@ -172,6 +179,151 @@ router.get("/stats", async (_req: Request, res: Response, next: NextFunction): P
     next(err);
   }
 });
+
+// ─── GET /fee-config ──────────────────────────────────────────────────────────
+
+/**
+ * Restituisce la configurazione project fee corrente per tutte le reti.
+ *
+ * Per ogni rete mostra:
+ *   - fee_bps: valore attuale (DB override o default globale)
+ *   - is_override: true se configurato manualmente in DB
+ *   - updated_at, updated_by, note: metadati dell'ultima modifica
+ */
+router.get("/fee-config", async (_req: Request, res: Response, next: NextFunction): Promise<void> => {
+  try {
+    const defaultBps = Number(DEFAULT_FEE_BPS);
+    const overrides  = await McFeeOverrideModel.find({}).lean();
+    const overrideMap = new Map(overrides.map(o => [o.network, o]));
+
+    const networks = SUPPORTED_NETWORKS.map((network: SupportedNetwork) => {
+      const override = overrideMap.get(network);
+      return {
+        network,
+        label:       network.charAt(0).toUpperCase() + network.slice(1),
+        fee_bps:     override ? override.fee_bps : defaultBps,
+        is_override: !!override,
+        updated_at:  override ? override.updated_at.toISOString() : null,
+        updated_by:  override ? override.updated_by_admin_id : null,
+        note:        override ? override.note : null,
+      };
+    });
+
+    res.json({ networks, default_bps: defaultBps });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ─── PUT /fee-config/:network — super_admin ───────────────────────────────────
+
+/**
+ * Imposta o aggiorna la project fee per una specifica rete.
+ *
+ * Body: { fee_bps: number [0–10000], note?: string }
+ *
+ * Effetto immediato sui nuovi transfer. I transfer già creati non sono impattati.
+ * Registra un evento audit per tracciabilità.
+ */
+router.put(
+  "/fee-config/:network",
+  requireAdmin("super_admin"),
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const network = req.params["network"] as string;
+
+      if (!SUPPORTED_NETWORKS.includes(network as SupportedNetwork)) {
+        throw new AppError("INVALID_NETWORK", 400,
+          `Rete non supportata: '${network}'. Valori ammessi: ${SUPPORTED_NETWORKS.join(", ")}`);
+      }
+
+      const { fee_bps, note } = req.body as { fee_bps?: unknown; note?: unknown };
+
+      if (fee_bps === undefined || fee_bps === null) {
+        throw new AppError("MISSING_FIELD", 400, "Il campo 'fee_bps' è obbligatorio");
+      }
+      const bps = Number(fee_bps);
+      if (!Number.isInteger(bps) || bps < 0 || bps > 10_000) {
+        throw new AppError("INVALID_FEE_BPS", 400,
+          `fee_bps deve essere un intero in [0, 10000], ricevuto: ${fee_bps}`);
+      }
+
+      const adminId = req.adminUser!.userId;
+      const now     = new Date();
+
+      const updated = await McFeeOverrideModel.findOneAndUpdate(
+        { network } as Record<string, unknown>,
+        {
+          $set: {
+            fee_bps:              bps,
+            updated_at:           now,
+            updated_by_admin_id:  adminId,
+            note:                 typeof note === "string" ? note.trim().slice(0, 500) || null : null,
+          },
+        },
+        { upsert: true, new: true },
+      ).lean();
+
+      await AuditEventModel.create({
+        event:      "MC_ADMIN_FEE_CONFIG_UPDATE",
+        user_id:    adminId,
+        created_at: now.toISOString(),
+        metadata:   {
+          network,
+          fee_bps:     bps,
+          note:        updated?.note ?? null,
+          admin_role:  req.adminUser!.adminRole,
+          prev_fee_bps: undefined,  // non richiamiamo valore precedente per semplicità
+        },
+      });
+
+      logger.info(
+        { network, fee_bps: bps, adminUserId: adminId },
+        "[Admin] MC project fee aggiornata",
+      );
+
+      res.json({
+        ok:         true,
+        network,
+        fee_bps:    bps,
+        updated_at: now.toISOString(),
+      });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
+
+// ─── DELETE /fee-config/:network — rimuove override (torna al default) ────────
+
+router.delete(
+  "/fee-config/:network",
+  requireAdmin("super_admin"),
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      const network = req.params["network"] as string;
+
+      if (!SUPPORTED_NETWORKS.includes(network as SupportedNetwork)) {
+        throw new AppError("INVALID_NETWORK", 400, `Rete non supportata: '${network}'`);
+      }
+
+      await McFeeOverrideModel.findOneAndDelete({ network } as Record<string, unknown>);
+
+      await AuditEventModel.create({
+        event:      "MC_ADMIN_FEE_CONFIG_RESET",
+        user_id:    req.adminUser!.userId,
+        created_at: new Date().toISOString(),
+        metadata:   { network, reset_to_default: true, admin_role: req.adminUser!.adminRole },
+      });
+
+      logger.info({ network, adminUserId: req.adminUser!.userId }, "[Admin] MC fee override rimosso — torna al default");
+
+      res.json({ ok: true, network, reset_to_default: true, default_bps: Number(DEFAULT_FEE_BPS) });
+    } catch (err) {
+      next(err);
+    }
+  },
+);
 
 // ─── Admin Actions (super_admin only) ─────────────────────────────────────────
 

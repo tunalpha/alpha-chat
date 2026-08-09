@@ -1,40 +1,62 @@
 ---
 name: TX3 Escrow Gas Reclaim
-description: Implementazione del reclaim del nativo residuo (POL/ETH/BNB) dall'escrow verso la Gas Station dopo ogni pagamento completato.
+description: Fire-and-forget dopo released; pattern C-01 pre-persist; Gap #1+#2 corretti; fee per-chain DB
 ---
 
+# TX3 Escrow Gas Reclaim — Note architetturali
+
 ## Regola fondamentale
-TX3 è fire-and-forget: un fallimento NON deve mai invalidare un pagamento già released.
-`void _reclaimEscrowGas(doc, signerPk)` dopo `emitMCPaymentStateChanged(completed!)`.
+TX3 è fire-and-forget: `void _reclaimEscrowGas(doc, signerPk)` dopo emit WS.
+Errori TX3 NON propagano mai al caller. Pagamento già released = immutabile.
 
-## Campi aggiornati in IMultiChainTransfer
-- `tx_hash_reclaim: string | null` — idempotency key (guard: `{ tx_hash_reclaim: null }` in findOneAndUpdate)
-- `pol_reclaimed: string | null` — importo recuperato in wei (string BigInt)
-- `reclaim_error: string | null` — `"INSUFFICIENT_BALANCE"` = permanente (no retry); altro = transitorio (scheduler riprova)
+## Idempotenza (doppio guard)
+1. **DB guard**: `findOneAndUpdate({ tx_hash_reclaim: null })` — solo il primo thread scrive
+2. **Balance check**: se TX3 confermata ma DB non aggiornato (crash) → balance ≈ 0 → `INSUFFICIENT_BALANCE` → no double-drain
 
-## Flusso TX3
-1. Guard: network ≠ bitcoin, GAS_STATION_PRIVATE_KEY disponibile, tx_hash_reclaim = null
-2. `Promise.all([getGasPrice, getBalance, getTransactionCount])` — 3 RPC in parallelo
-3. `transferAmount = escrowBalance − TX3_GAS_UNITS(21_000n) × gasPrice`
-4. Se balance ≤ gasCost → persist `INSUFFICIENT_BALANCE`, return (nessun retry)
-5. `sendTransaction({ to: gsAddress, value: transferAmount, gas: 21000n, gasPrice, nonce })`
-6. `waitForTransactionReceipt({ timeout: 30_000 })`
-7. Persist success: `{ tx_hash_reclaim, pol_reclaimed, reclaim_error: null }` con guard `{ tx_hash_reclaim: null }`
-8. In caso di errore: try-catch totale, persist `reclaim_error = errMsg.slice(0,500)`
+## Gap #1 — Scheduler query (CORRETTO)
+`processFailedReclaims()` ora usa `reclaim_error: { $ne: "INSUFFICIENT_BALANCE" }`.
+**Perché**: `$nin: [null, "INSUFFICIENT_BALANCE"]` escludeva `null` → transfer mai tentati
+(crash post-release, prima di TX3) erano invisibili allo scheduler per sempre.
+**Come si applica**: qualsiasi modifica al query del scheduler deve includere `reclaim_error:null`.
 
-## Scheduler retry (processFailedReclaims)
-Query: `{ status:"released", tx_hash_reclaim:null, reclaim_error:{$nin:[null,"INSUFFICIENT_BALANCE"]}, completed_at:{$gt:7daysAgo}, network:{$ne:"bitcoin"} }`
-Interval: ogni 30 minuti. Incluso in `_runAll()`.
+## Gap #2 — Pre-persist TX3 hash (CORRETTO — pattern C-01/C-02)
+Sequenza corretta in `_reclaimEscrowGas()`:
+1. `sendTransaction(...)` → txHash
+2. **IMMEDIATE**: `findOneAndUpdate({ tx_hash_reclaim: null }, { $set: { tx_hash_reclaim_submitted: txHash } })`
+3. `waitForTransactionReceipt(txHash)`
+4. On success: `findOneAndUpdate({ tx_hash_reclaim: null }, { $set: { tx_hash_reclaim, pol_reclaimed, reclaim_error: null } })`
 
-## privateKeyToAccount DENTRO il try-catch
-CRITICO: le chiamate a `privateKeyToAccount(escrowPk)` e `privateKeyToAccount(gsPk)` DEVONO stare dentro il try-catch. Se fuori, con chiavi mock/invalide in test, propagano unhandled rejection anche con `void`.
+Crash recovery: se `doc.tx_hash_reclaim_submitted` è set ma `tx_hash_reclaim` null:
+- `getTransactionReceipt(submitted_hash)` → se `success` → persist confirmed → return
+- Se reverted → clear submitted, procedi con nuova TX
+- Se null (non trovata) → procedi con nuova TX (stesso nonce → idempotente per nonce)
 
-**Why:** In unit test il mock viem non copre `viem/accounts`, quindi chiavi non valide (es. "0xMOCK_PRIVATE_KEY") fanno esplodere `@noble/curves` prima del try-catch.
+## `INSUFFICIENT_BALANCE` è permanente
+Saldo escrow ≤ costo TX3 → non tornerà mai. Scheduler ignora `INSUFFICIENT_BALANCE`.
 
-## Test updates
-- `multichain-payment.service.test.ts`: aggiunto `getTransactionCount: vi.fn().mockResolvedValue(5)` al mock viem; il test "fee_wallet null" aggiornato da 3 a 4 `findOneAndUpdate` (3 release + 1 reclaim TX3)
-- `multichain-reclaim.test.ts`: 32 test coprono R-01..R-14 + invariante matematica
+## `privateKeyToAccount` DENTRO il try-catch
+Se fuori dal try, chiavi malformate nei test causano unhandled rejection anche con `void`.
 
-## Pre-existing test failures (non correlati)
-- `payment-quote.test.ts > TEST J`: `payment-quote.ts` contiene "custodial" → check regex fallisce
-- `chat-payment.service.test.ts > acceptTransfer WALLET_NOT_CONFIGURED`: comportamento cambiato in sprint precedente
+## Scheduler interval: ogni 30 min
+`setInterval(() => void processFailedReclaims(), 30 * 60_000).unref()`
+
+## Fee per rete — sistema DB-based (IMPLEMENTATO)
+- Model: `mc_fee_overrides` collection (`McFeeOverrideModel`)
+- Helper: `getDbNetworkFeeBps(network)` → bigint | null (fail-open)
+- Service: in `createMultiChainTransfer`, `dbFeeBps ?? feeConfig.feeBps` — DB ha priorità
+- Admin routes: `GET/PUT/DELETE /api/v1/admin/multichain/fee-config[/:network]`
+- Admin Panel page: `/fee-config` (icona Percent in sidebar)
+- Audit events: `MC_ADMIN_FEE_CONFIG_UPDATE`, `MC_ADMIN_FEE_CONFIG_RESET`
+- Fee immutabile per transfer già creati (salvata in `fee_bps` nel record)
+
+## Campi modello TX3 (IMultiChainTransfer)
+- `tx_hash_reclaim_submitted: string | null` — submitted prima della receipt (crash safety)
+- `tx_hash_reclaim: string | null` — confirmed on-chain
+- `pol_reclaimed: string | null` — importo recuperato (wei stringa)
+- `reclaim_error: string | null` — null=ok, "INSUFFICIENT_BALANCE"=permanente, altro=transitorio
+
+## Test: 45 test in multichain-reclaim.test.ts
+R-01..R-17 coprono: happy path (con pre-persist verificato), saldo insufficiente,
+RPC failure, sendTx failure, timeout, revert, idempotenza, BTC skip, no-GS-key,
+concorrenza, transfer non trovato, scheduler (mai tentati + errori transitori),
+crash recovery con TX3 già confermata, crash recovery con TX3 non trovata.

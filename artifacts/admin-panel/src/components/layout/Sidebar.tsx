@@ -21,6 +21,7 @@ import {
   Gauge,
   Layers,
   Bitcoin,
+  Percent,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 
@@ -44,6 +45,7 @@ const navItems = [
   { href: "/performance",        label: "Performance",      icon: Gauge  },
   { href: "/multichain-monitor", label: "Multi-Chain",      icon: Layers  },
   { href: "/bitcoin-ops",        label: "Bitcoin Ops",      icon: Bitcoin },
+  { href: "/fee-config",         label: "Fee per Rete",     icon: Percent },
 ];
 
 interface SidebarProps {

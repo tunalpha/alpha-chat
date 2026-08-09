@@ -137,10 +137,17 @@ export interface IMultiChainTransfer {
    * TX3: reclaim del POL/ETH/BNB residuo nell'escrow verso la Gas Station.
    * Eseguita in fire-and-forget dopo TX1+TX2 completate. Solo EVM — BTC never.
    *
-   * null         = mai tentata (o BTC, o no GAS_STATION_PRIVATE_KEY)
-   * "0x..."      = TX3 confermata con successo
-   * (vedere reclaim_error per failure)
+   * tx_hash_reclaim_submitted: hash dopo sendTransaction, prima della receipt.
+   *   Persistito IMMEDIATAMENTE dopo sendTx per crash safety (pattern C-01/C-02).
+   *   null = TX3 mai inviata; "0x..." = TX3 inviata (potenzialmente in mempool).
+   *
+   * tx_hash_reclaim: hash CONFERMATO on-chain con receipt.status === "success".
+   *   null = non ancora confermata; "0x..." = TX3 completata con successo ✓
+   *
+   * In crash recovery: se submitted ≠ null e tx_hash_reclaim = null,
+   *   lo scheduler verifica la receipt prima di re-inviare.
    */
+  tx_hash_reclaim_submitted: string | null;
   tx_hash_reclaim: string | null;
 
   /** Importo nativo recuperato via TX3 (in wei, BigInt serializzato come stringa). */
@@ -242,9 +249,10 @@ const MultiChainTransferSchema = new Schema<MultiChainTransferDocument>(
     },
 
     // ── Gas Reclaim TX3 ──────────────────────────────────────────────────────
-    tx_hash_reclaim: { type: String, default: null },
-    pol_reclaimed:   { type: String, default: null },
-    reclaim_error:   { type: String, default: null },
+    tx_hash_reclaim_submitted: { type: String, default: null },  // C-01: submitted, not yet confirmed
+    tx_hash_reclaim:           { type: String, default: null },  // C-01: confirmed on-chain
+    pol_reclaimed:             { type: String, default: null },
+    reclaim_error:             { type: String, default: null },
   },
   {
     collection:  "multichain_transfers",

@@ -25,6 +25,7 @@ import AccessLogPage from '@/pages/access-log';
 import PerformancePage from '@/pages/performance';
 import MultichainMonitor from '@/pages/multichain-monitor';
 import BitcoinOps from '@/pages/bitcoin-ops';
+import FeeConfig from '@/pages/fee-config';
 
 const queryClient = new QueryClient();
 
@@ -49,6 +50,7 @@ function ProtectedRoutes() {
         <Route path="/investor-access" component={InvestorAccess} />
         <Route path="/multichain-monitor" component={MultichainMonitor} />
         <Route path="/bitcoin-ops" component={BitcoinOps} />
+        <Route path="/fee-config" component={FeeConfig} />
         <Route path="/access-log" component={AccessLogPage} />
         <Route path="/performance" component={PerformancePage} />
         <Route component={NotFound} />

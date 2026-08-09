@@ -4,7 +4,7 @@
  * Verifica il comportamento di reclaimEscrowGasById() e processFailedReclaims()
  *
  * Scenari:
- *   R-01  Happy path: TX3 completata, tx_hash_reclaim + pol_reclaimed persistiti
+ *   R-01  Happy path: TX3 completata, tx_hash_reclaim_submitted + tx_hash_reclaim + pol_reclaimed persistiti
  *   R-02  Saldo escrow insufficiente → INSUFFICIENT_BALANCE, nessun lancio
  *   R-03  RPC getBalance failure → errore loggato, reclaim_error persistito
  *   R-04  sendTransaction failure → errore loggato, reclaim_error persistito
@@ -16,13 +16,17 @@
  *   R-10  Doppio reclaim concorrente → il DB guard { tx_hash_reclaim: null } previene doppio-write
  *   R-11  Transfer non trovato (status ≠ released, o già reclamato) → no-op
  *   R-12  processFailedReclaims: trova doc con reclaim_error transitorio e chiama reclaimEscrowGasById
- *   R-13  processFailedReclaims: salta INSUFFICIENT_BALANCE (errore permanente)
+ *   R-13  processFailedReclaims: query usa $ne:"INSUFFICIENT_BALANCE" (Gap #1 fix — include null)
  *   R-14  processFailedReclaims: salta tx_hash_reclaim già valorizzato
+ *   R-15  Gap #1: processFailedReclaims raccoglie transfer MAI tentati (reclaim_error: null)
+ *   R-16  Gap #2: crash recovery — tx_hash_reclaim_submitted set, TX3 già confermata on-chain
+ *   R-17  Gap #2: crash recovery — tx_hash_reclaim_submitted set, TX3 non trovata → procedi con nuova TX
  *
  * Invarianti verificate:
  *   - Nessuna eccezione propagata al caller
  *   - Pagamento già released non impattato
  *   - TX1/TX2 non toccate
+ *   - tx_hash_reclaim_submitted persistito PRIMA di waitForTransactionReceipt (Gap #2 fix)
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
@@ -81,11 +85,13 @@ vi.mock("../../blockchain/multichain-config", async () => {
 // ─── Viem mock ───────────────────────────────────────────────────────────────
 // Ogni test può sovrascrivere i valori dei singoli mock fn.
 
-const mockGetGasPrice         = vi.fn().mockResolvedValue(30_000_000_000n); // 30 Gwei
-const mockGetBalance          = vi.fn().mockResolvedValue(500_000_000_000_000n); // 0.0005 POL residuo
-const mockGetTransactionCount = vi.fn().mockResolvedValue(7); // nonce
-const mockWaitForReceipt      = vi.fn().mockResolvedValue({ status: "success", gasUsed: 21_000n, effectiveGasPrice: 30_000_000_000n });
-const mockSendTransaction     = vi.fn().mockResolvedValue("0xTX3_RECLAIM_HASH");
+const mockGetGasPrice            = vi.fn().mockResolvedValue(30_000_000_000n); // 30 Gwei
+const mockGetBalance             = vi.fn().mockResolvedValue(500_000_000_000_000n); // 0.0005 POL residuo
+const mockGetTransactionCount    = vi.fn().mockResolvedValue(7); // nonce
+const mockWaitForReceipt         = vi.fn().mockResolvedValue({ status: "success", gasUsed: 21_000n, effectiveGasPrice: 30_000_000_000n });
+const mockSendTransaction        = vi.fn().mockResolvedValue("0xTX3_RECLAIM_HASH");
+// Gap #2: getTransactionReceipt per crash recovery
+const mockGetTransactionReceipt  = vi.fn().mockResolvedValue(null); // default: TX non trovata
 
 vi.mock("viem", async (importOriginal) => {
   const actual = await importOriginal<typeof import("viem")>();
@@ -96,6 +102,7 @@ vi.mock("viem", async (importOriginal) => {
       getBalance:               mockGetBalance,
       getTransactionCount:      mockGetTransactionCount,
       waitForTransactionReceipt: mockWaitForReceipt,
+      getTransactionReceipt:    mockGetTransactionReceipt,
     })),
     createWalletClient: vi.fn(() => ({
       sendTransaction: mockSendTransaction,
@@ -175,8 +182,10 @@ beforeEach(() => {
   mockGetTransactionCount.mockResolvedValue(7);
   mockSendTransaction.mockResolvedValue("0xTX3_RECLAIM_HASH");
   mockWaitForReceipt.mockResolvedValue({ status: "success", gasUsed: 21_000n, effectiveGasPrice: GAS_PRICE });
+  // Gap #2: crash recovery — default: TX non trovata on-chain (nessun crash precedente)
+  mockGetTransactionReceipt.mockResolvedValue(null);
 
-  // findOne default: doc released trovato (con tx_hash_reclaim: null)
+  // findOne default: doc released trovato (tx_hash_reclaim: null, tx_hash_reclaim_submitted: null)
   mockFindOne.mockReturnValue({
     lean: vi.fn().mockResolvedValue(makeReleasedDoc()),
   });
@@ -195,10 +204,9 @@ afterEach(() => {
 // ─── R-01: Happy path ────────────────────────────────────────────────────────
 
 describe("R-01 — Happy path: TX3 completata", () => {
-  it("chiama sendTransaction con i parametri corretti e persiste tx_hash_reclaim + pol_reclaimed", async () => {
+  it("chiama sendTransaction con i parametri corretti", async () => {
     await reclaimEscrowGasById(TRANSFER_ID);
 
-    // Verifica che sendTransaction sia stato chiamato con i parametri corretti
     expect(mockSendTransaction).toHaveBeenCalledWith(
       expect.objectContaining({
         value:    TRANSFER_AMOUNT,
@@ -207,13 +215,40 @@ describe("R-01 — Happy path: TX3 completata", () => {
         nonce:    7,
       }),
     );
+  });
 
-    // Verifica che waitForTransactionReceipt sia stato chiamato con il hash TX3
-    expect(mockWaitForReceipt).toHaveBeenCalledWith(
-      expect.objectContaining({ hash: "0xTX3_RECLAIM_HASH" }),
+  it("Gap #2 FIX: persiste tx_hash_reclaim_submitted PRIMA di waitForTransactionReceipt", async () => {
+    const callOrder: string[] = [];
+
+    mockFindOneAndUpdate.mockImplementation((_filter: unknown, update: unknown) => {
+      const upd = update as { $set: Record<string, unknown> };
+      if (upd.$set?.tx_hash_reclaim_submitted) callOrder.push("pre-persist-submitted");
+      if (upd.$set?.tx_hash_reclaim)            callOrder.push("persist-confirmed");
+      return {};
+    });
+    mockWaitForReceipt.mockImplementation(async () => {
+      callOrder.push("waitForReceipt");
+      return { status: "success" };
+    });
+
+    await reclaimEscrowGasById(TRANSFER_ID);
+
+    // L'ordine DEVE essere: submitted → waitForReceipt → confirmed
+    expect(callOrder).toEqual(["pre-persist-submitted", "waitForReceipt", "persist-confirmed"]);
+  });
+
+  it("persiste tx_hash_reclaim_submitted con il hash corretto", async () => {
+    await reclaimEscrowGasById(TRANSFER_ID);
+
+    expect(mockFindOneAndUpdate).toHaveBeenCalledWith(
+      { transfer_id: TRANSFER_ID, tx_hash_reclaim: null },
+      { $set: { tx_hash_reclaim_submitted: "0xTX3_RECLAIM_HASH" } },
     );
+  });
 
-    // Verifica persist successo: condizione { tx_hash_reclaim: null } + set
+  it("persiste tx_hash_reclaim + pol_reclaimed + reclaim_error:null al successo", async () => {
+    await reclaimEscrowGasById(TRANSFER_ID);
+
     expect(mockFindOneAndUpdate).toHaveBeenCalledWith(
       { transfer_id: TRANSFER_ID, tx_hash_reclaim: null },
       {
@@ -223,6 +258,13 @@ describe("R-01 — Happy path: TX3 completata", () => {
           reclaim_error:   null,
         },
       },
+    );
+  });
+
+  it("chiama waitForTransactionReceipt con il hash TX3", async () => {
+    await reclaimEscrowGasById(TRANSFER_ID);
+    expect(mockWaitForReceipt).toHaveBeenCalledWith(
+      expect.objectContaining({ hash: "0xTX3_RECLAIM_HASH" }),
     );
   });
 
@@ -526,27 +568,33 @@ describe("processFailedReclaims — scheduler", () => {
     reclaimSpy.mockRestore();
   });
 
-  it("R-13: salta INSUFFICIENT_BALANCE (errore permanente, non riprova)", async () => {
-    // La query del scheduler esclude INSUFFICIENT_BALANCE via $nin
-    // Verifichiamo che la query includa il filtro corretto
+  it("R-13 (Gap #1 fix): query usa $ne:'INSUFFICIENT_BALANCE' — include null (mai tentati)", async () => {
+    // PRIMA del fix (bug): $nin: [null, "INSUFFICIENT_BALANCE"]
+    //   → escludeva reclaim_error:null → transfer mai tentati invisibili allo scheduler
+    // DOPO il fix: $ne: "INSUFFICIENT_BALANCE"
+    //   → include reclaim_error:null (mai tentati) + errori transitori → nessun escrow silente
     const { MultiChainTransferModel } = await import("../../models/multichain-transfer.model");
     const findMock = vi.mocked(MultiChainTransferModel.find as ReturnType<typeof vi.fn>);
 
     findMock.mockReturnValueOnce({
       limit: vi.fn().mockReturnValue({
-        lean: vi.fn().mockResolvedValue([]), // 0 doc → INSUFFICIENT_BALANCE escluso dalla query
+        lean: vi.fn().mockResolvedValue([]),
       }),
     } as unknown as ReturnType<typeof vi.fn>);
 
     const { processFailedReclaims } = await import("../multichain-scheduler");
     await processFailedReclaims();
 
-    // La query deve escludere null e INSUFFICIENT_BALANCE
+    // La query usa $ne (non $nin) — include null
     expect(findMock).toHaveBeenCalledWith(
       expect.objectContaining({
-        reclaim_error: { $nin: [null, "INSUFFICIENT_BALANCE"] },
+        reclaim_error: { $ne: "INSUFFICIENT_BALANCE" },
       }),
     );
+    // Verifica che NON usi il vecchio pattern $nin (che escludeva null)
+    const lastCall = findMock.mock.calls[findMock.mock.calls.length - 1];
+    const queryArg = lastCall?.[0] as Record<string, unknown>;
+    expect(queryArg?.reclaim_error).not.toEqual({ $nin: expect.any(Array) });
   });
 
   it("R-14: salta transfer con tx_hash_reclaim già valorizzato", async () => {
@@ -566,6 +614,146 @@ describe("processFailedReclaims — scheduler", () => {
     expect(findMock).toHaveBeenCalledWith(
       expect.objectContaining({ tx_hash_reclaim: null }),
     );
+  });
+});
+
+// ─── R-15: Gap #1 — scheduler raccoglie transfer mai tentati ─────────────────
+
+describe("R-15 — Gap #1: processFailedReclaims raccoglie transfer con reclaim_error:null", () => {
+  it("chiama reclaimEscrowGasById per doc MAI tentato (reclaim_error: null)", async () => {
+    const { processFailedReclaims } = await import("../multichain-scheduler");
+    const reclaimSpy = vi.spyOn(
+      await import("../multichain-payment.service"),
+      "reclaimEscrowGasById",
+    ).mockResolvedValue();
+
+    // Doc mai tentato: reclaim_error = null
+    const docNeverTried = makeReleasedDoc({ reclaim_error: null });
+
+    const { MultiChainTransferModel } = await import("../../models/multichain-transfer.model");
+    vi.mocked(MultiChainTransferModel.find as ReturnType<typeof vi.fn>).mockReturnValueOnce({
+      limit: vi.fn().mockReturnValue({
+        lean: vi.fn().mockResolvedValue([docNeverTried]),
+      }),
+    } as unknown as ReturnType<typeof vi.fn>);
+
+    await processFailedReclaims();
+
+    // Con Gap #1 corretto, il transfer mai tentato viene processato
+    expect(reclaimSpy).toHaveBeenCalledWith(TRANSFER_ID);
+    reclaimSpy.mockRestore();
+  });
+
+  it("processa sia mai-tentati che errori transitori nella stessa passata", async () => {
+    const { processFailedReclaims } = await import("../multichain-scheduler");
+    const reclaimSpy = vi.spyOn(
+      await import("../multichain-payment.service"),
+      "reclaimEscrowGasById",
+    ).mockResolvedValue();
+
+    const docNeverTried = makeReleasedDoc({ transfer_id: "never-tried-id", reclaim_error: null });
+    const docTransient  = makeReleasedDoc({ transfer_id: "transient-err-id", reclaim_error: "RPC timeout" });
+
+    const { MultiChainTransferModel } = await import("../../models/multichain-transfer.model");
+    vi.mocked(MultiChainTransferModel.find as ReturnType<typeof vi.fn>).mockReturnValueOnce({
+      limit: vi.fn().mockReturnValue({
+        lean: vi.fn().mockResolvedValue([docNeverTried, docTransient]),
+      }),
+    } as unknown as ReturnType<typeof vi.fn>);
+
+    await processFailedReclaims();
+
+    expect(reclaimSpy).toHaveBeenCalledTimes(2);
+    expect(reclaimSpy).toHaveBeenCalledWith("never-tried-id");
+    expect(reclaimSpy).toHaveBeenCalledWith("transient-err-id");
+    reclaimSpy.mockRestore();
+  });
+});
+
+// ─── R-16: Gap #2 — crash recovery: TX3 submitted già confermata on-chain ────
+
+describe("R-16 — Gap #2 crash recovery: tx_hash_reclaim_submitted set + TX3 confermata", () => {
+  const SUBMITTED_HASH = "0xTX3_SUBMITTED_BEFORE_CRASH";
+
+  beforeEach(() => {
+    // Doc con submitted hash già set ma reclaim null (crash dopo sendTx ma prima della receipt)
+    mockFindOne.mockReturnValue({
+      lean: vi.fn().mockResolvedValue(
+        makeReleasedDoc({
+          tx_hash_reclaim_submitted: SUBMITTED_HASH,
+          tx_hash_reclaim:           null,
+        }),
+      ),
+    });
+
+    // TX3 risulta confermata on-chain (era già stata minata prima del crash)
+    mockGetTransactionReceipt.mockResolvedValue({ status: "success" });
+  });
+
+  it("NON invia una nuova TX3 (usa la receipt già confermata)", async () => {
+    await reclaimEscrowGasById(TRANSFER_ID);
+    expect(mockSendTransaction).not.toHaveBeenCalled();
+  });
+
+  it("persiste tx_hash_reclaim con l'hash già inviato", async () => {
+    await reclaimEscrowGasById(TRANSFER_ID);
+    expect(mockFindOneAndUpdate).toHaveBeenCalledWith(
+      { transfer_id: TRANSFER_ID, tx_hash_reclaim: null },
+      expect.objectContaining({
+        $set: expect.objectContaining({
+          tx_hash_reclaim: SUBMITTED_HASH,
+          reclaim_error:   null,
+        }),
+      }),
+    );
+  });
+
+  it("verifica la receipt usando l'hash submitted", async () => {
+    await reclaimEscrowGasById(TRANSFER_ID);
+    expect(mockGetTransactionReceipt).toHaveBeenCalledWith({
+      hash: SUBMITTED_HASH,
+    });
+  });
+
+  it("NON lancia eccezioni verso il caller", async () => {
+    await expect(reclaimEscrowGasById(TRANSFER_ID)).resolves.toBeUndefined();
+  });
+});
+
+// ─── R-17: Gap #2 — crash recovery: TX3 submitted non trovata → nuova TX ─────
+
+describe("R-17 — Gap #2 crash recovery: tx_hash_reclaim_submitted set + TX3 non trovata", () => {
+  const SUBMITTED_HASH = "0xTX3_SUBMITTED_DROPPED";
+
+  beforeEach(() => {
+    mockFindOne.mockReturnValue({
+      lean: vi.fn().mockResolvedValue(
+        makeReleasedDoc({
+          tx_hash_reclaim_submitted: SUBMITTED_HASH,
+          tx_hash_reclaim:           null,
+        }),
+      ),
+    });
+
+    // TX3 non trovata on-chain (dropped o mai confermata)
+    mockGetTransactionReceipt.mockResolvedValue(null);
+  });
+
+  it("invia una NUOVA TX3 (la precedente non è stata confermata)", async () => {
+    await reclaimEscrowGasById(TRANSFER_ID);
+    expect(mockSendTransaction).toHaveBeenCalledTimes(1);
+  });
+
+  it("persiste il nuovo tx_hash_reclaim_submitted prima della receipt", async () => {
+    await reclaimEscrowGasById(TRANSFER_ID);
+    expect(mockFindOneAndUpdate).toHaveBeenCalledWith(
+      { transfer_id: TRANSFER_ID, tx_hash_reclaim: null },
+      { $set: { tx_hash_reclaim_submitted: "0xTX3_RECLAIM_HASH" } },
+    );
+  });
+
+  it("NON lancia eccezioni verso il caller", async () => {
+    await expect(reclaimEscrowGasById(TRANSFER_ID)).resolves.toBeUndefined();
   });
 });
 

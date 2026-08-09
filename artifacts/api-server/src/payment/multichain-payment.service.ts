@@ -52,6 +52,7 @@ import {
   MC_ANTI_LOSS_GAS_UNITS,
 } from "../blockchain/multichain-config";
 import { calculateFee, assertFeeInvariant, DEFAULT_FEE_BPS } from "../blockchain/fee-config";
+import { getDbNetworkFeeBps } from "../models/mc-fee-override.model";
 import {
   calculatePaymentQuote,
   computeGrossFromNet,
@@ -557,13 +558,18 @@ export async function createMultiChainTransfer(
 
   const feeConfig = feeRegistry.resolve(params.network, params.asset);
 
+  // DB override: se l'admin ha configurato una fee per questa rete, ha priorità sul default.
+  // Fail-open: se il DB non risponde, usa il default dell'env var (già in feeConfig).
+  const dbFeeBps       = await getDbNetworkFeeBps(params.network as MCNetworkId);
+  const effectiveFeeBps = dbFeeBps ?? feeConfig.feeBps;
+
   const quote = calculatePaymentQuote({
     amountMode:           effectiveMode,
     grossAmountUnits:     params.grossAmountUnits,
     targetNetAmountUnits: params.targetNetAmountUnits,
     network:              params.network,
     asset:                params.asset,
-    feeBps:               feeConfig.feeBps,
+    feeBps:               effectiveFeeBps,
     feeWallet:            feeConfig.feeWallet,
   });
 
@@ -1063,6 +1069,58 @@ async function _reclaimEscrowGas(
     const escrowAccount      = privateKeyToAccount(normalizedEscrowPk);
     const gsAccount          = privateKeyToAccount(normalizedGsPk);
     const publicClient       = createPublicClient({ chain, transport: http(rpcConfig.primary) });
+
+    // ── Gap #2 — Crash Recovery ──────────────────────────────────────────────
+    // Se tx_hash_reclaim_submitted è già valorizzato, significa che il server si è
+    // crashato dopo sendTransaction ma prima di waitForTransactionReceipt.
+    // Prima di inviare una nuova TX3, verifichiamo se quella precedente è stata minata.
+    if (doc.tx_hash_reclaim_submitted) {
+      try {
+        const existingReceipt = await publicClient.getTransactionReceipt({
+          hash: doc.tx_hash_reclaim_submitted as `0x${string}`,
+        });
+        if (existingReceipt && existingReceipt.status === "success") {
+          // TX3 precedente già confermata — persist success e ritorna
+          const polRecovered = existingReceipt.gasUsed
+            ? "unknown_post_crash"  // non abbiamo il transferAmount in questo path
+            : "unknown_post_crash";
+          logger.info(
+            {
+              transferId: doc.transfer_id,
+              network:    doc.network,
+              txHash:     doc.tx_hash_reclaim_submitted,
+            },
+            "[MCReclaim] TX3 già confermata on-chain (crash recovery) — aggiorno DB senza riinviare",
+          );
+          await MultiChainTransferModel.findOneAndUpdate(
+            { transfer_id: doc.transfer_id, tx_hash_reclaim: null },
+            {
+              $set: {
+                tx_hash_reclaim: doc.tx_hash_reclaim_submitted,
+                pol_reclaimed:   polRecovered,
+                reclaim_error:   null,
+              },
+            },
+          );
+          return;
+        }
+        if (existingReceipt && existingReceipt.status === "reverted") {
+          // TX3 precedente revertita — rimuovi submitted e procedi con nuova TX
+          logger.warn(
+            { transferId: doc.transfer_id, txHash: doc.tx_hash_reclaim_submitted },
+            "[MCReclaim] TX3 precedente revertita on-chain — nuova TX3 in corso",
+          );
+          await MultiChainTransferModel.findOneAndUpdate(
+            { transfer_id: doc.transfer_id, tx_hash_reclaim: null },
+            { $set: { tx_hash_reclaim_submitted: null } },
+          );
+        }
+        // Se receipt non trovata → TX non ancora minata o dropped → procedi con nuova TX
+      } catch {
+        // RPC error durante check receipt → procedi con nuova TX (fail-safe)
+      }
+    }
+
     // Leggi gasPrice, saldo escrow e nonce in parallelo per minimizzare latenza
     const [gasPrice, escrowBalance, nonce] = await Promise.all([
       publicClient.getGasPrice(),
@@ -1126,6 +1184,15 @@ async function _reclaimEscrowGas(
       gasPrice: gasPrice,
       nonce,
     });
+
+    // ── Gap #2 FIX — Pre-persist del submitted hash (pattern C-01/C-02) ─────
+    // Persisti IMMEDIATAMENTE dopo sendTransaction, PRIMA di waitForTransactionReceipt.
+    // In caso di crash tra send e receipt, il scheduler trova tx_hash_reclaim_submitted
+    // valorizzato e può verificare la receipt senza re-inviare la TX.
+    await MultiChainTransferModel.findOneAndUpdate(
+      { transfer_id: doc.transfer_id, tx_hash_reclaim: null },
+      { $set: { tx_hash_reclaim_submitted: txHash } },
+    );
 
     const receipt = await publicClient.waitForTransactionReceipt({
       hash:            txHash,

@@ -117,7 +117,9 @@ export type AuditEventType =
   // Admin Multi-Chain Actions
   | "MC_ADMIN_CANCEL"
   | "MC_ADMIN_REFUND"
-  | "MC_ADMIN_RETRY";
+  | "MC_ADMIN_RETRY"
+  | "MC_ADMIN_FEE_CONFIG_UPDATE"
+  | "MC_ADMIN_FEE_CONFIG_RESET";
 
 export interface AuditEvent {
   event: AuditEventType;
