@@ -1059,48 +1059,44 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
                 <div className="usda-error" role="alert">{signError}</div>
               )}
 
-              {/* Apri wallet Bitcoin — deep link bitcoin: URI (Trust Wallet, Blue Wallet, Electrum…) */}
+              {/* Istruzione: apri tu il tuo wallet Bitcoin e incolla l'indirizzo */}
               {signPhase !== "done" && (
-                <button
-                  type="button"
-                  className="usda-btn-primary"
-                  onClick={() => {
-                    // navigator.share rifiuta silenziosamente schemi non-http su iOS PWA.
-                    // window.location.href con bitcoin: URI è l'unico modo affidabile
-                    // per aprire l'app picker nativo su iOS (Trust Wallet, MetaMask Portfolio,
-                    // Blue Wallet, Electrum, Muun, ecc.).
-                    try {
-                      window.location.href = bitcoinUri;
-                    } catch {
-                      // Fallback: clipboard copy + messaggio
-                      void navigator.clipboard?.writeText(transfer.escrowWallet).catch(() => null);
-                    }
-                  }}
-                >
-                  📲 Apri wallet Bitcoin
-                </button>
-              )}
-
-              {/* QR code */}
-              {qrDataUrl && (
-                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6 }}>
-                  <img src={qrDataUrl} alt="QR Bitcoin" style={{ width: 160, height: 160, borderRadius: 12 }} />
-                  <p style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.4)", margin: 0 }}>
-                    Scansiona con il wallet Bitcoin
-                  </p>
+                <div className="mc-btc-instruction">
+                  <p className="mc-btc-instruction-title">Come inviare</p>
+                  <ol className="mc-btc-instruction-steps">
+                    <li>Copia l'indirizzo qui sotto</li>
+                    <li>Apri il tuo wallet Bitcoin (Trust Wallet, Blue Wallet…)</li>
+                    <li>Invia esattamente <strong>{depositDisplay} BTC</strong> all'indirizzo copiato</li>
+                  </ol>
                 </div>
               )}
 
-              {/* Indirizzo + copia (fallback) */}
+              {/* Indirizzo escrow — pulsante copia primario */}
               <div className="mc-address-block">
                 <div className="mc-address-box">
                   <span className="mc-address-text">{transfer.escrowWallet}</span>
                 </div>
-                <button type="button" className="mc-copy-btn" onClick={() => handleCopy(transfer.escrowWallet)}>
-                  {copied ? t("multichain.addressCopied") : "📋 Copia indirizzo"}
+                {/* Pulsante copia grande — azione primaria */}
+                <button
+                  type="button"
+                  className={`usda-btn-primary${copied ? " mc-copy-success" : ""}`}
+                  style={{ marginTop: 8 }}
+                  onClick={() => handleCopy(transfer.escrowWallet)}
+                >
+                  {copied ? "✅ Indirizzo copiato!" : "📋 Copia indirizzo"}
                 </button>
-                <p className="mc-address-expiry">⏰ {t("multichain.expiresIn24h")}</p>
+                <p className="mc-address-expiry" style={{ marginTop: 10 }}>⏰ {t("multichain.expiresIn24h")}</p>
               </div>
+
+              {/* QR code — per scansionare con il wallet */}
+              {qrDataUrl && (
+                <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 6, marginTop: 4 }}>
+                  <p style={{ fontSize: "0.75rem", color: "rgba(255,255,255,0.4)", margin: 0 }}>
+                    oppure scansiona con il wallet Bitcoin
+                  </p>
+                  <img src={qrDataUrl} alt="QR Bitcoin" style={{ width: 150, height: 150, borderRadius: 12 }} />
+                </div>
+              )}
 
               <div className="usda-sheet-actions">
                 {/* Escape: ricomincia con un transfer pulito */}
