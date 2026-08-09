@@ -143,17 +143,20 @@ export interface CreateMultiChainTransferParams {
  */
 export class GasReserveDepletedError extends Error {
   readonly code = "GAS_RESERVE_DEPLETED" as const;
+  readonly waitingForGasReason: "GAS_STATION_DEPLETED" | "NETWORK_COST_TOO_HIGH" | "RPC_UNAVAILABLE";
 
   constructor(
     public readonly network: MCNetworkId,
     public readonly escrowAddress: string,
     public readonly required: bigint,
     public readonly available: bigint,
+    reason: "GAS_STATION_DEPLETED" | "NETWORK_COST_TOO_HIGH" | "RPC_UNAVAILABLE" = "GAS_STATION_DEPLETED",
   ) {
     super(
       `Gas station reserve depleted on ${network}: ` +
       `required ${required} wei, available ${available} wei — transfer → waiting_for_gas`,
     );
+    this.waitingForGasReason = reason;
     this.name = "GasReserveDepletedError";
     Object.setPrototypeOf(this, GasReserveDepletedError.prototype);
   }
@@ -208,6 +211,14 @@ export interface MultiChainTransferInfo {
    */
   gasRetryCount:      number;
   /**
+   * Motivo per cui il transfer è in waiting_for_gas.
+   *   GAS_STATION_DEPLETED   — gas station senza fondi nativi
+   *   NETWORK_COST_TOO_HIGH  — Anti-Loss: networkFeeCharged < costo gas stimato
+   *   RPC_UNAVAILABLE        — Anti-Loss fail-closed: RPC irraggiungibile
+   * Null se non in waiting_for_gas o per transfer pre-modifica.
+   */
+  waitingForGasReason: "GAS_STATION_DEPLETED" | "NETWORK_COST_TOO_HIGH" | "RPC_UNAVAILABLE" | null;
+  /**
    * Modalità importo scelta dal mittente:
    *   "send_amount"     — gross inserito direttamente (comportamento classico)
    *   "recipient_exact" — net target inserito; gross calcolato inversamente
@@ -240,14 +251,15 @@ function toInfo(doc: MultiChainTransferDocument): MultiChainTransferInfo {
     txHashDeposit:     doc.tx_hash_deposit,
     txHashRelease:     doc.tx_hash_release,
     txHashFee:         doc.tx_hash_fee,
-    minDepositAmount:  doc.min_deposit_amount ?? null,
-    networkFeeCharged: doc.network_fee_charged ?? null,
-    networkFeeActual:  doc.network_fee,
-    networkFeeAsset:   doc.network_fee_asset ?? null,
-    gasRetryCount:     doc.gas_retry_count ?? 0,
-    amountMode:        (doc.amount_mode as AmountMode | null) ?? null,
-    senderId:          doc.sender_id?.toString() ?? "",
-    recipientId:       doc.recipient_id?.toString() ?? "",
+    minDepositAmount:    doc.min_deposit_amount ?? null,
+    networkFeeCharged:   doc.network_fee_charged ?? null,
+    networkFeeActual:    doc.network_fee,
+    networkFeeAsset:     doc.network_fee_asset ?? null,
+    gasRetryCount:       doc.gas_retry_count ?? 0,
+    amountMode:          (doc.amount_mode as AmountMode | null) ?? null,
+    senderId:            doc.sender_id?.toString() ?? "",
+    recipientId:         doc.recipient_id?.toString() ?? "",
+    waitingForGasReason: (doc.waiting_for_gas_reason as "GAS_STATION_DEPLETED" | "NETWORK_COST_TOO_HIGH" | "RPC_UNAVAILABLE" | null) ?? null,
   };
 }
 
@@ -803,7 +815,11 @@ async function _transitionToWaitingForGas(
   const updated = await MultiChainTransferModel.findOneAndUpdate(
     { transfer_id: transferId, status: "releasing" },
     {
-      $set: { status: "waiting_for_gas", locked_at: null },
+      $set: {
+        status:                  "waiting_for_gas",
+        locked_at:               null,
+        waiting_for_gas_reason:  err.waitingForGasReason ?? "GAS_STATION_DEPLETED",
+      },
       $inc: { gas_retry_count: 1 },
     },
     { returnDocument: "after" },
@@ -913,12 +929,22 @@ async function _checkNetworkFeeAdequacy(
     const pc = createPublicClient({ chain, transport: http(rpcUrls.primary) });
     gasPrice = await pc.getGasPrice();
   } catch (rpcErr) {
-    // RPC non raggiungibile: non bloccare il release, logga e continua
+    // ★ FAIL CLOSED: impossibile verificare il costo gas → NON procedere con il release. ★
+    // Un RPC irraggiungibile durante uno spike di gas è il caso più pericoloso (i nodi
+    // si sovraccaricano esattamente quando il gas è alto). Lasciar passare il release
+    // senza verifica significherebbe potenziale perdita economica per la piattaforma.
+    // Il transfer va in waiting_for_gas e viene ritentato quando il RPC torna disponibile.
     logger.warn(
       { network: doc.network, transferId: doc.transfer_id, err: String(rpcErr) },
-      "[AntiLoss] Impossibile leggere gasPrice — anti-loss check skippato (RPC error)",
+      "[AntiLoss] ⛔ Impossibile leggere gasPrice (RPC error) — FAIL CLOSED → waiting_for_gas",
     );
-    return;
+    throw new GasReserveDepletedError(
+      doc.network,
+      doc.escrow_wallet,
+      0n,
+      0n,
+      "RPC_UNAVAILABLE",
+    );
   }
 
   // Stima costo totale in wei:  341_000 gas × gasPrice
@@ -946,13 +972,14 @@ async function _checkNetworkFeeAdequacy(
       "[AntiLoss] ⛔ Network fee insufficiente al release — transfer → waiting_for_gas",
     );
 
-    // Riusa GasReserveDepletedError: intercettata dal caller → waiting_for_gas
-    // required = estimatedCostRaw in wei, available = networkFeeCharged in wei (approx)
+    // Intercettata dal caller → waiting_for_gas con reason NETWORK_COST_TOO_HIGH
+    // required = costo stimato in wei, available = networkFeeCharged in wei (approx)
     throw new GasReserveDepletedError(
       doc.network,
       doc.escrow_wallet,
       gasPrice * MC_ANTI_LOSS_GAS_UNITS,
       (networkFeeCharged * (10n ** 18n)) / tokenDec,
+      "NETWORK_COST_TOO_HIGH",
     );
   }
 

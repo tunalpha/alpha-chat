@@ -51,12 +51,15 @@ interface MCTransfer {
   tx_hash_fee:        string | null;
   tx_hash_deposit:    string | null;
   tx_hash_refund:     string | null;
-  min_deposit_amount: string | null;
-  expires_at:         string;
-  locked_at:          string | null;
-  completed_at:       string | null;
-  createdAt:          string;
-  updatedAt:          string;
+  min_deposit_amount:      string | null;
+  expires_at:              string;
+  locked_at:               string | null;
+  completed_at:            string | null;
+  createdAt:               string;
+  updatedAt:               string;
+  /** Motivo Anti-Loss per waiting_for_gas. null se non applicabile. */
+  waiting_for_gas_reason:  "GAS_STATION_DEPLETED" | "NETWORK_COST_TOO_HIGH" | "RPC_UNAVAILABLE" | null;
+  network_fee_charged?:    string | null;
 }
 
 interface MCListResponse {
@@ -372,6 +375,39 @@ function DetailPanel({
               ))}
             </div>
           </section>
+
+          {/* Anti-Loss Check — mostrato solo quando in waiting_for_gas per motivi anti-loss */}
+          {transfer.status === "waiting_for_gas" && transfer.waiting_for_gas_reason &&
+           (transfer.waiting_for_gas_reason === "NETWORK_COST_TOO_HIGH" || transfer.waiting_for_gas_reason === "RPC_UNAVAILABLE") && (
+            <section>
+              <h3 className="text-xs font-mono uppercase tracking-wider text-amber-300/80 mb-2 flex items-center gap-1.5">
+                <AlertTriangle className="w-3.5 h-3.5 text-amber-300" /> Anti-Loss Check
+              </h3>
+              <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-3 space-y-2 text-xs">
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Reason</span>
+                  <span className="font-mono font-semibold text-amber-300">{transfer.waiting_for_gas_reason}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Network Fee Charged</span>
+                  <span className="font-mono text-foreground">
+                    {transfer.network_fee_charged
+                      ? `${transfer.network_fee_charged} raw`
+                      : "—"}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <span className="text-muted-foreground">Estimated Gas Units</span>
+                  <span className="font-mono text-foreground">341,000</span>
+                </div>
+                <p className="text-amber-300/70 mt-1 leading-relaxed">
+                  {transfer.waiting_for_gas_reason === "NETWORK_COST_TOO_HIGH"
+                    ? "La network fee incassata è insufficiente a coprire il costo gas stimato al momento del release."
+                    : "RPC irraggiungibile al momento del release — fail-closed attivato. Il release verrà ritentato quando il RPC torna disponibile."}
+                </p>
+              </div>
+            </section>
+          )}
 
           {/* Admin Actions */}
           <section>

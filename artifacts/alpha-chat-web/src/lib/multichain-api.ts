@@ -45,6 +45,12 @@ export interface MCSystemMeta {
   is_request:          boolean;
   /** Causale / nota opzionale inserita dal mittente */
   note:                string | null;
+  /**
+   * Motivo Anti-Loss per waiting_for_gas. Null se non applicabile.
+   * NETWORK_COST_TOO_HIGH | RPC_UNAVAILABLE → mostra UX "costo rete elevato".
+   * GAS_STATION_DEPLETED → UX standard "attesa gas".
+   */
+  waiting_for_gas_reason?: "GAS_STATION_DEPLETED" | "NETWORK_COST_TOO_HIGH" | "RPC_UNAVAILABLE" | null;
 }
 
 export interface MCTransfer {
@@ -63,6 +69,8 @@ export interface MCTransfer {
   networkFeeCharged: string | null;
   txHashDeposit:     string | null;
   txHashRelease:     string | null;
+  /** Motivo Anti-Loss per waiting_for_gas. Null se non applicabile. */
+  waitingForGasReason: "GAS_STATION_DEPLETED" | "NETWORK_COST_TOO_HIGH" | "RPC_UNAVAILABLE" | null;
 }
 
 // ─── Helper fetch ─────────────────────────────────────────────────────────────

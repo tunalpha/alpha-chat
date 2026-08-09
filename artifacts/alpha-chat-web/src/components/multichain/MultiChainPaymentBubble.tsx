@@ -44,7 +44,15 @@ function explorerUrl(network: string, txHash: string): string {
 
 // ─── StatusBadge ─────────────────────────────────────────────────────────────
 
-function StatusBadge({ status }: { status: MCStatus }) {
+/** Se il motivo è anti-loss (fee insufficiente o RPC irraggiungibile). */
+function isAntiLossReason(reason?: string | null): boolean {
+  return reason === "NETWORK_COST_TOO_HIGH" || reason === "RPC_UNAVAILABLE";
+}
+
+function StatusBadge({ status, waitingForGasReason }: {
+  status: MCStatus;
+  waitingForGasReason?: string | null;
+}) {
   const { t } = useTranslation();
   const labels: Record<MCStatus, string> = {
     awaiting_deposit: t("multichain.statusAwaitingDeposit"),
@@ -55,7 +63,9 @@ function StatusBadge({ status }: { status: MCStatus }) {
     refunded:         t("multichain.statusRefunded"),
     expired:          t("multichain.statusExpired"),
     failed:           t("multichain.statusFailed"),
-    waiting_for_gas:  t("multichain.statusWaitingForGas"),
+    waiting_for_gas:  isAntiLossReason(waitingForGasReason)
+      ? t("multichain.statusNetworkCostTooHigh")
+      : t("multichain.statusWaitingForGas"),
   };
   return (
     <span className={`mc-status-badge mc-status-${status}`}>
@@ -77,9 +87,10 @@ interface Props {
 export const MultiChainPaymentBubble = memo(function MultiChainPaymentBubble({ data, isMine }: Props) {
   // ── Tutti gli hook PRIMA di qualsiasi early return (React Rules of Hooks) ──
   const { t } = useTranslation();
-  const [status,  setStatus]  = useState<MCStatus>(data?.status ?? "awaiting_deposit");
-  const [txHash,  setTxHash]  = useState<string | null>(data?.tx_hash_release ?? data?.tx_hash_deposit ?? null);
-  const [copied,  setCopied]  = useState(false);
+  const [status,              setStatus]              = useState<MCStatus>(data?.status ?? "awaiting_deposit");
+  const [txHash,              setTxHash]              = useState<string | null>(data?.tx_hash_release ?? data?.tx_hash_deposit ?? null);
+  const [waitingForGasReason, setWaitingForGasReason] = useState<string | null>(data?.waiting_for_gas_reason ?? null);
+  const [copied,              setCopied]              = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // Auto-poll e detect ogni 30 s finché non terminale.
@@ -92,6 +103,7 @@ export const MultiChainPaymentBubble = memo(function MultiChainPaymentBubble({ d
           ? await apiMCDetect(data.transfer_id)   // chiama blockchain
           : await apiMCGet(data.transfer_id);      // solo DB
         setStatus(updated.status);
+        if (updated.waitingForGasReason !== undefined) setWaitingForGasReason(updated.waitingForGasReason);
         if (updated.txHashRelease) setTxHash(updated.txHashRelease);
         else if (updated.txHashDeposit) setTxHash(updated.txHashDeposit);
         if (isMCTerminal(updated.status) && pollRef.current) {
@@ -154,7 +166,7 @@ export const MultiChainPaymentBubble = memo(function MultiChainPaymentBubble({ d
       {/* Header: rete + badge stato */}
       <div className="mc-bubble-header">
         <span className="mc-bubble-network">{networkIcon} {networkLabel}</span>
-        <StatusBadge status={status} />
+        <StatusBadge status={status} waitingForGasReason={waitingForGasReason} />
       </div>
 
       {/* Importo */}
@@ -187,6 +199,14 @@ export const MultiChainPaymentBubble = memo(function MultiChainPaymentBubble({ d
               {new Date(data.expires_at).toLocaleString(undefined, { dateStyle: "short", timeStyle: "short" })}
             </p>
           )}
+        </div>
+      )}
+
+      {/* Anti-loss message — visibile quando il release è bloccato per costo rete */}
+      {status === "waiting_for_gas" && isAntiLossReason(waitingForGasReason) && (
+        <div className="mc-antiloss-notice">
+          <p className="mc-antiloss-title">{t("multichain.networkCostTooHighTitle")}</p>
+          <p className="mc-antiloss-msg">{t("multichain.networkCostTooHighMsg")}</p>
         </div>
       )}
 

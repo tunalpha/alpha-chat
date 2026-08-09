@@ -1,0 +1,127 @@
+Certo. Questo prompt serve per fare in modo che il blocco anti-perdita sia chiaro per il cliente, senza esporre dettagli tecnici o margini di AlphaChat.
+
+UX MESSAGE — NETWORK FEE TOO HIGH / ANTI-LOSS
+Abbiamo implementato l'Anti-Loss Check per BSC ed Ethereum.
+Ora devi verificare e implementare correttamente il comportamento UX quando:
+networkFeeCharged < estimatedNetworkCost
+In questo caso AlphaChat NON deve procedere con il release, perché la transazione sarebbe antieconomica.
+==================================================
+MESSAGGIO CLIENTE
+==================================================
+NON mostrare al cliente:
+- gas price
+- costo interno AlphaChat
+- margine
+- perdita
+- "AlphaChat perde soldi"
+- network cost stimato in dettaglio
+- informazioni tecniche sul gas station
+- dettagli dell'escrow
+Il cliente deve ricevere un messaggio semplice e professionale:
+"Tecnologia di rete temporaneamente non disponibile"
+Testo:
+"Il costo della rete è attualmente troppo elevato per completare questa transazione alle condizioni indicate. Nessun importo è stato addebitato. Riprova tra qualche minuto."
+Pulsante:
+"Riprova"
+==================================================
+ATTENZIONE ALLO STATO DEI FONDI
+==================================================
+Il messaggio deve dipendere dallo stato reale della transazione.
+CASO A — I fondi del cliente NON sono ancora stati ricevuti/bloccati:
+Mostrare:
+"Il costo della rete è attualmente troppo elevato per completare questa transazione alle condizioni indicate. Nessun importo è stato addebitato. Riprova tra qualche minuto."
+Pulsante:
+"Riprova"
+NON dire:
+"La richiesta è stata messa in attesa."
+==================================================
+CASO B — I fondi del cliente SONO già stati ricevuti/bloccati
+==================================================
+In questo caso NON dire:
+"Nessun importo è stato addebitato."
+Mostrare invece:
+"Il costo della rete è temporaneamente troppo elevato per completare questa transazione. La tua operazione è stata messa in attesa e verrà verificata nuovamente quando le condizioni della rete saranno compatibili."
+Mostrare lo stato:
+"IN ATTESA — costo rete"
+NON perdere, rimborsare o modificare i fondi automaticamente senza seguire il normale lifecycle della transazione.
+==================================================
+ADMIN
+==================================================
+Nel pannello Admin/Super Admin mostrare tutti i dettagli tecnici.
+Esempio:
+Status:
+waiting_for_gas
+Chain:
+Ethereum
+Network fee charged:
+5.00 USDT
+Estimated network cost:
+18.42 USDT
+Gas price:
+30 gwei
+Estimated gas:
+181,000
+Reason:
+NETWORK_COST_TOO_HIGH
+Il dettaglio tecnico NON deve essere mostrato al cliente.
+==================================================
+RETRY
+==================================================
+Se la transazione è in:
+waiting_for_gas
+il sistema deve poter ricontrollare successivamente il costo della rete.
+Quando:
+networkFeeCharged >= estimatedNetworkCost
+la transazione può tornare eleggibile per il release.
+NON eseguire automaticamente il pagamento senza rispettare tutte le verifiche di sicurezza e idempotenza già esistenti.
+==================================================
+IMPORTANTISSIMO
+==================================================
+NON modificare:
+- recipient_exact
+- project fee 0,10%
+- fee calculation
+- escrow
+- wallet generation
+- Polygon
+- BSC fee calculation
+- Ethereum fee calculation
+- transaction lifecycle
+Questa modifica riguarda SOLO:
+- messaggio UX
+- stato waiting_for_gas
+- gestione corretta del blocco anti-loss
+- retry/recheck
+- informazioni Admin
+==================================================
+MESSAGGI FINALI
+CLIENTE — fondi NON ricevuti:
+Titolo:
+"Rete temporaneamente congestionata"
+Messaggio:
+"Il costo della rete è attualmente troppo elevato per completare questa transazione alle condizioni indicate. Nessun importo è stato addebitato. Riprova tra qualche minuto."
+Pulsante:
+"Riprova"
+CLIENTE — fondi già ricevuti:
+Titolo:
+"Transazione in attesa"
+Messaggio:
+"Il costo della rete è temporaneamente troppo elevato per completare questa transazione. La tua operazione è stata messa in attesa e verrà verificata nuovamente quando le condizioni della rete saranno compatibili."
+ADMIN:
+"NETWORK_COST_TOO_HIGH"
+con tutti i dati tecnici disponibili.
+==================================================
+TEST
+==================================================
+Testare entrambi i casi:
+1. network fee sufficiente → pagamento normale
+2. network fee insufficiente + fondi non ricevuti
+3. network fee insufficiente + fondi ricevuti
+4. gas torna sotto soglia
+5. retry
+6. doppio retry
+7. crash durante waiting_for_gas
+8. transazione già completata
+9. nessun doppio pagamento
+10. nessuna perdita di fondi
+Prima di dichiarare completato il lavoro, verificare che il messaggio mostrato al cliente corrisponda realmente allo stato dei fondi.

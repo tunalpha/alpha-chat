@@ -1,0 +1,118 @@
+APPROVATO — MODIFICA FINALE FAIL-CLOSED ANTI-LOSS
+
+Procedi ESCLUSIVAMENTE con questa modifica.
+
+OBIETTIVO
+
+Quando _checkNetworkFeeAdequacy() non riesce a ottenere il gasPrice dal RPC, NON deve più consentire il release.
+
+Il comportamento deve diventare FAIL-CLOSED.
+
+COMPORTAMENTO RICHIESTO
+
+RPC disponibile:
+→ recupera gasPrice
+→ calcola il costo stimato usando gli attuali 341.000 gas
+→ confronta con networkFeeCharged
+→ se sufficiente: continua normalmente
+→ se insufficiente: GasReserveDepletedError → waiting_for_gas
+
+RPC NON disponibile:
+→ cattura l'errore RPC
+→ NON fare release
+→ lancia GasReserveDepletedError
+→ il pagamento deve entrare nello stato waiting_for_gas
+→ utilizzare il normale scheduler/retry già esistente
+→ quando RPC torna disponibile, eseguire nuovamente il controllo
+→ se la network fee è sufficiente, procedere con il release.
+
+IMPORTANTE
+
+NON modificare il valore:
+
+MC_ANTI_LOSS_GAS_UNITS = 341_000
+
+È stato verificato che rappresenta il costo economico effettivo che esce dalla Gas Station nel modello escrow single-use:
+
+21.000 gas TX Gas Station → Escrow
++
+320.000 gas top-up escrow
+=
+341.000 gas equivalenti
+
+NON sostituirlo con 151.000.
+
+NON modificare:
+
+- BSC network fee = 1.00 USDT
+- Ethereum network fee = 15.00 USDT
+- Polygon network fee = 0.50 USDT
+- project fee = 0,10%
+- recipient_exact
+- escrow architecture
+- Gas Station
+- TX2 project fee
+- fee calculation
+- Polygon
+- altri flussi di pagamento
+
+NON implementare:
+- ledger/sweep
+- smart contract
+- deferred TX
+- nuove fee
+- modifiche architetturali
+
+QUESTA È SOLO UNA MODIFICA DI SICUREZZA DEL CONTROLLO RPC.
+
+TEST OBBLIGATORI
+
+1. RPC funzionante + gas normale
+→ release consentito
+
+2. RPC funzionante + gas troppo alto
+→ waiting_for_gas
+
+3. RPC non raggiungibile
+→ waiting_for_gas
+→ MAI release
+
+4. RPC torna disponibile + gas sufficiente
+→ retry → release consentito
+
+5. RPC torna disponibile + gas ancora insufficiente
+→ rimane waiting_for_gas
+
+6. Retry multipli
+→ nessun doppio pagamento
+
+7. Crash durante waiting_for_gas
+→ nessuna perdita di fondi
+→ retry sicuro
+
+8. Transazione già completata
+→ nessun secondo release
+
+9. Polygon
+→ comportamento completamente invariato
+
+VERIFICA FINALE
+
+Eseguire:
+
+- TypeScript/typecheck
+- tutti i test multichain
+- test specifico RPC failure → waiting_for_gas
+
+Produrre un report finale indicando:
+
+- file modificati;
+- modifica effettuata;
+- test eseguiti;
+- test superati;
+- conferma che RPC failure NON permette più il release;
+- conferma che 341.000 non è stato modificato;
+- conferma che Polygon non è stata modificata;
+- conferma che recipient_exact e project fee 0,10% non sono stati modificati.
+
+NON effettuare altre modifiche.

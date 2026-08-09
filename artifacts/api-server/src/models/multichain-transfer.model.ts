@@ -112,6 +112,18 @@ export interface IMultiChainTransfer {
   gas_retry_count: number;
 
   /**
+   * Motivo per cui il transfer è in waiting_for_gas.
+   * Persistito per consentire UX differenziata sul client e diagnostica admin.
+   *
+   *   GAS_STATION_DEPLETED   — gas station senza fondi nativi (recovery automatica)
+   *   NETWORK_COST_TOO_HIGH  — networkFeeCharged < costo gas stimato al release (Anti-Loss)
+   *   RPC_UNAVAILABLE        — fail-closed: impossibile leggere gasPrice dall'RPC
+   *
+   * Null per transfer pre-modifica o in stati diversi da waiting_for_gas.
+   */
+  waiting_for_gas_reason: "GAS_STATION_DEPLETED" | "NETWORK_COST_TOO_HIGH" | "RPC_UNAVAILABLE" | null;
+
+  /**
    * Modalità importo scelta dal mittente al momento della creazione.
    *   "send_amount"      — il mittente ha inserito il gross amount (comportamento classico)
    *   "recipient_exact"  — il mittente ha inserito il net target; il gross è calcolato inversamente
@@ -201,6 +213,11 @@ const MultiChainTransferSchema = new Schema<MultiChainTransferDocument>(
     min_deposit_amount: { type: String, default: null },
     gas_retry_count:    { type: Number, default: 0 },
     amount_mode:        { type: String, enum: ["send_amount", "recipient_exact"], default: null },
+    waiting_for_gas_reason: {
+      type: String,
+      enum: ["GAS_STATION_DEPLETED", "NETWORK_COST_TOO_HIGH", "RPC_UNAVAILABLE", null],
+      default: null,
+    },
   },
   {
     collection:  "multichain_transfers",
