@@ -1520,6 +1520,27 @@
     "bubbleSent": "Cripto enviada",
     "bubbleReceived": "Cripto recebida",
     "bubbleRequested": "Solicitação enviada",
-    "bubbleIncoming": "Pagamento solicitado"
+    "bubbleIncoming": "Pagamento solicitado",
+    "statusTitle_awaiting_deposit": "Aguardando depósito",
+    "statusTitle_detecting": "Detectando pagamento",
+    "statusTitle_releasing": "Liberando fundos",
+    "statusTitle_released": "Pagamento concluído",
+    "statusTitle_refunding": "Reembolsando",
+    "statusTitle_refunded": "Reembolsado",
+    "statusTitle_expired": "Expirado",
+    "statusTitle_failed": "Pagamento falhou",
+    "statusTitle_waiting_for_gas": "Processando",
+    "statusTitle_cancelled": "Cancelado",
+    "statusTitleNetworkCostTooHigh": "Rede congestionada",
+    "statusSub_awaiting_deposit": "Envie fundos para o endereço de custódia",
+    "statusSub_detecting": "Verificando depósito na blockchain",
+    "statusSub_releasing": "Os fundos estão sendo enviados ao destinatário",
+    "statusSub_released": "Os fundos foram creditados na carteira do destinatário",
+    "statusSub_refunding": "Devolvendo fundos ao remetente",
+    "statusSub_refunded": "Os fundos foram devolvidos ao remetente",
+    "statusSub_expired": "O prazo de pagamento expirou",
+    "statusSub_failed": "O pagamento não pôde ser concluído",
+    "statusSub_waiting_for_gas": "Pagamento recebido — processando",
+    "statusSub_cancelled": "O pagamento foi cancelado"
   }
 }

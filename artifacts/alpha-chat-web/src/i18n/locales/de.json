@@ -1520,6 +1520,27 @@
     "bubbleSent": "Krypto gesendet",
     "bubbleReceived": "Krypto eingehend",
     "bubbleRequested": "Anfrage gesendet",
-    "bubbleIncoming": "Zahlung angefordert"
+    "bubbleIncoming": "Zahlung angefordert",
+    "statusTitle_awaiting_deposit": "Warte auf Einzahlung",
+    "statusTitle_detecting": "Erkennung läuft",
+    "statusTitle_releasing": "Freigabe läuft",
+    "statusTitle_released": "Zahlung abgeschlossen",
+    "statusTitle_refunding": "Rückerstattung läuft",
+    "statusTitle_refunded": "Erstattet",
+    "statusTitle_expired": "Abgelaufen",
+    "statusTitle_failed": "Zahlung fehlgeschlagen",
+    "statusTitle_waiting_for_gas": "In Bearbeitung",
+    "statusTitle_cancelled": "Abgebrochen",
+    "statusTitleNetworkCostTooHigh": "Netzwerk überlastet",
+    "statusSub_awaiting_deposit": "Sende Mittel an die Escrow-Adresse",
+    "statusSub_detecting": "Verifizierung der Einzahlung auf der Blockchain",
+    "statusSub_releasing": "Mittel werden an den Empfänger gesendet",
+    "statusSub_released": "Mittel wurden dem Wallet des Empfängers gutgeschrieben",
+    "statusSub_refunding": "Rückgabe der Mittel an den Absender",
+    "statusSub_refunded": "Mittel wurden an den Absender zurückgegeben",
+    "statusSub_expired": "Das Zahlungsfenster ist abgelaufen",
+    "statusSub_failed": "Die Zahlung konnte nicht abgeschlossen werden",
+    "statusSub_waiting_for_gas": "Zahlung empfangen — Verarbeitung läuft",
+    "statusSub_cancelled": "Die Zahlung wurde abgebrochen"
   }
 }

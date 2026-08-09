@@ -1520,6 +1520,27 @@
     "bubbleSent": "暗号資産を送信",
     "bubbleReceived": "暗号資産受信予定",
     "bubbleRequested": "要求を送信",
-    "bubbleIncoming": "支払いを要求されました"
+    "bubbleIncoming": "支払いを要求されました",
+    "statusTitle_awaiting_deposit": "入金待ち",
+    "statusTitle_detecting": "検出中",
+    "statusTitle_releasing": "送金中",
+    "statusTitle_released": "支払い完了",
+    "statusTitle_refunding": "返金中",
+    "statusTitle_refunded": "返金済み",
+    "statusTitle_expired": "期限切れ",
+    "statusTitle_failed": "支払い失敗",
+    "statusTitle_waiting_for_gas": "処理中",
+    "statusTitle_cancelled": "キャンセル",
+    "statusTitleNetworkCostTooHigh": "ネットワーク混雑",
+    "statusSub_awaiting_deposit": "エスクローアドレスに送金してください",
+    "statusSub_detecting": "ブロックチェーンで入金を確認中",
+    "statusSub_releasing": "受取人に送金中",
+    "statusSub_released": "受取人のウォレットに資金が入金されました",
+    "statusSub_refunding": "送金者への返金中",
+    "statusSub_refunded": "送金者へ返金されました",
+    "statusSub_expired": "支払い期限が切れました",
+    "statusSub_failed": "支払いを完了できませんでした",
+    "statusSub_waiting_for_gas": "入金確認済 — 処理中",
+    "statusSub_cancelled": "支払いがキャンセルされました"
   }
 }

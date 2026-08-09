@@ -1520,6 +1520,27 @@
     "bubbleSent": "加密货币已发送",
     "bubbleReceived": "加密货币即将到账",
     "bubbleRequested": "请求已发送",
-    "bubbleIncoming": "收到付款请求"
+    "bubbleIncoming": "收到付款请求",
+    "statusTitle_awaiting_deposit": "等待存款",
+    "statusTitle_detecting": "检测中",
+    "statusTitle_releasing": "释放资金",
+    "statusTitle_released": "支付完成",
+    "statusTitle_refunding": "退款中",
+    "statusTitle_refunded": "已退款",
+    "statusTitle_expired": "已过期",
+    "statusTitle_failed": "支付失败",
+    "statusTitle_waiting_for_gas": "处理中",
+    "statusTitle_cancelled": "已取消",
+    "statusTitleNetworkCostTooHigh": "网络拥堵",
+    "statusSub_awaiting_deposit": "请将资金发送至托管地址",
+    "statusSub_detecting": "正在区块链上验证存款",
+    "statusSub_releasing": "资金正在发送给收款人",
+    "statusSub_released": "资金已存入收款人钱包",
+    "statusSub_refunding": "正在退款给发送人",
+    "statusSub_refunded": "资金已退还给发送人",
+    "statusSub_expired": "支付时间窗口已过期",
+    "statusSub_failed": "支付未能完成",
+    "statusSub_waiting_for_gas": "已收到付款 — 处理中",
+    "statusSub_cancelled": "支付已取消"
   }
 }

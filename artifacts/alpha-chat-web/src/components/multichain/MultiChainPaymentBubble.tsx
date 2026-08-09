@@ -1,9 +1,13 @@
 /**
  * MultiChainPaymentBubble — bolla per message_type: "mc_payment"
  *
- * Stile visivo identico a UsdaPaymentBubble: classi usda-bubble, usda-bubble-header,
- * usda-bubble-amount, usda-bubble-status, usda-status-dot, success-glow.
- * Solo i dati dinamici cambiano (rete, asset, importo, stato, escrow, explorer link).
+ * Layout cp-bubble identico a ChatPaymentBubble:
+ *   - header emozionale (emoji direzionale + titolo)
+ *   - badge rete sotto l'header
+ *   - importo grande
+ *   - divider
+ *   - status a due righe (titolo + sottotitolo)
+ *   - link transazione con cp-scan-link
  *
  * ISOLAMENTO: solo JSX/CSS cambia. Logica, polling, dati: invariati.
  */
@@ -35,20 +39,19 @@ function explorerUrl(network: string, txHash: string): string {
   }
 }
 
-// ─── Status helpers (mappa a classi CSS USDA) ─────────────────────────────────
+// ─── Variant mapping (cp-variant-*) ──────────────────────────────────────────
 
-type UsdaStatusClass = "ok" | "fail" | "refund" | "blockchain" | "in-progress" | "waiting";
+type CpVariant = "success" | "fail" | "neutral" | "waiting" | "refund";
 
-function getStatusClass(status: MCStatus): UsdaStatusClass {
+function getVariant(status: MCStatus): CpVariant {
   switch (status) {
-    case "released":       return "ok";
+    case "released":        return "success";
     case "failed":
-    case "expired":        return "fail";
+    case "expired":         return "fail";
+    case "cancelled":       return "neutral";
     case "refunding":
-    case "refunded":       return "refund";
-    case "detecting":      return "blockchain";
-    case "waiting_for_gas": return "waiting";
-    default:               return "in-progress"; // awaiting_deposit, releasing
+    case "refunded":        return "refund";
+    default:                return "waiting"; // awaiting_deposit, detecting, releasing, waiting_for_gas
   }
 }
 
@@ -59,7 +62,7 @@ function isAnimated(status: MCStatus): boolean {
 const STATUS_ICONS: Record<MCStatus, string> = {
   awaiting_deposit: "⏳",
   detecting:        "🔍",
-  releasing:        "🔄",
+  releasing:        "⚡",
   released:         "✅",
   refunding:        "↩️",
   refunded:         "↩️",
@@ -68,7 +71,6 @@ const STATUS_ICONS: Record<MCStatus, string> = {
   waiting_for_gas:  "⛽",
 };
 
-/** Se il motivo è anti-loss (fee insufficiente o RPC irraggiungibile). */
 function isAntiLossReason(reason?: string | null): boolean {
   return reason === "NETWORK_COST_TOO_HIGH" || reason === "RPC_UNAVAILABLE";
 }
@@ -77,14 +79,12 @@ function isAntiLossReason(reason?: string | null): boolean {
 
 interface Props {
   data:   MCSystemMeta;
-  /** true = il messaggio chat è stato inviato dall'utente corrente */
   isMine: boolean;
 }
 
 // ─── Componente ───────────────────────────────────────────────────────────────
 
 export const MultiChainPaymentBubble = memo(function MultiChainPaymentBubble({ data, isMine }: Props) {
-  // ── Hook — tutti PRIMA di qualsiasi early return (React Rules of Hooks) ──
   const { t } = useTranslation();
   const [status,              setStatus]              = useState<MCStatus>(data?.status ?? "awaiting_deposit");
   const [txHash,              setTxHash]              = useState<string | null>(data?.tx_hash_release ?? data?.tx_hash_deposit ?? null);
@@ -92,7 +92,7 @@ export const MultiChainPaymentBubble = memo(function MultiChainPaymentBubble({ d
   const [copied,              setCopied]              = useState(false);
   const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Auto-poll e detect ogni 30 s finché non terminale.
+  // Auto-poll ogni 30 s finché non terminale.
   useEffect(() => {
     if (!data?.transfer_id) return;
     if (isMCTerminal(status)) return;
@@ -120,12 +120,7 @@ export const MultiChainPaymentBubble = memo(function MultiChainPaymentBubble({ d
   if (!data?.transfer_id || !data?.status || !data?.gross_amount || !data?.net_amount) return null;
 
   const isRequest = data.is_request === true;
-  /**
-   * isPayer = true → l'utente corrente deve inviare i fondi all'escrow.
-   *   Non-request, isMine:  io ho avviato il send → sono il payer.
-   *   Request,     !isMine: l'altro ha richiesto   → io devo pagare.
-   */
-  const isPayer = isRequest ? !isMine : isMine;
+  const isPayer   = isRequest ? !isMine : isMine;
 
   async function handleCopy() {
     await navigator.clipboard.writeText(data.escrow_wallet);
@@ -133,7 +128,7 @@ export const MultiChainPaymentBubble = memo(function MultiChainPaymentBubble({ d
     setTimeout(() => setCopied(false), 2500);
   }
 
-  // ── Valori display ─────────────────────────────────────────────────────────
+  // ── Display values ──────────────────────────────────────────────────────────
   const networkLabel = MC_NETWORK_LABELS[data.network] ?? data.network;
   const networkIcon  = MC_NETWORK_ICONS[data.network]  ?? "🔗";
   const rawDec  = MC_DECIMALS[data.network] ?? 6;
@@ -145,66 +140,64 @@ export const MultiChainPaymentBubble = memo(function MultiChainPaymentBubble({ d
     ? fmtDisplay(data.min_deposit_amount, rawDec, dispDec)
     : grossDisplay;
 
-  // Importo visualizzato: destinatario dopo rilascio vede il netto
   const displayAmount = (status === "released" && !isPayer) ? netDisplay : grossDisplay;
 
-  // ── Status helpers ─────────────────────────────────────────────────────────
-  const statusClass = getStatusClass(status);
-  const animated    = isAnimated(status);
-  const statusIcon  = STATUS_ICONS[status] ?? "•";
+  // ── Variant & animated ──────────────────────────────────────────────────────
+  const variant  = getVariant(status);
+  const animated = isAnimated(status);
+  const icon     = STATUS_ICONS[status] ?? "•";
 
-  const statusLabels: Record<MCStatus, string> = {
-    awaiting_deposit: t("multichain.statusAwaitingDeposit"),
-    detecting:        t("multichain.statusDetecting"),
-    releasing:        t("multichain.statusReleasing"),
-    released:         t("multichain.statusReleased"),
-    refunding:        t("multichain.statusRefunding"),
-    refunded:         t("multichain.statusRefunded"),
-    expired:          t("multichain.statusExpired"),
-    failed:           t("multichain.statusFailed"),
-    waiting_for_gas:  isAntiLossReason(waitingForGasReason)
-      ? t("multichain.statusNetworkCostTooHigh")
-      : t("multichain.statusWaitingForGas"),
-  };
-  const statusText = statusLabels[status] ?? status;
+  // ── Status label (titolo + sottotitolo) ─────────────────────────────────────
+  const statusTitle = isAntiLossReason(waitingForGasReason) && status === "waiting_for_gas"
+    ? t("multichain.statusTitleNetworkCostTooHigh")
+    : t(`multichain.statusTitle_${status}` as never, { defaultValue: status });
 
-  const isSuccess = status === "released";
+  const statusSub = isAntiLossReason(waitingForGasReason) && status === "waiting_for_gas"
+    ? t("multichain.networkCostTooHighMsg")
+    : t(`multichain.statusSub_${status}` as never, { defaultValue: "" });
 
-  // ── Titolo ─────────────────────────────────────────────────────────────────
-  let bubbleTitle: string;
+  // ── Header ─────────────────────────────────────────────────────────────────
+  let directionEmoji: string;
+  let directionTitle: string;
   if (isRequest) {
-    bubbleTitle = isMine ? t("multichain.bubbleRequested") : t("multichain.bubbleIncoming");
+    directionEmoji = isMine ? "📤" : "📥";
+    directionTitle = isMine ? t("multichain.bubbleRequested") : t("multichain.bubbleIncoming");
   } else {
-    bubbleTitle = isMine ? t("multichain.bubbleSent") : t("multichain.bubbleReceived");
+    directionEmoji = isMine ? "💸" : "💰";
+    directionTitle = isMine ? t("multichain.bubbleSent") : t("multichain.bubbleReceived");
   }
 
-  // ── Nota ───────────────────────────────────────────────────────────────────
-  const note = data.note ?? null;
+  // ── Sub (to/from) ───────────────────────────────────────────────────────────
+  const note      = data.note ?? null;
+  const isSuccess = status === "released";
 
   return (
-    <div className={`usda-bubble usda-send ${isMine ? "mine" : "theirs"} ${isSuccess ? "success-glow" : ""}`}>
+    <div className={`cp-bubble mc-payment-bubble ${isMine ? "mine" : "theirs"} cp-variant-${variant}${isSuccess ? " mc-success-glow" : ""}`}>
 
-      {/* Header: rete + asset — identico alla struttura USDA */}
-      <div className="usda-bubble-header">
-        <span className="usda-coin" aria-hidden="true">{networkIcon}</span>
+      {/* Header: emoji direzionale + titolo */}
+      <div className="cp-bubble-header">
+        <span className="cp-coin" aria-hidden="true">{directionEmoji}</span>
+        <span>{directionTitle}</span>
+      </div>
+
+      {/* Badge rete — piccolo, sotto l'header */}
+      <div className="mc-network-badge" aria-label={`${networkLabel} ${data.asset}`}>
+        <span aria-hidden="true">{networkIcon}</span>
         <span>{networkLabel} · {data.asset}</span>
       </div>
 
       {/* Importo grande */}
-      <div className="usda-bubble-amount">
+      <div className="cp-bubble-amount">
         {displayAmount}{" "}
-        <span className="usda-bubble-unit">{data.asset}</span>
+        <span className="cp-bubble-unit">{data.asset}</span>
       </div>
-
-      {/* Sottotitolo: "Cripto inviata" / "Cripto ricevuta" ecc. */}
-      <div className="usda-bubble-sub">{bubbleTitle}</div>
 
       {/* Nota opzionale */}
       {note && (
-        <div className="usda-bubble-note" aria-label={`Nota: ${note}`}>"{note}"</div>
+        <div className="cp-bubble-note" aria-label={`Nota: ${note}`}>"{note}"</div>
       )}
 
-      {/* Indirizzo escrow — visibile al payer quando awaiting_deposit */}
+      {/* Istruzioni escrow — visibile al payer quando awaiting_deposit */}
       {isPayer && status === "awaiting_deposit" && (
         <div className="mc-address-section">
           <p className="mc-address-label">
@@ -228,37 +221,35 @@ export const MultiChainPaymentBubble = memo(function MultiChainPaymentBubble({ d
         </div>
       )}
 
-      {/* Anti-loss notice — visibile quando il release è bloccato per costo rete */}
-      {status === "waiting_for_gas" && isAntiLossReason(waitingForGasReason) && (
-        <div className="mc-antiloss-notice">
-          <p className="mc-antiloss-title">{t("multichain.networkCostTooHighTitle")}</p>
-          <p className="mc-antiloss-msg">{t("multichain.networkCostTooHighMsg")}</p>
-        </div>
-      )}
+      {/* Divider */}
+      <div className="cp-bubble-divider" role="separator" />
 
-      {/* Status bar — identica a UsdaPaymentBubble */}
-      <div
-        className={`usda-bubble-status ${statusClass}`}
-        aria-live="polite"
-        aria-label={statusText}
-      >
-        {animated && <span className="usda-status-dot" aria-hidden="true" />}
-        <span className="usda-status-icon" aria-hidden="true">{statusIcon}</span>
-        <span className="usda-status-text">{statusText}</span>
+      {/* Status: icon + titolo + sottotitolo */}
+      <div className="cp-bubble-status" aria-live="polite" aria-label={statusTitle}>
+        {animated
+          ? <span className="cp-spinner" aria-hidden="true" />
+          : <span className="cp-status-icon" aria-hidden="true">{icon}</span>
+        }
+        <div className="cp-status-text-group">
+          <span className="cp-status-title">{statusTitle}</span>
+          {statusSub && <span className="cp-status-sub">{statusSub}</span>}
+        </div>
       </div>
 
-      {/* Explorer link — sotto la status bar come tap-hint */}
+      {/* Link transazione — sotto la status bar */}
       {txHash && (
-        <a
-          className="usda-bubble-tap-hint"
-          href={explorerUrl(data.network, txHash)}
-          target="_blank"
-          rel="noopener noreferrer"
-          style={{ display: "block", textAlign: "right", marginTop: 4, textDecoration: "none", opacity: 0.6 }}
-          onClick={e => e.stopPropagation()}
-        >
-          {t("multichain.explorerLink")} ↗
-        </a>
+        <div className="cp-bubble-scan-links">
+          <a
+            href={explorerUrl(data.network, txHash)}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="cp-scan-link"
+            aria-label={t("multichain.explorerLink")}
+            onClick={e => e.stopPropagation()}
+          >
+            {t("multichain.explorerLink")} ↗
+          </a>
+        </div>
       )}
 
     </div>

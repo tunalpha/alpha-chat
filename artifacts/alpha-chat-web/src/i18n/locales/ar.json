@@ -1520,6 +1520,27 @@
     "bubbleSent": "تم إرسال الكريبتو",
     "bubbleReceived": "كريبتو وارد",
     "bubbleRequested": "تم إرسال الطلب",
-    "bubbleIncoming": "تم طلب دفع"
+    "bubbleIncoming": "تم طلب دفع",
+    "statusTitle_awaiting_deposit": "في انتظار الإيداع",
+    "statusTitle_detecting": "جارٍ الكشف",
+    "statusTitle_releasing": "جارٍ الإفراج",
+    "statusTitle_released": "اكتملت الدفعة",
+    "statusTitle_refunding": "جارٍ الاسترداد",
+    "statusTitle_refunded": "تم الاسترداد",
+    "statusTitle_expired": "انتهت الصلاحية",
+    "statusTitle_failed": "فشلت الدفعة",
+    "statusTitle_waiting_for_gas": "قيد المعالجة",
+    "statusTitle_cancelled": "ملغاة",
+    "statusTitleNetworkCostTooHigh": "الشبكة مزدحمة",
+    "statusSub_awaiting_deposit": "أرسل الأموال إلى عنوان الضمان",
+    "statusSub_detecting": "التحقق من الإيداع على البلوكشين",
+    "statusSub_releasing": "جارٍ إرسال الأموال إلى المستلم",
+    "statusSub_released": "تم إيداع الأموال في محفظة المستلم",
+    "statusSub_refunding": "إعادة الأموال إلى المرسل",
+    "statusSub_refunded": "تمت إعادة الأموال إلى المرسل",
+    "statusSub_expired": "انتهت مهلة الدفع",
+    "statusSub_failed": "تعذر إكمال الدفعة",
+    "statusSub_waiting_for_gas": "تم استلام الدفعة — جارٍ المعالجة",
+    "statusSub_cancelled": "تم إلغاء الدفعة"
   }
 }

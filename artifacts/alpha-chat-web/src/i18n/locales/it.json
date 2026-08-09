@@ -1520,6 +1520,27 @@
     "bubbleSent": "Cripto inviata",
     "bubbleReceived": "Cripto in arrivo",
     "bubbleRequested": "Richiesta inviata",
-    "bubbleIncoming": "Pagamento richiesto"
+    "bubbleIncoming": "Pagamento richiesto",
+    "statusTitle_awaiting_deposit": "Attesa deposito",
+    "statusTitle_detecting": "Rilevamento in corso",
+    "statusTitle_releasing": "Rilascio in corso",
+    "statusTitle_released": "Pagamento completato",
+    "statusTitle_refunding": "Rimborso in corso",
+    "statusTitle_refunded": "Rimborsato",
+    "statusTitle_expired": "Scaduto",
+    "statusTitle_failed": "Pagamento fallito",
+    "statusTitle_waiting_for_gas": "In elaborazione",
+    "statusTitle_cancelled": "Annullato",
+    "statusTitleNetworkCostTooHigh": "Rete congestionata",
+    "statusSub_awaiting_deposit": "Invia i fondi all'indirizzo escrow",
+    "statusSub_detecting": "Verifica del deposito sulla blockchain",
+    "statusSub_releasing": "I fondi stanno per essere inviati",
+    "statusSub_released": "I fondi sono stati accreditati nel tuo wallet",
+    "statusSub_refunding": "Restituzione dei fondi al mittente in corso",
+    "statusSub_refunded": "I fondi sono stati restituiti al mittente",
+    "statusSub_expired": "Il tempo per il pagamento è scaduto",
+    "statusSub_failed": "Il pagamento non è stato completato",
+    "statusSub_waiting_for_gas": "Pagamento ricevuto — elaborazione in corso",
+    "statusSub_cancelled": "Il pagamento è stato annullato"
   }
 }

@@ -1520,6 +1520,27 @@
     "bubbleSent": "Крипто отправлено",
     "bubbleReceived": "Крипто получено",
     "bubbleRequested": "Запрос отправлен",
-    "bubbleIncoming": "Запрос платежа"
+    "bubbleIncoming": "Запрос платежа",
+    "statusTitle_awaiting_deposit": "Ожидание депозита",
+    "statusTitle_detecting": "Обнаружение платежа",
+    "statusTitle_releasing": "Высвобождение средств",
+    "statusTitle_released": "Платёж завершён",
+    "statusTitle_refunding": "Возврат средств",
+    "statusTitle_refunded": "Возвращено",
+    "statusTitle_expired": "Истёк срок",
+    "statusTitle_failed": "Платёж не выполнен",
+    "statusTitle_waiting_for_gas": "Обработка",
+    "statusTitle_cancelled": "Отменено",
+    "statusTitleNetworkCostTooHigh": "Сеть перегружена",
+    "statusSub_awaiting_deposit": "Отправьте средства на адрес эскроу",
+    "statusSub_detecting": "Проверка депозита в блокчейне",
+    "statusSub_releasing": "Средства отправляются получателю",
+    "statusSub_released": "Средства зачислены на кошелёк получателя",
+    "statusSub_refunding": "Возврат средств отправителю",
+    "statusSub_refunded": "Средства возвращены отправителю",
+    "statusSub_expired": "Срок оплаты истёк",
+    "statusSub_failed": "Платёж не удалось завершить",
+    "statusSub_waiting_for_gas": "Платёж получен — обработка идёт",
+    "statusSub_cancelled": "Платёж отменён"
   }
 }

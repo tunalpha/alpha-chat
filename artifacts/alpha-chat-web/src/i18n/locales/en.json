@@ -1520,6 +1520,27 @@
     "bubbleSent": "Crypto sent",
     "bubbleReceived": "Crypto incoming",
     "bubbleRequested": "Request sent",
-    "bubbleIncoming": "Payment requested"
+    "bubbleIncoming": "Payment requested",
+    "statusTitle_awaiting_deposit": "Awaiting deposit",
+    "statusTitle_detecting": "Detecting payment",
+    "statusTitle_releasing": "Releasing funds",
+    "statusTitle_released": "Payment completed",
+    "statusTitle_refunding": "Refunding",
+    "statusTitle_refunded": "Refunded",
+    "statusTitle_expired": "Expired",
+    "statusTitle_failed": "Payment failed",
+    "statusTitle_waiting_for_gas": "Processing",
+    "statusTitle_cancelled": "Cancelled",
+    "statusTitleNetworkCostTooHigh": "Network congested",
+    "statusSub_awaiting_deposit": "Send funds to the escrow address",
+    "statusSub_detecting": "Verifying deposit on the blockchain",
+    "statusSub_releasing": "Funds are being sent to the recipient",
+    "statusSub_released": "Funds have been credited to the recipient's wallet",
+    "statusSub_refunding": "Returning funds to the sender",
+    "statusSub_refunded": "Funds have been returned to the sender",
+    "statusSub_expired": "The payment window has expired",
+    "statusSub_failed": "The payment could not be completed",
+    "statusSub_waiting_for_gas": "Payment received — processing in progress",
+    "statusSub_cancelled": "The payment has been cancelled"
   }
 }
