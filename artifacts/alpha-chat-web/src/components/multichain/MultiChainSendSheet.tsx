@@ -1022,16 +1022,21 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
                 <div className="usda-error" role="alert">{signError}</div>
               )}
 
-              {/* Apri wallet Bitcoin — native share sheet (iOS picker) */}
+              {/* Apri wallet Bitcoin — deep link bitcoin: URI (Trust Wallet, Blue Wallet, Electrum…) */}
               {signPhase !== "done" && (
                 <button
                   type="button"
                   className="usda-btn-primary"
                   onClick={() => {
-                    if (navigator.share) {
-                      void navigator.share({ url: bitcoinUri });
-                    } else {
-                      window.open(bitcoinUri, "_blank");
+                    // navigator.share rifiuta silenziosamente schemi non-http su iOS PWA.
+                    // window.location.href con bitcoin: URI è l'unico modo affidabile
+                    // per aprire l'app picker nativo su iOS (Trust Wallet, MetaMask Portfolio,
+                    // Blue Wallet, Electrum, Muun, ecc.).
+                    try {
+                      window.location.href = bitcoinUri;
+                    } catch {
+                      // Fallback: clipboard copy + messaggio
+                      void navigator.clipboard?.writeText(transfer.escrowWallet).catch(() => null);
                     }
                   }}
                 >
