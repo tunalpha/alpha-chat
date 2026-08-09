@@ -1,0 +1,59 @@
+Sì, questo risultato è molto importante: finalmente abbiamo isolato il problema.
+
+Cosa significa in parole semplici
+
+Il problema non è USDA, non è il backend e non è la transazione.
+
+Abbiamo questa sequenza:
+
+Alpha Chat
+→ sendTransaction() parte ✅
+→ WalletConnect riceve/inoltra la richiesta ✅
+→ Trust Wallet si apre ✅
+→ Trust Wallet non mostra la schermata “Conferma/Firma” ❌
+→ non risponde mai
+→ Alpha Chat rimane su “Firma nel wallet…”
+
+Il fatto che non compaia né RESOLVED né REJECTED dimostra che la Promise è rimasta pending.
+
+Quindi NON farei modifiche al codice adesso
+
+Soprattutto non toccherei di nuovo SendPaymentSheet.tsx e non aggiungerei un altro switchChain.
+
+Abbiamo già fatto abbastanza modifiche e rischiamo di peggiorare la situazione.
+
+Il prossimo passo deve essere diagnosticare/ripristinare la sessione WalletConnect/ThirdWeb, non modificare USDA.
+
+Puoi dire all’agente:
+
+STOP MODIFICHE AL CODICE.
+
+La diagnostica ha confermato che sendTransaction() rimane pending: START presente, nessun RESOLVED/REJECTED.
+
+Non modificare SendPaymentSheet, USDA, MultiChain o WalletConnect integration.
+
+Voglio ora una diagnosi esclusivamente della sessione WalletConnect/ThirdWeb:
+
+1. verificare quale wallet/session/topic WalletConnect è attivo in ThirdWeb;
+2. verificare se esistono sessioni o richieste pending/stale;
+3. verificare se ThirdWebProvider sta usando una sessione diversa da quella che Trust Wallet sta riaprendo;
+4. verificare se la riconnessione crea un nuovo topic/sessione;
+5. determinare come effettuare un reset completo della sessione WalletConnect senza modificare la logica di pagamento.
+
+NON implementare ancora nessun fix.
+
+Voglio prima sapere esattamente se abbiamo una sessione WalletConnect desincronizzata.
+
+Una cosa importante
+
+La diagnosi dell’agente dice che la causa è “quasi certamente” una sessione stale/desincronizzata. Io non la considererei ancora provata al 100%.
+
+Quello che è provato è:
+
+sendTransaction() parte → rimane pending → Trust Wallet non restituisce né firma né rifiuto.
+
+Questo è già sufficiente per smettere di modificare il codice USDA alla cieca.
+
+E soprattutto: il rollback che abbiamo fatto è corretto. Il file USDA è tornato al baseline funzionante. Adesso dobbiamo capire perché l’infrastruttura WalletConnect non completa la richiesta.
+
+Non fare deploy di altri fix adesso. Prima facciamo questa diagnosi della sessione.
