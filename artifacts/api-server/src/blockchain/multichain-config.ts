@@ -217,6 +217,23 @@ function parseIntEnv(key: string, defaultVal: number): number {
  */
 export const BTC_TREASURY_WALLET: string | null = env("BTC_TREASURY_WALLET") ?? null;
 
+/**
+ * Restituisce il treasury wallet BTC effettivo a runtime.
+ * Priorità: DB override (btc_settings) > env var BTC_TREASURY_WALLET > null
+ * Usare questa funzione invece di BTC_TREASURY_WALLET per applicare
+ * modifiche admin senza restart del server.
+ */
+export async function getBtcTreasuryWallet(): Promise<string | null> {
+  try {
+    const { BtcSettingsModel } = await import("../models/btc-settings.model");
+    const doc = await BtcSettingsModel.findOne({ key: "treasury_wallet" }).lean();
+    if (doc?.value) return doc.value as string;
+  } catch {
+    /* DB non disponibile — fallback env */
+  }
+  return BTC_TREASURY_WALLET;
+}
+
 export const BTC_FEE_CONFIG = {
   /** Tasso stimato per minDepositAmount (sat/vbyte) — default 20 */
   ESTIMATE_RATE: parseIntEnv("BTC_ESTIMATE_FEE_RATE_SAT_VB", 20),

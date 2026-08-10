@@ -45,7 +45,7 @@ import {
   TOKEN_DECIMALS,
   buildDefaultFeeRegistry,
   BTC_FEE_CONFIG,
-  BTC_TREASURY_WALLET,
+  getBtcTreasuryWallet,
   RPC_CONFIGS,
   NATIVE_ASSET_SYMBOL,
   getNativePriceUSDT,
@@ -1644,8 +1644,9 @@ async function _releaseBitcoin(doc: MultiChainTransferDocument): Promise<MultiCh
     feeWallet:      doc.fee_wallet,
     projectFee:     BigInt(doc.project_fee),
     // Treasury: se configurato, il change residuo va qui nella stessa TX (no UTXO stranded).
-    // Fallback a escrowAddress se BTC_TREASURY_WALLET non è impostato.
-    treasuryAddress: BTC_TREASURY_WALLET,
+    // Fallback a escrowAddress se treasury non è configurato.
+    // Legge da DB (override admin) o env var BTC_TREASURY_WALLET.
+    treasuryAddress: await getBtcTreasuryWallet(),
   });
 
   // BTC: 1 TX unica → tx_hash_release e tx_hash_fee puntano allo stesso txid
