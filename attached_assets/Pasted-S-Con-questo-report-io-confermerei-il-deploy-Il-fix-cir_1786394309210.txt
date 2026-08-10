@@ -1,0 +1,66 @@
+Sì. Con questo report io confermerei il deploy. Il fix è circoscritto, i test funzionali importanti sono tutti passati e soprattutto è stata verificata la coerenza tra quote mostrato all’utente e transfer realmente creato.
+
+Perché il deploy è giustificato
+
+✅ Fee dinamica verificata
+
+* 0,10% → 1001,01
+* 0,50% → 1005,03
+* 1,00% → 1010,11
+* 2,00% → 1020,41
+
+✅ Recipient exact verificato
+Il destinatario riceve sempre esattamente il target.
+
+✅ Multi-chain verificata
+
+* Polygon USDT
+* Ethereum USDT
+* BSC USDT
+* Bitcoin
+
+✅ Quote ↔ CreateTransfer coerenti
+Questo è il punto più importante: entrambi leggono la stessa fee dal DB.
+
+✅ Fee modificabile dal pannello Admin
+Quindi in futuro, se passi da 1% a 0,50% o qualsiasi altro valore configurato, il calcolo viene aggiornato automaticamente senza modificare il codice.
+
+L’unica anomalia
+
+48 passed, 1 failed riguarda TEST J, che è un test pre-esistente difettoso perché trova la parola custodial dentro un commento.
+
+Non riguarda:
+
+* il calcolo;
+* la fee;
+* il DB;
+* il quote;
+* CreateTransfer;
+* le blockchain.
+
+Quindi non considero TEST J un blocker per questo deploy, purché venga registrato come test pre-esistente da correggere separatamente.
+
+Prima del deploy manderei solo questa conferma all’agente
+
+Confermato: procedi con il deploy del fix della fee dinamica.
+
+Non apportare altre modifiche.
+
+Il comportamento atteso in produzione è:
+
+Admin → DB → quote → createTransfer
+
+devono utilizzare la stessa feeBps.
+
+Mantieni DEFAULT_FEE_BPS come fallback e non modificare la business logic.
+
+Dopo il deploy esegui un controllo smoke in produzione con fee Polygon USDT impostata a 100 bps (1%) e verifica che per 1000 USDT recipient exact il quote mostri:
+
+Destinatario riceve: 1000,00 USDT
+Cricco paga: 1010,11 USDT
+
+Verifica inoltre che non ci siano errori nel backend dopo il deploy.
+
+TEST J non deve essere modificato come parte di questo deploy, perché è un problema pre-esistente e non correlato al fix. Va eventualmente corretto separatamente.
+
+Quindi sì: per me questo fix è pronto per il deploy.
