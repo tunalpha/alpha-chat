@@ -444,7 +444,7 @@ function Cleanup() {
           {data && (
             <div className="p-4 rounded-lg bg-muted/50 space-y-3">
               <div className="flex items-center gap-2"><CheckCircle2 className="w-5 h-5 text-emerald-500" /><span className="font-semibold">Cleanup completato</span></div>
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div><p className="text-xs text-muted-foreground font-mono uppercase">File eliminati</p><p className="text-2xl font-bold font-mono">{data.deleted}</p></div>
                 <div><p className="text-xs text-muted-foreground font-mono uppercase">Durata</p><p className="text-2xl font-bold font-mono">{data.duration_ms} ms</p></div>
                 <div><p className="text-xs text-muted-foreground font-mono uppercase">Alle</p><p className="text-sm font-mono">{new Date(data.ran_at).toLocaleTimeString()}</p></div>
@@ -502,10 +502,12 @@ function ConsistencyCheck() {
               )}
               {data.missing_media?.length > 0 && (
                 <Card className="border-amber-200"><CardHeader><CardTitle className="text-sm text-amber-600 font-mono">MongoDB senza R2 (max 50)</CardTitle></CardHeader>
-                  <CardContent>
+                  <CardContent className="p-0">
+                    <div className="overflow-x-auto">
                     <Table><TableHeader><TableRow className="hover:bg-transparent">{["Media ID","Storage Key","MIME","Upload"].map(h=><TableHead key={h} className="font-mono text-xs uppercase">{h}</TableHead>)}</TableRow></TableHeader>
                       <TableBody>{data.missing_media.map((m: R2MissingMedia)=>(<TableRow key={m.media_id}><TableCell className="font-mono text-xs">{m.media_id.slice(-8)}</TableCell><TableCell className="font-mono text-xs text-muted-foreground max-w-[160px] truncate">{m.storage_key}</TableCell><TableCell className="font-mono text-xs">{m.mime_type}</TableCell><TableCell className="font-mono text-xs">{new Date(m.uploaded_at).toLocaleDateString()}</TableCell></TableRow>))}</TableBody>
                     </Table>
+                    </div>
                   </CardContent>
                 </Card>
               )}

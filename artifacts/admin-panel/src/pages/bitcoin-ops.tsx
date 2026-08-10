@@ -469,10 +469,10 @@ export default function BitcoinOps() {
   ] : [];
 
   return (
-    <div className="p-6 space-y-5 max-w-screen-xl mx-auto">
+    <div className="p-3 sm:p-6 space-y-5 max-w-screen-xl mx-auto">
 
       {/* ── Header ────────────────────────────────────────────── */}
-      <div className="flex items-center justify-between">
+      <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-bold flex items-center gap-2 text-foreground">
             <Bitcoin className="w-5 h-5 text-orange-500" />
@@ -482,7 +482,7 @@ export default function BitcoinOps() {
             Monitoring BTC nativo · Bitcoin Network · Blockstream API
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           {/* Prezzo BTC live */}
           {priceEur != null && (
             <div className="flex items-center gap-1.5 text-xs text-muted-foreground border border-border rounded-lg px-2.5 py-1.5">

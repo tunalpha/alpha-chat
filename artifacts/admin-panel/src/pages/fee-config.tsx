@@ -445,7 +445,7 @@ export default function FeeConfigPage() {
   const allPricesHealthy = Object.values(priceCache).every(s => s !== null && s.ageSeconds < 300);
 
   return (
-    <div className="p-6 max-w-5xl mx-auto space-y-10">
+    <div className="p-3 sm:p-6 max-w-5xl mx-auto space-y-10">
 
       {/* ── Sezione 1: Project Fee ──────────────────────────────────────────── */}
       <div className="space-y-6">

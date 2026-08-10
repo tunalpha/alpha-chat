@@ -967,7 +967,7 @@ class DiagErrorBoundary extends Component<{ children: ReactNode }, EBState> {
   render() {
     if (this.state.error) {
       return (
-        <div className="p-6 space-y-4">
+        <div className="p-3 sm:p-6 space-y-4">
           <div className="flex items-center gap-2 text-red-400">
             <AlertTriangle className="w-5 h-5" />
             <h2 className="font-bold font-mono text-sm uppercase tracking-wide">Diagnostics Crash</h2>
