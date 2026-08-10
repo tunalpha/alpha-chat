@@ -1,0 +1,206 @@
+Certo. Questo è il prompt completo, con entrambe le soglie e il tasto Copia importo BTC incluso:
+
+TASK — BTC: doppia soglia minima + copia importo BTC
+
+Per ora NON modificare il codice e NON fare deploy. Prima esegui esclusivamente l’audit completo e mostrami il risultato.
+
+1. Doppia soglia minima per Bitcoin
+
+Voglio introdurre due limiti minimi contemporaneamente per i pagamenti BTC.
+
+Soglia 1 — minimo assoluto Bitcoin
+
+0,0001 BTC = 10.000 sat
+
+Soglia 2 — minimo controvalore fiat
+
+Deve essere configurabile e verificato nella valuta fiat utilizzata dall’utente:
+
+* EUR → minimo in €
+* USD → minimo in $
+
+Voglio che l’audit determini quale valore fiat sia più appropriato.
+
+Analizza almeno:
+
+€5 / €10 / €15 / €20
+
+e gli equivalenti USD.
+
+Considera:
+
+* ESTIMATE_RATE = 20 sat/vbyte
+* estimated miner fee ≈ 3.420 sat
+* BUFFER_SAT = 5.000 sat
+* project fee = 1%
+* fee floor BTC = 546 sat
+* diversi prezzi BTC
+* maggiorazione effettiva che il cliente deve sostenere.
+
+Analizza anche questi importi BTC:
+
+* 0,00005 BTC
+* 0,0001 BTC
+* 0,00015 BTC
+* 0,0002 BTC
+
+Per ogni scenario mostra:
+
+1. target BTC;
+2. equivalente EUR;
+3. equivalente USD;
+4. gross;
+5. project fee;
+6. estimated miner fee;
+7. buffer;
+8. minDepositAmount;
+9. importo effettivamente richiesto all’utente;
+10. maggiorazione percentuale.
+
+2. Regola di validazione
+
+Le due soglie devono essere rispettate ENTRAMBE.
+
+Il pagamento BTC è consentito solo se:
+
+target BTC ≥ 0,0001 BTC
+
+E
+
+controvalore fiat del target ≥ minimo fiat configurato
+
+Se anche una sola delle due condizioni non è rispettata:
+
+* bloccare il pulsante Continua;
+* non creare la transazione;
+* mostrare un messaggio chiaro all’utente.
+
+Esempio:
+
+Importo minimo Bitcoin
+
+0,0001 BTC
+
+≈ €X / $Y
+
+Il valore EUR/USD deve essere calcolato utilizzando la stessa fonte/prezzo BTC già utilizzata dal sistema, senza introdurre una seconda fonte di prezzo.
+
+3. IMPORTANTE — recipient_exact
+
+Il controllo deve essere applicato al target che il destinatario deve ricevere, non al gross e non al minDepositAmount.
+
+La logica attuale recipient_exact deve rimanere invariata.
+
+Non modificare:
+
+* formula gross-up;
+* project fee 1%;
+* fee floor;
+* miner fee;
+* buffer;
+* net_amount;
+* Treasury change;
+* polling BTC.
+
+4. TASTO “COPIA IMPORTO BTC”
+
+Nella schermata:
+
+Invia Cripto → Bitcoin → Step 3 Indirizzo
+
+attualmente viene mostrato, per esempio:
+
+Invia esattamente 0.00010771 BTC
+
+Voglio aggiungere un piccolo pulsante/icona 📋 Copia direttamente accanto all’importo BTC.
+
+Esempio:
+
+Invia esattamente 0.00010771 BTC  [📋]
+
+Al tap:
+
+* copiare negli appunti solo il valore numerico BTC;
+* esempio: 0.00010771
+* NON copiare la parola BTC;
+* mostrare un feedback breve: “Importo copiato”;
+* il valore visualizzato non deve cambiare;
+* non modificare l’indirizzo BTC;
+* non modificare il QR;
+* non modificare il polling del deposito.
+
+Il pulsante esistente “Copia indirizzo” deve rimanere invariato.
+
+Il nuovo pulsante deve essere piccolo e secondario, senza rubare importanza al pulsante principale Copia indirizzo.
+
+5. File da verificare
+
+Individua esattamente:
+
+* componente frontend che gestisce il campo importo BTC;
+* funzione che calcola/mostra depositDisplay;
+* funzione di validazione del form;
+* endpoint/backend dove deve essere applicato il controllo minimo;
+* configurazione BTC dove inserire le nuove soglie.
+
+6. Sicurezza
+
+Il minimo deve essere verificato sia frontend sia backend.
+
+Frontend:
+
+impedisce all’utente di procedere e mostra il messaggio.
+
+Backend:
+
+deve rifiutare comunque una richiesta sotto soglia, anche se qualcuno bypassa il frontend.
+
+Non affidarsi esclusivamente alla validazione frontend.
+
+7. Test da predisporre
+
+Proponi test per:
+
+* target BTC < 0,0001 → ❌
+* target BTC = 0,0001 → verifica entrambe le soglie
+* target BTC > 0,0001 ma sotto il minimo fiat → ❌
+* target BTC che supera entrambe → ✅
+* EUR → conversione corretta
+* USD → conversione corretta
+* cambio del prezzo BTC → soglia fiat aggiornata correttamente
+* bypass frontend → backend rifiuta
+* copia importo → clipboard contiene solamente 0.xxxxxxxx
+* copia indirizzo → comportamento esistente invariato
+* Treasury BTC → invariato
+* fee 1% → invariata
+* recipient_exact → invariato
+
+8. Vincoli assoluti
+
+NON modificare:
+
+* USDA;
+* Polygon;
+* Ethereum;
+* BSC;
+* fee 1%;
+* recipient_exact;
+* Treasury BTC/change;
+* polling BTC;
+* QR;
+* pulsante Copia indirizzo;
+* qualsiasi altra logica non necessaria a questo task.
+
+Prima fase esclusivamente audit.
+
+Voglio ricevere:
+
+1. tabella numerica completa;
+2. valore fiat minimo consigliato;
+3. conferma della logica AND tra minimo BTC e minimo fiat;
+4. UX proposta;
+5. file da modificare;
+6. test da aggiungere;
+7. eventuali rischi o effetti collaterali.
+
+Nessuna modifica e nessun deploy finché non approvo esplicitamente l’audit.
