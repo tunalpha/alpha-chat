@@ -75,10 +75,27 @@ export const USDA_CHAIN_ID  = 137;
 export const USDA_DECIMALS  = 18;
 
 // ── Wallets (condivisi tra tutti i payment flow) ──────────────────────────────
+//
+// optionalChains: tutte e tre le chain incluse nel WC session proposal iniziale.
+// Senza questo, la sessione WC parte solo sulla chain primaria (es. Polygon) e
+// switchChain() verso BSC/ETH fallisce perché eip155:56 / eip155:1 non sono
+// nel namespace della sessione → sendTransaction({ chainId }) viene rifiutato.
+// Con optionalChains l'utente non deve disconnettersi tra pagamenti su chain diverse.
+//
+// Il cast `as any` è necessario: ThirdWeb v5 non espone walletConnect.optionalChains
+// nei tipi delle creazioni per wallet ID specifici (DeepLinkSupportedWalletCreationOptions),
+// ma il runtime connectWC() li usa correttamente per tutti i wallet WC-based.
+// Per Coinbase/Rainbow/Zerion (che ignorano il 2° arg) questo è un no-op sicuro.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const _wcOpts: any = { walletConnect: { optionalChains: [polygon, bsc, ethereum] } };
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const _cw = createWallet as (...a: any[]) => ReturnType<typeof createWallet>;
+
 export const wallets = [
-  createWallet("io.metamask"),
-  createWallet("com.trustwallet.app"),
-  createWallet("com.coinbase.wallet"),
-  createWallet("me.rainbow"),
-  createWallet("io.zerion.wallet"),
+  createWallet("io.metamask",       _wcOpts),   // 2nd arg supportato
+  _cw("com.trustwallet.app",        _wcOpts),   // cast: runtime OK, tipo non esposto
+  createWallet("com.coinbase.wallet"),           // 1-arg only
+  createWallet("me.rainbow"),                    // 1-arg only
+  createWallet("io.zerion.wallet"),              // 1-arg only
 ];

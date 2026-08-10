@@ -138,7 +138,15 @@ export const MultiChainPaymentBubble = memo(function MultiChainPaymentBubble({ d
           clearInterval(pollRef.current);
           pollRef.current = null;
         }
-      } catch { /* silent — ultimo stato noto */ }
+      } catch (e: unknown) {
+        // Se il transfer è stato eliminato (404 TRANSFER_NOT_FOUND) ferma il polling.
+        const msg = (e as Error)?.message ?? "";
+        if (/TRANSFER_NOT_FOUND/i.test(msg) && pollRef.current) {
+          clearInterval(pollRef.current);
+          pollRef.current = null;
+        }
+        // altrimenti: errore transitorio — mantieni l'ultimo stato noto
+      }
     }, 30_000);
     return () => {
       if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }

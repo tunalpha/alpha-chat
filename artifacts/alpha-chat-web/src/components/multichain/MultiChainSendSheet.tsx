@@ -523,9 +523,9 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
     // ── 4. sendTransaction fire-and-forget ────────────────────────────────
     //
     // NON await txHash — fonte di verità = backend detect.
-    // chainId OMESSO: il chain switch esplicito al passo 1 garantisce la rete.
-    // (ThirdWeb richiede chainId nel tipo per polimorfismo; resta necessario
-    //  per non rompere la firma su Polygon dove switch non è richiesto.)
+    // chainId: routing WC corretto verso eip155:${evmChainId}.
+    // optionalChains in thirdweb.ts garantisce che la chain sia nel namespace
+    // dalla connessione iniziale → nessun switch mid-session necessario.
 
     let pollAborted  = false;
     let signErrorMsg: string | null = null;
