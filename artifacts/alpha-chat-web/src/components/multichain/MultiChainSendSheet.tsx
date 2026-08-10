@@ -531,11 +531,16 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
     let signErrorMsg: string | null = null;
 
     account.sendTransaction({
-      to:      tokenAddress,
-      data:    encodeERC20Transfer(transfer.escrowWallet, depositAmount),
-      gas:     BigInt(150000),
-      value:   BigInt(0),
-      chainId: evmChainId,  // rafforza la chain già switchata (no-op se già corretta)
+      to:    tokenAddress,
+      data:  encodeERC20Transfer(transfer.escrowWallet, depositAmount),
+      gas:   BigInt(150000),
+      value: BigInt(0),
+      // chainId è undefined a runtime (non nel payload WalletConnect).
+      // switchChain esplicito al passo 1 già mette il wallet sulla chain corretta.
+      // Se chainId fosse incluso, ThirdWeb v5 emette un secondo wallet_switchEthereumChain
+      // via WalletConnect → rifiutato con "Missing or invalid chainId" su Trust Wallet iOS
+      // → nessun popup di firma. Cast necessario perché il tipo ThirdWeb richiede number.
+      chainId: undefined as unknown as number,
     }).catch((err: unknown) => {
       const msg = (err as Error)?.message ?? "";
       if (/reject|cancel|denied|refused|user rejected/i.test(msg)) {
