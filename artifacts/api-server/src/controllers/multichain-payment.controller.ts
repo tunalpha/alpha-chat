@@ -36,6 +36,8 @@ import { estimateDynamicNetworkFee }                from "../blockchain/dynamic-
 import { PriceUnavailableError }                    from "../blockchain/native-price-provider";
 import { DynamicFeeError }                          from "../blockchain/dynamic-fee-estimator";
 import { AppError }                                from "../errors/AppError";
+import { getDbNetworkFeeBps }                      from "../models/mc-fee-override.model";
+import { DEFAULT_FEE_BPS }                         from "../blockchain/fee-config";
 import { MultiChainTransferModel }                 from "../models/multichain-transfer.model";
 import { MessageModel }                            from "../models/message.model";
 import { ConversationModel }                       from "../models/conversation.model";
@@ -308,6 +310,12 @@ export async function handlePaymentQuote(
       networkFeeCharged = dynFeeResult.networkFeeCharged;
     }
 
+    // ── Leggi fee dal DB (stessa sorgente usata da handleCreateTransfer) ──────
+    // Garantisce che il preventivo mostrato all'utente sia identico alla fee
+    // che verrà effettivamente applicata alla transazione reale.
+    const dbFeeBps       = await getDbNetworkFeeBps(network as import("../models/multichain-transfer.model").MCNetworkId);
+    const effectiveFeeBps = dbFeeBps ?? DEFAULT_FEE_BPS;
+
     const quote = calculatePaymentQuote(
       {
         amountMode:           amountMode ?? "send_amount",
@@ -315,6 +323,7 @@ export async function handlePaymentQuote(
         targetNetAmountUnits,
         network,
         asset,
+        feeBps:               effectiveFeeBps,
       },
       networkFeeCharged,
     );

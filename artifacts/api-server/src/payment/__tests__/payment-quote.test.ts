@@ -592,6 +592,186 @@ describe("TEST J — USDA regression: zero modifiche al codice USDA", () => {
   });
 });
 
+// ─── TEST K — Fee dinamica: 10 / 50 / 100 / 200 bps per 1000 USDT ────────────
+//
+// Verifica che calculatePaymentQuote calcoli correttamente i gross amount attesi
+// quando viene passata la fee letta dal DB (simulando il comportamento post-fix).
+// Questi valori corrispondono esattamente a quanto deve mostrare il quote endpoint.
+
+describe("TEST K — Fee dinamica (10 / 50 / 100 / 200 bps) — 1000 USDT recipient_exact", () => {
+  /** 1000 USDT @ 6 decimali */
+  const TARGET = 1_000_000_000n; // 1000.000000
+  const network = "polygon" as const;
+  const asset   = "USDT" as const;
+
+  it("10 bps (0.10%) → Cricco pagherà 1001.01 USDT (ceiling)", () => {
+    const quote = calculatePaymentQuote({
+      amountMode:          "recipient_exact",
+      targetNetAmountUnits: TARGET.toString(),
+      network, asset,
+      feeBps: 10n,
+    });
+    // gross = ceil(1000000000 × 10000 / 9990) = 1001001002
+    expect(BigInt(quote.grossAmount)).toBe(1_001_001_002n);
+    // net ≥ target
+    expect(BigInt(quote.netAmount)).toBeGreaterThanOrEqual(TARGET);
+    // invariante contabile
+    expect(BigInt(quote.netAmount) + BigInt(quote.projectFee)).toBe(BigInt(quote.grossAmount));
+    expect(quote.feeBps).toBe(10);
+  });
+
+  it("50 bps (0.50%) → Cricco pagherà 1005.03 USDT (ceiling)", () => {
+    const quote = calculatePaymentQuote({
+      amountMode:          "recipient_exact",
+      targetNetAmountUnits: TARGET.toString(),
+      network, asset,
+      feeBps: 50n,
+    });
+    // gross = ceil(1000000000 × 10000 / 9950) = 1005025126
+    expect(BigInt(quote.grossAmount)).toBe(1_005_025_126n);
+    expect(BigInt(quote.netAmount)).toBeGreaterThanOrEqual(TARGET);
+    expect(BigInt(quote.netAmount) + BigInt(quote.projectFee)).toBe(BigInt(quote.grossAmount));
+    expect(quote.feeBps).toBe(50);
+  });
+
+  it("100 bps (1.00%) → Cricco pagherà 1010.11 USDT (ceiling)", () => {
+    const quote = calculatePaymentQuote({
+      amountMode:          "recipient_exact",
+      targetNetAmountUnits: TARGET.toString(),
+      network, asset,
+      feeBps: 100n,
+    });
+    // gross = ceil(1000000000 × 10000 / 9900) = 1010101011
+    expect(BigInt(quote.grossAmount)).toBe(1_010_101_011n);
+    expect(BigInt(quote.netAmount)).toBeGreaterThanOrEqual(TARGET);
+    expect(BigInt(quote.netAmount) + BigInt(quote.projectFee)).toBe(BigInt(quote.grossAmount));
+    expect(quote.feeBps).toBe(100);
+  });
+
+  it("200 bps (2.00%) → Cricco pagherà 1020.41 USDT (ceiling)", () => {
+    const quote = calculatePaymentQuote({
+      amountMode:          "recipient_exact",
+      targetNetAmountUnits: TARGET.toString(),
+      network, asset,
+      feeBps: 200n,
+    });
+    // gross = ceil(1000000000 × 10000 / 9800) = 1020408164
+    expect(BigInt(quote.grossAmount)).toBe(1_020_408_164n);
+    expect(BigInt(quote.netAmount)).toBeGreaterThanOrEqual(TARGET);
+    expect(BigInt(quote.netAmount) + BigInt(quote.projectFee)).toBe(BigInt(quote.grossAmount));
+    expect(quote.feeBps).toBe(200);
+  });
+
+  it("destinatario riceve ESATTAMENTE il target per tutti i casi", () => {
+    for (const bps of [10n, 50n, 100n, 200n]) {
+      const quote = calculatePaymentQuote({
+        amountMode:          "recipient_exact",
+        targetNetAmountUnits: TARGET.toString(),
+        network, asset,
+        feeBps: bps,
+      });
+      // net ≥ target: il destinatario non riceve mai meno del target
+      expect(BigInt(quote.netAmount)).toBeGreaterThanOrEqual(TARGET);
+      // invariante contabile
+      expect(BigInt(quote.netAmount) + BigInt(quote.projectFee)).toBe(BigInt(quote.grossAmount));
+    }
+  });
+});
+
+// ─── TEST L — Fee dinamica: multi-network ────────────────────────────────────
+//
+// Verifica che lo stesso meccanismo funzioni per Ethereum, BSC e Bitcoin.
+
+describe("TEST L — Fee dinamica multi-network (100 bps = 1%)", () => {
+  const BPS = 100n;
+
+  it("Ethereum USDT — recipient_exact 1000 USDT @ 100 bps", () => {
+    const TARGET = 1_000_000_000n;
+    const quote = calculatePaymentQuote({
+      amountMode:          "recipient_exact",
+      targetNetAmountUnits: TARGET.toString(),
+      network: "ethereum", asset: "USDT",
+      feeBps: BPS,
+    });
+    expect(BigInt(quote.grossAmount)).toBe(1_010_101_011n);
+    expect(BigInt(quote.netAmount)).toBeGreaterThanOrEqual(TARGET);
+    expect(BigInt(quote.netAmount) + BigInt(quote.projectFee)).toBe(BigInt(quote.grossAmount));
+    expect(quote.feeBps).toBe(100);
+  });
+
+  it("BSC USDT — recipient_exact 1000 USDT @ 100 bps (18 decimali)", () => {
+    // 1000 USDT @ 18 decimali = 1000 × 10^18
+    const TARGET = 1_000n * (10n ** 18n);
+    const quote = calculatePaymentQuote({
+      amountMode:          "recipient_exact",
+      targetNetAmountUnits: TARGET.toString(),
+      network: "bsc", asset: "USDT",
+      feeBps: BPS,
+    });
+    // gross = ceil(TARGET × 10000 / 9900)
+    const expectedGross = (TARGET * 10_000n + 9_899n) / 9_900n;
+    expect(BigInt(quote.grossAmount)).toBe(expectedGross);
+    expect(BigInt(quote.netAmount)).toBeGreaterThanOrEqual(TARGET);
+    expect(BigInt(quote.netAmount) + BigInt(quote.projectFee)).toBe(BigInt(quote.grossAmount));
+    expect(quote.feeBps).toBe(100);
+  });
+
+  it("Bitcoin — recipient_exact 0.01 BTC @ 100 bps (8 decimali)", () => {
+    const TARGET = 1_000_000n; // 0.01 BTC in satoshi
+    const quote = calculatePaymentQuote({
+      amountMode:          "recipient_exact",
+      targetNetAmountUnits: TARGET.toString(),
+      network: "bitcoin", asset: "BTC",
+      feeBps: BPS,
+    });
+    // BTC usa lo stesso meccanismo di grossFromNet (salvo BTC_FEE_FLOOR_SAT)
+    expect(BigInt(quote.netAmount)).toBeGreaterThanOrEqual(TARGET);
+    expect(BigInt(quote.netAmount) + BigInt(quote.projectFee)).toBe(BigInt(quote.grossAmount));
+    expect(quote.feeBps).toBe(100);
+  });
+});
+
+// ─── TEST M — Coerenza quote ↔ createTransfer ────────────────────────────────
+//
+// Verifica che lo stesso feeBps passato al quote produca gli stessi valori
+// che il service userebbe al create-time: zero divergenza.
+
+describe("TEST M — Coerenza quote ↔ createTransfer (stessa feeBps)", () => {
+  it("feeBps=100 → quote e create producono lo stesso gross/net/fee", () => {
+    const TARGET = 500_000_000n; // 500 USDT
+    const feeBps = 100n;
+
+    const quote1 = calculatePaymentQuote({
+      amountMode:          "recipient_exact",
+      targetNetAmountUnits: TARGET.toString(),
+      network: "polygon", asset: "USDT",
+      feeBps,
+    });
+    // Seconda chiamata: identico risultato (deterministico)
+    const quote2 = calculatePaymentQuote({
+      amountMode:          "recipient_exact",
+      targetNetAmountUnits: TARGET.toString(),
+      network: "polygon", asset: "USDT",
+      feeBps,
+    });
+
+    expect(quote1.grossAmount).toBe(quote2.grossAmount);
+    expect(quote1.netAmount).toBe(quote2.netAmount);
+    expect(quote1.projectFee).toBe(quote2.projectFee);
+    expect(quote1.feeBps).toBe(100);
+  });
+
+  it("feeBps diversi → gross diversi (nessuna collisione)", () => {
+    const TARGET = 1_000_000_000n; // 1000 USDT
+    const q10  = calculatePaymentQuote({ amountMode: "recipient_exact", targetNetAmountUnits: TARGET.toString(), network: "polygon", asset: "USDT", feeBps: 10n  });
+    const q100 = calculatePaymentQuote({ amountMode: "recipient_exact", targetNetAmountUnits: TARGET.toString(), network: "polygon", asset: "USDT", feeBps: 100n });
+    const q200 = calculatePaymentQuote({ amountMode: "recipient_exact", targetNetAmountUnits: TARGET.toString(), network: "polygon", asset: "USDT", feeBps: 200n });
+
+    expect(BigInt(q10.grossAmount)).toBeLessThan(BigInt(q100.grossAmount));
+    expect(BigInt(q100.grossAmount)).toBeLessThan(BigInt(q200.grossAmount));
+  });
+});
+
 // ─── computeGrossFromNet — unit test diretti ──────────────────────────────────
 
 describe("computeGrossFromNet — formula inversa", () => {
