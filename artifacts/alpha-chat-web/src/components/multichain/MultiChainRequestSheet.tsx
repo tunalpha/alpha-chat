@@ -353,34 +353,22 @@ export function MultiChainRequestSheet({ conversationId, toUserId, toName, onClo
 
               {amountMode === "send_amount" ? (
                 <>
-                  {/* send_amount: lordo fisso depositato dal pagatore */}
-                  <div className="mc-confirm-row">
-                    <span>{toName} deposita</span>
-                    <span>
-                      {fmtQ(totalPaidUnits(quote).toString())}
-                      {isBtc && <em style={{ fontSize: "0.76em", opacity: 0.65, marginLeft: 4 }}>(+ fee miner BTC)</em>}
-                    </span>
-                  </div>
-                  <div className="mc-confirm-row mc-confirm-fee">
-                    <span>Fee progetto</span>
-                    <span>−{fmtQ(quote.projectFee)}
-                      {quote.btcFeeFloorApplied && <em style={{ fontSize: "0.72em", opacity: 0.7, marginLeft: 4 }}>(min 546 sat)</em>}
-                    </span>
-                  </div>
-                  {!isBtc && BigInt(quote.networkFeeCharged ?? "0") > 0n && (
-                    <div className="mc-confirm-row mc-confirm-fee" style={{ opacity: 0.85 }}>
-                      <span>Network fee <em style={{ fontSize: "0.72em", opacity: 0.7 }}>(stima)</em></span>
-                      <span>−{fmtQ(quote.networkFeeCharged)}</span>
-                    </div>
-                  )}
+                  {/* send_amount: mostra solo importo che ricevi e quanto deposita il pagatore */}
                   <div className="mc-confirm-row mc-confirm-net">
                     <span>Tu ricevi</span>
                     <strong>{fmtQ(quote.netAmount)}</strong>
                   </div>
+                  <div className="mc-confirm-row mc-confirm-total">
+                    <span>{toName} pagherà</span>
+                    <strong>
+                      {fmtQ(totalPaidUnits(quote).toString())}
+                      {isBtc && <em style={{ fontSize: "0.76em", opacity: 0.65, marginLeft: 4 }}>(+ fee miner BTC)</em>}
+                    </strong>
+                  </div>
                 </>
               ) : (
                 <>
-                  {/* recipient_exact: tu ricevi esattamente, il pagatore paga gross + fee rete */}
+                  {/* recipient_exact: importo esatto che ricevi + totale che pagherà l'altro */}
                   <div className="mc-confirm-row mc-confirm-net">
                     <span>Tu ricevi (esatto)</span>
                     <strong>
@@ -389,19 +377,6 @@ export function MultiChainRequestSheet({ conversationId, toUserId, toName, onClo
                         : fmtDisplay(targetNetUnits ?? quote.netAmount, rawDec, dispDec) + " " + ticker}
                     </strong>
                   </div>
-                  <div className="mc-confirm-row mc-confirm-fee">
-                    <span>Fee progetto</span>
-                    <span>+{fmtQ(quote.projectFee)}
-                      {quote.btcFeeFloorApplied && <em style={{ fontSize: "0.72em", opacity: 0.7, marginLeft: 4 }}>(min 546 sat)</em>}
-                    </span>
-                  </div>
-                  {!isBtc && BigInt(quote.networkFeeCharged ?? "0") > 0n && (
-                    <div className="mc-confirm-row mc-confirm-fee" style={{ opacity: 0.85 }}>
-                      <span>Network fee <em style={{ fontSize: "0.72em", opacity: 0.7 }}>(stima)</em></span>
-                      <span>+{fmtQ(quote.networkFeeCharged)}</span>
-                    </div>
-                  )}
-                  {/* Totale che pagherà il richiedente — la parte più importante per la UX */}
                   <div className="mc-confirm-row mc-confirm-total">
                     <span>{toName} pagherà</span>
                     <strong>
