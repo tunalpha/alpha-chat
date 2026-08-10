@@ -18,7 +18,7 @@
  */
 
 import { useState, useCallback, useEffect, useRef } from "react";
-import { isNetworkError } from "../lib/multichain-poll";
+import { isNetworkError } from "../../lib/multichain-poll";
 import { useTranslation } from "react-i18next";
 import QRCode from "qrcode";
 import { useActiveAccount, useActiveWalletChain, useSwitchActiveWalletChain, ConnectButton } from "thirdweb/react";
