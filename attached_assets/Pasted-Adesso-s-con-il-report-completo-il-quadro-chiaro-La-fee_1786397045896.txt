@@ -1,0 +1,114 @@
+Adesso sì, con il report completo il quadro è chiaro. La fee Alpha dell’1% è corretta e separata dalla miner fee BTC. Però c’è un aspetto che secondo me merita attenzione prima di chiudere definitivamente il flusso BTC.
+
+Come funziona realmente
+
+Per un destinatario che deve ricevere 0,001 BTC:
+
+Voce	BTC
+Target destinatario	0,00100000
+Project fee Alpha 1%	0,00001010
+Gross necessario	0,00101011
+Stima miner payout	~0,00003420
+Buffer	0,00005000
+Invia esattamente	0,00109431
+
+Quindi non stai facendo pagare al cliente una commissione Alpha del 9,43%.
+
+La vera commissione Alpha è circa 0,00001010 BTC = 1% del gross.
+
+I restanti ~0,00008420 BTC sono riserva per miner fee + buffer operativo.
+
+Però attenzione a “esattamente”
+
+C’è una piccola imperfezione matematica:
+
+Target:
+
+100.000 sat
+
+Il calcolo produce:
+
+101.011 gross − 1.010 fee = 100.001 sat
+
+Quindi il destinatario riceve 1 satoshi in più.
+
+Non è economicamente significativo, ma tecnicamente, se il prodotto dice “riceve esattamente”, io preferirei sistemarlo.
+
+La cosa positiva è che non è un problema della fee dell’1%: è semplicemente il risultato dell’arrotondamento intero dei satoshi.
+
+La cosa che controllerei maggiormente
+
+Il vero punto da verificare è il comportamento del buffer di 5.000 sat.
+
+Se il cliente invia:
+
+109.431 sat
+
+e il payout effettivamente costa, per esempio, 2.500 sat invece dei 3.420 stimati, voglio sapere con certezza dove finiscono i satoshi residui.
+
+Non devono diventare accidentalmente:
+
+* profitto non dichiarato;
+* fee aggiuntiva;
+* saldo bloccato;
+* dust;
+* oppure rimanere indefinitamente nell’escrow.
+
+Devono avere una destinazione contabile/on-chain precisa.
+
+E c’è un’altra cosa molto importante
+
+L’agente dice:
+
+network_fee = "0" → aggiornato alla miner fee effettiva dopo il payout
+
+Questa parte mi interessa molto.
+
+Perché significa che prima del payout il sistema non conosce la miner fee reale, ma sta chiedendo al cliente un deposito maggiorato per coprirla.
+
+È una strategia sensata per BTC, ma deve essere contabilizzata perfettamente.
+
+Io farei quindi un’ultima domanda all’agente
+
+Non cambierei ancora nulla. Mandagli:
+
+Perfetto, audit completo ricevuto. Prima di modificare qualsiasi cosa voglio un’ultima verifica contabile sul flusso BTC.
+
+Caso:
+
+Target destinatario = 100.000 sat
+
+Fee Alpha = 100 bps
+
+minDepositAmount = 109.431 sat
+
+Voglio simulare il caso in cui la miner fee reale del payout NON sia 3.420 sat.
+
+Verifica separatamente questi tre scenari:
+
+A — miner fee reale = 2.500 sat
+
+B — miner fee reale = 3.420 sat
+
+C — miner fee reale = 4.500 sat
+
+Per ciascun caso mostrami esattamente:
+
+1. quanti satoshi riceve l’escrow;
+2. gross amount;
+3. project fee Alpha;
+4. net destinato al destinatario;
+5. miner fee effettiva;
+6. buffer utilizzato;
+7. eventuale surplus residuo;
+8. dove finisce ogni satoshi residuo;
+9. quale valore viene scritto in network_fee;
+10. quale valore viene scritto in project_fee;
+11. se il destinatario riceve sempre il target esatto;
+12. cosa succede all’eventuale surplus del buffer.
+
+Non modificare codice. Solo simulazione/audit contabile.
+
+Inoltre conferma se il sistema può garantire realmente recipient_exact al singolo satoshi oppure se può produrre target + 1 sat come nell’esempio attuale.
+
+Questa è l’ultima verifica che farei. Se anche questa torna correttamente, allora il modello BTC è molto più solido: 1% Alpha chiaramente separato dai costi miner, quote dinamico e gestione del deposito con riserva.
