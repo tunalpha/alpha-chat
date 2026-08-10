@@ -45,6 +45,9 @@ import {
   TOKEN_DECIMALS,
   buildDefaultFeeRegistry,
   BTC_FEE_CONFIG,
+  BTC_MIN_NET_SAT,
+  BTC_MIN_FIAT_EUR,
+  BTC_MIN_FIAT_USD,
   getBtcTreasuryWallet,
   RPC_CONFIGS,
   NATIVE_ASSET_SYMBOL,
@@ -138,6 +141,13 @@ export interface CreateMultiChainTransferParams {
   clientRef:       string;
   /** Scadenza in ore (default: 24) */
   expiresInHours?: number;
+  /**
+   * (Solo BTC) Importo fiat inserito dall'utente — usato per la doppia soglia minima.
+   * Se presente insieme a btcFiatCurrency, il service verifica che sia ≥ BTC_MIN_FIAT.
+   */
+  btcFiatAmount?:   number;
+  /** (Solo BTC) Valuta fiat: "eur" | "usd". Obbligatorio se btcFiatAmount è fornito. */
+  btcFiatCurrency?: string;
 }
 
 /**
@@ -610,6 +620,40 @@ export async function createMultiChainTransfer(
     },
     injectedNetworkFee,
   );
+
+  // ── Soglia minima BTC (doppia condizione AND) ─────────────────────────────
+  //
+  // Controllata DOPO il quote per usare il netAmount calcolato (non l'input grezzo).
+  // Soglia 1: netAmount >= BTC_MIN_NET_SAT (indipendente dal cambio BTC/fiat).
+  // Soglia 2: fiatAmount >= BTC_MIN_FIAT[currency] (il client conosce la valuta).
+  //
+  // FAIL-CLOSED: se una delle due condizioni è falsa, il transfer non viene creato.
+  // La doppia guard protegge anche se qualcuno bypassa il frontend.
+  if (isBtcTransfer) {
+    const netSat = BigInt(quote.netAmount);
+    if (netSat < BTC_MIN_NET_SAT) {
+      throw multichainError("INVALID_AMOUNT", {
+        reason:        "BTC_BELOW_MIN_NET_SAT",
+        minNetSat:     BTC_MIN_NET_SAT.toString(),
+        actualNetSat:  netSat.toString(),
+      });
+    }
+
+    if (params.btcFiatAmount != null && params.btcFiatCurrency) {
+      const currency = params.btcFiatCurrency.toLowerCase();
+      const minFiat  = currency === "usd" ? BTC_MIN_FIAT_USD : BTC_MIN_FIAT_EUR;
+      if (params.btcFiatAmount < minFiat) {
+        const symbol = currency === "usd" ? "$" : "€";
+        throw multichainError("INVALID_AMOUNT", {
+          reason:          "BTC_BELOW_MIN_FIAT",
+          minFiatAmount:   minFiat,
+          minFiatCurrency: params.btcFiatCurrency,
+          minFiatSymbol:   symbol,
+          actualFiat:      params.btcFiatAmount,
+        });
+      }
+    }
+  }
 
   const grossAmount       = BigInt(quote.grossAmount);
   const projectFee        = BigInt(quote.projectFee);

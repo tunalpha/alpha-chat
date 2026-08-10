@@ -30,6 +30,7 @@ import {
   apiMCGet,
   apiMCQuote,
   apiMCNetworks,
+  apiMCBtcLimits,
   MC_DECIMALS,
   MC_DISPLAY_DECIMALS,
   MC_ASSET,
@@ -39,6 +40,7 @@ import {
   type MCNetwork,
   type MCTransfer,
   type MCQuote,
+  type MCBtcLimits,
 } from "../../lib/multichain-api";
 import {
   useBtcPrice,
@@ -171,6 +173,8 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
   const [targetNetUnits, setTargetNetUnits] = useState<string | null>(null);
   const [qrDataUrl,      setQrDataUrl]      = useState<string | null>(null);
   const [cancelling,     setCancelling]     = useState(false);
+  const [btcLimits,      setBtcLimits]      = useState<MCBtcLimits | null>(null);
+  const [copiedAmount,   setCopiedAmount]   = useState(false);
 
   const { price, loading: priceLoading, error: priceError, currency, setCurrency } = useBtcPrice();
 
@@ -198,6 +202,26 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
   const fiatNum = parseFloat(amount.replace(",", ".")) || 0;
   const satoshi = isBtc ? fiatToSatoshi(amount, currency, price) : null;
   const btcStr  = satoshi != null ? satoshiToBtcStr(satoshi) : null;
+
+  // ── Soglie minime BTC (derivate da btcLimits fetch) ─────────────────────────
+  // Soglia 1: netSat >= minNetSat. Soglia 2: fiatNum >= minFiat[currency].
+  // Logica AND: entrambe devono essere vere. Solo mostra il warning se l'utente
+  // ha già inserito un valore (fiatNum > 0).
+  const btcMinNetSat: bigint = btcLimits ? BigInt(btcLimits.minNetSat) : 10_000n;
+  const btcMinFiat:   number = btcLimits
+    ? (currency === "usd" ? btcLimits.minFiatUsd : btcLimits.minFiatEur)
+    : (currency === "usd" ? 11 : 10);
+
+  const btcBelowMinSat  = isBtc && fiatNum > 0 && satoshi != null && satoshi > 0n && satoshi < btcMinNetSat;
+  const btcBelowMinFiat = isBtc && fiatNum > 0 && fiatNum < btcMinFiat;
+  const btcBelowMin     = btcBelowMinSat || btcBelowMinFiat;
+
+  // Carica soglie minime BTC una volta al mount (quando in modalità BTC)
+  useEffect(() => {
+    if (!isBtc) return;
+    apiMCBtcLimits().then(setBtcLimits).catch(() => {});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isBtc]);
 
   // Carica reti abilitate
   useEffect(() => {
@@ -352,6 +376,11 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
       if (!amount.trim() || fiatNum <= 0)   { setError(t("multichain.invalidAmount")); return; }
       if (!price)                            { setError("Prezzo BTC non disponibile."); return; }
       if (!satoshi || satoshi <= 0n)         { setError(t("multichain.invalidAmount")); return; }
+      // Doppia soglia minima BTC: blocca anche qui (difesa vs bypass)
+      if (btcBelowMin) {
+        setError(`Importo minimo: ${fiatSymbol}${btcMinFiat} / ${Number(btcMinNetSat).toLocaleString()} sat (0.0001 BTC)`);
+        return;
+      }
     } else {
       const n = parseFloat(amount.replace(",", "."));
       if (!amount.trim() || isNaN(n) || n <= 0) { setError(t("multichain.invalidAmount")); return; }
@@ -400,6 +429,11 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
         note:                 note.trim() || undefined,
         clientRef:            crypto.randomUUID(),
         expiresInHours:       24,
+        // (Solo BTC) Invia anche il valore fiat per la doppia soglia backend
+        ...(isBtc && fiatNum > 0 ? {
+          btcFiatAmount:   fiatNum,
+          btcFiatCurrency: currency,
+        } : {}),
       });
       setTransfer(result);
 
@@ -791,6 +825,12 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
                     </>
                   )}
                 </div>
+                {/* Warning soglia minima BTC — visibile solo quando l'importo è troppo basso */}
+                {btcBelowMin && fiatNum > 0 && (
+                  <div className="mc-btc-min-warning" role="status">
+                    ⚠️ Importo minimo: <strong>{fiatSymbol}{btcMinFiat}</strong> / {Number(btcMinNetSat).toLocaleString()} sat (0.0001 BTC)
+                  </div>
+                )}
               </div>
             ) : (
               <div className="usda-sheet-field">
@@ -817,7 +857,7 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
               <button type="button" className="usda-btn-secondary" onClick={onClose}>{t("multichain.cancelBtn")}</button>
               <button type="button" className="usda-btn-primary"
                 onClick={handleContinue}
-                disabled={loading || (isBtc && priceLoading && !price)}
+                disabled={loading || (isBtc && priceLoading && !price) || (isBtc && btcBelowMin && fiatNum > 0)}
                 aria-busy={loading}>
                 {loading ? <><span className="usda-btn-spinner" aria-hidden="true" /> Calcolo…</> : t("multichain.continueBtn")}
               </button>
@@ -1072,7 +1112,22 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
                 </div>
                 <div className="mc-confirm-row mc-confirm-total">
                   <span>Invia esattamente</span>
-                  <strong>{depositDisplay} BTC</strong>
+                  <span style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                    <strong>{depositDisplay} BTC</strong>
+                    <button
+                      type="button"
+                      className={`mc-copy-amount-btn${copiedAmount ? " copied" : ""}`}
+                      title="Copia importo"
+                      aria-label="Copia importo BTC"
+                      onClick={async () => {
+                        await navigator.clipboard.writeText(depositDisplay);
+                        setCopiedAmount(true);
+                        setTimeout(() => setCopiedAmount(false), 2000);
+                      }}
+                    >
+                      {copiedAmount ? "✓" : "📋"}
+                    </button>
+                  </span>
                 </div>
               </div>
 

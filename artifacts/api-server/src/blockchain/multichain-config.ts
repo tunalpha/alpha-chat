@@ -245,6 +245,41 @@ export const BTC_FEE_CONFIG = {
   BUFFER_SAT:    BigInt(parseIntEnv("BTC_MINER_FEE_BUFFER_SAT", 5_000)),
 } as const;
 
+// ─── Soglie minime BTC (doppia condizione AND) ────────────────────────────────
+//
+// Un transfer BTC è accettato solo se ENTRAMBE le condizioni sono vere:
+//   Soglia 1: netAmount >= BTC_MIN_NET_SAT      (10 000 sat = 0.0001 BTC)
+//   Soglia 2: fiatAmount >= BTC_MIN_FIAT[currency]
+//
+// Soglia 1 — importo minimo netto in satoshi (indipendente dal cambio BTC/fiat).
+// Soglia 2 — importo minimo fiat (dipende dal cambio; lato client conosce la valuta).
+//
+// Configurabili via env var senza restart.
+
+/**
+ * Minimo netto BTC accettato in satoshi (default 10 000 sat = 0.0001 BTC).
+ * Override: BTC_MIN_NET_SAT=<intero_positivo>
+ */
+export const BTC_MIN_NET_SAT: bigint = BigInt(parseIntEnv("BTC_MIN_NET_SAT", 10_000));
+
+/**
+ * Importo minimo in EUR (default €10).
+ * Override: BTC_MIN_FIAT_EUR=<numero>
+ */
+export const BTC_MIN_FIAT_EUR: number = (() => {
+  const v = parseFloat(env("BTC_MIN_FIAT_EUR") ?? "");
+  return Number.isFinite(v) && v > 0 ? v : 10;
+})();
+
+/**
+ * Importo minimo in USD (default $11).
+ * Override: BTC_MIN_FIAT_USD=<numero>
+ */
+export const BTC_MIN_FIAT_USD: number = (() => {
+  const v = parseFloat(env("BTC_MIN_FIAT_USD") ?? "");
+  return Number.isFinite(v) && v > 0 ? v : 11;
+})();
+
 // ─── Default fee registry ─────────────────────────────────────────────────────
 
 /**

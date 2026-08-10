@@ -174,6 +174,22 @@ export interface MCCreateParams {
   clientRef:            string;
   note?:                string;        // causale opzionale (max 200 char)
   expiresInHours?:      number;
+  /** (Solo BTC) Importo fiat inserito dall'utente — backend verifica soglia minima fiat */
+  btcFiatAmount?:       number;
+  /** (Solo BTC) Valuta fiat: "eur" | "usd" */
+  btcFiatCurrency?:     string;
+}
+
+export interface MCBtcLimits {
+  minNetSat: string;   // satoshi (stringa BigInt)
+  minFiatEur: number;
+  minFiatUsd: number;
+}
+
+/** Soglie minime BTC configurate via env var — no auth richiesta */
+export async function apiMCBtcLimits(): Promise<MCBtcLimits> {
+  const res = await mcFetch<{ btcLimits: MCBtcLimits }>("GET", "/btc-limits");
+  return res.btcLimits;
 }
 
 export interface MCRequestParams {

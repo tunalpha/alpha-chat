@@ -158,6 +158,13 @@ export const CreateMultiChainTransferSchema = z
     conversationId:   z.string().regex(OBJECT_ID_RE, "conversationId non valido"),
     clientRef:        z.string().min(1).max(128),
     note:             z.string().max(200).optional(),
+    /**
+     * (Solo BTC) Importo fiat inserito dall'utente — usato per la doppia soglia minima.
+     * Se presente, btcFiatCurrency è obbligatorio.
+     */
+    btcFiatAmount:    z.number().positive().optional(),
+    /** (Solo BTC) Valuta fiat: "eur" | "usd". */
+    btcFiatCurrency:  z.enum(["eur", "usd"]).optional(),
     expiresInHours:   z
       .number()
       .int("Deve essere un intero")

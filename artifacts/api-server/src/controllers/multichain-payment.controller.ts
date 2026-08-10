@@ -31,7 +31,7 @@ import {
   setTransferMessageId,
   type MultiChainTransferInfo,
 } from "../payment/multichain-payment.service";
-import { FEATURE_FLAGS, NATIVE_ASSET_SYMBOL, TOKEN_CONTRACTS, FEE_WALLETS, TOKEN_DECIMALS } from "../blockchain/multichain-config";
+import { FEATURE_FLAGS, NATIVE_ASSET_SYMBOL, TOKEN_CONTRACTS, FEE_WALLETS, TOKEN_DECIMALS, BTC_MIN_NET_SAT, BTC_MIN_FIAT_EUR, BTC_MIN_FIAT_USD } from "../blockchain/multichain-config";
 import { estimateDynamicNetworkFee }                from "../blockchain/dynamic-fee-estimator";
 import { PriceUnavailableError }                    from "../blockchain/native-price-provider";
 import { DynamicFeeError }                          from "../blockchain/dynamic-fee-estimator";
@@ -219,6 +219,30 @@ export async function handleGetNetworks(
   }
 }
 
+// ─── GET /multichain/btc-limits ──────────────────────────────────────────────
+//
+// Endpoint pubblico (no auth) che espone le soglie minime BTC configurate via env var.
+// Il frontend le legge una volta al mount e le usa per la validazione real-time,
+// senza hardcodare valori che l'admin potrebbe modificare lato server.
+
+export async function handleGetBtcLimits(
+  _req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    res.json({
+      btcLimits: {
+        minNetSat: BTC_MIN_NET_SAT.toString(),
+        minFiatEur: BTC_MIN_FIAT_EUR,
+        minFiatUsd: BTC_MIN_FIAT_USD,
+      },
+    });
+  } catch (err) {
+    next(err);
+  }
+}
+
 // ─── GET /multichain/config ───────────────────────────────────────────────────
 
 export async function getMultiChainConfig(
@@ -379,6 +403,8 @@ export async function handleCreateTransfer(
       targetNetAmountUnits,
       clientRef,
       expiresInHours,
+      btcFiatAmount,
+      btcFiatCurrency,
     } = req.body;
 
     // Nota architetturale: wallet validation NON avviene alla creazione del transfer.
@@ -417,6 +443,8 @@ export async function handleCreateTransfer(
       targetNetAmountUnits,
       clientRef,
       expiresInHours,
+      btcFiatAmount:   typeof btcFiatAmount  === "number" ? btcFiatAmount  : undefined,
+      btcFiatCurrency: typeof btcFiatCurrency === "string" ? btcFiatCurrency : undefined,
     });
 
     // Crea messaggio in chat e WS broadcast — non-fatal (il transfer è già creato)

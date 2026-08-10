@@ -18,6 +18,7 @@ import { Router, type Request, type Response, type NextFunction, type RequestHan
 import {
   getMultiChainConfig,
   handleGetNetworks,
+  handleGetBtcLimits,
   handleCreateTransfer,
   handleRequestTransfer,
   handlePaymentQuote,
@@ -107,6 +108,9 @@ router.post(
 // IMPORTANTE: questa route deve stare PRIMA di /:id per evitare conflitti di routing.
 // GET /networks — reti e asset abilitati (no auth, usato dal frontend per filtrare la UI)
 router.get("/networks", handleGetNetworks);
+
+// GET /btc-limits — soglie minime BTC configurate via env var (no auth, usate per validazione real-time)
+router.get("/btc-limits", handleGetBtcLimits);
 
 router.post(
   "/transfers/request",
