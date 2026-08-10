@@ -1,0 +1,69 @@
+Sì, assolutamente. Anzi, se il sistema USDA che avete già implementato riesce a fare il reclaim del residuo verso il wallet treasury, ha molto senso verificare se possiamo adottare lo stesso principio per BTC.
+
+La differenza fondamentale è che BTC è UTXO-based, quindi non è identico a USDT/USDA su Polygon. Però il concetto è perfettamente applicabile:
+
+Escrow BTC → payout destinatario + fee Alpha → residuo/change → wallet BTC Alpha
+
+Il problema è che non basta semplicemente aggiungere un secondo trasferimento dopo il payout: bisogna capire se il change può essere indirizzato direttamente al vostro treasury nella stessa transazione di payout.
+
+In realtà questa sarebbe la soluzione migliore
+
+Invece di:
+
+Escrow → destinatario
+Escrow → fee wallet
+Escrow → change dello stesso escrow
+
+potremmo costruire:
+
+Escrow → destinatario
+Escrow → Alpha fee wallet
+Escrow → Alpha treasury wallet (change residuo)
+
+Così non nasce nemmeno l’UTXO stranded.
+
+Per esempio nello scenario B:
+
+109.431 sat
+
+→ 100.001 sat destinatario
+→ 1.010 sat Alpha fee
+→ 3.420 sat miner fee
+→ 5.000 sat → Alpha treasury
+
+Fine. Nessun secondo sweep, nessun UTXO dimenticato sull’escrow.
+
+Ma c’è una cosa da verificare
+
+La domanda tecnica è:
+
+buildPayoutOutputs() permette già di impostare un changeAddress diverso dall’escrow?
+
+L’audit dice che oggi:
+
+changeAddress = params.escrowAddress
+
+Quindi probabilmente basta capire se l’adapter Bitcoin può usare un BTC treasury/change wallet come destinazione del resto.
+
+Io farei fare all’agente solo un audit del sistema USDA e del codice BTC, senza modifiche:
+
+Verifica se possiamo utilizzare per BTC lo stesso principio già utilizzato dal sistema USDA per trasferire automaticamente il residuo al nostro wallet treasury.
+
+Voglio confrontare l’implementazione USDA con buildPayoutOutputs() / selectUtxos() del Bitcoin adapter.
+
+Verifica:
+
+1. come USDA trasferisce oggi il residuo al wallet treasury dopo la transazione;
+2. se possiamo ottenere lo stesso risultato direttamente nella TX di payout BTC;
+3. se il changeAddress BTC può essere impostato sul nostro BTC treasury wallet invece dell’escrow;
+4. se questo permette di evitare completamente gli UTXO stranded;
+5. se il residuo può essere inviato al treasury nella stessa TX di payout, senza una seconda transazione;
+6. cosa succede quando il residuo è inferiore al dust limit;
+7. quale sarebbe il costo aggiuntivo in vbytes/miner fee;
+8. se la project fee dell’1% rimane completamente separata;
+9. se il destinatario continua a ricevere il target;
+10. se esistono problemi di sicurezza nel mandare il change direttamente al treasury.
+
+Non modificare codice. Solo audit comparativo USDA ↔ BTC e proposta tecnica.
+
+Se è fattibile, io preferirei questa soluzione allo sweep successivo. È più pulita: ogni payout BTC chiude completamente l’escrow e il residuo viene trasferito subito al vostro wallet, senza lasciare fondi sparsi in decine o centinaia di indirizzi.
