@@ -205,6 +205,18 @@ function parseIntEnv(key: string, defaultVal: number): number {
   return Number.isFinite(n) && n > 0 ? n : defaultVal;
 }
 
+/**
+ * BTC Treasury wallet — riceve il change residuo dalla TX di payout Bitcoin.
+ *
+ * Quando configurato, ogni TX di payout BTC invia il change (buffer + risparmio miner fee)
+ * direttamente a questo indirizzo nella stessa TX, eliminando gli UTXO stranded sugli escrow.
+ *
+ * Se non configurato (null), il change torna all'indirizzo escrow (backward compat).
+ *
+ * Imposta con: BTC_TREASURY_WALLET=bc1q...
+ */
+export const BTC_TREASURY_WALLET: string | null = env("BTC_TREASURY_WALLET") ?? null;
+
 export const BTC_FEE_CONFIG = {
   /** Tasso stimato per minDepositAmount (sat/vbyte) — default 20 */
   ESTIMATE_RATE: parseIntEnv("BTC_ESTIMATE_FEE_RATE_SAT_VB", 20),

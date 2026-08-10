@@ -57,7 +57,7 @@ export { generateBtcEscrowWallet };
 export interface BtcPayoutParams {
   /** PK cifrata AES-256-GCM dell'escrow wallet */
   encryptedPk:   string;
-  /** Indirizzo escrow (usato come change address) */
+  /** Indirizzo escrow (fallback change address se treasuryAddress non configurato) */
   escrowAddress: string;
   /** Destinatario principale (netAmount) */
   recipient:     string;
@@ -67,6 +67,12 @@ export interface BtcPayoutParams {
   feeWallet:     string | null;
   /** Project fee in satoshi */
   projectFee:    bigint;
+  /**
+   * Indirizzo BTC treasury per il change residuo del payout.
+   * Se presente e valido, il change viene inviato qui invece che all'escrow.
+   * Se null/undefined, il change torna all'escrow (backward compat).
+   */
+  treasuryAddress?: string | null;
   /** Conferme minime da attender prima di considerare il payout "confirmed" */
   minConfirmations?: number;
 }
@@ -235,6 +241,22 @@ export class BitcoinAdapter implements BlockchainAdapter {
       });
     }
 
+    // Determina change address: treasury wallet (validato) o fallback all'escrow.
+    // Se BTC_TREASURY_WALLET è configurato, il change residuo viene inviato lì nella
+    // stessa TX di payout — nessun UTXO stranded sull'escrow, nessuna TX aggiuntiva.
+    const resolvedChangeAddress = (() => {
+      if (params.treasuryAddress) {
+        if (!this.validateAddress(params.treasuryAddress)) {
+          throw new Error(
+            `BTC_TREASURY_WALLET non è un indirizzo Bitcoin valido: "${params.treasuryAddress}". ` +
+            `Verificare la configurazione env BTC_TREASURY_WALLET.`,
+          );
+        }
+        return params.treasuryAddress;
+      }
+      return params.escrowAddress;
+    })();
+
     // Costruisci output pianificati
     const outputs = buildPayoutOutputs({
       netAmount:  params.netAmount,
@@ -248,33 +270,42 @@ export class BitcoinAdapter implements BlockchainAdapter {
       utxos,
       outputs,
       feeRateSatVb:  feeRate,
-      changeAddress: params.escrowAddress,
+      changeAddress: resolvedChangeAddress,
     });
 
     logger.info(
       {
-        escrow:   params.escrowAddress,
-        inputs:   selection.selected.length,
-        outputs:  outputs.length + (selection.change > 0n ? 1 : 0),
-        minerFee: selection.estimatedFee.toString(),
-        change:   selection.change.toString(),
+        escrow:         params.escrowAddress,
+        changeAddress:  resolvedChangeAddress,
+        treasuryUsed:   resolvedChangeAddress !== params.escrowAddress,
+        inputs:         selection.selected.length,
+        outputs:        outputs.length + (selection.change > 0n ? 1 : 0),
+        minerFee:       selection.estimatedFee.toString(),
+        change:         selection.change.toString(),
       },
       "[BitcoinAdapter] Costruzione TX payout",
     );
 
-    // Firma
+    // Firma — usa resolvedChangeAddress (treasury o escrow) per il change output
     const signed = buildAndSignTx({
       signerPkBytes: pkBytes,
       selection,
       outputs,
-      changeAddress: params.escrowAddress,
+      changeAddress: resolvedChangeAddress,
     });
 
     // H-2: broadcastTxSafe — lookup pre/post broadcast per evitare TX duplicate su timeout/5xx
     const txid = await this.api.broadcastTxSafe(signed.rawHex, signed.txid);
 
     logger.info(
-      { txid, netAmount: params.netAmount.toString(), projectFee: params.projectFee.toString(), minerFee: selection.estimatedFee.toString() },
+      {
+        txid,
+        netAmount:    params.netAmount.toString(),
+        projectFee:   params.projectFee.toString(),
+        minerFee:     selection.estimatedFee.toString(),
+        changeAmount: selection.change.toString(),
+        changeTo:     selection.change > 0n ? resolvedChangeAddress : "none (< dust)",
+      },
       "[BitcoinAdapter] Payout Bitcoin completato",
     );
 
@@ -283,7 +314,7 @@ export class BitcoinAdapter implements BlockchainAdapter {
       networkFee: selection.estimatedFee,
       outputs: [
         ...outputs,
-        ...(selection.change > 0n ? [{ address: params.escrowAddress, value: selection.change }] : []),
+        ...(selection.change > 0n ? [{ address: resolvedChangeAddress, value: selection.change }] : []),
       ],
     };
   }

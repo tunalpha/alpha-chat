@@ -45,6 +45,7 @@ import {
   TOKEN_DECIMALS,
   buildDefaultFeeRegistry,
   BTC_FEE_CONFIG,
+  BTC_TREASURY_WALLET,
   RPC_CONFIGS,
   NATIVE_ASSET_SYMBOL,
   getNativePriceUSDT,
@@ -1636,12 +1637,15 @@ async function _releaseBitcoin(doc: MultiChainTransferDocument): Promise<MultiCh
   );
 
   const result = await btcAdapter.buildAndBroadcastPayout({
-    encryptedPk:   doc.escrow_encrypted_pk,
-    escrowAddress: doc.escrow_wallet,
-    recipient:     doc.recipient_wallet,
-    netAmount:     BigInt(doc.net_amount),
-    feeWallet:     doc.fee_wallet,
-    projectFee:    BigInt(doc.project_fee),
+    encryptedPk:    doc.escrow_encrypted_pk,
+    escrowAddress:  doc.escrow_wallet,
+    recipient:      doc.recipient_wallet,
+    netAmount:      BigInt(doc.net_amount),
+    feeWallet:      doc.fee_wallet,
+    projectFee:     BigInt(doc.project_fee),
+    // Treasury: se configurato, il change residuo va qui nella stessa TX (no UTXO stranded).
+    // Fallback a escrowAddress se BTC_TREASURY_WALLET non è impostato.
+    treasuryAddress: BTC_TREASURY_WALLET,
   });
 
   // BTC: 1 TX unica → tx_hash_release e tx_hash_fee puntano allo stesso txid

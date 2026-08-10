@@ -1,0 +1,116 @@
+Questo audit è ottimo e, a questo punto, io sceglierei questa soluzione per BTC.
+
+Anzi, è migliore dello sweep successivo che stavamo valutando.
+
+Perché è la soluzione giusta
+
+Oggi:
+
+Escrow → destinatario + fee Alpha + miner fee + change sull’escrow
+
+Risultato: rimane un UTXO sull’escrow.
+
+Con la modifica:
+
+Escrow → destinatario + fee Alpha + miner fee + change → BTC Treasury
+
+Risultato: l’escrow viene chiuso nella stessa transazione.
+
+E soprattutto:
+
+* ✅ nessuna seconda TX
+* ✅ nessun scheduler
+* ✅ nessun sistema di retry
+* ✅ nessun UTXO stranded
+* ✅ nessun costo aggiuntivo di vbytes
+* ✅ fee Alpha 1% invariata
+* ✅ destinatario invariato
+* ✅ stessa logica recipient_exact
+* ✅ il treasury non deve possedere la chiave dell’escrow
+* ✅ il change viene trasferito atomicamente nella stessa TX
+
+Esempio
+
+Con i numeri dell’audit:
+
+109.431 sat entrano nell’escrow
+
+La TX può diventare:
+
+Destinazione	Sat
+Destinatario	100.001
+Alpha fee wallet	1.010
+Miner fee	~3.420
+Alpha BTC Treasury	5.000
+Totale	109.431
+
+Quindi quei 5.000 sat non rimangono dispersi.
+
+Mi piace anche il fallback
+
+Questa parte:
+
+params.treasuryAddress ?? params.escrowAddress
+
+è importante.
+
+Se BTC_TREASURY_WALLET non è configurato, il comportamento rimane quello attuale invece di rompere il payout.
+
+Io però aggiungerei una validazione obbligatoria quando la variabile è presente, così evitiamo di mandare il change a un indirizzo BTC configurato male.
+
+⸻
+
+Una cosa che farei aggiungere
+
+Non è indispensabile per il funzionamento, ma per la contabilità sarebbe utile registrare nel DB:
+
+* gross_amount
+* project_fee
+* net_amount
+* network_fee
+* min_deposit_amount
+* treasury_change_amount
+
+Così puoi sapere esattamente quanto BTC è stato recuperato dal sistema come change per ogni transazione.
+
+Non lo considero però necessario per il primo fix se vogliamo mantenerlo minimalista.
+
+Quindi io darei il via libera
+
+Manderei all’agente:
+
+Confermato. Applica questa soluzione per il BTC change verso il Treasury.
+
+Implementa esclusivamente le 4 modifiche indicate nell’audit:
+
+1. BtcPayoutParams → treasuryAddress?: string
+2. buildAndBroadcastPayout → changeAddress: params.treasuryAddress ?? params.escrowAddress
+3. _releaseBitcoin → passare BTC_TREASURY_WALLET
+4. multichain-config.ts → aggiungere BTC_TREASURY_WALLET
+
+Requisiti:
+
+* il destinatario deve continuare a ricevere lo stesso net_amount;
+* la project fee deve continuare ad andare esclusivamente a BTC_FEE_WALLET;
+* il change deve andare a BTC_TREASURY_WALLET;
+* nessuna modifica al calcolo della fee 1%;
+* nessuna modifica al recipient_exact;
+* nessuna modifica a quote o network fee;
+* nessuna seconda transazione di sweep;
+* se il change è < 546 sat, mantenere il comportamento attuale: niente output change e il residuo diventa miner fee;
+* mantenere il fallback a escrowAddress se BTC_TREASURY_WALLET non è configurato;
+* validare il treasury address prima dell’utilizzo.
+
+Aggiungi test specifici per verificare:
+
+1. change ≥ 546 sat → va al Treasury;
+2. change < 546 sat → nessun output Treasury;
+3. Treasury non configurato → fallback escrow;
+4. project fee rimane invariata;
+5. net destinatario rimane invariato;
+6. numero di output/vbytes invariato;
+7. nessun UTXO stranded quando il Treasury è configurato.
+
+Prima di fare deploy mostrami tutti i test e il diff esatto delle modifiche.
+
+Questa, per me, è una correzione architetturalmente pulita. E soprattutto risolve il problema alla radice: non dobbiamo più andare a cercare i piccoli residui BTC negli escrow dopo le transazioni; il resto viene indirizzato al vostro Treasury nello stesso momento in cui viene effettuato il payout.
