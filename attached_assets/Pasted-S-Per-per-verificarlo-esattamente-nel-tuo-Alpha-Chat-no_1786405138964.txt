@@ -1,0 +1,62 @@
+Sì. Però per verificarlo esattamente nel tuo Alpha Chat non basta lo screenshot: il valore 12000 bps / ×1,20 è una configurazione interna del tuo progetto e non è esposta pubblicamente sul sito.
+
+Dal contesto che mi hai fornito, la distinzione è questa:
+
+* 100 bps = 1% → Project Fee Alpha, quella che hai appena impostato.
+* 12.000 bps = ×1,20 → moltiplicatore della stima della network fee, quindi non è una commissione del 20% sul pagamento.
+* default → indica che è il valore predefinito della configurazione, non il tuo override dell’1%.
+
+Ma c’è una cosa che voglio controllare bene
+
+La dicitura ×1,20 (+20%) / 12000 bps mi fa pensare che quella sezione sia probabilmente utilizzata per gonfiare la stima del costo della rete, per esempio:
+
+network fee stimata = costo RPC/gas × 1,20
+
+e non:
+
+importo × 20%.
+
+Però voglio evitare di darti una risposta teorica: facciamo leggere all’agente il percorso esatto dal pannello Admin fino al calcolo della network fee, come abbiamo fatto per la fee 1%.
+
+Puoi dargli questo prompt:
+
+AUDIT — Network Fee Multiplier ×1.20 / 12000 bps
+
+Nessuna modifica e nessun deploy.
+
+Voglio capire esattamente cosa rappresenta la configurazione che vedo in Alpha OPS:
+
+Polygon USDT — ×1.20 (+20%) — 12000 bps — default
+
+e la stessa configurazione per Ethereum USDT e BSC USDT.
+
+Traccia tutto il percorso:
+
+Admin UI → DB → configurazione → backend → calcolo quote → networkFeeCharged → importo finale pagato dall’utente.
+
+Rispondi precisamente:
+
+1. Cosa significa 12000 bps in questo contesto?
+2. Perché viene visualizzato ×1.20 (+20%)?
+3. È una commissione applicata all’importo oppure un moltiplicatore della network fee stimata?
+4. Dove viene applicato matematicamente?
+5. Quale formula viene utilizzata?
+6. Su 1000 USDT Polygon, con network fee reale/stimata di X, quale valore viene mostrato all’utente?
+7. La project fee Alpha di 100 bps (1%) viene calcolata separatamente?
+8. Le due percentuali possono sommarsi accidentalmente?
+9. Questa configurazione influenza recipient_exact?
+10. Questa configurazione influenza BTC oppure BTC segue un percorso separato?
+11. Se modifico 12000 bps in Admin, il prossimo quote usa automaticamente il nuovo valore?
+12. Da dove viene il valore default?
+13. Esiste un override DB per rete, come per la project fee?
+14. Mostrami un esempio completo numerico per 1000 USDT Polygon separando:
+
+* importo destinatario;
+* project fee 1%;
+* network fee;
+* eventuale moltiplicatore ×1,20;
+* totale pagato dal cliente.
+
+IMPORTANTE: non modificare alcun file. Voglio esclusivamente l’audit e le formule esatte.
+
+Questo ci dirà definitivamente se quel 20% è soltanto un margine sulla network fee oppure se c’è qualcosa nel calcolo che dobbiamo rivedere.
