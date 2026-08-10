@@ -345,23 +345,16 @@ export function MultiChainPayRequestSheet({
       }
     }
 
-    // ── 3. Stabilisation delay post-switchChain ───────────────────────────────
+    // ── 3. sendTransaction fire-and-forget ───────────────────────────────────
     //
-    // WalletConnect relay rimane in stato di transizione per ~500 ms dopo
-    // wallet_switchEthereumChain. Se sendTransaction parte subito, il messaggio
-    // eth_sendTransaction viene swallowed dal relay (Promise pende forever,
-    // Trust Wallet non mostra il popup firma).
-    // 800 ms è sufficiente a stabilizzare il relay senza UX percepibile.
-    await new Promise<void>(r => setTimeout(r, 800));
-
-    // ── 4. sendTransaction fire-and-forget ────────────────────────────────────
-    //
+    // Identico al pattern di MultiChainSendSheet che funziona su BSC:
     // NON await txHash — fonte di verità = polling backend.
-    // chainId incluso per rinforzare la chain già switchata (no-op se corretta).
-    // ERC-20 calldata manuale: evita wallet_sendCalls (EIP-5792) / doppio popup.
+    // Nessun delay post-switchChain: il delay dà tempo al wallet iOS di chiudersi
+    // dopo il chain-switch → sendTransaction arriva quando il wallet non è più
+    // in foreground → popup firma non appare.
+    // chainId: routing WC corretto verso eip155:${evmChainId}.
     //
     // DESTINAZIONE:  PAGATORE WALLET → USDT ERC-20 → ESCROW WALLET
-    // MAI direttamente al richiedente.
 
     setPhase("signing");
 
@@ -373,12 +366,7 @@ export function MultiChainPayRequestSheet({
       data:  calldata,
       gas:   BigInt(150_000),
       value: BigInt(0),
-      // chainId è undefined a runtime (non nel payload WalletConnect).
-      // switchChain esplicito al passo 2 già mette il wallet sulla chain corretta.
-      // Se chainId fosse incluso, ThirdWeb v5 emette un secondo wallet_switchEthereumChain
-      // via WalletConnect → rifiutato con "Missing or invalid chainId" su Trust Wallet iOS
-      // → nessun popup di firma. Cast necessario perché il tipo ThirdWeb richiede number.
-      chainId: undefined as unknown as number,
+      chainId: evmChainId,
     }).catch((err: unknown) => {
       const msg = (err as Error)?.message ?? "";
       if (/reject|cancel|denied|refused|user rejected/i.test(msg)) {
