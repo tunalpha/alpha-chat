@@ -562,6 +562,7 @@ export function MultiChainPayRequestSheet({
                   /* Wallet non connesso — mostra ConnectButton (UX spec) */
                   <ConnectButton
                     client={client}
+                    chain={evmChain ?? polygon}
                     wallets={wallets}
                     connectButton={{ label: "🔗 Collega wallet per pagare" }}
                     connectModal={{ size: "compact" }}
