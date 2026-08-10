@@ -1,0 +1,100 @@
+Certo. Ti ripropongo il prompt completo, aggiornato anche con il pulsante Copia accanto all’importo BTC.
+
+TASK — BTC: importo minimo + copia importo
+
+NON modificare ancora il codice. Prima fai audit e proposta.
+
+1. Importo minimo BTC
+
+Voglio introdurre un importo minimo per i pagamenti Bitcoin, perché durante un test ho impostato circa 1 EUR e la schermata ha mostrato:
+
+Invia esattamente 0.00010771 BTC ≈ 5,96 EUR
+
+La maggiorazione deriva principalmente da estimatedMinerFee + BUFFER_SAT e rende i micropagamenti BTC economicamente poco sensati.
+
+Fai un audit numerico completo considerando almeno:
+
+* 5 EUR
+* 10 EUR
+* 15 EUR
+* 20 EUR
+* 25 EUR
+* 50 EUR
+* 100 EUR
+
+Per ogni importo indica:
+
+1. target BTC;
+2. gross;
+3. project fee 1%;
+4. estimated miner fee;
+5. BUFFER_SAT;
+6. minDepositAmount;
+7. importo effettivamente mostrato come “Invia esattamente”;
+8. equivalente EUR;
+9. maggiorazione percentuale rispetto al target.
+
+Poi proponi un unico importo minimo BTC consigliato per Alpha, motivandolo in base alla sostenibilità economica e alla UX.
+
+Il minimo deve essere applicato in modo chiaro prima della creazione della transazione, con un messaggio comprensibile all’utente, senza alterare la fee 1% o la logica recipient_exact.
+
+⸻
+
+2. Pulsante COPIA per l’importo BTC
+
+Nella schermata Invia Cripto → Bitcoin → Indirizzo, attualmente viene mostrato:
+
+Invia esattamente 0.00010771 BTC
+
+Voglio aggiungere un piccolo pulsante/icona 📋 Copia accanto all’importo BTC, in modo che l’utente possa copiare direttamente negli appunti l’importo BTC esatto da inviare, senza doverlo selezionare manualmente.
+
+Esempio:
+
+Invia esattamente 0.00010771 BTC  [📋 Copia]
+
+Al tap:
+
+* copiare negli appunti il valore numerico esatto, ad esempio 0.00010771;
+* NON copiare “BTC” se il wallet deve ricevere solo il valore numerico;
+* mostrare un feedback breve tipo “Importo copiato”;
+* non modificare il valore visualizzato;
+* non modificare l’indirizzo BTC;
+* non modificare QR o polling del deposito.
+
+Il pulsante Copia indirizzo esistente deve rimanere invariato.
+
+⸻
+
+3. Vincoli importanti
+
+Non modificare:
+
+* project fee 1%;
+* recipient_exact;
+* calcolo gross;
+* net_amount;
+* project_fee;
+* miner fee;
+* BTC Treasury/change;
+* polling BTC;
+* gestione Load failed;
+* flusso USDA;
+* Polygon/Ethereum/BSC;
+* altri asset.
+
+Il task deve essere isolato esclusivamente al comportamento BTC.
+
+4. Prima fase
+
+Per ora nessuna modifica e nessun deploy.
+
+Fai prima l’audit e mostrami:
+
+1. tabella numerica degli importi;
+2. minimo BTC consigliato;
+3. dove verrebbe applicato il controllo del minimo;
+4. file/componente in cui aggiungere il pulsante Copia;
+5. comportamento UX proposto;
+6. eventuali test necessari.
+
+Solo dopo la mia conferma potrai modificare il codice.
