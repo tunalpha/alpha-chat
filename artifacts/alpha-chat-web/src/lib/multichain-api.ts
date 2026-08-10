@@ -365,6 +365,36 @@ export function fmtDisplay(units: string, rawDecimals: number, displayDecimals: 
 }
 
 /**
+ * Come fmtDisplay ma arrotonda verso l'alto (ceiling) invece di troncare.
+ * Usare per mostrare "quanto pagherà il pagatore": meglio dire 0.91 che 0.90
+ * quando il gross reale è 0.909091, così il pagatore sa che deve avere abbastanza fondi.
+ */
+export function fmtDisplayCeil(units: string, rawDecimals: number, displayDecimals: number): string {
+  try {
+    if (rawDecimals <= displayDecimals) {
+      return fmtDisplay(units, rawDecimals, displayDecimals);
+    }
+    const diff   = rawDecimals - displayDecimals;
+    const scale  = BigInt(10) ** BigInt(diff);
+    const raw    = BigInt(units);
+    // ceiling: (raw + scale - 1) / scale
+    const scaled = (raw + scale - 1n) / scale;
+    let str = fromSmallestUnit(scaled.toString(), displayDecimals);
+    if (displayDecimals <= 2) {
+      const dot = str.indexOf(".");
+      if (dot === -1) {
+        str += displayDecimals > 0 ? "." + "0".repeat(displayDecimals) : "";
+      } else {
+        str = str.padEnd(dot + 1 + displayDecimals, "0");
+      }
+    }
+    return str;
+  } catch {
+    return fmtDisplay(units, rawDecimals, displayDecimals);
+  }
+}
+
+/**
  * Etichetta fee per network (uso nell'interfaccia — nessuna voce "Commissione AlphaChat").
  * EVM-style chains: "Gas fee". UTXO/Polygon: "Fee rete".
  */

@@ -21,6 +21,7 @@ import {
   MC_ASSET,
   toSmallestUnit,
   fmtDisplay,
+  fmtDisplayCeil,
   type MCNetwork,
   type MCQuote,
   type MCAmountMode,
@@ -123,6 +124,11 @@ export function MultiChainRequestSheet({ conversationId, toUserId, toName, onClo
 
   const fmtQ = (units: string) =>
     isBtc ? fmtDisplay(units, 8, 8) + " BTC" : fmtDisplay(units, rawDec, dispDec) + " " + ticker;
+
+  // Per "pagherà": ceiling invece di floor — il pagatore deve sapere
+  // che serve almeno questa cifra (es. gross 0.909091 → mostra 0.91, non 0.90).
+  const fmtQCeil = (units: string) =>
+    isBtc ? fmtDisplay(units, 8, 8) + " BTC" : fmtDisplayCeil(units, rawDec, dispDec) + " " + ticker;
 
   // ── Step 1 → 2 ───────────────────────────────────────────────────────────
 
@@ -361,7 +367,7 @@ export function MultiChainRequestSheet({ conversationId, toUserId, toName, onClo
                   <div className="mc-confirm-row mc-confirm-total">
                     <span>{toName} pagherà</span>
                     <strong>
-                      {fmtQ(totalPaidUnits(quote).toString())}
+                      {fmtQCeil(totalPaidUnits(quote).toString())}
                       {isBtc && <em style={{ fontSize: "0.76em", opacity: 0.65, marginLeft: 4 }}>(+ fee miner BTC)</em>}
                     </strong>
                   </div>
@@ -382,11 +388,11 @@ export function MultiChainRequestSheet({ conversationId, toUserId, toName, onClo
                     <strong>
                       {isBtc ? (
                         <>
-                          {fmtQ(totalPaidUnits(quote).toString())}
+                          {fmtQCeil(totalPaidUnits(quote).toString())}
                           {" "}<em style={{ fontSize: "0.76em", opacity: 0.65 }}>(+ fee miner BTC)</em>
                         </>
                       ) : (
-                        fmtQ(totalPaidUnits(quote).toString())
+                        fmtQCeil(totalPaidUnits(quote).toString())
                       )}
                     </strong>
                   </div>
