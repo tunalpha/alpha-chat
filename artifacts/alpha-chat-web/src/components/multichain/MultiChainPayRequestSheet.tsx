@@ -156,7 +156,10 @@ export function MultiChainPayRequestSheet({
   const depositBigInt  = (() => { try { return BigInt(depositUnits); } catch { return 0n; } })();
   const depositDisplay = fmtDisplay(depositUnits, rawDec, dispDec);
 
-  // Recovery iOS: se c'è un pending con questo transferId già firmato → riprendi polling
+  // Recovery iOS: se c'è un pending con questo transferId già firmato → verifica backend
+  // PRIMA di tornare in confirming. Se il deposito non è ancora arrivato, il
+  // sendTransaction precedente non ha raggiunto Trust Wallet (stale WC session) →
+  // torna a idle per permettere una nuova firma senza ricaricare l'app.
   useEffect(() => {
     const raw = localStorage.getItem(MC_PENDING_KEY);
     if (!raw) return;
@@ -167,10 +170,29 @@ export function MultiChainPayRequestSheet({
     if (Date.now() - pending.timestamp > 30 * 60 * 1000) {
       localStorage.removeItem(MC_PENDING_KEY); return;
     }
-    if (pending.signed) {
-      setPhase("confirming");
-      void runPolling(undefined);
-    }
+    if (!pending.signed) return;
+
+    // Signed=true ma non sappiamo se Trust Wallet ha davvero ricevuto la TX.
+    // Chiedi al backend lo stato reale prima di decidere.
+    void (async () => {
+      try {
+        const result = await apiMCDetect(transferId);
+        if (result.status !== "awaiting_deposit") {
+          // Deposito già rilevato → il send era andato a buon fine
+          setPhase("confirming");
+          void runPolling(undefined);
+        } else {
+          // Deposito non arrivato → la firma non ha raggiunto il wallet.
+          // Pulisci il pending e torna a idle per permettere una nuova firma.
+          localStorage.removeItem(MC_PENDING_KEY);
+          setPhase("idle");
+        }
+      } catch {
+        // Errore rete: meglio permettere retry che bloccare in confirming
+        localStorage.removeItem(MC_PENDING_KEY);
+        setPhase("idle");
+      }
+    })();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
