@@ -1,0 +1,37 @@
+Prompt da dare all’agente
+
+Confermato l’audit. Applica il FIX MINIMO per il polling BTC.
+
+Il problema è confermato: pollDetect() tratta qualsiasi errore fetch() senza .code come errore fatale. Su iOS Safari un errore di rete transitorio produce Error.message = "Load failed" e quindi il polling viene terminato.
+
+Correggi esclusivamente questo comportamento.
+
+Nuovo comportamento richiesto:
+
+1. DEPOSIT_TX_NOT_DETECTED → continua polling normalmente.
+2. ADAPTER_NOT_FOUND / FEATURE_DISABLED → errore reale, termina come attualmente.
+3. Network error / fetch error / Load failed / Failed to fetch / errore senza .code dovuto alla rete → NON terminare il polling.
+4. In caso di network error:
+    * non impostare signPhase = "error";
+    * non mostrare il banner rosso Load failed;
+    * attendere il normale intervallo di polling;
+    * riprovare automaticamente.
+5. Se la connessione torna disponibile, il polling deve riprendere normalmente senza richiedere all’utente di premere “Ho inviato”.
+6. Non modificare il backend, l’endpoint /detect, il modello della transfer, il calcolo BTC, l’indirizzo, il QR o il flusso di pagamento.
+
+Importante: non classificare indiscriminatamente qualsiasi errore senza .code come network error se potrebbe essere un errore applicativo. Identifica in modo robusto gli errori di rete (TypeError/fetch rejection/AbortError quando appropriato e i messaggi nativi Safari "Load failed" / Chrome "Failed to fetch"), mantenendo gli errori applicativi reali come fatal.
+
+Aggiungi test specifici:
+
+* fetch() che rifiuta con "Load failed" → polling continua ✅
+* fetch() che rifiuta con "Failed to fetch" → polling continua ✅
+* DEPOSIT_TX_NOT_DETECTED → polling continua ✅
+* ADAPTER_NOT_FOUND → polling termina con errore ✅
+* FEATURE_DISABLED → polling termina con errore ✅
+* network error seguito da detect riuscito → deposito rilevato correttamente ✅
+
+Dopo il fix esegui tutti i test e non fare deploy finché non mi mostri il risultato.
+
+Obiettivo: un temporaneo problema di rete su iOS non deve mai far perdere il monitoraggio automatico di un deposito BTC.
+
+Questo fix lo considero importante da fare prima del test BTC reale, perché altrimenti potresti inviare i BTC, avere un piccolo problema di rete sul telefono e ritrovarti con il monitoraggio terminato, pur avendo una richiesta perfettamente valida.

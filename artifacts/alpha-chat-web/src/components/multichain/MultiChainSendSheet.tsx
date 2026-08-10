@@ -18,6 +18,7 @@
  */
 
 import { useState, useCallback, useEffect, useRef } from "react";
+import { isNetworkError } from "../lib/multichain-poll";
 import { useTranslation } from "react-i18next";
 import QRCode from "qrcode";
 import { useActiveAccount, useActiveWalletChain, useSwitchActiveWalletChain, ConnectButton } from "thirdweb/react";
@@ -662,9 +663,12 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
         return;
       } catch (pollErr: unknown) {
         const code = (pollErr as Error & { code?: string })?.code;
-        // ADAPTER_NOT_FOUND e FEATURE_DISABLED sono transitori (deploy in corso, env var mancante):
-        // continua il polling invece di interrompere il recovery.
-        if (code === "DEPOSIT_TX_NOT_DETECTED" || code === "ADAPTER_NOT_FOUND" || code === "FEATURE_DISABLED") continue;
+        // Deposito non ancora trovato dalla blockchain — transitorio, riprova.
+        if (code === "DEPOSIT_TX_NOT_DETECTED") continue;
+        // Errore di rete transitorio (iOS Safari "Load failed", Chrome "Failed to fetch", …):
+        // non terminare il monitor — riprova al prossimo ciclo senza mostrare banner rosso.
+        if (isNetworkError(pollErr)) continue;
+        // Qualsiasi altro errore (ADAPTER_NOT_FOUND, FEATURE_DISABLED, errori applicativi): fatale.
         throw pollErr;
       }
     }
