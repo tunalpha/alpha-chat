@@ -2,7 +2,7 @@
  * bitcoin-ops.tsx — ₿ Bitcoin Operations
  *
  * Centro di controllo Bitcoin-specifico:
- * - Wallet treasury (editabile) + fee wallet con balance onchain
+ * - Wallet treasury (editabile) + fee wallet con balance onchain + controvalore EUR
  * - Fee rate corrente da Blockstream (1/3/6/144 blocchi)
  * - KPI transfer BTC per status
  * - Volume completato
@@ -14,12 +14,13 @@ import { useQuery, useMutation, useQueryClient }       from "@tanstack/react-que
 import {
   Bitcoin, Zap, RefreshCw, ExternalLink, ArrowRightLeft,
   CheckCircle2, XCircle, Clock, AlertTriangle, Activity,
-  Pencil, X, Save, Vault, Percent,
+  Pencil, X, Save, Vault, Percent, TrendingUp,
 } from "lucide-react";
-import { Button }   from "@/components/ui/button";
-import { Input }    from "@/components/ui/input";
-import { Skeleton } from "@/components/ui/skeleton";
-import { apiFetch } from "@/lib/api";
+import { Button }                                      from "@/components/ui/button";
+import { Input }                                       from "@/components/ui/input";
+import { Skeleton }                                    from "@/components/ui/skeleton";
+import { Card, CardContent, CardHeader, CardTitle }    from "@/components/ui/card";
+import { apiFetch }                                    from "@/lib/api";
 
 // ─── Types ─────────────────────────────────────────────────────────────────────
 
@@ -69,12 +70,34 @@ async function patchBtcConfig(treasury_wallet: string): Promise<{ ok: boolean; t
   return apiFetch("/bitcoin/config", { method: "PATCH", body: JSON.stringify({ treasury_wallet }) });
 }
 
+async function fetchBtcPriceEur(): Promise<number> {
+  const res = await fetch(
+    "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=eur",
+    { signal: AbortSignal.timeout(8000) },
+  );
+  if (!res.ok) throw new Error(`CoinGecko ${res.status}`);
+  const data = await res.json() as { bitcoin?: { eur?: number } };
+  const price = data?.bitcoin?.eur;
+  if (!price) throw new Error("Price missing");
+  return price;
+}
+
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 
 function satToBtc(sat: string | null | undefined): string {
   if (!sat) return "—";
   try { return (Number(BigInt(sat)) / 1e8).toLocaleString("en", { maximumFractionDigits: 8, minimumFractionDigits: 4 }); }
   catch { return "—"; }
+}
+
+function satToEur(sat: string | null | undefined, priceEur: number | null | undefined): string | null {
+  if (!sat || !priceEur) return null;
+  try {
+    const btc = Number(BigInt(sat)) / 1e8;
+    const eur = btc * priceEur;
+    if (eur < 0.01) return null;
+    return eur.toLocaleString("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 2 });
+  } catch { return null; }
 }
 
 function truncate(s: string | null | undefined, len = 12): string {
@@ -97,23 +120,17 @@ function formatDate(d: string | null | undefined): string {
   });
 }
 
-// ─── Shared dark card shell ────────────────────────────────────────────────────
-
-function DarkCard({
-  children, className = "",
-}: { children: React.ReactNode; className?: string }) {
-  return (
-    <div className={`rounded-xl border bg-[hsl(220,25%,8%)] border-white/8 ${className}`}>
-      {children}
-    </div>
-  );
-}
-
 // ─── Wallet Card (Treasury — editabile) ───────────────────────────────────────
 
 function TreasuryWalletCard({
-  wallet, balance, isLoading, onSaved,
-}: { wallet: string | null; balance: string | null; isLoading: boolean; onSaved: () => void }) {
+  wallet, balance, priceEur, isLoading, onSaved,
+}: {
+  wallet:   string | null;
+  balance:  string | null;
+  priceEur: number | null;
+  isLoading: boolean;
+  onSaved:  () => void;
+}) {
   const [editing, setEditing]   = useState(false);
   const [draft, setDraft]       = useState("");
   const [error, setError]       = useState<string | null>(null);
@@ -142,54 +159,64 @@ function TreasuryWalletCard({
     mutation.mutate(addr);
   }
 
-  return (
-    <DarkCard className="bg-gradient-to-br from-orange-500/10 to-orange-900/5 border-orange-500/20">
-      <div className="p-5">
-        {/* Header */}
-        <div className="flex items-start justify-between mb-4">
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-lg bg-orange-500/20 flex items-center justify-center">
-              <Vault className="w-4.5 h-4.5 text-orange-400" style={{ width: 18, height: 18 }} />
-            </div>
-            <div>
-              <p className="text-sm font-semibold text-white">Treasury Wallet</p>
-              <p className="text-xs text-white/40 mt-0.5">Change residuo dai payout BTC</p>
-            </div>
-          </div>
-          {!editing && (
-            <button
-              onClick={startEdit}
-              className="flex items-center gap-1.5 text-xs text-white/40 hover:text-orange-400 transition-colors border border-white/10 hover:border-orange-500/40 rounded-lg px-2.5 py-1.5"
-            >
-              <Pencil className="w-3 h-3" />
-              Modifica
-            </button>
-          )}
-        </div>
+  const eurValue = satToEur(balance, priceEur);
 
+  return (
+    <Card className="border-orange-200">
+      <CardHeader className="flex flex-row items-start justify-between pb-3">
+        <div className="flex items-center gap-2.5">
+          <div className="w-9 h-9 rounded-lg bg-orange-100 flex items-center justify-center">
+            <Vault className="text-orange-600" style={{ width: 18, height: 18 }} />
+          </div>
+          <div>
+            <CardTitle className="text-sm font-semibold text-foreground">Treasury Wallet</CardTitle>
+            <p className="text-xs text-muted-foreground mt-0.5">Change residuo dai payout BTC</p>
+          </div>
+        </div>
+        {!editing && (
+          <button
+            onClick={startEdit}
+            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-orange-600 transition-colors border border-border hover:border-orange-300 rounded-lg px-2.5 py-1.5"
+          >
+            <Pencil className="w-3 h-3" />
+            Modifica
+          </button>
+        )}
+      </CardHeader>
+
+      <CardContent className="space-y-4">
         {/* Balance */}
         {!isLoading && balance !== null && (
-          <div className="mb-4">
-            <p className="text-2xl font-bold font-mono text-orange-400">
-              {satToBtc(balance)} <span className="text-sm text-white/40 font-normal">BTC</span>
-            </p>
-            <p className="text-xs text-white/30 mt-0.5">Balance onchain</p>
+          <div className="pt-1 border-t border-border">
+            <p className="text-xs text-muted-foreground mb-1">Balance onchain</p>
+            <div className="flex items-baseline gap-2">
+              <span className="text-2xl font-bold font-mono text-orange-500">
+                {satToBtc(balance)}
+              </span>
+              <span className="text-sm text-muted-foreground font-medium">BTC</span>
+            </div>
+            {eurValue && (
+              <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1">
+                <TrendingUp className="w-3 h-3 text-orange-400" />
+                ≈ {eurValue}
+              </p>
+            )}
           </div>
         )}
 
         {/* Address display / edit */}
         {isLoading ? (
-          <Skeleton className="h-10 w-full bg-white/5" />
+          <Skeleton className="h-10 w-full" />
         ) : editing ? (
           <div className="space-y-2.5">
             <Input
               value={draft}
               onChange={(e) => setDraft(e.target.value)}
               placeholder="bc1q…"
-              className="font-mono text-sm bg-white/5 border-white/15 text-white placeholder:text-white/25 focus:border-orange-500/60"
+              className="font-mono text-sm"
               autoFocus
             />
-            {error && <p className="text-xs text-red-400">{error}</p>}
+            {error && <p className="text-xs text-red-500">{error}</p>}
             <div className="flex gap-2">
               <Button
                 size="sm"
@@ -200,102 +227,115 @@ function TreasuryWalletCard({
                 <Save className="w-3.5 h-3.5 mr-1.5" />
                 {mutation.isPending ? "Salvataggio…" : "Salva"}
               </Button>
-              <Button
-                size="sm"
-                variant="ghost"
-                onClick={() => setEditing(false)}
-                className="text-white/40 hover:text-white"
-              >
+              <Button size="sm" variant="ghost" onClick={() => setEditing(false)}>
                 <X className="w-3.5 h-3.5" />
               </Button>
             </div>
           </div>
         ) : wallet ? (
-          <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-lg px-3 py-2.5">
-            <Bitcoin className="w-3.5 h-3.5 text-orange-400 shrink-0" />
-            <span className="font-mono text-xs text-white/70 break-all">{wallet}</span>
+          <div className="flex items-center gap-2 bg-muted/40 border border-border rounded-lg px-3 py-2.5">
+            <Bitcoin className="w-3.5 h-3.5 text-orange-500 shrink-0" />
+            <span className="font-mono text-xs text-foreground break-all">{wallet}</span>
           </div>
         ) : (
-          <div className="flex items-start gap-2.5 bg-amber-500/10 border border-amber-500/20 rounded-lg p-3">
-            <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-            <p className="text-xs text-amber-300">
+          <div className="flex items-start gap-2.5 bg-amber-50 border border-amber-200 rounded-lg p-3">
+            <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+            <p className="text-xs text-amber-700">
               Non configurato — il change BTC torna all'escrow (UTXO stranded).
               Clicca <strong>Modifica</strong> per impostare l'indirizzo treasury.
             </p>
           </div>
         )}
-      </div>
-    </DarkCard>
+      </CardContent>
+    </Card>
   );
 }
 
 // ─── Wallet Card (Fee — read-only) ────────────────────────────────────────────
 
 function FeeWalletCard({
-  wallet, balance, isLoading,
-}: { wallet: string | null; balance: string | null; isLoading: boolean }) {
+  wallet, balance, priceEur, isLoading,
+}: {
+  wallet:   string | null;
+  balance:  string | null;
+  priceEur: number | null;
+  isLoading: boolean;
+}) {
+  const eurValue = satToEur(balance, priceEur);
+
   return (
-    <DarkCard className="bg-gradient-to-br from-purple-500/10 to-purple-900/5 border-purple-500/20">
-      <div className="p-5">
-        <div className="flex items-center gap-2.5 mb-4">
-          <div className="w-9 h-9 rounded-lg bg-purple-500/20 flex items-center justify-center">
-            <Percent className="text-purple-400" style={{ width: 18, height: 18 }} />
+    <Card className="border-purple-200">
+      <CardHeader className="pb-3">
+        <div className="flex items-center gap-2.5">
+          <div className="w-9 h-9 rounded-lg bg-purple-100 flex items-center justify-center">
+            <Percent className="text-purple-600" style={{ width: 18, height: 18 }} />
           </div>
           <div>
-            <p className="text-sm font-semibold text-white">Fee Wallet (1%)</p>
-            <p className="text-xs text-white/40 mt-0.5">Project fee Alpha · BTC_FEE_WALLET</p>
+            <CardTitle className="text-sm font-semibold text-foreground">Fee Wallet (1%)</CardTitle>
+            <p className="text-xs text-muted-foreground mt-0.5">Project fee Alpha · BTC_FEE_WALLET</p>
           </div>
         </div>
+      </CardHeader>
 
+      <CardContent className="space-y-4">
         {/* Balance */}
         {!isLoading && balance !== null && (
-          <div className="mb-4">
-            <p className="text-2xl font-bold font-mono text-purple-400">
-              {satToBtc(balance)} <span className="text-sm text-white/40 font-normal">BTC</span>
-            </p>
-            <p className="text-xs text-white/30 mt-0.5">Balance onchain</p>
+          <div className="pt-1 border-t border-border">
+            <p className="text-xs text-muted-foreground mb-1">Balance onchain</p>
+            <div className="flex items-baseline gap-2">
+              <span className="text-2xl font-bold font-mono text-purple-600">
+                {satToBtc(balance)}
+              </span>
+              <span className="text-sm text-muted-foreground font-medium">BTC</span>
+            </div>
+            {eurValue && (
+              <p className="text-xs text-muted-foreground mt-0.5 flex items-center gap-1">
+                <TrendingUp className="w-3 h-3 text-purple-400" />
+                ≈ {eurValue}
+              </p>
+            )}
           </div>
         )}
 
         {isLoading ? (
-          <Skeleton className="h-10 w-full bg-white/5" />
+          <Skeleton className="h-10 w-full" />
         ) : wallet ? (
-          <div className="flex items-center gap-2 bg-white/5 border border-white/10 rounded-lg px-3 py-2.5">
-            <Bitcoin className="w-3.5 h-3.5 text-purple-400 shrink-0" />
-            <span className="font-mono text-xs text-white/70 break-all">{wallet}</span>
+          <div className="flex items-center gap-2 bg-muted/40 border border-border rounded-lg px-3 py-2.5">
+            <Bitcoin className="w-3.5 h-3.5 text-purple-500 shrink-0" />
+            <span className="font-mono text-xs text-foreground break-all">{wallet}</span>
           </div>
         ) : (
-          <div className="flex items-start gap-2.5 bg-amber-500/10 border border-amber-500/20 rounded-lg p-3">
-            <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
-            <p className="text-xs text-amber-300">
+          <div className="flex items-start gap-2.5 bg-amber-50 border border-amber-200 rounded-lg p-3">
+            <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+            <p className="text-xs text-amber-700">
               BTC_FEE_WALLET non configurato. Imposta il secret per attivare la raccolta fee.
             </p>
           </div>
         )}
-      </div>
-    </DarkCard>
+      </CardContent>
+    </Card>
   );
 }
 
 // ─── Fee Rate Block ────────────────────────────────────────────────────────────
 
 const FEE_RATE_STYLE = [
-  { color: "from-red-500/20 to-red-900/10 border-red-500/25",    text: "text-red-400" },
-  { color: "from-amber-500/20 to-amber-900/10 border-amber-500/25", text: "text-amber-400" },
-  { color: "from-emerald-500/20 to-emerald-900/10 border-emerald-500/25", text: "text-emerald-400" },
-  { color: "from-blue-500/20 to-blue-900/10 border-blue-500/25", text: "text-blue-400" },
+  { border: "border-red-200",    bg: "bg-red-50",    text: "text-red-600",    label: "text-red-400"    },
+  { border: "border-amber-200",  bg: "bg-amber-50",  text: "text-amber-600",  label: "text-amber-400"  },
+  { border: "border-emerald-200",bg: "bg-emerald-50",text: "text-emerald-600",label: "text-emerald-400"},
+  { border: "border-blue-200",   bg: "bg-blue-50",   text: "text-blue-600",   label: "text-blue-400"   },
 ];
 
 function FeeRateBlock({ rates, error }: { rates: FeeRateEntry[] | null; error: string | null }) {
   if (error) return (
-    <div className="flex items-center gap-2 text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg p-3">
+    <div className="flex items-center gap-2 text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg p-3">
       <AlertTriangle className="w-4 h-4 shrink-0" />
       Blockstream non raggiungibile: {error}
     </div>
   );
   if (!rates) return (
     <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-      {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-24 w-full bg-white/5" />)}
+      {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-24 w-full" />)}
     </div>
   );
 
@@ -304,11 +344,11 @@ function FeeRateBlock({ rates, error }: { rates: FeeRateEntry[] | null; error: s
       {rates.map((r, i) => (
         <div
           key={r.target}
-          className={`bg-gradient-to-br ${FEE_RATE_STYLE[i].color} border rounded-xl p-4 text-center`}
+          className={`${FEE_RATE_STYLE[i].bg} border ${FEE_RATE_STYLE[i].border} rounded-xl p-4 text-center`}
         >
-          <p className="text-xs text-white/40 mb-2">{r.label}</p>
+          <p className={`text-xs mb-2 ${FEE_RATE_STYLE[i].label}`}>{r.label}</p>
           <p className={`text-3xl font-bold font-mono ${FEE_RATE_STYLE[i].text}`}>{r.rate}</p>
-          <p className="text-xs text-white/30 mt-1.5">sat/vbyte</p>
+          <p className="text-xs text-muted-foreground mt-1.5">sat/vbyte</p>
         </div>
       ))}
     </div>
@@ -318,21 +358,21 @@ function FeeRateBlock({ rates, error }: { rates: FeeRateEntry[] | null; error: s
 // ─── KPI Card ─────────────────────────────────────────────────────────────────
 
 interface KpiDef {
-  label:    string;
-  value:    number;
-  gradient: string;
-  border:   string;
-  numColor: string;
-  icon:     React.ElementType;
+  label:   string;
+  value:   number;
+  bg:      string;
+  border:  string;
+  numColor:string;
+  icon:    React.ElementType;
 }
 
 function KpiCard({ kpi }: { kpi: KpiDef }) {
   const Icon = kpi.icon;
   return (
-    <div className={`bg-gradient-to-br ${kpi.gradient} border ${kpi.border} rounded-xl p-4`}>
+    <div className={`${kpi.bg} border ${kpi.border} rounded-xl p-4`}>
       <div className="flex items-start justify-between mb-2">
-        <p className="text-xs text-white/40 uppercase tracking-wider font-mono">{kpi.label}</p>
-        <Icon className="w-4 h-4 text-white/20" />
+        <p className="text-xs text-muted-foreground uppercase tracking-wider font-mono">{kpi.label}</p>
+        <Icon className={`w-4 h-4 ${kpi.numColor} opacity-50`} />
       </div>
       <p className={`text-3xl font-bold ${kpi.numColor}`}>{kpi.value}</p>
     </div>
@@ -346,35 +386,35 @@ const STATUS_DOT: Record<string, string> = {
   pending:          "bg-blue-400",
   releasing:        "bg-orange-400",
   released:         "bg-emerald-400",
-  waiting_for_gas:  "bg-amber-300",
+  waiting_for_gas:  "bg-amber-400",
   refunded:         "bg-gray-400",
-  expired:          "bg-gray-500",
+  expired:          "bg-gray-400",
   failed:           "bg-red-400",
-  cancelled:        "bg-gray-500",
+  cancelled:        "bg-gray-400",
 };
 
 function RecentRow({ t }: { t: BtcStatusResponse["recent"][0] }) {
   const primaryHash = t.tx_hash_release ?? t.tx_hash_deposit ?? t.tx_hash_refund;
-  const dot = STATUS_DOT[t.status] ?? "bg-gray-500";
+  const dot = STATUS_DOT[t.status] ?? "bg-gray-400";
   return (
-    <tr className="border-b border-white/5 hover:bg-white/3 transition-colors text-xs">
+    <tr className="border-b border-border hover:bg-muted/30 transition-colors text-xs">
       <td className="px-4 py-3">
-        <span className="font-mono text-white/60">{truncate(t.transfer_id, 16)}</span>
-        <div className="text-white/30 mt-0.5">{formatDate(t.createdAt)}</div>
+        <span className="font-mono text-muted-foreground">{truncate(t.transfer_id, 16)}</span>
+        <div className="text-muted-foreground/60 mt-0.5">{formatDate(t.createdAt)}</div>
       </td>
       <td className="px-4 py-3">
         <div className="flex items-center gap-1.5">
           <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dot}`} />
-          <span className="text-white/60">{t.status.replace(/_/g, " ")}</span>
+          <span className="text-foreground/70">{t.status.replace(/_/g, " ")}</span>
         </div>
       </td>
       <td className="px-4 py-3 font-mono">
-        <span className="text-white/80 font-semibold">{satToBtc(t.gross_amount)}</span>
-        <div className="text-white/30">Net: {satToBtc(t.net_amount)}</div>
+        <span className="text-foreground font-semibold">{satToBtc(t.gross_amount)}</span>
+        <div className="text-muted-foreground">Net: {satToBtc(t.net_amount)}</div>
       </td>
-      <td className="px-4 py-3 font-mono text-white/40">
+      <td className="px-4 py-3 font-mono text-muted-foreground">
         <div title={t.sender_wallet}>{truncateAddr(t.sender_wallet)}</div>
-        <div title={t.recipient_wallet} className="text-white/25">→ {truncateAddr(t.recipient_wallet)}</div>
+        <div title={t.recipient_wallet} className="text-muted-foreground/60">→ {truncateAddr(t.recipient_wallet)}</div>
       </td>
       <td className="px-4 py-3">
         {primaryHash ? (
@@ -382,16 +422,16 @@ function RecentRow({ t }: { t: BtcStatusResponse["recent"][0] }) {
             href={`https://blockstream.info/tx/${primaryHash}`}
             target="_blank"
             rel="noopener noreferrer"
-            className="flex items-center gap-1 font-mono text-orange-400 hover:text-orange-300 transition-colors"
+            className="flex items-center gap-1 font-mono text-orange-500 hover:text-orange-600 transition-colors"
           >
             {truncate(primaryHash, 16)}
             <ExternalLink className="w-2.5 h-2.5 shrink-0" />
           </a>
         ) : (
-          <span className="text-white/25">—</span>
+          <span className="text-muted-foreground">—</span>
         )}
       </td>
-      <td className="px-4 py-3 font-mono text-white/30">{satToBtc(t.network_fee)} BTC</td>
+      <td className="px-4 py-3 font-mono text-muted-foreground">{satToBtc(t.network_fee)} BTC</td>
     </tr>
   );
 }
@@ -406,17 +446,26 @@ export default function BitcoinOps() {
     refetchInterval: 30_000,
   });
 
+  const priceQuery = useQuery({
+    queryKey: ["btc-price-eur"],
+    queryFn:  fetchBtcPriceEur,
+    refetchInterval: 5 * 60_000,   // aggiorna ogni 5 minuti
+    retry: 2,
+    staleTime: 3 * 60_000,
+  });
+
   const data      = query.data;
   const isLoading = query.isLoading;
+  const priceEur  = priceQuery.data ?? null;
 
   const kpis: KpiDef[] = data ? [
-    { label: "Totali",     value: data.transfers.totals.total,         gradient: "from-violet-500/15 to-violet-900/10", border: "border-violet-500/20", numColor: "text-violet-300",  icon: ArrowRightLeft },
-    { label: "Attivi",     value: data.transfers.totals.active,        gradient: "from-blue-500/15 to-blue-900/10",    border: "border-blue-500/20",   numColor: "text-blue-300",    icon: Clock          },
-    { label: "In corso",   value: data.transfers.totals.releasing,     gradient: "from-orange-500/15 to-orange-900/10",border: "border-orange-500/20", numColor: "text-orange-300",  icon: AlertTriangle  },
-    { label: "Released",   value: data.transfers.totals.released,      gradient: "from-emerald-500/15 to-emerald-900/10",border:"border-emerald-500/20",numColor: "text-emerald-300", icon: CheckCircle2   },
-    { label: "Rimborsati", value: data.transfers.totals.refunded,      gradient: "from-gray-500/15 to-gray-900/10",    border: "border-gray-500/20",   numColor: "text-gray-300",    icon: RefreshCw      },
-    { label: "Falliti",    value: data.transfers.totals.failed,        gradient: "from-red-500/15 to-red-900/10",      border: "border-red-500/20",    numColor: "text-red-300",     icon: XCircle        },
-    { label: "Att. gas",   value: data.transfers.totals.waitingForGas, gradient: "from-amber-500/15 to-amber-900/10", border: "border-amber-500/20",  numColor: "text-amber-300",   icon: AlertTriangle  },
+    { label: "Totali",     value: data.transfers.totals.total,         bg: "bg-violet-50",  border: "border-violet-200", numColor: "text-violet-600",  icon: ArrowRightLeft },
+    { label: "Attivi",     value: data.transfers.totals.active,        bg: "bg-blue-50",    border: "border-blue-200",   numColor: "text-blue-600",    icon: Clock          },
+    { label: "In corso",   value: data.transfers.totals.releasing,     bg: "bg-orange-50",  border: "border-orange-200", numColor: "text-orange-600",  icon: AlertTriangle  },
+    { label: "Released",   value: data.transfers.totals.released,      bg: "bg-emerald-50", border: "border-emerald-200",numColor: "text-emerald-600", icon: CheckCircle2   },
+    { label: "Rimborsati", value: data.transfers.totals.refunded,      bg: "bg-gray-50",    border: "border-gray-200",   numColor: "text-gray-600",    icon: RefreshCw      },
+    { label: "Falliti",    value: data.transfers.totals.failed,        bg: "bg-red-50",     border: "border-red-200",    numColor: "text-red-600",     icon: XCircle        },
+    { label: "Att. gas",   value: data.transfers.totals.waitingForGas, bg: "bg-amber-50",   border: "border-amber-200",  numColor: "text-amber-600",   icon: AlertTriangle  },
   ] : [];
 
   return (
@@ -425,26 +474,35 @@ export default function BitcoinOps() {
       {/* ── Header ────────────────────────────────────────────── */}
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold flex items-center gap-2 text-white">
-            <Bitcoin className="w-5 h-5 text-orange-400" />
+          <h1 className="text-xl font-bold flex items-center gap-2 text-foreground">
+            <Bitcoin className="w-5 h-5 text-orange-500" />
             Bitcoin Operations
           </h1>
-          <p className="text-xs text-white/35 mt-1">
+          <p className="text-xs text-muted-foreground mt-1">
             Monitoring BTC nativo · Bitcoin Network · Blockstream API
           </p>
         </div>
         <div className="flex items-center gap-2">
+          {/* Prezzo BTC live */}
+          {priceEur != null && (
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground border border-border rounded-lg px-2.5 py-1.5">
+              <Bitcoin className="w-3 h-3 text-orange-500" />
+              <span className="font-mono font-medium text-foreground">
+                {priceEur.toLocaleString("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 0 })}
+              </span>
+            </div>
+          )}
           {data && (
-            <div className="flex items-center gap-1.5 text-xs text-white/40 border border-white/10 rounded-lg px-2.5 py-1.5">
-              <Activity className="w-3 h-3 text-emerald-400" />
-              <span className="text-emerald-400 font-medium">
+            <div className="flex items-center gap-1.5 text-xs text-muted-foreground border border-border rounded-lg px-2.5 py-1.5">
+              <Activity className="w-3 h-3 text-emerald-500" />
+              <span className="text-emerald-600 font-medium">
                 {data.provider.network === "mainnet" ? "Mainnet" : "Testnet"}
               </span>
             </div>
           )}
           <button
             onClick={() => query.refetch()}
-            className="flex items-center gap-1.5 text-xs text-white/40 hover:text-white border border-white/10 hover:border-white/20 rounded-lg px-2.5 py-1.5 transition-colors"
+            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground border border-border hover:border-border/80 rounded-lg px-2.5 py-1.5 transition-colors"
           >
             <RefreshCw className={`w-3 h-3 ${query.isFetching ? "animate-spin" : ""}`} />
             Aggiorna
@@ -457,38 +515,42 @@ export default function BitcoinOps() {
         <TreasuryWalletCard
           wallet={data?.treasuryWallet ?? null}
           balance={data?.treasuryWalletBalance ?? null}
+          priceEur={priceEur}
           isLoading={isLoading}
           onSaved={() => qc.invalidateQueries({ queryKey: ["btc-status"] })}
         />
         <FeeWalletCard
           wallet={data?.feeWallet ?? null}
           balance={data?.feeWalletBalance ?? null}
+          priceEur={priceEur}
           isLoading={isLoading}
         />
       </div>
 
       {/* ── Fee Rate ──────────────────────────────────────────── */}
-      <DarkCard>
-        <div className="p-5">
-          <div className="flex items-center gap-2 mb-4">
-            <Zap className="w-4 h-4 text-yellow-400" />
-            <p className="text-sm font-semibold text-white">Fee Rate — Blockstream Mempool</p>
-            <span className="ml-auto text-xs text-white/30">sat/vbyte</span>
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex items-center gap-2">
+            <Zap className="w-4 h-4 text-amber-500" />
+            <CardTitle className="text-sm font-semibold">Fee Rate — Blockstream Mempool</CardTitle>
+            <span className="ml-auto text-xs text-muted-foreground">sat/vbyte</span>
           </div>
+        </CardHeader>
+        <CardContent>
           {isLoading ? (
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-24 w-full bg-white/5" />)}
+              {Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-24 w-full" />)}
             </div>
           ) : (
             <FeeRateBlock rates={data?.feeRates ?? null} error={data?.feeRateError ?? null} />
           )}
-        </div>
-      </DarkCard>
+        </CardContent>
+      </Card>
 
       {/* ── KPI Grid ──────────────────────────────────────────── */}
       {isLoading ? (
         <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
-          {Array.from({ length: 7 }).map((_, i) => <Skeleton key={i} className="h-24 w-full bg-white/5 rounded-xl" />)}
+          {Array.from({ length: 7 }).map((_, i) => <Skeleton key={i} className="h-24 w-full rounded-xl" />)}
         </div>
       ) : data && (
         <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-7 gap-3">
@@ -498,55 +560,88 @@ export default function BitcoinOps() {
 
       {/* ── Volume completato ─────────────────────────────────── */}
       {data && data.transfers.volume.count > 0 && (
-        <DarkCard className="bg-gradient-to-br from-emerald-500/8 to-emerald-900/5 border-emerald-500/15">
-          <div className="p-5">
-            <div className="flex items-center gap-2 mb-4">
-              <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-              <p className="text-sm font-semibold text-white">Volume Completato</p>
-              <span className="text-xs text-white/30 ml-1">released + refunded</span>
+        <Card className="border-emerald-200">
+          <CardHeader className="pb-3">
+            <div className="flex items-center gap-2">
+              <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+              <CardTitle className="text-sm font-semibold">Volume Completato</CardTitle>
+              <span className="text-xs text-muted-foreground ml-1">released + refunded</span>
             </div>
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-6">
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-6 pt-1 border-t border-border">
               {[
-                { label: "Transazioni", value: String(data.transfers.volume.count), unit: "",    color: "text-white" },
-                { label: "Volume Lordo",value: satToBtc(data.transfers.volume.grossSat),     unit: "BTC", color: "text-emerald-300" },
-                { label: "Project Fee", value: satToBtc(data.transfers.volume.projectFeeSat),unit: "BTC", color: "text-purple-300"  },
-                { label: "Miner Fee",   value: satToBtc(data.transfers.volume.networkFeeSat),unit: "BTC", color: "text-orange-300"  },
-              ].map(({ label, value, unit, color }) => (
-                <div key={label}>
-                  <p className="text-xs text-white/30 uppercase tracking-wider mb-1">{label}</p>
+                {
+                  label: "Transazioni",
+                  value: String(data.transfers.volume.count),
+                  unit:  "",
+                  color: "text-foreground",
+                  eur:   null,
+                },
+                {
+                  label: "Volume Lordo",
+                  value: satToBtc(data.transfers.volume.grossSat),
+                  unit:  "BTC",
+                  color: "text-emerald-600",
+                  eur:   satToEur(data.transfers.volume.grossSat, priceEur),
+                },
+                {
+                  label: "Project Fee",
+                  value: satToBtc(data.transfers.volume.projectFeeSat),
+                  unit:  "BTC",
+                  color: "text-purple-600",
+                  eur:   satToEur(data.transfers.volume.projectFeeSat, priceEur),
+                },
+                {
+                  label: "Miner Fee",
+                  value: satToBtc(data.transfers.volume.networkFeeSat),
+                  unit:  "BTC",
+                  color: "text-orange-600",
+                  eur:   satToEur(data.transfers.volume.networkFeeSat, priceEur),
+                },
+              ].map(({ label, value, unit, color, eur }) => (
+                <div key={label} className="mt-3">
+                  <p className="text-xs text-muted-foreground uppercase tracking-wider mb-1">{label}</p>
                   <p className={`font-mono font-bold text-lg ${color}`}>
-                    {value} <span className="text-xs text-white/30 font-normal">{unit}</span>
+                    {value} <span className="text-xs text-muted-foreground font-normal">{unit}</span>
                   </p>
+                  {eur && (
+                    <p className="text-xs text-muted-foreground mt-0.5">≈ {eur}</p>
+                  )}
                 </div>
               ))}
             </div>
-          </div>
-        </DarkCard>
+          </CardContent>
+        </Card>
       )}
 
       {/* ── Recent Transfers ──────────────────────────────────── */}
-      <DarkCard>
-        <div className="p-5 pb-3 flex items-center gap-2">
-          <Bitcoin className="w-4 h-4 text-orange-400" />
-          <p className="text-sm font-semibold text-white">Ultimi Transfer BTC</p>
-          <span className="ml-auto text-xs text-white/25">
-            Clicca hash → Blockstream.info
-          </span>
-        </div>
+      <Card>
+        <CardHeader className="pb-3">
+          <div className="flex items-center gap-2">
+            <Bitcoin className="w-4 h-4 text-orange-500" />
+            <CardTitle className="text-sm font-semibold">Ultimi Transfer BTC</CardTitle>
+            <span className="ml-auto text-xs text-muted-foreground">
+              Clicca hash → Blockstream.info
+            </span>
+          </div>
+        </CardHeader>
         {isLoading ? (
-          <div className="p-5 pt-0 space-y-3">
-            {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-10 w-full bg-white/5" />)}
-          </div>
+          <CardContent className="space-y-3">
+            {Array.from({ length: 5 }).map((_, i) => <Skeleton key={i} className="h-10 w-full" />)}
+          </CardContent>
         ) : !data?.recent.length ? (
-          <div className="py-12 text-center">
-            <Bitcoin className="w-10 h-10 mx-auto mb-3 text-orange-400/20" />
-            <p className="text-sm text-white/25">Nessun transfer BTC ancora.</p>
-          </div>
+          <CardContent>
+            <div className="py-12 text-center">
+              <Bitcoin className="w-10 h-10 mx-auto mb-3 text-orange-400/40" />
+              <p className="text-sm text-muted-foreground">Nessun transfer BTC ancora.</p>
+            </div>
+          </CardContent>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
-                <tr className="border-b border-white/8 text-xs text-white/25 font-mono uppercase tracking-wider">
+                <tr className="border-b border-border text-xs text-muted-foreground font-mono uppercase tracking-wider">
                   <th className="px-4 py-2.5 text-left">Transfer ID</th>
                   <th className="px-4 py-2.5 text-left">Status</th>
                   <th className="px-4 py-2.5 text-left">Gross / Net</th>
@@ -561,7 +656,7 @@ export default function BitcoinOps() {
             </table>
           </div>
         )}
-      </DarkCard>
+      </Card>
     </div>
   );
 }
