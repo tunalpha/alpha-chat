@@ -323,7 +323,16 @@ export function MultiChainPayRequestSheet({
       }
     }
 
-    // ── 3. sendTransaction fire-and-forget ────────────────────────────────────
+    // ── 3. Stabilisation delay post-switchChain ───────────────────────────────
+    //
+    // WalletConnect relay rimane in stato di transizione per ~500 ms dopo
+    // wallet_switchEthereumChain. Se sendTransaction parte subito, il messaggio
+    // eth_sendTransaction viene swallowed dal relay (Promise pende forever,
+    // Trust Wallet non mostra il popup firma).
+    // 800 ms è sufficiente a stabilizzare il relay senza UX percepibile.
+    await new Promise<void>(r => setTimeout(r, 800));
+
+    // ── 4. sendTransaction fire-and-forget ────────────────────────────────────
     //
     // NON await txHash — fonte di verità = polling backend.
     // chainId incluso per rinforzare la chain già switchata (no-op se corretta).
