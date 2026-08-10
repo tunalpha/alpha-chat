@@ -16,7 +16,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
   Bitcoin, Zap, RefreshCw, ExternalLink, ArrowRightLeft,
-  CheckCircle2, XCircle, Clock, AlertTriangle, Activity,
+  CheckCircle2, XCircle, Clock, AlertTriangle, Activity, Copy, Vault,
 } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -29,9 +29,10 @@ import { apiFetch } from "@/lib/api";
 interface FeeRateEntry { target: number; rate: number; label: string }
 
 interface BtcStatusResponse {
-  provider:     { name: string; network: string; url: string };
-  feeRates:     FeeRateEntry[] | null;
-  feeRateError: string | null;
+  provider:       { name: string; network: string; url: string };
+  feeRates:       FeeRateEntry[] | null;
+  feeRateError:   string | null;
+  treasuryWallet: string | null;
   transfers: {
     byStatus: Record<string, number>;
     totals: {
@@ -160,6 +161,69 @@ function RecentRow({ t }: { t: BtcStatusResponse["recent"][0] }) {
   );
 }
 
+// ─── Treasury Wallet Card ─────────────────────────────────────────────────────
+
+function TreasuryWalletCard({ wallet, isLoading }: { wallet: string | null; isLoading: boolean }) {
+  const [copied, setCopied] = useState(false);
+
+  function handleCopy() {
+    if (!wallet) return;
+    navigator.clipboard.writeText(wallet).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  }
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-sm flex items-center gap-2">
+          <Vault className="w-4 h-4 text-orange-400" />
+          BTC Treasury Wallet
+        </CardTitle>
+        <p className="text-xs text-muted-foreground mt-1">
+          Indirizzo che riceve il <span className="text-foreground font-medium">change residuo</span> da ogni payout BTC (buffer miner fee non utilizzato).
+          Il change viene inviato qui nella stessa TX del payout — nessun UTXO stranded sull'escrow.
+        </p>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <div className="h-10 bg-muted/40 rounded-lg animate-pulse" />
+        ) : wallet ? (
+          <div className="flex items-center gap-2">
+            <div className="flex-1 flex items-center gap-2 bg-muted/40 border border-border/60 rounded-lg px-3 py-2.5">
+              <Bitcoin className="w-3.5 h-3.5 text-orange-400 shrink-0" />
+              <span className="font-mono text-sm text-foreground break-all select-all">{wallet}</span>
+            </div>
+            <button
+              onClick={handleCopy}
+              className="shrink-0 p-2.5 rounded-lg border border-border/60 bg-muted/40 hover:bg-muted/70 transition-colors text-muted-foreground hover:text-foreground"
+              title="Copia indirizzo"
+            >
+              {copied ? (
+                <CheckCircle2 className="w-4 h-4 text-green-400" />
+              ) : (
+                <Copy className="w-4 h-4" />
+              )}
+            </button>
+          </div>
+        ) : (
+          <div className="flex items-start gap-3 bg-amber-500/10 border border-amber-500/20 rounded-lg p-3">
+            <AlertTriangle className="w-4 h-4 text-amber-400 shrink-0 mt-0.5" />
+            <div>
+              <p className="text-sm text-amber-300 font-medium">Treasury non configurato</p>
+              <p className="text-xs text-amber-400/80 mt-1">
+                Il change BTC torna all'escrow address (UTXO stranded).
+                Imposta il secret <code className="bg-amber-500/10 px-1 rounded">BTC_TREASURY_WALLET</code> con l'indirizzo treasury bc1q… per attivare il routing automatico.
+              </p>
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function BitcoinOps() {
@@ -198,6 +262,9 @@ export default function BitcoinOps() {
           </Button>
         </div>
       </div>
+
+      {/* BTC Treasury Wallet */}
+      <TreasuryWalletCard wallet={data?.treasuryWallet ?? null} isLoading={isLoading} />
 
       {/* BTC Fee Rate */}
       <Card>

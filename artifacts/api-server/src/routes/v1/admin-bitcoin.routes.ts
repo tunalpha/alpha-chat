@@ -14,6 +14,7 @@ import { MultiChainTransferModel } from "../../models/multichain-transfer.model"
 import { authenticate }            from "../../middleware/authenticate.middleware";
 import { requireAdmin }            from "../../middleware/require-admin.middleware";
 import { logger }                  from "../../lib/logger";
+import { BTC_TREASURY_WALLET }     from "../../blockchain/multichain-config";
 
 const router = Router();
 
@@ -117,6 +118,7 @@ router.get("/status", async (_req: Request, res: Response, next: NextFunction): 
         },
       },
       recent: recent,
+      treasuryWallet: BTC_TREASURY_WALLET,
     });
   } catch (err) {
     next(err);
