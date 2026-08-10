@@ -177,7 +177,10 @@ export const MultiChainPaymentBubble = memo(function MultiChainPaymentBubble({ d
     ? fmtDisplay(data.min_deposit_amount, rawDec, dispDec)
     : grossDisplay;
 
-  const displayAmount = (status === "released" && !isPayer) ? netDisplay : grossDisplay;
+  // Non-payer (destinatario / richiedente) vede sempre il NET: ciò che riceverà.
+  // Payer (mittente) vede sempre il GROSS: ciò che deve inviare.
+  // Nota: per recipient_exact, gross ≠ net (es. richiesta 0.99 USDT → payer invia 1 USDT).
+  const displayAmount = !isPayer ? netDisplay : grossDisplay;
 
   // ── Variant & animated ──────────────────────────────────────────────────────
   const variant  = getVariant(status);
