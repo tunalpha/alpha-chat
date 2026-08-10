@@ -1,0 +1,201 @@
+Certo. Lo renderei ancora più rigido, soprattutto sulla cancellazione dei test pending: cancellazione totale dei dati di test, ma mai di fondi reali.
+
+Puoi dare all’agente questo prompt:
+
+🔒 FREEZE ASSOLUTO USDA + CLEANUP COMPLETO TRANSAZIONI DI TEST
+
+REGOLA PERMANENTE: USDA È CONGELATO.
+
+Abbiamo appena verificato su iPhone che il flusso USDA funziona perfettamente:
+
+* Trust Wallet si apre;
+* arriva la richiesta di firma;
+* la transazione viene firmata;
+* il pagamento viene completato;
+* USDA funziona correttamente.
+
+Questa versione deve diventare la BASELINE USDA PROTETTA.
+
+⸻
+
+1. USDA NON DEVE PIÙ ESSERE TOCCATO
+
+Durante qualsiasi futuro lavoro su:
+
+* USDT BSC
+* USDT Polygon
+* USDT Ethereum
+* BTC
+* Richiedi USDT
+* Invia USDT
+* MultiChain
+* escrow
+* auto-release
+* scheduler
+* gas reclaim
+* fee
+* email MultiChain
+* WalletConnect
+* ThirdWeb
+
+NON modificare in alcun modo il flusso USDA.
+
+In particolare NON modificare:
+
+* SendPaymentSheet.tsx
+* UsdaRequestBubble.tsx
+* signAndPoll
+* account.sendTransaction USDA
+* polling USDA
+* recovery USDA
+* API USDA
+* backend USDA
+* configurazione specifica USDA
+
+Non fare refactor condivisi che possano modificare indirettamente USDA.
+
+Se ritieni necessario modificare un componente condiviso da USDA e MultiChain, FERMATI e chiedimi autorizzazione prima di modificarlo.
+
+⸻
+
+2. BASELINE USDA
+
+Prima di qualsiasi modifica futura:
+
+* identifica il commit/versione attualmente funzionante USDA;
+* considera quella versione la USDA GOLDEN BASELINE;
+* verifica con git diff che i file USDA siano invariati.
+
+Se compare una modifica USDA non esplicitamente autorizzata:
+
+STOP — NON DEPLOYARE.
+
+⸻
+
+3. CLEANUP COMPLETO DELLE TRANSAZIONI DI TEST
+
+Prima di proseguire con altri test USDT/BTC, voglio una pulizia completa di tutte le transazioni generate durante i test di questa sessione.
+
+Cerca tutti i transfer/transazioni di test rimasti in stati come:
+
+* awaiting_deposit
+* pending
+* releasing
+* released
+* expired
+* refunded
+* eventuali altri stati creati dai test
+
+Comprendi sia:
+
+* USDA test;
+* USDT test;
+* BTC test;
+* MultiChain test;
+* richieste di pagamento test;
+* escrow test;
+* eventuali record associati nei messaggi/chat;
+* eventuali pending locali/recovery.
+
+ATTENZIONE
+
+NON cancellare alla cieca i record dal database.
+
+Per ogni transfer verifica prima se esistono fondi reali on-chain.
+
+Se un transfer non ha ricevuto alcun fondo on-chain, ed è chiaramente un test/stale transaction:
+
+→ cancellazione definitiva del record di test
+→ eliminazione dei relativi metadata/messaggi di test se previsto dal modello
+→ eliminazione degli eventuali lock/recovery associati
+→ rimozione dei pending locali/recovery relativi ai test.
+
+Se invece esistono fondi reali on-chain:
+
+NON CANCELLARE.
+
+Fermati su quel record e segnalamelo indicando:
+
+* transfer ID;
+* chain;
+* escrow;
+* importo;
+* stato;
+* eventuale TX hash;
+* saldo on-chain.
+
+Nessun fondo reale deve essere perso o reso irrecuperabile per una pulizia dei test.
+
+⸻
+
+4. LOCAL STORAGE / RECOVERY
+
+Verifica anche eventuali chiavi di recovery/pending create dai test, comprese:
+
+* ac_pending_payment
+* MC_PENDING_KEY
+* eventuali altre chiavi temporanee relative a USDA/MultiChain.
+
+Rimuovi esclusivamente quelle appartenenti a transazioni di test già verificate come inesistenti/non depositate.
+
+Non cancellare dati relativi a pagamenti reali.
+
+⸻
+
+5. NON MODIFICARE LA LOGICA
+
+Il cleanup deve essere un’operazione di pulizia dei dati di test, non un’occasione per:
+
+* correggere il codice;
+* refactorizzare;
+* modificare WalletConnect;
+* modificare ThirdWeb;
+* modificare USDA;
+* modificare MultiChain;
+* modificare scheduler;
+* modificare escrow;
+* modificare fee.
+
+Nessun fix funzionale durante il cleanup.
+
+⸻
+
+6. PRIMA DELLA CANCELLAZIONE DEFINITIVA
+
+Prima di cancellare definitivamente qualsiasi record, produci un report:
+
+A. numero totale di transazioni test trovate
+B. elenco dei transfer ID
+C. chain
+D. importo
+E. stato
+F. verifica presenza/assenza fondi on-chain
+G. quali record possono essere cancellati in sicurezza
+H. quali devono essere conservati perché hanno fondi reali.
+
+Se tutti i record sono chiaramente test e senza fondi reali, procedi con la cancellazione totale dei test.
+
+⸻
+
+7. DOPO IL CLEANUP
+
+Il sistema deve risultare pulito dai test precedenti:
+
+USDA → baseline funzionante e congelata 🔒
+
+USDT/BTC → pronti per nuovi test puliti
+
+Nessun vecchio pending di test deve interferire con i prossimi test.
+
+⸻
+
+IMPORTANTE: per ora NON modificare codice.
+
+Prima esegui solo:
+
+1. identificazione baseline USDA;
+2. audit delle transazioni di test;
+3. verifica on-chain;
+4. report dei record cancellabili.
+
+Solo dopo il report procederemo con la cancellazione.
