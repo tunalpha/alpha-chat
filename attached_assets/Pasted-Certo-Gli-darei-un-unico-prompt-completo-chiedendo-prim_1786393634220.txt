@@ -1,0 +1,136 @@
+Certo. Gli darei un unico prompt completo, chiedendo prima l’analisi e poi, solo se necessario, la correzione. Soprattutto deve verificare che la percentuale impostata in Admin sia sempre quella usata dal calcolo, anche se in futuro la cambi.
+
+Prompt da dare all’agente
+
+AUDIT + FIX — FEE DINAMICA ADMIN E CALCOLO RECIPIENT_EXACT
+
+IMPORTANTE: prima di modificare qualsiasi cosa, fai un audit completo e mostrami la causa. Non cambiare codice, configurazioni o database finché non hai concluso l’analisi.
+
+Attualmente nell’Admin Alpha Ops la fee Polygon USDT è impostata a:
+
+1,00% = 100 bps
+
+In precedenza era:
+
+0,10% = 10 bps
+
+La schermata “Richiedi Cripto” però, per:
+
+Tu ricevi esatto: 1000 USDT
+
+mostra:
+
+Cricco pagherà: 1001,01 USDT
+
+Questo risultato sembra utilizzare ancora 10 bps / 0,10%, mentre l’Admin è configurato a 100 bps / 1,00%.
+
+1. AUDIT READ-ONLY
+
+Individua esattamente tutto il percorso:
+
+Admin fee setting → database → API/backend → recipient_exact calculation → frontend
+
+Verifica:
+
+1. Quale valore fee è realmente salvato nel DB per Polygon USDT.
+2. Quale valore restituisce l’API utilizzata dalla schermata “Richiedi Cripto”.
+3. Quale valore viene effettivamente passato alla funzione di calcolo.
+4. Dove viene utilizzato DEFAULT_FEE_BPS = 10.
+5. Se DEFAULT_FEE_BPS è un semplice fallback oppure viene utilizzato sempre.
+6. Se esiste una cache che conserva il vecchio valore di 10 bps.
+7. Se esiste una precedenza errata tra DB override e default.
+8. Quale funzione esegue il calcolo recipient_exact.
+9. Quale valore feeBps arriva realmente a quella funzione.
+
+2. VERIFICA MATEMATICA
+
+Per 1000 USDT recipient exact e 100 bps / 1%, verifica che il sistema calcoli:
+
+gross = ceil(net × 10000 / (10000 − feeBps))
+
+quindi:
+
+gross = ceil(1000 × 10000 / 9900)
+
+gross = 1010,101010...
+
+con arrotondamento verso l’alto a 2 decimali:
+
+1010,11 USDT
+
+Verifica inoltre che:
+
+destinatario riceva esattamente 1000,00 USDT
+
+e che la differenza venga contabilizzata correttamente come fee.
+
+3. VERIFICA FONDAMENTALE: FEE DINAMICA
+
+Voglio sapere se il sistema è realmente dinamico.
+
+In futuro, se nell’Admin modifico:
+
+* 0,10% → 10 bps
+* 0,50% → 50 bps
+* 1,00% → 100 bps
+* 2,00% → 200 bps
+* oppure qualsiasi altro valore consentito
+
+il calcolo recipient_exact deve automaticamente utilizzare il nuovo valore configurato nell’Admin, senza modificare il codice e senza dover cambiare DEFAULT_FEE_BPS.
+
+Esempi per 1000 USDT:
+
+0,10% → circa 1001,01 USDT
+
+1,00% → 1010,11 USDT
+
+2,00% → 1020,41 USDT
+
+Verifica matematicamente questi casi e soprattutto verifica che il software utilizzi effettivamente il valore dinamico configurato.
+
+4. MULTI-CHAIN
+
+Verifica separatamente che il meccanismo funzioni correttamente per:
+
+* Polygon USDT
+* Ethereum USDT
+* BSC USDT
+* Bitcoin/BTC, se utilizza lo stesso sistema di fee dinamica
+
+Ogni rete/asset deve leggere la propria configurazione e non usare accidentalmente una fee globale o il vecchio default.
+
+5. CACHE / FALLBACK / RESTART
+
+Verifica anche che:
+
+* modificando la fee nell’Admin, il nuovo valore venga utilizzato senza comportamento stale;
+* eventuali cache vengano invalidate o aggiornate correttamente;
+* dopo un restart del backend il valore continui a essere quello configurato nel DB;
+* DEFAULT_FEE_BPS = 10 rimanga eventualmente solo come fallback iniziale, se questa è l’architettura prevista;
+* il fallback non sovrascriva mai una configurazione valida presente nel DB.
+
+6. DOPO L’AUDIT
+
+Prima mostrami:
+
+A. causa esatta del problema
+
+B. file/funzioni coinvolti
+
+C. valore letto dall’Admin
+
+D. valore effettivamente utilizzato dal calcolo
+
+E. spiegazione del perché oggi 100 bps nell’Admin produce eventualmente 1001,01 invece di 1010,11
+
+F. conferma se, dopo la correzione, potrò cambiare la percentuale direttamente dalle Impostazioni Admin e il calcolo si aggiornerà automaticamente.
+
+Solo dopo questa analisi, se viene individuato un bug, proponi la modifica minima necessaria.
+
+Non modificare altre parti del sistema. Non cambiare la fee attuale. Non modificare USDA, BTC, network fee, chain switching o altri flussi.
+
+L’obiettivo è esclusivamente garantire che:
+
+la fee impostata nell’Admin sia la source of truth e venga sempre utilizzata correttamente dal calcolo recipient_exact, anche per qualsiasi futura modifica della percentuale.
+
+Prima AUDIT, poi eventualmente FIX. Nessun deploy finché non approvo il risultato.
