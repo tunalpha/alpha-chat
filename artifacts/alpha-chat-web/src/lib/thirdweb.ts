@@ -70,7 +70,9 @@ export const ethereum = defineChain({
 });
 
 // ── USDA constants (Polygon) ──────────────────────────────────────────────────
-export const USDA_CONTRACT_ADDRESS = "0x23396cF899Ca06c4472205fC903bDB4de249D6f";
+// Verified on-chain via PolygonScan (August 2026): "AlphaBit USDA (USDA)" — matches getusda.xyz API.
+// Previous address (0x23396cF..., 39 hex chars) returned "Invalid Token" on PolygonScan.
+export const USDA_CONTRACT_ADDRESS = "0xe714655fD1B3ba96B887DF1F94336c2A78E24001";
 export const USDA_CHAIN_ID  = 137;
 export const USDA_DECIMALS  = 18;
 

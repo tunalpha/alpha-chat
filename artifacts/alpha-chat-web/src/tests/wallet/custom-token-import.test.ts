@@ -32,8 +32,8 @@ const POLYGON = 137;
 const ETH = 1;
 const BSC = 56;
 
-// Address USDA in thirdweb.ts — fonte di verità del sistema esistente
-const THIRDWEB_USDA_ADDRESS = "0x23396cF899Ca06c4472205fC903bDB4de249D6f";
+// Address USDA in thirdweb.ts — verificato su PolygonScan (agosto 2026): "AlphaBit USDA (USDA)"
+const THIRDWEB_USDA_ADDRESS = "0xe714655fD1B3ba96B887DF1F94336c2A78E24001";
 
 // ─── USDA address verification ────────────────────────────────────────────
 

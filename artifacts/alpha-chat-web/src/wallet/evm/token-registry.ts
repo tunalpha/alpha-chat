@@ -21,14 +21,14 @@
 import { getWalletDB, STORE_CUSTOM_TOKENS, closeWalletDB } from "../core/wallet-db";
 
 /**
- * Indirizzo USDA su Polygon — valore canonico usato da tutto il sistema esistente.
- * Corrisponde a USDA_CONTRACT_ADDRESS in src/lib/thirdweb.ts.
+ * Indirizzo USDA su Polygon — verificato on-chain su PolygonScan (agosto 2026).
+ * Token: "AlphaBit USDA (USDA)" — corrisponde all'API getusda.xyz ("AlphaBit USD (USDA) API").
  *
- * ⚠️ L'indirizzo ha 39 hex chars (non 40 standard EVM): è il valore già in produzione.
- * Non modificare senza verifica on-chain su Polygonscan.
+ * L'indirizzo precedente (0x23396cF..., 39 hex chars) restituiva "Invalid Token" su PolygonScan
+ * e non è mai esistito come contratto reale. Questo (40 hex chars) è il contratto autentico.
  */
 export const USDA_POLYGON_ADDRESS =
-  "0x23396cF899Ca06c4472205fC903bDB4de249D6f" as `0x${string}`;
+  "0xe714655fD1B3ba96B887DF1F94336c2A78E24001" as `0x${string}`;
 
 // ─── Tipi ─────────────────────────────────────────────────────────────────
 
