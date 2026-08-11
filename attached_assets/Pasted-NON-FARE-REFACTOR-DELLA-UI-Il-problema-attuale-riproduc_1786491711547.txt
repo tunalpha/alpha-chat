@@ -1,0 +1,65 @@
+NON FARE REFACTOR DELLA UI.
+
+Il problema attuale è riproducibile su iPhone.
+
+Screenshot:
+- Alpha Wallet è configurato.
+- Rete Polygon.
+- Saldo wallet: 1 POL (~1,02 €).
+- In Paga con Alpha Wallet: destinatario Cricco, Polygon, USDA, importo 1.
+- Premendo "Calcola costi" compare:
+  "Impossibile calcolare i costi: il wallet potrebbe essere bloccato. Sblocca Alpha Wallet e riprova."
+
+Quindi il problema NON è il saldo e NON è più lo Step 4 bianco.
+
+L'errore avviene PRIMA dello Step 4 perché ChatWalletBridge.calculateQuote() restituisce null.
+
+Fai prima un AUDIT SENZA MODIFICARE CODICE.
+
+Devi verificare:
+
+1. Qual è esattamente la condizione che fa restituire null a calculateQuote().
+2. Quale valore ha walletBridge.status nel momento in cui premo "Calcola costi".
+3. Se il wallet è realmente unlocked/ready oppure se Alpha Wallet UI e ChatWalletBridge hanno due stati differenti.
+4. Se entrando in Alpha Wallet il wallet risulta disponibile ma il bridge rimane locked/unavailable.
+5. Se il ritorno dalla pagina Alpha Wallet alla chat aggiorna correttamente lo stato del bridge.
+6. Se l'auto-lock iOS/PWA lascia uno stato stale.
+7. Se calculateQuote richiede inutilmente "ready" per fare una semplice quotazione.
+8. Verificare i log esatti della chiamata calculateQuote.
+9. Verificare perché con 1 POL disponibile non viene prodotta la quote.
+
+IMPORTANTE:
+
+NON modificare:
+- ChatWalletPaySheet UI
+- state machine
+- recipient discovery
+- fee logic
+- signing
+- broadcast
+- Payment Engine
+- USDA/USDT/BTC
+- backend
+- wallet generation
+- keystore
+
+Il problema da risolvere è esclusivamente:
+"Perché calculateQuote() restituisce null quando Alpha Wallet è configurato e dispone di 1 POL?"
+
+Se il wallet è semplicemente locked:
+→ il comportamento corretto deve essere chiedere lo sblocco Alpha Wallet e poi riprovare automaticamente la quote.
+
+Se invece il wallet è unlocked ma ChatWalletBridge vede uno stato stale:
+→ correggere la sincronizzazione dello stato.
+
+Se calculateQuote() sta usando lo stato locked come motivo per non calcolare la quote:
+→ verificare se è realmente necessario. La quote/fee deve essere calcolabile quando sono disponibili i dati necessari; la firma deve essere richiesta solo successivamente.
+
+PRIMA DI MODIFICARE DAMMI:
+- causa esatta
+- file e righe coinvolte
+- stato reale del bridge
+- perché il saldo di 1 POL non viene utilizzato
+- fix minimo proposto.
+
+NON implementare finché non ho visto l'audit.
