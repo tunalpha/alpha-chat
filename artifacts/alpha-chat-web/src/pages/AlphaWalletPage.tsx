@@ -125,19 +125,30 @@ function AlphaWalletInner({ onBack }: Props) {
     return <div className="aw-root"><div className="aw-spinner" /></div>;
   }
 
-  const handleCreate = () => { setFlowType("create"); setSubView("create-phrase"); };
-  const handleImport = () => { setFlowType("import"); setSubView("import-phrase"); };
+  // SECURITY: always wipe pending onboarding state before starting a new flow
+  const handleCreate = () => {
+    setPendingMnemonic(""); setPendingPin("");
+    setFlowType("create"); setSubView("create-phrase");
+  };
+  const handleImport = () => {
+    setPendingMnemonic(""); setPendingPin("");
+    setFlowType("import"); setSubView("import-phrase");
+  };
 
   const renderContent = () => {
     switch (subView) {
       case "welcome":
         return <WelcomeView onCreate={handleCreate} onImport={handleImport} />;
       case "create-phrase":
-        return <CreatePhraseView onNext={(m) => { setPendingMnemonic(m); setSubView("create-verify"); }} onBack={() => setSubView("welcome")} />;
+        return <CreatePhraseView
+          onNext={(m) => { setPendingMnemonic(m); setSubView("create-verify"); }}
+          onBack={() => { setPendingMnemonic(""); setPendingPin(""); setSubView("welcome"); }} />;
       case "create-verify":
         return <VerifyPhraseView mnemonic={pendingMnemonic} onNext={() => setSubView("setup-pin")} onBack={() => setSubView("create-phrase")} />;
       case "import-phrase":
-        return <ImportPhraseView onNext={(m) => { setPendingMnemonic(m); setSubView("setup-pin"); }} onBack={() => setSubView("welcome")} />;
+        return <ImportPhraseView
+          onNext={(m) => { setPendingMnemonic(m); setSubView("setup-pin"); }}
+          onBack={() => { setPendingMnemonic(""); setPendingPin(""); setSubView("welcome"); }} />;
       case "setup-pin":
         return <SetupPinView onNext={(p) => { setPendingPin(p); setSubView("confirm-pin"); }} onBack={() => setSubView(flowType === "create" ? "create-verify" : "import-phrase")} />;
       case "confirm-pin":
@@ -884,7 +895,11 @@ function SendView({ onBack, onSuccess }: { onBack: () => void; onSuccess: () => 
       if (!keystore) throw new Error("Keystore non trovato. Ricrea il wallet.");
       let mnemonic: string;
       try { mnemonic = await decryptSeed(keystore, pin); }
-      catch { setStep("auth"); setPinErr("PIN errato. Riprova."); return; }
+      catch {
+        // SECURITY: wrong PIN — clear entered PIN so user retypes from scratch
+        setPin("");
+        setStep("auth"); setPinErr("PIN errato. Riprova."); return;
+      }
 
       if (isBtc) {
         const result = await signAndBroadcastBtcTx({ mnemonic, recipientAddress: recipient, amountSat: raw, feeTarget: "normal" });
@@ -896,8 +911,12 @@ function SendView({ onBack, onSuccess }: { onBack: () => void; onSuccess: () => 
         const result = await signAndBroadcastErc20Evm({ mnemonic, chainId, tokenContractAddr: selectedAsset.contractAddress as `0x${string}`, recipient: recipient as `0x${string}`, amount: raw, gasLimit: gasEst!.gasLimit, gasPrice: gasEst!.gasPrice, nonce: gasEst!.nonce });
         setTxHash(result.txHash);
       }
+      // SECURITY: clear PIN from React state on success
+      setPin("");
       setStep("success");
     } catch (e) {
+      // SECURITY: clear PIN from React state on error too
+      setPin("");
       setBroadcastErr(e instanceof Error ? e.message : "Errore durante l'invio");
       setStep("error");
     }

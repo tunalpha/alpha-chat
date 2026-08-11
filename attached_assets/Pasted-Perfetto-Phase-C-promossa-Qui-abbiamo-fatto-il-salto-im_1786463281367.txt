@@ -1,0 +1,222 @@
+Perfetto. Phase C è promossa. Qui abbiamo fatto il salto importante: non è più solo una UI di wallet, ma ci sono balance reali, gas reali, signing locale e broadcast reale.
+
+I numeri sono ottimi:
+
+* 321/321 test ✅
+* +83 test rispetto a Phase B
+* chiave privata mai inviata al backend ✅
+* PIN/re-auth prima della firma ✅
+* EVM + BTC separati ✅
+* Payment Engine completamente intatto ✅
+
+L’unica cosa che terrei sotto osservazione
+
+Prima di usare il wallet con fondi reali, farei nella prossima fase una serie di test controllati su piccolissimi importi, soprattutto:
+
+1. ricevere USDT su Polygon;
+2. ricevere USDC su Polygon;
+3. inviare una piccola quantità di USDT;
+4. inviare una piccola quantità di USDC;
+5. ricevere BTC;
+6. inviare una piccola quantità di BTC;
+7. verificare il change BTC;
+8. esportare la seed e recuperare lo stesso wallet in un wallet esterno;
+9. verificare che il balance dopo recovery sia identico.
+
+Non toccherei ancora il Payment Engine.
+
+Phase D
+
+A questo punto darei il via alla Phase D, ma la imposterei come fase di hardening + test reali + sicurezza, prima di aggiungere altre funzioni.
+
+Puoi mandare all’agente:
+
+PHASE D — APPROVATA: HARDENING, TEST REALI E SECURITY AUDIT
+
+Procedi con Phase D esclusivamente sul nuovo Alpha Wallet.
+
+Non modificare in alcun modo il Payment Engine esistente.
+
+Obiettivo: portare il wallet da “tecnicamente funzionante” a “pronto per test reali controllati”, senza introdurre nuove integrazioni con il Payment Engine.
+
+1. Testnet / piccoli importi reali
+
+Preparare una checklist di test controllati per:
+
+EVM
+
+* ETH
+* Polygon
+* BSC
+* USDT
+* USDC
+* USDA
+* custom token
+
+Bitcoin
+
+* BTC receive
+* BTC send
+* UTXO selection
+* change
+* dust
+
+Non utilizzare importi significativi durante i test.
+
+2. Recovery interoperability
+
+Verificare realmente:
+
+Alpha Wallet → export recovery phrase → wallet esterno compatibile → stesso address.
+
+Eseguire il test almeno per:
+
+* EVM BIP-44;
+* BTC BIP-84.
+
+Verificare anche:
+
+* balance;
+* address;
+* derivation path.
+
+3. Signing security audit
+
+Verificare nuovamente che:
+
+* seed non venga inviata al backend;
+* private key non venga inviata al backend;
+* PIN non venga inviato al backend;
+* decrypted key non venga salvata in IndexedDB;
+* private key venga azzerata dopo l’utilizzo;
+* signed transaction sia l’unico dato sensibile inviato al broadcast endpoint.
+
+Cercare esplicitamente eventuali:
+
+* console.log;
+* error logging;
+* analytics;
+* exception tracking;
+* React state;
+* URL/query parameters;
+* localStorage;
+
+che possano contenere materiale sensibile.
+
+4. Transaction safety
+
+Prima della firma verificare sempre:
+
+* chainId;
+* recipient;
+* asset;
+* contract address;
+* amount;
+* decimals;
+* gas;
+* nonce;
+* total.
+
+L’utente deve firmare esattamente ciò che viene mostrato nella schermata di conferma.
+
+5. Anti-phishing
+
+Verificare:
+
+* fake USDT;
+* fake USDC;
+* fake USDA;
+* contract address errato;
+* network errata;
+* recipient address invalido.
+
+Il simbolo del token non deve mai essere utilizzato come identificatore di sicurezza.
+
+6. Bitcoin security
+
+Verificare:
+
+* UTXO selection;
+* fee calculation;
+* change;
+* dust threshold;
+* insufficient funds;
+* invalid recipient;
+* fee spike;
+* RBF/confirmation handling, se supportato.
+
+7. PWA / iOS audit
+
+Verificare cosa accade se:
+
+* l’app viene chiusa durante una firma;
+* Safari/PWA viene sospesa;
+* IndexedDB non è disponibile;
+* storage viene cancellato;
+* RPC cade durante una transazione;
+* broadcast fallisce dopo la firma.
+
+Non introdurre workaround insicuri.
+
+Documentare chiaramente ogni limitazione.
+
+8. Notifications
+
+Verificare il sistema già implementato:
+
+* incoming;
+* outgoing;
+* pending;
+* confirmed;
+* failed;
+* anti-duplicate;
+* EVM token events;
+* BTC confirmations.
+
+Verificare che nessuna notifica contenga seed/private key/PIN.
+
+9. Custom Token Import
+
+Testare nuovamente:
+
+* token verificato;
+* token custom;
+* fake USDT;
+* fake USDC;
+* fake USDA;
+* decimals differenti;
+* contract su network sbagliata.
+
+10. Regression
+
+Tutti i test esistenti devono rimanere verdi.
+
+Target:
+
+321/321 + nuovi test Phase D = 100% pass.
+
+Verificare inoltre esplicitamente:
+
+Payment Engine = zero modifiche funzionali.
+
+11. STOP CONDITION
+
+Al termine non procedere automaticamente alla Phase E.
+
+Restituire:
+
+* test eseguiti;
+* test reali eseguiti;
+* eventuali TX hash di test;
+* reti testate;
+* asset testati;
+* problemi trovati;
+* problemi risolti;
+* problemi ancora aperti;
+* security findings;
+* limitazioni PWA/iOS;
+* conferma isolamento Payment Engine.
+
+STOP e attendi approvazione esplicita per Phase E.
+
+Questa secondo me è la sequenza giusta: non aggiungerei altre funzioni prima di aver provato realmente il ciclo completo ricezione → saldo → firma → broadcast → conferma → recovery.

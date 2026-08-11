@@ -168,15 +168,24 @@ interface BtcKeyPair {
 
 async function deriveBtcKeyPair(mnemonic: string, index = 0): Promise<BtcKeyPair> {
   const seed = await mnemonicToSeedBytes(mnemonic);
-  const root = HDKey.fromMasterSeed(seed);
-  const path = `${BTC_BASE_PATH}/${index}`;
-  const child = root.derive(path);
+  try {
+    const root  = HDKey.fromMasterSeed(seed);
+    const path  = `${BTC_BASE_PATH}/${index}`;
+    const child = root.derive(path);
 
-  if (!child.privateKey || !child.publicKey) {
-    throw new Error(`[AlphaWallet] BTC key derivation failed at ${path}`);
+    if (!child.privateKey || !child.publicKey) {
+      throw new Error(`[AlphaWallet] BTC key derivation failed at ${path}`);
+    }
+
+    // Copy key bytes out before seed is zeroed; HDKey internals may hold refs
+    return {
+      privateKey: new Uint8Array(child.privateKey),
+      publicKey:  new Uint8Array(child.publicKey),
+    };
+  } finally {
+    // SECURITY: zero the 64-byte BIP-39 seed as soon as the derived key is out
+    seed.fill(0);
   }
-
-  return { privateKey: child.privateKey, publicKey: child.publicKey };
 }
 
 function bytesToHex(bytes: Uint8Array): string {

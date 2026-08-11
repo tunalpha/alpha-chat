@@ -8,6 +8,7 @@
  */
 
 import { Router } from "express";
+import rateLimit from "express-rate-limit";
 import { authenticate } from "../../middleware/authenticate.middleware";
 import {
   getEvmTokenInfo,
@@ -26,6 +27,17 @@ import {
 const router = Router();
 router.use(authenticate);
 
+// SECURITY: Rate limit broadcast endpoints — 10 requests/minute per authenticated user.
+// Prevents RPC abuse, transaction spam, and nonce exhaustion attacks.
+const broadcastLimiter = rateLimit({
+  windowMs:          60 * 1000,
+  max:               10,
+  keyGenerator:      (req) => (req as any).user?.userId ?? req.ip ?? "unknown",
+  standardHeaders:   true,
+  legacyHeaders:     false,
+  message:           { error: "BROADCAST_RATE_LIMIT", message: "Troppi broadcast. Riprova tra un minuto." },
+});
+
 // ── Token info (Phase B) ──────────────────────────────────────────────────
 /** GET /evm/token-info?chainId=137&address=0x... */
 router.get("/evm/token-info", getEvmTokenInfo);
@@ -40,7 +52,7 @@ router.get("/evm/gas", getEvmGasEstimate);
 
 // ── Broadcast (Phase C) — receives only pre-signed tx hex ─────────────────
 /** POST /evm/broadcast — body: { chainId, signedTx } */
-router.post("/evm/broadcast", broadcastEvmTx);
+router.post("/evm/broadcast", broadcastLimiter, broadcastEvmTx);
 
 // ── Transaction history (Phase B) ─────────────────────────────────────────
 /** GET /evm/transactions?chainId=137&address=0x...&fromBlock=0x... */
@@ -57,7 +69,7 @@ router.get("/btc/utxos", getBtcUTXOs);
 router.get("/btc/fee-rate", getBtcFeeRate);
 
 /** POST /btc/broadcast — body: { txHex } */
-router.post("/btc/broadcast", broadcastBtcTx);
+router.post("/btc/broadcast", broadcastLimiter, broadcastBtcTx);
 
 /** GET /btc/transactions?address=bc1q... */
 router.get("/btc/transactions", getBtcTransactions);

@@ -58,13 +58,18 @@ function bytesToHex(bytes: Uint8Array): `0x${string}` {
 
 // ─── Validation helpers ────────────────────────────────────────────────────
 
+const ZERO_ADDRESS = "0x" + "0".repeat(40);
+
 function isValidEvmAddress(addr: string): addr is `0x${string}` {
-  return /^0x[0-9a-fA-F]{38,40}$/.test(addr);
+  // EVM addresses are exactly 40 hex chars after the 0x prefix
+  return /^0x[0-9a-fA-F]{40}$/.test(addr);
 }
 
 export function validateEvmRecipient(addr: string): string | null {
   if (!addr.trim()) return "Inserisci un indirizzo destinatario";
-  if (!isValidEvmAddress(addr)) return "Indirizzo non valido (deve iniziare con 0x e avere 40 caratteri hex)";
+  if (!isValidEvmAddress(addr)) return "Indirizzo non valido (deve iniziare con 0x e avere esattamente 40 caratteri hex)";
+  // SECURITY: reject zero address (burn address — almost certainly a mistake)
+  if (addr.toLowerCase() === ZERO_ADDRESS.toLowerCase()) return "Indirizzo zero non valido";
   return null;
 }
 

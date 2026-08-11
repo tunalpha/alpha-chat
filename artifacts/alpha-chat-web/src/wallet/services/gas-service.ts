@@ -6,7 +6,7 @@
  * SICUREZZA: gas fetching uses only public addresses.
  */
 
-import { encodeFunctionData } from "viem";
+import { encodeFunctionData, getAddress } from "viem";
 import { apiWalletGetGasEstimate } from "../../lib/alpha-wallet-api";
 
 // ─── Tipi ──────────────────────────────────────────────────────────────────
@@ -47,10 +47,12 @@ export function buildErc20TransferData(
   to:     `0x${string}`,
   amount: bigint,
 ): `0x${string}` {
+  // SECURITY: normalize to EIP-55 checksum before encoding (viem requires checksummed addresses)
+  const checksummed = getAddress(to);
   return encodeFunctionData({
     abi:          ERC20_TRANSFER_ABI,
     functionName: "transfer",
-    args:         [to, amount],
+    args:         [checksummed, amount],
   });
 }
 
