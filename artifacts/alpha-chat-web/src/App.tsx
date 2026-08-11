@@ -282,7 +282,7 @@ function AppContent() {
           case "wallet-center":
             return <WalletCenterPage onBack={goSettings} onOpenAlphaWallet={() => setView("alpha-wallet")} />;
           case "usda-settings":
-            return <UsdaSettingsPage onBack={goSettings} />;
+            return <UsdaSettingsPage onBack={goSettings} onOpenAlphaWallet={() => setView("alpha-wallet")} />;
           case "pwa-guide":
             return <PwaGuidePage onBack={goSettings} />;
           // Alpha Wallet — wallet self-custodial nativo (isolato da Payment Engine)

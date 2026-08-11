@@ -7298,6 +7298,32 @@ html.emergency-open #root {
 
 /* ── Connect button wrapper ──────────────────────────────────────────────────── */
 .ups-connect-wrap { display: flex; justify-content: center; }
+
+/* Alpha Wallet option in UsdaSettingsPage */
+.ups-alpha-wallet-option { margin: 4px 0 8px; }
+.ups-alpha-wallet-divider {
+  display: flex; align-items: center; gap: 8px;
+  margin: 12px 0 10px;
+  color: rgba(255,255,255,0.3); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em;
+}
+.ups-alpha-wallet-divider::before,
+.ups-alpha-wallet-divider::after {
+  content: ""; flex: 1; height: 1px; background: rgba(255,255,255,0.1);
+}
+.ups-alpha-wallet-btn {
+  display: flex; align-items: center; gap: 12px;
+  width: 100%; padding: 12px 14px;
+  background: rgba(139,92,246,0.08);
+  border: 1.5px solid rgba(139,92,246,0.35);
+  border-radius: 12px; cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.ups-alpha-wallet-btn:hover { background: rgba(139,92,246,0.16); border-color: rgba(139,92,246,0.55); }
+.ups-alpha-wallet-btn-icon { font-size: 1.3rem; flex-shrink: 0; }
+.ups-alpha-wallet-btn-text { display: flex; flex-direction: column; align-items: flex-start; flex: 1; min-width: 0; }
+.ups-alpha-wallet-btn-title { font-size: 0.88rem; font-weight: 700; color: #c4b5fd; }
+.ups-alpha-wallet-btn-sub { font-size: 0.73rem; color: rgba(255,255,255,0.45); margin-top: 2px; }
+.ups-alpha-wallet-btn-arrow { font-size: 1.2rem; color: rgba(139,92,246,0.7); flex-shrink: 0; }
 .ups-wallet-actions { display: flex; flex-direction: column; gap: 8px; }
 
 /* ── Address block (connected state) ────────────────────────────────────────── */

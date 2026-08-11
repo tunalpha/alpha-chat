@@ -255,11 +255,12 @@ function ManualAddDialog({ address, onClose }: { address: string; onClose: () =>
 
 interface Props {
   onBack: () => void;
+  onOpenAlphaWallet?: () => void;
 }
 
 // ── Componente ────────────────────────────────────────────────────────────────
 
-export default function UsdaSettingsPage({ onBack }: Props) {
+export default function UsdaSettingsPage({ onBack, onOpenAlphaWallet }: Props) {
   const { t } = useTranslation("usdaSettings");
 
   const WALLET_CHIPS = [
@@ -432,6 +433,28 @@ export default function UsdaSettingsPage({ onBack }: Props) {
                   </div>
                 ))}
               </div>
+
+              {/* Alpha Wallet — opzione nativa */}
+              {onOpenAlphaWallet && (
+                <div className="ups-alpha-wallet-option">
+                  <div className="ups-alpha-wallet-divider">
+                    <span>oppure</span>
+                  </div>
+                  <button
+                    type="button"
+                    className="ups-alpha-wallet-btn"
+                    onClick={onOpenAlphaWallet}
+                  >
+                    <span className="ups-alpha-wallet-btn-icon">🔐</span>
+                    <div className="ups-alpha-wallet-btn-text">
+                      <span className="ups-alpha-wallet-btn-title">Alpha Wallet</span>
+                      <span className="ups-alpha-wallet-btn-sub">Wallet nativo integrato — nessuna app esterna</span>
+                    </div>
+                    <span className="ups-alpha-wallet-btn-arrow">›</span>
+                  </button>
+                </div>
+              )}
+
               <div className="ups-connect-wrap">
                 <ConnectButton client={client} chain={polygon} wallets={wallets} />
               </div>
