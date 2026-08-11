@@ -41,7 +41,7 @@
     "chats": "聊天",
     "archive": "归档",
     "calls": "通话",
-    "usdaPayments": "💸 USDA 支付",
+    "usdaPayments": "💸 加密货币支付",
     "nuclearProtocol": "核协议"
   },
   "auth": {
@@ -277,7 +277,7 @@
     "storage": "存储",
     "version": "版本",
     "payments": "💰 支付",
-    "usdaPayments": "💸 USDA 支付",
+    "usdaPayments": "💸 加密货币支付",
     "usdaPaymentsValue": "钱包、代币、指南和安全",
     "walletCenter": "钱包中心",
     "walletCenterValue": "余额、历史、交易",

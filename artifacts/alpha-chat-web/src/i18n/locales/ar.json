@@ -41,7 +41,7 @@
     "chats": "المحادثات",
     "archive": "الأرشيف",
     "calls": "المكالمات",
-    "usdaPayments": "💸 مدفوعات USDA",
+    "usdaPayments": "💸 مدفوعات Crypto",
     "nuclearProtocol": "البروتوكول النووي"
   },
   "auth": {
@@ -277,7 +277,7 @@
     "storage": "التخزين",
     "version": "الإصدار",
     "payments": "💰 المدفوعات",
-    "usdaPayments": "💸 مدفوعات USDA",
+    "usdaPayments": "💸 مدفوعات Crypto",
     "usdaPaymentsValue": "المحفظة والرمز والدليل والأمان",
     "walletCenter": "مركز المحفظة",
     "walletCenterValue": "الرصيد والتاريخ والمعاملات",

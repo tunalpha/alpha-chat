@@ -41,7 +41,7 @@
     "chats": "チャット",
     "archive": "アーカイブ",
     "calls": "通話",
-    "usdaPayments": "💸 USDA 支払い",
+    "usdaPayments": "💸 暗号通貨支払い",
     "nuclearProtocol": "核プロトコル"
   },
   "auth": {
@@ -277,7 +277,7 @@
     "storage": "ストレージ",
     "version": "バージョン",
     "payments": "💰 支払い",
-    "usdaPayments": "💸 USDA 支払い",
+    "usdaPayments": "💸 暗号通貨支払い",
     "usdaPaymentsValue": "ウォレット・トークン・ガイド・セキュリティ",
     "walletCenter": "ウォレットセンター",
     "walletCenterValue": "残高・履歴・取引",

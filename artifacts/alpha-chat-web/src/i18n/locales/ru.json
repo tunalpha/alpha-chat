@@ -41,7 +41,7 @@
     "chats": "Чаты",
     "archive": "Архив",
     "calls": "Звонки",
-    "usdaPayments": "💸 Платежи USDA",
+    "usdaPayments": "💸 Крипто-платежи",
     "nuclearProtocol": "Ядерный протокол"
   },
   "auth": {
@@ -277,7 +277,7 @@
     "storage": "Хранилище",
     "version": "Версия",
     "payments": "💰 Платежи",
-    "usdaPayments": "💸 Платежи USDA",
+    "usdaPayments": "💸 Крипто-платежи",
     "usdaPaymentsValue": "Кошелёк, токен, руководство и безопасность",
     "walletCenter": "Центр кошелька",
     "walletCenterValue": "Баланс, история, транзакции",

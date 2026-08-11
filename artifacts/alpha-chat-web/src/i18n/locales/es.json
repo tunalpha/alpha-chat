@@ -41,7 +41,7 @@
     "chats": "Chats",
     "archive": "Archivo",
     "calls": "Llamadas",
-    "usdaPayments": "💸 Pagos USDA",
+    "usdaPayments": "💸 Pagos Crypto",
     "nuclearProtocol": "Protocolo Nuclear"
   },
   "auth": {
@@ -277,7 +277,7 @@
     "storage": "Almacenamiento",
     "version": "Versión",
     "payments": "💰 Pagos",
-    "usdaPayments": "💸 Pagos USDA",
+    "usdaPayments": "💸 Pagos Crypto",
     "usdaPaymentsValue": "Cartera, token, guía y seguridad",
     "walletCenter": "Centro de Cartera",
     "walletCenterValue": "Saldo, historial, transacciones",
