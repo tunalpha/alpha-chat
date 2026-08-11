@@ -1,0 +1,95 @@
+Esatto. Questo audit chiarisce una cosa importante: la parte più importante della UX “Paga con Alpha Wallet” non è ancora completata.
+
+Oggi il wallet funziona tecnicamente, ma il pagamento in chat è ancora troppo manuale:
+
+Oggi
+Paga con Alpha Wallet → scegli rete → asset → importo → INCOLLA indirizzo destinatario → firma
+
+Quello che dovrebbe fare Alpha Chat
+Paga con Alpha Wallet → scegli asset → importo → destinatario già riconosciuto → conferma → firma
+
+La soluzione che farei
+
+Non esporrei genericamente un endpoint tipo /users/:id/wallet-address senza ulteriori protezioni.
+
+Creerei un’API specifica e minimale, ad esempio:
+
+GET /api/v1/alpha-wallet/recipient/:userId
+
+che restituisce solo gli indirizzi pubblici necessari:
+
+{
+  evmAddress: "0x...",
+  btcAddress: "bc1q..."
+}
+
+Mai:
+
+* seed
+* private key
+* PIN
+* dati del keystore
+* informazioni sensibili.
+
+E soprattutto l’API dovrebbe verificare che userId appartenga realmente alla conversazione corrente, evitando che un utente possa interrogare arbitrariamente gli indirizzi di altri utenti.
+
+UX ideale
+
+Se Cricko ha Alpha Wallet:
+
+🔐 Paga con Alpha Wallet
+
+Destinatario: Cricko
+🟣 Polygon
+💎 USDT
+
+Importo: 100 USDT
+
+Cricko riceverà 100 USDT
+
+Commissione piattaforma: 0,10 USDT
+Network fee: ...
+
+[Conferma e firma]
+
+L’indirizzo può essere mostrato eventualmente nei dettagli, ma non deve essere richiesto all’utente.
+
+Se Cricko NON ha Alpha Wallet
+
+Qui abbiamo due possibilità.
+
+Io sceglierei:
+
+⚠️ Cricko non ha ancora configurato Alpha Wallet
+
+Per pagare direttamente con Alpha Wallet, il destinatario deve avere un indirizzo configurato.
+
+[Invita Cricko ad attivare Alpha Wallet]
+
+Nessuna transazione parte.
+
+Non usiamo escrow, non usiamo Payment Engine e non custodiamo i fondi.
+
+Ma c’è un vantaggio importante
+
+Se Cricko non ha Alpha Wallet ma possiede già un wallet esterno, tecnicamente può comunque ricevere una transazione Alpha Wallet se il mittente conosce il suo indirizzo.
+
+Quindi possiamo distinguere:
+
+1. Alpha Wallet configurato → indirizzo recuperato automaticamente.
+2. Alpha Wallet non configurato → invito/configurazione.
+3. Indirizzo esterno fornito manualmente → pagamento diretto possibile, con conferma molto chiara della rete e dell’indirizzo.
+
+E soprattutto: niente modifica al Payment Engine
+
+Questa implementazione sarebbe esclusivamente:
+
+Chat → Recipient Wallet Discovery → ChatWalletBridge → Alpha Wallet
+
+Il vecchio:
+
+USDA / USDT / BTC → Payment Engine / escrow
+
+rimane esattamente com’è.
+
+Questo è il prossimo miglioramento che farei prima di considerare “Paga con Alpha Wallet” veramente pronto per gli utenti.
