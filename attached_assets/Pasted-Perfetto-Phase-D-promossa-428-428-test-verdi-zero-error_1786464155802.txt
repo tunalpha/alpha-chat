@@ -1,0 +1,107 @@
+Perfetto. Phase D è promossa: 428/428 test verdi, zero errori TypeScript backend e soprattutto sono stati risolti alcuni problemi di sicurezza realmente importanti.
+
+Io però non passerei ancora a una Phase E di nuove funzionalità. Il report stesso indica che il prossimo passo naturale è il testnet con fondi minimi, e sono d’accordo.
+
+Prima farei quindi una Phase E dedicata esclusivamente alla validazione reale, non a swap/address book o altre funzioni.
+
+Cosa voglio verificare prima
+
+EVM
+
+* Ethereum
+* Polygon
+* BSC
+* ETH/POL/BNB
+* USDT
+* USDC
+* USDA
+* almeno un custom token
+
+Per ogni rete:
+
+1. Creazione/import wallet.
+2. Recupero dello stesso address.
+3. Ricezione.
+4. Balance reale.
+5. Valore EUR/USD.
+6. Invio di importo minimo.
+7. Stima gas.
+8. Schermata di conferma.
+9. PIN/biometria.
+10. Firma locale.
+11. Broadcast.
+12. Conferma on-chain.
+13. Notifica ricevuta.
+14. Transaction history.
+
+Bitcoin
+
+* ricezione BTC;
+* UTXO;
+* balance;
+* invio piccolo importo;
+* fee reale;
+* change;
+* conferma;
+* notifica;
+* recovery con wallet compatibile.
+
+Una verifica fondamentale
+
+Durante i test voglio che venga controllato il valore realmente firmato, non solamente che la transazione venga accettata.
+
+Per esempio:
+
+UI: 10 USDC
+TX firmata: 10 USDC
+Contract: USDC corretto
+Network: Polygon
+Recipient: address corretto
+
+Questo è particolarmente importante perché abbiamo già visto quanto possano essere pericolosi i decimals diversi tra reti.
+
+E soprattutto: niente Phase G
+
+Ancora nessuna integrazione con “Invia Cripto”, “Richiedi Cripto” o Payment Engine.
+
+Il wallet deve prima dimostrare di funzionare perfettamente da solo.
+
+Puoi quindi dare all’agente questo:
+
+PHASE E — APPROVATA COME VALIDATION PHASE
+
+Non aggiungere nuove funzionalità. Non implementare swap, address book o integrazione con Chat/Payment Engine.
+
+Eseguire esclusivamente la checklist reale descritta in PHASE_D_TEST_CHECKLIST.md, utilizzando testnet quando disponibile e importi reali minimi solo dove necessario.
+
+Verificare EVM Ethereum/Polygon/BSC e Bitcoin end-to-end: create/import → receive → balance → fiat valuation → send → gas/fee → local authentication → local signing → broadcast → confirmation → notification → history.
+
+Per ogni transazione verificare che ciò che viene mostrato nella UI corrisponda byte-for-byte/logicamente alla transazione realmente firmata: network/chainId, token contract, decimals, amount, recipient, gas/fee e nonce.
+
+Verificare USDT, USDC, USDA e almeno un custom token.
+
+Verificare Bitcoin con UTXO selection, fee, change e dust.
+
+Eseguire inoltre recovery interoperability con wallet esterni compatibili per EVM e BTC.
+
+NON utilizzare mai fondi significativi.
+
+Se una funzione non può essere testata realmente per una limitazione della PWA/iOS, non simularla: documentare la limitazione.
+
+Payment Engine, USDA payment flow, ThirdWeb, WalletConnect, escrow, Gas Station e BTC Payment Engine devono rimanere completamente invariati.
+
+Al termine:
+
+* fornire TX hash dei test reali;
+* rete;
+* asset;
+* importo;
+* risultato;
+* eventuali problemi;
+* test automatici;
+* eventuali limitazioni;
+* conferma isolamento.
+
+STOP dopo la checklist. Non procedere a Phase F/G senza mia approvazione.
+
+Questa è, secondo me, la fase più importante prima di considerare Alpha Wallet realmente pronto.

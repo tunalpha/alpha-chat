@@ -18,6 +18,7 @@
  */
 
 import { privateKeyToAccount } from "viem/accounts";
+import { getAddress }          from "viem";
 import type { TransactionSerializableLegacy } from "viem";
 import { deriveEvmWallet } from "../core/hd-wallet";
 import { buildErc20TransferData } from "./gas-service";
@@ -110,12 +111,13 @@ export async function signAndBroadcastNativeEvm(
     const account = privateKeyToAccount(privateKeyHex);
 
     // 3. Build transaction (legacy type for compatibility with all EVM chains)
+    // SECURITY: normalize to EIP-55 checksum — rejects invalid addresses at viem layer
     const tx: TransactionSerializableLegacy = {
       type:     "legacy",
       nonce:    params.nonce,
       gas:      params.gasLimit,
       gasPrice: params.gasPrice,
-      to:       params.to,
+      to:       getAddress(params.to),
       value:    params.valueWei,
       chainId:  params.chainId,
     };
@@ -153,7 +155,7 @@ export async function signAndBroadcastErc20Evm(
       nonce:    params.nonce,
       gas:      params.gasLimit,
       gasPrice: params.gasPrice,
-      to:       params.tokenContractAddr,
+      to:       getAddress(params.tokenContractAddr), // EIP-55 normalize
       value:    0n, // ERC-20: native value is 0
       data,
       chainId:  params.chainId,

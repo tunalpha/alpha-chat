@@ -37,6 +37,11 @@ Phase C adds real on-chain data and full send flow to the Alpha Wallet:
 - Phase D tests: 5 new test files (phase-d-security, phase-d-anti-phishing, phase-d-recovery, phase-d-transaction-safety, phase-d-notifications)
 - Total: 428 tests green (was 321 after Phase C, was 238 before Phase C)
 
+## Phase E validation findings (August 2026)
+- USDA address in wallet files (token-registry-server.ts, token-registry.ts, thirdweb.ts) = 39 hex chars, INVALID (must be 40). Payment engine uses 0xe714655fD1B3ba96B887DF1F94336c2A78E24001 (valid). ACTION: verify on Polygonscan before launch.
+- evm-signer.ts: added getAddress() normalization on `to` and `tokenContractAddr` (EIP-55 auto-normalize + reject bad checksum before signing)
+- Phase E tests: 88 new tests, 516 total. BIP-44/84 vectors match MetaMask+BlueWallet exactly. All EVM/BTC signing fields verified byte-by-byte via parseTransaction/Transaction.fromRaw.
+
 ## Phase D security fixes applied
 - `btc-signer.ts`: seed.fill(0) in finally after HDKey derivation
 - `evm-signer.ts`: isValidEvmAddress regex fixed to exactly 40 hex chars; zero address rejected
