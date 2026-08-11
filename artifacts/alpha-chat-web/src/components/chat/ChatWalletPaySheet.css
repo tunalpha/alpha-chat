@@ -15,9 +15,12 @@
   border-radius: 20px 20px 0 0;
   width: 100%;
   max-width: 480px;
+  /* Altezza massima: sheet occupa al più 88% della viewport */
   max-height: 88vh;
-  overflow-y: auto;
-  padding-bottom: env(safe-area-inset-bottom, 0px);
+  /* flex column: header fisso + body scrollabile */
+  display: flex;
+  flex-direction: column;
+  overflow: hidden; /* nasconde overflow: lo scroll è sul cwp-body */
 }
 
 .cwp-header {
@@ -26,8 +29,8 @@
   justify-content: space-between;
   padding: 16px 20px 12px;
   border-bottom: 1px solid var(--border-subtle, #e5e7eb);
-  position: sticky;
-  top: 0;
+  /* Header NON scorre — flex-shrink: 0 garantisce altezza fissa */
+  flex-shrink: 0;
   background: var(--bg-primary, #fff);
   z-index: 1;
 }
@@ -49,9 +52,16 @@
 
 .cwp-body {
   padding: 16px 20px 20px;
+  padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px));
   display: flex;
   flex-direction: column;
   gap: 16px;
+  /* Scroll nativo iOS-safe sul contenuto interno */
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  flex: 1 1 auto;
+  min-height: 0; /* necessario per far funzionare flex + overflow su iOS */
 }
 
 .cwp-section { display: flex; flex-direction: column; gap: 6px; }
