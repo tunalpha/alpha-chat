@@ -18,6 +18,7 @@
  */
 
 import { useState, useCallback, useRef, useEffect } from "react";
+import { useSecurePhraseDisplay } from "../hooks/useSecurePhraseDisplay";
 import { useLock } from "../contexts/LockContext";
 import { WalletProvider, useWallet } from "../wallet/context/WalletContext";
 import { createMnemonic, isValidMnemonic } from "../wallet/core/mnemonic";
@@ -288,6 +289,40 @@ function AlphaWalletInner({ onBack }: Props) {
 // ONBOARDING VIEWS (Phase B — unchanged)
 // ═══════════════════════════════════════════════════════════════════════════
 
+// ─── SecureOverlay ────────────────────────────────────────────────────────────
+// Si sovrappone alla griglia della frase quando viene rilevato un tentativo
+// di screenshot o condivisione schermo.
+
+function SecureOverlay({
+  isScreenShare,
+  onReveal,
+}: {
+  isScreenShare: boolean;
+  onReveal: () => void;
+}) {
+  return (
+    <div className="aw-secure-overlay" role="alert" aria-live="assertive">
+      <div className="aw-secure-overlay-icon">🛡️</div>
+      <p className="aw-secure-overlay-title">Schermata nascosta</p>
+      {isScreenShare ? (
+        <p className="aw-secure-overlay-sub aw-secure-overlay-sub--danger">
+          ⚠️ Condivisione schermo rilevata.<br />
+          Interrompi la registrazione per vedere la frase.
+        </p>
+      ) : (
+        <p className="aw-secure-overlay-sub">
+          Il contenuto è stato nascosto per proteggere la tua recovery phrase.
+        </p>
+      )}
+      {!isScreenShare && (
+        <button className="aw-secure-overlay-btn" onClick={onReveal}>
+          👁 Tocca per rivelare
+        </button>
+      )}
+    </div>
+  );
+}
+
 function WelcomeView({ onCreate, onImport }: { onCreate: () => void; onImport: () => void }) {
   return (
     <div className="aw-welcome">
@@ -309,18 +344,20 @@ function CreatePhraseView({ onNext, onBack }: { onNext: (m: string) => void; onB
   const [revealed, setRevealed] = useState(false);
   const [copied, setCopied] = useState(false);
   const words = mnemonic.split(" ");
+  const { isProtected, isScreenShare, reveal } = useSecurePhraseDisplay();
   const handleCopy = () => void navigator.clipboard.writeText(mnemonic).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); });
   return (
     <div className="aw-create-phrase">
       <h2>La tua Recovery Phrase</h2>
       <p className="aw-sub">Scrivi queste 12 parole su carta. Non fare screenshot.</p>
-      <div className={`aw-phrase-grid ${!revealed ? "aw-blurred" : ""}`}>
+      <div className={`aw-phrase-grid ${!revealed ? "aw-blurred" : ""}`} style={{ position: "relative" }}>
         {words.map((w, i) => (
           <div key={i} className="aw-phrase-word">
             <span className="aw-word-num">{i + 1}</span>
             <span className="aw-word-text">{w}</span>
           </div>
         ))}
+        {revealed && isProtected && <SecureOverlay isScreenShare={isScreenShare} onReveal={reveal} />}
       </div>
       {!revealed
         ? <button className="aw-btn aw-btn--secondary" onClick={() => setRevealed(true)}>👁 Mostra recovery phrase</button>
@@ -438,6 +475,7 @@ function BackupConfirmView({ mnemonic, pin, onConfirm }: { mnemonic: string; pin
   const [checked, setChecked] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const { isProtected, isScreenShare, reveal } = useSecurePhraseDisplay();
   const handleConfirm = async () => {
     if (!checked) return;
     setLoading(true);
@@ -449,8 +487,9 @@ function BackupConfirmView({ mnemonic, pin, onConfirm }: { mnemonic: string; pin
       <div className="aw-backup-icon">📝</div>
       <h2>Backup obbligatorio</h2>
       <p>Hai annotato le 12 parole in un posto sicuro?<br /><strong>Alpha Chat non può recuperare il tuo wallet se perdi la recovery phrase.</strong></p>
-      <div className="aw-phrase-review">
+      <div className="aw-phrase-review" style={{ position: "relative" }}>
         {mnemonic.split(" ").map((w, i) => <span key={i} className="aw-phrase-tag">{i + 1}. {w}</span>)}
+        {isProtected && <SecureOverlay isScreenShare={isScreenShare} onReveal={reveal} />}
       </div>
       <label className="aw-checkbox-label">
         <input type="checkbox" checked={checked} onChange={e => setChecked(e.target.checked)} />
@@ -2095,7 +2134,11 @@ function SeedExportView({ onBack }: { onBack: () => void }) {
       .then(() => { setCopied(true); setTimeout(() => setCopied(false), 3000); });
   };
 
+  // Hook sicurezza — sempre chiamato (sopra i return condizionali, regola dei hooks)
+  const { isProtected, isScreenShare, reveal } = useSecurePhraseDisplay();
+
   // Mostra la frase se autenticata
+
   if (words) {
     return (
       <div className="aw-seed-export">
@@ -2103,13 +2146,14 @@ function SeedExportView({ onBack }: { onBack: () => void }) {
           ⚠️ <strong>Non condividere mai queste parole.</strong> Chiunque le abbia può accedere ai tuoi fondi.
           Non fare screenshot — le immagini possono essere intercettate.
         </div>
-        <div className="aw-seed-export-phrase">
+        <div className="aw-seed-export-phrase" style={{ position: "relative" }}>
           {words.map((w, i) => (
             <div key={i} className="aw-seed-export-word">
               <span className="aw-seed-export-word-num">{i + 1}</span>
               <span>{w}</span>
             </div>
           ))}
+          {isProtected && <SecureOverlay isScreenShare={isScreenShare} onReveal={reveal} />}
         </div>
         <button className="aw-btn aw-btn--ghost" onClick={handleCopy}>
           {copied ? "✅ Copiata negli appunti" : "📋 Copia recovery phrase"}

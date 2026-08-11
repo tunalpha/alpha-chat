@@ -260,6 +260,63 @@
 .aw-add-token h2, .aw-security h2 {
   font-size: 20px; font-weight: 700; margin: 0 0 4px;
 }
+/* ── SecureOverlay — anti-screenshot / anti-screen-share ─────────────────── */
+.aw-secure-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(15, 12, 25, 0.96);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border-radius: inherit;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  z-index: 10;
+  padding: 16px;
+  text-align: center;
+}
+
+.aw-secure-overlay-icon {
+  font-size: 32px;
+  margin-bottom: 4px;
+}
+
+.aw-secure-overlay-title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #fff;
+  margin: 0;
+}
+
+.aw-secure-overlay-sub {
+  font-size: 13px;
+  color: rgba(255,255,255,0.65);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.aw-secure-overlay-sub--danger {
+  color: #fca5a5;
+}
+
+.aw-secure-overlay-btn {
+  margin-top: 8px;
+  padding: 9px 20px;
+  border: 1px solid rgba(255,255,255,0.25);
+  border-radius: 100px;
+  background: rgba(255,255,255,0.1);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.aw-secure-overlay-btn:hover {
+  background: rgba(255,255,255,0.18);
+}
+
 .aw-phrase-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
