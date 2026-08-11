@@ -102,6 +102,20 @@ function useWalletCurrency() {
   return { currency, setCurrency };
 }
 
+// ─── Wallet Face ID hook (wallet-specific, separate from app-level Face ID) ──
+
+function useWalletFaceId() {
+  const [enabled, setEnabledState] = useState<boolean>(() => {
+    try { return localStorage.getItem("aw_wallet_faceid") === "1"; }
+    catch { return false; }
+  });
+  const setEnabled = useCallback((v: boolean) => {
+    try { localStorage.setItem("aw_wallet_faceid", v ? "1" : "0"); } catch { /* ignore */ }
+    setEnabledState(v);
+  }, []);
+  return { walletFaceIdEnabled: enabled, setWalletFaceIdEnabled: setEnabled };
+}
+
 const ONBOARDING_VIEWS: WalletSubView[] = [
   "create-phrase", "create-verify", "import-phrase",
   "setup-pin", "confirm-pin", "backup-confirm",
@@ -453,19 +467,29 @@ function BackupConfirmView({ mnemonic, pin, onConfirm }: { mnemonic: string; pin
 function UnlockView() {
   const wallet = useWallet();
   const lock = useLock();
-  const biometricOnlyEnabled = lock?.biometricOnlyEnabled ?? false;
+  const { walletFaceIdEnabled } = useWalletFaceId();
+
+  // Wallet-specific Face ID: enabled via wallet settings + device supports biometric
   const hasBiometricSet = lock?.hasBiometricSet ?? false;
+  const walletBioActive = walletFaceIdEnabled && hasBiometricSet;
+
+  // App-level biometric-only (legacy path — keep working)
+  const appBiometricOnly = lock?.biometricOnlyEnabled ?? false;
   const biometricEnabled = lock?.settings?.biometricEnabled ?? false;
-  const showBiometric = biometricOnlyEnabled || (hasBiometricSet && biometricEnabled);
+
+  // Show biometric button if either wallet Face ID or app biometric is configured
+  const showBiometric = walletBioActive || appBiometricOnly || (hasBiometricSet && biometricEnabled);
+  // Auto-trigger biometric on mount only if it's the primary unlock method
+  const primaryBiometric = walletBioActive || appBiometricOnly;
 
   const [pin, setPin] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const [showPin, setShowPin] = useState(!biometricOnlyEnabled);
+  const [showPin, setShowPin] = useState(!primaryBiometric);
 
-  // Tenta sblocco biometrico automaticamente se è l'unico metodo
+  // Tenta sblocco biometrico automaticamente se è il metodo primario
   useEffect(() => {
-    if (biometricOnlyEnabled) void handleBiometric();
+    if (primaryBiometric) void handleBiometric();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -517,7 +541,7 @@ function UnlockView() {
       <h2>Alpha Wallet</h2>
 
       {/* Modalità biometrica primaria */}
-      {biometricOnlyEnabled && !showPin ? (
+      {primaryBiometric && !showPin ? (
         <>
           <p className="aw-sub">Usa Face ID per sbloccare il wallet.</p>
           {error && <div className="aw-error">{error}</div>}
@@ -555,7 +579,7 @@ function UnlockView() {
           >
             {loading ? "Sblocco…" : "Sblocca →"}
           </button>
-          {showBiometric && !biometricOnlyEnabled && (
+          {showBiometric && !primaryBiometric && (
             <button
               className="aw-btn aw-btn--ghost aw-btn--biometric"
               onClick={handleBiometric}
@@ -1446,6 +1470,11 @@ function WalletSettingsView({
 }) {
   const wallet = useWallet();
   const { currency, setCurrency } = useWalletCurrency();
+  const { walletFaceIdEnabled, setWalletFaceIdEnabled } = useWalletFaceId();
+  const lock = useLock();
+  const hasBiometricSet = lock?.hasBiometricSet ?? false;
+  // Il PIN è già in cache in sessionStorage se l'utente ha già sbloccato in questa sessione
+  const hasPinCached = !!sessionStorage.getItem("aw_bio_pin");
 
   // ── Change PIN flow ──────────────────────────────────────────────────────
   const [pinStep, setPinStep] = useState<PinChangeStep>("idle");
@@ -1595,6 +1624,38 @@ function WalletSettingsView({
       {/* ── Sicurezza ──────────────────────────────────────────────────── */}
       <div className="aw-settings-section">
         <div className="aw-settings-section-title">Sicurezza</div>
+
+        {/* Face ID wallet-specifico */}
+        {hasBiometricSet && (
+          <div className="aw-settings-item aw-settings-item--row">
+            <span className="aw-settings-item-icon">🫣</span>
+            <div style={{ flex: 1 }}>
+              <div className="aw-settings-item-label">Face ID / Touch ID</div>
+              <div className="aw-settings-item-hint">
+                {walletFaceIdEnabled && !hasPinCached
+                  ? "Sblocca con PIN una volta per attivare"
+                  : walletFaceIdEnabled
+                  ? "Sblocco biometrico abilitato"
+                  : "Sblocca il wallet con Face ID"}
+              </div>
+            </div>
+            <label className="aw-toggle">
+              <input
+                type="checkbox"
+                checked={walletFaceIdEnabled}
+                onChange={e => {
+                  if (e.target.checked && !hasPinCached) {
+                    // Il PIN non è in cache — abilitiamo il flag ma avvisiamo
+                    setWalletFaceIdEnabled(true);
+                  } else {
+                    setWalletFaceIdEnabled(e.target.checked);
+                  }
+                }}
+              />
+              <span className="aw-toggle-track" />
+            </label>
+          </div>
+        )}
 
         {/* Cambio PIN */}
         <div className="aw-settings-expandable">

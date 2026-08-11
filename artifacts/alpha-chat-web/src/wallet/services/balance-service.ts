@@ -55,7 +55,7 @@ export interface BtcBalance {
 export async function fetchEvmBalance(
   chainId:       number,
   address:       `0x${string}`,
-  customTokens?: { contractAddress: string | undefined }[],
+  customTokens?: { contractAddress?: string | undefined }[],
 ): Promise<ChainBalance> {
   const extraAddresses = customTokens
     ?.map(t => t.contractAddress)
