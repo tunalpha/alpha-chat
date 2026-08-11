@@ -723,7 +723,7 @@ function SidebarMenu({
       icon: null,
     },
     {
-      label: `🛡️ ${t("settings.securityCenterLabel")}`,
+      label: t("settings.securityCenterLabel"),
       view: "security-center",
       icon: null,
     },
