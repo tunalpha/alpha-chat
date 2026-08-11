@@ -1,4 +1,11 @@
-/* ChatWalletPaySheet — Phase G */
+/* ChatWalletPaySheet — Wizard no-scroll
+ *
+ * Architettura: ogni step è compatto e non richiede scrolling.
+ * Nessun max-height né overflow sul cwp-sheet.
+ * Il footer con l'azione principale è sempre visibile.
+ */
+
+/* ── Backdrop ─────────────────────────────────────────────────────────── */
 
 .cwp-backdrop {
   position: fixed;
@@ -10,35 +17,46 @@
   justify-content: center;
 }
 
+/* ── Sheet ────────────────────────────────────────────────────────────── */
+
 .cwp-sheet {
-  background: var(--bg-primary, #fff);
-  border-radius: 20px 20px 0 0;
   width: 100%;
   max-width: 480px;
-  /* dvh = dynamic viewport height, corretto per iOS PWA (niente address bar) */
-  max-height: 88vh;
-  max-height: 88dvh;
-  /* flex column: header fisso + body scrollabile */
-  display: flex;
-  flex-direction: column;
-  overflow: hidden;
+  background: var(--bg-primary, #fff);
+  border-radius: 20px 20px 0 0;
+  /* NO max-height — ogni step è disegnato per stare nel viewport */
+  /* NO overflow  — nessuno scroll necessario */
+  box-shadow: 0 -4px 32px rgba(0,0,0,0.15);
 }
+
+/* ── Header ───────────────────────────────────────────────────────────── */
 
 .cwp-header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
-  padding: 16px 20px 12px;
+  padding: 18px 20px 14px;
   border-bottom: 1px solid var(--border-subtle, #e5e7eb);
-  /* Header NON scorre — flex-shrink: 0 garantisce altezza fissa */
-  flex-shrink: 0;
-  background: var(--bg-primary, #fff);
-  z-index: 1;
 }
+
+.cwp-header-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
 .cwp-title {
   font-size: 17px;
   font-weight: 700;
+  color: var(--text-primary, #111);
 }
+
+.cwp-step-label {
+  font-size: 12px;
+  color: var(--text-secondary, #888);
+  font-weight: 500;
+}
+
 .cwp-close {
   background: none;
   border: none;
@@ -48,144 +66,50 @@
   padding: 4px 8px;
   border-radius: 50%;
   line-height: 1;
+  margin-top: -2px;
 }
 .cwp-close:hover { background: var(--bg-hover, #f3f4f6); }
 
-/*
- * ROOT CAUSE iOS: overflow-y: scroll su display:flex non crea
- * momentum-scroll nativo su Safari PWA.
- * Fix: cwp-body è un block puro (solo scroll), il layout flex
- * è delegato a cwp-body-inner.
- */
-.cwp-body {
-  /* Block, non flex — requisito iOS per momentum scroll nativo */
-  display: block;
-  flex: 1 1 auto;
-  min-height: 0;        /* permette al flex parent di contenere questo elemento */
-  overflow-y: scroll;   /* scroll (non auto) per iOS Safari PWA */
-  -webkit-overflow-scrolling: touch;
-  overscroll-behavior: contain;
-  touch-action: pan-y;
-}
+/* ── Step container ───────────────────────────────────────────────────── */
 
-.cwp-body-inner {
+.cwp-step {
+  padding: 20px 20px 0;
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  padding: 16px 20px;
-  padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+  gap: 14px;
 }
 
-.cwp-section { display: flex; flex-direction: column; gap: 6px; }
-.cwp-label {
-  font-size: 12px;
-  font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  color: var(--text-secondary, #666);
-}
-
-/* Network tabs */
-.cwp-network-tabs {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-}
-.cwp-net-tab {
-  padding: 5px 11px;
-  border-radius: 100px;
-  border: 1px solid var(--border, #d1d5db);
-  background: none;
-  cursor: pointer;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-primary, #111);
-  transition: all 0.15s;
-}
-.cwp-net-tab.active { font-weight: 700; }
-
-/* Input */
-.cwp-select,
-.cwp-input {
-  padding: 10px 12px;
-  border: 1px solid var(--border, #d1d5db);
-  border-radius: 10px;
-  font-size: 15px;
-  color: var(--text-primary, #111);
-  background: var(--bg-input, #f9fafb);
-  width: 100%;
-  box-sizing: border-box;
-  outline: none;
-}
-.cwp-input.error { border-color: #ef4444; }
-.cwp-select { appearance: none; cursor: pointer; }
-
-.cwp-amount-row {
-  display: flex;
+.cwp-step-center {
   align-items: center;
-  gap: 8px;
-}
-.cwp-amount-row .cwp-input { flex: 1; }
-.cwp-amount-symbol {
-  font-size: 14px;
-  font-weight: 700;
-  color: var(--text-secondary, #555);
-  min-width: 36px;
+  text-align: center;
+  padding-top: 32px;
+  padding-bottom: 32px;
+  gap: 12px;
 }
 
-.cwp-field-err {
-  color: #ef4444;
-  font-size: 12px;
-  margin: 2px 0 0;
+.cwp-step-auth {
+  align-items: center;
+  text-align: center;
 }
 
-/* Quote */
-.cwp-quote {
-  background: var(--bg-secondary, #f9fafb);
-  border: 1px solid var(--border, #e5e7eb);
-  border-radius: 12px;
-  padding: 12px 14px;
+/* ── Footer ───────────────────────────────────────────────────────────── */
+
+.cwp-footer {
+  padding: 16px 20px;
+  padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
   display: flex;
-  flex-direction: column;
-  gap: 6px;
+  gap: 10px;
+  margin-top: 16px;
 }
-.cwp-quote-header {
-  display: flex;
+
+.cwp-footer-split {
   justify-content: space-between;
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--text-secondary, #666);
-  margin-bottom: 4px;
-}
-.cwp-quote-timer {
-  font-size: 11px;
-  font-variant-numeric: tabular-nums;
-}
-.cwp-quote-timer.expiring { color: #f59e0b; font-weight: 700; }
-
-.cwp-quote-row {
-  display: flex;
-  justify-content: space-between;
-  font-size: 13px;
-  color: var(--text-primary, #111);
-}
-.cwp-quote-divider {
-  height: 1px;
-  background: var(--border, #e5e7eb);
-  margin: 4px 0;
-}
-.cwp-quote-total {
-  font-weight: 700;
-  font-size: 15px;
-}
-.cwp-quote-gas {
-  font-size: 12px;
-  color: var(--text-secondary, #888);
 }
 
-/* Buttons */
+/* ── Buttons ──────────────────────────────────────────────────────────── */
+
 .cwp-btn-primary {
-  width: 100%;
+  flex: 1;
   padding: 14px;
   border: none;
   border-radius: 12px;
@@ -193,10 +117,23 @@
   font-weight: 700;
   color: #fff;
   cursor: pointer;
-  letter-spacing: 0.1px;
+  background: #8247E5;
   transition: opacity 0.15s;
 }
-.cwp-btn-primary:disabled { opacity: 0.55; cursor: not-allowed; }
+.cwp-btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.cwp-btn-back {
+  padding: 14px 18px;
+  border: 1px solid var(--border, #d1d5db);
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-secondary, #555);
+  background: none;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.cwp-btn-back:hover { background: var(--bg-hover, #f3f4f6); }
 
 .cwp-btn-secondary {
   width: 100%;
@@ -211,11 +148,278 @@
 }
 .cwp-btn-secondary:hover { background: var(--bg-hover, #f3f4f6); }
 
-.cwp-send-err {
-  color: #ef4444;
+.cwp-btn-invite {
+  width: 100%;
+  padding: 12px;
+  border: 1.5px solid rgba(139,92,246,0.5);
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #8b5cf6;
+  background: rgba(139,92,246,0.08);
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.cwp-btn-invite:hover { background: rgba(139,92,246,0.15); }
+
+/* ── Sezione generica ─────────────────────────────────────────────────── */
+
+.cwp-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.cwp-label {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-secondary, #666);
+}
+
+/* ── Loading ──────────────────────────────────────────────────────────── */
+
+.cwp-recipient-loading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px;
+  background: var(--bg-secondary, #f9fafb);
+  border-radius: 12px;
   font-size: 13px;
+  color: var(--text-secondary, #666);
+}
+
+.cwp-loading-spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--border, #d1d5db);
+  border-top-color: #8247E5;
+  border-radius: 50%;
+  animation: cwp-spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes cwp-spin { to { transform: rotate(360deg); } }
+
+/* ── Caso A — Recipient card ──────────────────────────────────────────── */
+
+.cwp-recipient-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px 16px;
+  background: #8247E511;
+  border: 1px solid #8247E530;
+  border-radius: 14px;
+}
+
+.cwp-recipient-badge {
+  font-size: 11px;
+  font-weight: 700;
+  color: #8247E5;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.cwp-recipient-name {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text-primary, #111);
+}
+
+.cwp-recipient-address {
+  font-size: 12px;
+  color: var(--text-secondary, #555);
+  font-family: monospace;
+}
+
+.cwp-recipient-no-address {
+  font-size: 12px;
+  color: #f59e0b;
+  font-style: italic;
+}
+
+/* ── Caso C — Manual notice ───────────────────────────────────────────── */
+
+.cwp-manual-notice {
+  padding: 10px 12px;
+  background: #fef3c711;
+  border: 1px solid #f59e0b44;
+  border-radius: 10px;
+  font-size: 12px;
+  color: #92400e;
+}
+
+/* ── Caso B — No wallet card ──────────────────────────────────────────── */
+
+.cwp-no-wallet-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 4px 4px;
   text-align: center;
+}
+
+.cwp-no-wallet-icon { font-size: 32px; }
+
+.cwp-no-wallet-title {
+  font-size: 15px;
+  color: var(--text-primary, #111);
   margin: 0;
+  line-height: 1.4;
+}
+
+.cwp-no-wallet-sub {
+  font-size: 13px;
+  color: var(--text-secondary, #666);
+  margin: 0;
+  line-height: 1.5;
+}
+
+.cwp-no-wallet-note {
+  font-size: 12px;
+  color: var(--text-secondary, #888);
+  margin: 0;
+  line-height: 1.4;
+}
+
+/* ── Network grid ─────────────────────────────────────────────────────── */
+
+.cwp-network-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+
+.cwp-net-btn {
+  padding: 10px 12px;
+  border: 1.5px solid var(--border, #d1d5db);
+  border-radius: 10px;
+  background: none;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-primary, #333);
+  cursor: pointer;
+  transition: all 0.15s;
+  text-align: center;
+}
+.cwp-net-btn:hover { background: var(--bg-hover, #f3f4f6); }
+.cwp-net-btn.active { font-weight: 700; }
+
+/* ── Asset list ───────────────────────────────────────────────────────── */
+
+.cwp-step-hint {
+  font-size: 14px;
+  color: var(--text-secondary, #666);
+  margin: 0;
+}
+
+.cwp-asset-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cwp-asset-btn {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 14px;
+  border: 1.5px solid var(--border, #d1d5db);
+  border-radius: 12px;
+  background: none;
+  cursor: pointer;
+  transition: all 0.15s;
+  text-align: left;
+  width: 100%;
+}
+.cwp-asset-btn:hover { background: var(--bg-hover, #f3f4f6); }
+.cwp-asset-btn.active { font-weight: 700; }
+
+.cwp-asset-icon { font-size: 22px; flex-shrink: 0; }
+
+.cwp-asset-info {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  flex: 1;
+}
+
+.cwp-asset-symbol {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-primary, #111);
+}
+
+.cwp-asset-name {
+  font-size: 12px;
+  color: var(--text-secondary, #666);
+}
+
+.cwp-asset-check {
+  font-size: 18px;
+  font-weight: 700;
+  flex-shrink: 0;
+}
+
+/* ── Amount step ──────────────────────────────────────────────────────── */
+
+.cwp-amount-context {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.cwp-ctx-pill {
+  padding: 4px 10px;
+  border: 1px solid var(--border, #d1d5db);
+  border-radius: 100px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-secondary, #555);
+}
+
+.cwp-amount-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cwp-input {
+  padding: 10px 12px;
+  border: 1.5px solid var(--border, #d1d5db);
+  border-radius: 10px;
+  font-size: 15px;
+  color: var(--text-primary, #111);
+  background: var(--bg-input, #f9fafb);
+  width: 100%;
+  box-sizing: border-box;
+  outline: none;
+}
+.cwp-input:focus { border-color: #8247E5; }
+.cwp-input.error { border-color: #ef4444; }
+
+.cwp-amount-input {
+  font-size: 22px;
+  font-weight: 700;
+  flex: 1;
+}
+
+.cwp-amount-symbol {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-secondary, #555);
+  min-width: 44px;
+}
+
+.cwp-field-err {
+  color: #ef4444;
+  font-size: 12px;
+  margin: 2px 0 0;
 }
 
 .cwp-quote-err {
@@ -229,190 +433,110 @@
   padding: 8px 12px;
 }
 
-/* Bottone invita — Caso B */
-.cwp-btn-invite {
-  width: 100%;
-  padding: 12px;
-  border: 1.5px solid rgba(139,92,246,0.5);
-  border-radius: 12px;
-  font-size: 14px;
-  font-weight: 600;
-  color: #8b5cf6;
-  background: rgba(139,92,246,0.08);
-  cursor: pointer;
-  transition: background 0.15s, border-color 0.15s;
-}
-.cwp-btn-invite:hover { background: rgba(139,92,246,0.15); border-color: rgba(139,92,246,0.7); }
-
-/* ── Task #93: Recipient Discovery ──────────────────────────────────────── */
-
-/* Loading state */
-.cwp-recipient-loading {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 14px;
-  background: var(--bg-secondary, #f9fafb);
-  border-radius: 12px;
+.cwp-send-err {
+  color: #ef4444;
   font-size: 13px;
-  color: var(--text-secondary, #666);
+  text-align: center;
+  margin: 0;
 }
-.cwp-loading-spinner {
-  display: inline-block;
-  width: 16px;
-  height: 16px;
-  border: 2px solid var(--border, #d1d5db);
-  border-top-color: #8247E5;
-  border-radius: 50%;
-  animation: cwp-spin 0.7s linear infinite;
-}
-@keyframes cwp-spin { to { transform: rotate(360deg); } }
 
-/* Caso A — Recipient info card */
-.cwp-recipient-card {
+/* ── Summary step ─────────────────────────────────────────────────────── */
+
+.cwp-summary-recv {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
-  gap: 4px;
-  padding: 12px 14px;
-  background: #8247E511;
-  border: 1px solid #8247E530;
-  border-radius: 12px;
-}
-.cwp-recipient-badge {
-  font-size: 11px;
-  font-weight: 700;
-  color: #8247E5;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-}
-.cwp-recipient-name {
-  font-size: 16px;
-  font-weight: 700;
-  color: var(--text-primary, #111);
-}
-.cwp-recipient-address {
-  font-size: 12px;
-  color: var(--text-secondary, #555);
-  font-family: monospace;
-  word-break: break-all;
-}
-.cwp-recipient-no-address {
-  font-size: 12px;
-  color: #f59e0b;
-  font-style: italic;
+  align-items: center;
+  gap: 2px;
+  padding: 16px;
+  background: var(--bg-secondary, #f9fafb);
+  border-radius: 14px;
+  text-align: center;
 }
 
-/* Caso A — address locked (non modificabile) */
-.cwp-address-locked {
+.cwp-summary-recv-label {
+  font-size: 14px;
+  color: var(--text-secondary, #666);
+}
+
+.cwp-summary-recv-amount {
+  font-size: 26px;
+  font-weight: 800;
+  margin: 4px 0;
+}
+
+.cwp-summary-recv-net {
+  font-size: 13px;
+  color: var(--text-secondary, #888);
+}
+
+.cwp-summary-addr {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   gap: 8px;
-  padding: 10px 12px;
+  padding: 10px 14px;
   background: var(--bg-secondary, #f3f4f6);
   border: 1px solid var(--border, #d1d5db);
   border-radius: 10px;
   font-size: 12px;
-  color: var(--text-secondary, #555);
   font-family: monospace;
+  color: var(--text-secondary, #555);
   word-break: break-all;
-  cursor: default;
-}
-.cwp-address-locked-icon { font-size: 14px; flex-shrink: 0; margin-top: 1px; }
-.cwp-address-locked-text { line-height: 1.4; }
-
-/* Caso A — no BTC address warning */
-.cwp-no-address-warning {
-  padding: 10px 12px;
-  background: #fef3c711;
-  border: 1px solid #f59e0b44;
-  border-radius: 10px;
-  font-size: 13px;
-  color: #92400e;
-}
-.cwp-no-address-hint { font-size: 12px; color: var(--text-secondary, #666); }
-
-/* Caso C — notice indirizzo manuale */
-.cwp-manual-notice {
-  padding: 10px 12px;
-  background: #fef3c711;
-  border: 1px solid #f59e0b44;
-  border-radius: 10px;
-  font-size: 12px;
-  color: #92400e;
 }
 
-/* Caso B — no wallet card */
-.cwp-no-wallet-card {
+.cwp-summary-addr-icon { flex-shrink: 0; font-size: 14px; }
+.cwp-summary-addr-text { flex: 1; line-height: 1.4; }
+
+/* ── Quote breakdown ──────────────────────────────────────────────────── */
+
+.cwp-quote {
+  background: var(--bg-secondary, #f9fafb);
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 12px;
+  padding: 12px 14px;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 12px;
-  padding: 24px 20px;
-  text-align: center;
-}
-.cwp-no-wallet-icon { font-size: 36px; }
-.cwp-no-wallet-title {
-  font-size: 15px;
-  color: var(--text-primary, #111);
-  margin: 0;
-  line-height: 1.4;
-}
-.cwp-no-wallet-sub {
-  font-size: 13px;
-  color: var(--text-secondary, #666);
-  margin: 0;
-  line-height: 1.5;
-}
-.cwp-no-wallet-note {
-  font-size: 12px;
-  color: var(--text-secondary, #888);
-  margin: 4px 0 0;
-  line-height: 1.4;
+  gap: 6px;
 }
 
-/* Pre-firma riepilogo — rete + address espliciti (§4, §11) */
-.cwp-quote-confirm-header {
-  display: flex;
-  justify-content: center;
-  margin-bottom: 6px;
-}
-.cwp-quote-confirm-title {
-  font-size: 13px;
-  font-weight: 700;
-  color: var(--text-primary, #111);
-}
-.cwp-quote-confirm-dest {
-  font-size: 14px;
-  text-align: center;
-  color: var(--text-primary, #111);
-  line-height: 1.5;
-  padding: 4px 0;
-}
-.cwp-quote-confirm-label { font-weight: 500; }
-.cwp-quote-address-row {
+.cwp-quote-header {
   display: flex;
   justify-content: space-between;
-  align-items: center;
   font-size: 12px;
-  color: var(--text-secondary, #555);
-  background: var(--bg-primary, #fff);
-  border: 1px solid var(--border, #e5e7eb);
-  border-radius: 8px;
-  padding: 7px 10px;
-  gap: 8px;
-}
-.cwp-quote-addr-label { font-weight: 600; flex-shrink: 0; }
-.cwp-quote-addr-value {
-  font-family: monospace;
-  font-size: 11px;
-  word-break: break-all;
-  text-align: right;
+  font-weight: 600;
+  color: var(--text-secondary, #666);
+  margin-bottom: 2px;
 }
 
-/* Avviso rete per indirizzo manuale (Caso C) */
+.cwp-quote-timer {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.cwp-quote-timer.expiring { color: #f59e0b; font-weight: 700; }
+
+.cwp-quote-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 13px;
+  color: var(--text-primary, #111);
+}
+
+.cwp-quote-divider {
+  height: 1px;
+  background: var(--border, #e5e7eb);
+  margin: 4px 0;
+}
+
+.cwp-quote-total {
+  font-weight: 700;
+  font-size: 14px;
+}
+
+.cwp-quote-gas {
+  font-size: 12px;
+  color: var(--text-secondary, #888);
+}
+
 .cwp-manual-confirm-warning {
-  margin-top: 8px;
   padding: 10px 12px;
   background: #fef3c711;
   border: 1px solid #f59e0b55;
@@ -422,55 +546,80 @@
   line-height: 1.4;
 }
 
-/* Auth modal */
-.cwp-auth-backdrop {
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,0.6);
-  z-index: 700;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 24px;
+/* ── Auth step ────────────────────────────────────────────────────────── */
+
+.cwp-auth-icon { font-size: 40px; }
+
+.cwp-auth-desc {
+  font-size: 14px;
+  color: var(--text-secondary, #555);
+  margin: 0;
+  line-height: 1.5;
+  max-width: 260px;
 }
-.cwp-auth-modal {
-  background: var(--bg-primary, #fff);
-  border-radius: 20px;
-  padding: 28px 24px;
-  width: 100%;
-  max-width: 340px;
+
+.cwp-pin-input {
+  width: 200px;
+  padding: 16px;
+  border: 2px solid var(--border, #d1d5db);
+  border-radius: 14px;
+  font-size: 28px;
   text-align: center;
-  box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+  letter-spacing: 10px;
+  outline: none;
+  background: var(--bg-input, #f9fafb);
+  color: var(--text-primary, #111);
+  box-sizing: border-box;
 }
-.cwp-auth-title {
-  font-size: 20px;
+.cwp-pin-input:focus { border-color: #8247E5; }
+.cwp-pin-input.error { border-color: #ef4444; }
+
+/* ── Sending step ─────────────────────────────────────────────────────── */
+
+.cwp-sending-spinner {
+  width: 44px;
+  height: 44px;
+  border: 3px solid var(--border, #e5e7eb);
+  border-top-color: #8247E5;
+  border-radius: 50%;
+  animation: cwp-spin 0.8s linear infinite;
+}
+
+.cwp-sending-label {
+  font-size: 18px;
   font-weight: 700;
-  margin: 0 0 8px;
+  color: var(--text-primary, #111);
+  margin: 0;
 }
-.cwp-auth-sub {
+
+.cwp-sending-sub {
+  font-size: 13px;
+  color: var(--text-secondary, #666);
+  margin: 0;
+}
+
+/* ── Success step ─────────────────────────────────────────────────────── */
+
+.cwp-success-icon { font-size: 52px; }
+
+.cwp-success-title {
+  font-size: 20px;
+  font-weight: 800;
+  color: var(--text-primary, #111);
+  margin: 0;
+}
+
+.cwp-success-sub {
   font-size: 14px;
   color: var(--text-secondary, #666);
-  margin: 0 0 20px;
+  margin: 0;
+  line-height: 1.5;
 }
-.cwp-auth-pin {
-  width: 100%;
-  box-sizing: border-box;
-  padding: 14px;
-  border: 2px solid var(--border, #d1d5db);
-  border-radius: 12px;
-  font-size: 20px;
-  text-align: center;
-  letter-spacing: 6px;
-  outline: none;
-  margin-bottom: 8px;
+
+.cwp-success-tx {
+  font-size: 13px;
+  color: #8247E5;
+  text-decoration: none;
+  font-weight: 600;
 }
-.cwp-auth-pin:focus { border-color: #8247E5; }
-.cwp-auth-actions {
-  display: flex;
-  gap: 10px;
-  margin-top: 16px;
-}
-.cwp-auth-actions .cwp-btn-secondary,
-.cwp-auth-actions .cwp-btn-primary {
-  flex: 1;
-}
+.cwp-success-tx:hover { text-decoration: underline; }

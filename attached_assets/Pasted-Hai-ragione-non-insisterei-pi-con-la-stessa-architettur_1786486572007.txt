@@ -1,0 +1,354 @@
+Hai ragione: non insisterei più con la stessa architettura di scroll. Dallo screenshot il problema è ancora identico: il foglio si apre, ma la parte inferiore resta irraggiungibile. Quindi il precedente fix non ha risolto il problema reale sul dispositivo.
+
+A questo punto mandagli questo prompt, chiedendo esplicitamente di cambiare approccio:
+
+⸻
+
+🚨 ESCALATION BUG — CAMBIARE COMPLETAMENTE APPROCCIO
+
+Il precedente fix NON ha risolto il problema.
+
+Ho verificato personalmente su iPhone/PWA reale dopo il fix.
+
+Il risultato è identico:
+
+* Paga con Alpha Wallet si apre;
+* destinatario Alpha Wallet viene trovato correttamente;
+* rete e asset vengono mostrati;
+* importo e destinatario vengono mostrati;
+* la pagina non può essere scrollata verso il basso;
+* Calcola costi non è raggiungibile;
+* fee/totale non sono raggiungibili;
+* pulsante Paga/Conferma non è raggiungibile.
+
+Quindi:
+
+NON continuare a modificare overflow, flex, vh/dvh o wrapper dello stesso sistema.
+
+Abbiamo già provato questo approccio e sul dispositivo reale non funziona.
+
+NUOVO OBIETTIVO
+
+Devi progettare un sistema UI alternativo che NON dipenda dallo scrolling verticale del payment sheet.
+
+SOLUZIONE RACCOMANDATA: STEP-BY-STEP
+
+Trasforma ChatWalletPaySheet in un vero flusso a schermate/passi.
+
+Non deve essere necessario scorrere una pagina lunga.
+
+⸻
+
+STEP 1 — DESTINATARIO + RETE
+
+Mostrare:
+
+🔐 Paga con Alpha Wallet
+
+Destinatario:
+
+🔐 Alpha Wallet
+Cricco
+0xa497...19e170
+
+Poi selezione rete:
+
+* Polygon
+* Ethereum
+* BNB Smart Chain
+* Bitcoin
+
+Pulsante fisso in fondo:
+
+Continua →
+
+⸻
+
+STEP 2 — ASSET
+
+Mostrare esclusivamente gli asset compatibili con la rete scelta.
+
+Esempio Polygon:
+
+* 🟡 USDA
+* 💎 USDT
+* eventuali custom token verificati
+
+Bitcoin:
+
+* ₿ BTC
+
+Pulsante:
+
+Continua →
+
+Nessuno scroll necessario.
+
+⸻
+
+STEP 3 — IMPORTO
+
+Mostrare:
+
+Quanto vuoi inviare?
+
+Campo grande:
+
+0.00
+
+Asset:
+
+USDA
+
+Destinatario:
+
+Cricco
+
+Pulsante fisso:
+
+Calcola costi →
+
+⸻
+
+STEP 4 — RIEPILOGO
+
+Mostrare tutto contemporaneamente in una schermata compatta:
+
+Cricco riceverà
+
+1 USDA
+
+Rete: Polygon
+
+Destinatario:
+0xa497...19e170
+
+Platform fee:
+0,001 USDA
+
+Network fee:
+~0,00 POL
+
+Totale
+1,001 USDA
+
+Pulsanti:
+
+← Modifica
+
+🔐 Firma e invia
+
+⸻
+
+STEP 5 — AUTENTICAZIONE
+
+Schermata dedicata:
+
+🔐 Autorizza pagamento
+
+Inserisci il PIN per firmare la transazione.
+
+Oppure Face ID quando disponibile.
+
+Pulsante:
+
+Firma e invia
+
+⸻
+
+STEP 6 — INVIO
+
+Schermata:
+
+⏳ Invio in corso…
+
+Stiamo trasmettendo la transazione alla rete Polygon.
+
+Poi:
+
+✅ Pagamento inviato
+
+TX:
+0x....
+
+Visualizza sulla blockchain
+
+⸻
+
+IMPORTANTE — NIENTE SCROLL
+
+L’intero flusso deve essere progettato affinché ogni step:
+
+* entri nel viewport mobile;
+* abbia contenuto compatto;
+* abbia il pulsante principale sempre visibile;
+* non richieda scrolling verticale;
+* funzioni su iPhone PWA;
+* funzioni su Android;
+* funzioni desktop.
+
+Il footer con l’azione principale deve essere sempre visibile.
+
+⸻
+
+ARCHITETTURA
+
+Invece di:
+
+un'unica pagina enorme
+↓
+scroll
+↓
+Calcola costi
+↓
+scroll
+↓
+Paga
+
+utilizzare:
+
+STEP 1
+Destinatario + Rete
+        ↓
+STEP 2
+Asset
+        ↓
+STEP 3
+Importo
+        ↓
+STEP 4
+Riepilogo
+        ↓
+STEP 5
+PIN / Face ID
+        ↓
+STEP 6
+Broadcast
+        ↓
+SUCCESS
+
+⸻
+
+NON TOCCARE LA LOGICA BACKEND
+
+Il refactor deve essere solo UI/orchestrazione del flow.
+
+Non modificare:
+
+* ChatWalletBridge;
+* signing;
+* broadcast;
+* fee;
+* quote;
+* recipient discovery;
+* Alpha Wallet;
+* Payment Engine;
+* USDA;
+* USDT;
+* BTC.
+
+Riutilizzare le funzioni esistenti.
+
+⸻
+
+MANTENERE I CASI A/B/C
+
+La nuova UI deve mantenere integralmente:
+
+A — Alpha Wallet
+
+Address recuperato automaticamente e bloccato.
+
+B — Nessun Alpha Wallet
+
+Messaggio:
+
+Cricco non ha ancora configurato Alpha Wallet.
+
+e possibilità:
+
+Usa indirizzo esterno →
+
+C — Indirizzo esterno
+
+Inserimento manuale con validazione.
+
+⸻
+
+TEST
+
+Aggiungere test specifici per il nuovo state machine:
+
+recipient
+→ network
+→ asset
+→ amount
+→ quote
+→ confirmation
+→ authentication
+→ signing
+→ success/error
+
+Verificare:
+
+* back tra gli step;
+* chiusura;
+* cambio rete;
+* cambio asset;
+* cambio importo;
+* quote invalidata quando cambia un parametro;
+* PIN obbligatorio;
+* nessun remote trigger;
+* nessuna regressione.
+
+⸻
+
+CRITERIO DI ACCETTAZIONE
+
+Il test definitivo è il mio iPhone reale.
+
+Devo poter completare:
+
+Paga con Alpha Wallet
+→ Polygon
+→ USDA
+→ 1 USDA
+→ Calcola costi
+→ vedo fee + totale
+→ Firma e invia
+→ PIN
+→ pagamento
+
+senza effettuare uno swipe verticale per raggiungere un pulsante.
+
+⸻
+
+REGOLA FONDAMENTALE
+
+Non cercare più di risolvere il bug tramite un altro overflow-y, wrapper o modifica vh/dvh.
+
+Il requisito ora è:
+
+ELIMINARE LA NECESSITÀ DELLO SCROLL DAL PAYMENT FLOW.
+
+Prima di modificare il codice, mostra brevemente:
+
+1. l’attuale struttura;
+2. perché il precedente approccio non ha funzionato sul dispositivo reale;
+3. la nuova state machine proposta.
+
+Poi implementa.
+
+Al termine:
+
+* test completi;
+* TypeScript;
+* nessuna regressione;
+* screenshot del nuovo flow;
+* STOP.
+
+Non modificare altro progetto.
+
+⸻
+
+Secondo me questa è la strada giusta: non dobbiamo vincere una battaglia contro lo scroll di Safari. Per un pagamento crypto, avere 6 schermate brevi e controllate è anche una UX migliore: l’utente sa sempre a che punto è e il pulsante dell’azione successiva è sempre davanti a lui.
