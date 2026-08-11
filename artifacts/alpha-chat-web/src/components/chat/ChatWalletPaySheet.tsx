@@ -58,7 +58,7 @@ const ASSETS_BY_NETWORK: Record<SupportedNetwork, AssetOption[]> = {
     { symbol: "POL",  name: "POL (nativo)",        contractAddress: null },
     { symbol: "USDT", name: "Tether (USDT)",        contractAddress: "0xc2132D05D31c914a87C6611C10748AEb04B58e8F" },
     { symbol: "USDC", name: "USD Coin (USDC)",       contractAddress: "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174" },
-    { symbol: "USDA", name: "USDA (stablecoin)",     contractAddress: "0x4F51E5416EFf9B91FCE28Be3C63d714f34b59c76" },
+    { symbol: "USDA", name: "USDA (stablecoin)",     contractAddress: "0xe714655fD1B3ba96B887DF1F94336c2A78E24001" },
   ],
   ethereum: [
     { symbol: "ETH",  name: "Ether (nativo)",        contractAddress: null },
