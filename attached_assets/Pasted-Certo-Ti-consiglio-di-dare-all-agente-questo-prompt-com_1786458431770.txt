@@ -1,0 +1,940 @@
+Certo. Ti consiglio di dare all’agente questo prompt completo, specificando ancora più chiaramente che in questa prima fase deve solo progettare/auditare e NON modificare il progetto esistente.
+
+⸻
+
+PROMPT — ALPHA CHAT NATIVE WALLET
+
+EVM Multi-Chain + Bitcoin + USDT/USDC/USDA
+
+OBIETTIVO
+
+Vogliamo progettare un nuovo Wallet nativo di Alpha Chat, completamente integrato nell’applicazione ma tecnicamente isolato da tutto il sistema di pagamenti già esistente.
+
+Il risultato finale dovrà essere simile, come concetto, a un wallet come Trust Wallet, ma integrato direttamente dentro Alpha Chat.
+
+L’utente deve poter:
+
+* creare un wallet;
+* ricevere crypto;
+* inviare crypto;
+* visualizzare saldo;
+* visualizzare storico;
+* utilizzare QR;
+* copiare indirizzi;
+* firmare transazioni direttamente dentro Alpha Chat;
+* proteggere il wallet con autenticazione locale;
+* esportare seed phrase/private key;
+* recuperare il wallet su altri wallet compatibili.
+
+Niente Trust Wallet, MetaMask o WalletConnect per l’utilizzo normale del nuovo wallet.
+
+⸻
+
+⚠️ REGOLA NUMERO 1 — ISOLAMENTO ASSOLUTO
+
+Questa è la regola più importante.
+
+Il nuovo Alpha Wallet deve essere sviluppato come nuovo modulo completamente indipendente.
+
+NON modificare, refactorizzare o sostituire:
+
+* MultiChain Payment Engine esistente;
+* USDA payment flow esistente;
+* Trust Wallet integration;
+* MetaMask integration;
+* WalletConnect;
+* ThirdWeb;
+* payment quote;
+* fee engine;
+* escrow;
+* Gas Station;
+* BTC escrow/payment engine;
+* payment models;
+* API esistenti;
+* “Invia Cripto”;
+* “Richiedi Cripto”;
+* sistemi di fee già esistenti.
+
+Non riutilizzare direttamente la logica del Payment Engine per il nuovo wallet.
+
+Se esistono componenti potenzialmente riutilizzabili, segnalarli nell’audit, ma non modificarli.
+
+Il nuovo wallet deve poter essere:
+
+* sviluppato;
+* testato;
+* disattivato;
+
+senza compromettere nessuna funzionalità attuale di Alpha Chat.
+
+⸻
+
+1. NUOVA SEZIONE ALPHA CHAT
+
+Creare una nuova sezione principale:
+
+Wallet
+
+Il Wallet deve essere percepito come una funzionalità nativa di Alpha Chat.
+
+Struttura concettuale:
+
+Alpha Chat
+│
+├── Chat
+├── Payments
+├── Requests
+│
+└── Wallet
+      │
+      ├── Overview
+      ├── EVM
+      │    ├── Ethereum
+      │    ├── Polygon
+      │    └── BNB Smart Chain
+      │
+      └── Bitcoin
+
+Non deve sembrare un iframe o un wallet esterno.
+
+Deve avere il design language di Alpha Chat.
+
+⸻
+
+2. ARCHITETTURA DEL WALLET
+
+Il Wallet deve essere composto da due sistemi distinti:
+
+A. EVM Wallet
+
+Supportare:
+
+* Ethereum
+* Polygon
+* BNB Smart Chain
+* architettura pronta per ulteriori EVM chain.
+
+B. Bitcoin Wallet
+
+Bitcoin deve essere un modulo separato dall’EVM perché utilizza il modello UTXO.
+
+Non cercare di unificare artificialmente il signing EVM con Bitcoin.
+
+⸻
+
+3. ASSET EVM
+
+Il wallet deve essere progettato per supportare come asset principali:
+
+Ethereum
+
+* ETH
+* USDT
+* USDC
+
+Polygon
+
+* POL
+* USDT
+* USDC
+* USDA
+
+BNB Smart Chain
+
+* BNB
+* USDT
+* USDC
+
+Il sistema deve essere progettato in modo che altri token possano essere aggiunti successivamente senza modificare il wallet core.
+
+⸻
+
+4. TOKEN REGISTRY
+
+Creare un sistema centralizzato di configurazione dei token.
+
+Concettualmente:
+
+Token Registry
+Network
+├── Native asset
+├── USDT
+├── USDC
+├── USDA
+└── Future tokens
+
+Ogni token deve avere almeno:
+
+* network;
+* contract address;
+* symbol;
+* decimals;
+* token standard;
+* logo;
+* explorer;
+* eventuali metadata necessari.
+
+IMPORTANTE
+
+Non inventare mai contract address.
+
+Per ogni rete utilizzare esclusivamente contract address ufficiali/verificati.
+
+Il wallet deve impedire che un token con simbolo uguale venga confuso con un contratto non ufficiale.
+
+⸻
+
+5. WALLET EVM SELF-CUSTODIAL
+
+Il wallet deve essere realmente:
+
+SELF-CUSTODIAL
+
+La private key e la seed phrase devono rimanere sotto il controllo dell’utente.
+
+Il backend Alpha Chat:
+
+PUÒ conoscere
+
+* wallet address;
+* network;
+* transaction hash;
+* balance pubblico;
+* token holdings;
+* transaction status.
+
+NON DEVE MAI conoscere
+
+* seed phrase;
+* mnemonic;
+* private key;
+* decrypted wallet secret.
+
+Non inviare mai queste informazioni al backend.
+
+⸻
+
+6. CREAZIONE WALLET EVM
+
+Alla prima apertura:
+
+Create your Alpha Wallet
+
+Generare il wallet localmente.
+
+Utilizzare standard interoperabili, ad esempio:
+
+* BIP-39;
+* BIP-32;
+* BIP-44;
+
+con derivation path EVM compatibile.
+
+Prima di implementare determinare esattamente:
+
+* mnemonic format;
+* derivation path;
+* key derivation;
+* private key format;
+* address derivation.
+
+OBIETTIVO
+
+Un wallet creato in Alpha Chat deve poter essere recuperato in un wallet EVM compatibile.
+
+⸻
+
+7. EXPORT WALLET
+
+Obbligatorio.
+
+L’utente deve poter accedere a:
+
+Wallet
+→ Security
+→ Backup Wallet
+
+e:
+
+Show Recovery Phrase
+
+Export Private Key
+
+Prima di mostrare qualsiasi dato sensibile:
+
+Face ID / PIN / autenticazione locale
+
+La seed/private key deve essere mostrata solo temporaneamente.
+
+Non deve essere:
+
+* inviata al backend;
+* salvata nei log;
+* salvata in analytics;
+* salvata nel database.
+
+⸻
+
+8. IMPORT / RECOVERY
+
+Supportare:
+
+Recovery phrase
+
+e, dove tecnicamente appropriato:
+
+Private key
+
+Flow:
+
+Restore Wallet
+│
+├── Recovery Phrase
+└── Private Key
+
+Verificare che:
+
+Alpha Wallet → export seed → import wallet compatibile
+
+produca:
+
+stesso address + stessi fondi.
+
+Questo test è obbligatorio.
+
+⸻
+
+9. EVM MULTI-CHAIN
+
+Lo stesso account EVM deve poter essere utilizzato su:
+
+* Ethereum;
+* Polygon;
+* BSC.
+
+Non creare tre wallet separati.
+
+Creare un:
+
+EVM Network Registry
+
+con:
+
+* chainId;
+* RPC;
+* native token;
+* explorer;
+* token registry;
+* gas configuration.
+
+L’architettura deve permettere di aggiungere nuove EVM chain in futuro con una configurazione, non riscrivendo il wallet.
+
+⸻
+
+10. SIGNING EVM
+
+La firma deve avvenire localmente.
+
+Flow:
+
+User
+ ↓
+Create transaction
+ ↓
+Show transaction details
+ ↓
+Authenticate
+ ↓
+Local signing
+ ↓
+Broadcast
+ ↓
+Blockchain
+
+Il backend non deve mai ricevere la private key.
+
+⸻
+
+11. SEND EVM
+
+Esempio:
+
+Send
+Asset
+USDC
+Network
+Polygon
+Amount
+100 USDC
+Recipient
+0x1234...5678
+Network fee
+€0.xx
+Total
+€100.xx
+
+Prima della firma mostrare sempre:
+
+* asset;
+* network;
+* amount;
+* recipient;
+* network fee;
+* total;
+* eventuale token contract;
+* eventuali warning.
+
+Poi:
+
+Confirm → Face ID/PIN → Sign locally → Broadcast
+
+⸻
+
+12. RECEIVE EVM
+
+Pagina:
+
+Receive
+
+Selezione:
+
+* Ethereum;
+* Polygon;
+* BSC.
+
+Mostrare:
+
+* address;
+* QR code;
+* copy address;
+* network;
+* asset.
+
+Evitare che l’utente possa accidentalmente inviare un token su una rete sbagliata.
+
+⸻
+
+13. BITCOIN WALLET
+
+Bitcoin deve essere completamente separato dal core EVM.
+
+Utilizzare gli standard Bitcoin appropriati, valutando:
+
+* BIP-39;
+* BIP-32;
+* BIP-84;
+* SegWit;
+* derivation path Bitcoin appropriato.
+
+Supportare:
+
+Bitcoin Mainnet
+
+Preferire indirizzi moderni SegWit, ad esempio:
+
+bc1q...
+
+salvo diversa motivazione tecnica.
+
+⸻
+
+14. BITCOIN SELF-CUSTODY
+
+Anche Bitcoin deve essere completamente self-custodial.
+
+Il backend non deve mai conoscere:
+
+* seed;
+* private key;
+* decrypted signing material.
+
+Il backend può conoscere soltanto dati pubblici:
+
+* address;
+* UTXO;
+* balance;
+* transaction hash;
+* confirmation status.
+
+⸻
+
+15. BITCOIN SEND
+
+Flow:
+
+Bitcoin
+ ↓
+Send
+ ↓
+Address
+ ↓
+Amount
+ ↓
+Fee
+ ↓
+Total
+ ↓
+Confirm
+ ↓
+Face ID / PIN
+ ↓
+Local signing
+ ↓
+Broadcast
+
+Mostrare chiaramente:
+
+* BTC amount;
+* fiat equivalent;
+* network fee;
+* total;
+* destination;
+* eventuale change.
+
+⸻
+
+16. BITCOIN RECEIVE
+
+Receive BTC
+
+Mostrare:
+
+* BTC address;
+* QR;
+* copy address;
+* amount opzionale;
+* fiat equivalent.
+
+⸻
+
+17. WALLET OVERVIEW
+
+Creare una schermata principale:
+
+Wallet
+Total Balance
+€ XXXX.XX
+Ethereum
+ ETH
+ USDT
+ USDC
+Polygon
+ POL
+ USDT
+ USDC
+ USDA
+BNB Chain
+ BNB
+ USDT
+ USDC
+Bitcoin
+ BTC
+
+Il saldo fiat deve essere calcolato utilizzando una fonte di prezzo chiaramente definita.
+
+Non confondere:
+
+on-chain balance
+
+con:
+
+fiat valuation.
+
+⸻
+
+18. TRANSACTION HISTORY
+
+Creare uno storico indipendente dal Payment Engine.
+
+Ogni transazione deve contenere:
+
+* network;
+* asset;
+* amount;
+* sender;
+* recipient;
+* network fee;
+* TX hash;
+* status;
+* timestamp;
+* confirmations quando applicabile.
+
+Possibilità di aprire il transaction explorer.
+
+⸻
+
+19. SICUREZZA DELLE CHIAVI
+
+Questa è la parte più importante.
+
+Analizzare attentamente:
+
+* WebCrypto;
+* IndexedDB;
+* WebAuthn;
+* passkey;
+* iOS Keychain;
+* Secure Enclave;
+* PWA security model.
+
+NON utilizzare:
+
+localStorage → private key in chiaro
+
+oppure:
+
+MongoDB → seed phrase
+
+oppure:
+
+API request → private key
+
+oppure:
+
+analytics/logs → wallet secret
+
+Se una protezione realmente sicura non è possibile nella PWA, non creare workaround insicuri.
+
+Segnalare la limitazione e proporre eventualmente una futura versione nativa iOS/Android.
+
+⸻
+
+20. AUTENTICAZIONE LOCALE
+
+Il wallet deve prevedere un livello di protezione locale.
+
+Preferibilmente:
+
+* Face ID;
+* passkey/WebAuthn;
+* PIN locale come fallback.
+
+La password dell’account Alpha Chat non deve essere automaticamente considerata sufficiente per autorizzare una transazione.
+
+La firma deve richiedere una protezione specifica del wallet.
+
+⸻
+
+21. BACKUP E RECOVERY
+
+Durante la creazione:
+
+Your wallet is self-custodial.
+Alpha Chat cannot recover your funds
+if you lose your recovery phrase.
+
+Prevedere:
+
+* backup seed;
+* verifica seed;
+* recovery test;
+* export;
+* import.
+
+L’utente deve essere consapevole che Alpha Chat non può recuperare la seed persa.
+
+⸻
+
+22. ANTI-PHISHING
+
+Prima di ogni firma mostrare una schermata di conferma chiara.
+
+EVM:
+
+You are sending
+100 USDC
+Network
+Polygon
+To
+0x1234...5678
+Network fee
+€0.xx
+Total
+€100.xx
+
+Bitcoin:
+
+You are sending
+0.001 BTC
+To
+bc1q...
+Network fee
+€0.xx
+Total
+€0.xx
+
+L’utente deve poter annullare prima della firma.
+
+⸻
+
+23. SEPARAZIONE DAL PAYMENT ENGINE
+
+Il nuovo Alpha Wallet NON deve dipendere da:
+
+calculatePaymentQuote()
+createMultiChainTransfer()
+escrow
+Gas Station
+project fee
+payment fee configuration
+BTC escrow
+existing payment APIs
+
+Il concetto deve essere:
+
+Alpha Wallet
+
+Wallet personale dell’utente.
+
+Alpha Payment Engine
+
+Sistema di pagamento già esistente.
+
+Sono due sistemi differenti.
+
+⸻
+
+24. INTEGRAZIONE FUTURA
+
+Solo in una fase successiva potremo eventualmente collegare:
+
+Chat
+ ↓
+Pay
+ ↓
+Use Alpha Wallet
+ ↓
+Local signing
+
+Ma non implementare questa integrazione adesso.
+
+Prima il wallet deve funzionare autonomamente.
+
+⸻
+
+25. STRUTTURA MODULARE PROPOSTA
+
+La struttura esatta può essere adattata al progetto, ma concettualmente:
+
+alpha-wallet/
+├── core/
+│   ├── wallet/
+│   ├── key-management/
+│   ├── security/
+│   └── signing/
+│
+├── evm/
+│   ├── wallet/
+│   ├── networks/
+│   ├── tokens/
+│   ├── balances/
+│   ├── transactions/
+│   └── signer/
+│
+├── bitcoin/
+│   ├── wallet/
+│   ├── addresses/
+│   ├── utxo/
+│   ├── transactions/
+│   ├── fee-estimation/
+│   └── signer/
+│
+├── ui/
+│   ├── overview/
+│   ├── send/
+│   ├── receive/
+│   ├── security/
+│   └── history/
+│
+└── tests/
+
+⸻
+
+26. TEST OBBLIGATORI
+
+EVM
+
+Testare:
+
+* create wallet;
+* restore wallet;
+* seed compatibility;
+* private key export;
+* address consistency;
+* Ethereum;
+* Polygon;
+* BSC;
+* ETH;
+* POL;
+* BNB;
+* USDT;
+* USDC;
+* USDA;
+* ERC-20 transfers;
+* native transfers;
+* signing;
+* insufficient balance;
+* invalid transaction;
+* RPC failure.
+
+Bitcoin
+
+Testare:
+
+* create wallet;
+* restore;
+* seed compatibility;
+* address derivation;
+* balance;
+* UTXO selection;
+* fee estimation;
+* send;
+* receive;
+* signing;
+* change;
+* dust;
+* insufficient balance;
+* broadcast failure.
+
+Security
+
+Verificare esplicitamente che:
+
+seed phrase e private key non compaiano in API request, database, logs, analytics, error tracking o telemetry.
+
+⸻
+
+27. COMPATIBILITÀ ESTERNA
+
+Test obbligatorio:
+
+EVM
+
+Alpha Wallet
+      ↓
+Export seed phrase
+      ↓
+Wallet EVM compatibile
+      ↓
+Same address
+      ↓
+Same assets
+
+Bitcoin
+
+Alpha Wallet
+      ↓
+Export seed phrase
+      ↓
+Bitcoin wallet compatibile
+      ↓
+Same derivation
+      ↓
+Same BTC address/funds
+
+La compatibilità deve essere verificata realmente, non solo dichiarata.
+
+⸻
+
+28. FASE 1 — SOLO AUDIT
+
+NON MODIFICARE ALCUN FILE.
+
+Prima produrre esclusivamente un documento di architettura contenente:
+
+1. architettura completa;
+2. struttura dei moduli;
+3. librerie consigliate;
+4. standard wallet;
+5. derivation paths;
+6. gestione seed;
+7. key storage;
+8. signing;
+9. sicurezza PWA/iOS;
+10. EVM multi-chain;
+11. Ethereum;
+12. Polygon;
+13. BSC;
+14. USDT;
+15. USDC;
+16. USDA;
+17. Bitcoin;
+18. backup;
+19. recovery;
+20. export/import;
+21. transaction history;
+22. API necessarie;
+23. database necessario, se realmente necessario;
+24. rischi;
+25. test plan;
+26. struttura file;
+27. dipendenze;
+28. stima della complessità.
+
+IMPORTANTE
+
+Indicare chiaramente:
+
+FILE NUOVI DA CREARE
+
+e separatamente:
+
+FILE ESISTENTI CHE NON DEVONO ESSERE TOCCATI.
+
+Se per qualsiasi motivo fosse indispensabile modificare un file esistente, NON modificarlo: segnalarlo nell’audit e spiegare perché.
+
+⸻
+
+29. STOP CONDITION
+
+Dopo aver completato l’audit:
+
+STOP.
+
+Non implementare.
+
+Non creare wallet.
+
+Non modificare database.
+
+Non modificare API.
+
+Non modificare UI esistente.
+
+Non modificare payment engine.
+
+Attendere approvazione prima della fase di implementazione.
+
+⸻
+
+RISULTATO FINALE DESIDERATO
+
+Vogliamo arrivare a un vero:
+
+ALPHA WALLET
+
+nativo dentro Alpha Chat.
+
+EVM
+
+Ethereum + Polygon + BSC + future EVM
+
+con:
+
+ETH / POL / BNB / USDT / USDC / USDA
+
+Bitcoin
+
+BTC
+
+con wallet separato tecnicamente dall’EVM.
+
+Entrambi:
+
+self-custodial → backup → recovery → export → import → local signing
+
+e utilizzo quotidiano senza:
+
+Trust Wallet / MetaMask / WalletConnect.
+
+Il tutto deve rimanere completamente isolato dal Payment Engine già esistente fino a una successiva fase di integrazione approvata esplicitamente.
