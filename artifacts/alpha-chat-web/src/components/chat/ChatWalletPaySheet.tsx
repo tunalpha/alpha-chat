@@ -56,6 +56,8 @@ interface Props {
   conversationId?:   string;
   onClose:           () => void;
   onSent:            (result: ChatPaymentResult) => void;
+  /** Caso B: invia messaggio di invito in chat quando il destinatario non ha Alpha Wallet */
+  onSendInvite?:     (message: string) => void;
 }
 
 // ─── Asset option ──────────────────────────────────────────────────────────
@@ -116,6 +118,7 @@ export function ChatWalletPaySheet({
   conversationId,
   onClose,
   onSent,
+  onSendInvite,
 }: Props) {
   const bridge = useChatWalletBridge();
 
@@ -140,6 +143,7 @@ export function ChatWalletPaySheet({
   const [quote,        setQuote]        = useState<PaymentQuote | null>(null);
   const [quoteAge,     setQuoteAge]     = useState(0);
   const [quoteLoading, setQuoteLoading] = useState(false);
+  const [quoteErr,     setQuoteErr]     = useState<string | null>(null);
   const quoteTimer = useRef<ReturnType<typeof setInterval> | null>(null);
 
   // ── Auth modal state ─────────────────────────────────────────────────
@@ -242,10 +246,13 @@ export function ChatWalletPaySheet({
 
     if (!valid) return;
 
+    setQuoteErr(null);
     setQuoteLoading(true);
     try {
       const q = await bridge.calculateQuote(network, asset.contractAddress, asset.symbol, amount);
       setQuote(q);
+    } catch (e) {
+      setQuoteErr(e instanceof Error ? e.message : "Errore nel calcolo dei costi. Riprova.");
     } finally {
       setQuoteLoading(false);
     }
@@ -282,7 +289,7 @@ export function ChatWalletPaySheet({
   // ── Invia pagamento ──────────────────────────────────────────────────
   // REGOLA §12: solo questa azione esplicita dell'utente può avviare sendPayment()
   const handleSend = useCallback(async () => {
-    if (!quote) { void handleCalculate(); return; }
+    if (!quote) return; // non dovrebbe accadere: il bottone primario ora chiama handleCalculate se !quote
     const age = (Date.now() - quote.frozenAt) / 1000;
     if (age >= quote.quoteValiditySec) {
       setQuote(null); setSendErr("Quote scaduta. Ricalcola i costi."); return;
@@ -347,6 +354,23 @@ export function ChatWalletPaySheet({
                   Per ricevere un pagamento self-custodial diretto, il destinatario deve
                   prima configurare Alpha Wallet sul proprio dispositivo.
                 </p>
+
+                {/* Invita in chat — Bug 2 fix */}
+                {onSendInvite && (
+                  <button
+                    className="cwp-btn-invite"
+                    onClick={() => {
+                      const name = recipientName ?? "il destinatario";
+                      onSendInvite(
+                        `👋 Ciao ${name}! Per ricevere pagamenti diretti tramite Alpha Wallet, configura il tuo wallet su Alpha Chat: Impostazioni → Alpha Wallet. È gratuito e richiede meno di un minuto. 🔐`,
+                      );
+                      onClose();
+                    }}
+                  >
+                    📩 Invita {recipientName ?? "il destinatario"} su Alpha Wallet
+                  </button>
+                )}
+
                 <button
                   className="cwp-btn-secondary"
                   onClick={() => {
@@ -491,7 +515,7 @@ export function ChatWalletPaySheet({
                 )}
 
                 {/* Fee breakdown + riepilogo pre-firma */}
-                {quote ? (
+                {quote && (
                   <div className="cwp-quote">
                     {/* Header riepilogo — RETE + ADDRESS SEMPRE ESPLICITI (spec §4 e §11) */}
                     <div className="cwp-quote-confirm-header">
@@ -560,25 +584,21 @@ export function ChatWalletPaySheet({
                       </div>
                     )}
                   </div>
-                ) : (
-                  <button
-                    className="cwp-btn-secondary"
-                    onClick={handleCalculate}
-                    disabled={quoteLoading || recipientMode === "loading" || (recipientMode === "found" && !autoAddress)}
-                  >
-                    {quoteLoading ? "Calcolo in corso…" : "Calcola costi"}
-                  </button>
                 )}
 
+                {quoteErr && <p className="cwp-quote-err">{quoteErr}</p>}
                 {sendErr && <p className="cwp-send-err">{sendErr}</p>}
 
-                {/* CTA — solo dopo azione esplicita dell'utente (§12) */}
+                {/* CTA — solo dopo azione esplicita dell'utente (§12)
+                    Se non c'è quote: chiama handleCalculate direttamente (Bug 1 fix).
+                    Se c'è quote: chiama handleSend per la firma.              */}
                 <button
                   className="cwp-btn-primary"
-                  style={{ background: netColor }}
-                  onClick={handleSend}
+                  style={{ background: quote ? netColor : undefined }}
+                  onClick={quote ? handleSend : handleCalculate}
                   disabled={
                     sending ||
+                    quoteLoading ||
                     bridge.sendInProgress ||
                     recipientMode === "loading" ||
                     (recipientMode === "found" && !autoAddress)
@@ -586,9 +606,11 @@ export function ChatWalletPaySheet({
                 >
                   {sending
                     ? "Invio in corso…"
-                    : quote
-                      ? `Conferma e Invia su ${NETWORK_LABELS[network]} →`
-                      : "Calcola costi prima"}
+                    : quoteLoading
+                      ? "Calcolo in corso…"
+                      : quote
+                        ? `Conferma e Invia su ${NETWORK_LABELS[network]} →`
+                        : "Calcola costi"}
                 </button>
               </>
             )}

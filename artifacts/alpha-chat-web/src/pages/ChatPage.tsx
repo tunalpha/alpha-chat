@@ -4908,6 +4908,7 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
           conversationId={activeConvId ?? ""}
           recipientUserId={activeConv.other_user?.user_id}
           recipientName={activeConv.other_user?.display_name ?? activeConv.other_user?.username}
+          onSendInvite={(msg) => void sendProgrammatic(msg)}
           onClose={() => setShowWalletPay(false)}
           onSent={(result: ChatPaymentResult) => {
             setShowWalletPay(false);

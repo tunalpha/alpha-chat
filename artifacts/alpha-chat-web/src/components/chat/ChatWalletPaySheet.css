@@ -196,6 +196,32 @@
   margin: 0;
 }
 
+.cwp-quote-err {
+  color: #f97316;
+  font-size: 13px;
+  text-align: center;
+  margin: 0;
+  background: rgba(249,115,22,0.08);
+  border: 1px solid rgba(249,115,22,0.2);
+  border-radius: 8px;
+  padding: 8px 12px;
+}
+
+/* Bottone invita — Caso B */
+.cwp-btn-invite {
+  width: 100%;
+  padding: 12px;
+  border: 1.5px solid rgba(139,92,246,0.5);
+  border-radius: 12px;
+  font-size: 14px;
+  font-weight: 600;
+  color: #8b5cf6;
+  background: rgba(139,92,246,0.08);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.cwp-btn-invite:hover { background: rgba(139,92,246,0.15); border-color: rgba(139,92,246,0.7); }
+
 /* ── Task #93: Recipient Discovery ──────────────────────────────────────── */
 
 /* Loading state */
