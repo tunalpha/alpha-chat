@@ -860,7 +860,10 @@ export async function releaseMultiChainTransfer(transferId: string): Promise<Mul
     const { UserModel } = await import("../models/user.model");
     const recipientUser = await UserModel.findOne(
       { _id: locked.recipient_id },
-      { wallet_address: 1 },
+      // Proietta sia il campo legacy che la struttura wallets multi-chain.
+      // Per le chain EVM (BSC, Polygon, Ethereum) l'indirizzo è intercambiabile:
+      // stessa derivazione BIP-44, stesso formato 0x.
+      { wallet_address: 1, wallets: 1 },
     ).lean();
 
     // Helper: rollback a pending — deposito al sicuro nell'escrow, ritenterà al prossimo ciclo
@@ -869,23 +872,34 @@ export async function releaseMultiChainTransfer(transferId: string): Promise<Mul
       { $set: { status: "pending", locked_at: null } },
     );
 
-    if (recipientUser?.wallet_address) {
+    // Risolvi il wallet EVM del destinatario con fallback a cascata:
+    // 1. campo legacy wallet_address
+    // 2. wallets.polygon (preferito — stessa chain family EVM)
+    // 3. wallets.ethereum
+    // 4. wallets.usda (USDA è ERC-20 su Polygon, stessa key derivation)
+    const resolvedWallet: string | null | undefined =
+      recipientUser?.wallet_address ||
+      recipientUser?.wallets?.polygon?.address ||
+      recipientUser?.wallets?.ethereum?.address ||
+      recipientUser?.wallets?.usda?.address ||
+      null;
+
+    if (resolvedWallet) {
       // Valida formato indirizzo EVM prima di usarlo (difesa in profondità).
-      // wallet_address arriva dal profilo utente e potrebbe essere malformato.
-      if (!isAddress(recipientUser.wallet_address)) {
+      if (!isAddress(resolvedWallet)) {
         await _rollbackToPending();
         throw new AppError("RECIPIENT_WALLET_INVALID_FORMAT", 422,
-          `Il wallet del destinatario ha un formato non valido: ${recipientUser.wallet_address}`);
+          `Il wallet del destinatario ha un formato non valido: ${resolvedWallet}`);
       }
 
       // Persisti il wallet nel transfer per evitare il lookup ad ogni retry.
       await MultiChainTransferModel.findOneAndUpdate(
         { transfer_id: transferId, status: "releasing" },
-        { $set: { recipient_wallet: recipientUser.wallet_address } },
+        { $set: { recipient_wallet: resolvedWallet } },
       );
-      locked.recipient_wallet = recipientUser.wallet_address;
+      locked.recipient_wallet = resolvedWallet;
       logger.info(
-        { transferId, recipientWallet: recipientUser.wallet_address, network: locked.network },
+        { transferId, recipientWallet: resolvedWallet, network: locked.network },
         "[MCPayment] recipient_wallet risolto dal profilo utente",
       );
     } else {

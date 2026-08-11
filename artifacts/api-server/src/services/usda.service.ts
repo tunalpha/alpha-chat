@@ -336,6 +336,23 @@ export async function setWalletAddress(userId: string, address: string, chain = 
     { _id: new mongoose.Types.ObjectId(userId) },
     { $set },
   );
+
+  // ROOT-CAUSE FIX: quando il destinatario registra/aggiorna il proprio wallet
+  // per la prima volta, potrebbe esserci un transfer MC bloccato in stato "pending"
+  // perché il release aveva fallito con RECIPIENT_WALLET_REQUIRED_FOR_RELEASE.
+  // Triggeriamo immediatamente una passata di release invece di aspettare
+  // il prossimo ciclo dello scheduler (fino a 2 min di ritardo).
+  // Fire-and-forget: non blocca la risposta HTTP.
+  void (async () => {
+    try {
+      const { processNewPendingTransfers } = await import("../payment/multichain-scheduler");
+      await processNewPendingTransfers();
+    } catch (err) {
+      // Non propagare: il rilascio avverrà al prossimo ciclo periodico.
+      logger.warn({ err, userId }, "[setWalletAddress] trigger MC release fallito — riproverà allo scheduler cycle");
+    }
+  })();
+
   return _adapter.setWalletAddress(userId, address, chain as import("../usda/usda-adapter.interface").WalletChain);
 }
 
