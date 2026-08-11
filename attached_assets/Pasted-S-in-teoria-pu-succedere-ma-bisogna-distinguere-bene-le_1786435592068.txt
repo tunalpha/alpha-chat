@@ -1,0 +1,97 @@
+Sì, in teoria può succedere, ma bisogna distinguere bene le due cose.
+
+La Gas Station non “assorbe” direttamente la tua project fee. La domanda economica corretta è:
+
+La project fee che incassi è maggiore del costo reale che Alpha sostiene per eseguire le transazioni?
+
+Con fee Alpha 0,10%, su:
+
+* 100 USDT → 0,10 USDT
+* 1.000 USDT → 1 USDT
+* 10.000 USDT → 10 USDT
+
+Se invece il costo reale del gas per Alpha, per completare il pagamento, fosse superiore a quella cifra, su quella transazione sei in perdita.
+
+Esempio
+
+Supponiamo:
+
+Pagamento: 1.000 USDT
+
+Fee Alpha 0,10%:
+
++1 USDT
+
+Se le transazioni backend costano complessivamente:
+
+0,40 USDT
+
+→ guadagni 0,60 USDT prima degli altri costi.
+
+Se invece costano:
+
+1,50 USDT
+
+→ perdi 0,50 USDT.
+
+Il ×1,20 che abbiamo appena analizzato non risolve questo problema: quello è un margine sulla network fee addebitata/stimata, destinato a coprire il costo gas. Non è automaticamente profitto Alpha.
+
+Ed è proprio qui che farei un audit
+
+Perché nel tuo sistema ci sono potenzialmente TX1 + TX2 + TX3/reclaim, quindi non basta guardare il gas di una singola transazione.
+
+Bisogna sapere:
+
+Quanto costa realmente ad Alpha ogni pagamento completo?
+
+e confrontarlo con:
+
+Project fee 0,10%
+
+Per esempio, su Polygon:
+
+Fee Alpha = 1 USDT
+Gas Station costo reale TX1 + TX2 + eventuale TX3 = ?
+
+Se il costo medio fosse 0,20–0,30 USDT, sei tranquillo.
+
+Se fosse 1,50 USDT, lo 0,10% non è sostenibile per transazioni da 1.000 USDT.
+
+Quindi non cambierei ancora la fee. Farei fare all’agente un audit specifico di redditività:
+
+AUDIT — Profitabilità Project Fee 0,10% vs costo Gas Station
+
+Nessuna modifica.
+
+Voglio sapere se con DEFAULT_FEE_BPS = 10 (0,10%) Alpha rischia di perdere denaro per transazione.
+
+Analizza separatamente Polygon, Ethereum e BSC.
+
+Per ciascuna rete determina:
+
+1. quante TX esegue realmente la Gas Station per un pagamento completo;
+2. costo gas reale di ciascuna TX;
+3. costo totale reale per pagamento;
+4. network fee addebitata al cliente;
+5. safety margin ×1,20;
+6. project fee Alpha 0,10%;
+7. margine netto Alpha dopo il costo gas.
+
+Simula almeno pagamenti da:
+
+10 / 50 / 100 / 500 / 1.000 / 5.000 / 10.000 USDT
+
+e indica per ogni importo:
+
+Project fee − costo gas reale = profitto/perdita
+
+Voglio inoltre distinguere chiaramente:
+
+* denaro che va alla Gas Station per finanziare il gas;
+* project fee che appartiene ad Alpha;
+* safety margin;
+* eventuale eccedenza della network fee.
+
+Nessuna modifica al codice. Solo audit economico.
+
+Questa verifica è molto importante, perché se vuoi mantenere lo 0,10%, dobbiamo sapere qual è il break-even minimo per transazione.
