@@ -16,7 +16,7 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 14px 16px;
+  padding: calc(env(safe-area-inset-top, 0px) + 14px) 16px 14px;
   border-bottom: 1px solid var(--border-subtle, rgba(255,255,255,.07));
   flex-shrink: 0;
 }
@@ -117,6 +117,12 @@
 .aw-btn--primary  { background: var(--accent, #6366f1); color: #fff; }
 .aw-btn--secondary { background: rgba(255,255,255,.08); color: inherit; }
 .aw-btn--ghost    { background: transparent; border: 1px solid rgba(255,255,255,.2); color: inherit; }
+.aw-btn--biometric {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+}
 .aw-btn--danger   { background: #dc2626; color: #fff; }
 .aw-btn-row {
   display: flex;

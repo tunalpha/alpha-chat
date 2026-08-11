@@ -18,6 +18,7 @@
  */
 
 import { useState, useCallback, useRef, useEffect } from "react";
+import { useLock } from "../contexts/LockContext";
 import { WalletProvider, useWallet } from "../wallet/context/WalletContext";
 import { createMnemonic, isValidMnemonic } from "../wallet/core/mnemonic";
 import { validatePin, pinValidationError } from "../wallet/core/wallet-auth";
@@ -433,24 +434,121 @@ function BackupConfirmView({ mnemonic, pin, onConfirm }: { mnemonic: string; pin
 
 function UnlockView() {
   const wallet = useWallet();
+  const lock = useLock();
+  const biometricOnlyEnabled = lock?.biometricOnlyEnabled ?? false;
+  const hasBiometricSet = lock?.hasBiometricSet ?? false;
+  const biometricEnabled = lock?.settings?.biometricEnabled ?? false;
+  const showBiometric = biometricOnlyEnabled || (hasBiometricSet && biometricEnabled);
+
   const [pin, setPin] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
-  const unlock = async () => {
-    if (!validatePin(pin)) { setError("PIN non valido"); return; }
+  const [showPin, setShowPin] = useState(!biometricOnlyEnabled);
+
+  // Tenta sblocco biometrico automaticamente se è l'unico metodo
+  useEffect(() => {
+    if (biometricOnlyEnabled) void handleBiometric();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const unlockWithPin = async (p: string) => {
+    if (!validatePin(p)) { setError("PIN non valido"); return; }
     setLoading(true);
-    try { await wallet.unlockWallet(pin); }
+    try { await wallet.unlockWallet(p); }
     catch { setError("PIN errato. Riprova."); setPin(""); }
     finally { setLoading(false); }
   };
+
+  const handleBiometric = async () => {
+    if (!lock) return;
+    setError(null);
+    setLoading(true);
+    try {
+      const ok = await lock.tryUnlockWithBiometric();
+      if (!ok) { setError("Autenticazione biometrica fallita."); setLoading(false); return; }
+      // Recupera il PIN cachato in sessionStorage per decriptare il keystore
+      const cached = sessionStorage.getItem("aw_bio_pin");
+      if (!cached) {
+        setError("Sessione scaduta. Inserisci il PIN una volta per riattivare Face ID.");
+        setShowPin(true);
+        setLoading(false);
+        return;
+      }
+      await wallet.unlockWallet(cached);
+    } catch {
+      setError("Impossibile sbloccare. Usa il PIN.");
+      setShowPin(true);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const BiometricIcon = () => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" width="24" height="24">
+      <path d="M12 1C5.925 1 1 5.925 1 12s4.925 11 11 11 11-4.925 11-11S18.075 1 12 1z"/>
+      <path d="M8.5 9.5c0-1.933 1.567-3.5 3.5-3.5s3.5 1.567 3.5 3.5"/>
+      <path d="M6 12c0-3.314 2.686-6 6-6s6 2.686 6 6"/>
+      <path d="M3.5 12c0-4.694 3.806-8.5 8.5-8.5s8.5 3.806 8.5 8.5"/>
+      <circle cx="12" cy="12" r="1"/>
+    </svg>
+  );
+
   return (
     <div className="aw-unlock">
       <div className="aw-unlock-icon">🔐</div>
       <h2>Alpha Wallet</h2>
-      <p className="aw-sub">Inserisci il PIN per sbloccare il wallet.</p>
-      <input type="password" inputMode="numeric" className="aw-input aw-input--pin" value={pin} onChange={e => { setPin(e.target.value.replace(/\D/g, "")); setError(null); }} onKeyDown={e => e.key === "Enter" && void unlock()} maxLength={12} placeholder="••••••" autoFocus />
-      {error && <div className="aw-error">{error}</div>}
-      <button className="aw-btn aw-btn--primary" onClick={unlock} disabled={loading || pin.length < 6}>{loading ? "Sblocco…" : "Sblocca →"}</button>
+
+      {/* Modalità biometrica primaria */}
+      {biometricOnlyEnabled && !showPin ? (
+        <>
+          <p className="aw-sub">Usa Face ID per sbloccare il wallet.</p>
+          {error && <div className="aw-error">{error}</div>}
+          <button
+            className="aw-btn aw-btn--primary aw-btn--biometric"
+            onClick={handleBiometric}
+            disabled={loading}
+          >
+            <BiometricIcon />
+            {loading ? "Verifica in corso…" : "Face ID / Touch ID"}
+          </button>
+          <button className="aw-btn aw-btn--ghost" onClick={() => setShowPin(true)}>
+            Usa il PIN
+          </button>
+        </>
+      ) : (
+        <>
+          <p className="aw-sub">Inserisci il PIN per sbloccare il wallet.</p>
+          <input
+            type="password"
+            inputMode="numeric"
+            className="aw-input aw-input--pin"
+            value={pin}
+            onChange={e => { setPin(e.target.value.replace(/\D/g, "")); setError(null); }}
+            onKeyDown={e => e.key === "Enter" && void unlockWithPin(pin)}
+            maxLength={12}
+            placeholder="••••••"
+            autoFocus
+          />
+          {error && <div className="aw-error">{error}</div>}
+          <button
+            className="aw-btn aw-btn--primary"
+            onClick={() => unlockWithPin(pin)}
+            disabled={loading || pin.length < 6}
+          >
+            {loading ? "Sblocco…" : "Sblocca →"}
+          </button>
+          {showBiometric && !biometricOnlyEnabled && (
+            <button
+              className="aw-btn aw-btn--ghost aw-btn--biometric"
+              onClick={handleBiometric}
+              disabled={loading}
+            >
+              <BiometricIcon />
+              Face ID / Touch ID
+            </button>
+          )}
+        </>
+      )}
     </div>
   );
 }

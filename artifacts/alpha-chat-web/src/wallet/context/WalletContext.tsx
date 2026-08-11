@@ -223,6 +223,8 @@ export function WalletProvider({ children }: WalletProviderProps) {
     await saveWalletMeta(walletMeta);
     setMeta(walletMeta);
     recordAuthSuccess();
+    // Cache PIN per sblocco biometrico nella stessa sessione
+    try { sessionStorage.setItem("aw_bio_pin", pin); } catch { /* ignore */ }
     setPhase("unlocked");
     _startMonitor(walletMeta);
   }, [_startMonitor]);
@@ -233,6 +235,8 @@ export function WalletProvider({ children }: WalletProviderProps) {
     // Verifica PIN (lancia eccezione se sbagliato)
     await decryptSeed(entry, pin);
     recordAuthSuccess();
+    // Cache PIN per sblocco biometrico nella stessa sessione
+    try { sessionStorage.setItem("aw_bio_pin", pin); } catch { /* ignore */ }
     const savedMeta = await loadWalletMeta();
     setMeta(savedMeta);
     setPhase("unlocked");
@@ -253,6 +257,7 @@ export function WalletProvider({ children }: WalletProviderProps) {
     await clearKeystore();
     await TxMonitor_resetState();
     await clearTxHistory();
+    try { sessionStorage.removeItem("aw_bio_pin"); } catch { /* ignore */ }
     setMeta(null);
     setPhase("no-wallet");
     setNotifications([]);
