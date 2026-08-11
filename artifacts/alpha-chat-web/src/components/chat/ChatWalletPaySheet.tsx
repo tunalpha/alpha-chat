@@ -154,6 +154,7 @@ export function ChatWalletPaySheet({
   const [quoteAge,     setQuoteAge]     = useState(0);
   const [quoteLoading, setQuoteLoading] = useState(false);
   const [quoteErr,     setQuoteErr]     = useState<string | null>(null);
+  const [showFullAddr, setShowFullAddr] = useState(false);
 
   // ── Auth (inline PIN) ────────────────────────────────────────────────
   const [pinValue,  setPinValue]  = useState("");
@@ -206,11 +207,11 @@ export function ChatWalletPaySheet({
       if (age >= quote.quoteValiditySec) {
         setQuote(null);
         clearInterval(interval);
-        // Quote scaduta → torna ad "amount"
-        if (step === "summary") {
-          setSendErr("Quote scaduta. Ricalcola i costi.");
-          setStep("amount");
-        }
+        // Quote scaduta → torna ad "amount".
+        // NOTA: functional update per evitare la closure stale di `step`
+        // (questo effect dipende solo da [quote]).
+        setSendErr("Quote scaduta. Ricalcola i costi.");
+        setStep(s => (s === "summary" ? "amount" : s));
       }
     }, 1000);
     return () => clearInterval(interval);
@@ -285,7 +286,20 @@ export function ChatWalletPaySheet({
         asset.symbol,
         amount,
       );
+      // FIX Step 4 bianco: calculateQuote può risolvere `null` SENZA lanciare
+      // (wallet non "ready" — es. auto-lock su iOS PWA — o importo non parsabile).
+      // Prima si faceva setQuote(null)+setStep("summary") → schermo vuoto.
+      if (!q) {
+        setQuoteErr(
+          "Impossibile calcolare i costi: il wallet potrebbe essere bloccato. Sblocca Alpha Wallet e riprova.",
+        );
+        // Torna SEMPRE ad "amount": questo handler può essere invocato anche
+        // dal fallback "Ricalcola i costi" mentre siamo già su "summary".
+        setStep("amount");
+        return;
+      }
       setQuote(q);
+      setShowFullAddr(false);
       setStep("summary");
     } catch (e) {
       setQuoteErr(e instanceof Error ? e.message : "Errore nel calcolo dei costi. Riprova.");
@@ -319,7 +333,9 @@ export function ChatWalletPaySheet({
       pinResolveRef.current(null);
       pinResolveRef.current = null;
     }
-    setStep("summary");
+    // Se nel frattempo la quote è scaduta (countdown → setQuote(null)),
+    // tornare a "summary" mostrerebbe uno step vuoto: torna ad "amount".
+    setStep(quote ? "summary" : "amount");
   };
 
   // ── Invia pagamento ──────────────────────────────────────────────────
@@ -374,20 +390,31 @@ export function ChatWalletPaySheet({
   const displayName = recipientName ?? "il destinatario";
 
   // ─────────────────────────────────────────────────────────────────────
-  // RENDER — Full-screen view nel normal document flow.
+  // RENDER — Bottom-sheet compatto.
   //
   // ARCHITETTURA iOS/PWA:
-  //   awp-view       display:flex flex-direction:column height:100%
-  //   awp-header     flex-shrink:0   ← fisso, non scrolla
-  //   awp-content    flex:1 overflow-y:auto   ← unico elemento che può scrollare
-  //   awp-footer     flex-shrink:0   ← sempre visibile sotto il contenuto
-  //
-  // Perché funziona: overflow-y:auto su un elemento il cui ANTENATO NON è
-  // position:fixed funziona perfettamente su iOS Safari PWA.
+  //   cwp-backdrop   position:fixed inset:0 — overlay sopra la chat
+  //   cwp-sheet      ancorato in basso, flex column, alto quanto il contenuto
+  //   awp-header     flex-shrink:0
+  //   awp-content    flex:1 — NESSUNO step dipende dallo scroll interno:
+  //                  ogni step è compatto e sta nel viewport mobile.
+  //                  overflow-y:auto resta solo come rete di sicurezza.
+  //   awp-footer     flex-shrink:0 — il CTA è STRUTTURALMENTE fuori dal
+  //                  content, quindi sempre visibile a prescindere da iOS.
   // ─────────────────────────────────────────────────────────────────────
 
   return (
-    <div className="awp-view">
+    <div
+      className="cwp-backdrop"
+      onClick={e => {
+        // Chiusura da backdrop DISABILITATA durante "sending" e "auth":
+        // in auth sendPayment() sta awaitando la promise del PIN — chiudere
+        // qui lascerebbe pinResolveRef pendente e il mutex anti-double-send
+        // attivo fino al reload. La X/← nell'header gestisce l'annullo corretto.
+        if (e.target === e.currentTarget && step !== "sending" && step !== "auth") onClose();
+      }}
+    >
+    <div className="cwp-sheet" role="dialog" aria-modal="true">
 
       {/* ── Header ──────────────────────────────────────────────────── */}
       <div className="awp-header">
@@ -631,10 +658,18 @@ export function ChatWalletPaySheet({
               </div>
               <div className="cwp-quote-row">
                 <span>Destinatario</span>
-                <span className="cwp-quote-addr" title={effectiveAddress}>
+                <button
+                  type="button"
+                  className="cwp-quote-addr"
+                  title={showFullAddr ? "Nascondi indirizzo completo" : "Mostra indirizzo completo"}
+                  onClick={() => setShowFullAddr(v => !v)}
+                >
                   🔒 {truncateAddress(effectiveAddress)}
-                </span>
+                </button>
               </div>
+              {showFullAddr && (
+                <div className="cwp-quote-addr-full">{effectiveAddress}</div>
+              )}
               <div className="cwp-quote-divider" />
               <div className="cwp-quote-row">
                 <span>Platform fee</span>
@@ -665,6 +700,19 @@ export function ChatWalletPaySheet({
             )}
 
             {sendErr && <p className="cwp-send-err">{sendErr}</p>}
+          </div>
+        )}
+
+        {/* ── STEP 4 senza quote — fallback difensivo (MAI schermo vuoto).
+            Può accadere solo se la quote scade/si invalida mentre siamo
+            su questo step: mostra un messaggio e permetti il ricalcolo. ── */}
+        {step === "summary" && !quote && (
+          <div className="cwp-step cwp-step-center">
+            <div className="cwp-no-wallet-icon">⏱</div>
+            <p className="cwp-quote-err">
+              Quote non disponibile o scaduta. Ricalcola i costi per continuare.
+            </p>
+            {quoteErr && <p className="cwp-field-err">{quoteErr}</p>}
           </div>
         )}
 
@@ -792,6 +840,21 @@ export function ChatWalletPaySheet({
           </>
         )}
 
+        {/* Step 4 senza quote — fallback: consenti ricalcolo o ritorno */}
+        {step === "summary" && !quote && (
+          <>
+            <button className="cwp-btn-back" onClick={goBack}>← Modifica</button>
+            <button
+              className="cwp-btn-primary"
+              style={{ background: netColor }}
+              onClick={handleGoToSummary}
+              disabled={quoteLoading}
+            >
+              {quoteLoading ? "Calcolo…" : "Ricalcola i costi"}
+            </button>
+          </>
+        )}
+
         {/* Step 5 — auth */}
         {step === "auth" && (
           <>
@@ -800,7 +863,6 @@ export function ChatWalletPaySheet({
               className="cwp-btn-primary"
               style={{ background: netColor }}
               onClick={handlePinSubmit}
-              disabled={pinValue.length < 4}
             >
               Firma e invia
             </button>
@@ -816,6 +878,7 @@ export function ChatWalletPaySheet({
 
       </div>{/* /awp-footer */}
 
+    </div>{/* /cwp-sheet */}
     </div>
   );
 }

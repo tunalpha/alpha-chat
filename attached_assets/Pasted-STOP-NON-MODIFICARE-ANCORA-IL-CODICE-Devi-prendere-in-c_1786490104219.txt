@@ -1,0 +1,154 @@
+STOP. NON MODIFICARE ANCORA IL CODICE.
+
+Devi prendere in carico il problema completo di "Paga con Alpha Wallet" e risolverlo definitivamente.
+
+CONTESTO:
+Abbiamo già effettuato diversi tentativi per risolvere un problema iOS/PWA nel componente ChatWalletPaySheet.
+
+Il flusso wallet e la logica di pagamento FUNZIONANO:
+- Alpha Wallet
+- recipient discovery
+- rete
+- asset
+- amount
+- quote
+- fee
+- signing
+- broadcast
+- PIN/auth
+- success/failure
+- bridge
+- recipient Alpha Wallet
+NON devono essere riscritti.
+
+I test attuali sono 641/641 verdi.
+
+IL PROBLEMA È ESCLUSIVAMENTE LA PRESENTAZIONE/UI DEL PAGAMENTO.
+
+CRITICITÀ:
+1. La soluzione originaria era un bottom-sheet sopra la chat.
+2. Su iOS PWA il contenitore fixed + overflow interno causava problemi di scroll/clipping.
+3. Sono stati fatti diversi fix CSS senza successo.
+4. È stato trasformato il componente in wizard full-screen/in-place.
+5. Ora il wizard mostra Step 1/2/3, ma Step 4 "Riepilogo" può risultare completamente bianco/vuoto.
+6. Quindi NON assumere più che il problema sia semplicemente lo scrolling.
+7. L'ultima implementazione ha introdotto una regressione reale: Step 4 non renderizza correttamente.
+8. La UX precedente bottom-sheet era migliore e vogliamo recuperare quella sensazione.
+
+OBIETTIVO UX FINALE:
+
+Chat
+→ 📎
+→ 🔐 Paga con Alpha Wallet
+→ pannello di pagamento elegante dal basso / modal coerente con Alpha Chat
+→ wizard compatto
+→ ogni step deve essere utilizzabile su iPhone senza dipendere da uno scroll interno fragile.
+
+STEP:
+1. Destinatario + rete
+2. Asset
+3. Importo
+4. Riepilogo
+5. PIN/autenticazione
+6. Invio
+7. Successo/errore
+
+REGOLA FONDAMENTALE:
+NESSUNO STEP deve dipendere da un'area interna scrollabile per mostrare il pulsante principale.
+
+Ogni step deve stare nel viewport mobile.
+
+STEP 4 deve essere particolarmente compatto:
+
+"Cricco riceverà"
+1.00 USDA
+Rete: Polygon
+Destinatario: 0xa497…170
+Platform fee: 0.01 USDA
+Network fee: ~0.001 POL
+──────────────
+Totale: 1.01 USDA
+
+[ 🔐 Firma e invia ]
+
+L'indirizzo deve essere troncato su una sola riga.
+Possibilità di vedere l'indirizzo completo senza occupare spazio.
+
+PRIMA DI MODIFICARE:
+Fai un audit completo.
+
+Devi verificare concretamente:
+- render condition di ogni step
+- state machine
+- condizioni che determinano lo step corrente
+- return JSX di Step 4
+- eventuali early return
+- classi CSS che possono nascondere Step 4
+- display/visibility/opacity/height/overflow
+- conditional rendering
+- dati necessari al summary
+- eventuali errori JavaScript silenziosi
+- eventuali errori React
+- eventuali problemi causati dal refactor in-place
+- struttura ChatPage che monta ChatWalletPaySheet
+- differenza tra il vecchio bottom-sheet e l'attuale in-place
+- eventuali CSS ereditati dal vecchio .cwp-* che interferiscono con .awp-*
+
+IMPORTANTE:
+Non voglio un'altra spiegazione teorica su iOS Safari.
+
+Voglio sapere ESATTAMENTE perché oggi Step 4 è bianco.
+
+NON fare modifiche finché non hai individuato la causa.
+
+Poi presenta un piano minimo.
+
+DOPO L'AUDIT:
+Implementa la soluzione definitiva.
+
+VINCOLI ASSOLUTI:
+- NON modificare ChatWalletBridge
+- NON modificare signing
+- NON modificare broadcast
+- NON modificare fee calculation
+- NON modificare quote
+- NON modificare recipient discovery
+- NON modificare register-address
+- NON modificare Payment Engine
+- NON modificare USDA/USDT/BTC
+- NON modificare wallet/keystore/PIN/security
+- NON modificare API backend salvo necessità assoluta dimostrata
+- NON rimuovere funzionalità esistenti
+- NON semplificare la state machine eliminando casi
+- NON fare un nuovo refactor architetturale senza prima spiegare perché è necessario
+
+Puoi modificare SOLO la presentazione di ChatWalletPaySheet, il relativo CSS e il punto di mounting in ChatPage se realmente necessario.
+
+TEST:
+Dopo la modifica:
+- tutti i test devono essere verdi
+- TypeScript clean
+- nessuna regressione
+- verificare esplicitamente che Step 1, 2, 3, 4, 5, 6 e success siano renderizzabili
+- verificare back navigation
+- verificare Caso A/B/C
+- verificare che il CTA principale sia sempre raggiungibile
+- verificare che Step 4 NON sia vuoto
+
+NON dichiarare "completato" sulla base dei soli test automatici.
+
+Prima del completamento devi spiegare:
+1. causa esatta del precedente Step 4 bianco
+2. soluzione adottata
+3. perché la soluzione non dipende dallo scrolling iOS
+4. quali file hai modificato
+5. quali file NON hai modificato
+6. test effettuati
+7. eventuali limiti residui
+
+Questo è l'ULTIMO tentativo.
+
+Priorità:
+CORRETTEZZA > UX > semplicità > quantità di modifiche.
+
+Non fare altre modifiche speculative.

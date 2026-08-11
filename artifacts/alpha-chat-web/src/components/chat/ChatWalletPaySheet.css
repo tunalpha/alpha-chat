@@ -1,24 +1,46 @@
-/* ChatWalletPaySheet — Full-screen payment view
+/* ChatWalletPaySheet — Bottom-sheet compatto
  *
  * ARCHITETTURA iOS/PWA:
- *   awp-view      display:flex flex-direction:column height:100%
- *   awp-header    flex-shrink:0  ← non scrolla mai
- *   awp-content   flex:1 overflow-y:auto  ← unico elemento scrollabile
- *   awp-footer    flex-shrink:0  ← CTA sempre visibile
+ *   cwp-backdrop  position:fixed inset:0 — overlay
+ *   cwp-sheet     ancorato in basso, flex column, alto quanto il contenuto
+ *   awp-header    flex-shrink:0
+ *   awp-content   flex:1 — nessuno step dipende dallo scroll interno;
+ *                 overflow-y:auto è solo rete di sicurezza
+ *   awp-footer    flex-shrink:0 — CTA strutturalmente fuori dal content
  *
- * overflow-y:auto su un contenitore il cui antenato NON è position:fixed
- * funziona perfettamente su iOS Safari PWA — questo è il principio fondamentale
- * che risolve definitivamente il problema dello step 4 clippato.
+ * REGOLA FONDAMENTALE: ogni step è compatto e sta nel viewport mobile.
+ * Il CTA vive nel footer, mai dentro l'area (eventualmente) scrollabile —
+ * quindi il bug iOS "fixed + overflow interno" non può nasconderlo.
  */
 
-/* ── View layout ──────────────────────────────────────────────────────── */
+/* ── Sheet layout ─────────────────────────────────────────────────────── */
 
-.awp-view {
+.cwp-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1200;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.cwp-sheet {
+  width: 100%;
+  max-width: 520px;
+  background: var(--bg-primary, #fff);
+  border-radius: 20px 20px 0 0;
+  box-shadow: 0 -8px 32px rgba(0, 0, 0, 0.25);
   display: flex;
   flex-direction: column;
-  height: 100%;
-  background: var(--bg-primary, #fff);
-  /* NO position:fixed — è dentro il normal document flow di .chat-area */
+  /* Alto quanto il contenuto; mai oltre il viewport (safe area top inclusa) */
+  max-height: calc(100dvh - env(safe-area-inset-top, 0px) - 24px);
+  animation: cwp-slide-up 0.22s ease-out;
+}
+
+@keyframes cwp-slide-up {
+  from { transform: translateY(24px); opacity: 0.6; }
+  to   { transform: translateY(0);    opacity: 1; }
 }
 
 /* ── Header ───────────────────────────────────────────────────────────── */
@@ -31,7 +53,6 @@
   height: 56px;
   border-bottom: 1px solid var(--border-subtle, #e5e7eb);
   flex-shrink: 0;
-  padding-top: var(--sat, 0px); /* safe area top per iOS PWA */
 }
 
 .awp-back-btn {
@@ -524,6 +545,24 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  text-decoration: underline dotted;
+  text-underline-offset: 2px;
+}
+
+/* Indirizzo completo espanso on-tap — una riga extra, va a capo */
+.cwp-quote-addr-full {
+  font-family: monospace;
+  font-size: 10px;
+  color: var(--text-secondary, #666);
+  word-break: break-all;
+  line-height: 1.4;
+  background: var(--bg-input, #f3f4f6);
+  border-radius: 6px;
+  padding: 6px 8px;
 }
 
 .cwp-quote-divider {

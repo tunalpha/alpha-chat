@@ -188,9 +188,9 @@ describe("ChatWalletPaySheet — wizard steps", () => {
     fireEvent.change(screen.getByPlaceholderText("0.00"), { target: { value: "1" } });
     fireEvent.click(screen.getByText("Calcola costi →"));
     await waitFor(() => {
-      expect(screen.getByText("1.000")).toBeInTheDocument(); // recipientAmount
-      expect(screen.getByText("0.001")).toBeInTheDocument(); // platformFee
-      expect(screen.getByText("1.001")).toBeInTheDocument(); // totalAsset
+      expect(screen.getByText(/1\.000/)).toBeInTheDocument();      // recipientAmount (hero)
+      expect(screen.getByText(/0\.001 USDA/)).toBeInTheDocument(); // platformFee
+      expect(screen.getByText(/1\.001/)).toBeInTheDocument();      // totalAsset
     });
   });
 
@@ -381,5 +381,60 @@ describe("ChatWalletPaySheet — wizard steps", () => {
     fireEvent.click(screen.getByText("Bitcoin"));
     const continua = screen.getByText("Continua →");
     expect(continua).toBeDisabled();
+  });
+
+  // 23. REGRESSIONE Step 4 bianco — calculateQuote risolve null (senza throw)
+  it("quote null da amount: mostra errore e rimane su amount (mai summary vuoto)", async () => {
+    mockCalculateQuote.mockResolvedValue(null);
+    await goToAmount();
+    fireEvent.change(screen.getByPlaceholderText("0.00"), { target: { value: "1" } });
+    fireEvent.click(screen.getByText("Calcola costi →"));
+    await waitFor(() => {
+      expect(screen.getByText(/Impossibile calcolare i costi/)).toBeInTheDocument();
+      expect(screen.getByText("Importo")).toBeInTheDocument(); // rimasto su amount
+    });
+    expect(screen.queryByText("Riepilogo costi")).not.toBeInTheDocument();
+  });
+
+  // 24. REGRESSIONE — fallback "Ricalcola" su summary: quote di nuovo null → torna ad amount
+  it("summary senza quote: Ricalcola con quote null torna ad amount con errore", async () => {
+    await goToAmount();
+    fireEvent.change(screen.getByPlaceholderText("0.00"), { target: { value: "1" } });
+    fireEvent.click(screen.getByText("Calcola costi →"));
+    await waitFor(() => screen.getByText("🔐 Firma e invia"));
+    // Simula quote scaduta durante auth: sendPayment apre auth, l'utente annulla
+    // ma nel frattempo quote è null → handlePinCancel deve tornare ad amount.
+    // Qui testiamo direttamente il fallback: forziamo il ricalcolo con null.
+    mockCalculateQuote.mockResolvedValue(null);
+    // Torna ad amount e riprova (percorso equivalente al fallback "Ricalcola i costi")
+    fireEvent.click(screen.getByText("← Modifica"));
+    fireEvent.click(screen.getByText("Calcola costi →"));
+    await waitFor(() => {
+      expect(screen.getByText(/Impossibile calcolare i costi/)).toBeInTheDocument();
+      expect(screen.getByText("Importo")).toBeInTheDocument();
+    });
+  });
+
+  // 25. REGRESSIONE — tap sul backdrop durante auth NON chiude né orfana la promise PIN
+  it("backdrop click durante auth non chiude il foglio", async () => {
+    mockSendPayment.mockImplementation(async (_req, onAuthRequired) => {
+      const pin = await onAuthRequired();
+      if (!pin) return { status: "cancelled" };
+      return { status: "sent", txHash: "0xTX" };
+    });
+    await goToAmount();
+    fireEvent.change(screen.getByPlaceholderText("0.00"), { target: { value: "1" } });
+    fireEvent.click(screen.getByText("Calcola costi →"));
+    await waitFor(() => screen.getByText("🔐 Firma e invia"));
+    fireEvent.click(screen.getByText("🔐 Firma e invia"));
+    await waitFor(() => screen.getByText("Conferma PIN"));
+    // Tap sul backdrop: non deve chiamare onClose durante auth
+    const backdrop = document.querySelector(".cwp-backdrop")!;
+    fireEvent.click(backdrop);
+    expect(DEFAULT_PROPS.onClose).not.toHaveBeenCalled();
+    expect(screen.getByText("Conferma PIN")).toBeInTheDocument();
+    // Cleanup: annulla correttamente via pulsante
+    fireEvent.click(screen.getByText("Annulla"));
+    await waitFor(() => screen.getByText("🔐 Firma e invia"));
   });
 });

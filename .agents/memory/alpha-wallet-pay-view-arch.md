@@ -1,48 +1,26 @@
 ---
-name: Alpha Wallet Pay View — full-screen architecture
-description: ChatWalletPaySheet ora è una full-screen view in normal flow (non più bottom-sheet fixed overlay). Decisione definitiva per iOS Safari PWA.
+name: Alpha Wallet Pay Sheet — presentation architecture
+description: Bottom-sheet compatto per ChatWalletPaySheet; causa del bug "Step 4 bianco"; regole di presentazione iOS PWA
 ---
 
-# Alpha Wallet Pay View — architettura full-screen
+# Architettura finale (approvata dall'utente, ago 2026)
 
-## La regola
+Bottom-sheet overlay (`cwp-backdrop` fixed + `cwp-sheet` ancorato in basso), NON full-screen in-place.
+- Sheet alto quanto il contenuto (max-height 100dvh − safe-area), flex column: header / content / footer.
+- **Regola fondamentale**: NESSUNO step dipende dallo scroll interno; ogni step compatto sta nel viewport mobile. Il CTA vive nel footer strutturale (flex-shrink:0), mai dentro l'area scrollabile → il bug iOS "fixed + overflow interno" non può nasconderlo.
+- Backdrop click chiude, MA disabilitato durante `sending` E `auth` (in auth sendPayment awaita la promise del PIN: chiudere orfanerebbe pinResolveRef e lascerebbe il mutex anti-double-send attivo fino al reload).
 
-`ChatWalletPaySheet` NON è più un bottom-sheet (position:fixed backdrop). È una **full-screen view** che occupa il posto della chat quando `showWalletPay === true`.
+# Bug "Step 4 bianco" (causa esatta)
 
-## Perché
+`bridge.calculateQuote()` risolve **null senza throw** quando il wallet non è `ready` (es. auto-lock iOS PWA) o l'importo non è parsabile. Il vecchio codice faceva `setQuote(null); setStep("summary")` → contenuto E footer di summary gated su `step==="summary" && quote` → schermo bianco con solo header.
 
-`overflow-y: auto` dentro un elemento il cui antenato è `position: fixed` non funziona su iOS Safari PWA. Qualsiasi workaround CSS (translateZ, max-height, dvh) è inaffidabile. L'unica soluzione è eliminare il fixed dall'antenato.
+**Regole permanenti:**
+1. Ogni chiamata che può risolvere null deve gestire il null esplicitamente (non solo il catch).
+2. Su quote null → errore + `setStep("amount")` SEMPRE (il handler può essere invocato anche dal fallback su summary).
+3. Fallback difensivo renderizzato per `summary && !quote` (messaggio + "Ricalcola i costi") — mai uno step senza render path.
+4. Effect countdown scadenza quote: functional `setStep` (deps solo [quote] → `step` è stale nella closure).
+5. `handlePinCancel`: torna a `summary` solo se quote esiste ancora, altrimenti `amount`.
 
-## Struttura CSS (awp-*)
+# Test infrastructure gotcha
 
-```
-awp-view       display:flex; flex-direction:column; height:100%
-  awp-header   flex-shrink:0   ← non scrolla
-  awp-content  flex:1; min-height:0; overflow-y:auto; -webkit-overflow-scrolling:touch
-  awp-footer   flex-shrink:0   ← CTA sempre visibile
-```
-
-**Why it works:** `awp-content` ha `overflow-y:auto` ma il suo antenato è `.chat-area` che è `position:relative`, NON `position:fixed`. iOS Safari gestisce questo correttamente.
-
-## Integrazione ChatPage
-
-```tsx
-// In <main className="chat-area">:
-{showGroupInfo ? <GroupInfoPage>
-  : showWalletPay && activeConv && auth ? <ChatWalletPaySheet ... />  // ← full-screen
-  : !activeConvId ? <empty>
-  : <normal chat>}
-```
-
-`showWalletPay` fa anche rendere visibile `chat-area` su mobile (aggiunto `&& !showWalletPay` alla condizione `chat-area-mobile-hidden`).
-
-## NON ripristinare mai il vecchio pattern
-
-Non riportare `cwp-backdrop` o `cwp-sheet` con `position:fixed`. Se Step 4 avesse ancora problemi, la soluzione è ridurre il contenuto dello step — mai tornare al fixed overlay.
-
-## Step 4 Riepilogo — layout compatto
-
-- `cwp-summary-hero`: una riga "Nome riceverà / importo" (no big card centrata)
-- `cwp-quote`: tabella compatta con Rete + Destinatario (truncated) + fee + totale
-- Indirizzo: inline nella tabella, monospace 11px, max-width 160px truncato
-- Nessun blocco indirizzo separato che occupa spazio
+Il file `src/components/chat/__tests__/chat-wallet-pay-sheet-wizard.test.tsx` NON era incluso in vitest (`include` copriva solo `src/tests/**`) → "641 test verdi" non copriva affatto il wizard. Fix: include esteso, `@testing-library/react`+`jest-dom` installati, `setup-dom.ts` con `afterEach(cleanup)` (con `globals:false` l'auto-cleanup non si attiva → elementi duplicati tra test). Ora 665 test.
