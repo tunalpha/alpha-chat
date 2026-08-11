@@ -1,0 +1,68 @@
+Sì, questo è un problema che va analizzato: l’indirizzo che hai inserito è formalmente valido:
+
+0x64487539aa9d61Bdc652A5755bbe30Ee96cFcEb2
+
+Ha 40 caratteri esadecimali, quindi non è l’errore dell’indirizzo USDA che avevamo trovato.
+
+Il fatto che Alpha Wallet riesca a trovare il token ma poi mostri “errore” fa pensare molto più probabilmente alla fase successiva dell’importazione: recupero/validazione di symbol, decimals, nome o security check.
+
+Non modificherei ancora nulla
+
+Darei all’agente questo prompt diagnostico:
+
+AUDIT — Custom Token Import: token trovato ma import restituisce errore
+
+Non modificare codice inizialmente.
+
+L’utente ha provato a importare questo contratto:
+
+0x64487539aa9d61Bdc652A5755bbe30Ee96cFcEb2
+
+Alpha Wallet riesce a individuare il token/contratto, ma dopo la ricerca mostra errore e non completa l’importazione.
+
+Analizza end-to-end il flusso Custom Token Import:
+
+1. Add Token UI
+2. validazione indirizzo
+3. getEvmTokenInfo
+4. RPC/viem symbol()
+5. decimals()
+6. name()
+7. Token Registry
+8. anti-phishing
+9. gestione token verificati vs custom
+10. salvataggio IndexedDB
+11. rendering dell’errore nella UI.
+
+Verifica specificamente se il contratto:
+
+0x64487539aa9d61Bdc652A5755bbe30Ee96cFcEb2
+
+viene trovato correttamente ma successivamente rifiutato da una validazione pensata erroneamente solo per token verificati.
+
+IMPORTANTE: un Custom Token deve poter essere importato anche se non è presente nel Token Registry verificato, purché:
+
+* indirizzo valido;
+* contratto ERC-20 interrogabile;
+* decimals() valido;
+* symbol() recuperabile oppure gestibile come fallback;
+* nessun errore RPC bloccante;
+* warning anti-phishing se necessario, ma non falso rifiuto.
+
+Non modificare Payment Engine, USDA, ThirdWeb, WalletConnect o altri sistemi.
+
+Prima fornire:
+
+A. causa esatta dell’errore
+
+B. endpoint/funzione che fallisce
+
+C. valore restituito dal contratto
+
+D. condizione che provoca il rifiuto
+
+E. proposta di fix minimo
+
+Solo dopo approvazione implementare il fix e aggiungere test di regressione.
+
+Questa verifica è importante, perché abbiamo esplicitamente progettato il wallet con Custom Token Import. Se trova il contratto ma poi lo rifiuta, dobbiamo capire se è un vero problema del token oppure una restrizione erronea del nostro codice.

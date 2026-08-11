@@ -105,9 +105,22 @@ export async function getEvmBalance(
     const nativeSymbol = chainId === 1 ? "ETH" : chainId === 137 ? "POL" : "BNB";
 
     // Verified ERC-20 balances (parallel)
-    const tokens = getVerifiedTokensForChain(chainId);
-    const tokenBalances = await Promise.all(
-      tokens.map(async (t) => {
+    const verifiedTokens = getVerifiedTokensForChain(chainId);
+
+    // Optional extra custom-token addresses from the client (comma-separated)
+    const extraRaw = (req.query.extraTokens as string | undefined) ?? "";
+    const extraAddresses = extraRaw
+      .split(",")
+      .map(a => a.trim().toLowerCase())
+      .filter(a => /^0x[0-9a-f]{40}$/.test(a));
+
+    // Dedupe: skip extra addresses already covered by verified list
+    const verifiedAddresses = new Set(verifiedTokens.map(t => t.contractAddress?.toLowerCase()));
+    const uniqueExtras = extraAddresses.filter(a => !verifiedAddresses.has(a));
+
+    // Query verified tokens
+    const verifiedBalances = await Promise.all(
+      verifiedTokens.map(async (t) => {
         try {
           const bal = await client.readContract({
             address: t.contractAddress as `0x${string}`,
@@ -115,12 +128,34 @@ export async function getEvmBalance(
             functionName: "balanceOf",
             args: [walletAddr],
           }) as bigint;
-          return { symbol: t.symbol, name: t.name, balance: bal.toString(), decimals: t.decimals, contractAddress: t.contractAddress };
+          return { symbol: t.symbol, name: t.name, balance: bal.toString(), decimals: t.decimals, contractAddress: t.contractAddress, isCustom: false };
         } catch {
-          return { symbol: t.symbol, name: t.name, balance: "0", decimals: t.decimals, contractAddress: t.contractAddress };
+          return { symbol: t.symbol, name: t.name, balance: "0", decimals: t.decimals, contractAddress: t.contractAddress, isCustom: false };
         }
       })
     );
+
+    // Query custom/extra tokens: fetch symbol/name/decimals + balanceOf in parallel per token
+    const customBalances = await Promise.all(
+      uniqueExtras.map(async (addr) => {
+        try {
+          const [nameRaw, symbolRaw, decimalsRaw, balRaw] = await Promise.all([
+            client.readContract({ address: addr as `0x${string}`, abi: ERC20_READ_ABI, functionName: "name"     }).catch(() => "Unknown Token"),
+            client.readContract({ address: addr as `0x${string}`, abi: ERC20_READ_ABI, functionName: "symbol"   }).catch(() => "???"),
+            client.readContract({ address: addr as `0x${string}`, abi: ERC20_READ_ABI, functionName: "decimals" }).catch(() => 18),
+            client.readContract({ address: addr as `0x${string}`, abi: ERC20_READ_ABI, functionName: "balanceOf", args: [walletAddr] }).catch(() => 0n),
+          ]);
+          return { symbol: symbolRaw as string, name: nameRaw as string, balance: (balRaw as bigint).toString(), decimals: decimalsRaw as number, contractAddress: addr, isCustom: true };
+        } catch {
+          return null;
+        }
+      })
+    );
+
+    const tokenBalances = [
+      ...verifiedBalances,
+      ...customBalances.filter((b): b is NonNullable<typeof b> => b !== null),
+    ];
 
     res.json({
       data: {

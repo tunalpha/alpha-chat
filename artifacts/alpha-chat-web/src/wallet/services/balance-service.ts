@@ -53,10 +53,14 @@ export interface BtcBalance {
 // ─── EVM Balance ───────────────────────────────────────────────────────────
 
 export async function fetchEvmBalance(
-  chainId:  number,
-  address:  `0x${string}`,
+  chainId:       number,
+  address:       `0x${string}`,
+  customTokens?: { contractAddress: string | undefined }[],
 ): Promise<ChainBalance> {
-  const resp: EvmBalanceResponse = await apiWalletGetEvmBalance(chainId, address);
+  const extraAddresses = customTokens
+    ?.map(t => t.contractAddress)
+    .filter((a): a is string => !!a);
+  const resp: EvmBalanceResponse = await apiWalletGetEvmBalance(chainId, address, extraAddresses);
   const verifiedTokens = getVerifiedTokens(chainId);
 
   const native: TokenBalance = {

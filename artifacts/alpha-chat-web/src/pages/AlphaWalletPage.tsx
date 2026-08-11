@@ -600,7 +600,11 @@ function OverviewView({ onNavigate }: { onNavigate: (v: WalletSubView) => void }
         fetchPrices().catch(() => null),
         isBtc
           ? fetchBtcBalance(meta.btcAddress).then(setBtcBalance).catch(() => {})
-          : fetchEvmBalance(wallet.selectedChainId, meta.evmAddress as `0x${string}`).then(setChainBalance).catch(() => {}),
+          : fetchEvmBalance(
+              wallet.selectedChainId,
+              meta.evmAddress as `0x${string}`,
+              wallet.customTokens.filter(t => t.chainId === wallet.selectedChainId),
+            ).then(setChainBalance).catch(() => {}),
       ]);
       setPrices(pricesData);
     } catch {
@@ -608,7 +612,7 @@ function OverviewView({ onNavigate }: { onNavigate: (v: WalletSubView) => void }
     } finally {
       setBalanceLoading(false);
     }
-  }, [meta, isBtc, wallet.selectedChainId]);
+  }, [meta, isBtc, wallet.selectedChainId, wallet.customTokens]);
 
   useEffect(() => {
     // Reset previous chain's balance when chain changes
@@ -945,12 +949,16 @@ function SendView({ onBack, onSuccess }: { onBack: () => void; onSuccess: () => 
           fetchPrices().catch(() => null),
           isBtc
             ? fetchBtcBalance(meta.btcAddress).then(setBtcBalance).catch(() => {})
-            : fetchEvmBalance(chainId, meta.evmAddress as `0x${string}`).then(setChainBalance).catch(() => {}),
+            : fetchEvmBalance(
+                chainId,
+                meta.evmAddress as `0x${string}`,
+                wallet.customTokens.filter(t => t.chainId === chainId),
+              ).then(setChainBalance).catch(() => {}),
         ]);
         setPrices(p);
       } finally { setBalLoading(false); }
     })();
-  }, [chainId, meta.evmAddress, meta.btcAddress, isBtc]);
+  }, [chainId, meta.evmAddress, meta.btcAddress, isBtc, wallet.customTokens]);
 
   // Build asset list
   const assets: SendAsset[] = isBtc

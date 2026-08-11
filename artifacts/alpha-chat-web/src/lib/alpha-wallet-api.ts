@@ -80,9 +80,13 @@ export interface EvmBalanceResponse {
 export async function apiWalletGetEvmBalance(
   chainId: number,
   address: string,
+  extraTokenAddresses?: string[],
 ): Promise<EvmBalanceResponse> {
+  const extra = extraTokenAddresses?.length
+    ? `&extraTokens=${extraTokenAddresses.join(",")}`
+    : "";
   return walletRequest<EvmBalanceResponse>(
-    `/alpha-wallet/evm/balance?chainId=${chainId}&address=${address}`,
+    `/alpha-wallet/evm/balance?chainId=${chainId}&address=${address}${extra}`,
     { method: "GET" },
   );
 }
