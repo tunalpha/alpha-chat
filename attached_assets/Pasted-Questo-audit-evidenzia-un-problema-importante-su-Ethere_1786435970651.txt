@@ -1,0 +1,108 @@
+Questo audit evidenzia un problema importante su Ethereum, ma c’è anche una distinzione da fare.
+
+La situazione reale
+
+Con 0,10% di project fee:
+
+Rete	Situazione
+🟢 Polygon	Molto buona
+🟡 BSC	Accettabile sopra importi più elevati
+🔴 Ethereum	0,10% non è economicamente sostenibile per piccoli/medi importi
+
+Il punto fondamentale è che la Gas Station non dovrebbe normalmente mangiarsi la tua project fee: la network fee viene addebitata separatamente al cliente.
+
+Però esiste un rischio: se la network fee incassata è inferiore al gas effettivamente consumato, il Gas Station wallet deve coprire la differenza.
+
+⸻
+
+Però c’è una cosa che controllerei prima di prendere decisioni
+
+L’agente ha considerato 172.000 gas come costo totale:
+
+* TX0 = 21.000
+* TX1 = 80.000
+* TX2 = 50.000
+* TX3 = 21.000
+
+Ma dobbiamo verificare se TX0 e TX3 debbano essere attribuite interamente a ogni pagamento.
+
+Per esempio, TX0 è il rifornimento dell’escrow e TX3 il reclaim. Se il sistema riutilizza determinati fondi o il gas station ha un modello di finanziamento particolare, il costo economico marginale per singolo pagamento potrebbe essere diverso.
+
+Quindi non imposterei ancora una fee minima Ethereum sulla base di quei 172.000 gas senza questa verifica.
+
+⸻
+
+Una cosa invece è chiarissima
+
+Se il dato dell’audit è corretto e ogni pagamento Ethereum costa davvero circa $15 di gas, allora:
+
+0,10% su $1.000 = $1
+
+e il sistema non può pretendere che lo $1 copra $15 di costo.
+
+La network fee dovrebbe quindi essere pagata dal cliente separatamente.
+
+Il vero rischio economico è:
+
+network fee richiesta al cliente < costo gas effettivo
+
+non:
+
+project fee 0,10% < costo gas
+
+Sono due conti separati.
+
+⸻
+
+Io farei una cosa molto precisa
+
+Non aumenterei la fee globale dall’1% o dallo 0,10%.
+
+Hai già una configurazione per-rete. Quindi possiamo mantenere:
+
+* Polygon → fee che vuoi tu
+* BSC → fee che vuoi tu
+* Ethereum → eventualmente una regola economica specifica
+
+Per esempio, potremmo avere:
+
+Ethereum: minimo transazione oppure fee minima flat
+
+senza toccare Polygon/BSC.
+
+Ma prima farei verificare all’agente il costo marginale reale di una singola operazione Ethereum, contando esattamente le TX che vengono effettivamente eseguite e chi le paga.
+
+Prompt che gli darei adesso
+
+AUDIT 2 — Verifica costo reale per singolo pagamento Ethereum
+
+Nessuna modifica e nessun deploy.
+
+L’audit precedente ha stimato 172.000 gas per pagamento completo considerando TX0 + TX1 + TX2 + TX3.
+
+Prima di modificare qualsiasi fee voglio verificare se questo è realmente il costo marginale per ogni pagamento Ethereum.
+
+Traccia un pagamento reale completo end-to-end e determina:
+
+1. quali TX vengono sempre eseguite;
+2. quali TX sono opzionali/condizionali;
+3. chi paga effettivamente ogni TX;
+4. gas stimato e gas effettivamente consumato per ogni TX;
+5. se TX0 e TX3 devono essere contabilizzate interamente su ogni singolo pagamento;
+6. se eventuale gas residuo viene recuperato;
+7. quanto costa realmente ad Alpha un pagamento Ethereum da $100, $1.000, $5.000 e $10.000;
+8. quanto network fee viene addebitato al cliente;
+9. quanto rimane nel Gas Station dopo il pagamento;
+10. qual è il vero break-even di Ethereum con project fee 0,10%.
+
+Voglio una tabella:
+
+Importo → project fee → network fee cliente → gas reale → eventuale surplus/deficit Gas Station → costo netto Alpha → profitto/perdita Alpha
+
+Analizza anche cosa succede quando il gas reale supera la stima ×1,20.
+
+Non modificare fee, configurazioni o codice. Solo audit.
+
+Alla fine dimmi se il problema Ethereum può essere risolto semplicemente aumentando la network fee/safety margin oppure se serve una fee minima specifica per Ethereum.
+
+Questo è il passaggio che farei prima di toccare qualsiasi configurazione.
