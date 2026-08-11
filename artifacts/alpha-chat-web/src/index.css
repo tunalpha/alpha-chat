@@ -2662,6 +2662,25 @@ button:disabled.profile-avatar-edit {
   text-align: center;
   color: var(--text-secondary);
   margin-bottom: 14px;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.attach-submenu-back {
+  position: absolute;
+  left: 0;
+  background: none;
+  border: none;
+  color: var(--accent, #8247E5);
+  font-size: 0.8rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 2px 6px;
+  text-transform: none;
+  letter-spacing: 0;
+  min-height: unset;
+  min-width: unset;
 }
 .attach-sheet-grid {
   display: grid;

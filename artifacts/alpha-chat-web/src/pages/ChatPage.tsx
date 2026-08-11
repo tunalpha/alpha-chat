@@ -852,6 +852,7 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
   const [forwardingMessage, setForwardingMessage] = useState<MessageItem | null>(null);
   // attach sheet
   const [showAttachSheet, setShowAttachSheet] = useState(false);
+  const [attachSubMenu, setAttachSubMenu]     = useState<"none" | "send" | "request">("none");
   const mediaInputRef = useRef<HTMLInputElement>(null);
   const docInputRef   = useRef<HTMLInputElement>(null);
   // toast
@@ -4353,106 +4354,142 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
 
       {/* ── Attach sheet ──────────────────────────────────────────────────────── */}
       {showAttachSheet && (
-        <div className="modal-backdrop" onClick={() => setShowAttachSheet(false)}>
+        <div className="modal-backdrop" onClick={() => { setShowAttachSheet(false); setAttachSubMenu("none"); }}>
           <div className="attach-sheet" onClick={(e) => e.stopPropagation()}>
-            <div className="attach-sheet-title">{t("chat.attachShare")}</div>
-            <div className="attach-sheet-grid">
-              <button
-                className="attach-sheet-item"
-                onClick={() => { setShowAttachSheet(false); setTimeout(() => mediaInputRef.current?.click(), 80); }}
-              >
-                <span className="attach-sheet-icon">📷</span>
-                <span>{t("chat.attachPhoto")}</span>
-              </button>
-              <button
-                className="attach-sheet-item"
-                onClick={() => { setShowAttachSheet(false); setTimeout(() => docInputRef.current?.click(), 80); }}
-              >
-                <span className="attach-sheet-icon">📄</span>
-                <span>{t("chat.attachDocument")}</span>
-              </button>
-              <button
-                className="attach-sheet-item"
-                onClick={() => { setShowAttachSheet(false); void handleLocationRequest(); }}
-              >
-                <span className="attach-sheet-icon">📍</span>
-                <span>{t("chat.attachLocation")}</span>
-              </button>
-              {activeConv?.type !== "group" && (
-                <>
-                  <button
-                    className="attach-sheet-item"
-                    onClick={() => { setShowAttachSheet(false); setSendPrefill(null); setTimeout(() => setShowSendPayment(true), 80); }}
-                  >
-                    <span className="attach-sheet-icon">💰</span>
-                    <span>{t("chat.attachSendUsda")}</span>
-                  </button>
-                  <button
-                    className="attach-sheet-item"
-                    onClick={() => { setShowAttachSheet(false); setTimeout(() => setShowRequestUsda(true), 80); }}
-                  >
-                    <span className="attach-sheet-icon">💸</span>
-                    <span>{t("chat.attachRequestUsda")}</span>
-                  </button>
-                  {/* USDT + BTC: visibili solo se il flag admin è ON */}
-                  {multichainEnabled && (
-                    <>
-                      <button
-                        className="attach-sheet-item"
-                        onClick={() => { setShowAttachSheet(false); setTimeout(() => setShowMCPay(true), 80); }}
-                      >
-                        <span className="attach-sheet-icon">💎</span>
-                        <span>{t("chat.attachSendMultichain")}</span>
-                      </button>
-                      <button
-                        className="attach-sheet-item"
-                        onClick={() => { setShowAttachSheet(false); setTimeout(() => setShowMCRequest(true), 80); }}
-                      >
-                        <span className="attach-sheet-icon">🪙</span>
-                        <span>{t("chat.attachRequestMultichain")}</span>
-                      </button>
-                      <button
-                        className="attach-sheet-item"
-                        onClick={() => { setShowAttachSheet(false); setTimeout(() => setShowBTCPay(true), 80); }}
-                      >
-                        <span className="attach-sheet-icon">₿</span>
-                        <span>{t("chat.attachSendBtc")}</span>
-                      </button>
-                      <button
-                        className="attach-sheet-item"
-                        onClick={() => { setShowAttachSheet(false); setTimeout(() => setShowBTCRequest(true), 80); }}
-                      >
-                        <span className="attach-sheet-icon">🟠</span>
-                        <span>{t("chat.attachRequestBtc")}</span>
-                      </button>
-                    </>
-                  )}
-                  {/* Phase G — Alpha Wallet self-custodial */}
-                  {/* REGOLA §15: il tap utente è l'UNICO trigger — MAI da eventi WS */}
-                  {walletBridge.status !== "unavailable" ? (
-                    <button
-                      className="attach-sheet-item"
-                      onClick={() => { setShowAttachSheet(false); setTimeout(() => setShowWalletPay(true), 80); }}
-                    >
-                      <span className="attach-sheet-icon">🔐</span>
-                      <span>Paga con Alpha Wallet{walletBridge.status === "locked" ? " 🔒" : ""}</span>
-                    </button>
-                  ) : (
-                    <button
-                      className="attach-sheet-item"
-                      style={{ opacity: 0.55 }}
-                      onClick={() => {
-                        setShowAttachSheet(false);
-                        showToast("Configura Alpha Wallet prima di inviare. Vai in Chat → Alpha Wallet.");
-                      }}
-                    >
-                      <span className="attach-sheet-icon">🔐</span>
-                      <span>Paga con Alpha Wallet</span>
-                    </button>
-                  )}
-                </>
+            <div className="attach-sheet-title">
+              {attachSubMenu === "none"
+                ? t("chat.attachShare")
+                : attachSubMenu === "send" ? "📤 Invia" : "📥 Richiedi"}
+              {attachSubMenu !== "none" && (
+                <button
+                  className="attach-submenu-back"
+                  onClick={() => setAttachSubMenu("none")}
+                  aria-label="Indietro"
+                >‹ indietro</button>
               )}
             </div>
+
+            {/* ── Livello 1: griglia principale ─────────────────── */}
+            {attachSubMenu === "none" && (
+              <div className="attach-sheet-grid">
+                <button className="attach-sheet-item" onClick={() => { setShowAttachSheet(false); setAttachSubMenu("none"); setTimeout(() => mediaInputRef.current?.click(), 80); }}>
+                  <span className="attach-sheet-icon">📷</span>
+                  <span>{t("chat.attachPhoto")}</span>
+                </button>
+                <button className="attach-sheet-item" onClick={() => { setShowAttachSheet(false); setAttachSubMenu("none"); setTimeout(() => docInputRef.current?.click(), 80); }}>
+                  <span className="attach-sheet-icon">📄</span>
+                  <span>{t("chat.attachDocument")}</span>
+                </button>
+                <button className="attach-sheet-item" onClick={() => { setShowAttachSheet(false); setAttachSubMenu("none"); void handleLocationRequest(); }}>
+                  <span className="attach-sheet-icon">📍</span>
+                  <span>{t("chat.attachLocation")}</span>
+                </button>
+
+                {activeConv?.type !== "group" && (
+                  <>
+                    {/* Invia — apre sotto-menu */}
+                    <button className="attach-sheet-item" onClick={() => setAttachSubMenu("send")}>
+                      <span className="attach-sheet-icon">📤</span>
+                      <span>Invia</span>
+                    </button>
+                    {/* Richiedi — apre sotto-menu */}
+                    <button className="attach-sheet-item" onClick={() => setAttachSubMenu("request")}>
+                      <span className="attach-sheet-icon">📥</span>
+                      <span>Richiedi</span>
+                    </button>
+                    {/* Phase G — Alpha Wallet self-custodial */}
+                    {/* REGOLA §15: il tap utente è l'UNICO trigger — MAI da eventi WS */}
+                    {walletBridge.status !== "unavailable" ? (
+                      <button
+                        className="attach-sheet-item"
+                        onClick={() => { setShowAttachSheet(false); setAttachSubMenu("none"); setTimeout(() => setShowWalletPay(true), 80); }}
+                      >
+                        <span className="attach-sheet-icon">🔐</span>
+                        <span>Paga con Alpha Wallet{walletBridge.status === "locked" ? " 🔒" : ""}</span>
+                      </button>
+                    ) : (
+                      <button
+                        className="attach-sheet-item"
+                        style={{ opacity: 0.55 }}
+                        onClick={() => {
+                          setShowAttachSheet(false); setAttachSubMenu("none");
+                          showToast("Configura Alpha Wallet prima di inviare. Vai in Chat → Alpha Wallet.");
+                        }}
+                      >
+                        <span className="attach-sheet-icon">🔐</span>
+                        <span>Paga con Alpha Wallet</span>
+                      </button>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* ── Livello 2: scelta asset per Invia ─────────────── */}
+            {attachSubMenu === "send" && (
+              <div className="attach-sheet-grid">
+                {/* USDA — sempre disponibile */}
+                <button
+                  className="attach-sheet-item"
+                  onClick={() => { setShowAttachSheet(false); setAttachSubMenu("none"); setSendPrefill(null); setTimeout(() => setShowSendPayment(true), 80); }}
+                >
+                  <span className="attach-sheet-icon">💰</span>
+                  <span>USDA</span>
+                </button>
+                {/* USDT + BTC — solo se flag admin ON */}
+                {multichainEnabled && (
+                  <>
+                    <button
+                      className="attach-sheet-item"
+                      onClick={() => { setShowAttachSheet(false); setAttachSubMenu("none"); setTimeout(() => setShowMCPay(true), 80); }}
+                    >
+                      <span className="attach-sheet-icon">💎</span>
+                      <span>USDT</span>
+                    </button>
+                    <button
+                      className="attach-sheet-item"
+                      onClick={() => { setShowAttachSheet(false); setAttachSubMenu("none"); setTimeout(() => setShowBTCPay(true), 80); }}
+                    >
+                      <span className="attach-sheet-icon">₿</span>
+                      <span>BTC</span>
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
+
+            {/* ── Livello 2: scelta asset per Richiedi ──────────── */}
+            {attachSubMenu === "request" && (
+              <div className="attach-sheet-grid">
+                {/* USDA */}
+                <button
+                  className="attach-sheet-item"
+                  onClick={() => { setShowAttachSheet(false); setAttachSubMenu("none"); setTimeout(() => setShowRequestUsda(true), 80); }}
+                >
+                  <span className="attach-sheet-icon">💸</span>
+                  <span>USDA</span>
+                </button>
+                {/* USDT + BTC */}
+                {multichainEnabled && (
+                  <>
+                    <button
+                      className="attach-sheet-item"
+                      onClick={() => { setShowAttachSheet(false); setAttachSubMenu("none"); setTimeout(() => setShowMCRequest(true), 80); }}
+                    >
+                      <span className="attach-sheet-icon">🪙</span>
+                      <span>USDT</span>
+                    </button>
+                    <button
+                      className="attach-sheet-item"
+                      onClick={() => { setShowAttachSheet(false); setAttachSubMenu("none"); setTimeout(() => setShowBTCRequest(true), 80); }}
+                    >
+                      <span className="attach-sheet-icon">🟠</span>
+                      <span>BTC</span>
+                    </button>
+                  </>
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}

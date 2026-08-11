@@ -1,0 +1,119 @@
+Sì, hai fatto bene a fermarlo prima che completasse la modifica.
+
+Dallo screenshot si vede che l’agente aveva già iniziato a riscrivere ChatWalletPaySheet.tsx con un approccio leggermente diverso da quello che avevamo definito: step-by-step con scelta visuale dell’asset, che in realtà è coerente con la nostra idea.
+
+Però io farei una cosa precisa: non farlo continuare alla cieca.
+
+Il requisito deve essere:
+
+📎 Attach
+→ 📤 Invia | 📥 Richiedi | 🔐 Paga con Alpha Wallet
+
+Poi:
+
+📤 Invia
+→ 💎 USDA | 💵 USDT | ₿ BTC
+
+📥 Richiedi
+→ 💎 USDA | 💵 USDT | ₿ BTC
+
+e solo dopo la scelta:
+
+→ schermata dell’importo
+→ conferma
+→ esattamente il vecchio flusso già funzionante.
+
+Prompt per farlo ripartire
+
+Puoi mandargli questo:
+
+RIPRENDI DALLO STATO ATTUALE — NON RICOMINCIARE
+
+Hai già iniziato il redesign di ChatWalletPaySheet.tsx. Prima di continuare, fermati e verifica che l’implementazione rispetti esattamente questa UX.
+
+UX definitiva
+
+Nel menu Attach devono rimanere solo tre azioni di pagamento:
+
+📤 Invia
+📥 Richiedi
+🔐 Paga con Alpha Wallet
+
+Cliccando Invia deve apparire una seconda selezione:
+
+* 💎 USDA
+* 💵 USDT
+* ₿ BTC
+
+Cliccando Richiedi:
+
+* 💎 USDA
+* 💵 USDT
+* ₿ BTC
+
+Dopo la scelta dell’asset si apre il relativo flusso esistente.
+
+IMPORTANTE
+
+Non cambiare la logica dei pagamenti esistenti.
+
+Invia → USDA deve richiamare esattamente il vecchio flusso USDA.
+
+Invia → USDT deve richiamare esattamente il vecchio flusso USDT.
+
+Invia → BTC deve richiamare esattamente il vecchio flusso BTC.
+
+Stessa cosa per Richiedi.
+
+Non modificare:
+
+* Payment Engine
+* USDA
+* USDT
+* BTC
+* Alpha Wallet
+* ChatWalletBridge
+* commissioni
+* fee logic
+* signing
+* broadcast
+
+Questo è solo un refactoring UX/navigazione.
+
+Alpha Wallet
+
+Deve rimanere separato:
+
+🔐 Paga con Alpha Wallet
+
+→ ChatWalletPaySheet
+→ ChatWalletBridge
+→ Alpha Wallet self-custodial
+
+Non inserirlo dentro la scelta USDA/USDT/BTC del vecchio sistema.
+
+Prima di modificare altro
+
+1. Leggi le modifiche già effettuate.
+2. Dimmi quali file sono stati modificati.
+3. Verifica che non siano state alterate logiche di pagamento.
+4. Se hai già modificato esclusivamente la UX, continua.
+5. Se hai modificato logica di pagamento, fermati e ripristina solo quelle modifiche.
+
+Test
+
+Alla fine esegui la suite completa e verifica:
+
+* Invia USDA
+* Invia USDT
+* Invia BTC
+* Richiedi USDA
+* Richiedi USDT
+* Richiedi BTC
+* Paga con Alpha Wallet
+* nessuna regressione
+* nessuna modifica al Payment Engine
+
+Non procedere con altre funzionalità.
+
+Così gli permettiamo di continuare il lavoro già iniziato, ma gli togliamo la possibilità di allargare il perimetro.
