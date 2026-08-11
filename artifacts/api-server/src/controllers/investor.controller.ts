@@ -28,6 +28,7 @@ import {
   sendInvestorRequestNotification,
   sendInvestorContactMessage,
 } from "../services/email.service";
+import { logger } from "../lib/logger";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -245,16 +246,17 @@ export const approveRequest: RequestHandler = async (req, res, next) => {
     request.approvedCodeId = accessCode._id as unknown as import("mongoose").Types.ObjectId;
     await request.save();
 
+    let emailSent = false;
     if (sendEmail) {
-      await sendInvestorCodeEmail({
-        to: email,
-        investorName,
-        code: plainCode,
-        expiresAt,
-      }).catch(() => { /* non-fatal */ });
+      try {
+        await sendInvestorCodeEmail({ to: email, investorName, code: plainCode, expiresAt });
+        emailSent = true;
+      } catch (err) {
+        logger.error({ err, to: email, investorName }, "Failed to send investor code email (approve)");
+      }
     }
 
-    res.json({ ok: true, code: plainCode, codeId: accessCode._id });
+    res.json({ ok: true, code: plainCode, codeId: accessCode._id, emailSent });
   } catch (err) { next(err); }
 };
 
@@ -274,6 +276,58 @@ export const rejectRequest: RequestHandler = async (req, res, next) => {
     await request.save();
 
     res.json({ ok: true });
+  } catch (err) { next(err); }
+};
+
+// ---------------------------------------------------------------------------
+// POST /api/investor/admin/codes  (standalone — non legato a una richiesta)
+// ---------------------------------------------------------------------------
+
+export const createCode: RequestHandler = async (req, res, next) => {
+  try {
+    const {
+      customCode,
+      investorName,
+      email,
+      validityDays,
+      sendEmail = false,
+    } = req.body as {
+      customCode?: string;
+      investorName: string;
+      email: string;
+      validityDays?: number;
+      sendEmail?: boolean;
+    };
+
+    if (!investorName?.trim()) throw new AppError("VALIDATION_ERROR", 400, "investorName is required");
+    if (!email?.trim())        throw new AppError("VALIDATION_ERROR", 400, "email is required");
+
+    const plainCode = customCode?.trim().toUpperCase() || generateCode();
+    const hash      = await hashCode(plainCode);
+
+    let expiresAt: Date | undefined;
+    if (validityDays && validityDays > 0) {
+      expiresAt = new Date(Date.now() + validityDays * 24 * 60 * 60 * 1000);
+    }
+
+    const accessCode = await InvestorAccessCodeModel.create({
+      codeHash: hash,
+      investorName: investorName.trim(),
+      investorEmail: email.trim(),
+      expiresAt,
+    });
+
+    let emailSent = false;
+    if (sendEmail) {
+      try {
+        await sendInvestorCodeEmail({ to: email.trim(), investorName: investorName.trim(), code: plainCode, expiresAt });
+        emailSent = true;
+      } catch (err) {
+        logger.error({ err, to: email, investorName }, "Failed to send investor code email (createCode)");
+      }
+    }
+
+    res.json({ ok: true, code: plainCode, codeId: accessCode._id, emailSent });
   } catch (err) { next(err); }
 };
 

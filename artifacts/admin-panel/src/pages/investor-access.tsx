@@ -184,6 +184,61 @@ function StatusBadge({ status }: { status: string }) {
 
 // ─── Modal Approvazione ──────────────────────────────────────────────────────
 
+function generateFrontendCode() {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  const seg = () => Array.from({ length: 4 }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+  return `${seg()}-${seg()}-${seg()}`;
+}
+
+function CodeResultPanel({
+  code,
+  emailSent,
+  wantedEmail,
+  onClose,
+}: {
+  code: string;
+  emailSent: boolean;
+  wantedEmail: boolean;
+  onClose: () => void;
+}) {
+  const { toast } = useToast();
+  const copy = () => {
+    navigator.clipboard.writeText(code).then(() => toast({ title: "Codice copiato!" }));
+  };
+  return (
+    <div className="space-y-4">
+      <div className="text-center space-y-1">
+        <p className="text-3xl">✅</p>
+        <p className="font-bold text-white text-lg">Codice generato</p>
+      </div>
+      <div className="bg-violet-900/40 border-2 border-violet-500 rounded-xl p-5 text-center">
+        <p className="text-xs text-violet-300 uppercase tracking-widest mb-2">Codice di accesso</p>
+        <p className="font-mono text-3xl font-bold text-white tracking-[0.25em] select-all">{code}</p>
+      </div>
+      <button
+        onClick={copy}
+        className="w-full py-3 rounded-xl bg-violet-600 hover:bg-violet-500 text-white font-semibold text-sm flex items-center justify-center gap-2"
+      >
+        📋 Copia codice
+      </button>
+      {wantedEmail && !emailSent && (
+        <div className="rounded-lg bg-orange-900/30 border border-orange-500/40 p-3 text-xs text-orange-300">
+          ⚠️ <strong>Email non recapitata.</strong> Salva e invia questo codice manualmente all'investitore.
+        </div>
+      )}
+      {wantedEmail && emailSent && (
+        <div className="rounded-lg bg-green-900/20 border border-green-500/30 p-3 text-xs text-green-400">
+          ✉️ Email con il codice inviata all'investitore.
+        </div>
+      )}
+      <p className="text-xs text-gray-500 text-center">Il codice non verrà mostrato di nuovo.</p>
+      <button onClick={onClose} className="w-full py-2 rounded-xl border border-gray-600 text-sm text-gray-400 hover:text-white">
+        Chiudi
+      </button>
+    </div>
+  );
+}
+
 function ApproveModal({
   request,
   onClose,
@@ -200,24 +255,21 @@ function ApproveModal({
   const [validity, setValidity] = useState(30);
   const [sendEmail, setSendEmail] = useState(true);
   const [loading, setLoading] = useState(false);
-
-  function generateFrontendCode() {
-    const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-    const seg = () => Array.from({length:4}, () => chars[Math.floor(Math.random()*chars.length)]).join('');
-    return `${seg()}-${seg()}-${seg()}`;
-  }
+  const [result, setResult] = useState<{ code: string; emailSent: boolean } | null>(null);
 
   const submit = async () => {
     setLoading(true);
     try {
-      const res = await invFetch<{ ok: boolean; code: string }>(`/requests/${request._id}/approve`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ customCode: code, investorName: name, email, validityDays: validity, sendEmail }),
-      });
-      toast({ title: "Codice generato", description: `Codice: ${res.code}` });
+      const res = await invFetch<{ ok: boolean; code: string; emailSent: boolean }>(
+        `/requests/${request._id}/approve`,
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ customCode: code, investorName: name, email, validityDays: validity, sendEmail }),
+        }
+      );
       onDone();
-      onClose();
+      setResult({ code: res.code, emailSent: res.emailSent ?? false });
     } catch {
       toast({ title: "Errore", description: "Impossibile generare il codice", variant: "destructive" });
     } finally { setLoading(false); }
@@ -225,66 +277,77 @@ function ApproveModal({
 
   return (
     <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-      <div className="bg-sidebar border border-gray-200 rounded-2xl w-full max-w-md p-6 space-y-4 shadow-2xl">
-        <div className="flex items-center justify-between">
-          <h3 className="text-lg font-bold text-white">Genera codice di accesso</h3>
-          <button onClick={onClose} className="text-gray-400 hover:text-white">✕</button>
-        </div>
-        <p className="text-sm text-gray-600">
-          Approvazione richiesta di <strong className="text-white">{request.name}</strong> · {request.company}
-        </p>
+      <div className="bg-sidebar border border-gray-200 rounded-2xl w-full max-w-md p-6 shadow-2xl">
+        {result ? (
+          <CodeResultPanel
+            code={result.code}
+            emailSent={result.emailSent}
+            wantedEmail={sendEmail}
+            onClose={onClose}
+          />
+        ) : (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-bold text-white">Genera codice di accesso</h3>
+              <button onClick={onClose} className="text-gray-400 hover:text-white">✕</button>
+            </div>
+            <p className="text-sm text-gray-600">
+              Approvazione richiesta di <strong className="text-white">{request.name}</strong> · {request.company}
+            </p>
 
-        <div className="space-y-3">
-          <div>
-            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-              Codice di accesso (generato automaticamente, modificabile)
-            </label>
-            <div className="flex gap-2 mt-1">
-              <input
-                value={code} onChange={e => setCode(e.target.value.toUpperCase())}
-                className="flex-1 bg-gray-100 border border-gray-200 rounded-lg px-3 py-2 text-white font-mono text-sm tracking-widest"
-              />
-              <button onClick={() => setCode(generateFrontendCode())}
-                className="px-3 py-2 rounded-lg border border-gray-200 text-xs text-gray-600 hover:text-white hover:border-white/20">
-                ↻
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                  Codice di accesso
+                </label>
+                <div className="flex gap-2 mt-1">
+                  <input
+                    value={code} onChange={e => setCode(e.target.value.toUpperCase())}
+                    className="flex-1 bg-gray-100 border border-gray-200 rounded-lg px-3 py-2 text-white font-mono text-sm tracking-widest"
+                  />
+                  <button onClick={() => setCode(generateFrontendCode())}
+                    className="px-3 py-2 rounded-lg border border-gray-200 text-xs text-gray-600 hover:text-white hover:border-white/20">
+                    ↻
+                  </button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Nome investitore</label>
+                <input value={name} onChange={e => setName(e.target.value)}
+                  className="w-full mt-1 bg-gray-100 border border-gray-200 rounded-lg px-3 py-2 text-white text-sm" />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Email</label>
+                <input type="email" value={email} onChange={e => setEmail(e.target.value)}
+                  className="w-full mt-1 bg-gray-100 border border-gray-200 rounded-lg px-3 py-2 text-white text-sm" />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Validità</label>
+                <select value={validity} onChange={e => setValidity(Number(e.target.value))}
+                  className="w-full mt-1 bg-gray-100 border border-gray-200 rounded-lg px-3 py-2 text-white text-sm">
+                  {VALIDITY_OPTIONS.map(o => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+              </div>
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input type="checkbox" checked={sendEmail} onChange={e => setSendEmail(e.target.checked)}
+                  className="w-4 h-4 rounded border-gray-200 accent-violet-500" />
+                <span className="text-sm text-gray-700">Invia il codice automaticamente via email</span>
+              </label>
+            </div>
+
+            <div className="flex gap-3 pt-2">
+              <button onClick={onClose} className="flex-1 py-2 rounded-lg border border-gray-200 text-sm text-gray-600 hover:text-white">
+                Annulla
+              </button>
+              <button onClick={submit} disabled={loading}
+                className="flex-1 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-sm font-semibold disabled:opacity-50">
+                {loading ? "Generazione…" : "Genera codice"}
               </button>
             </div>
           </div>
-          <div>
-            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Nome investitore</label>
-            <input value={name} onChange={e => setName(e.target.value)}
-              className="w-full mt-1 bg-gray-100 border border-gray-200 rounded-lg px-3 py-2 text-white text-sm" />
-          </div>
-          <div>
-            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Email</label>
-            <input type="email" value={email} onChange={e => setEmail(e.target.value)}
-              className="w-full mt-1 bg-gray-100 border border-gray-200 rounded-lg px-3 py-2 text-white text-sm" />
-          </div>
-          <div>
-            <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Validità</label>
-            <select value={validity} onChange={e => setValidity(Number(e.target.value))}
-              className="w-full mt-1 bg-gray-100 border border-gray-200 rounded-lg px-3 py-2 text-white text-sm">
-              {VALIDITY_OPTIONS.map(o => (
-                <option key={o.value} value={o.value}>{o.label}</option>
-              ))}
-            </select>
-          </div>
-          <label className="flex items-center gap-3 cursor-pointer">
-            <input type="checkbox" checked={sendEmail} onChange={e => setSendEmail(e.target.checked)}
-              className="w-4 h-4 rounded border-gray-200 accent-violet-500" />
-            <span className="text-sm text-gray-700">Invia il codice automaticamente via email</span>
-          </label>
-        </div>
-
-        <div className="flex gap-3 pt-2">
-          <button onClick={onClose} className="flex-1 py-2 rounded-lg border border-gray-200 text-sm text-gray-600 hover:text-white">
-            Annulla
-          </button>
-          <button onClick={submit} disabled={loading}
-            className="flex-1 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-sm font-semibold disabled:opacity-50">
-            {loading ? "Generazione…" : "Genera codice di accesso"}
-          </button>
-        </div>
+        )}
       </div>
     </div>
   );
@@ -500,6 +563,125 @@ function RequestsTab() {
   );
 }
 
+// ─── Modal Genera Codice Standalone ──────────────────────────────────────────
+
+function CreateCodeModal({
+  onClose,
+  onDone,
+}: {
+  onClose: () => void;
+  onDone: () => void;
+}) {
+  const { toast } = useToast();
+  const [code, setCode]       = useState(() => generateFrontendCode());
+  const [name, setName]       = useState("");
+  const [email, setEmail]     = useState("");
+  const [validity, setValidity] = useState(30);
+  const [sendEmail, setSendEmail] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [result, setResult]   = useState<{ code: string; emailSent: boolean } | null>(null);
+
+  const submit = async () => {
+    if (!name.trim() || !email.trim()) {
+      toast({ title: "Compila nome e email", variant: "destructive" });
+      return;
+    }
+    setLoading(true);
+    try {
+      const res = await invFetch<{ ok: boolean; code: string; emailSent: boolean }>("/codes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ customCode: code, investorName: name, email, validityDays: validity, sendEmail }),
+      });
+      onDone();
+      setResult({ code: res.code, emailSent: res.emailSent ?? false });
+    } catch {
+      toast({ title: "Errore nella creazione del codice", variant: "destructive" });
+    } finally { setLoading(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+      <div className="bg-sidebar border border-gray-200 rounded-2xl w-full max-w-md p-6 shadow-2xl">
+        {result ? (
+          <CodeResultPanel
+            code={result.code}
+            emailSent={result.emailSent}
+            wantedEmail={sendEmail}
+            onClose={onClose}
+          />
+        ) : (
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h3 className="text-lg font-bold text-white">🔑 Genera codice di accesso</h3>
+              <button onClick={onClose} className="text-gray-400 hover:text-white">✕</button>
+            </div>
+            <p className="text-sm text-gray-500">
+              Crea un codice per un investitore senza che abbia inviato una richiesta.
+            </p>
+
+            <div className="space-y-3">
+              <div>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                  Codice di accesso
+                </label>
+                <div className="flex gap-2 mt-1">
+                  <input
+                    value={code} onChange={e => setCode(e.target.value.toUpperCase())}
+                    className="flex-1 bg-gray-100 border border-gray-200 rounded-lg px-3 py-2 text-white font-mono text-sm tracking-widest"
+                    placeholder="XXXX-XXXX-XXXX"
+                  />
+                  <button onClick={() => setCode(generateFrontendCode())}
+                    className="px-3 py-2 rounded-lg border border-gray-200 text-xs text-gray-600 hover:text-white hover:border-white/20 shrink-0">
+                    ↻
+                  </button>
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Nome investitore *</label>
+                <input value={name} onChange={e => setName(e.target.value)}
+                  placeholder="Mario Rossi"
+                  className="w-full mt-1 bg-gray-100 border border-gray-200 rounded-lg px-3 py-2 text-white text-sm" />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Email *</label>
+                <input type="email" value={email} onChange={e => setEmail(e.target.value)}
+                  placeholder="mario@example.com"
+                  className="w-full mt-1 bg-gray-100 border border-gray-200 rounded-lg px-3 py-2 text-white text-sm" />
+              </div>
+              <div>
+                <label className="text-xs font-semibold text-gray-500 uppercase tracking-wider">Validità</label>
+                <select value={validity} onChange={e => setValidity(Number(e.target.value))}
+                  className="w-full mt-1 bg-gray-100 border border-gray-200 rounded-lg px-3 py-2 text-white text-sm">
+                  {VALIDITY_OPTIONS.map(o => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+              </div>
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input type="checkbox" checked={sendEmail} onChange={e => setSendEmail(e.target.checked)}
+                  className="w-4 h-4 rounded border-gray-200 accent-violet-500" />
+                <span className="text-sm text-gray-700">Invia il codice via email all'investitore</span>
+              </label>
+            </div>
+
+            <div className="flex gap-3 pt-2">
+              <button onClick={onClose}
+                className="flex-1 py-2 rounded-lg border border-gray-200 text-sm text-gray-600 hover:text-white">
+                Annulla
+              </button>
+              <button onClick={submit} disabled={loading}
+                className="flex-1 py-2 rounded-lg bg-violet-600 hover:bg-violet-500 text-white text-sm font-semibold disabled:opacity-50">
+                {loading ? "Generazione…" : "Genera codice"}
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Tab B: Codici ───────────────────────────────────────────────────────────
 
 const FILTER_CODES = [
@@ -515,6 +697,7 @@ function CodesTab() {
   const [loading, setLoading] = useState(true);
   const [filter, setFilter] = useState("all");
   const [showNewCode, setShowNewCode] = useState<string | null>(null);
+  const [showCreate, setShowCreate] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -569,22 +752,27 @@ function CodesTab() {
 
   return (
     <div className="space-y-4">
+      {showCreate && (
+        <CreateCodeModal
+          onClose={() => setShowCreate(false)}
+          onDone={() => load()}
+        />
+      )}
+
       {showNewCode && (
         <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
-          <div className="bg-sidebar border border-gray-200 rounded-2xl p-6 max-w-sm w-full text-center">
-            <p className="text-xl mb-2">✅</p>
-            <p className="font-semibold text-white mb-1">Nuovo codice di accesso</p>
-            <p className="font-mono text-2xl font-bold text-violet-400 tracking-widest my-4 select-all">{showNewCode}</p>
-            <p className="text-xs text-gray-500 mb-4">Salva questo codice — non verrà mostrato di nuovo.</p>
-            <div className="flex gap-2">
-              <button onClick={() => copy(showNewCode)} className="flex-1 py-2 rounded-lg border border-gray-200 text-sm hover:text-white">Copia</button>
-              <button onClick={() => setShowNewCode(null)} className="flex-1 py-2 rounded-lg bg-violet-600 text-white text-sm font-semibold">Fatto</button>
-            </div>
+          <div className="bg-sidebar border border-gray-200 rounded-2xl p-6 max-w-sm w-full">
+            <CodeResultPanel
+              code={showNewCode}
+              emailSent={false}
+              wantedEmail={false}
+              onClose={() => setShowNewCode(null)}
+            />
           </div>
         </div>
       )}
 
-      <div className="flex gap-2 flex-wrap">
+      <div className="flex gap-2 flex-wrap items-center">
         {FILTER_CODES.map(s => (
           <button key={s.id} onClick={() => setFilter(s.id)}
             className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
@@ -593,9 +781,17 @@ function CodesTab() {
             {s.label}
           </button>
         ))}
-        <button onClick={load} className="ml-auto px-3 py-1.5 rounded-lg text-xs border border-gray-300 bg-white text-gray-600 hover:text-gray-900 hover:border-gray-400">
-          ↻ Aggiorna
-        </button>
+        <div className="ml-auto flex gap-2">
+          <button onClick={load} className="px-3 py-1.5 rounded-lg text-xs border border-gray-300 bg-white text-gray-600 hover:text-gray-900 hover:border-gray-400">
+            ↻ Aggiorna
+          </button>
+          <button
+            onClick={() => setShowCreate(true)}
+            className="px-3 py-1.5 rounded-lg text-xs font-semibold bg-violet-600 hover:bg-violet-500 text-white flex items-center gap-1"
+          >
+            🔑 Genera Codice
+          </button>
+        </div>
       </div>
 
       {loading ? (
