@@ -18,6 +18,7 @@ import {
   wallets,
   USDA_CHAIN_ID,
 } from "../lib/thirdweb";
+import { useWallet } from "../wallet/context/WalletContext";
 import {
   apiUsdaGetWallet,
   apiUsdaSetWalletAddress,
@@ -35,9 +36,10 @@ type HistoryFilter = "tutti" | "sent" | "received" | "pending" | "claimed" | "re
 
 interface Props {
   onBack: () => void;
+  onOpenAlphaWallet?: () => void;
 }
 
-export default function WalletCenterPage({ onBack }: Props) {
+export default function WalletCenterPage({ onBack, onOpenAlphaWallet }: Props) {
   const { t } = useTranslation("walletCenter");
 
   const HISTORY_FILTERS: { key: HistoryFilter; label: string }[] = [
@@ -80,6 +82,9 @@ export default function WalletCenterPage({ onBack }: Props) {
   const address           = account?.address;
   const isWalletConnected = !!account;
   const isCorrectNetwork  = !!account;
+
+  const { phase: awPhase, meta: awMeta } = useWallet();
+  const hasAlphaWallet = awPhase === "unlocked" || awPhase === "locked";
 
   // ── Recovery crash al mount ─────────────────────────────────────────────────
   const [recoveryBanner, setRecoveryBanner] = useState<"found" | "not_found" | null>(null);
@@ -277,6 +282,53 @@ export default function WalletCenterPage({ onBack }: Props) {
                 </>
               )}
 
+              {/* Alpha Wallet — wallet nativo */}
+              {awPhase !== "initializing" && (
+                <>
+                  <div className="wc-section-title">🔐 Alpha Wallet</div>
+                  {hasAlphaWallet ? (
+                    <div className="wc-aw-card wc-aw-card--active">
+                      <div className="wc-aw-header">
+                        <span className="wc-aw-icon" aria-hidden="true">🔐</span>
+                        <div className="wc-aw-title-group">
+                          <span className="wc-aw-title">Alpha Wallet</span>
+                          <span className="wc-aw-badge">✓ Attivo</span>
+                        </div>
+                        {awPhase === "locked" && (
+                          <span className="wc-aw-locked-badge" title="Wallet bloccato — sblocca in Alpha Wallet">🔒</span>
+                        )}
+                      </div>
+                      {awMeta && (
+                        <div className="wc-aw-addr-row">
+                          <span className="wc-aw-addr-label">EVM</span>
+                          <span className="wc-aw-addr">{awMeta.evmAddress.slice(0, 6)}…{awMeta.evmAddress.slice(-4)}</span>
+                        </div>
+                      )}
+                      {awMeta && (
+                        <div className="wc-aw-addr-row">
+                          <span className="wc-aw-addr-label">BTC</span>
+                          <span className="wc-aw-addr">{awMeta.btcAddress.slice(0, 8)}…{awMeta.btcAddress.slice(-6)}</span>
+                        </div>
+                      )}
+                      <p className="wc-aw-hint">Usa <strong>Paga con Alpha Wallet</strong> in chat per pagamenti diretti P2P senza wallet esterni.</p>
+                    </div>
+                  ) : (
+                    <div className="wc-aw-card wc-aw-card--empty">
+                      <div className="wc-aw-header">
+                        <span className="wc-aw-icon" aria-hidden="true">🔐</span>
+                        <span className="wc-aw-title">Alpha Wallet — Wallet nativo</span>
+                      </div>
+                      <p className="wc-aw-desc">Wallet self-custodial integrato in Alpha Chat. Nessun MetaMask o Trust Wallet richiesto per i pagamenti diretti in chat.</p>
+                      {onOpenAlphaWallet && (
+                        <button type="button" className="wc-aw-setup-btn" onClick={onOpenAlphaWallet}>
+                          Configura Alpha Wallet →
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </>
+              )}
+
               {/* Wallet — Reown AppKit */}
               <div className="wc-section-title">{t("walletSection")}</div>
               <div className="wc-tw-section">
@@ -420,8 +472,60 @@ export default function WalletCenterPage({ onBack }: Props) {
       {tab === "impostazioni" && (
         <div id="wc-panel-impostazioni" role="tabpanel" aria-labelledby="wc-tab-impostazioni" className="wc-content">
 
-          {/* Wallet — Reown AppKit */}
-          <div className="wc-section-title">{t("connectedWallet")}</div>
+          {/* Alpha Wallet — wallet nativo */}
+          {awPhase !== "initializing" && (
+            <>
+              <div className="wc-section-title">🔐 Alpha Wallet</div>
+              {hasAlphaWallet ? (
+                <div className="wc-aw-card wc-aw-card--active">
+                  <div className="wc-aw-header">
+                    <span className="wc-aw-icon" aria-hidden="true">🔐</span>
+                    <div className="wc-aw-title-group">
+                      <span className="wc-aw-title">Alpha Wallet</span>
+                      <span className="wc-aw-badge">✓ Attivo</span>
+                    </div>
+                    {awPhase === "locked" && (
+                      <span className="wc-aw-locked-badge" title="Wallet bloccato — sblocca in Alpha Wallet">🔒</span>
+                    )}
+                  </div>
+                  {awMeta && (
+                    <div className="wc-aw-addr-row">
+                      <span className="wc-aw-addr-label">EVM</span>
+                      <span className="wc-aw-addr">{awMeta.evmAddress.slice(0, 6)}…{awMeta.evmAddress.slice(-4)}</span>
+                    </div>
+                  )}
+                  {awMeta && (
+                    <div className="wc-aw-addr-row">
+                      <span className="wc-aw-addr-label">BTC</span>
+                      <span className="wc-aw-addr">{awMeta.btcAddress.slice(0, 8)}…{awMeta.btcAddress.slice(-6)}</span>
+                    </div>
+                  )}
+                  <p className="wc-aw-hint">Usa <strong>Paga con Alpha Wallet</strong> in chat per pagamenti diretti P2P senza wallet esterni.</p>
+                  {onOpenAlphaWallet && (
+                    <button type="button" className="wc-aw-open-btn" onClick={onOpenAlphaWallet}>
+                      Apri Alpha Wallet →
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="wc-aw-card wc-aw-card--empty">
+                  <div className="wc-aw-header">
+                    <span className="wc-aw-icon" aria-hidden="true">🔐</span>
+                    <span className="wc-aw-title">Alpha Wallet — Wallet nativo</span>
+                  </div>
+                  <p className="wc-aw-desc">Wallet self-custodial integrato in Alpha Chat. Nessun MetaMask o Trust Wallet richiesto per i pagamenti diretti in chat.</p>
+                  {onOpenAlphaWallet && (
+                    <button type="button" className="wc-aw-setup-btn" onClick={onOpenAlphaWallet}>
+                      Configura Alpha Wallet →
+                    </button>
+                  )}
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Wallet esterno — Reown AppKit */}
+          <div className="wc-section-title" style={{ marginTop: 20 }}>{t("connectedWallet")}</div>
           <div className="wc-tw-section">
             {isWalletConnected && address ? (
               <div className="wc-tw-card">

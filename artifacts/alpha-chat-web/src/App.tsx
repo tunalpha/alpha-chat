@@ -280,7 +280,7 @@ function AppContent() {
           case "language":
             return <LanguagePage onBack={goSettings} />;
           case "wallet-center":
-            return <WalletCenterPage onBack={goSettings} />;
+            return <WalletCenterPage onBack={goSettings} onOpenAlphaWallet={() => setView("alpha-wallet")} />;
           case "usda-settings":
             return <UsdaSettingsPage onBack={goSettings} />;
           case "pwa-guide":

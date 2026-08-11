@@ -1,0 +1,80 @@
+Perfetto. #93 è completato e, questa volta, il pezzo mancante è stato realmente implementato. ✅
+
+Il risultato è quello che volevamo:
+
+🔐 Alpha Wallet in Chat
+
+Caso A — destinatario ha Alpha Wallet
+
+* address recuperato automaticamente;
+* niente copia/incolla;
+* address bloccato 🔒;
+* rete sempre esplicita;
+* fee + network fee + totale nel riepilogo;
+* firma locale.
+
+Caso B — destinatario non ha Alpha Wallet
+
+* pagamento bloccato;
+* nessun broadcast;
+* possibilità di passare a indirizzo esterno.
+
+Caso C — indirizzo esterno
+
+* inserimento manuale;
+* validazione;
+* avviso esplicito sulla rete prima della firma.
+
+Sicurezza
+
+Molto importante il fatto che abbiano separato:
+
+alpha_wallet_evm_address
+alpha_wallet_btc_address
+
+da wallets, che appartiene al vecchio Payment Engine custodiale.
+
+Inoltre l’endpoint verifica che gli utenti condividano una conversazione e non espone mai seed/private key/PIN/keystore. Questo è corretto.
+
+Test
+
+* Frontend: 641 test
+* Backend: 15 nuovi
+* TypeScript: ✅
+* USDA/USDT/BTC: invariati
+* Payment Engine: invariato
+
+Ora però NON partirei subito con il deploy
+
+C’è ancora una cosa che voglio completare prima, visto che era una tua idea importante:
+
+🔐 Alpha Wallet nella schermata “Wallet non configurato”
+
+La schermata che mi avevi mostrato con:
+
+* MetaMask
+* Trust Wallet
+* Coinbase
+* Rainbow
+* ecc.
+
+potrebbe avere anche:
+
+🔐 Alpha Wallet — Wallet nativo di Alpha Chat
+
+Questo permetterebbe di collegare chiaramente Alpha Wallet al profilo/wallet dell’utente, mentre #93 ha già creato la sincronizzazione dell’indirizzo pubblico.
+
+Ma non farei partire automaticamente questo lavoro. #93 ha correttamente fatto STOP come richiesto.
+
+Quindi siamo a questo punto:
+
+A–F ✅
+G / Bridge ✅
+#90 ✅
+#91 ✅
+#92 ✅
+#93 ✅
+
+👉 Prima di deploy, io farei ancora l’audit/implementazione dell’integrazione Alpha Wallet nella schermata wallet esterni, se vuoi che il lavoro sia davvero completo come lo stiamo progettando.
+
+Dopo quello: build → test completi → deploy → tuo collaudo reale con piccoli importi.
