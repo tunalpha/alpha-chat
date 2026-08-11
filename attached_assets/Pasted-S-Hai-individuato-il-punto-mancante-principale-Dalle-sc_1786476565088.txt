@@ -1,0 +1,256 @@
+Sì. Hai individuato il punto mancante principale. Dalle schermate è evidente che in produzione è ancora presente il vecchio sistema di pagamento:
+
+* Invia USDA
+* Richiedi USDA
+* Invia USDT
+* Richiedi USDT
+* Invia BTC
+* Richiedi BTC
+
+mentre Alpha Wallet non è ancora collegato come metodo di pagamento della Chat.
+
+E questo è importante perché la funzione che avevamo progettato con Phase G era proprio:
+
+Chat → Paga con Alpha Wallet → selezione asset/rete → importo → fee → conferma → PIN → firma locale → broadcast
+
+Il fatto che ChatWalletPaySheet e ChatWalletBridge risultino nei report non significa necessariamente che la UI pubblicata stia effettivamente mostrando il nuovo ingresso. Le schermate che hai inviato sono una prova concreta che nell’interfaccia attuale non è disponibile.
+
+Quindi NON farei ancora il deploy definitivo/pubblico
+
+Prima farei verificare all’agente se il codice Phase G è realmente presente nel build che stai visualizzando oppure se è stato implementato ma non correttamente raggiungibile dalla UI.
+
+Puoi dargli questo prompt:
+
+⸻
+
+PROMPT — VERIFICA E COMPLETAMENTO ALPHA WALLET PAYMENT NELLA CHAT
+
+Abbiamo completato Alpha Wallet Phase A→F e Phase G, ma dalla UI reale attualmente pubblicata emerge che la funzione principale “Paga con Alpha Wallet” non è presente.
+
+Le schermate mostrano ancora esclusivamente il vecchio sistema:
+
+* Invia USDA
+* Richiedi USDA
+* Invia USDT
+* Richiedi USDT
+* Invia BTC
+* Richiedi BTC
+
+OBIETTIVO
+
+Verificare e, se necessario, completare esclusivamente il collegamento della Alpha Wallet nativa alla Chat, senza modificare o sostituire il vecchio sistema di pagamenti.
+
+1. PRIMA FASE — SOLO AUDIT
+
+Non modificare codice.
+
+Verificare:
+
+1. ChatWalletBridgeProvider
+2. useChatWalletBridge()
+3. ChatWalletPaySheet
+4. ChatWalletPaymentBubble
+5. ChatPage.tsx
+6. App.tsx
+7. WalletProvider
+8. WalletContext
+9. eventuale attach/share sheet
+10. eventuali feature flag o condizioni che nascondono “Paga con Wallet”
+11. routing/build production
+12. eventuali differenze tra codice sorgente e build pubblicata.
+
+Determinare precisamente:
+
+A) la funzione è implementata ma nascosta/non raggiungibile;
+
+oppure
+
+B) è implementata solo parzialmente;
+
+oppure
+
+C) la Phase G dichiarata completata non è effettivamente presente nel codice/build pubblicato.
+
+NON inventare una soluzione prima dell’audit.
+
+2. COMPORTAMENTO DESIDERATO
+
+Nel menu della Chat deve comparire una nuova voce separata:
+
+🔐 Paga con Alpha Wallet
+
+Questa voce deve essere distinta dai vecchi:
+
+* Invia USDA
+* Invia USDT
+* Invia BTC
+
+I vecchi sistemi devono continuare a funzionare esattamente come prima.
+
+3. FLUSSO ALPHA WALLET
+
+Premendo Paga con Alpha Wallet:
+
+Step 1 — Destinatario
+
+Il destinatario deve essere ricavato dal profilo/identità della conversazione secondo la specifica Phase G.
+
+Non chiedere manualmente un indirizzo se il destinatario Alpha Chat possiede un wallet associato.
+
+Step 2 — Asset/Rete
+
+Permettere esclusivamente gli asset realmente supportati dal wallet:
+
+EVM:
+
+* Ethereum
+* Polygon
+* BSC
+
+Token verificati secondo Token Registry:
+
+* native coin
+* USDT
+* USDC
+* USDA dove supportato
+
+Bitcoin:
+
+* BTC
+
+Non confondere questo sistema con USDA/Payment Engine custodiale.
+
+Step 3 — Importo
+
+L’utente inserisce l’importo.
+
+Step 4 — Quote
+
+Mostrare:
+
+* importo destinatario
+* platform fee
+* eventuale fee minima
+* network/miner fee stimata
+* totale
+* rete
+* asset
+* destinatario
+
+La quote deve essere congelata prima dell’autenticazione/firma.
+
+Step 5 — Autenticazione
+
+Richiedere PIN/biometria locale.
+
+Il server non deve mai ricevere:
+
+* seed
+* mnemonic
+* private key
+* PIN.
+
+Step 6 — Firma
+
+La transazione deve essere firmata localmente dall’Alpha Wallet.
+
+Backend riceve esclusivamente il signed transaction hex necessario al broadcast.
+
+Step 7 — Broadcast
+
+Inviare la transazione al backend broadcast isolato dell’Alpha Wallet.
+
+Step 8 — Bubble
+
+Creare nella conversazione un wallet_payment bubble contenente:
+
+* asset
+* rete
+* importo
+* platform fee
+* stato
+* txHash quando disponibile
+* link explorer
+
+Stati:
+
+pending → confirmed
+
+oppure
+
+pending → failed
+
+4. REGOLA FONDAMENTALE
+
+NON utilizzare:
+
+* Payment Engine custodiale
+* escrow
+* Gas Station
+* WalletConnect
+* ThirdWeb
+* wallet esterni
+
+per il pagamento Alpha Wallet.
+
+La firma deve avvenire con la chiave custodita localmente nell’Alpha Wallet.
+
+5. I VECCHI PAGAMENTI DEVONO SOPRAVVIVERE
+
+Non rimuovere né modificare:
+
+* Invia USDA
+* Richiedi USDA
+* Invia USDT
+* Richiedi USDT
+* Invia BTC
+* Richiedi BTC
+
+Alpha Wallet deve essere un ulteriore metodo di pagamento, non una sostituzione.
+
+6. TEST OBBLIGATORI
+
+Prima di dichiarare completato il lavoro:
+
+* verificare che il pulsante sia realmente visibile nella Chat;
+* verificare wallet locked;
+* verificare wallet unlocked;
+* verificare destinatario;
+* verificare quote;
+* verificare platform fee;
+* verificare autenticazione;
+* verificare firma locale;
+* verificare broadcast;
+* verificare bubble;
+* verificare stato pending/confirmed/failed;
+* verificare che un evento WebSocket remoto NON possa provocare una firma;
+* verificare che i vecchi sistemi USDA/USDT/BTC continuino a funzionare;
+* verificare isolamento dal Payment Engine.
+
+7. REGOLA DI SICUREZZA
+
+Non dichiarare “Phase G completata” semplicemente perché i file esistono.
+
+La condizione di completamento è:
+
+un utente reale deve poter aprire una conversazione, premere “Paga con Alpha Wallet”, compilare il pagamento, autenticarsi, firmare localmente e ottenere una transazione on-chain.
+
+Prima dell’implementazione fornire il risultato dell’audit.
+
+Se il codice è già presente ma non collegato alla UI, effettuare esclusivamente il wiring necessario.
+
+Non modificare architettura, Payment Engine o logica commissionale esistente.
+
+Alla fine riportare:
+
+1. causa del problema;
+2. file modificati;
+3. file nuovi;
+4. test prima/dopo;
+5. eventuali regressioni;
+6. verifica TypeScript/build;
+7. percorso esatto nella UI per raggiungere Paga con Alpha Wallet.
+
+⸻
+
+Questo è il passaggio che farei adesso. Non serve rifare Alpha Wallet: il grosso è già stato costruito. Dobbiamo verificare perché la parte più importante di Phase G non è arrivata nella UI che stai utilizzando.

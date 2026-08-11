@@ -4427,15 +4427,27 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
                       </button>
                     </>
                   )}
-                  {/* Phase G — Alpha Wallet self-custodial: visibile solo se wallet sbloccato */}
+                  {/* Phase G — Alpha Wallet self-custodial */}
                   {/* REGOLA §15: il tap utente è l'UNICO trigger — MAI da eventi WS */}
-                  {walletBridge.status === "ready" && (
+                  {walletBridge.status !== "unavailable" ? (
                     <button
                       className="attach-sheet-item"
                       onClick={() => { setShowAttachSheet(false); setTimeout(() => setShowWalletPay(true), 80); }}
                     >
-                      <span className="attach-sheet-icon">🔑</span>
-                      <span>Paga con Wallet</span>
+                      <span className="attach-sheet-icon">🔐</span>
+                      <span>Paga con Alpha Wallet{walletBridge.status === "locked" ? " 🔒" : ""}</span>
+                    </button>
+                  ) : (
+                    <button
+                      className="attach-sheet-item"
+                      style={{ opacity: 0.55 }}
+                      onClick={() => {
+                        setShowAttachSheet(false);
+                        showToast("Configura Alpha Wallet prima di inviare. Vai in Chat → Alpha Wallet.");
+                      }}
+                    >
+                      <span className="attach-sheet-icon">🔐</span>
+                      <span>Paga con Alpha Wallet</span>
                     </button>
                   )}
                 </>

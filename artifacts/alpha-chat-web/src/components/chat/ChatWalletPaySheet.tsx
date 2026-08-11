@@ -234,7 +234,7 @@ export function ChatWalletPaySheet({ prefillRecipient, conversationId, onClose, 
 
           {/* Header */}
           <div className="cwp-header">
-            <span className="cwp-title">💸 Paga con Wallet</span>
+            <span className="cwp-title">🔐 Paga con Alpha Wallet</span>
             <button className="cwp-close" onClick={onClose} aria-label="Chiudi">✕</button>
           </div>
 
