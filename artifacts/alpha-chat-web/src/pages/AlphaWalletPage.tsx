@@ -343,13 +343,36 @@ function CreatePhraseView({ onNext, onBack }: { onNext: (m: string) => void; onB
   const [mnemonic] = useState(() => createMnemonic(128));
   const [revealed, setRevealed] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [secsLeft, setSecsLeft] = useState(PHRASE_VISIBLE_SECS);
   const words = mnemonic.split(" ");
   const { isProtected, isScreenShare, reveal } = useSecurePhraseDisplay();
+
+  // Auto-hide: dopo PHRASE_VISIBLE_SECS la frase si ri-offusca automaticamente
+  useEffect(() => {
+    if (!revealed) { setSecsLeft(PHRASE_VISIBLE_SECS); return; }
+    setSecsLeft(PHRASE_VISIBLE_SECS);
+    const iv = setInterval(() => {
+      setSecsLeft(s => {
+        if (s <= 1) { clearInterval(iv); setRevealed(false); return 0; }
+        return s - 1;
+      });
+    }, 1000);
+    return () => clearInterval(iv);
+  }, [revealed]);
+
   const handleCopy = () => void navigator.clipboard.writeText(mnemonic).then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); });
   return (
     <div className="aw-create-phrase">
       <h2>La tua Recovery Phrase</h2>
-      <p className="aw-sub">Scrivi queste 12 parole su carta. Non fare screenshot.</p>
+      <p className="aw-sub">
+        Scrivi queste 12 parole su carta. Non fare screenshot.
+        {revealed && (
+          <span style={{ display: "block", marginTop: 4, fontVariantNumeric: "tabular-nums", opacity: 0.7, fontSize: "0.85em" }}>
+            La frase si nasconde in{" "}
+            <strong style={{ color: secsLeft <= 10 ? "#ef4444" : undefined }}>{secsLeft}s</strong>.
+          </span>
+        )}
+      </p>
       <div className={`aw-phrase-grid ${!revealed ? "aw-blurred" : ""}`} style={{ position: "relative" }}>
         {words.map((w, i) => (
           <div key={i} className="aw-phrase-word">
@@ -1514,7 +1537,8 @@ function WalletSettingsView({
   const { currency, setCurrency } = useWalletCurrency();
   const { walletFaceIdEnabled, setWalletFaceIdEnabled } = useWalletFaceId();
   const lock = useLock();
-  const hasBiometricSet = lock?.hasBiometricSet ?? false;
+  const hasBiometricSet   = lock?.hasBiometricSet   ?? false;
+  const canUseBiometric   = lock?.canUseBiometric   ?? false;
   // Il PIN è già in cache in sessionStorage se l'utente ha già sbloccato in questa sessione
   const hasPinCached = !!sessionStorage.getItem("aw_bio_pin");
 
@@ -1804,8 +1828,9 @@ function WalletSettingsView({
       <div className="aw-settings-section">
         <div className="aw-settings-section-title">Sicurezza</div>
 
-        {/* Face ID wallet-specifico — mostra se biometric è rilevato O se era già abilitato */}
-        {(hasBiometricSet || walletFaceIdEnabled) && (
+        {/* Face ID wallet-specifico — mostra se il dispositivo supporta biometrica,
+            se era già registrata, oppure se era già abilitata (flag persistito) */}
+        {(canUseBiometric || hasBiometricSet || walletFaceIdEnabled) && (
           <div className="aw-settings-item aw-settings-item--row">
             <span className="aw-settings-item-icon">🫣</span>
             <div style={{ flex: 1 }}>
@@ -2103,12 +2128,15 @@ function TxDetailView({ tx, onBack }: { tx: WalletTxRecord; onBack: () => void }
 // SEED EXPORT VIEW (Phase F — visualizzazione autenticata recovery phrase)
 // ═══════════════════════════════════════════════════════════════════════════
 
+const PHRASE_VISIBLE_SECS = 30; // secondi prima dell'auto-hide
+
 function SeedExportView({ onBack }: { onBack: () => void }) {
   const [pin, setPin] = useState("");
   const [pinErr, setPinErr] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [words, setWords] = useState<string[] | null>(null);
   const [copied, setCopied] = useState(false);
+  const [secsLeft, setSecsLeft] = useState(PHRASE_VISIBLE_SECS);
 
   const handleReveal = async () => {
     if (!validatePin(pin)) { setPinErr("PIN non valido"); return; }
@@ -2137,6 +2165,19 @@ function SeedExportView({ onBack }: { onBack: () => void }) {
   // Hook sicurezza — sempre chiamato (sopra i return condizionali, regola dei hooks)
   const { isProtected, isScreenShare, reveal } = useSecurePhraseDisplay();
 
+  // Auto-hide: dopo PHRASE_VISIBLE_SECS la frase scompare e l'utente deve reinserire il PIN
+  useEffect(() => {
+    if (!words) { setSecsLeft(PHRASE_VISIBLE_SECS); return; }
+    setSecsLeft(PHRASE_VISIBLE_SECS);
+    const iv = setInterval(() => {
+      setSecsLeft(s => {
+        if (s <= 1) { clearInterval(iv); setWords(null); return 0; }
+        return s - 1;
+      });
+    }, 1000);
+    return () => clearInterval(iv);
+  }, [words]);
+
   // Mostra la frase se autenticata
 
   if (words) {
@@ -2145,6 +2186,11 @@ function SeedExportView({ onBack }: { onBack: () => void }) {
         <div className="aw-seed-export-warning">
           ⚠️ <strong>Non condividere mai queste parole.</strong> Chiunque le abbia può accedere ai tuoi fondi.
           Non fare screenshot — le immagini possono essere intercettate.
+          <br />
+          <span style={{ fontVariantNumeric: "tabular-nums", opacity: 0.75 }}>
+            La frase scomparirà automaticamente in{" "}
+            <strong style={{ color: secsLeft <= 10 ? "#ef4444" : undefined }}>{secsLeft}s</strong>.
+          </span>
         </div>
         <div className="aw-seed-export-phrase" style={{ position: "relative" }}>
           {words.map((w, i) => (
