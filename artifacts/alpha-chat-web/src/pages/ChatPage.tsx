@@ -722,6 +722,11 @@ function SidebarMenu({
       icon: null,
     },
     {
+      label: "🔐 Alpha Wallet",
+      view: "alpha-wallet",
+      icon: null,
+    },
+    {
       label: t("calls:historyTitle", "Chiamate"),
       view: "call-history",
       icon: (

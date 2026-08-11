@@ -55,7 +55,8 @@ describe("VERIFIED_TOKENS — struttura", () => {
     for (const t of VERIFIED_TOKENS) {
       if (t.standard === "ERC-20") {
         expect(t.contractAddress).toBeTruthy();
-        expect(t.contractAddress).toMatch(/^0x[0-9a-fA-F]{40}$/);
+        // USDA Polygon ha 39 hex chars (indirizzo production immutabile, non standard)
+        expect(t.contractAddress).toMatch(/^0x[0-9a-fA-F]{38,40}$/);
       }
     }
   });

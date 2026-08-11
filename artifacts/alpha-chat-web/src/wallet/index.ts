@@ -18,3 +18,14 @@ export * from "./core/wallet-auth";
 // EVM
 export * from "./evm/evm-network-config";
 export * from "./evm/token-registry";
+
+// Notifications
+export * from "./notifications/wallet-notification-types";
+export { dispatchWalletNotification, loadNotifications, countUnread, markAllNotificationsRead } from "./notifications/wallet-notification-store";
+
+// Monitoring
+export { txMonitor } from "./monitoring/tx-monitor";
+
+// Context
+export { WalletProvider, useWallet } from "./context/WalletContext";
+export type { WalletPhase } from "./context/WalletContext";

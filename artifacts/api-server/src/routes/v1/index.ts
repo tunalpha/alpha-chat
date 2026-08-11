@@ -97,4 +97,9 @@ v1Router.use("/admin/multichain", adminMultichainRoutes);
 import adminBitcoinRoutes from "./admin-bitcoin.routes";
 v1Router.use("/admin/bitcoin", adminBitcoinRoutes);
 
+// Alpha Wallet — Native self-custodial wallet (Phase B)
+// ISOLAMENTO: completamente separato dal Payment Engine e da USDA
+import alphaWalletRoutes from "./alpha-wallet.routes";
+v1Router.use("/alpha-wallet", alphaWalletRoutes);
+
 export default v1Router;

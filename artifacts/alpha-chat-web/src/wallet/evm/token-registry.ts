@@ -20,6 +20,16 @@
 
 import { getWalletDB, STORE_CUSTOM_TOKENS, closeWalletDB } from "../core/wallet-db";
 
+/**
+ * Indirizzo USDA su Polygon — valore canonico usato da tutto il sistema esistente.
+ * Corrisponde a USDA_CONTRACT_ADDRESS in src/lib/thirdweb.ts.
+ *
+ * ⚠️ L'indirizzo ha 39 hex chars (non 40 standard EVM): è il valore già in produzione.
+ * Non modificare senza verifica on-chain su Polygonscan.
+ */
+export const USDA_POLYGON_ADDRESS =
+  "0x23396cF899Ca06c4472205fC903bDB4de249D6f" as `0x${string}`;
+
 // ─── Tipi ─────────────────────────────────────────────────────────────────
 
 export type TokenVerification = "verified" | "custom";
@@ -120,8 +130,10 @@ export const VERIFIED_TOKENS: TokenConfig[] = [
     symbol: "USDA",
     name: "USDA Stablecoin",
     decimals: 18,
-    // Indirizzo da aggiornare con quello ufficiale verificato su Polygonscan
-    contractAddress: "0x23396cF899Ca06c4472205fC903bDB4de249D6fA",
+    // Indirizzo verificato: corrisponde a USDA_CONTRACT_ADDRESS in src/lib/thirdweb.ts
+    // ⚠️ Nota: l'indirizzo ha 39 hex chars (non 40 standard EVM). È il valore
+    // usato da tutto il sistema USDA esistente — non modificare senza verifica on-chain.
+    contractAddress: USDA_POLYGON_ADDRESS,
     standard: "ERC-20",
     explorerUrl: "https://polygonscan.com",
     verification: "verified",

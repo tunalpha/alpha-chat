@@ -1,0 +1,342 @@
+Hai ragione. Le notifiche devono essere un requisito della V1, non solo una predisposizione.
+
+Ti riscrivo il prompt corretto per la Fase B, includendo Custom Token Import + Notifications + Transaction Monitoring, mantenendo tutto isolato.
+
+PROMPT CORRETTO — PHASE B
+
+PHASE B — APPROVATA
+
+Procedi con Phase B del nuovo Alpha Wallet, mantenendo l’isolamento assoluto dal Payment Engine esistente.
+
+Prima di iniziare, esegui questi pre-check obbligatori.
+
+⸻
+
+1. USDA CONTRACT ADDRESS — OBBLIGATORIO
+
+Il Token Registry contiene attualmente un placeholder USDA.
+
+Recupera dal progetto l’indirizzo ufficiale USDA Polygon già utilizzato dal sistema esistente.
+
+NON inventare l’indirizzo.
+
+Sostituisci il placeholder esclusivamente con il contract address verificato.
+
+Aggiungi un test che impedisca l’utilizzo accidentale di un placeholder.
+
+⸻
+
+2. WALLET UI
+
+Implementare:
+
+* creazione wallet;
+* import/recovery wallet;
+* visualizzazione recovery phrase;
+* verifica recovery phrase;
+* backup obbligatorio;
+* PIN setup;
+* unlock/lock;
+* Wallet Overview;
+* network selector;
+* asset list;
+* asset details;
+* Security / Backup;
+* Transaction History;
+* Notifications.
+
+Il wallet deve apparire come una sezione nativa di Alpha Chat.
+
+⸻
+
+3. CUSTOM TOKEN IMPORT — V1
+
+Implementare:
+
+Wallet → Add Token → Custom Token
+
+L’utente inserisce il contract address.
+
+Il wallet deve recuperare:
+
+* name;
+* symbol;
+* decimals;
+* network;
+* contract address.
+
+Mostrare prima della conferma:
+
+Token trovato
+
+Nome
+Symbol
+Network
+Decimals
+Contract
+
+Se presente nel Token Registry:
+
+✅ Verified
+
+Altrimenti:
+
+⚠️ Custom / Unverified
+
+Un token con simbolo USDT, USDC o USDA ma contract diverso NON deve essere classificato come ufficiale.
+
+⸻
+
+4. NOTIFICHE WALLET — REQUISITO V1
+
+Implementare un vero sistema di notifiche dedicato al nuovo Alpha Wallet.
+
+Deve essere completamente indipendente dal Payment Engine.
+
+Ricezione
+
+Generare una notifica quando viene rilevata una transazione in entrata:
+
+* BTC;
+* ETH;
+* POL;
+* BNB;
+* USDT;
+* USDC;
+* USDA;
+* custom EVM token.
+
+Esempio:
+
+💰 Hai ricevuto 100 USDC
+
+Polygon · Confermato
+
+⸻
+
+Invio
+
+Notificare:
+
+* Transaction submitted;
+* Pending;
+* Confirmed;
+* Failed.
+
+Esempio:
+
+📤 Invio USDC
+
+100 USDC · Polygon
+Confermata ✓
+
+⸻
+
+Bitcoin
+
+Supportare:
+
+* transaction detected;
+* pending/mempool;
+* confirmation;
+* confirmed;
+* failed/rejected quando rilevabile.
+
+⸻
+
+5. IN-APP NOTIFICATIONS
+
+Creare una sezione:
+
+Wallet → Notifications
+
+con storico delle notifiche.
+
+Ogni evento deve contenere almeno:
+
+* tipo;
+* asset;
+* network;
+* amount;
+* transaction hash;
+* timestamp;
+* status.
+
+Toccando la notifica deve essere possibile aprire i dettagli della transazione.
+
+⸻
+
+6. PUSH NOTIFICATIONS
+
+Implementare anche il supporto alle notifiche push del Wallet, quando tecnicamente disponibile nella PWA.
+
+Richiedere il permesso all’utente in modo appropriato.
+
+Esempio:
+
+💰 Hai ricevuto 100 USDC su Polygon
+
+Se l’utente nega il permesso push:
+
+* le notifiche in-app devono continuare a funzionare;
+* nessun errore;
+* nessun dato sensibile deve essere esposto.
+
+Se una limitazione della PWA/iOS impedisce una soluzione affidabile, non creare workaround insicuri: documentare la limitazione e predisporre l’architettura per il futuro.
+
+⸻
+
+7. TRANSACTION MONITORING
+
+Il Wallet deve monitorare autonomamente le blockchain per gli address dell’utente.
+
+EVM:
+
+* native transactions;
+* ERC-20/BEP-20;
+* pending quando disponibile;
+* confirmed;
+* failed.
+
+Bitcoin:
+
+* incoming;
+* outgoing;
+* mempool;
+* confirmations;
+* confirmed.
+
+Il monitor deve essere specifico del Wallet e NON utilizzare il polling del Payment Engine.
+
+⸻
+
+8. ANTI-DUPLICATE NOTIFICATIONS
+
+Una stessa transazione non deve generare notifiche duplicate.
+
+Utilizzare come identificatore almeno:
+
+network + transactionHash + eventType
+
+Per token transfer considerare anche:
+
+logIndex
+
+in modo da distinguere correttamente più transfer presenti nella stessa transazione.
+
+⸻
+
+9. SICUREZZA NOTIFICHE
+
+MAI inserire nelle notifiche:
+
+* seed phrase;
+* private key;
+* PIN;
+* dati di signing;
+* materiale crittografico.
+
+Le notifiche possono utilizzare esclusivamente informazioni pubbliche della blockchain e dati locali necessari alla visualizzazione.
+
+⸻
+
+10. BACKUP OBBLIGATORIO
+
+Prima che l’utente possa utilizzare il wallet per depositare fondi, deve completare il backup della recovery phrase.
+
+Mostrare chiaramente:
+
+“Alpha Chat cannot recover your wallet if you lose your recovery phrase.”
+
+Non salvare la seed in chiaro.
+
+⸻
+
+11. ISOLAMENTO ASSOLUTO
+
+NON modificare:
+
+* MultiChain Payment Engine;
+* calculatePaymentQuote;
+* createMultiChainTransfer;
+* escrow;
+* Gas Station;
+* BTC Payment Engine;
+* BTC Treasury;
+* WalletConnect;
+* ThirdWeb;
+* USDA payment flow;
+* API esistenti dei pagamenti.
+
+Il nuovo Alpha Wallet deve rimanere completamente autonomo.
+
+⸻
+
+12. TEST OBBLIGATORI
+
+Aggiungere test per:
+
+Wallet
+
+* create;
+* import;
+* recovery;
+* backup;
+* PIN;
+* lock/unlock.
+
+Custom Token
+
+* valid contract;
+* invalid contract;
+* wrong network;
+* autodiscovery;
+* verified;
+* unverified;
+* fake USDT;
+* fake USDC;
+* fake USDA.
+
+Notifications
+
+* incoming;
+* outgoing;
+* pending;
+* confirmed;
+* failed;
+* duplicate transaction;
+* multiple token transfers nella stessa TX;
+* push permission denied;
+* nessun dato sensibile.
+
+Regression
+
+Tutti i test Phase A devono continuare a passare.
+
+⸻
+
+13. STOP CONDITION
+
+Al termine della Phase B:
+
+NON procedere automaticamente alla Phase C.
+
+Restituisci un report completo con:
+
+1. file creati;
+2. file modificati;
+3. test eseguiti;
+4. risultati;
+5. eventuali errori pre-esistenti;
+6. cosa è realmente funzionante;
+7. cosa è ancora mock;
+8. limitazioni PWA/iOS;
+9. conferma isolamento dal Payment Engine;
+10. conferma che seed/private key non arrivano mai al backend;
+11. stato delle notifiche in-app;
+12. stato delle push notification;
+13. stato del transaction monitoring.
+
+STOP e attendi la mia approvazione prima della Phase C.
+
+Così sì: notifiche, monitoring e custom token diventano parte reale della V1, non semplicemente una predisposizione.
