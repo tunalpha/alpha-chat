@@ -96,6 +96,8 @@ interface WalletContextValue {
   // Token custom
   addCustomToken: (token: TokenConfig) => Promise<void>;
   removeToken: (chainId: number, address: string) => Promise<void>;
+  // PIN management
+  changeWalletPIN: (oldPin: string, newPin: string) => Promise<void>;
 }
 
 // ─── Context ───────────────────────────────────────────────────────────────
@@ -290,6 +292,19 @@ export function WalletProvider({ children }: WalletProviderProps) {
     await _refreshCustomTokens();
   }, [_refreshCustomTokens]);
 
+  const changeWalletPIN = useCallback(async (oldPin: string, newPin: string): Promise<void> => {
+    if (!validatePin(newPin)) throw new Error("[AlphaWallet] Nuovo PIN non valido");
+    const entry = await loadKeystore();
+    if (!entry) throw new Error("[AlphaWallet] Keystore non trovato");
+    // Decripta con vecchio PIN (lancia eccezione se errato)
+    const seed = await decryptSeed(entry, oldPin);
+    // Ri-cifra con nuovo PIN
+    const newEntry = await encryptSeed(seed, newPin);
+    await saveKeystore(newEntry);
+    // Aggiorna cache biometrica
+    try { sessionStorage.setItem("aw_bio_pin", newPin); } catch { /* ignore */ }
+  }, []);
+
   return (
     <WalletContext.Provider
       value={{
@@ -312,6 +327,7 @@ export function WalletProvider({ children }: WalletProviderProps) {
         markNotificationRead: handleMarkRead,
         addCustomToken: addToken,
         removeToken,
+        changeWalletPIN,
       }}
     >
       {children}

@@ -79,13 +79,28 @@ type WalletSubView =
   | "backup-confirm"
   | "unlock"
   | "overview"
-  | "receive"        // Phase C
-  | "send"           // Phase C
+  | "receive"           // Phase C
+  | "send"              // Phase C
   | "notifications"
   | "add-token"
   | "security"
-  | "history"        // Phase F
-  | "seed-export";   // Phase F
+  | "history"           // Phase F
+  | "seed-export"       // Phase F
+  | "wallet-settings";  // Phase I — impostazioni wallet
+
+// ─── Currency preference hook ────────────────────────────────────────────────
+
+function useWalletCurrency() {
+  const [currency, setCurrencyState] = useState<"EUR" | "USD">(() => {
+    try { return (localStorage.getItem("aw_currency") as "EUR" | "USD" | null) ?? "EUR"; }
+    catch { return "EUR"; }
+  });
+  const setCurrency = useCallback((c: "EUR" | "USD") => {
+    try { localStorage.setItem("aw_currency", c); } catch { /* ignore */ }
+    setCurrencyState(c);
+  }, []);
+  return { currency, setCurrency };
+}
 
 const ONBOARDING_VIEWS: WalletSubView[] = [
   "create-phrase", "create-verify", "import-phrase",
@@ -200,6 +215,8 @@ function AlphaWalletInner({ onBack }: Props) {
         return <HistoryView onBack={() => setSubView("overview")} />;
       case "seed-export":
         return <SeedExportView onBack={() => setSubView("security")} />;
+      case "wallet-settings":
+        return <WalletSettingsView onBack={() => setSubView("overview")} onGoSecurity={() => setSubView("security")} onGoSeedExport={() => setSubView("seed-export")} />;
       default: return null;
     }
   };
@@ -208,7 +225,7 @@ function AlphaWalletInner({ onBack }: Props) {
   const subViewTitle: Partial<Record<WalletSubView, string>> = {
     overview: "Alpha Wallet", notifications: "Notifiche", "add-token": "Aggiungi Token",
     security: "Sicurezza", unlock: "Alpha Wallet", receive: "Ricevi", send: "Invia",
-    history: "Storico", "seed-export": "Recovery Phrase",
+    history: "Storico", "seed-export": "Recovery Phrase", "wallet-settings": "Impostazioni",
   };
 
   return (
@@ -241,7 +258,8 @@ function AlphaWalletInner({ onBack }: Props) {
                   🔔
                   {wallet.unreadCount > 0 && <span className="aw-badge">{wallet.unreadCount}</span>}
                 </button>
-                <button className="aw-icon-btn" onClick={() => setSubView("security")} aria-label="Sicurezza">🔒</button>
+                <button className="aw-icon-btn" onClick={() => wallet.lockWallet()} aria-label="Blocca wallet">🔒</button>
+                <button className="aw-icon-btn" onClick={() => setSubView("wallet-settings")} aria-label="Impostazioni">⚙️</button>
               </div>
             ) : <div />}
           </>
@@ -559,6 +577,7 @@ function UnlockView() {
 
 function OverviewView({ onNavigate }: { onNavigate: (v: WalletSubView) => void }) {
   const wallet = useWallet();
+  const { currency } = useWalletCurrency();
   const meta = wallet.meta;
   const isBtc = wallet.selectedChainId === 0;
   const net = getNetworkByChainId(wallet.selectedChainId);
@@ -610,20 +629,21 @@ function OverviewView({ onNavigate }: { onNavigate: (v: WalletSubView) => void }
 
   if (!meta) return null;
 
-  // Portfolio total in EUR
-  let totalEur: number | null = null;
+  // Portfolio total in selected currency
+  const fiatKey = currency.toLowerCase() as "eur" | "usd";
+  let totalFiatRaw: number | null = null;
   if (prices && !balanceLoading) {
     if (isBtc && btcBalance) {
-      totalEur = (Number(btcBalance.confirmedSat) / 1e8) * (prices.btc?.eur ?? 0);
+      totalFiatRaw = (Number(btcBalance.confirmedSat) / 1e8) * (prices.btc?.[fiatKey] ?? 0);
     } else if (chainBalance) {
-      totalEur = 0;
+      totalFiatRaw = 0;
       const nativeKey = wallet.selectedChainId === 1 ? "eth" : wallet.selectedChainId === 137 ? "pol" : "bnb";
-      const np = (prices[nativeKey as keyof AssetPrices] as { eur: number } | undefined)?.eur ?? 0;
-      totalEur += (Number(chainBalance.native.rawBalance) / 1e18) * np;
+      const np = (prices[nativeKey as keyof AssetPrices] as { eur: number; usd: number } | undefined)?.[fiatKey] ?? 0;
+      totalFiatRaw += (Number(chainBalance.native.rawBalance) / 1e18) * np;
       for (const t of chainBalance.tokens) {
         const sym = t.symbol.toLowerCase() as keyof AssetPrices;
-        const p = (prices[sym] as { eur: number } | undefined)?.eur ?? 0;
-        totalEur += (Number(t.rawBalance) / 10 ** t.decimals) * p;
+        const p = (prices[sym] as { eur: number; usd: number } | undefined)?.[fiatKey] ?? 0;
+        totalFiatRaw += (Number(t.rawBalance) / 10 ** t.decimals) * p;
       }
     }
   }
@@ -634,8 +654,8 @@ function OverviewView({ onNavigate }: { onNavigate: (v: WalletSubView) => void }
       ? (btcBalance?.formatted ?? "0.00000000 BTC")
       : (chainBalance?.native.formatted ?? `0 ${wallet.selectedChainId === 1 ? "ETH" : wallet.selectedChainId === 137 ? "POL" : "BNB"}`);
 
-  const totalFiat = totalEur !== null
-    ? new Intl.NumberFormat("it-IT", { style: "currency", currency: "EUR", maximumFractionDigits: 2 }).format(totalEur)
+  const totalFiat = totalFiatRaw !== null
+    ? new Intl.NumberFormat(currency === "EUR" ? "it-IT" : "en-US", { style: "currency", currency, maximumFractionDigits: 2 }).format(totalFiatRaw)
     : null;
 
   const address = isBtc ? meta.btcAddress : meta.evmAddress;
@@ -705,7 +725,7 @@ function OverviewView({ onNavigate }: { onNavigate: (v: WalletSubView) => void }
         <div className="aw-section-title" style={{ margin: 0 }}>Asset</div>
         <button className="aw-section-link" onClick={() => onNavigate("add-token")}>+ Aggiungi</button>
       </div>
-      <AssetList chainId={wallet.selectedChainId} chainBalance={chainBalance} btcBalance={btcBalance} prices={prices} loading={balanceLoading} />
+      <AssetList chainId={wallet.selectedChainId} chainBalance={chainBalance} btcBalance={btcBalance} prices={prices} loading={balanceLoading} currency={currency} />
 
       {/* Push notification prompt */}
       {notifPermission === "default" && (
@@ -739,9 +759,10 @@ interface AssetListProps {
   btcBalance:   BtcBalance | null;
   prices:       AssetPrices | null;
   loading:      boolean;
+  currency:     "EUR" | "USD";
 }
 
-function AssetList({ chainId, chainBalance, btcBalance, prices, loading }: AssetListProps) {
+function AssetList({ chainId, chainBalance, btcBalance, prices, loading, currency }: AssetListProps) {
   const wallet = useWallet();
   const isBtc = chainId === 0;
   const verifiedTokens = getVerifiedTokens(isBtc ? 137 : chainId);
@@ -749,7 +770,7 @@ function AssetList({ chainId, chainBalance, btcBalance, prices, loading }: Asset
   if (isBtc) {
     const btcPrice = prices?.btc ?? null;
     const fiatStr  = btcBalance && btcPrice
-      ? formatFiat(btcBalance.confirmedSat, 8, btcPrice, "EUR")
+      ? formatFiat(btcBalance.confirmedSat, 8, btcPrice, currency)
       : null;
     return (
       <div className="aw-asset-list">
@@ -777,7 +798,7 @@ function AssetList({ chainId, chainBalance, btcBalance, prices, loading }: Asset
         const n = chainBalance.native;
         const nKey = chainId === 1 ? "eth" : chainId === 137 ? "pol" : "bnb";
         const nPrice = prices ? prices[nKey as keyof AssetPrices] as { usd: number; eur: number } | undefined : null;
-        const fiatStr = nPrice ? formatFiat(n.rawBalance, 18, nPrice, "EUR") : null;
+        const fiatStr = nPrice ? formatFiat(n.rawBalance, 18, nPrice, currency) : null;
         return (
           <div className="aw-asset-item">
             <div className="aw-asset-icon">⬡</div>
@@ -802,7 +823,7 @@ function AssetList({ chainId, chainBalance, btcBalance, prices, loading }: Asset
         const fmtBal = loading ? "…" : formatCrypto(bal, t.decimals, t.symbol);
         const sym    = t.symbol.toLowerCase() as keyof AssetPrices;
         const price  = prices ? prices[sym] as { usd: number; eur: number } | undefined : null;
-        const fiat   = !loading && price ? formatFiat(bal, t.decimals, price, "EUR") : null;
+        const fiat   = !loading && price ? formatFiat(bal, t.decimals, price, currency) : null;
         const isVerifiedToken = t.verification === "verified";
         const isCustomToken   = t.verification === "custom";
         return (
@@ -1395,6 +1416,223 @@ function SecurityView({ onBack, onForget, onExportSeed }: { onBack: () => void; 
           )
         }
       </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// WALLET SETTINGS VIEW (Phase I)
+// ═══════════════════════════════════════════════════════════════════════════
+
+type PinChangeStep = "idle" | "verify-old" | "enter-new" | "confirm-new";
+
+function WalletSettingsView({
+  onBack,
+  onGoSecurity,
+  onGoSeedExport,
+}: {
+  onBack: () => void;
+  onGoSecurity: () => void;
+  onGoSeedExport: () => void;
+}) {
+  const wallet = useWallet();
+  const { currency, setCurrency } = useWalletCurrency();
+
+  // ── Change PIN flow ──────────────────────────────────────────────────────
+  const [pinStep, setPinStep] = useState<PinChangeStep>("idle");
+  const [oldPin, setOldPin] = useState("");
+  const [newPin, setNewPin] = useState("");
+  const [confirmPin, setConfirmPin] = useState("");
+  const [pinError, setPinError] = useState<string | null>(null);
+  const [pinLoading, setPinLoading] = useState(false);
+  const [pinSuccess, setPinSuccess] = useState(false);
+
+  const resetPinFlow = () => {
+    setPinStep("idle");
+    setOldPin(""); setNewPin(""); setConfirmPin("");
+    setPinError(null); setPinLoading(false);
+  };
+
+  const handleVerifyOld = async () => {
+    if (oldPin.length < 6) { setPinError("PIN troppo corto"); return; }
+    setPinLoading(true); setPinError(null);
+    // Verifica vecchio PIN provando a sbloccare (senza modificare lo stato del wallet)
+    try {
+      const entry = await loadKeystore();
+      if (!entry) throw new Error("Keystore non trovato");
+      await decryptSeed(entry, oldPin);
+      setPinStep("enter-new");
+    } catch {
+      setPinError("PIN attuale errato. Riprova.");
+    } finally {
+      setPinLoading(false);
+    }
+  };
+
+  const handleNewPin = () => {
+    const err = pinValidationError(newPin);
+    if (err) { setPinError(err); return; }
+    setPinError(null);
+    setPinStep("confirm-new");
+  };
+
+  const handleConfirmNew = async () => {
+    if (confirmPin !== newPin) { setPinError("I PIN non corrispondono"); return; }
+    setPinLoading(true); setPinError(null);
+    try {
+      await wallet.changeWalletPIN(oldPin, newPin);
+      setPinSuccess(true);
+      setTimeout(() => { setPinSuccess(false); resetPinFlow(); }, 2000);
+    } catch (e) {
+      setPinError(e instanceof Error ? e.message : "Errore durante il cambio PIN");
+    } finally {
+      setPinLoading(false);
+    }
+  };
+
+  const renderPinFlow = () => {
+    if (pinSuccess) {
+      return (
+        <div className="aw-settings-pin-success">✅ PIN aggiornato con successo</div>
+      );
+    }
+    switch (pinStep) {
+      case "verify-old":
+        return (
+          <div className="aw-settings-pin-flow">
+            <p className="aw-sub">Inserisci il PIN attuale</p>
+            <input type="password" inputMode="numeric" className="aw-input aw-input--pin" value={oldPin}
+              onChange={e => { setOldPin(e.target.value.replace(/\D/g, "")); setPinError(null); }}
+              onKeyDown={e => e.key === "Enter" && void handleVerifyOld()}
+              maxLength={12} placeholder="••••••" autoFocus />
+            {pinError && <div className="aw-error">{pinError}</div>}
+            <div className="aw-btn-row">
+              <button className="aw-btn aw-btn--secondary" onClick={resetPinFlow}>Annulla</button>
+              <button className="aw-btn aw-btn--primary" onClick={handleVerifyOld} disabled={pinLoading || oldPin.length < 6}>
+                {pinLoading ? "Verifica…" : "Avanti →"}
+              </button>
+            </div>
+          </div>
+        );
+      case "enter-new":
+        return (
+          <div className="aw-settings-pin-flow">
+            <p className="aw-sub">Scegli il nuovo PIN (min. 6 cifre)</p>
+            <input type="password" inputMode="numeric" className="aw-input aw-input--pin" value={newPin}
+              onChange={e => { setNewPin(e.target.value.replace(/\D/g, "")); setPinError(null); }}
+              onKeyDown={e => e.key === "Enter" && handleNewPin()}
+              maxLength={12} placeholder="••••••" autoFocus />
+            {pinError && <div className="aw-error">{pinError}</div>}
+            <div className="aw-btn-row">
+              <button className="aw-btn aw-btn--secondary" onClick={resetPinFlow}>Annulla</button>
+              <button className="aw-btn aw-btn--primary" onClick={handleNewPin} disabled={newPin.length < 6}>
+                Avanti →
+              </button>
+            </div>
+          </div>
+        );
+      case "confirm-new":
+        return (
+          <div className="aw-settings-pin-flow">
+            <p className="aw-sub">Conferma il nuovo PIN</p>
+            <input type="password" inputMode="numeric" className="aw-input aw-input--pin" value={confirmPin}
+              onChange={e => { setConfirmPin(e.target.value.replace(/\D/g, "")); setPinError(null); }}
+              onKeyDown={e => e.key === "Enter" && void handleConfirmNew()}
+              maxLength={12} placeholder="••••••" autoFocus />
+            {pinError && <div className="aw-error">{pinError}</div>}
+            <div className="aw-btn-row">
+              <button className="aw-btn aw-btn--secondary" onClick={resetPinFlow}>Annulla</button>
+              <button className="aw-btn aw-btn--primary" onClick={handleConfirmNew} disabled={pinLoading || confirmPin.length < 6}>
+                {pinLoading ? "Salvataggio…" : "Conferma →"}
+              </button>
+            </div>
+          </div>
+        );
+      default:
+        return (
+          <button className="aw-settings-item" onClick={() => { resetPinFlow(); setPinStep("verify-old"); }}>
+            <span className="aw-settings-item-icon">🔑</span>
+            <span className="aw-settings-item-label">Cambia PIN</span>
+            <span className="aw-settings-item-chevron">›</span>
+          </button>
+        );
+    }
+  };
+
+  return (
+    <div className="aw-settings">
+
+      {/* ── Preferenze ─────────────────────────────────────────────────── */}
+      <div className="aw-settings-section">
+        <div className="aw-settings-section-title">Preferenze</div>
+
+        {/* Valuta di visualizzazione */}
+        <div className="aw-settings-item aw-settings-item--row">
+          <span className="aw-settings-item-icon">💱</span>
+          <span className="aw-settings-item-label">Valuta</span>
+          <div className="aw-segmented">
+            <button
+              className={`aw-segmented-btn ${currency === "EUR" ? "aw-segmented-btn--active" : ""}`}
+              onClick={() => setCurrency("EUR")}
+            >EUR €</button>
+            <button
+              className={`aw-segmented-btn ${currency === "USD" ? "aw-segmented-btn--active" : ""}`}
+              onClick={() => setCurrency("USD")}
+            >USD $</button>
+          </div>
+        </div>
+      </div>
+
+      {/* ── Sicurezza ──────────────────────────────────────────────────── */}
+      <div className="aw-settings-section">
+        <div className="aw-settings-section-title">Sicurezza</div>
+
+        {/* Cambio PIN */}
+        <div className="aw-settings-expandable">
+          {renderPinFlow()}
+        </div>
+
+        {/* Recovery phrase */}
+        <button className="aw-settings-item" onClick={onGoSeedExport}>
+          <span className="aw-settings-item-icon">📋</span>
+          <span className="aw-settings-item-label">Recovery phrase</span>
+          <span className="aw-settings-item-chevron">›</span>
+        </button>
+
+        {/* Stato backup */}
+        <div className="aw-settings-item aw-settings-item--info">
+          <span className="aw-settings-item-icon">{wallet.meta?.backupVerified ? "✅" : "⚠️"}</span>
+          <span className="aw-settings-item-label">
+            Backup {wallet.meta?.backupVerified ? "completato" : "non completato"}
+          </span>
+        </div>
+
+        {/* Sicurezza avanzata */}
+        <button className="aw-settings-item" onClick={onGoSecurity}>
+          <span className="aw-settings-item-icon">🛡️</span>
+          <span className="aw-settings-item-label">Sicurezza avanzata</span>
+          <span className="aw-settings-item-chevron">›</span>
+        </button>
+
+        {/* Blocca wallet */}
+        <button className="aw-settings-item aw-settings-item--lock" onClick={() => { wallet.lockWallet(); onBack(); }}>
+          <span className="aw-settings-item-icon">🔒</span>
+          <span className="aw-settings-item-label">Blocca wallet</span>
+        </button>
+      </div>
+
+      {/* ── Informazioni ───────────────────────────────────────────────── */}
+      <div className="aw-settings-section">
+        <div className="aw-settings-section-title">Informazioni</div>
+        <div className="aw-settings-item aw-settings-item--info">
+          <span className="aw-settings-item-icon">ℹ️</span>
+          <div>
+            <div className="aw-settings-item-label">Alpha Wallet</div>
+            <div className="aw-settings-item-sub">Self-custodial · Le chiavi restano sul dispositivo</div>
+          </div>
+        </div>
+      </div>
+
     </div>
   );
 }

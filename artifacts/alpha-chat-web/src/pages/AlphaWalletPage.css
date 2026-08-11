@@ -16,7 +16,8 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: calc(env(safe-area-inset-top, 0px) + 14px) 16px 14px;
+  padding: 14px 16px;
+  padding-top: calc(14px + var(--sat, env(safe-area-inset-top, 0px)));
   border-bottom: 1px solid var(--border-subtle, rgba(255,255,255,.07));
   flex-shrink: 0;
 }
@@ -31,12 +32,19 @@
   border: none;
   color: inherit;
   cursor: pointer;
-  padding: 4px;
-  border-radius: 8px;
+  width: 44px;
+  height: 44px;
+  min-height: unset;
+  min-width: unset;
+  border-radius: 50%;
   display: flex;
   align-items: center;
+  justify-content: center;
   opacity: 0.8;
   transition: opacity .15s;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+  flex-shrink: 0;
 }
 .aw-back-btn:hover { opacity: 1; }
 .aw-icon-btn {
@@ -1091,3 +1099,104 @@
   align-items: center;
 }
 .aw-seed-export-word-num { font-size: 10px; color: rgba(255,255,255,.3); min-width: 16px; }
+
+/* ── Wallet Settings View ────────────────────────────────────────────────── */
+.aw-settings {
+  padding: 12px 0 40px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+}
+.aw-settings-section {
+  padding: 0 16px;
+  margin-top: 16px;
+}
+.aw-settings-section-title {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.6px;
+  text-transform: uppercase;
+  color: rgba(255,255,255,.35);
+  margin-bottom: 8px;
+  padding: 0 4px;
+}
+.aw-settings-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  background: rgba(255,255,255,.05);
+  border: none;
+  border-radius: 12px;
+  padding: 14px 16px;
+  color: inherit;
+  cursor: pointer;
+  text-align: left;
+  margin-bottom: 6px;
+  transition: background .15s;
+  touch-action: manipulation;
+  min-height: unset;
+  min-width: unset;
+}
+.aw-settings-item:hover { background: rgba(255,255,255,.08); }
+.aw-settings-item--row {
+  justify-content: space-between;
+  cursor: default;
+}
+.aw-settings-item--row:hover { background: rgba(255,255,255,.05); }
+.aw-settings-item--info { cursor: default; }
+.aw-settings-item--info:hover { background: rgba(255,255,255,.05); }
+.aw-settings-item--lock { color: rgba(255,200,100,.9); }
+.aw-settings-item-icon { font-size: 18px; flex-shrink: 0; }
+.aw-settings-item-label { flex: 1; font-size: 15px; font-weight: 500; }
+.aw-settings-item-sub { font-size: 12px; color: rgba(255,255,255,.4); margin-top: 2px; }
+.aw-settings-item-chevron { color: rgba(255,255,255,.3); font-size: 20px; font-weight: 300; }
+
+/* Segmented control (EUR / USD) */
+.aw-segmented {
+  display: flex;
+  background: rgba(255,255,255,.08);
+  border-radius: 8px;
+  padding: 3px;
+  gap: 2px;
+}
+.aw-segmented-btn {
+  padding: 5px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: rgba(255,255,255,.5);
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  transition: background .15s, color .15s;
+  min-height: unset;
+  min-width: unset;
+  touch-action: manipulation;
+}
+.aw-segmented-btn--active {
+  background: var(--accent, #6366f1);
+  color: #fff;
+}
+
+/* Change PIN expandable area */
+.aw-settings-expandable { margin-bottom: 6px; }
+.aw-settings-pin-flow {
+  background: rgba(255,255,255,.05);
+  border-radius: 12px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.aw-settings-pin-success {
+  background: rgba(74,222,128,.1);
+  border: 1px solid rgba(74,222,128,.25);
+  border-radius: 12px;
+  padding: 14px 16px;
+  font-size: 14px;
+  font-weight: 500;
+  color: #4ade80;
+  text-align: center;
+}
