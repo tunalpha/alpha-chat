@@ -1,0 +1,271 @@
+Perfetto. Phase B è promossa. Il risultato 238/238 e soprattutto 0 regressioni è quello che volevamo.
+
+C’è però una distinzione importante: non è ancora un wallet operativo per movimentare fondi. La base è pronta, ma Phase C è quella che lo trasformerà in un wallet realmente utilizzabile.
+
+Stato attuale
+
+Funzione	Stato
+Creazione wallet	✅
+Import/recovery	✅
+BIP-39 / BIP-44 / BIP-84	✅
+Cifratura AES-256-GCM	✅
+PIN / lock / unlock	✅
+Backup seed	✅
+Custom token import	✅
+Anti-phishing token	✅
+Notifiche in-app	✅
+Deduplicazione notifiche	✅
+Transaction monitoring	✅ architettura
+EVM balance reale	⏳ Phase C
+BTC balance reale	⏳ Phase C
+Invio EVM	⏳ Phase C
+Invio BTC	⏳ Phase C
+Push background	⏳ da progettare
+Integrazione pagamenti Alpha	❌ volutamente esclusa
+
+Una cosa particolarmente positiva
+
+Il fatto che il server non conosca gli address dei wallet è coerente con il modello self-custodial. Però significa che per le push notification in background servirà in futuro progettare un meccanismo separato che non comprometta questo principio.
+
+Non farei quindi modificare adesso l’architettura per “risolvere” le push.
+
+Prossimo passo
+
+Io darei il via a Phase C, ma con un audit/implementazione molto controllata perché qui iniziamo a toccare RPC, saldi reali, gas e soprattutto signing/broadcast.
+
+Il prompt che userei è:
+
+PHASE C — APPROVATA
+
+Procedi con Phase C del nuovo Alpha Wallet.
+
+Obiettivo: rendere il wallet capace di leggere i saldi reali on-chain e predisporre/implementare l’invio self-custodial, mantenendo l’isolamento assoluto dal Payment Engine esistente.
+
+1. Balance Reader
+
+Implementare saldi reali per:
+
+Ethereum
+
+* ETH
+* USDT
+* USDC
+
+Polygon
+
+* POL
+* USDT
+* USDC
+* USDA
+
+BSC
+
+* BNB
+* USDT
+* USDC
+
+Bitcoin
+
+* BTC
+
+Utilizzare esclusivamente dati blockchain reali.
+
+Non utilizzare mock balance.
+
+2. Token Registry
+
+Il Token Registry deve essere l’unica fonte per:
+
+* contract address;
+* decimals;
+* symbol;
+* network;
+* verified status.
+
+Per i custom token utilizzare il contract address e leggere balanceOf con i decimals verificati.
+
+Prestare particolare attenzione a BSC USDT = 18 decimals.
+
+3. Fiat valuation
+
+Mostrare:
+
+* quantità crypto;
+* equivalente EUR;
+* equivalente USD.
+
+Utilizzare il price provider già presente nel progetto, senza modificare il sistema di pricing del Payment Engine.
+
+Separare chiaramente:
+
+on-chain balance
+
+da
+
+fiat valuation.
+
+4. Send EVM
+
+Implementare il vero flow self-custodial:
+
+Asset → Network → Recipient → Amount → Fee → Confirm → Local authentication → Local signing → Broadcast
+
+La private key deve rimanere esclusivamente locale.
+
+Il backend non deve mai ricevere:
+
+* seed;
+* private key;
+* decrypted wallet;
+* signing material.
+
+5. Gas
+
+Per le transazioni native/ERC-20:
+
+mostrare all’utente una stima reale della network fee prima della firma.
+
+Non utilizzare:
+
+* Gas Station;
+* escrow;
+* network fee del Payment Engine;
+* project fee;
+* fee configuration del Payment Engine.
+
+Il nuovo Alpha Wallet è un wallet self-custodial indipendente.
+
+6. ERC-20
+
+Per USDT/USDC/USDA/custom token:
+
+verificare:
+
+* balance;
+* decimals;
+* allowance solo se realmente necessaria;
+* gas;
+* recipient;
+* amount.
+
+Mostrare sempre network e token contract nei dettagli della conferma.
+
+7. Bitcoin
+
+Implementare balance BTC reale tramite UTXO.
+
+Preparare il send flow:
+
+BTC → recipient → amount → fee → confirm → local signing → broadcast
+
+Utilizzare BIP-84 e Native SegWit.
+
+Implementare correttamente:
+
+* UTXO selection;
+* fee estimation;
+* change;
+* dust;
+* insufficient balance.
+
+Non utilizzare l’escrow BTC esistente.
+
+8. Confirmation screen
+
+Prima della firma mostrare chiaramente:
+
+EVM
+
+Asset
+Network
+Amount
+Recipient
+Network fee
+Total
+
+BTC
+
+BTC amount
+Recipient
+Miner fee
+Total
+
+L’utente deve poter annullare prima della firma.
+
+9. Security
+
+Ogni signing deve richiedere:
+
+* wallet unlock;
+* PIN/biometric authentication secondo l’architettura Phase A/B.
+
+Mai loggare:
+
+* private key;
+* seed;
+* transaction signing payload contenente materiale segreto.
+
+10. Error handling
+
+Gestire esplicitamente:
+
+* RPC unavailable;
+* insufficient balance;
+* insufficient gas;
+* invalid recipient;
+* invalid amount;
+* token contract failure;
+* transaction rejected;
+* broadcast failure;
+* Bitcoin insufficient UTXO;
+* Bitcoin dust/change problems.
+
+Non mostrare errori tecnici incomprensibili all’utente.
+
+11. Testing
+
+Testare:
+
+* ETH balance;
+* ERC-20 balance;
+* BTC balance;
+* decimals;
+* fiat conversion;
+* gas estimation;
+* EVM transaction creation;
+* local signing;
+* Bitcoin transaction creation;
+* UTXO selection;
+* change;
+* insufficient balance;
+* invalid recipient;
+* signing rejection;
+* broadcast failure.
+
+Aggiungere regression test per assicurare che:
+
+Payment Engine = completamente invariato.
+
+12. STOP CONDITION
+
+Al termine della Phase C:
+
+NON procedere automaticamente alla fase successiva.
+
+Restituire:
+
+* file creati;
+* file modificati;
+* test totali;
+* test passati/falliti;
+* cosa è realmente on-chain;
+* cosa è ancora mock;
+* reti testate;
+* asset testati;
+* eventuali limitazioni PWA/iOS;
+* conferma che seed/private key non lasciano il dispositivo;
+* conferma che Payment Engine, USDA, ThirdWeb, WalletConnect, escrow e Gas Station non sono stati modificati.
+
+STOP e attendi approvazione esplicita prima della Phase D.
+
+Io procederei così: Phase C è il passaggio decisivo. Dopo questa fase potremo verificare realmente un saldo USDT/USDC/BTC dentro Alpha Wallet e, soprattutto, capire quanto è solida la parte di firma locale prima di aggiungere ulteriori funzioni.

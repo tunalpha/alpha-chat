@@ -29,3 +29,10 @@ export { txMonitor } from "./monitoring/tx-monitor";
 // Context
 export { WalletProvider, useWallet } from "./context/WalletContext";
 export type { WalletPhase } from "./context/WalletContext";
+
+// Phase C — Services
+export * from "./services/balance-service";
+export * from "./services/price-service";
+export * from "./services/gas-service";
+export * from "./services/evm-signer";
+export * from "./services/btc-signer";

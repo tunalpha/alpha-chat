@@ -74,3 +74,4 @@
 - [MultiChain WC chain prop bug](multichain-wc-chain-prop.md) — ConnectButton senza chain= → eip155:56 mai nel namespace WC → "BSC non accettata"; fix: chain={evmChain ?? polygon}
 - [Alpha Wallet Phase A — core crypto](alpha-wallet-phase-a.md) — @scure/bip39 v2.x wordlist import, IDB singleton, fake-indexeddb per test, 173 test green
 - [Alpha Wallet Phase B — UI + services](alpha-wallet-phase-b.md) — walletRequest() inline, subViewRef sync guard, create-flow PIN/backup split, 238 test green
+- [Alpha Wallet Phase C — Real balances + EVM/BTC send](alpha-wallet-phase-c.md) — on-chain balance/prices/send; key zeroed in finally; AppError(CODE,status); BSC USDT 18dec; 321 test green

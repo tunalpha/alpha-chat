@@ -45,6 +45,12 @@ export interface BtcWallet {
   address: string;
   /** Chiave pubblica compressa (33 bytes) */
   publicKey: Uint8Array;
+  /**
+   * Private key (32 bytes).
+   * ⚠️ Usare SOLO per firmare, poi azzerare con .fill(0).
+   * Non salvare in stato React, localStorage o IDB.
+   */
+  privateKey: Uint8Array;
   /** Path BIP-84 completo */
   derivationPath: string;
   /** Indice account (default 0) */
@@ -53,7 +59,8 @@ export interface BtcWallet {
 
 // ─── Helper ────────────────────────────────────────────────────────────────
 
-function toHexKey(bytes: Uint8Array): `0x${string}` {
+/** Converts Uint8Array to 0x-prefixed hex string (for viem's privateKeyToAccount). */
+export function toHexKey(bytes: Uint8Array): `0x${string}` {
   return `0x${Array.from(bytes)
     .map(b => b.toString(16).padStart(2, "0"))
     .join("")}` as `0x${string}`;
@@ -127,9 +134,14 @@ export async function deriveBtcWallet(
     throw new Error("[AlphaWallet] Failed to compute BTC P2WPKH address");
   }
 
+  if (!child.privateKey) {
+    throw new Error("[AlphaWallet] BTC private key derivation failed");
+  }
+
   return {
-    address: payment.address,
-    publicKey: child.publicKey,
+    address:        payment.address,
+    publicKey:      child.publicKey,
+    privateKey:     child.privateKey,
     derivationPath: path,
     index,
   };
