@@ -1,5 +1,5 @@
 /**
- * Alpha Wallet — Routes (Phase B + C)
+ * Alpha Wallet — Routes (Phase B + C + G)
  *
  * ISOLAMENTO: nessuna dipendenza dal Payment Engine esistente.
  * SICUREZZA: tutti gli endpoint richiedono autenticazione.
@@ -10,6 +10,7 @@
 import { Router } from "express";
 import rateLimit from "express-rate-limit";
 import { authenticate } from "../../middleware/authenticate.middleware";
+import { requireAdmin } from "../../middleware/require-admin.middleware";
 import {
   getEvmTokenInfo,
   getEvmBalance,
@@ -22,6 +23,9 @@ import {
   broadcastBtcTx,
   getBtcTransactions,
   getWalletPrices,
+  // Phase G: Platform Fee Config
+  getFeeConfig,
+  updateFeeConfig,
 } from "../../controllers/alpha-wallet.controller";
 
 const router = Router();
@@ -77,5 +81,12 @@ router.get("/btc/transactions", getBtcTransactions);
 // ── Prices (Phase C) ──────────────────────────────────────────────────────
 /** GET /prices — returns ETH, POL, BNB, BTC, stablecoins in USD+EUR */
 router.get("/prices", getWalletPrices);
+
+// ── Platform Fee Config (Phase G) ─────────────────────────────────────────
+/** GET /fee-config — platform fee config (authenticated user) */
+router.get("/fee-config", getFeeConfig);
+
+/** PATCH /fee-config — update platform fee (super_admin only) */
+router.patch("/fee-config", requireAdmin("super_admin"), updateFeeConfig);
 
 export default router;

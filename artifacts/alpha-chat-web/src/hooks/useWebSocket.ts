@@ -34,7 +34,14 @@ export type WsEvent =
   // Chat Payment Engine (Sprint 4)
   | { type: "payment.state_changed"; payload: Record<string, unknown> }
   // Signal session reset (gestito in WebSocketContext)
-  | { type: "signal.session.reset"; payload: Record<string, unknown> };
+  | { type: "signal.session.reset"; payload: Record<string, unknown> }
+  // Multi-Chain Payment Engine
+  | { type: "mc_payment.state_changed"; payload: Record<string, unknown> }
+  // Message reactions
+  | { type: "message.reaction"; payload: Record<string, unknown> }
+  // Phase G — Alpha Wallet self-custodial TX confirmation
+  // REGOLA §15: questo evento aggiorna solo il bubble, NON autorizza TX
+  | { type: "wallet_payment.confirmed"; payload: Record<string, unknown> };
 
 type EventHandler = (event: WsEvent) => void;
 

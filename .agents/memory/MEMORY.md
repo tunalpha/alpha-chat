@@ -76,3 +76,4 @@
 - [Alpha Wallet Phase B — UI + services](alpha-wallet-phase-b.md) — walletRequest() inline, subViewRef sync guard, create-flow PIN/backup split, 238 test green
 - [Alpha Wallet Phase C — Real balances + EVM/BTC send](alpha-wallet-phase-c.md) — on-chain balance/prices/send; key zeroed in finally; AppError(CODE,status); BSC USDT 18dec; 321 test green
 - [Alpha Wallet Phase F — Finalization](alpha-wallet-phase-f.md) — tx-store IDB v3, tx-monitor enhanced, HistoryView+TxDetailView+SeedExportView, 563 test green; Phase G locked
+- [Alpha Wallet Phase G — ChatWalletBridge](alpha-wallet-phase-g.md) — WalletProvider elevato al root (rimosso da AlphaWalletPage); ChatWalletBridgeProvider wrappa internamente; sendPayment richiede onAuthRequired callback; WsEvent esteso; platform fee model+controller; 583 test green

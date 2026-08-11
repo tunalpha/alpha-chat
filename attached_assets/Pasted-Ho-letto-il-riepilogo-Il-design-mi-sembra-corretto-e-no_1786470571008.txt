@@ -1,0 +1,95 @@
+Ho letto il riepilogo. Il design mi sembra corretto e non cambierei l’architettura B proposta.
+
+L’unico punto che voglio fissare bene prima del codice è proprio il §3.1: elevare WalletProvider al root è accettabile, purché non significhi rendere la Chat proprietaria del wallet.
+
+La struttura ideale resta:
+
+                    Alpha Chat App
+                         │
+                ┌────────┴────────┐
+                │                 │
+          ChatWalletBridge    Alpha Wallet UI
+                │                 │
+                └────────┬────────┘
+                         │
+                  WalletProvider
+                         │
+              ┌──────────┴──────────┐
+              │                     │
+        EVM/BTC services       Keystore/Signer
+
+La Chat vede solo il Bridge.
+
+Prima di dare il via alla G
+
+Aggiungerei però al design un requisito che avevamo appena discusso:
+
+Platform Fee Alpha Wallet configurabile da Admin.
+
+Deve essere una configurazione separata da quella del Payment Engine.
+
+Per esempio:
+
+Alpha Wallet Platform Fee
+0,10% = 10 bps
+
+Admin deve poterla modificare, con:
+
+* valore in bps;
+* validazione min/max;
+* eventuale configurazione per network/asset se prevista dalla spec;
+* audit log di chi l’ha modificata;
+* valore applicato ai nuovi pagamenti;
+* nessuna modifica alla fee del Payment Engine.
+
+E il wallet deve mostrare sempre prima della firma:
+
+Destinatario       100,00 USDC
+Platform fee         0,10 USDC
+Network fee          0,XX USDC
+──────────────────────────────
+Totale pagato      100,XX USDC
+
+Per BTC:
+
+Destinatario       0,00100000 BTC
+Platform fee       0,00000XXX BTC
+Miner fee          0,00000XXX BTC
+──────────────────────────────
+Totale pagato      0,00100XXX BTC
+
+Mai fondere Platform Fee e Network/Miner Fee.
+
+E una regola che considero fondamentale
+
+La fee deve essere calcolata prima della firma e congelata per quella transazione.
+
+Quindi:
+
+Quote
+ ↓
+Platform fee
+ ↓
+Network fee
+ ↓
+Totale
+ ↓
+Conferma utente
+ ↓
+PIN / Face ID
+ ↓
+Firma
+
+Se l’Admin modifica la fee mentre l’utente è nella schermata di conferma, non deve cambiare silenziosamente l’importo della transazione già presentata. La quote deve essere invalidata/ricalcolata oppure mantenuta secondo una validità temporale esplicita.
+
+Questo lo inserirei nei §7/§16 del documento.
+
+Quindi il mio via è:
+
+✅ Approvo §3.1 — WalletProvider al root.
+✅ Approvo architettura B — Context dedicato.
+✅ Approvo ChatWalletBridge come unica superficie Chat → Wallet.
+✅ Approvo isolamento totale dal Payment Engine.
+➕ Aggiungere Platform Fee Alpha Wallet configurabile da Admin prima dell’implementazione.
+
+Dopo questa integrazione della specifica, si può dare il via alla Phase G implementation.

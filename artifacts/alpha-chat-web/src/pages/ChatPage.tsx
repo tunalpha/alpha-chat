@@ -14,6 +14,12 @@ import { MultiChainRequestSheet }     from "../components/multichain/MultiChainR
 import { MultiChainPaymentBubble }    from "../components/multichain/MultiChainPaymentBubble";
 import { MultiChainPayRequestSheet }  from "../components/multichain/MultiChainPayRequestSheet";
 import { ErrorBoundary }             from "../components/ErrorBoundary";
+// Phase G — Alpha Wallet self-custodial payments (ISOLATO dal Payment Engine)
+import { ChatWalletPaymentBubble }   from "../components/chat/ChatWalletPaymentBubble";
+import type { WalletPaymentMeta }    from "../components/chat/ChatWalletPaymentBubble";
+import { ChatWalletPaySheet }        from "../components/chat/ChatWalletPaySheet";
+import { useChatWalletBridge }       from "../wallet/bridge/chat-wallet-bridge-context";
+import type { ChatPaymentResult }    from "../wallet/bridge/chat-wallet-bridge";
 import type { MCSystemMeta }        from "../lib/multichain-api";
 
 import type { UsdaPaymentData } from "../lib/usda-types";
@@ -810,6 +816,8 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
   const { auth, logout, logoutAll } = useAuth();
   const { connected, on, send: wsSend, sendTypingStart, sendTypingStop, onlineUsers } = useWs();
   const { initiateCall } = useCall();
+  // Phase G §15: bridge è read-only qui — sendPayment() è chiamato SOLO da ChatWalletPaySheet
+  const walletBridge = useChatWalletBridge();
 
   const { t } = useTranslation();
   const [conversations, setConversations] = useState<ConversationItem[]>([]);
@@ -895,6 +903,9 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
   // ── USDA Payments ──────────────────────────────────────────────────────
   const [showSendUsda,    setShowSendUsda]    = useState(false);   // legacy — non più connesso al pulsante
   const [showSendPayment, setShowSendPayment] = useState(false);   // nuovo Payment Engine
+  // Phase G — Alpha Wallet self-custodial (SEPARATO dal Payment Engine)
+  // REGOLA §15: showWalletPay è settato SOLO da tap utente, MAI da eventi WS/remoti
+  const [showWalletPay,   setShowWalletPay]   = useState(false);
   // ── Multi-Chain Payments ─────────────────────────────────────────────
   const [showMCPay,      setShowMCPay]      = useState(false);
   const [showMCRequest,  setShowMCRequest]  = useState(false);
@@ -1857,6 +1868,20 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
               };
             }),
           );
+          break;
+        }
+
+        // Phase G — Alpha Wallet: aggiorna stato TX nel bubble wallet_payment in-place
+        // REGOLA §15: questo handler NON chiama sendPayment(). Aggiorna solo l'UI.
+        case "wallet_payment.confirmed": {
+          const { txHash, status: wpStatus } = event.payload as { txHash?: string; status?: string };
+          if (!txHash) break;
+          setMessages(prev => prev.map(m => {
+            if (m.message_type !== "wallet_payment") return m;
+            const meta = m.system_metadata as Record<string, unknown>;
+            if (meta?.txHash !== txHash) return m;
+            return { ...m, system_metadata: { ...meta, status: wpStatus ?? "confirmed" } };
+          }));
           break;
         }
 
@@ -3936,6 +3961,16 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
                               </div>
                             );
                           })()
+                        ) : msg.message_type === "wallet_payment" ? (
+                          /* Phase G — Alpha Wallet self-custodial bubble (SEPARATO da mc_payment) */
+                          (msg.system_metadata as unknown as WalletPaymentMeta)?.txHash
+                            ? <ErrorBoundary fallback={<div style={{ fontSize: "0.78rem", opacity: 0.5, padding: "8px 12px" }}>⚠ Pagamento wallet non visualizzabile</div>}>
+                                <ChatWalletPaymentBubble
+                                  meta={msg.system_metadata as unknown as WalletPaymentMeta}
+                                  isMine={isMine}
+                                />
+                              </ErrorBoundary>
+                            : null
                         ) : msg.message_type === "mc_payment" ? (
                           (msg.system_metadata as unknown as MCSystemMeta)?.transfer_id
                             ? <ErrorBoundary fallback={<div style={{ fontSize: "0.78rem", opacity: 0.5, padding: "8px 12px" }}>⚠ Pagamento non visualizzabile</div>}>
@@ -4392,6 +4427,17 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
                       </button>
                     </>
                   )}
+                  {/* Phase G — Alpha Wallet self-custodial: visibile solo se wallet sbloccato */}
+                  {/* REGOLA §15: il tap utente è l'UNICO trigger — MAI da eventi WS */}
+                  {walletBridge.status === "ready" && (
+                    <button
+                      className="attach-sheet-item"
+                      onClick={() => { setShowAttachSheet(false); setTimeout(() => setShowWalletPay(true), 80); }}
+                    >
+                      <span className="attach-sheet-icon">🔑</span>
+                      <span>Paga con Wallet</span>
+                    </button>
+                  )}
                 </>
               )}
             </div>
@@ -4804,6 +4850,34 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
           resumeTransferId={resumeTransferId}
           onClose={() => setResumeTransferId(null)}
           onSent={() => setResumeTransferId(null)}
+        />
+      )}
+
+      {/* Phase G — Alpha Wallet self-custodial payment sheet */}
+      {showWalletPay && activeConv && auth && activeConv.type !== "group" && (
+        <ChatWalletPaySheet
+          conversationId={activeConvId ?? ""}
+          onClose={() => setShowWalletPay(false)}
+          onSent={(result: ChatPaymentResult) => {
+            setShowWalletPay(false);
+            if (result.status === "sent" || result.status === "confirmed") {
+              // Invia un messaggio sistema con i dettagli della TX (E2E cifrato come testo normale)
+              // La bubble lo rileva e lo renderizza come ChatWalletPaymentBubble (§14)
+              const meta: WalletPaymentMeta = {
+                txHash:      result.txHash ?? "",
+                network:     result.network ?? "polygon",
+                assetSymbol: result.assetSymbol ?? "",
+                amount:      result.amountSent ?? "",
+                fee:         result.fee,
+                direction:   "out",   // per il mittente; il ricevente vede isMine=false → "in"
+                status:      "sent",
+                explorerUrl: result.explorerUrl ?? "",
+              };
+              // Usa il canale messaggio normale E2E — message_type "wallet_payment"
+              // Il backend tratta il body come opaco cifrato
+              void sendProgrammatic(`🔐WALLETPAY:${JSON.stringify(meta)}`);
+            }
+          }}
         />
       )}
 

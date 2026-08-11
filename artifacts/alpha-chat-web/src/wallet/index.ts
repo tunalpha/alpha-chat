@@ -36,3 +36,23 @@ export * from "./services/price-service";
 export * from "./services/gas-service";
 export * from "./services/evm-signer";
 export * from "./services/btc-signer";
+
+// Phase G — ChatWalletBridge (unica surface Chat → Wallet)
+export type {
+  SupportedEvmNetwork,
+  SupportedNetwork,
+  BridgeStatus,
+  WalletCapabilities,
+  EvmNetworkCapability,
+  BitcoinCapability,
+  AssetCapability,
+  PlatformFeeConfig,
+  PaymentQuote,
+  ChatPaymentRequest,
+  ChatPaymentResult,
+  ChatPaymentStatus,
+  ChatPaymentErrorCode,
+  ChatWalletBridge,
+} from "./bridge/chat-wallet-bridge";
+export { NETWORK_LABELS, NETWORK_COLORS, NETWORK_CHAIN_IDS } from "./bridge/chat-wallet-bridge";
+export { ChatWalletBridgeProvider, useChatWalletBridge } from "./bridge/chat-wallet-bridge-context";

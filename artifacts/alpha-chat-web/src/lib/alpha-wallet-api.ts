@@ -278,3 +278,21 @@ import type { AssetPrices } from "../wallet/services/price-service";
 export async function apiWalletGetPrices(): Promise<AssetPrices> {
   return walletRequest<AssetPrices>("/alpha-wallet/prices", { method: "GET" });
 }
+
+// ─── Phase G: Platform Fee Config ─────────────────────────────────────────
+
+export interface AlphaWalletFeeConfigResponse {
+  fee_bps:          number;
+  quote_validity_sec: number;
+  min_fee_usdt?:    string;
+  min_fee_btc_sat?: number;
+  /** Fee wallet per reti EVM (Ethereum, Polygon, BSC) — indirizzo pubblico */
+  fee_wallet_evm?:  string;
+  /** Fee wallet Bitcoin */
+  fee_wallet_btc?:  string;
+}
+
+/** GET /alpha-wallet/fee-config — recupera la configurazione Platform Fee. Pubblica (utente autenticato). */
+export async function apiGetAlphaWalletFeeConfig(): Promise<AlphaWalletFeeConfigResponse> {
+  return walletRequest<AlphaWalletFeeConfigResponse>("/alpha-wallet/fee-config", { method: "GET" });
+}

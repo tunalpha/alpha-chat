@@ -122,7 +122,9 @@ export type AuditEventType =
   | "MC_ADMIN_FEE_CONFIG_UPDATE"
   | "MC_ADMIN_FEE_CONFIG_RESET"
   | "MC_ADMIN_NETWORK_FEE_CONFIG_UPDATE"
-  | "MC_ADMIN_NETWORK_FEE_CONFIG_RESET";
+  | "MC_ADMIN_NETWORK_FEE_CONFIG_RESET"
+  // Phase G — Alpha Wallet Platform Fee
+  | "ALPHA_WALLET_FEE_UPDATED";
 
 export interface AuditEvent {
   event: AuditEventType;

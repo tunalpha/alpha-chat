@@ -40,6 +40,9 @@ import LanguagePage from "./pages/LanguagePage";
 import NuclearDestroyPage from "./pages/NuclearDestroyPage";
 import PwaGuidePage from "./pages/PwaGuidePage";
 import AlphaWalletPage from "./pages/AlphaWalletPage";
+// Phase G: Alpha Wallet × Chat bridge (WalletProvider elevato al root)
+import { WalletProvider } from "./wallet/context/WalletContext";
+import { ChatWalletBridgeProvider } from "./wallet/bridge/chat-wallet-bridge-context";
 import { useNotifSync } from "./hooks/useNotifSync";
 import { initServiceWorker, requestAndSubscribe as pushSubscribe } from "./lib/pushManager";
 import SignalReinstallBanner from "./components/SignalReinstallBanner";
@@ -307,11 +310,19 @@ export default function App() {
         <LockProvider>
           <WebSocketProvider>
             <CallProvider>
-              <AppContent />
-              <IncomingCallModal />
-              <ActiveCallScreen />
-              <BusyCallScreen />
-
+              {/*
+                Phase G §3.1: WalletProvider elevato al root.
+                AlphaWalletPage non ha più un proprio WalletProvider wrapper.
+                ChatWalletBridgeProvider espone l'unica superficie Chat→Wallet.
+              */}
+              <WalletProvider>
+                <ChatWalletBridgeProvider>
+                  <AppContent />
+                  <IncomingCallModal />
+                  <ActiveCallScreen />
+                  <BusyCallScreen />
+                </ChatWalletBridgeProvider>
+              </WalletProvider>
             </CallProvider>
           </WebSocketProvider>
         </LockProvider>

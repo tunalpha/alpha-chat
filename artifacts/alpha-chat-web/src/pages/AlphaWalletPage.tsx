@@ -97,12 +97,12 @@ interface Props {
 
 // ─── Root component ──────────────────────────────────────────────────────────
 
+/**
+ * Phase G §3.1: WalletProvider è ora al root dell'app (App.tsx).
+ * AlphaWalletPage non ha più il suo wrapper — usa il provider elevato.
+ */
 export default function AlphaWalletPage({ onBack }: Props) {
-  return (
-    <WalletProvider>
-      <AlphaWalletInner onBack={onBack} />
-    </WalletProvider>
-  );
+  return <AlphaWalletInner onBack={onBack} />;
 }
 
 // ─── Inner ──────────────────────────────────────────────────────────────────

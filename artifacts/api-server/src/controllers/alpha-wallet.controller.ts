@@ -548,3 +548,99 @@ interface BlockstreamTx {
   vout: Array<{ scriptpubkey_address: string; value: number }>;
   status: { confirmed: boolean; block_height?: number; block_time?: number };
 }
+
+// ─── Phase G: Platform Fee Config ──────────────────────────────────────────
+
+import {
+  AlphaWalletFeeConfigModel,
+  getAlphaWalletFeeConfig as _loadFeeConfig,
+  ALPHA_WALLET_FEE_DEFAULTS,
+} from "../models/alpha-wallet-fee-config.model";
+import { logAuditEvent } from "../lib/audit";
+
+/**
+ * GET /api/v1/alpha-wallet/fee-config
+ * Recupera la configurazione Platform Fee. Accessibile a tutti gli utenti autenticati
+ * (l'indirizzo fee wallet è pubblico on-chain).
+ */
+export async function getFeeConfig(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const cfg = await _loadFeeConfig();
+    res.json({
+      data: {
+        fee_bps:            cfg.fee_bps,
+        quote_validity_sec: cfg.quote_validity_sec,
+        min_fee_usdt:       cfg.min_fee_usdt   ?? ALPHA_WALLET_FEE_DEFAULTS.min_fee_usdt,
+        min_fee_btc_sat:    cfg.min_fee_btc_sat ?? ALPHA_WALLET_FEE_DEFAULTS.min_fee_btc_sat,
+        // Fee wallet addresses — public on-chain, safe to expose to authenticated users
+        fee_wallet_evm: process.env.POLYGON_FEE_WALLET ?? null,
+        fee_wallet_btc: process.env.BTC_FEE_WALLET     ?? null,
+        updated_at:     cfg.updated_at     ?? null,
+        updated_by_email: cfg.updated_by_email ?? null,
+      },
+    });
+  } catch (err) { next(err); }
+}
+
+/**
+ * PATCH /api/v1/alpha-wallet/fee-config
+ * Aggiorna la Platform Fee. Richiede ruolo super_admin.
+ * Registra un audit log per ogni modifica.
+ */
+export async function updateFeeConfig(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const adminUser = (req as any).user as { userId: string; email?: string };
+    const { fee_bps, quote_validity_sec } = req.body as {
+      fee_bps?:           number;
+      quote_validity_sec?: number;
+    };
+
+    // Validazione
+    if (fee_bps !== undefined) {
+      if (typeof fee_bps !== "number" || fee_bps < 0 || fee_bps > 500) {
+        res.status(400).json({ error: "FEE_BPS_INVALID", message: "fee_bps deve essere tra 0 e 500" });
+        return;
+      }
+    }
+    if (quote_validity_sec !== undefined) {
+      if (typeof quote_validity_sec !== "number" || quote_validity_sec < 5 || quote_validity_sec > 300) {
+        res.status(400).json({ error: "QUOTE_VALIDITY_INVALID", message: "quote_validity_sec deve essere tra 5 e 300" });
+        return;
+      }
+    }
+
+    // Carica config precedente per audit
+    const prev = await _loadFeeConfig();
+
+    // Aggiorna
+    const updated = await AlphaWalletFeeConfigModel.findOneAndUpdate(
+      { _id: "alpha-wallet-fee" },
+      {
+        $set: {
+          ...(fee_bps           !== undefined ? { fee_bps }           : {}),
+          ...(quote_validity_sec !== undefined ? { quote_validity_sec } : {}),
+          updated_at:       new Date(),
+          updated_by:       adminUser.userId,
+          updated_by_email: adminUser.email ?? null,
+        },
+      },
+      { upsert: true, returnDocument: "after" },
+    );
+
+    // Audit log
+    logAuditEvent({
+      event:   "ALPHA_WALLET_FEE_UPDATED",
+      user_id: adminUser.userId,
+      ip_hash: req.ip ?? undefined,
+      created_at: new Date().toISOString(),
+      metadata: {
+        prev_fee_bps:  prev.fee_bps,
+        new_fee_bps:   updated?.fee_bps ?? prev.fee_bps,
+        prev_validity: prev.quote_validity_sec,
+        new_validity:  updated?.quote_validity_sec ?? prev.quote_validity_sec,
+      },
+    });
+
+    res.json({ data: { ok: true, fee_bps: updated?.fee_bps, quote_validity_sec: updated?.quote_validity_sec } });
+  } catch (err) { next(err); }
+}

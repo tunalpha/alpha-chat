@@ -682,6 +682,176 @@ api-server routes               ✅ Sì (aggiunge /messages/:id/wallet-payment-s
 
 ---
 
+## 12b. Platform Fee Alpha Wallet (aggiunta post-approvazione)
+
+### 12b.1 Principio
+
+La Platform Fee Alpha Wallet è **indipendente** dal Payment Engine custodiale. Non si sovrappone né modifica le fee di MultiChain, USDA o Gas Station.
+
+```
+ALPHA WALLET Platform Fee    ≠    PAYMENT ENGINE fee
+(questo §)                        (invariata — fuori scope Phase G)
+```
+
+### 12b.2 Valore di default e configurazione
+
+```typescript
+interface AlphaWalletFeeConfig {
+  /** Fee in basis points (1 bps = 0.01%). Default: 10 bps = 0.10% */
+  feeBps:        number;   // min: 0, max: 500 (5%)
+  /** Fee minima per rete/asset — evita fee sub-dust */
+  minFeeByNetwork?: Partial<Record<SupportedNetwork, string>>; // human-readable
+  /** Fee massima per rete/asset (cap opzionale) */
+  maxFeeByNetwork?: Partial<Record<SupportedNetwork, string>>;
+  /** Wallet di destinazione fee per rete */
+  feeWallets: {
+    ethereum: string;   // da env ETHEREUM_FEE_WALLET
+    polygon:  string;   // da env POLYGON_FEE_WALLET
+    bsc:      string;   // da env BSC_FEE_WALLET
+    bitcoin:  string;   // da env BTC_FEE_WALLET
+  };
+  /** Validità della quote in secondi (default: 30s) */
+  quoteValiditySeconds: number;
+  /** Timestamp ultima modifica */
+  updatedAt:   Date;
+  /** userId di chi ha modificato (audit) */
+  updatedBy:   string;
+}
+```
+
+### 12b.3 Configurazione Admin
+
+**Admin panel — nuova sezione "Alpha Wallet Fee"** (separata da "Payment Engine Settings"):
+
+```
+┌─ Alpha Wallet Platform Fee ─────────────────────────────────┐
+│                                                              │
+│  Fee rate:  [ 10 ] bps  =  0,10%                            │
+│  (min 0 bps — max 500 bps)                                   │
+│                                                              │
+│  Quote validity: [ 30 ] secondi                              │
+│                                                              │
+│  Modifica → richiede conferma → audit log                    │
+│                                                              │
+│  Last updated: 11 ago 2026 14:32 — admin@example.com        │
+└──────────────────────────────────────────────────────────────┘
+```
+
+Audit log per ogni modifica:
+```typescript
+interface AlphaWalletFeeAuditEntry {
+  timestamp:  Date;
+  adminId:    string;
+  adminEmail: string;
+  prevFeeBps: number;
+  newFeeBps:  number;
+  ip:         string;
+}
+```
+
+### 12b.4 Calcolo fee — regole
+
+```
+EVM (ERC-20 / native):
+  platformFeeAmount = floor(amount × feeBps / 10000)
+  // Se platformFeeAmount < minFee → usa minFee
+  // Se maxFee definita e platformFeeAmount > maxFee → usa maxFee
+
+BTC:
+  platformFeeSat = floor(amountSat × feeBps / 10000)
+  // Rispetta dust limit: min 546 sat
+
+Totale a carico del mittente:
+  EVM: amount + platformFeeAmount + networkGasFee
+  BTC: amountSat + platformFeeSat + minerFeeSat
+```
+
+### 12b.5 UI breakdown obbligatoria (schermata di conferma)
+
+```
+EVM (USDC):
+┌──────────────────────────────────┐
+│  Destinatario      100,00 USDC   │
+│  Platform fee        0,10 USDC   │
+│  Network fee         0,42 POL    │  ← in token nativo (gas)
+│  ──────────────────────────────  │
+│  Totale inviato    100,10 USDC   │
+│  + Network fee       0,42 POL    │
+└──────────────────────────────────┘
+
+BTC:
+┌──────────────────────────────────┐
+│  Destinatario   0,00100000 BTC   │
+│  Platform fee   0,00000010 BTC   │
+│  Miner fee      0,00000234 BTC   │
+│  ──────────────────────────────  │
+│  Totale pagato  0,00100244 BTC   │
+└──────────────────────────────────┘
+
+REGOLA ASSOLUTA: Platform Fee e Network/Miner Fee non devono mai
+essere mostrate come un'unica voce aggregata.
+```
+
+### 12b.6 Congelamento della quote e validità temporale
+
+```
+Flusso con quote congelata:
+
+1. Apertura ChatWalletPaySheet
+   → GET /api/wallet/payment-quote-config (fee corrente + validity)
+   → La quote è valida per N secondi (default 30s)
+   → Timer visibile nella UI: "Prezzi aggiornati · scade in 28s ⟳"
+
+2. Utente completa i campi e preme "Conferma"
+   → Il bridge controlla age della quote
+   → Se quote scaduta: ricaricare automaticamente (notify utente "Fee aggiornata")
+   → Se quote valida: congela { amount, platformFee, networkFee }
+
+3. Utente inserisce PIN / Face ID
+   → La firma avviene con i valori congelati al passo 2
+   → Anche se l'Admin modifica la fee durante questa finestra,
+     la transazione usa la fee presentata all'utente
+
+4. SCENARIO: Admin modifica fee MENTRE l'utente è in attesa della firma
+   → La firma usa la fee congelata (protegge l'utente da variazioni silenti)
+   → Le nuove fee si applicano al PROSSIMO pagamento
+
+Quote invalidity window:
+  - Quote valida ≤ quoteValiditySeconds → procede normalmente
+  - Quote scaduta prima della firma → ricalcola, mostra nuovi valori, richiede
+    nuova conferma utente (non riautenticazione)
+```
+
+### 12b.7 Destinazione fee — transazione tecnica
+
+```
+EVM (ERC-20):
+  TX1: transfer(recipient, amount)           → tx principale
+  TX2: transfer(feeWallet, platformFeeAmt)   → fee collection (fire-and-forget)
+  Entrambe firmate con lo stesso mnemonic nella stessa sessione di autenticazione.
+  TX2 failure: non blocca TX1 — audit log dell'errore.
+
+EVM (native ETH/POL/BNB):
+  Stessa strategia a 2 TX.
+
+BTC:
+  Singola transazione con 2 output:
+    output[0]: recipient address, amountSat
+    output[1]: feeWallet address, platformFeeSat
+  Elegante e atomico — nessun rischio di partial execution.
+```
+
+### 12b.8 Errori specifici Platform Fee
+
+```typescript
+// Aggiunta a ChatPaymentErrorCode:
+| "FEE_CONFIG_UNAVAILABLE"    // impossibile recuperare la config fee
+| "QUOTE_EXPIRED"             // quote scaduta durante la firma
+| "PLATFORM_FEE_TX_FAILED"    // TX2 (fee collection) fallita — TX1 già inviata
+```
+
+---
+
 ## 13. Associazione TX ↔ messaggio (punto §9 — dettaglio)
 
 ```typescript

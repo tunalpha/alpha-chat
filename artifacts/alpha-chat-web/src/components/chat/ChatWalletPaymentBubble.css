@@ -1,0 +1,86 @@
+/* ChatWalletPaymentBubble — Phase G */
+
+.wallet-pay-bubble {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px 14px;
+  border-radius: 14px;
+  max-width: 280px;
+  min-width: 200px;
+  font-size: 13px;
+  border: 1px solid transparent;
+}
+
+.wallet-pay-bubble.mine {
+  background: var(--bubble-out-bg, #dcf8c6);
+  border-color: rgba(0,0,0,0.06);
+}
+.wallet-pay-bubble.theirs {
+  background: var(--bubble-in-bg, #fff);
+  border-color: rgba(0,0,0,0.08);
+}
+
+/* Status variants */
+.wallet-pay-bubble.status-failed { opacity: 0.75; }
+
+/* Header */
+.wpb-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+}
+.wpb-icon { font-size: 16px; }
+.wpb-dir  { font-size: 12px; color: var(--text-secondary, #666); }
+.wpb-network {
+  margin-left: auto;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 100px;
+  letter-spacing: 0.3px;
+}
+
+/* Amount */
+.wpb-amount {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+}
+.wpb-amount-value {
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: -0.5px;
+}
+.wpb-amount-symbol {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--text-secondary, #555);
+}
+
+/* Fee */
+.wpb-fee {
+  font-size: 11px;
+  color: var(--text-tertiary, #888);
+  font-style: italic;
+}
+
+/* Status */
+.wpb-status {
+  font-size: 11px;
+  font-weight: 500;
+}
+.wpb-status--confirmed { color: #22c55e; }
+.wpb-status--failed    { color: #ef4444; }
+.wpb-status--sent      { color: var(--text-tertiary, #888); }
+
+/* Explorer */
+.wpb-explorer {
+  font-size: 11px;
+  color: var(--link-color, #2563eb);
+  text-decoration: none;
+  font-family: monospace;
+  letter-spacing: -0.3px;
+}
+.wpb-explorer:hover { text-decoration: underline; }
