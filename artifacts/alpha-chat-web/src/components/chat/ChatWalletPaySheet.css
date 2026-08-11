@@ -24,9 +24,13 @@
   max-width: 480px;
   background: var(--bg-primary, #fff);
   border-radius: 20px 20px 0 0;
-  /* NO max-height — ogni step è disegnato per stare nel viewport */
-  /* NO overflow  — nessuno scroll necessario */
   box-shadow: 0 -4px 32px rgba(0,0,0,0.15);
+  /* Safety net: il sheet non può mai superare il viewport */
+  max-height: 92vh;
+  max-height: 92dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
 /* ── Header ───────────────────────────────────────────────────────────── */
@@ -37,6 +41,7 @@
   justify-content: space-between;
   padding: 18px 20px 14px;
   border-bottom: 1px solid var(--border-subtle, #e5e7eb);
+  flex-shrink: 0; /* header fisso — non entra nell'area scroll */
 }
 
 .cwp-header-inner {
@@ -73,10 +78,19 @@
 /* ── Step container ───────────────────────────────────────────────────── */
 
 .cwp-step {
-  padding: 20px 20px 0;
+  padding: 16px 20px 0;
   display: flex;
   flex-direction: column;
-  gap: 14px;
+  gap: 12px;
+  /* Scroll iOS-safe: transform: translateZ(0) forza un composite layer separato.
+     Su iOS Safari PWA questo è il SOLO modo affidabile per avere overflow-y
+     funzionante dentro un elemento position:fixed.               */
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  transform: translateZ(0);
+  overscroll-behavior: contain;
 }
 
 .cwp-step-center {
@@ -99,7 +113,9 @@
   padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
   display: flex;
   gap: 10px;
-  margin-top: 16px;
+  margin-top: 8px;
+  flex-shrink: 0; /* footer sempre visibile — non entra nell'area scroll */
+  border-top: 1px solid var(--border-subtle, #e5e7eb);
 }
 
 .cwp-footer-split {
