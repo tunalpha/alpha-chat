@@ -29,6 +29,9 @@ import {
   // Phase G #90: Fee Records
   recordFeeOutcome,
   getFeeRecords,
+  // Task #93: Recipient Wallet Discovery
+  registerAlphaWalletAddress,
+  getAlphaWalletRecipient,
 } from "../../controllers/alpha-wallet.controller";
 
 const router = Router();
@@ -101,5 +104,23 @@ router.post("/fee-record", recordFeeOutcome);
 
 /** GET /fee-records — lista record fee + summary. Super admin only. */
 router.get("/fee-records", requireAdmin("super_admin"), getFeeRecords);
+
+// ── Task #93: Recipient Wallet Discovery ──────────────────────────────────
+
+/**
+ * POST /register-address
+ * Salva gli indirizzi Alpha Wallet pubblici dell'utente autenticato.
+ * Body: { evmAddress: "0x...", btcAddress?: "bc1q..." }
+ * NON riceve mai seed, private key, PIN o keystore.
+ */
+router.post("/register-address", registerAlphaWalletAddress);
+
+/**
+ * GET /recipient/:userId
+ * Recupera gli indirizzi Alpha Wallet pubblici di un destinatario.
+ * Richiede che requester e userId condividano una conversazione attiva.
+ * 403 se non esiste conversazione comune.
+ */
+router.get("/recipient/:userId", getAlphaWalletRecipient);
 
 export default router;

@@ -196,6 +196,184 @@
   margin: 0;
 }
 
+/* ── Task #93: Recipient Discovery ──────────────────────────────────────── */
+
+/* Loading state */
+.cwp-recipient-loading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px;
+  background: var(--bg-secondary, #f9fafb);
+  border-radius: 12px;
+  font-size: 13px;
+  color: var(--text-secondary, #666);
+}
+.cwp-loading-spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--border, #d1d5db);
+  border-top-color: #8247E5;
+  border-radius: 50%;
+  animation: cwp-spin 0.7s linear infinite;
+}
+@keyframes cwp-spin { to { transform: rotate(360deg); } }
+
+/* Caso A — Recipient info card */
+.cwp-recipient-card {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 12px 14px;
+  background: #8247E511;
+  border: 1px solid #8247E530;
+  border-radius: 12px;
+}
+.cwp-recipient-badge {
+  font-size: 11px;
+  font-weight: 700;
+  color: #8247E5;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+.cwp-recipient-name {
+  font-size: 16px;
+  font-weight: 700;
+  color: var(--text-primary, #111);
+}
+.cwp-recipient-address {
+  font-size: 12px;
+  color: var(--text-secondary, #555);
+  font-family: monospace;
+  word-break: break-all;
+}
+.cwp-recipient-no-address {
+  font-size: 12px;
+  color: #f59e0b;
+  font-style: italic;
+}
+
+/* Caso A — address locked (non modificabile) */
+.cwp-address-locked {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--bg-secondary, #f3f4f6);
+  border: 1px solid var(--border, #d1d5db);
+  border-radius: 10px;
+  font-size: 12px;
+  color: var(--text-secondary, #555);
+  font-family: monospace;
+  word-break: break-all;
+  cursor: default;
+}
+.cwp-address-locked-icon { font-size: 14px; flex-shrink: 0; margin-top: 1px; }
+.cwp-address-locked-text { line-height: 1.4; }
+
+/* Caso A — no BTC address warning */
+.cwp-no-address-warning {
+  padding: 10px 12px;
+  background: #fef3c711;
+  border: 1px solid #f59e0b44;
+  border-radius: 10px;
+  font-size: 13px;
+  color: #92400e;
+}
+.cwp-no-address-hint { font-size: 12px; color: var(--text-secondary, #666); }
+
+/* Caso C — notice indirizzo manuale */
+.cwp-manual-notice {
+  padding: 10px 12px;
+  background: #fef3c711;
+  border: 1px solid #f59e0b44;
+  border-radius: 10px;
+  font-size: 12px;
+  color: #92400e;
+}
+
+/* Caso B — no wallet card */
+.cwp-no-wallet-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  padding: 24px 20px;
+  text-align: center;
+}
+.cwp-no-wallet-icon { font-size: 36px; }
+.cwp-no-wallet-title {
+  font-size: 15px;
+  color: var(--text-primary, #111);
+  margin: 0;
+  line-height: 1.4;
+}
+.cwp-no-wallet-sub {
+  font-size: 13px;
+  color: var(--text-secondary, #666);
+  margin: 0;
+  line-height: 1.5;
+}
+.cwp-no-wallet-note {
+  font-size: 12px;
+  color: var(--text-secondary, #888);
+  margin: 4px 0 0;
+  line-height: 1.4;
+}
+
+/* Pre-firma riepilogo — rete + address espliciti (§4, §11) */
+.cwp-quote-confirm-header {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 6px;
+}
+.cwp-quote-confirm-title {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-primary, #111);
+}
+.cwp-quote-confirm-dest {
+  font-size: 14px;
+  text-align: center;
+  color: var(--text-primary, #111);
+  line-height: 1.5;
+  padding: 4px 0;
+}
+.cwp-quote-confirm-label { font-weight: 500; }
+.cwp-quote-address-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 12px;
+  color: var(--text-secondary, #555);
+  background: var(--bg-primary, #fff);
+  border: 1px solid var(--border, #e5e7eb);
+  border-radius: 8px;
+  padding: 7px 10px;
+  gap: 8px;
+}
+.cwp-quote-addr-label { font-weight: 600; flex-shrink: 0; }
+.cwp-quote-addr-value {
+  font-family: monospace;
+  font-size: 11px;
+  word-break: break-all;
+  text-align: right;
+}
+
+/* Avviso rete per indirizzo manuale (Caso C) */
+.cwp-manual-confirm-warning {
+  margin-top: 8px;
+  padding: 10px 12px;
+  background: #fef3c711;
+  border: 1px solid #f59e0b55;
+  border-radius: 8px;
+  font-size: 12px;
+  color: #92400e;
+  line-height: 1.4;
+}
+
 /* Auth modal */
 .cwp-auth-backdrop {
   position: fixed;

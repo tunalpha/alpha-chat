@@ -98,6 +98,12 @@ export interface IUser {
   // Admin — Sprint 23
   admin_role: "super_admin" | "security_admin" | "support" | "read_only" | null;
 
+  // Alpha Wallet — Task #93 (Recipient Discovery)
+  // Indirizzi pubblici self-custodial — mai seed/key/PIN.
+  // Separati da `wallets` (multichain custodiale) per evitare conflitti.
+  alpha_wallet_evm_address: string | null;
+  alpha_wallet_btc_address: string | null;
+
   // Shared Identity Key — Sprint 28
   // Blob opaco: AES-256-GCM(wrap_key, IK.privKey). Il server non lo decifra mai.
   encrypted_identity_key: string | null;
@@ -206,6 +212,10 @@ const userSchema = new Schema<IUserDocument>(
       }, { _id: false }),
       default: () => ({}),
     },
+
+    // Alpha Wallet public addresses (Task #93)
+    alpha_wallet_evm_address: { type: String, default: null },
+    alpha_wallet_btc_address: { type: String, default: null },
 
     // Admin — Sprint 23
     admin_role: {

@@ -63,6 +63,8 @@ import {
   clearTxHistory,
   type WalletTxRecord,
 } from "../services/tx-store";
+// Task #93 — persiste gli indirizzi pubblici sul backend (best-effort, fire-and-forget)
+import { apiWalletRegisterAddress } from "../../lib/alpha-wallet-api";
 
 // ─── Tipi ─────────────────────────────────────────────────────────────────
 
@@ -202,6 +204,9 @@ export function WalletProvider({ children }: WalletProviderProps) {
     await saveKeystore(entry);
     await saveWalletMeta(walletMeta);
     setMeta(walletMeta);
+    // Task #93: persiste indirizzi pubblici sul backend (best-effort, fire-and-forget)
+    // Non blocca il flusso — il pagamento funziona anche se fallisce
+    apiWalletRegisterAddress({ evmAddress, btcAddress }).catch(() => { /* best-effort */ });
     // NON impostare phase qui — il flusso continua con backup/verifica
     return mnemonic;
   }, []);
@@ -229,6 +234,8 @@ export function WalletProvider({ children }: WalletProviderProps) {
     try { sessionStorage.setItem("aw_bio_pin", pin); } catch { /* ignore */ }
     setPhase("unlocked");
     _startMonitor(walletMeta);
+    // Task #93: persiste indirizzi pubblici sul backend (best-effort, fire-and-forget)
+    apiWalletRegisterAddress({ evmAddress, btcAddress }).catch(() => { /* best-effort */ });
   }, [_startMonitor]);
 
   const unlockWallet = useCallback(async (pin: string): Promise<void> => {

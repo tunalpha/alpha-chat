@@ -19,6 +19,9 @@ import {
   isSymbolConflict,
   getVerifiedTokensForChain,
 } from "../wallet/token-registry-server";
+import { UserModel }                 from "../models/user.model";
+import { ConversationMemberModel }   from "../models/conversation-member.model";
+import mongoose                      from "mongoose";
 import pino from "pino";
 
 const logger = pino({ name: "alpha-wallet-controller" });
@@ -824,6 +827,141 @@ export async function getFeeRecords(req: Request, res: Response, next: NextFunct
           failed_transient: failedTransient,
           failed_permanent: failedPermanent,
         },
+      },
+    });
+  } catch (err) { next(err); }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Task #93 — Recipient Wallet Discovery
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * POST /api/v1/alpha-wallet/register-address
+ *
+ * Persiste gli indirizzi Alpha Wallet pubblici dell'utente autenticato.
+ * Chiamato dal client dopo createWallet / importWallet (best-effort).
+ * NON riceve mai seed, private key, PIN o keystore.
+ */
+export async function registerAlphaWalletAddress(
+  req: Request, res: Response, next: NextFunction,
+): Promise<void> {
+  try {
+    const userId = (req as any).user?.userId as string | undefined;
+    if (!userId) throw new AppError("UNAUTHORIZED", 401);
+
+    const { evmAddress, btcAddress } = req.body as {
+      evmAddress?: unknown;
+      btcAddress?: unknown;
+    };
+
+    if (
+      typeof evmAddress !== "string" ||
+      !/^0x[0-9a-fA-F]{40}$/.test(evmAddress)
+    ) {
+      throw new AppError("INVALID_EVM_ADDRESS", 400);
+    }
+
+    if (btcAddress !== undefined && btcAddress !== null) {
+      if (
+        typeof btcAddress !== "string" ||
+        !/^(bc1|[13])[a-zA-Z0-9]{25,87}$/.test(btcAddress)
+      ) {
+        throw new AppError("INVALID_BTC_ADDRESS", 400);
+      }
+    }
+
+    const update: Record<string, unknown> = {
+      alpha_wallet_evm_address: evmAddress,
+    };
+    if (typeof btcAddress === "string") {
+      update["alpha_wallet_btc_address"] = btcAddress;
+    }
+
+    await UserModel.updateOne(
+      { _id: new mongoose.Types.ObjectId(userId) },
+      { $set: update },
+    );
+
+    res.json({ data: { ok: true } });
+  } catch (err) { next(err); }
+}
+
+/**
+ * GET /api/v1/alpha-wallet/recipient/:userId
+ *
+ * Restituisce gli indirizzi Alpha Wallet pubblici di un utente destinatario.
+ *
+ * SICUREZZA:
+ *   - Autenticato (JWT — gestito da router.use(authenticate))
+ *   - Verifica che requester e target condividano una conversazione attiva
+ *   - 403 se non esiste conversazione comune
+ *   - Non espone mai: seed, mnemonic, private key, PIN, keystore, dati IDB
+ *
+ * REGOLA §12: un evento WebSocket NON può mai chiamare questo endpoint
+ * per avviare automaticamente una firma — solo l'azione esplicita dell'utente
+ * apre ChatWalletPaySheet che chiama questo endpoint.
+ */
+export async function getAlphaWalletRecipient(
+  req: Request, res: Response, next: NextFunction,
+): Promise<void> {
+  try {
+    const requesterId = (req as any).user?.userId as string | undefined;
+    if (!requesterId) throw new AppError("UNAUTHORIZED", 401);
+
+    const { userId: targetId } = req.params as { userId: string };
+
+    if (!targetId || !mongoose.Types.ObjectId.isValid(targetId)) {
+      throw new AppError("INVALID_USER_ID", 400);
+    }
+    if (targetId === requesterId) {
+      throw new AppError("CANNOT_LOOKUP_SELF", 400);
+    }
+
+    // ── Verifica conversazione condivisa ───────────────────────────────────
+    const myMemberships = await ConversationMemberModel
+      .find({
+        user_id:    new mongoose.Types.ObjectId(requesterId),
+        left_at:    null,
+        deleted_at: null,
+      })
+      .select("conversation_id")
+      .lean();
+
+    if (myMemberships.length === 0) {
+      throw new AppError("FORBIDDEN", 403);
+    }
+
+    const myConvIds = myMemberships.map(m => m.conversation_id);
+
+    const sharedMembership = await ConversationMemberModel.findOne({
+      conversation_id: { $in: myConvIds },
+      user_id:         new mongoose.Types.ObjectId(targetId),
+      left_at:         null,
+      deleted_at:      null,
+    }).lean();
+
+    if (!sharedMembership) {
+      throw new AppError("FORBIDDEN", 403);
+    }
+
+    // ── Legge solo i campi pubblici Alpha Wallet ───────────────────────────
+    const targetUser = await UserModel
+      .findById(targetId)
+      .select("alpha_wallet_evm_address alpha_wallet_btc_address")
+      .lean();
+
+    if (!targetUser) throw new AppError("USER_NOT_FOUND", 404);
+
+    const evmAddress = targetUser.alpha_wallet_evm_address ?? null;
+    const btcAddress = targetUser.alpha_wallet_btc_address ?? null;
+    const hasAlphaWallet = evmAddress !== null;
+
+    res.json({
+      data: {
+        hasAlphaWallet,
+        ...(evmAddress ? { evmAddress } : {}),
+        ...(btcAddress ? { btcAddress } : {}),
       },
     });
   } catch (err) { next(err); }

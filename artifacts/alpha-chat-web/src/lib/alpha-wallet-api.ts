@@ -338,6 +338,40 @@ export async function apiRecordFeeOutcome(payload: FeeRecordPayload): Promise<vo
   });
 }
 
+// ─── Task #93: Recipient Wallet Discovery ─────────────────────────────────
+
+export interface RecipientWalletInfo {
+  hasAlphaWallet: boolean;
+  evmAddress?:    string;
+  btcAddress?:    string;
+}
+
+/**
+ * POST /alpha-wallet/register-address
+ * Persiste gli indirizzi Alpha Wallet pubblici dell'utente autenticato sul backend.
+ * Chiamato dopo createWallet / importWallet — best-effort, fire-and-forget.
+ * Mai invia seed, private key o PIN.
+ */
+export async function apiWalletRegisterAddress(params: {
+  evmAddress:  string;
+  btcAddress?: string;
+}): Promise<void> {
+  await walletRequest<void>("/alpha-wallet/register-address", {
+    method: "POST",
+    body:   JSON.stringify(params),
+  });
+}
+
+/**
+ * GET /alpha-wallet/recipient/:userId
+ * Recupera gli indirizzi Alpha Wallet pubblici di un utente destinatario.
+ * Il server verifica che i due utenti condividano una conversazione attiva.
+ * Ritorna { hasAlphaWallet, evmAddress?, btcAddress? }.
+ */
+export async function apiWalletGetRecipient(userId: string): Promise<RecipientWalletInfo> {
+  return walletRequest<RecipientWalletInfo>(`/alpha-wallet/recipient/${encodeURIComponent(userId)}`);
+}
+
 /**
  * GET /alpha-wallet/fee-records — admin only
  * Recupera i record di fee per il pannello admin.

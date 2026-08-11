@@ -1,0 +1,460 @@
+Certo. Questo è il prompt definitivo per #93, già integrato con tutti i requisiti che abbiamo deciso:
+
+⸻
+
+TASK #93 — ALPHA WALLET RECIPIENT DISCOVERY
+
+Obiettivo
+
+Completare definitivamente la funzione 🔐 Paga con Alpha Wallet nella Chat.
+
+Attualmente il pagamento funziona tecnicamente, ma il mittente deve inserire manualmente l’indirizzo blockchain del destinatario.
+
+Vogliamo che Alpha Chat riconosca automaticamente il wallet del destinatario quando disponibile.
+
+Non modificare il Payment Engine e non modificare i vecchi flussi USDA/USDT/BTC.
+
+⸻
+
+1. AUDIT OBBLIGATORIO PRIMA DEL CODICE
+
+Prima di modificare qualsiasi file:
+
+* analizza ChatPage.tsx;
+* ChatWalletPaySheet.tsx;
+* chat-wallet-bridge-context.tsx;
+* WalletContext;
+* modelli utente/profilo;
+* eventuale storage degli indirizzi Alpha Wallet;
+* API Alpha Wallet esistenti;
+* gestione delle conversazioni;
+* autenticazione/autorizzazione.
+
+Determina esattamente dove vengono oggi memorizzati:
+
+* EVM address pubblico;
+* BTC address pubblico.
+
+NON modificare codice durante questa fase.
+
+Riporta prima:
+
+1. dove sono memorizzati gli address;
+2. come identificarli per un determinato utente;
+3. quali API esistono già;
+4. quali file devono essere modificati;
+5. eventuali problemi di sicurezza.
+
+Solo dopo l’audit procedere con l’implementazione.
+
+⸻
+
+2. ENDPOINT RECIPIENT DISCOVERY
+
+Creare, se non esiste già un endpoint equivalente:
+
+GET /api/v1/alpha-wallet/recipient/:userId
+
+Sicurezza
+
+Endpoint autenticato.
+
+Il server deve verificare che:
+
+requester e userId condividano una conversazione autorizzata.
+
+Un utente NON deve poter interrogare arbitrariamente gli indirizzi Alpha Wallet di utenti qualsiasi.
+
+Se non esiste una conversazione valida:
+
+403 Forbidden
+
+Response
+
+Restituire esclusivamente dati pubblici:
+
+{
+  "hasAlphaWallet": true,
+  "evmAddress": "0x...",
+  "btcAddress": "bc1q..."
+}
+
+Non restituire MAI:
+
+* seed;
+* mnemonic;
+* private key;
+* PIN;
+* encrypted seed;
+* keystore;
+* dati IndexedDB;
+* dati di autenticazione;
+* informazioni sensibili.
+
+⸻
+
+3. CASO A — DESTINATARIO CON ALPHA WALLET
+
+Se il destinatario possiede Alpha Wallet configurato:
+
+Il sistema deve recuperare automaticamente il suo address.
+
+Il ChatWalletPaySheet deve ricevere il destinatario tramite prefillRecipient.
+
+Il mittente NON deve digitare manualmente l’indirizzo.
+
+Esempio:
+
+Cricco
+Alpha Wallet ✓
+Rete: Polygon
+Asset: USDT
+Destinatario:
+0x1234…abcd
+
+⸻
+
+4. RETE SEMPRE ESPLICITA
+
+IMPORTANTE.
+
+L’indirizzo EVM è tecnicamente lo stesso su:
+
+* Ethereum;
+* Polygon;
+* BSC.
+
+Tuttavia la UI deve SEMPRE mostrare la rete selezionata accanto all’indirizzo.
+
+Prima della firma deve essere chiarissimo:
+
+Cricco riceverà 100 USDT su Polygon
+
+Destinatario: 0x1234…abcd
+
+Commissione: 0,10 USDT
+
+Network fee: 0,XX USDT
+
+Totale: 100,XX USDT
+
+Non permettere un riepilogo ambiguo del tipo:
+
+Cricco riceverà 100 USDT
+0x1234…
+
+senza indicare la rete.
+
+⸻
+
+5. CASO B — DESTINATARIO SENZA ALPHA WALLET
+
+Se il destinatario non ha Alpha Wallet:
+
+NON effettuare alcuna transazione.
+
+NON usare:
+
+* escrow;
+* Payment Engine;
+* Gas Station;
+* wallet custodiale;
+* indirizzo temporaneo del server.
+
+Mostrare:
+
+Cricco non ha ancora configurato Alpha Wallet.
+
+Per ricevere un pagamento diretto deve prima configurare Alpha Wallet.
+
+Pulsante:
+
+[Invita a configurare Alpha Wallet]
+
+Il pagamento deve rimanere fermo.
+
+Nessuna firma.
+
+Nessun broadcast.
+
+⸻
+
+6. CASO C — DESTINATARIO CON INDIRIZZO ESTERNO
+
+Mantenere la possibilità di inserire manualmente un indirizzo esterno quando necessario.
+
+Questo caso NON deve essere eliminato.
+
+Se l’utente inserisce manualmente:
+
+* validare l’indirizzo;
+* verificare la compatibilità con la rete selezionata;
+* mostrare chiaramente rete + address nel riepilogo;
+* richiedere conferma esplicita prima della firma.
+
+Esempio:
+
+Attenzione
+
+Stai inviando USDT su Polygon.
+
+Destinatario:
+0x1234…abcd
+
+Verifica che l’indirizzo appartenga al destinatario corretto.
+
+⸻
+
+7. ALPHA WALLET DEVE RIMANERE SELF-CUSTODIAL
+
+Il flusso deve rimanere:
+
+Chat
+ ↓
+ChatWalletBridge
+ ↓
+Alpha Wallet
+ ↓
+PIN / Face ID
+ ↓
+firma locale
+ ↓
+signed transaction
+ ↓
+broadcast
+ ↓
+blockchain
+
+La private key NON deve mai lasciare il dispositivo.
+
+Il backend riceve esclusivamente ciò che già riceve oggi per il broadcast, cioè la transazione firmata.
+
+⸻
+
+8. NESSUN COLLEGAMENTO AL PAYMENT ENGINE
+
+NON modificare:
+
+* Payment Engine;
+* escrow;
+* Gas Station;
+* USDA custodial;
+* Multichain Payment Engine;
+* WalletConnect;
+* ThirdWeb.
+
+Paga con Alpha Wallet deve continuare a usare esclusivamente:
+
+ChatWalletBridge → Alpha Wallet
+
+I vecchi pagamenti rimangono completamente separati.
+
+⸻
+
+9. NON MODIFICARE I VECCHI PAGAMENTI
+
+Devono continuare a funzionare invariati:
+
+Invia
+
+* USDA;
+* USDT;
+* BTC.
+
+Richiedi
+
+* USDA;
+* USDT;
+* BTC.
+
+Il nuovo recipient discovery deve riguardare solo Paga con Alpha Wallet.
+
+⸻
+
+10. DESTINATARIO E CONVERSAZIONE
+
+Il userId usato per il recipient discovery deve essere quello del destinatario della conversazione corrente.
+
+Non accettare un userId arbitrario proveniente dall’utente senza verifica server-side.
+
+La relazione deve essere:
+
+current authenticated user
+        ↓
+conversation
+        ↓
+recipient userId
+        ↓
+Alpha Wallet public address
+
+⸻
+
+11. PRE-FIRMA — CONTROLLO FINALE
+
+Prima della firma devono essere visibili almeno:
+
+* destinatario;
+* nome del destinatario;
+* rete;
+* asset;
+* address;
+* importo destinatario;
+* platform fee;
+* network/miner fee;
+* totale.
+
+Esempio:
+
+🔐 Conferma pagamento
+
+Cricco riceverà 100 USDT su Polygon
+
+Destinatario: 0x1234…abcd
+
+Platform fee: 0,10 USDT
+
+Network fee: 0,XX USDT
+
+Totale: 100,XX USDT
+
+[Conferma e firma]
+
+Solo dopo l’azione esplicita dell’utente può partire l’autenticazione locale.
+
+⸻
+
+12. SICUREZZA ANTI-REMOTE-TRIGGER
+
+Un evento WebSocket:
+
+wallet_payment.confirmed
+
+o qualsiasi altro evento remoto:
+
+NON deve mai poter:
+
+* iniziare una firma;
+* aprire automaticamente una transazione;
+* chiamare sendPayment();
+* utilizzare una private key;
+* effettuare un broadcast.
+
+Solo un’azione esplicita dell’utente può avviare il pagamento.
+
+⸻
+
+13. TEST OBBLIGATORI
+
+Aggiungere test per:
+
+Backend
+
+1. destinatario con Alpha Wallet;
+2. destinatario senza Alpha Wallet;
+3. 403 se gli utenti non condividono una conversazione;
+4. autenticazione obbligatoria;
+5. EVM address valido;
+6. BTC address valido;
+7. nessun dato privato nella response;
+8. userId arbitrario non accessibile.
+
+Frontend
+
+9. prefillRecipient valorizzato automaticamente;
+10. campo destinatario non richiede digitazione quando Alpha Wallet esiste;
+11. rete mostrata nel riepilogo;
+12. address mostrato nel riepilogo;
+13. asset mostrato correttamente;
+14. destinatario senza wallet → nessuna transazione;
+15. manual external address ancora funzionante;
+16. validazione rete/address;
+17. firma richiede sempre autenticazione locale.
+
+Security
+
+18. WebSocket non può triggerare una firma;
+19. nessuna private key inviata;
+20. nessun seed inviato;
+21. nessun PIN inviato.
+
+Regression
+
+22. Invia USDA;
+23. Invia USDT;
+24. Invia BTC;
+25. Richiedi USDA;
+26. Richiedi USDT;
+27. Richiedi BTC;
+28. Alpha Wallet normale;
+29. Payment Engine invariato.
+
+⸻
+
+14. TEST END-TO-END MANUALE
+
+Dopo i test automatici, predisporre anche il percorso:
+
+Utente A
+
+ha Alpha Wallet.
+
+Utente B
+
+ha Alpha Wallet.
+
+A apre la chat con B:
+
+Paga con Alpha Wallet → USDT Polygon → 10 USDT
+
+Deve comparire automaticamente:
+
+B riceverà 10 USDT su Polygon
+Destinatario: 0x...
+
+A conferma → PIN → firma → broadcast.
+
+Verificare on-chain che B riceva effettivamente l’importo previsto.
+
+⸻
+
+15. CASO NEGATIVO
+
+Ripetere con un utente B che non ha Alpha Wallet.
+
+Risultato obbligatorio:
+
+* nessun address;
+* nessuna firma;
+* nessun broadcast;
+* nessun addebito;
+* messaggio per configurare/invitare il destinatario.
+
+⸻
+
+16. REGOLA FINALE
+
+NON dichiarare il task completato solo perché l’endpoint funziona.
+
+Il task è completo solamente quando:
+
+un utente può aprire una chat, scegliere “Paga con Alpha Wallet”, selezionare rete e asset, vedere automaticamente il wallet del destinatario, controllare rete + address + fee + totale, autenticarsi, firmare localmente e completare il pagamento on-chain.
+
+⸻
+
+STOP
+
+Al termine:
+
+1. riportare audit iniziale;
+2. file modificati;
+3. endpoint creato/modificato;
+4. comportamento Caso A/B/C;
+5. test aggiunti;
+6. totale test;
+7. TypeScript/build;
+8. regressioni;
+9. eventuali limitazioni residue.
+
+NON iniziare altri task dopo #93.
+
+Dopo questo task STOP e attendi approvazione esplicita.

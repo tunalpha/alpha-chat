@@ -4906,6 +4906,8 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
       {showWalletPay && activeConv && auth && activeConv.type !== "group" && (
         <ChatWalletPaySheet
           conversationId={activeConvId ?? ""}
+          recipientUserId={activeConv.other_user?.user_id}
+          recipientName={activeConv.other_user?.display_name ?? activeConv.other_user?.username}
           onClose={() => setShowWalletPay(false)}
           onSent={(result: ChatPaymentResult) => {
             setShowWalletPay(false);
