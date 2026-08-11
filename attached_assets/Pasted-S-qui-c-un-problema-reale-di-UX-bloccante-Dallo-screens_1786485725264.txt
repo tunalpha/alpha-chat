@@ -1,0 +1,367 @@
+Sì, qui c’è un problema reale di UX bloccante. Dallo screenshot si vede chiaramente che il ChatWalletPaySheet viene aperto, ma il contenuto occupa più dell’area visibile e la parte inferiore del modal non è raggiungibile.
+
+Quindi non è un problema di Alpha Wallet, recipient discovery o fee: è il layout/scroll del payment sheet.
+
+La cosa importante è: non far fare all’agente un altro fix “a tentativi”. Dopo 10 segnalazioni deve fare un audit del DOM/CSS e riprodurre il problema.
+
+Mandagli questo prompt:
+
+⸻
+
+🚨 BUG BLOCCANTE — ChatWalletPaySheet NON SCROLLABILE
+
+STOP a qualsiasi altra modifica funzionale.
+
+Il problema è stato segnalato molte volte e persiste.
+
+Lo screenshot allegato mostra il comportamento reale su iPhone:
+
+* Paga con Alpha Wallet si apre;
+* destinatario Alpha Wallet viene correttamente rilevato;
+* rete e asset vengono mostrati;
+* importo viene mostrato;
+* destinatario viene mostrato;
+* MA il contenuto sotto il destinatario non è raggiungibile;
+* non compare Calcola costi;
+* non compare Paga / Conferma;
+* il foglio non può essere scrollato verso il basso.
+
+Di conseguenza il pagamento è completamente inutilizzabile.
+
+1. NON modificare la logica del pagamento
+
+Non toccare:
+
+* ChatWalletBridge;
+* signing;
+* fee;
+* quote;
+* recipient discovery;
+* Alpha Wallet;
+* Payment Engine;
+* USDA;
+* USDT;
+* BTC.
+
+Il problema da risolvere è esclusivamente la presentazione e gestione dello scroll del ChatWalletPaySheet.
+
+⸻
+
+2. AUDIT OBBLIGATORIO PRIMA DEL FIX
+
+Prima di modificare codice, analizza realmente:
+
+ChatWalletPaySheet.tsx
+
+e
+
+ChatWalletPaySheet.css
+
+oltre agli eventuali parent CSS che controllano:
+
+* modal;
+* bottom sheet;
+* overlay;
+* viewport;
+* overflow;
+* height;
+* max-height;
+* position;
+* display:flex;
+* flex;
+* min-height;
+* 100vh;
+* 100dvh;
+* 100svh;
+* 100lvh;
+* safe-area iOS.
+
+Verifica anche se ChatPage o il parent del componente applicano:
+
+overflow: hidden;
+
+o
+
+position: fixed;
+
+o altre proprietà che impediscono lo scroll.
+
+Non dichiarare risolto il problema analizzando solamente il codice.
+
+⸻
+
+3. RIPRODUZIONE OBBLIGATORIA
+
+Riprodurre il caso esatto:
+
+Chat
+→ 📎
+→ Paga con Alpha Wallet
+→ destinatario con Alpha Wallet
+→ Polygon
+→ USDA/USDT
+→ inserimento importo
+
+Il test deve essere eseguito su viewport mobile equivalente a iPhone.
+
+Verificare:
+
+A
+
+Il contenitore del sheet deve essere più grande del viewport.
+
+B
+
+Il contenuto interno deve poter scorrere verticalmente.
+
+C
+
+La parte inferiore deve essere raggiungibile con uno swipe dal basso verso l’alto.
+
+D
+
+Devono essere raggiungibili:
+
+* Calcola costi;
+* riepilogo fee;
+* network fee;
+* totale;
+* pulsante di conferma/paga;
+* eventuale PIN/auth.
+
+⸻
+
+4. ARCHITETTURA CORRETTA
+
+Il comportamento deve essere:
+
+Viewport
+└── Overlay
+    └── Payment Sheet
+        ├── Header fisso
+        │   ├── Titolo
+        │   └── Chiudi
+        │
+        └── Content SCROLLABILE
+            ├── Recipient
+            ├── Rete
+            ├── Asset
+            ├── Importo
+            ├── Destinatario
+            ├── Calcola costi
+            ├── Quote
+            ├── Fee
+            ├── Totale
+            └── Paga / Conferma
+
+Il punto fondamentale è:
+
+NON deve essere l’intero viewport a dover scrollare. Deve essere il contenuto interno del payment sheet.
+
+⸻
+
+5. MOBILE / iOS
+
+Implementare correttamente il comportamento mobile.
+
+Il sheet deve utilizzare una struttura compatibile con:
+
+height: 100dvh;
+max-height: 100dvh;
+
+o una soluzione equivalente robusta.
+
+Il contenitore interno deve avere:
+
+overflow-y: auto;
+-webkit-overflow-scrolling: touch;
+
+e deve essere effettivamente autorizzato a ridursi all’interno di un layout flex.
+
+Prestare particolare attenzione a:
+
+min-height: 0;
+
+sul flex child scrollabile.
+
+Non applicare semplicemente overflow-y:auto a caso.
+Verificare quale elemento possiede realmente l’altezza limitata.
+
+⸻
+
+6. SAFE AREA iOS
+
+Il fondo del contenuto deve rispettare la safe area:
+
+padding-bottom: max(..., env(safe-area-inset-bottom));
+
+o equivalente.
+
+Il pulsante finale non deve finire dietro:
+
+* Home Indicator;
+* barra di sistema;
+* bordo inferiore del viewport.
+
+⸻
+
+7. HEADER
+
+Il titolo:
+
+🔐 Paga con Alpha Wallet
+
+e il pulsante ×
+
+possono rimanere fissi.
+
+Lo scroll deve interessare principalmente il contenuto sottostante.
+
+⸻
+
+8. FOOTER / AZIONE
+
+Se il pulsante finale è in un footer separato, verificare che:
+
+* sia sempre raggiungibile;
+* non sia coperto dall’overlay;
+* non sia fuori dal viewport;
+* non abbia position:absolute che lo porta fuori dal sheet;
+* non sia nascosto da overflow:hidden.
+
+Se necessario, utilizzare:
+
+sheet
+├── header
+├── scroll-container
+└── action-footer
+
+con il footer sempre visibile.
+
+⸻
+
+9. TEST DI REGRESSIONE
+
+Aggiungere un test specifico per il bug:
+
+chat-wallet-pay-sheet-scroll.test.tsx
+
+Verificare almeno:
+
+1. sheet renderizza su mobile;
+2. contenuto supera l’altezza viewport;
+3. scroll container esiste;
+4. Calcola costi è nel DOM;
+5. pulsante finale è nel DOM;
+6. footer non viene eliminato;
+7. recipient card non impedisce lo scroll;
+8. chiusura sheet funziona;
+9. il layout desktop non viene rotto;
+10. il layout mobile non viene rotto.
+
+⸻
+
+10. TEST MANUALE OBBLIGATORIO
+
+Dopo il fix, verificare manualmente:
+
+Screenshot 1
+
+Apertura:
+
+Recipient
+Rete
+Asset
+Importo
+Destinatario
+
+Swipe verso l’alto
+
+Deve comparire:
+
+Calcola costi
+
+Ulteriore swipe
+
+Deve comparire:
+
+Commissione
+Network fee
+Totale
+
+Ulteriore swipe
+
+Deve essere raggiungibile:
+
+🔐 Paga / Conferma
+
+Dopo conferma
+
+PIN/auth deve essere raggiungibile normalmente.
+
+⸻
+
+11. CRITERIO DI ACCETTAZIONE
+
+Il bug è risolto solo se su iPhone reale posso fare:
+
+Apri Paga con Alpha Wallet
+↓
+Inserisci importo
+↓
+Swipe verso l'alto
+↓
+Calcola costi
+↓
+Swipe
+↓
+Vedo fee + totale
+↓
+Swipe
+↓
+Vedo Paga/Conferma
+↓
+PIN
+↓
+Firma
+
+Nessun pulsante può essere semplicemente “presente nel DOM” ma fuori dalla parte raggiungibile dello schermo.
+
+⸻
+
+12. REGOLA FONDAMENTALE
+
+Non fare un altro fix basandoti sull’ipotesi.
+
+Prima identifica quale elemento sta impedendo lo scroll e riportalo nel report.
+
+Esempio:
+
+Root cause: .aw-sheet-content aveva overflow:hidden + min-height:auto, impedendo al flex child di diventare scrollabile su iOS.
+
+oppure:
+
+Root cause: il parent del sheet utilizzava height: 100vh + overflow:hidden, mentre il content non aveva un’altezza calcolabile.
+
+Solo dopo applicare il fix.
+
+⸻
+
+STOP DOPO IL FIX
+
+Alla fine riportare:
+
+* root cause esatta;
+* file modificati;
+* CSS modificato;
+* comportamento iPhone;
+* test aggiunti;
+* test totali;
+* TypeScript;
+* regressioni.
+
+Non modificare altro.
+
+⸻
+
+Questa volta gli farei prima trovare la root cause e poi correggere, perché dal tuo screenshot il problema non è che manchi la funzione: la parte inferiore del componente è semplicemente irraggiungibile. È esattamente il tipo di bug che un overflow/flex/100vh mal impostato può provocare su iOS.

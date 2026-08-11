@@ -15,12 +15,13 @@
   border-radius: 20px 20px 0 0;
   width: 100%;
   max-width: 480px;
-  /* Altezza massima: sheet occupa al più 88% della viewport */
+  /* dvh = dynamic viewport height, corretto per iOS PWA (niente address bar) */
   max-height: 88vh;
+  max-height: 88dvh;
   /* flex column: header fisso + body scrollabile */
   display: flex;
   flex-direction: column;
-  overflow: hidden; /* nasconde overflow: lo scroll è sul cwp-body */
+  overflow: hidden;
 }
 
 .cwp-header {
@@ -50,21 +51,29 @@
 }
 .cwp-close:hover { background: var(--bg-hover, #f3f4f6); }
 
+/*
+ * ROOT CAUSE iOS: overflow-y: scroll su display:flex non crea
+ * momentum-scroll nativo su Safari PWA.
+ * Fix: cwp-body è un block puro (solo scroll), il layout flex
+ * è delegato a cwp-body-inner.
+ */
 .cwp-body {
-  padding: 16px 20px 20px;
-  padding-bottom: calc(20px + env(safe-area-inset-bottom, 0px));
-  display: flex;
-  flex-direction: column;
-  gap: 16px;
-  /* Scroll nativo iOS-safe sul contenuto interno.
-     overflow-y: scroll (non auto) è necessario su iOS Safari PWA
-     per attivare il touch-scroll all'interno di fixed overlay. */
-  overflow-y: scroll;
+  /* Block, non flex — requisito iOS per momentum scroll nativo */
+  display: block;
+  flex: 1 1 auto;
+  min-height: 0;        /* permette al flex parent di contenere questo elemento */
+  overflow-y: scroll;   /* scroll (non auto) per iOS Safari PWA */
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
   touch-action: pan-y;
-  flex: 1 1 auto;
-  min-height: 0; /* necessario per far funzionare flex + overflow su iOS */
+}
+
+.cwp-body-inner {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px 20px;
+  padding-bottom: calc(24px + env(safe-area-inset-bottom, 0px));
 }
 
 .cwp-section { display: flex; flex-direction: column; gap: 6px; }

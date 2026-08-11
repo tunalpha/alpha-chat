@@ -122,14 +122,6 @@ export function ChatWalletPaySheet({
 }: Props) {
   const bridge = useChatWalletBridge();
 
-  // ── Body scroll lock — iOS Safari PWA: senza questo il body scrolla
-  //    invece del contenuto interno dello sheet ───────────────────────
-  useEffect(() => {
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => { document.body.style.overflow = prev; };
-  }, []);
-
   // ── Network / asset ──────────────────────────────────────────────────
   const [network,  setNetwork]  = useState<SupportedNetwork>("polygon");
   const [assetIdx, setAssetIdx] = useState(0);
@@ -348,6 +340,7 @@ export function ChatWalletPaySheet({
           </div>
 
           <div className="cwp-body">
+          <div className="cwp-body-inner">
 
             {/* ── CASO B — destinatario senza Alpha Wallet ──────────── */}
             {recipientMode === "not-found" && (
@@ -623,6 +616,7 @@ export function ChatWalletPaySheet({
               </>
             )}
 
+          </div>{/* /cwp-body-inner */}
           </div>{/* /cwp-body */}
         </div>
       </div>
