@@ -556,6 +556,12 @@ import {
   getAlphaWalletFeeConfig as _loadFeeConfig,
   ALPHA_WALLET_FEE_DEFAULTS,
 } from "../models/alpha-wallet-fee-config.model";
+import {
+  AlphaWalletFeeRecordModel,
+  emitPermanentFeeFailureAlert,
+  type FeeRecordStatus,
+  type IAlphaWalletFeeRecord,
+} from "../models/alpha-wallet-fee-record.model";
 import { logAuditEvent } from "../lib/audit";
 
 /**
@@ -642,5 +648,120 @@ export async function updateFeeConfig(req: Request, res: Response, next: NextFun
     });
 
     res.json({ data: { ok: true, fee_bps: updated?.fee_bps, quote_validity_sec: updated?.quote_validity_sec } });
+  } catch (err) { next(err); }
+}
+
+// ─── Phase G #90: Fee Record endpoints ────────────────────────────────────
+
+/**
+ * POST /api/v1/alpha-wallet/fee-record
+ *
+ * Registra l'esito di una raccolta platform fee (success o failure).
+ * Idempotency key: _id = mainTxHash — un record per TX principale.
+ *
+ * SICUREZZA §17: nessun dato privato nel payload — solo txHash, rete, importo, status.
+ */
+export async function recordFeeOutcome(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const {
+      mainTxHash, network, assetSymbol, feeAmount, feeWallet,
+      status, feeTxHash, attempts, error,
+    } = req.body as {
+      mainTxHash:  string;
+      network:     string;
+      assetSymbol: string;
+      feeAmount:   string;
+      feeWallet:   string;
+      status:      FeeRecordStatus;
+      feeTxHash?:  string;
+      attempts:    number;
+      error?:      string;
+    };
+
+    if (!mainTxHash || !network || !assetSymbol || !status) {
+      res.status(400).json({ error: "FEE_RECORD_INVALID", message: "mainTxHash, network, assetSymbol, status obbligatori" });
+      return;
+    }
+
+    // Idempotency: se esiste già un record "success" per questo mainTxHash, non sovrascrivere
+    const existing = await AlphaWalletFeeRecordModel.findById(mainTxHash) as IAlphaWalletFeeRecord | null;
+    if (existing?.status === "success") {
+      res.json({ data: { ok: true, idempotent: true } });
+      return;
+    }
+
+    const record = await AlphaWalletFeeRecordModel.findOneAndUpdate(
+      { _id: mainTxHash },
+      {
+        $set: {
+          network, assetSymbol, feeAmount, feeWallet, status,
+          attempts: attempts ?? 1,
+          ...(feeTxHash ? { feeTxHash }  : {}),
+          ...(error     ? { lastError: error } : {}),
+        },
+      },
+      { upsert: true, returnDocument: "after" },
+    ) as IAlphaWalletFeeRecord | null;
+
+    // Allerta strutturata su fallimento permanente
+    if (status === "failed_permanent") {
+      emitPermanentFeeFailureAlert(record ?? {
+        _id: mainTxHash, network, assetSymbol, feeAmount,
+        feeWallet, attempts, lastError: error,
+      } as Partial<IAlphaWalletFeeRecord>);
+
+      logAuditEvent({
+        event:    "ALPHA_WALLET_FEE_FAILED",
+        user_id:  ((req as unknown as Record<string, unknown>).user as { userId?: string })?.userId,
+        ip_hash:  req.ip ?? undefined,
+        created_at: new Date().toISOString(),
+        metadata: { mainTxHash, network, assetSymbol, feeAmount, attempts, error },
+      });
+    }
+
+    res.json({ data: { ok: true, idempotent: false } });
+  } catch (err) { next(err); }
+}
+
+/**
+ * GET /api/v1/alpha-wallet/fee-records
+ * Lista record fee con summary aggregato — richiede super_admin.
+ */
+export async function getFeeRecords(req: Request, res: Response, next: NextFunction): Promise<void> {
+  try {
+    const { status, network, limit = "50" } = req.query as {
+      status?:  string;
+      network?: string;
+      limit?:   string;
+    };
+
+    const filter: Record<string, unknown> = {};
+    if (status)  filter["status"]  = status;
+    if (network) filter["network"] = network;
+
+    const records = await AlphaWalletFeeRecordModel
+      .find(filter)
+      .sort({ createdAt: -1 })
+      .limit(Math.min(parseInt(limit, 10) || 50, 200))
+      .lean();
+
+    const [total, success, failedTransient, failedPermanent] = await Promise.all([
+      AlphaWalletFeeRecordModel.countDocuments({}),
+      AlphaWalletFeeRecordModel.countDocuments({ status: "success" }),
+      AlphaWalletFeeRecordModel.countDocuments({ status: "failed_transient" }),
+      AlphaWalletFeeRecordModel.countDocuments({ status: "failed_permanent" }),
+    ]);
+
+    res.json({
+      data: {
+        records,
+        summary: {
+          total,
+          success,
+          failed_transient: failedTransient,
+          failed_permanent: failedPermanent,
+        },
+      },
+    });
   } catch (err) { next(err); }
 }

@@ -44,6 +44,8 @@ import { saveTxRecord }                          from "../services/tx-store";
 import { VERIFIED_TOKENS }                       from "../evm/token-registry";
 import { EVM_NETWORKS }                          from "../evm/evm-network-config";
 import { apiGetAlphaWalletFeeConfig }            from "../../lib/alpha-wallet-api";
+// Phase G #90: fee collector con retry + report backend (sostituisce fire-and-forget)
+import { collectPlatformFeeReliable }            from "./platform-fee-collector";
 
 // ── Bridge types (public surface) ─────────────────────────────────────────
 import {
@@ -313,17 +315,22 @@ export function ChatWalletBridgeProvider({ children }: Props) {
           });
           txHash = result.txHash;
 
-          // Platform fee: fire-and-forget ERC-20 fee TX (non-blocking)
-          void _sendPlatformFeeErc20(
-            mnemonic,
+          // Phase G #90: fee TX con retry + report backend (NON fire-and-forget)
+          // Awaited prima del finally che azzera il mnemonic.
+          // Un fallimento qui non fa fallire il pagamento principale.
+          await collectPlatformFeeReliable({
+            mnemonic:    mnemonic!,
             chainId,
-            tokenContractAddress as `0x${string}`,
-            params.frozenQuote.platformFee,
+            network:     params.network,
+            assetSymbol: params.assetSymbol,
+            feeAmount:   params.frozenQuote.platformFee,
+            mainTxHash:  txHash,
+            tokenAddr:   tokenContractAddress as `0x${string}`,
             decimals,
-            gasEst.nonce + 1,
-            gasEst.gasLimit,
-            gasEst.gasPrice,
-          ).catch(err => console.warn("[Bridge] Platform fee TX failed (non-critical):", err));
+            nonce:       gasEst.nonce + 1,
+            gasLimit:    gasEst.gasLimit,
+            gasPrice:    gasEst.gasPrice,
+          }).catch(() => {/* errore fee non blocca il pagamento */});
 
         } else {
           // Native token send (ETH / POL / BNB)
@@ -347,15 +354,19 @@ export function ChatWalletBridgeProvider({ children }: Props) {
           });
           txHash = result.txHash;
 
-          // Platform fee: fire-and-forget native fee TX
-          void _sendPlatformFeeNative(
-            mnemonic,
+          // Phase G #90: fee TX con retry + report backend (NON fire-and-forget)
+          await collectPlatformFeeReliable({
+            mnemonic:    mnemonic!,
             chainId,
-            params.frozenQuote.platformFee,
-            gasEst.nonce + 1,
-            gasEst.gasLimit,
-            gasEst.gasPrice,
-          ).catch(err => console.warn("[Bridge] Platform fee TX failed (non-critical):", err));
+            network:     params.network,
+            assetSymbol: params.assetSymbol,
+            feeAmount:   params.frozenQuote.platformFee,
+            mainTxHash:  txHash,
+            // tokenAddr/decimals omessi → native send
+            nonce:       gasEst.nonce + 1,
+            gasLimit:    gasEst.gasLimit,
+            gasPrice:    gasEst.gasPrice,
+          }).catch(() => {/* errore fee non blocca il pagamento */});
         }
 
         explorerUrl = evmExplorerUrl(chainId, txHash);
@@ -424,63 +435,11 @@ export function ChatWalletBridgeProvider({ children }: Props) {
   );
 }
 
-// ─── Private helpers: platform fee collection (fire-and-forget) ──────────
-// These run AFTER the main TX with the same mnemonic still in scope.
-// They are non-blocking — a failure here does NOT affect the user's TX.
-
-async function _sendPlatformFeeErc20(
-  mnemonic:    string,
-  chainId:     number,
-  tokenAddr:   `0x${string}`,
-  feeAmount:   string,
-  decimals:    number,
-  nonce:       number,
-  gasLimit:    bigint,
-  gasPrice:    bigint,
-): Promise<void> {
-  let feeConfig: { fee_wallet_evm?: string } = {};
-  try { feeConfig = await apiGetAlphaWalletFeeConfig(); } catch { return; }
-  const feeWallet = feeConfig.fee_wallet_evm;
-  if (!feeWallet || !feeWallet.startsWith("0x")) return;
-
-  const feeRaw = parseAmount(feeAmount, decimals);
-  if (feeRaw <= 0n) return;
-
-  await signAndBroadcastErc20Evm({
-    mnemonic,
-    chainId,
-    tokenContractAddr: tokenAddr,
-    recipient:         feeWallet as `0x${string}`,
-    amount:            feeRaw,
-    gasLimit,
-    gasPrice,
-    nonce,
-  });
-}
-
-async function _sendPlatformFeeNative(
-  mnemonic:  string,
-  chainId:   number,
-  feeAmount: string,
-  nonce:     number,
-  gasLimit:  bigint,
-  gasPrice:  bigint,
-): Promise<void> {
-  let feeConfig: { fee_wallet_evm?: string } = {};
-  try { feeConfig = await apiGetAlphaWalletFeeConfig(); } catch { return; }
-  const feeWallet = feeConfig.fee_wallet_evm;
-  if (!feeWallet || !feeWallet.startsWith("0x")) return;
-
-  const feeWei = parseAmount(feeAmount, 18);
-  if (feeWei <= 0n) return;
-
-  await signAndBroadcastNativeEvm({
-    mnemonic,
-    chainId,
-    to:       feeWallet as `0x${string}`,
-    valueWei: feeWei,
-    gasLimit,
-    gasPrice,
-    nonce,
-  });
-}
+// ─── Nota Phase G #90 ─────────────────────────────────────────────────────
+// Le funzioni _sendPlatformFeeErc20 e _sendPlatformFeeNative (fire-and-forget)
+// sono state rimosse e sostituite da collectPlatformFeeReliable()
+// in platform-fee-collector.ts, che implementa:
+//   - retry (max 2 tentativi)
+//   - idempotency via mainTxHash
+//   - report outcome al backend (POST /alpha-wallet/fee-record)
+//   - alert strutturato su fallimento permanente

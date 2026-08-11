@@ -296,3 +296,56 @@ export interface AlphaWalletFeeConfigResponse {
 export async function apiGetAlphaWalletFeeConfig(): Promise<AlphaWalletFeeConfigResponse> {
   return walletRequest<AlphaWalletFeeConfigResponse>("/alpha-wallet/fee-config", { method: "GET" });
 }
+
+// ─── Phase G #90: Fee Record (persistenza outcome fee TX) ─────────────────
+// SICUREZZA §17: nessun dato privato inviato al backend (solo hash TX, importi, status)
+
+export type FeeRecordStatus = "success" | "failed_transient" | "failed_permanent";
+
+export interface FeeRecordPayload {
+  /** Idempotency key — txHash della TX principale del pagamento */
+  mainTxHash:  string;
+  network:     string;
+  assetSymbol: string;
+  feeAmount:   string;
+  feeWallet:   string;
+  status:      FeeRecordStatus;
+  feeTxHash?:  string;
+  attempts:    number;
+  error?:      string;
+}
+
+export interface FeeRecordSummary {
+  total:            number;
+  success:          number;
+  failed_transient: number;
+  failed_permanent: number;
+}
+
+/**
+ * POST /alpha-wallet/fee-record
+ * Registra l'esito della raccolta fee al backend.
+ * Best-effort: il chiamante non deve bloccarsi sul risultato.
+ */
+export async function apiRecordFeeOutcome(payload: FeeRecordPayload): Promise<void> {
+  await walletRequest<void>("/alpha-wallet/fee-record", {
+    method: "POST",
+    body:   JSON.stringify(payload),
+  });
+}
+
+/**
+ * GET /alpha-wallet/fee-records — admin only
+ * Recupera i record di fee per il pannello admin.
+ */
+export async function apiGetFeeRecords(params?: {
+  status?:  FeeRecordStatus;
+  network?: string;
+  limit?:   number;
+}): Promise<{ records: FeeRecordPayload[]; summary: FeeRecordSummary }> {
+  const qs = new URLSearchParams();
+  if (params?.status)  qs.set("status",  params.status);
+  if (params?.network) qs.set("network", params.network);
+  if (params?.limit)   qs.set("limit",   String(params.limit));
+  return walletRequest(`/alpha-wallet/fee-records?${qs}`);
+}

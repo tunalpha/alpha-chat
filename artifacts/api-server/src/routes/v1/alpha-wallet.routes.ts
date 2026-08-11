@@ -26,6 +26,9 @@ import {
   // Phase G: Platform Fee Config
   getFeeConfig,
   updateFeeConfig,
+  // Phase G #90: Fee Records
+  recordFeeOutcome,
+  getFeeRecords,
 } from "../../controllers/alpha-wallet.controller";
 
 const router = Router();
@@ -88,5 +91,15 @@ router.get("/fee-config", getFeeConfig);
 
 /** PATCH /fee-config — update platform fee (super_admin only) */
 router.patch("/fee-config", requireAdmin("super_admin"), updateFeeConfig);
+
+// ── Platform Fee Records (Phase G #90) ───────────────────────────────────
+/**
+ * POST /fee-record — utente autenticato registra l'esito della propria fee TX.
+ * Idempotency key: mainTxHash. Non richiede admin perché l'utente riporta il proprio pagamento.
+ */
+router.post("/fee-record", recordFeeOutcome);
+
+/** GET /fee-records — lista record fee + summary. Super admin only. */
+router.get("/fee-records", requireAdmin("super_admin"), getFeeRecords);
 
 export default router;

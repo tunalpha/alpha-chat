@@ -1,0 +1,79 @@
+Sì, questa sequenza è corretta. Io farei #90 → #91 → #92, con una piccola precisazione: #92 può essere fatto anche dopo #90, ma non deve essere il gate tecnico per il collaudo.
+
+🔴 #90 prima di tutto — fee revenue
+
+È la priorità assoluta perché stiamo parlando di denaro reale.
+
+La logica proposta:
+
+fee TX outcome → persist → retry → alert
+
+è molto più sicura del fire-and-forget.
+
+Voglio che sia garantito che:
+
+* la fee non venga persa silenziosamente;
+* ogni tentativo abbia un identificatore/idempotency key;
+* una fee già contabilizzata non venga pagata due volte;
+* il fallimento venga persistito;
+* il retry sia limitato;
+* dopo il retry fallito ci sia un alert permanente;
+* il Payment Engine rimanga completamente separato.
+
+🔴 #91 — Production Readiness
+
+Questo deve essere il vero gate prima dei fondi reali.
+
+Non basta più 583/583: bisogna verificare il comportamento effettivo:
+
+quote → conferma → autenticazione → firma → broadcast → TX on-chain → conferma → fee → bubble → history
+
+su:
+
+* Ethereum;
+* Polygon;
+* BSC;
+* BTC;
+* USDT;
+* USDC;
+* USDA;
+* almeno un custom token.
+
+E soprattutto testare piccoli importi reali, non solo mock.
+
+🟡 #92 — Admin Fee
+
+È importante perché attualmente la configurazione esiste via API, ma l’Admin deve avere una UI vera.
+
+Dovrà permettere almeno:
+
+* visualizzare fee corrente;
+* modificarla;
+* vedere bps e percentuale;
+* impostare minimo USDT;
+* impostare minimo BTC;
+* impostare validità quote;
+* confermare la modifica;
+* audit log.
+
+E io aggiungerei una cosa: mostrare immediatamente l’equivalente percentuale.
+
+Per esempio:
+
+10 bps = 0,10%
+
+così non c’è rischio che qualcuno inserisca 100 pensando di impostare 0,10%.
+
+Ordine definitivo
+
+#90  🔴 Fee revenue reliability
+       ↓
+#91  🔴 Production Readiness + TX reali
+       ↓
+#92  🟡 Admin Fee UI
+       ↓
+🚀 Collaudo finale / apertura utenti
+
+Non aprirei il wallet agli utenti reali prima che #90 e #91 siano verdi.
+
+Il #92 è importante per la gestione operativa, ma tecnicamente la configurazione API già esiste.
