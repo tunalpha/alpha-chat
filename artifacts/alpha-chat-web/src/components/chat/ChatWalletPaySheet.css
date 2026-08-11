@@ -56,10 +56,13 @@
   display: flex;
   flex-direction: column;
   gap: 16px;
-  /* Scroll nativo iOS-safe sul contenuto interno */
-  overflow-y: auto;
+  /* Scroll nativo iOS-safe sul contenuto interno.
+     overflow-y: scroll (non auto) è necessario su iOS Safari PWA
+     per attivare il touch-scroll all'interno di fixed overlay. */
+  overflow-y: scroll;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
+  touch-action: pan-y;
   flex: 1 1 auto;
   min-height: 0; /* necessario per far funzionare flex + overflow su iOS */
 }

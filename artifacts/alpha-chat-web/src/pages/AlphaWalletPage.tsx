@@ -1765,8 +1765,8 @@ function WalletSettingsView({
       <div className="aw-settings-section">
         <div className="aw-settings-section-title">Sicurezza</div>
 
-        {/* Face ID wallet-specifico */}
-        {hasBiometricSet && (
+        {/* Face ID wallet-specifico — mostra se biometric è rilevato O se era già abilitato */}
+        {(hasBiometricSet || walletFaceIdEnabled) && (
           <div className="aw-settings-item aw-settings-item--row">
             <span className="aw-settings-item-icon">🫣</span>
             <div style={{ flex: 1 }}>
