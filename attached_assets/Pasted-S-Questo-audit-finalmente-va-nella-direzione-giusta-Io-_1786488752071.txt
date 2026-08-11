@@ -1,0 +1,66 @@
+Sì. Questo audit finalmente va nella direzione giusta. Io approverei il piano.
+
+La differenza fondamentale è questa:
+
+Prima
+Chat → overlay fixed → sheet → scroll interno iOS ❌
+
+Dopo
+Chat → sostituzione del contenuto della chat → view normale → content scrollabile ✅
+
+Quindi non stanno più cercando di convincere iOS a far funzionare uno scroll dentro un position: fixed: lo eliminano proprio dal flusso del pagamento.
+
+Approverei con 3 condizioni
+
+1. Non toccare assolutamente la logica del wallet
+    * bridge
+    * signing
+    * broadcast
+    * fee
+    * quote
+    * recipient discovery
+    * PIN
+    * tx-store
+    * Payment Engine
+2. Il footer deve essere strutturalmente fuori dall’area scroll
+
+Alpha Wallet Pay
+├── Header       ← fisso
+├── Content      ← unico elemento che può scrollare
+└── Footer       ← sempre visibile
+       [Firma e invia]
+
+3. Step 4 deve essere compatto davvero, come nello schema proposto:
+    Cricco → 1.00 USDA → Polygon → address → fee → totale → Firma e invia
+    Niente più card enorme dell’indirizzo che occupa mezzo schermo.
+
+Una cosa che farei correggere nella specifica
+
+Non userei necessariamente:
+
+ChatWalletPaySheet.tsx → Rinominare
+
+Non è necessario rinominare il file se questo comporta modifiche inutili agli import.
+
+Può tranquillamente rimanere ChatWalletPaySheet.tsx, ma diventare internamente una AlphaWalletPayView/view full-screen. È una modifica di presentazione, non serve creare rumore nel progetto.
+
+Quindi il mio via libera sarebbe:
+
+APPROVATO — procedi con l’implementazione del piano architetturale.
+
+Non modificare bridge, signing, broadcast, fee, quote, recipient discovery, Payment Engine o flussi USDA/USDT/BTC.
+
+Eliminare completamente la dipendenza da position: fixed + scroll interno per il pagamento Alpha Wallet.
+
+Prima di dichiarare completato, verificare:
+
+* 641+ test verdi
+* TypeScript clean
+* Step 1→6 funzionanti
+* back navigation
+* Caso A/B/C
+* Step 4 con CTA visibile
+* iPhone/PWA reale senza blocco
+* firma e broadcast reali con piccolo importo.
+
+Questo sì: lo farei partire. Dopo questa modifica, non accetterei un altro workaround CSS se l’iPhone continua a bloccare la UI: si passa a una vera pagina di pagamento separata dal pannello chat.

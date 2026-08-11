@@ -374,383 +374,324 @@ export function ChatWalletPaySheet({
   const displayName = recipientName ?? "il destinatario";
 
   // ─────────────────────────────────────────────────────────────────────
-  // RENDER
+  // RENDER — Full-screen view nel normal document flow.
+  //
+  // ARCHITETTURA iOS/PWA:
+  //   awp-view       display:flex flex-direction:column height:100%
+  //   awp-header     flex-shrink:0   ← fisso, non scrolla
+  //   awp-content    flex:1 overflow-y:auto   ← unico elemento che può scrollare
+  //   awp-footer     flex-shrink:0   ← sempre visibile sotto il contenuto
+  //
+  // Perché funziona: overflow-y:auto su un elemento il cui ANTENATO NON è
+  // position:fixed funziona perfettamente su iOS Safari PWA.
   // ─────────────────────────────────────────────────────────────────────
 
   return (
-    <div className="cwp-backdrop" onClick={onClose}>
-      <div className="cwp-sheet" onClick={e => e.stopPropagation()}>
+    <div className="awp-view">
 
-        {/* ── Header ──────────────────────────────────────────────────── */}
-        <div className="cwp-header">
-          <div className="cwp-header-inner">
-            <span className="cwp-title">🔐 Paga con Alpha Wallet</span>
-            {step !== "sending" && step !== "success" && (
-              <span className="cwp-step-label">{STEP_LABELS[step]}</span>
-            )}
-          </div>
-          <button className="cwp-close" onClick={onClose} aria-label="Chiudi">✕</button>
+      {/* ── Header ──────────────────────────────────────────────────── */}
+      <div className="awp-header">
+        <button
+          className="awp-back-btn"
+          aria-label={step === "recipient" || step === "success" ? "Chiudi" : "Indietro"}
+          disabled={step === "sending"}
+          onClick={() => {
+            if (step === "sending") return;
+            if (step === "recipient" || step === "success") { onClose(); return; }
+            if (step === "auth") { handlePinCancel(); return; }
+            goBack();
+          }}
+        >
+          ←
+        </button>
+        <div className="awp-title-group">
+          <span className="awp-title">🔐 Paga con Alpha Wallet</span>
+          {step !== "sending" && step !== "success" && (
+            <span className="awp-step-label">{STEP_LABELS[step]}</span>
+          )}
         </div>
+        <div className="awp-header-spacer" aria-hidden="true" />
+      </div>
+
+      {/* ── Scrollable content ─────────────────────────────────────── */}
+      <div className="awp-content">
 
         {/* ════════════════════════════════════════════════════════════
             STEP 1 — Destinatario + Rete
         ═══════════════════════════════════════════════════════════════ */}
         {step === "recipient" && (
-          <>
-            <div className="cwp-step">
+          <div className="cwp-step">
 
-              {/* Loading */}
-              {recipientMode === "loading" && (
-                <div className="cwp-recipient-loading">
-                  <span className="cwp-loading-spinner" />
-                  Verifica wallet destinatario…
-                </div>
-              )}
+            {/* Loading */}
+            {recipientMode === "loading" && (
+              <div className="cwp-recipient-loading">
+                <span className="cwp-loading-spinner" />
+                Verifica wallet destinatario…
+              </div>
+            )}
 
-              {/* CASO B — no wallet */}
-              {recipientMode === "not-found" && (
-                <div className="cwp-no-wallet-card">
-                  <div className="cwp-no-wallet-icon">⚠️</div>
-                  <p className="cwp-no-wallet-title">
-                    {recipientName
-                      ? <><strong>{recipientName}</strong> non ha ancora configurato Alpha Wallet.</>
-                      : <>Il destinatario non ha ancora configurato Alpha Wallet.</>}
-                  </p>
-                  <p className="cwp-no-wallet-sub">
-                    Per ricevere un pagamento self-custodial diretto, il destinatario deve
-                    prima configurare Alpha Wallet sul proprio dispositivo.
-                  </p>
-                  {onSendInvite && (
-                    <button
-                      className="cwp-btn-invite"
-                      onClick={() => {
-                        const name = recipientName ?? "il destinatario";
-                        onSendInvite(
-                          `👋 Ciao ${name}! Per ricevere pagamenti diretti tramite Alpha Wallet, configura il tuo wallet su Alpha Chat: Impostazioni → Alpha Wallet. È gratuito e richiede meno di un minuto. 🔐`,
-                        );
-                        onClose();
-                      }}
-                    >
-                      📩 Invita {recipientName ?? "il destinatario"} su Alpha Wallet
-                    </button>
-                  )}
+            {/* CASO B — no wallet */}
+            {recipientMode === "not-found" && (
+              <div className="cwp-no-wallet-card">
+                <div className="cwp-no-wallet-icon">⚠️</div>
+                <p className="cwp-no-wallet-title">
+                  {recipientName
+                    ? <><strong>{recipientName}</strong> non ha ancora configurato Alpha Wallet.</>
+                    : <>Il destinatario non ha ancora configurato Alpha Wallet.</>}
+                </p>
+                <p className="cwp-no-wallet-sub">
+                  Per ricevere un pagamento self-custodial diretto, il destinatario deve
+                  prima configurare Alpha Wallet sul proprio dispositivo.
+                </p>
+                {onSendInvite && (
                   <button
-                    className="cwp-btn-secondary"
-                    onClick={() => { setRecipientMode("manual"); setRecipErr(null); }}
+                    className="cwp-btn-invite"
+                    onClick={() => {
+                      const name = recipientName ?? "il destinatario";
+                      onSendInvite(
+                        `👋 Ciao ${name}! Per ricevere pagamenti diretti tramite Alpha Wallet, configura il tuo wallet su Alpha Chat: Impostazioni → Alpha Wallet. È gratuito e richiede meno di un minuto. 🔐`,
+                      );
+                      onClose();
+                    }}
                   >
-                    Usa indirizzo esterno →
+                    📩 Invita {recipientName ?? "il destinatario"} su Alpha Wallet
                   </button>
-                  <p className="cwp-no-wallet-note">
-                    Se il destinatario ha un wallet esterno, puoi inviare al suo indirizzo.
-                  </p>
-                </div>
-              )}
-
-              {/* CASO A — Alpha Wallet trovato */}
-              {recipientMode === "found" && (
-                <div className="cwp-recipient-card">
-                  <div className="cwp-recipient-badge">ALPHA WALLET ✓</div>
-                  <div className="cwp-recipient-name">{recipientName ?? "Destinatario"}</div>
-                  {autoAddress
-                    ? <div className="cwp-recipient-address">{truncateAddress(autoAddress)}</div>
-                    : <div className="cwp-recipient-no-address">Nessun indirizzo per questa rete</div>
-                  }
-                </div>
-              )}
-
-              {/* CASO C — manuale */}
-              {recipientMode === "manual" && recipientUserId && (
-                <div className="cwp-manual-notice">
-                  ⚠️ Indirizzo esterno — verifica rete e indirizzo prima di confermare.
-                </div>
-              )}
-
-              {/* Selezione rete — mostrata per tutti tranne loading e not-found (prima della scelta) */}
-              {(recipientMode === "found" || recipientMode === "manual") && (
-                <div className="cwp-section">
-                  <label className="cwp-label">Rete</label>
-                  <div className="cwp-network-grid">
-                    {NETWORKS.map(net => (
-                      <button
-                        key={net}
-                        className={`cwp-net-btn ${network === net ? "active" : ""}`}
-                        style={network === net
-                          ? { borderColor: NETWORK_COLORS[net], color: NETWORK_COLORS[net], background: `${NETWORK_COLORS[net]}18` }
-                          : {}}
-                        onClick={() => setNetwork(net)}
-                      >
-                        {NETWORK_LABELS[net]}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-
-            {/* Footer Step 1 */}
-            <div className="cwp-footer">
-              {(recipientMode === "found" || recipientMode === "manual") && (
+                )}
                 <button
-                  className="cwp-btn-primary"
-                  style={{ background: netColor }}
-                  onClick={goNext}
-                  disabled={recipientMode === "found" && !autoAddress}
+                  className="cwp-btn-secondary"
+                  onClick={() => { setRecipientMode("manual"); setRecipErr(null); }}
                 >
-                  Continua →
+                  Usa indirizzo esterno →
                 </button>
-              )}
-            </div>
-          </>
+                <p className="cwp-no-wallet-note">
+                  Se il destinatario ha un wallet esterno, puoi inviare al suo indirizzo.
+                </p>
+              </div>
+            )}
+
+            {/* CASO A — Alpha Wallet trovato */}
+            {recipientMode === "found" && (
+              <div className="cwp-recipient-card">
+                <div className="cwp-recipient-badge">ALPHA WALLET ✓</div>
+                <div className="cwp-recipient-name">{recipientName ?? "Destinatario"}</div>
+                {autoAddress
+                  ? <div className="cwp-recipient-address">{truncateAddress(autoAddress)}</div>
+                  : <div className="cwp-recipient-no-address">Nessun indirizzo per questa rete</div>
+                }
+              </div>
+            )}
+
+            {/* CASO C — manuale */}
+            {recipientMode === "manual" && recipientUserId && (
+              <div className="cwp-manual-notice">
+                ⚠️ Indirizzo esterno — verifica rete e indirizzo prima di confermare.
+              </div>
+            )}
+
+            {/* Selezione rete */}
+            {(recipientMode === "found" || recipientMode === "manual") && (
+              <div className="cwp-section">
+                <label className="cwp-label">Rete</label>
+                <div className="cwp-network-grid">
+                  {NETWORKS.map(net => (
+                    <button
+                      key={net}
+                      className={`cwp-net-btn ${network === net ? "active" : ""}`}
+                      style={network === net
+                        ? { borderColor: NETWORK_COLORS[net], color: NETWORK_COLORS[net], background: `${NETWORK_COLORS[net]}18` }
+                        : {}}
+                      onClick={() => setNetwork(net)}
+                    >
+                      {NETWORK_LABELS[net]}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
         )}
 
         {/* ════════════════════════════════════════════════════════════
             STEP 2 — Asset
         ═══════════════════════════════════════════════════════════════ */}
         {step === "asset" && (
-          <>
-            <div className="cwp-step">
-              <p className="cwp-step-hint">
-                Seleziona l'asset da inviare su{" "}
-                <strong style={{ color: netColor }}>{NETWORK_LABELS[network]}</strong>
-              </p>
-              <div className="cwp-asset-list">
-                {assets.map((a, i) => (
-                  <button
-                    key={a.symbol}
-                    className={`cwp-asset-btn ${assetIdx === i ? "active" : ""}`}
-                    style={assetIdx === i
-                      ? { borderColor: netColor, background: `${netColor}12` }
-                      : {}}
-                    onClick={() => setAssetIdx(i)}
-                  >
-                    <span className="cwp-asset-icon">{a.icon}</span>
-                    <span className="cwp-asset-info">
-                      <span className="cwp-asset-symbol">{a.symbol}</span>
-                      <span className="cwp-asset-name">{a.name}</span>
-                    </span>
-                    {assetIdx === i && (
-                      <span className="cwp-asset-check" style={{ color: netColor }}>✓</span>
-                    )}
-                  </button>
-                ))}
-              </div>
+          <div className="cwp-step">
+            <p className="cwp-step-hint">
+              Seleziona l'asset da inviare su{" "}
+              <strong style={{ color: netColor }}>{NETWORK_LABELS[network]}</strong>
+            </p>
+            <div className="cwp-asset-list">
+              {assets.map((a, i) => (
+                <button
+                  key={a.symbol}
+                  className={`cwp-asset-btn ${assetIdx === i ? "active" : ""}`}
+                  style={assetIdx === i
+                    ? { borderColor: netColor, background: `${netColor}12` }
+                    : {}}
+                  onClick={() => setAssetIdx(i)}
+                >
+                  <span className="cwp-asset-icon">{a.icon}</span>
+                  <span className="cwp-asset-info">
+                    <span className="cwp-asset-symbol">{a.symbol}</span>
+                    <span className="cwp-asset-name">{a.name}</span>
+                  </span>
+                  {assetIdx === i && (
+                    <span className="cwp-asset-check" style={{ color: netColor }}>✓</span>
+                  )}
+                </button>
+              ))}
             </div>
-
-            {/* Footer Step 2 */}
-            <div className="cwp-footer cwp-footer-split">
-              <button className="cwp-btn-back" onClick={goBack}>← Indietro</button>
-              <button
-                className="cwp-btn-primary"
-                style={{ background: netColor }}
-                onClick={goNext}
-              >
-                Continua →
-              </button>
-            </div>
-          </>
+          </div>
         )}
 
         {/* ════════════════════════════════════════════════════════════
             STEP 3 — Importo
         ═══════════════════════════════════════════════════════════════ */}
         {step === "amount" && (
-          <>
-            <div className="cwp-step">
-              {/* Riepilogo rete + asset */}
-              <div className="cwp-amount-context">
-                <span className="cwp-ctx-pill" style={{ color: netColor, borderColor: `${netColor}50`, background: `${netColor}12` }}>
-                  {NETWORK_LABELS[network]}
-                </span>
-                <span className="cwp-ctx-pill">
-                  {asset.icon} {asset.symbol}
-                </span>
-                <span className="cwp-ctx-pill">→ {displayName}</span>
-              </div>
+          <div className="cwp-step">
+            <div className="cwp-amount-context">
+              <span className="cwp-ctx-pill" style={{ color: netColor, borderColor: `${netColor}50`, background: `${netColor}12` }}>
+                {NETWORK_LABELS[network]}
+              </span>
+              <span className="cwp-ctx-pill">{asset.icon} {asset.symbol}</span>
+              <span className="cwp-ctx-pill">→ {displayName}</span>
+            </div>
 
-              {/* Importo */}
+            <div className="cwp-section">
+              <label className="cwp-label">Quanto vuoi inviare?</label>
+              <div className="cwp-amount-row">
+                <input
+                  className={`cwp-input cwp-amount-input ${amountErr ? "error" : ""}`}
+                  type="number"
+                  inputMode="decimal"
+                  min="0"
+                  step="any"
+                  placeholder="0.00"
+                  value={amount}
+                  onChange={e => { setAmount(e.target.value); setAmountErr(null); setQuoteErr(null); }}
+                  autoFocus
+                />
+                <span className="cwp-amount-symbol">{asset.symbol}</span>
+              </div>
+              {amountErr && <p className="cwp-field-err">{amountErr}</p>}
+            </div>
+
+            {recipientMode === "manual" && (
               <div className="cwp-section">
-                <label className="cwp-label">Quanto vuoi inviare?</label>
-                <div className="cwp-amount-row">
-                  <input
-                    className={`cwp-input cwp-amount-input ${amountErr ? "error" : ""}`}
-                    type="number"
-                    inputMode="decimal"
-                    min="0"
-                    step="any"
-                    placeholder="0.00"
-                    value={amount}
-                    onChange={e => { setAmount(e.target.value); setAmountErr(null); setQuoteErr(null); }}
-                    autoFocus
-                  />
-                  <span className="cwp-amount-symbol">{asset.symbol}</span>
-                </div>
-                {amountErr && <p className="cwp-field-err">{amountErr}</p>}
+                <label className="cwp-label">Indirizzo destinatario</label>
+                <input
+                  className={`cwp-input ${recipErr ? "error" : ""}`}
+                  type="text"
+                  placeholder={network === "bitcoin" ? "bc1q..." : "0x..."}
+                  value={manualAddress}
+                  onChange={e => { setManualAddress(e.target.value); setRecipErr(null); }}
+                  spellCheck={false}
+                  autoComplete="off"
+                />
+                {recipErr && <p className="cwp-field-err">{recipErr}</p>}
               </div>
+            )}
 
-              {/* Caso C — indirizzo manuale */}
-              {recipientMode === "manual" && (
-                <div className="cwp-section">
-                  <label className="cwp-label">Indirizzo destinatario</label>
-                  <input
-                    className={`cwp-input ${recipErr ? "error" : ""}`}
-                    type="text"
-                    placeholder={network === "bitcoin" ? "bc1q..." : "0x..."}
-                    value={manualAddress}
-                    onChange={e => { setManualAddress(e.target.value); setRecipErr(null); }}
-                    spellCheck={false}
-                    autoComplete="off"
-                  />
-                  {recipErr && <p className="cwp-field-err">{recipErr}</p>}
-                </div>
-              )}
-
-              {/* Errore quota */}
-              {quoteErr && <p className="cwp-quote-err">{quoteErr}</p>}
-              {sendErr && <p className="cwp-send-err">{sendErr}</p>}
-            </div>
-
-            {/* Footer Step 3 */}
-            <div className="cwp-footer cwp-footer-split">
-              <button className="cwp-btn-back" onClick={goBack}>← Indietro</button>
-              <button
-                className="cwp-btn-primary"
-                style={{ background: netColor }}
-                onClick={handleGoToSummary}
-                disabled={quoteLoading}
-              >
-                {quoteLoading ? "Calcolo…" : "Calcola costi →"}
-              </button>
-            </div>
-          </>
+            {quoteErr && <p className="cwp-quote-err">{quoteErr}</p>}
+            {sendErr && <p className="cwp-send-err">{sendErr}</p>}
+          </div>
         )}
 
         {/* ════════════════════════════════════════════════════════════
-            STEP 4 — Riepilogo + Conferma
+            STEP 4 — Riepilogo compatto
+            Schema: [chi/quanto] + [tabella rete+dest+fee+totale]
+            Nessun blocco enorme — indirizzo inline nella tabella.
         ═══════════════════════════════════════════════════════════════ */}
         {step === "summary" && quote && (
-          <>
-            <div className="cwp-step">
+          <div className="cwp-step">
 
-              {/* Chi riceve */}
-              <div className="cwp-summary-recv">
-                <div className="cwp-summary-recv-label">
-                  {recipientMode === "found" && recipientName
-                    ? <><strong>{recipientName}</strong> riceverà</>
-                    : <>Destinatario riceverà</>}
-                </div>
-                <div className="cwp-summary-recv-amount" style={{ color: netColor }}>
-                  {quote.recipientAmount} {asset.symbol}
-                </div>
-                <div className="cwp-summary-recv-net">su {NETWORK_LABELS[network]}</div>
-              </div>
+            {/* Hero compatto */}
+            <div className="cwp-summary-hero">
+              <span className="cwp-summary-hero-label">
+                {recipientMode === "found" && recipientName
+                  ? <><strong>{recipientName}</strong> riceverà</>
+                  : <>Destinatario riceverà</>}
+              </span>
+              <span className="cwp-summary-hero-amount" style={{ color: netColor }}>
+                {quote.recipientAmount} {asset.symbol}
+              </span>
+            </div>
 
-              {/* Indirizzo */}
-              <div className="cwp-summary-addr">
-                <span className="cwp-summary-addr-icon">🔒</span>
-                <span className="cwp-summary-addr-text" title={effectiveAddress}>
-                  {truncateAddress(effectiveAddress)}
+            {/* Tabella compatta: rete + dest + fee */}
+            <div className="cwp-quote">
+              <div className="cwp-quote-header">
+                <span>Riepilogo costi</span>
+                <span className={`cwp-quote-timer ${quoteSecondsLeft < 10 ? "expiring" : ""}`}>
+                  ⏱ {quoteSecondsLeft}s
                 </span>
               </div>
-
-              {/* Fee breakdown */}
-              <div className="cwp-quote">
-                <div className="cwp-quote-header">
-                  <span>Riepilogo costi</span>
-                  <span className={`cwp-quote-timer ${quoteSecondsLeft < 10 ? "expiring" : ""}`}>
-                    ⏱ {quoteSecondsLeft}s
-                  </span>
-                </div>
-                <div className="cwp-quote-row">
-                  <span>Importo</span>
-                  <span>{quote.recipientAmount} {asset.symbol}</span>
-                </div>
-                <div className="cwp-quote-row">
-                  <span>Platform fee</span>
-                  <span>{quote.platformFee} {asset.symbol}</span>
-                </div>
-                <div className="cwp-quote-row">
-                  <span>Network fee</span>
+              <div className="cwp-quote-row">
+                <span>Rete</span>
+                <span style={{ color: netColor, fontWeight: 600 }}>{NETWORK_LABELS[network]}</span>
+              </div>
+              <div className="cwp-quote-row">
+                <span>Destinatario</span>
+                <span className="cwp-quote-addr" title={effectiveAddress}>
+                  🔒 {truncateAddress(effectiveAddress)}
+                </span>
+              </div>
+              <div className="cwp-quote-divider" />
+              <div className="cwp-quote-row">
+                <span>Platform fee</span>
+                <span>{quote.platformFee} {asset.symbol}</span>
+              </div>
+              <div className="cwp-quote-row">
+                <span>Network fee</span>
+                <span>~{quote.networkFee} {quote.networkFeeSymbol}</span>
+              </div>
+              <div className="cwp-quote-divider" />
+              <div className="cwp-quote-row cwp-quote-total">
+                <span>Totale inviato</span>
+                <span style={{ color: netColor }}>{quote.totalAsset} {asset.symbol}</span>
+              </div>
+              {quote.networkFeeSymbol !== asset.symbol && (
+                <div className="cwp-quote-row cwp-quote-gas">
+                  <span>+ gas separato</span>
                   <span>~{quote.networkFee} {quote.networkFeeSymbol}</span>
                 </div>
-                <div className="cwp-quote-divider" />
-                <div className="cwp-quote-row cwp-quote-total">
-                  <span>Totale inviato</span>
-                  <span style={{ color: netColor }}>{quote.totalAsset} {asset.symbol}</span>
-                </div>
-                {quote.networkFeeSymbol !== asset.symbol && (
-                  <div className="cwp-quote-row cwp-quote-gas">
-                    <span>+ Network fee separata</span>
-                    <span>~{quote.networkFee} {quote.networkFeeSymbol}</span>
-                  </div>
-                )}
-              </div>
-
-              {/* Warning Caso C */}
-              {recipientMode === "manual" && (
-                <div className="cwp-manual-confirm-warning">
-                  ⚠️ Stai inviando <strong>{asset.symbol}</strong> su{" "}
-                  <strong>{NETWORK_LABELS[network]}</strong>.
-                  Verifica che l'indirizzo appartenga alla rete corretta.
-                </div>
               )}
-
-              {sendErr && <p className="cwp-send-err">{sendErr}</p>}
             </div>
 
-            {/* Footer Step 4 */}
-            <div className="cwp-footer cwp-footer-split">
-              <button className="cwp-btn-back" onClick={goBack}>← Modifica</button>
-              <button
-                className="cwp-btn-primary"
-                style={{ background: netColor }}
-                onClick={handleSend}
-                disabled={sending || bridge.sendInProgress}
-              >
-                🔐 Firma e invia
-              </button>
-            </div>
-          </>
+            {recipientMode === "manual" && (
+              <div className="cwp-manual-confirm-warning">
+                ⚠️ Verifica che l'indirizzo sia sulla rete{" "}
+                <strong>{NETWORK_LABELS[network]}</strong>.
+              </div>
+            )}
+
+            {sendErr && <p className="cwp-send-err">{sendErr}</p>}
+          </div>
         )}
 
         {/* ════════════════════════════════════════════════════════════
-            STEP 5 — Autenticazione PIN (inline)
+            STEP 5 — PIN inline
         ═══════════════════════════════════════════════════════════════ */}
         {step === "auth" && (
-          <>
-            <div className="cwp-step cwp-step-auth">
-              <div className="cwp-auth-icon">🔐</div>
-              <p className="cwp-auth-desc">
-                {recipientName
-                  ? <>Stai inviando <strong>{amount} {asset.symbol}</strong> a{" "}<strong>{recipientName}</strong></>
-                  : <>Autorizza la transazione con il tuo PIN</>}
-              </p>
-              <input
-                className={`cwp-pin-input ${authErr ? "error" : ""}`}
-                type="password"
-                inputMode="numeric"
-                pattern="[0-9]*"
-                placeholder="• • • •"
-                value={pinValue}
-                onChange={e => { setPinValue(e.target.value.replace(/\D/g, "")); setAuthErr(null); }}
-                autoFocus
-                maxLength={8}
-              />
-              {authErr && <p className="cwp-field-err">{authErr}</p>}
-            </div>
-
-            {/* Footer Step 5 */}
-            <div className="cwp-footer cwp-footer-split">
-              <button className="cwp-btn-back" onClick={handlePinCancel}>Annulla</button>
-              <button
-                className="cwp-btn-primary"
-                style={{ background: netColor }}
-                onClick={handlePinSubmit}
-                disabled={pinValue.length < 4}
-              >
-                Firma e invia
-              </button>
-            </div>
-          </>
+          <div className="cwp-step cwp-step-auth">
+            <div className="cwp-auth-icon">🔐</div>
+            <p className="cwp-auth-desc">
+              {recipientName
+                ? <>Stai inviando <strong>{amount} {asset.symbol}</strong> a{" "}<strong>{recipientName}</strong></>
+                : <>Autorizza la transazione con il tuo PIN</>}
+            </p>
+            <input
+              className={`cwp-pin-input ${authErr ? "error" : ""}`}
+              type="password"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              placeholder="• • • •"
+              value={pinValue}
+              onChange={e => { setPinValue(e.target.value.replace(/\D/g, "")); setAuthErr(null); }}
+              autoFocus
+              maxLength={8}
+            />
+            {authErr && <p className="cwp-field-err">{authErr}</p>}
+          </div>
         )}
 
         {/* ════════════════════════════════════════════════════════════
@@ -771,37 +712,110 @@ export function ChatWalletPaySheet({
             SUCCESS
         ═══════════════════════════════════════════════════════════════ */}
         {step === "success" && (
-          <>
-            <div className="cwp-step cwp-step-center">
-              <div className="cwp-success-icon">✅</div>
-              <p className="cwp-success-title">Pagamento inviato</p>
-              <p className="cwp-success-sub">
-                {amount} {asset.symbol} inviati a <strong>{displayName}</strong>
-              </p>
-              {txHash && (
-                <a
-                  className="cwp-success-tx"
-                  href={`https://polygonscan.com/tx/${txHash}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  Visualizza sulla blockchain →
-                </a>
-              )}
-            </div>
-            <div className="cwp-footer">
-              <button
-                className="cwp-btn-primary"
-                style={{ background: netColor }}
-                onClick={onClose}
+          <div className="cwp-step cwp-step-center">
+            <div className="cwp-success-icon">✅</div>
+            <p className="cwp-success-title">Pagamento inviato</p>
+            <p className="cwp-success-sub">
+              {amount} {asset.symbol} inviati a <strong>{displayName}</strong>
+            </p>
+            {txHash && (
+              <a
+                className="cwp-success-tx"
+                href={`https://polygonscan.com/tx/${txHash}`}
+                target="_blank"
+                rel="noopener noreferrer"
               >
-                Chiudi
-              </button>
-            </div>
+                Visualizza sulla blockchain →
+              </a>
+            )}
+          </div>
+        )}
+
+      </div>{/* /awp-content */}
+
+      {/* ════════════════════════════════════════════════════════════
+          FOOTER — strutturalmente fuori da awp-content.
+          flex-shrink:0 garantisce che il CTA sia SEMPRE visibile
+          indipendentemente dall'altezza del contenuto dello step.
+      ═══════════════════════════════════════════════════════════════ */}
+      <div className="awp-footer">
+
+        {/* Step 1 — solo quando c'è un'azione primaria */}
+        {step === "recipient" && (recipientMode === "found" || recipientMode === "manual") && (
+          <button
+            className="cwp-btn-primary"
+            style={{ background: netColor }}
+            onClick={goNext}
+            disabled={recipientMode === "found" && !autoAddress}
+          >
+            Continua →
+          </button>
+        )}
+
+        {/* Step 2 */}
+        {step === "asset" && (
+          <>
+            <button className="cwp-btn-back" onClick={goBack}>← Indietro</button>
+            <button className="cwp-btn-primary" style={{ background: netColor }} onClick={goNext}>
+              Continua →
+            </button>
           </>
         )}
 
-      </div>
+        {/* Step 3 */}
+        {step === "amount" && (
+          <>
+            <button className="cwp-btn-back" onClick={goBack}>← Indietro</button>
+            <button
+              className="cwp-btn-primary"
+              style={{ background: netColor }}
+              onClick={handleGoToSummary}
+              disabled={quoteLoading}
+            >
+              {quoteLoading ? "Calcolo…" : "Calcola costi →"}
+            </button>
+          </>
+        )}
+
+        {/* Step 4 */}
+        {step === "summary" && quote && (
+          <>
+            <button className="cwp-btn-back" onClick={goBack}>← Modifica</button>
+            <button
+              className="cwp-btn-primary"
+              style={{ background: netColor }}
+              onClick={handleSend}
+              disabled={sending || bridge.sendInProgress}
+            >
+              🔐 Firma e invia
+            </button>
+          </>
+        )}
+
+        {/* Step 5 — auth */}
+        {step === "auth" && (
+          <>
+            <button className="cwp-btn-back" onClick={handlePinCancel}>Annulla</button>
+            <button
+              className="cwp-btn-primary"
+              style={{ background: netColor }}
+              onClick={handlePinSubmit}
+              disabled={pinValue.length < 4}
+            >
+              Firma e invia
+            </button>
+          </>
+        )}
+
+        {/* Success */}
+        {step === "success" && (
+          <button className="cwp-btn-primary" style={{ background: netColor }} onClick={onClose}>
+            Chiudi
+          </button>
+        )}
+
+      </div>{/* /awp-footer */}
+
     </div>
   );
 }

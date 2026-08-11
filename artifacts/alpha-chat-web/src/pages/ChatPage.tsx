@@ -3547,7 +3547,7 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
       {/* ── Chat area ─────────────────────────────────────────────────────── */}
       {/* Group Info — renderizzata dentro chat-area (stessa slide-in usata per la chat)
           per evitare tutti i problemi di position:fixed su iOS Safari */}
-      <main ref={chatAreaRef} className={`chat-area${(!mobileShowChat && !showGroupInfo) ? " chat-area-mobile-hidden" : ""}`}>
+      <main ref={chatAreaRef} className={`chat-area${(!mobileShowChat && !showGroupInfo && !showWalletPay) ? " chat-area-mobile-hidden" : ""}`}>
         {showGroupInfo && groupInfoId ? (
           <GroupInfoPage
             groupId={groupInfoId}
@@ -3561,6 +3561,34 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
             contacts={conversations
               .filter((c) => c.type !== "group" && c.other_user)
               .map((c) => ({ username: c.other_user!.username, display_name: c.other_user!.display_name }))}
+          />
+        ) : showWalletPay && activeConv && auth && activeConv.type !== "group" ? (
+          /* Phase G — Alpha Wallet full-screen view (in normal flow, NO position:fixed)
+             Fills the chat-area <main> exactly like GroupInfoPage does.
+             awp-view usa height:100% + flex column → awp-content overflow-y:auto
+             funziona su iOS Safari PWA perché il parent NON è position:fixed. */
+          <ChatWalletPaySheet
+            conversationId={activeConvId ?? ""}
+            recipientUserId={activeConv.other_user?.user_id}
+            recipientName={activeConv.other_user?.display_name ?? activeConv.other_user?.username}
+            onSendInvite={(msg) => void sendProgrammatic(msg)}
+            onClose={() => setShowWalletPay(false)}
+            onSent={(result: ChatPaymentResult) => {
+              setShowWalletPay(false);
+              if (result.status === "sent" || result.status === "confirmed") {
+                const meta: WalletPaymentMeta = {
+                  txHash:      result.txHash ?? "",
+                  network:     result.network ?? "polygon",
+                  assetSymbol: result.assetSymbol ?? "",
+                  amount:      result.amountSent ?? "",
+                  fee:         result.fee,
+                  direction:   "out",
+                  status:      "sent",
+                  explorerUrl: result.explorerUrl ?? "",
+                };
+                void sendProgrammatic(`🔐WALLETPAY:${JSON.stringify(meta)}`);
+              }
+            }}
           />
         ) : !activeConvId ? (
           <div className="chat-empty">
@@ -4902,36 +4930,9 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
         />
       )}
 
-      {/* Phase G — Alpha Wallet self-custodial payment sheet */}
-      {showWalletPay && activeConv && auth && activeConv.type !== "group" && (
-        <ChatWalletPaySheet
-          conversationId={activeConvId ?? ""}
-          recipientUserId={activeConv.other_user?.user_id}
-          recipientName={activeConv.other_user?.display_name ?? activeConv.other_user?.username}
-          onSendInvite={(msg) => void sendProgrammatic(msg)}
-          onClose={() => setShowWalletPay(false)}
-          onSent={(result: ChatPaymentResult) => {
-            setShowWalletPay(false);
-            if (result.status === "sent" || result.status === "confirmed") {
-              // Invia un messaggio sistema con i dettagli della TX (E2E cifrato come testo normale)
-              // La bubble lo rileva e lo renderizza come ChatWalletPaymentBubble (§14)
-              const meta: WalletPaymentMeta = {
-                txHash:      result.txHash ?? "",
-                network:     result.network ?? "polygon",
-                assetSymbol: result.assetSymbol ?? "",
-                amount:      result.amountSent ?? "",
-                fee:         result.fee,
-                direction:   "out",   // per il mittente; il ricevente vede isMine=false → "in"
-                status:      "sent",
-                explorerUrl: result.explorerUrl ?? "",
-              };
-              // Usa il canale messaggio normale E2E — message_type "wallet_payment"
-              // Il backend tratta il body come opaco cifrato
-              void sendProgrammatic(`🔐WALLETPAY:${JSON.stringify(meta)}`);
-            }
-          }}
-        />
-      )}
+      {/* Phase G — Alpha Wallet: ora resa come view in-place (non più overlay fixed).
+           Vedere architettura in ChatWalletPaySheet.css — questo risolve definitivamente
+           il clipping di Step 4 su iOS Safari PWA. */}
 
       {/* Legacy SendUsdaSheet — mantenuto per compatibilità, non più collegato al pulsante */}
       {showSendUsda && activeConv && auth && activeConv.type !== "group" && (
