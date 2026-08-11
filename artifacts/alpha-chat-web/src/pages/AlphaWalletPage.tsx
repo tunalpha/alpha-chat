@@ -1,10 +1,16 @@
 /**
- * Alpha Wallet Page — Phase B + C
+ * Alpha Wallet Page — Phase B + C + F
  *
  * Flussi:
  *   1. Nessun wallet → Onboarding (crea / importa)
  *   2. Wallet bloccato → PIN unlock
- *   3. Wallet sbloccato → Overview / Receive / Send / Notifications / Token import / Security
+ *   3. Wallet sbloccato → Overview / Receive / Send / Notifications / Token import / Security / History
+ *
+ * Phase F additions:
+ *   - Storico transazioni (HistoryView) con filtri e dettaglio inline
+ *   - Seed export autenticato (SeedExportView) in SecurityView
+ *   - Custom token remove button nell'AssetList
+ *   - Backup reminder potenziato con CTA navigabile
  *
  * ISOLAMENTO ASSOLUTO: non importa nulla dal Payment Engine, USDA, ThirdWeb.
  * SICUREZZA: seed/privateKey firmano localmente e non escono mai dal dispositivo.
@@ -25,6 +31,7 @@ import {
   chainName,
 } from "../wallet/notifications/wallet-notification-types";
 import { markAllNotificationsRead } from "../wallet/notifications/wallet-notification-store";
+import type { WalletTxRecord } from "../wallet/services/tx-store";
 // Phase C: balance, price, gas, signing
 import {
   fetchEvmBalance,
@@ -71,11 +78,13 @@ type WalletSubView =
   | "backup-confirm"
   | "unlock"
   | "overview"
-  | "receive"   // Phase C
-  | "send"      // Phase C
+  | "receive"        // Phase C
+  | "send"           // Phase C
   | "notifications"
   | "add-token"
-  | "security";
+  | "security"
+  | "history"        // Phase F
+  | "seed-export";   // Phase F
 
 const ONBOARDING_VIEWS: WalletSubView[] = [
   "create-phrase", "create-verify", "import-phrase",
@@ -185,7 +194,11 @@ function AlphaWalletInner({ onBack }: Props) {
       case "add-token":
         return <AddTokenView onBack={() => setSubView("overview")} />;
       case "security":
-        return <SecurityView onBack={() => setSubView("overview")} onForget={onBack} />;
+        return <SecurityView onBack={() => setSubView("overview")} onForget={onBack} onExportSeed={() => setSubView("seed-export")} />;
+      case "history":
+        return <HistoryView onBack={() => setSubView("overview")} />;
+      case "seed-export":
+        return <SeedExportView onBack={() => setSubView("security")} />;
       default: return null;
     }
   };
@@ -194,6 +207,7 @@ function AlphaWalletInner({ onBack }: Props) {
   const subViewTitle: Partial<Record<WalletSubView, string>> = {
     overview: "Alpha Wallet", notifications: "Notifiche", "add-token": "Aggiungi Token",
     security: "Sicurezza", unlock: "Alpha Wallet", receive: "Ricevi", send: "Invia",
+    history: "Storico", "seed-export": "Recovery Phrase",
   };
 
   return (
@@ -570,8 +584,8 @@ function OverviewView({ onNavigate }: { onNavigate: (v: WalletSubView) => void }
         <button className="aw-action-btn" onClick={() => onNavigate("receive")}>
           📥<br /><small>Ricevi</small>
         </button>
-        <button className="aw-action-btn" onClick={() => onNavigate("add-token")}>
-          ➕<br /><small>Token</small>
+        <button className="aw-action-btn" onClick={() => onNavigate("history")}>
+          📋<br /><small>Storico</small>
         </button>
         <button className="aw-action-btn" onClick={() => onNavigate("notifications")} style={{ position: "relative" }}>
           🔔<br /><small>Notifiche</small>
@@ -589,7 +603,10 @@ function OverviewView({ onNavigate }: { onNavigate: (v: WalletSubView) => void }
       </div>
 
       {/* Asset list */}
-      <div className="aw-section-title">Asset</div>
+      <div className="aw-section-header">
+        <div className="aw-section-title" style={{ margin: 0 }}>Asset</div>
+        <button className="aw-section-link" onClick={() => onNavigate("add-token")}>+ Aggiungi</button>
+      </div>
       <AssetList chainId={wallet.selectedChainId} chainBalance={chainBalance} btcBalance={btcBalance} prices={prices} loading={balanceLoading} />
 
       {/* Push notification prompt */}
@@ -603,9 +620,12 @@ function OverviewView({ onNavigate }: { onNavigate: (v: WalletSubView) => void }
       {!meta.backupVerified && (
         <div className="aw-backup-warning">
           <span>⚠️</span>
-          <div>
+          <div className="aw-backup-warning-content">
             <strong>Backup non completato</strong>
             <p>Esegui il backup della recovery phrase prima di depositare fondi.</p>
+            <button className="aw-backup-warning-btn" onClick={() => onNavigate("seed-export")}>
+              📋 Vedi recovery phrase →
+            </button>
           </div>
         </div>
       )}
@@ -686,6 +706,7 @@ function AssetList({ chainId, chainBalance, btcBalance, prices, loading }: Asset
         const price  = prices ? prices[sym] as { usd: number; eur: number } | undefined : null;
         const fiat   = !loading && price ? formatFiat(bal, t.decimals, price, "EUR") : null;
         const isVerifiedToken = t.verification === "verified";
+        const isCustomToken   = t.verification === "custom";
         return (
           <div key={`${t.chainId}-${t.contractAddress}`} className="aw-asset-item">
             <div className="aw-asset-icon">🪙</div>
@@ -703,6 +724,15 @@ function AssetList({ chainId, chainBalance, btcBalance, prices, loading }: Asset
               <div className="aw-asset-balance">{fmtBal}</div>
               {fiat && <div className="aw-asset-fiat">{fiat}</div>}
             </div>
+            {/* Phase F: remove custom token button */}
+            {isCustomToken && t.contractAddress && (
+              <button
+                className="aw-asset-remove-btn"
+                title="Rimuovi token"
+                onClick={e => { e.stopPropagation(); void wallet.removeToken(t.chainId, t.contractAddress!); }}
+                aria-label={`Rimuovi ${t.symbol}`}
+              >✕</button>
+            )}
           </div>
         );
       })}
@@ -1220,9 +1250,9 @@ function AddTokenView({ onBack }: { onBack: () => void }) {
   );
 }
 
-// ─── Security (Phase B — unchanged) ─────────────────────────────────────────
+// ─── Security (Phase B + F) ────────────────────────────────────────────────
 
-function SecurityView({ onBack, onForget }: { onBack: () => void; onForget: () => void }) {
+function SecurityView({ onBack, onForget, onExportSeed }: { onBack: () => void; onForget: () => void; onExportSeed: () => void }) {
   const wallet = useWallet();
   const [showForgetConfirm, setShowForgetConfirm] = useState(false);
   const [forgetting, setForgetting] = useState(false);
@@ -1235,6 +1265,18 @@ function SecurityView({ onBack, onForget }: { onBack: () => void; onForget: () =
           {wallet.meta?.backupVerified ? "✅ Recovery phrase verificata" : "⚠️ Recovery phrase non ancora verificata"}
         </div>
       </div>
+
+      {/* Phase F: seed export autenticato */}
+      <div className="aw-security-section">
+        <h3>Recovery Phrase</h3>
+        <p style={{ fontSize: 13, color: "rgba(255,255,255,.45)", margin: "0 0 10px" }}>
+          Visualizza la tua recovery phrase in modo sicuro, protetta dal PIN.
+        </p>
+        <button className="aw-btn aw-btn--secondary" onClick={onExportSeed}>
+          📋 Mostra recovery phrase
+        </button>
+      </div>
+
       <div className="aw-security-section">
         <h3>Sessione</h3>
         <button className="aw-btn aw-btn--secondary" onClick={wallet.lockWallet}>🔒 Blocca wallet</button>
@@ -1254,6 +1296,308 @@ function SecurityView({ onBack, onForget }: { onBack: () => void; onForget: () =
             </div>
           )
         }
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// HISTORY VIEW (Phase F — storico transazioni)
+// ═══════════════════════════════════════════════════════════════════════════
+
+type TxFilter = "all" | "in" | "out" | "pending";
+
+function HistoryView({ onBack }: { onBack: () => void }) {
+  const wallet = useWallet();
+  const [filter, setFilter] = useState<TxFilter>("all");
+  const [selectedTx, setSelectedTx] = useState<WalletTxRecord | null>(null);
+  const [page, setPage] = useState(1);
+  const PAGE_SIZE = 30;
+
+  // Refresh storico quando si entra nella view
+  useEffect(() => { void wallet.refreshTxHistory(); }, []); // eslint-disable-line
+
+  const filtered = wallet.txHistory.filter(tx => {
+    if (filter === "all") return true;
+    if (filter === "in") return tx.direction === "in" && tx.status !== "pending";
+    if (filter === "out") return tx.direction === "out" && tx.status !== "pending";
+    if (filter === "pending") return tx.status === "pending";
+    return true;
+  });
+
+  const visible = filtered.slice(0, page * PAGE_SIZE);
+  const hasMore = visible.length < filtered.length;
+
+  if (selectedTx) {
+    return <TxDetailView tx={selectedTx} onBack={() => setSelectedTx(null)} />;
+  }
+
+  return (
+    <div className="aw-history">
+      {/* Filtri */}
+      <div className="aw-history-filters">
+        {(["all", "in", "out", "pending"] as TxFilter[]).map(f => (
+          <button
+            key={f}
+            className={`aw-filter-chip ${filter === f ? "aw-filter-chip--active" : ""}`}
+            onClick={() => { setFilter(f); setPage(1); }}
+          >
+            {f === "all" ? "Tutto" : f === "in" ? "💰 Ricevuto" : f === "out" ? "📤 Inviato" : "⏳ In attesa"}
+          </button>
+        ))}
+      </div>
+
+      {/* Lista */}
+      {filtered.length === 0 ? (
+        <div className="aw-history-empty">
+          <div className="aw-history-empty-icon">📋</div>
+          <div className="aw-history-empty-title">
+            {filter === "all" ? "Nessuna transazione" : "Nessuna transazione con questo filtro"}
+          </div>
+          <p>Le transazioni rilevate dal monitor appariranno qui.</p>
+        </div>
+      ) : (
+        <div className="aw-history-list">
+          {visible.map(tx => <TxListItem key={tx.id} tx={tx} onClick={() => setSelectedTx(tx)} />)}
+          {hasMore && (
+            <div className="aw-history-load-more">
+              <button className="aw-btn aw-btn--secondary" style={{ maxWidth: 180 }} onClick={() => setPage(p => p + 1)}>
+                Carica altri…
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── TxListItem ─────────────────────────────────────────────────────────────
+
+function TxListItem({ tx, onClick }: { tx: WalletTxRecord; onClick: () => void }) {
+  const isIn      = tx.direction === "in";
+  const isPending = tx.status === "pending";
+  const isFailed  = tx.status === "failed";
+
+  const iconClass = isPending ? "aw-tx-icon--pending" : isIn ? "aw-tx-icon--in" : "aw-tx-icon--out";
+  const icon      = isPending ? "⏳" : isIn ? "💰" : "📤";
+  const label     = isPending ? "In attesa" : isIn ? "Ricevuto" : "Inviato";
+  const amtClass  = isPending ? "aw-tx-amount--pending" : isIn ? "aw-tx-amount--in" : "aw-tx-amount--out";
+  const amtPrefix = isIn ? "+" : "-";
+
+  const date = new Date(tx.timestamp);
+  const dateStr = date.toLocaleDateString("it-IT", { day: "2-digit", month: "short" });
+  const timeStr = date.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" });
+
+  return (
+    <div className="aw-tx-item" onClick={onClick} role="button" tabIndex={0}
+      onKeyDown={e => e.key === "Enter" && onClick()}>
+      <div className={`aw-tx-icon ${iconClass}`}>{icon}</div>
+      <div className="aw-tx-body">
+        <div className="aw-tx-title">
+          {label}
+          {isFailed && <span className="aw-tx-status-badge aw-tx-status-badge--failed">Fallita</span>}
+          {isPending && <span className="aw-tx-status-badge aw-tx-status-badge--pending">Pending</span>}
+        </div>
+        <div className="aw-tx-meta">{tx.network} · {tx.txHash.slice(0, 8)}…{tx.txHash.slice(-6)}</div>
+      </div>
+      <div className="aw-tx-amount-col">
+        <div className={`aw-tx-amount ${amtClass}`}>{amtPrefix}{tx.amount} {tx.asset}</div>
+        <div className="aw-tx-date">{dateStr} {timeStr}</div>
+      </div>
+    </div>
+  );
+}
+
+// ─── TxDetailView ───────────────────────────────────────────────────────────
+
+function TxDetailView({ tx, onBack }: { tx: WalletTxRecord; onBack: () => void }) {
+  const isIn      = tx.direction === "in";
+  const isPending = tx.status === "pending";
+  const isFailed  = tx.status === "failed";
+  const [copied, setCopied] = useState(false);
+
+  const explorerUrl = tx.chainId === 0
+    ? `https://blockstream.info/tx/${tx.txHash}`
+    : txExplorerUrl(tx.chainId, tx.txHash);
+
+  const copyHash = () => {
+    void navigator.clipboard.writeText(tx.txHash)
+      .then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); });
+  };
+
+  const statusLabel = isFailed ? "Fallita ❌" : isPending ? "In attesa ⏳" : "Confermata ✅";
+  const amtClass = isPending ? "aw-tx-detail-amount-value--out"
+    : isIn ? "aw-tx-detail-amount-value--in" : "aw-tx-detail-amount-value--out";
+  const amtPrefix = isIn ? "+" : "-";
+
+  const date = new Date(tx.timestamp);
+  const dateStr = date.toLocaleString("it-IT");
+
+  return (
+    <div className="aw-tx-detail">
+      <div className="aw-tx-detail-header">
+        <button className="aw-back-btn" onClick={onBack} aria-label="Indietro">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="20" height="20">
+            <polyline points="15 18 9 12 15 6"/>
+          </svg>
+        </button>
+        <h2>Dettaglio transazione</h2>
+      </div>
+
+      <div className="aw-tx-detail-icon">
+        {isPending ? "⏳" : isIn ? "💰" : "📤"}
+      </div>
+
+      <div className="aw-tx-detail-amount">
+        <div className={`aw-tx-detail-amount-value ${amtClass}`}>
+          {amtPrefix}{tx.amount} {tx.asset}
+        </div>
+        <div className="aw-tx-detail-amount-network">{tx.network}</div>
+      </div>
+
+      <div className="aw-tx-detail-card">
+        <div className="aw-tx-detail-row">
+          <span className="aw-tx-detail-label">Stato</span>
+          <span className="aw-tx-detail-value">{statusLabel}</span>
+        </div>
+        <div className="aw-tx-detail-row">
+          <span className="aw-tx-detail-label">Data</span>
+          <span className="aw-tx-detail-value">{dateStr}</span>
+        </div>
+        <div className="aw-tx-detail-row">
+          <span className="aw-tx-detail-label">TX Hash</span>
+          <span className="aw-tx-detail-value aw-tx-detail-value--mono">
+            {tx.txHash.slice(0, 14)}…{tx.txHash.slice(-10)}
+          </span>
+        </div>
+        {tx.fromAddress && (
+          <div className="aw-tx-detail-row">
+            <span className="aw-tx-detail-label">Da</span>
+            <span className="aw-tx-detail-value aw-tx-detail-value--mono">
+              {tx.fromAddress.slice(0, 10)}…{tx.fromAddress.slice(-8)}
+            </span>
+          </div>
+        )}
+        {tx.toAddress && (
+          <div className="aw-tx-detail-row">
+            <span className="aw-tx-detail-label">A</span>
+            <span className="aw-tx-detail-value aw-tx-detail-value--mono">
+              {tx.toAddress.slice(0, 10)}…{tx.toAddress.slice(-8)}
+            </span>
+          </div>
+        )}
+        {tx.blockNumber && (
+          <div className="aw-tx-detail-row">
+            <span className="aw-tx-detail-label">Blocco</span>
+            <span className="aw-tx-detail-value">{parseInt(tx.blockNumber, 16) || tx.blockNumber}</span>
+          </div>
+        )}
+        {tx.fee && (
+          <div className="aw-tx-detail-row">
+            <span className="aw-tx-detail-label">Fee</span>
+            <span className="aw-tx-detail-value">{tx.fee}</span>
+          </div>
+        )}
+      </div>
+
+      <div className="aw-tx-detail-actions">
+        <button className="aw-btn aw-btn--secondary" onClick={copyHash}>
+          {copied ? "✅ Hash copiato" : "📋 Copia TX Hash"}
+        </button>
+        <a href={explorerUrl} target="_blank" rel="noopener noreferrer"
+          className="aw-btn aw-btn--secondary" style={{ textDecoration: "none", textAlign: "center" }}>
+          🔍 Vedi su explorer ↗
+        </a>
+      </div>
+    </div>
+  );
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SEED EXPORT VIEW (Phase F — visualizzazione autenticata recovery phrase)
+// ═══════════════════════════════════════════════════════════════════════════
+
+function SeedExportView({ onBack }: { onBack: () => void }) {
+  const [pin, setPin] = useState("");
+  const [pinErr, setPinErr] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [words, setWords] = useState<string[] | null>(null);
+  const [copied, setCopied] = useState(false);
+
+  const handleReveal = async () => {
+    if (!validatePin(pin)) { setPinErr("PIN non valido"); return; }
+    setPinErr(null);
+    setLoading(true);
+    try {
+      const keystore = await loadKeystore();
+      if (!keystore) { setPinErr("Keystore non trovato. Ricrea il wallet."); return; }
+      const mnemonic = await decryptSeed(keystore, pin);
+      setWords(mnemonic.split(" "));
+      setPin(""); // SECURITY: wipe PIN from state
+    } catch {
+      setPin("");
+      setPinErr("PIN errato. Riprova.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCopy = () => {
+    if (!words) return;
+    void navigator.clipboard.writeText(words.join(" "))
+      .then(() => { setCopied(true); setTimeout(() => setCopied(false), 3000); });
+  };
+
+  // Mostra la frase se autenticata
+  if (words) {
+    return (
+      <div className="aw-seed-export">
+        <div className="aw-seed-export-warning">
+          ⚠️ <strong>Non condividere mai queste parole.</strong> Chiunque le abbia può accedere ai tuoi fondi.
+          Non fare screenshot — le immagini possono essere intercettate.
+        </div>
+        <div className="aw-seed-export-phrase">
+          {words.map((w, i) => (
+            <div key={i} className="aw-seed-export-word">
+              <span className="aw-seed-export-word-num">{i + 1}</span>
+              <span>{w}</span>
+            </div>
+          ))}
+        </div>
+        <button className="aw-btn aw-btn--ghost" onClick={handleCopy}>
+          {copied ? "✅ Copiata negli appunti" : "📋 Copia recovery phrase"}
+        </button>
+        <button className="aw-btn aw-btn--secondary" onClick={onBack}>← Torna alla sicurezza</button>
+      </div>
+    );
+  }
+
+  // Form PIN
+  return (
+    <div className="aw-seed-export">
+      <div className="aw-seed-export-warning">
+        ⚠️ La recovery phrase ti permette di ripristinare il wallet su qualsiasi dispositivo.
+        Tienila in un posto fisico sicuro, mai in foto o file digitali.
+      </div>
+      <p className="aw-sub">Inserisci il PIN per vedere la recovery phrase.</p>
+      <input
+        type="password"
+        inputMode="numeric"
+        className={`aw-input aw-input--pin ${pinErr ? "aw-input--error" : ""}`}
+        value={pin}
+        onChange={e => { setPin(e.target.value.replace(/\D/g, "")); setPinErr(null); }}
+        onKeyDown={e => e.key === "Enter" && void handleReveal()}
+        maxLength={12}
+        placeholder="••••••"
+        autoFocus
+      />
+      {pinErr && <div className="aw-error">{pinErr}</div>}
+      <div className="aw-btn-row">
+        <button className="aw-btn aw-btn--secondary" onClick={onBack}>Annulla</button>
+        <button className="aw-btn aw-btn--primary" onClick={handleReveal} disabled={loading || pin.length < 6}>
+          {loading ? "Verifica…" : "Mostra phrase →"}
+        </button>
       </div>
     </div>
   );

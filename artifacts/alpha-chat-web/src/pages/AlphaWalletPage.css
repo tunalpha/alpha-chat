@@ -827,3 +827,261 @@
   line-height: 1.5;
   word-break: break-word;
 }
+
+/* ══════════════════════════════════════════════════════════════════════════
+   Phase F — Transaction History & Polish
+   ══════════════════════════════════════════════════════════════════════════ */
+
+/* ── History View ────────────────────────────────────────────────────────── */
+.aw-history {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.aw-history-filters {
+  display: flex;
+  gap: 8px;
+  padding: 12px 16px 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  flex-shrink: 0;
+  border-bottom: 1px solid rgba(255,255,255,.06);
+}
+.aw-history-filters::-webkit-scrollbar { display: none; }
+
+.aw-filter-chip {
+  background: rgba(255,255,255,.06);
+  border: 1px solid rgba(255,255,255,.1);
+  border-radius: 20px;
+  color: inherit;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 5px 12px;
+  white-space: nowrap;
+  transition: background .15s, border-color .15s;
+}
+.aw-filter-chip:hover { background: rgba(255,255,255,.1); }
+.aw-filter-chip--active {
+  background: rgba(99,102,241,.25);
+  border-color: rgba(99,102,241,.5);
+  color: #a5b4fc;
+}
+
+.aw-history-list {
+  flex: 1;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  padding: 0 0 16px;
+}
+
+.aw-tx-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+  border-bottom: 1px solid rgba(255,255,255,.04);
+  cursor: pointer;
+  transition: background .12s;
+}
+.aw-tx-item:hover,
+.aw-tx-item:active { background: rgba(255,255,255,.04); }
+
+.aw-tx-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  flex-shrink: 0;
+}
+.aw-tx-icon--in      { background: rgba(34,197,94,.15); }
+.aw-tx-icon--out     { background: rgba(239,68,68,.12); }
+.aw-tx-icon--pending { background: rgba(245,158,11,.12); }
+
+.aw-tx-body { flex: 1; min-width: 0; }
+.aw-tx-title {
+  font-size: 14px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.aw-tx-meta {
+  font-size: 12px;
+  color: rgba(255,255,255,.4);
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.aw-tx-amount-col { text-align: right; flex-shrink: 0; }
+.aw-tx-amount { font-size: 14px; font-weight: 600; }
+.aw-tx-amount--in      { color: #4ade80; }
+.aw-tx-amount--out     { color: #f87171; }
+.aw-tx-amount--pending { color: #fbbf24; }
+.aw-tx-date { font-size: 11px; color: rgba(255,255,255,.3); margin-top: 2px; }
+
+.aw-tx-status-badge {
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 10px;
+  font-weight: 600;
+  letter-spacing: .3px;
+}
+.aw-tx-status-badge--pending  { background: rgba(245,158,11,.2); color: #fbbf24; }
+.aw-tx-status-badge--confirmed { background: rgba(34,197,94,.15); color: #4ade80; }
+.aw-tx-status-badge--failed   { background: rgba(239,68,68,.15); color: #f87171; }
+
+.aw-history-load-more { padding: 16px; text-align: center; }
+
+/* ── Transaction Detail ──────────────────────────────────────────────────── */
+.aw-tx-detail {
+  position: absolute;
+  inset: 0;
+  background: var(--bg-primary, #0f0f0f);
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
+.aw-tx-detail-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 14px 16px;
+  border-bottom: 1px solid rgba(255,255,255,.07);
+  flex-shrink: 0;
+}
+.aw-tx-detail-header h2 { flex: 1; font-size: 16px; font-weight: 600; }
+.aw-tx-detail-icon { text-align: center; padding: 28px 0 16px; font-size: 48px; line-height: 1; }
+.aw-tx-detail-amount { text-align: center; padding: 0 20px 24px; }
+.aw-tx-detail-amount-value { font-size: 28px; font-weight: 700; letter-spacing: -0.5px; }
+.aw-tx-detail-amount-value--in  { color: #4ade80; }
+.aw-tx-detail-amount-value--out { color: #f87171; }
+.aw-tx-detail-amount-network { font-size: 13px; color: rgba(255,255,255,.4); margin-top: 4px; }
+
+.aw-tx-detail-card {
+  margin: 0 16px 16px;
+  background: rgba(255,255,255,.04);
+  border-radius: 14px;
+  overflow: hidden;
+}
+.aw-tx-detail-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 16px;
+  padding: 13px 16px;
+  border-bottom: 1px solid rgba(255,255,255,.05);
+}
+.aw-tx-detail-row:last-child { border-bottom: none; }
+.aw-tx-detail-label { font-size: 13px; color: rgba(255,255,255,.4); flex-shrink: 0; }
+.aw-tx-detail-value { font-size: 13px; text-align: right; word-break: break-all; font-weight: 500; }
+.aw-tx-detail-value--mono { font-family: monospace; font-size: 12px; color: rgba(255,255,255,.7); }
+.aw-tx-detail-actions { padding: 0 16px 32px; display: flex; flex-direction: column; gap: 10px; }
+
+/* ── Custom token remove button ──────────────────────────────────────────── */
+.aw-asset-item { position: relative; }
+.aw-asset-remove-btn {
+  background: none;
+  border: none;
+  color: rgba(239,68,68,.6);
+  cursor: pointer;
+  font-size: 14px;
+  padding: 4px 6px;
+  border-radius: 6px;
+  opacity: 0;
+  transition: opacity .15s, color .15s;
+  flex-shrink: 0;
+}
+.aw-asset-item:hover .aw-asset-remove-btn,
+.aw-asset-item:focus-within .aw-asset-remove-btn { opacity: 1; }
+.aw-asset-remove-btn:hover { color: #ef4444; }
+
+/* ── Backup reminder enhanced ────────────────────────────────────────────── */
+.aw-backup-warning-content { flex: 1; }
+.aw-backup-warning-content strong { display: block; font-size: 13px; margin-bottom: 3px; }
+.aw-backup-warning-content p { font-size: 12px; color: rgba(255,255,255,.5); margin: 0 0 10px; }
+.aw-backup-warning-btn {
+  background: rgba(245,158,11,.2);
+  border: 1px solid rgba(245,158,11,.35);
+  border-radius: 8px;
+  color: #fbbf24;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 12px;
+  transition: background .15s;
+}
+.aw-backup-warning-btn:hover { background: rgba(245,158,11,.3); }
+
+/* ── Section header with action link ─────────────────────────────────────── */
+.aw-section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin: 0 0 2px;
+}
+.aw-section-link {
+  background: none;
+  border: none;
+  color: rgba(99,102,241,.8);
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 500;
+  padding: 4px 0;
+  transition: color .15s;
+}
+.aw-section-link:hover { color: #a5b4fc; }
+
+/* ── Empty history state ─────────────────────────────────────────────────── */
+.aw-history-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 60px 24px;
+  text-align: center;
+  color: rgba(255,255,255,.4);
+}
+.aw-history-empty-icon  { font-size: 40px; }
+.aw-history-empty-title { font-size: 15px; font-weight: 500; color: rgba(255,255,255,.6); }
+
+/* ── Seed export ─────────────────────────────────────────────────────────── */
+.aw-seed-export { padding: 24px 20px; display: flex; flex-direction: column; gap: 20px; }
+.aw-seed-export-warning {
+  background: rgba(239,68,68,.08);
+  border: 1px solid rgba(239,68,68,.2);
+  border-radius: 12px;
+  padding: 14px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #fca5a5;
+}
+.aw-seed-export-phrase {
+  background: rgba(255,255,255,.04);
+  border: 1px solid rgba(255,255,255,.1);
+  border-radius: 14px;
+  padding: 20px;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.aw-seed-export-word {
+  background: rgba(255,255,255,.06);
+  border-radius: 8px;
+  padding: 8px 10px;
+  font-size: 13px;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+.aw-seed-export-word-num { font-size: 10px; color: rgba(255,255,255,.3); min-width: 16px; }

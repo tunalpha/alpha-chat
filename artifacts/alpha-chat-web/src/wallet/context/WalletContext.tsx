@@ -58,6 +58,11 @@ import {
   type TokenConfig,
 } from "../evm/token-registry";
 import { txMonitor } from "../monitoring/tx-monitor";
+import {
+  loadTxHistory,
+  clearTxHistory,
+  type WalletTxRecord,
+} from "../services/tx-store";
 
 // ─── Tipi ─────────────────────────────────────────────────────────────────
 
@@ -75,6 +80,9 @@ interface WalletContextValue {
   notifications: WalletNotification[];
   unreadCount: number;
   customTokens: TokenConfig[];
+  // Phase F: storico transazioni
+  txHistory: WalletTxRecord[];
+  refreshTxHistory: () => Promise<void>;
   // Operazioni wallet
   createWallet: (pin: string) => Promise<string>; // restituisce mnemonic
   importWallet: (mnemonic: string, pin: string) => Promise<void>;
@@ -113,6 +121,7 @@ export function WalletProvider({ children }: WalletProviderProps) {
   const [notifications, setNotifications] = useState<WalletNotification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [customTokens, setCustomTokens] = useState<TokenConfig[]>([]);
+  const [txHistory, setTxHistory] = useState<WalletTxRecord[]>([]);
   const monitorStarted = useRef(false);
 
   // ── Inizializzazione ────────────────────────────────────────────────────
@@ -135,11 +144,12 @@ export function WalletProvider({ children }: WalletProviderProps) {
     })();
   }, []);
 
-  // ── Notifiche al mount (quando unlocked) ────────────────────────────────
+  // ── Notifiche e storico al mount (quando unlocked) ──────────────────────
   useEffect(() => {
     if (phase === "unlocked") {
       void _refreshNotifications();
       void _refreshCustomTokens();
+      void _refreshTxHistory();
     }
   }, [phase, selectedChainId]);
 
@@ -149,6 +159,7 @@ export function WalletProvider({ children }: WalletProviderProps) {
     monitorStarted.current = true;
     txMonitor.onNewTransaction(() => {
       void _refreshNotifications();
+      void _refreshTxHistory();
     });
     txMonitor.start(m.evmAddress, m.btcAddress);
   }, []);
@@ -166,6 +177,11 @@ export function WalletProvider({ children }: WalletProviderProps) {
     const tokens = await loadCustomTokens(selectedChainId);
     setCustomTokens(tokens);
   }, [selectedChainId]);
+
+  const _refreshTxHistory = useCallback(async () => {
+    const history = await loadTxHistory(100);
+    setTxHistory(history);
+  }, []);
 
   // ── Operazioni wallet ───────────────────────────────────────────────────
 
@@ -236,9 +252,11 @@ export function WalletProvider({ children }: WalletProviderProps) {
     monitorStarted.current = false;
     await clearKeystore();
     await TxMonitor_resetState();
+    await clearTxHistory();
     setMeta(null);
     setPhase("no-wallet");
     setNotifications([]);
+    setTxHistory([]);
   }, []);
 
   const confirmBackup = useCallback(async () => {
@@ -277,6 +295,8 @@ export function WalletProvider({ children }: WalletProviderProps) {
         notifications,
         unreadCount,
         customTokens,
+        txHistory,
+        refreshTxHistory: _refreshTxHistory,
         createWallet,
         importWallet,
         unlockWallet,
