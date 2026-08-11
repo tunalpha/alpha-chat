@@ -1,0 +1,156 @@
+Esatto. Partirei da #87, e soltanto da #87.
+
+La sequenza corretta è:
+
+#87 → approvazione spec → #89 security boundary → #88 implementazione Phase G
+
+Non farei partire #88 in parallelo a #87.
+
+Perché #87 prima
+
+Il ChatWalletBridge deve diventare il contratto ufficiale tra i due mondi.
+
+La Chat non deve sapere:
+
+* mnemonic;
+* private key;
+* keystore;
+* derivation path;
+* signing;
+* UTXO;
+* RPC;
+* gas internals;
+* token registry internals;
+* Payment Engine;
+* escrow;
+* Gas Station.
+
+La Chat deve poter dire semplicemente:
+
+“Voglio inviare X di questo asset a questo destinatario.”
+
+e il Wallet decide internamente come costruire, autenticare, firmare e trasmettere.
+
+Un’importante modifica che farei alla proposta
+
+Non esporrei direttamente:
+
+isAvailable: boolean
+evmAddress: string | null
+btcAddress: string | null
+
+come unico modello, perché abbiamo più reti EVM e più asset.
+
+Meglio che il bridge esponga una capability minimale, per esempio concettualmente:
+
+interface ChatWalletBridge {
+  getCapabilities(): Promise<WalletCapabilities>;
+  sendPayment(params: ChatPaymentRequest): Promise<ChatPaymentResult>;
+  getReceiveAddress(network): string | null;
+}
+
+Dove ChatPaymentRequest contiene solo ciò che serve alla Chat:
+
+* network;
+* asset/contract identificativo;
+* amount;
+* recipient;
+* eventualmente conversationId/messageId come metadata non finanziario.
+
+E il risultato:
+
+* status;
+* txHash;
+* explorerUrl;
+* eventualmente network/asset.
+
+Mai signed transaction, private key o dati del keystore.
+
+#89 è fondamentale
+
+Il punto più importante dell’audit è proprio quello che hai individuato:
+
+un messaggio ricevuto dalla Chat non deve mai poter causare automaticamente una transazione.
+
+Quindi:
+
+messaggio “Pagami 10 USDC”
+≠
+transazione autorizzata
+
+Deve esserci sempre:
+
+utente → tap esplicito → schermata pagamento → conferma → autenticazione → firma locale
+
+Un eventuale evento WebSocket può al massimo mostrare una richiesta di pagamento.
+
+Non può chiamare sendPayment() autonomamente.
+
+E una regola ancora più importante
+
+La Phase G non deve modificare il comportamento del Payment Engine esistente.
+
+Avremo due percorsi distinti:
+
+                    ALPHA CHAT
+                        │
+             ┌──────────┴──────────┐
+             │                     │
+       Payment Engine        ChatWalletBridge
+       esistente             │
+             │               ▼
+      custodial flow       ALPHA WALLET
+                           self-custodial
+
+Quindi possiamo avere contemporaneamente:
+
+“Invia Cripto” del Payment Engine
+
+e
+
+“Paga con Alpha Wallet”
+
+senza mischiare i due sistemi.
+
+Quindi la mia istruzione all’agente sarebbe
+
+Avvia esclusivamente TASK #87 — Alpha Wallet ↔ ChatWalletBridge Specification.
+
+Non modificare codice di produzione.
+
+Non iniziare Phase G (#88).
+
+Non modificare ChatPage.tsx.
+
+Non importare useWallet() direttamente nella Chat.
+
+Produrre un documento di specifica completo che definisca:
+
+1. ChatWalletBridge pubblico;
+2. ChatPaymentRequest;
+3. ChatPaymentResult;
+4. capability EVM/BTC;
+5. gestione wallet locked/unavailable;
+6. gestione network/token;
+7. UX completa del pagamento dalla Chat;
+8. stato pending/confirmed/failed;
+9. associazione TX ↔ messaggio;
+10. explorer links;
+11. cancellazione prima della firma;
+12. comportamento quando il wallet viene bloccato;
+13. gestione errori;
+14. idempotenza e prevenzione doppio invio;
+15. regola fondamentale: nessun evento WS/messaggio remoto può autorizzare una transazione;
+16. autenticazione locale obbligatoria prima della firma;
+17. nessuna esposizione di seed/private key/keystore/signed transaction alla Chat;
+18. isolamento totale dal Payment Engine;
+19. acceptance criteria;
+20. test plan.
+
+Valutare anche se il bridge debba essere un service/context dedicato anziché un hook che esponga direttamente gli internals del Wallet.
+
+Non implementare nulla.
+
+Al termine fornire esclusivamente il documento/spec e fermarsi in attesa di approvazione.
+
+Questo è il passo giusto. Prima fissiamo il contratto; poi facciamo l’audit del confine; solo dopo tocchiamo il codice della Chat.
