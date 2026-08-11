@@ -154,8 +154,9 @@ export function ChatWalletBridgeProvider({ children }: Props) {
     assetSymbol:          string,
     amount:               string,
   ): Promise<PaymentQuote | null> => {
-    if (status !== "ready") return null;
-
+    // FIX: la quote è matematica pura + API pubblica → non richiede wallet unlocked.
+    // Il guard status !== "ready" è stato rimosso: calculateQuote funziona anche con
+    // wallet locked. Solo sendPayment (firma) richiede autenticazione.
     const amountNum = parseFloat(amount);
     if (isNaN(amountNum) || amountNum <= 0) return null;
 
@@ -221,10 +222,9 @@ export function ChatWalletBridgeProvider({ children }: Props) {
       return { status: "failed", errorCode: "WALLET_UNAVAILABLE",
                errorMessage: "Nessun wallet creato.", metadata: params.metadata };
     }
-    if (status === "locked") {
-      return { status: "failed", errorCode: "WALLET_LOCKED",
-               errorMessage: "Wallet bloccato.", metadata: params.metadata };
-    }
+    // FIX: rimosso early-return WALLET_LOCKED. Se il wallet è locked, il flusso
+    // prosegue fino a onAuthRequired che chiede il PIN → decryptSeed funziona
+    // indipendentemente da wallet.phase (accede direttamente al keystore).
     if (!wallet.meta?.evmAddress) {
       return { status: "failed", errorCode: "WALLET_UNAVAILABLE",
                errorMessage: "Wallet non inizializzato.", metadata: params.metadata };

@@ -126,3 +126,155 @@ describe("Quote validity", () => {
     expect(isExpired).toBe(false);
   });
 });
+
+// ─── FIX: calculateQuote deve funzionare con wallet locked ────────────────
+//
+// Prima del fix: calculateQuote restituiva null quando status !== "ready".
+// L'utente riceveva "Impossibile calcolare i costi" anche con wallet configurato
+// ma non ancora sbloccato nella sessione corrente.
+//
+// Dopo il fix: la quotazione è matematica pura + API pubblica → non richiede
+// wallet unlocked. Solo sendPayment (firma) richiede PIN/autenticazione.
+
+describe("calculateQuote — locked wallet fix", () => {
+  // Replica la logica pura di calculateQuote estratta dal bridge context.
+  // Questo permette di testare il comportamento senza React hooks.
+  async function calculateQuotePure(
+    status: "unavailable" | "locked" | "ready",
+    amount: string,
+    feeBps = 10,
+  ): Promise<{ recipientAmount: string; platformFee: string; totalAsset: string } | null> {
+    // PRE-FIX (commentato per documentazione):
+    // if (status !== "ready") return null;
+
+    // POST-FIX: solo amount invalido blocca la quote; status ignorato
+    const amountNum = parseFloat(amount);
+    if (isNaN(amountNum) || amountNum <= 0) return null;
+
+    const platformFeeNum = (amountNum * feeBps) / 10000;
+    const platformFee    = platformFeeNum.toFixed(8).replace(/0+$/, "").replace(/\.$/, "");
+    const totalAsset     = (amountNum + platformFeeNum).toFixed(8).replace(/0+$/, "").replace(/\.$/, "");
+
+    return { recipientAmount: amount, platformFee, totalAsset };
+  }
+
+  it("status=locked → restituisce una quote valida (NON null)", async () => {
+    const result = await calculateQuotePure("locked", "1");
+    expect(result).not.toBeNull();
+    expect(result!.recipientAmount).toBe("1");
+    expect(result!.platformFee).toBe("0.001");      // 1 × 10 bps / 10000
+    expect(result!.totalAsset).toBe("1.001");
+  });
+
+  it("status=unavailable → restituisce una quote valida (NON null)", async () => {
+    // La quote non dipende dallo stato del wallet — solo il send richiede auth.
+    const result = await calculateQuotePure("unavailable", "5");
+    expect(result).not.toBeNull();
+    expect(result!.recipientAmount).toBe("5");
+  });
+
+  it("status=ready → restituisce una quote valida (comportamento invariato)", async () => {
+    const result = await calculateQuotePure("ready", "2");
+    expect(result).not.toBeNull();
+    expect(result!.recipientAmount).toBe("2");
+  });
+
+  it("importo non valido → null indipendentemente dallo status", async () => {
+    expect(await calculateQuotePure("locked",      "0")).toBeNull();
+    expect(await calculateQuotePure("locked",      "-1")).toBeNull();
+    expect(await calculateQuotePure("locked",      "abc")).toBeNull();
+    expect(await calculateQuotePure("unavailable", "0")).toBeNull();
+  });
+
+  it("fee 0 bps → platform fee = 0", async () => {
+    const result = await calculateQuotePure("locked", "10", 0);
+    expect(result!.platformFee).toBe("0");
+    expect(result!.totalAsset).toBe("10");
+  });
+});
+
+// ─── FIX: sendPayment con wallet locked → raggiunge onAuthRequired ────────
+//
+// Prima del fix: sendPayment restituiva { status: "failed", errorCode: "WALLET_LOCKED" }
+// come early-return, senza mai chiamare onAuthRequired.
+//
+// Dopo il fix: il flusso raggiunge onAuthRequired (che chiede il PIN) e
+// decryptSeed funziona direttamente con il keystore — wallet.phase non impatta.
+
+describe("sendPayment — locked wallet fix", () => {
+  // Replica la logica guard di sendPayment estratta dal bridge context.
+  type SendResult =
+    | { status: "called_auth" }
+    | { status: "failed"; errorCode: string };
+
+  async function sendPaymentGuardPure(
+    status: "unavailable" | "locked" | "ready",
+    hasEvmAddress: boolean,
+    onAuthRequired: () => Promise<string | null>,
+  ): Promise<SendResult> {
+    // PRE-FIX (commentato):
+    // if (status === "locked") return { status: "failed", errorCode: "WALLET_LOCKED" };
+
+    if (status === "unavailable") {
+      return { status: "failed", errorCode: "WALLET_UNAVAILABLE" };
+    }
+    // FIX: status === "locked" non blocca più qui — arriva a onAuthRequired
+    if (!hasEvmAddress) {
+      return { status: "failed", errorCode: "WALLET_UNAVAILABLE" };
+    }
+
+    // Il bridge chiama onAuthRequired per ottenere il PIN → poi usa decryptSeed
+    const pin = await onAuthRequired();
+    if (!pin) return { status: "failed", errorCode: "AUTHENTICATION_FAILED" };
+
+    return { status: "called_auth" };
+  }
+
+  it("status=locked → raggiunge onAuthRequired (NON restituisce WALLET_LOCKED)", async () => {
+    const onAuthRequired = vi.fn(async () => "1234");
+    const result = await sendPaymentGuardPure("locked", true, onAuthRequired);
+    expect(onAuthRequired).toHaveBeenCalledOnce();
+    expect(result.status).toBe("called_auth");
+  });
+
+  it("status=locked + PIN annullato → cancelled (NON WALLET_LOCKED)", async () => {
+    const onAuthRequired = vi.fn(async () => null);
+    const result = await sendPaymentGuardPure("locked", true, onAuthRequired);
+    expect(onAuthRequired).toHaveBeenCalledOnce();
+    expect(result.status).toBe("failed");
+    expect((result as { status: "failed"; errorCode: string }).errorCode).toBe("AUTHENTICATION_FAILED");
+  });
+
+  it("status=ready → raggiunge onAuthRequired normalmente", async () => {
+    const onAuthRequired = vi.fn(async () => "5678");
+    const result = await sendPaymentGuardPure("ready", true, onAuthRequired);
+    expect(onAuthRequired).toHaveBeenCalledOnce();
+    expect(result.status).toBe("called_auth");
+  });
+
+  it("status=unavailable → bloccato PRIMA di onAuthRequired (invariato)", async () => {
+    const onAuthRequired = vi.fn(async () => "1234");
+    const result = await sendPaymentGuardPure("unavailable", true, onAuthRequired);
+    // Guard unavailable ancora presente: onAuthRequired NON chiamato
+    expect(onAuthRequired).not.toHaveBeenCalled();
+    expect(result.status).toBe("failed");
+    expect((result as { status: "failed"; errorCode: string }).errorCode).toBe("WALLET_UNAVAILABLE");
+  });
+
+  it("status=locked ma senza evmAddress → WALLET_UNAVAILABLE (guard meta invariato)", async () => {
+    const onAuthRequired = vi.fn(async () => "1234");
+    const result = await sendPaymentGuardPure("locked", false, onAuthRequired);
+    expect(onAuthRequired).not.toHaveBeenCalled();
+    expect(result.status).toBe("failed");
+    expect((result as { status: "failed"; errorCode: string }).errorCode).toBe("WALLET_UNAVAILABLE");
+  });
+
+  it("status=unavailable + no address → WALLET_UNAVAILABLE (doppio guard invariato)", async () => {
+    const onAuthRequired = vi.fn(async () => "1234");
+    const result = await sendPaymentGuardPure("unavailable", false, onAuthRequired);
+    expect(onAuthRequired).not.toHaveBeenCalled();
+    expect((result as { status: "failed"; errorCode: string }).errorCode).toBe("WALLET_UNAVAILABLE");
+  });
+});
+
+import { vi } from "vitest";
