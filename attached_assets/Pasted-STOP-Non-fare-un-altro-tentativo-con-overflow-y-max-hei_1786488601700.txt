@@ -1,0 +1,164 @@
+STOP. Non fare un altro tentativo con overflow-y, max-height, vh/dvh,
+translateZ(0), position: fixed o altri workaround CSS per iOS.
+
+Il problema è ormai confermato anche dopo più tentativi: su iPhone/PWA
+il ChatWalletPaySheet viene clippato e lo Step 4 Riepilogo non è
+utilizzabile. Nello screenshot il sheet mostra header + "Riepilogo",
+ma il contenuto e il footer con il pulsante di pagamento sono fuori
+dal viewport/clippati.
+
+Voglio una soluzione ARCHITETTURALE definitiva.
+
+OBIETTIVO:
+"Paga con Alpha Wallet" deve funzionare perfettamente su iPhone/PWA
+senza dipendere da scroll interno di modal/fixed overlay.
+
+NUOVA DIREZIONE:
+
+1. ELIMINARE ChatWalletPaySheet come bottom-sheet/fixed overlay per il
+   flusso di pagamento.
+
+2. Trasformare il pagamento Alpha Wallet in una VIEW/PAGE FULL-SCREEN
+   all'interno dell'app, mantenendo il contesto della chat.
+
+3. La view deve occupare il normale viewport dell'app e usare il normale
+   layout documentale/flex dell'app, NON:
+   - position: fixed per il contenitore principale
+   - overflow-y sul modal
+   - max-height artificiale
+   - translateZ(0) come workaround
+   - body overflow lock
+   - gesture/touch workaround
+
+4. Struttura:
+
+   HEADER
+   ← Indietro     🔐 Paga con Alpha Wallet
+
+   CONTENT
+   Step corrente
+
+   FOOTER
+   pulsante principale sempre visibile
+
+   Il footer deve essere parte del normale layout della pagina e rispettare
+   safe-area-inset-bottom di iOS.
+
+5. Mantenere ESATTAMENTE la state machine già implementata:
+
+   recipient
+   → asset
+   → amount
+   → summary
+   → auth
+   → sending
+   → success
+
+6. Ogni step deve essere progettato per entrare nel viewport mobile.
+   NON deve essere necessario uno scroll per raggiungere il pulsante
+   principale.
+
+7. STEP 4 RIEPILOGO deve essere particolarmente compatto:
+
+   Cricco riceverà
+   1.00 USDT
+
+   Rete: Polygon
+   Destinatario: 0xa497…19e170
+   Platform fee: ...
+   Network fee: ...
+   Totale: ...
+
+   [ 🔐 Firma e invia ]
+
+   Nessun blocco enorme dell'indirizzo.
+   L'indirizzo completo può essere visualizzato tramite "Mostra indirizzo"
+   oppure in una riga secondaria, ma non deve spingere il CTA fuori
+   dal viewport.
+
+8. Il pulsante principale deve essere sempre visibile:
+   - Step 1: Continua
+   - Step 2: Continua
+   - Step 3: Calcola costi
+   - Step 4: Firma e invia
+   - Step 5: Firma e invia
+   - Step 6: Chiudi
+
+9. PRESERVARE COMPLETAMENTE LA LOGICA BACKEND E BLOCKCHAIN.
+
+NON MODIFICARE:
+- ChatWalletBridge
+- signing
+- broadcast
+- fee calculation
+- quote
+- platform fee
+- recipient discovery
+- register address
+- Payment Engine
+- USDA
+- USDT
+- BTC
+- wallet/keystore
+- PIN/security
+- tx-store
+- transaction monitoring
+
+Modificare esclusivamente il presentation/wiring necessario per sostituire
+il bottom-sheet con una full-screen payment view.
+
+10. Il pulsante "Paga con Alpha Wallet" nella chat deve continuare ad aprire
+direttamente questa nuova view.
+
+11. Il tasto ← deve tornare alla chat senza perdere lo stato se l'utente
+sta tornando indietro tra gli step.
+
+12. Gestire correttamente i tre casi già implementati:
+   A) destinatario con Alpha Wallet → address automatico locked
+   B) destinatario senza Alpha Wallet → invito / indirizzo esterno
+   C) indirizzo esterno → input manuale + avviso rete
+
+13. TEST OBBLIGATORI:
+
+   - tutti i test esistenti devono restare verdi
+   - aggiungere test per ogni transizione della state machine
+   - test back navigation
+   - test Caso A/B/C
+   - test summary
+   - test auth
+   - test success/failure
+   - nessun cambiamento al comportamento blockchain
+
+14. COLLАUDO MANUALE OBBLIGATORIO:
+   verificare su iPhone/PWA reale che:
+
+   Step 1 → visibile
+   Step 2 → visibile
+   Step 3 → visibile
+   Step 4 → riepilogo + "Firma e invia" VISIBILI
+   Step 5 → PIN + "Firma e invia" VISIBILI
+   Step 6 → risultato TX VISIBILE
+
+   Nessuno scroll interno deve essere necessario.
+
+15. PRIMA DI MODIFICARE CODICE:
+   esegui un audit dell'attuale ChatWalletPaySheet e descrivi
+   esattamente come verrà trasformato in full-screen view.
+
+   NON modificare codice finché non hai presentato:
+   - file da modificare
+   - file eventualmente da creare
+   - struttura UI
+   - cosa rimane invariato
+   - strategia iOS/PWA
+
+Dopo l'approvazione implementa.
+
+IMPORTANTE:
+Questo è l'ULTIMO tentativo sulla UI del pagamento.
+Non voglio un altro workaround CSS sul modal.
+Se la soluzione richiede di sostituire completamente il bottom-sheet
+con una full-screen view, fallo.
+
+La priorità è:
+AFFIDABILITÀ SU IPHONE/PWA > mantenere il vecchio aspetto del bottom-sheet.
