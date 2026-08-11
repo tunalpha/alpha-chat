@@ -45,6 +45,15 @@ export interface BtcSendParams {
   amountSat:        bigint;
   /** "fastest" | "normal" | "economy" — fee urgency */
   feeTarget?:       "fastest" | "normal" | "economy";
+  /**
+   * Phase G #91 — Atomic platform fee output.
+   * If provided, adds a second output to this address in the SAME PSBT.
+   * This guarantees fee collection is atomic: either the whole TX is mined
+   * (recipient + fee wallet both paid) or it fails (neither paid).
+   * Must be a valid BTC address; must be > DUST_LIMIT_SAT (546 sat).
+   */
+  platformFeeAddress?: string;
+  platformFeeSat?:     bigint;
 }
 
 export interface BtcSendPreview {
@@ -104,11 +113,16 @@ interface SelectionResult {
  * Greedy UTXO selection (largest-first).
  * Handles dust change by folding into fee.
  * Returns null if insufficient balance.
+ *
+ * @param amountSat    Total amount to send to non-change outputs (recipient + platform fee)
+ * @param extraOutputs Extra non-change outputs beyond recipient (default 0).
+ *                     Pass 1 when a platform fee output is included.
  */
 export function selectBtcUTXOs(
-  utxos:      BtcUTXO[],
-  amountSat:  bigint,
-  feeRateSvb: number,
+  utxos:        BtcUTXO[],
+  amountSat:    bigint,
+  feeRateSvb:   number,
+  extraOutputs  = 0,
 ): SelectionResult | null {
   const sorted = [...utxos].sort((a, b) => b.value - a.value);
   const selected: BtcUTXO[] = [];
@@ -118,11 +132,13 @@ export function selectBtcUTXOs(
     selected.push(utxo);
     totalInput += BigInt(utxo.value);
 
-    // Estimate fee with change output
-    const vbytesWithChange  = estimateTxVBytes(selected.length, 2);
-    const vbytesNoChange    = estimateTxVBytes(selected.length, 1);
-    const feeWithChange     = BigInt(Math.ceil(vbytesWithChange * feeRateSvb));
-    const feeNoChange       = BigInt(Math.ceil(vbytesNoChange * feeRateSvb));
+    // Outputs: 1 recipient + extraOutputs (platform fee, etc.) + 1 change (optional)
+    const nOutputsWithChange = 2 + extraOutputs;
+    const nOutputsNoChange   = 1 + extraOutputs;
+    const vbytesWithChange   = estimateTxVBytes(selected.length, nOutputsWithChange);
+    const vbytesNoChange     = estimateTxVBytes(selected.length, nOutputsNoChange);
+    const feeWithChange      = BigInt(Math.ceil(vbytesWithChange * feeRateSvb));
+    const feeNoChange        = BigInt(Math.ceil(vbytesNoChange * feeRateSvb));
 
     const needed = amountSat + feeWithChange;
 
@@ -136,7 +152,7 @@ export function selectBtcUTXOs(
           return {
             selected,
             totalInputSat: totalInput,
-            feeSat:        totalInput - amountSat, // all remainder = fee
+            feeSat:        totalInput - amountSat, // all remainder = miner fee
             changeSat:     0n,
             hasChange:     false,
             txVBytes:      vbytesNoChange,
@@ -262,12 +278,21 @@ export async function signAndBroadcastBtcTx(
       apiWalletGetBtcFeeRate(),
     ]);
 
-    const feeRate  = feeRates[feeTarget];
-    const selection = selectBtcUTXOs(utxosResp.utxos, params.amountSat, feeRate);
+    const feeRate = feeRates[feeTarget];
+
+    // Phase G #91: total target = recipient + platform fee (if present)
+    const hasPlatformFee =
+      !!params.platformFeeAddress &&
+      !!params.platformFeeSat &&
+      params.platformFeeSat >= DUST_LIMIT_SAT;
+    const totalTargetSat = params.amountSat + (hasPlatformFee ? (params.platformFeeSat ?? 0n) : 0n);
+    const extraOutputs   = hasPlatformFee ? 1 : 0;
+
+    const selection = selectBtcUTXOs(utxosResp.utxos, totalTargetSat, feeRate, extraOutputs);
 
     if (!selection) {
       const totalSat = utxosResp.utxos.reduce((s, u) => s + BigInt(u.value), 0n);
-      throw new Error(`Saldo insufficiente. Disponibile: ${totalSat} sat, richiesto: ${params.amountSat + BigInt(Math.ceil(estimateTxVBytes(2, 2) * feeRate))} sat`);
+      throw new Error(`Saldo insufficiente. Disponibile: ${totalSat} sat, richiesto: ~${totalTargetSat + BigInt(Math.ceil(estimateTxVBytes(2, 2 + extraOutputs) * feeRate))} sat`);
     }
 
     // 3. Build transaction
@@ -287,6 +312,15 @@ export async function signAndBroadcastBtcTx(
 
     // Recipient output
     tx.addOutputAddress(params.recipientAddress, params.amountSat, NETWORK);
+
+    // Phase G #91: Atomic platform fee output — same TX, same success/failure guarantee
+    if (
+      params.platformFeeAddress &&
+      params.platformFeeSat &&
+      params.platformFeeSat >= DUST_LIMIT_SAT
+    ) {
+      tx.addOutputAddress(params.platformFeeAddress, params.platformFeeSat, NETWORK);
+    }
 
     // Change output (only if above dust)
     if (selection.hasChange && selection.changeSat >= DUST_LIMIT_SAT) {

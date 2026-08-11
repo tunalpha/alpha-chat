@@ -78,3 +78,4 @@
 - [Alpha Wallet Phase F — Finalization](alpha-wallet-phase-f.md) — tx-store IDB v3, tx-monitor enhanced, HistoryView+TxDetailView+SeedExportView, 563 test green; Phase G locked
 - [Alpha Wallet Phase G — ChatWalletBridge](alpha-wallet-phase-g.md) — WalletProvider elevato al root (rimosso da AlphaWalletPage); ChatWalletBridgeProvider wrappa internamente; sendPayment richiede onAuthRequired callback; WsEvent esteso; platform fee model+controller; 583 test green
 - [Phase G #90 — Fee Revenue Reliability](phase-g90-fee-reliability.md) — fire-and-forget→collectPlatformFeeReliable; retry 2 tentativi; idempotency mainTxHash; POST /fee-record; alert permanente pino WARN; 596 test green
+- [Phase G #91 — Production Readiness Audit](phase-g91-production-readiness.md) — BTC fee atomica nel PSBT (selectBtcUTXOs con extraOutputs); PRODUCTION_READINESS.md checklist testnet; 30 test §1-§10; 626 test green

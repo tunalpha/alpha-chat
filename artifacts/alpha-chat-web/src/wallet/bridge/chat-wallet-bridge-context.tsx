@@ -43,7 +43,10 @@ import { signAndBroadcastBtcTx }                 from "../services/btc-signer";
 import { saveTxRecord }                          from "../services/tx-store";
 import { VERIFIED_TOKENS }                       from "../evm/token-registry";
 import { EVM_NETWORKS }                          from "../evm/evm-network-config";
-import { apiGetAlphaWalletFeeConfig }            from "../../lib/alpha-wallet-api";
+import {
+  apiGetAlphaWalletFeeConfig,
+  apiRecordFeeOutcome,
+}                                                from "../../lib/alpha-wallet-api";
 // Phase G #90: fee collector con retry + report backend (sostituisce fire-and-forget)
 import { collectPlatformFeeReliable }            from "./platform-fee-collector";
 
@@ -271,15 +274,49 @@ export function ChatWalletBridgeProvider({ children }: Props) {
 
       if (network === "bitcoin") {
         // ── BTC ──────────────────────────────────────────────────────
-        const amountSat = parseAmount(amount, 8); // BTC has 8 decimal places
+        // Phase G #91: Platform fee è ATOMICA — inclusa nel PSBT come secondo output.
+        // Se la TX è minata: sia il destinatario che il fee wallet vengono pagati.
+        // Se fallisce il broadcast: né il destinatario né il fee wallet ricevono nulla.
+        // Nessuna TX separata necessaria per BTC (a differenza di EVM).
+        const amountSat     = parseAmount(amount, 8);
+        const feeAmountSat  = parseAmount(params.frozenQuote.platformFee, 8);
+        const DUST_SAT      = 546n;
+
+        let btcFeeWallet: string | undefined;
+        try {
+          const feeConf = await apiGetAlphaWalletFeeConfig();
+          if (feeConf.fee_wallet_btc) btcFeeWallet = feeConf.fee_wallet_btc;
+        } catch { /* fee wallet non critico per il pagamento */ }
+
         const result = await signAndBroadcastBtcTx({
           mnemonic,
           recipientAddress,
           amountSat,
-          feeTarget: "normal",
+          feeTarget:          "normal",
+          platformFeeAddress: feeAmountSat >= DUST_SAT ? btcFeeWallet : undefined,
+          platformFeeSat:     feeAmountSat >= DUST_SAT ? feeAmountSat  : undefined,
         });
         txHash      = result.txid;
         explorerUrl = `https://blockstream.info/tx/${txHash}`;
+
+        // Report fee outcome al backend (atomico: txHash = stesso della TX principale)
+        void apiRecordFeeOutcome({
+          mainTxHash:  txHash,
+          network:     "bitcoin",
+          assetSymbol: params.assetSymbol,
+          feeAmount:   params.frozenQuote.platformFee,
+          feeWallet:   btcFeeWallet ?? "",
+          status:      btcFeeWallet && feeAmountSat >= DUST_SAT
+            ? "success"
+            : "failed_permanent",
+          feeTxHash:   txHash, // stesso TX — atomico
+          attempts:    1,
+          error:       !btcFeeWallet
+            ? "BTC_FEE_WALLET_NOT_CONFIGURED"
+            : feeAmountSat < DUST_SAT
+              ? "BTC_FEE_BELOW_DUST"
+              : undefined,
+        }).catch(() => {});
 
       } else {
         // ── EVM ──────────────────────────────────────────────────────
