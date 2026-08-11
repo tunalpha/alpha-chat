@@ -79,3 +79,4 @@
 - [Alpha Wallet Phase G — ChatWalletBridge](alpha-wallet-phase-g.md) — WalletProvider elevato al root (rimosso da AlphaWalletPage); ChatWalletBridgeProvider wrappa internamente; sendPayment richiede onAuthRequired callback; WsEvent esteso; platform fee model+controller; 583 test green
 - [Phase G #90 — Fee Revenue Reliability](phase-g90-fee-reliability.md) — fire-and-forget→collectPlatformFeeReliable; retry 2 tentativi; idempotency mainTxHash; POST /fee-record; alert permanente pino WARN; 596 test green
 - [Phase G #91 — Production Readiness Audit](phase-g91-production-readiness.md) — BTC fee atomica nel PSBT (selectBtcUTXOs con extraOutputs); PRODUCTION_READINESS.md checklist testnet; 30 test §1-§10; 626 test green
+- [Phase G #92 — Admin Fee UI](phase-g92-admin-fee-ui.md) — pagina /alpha-wallet-fee admin; awFetch separato; vitest admin panel; 56 test admin + 626 chat-web; backend PATCH esteso con min_fee_usdt+min_fee_btc_sat

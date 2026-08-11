@@ -1,0 +1,379 @@
+Certo. Visto che #90 e #91 sono già completati, il prossimo prompt è per #92 — Admin Fee UI, mantenendo tutto ciò che è già stato validato.
+
+Prompt completo per l’agente
+
+TASK #92 — Alpha Wallet Admin Fee UI
+
+Implementare esclusivamente l’interfaccia Admin per la configurazione della Platform Fee di Alpha Wallet.
+
+⚠️ REGOLA ASSOLUTA
+
+NON modificare il Payment Engine custodial.
+
+NON modificare la logica di calcolo della fee già implementata in Alpha Wallet.
+
+NON modificare ChatWalletBridge, signing, EVM, BTC, PSBT, transaction flow, fee collector o security logic, salvo eventuali modifiche minime strettamente necessarie per collegare la UI agli endpoint fee-config già esistenti.
+
+La configurazione backend/API di Alpha Wallet Fee è già funzionante e non deve essere reinventata.
+
+⸻
+
+1. OBIETTIVO
+
+Creare nel pannello Admin una sezione:
+
+Alpha Wallet → Platform Fee
+
+che permetta al super_admin di visualizzare e modificare la configurazione già esposta dalle API:
+
+* fee_bps
+* quote_validity_sec
+* min_fee_usdt
+* min_fee_btc_sat
+
+Utilizzare gli endpoint esistenti:
+
+GET /api/v1/alpha-wallet/fee-config
+
+PATCH /api/v1/alpha-wallet/fee-config
+
+Non creare un secondo sistema di configurazione.
+
+⸻
+
+2. VISUALIZZAZIONE DELLA PLATFORM FEE
+
+Mostrare sempre contemporaneamente:
+
+Basis points
+
+10 bps
+
+e relativa percentuale:
+
+0,10%
+
+Esempi:
+
+* 0 bps → 0,00%
+* 10 bps → 0,10%
+* 25 bps → 0,25%
+* 50 bps → 0,50%
+* 100 bps → 1,00%
+* 500 bps → 5,00%
+
+Formula:
+
+percentage = fee_bps / 100
+
+Non permettere all’Admin di confondere bps e percentuale.
+
+⸻
+
+3. CAMPI CONFIGURABILI
+
+Platform Fee
+
+Campo:
+
+fee_bps
+
+Range backend già definito:
+
+0–500 bps
+
+Quindi:
+
+0,00%–5,00%
+
+Mostrare sotto il campo l’equivalente percentuale in tempo reale.
+
+⸻
+
+Quote validity
+
+Campo:
+
+quote_validity_sec
+
+Mostrare chiaramente:
+
+Validità della quote: X secondi
+
+Deve essere un valore positivo e rispettare eventuali limiti già imposti dal backend.
+
+⸻
+
+Minimum USDT fee
+
+Campo:
+
+min_fee_usdt
+
+Mostrare chiaramente che rappresenta:
+
+Commissione minima Alpha Wallet per USDT
+
+Non confonderla con:
+
+* network fee;
+* gas;
+* importo minimo del pagamento.
+
+⸻
+
+Minimum BTC fee
+
+Campo:
+
+min_fee_btc_sat
+
+Mostrare:
+
+Commissione minima Alpha Wallet BTC
+
+specificando che il valore è espresso in satoshi.
+
+Esempio:
+
+1000 sat
+
+Non convertirlo silenziosamente in BTC durante il salvataggio.
+
+⸻
+
+4. ANTEPRIMA IN TEMPO REALE
+
+Prima del salvataggio mostrare un riepilogo:
+
+Configurazione attuale
+
+Platform Fee: 0,10%
+
+Esempio su 100 USDT:
+
+Importo destinatario: 100 USDT
+
+Platform Fee: 0,10 USDT
+
+Network Fee: calcolata separatamente
+
+Questo è solo un esempio informativo, non deve effettuare una quote reale né modificare alcun pagamento.
+
+⸻
+
+5. SEPARAZIONE DELLE FEE
+
+Nell’interfaccia deve essere chiarissimo:
+
+Platform Fee
+
+= revenue Alpha Wallet configurata dall’Admin.
+
+Network Fee
+
+= costo blockchain.
+
+Miner Fee
+
+= costo Bitcoin.
+
+Non usare mai una terminologia che possa far pensare che siano la stessa commissione.
+
+⸻
+
+6. CONFERMA PRIMA DEL SALVATAGGIO
+
+Quando l’Admin modifica la fee, non salvare immediatamente.
+
+Mostrare una conferma:
+
+Conferma modifica
+
+Platform Fee
+
+Da:
+
+0,10%
+
+A:
+
+0,20%
+
+20 bps
+
+Confermare / Annullare
+
+Solo dopo conferma chiamare il PATCH.
+
+⸻
+
+7. AUDIT LOG
+
+Il backend dispone già dell’audit log:
+
+ALPHA_WALLET_FEE_UPDATED
+
+Non creare un secondo audit system nel frontend.
+
+Dopo un salvataggio riuscito, mostrare semplicemente:
+
+Configurazione aggiornata
+
+e ricaricare la configurazione dal backend.
+
+⸻
+
+8. GESTIONE ERRORI
+
+Se il PATCH fallisce:
+
+* non mostrare la nuova configurazione come salvata;
+* mantenere visualizzata la configurazione precedente;
+* mostrare un messaggio chiaro;
+* non fare retry automatici potenzialmente pericolosi.
+
+Se il GET fallisce:
+
+mostrare:
+
+Impossibile caricare la configurazione Alpha Wallet
+
+e non mostrare valori inventati/default nel campo come se fossero valori realmente salvati.
+
+⸻
+
+9. PERMESSI
+
+La sezione deve essere modificabile esclusivamente da:
+
+super_admin
+
+Gli altri utenti Admin possono eventualmente visualizzare la configurazione solo se il sistema di autorizzazione esistente lo consente, ma non devono poter modificarla.
+
+Non implementare un nuovo sistema RBAC.
+
+Utilizzare il sistema di autorizzazione già presente.
+
+⸻
+
+10. PROTEZIONE DA CONFIGURAZIONI ERRATE
+
+Il frontend deve validare:
+
+* fee_bps numerico;
+* intero;
+* 0–500;
+* nessun valore negativo;
+* nessun valore decimale;
+* quote_validity_sec valido;
+* min_fee_usdt valido;
+* min_fee_btc_sat intero valido.
+
+Il backend rimane comunque la fonte di verità.
+
+Il frontend non deve sostituire le validazioni backend.
+
+⸻
+
+11. ZERO IMPATTO SUI PAGAMENTI ESISTENTI
+
+Verificare esplicitamente che la modifica della UI non alteri:
+
+* ChatWalletBridge;
+* ChatWalletPaySheet;
+* EVM signer;
+* BTC signer;
+* BTC atomic fee;
+* platform-fee-collector;
+* quote calculation;
+* transaction history;
+* notifications;
+* Payment Engine;
+* USDA;
+* ThirdWeb;
+* WalletConnect;
+* Gas Station;
+* BTC Treasury.
+
+⸻
+
+12. QUOTE GIÀ APERTE
+
+NON modificare la logica di quote già congelata.
+
+Se esiste già una quote con una determinata fee, una modifica successiva dell’Admin non deve cambiare retroattivamente quella quote.
+
+La nuova configurazione deve essere utilizzata solamente dalle nuove quote secondo la logica backend già implementata.
+
+⸻
+
+13. TEST
+
+Aggiungere test per:
+
+1. GET configurazione;
+2. visualizzazione 10 bps = 0,10%;
+3. conversione bps → percentuale;
+4. valore minimo 0 bps;
+5. valore massimo 500 bps;
+6. rifiuto valori >500;
+7. rifiuto valori negativi;
+8. rifiuto decimali;
+9. modifica fee;
+10. conferma prima del PATCH;
+11. annullamento modifica;
+12. errore PATCH;
+13. errore GET;
+14. permesso super_admin;
+15. utente non autorizzato;
+16. visualizzazione min_fee_usdt;
+17. visualizzazione min_fee_btc_sat;
+18. quote validity;
+19. nessuna modifica al Payment Engine;
+20. nessuna regressione Alpha Wallet.
+
+Eseguire l’intera suite esistente.
+
+Non accettare regressioni.
+
+⸻
+
+14. CRITERIO DI SUCCESSO
+
+Il task è concluso solamente se:
+
+* Admin può visualizzare la configurazione;
+* Admin può modificarla;
+* il valore viene salvato realmente tramite API;
+* la percentuale visualizzata corrisponde correttamente ai bps;
+* i limiti sono rispettati;
+* il backend rimane fonte di verità;
+* audit log esistente continua a funzionare;
+* nessuna fee viene modificata accidentalmente;
+* nessun pagamento viene alterato;
+* Payment Engine resta completamente isolato;
+* tutti i test nuovi passano;
+* tutti i test preesistenti passano.
+
+⸻
+
+15. OUTPUT FINALE OBBLIGATORIO
+
+Al termine fornire:
+
+1. elenco esatto dei file modificati;
+2. elenco dei file nuovi;
+3. test aggiunti;
+4. risultato test completo;
+5. eventuali errori TypeScript;
+6. conferma esplicita che Payment Engine non è stato modificato;
+7. conferma che la configurazione viene effettivamente salvata nel backend;
+8. screenshot della nuova sezione Admin;
+9. eventuali problemi residui.
+
+NON procedere ad altri task dopo #92.
+
+Una volta completato #92, FERMATI e attendi istruzioni.
+
+Questo task riguarda esclusivamente la UI amministrativa della Platform Fee di Alpha Wallet.

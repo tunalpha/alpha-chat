@@ -596,21 +596,35 @@ export async function getFeeConfig(req: Request, res: Response, next: NextFuncti
 export async function updateFeeConfig(req: Request, res: Response, next: NextFunction): Promise<void> {
   try {
     const adminUser = (req as any).user as { userId: string; email?: string };
-    const { fee_bps, quote_validity_sec } = req.body as {
-      fee_bps?:           number;
+    const { fee_bps, quote_validity_sec, min_fee_usdt, min_fee_btc_sat } = req.body as {
+      fee_bps?:            number;
       quote_validity_sec?: number;
+      min_fee_usdt?:       number;
+      min_fee_btc_sat?:    number;
     };
 
     // Validazione
     if (fee_bps !== undefined) {
-      if (typeof fee_bps !== "number" || fee_bps < 0 || fee_bps > 500) {
-        res.status(400).json({ error: "FEE_BPS_INVALID", message: "fee_bps deve essere tra 0 e 500" });
+      if (typeof fee_bps !== "number" || !Number.isInteger(fee_bps) || fee_bps < 0 || fee_bps > 500) {
+        res.status(400).json({ error: "FEE_BPS_INVALID", message: "fee_bps deve essere un intero tra 0 e 500" });
         return;
       }
     }
     if (quote_validity_sec !== undefined) {
-      if (typeof quote_validity_sec !== "number" || quote_validity_sec < 5 || quote_validity_sec > 300) {
-        res.status(400).json({ error: "QUOTE_VALIDITY_INVALID", message: "quote_validity_sec deve essere tra 5 e 300" });
+      if (typeof quote_validity_sec !== "number" || !Number.isInteger(quote_validity_sec) || quote_validity_sec < 5 || quote_validity_sec > 300) {
+        res.status(400).json({ error: "QUOTE_VALIDITY_INVALID", message: "quote_validity_sec deve essere un intero tra 5 e 300" });
+        return;
+      }
+    }
+    if (min_fee_usdt !== undefined) {
+      if (typeof min_fee_usdt !== "number" || isNaN(min_fee_usdt) || min_fee_usdt < 0) {
+        res.status(400).json({ error: "MIN_FEE_USDT_INVALID", message: "min_fee_usdt deve essere un numero non negativo" });
+        return;
+      }
+    }
+    if (min_fee_btc_sat !== undefined) {
+      if (typeof min_fee_btc_sat !== "number" || !Number.isInteger(min_fee_btc_sat) || min_fee_btc_sat < 0) {
+        res.status(400).json({ error: "MIN_FEE_BTC_SAT_INVALID", message: "min_fee_btc_sat deve essere un intero non negativo (satoshi)" });
         return;
       }
     }
@@ -623,8 +637,10 @@ export async function updateFeeConfig(req: Request, res: Response, next: NextFun
       { _id: "alpha-wallet-fee" },
       {
         $set: {
-          ...(fee_bps           !== undefined ? { fee_bps }           : {}),
+          ...(fee_bps            !== undefined ? { fee_bps }            : {}),
           ...(quote_validity_sec !== undefined ? { quote_validity_sec } : {}),
+          ...(min_fee_usdt       !== undefined ? { min_fee_usdt }       : {}),
+          ...(min_fee_btc_sat    !== undefined ? { min_fee_btc_sat }    : {}),
           updated_at:       new Date(),
           updated_by:       adminUser.userId,
           updated_by_email: adminUser.email ?? null,
@@ -640,14 +656,26 @@ export async function updateFeeConfig(req: Request, res: Response, next: NextFun
       ip_hash: req.ip ?? undefined,
       created_at: new Date().toISOString(),
       metadata: {
-        prev_fee_bps:  prev.fee_bps,
-        new_fee_bps:   updated?.fee_bps ?? prev.fee_bps,
-        prev_validity: prev.quote_validity_sec,
-        new_validity:  updated?.quote_validity_sec ?? prev.quote_validity_sec,
+        prev_fee_bps:       prev.fee_bps,
+        new_fee_bps:        updated?.fee_bps        ?? prev.fee_bps,
+        prev_validity:      prev.quote_validity_sec,
+        new_validity:       updated?.quote_validity_sec ?? prev.quote_validity_sec,
+        prev_min_usdt:      prev.min_fee_usdt,
+        new_min_usdt:       updated?.min_fee_usdt   ?? prev.min_fee_usdt,
+        prev_min_btc_sat:   prev.min_fee_btc_sat,
+        new_min_btc_sat:    updated?.min_fee_btc_sat ?? prev.min_fee_btc_sat,
       },
     });
 
-    res.json({ data: { ok: true, fee_bps: updated?.fee_bps, quote_validity_sec: updated?.quote_validity_sec } });
+    res.json({
+      data: {
+        ok:                true,
+        fee_bps:           updated?.fee_bps,
+        quote_validity_sec: updated?.quote_validity_sec,
+        min_fee_usdt:      updated?.min_fee_usdt,
+        min_fee_btc_sat:   updated?.min_fee_btc_sat,
+      },
+    });
   } catch (err) { next(err); }
 }
 

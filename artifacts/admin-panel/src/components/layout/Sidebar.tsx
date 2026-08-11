@@ -23,6 +23,7 @@ import {
   Bitcoin,
   Percent,
   TrendingUp,
+  Wallet,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 
@@ -48,6 +49,7 @@ const navItems = [
   { href: "/bitcoin-ops",        label: "Bitcoin Ops",      icon: Bitcoin    },
   { href: "/fee-config",         label: "Fee per Rete",     icon: Percent    },
   { href: "/revenue-monitor",    label: "Revenue",          icon: TrendingUp },
+  { href: "/alpha-wallet-fee",   label: "Alpha Wallet Fee", icon: Wallet     },
 ];
 
 interface SidebarProps {
