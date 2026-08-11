@@ -789,7 +789,8 @@ function AssetList({ chainId, chainBalance, btcBalance, prices, loading, currenc
     );
   }
 
-  const allTokenDefs = [...verifiedTokens, ...wallet.customTokens];
+  // Escludi i token nativi (contractAddress null/undefined) — già mostrati nella sezione dedicata sopra
+  const allTokenDefs = [...verifiedTokens, ...wallet.customTokens].filter(t => t.contractAddress != null);
 
   return (
     <div className="aw-asset-list">
