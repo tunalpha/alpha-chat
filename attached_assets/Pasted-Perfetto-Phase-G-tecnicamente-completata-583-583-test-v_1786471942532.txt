@@ -1,0 +1,98 @@
+Perfetto. Phase G è tecnicamente completata: 583/583 test verdi e l’API server compila pulito. 🎯
+
+E soprattutto è stata rispettata la separazione che avevamo definito:
+
+Alpha Chat
+    │
+    ▼
+ChatWalletBridge
+    │
+    ▼
+Alpha Wallet
+    │
+    ├── EVM
+    └── BTC
+
+mentre il Payment Engine custodial rimane separato.
+
+La parte che mi convince di più
+
+La regola di sicurezza §15 è stata rispettata:
+
+Un evento WebSocket può aggiornare lo stato del bubble, ma non può mai avviare una transazione.
+
+Quindi:
+
+messaggio remoto → nessuna firma automatica ❌
+tap esplicito “Paga con Wallet” → quote → conferma → PIN → firma ✅
+
+È esattamente il comportamento che volevamo.
+
+Anche le commissioni sono state finalmente separate
+
+Ora Alpha Wallet ha una propria configurazione:
+
+* fee_bps 0–500
+* quote_validity_sec
+* min_fee_usdt
+* min_fee_btc_sat
+* modifica consentita al super_admin
+* audit log ALPHA_WALLET_FEE_UPDATED
+
+Quindi non dipende dalla commissione del Payment Engine.
+
+Questo è particolarmente importante perché possiamo decidere in Admin, per esempio:
+
+Alpha Wallet Platform Fee
+0,10% = 10 bps
+
+senza modificare la fee del sistema custodial.
+
+Un dettaglio da controllare prima di considerarlo “production ready”
+
+Vedo questa parte:
+
+platform fee fire-and-forget
+
+Questa è l’unica cosa che non lascerei passare senza un audit specifico.
+
+La commissione deve essere:
+
+1. calcolata nella quote;
+2. mostrata all’utente;
+3. inclusa nel riepilogo;
+4. deterministica;
+5. contabilizzata correttamente;
+6. trasferita effettivamente;
+7. non persa se una chiamata fallisce.
+
+Un “fire-and-forget” va bene per una notifica, ma bisogna verificare attentamente che non venga usato per qualcosa che rappresenta denaro reale.
+
+Quindi lo stato complessivo è
+
+A ✅ 173
+B ✅ 238
+C ✅ 321
+D ✅ 428
+E ✅ 516
+F ✅ 563
+G ✅ 583
+
+Il wallet è ora integrato nella Chat, ma io non lo dichiarerei ancora pronto per fondi reali solamente sulla base dei test automatici.
+
+Farei un’ultima Production Readiness Audit focalizzata su:
+
+* commissione reale;
+* transazioni reali EVM;
+* transazioni reali BTC;
+* quote → firma → broadcast;
+* doppio invio;
+* wallet locked;
+* crash/interruzione durante pagamento;
+* notifiche;
+* contabilizzazione fee;
+* recovery;
+* PWA/iOS;
+* verifica che Payment Engine non sia stato alterato.
+
+Dopo quella, possiamo davvero parlare di Alpha Chat + Alpha Wallet pronto al collaudo finale.
