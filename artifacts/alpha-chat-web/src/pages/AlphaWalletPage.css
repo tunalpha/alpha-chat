@@ -1238,3 +1238,16 @@
   color: rgba(255,255,255,.35);
   margin-top: 2px;
 }
+
+/* Reset PIN — indirizzo wallet come riferimento visivo */
+.aw-settings-pin-addr-hint {
+  font-size: 12px;
+  color: rgba(255,255,255,.45);
+  background: rgba(255,255,255,.06);
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+.aw-settings-pin-addr-hint code {
+  font-family: monospace;
+  color: #a78bfa;
+}

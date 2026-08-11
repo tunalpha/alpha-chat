@@ -22,7 +22,7 @@ import { useLock } from "../contexts/LockContext";
 import { WalletProvider, useWallet } from "../wallet/context/WalletContext";
 import { createMnemonic, isValidMnemonic } from "../wallet/core/mnemonic";
 import { validatePin, pinValidationError } from "../wallet/core/wallet-auth";
-import { loadKeystore, decryptSeed } from "../wallet/core/keystore";
+import { loadKeystore, decryptSeed, loadWalletMeta } from "../wallet/core/keystore";
 import { requestNotificationPermission } from "../wallet/notifications/wallet-notification-store";
 import { buildCustomTokenPreview, getVerifiedTokens } from "../wallet/evm/token-registry";
 import { apiWalletGetTokenInfo } from "../lib/alpha-wallet-api";
@@ -1457,7 +1457,10 @@ function SecurityView({ onBack, onForget, onExportSeed }: { onBack: () => void; 
 // WALLET SETTINGS VIEW (Phase I)
 // ═══════════════════════════════════════════════════════════════════════════
 
-type PinChangeStep = "idle" | "verify-old" | "enter-new" | "confirm-new";
+type PinChangeStep =
+  | "idle"
+  | "verify-old" | "enter-new" | "confirm-new"          // Cambia PIN (vecchio PIN noto)
+  | "reset-phrase" | "reset-pin-new" | "reset-pin-confirm"; // Reset PIN (via recovery phrase)
 
 function WalletSettingsView({
   onBack,
@@ -1485,10 +1488,55 @@ function WalletSettingsView({
   const [pinLoading, setPinLoading] = useState(false);
   const [pinSuccess, setPinSuccess] = useState(false);
 
+  // ── Reset PIN flow (via recovery phrase) ────────────────────────────────
+  const [resetPhrase,      setResetPhrase]      = useState("");
+  const [resetNewPin,      setResetNewPin]       = useState("");
+  const [resetConfirmPin,  setResetConfirmPin]   = useState("");
+  const [storedEvmAddr,    setStoredEvmAddr]     = useState<string | null>(null);
+
   const resetPinFlow = () => {
     setPinStep("idle");
     setOldPin(""); setNewPin(""); setConfirmPin("");
+    setResetPhrase(""); setResetNewPin(""); setResetConfirmPin("");
     setPinError(null); setPinLoading(false);
+  };
+
+  /** Passo 1 Reset: valida la recovery phrase e carica l'indirizzo stored */
+  const handleResetPhraseSubmit = async () => {
+    const words = resetPhrase.trim().toLowerCase().replace(/\s+/g, " ");
+    if (!isValidMnemonic(words)) {
+      setPinError("Recovery phrase non valida. Controlla le 12 parole e riprova.");
+      return;
+    }
+    setPinError(null);
+    // Carica indirizzo wallet attuale per mostrarlo all'utente come riferimento
+    const meta = await loadWalletMeta();
+    setStoredEvmAddr(meta?.evmAddress ?? null);
+    setResetPhrase(words); // normalizzata
+    setPinStep("reset-pin-new");
+  };
+
+  /** Passo 2 Reset: valida il nuovo PIN */
+  const handleResetPinNew = () => {
+    const err = pinValidationError(resetNewPin);
+    if (err) { setPinError(err); return; }
+    setPinError(null);
+    setPinStep("reset-pin-confirm");
+  };
+
+  /** Passo 3 Reset: conferma PIN e re-cifra il keystore con la phrase */
+  const handleResetPinConfirm = async () => {
+    if (resetConfirmPin !== resetNewPin) { setPinError("I PIN non corrispondono"); return; }
+    setPinLoading(true); setPinError(null);
+    try {
+      await wallet.importWallet(resetPhrase, resetNewPin);
+      setPinSuccess(true);
+      setTimeout(() => { setPinSuccess(false); resetPinFlow(); }, 2500);
+    } catch (e) {
+      setPinError(e instanceof Error ? e.message : "Errore durante il reset del PIN");
+    } finally {
+      setPinLoading(false);
+    }
   };
 
   const handleVerifyOld = async () => {
@@ -1586,13 +1634,105 @@ function WalletSettingsView({
             </div>
           </div>
         );
+
+      /* ── Reset PIN via recovery phrase ─────────────────────────────────── */
+      case "reset-phrase":
+        return (
+          <div className="aw-settings-pin-flow">
+            <p className="aw-sub" style={{ fontWeight: 600 }}>🔑 Reset PIN — Recovery phrase</p>
+            <p className="aw-sub" style={{ fontSize: "0.8rem", opacity: 0.7 }}>
+              Inserisci le 12 parole della recovery phrase nell'ordine corretto. Il wallet verrà
+              re-cifrato con il nuovo PIN che sceglierai al passo successivo.
+            </p>
+            <textarea
+              className="aw-input"
+              rows={3}
+              placeholder="parola1 parola2 parola3 … parola12"
+              value={resetPhrase}
+              onChange={e => { setResetPhrase(e.target.value); setPinError(null); }}
+              autoComplete="off"
+              spellCheck={false}
+              style={{ resize: "none", fontFamily: "monospace", fontSize: "0.85rem" }}
+            />
+            {pinError && <div className="aw-error">{pinError}</div>}
+            <div className="aw-btn-row">
+              <button className="aw-btn aw-btn--secondary" onClick={resetPinFlow}>Annulla</button>
+              <button
+                className="aw-btn aw-btn--primary"
+                onClick={handleResetPhraseSubmit}
+                disabled={resetPhrase.trim().split(/\s+/).length < 12}
+              >
+                Avanti →
+              </button>
+            </div>
+          </div>
+        );
+
+      case "reset-pin-new":
+        return (
+          <div className="aw-settings-pin-flow">
+            <p className="aw-sub" style={{ fontWeight: 600 }}>🔑 Reset PIN — Nuovo PIN</p>
+            {storedEvmAddr && (
+              <div className="aw-settings-pin-addr-hint">
+                🔍 Indirizzo wallet: <code>{storedEvmAddr.slice(0,8)}…{storedEvmAddr.slice(-6)}</code>
+              </div>
+            )}
+            <p className="aw-sub" style={{ fontSize: "0.8rem", opacity: 0.7 }}>
+              Scegli il nuovo PIN (minimo 6 cifre).
+            </p>
+            <input type="password" inputMode="numeric" className="aw-input aw-input--pin" value={resetNewPin}
+              onChange={e => { setResetNewPin(e.target.value.replace(/\D/g, "")); setPinError(null); }}
+              onKeyDown={e => e.key === "Enter" && handleResetPinNew()}
+              maxLength={12} placeholder="••••••" autoFocus />
+            {pinError && <div className="aw-error">{pinError}</div>}
+            <div className="aw-btn-row">
+              <button className="aw-btn aw-btn--secondary" onClick={resetPinFlow}>Annulla</button>
+              <button className="aw-btn aw-btn--primary" onClick={handleResetPinNew} disabled={resetNewPin.length < 6}>
+                Avanti →
+              </button>
+            </div>
+          </div>
+        );
+
+      case "reset-pin-confirm":
+        return (
+          <div className="aw-settings-pin-flow">
+            <p className="aw-sub" style={{ fontWeight: 600 }}>🔑 Reset PIN — Conferma</p>
+            <input type="password" inputMode="numeric" className="aw-input aw-input--pin" value={resetConfirmPin}
+              onChange={e => { setResetConfirmPin(e.target.value.replace(/\D/g, "")); setPinError(null); }}
+              onKeyDown={e => e.key === "Enter" && void handleResetPinConfirm()}
+              maxLength={12} placeholder="••••••" autoFocus />
+            {pinError && <div className="aw-error">{pinError}</div>}
+            <div className="aw-btn-row">
+              <button className="aw-btn aw-btn--secondary" onClick={resetPinFlow}>Annulla</button>
+              <button
+                className="aw-btn aw-btn--primary"
+                onClick={handleResetPinConfirm}
+                disabled={pinLoading || resetConfirmPin.length < 6}
+              >
+                {pinLoading ? "Reset in corso…" : "Conferma e Salva →"}
+              </button>
+            </div>
+          </div>
+        );
+
       default:
         return (
-          <button className="aw-settings-item" onClick={() => { resetPinFlow(); setPinStep("verify-old"); }}>
-            <span className="aw-settings-item-icon">🔑</span>
-            <span className="aw-settings-item-label">Cambia PIN</span>
-            <span className="aw-settings-item-chevron">›</span>
-          </button>
+          <>
+            <button className="aw-settings-item" onClick={() => { resetPinFlow(); setPinStep("verify-old"); }}>
+              <span className="aw-settings-item-icon">🔑</span>
+              <span className="aw-settings-item-label">Cambia PIN</span>
+              <span className="aw-settings-item-chevron">›</span>
+            </button>
+            <button className="aw-settings-item" onClick={() => { resetPinFlow(); setPinStep("reset-phrase"); }}>
+              <span className="aw-settings-item-icon">🔓</span>
+              <div style={{ flex: 1 }}>
+                <div className="aw-settings-item-label">Reset PIN</div>
+                <div className="aw-settings-item-hint">Hai dimenticato il PIN? Usa la recovery phrase</div>
+              </div>
+              <span className="aw-settings-item-chevron">›</span>
+            </button>
+          </>
         );
     }
   };
