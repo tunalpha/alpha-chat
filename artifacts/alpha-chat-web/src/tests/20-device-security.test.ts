@@ -159,6 +159,7 @@ describe("20.6 Lock Settings — persist/load", () => {
       autoLockMs: 60_000,
       privacyScreen: false,
       biometricEnabled: true,
+      biometricOnly: false,
       panicEnabled: true,
     };
     saveLockSettings(USER_A, custom);

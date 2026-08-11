@@ -72,3 +72,4 @@
 - [MC detect false-positive](detect-status-check-bug.md) — backend HTTP 200 sia con che senza deposito; frontend deve controllare t.status !== "awaiting_deposit" prima di avanzare
 - [MultiChain Release Flow](multichain-release-flow.md) — auto-release in detect controller + scheduler; recipient_wallet lookup da UserModel se null; sendTransaction chainId implicito rompe Trust Wallet iOS
 - [MultiChain WC chain prop bug](multichain-wc-chain-prop.md) — ConnectButton senza chain= → eip155:56 mai nel namespace WC → "BSC non accettata"; fix: chain={evmChain ?? polygon}
+- [Alpha Wallet Phase A — core crypto](alpha-wallet-phase-a.md) — @scure/bip39 v2.x wordlist import, IDB singleton, fake-indexeddb per test, 173 test green

@@ -290,6 +290,105 @@ Il token registry è la fonte di verità. Qualsiasi token non presente nel regis
 
 ---
 
+## 7b. CUSTOM EVM TOKEN IMPORT — Requisito V1
+
+### 7b.1 Motivazione
+
+Un wallet professionale deve permettere all'utente di aggiungere token ERC-20 non presenti nel registry ufficiale. Questa funzionalità deve essere implementata in V1 con protezioni anti-phishing esplicite.
+
+### 7b.2 Flusso import
+
+```
+User → "Importa Token"
+         ↓
+Seleziona rete (Ethereum / Polygon / BSC)
+         ↓
+Inserisce contract address (0x...)
+         ↓
+Backend legge dal contratto via viem multicall:
+  - name()     → es. "Tether USD"
+  - symbol()   → es. "USDT"
+  - decimals() → es. 6
+         ↓
+Frontend mostra anteprima:
+  ⚠️ Token personalizzato
+  Name: Tether USD
+  Symbol: USDT
+  Decimals: 6
+  Network: Polygon
+  Contract: 0xabcd...efgh
+         ↓
+Verifica anti-phishing:
+  Se symbol === token verificato (USDT/USDC/USDA) → warning rosso:
+  "⚠️ Un token con questo simbolo è già presente nel registro ufficiale.
+   Verifica l'indirizzo prima di aggiungere."
+         ↓
+User conferma → salvato in IndexedDB come token "custom"
+```
+
+### 7b.3 Struttura dati
+
+```typescript
+type TokenVerification = "verified" | "custom";
+
+interface TokenConfig {
+  chainId: number;
+  symbol: string;
+  name: string;
+  decimals: number;
+  contractAddress?: `0x${string}`;  // undefined = native
+  standard: "native" | "ERC-20";
+  logoUrl?: string;
+  explorerUrl: string;
+  coingeckoId?: string;
+  verification: TokenVerification;  // OBBLIGATORIO
+  importedAt?: Date;                 // solo per custom
+}
+```
+
+### 7b.4 Regola anti-phishing — OBBLIGATORIA
+
+```
+Token VERIFIED:
+  ├── Badge verde: ✅ Verificato
+  ├── Da VERIFIED_TOKENS registry
+  └── Mai sovrascrivibile da token custom
+
+Token CUSTOM:
+  ├── Badge arancione: ⚠️ Personalizzato
+  ├── Symbol identico a token verificato → warning rosso + conferma doppia
+  ├── Mai mostrato senza il badge ⚠️
+  └── Salvato in IndexedDB separato da VERIFIED_TOKENS
+```
+
+### 7b.5 Backend endpoint necessario
+
+```
+GET /api/v1/alpha-wallet/evm/token-info?address=0x...&chainId=137
+→ { name, symbol, decimals, totalSupply, isVerified }
+```
+
+Il backend usa viem `readContract` per leggere i campi ERC-20 standard.
+Restituisce anche `isVerified: true` se l'address corrisponde a un token nel VERIFIED_TOKENS registry.
+
+### 7b.6 Gestione custom tokens
+
+```typescript
+// IndexedDB store separato: "alpha-wallet-custom-tokens"
+interface CustomTokenStore {
+  chainId: number;
+  contractAddress: string;
+  symbol: string;
+  name: string;
+  decimals: number;
+  addedAt: number;  // timestamp
+}
+```
+
+I custom token vengono sempre mostrati **dopo** i token verificati nella lista asset.
+
+---
+
 ## 8. EVM NETWORK REGISTRY
 
 ```typescript

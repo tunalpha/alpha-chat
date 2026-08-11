@@ -1,0 +1,74 @@
+L’audit è molto buono e, soprattutto, conferma che possiamo procedere senza toccare ciò che abbiamo già costruito.
+
+Prima di dare il via alla Fase A, però, aggiungerei un requisito che avevamo appena deciso e che nell’audit non vedo esplicitato chiaramente: il token import manuale tramite contract address.
+
+Io darei il via con queste condizioni
+
+Fase A sì, ma con queste precisazioni obbligatorie:
+
+1. EVM multi-chain
+    * Ethereum
+    * Polygon
+    * BSC
+    * architettura pronta per altre EVM.
+2. Asset iniziali
+    * ETH
+    * POL
+    * BNB
+    * USDT
+    * USDC
+    * USDA
+    * BTC separato.
+3. Token Registry come unica fonte di verità
+    * attenzione particolare a USDT BSC = 18 decimals;
+    * indirizzi ufficiali verificati;
+    * network + contract + decimals sempre associati.
+4. Token personalizzati — requisito V1
+    * pulsante “Importa/Aggiungi token”;
+    * inserimento contract address;
+    * lettura automatica di name, symbol, decimals;
+    * verifica della rete;
+    * distinzione visiva:
+        * ✅ verificato
+        * ⚠️ personalizzato/non verificato;
+    * mai presentare un token personalizzato come USDT/USDC/USDA ufficiale solo perché ha lo stesso simbolo.
+5. Self-custody
+    * seed mai sul server;
+    * private key mai sul server;
+    * signing locale;
+    * backup obbligatorio prima di depositare fondi.
+6. Compatibilità
+    * EVM → MetaMask / Trust Wallet / Ledger e wallet compatibili;
+    * BTC → wallet BIP-84 compatibili.
+7. Isolamento assoluto
+    * Payment Engine: intatto;
+    * WalletConnect: intatto;
+    * ThirdWeb: intatto;
+    * USDA esistente: intatto;
+    * escrow: intatto;
+    * Gas Station: intatto;
+    * BTC Payment Engine: intatto.
+8. Fase G esclusa
+    * nessun collegamento tra Alpha Wallet e Chat/Payment Engine finché non lo approviamo esplicitamente.
+
+Una cosa che mi piace particolarmente
+
+La scelta:
+
+Seed → AES-256-GCM → IndexedDB
+
+con autenticazione locale e backup seed obbligatorio prima di depositare fondi è coerente con il fatto che stiamo iniziando come PWA.
+
+L’unico punto che terrei molto sotto controllo è proprio iOS PWA + IndexedDB: l’agente ha correttamente evidenziato che non possiamo promettere la stessa persistenza di una vera app nativa. Quindi il backup della seed non è un dettaglio UX: è fondamentale.
+
+Quindi
+
+Sì, procederei con la Fase A, ma prima fai aggiungere all’agente il requisito Custom Token Import all’architecture document e ai test plan.
+
+Puoi dargli semplicemente:
+
+Procedi con la Fase A. Prima di iniziare, aggiorna docs/alpha-wallet-architecture-audit.md includendo esplicitamente come requisito V1 il Custom EVM Token Import tramite contract address, con autodiscovery di name/symbol/decimals, verifica della rete e distinzione obbligatoria tra token verificati e token personalizzati/non verificati. Aggiungi anche i relativi test al test plan.
+
+Dopo questa integrazione, procedi con la Fase A rispettando integralmente l’isolamento definito nell’audit. Non modificare alcun componente del Payment Engine esistente e non iniziare la Fase G di integrazione con Chat/Payments.
+
+Questa impostazione mi sembra molto solida per partire.
