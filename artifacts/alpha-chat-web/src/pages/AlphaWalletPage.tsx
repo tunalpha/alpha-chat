@@ -45,6 +45,7 @@ import {
   fetchPrices,
   formatCrypto,
   formatFiat,
+  getSymbolPrice,
   parseAmount,
   type AssetPrices,
 } from "../wallet/services/price-service";
@@ -1064,6 +1065,32 @@ interface SendAsset {
   name:            string;
 }
 
+/**
+ * Converte la stringa digitata dall'utente in bigint nativo per la transazione.
+ * - inputMode "crypto": parsing diretto
+ * - inputMode "eur"/"usd": converti fiat → crypto usando il prezzo corrente
+ */
+function resolveRaw(
+  amountStr: string,
+  inputMode: "crypto" | "eur" | "usd",
+  decimals: number,
+  prices: AssetPrices | null,
+  symbol: string,
+): bigint | null {
+  if (!amountStr.trim()) return null;
+  if (inputMode === "crypto") return parseAmount(amountStr, decimals);
+  const priceObj = prices
+    ? (prices[symbol.toLowerCase() as keyof AssetPrices] as { usd: number; eur: number } | undefined)
+    : null;
+  const price = priceObj?.[inputMode]; // "eur" | "usd"
+  if (!price || price <= 0) return null;
+  const fiatNum = parseFloat(amountStr.replace(",", "."));
+  if (isNaN(fiatNum) || fiatNum <= 0) return null;
+  const rawNum = Math.round((fiatNum / price) * 10 ** decimals);
+  if (!isFinite(rawNum) || rawNum <= 0) return null;
+  try { return BigInt(rawNum); } catch { return null; }
+}
+
 function SendView({ onBack, onSuccess }: { onBack: () => void; onSuccess: () => void }) {
   const wallet   = useWallet();
   const meta     = wallet.meta!;
@@ -1125,6 +1152,8 @@ function SendView({ onBack, onSuccess }: { onBack: () => void; onSuccess: () => 
   const [assetIdx, setAssetIdx]         = useState(0);
   const [recipient, setRecipient]       = useState("");
   const [amountStr, setAmountStr]       = useState("");
+  const [inputMode, setInputMode]       = useState<"crypto" | "eur" | "usd">("crypto");
+  const [pendingRaw, setPendingRaw]     = useState<bigint | null>(null); // raw bigint confirmed in handleProceed
   const [recipientErr, setRecipientErr] = useState<string | null>(null);
   const [amountErr, setAmountErr]       = useState<string | null>(null);
   const [gasEst, setGasEst]             = useState<GasEstimate | null>(null);
@@ -1144,10 +1173,16 @@ function SendView({ onBack, onSuccess }: { onBack: () => void; onSuccess: () => 
     if (rErr) { setRecipientErr(rErr); return; }
     setRecipientErr(null);
 
-    // Validate amount
-    const raw = parseAmount(amountStr, selectedAsset.decimals);
-    if (!raw || raw <= 0n) { setAmountErr("Importo non valido"); return; }
+    // Validate amount — supports crypto, EUR and USD input modes
+    const raw = resolveRaw(amountStr, inputMode, selectedAsset.decimals, prices, selectedAsset.symbol);
+    if (!raw || raw <= 0n) {
+      setAmountErr(inputMode !== "crypto" && !prices
+        ? "Prezzi non disponibili. Usa la modalità crypto."
+        : "Importo non valido");
+      return;
+    }
     if (raw > selectedAsset.balance) { setAmountErr("Saldo insufficiente"); return; }
+    setPendingRaw(raw); // store resolved bigint for handleSignAndSend
     setAmountErr(null);
 
     setStep("confirming-gas");
@@ -1182,7 +1217,8 @@ function SendView({ onBack, onSuccess }: { onBack: () => void; onSuccess: () => 
     if (!validatePin(pin)) { setPinErr("PIN non valido"); return; }
     setPinErr(null);
     setStep("processing");
-    const raw = parseAmount(amountStr, selectedAsset.decimals)!;
+    // Use the raw value confirmed during handleProceed (already validated + converted from fiat if needed)
+    const raw = pendingRaw ?? resolveRaw(amountStr, inputMode, selectedAsset.decimals, prices, selectedAsset.symbol)!;
     try {
       const keystore = await loadKeystore();
       if (!keystore) throw new Error("Keystore non trovato. Ricrea il wallet.");
@@ -1216,7 +1252,10 @@ function SendView({ onBack, onSuccess }: { onBack: () => void; onSuccess: () => 
   };
 
   const netName = isBtc ? "Bitcoin" : getNetworkByChainId(chainId)?.name ?? `Chain ${chainId}`;
-  const raw = parseAmount(amountStr, selectedAsset?.decimals ?? 8);
+  // Live-display raw: converts fiat→crypto using current prices so previews update in real time
+  const raw = selectedAsset
+    ? resolveRaw(amountStr, inputMode, selectedAsset.decimals, prices, selectedAsset.symbol)
+    : null;
 
   // Render form step
   if (step === "form" || step === "confirming-gas") {
@@ -1229,7 +1268,7 @@ function SendView({ onBack, onSuccess }: { onBack: () => void; onSuccess: () => 
         {assets.length > 1 && (
           <>
             <label className="aw-label">Asset</label>
-            <select className="aw-select" value={assetIdx} onChange={e => { setAssetIdx(Number(e.target.value)); setAmountStr(""); setAmountErr(null); }}>
+            <select className="aw-select" value={assetIdx} onChange={e => { setAssetIdx(Number(e.target.value)); setAmountStr(""); setAmountErr(null); setInputMode("crypto"); setPendingRaw(null); }}>
               {assets.map((a, i) => <option key={i} value={i}>{a.symbol} — {formatCrypto(a.balance, a.decimals, a.symbol)}</option>)}
             </select>
           </>
@@ -1255,26 +1294,73 @@ function SendView({ onBack, onSuccess }: { onBack: () => void; onSuccess: () => 
         />
         {recipientErr && <div className="aw-error">{recipientErr}</div>}
 
-        {/* Amount */}
+        {/* Amount — with native / EUR / USD toggle */}
         <label className="aw-label">Importo</label>
+
+        {/* Mode pills */}
+        <div className="aw-amount-mode-toggle">
+          <button
+            type="button"
+            className={`aw-mode-pill${inputMode === "crypto" ? " aw-mode-pill--active" : ""}`}
+            onClick={() => { setInputMode("crypto"); setAmountStr(""); setAmountErr(null); setPendingRaw(null); }}
+          >
+            {selectedAsset?.symbol ?? "Crypto"}
+          </button>
+          <button
+            type="button"
+            className={`aw-mode-pill${inputMode === "eur" ? " aw-mode-pill--active" : ""}`}
+            onClick={() => { setInputMode("eur"); setAmountStr(""); setAmountErr(null); setPendingRaw(null); }}
+            disabled={!prices}
+            title={!prices ? "Prezzi non disponibili" : undefined}
+          >
+            EUR €
+          </button>
+          <button
+            type="button"
+            className={`aw-mode-pill${inputMode === "usd" ? " aw-mode-pill--active" : ""}`}
+            onClick={() => { setInputMode("usd"); setAmountStr(""); setAmountErr(null); setPendingRaw(null); }}
+            disabled={!prices}
+            title={!prices ? "Prezzi non disponibili" : undefined}
+          >
+            USD $
+          </button>
+        </div>
+
+        {/* Amount input */}
         <div className="aw-amount-row">
+          {inputMode !== "crypto" && (
+            <span className="aw-amount-symbol" style={{ minWidth: 20, color: "rgba(255,255,255,.6)" }}>
+              {inputMode === "eur" ? "€" : "$"}
+            </span>
+          )}
           <input
             type="text"
             inputMode="decimal"
             className={`aw-input aw-input--amount ${amountErr ? "aw-input--error" : ""}`}
             value={amountStr}
-            onChange={e => { setAmountStr(e.target.value.replace(",", ".")); setAmountErr(null); }}
+            onChange={e => { setAmountStr(e.target.value.replace(",", ".")); setAmountErr(null); setPendingRaw(null); }}
             placeholder="0.00"
           />
-          <span className="aw-amount-symbol">{selectedAsset?.symbol}</span>
+          {inputMode === "crypto" && (
+            <span className="aw-amount-symbol">{selectedAsset?.symbol}</span>
+          )}
         </div>
         {amountErr && <div className="aw-error">{amountErr}</div>}
 
-        {/* Fiat preview */}
+        {/* Conversion preview */}
         {raw && raw > 0n && prices && selectedAsset && (() => {
-          const sym = selectedAsset.symbol.toLowerCase() as keyof AssetPrices;
-          const p = prices[sym] as { usd: number; eur: number } | undefined;
-          return p ? <div className="aw-amount-fiat">≈ {formatFiat(raw, selectedAsset.decimals, p, "EUR")}</div> : null;
+          const priceObj = getSymbolPrice(prices, selectedAsset.symbol);
+          if (inputMode === "crypto") {
+            // Mostra EUR + USD
+            const eurStr = priceObj ? formatFiat(raw, selectedAsset.decimals, priceObj, "EUR") : null;
+            const usdStr = priceObj ? formatFiat(raw, selectedAsset.decimals, priceObj, "USD") : null;
+            const parts = [eurStr, usdStr].filter(s => s && s !== "—");
+            return parts.length > 0 ? <div className="aw-amount-fiat">≈ {parts.join(" · ")}</div> : null;
+          } else {
+            // Mostra equivalente crypto
+            const cryptoStr = formatCrypto(raw, selectedAsset.decimals, selectedAsset.symbol);
+            return <div className="aw-amount-fiat">≈ {cryptoStr}</div>;
+          }
         })()}
 
         <div className="aw-btn-row">
