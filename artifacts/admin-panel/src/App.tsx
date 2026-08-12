@@ -29,6 +29,7 @@ import FeeConfig from '@/pages/fee-config';
 import RevenueMonitor from '@/pages/revenue-monitor';
 import AlphaWalletFee from '@/pages/alpha-wallet-fee';
 import SparkLightningFee from '@/pages/spark-lightning-fee';
+import SparkMonitor      from '@/pages/spark-monitor';
 
 const queryClient = new QueryClient();
 
@@ -57,6 +58,7 @@ function ProtectedRoutes() {
         <Route path="/revenue-monitor" component={RevenueMonitor} />
         <Route path="/alpha-wallet-fee" component={AlphaWalletFee} />
         <Route path="/spark-lightning-fee" component={SparkLightningFee} />
+        <Route path="/spark-monitor"       component={SparkMonitor} />
         <Route path="/access-log" component={AccessLogPage} />
         <Route path="/performance" component={PerformancePage} />
         <Route component={NotFound} />

@@ -1,0 +1,338 @@
+ADMIN SPARK / LIGHTNING — POST-DEPLOY MONITORING
+
+Ora che il core Breez Spark è stato deployato e validato, implementa una sezione Admin dedicata esclusivamente al monitoraggio e alla gestione di Spark / Lightning.
+
+IMPORTANTE:
+Questa fase NON deve modificare il funzionamento del core Spark già testato.
+
+NON modificare:
+- BTC on-chain
+- WalletContext BTC
+- EVM / Polygon / Ethereum / BSC
+- USDA
+- Payment Engine
+- ChatPage
+- Signal / E2E encryption
+- fee BTC esistente
+- Treasury BTC on-chain esistente
+- logiche di invio/ricezione già validate
+
+Prima di modificare qualsiasi file:
+1. esegui test esistenti;
+2. verifica lo stato attuale;
+3. identifica esattamente i file coinvolti;
+4. mantieni completamente isolato il nuovo Admin Monitoring.
+
+========================================
+1. DASHBOARD SPARK / LIGHTNING
+========================================
+
+Creare una sezione Admin:
+
+"Spark / Lightning"
+
+con card riepilogative:
+
+- Wallet Spark abilitati
+- Movimenti totali
+- Volume totale movimentato
+- Commissioni Alpha generate
+- Commissioni Spark/Breez
+- Commissioni destinate al BTC Treasury
+- Pagamenti pending
+- Pagamenti completati
+- Pagamenti falliti
+
+I valori devono essere ottenuti da dati reali.
+
+NON inventare valori e NON usare mock data in produzione.
+
+========================================
+2. UTENTI SPARK
+========================================
+
+Creare una sezione:
+
+"Utenti con Spark abilitato"
+
+Mostrare una lista minimale e privacy-conscious degli utenti che hanno effettivamente abilitato/utilizzato Spark.
+
+Per ogni utente, ove disponibile:
+
+- identificativo utente non sensibile
+- stato Spark: enabled / disabled
+- data attivazione
+- numero movimenti
+- volume totale
+- fee Alpha generate
+- ultimo movimento
+- eventuale stato pending/error
+
+NON mostrare:
+- seed
+- mnemonic
+- private key
+- API key Breez
+- dati sensibili non necessari.
+
+Non memorizzare nuove informazioni personali se non indispensabili.
+
+========================================
+3. MOVIMENTI SPARK
+========================================
+
+Creare una vista "Movimenti Spark".
+
+Filtri:
+
+- 24h
+- 7 giorni
+- 30 giorni
+- Totale
+- Send
+- Receive
+- Completed
+- Pending
+- Failed
+
+Mostrare almeno:
+
+- timestamp
+- tipo
+- importo
+- fee Breez/Lightning
+- Alpha fee
+- stato
+- payment hash/id
+- eventuale errore
+
+Separare sempre:
+
+BTC on-chain
+≠
+BTC Lightning / Spark
+
+========================================
+4. HEALTH MONITOR
+========================================
+
+Aggiungere una card "Spark Health".
+
+Controllare:
+
+- SDK/API raggiungibile
+- operatori Spark raggiungibili
+- stato sync
+- ultimo sync
+- pagamenti pending
+- pagamenti failed
+- error rate
+- webhook
+- eventuali problemi di riconciliazione Treasury
+
+Stati:
+
+🟢 Healthy
+🟡 Warning
+🔴 Critical
+
+Non creare falsi positivi se un controllo non è disponibile.
+
+========================================
+5. TREASURY RECONCILIATION
+========================================
+
+Aggiungere controllo:
+
+"Spark Treasury Reconciliation"
+
+Verificare che:
+
+Alpha Spark fees contabilizzate
+=
+fee Spark registrate nel BTC Treasury
+
+Usare la separazione già esistente:
+
+source = "spark_lightning"
+
+NON modificare i record BTC on-chain esistenti.
+
+Mostrare:
+
+- fee Spark contabilizzate
+- fee Treasury
+- differenza
+- stato reconciliation
+
+Se differenza != 0:
+
+🔴 ALERT
+
+Non correggere automaticamente i dati.
+
+========================================
+6. FEE
+========================================
+
+La configurazione fee Spark già esistente deve rimanere separata dalla fee BTC.
+
+Mostrare:
+
+- Alpha fee %
+- minimum fee
+- quote validity
+- eventuale fee Breez stimata
+- eventuale fee effettiva
+
+NON modificare la fee BTC quando viene modificata quella Spark.
+
+Ogni modifica fee deve continuare a generare:
+
+SPARK_FEE_UPDATED
+
+con audit log.
+
+========================================
+7. KILL SWITCH
+========================================
+
+Mantenere il Kill Switch Spark.
+
+Solo super_admin.
+
+Quando Spark è ON:
+
+→ mostrare "Kill Switch"
+
+Quando Spark è OFF:
+
+→ mostrare "Abilita Go-Live"
+
+Conferma obbligatoria.
+
+IMPORTANTE:
+
+Il Kill Switch deve bloccare SOLO:
+
+- nuovi pagamenti Spark
+- nuove operazioni Spark
+
+NON deve:
+
+- cancellare wallet
+- cancellare fondi
+- cancellare storico
+- modificare BTC on-chain
+- modificare EVM
+- modificare USDA
+- modificare Chat
+- modificare Signal.
+
+Eventuali pagamenti già pending devono essere gestiti secondo lo stato reale e NON cancellati arbitrariamente.
+
+========================================
+8. ALERT
+========================================
+
+Prevedere alert Admin per:
+
+- operatori Spark non disponibili
+- aumento anomalo failed payments
+- pagamenti pending oltre soglia
+- Treasury reconciliation mismatch
+- problemi webhook
+- errori sync
+- API Breez non raggiungibile
+
+NON creare notifiche continue inutili.
+
+========================================
+9. PRIVACY / SECURITY
+========================================
+
+Verificare esplicitamente che:
+
+- mnemonic mai presente nell'Admin
+- private key mai presente nell'Admin
+- API key Breez mai restituita dalle API Admin
+- nessun segreto nei log
+- solo super_admin può modificare configurazioni
+- ruoli inferiori possono eventualmente vedere dati di monitoring senza poter modificare configurazioni.
+
+========================================
+10. TEST
+========================================
+
+Creare test automatici per:
+
+- accesso super_admin
+- accesso non autorizzato
+- dashboard totals
+- utenti Spark
+- movimenti
+- filtri
+- fee isolation
+- Treasury reconciliation
+- Kill Switch
+- pending/failed
+- Health Monitor
+- API key non esposta
+- mnemonic/private key non esposte
+- nessuna regressione BTC.
+
+Target:
+
+0 FAIL.
+
+========================================
+11. REGRESSION TEST
+========================================
+
+Eseguire nuovamente:
+
+- Alpha Wallet tests
+- Admin tests
+- Spark tests
+- TypeScript
+- production build
+
+Verificare esplicitamente:
+
+BTC on-chain invariato.
+EVM invariato.
+USDA invariato.
+Chat invariata.
+Signal invariato.
+Payment Engine invariato.
+BTC fee invariata.
+
+========================================
+12. REGOLA FONDAMENTALE
+========================================
+
+NON fare refactoring del core Spark.
+
+NON cambiare architettura.
+
+NON cambiare fee model.
+
+NON cambiare Treasury model.
+
+NON modificare WalletContext BTC.
+
+Questa fase è esclusivamente:
+
+ADMIN MONITORING + OBSERVABILITY + CONTROLS.
+
+Al termine produci un report:
+
+- file modificati
+- file non modificati
+- test eseguiti
+- PASS/FAIL
+- eventuali rischi
+- screenshot/endpoint verificabili
+- conferma esplicita che BTC/EVM/USDA/Chat/Signal non hanno subito regressioni.
+
+NON effettuare ulteriori modifiche dopo il report senza approvazione.

@@ -16,7 +16,13 @@ import { requireAdmin } from "../../middleware/require-admin.middleware";
 import {
   getSparkFeeConfigHandler,
   updateSparkFeeConfigHandler,
-} from "../../controllers/spark-fee.controller";
+} from "../../controllers/spark-fee.controller.js";
+import {
+  getSparkDashboardHandler,
+  getSparkMovementsHandler,
+  getSparkHealthHandler,
+  getSparkReconciliationHandler,
+} from "../../controllers/spark-monitoring.controller.js";
 
 const router = Router();
 
@@ -36,5 +42,23 @@ router.get("/fee-config", requireAdmin("read_only"), getSparkFeeConfigHandler);
  * NOTA: non è possibile modificare la provider fee (Breez/Spark routing) tramite questa route.
  */
 router.patch("/fee-config", requireAdmin("super_admin"), updateSparkFeeConfigHandler);
+
+/**
+ * Monitoring routes — sola lettura (read_only admin).
+ * ISOLAMENTO: zero import da BTC/EVM/USDA/Payment Engine/Chat/Signal.
+ * PRIVACY: nessun secret/mnemonic/private_key restituito.
+ */
+
+/** GET /api/v1/spark/monitoring/dashboard — aggregate stats (totali, fee, error rate) */
+router.get("/monitoring/dashboard",       requireAdmin("read_only"), getSparkDashboardHandler);
+
+/** GET /api/v1/spark/monitoring/movements — paginated fee records con filtri range/status */
+router.get("/monitoring/movements",       requireAdmin("read_only"), getSparkMovementsHandler);
+
+/** GET /api/v1/spark/monitoring/health — health check (SDK key, error rate 24h, alerts) */
+router.get("/monitoring/health",          requireAdmin("read_only"), getSparkHealthHandler);
+
+/** GET /api/v1/spark/monitoring/reconciliation — Treasury reconciliation Spark vs failed records */
+router.get("/monitoring/reconciliation",  requireAdmin("read_only"), getSparkReconciliationHandler);
 
 export default router;
