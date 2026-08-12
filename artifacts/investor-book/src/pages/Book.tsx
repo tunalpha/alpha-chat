@@ -10,7 +10,10 @@ import StorySection from '@/components/sections/StorySection';
 import ProductSection from '@/components/sections/ProductSection';
 import KpiSection from '@/components/sections/KpiSection';
 import HeroPrivateSection from '@/components/sections/HeroPrivateSection';
+import SecurityDeepDiveSection from '@/components/sections/SecurityDeepDiveSection';
+import WalletDeepDiveSection from '@/components/sections/WalletDeepDiveSection';
 import PaymentSection from '@/components/sections/PaymentSection';
+import MultiChainSection from '@/components/sections/MultiChainSection';
 import HeroPaymentSection from '@/components/sections/HeroPaymentSection';
 import HeroTransferSection from '@/components/sections/HeroTransferSection';
 import EcosystemSection from '@/components/sections/EcosystemSection';
@@ -45,7 +48,7 @@ export default function Book({ lang, theme, toggleTheme }: BookProps) {
         {/* ── Cover ── */}
         <CoverSection dict={dict} />
 
-        {/* ── Narrative sections ── */}
+        {/* ── Narrative foundation ── */}
         <div className="max-w-4xl mx-auto px-6 space-y-32 md:space-y-48 mt-32 md:mt-48">
           <FounderSection dict={dict} />
           <LetterSection dict={dict} />
@@ -59,15 +62,37 @@ export default function Book({ lang, theme, toggleTheme }: BookProps) {
           <HeroPrivateSection dict={dict} />
         </div>
 
+        {/* ── Security Deep Dive ── */}
+        <div className="max-w-4xl mx-auto px-6 mt-32 md:mt-48">
+          <SecurityDeepDiveSection dict={dict} />
+        </div>
+
+        {/* ── Alpha Wallet (full-bleed dark card) ── */}
+        <div className="max-w-4xl mx-auto px-6 mt-32 md:mt-48">
+          <WalletDeepDiveSection dict={dict} />
+        </div>
+
+        {/* ── Hero 5: Wallet (phone mockup interlude) ── */}
+        <div className="mt-32 md:mt-48">
+          <HeroWalletSection dict={dict} />
+        </div>
+
         {/* ── Payment layer ── */}
         <div className="max-w-4xl mx-auto px-6 mt-32 md:mt-48">
           <PaymentSection dict={dict} />
         </div>
 
-        {/* ── Hero 2 & 3: USDA payment + Transfer ── */}
+        {/* ── Hero 2: USDA payment ── */}
         <div className="mt-32 md:mt-48">
           <HeroPaymentSection dict={dict} />
         </div>
+
+        {/* ── Multi-Chain Engine ── */}
+        <div className="max-w-4xl mx-auto px-6 mt-32 md:mt-48">
+          <MultiChainSection dict={dict} />
+        </div>
+
+        {/* ── Hero 3: Transfer ── */}
         <HeroTransferSection dict={dict} />
 
         {/* ── Architecture & Competitive ── */}
@@ -83,16 +108,11 @@ export default function Book({ lang, theme, toggleTheme }: BookProps) {
           <HeroMerchantSection dict={dict} />
         </div>
 
-        {/* ── Market & strategy ── */}
+        {/* ── Market & Strategy ── */}
         <div className="max-w-4xl mx-auto px-6 space-y-32 md:space-y-48 mt-32 md:mt-48">
           <MarketSection dict={dict} />
           <SwotSection dict={dict} />
           <RoadmapSection dict={dict} />
-        </div>
-
-        {/* ── Hero 5: Wallet ── */}
-        <div className="mt-32 md:mt-48">
-          <HeroWalletSection dict={dict} />
         </div>
 
         {/* ── Closing ── */}
