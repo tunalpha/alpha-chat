@@ -1,0 +1,247 @@
+BREEZ SPARK PoC — FINAL VALIDATION
+OBIETTIVO: PORTARE CONDITIONAL GO A GO / NO-GO
+
+Il PoC è risultato 🟡 CONDITIONAL GO.
+
+NON implementare nulla in Alpha Wallet.
+
+NON modificare nessun file del progetto principale.
+
+NON installare Breez nel progetto Alpha Wallet.
+
+NON modificare BTC on-chain, EVM, USDA, Portfolio, fee, Treasury o recipient_exact.
+
+Il solo obiettivo ora è chiudere le 3 condizioni mancanti dell'audit.
+
+==================================================
+1. TEST CRITICO — CONNECT() BROWSER MAINNET
+==================================================
+
+Eseguire nel browser il test §7 del PoC:
+
+connect() su Mainnet.
+
+NON usare fondi reali.
+
+Usare esclusivamente la seed TEST già utilizzata nel PoC.
+
+Verificare separatamente:
+
+A) connect() senza API key
+B) connect() con API key, SOLO se esiste una API key ufficiale/test autorizzata.
+
+Non inventare credenziali.
+
+Registrare:
+
+- risultato;
+- errore esatto, se presente;
+- tempo di connessione;
+- network;
+- getInfo();
+- balance;
+- eventuale stato operatori.
+
+Se connect() senza API key funziona:
+segnalare PASS.
+
+Se richiede API key:
+segnalare esattamente quando e come viene richiesta.
+
+NON considerare il fallimento Node.js SQLite come evidenza contro il browser WASM.
+
+==================================================
+2. VERIFICARE INDEXEDDB DOPO CONNECT
+==================================================
+
+Dopo connect() browser riuscito:
+
+aprire DevTools → Application → IndexedDB.
+
+Identificare:
+
+- database;
+- object stores;
+- dati salvati;
+- eventuali metadata;
+- eventuali informazioni sensibili.
+
+NON mostrare seed, private key o secret nel report.
+
+Determinare se il contenuto IndexedDB contiene materiale che richiede cifratura applicativa prima di una futura integrazione.
+
+==================================================
+3. DERIVATION PATH SPARK — CONFERMA DEFINITIVA
+==================================================
+
+Abbiamo già verificato empiricamente:
+
+BIP84:
+m/84'/0'/0'/0/0
+
+≠
+
+Spark identity key.
+
+Ora verificare nel Rust source/documentazione ufficiale Breez:
+
+- derivation path Spark;
+- master key derivation;
+- eventuale hardened path;
+- eventuale domain separation;
+- eventuali collision protections.
+
+Obiettivo:
+
+confermare formalmente che una singola seed BIP39 Alpha può essere utilizzata per:
+
+BTC on-chain BIP84
+
++
+
+Spark
+
+senza collisioni o incompatibilità.
+
+Se il path non è ufficialmente documentato:
+NON inventarlo.
+
+Segnalare:
+
+"Empiricamente verificato ma non formalmente documentato."
+
+==================================================
+4. COSTI — NESSUNA STIMA INVENTATA
+==================================================
+
+Verificare la documentazione ufficiale Breez.
+
+Se i costi non sono pubblici:
+
+NON stimarli.
+
+Preparare una richiesta ufficiale a Breez con queste domande:
+
+1. Spark operator fee per transazione?
+2. Lightning routing fee?
+3. Fee per Spark-to-Spark?
+4. Fee per Lightning BOLT11?
+5. Fee per ricezione?
+6. Fee per swap on-chain?
+7. API key gratuita?
+8. API key con limiti?
+9. Pricing per volume?
+10. Costi per applicazioni commerciali?
+11. È consentito un wallet multi-user/client-side?
+12. È consentito applicare una platform fee propria del 0,10%?
+13. È consentito mantenere il proprio Treasury BTC?
+14. Esistono restrizioni geografiche/commerciali?
+15. Quali SLA/limiti esistono per operatori Spark?
+
+NON inviare email automaticamente.
+
+Preparare solamente il testo della richiesta.
+
+==================================================
+5. iOS — CHIUDERE LA VERIFICA
+==================================================
+
+Se è disponibile un iPhone reale:
+
+testare:
+
+- Safari;
+- PWA;
+- connect;
+- IndexedDB;
+- background;
+- foreground;
+- ricezione;
+- webhook;
+- notifica.
+
+NON considerare l'impossibilità di background execution come bug Breez.
+
+Classificarla come:
+
+"iOS PWA platform limitation."
+
+Verificare se registerWebhook() + Web Push VAPID può notificare correttamente un pagamento ricevuto mentre la PWA è sospesa.
+
+==================================================
+6. PRODUZIONE REPLIT — SOLO TEST DEL PoC
+==================================================
+
+Se possibile fare un deploy del SOLO PoC su ambiente Replit separato.
+
+Verificare:
+
+crossOriginIsolated === true
+
+SharedArrayBuffer disponibile
+
+WebAssembly disponibile
+
+connect browser
+
+Nessun collegamento con Alpha Wallet production.
+
+NON modificare il deployment principale.
+
+==================================================
+7. NON TESTARE CON FONDI REALI
+==================================================
+
+Nessun Mainnet payment reale.
+
+Nessun trasferimento reale.
+
+Nessuna seed reale.
+
+Nessun Treasury reale.
+
+==================================================
+8. VERDETTO FINALE
+
+Dopo aver completato i test, produrre:
+
+### GO CONDITIONS
+
+1. Browser connect
+2. Derivation confirmation
+3. Cost/API key status
+
+Per ciascuno:
+
+PASS / FAIL / UNKNOWN
+
+Poi dare:
+
+🟢 GO TO ARCHITECTURE
+oppure
+🟡 CONDITIONAL GO
+oppure
+🔴 NO-GO
+
+IMPORTANTE:
+
+Anche se il risultato è 🟢 GO TO ARCHITECTURE,
+NON implementare ancora Alpha Wallet.
+
+Il passo successivo sarà un documento separato:
+
+"Breez Spark — Architecture Design for Alpha Wallet"
+
+Solo dopo approvazione esplicita dell'architettura si potrà procedere all'implementazione.
+
+==================================================
+REGOLA ASSOLUTA
+==================================================
+
+Alpha Wallet esistente deve rimanere completamente invariato.
+
+Il PoC deve rimanere:
+
+artifacts/breez-spark-poc/
+
+Nessun codice del PoC deve essere importato nel progetto principale in questa fase.
