@@ -973,34 +973,73 @@ function AssetList({ chainId, chainBalance, btcBalance, prices, loading, currenc
 // RECEIVE VIEW (Phase C)
 // ═══════════════════════════════════════════════════════════════════════════
 
-function ReceiveView({ onBack }: { onBack: () => void }) {
+function ReceiveView({ onBack: _onBack }: { onBack: () => void }) {
   const wallet = useWallet();
-  const meta = wallet.meta!;
-  const isBtc = wallet.selectedChainId === 0;
+  const meta   = wallet.meta!;
+  const isBtc  = wallet.selectedChainId === 0;
   const address = isBtc ? meta.btcAddress : meta.evmAddress;
-  const net = getNetworkByChainId(wallet.selectedChainId);
-  const [copied, setCopied] = useState(false);
+  const net     = getNetworkByChainId(wallet.selectedChainId);
+  const networkLabel = isBtc
+    ? "Bitcoin · Native SegWit"
+    : (net?.name ?? `Chain ${wallet.selectedChainId}`);
 
-  const copy = () => void navigator.clipboard.writeText(address).then(() => { setCopied(true); setTimeout(() => setCopied(false), 3000); });
+  const [copied,   setCopied]   = useState(false);
+  const [qrDataUrl, setQrDataUrl] = useState<string>("");
+
+  useEffect(() => {
+    if (!address) return;
+    let cancelled = false;
+    import("qrcode").then(mod =>
+      mod.toDataURL(address, {
+        width: 240,
+        margin: 2,
+        errorCorrectionLevel: "M",
+        color: { dark: "#111111", light: "#ffffff" },
+      })
+    ).then(url => { if (!cancelled) setQrDataUrl(url); })
+     .catch(() => { /* silenzioso — mostra skeleton */ });
+    return () => { cancelled = true; };
+  }, [address]);
+
+  const copy = () =>
+    void navigator.clipboard.writeText(address).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 3000);
+    });
 
   return (
     <div className="aw-receive">
-      <div className="aw-receive-icon">📥</div>
-      <div className="aw-receive-network">
-        {isBtc ? "Bitcoin · Native SegWit" : (net?.name ?? `Chain ${wallet.selectedChainId}`)}
+
+      {/* Rete */}
+      <p className="aw-receive-network-label">{networkLabel}</p>
+
+      {/* Card bianca con QR */}
+      <div className="aw-receive-qr-card">
+        {qrDataUrl
+          ? <img src={qrDataUrl} alt={`QR ${address}`} className="aw-receive-qr-img" />
+          : <div className="aw-receive-qr-skeleton" aria-hidden="true" />
+        }
       </div>
-      <div className="aw-receive-address-box">
-        <div className="aw-receive-address">{address}</div>
-        <button className="aw-btn aw-btn--primary" onClick={copy}>
-          {copied ? "✅ Indirizzo copiato!" : "📋 Copia indirizzo"}
-        </button>
+
+      {/* Indirizzo testuale */}
+      <div className="aw-receive-addr-box">
+        <span className="aw-receive-addr-text">{address}</span>
       </div>
-      <div className="aw-receive-warning">
-        ⚠️ Invia solo {isBtc ? "BTC (mainnet)" : `asset compatibili con ${net?.name ?? "questa rete"}`} a questo indirizzo.
-      </div>
-      <button className="aw-btn aw-btn--secondary" style={{ maxWidth: 200, margin: "16px auto 0" }} onClick={onBack}>
-        ← Torna al wallet
+
+      {/* Unico bottone — Copia indirizzo */}
+      <button
+        className={`aw-receive-copy-btn${copied ? " copied" : ""}`}
+        onClick={copy}
+        aria-label={copied ? "Indirizzo copiato" : "Copia indirizzo"}
+      >
+        {copied ? "✅  Copiato!" : "📋  Copia indirizzo"}
       </button>
+
+      {/* Hint minimo */}
+      <p className="aw-receive-hint">
+        Invia solo asset {isBtc ? "BTC (mainnet)" : `compatibili con ${net?.name ?? "questa rete"}`} a questo indirizzo.
+      </p>
+
     </div>
   );
 }
