@@ -3982,6 +3982,21 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
                                 />
                               </ErrorBoundary>
                             : null
+                        ) : (decryptedTexts.get(msg.id) ?? "").startsWith("🔐WALLETPAY:") ? (
+                          /* Phase G — Alpha Wallet: messaggio inviato via sendProgrammatic.
+                             Il prefisso 🔐WALLETPAY: è nel testo decriptato (message_type="text").
+                             Parsato e renderizzato come ChatWalletPaymentBubble. */
+                          (() => {
+                            try {
+                              const raw  = (decryptedTexts.get(msg.id) ?? "").slice("🔐WALLETPAY:".length);
+                              const meta = JSON.parse(raw) as WalletPaymentMeta;
+                              return meta.txHash
+                                ? <ErrorBoundary fallback={<div style={{ fontSize: "0.78rem", opacity: 0.5, padding: "8px 12px" }}>⚠ Pagamento wallet non visualizzabile</div>}>
+                                    <ChatWalletPaymentBubble meta={meta} isMine={isMine} />
+                                  </ErrorBoundary>
+                                : null;
+                            } catch { return null; }
+                          })()
                         ) : (decryptedTexts.get(msg.id) ?? "").startsWith(ANIMATED_STICKER_MARKER) ? (
                           /* Sticker animato Lottie v:2 — rilevato da ANIMATED_STICKER_MARKER */
                           <AnimatedStickerMessage body={decryptedTexts.get(msg.id) ?? ""} />
