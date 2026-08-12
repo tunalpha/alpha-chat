@@ -1,0 +1,104 @@
+Siamo molto vicini, ma io non attiverei ancora il flag spark_lightning_enabled=true.
+
+Dove siamo adesso
+
+🟢 Architettura: completata
+🟢 Integrazione core: completata
+🟢 Keystore reale: collegato
+🟢 Fee Alpha 0,10%: isolata e configurabile da Admin
+🟢 BTC Treasury: stesso Treasury, ma contabilità Spark separata
+🟢 Portfolio: BTC on-chain e Lightning separati
+🟢 Idempotenza / recovery: testati
+🟢 Isolamento: verificato
+🟢 993/993 test PASS
+🟢 Build: SUCCESS
+🟢 TypeScript: pulito
+🟢 Feature flag: ancora OFF, quindi produzione attuale protetta
+
+Mancano sostanzialmente 2 cose
+
+1. Test fisico su iPhone 📱
+È il vero test che non possiamo sostituire con simulazione:
+
+* apertura wallet Spark
+* connect/sync
+* chiusura/minimizzazione PWA
+* comportamento dopo ~30 secondi
+* ritorno in foreground
+* ricezione
+* eventuale webhook/push
+* invio
+* storico
+* recovery
+
+2. Test reale controllato Send/Receive ⚡
+Con importi minimi e seguendo il test plan, verificare:
+
+* BOLT11 receive
+* BOLT11 send
+* fee effettiva
+* Alpha fee 0,10%
+* recipient-exact
+* registrazione Treasury
+* storico
+* riconciliazione
+* nessun doppio pagamento
+
+Quindi il prossimo prompt all’agente
+
+Io gli darei solo questo, senza fargli ancora attivare il go-live:
+
+Continua con Phase 5 — Final Pre-Go-Live Validation.
+
+NON attivare spark_lightning_enabled e NON effettuare ancora il go-live.
+
+Partendo dal report SPARK_PHASE5_VALIDATION_REPORT.md e dal SPARK_IOS_TEST_CHECKLIST.md, completa esclusivamente le verifiche ancora PENDING.
+
+Priorità 1 — iPhone fisico reale
+Esegui/documenta il test su dispositivo iOS reale, non simulazione:
+
+* Spark connect
+* sync
+* apertura/chiusura PWA
+* sospensione background
+* ritorno foreground
+* ricezione Lightning
+* invio Lightning
+* aggiornamento saldo
+* storico
+* eventuale webhook/push
+* recovery dopo riapertura
+
+Priorità 2 — Mainnet reale controllato
+Con importi minimi e senza modificare alcun sistema esistente, verifica:
+
+* BOLT11 receive
+* BOLT11 send
+* fee Breez effettiva
+* Alpha platform fee 0,10%
+* recipient_exact
+* registrazione corretta della fee nel BTC Treasury con source: spark_lightning
+* idempotenza
+* storico
+* riconciliazione saldo/fee
+
+Regola assoluta: nessun cambiamento a BTC on-chain, EVM, USDA, Payment Engine, Chat, Signal o WalletContext BTC.
+
+Mantieni spark_lightning_enabled=false durante tutti i test preparatori.
+
+Al termine produci un report con:
+
+1. PASS
+2. FAIL
+3. PENDING
+4. rischi residui
+5. eventuali modifiche necessarie
+6. decisione GO / NO-GO
+
+NON attivare il flag e NON fare deploy/go-live senza mia approvazione esplicita.
+
+Se un test reale non può essere eseguito per mancanza di dispositivo, fondi o condizioni operative, NON simulare il risultato: segnalo come PENDING.
+
+Una cosa importante: i 993/993 test PASS sono ottimi, ma non significano ancora che Lightning sia pronto per utenti reali. Significano che la parte software automatizzabile è in ottimo stato. Restano proprio le prove che solo un dispositivo reale e una transazione reale possono validare.
+
+E dopo il deploy, come abbiamo stabilito, faremo anche la sezione Admin Monitoring Spark con utenti abilitati, movimenti, volume, commissioni, Treasury reconciliation, health e kill switch.
