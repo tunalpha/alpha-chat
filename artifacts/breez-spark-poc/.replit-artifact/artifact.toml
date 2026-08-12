@@ -1,0 +1,28 @@
+kind = "web"
+previewPath = "/breez-spark-poc/"
+title = "Breez SDK Spark — PoC Isolato"
+description = "Proof of Concept completamente isolato per testare Breez SDK Spark WASM. NON collegato ad Alpha Wallet. Verifica: installazione WASM, init wallet, IndexedDB, client signing, invio/ricezione Lightning su Signet."
+version = "1.0.0"
+id = "artifacts/breez-spark-poc"
+router = "path"
+
+[[services]]
+name = "web"
+paths = [ "/breez-spark-poc/" ]
+localPort = 20262
+
+[services.development]
+run = "pnpm --filter @workspace/breez-spark-poc run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/breez-spark-poc", "run", "build" ]
+serve = "static"
+publicDir = "artifacts/breez-spark-poc/dist/public"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "20262"
+BASE_PATH = "/breez-spark-poc/"

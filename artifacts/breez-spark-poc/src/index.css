@@ -1,0 +1,142 @@
+@import 'tailwindcss';
+
+/* ─── PoC Dark Theme — Bitcoin/Lightning colors ─────────────────────────────
+   Completely isolated from Alpha Wallet's design system.
+   ───────────────────────────────────────────────────────────────────────────── */
+:root {
+  --background: 222 47% 5%;
+  --foreground: 210 40% 92%;
+  --card: 222 47% 8%;
+  --card-foreground: 210 40% 92%;
+  --border: 217 19% 18%;
+  --input: 217 19% 18%;
+  --primary: 33 100% 55%;        /* Bitcoin orange */
+  --primary-foreground: 0 0% 5%;
+  --muted: 217 19% 14%;
+  --muted-foreground: 215 16% 55%;
+  --accent: 250 70% 65%;         /* Lightning purple */
+  --accent-foreground: 0 0% 100%;
+  --destructive: 0 70% 55%;
+  --destructive-foreground: 0 0% 100%;
+  --ring: 33 100% 55%;
+  --radius: 0.5rem;
+}
+
+body {
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-family: 'JetBrains Mono', 'Fira Code', 'Menlo', monospace;
+  font-size: 13px;
+  margin: 0;
+  padding: 0;
+}
+
+* { box-sizing: border-box; }
+
+/* Status badges */
+.badge-pass    { background: #14532d; color: #4ade80; border: 1px solid #166534; }
+.badge-fail    { background: #450a0a; color: #f87171; border: 1px solid #991b1b; }
+.badge-warn    { background: #422006; color: #fb923c; border: 1px solid #9a3412; }
+.badge-info    { background: #0c1a3a; color: #60a5fa; border: 1px solid #1d4ed8; }
+.badge-pending { background: #1c1c1c; color: #94a3b8; border: 1px solid #334155; }
+
+/* Code blocks */
+.code-block {
+  background: hsl(222 47% 3%);
+  border: 1px solid hsl(217 19% 18%);
+  border-radius: 6px;
+  padding: 12px;
+  font-size: 12px;
+  white-space: pre-wrap;
+  word-break: break-all;
+  overflow-x: auto;
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+/* Test card */
+.test-card {
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--border));
+  border-radius: 8px;
+  padding: 16px;
+  margin-bottom: 12px;
+}
+
+.test-card:hover {
+  border-color: hsl(217 19% 28%);
+}
+
+/* Section header */
+.section-header {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: hsl(var(--muted-foreground));
+  margin: 20px 0 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid hsl(var(--border));
+}
+
+/* Spinner */
+@keyframes spin { to { transform: rotate(360deg); } }
+.spinner {
+  display: inline-block;
+  width: 12px; height: 12px;
+  border: 2px solid hsl(var(--border));
+  border-top-color: hsl(var(--primary));
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  vertical-align: middle;
+  margin-right: 6px;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: hsl(217 19% 25%); border-radius: 3px; }
+
+a { color: hsl(var(--accent)); text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+input, textarea {
+  background: hsl(222 47% 3%);
+  border: 1px solid hsl(var(--border));
+  border-radius: 6px;
+  color: hsl(var(--foreground));
+  padding: 8px 12px;
+  font-family: inherit;
+  font-size: 12px;
+  width: 100%;
+  outline: none;
+}
+input:focus, textarea:focus {
+  border-color: hsl(var(--primary));
+}
+
+button {
+  cursor: pointer;
+  border: none;
+  border-radius: 6px;
+  padding: 8px 16px;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  transition: opacity 0.15s;
+}
+button:hover { opacity: 0.85; }
+button:disabled { opacity: 0.4; cursor: not-allowed; }
+
+.btn-primary {
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+}
+.btn-secondary {
+  background: hsl(var(--muted));
+  color: hsl(var(--foreground));
+}
+.btn-danger {
+  background: hsl(var(--destructive));
+  color: hsl(var(--destructive-foreground));
+}

@@ -85,3 +85,4 @@
 - [Alpha Wallet TX status stuck pending](alpha-wallet-tx-status-fix.md) — _reconcilePendingEvm skip silenzioso + ID bridge/monitor discrepancy + no forcePoll + stale closure; fix: receipt diretto via /evm/receipt backend
 - [Alpha Wallet — Richiedi con Alpha Wallet](alpha-wallet-request.md) — flow completo richiedente+pagante, bubble WALLETREQ:, 3 endpoint backend, WS event
 - [Build before deploy](build-before-deploy.md) — dist/public è statico; eseguire pnpm build PRIMA di ogni deploy suggestion
+- [Breez SDK Spark PoC](breez-spark-poc.md) — COOP/COEP headers sopravvivono al proxy Replit dev; crossOriginIsolated=true; SharedArrayBuffer OK; WASM carica

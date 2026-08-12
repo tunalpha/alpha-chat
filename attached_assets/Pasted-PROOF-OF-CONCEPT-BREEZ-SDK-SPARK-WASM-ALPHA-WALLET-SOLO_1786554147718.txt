@@ -1,0 +1,434 @@
+PROOF OF CONCEPT — BREEZ SDK SPARK WASM
+ALPHA WALLET — SOLO AMBIENTE ISOLATO
+
+OBIETTIVO
+
+Vogliamo verificare praticamente se Breez SDK Spark WASM è tecnicamente integrabile nell'architettura di Alpha Wallet.
+
+QUESTA NON È UN'IMPLEMENTAZIONE DI ALPHA WALLET.
+
+È ESCLUSIVAMENTE UN PoC isolato.
+
+==================================================
+REGOLA ASSOLUTA — NON TOCCARE ALPHA WALLET
+==================================================
+
+NON modificare:
+
+- Alpha Wallet
+- WalletContext
+- AlphaWalletPage
+- BTC on-chain
+- tx-monitor.ts
+- Portfolio Multi-Chain
+- seed/keystore esistente
+- MongoDB
+- API server di produzione
+- fee system
+- recipient_exact
+- UI esistente
+- autenticazione
+- Alpha Chat
+- deployment di produzione
+
+NON installare Breez SDK nel progetto di produzione.
+
+NON creare endpoint di produzione.
+
+NON fare deploy.
+
+NON usare seed reali.
+
+NON usare fondi reali.
+
+==================================================
+1. CREA UN PROGETTO PoC COMPLETAMENTE ISOLATO
+==================================================
+
+Creare una directory/progetto separato esclusivamente per il test Breez Spark.
+
+Stack:
+
+- React
+- TypeScript
+- Vite
+- @breeztech/breez-sdk-spark
+- WASM/browser
+
+Il PoC deve essere completamente indipendente dal codice di Alpha Wallet.
+
+Se possibile utilizzare una configurazione di test/regtest supportata ufficialmente da Breez.
+
+NON usare la seed reale di Alpha Wallet.
+
+Generare/utilizzare esclusivamente una seed di TEST.
+
+==================================================
+2. VERIFICARE INSTALLAZIONE E BUILD
+==================================================
+
+Verificare:
+
+- installazione package;
+- TypeScript;
+- Vite;
+- caricamento WASM;
+- eventuali SharedArrayBuffer;
+- COOP;
+- COEP;
+- Cross-Origin-Opener-Policy;
+- Cross-Origin-Embedder-Policy;
+- compatibilità con Replit;
+- build production.
+
+Documentare qualsiasi modifica necessaria alla configurazione Vite.
+
+NON applicare tali modifiche al progetto Alpha Wallet.
+
+==================================================
+3. VERIFICARE INIZIALIZZAZIONE WALLET
+==================================================
+
+Utilizzare esclusivamente una seed TEST.
+
+Verificare:
+
+- connect/init SDK;
+- creazione wallet;
+- recupero wallet;
+- getInfo/balance;
+- sync;
+- persistence IndexedDB;
+- refresh della pagina;
+- chiusura e riapertura browser;
+- restore tramite seed.
+
+Verificare che la seed privata:
+
+NON venga inviata al backend;
+NON venga salvata in MongoDB;
+NON venga stampata nei log;
+NON venga esposta nelle network request.
+
+==================================================
+4. VERIFICARE INDEXEDDB
+==================================================
+
+Controllare concretamente dove viene salvato lo stato Spark.
+
+Verificare:
+
+- nome database/store;
+- persistenza;
+- cosa succede al refresh;
+- cosa succede alla chiusura della PWA;
+- cosa succede cancellando lo storage;
+- restore tramite seed.
+
+Documentare eventuali limiti iOS.
+
+==================================================
+5. VERIFICARE CLIENT SIGNING / EXTERNAL SIGNER
+==================================================
+
+Questo è uno dei test più importanti.
+
+Determinare se possiamo mantenere il seguente modello:
+
+Browser Alpha Wallet
+↓
+chiave privata locale
+↓
+firma locale
+↓
+backend NON vede mai la chiave privata
+
+Verificare concretamente quali API ufficiali Breez devono essere utilizzate.
+
+NON implementare ancora il sistema definitivo di signing di Alpha.
+
+Dimostrare soltanto il funzionamento nel PoC.
+
+==================================================
+6. VERIFICARE DERIVAZIONE SEED
+==================================================
+
+Questo è CRITICO.
+
+Analizzare la documentazione/API ufficiale Breez Spark.
+
+Determinare se la stessa seed BIP39 attualmente utilizzata da Alpha Wallet può essere utilizzata anche per Spark mantenendo separata la derivazione:
+
+BTC on-chain:
+m/84'/0'/0'/0/{index}
+
+Spark:
+<derivation path ufficiale Spark>
+
+NON assumere che sia compatibile.
+
+Verificare documentazione e codice ufficiale.
+
+Se non è possibile utilizzare la stessa seed in modo sicuro/standard:
+
+DICHIARARLO CHIARAMENTE.
+
+NON modificare la seed Alpha Wallet.
+
+==================================================
+7. VERIFICARE INVIO
+==================================================
+
+Solo con fondi TEST.
+
+Verificare:
+
+- prepareSendPayment;
+- fee_policy;
+- prepare;
+- firma;
+- sendPayment;
+- getPayment;
+- stato finale;
+- gestione errore;
+- retry.
+
+Verificare specificamente:
+
+FeesExcluded
+
+e spiegare esattamente come viene interpretato l'importo.
+
+NON implementare ancora la commissione Alpha 0,10%.
+
+==================================================
+8. VERIFICARE RICEZIONE
+==================================================
+
+Solo test.
+
+Verificare:
+
+- prepareReceivePayment;
+- receivePayment;
+- BOLT11;
+- eventuale BOLT12;
+- pagamento ricevuto;
+- aggiornamento balance;
+- getPayment;
+- listPayments.
+
+Verificare se la ricezione funziona quando la pagina è:
+
+A) aperta
+B) in background
+C) chiusa
+
+soprattutto su iOS/PWA.
+
+==================================================
+9. VERIFICARE LIGHTNING INTEROPERABILITY
+==================================================
+
+Verificare concretamente almeno:
+
+- BOLT11;
+- BOLT12;
+- Lightning Address;
+- LNURL-Pay;
+
+solo se supportati nell'ambiente di test.
+
+Separare chiaramente:
+
+Spark-to-Spark
+
+da:
+
+Lightning → BOLT11
+
+perché il comportamento delle fee e della finalizzazione può essere diverso.
+
+==================================================
+10. VERIFICARE PERSISTENZA E RECOVERY
+==================================================
+
+Simulare:
+
+1. refresh browser;
+2. chiusura browser;
+3. riapertura;
+4. cancellazione IndexedDB;
+5. restore tramite seed;
+6. perdita temporanea connessione;
+7. backend Alpha offline;
+8. operatore Spark non disponibile, se testabile.
+
+Documentare cosa succede ai fondi in ogni scenario.
+
+==================================================
+11. VERIFICARE iOS / PWA
+==================================================
+
+Testare specificamente:
+
+- iPhone Safari;
+- PWA installata;
+- apertura;
+- background;
+- foreground;
+- WebSocket;
+- IndexedDB;
+- WASM;
+- ricezione pagamento.
+
+NON dichiarare "compatibile iOS" solamente perché WASM compila.
+
+Voglio un risultato pratico.
+
+==================================================
+12. VERIFICARE REPLIT
+==================================================
+
+Il PoC deve girare in ambiente Replit.
+
+Verificare:
+
+- npm install;
+- dev server;
+- production build;
+- preview;
+- WASM;
+- COOP/COEP;
+- eventuali problemi con proxy Replit.
+
+NON modificare il progetto Alpha Wallet.
+
+==================================================
+13. MULTI-USER
+==================================================
+
+NON implementare il multi-user in Alpha Wallet.
+
+Analizzare solamente se il modello ufficiale Breez Server Mode può essere utilizzato in futuro.
+
+Verificare:
+
+- una seed per utente;
+- isolamento tra utenti;
+- storage;
+- API;
+- signing;
+- scalabilità.
+
+Confrontare con l'architettura client-side WASM.
+
+==================================================
+14. COSTI E API KEY
+==================================================
+
+Prima di qualsiasi Mainnet test:
+
+verificare:
+
+- API key;
+- condizioni d'uso;
+- fee Breez;
+- fee Spark;
+- fee Lightning;
+- eventuali costi per volume;
+- eventuali limiti.
+
+NON inventare valori.
+
+Se non sono pubblici:
+
+SEGNALARLO.
+
+NON attivare un modello commerciale.
+
+==================================================
+15. COMMISSIONE ALPHA — NON IMPLEMENTARE
+==================================================
+
+IMPORTANTE:
+
+Per questo PoC NON implementare:
+
+- Alpha fee 0,10%;
+- recipient_exact;
+- raccolta commissione;
+- accounting fee.
+
+Dobbiamo prima verificare che Breez Spark sia tecnicamente adatto.
+
+La logica futura sarà:
+
+Destinatario riceve esattamente X
++
+Alpha fee 0,10%
++
+eventuale fee tecnica Lightning/Spark
+
+ma questa parte verrà progettata SOLO dopo l'approvazione del PoC.
+
+==================================================
+16. RISULTATO FINALE OBBLIGATORIO
+==================================================
+
+Alla fine consegnare un report con:
+
+1. BUILD
+2. WASM
+3. VITE
+4. REPLIT
+5. IndexedDB
+6. Seed
+7. Derivation
+8. Client Signing
+9. Invio
+10. Ricezione
+11. BOLT11
+12. BOLT12
+13. Lightning Address
+14. LNURL
+15. iOS
+16. PWA
+17. Recovery
+18. Multi-user
+19. API key
+20. Costi
+21. Rischi
+22. Blocker
+
+E soprattutto un verdetto:
+
+🟢 READY FOR ARCHITECTURE
+
+🟡 PROMISING BUT NEEDS MORE VERIFICATION
+
+oppure
+
+🔴 NOT SUITABLE
+
+==================================================
+REGOLA FINALE
+==================================================
+
+Questo PoC serve per RACCOGLIERE EVIDENZE.
+
+NON trasformarlo in implementazione Alpha Wallet.
+
+NON modificare codice esistente.
+
+NON fare deploy.
+
+NON usare fondi reali.
+
+NON usare seed reali.
+
+NON modificare il BTC on-chain che oggi funziona.
+
+Se il PoC fallisce, spiegare esattamente perché.
+
+Se passa, NON implementare ancora Alpha Wallet: prima voglio vedere il report completo e decidere insieme l'architettura definitiva.
