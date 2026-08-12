@@ -41,6 +41,7 @@ import {
 }                                                from "../services/gas-service";
 import { signAndBroadcastBtcTx }                 from "../services/btc-signer";
 import { saveTxRecord }                          from "../services/tx-store";
+import { txMonitor }                             from "../monitoring/tx-monitor";
 import { VERIFIED_TOKENS }                       from "../evm/token-registry";
 import { EVM_NETWORKS }                          from "../evm/evm-network-config";
 import {
@@ -427,6 +428,16 @@ export function ChatWalletBridgeProvider({ children }: Props) {
         status:    "pending",
         updatedAt: Date.now(),
       });
+
+      // ── 5. Accelera reconciliation: forza un poll aggressivo ─────────
+      // Dopo il broadcast, la TX è in mempool. Il primo poll normale
+      // arriva entro 30s; qui ne schedula uno aggressivo a 15s per
+      // aggiornare la bolla velocemente.
+      // Per BTC basta il poll standard (nessun receipt diretto disponibile).
+      if (txMonitor.isRunning() && network !== "bitcoin") {
+        setTimeout(() => { void txMonitor.forcePoll(); }, 15_000);
+        setTimeout(() => { void txMonitor.forcePoll(); }, 45_000);
+      }
 
       return {
         status:      "sent",

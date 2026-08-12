@@ -7,9 +7,10 @@
  * ISOLAMENTO: importa solo il tipo pubblico da bridge e tx-store.
  */
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import type { SupportedNetwork } from "../../wallet/bridge/chat-wallet-bridge";
 import { getTxRecordByHash } from "../../wallet/services/tx-store";
+import { txMonitor } from "../../wallet/monitoring/tx-monitor";
 import "./ChatWalletPaymentBubble.css";
 
 // ─── Tipi ─────────────────────────────────────────────────────────────────
@@ -57,6 +58,8 @@ const NETWORK_ICONS: Record<SupportedNetwork, string> = {
 
 function useLiveTxStatus(txHash: string, initial: WalletPaymentBubbleStatus): WalletPaymentBubbleStatus {
   const [liveStatus, setLiveStatus] = useState<WalletPaymentBubbleStatus>(initial);
+  // Ref per evitare stale closure nell'interval: reflect sempre il valore corrente
+  const statusRef = useRef<WalletPaymentBubbleStatus>(initial);
 
   useEffect(() => {
     if (initial === "confirmed" || initial === "failed") return;
@@ -67,15 +70,24 @@ function useLiveTxStatus(txHash: string, initial: WalletPaymentBubbleStatus): Wa
       try {
         const record = await getTxRecordByHash(txHash);
         if (!active) return;
-        if (record?.status === "confirmed") setLiveStatus("confirmed");
-        else if (record?.status === "failed") setLiveStatus("failed");
+        if (record?.status === "confirmed") {
+          statusRef.current = "confirmed";
+          setLiveStatus("confirmed");
+        } else if (record?.status === "failed") {
+          statusRef.current = "failed";
+          setLiveStatus("failed");
+        }
       } catch { /* IDB non disponibile */ }
     };
 
     void check();
 
     const timer = setInterval(() => {
-      if (liveStatus === "confirmed" || liveStatus === "failed") { clearInterval(timer); return; }
+      // Usa il ref — nessuna stale closure
+      if (statusRef.current === "confirmed" || statusRef.current === "failed") {
+        clearInterval(timer);
+        return;
+      }
       void check();
     }, 15_000);
 

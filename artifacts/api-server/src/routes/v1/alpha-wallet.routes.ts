@@ -17,6 +17,7 @@ import {
   getEvmGasEstimate,
   broadcastEvmTx,
   getEvmTransactions,
+  getEvmReceipt,
   getBtcBalance,
   getBtcUTXOs,
   getBtcFeeRate,
@@ -67,6 +68,9 @@ router.post("/evm/broadcast", broadcastLimiter, broadcastEvmTx);
 // ── Transaction history (Phase B) ─────────────────────────────────────────
 /** GET /evm/transactions?chainId=137&address=0x...&fromBlock=0x... */
 router.get("/evm/transactions", getEvmTransactions);
+
+/** GET /evm/receipt?chainId=137&txHash=0x... — controlla stato on-chain di una TX specifica */
+router.get("/evm/receipt", getEvmReceipt);
 
 // ── Bitcoin balance (Phase C) ─────────────────────────────────────────────
 /** GET /btc/balance?address=bc1q... */

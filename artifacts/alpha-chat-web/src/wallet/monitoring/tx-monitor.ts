@@ -21,6 +21,7 @@
 import {
   apiWalletGetEvmTransactions,
   apiWalletGetBtcTransactions,
+  apiWalletGetEvmReceipt,
   type WalletTx,
   type BtcTx,
 } from "../../lib/alpha-wallet-api";
@@ -225,28 +226,64 @@ async function _reconcileBtcTx(tx: BtcTx): Promise<void> {
 
 /**
  * Controlla le TX EVM in stato pending nel tx-store e aggiorna il loro stato.
- * Strategy: se la TX è tra quelle ritornate dalla prossima poll → usa quel status.
- * Se non la troviamo più nelle ultime TX (assumed confirmed), marca confirmed.
- * Non facciamo call specifiche per TX (no eth_getTransactionReceipt diretto —
- * rischio rate limit su RPC free). Il monitor standard le ritroverà.
+ *
+ * Strategy a due livelli:
+ * 1. Se la TX è tra quelle ritornate dal poll corrente → usa quel status.
+ * 2. Se NON è nella risposta corrente (hash fuori dal range di blocchi già visti):
+ *    chiama direttamente eth_getTransactionReceipt via backend.
+ *    confirmed/failed → aggiorna immediatamente.
+ *    pending (in mempool, non ancora minata) → lascia pending.
+ *
+ * Questo risolve il caso in cui il bridge salva un record pending con ID diverso
+ * da quello che il monitor scrive (buildDedupKey) e il tx hash non rientra nel
+ * range fromBlock..latestBlock del round corrente.
  */
 async function _reconcilePendingEvm(
-  address: string,
+  _address: string,
   newTxsThisRound: Map<string, WalletTx>
 ): Promise<void> {
   const pending = await loadPendingTxRecords();
   const evmPending = pending.filter(r => r.chainId !== 0);
 
+  // Dedup: controlla ogni hash una volta sola anche se ci sono più record pending
+  const checkedHashes = new Set<string>();
+
   for (const r of evmPending) {
-    const fromApi = newTxsThisRound.get(r.txHash.toLowerCase());
-    if (!fromApi) continue;
+    const hashLower = r.txHash.toLowerCase();
 
-    const newStatus = fromApi.status === "pending" ? "pending"
-      : fromApi.status === "failed" ? "failed"
-      : "confirmed";
+    // ── Livello 1: risposta del poll corrente ────────────────────────────
+    const fromApi = newTxsThisRound.get(hashLower);
+    if (fromApi) {
+      const newStatus = fromApi.status === "pending" ? "pending"
+        : fromApi.status === "failed" ? "failed"
+        : "confirmed";
+      if (newStatus !== "pending") {
+        await updateTxStatus(r.id, newStatus);
+      }
+      continue;
+    }
 
-    if (newStatus !== "pending") {
-      await updateTxStatus(r.id, newStatus);
+    // ── Livello 2: receipt diretto via eth_getTransactionReceipt ─────────
+    // Se l'hash non era nel round corrente (fuori range blocchi), chiediamo
+    // direttamente il receipt al backend. Un hash già controllato in questo
+    // ciclo viene saltato per non sprecare call RPC.
+    if (checkedHashes.has(hashLower)) continue;
+    checkedHashes.add(hashLower);
+
+    try {
+      const receipt = await apiWalletGetEvmReceipt(r.chainId, r.txHash);
+      if (receipt.status === "confirmed" || receipt.status === "failed") {
+        // Aggiorna TUTTI i record pending con questo stesso txHash
+        // (bridge record + eventuale record del monitor con ID diverso)
+        for (const dup of evmPending) {
+          if (dup.txHash.toLowerCase() === hashLower) {
+            await updateTxStatus(dup.id, receipt.status);
+          }
+        }
+      }
+      // Se receipt.status === "pending": la TX è in mempool, lasciamo invariato
+    } catch {
+      // Errore di rete: non bloccare la reconciliation, riproverà al prossimo ciclo
     }
   }
 }

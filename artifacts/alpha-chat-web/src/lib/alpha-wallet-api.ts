@@ -180,6 +180,28 @@ export async function apiWalletGetEvmTransactions(
   );
 }
 
+// ─── EVM Receipt (reconciliation) ────────────────────────────────────────
+
+export interface EvmReceiptResponse {
+  status:      "confirmed" | "failed" | "pending";
+  blockNumber: number | null;
+}
+
+/**
+ * Controlla lo stato on-chain di una TX EVM tramite eth_getTransactionReceipt
+ * (server-side via RPC autenticato). Usato per riconciliare TX pending nel tx-monitor.
+ */
+export async function apiWalletGetEvmReceipt(
+  chainId: number,
+  txHash:  string,
+): Promise<EvmReceiptResponse> {
+  const params = new URLSearchParams({ chainId: String(chainId), txHash });
+  return walletRequest<EvmReceiptResponse>(
+    `/alpha-wallet/evm/receipt?${params}`,
+    { method: "GET" },
+  );
+}
+
 // ─── Phase C: BTC Balance ─────────────────────────────────────────────────
 
 export interface BtcBalanceResponse {

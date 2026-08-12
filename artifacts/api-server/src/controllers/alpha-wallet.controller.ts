@@ -485,6 +485,51 @@ const ALCHEMY_URLS: Record<number, string> = {
   56:  "",
 };
 
+// ─── EVM Transaction Receipt ──────────────────────────────────────────────
+
+/**
+ * GET /evm/receipt?chainId=137&txHash=0x...
+ *
+ * Chiama eth_getTransactionReceipt tramite il client viem server-side.
+ * Restituisce status: "confirmed" | "failed" | "pending"
+ * "pending" = la TX esiste in mempool ma non ancora minata, o hash sconosciuto.
+ *
+ * SICUREZZA: non espone private key né material di firma.
+ * Accetta solo hash pubblico + chainId.
+ */
+export async function getEvmReceipt(
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> {
+  try {
+    const chainId = parseInt(req.query.chainId as string, 10);
+    const txHash  = (req.query.txHash as string)?.trim();
+
+    if (!chainId || !txHash || !/^0x[0-9a-fA-F]{64}$/.test(txHash)) {
+      throw new AppError("BAD_REQUEST", 400);
+    }
+
+    const client = getRpcClient(chainId);
+
+    let receipt: Awaited<ReturnType<typeof client.getTransactionReceipt>> | null = null;
+    try {
+      receipt = await client.getTransactionReceipt({ hash: txHash as `0x${string}` });
+    } catch {
+      // Hash non trovato in nessun blocco → ancora pending
+    }
+
+    if (!receipt) {
+      // Verifica se almeno è in mempool (non ancora minata)
+      res.json({ data: { status: "pending", blockNumber: null } });
+      return;
+    }
+
+    const status = receipt.status === "success" ? "confirmed" : "failed";
+    res.json({ data: { status, blockNumber: Number(receipt.blockNumber ?? 0n) } });
+  } catch (err) { next(err); }
+}
+
 export async function getEvmTransactions(
   req: Request,
   res: Response,

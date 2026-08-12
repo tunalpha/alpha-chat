@@ -82,3 +82,4 @@
 - [Phase G #92 — Admin Fee UI](phase-g92-admin-fee-ui.md) — pagina /alpha-wallet-fee admin; awFetch separato; vitest admin panel; 56 test admin + 626 chat-web; backend PATCH esteso con min_fee_usdt+min_fee_btc_sat
 - [Task #93 — Recipient Wallet Discovery](task-93-recipient-discovery.md) — GET /recipient/:userId con verifica conversazione; indirizzi su UserModel.alpha_wallet_evm/btc_address; 3 casi UX in ChatWalletPaySheet; 641+15 test
 - [Alpha Wallet Pay Sheet — bottom-sheet arch](alpha-wallet-pay-view-arch.md) — causa Step 4 bianco (calculateQuote null senza throw); regole: null gestito esplicito, CTA nel footer strutturale, no scroll interno; wizard test mai inclusi in vitest prima
+- [Alpha Wallet TX status stuck pending](alpha-wallet-tx-status-fix.md) — _reconcilePendingEvm skip silenzioso + ID bridge/monitor discrepancy + no forcePoll + stale closure; fix: receipt diretto via /evm/receipt backend
