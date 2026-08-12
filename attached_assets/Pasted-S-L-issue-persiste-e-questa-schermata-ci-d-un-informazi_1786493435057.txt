@@ -1,0 +1,145 @@
+Sì. L’issue persiste, e questa schermata ci dà un’informazione molto precisa: il fix dichiarato dall’agente non sta intercettando il messaggio reale che arriva al renderer.
+
+La seconda transazione è reale e distinta:
+
+0xde91cbd2aae81e0c02cb9687ecfcfb14266f5d4cac5ca6b91f3ccc5da64681ae
+
+Quindi non tocchiamo più assolutamente la parte blockchain. PolygonScan considera il transaction hash il riferimento univoco alla transazione e permette di verificarne stato, block, from/to e receipt; il mio accesso diretto alla pagina specifica oggi è però bloccato da 403. 
+
+Il problema adesso è 100% rendering della bubble.
+
+E c’è un indizio importante
+
+L’agente ha detto:
+
+startsWith("🔐WALLETPAY:")
+
+ma nella realtà vediamo ancora:
+
+🔐WALLETPAY: {...JSON...}
+
+Questo significa che quel controllo non viene eseguito sul valore effettivamente utilizzato dal renderer, oppure il messaggio passa attraverso un’altra strada prima di arrivare a quel codice.
+
+E non mi fiderei più del semplice:
+
+676/676 verdi
+
+perché abbiamo già scoperto in questa sessione che i test precedenti potevano essere verdi senza testare realmente il percorso iPhone/PWA.
+
+Questa volta dagli QUESTO prompt
+
+Non deve modificare subito. Deve fare un audit del messaggio reale:
+
+STOP. Il fix precedente NON ha risolto il problema.
+
+Ho appena effettuato una SECONDA transazione Alpha Wallet reale:
+
+0xde91cbd2aae81e0c02cb9687ecfcfb14266f5d4cac5ca6b91f3ccc5da64681ae
+
+La transazione è reale/on-chain.
+
+PROBLEMA ATTUALE ESCLUSIVAMENTE UI: nella chat il messaggio continua ad apparire come:
+
+🔐WALLETPAY:{"txHash":...}
+
+invece di ChatWalletPaymentBubble.
+
+Lo screenshot dimostra che il precedente check:
+
+startsWith("🔐WALLETPAY:")
+
+NON sta intercettando il messaggio reale.
+
+NON MODIFICARE ANCORA NULLA.
+
+Fai un audit forense del percorso completo del messaggio reale:
+
+sendProgrammatic()
+→ messaggio ottimistico locale
+→ persistenza/invio al backend
+→ WebSocket
+→ decrypt
+→ normalizzazione del messaggio
+→ array messages della ChatPage
+→ renderer JSX
+
+Voglio identificare esattamente quale proprietà contiene il testo quando il messaggio arriva alla ChatPage:
+
+* content
+* text
+* decryptedContent
+* body
+* altra proprietà
+
+e qual è il valore ESATTO.
+
+Verifica inoltre se message_type viene trasformato da text a qualcos’altro durante il percorso.
+
+IMPORTANTE
+
+Non assumere che il messaggio arrivi al renderer come una semplice stringa.
+
+Verifica il codice reale del renderer e il tipo effettivo dell’oggetto msg.
+
+Controlla anche se esiste più di un renderer della bubble/chat:
+
+* messaggi ottimistici del mittente
+* messaggi ricevuti via WebSocket
+* messaggi caricati dalla history
+
+Il fix deve funzionare per tutti e tre.
+
+TEST OBBLIGATORIO
+
+Prima di dichiarare risolto, aggiungi un test che costruisca esattamente lo stesso oggetto messaggio prodotto da sendProgrammatic(), con:
+
+message_type: "text"
+
+e contenuto:
+
+🔐WALLETPAY:{...}
+
+e verifica che il renderer produca:
+
+ChatWalletPaymentBubble
+
+e NON il testo grezzo.
+
+Aggiungi anche il test per un messaggio ricevuto/decriptato con la stessa struttura.
+
+Non limitarti a testare una funzione parser isolata. Deve essere testato il renderer reale della ChatPage.
+
+NON TOCCARE
+
+* Alpha Wallet bridge
+* signing
+* broadcast
+* RPC
+* fee
+* quote
+* Payment Engine
+* USDA
+* USDT
+* BTC
+* recipient discovery
+* wallet state
+
+Il pagamento funziona on-chain. Il problema è esclusivamente la rappresentazione della bubble.
+
+Prima dammi:
+
+A. struttura reale del messaggio al renderer
+
+B. proprietà che contiene 🔐WALLETPAY:
+
+C. perché il precedente startsWith() non viene eseguito/risulta falso
+
+D. percorso esatto del renderer che produce il testo grezzo
+
+E. fix minimo proposto
+
+Solo dopo approvazione implementiamo.
+
+Questo è il punto in cui fermerei l’agente se ricomincia a dire “676/676 verdi” senza mostrarti il test del renderer reale.
+
+Perché adesso abbiamo la prova pratica: il pagamento funziona; la bubble no. Non deve più toccare nient’altro.

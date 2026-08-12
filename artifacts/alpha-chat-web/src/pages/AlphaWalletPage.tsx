@@ -103,6 +103,61 @@ function useWalletCurrency() {
   return { currency, setCurrency };
 }
 
+// ─── Sealed PIN — AES-GCM, sopravvive alla chiusura PWA ──────────────────────
+//
+// Il PIN viene cifrato con AES-256-GCM e salvato in localStorage insieme alla
+// chiave AES (anch'essa in localStorage). Il Face ID (WebAuthn) fa da gate:
+// solo dopo verifica biometrica il codice chiama unsealWalletPin().
+// Sicurezza nel contesto PWA iOS: senza bypass biometrico il PIN rimane cifrato.
+//
+const _AW_BIO_KEY  = "aw_bk";   // chiave AES-256 esportata (base64)
+const _AW_BIO_SEAL = "aw_bs";   // {iv,data} cifrato (base64)
+
+async function _getOrCreateBioKey(): Promise<CryptoKey> {
+  const stored = localStorage.getItem(_AW_BIO_KEY);
+  if (stored) {
+    const raw = Uint8Array.from(atob(stored), c => c.charCodeAt(0));
+    return crypto.subtle.importKey("raw", raw, "AES-GCM", false, ["encrypt", "decrypt"]);
+  }
+  const key = await crypto.subtle.generateKey({ name: "AES-GCM", length: 256 }, true, ["encrypt", "decrypt"]);
+  const raw  = await crypto.subtle.exportKey("raw", key);
+  localStorage.setItem(_AW_BIO_KEY, btoa(String.fromCharCode(...new Uint8Array(raw))));
+  return key;
+}
+
+async function sealWalletPin(pin: string): Promise<void> {
+  try {
+    const key  = await _getOrCreateBioKey();
+    const iv   = crypto.getRandomValues(new Uint8Array(12));
+    const data = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, new TextEncoder().encode(pin));
+    localStorage.setItem(_AW_BIO_SEAL, JSON.stringify({
+      iv:   btoa(String.fromCharCode(...iv)),
+      data: btoa(String.fromCharCode(...new Uint8Array(data))),
+    }));
+  } catch { /* best-effort */ }
+}
+
+async function unsealWalletPin(): Promise<string | null> {
+  try {
+    const stored = localStorage.getItem(_AW_BIO_SEAL);
+    const keyRaw = localStorage.getItem(_AW_BIO_KEY);
+    if (!stored || !keyRaw) return null;
+    const { iv: ivB64, data: dataB64 } = JSON.parse(stored) as { iv: string; data: string };
+    const iv   = Uint8Array.from(atob(ivB64),   c => c.charCodeAt(0));
+    const data = Uint8Array.from(atob(dataB64),  c => c.charCodeAt(0));
+    const key  = await crypto.subtle.importKey(
+      "raw", Uint8Array.from(atob(keyRaw), c => c.charCodeAt(0)), "AES-GCM", false, ["decrypt"],
+    );
+    const dec  = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, data);
+    return new TextDecoder().decode(dec);
+  } catch { return null; }
+}
+
+function clearSealedWalletPin(): void {
+  localStorage.removeItem(_AW_BIO_SEAL);
+  localStorage.removeItem(_AW_BIO_KEY);
+}
+
 // ─── Wallet Face ID hook (wallet-specific, separate from app-level Face ID) ──
 
 function useWalletFaceId() {
@@ -533,6 +588,7 @@ function UnlockView() {
 
   // Wallet-specific Face ID: enabled via wallet settings + device supports biometric
   const hasBiometricSet = lock?.hasBiometricSet ?? false;
+  const canUseBiometric = lock?.canUseBiometric ?? false;
   const walletBioActive = walletFaceIdEnabled && hasBiometricSet;
 
   // App-level biometric-only (legacy path — keep working)
@@ -558,8 +614,22 @@ function UnlockView() {
   const unlockWithPin = async (p: string) => {
     if (!validatePin(p)) { setError("PIN non valido"); return; }
     setLoading(true);
-    try { await wallet.unlockWallet(p); }
-    catch { setError("PIN errato. Riprova."); setPin(""); }
+    try {
+      await wallet.unlockWallet(p);
+      // Face ID abilitato ma WebAuthn non ancora registrato (es. toggle abilitato senza PIN in cache)?
+      // Auto-registra ora + sigilla il PIN così le sessioni successive funzioneranno senza PIN.
+      if (walletFaceIdEnabled && !hasBiometricSet && lock && canUseBiometric) {
+        void (async () => {
+          try {
+            const ok = await lock.enableBiometric();
+            if (ok) await sealWalletPin(p);
+          } catch { /* best-effort — l'utente è già sbloccato */ }
+        })();
+      } else if (walletFaceIdEnabled && hasBiometricSet) {
+        // Registrazione già avvenuta: aggiorna il sigillo con il PIN corrente
+        void sealWalletPin(p);
+      }
+    } catch { setError("PIN errato. Riprova."); setPin(""); }
     finally { setLoading(false); }
   };
 
@@ -570,15 +640,15 @@ function UnlockView() {
     try {
       const ok = await lock.tryUnlockWithBiometric();
       if (!ok) { setError("Autenticazione biometrica fallita."); setLoading(false); return; }
-      // Recupera il PIN cachato in sessionStorage per decriptare il keystore
+      // 1. Prova prima sessionStorage (stessa sessione PWA)
       const cached = sessionStorage.getItem("aw_bio_pin");
-      if (!cached) {
-        setError("Sessione scaduta. Inserisci il PIN una volta per riattivare Face ID.");
-        setShowPin(true);
-        setLoading(false);
-        return;
-      }
-      await wallet.unlockWallet(cached);
+      if (cached) { await wallet.unlockWallet(cached); return; }
+      // 2. Fallback: PIN sigillato con AES-GCM in localStorage (sopravvive alla chiusura)
+      const sealed = await unsealWalletPin();
+      if (sealed) { await wallet.unlockWallet(sealed); return; }
+      // 3. Né sessionStorage né sealed: chiedi il PIN una volta per riscrivere il sigillo
+      setError("Inserisci il PIN una volta per riattivare Face ID su questo dispositivo.");
+      setShowPin(true);
     } catch {
       setError("Impossibile sbloccare. Usa il PIN.");
       setShowPin(true);
@@ -1848,12 +1918,28 @@ function WalletSettingsView({
                 type="checkbox"
                 checked={walletFaceIdEnabled}
                 onChange={e => {
-                  if (e.target.checked && !hasPinCached) {
-                    // Il PIN non è in cache — abilitiamo il flag ma avvisiamo
-                    setWalletFaceIdEnabled(true);
-                  } else {
-                    setWalletFaceIdEnabled(e.target.checked);
+                  const enabling = e.target.checked;
+                  if (!enabling) {
+                    // Disabilitazione: rimuovi sigillo e credenziale WebAuthn
+                    clearSealedWalletPin();
+                    lock?.disableBiometric();
+                    setWalletFaceIdEnabled(false);
+                    return;
                   }
+                  // Abilitazione
+                  setWalletFaceIdEnabled(true);
+                  const pin = sessionStorage.getItem("aw_bio_pin");
+                  if (pin && lock) {
+                    // PIN disponibile in sessione → registra WebAuthn + sigilla subito
+                    void (async () => {
+                      try {
+                        const ok = await lock.enableBiometric();
+                        if (ok) await sealWalletPin(pin);
+                      } catch { /* best-effort */ }
+                    })();
+                  }
+                  // Se PIN non disponibile: il flag è settato, la registrazione
+                  // avviene automaticamente al prossimo sblocco con PIN (unlockWithPin)
                 }}
               />
               <span className="aw-toggle-track" />
