@@ -656,12 +656,14 @@ export function ChatWalletPaySheet({
               style={{
                 marginBottom: 12,
                 padding: "10px 12px",
-                background: `${netColor}22`,
-                border: `1px solid ${netColor}55`,
+                background: `${netColor}`,
+                border: `1px solid ${netColor}`,
                 borderRadius: 8,
                 fontSize: 13,
-                color: "var(--color-text, #e8e8f0)",
+                color: "#ffffff",
                 lineHeight: 1.4,
+                fontWeight: 500,
+                opacity: 0.9,
               }}
             >
               📥 Stai pagando una richiesta ricevuta. Rete, asset e importo sono fissati dal richiedente.
