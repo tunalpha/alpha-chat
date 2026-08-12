@@ -84,3 +84,4 @@
 - [Alpha Wallet Pay Sheet — bottom-sheet arch](alpha-wallet-pay-view-arch.md) — causa Step 4 bianco (calculateQuote null senza throw); regole: null gestito esplicito, CTA nel footer strutturale, no scroll interno; wizard test mai inclusi in vitest prima
 - [Alpha Wallet TX status stuck pending](alpha-wallet-tx-status-fix.md) — _reconcilePendingEvm skip silenzioso + ID bridge/monitor discrepancy + no forcePoll + stale closure; fix: receipt diretto via /evm/receipt backend
 - [Alpha Wallet — Richiedi con Alpha Wallet](alpha-wallet-request.md) — flow completo richiedente+pagante, bubble WALLETREQ:, 3 endpoint backend, WS event
+- [Build before deploy](build-before-deploy.md) — dist/public è statico; eseguire pnpm build PRIMA di ogni deploy suggestion
