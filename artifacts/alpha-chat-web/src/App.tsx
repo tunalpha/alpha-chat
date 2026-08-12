@@ -345,7 +345,13 @@ function SparkWalletProviderWrapper({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     void apiGetAppFeatureFlags()
-      .then(flags => setSparkEnabled(flags.spark_lightning_enabled ?? false))
+      .then(flags => {
+        const enabled = flags.spark_lightning_enabled ?? false;
+        setSparkEnabled(enabled);
+        import("./lib/spark/spark-diag")
+          .then(({ updateSparkDiag }) => updateSparkDiag({ featureFlag: enabled ? "ON" : "OFF" }))
+          .catch(() => {});
+      })
       .catch(() => { /* spark rimane false — fail-safe */ });
   }, []);
 
@@ -362,10 +368,13 @@ function SparkWalletProviderWrapper({ children }: { children: ReactNode }) {
   const getMnemonic = useCallback(async (): Promise<string> => {
     // Legge PIN dalla session cache — set da unlockWallet/importWallet
     const pin = sessionStorage.getItem("aw_bio_pin");
+    const { updateSparkDiag, sanitizeErrorMsg } = await import("./lib/spark/spark-diag");
     // ── SPARK_DIAG ──────────────────────────────────────────────────────────
+    updateSparkDiag({ walletUnlocked: pin ? "YES" : "NO" });
     console.log("[SPARK_DIAG] getMnemonic called, pinPresent:", !!pin);
     // ────────────────────────────────────────────────────────────────────────
     if (!pin) {
+      updateSparkDiag({ getMnemonic: "FAIL", getMnemonicError: "aw_bio_pin not in sessionStorage" });
       throw new Error(
         "[SparkWallet] Wallet non sbloccato — sbloccare Alpha Wallet prima di connettere Spark",
       );
@@ -377,17 +386,25 @@ function SparkWalletProviderWrapper({ children }: { children: ReactNode }) {
       entry = await loadKeystore();
       console.log("[SPARK_DIAG] loadKeystore:", entry ? "FOUND" : "NULL");
     } catch (e) {
-      console.log("[SPARK_DIAG] loadKeystore THREW:", e instanceof Error ? e.message : String(e));
+      const msg = sanitizeErrorMsg(e instanceof Error ? e.message : String(e));
+      updateSparkDiag({ getMnemonic: "FAIL", getMnemonicError: `loadKeystore: ${msg}` });
+      console.log("[SPARK_DIAG] loadKeystore THREW:", msg);
       throw e;
     }
-    if (!entry) throw new Error("[SparkWallet] Keystore Alpha Wallet non trovato");
+    if (!entry) {
+      updateSparkDiag({ getMnemonic: "FAIL", getMnemonicError: "Keystore non trovato in IDB" });
+      throw new Error("[SparkWallet] Keystore Alpha Wallet non trovato");
+    }
     // SECURITY: il mnemonic plaintext esiste solo per la durata di questa chiamata
     try {
       const seed = decryptSeed(entry, pin);
-      console.log("[SPARK_DIAG] decryptSeed: OK, seedLength:", seed.split(" ").length, "words");
+      updateSparkDiag({ getMnemonic: "PASS", getMnemonicError: "" });
+      console.log("[SPARK_DIAG] decryptSeed: OK, wordCount:", seed.split(" ").length);
       return seed;
     } catch (e) {
-      console.log("[SPARK_DIAG] decryptSeed THREW:", e instanceof Error ? e.message : String(e));
+      const msg = sanitizeErrorMsg(e instanceof Error ? e.message : String(e));
+      updateSparkDiag({ getMnemonic: "FAIL", getMnemonicError: `decryptSeed: ${msg}` });
+      console.log("[SPARK_DIAG] decryptSeed THREW:", msg);
       throw e;
     }
   }, []);

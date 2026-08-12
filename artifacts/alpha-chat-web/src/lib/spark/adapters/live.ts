@@ -47,6 +47,7 @@ export class LiveSparkAdapter implements BreezSparkAdapter {
     if (config.getMnemonic) this._getMnemonicFn = config.getMnemonic;
     this._state = "connecting";
     // ── SPARK_DIAG ──────────────────────────────────────────────────────────
+    const { updateSparkDiag, sanitizeErrorMsg } = await import("../spark-diag");
     console.log("[SPARK_DIAG] LiveSparkAdapter.connect() start");
     // ────────────────────────────────────────────────────────────────────────
     try {
@@ -58,7 +59,8 @@ export class LiveSparkAdapter implements BreezSparkAdapter {
       // @ts-ignore
       // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
       const sdkModule = await import(/* @vite-ignore */ "@breeztech/breez-sdk-spark") as Record<string, unknown>;
-      console.log("[SPARK_DIAG] SDK module imported, keys:", Object.keys(sdkModule).join(","));
+      const sdkKeys = Object.keys(sdkModule).join(",");
+      console.log("[SPARK_DIAG] SDK module imported, keys:", sdkKeys);
 
       // initBreezSDK() imposta IndexedDB storage — obbligatorio prima di connect()
       if (typeof sdkModule["default"] === "function") {
@@ -96,14 +98,16 @@ export class LiveSparkAdapter implements BreezSparkAdapter {
 
       this._state = "connected";
       this._lastError = undefined;
+      updateSparkDiag({ breezConnect: "PASS", breezConnectError: "" });
       console.log("[SPARK_DIAG] LiveSparkAdapter state → connected ✓");
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
+      const msg = sanitizeErrorMsg(err instanceof Error ? err.message : String(err));
       console.log("[SPARK_DIAG] LiveSparkAdapter connect() CATCH:", msg);
+      updateSparkDiag({ breezConnect: "FAIL", breezConnectError: msg });
       this._state = "error";
       this._lastError = {
         code:        "CONNECT_FAILED",
-        message:     msg,
+        message:     err instanceof Error ? err.message : String(err),
         recoverable: true,
       };
       throw err;

@@ -20,6 +20,9 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 // Phase 5: Spark/Lightning portfolio integration (safe hook — null se flag=false)
 import { useSparkWalletOptional } from "../contexts/SparkWalletContext";
+// TEMP: diagnostica Spark visibile su dispositivo (rimuovere dopo root-cause)
+import { SparkDiagPanel } from "./SparkDiagPanel";
+import { updateSparkDiag } from "../lib/spark/spark-diag";
 import { useSecurePhraseDisplay } from "../hooks/useSecurePhraseDisplay";
 import { useLock } from "../contexts/LockContext";
 import { WalletProvider, useWallet } from "../wallet/context/WalletContext";
@@ -286,6 +289,8 @@ function AlphaWalletInner({ onBack }: Props) {
         )}
       </header>
       <main className="aw-content">{renderContent()}</main>
+      {/* TEMP — diagnostica Spark visibile su dispositivo; rimuovere dopo root-cause */}
+      <SparkDiagPanel />
     </div>
   );
 }
@@ -919,12 +924,9 @@ function usePortfolioBalances() {
     const metaPresent = !!meta;
     const sparkState  = spark?.state ?? "no-context";
     // ── SPARK_DIAG ──────────────────────────────────────────────────────────
-    console.log("[SPARK_DIAG] effect fired", {
-      isEnabled:   spark?.isEnabled,
-      state:       sparkState,
-      pinPresent,
-      metaPresent,
-    });
+    // ── SPARK_DIAG — sync live state ─────────────────────────────────────────
+    updateSparkDiag({ sparkState: sparkState, walletUnlocked: pinPresent ? "YES" : "NO" });
+    console.log("[SPARK_DIAG] effect fired", { isEnabled: spark?.isEnabled, state: sparkState, pinPresent, metaPresent });
     // ────────────────────────────────────────────────────────────────────────
     if (!spark?.isEnabled) return;
     // Non interferire con stati attivi
@@ -949,6 +951,18 @@ function usePortfolioBalances() {
       console.log("[SPARK_DIAG] spark.connect() caught in effect:", err instanceof Error ? err.message : String(err));
     });
   }, [spark?.isEnabled, spark?.state, meta]); // meta null→non-null all'unlock = trigger
+
+  // Sync live spark state + sparkSat al pannello diagnostico
+  const sparkSatLive: bigint | null =
+    spark !== null && spark.state === "connected"
+      ? (spark.walletInfo?.balanceSat ?? null)
+      : null;
+  useEffect(() => {
+    updateSparkDiag({
+      sparkState: spark?.state ?? "no-context",
+      sparkSat:   sparkSatLive !== null ? `${sparkSatLive} sat` : "N/A",
+    });
+  }, [spark?.state, sparkSatLive]);
 
   // Spark Lightning balance — letto dal context (no fetch rete, già in memoria)
   // null se: Spark disabilitato | non connesso | walletInfo non ancora disponibile

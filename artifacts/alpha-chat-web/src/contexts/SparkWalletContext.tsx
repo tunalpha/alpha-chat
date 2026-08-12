@@ -150,7 +150,9 @@ export function SparkWalletProvider({ children, isEnabled, storageDir = "spark-w
   }, [isEnabled]);
 
   const connect = useCallback(async () => {
+    const { updateSparkDiag, sanitizeErrorMsg } = await import("../lib/spark/spark-diag");
     // ── SPARK_DIAG ──────────────────────────────────────────────────────────
+    updateSparkDiag({ connectCalled: "YES", sparkState: "connecting" });
     console.log("[SPARK_DIAG] SparkWalletContext.connect() called, isEnabled:", isEnabled);
     // ────────────────────────────────────────────────────────────────────────
     if (!isEnabled) return;
@@ -167,12 +169,16 @@ export function SparkWalletProvider({ children, isEnabled, storageDir = "spark-w
       await adapter.connect({ storageDir, network: "mainnet", getMnemonic });
       console.log("[SPARK_DIAG] adapter.connect() OK — calling getInfo()");
       const info = await adapter.getInfo();
-      console.log("[SPARK_DIAG] getInfo OK, balanceSat:", info.balanceSat?.toString());
+      const sat = info.balanceSat?.toString() ?? "0";
+      console.log("[SPARK_DIAG] getInfo OK, balanceSat:", sat);
+      updateSparkDiag({ sparkState: "connected", sparkSat: `${sat} sat`, syncWallet: "PASS" });
       setInfo(info);
       setState("connected");
       console.log("[SPARK_DIAG] state → connected ✓");
     } catch (err) {
-      console.log("[SPARK_DIAG] connect() CATCH:", err instanceof Error ? err.message : String(err));
+      const msg = sanitizeErrorMsg(err instanceof Error ? err.message : String(err));
+      console.log("[SPARK_DIAG] connect() CATCH:", msg);
+      updateSparkDiag({ sparkState: "error" });
       const e: SparkAdapterError = {
         code:        "CONNECT_FAILED",
         message:     err instanceof Error ? err.message : String(err),
