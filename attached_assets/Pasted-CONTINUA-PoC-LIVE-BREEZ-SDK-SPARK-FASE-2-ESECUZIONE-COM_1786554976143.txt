@@ -1,0 +1,500 @@
+CONTINUA PoC LIVE — BREEZ SDK SPARK
+FASE 2 — ESECUZIONE COMPLETA DEI TEST
+
+IMPORTANTE:
+Questo lavoro rimane ESCLUSIVAMENTE nel progetto PoC isolato
+"Breez SDK Spark — PoC Isolato".
+
+NON modificare in alcun modo Alpha Wallet, Alpha Chat o qualsiasi componente già in produzione.
+
+==================================================
+REGOLA ASSOLUTA: ZERO REGRESSIONI
+==================================================
+
+NON modificare:
+
+- AlphaWalletPage.tsx
+- WalletContext.tsx
+- tx-monitor.ts
+- BTC on-chain
+- BTC seed/keystore
+- Polygon
+- Ethereum
+- BSC
+- USDA
+- Portfolio Multi-Chain
+- PortfolioTotalCard
+- storico
+- notifiche
+- invio/ricezione esistenti
+- fee 0,10%
+- recipient_exact
+- Treasury BTC
+- MongoDB di produzione
+- API server di produzione
+- configurazione di produzione
+- Replit deployment di produzione
+
+NON installare Breez SDK nel progetto Alpha Wallet.
+
+NON fare merge del PoC nel progetto principale.
+
+NON fare deploy di modifiche al progetto principale.
+
+==================================================
+OBIETTIVO
+==================================================
+
+Ora esegui realmente tutti i test disponibili nel PoC.
+
+Apri:
+
+"Breez SDK Spark — PoC Isolato"
+
+e utilizza:
+
+"▶ Run All Tests"
+
+NON fermarti al primo errore.
+
+Esegui tutti i test possibili e raccogli il risultato completo.
+
+==================================================
+1. AMBIENTE
+==================================================
+
+Confermare nuovamente:
+
+- crossOriginIsolated
+- SharedArrayBuffer
+- WebAssembly
+- IndexedDB
+- WebSocket
+- browser
+- OS
+- iOS/PWA se disponibile
+
+Riportare PASS / FAIL / WARN.
+
+==================================================
+2. BUILD E SDK
+==================================================
+
+Verificare:
+
+- import @breeztech/breez-sdk-spark
+- caricamento WASM
+- export disponibili
+- connect()
+- eventuali dipendenze mancanti
+- eventuali errori runtime
+
+Non modificare Alpha Wallet per risolvere eventuali errori.
+
+==================================================
+3. CONNECT SU SIGNET
+==================================================
+
+Questa è una domanda fondamentale.
+
+Provare connect() su Signet utilizzando esclusivamente il PoC.
+
+Verificare:
+
+A) connect senza API key
+B) connect con eventuale configurazione pubblica/test prevista ufficialmente
+
+NON inventare API key.
+
+Se l'API key è obbligatoria:
+
+- segnalarlo;
+- non cercare workaround non ufficiali;
+- non usare una API key reale senza autorizzazione.
+
+Riportare esattamente l'errore o il comportamento.
+
+==================================================
+4. GETINFO / WALLET
+==================================================
+
+Se connect() riesce:
+
+verificare:
+
+- getInfo()
+- wallet balance
+- wallet status
+- wallet ID
+- network
+- eventuali dati operator
+
+Riportare output significativo senza esporre seed o segreti.
+
+==================================================
+5. SEED E DERIVATION PATH
+==================================================
+
+QUESTO TEST È CRITICO.
+
+Analizzare la documentazione e, dove possibile, verificare empiricamente:
+
+Seed BIP39 Alpha Wallet
+        ↓
+BTC BIP84
+m/84'/0'/0'/0/index
+
+e
+
+Seed Spark
+        ↓
+derivation Spark
+
+Determinare:
+
+1. stessa seed compatibile?
+2. derivazione separata?
+3. esiste rischio collisione?
+4. esiste una procedura ufficiale Breez?
+5. è possibile mantenere una sola seed per l'utente?
+6. se non possibile, servono due seed?
+
+NON modificare la seed reale Alpha.
+
+Usare esclusivamente una seed TEST.
+
+==================================================
+6. INDEXEDDB
+==================================================
+
+Verificare:
+
+- database creati;
+- store;
+- persistenza;
+- refresh;
+- chiusura/riapertura;
+- clear storage;
+- restore seed.
+
+Dopo clear IndexedDB:
+
+verificare se il wallet può essere ricostruito correttamente dalla seed TEST.
+
+NON utilizzare seed reale.
+
+==================================================
+7. CLIENT SIGNING / EXTERNAL SIGNER
+==================================================
+
+Verificare concretamente le API ufficiali disponibili.
+
+Obiettivo:
+
+dimostrare che:
+
+Browser
+↓
+chiave privata locale
+↓
+firma
+↓
+server/operator
+↓
+completamento
+
+senza inviare la chiave privata al server.
+
+Verificare network requests durante il test.
+
+Confermare esplicitamente:
+
+"private key NON trasmessa"
+
+Se non è possibile dimostrarlo empiricamente, dichiararlo come NON VERIFICATO.
+
+==================================================
+8. INVIO TEST
+==================================================
+
+Solo Signet/testnet e solo fondi di test.
+
+Eseguire se possibile:
+
+prepareSendPayment()
+
+e:
+
+sendPayment()
+
+Testare:
+
+- FeesExcluded
+- amount
+- fee
+- prepared payment
+- signing
+- completion
+- getPayment
+- failure handling
+
+NON implementare Alpha fee.
+
+NON implementare recipient_exact nel codice Alpha.
+
+Vogliamo solo capire il comportamento nativo di Breez.
+
+==================================================
+9. RICEZIONE TEST
+==================================================
+
+Verificare:
+
+prepareReceivePayment()
+receivePayment()
+
+e:
+
+- BOLT11
+- BOLT12
+
+Se possibile effettuare un pagamento di test.
+
+Verificare:
+
+- invoice generation
+- payment detection
+- balance update
+- getPayment
+- listPayments
+
+==================================================
+10. INTEROPERABILITÀ
+==================================================
+
+Verificare, solo se possibile nell'ambiente di test:
+
+- BOLT11
+- BOLT12
+- LNURL-Pay
+- Lightning Address
+- BIP353
+
+Separare chiaramente:
+
+Spark-to-Spark
+
+da:
+
+Lightning BOLT11
+
+Non assumere che abbiano la stessa struttura fee.
+
+==================================================
+11. iOS / PWA
+==================================================
+
+Se l'ambiente permette un test reale su iPhone/iOS:
+
+verificare:
+
+- Safari
+- PWA
+- foreground
+- background
+- IndexedDB
+- WASM
+- WebSocket
+- invio
+- ricezione
+
+In particolare verificare:
+
+cosa succede quando la PWA viene chiusa durante una ricezione.
+
+NON dichiarare "iOS compatible" solo perché il build WASM funziona.
+
+==================================================
+12. RECOVERY
+==================================================
+
+Testare:
+
+A) refresh
+B) browser restart
+C) IndexedDB clear
+D) restore con seed
+E) temporary network loss
+F) operator unavailable, se testabile
+G) Alpha backend unavailable
+
+Documentare esattamente cosa succede.
+
+==================================================
+13. SERVER MODE / MULTI-USER
+==================================================
+
+NON implementare multi-user nel progetto Alpha.
+
+Nel PoC verificare solo la fattibilità documentale/pratica.
+
+Determinare:
+
+- una seed per user?
+- isolamento?
+- storage?
+- API?
+- client signing?
+- limiti?
+- stato attuale server mode?
+- production readiness?
+
+Se la documentazione ufficiale è ancora in evoluzione, segnalarlo.
+
+==================================================
+14. COSTI E API KEY
+==================================================
+
+Determinare con evidenze:
+
+- API key obbligatoria?
+- API key per Signet?
+- API key per Mainnet?
+- costi SDK;
+- costi operatore;
+- fee Spark;
+- fee Lightning;
+- eventuali limiti volume.
+
+NON inventare numeri.
+
+Se il costo non è pubblicamente documentato:
+
+"NON DETERMINATO — richiede conferma ufficiale Breez."
+
+NON utilizzare Mainnet con fondi reali.
+
+==================================================
+15. SICUREZZA
+==================================================
+
+Verificare:
+
+- seed non inviata;
+- private key non inviata;
+- secret non loggati;
+- network requests;
+- local storage;
+- IndexedDB;
+- eventuali API key;
+- eventuali token;
+- WebSocket.
+
+Se trovi una possibile esposizione di segreti:
+
+FERMA il test relativo e segnalalo.
+
+==================================================
+16. NON TOCCARE COMMISSIONI ALPHA
+==================================================
+
+IMPORTANTE:
+
+NON implementare:
+
+- Alpha fee 0,10%;
+- Treasury BTC;
+- recipient_exact;
+- accounting;
+- fee routing personalizzata.
+
+Questi verranno progettati SOLO dopo il verdetto del PoC.
+
+Il fatto che Breez supporti FeePolicy/FeesExcluded deve essere solamente documentato.
+
+==================================================
+17. NON MODIFICARE ALPHA WALLET
+==================================================
+
+Se durante il PoC trovi un problema che richiederebbe modifiche ad Alpha Wallet:
+
+NON modificarlo.
+
+Scrivere:
+
+"Richiede modifica al progetto principale — NON ESEGUITA."
+
+==================================================
+18. OUTPUT FINALE OBBLIGATORIO
+==================================================
+
+Al termine crea un report strutturato:
+
+### TEST SUMMARY
+
+| Test | Risultato | Evidenza | Note |
+|---|---|---|---|
+
+Usare:
+
+PASS
+FAIL
+WARN
+BLOCKED
+NOT TESTED
+
+### DOMANDE CRITICHE
+
+1. Connect Signet senza API key?
+2. Derivation path compatibile con seed Alpha?
+3. Private key rimane client-side?
+4. IndexedDB persistence?
+5. Restore da seed?
+6. Send test?
+7. Receive test?
+8. BOLT11?
+9. BOLT12?
+10. Lightning Address?
+11. LNURL?
+12. iOS/PWA?
+13. Server mode?
+14. Multi-user?
+15. Costi?
+16. API key?
+17. Replit?
+
+### BLOCKER
+
+Elencare esclusivamente i blocker realmente dimostrati.
+
+### HIGH RISK
+
+Elencare i rischi importanti.
+
+### UNKNOWN
+
+Separare ciò che non è stato possibile verificare.
+
+### VERDETTO
+
+Dare uno dei tre:
+
+🟢 GO TO ARCHITECTURE
+
+🟡 CONDITIONAL GO
+
+🔴 NO-GO
+
+==================================================
+REGOLA FINALE
+==================================================
+
+NON implementare nulla in Alpha Wallet anche se tutti i test passano.
+
+Il risultato che voglio adesso è:
+
+EVIDENZA TECNICA → REPORT → DECISIONE.
+
+Solo dopo il mio/nostro via libera si potrà progettare l'integrazione.
+
+Alpha Wallet esistente deve rimanere completamente intatto.
