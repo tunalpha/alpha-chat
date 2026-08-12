@@ -1,0 +1,109 @@
+Obiettivo
+
+Risolvi definitivamente il problema dello stato delle transazioni Bitcoin nella cronologia di Alpha Wallet.
+
+Il balance BTC ora è corretto e la transazione è correttamente recuperata e visualizzata nella cronologia, ma una transazione già confermata on-chain continua a essere mostrata come “In attesa”.
+
+Stato attuale verificato
+
+* Balance BTC corretto: 0.00023114 BTC ✅
+* La transazione è presente nella cronologia ✅
+* TXID visualizzato: 1924199062...fd2742
+* La transazione è stata completata correttamente on-chain.
+* La cronologia continua però a mostrare: Bitcoin · In attesa ❌
+
+Task
+
+Esegui un’analisi end-to-end senza modificare parti non necessarie:
+
+Blockstream → BTC transaction fetch → BTC monitor → database → API → WalletContext → Transaction History
+
+1. Recupera il TXID completo della transazione 1924199062...fd2742.
+2. Verifica direttamente su Blockstream:
+    * presenza della transazione;
+    * status.confirmed;
+    * block_height;
+    * block_hash;
+    * block_time;
+    * numero di conferme, se disponibile/calcolabile.
+3. Individua nel backend il codice che determina lo stato delle transazioni BTC.
+4. Verifica esattamente perché una transazione confermata continua a essere salvata/ritornata come pending.
+5. Controlla se il monitor BTC:
+    * trova correttamente il TXID;
+    * riconosce status.confirmed = true;
+    * aggiorna effettivamente il database;
+    * aggiorna il campo di stato utilizzato dall’API/frontend.
+6. Controlla anche l’endpoint che restituisce la cronologia BTC e verifica che non trasformi erroneamente una transazione confermata in pending.
+7. Controlla il frontend solo se il backend restituisce correttamente lo stato ma la UI continua a mostrare “In attesa”.
+
+Fix richiesto
+
+Una transazione BTC deve essere considerata completata/confermata quando la blockchain/Blockstream indica che:
+
+status.confirmed === true
+
+Lo stato deve quindi passare automaticamente da:
+
+pending / In attesa
+
+a:
+
+completed / confirmed
+
+secondo la convenzione di stato già utilizzata dall’applicazione.
+
+Non introdurre una nuova logica di conferma se esiste già una logica standard nel progetto: correggi quella esistente.
+
+Importante
+
+NON modificare:
+
+* calcolo del balance BTC;
+* indirizzo BTC;
+* sistema di invio BTC;
+* sistema di ricezione BTC;
+* fee;
+* altre blockchain;
+* wallet EVM;
+* struttura generale della cronologia;
+* UI non necessaria alla correzione.
+
+Il precedente bug raw.stats → raw.chain_stats è già stato corretto. Non toccare nuovamente quella parte se non è necessario.
+
+Verifica obbligatoria dopo il fix
+
+Non limitarti a dire che il codice è stato modificato.
+
+Devi verificare realmente:
+
+1. TXID completo della transazione.
+2. Stato reale della transazione su Blockstream.
+3. Stato restituito dal backend.
+4. Stato presente nel database, se applicabile.
+5. Stato ricevuto dal frontend.
+6. Stato visualizzato nella cronologia.
+
+Il risultato finale deve essere:
+
+0.00023114 BTC — Bitcoin · Completata/Confermata
+
+e non più:
+
+Bitcoin · In attesa
+
+Esegui test/regression check per assicurarti che le transazioni BTC realmente pending continuino invece a essere mostrate come “In attesa”.
+
+Output finale richiesto
+
+Fornisci un report conciso con:
+
+* Root cause esatta;
+* file modificati;
+* fix applicato;
+* TXID verificato;
+* stato on-chain;
+* stato restituito dal backend;
+* conferma che la cronologia ora mostra lo stato corretto;
+* eventuali test eseguiti.
+
+Non dichiarare il lavoro completato finché non hai verificato effettivamente il passaggio da “In attesa” a “Completata/Confermata”.

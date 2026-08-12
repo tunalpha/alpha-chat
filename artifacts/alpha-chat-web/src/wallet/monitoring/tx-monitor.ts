@@ -37,8 +37,10 @@ import {
   saveTxRecord,
   updateTxStatus,
   loadPendingTxRecords,
+  getTxRecord,
   type WalletTxRecord,
 } from "../services/tx-store";
+import { updateNotificationStatus } from "../notifications/wallet-notification-store";
 
 // ─── State IDB ────────────────────────────────────────────────────────────
 
@@ -219,12 +221,35 @@ async function _processBtcTx(tx: BtcTx): Promise<void> {
 /**
  * Aggiorna status BTC pending → confirmed se la TX è stata confermata.
  * Ritorna true se lo status è stato effettivamente aggiornato (era pending).
+ *
+ * Gestisce tre casi:
+ *  1. Record mancante dal tx-store (stato inconsistente): ricrea via _processBtcTx.
+ *  2. Record già confermato: no-op (evita refresh inutili ogni 30 s).
+ *  3. Record pending → confirmed: aggiorna tx-store E notifica.
  */
 async function _reconcileBtcTx(tx: BtcTx): Promise<boolean> {
   if (!tx.confirmed) return false;
   const dir = tx.direction === "in" ? "in" : "out";
   const id  = `btc:${tx.txid}:${dir}:`;
-  return updateTxStatus(id, "confirmed");
+
+  const existing = await getTxRecord(id);
+
+  // Caso 1: record assente — ricrea come confermato (gestisce anche la notifica)
+  if (!existing) {
+    await _processBtcTx(tx);
+    return true;
+  }
+
+  // Caso 2: già confermato — nessuna azione necessaria
+  if (existing.status === "confirmed") return false;
+
+  // Caso 3: pending → confirmed — aggiorna tx-store e notifica
+  await updateTxStatus(id, "confirmed");
+  // Aggiorna la notifica (pending → confirmed) così la sezione Notifiche
+  // mostra "Confermato" invece di "In attesa"
+  await updateNotificationStatus(tx.txid, "confirmed", "received");
+
+  return true;
 }
 
 // ─── Reconciliation EVM pending TX ────────────────────────────────────────
