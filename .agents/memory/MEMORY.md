@@ -89,3 +89,4 @@
 - [Spark IDB Analysis](spark-idb-analysis.md) — IDB Breez SDK NON cifrata: valori plain JSON, preimage HTLC leggibili, mnemonic NON presente; implicazioni go-live
 - [Spark Phase 3.1 Audit](spark-phase3-audit.md) — 2 regression fixate (build blocker + static import); lazy-load pattern obbligatorio; 773/773 test PASS; prerequisiti GO-LIVE invariati
 - [Spark Phase 4 — Keystore + Admin + Treasury](spark-phase4.md) — getMnemonic callback via sessionStorage aw_bio_pin; admin UI Spark fee; FeeRecordSource; 5 test file; 861 test PASS
+- [Spark Phase 5 — Pre-Go-Live Validation](spark-phase5.md) — portfolio Lightning integration, useSparkWalletOptional, 4 test file (132 test), report 23-item; 993/993 PASS

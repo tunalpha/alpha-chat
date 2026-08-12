@@ -1,0 +1,514 @@
+PHASE 5 — BREEZ SPARK PRE-GO-LIVE VALIDATION
+REAL SEND/RECEIVE + FEE + TREASURY + RECOVERY + SECURITY
+NO GO-LIVE / NO FEATURE FLAG ACTIVATION
+
+STATO DI PARTENZA
+
+Phase 4 completata:
+
+- 861/861 test PASS
+- Build production PASS
+- Keystore wiring completato
+- ExternalSigner attivo
+- Spark fee Admin configurata separatamente dalla BTC fee
+- BTC Treasury accounting predisposto con source="spark_lightning"
+- Feature flag spark_lightning_enabled = false
+- Spark lazy-loaded
+- Zero regressioni confermate
+
+OBIETTIVO
+
+Questa fase deve VALIDARE il sistema integrato, non attivarlo in produzione.
+
+NON impostare mai:
+spark_lightning_enabled = true
+
+NON fare go-live.
+
+NON rendere Spark disponibile agli utenti reali.
+
+NON modificare il comportamento BTC/EVM/USDA/Chat/Signal.
+
+==================================================
+1. TEST DEL VERO KEYSTORE
+==================================================
+
+Verificare con un wallet Alpha reale di test:
+
+Alpha Wallet keystore
+→ decrypt locale
+→ mnemonic
+→ ExternalSigner
+→ Spark
+
+Verificare:
+
+- mnemonic mai inviato al backend
+- private key mai inviata al backend
+- mnemonic mai scritto nei log
+- mnemonic mai scritto in localStorage
+- mnemonic non presente nel React context
+- API request prive di seed/private key
+- derivazione BTC invariata
+- derivazione Spark invariata
+- stesso mnemonic produce sempre la stessa Spark identity
+
+NON utilizzare mai seed pubbliche/test vector per fondi reali.
+
+==================================================
+2. TEST CONNECT + SYNC
+==================================================
+
+Con wallet di test:
+
+connect()
+getInfo()
+syncWallet()
+listPayments()
+
+Verificare:
+
+- tempi di connessione
+- error handling
+- retry
+- disconnect
+- reconnect
+- refresh pagina
+- chiusura e riapertura app
+
+Verificare che dopo reload lo stato Spark venga recuperato correttamente.
+
+==================================================
+3. TEST RECEIVE — CONTROLLED
+==================================================
+
+Preparare un test di ricezione controllato.
+
+Testare:
+
+A. Spark address
+B. BOLT11 invoice
+
+IMPORTANTE:
+
+NON utilizzare fondi significativi.
+
+Prima di generare una transazione reale:
+
+- mostrare importo
+- mostrare eventuale fee
+- verificare destinazione
+- verificare stato
+- verificare che il test sia esplicitamente autorizzabile
+
+NON effettuare automaticamente un pagamento reale senza conferma esplicita.
+
+Dopo ricezione:
+
+- getInfo balance
+- listPayments
+- transaction history Alpha
+- notification
+- portfolio
+- BTC Lightning balance
+
+Devono risultare coerenti.
+
+==================================================
+4. TEST SEND — CONTROLLED
+==================================================
+
+Testare:
+
+A. Spark-to-Spark
+B. BOLT11 Lightning invoice
+
+Utilizzare importo minimo possibile e wallet controllato.
+
+Verificare:
+
+prepareSendPayment()
+→ fee calculation
+→ confirmation
+→ sendPayment()
+
+Verificare che l'utente veda prima della conferma:
+
+Recipient receives
+Alpha fee
+Provider/Lightning fee
+Total paid
+
+NON confondere:
+
+Alpha fee
+Provider fee
+Bitcoin mining fee
+
+Dopo il pagamento:
+
+- balance aggiornato
+- storico aggiornato
+- stato completed
+- eventuale notification
+- paymentHash registrato
+- Treasury accounting aggiornato
+
+==================================================
+5. RECIPIENT-EXACT
+==================================================
+
+Verificare esplicitamente:
+
+Spark-to-Spark:
+recipient_exact deve essere matematicamente deterministico.
+
+BOLT11:
+se la fee provider/routing non è deterministica, NON promettere un importo netto esatto che il sistema non può garantire.
+
+La UI deve distinguere chiaramente i due casi.
+
+NON inventare margini o fee.
+
+==================================================
+6. ALPHA FEE — 0.10%
+==================================================
+
+Verificare:
+
+spark_fee_bps = 10
+
+Calcolo:
+
+Alpha fee = 0.10%
+
+Verificare:
+
+- rounding
+- minimum fee
+- fee cap se previsto
+- importi piccoli
+- importi grandi
+- fee negativa impossibile
+- overflow impossibile
+
+Modificare Spark fee Admin in ambiente di test.
+
+Esempio:
+
+0.10% → 0.20%
+
+Verificare:
+
+- Spark usa 0.20%
+- BTC continua a usare la propria fee invariata
+- audit event SPARK_FEE_UPDATED generato
+- Treasury source rimane spark_lightning
+
+Ripristinare infine il valore configurato previsto.
+
+==================================================
+7. TREASURY ACCOUNTING
+==================================================
+
+Per ogni fee Spark verificare:
+
+source = "spark_lightning"
+
+network = "lightning"
+
+_id / idempotency basato sul paymentHash.
+
+Verificare:
+
+stesso paymentHash elaborato due volte
+→ una sola registrazione Treasury.
+
+NON eseguire sweep automatico reale in questa fase.
+
+NON trasferire fondi automaticamente dal wallet Spark al Treasury.
+
+Verificare solo contabilizzazione e guardrail.
+
+==================================================
+8. FAILURE / RETRY / IDEMPOTENCY
+==================================================
+
+Testare:
+
+- invoice scaduta
+- invoice invalida
+- pagamento fallito
+- timeout
+- perdita connessione
+- refresh durante pending
+- doppio click Send
+- retry della stessa richiesta
+- doppio evento payment_received
+
+REQUISITO:
+
+Mai doppio pagamento.
+
+Mai doppia commissione Treasury.
+
+Mai doppia notifica.
+
+Mai doppio record storico.
+
+==================================================
+9. RECOVERY
+==================================================
+
+Testare:
+
+A. refresh browser
+B. chiusura app
+C. riapertura app
+D. logout/login
+E. clear IndexedDB controllato
+F. restore tramite seed
+G. sync Spark
+
+Verificare che il wallet Spark venga ricostruito dalla seed senza perdere il controllo dei fondi.
+
+NON modificare il keystore BTC.
+
+Verificare separatamente che BTC recovery continui a funzionare.
+
+==================================================
+10. IDB SECURITY
+==================================================
+
+Usare il report SPARK_IDB_SECURITY_REPORT.md.
+
+Verificare nuovamente:
+
+- quali dati sono persistiti
+- payment history
+- invoice
+- HTLC data
+- preimage
+- assenza di mnemonic
+- assenza di private key
+
+NON implementare una cifratura custom del database Breez senza prima verificare che sia compatibile con il lifecycle SDK.
+
+Produrre una decisione:
+
+ACCEPT
+oppure
+MITIGATE
+oppure
+BLOCK GO-LIVE
+
+motivando tecnicamente.
+
+==================================================
+11. IPHONE FISICO
+==================================================
+
+Eseguire, se disponibile, su vero iPhone:
+
+- apertura PWA
+- connect
+- sync
+- receive
+- send
+- background
+- foreground
+- WebSocket
+- push notification
+- recovery
+
+NON considerare la simulazione Chromium equivalente a un test iPhone reale.
+
+Se il test fisico non è disponibile:
+
+segnare:
+
+IPHONE_REAL_TEST = PENDING
+
+NON dichiarare PASS.
+
+==================================================
+12. PORTFOLIO
+==================================================
+
+Verificare che Bitcoin venga mostrato separatamente:
+
+BTC On-chain
+BTC Lightning / Spark
+
+Non confondere i due saldi.
+
+Verificare che il Portfolio totale:
+
+- includa Spark quando disponibile
+- non faccia double counting
+- mantenga chainId/network corretto
+- mantenga asset type corretto
+- gestisca Spark offline
+- gestisca dati parziali
+
+Se Spark non risponde:
+
+Portfolio deve mostrare dati parziali e NON inventare saldo zero come se fosse un saldo reale.
+
+==================================================
+13. STORICO E NOTIFICHE
+==================================================
+
+Spark transaction types devono rimanere separati da:
+
+btc_sent
+btc_received
+
+Usare tipi dedicati:
+
+btc_lightning_sent
+btc_lightning_received
+spark_sent
+spark_received
+
+o quelli già definiti nell'architettura, senza creare duplicazioni.
+
+Verificare:
+
+pending
+completed
+failed
+
+e riconciliazione dopo restart.
+
+==================================================
+14. ADMIN SECURITY
+==================================================
+
+Verificare:
+
+solo super_admin può modificare Spark fee.
+
+Ogni modifica:
+
+SPARK_FEE_UPDATED
+
+deve contenere audit trail sufficiente.
+
+Verificare che modificare Spark fee NON modifichi:
+
+BTC fee
+EVM fee
+USDA fee
+Treasury BTC configuration
+
+==================================================
+15. FEATURE FLAG — ULTIMA BARRIERA
+==================================================
+
+Dopo tutti i test, riportare:
+
+spark_lightning_enabled = false
+
+E verificare nuovamente:
+
+- Spark SDK non caricato
+- zero Spark network requests
+- zero Spark WebSocket
+- zero Spark WASM al cold start
+- BTC invariato
+- EVM invariato
+- USDA invariato
+- Chat invariata
+- Signal invariato
+
+==================================================
+16. REGRESSION SUITE FINALE
+==================================================
+
+Eseguire:
+
+- tutti i test frontend
+- tutti i test backend
+- tutti i test Spark
+- TypeScript
+- lint
+- production build
+- E2E
+- isolation tests
+
+Obiettivo:
+
+ZERO regressioni.
+
+Se un test preesistente fallisce:
+
+STOP.
+
+Non modificare il test per farlo passare.
+
+==================================================
+17. STOP CONDITIONS
+==================================================
+
+FERMATI immediatamente se:
+
+- seed/private key lascia il client
+- BTC derivation cambia
+- BTC fee cambia
+- BTC Treasury viene alterato in modo non isolato
+- doppio pagamento possibile
+- doppia fee possibile
+- recipient-exact viene falsamente garantito
+- Spark modifica comportamento con flag OFF
+- IDB Spark collide con Alpha
+- recovery non funziona
+- iPhone mostra perdita di fondi o stato incoerente
+- viene necessario modificare WalletContext BTC per far funzionare Spark
+- viene necessario modificare Payment Engine esistente in modo non isolato
+
+In caso di STOP:
+NON correggere in modo improvvisato.
+Produrre RCA + proposta di soluzione.
+
+==================================================
+18. REPORT FINALE OBBLIGATORIO
+==================================================
+
+Restituire un report con:
+
+1. Test connect
+2. Test sync
+3. Receive Spark
+4. Receive BOLT11
+5. Send Spark
+6. Send BOLT11
+7. Fee 0.10%
+8. Fee Admin change
+9. Treasury accounting
+10. Idempotency
+11. Failure/retry
+12. Recovery
+13. IDB security
+14. iPhone physical test
+15. Portfolio
+16. History
+17. Notifications
+18. Feature flag OFF
+19. Full regression
+20. Test count PASS/FAIL
+21. Rischi residui
+22. STOP conditions
+23. GO/NO-GO recommendation
+
+IMPORTANTE:
+
+NON attivare spark_lightning_enabled.
+
+NON fare go-live.
+
+NON fare sweep reale Treasury.
+
+Questa fase serve a dimostrare che l'integrazione completa è sicura e pronta per una successiva FINAL GO-LIVE REVIEW.
+
+Solo dopo un report GREEN potremo decidere separatamente se fare la fase finale di attivazione.

@@ -18,6 +18,8 @@
  */
 
 import { useState, useCallback, useRef, useEffect } from "react";
+// Phase 5: Spark/Lightning portfolio integration (safe hook — null se flag=false)
+import { useSparkWalletOptional } from "../contexts/SparkWalletContext";
 import { useSecurePhraseDisplay } from "../hooks/useSecurePhraseDisplay";
 import { useLock } from "../contexts/LockContext";
 import { WalletProvider, useWallet } from "../wallet/context/WalletContext";
@@ -881,14 +883,34 @@ interface PortfolioAllBalances {
 
 const EMPTY_PORTFOLIO: PortfolioAllBalances = { polygon: null, ethereum: null, bsc: null, btc: null };
 
+/** Formatta satoshi in stringa BTC leggibile (es. "0.00050000 BTC") */
+function formatSatoshisToBtc(sats: bigint): string {
+  return `${(Number(sats) / 1e8).toFixed(8)} BTC`;
+}
+
 function usePortfolioBalances() {
   const wallet = useWallet();
+  const spark  = useSparkWalletOptional();  // null se spark_lightning_enabled=false
   const meta   = wallet.meta;
   const [all,          setAll]          = useState<PortfolioAllBalances>(EMPTY_PORTFOLIO);
   const [prices,       setPrices]       = useState<AssetPrices | null>(null);
   const [loading,      setLoading]      = useState(true);
   // Quante chain non hanno risposto (0 = dati completi, >0 = totale parziale)
   const [failedChains, setFailedChains] = useState(0);
+
+  // Spark Lightning balance — letto dal context (no fetch rete, già in memoria)
+  // null se: Spark disabilitato | non connesso | walletInfo non ancora disponibile
+  const sparkSat: bigint | null =
+    spark !== null && spark.state === "connected"
+      ? (spark.walletInfo?.balanceSat ?? null)
+      : null;
+  // Spark è abilitato e connesso ma non ha ancora restituito walletInfo (caricamento)
+  const sparkLoading =
+    spark !== null && spark.isEnabled && spark.state === "connecting";
+  // Spark è abilitato ma non disponibile → dati parziali
+  const sparkOffline =
+    spark !== null && spark.isEnabled &&
+    spark.state !== "connected" && spark.state !== "disabled" && spark.state !== "connecting";
 
   const fetchAll = useCallback(async () => {
     if (!meta) return;
@@ -926,14 +948,21 @@ function usePortfolioBalances() {
     return () => window.removeEventListener("aw:new-tx", h);
   }, [fetchAll]);
 
-  return { all, prices, loading, failedChains };
+  return { all, prices, loading, failedChains, sparkSat, sparkLoading, sparkOffline };
 }
 
-/** Calcola il valore fiat totale di tutti gli asset su tutte le chain. */
+/**
+ * Calcola il valore fiat totale di tutti gli asset su tutte le chain.
+ *
+ * Phase 5: sparkSat aggiunto — saldo Lightning/Spark in satoshi.
+ * INVARIANTE: sparkSat è contabilizzato col prezzo BTC, separatamente da BTC on-chain.
+ * MAI sommare sparkSat a BTC on-chain confirmedSat (double counting).
+ */
 function calcPortfolioTotal(
   all: PortfolioAllBalances,
   prices: AssetPrices | null,
   fiatKey: "eur" | "usd",
+  sparkSat?: bigint | null,
 ): number {
   if (!prices) return 0;
   let total = 0;
@@ -958,6 +987,11 @@ function calcPortfolioTotal(
   if (all.btc) {
     total += (Number(all.btc.confirmedSat) / 1e8) * price("btc");
   }
+  // Phase 5: Spark Lightning balance — stesso prezzo BTC, contabilizzato separatamente
+  // GUARD: null = Spark non connesso → non includere nel totale (dati parziali)
+  if (sparkSat != null && sparkSat > 0n) {
+    total += (Number(sparkSat) / 1e8) * price("btc");
+  }
   return total;
 }
 
@@ -976,18 +1010,21 @@ function PortfolioTotalCard({
   onOpen: () => void;
   currency: "EUR" | "USD";
 }) {
-  const { all, prices, loading, failedChains } = usePortfolioBalances();
+  const { all, prices, loading, failedChains, sparkSat, sparkOffline } = usePortfolioBalances();
   const fiatKey = currency.toLowerCase() as "eur" | "usd";
 
-  const isPartial   = !loading && failedChains > 0;
-  const totalRaw    = loading ? null : calcPortfolioTotal(all, prices, fiatKey);
+  const partialCount = failedChains + (sparkOffline ? 1 : 0);
+  const isPartial   = !loading && partialCount > 0;
+  const totalRaw    = loading ? null : calcPortfolioTotal(all, prices, fiatKey, sparkSat);
   const totalFmt    = totalRaw !== null ? fmtPortfolioTotal(totalRaw, currency) : null;
-  const activeChains = [all.polygon, all.ethereum, all.bsc, all.btc].filter(Boolean).length;
+  const activeChains = [all.polygon, all.ethereum, all.bsc, all.btc].filter(Boolean).length
+    + (sparkSat != null ? 1 : 0);
   const totalAssets  = [
     all.polygon  ? 1 + all.polygon.tokens.length  : 0,
     all.ethereum ? 1 + all.ethereum.tokens.length : 0,
     all.bsc      ? 1 + all.bsc.tokens.length      : 0,
     all.btc      ? 1                               : 0,
+    sparkSat != null ? 1 : 0,
   ].reduce((a, b) => a + b, 0);
 
   return (
@@ -1035,7 +1072,7 @@ function PortfolioView({
   onSelectChain: (chainId: number) => void;
 }) {
   const { currency } = useWalletCurrency();
-  const { all, prices, loading, failedChains } = usePortfolioBalances();
+  const { all, prices, loading, failedChains, sparkSat, sparkLoading, sparkOffline } = usePortfolioBalances();
   const fiatKey = currency.toLowerCase() as "eur" | "usd";
 
   const price = (key: string) =>
@@ -1097,13 +1134,32 @@ function PortfolioView({
     });
   }
 
+  // Phase 5: Spark Lightning balance (BTC-priced, contabilizzato separatamente da BTC on-chain)
+  // chainId=-1 → riserva per Lightning (non corrisponde a nessuna EVM chain)
+  // NON confondere con BTC on-chain (chainId=0)
+  if (sparkSat != null) {
+    const btcP = price("btc");
+    const fv   = (Number(sparkSat) / 1e8) * btcP;
+    const po   = prices?.btc as { eur: number; usd: number } | undefined;
+    rows.push({
+      chainId: -1, network: "Lightning",
+      symbol: "BTC", icon: "⚡", name: "Bitcoin Lightning",
+      amount: formatSatoshisToBtc(sparkSat),
+      fiatValue: fv,
+      fiatStr: po ? formatFiat(sparkSat, 8, po, currency) : null,
+    });
+  }
+
   // Ordina per valore fiat decrescente
   rows.sort((a, b) => b.fiatValue - a.fiatValue);
 
-  const isPartial   = !loading && failedChains > 0;
-  const totalRaw    = loading ? null : calcPortfolioTotal(all, prices, fiatKey);
+  const partialCount = failedChains + (sparkOffline ? 1 : 0);
+
+  const isPartial   = !loading && partialCount > 0;
+  const totalRaw    = loading ? null : calcPortfolioTotal(all, prices, fiatKey, sparkSat);
   const totalFmt    = totalRaw !== null ? fmtPortfolioTotal(totalRaw, currency) : null;
-  const activeChains = [all.polygon, all.ethereum, all.bsc, all.btc].filter(Boolean).length;
+  const activeChains = [all.polygon, all.ethereum, all.bsc, all.btc].filter(Boolean).length
+    + (sparkSat != null ? 1 : 0);
 
   return (
     <div className="aw-portfolio-view">
@@ -1122,7 +1178,16 @@ function PortfolioView({
         </div>
         {isPartial && (
           <div className="aw-portfolio-partial-warn">
-            ⚠️ Dati parziali — {failedChains} chain {failedChains === 1 ? "non ha risposto" : "non hanno risposto"}. Il totale potrebbe essere incompleto.
+            ⚠️ Dati parziali —{" "}
+            {failedChains > 0
+              ? `${failedChains} chain ${failedChains === 1 ? "non ha risposto" : "non hanno risposto"}${sparkOffline ? " · Lightning non disponibile" : ""}`
+              : "Lightning non disponibile"
+            }. Il totale potrebbe essere incompleto.
+          </div>
+        )}
+        {sparkLoading && (
+          <div className="aw-portfolio-partial-warn" style={{ color: "rgba(255,255,255,0.5)" }}>
+            ⚡ Caricamento saldo Lightning…
           </div>
         )}
       </div>

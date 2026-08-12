@@ -92,6 +92,15 @@ export function useSparkWallet(): SparkWalletContextValue {
   return ctx;
 }
 
+/**
+ * Versione safe di useSparkWallet — restituisce null se SparkWalletProvider
+ * non è nell'albero (es. spark_lightning_enabled=false).
+ * Portfolio e altri componenti opzionali usano questo.
+ */
+export function useSparkWalletOptional(): SparkWalletContextValue | null {
+  return useContext(SparkWalletContext);
+}
+
 // ── Provider ──────────────────────────────────────────────────────────────────
 
 interface Props {
