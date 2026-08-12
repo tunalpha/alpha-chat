@@ -102,4 +102,10 @@ v1Router.use("/admin/bitcoin", adminBitcoinRoutes);
 import alphaWalletRoutes from "./alpha-wallet.routes";
 v1Router.use("/alpha-wallet", alphaWalletRoutes);
 
+// Spark/Lightning — Platform Fee config (Phase Spark)
+// ISOLAMENTO: completamente separato da Alpha Wallet BTC, MultiChain, USDA.
+// Default feature flag spark_lightning_enabled = false fino a go-live esplicito.
+import sparkRoutes from "./spark.routes";
+v1Router.use("/spark", sparkRoutes);
+
 export default v1Router;

@@ -22,6 +22,12 @@ export interface IAdminSettings {
    * Default: true (abilitato).
    */
   multichain_payments_enabled:  boolean;
+  /**
+   * Feature flag: abilita/disabilita Lightning/Spark in chat.
+   * ISOLAMENTO: indipendente da multichain_payments_enabled.
+   * Default: false — disabilitato fino a go-live esplicito.
+   */
+  spark_lightning_enabled:      boolean;
   updated_at?:                  Date;
   updated_by?:                  string;
 }
@@ -32,6 +38,7 @@ export const ADMIN_SETTINGS_DEFAULTS: Omit<IAdminSettings, "_id" | "updated_at" 
   registration_emails:         true,
   multichain_emails:           true,
   multichain_payments_enabled: true,
+  spark_lightning_enabled:     false,  // OFF fino a go-live esplicito
 };
 
 const schema = new Schema<IAdminSettings>(
@@ -42,6 +49,7 @@ const schema = new Schema<IAdminSettings>(
     registration_emails:         { type: Boolean, default: true },
     multichain_emails:           { type: Boolean, default: true },
     multichain_payments_enabled: { type: Boolean, default: true },
+    spark_lightning_enabled:     { type: Boolean, default: false },
     updated_at:                  Date,
     updated_by:                  String,
   },

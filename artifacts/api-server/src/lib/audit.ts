@@ -126,7 +126,9 @@ export type AuditEventType =
   // Phase G — Alpha Wallet Platform Fee
   | "ALPHA_WALLET_FEE_UPDATED"
   // Phase G #90 — Alpha Wallet Fee Reliability
-  | "ALPHA_WALLET_FEE_FAILED";
+  | "ALPHA_WALLET_FEE_FAILED"
+  // Spark/Lightning — Platform Fee (isolato da BTC fee)
+  | "SPARK_FEE_UPDATED";
 
 export interface AuditEvent {
   event: AuditEventType;

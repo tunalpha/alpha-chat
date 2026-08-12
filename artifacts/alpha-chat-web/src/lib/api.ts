@@ -1739,17 +1739,24 @@ export async function apiDestroyAccountDirect(): Promise<{ success: boolean }> {
 export interface AppFeatureFlags {
   /** Quando false: USDT e BTC nascosti nella chat, rimane solo USDA nativo */
   multichain_payments_enabled: boolean;
+  /**
+   * Quando false: Lightning/Spark nascosti nella chat.
+   * ISOLAMENTO: indipendente da multichain_payments_enabled.
+   * Default: false — disabilitato fino a go-live esplicito (admin lo abilita).
+   */
+  spark_lightning_enabled: boolean;
 }
 
 /**
  * Legge i feature flag dall'admin (endpoint senza auth, fail-open).
- * In caso di errore restituisce il default sicuro (tutti abilitati).
+ * In caso di errore restituisce il default sicuro.
+ * spark_lightning_enabled: fail-safe = false (non mostra Lightning se API non raggiungibile).
  */
 export async function apiGetAppFeatureFlags(): Promise<AppFeatureFlags> {
   try {
     return await request<AppFeatureFlags>("GET", "/admin/app-feature-flags");
   } catch {
-    // Fail-open: se l'endpoint non è raggiungibile, mostra tutto
-    return { multichain_payments_enabled: true };
+    // Fail-safe: multichain abilitato (comportamento precedente), Spark disabilitato
+    return { multichain_payments_enabled: true, spark_lightning_enabled: false };
   }
 }

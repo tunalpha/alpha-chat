@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, type ReactNode } from "react";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { LockProvider, useLock } from "./contexts/LockContext";
 import { CallProvider, useCall } from "./contexts/CallContext";
@@ -32,7 +32,7 @@ import LockScreen from "./components/LockScreen";
 import PrivacyOverlay from "./components/PrivacyOverlay";
 import BusyCallScreen from "./components/BusyCallScreen";
 import CallHistoryPage, { type PeerInfo } from "./pages/CallHistoryPage";
-import { apiListConversations } from "./lib/api";
+import { apiListConversations, apiGetAppFeatureFlags } from "./lib/api";
 import CallSettingsPage from "./pages/CallSettingsPage";
 import AppearancePage from "./pages/AppearancePage";
 import NotificationsPage from "./pages/NotificationsPage";
@@ -43,6 +43,8 @@ import AlphaWalletPage from "./pages/AlphaWalletPage";
 // Phase G: Alpha Wallet × Chat bridge (WalletProvider elevato al root)
 import { WalletProvider } from "./wallet/context/WalletContext";
 import { ChatWalletBridgeProvider } from "./wallet/bridge/chat-wallet-bridge-context";
+// Spark/Lightning — isolato da WalletProvider BTC. Feature flag OFF per default.
+import { SparkWalletProvider } from "./contexts/SparkWalletContext";
 import { useNotifSync } from "./hooks/useNotifSync";
 import { initServiceWorker, requestAndSubscribe as pushSubscribe } from "./lib/pushManager";
 import SignalReinstallBanner from "./components/SignalReinstallBanner";
@@ -303,6 +305,26 @@ function AppContent() {
   );
 }
 
+/**
+ * SparkWalletProviderWrapper — legge il feature flag e monta il provider Spark.
+ * Se spark_lightning_enabled = false (default): provider è no-op, zero WASM caricato.
+ * ISOLAMENTO: non tocca WalletProvider BTC né ChatWalletBridgeProvider.
+ */
+function SparkWalletProviderWrapper({ children }: { children: ReactNode }) {
+  const [sparkEnabled, setSparkEnabled] = useState(false);
+  useEffect(() => {
+    // Legge il feature flag (fail-safe = false)
+    void apiGetAppFeatureFlags().then(flags =>
+      setSparkEnabled(flags.spark_lightning_enabled ?? false),
+    );
+  }, []);
+  return (
+    <SparkWalletProvider isEnabled={sparkEnabled}>
+      {children}
+    </SparkWalletProvider>
+  );
+}
+
 export default function App() {
   return (
     <AppSettingsProvider>
@@ -317,10 +339,17 @@ export default function App() {
               */}
               <WalletProvider>
                 <ChatWalletBridgeProvider>
-                  <AppContent />
-                  <IncomingCallModal />
-                  <ActiveCallScreen />
-                  <BusyCallScreen />
+                  {/*
+                    SparkWalletProvider — Lightning/Spark (isolato da WalletProvider BTC).
+                    isEnabled viene da AppFeatureFlags.spark_lightning_enabled (default: false).
+                    Nessuna modifica a WalletProvider BTC né a ChatWalletBridgeProvider.
+                  */}
+                  <SparkWalletProviderWrapper>
+                    <AppContent />
+                    <IncomingCallModal />
+                    <ActiveCallScreen />
+                    <BusyCallScreen />
+                  </SparkWalletProviderWrapper>
                 </ChatWalletBridgeProvider>
               </WalletProvider>
             </CallProvider>

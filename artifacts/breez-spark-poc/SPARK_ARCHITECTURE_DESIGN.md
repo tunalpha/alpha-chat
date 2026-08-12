@@ -516,16 +516,95 @@ Phase 5: Go-live (enable feature flag)       → approvazione esplicita
 
 ---
 
-## 20. Condizioni per GO TO PRODUCTION
+## 20. Condizioni per GO TO PRODUCTION (aggiornate)
 
-L'implementazione production può iniziare **solo dopo** tutte e tre le condizioni:
+La risposta email Breez è trattata come **"Commercial / Provider Confirmation — Advisory"** e NON blocca il lavoro tecnico. L'implementazione controllata può procedere immediatamente.
 
-- [ ] **1. Risposta Breez email** — conferma costi operatori + condizioni commerciali + ToS per uso multi-utente
-- [ ] **2. Test iPhone Safari reale** — verifica comportamento WASM + background su iOS 15+ (non simulatore)
-- [ ] **3. Approvazione esplicita di questo documento** — il documento deve essere letto e approvato per iscritto prima di toccare qualsiasi file production
+Le condizioni per il GO-LIVE (feature flag `spark_lightning_enabled = true` in produzione) sono:
 
-Condizione aggiuntiva raccomandata:
-- [ ] **4. Analisi contenuto IDB Spark** — verificare se il WASM cifra le chiavi prima di persisterle
+- [ ] **1. Test iPhone Safari reale** — verifica WASM + background su iOS 15+ (non simulatore)
+- [ ] **2. Approvazione esplicita di questo documento** — prima di toccare qualsiasi file production
+- [ ] **3. Analisi contenuto IDB Spark** — verificare se il WASM cifra le chiavi prima di persisterle
+- [ ] **4. Tutti i test green** — unit, integration, regression BTC, build, lint, typecheck
+- [ ] **5. Risposta Breez email** *(Advisory — non blocca tecnico, ma necessaria per go-live commerciale)*
+
+**NON fare deploy production al termine dell'implementazione.** Il feature flag rimane `false`.
+
+---
+
+## 21. Admin Fee Configuration
+
+### Principio di separazione
+
+Le due fee Alpha Platform sono **singleton MongoDB indipendenti**, con model, route e audit log separati:
+
+| Configurazione | Singleton | Default | Indipendente da |
+|---|---|---|---|
+| BTC on-chain Alpha fee | `alpha_wallet_fee_config` (`_id: "alpha-wallet-fee"`) | 10 bps (0.10%) | Spark fee |
+| Spark/Lightning Alpha fee | `spark_fee_config` (`_id: "spark-fee"`) | 10 bps (0.10%) | BTC fee |
+
+**Invariante di isolamento**: modificare la fee Spark NON modifica la fee BTC, e viceversa. I test `spark-isolation.test.ts` garantiscono questo a ogni build.
+
+### Campi configurabili (Spark)
+
+| Campo | Tipo | Default | Range | Descrizione |
+|---|---|---|---|---|
+| `fee_bps` | integer | 10 | 0–500 | Alpha Platform Fee in basis points |
+| `min_fee_sat` | integer | 1 | ≥0 | Fee minima in satoshi |
+| `quote_validity_sec` | integer | 30 | 5–300 | Validità quote in secondi |
+
+### Provider fee: NON configurabile admin
+
+La **provider fee** (Breez/Spark routing) è determinata dall'SDK al momento di `prepareSendPayment()`. Non esiste un campo admin per essa:
+- Viene mostrata separatamente all'utente nella fee breakdown UI
+- Non può essere sovrascritta dall'admin
+- Non viene sommata silenziosamente alla Alpha fee
+
+### Route API Spark fee
+
+```
+GET  /api/v1/spark/fee-config   — requireAdmin("read_only")
+PATCH /api/v1/spark/fee-config  — requireAdmin("super_admin")
+```
+
+### Audit log obbligatorio
+
+Ogni modifica PATCH genera un audit event `SPARK_FEE_UPDATED` con:
+```json
+{
+  "event": "SPARK_FEE_UPDATED",
+  "user_id": "<admin_id>",
+  "created_at": "<timestamp_ISO>",
+  "metadata": {
+    "prev_fee_bps": 10,
+    "new_fee_bps": 15,
+    "prev_min_fee_sat": 1,
+    "new_min_fee_sat": 1,
+    "btc_fee_config_unchanged": true,
+    "provider_fee_unchanged": true
+  }
+}
+```
+
+### Treasury destination
+
+Entrambe le fee Alpha (BTC e Spark) vengono accreditate allo stesso BTC Treasury Alpha:
+- **BTC**: direttamente (già in produzione)
+- **Spark**: sweep Lightning → on-chain via SDK (da implementare in fase di go-live, non ora)
+- **Nessun trasferimento reale nella fase corrente** — solo l'astrazione è implementata
+
+### Test di isolamento
+
+I test in `src/tests/spark/spark-isolation.test.ts` verificano:
+- Modificare fee_bps Spark non altera fee BTC
+- Modificare fee_bps BTC non altera fee Spark
+- recipient_exact: recipientAmountSat invariato
+- Provider fee mai confusa con Alpha fee nel totalDebit
+- alphaPlatformFeeSat mai negativa (Treasury non riceve valore negativo)
+
+### Admin panel (DIFFERITO)
+
+L'UI admin per la fee Spark è **differita** a una fase successiva (non questa). Il modello, le route e i test sono pronti; la pagina admin visual verrà aggiunta quando il feature flag Spark viene abilitato in produzione.
 
 ---
 

@@ -86,3 +86,4 @@
 - [Alpha Wallet — Richiedi con Alpha Wallet](alpha-wallet-request.md) — flow completo richiedente+pagante, bubble WALLETREQ:, 3 endpoint backend, WS event
 - [Build before deploy](build-before-deploy.md) — dist/public è statico; eseguire pnpm build PRIMA di ogni deploy suggestion
 - [Breez SDK Spark PoC](breez-spark-poc.md) — COOP/COEP headers sopravvivono al proxy Replit dev; crossOriginIsolated=true; SharedArrayBuffer OK; WASM carica
+- [Spark IDB Analysis](spark-idb-analysis.md) — IDB Breez SDK NON cifrata: valori plain JSON, preimage HTLC leggibili, mnemonic NON presente; implicazioni go-live

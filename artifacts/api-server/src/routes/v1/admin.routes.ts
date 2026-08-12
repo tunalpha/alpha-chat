@@ -1941,6 +1941,7 @@ router.get("/notification-settings", requireAdmin("read_only"), async (_req, res
       registration_emails:         settings.registration_emails,
       multichain_emails:           settings.multichain_emails ?? true,
       multichain_payments_enabled: settings.multichain_payments_enabled ?? true,
+      spark_lightning_enabled:     settings.spark_lightning_enabled     ?? false,
       updated_at:                  settings.updated_at ?? null,
       updated_by:                  settings.updated_by ?? null,
     });
@@ -1950,13 +1951,14 @@ router.get("/notification-settings", requireAdmin("read_only"), async (_req, res
 /** PATCH /api/v1/admin/notification-settings — aggiorna uno o più toggle */
 router.patch("/notification-settings", requireAdmin("super_admin"), async (req, res, next) => {
   try {
-    const { gas_station_emails, usda_emails, registration_emails, multichain_emails, multichain_payments_enabled } = req.body as Record<string, unknown>;
+    const { gas_station_emails, usda_emails, registration_emails, multichain_emails, multichain_payments_enabled, spark_lightning_enabled } = req.body as Record<string, unknown>;
     const update: Record<string, unknown> = { updated_at: new Date(), updated_by: (req as unknown as { user?: { userId?: string } }).user?.userId };
     if (typeof gas_station_emails          === "boolean") update.gas_station_emails          = gas_station_emails;
     if (typeof usda_emails                  === "boolean") update.usda_emails                  = usda_emails;
     if (typeof registration_emails          === "boolean") update.registration_emails          = registration_emails;
     if (typeof multichain_emails            === "boolean") update.multichain_emails            = multichain_emails;
     if (typeof multichain_payments_enabled  === "boolean") update.multichain_payments_enabled  = multichain_payments_enabled;
+    if (typeof spark_lightning_enabled      === "boolean") update.spark_lightning_enabled      = spark_lightning_enabled;
 
     const doc = await AdminSettingsModel.findOneAndUpdate(
       { _id: "default" },
@@ -1969,6 +1971,7 @@ router.patch("/notification-settings", requireAdmin("super_admin"), async (req, 
       registration_emails:         doc!.registration_emails,
       multichain_emails:           doc!.multichain_emails ?? true,
       multichain_payments_enabled: doc!.multichain_payments_enabled ?? true,
+      spark_lightning_enabled:     doc!.spark_lightning_enabled     ?? false,
       updated_at:                  doc!.updated_at ?? null,
       updated_by:                  doc!.updated_by ?? null,
     });
@@ -1981,6 +1984,9 @@ router.get("/app-feature-flags", async (_req, res, next) => {
     const settings = await getAdminSettings();
     res.json({
       multichain_payments_enabled: settings.multichain_payments_enabled ?? true,
+      // ISOLAMENTO: spark_lightning_enabled è indipendente da multichain.
+      // Default: false — disabilitato fino a go-live esplicito.
+      spark_lightning_enabled:     settings.spark_lightning_enabled     ?? false,
     });
   } catch (err) { next(err); }
 });

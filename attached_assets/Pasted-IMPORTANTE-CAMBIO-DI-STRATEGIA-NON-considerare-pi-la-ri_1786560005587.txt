@@ -1,0 +1,152 @@
+IMPORTANTE — CAMBIO DI STRATEGIA
+
+NON considerare più la risposta email di Breez come blocker tecnico per proseguire il progetto.
+
+La richiesta Breez rimane PENDING e deve essere trattata come:
+"Commercial / Provider Confirmation — Advisory"
+
+NON bloccare il lavoro tecnico in attesa dell'email.
+
+Il PoC ha già dimostrato:
+- connect() Mainnet PASS
+- getInfo() PASS
+- syncWallet() PASS
+- listPayments() PASS
+- WASM PASS
+- ExternalSigner PASS
+- derivation separation PASS
+- IndexedDB isolation PASS
+
+PROCEDI quindi con la preparazione dell'implementazione, mantenendo però il requisito fondamentale:
+
+ZERO REGRESSIONI.
+ZERO modifiche distruttive.
+ZERO modifica al comportamento BTC on-chain esistente.
+
+FASE ATTUALE:
+Preparazione/implementazione controllata con Spark completamente isolato.
+
+1. Mantieni Spark dietro BreezSparkAdapter.
+2. Mantieni MockBreezAdapter per test.
+3. Mantieni LiveBreezAdapter separato.
+4. Mantieni feature flag:
+   SPARK_ENABLED = false
+   come default fino al go-live.
+5. Nessuna modifica al flusso BTC on-chain.
+6. Nessuna modifica a EVM/USDA/USDT.
+7. Nessuna modifica al WalletContext BTC esistente se non tramite adapter/bridge isolato.
+8. Nessuna modifica al Treasury esistente senza test specifico.
+9. Nessuna transazione reale automatica.
+
+FEE ARCHITECTURE:
+
+Implementare il motore in modo provider-agnostic.
+
+Separare sempre:
+
+recipientAmount
+alphaPlatformFee = 0.10%
+providerFee
+totalDebit
+
+Non hardcodare una fee Breez/Spark finché non abbiamo un valore ufficiale.
+
+Il provider deve poter restituire dinamicamente:
+
+estimatedProviderFee
+actualProviderFee
+
+La UI deve mostrare prima della conferma:
+
+Destinatario riceve: X
+Alpha fee: 0,10%
+Fee Spark/Lightning: Y / stima
+Totale: Z
+
+Se la fee effettiva differisce dalla stima:
+- NON nascondere la differenza;
+- NON creare un saldo negativo;
+- NON alterare arbitrariamente recipient_exact;
+- gestire esplicitamente il caso secondo la policy definita nell'Architecture Design.
+
+TREASURY:
+
+La Alpha platform fee deve essere progettata per essere accreditata allo stesso BTC Treasury Alpha già previsto.
+
+MA:
+- nessun trasferimento reale ora;
+- nessuna modifica production al Treasury ora;
+- creare solo l'astrazione necessaria;
+- mantenere provider fee separata dalla Alpha fee.
+
+PROVIDER ABSTRACTION:
+
+Il codice non deve dipendere direttamente da Breez al di fuori del LiveAdapter.
+
+In futuro deve essere possibile sostituire:
+
+Breez Spark
+→ altro provider Lightning/Spark
+
+senza riscrivere:
+- UI
+- portfolio
+- transaction history
+- fee engine
+- Treasury logic
+- recipient_exact
+- security layer
+
+TEST:
+
+Prima di qualsiasi modifica production:
+- unit tests
+- mock tests
+- adapter tests
+- fee calculation tests
+- isolation tests
+- regression tests BTC
+- build
+- lint
+- typecheck
+
+Aggiungere test specifici per garantire che:
+una modifica Spark non possa alterare il codice BTC on-chain.
+
+IPHONE:
+
+Procedere con il test reale su iPhone/PWA e documentare:
+- app foreground
+- background
+- reconnect
+- receive notification
+- resume/sync.
+
+IDB:
+
+Completare l'analisi di cosa persiste realmente il Breez SDK in IndexedDB.
+NON modificare/cifrare il database interno SDK senza supporto ufficiale.
+
+CHECKPOINT:
+
+Al termine NON fare deploy production.
+
+Produrre un report:
+- file modificati;
+- file production modificati;
+- test;
+- regressioni;
+- fee engine;
+- Treasury integration;
+- iPhone results;
+- IDB findings;
+- rischi residui;
+- cosa resta per il GO-LIVE.
+
+La risposta email Breez deve rimanere solo una verifica commerciale/documentale.
+
+NON inventare costi Breez.
+NON inventare condizioni ToS.
+NON dichiarare approvazioni commerciali non ricevute.
+
+Il progetto tecnico deve poter avanzare anche se Breez non risponde.
