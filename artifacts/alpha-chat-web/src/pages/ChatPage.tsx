@@ -4468,7 +4468,7 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
                       <span className="attach-sheet-icon">📥</span>
                       <span>Richiedi</span>
                     </button>
-                    {/* Phase G — Alpha Wallet self-custodial */}
+                    {/* Phase G — Alpha Wallet self-custodial PAY */}
                     {/* REGOLA §15: il tap utente è l'UNICO trigger — MAI da eventi WS */}
                     {walletBridge.status !== "unavailable" ? (
                       <button
@@ -4489,6 +4489,28 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
                       >
                         <span className="attach-sheet-icon">🔐</span>
                         <span>Paga con Alpha Wallet</span>
+                      </button>
+                    )}
+                    {/* Phase G — Alpha Wallet self-custodial REQUEST (livello principale, come Paga) */}
+                    {walletBridge.status !== "unavailable" ? (
+                      <button
+                        className="attach-sheet-item"
+                        onClick={() => { setShowAttachSheet(false); setAttachSubMenu("none"); setTimeout(() => setShowWalletRequest(true), 80); }}
+                      >
+                        <span className="attach-sheet-icon">📩</span>
+                        <span>Richiedi con Alpha Wallet{walletBridge.status === "locked" ? " 🔒" : ""}</span>
+                      </button>
+                    ) : (
+                      <button
+                        className="attach-sheet-item"
+                        style={{ opacity: 0.55 }}
+                        onClick={() => {
+                          setShowAttachSheet(false); setAttachSubMenu("none");
+                          showToast("Configura Alpha Wallet prima di richiedere. Vai in Chat → Alpha Wallet.");
+                        }}
+                      >
+                        <span className="attach-sheet-icon">📩</span>
+                        <span>Richiedi con Alpha Wallet</span>
                       </button>
                     )}
                   </>
