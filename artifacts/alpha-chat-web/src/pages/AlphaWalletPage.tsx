@@ -898,21 +898,38 @@ function usePortfolioBalances() {
   // Quante chain non hanno risposto (0 = dati completi, >0 = totale parziale)
   const [failedChains, setFailedChains] = useState(0);
 
-  // Auto-connect Spark quando il flag è true e la pagina è visibile.
-  // Questa pagina è visibile SOLO dopo che l'utente ha sbloccato il wallet →
-  // sessionStorage["aw_bio_pin"] è già disponibile per getMnemonic().
+  // Cooldown per retry "error" — evita loop rapidi se Spark SDK fallisce ripetutamente.
+  const sparkRetryRef = useRef(0);
+
+  // Auto-connect Spark.
   //
-  // "disabled" = stato iniziale del provider (connect() mai chiamato).
-  // "disconnected" = disconnesso; tenta reconnect.
-  // Qualsiasi altro stato (connecting/connected/syncing/error) → non interferire.
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+  // TIMING CRITICO: questo hook gira anche quando wallet.phase === "locked"
+  // (il wallet mostra la schermata PIN ma i hook React sono già eseguiti).
+  // sessionStorage["aw_bio_pin"] viene scritto da unlockWallet() SOLO DOPO che
+  // l'utente inserisce il PIN del wallet. Prima di allora getMnemonic() lancerebbe
+  // "[SparkWallet] Wallet non sbloccato" → state="error" → mai più ritentato.
+  //
+  // Fix:
+  // 1. Verifica sessionStorage["aw_bio_pin"] prima di ogni tentativo.
+  // 2. Dipende da spark.state → si ri-triggera quando state cambia (es. error → retry).
+  // 3. Dipende da meta → null→non-null quando il wallet si sblocca = trigger naturale.
+  // 4. Cooldown 30s su "error" per evitare loop se Breez SDK è irraggiungibile.
   useEffect(() => {
     if (!spark?.isEnabled) return;
-    if (spark.state !== "disabled" && spark.state !== "disconnected") return;
+    // Non interferire con stati attivi
+    if (spark.state === "connecting" || spark.state === "connected" || spark.state === "syncing") return;
+    // Verifica PIN: stesso check che fa getMnemonic() — se manca, wallet ancora bloccato
+    if (!sessionStorage.getItem("aw_bio_pin")) return;
+    // Cooldown: non ritentare "error" più di una volta ogni 30s
+    if (spark.state === "error") {
+      const now = Date.now();
+      if (now - sparkRetryRef.current < 30_000) return;
+      sparkRetryRef.current = now;
+    }
     void spark.connect().catch(() => {
-      // In caso di errore: state → "error" → sparkOffline=true → UI mostra avviso
+      // state → "error" → sparkOffline=true → UI mostra "Lightning non disponibile"
     });
-  }, [spark?.isEnabled]); // dipende solo dal flag — non re-triggera ad ogni render
+  }, [spark?.isEnabled, spark?.state, meta]); // meta null→non-null all'unlock = trigger
 
   // Spark Lightning balance — letto dal context (no fetch rete, già in memoria)
   // null se: Spark disabilitato | non connesso | walletInfo non ancora disponibile

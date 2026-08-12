@@ -1,0 +1,99 @@
+Sì. Confermo: Lightning non è ancora collegato correttamente alla UI del wallet.
+
+Dagli screenshot vediamo però una cosa importante:
+
+* ✅ spark_lightning_enabled = true
+* ✅ Alpha Wallet funziona
+* ✅ il portfolio riconosce che Lightning è indisponibile
+* ✅ compare correttamente l’avviso: “Dati parziali — Lightning non disponibile”
+* ❌ non compare Bitcoin Lightning ⚡
+* ❌ quindi spark.state non è arrivato a connected oppure connect() è fallito.
+
+Quindi il fix precedente ha fatto partire il tentativo, ma non ha completato la connessione.
+
+Adesso non fare altri tentativi manuali
+
+Dai all’agente questo prompt:
+
+DEBUG SPARK LIVE — NON MODIFICARE ALTRO FINCHÉ NON TROVI LA ROOT CAUSE
+
+Dopo il fix che aggiunge spark.connect() automatico, in produzione spark_lightning_enabled=true, ma su iPhone Alpha Wallet mostra:
+
+“Dati parziali — Lightning non disponibile”
+
+e non appare la riga Bitcoin Lightning ⚡.
+
+Quindi il problema non è più il feature flag.
+
+Devi tracciare il percorso reale:
+
+spark_lightning_enabled=true
+→ SparkWalletProvider
+→ connect()
+→ getMnemonic()
+→ loadKeystore/decryptSeed
+→ createBreezAdapter
+→ Breez SDK connect
+→ syncWallet
+→ state=connected
+→ sparkSat
+→ AlphaWalletPage
+→ riga Bitcoin Lightning.
+
+1. Aggiungi temporaneamente diagnostica non sensibile, senza mai loggare mnemonic, PIN, private key o API key.
+
+Devi sapere esattamente quale di questi passaggi fallisce.
+
+2. Verifica soprattutto getMnemonic():
+
+* sessionStorage["aw_bio_pin"] esiste davvero in produzione?
+* loadKeystore() trova il wallet corretto?
+* decryptSeed() riesce?
+* il mnemonic viene passato correttamente al LiveSparkAdapter?
+
+3. Verifica connect():
+
+* viene effettivamente chiamato?
+* quale stato assume il provider?
+* quale errore restituisce, se fallisce?
+* Breez SDK viene caricato?
+* IndexedDB breez-poc-live-v1 viene aperta?
+
+4. Verifica iOS Safari:
+
+* crossOriginIsolated === true
+* WASM caricato
+* nessun errore CORS/COOP/COEP
+* nessun errore IndexedDB
+* nessun errore WalletConnect/Spark.
+
+5. Verifica il rendering:
+se connect() termina correttamente con saldo 0 sat, la riga Lightning DEVE comunque apparire.
+
+6. NON usare il saldo per decidere se mostrare la riga.
+0 sat è un saldo valido.
+
+7. NON modificare:
+BTC, EVM, USDA, MultiChain, WalletContext, Payment Engine, ChatPage o fee BTC.
+
+8. NON disabilitare spark_lightning_enabled.
+
+Prima di fare qualsiasi altro fix, restituisci:
+
+ROOT CAUSE: [punto preciso]
+
+STATO: disabled / connecting / connected / error
+
+ERRORE ESATTO: […]
+
+FIX NECESSARIO: […]
+
+Solo dopo la diagnosi applica il fix minimo.
+
+La cosa positiva è che non siamo tornati al problema iniziale: il sistema ora sa che Lightning dovrebbe essere disponibile e ti avvisa correttamente quando non lo è.
+
+Il prossimo obiettivo è semplicemente arrivare a:
+
+connect() → connected → 0 sat → Bitcoin Lightning ⚡ visibile
+
+e poi faremo il vero test con 1.000 sat.
