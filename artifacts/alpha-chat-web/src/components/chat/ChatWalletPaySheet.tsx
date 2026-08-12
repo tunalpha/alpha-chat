@@ -40,6 +40,30 @@ import {
 import "./ChatWalletPaySheet.css";
 import { useLock } from "../../contexts/LockContext";
 import { useWalletFaceId, unsealWalletPin } from "../../wallet/security/wallet-pin-seal";
+import {
+  fetchPrices,
+  type AssetPrices,
+} from "../../wallet/services/price-service";
+
+/**
+ * Converte un importo fiat (EUR/USD) nella stringa crypto corrispondente.
+ * Ritorna stringa vuota se i prezzi non sono disponibili o l'importo non è valido.
+ */
+function cwpFiatToCrypto(
+  fiatStr: string,
+  assetSymbol: string,
+  mode: "eur" | "usd",
+  prices: AssetPrices | null,
+): string {
+  const fiatNum = parseFloat(fiatStr.replace(",", "."));
+  if (isNaN(fiatNum) || fiatNum <= 0 || !prices) return "";
+  const sym = assetSymbol.toLowerCase() as keyof AssetPrices;
+  const priceObj = prices[sym] as { usd: number; eur: number } | undefined;
+  const price = priceObj?.[mode];
+  if (!price || price <= 0) return "";
+  const decimals = assetSymbol.toUpperCase() === "BTC" ? 8 : 6;
+  return (fiatNum / price).toFixed(decimals);
+}
 
 /**
  * Calcola il colore del testo (bianco/nero) in base alla luminanza del colore di sfondo.
@@ -157,6 +181,9 @@ export function ChatWalletPaySheet({
 }: Props) {
   const bridge = useChatWalletBridge();
 
+  // ── Fetch prices per conversione EUR/USD ─────────────────────────────
+  useEffect(() => { fetchPrices().then(setPrices).catch(() => {}); }, []);
+
   // ── Biometric auth (Face ID per wallet) ──────────────────────────────
   const lock = useLock();
   const { walletFaceIdEnabled } = useWalletFaceId();
@@ -187,9 +214,11 @@ export function ChatWalletPaySheet({
   const [manualAddress, setManualAddress] = useState(
     prefillRequest?.recipientAddress ?? prefillRecipient ?? "",
   );
-  const [amount,        setAmount]        = useState(prefillRequest?.amount ?? "");
-  const [amountErr,     setAmountErr]     = useState<string | null>(null);
-  const [recipErr,      setRecipErr]      = useState<string | null>(null);
+  const [amount,          setAmount]          = useState(prefillRequest?.amount ?? "");
+  const [amountInputMode, setAmountInputMode] = useState<"crypto" | "eur" | "usd">("crypto");
+  const [prices,          setPrices]          = useState<AssetPrices | null>(null);
+  const [amountErr,       setAmountErr]       = useState<string | null>(null);
+  const [recipErr,        setRecipErr]        = useState<string | null>(null);
 
   // ── Quote ────────────────────────────────────────────────────────────
   const [quote,        setQuote]        = useState<PaymentQuote | null>(null);
@@ -263,11 +292,21 @@ export function ChatWalletPaySheet({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [quote]);
 
+  // ── Importo effettivo in crypto (per quote e validazione) ────────────
+  // Se inputMode è "crypto" usa amount direttamente; altrimenti converte fiat → crypto.
+  const effectiveAmount = amountInputMode === "crypto"
+    ? amount
+    : cwpFiatToCrypto(amount, asset.symbol, amountInputMode, prices);
+
   // ── Validazione ──────────────────────────────────────────────────────
   const validateAmount = (): boolean => {
-    const amt = parseFloat(amount);
-    if (!amount || isNaN(amt) || amt <= 0) {
-      setAmountErr("Inserisci un importo valido");
+    const numToCheck = parseFloat(amountInputMode === "crypto" ? amount : effectiveAmount);
+    if (!amount || isNaN(numToCheck) || numToCheck <= 0) {
+      setAmountErr(
+        amountInputMode !== "crypto" && !prices
+          ? "Prezzi non disponibili. Usa la modalità crypto."
+          : "Inserisci un importo valido",
+      );
       return false;
     }
     setAmountErr(null);
@@ -329,7 +368,7 @@ export function ChatWalletPaySheet({
         network,
         asset.contractAddress,
         asset.symbol,
-        amount,
+        effectiveAmount || amount,
       );
       // FIX Step 4 bianco: calculateQuote può risolvere `null` SENZA lanciare
       // (wallet non "ready" — es. auto-lock su iOS PWA — o importo non parsabile).
@@ -352,7 +391,7 @@ export function ChatWalletPaySheet({
       setQuoteLoading(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bridge, network, asset, amount, manualAddress, recipientMode, autoAddress, recipientName]);
+  }, [bridge, network, asset, amount, effectiveAmount, manualAddress, recipientMode, autoAddress, recipientName]);
 
   // ── onAuthRequired: prova Face ID silenziosamente, fallback PIN step ─
   const onAuthRequired = useCallback((): Promise<string | null> => {
@@ -719,7 +758,39 @@ export function ChatWalletPaySheet({
 
             <div className="cwp-section">
               <label className="cwp-label">Quanto vuoi inviare?</label>
+
+              {/* Toggle crypto / EUR / USD */}
+              <div className="cwp-mode-toggle">
+                {(["crypto", "eur", "usd"] as const).map(mode => {
+                  const label = mode === "crypto" ? asset.symbol : mode === "eur" ? "EUR €" : "USD $";
+                  const active = amountInputMode === mode;
+                  return (
+                    <button
+                      key={mode}
+                      type="button"
+                      className={`cwp-mode-pill${active ? " active" : ""}`}
+                      style={active ? { borderColor: netColor, color: netColor, background: `${netColor}18` } : {}}
+                      disabled={mode !== "crypto" && !prices}
+                      title={mode !== "crypto" && !prices ? "Prezzi non disponibili" : undefined}
+                      onClick={() => {
+                        setAmountInputMode(mode);
+                        setAmount("");
+                        setAmountErr(null);
+                        setQuoteErr(null);
+                      }}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
+              </div>
+
               <div className="cwp-amount-row">
+                {amountInputMode !== "crypto" && (
+                  <span className="cwp-amount-prefix">
+                    {amountInputMode === "eur" ? "€" : "$"}
+                  </span>
+                )}
                 <input
                   className={`cwp-input cwp-amount-input ${amountErr ? "error" : ""}`}
                   type="number"
@@ -731,8 +802,33 @@ export function ChatWalletPaySheet({
                   onChange={e => { setAmount(e.target.value); setAmountErr(null); setQuoteErr(null); }}
                   autoFocus
                 />
-                <span className="cwp-amount-symbol">{asset.symbol}</span>
+                {amountInputMode === "crypto" && (
+                  <span className="cwp-amount-symbol">{asset.symbol}</span>
+                )}
               </div>
+
+              {/* Conversione in tempo reale */}
+              {amount && parseFloat(amount) > 0 && prices && (() => {
+                const priceObj = prices[asset.symbol.toLowerCase() as keyof AssetPrices] as
+                  | { usd: number; eur: number } | undefined;
+                if (!priceObj) return null;
+                if (amountInputMode === "crypto") {
+                  const n = parseFloat(amount);
+                  if (isNaN(n)) return null;
+                  return (
+                    <div className="cwp-amount-hint">
+                      ≈ €{(n * priceObj.eur).toFixed(2)} · ${(n * priceObj.usd).toFixed(2)}
+                    </div>
+                  );
+                }
+                if (!effectiveAmount) return null;
+                return (
+                  <div className="cwp-amount-hint">
+                    ≈ {effectiveAmount} {asset.symbol}
+                  </div>
+                );
+              })()}
+
               {amountErr && <p className="cwp-field-err">{amountErr}</p>}
             </div>
 
