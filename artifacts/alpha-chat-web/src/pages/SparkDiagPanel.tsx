@@ -1,7 +1,9 @@
 /**
  * SparkDiagPanel — pannello diagnostico temporaneo Spark.
  *
- * Visibile direttamente nella pagina Alpha Wallet.
+ * ARCHITETTURA: NON usa position:fixed (clippato da overflow:hidden su iOS Safari PWA).
+ * È un elemento nel flex layout di .aw-root — flex-shrink:0 lo àncora in fondo.
+ *
  * SICUREZZA: mostra SOLO stato, booleani, codici errore.
  * MAI mnemonic, PIN, seed, private key, API key.
  *
@@ -18,16 +20,16 @@ function statusColor(v: string): string {
   if (v === "PASS" || v === "YES" || v === "ON" || v === "connected") return "#4ade80";
   if (v === "FAIL" || v === "NO" || v === "OFF" || v === "error")     return "#f87171";
   if (v === "connecting" || v === "syncing")                           return "#fbbf24";
-  return "#d1d5db";
+  return "#94a3b8";
 }
 
 function Row({ label, value }: { label: string; value: string }) {
   return (
     <div style={{
       display: "flex", justifyContent: "space-between", alignItems: "flex-start",
-      marginBottom: 5, gap: 8,
+      padding: "3px 0", gap: 8,
     }}>
-      <span style={{ color: "#9ca3af", fontSize: 11, whiteSpace: "nowrap", flexShrink: 0 }}>
+      <span style={{ color: "#94a3b8", fontSize: 11, whiteSpace: "nowrap", flexShrink: 0 }}>
         {label}
       </span>
       <span style={{
@@ -44,83 +46,68 @@ function Row({ label, value }: { label: string; value: string }) {
 
 export function SparkDiagPanel() {
   const [diag, setDiag] = useState<SparkDiagState>(getSparkDiag);
-  const [open, setOpen] = useState(true);
+  const [open, setOpen] = useState(false); // collassato di default
 
   useEffect(() => subscribeSparkDiag(() => setDiag(getSparkDiag())), []);
 
-  if (!open) {
-    return (
+  // Barra sempre visibile in fondo alla pagina (parte del flex layout, non fixed)
+  return (
+    <div
+      style={{
+        flexShrink: 0,           // non viene schiacciato dal main scrollabile
+        background: "#0d0d1a",
+        borderTop: "1.5px solid #7c3aed",
+        fontFamily: "'Courier New', monospace",
+        // Safe area bottom per iPhone con notch
+        paddingBottom: "env(safe-area-inset-bottom, 0px)",
+      }}
+    >
+      {/* Toggle header — sempre visibile */}
       <button
-        onClick={() => setOpen(true)}
+        onClick={() => setOpen(o => !o)}
         style={{
-          position: "fixed", bottom: 88, right: 14, zIndex: 9999,
-          background: "#7c3aed", color: "#fff", border: "none",
-          borderRadius: 8, padding: "5px 10px", fontSize: 12,
-          cursor: "pointer", opacity: 0.9,
-          boxShadow: "0 2px 8px rgba(0,0,0,0.5)",
+          width: "100%",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: "8px 14px",
+          background: "none",
+          border: "none",
+          cursor: "pointer",
+          color: "#a78bfa",
         }}
       >
-        ⚡ Diag
-      </button>
-    );
-  }
-
-  return (
-    <div style={{
-      position: "fixed",
-      bottom: 72,
-      left: 10,
-      right: 10,
-      zIndex: 9999,
-      background: "rgba(10,10,18,0.97)",
-      border: "1.5px solid #7c3aed",
-      borderRadius: 14,
-      padding: "12px 14px",
-      boxShadow: "0 6px 28px rgba(0,0,0,0.7)",
-      fontFamily: "'Courier New', monospace",
-    }}>
-      {/* header */}
-      <div style={{
-        display: "flex", justifyContent: "space-between", alignItems: "center",
-        marginBottom: 10, borderBottom: "1px solid #2d2d3a", paddingBottom: 8,
-      }}>
-        <span style={{ color: "#a78bfa", fontWeight: 700, fontSize: 13, letterSpacing: 0.5 }}>
+        <span style={{ fontSize: 12, fontWeight: 700, letterSpacing: 0.4 }}>
           ⚡ Spark Diagnostics
         </span>
-        <button
-          onClick={() => setOpen(false)}
-          style={{
-            background: "none", border: "none", color: "#6b7280",
-            cursor: "pointer", fontSize: 18, lineHeight: 1, padding: "0 2px",
-          }}
-        >
-          ✕
-        </button>
-      </div>
+        <span style={{ fontSize: 11, color: "#6b7280" }}>
+          {open ? "▲ chiudi" : "▼ espandi"}
+        </span>
+      </button>
 
-      {/* rows */}
-      <Row label="Feature flag"      value={diag.featureFlag} />
-      <Row label="Wallet unlocked"   value={diag.walletUnlocked} />
-      <Row label="connect() called"  value={diag.connectCalled} />
-      <Row label="getMnemonic()"     value={diag.getMnemonic} />
-      {diag.getMnemonicError && (
-        <Row label="  ↳ error" value={diag.getMnemonicError} />
+      {/* Contenuto espanso */}
+      {open && (
+        <div style={{ padding: "0 14px 10px" }}>
+          <Row label="Feature flag"     value={diag.featureFlag} />
+          <Row label="Wallet unlocked"  value={diag.walletUnlocked} />
+          <Row label="connect() called" value={diag.connectCalled} />
+          <Row label="getMnemonic()"    value={diag.getMnemonic} />
+          {diag.getMnemonicError ? (
+            <Row label="  ↳ error" value={diag.getMnemonicError} />
+          ) : null}
+          <Row label="Breez connect"    value={diag.breezConnect} />
+          {diag.breezConnectError ? (
+            <Row label="  ↳ error" value={diag.breezConnectError} />
+          ) : null}
+          <Row label="syncWallet()"     value={diag.syncWallet} />
+          <div style={{ height: 1, background: "#1e1e2e", margin: "6px 0" }} />
+          <Row label="Spark state"      value={diag.sparkState} />
+          <Row label="sparkSat"         value={diag.sparkSat} />
+          <div style={{ marginTop: 6, color: "#374151", fontSize: 9, textAlign: "right" }}>
+            upd {diag.lastUpdate.slice(11, 19)} UTC
+          </div>
+        </div>
       )}
-      <Row label="Breez connect"     value={diag.breezConnect} />
-      {diag.breezConnectError && (
-        <Row label="  ↳ error" value={diag.breezConnectError} />
-      )}
-      <Row label="syncWallet()"      value={diag.syncWallet} />
-      <div style={{ borderTop: "1px solid #2d2d3a", marginTop: 6, paddingTop: 8 }} />
-      <Row label="Spark state"       value={diag.sparkState} />
-      <Row label="sparkSat"          value={diag.sparkSat} />
-
-      {/* timestamp */}
-      <div style={{
-        marginTop: 8, color: "#4b5563", fontSize: 9, textAlign: "right",
-      }}>
-        upd {diag.lastUpdate.slice(11, 19)} UTC
-      </div>
     </div>
   );
 }

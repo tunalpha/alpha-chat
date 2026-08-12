@@ -1,0 +1,50 @@
+STOP — non fare altri fix funzionali a Spark e non modificare il flusso di connessione.
+
+Il diagnostic panel che hai dichiarato completato NON è visibile in produzione su iPhone.
+
+Ho aperto Alpha Wallet, sbloccato il wallet e aspettato oltre 20 secondi. Ho verificato tutta la pagina: non compare alcun pannello "Spark Diagnostics" e non ho quindi modo di vedere:
+- Feature flag
+- Wallet unlocked
+- connect() called
+- getMnemonic()
+- Breez connect
+- Spark state
+- sparkSat
+- error
+
+Prima di modificare qualsiasi logica Spark, fai una DIAGNOSI DEL DEPLOY del diagnostic panel.
+
+Verifica esattamente:
+
+1. Che SparkDiagPanel.tsx esista realmente nel codice.
+2. Che AlphaWalletPage.tsx lo importi.
+3. Che SparkDiagPanel venga effettivamente renderizzato nel JSX della pagina Alpha Wallet.
+4. Verifica che non sia condizionato da una condizione che sul mio account risulta false.
+5. Verifica se il pannello è visibile solo per admin/account specifici.
+6. Verifica che il file sia incluso nel build production.
+7. Verifica che il deployment attuale contenga la versione con SparkDiagPanel e non una build precedente/cache/service worker.
+8. Verifica nel DOM/E2E production se il pannello esiste ma è nascosto via CSS.
+9. Verifica che il pannello non sia semplicemente fuori viewport o sotto un container overflow-hidden.
+10. Verifica che il componente venga montato anche quando Spark è in stato error/disabled.
+11. Verifica che il pannello NON richieda che Spark sia già connected per essere visualizzato: deve essere sempre visibile quando spark_lightning_enabled=true, proprio perché serve a diagnosticare la mancata connessione.
+
+IMPORTANTE:
+Non aggiungere altri retry, cooldown, connect(), modifiche al keystore o modifiche alla logica Spark in questa fase.
+
+Voglio prima un report con:
+
+- PANEL_COMPONENT: FOUND / NOT FOUND
+- IMPORT: FOUND / NOT FOUND
+- JSX_RENDER: FOUND / NOT FOUND
+- CONDITION: ...
+- PRODUCTION_BUILD: FOUND / NOT FOUND
+- DOM_RENDER: YES / NO
+- CSS_VISIBLE: YES / NO
+- CURRENT_DEPLOY_VERSION: ...
+- ROOT_CAUSE: ...
+
+Se il problema è semplicemente che il pannello non viene renderizzato, correggi SOLO quello, poi build e deploy.
+
+Dopo il deploy, il pannello deve essere sempre visibile in fondo ad Alpha Wallet quando spark_lightning_enabled=true, anche se Spark è disconnected/error.
+
+NON considerare il lavoro completato finché non hai verificato concretamente che il pannello sia visibile nella build production.
