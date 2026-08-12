@@ -108,6 +108,7 @@ export const technology = {
     deepDiveLink: 'Investor Book → Architecture section',
     pillars: [
       { icon: '🔐', title: 'Signal Protocol E2E', body: 'Double Ratchet + X3DH key exchange — every message encrypted with ephemeral keys. Zero server knowledge.', tag: 'Cryptography' },
+      { icon: '🗝️', title: 'Alpha Wallet — Self-Custodial', body: 'HD wallet (BIP-39/44/84) built from scratch. Seed phrase generated locally, never transmitted. Private keys sign offline and are zeroed in memory immediately after. 4 chains: Polygon, Ethereum, BSC, Bitcoin.', tag: 'Self-Custody' },
       { icon: '💳', title: 'USDA Payment Layer', body: 'Native stablecoin payments embedded in conversations. Escrow-based P2P transfers with on-chain verification on Polygon.', tag: 'Blockchain' },
       { icon: '📞', title: 'WebRTC Secure Calls', body: 'E2E encrypted audio/video calls. TURN/STUN with ICE restart, quality monitoring (RTT, jitter, packet loss), call log and history.', tag: 'Real-time' },
       { icon: '📱', title: 'React Native Mobile', body: 'Single codebase for iOS and Android via Expo. Biometric lock (Face ID / Fingerprint), push notifications, PWA support.', tag: 'Cross-platform' },
@@ -118,9 +119,10 @@ export const technology = {
       { layer: 'Frontend',   tech: 'React Native (Expo) · React (Vite) · TypeScript' },
       { layer: 'Backend',    tech: 'Node.js · Express · TypeScript · MongoDB (Mongoose)' },
       { layer: 'Crypto',     tech: 'Signal Protocol · AES-256-GCM · Argon2id · X25519' },
-      { layer: 'Blockchain', tech: 'Polygon · Viem · ThirdWeb v5 · ERC-20 (USDA)' },
+      { layer: 'Wallet',     tech: 'BIP-39/44/84 · secp256k1 · P2WPKH SegWit · PSBT · WebCrypto API' },
+      { layer: 'Blockchain', tech: 'Polygon · Ethereum · BSC · Bitcoin · Viem · ERC-20 (USDA)' },
       { layer: 'Infra',      tech: 'Cloudflare R2 · Nodemailer SMTP · WebRTC · VAPID Push' },
-      { layer: 'Auth',       tech: 'JWT ES256 · Session tokens · Biometrics · PKCE' },
+      { layer: 'Auth',       tech: 'JWT ES256 · Session tokens · WebAuthn Face ID · PKCE' },
     ],
   },
   it: {
@@ -132,6 +134,7 @@ export const technology = {
     deepDiveLink: 'Investor Book → sezione Architettura',
     pillars: [
       { icon: '🔐', title: 'Signal Protocol E2E', body: 'Double Ratchet + X3DH key exchange — ogni messaggio cifrato con chiavi effimere. Zero conoscenza server.', tag: 'Crittografia' },
+      { icon: '🗝️', title: 'Alpha Wallet — Self-Custodial', body: 'Wallet HD (BIP-39/44/84) costruito da zero. Frase seme generata localmente, mai trasmessa. Le chiavi private firmano offline e vengono azzerate in memoria subito dopo. 4 chain: Polygon, Ethereum, BSC, Bitcoin.', tag: 'Self-Custody' },
       { icon: '💳', title: 'Layer Pagamenti USDA', body: 'Pagamenti in stablecoin nativi nelle conversazioni. Trasferimenti P2P con escrow e verifica on-chain su Polygon.', tag: 'Blockchain' },
       { icon: '📞', title: 'Chiamate Sicure WebRTC', body: 'Chiamate audio/video E2E cifrate. TURN/STUN con ICE restart, monitoraggio qualità (RTT, jitter, packet loss), cronologia chiamate.', tag: 'Real-time' },
       { icon: '📱', title: 'React Native Mobile', body: 'Codebase unico per iOS e Android via Expo. Blocco biometrico (Face ID / Impronta), notifiche push, supporto PWA.', tag: 'Cross-platform' },
@@ -142,9 +145,10 @@ export const technology = {
       { layer: 'Frontend',       tech: 'React Native (Expo) · React (Vite) · TypeScript' },
       { layer: 'Backend',        tech: 'Node.js · Express · TypeScript · MongoDB (Mongoose)' },
       { layer: 'Crittografia',   tech: 'Signal Protocol · AES-256-GCM · Argon2id · X25519' },
-      { layer: 'Blockchain',     tech: 'Polygon · Viem · ThirdWeb v5 · ERC-20 (USDA)' },
+      { layer: 'Wallet',         tech: 'BIP-39/44/84 · secp256k1 · P2WPKH SegWit · PSBT · WebCrypto API' },
+      { layer: 'Blockchain',     tech: 'Polygon · Ethereum · BSC · Bitcoin · Viem · ERC-20 (USDA)' },
       { layer: 'Infrastruttura', tech: 'Cloudflare R2 · Nodemailer SMTP · WebRTC · VAPID Push' },
-      { layer: 'Autenticazione', tech: 'JWT ES256 · Token di sessione · Biometria · PKCE' },
+      { layer: 'Autenticazione', tech: 'JWT ES256 · Token di sessione · WebAuthn Face ID · PKCE' },
     ],
   },
 };
@@ -172,6 +176,16 @@ export const security = {
           'X3DH key agreement — asynchronous session init without server mediation',
           'OTPK one-time prekeys — exhaustion auto-replenishment',
           'Identity key verification with Safety Numbers and QR scan',
+        ],
+      },
+      {
+        icon: '🗝️', title: 'Alpha Wallet — Self-Custodial Vault',
+        points: [
+          'BIP-39 mnemonic (12–24 words) generated locally with crypto.getRandomValues — never transmitted',
+          'Private key derived on-device (BIP-44/84), used to sign, then zeroed in try/finally block',
+          'Wallet encrypted with AES-256-GCM in IndexedDB; sealed with Face ID via WebAuthn',
+          'Server receives only the signed transaction — never the seed phrase or private key',
+          '4 chains: Polygon, Ethereum, BSC, Bitcoin Native SegWit (PSBT)',
         ],
       },
       {
@@ -224,6 +238,16 @@ export const security = {
           'X3DH key agreement — inizializzazione sessione asincrona senza mediazione server',
           'OTPK one-time prekeys — reintegro automatico alla scadenza',
           'Verifica della chiave d\'identità con Safety Numbers e scansione QR',
+        ],
+      },
+      {
+        icon: '🗝️', title: 'Alpha Wallet — Vault Self-Custodial',
+        points: [
+          'Frase seme BIP-39 (12–24 parole) generata localmente con crypto.getRandomValues — mai trasmessa',
+          'Chiave privata derivata on-device (BIP-44/84), usata per firmare, poi azzerata nel blocco try/finally',
+          'Wallet cifrato con AES-256-GCM in IndexedDB; sigillato con Face ID via WebAuthn',
+          'Il server riceve solo la transazione firmata — mai la frase seme o la chiave privata',
+          '4 chain: Polygon, Ethereum, BSC, Bitcoin Native SegWit (PSBT)',
         ],
       },
       {
