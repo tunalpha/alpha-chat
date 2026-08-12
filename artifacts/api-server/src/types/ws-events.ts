@@ -81,6 +81,7 @@ export type WsOutboundEventType =
   | "usda.payment.update"     // Server → mittente+destinatario: stato pagamento USDA aggiornato
   | "payment.state_changed"      // Server → mittente+destinatario: stato Chat Payment Engine aggiornato (Sprint 1)
   | "mc_payment.state_changed"  // Server → mittente+destinatario: stato Multi-Chain Payment Engine aggiornato
+  | "aw_payment_request.state_changed" // Server → requester+payer: stato richiesta Alpha Wallet aggiornato
   | "message.reaction";      // Server → membri: reaction aggiornata su un messaggio
 
 export interface WsOutboundEvent {

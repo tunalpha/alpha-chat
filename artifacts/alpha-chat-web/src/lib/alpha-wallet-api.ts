@@ -394,6 +394,74 @@ export async function apiWalletGetRecipient(userId: string): Promise<RecipientWa
   return walletRequest<RecipientWalletInfo>(`/alpha-wallet/recipient/${encodeURIComponent(userId)}`);
 }
 
+// ─── Phase G — Richiedi con Alpha Wallet (Payment Requests) ──────────────────
+
+export type AWPaymentRequestStatus = "pending" | "paid" | "cancelled" | "expired";
+
+export interface AWPaymentRequestPayload {
+  payerUserId:      string;
+  conversationId:   string;
+  network:          string;
+  assetSymbol:      string;
+  amount:           string;
+  requesterAddress: string;
+}
+
+export interface AWPaymentRequestResult {
+  requestId: string;
+  expiresAt: string;
+}
+
+export interface AWPaymentRequestInfo {
+  requestId:        string;
+  status:           AWPaymentRequestStatus;
+  txHash:           string | null;
+  network:          string;
+  assetSymbol:      string;
+  amount:           string;
+  requesterAddress: string;
+  expiresAt:        number;
+}
+
+/**
+ * POST /alpha-wallet/payment-requests
+ * Crea una richiesta di pagamento self-custodial.
+ */
+export async function apiCreateAlphaWalletPaymentRequest(
+  payload: AWPaymentRequestPayload,
+): Promise<AWPaymentRequestResult> {
+  return walletRequest<AWPaymentRequestResult>("/alpha-wallet/payment-requests", {
+    method: "POST",
+    body:   JSON.stringify(payload),
+  });
+}
+
+/**
+ * GET /alpha-wallet/payment-requests/:id
+ * Stato corrente di una richiesta (solo requester o payer).
+ */
+export async function apiGetAlphaWalletPaymentRequest(
+  requestId: string,
+): Promise<AWPaymentRequestInfo> {
+  return walletRequest<AWPaymentRequestInfo>(
+    `/alpha-wallet/payment-requests/${encodeURIComponent(requestId)}`,
+  );
+}
+
+/**
+ * PATCH /alpha-wallet/payment-requests/:id/paid
+ * Il payer segnala di aver eseguito il pagamento.
+ */
+export async function apiMarkAlphaWalletRequestPaid(
+  requestId: string,
+  txHash:    string,
+): Promise<void> {
+  await walletRequest<void>(`/alpha-wallet/payment-requests/${encodeURIComponent(requestId)}/paid`, {
+    method: "PATCH",
+    body:   JSON.stringify({ txHash }),
+  });
+}
+
 /**
  * GET /alpha-wallet/fee-records — admin only
  * Recupera i record di fee per il pannello admin.

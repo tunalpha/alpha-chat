@@ -21,6 +21,8 @@ import {
 } from "../wallet/token-registry-server";
 import { UserModel }                 from "../models/user.model";
 import { ConversationMemberModel }   from "../models/conversation-member.model";
+import { AlphaWalletPaymentRequestModel } from "../models/alpha-wallet-payment-request.model";
+import { wsManager }                 from "../lib/ws-manager";
 import mongoose                      from "mongoose";
 import pino from "pino";
 
@@ -874,6 +876,181 @@ export async function getFeeRecords(req: Request, res: Response, next: NextFunct
         },
       },
     });
+  } catch (err) { next(err); }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Phase G — Richiedi con Alpha Wallet (Payment Requests)
+// ─────────────────────────────────────────────────────────────────────────────
+
+const REQUEST_TTL_MS = 24 * 60 * 60 * 1000; // 24h
+
+/**
+ * POST /api/v1/alpha-wallet/payment-requests
+ *
+ * Crea una richiesta di pagamento self-custodial.
+ * Body: { payerUserId, conversationId, network, assetSymbol, amount, requesterAddress }
+ *
+ * SICUREZZA: non riceve mai seed, private key, PIN.
+ * Solo indirizzo pubblico del requester (per inviare i fondi).
+ */
+export async function createAlphaWalletPaymentRequest(
+  req: Request, res: Response, next: NextFunction,
+): Promise<void> {
+  try {
+    const requesterId = (req as any).user?.userId as string | undefined;
+    if (!requesterId) throw new AppError("UNAUTHORIZED", 401);
+
+    const {
+      payerUserId,
+      conversationId,
+      network,
+      assetSymbol,
+      amount,
+      requesterAddress,
+    } = req.body as Record<string, unknown>;
+
+    if (typeof payerUserId !== "string" || !mongoose.Types.ObjectId.isValid(payerUserId))
+      throw new AppError("INVALID_PAYER_ID", 400);
+    if (typeof conversationId !== "string" || !mongoose.Types.ObjectId.isValid(conversationId))
+      throw new AppError("INVALID_CONVERSATION_ID", 400);
+    if (typeof network !== "string" || !["polygon","ethereum","bsc","bitcoin"].includes(network))
+      throw new AppError("INVALID_NETWORK", 400);
+    if (typeof assetSymbol !== "string" || !assetSymbol.trim())
+      throw new AppError("INVALID_ASSET_SYMBOL", 400);
+    if (typeof amount !== "string" || isNaN(parseFloat(amount)) || parseFloat(amount) <= 0)
+      throw new AppError("INVALID_AMOUNT", 400);
+    if (
+      typeof requesterAddress !== "string" ||
+      (network !== "bitcoin" && !/^0x[0-9a-fA-F]{40}$/.test(requesterAddress)) ||
+      (network === "bitcoin" && !/^(bc1|[13])[a-zA-Z0-9]{25,87}$/.test(requesterAddress))
+    ) throw new AppError("INVALID_REQUESTER_ADDRESS", 400);
+    if (payerUserId === requesterId) throw new AppError("CANNOT_REQUEST_FROM_SELF", 400);
+
+    // Verifica che payer esista
+    const payerExists = await UserModel.exists({ _id: new mongoose.Types.ObjectId(payerUserId) });
+    if (!payerExists) throw new AppError("PAYER_NOT_FOUND", 404);
+
+    const expiresAt = new Date(Date.now() + REQUEST_TTL_MS);
+
+    const doc = await AlphaWalletPaymentRequestModel.create({
+      requester_id:      new mongoose.Types.ObjectId(requesterId),
+      payer_id:          new mongoose.Types.ObjectId(payerUserId),
+      conversation_id:   new mongoose.Types.ObjectId(conversationId as string),
+      network,
+      asset_symbol:      assetSymbol,
+      amount,
+      requester_address: requesterAddress,
+      status:            "pending",
+      expires_at:        expiresAt,
+    });
+
+    res.status(201).json({
+      data: {
+        requestId:  (doc._id as mongoose.Types.ObjectId).toString(),
+        expiresAt:  expiresAt.toISOString(),
+      },
+    });
+  } catch (err) { next(err); }
+}
+
+/**
+ * GET /api/v1/alpha-wallet/payment-requests/:id
+ *
+ * Restituisce lo stato corrente di una richiesta.
+ * Accessibile solo da requester o payer (verifica _id appartenenza).
+ */
+export async function getAlphaWalletPaymentRequest(
+  req: Request, res: Response, next: NextFunction,
+): Promise<void> {
+  try {
+    const userId = (req as any).user?.userId as string | undefined;
+    if (!userId) throw new AppError("UNAUTHORIZED", 401);
+
+    const { id } = req.params as { id: string };
+    if (!mongoose.Types.ObjectId.isValid(id)) throw new AppError("INVALID_REQUEST_ID", 400);
+
+    const doc = await AlphaWalletPaymentRequestModel
+      .findById(id)
+      .select("requester_id payer_id status tx_hash expires_at network asset_symbol amount requester_address")
+      .lean();
+
+    if (!doc) throw new AppError("REQUEST_NOT_FOUND", 404);
+
+    // Solo requester o payer possono vedere
+    const rid = doc.requester_id.toString();
+    const pid = doc.payer_id.toString();
+    if (userId !== rid && userId !== pid) throw new AppError("FORBIDDEN", 403);
+
+    // Controlla scadenza
+    const expired = new Date() > new Date(doc.expires_at) && doc.status === "pending";
+    const effectiveStatus = expired ? "expired" : doc.status;
+
+    res.json({
+      data: {
+        requestId:        id,
+        status:           effectiveStatus,
+        txHash:           doc.tx_hash ?? null,
+        network:          doc.network,
+        assetSymbol:      doc.asset_symbol,
+        amount:           doc.amount,
+        requesterAddress: doc.requester_address,
+        expiresAt:        new Date(doc.expires_at).getTime(),
+      },
+    });
+  } catch (err) { next(err); }
+}
+
+/**
+ * PATCH /api/v1/alpha-wallet/payment-requests/:id/paid
+ *
+ * Il payer segnala di aver eseguito il pagamento (dopo TX broadcast).
+ * Body: { txHash }
+ * Emette WS aw_payment_request.state_changed a requester e payer.
+ */
+export async function markAlphaWalletRequestPaid(
+  req: Request, res: Response, next: NextFunction,
+): Promise<void> {
+  try {
+    const userId = (req as any).user?.userId as string | undefined;
+    if (!userId) throw new AppError("UNAUTHORIZED", 401);
+
+    const { id } = req.params as { id: string };
+    if (!mongoose.Types.ObjectId.isValid(id)) throw new AppError("INVALID_REQUEST_ID", 400);
+
+    const { txHash } = req.body as { txHash?: unknown };
+    if (typeof txHash !== "string" || !txHash.trim()) throw new AppError("INVALID_TX_HASH", 400);
+
+    const doc = await AlphaWalletPaymentRequestModel.findById(id).lean();
+    if (!doc) throw new AppError("REQUEST_NOT_FOUND", 404);
+
+    // Solo il payer può marcare come paid
+    if (doc.payer_id.toString() !== userId) throw new AppError("FORBIDDEN", 403);
+    if (doc.status !== "pending") {
+      // Idempotente: se già paid restituisce OK
+      res.json({ data: { ok: true, status: doc.status } });
+      return;
+    }
+
+    await AlphaWalletPaymentRequestModel.updateOne(
+      { _id: doc._id, status: "pending" },
+      { $set: { status: "paid", tx_hash: txHash } },
+    );
+
+    // Notifica WS a entrambe le parti
+    const payload = {
+      requestId: id,
+      status:    "paid" as const,
+      txHash,
+    };
+    wsManager.sendToUsers(
+      [doc.requester_id.toString(), doc.payer_id.toString()],
+      { type: "aw_payment_request.state_changed", payload },
+    );
+
+    logger.info({ requestId: id, txHash }, "aw_payment_request marked paid");
+
+    res.json({ data: { ok: true, status: "paid" } });
   } catch (err) { next(err); }
 }
 

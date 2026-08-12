@@ -34,6 +34,7 @@ import {
 } from "../../wallet/bridge/chat-wallet-bridge";
 import {
   apiWalletGetRecipient,
+  apiMarkAlphaWalletRequestPaid,
   type RecipientWalletInfo,
 } from "../../lib/alpha-wallet-api";
 import "./ChatWalletPaySheet.css";
@@ -41,6 +42,16 @@ import { useLock } from "../../contexts/LockContext";
 import { useWalletFaceId, unsealWalletPin } from "../../wallet/security/wallet-pin-seal";
 
 // ─── Types ────────────────────────────────────────────────────────────────
+
+/** Dati pre-compilati dal bubble "Richiedi" — apre il wizard direttamente su amount. */
+export interface PrefillRequest {
+  requestId:            string;
+  network:              SupportedNetwork;
+  assetSymbol:          string;
+  tokenContractAddress: string | null;
+  amount:               string;
+  recipientAddress:     string;
+}
 
 interface Props {
   recipientUserId?:  string;
@@ -50,6 +61,8 @@ interface Props {
   onClose:           () => void;
   onSent:            (result: ChatPaymentResult) => void;
   onSendInvite?:     (message: string) => void;
+  /** Se presente, salta a step="amount" con campi bloccati (payer flow). */
+  prefillRequest?:   PrefillRequest;
 }
 
 interface AssetOption {
@@ -129,6 +142,7 @@ export function ChatWalletPaySheet({
   onClose,
   onSent,
   onSendInvite,
+  prefillRequest,
 }: Props) {
   const bridge = useChatWalletBridge();
 
@@ -139,21 +153,30 @@ export function ChatWalletPaySheet({
   const walletBioActive  = walletFaceIdEnabled && hasBiometricSet;
 
   // ── Wizard step ──────────────────────────────────────────────────────
-  const [step, setStep] = useState<WizardStep>("recipient");
+  // Quando prefillRequest è presente salta direttamente ad "amount" (payer flow).
+  const [step, setStep] = useState<WizardStep>(prefillRequest ? "amount" : "recipient");
 
   // ── Network / asset ──────────────────────────────────────────────────
-  const [network,  setNetwork]  = useState<SupportedNetwork>("polygon");
-  const [assetIdx, setAssetIdx] = useState(0);
+  const [network,  setNetwork]  = useState<SupportedNetwork>(prefillRequest?.network ?? "polygon");
+  const [assetIdx, setAssetIdx] = useState(() => {
+    if (!prefillRequest) return 0;
+    const idx = ASSETS_BY_NETWORK[prefillRequest.network]
+      .findIndex(a => a.symbol === prefillRequest.assetSymbol);
+    return Math.max(0, idx);
+  });
 
   // ── Recipient discovery ──────────────────────────────────────────────
   const [recipientMode, setRecipientMode] = useState<RecipientMode>(
+    prefillRequest ? "manual" :
     recipientUserId ? "loading" : "manual",
   );
   const [recipientInfo, setRecipientInfo] = useState<RecipientWalletInfo | null>(null);
 
   // ── Form state ───────────────────────────────────────────────────────
-  const [manualAddress, setManualAddress] = useState(prefillRecipient ?? "");
-  const [amount,        setAmount]        = useState("");
+  const [manualAddress, setManualAddress] = useState(
+    prefillRequest?.recipientAddress ?? prefillRecipient ?? "",
+  );
+  const [amount,        setAmount]        = useState(prefillRequest?.amount ?? "");
   const [amountErr,     setAmountErr]     = useState<string | null>(null);
   const [recipErr,      setRecipErr]      = useState<string | null>(null);
 
@@ -184,6 +207,8 @@ export function ChatWalletPaySheet({
 
   // ── Fetch recipient on mount ─────────────────────────────────────────
   useEffect(() => {
+    // In prefill (payer) mode l'indirizzo è già noto → non serve lookup
+    if (prefillRequest) return;
     if (!recipientUserId) { setRecipientMode("manual"); return; }
     let cancelled = false;
     (async () => {
@@ -416,6 +441,10 @@ export function ChatWalletPaySheet({
     }
 
     if (result.status === "sent" || result.status === "confirmed") {
+      // Se stiamo pagando una richiesta, notifica il backend (best-effort)
+      if (prefillRequest?.requestId && result.txHash) {
+        apiMarkAlphaWalletRequestPaid(prefillRequest.requestId, result.txHash).catch(() => {});
+      }
       setTxHash(result.txHash ?? null);
       setStep("success");
       onSent(result);
@@ -616,7 +645,43 @@ export function ChatWalletPaySheet({
         {/* ════════════════════════════════════════════════════════════
             STEP 3 — Importo
         ═══════════════════════════════════════════════════════════════ */}
-        {step === "amount" && (
+        {step === "amount" && prefillRequest && (
+          /* Payer flow — campi bloccati dalla richiesta ricevuta */
+          <div className="cwp-step">
+            <div
+              className="cwp-manual-confirm-warning"
+              style={{ marginBottom: 12, background: `${netColor}12`, borderColor: `${netColor}40`, color: "inherit" }}
+            >
+              📥 Stai pagando una richiesta ricevuta. Rete, asset e importo sono fissati dal richiedente.
+            </div>
+            <div className="cwp-amount-context">
+              <span className="cwp-ctx-pill" style={{ color: netColor, borderColor: `${netColor}50`, background: `${netColor}12` }}>
+                {NETWORK_LABELS[network]}
+              </span>
+              <span className="cwp-ctx-pill">{asset.icon} {asset.symbol}</span>
+              <span className="cwp-ctx-pill">→ {displayName}</span>
+            </div>
+            <div className="cwp-section">
+              <label className="cwp-label">Importo richiesto</label>
+              <div className="cwp-amount-row" style={{ opacity: 0.85 }}>
+                <span className="cwp-input cwp-amount-input" style={{ display: "flex", alignItems: "center", background: "var(--color-surface,#1a1a2e)", cursor: "default" }}>
+                  {amount}
+                </span>
+                <span className="cwp-amount-symbol">{asset.symbol}</span>
+              </div>
+            </div>
+            <div className="cwp-section">
+              <label className="cwp-label">Indirizzo destinatario</label>
+              <div className="cwp-quote-addr-full" style={{ marginTop: 4 }}>
+                🔒 {manualAddress}
+              </div>
+            </div>
+            {quoteErr && <p className="cwp-quote-err">{quoteErr}</p>}
+            {sendErr && <p className="cwp-send-err">{sendErr}</p>}
+          </div>
+        )}
+        {step === "amount" && !prefillRequest && (
+          /* Normale: tutti i campi editabili */
           <div className="cwp-step">
             <div className="cwp-amount-context">
               <span className="cwp-ctx-pill" style={{ color: netColor, borderColor: `${netColor}50`, background: `${netColor}12` }}>

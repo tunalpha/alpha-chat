@@ -18,6 +18,10 @@ import { ErrorBoundary }             from "../components/ErrorBoundary";
 import { ChatWalletPaymentBubble }   from "../components/chat/ChatWalletPaymentBubble";
 import type { WalletPaymentMeta }    from "../components/chat/ChatWalletPaymentBubble";
 import { ChatWalletPaySheet }        from "../components/chat/ChatWalletPaySheet";
+import type { PrefillRequest }       from "../components/chat/ChatWalletPaySheet";
+import { ChatWalletRequestSheet }    from "../components/chat/ChatWalletRequestSheet";
+import { ChatWalletRequestBubble }   from "../components/chat/ChatWalletRequestBubble";
+import type { WalletRequestMeta, AWRequestStatus } from "../components/chat/ChatWalletRequestBubble";
 import { useChatWalletBridge }       from "../wallet/bridge/chat-wallet-bridge-context";
 import type { ChatPaymentResult }    from "../wallet/bridge/chat-wallet-bridge";
 import type { MCSystemMeta }        from "../lib/multichain-api";
@@ -905,8 +909,13 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
   const [showSendUsda,    setShowSendUsda]    = useState(false);   // legacy — non più connesso al pulsante
   const [showSendPayment, setShowSendPayment] = useState(false);   // nuovo Payment Engine
   // Phase G — Alpha Wallet self-custodial (SEPARATO dal Payment Engine)
-  // REGOLA §15: showWalletPay è settato SOLO da tap utente, MAI da eventi WS/remoti
-  const [showWalletPay,   setShowWalletPay]   = useState(false);
+  // REGOLA §15: showWalletPay/showWalletRequest è settato SOLO da tap utente, MAI da WS
+  const [showWalletPay,     setShowWalletPay]     = useState(false);
+  const [showWalletRequest, setShowWalletRequest] = useState(false);
+  /** Dati pre-compilati quando il pagante clicca "Paga" in una bubble richiesta */
+  const [walletRequestPay, setWalletRequestPay] = useState<PrefillRequest | null>(null);
+  /** Mappa requestId → status — aggiornata da WS aw_payment_request.state_changed */
+  const [walletRequestStatuses, setWalletRequestStatuses] = useState<Map<string, AWRequestStatus>>(new Map());
   // ── Multi-Chain Payments ─────────────────────────────────────────────
   const [showMCPay,      setShowMCPay]      = useState(false);
   const [showMCRequest,  setShowMCRequest]  = useState(false);
@@ -1876,6 +1885,20 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
               };
             }),
           );
+          break;
+        }
+
+        // Phase G — Alpha Wallet: aggiorna stato richiesta di pagamento in-place
+        case "aw_payment_request.state_changed": {
+          const { requestId: awReqId, status: awStatus } = event.payload as {
+            requestId?: string; status?: string;
+          };
+          if (!awReqId || !awStatus) break;
+          setWalletRequestStatuses(prev => {
+            const next = new Map(prev);
+            next.set(awReqId, awStatus as AWRequestStatus);
+            return next;
+          });
           break;
         }
 
@@ -4005,6 +4028,31 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
                                 : null;
                             } catch { return null; }
                           })()
+                        ) : text.startsWith("🔐WALLETREQ:") ? (
+                          /* Phase G — Alpha Wallet: richiesta di pagamento via sendProgrammatic. */
+                          (() => {
+                            try {
+                              const raw  = text.slice("🔐WALLETREQ:".length);
+                              const meta = JSON.parse(raw) as WalletRequestMeta;
+                              return meta.requestId
+                                ? <ErrorBoundary fallback={<div style={{ fontSize: "0.78rem", opacity: 0.5, padding: "8px 12px" }}>⚠ Richiesta wallet non visualizzabile</div>}>
+                                    <ChatWalletRequestBubble
+                                      meta={meta}
+                                      isMine={isMine}
+                                      statusOverride={walletRequestStatuses.get(meta.requestId)}
+                                      onPay={(payData) => setWalletRequestPay({
+                                        requestId:            payData.requestId,
+                                        network:              payData.network,
+                                        assetSymbol:          payData.assetSymbol,
+                                        tokenContractAddress: payData.tokenContractAddress,
+                                        amount:               payData.amount,
+                                        recipientAddress:     payData.recipientAddress,
+                                      })}
+                                    />
+                                  </ErrorBoundary>
+                                : null;
+                            } catch { return null; }
+                          })()
                         ) : (decryptedTexts.get(msg.id) ?? "").startsWith(ANIMATED_STICKER_MARKER) ? (
                           /* Sticker animato Lottie v:2 — rilevato da ANIMATED_STICKER_MARKER */
                           <AnimatedStickerMessage body={decryptedTexts.get(msg.id) ?? ""} />
@@ -4492,6 +4540,16 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
                   <span className="attach-sheet-icon">💸</span>
                   <span>USDA</span>
                 </button>
+                {/* Alpha Wallet — self-custodial */}
+                {walletBridge.status !== "unavailable" && activeConv?.type !== "group" && (
+                  <button
+                    className="attach-sheet-item"
+                    onClick={() => { setShowAttachSheet(false); setAttachSubMenu("none"); setTimeout(() => setShowWalletRequest(true), 80); }}
+                  >
+                    <span className="attach-sheet-icon">🔐</span>
+                    <span>Alpha Wallet{walletBridge.status === "locked" ? " 🔒" : ""}</span>
+                  </button>
+                )}
                 {/* USDT + BTC */}
                 {multichainEnabled && (
                   <>
@@ -4937,6 +4995,48 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
           onClose={() => setShowWalletPay(false)}
           onSent={(result: ChatPaymentResult) => {
             setShowWalletPay(false);
+            if (result.status === "sent" || result.status === "confirmed") {
+              const meta: WalletPaymentMeta = {
+                txHash:      result.txHash ?? "",
+                network:     result.network ?? "polygon",
+                assetSymbol: result.assetSymbol ?? "",
+                amount:      result.amountSent ?? "",
+                fee:         result.fee,
+                direction:   "out",
+                status:      "sent",
+                explorerUrl: result.explorerUrl ?? "",
+              };
+              void sendProgrammatic(`🔐WALLETPAY:${JSON.stringify(meta)}`);
+            }
+          }}
+        />
+      )}
+
+      {/* Phase G — Alpha Wallet: richiesta di pagamento (richiedente) */}
+      {showWalletRequest && activeConv && auth && activeConv.type !== "group" && (
+        <ChatWalletRequestSheet
+          conversationId={activeConvId ?? ""}
+          payerUserId={activeConv.other_user?.user_id ?? ""}
+          payerName={activeConv.other_user?.display_name ?? activeConv.other_user?.username}
+          onClose={() => setShowWalletRequest(false)}
+          onRequested={(_requestId, meta) => {
+            setShowWalletRequest(false);
+            void sendProgrammatic(`🔐WALLETREQ:${JSON.stringify(meta)}`);
+          }}
+        />
+      )}
+
+      {/* Phase G — Alpha Wallet: paga una richiesta ricevuta (pagante — aperto da bubble) */}
+      {walletRequestPay && activeConv && auth && activeConv.type !== "group" && (
+        <ChatWalletPaySheet
+          conversationId={activeConvId ?? ""}
+          recipientUserId={activeConv.other_user?.user_id}
+          recipientName={activeConv.other_user?.display_name ?? activeConv.other_user?.username}
+          prefillRequest={walletRequestPay}
+          onSendInvite={(msg) => void sendProgrammatic(msg)}
+          onClose={() => setWalletRequestPay(null)}
+          onSent={(result: ChatPaymentResult) => {
+            setWalletRequestPay(null);
             if (result.status === "sent" || result.status === "confirmed") {
               const meta: WalletPaymentMeta = {
                 txHash:      result.txHash ?? "",

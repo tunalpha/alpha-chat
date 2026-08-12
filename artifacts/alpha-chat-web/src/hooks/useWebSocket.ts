@@ -41,7 +41,9 @@ export type WsEvent =
   | { type: "message.reaction"; payload: Record<string, unknown> }
   // Phase G — Alpha Wallet self-custodial TX confirmation
   // REGOLA §15: questo evento aggiorna solo il bubble, NON autorizza TX
-  | { type: "wallet_payment.confirmed"; payload: Record<string, unknown> };
+  | { type: "wallet_payment.confirmed"; payload: Record<string, unknown> }
+  // Phase G — Alpha Wallet: stato richiesta di pagamento aggiornato
+  | { type: "aw_payment_request.state_changed"; payload: Record<string, unknown> };
 
 type EventHandler = (event: WsEvent) => void;
 

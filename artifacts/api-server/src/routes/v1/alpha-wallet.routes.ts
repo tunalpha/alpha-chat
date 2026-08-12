@@ -33,6 +33,10 @@ import {
   // Task #93: Recipient Wallet Discovery
   registerAlphaWalletAddress,
   getAlphaWalletRecipient,
+  // Phase G — Richiedi con Alpha Wallet
+  createAlphaWalletPaymentRequest,
+  getAlphaWalletPaymentRequest,
+  markAlphaWalletRequestPaid,
 } from "../../controllers/alpha-wallet.controller";
 
 const router = Router();
@@ -126,5 +130,27 @@ router.post("/register-address", registerAlphaWalletAddress);
  * 403 se non esiste conversazione comune.
  */
 router.get("/recipient/:userId", getAlphaWalletRecipient);
+
+// ── Phase G — Richiedi con Alpha Wallet ───────────────────────────────────
+
+/**
+ * POST /payment-requests
+ * Crea una richiesta di pagamento self-custodial.
+ * Body: { payerUserId, conversationId, network, assetSymbol, amount, requesterAddress }
+ */
+router.post("/payment-requests", createAlphaWalletPaymentRequest);
+
+/**
+ * GET /payment-requests/:id
+ * Stato corrente di una richiesta. Solo requester o payer.
+ */
+router.get("/payment-requests/:id", getAlphaWalletPaymentRequest);
+
+/**
+ * PATCH /payment-requests/:id/paid
+ * Il payer segna la richiesta come pagata (dopo TX broadcast).
+ * Body: { txHash }
+ */
+router.patch("/payment-requests/:id/paid", markAlphaWalletRequestPaid);
 
 export default router;
