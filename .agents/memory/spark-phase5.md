@@ -1,40 +1,50 @@
 ---
 name: Spark Phase 5 — Pre-Go-Live Validation
-description: Portfolio integration, 4 test file (132 nuovi test), report 23-item. 993/993 PASS.
+description: Stato finale Phase 5, production COOP/COEP fix, kill switch admin, deploy instructions
 ---
 
-## Cosa è stato costruito
+## Stato completato
 
-### SparkWalletContext — nuovo export
-- `useSparkWalletOptional()` → `SparkWalletContextValue | null` — non lancia se fuori da SparkWalletProvider
-- **Perché:** AlphaWalletPage (e altri) devono usare Spark opzionalmente; `useSparkWallet()` lancia se il provider non è in tree (spark_lightning_enabled=false)
+- 993/993 test PASS (alpha-chat-web)
+- 56/56 test PASS (admin-panel)
+- Build SUCCESS tutti gli artifact
 
-### AlphaWalletPage.tsx — Portfolio Spark (§12)
-- `useSparkWalletOptional()` in `usePortfolioBalances()` → return aggiunto `sparkSat: bigint|null`, `sparkLoading: boolean`, `sparkOffline: boolean`
-- `sparkSat=null` quando `state !== "connected"` o adapter non presente — mai inventare zero
-- `calcPortfolioTotal(all, prices, fiatKey, sparkSat?)` — aggiunto quarto parametro opzionale
-- `formatSatoshisToBtc(sats: bigint): string` — helper: `(Number(sats)/1e8).toFixed(8) + " BTC"`
-- Riga Lightning: `chainId=-1, icon="⚡", network="Lightning"` (≠ BTC on-chain: chainId=0, icon="₿", network="Bitcoin")
-- `fiatStr: formatFiat(sparkSat, 8, po, currency)` — usare bigint direttamente (NON Number())
-- partialCount = failedChains + (sparkOffline ? 1 : 0)
-- Warning "Lightning non disponibile" separato da warning chain-down
+## COOP/COEP in produzione — soluzione adottata
 
-### Test files nuovi (alpha-chat-web/src/tests/spark/)
-- `spark-connect-sync.test.ts` — 40 test (gruppi A-G)
-- `spark-failure-idempotency.test.ts` — 35 test (gruppi A-F)
-- `spark-recovery.test.ts` — 25 test (gruppi A-G)
-- `spark-portfolio.test.ts` — 26 test (gruppi A-F)
-- `spark-admin-security.test.ts` — 39 test (gruppi A-F) — importa da admin-panel/src/lib/spark-api
+**Problema:** `serve = "static"` in artifact.toml non invia COOP/COEP headers → SharedArrayBuffer non disponibile → Breez SDK WASM fallisce in produzione.
 
-### Report
-- `artifacts/breez-spark-poc/SPARK_PHASE5_VALIDATION_REPORT.md` — 23 item, 18 PASS, 5 PENDING (iPhone reale)
+**Soluzione:** `artifacts/alpha-chat-web/server.mjs` — server Node.js built-in (nessuna dipendenza npm) che:
+- Imposta `Cross-Origin-Opener-Policy: same-origin`
+- Imposta `Cross-Origin-Embedder-Policy: require-corp`
+- Serve i file statici da `dist/public` con MIME types corretti
+- SPA fallback → `index.html` per React Router DOM
+- Cache immutable per asset con hash Vite, no-cache per index.html/sw.js
 
-## Invarianti critiche (mai violare)
+artifact.toml aggiornato: `serve = "static"` → `deploymentTarget = "autoscale"` con `run = ["node", "artifacts/alpha-chat-web/server.mjs"]`
 
-- **No double counting**: sparkSat e btc.confirmedSat sono SEPARATI — stesso prezzo BTC ma mai sommare i sat
-- **No fake zero**: sparkSat=null (Spark offline) ≠ sparkSat=0n (Spark connesso, wallet vuoto)
-- **formatFiat vuole bigint**: passare `sparkSat` non `Number(sparkSat)` — errore TS2345
-- **chainId Lightning = -1**: non confondere con chainId=0 (Bitcoin on-chain)
+**Verifica:** `curl -I localhost:29999/ | grep Cross-Origin` → `same-origin` + `require-corp` ✅
 
-## Status finale
-993/993 PASS, build SUCCESS, TS clean (Spark). Feature ancora OFF: `spark_lightning_enabled=false`
+## Kill switch admin
+
+**Where:** Admin Panel → Spark / Lightning (sidebar)
+**Toggle:** "Abilita Go-Live" / "Kill Switch"
+**API:** PATCH /api/v1/admin/settings `{ spark_lightning_enabled: true/false }`
+**Auth:** solo super_admin
+
+## Procedura go-live
+
+1. Pubblica il deploy (Replit → Deploy)
+2. Verifica produzione: apri https://alphachat.sbs su iPhone, controlla devtools `crossOriginIsolated = true`
+3. Admin Panel → Spark / Lightning → "Abilita Go-Live" → conferma
+4. Testa invio/ricezione Lightning su mainnet (importo piccolo)
+5. Se problemi → "Kill Switch" in admin panel → immediato
+6. Post-test: lasciare `spark_lightning_enabled = true` se OK, altrimenti kill switch
+
+## Flag stato attuale
+
+- `spark_lightning_enabled = false` (default DB)
+- Cambiare a `true` DOPO il deploy tramite admin panel
+
+## Prerequisiti Sprint successivo (Admin Monitoring Spark)
+
+Concordato dopo go-live: volume Lightning, fee revenue, Treasury reconciliation, health Breez node.

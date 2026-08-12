@@ -9,7 +9,7 @@
  *   PATCH /api/v1/spark/fee-config  — richiede super_admin
  */
 
-import { getToken } from "./api";
+import { getToken, apiFetch } from "./api";
 
 const SPARK_BASE = "/api/v1/spark";
 
@@ -105,6 +105,27 @@ export function validateSparkQuoteValiditySec(val: number): string | null {
 
 export function apiGetSparkFeeConfig(): Promise<SparkFeeConfig> {
   return sparkFetch<SparkFeeConfig>("/fee-config");
+}
+
+// ── Admin Settings — spark_lightning_enabled kill switch ──────────────────
+
+interface AdminSettingsResponse {
+  spark_lightning_enabled: boolean;
+  [key: string]: unknown;
+}
+
+export function apiGetSparkEnabled(): Promise<boolean> {
+  return apiFetch<AdminSettingsResponse>("/admin/settings").then(
+    (s) => s.spark_lightning_enabled ?? false,
+  );
+}
+
+export function apiSetSparkEnabled(enabled: boolean): Promise<void> {
+  return apiFetch<void>("/admin/settings", {
+    method:  "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body:    JSON.stringify({ spark_lightning_enabled: enabled }),
+  });
 }
 
 export function apiUpdateSparkFeeConfig(payload: {

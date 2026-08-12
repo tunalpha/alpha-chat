@@ -1,0 +1,43 @@
+Sì, in questo caso ha senso. Se sei l’unico utente, possiamo fare il deploy con Spark già ON e usarlo come test di produzione controllato.
+
+La cosa importante è che l’agente non lo interpreti come autorizzazione a fare modifiche invasive.
+
+Io gli darei questo prompt:
+
+Procedi con il deploy in produzione della versione attuale di Spark.
+
+Poiché al momento non ci sono clienti esterni e il wallet sarà utilizzato esclusivamente da me per la validazione, imposta spark_lightning_enabled=true dopo il deploy e abilita Spark in produzione.
+
+Obiettivo: effettuare il primo test reale end-to-end in ambiente production.
+
+Prima del deploy:
+
+* esegui tutti i test esistenti;
+* verifica build e TypeScript;
+* verifica che non ci siano regressioni;
+* verifica che BTC on-chain, EVM, USDA, Chat, Signal e Payment Engine siano invariati;
+* verifica che la Breez API key sia configurata correttamente come secret;
+* verifica che il kill switch Spark rimanga disponibile dall’Admin.
+
+Dopo il deploy:
+
+* verifica che l’app si avvii correttamente;
+* verifica crossOriginIsolated;
+* verifica caricamento WASM;
+* verifica connect → getInfo → syncWallet;
+* verifica portfolio BTC on-chain + Lightning separati;
+* verifica fee Alpha 0,10%;
+* verifica Treasury accounting;
+* verifica send/receive con importo reale molto piccolo, massimo 10.000 sat;
+* verifica storico e idempotenza;
+* verifica che nessuna transazione BTC on-chain venga alterata.
+
+IMPORTANTE: non modificare WalletContext BTC, ChatPage, Signal, USDA, MultiChain o Payment Engine.
+
+Non fare refactoring non necessario.
+
+Al termine NON considerare automaticamente il sistema pronto per clienti esterni: produci un report completo dei test production reali, eventuali problemi e stato GO/NO-GO.
+
+Il fatto che Spark venga attivato ora è autorizzato perché l’ambiente non ha clienti esterni ed è utilizzato esclusivamente per la nostra validazione controllata.
+
+Questa è la strada giusta. Facciamo il deploy, lo accendiamo e lo proviamo realmente tu per primo. Se qualcosa non torna, lo correggiamo prima di qualsiasi cliente.

@@ -14,13 +14,22 @@ localPort = 19025
 run = "pnpm --filter @workspace/alpha-chat-web run dev"
 
 [services.production]
-build = [ "pnpm", "--filter", "@workspace/alpha-chat-web", "run", "build" ]
-serve = "static"
-publicDir = "artifacts/alpha-chat-web/dist/public"
+deploymentTarget = "autoscale"
 
-[[services.production.rewrites]]
-from = "/*"
-to = "/index.html"
+[services.production.build]
+args = ["pnpm", "--filter", "@workspace/alpha-chat-web", "run", "build"]
+
+[services.production.build.env]
+NODE_ENV = "production"
+
+[services.production.run]
+# server.mjs: Node.js built-in only, no deps. Sets COOP/COEP headers for
+# SharedArrayBuffer / Breez SDK WASM. SPA fallback → index.html.
+args = ["node", "artifacts/alpha-chat-web/server.mjs"]
+
+[services.production.run.env]
+PORT = "19025"
+NODE_ENV = "production"
 
 [services.env]
 PORT = "19025"

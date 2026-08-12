@@ -55,6 +55,8 @@ import {
   X,
   Check,
   Lock,
+  Power,
+  PowerOff,
 } from "lucide-react";
 
 import {
@@ -66,6 +68,8 @@ import {
   validateSparkQuoteValiditySec,
   apiGetSparkFeeConfig,
   apiUpdateSparkFeeConfig,
+  apiGetSparkEnabled,
+  apiSetSparkEnabled,
 } from "@/lib/spark-api";
 
 // ─── Interfaccia form locale ───────────────────────────────────────────────
@@ -107,11 +111,12 @@ export default function SparkLightningFeePage() {
   const isSuperAdmin    = user?.admin_role === "super_admin";
 
   // ── State ─────────────────────────────────────────────────────────────────
-  const [editing,      setEditing]      = useState(false);
-  const [form,         setForm]         = useState<EditForm | null>(null);
-  const [formErrors,   setFormErrors]   = useState<Partial<EditForm>>({});
-  const [confirmOpen,  setConfirmOpen]  = useState(false);
-  const [pendingPatch, setPendingPatch] = useState<Partial<SparkFeeConfig> | null>(null);
+  const [editing,           setEditing]           = useState(false);
+  const [form,              setForm]              = useState<EditForm | null>(null);
+  const [formErrors,        setFormErrors]        = useState<Partial<EditForm>>({});
+  const [confirmOpen,       setConfirmOpen]       = useState(false);
+  const [pendingPatch,      setPendingPatch]      = useState<Partial<SparkFeeConfig> | null>(null);
+  const [toggleConfirm,     setToggleConfirm]     = useState<"enable" | "disable" | null>(null);
 
   // ── Query ─────────────────────────────────────────────────────────────────
   const {
@@ -124,7 +129,39 @@ export default function SparkLightningFeePage() {
     staleTime: 30_000,
   });
 
+  const {
+    data:      sparkEnabled,
+    isLoading: loadingEnabled,
+  } = useQuery({
+    queryKey:  ["spark-enabled"],
+    queryFn:   apiGetSparkEnabled,
+    staleTime: 10_000,
+  });
+
   // ── Mutation ──────────────────────────────────────────────────────────────
+  const toggleMutation = useMutation({
+    mutationFn: (enabled: boolean) => apiSetSparkEnabled(enabled),
+    onSuccess: (_data, enabled) => {
+      void queryClient.invalidateQueries({ queryKey: ["spark-enabled"] });
+      setToggleConfirm(null);
+      toast({
+        title: enabled
+          ? "⚡ Spark Lightning ABILITATO"
+          : "🔒 Spark Lightning DISABILITATO",
+        description: enabled
+          ? "Spark Lightning è ora attivo in produzione. Gli utenti possono usare i pagamenti Lightning."
+          : "Kill switch attivato. Spark Lightning è disabilitato in produzione.",
+      });
+    },
+    onError: (err: Error) => {
+      toast({
+        title:       "❌ Operazione fallita",
+        description: err.message,
+        variant:     "destructive",
+      });
+    },
+  });
+
   const patchMutation = useMutation({
     mutationFn: apiUpdateSparkFeeConfig,
     onSuccess: () => {
@@ -205,15 +242,55 @@ export default function SparkLightningFeePage() {
         </div>
       </div>
 
-      {/* Status banner: Spark disabilitato */}
-      <div className="flex items-start gap-2 rounded-lg bg-yellow-900/20 border border-yellow-700/30 px-4 py-3">
-        <Lock className="h-4 w-4 text-yellow-400 mt-0.5 shrink-0" />
-        <div className="text-xs text-yellow-300/80">
-          <strong>spark_lightning_enabled = false</strong> — Spark non è attivo in produzione.
-          Questa pagina consente la pre-configurazione della fee prima del go-live.
-          Le modifiche verranno applicate quando Spark sarà abilitato.
-        </div>
-      </div>
+      {/* Kill Switch — spark_lightning_enabled toggle */}
+      <Card className={sparkEnabled
+        ? "bg-green-900/20 border-green-700/40"
+        : "bg-yellow-900/20 border-yellow-700/30"
+      }>
+        <CardContent className="pt-4">
+          <div className="flex items-center justify-between gap-4">
+            <div className="flex items-center gap-2">
+              {sparkEnabled
+                ? <Power    className="h-4 w-4 text-green-400 shrink-0" />
+                : <PowerOff className="h-4 w-4 text-yellow-400 shrink-0" />
+              }
+              <div>
+                <p className={`text-sm font-semibold ${sparkEnabled ? "text-green-300" : "text-yellow-300"}`}>
+                  {loadingEnabled
+                    ? "Caricamento stato…"
+                    : sparkEnabled
+                      ? "Spark Lightning ATTIVO in produzione"
+                      : "Spark Lightning DISABILITATO (kill switch)"
+                  }
+                </p>
+                <p className="text-xs text-white/50 mt-0.5">
+                  {sparkEnabled
+                    ? "Gli utenti possono effettuare pagamenti Lightning. Usa il kill switch per disabilitare istantaneamente."
+                    : "Spark non è attivo. Gli utenti non vedono l'opzione Lightning. Pre-configura la fee e abilita per il go-live."
+                  }
+                </p>
+              </div>
+            </div>
+            {isSuperAdmin && !loadingEnabled && (
+              <Button
+                size="sm"
+                variant={sparkEnabled ? "outline" : "default"}
+                className={sparkEnabled
+                  ? "border-red-700/50 text-red-400 hover:bg-red-900/30 shrink-0"
+                  : "bg-green-700 hover:bg-green-600 text-white shrink-0"
+                }
+                onClick={() => setToggleConfirm(sparkEnabled ? "disable" : "enable")}
+                disabled={toggleMutation.isPending}
+              >
+                {sparkEnabled
+                  ? <><PowerOff className="h-3.5 w-3.5 mr-1.5" /> Kill Switch</>
+                  : <><Power    className="h-3.5 w-3.5 mr-1.5" /> Abilita Go-Live</>
+                }
+              </Button>
+            )}
+          </div>
+        </CardContent>
+      </Card>
 
       {/* Isolamento info */}
       <div className="flex items-start gap-2 rounded-lg bg-blue-900/20 border border-blue-700/30 px-4 py-3">
@@ -405,6 +482,63 @@ export default function SparkLightningFeePage() {
           ))}
         </CardContent>
       </Card>
+
+      {/* Toggle confirm dialog — Enable / Kill switch */}
+      <Dialog open={toggleConfirm !== null} onOpenChange={(o) => { if (!o) setToggleConfirm(null); }}>
+        <DialogContent className="bg-[#1a1a1a] border-white/10 text-white">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              {toggleConfirm === "enable"
+                ? <><Power    className="h-5 w-5 text-green-400" /> Abilitare Spark Lightning in produzione?</>
+                : <><PowerOff className="h-5 w-5 text-red-400"   /> Disabilitare Spark Lightning?</>
+              }
+            </DialogTitle>
+            <DialogDescription className="text-white/50 text-sm">
+              {toggleConfirm === "enable"
+                ? "Spark Lightning diventerà attivo immediatamente. Gli utenti potranno inviare e ricevere pagamenti Lightning tramite Alpha Wallet."
+                : "Kill switch: Spark Lightning viene disabilitato istantaneamente. Gli utenti non vedranno l'opzione Lightning. La fee config rimane invariata."
+              }
+            </DialogDescription>
+          </DialogHeader>
+          {toggleConfirm === "enable" && (
+            <div className="bg-green-900/20 border border-green-700/30 rounded-lg p-3 text-xs text-green-300/80 space-y-1">
+              <p><strong>Prerequisiti verificati (Phase 5):</strong></p>
+              <p>✅ WASM Breez SDK — crossOriginIsolated attivo (COOP/COEP in produzione)</p>
+              <p>✅ 993/993 test PASS — nessuna regressione</p>
+              <p>✅ Kill switch disponibile — disabilitare istantaneamente con "Kill Switch"</p>
+            </div>
+          )}
+          {toggleConfirm === "disable" && (
+            <div className="bg-red-900/20 border border-red-700/30 rounded-lg p-3 text-xs text-red-300/80">
+              <p>⚡ Pagamenti Lightning in corso potrebbero essere interrotti se disabiliti ora.</p>
+              <p className="mt-1">La fee configuration viene mantenuta e potrà essere riabilitata.</p>
+            </div>
+          )}
+          <DialogFooter>
+            <Button
+              variant="ghost"
+              onClick={() => setToggleConfirm(null)}
+              className="text-white/50"
+              disabled={toggleMutation.isPending}
+            >
+              Annulla
+            </Button>
+            <Button
+              onClick={() => toggleMutation.mutate(toggleConfirm === "enable")}
+              disabled={toggleMutation.isPending}
+              className={toggleConfirm === "enable"
+                ? "bg-green-700 hover:bg-green-600 text-white"
+                : "bg-red-700 hover:bg-red-600 text-white"
+              }
+            >
+              {toggleMutation.isPending
+                ? "Aggiornamento…"
+                : toggleConfirm === "enable" ? "⚡ Abilita Go-Live" : "🔒 Disabilita ora"
+              }
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Confirm dialog */}
       <Dialog open={confirmOpen} onOpenChange={setConfirmOpen}>

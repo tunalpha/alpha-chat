@@ -162,6 +162,10 @@ export default defineConfig({
     headers: {
       // Impedisce a Safari/iOS di cachare i moduli JS durante lo sviluppo
       'Cache-Control': 'no-store',
+      // COOP/COEP obbligatori per SharedArrayBuffer (Breez SDK Spark WASM).
+      // In produzione: impostati da server.mjs (non dal CDN statico).
+      'Cross-Origin-Opener-Policy':  'same-origin',
+      'Cross-Origin-Embedder-Policy': 'require-corp',
     },
     fs: {
       strict: true,
