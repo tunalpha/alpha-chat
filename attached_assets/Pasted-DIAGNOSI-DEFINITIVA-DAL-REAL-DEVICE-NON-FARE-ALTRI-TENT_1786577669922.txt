@@ -1,0 +1,74 @@
+DIAGNOSI DEFINITIVA DAL REAL DEVICE — NON FARE ALTRI TENTATIVI ALLA CIECA.
+
+Il pannello Spark Diagnostics su iPhone mostra:
+
+Feature flag: ON
+Wallet unlocked: YES
+connect() called: YES
+getMnemonic(): —
+Breez connect: FAIL
+Error:
+"Module name, '@breeztech/breez-sdk-spark' does not resolve to a valid URL."
+Spark state: error
+sparkSat: N/A
+
+ROOT CAUSE DA RISOLVERE:
+Il browser production non riesce a risolvere il bare module import
+@breeztech/breez-sdk-spark.
+
+Questo avviene PRIMA di getMnemonic(), quindi NON è un problema di:
+- keystore
+- mnemonic
+- PIN
+- unlock
+- Breez credentials
+- Spark network
+- iPhone background
+- fee
+
+Indaga esclusivamente sulla risoluzione/bundling del modulo Breez.
+
+CONTESTO IMPORTANTE:
+In Phase 3.1 era stato aggiunto:
+build.rollupOptions.external = ["@breeztech/breez-sdk-spark"]
+per evitare il build error quando il package non era installato direttamente in alpha-chat-web.
+
+Ora però il lazy/dynamic import production sta lasciando probabilmente un bare import:
+import("@breeztech/breez-sdk-spark")
+che il browser iOS non può risolvere.
+
+VERIFICA:
+
+1. Cerca tutti gli import di @breeztech/breez-sdk-spark in alpha-chat-web.
+2. Determina esattamente quale file genera il dynamic import.
+3. Controlla il dist production finale:
+   - deve contenere il codice WASM/SDK necessario oppure un URL browser-risolvibile;
+   - NON deve contenere un bare import @breeztech/breez-sdk-spark destinato al browser.
+4. Controlla vite.config.ts e rimuovi/correggi l'external SOLO se necessario.
+5. Verifica package.json/package-lock/pnpm-lock e workspace dependency.
+6. Assicurati che @breeztech/breez-sdk-spark sia disponibile durante il build di alpha-chat-web.
+7. Mantieni il lazy loading: con spark_lightning_enabled=false il codice Spark non deve essere caricato.
+8. Con spark_lightning_enabled=true il browser deve poter caricare realmente il modulo SDK.
+9. Mantieni COOP/COEP.
+10. Non modificare WalletContext BTC, keystore, fee engine, Treasury, send/receive o altre parti funzionali.
+
+CRITERIO DI SUCCESSO:
+
+Con flag=false:
+- zero Spark SDK al cold start.
+
+Con flag=true:
+- il dynamic import deve risolversi realmente;
+- Breez SDK deve iniziare connect();
+- il diagnostic panel deve passare oltre "Breez connect FAIL";
+- getMnemonic deve poter essere eseguito;
+- Spark state deve arrivare a connected.
+
+Prima di modificare il codice dammi la ROOT CAUSE ESATTA del problema di bundling/resolution.
+
+Poi applica il fix minimo, esegui test + build production e mostrami:
+- build PASS
+- 993/993 test PASS (o eventuale variazione motivata)
+- verifica che nel dist non rimanga un bare import @breeztech/breez-sdk-spark.
+
+NON dichiarare completato finché il modulo è effettivamente browser-resolvibile nella build production.

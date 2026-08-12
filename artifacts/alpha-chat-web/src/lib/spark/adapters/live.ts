@@ -52,13 +52,13 @@ export class LiveSparkAdapter implements BreezSparkAdapter {
     // ────────────────────────────────────────────────────────────────────────
     try {
       // Dynamic import — il WASM viene caricato qui (lazy).
-      // @vite-ignore: il pacchetto non è bundlato — viene caricato a runtime
-      // solo quando spark_lightning_enabled=true. Rollup non deve tentare di
-      // risolvere questa importazione a build-time.
-      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
-      // @ts-ignore
+      // L'SDK è servito come file statico da public/spark/ (non bundlato —
+      // 7.2 MB WASM causerebbe OOM durante il build).
+      // L'URL relativa si risolve correttamente con qualsiasi base path di deployment.
+      const sparkBase = (import.meta.env.BASE_URL as string).replace(/\/$/, '');
+      const sparkUrl  = `${sparkBase}/spark/index.js`;
       // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
-      const sdkModule = await import(/* @vite-ignore */ "@breeztech/breez-sdk-spark") as Record<string, unknown>;
+      const sdkModule = await import(/* @vite-ignore */ sparkUrl) as Record<string, unknown>;
       const sdkKeys = Object.keys(sdkModule).join(",");
       console.log("[SPARK_DIAG] SDK module imported, keys:", sdkKeys);
 
