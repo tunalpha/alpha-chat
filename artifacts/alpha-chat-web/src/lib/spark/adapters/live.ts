@@ -36,11 +36,15 @@ export class LiveSparkAdapter implements BreezSparkAdapter {
   private _state: SparkAdapterState = "disconnected";
   private _lastError?: SparkAdapterError;
   private _sdk: SdkInstance | null = null;
+  /** Callback iniettato da SparkWalletContext.connect() per accedere al keystore */
+  private _getMnemonicFn?: () => Promise<string>;
 
   get state()     { return this._state;     }
   get lastError() { return this._lastError; }
 
   async connect(config: SparkConnectConfig): Promise<void> {
+    // Salva il callback prima di tutto
+    if (config.getMnemonic) this._getMnemonicFn = config.getMnemonic;
     this._state = "connecting";
     try {
       // Dynamic import — il WASM viene caricato qui (lazy).
@@ -214,17 +218,31 @@ export class LiveSparkAdapter implements BreezSparkAdapter {
   }
 
   /**
-   * Recupera il mnemonic dall'Alpha Wallet storage.
-   * @internal — deve essere implementato nel contesto di integrazione Alpha Wallet.
-   * Placeholder: sarà collegato a WalletContext nella fase di wiring.
+   * Recupera il mnemonic dall'Alpha Wallet keystore tramite il callback iniettato.
+   *
+   * SECURITY:
+   * - Il callback legge sessionStorage "aw_bio_pin" (già scritto da unlockWallet)
+   *   e decifra il keystore IDB con AES-256-GCM via decryptSeed()
+   * - Il plaintext mnemonic rimane in memoria JS solo per la durata di connect()
+   * - NON viene mai loggato (nessun console.log/error sul plaintext)
+   * - NON viene mai inviato al backend
+   * - NON viene scritto in IDB Spark né in localStorage
+   * - L'SDK lo usa esclusivamente per la derivazione locale (ExternalSigner)
+   * - WalletContext BTC NON viene modificato
    */
   private async _getMnemonic(): Promise<string> {
-    // TODO (Phase 2 wiring): ottenere il mnemonic da WalletContext / keystore Alpha
-    // SECURITY: il mnemonic deve essere gestito in memoria, mai serializzato
-    throw new Error(
-      "LiveSparkAdapter._getMnemonic() non ancora collegato. " +
-      "Completare il wiring con Alpha Wallet keystore nella Fase 2.",
-    );
+    if (!this._getMnemonicFn) {
+      throw new Error(
+        "[SparkLive] getMnemonic callback non iniettato. " +
+        "Assicurarsi che SparkWalletProvider riceva il prop getMnemonic da App.tsx.",
+      );
+    }
+    const mnemonic = await this._getMnemonicFn();
+    if (!mnemonic || typeof mnemonic !== "string") {
+      throw new Error("[SparkLive] getMnemonic ha restituito un valore non valido");
+    }
+    // SECURITY: nessun log del plaintext mnemonic
+    return mnemonic;
   }
 
   private _assertSdk(): SdkInstance {

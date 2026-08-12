@@ -18,6 +18,15 @@ import { logger } from "../lib/logger";
 
 export type FeeRecordStatus = "success" | "failed_transient" | "failed_permanent";
 
+/**
+ * Source di una fee record — identifica l'origine del pagamento.
+ *
+ * GUARDRAIL: una fee Spark NON deve mai essere contabilizzata come fee BTC on-chain.
+ * Il campo `source` è obbligatorio per tutte le nuove fee record.
+ * Default retrocompatibile: `btc_onchain` per record pre-esistenti senza il campo.
+ */
+export type FeeRecordSource = "btc_onchain" | "spark_lightning";
+
 export interface IAlphaWalletFeeRecord {
   /** Idempotency key = txHash della TX principale del pagamento */
   _id:        string;
@@ -32,6 +41,17 @@ export interface IAlphaWalletFeeRecord {
   feeTxHash?: string;
   /** Ultimo messaggio di errore */
   lastError?: string;
+  /**
+   * Sorgente della fee — identifica il sistema che ha generato questa fee.
+   *
+   * ISOLAMENTO TREASURY:
+   * - btc_onchain  → fee raccolta via TX EVM/BTC (Alpha Wallet Pay)
+   * - spark_lightning → fee raccolta via Lightning (Spark — futura)
+   *
+   * Le fee Spark vengono accreditate allo STESSO BTC Treasury ma con source distinta
+   * per separare la contabilità. NON confondere mai source nel reporting.
+   */
+  source?:    FeeRecordSource;
   createdAt:  Date;
   updatedAt:  Date;
 }
@@ -51,6 +71,15 @@ const FeeRecordSchema = new mongoose.Schema<IAlphaWalletFeeRecord>(
     attempts:    { type: Number, required: true, min: 1 },
     feeTxHash:   { type: String },
     lastError:   { type: String },
+    /**
+     * Source retrocompatibile: assente sui record pre-esistenti = btc_onchain.
+     * GUARDRAIL: i record Spark DEVONO avere source="spark_lightning".
+     */
+    source: {
+      type:    String,
+      enum:    ["btc_onchain", "spark_lightning"],
+      default: undefined, // pre-existing records treated as btc_onchain in query logic
+    },
   },
   {
     timestamps:   true,           // createdAt / updatedAt auto

@@ -95,14 +95,21 @@ export function useSparkWallet(): SparkWalletContextValue {
 // ── Provider ──────────────────────────────────────────────────────────────────
 
 interface Props {
-  children:  ReactNode;
+  children:    ReactNode;
   /** Iniettato da App.tsx leggendo AppFeatureFlags */
-  isEnabled: boolean;
+  isEnabled:   boolean;
   /** storageDir per IndexedDB Spark — idealmente basato sull'userId */
   storageDir?: string;
+  /**
+   * Callback per ottenere il mnemonic dal keystore Alpha Wallet.
+   * Iniettato da App.tsx — legge sessionStorage "aw_bio_pin" + decryptSeed().
+   * NON modifica WalletContext BTC.
+   * Se assente: LiveAdapter usa il proprio fallback (lancia errore).
+   */
+  getMnemonic?: () => Promise<string>;
 }
 
-export function SparkWalletProvider({ children, isEnabled, storageDir = "spark-wallet-v1" }: Props) {
+export function SparkWalletProvider({ children, isEnabled, storageDir = "spark-wallet-v1", getMnemonic }: Props) {
   const adapterRef             = useRef<BreezSparkAdapter | null>(null);
   const [state, setState]      = useState<SparkAdapterState | "disabled">("disabled");
   const [lastError, setError]  = useState<SparkAdapterError | undefined>();
@@ -140,7 +147,9 @@ export function SparkWalletProvider({ children, isEnabled, storageDir = "spark-w
     try {
       const adapter = await createSparkAdapter();
       adapterRef.current = adapter;
-      await adapter.connect({ storageDir, network: "mainnet" });
+      // getMnemonic iniettato da App.tsx — legge keystore Alpha Wallet via sessionStorage.
+      // SECURITY: il plaintext mnemonic esiste in memoria solo durante connect().
+      await adapter.connect({ storageDir, network: "mainnet", getMnemonic });
       const info = await adapter.getInfo();
       setInfo(info);
       setState("connected");

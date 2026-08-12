@@ -1,4 +1,4 @@
-import { useState, useEffect, lazy, Suspense, type ReactNode } from "react";
+import { useState, useEffect, useCallback, lazy, Suspense, type ReactNode } from "react";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { LockProvider, useLock } from "./contexts/LockContext";
 import { CallProvider, useCall } from "./contexts/CallContext";
@@ -322,14 +322,57 @@ function AppContent() {
  *
  * FASE CORRENTE (spark disabled): questo componente si riduce a un Fragment.
  */
+/**
+ * SparkWalletProviderWrapper — lazy isolation gate per Lightning/Spark.
+ *
+ * KEYSTORE WIRING (Phase 4):
+ * Fornisce `getMnemonic` callback a SparkWalletProvider.
+ * Il callback legge `sessionStorage["aw_bio_pin"]` (già scritto da unlockWallet/importWallet)
+ * e decifra il keystore IDB con decryptSeed(entry, pin).
+ *
+ * SECURITY:
+ * - NON modifica WalletContext BTC
+ * - Il mnemonic plaintext è in memoria solo durante connect()
+ * - sessionStorage["aw_bio_pin"] è già presente nel codebase (biometric unlock)
+ * - MAI loggato, MAI inviato al backend, MAI scritto in IDB Spark
+ *
+ * ISOLAMENTO:
+ * - Con spark_lightning_enabled=false: render diretto di children, zero import Spark
+ * - Con spark_lightning_enabled=true: lazy-load SparkWalletContext
+ */
 function SparkWalletProviderWrapper({ children }: { children: ReactNode }) {
   const [sparkEnabled, setSparkEnabled] = useState(false);
 
   useEffect(() => {
-    // Fail-safe = false: se la chiamata fallisce, Spark rimane disabilitato
     void apiGetAppFeatureFlags()
       .then(flags => setSparkEnabled(flags.spark_lightning_enabled ?? false))
-      .catch(() => { /* spark rimane false */ });
+      .catch(() => { /* spark rimane false — fail-safe */ });
+  }, []);
+
+  /**
+   * getMnemonic — accede al keystore Alpha Wallet tramite il PIN di sessione.
+   *
+   * SECURITY:
+   * - sessionStorage["aw_bio_pin"] è scritto da unlockWallet() e importWallet()
+   *   (biometric session cache, già esistente nel codebase)
+   * - loadKeystore() + decryptSeed() = AES-256-GCM, no network
+   * - Il plaintext mnemonic è scartato dopo che connect() lo ha usato
+   * - WalletContext BTC NON viene modificato
+   */
+  const getMnemonic = useCallback(async (): Promise<string> => {
+    // Legge PIN dalla session cache — set da unlockWallet/importWallet
+    const pin = sessionStorage.getItem("aw_bio_pin");
+    if (!pin) {
+      throw new Error(
+        "[SparkWallet] Wallet non sbloccato — sbloccare Alpha Wallet prima di connettere Spark",
+      );
+    }
+    // Dynamic import keystore per non appesantire il bundle con spark=false
+    const { loadKeystore, decryptSeed } = await import("./wallet/core/keystore");
+    const entry = await loadKeystore();
+    if (!entry) throw new Error("[SparkWallet] Keystore Alpha Wallet non trovato");
+    // SECURITY: il mnemonic plaintext esiste solo per la durata di questa chiamata
+    return decryptSeed(entry, pin);
   }, []);
 
   // FASE CORRENTE: spark_lightning_enabled=false → children diretti, zero Spark code
@@ -338,7 +381,7 @@ function SparkWalletProviderWrapper({ children }: { children: ReactNode }) {
   // spark_lightning_enabled=true → lazy-load SparkWalletContext per la prima volta
   return (
     <Suspense fallback={<>{children}</>}>
-      <_LazySparkProvider isEnabled={true}>
+      <_LazySparkProvider isEnabled={true} getMnemonic={getMnemonic}>
         {children}
       </_LazySparkProvider>
     </Suspense>

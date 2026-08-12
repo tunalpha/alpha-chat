@@ -144,7 +144,36 @@ export interface SparkAdapterError {
   recoverable: boolean;
 }
 
+/**
+ * Sorgente di una fee record Spark — identifica l'origine del pagamento.
+ *
+ * GUARDRAIL TREASURY:
+ * - btc_onchain  → fee raccolta via TX EVM/BTC (Alpha Wallet Pay)
+ * - spark_lightning → fee raccolta via Lightning/Spark
+ *
+ * Le fee Spark usano lo STESSO BTC Treasury ma con source diversa
+ * per separare la contabilità. Mai confondere le due sorgenti.
+ *
+ * Mirroring di FeeRecordSource in alpha-wallet-fee-record.model.ts (backend).
+ */
+export type FeeRecordSource = "btc_onchain" | "spark_lightning";
+
 export interface SparkConnectConfig {
   storageDir: string;
-  network:    'mainnet';  // solo mainnet nel JS SDK Spark
+  network:    "mainnet" | "testnet";
+  /**
+   * Callback per ottenere il mnemonic BIP39 dal keystore Alpha Wallet.
+   *
+   * SECURITY:
+   * - Chiamato SOLO durante connect() — il plaintext mnemonic vive in memoria JS
+   *   solo per la durata della chiamata SDK, poi rimosso dal GC
+   * - NON viene mai loggato, serializzato, inviato al backend o scritto in IDB/localStorage
+   * - L'SDK lo usa esclusivamente per derivazione locale (path Spark m/8797555'/1'/0')
+   * - WalletContext BTC NON viene modificato (path BTC m/84' rimane separato)
+   *
+   * Implementazione in App.tsx:
+   *   legge sessionStorage["aw_bio_pin"] (già scritto da unlockWallet/importWallet)
+   *   → loadKeystore() → decryptSeed(entry, pin) → restituisce mnemonic plaintext
+   */
+  getMnemonic?: () => Promise<string>;
 }

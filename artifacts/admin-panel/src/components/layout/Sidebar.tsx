@@ -24,6 +24,7 @@ import {
   Percent,
   TrendingUp,
   Wallet,
+  Zap,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 
@@ -50,6 +51,7 @@ const navItems = [
   { href: "/fee-config",         label: "Fee per Rete",     icon: Percent    },
   { href: "/revenue-monitor",    label: "Revenue",          icon: TrendingUp },
   { href: "/alpha-wallet-fee",   label: "Alpha Wallet Fee", icon: Wallet     },
+  { href: "/spark-lightning-fee", label: "Spark / Lightning", icon: Zap       },
 ];
 
 interface SidebarProps {
