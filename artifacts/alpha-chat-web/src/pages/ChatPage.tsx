@@ -4475,7 +4475,7 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
                         className="attach-sheet-item"
                         onClick={() => { setShowAttachSheet(false); setAttachSubMenu("none"); setTimeout(() => setShowWalletPay(true), 80); }}
                       >
-                        <span className="attach-sheet-icon">🔐</span>
+                        <img src="/logo.svg" alt="Alpha Chat" className="attach-sheet-logo-img" />
                         <span>Paga con Alpha Wallet{walletBridge.status === "locked" ? " 🔒" : ""}</span>
                       </button>
                     ) : (
@@ -4487,7 +4487,7 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
                           showToast("Configura Alpha Wallet prima di inviare. Vai in Chat → Alpha Wallet.");
                         }}
                       >
-                        <span className="attach-sheet-icon">🔐</span>
+                        <img src="/logo.svg" alt="Alpha Chat" className="attach-sheet-logo-img" />
                         <span>Paga con Alpha Wallet</span>
                       </button>
                     )}
@@ -4497,7 +4497,7 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
                         className="attach-sheet-item"
                         onClick={() => { setShowAttachSheet(false); setAttachSubMenu("none"); setTimeout(() => setShowWalletRequest(true), 80); }}
                       >
-                        <span className="attach-sheet-icon">💎</span>
+                        <img src="/logo.svg" alt="Alpha Chat" className="attach-sheet-logo-img" />
                         <span>Richiedi con Alpha Wallet{walletBridge.status === "locked" ? " 🔒" : ""}</span>
                       </button>
                     ) : (
@@ -4509,7 +4509,7 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
                           showToast("Configura Alpha Wallet prima di richiedere. Vai in Chat → Alpha Wallet.");
                         }}
                       >
-                        <span className="attach-sheet-icon">💎</span>
+                        <img src="/logo.svg" alt="Alpha Chat" className="attach-sheet-logo-img" />
                         <span>Richiedi con Alpha Wallet</span>
                       </button>
                     )}
