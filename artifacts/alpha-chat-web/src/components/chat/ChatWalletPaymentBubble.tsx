@@ -7,8 +7,9 @@
  * ISOLAMENTO: importa solo il tipo pubblico da bridge, nessun wallet internal.
  */
 
-import { useMemo } from "react";
+import { useMemo, useState, useEffect } from "react";
 import type { SupportedNetwork } from "../../wallet/bridge/chat-wallet-bridge";
+import { getTxRecordByHash } from "../../wallet/services/tx-store";
 import "./ChatWalletPaymentBubble.css";
 
 // ─── Tipi ─────────────────────────────────────────────────────────────────
@@ -64,10 +65,58 @@ function statusLabel(status: WalletPaymentBubbleStatus): string {
   return "In attesa di conferma…";
 }
 
+// ─── Live-status hook ─────────────────────────────────────────────────────
+//
+// La bubble riceve `meta.status = "sent"` congelato nel JSON Signal al momento
+// dell'invio. Il tx-monitor aggiorna IDB (tx-store) quando la TX viene
+// confermata on-chain, ma la bubble non lo sa. Questo hook legge IDB una volta
+// al mount (e ripete ogni 15s mentre è "pending/sent") per aggiornare lo status.
+//
+
+function useLiveTxStatus(txHash: string, initial: WalletPaymentBubbleStatus): WalletPaymentBubbleStatus {
+  const [liveStatus, setLiveStatus] = useState<WalletPaymentBubbleStatus>(initial);
+
+  useEffect(() => {
+    // Se lo status iniziale è già finale, non serve polling.
+    if (initial === "confirmed" || initial === "failed") return;
+
+    let active = true;
+
+    const check = async () => {
+      try {
+        const record = await getTxRecordByHash(txHash);
+        if (!active) return;
+        if (record?.status === "confirmed") setLiveStatus("confirmed");
+        else if (record?.status === "failed") setLiveStatus("failed");
+        // "pending" → rimane "sent" (in attesa)
+      } catch { /* IDB non disponibile — nessun wallet caricato */ }
+    };
+
+    void check();
+
+    // Ricontrolla ogni 15 s finché non siamo in stato finale
+    const timer = setInterval(() => {
+      if (liveStatus === "confirmed" || liveStatus === "failed") {
+        clearInterval(timer);
+        return;
+      }
+      void check();
+    }, 15_000);
+
+    return () => { active = false; clearInterval(timer); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [txHash, initial]);
+
+  return liveStatus;
+}
+
 // ─── Component ────────────────────────────────────────────────────────────
 
 export function ChatWalletPaymentBubble({ meta, isMine }: Props) {
-  const { txHash, network, assetSymbol, amount, fee, direction, status, explorerUrl } = meta;
+  const { txHash, network, assetSymbol, amount, fee, direction, explorerUrl } = meta;
+
+  // Usa lo status live da IDB — sovrascrive il valore congelato nel JSON Signal.
+  const status = useLiveTxStatus(txHash, meta.status);
 
   const netColor = NETWORK_COLORS[network];
   const netName  = NETWORK_NAMES[network];

@@ -139,6 +139,17 @@ export async function getTxRecord(id: string): Promise<WalletTxRecord | undefine
 }
 
 /**
+ * Cerca un record TX per txHash (tutti i chainId).
+ * Usato da ChatWalletPaymentBubble per recuperare il live status senza
+ * passare dal WalletContext (funziona anche con wallet locked).
+ */
+export async function getTxRecordByHash(txHash: string): Promise<WalletTxRecord | undefined> {
+  const db  = await getWalletDB();
+  const all = (await db.getAll(STORE_TX_HISTORY)) as WalletTxRecord[];
+  return all.find(r => r.txHash === txHash);
+}
+
+/**
  * Conta il totale di TX nello storico.
  */
 export async function countTxRecords(): Promise<number> {
