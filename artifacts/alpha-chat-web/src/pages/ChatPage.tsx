@@ -991,9 +991,10 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
    * altrimenti fallback a legacy decode (funziona per messaggi pre-Fase 2).
    */
   function getDisplayText(msg: MessageItem): string {
-    if (!msg.ciphertext) return "";
-    // Fase 3: media messages also go through Signal decrypt → decryptedTexts
-    // FIX: non usare decodeMessage come fallback — produce garbled text dal binary Signal
+    // Legge sempre dalla Map (anche per messaggi ottimistici senza ciphertext, che possono
+    // avere il testo già settato da sendProgrammatic es. 🔐WALLETPAY:).
+    // Se ciphertext è null E la Map non ha nulla, restituisce "".
+    // NON usiamo decodeMessage come fallback (produce garbled text dal binary Signal).
     return decryptedTexts.get(msg.id) ?? "";
   }
 
@@ -1058,7 +1059,13 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
   async function decryptSingleMsg(msg: MessageItem): Promise<void> {
     if (!auth) return;
     if (!msg.ciphertext) {
-      setDecryptedTexts((prev) => new Map(prev).set(msg.id, ""));
+      // NON sovrascrivere valori già significativi (es: testo settato da sendProgrammatic
+      // per i messaggi ottimistici tipo 🔐WALLETPAY: prima che il WS echo arrivi).
+      setDecryptedTexts((prev) => {
+        const existing = prev.get(msg.id);
+        if (existing !== undefined && existing !== "" && existing !== "[Messaggio non decifrabile]") return prev;
+        return new Map(prev).set(msg.id, "");
+      });
       return;
     }
 
@@ -3982,13 +3989,14 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
                                 />
                               </ErrorBoundary>
                             : null
-                        ) : (decryptedTexts.get(msg.id) ?? "").startsWith("🔐WALLETPAY:") ? (
+                        ) : text.startsWith("🔐WALLETPAY:") ? (
                           /* Phase G — Alpha Wallet: messaggio inviato via sendProgrammatic.
                              Il prefisso 🔐WALLETPAY: è nel testo decriptato (message_type="text").
-                             Parsato e renderizzato come ChatWalletPaymentBubble. */
+                             Usiamo `text` (già calcolato da getDisplayText) per garantire coerenza
+                             in un singolo render — nessuna doppia lettura da decryptedTexts. */
                           (() => {
                             try {
-                              const raw  = (decryptedTexts.get(msg.id) ?? "").slice("🔐WALLETPAY:".length);
+                              const raw  = text.slice("🔐WALLETPAY:".length);
                               const meta = JSON.parse(raw) as WalletPaymentMeta;
                               return meta.txHash
                                 ? <ErrorBoundary fallback={<div style={{ fontSize: "0.78rem", opacity: 0.5, padding: "8px 12px" }}>⚠ Pagamento wallet non visualizzabile</div>}>

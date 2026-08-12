@@ -1013,7 +1013,10 @@
 
 /* ── Transaction Detail ──────────────────────────────────────────────────── */
 .aw-tx-detail {
-  position: absolute;
+  /* position: fixed — copre anche l'header di AlphaWalletInner (position: sticky/relative),
+     così il suo back-button "< Storico" non è più visibile né cliccabile.
+     Solo il back-button di TxDetailView rimane visibile. */
+  position: fixed;
   inset: 0;
   background: var(--bg-primary, #0f0f0f);
   z-index: 10;
