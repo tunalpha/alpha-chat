@@ -1,0 +1,85 @@
+Sì, il report è coerente con il prompt e, a prima vista, l’implementazione è stata fatta in modo abbastanza prudente.
+
+Ci sono però 3 punti che farei verificare prima di considerarla definitivamente chiusa.
+
+1. ⚠️ Promise.allSettled + totale parziale
+
+Il punto più importante.
+
+L’agente dice:
+
+fetcha le 4 chain in parallelo (Promise.allSettled)
+
+Questo è tecnicamente buono per non bloccare tutto se una chain ha un errore, ma bisogna verificare cosa succede al totale se una delle 4 chain fallisce.
+
+Non vogliamo una situazione tipo:
+
+* Polygon ✅ €995
+* BTC ✅ €12
+* Ethereum ❌ errore
+* BSC ❌ errore
+
+e la Card mostra comunque:
+
+€1.007
+
+come se fosse il totale completo.
+
+Meglio mostrare “Aggiornamento in corso” o indicare che il totale è parziale, se una chain necessaria non è disponibile.
+
+2. ⚠️ Refresh ogni 60 secondi
+
+L’agente ha aggiunto:
+
+refresh ogni 60s e su aw:new-tx
+
+Non è necessariamente un problema, ma nel prompt avevamo detto di non creare polling duplicato.
+
+Quindi bisogna verificare se questo polling da 60 secondi è realmente necessario oppure se sta duplicando il meccanismo già esistente.
+
+Non è una regressione grave, ma può creare richieste inutili soprattutto con più utenti.
+
+3. ✅ Navigazione asset
+
+Questa parte è esattamente come la volevamo:
+
+tap su un asset → switcha alla chain corrispondente e torna all'Overview
+
+Perfetto.
+
+Quindi:
+
+Saldo totale → Portfolio → BTC → torna alla vista Bitcoin
+
+oppure:
+
+Saldo totale → Portfolio → USDT Polygon → torna a Polygon
+
+È una UX molto più naturale rispetto allo scorrimento automatico tra chain.
+
+⸻
+
+Il resto è positivo
+
+Questi punti sono particolarmente buoni:
+
+* ✅ 4 chain aggregate
+* ✅ totale EUR
+* ✅ conteggio N chain · M asset
+* ✅ asset ordinati per valore EUR decrescente
+* ✅ Promise.allSettled
+* ✅ chiave (chainId, asset) per evitare duplicazioni
+* ✅ build 0 errori
+* ✅ nessuna modifica alla logica esistente di OverviewView
+* ✅ nessuna modifica a fetchData
+* ✅ nessuna modifica a AssetList
+* ✅ Card aggiunta sopra il selettore
+* ✅ nuova vista Portfolio
+
+Prima del deploy farei solo questa verifica
+
+Chiederei all’agente:
+
+Verifica che il totale non venga mostrato come completo quando una delle 4 chain non ha restituito dati validi e verifica che il nuovo polling 60s non duplichi un polling già esistente. Esegui inoltre un test con dati reali di Polygon, Ethereum, BSC e Bitcoin e dimostra che il totale della Card è esattamente la somma dei valori EUR degli asset senza duplicazioni. Non modificare altro.
+
+Se questa verifica passa, io procederei al deploy. La struttura implementata è quella giusta per trasformare Alpha Wallet in un wallet multi-chain più professionale senza toccare le parti operative già funzionanti.

@@ -1568,3 +1568,23 @@
   flex-shrink: 0;
   margin-left: 4px;
 }
+
+/* ── Portfolio — indicatori dati parziali ──────────────────────────────────── */
+.aw-portfolio-partial-badge {
+  font-size: 11px;
+  color: #fbbf24;
+  font-weight: 500;
+  letter-spacing: 0;
+  text-transform: none;
+}
+.aw-portfolio-partial-warn {
+  margin-top: 10px;
+  padding: 8px 12px;
+  background: rgba(245,158,11,.10);
+  border: 1px solid rgba(245,158,11,.25);
+  border-radius: 8px;
+  font-size: 12px;
+  color: #fcd34d;
+  text-align: left;
+  line-height: 1.4;
+}

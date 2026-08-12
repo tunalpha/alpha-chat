@@ -884,9 +884,11 @@ const EMPTY_PORTFOLIO: PortfolioAllBalances = { polygon: null, ethereum: null, b
 function usePortfolioBalances() {
   const wallet = useWallet();
   const meta   = wallet.meta;
-  const [all,     setAll]     = useState<PortfolioAllBalances>(EMPTY_PORTFOLIO);
-  const [prices,  setPrices]  = useState<AssetPrices | null>(null);
-  const [loading, setLoading] = useState(true);
+  const [all,          setAll]          = useState<PortfolioAllBalances>(EMPTY_PORTFOLIO);
+  const [prices,       setPrices]       = useState<AssetPrices | null>(null);
+  const [loading,      setLoading]      = useState(true);
+  // Quante chain non hanno risposto (0 = dati completi, >0 = totale parziale)
+  const [failedChains, setFailedChains] = useState(0);
 
   const fetchAll = useCallback(async () => {
     if (!meta) return;
@@ -900,6 +902,8 @@ function usePortfolioBalances() {
         fetchBtcBalance(meta.btcAddress),
       ]);
       if (pricesRes.status === "fulfilled") setPrices(pricesRes.value);
+      const chainResults = [polyRes, ethRes, bscRes, btcRes];
+      setFailedChains(chainResults.filter(r => r.status === "rejected").length);
       setAll({
         polygon:  polyRes.status === "fulfilled" ? polyRes.value : null,
         ethereum: ethRes.status  === "fulfilled" ? ethRes.value  : null,
@@ -911,11 +915,10 @@ function usePortfolioBalances() {
     }
   }, [meta, wallet.customTokens]);
 
-  useEffect(() => {
-    void fetchAll();
-    const id = setInterval(() => void fetchAll(), 60_000);
-    return () => clearInterval(id);
-  }, [fetchAll]);
+  // Fetch al mount e quando arriva un nuovo TX — nessun polling separato:
+  // il refresh periodico dei dati è già gestito dal ciclo 60s di OverviewView.fetchData
+  // tramite l'evento aw:new-tx che viene emesso dal tx-monitor.
+  useEffect(() => { void fetchAll(); }, [fetchAll]);
 
   useEffect(() => {
     const h = () => void fetchAll();
@@ -923,7 +926,7 @@ function usePortfolioBalances() {
     return () => window.removeEventListener("aw:new-tx", h);
   }, [fetchAll]);
 
-  return { all, prices, loading };
+  return { all, prices, loading, failedChains };
 }
 
 /** Calcola il valore fiat totale di tutti gli asset su tutte le chain. */
@@ -973,11 +976,12 @@ function PortfolioTotalCard({
   onOpen: () => void;
   currency: "EUR" | "USD";
 }) {
-  const { all, prices, loading } = usePortfolioBalances();
+  const { all, prices, loading, failedChains } = usePortfolioBalances();
   const fiatKey = currency.toLowerCase() as "eur" | "usd";
 
-  const totalRaw = loading ? null : calcPortfolioTotal(all, prices, fiatKey);
-  const totalFmt = totalRaw !== null ? fmtPortfolioTotal(totalRaw, currency) : null;
+  const isPartial   = !loading && failedChains > 0;
+  const totalRaw    = loading ? null : calcPortfolioTotal(all, prices, fiatKey);
+  const totalFmt    = totalRaw !== null ? fmtPortfolioTotal(totalRaw, currency) : null;
   const activeChains = [all.polygon, all.ethereum, all.bsc, all.btc].filter(Boolean).length;
   const totalAssets  = [
     all.polygon  ? 1 + all.polygon.tokens.length  : 0,
@@ -990,12 +994,18 @@ function PortfolioTotalCard({
     <button className="aw-portfolio-total-card" onClick={onOpen} aria-label="Apri portfolio multi-chain">
       <div className="aw-portfolio-total-inner">
         <div>
-          <div className="aw-portfolio-total-label">Portfolio</div>
+          <div className="aw-portfolio-total-label">
+            Portfolio{isPartial ? <span className="aw-portfolio-partial-badge"> · ⚠️ parziale</span> : null}
+          </div>
           <div className={`aw-portfolio-total-amount ${loading ? "aw-portfolio-total-loading" : ""}`}>
             {loading ? "Caricamento…" : (totalFmt ? `≈ ${totalFmt}` : "—")}
           </div>
           <div className="aw-portfolio-total-meta">
-            {loading ? "…" : `${activeChains} chain · ${totalAssets} asset`}
+            {loading
+              ? "…"
+              : isPartial
+                ? `${failedChains} chain non disponibili · dati parziali`
+                : `${activeChains} chain · ${totalAssets} asset`}
           </div>
         </div>
         <span className="aw-portfolio-total-chevron">›</span>
@@ -1025,7 +1035,7 @@ function PortfolioView({
   onSelectChain: (chainId: number) => void;
 }) {
   const { currency } = useWalletCurrency();
-  const { all, prices, loading } = usePortfolioBalances();
+  const { all, prices, loading, failedChains } = usePortfolioBalances();
   const fiatKey = currency.toLowerCase() as "eur" | "usd";
 
   const price = (key: string) =>
@@ -1090,8 +1100,9 @@ function PortfolioView({
   // Ordina per valore fiat decrescente
   rows.sort((a, b) => b.fiatValue - a.fiatValue);
 
-  const totalRaw = loading ? null : calcPortfolioTotal(all, prices, fiatKey);
-  const totalFmt = totalRaw !== null ? fmtPortfolioTotal(totalRaw, currency) : null;
+  const isPartial   = !loading && failedChains > 0;
+  const totalRaw    = loading ? null : calcPortfolioTotal(all, prices, fiatKey);
+  const totalFmt    = totalRaw !== null ? fmtPortfolioTotal(totalRaw, currency) : null;
   const activeChains = [all.polygon, all.ethereum, all.bsc, all.btc].filter(Boolean).length;
 
   return (
@@ -1103,8 +1114,17 @@ function PortfolioView({
           {loading ? "Caricamento…" : (totalFmt ? `≈ ${totalFmt}` : "—")}
         </div>
         <div className="aw-portfolio-view-meta">
-          {loading ? "…" : `${activeChains} chain · ${rows.length} asset`}
+          {loading
+            ? "…"
+            : isPartial
+              ? `${activeChains} chain disponibili · ${failedChains} non raggiungibili`
+              : `${activeChains} chain · ${rows.length} asset`}
         </div>
+        {isPartial && (
+          <div className="aw-portfolio-partial-warn">
+            ⚠️ Dati parziali — {failedChains} chain {failedChains === 1 ? "non ha risposto" : "non hanno risposto"}. Il totale potrebbe essere incompleto.
+          </div>
+        )}
       </div>
 
       {/* Lista asset */}
