@@ -279,8 +279,8 @@ export async function getBtcBalance(
 
     const raw = await resp.json() as Record<string, unknown>;
 
-    // Difensivo: mempool.space restituisce null/oggetto vuoto per indirizzi nuovi o rate-limit
-    const stats        = (raw.stats        as Record<string,number> | null | undefined) ?? {};
+    // Blockstream restituisce "chain_stats" (confermati) + "mempool_stats" (in attesa)
+    const stats        = (raw.chain_stats  as Record<string,number> | null | undefined) ?? {};
     const mempoolStats = (raw.mempool_stats as Record<string,number> | null | undefined) ?? {};
 
     const data = {
