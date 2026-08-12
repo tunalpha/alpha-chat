@@ -1,0 +1,561 @@
+OBIETTIVO
+
+Aggiungere ad Alpha Wallet una nuova esperienza Portfolio Multi-Chain mantenendo completamente intatta la logica esistente delle singole blockchain.
+
+La modifica richiesta consiste in:
+
+1. una nuova Card “Saldo totale” che aggrega il valore EUR di tutti gli asset presenti su tutte le blockchain supportate;
+2. tap sulla Card → apertura della vista “Portfolio / Tutti gli asset”;
+3. mantenimento completo della schermata e del comportamento attuale quando viene selezionata una singola blockchain.
+
+Questa deve essere un’estensione dell’attuale wallet, non una riscrittura.
+
+⸻
+
+1. COMPORTAMENTO ATTUALE DA PRESERVARE
+
+Alpha Wallet attualmente permette di selezionare:
+
+* Polygon
+* Ethereum
+* BNB Smart Chain
+* Bitcoin
+
+La selezione della blockchain deve continuare a funzionare esattamente come oggi.
+
+Per ogni chain devono rimanere invariati:
+
+* saldo native coin;
+* saldo token;
+* valore EUR;
+* indirizzo;
+* pulsante Invia;
+* pulsante Ricevi;
+* Storico;
+* Notifiche;
+* refresh;
+* monitoraggio transazioni;
+* fee;
+* network fee;
+* sistemi EVM;
+* sistema Bitcoin;
+* token esistenti;
+* logica wallet;
+* autenticazione;
+* database;
+* API esistenti.
+
+NON modificare queste funzionalità se non è strettamente necessario.
+
+⸻
+
+2. NUOVA CARD “SALDO TOTALE”
+
+Aggiungere una Card sopra il selettore della blockchain.
+
+La Card deve mostrare:
+
+Saldo totale
+
+≈ €X.XX
+
+e un’indicazione secondaria del tipo:
+
+Tutte le chain
+
+oppure:
+
+4 chain · X asset
+
+Il valore deve rappresentare il valore complessivo in EUR di tutti gli asset del wallet.
+
+Esempio:
+
+* Polygon → €995,62
+* Bitcoin → €12,70
+* Ethereum → €X
+* BNB Smart Chain → €X
+
+La Card deve mostrare la somma corretta di tutti questi valori.
+
+⸻
+
+3. REGOLA FONDAMENTALE DEL CALCOLO
+
+Non creare una seconda logica indipendente per calcolare i saldi.
+
+Utilizzare, quando possibile, i dati già prodotti dalla logica esistente delle singole chain.
+
+Il principio deve essere:
+
+saldo chain/asset già calcolato → valore EUR → aggregazione totale
+
+Non introdurre un secondo sistema di pricing o balance fetching se non indispensabile.
+
+La formula concettuale è:
+
+Saldo totale EUR = somma dei valori EUR di tutti gli asset effettivamente presenti
+
+Non sommare quantità di token differenti.
+
+Esempio:
+
+* 0,7924438 POL → €995,62
+* 0,00023114 BTC → €12,70
+* ETH → €X
+* BNB → €X
+* USDT → €X
+
+Il totale deve essere la somma dei relativi valori EUR.
+
+⸻
+
+4. PROTEZIONE CONTRO IL DOPPIO CONTEGGIO
+
+Questa parte è fondamentale.
+
+Ogni asset deve essere contato una sola volta.
+
+Esempio:
+
+Polygon:
+
+* POL → €995,62
+* USDT → €100
+
+Il valore Polygon è:
+
+€1.095,62
+
+Non deve essere aggiunto nuovamente un valore aggregato Polygon che già contiene questi asset.
+
+Prestare particolare attenzione a:
+
+* native coin;
+* token;
+* token duplicati provenienti da cache/API differenti;
+* asset presenti in più strutture dati;
+* eventuali asset nascosti/disabilitati;
+* asset custom/non verificati.
+
+Il totale deve derivare dagli asset effettivamente presenti e valorizzati nel wallet, una sola volta.
+
+⸻
+
+5. TAP SULLA CARD “SALDO TOTALE”
+
+Questa logica DEVE essere implementata esplicitamente.
+
+Quando l’utente tocca:
+
+Saldo totale
+
+NON cambiare automaticamente Polygon → Ethereum → BSC → Bitcoin.
+
+NON creare uno slideshow automatico.
+
+Deve aprirsi una nuova vista:
+
+Portfolio
+
+oppure:
+
+Tutti gli asset
+
+Questa vista rappresenta il portafoglio complessivo.
+
+⸻
+
+6. VISTA “PORTFOLIO / TUTTI GLI ASSET”
+
+La nuova vista deve mostrare tutti gli asset disponibili su tutte le blockchain.
+
+Esempio:
+
+Portfolio
+
+≈ €1.008,32
+
+Poi una lista:
+
+POL
+Polygon
+0.7924438 POL
+≈ €995,62
+
+BTC
+Bitcoin
+0.00023114 BTC
+≈ €12,70
+
+ETH
+Ethereum
+X ETH
+≈ €X
+
+BNB
+BNB Smart Chain
+X BNB
+≈ €X
+
+USDT
+Polygon
+X USDT
+≈ €X
+
+Ogni asset deve indicare chiaramente:
+
+* simbolo;
+* nome;
+* blockchain;
+* quantità;
+* valore EUR.
+
+⸻
+
+7. ORDINE DEGLI ASSET
+
+Ordinare gli asset in modo professionale.
+
+Default consigliato:
+
+valore EUR decrescente
+
+Quindi l’asset con maggiore valore viene mostrato per primo.
+
+Non cambiare però l’ordine della schermata per-chain esistente.
+
+Questa regola vale esclusivamente per la nuova vista Portfolio.
+
+⸻
+
+8. TAP SU UN ASSET DEL PORTFOLIO
+
+Se tecnicamente già supportato dalla struttura dell’app:
+
+toccando un asset nella vista Portfolio, permettere di entrare nel relativo contesto della blockchain/asset.
+
+Esempio:
+
+tap su:
+
+BTC · Bitcoin
+
+→ apre il contesto Bitcoin.
+
+tap su:
+
+USDT · Polygon
+
+→ apre il contesto Polygon con USDT.
+
+Non creare nuove funzionalità di trading o swap.
+
+Se questa navigazione richiede modifiche importanti all’architettura esistente, NON riscrivere l’architettura: implementare solo il collegamento minimo necessario.
+
+⸻
+
+9. SELETTORE DELLE CHAIN
+
+Il selettore attuale deve rimanere invariato.
+
+Deve continuare a mostrare:
+
+Polygon
+Ethereum
+BNB Smart Chain
+Bitcoin
+
+Quando l’utente seleziona una chain:
+
+* torna alla schermata specifica della chain;
+* la Card saldo della chain continua a funzionare come oggi;
+* gli asset della chain continuano a essere mostrati come oggi;
+* indirizzo e funzioni operative rimangono invariati.
+
+La nuova Card “Saldo totale” NON deve sostituire la Card esistente della chain.
+
+La struttura deve diventare concettualmente:
+
+Card Saldo Totale Multi-Chain
+
+↓
+
+Selettore Blockchain
+
+↓
+
+Card Saldo Chain
+
+↓
+
+Azioni
+
+↓
+
+Asset della Chain
+
+⸻
+
+10. LOADING E DATI PARZIALI
+
+Gestire correttamente il caricamento.
+
+Non mostrare un totale definitivo mentre una o più chain stanno ancora caricando, se questo potrebbe produrre un totale incompleto presentato come definitivo.
+
+Non inventare valori.
+
+Se una singola chain ha un errore temporaneo:
+
+* non azzerare i saldi delle altre chain;
+* non trasformare un errore in saldo 0;
+* non perdere dati già corretti;
+* utilizzare lo stesso comportamento di errore/fallback già presente nel wallet.
+
+Se necessario, mostrare temporaneamente:
+
+Saldo totale — Caricamento…
+
+e calcolare il totale definitivo quando i dati necessari sono disponibili.
+
+⸻
+
+11. REFRESH
+
+Non creare un nuovo polling indipendente esclusivamente per il saldo totale.
+
+Riutilizzare il sistema di refresh già esistente.
+
+Il comportamento desiderato è:
+
+refresh balance chain
+
+↓
+
+nuovo valore asset
+
+↓
+
+aggiornamento valore EUR
+
+↓
+
+ricalcolo Saldo totale
+
+La Card totale deve aggiornarsi automaticamente quando cambiano i dati delle chain.
+
+⸻
+
+12. PREZZI E VALUTA
+
+Utilizzare esattamente le stesse fonti di prezzo e la stessa conversione fiat già utilizzate da Alpha Wallet.
+
+Non introdurre:
+
+* nuovo price provider;
+* nuova API;
+* nuova conversione;
+* nuova valuta;
+* nuovo sistema di caching dei prezzi.
+
+La valuta deve rimanere quella configurata dall’app, attualmente EUR.
+
+La formattazione deve essere coerente con le Card esistenti.
+
+⸻
+
+13. TOKEN VERIFICATI E CUSTOM
+
+Non modificare la logica esistente dei token.
+
+Se un token custom/non verificato è già supportato dal wallet:
+
+* non eliminarlo;
+* non nasconderlo;
+* non duplicarlo;
+* includerlo nel Portfolio solo se il wallet possiede un valore/balance valido secondo la logica esistente.
+
+Non introdurre nuove regole di verifica token in questa modifica.
+
+⸻
+
+14. UI / DESIGN
+
+La nuova Card deve sembrare nativa di Alpha Wallet.
+
+Mantenere:
+
+* stile attuale;
+* tipografia;
+* bordi;
+* spaziature;
+* colori;
+* responsive layout;
+* comportamento mobile.
+
+Non ridisegnare l’intera pagina.
+
+La nuova Card deve essere chiaramente distinguibile dalla Card della singola chain.
+
+Suggerimento visivo:
+
+Saldo totale
+
+≈ €1.008,32
+
+Tutte le chain · 4 chain
+
+La Card deve essere chiaramente tappabile senza sembrare un normale elemento non interattivo.
+
+⸻
+
+15. ARCHITETTURA E REGRESSIONI
+
+Prima di modificare codice:
+
+* individuare dove vengono prodotti i balance delle singole chain;
+* individuare dove vengono prodotti i valori EUR;
+* individuare il componente della Card attuale;
+* individuare il selettore delle chain;
+* individuare il sistema di navigazione.
+
+Preferire una soluzione frontend se i dati necessari sono già disponibili.
+
+NON modificare il backend/API/database solo per comodità.
+
+Se una modifica backend è realmente necessaria, spiegare prima nel report perché.
+
+⸻
+
+16. TEST OBBLIGATORI
+
+Dopo l’implementazione verificare almeno:
+
+Polygon
+
+* POL corretto;
+* USDT corretto;
+* valore EUR corretto;
+* Card chain invariata;
+* Card totale corretta.
+
+Ethereum
+
+* ETH corretto;
+* token corretti;
+* valore EUR corretto;
+* Card totale aggiornata.
+
+BNB Smart Chain
+
+* BNB corretto;
+* token corretti;
+* valore EUR corretto;
+* Card totale aggiornata.
+
+Bitcoin
+
+* BTC 0.00023114 BTC correttamente riconosciuto;
+* valore EUR corretto;
+* transazione confermata ancora correttamente visualizzata;
+* nessuna regressione nel monitor BTC;
+* Card totale aggiornata.
+
+Portfolio
+
+Verificare:
+
+* totale corretto;
+* nessun doppio conteggio;
+* tutti gli asset presenti;
+* blockchain indicata per ogni asset;
+* quantità corretta;
+* valore EUR corretto;
+* ordinamento per valore;
+* tap sulla Card apre Portfolio;
+* tap su un asset funziona se già supportato.
+
+⸻
+
+17. REGRESSION TEST OBBLIGATORIO
+
+Verificare esplicitamente che NON siano cambiati:
+
+* invio crypto;
+* ricezione crypto;
+* fee;
+* network fee;
+* balance per-chain;
+* selezione chain;
+* indirizzi;
+* Storico;
+* Notifiche;
+* monitor BTC;
+* stato pending/confirmed BTC;
+* token EVM;
+* wallet EVM;
+* autenticazione;
+* database;
+* API esistenti.
+
+Se un test fallisce, correggere la regressione prima di dichiarare il lavoro completato.
+
+⸻
+
+18. NON FARE
+
+NON:
+
+* riscrivere WalletContext;
+* riscrivere i monitor;
+* cambiare provider RPC;
+* cambiare Blockstream;
+* cambiare contratti;
+* cambiare fee;
+* cambiare API senza necessità;
+* cambiare il sistema di transazioni;
+* cambiare la logica BTC appena corretta;
+* cambiare il layout completo;
+* aggiungere swap/trading;
+* aggiungere nuove blockchain;
+* introdurre un nuovo price provider;
+* creare polling duplicato;
+* modificare la logica dei singoli balance se già corretta.
+
+⸻
+
+19. REPORT FINALE OBBLIGATORIO
+
+Alla fine fornire:
+
+1. root cause di eventuali problemi incontrati;
+2. file modificati;
+3. API modificate, se presenti;
+4. come viene calcolato il totale;
+5. come viene evitato il doppio conteggio;
+6. comportamento del tap sulla Card;
+7. comportamento della vista Portfolio;
+8. test effettuati per Polygon;
+9. test effettuati per Ethereum;
+10. test effettuati per BNB Smart Chain;
+11. test effettuati per Bitcoin;
+12. test di regressione;
+13. screenshot o evidenza del risultato finale, se disponibile.
+
+CRITERIO DI COMPLETAMENTO
+
+Il lavoro è completo SOLO quando:
+
+Card Saldo Totale → tap → Portfolio/Tutti gli asset
+
+funziona correttamente,
+
+il totale EUR è corretto,
+
+gli asset non sono duplicati,
+
+le singole chain continuano a funzionare esattamente come prima,
+
+e tutti i test di regressione sono superati.
+
+Obiettivo: aggiungere una funzionalità professionale di Portfolio Multi-Chain senza alterare il comportamento esistente di Alpha Wallet.

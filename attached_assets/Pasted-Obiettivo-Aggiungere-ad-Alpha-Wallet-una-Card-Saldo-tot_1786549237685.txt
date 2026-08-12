@@ -1,0 +1,270 @@
+Obiettivo
+
+Aggiungere ad Alpha Wallet una Card “Saldo totale” che mostri il valore complessivo del portafoglio su tutte le blockchain supportate, senza modificare o rompere il comportamento attuale delle singole chain.
+
+Regola fondamentale
+
+NON modificare la logica esistente dei saldi per singola chain.
+
+La Card “Saldo totale” deve essere una funzionalità aggiuntiva e deve utilizzare i dati già correttamente calcolati dalle singole chain, evitando di introdurre una seconda logica parallela di calcolo che possa creare discrepanze.
+
+Comportamento attuale da preservare
+
+Devono continuare a funzionare esattamente come ora:
+
+* Polygon
+* Ethereum
+* BNB Smart Chain
+* Bitcoin
+* saldo native coin
+* saldo token
+* conversione in EUR
+* selettore della blockchain
+* indirizzi wallet
+* pulsanti Invia / Ricevi
+* Storico
+* Notifiche
+* refresh dei balance
+* monitoraggio transazioni
+* fee
+* tutte le funzionalità EVM/BTC esistenti.
+
+Non cambiare API, endpoint, contratti o struttura dati esistenti se non strettamente necessario.
+
+⸻
+
+Nuova Card
+
+Aggiungere sopra il selettore delle blockchain una Card:
+
+Saldo totale
+
+≈ €X.XX
+
+Sottotitolo opzionale:
+
+Tutte le chain
+
+Il valore deve rappresentare la somma dei valori fiat EUR di tutti gli asset disponibili e correttamente valorizzati sulle chain supportate.
+
+Formula logica
+
+Il totale deve essere:
+
+Totale portfolio EUR = somma dei valori EUR degli asset di tutte le chain
+
+Esempio:
+
+* Polygon → €995,62
+* Bitcoin → €12,70
+* Ethereum → €X
+* BNB Smart Chain → €X
+
+La Card mostra la somma complessiva.
+
+Non sommare quantità di token diversi.
+La somma deve avvenire esclusivamente dopo la conversione di ogni asset nella valuta fiat configurata, attualmente EUR.
+
+⸻
+
+Importante: niente doppio conteggio
+
+Prestare particolare attenzione ai token presenti sulla stessa chain.
+
+Esempio:
+
+Polygon:
+
+* POL → €995,62
+* USDT → €100
+
+Il totale Polygon deve essere:
+
+€1.095,62
+
+e non deve conteggiare nuovamente il valore già incluso nel saldo totale della chain.
+
+Analogamente, lo stesso asset non deve essere duplicato se viene restituito da più endpoint/cache.
+
+Implementare un’unica aggregazione dei saldi asset effettivamente visualizzati/valorizzati dal wallet.
+
+⸻
+
+Interazione con il selettore
+
+Il selettore attuale delle chain deve rimanere invariato:
+
+Polygon | Ethereum | BNB Smart Chain | Bitcoin
+
+Quando viene selezionata una chain:
+
+* la Card attuale continua a mostrare il saldo di quella chain;
+* asset e indirizzo rimangono quelli della chain selezionata;
+* nessun comportamento esistente deve cambiare.
+
+La nuova Card “Saldo totale” deve essere indipendente dalla selezione della chain.
+
+Importante
+
+Non sostituire la Card esistente per-chain.
+
+Aggiungere semplicemente:
+
+Card Saldo Totale → Card Saldo della Chain selezionata
+
+⸻
+
+Gestione caricamento
+
+La Card totale deve gestire correttamente gli stati:
+
+* caricamento iniziale;
+* aggiornamento;
+* errore temporaneo di una singola chain;
+* chain momentaneamente non disponibile.
+
+Non mostrare un totale apparentemente preciso se i dati necessari non sono ancora disponibili.
+
+Se una chain sta ancora caricando, utilizzare lo stesso comportamento di loading già adottato dal wallet e non inventare valori.
+
+Non permettere che un errore temporaneo di una chain azzeri o cancelli i saldi corretti delle altre chain.
+
+⸻
+
+Refresh
+
+Quando vengono aggiornati i balance delle singole chain, il totale deve aggiornarsi automaticamente utilizzando i nuovi valori.
+
+Non creare polling aggiuntivo se non necessario.
+
+Riutilizzare i meccanismi di refresh già presenti.
+
+Obiettivo:
+
+refresh chain → nuovo balance → aggiornamento Card totale
+
+e non:
+
+refresh chain + nuovo polling separato del totale.
+
+⸻
+
+Precisione
+
+Mantenere la stessa precisione e gli stessi criteri di arrotondamento già utilizzati dal wallet per i valori EUR.
+
+La Card deve utilizzare:
+
+* stessa fonte dei prezzi;
+* stessa conversione fiat;
+* stesso comportamento di fallback;
+* stessa formattazione EUR.
+
+Non introdurre un nuovo provider di prezzi.
+
+⸻
+
+UI / Design
+
+La nuova Card deve essere visivamente coerente con la Card saldo esistente.
+
+Non modificare inutilmente:
+
+* colori;
+* font;
+* dimensioni;
+* pulsanti;
+* selettore chain;
+* layout degli asset.
+
+La Card totale deve sembrare parte nativa dell’attuale Alpha Wallet.
+
+⸻
+
+Protezione contro regressioni
+
+Prima di considerare il lavoro completato, verificare esplicitamente:
+
+Polygon
+
+* balance corretto;
+* POL corretto;
+* USDT corretto;
+* valore EUR corretto.
+
+Ethereum
+
+* balance corretto;
+* ETH corretto;
+* token corretti;
+* valore EUR corretto.
+
+BNB Smart Chain
+
+* balance corretto;
+* BNB corretto;
+* token corretti;
+* valore EUR corretto.
+
+Bitcoin
+
+* balance BTC corretto;
+* transazioni confermate correttamente visualizzate;
+* transazioni pending ancora visualizzate come pending;
+* valore EUR corretto.
+
+Multi-chain
+
+Verificare che:
+
+Saldo totale = somma dei valori EUR degli asset effettivamente presenti su tutte le chain
+
+e che nessun asset venga contato due volte.
+
+⸻
+
+Vincoli assoluti
+
+NON modificare:
+
+* monitor BTC;
+* logica di conferma BTC;
+* Blockstream;
+* transazioni BTC;
+* invio/ricezione BTC;
+* logica EVM;
+* fee;
+* network fee;
+* wallet address;
+* smart contract;
+* token contract;
+* API esistenti;
+* autenticazione;
+* database;
+* storico;
+* notifiche.
+
+Se è possibile implementare la Card totale esclusivamente nel frontend utilizzando i dati già disponibili, preferire questa soluzione.
+
+Prima di modificare un backend/API esistente, dimostrare che sia realmente necessario.
+
+⸻
+
+Verifica finale obbligatoria
+
+Dopo l’implementazione fornire un report con:
+
+1. file modificati;
+2. eventuali API modificate;
+3. origine dei dati utilizzati per il totale;
+4. formula di aggregazione;
+5. conferma che non esiste doppio conteggio;
+6. test effettuati per Polygon, Ethereum, BSC e Bitcoin;
+7. esempio numerico del totale;
+8. conferma che il selettore per-chain continua a funzionare esattamente come prima;
+9. conferma che Storico, Notifiche, Invia e Ricevi non sono stati alterati;
+10. eventuali problemi riscontrati.
+
+Non dichiarare il lavoro completato se non sono stati eseguiti i test di regressione multi-chain.
+
+L’obiettivo è aggiungere una sola nuova funzionalità: il Saldo totale multi-chain, lasciando tutto il resto di Alpha Wallet invariato.

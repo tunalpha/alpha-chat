@@ -88,7 +88,8 @@ type WalletSubView =
   | "security"
   | "history"           // Phase F
   | "seed-export"       // Phase F
-  | "wallet-settings";  // Phase I — impostazioni wallet
+  | "wallet-settings"   // Phase I — impostazioni wallet
+  | "portfolio";        // Portfolio Multi-Chain
 
 // ─── Currency preference hook ────────────────────────────────────────────────
 
@@ -228,6 +229,11 @@ function AlphaWalletInner({ onBack }: Props) {
         return <SeedExportView onBack={() => setSubView("security")} />;
       case "wallet-settings":
         return <WalletSettingsView onBack={() => setSubView("overview")} onGoSecurity={() => setSubView("security")} onGoSeedExport={() => setSubView("seed-export")} />;
+      case "portfolio":
+        return <PortfolioView
+          onBack={() => setSubView("overview")}
+          onSelectChain={(chainId) => { wallet.setSelectedChainId(chainId); setSubView("overview"); }}
+        />;
       default: return null;
     }
   };
@@ -237,6 +243,7 @@ function AlphaWalletInner({ onBack }: Props) {
     overview: "Alpha Wallet", notifications: "Notifiche", "add-token": "Aggiungi Token",
     security: "Sicurezza", unlock: "Alpha Wallet", receive: "Ricevi", send: "Invia",
     history: "Storico", "seed-export": "Recovery Phrase", "wallet-settings": "Impostazioni",
+    portfolio: "Portfolio",
   };
 
   return (
@@ -771,6 +778,9 @@ function OverviewView({ onNavigate }: { onNavigate: (v: WalletSubView) => void }
 
   return (
     <div className="aw-overview">
+      {/* Portfolio total card — sopra il selettore chain, tap apre Portfolio */}
+      <PortfolioTotalCard onOpen={() => onNavigate("portfolio")} currency={currency} />
+
       {/* Network selector */}
       <div className="aw-network-bar">
         <div className="aw-network-badge" style={{ borderColor: net?.color ?? "#888" }}>
@@ -856,6 +866,278 @@ function OverviewView({ onNavigate }: { onNavigate: (v: WalletSubView) => void }
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── Portfolio Multi-Chain helpers ───────────────────────────────────────────
+
+interface PortfolioAllBalances {
+  polygon:  ChainBalance | null;
+  ethereum: ChainBalance | null;
+  bsc:      ChainBalance | null;
+  btc:      BtcBalance   | null;
+}
+
+const EMPTY_PORTFOLIO: PortfolioAllBalances = { polygon: null, ethereum: null, bsc: null, btc: null };
+
+function usePortfolioBalances() {
+  const wallet = useWallet();
+  const meta   = wallet.meta;
+  const [all,     setAll]     = useState<PortfolioAllBalances>(EMPTY_PORTFOLIO);
+  const [prices,  setPrices]  = useState<AssetPrices | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  const fetchAll = useCallback(async () => {
+    if (!meta) return;
+    setLoading(true);
+    try {
+      const [pricesRes, polyRes, ethRes, bscRes, btcRes] = await Promise.allSettled([
+        fetchPrices(),
+        fetchEvmBalance(137, meta.evmAddress as `0x${string}`, wallet.customTokens.filter(t => t.chainId === 137)),
+        fetchEvmBalance(1,   meta.evmAddress as `0x${string}`, wallet.customTokens.filter(t => t.chainId === 1)),
+        fetchEvmBalance(56,  meta.evmAddress as `0x${string}`, wallet.customTokens.filter(t => t.chainId === 56)),
+        fetchBtcBalance(meta.btcAddress),
+      ]);
+      if (pricesRes.status === "fulfilled") setPrices(pricesRes.value);
+      setAll({
+        polygon:  polyRes.status === "fulfilled" ? polyRes.value : null,
+        ethereum: ethRes.status  === "fulfilled" ? ethRes.value  : null,
+        bsc:      bscRes.status  === "fulfilled" ? bscRes.value  : null,
+        btc:      btcRes.status  === "fulfilled" ? btcRes.value  : null,
+      });
+    } finally {
+      setLoading(false);
+    }
+  }, [meta, wallet.customTokens]);
+
+  useEffect(() => {
+    void fetchAll();
+    const id = setInterval(() => void fetchAll(), 60_000);
+    return () => clearInterval(id);
+  }, [fetchAll]);
+
+  useEffect(() => {
+    const h = () => void fetchAll();
+    window.addEventListener("aw:new-tx", h);
+    return () => window.removeEventListener("aw:new-tx", h);
+  }, [fetchAll]);
+
+  return { all, prices, loading };
+}
+
+/** Calcola il valore fiat totale di tutti gli asset su tutte le chain. */
+function calcPortfolioTotal(
+  all: PortfolioAllBalances,
+  prices: AssetPrices | null,
+  fiatKey: "eur" | "usd",
+): number {
+  if (!prices) return 0;
+  let total = 0;
+  const price = (key: string) =>
+    (prices[key as keyof AssetPrices] as { eur: number; usd: number } | undefined)?.[fiatKey] ?? 0;
+
+  if (all.polygon) {
+    total += (Number(all.polygon.native.rawBalance) / 1e18) * price("pol");
+    for (const t of all.polygon.tokens)
+      total += (Number(t.rawBalance) / 10 ** t.decimals) * price(t.symbol.toLowerCase());
+  }
+  if (all.ethereum) {
+    total += (Number(all.ethereum.native.rawBalance) / 1e18) * price("eth");
+    for (const t of all.ethereum.tokens)
+      total += (Number(t.rawBalance) / 10 ** t.decimals) * price(t.symbol.toLowerCase());
+  }
+  if (all.bsc) {
+    total += (Number(all.bsc.native.rawBalance) / 1e18) * price("bnb");
+    for (const t of all.bsc.tokens)
+      total += (Number(t.rawBalance) / 10 ** t.decimals) * price(t.symbol.toLowerCase());
+  }
+  if (all.btc) {
+    total += (Number(all.btc.confirmedSat) / 1e8) * price("btc");
+  }
+  return total;
+}
+
+function fmtPortfolioTotal(value: number, currency: "EUR" | "USD"): string {
+  return new Intl.NumberFormat(currency === "EUR" ? "it-IT" : "en-US", {
+    style: "currency", currency, maximumFractionDigits: 2,
+  }).format(value);
+}
+
+// ─── PortfolioTotalCard ───────────────────────────────────────────────────────
+
+function PortfolioTotalCard({
+  onOpen,
+  currency,
+}: {
+  onOpen: () => void;
+  currency: "EUR" | "USD";
+}) {
+  const { all, prices, loading } = usePortfolioBalances();
+  const fiatKey = currency.toLowerCase() as "eur" | "usd";
+
+  const totalRaw = loading ? null : calcPortfolioTotal(all, prices, fiatKey);
+  const totalFmt = totalRaw !== null ? fmtPortfolioTotal(totalRaw, currency) : null;
+  const activeChains = [all.polygon, all.ethereum, all.bsc, all.btc].filter(Boolean).length;
+  const totalAssets  = [
+    all.polygon  ? 1 + all.polygon.tokens.length  : 0,
+    all.ethereum ? 1 + all.ethereum.tokens.length : 0,
+    all.bsc      ? 1 + all.bsc.tokens.length      : 0,
+    all.btc      ? 1                               : 0,
+  ].reduce((a, b) => a + b, 0);
+
+  return (
+    <button className="aw-portfolio-total-card" onClick={onOpen} aria-label="Apri portfolio multi-chain">
+      <div className="aw-portfolio-total-inner">
+        <div>
+          <div className="aw-portfolio-total-label">Portfolio</div>
+          <div className={`aw-portfolio-total-amount ${loading ? "aw-portfolio-total-loading" : ""}`}>
+            {loading ? "Caricamento…" : (totalFmt ? `≈ ${totalFmt}` : "—")}
+          </div>
+          <div className="aw-portfolio-total-meta">
+            {loading ? "…" : `${activeChains} chain · ${totalAssets} asset`}
+          </div>
+        </div>
+        <span className="aw-portfolio-total-chevron">›</span>
+      </div>
+    </button>
+  );
+}
+
+// ─── PortfolioView ────────────────────────────────────────────────────────────
+
+interface PortfolioAssetRow {
+  chainId:   number;
+  network:   string;
+  symbol:    string;
+  icon:      string;
+  name:      string;
+  amount:    string;
+  fiatValue: number;
+  fiatStr:   string | null;
+}
+
+function PortfolioView({
+  onBack,
+  onSelectChain,
+}: {
+  onBack: () => void;
+  onSelectChain: (chainId: number) => void;
+}) {
+  const { currency } = useWalletCurrency();
+  const { all, prices, loading } = usePortfolioBalances();
+  const fiatKey = currency.toLowerCase() as "eur" | "usd";
+
+  const price = (key: string) =>
+    (prices?.[key as keyof AssetPrices] as { eur: number; usd: number } | undefined)?.[fiatKey] ?? 0;
+
+  const rows: PortfolioAssetRow[] = [];
+
+  const addEvm = (
+    balance: ChainBalance | null,
+    chainId: number,
+    network: string,
+    nativeKey: string,
+    nativeIcon: string,
+  ) => {
+    if (!balance) return;
+    const nativePrice = price(nativeKey);
+    const nativeFiatVal = (Number(balance.native.rawBalance) / 1e18) * nativePrice;
+    const nativePriceObj = prices?.[nativeKey as keyof AssetPrices] as { eur: number; usd: number } | undefined;
+    rows.push({
+      chainId, network,
+      symbol: balance.native.symbol,
+      icon: "⬡",
+      name: balance.native.name,
+      amount: balance.native.formatted,
+      fiatValue: nativeFiatVal,
+      fiatStr: nativePriceObj ? formatFiat(balance.native.rawBalance, 18, nativePriceObj, currency) : null,
+    });
+    for (const t of balance.tokens) {
+      const sym = t.symbol.toLowerCase();
+      const p   = price(sym);
+      const fv  = (Number(t.rawBalance) / 10 ** t.decimals) * p;
+      const po  = prices?.[sym as keyof AssetPrices] as { eur: number; usd: number } | undefined;
+      rows.push({
+        chainId, network,
+        symbol: t.symbol,
+        icon: "🪙",
+        name: t.name,
+        amount: formatCrypto(t.rawBalance, t.decimals, t.symbol),
+        fiatValue: fv,
+        fiatStr: po ? formatFiat(t.rawBalance, t.decimals, po, currency) : null,
+      });
+    }
+  };
+
+  addEvm(all.polygon,  137, "Polygon",        "pol", "⬡");
+  addEvm(all.ethereum, 1,   "Ethereum",        "eth", "⬡");
+  addEvm(all.bsc,      56,  "BNB Smart Chain", "bnb", "⬡");
+
+  if (all.btc) {
+    const btcP = price("btc");
+    const fv   = (Number(all.btc.confirmedSat) / 1e8) * btcP;
+    const po   = prices?.btc as { eur: number; usd: number } | undefined;
+    rows.push({
+      chainId: 0, network: "Bitcoin",
+      symbol: "BTC", icon: "₿", name: "Bitcoin",
+      amount: all.btc.formatted,
+      fiatValue: fv,
+      fiatStr: po ? formatFiat(all.btc.confirmedSat, 8, po, currency) : null,
+    });
+  }
+
+  // Ordina per valore fiat decrescente
+  rows.sort((a, b) => b.fiatValue - a.fiatValue);
+
+  const totalRaw = loading ? null : calcPortfolioTotal(all, prices, fiatKey);
+  const totalFmt = totalRaw !== null ? fmtPortfolioTotal(totalRaw, currency) : null;
+  const activeChains = [all.polygon, all.ethereum, all.bsc, all.btc].filter(Boolean).length;
+
+  return (
+    <div className="aw-portfolio-view">
+      {/* Header totale */}
+      <div className="aw-portfolio-view-header">
+        <div className="aw-portfolio-view-label">Tutti gli asset</div>
+        <div className={`aw-portfolio-view-total ${loading ? "aw-portfolio-total-loading" : ""}`}>
+          {loading ? "Caricamento…" : (totalFmt ? `≈ ${totalFmt}` : "—")}
+        </div>
+        <div className="aw-portfolio-view-meta">
+          {loading ? "…" : `${activeChains} chain · ${rows.length} asset`}
+        </div>
+      </div>
+
+      {/* Lista asset */}
+      <div className="aw-portfolio-asset-list">
+        {loading && rows.length === 0
+          ? [1, 2, 3, 4].map(i => (
+              <div key={i} className="aw-asset-item aw-asset-item--skeleton">
+                <div className="aw-asset-icon">⬡</div>
+                <div className="aw-asset-info"><div className="aw-skeleton-line" style={{ width: 120, height: 14 }} /></div>
+                <div className="aw-asset-balance">…</div>
+              </div>
+            ))
+          : rows.map((row, i) => (
+              <button
+                key={`${row.chainId}-${row.symbol}-${i}`}
+                className="aw-portfolio-asset-item"
+                onClick={() => onSelectChain(row.chainId)}
+                aria-label={`Vai a ${row.network}`}
+              >
+                <div className="aw-portfolio-asset-icon">{row.icon}</div>
+                <div className="aw-portfolio-asset-info">
+                  <div className="aw-portfolio-asset-symbol">{row.symbol}</div>
+                  <div className="aw-portfolio-asset-network">{row.network}</div>
+                </div>
+                <div className="aw-portfolio-asset-amounts">
+                  <div className="aw-portfolio-asset-amount">{row.amount}</div>
+                  {row.fiatStr && <div className="aw-portfolio-asset-fiat">{row.fiatStr}</div>}
+                </div>
+                <span className="aw-portfolio-asset-chevron">›</span>
+              </button>
+            ))
+        }
+      </div>
     </div>
   );
 }
