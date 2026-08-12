@@ -898,6 +898,22 @@ function usePortfolioBalances() {
   // Quante chain non hanno risposto (0 = dati completi, >0 = totale parziale)
   const [failedChains, setFailedChains] = useState(0);
 
+  // Auto-connect Spark quando il flag è true e la pagina è visibile.
+  // Questa pagina è visibile SOLO dopo che l'utente ha sbloccato il wallet →
+  // sessionStorage["aw_bio_pin"] è già disponibile per getMnemonic().
+  //
+  // "disabled" = stato iniziale del provider (connect() mai chiamato).
+  // "disconnected" = disconnesso; tenta reconnect.
+  // Qualsiasi altro stato (connecting/connected/syncing/error) → non interferire.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => {
+    if (!spark?.isEnabled) return;
+    if (spark.state !== "disabled" && spark.state !== "disconnected") return;
+    void spark.connect().catch(() => {
+      // In caso di errore: state → "error" → sparkOffline=true → UI mostra avviso
+    });
+  }, [spark?.isEnabled]); // dipende solo dal flag — non re-triggera ad ogni render
+
   // Spark Lightning balance — letto dal context (no fetch rete, già in memoria)
   // null se: Spark disabilitato | non connesso | walletInfo non ancora disponibile
   const sparkSat: bigint | null =
