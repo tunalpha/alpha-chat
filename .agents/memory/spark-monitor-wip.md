@@ -1,5 +1,5 @@
 ---
-name: Spark Monitor WIP — punto di interruzione
+name: Spark Monitor — COMPLETATO
 description: Stato esatto del lavoro al momento dell'interruzione del sprint Admin Spark Monitoring
 ---
 

@@ -23,7 +23,7 @@
 
 import { type Request, type Response, type NextFunction } from "express";
 import { AlphaWalletFeeRecordModel } from "../models/alpha-wallet-fee-record.model.js";
-import AdminSettingsModel            from "../models/admin-settings.model.js";
+import { getAdminSettings }          from "../models/admin-settings.model.js";
 
 // ─── Helper ───────────────────────────────────────────────────────────────────
 
@@ -54,14 +54,14 @@ export async function getSparkDashboardHandler(
   _req: Request, res: Response, next: NextFunction,
 ): Promise<void> {
   try {
-    const [adminSettings, allRecords] = await Promise.all([
-      AdminSettingsModel.findOne().select("spark_lightning_enabled").lean(),
+    const [settings, allRecords] = await Promise.all([
+      getAdminSettings(),
       AlphaWalletFeeRecordModel.find({ source: "spark_lightning" })
         .select("status feeAmount createdAt")
         .lean(),
     ]);
 
-    const sparkEnabled = adminSettings?.spark_lightning_enabled ?? false;
+    const sparkEnabled = settings.spark_lightning_enabled ?? false;
     const total        = allRecords.length;
     const completed    = allRecords.filter(r => r.status === "success");
     const failed       = allRecords.filter(r => r.status !== "success");
@@ -164,8 +164,8 @@ export async function getSparkHealthHandler(
   try {
     const cutoff24h = new Date(Date.now() - 24 * 60 * 60 * 1000);
 
-    const [adminSettings, failed24h, total24h, failedPermanent] = await Promise.all([
-      AdminSettingsModel.findOne().select("spark_lightning_enabled").lean(),
+    const [settings, failed24h, total24h, failedPermanent] = await Promise.all([
+      getAdminSettings(),
       AlphaWalletFeeRecordModel.countDocuments({
         source:    "spark_lightning",
         status:    { $in: ["failed_transient", "failed_permanent"] },
@@ -181,7 +181,7 @@ export async function getSparkHealthHandler(
       }),
     ]);
 
-    const sparkEnabled      = adminSettings?.spark_lightning_enabled ?? false;
+    const sparkEnabled      = settings.spark_lightning_enabled ?? false;
     const keyConfigured     = breezKeyConfigured();
     const errorRate24h      = total24h > 0
       ? parseFloat(((failed24h / total24h) * 100).toFixed(2))

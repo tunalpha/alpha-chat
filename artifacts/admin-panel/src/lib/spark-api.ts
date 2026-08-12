@@ -108,20 +108,22 @@ export function apiGetSparkFeeConfig(): Promise<SparkFeeConfig> {
 }
 
 // ── Admin Settings — spark_lightning_enabled kill switch ──────────────────
+// Path corretto: /admin/notification-settings (GET + PATCH)
+// NON /admin/settings — quello non esiste come endpoint PATCH.
 
-interface AdminSettingsResponse {
+interface AdminNotifSettingsResponse {
   spark_lightning_enabled: boolean;
   [key: string]: unknown;
 }
 
 export function apiGetSparkEnabled(): Promise<boolean> {
-  return apiFetch<AdminSettingsResponse>("/admin/settings").then(
+  return apiFetch<AdminNotifSettingsResponse>("/admin/notification-settings").then(
     (s) => s.spark_lightning_enabled ?? false,
   );
 }
 
 export function apiSetSparkEnabled(enabled: boolean): Promise<void> {
-  return apiFetch<void>("/admin/settings", {
+  return apiFetch<void>("/admin/notification-settings", {
     method:  "PATCH",
     headers: { "Content-Type": "application/json" },
     body:    JSON.stringify({ spark_lightning_enabled: enabled }),

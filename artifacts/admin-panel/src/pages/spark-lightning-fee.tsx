@@ -243,54 +243,53 @@ export default function SparkLightningFeePage() {
       </div>
 
       {/* Kill Switch — spark_lightning_enabled toggle */}
-      <Card className={sparkEnabled
-        ? "bg-green-900/20 border-green-700/40"
-        : "bg-yellow-900/20 border-yellow-700/30"
-      }>
-        <CardContent className="pt-4">
-          <div className="flex items-center justify-between gap-4">
-            <div className="flex items-center gap-2">
-              {sparkEnabled
-                ? <Power    className="h-4 w-4 text-green-400 shrink-0" />
-                : <PowerOff className="h-4 w-4 text-yellow-400 shrink-0" />
+      {/* NOTE: usa <div> non <Card> — Card shadcn ha bg bianco di default che
+          rende illeggibili i colori semi-trasparenti (bg-yellow/20 → beige). */}
+      <div className={`flex items-center justify-between gap-4 rounded-lg border px-4 py-3 ${
+        sparkEnabled
+          ? "bg-green-900/30 border-green-700/40"
+          : "bg-yellow-900/30 border-yellow-700/40"
+      }`}>
+        <div className="flex items-center gap-2 min-w-0">
+          {sparkEnabled
+            ? <Power    className="h-4 w-4 text-green-400 shrink-0" />
+            : <PowerOff className="h-4 w-4 text-yellow-400 shrink-0" />
+          }
+          <div className="min-w-0">
+            <p className={`text-sm font-semibold ${sparkEnabled ? "text-green-300" : "text-yellow-300"}`}>
+              {loadingEnabled
+                ? "Caricamento stato…"
+                : sparkEnabled
+                  ? "Spark Lightning ATTIVO in produzione"
+                  : "Spark Lightning DISABILITATO (kill switch)"
               }
-              <div>
-                <p className={`text-sm font-semibold ${sparkEnabled ? "text-green-300" : "text-yellow-300"}`}>
-                  {loadingEnabled
-                    ? "Caricamento stato…"
-                    : sparkEnabled
-                      ? "Spark Lightning ATTIVO in produzione"
-                      : "Spark Lightning DISABILITATO (kill switch)"
-                  }
-                </p>
-                <p className="text-xs text-white/50 mt-0.5">
-                  {sparkEnabled
-                    ? "Gli utenti possono effettuare pagamenti Lightning. Usa il kill switch per disabilitare istantaneamente."
-                    : "Spark non è attivo. Gli utenti non vedono l'opzione Lightning. Pre-configura la fee e abilita per il go-live."
-                  }
-                </p>
-              </div>
-            </div>
-            {isSuperAdmin && !loadingEnabled && (
-              <Button
-                size="sm"
-                variant={sparkEnabled ? "outline" : "default"}
-                className={sparkEnabled
-                  ? "border-red-700/50 text-red-400 hover:bg-red-900/30 shrink-0"
-                  : "bg-green-700 hover:bg-green-600 text-white shrink-0"
-                }
-                onClick={() => setToggleConfirm(sparkEnabled ? "disable" : "enable")}
-                disabled={toggleMutation.isPending}
-              >
-                {sparkEnabled
-                  ? <><PowerOff className="h-3.5 w-3.5 mr-1.5" /> Kill Switch</>
-                  : <><Power    className="h-3.5 w-3.5 mr-1.5" /> Abilita Go-Live</>
-                }
-              </Button>
-            )}
+            </p>
+            <p className="text-xs text-white/50 mt-0.5">
+              {sparkEnabled
+                ? "Gli utenti possono effettuare pagamenti Lightning. Usa il kill switch per disabilitare istantaneamente."
+                : "Spark non è attivo. Gli utenti non vedono l'opzione Lightning. Pre-configura la fee e abilita per il go-live."
+              }
+            </p>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+        {isSuperAdmin && !loadingEnabled && (
+          <Button
+            size="sm"
+            variant={sparkEnabled ? "outline" : "default"}
+            className={sparkEnabled
+              ? "border-red-700/50 text-red-400 hover:bg-red-900/30 shrink-0"
+              : "bg-green-700 hover:bg-green-600 text-white shrink-0"
+            }
+            onClick={() => setToggleConfirm(sparkEnabled ? "disable" : "enable")}
+            disabled={toggleMutation.isPending}
+          >
+            {sparkEnabled
+              ? <><PowerOff className="h-3.5 w-3.5 mr-1.5" /> Kill Switch</>
+              : <><Power    className="h-3.5 w-3.5 mr-1.5" /> Abilita Go-Live</>
+            }
+          </Button>
+        )}
+      </div>
 
       {/* Isolamento info */}
       <div className="flex items-start gap-2 rounded-lg bg-blue-900/20 border border-blue-700/30 px-4 py-3">
