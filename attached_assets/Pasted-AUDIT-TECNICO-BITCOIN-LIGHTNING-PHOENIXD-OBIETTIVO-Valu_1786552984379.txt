@@ -1,0 +1,924 @@
+AUDIT TECNICO — BITCOIN LIGHTNING + PHOENIXD
+
+OBIETTIVO
+
+Valutare in modo approfondito se sia possibile integrare Bitcoin Lightning Network direttamente dentro Alpha Wallet, utilizzando Phoenixd di ACINQ come possibile motore Lightning.
+
+Questa è una fase di SOLO AUDIT.
+
+⚠️ NON IMPLEMENTARE NULLA
+
+Non modificare:
+
+* codice frontend;
+* backend;
+* database;
+* wallet BTC on-chain;
+* monitor BTC;
+* Blockstream;
+* EVM;
+* Polygon;
+* Ethereum;
+* BNB Smart Chain;
+* USDA;
+* Portfolio Multi-Chain;
+* fee esistenti;
+* invio/ricezione crypto;
+* autenticazione;
+* UI.
+
+Non installare dipendenze definitive.
+
+Non creare endpoint.
+
+Non creare nuove collection.
+
+Non modificare file di produzione.
+
+Non fare deploy.
+
+Prima voglio sapere se l’integrazione è tecnicamente, economicamente e architetturalmente corretta.
+
+⸻
+
+1. VERIFICA UFFICIALE PHOENIX / PHOENIXD
+
+Utilizza esclusivamente documentazione e repository ufficiali ACINQ come fonte primaria.
+
+Identifica:
+
+* repository ufficiale Phoenix;
+* repository ufficiale Phoenixd;
+* versione attuale disponibile;
+* licenza;
+* stato di manutenzione;
+* documentazione ufficiale;
+* API disponibili;
+* modalità di autenticazione;
+* requisiti runtime;
+* requisiti di persistenza;
+* requisiti Bitcoin;
+* requisiti Lightning.
+
+Non basarti su tutorial casuali o implementazioni di terze parti quando esiste documentazione ufficiale.
+
+Riporta i link/sorgenti utilizzati.
+
+⸻
+
+2. DIFFERENZA PHOENIX APP vs PHOENIXD
+
+Spiega chiaramente la differenza tra:
+
+Phoenix Wallet
+
+Applicazione wallet self-custodial destinata all’utente finale.
+
+Phoenixd
+
+Daemon/backend Lightning destinato all’integrazione programmatica.
+
+Determina quale dei due è realmente adatto ad Alpha Wallet.
+
+NON assumere che l’app Phoenix possa essere semplicemente incorporata dentro Alpha Wallet.
+
+L’obiettivo è capire se Phoenixd può essere utilizzato come componente infrastrutturale di Alpha Wallet.
+
+⸻
+
+3. ARCHITETTURA ATTUALE ALPHA WALLET
+
+Prima di proporre modifiche, analizza l’architettura attuale.
+
+Individua:
+
+* frontend;
+* backend;
+* sistema wallet;
+* gestione chiavi;
+* gestione BTC;
+* monitor BTC;
+* balance BTC;
+* transaction history;
+* notifiche;
+* database;
+* deployment;
+* hosting;
+* eventuali limiti di Replit;
+* eventuali processi background già esistenti.
+
+In particolare analizza come Alpha Wallet gestisce oggi:
+
+BTC on-chain
+
+e come vengono conservate/protette le chiavi.
+
+NON modificare nulla.
+
+⸻
+
+4. DOMANDA FONDAMENTALE: SELF-CUSTODIAL
+
+Questa è la questione più importante.
+
+Determina se possiamo integrare Lightning mantenendo un modello coerente con il principio:
+
+Alpha Wallet non custodisce i fondi dell’utente.
+
+Analizza precisamente:
+
+* dove vivrebbero le chiavi Lightning;
+* chi controllerebbe le chiavi;
+* chi controllerebbe i fondi;
+* chi potrebbe spendere i fondi;
+* cosa succede se Alpha backend è offline;
+* cosa succede se Alpha backend viene compromesso;
+* cosa succede se Replit viene compromesso;
+* possibilità di backup;
+* recovery;
+* seed/recovery phrase;
+* possibilità di recuperare i fondi senza Alpha Wallet;
+* eventuale dipendenza da Phoenixd.
+
+NON utilizzare la parola “non-custodial” senza dimostrarla tecnicamente.
+
+Se la soluzione proposta è realmente custodial o introduce una forma di custodia, dichiararlo chiaramente.
+
+⸻
+
+5. MODELLO CORRETTO PER ALPHA WALLET
+
+Analizza almeno queste tre architetture:
+
+ARCHITETTURA A
+
+Phoenixd sul backend Alpha.
+
+Alpha Wallet frontend
+↓
+Alpha backend
+↓
+Phoenixd
+↓
+Lightning Network
+
+ARCHITETTURA B
+
+Phoenixd direttamente sul dispositivo dell’utente.
+
+Alpha Wallet
+↓
+Phoenixd locale
+↓
+Lightning Network
+
+ARCHITETTURA C
+
+Phoenixd separato come infrastruttura Lightning dedicata.
+
+Alpha Wallet
+↓
+Lightning service
+↓
+Phoenixd
+↓
+Lightning Network
+
+Per ciascuna:
+
+* sicurezza;
+* privacy;
+* custodia;
+* costi;
+* complessità;
+* affidabilità;
+* scalabilità;
+* compatibilità iOS;
+* compatibilità PWA;
+* compatibilità Replit;
+* persistenza;
+* backup;
+* recovery;
+* esperienza utente.
+
+Indicare quale architettura è realmente consigliabile.
+
+⸻
+
+6. REQUISITI LIGHTNING
+
+Verificare se Phoenixd permette di implementare:
+
+Ricezione
+
+* generazione invoice Lightning;
+* BOLT11;
+* importo specificato;
+* invoice senza importo, se supportato;
+* descrizione/memo;
+* scadenza;
+* verifica pagamento;
+* rilevamento automatico pagamento;
+* stato invoice.
+
+Invio
+
+* pagamento BOLT11;
+* eventuali BOLT12/offers se supportati;
+* importo;
+* fee;
+* preflight/quote;
+* verifica del destinatario;
+* stato pagamento;
+* failure reason;
+* retry sicuro.
+
+Stato
+
+Definire i possibili stati:
+
+pending
+
+paid
+
+failed
+
+expired
+
+cancelled, se supportato.
+
+Verificare quali stati sono realmente disponibili nelle API ufficiali.
+
+⸻
+
+7. LIGHTNING FEE
+
+Analizzare accuratamente:
+
+* fee di routing;
+* fee Phoenixd;
+* eventuali fee di liquidity;
+* eventuali fee on-chain;
+* eventuali swap;
+* eventuali costi di apertura/gestione canali;
+* eventuali costi variabili.
+
+Alpha Wallet deve poter mostrare all’utente quanto paga prima della conferma, quando tecnicamente possibile.
+
+Non assumere che una transazione Lightning abbia sempre fee zero.
+
+⸻
+
+8. LIQUIDITÀ
+
+Questa è una parte critica.
+
+Spiegare come Phoenix gestisce:
+
+* inbound liquidity;
+* outbound liquidity;
+* apertura canali;
+* splice;
+* swap-in;
+* swap-out;
+* capacità del canale;
+* ricezione di pagamenti;
+* pagamento di importi elevati.
+
+Determinare se l’utente può ricevere Lightning immediatamente dopo la creazione del wallet.
+
+Spiegare eventuali limiti.
+
+⸻
+
+9. PERSISTENZA
+
+Verificare cosa deve essere persistito per Phoenixd.
+
+Determinare:
+
+* directory dati;
+* database interno;
+* seed;
+* canali;
+* stato Lightning;
+* backup;
+* file indispensabili;
+* cosa succede se il container viene riavviato;
+* cosa succede se Replit ricrea il container;
+* cosa succede se il processo viene terminato;
+* cosa succede dopo un deploy.
+
+⚠️ Questo punto è fondamentale per Alpha Wallet.
+
+Se Phoenixd richiede storage persistente che Replit Autoscale non garantisce nel modo necessario, segnalarlo come BLOCKER.
+
+Non proporre una soluzione fragile.
+
+⸻
+
+10. REPLIT / DEPLOYMENT
+
+Analizza specificamente la compatibilità con l’attuale ambiente Alpha Wallet.
+
+Verificare:
+
+* processo persistente;
+* porte;
+* networking;
+* storage persistente;
+* restart;
+* sleep;
+* CPU;
+* RAM;
+* processi background;
+* Autoscale;
+* timeout;
+* container lifecycle;
+* backup.
+
+Determinare se Phoenixd può funzionare in sicurezza su Replit.
+
+Se la risposta è:
+
+“funziona tecnicamente ma non è adatto alla produzione”
+
+dirlo chiaramente.
+
+Proporre eventualmente infrastruttura alternativa, ma senza implementarla.
+
+⸻
+
+11. SICUREZZA
+
+Analizzare:
+
+API Phoenixd
+
+* autenticazione;
+* token;
+* secret;
+* TLS;
+* binding localhost;
+* accesso remoto;
+* firewall;
+* reverse proxy;
+* rate limiting.
+
+Alpha backend
+
+Determinare come evitare che un endpoint Lightning possa essere sfruttato per:
+
+* pagamento arbitrario;
+* doppio pagamento;
+* replay;
+* race condition;
+* invoice manipulation;
+* amount manipulation;
+* unauthorized payment;
+* draining del wallet.
+
+Idempotenza
+
+Verificare come garantire:
+
+una richiesta utente = massimo un pagamento Lightning
+
+anche in caso di:
+
+* doppio tap;
+* timeout;
+* retry;
+* refresh;
+* reconnect;
+* race condition.
+
+⸻
+
+12. RELAZIONE CON BTC ON-CHAIN
+
+Alpha Wallet ha già Bitcoin on-chain.
+
+NON sostituirlo.
+
+La nuova architettura deve permettere:
+
+Bitcoin
+
+On-chain
+
+e
+
+Lightning
+
+come due modalità dello stesso asset Bitcoin.
+
+Analizzare come rappresentare:
+
+* saldo BTC on-chain;
+* saldo Lightning;
+* eventuale saldo complessivo BTC.
+
+Attenzione:
+
+NON sommare due volte gli stessi fondi.
+
+Se il saldo Lightning e il saldo on-chain sono separati, devono essere mostrati separatamente e il Portfolio deve sapere come aggregarli correttamente.
+
+⸻
+
+13. PORTFOLIO MULTI-CHAIN ESISTENTE
+
+Abbiamo appena implementato:
+
+Portfolio Multi-Chain
+
+con:
+
+* Polygon;
+* Ethereum;
+* BNB Smart Chain;
+* Bitcoin.
+
+Analizzare come integrare Lightning senza rompere il Portfolio.
+
+Possibile modello futuro:
+
+Bitcoin
+
+* BTC On-chain
+* BTC Lightning
+
+e:
+
+Portfolio totale
+
+somma correttamente i due saldi solo se rappresentano effettivamente fondi distinti.
+
+NON modificare ora il Portfolio.
+
+Solo analizzare.
+
+⸻
+
+14. UX PROPOSTA
+
+Proporre una UX professionale.
+
+Non implementare.
+
+Possibile struttura:
+
+Bitcoin
+
+₿ Bitcoin
+
+On-chain
+
+0.00023114 BTC
+
+Lightning
+
+0.00000000 BTC
+
+Azioni:
+
+Invia
+
+Ricevi
+
+e possibilità di scegliere:
+
+Bitcoin On-chain
+
+oppure:
+
+⚡ Lightning
+
+Analizzare se questa UX è realmente la migliore.
+
+⸻
+
+15. INVIA LIGHTNING
+
+Proporre il flusso ideale:
+
+Invia → Bitcoin → Lightning
+
+↓
+
+Inserisci/scansiona invoice
+
+↓
+
+Decodifica invoice
+
+↓
+
+Mostra:
+
+* destinatario;
+* importo;
+* memo;
+* expiry;
+* fee;
+* totale;
+* rete Lightning.
+
+↓
+
+Conferma
+
+↓
+
+Firma/paga
+
+↓
+
+Stato:
+
+Pagamento inviato
+
+Non implementare.
+
+⸻
+
+16. RICEVI LIGHTNING
+
+Proporre:
+
+Ricevi → Bitcoin → Lightning
+
+↓
+
+Importo
+
+↓
+
+Memo opzionale
+
+↓
+
+Genera invoice
+
+↓
+
+Mostra QR
+
+↓
+
+Copia invoice
+
+↓
+
+Attendi pagamento
+
+↓
+
+Pagamento ricevuto
+
+↓
+
+Aggiorna balance e cronologia.
+
+Non implementare.
+
+⸻
+
+17. QR CODE
+
+Verificare compatibilità con:
+
+* BOLT11;
+* eventuali BOLT12;
+* scanner iOS;
+* scanner PWA;
+* deep links.
+
+Determinare quali standard sono realmente supportati da Phoenixd.
+
+⸻
+
+18. NOTIFICHE E STORICO
+
+Analizzare come integrare Lightning nello stesso sistema già utilizzato da Alpha Wallet.
+
+Esempio:
+
+⚡ Bitcoin Lightning
+
++ 0.001 BTC
+
+Ricevuto
+
+oppure:
+
+- 0.001 BTC
+
+Inviato
+
+Distinguere chiaramente:
+
+* BTC on-chain;
+* BTC Lightning.
+
+Non modificare ora il sistema storico.
+
+Solo proporre l’architettura.
+
+⸻
+
+19. PRIVACY
+
+Analizzare:
+
+* cosa vede Alpha backend;
+* cosa vede Phoenix/ACINQ;
+* cosa vede il nodo Lightning;
+* eventuali metadata;
+* IP;
+* invoice;
+* payment hash;
+* timestamp;
+* destinatario;
+* amount.
+
+Confrontare la privacy con l’attuale modello Alpha Chat.
+
+Questo è importante perché Alpha Chat ha come principio fondamentale la privacy.
+
+⸻
+
+20. AFFIDABILITÀ
+
+Analizzare scenari:
+
+* Phoenixd offline;
+* nodo non sincronizzato;
+* pagamento pending;
+* pagamento fallito;
+* pagamento ricevuto mentre frontend è offline;
+* backend riavviato;
+* Phoenixd riavviato;
+* perdita connessione;
+* timeout;
+* duplicazione richiesta;
+* database temporaneamente non disponibile.
+
+Definire come dovrebbe recuperare automaticamente lo stato.
+
+⸻
+
+21. RECOVERY
+
+Analizzare:
+
+Caso 1
+
+Utente perde il telefono.
+
+Caso 2
+
+Alpha backend viene ricreato.
+
+Caso 3
+
+Phoenixd viene ricreato.
+
+Caso 4
+
+Database Alpha viene perso.
+
+Caso 5
+
+Phoenixd ha un problema.
+
+Determinare come recuperare i fondi in ogni scenario.
+
+Se esiste una recovery phrase o un backup indispensabile, spiegare precisamente dove deve essere custodito.
+
+⸻
+
+22. COSTI
+
+Stimare qualitativamente:
+
+* costi Phoenix/ACINQ;
+* costi Lightning;
+* costi Bitcoin on-chain;
+* costi server;
+* storage;
+* bandwidth;
+* eventuali costi di liquidity/swap;
+* eventuali costi di routing.
+
+Non inventare prezzi.
+
+Se un costo dipende dalle condizioni di rete o dal provider, dichiararlo.
+
+⸻
+
+23. SCALABILITÀ
+
+Analizzare se un singolo Phoenixd può servire:
+
+* 1 utente;
+* 10 utenti;
+* 100 utenti;
+* 1.000 utenti.
+
+Determinare se Phoenixd è pensato per:
+
+un wallet personale
+
+oppure:
+
+un servizio multi-user
+
+e se utilizzarlo come backend condiviso introdurrebbe un modello custodial.
+
+Questo punto è CRITICO.
+
+⸻
+
+24. MODELLO MULTI-USER
+
+Alpha Wallet è destinato a più utenti.
+
+Verificare se è tecnicamente possibile avere:
+
+User A → wallet Lightning A
+
+User B → wallet Lightning B
+
+User C → wallet Lightning C
+
+e come Phoenixd gestisce più wallet/seed.
+
+NON assumere che un unico wallet Phoenixd possa essere condiviso tra tutti gli utenti.
+
+Se ogni utente richiede un’istanza separata, indicare:
+
+* complessità;
+* storage;
+* CPU;
+* memoria;
+* deployment;
+* costi;
+* scalabilità.
+
+Se invece esiste un modo ufficialmente supportato per gestire più wallet, documentarlo.
+
+⸻
+
+25. ALTERNATIVE
+
+Se Phoenixd non è adatto all’architettura Alpha Wallet, confrontarlo con almeno 2 alternative Lightning realistiche.
+
+Esempi da valutare se pertinenti:
+
+* LND;
+* Core Lightning;
+* Eclair;
+* Breez SDK;
+* altre soluzioni mature.
+
+Non scegliere in base alla popolarità.
+
+Confrontare:
+
+Soluzione	Self-custody	Multi-user	API	Mobile	Replit	Complessità	Liquidità	Costi
+
+Alla fine indicare quale soluzione è migliore per Alpha Wallet e perché.
+
+⸻
+
+26. COMPATIBILITÀ CON ALPHA CHAT
+
+Alpha Wallet è integrato in Alpha Chat.
+
+Analizzare la possibilità futura di:
+
+Chat → Ricevi BTC Lightning
+
+oppure:
+
+Chat → Invia BTC Lightning
+
+senza compromettere la sicurezza di Alpha Chat.
+
+NON implementare.
+
+Solo progettare concettualmente.
+
+⸻
+
+27. RISCHI
+
+Classificare i rischi:
+
+🔴 BLOCKER
+
+Problemi che impediscono l’integrazione.
+
+🟠 HIGH
+
+Problemi importanti da risolvere prima della produzione.
+
+🟡 MEDIUM
+
+Problemi gestibili.
+
+🟢 LOW
+
+Problemi minori.
+
+⸻
+
+28. VERDETTO FINALE
+
+Alla fine dell’audit devi dare un verdetto inequivocabile:
+
+OPZIONE A
+
+Phoenixd è adatto → procedere con implementazione
+
+oppure:
+
+OPZIONE B
+
+Phoenixd è tecnicamente possibile ma non consigliato
+
+oppure:
+
+OPZIONE C
+
+Phoenixd non è adatto all’architettura attuale
+
+Se consigli Phoenixd, specificare esattamente quale architettura utilizzare.
+
+⸻
+
+29. NON IMPLEMENTARE
+
+Ripeto:
+
+QUESTO È SOLO UN AUDIT.
+
+Non devi:
+
+* modificare codice;
+* creare componenti;
+* creare API;
+* installare Phoenixd;
+* installare pacchetti;
+* modificare database;
+* modificare WalletContext;
+* modificare BTC monitor;
+* modificare Portfolio;
+* modificare UI;
+* fare deploy.
+
+Se trovi problemi nel codice attuale, riportali soltanto.
+
+⸻
+
+30. REPORT FINALE OBBLIGATORIO
+
+Il report deve contenere:
+
+1. Phoenixd è integrabile?
+2. Versione/documentazione verificata.
+3. Architettura consigliata.
+4. Self-custodial: sì/no e perché.
+5. Gestione chiavi.
+6. Gestione seed/recovery.
+7. Multi-user.
+8. Replit compatibility.
+9. Persistenza.
+10. Sicurezza.
+11. API disponibili.
+12. Invio Lightning.
+13. Ricezione Lightning.
+14. Invoice.
+15. Fee.
+16. Liquidità.
+17. Recovery.
+18. Privacy.
+19. Scalabilità.
+20. Costi.
+21. Impatto sul BTC on-chain esistente.
+22. Impatto sul Portfolio Multi-Chain.
+23. UX consigliata.
+24. Alternative confrontate.
+25. Rischi classificati.
+26. BLOCKER eventuali.
+27. Raccomandazione finale.
+
+REGOLA FINALE
+
+Non dire semplicemente “sì, si può fare”.
+
+Voglio sapere se è una soluzione realmente adatta ad Alpha Wallet multi-user, self-custodial, integrato in Alpha Chat e attualmente ospitato su Replit.
+
+Se ci sono problemi di custodia, persistenza, sicurezza, scalabilità o compatibilità con Replit, devono essere evidenziati chiaramente prima di qualsiasi implementazione.
