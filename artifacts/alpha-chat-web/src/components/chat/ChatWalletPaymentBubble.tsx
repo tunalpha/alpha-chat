@@ -5,12 +5,18 @@
  * Usa le stesse classi CSS cp-bubble del MultiChain bubble per consistenza visiva.
  *
  * ISOLAMENTO: importa solo il tipo pubblico da bridge e tx-store.
+ *
+ * STATUS RESOLUTION (doppio livello, senza dipendere da txMonitor):
+ *   1. IDB locale (getTxRecordByHash) — istantaneo
+ *   2. eth_getTransactionReceipt diretto via backend — fallback se IDB = pending
+ *      Aggiorna anche IDB così i check successivi sono veloci.
  */
 
 import { useState, useEffect, useMemo, useRef } from "react";
 import type { SupportedNetwork } from "../../wallet/bridge/chat-wallet-bridge";
-import { getTxRecordByHash } from "../../wallet/services/tx-store";
-import { txMonitor } from "../../wallet/monitoring/tx-monitor";
+import { NETWORK_CHAIN_IDS }    from "../../wallet/bridge/chat-wallet-bridge";
+import { getTxRecordByHash, updateTxStatus } from "../../wallet/services/tx-store";
+import { apiWalletGetEvmReceipt } from "../../lib/alpha-wallet-api";
 import "./ChatWalletPaymentBubble.css";
 
 // ─── Tipi ─────────────────────────────────────────────────────────────────
@@ -51,39 +57,74 @@ const NETWORK_ICONS: Record<SupportedNetwork, string> = {
 
 // ─── Live-status hook ─────────────────────────────────────────────────────
 //
-// Il meta.status è congelato nel JSON Signal all'invio (= "sent").
-// Il tx-monitor aggiorna IDB quando la TX si conferma on-chain.
-// Questo hook legge IDB al mount e ri-controlla ogni 15s finché non finale.
+// Strategia a DUE LIVELLI — indipendente da txMonitor:
+//
+//   Livello 1: IDB locale via getTxRecordByHash (istantaneo, zero rete)
+//   Livello 2: eth_getTransactionReceipt via backend (solo se IDB dice pending)
+//              → aggiorna anche IDB così il check successivo è veloce
+//
+// Questo garantisce l'aggiornamento anche se:
+//   - txMonitor non è in esecuzione (wallet locked, background PWA)
+//   - la cache PWA ha una versione vecchia del monitor
+//   - il range di blocchi Alchemy non include la TX
 //
 
-function useLiveTxStatus(txHash: string, initial: WalletPaymentBubbleStatus): WalletPaymentBubbleStatus {
+function useLiveTxStatus(
+  txHash:  string,
+  network: SupportedNetwork,
+  initial: WalletPaymentBubbleStatus,
+): WalletPaymentBubbleStatus {
   const [liveStatus, setLiveStatus] = useState<WalletPaymentBubbleStatus>(initial);
-  // Ref per evitare stale closure nell'interval: reflect sempre il valore corrente
+  // useRef per evitare stale closure nell'interval
   const statusRef = useRef<WalletPaymentBubbleStatus>(initial);
 
   useEffect(() => {
     if (initial === "confirmed" || initial === "failed") return;
 
     let active = true;
+    // chainId 0 = Bitcoin (no receipt disponibile)
+    const chainId = (NETWORK_CHAIN_IDS as Record<string, number>)[network] ?? 0;
+
+    const resolve = (s: "confirmed" | "failed") => {
+      statusRef.current = s;
+      setLiveStatus(s);
+    };
 
     const check = async () => {
       try {
+        // ── Livello 1: IDB locale ────────────────────────────────────────
         const record = await getTxRecordByHash(txHash);
         if (!active) return;
-        if (record?.status === "confirmed") {
-          statusRef.current = "confirmed";
-          setLiveStatus("confirmed");
-        } else if (record?.status === "failed") {
-          statusRef.current = "failed";
-          setLiveStatus("failed");
+
+        if (record?.status === "confirmed") { resolve("confirmed"); return; }
+        if (record?.status === "failed")    { resolve("failed");    return; }
+
+        // ── Livello 2: receipt diretto via backend ───────────────────────
+        // Solo EVM (chainId > 0). BTC si aggiorna solo tramite txMonitor.
+        if (chainId <= 0) return;
+
+        const receipt = await apiWalletGetEvmReceipt(chainId, txHash);
+        if (!active) return;
+
+        if (receipt.status === "confirmed" || receipt.status === "failed") {
+          // Persisti in IDB: aggiorna il record esistente se trovato,
+          // altrimenti la prossima lettura IDB sarà ancora pending ma
+          // il check receipt si ri-attiverà e lo risolverà.
+          if (record?.id) {
+            await updateTxStatus(record.id, receipt.status);
+          }
+          resolve(receipt.status);
         }
-      } catch { /* IDB non disponibile */ }
+        // receipt.status === "pending" → TX ancora in mempool, riprova al prossimo ciclo
+
+      } catch { /* IDB non disponibile o errore rete — riprova al ciclo successivo */ }
     };
 
+    // Check immediato al mount
     void check();
 
+    // Poi ogni 15s finché non finale (usa ref per evitare stale closure)
     const timer = setInterval(() => {
-      // Usa il ref — nessuna stale closure
       if (statusRef.current === "confirmed" || statusRef.current === "failed") {
         clearInterval(timer);
         return;
@@ -92,8 +133,8 @@ function useLiveTxStatus(txHash: string, initial: WalletPaymentBubbleStatus): Wa
     }, 15_000);
 
     return () => { active = false; clearInterval(timer); };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [txHash, initial]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [txHash, network, initial]);
 
   return liveStatus;
 }
@@ -103,8 +144,8 @@ function useLiveTxStatus(txHash: string, initial: WalletPaymentBubbleStatus): Wa
 export function ChatWalletPaymentBubble({ meta, isMine }: Props) {
   const { txHash, network, assetSymbol, amount, fee, direction, explorerUrl } = meta;
 
-  // Status live da IDB — sovrascrive il valore congelato nel JSON Signal.
-  const status = useLiveTxStatus(txHash, meta.status);
+  // Status live — controlla IDB e receipt direttamente, senza dipendere da txMonitor
+  const status = useLiveTxStatus(txHash, network, meta.status);
 
   const netName = NETWORK_NAMES[network] ?? network;
   const netIcon = NETWORK_ICONS[network] ?? "⬡";
