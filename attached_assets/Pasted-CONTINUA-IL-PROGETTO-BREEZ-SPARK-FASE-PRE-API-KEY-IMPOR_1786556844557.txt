@@ -1,0 +1,235 @@
+CONTINUA IL PROGETTO BREEZ SPARK — FASE PRE-API-KEY
+
+IMPORTANTE:
+La richiesta della Breez API Key è stata inviata correttamente.
+LA API KEY NON È ANCORA DISPONIBILE E NON DEVE ESSERE RICHIESTA, INVENTATA O INSERITA NEL CODICE.
+
+Continua lo sviluppo esclusivamente nella PoC isolata:
+artifacts/breez-spark-poc/
+
+NON MODIFICARE in alcun modo le funzionalità esistenti di Alpha Wallet/Alpha Chat.
+
+OBIETTIVO:
+Portare la PoC al massimo livello di completezza possibile senza API key, preparando l'architettura definitiva per il momento in cui riceveremo la key.
+
+REGOLE ASSOLUTE DI ISOLAMENTO:
+1. Non modificare il BTC on-chain già funzionante.
+2. Non modificare la seed/keystore esistente.
+3. Non modificare Polygon, Ethereum, BSC, USDA, USDT o altri asset.
+4. Non modificare il sistema di commissioni esistente.
+5. Non modificare il portfolio esistente.
+6. Non modificare ChatWalletBridge esistente se non tramite codice PoC isolato.
+7. Nessuna transazione reale.
+8. Nessun pagamento Lightning reale.
+9. Nessun broadcast.
+10. Nessun fondo reale.
+11. Nessun endpoint production modificato.
+12. Nessuna dipendenza Breez installata nel progetto production.
+13. Nessuna API key hardcoded.
+14. Se prepari il supporto alla key, usa esclusivamente una variabile d'ambiente/configurazione del PoC.
+
+COMPLETARE ORA:
+
+A) ARCHITETTURA
+- Definire chiaramente il modulo Breez Spark come componente completamente isolato.
+- Creare un adapter/service layer dedicato, senza accoppiare direttamente Alpha Wallet alle API Breez.
+- Preparare un BreezSparkWalletContext separato dal WalletContext BTC esistente.
+- Definire interfacce astratte per:
+  connect
+  disconnect
+  getBalance
+  receive
+  send
+  listPayments
+  sync
+  recovery
+  status
+- Gestire correttamente gli stati:
+  disconnected
+  connecting
+  connected
+  unavailable
+  error
+  syncing
+
+B) SEED
+- Utilizzare la stessa seed BIP39 dell'Alpha Wallet SOLO quando verrà effettivamente collegato il wallet Spark.
+- NON modificare la derivazione BTC BIP84.
+- Implementare la derivazione Spark secondo:
+  m/8797555'/accountNumber'/keyType'
+  MAINNET account = 1.
+- Documentare chiaramente la separazione tra:
+  BTC BIP84
+  Spark Identity
+- Nessuna seed deve essere inviata al backend.
+- Nessuna private key deve lasciare il client.
+- ExternalSigner/client signing deve rimanere client-side.
+
+C) STORAGE
+- Preparare IndexedDB Spark separata dal keystore Alpha esistente.
+- Namespace/database dedicato.
+- Non utilizzare gli store del wallet BTC.
+- Prevedere recovery tramite seed.
+- Prevedere gestione di storage reset/re-sync.
+
+D) SEND
+Preparare il flusso:
+prepare → mostra fee → conferma → send
+
+Supportare:
+- BOLT11
+- BOLT12 send
+- Lightning Address
+- LNURL-Pay
+- BIP353
+- Spark-to-Spark
+
+Usare FeePolicy:
+feesExcluded
+
+IMPORTANTE:
+Non implementare ancora transazioni reali.
+Usare mock/test adapter quando la API key è assente.
+
+E) RECEIVE
+Preparare:
+- BOLT11 invoice
+- Spark address
+- QR
+- copia invoice
+- stato pending/complete/failed
+- riconciliazione
+- webhook/push architecture
+
+BOLT12 RECEIVE:
+NON dichiararlo supportato.
+Lasciare esplicitamente la feature come non disponibile nella versione SDK testata.
+
+F) COMMISSIONI ALPHA
+NON decidere ancora la fee definitiva Breez/Spark.
+
+Mantenere separati concettualmente:
+
+1. Alpha platform fee = 0,10%
+2. Lightning/Spark network/operator fees
+3. eventuali on-chain swap fees
+
+Il modello Alpha deve rimanere compatibile con:
+recipient_exact
+
+Ma NON assumere che recipient_exact sia matematicamente garantito per ogni BOLT11 fino alla verifica della fee effettiva.
+
+Preparare solo l'architettura per:
+destinatario riceve esattamente X
++
+Alpha fee 0,10%
++
+eventuale fee Spark/Lightning
+
+La raccolta della Alpha fee deve essere progettata in modo da poter utilizzare il Bitcoin Treasury separato di Alpha, ma NON eseguire ancora alcun trasferimento reale.
+
+G) ADMIN / COMMISSIONI
+NON modificare ancora il pannello Admin production.
+
+Preparare solo nella PoC la separazione concettuale:
+- Alpha BTC platform fee
+- Spark/Lightning external fee
+
+Quando arriverà la risposta Breez sulle fee, decideremo definitivamente se Lightning utilizzerà la stessa configurazione commissionale BTC oppure una configurazione separata.
+
+H) PORTFOLIO
+Preparare una struttura separata:
+
+Bitcoin
+ ├── On-chain
+ └── ⚡ Lightning / Spark
+
+NON sommare automaticamente i due saldi nell'UI senza distinzione.
+
+I dati Spark devono avere network/type distinti, ad esempio:
+btc_lightning
+spark
+
+BTC on-chain deve rimanere:
+btc
+
+I) TRANSACTION HISTORY
+Preparare tipi distinti:
+btc_sent
+btc_received
+btc_lightning_sent
+btc_lightning_received
+spark_sent
+spark_received
+
+Non modificare lo storico production esistente finché l'integrazione reale non sarà approvata.
+
+J) iOS / PWA
+Preparare l'architettura per:
+- foreground sync
+- reconnect al ritorno in foreground
+- webhook
+- Web Push VAPID già esistente
+- riconciliazione dopo background
+
+NON dichiarare che la PWA iOS riceve Lightning in background in tempo reale.
+
+K) SICUREZZA
+Aggiungere test/documentazione per verificare:
+- private key mai trasmessa
+- mnemonic mai trasmesso
+- API key mai hardcoded
+- nessun secret nei log
+- isolamento IndexedDB
+- isolamento Spark/BTC
+- nessun accesso Spark al wallet BTC server-side
+- nessuna modifica al backend BTC esistente
+
+L) TEST
+Aggiungere test automatici/mock per tutto ciò che non richiede API key.
+
+Creare una checklist chiaramente divisa:
+
+PASS SENZA API KEY
+PENDING API KEY
+RICHIEDE TEST MAINNET
+RICHIEDE RISPOSTA BREEZ
+
+Il test connect() Mainnet deve rimanere PENDING fino alla disponibilità della API key.
+
+M) API KEY — ULTIMO STEP
+Preparare esclusivamente il punto di integrazione:
+
+BREEZ_API_KEY
+
+La key NON deve essere inserita ora.
+
+Quando sarà disponibile:
+1. inserirla come secret/env variable;
+2. verificare che non venga mai esposta nel frontend/log;
+3. eseguire connect() nel PoC;
+4. verificare getInfo();
+5. verificare balance;
+6. verificare receive;
+7. verificare send con importo minimo/test appropriato;
+8. verificare fee;
+9. verificare recovery;
+10. solo dopo produrre il report GO/NO-GO.
+
+OUTPUT OBBLIGATORIO:
+Alla fine non modificare production e produci un report dettagliato con:
+
+- file creati/modificati nella PoC
+- file production NON modificati
+- dipendenze aggiunte
+- test eseguiti
+- test PASS
+- test FAIL
+- test PENDING API KEY
+- rischi residui
+- cosa manca prima dell'integrazione production
+- conferma esplicita che BTC on-chain e tutte le funzionalità esistenti non sono state toccate.
+
+REGOLA FINALE:
+NON passare dalla PoC all'Alpha Wallet production.
+La PoC deve essere considerata una sandbox isolata fino a mia esplicita approvazione successiva.

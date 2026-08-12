@@ -1,49 +1,63 @@
 ---
 name: Breez SDK Spark PoC
-description: Evidenze tecniche raccolte dal PoC WASM isolato (breez-spark-poc artifact)
+description: Stato architettura, findings critici e decision log per l'integrazione Lightning con Breez SDK Spark nel PoC isolato (artifacts/breez-spark-poc/)
 ---
 
-## Findings confermati (Aug 12 2026)
+## Ambiente
 
-**COOP/COEP headers su Replit: ✅ SOPRAVVIVONO al proxy**
-- `Cross-Origin-Opener-Policy: same-origin` + `Cross-Origin-Embedder-Policy: require-corp` impostati in `vite.config.ts` `server.headers`
-- Il proxy Replit dev (nginx) NON li strappa
-- Risultato: `crossOriginIsolated = true`, `SharedArrayBuffer` disponibile
-- **Questo era il blocker più critico — è risolto**
+- **COOP/COEP headers**: sopravvivono al proxy Replit dev → `crossOriginIsolated=true` confermato via Playwright
+- **SharedArrayBuffer**: disponibile (conseguenza di crossOriginIsolated=true)
+- **WASM binary**: 7.2MB, carica correttamente nel browser
+- **IDB**: `breez-poc-test-v1/mainnet/d2ea863c` — creato prima del fallimento di connect()
+- **getSparkStatus() browser**: bloccato da CORS (`spark.money/api/v1/status` — no CORS header). Funziona in Node.js. In produzione: proxied dal backend Alpha.
 
-**Why:** Il dev server Vite risponde direttamente, il proxy Replit fa pass-through degli header custom in modalità sviluppo.
+## Findings critici
 
-**Limite importante:** non verificato in produzione (deploy statico). In un deployment statico i file sono serviti da un CDN Replit che potrebbe comportarsi diversamente. Da testare prima di decidere.
+### API Key
+- `connect()` su mainnet richiede `apiKey` obbligatoria (errore: `"Missing Breez API key"` — rifiuto immediato)
+- API key **GRATUITA** via form: `breez.technology/request-api-key` o curl `breez.technology/contact/apikey`
+- Email inviata a contact@breez.technology con 15 domande tecniche + richiesta chiave
+- Quando disponibile: aggiungere come `VITE_BREEZ_API_KEY` secret Replit nel PoC
 
-## SDK installato
+### Derivation path (FORMALMENTE DOCUMENTATO)
+- Spark purpose: `m/8797555'/accountNumber'/keyType'`
+- `8797555'` = SHA256("spark") last 3 bytes = 0x863d73
+- Identity key: `m/8797555'/1'/0'` (mainnet, account=1)
+- **MAINNET default account = 1** (non 0 — errore comune)
+- BTC on-chain Alpha Wallet: `m/84'/0'/0'/0/{idx}` (purpose 84)
+- Separazione garantita per design — nessuna collisione possibile
+- Empiricamente verificato: BIP84 pubkey ≠ Spark identity pubkey
+- Fonte ufficiale: `docs.spark.money/wallets/identity-key-derivation`
 
-- Package: `@breeztech/breez-sdk-spark@0.15.1` (npm; 0.22.0 troppo recente — firewall blocca pacchetti < 24h)
-- Vite plugins: `vite-plugin-wasm@3.6.0`, `vite-plugin-top-level-await@1.6.0`, `vite-plugin-node-polyfills@0.22.0`
-- `optimizeDeps.exclude: ['@breeztech/breez-sdk-spark']` — i pacchetti WASM non vanno pre-bundlati da Vite
+### Network support
+- SDK v0.15.1 supporta solo `"mainnet" | "regtest"` — NO signet/testnet
+- BOLT12 receive: NON supportato in `ReceivePaymentMethod` — solo BOLT11/sparkAddress/bitcoinAddress
 
-## Config vite.config.ts per WASM
+## Architettura PoC (pre-API-key)
 
-```ts
-plugins: [
-  wasm(),           // PRIMA di react()
-  topLevelAwait(),
-  nodePolyfills({ include: ['buffer','crypto','stream','util','process'], globals: { Buffer: true, process: true } }),
-  react(),
-  ...
-]
-build: { target: 'esnext' }  // richiesto per top-level await
-optimizeDeps: { exclude: ['@breeztech/breez-sdk-spark'] }
-```
+Tutti i file in `artifacts/breez-spark-poc/src/`:
 
-## Test da fare manualmente nel PoC
+- `lib/breez-spark/types.ts` — tutte le interfacce
+- `lib/breez-spark/constants.ts` — derivation paths, IDB namespaces, fee model
+- `lib/breez-spark/adapter.ts` — BreezSparkAdapter interface + factory
+- `lib/breez-spark/adapters/mock.ts` — MockBreezAdapter (funziona senza API key)
+- `lib/breez-spark/adapters/live.ts` — LiveBreezAdapter (wrappa SDK reale)
+- `lib/breez-spark/fee-model.ts` — Alpha 0.10% + Spark TBD (feesExcluded)
+- `lib/breez-spark/signer.ts` — ExternalSigner wrapper + derivation audit
+- `lib/breez-spark/storage.ts` — IDB namespace manager + isolation check
+- `contexts/BreezSparkContext.tsx` — state machine (6 stati) + hooks
+- `components/spark/` — ConnectPanel, SendSheet, ReceiveSheet, SparkBalance, SparkTransactionHistory, SecurityChecklist, TestChecklist
+- `pages/SparkArchDemo.tsx` — demo architettura con tab
+- `App.tsx` — nav tra 🏗️ Architettura e 🧪 Test Runner
 
-1. Premere "Run All Tests" nel PoC → raccogliere risultati SDK connect(), BOLT11, IndexedDB
-2. Testare su iPhone Safari (background behavior)
-3. Verificare se `api_key` è richiesta su signet
+**Why**: il codice production non deve MAI importare direttamente da `@breeztech/breez-sdk-spark`. Solo `LiveBreezAdapter` importa l'SDK. `MockBreezAdapter` gira senza dipendenze esterne.
 
-## Domande aperte
+## iOS — classificazione definitiva
+- iOS background execution = **iOS PWA PLATFORM LIMITATION** (non bug SDK)
+- Mitigazione: `registerWebhook()` → Alpha backend → Web Push VAPID (già in produzione)
 
-- Derivation path Spark vs BTC on-chain BIP84 (path clash con stesso seed?)
-- API key richiesta per mainnet? Costo operatore?
-- Multi-user server mode: issue #874 ancora aperta
-- COOP/COEP in production deploy (CDN Replit)?
+## Cosa manca prima di integrazione production
+1. API key ricevuta + connect() verificato con PASS
+2. Risposta Breez su costi operatori
+3. Architettura design document approvato esplicitamente
+4. Test su iPhone Safari reale
