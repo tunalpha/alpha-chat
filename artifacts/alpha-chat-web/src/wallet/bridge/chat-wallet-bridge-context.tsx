@@ -451,17 +451,57 @@ export function ChatWalletBridgeProvider({ children }: Props) {
       };
 
     } catch (err: unknown) {
-      // Alcuni errori viem/fetch hanno .message come oggetto — forziamo sempre stringa
-      const rawMsg = err instanceof Error ? err.message : String(err);
-      const msg = typeof rawMsg === "string" && rawMsg.trim() && rawMsg !== "[object Object]"
-        ? rawMsg
-        : (err instanceof Error && typeof (err as Record<string,unknown>).shortMessage === "string"
-            ? String((err as Record<string,unknown>).shortMessage)
-            : "Errore sconosciuto");
-      const code = msg.toLowerCase().includes("insufficient") ? "INSUFFICIENT_BALANCE"
-        : (msg.toLowerCase().includes("network") || msg.toLowerCase().includes("fetch"))
-          ? "NETWORK_ERROR"
-          : "UNKNOWN";
+      // Estrai il messaggio più significativo dagli errori viem/fetch/unknown.
+      // Priorità: shortMessage (viem conciso) → details → message (se non è [object Object])
+      let rawMsg = "Errore sconosciuto";
+      if (err !== null && typeof err === "object") {
+        const e = err as Record<string, unknown>;
+        const candidates: (string | null)[] = [
+          typeof e.shortMessage === "string" && e.shortMessage ? e.shortMessage : null,
+          typeof e.details    === "string" && e.details    ? e.details    : null,
+          typeof e.message    === "string" && e.message && e.message !== "[object Object]" ? e.message : null,
+        ];
+        const found = candidates.find(c => c && c.trim().length > 0);
+        if (found) rawMsg = found;
+      } else if (err instanceof Error && err.message && err.message !== "[object Object]") {
+        rawMsg = err.message;
+      }
+
+      // Traduci errori tecnici comuni in messaggi leggibili in italiano
+      const lc = rawMsg.toLowerCase();
+      let msg: string;
+      let code: "INSUFFICIENT_BALANCE" | "NETWORK_ERROR" | "UNKNOWN";
+
+      if (lc.includes("insufficient funds") || lc.includes("insufficient balance") || lc.includes("exceeds the balance") || lc.includes("exceeds balance")) {
+        msg  = "Saldo insufficiente per coprire l'importo + commissioni gas.";
+        code = "INSUFFICIENT_BALANCE";
+      } else if (lc.includes("gas required exceeds") || lc.includes("gas too low") || lc.includes("intrinsic gas") || lc.includes("out of gas")) {
+        msg  = "Gas insufficiente. Riprova tra qualche istante.";
+        code = "INSUFFICIENT_BALANCE";
+      } else if (lc.includes("nonce too low") || lc.includes("replacement transaction") || lc.includes("already known")) {
+        msg  = "Transazione in conflitto con un'altra pendente. Attendi e riprova.";
+        code = "UNKNOWN";
+      } else if (lc.includes("network") || lc.includes("fetch") || lc.includes("etimedout") || lc.includes("econnrefused") || lc.includes("failed to fetch")) {
+        msg  = "Errore di rete. Controlla la connessione e riprova.";
+        code = "NETWORK_ERROR";
+      } else if (lc.includes("user rejected") || lc.includes("rejected")) {
+        msg  = "Transazione annullata.";
+        code = "UNKNOWN";
+      } else if (lc.includes("execution reverted") || lc.includes("revert")) {
+        msg  = "Transazione rifiutata dal contratto. Verifica i parametri.";
+        code = "UNKNOWN";
+      } else if (lc.includes("underpriced") || lc.includes("transaction underpriced")) {
+        msg  = "Commissione troppo bassa. Riprova.";
+        code = "UNKNOWN";
+      } else if (rawMsg !== "Errore sconosciuto") {
+        // Messaggio tecnico non riconosciuto: mostralo ma troncalo se troppo lungo
+        msg  = rawMsg.length > 140 ? rawMsg.slice(0, 140) + "…" : rawMsg;
+        code = "UNKNOWN";
+      } else {
+        msg  = "Pagamento fallito. Riprova.";
+        code = "UNKNOWN";
+      }
+
       return { status: "failed", errorCode: code, errorMessage: msg, metadata: params.metadata };
 
     } finally {

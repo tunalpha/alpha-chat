@@ -41,6 +41,17 @@ import "./ChatWalletPaySheet.css";
 import { useLock } from "../../contexts/LockContext";
 import { useWalletFaceId, unsealWalletPin } from "../../wallet/security/wallet-pin-seal";
 
+/**
+ * Calcola il colore del testo (bianco/nero) in base alla luminanza del colore di sfondo.
+ * Necessario per reti con colori chiari: BNB (#F3BA2F), Bitcoin (#F7931A).
+ */
+function getContrastColor(hex: string): "#111111" | "#ffffff" {
+  const r = parseInt(hex.slice(1, 3), 16);
+  const g = parseInt(hex.slice(3, 5), 16);
+  const b = parseInt(hex.slice(5, 7), 16);
+  return (0.299 * r + 0.587 * g + 0.114 * b) / 255 > 0.55 ? "#111111" : "#ffffff";
+}
+
 // ─── Types ────────────────────────────────────────────────────────────────
 
 /** Dati pre-compilati dal bubble "Richiedi" — apre il wizard direttamente su amount. */
@@ -193,9 +204,10 @@ export function ChatWalletPaySheet({
   const pinResolveRef = useRef<((pin: string | null) => void) | null>(null);
 
   // ── Send ─────────────────────────────────────────────────────────────
-  const [sending,  setSending]  = useState(false);
-  const [sendErr,  setSendErr]  = useState<string | null>(null);
-  const [txHash,   setTxHash]   = useState<string | null>(null);
+  const [sending,     setSending]     = useState(false);
+  const [sendErr,     setSendErr]     = useState<string | null>(null);
+  const [txHash,      setTxHash]      = useState<string | null>(null);
+  const [explorerUrl, setExplorerUrl] = useState<string | null>(null);
 
   const assets         = ASSETS_BY_NETWORK[network];
   const asset          = assets[Math.min(assetIdx, assets.length - 1)];
@@ -446,6 +458,7 @@ export function ChatWalletPaySheet({
         apiMarkAlphaWalletRequestPaid(prefillRequest.requestId, result.txHash).catch(() => {});
       }
       setTxHash(result.txHash ?? null);
+      setExplorerUrl(result.explorerUrl ?? null);
       setStep("success");
       onSent(result);
     } else {
@@ -655,21 +668,20 @@ export function ChatWalletPaySheet({
             <div
               style={{
                 marginBottom: 12,
-                padding: "10px 12px",
-                background: `${netColor}`,
-                border: `1px solid ${netColor}`,
+                padding: "10px 14px",
+                background: "rgba(15,15,30,0.82)",
+                borderLeft: `4px solid ${netColor}`,
                 borderRadius: 8,
                 fontSize: 13,
-                color: "#ffffff",
-                lineHeight: 1.4,
+                color: "#f0f0f0",
+                lineHeight: 1.5,
                 fontWeight: 500,
-                opacity: 0.9,
               }}
             >
               📥 Stai pagando una richiesta ricevuta. Rete, asset e importo sono fissati dal richiedente.
             </div>
             <div className="cwp-amount-context">
-              <span className="cwp-ctx-pill" style={{ color: netColor, borderColor: `${netColor}50`, background: `${netColor}12` }}>
+              <span className="cwp-ctx-pill" style={{ color: getContrastColor(netColor) === "#111111" ? "#555" : netColor, borderColor: `${netColor}60`, background: `${netColor}20` }}>
                 {NETWORK_LABELS[network]}
               </span>
               <span className="cwp-ctx-pill">{asset.icon} {asset.symbol}</span>
@@ -698,7 +710,7 @@ export function ChatWalletPaySheet({
           /* Normale: tutti i campi editabili */
           <div className="cwp-step">
             <div className="cwp-amount-context">
-              <span className="cwp-ctx-pill" style={{ color: netColor, borderColor: `${netColor}50`, background: `${netColor}12` }}>
+              <span className="cwp-ctx-pill" style={{ color: getContrastColor(netColor) === "#111111" ? "#555" : netColor, borderColor: `${netColor}60`, background: `${netColor}20` }}>
                 {NETWORK_LABELS[network]}
               </span>
               <span className="cwp-ctx-pill">{asset.icon} {asset.symbol}</span>
@@ -903,10 +915,10 @@ export function ChatWalletPaySheet({
             <p className="cwp-success-sub">
               {amount} {asset.symbol} inviati a <strong>{displayName}</strong>
             </p>
-            {txHash && (
+            {txHash && explorerUrl && (
               <a
                 className="cwp-success-tx"
-                href={`https://polygonscan.com/tx/${txHash}`}
+                href={explorerUrl}
                 target="_blank"
                 rel="noopener noreferrer"
               >
