@@ -1,0 +1,113 @@
+Ottimo. Questo è il checkpoint che aspettavamo. Il risultato è molto positivo.
+
+🟢 Situazione attuale
+
+Il test fondamentale è passato:
+
+connect → getInfo → syncWallet → listPayments = PASS
+
+E soprattutto è stato fatto su Mainnet reale, non su un ambiente simulato.
+
+Sono confermati:
+
+* WASM/browser su Replit ✅
+* API key client-side secondo il modello Breez ✅
+* connessione ai 3 operatori Spark ✅
+* External Signer/client signing ✅
+* private key mai trasmessa ✅
+* seed mai trasmessa ✅
+* derivazione Spark separata da BIP84 ✅
+* IndexedDB separata da Alpha Wallet ✅
+* recovery/sync architecture ✅
+* zero modifiche production ✅
+
+⚠️ Ma NON darei ancora il via al codice production
+
+Concordo con il verdetto dell’agente:
+
+🟢 GO TO ARCHITECTURE
+
+non ancora:
+
+🟢 GO TO PRODUCTION
+
+Le tre cose da chiudere sono corrette:
+
+1. Risposta Breez sulle fee/operator costs e condizioni commerciali
+2. Test reale su iPhone
+3. Architecture Design definitivo
+
+E aggiungo una quarta verifica che considero importante:
+
+🔐 Seed: dobbiamo decidere formalmente il modello
+
+Il PoC ha dimostrato che la stessa BIP39 seed può derivare BTC BIP84 e Spark senza collisioni.
+
+Ma prima di implementare dobbiamo decidere se Alpha Wallet farà:
+
+Opzione A — una sola seed
+
+Alpha Wallet seed
+   ├── BTC BIP84
+   └── Spark m/8797555'/1'/...
+
+oppure
+
+Opzione B — seed Spark separata
+
+Io preferisco A, perché è molto più elegante per l’utente:
+
+Una seed → Bitcoin on-chain + Spark/Lightning
+
+ma voglio che venga formalizzato nell’Architecture Design prima di toccare production.
+
+⸻
+
+E c’è un’altra cosa importante
+
+Il test ha trovato 20 transazioni appartenenti alla seed pubblica di test.
+
+Questo non è un problema del sistema, anzi ci ha dato una conferma utile: la connessione Mainnet e la sincronizzazione funzionano realmente.
+
+Però nel prossimo step l’agente deve abbandonare completamente quella mnemonic.
+
+Mai usarla per test di invio/ricezione con fondi reali.
+
+⸻
+
+Quindi adesso cosa farei io?
+
+NON farei ancora Send/Receive reale.
+
+Aspetterei la risposta di Breez sulle condizioni economiche e commerciali.
+
+Nel frattempo farei preparare all’agente solo l’Architecture Design, senza modificare production.
+
+Il documento dovrebbe definire definitivamente:
+
+* architettura Spark;
+* una seed vs seed separata;
+* External Signer;
+* IndexedDB;
+* Send/Receive;
+* BOLT11;
+* Spark-to-Spark;
+* Lightning Address/LNURL;
+* portfolio;
+* storico;
+* iOS/background;
+* recovery;
+* Alpha fee 0,10%;
+* stesso BTC Treasury;
+* recipient-exact;
+* gestione fee Breez + Alpha;
+* isolamento totale dal BTC on-chain;
+* kill switch/disattivazione Spark;
+* migrazione futura;
+* test e rollback;
+* sicurezza;
+* nessuna regressione.
+
+E soprattutto: il documento deve essere approvato prima che l’agente tocchi un solo file di produzione.
+
+Questa è ormai la fase giusta: PoC conclusa → Architecture Design → approvazione → implementazione controllata.
