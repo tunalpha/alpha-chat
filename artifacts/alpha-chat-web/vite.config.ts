@@ -110,6 +110,13 @@ export default defineConfig({
     // Aumenta il limite chunk warning (5.7 MB è normale con thirdweb+Signal)
     chunkSizeWarningLimit: 6000,
     rollupOptions: {
+      // @breeztech/breez-sdk-spark è un modulo WASM opzionale caricato solo
+      // quando spark_lightning_enabled=true (default: false). Non va bundlato —
+      // è troppo pesante (7.2 MB WASM + SharedArrayBuffer) e richiede config
+      // COOP/COEP speciali. Marcato external: Rollup non tenta di risolverlo.
+      // Quando Spark verrà abilitato in produzione: installare il pacchetto,
+      // aggiungere il plugin WASM a vite.config.ts e rimuovere questa riga.
+      external: ["@breeztech/breez-sdk-spark"],
       output: {
         // Code-splitting manuale: riduce il picco di memoria durante
         // il passo "rendering chunks" che causava OOM in produzione.

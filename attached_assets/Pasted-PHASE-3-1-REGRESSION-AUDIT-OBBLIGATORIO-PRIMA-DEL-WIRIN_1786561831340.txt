@@ -1,0 +1,127 @@
+PHASE 3.1 — REGRESSION AUDIT OBBLIGATORIO PRIMA DEL WIRING DELLA SEED
+
+NON implementare ancora il collegamento della seed reale Alpha Wallet a Breez Spark.
+
+NON modificare il comportamento funzionale di Spark.
+
+Obiettivo:
+verificare che le modifiche introdotte in Phase 3 siano completamente isolate quando:
+
+spark_lightning_enabled = false
+
+Eseguire un audit completo di regressione confrontando il comportamento attuale con quello precedente all'integrazione Spark.
+
+CONTROLLARE OBBLIGATORIAMENTE:
+
+1. Alpha Wallet
+- WalletProvider BTC invariato
+- BTC balance
+- BTC send
+- BTC receive
+- BTC fee
+- BTC Treasury
+- BTC transaction history
+- BIP84 derivation
+- keystore
+- seed recovery
+
+2. EVM / MultiChain
+- Ethereum
+- Polygon
+- BSC
+- token balances
+- Portfolio Multi-Chain
+- chain switching
+- asset navigation
+
+3. USDA
+- balance
+- send
+- receive
+- existing payment flows
+- fee logic
+
+4. Payment Engine
+- recipient_exact
+- existing Alpha fee
+- network fee
+- Treasury
+- nessuna modifica al fee model BTC/EVM esistente
+
+5. Alpha Chat
+- ChatWalletBridge
+- messaggi di pagamento
+- Signal/E2E
+- chiamate
+- startup
+- routing
+
+6. Performance / startup
+Con spark_lightning_enabled=false verificare che:
+- Breez WASM NON venga caricato
+- nessuna connessione Spark venga aperta
+- nessun nuovo polling Spark venga eseguito
+- nessuna nuova richiesta HTTP/WS Spark venga effettuata
+- nessun overhead significativo venga introdotto
+- nessun errore console Spark venga generato
+
+7. IndexedDB
+Verificare che:
+- gli store BTC/Alpha esistenti non vengano modificati
+- gli store Signal non vengano modificati
+- Spark utilizzi esclusivamente il proprio namespace
+- nessuna collisione di database/store
+
+8. Feature flag
+Verificare:
+spark_lightning_enabled=false → comportamento precedente completamente preservato.
+
+Testare anche:
+false → true → false
+
+e verificare che il ritorno a false disattivi completamente Spark.
+
+9. Admin
+Verificare che la configurazione Spark fee sia completamente separata da BTC fee.
+
+10. Security
+Verificare che:
+- mnemonic non venga mai inviato al backend
+- private key non venga inviata al backend
+- API key Breez non venga loggata
+- API key non venga salvata nel nostro IndexedDB
+- Spark non possa accedere al WalletContext BTC senza autorizzazione esplicita
+
+11. CI / test
+Eseguire:
+- tutti i test esistenti
+- tutti i test Spark
+- TypeScript
+- lint
+- build production
+
+Se possibile creare test automatici di isolamento cross-domain.
+
+CRITERIO DI SUCCESSO:
+
+Tutti i test PASS.
+
+Se viene trovata anche una sola regressione funzionale nel comportamento esistente:
+STOP.
+NON procedere al wiring della seed.
+Riportare:
+- file coinvolto
+- causa
+- impatto
+- proposta di fix
+- test che dimostra la correzione.
+
+IMPORTANTE:
+NON modificare ChatPage.tsx.
+NON modificare WalletContext.tsx per risolvere problemi Spark in questa fase.
+NON modificare BTC fee model.
+NON modificare MultiChain.
+NON modificare USDA.
+NON modificare Payment Engine.
+
+Questa fase è esclusivamente AUDIT + REGRESSION TEST.

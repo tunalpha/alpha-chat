@@ -1,4 +1,4 @@
-import { useState, useEffect, type ReactNode } from "react";
+import { useState, useEffect, lazy, Suspense, type ReactNode } from "react";
 import { AuthProvider, useAuth } from "./contexts/AuthContext";
 import { LockProvider, useLock } from "./contexts/LockContext";
 import { CallProvider, useCall } from "./contexts/CallContext";
@@ -43,8 +43,13 @@ import AlphaWalletPage from "./pages/AlphaWalletPage";
 // Phase G: Alpha Wallet × Chat bridge (WalletProvider elevato al root)
 import { WalletProvider } from "./wallet/context/WalletContext";
 import { ChatWalletBridgeProvider } from "./wallet/bridge/chat-wallet-bridge-context";
-// Spark/Lightning — isolato da WalletProvider BTC. Feature flag OFF per default.
-import { SparkWalletProvider } from "./contexts/SparkWalletContext";
+// Spark/Lightning — lazy-loaded: il codice JS (SparkWalletContext, fee-engine, adapter)
+// viene scaricato SOLO se spark_lightning_enabled=true. Con flag=false (default):
+// zero import, zero overhead, zero WASM. Static import rimosso intenzionalmente.
+// Defined module-level (fuori dal componente) per evitare re-creazione ad ogni render.
+const _LazySparkProvider = lazy(() =>
+  import("./contexts/SparkWalletContext").then(m => ({ default: m.SparkWalletProvider })),
+);
 import { useNotifSync } from "./hooks/useNotifSync";
 import { initServiceWorker, requestAndSubscribe as pushSubscribe } from "./lib/pushManager";
 import SignalReinstallBanner from "./components/SignalReinstallBanner";
@@ -306,22 +311,37 @@ function AppContent() {
 }
 
 /**
- * SparkWalletProviderWrapper — legge il feature flag e monta il provider Spark.
- * Se spark_lightning_enabled = false (default): provider è no-op, zero WASM caricato.
- * ISOLAMENTO: non tocca WalletProvider BTC né ChatWalletBridgeProvider.
+ * SparkWalletProviderWrapper — lazy isolation gate per Lightning/Spark.
+ *
+ * ISOLAMENTO GARANTITO:
+ * - Con spark_lightning_enabled=false (default): render diretto di children,
+ *   zero import JS Spark, zero WASM, zero HTTP /spark/*, zero IDB Spark.
+ * - Con spark_lightning_enabled=true: lazy-import di SparkWalletContext
+ *   (e tutta la chain: fee-engine, adapter, types) SOLO in quel momento.
+ * - Il dynamic import non tocca WalletProvider BTC né ChatWalletBridgeProvider.
+ *
+ * FASE CORRENTE (spark disabled): questo componente si riduce a un Fragment.
  */
 function SparkWalletProviderWrapper({ children }: { children: ReactNode }) {
   const [sparkEnabled, setSparkEnabled] = useState(false);
+
   useEffect(() => {
-    // Legge il feature flag (fail-safe = false)
-    void apiGetAppFeatureFlags().then(flags =>
-      setSparkEnabled(flags.spark_lightning_enabled ?? false),
-    );
+    // Fail-safe = false: se la chiamata fallisce, Spark rimane disabilitato
+    void apiGetAppFeatureFlags()
+      .then(flags => setSparkEnabled(flags.spark_lightning_enabled ?? false))
+      .catch(() => { /* spark rimane false */ });
   }, []);
+
+  // FASE CORRENTE: spark_lightning_enabled=false → children diretti, zero Spark code
+  if (!sparkEnabled) return <>{children}</>;
+
+  // spark_lightning_enabled=true → lazy-load SparkWalletContext per la prima volta
   return (
-    <SparkWalletProvider isEnabled={sparkEnabled}>
-      {children}
-    </SparkWalletProvider>
+    <Suspense fallback={<>{children}</>}>
+      <_LazySparkProvider isEnabled={true}>
+        {children}
+      </_LazySparkProvider>
+    </Suspense>
   );
 }
 

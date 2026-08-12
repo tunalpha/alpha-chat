@@ -43,8 +43,14 @@ export class LiveSparkAdapter implements BreezSparkAdapter {
   async connect(config: SparkConnectConfig): Promise<void> {
     this._state = "connecting";
     try {
-      // Dynamic import — il WASM viene caricato qui (lazy)
-      const sdkModule = await import("@breeztech/breez-sdk-spark") as Record<string, unknown>;
+      // Dynamic import — il WASM viene caricato qui (lazy).
+      // @vite-ignore: il pacchetto non è bundlato — viene caricato a runtime
+      // solo quando spark_lightning_enabled=true. Rollup non deve tentare di
+      // risolvere questa importazione a build-time.
+      // eslint-disable-next-line @typescript-eslint/ban-ts-comment
+      // @ts-ignore
+      // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
+      const sdkModule = await import(/* @vite-ignore */ "@breeztech/breez-sdk-spark") as Record<string, unknown>;
 
       // initBreezSDK() imposta IndexedDB storage — obbligatorio prima di connect()
       if (typeof sdkModule["default"] === "function") {
