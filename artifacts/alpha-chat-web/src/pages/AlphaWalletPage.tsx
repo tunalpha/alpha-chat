@@ -915,19 +915,38 @@ function usePortfolioBalances() {
   // 3. Dipende da meta → null→non-null quando il wallet si sblocca = trigger naturale.
   // 4. Cooldown 30s su "error" per evitare loop se Breez SDK è irraggiungibile.
   useEffect(() => {
+    const pinPresent  = !!sessionStorage.getItem("aw_bio_pin");
+    const metaPresent = !!meta;
+    const sparkState  = spark?.state ?? "no-context";
+    // ── SPARK_DIAG ──────────────────────────────────────────────────────────
+    console.log("[SPARK_DIAG] effect fired", {
+      isEnabled:   spark?.isEnabled,
+      state:       sparkState,
+      pinPresent,
+      metaPresent,
+    });
+    // ────────────────────────────────────────────────────────────────────────
     if (!spark?.isEnabled) return;
     // Non interferire con stati attivi
     if (spark.state === "connecting" || spark.state === "connected" || spark.state === "syncing") return;
     // Verifica PIN: stesso check che fa getMnemonic() — se manca, wallet ancora bloccato
-    if (!sessionStorage.getItem("aw_bio_pin")) return;
+    if (!pinPresent) {
+      console.log("[SPARK_DIAG] SKIP — aw_bio_pin non in sessionStorage (wallet bloccato)");
+      return;
+    }
     // Cooldown: non ritentare "error" più di una volta ogni 30s
     if (spark.state === "error") {
       const now = Date.now();
-      if (now - sparkRetryRef.current < 30_000) return;
+      if (now - sparkRetryRef.current < 30_000) {
+        console.log("[SPARK_DIAG] SKIP — cooldown error, secondi rimanenti:", Math.round((30_000 - (now - sparkRetryRef.current)) / 1000));
+        return;
+      }
       sparkRetryRef.current = now;
     }
-    void spark.connect().catch(() => {
+    console.log("[SPARK_DIAG] CALLING spark.connect()");
+    void spark.connect().catch((err: unknown) => {
       // state → "error" → sparkOffline=true → UI mostra "Lightning non disponibile"
+      console.log("[SPARK_DIAG] spark.connect() caught in effect:", err instanceof Error ? err.message : String(err));
     });
   }, [spark?.isEnabled, spark?.state, meta]); // meta null→non-null all'unlock = trigger
 

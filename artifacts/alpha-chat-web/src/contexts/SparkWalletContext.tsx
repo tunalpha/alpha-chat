@@ -150,19 +150,29 @@ export function SparkWalletProvider({ children, isEnabled, storageDir = "spark-w
   }, [isEnabled]);
 
   const connect = useCallback(async () => {
+    // ── SPARK_DIAG ──────────────────────────────────────────────────────────
+    console.log("[SPARK_DIAG] SparkWalletContext.connect() called, isEnabled:", isEnabled);
+    // ────────────────────────────────────────────────────────────────────────
     if (!isEnabled) return;
     setState("connecting");
     setError(undefined);
     try {
+      console.log("[SPARK_DIAG] createSparkAdapter() starting");
       const adapter = await createSparkAdapter();
+      console.log("[SPARK_DIAG] adapter created, type:", adapter.adapterType);
       adapterRef.current = adapter;
       // getMnemonic iniettato da App.tsx — legge keystore Alpha Wallet via sessionStorage.
       // SECURITY: il plaintext mnemonic esiste in memoria solo durante connect().
+      console.log("[SPARK_DIAG] adapter.connect() starting, storageDir:", storageDir);
       await adapter.connect({ storageDir, network: "mainnet", getMnemonic });
+      console.log("[SPARK_DIAG] adapter.connect() OK — calling getInfo()");
       const info = await adapter.getInfo();
+      console.log("[SPARK_DIAG] getInfo OK, balanceSat:", info.balanceSat?.toString());
       setInfo(info);
       setState("connected");
+      console.log("[SPARK_DIAG] state → connected ✓");
     } catch (err) {
+      console.log("[SPARK_DIAG] connect() CATCH:", err instanceof Error ? err.message : String(err));
       const e: SparkAdapterError = {
         code:        "CONNECT_FAILED",
         message:     err instanceof Error ? err.message : String(err),

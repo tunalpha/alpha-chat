@@ -362,6 +362,9 @@ function SparkWalletProviderWrapper({ children }: { children: ReactNode }) {
   const getMnemonic = useCallback(async (): Promise<string> => {
     // Legge PIN dalla session cache — set da unlockWallet/importWallet
     const pin = sessionStorage.getItem("aw_bio_pin");
+    // ── SPARK_DIAG ──────────────────────────────────────────────────────────
+    console.log("[SPARK_DIAG] getMnemonic called, pinPresent:", !!pin);
+    // ────────────────────────────────────────────────────────────────────────
     if (!pin) {
       throw new Error(
         "[SparkWallet] Wallet non sbloccato — sbloccare Alpha Wallet prima di connettere Spark",
@@ -369,10 +372,24 @@ function SparkWalletProviderWrapper({ children }: { children: ReactNode }) {
     }
     // Dynamic import keystore per non appesantire il bundle con spark=false
     const { loadKeystore, decryptSeed } = await import("./wallet/core/keystore");
-    const entry = await loadKeystore();
+    let entry;
+    try {
+      entry = await loadKeystore();
+      console.log("[SPARK_DIAG] loadKeystore:", entry ? "FOUND" : "NULL");
+    } catch (e) {
+      console.log("[SPARK_DIAG] loadKeystore THREW:", e instanceof Error ? e.message : String(e));
+      throw e;
+    }
     if (!entry) throw new Error("[SparkWallet] Keystore Alpha Wallet non trovato");
     // SECURITY: il mnemonic plaintext esiste solo per la durata di questa chiamata
-    return decryptSeed(entry, pin);
+    try {
+      const seed = decryptSeed(entry, pin);
+      console.log("[SPARK_DIAG] decryptSeed: OK, seedLength:", seed.split(" ").length, "words");
+      return seed;
+    } catch (e) {
+      console.log("[SPARK_DIAG] decryptSeed THREW:", e instanceof Error ? e.message : String(e));
+      throw e;
+    }
   }, []);
 
   // FASE CORRENTE: spark_lightning_enabled=false → children diretti, zero Spark code

@@ -1,0 +1,65 @@
+Sì, anche adesso Lightning non è connesso. Lo screenshot è chiarissimo:
+
+* ❌ non compare Bitcoin Lightning
+* ❌ 0 chain non disponibili · dati parziali
+* ❌ il banner dice Lightning non disponibile
+* quindi il nuovo retry non ha risolto il problema.
+
+A questo punto non farei altri fix alla cieca. La root cause precedente era corretta, ma evidentemente c’è un secondo problema nella fase successiva allo sblocco.
+
+Manderei subito all’agente questo:
+
+STOP — il fix del timing non ha risolto il problema in produzione.
+
+Dopo Publish + chiusura/riapertura + sblocco Alpha Wallet, Lightning continua a non comparire.
+
+Screenshot reale iPhone:
+
+* Portfolio: ⚠️ parziale
+* 0 chain non disponibili · dati parziali
+* banner: Dati parziali — Lightning non disponibile
+* nessuna riga Bitcoin Lightning
+
+La root cause precedente era:
+wallet locked → auto-connect troppo presto.
+È stata aggiunta la gestione PIN + retry.
+
+Ora NON modificare codice. Fai prima una diagnosi runtime completa.
+
+Voglio sapere esattamente:
+
+1. Dopo lo sblocco, sessionStorage["aw_bio_pin"] esiste?
+2. meta passa da null a valore?
+3. L’effect di auto-connect viene effettivamente rieseguito?
+4. spark.connect() viene chiamato?
+5. getMnemonic() viene completato?
+6. loadKeystore() / decryptSeed() completano?
+7. LiveSparkAdapter viene creato?
+8. Breez SDK connect() viene chiamato?
+9. Qual è l’errore esatto restituito da Breez, se presente?
+10. Qual è lo stato finale Spark: disabled, connecting, connected, disconnected o error?
+11. syncWallet() viene chiamato?
+12. sparkSat quale valore assume?
+
+IMPORTANTE: non loggare mai mnemonic, PIN, private key o API key. Loggare solamente stato, booleani e tipo/codice dell’errore.
+
+Inoltre verifica se spark.connect() viene eventualmente chiamato ma il componente viene smontato/rimontato prima del completamento.
+
+Voglio un report con questa struttura:
+
+CONNECT CALLED: YES/NO
+GET MNEMONIC: PASS/FAIL
+BREEZ CONNECT: PASS/FAIL
+SYNC: PASS/FAIL
+FINAL SPARK STATE: …
+sparkSat: …
+EXACT ERROR: …
+ROOT CAUSE: …
+
+Solo dopo aver identificato il punto preciso, proporre il fix minimo.
+
+Non modificare BTC, EVM, USDA, MultiChain, WalletContext, Payment Engine o altre parti production.
+
+Non toccherei il Kill Switch e non disattiverei Spark. Siamo già in produzione e abbiamo bisogno di vedere dove si interrompe realmente la sequenza.
+
+La cosa importante è che ora abbiamo abbastanza informazioni per smettere di andare per tentativi: l’agente deve dirci esattamente dove muore connect().
