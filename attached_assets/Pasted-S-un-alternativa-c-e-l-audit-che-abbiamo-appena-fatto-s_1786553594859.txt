@@ -1,0 +1,67 @@
+Sì: un’alternativa c’è, e l’audit che abbiamo appena fatto su Phoenixd cambia parecchio la situazione.
+
+Ho controllato la documentazione attuale di Breez SDK – Spark e, rispetto a Phoenixd, è molto più interessante per Alpha Wallet. La documentazione ufficiale indica esplicitamente:
+
+* non-custodial;
+* chiavi detenute dagli utenti;
+* multi-user server mode;
+* supporto WASM/Web, quindi molto più interessante per una PWA;
+* persistenza e restore;
+* Lightning + Bitcoin on-chain;
+* Lightning Address, LNURL-Pay, BOLT11 e BOLT12;
+* supporto multi-device;
+* client-side signing;
+* integrazione con backend multi-tenant. 
+
+E c’è un dettaglio molto importante per Alpha Wallet: il Server Mode è progettato proprio per un backend che gestisce molti wallet, creando un’istanza SDK per richiesta invece di dover eseguire un Phoenixd separato per ogni utente. 
+
+Quindi io non abbandonerei Lightning
+
+Cambierei semplicemente strategia:
+
+❌ Phoenixd → scartato
+
+🟢 Breez SDK Spark → da sottoporre a un nuovo audit
+
+Per Alpha Wallet è potenzialmente molto più adatto.
+
+Inoltre, la documentazione ufficiale parla esplicitamente di client signing: il server può preparare il pagamento, ma la chiave che lo autorizza rimane lato utente. Questo è esattamente il tipo di architettura che dobbiamo verificare per mantenere la filosofia self-custodial di Alpha Wallet. 
+
+Ma attenzione a una cosa
+
+Non direi ancora “integriamo Breez”.
+
+Prima dobbiamo fare un audit Breez SDK Spark specifico per Alpha Wallet, perché dobbiamo verificare:
+
+* PWA/iOS reale;
+* compatibilità con il nostro React/TypeScript;
+* IndexedDB e seed attuale;
+* integrazione con la nostra HD wallet;
+* multi-user;
+* server mode;
+* client signing;
+* recovery;
+* Bitcoin on-chain ↔ Lightning;
+* privacy;
+* costi;
+* API key;
+* Lightning Address;
+* gestione notifiche/background;
+* compatibilità con Replit;
+* soprattutto come applicare il nostro 0,10% Alpha fee e recipient_exact senza rompere il modello attuale.
+
+La parte interessante è che la documentazione ufficiale indica anche WASM e una demo browser/PWA, quindi questa volta abbiamo una strada concreta da investigare. 
+
+La mia raccomandazione
+
+Non implementare ancora.
+
+Facciamo adesso un Audit tecnico Breez SDK Spark, analogo a quello appena fatto per Phoenixd, ma con un obiettivo preciso:
+
+“Può Breez SDK Spark permettere ad Alpha Wallet di offrire BTC Lightning non-custodial, multi-user, compatibile PWA/iOS, mantenendo le chiavi dell’utente e l’architettura self-custodial attuale?”
+
+Se la risposta è sì, allora abbiamo finalmente una candidata seria per Lightning.
+
+E solo dopo quell’audit riprendiamo il punto che avevamo messo in sospeso: commissione Alpha 0,10% + recipient_exact + fee Lightning, con una progettazione precisa.
+
+Io farei questo audit prima di pensare a qualsiasi altra soluzione.
