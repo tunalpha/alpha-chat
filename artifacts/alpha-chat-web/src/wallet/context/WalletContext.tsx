@@ -164,6 +164,8 @@ export function WalletProvider({ children }: WalletProviderProps) {
     txMonitor.onNewTransaction(() => {
       void _refreshNotifications();
       void _refreshTxHistory();
+      // Notifica AlphaWalletPage (e altri listener) di aggiornare il saldo
+      window.dispatchEvent(new CustomEvent("aw:new-tx"));
     });
     txMonitor.start(m.evmAddress, m.btcAddress);
   }, []);

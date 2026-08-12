@@ -720,6 +720,14 @@ function OverviewView({ onNavigate }: { onNavigate: (v: WalletSubView) => void }
     return () => clearInterval(id);
   }, [fetchData]);
 
+  // Refresh saldo quando il tx-monitor segnala nuove TX o riconciliazioni
+  // (es. BTC pending → confirmed, nuova ricezione)
+  useEffect(() => {
+    const handler = () => void fetchData();
+    window.addEventListener("aw:new-tx", handler);
+    return () => window.removeEventListener("aw:new-tx", handler);
+  }, [fetchData]);
+
   useEffect(() => {
     if (typeof Notification !== "undefined") setNotifPermission(Notification.permission);
   }, []);

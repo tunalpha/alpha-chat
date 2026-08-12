@@ -153,27 +153,29 @@ async function _processEvmTx(
 async function pollBtc(
   address: string,
   state: MonitorState
-): Promise<string[]> {
+): Promise<{ newTxids: string[]; reconciled: boolean }> {
   let result;
   try {
     result = await apiWalletGetBtcTransactions(address);
   } catch {
-    return state.btcSeenTxids;
+    return { newTxids: state.btcSeenTxids, reconciled: false };
   }
 
   const newTxids: string[] = [...state.btcSeenTxids];
+  let reconciled = false;
 
   for (const tx of result.txs) {
     if (state.btcSeenTxids.includes(tx.txid)) {
-      // TX già vista: controlla se c'è un aggiornamento di stato
-      await _reconcileBtcTx(tx);
+      // TX già vista: controlla se c'è un aggiornamento di stato (pending → confirmed)
+      const updated = await _reconcileBtcTx(tx);
+      if (updated) reconciled = true;
       continue;
     }
     newTxids.push(tx.txid);
     await _processBtcTx(tx);
   }
 
-  return newTxids;
+  return { newTxids, reconciled };
 }
 
 async function _processBtcTx(tx: BtcTx): Promise<void> {
@@ -214,12 +216,15 @@ async function _processBtcTx(tx: BtcTx): Promise<void> {
   await saveTxRecord(record);
 }
 
-/** Aggiorna status BTC pending → confirmed se la TX è stata confermata */
-async function _reconcileBtcTx(tx: BtcTx): Promise<void> {
-  if (!tx.confirmed) return;
+/**
+ * Aggiorna status BTC pending → confirmed se la TX è stata confermata.
+ * Ritorna true se lo status è stato effettivamente aggiornato (era pending).
+ */
+async function _reconcileBtcTx(tx: BtcTx): Promise<boolean> {
+  if (!tx.confirmed) return false;
   const dir = tx.direction === "in" ? "in" : "out";
   const id  = `btc:${tx.txid}:${dir}:`;
-  await updateTxStatus(id, "confirmed");
+  return updateTxStatus(id, "confirmed");
 }
 
 // ─── Reconciliation EVM pending TX ────────────────────────────────────────
@@ -409,11 +414,13 @@ export class TxMonitor {
     if (this._btcAddress) {
       try {
         const prevTxids = state.btcSeenTxids;
-        const newTxids = await pollBtc(this._btcAddress, state);
+        const { newTxids, reconciled } = await pollBtc(this._btcAddress, state);
         if (newTxids.length > prevTxids.length) {
           state.btcSeenTxids = newTxids;
           hasNew = true;
         }
+        // Reconcile: una TX pending è diventata confirmed → segnala refresh
+        if (reconciled) hasNew = true;
       } catch {
         hadError = true;
       }
