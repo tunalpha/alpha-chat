@@ -1,20 +1,13 @@
 /**
  * alpha-wallet-fee.tsx — Alpha Wallet Platform Fee Configuration
  *
- * Permette al super_admin di visualizzare e modificare la configurazione
- * della Platform Fee di Alpha Wallet.
+ * FIX TEMA: usa classi semantiche (text-foreground, bg-card, border-border)
+ * invece di text-white/bg-white/5 invisibili su tema chiaro (pagina bianca).
  *
- * ENDPOINT USATI:
+ * ENDPOINT:
  *   GET  /api/v1/alpha-wallet/fee-config
  *   PATCH /api/v1/alpha-wallet/fee-config  (solo super_admin)
  *   GET  /api/v1/alpha-wallet/fee-records  (solo super_admin)
- *
- * REGOLE CHIAVE:
- *   - Modifica richiede conferma esplicita prima del PATCH
- *   - PATCH fallito → ripristino config precedente, nessun default inventato
- *   - GET fallito → messaggio di errore, nessun valore inventato
- *   - Platform Fee ≠ Network Fee ≠ Miner Fee (terminologia separata)
- *   - Quote già congelate non vengono retroattivamente modificate
  */
 
 import { useState } from "react";
@@ -66,8 +59,6 @@ import {
   apiGetAlphaWalletFeeRecords,
 } from "@/lib/alpha-wallet-api";
 
-// ─── Interfaccia form locale ───────────────────────────────────────────────
-
 interface EditForm {
   fee_bps:            string;
   quote_validity_sec: string;
@@ -84,21 +75,17 @@ function configToForm(cfg: AlphaWalletFeeConfig): EditForm {
   };
 }
 
-// ─── Helper: riga informativa ──────────────────────────────────────────────
-
 function InfoRow({ label, value, sub }: { label: string; value: string; sub?: string }) {
   return (
-    <div className="flex items-start justify-between py-2 border-b border-white/5 last:border-0">
-      <span className="text-sm text-white/60">{label}</span>
+    <div className="flex items-start justify-between py-2 border-b border-border/50 last:border-0">
+      <span className="text-sm text-muted-foreground">{label}</span>
       <div className="text-right">
-        <span className="text-sm font-medium text-white">{value}</span>
-        {sub && <p className="text-xs text-white/40 mt-0.5">{sub}</p>}
+        <span className="text-sm font-medium text-foreground">{value}</span>
+        {sub && <p className="text-xs text-muted-foreground mt-0.5">{sub}</p>}
       </div>
     </div>
   );
 }
-
-// ─── Pagina principale ────────────────────────────────────────────────────
 
 export default function AlphaWalletFeePage() {
   const { user }        = useAuth();
@@ -106,14 +93,12 @@ export default function AlphaWalletFeePage() {
   const queryClient     = useQueryClient();
   const isSuperAdmin    = user?.admin_role === "super_admin";
 
-  // ── State ─────────────────────────────────────────────────────────────────
   const [editing,      setEditing]      = useState(false);
   const [form,         setForm]         = useState<EditForm | null>(null);
   const [formErrors,   setFormErrors]   = useState<Partial<EditForm>>({});
   const [confirmOpen,  setConfirmOpen]  = useState(false);
   const [pendingPatch, setPendingPatch] = useState<Partial<AlphaWalletFeeConfig> | null>(null);
 
-  // ── Queries ───────────────────────────────────────────────────────────────
   const {
     data:      config,
     isLoading: loadingConfig,
@@ -124,16 +109,13 @@ export default function AlphaWalletFeePage() {
     refetchInterval: 60_000,
   });
 
-  const {
-    data: feeRecords,
-  } = useQuery<AlphaWalletFeeRecordsSummary>({
+  const { data: feeRecords } = useQuery<AlphaWalletFeeRecordsSummary>({
     queryKey: ["aw-fee-records"],
     queryFn:  apiGetAlphaWalletFeeRecords,
     enabled:  isSuperAdmin,
     refetchInterval: 60_000,
   });
 
-  // ── Mutation ──────────────────────────────────────────────────────────────
   const mutation = useMutation({
     mutationFn: (payload: Parameters<typeof apiUpdateAlphaWalletFeeConfig>[0]) =>
       apiUpdateAlphaWalletFeeConfig(payload),
@@ -146,7 +128,6 @@ export default function AlphaWalletFeePage() {
       setFormErrors({});
     },
     onError: (err: Error) => {
-      // Non mostrare configurazione nuova come salvata — la query si ricarica da backend
       toast({
         title:       "Errore nel salvataggio",
         description: err.message ?? "Impossibile aggiornare la configurazione",
@@ -154,8 +135,6 @@ export default function AlphaWalletFeePage() {
       });
     },
   });
-
-  // ── Azioni ────────────────────────────────────────────────────────────────
 
   function startEditing() {
     if (!config) return;
@@ -172,7 +151,6 @@ export default function AlphaWalletFeePage() {
 
   function updateField(field: keyof EditForm, value: string) {
     setForm(prev => prev ? { ...prev, [field]: value } : prev);
-    // Clear error when user types
     setFormErrors(prev => ({ ...prev, [field]: undefined }));
   }
 
@@ -218,14 +196,12 @@ export default function AlphaWalletFeePage() {
   function requestSave() {
     if (!form || !config) return;
     if (!validateForm(form)) return;
-
-    const payload = {
+    setPendingPatch({
       fee_bps:            parseInt(form.fee_bps, 10),
       quote_validity_sec: parseInt(form.quote_validity_sec, 10),
       min_fee_usdt:       parseFloat(form.min_fee_usdt),
       min_fee_btc_sat:    parseInt(form.min_fee_btc_sat, 10),
-    };
-    setPendingPatch(payload);
+    });
     setConfirmOpen(true);
   }
 
@@ -241,51 +217,47 @@ export default function AlphaWalletFeePage() {
     setPendingPatch(null);
   }
 
-  // ── Valori live per anteprima ─────────────────────────────────────────────
-  const liveBps = form ? (parseInt(form.fee_bps, 10) || 0) : (config?.fee_bps ?? 0);
-  const livePercent = bpsToPercent(liveBps);
+  const liveBps        = form ? (parseInt(form.fee_bps, 10) || 0) : (config?.fee_bps ?? 0);
+  const livePercent    = bpsToPercent(liveBps);
   const liveExampleFee = computeExampleFee(100, liveBps);
-
   const failedPermanent = feeRecords?.data?.summary?.failed_permanent ?? 0;
 
-  // ── Rendering ─────────────────────────────────────────────────────────────
-
   return (
-    <div className="p-6 max-w-4xl mx-auto space-y-6">
+    <div className="space-y-6 max-w-4xl">
 
       {/* Header */}
       <div className="flex items-center gap-3">
-        <div className="w-10 h-10 rounded-lg bg-purple-500/20 flex items-center justify-center">
-          <Wallet className="w-5 h-5 text-purple-400" />
+        <div className="w-10 h-10 rounded-lg bg-purple-100 flex items-center justify-center">
+          <Wallet className="w-5 h-5 text-purple-600" />
         </div>
         <div>
-          <h1 className="text-xl font-bold text-white">Alpha Wallet — Platform Fee</h1>
-          <p className="text-sm text-white/50">
+          <h1 className="text-xl font-bold text-foreground">Alpha Wallet — Platform Fee</h1>
+          <p className="text-sm text-muted-foreground">
             Configurazione commissione Alpha Wallet sui pagamenti in-chat
           </p>
         </div>
       </div>
 
-      {/* ── Card: Configurazione attuale ───────────────────────────────────── */}
-      <Card className="bg-white/5 border-white/10">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base text-white flex items-center gap-2">
-            <Info className="w-4 h-4 text-purple-400" />
+      {/* Configurazione attuale */}
+      <Card className="bg-card">
+        <CardHeader className="pb-2 border-b border-border/50 bg-muted/20">
+          <CardTitle className="text-base text-foreground flex items-center gap-2">
+            <Info className="w-4 h-4 text-purple-600" />
             Configurazione attuale
           </CardTitle>
-          <CardDescription className="text-white/40 text-xs">
+          <CardDescription className="text-muted-foreground text-xs">
             Letta dal backend — fonte di verità
           </CardDescription>
         </CardHeader>
-        <CardContent>
+        <CardContent className="pt-3">
           {loadingConfig && (
-            <p className="text-sm text-white/40 py-4 text-center">Caricamento…</p>
+            <p className="text-sm text-muted-foreground py-4 text-center">Caricamento…</p>
           )}
 
           {errorConfig && (
-            <div className="flex items-center gap-2 p-4 rounded-lg bg-red-500/10 border border-red-500/20">
-              <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
-              <p className="text-sm text-red-300">
+            <div className="flex items-center gap-2 p-4 rounded-lg bg-red-50 border border-red-200">
+              <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
+              <p className="text-sm text-red-700">
                 Impossibile caricare la configurazione Alpha Wallet
               </p>
             </div>
@@ -293,21 +265,19 @@ export default function AlphaWalletFeePage() {
 
           {config && !editing && (
             <div className="space-y-0">
-              {/* Platform Fee — bps E % sempre insieme */}
-              <div className="flex items-start justify-between py-2 border-b border-white/5">
+              {/* Platform Fee */}
+              <div className="flex items-start justify-between py-2 border-b border-border/50">
                 <div>
-                  <span className="text-sm text-white/60">Platform Fee</span>
-                  <p className="text-xs text-white/30 mt-0.5">Revenue Alpha Wallet</p>
+                  <span className="text-sm text-muted-foreground">Platform Fee</span>
+                  <p className="text-xs text-muted-foreground mt-0.5">Revenue Alpha Wallet</p>
                 </div>
-                <div className="text-right">
-                  <div className="flex items-center gap-2 justify-end">
-                    <Badge className="bg-purple-500/20 text-purple-300 border-purple-500/30 text-xs font-mono">
-                      {config.fee_bps} bps
-                    </Badge>
-                    <Badge className="bg-green-500/20 text-green-300 border-green-500/30 text-xs font-mono">
-                      {bpsToPercent(config.fee_bps)}
-                    </Badge>
-                  </div>
+                <div className="flex items-center gap-2">
+                  <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200 font-mono text-xs">
+                    {config.fee_bps} bps
+                  </Badge>
+                  <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 font-mono text-xs">
+                    {bpsToPercent(config.fee_bps)}
+                  </Badge>
                 </div>
               </div>
 
@@ -328,17 +298,17 @@ export default function AlphaWalletFeePage() {
               />
 
               {config.fee_wallet_evm && (
-                <div className="flex items-start justify-between py-2 border-b border-white/5">
-                  <span className="text-sm text-white/60">Fee Wallet EVM</span>
-                  <span className="text-xs font-mono text-white/50 max-w-[240px] truncate text-right">
+                <div className="flex items-start justify-between py-2 border-b border-border/50">
+                  <span className="text-sm text-muted-foreground">Fee Wallet EVM</span>
+                  <span className="text-xs font-mono text-muted-foreground max-w-[240px] truncate text-right">
                     {config.fee_wallet_evm}
                   </span>
                 </div>
               )}
               {config.fee_wallet_btc && (
                 <div className="flex items-start justify-between py-2">
-                  <span className="text-sm text-white/60">Fee Wallet BTC</span>
-                  <span className="text-xs font-mono text-white/50 max-w-[240px] truncate text-right">
+                  <span className="text-sm text-muted-foreground">Fee Wallet BTC</span>
+                  <span className="text-xs font-mono text-muted-foreground max-w-[240px] truncate text-right">
                     {config.fee_wallet_btc}
                   </span>
                 </div>
@@ -346,12 +316,7 @@ export default function AlphaWalletFeePage() {
 
               {isSuperAdmin && (
                 <div className="pt-4">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={startEditing}
-                    className="gap-2 border-white/20 text-white/80 hover:bg-white/10"
-                  >
+                  <Button size="sm" variant="outline" onClick={startEditing} className="gap-2">
                     <Pencil className="w-3.5 h-3.5" />
                     Modifica configurazione
                   </Button>
@@ -362,25 +327,25 @@ export default function AlphaWalletFeePage() {
         </CardContent>
       </Card>
 
-      {/* ── Card: Form modifica (super_admin + editing) ────────────────────── */}
+      {/* Form modifica */}
       {isSuperAdmin && editing && form && (
-        <Card className="bg-white/5 border-purple-500/30">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base text-white flex items-center gap-2">
-              <Pencil className="w-4 h-4 text-purple-400" />
+        <Card className="bg-card border-purple-200">
+          <CardHeader className="pb-2 border-b border-border/50 bg-purple-50/50">
+            <CardTitle className="text-base text-foreground flex items-center gap-2">
+              <Pencil className="w-4 h-4 text-purple-600" />
               Modifica configurazione
             </CardTitle>
-            <CardDescription className="text-white/40 text-xs">
+            <CardDescription className="text-muted-foreground text-xs">
               Le modifiche sono effettive solo per le nuove quote — quelle già congelate non cambiano
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-5">
+          <CardContent className="pt-4 space-y-5">
 
             {/* fee_bps */}
             <div className="space-y-2">
-              <Label className="text-white/70 text-sm">
+              <Label className="text-sm text-foreground">
                 Platform Fee
-                <span className="text-white/30 ml-1 text-xs font-normal">(basis points, 0–500)</span>
+                <span className="text-muted-foreground ml-1 text-xs font-normal">(basis points, 0–500)</span>
               </Label>
               <div className="flex gap-3 items-start">
                 <div className="flex-1">
@@ -392,33 +357,31 @@ export default function AlphaWalletFeePage() {
                     value={form.fee_bps}
                     onChange={e => updateField("fee_bps", e.target.value)}
                     placeholder="10"
-                    className="bg-white/5 border-white/20 text-white placeholder:text-white/20"
                   />
                   {formErrors.fee_bps && (
-                    <p className="text-xs text-red-400 mt-1">{formErrors.fee_bps}</p>
+                    <p className="text-xs text-destructive mt-1">{formErrors.fee_bps}</p>
                   )}
                 </div>
-                {/* Anteprima bps ↔ % in tempo reale */}
-                <div className="flex items-center gap-2 pt-2">
-                  <Badge className="bg-purple-500/20 text-purple-300 border-purple-500/30 font-mono text-sm px-3">
+                <div className="flex items-center gap-2 pt-2 shrink-0">
+                  <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200 font-mono text-sm px-3">
                     {isNaN(parseInt(form.fee_bps)) ? "— bps" : `${parseInt(form.fee_bps)} bps`}
                   </Badge>
-                  <span className="text-white/30">=</span>
-                  <Badge className="bg-green-500/20 text-green-300 border-green-500/30 font-mono text-sm px-3">
+                  <span className="text-muted-foreground">=</span>
+                  <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 font-mono text-sm px-3">
                     {isNaN(parseInt(form.fee_bps)) ? "—" : bpsToPercent(parseInt(form.fee_bps))}
                   </Badge>
                 </div>
               </div>
-              <p className="text-xs text-white/30">
+              <p className="text-xs text-muted-foreground">
                 Range: 0 bps (0,00%) — 500 bps (5,00%). Non confondere bps e percentuale.
               </p>
             </div>
 
             {/* quote_validity_sec */}
             <div className="space-y-2">
-              <Label className="text-white/70 text-sm">
+              <Label className="text-sm text-foreground">
                 Validità Quote
-                <span className="text-white/30 ml-1 text-xs font-normal">(secondi, 5–300)</span>
+                <span className="text-muted-foreground ml-1 text-xs font-normal">(secondi, 5–300)</span>
               </Label>
               <Input
                 type="number"
@@ -428,21 +391,18 @@ export default function AlphaWalletFeePage() {
                 value={form.quote_validity_sec}
                 onChange={e => updateField("quote_validity_sec", e.target.value)}
                 placeholder="30"
-                className="bg-white/5 border-white/20 text-white placeholder:text-white/20"
               />
               {formErrors.quote_validity_sec && (
-                <p className="text-xs text-red-400 mt-1">{formErrors.quote_validity_sec}</p>
+                <p className="text-xs text-destructive mt-1">{formErrors.quote_validity_sec}</p>
               )}
-              <p className="text-xs text-white/30">
+              <p className="text-xs text-muted-foreground">
                 Finestra di tempo che l'utente ha per confermare il pagamento dopo la quote.
               </p>
             </div>
 
             {/* min_fee_usdt */}
             <div className="space-y-2">
-              <Label className="text-white/70 text-sm">
-                Commissione minima USDT
-              </Label>
+              <Label className="text-sm text-foreground">Commissione minima USDT</Label>
               <div className="flex gap-2 items-start">
                 <Input
                   type="number"
@@ -451,23 +411,22 @@ export default function AlphaWalletFeePage() {
                   value={form.min_fee_usdt}
                   onChange={e => updateField("min_fee_usdt", e.target.value)}
                   placeholder="0.01"
-                  className="bg-white/5 border-white/20 text-white placeholder:text-white/20"
                 />
-                <span className="text-white/40 pt-2.5 text-sm shrink-0">USDT</span>
+                <span className="text-muted-foreground pt-2.5 text-sm shrink-0">USDT</span>
               </div>
               {formErrors.min_fee_usdt && (
-                <p className="text-xs text-red-400 mt-1">{formErrors.min_fee_usdt}</p>
+                <p className="text-xs text-destructive mt-1">{formErrors.min_fee_usdt}</p>
               )}
-              <p className="text-xs text-white/30">
+              <p className="text-xs text-muted-foreground">
                 Commissione minima Alpha Wallet per USDT — non è la network fee né il gas.
               </p>
             </div>
 
             {/* min_fee_btc_sat */}
             <div className="space-y-2">
-              <Label className="text-white/70 text-sm">
+              <Label className="text-sm text-foreground">
                 Commissione minima BTC
-                <span className="text-white/30 ml-1 text-xs font-normal">(satoshi)</span>
+                <span className="text-muted-foreground ml-1 text-xs font-normal">(satoshi)</span>
               </Label>
               <div className="flex gap-2 items-start">
                 <Input
@@ -477,20 +436,17 @@ export default function AlphaWalletFeePage() {
                   value={form.min_fee_btc_sat}
                   onChange={e => updateField("min_fee_btc_sat", e.target.value)}
                   placeholder="1000"
-                  className="bg-white/5 border-white/20 text-white placeholder:text-white/20"
                 />
-                <span className="text-white/40 pt-2.5 text-sm shrink-0">sat</span>
+                <span className="text-muted-foreground pt-2.5 text-sm shrink-0">sat</span>
               </div>
               {formErrors.min_fee_btc_sat && (
-                <p className="text-xs text-red-400 mt-1">{formErrors.min_fee_btc_sat}</p>
+                <p className="text-xs text-destructive mt-1">{formErrors.min_fee_btc_sat}</p>
               )}
-              <p className="text-xs text-white/30">
+              <p className="text-xs text-muted-foreground">
                 Commissione minima Alpha Wallet BTC, espressa in satoshi. Non è la miner fee.
-                Esempio: 1000 sat.
               </p>
             </div>
 
-            {/* Azioni */}
             <div className="flex gap-3 pt-2">
               <Button
                 onClick={requestSave}
@@ -500,88 +456,82 @@ export default function AlphaWalletFeePage() {
                 <Check className="w-3.5 h-3.5" />
                 {mutation.isPending ? "Salvataggio…" : "Salva"}
               </Button>
-              <Button
-                variant="outline"
-                onClick={cancelEditing}
-                disabled={mutation.isPending}
-                className="gap-2 border-white/20 text-white/70 hover:bg-white/10"
-              >
-                <X className="w-3.5 h-3.5" />
-                Annulla
+              <Button variant="outline" onClick={cancelEditing} disabled={mutation.isPending} className="gap-2">
+                <X className="w-3.5 h-3.5" />Annulla
               </Button>
             </div>
           </CardContent>
         </Card>
       )}
 
-      {/* ── Card: Anteprima in tempo reale ─────────────────────────────────── */}
-      <Card className="bg-white/5 border-white/10">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base text-white flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4 text-green-400" />
+      {/* Anteprima */}
+      <Card className="bg-card">
+        <CardHeader className="pb-2 border-b border-border/50 bg-muted/20">
+          <CardTitle className="text-base text-foreground flex items-center gap-2">
+            <CheckCircle2 className="w-4 h-4 text-green-600" />
             Anteprima su 100 USDT
           </CardTitle>
-          <CardDescription className="text-white/40 text-xs">
+          <CardDescription className="text-muted-foreground text-xs">
             Solo informativa — non esegue quote reali né modifica pagamenti
           </CardDescription>
         </CardHeader>
-        <CardContent>
-          <div className="rounded-lg bg-white/5 p-4 space-y-3">
+        <CardContent className="pt-4">
+          <div className="rounded-lg bg-muted/30 border border-border/50 p-4 space-y-3">
             <div className="flex justify-between text-sm">
-              <span className="text-white/60">Importo destinatario</span>
-              <span className="text-white font-medium">100,00 USDT</span>
+              <span className="text-muted-foreground">Importo destinatario</span>
+              <span className="text-foreground font-medium">100,00 USDT</span>
             </div>
             <div className="flex justify-between text-sm">
               <div>
-                <span className="text-white/60">Platform Fee Alpha Wallet</span>
-                <span className="text-white/30 ml-2 text-xs">({livePercent})</span>
+                <span className="text-muted-foreground">Platform Fee Alpha Wallet</span>
+                <span className="text-muted-foreground ml-2 text-xs">({livePercent})</span>
               </div>
-              <span className="text-purple-300 font-medium">{liveExampleFee} USDT</span>
+              <span className="text-purple-700 font-medium">{liveExampleFee} USDT</span>
             </div>
-            <div className="flex justify-between text-sm border-t border-white/10 pt-3">
-              <span className="text-white/60">Network Fee</span>
-              <span className="text-white/40 text-xs italic">calcolata separatamente (blockchain)</span>
+            <div className="flex justify-between text-sm border-t border-border pt-3">
+              <span className="text-muted-foreground">Network Fee</span>
+              <span className="text-muted-foreground text-xs italic">calcolata separatamente (blockchain)</span>
             </div>
           </div>
-          <div className="mt-3 flex gap-4 text-xs text-white/30">
+          <div className="mt-3 flex gap-4 text-xs text-muted-foreground">
             <div className="flex items-center gap-1">
-              <div className="w-2 h-2 rounded-full bg-purple-400" />
+              <div className="w-2 h-2 rounded-full bg-purple-500" />
               Platform Fee = revenue Alpha Wallet (configurabile)
             </div>
             <div className="flex items-center gap-1">
-              <div className="w-2 h-2 rounded-full bg-blue-400" />
+              <div className="w-2 h-2 rounded-full bg-blue-500" />
               Network Fee = costo blockchain (gas/miner)
             </div>
           </div>
         </CardContent>
       </Card>
 
-      {/* ── Card: Fee failures (super_admin) ─────────────────────────────────── */}
+      {/* Fee failures */}
       {isSuperAdmin && (
-        <Card className={`bg-white/5 border-white/10 ${failedPermanent > 0 ? "border-red-500/30" : ""}`}>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base text-white flex items-center gap-2">
-              <AlertTriangle className={`w-4 h-4 ${failedPermanent > 0 ? "text-red-400" : "text-white/40"}`} />
+        <Card className={`bg-card ${failedPermanent > 0 ? "border-red-200" : ""}`}>
+          <CardHeader className="pb-2 border-b border-border/50 bg-muted/20">
+            <CardTitle className="text-base text-foreground flex items-center gap-2">
+              <AlertTriangle className={`w-4 h-4 ${failedPermanent > 0 ? "text-red-600" : "text-muted-foreground"}`} />
               Fee Failures (Permanent)
             </CardTitle>
-            <CardDescription className="text-white/40 text-xs">
+            <CardDescription className="text-muted-foreground text-xs">
               TX in cui la platform fee non è stata raccolta dopo tutti i retry
             </CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="pt-3">
             {failedPermanent === 0 ? (
-              <div className="flex items-center gap-2 p-3 rounded-lg bg-green-500/10 border border-green-500/20">
-                <CheckCircle2 className="w-4 h-4 text-green-400 shrink-0" />
-                <p className="text-sm text-green-300">Nessun fallimento permanente — tutte le fee raccolte</p>
+              <div className="flex items-center gap-2 p-3 rounded-lg bg-green-50 border border-green-200">
+                <CheckCircle2 className="w-4 h-4 text-green-600 shrink-0" />
+                <p className="text-sm text-green-700">Nessun fallimento permanente — tutte le fee raccolte</p>
               </div>
             ) : (
-              <div className="flex items-center gap-2 p-3 rounded-lg bg-red-500/10 border border-red-500/20">
-                <AlertTriangle className="w-4 h-4 text-red-400 shrink-0" />
+              <div className="flex items-center gap-2 p-3 rounded-lg bg-red-50 border border-red-200">
+                <AlertTriangle className="w-4 h-4 text-red-600 shrink-0" />
                 <div>
-                  <p className="text-sm text-red-300 font-medium">
+                  <p className="text-sm text-red-700 font-medium">
                     {failedPermanent} fee permanentemente non raccolt{failedPermanent === 1 ? "a" : "e"}
                   </p>
-                  <p className="text-xs text-red-400/70 mt-0.5">
+                  <p className="text-xs text-red-600 mt-0.5">
                     Verificare i log WARN nel server e il DB alpha_wallet_fee_records
                   </p>
                 </div>
@@ -591,83 +541,59 @@ export default function AlphaWalletFeePage() {
         </Card>
       )}
 
-      {/* ── Dialog: Conferma prima del PATCH ───────────────────────────────── */}
+      {/* Dialog conferma PATCH */}
       <Dialog open={confirmOpen} onOpenChange={open => { if (!open) cancelConfirm(); }}>
-        <DialogContent className="bg-[#1a1a2e] border-white/20 text-white max-w-md">
+        <DialogContent className="max-w-md">
           <DialogHeader>
-            <DialogTitle className="flex items-center gap-2 text-white">
-              <AlertTriangle className="w-5 h-5 text-yellow-400" />
+            <DialogTitle className="flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-amber-500" />
               Conferma modifica
             </DialogTitle>
-            <DialogDescription className="text-white/50 text-sm">
+            <DialogDescription>
               Le modifiche si applicano alle nuove quote. Le quote già congelate non cambiano.
             </DialogDescription>
           </DialogHeader>
 
           {pendingPatch && config && (
             <div className="space-y-3 py-2">
-              {/* Platform Fee */}
               {pendingPatch.fee_bps !== undefined && pendingPatch.fee_bps !== config.fee_bps && (
-                <div className="rounded-lg bg-white/5 p-3">
-                  <p className="text-xs text-white/40 mb-2">Platform Fee</p>
-                  <div className="flex items-center gap-3">
-                    <span className="text-sm text-white/60 font-mono">
-                      {bpsToPercent(config.fee_bps)}
-                    </span>
-                    <span className="text-white/30">→</span>
-                    <span className="text-sm text-green-300 font-mono font-medium">
-                      {bpsToPercent(pendingPatch.fee_bps)}
-                    </span>
-                    <Badge className="text-xs font-mono bg-white/10 text-white/50 border-white/10">
-                      {pendingPatch.fee_bps} bps
-                    </Badge>
+                <div className="rounded-lg bg-muted/40 p-3">
+                  <p className="text-xs text-muted-foreground mb-2">Platform Fee</p>
+                  <div className="flex items-center gap-3 text-sm">
+                    <span className="text-muted-foreground font-mono">{bpsToPercent(config.fee_bps)}</span>
+                    <span className="text-muted-foreground">→</span>
+                    <span className="text-green-700 font-mono font-medium">{bpsToPercent(pendingPatch.fee_bps)}</span>
+                    <Badge variant="outline" className="text-xs font-mono">{pendingPatch.fee_bps} bps</Badge>
                   </div>
                 </div>
               )}
-
-              {/* Quote validity */}
-              {pendingPatch.quote_validity_sec !== undefined &&
-               pendingPatch.quote_validity_sec !== config.quote_validity_sec && (
-                <div className="rounded-lg bg-white/5 p-3">
-                  <p className="text-xs text-white/40 mb-2">Validità Quote</p>
-                  <div className="flex items-center gap-3">
-                    <span className="text-sm text-white/60">{config.quote_validity_sec}s</span>
-                    <span className="text-white/30">→</span>
-                    <span className="text-sm text-green-300 font-medium">
-                      {pendingPatch.quote_validity_sec}s
-                    </span>
+              {pendingPatch.quote_validity_sec !== undefined && pendingPatch.quote_validity_sec !== config.quote_validity_sec && (
+                <div className="rounded-lg bg-muted/40 p-3">
+                  <p className="text-xs text-muted-foreground mb-2">Validità Quote</p>
+                  <div className="flex items-center gap-3 text-sm">
+                    <span className="text-muted-foreground">{config.quote_validity_sec}s</span>
+                    <span className="text-muted-foreground">→</span>
+                    <span className="text-green-700 font-medium">{pendingPatch.quote_validity_sec}s</span>
                   </div>
                 </div>
               )}
-
-              {/* min_fee_usdt */}
-              {pendingPatch.min_fee_usdt !== undefined &&
-               pendingPatch.min_fee_usdt !== config.min_fee_usdt && (
-                <div className="rounded-lg bg-white/5 p-3">
-                  <p className="text-xs text-white/40 mb-2">Fee minima USDT</p>
-                  <div className="flex items-center gap-3">
-                    <span className="text-sm text-white/60">{config.min_fee_usdt} USDT</span>
-                    <span className="text-white/30">→</span>
-                    <span className="text-sm text-green-300 font-medium">
-                      {pendingPatch.min_fee_usdt} USDT
-                    </span>
+              {pendingPatch.min_fee_usdt !== undefined && pendingPatch.min_fee_usdt !== config.min_fee_usdt && (
+                <div className="rounded-lg bg-muted/40 p-3">
+                  <p className="text-xs text-muted-foreground mb-2">Fee minima USDT</p>
+                  <div className="flex items-center gap-3 text-sm">
+                    <span className="text-muted-foreground">{config.min_fee_usdt} USDT</span>
+                    <span className="text-muted-foreground">→</span>
+                    <span className="text-green-700 font-medium">{pendingPatch.min_fee_usdt} USDT</span>
                   </div>
                 </div>
               )}
-
-              {/* min_fee_btc_sat */}
-              {pendingPatch.min_fee_btc_sat !== undefined &&
-               pendingPatch.min_fee_btc_sat !== config.min_fee_btc_sat && (
-                <div className="rounded-lg bg-white/5 p-3">
-                  <p className="text-xs text-white/40 mb-2">Fee minima BTC</p>
-                  <div className="flex items-center gap-3">
-                    <span className="text-sm text-white/60">
-                      {config.min_fee_btc_sat.toLocaleString()} sat
-                    </span>
-                    <span className="text-white/30">→</span>
-                    <span className="text-sm text-green-300 font-medium">
-                      {pendingPatch.min_fee_btc_sat!.toLocaleString()} sat
-                    </span>
+              {pendingPatch.min_fee_btc_sat !== undefined && pendingPatch.min_fee_btc_sat !== config.min_fee_btc_sat && (
+                <div className="rounded-lg bg-muted/40 p-3">
+                  <p className="text-xs text-muted-foreground mb-2">Fee minima BTC</p>
+                  <div className="flex items-center gap-3 text-sm">
+                    <span className="text-muted-foreground">{config.min_fee_btc_sat.toLocaleString()} sat</span>
+                    <span className="text-muted-foreground">→</span>
+                    <span className="text-green-700 font-medium">{pendingPatch.min_fee_btc_sat!.toLocaleString()} sat</span>
                   </div>
                 </div>
               )}
@@ -675,13 +601,7 @@ export default function AlphaWalletFeePage() {
           )}
 
           <DialogFooter className="gap-2">
-            <Button
-              variant="outline"
-              onClick={cancelConfirm}
-              className="border-white/20 text-white/70 hover:bg-white/10"
-            >
-              Annullare
-            </Button>
+            <Button variant="outline" onClick={cancelConfirm}>Annullare</Button>
             <Button
               onClick={confirmSave}
               disabled={mutation.isPending}

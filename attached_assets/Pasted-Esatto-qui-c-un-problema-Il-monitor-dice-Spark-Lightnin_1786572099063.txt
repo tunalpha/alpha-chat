@@ -1,0 +1,50 @@
+Esatto: qui c’è un problema. ⚠️
+
+Il monitor dice Spark Lightning ATTIVO, ma il tuo Alpha Wallet mostra ancora:
+
+* 4 chain
+* 11 asset
+* Polygon / Ethereum / BSC / Bitcoin
+* nessuna voce Lightning ⚡
+
+Quindi non dobbiamo fare nessun test di invio/ricezione ancora.
+
+La situazione più probabile è che il flag sia attivo lato Admin/API, ma il client Alpha Wallet non stia caricando/inizializzando SparkWalletProvider oppure non stia ricevendo lo stato spark_lightning_enabled=true.
+
+Farei controllare subito all’agente
+
+Digli esattamente:
+
+STOP — non modificare altre funzionalità.
+
+Dopo l’attivazione di spark_lightning_enabled=true in produzione, Admin → Spark Monitor mostra correttamente “Spark Lightning ATTIVO in produzione”, ma Alpha Wallet su iPhone non mostra assolutamente la voce Bitcoin Lightning ⚡ nel portfolio.
+
+Esegui ora un debug end-to-end del percorso:
+
+DB feature flag → API /app-feature-flags → alpha-chat-web App.tsx → SparkWalletProvider → Spark connection state → AlphaWalletPage.tsx → portfolio Lightning row
+
+Verifica con dati reali di produzione:
+
+1. Che GET /api/v1/admin/app-feature-flags restituisca spark_lightning_enabled: true per l’utente autenticato.
+2. Che Alpha Wallet riceva effettivamente questo valore e non un valore cached/false.
+3. Che SparkWalletProvider venga realmente caricato quando il flag è true.
+4. Che useSparkWalletOptional() restituisca il context corretto e non null.
+5. Che sparkSat venga popolato dopo connect/sync.
+6. Che AlphaWalletPage.tsx renderizzi la card/riga Bitcoin Lightning ⚡ quando Spark è enabled/connected, anche con saldo 0.
+7. Verificare se il problema è cache del browser/service worker/build precedente.
+8. Controllare console/network su iPhone e desktop.
+9. NON disabilitare Spark: il flag deve rimanere true durante il debug.
+10. NON modificare BTC, EVM, USDA, MultiChain, WalletContext o Payment Engine.
+
+Prima di modificare codice, fornire la root cause precisa e indicare quale passaggio della catena sopra sta fallendo.
+
+Se il codice è già corretto e il problema è semplicemente cache/deploy, non modificare codice: indicare la procedura esatta per forzare il nuovo client.
+
+Obiettivo: ottenere in Alpha Wallet la visualizzazione separata:
+
+Bitcoin → on-chain BTC
+Bitcoin Lightning ⚡ → Spark/Lightning
+
+senza sommare i due saldi e senza alterare il portfolio BTC esistente.
+
+Questa è la cosa giusta da fare adesso. Non toccherei altro finché l’agente non ci dice perché il flag è ON ma la UI non vede Lightning.
