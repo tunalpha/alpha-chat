@@ -1,0 +1,123 @@
+BREEZ SPARK — NEXT STEP: API KEY SECURITY + LIVE CONNECT CHECKPOINT
+
+La API key Breez è stata ricevuta.
+
+Prima di qualsiasi integrazione production o pagamento reale, procedi SOLO nella PoC isolata:
+artifacts/breez-spark-poc/
+
+OBIETTIVO:
+Determinare se la API key Breez è progettata per essere utilizzata direttamente nel client WASM/browser e completare, se sicuro e previsto, il test connect() Mainnet.
+
+1. API KEY SECURITY
+Non modificare production.
+
+Verifica nella documentazione ufficiale Breez, nei type definitions e nel codice SDK disponibile localmente:
+
+- se la API key è esplicitamente classificata come public/client-side key;
+- se l'uso nel browser WASM è previsto;
+- se la key può essere esposta nel bundle;
+- eventuali rate limits;
+- eventuale domain/origin restriction;
+- eventuale token exchange/session token;
+- eventuali raccomandazioni ufficiali per applicazioni commerciali WASM.
+
+NON inventare un sistema di token exchange se Breez non lo supporta ufficialmente.
+
+2. SE IL MODELLO CLIENT-SIDE È UFFICIALMENTE PREVISTO
+Usa la API key SOLO nel PoC tramite Secret/Environment Variable.
+
+NON:
+- hardcodare la key;
+- committarla;
+- stamparla nei log;
+- inserirla nel report;
+- inserirla in localStorage;
+- inserirla manualmente in IndexedDB;
+- modificarne il valore;
+- copiarla in Alpha Wallet production.
+
+3. LIVE CONNECT
+Se il modello client-side è previsto da Breez:
+
+Esegui SOLO:
+
+connect()
+→ getInfo()
+→ syncWallet()
+→ listPayments()
+
+Nessun invio reale.
+Nessuna ricezione reale.
+Nessuno swap.
+Nessun trasferimento.
+Nessun utilizzo del Treasury.
+
+4. SECURITY INSPECTION
+Durante connect():
+
+verifica:
+- private key mai trasmessa;
+- mnemonic mai trasmesso;
+- seed mai presente nei network payload;
+- nessun secret nei log;
+- IndexedDB Spark separata;
+- nessuna modifica agli store BTC;
+- nessuna modifica al production backend.
+
+NON considerare la visibilità della API key nel browser automaticamente come vulnerabilità: classificare il risultato in base al modello ufficiale Breez.
+
+5. PRODUZIONE
+NON modificare:
+- Alpha Wallet;
+- WalletContext production;
+- BTC on-chain;
+- EVM;
+- USDA;
+- USDT;
+- Portfolio production;
+- commissioni production;
+- Treasury production;
+- ChatWalletBridge production.
+
+Tutto deve rimanere dentro artifacts/breez-spark-poc/.
+
+6. SE CONNECT() FALLISCE
+Fermati.
+
+Riporta:
+- errore esatto;
+- punto del fallimento;
+- eventuale causa;
+- nessun workaround invasivo.
+
+NON effettuare transazioni.
+
+7. SE CONNECT() PASSA
+Fermati comunque dopo:
+connect + getInfo + sync + listPayments.
+
+Non fare ancora Send/Receive reale.
+
+8. OUTPUT FINALE
+
+Produci un report con:
+
+A. API key security model
+B. Connect Mainnet
+C. getInfo
+D. syncWallet
+E. listPayments
+F. ExternalSigner
+G. network inspection
+H. IndexedDB isolation
+I. eventuali rischi
+J. eventuali condizioni Breez
+K. file modificati SOLO nella PoC
+L. conferma ZERO production changes
+M. prossimo step consigliato
+
+IMPORTANTISSIMO:
+Questo è un checkpoint.
+Dopo il report NON procedere automaticamente con pagamenti reali.
+
+Aspetta una successiva autorizzazione.
