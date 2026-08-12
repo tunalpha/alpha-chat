@@ -56,10 +56,10 @@ interface NetworkFeeMarginResponse {
 // ─── Network metadata ─────────────────────────────────────────────────────────
 
 const NETWORK_META: Record<string, { label: string; color: string; asset: string }> = {
-  polygon:  { label: "Polygon",  color: "bg-purple-500/20 text-purple-300 border-purple-500/30", asset: "USDT" },
-  ethereum: { label: "Ethereum", color: "bg-blue-500/20   text-blue-300   border-blue-500/30",   asset: "USDT" },
-  bsc:      { label: "BSC",      color: "bg-yellow-500/20 text-yellow-300 border-yellow-500/30", asset: "USDT" },
-  bitcoin:  { label: "Bitcoin",  color: "bg-orange-500/20 text-orange-300 border-orange-500/30", asset: "BTC"  },
+  polygon:  { label: "Polygon",  color: "bg-purple-50 text-purple-700 border-purple-200", asset: "USDT" },
+  ethereum: { label: "Ethereum", color: "bg-blue-50   text-blue-700   border-blue-200",   asset: "USDT" },
+  bsc:      { label: "BSC",      color: "bg-amber-50  text-amber-700  border-amber-200",  asset: "USDT" },
+  bitcoin:  { label: "Bitcoin",  color: "bg-orange-50 text-orange-700 border-orange-200", asset: "BTC"  },
 };
 
 // ─── Helper: bps → percentage string ─────────────────────────────────────────
@@ -146,7 +146,7 @@ function NetworkFeeCard({
           </div>
           <div className="flex items-center gap-2">
             {config.is_override ? (
-              <Badge variant="outline" className="text-xs bg-green-500/10 text-green-400 border-green-500/30">
+              <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200">
                 override DB
               </Badge>
             ) : (
@@ -298,7 +298,7 @@ function SafetyMarginCard({
           </div>
           <div className="flex items-center gap-2">
             {config.is_override
-              ? <Badge variant="outline" className="text-xs bg-green-500/10 text-green-400 border-green-500/30">override DB</Badge>
+              ? <Badge variant="outline" className="text-xs bg-green-50 text-green-700 border-green-200">override DB</Badge>
               : <Badge variant="outline" className="text-xs text-muted-foreground">default</Badge>}
           </div>
         </div>
@@ -456,11 +456,11 @@ export default function FeeConfigPage() {
           </p>
         </div>
 
-        <div className="flex items-start gap-3 p-4 rounded-lg border border-blue-500/30 bg-blue-500/5">
-          <Info className="w-4 h-4 text-blue-400 mt-0.5 shrink-0" />
-          <div className="text-sm text-blue-300/80 space-y-1">
+        <div className="flex items-start gap-3 p-4 rounded-lg border border-blue-200 bg-blue-50">
+          <Info className="w-4 h-4 text-blue-600 mt-0.5 shrink-0" />
+          <div className="text-sm text-blue-800 space-y-1">
             <p><strong>I transfer già creati non sono impattati</strong> — la fee viene salvata nel record al momento della creazione.</p>
-            <p className="text-xs text-blue-400/60">Default globale: {data ? bpsToPercent(data.default_bps) : "..."} ({data?.default_bps ?? "?"} bps).</p>
+            <p className="text-xs text-blue-600">Default globale: {data ? bpsToPercent(data.default_bps) : "..."} ({data?.default_bps ?? "?"} bps).</p>
           </div>
         </div>
 
@@ -484,7 +484,7 @@ export default function FeeConfigPage() {
       <div className="space-y-6">
         <div>
           <h2 className="text-xl font-bold tracking-tight flex items-center gap-2">
-            <Zap className="w-5 h-5 text-yellow-400" />
+            <Zap className="w-5 h-5 text-amber-500" />
             Safety Margin — Network Fee Dinamica
           </h2>
           <p className="text-sm text-muted-foreground mt-1">
@@ -494,11 +494,11 @@ export default function FeeConfigPage() {
           </p>
         </div>
 
-        <div className="flex items-start gap-3 p-4 rounded-lg border border-yellow-500/30 bg-yellow-500/5">
-          <Zap className="w-4 h-4 text-yellow-400 mt-0.5 shrink-0" />
-          <div className="text-sm text-yellow-300/80 space-y-1">
+        <div className="flex items-start gap-3 p-4 rounded-lg border border-amber-200 bg-amber-50">
+          <Zap className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
+          <div className="text-sm text-amber-800 space-y-1">
             <p><strong>Default: ×1.20 (+20%)</strong> — La fee addebitata al cliente include un margine del 20% sul costo gas stimato.</p>
-            <p className="text-xs text-yellow-400/60">Aumentare in periodi volatili. Ridurre se si vuole essere più competitivi sul gas. Range: 0% – 400%.</p>
+            <p className="text-xs text-amber-600">Aumentare in periodi volatili. Ridurre se si vuole essere più competitivi sul gas. Range: 0% – 400%.</p>
           </div>
         </div>
 
@@ -506,8 +506,8 @@ export default function FeeConfigPage() {
         {marginData && (
           <div className={`flex items-center gap-3 p-3 rounded-lg border text-xs font-mono ${
             allPricesHealthy
-              ? "border-green-500/30 bg-green-500/5 text-green-400"
-              : "border-orange-500/30 bg-orange-500/5 text-orange-400"
+              ? "border-green-200 bg-green-50 text-green-700"
+              : "border-orange-200 bg-orange-50 text-orange-700"
           }`}>
             <span>{allPricesHealthy ? "✓" : "⚠"} Prezzi nativi</span>
             {Object.entries(priceCache).map(([net, s]) => (
