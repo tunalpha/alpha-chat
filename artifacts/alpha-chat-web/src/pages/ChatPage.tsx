@@ -4430,7 +4430,7 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
             <div className="attach-sheet-title">
               {attachSubMenu === "none"
                 ? t("chat.attachShare")
-                : attachSubMenu === "send" ? "📤 Invia" : "📥 Richiedi"}
+                : attachSubMenu === "send" ? "💸 Invia crypto" : "🤑 Richiedi crypto"}
               {attachSubMenu !== "none" && (
                 <button
                   className="attach-submenu-back"
@@ -4460,12 +4460,12 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
                   <>
                     {/* Invia — apre sotto-menu */}
                     <button className="attach-sheet-item" onClick={() => setAttachSubMenu("send")}>
-                      <span className="attach-sheet-icon">📤</span>
+                      <span className="attach-sheet-icon">💸</span>
                       <span>Invia</span>
                     </button>
                     {/* Richiedi — apre sotto-menu */}
                     <button className="attach-sheet-item" onClick={() => setAttachSubMenu("request")}>
-                      <span className="attach-sheet-icon">📥</span>
+                      <span className="attach-sheet-icon">🤑</span>
                       <span>Richiedi</span>
                     </button>
                     {/* Phase G — Alpha Wallet self-custodial PAY */}
@@ -4497,7 +4497,7 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
                         className="attach-sheet-item"
                         onClick={() => { setShowAttachSheet(false); setAttachSubMenu("none"); setTimeout(() => setShowWalletRequest(true), 80); }}
                       >
-                        <span className="attach-sheet-icon">📩</span>
+                        <span className="attach-sheet-icon">💎</span>
                         <span>Richiedi con Alpha Wallet{walletBridge.status === "locked" ? " 🔒" : ""}</span>
                       </button>
                     ) : (
@@ -4509,7 +4509,7 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
                           showToast("Configura Alpha Wallet prima di richiedere. Vai in Chat → Alpha Wallet.");
                         }}
                       >
-                        <span className="attach-sheet-icon">📩</span>
+                        <span className="attach-sheet-icon">💎</span>
                         <span>Richiedi con Alpha Wallet</span>
                       </button>
                     )}
@@ -4559,7 +4559,7 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
                   className="attach-sheet-item"
                   onClick={() => { setShowAttachSheet(false); setAttachSubMenu("none"); setTimeout(() => setShowRequestUsda(true), 80); }}
                 >
-                  <span className="attach-sheet-icon">💸</span>
+                  <span className="attach-sheet-icon">💰</span>
                   <span>USDA</span>
                 </button>
                 {/* Alpha Wallet — self-custodial */}
@@ -4579,14 +4579,14 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
                       className="attach-sheet-item"
                       onClick={() => { setShowAttachSheet(false); setAttachSubMenu("none"); setTimeout(() => setShowMCRequest(true), 80); }}
                     >
-                      <span className="attach-sheet-icon">🪙</span>
+                      <span className="attach-sheet-icon">💎</span>
                       <span>USDT</span>
                     </button>
                     <button
                       className="attach-sheet-item"
                       onClick={() => { setShowAttachSheet(false); setAttachSubMenu("none"); setTimeout(() => setShowBTCRequest(true), 80); }}
                     >
-                      <span className="attach-sheet-icon">🟠</span>
+                      <span className="attach-sheet-icon">₿</span>
                       <span>BTC</span>
                     </button>
                   </>
