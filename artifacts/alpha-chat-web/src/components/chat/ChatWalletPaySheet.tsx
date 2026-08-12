@@ -449,7 +449,11 @@ export function ChatWalletPaySheet({
       setStep("success");
       onSent(result);
     } else {
-      setSendErr(result.errorMessage ?? "Pagamento fallito. Riprova.");
+      const rawErr = result.errorMessage;
+      const errMsg = typeof rawErr === "string" && rawErr.trim()
+        ? rawErr
+        : "Pagamento fallito. Riprova.";
+      setSendErr(errMsg);
       setStep("summary");
     }
   }, [bridge, quote, network, asset, amount, effectiveAddress, conversationId, onAuthRequired, onSent]);
@@ -649,8 +653,16 @@ export function ChatWalletPaySheet({
           /* Payer flow — campi bloccati dalla richiesta ricevuta */
           <div className="cwp-step">
             <div
-              className="cwp-manual-confirm-warning"
-              style={{ marginBottom: 12, background: `${netColor}12`, borderColor: `${netColor}40`, color: "inherit" }}
+              style={{
+                marginBottom: 12,
+                padding: "10px 12px",
+                background: `${netColor}22`,
+                border: `1px solid ${netColor}55`,
+                borderRadius: 8,
+                fontSize: 13,
+                color: "var(--color-text, #e8e8f0)",
+                lineHeight: 1.4,
+              }}
             >
               📥 Stai pagando una richiesta ricevuta. Rete, asset e importo sono fissati dal richiedente.
             </div>

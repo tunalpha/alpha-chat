@@ -451,7 +451,13 @@ export function ChatWalletBridgeProvider({ children }: Props) {
       };
 
     } catch (err: unknown) {
-      const msg  = err instanceof Error ? err.message : "Errore sconosciuto";
+      // Alcuni errori viem/fetch hanno .message come oggetto — forziamo sempre stringa
+      const rawMsg = err instanceof Error ? err.message : String(err);
+      const msg = typeof rawMsg === "string" && rawMsg.trim() && rawMsg !== "[object Object]"
+        ? rawMsg
+        : (err instanceof Error && typeof (err as Record<string,unknown>).shortMessage === "string"
+            ? String((err as Record<string,unknown>).shortMessage)
+            : "Errore sconosciuto");
       const code = msg.toLowerCase().includes("insufficient") ? "INSUFFICIENT_BALANCE"
         : (msg.toLowerCase().includes("network") || msg.toLowerCase().includes("fetch"))
           ? "NETWORK_ERROR"

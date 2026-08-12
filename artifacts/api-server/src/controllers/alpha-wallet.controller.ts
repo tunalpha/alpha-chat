@@ -277,19 +277,24 @@ export async function getBtcBalance(
     });
     if (!resp.ok) throw new AppError("BLOCKSTREAM_ERROR", 502);
 
-    const data = await resp.json() as {
-      address: string;
+    const raw = await resp.json() as Record<string, unknown>;
+
+    // Difensivo: mempool.space restituisce null/oggetto vuoto per indirizzi nuovi o rate-limit
+    const stats        = (raw.stats        as Record<string,number> | null | undefined) ?? {};
+    const mempoolStats = (raw.mempool_stats as Record<string,number> | null | undefined) ?? {};
+
+    const data = {
       stats: {
-        funded_txo_sum: number;
-        spent_txo_sum:  number;
-        funded_txo_count: number;
-        spent_txo_count:  number;
-        tx_count: number;
-      };
+        funded_txo_sum:   stats.funded_txo_sum   ?? 0,
+        spent_txo_sum:    stats.spent_txo_sum    ?? 0,
+        funded_txo_count: stats.funded_txo_count ?? 0,
+        spent_txo_count:  stats.spent_txo_count  ?? 0,
+        tx_count:         stats.tx_count         ?? 0,
+      },
       mempool_stats: {
-        funded_txo_sum: number;
-        spent_txo_sum:  number;
-      };
+        funded_txo_sum: mempoolStats.funded_txo_sum ?? 0,
+        spent_txo_sum:  mempoolStats.spent_txo_sum  ?? 0,
+      },
     };
 
     const confirmedSat   = data.stats.funded_txo_sum - data.stats.spent_txo_sum;
