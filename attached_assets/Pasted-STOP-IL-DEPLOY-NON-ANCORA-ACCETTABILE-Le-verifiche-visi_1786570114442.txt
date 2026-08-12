@@ -1,0 +1,106 @@
+STOP. IL DEPLOY NON È ANCORA ACCETTABILE.
+
+Le verifiche visive in produzione mostrano ancora due problemi reali:
+
+PROBLEMA 1 — GO-LIVE: "Endpoint non trovato"
+Il dialog "Abilitare Spark Lightning in produzione?" continua a mostrare:
+"Operazione fallita — Endpoint non trovato."
+
+Non assumere che il fix sia corretto solo perché il codice locale usa
+/admin/notification-settings.
+
+DEVI verificare direttamente in produzione:
+
+1. Aprire il Network log del browser.
+2. Premere "Abilita Go-Live" SENZA confermare.
+3. Identificare ESATTAMENTE quale URL viene chiamato per leggere lo stato.
+4. Identificare ESATTAMENTE quale URL viene chiamato quando viene eseguito il PATCH.
+5. Verificare metodo HTTP, URL completo, status code e response body.
+6. Confrontare questi URL con le route effettivamente registrate in api-server.
+7. Cercare in TUTTO admin-panel eventuali vecchi riferimenti a:
+   /admin/settings
+   /api/v1/admin/admin/settings
+   o altri path errati.
+8. Verificare che il browser stia realmente servendo il nuovo bundle dopo il deploy e non una versione cached.
+
+NON limitarti a correggere il file già modificato.
+Devi dimostrare quale richiesta sta producendo il 404 e correggere la causa reale.
+
+PROBLEMA 2 — SPARK MONITOR ILLEGGIBILE
+
+La pagina /spark-monitor in produzione mostra testo quasi bianco su
+sfondo bianco e resta visivamente in "Caricamento stato...".
+
+Devi verificare:
+
+1. Network request verso:
+   /api/v1/spark/monitoring/dashboard
+   /api/v1/spark/monitoring/movements
+   /api/v1/spark/monitoring/health
+   /api/v1/spark/monitoring/reconciliation
+
+2. Status HTTP e response JSON di ciascuna.
+
+3. Se le API rispondono correttamente, il problema è frontend/CSS/state
+   e deve essere corretto.
+
+4. Eliminare qualsiasi contrasto bianco-su-bianco.
+   Il monitor deve essere leggibile sia su mobile Safari sia desktop.
+
+5. Verificare se esiste un overlay/loading state che rimane attivo
+   erroneamente dopo la risposta API.
+
+6. Verificare che il monitor visualizzi chiaramente:
+   - Movimento totali
+   - Fee Spark
+   - Error rate
+   - Last movement
+   - Health
+   - Reconciliation
+   - Wallet Spark abilitati / stato tracking
+   - eventuali alert
+
+7. Se i dati sono realmente zero/ND, mostrarli esplicitamente come
+   "0" o "N/D", NON lasciare skeleton/loading indefiniti.
+
+REGOLA IMPORTANTE:
+
+NON modificare:
+- BTC on-chain
+- WalletContext BTC
+- EVM
+- USDA
+- Signal
+- Chat
+- Payment Engine
+- BTC fee
+- BTC Treasury
+- logiche Spark di pagamento
+
+MODIFICARE SOLO ciò che è necessario per risolvere:
+A) endpoint Go-Live
+B) Spark Monitor frontend/API integration
+C) eventuale CSS/accessibilità del Monitor.
+
+Prima di modificare il codice, esegui la diagnosi production e riportami:
+- URL realmente chiamato
+- status HTTP
+- route server corrispondente
+- causa del 404
+- causa del problema visuale
+
+Poi applica il fix.
+
+DOPO il fix:
+- test automatici
+- build
+- redeploy
+- verifica direttamente sull'URL production
+- Network verification
+- verifica mobile Safari
+- verifica che spark_lightning_enabled rimanga FALSE
+
+NON attivare Spark Go-Live.
+NON fare transazioni.
+NON considerare il lavoro completato finché entrambe le schermate
+non funzionano realmente in produzione.

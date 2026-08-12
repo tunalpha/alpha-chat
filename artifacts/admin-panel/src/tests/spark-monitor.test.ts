@@ -35,17 +35,41 @@ import {
   type SparkHealthData,
 } from "../lib/spark-monitoring-api";
 
-// ── Mock apiFetch ────────────────────────────────────────────────────────────
+// ── Mock globale fetch ────────────────────────────────────────────────────────
+// spark-monitoring-api usa sparkMonitorFetch che chiama fetch() direttamente
+// (base /api/v1/spark), NON apiFetch (base /api/v1/admin).
+// Il mock intercetta il fetch globale.
 
-const mockApiFetch = vi.fn();
 vi.mock("../lib/api", () => ({
-  apiFetch: (...args: unknown[]) => mockApiFetch(...args),
-  getToken: vi.fn().mockReturnValue("test-token"),
+  getToken: vi.fn().mockReturnValue("test-admin-token"),
+  apiFetch: vi.fn(), // non usato da spark-monitoring-api ma importato da spark-api.ts
 }));
+
+const mockFetch = vi.fn();
 
 beforeEach(() => {
   vi.clearAllMocks();
+  global.fetch = mockFetch;
 });
+
+/** Helper: simula una risposta fetch JSON OK */
+function mockFetchOk(body: unknown) {
+  mockFetch.mockResolvedValueOnce({
+    ok: true,
+    json: () => Promise.resolve(body),
+    headers: { get: () => "application/json" },
+  } as unknown as Response);
+}
+
+/** Helper: simula una risposta fetch con errore */
+function mockFetchError(status: number, message: string) {
+  mockFetch.mockResolvedValueOnce({
+    ok: false,
+    status,
+    json: () => Promise.resolve({ message }),
+    headers: { get: () => "application/json" },
+  } as unknown as Response);
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // §1 formatSparkFeeAmount — valori normali
@@ -170,9 +194,9 @@ describe("§8 healthStatusBadge — tutti gli stati", () => {
 
 describe("§9 apiGetSparkMovements — query string", () => {
   it("include range e status nella query string", async () => {
-    mockApiFetch.mockResolvedValue({ data: { total: 0, page: 1, limit: 20, pages: 1, records: [] } });
+    mockFetchOk({ data: { total: 0, page: 1, limit: 20, pages: 1, records: [] } });
     await apiGetSparkMovements({ range: "7d", status: "success", page: 2, limit: 20 });
-    const url: string = mockApiFetch.mock.calls[0][0];
+    const url: string = mockFetch.mock.calls[0][0] as string;
     expect(url).toContain("range=7d");
     expect(url).toContain("status=success");
     expect(url).toContain("page=2");
@@ -180,43 +204,50 @@ describe("§9 apiGetSparkMovements — query string", () => {
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// §10 apiGetSparkMovements — range=all senza parametri extra
+// §10 apiGetSparkMovements — chiamata senza params
 // ─────────────────────────────────────────────────────────────────────────────
 
 describe("§10 apiGetSparkMovements — chiamata senza params", () => {
-  it("endpoint base senza query string quando nessun param", async () => {
-    mockApiFetch.mockResolvedValue({ data: { total: 0, page: 1, limit: 50, pages: 1, records: [] } });
+  it("nessuna query string quando nessun param", async () => {
+    mockFetchOk({ data: { total: 0, page: 1, limit: 50, pages: 1, records: [] } });
     await apiGetSparkMovements({});
-    const url: string = mockApiFetch.mock.calls[0][0];
-    expect(url).toBe("/spark/monitoring/movements");
+    const url: string = mockFetch.mock.calls[0][0] as string;
+    expect(url).toContain("/monitoring/movements");
+    expect(url).not.toContain("?");
   });
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
-// §11–13 Endpoint corretti
+// §11–13 Endpoint corretti (base /api/v1/spark — NON /api/v1/admin/spark)
 // ─────────────────────────────────────────────────────────────────────────────
 
-describe("§11 apiGetSparkDashboard — endpoint", () => {
-  it("chiama /spark/monitoring/dashboard", async () => {
-    mockApiFetch.mockResolvedValue({ data: { movements_total: 0 } });
+describe("§11 apiGetSparkDashboard — endpoint corretto", () => {
+  it("chiama /api/v1/spark/monitoring/dashboard (NON /admin/spark/...)", async () => {
+    mockFetchOk({ data: { movements_total: 0 } });
     await apiGetSparkDashboard();
-    expect(mockApiFetch.mock.calls[0][0]).toBe("/spark/monitoring/dashboard");
+    const url: string = mockFetch.mock.calls[0][0] as string;
+    expect(url).toContain("/api/v1/spark/monitoring/dashboard");
+    expect(url).not.toContain("/admin/spark");
   });
 });
 
-describe("§12 apiGetSparkHealth — endpoint", () => {
-  it("chiama /spark/monitoring/health", async () => {
-    mockApiFetch.mockResolvedValue({ data: { overall_status: "healthy", alerts: [] } });
+describe("§12 apiGetSparkHealth — endpoint corretto", () => {
+  it("chiama /api/v1/spark/monitoring/health", async () => {
+    mockFetchOk({ data: { overall_status: "healthy", alerts: [] } });
     await apiGetSparkHealth();
-    expect(mockApiFetch.mock.calls[0][0]).toBe("/spark/monitoring/health");
+    const url: string = mockFetch.mock.calls[0][0] as string;
+    expect(url).toContain("/api/v1/spark/monitoring/health");
+    expect(url).not.toContain("/admin/spark");
   });
 });
 
-describe("§13 apiGetSparkReconciliation — endpoint", () => {
-  it("chiama /spark/monitoring/reconciliation", async () => {
-    mockApiFetch.mockResolvedValue({ data: { status: "ok", alert: false } });
+describe("§13 apiGetSparkReconciliation — endpoint corretto", () => {
+  it("chiama /api/v1/spark/monitoring/reconciliation", async () => {
+    mockFetchOk({ data: { status: "ok", alert: false } });
     await apiGetSparkReconciliation();
-    expect(mockApiFetch.mock.calls[0][0]).toBe("/spark/monitoring/reconciliation");
+    const url: string = mockFetch.mock.calls[0][0] as string;
+    expect(url).toContain("/api/v1/spark/monitoring/reconciliation");
+    expect(url).not.toContain("/admin/spark");
   });
 });
 
@@ -228,7 +259,7 @@ describe("§14 Privacy — payload non contiene dati sensibili", () => {
   it("dashboard response non contiene mnemonic o API key", async () => {
     const dashboardData = {
       spark_enabled: true,
-      breez_api_key_configured: true, // boolean only
+      breez_api_key_configured: true,
       movements_total: 5,
       movements_completed: 5,
       movements_failed: 0,
@@ -238,12 +269,11 @@ describe("§14 Privacy — payload non contiene dati sensibili", () => {
       error_rate_percent: 0,
       last_movement_at: null,
     };
-    mockApiFetch.mockResolvedValue({ data: dashboardData });
+    mockFetchOk({ data: dashboardData });
     const result = await apiGetSparkDashboard();
     const json = JSON.stringify(result);
     expect(json).not.toMatch(/mnemonic/i);
     expect(json).not.toMatch(/private_key/i);
-    // breez_api_key_configured è boolean, non il valore della chiave
     expect(typeof result.breez_api_key_configured).toBe("boolean");
     expect(json).not.toMatch(/sk_/);
   });

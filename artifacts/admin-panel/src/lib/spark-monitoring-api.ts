@@ -6,7 +6,41 @@
  * PRIVACY: nessun secret, mnemonic, private key nei payload.
  */
 
-import { apiFetch } from "./api";
+import { getToken } from "./api";
+
+// Le route /spark/monitoring/* sono montate sotto /api/v1/spark/ (NON /api/v1/admin/).
+// Non possiamo usare apiFetch (che usa BASE="/api/v1/admin"), altrimenti
+// apiFetch("/spark/monitoring/dashboard") → /api/v1/admin/spark/monitoring/dashboard → 404.
+// Usiamo sparkMonitorFetch con la base corretta.
+
+const SPARK_MONITOR_BASE = "/api/v1/spark";
+
+async function sparkMonitorFetch<T>(path: string): Promise<T> {
+  const token = getToken();
+  const headers: Record<string, string> = { "Content-Type": "application/json" };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const controller = new AbortController();
+  const tid = setTimeout(() => controller.abort(), 12_000);
+  let res: Response;
+  try {
+    res = await fetch(`${SPARK_MONITOR_BASE}${path}`, { headers, signal: controller.signal });
+  } finally {
+    clearTimeout(tid);
+  }
+
+  if (!res.ok) {
+    let msg = `HTTP ${res.status}`;
+    try {
+      const b = await res.json();
+      msg = (b as { error?: { message?: string }; message?: string })?.error?.message
+        ?? (b as { message?: string })?.message
+        ?? msg;
+    } catch { /* ignore */ }
+    throw new Error(msg);
+  }
+  return res.json() as Promise<T>;
+}
 
 // ─── Tipi risposta ─────────────────────────────────────────────────────────
 
@@ -73,7 +107,7 @@ export interface SparkReconciliationData {
 // ─── API functions ──────────────────────────────────────────────────────────
 
 export function apiGetSparkDashboard(): Promise<SparkDashboardData> {
-  return apiFetch<{ data: SparkDashboardData }>("/spark/monitoring/dashboard")
+  return sparkMonitorFetch<{ data: SparkDashboardData }>("/monitoring/dashboard")
     .then(r => r.data);
 }
 
@@ -91,17 +125,17 @@ export function apiGetSparkMovements(params: MovementsParams = {}): Promise<Spar
   if (params.limit)  qs.set("limit",  String(params.limit));
   if (params.page)   qs.set("page",   String(params.page));
   const query = qs.toString() ? `?${qs.toString()}` : "";
-  return apiFetch<{ data: SparkMovementsData }>(`/spark/monitoring/movements${query}`)
+  return sparkMonitorFetch<{ data: SparkMovementsData }>(`/monitoring/movements${query}`)
     .then(r => r.data);
 }
 
 export function apiGetSparkHealth(): Promise<SparkHealthData> {
-  return apiFetch<{ data: SparkHealthData }>("/spark/monitoring/health")
+  return sparkMonitorFetch<{ data: SparkHealthData }>("/monitoring/health")
     .then(r => r.data);
 }
 
 export function apiGetSparkReconciliation(): Promise<SparkReconciliationData> {
-  return apiFetch<{ data: SparkReconciliationData }>("/spark/monitoring/reconciliation")
+  return sparkMonitorFetch<{ data: SparkReconciliationData }>("/monitoring/reconciliation")
     .then(r => r.data);
 }
 
