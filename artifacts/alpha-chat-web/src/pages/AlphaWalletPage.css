@@ -1029,7 +1029,8 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 14px 16px;
+  /* padding-top include la safe-area iOS così il bottone < non finisce sotto la status bar */
+  padding: calc(14px + env(safe-area-inset-top)) 16px 14px;
   border-bottom: 1px solid rgba(255,255,255,.07);
   flex-shrink: 0;
 }
