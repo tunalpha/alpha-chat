@@ -1,13 +1,13 @@
 /**
  * ChatWalletPaymentBubble — Phase G
  *
- * Bubble in-chat per messaggi di tipo "wallet_payment" (Alpha Wallet self-custodial).
- * SEPARATO da MultiChainPaymentBubble (Payment Engine custodiale).
+ * Bubble in-chat per messaggi 🔐WALLETPAY: (Alpha Wallet self-custodial).
+ * Usa le stesse classi CSS cp-bubble del MultiChain bubble per consistenza visiva.
  *
- * ISOLAMENTO: importa solo il tipo pubblico da bridge, nessun wallet internal.
+ * ISOLAMENTO: importa solo il tipo pubblico da bridge e tx-store.
  */
 
-import { useMemo, useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import type { SupportedNetwork } from "../../wallet/bridge/chat-wallet-bridge";
 import { getTxRecordByHash } from "../../wallet/services/tx-store";
 import "./ChatWalletPaymentBubble.css";
@@ -41,43 +41,24 @@ const NETWORK_NAMES: Record<SupportedNetwork, string> = {
   bitcoin:  "Bitcoin",
 };
 
-const NETWORK_COLORS: Record<SupportedNetwork, string> = {
-  ethereum: "#627EEA",
-  polygon:  "#8247E5",
-  bsc:      "#F3BA2F",
-  bitcoin:  "#F7931A",
+const NETWORK_ICONS: Record<SupportedNetwork, string> = {
+  ethereum: "⬡",
+  polygon:  "🔵",
+  bsc:      "🟡",
+  bitcoin:  "🟠",
 };
-
-function truncateHash(hash: string, head = 6, tail = 4): string {
-  if (hash.length <= head + tail + 3) return hash;
-  return `${hash.slice(0, head)}…${hash.slice(-tail)}`;
-}
-
-function statusIcon(status: WalletPaymentBubbleStatus, direction: "in" | "out"): string {
-  if (status === "failed") return "❌";
-  if (status === "confirmed") return direction === "in" ? "💰" : "✅";
-  return direction === "in" ? "📩" : "📤";
-}
-
-function statusLabel(status: WalletPaymentBubbleStatus): string {
-  if (status === "confirmed") return "Confermata";
-  if (status === "failed")    return "Fallita";
-  return "In attesa di conferma…";
-}
 
 // ─── Live-status hook ─────────────────────────────────────────────────────
 //
-// La bubble riceve `meta.status = "sent"` congelato nel JSON Signal al momento
-// dell'invio. Il tx-monitor aggiorna IDB (tx-store) quando la TX viene
-// confermata on-chain, ma la bubble non lo sa. Questo hook legge IDB una volta
-// al mount (e ripete ogni 15s mentre è "pending/sent") per aggiornare lo status.
+// Il meta.status è congelato nel JSON Signal all'invio (= "sent").
+// Il tx-monitor aggiorna IDB quando la TX si conferma on-chain.
+// Questo hook legge IDB al mount e ri-controlla ogni 15s finché non finale.
 //
 
 function useLiveTxStatus(txHash: string, initial: WalletPaymentBubbleStatus): WalletPaymentBubbleStatus {
   const [liveStatus, setLiveStatus] = useState<WalletPaymentBubbleStatus>(initial);
 
   useEffect(() => {
-    // Se lo status iniziale è già finale, non serve polling.
     if (initial === "confirmed" || initial === "failed") return;
 
     let active = true;
@@ -88,18 +69,13 @@ function useLiveTxStatus(txHash: string, initial: WalletPaymentBubbleStatus): Wa
         if (!active) return;
         if (record?.status === "confirmed") setLiveStatus("confirmed");
         else if (record?.status === "failed") setLiveStatus("failed");
-        // "pending" → rimane "sent" (in attesa)
-      } catch { /* IDB non disponibile — nessun wallet caricato */ }
+      } catch { /* IDB non disponibile */ }
     };
 
     void check();
 
-    // Ricontrolla ogni 15 s finché non siamo in stato finale
     const timer = setInterval(() => {
-      if (liveStatus === "confirmed" || liveStatus === "failed") {
-        clearInterval(timer);
-        return;
-      }
+      if (liveStatus === "confirmed" || liveStatus === "failed") { clearInterval(timer); return; }
       void check();
     }, 15_000);
 
@@ -115,56 +91,92 @@ function useLiveTxStatus(txHash: string, initial: WalletPaymentBubbleStatus): Wa
 export function ChatWalletPaymentBubble({ meta, isMine }: Props) {
   const { txHash, network, assetSymbol, amount, fee, direction, explorerUrl } = meta;
 
-  // Usa lo status live da IDB — sovrascrive il valore congelato nel JSON Signal.
+  // Status live da IDB — sovrascrive il valore congelato nel JSON Signal.
   const status = useLiveTxStatus(txHash, meta.status);
 
-  const netColor = NETWORK_COLORS[network];
-  const netName  = NETWORK_NAMES[network];
-  const icon     = useMemo(() => statusIcon(status, direction), [status, direction]);
+  const netName = NETWORK_NAMES[network] ?? network;
+  const netIcon = NETWORK_ICONS[network] ?? "⬡";
 
-  const dirLabel = direction === "out" ? "Inviato" : "Ricevuto";
-  const bubbleCls = `wallet-pay-bubble ${isMine ? "mine" : "theirs"} status-${status}`;
+  // Direzione
+  const dirIcon = direction === "out" ? "🚀" : "📩";
+  const dirText = direction === "out" ? "CRIPTO INVIATA" : "CRIPTO RICEVUTA";
+
+  // Variant per colori status
+  const variant  = status === "confirmed" ? "success" : status === "failed" ? "fail" : "waiting";
+  const animated = status === "sent";
+
+  const statusIcon  = useMemo(() => {
+    if (status === "confirmed") return direction === "out" ? "✅" : "💰";
+    if (status === "failed")    return "❌";
+    return "";
+  }, [status, direction]);
+
+  const statusTitle = status === "confirmed" ? "Pagamento completato"
+    : status === "failed" ? "Transazione fallita"
+    : "In attesa di conferma…";
+
+  const statusSub = status === "confirmed"
+    ? (direction === "out" ? "Fondi inviati con successo" : "Fondi ricevuti nel wallet")
+    : status === "failed" ? "Controlla l'explorer per i dettagli"
+    : null;
+
+  const glowCls   = status === "confirmed" ? " mc-success-glow" : "";
+  const bubbleCls = `cp-bubble ${isMine ? "mine" : "theirs"} cp-variant-${variant}${glowCls}`;
 
   return (
     <div className={bubbleCls}>
-      {/* Header ─────────────────────────────────────────────────────── */}
-      <div className="wpb-header">
-        <span className="wpb-icon">{icon}</span>
-        <span className="wpb-dir">{dirLabel}</span>
-        <span
-          className="wpb-network"
-          style={{ background: `${netColor}22`, color: netColor, border: `1px solid ${netColor}55` }}
-        >
-          {netName}
-        </span>
+
+      {/* Header: icona direzione + label */}
+      <div className="cp-bubble-header">
+        <span className="cp-coin">{dirIcon}</span>
+        <span>{dirText}</span>
       </div>
 
-      {/* Amount ─────────────────────────────────────────────────────── */}
-      <div className="wpb-amount">
-        <span className="wpb-amount-value">{amount}</span>
-        <span className="wpb-amount-symbol">{assetSymbol}</span>
+      {/* Badge rete + asset */}
+      <div className="mc-network-badge">
+        {netIcon} {netName} · {assetSymbol}
       </div>
 
-      {/* Fee ─────────────────────────────────────────────────────────── */}
+      {/* Importo grande */}
+      <div style={{ display: "flex", alignItems: "baseline", gap: "5px" }}>
+        <span className="cp-bubble-amount">{amount}</span>
+        <span className="cp-bubble-unit">{assetSymbol}</span>
+      </div>
+
+      {/* Platform fee (opzionale) */}
       {fee && (
-        <div className="wpb-fee">Platform fee: {fee} {assetSymbol}</div>
+        <div className="cp-bubble-note">Platform fee: {fee} {assetSymbol}</div>
       )}
 
-      {/* Status ─────────────────────────────────────────────────────── */}
-      <div className={`wpb-status wpb-status--${status}`}>
-        {statusLabel(status)}
+      {/* Divisore */}
+      <div className="cp-bubble-divider" role="separator" />
+
+      {/* Status */}
+      <div className="cp-bubble-status" aria-live="polite" aria-label={statusTitle}>
+        {animated
+          ? <span className="cp-spinner" aria-hidden="true" />
+          : <span className="cp-status-icon" aria-hidden="true">{statusIcon}</span>
+        }
+        <div className="cp-status-text-group">
+          <span className="cp-status-title">{statusTitle}</span>
+          {statusSub && <span className="cp-status-sub">{statusSub}</span>}
+        </div>
       </div>
 
-      {/* Explorer link ───────────────────────────────────────────────── */}
-      <a
-        href={explorerUrl}
-        target="_blank"
-        rel="noopener noreferrer"
-        className="wpb-explorer"
-        title="Vedi su blockchain explorer"
-      >
-        🔗 {truncateHash(txHash)}
-      </a>
+      {/* Link explorer */}
+      <div className="cp-bubble-scan-links">
+        <a
+          href={explorerUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="cp-scan-link"
+          aria-label="Vedi transazione sull'explorer"
+          onClick={e => e.stopPropagation()}
+        >
+          Vedi transazione ↗
+        </a>
+      </div>
+
     </div>
   );
 }

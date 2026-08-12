@@ -104,21 +104,22 @@ describe("ChatWalletPaymentBubble — renderer reale", () => {
   });
 
   // ── Test 3: messaggio mittente — isMine=true ──────────────────────────────
-  it("isMine=true: bubble ha classe CSS mine", () => {
+  it("isMine=true: bubble ha classe CSS mine (cp-bubble)", () => {
     const text = buildWalletPayText(REAL_META_TX1);
     const bubble = renderWalletPayBubble(text, true);
     const { container } = render(bubble!);
-    const bubbleEl = container.querySelector(".wallet-pay-bubble");
+    // Ora usa cp-bubble.mine invece di wallet-pay-bubble.mine
+    const bubbleEl = container.querySelector(".cp-bubble");
     expect(bubbleEl?.classList.contains("mine")).toBe(true);
   });
 
   // ── Test 4: messaggio ricevuto — isMine=false ─────────────────────────────
-  it("isMine=false: bubble ha classe CSS theirs", () => {
+  it("isMine=false: bubble ha classe CSS theirs (cp-bubble)", () => {
     const inMeta: WalletPaymentMeta = { ...REAL_META_TX1, direction: "in" };
     const text = buildWalletPayText(inMeta);
     const bubble = renderWalletPayBubble(text, false);
     const { container } = render(bubble!);
-    const bubbleEl = container.querySelector(".wallet-pay-bubble");
+    const bubbleEl = container.querySelector(".cp-bubble");
     expect(bubbleEl?.classList.contains("theirs")).toBe(true);
   });
 
@@ -160,13 +161,13 @@ describe("ChatWalletPaymentBubble — renderer reale", () => {
     expect(container.textContent).toContain("In attesa di conferma");
   });
 
-  // ── Test 10: status "confirmed" mostra "Confermata" ──────────────────────
-  it("status confirmed → label Confermata", () => {
+  // ── Test 10: status "confirmed" mostra "Pagamento completato" ───────────────
+  it("status confirmed → label Pagamento completato", () => {
     const confirmed: WalletPaymentMeta = { ...REAL_META_TX1, status: "confirmed" };
     const text = buildWalletPayText(confirmed);
     const bubble = renderWalletPayBubble(text, true);
     const { container } = render(bubble!);
-    expect(container.textContent).toContain("Confermata");
+    expect(container.textContent).toContain("Pagamento completato");
   });
 
   // ── Test 11: emoji WALLETPAY → stessa encoding sia nel producer che nel check
@@ -183,9 +184,12 @@ describe("ChatWalletPaymentBubble — renderer reale", () => {
     const { container } = render(<ChatWalletPaymentBubble meta={REAL_META_TX2} isMine={true} />);
     // NON deve mai apparire la chiave JSON "txHash"
     expect(screen.queryByText(/\"txHash\"/)).toBeNull();
-    // Il testo visibile contiene il prefisso dell'hash troncato (0xde91 + ellipsis + ultimi 4 chars)
-    expect(container.textContent).toMatch(/0xde91/);
-    // L'hash intero NON appare come stringa grezza nel DOM (sarebbe il JSON raw)
+    // L'hash intero NON appare come stringa grezza nel testo (sarebbe il JSON raw)
     expect(container.textContent).not.toContain('"0xde91');
+    // Il link "Vedi transazione" è presente (cp-bubble style non mostra hash nel testo)
+    expect(container.textContent).toContain("Vedi transazione");
+    // L'href del link contiene il txHash
+    const link = container.querySelector("a.cp-scan-link");
+    expect(link?.getAttribute("href")).toContain("0xde91");
   });
 });

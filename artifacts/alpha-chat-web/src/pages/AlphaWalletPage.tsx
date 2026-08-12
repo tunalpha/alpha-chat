@@ -103,74 +103,14 @@ function useWalletCurrency() {
   return { currency, setCurrency };
 }
 
-// ─── Sealed PIN — AES-GCM, sopravvive alla chiusura PWA ──────────────────────
-//
-// Il PIN viene cifrato con AES-256-GCM e salvato in localStorage insieme alla
-// chiave AES (anch'essa in localStorage). Il Face ID (WebAuthn) fa da gate:
-// solo dopo verifica biometrica il codice chiama unsealWalletPin().
-// Sicurezza nel contesto PWA iOS: senza bypass biometrico il PIN rimane cifrato.
-//
-const _AW_BIO_KEY  = "aw_bk";   // chiave AES-256 esportata (base64)
-const _AW_BIO_SEAL = "aw_bs";   // {iv,data} cifrato (base64)
-
-async function _getOrCreateBioKey(): Promise<CryptoKey> {
-  const stored = localStorage.getItem(_AW_BIO_KEY);
-  if (stored) {
-    const raw = Uint8Array.from(atob(stored), c => c.charCodeAt(0));
-    return crypto.subtle.importKey("raw", raw, "AES-GCM", false, ["encrypt", "decrypt"]);
-  }
-  const key = await crypto.subtle.generateKey({ name: "AES-GCM", length: 256 }, true, ["encrypt", "decrypt"]);
-  const raw  = await crypto.subtle.exportKey("raw", key);
-  localStorage.setItem(_AW_BIO_KEY, btoa(String.fromCharCode(...new Uint8Array(raw))));
-  return key;
-}
-
-async function sealWalletPin(pin: string): Promise<void> {
-  try {
-    const key  = await _getOrCreateBioKey();
-    const iv   = crypto.getRandomValues(new Uint8Array(12));
-    const data = await crypto.subtle.encrypt({ name: "AES-GCM", iv }, key, new TextEncoder().encode(pin));
-    localStorage.setItem(_AW_BIO_SEAL, JSON.stringify({
-      iv:   btoa(String.fromCharCode(...iv)),
-      data: btoa(String.fromCharCode(...new Uint8Array(data))),
-    }));
-  } catch { /* best-effort */ }
-}
-
-async function unsealWalletPin(): Promise<string | null> {
-  try {
-    const stored = localStorage.getItem(_AW_BIO_SEAL);
-    const keyRaw = localStorage.getItem(_AW_BIO_KEY);
-    if (!stored || !keyRaw) return null;
-    const { iv: ivB64, data: dataB64 } = JSON.parse(stored) as { iv: string; data: string };
-    const iv   = Uint8Array.from(atob(ivB64),   c => c.charCodeAt(0));
-    const data = Uint8Array.from(atob(dataB64),  c => c.charCodeAt(0));
-    const key  = await crypto.subtle.importKey(
-      "raw", Uint8Array.from(atob(keyRaw), c => c.charCodeAt(0)), "AES-GCM", false, ["decrypt"],
-    );
-    const dec  = await crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, data);
-    return new TextDecoder().decode(dec);
-  } catch { return null; }
-}
-
-function clearSealedWalletPin(): void {
-  localStorage.removeItem(_AW_BIO_SEAL);
-  localStorage.removeItem(_AW_BIO_KEY);
-}
-
-// ─── Wallet Face ID hook (wallet-specific, separate from app-level Face ID) ──
-
-function useWalletFaceId() {
-  const [enabled, setEnabledState] = useState<boolean>(() => {
-    try { return localStorage.getItem("aw_wallet_faceid") === "1"; }
-    catch { return false; }
-  });
-  const setEnabled = useCallback((v: boolean) => {
-    try { localStorage.setItem("aw_wallet_faceid", v ? "1" : "0"); } catch { /* ignore */ }
-    setEnabledState(v);
-  }, []);
-  return { walletFaceIdEnabled: enabled, setWalletFaceIdEnabled: setEnabled };
-}
+// ─── Sealed PIN + Wallet Face ID — importati dal modulo condiviso ─────────────
+// Estratti in wallet/security/wallet-pin-seal.ts per riuso in ChatWalletPaySheet.
+import {
+  sealWalletPin,
+  unsealWalletPin,
+  clearSealedWalletPin,
+  useWalletFaceId,
+} from "../wallet/security/wallet-pin-seal";
 
 const ONBOARDING_VIEWS: WalletSubView[] = [
   "create-phrase", "create-verify", "import-phrase",

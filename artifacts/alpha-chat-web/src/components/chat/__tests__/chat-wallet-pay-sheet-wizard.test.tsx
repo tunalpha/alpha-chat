@@ -45,6 +45,24 @@ vi.mock("../../../lib/alpha-wallet-api", () => ({
   apiWalletGetRecipient: vi.fn(),
 }));
 
+// Mock LockContext — Face ID disabilitato nei test standard
+vi.mock("../../../contexts/LockContext", () => ({
+  useLock: () => ({
+    hasBiometricSet:        false,
+    canUseBiometric:        false,
+    tryUnlockWithBiometric: vi.fn().mockResolvedValue(false),
+  }),
+}));
+
+// Mock wallet-pin-seal — biometria non disponibile nei test standard
+vi.mock("../../../wallet/security/wallet-pin-seal", () => ({
+  useWalletFaceId:      () => ({ walletFaceIdEnabled: false, setWalletFaceIdEnabled: vi.fn() }),
+  unsealWalletPin:      vi.fn().mockResolvedValue(null),
+  sealWalletPin:        vi.fn().mockResolvedValue(undefined),
+  clearSealedWalletPin: vi.fn(),
+  hasSealedPin:         vi.fn().mockReturnValue(false),
+}));
+
 import { apiWalletGetRecipient } from "../../../lib/alpha-wallet-api";
 const mockGetRecipient = apiWalletGetRecipient as ReturnType<typeof vi.fn>;
 

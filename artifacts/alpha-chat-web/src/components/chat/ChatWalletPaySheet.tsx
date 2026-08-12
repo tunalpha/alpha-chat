@@ -37,6 +37,8 @@ import {
   type RecipientWalletInfo,
 } from "../../lib/alpha-wallet-api";
 import "./ChatWalletPaySheet.css";
+import { useLock } from "../../contexts/LockContext";
+import { useWalletFaceId, unsealWalletPin } from "../../wallet/security/wallet-pin-seal";
 
 // ─── Types ────────────────────────────────────────────────────────────────
 
@@ -129,6 +131,12 @@ export function ChatWalletPaySheet({
   onSendInvite,
 }: Props) {
   const bridge = useChatWalletBridge();
+
+  // ── Biometric auth (Face ID per wallet) ──────────────────────────────
+  const lock = useLock();
+  const { walletFaceIdEnabled } = useWalletFaceId();
+  const hasBiometricSet  = lock?.hasBiometricSet  ?? false;
+  const walletBioActive  = walletFaceIdEnabled && hasBiometricSet;
 
   // ── Wizard step ──────────────────────────────────────────────────────
   const [step, setStep] = useState<WizardStep>("recipient");
@@ -309,15 +317,49 @@ export function ChatWalletPaySheet({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bridge, network, asset, amount, manualAddress, recipientMode, autoAddress, recipientName]);
 
-  // ── onAuthRequired: avanza allo step auth inline ──────────────────────
+  // ── onAuthRequired: prova Face ID silenziosamente, fallback PIN step ─
   const onAuthRequired = useCallback((): Promise<string | null> => {
-    return new Promise(resolve => {
+    // eslint-disable-next-line no-async-promise-executor
+    return new Promise(async resolve => {
+      // Prova Face ID silenziosamente — se ha successo e il PIN è sigillato,
+      // risolve la promise senza mostrare l'auth step.
+      if (walletBioActive && lock) {
+        try {
+          const ok = await lock.tryUnlockWithBiometric();
+          if (ok) {
+            const pin = await unsealWalletPin();
+            if (pin) { resolve(pin); return; }
+          }
+        } catch { /* non disponibile — mostra PIN step */ }
+      }
+      // Biometria fallita/assente → mostra step PIN inline
       pinResolveRef.current = resolve;
       setPinValue("");
       setAuthErr(null);
       setStep("auth");
     });
-  }, []);
+  }, [lock, walletBioActive]);
+
+  // ── handleBioAuth: retry Face ID dall'auth step (bottone esplicito) ─
+  const handleBioAuth = useCallback(async () => {
+    if (!walletBioActive || !lock) return;
+    setAuthErr(null);
+    try {
+      const ok = await lock.tryUnlockWithBiometric();
+      if (ok) {
+        const pin = await unsealWalletPin();
+        if (pin && pinResolveRef.current) {
+          pinResolveRef.current(pin);
+          pinResolveRef.current = null;
+          setStep("sending");
+          return;
+        }
+      }
+      setAuthErr("Face ID non riconosciuto. Inserisci il PIN.");
+    } catch {
+      setAuthErr("Face ID non disponibile. Inserisci il PIN.");
+    }
+  }, [walletBioActive, lock]);
 
   const handlePinSubmit = () => {
     if (pinValue.length < 4) { setAuthErr("PIN troppo corto"); return; }
@@ -721,7 +763,23 @@ export function ChatWalletPaySheet({
         ═══════════════════════════════════════════════════════════════ */}
         {step === "auth" && (
           <div className="cwp-step cwp-step-auth">
-            <div className="cwp-auth-icon">🔐</div>
+            {/* Face ID disponibile → bottone primario in cima, PIN come fallback */}
+            {walletBioActive ? (
+              <>
+                <button
+                  type="button"
+                  className="cwp-bio-btn"
+                  onClick={handleBioAuth}
+                  aria-label="Autorizza con Face ID"
+                >
+                  <span className="cwp-bio-icon">🪪</span>
+                  <span>Usa Face ID</span>
+                </button>
+                <p className="cwp-bio-or">oppure inserisci il PIN</p>
+              </>
+            ) : (
+              <div className="cwp-auth-icon">🔐</div>
+            )}
             <p className="cwp-auth-desc">
               {recipientName
                 ? <>Stai inviando <strong>{amount} {asset.symbol}</strong> a{" "}<strong>{recipientName}</strong></>
@@ -735,7 +793,7 @@ export function ChatWalletPaySheet({
               placeholder="• • • •"
               value={pinValue}
               onChange={e => { setPinValue(e.target.value.replace(/\D/g, "")); setAuthErr(null); }}
-              autoFocus
+              autoFocus={!walletBioActive}
               maxLength={8}
             />
             {authErr && <p className="cwp-field-err">{authErr}</p>}
@@ -859,6 +917,16 @@ export function ChatWalletPaySheet({
         {step === "auth" && (
           <>
             <button className="cwp-btn-back" onClick={handlePinCancel}>Annulla</button>
+            {walletBioActive && (
+              <button
+                type="button"
+                className="cwp-btn-bio"
+                onClick={handleBioAuth}
+                aria-label="Face ID"
+              >
+                🪪 Face ID
+              </button>
+            )}
             <button
               className="cwp-btn-primary"
               style={{ background: netColor }}
