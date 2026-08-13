@@ -3327,6 +3327,18 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
               <line x1="22" y1="11" x2="16" y2="11"/>
             </svg>
           </button>
+          {/* Alpha Wallet */}
+          <button
+            className="invite-sidebar-btn"
+            title="Alpha Wallet"
+            onClick={() => onNavigate("alpha-wallet")}
+            aria-label="Alpha Wallet"
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" width="17" height="17">
+              <path d="M21 12V7a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-5z"/>
+              <path d="M16 12a2 2 0 0 0 0 4h5v-4h-5z"/>
+            </svg>
+          </button>
         </div>
 
         {/* Conversation list */}

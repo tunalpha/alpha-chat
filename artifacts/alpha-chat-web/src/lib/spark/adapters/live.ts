@@ -170,6 +170,8 @@ export class LiveSparkAdapter implements BreezSparkAdapter {
             ? { amountSats: Number(req.amountSat) }
             : {}),
           description: req.description ?? "",
+          // expirySecs: passato esplicitamente per forzare 1 ora. Il default SDK è ~30 giorni.
+          expirySecs:  req.expirySecs ?? 3600,
         };
         break;
       case "spark_address":

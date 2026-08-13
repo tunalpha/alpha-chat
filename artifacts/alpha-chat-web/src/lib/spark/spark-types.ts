@@ -119,9 +119,11 @@ export interface SparkSendResult {
 export type SparkReceiveMethod = 'bolt11' | 'spark_address' | 'bitcoin_on_chain';
 
 export interface SparkReceiveRequest {
-  method:       SparkReceiveMethod;
-  amountSat?:   bigint;
-  description?: string;
+  method:        SparkReceiveMethod;
+  amountSat?:    bigint;
+  description?:  string;
+  /** Durata validità invoice BOLT11 in secondi. Default SDK = ~30 giorni; Alpha Wallet usa 3600. */
+  expirySecs?:   number;
 }
 
 export interface SparkReceiveResult {

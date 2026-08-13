@@ -1,0 +1,63 @@
+Sì, questa scadenza è chiaramente anomala rispetto a quella che avevamo previsto.
+
+Nello screenshot compare:
+
+⏱ Scade tra 43199:49
+
+Se il formato è MM:SS, significa:
+
+43.199 minuti e 49 secondi ≈ 29 giorni, 23 ore, 59 minuti e 49 secondi.
+
+Quindi questa invoice sta risultando valida per circa 30 giorni, non per 1 ora.
+
+La documentazione ufficiale di Breez SDK Spark mostra per le BOLT11 un expirySecs esplicito, con 3600 secondi (1 ora) nell’esempio. 
+
+Quindi attenzione
+
+Il problema non sembra essere il countdown: il countdown sta probabilmente leggendo correttamente l’expiry codificato nell’invoice.
+
+Il punto da verificare è come createReceiveInvoice() sta creando l’invoice.
+
+Se vogliamo che Alpha Wallet utilizzi sempre 1 ora, dobbiamo passare esplicitamente:
+
+expirySecs = 3600
+
+quando viene generata la BOLT11.
+
+Io non farei ancora Publish.
+
+Darei all’agente questo prompt:
+
+VERIFICA EXPIRY BOLT11 — ALPHA WALLET
+
+Ho appena testato una invoice Lightning reale in produzione e la UI mostra:
+Scade tra 43199:49, cioè circa 30 giorni.
+
+Questo non è il comportamento desiderato. Vogliamo che le invoice BOLT11 generate da Alpha Wallet abbiano una scadenza di 1 ora (3600 secondi).
+
+Verifica nel percorso ReceiveView → spark.createReceiveInvoice() quale parametro viene passato al Breez SDK Spark/WASM.
+
+La documentazione ufficiale del Breez SDK Spark prevede expirySecs, con esempio 3600.
+
+Obiettivo:
+
+* generazione BOLT11 con expirySecs: 3600;
+* mantenere invariato amountSat;
+* mantenere invariata la conversione BTC/EUR/USD;
+* mantenere invariata la persistenza IDB;
+* mantenere invariato il countdown già implementato;
+* il countdown deve leggere l’expiry reale del BOLT11;
+* nessun fallback arbitrario a 30 giorni;
+* nessuna modifica al core Spark/Breez connect/send/sync.
+
+Dopo la modifica:
+
+1. test automatici;
+2. build production;
+3. verificare che una nuova invoice generata abbia expiry di circa 3600 secondi;
+4. verificare che la UI mostri inizialmente circa 59:59 / 1:00:00;
+5. verificare che dopo la scadenza diventi 🔴 Invoice scaduta.
+
+Non modificare la cronologia Lightning, IDB o il sistema di pagamento. Intervenire esclusivamente sulla durata dell’expiry della BOLT11.
+
+Questa è la correzione che farei prima di qualsiasi altro lavoro.

@@ -1665,9 +1665,10 @@ function ReceiveView({ onBack: _onBack }: { onBack: () => void }) {
     try {
       const amountSat = computeLnSat() ?? undefined;
       const result = await spark.createReceiveInvoice({
-        method: "bolt11",
+        method:      "bolt11",
         amountSat,
         description: "Alpha Wallet",
+        expirySecs:  3600, // 1 ora — il default SDK è ~30 giorni
       });
       if (!result.bolt11) throw new Error("L'SDK non ha restituito una invoice BOLT11.");
       setLnInvoice(result.bolt11);
@@ -1845,12 +1846,13 @@ function ReceiveView({ onBack: _onBack }: { onBack: () => void }) {
 
             {/* ── Countdown / Scaduta ── */}
             {lnCountdown !== null && (() => {
-              const isWarn = !lnExpired && lnCountdown < 60;
+              const isWarn = !lnExpired && lnCountdown < 3600;
               const fmtSecs = (s: number) => {
-                if (s <= 0) return "00:00";
-                if (s < 60) return `${s} sec`;
-                const m = Math.floor(s / 60), r = s % 60;
-                return `${String(m).padStart(2, "0")}:${String(r).padStart(2, "0")}`;
+                if (s <= 0) return "scaduta";
+                if (s < 60) return `${s}s`;
+                if (s < 3600) { const m = Math.floor(s / 60), r = s % 60; return `${m}:${String(r).padStart(2, "0")}`; }
+                if (s < 86400) { const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60); return `${h}h ${m}m`; }
+                const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600); return `${d}g ${h}h`;
               };
               return (
                 <div style={{
@@ -3142,58 +3144,84 @@ function WalletSettingsView({
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// HISTORY VIEW (Phase F + Task 6 — storico transazioni + Lightning)
+// HISTORY VIEW (Phase F + Task 6 — storico on-chain + ⚡ Lightning)
+// Due tab fissi sempre visibili indipendentemente dal chain selezionato.
 // ═══════════════════════════════════════════════════════════════════════════
 
 type TxFilter = "all" | "in" | "out" | "pending";
 
 function HistoryView({ onBack }: { onBack: () => void }) {
-  const wallet   = useWallet();
-  const isLightning = wallet.selectedChainId === -1;
+  const wallet = useWallet();
 
-  // ── On-chain state ─────────────────────────────────────────────────────
+  // Tab di primo livello: on-chain vs Lightning
+  // Default: Lightning se il chain selezionato è -1, altrimenti on-chain
+  const [mainTab, setMainTab] = useState<"onchain" | "lightning">(
+    wallet.selectedChainId === -1 ? "lightning" : "onchain"
+  );
+
+  // ── On-chain state ──────────────────────────────────────────────────────
   const [filter,     setFilter]     = useState<TxFilter>("all");
   const [selectedTx, setSelectedTx] = useState<WalletTxRecord | null>(null);
   const [page,       setPage]       = useState(1);
   const PAGE_SIZE = 30;
 
-  // ── Lightning state ────────────────────────────────────────────────────
+  // ── Lightning state ─────────────────────────────────────────────────────
   const [lnHistory,    setLnHistory]    = useState<LightningTxRecord[]>([]);
   const [lnLoading,    setLnLoading]    = useState(false);
   const [selectedLnTx, setSelectedLnTx] = useState<LightningTxRecord | null>(null);
   const [lnFilter,     setLnFilter]     = useState<"all" | "receive" | "send">("all");
 
-  // Carica storico quando si entra nella view
+  // Carica on-chain sempre; carica Lightning al primo accesso al tab
+  useEffect(() => { void wallet.refreshTxHistory(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
   useEffect(() => {
-    if (isLightning) {
-      setLnLoading(true);
-      void listLightningTxs(200)
-        .then(txs => {
-          // Mark expired: pending invoices la cui scadenza è passata
-          const now = Date.now();
-          setLnHistory(txs.map(t =>
-            t.status === "pending" && t.expiresAt && t.expiresAt < now
-              ? { ...t, status: "expired" as const }
-              : t
-          ));
-        })
-        .catch(() => {})
-        .finally(() => setLnLoading(false));
-    } else {
-      void wallet.refreshTxHistory();
-    }
-  }, [isLightning]); // eslint-disable-line react-hooks/exhaustive-deps
+    if (mainTab !== "lightning") return;
+    setLnLoading(true);
+    void listLightningTxs(200)
+      .then(txs => {
+        const now = Date.now();
+        setLnHistory(txs.map(t =>
+          t.status === "pending" && t.expiresAt && t.expiresAt < now
+            ? { ...t, status: "expired" as const }
+            : t
+        ));
+      })
+      .catch(() => {})
+      .finally(() => setLnLoading(false));
+  }, [mainTab]);
 
-  // ── Lightning branch ───────────────────────────────────────────────────
-  if (isLightning) {
-    if (selectedLnTx) {
-      return <LightningTxDetailView
-        tx={selectedLnTx}
-        onBack={() => setSelectedLnTx(null)}
-        onUpdated={updated => setSelectedLnTx(updated)}
-      />;
-    }
+  // ── Detail views (devono stare prima dei return early) ──────────────────
+  if (selectedTx) {
+    return <TxDetailView tx={selectedTx} onBack={() => setSelectedTx(null)} />;
+  }
+  if (selectedLnTx) {
+    return <LightningTxDetailView
+      tx={selectedLnTx}
+      onBack={() => setSelectedLnTx(null)}
+      onUpdated={updated => setSelectedLnTx(updated)}
+    />;
+  }
 
+  // ── Tab switcher ────────────────────────────────────────────────────────
+  const tabBar = (
+    <div className="aw-history-filters" style={{ marginBottom: 4 }}>
+      <button
+        className={`aw-filter-chip ${mainTab === "onchain" ? "aw-filter-chip--active" : ""}`}
+        onClick={() => setMainTab("onchain")}
+      >
+        🔗 On-chain
+      </button>
+      <button
+        className={`aw-filter-chip ${mainTab === "lightning" ? "aw-filter-chip--active" : ""}`}
+        onClick={() => setMainTab("lightning")}
+      >
+        ⚡ Lightning
+      </button>
+    </div>
+  );
+
+  // ── Lightning tab ───────────────────────────────────────────────────────
+  if (mainTab === "lightning") {
     const lnFiltered = lnHistory.filter(t => {
       if (lnFilter === "all") return true;
       if (lnFilter === "receive") return t.direction === "receive";
@@ -3203,6 +3231,7 @@ function HistoryView({ onBack }: { onBack: () => void }) {
 
     return (
       <div className="aw-history">
+        {tabBar}
         <div className="aw-history-filters">
           {(["all", "receive", "send"] as const).map(f => (
             <button
@@ -3210,7 +3239,7 @@ function HistoryView({ onBack }: { onBack: () => void }) {
               className={`aw-filter-chip ${lnFilter === f ? "aw-filter-chip--active" : ""}`}
               onClick={() => setLnFilter(f)}
             >
-              {f === "all" ? "⚡ Tutto" : f === "receive" ? "💰 Ricevuto" : "📤 Inviato"}
+              {f === "all" ? "Tutto" : f === "receive" ? "💰 Ricevuto" : "📤 Inviato"}
             </button>
           ))}
         </div>
@@ -3223,7 +3252,7 @@ function HistoryView({ onBack }: { onBack: () => void }) {
           <div className="aw-history-empty">
             <div className="aw-history-empty-icon">⚡</div>
             <div className="aw-history-empty-title">Nessuna transazione Lightning</div>
-            <p>I pagamenti Lightning inviati e ricevuti appariranno qui.</p>
+            <p>Le invoice generate e i pagamenti inviati via Lightning appariranno qui.</p>
           </div>
         ) : (
           <div className="aw-history-list">
@@ -3236,7 +3265,7 @@ function HistoryView({ onBack }: { onBack: () => void }) {
     );
   }
 
-  // ── On-chain branch ────────────────────────────────────────────────────
+  // ── On-chain tab ────────────────────────────────────────────────────────
   const filtered = wallet.txHistory.filter(tx => {
     if (filter === "all") return true;
     if (filter === "in") return tx.direction === "in" && tx.status !== "pending";
@@ -3248,13 +3277,9 @@ function HistoryView({ onBack }: { onBack: () => void }) {
   const visible = filtered.slice(0, page * PAGE_SIZE);
   const hasMore = visible.length < filtered.length;
 
-  if (selectedTx) {
-    return <TxDetailView tx={selectedTx} onBack={() => setSelectedTx(null)} />;
-  }
-
   return (
     <div className="aw-history">
-      {/* Filtri */}
+      {tabBar}
       <div className="aw-history-filters">
         {(["all", "in", "out", "pending"] as TxFilter[]).map(f => (
           <button
@@ -3267,7 +3292,6 @@ function HistoryView({ onBack }: { onBack: () => void }) {
         ))}
       </div>
 
-      {/* Lista */}
       {filtered.length === 0 ? (
         <div className="aw-history-empty">
           <div className="aw-history-empty-icon">📋</div>
@@ -3549,10 +3573,11 @@ function LightningTxDetailView({
   };
 
   const fmtSecs = (s: number) => {
-    if (s <= 0) return "00:00";
-    if (s < 60) return `${s} sec`;
-    const m = Math.floor(s / 60), r = s % 60;
-    return `${String(m).padStart(2, "0")}:${String(r).padStart(2, "0")}`;
+    if (s <= 0) return "scaduta";
+    if (s < 60) return `${s}s`;
+    if (s < 3600) { const m = Math.floor(s / 60), r = s % 60; return `${m}:${String(r).padStart(2, "0")}`; }
+    if (s < 86400) { const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60); return `${h}h ${m}m`; }
+    const d = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600); return `${d}g ${h}h`;
   };
 
   const statusEmoji = isPaid ? "✅" : isExpired ? "⏰" : isPending ? "⏳" : "❌";
