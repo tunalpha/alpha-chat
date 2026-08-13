@@ -1,0 +1,82 @@
+Il fix precedente NON ha risolto il problema.
+
+Test reale su iPhone:
+1. Apro Alpha Wallet.
+2. Entro nel wallet con Face ID.
+3. Vado in Impostazioni → Blocca wallet.
+4. Compare "Wallet bloccato".
+5. Face ID sblocca correttamente il wallet.
+6. Torno indietro con la freccia ←.
+7. IL WALLET RIMANE VISIBILE.
+
+Quindi il problema NON è semplicemente:
+subView === "unlock" → setSubView("overview").
+
+Il comportamento desiderato è:
+
+Quando l'utente preme ← dalla schermata "Wallet bloccato" / unlock, deve USCIRE COMPLETAMENTE dalla pagina Alpha Wallet e tornare alla schermata precedente dell'app.
+
+Il wallet deve rimanere locked.
+
+NON deve:
+- mostrare overview;
+- mostrare il saldo;
+- mostrare nuovamente il wallet sbloccato;
+- eseguire Face ID automaticamente;
+- modificare lo stato locked/unlocked;
+- fare logout dell'account.
+
+Prima di modificare codice, fai un trace completo della navigazione:
+
+A) AlphaWalletPage.tsx:
+- trova esattamente quale componente rende l'header e la freccia ←;
+- identifica onBack;
+- identifica subView;
+- identifica tutti i branch overview/unlock;
+- verifica cosa succede dopo wallet.unlockWallet().
+
+B) Parent che monta AlphaWalletPage:
+- trova chi passa la prop onBack;
+- mostra esattamente cosa fa quel callback;
+- verifica se modifica route, pagina, view, selected tab o stato wallet.
+
+C) Routing:
+- verifica se AlphaWalletPage è una route reale o una subview;
+- verifica quale stato determina che AlphaWalletPage rimanga visibile;
+- verifica se esiste un parent che, dopo onBack(), rimonta automaticamente AlphaWalletPage.
+
+D) Lock state:
+- verifica che wallet.phase rimanga "locked" dopo l'uscita;
+- verifica che nessun useEffect faccia automaticamente unlockWallet() quando AlphaWalletPage viene rimontata.
+
+IMPORTANTE:
+Non voglio un'altra supposizione.
+Voglio il percorso effettivo:
+
+pressione ←
+→ callback eseguito
+→ stato modificato
+→ componente/route renderizzato
+→ eventuale re-render/remount
+→ motivo per cui il wallet resta visibile.
+
+Solo dopo aver trovato la causa esatta proponi il fix.
+
+Il requisito finale è inequivocabile:
+
+[Wallet bloccato]
+      ↓
+premi ←
+      ↓
+ESCI DA ALPHA WALLET
+      ↓
+torni alla schermata precedente
+      ↓
+wallet rimane locked
+
+Quando rientro successivamente in Alpha Wallet:
+→ deve comparire Wallet bloccato
+→ deve essere necessario Face ID/PIN
+→ nessun auto-unlock.
+
+Non toccare Spark/Breez, Lightning, EVM, BTC, USDA, LockContext o login account.

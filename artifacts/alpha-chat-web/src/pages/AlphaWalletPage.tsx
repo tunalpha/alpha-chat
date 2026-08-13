@@ -568,11 +568,10 @@ function UnlockView() {
   const [loading, setLoading] = useState(false);
   const [showPin, setShowPin] = useState(!primaryBiometric);
 
-  // Tenta sblocco biometrico automaticamente se è il metodo primario
-  useEffect(() => {
-    if (primaryBiometric) void handleBiometric();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  // Auto-trigger rimosso intenzionalmente:
+  // il mount di UnlockView può avvenire dopo lockWallet() esplicito dell'utente.
+  // In quel caso auto-sbloccare via Face ID viola il lock voluto — l'utente
+  // deve premere il pulsante "Face ID / Touch ID" in modo esplicito.
 
   const unlockWithPin = async (p: string) => {
     if (!validatePin(p)) { setError("PIN non valido"); return; }
