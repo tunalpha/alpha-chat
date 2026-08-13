@@ -238,13 +238,13 @@ function AlphaWalletInner({ onBack }: Props) {
       case "add-token":
         return <AddTokenView onBack={() => setSubView("overview")} />;
       case "security":
-        return <SecurityView onBack={() => setSubView("overview")} onForget={onBack} onExportSeed={() => setSubView("seed-export")} />;
+        return <SecurityView onBack={() => setSubView("overview")} onForget={onBack} onExportSeed={() => setSubView("seed-export")} onLockAndExit={onBack} />;
       case "history":
         return <HistoryView onBack={() => setSubView("overview")} />;
       case "seed-export":
         return <SeedExportView onBack={() => setSubView("security")} />;
       case "wallet-settings":
-        return <WalletSettingsView onBack={() => setSubView("overview")} onGoSecurity={() => setSubView("security")} onGoSeedExport={() => setSubView("seed-export")} />;
+        return <WalletSettingsView onBack={() => setSubView("overview")} onGoSecurity={() => setSubView("security")} onGoSeedExport={() => setSubView("seed-export")} onLockAndExit={onBack} />;
       case "portfolio":
         return <PortfolioView
           onBack={() => setSubView("overview")}
@@ -2854,7 +2854,7 @@ function AddTokenView({ onBack }: { onBack: () => void }) {
 
 // ─── Security (Phase B + F) ────────────────────────────────────────────────
 
-function SecurityView({ onBack, onForget, onExportSeed }: { onBack: () => void; onForget: () => void; onExportSeed: () => void }) {
+function SecurityView({ onBack, onForget, onExportSeed, onLockAndExit }: { onBack: () => void; onForget: () => void; onExportSeed: () => void; onLockAndExit?: () => void }) {
   const wallet = useWallet();
   const [showForgetConfirm, setShowForgetConfirm] = useState(false);
   const [forgetting, setForgetting] = useState(false);
@@ -2881,7 +2881,7 @@ function SecurityView({ onBack, onForget, onExportSeed }: { onBack: () => void; 
 
       <div className="aw-security-section">
         <h3>Sessione</h3>
-        <button className="aw-btn aw-btn--secondary" onClick={wallet.lockWallet}>🔒 Blocca wallet</button>
+        <button className="aw-btn aw-btn--secondary" onClick={() => { wallet.lockWallet(); onLockAndExit?.(); }}>🔒 Blocca wallet</button>
       </div>
       <div className="aw-security-section aw-security-section--danger">
         <h3>Zona pericolosa</h3>
@@ -2916,10 +2916,12 @@ function WalletSettingsView({
   onBack,
   onGoSecurity,
   onGoSeedExport,
+  onLockAndExit,
 }: {
   onBack: () => void;
   onGoSecurity: () => void;
   onGoSeedExport: () => void;
+  onLockAndExit?: () => void;
 }) {
   const wallet = useWallet();
   const { currency, setCurrency } = useWalletCurrency();
@@ -3293,7 +3295,7 @@ function WalletSettingsView({
         </button>
 
         {/* Blocca wallet */}
-        <button className="aw-settings-item aw-settings-item--lock" onClick={() => { wallet.lockWallet(); onBack(); }}>
+        <button className="aw-settings-item aw-settings-item--lock" onClick={() => { wallet.lockWallet(); onLockAndExit?.(); }}>
           <span className="aw-settings-item-icon">🔒</span>
           <span className="aw-settings-item-label">Blocca wallet</span>
         </button>
