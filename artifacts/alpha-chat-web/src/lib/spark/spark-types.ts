@@ -71,6 +71,19 @@ export interface SparkPayment {
   description?:  string;
 }
 
+/**
+ * Evento normalizzato dal SDK Breez Spark.
+ * Emesso da subscribeToEvents() per paymentSucceeded / paymentPending / paymentFailed.
+ * bolt11 è estratto da details.invoice (pagamenti Lightning).
+ */
+export interface SparkPaymentEvent {
+  type:      "paymentSucceeded" | "paymentFailed" | "paymentPending";
+  paymentId: string;
+  amountSat: bigint;
+  bolt11?:   string;
+  feeSat?:   bigint;
+}
+
 // ── Send ──────────────────────────────────────────────────────────────────────
 
 export interface SparkPrepareSendRequest {

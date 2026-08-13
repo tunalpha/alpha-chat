@@ -19,6 +19,7 @@ import type {
   SparkAdapterError,
   SparkWalletInfo,
   SparkPayment,
+  SparkPaymentEvent,
   SparkPrepareSendRequest,
   SparkPrepareSendResult,
   SparkSendRequest,
@@ -54,6 +55,14 @@ export interface BreezSparkAdapter {
 
   // ── History ────────────────────────────────────────────────────────────────
   listPayments(req: SparkListPaymentsRequest): Promise<SparkPayment[]>;
+
+  // ── Events ─────────────────────────────────────────────────────────────────
+  /**
+   * Iscriviti agli eventi SDK Breez (paymentSucceeded/paymentPending/paymentFailed).
+   * Restituisce una funzione di cleanup da chiamare per de-registrarsi.
+   * No-op se l'adapter non è connesso o non supporta gli eventi.
+   */
+  subscribeToEvents(cb: (e: SparkPaymentEvent) => void): () => void;
 }
 
 /**

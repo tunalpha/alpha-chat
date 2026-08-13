@@ -23,6 +23,12 @@ import { useSparkWalletOptional } from "../contexts/SparkWalletContext";
 // Admin monitoring: registra stato Spark nell'admin monitor (fire-and-forget)
 import { apiRegisterSparkStatus } from "../lib/spark/spark-admin-register";
 import type { SparkFeeBreakdown } from "../lib/spark/spark-types";
+import {
+  saveLightningTx,
+  updateLightningTx,
+  listLightningTxs,
+  type LightningTxRecord,
+} from "../lib/spark/lightning-store";
 import { useSecurePhraseDisplay } from "../hooks/useSecurePhraseDisplay";
 import { useLock } from "../contexts/LockContext";
 import { WalletProvider, useWallet } from "../wallet/context/WalletContext";
@@ -1518,9 +1524,13 @@ function ReceiveView({ onBack: _onBack }: { onBack: () => void }) {
   const [lnExpiry,     setLnExpiry]     = useState<number | null>(null);   // ms UTC
   const [lnExpired,    setLnExpired]    = useState(false);
   const [lnCountdown,  setLnCountdown]  = useState<number | null>(null);   // secondi rimasti
-  const [lnLoading,    setLnLoading]    = useState(false);
-  const [lnQrUrl,      setLnQrUrl]      = useState<string>("");
-  const [lnCopied,     setLnCopied]     = useState(false);
+  const [lnLoading,            setLnLoading]            = useState(false);
+  const [lnQrUrl,              setLnQrUrl]              = useState<string>("");
+  const [lnCopied,             setLnCopied]             = useState(false);
+  // Persistenza storico Lightning
+  const [lnTxId,               setLnTxId]               = useState<string | null>(null);
+  const [lnPaid,               setLnPaid]               = useState(false);
+  const [lnGeneratedAmountSat, setLnGeneratedAmountSat] = useState<bigint | null>(null);
 
   // Fetch prezzi BTC solo per Lightning (per conversione EUR/USD → sat)
   useEffect(() => {
@@ -1540,6 +1550,64 @@ function ReceiveView({ onBack: _onBack }: { onBack: () => void }) {
     const id = setInterval(tick, 1000);
     return () => clearInterval(id);
   }, [lnExpiry]);
+
+  // Quando la invoice scade → aggiorna stato IDB (fire-and-forget, best-effort)
+  useEffect(() => {
+    if (!lnExpired || !lnTxId || lnPaid) return;
+    void updateLightningTx(lnTxId, { status: "expired" }).catch(() => {});
+  }, [lnExpired, lnTxId, lnPaid]);
+
+  // Polling 15s per rilevare il pagamento della invoice corrente
+  // Usa subscribeToEvents (SDK real-time) + fallback listPayments
+  useEffect(() => {
+    if (!lnInvoice || !spark || spark.state !== "connected" || lnPaid || lnExpired) return;
+    let cancelled = false;
+
+    // Event-based detection (real-time via SDK addEventListener)
+    const unsub = spark.subscribeToEvents(async ev => {
+      if (ev.type === "paymentSucceeded" && ev.bolt11 === lnInvoice && !cancelled) {
+        setLnPaid(true);
+        if (lnTxId) {
+          await updateLightningTx(lnTxId, {
+            status:    "paid",
+            paymentId: ev.paymentId,
+            paidAt:    Date.now(),
+          }).catch(() => {});
+        }
+        await spark.syncWallet().catch(() => {});
+      }
+    });
+
+    // Polling 15s — fallback: cattura pagamenti avvenuti offline
+    const pollOnce = async () => {
+      if (cancelled || lnPaid) return;
+      try {
+        const payments = await spark.listPayments({ limit: 30 });
+        const match = payments.find(p => p.bolt11 === lnInvoice && p.status === "completed");
+        if (match && !cancelled) {
+          setLnPaid(true);
+          if (lnTxId) {
+            await updateLightningTx(lnTxId, {
+              status:    "paid",
+              paymentId: match.id,
+              paidAt:    Date.now(),
+            }).catch(() => {});
+          }
+          await spark.syncWallet().catch(() => {});
+        }
+      } catch { /* rete non disponibile — silenzioso */ }
+    };
+
+    void pollOnce();
+    const pollId = setInterval(() => void pollOnce(), 15_000);
+
+    return () => {
+      cancelled = true;
+      clearInterval(pollId);
+      unsub();
+    };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [lnInvoice, spark?.state, lnPaid, lnExpired, lnTxId]);
 
   // QR on-chain (skippato per Lightning: nessun indirizzo)
   useEffect(() => {
@@ -1614,6 +1682,25 @@ function ReceiveView({ onBack: _onBack }: { onBack: () => void }) {
         color: { dark: "#111111", light: "#ffffff" },
       });
       setLnQrUrl(url);
+      // ── Persistenza immediata nello storico Lightning ──────────────────────
+      // Invoice salvata PRIMA che l'utente possa premere Indietro.
+      const txId = `ln-rx-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+      const btcPriceObj = lnPrices?.btc as Record<string, number> | undefined;
+      void saveLightningTx({
+        id:                  txId,
+        direction:           "receive",
+        status:              "pending",
+        amountSat:           amountSat !== undefined ? Number(amountSat) : 0,
+        fiatAmount:          lnInputMode !== "btc" ? (parseFloat(lnAmountStr) || undefined) : undefined,
+        fiatCurrency:        lnInputMode.toUpperCase() as "BTC" | "EUR" | "USD",
+        btcPriceAtCreation:  btcPriceObj?.[lnInputMode] ?? undefined,
+        bolt11:              result.bolt11,
+        createdAt:           Date.now(),
+        expiresAt:           expMs,
+        updatedAt:           Date.now(),
+      }).catch(() => {});
+      setLnTxId(txId);
+      setLnGeneratedAmountSat(amountSat ?? 0n);
     } catch (e) {
       setLnInvoiceErr(e instanceof Error ? e.message : "Errore nella creazione dell'invoice Lightning.");
     } finally {
@@ -1721,6 +1808,32 @@ function ReceiveView({ onBack: _onBack }: { onBack: () => void }) {
               {lnLoading ? "Generazione…" : "⚡ Genera invoice Lightning"}
             </button>
           </>
+        ) : lnPaid ? (
+          /* ── Invoice pagata ──────────────────────────────────────────── */
+          <>
+            <div style={{ textAlign: "center", margin: "24px 0 8px", fontSize: "3.2rem", lineHeight: 1 }}>
+              ⚡✅
+            </div>
+            <div style={{ textAlign: "center", fontWeight: 700, fontSize: "1.05rem", margin: "0 0 6px" }}>
+              Invoice pagata!
+            </div>
+            <div style={{ textAlign: "center", color: "rgba(255,255,255,.65)", fontSize: "0.85rem", marginBottom: 20 }}>
+              {lnGeneratedAmountSat && lnGeneratedAmountSat > 0n
+                ? `${Number(lnGeneratedAmountSat).toLocaleString("it-IT")} sat ricevuti`
+                : "Pagamento ricevuto con successo"}
+            </div>
+            <button
+              className="aw-btn aw-btn--secondary"
+              style={{ width: "100%", marginTop: 4 }}
+              onClick={() => {
+                setLnInvoice(null); setLnQrUrl(""); setLnCopied(false);
+                setLnExpiry(null); setLnExpired(false); setLnCountdown(null);
+                setLnAmountStr(""); setLnInvoiceErr(null);
+                setLnTxId(null); setLnPaid(false); setLnGeneratedAmountSat(null);
+              }}>
+              ↻ Nuova invoice
+            </button>
+          </>
         ) : (
           <>
             {/* ── QR (sempre visibile anche dopo scadenza, per consultazione) ── */}
@@ -1785,6 +1898,7 @@ function ReceiveView({ onBack: _onBack }: { onBack: () => void }) {
                 setLnInvoice(null); setLnQrUrl(""); setLnCopied(false);
                 setLnExpiry(null); setLnExpired(false); setLnCountdown(null);
                 setLnAmountStr(""); setLnInvoiceErr(null);
+                setLnTxId(null); setLnPaid(false); setLnGeneratedAmountSat(null);
               }}>
               ↻ Nuova invoice
             </button>
@@ -2056,6 +2170,19 @@ function SendView({ onBack, onSuccess }: { onBack: () => void; onSuccess: () => 
         const { result } = await spark!.send({ paymentRequest: lnInvoice }, lnFeeBreakdown!);
         setPin("");
         setLnPaymentId(result.paymentId);
+        // ── Persistenza storico Lightning — invio ──────────────────────────
+        void saveLightningTx({
+          id:        `ln-tx-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+          direction: "send",
+          status:    "paid",
+          amountSat: Number(lnFeeBreakdown!.recipientAmountSat),
+          bolt11:    lnInvoice ?? undefined,
+          paymentId: result.paymentId,
+          feeSat:    Number((lnFeeBreakdown!.estimatedProviderFeeSat ?? 0n) + (lnFeeBreakdown!.alphaPlatformFeeSat ?? 0n)),
+          createdAt: Date.now(),
+          paidAt:    Date.now(),
+          updatedAt: Date.now(),
+        }).catch(() => {});
         setStep("success");
       } catch (e) {
         setPin("");
@@ -3015,21 +3142,101 @@ function WalletSettingsView({
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
-// HISTORY VIEW (Phase F — storico transazioni)
+// HISTORY VIEW (Phase F + Task 6 — storico transazioni + Lightning)
 // ═══════════════════════════════════════════════════════════════════════════
 
 type TxFilter = "all" | "in" | "out" | "pending";
 
 function HistoryView({ onBack }: { onBack: () => void }) {
-  const wallet = useWallet();
-  const [filter, setFilter] = useState<TxFilter>("all");
+  const wallet   = useWallet();
+  const isLightning = wallet.selectedChainId === -1;
+
+  // ── On-chain state ─────────────────────────────────────────────────────
+  const [filter,     setFilter]     = useState<TxFilter>("all");
   const [selectedTx, setSelectedTx] = useState<WalletTxRecord | null>(null);
-  const [page, setPage] = useState(1);
+  const [page,       setPage]       = useState(1);
   const PAGE_SIZE = 30;
 
-  // Refresh storico quando si entra nella view
-  useEffect(() => { void wallet.refreshTxHistory(); }, []); // eslint-disable-line
+  // ── Lightning state ────────────────────────────────────────────────────
+  const [lnHistory,    setLnHistory]    = useState<LightningTxRecord[]>([]);
+  const [lnLoading,    setLnLoading]    = useState(false);
+  const [selectedLnTx, setSelectedLnTx] = useState<LightningTxRecord | null>(null);
+  const [lnFilter,     setLnFilter]     = useState<"all" | "receive" | "send">("all");
 
+  // Carica storico quando si entra nella view
+  useEffect(() => {
+    if (isLightning) {
+      setLnLoading(true);
+      void listLightningTxs(200)
+        .then(txs => {
+          // Mark expired: pending invoices la cui scadenza è passata
+          const now = Date.now();
+          setLnHistory(txs.map(t =>
+            t.status === "pending" && t.expiresAt && t.expiresAt < now
+              ? { ...t, status: "expired" as const }
+              : t
+          ));
+        })
+        .catch(() => {})
+        .finally(() => setLnLoading(false));
+    } else {
+      void wallet.refreshTxHistory();
+    }
+  }, [isLightning]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Lightning branch ───────────────────────────────────────────────────
+  if (isLightning) {
+    if (selectedLnTx) {
+      return <LightningTxDetailView
+        tx={selectedLnTx}
+        onBack={() => setSelectedLnTx(null)}
+        onUpdated={updated => setSelectedLnTx(updated)}
+      />;
+    }
+
+    const lnFiltered = lnHistory.filter(t => {
+      if (lnFilter === "all") return true;
+      if (lnFilter === "receive") return t.direction === "receive";
+      if (lnFilter === "send") return t.direction === "send";
+      return true;
+    });
+
+    return (
+      <div className="aw-history">
+        <div className="aw-history-filters">
+          {(["all", "receive", "send"] as const).map(f => (
+            <button
+              key={f}
+              className={`aw-filter-chip ${lnFilter === f ? "aw-filter-chip--active" : ""}`}
+              onClick={() => setLnFilter(f)}
+            >
+              {f === "all" ? "⚡ Tutto" : f === "receive" ? "💰 Ricevuto" : "📤 Inviato"}
+            </button>
+          ))}
+        </div>
+
+        {lnLoading ? (
+          <div className="aw-history-empty">
+            <div className="aw-spinner" style={{ margin: "32px auto" }} />
+          </div>
+        ) : lnFiltered.length === 0 ? (
+          <div className="aw-history-empty">
+            <div className="aw-history-empty-icon">⚡</div>
+            <div className="aw-history-empty-title">Nessuna transazione Lightning</div>
+            <p>I pagamenti Lightning inviati e ricevuti appariranno qui.</p>
+          </div>
+        ) : (
+          <div className="aw-history-list">
+            {lnFiltered.map(tx => (
+              <LightningTxListItem key={tx.id} tx={tx} onClick={() => setSelectedLnTx(tx)} />
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  // ── On-chain branch ────────────────────────────────────────────────────
   const filtered = wallet.txHistory.filter(tx => {
     if (filter === "all") return true;
     if (filter === "in") return tx.direction === "in" && tx.status !== "pending";
@@ -3222,6 +3429,242 @@ function TxDetailView({ tx, onBack }: { tx: WalletTxRecord; onBack: () => void }
           className="aw-btn aw-btn--secondary" style={{ textDecoration: "none", textAlign: "center" }}>
           🔍 Vedi su explorer ↗
         </a>
+      </div>
+    </div>
+  );
+}
+
+// ─── LightningTxListItem ─────────────────────────────────────────────────────
+
+function LightningTxListItem({ tx, onClick }: { tx: LightningTxRecord; onClick: () => void }) {
+  const isReceive = tx.direction === "receive";
+  const isPaid    = tx.status === "paid";
+  const isPending = tx.status === "pending";
+  const isExpired = tx.status === "expired";
+  const isFailed  = tx.status === "failed";
+
+  const icon      = isReceive ? (isPaid ? "💰" : isExpired ? "⏰" : isFailed ? "❌" : "⏳")
+                              : (isPaid ? "📤" : "❌");
+  const iconClass = isPaid
+    ? (isReceive ? "aw-tx-icon--in" : "aw-tx-icon--out")
+    : isPending ? "aw-tx-icon--pending"
+    : "aw-tx-icon--pending";
+
+  const label     = isReceive
+    ? (isPaid ? "Ricevuto ⚡" : isPending ? "In attesa" : isExpired ? "Scaduta" : "Fallita")
+    : (isPaid ? "Inviato ⚡" : "Fallito");
+
+  const amtSat    = tx.amountSat;
+  const amtPrefix = isReceive ? "+" : "-";
+  const amtClass  = isPaid
+    ? (isReceive ? "aw-tx-amount--in" : "aw-tx-amount--out")
+    : "aw-tx-amount--pending";
+
+  const date    = new Date(tx.createdAt);
+  const dateStr = date.toLocaleDateString("it-IT", { day: "2-digit", month: "short" });
+  const timeStr = date.toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" });
+
+  const amtDisplay = amtSat > 0
+    ? `${amtPrefix}${amtSat.toLocaleString("it-IT")} sat`
+    : isReceive ? "⚡ Qualsiasi" : "—";
+
+  return (
+    <div className="aw-tx-item" onClick={onClick} role="button" tabIndex={0}
+      onKeyDown={e => e.key === "Enter" && onClick()}>
+      <div className={`aw-tx-icon ${iconClass}`}>{icon}</div>
+      <div className="aw-tx-body">
+        <div className="aw-tx-title">
+          {label}
+          {isFailed  && <span className="aw-tx-status-badge aw-tx-status-badge--failed">Fallita</span>}
+          {isPending && <span className="aw-tx-status-badge aw-tx-status-badge--pending">Pending</span>}
+          {isExpired && <span className="aw-tx-status-badge aw-tx-status-badge--failed">Scaduta</span>}
+        </div>
+        <div className="aw-tx-meta">⚡ Lightning</div>
+      </div>
+      <div className="aw-tx-amount-col">
+        <div className={`aw-tx-amount ${amtClass}`}>{amtDisplay}</div>
+        <div className="aw-tx-date">{dateStr} {timeStr}</div>
+      </div>
+    </div>
+  );
+}
+
+// ─── LightningTxDetailView ───────────────────────────────────────────────────
+
+function LightningTxDetailView({
+  tx,
+  onBack,
+  onUpdated,
+}: {
+  tx: LightningTxRecord;
+  onBack: () => void;
+  onUpdated: (updated: LightningTxRecord) => void;
+}) {
+  const isReceive = tx.direction === "receive";
+  const isPaid    = tx.status === "paid";
+  const isPending = tx.status === "pending";
+  const isExpired = tx.status === "expired" || (isPending && !!tx.expiresAt && tx.expiresAt < Date.now());
+
+  const [qrUrl,   setQrUrl]   = useState<string>("");
+  const [copied,  setCopied]  = useState(false);
+  const [countdown, setCountdown] = useState<number | null>(null);
+
+  // Genera QR per invoice pending-receive
+  useEffect(() => {
+    if (!isReceive || !isPending || isExpired || !tx.bolt11) return;
+    let cancelled = false;
+    import("qrcode").then(mod =>
+      mod.toDataURL(tx.bolt11!.toUpperCase(), {
+        width: 220, margin: 2, errorCorrectionLevel: "M",
+        color: { dark: "#111111", light: "#ffffff" },
+      })
+    ).then(url => { if (!cancelled) setQrUrl(url); }).catch(() => {});
+    return () => { cancelled = true; };
+  }, [tx.bolt11, isReceive, isPending, isExpired]);
+
+  // Countdown per invoice pending (scadenza residua)
+  useEffect(() => {
+    if (!isPending || !tx.expiresAt || isExpired) return;
+    const tick = () => {
+      const secs = Math.floor((tx.expiresAt! - Date.now()) / 1000);
+      setCountdown(secs <= 0 ? 0 : secs);
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [tx.expiresAt, isPending, isExpired]);
+
+  // Quando il countdown arriva a 0 → aggiorna record e notifica parent
+  useEffect(() => {
+    if (countdown !== 0 || isPaid) return;
+    const updated = { ...tx, status: "expired" as const };
+    void updateLightningTx(tx.id, { status: "expired" }).catch(() => {});
+    onUpdated(updated);
+  }, [countdown]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const copyBolt11 = () => {
+    if (!tx.bolt11) return;
+    void navigator.clipboard.writeText(tx.bolt11)
+      .then(() => { setCopied(true); setTimeout(() => setCopied(false), 2000); });
+  };
+
+  const fmtSecs = (s: number) => {
+    if (s <= 0) return "00:00";
+    if (s < 60) return `${s} sec`;
+    const m = Math.floor(s / 60), r = s % 60;
+    return `${String(m).padStart(2, "0")}:${String(r).padStart(2, "0")}`;
+  };
+
+  const statusEmoji = isPaid ? "✅" : isExpired ? "⏰" : isPending ? "⏳" : "❌";
+  const statusLabel = isPaid ? "Pagata" : isExpired ? "Scaduta" : isPending ? "In attesa di pagamento" : "Fallita";
+  const dirLabel    = isReceive ? "Ricevuto" : "Inviato";
+  const dateStr     = new Date(tx.createdAt).toLocaleString("it-IT", {
+    day: "2-digit", month: "short", year: "numeric",
+    hour: "2-digit", minute: "2-digit",
+  });
+
+  return (
+    <div className="aw-tx-detail">
+      <div className="aw-tx-detail-header">
+        <button className="aw-back-btn" onClick={onBack} aria-label="Indietro">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="20" height="20">
+            <polyline points="15 18 9 12 15 6"/>
+          </svg>
+        </button>
+        <h2>Dettaglio ⚡ Lightning</h2>
+      </div>
+
+      <div className="aw-tx-detail-icon">{statusEmoji}</div>
+
+      <div className="aw-tx-detail-amount">
+        <div className={`aw-tx-detail-amount-value ${isReceive && isPaid ? "aw-tx-amount--in" : !isPaid ? "aw-tx-amount--pending" : "aw-tx-amount--out"}`}>
+          {isReceive ? "+" : "-"}
+          {tx.amountSat > 0
+            ? `${tx.amountSat.toLocaleString("it-IT")} sat`
+            : isReceive ? "Qualsiasi importo" : "—"}
+        </div>
+        <div className="aw-tx-detail-amount-network">⚡ Lightning · {dirLabel}</div>
+      </div>
+
+      {/* QR per invoice pending-receive ancora valida */}
+      {isReceive && isPending && !isExpired && qrUrl && (
+        <div className="aw-receive-qr-card" style={{ margin: "12px auto" }}>
+          <img src={qrUrl} alt="QR invoice Lightning" className="aw-receive-qr-img" />
+        </div>
+      )}
+
+      {/* Countdown per pending */}
+      {isPending && !isExpired && countdown !== null && (
+        <div style={{
+          textAlign: "center", margin: "6px 0 12px", fontSize: "0.88rem",
+          fontVariantNumeric: "tabular-nums", fontWeight: countdown < 60 ? 600 : 400,
+          color: countdown < 60 ? "#ffaa00" : "rgba(255,255,255,.7)",
+        }}>
+          ⏱ Scade tra {fmtSecs(countdown)}
+        </div>
+      )}
+
+      {/* Banner scaduta */}
+      {isExpired && (
+        <div style={{ textAlign: "center", color: "#ff4d4d", fontSize: "0.88rem", fontWeight: 600, margin: "6px 0 12px" }}>
+          🔴 Invoice scaduta
+        </div>
+      )}
+
+      <div className="aw-tx-detail-card">
+        <div className="aw-tx-detail-row">
+          <span className="aw-tx-detail-label">Stato</span>
+          <span className="aw-tx-detail-value">{statusLabel}</span>
+        </div>
+        <div className="aw-tx-detail-row">
+          <span className="aw-tx-detail-label">Data creazione</span>
+          <span className="aw-tx-detail-value">{dateStr}</span>
+        </div>
+        {tx.paidAt && (
+          <div className="aw-tx-detail-row">
+            <span className="aw-tx-detail-label">Data pagamento</span>
+            <span className="aw-tx-detail-value">
+              {new Date(tx.paidAt).toLocaleString("it-IT", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })}
+            </span>
+          </div>
+        )}
+        {tx.feeSat !== undefined && tx.feeSat > 0 && (
+          <div className="aw-tx-detail-row">
+            <span className="aw-tx-detail-label">Fee</span>
+            <span className="aw-tx-detail-value">{tx.feeSat.toLocaleString("it-IT")} sat</span>
+          </div>
+        )}
+        {tx.fiatAmount && tx.fiatCurrency && tx.fiatCurrency !== "BTC" && (
+          <div className="aw-tx-detail-row">
+            <span className="aw-tx-detail-label">Importo fiat</span>
+            <span className="aw-tx-detail-value">
+              {tx.fiatCurrency === "EUR" ? "€" : "$"}{tx.fiatAmount.toFixed(2)}
+            </span>
+          </div>
+        )}
+        {tx.paymentId && (
+          <div className="aw-tx-detail-row">
+            <span className="aw-tx-detail-label">Payment ID</span>
+            <span className="aw-tx-detail-value aw-tx-detail-value--mono" style={{ fontSize: "0.72rem" }}>
+              {tx.paymentId.slice(0, 16)}…
+            </span>
+          </div>
+        )}
+      </div>
+
+      {/* Azioni */}
+      {tx.bolt11 && (
+        <div className="aw-tx-detail-actions">
+          <button className="aw-btn aw-btn--secondary" onClick={copyBolt11}>
+            {copied ? "✅ Copiata" : "📋 Copia invoice"}
+          </button>
+        </div>
+      )}
+
+      <div style={{ marginTop: 12 }}>
+        <button className="aw-btn aw-btn--secondary" style={{ width: "100%" }} onClick={onBack}>
+          ← Torna allo storico
+        </button>
       </div>
     </div>
   );

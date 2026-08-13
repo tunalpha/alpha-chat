@@ -13,6 +13,7 @@ import type {
   SparkConnectConfig,
   SparkWalletInfo,
   SparkPayment,
+  SparkPaymentEvent,
   SparkPrepareSendRequest,
   SparkPrepareSendResult,
   SparkSendRequest,
@@ -119,6 +120,11 @@ export class MockSparkAdapter implements BreezSparkAdapter {
       });
     }
     return payments;
+  }
+
+  /** Mock stub — nessun evento reale in sviluppo. */
+  subscribeToEvents(_cb: (e: SparkPaymentEvent) => void): () => void {
+    return () => {}; // no-op cleanup
   }
 
   private _assertConnected(): void {

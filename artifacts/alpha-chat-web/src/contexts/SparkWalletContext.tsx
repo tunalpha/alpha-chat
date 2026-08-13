@@ -29,6 +29,7 @@ import type {
   SparkFeeConfig,
   SparkWalletInfo,
   SparkFeeBreakdown,
+  SparkPaymentEvent,
   SparkPrepareSendRequest,
   SparkSendRequest,
   SparkSendResult,
@@ -80,6 +81,13 @@ export interface SparkWalletContextValue {
 
   createReceiveInvoice(req: SparkReceiveRequest): Promise<SparkReceiveResult>;
   listPayments(req: SparkListPaymentsRequest):    Promise<SparkPayment[]>;
+
+  /**
+   * Iscriviti agli eventi Lightning/Spark (pagamenti ricevuti/inviati/falliti).
+   * Restituisce una funzione di cleanup da chiamare al dismount.
+   * Delegato direttamente all'adapter tramite ref — stabile, nessun re-render.
+   */
+  subscribeToEvents(cb: (e: SparkPaymentEvent) => void): () => void;
 }
 
 // ── Context ───────────────────────────────────────────────────────────────────
@@ -241,6 +249,11 @@ export function SparkWalletProvider({ children, isEnabled, storageDir = "spark-w
     return adapter.listPayments(req);
   }, []);
 
+  // Stabile tramite ref — non causa re-render, sempre aggiornato
+  const subscribeToEvents = useCallback((cb: (e: SparkPaymentEvent) => void): (() => void) => {
+    return adapterRef.current?.subscribeToEvents(cb) ?? (() => {});
+  }, []); // dipendenze vuote: adapterRef è un ref, sempre attuale
+
   const value: SparkWalletContextValue = {
     adapterType:  isEnabled ? (adapterRef.current?.adapterType ?? null) : null,
     state:        isEnabled ? state : "disabled",
@@ -255,6 +268,7 @@ export function SparkWalletProvider({ children, isEnabled, storageDir = "spark-w
     send,
     createReceiveInvoice,
     listPayments,
+    subscribeToEvents,
   };
 
   return (

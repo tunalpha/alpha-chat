@@ -18,6 +18,7 @@ import type {
   SparkConnectConfig,
   SparkWalletInfo,
   SparkPayment,
+  SparkPaymentEvent,
   SparkPaymentType,
   SparkPrepareSendRequest,
   SparkPrepareSendResult,
@@ -215,10 +216,55 @@ export class LiveSparkAdapter implements BreezSparkAdapter {
         amountSat:   BigInt((payment["amount"] as number | bigint) ?? 0),
         feeSat:      BigInt((payment["fees"]   as number | bigint) ?? 0),
         timestamp:   Number(payment["timestamp"] ?? 0),
-        bolt11:      payment["bolt11"] as string | undefined,
+        // bolt11 può essere al top-level o in details.invoice (Lightning payments)
+        bolt11: (() => {
+          const top = payment["bolt11"] as string | undefined;
+          if (top) return top;
+          const det = payment["details"] as Record<string, unknown> | undefined;
+          return det?.["type"] === "lightning"
+            ? (det["invoice"] as string | undefined)
+            : undefined;
+        })(),
         description: payment["description"] as string | undefined,
       };
     });
+  }
+
+  /**
+   * Iscriviti agli eventi SDK Breez (paymentSucceeded / paymentPending / paymentFailed).
+   * Usa sdk.addEventListener → callback onEvent → mappa a SparkPaymentEvent.
+   * Restituisce una funzione di cleanup che chiama sdk.removeEventListener.
+   */
+  subscribeToEvents(cb: (e: SparkPaymentEvent) => void): () => void {
+    const sdk = this._sdk;
+    if (!sdk) return () => {};
+    let listenerId: string | null = null;
+    const listener = {
+      onEvent: (rawEvent: unknown) => {
+        const ev   = rawEvent as Record<string, unknown>;
+        const type = ev["type"] as string;
+        if (type !== "paymentSucceeded" && type !== "paymentFailed" && type !== "paymentPending") return;
+        const payment = ev["payment"] as Record<string, unknown> | undefined;
+        if (!payment) return;
+        const id     = (payment["id"] as string) ?? "";
+        const amount = BigInt((payment["amount"] as number | bigint) ?? 0);
+        const fees   = BigInt((payment["fees"]   as number | bigint) ?? 0);
+        // bolt11 estratto da details.invoice per pagamenti Lightning
+        const details = payment["details"] as Record<string, unknown> | undefined;
+        const bolt11  = details?.["type"] === "lightning"
+          ? (details["invoice"] as string | undefined)
+          : undefined;
+        cb({ type: type as SparkPaymentEvent["type"], paymentId: id, amountSat: amount, bolt11, feeSat: fees });
+      },
+    };
+    void (sdk["addEventListener"] as (l: unknown) => Promise<string>)(listener)
+      .then(id => { listenerId = id; })
+      .catch(() => {});
+    return () => {
+      if (listenerId !== null) {
+        void (sdk["removeEventListener"] as (id: string) => Promise<boolean>)(listenerId).catch(() => {});
+      }
+    };
   }
 
   /**
