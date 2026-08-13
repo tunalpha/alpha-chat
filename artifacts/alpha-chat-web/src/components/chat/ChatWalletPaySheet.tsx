@@ -601,9 +601,11 @@ export function ChatWalletPaySheet({
                   <button
                     className="cwp-btn-invite"
                     onClick={() => {
-                      const name = recipientName ?? "il destinatario";
+                      // The invite text is always sent in English —
+                      // the sender's UI language must not be imposed on the recipient.
+                      const name = recipientName ?? "there";
                       onSendInvite(
-                        `👋 Ciao ${name}! Per ricevere pagamenti diretti tramite Alpha Wallet, configura il tuo wallet su Alpha Chat: Impostazioni → Alpha Wallet. È gratuito e richiede meno di un minuto. 🔐`,
+                        `👋 Hi ${name}! To receive direct payments via Alpha Wallet, set up your wallet on Alpha Chat: Settings → Alpha Wallet. It's free and takes less than a minute. 🔐`,
                       );
                       onClose();
                     }}
