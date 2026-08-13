@@ -1,0 +1,201 @@
+FASE 1 — AUDIT COMPLETO CAPACITOR DI ALPHA CHAT
+
+Voglio preparare Alpha Chat Web per avere in futuro:
+
+1. Alpha Chat Web/PWA — invariata e sempre funzionante
+2. Alpha Chat iOS — App Store
+3. Alpha Chat Android — Google Play
+
+La tecnologia candidata è Capacitor.
+
+PER QUESTA FASE NON DEVI MODIFICARE NULLA.
+
+NON installare Capacitor.
+NON modificare package.json.
+NON eseguire npm install.
+NON creare ios/.
+NON creare android/.
+NON modificare codice.
+NON modificare backend.
+NON modificare Spark/Lightning.
+NON modificare Alpha Wallet.
+
+Fai esclusivamente un AUDIT tecnico del progetto attuale.
+
+ANALIZZA:
+
+A) ARCHITETTURA WEB
+- framework
+- build system
+- package manager
+- entry point
+- output directory
+- routing
+- PWA/service worker
+- manifest
+- eventuali URL assoluti
+- eventuali dipendenze browser-only
+
+B) STORAGE
+Controlla:
+- localStorage
+- sessionStorage
+- IndexedDB
+- WebCrypto
+- WebAuthn
+- cookie
+- token/sessioni
+
+Indica cosa può funzionare direttamente in Capacitor e cosa sarebbe meglio spostare su storage nativo.
+
+C) ALPHA WALLET
+Analizza:
+- EVM wallet
+- BTC on-chain
+- USDA
+- WalletConnect
+- seed/keystore
+- PIN
+- Face ID/Touch ID
+- Spark/Breez
+- Lightning
+- WASM
+- SharedArrayBuffer
+- COOP/COEP
+- QR
+- clipboard
+- navigator.share
+- deep link lightning:
+- Universal Links iOS
+- App Links Android
+
+D) ALPHA CHAT
+Analizza:
+- Signal/E2E
+- chat
+- allegati
+- immagini
+- file
+- notifiche
+- audio/video
+- background behavior
+- lifecycle app
+
+E) BACKEND
+Verifica:
+- API
+- autenticazione
+- token
+- CORS
+- WebSocket, se presenti
+- URL assoluti
+- callback
+- deep link
+- eventuali redirect
+
+F) CAPACITOR
+Per ogni area indica:
+
+🟢 FUNZIONA DIRETTAMENTE
+🟡 RICHIEDE ADATTAMENTO
+🔴 RICHIEDE IMPLEMENTAZIONE NATIVA
+
+Indica anche quali plugin Capacitor ufficiali/community potrebbero essere necessari.
+
+G) IOS
+
+Indica:
+- cosa funzionerebbe immediatamente;
+- cosa richiede Swift/plugin;
+- eventuali problemi con WebView;
+- eventuali problemi con App Store;
+- eventuali problemi specifici per wallet/crypto/Lightning.
+
+H) ANDROID
+
+Indica:
+- cosa funzionerebbe immediatamente;
+- cosa richiede Kotlin/plugin;
+- eventuali problemi WebView;
+- eventuali problemi Play Store;
+- eventuali problemi crypto/Lightning.
+
+I) SPARK/LIGHTNING — PRIORITÀ MASSIMA
+
+Analizza molto attentamente l'attuale implementazione Spark/Breez WASM.
+
+Voglio sapere se può funzionare dentro la WebView di Capacitor su:
+
+- iOS
+- Android
+
+Verifica in particolare:
+- WebAssembly
+- SharedArrayBuffer
+- COOP/COEP
+- Web Worker
+- IndexedDB
+- memoria
+- lifecycle/background
+- accesso alla rete
+- deep link Lightning
+- eventuali API browser che Capacitor WebView non supporta allo stesso modo di Safari/Chrome.
+
+NON proporre di riscrivere Spark/Lightning senza una necessità tecnica dimostrata.
+
+J) ARCHITETTURA CONSIGLIATA
+
+Proponi questa architettura come obiettivo:
+
+                ALPHA CHAT
+                     |
+             codice web condiviso
+                     |
+          +----------+----------+
+          |                     |
+        WEB                 CAPACITOR
+          |                     |
+   alphachat.sbs        +-------+-------+
+                        |               |
+                       iOS           Android
+
+Indica quali parti rimangono identiche tra Web/iOS/Android e quali diventano native.
+
+K) ROADMAP
+
+Proponi una roadmap ordinata:
+
+FASE 1 — Audit
+FASE 2 — Preparazione progetto
+FASE 3 — Capacitor base
+FASE 4 — iOS
+FASE 5 — Android
+FASE 6 — API native
+FASE 7 — Wallet
+FASE 8 — Lightning
+FASE 9 — test completi
+FASE 10 — Store
+
+Per ogni fase indica rischi e dipendenze.
+
+L) STIMA COMPLESSITÀ
+
+Classifica ogni componente:
+
+🟢 facile
+🟡 media
+🔴 difficile
+
+IMPORTANTE:
+
+La web app attuale deve rimanere sempre funzionante.
+
+NON voglio una migrazione distruttiva.
+
+NON voglio una riscrittura React Native.
+
+Voglio mantenere il più possibile il codice React/Web esistente e aggiungere Capacitor come layer nativo.
+
+Alla fine restituisci SOLO il report dell'audit.
+
+NON applicare alcuna modifica.
