@@ -559,12 +559,13 @@ export async function getEvmTransactions(
       fetch(alchemyUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "alchemy_getAssetTransfers", params: [{ fromBlock, toAddress: address, category: ["external", "erc20"], withMetadata: true, maxCount: "0x32", order: "desc" }] }),
+        // Incoming: "internal" cattura trasferimenti avviati da contratti (swap, bridge). maxCount 500.
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "alchemy_getAssetTransfers", params: [{ fromBlock, toAddress: address, category: ["external", "erc20", "internal"], withMetadata: true, maxCount: "0x1F4", order: "desc" }] }),
       }).then(r => r.json()),
       fetch(alchemyUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ jsonrpc: "2.0", id: 2, method: "alchemy_getAssetTransfers", params: [{ fromBlock, fromAddress: address, category: ["external", "erc20"], withMetadata: true, maxCount: "0x32", order: "desc" }] }),
+        body: JSON.stringify({ jsonrpc: "2.0", id: 2, method: "alchemy_getAssetTransfers", params: [{ fromBlock, fromAddress: address, category: ["external", "erc20"], withMetadata: true, maxCount: "0x1F4", order: "desc" }] }),
       }).then(r => r.json()),
       fetch(alchemyUrl, {
         method: "POST",
