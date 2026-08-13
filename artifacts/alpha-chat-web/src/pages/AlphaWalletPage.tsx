@@ -1452,6 +1452,39 @@ function AssetList({ chainId, chainBalance, btcBalance, prices, loading, currenc
   );
 }
 
+// ─── BOLT11 expiry decoder ────────────────────────────────────────────────────
+// Decodifica il BOLT11 con @scure/base (bech32) per ricavare il timestamp di
+// scadenza esatto: timestamp_creazione (35 bit) + tag type-6 expiry (default 3600 s).
+// Nessun dato sensibile viene loggato — solo hasBolt11 e la durata.
+async function parseBolt11Expiry(bolt11: string): Promise<number> {
+  try {
+    const { bech32 } = await import("@scure/base");
+    const { words } = bech32.decode(bolt11, 2000);
+    // Prime 7 words (5 bit × 7 = 35 bit) → Unix timestamp di creazione invoice
+    let timestamp = 0;
+    for (let i = 0; i < 7; i++) timestamp = timestamp * 32 + (words[i] & 0x1f);
+    // Scan tag: skippa firma (ultimi 104 words = 520 bit = 65 byte)
+    let expirySecs = 3600; // default per spec BOLT11
+    let pos = 7;
+    const tagEnd = words.length - 104;
+    while (pos + 2 < tagEnd) {
+      const tagType = words[pos] & 0x1f;
+      const tagLen  = (words[pos + 1] & 0x1f) * 32 + (words[pos + 2] & 0x1f);
+      pos += 3;
+      if (tagType === 6 && tagLen > 0) {        // tag 6 = expiry
+        let e = 0;
+        for (let i = 0; i < tagLen; i++) e = e * 32 + (words[pos + i] & 0x1f);
+        expirySecs = e;
+        break;
+      }
+      pos += tagLen;
+    }
+    return (timestamp + expirySecs) * 1000;     // ms UTC
+  } catch {
+    return Date.now() + 3600 * 1000;            // fallback: 1 ora da ora
+  }
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // RECEIVE VIEW (Phase C)
 // ═══════════════════════════════════════════════════════════════════════════
@@ -1482,7 +1515,9 @@ function ReceiveView({ onBack: _onBack }: { onBack: () => void }) {
   const [lnPrices,     setLnPrices]     = useState<AssetPrices | null>(null);
   const [lnInvoice,    setLnInvoice]    = useState<string | null>(null);
   const [lnInvoiceErr, setLnInvoiceErr] = useState<string | null>(null);
-  const [lnExpiry,     setLnExpiry]     = useState<number | null>(null);
+  const [lnExpiry,     setLnExpiry]     = useState<number | null>(null);   // ms UTC
+  const [lnExpired,    setLnExpired]    = useState(false);
+  const [lnCountdown,  setLnCountdown]  = useState<number | null>(null);   // secondi rimasti
   const [lnLoading,    setLnLoading]    = useState(false);
   const [lnQrUrl,      setLnQrUrl]      = useState<string>("");
   const [lnCopied,     setLnCopied]     = useState(false);
@@ -1492,6 +1527,19 @@ function ReceiveView({ onBack: _onBack }: { onBack: () => void }) {
     if (!isLightning) return;
     fetchPrices().then(setLnPrices).catch(() => {});
   }, [isLightning]);
+
+  // Countdown live: aggiorna ogni secondo finché lnExpiry è impostato
+  useEffect(() => {
+    if (!lnExpiry) { setLnCountdown(null); setLnExpired(false); return; }
+    const tick = () => {
+      const secs = Math.floor((lnExpiry - Date.now()) / 1000);
+      if (secs <= 0) { setLnCountdown(0); setLnExpired(true); }
+      else { setLnCountdown(secs); setLnExpired(false); }
+    };
+    tick();
+    const id = setInterval(tick, 1000);
+    return () => clearInterval(id);
+  }, [lnExpiry]);
 
   // QR on-chain (skippato per Lightning: nessun indirizzo)
   useEffect(() => {
@@ -1555,7 +1603,10 @@ function ReceiveView({ onBack: _onBack }: { onBack: () => void }) {
       });
       if (!result.bolt11) throw new Error("L'SDK non ha restituito una invoice BOLT11.");
       setLnInvoice(result.bolt11);
-      if (result.expiresAt) setLnExpiry(result.expiresAt);
+      // Decodifica BOLT11 per ricavare scadenza reale (tag type-6 + timestamp creazione)
+      // ReceivePaymentResponse non espone expiresAt → unica fonte affidabile è il payload
+      const expMs = await parseBolt11Expiry(result.bolt11);
+      setLnExpiry(expMs);
       // QR uppercase per maggiore compatibilità con i scanner Lightning
       const mod = await import("qrcode");
       const url = await mod.toDataURL(result.bolt11.toUpperCase(), {
@@ -1672,39 +1723,68 @@ function ReceiveView({ onBack: _onBack }: { onBack: () => void }) {
           </>
         ) : (
           <>
+            {/* ── QR (sempre visibile anche dopo scadenza, per consultazione) ── */}
             {lnQrUrl && (
-              <div className="aw-receive-qr-card">
+              <div className="aw-receive-qr-card" style={lnExpired ? { opacity: 0.4 } : {}}>
                 <img src={lnQrUrl} alt="Lightning invoice QR" className="aw-receive-qr-img" />
               </div>
             )}
-            <div className="aw-receive-addr-box">
+
+            {/* ── Countdown / Scaduta ── */}
+            {lnCountdown !== null && (() => {
+              const isWarn = !lnExpired && lnCountdown < 60;
+              const fmtSecs = (s: number) => {
+                if (s <= 0) return "00:00";
+                if (s < 60) return `${s} sec`;
+                const m = Math.floor(s / 60), r = s % 60;
+                return `${String(m).padStart(2, "0")}:${String(r).padStart(2, "0")}`;
+              };
+              return (
+                <div style={{
+                  textAlign: "center",
+                  margin: "8px 0 4px",
+                  fontSize: "0.88rem",
+                  fontVariantNumeric: "tabular-nums",
+                  fontWeight: lnExpired || isWarn ? 600 : 400,
+                  color: lnExpired ? "#ff4d4d" : isWarn ? "#ffaa00" : "rgba(255,255,255,.7)",
+                  letterSpacing: "0.02em",
+                }}>
+                  {lnExpired
+                    ? "🔴 Invoice scaduta — non deve più essere pagata"
+                    : `⏱ Scade tra ${fmtSecs(lnCountdown)}`}
+                </div>
+              );
+            })()}
+
+            {/* ── BOLT11 testuale ── */}
+            <div className="aw-receive-addr-box" style={lnExpired ? { opacity: 0.4 } : {}}>
               <span className="aw-receive-addr-text"
                 style={{ fontSize: "0.7rem", wordBreak: "break-all", letterSpacing: 0 }}>
                 {lnInvoice}
               </span>
             </div>
-            {lnExpiry && (
-              <p className="aw-sub" style={{ textAlign: "center", fontSize: "0.78rem", margin: "4px 0 8px" }}>
-                ⏱ Scade: {new Date(lnExpiry).toLocaleTimeString()}
-              </p>
+
+            {/* ── Azioni ── */}
+            {!lnExpired && (
+              <button
+                className={`aw-receive-copy-btn${lnCopied ? " copied" : ""}`}
+                onClick={() =>
+                  void navigator.clipboard.writeText(lnInvoice!).then(() => {
+                    setLnCopied(true);
+                    setTimeout(() => setLnCopied(false), 3000);
+                  })
+                }
+                aria-label={lnCopied ? "Invoice copiata" : "Copia invoice Lightning"}>
+                {lnCopied ? "✅  Copiata!" : "📋  Copia invoice"}
+              </button>
             )}
-            <button
-              className={`aw-receive-copy-btn${lnCopied ? " copied" : ""}`}
-              onClick={() =>
-                void navigator.clipboard.writeText(lnInvoice!).then(() => {
-                  setLnCopied(true);
-                  setTimeout(() => setLnCopied(false), 3000);
-                })
-              }
-              aria-label={lnCopied ? "Invoice copiata" : "Copia invoice Lightning"}>
-              {lnCopied ? "✅  Copiata!" : "📋  Copia invoice"}
-            </button>
             <button
               className="aw-btn aw-btn--secondary"
               style={{ width: "100%", marginTop: 8 }}
               onClick={() => {
                 setLnInvoice(null); setLnQrUrl(""); setLnCopied(false);
-                setLnExpiry(null); setLnAmountStr(""); setLnInvoiceErr(null);
+                setLnExpiry(null); setLnExpired(false); setLnCountdown(null);
+                setLnAmountStr(""); setLnInvoiceErr(null);
               }}>
               ↻ Nuova invoice
             </button>

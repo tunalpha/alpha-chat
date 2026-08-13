@@ -1,0 +1,692 @@
+IMPLEMENTAZIONE COMPLETA BITCOIN LIGHTNING — INVOICE + CRONOLOGIA + STATI + PAGAMENTI
+
+OBIETTIVO
+
+Rendere Bitcoin Lightning in Alpha Wallet completamente funzionale dal punto di vista utente.
+
+Il flusso deve funzionare come un vero wallet:
+
+RICEVI:
+creazione invoice → visualizzazione QR → persistenza → ritorno al wallet → recupero invoice → pagamento → riconoscimento pagamento → stato "Pagata" → aggiornamento saldo → cronologia.
+
+INVIA:
+incolla BOLT11 → verifica invoice → calcolo fee → conferma → pagamento → stato "Pagato" → cronologia.
+
+Non voglio più invoice che scompaiono semplicemente premendo Indietro.
+
+==================================================
+FASE 0 — AUDIT PRIMA DI MODIFICARE
+==================================================
+
+Prima di modificare il codice, analizza l'implementazione Lightning attuale.
+
+Verifica:
+
+- SparkWalletContext
+- LiveSparkAdapter
+- createReceiveInvoice()
+- send()
+- receive()
+- syncWallet()
+- calculateSendFee()
+- SendView
+- ReceiveView
+- AlphaWalletPage
+- storico attuale
+- API/backend esistenti
+- eventuale modello locale/backend per pagamenti
+- eventuale supporto del Breez/Spark SDK per transaction/payment history
+- eventuali eventi/listener disponibili per pagamenti ricevuti/inviati
+- expiry reale delle BOLT11
+- paymentId disponibile dopo pagamento
+- stato disponibile per una invoice
+- metodo ufficiale per verificare se una invoice ricevuta è stata pagata
+
+NON assumere API o campi del SDK.
+Usare esclusivamente API realmente presenti nella versione SDK caricata dal progetto.
+
+==================================================
+FASE 1 — MODELLO DATI LIGHTNING
+==================================================
+
+Creare un modello coerente per una transazione Lightning.
+
+Ogni record deve poter rappresentare almeno:
+
+- id
+- userId, se necessario per la persistenza autenticata
+- direction: receive | send
+- status:
+  - pending
+  - paid
+  - expired
+  - failed
+  - cancelled, solo se realmente supportato
+- amountSat
+- amountBtc
+- fiatAmount, quando disponibile
+- fiatCurrency: BTC | EUR | USD
+- btcPriceAtCreation, quando applicabile
+- bolt11, se necessario per recuperare/copiare l'invoice
+- paymentId, quando disponibile
+- createdAt
+- expiresAt, quando disponibile
+- paidAt, quando disponibile
+- updatedAt
+
+NON duplicare inutilmente dati sensibili.
+
+NON salvare:
+- mnemonic
+- seed
+- private key
+- PIN
+- wallet encryption keys
+
+La BOLT11 può essere considerata dato di pagamento, ma va trattata con attenzione e non deve mai comparire nei log.
+
+Prima di creare un nuovo sistema, verificare se esiste già una struttura di storico riutilizzabile.
+
+==================================================
+FASE 2 — RICEVI LIGHTNING
+==================================================
+
+Quando l'utente seleziona:
+
+Ricevi → Lightning
+
+deve poter scegliere:
+
+BTC | € EUR | $ USD
+
+e inserire un importo oppure lasciare vuoto.
+
+Conversione già funzionante:
+- BTC → sat
+- EUR → sat usando il prezzo BTC corrente
+- USD → sat usando il prezzo BTC corrente
+
+NON modificare questa logica se già corretta.
+
+==================================================
+FASE 3 — GENERAZIONE INVOICE
+==================================================
+
+Quando l'utente preme:
+
+"Genera invoice Lightning"
+
+deve essere eseguito:
+
+createReceiveInvoice()
+
+con:
+
+amountSats: number
+
+solo quando l'importo è > 0.
+
+Se il campo è vuoto:
+
+amountSats deve essere OMESSO.
+
+NON passare 0 come equivalente ad "any amount".
+
+Il risultato reale del WASM è:
+
+paymentRequest
+
+che contiene la BOLT11.
+
+NON cercare "invoice".
+
+==================================================
+FASE 4 — SCADENZA INVOICE
+==================================================
+
+Determinare la scadenza REALE della BOLT11/SDK.
+
+NON assumere arbitrariamente 1 ora.
+
+Salvare expiresAt corretto.
+
+Dopo la generazione mostrare:
+
+"Scade tra 59:59"
+
+con countdown live.
+
+Quando scade:
+
+"🔴 Invoice scaduta"
+
+NON rigenerare automaticamente.
+
+Il countdown deve essere basato sul timestamp reale dell'invoice, non su un semplice timer scollegato dalla BOLT11.
+
+==================================================
+FASE 5 — PERSISTENZA IMMEDIATA
+==================================================
+
+QUESTO È IMPORTANTE.
+
+Appena viene generata una invoice valida:
+
+deve essere salvata nello storico.
+
+Quindi:
+
+Genera invoice
+↓
+BOLT11 valida
+↓
+salva record
+↓
+mostra QR
+
+Se l'utente preme Indietro:
+
+la invoice NON deve sparire.
+
+Tornando in:
+
+Alpha Wallet → Storico
+
+deve comparire.
+
+Esempio:
+
+⚡ Ricezione Lightning
+6,00 €
+10.823 sat
+⏳ In attesa
+Scade alle 08:35
+
+==================================================
+FASE 6 — DETTAGLIO INVOICE
+==================================================
+
+Cliccando una transazione Lightning nello storico, aprire una pagina/dettaglio.
+
+Per una invoice ricevuta:
+
+⚡ Ricezione Lightning
+
+Importo:
+6,00 €
+
+BTC:
+0,00010823 BTC
+
+Satoshi:
+10.823 sat
+
+Stato:
+⏳ In attesa
+
+Creata:
+data/ora
+
+Scadenza:
+data/ora
+
+Se ancora valida:
+
+mostrare:
+
+[Mostra QR]
+[Copia invoice]
+
+Se scaduta:
+
+🔴 Invoice scaduta
+
+e:
+
+[Genera nuova invoice]
+
+NON permettere di presentare come valida un'invoice già scaduta.
+
+==================================================
+FASE 7 — RICONOSCIMENTO PAGAMENTO
+==================================================
+
+Quando qualcuno paga una invoice ricevuta:
+
+Alpha Wallet deve riconoscerlo.
+
+Usare il metodo ufficiale disponibile nel SDK per verificare lo stato.
+
+NON basarsi semplicemente sul fatto che il saldo sia aumentato.
+
+NON associare arbitrariamente un pagamento ad una invoice solo perché l'importo coincide.
+
+Quando il pagamento viene confermato:
+
+status:
+
+pending → paid
+
+salvare:
+
+paidAt
+paymentId, se disponibile
+
+aggiornare il saldo Lightning.
+
+Lo storico deve diventare:
+
+⚡ Ricezione Lightning
+6,00 €
+10.823 sat
+✅ Pagata
+
+==================================================
+FASE 8 — AGGIORNAMENTO SENZA RIAVVIARE L'APP
+==================================================
+
+Dopo una ricezione:
+
+il saldo Lightning deve aggiornarsi senza richiedere logout/login.
+
+Implementare il meccanismo corretto supportato dal SDK:
+
+- listener/evento, se disponibile;
+- polling leggero, solo se necessario;
+- syncWallet(), se è il metodo ufficiale appropriato.
+
+NON creare polling aggressivo.
+
+NON fare richieste ogni secondo.
+
+==================================================
+FASE 9 — INVOICE SCADUTE
+==================================================
+
+Le invoice pending devono passare automaticamente a:
+
+expired
+
+quando raggiungono expiresAt.
+
+Questo può essere determinato:
+
+- localmente per la UI;
+- verificato con SDK/backend quando necessario.
+
+Una invoice scaduta NON deve essere mostrata come pending indefinitamente.
+
+==================================================
+FASE 10 — STORICO LIGHTNING
+==================================================
+
+Lo storico deve mostrare almeno:
+
+⚡ Ricezioni Lightning
+⚡ Pagamenti Lightning inviati
+
+Con:
+
+- data
+- ora
+- importo
+- satoshi
+- direzione
+- stato
+
+Esempio:
+
+⚡ Ricevuto
++ 6,00 €
+10.823 sat
+✅ Pagato
+
+⚡ Inviato
+- 2,50 €
+4.510 sat
+✅ Pagato
+
+⚡ Ricevuto
++ 10,00 €
+18.100 sat
+🔴 Scaduto
+
+⚡ Inviato
+- 5,00 €
+9.050 sat
+❌ Fallito
+
+NON mescolare BTC on-chain con Lightning.
+
+BTC on-chain:
+chainId = 0
+
+Lightning:
+chainId = -1
+
+Devono rimanere due sistemi separati.
+
+==================================================
+FASE 11 — INVIA LIGHTNING
+==================================================
+
+Verificare e completare il flusso esistente:
+
+Incolla BOLT11
+↓
+decodifica/verifica
+↓
+mostra destinatario/importo quando disponibile
+↓
+calcola fee
+↓
+conferma
+↓
+PIN/biometria
+↓
+spark.send()
+↓
+success
+↓
+paymentId
+↓
+salva nello storico
+
+Dopo il pagamento:
+
+⚡ Pagamento Lightning
+- 6,00 €
+10.823 sat
+✅ Pagato
+
+NON modificare il core send() se già corretto.
+
+==================================================
+FASE 12 — FEE
+==================================================
+
+Mantenere il sistema fee Lightning esistente.
+
+Prima della conferma mostrare chiaramente:
+
+Importo destinatario
+Fee routing Lightning
+Fee Alpha
+Totale addebitato
+
+Non cambiare la formula esistente senza necessità.
+
+==================================================
+FASE 13 — BTC / EUR / USD
+==================================================
+
+Nel flusso Ricevi Lightning mantenere:
+
+BTC | € EUR | $ USD
+
+Esempio:
+
+BTC:
+0,001 BTC
+100.000 sat
+
+EUR con BTC = 55.000 €:
+55 €
+100.000 sat
+0,001 BTC
+
+USD:
+conversione secondo il prezzo USD/BTC disponibile.
+
+Il valore utilizzato deve essere mostrato nella preview.
+
+NON alterare il comportamento già funzionante.
+
+==================================================
+FASE 14 — "ANY AMOUNT"
+==================================================
+
+Campo vuoto:
+
+→ invoice senza amountSats
+
+→ invoice "any amount"
+
+Lo storico deve comunque salvare l'invoice.
+
+Quando viene pagata, aggiornare il record con:
+
+actualAmountSat
+actualAmountBtc
+paidAt
+paymentId
+
+Se l'SDK fornisce questi dati.
+
+NON inventare un importo prima del pagamento.
+
+==================================================
+FASE 15 — NUOVA INVOICE
+==================================================
+
+Dopo:
+
+- invoice pagata
+- invoice scaduta
+
+deve essere possibile premere:
+
+"Nuova invoice"
+
+e creare una nuova invoice indipendente.
+
+Non sovrascrivere lo storico precedente.
+
+==================================================
+FASE 16 — PRIVACY
+==================================================
+
+NON introdurre tracking per utente nei fee records esistenti.
+
+NON modificare la scelta privacy-by-design già esistente senza necessità.
+
+Se serve userId per lo storico personale Lightning, usare una struttura separata e autenticata.
+
+NON fare associazioni speculative tra fee record e utenti.
+
+==================================================
+FASE 17 — UI
+==================================================
+
+La UI deve essere coerente con Alpha Wallet.
+
+Per Lightning usare:
+
+⚡
+
+Stati visivi:
+
+⏳ In attesa
+✅ Pagata
+🔴 Scaduta
+❌ Fallita
+
+La cronologia deve essere facilmente distinguibile da BTC on-chain.
+
+NON mostrare explorer link per Lightning.
+
+Lightning non è una normale transazione on-chain Bitcoin.
+
+==================================================
+FASE 18 — RESILIENZA
+==================================================
+
+Gestire:
+
+- offline
+- SDK non connesso
+- timeout
+- invoice non trovata
+- invoice scaduta
+- pagamento fallito
+- riapertura app
+- refresh pagina
+- cambio chain
+- logout/login
+
+Nessun crash.
+
+Se Lightning non è disponibile:
+
+"Lightning non disponibile"
+
+senza mostrare dati BNB/ETH/POL/BTC on-chain al posto del saldo Lightning.
+
+==================================================
+FASE 19 — TEST REALI OBBLIGATORI
+==================================================
+
+Creare/aggiornare test per:
+
+1. Receive Lightning BTC
+2. Receive Lightning EUR
+3. Receive Lightning USD
+4. Conversione corretta in sat
+5. createReceiveInvoice con amount
+6. createReceiveInvoice senza amount
+7. paymentRequest estratto correttamente
+8. QR BOLT11
+9. expiry
+10. countdown
+11. invoice pending
+12. invoice paid
+13. invoice expired
+14. invoice failed
+15. persistenza dopo Back
+16. persistenza dopo refresh
+17. storico Lightning
+18. dettaglio Lightning
+19. Send Lightning
+20. paymentId
+21. saldo Lightning aggiornato
+22. BTC on-chain invariato
+23. EVM invariato
+24. USDA invariato
+25. conversioni BTC/EUR/USD invariate
+
+Eseguire tutti i test esistenti.
+
+Non limitarsi ai nuovi test.
+
+==================================================
+FASE 20 — TEST PRODUZIONE
+==================================================
+
+Prima del Publish:
+
+- test suite completa
+- build production
+- nessun errore TypeScript
+- nessun errore runtime
+- verificare bundle SDK
+
+Dopo Publish, testare realmente:
+
+TEST A — Ricezione
+
+1. Lightning
+2. Ricevi
+3. 6 EUR
+4. genera invoice
+5. QR presente
+6. torna indietro
+7. apri Storico
+8. invoice ancora presente
+9. stato Pending
+10. riapri dettaglio
+11. QR ancora disponibile
+12. paga da altro wallet
+13. torna Alpha Wallet
+14. saldo aumenta
+15. stato diventa Pagata
+
+TEST B — Scadenza
+
+1. crea invoice
+2. verifica countdown
+3. attendi scadenza
+4. stato diventa Scaduta
+5. non deve essere presentata come pagabile
+6. Nuova invoice crea un nuovo record
+
+TEST C — Any amount
+
+1. campo vuoto
+2. genera invoice
+3. invoice senza importo fisso
+4. paga da altro wallet
+5. registrare importo effettivamente ricevuto
+6. stato Pagata
+
+TEST D — Send
+
+1. inserisci BOLT11
+2. verifica importo
+3. calcola fee
+4. conferma
+5. paga
+6. paymentId
+7. storico aggiornato
+
+==================================================
+REGOLE ASSOLUTE
+==================================================
+
+NON modificare inutilmente:
+
+- SparkWalletContext.connect()
+- LiveSparkAdapter.connect()
+- syncWallet()
+- Spark core
+- Breez core
+- BTC on-chain
+- EVM
+- USDA
+- Signal/Chat
+- Payment Engine
+- Treasury
+
+Modificare solo ciò che serve per completare il sistema Lightning.
+
+NON fare workaround fittizi.
+
+NON simulare pagamenti.
+
+NON segnare una invoice come pagata solo perché il saldo cambia.
+
+Usare sempre lo stato reale fornito dal SDK.
+
+NON inventare API del Breez/Spark SDK.
+
+Prima verificare le API reali della versione installata.
+
+==================================================
+REPORT FINALE
+==================================================
+
+Restituire:
+
+1. Architettura scelta per lo storico
+2. API/SDK utilizzati per lo stato invoice
+3. Come viene determinata la scadenza
+4. Come viene riconosciuto il pagamento
+5. Come viene persistita una invoice
+6. File creati/modificati
+7. Test completi
+8. Build
+9. Eventuali limitazioni reali
+10. Conferma che BTC on-chain/EVM/USDA/Payment Engine/Signal non sono stati modificati
+
+NON fare Publish automaticamente.
+
+Fermarsi dopo test + build e fornire il report.

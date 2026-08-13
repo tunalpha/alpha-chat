@@ -1,0 +1,122 @@
+AGGIUNTA SCADENZA INVOICE LIGHTNING — SOLO UX, NON TOCCARE IL CORE
+
+La ricezione Lightning ora funziona correttamente:
+- BTC/EUR/USD conversione OK
+- amountSat corretto
+- createReceiveInvoice() corretto
+- paymentRequest BOLT11 correttamente estratto
+- QR BOLT11 generato correttamente
+
+NON modificare nulla di tutto questo.
+
+OBIETTIVO:
+aggiungere alla schermata dell'invoice Lightning una gestione chiara della scadenza.
+
+FASE 1 — VERIFICA PRIMA DI MODIFICARE
+
+Verifica nel runtime/SDK effettivamente utilizzato:
+- quale expiry viene assegnato automaticamente a una BOLT11 quando expirySecs non viene specificato;
+- se la risposta di createReceiveInvoice() espone direttamente la scadenza;
+- se la BOLT11 può essere decodificata localmente per ricavare l'expiry;
+- quale timestamp preciso deve essere utilizzato per il countdown.
+
+NON assumere che la scadenza sia 1 ora.
+Determina il valore reale utilizzato dal SDK.
+
+FASE 2 — UI
+
+Dopo la generazione della invoice mostra:
+
+"Scade tra 59:59"
+
+con countdown aggiornato ogni secondo.
+
+Quando rimangono meno di 60 secondi:
+mostra il tempo in secondi.
+
+Quando raggiunge zero:
+mostra chiaramente:
+
+"🔴 Invoice scaduta"
+
+e considera l'invoice non più valida per il flusso UI.
+
+IMPORTANTE:
+non modificare la BOLT11 già generata.
+Non rigenerare automaticamente invoice.
+Non effettuare polling inutile verso il backend/Spark.
+
+FASE 3 — COMPORTAMENTO
+
+Aggiungere:
+
+- countdown live
+- timestamp di scadenza associato all'invoice corrente
+- stato expired
+- reset completo quando viene premuto "Nuova invoice"
+- se l'utente esce e rientra nella schermata durante la stessa sessione, mantenere correttamente lo stato dell'invoice se l'implementazione attuale lo consente; altrimenti non inventare persistenza.
+
+Se l'invoice è scaduta:
+- il QR può rimanere visualizzato per consultazione;
+- mostrare chiaramente che non deve più essere pagata;
+- il pulsante "Nuova invoice" deve permettere di generarne una nuova.
+
+FASE 4 — SICUREZZA
+
+NON loggare:
+- invoice BOLT11 completa
+- mnemonic
+- seed
+- private key
+- PIN
+- token
+
+FASE 5 — INVARIANTI
+
+NON modificare:
+- SparkWalletContext.connect()
+- LiveSparkAdapter.connect()
+- syncWallet()
+- send()
+- receive core
+- createReceiveInvoice() salvo eventuale lettura del dato expiry necessaria
+- conversione BTC/EUR/USD
+- amountSat
+- BTC on-chain
+- EVM
+- Send Lightning
+- Payment Engine
+- USDA
+- Signal/Chat
+- fee system
+
+FASE 6 — TEST OBBLIGATORI
+
+Verificare:
+
+1. Generazione invoice BTC
+2. Generazione invoice EUR
+3. Generazione invoice USD
+4. Countdown visualizzato
+5. Countdown diminuisce realmente ogni secondo
+6. Arrivo a 00:00
+7. Stato "Invoice scaduta"
+8. "Nuova invoice" resetta countdown e stato
+9. Invoice any amount
+10. Nessuna regressione BTC on-chain
+11. Nessuna regressione EVM
+12. Nessuna regressione Send Lightning
+
+Eseguire:
+- test completi frontend
+- build production
+
+REPORT FINALE:
+- expiry reale rilevato dall'SDK
+- metodo con cui è stata determinata la scadenza
+- file modificati
+- modifiche effettuate
+- test
+- build
+
+NON fare Publish automaticamente.
