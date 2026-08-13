@@ -164,7 +164,10 @@ export class LiveSparkAdapter implements BreezSparkAdapter {
       case "bolt11":
         paymentMethod = {
           type:        "bolt11Invoice",
-          amountSats:  req.amountSat ?? 0n,
+          // amountSats è number nel WASM (non bigint); omesso → invoice "any amount"
+          ...(req.amountSat !== undefined && req.amountSat > 0n
+            ? { amountSats: Number(req.amountSat) }
+            : {}),
           description: req.description ?? "",
         };
         break;
@@ -181,10 +184,11 @@ export class LiveSparkAdapter implements BreezSparkAdapter {
     }) as Record<string, unknown>;
 
     return {
-      bolt11:          (raw["invoice"]      as string | undefined),
-      sparkAddress:    (raw["sparkAddress"] as string | undefined),
-      bitcoinAddress:  (raw["address"]      as string | undefined),
-      expiresAt:       raw["expiresAt"]      ? Number(raw["expiresAt"]) : undefined,
+      // Il WASM restituisce ReceivePaymentResponse.paymentRequest (non "invoice")
+      bolt11:          (raw["paymentRequest"] as string | undefined),
+      sparkAddress:    (raw["sparkAddress"]   as string | undefined),
+      bitcoinAddress:  (raw["address"]        as string | undefined),
+      expiresAt:       raw["expiresAt"]        ? Number(raw["expiresAt"]) : undefined,
     };
   }
 

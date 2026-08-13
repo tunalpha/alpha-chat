@@ -1,0 +1,128 @@
+DEBUG DEFINITIVO — Bitcoin Lightning Receive: SDK non restituisce BOLT11
+
+Il test reale su produzione ha isolato il problema.
+
+UI CORRETTA:
+- Lightning selezionato
+- BTC / EUR / USD funzionanti
+- 0,001 BTC
+- conversione corretta: 100.000 sat
+- preview:
+  Richiesta: 0.001 BTC
+  Invoice per: 0.00100000 BTC (100.000 sat)
+
+Quando premo "⚡ Genera invoice Lightning" ottengo:
+
+"L'SDK non ha restituito una invoice BOLT11."
+
+NON modificare ancora il codice.
+NON modificare SparkWalletContext.connect().
+NON modificare LiveSparkAdapter.connect().
+NON modificare syncWallet().
+NON modificare send().
+NON modificare il core Spark/Breez.
+NON cambiare la logica BTC on-chain o EVM.
+NON cambiare la conversione BTC/EUR/USD.
+
+OBIETTIVO:
+identificare ESATTAMENTE cosa restituisce createReceiveInvoice() in produzione e quale campo contiene la BOLT11 invoice.
+
+Analizza end-to-end:
+
+1. ReceiveView.tsx
+   - chiamata esatta a:
+     spark.createReceiveInvoice({ method: "bolt11", amountSat })
+   - verifica come viene interpretato il risultato
+   - verifica quale proprietà viene cercata per estrarre la BOLT11.
+
+2. SparkWalletContext / adapter / LiveSparkAdapter
+   - trova l'implementazione di createReceiveInvoice()
+   - verifica il tipo/shape restituito.
+   - NON assumere che il risultato sia una stringa.
+   - NON assumere che la proprietà si chiami invoice.
+   - verifica la struttura reale restituita dal Breez SDK Spark utilizzato dal progetto.
+
+3. Controlla il bundle/runtime dell'SDK effettivamente caricato in produzione.
+   Il progetto usa il bundle locale /spark/index.js.
+   Verifica che la versione/runtime effettivamente caricata corrisponda a quella per cui sono stati scritti i tipi TypeScript.
+
+4. Aggiungi SOLO logging diagnostico temporaneo e sicuro, senza mai loggare:
+   - mnemonic
+   - private key
+   - seed
+   - PIN
+   - token
+   - credenziali.
+
+Puoi loggare esclusivamente:
+   - metodo chiamato
+   - amountSat
+   - typeof risultato
+   - Object.keys() del risultato
+   - eventuali proprietà non sensibili necessarie a identificare la struttura
+   - error type
+   - error message
+   - Spark state.
+
+IMPORTANTE:
+non loggare integralmente eventuali invoice BOLT11, perché contiene dati identificativi della richiesta/pagamento. Se serve verificare la presenza, usare solo:
+   hasBolt11: boolean
+   bolt11Length: number
+
+5. Determina quale dei seguenti casi è quello reale:
+
+A) createReceiveInvoice() fallisce con eccezione
+
+B) createReceiveInvoice() riesce ma restituisce una struttura diversa da quella attesa
+
+C) restituisce una BOLT11 ma il ReceiveView cerca il campo sbagliato
+
+D) restituisce un invoice object con paymentRequest / encoded / invoice / request / altro campo equivalente
+
+E) il metodo "bolt11" non è quello corretto per la versione SDK caricata
+
+F) il bundle SDK locale è incompatibile con i tipi/runtime usati dal progetto
+
+G) altro — specificare esattamente cosa.
+
+SOLO DOPO aver identificato il caso:
+applica il fix minimo e chirurgico.
+
+Il fix deve:
+- estrarre correttamente la BOLT11 dalla struttura reale restituita dall'SDK;
+- mantenere amountSat esattamente uguale al valore calcolato dalla UI;
+- mantenere BTC/EUR/USD invariati;
+- mantenere "any amount" quando il campo è vuoto;
+- non alterare il core Spark;
+- non alterare BTC on-chain;
+- non alterare EVM;
+- non alterare Send Lightning.
+
+TEST OBBLIGATORI:
+1. Receive Lightning 0,001 BTC → 100.000 sat
+2. createReceiveInvoice() → BOLT11 valida
+3. QR generato dalla BOLT11
+4. copia invoice
+5. invoice amount = 100.000 sat
+6. Receive Lightning EUR → conversione invariata
+7. Receive Lightning USD → conversione invariata
+8. campo vuoto → any amount
+9. BTC on-chain invariato
+10. EVM invariato
+11. Send Lightning invariato
+
+Poi esegui:
+- 993/993 frontend tests
+- build production
+- verifica che il bundle SDK utilizzato in produzione sia quello corretto.
+
+REPORT FINALE:
+- causa esatta
+- valore/struttura restituita da createReceiveInvoice() (senza dati sensibili)
+- campo corretto contenente BOLT11
+- file modificati
+- modifiche effettuate
+- test
+- build
+
+NON fare Publish finché non è verificato che una invoice BOLT11 reale viene generata correttamente.
