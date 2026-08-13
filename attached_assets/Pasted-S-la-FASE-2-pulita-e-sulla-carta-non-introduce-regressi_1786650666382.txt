@@ -1,0 +1,68 @@
+Sì: la FASE 2 è pulita e, sulla carta, non introduce regressioni alla PWA.
+
+La verifica più importante è questa:
+
+VITE_API_BASE_URL non impostata → BASE = "/api/v1"
+
+Quindi sul sito attuale continua a comportarsi come prima.
+
+Anche WebSocket mantiene il fallback a window.location, quindi la PWA non viene trasformata in qualcosa di diverso.
+
+✅ Cosa mi convince
+
+* 993/993 test frontend ✅
+* Build production OK ✅
+* Backend typecheck OK ✅
+* I 4 test backend falliti sono dichiarati preesistenti e non collegati a questa modifica.
+* Spark/Lightning non toccati.
+* Alpha Wallet non toccato.
+* Face ID/WebAuthn non toccato.
+* Signal non toccato.
+* Push/WebRTC non toccati.
+* Routing non toccato.
+* API individuali non cambiate.
+* In futuro possiamo impostare gli URL nativi senza modificare i componenti.
+
+⚠️ Una cosa che voglio correggere prima della FASE 3
+
+Nel report c’è questa frase:
+
+ALLOWED_ORIGINS = ["*"] → wildcard invariata
+
+Non è un problema adesso, perché non è stata modificata. Però per la versione nativa, non voglio introdurre capacitor://localhost mentre rimane un wildcard aperto, se la configurazione di produzione attuale non ne ha realmente bisogno.
+
+Non toccherei nulla ora. Lo verificheremo nella FASE 3/integrazione CORS quando configureremo Capacitor.
+
+🟢 Quindi FASE 2: APPROVATA
+
+Abbiamo fatto esattamente quello che volevamo:
+
+PWA attuale
+     ↓
+rimane invariata
+     ↓
+configurazione API/WS preparata
+     ↓
+futura Capacitor App
+
+Non farei rollback.
+
+⸻
+
+Prossimo passo: FASE 3
+
+Adesso possiamo finalmente installare Capacitor, ma con una strategia molto prudente:
+
+1. installare Capacitor;
+2. creare capacitor.config;
+3. aggiungere Android e iOS;
+4. non modificare ancora Spark/Lightning;
+5. non modificare il wallet;
+6. fare una prima build;
+7. verificare che la PWA continui a funzionare;
+8. testare prima la versione Android/WebView;
+9. solo dopo affrontare le funzioni native.
+
+E soprattutto: non serve ancora un Mac per iniziare questa fase. Possiamo far preparare il progetto tramite Replit dal tuo iPhone. Il Mac ci servirà quando arriveremo alla compilazione/test iOS con Xcode.
+
+Se vuoi, ti preparo ora il prompt FASE 3, mantenendo lo stesso livello di prudenza delle prime due fasi.
