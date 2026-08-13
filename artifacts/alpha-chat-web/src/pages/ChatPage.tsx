@@ -259,6 +259,7 @@ function ChatHeader({
   onOpenSafetyNumber,
   onSessionReset,
   onGroupInfo,
+  onWallet,
 }: {
   otherUser: { display_name: string; username: string; avatar_url?: string | null } | null | undefined;
   isOnline: boolean;
@@ -279,6 +280,7 @@ function ChatHeader({
   onOpenSafetyNumber?: () => void;
   onSessionReset?: () => void;
   onGroupInfo?: () => void;
+  onWallet?: () => void;
 }) {
   const { t } = useTranslation();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -378,6 +380,13 @@ function ChatHeader({
         <button className="icon-btn icon-btn-header" title="Videochiamata (prossimamente)" aria-label="Videochiamata" onClick={onCallVideo}>
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="20" height="20">
             <polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/>
+          </svg>
+        </button>
+
+        <button className="icon-btn icon-btn-header" title="Alpha Wallet" aria-label="Alpha Wallet" onClick={onWallet}>
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" width="20" height="20">
+            <path d="M21 12V7a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-5z"/>
+            <path d="M16 12a2 2 0 0 0 0 4h5v-4h-5z"/>
           </svg>
         </button>
 
@@ -3662,6 +3671,7 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
                   setShowGroupInfo(true);
                 }
               }}
+              onWallet={() => onNavigate("alpha-wallet")}
               onOpenSafetyNumber={() => setShowSafetyModal(true)}
               onSessionReset={async () => {
                 if (!auth || !activeConvId) return;
