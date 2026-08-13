@@ -549,39 +549,55 @@ export async function getEvmTransactions(
 
     if (!chainId || !address) throw new AppError("BAD_REQUEST", 400);
 
+    // Guard: chain sconosciuta → errore esplicito (mai silenzioso)
     const alchemyUrl = ALCHEMY_URLS[chainId];
-    let transfers: object[] = [];
-    let latestBlock = "0x0";
-
-    if (alchemyUrl) {
-      const [inRes, outRes, blockRes] = await Promise.all([
-        fetch(alchemyUrl, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "alchemy_getAssetTransfers", params: [{ fromBlock, toAddress: address, category: ["external", "erc20"], withMetadata: true, maxCount: "0x32", order: "desc" }] }),
-        }).then(r => r.json()),
-        fetch(alchemyUrl, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ jsonrpc: "2.0", id: 2, method: "alchemy_getAssetTransfers", params: [{ fromBlock, fromAddress: address, category: ["external", "erc20"], withMetadata: true, maxCount: "0x32", order: "desc" }] }),
-        }).then(r => r.json()),
-        fetch(alchemyUrl, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ jsonrpc: "2.0", id: 3, method: "eth_blockNumber", params: [] }),
-        }).then(r => r.json()),
-      ]);
-
-      const _blockRes = blockRes as { result?: string };
-      const _inRes    = inRes    as { result?: { transfers?: AlchemyTransfer[] } };
-      const _outRes   = outRes   as { result?: { transfers?: AlchemyTransfer[] } };
-      latestBlock = _blockRes?.result ?? "0x0";
-      const inT = (_inRes?.result?.transfers ?? []) as AlchemyTransfer[];
-      const outT = (_outRes?.result?.transfers ?? []) as AlchemyTransfer[];
-      transfers = [...inT.map(t => _mapAlchemy(t, address, "in", chainId)), ...outT.map(t => _mapAlchemy(t, address, "out", chainId))].sort((a: any, b: any) => (b.blockNum > a.blockNum ? 1 : -1));
-    } else {
-      logger.warn({ chainId }, "BSC tx history non disponibile senza Alchemy BSC");
+    if (!alchemyUrl) {
+      throw new AppError("UNSUPPORTED_CHAIN", 501);
     }
+
+    const [inRes, outRes, blockRes] = await Promise.all([
+      fetch(alchemyUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "alchemy_getAssetTransfers", params: [{ fromBlock, toAddress: address, category: ["external", "erc20"], withMetadata: true, maxCount: "0x32", order: "desc" }] }),
+      }).then(r => r.json()),
+      fetch(alchemyUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 2, method: "alchemy_getAssetTransfers", params: [{ fromBlock, fromAddress: address, category: ["external", "erc20"], withMetadata: true, maxCount: "0x32", order: "desc" }] }),
+      }).then(r => r.json()),
+      fetch(alchemyUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 3, method: "eth_blockNumber", params: [] }),
+      }).then(r => r.json()),
+    ]);
+
+    const _blockRes = blockRes as { result?: string };
+    const _inRes    = inRes    as { result?: { transfers?: AlchemyTransfer[] }; error?: { code: number; message: string } };
+    const _outRes   = outRes   as { result?: { transfers?: AlchemyTransfer[] }; error?: { code: number; message: string } };
+
+    // Guard 1: eth_blockNumber fallito → throw, il frontend NON avanza il checkpoint
+    if (!_blockRes?.result) {
+      logger.error({ chainId }, "[TX History] eth_blockNumber returned null for chain %d — refusing to advance checkpoint", chainId);
+      throw new AppError("ALCHEMY_BLOCK_ERROR", 502);
+    }
+
+    // Guard 2: Alchemy ha restituito un error object (rate limit, key invalida, ecc.)
+    // Senza questo guard, transfers = [] ma latestBlock avanza → silent skip permanente
+    if (_inRes.error || _outRes.error) {
+      const alchemyError = _inRes.error ?? _outRes.error;
+      logger.error({ chainId, alchemyError }, "[TX History] Alchemy error for chain %d — refusing to advance checkpoint", chainId);
+      throw new AppError("ALCHEMY_ERROR", 502);
+    }
+
+    const latestBlock = _blockRes.result;
+    const inT  = (_inRes?.result?.transfers  ?? []) as AlchemyTransfer[];
+    const outT = (_outRes?.result?.transfers ?? []) as AlchemyTransfer[];
+    const transfers = [
+      ...inT.map(t  => _mapAlchemy(t, address, "in",  chainId)),
+      ...outT.map(t => _mapAlchemy(t, address, "out", chainId)),
+    ].sort((a: any, b: any) => (b.blockNum > a.blockNum ? 1 : -1));
 
     res.json({ data: { transfers, latestBlock } });
   } catch (err) { next(err); }

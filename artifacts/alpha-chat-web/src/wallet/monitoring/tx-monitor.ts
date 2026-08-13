@@ -92,7 +92,16 @@ async function pollEvmChain(
   try {
     result = await apiWalletGetEvmTransactions(chainId, address, fromBlock);
   } catch {
-    // Errore di rete: non aggiornare il lastBlock, riprova al prossimo ciclo
+    // Errore di rete o errore backend (ALCHEMY_ERROR, ALCHEMY_BLOCK_ERROR, ecc.):
+    // NON aggiornare il lastBlock — riprova al prossimo ciclo.
+    return fromBlock ?? "0x0";
+  }
+
+  // Belt-and-suspenders: se latestBlock è "0x0" o mancante (eth_blockNumber fallito
+  // lato server ma non ha generato un throw), NON avanzare il checkpoint.
+  // Il backend dovrebbe già aver thrown (AppError ALCHEMY_BLOCK_ERROR), ma questa
+  // guardia protegge da future regressioni o mock non aggiornati.
+  if (!result.latestBlock || result.latestBlock === "0x0") {
     return fromBlock ?? "0x0";
   }
 
@@ -418,17 +427,30 @@ export class TxMonitor {
           const result = await apiWalletGetEvmTransactions(
             chainId, this._evmAddress, prevBlock
           );
+
+          // Belt-and-suspenders: il backend dovrebbe già aver thrown se
+          // eth_blockNumber fallisce (AppError ALCHEMY_BLOCK_ERROR) o se
+          // Alchemy restituisce error (AppError ALCHEMY_ERROR). Questa guardia
+          // protegge da future regressioni: se "0x0" dovesse filtrare attraverso,
+          // NON avanziamo il checkpoint — trattiamo come soft-failure.
+          if (!result.latestBlock || result.latestBlock === "0x0") {
+            hadError = true;
+            continue; // checkpoint invariato per questa chain
+          }
+
           for (const tx of result.transfers) {
             txsThisRound.set(tx.hash.toLowerCase(), tx);
             await _processEvmTx(tx, this._evmAddress, chainId);
           }
+
           if (result.latestBlock !== prevBlock) {
             state.evmLastBlock[chainId] = result.latestBlock;
             if (result.transfers.length > 0) hasNew = true;
           }
         } catch {
           hadError = true;
-          // Non aggiornare lastBlock — riprova al prossimo ciclo
+          // Errore di rete o errore backend (ALCHEMY_ERROR, ecc.):
+          // NON aggiornare lastBlock — riprova al prossimo ciclo
         }
       }
       // Reconcile pending EVM TX con i dati appena ottenuti

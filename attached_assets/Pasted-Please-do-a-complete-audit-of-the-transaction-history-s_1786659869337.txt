@@ -1,0 +1,70 @@
+Please do a complete audit of the transaction-history system across ALL supported chains.
+
+This is important: the bug we just found with BSC and Alchemy must never be able to happen silently on another chain.
+
+Requirements:
+
+1. Audit EVERY supported chain individually.
+   - Verify that every chain has a valid RPC/Alchemy/explorer endpoint.
+   - Verify that no chain has an empty, undefined, falsy, malformed, or missing URL.
+   - Verify that incoming and outgoing transaction polling works for every chain.
+   - Verify pagination/order parameters and make sure the newest transactions cannot be skipped.
+   - Verify fromBlock/latestBlock handling and make sure there is no possible gap during the initial sync or subsequent polling.
+   - Verify error handling: if a chain fails, it must NOT silently mark that chain as synchronized.
+   - A failed chain must remain retryable and must visibly report/log the failure.
+   - Check all EVM chains currently supported by Alpha Wallet, not just BSC.
+
+2. Check for the same class of bug outside EVM.
+   Audit BTC, Lightning/Spark, and every other transaction-history source currently supported by the wallet.
+   Do not modify unrelated wallet functionality, but identify any equivalent risk where transactions could be silently skipped.
+
+3. Add defensive safeguards so this class of problem cannot silently recur.
+   The history monitor should never advance its checkpoint/latestBlock past a range that was not successfully processed.
+   If an API returns an error, empty endpoint, malformed response, or incomplete result, do not advance the checkpoint.
+
+4. Recovery mechanism:
+   Keep the existing 🔄 manual history resync.
+   Verify that it works correctly for ALL supported chains, not only EVM.
+   It must safely rebuild/reconcile recent history without creating duplicate transactions.
+
+5. IMPORTANT — manually restore the two missing recent USDT transactions that were already identified in the previous audit:
+   - the 2 USDT received transactions
+   - the 1 USDT sent transaction
+
+   The previous report explicitly identified these transactions as having fallen into the historical polling gap.
+
+   Before inserting anything manually:
+   - locate the exact transaction hashes and chain/network from the existing data/logs if available;
+   - verify them against the blockchain/API;
+   - do NOT invent transaction hashes, block numbers, timestamps, addresses, or amounts.
+
+   Once verified, add/reconcile them into the transaction history using the application's normal transaction-history data model, so they appear exactly like normally discovered transactions.
+   Make the operation idempotent: running the sync again must not create duplicates.
+
+6. Do NOT change:
+   - Capacitor
+   - PWA architecture
+   - Signal/E2E
+   - WebRTC
+   - authentication
+   - routing
+   - Spark/Lightning core
+   - wallet signing/security
+   unless absolutely required for this specific transaction-history audit.
+
+7. Testing:
+   - Run the complete frontend test suite: expected 993/993 or higher if new tests are added.
+   - Run backend typecheck.
+   - Run relevant backend tests.
+   - Add regression tests for every chain-specific failure found.
+   - Add a test proving that a failed chain does NOT advance its checkpoint.
+   - Add a test proving that the newest transactions are returned first.
+   - Add a test proving that manual resync cannot create duplicates.
+
+Before modifying anything, report:
+A) every supported chain you found,
+B) the transaction-history endpoint/configuration used by each chain,
+C) any additional bugs or risks found,
+D) the exact files you plan to modify.
+
+Then implement the fixes and provide a final report with all modified files and test results.
