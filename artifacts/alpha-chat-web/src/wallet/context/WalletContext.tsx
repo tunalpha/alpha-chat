@@ -85,6 +85,8 @@ interface WalletContextValue {
   // Phase F: storico transazioni
   txHistory: WalletTxRecord[];
   refreshTxHistory: () => Promise<void>;
+  /** Reset monitor state + repoll immediato: recupera TX mancanti dal gap storico */
+  resetAndRepoll: () => Promise<void>;
   // Operazioni wallet
   createWallet: (pin: string) => Promise<string>; // restituisce mnemonic
   importWallet: (mnemonic: string, pin: string) => Promise<void>;
@@ -188,6 +190,16 @@ export function WalletProvider({ children }: WalletProviderProps) {
     const history = await loadTxHistory(100);
     setTxHistory(history);
   }, []);
+
+  /** Resetta lo stato del monitor (evmLastBlock → 0x0) e forza un poll immediato.
+   *  Usato dal pulsante "Aggiorna storico" in HistoryView per recuperare TX
+   *  finite nel gap tra il primo poll (fromBlock=0x0 ASC, ora corretto in DESC)
+   *  e il blocco corrente. */
+  const resetAndRepoll = useCallback(async () => {
+    await TxMonitor_resetState();
+    await txMonitor.forcePoll();
+    await _refreshTxHistory();
+  }, [_refreshTxHistory]);
 
   // ── Operazioni wallet ───────────────────────────────────────────────────
 
@@ -326,6 +338,7 @@ export function WalletProvider({ children }: WalletProviderProps) {
         customTokens,
         txHistory,
         refreshTxHistory: _refreshTxHistory,
+        resetAndRepoll,
         createWallet,
         importWallet,
         unlockWallet,

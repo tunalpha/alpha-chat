@@ -489,7 +489,7 @@ export async function getWalletPrices(
 const ALCHEMY_URLS: Record<number, string> = {
   1:   `https://eth-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
   137: `https://polygon-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
-  56:  "",
+  56:  `https://bnb-mainnet.g.alchemy.com/v2/${process.env.ALCHEMY_API_KEY}`,
 };
 
 // ─── EVM Transaction Receipt ──────────────────────────────────────────────
@@ -558,12 +558,12 @@ export async function getEvmTransactions(
         fetch(alchemyUrl, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "alchemy_getAssetTransfers", params: [{ fromBlock, toAddress: address, category: ["external", "erc20"], withMetadata: true, maxCount: "0x32" }] }),
+          body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "alchemy_getAssetTransfers", params: [{ fromBlock, toAddress: address, category: ["external", "erc20"], withMetadata: true, maxCount: "0x32", order: "desc" }] }),
         }).then(r => r.json()),
         fetch(alchemyUrl, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ jsonrpc: "2.0", id: 2, method: "alchemy_getAssetTransfers", params: [{ fromBlock, fromAddress: address, category: ["external", "erc20"], withMetadata: true, maxCount: "0x32" }] }),
+          body: JSON.stringify({ jsonrpc: "2.0", id: 2, method: "alchemy_getAssetTransfers", params: [{ fromBlock, fromAddress: address, category: ["external", "erc20"], withMetadata: true, maxCount: "0x32", order: "desc" }] }),
         }).then(r => r.json()),
         fetch(alchemyUrl, {
           method: "POST",

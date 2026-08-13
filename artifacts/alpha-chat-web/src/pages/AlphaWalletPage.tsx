@@ -3334,9 +3334,10 @@ function HistoryView({ onBack }: { onBack: () => void }) {
   );
 
   // ── On-chain state ──────────────────────────────────────────────────────
-  const [filter,     setFilter]     = useState<TxFilter>("all");
-  const [selectedTx, setSelectedTx] = useState<WalletTxRecord | null>(null);
-  const [page,       setPage]       = useState(1);
+  const [filter,      setFilter]      = useState<TxFilter>("all");
+  const [selectedTx,  setSelectedTx]  = useState<WalletTxRecord | null>(null);
+  const [page,        setPage]        = useState(1);
+  const [repolling,   setRepolling]   = useState(false);
   const PAGE_SIZE = 30;
 
   // ── Lightning state ─────────────────────────────────────────────────────
@@ -3440,6 +3441,12 @@ function HistoryView({ onBack }: { onBack: () => void }) {
   }
 
   // ── On-chain tab ────────────────────────────────────────────────────────
+  async function handleResetAndRepoll() {
+    if (repolling) return;
+    setRepolling(true);
+    try { await wallet.resetAndRepoll(); } finally { setRepolling(false); }
+  }
+
   const filtered = wallet.txHistory.filter(tx => {
     if (filter === "all") return true;
     if (filter === "in") return tx.direction === "in" && tx.status !== "pending";
@@ -3454,7 +3461,7 @@ function HistoryView({ onBack }: { onBack: () => void }) {
   return (
     <div className="aw-history">
       {tabBar}
-      <div className="aw-history-filters">
+      <div className="aw-history-filters" style={{ display: "flex", alignItems: "center", gap: 6 }}>
         {(["all", "in", "out", "pending"] as TxFilter[]).map(f => (
           <button
             key={f}
@@ -3464,6 +3471,16 @@ function HistoryView({ onBack }: { onBack: () => void }) {
             {f === "all" ? "Tutto" : f === "in" ? "💰 Ricevuto" : f === "out" ? "📤 Inviato" : "⏳ In attesa"}
           </button>
         ))}
+        {/* Pulsante reset monitor: forza un poll fresco da block 0 con order:desc */}
+        <button
+          className="aw-filter-chip"
+          style={{ marginLeft: "auto", minWidth: 32, opacity: repolling ? 0.5 : 1 }}
+          disabled={repolling}
+          onClick={() => { void handleResetAndRepoll(); }}
+          title="Aggiorna storico completo"
+        >
+          {repolling ? "⏳" : "🔄"}
+        </button>
       </div>
 
       {filtered.length === 0 ? (
