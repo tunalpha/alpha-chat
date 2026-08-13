@@ -150,35 +150,19 @@ export function SparkWalletProvider({ children, isEnabled, storageDir = "spark-w
   }, [isEnabled]);
 
   const connect = useCallback(async () => {
-    const { updateSparkDiag, sanitizeErrorMsg } = await import("../lib/spark/spark-diag");
-    // ── SPARK_DIAG ──────────────────────────────────────────────────────────
-    updateSparkDiag({ connectCalled: "YES", sparkState: "connecting" });
-    console.log("[SPARK_DIAG] SparkWalletContext.connect() called, isEnabled:", isEnabled);
-    // ────────────────────────────────────────────────────────────────────────
     if (!isEnabled) return;
     setState("connecting");
     setError(undefined);
     try {
-      console.log("[SPARK_DIAG] createSparkAdapter() starting");
       const adapter = await createSparkAdapter();
-      console.log("[SPARK_DIAG] adapter created, type:", adapter.adapterType);
       adapterRef.current = adapter;
       // getMnemonic iniettato da App.tsx — legge keystore Alpha Wallet via sessionStorage.
       // SECURITY: il plaintext mnemonic esiste in memoria solo durante connect().
-      console.log("[SPARK_DIAG] adapter.connect() starting, storageDir:", storageDir);
       await adapter.connect({ storageDir, network: "mainnet", getMnemonic });
-      console.log("[SPARK_DIAG] adapter.connect() OK — calling getInfo()");
       const info = await adapter.getInfo();
-      const sat = info.balanceSat?.toString() ?? "0";
-      console.log("[SPARK_DIAG] getInfo OK, balanceSat:", sat);
-      updateSparkDiag({ sparkState: "connected", sparkSat: `${sat} sat`, syncWallet: "PASS" });
       setInfo(info);
       setState("connected");
-      console.log("[SPARK_DIAG] state → connected ✓");
     } catch (err) {
-      const msg = sanitizeErrorMsg(err instanceof Error ? err.message : String(err));
-      console.log("[SPARK_DIAG] connect() CATCH:", msg);
-      updateSparkDiag({ sparkState: "error" });
       const e: SparkAdapterError = {
         code:        "CONNECT_FAILED",
         message:     err instanceof Error ? err.message : String(err),

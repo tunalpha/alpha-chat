@@ -46,10 +46,6 @@ export class LiveSparkAdapter implements BreezSparkAdapter {
     // Salva il callback prima di tutto
     if (config.getMnemonic) this._getMnemonicFn = config.getMnemonic;
     this._state = "connecting";
-    // ── SPARK_DIAG ──────────────────────────────────────────────────────────
-    const { updateSparkDiag, sanitizeErrorMsg } = await import("../spark-diag");
-    console.log("[SPARK_DIAG] LiveSparkAdapter.connect() start");
-    // ────────────────────────────────────────────────────────────────────────
     try {
       // Dynamic import — il WASM viene caricato qui (lazy).
       // L'SDK è servito come file statico da public/spark/ (non bundlato —
@@ -59,14 +55,10 @@ export class LiveSparkAdapter implements BreezSparkAdapter {
       const sparkUrl  = `${sparkBase}/spark/index.js`;
       // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
       const sdkModule = await import(/* @vite-ignore */ sparkUrl) as Record<string, unknown>;
-      const sdkKeys = Object.keys(sdkModule).join(",");
-      console.log("[SPARK_DIAG] SDK module imported, keys:", sdkKeys);
 
       // initBreezSDK() imposta IndexedDB storage — obbligatorio prima di connect()
       if (typeof sdkModule["default"] === "function") {
-        console.log("[SPARK_DIAG] calling sdkModule.default() (WASM init)");
         await (sdkModule["default"] as () => Promise<void>)();
-        console.log("[SPARK_DIAG] WASM init OK");
       }
 
       const connectFn     = sdkModule["connect"] as (req: unknown) => Promise<unknown>;
@@ -76,15 +68,11 @@ export class LiveSparkAdapter implements BreezSparkAdapter {
 
       // SECURITY: apiKey mai loggata, mai in localStorage
       const apiKey = (import.meta.env as Record<string, string>)["VITE_BREEZ_API_KEY"];
-      console.log("[SPARK_DIAG] apiKeyPresent:", !!apiKey, "cfgKeys:", Object.keys(cfg).join(","));
       if (apiKey) cfg["apiKey"] = apiKey;
 
       // SECURITY: mnemonic usato solo per derivazione locale, non trasmesso
-      console.log("[SPARK_DIAG] calling getMnemonic()");
       const mnemonic = await this._getMnemonic();
-      console.log("[SPARK_DIAG] getMnemonic OK, wordCount:", mnemonic.split(" ").length);
 
-      console.log("[SPARK_DIAG] calling Breez connectFn(), storageDir:", config.storageDir);
       this._sdk = await Promise.race([
         connectFn({
           config:     cfg,
@@ -98,12 +86,7 @@ export class LiveSparkAdapter implements BreezSparkAdapter {
 
       this._state = "connected";
       this._lastError = undefined;
-      updateSparkDiag({ breezConnect: "PASS", breezConnectError: "" });
-      console.log("[SPARK_DIAG] LiveSparkAdapter state → connected ✓");
     } catch (err) {
-      const msg = sanitizeErrorMsg(err instanceof Error ? err.message : String(err));
-      console.log("[SPARK_DIAG] LiveSparkAdapter connect() CATCH:", msg);
-      updateSparkDiag({ breezConnect: "FAIL", breezConnectError: msg });
       this._state = "error";
       this._lastError = {
         code:        "CONNECT_FAILED",

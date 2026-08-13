@@ -20,9 +20,6 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 // Phase 5: Spark/Lightning portfolio integration (safe hook — null se flag=false)
 import { useSparkWalletOptional } from "../contexts/SparkWalletContext";
-// TEMP: diagnostica Spark visibile su dispositivo (rimuovere dopo root-cause)
-import { SparkDiagPanel } from "./SparkDiagPanel";
-import { updateSparkDiag } from "../lib/spark/spark-diag";
 import { useSecurePhraseDisplay } from "../hooks/useSecurePhraseDisplay";
 import { useLock } from "../contexts/LockContext";
 import { WalletProvider, useWallet } from "../wallet/context/WalletContext";
@@ -289,8 +286,6 @@ function AlphaWalletInner({ onBack }: Props) {
         )}
       </header>
       <main className="aw-content">{renderContent()}</main>
-      {/* TEMP — diagnostica Spark visibile su dispositivo; rimuovere dopo root-cause */}
-      <SparkDiagPanel />
     </div>
   );
 }
@@ -920,49 +915,23 @@ function usePortfolioBalances() {
   // 3. Dipende da meta → null→non-null quando il wallet si sblocca = trigger naturale.
   // 4. Cooldown 30s su "error" per evitare loop se Breez SDK è irraggiungibile.
   useEffect(() => {
-    const pinPresent  = !!sessionStorage.getItem("aw_bio_pin");
-    const metaPresent = !!meta;
-    const sparkState  = spark?.state ?? "no-context";
-    // ── SPARK_DIAG ──────────────────────────────────────────────────────────
-    // ── SPARK_DIAG — sync live state ─────────────────────────────────────────
-    updateSparkDiag({ sparkState: sparkState, walletUnlocked: pinPresent ? "YES" : "NO" });
-    console.log("[SPARK_DIAG] effect fired", { isEnabled: spark?.isEnabled, state: sparkState, pinPresent, metaPresent });
-    // ────────────────────────────────────────────────────────────────────────
+    const pinPresent = !!sessionStorage.getItem("aw_bio_pin");
     if (!spark?.isEnabled) return;
     // Non interferire con stati attivi
     if (spark.state === "connecting" || spark.state === "connected" || spark.state === "syncing") return;
     // Verifica PIN: stesso check che fa getMnemonic() — se manca, wallet ancora bloccato
-    if (!pinPresent) {
-      console.log("[SPARK_DIAG] SKIP — aw_bio_pin non in sessionStorage (wallet bloccato)");
-      return;
-    }
-    // Cooldown: non ritentare "error" più di una volta ogni 30s
+    // (wallet.phase==="locked" → hook già eseguiti ma aw_bio_pin non ancora scritto)
+    if (!pinPresent) return;
+    // Cooldown 30s su "error" — evita loop rapidi se Breez SDK è irraggiungibile
     if (spark.state === "error") {
       const now = Date.now();
-      if (now - sparkRetryRef.current < 30_000) {
-        console.log("[SPARK_DIAG] SKIP — cooldown error, secondi rimanenti:", Math.round((30_000 - (now - sparkRetryRef.current)) / 1000));
-        return;
-      }
+      if (now - sparkRetryRef.current < 30_000) return;
       sparkRetryRef.current = now;
     }
-    console.log("[SPARK_DIAG] CALLING spark.connect()");
-    void spark.connect().catch((err: unknown) => {
+    void spark.connect().catch(() => {
       // state → "error" → sparkOffline=true → UI mostra "Lightning non disponibile"
-      console.log("[SPARK_DIAG] spark.connect() caught in effect:", err instanceof Error ? err.message : String(err));
     });
   }, [spark?.isEnabled, spark?.state, meta]); // meta null→non-null all'unlock = trigger
-
-  // Sync live spark state + sparkSat al pannello diagnostico
-  const sparkSatLive: bigint | null =
-    spark !== null && spark.state === "connected"
-      ? (spark.walletInfo?.balanceSat ?? null)
-      : null;
-  useEffect(() => {
-    updateSparkDiag({
-      sparkState: spark?.state ?? "no-context",
-      sparkSat:   sparkSatLive !== null ? `${sparkSatLive} sat` : "N/A",
-    });
-  }, [spark?.state, sparkSatLive]);
 
   // Spark Lightning balance — letto dal context (no fetch rete, già in memoria)
   // null se: Spark disabilitato | non connesso | walletInfo non ancora disponibile
