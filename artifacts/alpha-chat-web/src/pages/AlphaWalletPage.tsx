@@ -687,8 +687,14 @@ function OverviewView({ onNavigate }: { onNavigate: (v: WalletSubView) => void }
   const wallet = useWallet();
   const { currency } = useWalletCurrency();
   const meta = wallet.meta;
-  const isBtc = wallet.selectedChainId === 0;
+  const isBtc       = wallet.selectedChainId === 0;
+  // Phase 5: Lightning — chainId=-1 è riservato a Spark/Lightning, separato da BTC on-chain
+  const isLightning = wallet.selectedChainId === -1;
   const net = getNetworkByChainId(wallet.selectedChainId);
+  // Saldo Lightning dal Spark SDK (stato in memoria — nessuna fetch blockchain)
+  const spark          = useSparkWalletOptional();
+  const sparkConnected = spark?.state === "connected";
+  const sparkBalance: bigint | null = sparkConnected ? (spark?.walletInfo?.balanceSat ?? null) : null;
   const [copied, setCopied] = useState<"evm" | "btc" | null>(null);
   const [notifPermission, setNotifPermission] = useState<NotificationPermission>("default");
 
@@ -704,6 +710,13 @@ function OverviewView({ onNavigate }: { onNavigate: (v: WalletSubView) => void }
     setBalanceLoading(true);
     setBalanceError(null);
     try {
+      if (wallet.selectedChainId === -1) {
+        // Lightning: saldo da Spark SDK (già in memoria), nessuna fetch blockchain.
+        // Fetch solo prezzi per il controvalore in fiat.
+        const pricesData = await fetchPrices().catch(() => null);
+        setPrices(pricesData);
+        return;
+      }
       const [pricesData] = await Promise.all([
         fetchPrices().catch(() => null),
         isBtc
@@ -753,7 +766,13 @@ function OverviewView({ onNavigate }: { onNavigate: (v: WalletSubView) => void }
   const fiatKey = currency.toLowerCase() as "eur" | "usd";
   let totalFiatRaw: number | null = null;
   if (prices && !balanceLoading) {
-    if (isBtc && btcBalance) {
+    if (isLightning) {
+      // Lightning: prezzo BTC, separato da BTC on-chain (no double-counting)
+      if (sparkConnected && sparkBalance !== null) {
+        const btcP = (prices.btc as { eur: number; usd: number } | undefined)?.[fiatKey] ?? 0;
+        totalFiatRaw = (Number(sparkBalance) / 1e8) * btcP;
+      }
+    } else if (isBtc && btcBalance) {
       totalFiatRaw = (Number(btcBalance.confirmedSat) / 1e8) * (prices.btc?.[fiatKey] ?? 0);
     } else if (chainBalance) {
       totalFiatRaw = 0;
@@ -770,15 +789,20 @@ function OverviewView({ onNavigate }: { onNavigate: (v: WalletSubView) => void }
 
   const primaryBalance = balanceLoading
     ? "Caricamento…"
-    : isBtc
-      ? (btcBalance?.formatted ?? "0.00000000 BTC")
-      : (chainBalance?.native.formatted ?? `0 ${wallet.selectedChainId === 1 ? "ETH" : wallet.selectedChainId === 137 ? "POL" : "BNB"}`);
+    : isLightning
+      ? (sparkConnected && sparkBalance !== null
+          ? formatSatoshisToBtc(sparkBalance)
+          : "⚡ Lightning non disponibile")
+      : isBtc
+        ? (btcBalance?.formatted ?? "0.00000000 BTC")
+        : (chainBalance?.native.formatted ?? `0 ${wallet.selectedChainId === 1 ? "ETH" : wallet.selectedChainId === 137 ? "POL" : "BNB"}`);
 
   const totalFiat = totalFiatRaw !== null
     ? new Intl.NumberFormat(currency === "EUR" ? "it-IT" : "en-US", { style: "currency", currency, maximumFractionDigits: 2 }).format(totalFiatRaw)
     : null;
 
-  const address = isBtc ? meta.btcAddress : meta.evmAddress;
+  // Lightning non ha indirizzo on-chain — non mostrare EVM né BTC address
+  const address = isLightning ? "" : isBtc ? meta.btcAddress : meta.evmAddress;
 
   return (
     <div className="aw-overview">
@@ -789,13 +813,15 @@ function OverviewView({ onNavigate }: { onNavigate: (v: WalletSubView) => void }
       <div className="aw-network-bar">
         <div className="aw-network-badge" style={{ borderColor: net?.color ?? "#888" }}>
           <span style={{ color: net?.color }}>●</span>
-          {isBtc ? "Bitcoin" : (net?.name ?? `Chain ${wallet.selectedChainId}`)}
+          {isLightning ? "⚡ Lightning" : isBtc ? "Bitcoin" : (net?.name ?? `Chain ${wallet.selectedChainId}`)}
         </div>
         <select className="aw-network-select" value={wallet.selectedChainId} onChange={e => wallet.setSelectedChainId(Number(e.target.value))} aria-label="Seleziona rete">
           <option value={137}>Polygon</option>
           <option value={1}>Ethereum</option>
           <option value={56}>BNB Smart Chain</option>
           <option value={0}>Bitcoin</option>
+          {/* Lightning è un canale off-chain (chainId=-1); mostrato solo quando Spark è abilitato */}
+          {spark?.isEnabled && <option value={-1}>⚡ Lightning</option>}
         </select>
       </div>
 
@@ -819,10 +845,17 @@ function OverviewView({ onNavigate }: { onNavigate: (v: WalletSubView) => void }
 
       {/* Actions */}
       <div className="aw-actions">
-        <button className="aw-action-btn" onClick={() => onNavigate("send")}>
+        {/* Invia/Ricevi disabilitati per Lightning — il flusso Lightning è in sviluppo */}
+        <button className="aw-action-btn"
+          onClick={() => { if (!isLightning) onNavigate("send"); }}
+          disabled={isLightning}
+          style={isLightning ? { opacity: 0.4, cursor: "not-allowed" } : undefined}>
           📤<br /><small>Invia</small>
         </button>
-        <button className="aw-action-btn" onClick={() => onNavigate("receive")}>
+        <button className="aw-action-btn"
+          onClick={() => { if (!isLightning) onNavigate("receive"); }}
+          disabled={isLightning}
+          style={isLightning ? { opacity: 0.4, cursor: "not-allowed" } : undefined}>
           📥<br /><small>Ricevi</small>
         </button>
         <button className="aw-action-btn" onClick={() => onNavigate("history")}>
@@ -834,21 +867,54 @@ function OverviewView({ onNavigate }: { onNavigate: (v: WalletSubView) => void }
         </button>
       </div>
 
-      {/* Address card */}
-      <div className="aw-address-card">
-        <div className="aw-address-label">Il tuo indirizzo {isBtc ? "Bitcoin" : (net?.shortName ?? "EVM")}</div>
-        <div className="aw-address-value">{address}</div>
-        <button className="aw-copy-btn" onClick={() => copy(address, isBtc ? "btc" : "evm")}>
-          {copied ? "✅ Copiato" : "📋 Copia"}
-        </button>
-      </div>
+      {/* Address card — nascosta per Lightning (no indirizzo on-chain) */}
+      {!isLightning && address && (
+        <div className="aw-address-card">
+          <div className="aw-address-label">Il tuo indirizzo {isBtc ? "Bitcoin" : (net?.shortName ?? "EVM")}</div>
+          <div className="aw-address-value">{address}</div>
+          <button className="aw-copy-btn" onClick={() => copy(address, isBtc ? "btc" : "evm")}>
+            {copied ? "✅ Copiato" : "📋 Copia"}
+          </button>
+        </div>
+      )}
 
-      {/* Asset list */}
+      {/* Asset list / Lightning asset */}
       <div className="aw-section-header">
         <div className="aw-section-title" style={{ margin: 0 }}>Asset</div>
-        <button className="aw-section-link" onClick={() => onNavigate("add-token")}>+ Aggiungi</button>
+        {!isLightning && <button className="aw-section-link" onClick={() => onNavigate("add-token")}>+ Aggiungi</button>}
       </div>
-      <AssetList chainId={wallet.selectedChainId} chainBalance={chainBalance} btcBalance={btcBalance} prices={prices} loading={balanceLoading} currency={currency} />
+      {isLightning ? (
+        // Lightning: mostra solo il saldo BTC Lightning dal Spark SDK
+        // NON mostrare saldi EVM/BNB/BTC on-chain
+        <div className="aw-asset-list">
+          {sparkConnected && sparkBalance !== null ? (
+            <div className="aw-asset-item">
+              <div className="aw-asset-icon">⚡</div>
+              <div className="aw-asset-info">
+                <div className="aw-asset-symbol">BTC</div>
+                <div className="aw-asset-network">Bitcoin Lightning</div>
+              </div>
+              <div className="aw-asset-balance">
+                <div className="aw-asset-amount">{formatSatoshisToBtc(sparkBalance)}</div>
+                {prices && totalFiatRaw !== null && totalFiatRaw > 0 && (
+                  <div className="aw-asset-fiat">
+                    {new Intl.NumberFormat(currency === "EUR" ? "it-IT" : "en-US", {
+                      style: "currency", currency, maximumFractionDigits: 2,
+                    }).format(totalFiatRaw)}
+                  </div>
+                )}
+              </div>
+            </div>
+          ) : (
+            <div className="aw-asset-item"
+              style={{ justifyContent: "center", color: "rgba(255,255,255,0.45)", fontSize: "0.85rem", padding: "1rem" }}>
+              ⚠️ Lightning non disponibile
+            </div>
+          )}
+        </div>
+      ) : (
+        <AssetList chainId={wallet.selectedChainId} chainBalance={chainBalance} btcBalance={btcBalance} prices={prices} loading={balanceLoading} currency={currency} />
+      )}
 
       {/* Push notification prompt */}
       {notifPermission === "default" && (
