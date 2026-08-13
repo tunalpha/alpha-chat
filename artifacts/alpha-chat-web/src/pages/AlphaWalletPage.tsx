@@ -226,7 +226,7 @@ function AlphaWalletInner({ onBack }: Props) {
           />
         );
       case "unlock":
-        return <UnlockView />;
+        return <UnlockView onExit={onBack} />;
       case "overview":
         return <OverviewView onNavigate={setSubView} />;
       case "receive":
@@ -552,7 +552,7 @@ function BackupConfirmView({ mnemonic, pin, onConfirm }: { mnemonic: string; pin
   );
 }
 
-function UnlockView() {
+function UnlockView({ onExit }: { onExit?: () => void }) {
   const wallet = useWallet();
   const lock = useLock();
   const { walletFaceIdEnabled } = useWalletFaceId();
@@ -651,6 +651,15 @@ function UnlockView() {
       <div className="aw-unlock-icon">🔐</div>
       <h2>Wallet bloccato</h2>
       <p className="aw-sub" style={{ marginBottom: 0 }}>Sblocca il wallet per continuare</p>
+      {onExit && (
+        <button
+          className="aw-btn aw-btn--ghost"
+          onClick={onExit}
+          style={{ fontSize: 13, opacity: 0.55, marginBottom: 4, marginTop: 0 }}
+        >
+          ← Indietro
+        </button>
+      )}
 
       {/* Modalità biometrica primaria */}
       {primaryBiometric && !showPin ? (

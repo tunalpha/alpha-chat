@@ -104,6 +104,27 @@ function AppContent() {
   const [peerMap, setPeerMap] = useState<Record<string, PeerInfo>>({});
   const [requestedConvId, setRequestedConvId] = useState<string | null>(null);
 
+  // ── iOS PWA history: pushState al mount del wallet ────────────────────────
+  // Senza questo, il gesto swipe-back iOS non funziona nelle SPA React
+  // (non ci sono URL change → history è vuota → il gesto è no-op).
+  useEffect(() => {
+    if (view === "alpha-wallet") {
+      history.pushState({ aw: true }, "");
+    }
+  }, [view]);
+
+  useEffect(() => {
+    const onPop = (e: PopStateEvent) => {
+      // Gesto swipe-back iOS o pulsante browser ← mentre il wallet è aperto
+      if (view === "alpha-wallet") {
+        e.preventDefault();
+        setView("chat");
+      }
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, [view]);
+
   // ── Registra il sender WS nel CallContext ─────────────────────────────────
   useEffect(() => { setWsSend(wsSend); }, [wsSend, setWsSend]);
 
