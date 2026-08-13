@@ -22,6 +22,7 @@ import { useState, useCallback, useRef, useEffect } from "react";
 import { useSparkWalletOptional } from "../contexts/SparkWalletContext";
 // Admin monitoring: registra stato Spark nell'admin monitor (fire-and-forget)
 import { apiRegisterSparkStatus } from "../lib/spark/spark-admin-register";
+import type { SparkFeeBreakdown } from "../lib/spark/spark-types";
 import { useSecurePhraseDisplay } from "../hooks/useSecurePhraseDisplay";
 import { useLock } from "../contexts/LockContext";
 import { WalletProvider, useWallet } from "../wallet/context/WalletContext";
@@ -845,17 +846,11 @@ function OverviewView({ onNavigate }: { onNavigate: (v: WalletSubView) => void }
 
       {/* Actions */}
       <div className="aw-actions">
-        {/* Invia/Ricevi disabilitati per Lightning — il flusso Lightning è in sviluppo */}
-        <button className="aw-action-btn"
-          onClick={() => { if (!isLightning) onNavigate("send"); }}
-          disabled={isLightning}
-          style={isLightning ? { opacity: 0.4, cursor: "not-allowed" } : undefined}>
+        {/* Invia/Ricevi: per Lightning usa i flussi Spark/Breez; per BTC/EVM usa i flussi on-chain */}
+        <button className="aw-action-btn" onClick={() => onNavigate("send")}>
           📤<br /><small>Invia</small>
         </button>
-        <button className="aw-action-btn"
-          onClick={() => { if (!isLightning) onNavigate("receive"); }}
-          disabled={isLightning}
-          style={isLightning ? { opacity: 0.4, cursor: "not-allowed" } : undefined}>
+        <button className="aw-action-btn" onClick={() => onNavigate("receive")}>
           📥<br /><small>Ricevi</small>
         </button>
         <button className="aw-action-btn" onClick={() => onNavigate("history")}>
@@ -1462,20 +1457,37 @@ function AssetList({ chainId, chainBalance, btcBalance, prices, loading, currenc
 // ═══════════════════════════════════════════════════════════════════════════
 
 function ReceiveView({ onBack: _onBack }: { onBack: () => void }) {
-  const wallet = useWallet();
-  const meta   = wallet.meta!;
-  const isBtc  = wallet.selectedChainId === 0;
-  const address = isBtc ? meta.btcAddress : meta.evmAddress;
-  const net     = getNetworkByChainId(wallet.selectedChainId);
-  const networkLabel = isBtc
-    ? "Bitcoin · Native SegWit"
-    : (net?.name ?? `Chain ${wallet.selectedChainId}`);
+  const wallet      = useWallet();
+  const meta        = wallet.meta!;
+  const isBtc       = wallet.selectedChainId === 0;
+  const isLightning = wallet.selectedChainId === -1;
+  const net         = getNetworkByChainId(wallet.selectedChainId);
+  const address     = isLightning ? "" : isBtc ? meta.btcAddress : meta.evmAddress;
+  const networkLabel = isLightning
+    ? "⚡ Bitcoin Lightning"
+    : isBtc
+      ? "Bitcoin · Native SegWit"
+      : (net?.name ?? `Chain ${wallet.selectedChainId}`);
 
-  const [copied,   setCopied]   = useState(false);
+  // Spark context per la generazione di invoice Lightning
+  const spark = useSparkWalletOptional();
+
+  // Stato on-chain receive (BTC / EVM)
+  const [copied,    setCopied]    = useState(false);
   const [qrDataUrl, setQrDataUrl] = useState<string>("");
 
+  // Stato Lightning receive — tutti gli hook devono essere chiamati incondizionatamente
+  const [lnAmountSat,  setLnAmountSat]  = useState("");
+  const [lnInvoice,    setLnInvoice]    = useState<string | null>(null);
+  const [lnInvoiceErr, setLnInvoiceErr] = useState<string | null>(null);
+  const [lnExpiry,     setLnExpiry]     = useState<number | null>(null);
+  const [lnLoading,    setLnLoading]    = useState(false);
+  const [lnQrUrl,      setLnQrUrl]      = useState<string>("");
+  const [lnCopied,     setLnCopied]     = useState(false);
+
+  // QR on-chain (skippato per Lightning: nessun indirizzo)
   useEffect(() => {
-    if (!address) return;
+    if (isLightning || !address) return;
     let cancelled = false;
     import("qrcode").then(mod =>
       mod.toDataURL(address, {
@@ -1485,9 +1497,9 @@ function ReceiveView({ onBack: _onBack }: { onBack: () => void }) {
         color: { dark: "#111111", light: "#ffffff" },
       })
     ).then(url => { if (!cancelled) setQrDataUrl(url); })
-     .catch(() => { /* silenzioso — mostra skeleton */ });
+     .catch(() => {});
     return () => { cancelled = true; };
-  }, [address]);
+  }, [address, isLightning]);
 
   const copy = () =>
     void navigator.clipboard.writeText(address).then(() => {
@@ -1495,6 +1507,110 @@ function ReceiveView({ onBack: _onBack }: { onBack: () => void }) {
       setTimeout(() => setCopied(false), 3000);
     });
 
+  /** Genera BOLT11 invoice via Spark SDK — non richiede saldo preesistente */
+  const generateInvoice = async () => {
+    if (!spark || spark.state !== "connected") {
+      setLnInvoiceErr("Spark non connesso. Torna al wallet e attendi la connessione Lightning.");
+      return;
+    }
+    setLnLoading(true);
+    setLnInvoiceErr(null);
+    setLnInvoice(null);
+    setLnQrUrl("");
+    try {
+      const amountSat = lnAmountSat ? BigInt(Math.round(parseFloat(lnAmountSat))) : undefined;
+      const result = await spark.createReceiveInvoice({
+        method: "bolt11",
+        amountSat,
+        description: "Alpha Wallet",
+      });
+      if (!result.bolt11) throw new Error("L'SDK non ha restituito una invoice BOLT11.");
+      setLnInvoice(result.bolt11);
+      if (result.expiresAt) setLnExpiry(result.expiresAt);
+      // QR uppercase per maggiore compatibilità con i scanner Lightning
+      const mod = await import("qrcode");
+      const url = await mod.toDataURL(result.bolt11.toUpperCase(), {
+        width: 240, margin: 2, errorCorrectionLevel: "M",
+        color: { dark: "#111111", light: "#ffffff" },
+      });
+      setLnQrUrl(url);
+    } catch (e) {
+      setLnInvoiceErr(e instanceof Error ? e.message : "Errore nella creazione dell'invoice Lightning.");
+    } finally {
+      setLnLoading(false);
+    }
+  };
+
+  // ── Lightning Receive ──────────────────────────────────────────────────────
+  if (isLightning) {
+    return (
+      <div className="aw-receive">
+        <p className="aw-receive-network-label">{networkLabel}</p>
+        {!lnInvoice ? (
+          <>
+            <label className="aw-label">Importo in sat (facoltativo)</label>
+            <input
+              type="text"
+              inputMode="numeric"
+              className="aw-input"
+              value={lnAmountSat}
+              onChange={e => setLnAmountSat(e.target.value.replace(/\D/g, ""))}
+              placeholder="Lascia vuoto per invoice «any amount»"
+            />
+            <p className="aw-receive-hint">
+              Funziona anche con saldo 0 — ricevere Lightning non richiede fondi preesistenti.
+            </p>
+            {lnInvoiceErr && <div className="aw-error">{lnInvoiceErr}</div>}
+            <button
+              className="aw-btn aw-btn--primary"
+              onClick={generateInvoice}
+              disabled={lnLoading}
+              style={{ width: "100%", marginTop: 12 }}>
+              {lnLoading ? "Generazione…" : "⚡ Genera invoice Lightning"}
+            </button>
+          </>
+        ) : (
+          <>
+            {lnQrUrl && (
+              <div className="aw-receive-qr-card">
+                <img src={lnQrUrl} alt="Lightning invoice QR" className="aw-receive-qr-img" />
+              </div>
+            )}
+            <div className="aw-receive-addr-box">
+              <span className="aw-receive-addr-text"
+                style={{ fontSize: "0.7rem", wordBreak: "break-all", letterSpacing: 0 }}>
+                {lnInvoice}
+              </span>
+            </div>
+            {lnExpiry && (
+              <p className="aw-sub" style={{ textAlign: "center", fontSize: "0.78rem", margin: "4px 0 8px" }}>
+                ⏱ Scade: {new Date(lnExpiry).toLocaleTimeString()}
+              </p>
+            )}
+            <button
+              className={`aw-receive-copy-btn${lnCopied ? " copied" : ""}`}
+              onClick={() =>
+                void navigator.clipboard.writeText(lnInvoice!).then(() => {
+                  setLnCopied(true);
+                  setTimeout(() => setLnCopied(false), 3000);
+                })
+              }
+              aria-label={lnCopied ? "Invoice copiata" : "Copia invoice Lightning"}>
+              {lnCopied ? "✅  Copiata!" : "📋  Copia invoice"}
+            </button>
+            <button
+              className="aw-btn aw-btn--secondary"
+              style={{ width: "100%", marginTop: 8 }}
+              onClick={() => { setLnInvoice(null); setLnQrUrl(""); setLnCopied(false); setLnExpiry(null); }}>
+              ↻ Nuova invoice
+            </button>
+          </>
+        )}
+      </div>
+    );
+  }
+
+  // ── On-chain Receive (BTC / EVM) ───────────────────────────────────────────
   return (
     <div className="aw-receive">
 
@@ -1579,10 +1695,13 @@ function resolveRaw(
 }
 
 function SendView({ onBack, onSuccess }: { onBack: () => void; onSuccess: () => void }) {
-  const wallet   = useWallet();
-  const meta     = wallet.meta!;
-  const chainId  = wallet.selectedChainId;
-  const isBtc    = chainId === 0;
+  const wallet      = useWallet();
+  const meta        = wallet.meta!;
+  const chainId     = wallet.selectedChainId;
+  const isBtc       = chainId === 0;
+  const isLightning = chainId === -1;
+  // Spark/Lightning context (null se spark_lightning_enabled=false)
+  const spark = useSparkWalletOptional();
 
   // Balance data
   const [chainBalance, setChainBalance] = useState<ChainBalance | null>(null);
@@ -1594,6 +1713,12 @@ function SendView({ onBack, onSuccess }: { onBack: () => void; onSuccess: () => 
     void (async () => {
       setBalLoading(true);
       try {
+        if (isLightning) {
+          // Lightning: saldo da Spark SDK (già in memoria), nessuna fetch blockchain.
+          const p = await fetchPrices().catch(() => null);
+          setPrices(p);
+          return;
+        }
         const [p] = await Promise.all([
           fetchPrices().catch(() => null),
           isBtc
@@ -1607,7 +1732,7 @@ function SendView({ onBack, onSuccess }: { onBack: () => void; onSuccess: () => 
         setPrices(p);
       } finally { setBalLoading(false); }
     })();
-  }, [chainId, meta.evmAddress, meta.btcAddress, isBtc, wallet.customTokens]);
+  }, [chainId, meta.evmAddress, meta.btcAddress, isBtc, isLightning, wallet.customTokens]);
 
   // Build asset list
   const assets: SendAsset[] = isBtc
@@ -1650,9 +1775,40 @@ function SendView({ onBack, onSuccess }: { onBack: () => void; onSuccess: () => 
   const [pin, setPin]                   = useState("");
   const [pinErr, setPinErr]             = useState<string | null>(null);
 
+  // Lightning-specific state (nessun EVM/BTC on-chain — Spark SDK)
+  const [lnInvoice,      setLnInvoice]      = useState("");
+  const [lnInvoiceErr,   setLnInvoiceErr]   = useState<string | null>(null);
+  const [lnFeeBreakdown, setLnFeeBreakdown] = useState<SparkFeeBreakdown | null>(null);
+  const [lnPaymentId,    setLnPaymentId]    = useState<string | null>(null);
+  const lightningBalanceSat = isLightning ? (spark?.walletInfo?.balanceSat ?? null) : null;
+
   const selectedAsset = assets[assetIdx] ?? assets[0];
 
   const handleProceed = async () => {
+    // ── Lightning ─────────────────────────────────────────────────────────────
+    if (isLightning) {
+      if (!lnInvoice.trim()) { setLnInvoiceErr("Inserisci un invoice Lightning (BOLT11)."); return; }
+      setLnInvoiceErr(null);
+      setStep("confirming-gas");
+      try {
+        const breakdown = await spark!.calculateSendFee({ paymentRequest: lnInvoice }, "fee_excluded");
+        // Verifica saldo Lightning sufficiente
+        if (lightningBalanceSat !== null && breakdown.totalDebitSat > lightningBalanceSat) {
+          setLnInvoiceErr(
+            `Saldo Lightning insufficiente. Necessari ${Number(breakdown.totalDebitSat)} sat, disponibili ${Number(lightningBalanceSat)} sat.`,
+          );
+          setStep("form");
+          return;
+        }
+        setLnFeeBreakdown(breakdown);
+        setStep("confirm");
+      } catch (e) {
+        setLnInvoiceErr(e instanceof Error ? e.message : "Errore nel calcolo fee Lightning.");
+        setStep("form");
+      }
+      return;
+    }
+    // ── BTC / EVM ─────────────────────────────────────────────────────────────
     if (!selectedAsset) return;
 
     // Validate recipient
@@ -1702,6 +1858,29 @@ function SendView({ onBack, onSuccess }: { onBack: () => void; onSuccess: () => 
 
   const handleSignAndSend = async () => {
     if (!validatePin(pin)) { setPinErr("PIN non valido"); return; }
+    // ── Lightning ─────────────────────────────────────────────────────────────
+    if (isLightning) {
+      setPinErr(null);
+      setStep("processing");
+      try {
+        // Verifica PIN tramite keystore (conferma identità — Spark SDK gestisce i propri segreti)
+        const keystore = await loadKeystore();
+        if (keystore) {
+          try { await decryptSeed(keystore, pin); }
+          catch { setPin(""); setStep("auth"); setPinErr("PIN errato. Riprova."); return; }
+        }
+        const { result } = await spark!.send({ paymentRequest: lnInvoice }, lnFeeBreakdown!);
+        setPin("");
+        setLnPaymentId(result.paymentId);
+        setStep("success");
+      } catch (e) {
+        setPin("");
+        setBroadcastErr(e instanceof Error ? e.message : "Errore durante il pagamento Lightning.");
+        setStep("error");
+      }
+      return;
+    }
+    // ── BTC / EVM ─────────────────────────────────────────────────────────────
     setPinErr(null);
     setStep("processing");
     // Use the raw value confirmed during handleProceed (already validated + converted from fiat if needed)
@@ -1746,6 +1925,48 @@ function SendView({ onBack, onSuccess }: { onBack: () => void; onSuccess: () => 
 
   // Render form step
   if (step === "form" || step === "confirming-gas") {
+    // ── Lightning form ──────────────────────────────────────────────────────
+    if (isLightning) {
+      return (
+        <div className="aw-send-form">
+          <h2>Invia</h2>
+          <div className="aw-send-network">⚡ Lightning</div>
+          {lightningBalanceSat !== null && (
+            <div className="aw-send-balance">
+              Disponibile:{" "}
+              <strong>{formatSatoshisToBtc(lightningBalanceSat)}</strong>
+              {lightningBalanceSat === 0n && (
+                <span style={{ color: "rgba(255,80,80,.9)", marginLeft: 8 }}>⚠️ Saldo insufficiente</span>
+              )}
+            </div>
+          )}
+          <label className="aw-label">Lightning invoice (BOLT11)</label>
+          <textarea
+            className={`aw-input${lnInvoiceErr ? " aw-input--error" : ""}`}
+            style={{ minHeight: 90, fontFamily: "monospace", fontSize: "0.78rem", resize: "vertical" }}
+            value={lnInvoice}
+            onChange={e => { setLnInvoice(e.target.value.trim()); setLnInvoiceErr(null); }}
+            placeholder="lnbc…"
+            autoComplete="off"
+            autoCapitalize="none"
+            spellCheck={false}
+          />
+          {lnInvoiceErr && <div className="aw-error">{lnInvoiceErr}</div>}
+          <p className="aw-sub" style={{ fontSize: "0.78rem", margin: "4px 0 0" }}>
+            Incolla un invoice BOLT11 generato dal destinatario.
+            NON usare indirizzi BTC on-chain (bc1…) o EVM (0x…).
+          </p>
+          <div className="aw-btn-row">
+            <button className="aw-btn aw-btn--secondary" onClick={onBack}>Annulla</button>
+            <button className="aw-btn aw-btn--primary" onClick={handleProceed}
+              disabled={step === "confirming-gas" || !lnInvoice.trim()}>
+              {step === "confirming-gas" ? "Calcolo fee…" : "Rivedi →"}
+            </button>
+          </div>
+        </div>
+      );
+    }
+    // ── BTC / EVM form ──────────────────────────────────────────────────────
     return (
       <div className="aw-send-form">
         <h2>Invia</h2>
@@ -1860,7 +2081,47 @@ function SendView({ onBack, onSuccess }: { onBack: () => void; onSuccess: () => 
     );
   }
 
-  // Confirm step
+  // ── Lightning confirm ───────────────────────────────────────────────────────
+  if (step === "confirm" && isLightning && lnFeeBreakdown) {
+    return (
+      <div className="aw-send-confirm">
+        <h2>Conferma pagamento Lightning</h2>
+        <div className="aw-confirm-table">
+          <div className="aw-confirm-row"><span>Rete</span><strong>⚡ Lightning</strong></div>
+          <div className="aw-confirm-row">
+            <span>Importo destinatario</span>
+            <strong>{satToBtc(lnFeeBreakdown.recipientAmountSat)}</strong>
+          </div>
+          <div className="aw-confirm-row">
+            <span>Fee routing (Spark)</span>
+            <strong>{Number(lnFeeBreakdown.estimatedProviderFeeSat)} sat</strong>
+          </div>
+          <div className="aw-confirm-row">
+            <span>Fee piattaforma Alpha</span>
+            <strong>{Number(lnFeeBreakdown.alphaPlatformFeeSat)} sat</strong>
+          </div>
+          <div className="aw-confirm-row aw-confirm-row--total">
+            <span>Totale addebitato</span>
+            <strong>{satToBtc(lnFeeBreakdown.totalDebitSat)}</strong>
+          </div>
+        </div>
+        {lnFeeBreakdown.quoteExpiresAt > 0 && (
+          <p className="aw-sub" style={{ fontSize: "0.78rem", textAlign: "center" }}>
+            ⏱ Quote valido fino alle {new Date(lnFeeBreakdown.quoteExpiresAt).toLocaleTimeString()}
+          </p>
+        )}
+        <div className="aw-confirm-note">
+          ⚠️ I pagamenti Lightning sono immediati e non reversibili. Verifica l'invoice prima di confermare.
+        </div>
+        <div className="aw-btn-row">
+          <button className="aw-btn aw-btn--secondary" onClick={() => setStep("form")}>← Modifica</button>
+          <button className="aw-btn aw-btn--primary" onClick={() => setStep("auth")}>Autorizza →</button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── BTC / EVM confirm ───────────────────────────────────────────────────────
   if (step === "confirm") {
     const raw2 = parseAmount(amountStr, selectedAsset?.decimals ?? 8)!;
     return (
@@ -1942,7 +2203,27 @@ function SendView({ onBack, onSuccess }: { onBack: () => void; onSuccess: () => 
     );
   }
 
-  // Success
+  // ── Lightning success ────────────────────────────────────────────────────────
+  if (step === "success" && isLightning) {
+    return (
+      <div className="aw-send-success">
+        <div className="aw-send-success-icon">✅</div>
+        <h2>Pagamento Lightning inviato!</h2>
+        <p>Il pagamento è stato completato con successo.</p>
+        {lnPaymentId && (
+          <div className="aw-tx-hash-box">
+            <div className="aw-tx-hash-label">Payment ID</div>
+            <div className="aw-tx-hash" style={{ fontSize: "0.75rem", wordBreak: "break-all" }}>
+              {lnPaymentId}
+            </div>
+          </div>
+        )}
+        <button className="aw-btn aw-btn--primary" onClick={onSuccess}>← Torna al wallet</button>
+      </div>
+    );
+  }
+
+  // ── BTC / EVM success ────────────────────────────────────────────────────────
   if (step === "success" && txHash) {
     const explorerUrl = isBtc
       ? `https://blockstream.info/tx/${txHash}`

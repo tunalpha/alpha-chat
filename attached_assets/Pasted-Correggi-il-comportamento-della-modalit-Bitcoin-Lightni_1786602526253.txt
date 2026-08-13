@@ -1,0 +1,69 @@
+Correggi il comportamento della modalità Bitcoin Lightning in Alpha Wallet.
+
+Il fix precedente per chainId=-1 è corretto per quanto riguarda:
+- selettore Lightning
+- saldo Spark
+- asset BTC Lightning
+- separazione da BTC on-chain
+- assenza di indirizzi EVM/on-chain
+
+MA è stata introdotta una regressione funzionale:
+quando Lightning è selezionato, Invia e Ricevi sono stati impostati disabled.
+
+Questo NON è il comportamento desiderato.
+
+REQUISITI:
+
+1. Quando selectedChainId === -1 (Bitcoin Lightning):
+   - Invia deve essere cliccabile.
+   - Ricevi deve essere cliccabile.
+   - Storico deve essere cliccabile.
+   - Notifiche deve essere cliccabile.
+
+2. RICEVI LIGHTNING:
+   - deve aprire il normale flusso Ricevi Bitcoin Lightning;
+   - deve permettere di creare una Lightning invoice anche con saldo 0;
+   - non deve richiedere un saldo esistente;
+   - non deve usare indirizzi BTC on-chain;
+   - deve usare Spark/Breez per la ricezione.
+
+3. INVIA LIGHTNING:
+   - deve aprire il normale flusso Invia Bitcoin Lightning;
+   - deve utilizzare Spark/Breez send;
+   - se il saldo è 0 o insufficiente, mostrare un errore chiaro di saldo insufficiente;
+   - NON deve cadere nel percorso EVM;
+   - NON deve usare Polygon/ETH/BNB/POL;
+   - NON deve usare il send BTC on-chain.
+
+4. IMPORTANTE:
+   Non modificare:
+   - SparkWalletContext.connect()
+   - LiveSparkAdapter
+   - syncWallet()
+   - Spark send/receive core
+   - Breez SDK
+   - mnemonic/keystore
+   - feature flag
+   - Payment Engine
+   - Treasury
+   - BTC on-chain
+   - USDA
+   - Signal/Chat
+   - fee logic
+
+5. Correggere esclusivamente il routing/UI dei pulsanti Invia e Ricevi in modo che chainId=-1 venga indirizzato ai rispettivi flussi Lightning già esistenti.
+
+6. BTC on-chain (chainId=0) deve continuare a comportarsi esattamente come prima.
+
+7. Non fare workaround inventati e non creare un nuovo sistema Lightning. Riutilizzare i flussi Spark/Breez già presenti nel progetto.
+
+8. Aggiungere test per verificare:
+   - Lightning → Invia disponibile
+   - Lightning → Ricevi disponibile
+   - Lightning → Invia non usa EVM
+   - Lightning → Ricevi non usa BTC on-chain
+   - Bitcoin on-chain → comportamento invariato
+
+Eseguire test e build.
+
+Prima di modificare il codice, individuare esattamente quali handler attuali usano i pulsanti Invia/Ricevi e quale routing esistente viene utilizzato per Spark/Breez. Poi applicare il fix minimo e chirurgico.
