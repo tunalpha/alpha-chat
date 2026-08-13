@@ -1,0 +1,121 @@
+CORREZIONE FINALE — CONDIVISIONE INVOICE LIGHTNING
+
+Ho testato la condivisione reale su WhatsApp.
+
+La condivisione del testo funziona, ma c'è un problema importante:
+
+attualmente viene condiviso anche:
+https://alphachat.sbs
+
+e cliccandolo WhatsApp apre la homepage di Alpha Chat.
+
+NON voglio che il link della condivisione apra la homepage.
+
+OBIETTIVO
+
+Quando condivido una invoice Lightning da Alpha Wallet, il destinatario deve poter cliccare un vero link associato ALLA SPECIFICA INVOICE e arrivare direttamente al flusso di pagamento Lightning.
+
+Esempio concettuale:
+
+⚡ Alpha Wallet
+
+Richiesta pagamento Bitcoin Lightning
+
+Importo: 6,00 €
+10.823 sat · 0,00010823 BTC
+
+Invoice Lightning:
+lnbc...
+
+⚡ Paga questa invoice Lightning
+https://alphachat.sbs/pay/lightning/...
+
+Il link deve identificare la specifica invoice e NON deve aprire la homepage.
+
+REQUISITI
+
+1. Creare un vero deep link/universal link HTTPS per una specifica invoice Lightning.
+
+2. Il link deve contenere o referenziare in modo sicuro la BOLT11 specifica generata.
+
+3. Se l'utente ha Alpha Wallet/PWA disponibile:
+   → aprire direttamente il flusso di pagamento Lightning
+   → mostrare la invoice
+   → mostrare importo in BTC/sat e, quando disponibile, equivalente fiat
+   → consentire la conferma del pagamento.
+
+4. Se l'app/PWA non è installata:
+   → aprire una pagina web dedicata alla invoice, NON la homepage.
+   → la pagina deve spiegare che si tratta di una richiesta di pagamento Bitcoin Lightning e offrire un modo compatibile per pagare/aprire un wallet Lightning.
+
+5. NON modificare la BOLT11.
+   La BOLT11 deve rimanere esattamente quella generata dallo SDK.
+
+6. Il QR deve continuare a contenere ESCLUSIVAMENTE la BOLT11.
+   NON inserire URL nel QR.
+
+7. Il pulsante "Copia invoice" deve continuare a copiare ESCLUSIVAMENTE la BOLT11.
+   Non aggiungere branding, URL o testo alla clipboard.
+
+8. Il pulsante "Condividi" invece deve condividere:
+   - branding Alpha Wallet
+   - richiesta pagamento
+   - importo
+   - BOLT11 completa
+   - un vero link cliccabile alla specifica invoice
+
+9. NON usare più https://alphachat.sbs come semplice URL promozionale nella condivisione della invoice.
+
+10. Il link deve avere un testo chiaro:
+    "⚡ Paga questa invoice Lightning"
+
+11. IMPORTANTE PRIVACY/SICUREZZA:
+    non salvare dati personali inutili.
+    Non associare la invoice a userId nel link.
+    Non esporre dati sensibili.
+    Se per creare il deep link è necessario un identificatore server-side, usare un ID casuale/opaque e non userId/email/username.
+
+12. Le invoice scadute NON devono essere condivisibili come pagamento attivo.
+    Il link deve mostrare chiaramente "Invoice scaduta" e non permettere il pagamento.
+
+13. Se la soluzione migliore è usare un Lightning URI scheme, universal link HTTPS, oppure una combinazione dei due, scegli quella più compatibile con iOS Safari/PWA, Android e WhatsApp.
+    NON implementare un semplice link alla homepage.
+
+14. Testare specificamente:
+    - iOS Safari/PWA
+    - condivisione WhatsApp
+    - apertura del link
+    - invoice pending
+    - invoice scaduta
+    - BOLT11 invariata
+    - Copia = solo BOLT11
+    - QR = solo BOLT11
+
+15. NON modificare:
+    SparkWalletContext.connect()
+    LiveSparkAdapter.connect()
+    syncWallet()
+    send()
+    receive()
+    createReceiveInvoice()
+    storico Lightning
+    IDB alpha-lightning-v1
+    BTC on-chain
+    EVM
+    USDA
+    Payment Engine
+    Signal/Chat
+    fee
+    Treasury
+
+Prima di modificare il codice, analizza l'architettura esistente e scegli la soluzione più robusta per ottenere un vero link cliccabile alla specifica invoice.
+
+Alla fine restituisci:
+- soluzione scelta
+- file modificati
+- comportamento iOS/Android/WhatsApp
+- gestione invoice scaduta
+- test
+- build
+- conferma che QR e Copia contengono ancora solo la BOLT11
+- conferma che il core Spark/Breez non è stato modificato.

@@ -1747,6 +1747,21 @@ export interface AppFeatureFlags {
   spark_lightning_enabled: boolean;
 }
 
+// ── Lightning Invoice Links — deep link per condivisione invoice ──────────────
+
+/**
+ * Crea un link opaque per una invoice BOLT11 specifica.
+ * Nessun dato personale associato: privacy by design.
+ * @returns invoiceId — ID a 12 caratteri da usare in alphachat.sbs/pay/lightning/:id
+ */
+export async function apiCreateLightningInvoiceLink(payload: {
+  bolt11:    string;
+  amountSat: number | null;
+  expiresAt: number; // Unix seconds
+}): Promise<{ invoiceId: string }> {
+  return request<{ invoiceId: string }>("POST", "/lightning/invoice-links", payload);
+}
+
 /**
  * Legge i feature flag dall'admin (endpoint senza auth, fail-open).
  * In caso di errore restituisce il default sicuro.

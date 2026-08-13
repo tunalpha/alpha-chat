@@ -38,6 +38,7 @@ import { loadKeystore, decryptSeed, loadWalletMeta } from "../wallet/core/keysto
 import { requestNotificationPermission } from "../wallet/notifications/wallet-notification-store";
 import { buildCustomTokenPreview, getVerifiedTokens } from "../wallet/evm/token-registry";
 import { apiWalletGetTokenInfo } from "../lib/alpha-wallet-api";
+import { apiCreateLightningInvoiceLink } from "../lib/api";
 import { getNetworkByChainId, txExplorerUrl } from "../wallet/evm/evm-network-config";
 import {
   notificationIcon,
@@ -1528,6 +1529,7 @@ function ReceiveView({ onBack: _onBack }: { onBack: () => void }) {
   const [lnLoading,            setLnLoading]            = useState(false);
   const [lnQrUrl,              setLnQrUrl]              = useState<string>("");
   const [lnCopied,             setLnCopied]             = useState(false);
+  const [lnShareLoading,       setLnShareLoading]       = useState(false);
   // Persistenza storico Lightning
   const [lnTxId,               setLnTxId]               = useState<string | null>(null);
   const [lnPaid,               setLnPaid]               = useState(false);
@@ -1943,25 +1945,51 @@ function ReceiveView({ onBack: _onBack }: { onBack: () => void }) {
                   {lnCopied ? "✅ Copiata!" : "📋 Copia invoice"}
                 </button>
 
-                {/* Condividi — Web Share API; fallback: copia + toast */}
+                {/* Condividi — crea deep link opaque per questa invoice, poi Web Share API */}
                 <button
                   className="aw-receive-copy-btn"
-                  style={{ flex: 1 }}
-                  onClick={() => {
-                    const sat = lnGeneratedAmountSat !== null ? Number(lnGeneratedAmountSat) : null;
-                    const satFmt = sat !== null ? sat.toLocaleString("it-IT") : null;
-                    const btcFmt = sat !== null ? (sat / 1e8).toFixed(8) : null;
+                  style={{ flex: 1, opacity: lnShareLoading ? 0.6 : 1 }}
+                  disabled={lnShareLoading}
+                  onClick={async () => {
+                    if (lnShareLoading || !lnInvoice) return;
+                    setLnShareLoading(true);
+
+                    const sat      = lnGeneratedAmountSat !== null && lnGeneratedAmountSat > 0n
+                                       ? Number(lnGeneratedAmountSat)
+                                       : null;
+                    const satFmt   = sat !== null ? sat.toLocaleString("it-IT") : null;
+                    const btcFmt   = sat !== null ? (sat / 1e8).toFixed(8) : null;
+                    const expSec   = lnExpiry !== null
+                                       ? Math.floor(lnExpiry / 1000)
+                                       : Math.floor(Date.now() / 1000) + 3600;
 
                     // Riga importo: costruita in base alla valuta scelta
                     let amountLine = "";
                     if (sat && sat > 0) {
                       if (lnInputMode !== "btc" && lnAmountStr) {
-                        const sym = lnInputMode === "eur" ? "€" : "$";
-                        const fiatFmt = parseFloat(lnAmountStr).toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                        const sym     = lnInputMode === "eur" ? "€" : "$";
+                        const fiatFmt = parseFloat(lnAmountStr).toLocaleString("it-IT", {
+                          minimumFractionDigits: 2, maximumFractionDigits: 2,
+                        });
                         amountLine = `Importo: ${sym} ${fiatFmt}\n${satFmt} sat · ${btcFmt} BTC`;
-                      } else {
+                      } else if (btcFmt) {
                         amountLine = `Importo: ${btcFmt} BTC · ${satFmt} sat`;
                       }
+                    }
+
+                    const shareTitle = "Alpha Wallet — Richiesta Bitcoin Lightning";
+                    let invoiceLink  = "https://alphachat.sbs";
+
+                    try {
+                      // Crea link opaque per questa invoice specifica (nessun userId esposto)
+                      const { invoiceId } = await apiCreateLightningInvoiceLink({
+                        bolt11:    lnInvoice,
+                        amountSat: sat,
+                        expiresAt: expSec,
+                      });
+                      invoiceLink = `https://alphachat.sbs/pay/lightning/${invoiceId}`;
+                    } catch {
+                      // Fallback silenzioso: usiamo alphachat.sbs generico
                     }
 
                     const shareText = [
@@ -1971,26 +1999,27 @@ function ReceiveView({ onBack: _onBack }: { onBack: () => void }) {
                       ...(amountLine ? ["", amountLine] : []),
                       "",
                       "Invoice Lightning:",
-                      lnInvoice!,
+                      lnInvoice,
                       "",
-                      "https://alphachat.sbs",
+                      "⚡ Paga questa invoice Lightning",
+                      invoiceLink,
                     ].join("\n");
 
-                    const shareTitle = "Alpha Wallet — Richiesta Bitcoin Lightning";
-
                     if (typeof navigator.share === "function") {
-                      void navigator.share({ title: shareTitle, text: shareText })
+                      await navigator.share({ title: shareTitle, text: shareText })
                         .catch(() => { /* utente ha annullato */ });
                     } else {
-                      // Fallback: copia il testo completo con branding e mostra toast
-                      void navigator.clipboard.writeText(shareText).then(() => {
+                      // Fallback: copia il testo con il link e mostra toast
+                      await navigator.clipboard.writeText(shareText).then(() => {
                         setLnCopied(true);
                         setTimeout(() => setLnCopied(false), 3000);
                       });
                     }
+
+                    setLnShareLoading(false);
                   }}
                   aria-label="Condividi invoice Lightning">
-                  ↗ Condividi
+                  {lnShareLoading ? "…" : "↗ Condividi"}
                 </button>
               </div>
             )}

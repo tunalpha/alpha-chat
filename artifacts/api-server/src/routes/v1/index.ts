@@ -108,4 +108,9 @@ v1Router.use("/alpha-wallet", alphaWalletRoutes);
 import sparkRoutes from "./spark.routes";
 v1Router.use("/spark", sparkRoutes);
 
+// Lightning Invoice Links — deep link pubblico per condivisione invoice BOLT11
+// POST autenticato (crea link), GET pubblico (nessun dato personale).
+import lightningRoutes from "./lightning.routes";
+v1Router.use("/lightning/invoice-links", lightningRoutes);
+
 export default v1Router;

@@ -19,6 +19,7 @@ import ArchivioPage from "./pages/ArchivioPage";
 import WalletCenterPage from "./pages/WalletCenterPage";
 import UsdaSettingsPage from "./pages/UsdaSettingsPage";
 import EmergencyPage from "./pages/EmergencyPage";
+import SparkPayPage from "./pages/SparkPayPage";
 import SecurityCenterPage from "./pages/SecurityCenterPage";
 import DeadManSwitchPage from "./pages/DeadManSwitchPage";
 import RecoveryContactsPage from "./pages/RecoveryContactsPage";
@@ -87,6 +88,11 @@ export type AppView =
 function isEmergencyPath(): boolean {
   return window.location.pathname === "/emergency" ||
     window.location.pathname.endsWith("/emergency");
+}
+
+/** Controlla se l'URL è una pagina pubblica di pagamento Lightning invoice. */
+function isPayLightningPath(): boolean {
+  return /^\/pay\/lightning\/[A-Za-z0-9_-]+/.test(window.location.pathname);
 }
 
 function AppContent() {
@@ -196,6 +202,9 @@ function AppContent() {
 
   // Pagina di emergenza — accessibile senza autenticazione
   if (isEmergencyPath()) return <EmergencyPage />;
+
+  // Pagina pubblica di pagamento Lightning invoice — accessibile senza autenticazione
+  if (isPayLightningPath()) return <SparkPayPage />;
 
   if (isLoading) {
     return (
