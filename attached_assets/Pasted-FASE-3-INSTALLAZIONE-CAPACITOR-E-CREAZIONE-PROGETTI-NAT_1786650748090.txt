@@ -1,0 +1,218 @@
+FASE 3 — INSTALLAZIONE CAPACITOR E CREAZIONE PROGETTI NATIVI
+
+FASE 1 — AUDIT ✅ COMPLETATA
+FASE 2 — PREPARAZIONE CAPACITOR-READY ✅ COMPLETATA
+
+Ora procedi con la FASE 3.
+
+OBIETTIVO:
+Aggiungere Capacitor al progetto Alpha Chat esistente e creare i target nativi iOS + Android, mantenendo la Web/PWA completamente funzionante.
+
+IMPORTANTE:
+Questa fase è SOLO infrastrutturale.
+
+NON modificare il comportamento funzionale di Alpha Chat.
+NON modificare UI/UX.
+NON modificare Alpha Wallet.
+NON modificare Spark/Lightning.
+NON modificare Breez.
+NON modificare BTC.
+NON modificare EVM.
+NON modificare USDA.
+NON modificare Signal/E2E.
+NON modificare WalletConnect.
+NON modificare Face ID/WebAuthn.
+NON modificare Push.
+NON modificare WebRTC/chiamate.
+NON modificare il routing applicativo.
+NON modificare autenticazione.
+NON modificare API individuali.
+NON modificare il backend salvo ciò che è strettamente necessario per l'integrazione Capacitor.
+
+1. INSTALLAZIONE
+
+Installa le versioni compatibili e stabili di:
+
+@capacitor/core
+@capacitor/cli
+@capacitor/ios
+@capacitor/android
+
+Usa il package manager già presente nel monorepo (pnpm).
+
+Prima di installare verifica:
+- versione Node;
+- versione pnpm;
+- struttura workspace;
+- package.json corretto di alpha-chat-web;
+- compatibilità delle versioni Capacitor con il progetto.
+
+NON aggiornare arbitrariamente altre dipendenze.
+
+2. CONFIGURAZIONE
+
+Crea capacitor.config.ts nel progetto corretto.
+
+Configura:
+
+- appId: identificatore provvisorio appropriato per Alpha Chat
+- appName: Alpha Chat
+- webDir: directory di build reale del frontend (dist/public)
+- server configuration solo se realmente necessaria
+
+NON utilizzare server.url verso alphachat.sbs in produzione.
+L'app deve essere costruita con gli asset locali della web app.
+
+NON inserire password, API key o segreti.
+
+3. PROGETTI NATIVI
+
+Aggiungi:
+
+ios/
+android/
+
+usando Capacitor.
+
+NON aggiungere ancora plugin nativi funzionali.
+
+NON implementare ancora:
+- APNs
+- FCM
+- Face ID nativo
+- CallKit
+- PushKit
+- WalletConnect native deep link
+- Lightning native deep link
+- Spark native
+- COOP/COEP injection
+
+Queste saranno fasi successive.
+
+4. BUILD WEB
+
+Esegui la build dell'attuale alpha-chat-web.
+
+Verifica che:
+
+dist/public
+
+contenga gli asset necessari.
+
+Poi esegui la sincronizzazione Capacitor.
+
+5. VERIFICA WEB/PWA
+
+Dopo l'installazione e la sincronizzazione:
+
+- esegui test frontend;
+- esegui build production;
+- verifica che la Web/PWA continui a usare:
+  VITE_API_BASE_URL fallback "/api/v1"
+  VITE_WS_BASE_URL fallback window.location
+
+NON modificare questi fallback.
+
+6. VERIFICA PROGETTO ANDROID
+
+Verifica che il progetto Android sia generato correttamente.
+
+NON implementare ancora codice Kotlin personalizzato.
+
+Controlla solamente:
+- struttura progetto;
+- Gradle;
+- manifest;
+- package/application ID;
+- Capacitor config;
+- web assets.
+
+Se possibile esegui una verifica/build Gradle senza richiedere modifiche funzionali.
+
+7. VERIFICA PROGETTO iOS
+
+Verifica che il progetto iOS sia generato correttamente.
+
+NON modificare ancora codice Swift.
+NON aggiungere entitlements funzionali.
+NON configurare certificati.
+NON configurare provisioning.
+
+Controlla:
+- struttura Xcode project;
+- Bundle Identifier;
+- Capacitor config;
+- web assets.
+
+8. IMPORTANTISSIMO — PWA
+
+La PWA attuale deve rimanere invariata.
+
+Non modificare:
+- manifest.webmanifest
+- service worker
+- pushManager
+- routing
+- UI
+- comportamento browser.
+
+9. TEST DI REGRESSIONE
+
+Esegui:
+
+Frontend:
+993/993 o numero aggiornato di test.
+
+Backend:
+test/typecheck interessati.
+
+Build:
+alpha-chat-web production.
+
+Se Capacitor introduce errori di build, correggi SOLO gli errori necessari all'integrazione Capacitor.
+
+Non correggere bug preesistenti non correlati.
+
+10. REPORT FINALE
+
+Restituisci:
+
+A. Versione Capacitor installata
+B. File modificati
+C. Nuove dipendenze
+D. capacitor.config.ts
+E. Struttura ios/
+F. Struttura android/
+G. Build web
+H. Sync Capacitor
+I. Test frontend
+J. Test backend/typecheck
+K. Eventuali problemi Android
+L. Eventuali problemi iOS
+M. Conferma esplicita che:
+
+Spark/Lightning = NON modificato
+Alpha Wallet = NON modificato
+BTC/EVM/USDA = NON modificati
+Signal = NON modificato
+Face ID = NON modificato
+WalletConnect = NON modificato
+Push = NON modificato
+WebRTC = NON modificato
+PWA = invariata
+
+IMPORTANTE:
+
+Se incontri un problema che richiede modifiche a una delle aree sopra, FERMATI e segnalalo.
+
+NON procedere autonomamente con workaround che modifichino il comportamento dell'app.
+
+FASE 3 termina con:
+- Capacitor installato;
+- ios/ creato;
+- android/ creato;
+- web build funzionante;
+- PWA funzionante;
+- nessuna funzionalità applicativa modificata.
+
+NON procedere alla FASE 4.

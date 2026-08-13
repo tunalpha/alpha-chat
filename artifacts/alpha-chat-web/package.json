@@ -13,6 +13,9 @@
   },
   "devDependencies": {
     "@breeztech/breez-sdk-spark": "0.15.1",
+    "@capacitor/android": "^8.5.0",
+    "@capacitor/cli": "^8.5.0",
+    "@capacitor/ios": "^8.5.0",
     "@hookform/resolvers": "^3.10.0",
     "@radix-ui/react-accordion": "^1.2.4",
     "@radix-ui/react-alert-dialog": "^1.1.7",
@@ -85,6 +88,7 @@
     "zod": "catalog:"
   },
   "dependencies": {
+    "@capacitor/core": "^8.5.0",
     "@noble/hashes": "^2.3.0",
     "@noble/secp256k1": "^3.1.0",
     "@scure/base": "^2.3.0",

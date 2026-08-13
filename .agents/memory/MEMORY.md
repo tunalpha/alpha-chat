@@ -95,6 +95,7 @@
 - [Spark Phase 4 — Keystore + Admin + Treasury](spark-phase4.md) — getMnemonic callback via sessionStorage aw_bio_pin; admin UI Spark fee; FeeRecordSource; 5 test file; 861 test PASS
 - [Spark Phase 5 — Pre-Go-Live Validation](spark-phase5.md) — COOP/COEP via server.mjs (no-deps) + kill switch admin panel; artifact.toml da static → process; deploy-ready 993/993 PASS
 - [Capacitor FASE 2 — platform-config](capacitor-phase2.md) — API_BASE_URL + getWsUrl() centralizzati; CAPACITOR_ORIGINS backend; biometric.ts NON toccato; 993 test green
+- [Capacitor FASE 3 — installazione base](capacitor-phase3.md) — v8.5.0; com.alphachat.app; webDir=dist/public; android/ + ios/ in artifacts/alpha-chat-web; SPM (no CocoaPods); 993 test green
 - [Lightning Invoice Deep Link](lightning-invoice-deeplink.md) — /pay/lightning/:invoiceId; AppError(code,httpStatus) no message param; isPayLightningPath() guard in App.tsx
 - [Spark auto-connect missing](spark-autoconnect.md) — SparkWalletProvider non auto-connette; fix: useEffect([spark?.isEnabled]) in usePortfolioBalances che chiama spark.connect() quando state=disabled/disconnected
 - [Spark user tracking — admin monitoring](spark-user-tracking.md) — collection spark_user_status; POST /api/v1/spark/user-status (authenticate); movimenti per-utente sempre N/D (fee records no userId)
