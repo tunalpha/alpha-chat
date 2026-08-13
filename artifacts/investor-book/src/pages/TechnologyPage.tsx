@@ -3,6 +3,9 @@ import PortalLayout from '@/components/PortalLayout';
 import { loadPortalSession } from '@/lib/portalSession';
 import { useLang } from '@/context/LanguageContext';
 import { technology as T } from '@/lib/i18n';
+import { it } from '@/content/it';
+import { en } from '@/content/en';
+import LightningSection from '@/components/sections/LightningSection';
 import '@/components/portal-layout.css';
 
 export default function TechnologyPage() {
@@ -10,6 +13,7 @@ export default function TechnologyPage() {
   const { lang } = useLang();
   const t = T[lang];
   const isIt = lang === 'it';
+  const dict = lang === 'it' ? it : en;
 
   return (
     <PortalLayout investorName={session?.investorName} sessionExpiry={session?.sessionExpiry}>
@@ -203,6 +207,11 @@ export default function TechnologyPage() {
             <span className="portal-table-val">{s.tech}</span>
           </div>
         ))}
+      </div>
+
+      {/* ── Bitcoin Lightning Network ── */}
+      <div style={{ marginBottom: 48 }}>
+        <LightningSection dict={dict} />
       </div>
 
       <div className="portal-info-box">

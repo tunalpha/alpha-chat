@@ -278,7 +278,15 @@ function AlphaWalletInner({ onBack }: Props) {
         ) : (
           <>
             <button className="aw-back-btn"
-              onClick={() => (subView === "overview" || subView === "unlock") ? onBack() : setSubView("overview")}
+              onClick={() => {
+                // Se il wallet è bloccato, ← esce sempre dal wallet (indipendente da subView).
+                // Risolve la race condition: lockWallet() imposta phase="locked" sincrono ma
+                // setSubView("unlock") arriva solo dopo il commit via useEffect — se l'utente
+                // preme ← nel frattempo subView è ancora "wallet-settings" e la vecchia logica
+                // tornava all'overview invece di uscire.
+                if (wallet.phase === "locked") { onBack(); return; }
+                (subView === "overview" || subView === "unlock") ? onBack() : setSubView("overview");
+              }}
               aria-label="Indietro"
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="20" height="20">
