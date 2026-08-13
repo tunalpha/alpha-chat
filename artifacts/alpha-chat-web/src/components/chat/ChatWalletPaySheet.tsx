@@ -46,6 +46,27 @@ import {
 } from "../../wallet/services/price-service";
 
 /**
+ * Costruisce il testo del messaggio di invito Alpha Wallet nella lingua del
+ * DESTINATARIO — non del mittente — affinché il destinatario lo comprenda.
+ * Supporta tutte le 10 lingue dell'app; fallback en se lingua sconosciuta.
+ */
+function buildWalletInviteText(recipientLang: string | undefined, name: string): string {
+  const n = name;
+  switch (recipientLang ?? "en") {
+    case "it": return `👋 Ciao ${n}! Per ricevere pagamenti diretti tramite Alpha Wallet, configura il tuo wallet su Alpha Chat: Impostazioni → Alpha Wallet. È gratuito e richiede meno di un minuto. 🔐`;
+    case "es": return `👋 ¡Hola ${n}! Para recibir pagos directos con Alpha Wallet, configura tu wallet en Alpha Chat: Ajustes → Alpha Wallet. Es gratis y tarda menos de un minuto. 🔐`;
+    case "fr": return `👋 Salut ${n}! Pour recevoir des paiements directs via Alpha Wallet, configure ton wallet sur Alpha Chat : Paramètres → Alpha Wallet. C'est gratuit et ça prend moins d'une minute. 🔐`;
+    case "de": return `👋 Hallo ${n}! Um direkte Zahlungen über Alpha Wallet zu empfangen, richte dein Wallet in Alpha Chat ein: Einstellungen → Alpha Wallet. Es ist kostenlos und dauert weniger als eine Minute. 🔐`;
+    case "pt": return `👋 Olá ${n}! Para receber pagamentos diretos via Alpha Wallet, configure sua carteira no Alpha Chat: Configurações → Alpha Wallet. É grátis e leva menos de um minuto. 🔐`;
+    case "ar": return `👋 مرحباً ${n}! لاستقبال المدفوعات المباشرة عبر Alpha Wallet، أعدّ محفظتك في Alpha Chat: الإعدادات ← Alpha Wallet. إنه مجاني ويستغرق أقل من دقيقة. 🔐`;
+    case "ru": return `👋 Привет ${n}! Чтобы получать прямые платежи через Alpha Wallet, настрой кошелёк в Alpha Chat: Настройки → Alpha Wallet. Это бесплатно и займёт меньше минуты. 🔐`;
+    case "zh": return `👋 你好 ${n}！要通过 Alpha Wallet 接收直接付款，请在 Alpha Chat 中设置钱包：设置 → Alpha Wallet。免费，不到一分钟即可完成。🔐`;
+    case "ja": return `👋 こんにちは ${n}！Alpha Wallet で直接支払いを受け取るには、Alpha Chat でウォレットを設定してください：設定 → Alpha Wallet。無料で1分もかかりません。🔐`;
+    default:   return `👋 Hi ${n}! To receive direct payments via Alpha Wallet, set up your wallet on Alpha Chat: Settings → Alpha Wallet. It's free and takes less than a minute. 🔐`;
+  }
+}
+
+/**
  * Converte un importo fiat (EUR/USD) nella stringa crypto corrispondente.
  * Ritorna stringa vuota se i prezzi non sono disponibili o l'importo non è valido.
  */
@@ -601,12 +622,12 @@ export function ChatWalletPaySheet({
                   <button
                     className="cwp-btn-invite"
                     onClick={() => {
-                      // The invite text is always sent in English —
-                      // the sender's UI language must not be imposed on the recipient.
+                      // Il testo viene costruito nella lingua del DESTINATARIO
+                      // (ritornata dal backend insieme al lookup wallet),
+                      // non nella lingua dell'interfaccia del mittente.
                       const name = recipientName ?? "there";
-                      onSendInvite(
-                        `👋 Hi ${name}! To receive direct payments via Alpha Wallet, set up your wallet on Alpha Chat: Settings → Alpha Wallet. It's free and takes less than a minute. 🔐`,
-                      );
+                      const lang = recipientInfo?.language;
+                      onSendInvite(buildWalletInviteText(lang, name));
                       onClose();
                     }}
                   >

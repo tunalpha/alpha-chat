@@ -364,6 +364,9 @@ export async function apiRecordFeeOutcome(payload: FeeRecordPayload): Promise<vo
 
 export interface RecipientWalletInfo {
   hasAlphaWallet: boolean;
+  /** Lingua preferita del destinatario (codice BCP-47 breve, es. "it", "en").
+   *  Usata per costruire il testo del messaggio di invito nella lingua giusta. */
+  language?:      string;
   evmAddress?:    string;
   btcAddress?:    string;
 }

@@ -1175,7 +1175,7 @@ export async function getAlphaWalletRecipient(
     // ── Legge solo i campi pubblici Alpha Wallet ───────────────────────────
     const targetUser = await UserModel
       .findById(targetId)
-      .select("alpha_wallet_evm_address alpha_wallet_btc_address")
+      .select("alpha_wallet_evm_address alpha_wallet_btc_address language")
       .lean();
 
     if (!targetUser) throw new AppError("USER_NOT_FOUND", 404);
@@ -1183,10 +1183,14 @@ export async function getAlphaWalletRecipient(
     const evmAddress = targetUser.alpha_wallet_evm_address ?? null;
     const btcAddress = targetUser.alpha_wallet_btc_address ?? null;
     const hasAlphaWallet = evmAddress !== null;
+    // language è usato dal mittente per costruire il messaggio di invito
+    // nella lingua del destinatario anziché nella propria.
+    const language: string = (targetUser as any).language ?? "en";
 
     res.json({
       data: {
         hasAlphaWallet,
+        language,
         ...(evmAddress ? { evmAddress } : {}),
         ...(btcAddress ? { btcAddress } : {}),
       },
