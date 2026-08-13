@@ -1477,13 +1477,21 @@ function ReceiveView({ onBack: _onBack }: { onBack: () => void }) {
   const [qrDataUrl, setQrDataUrl] = useState<string>("");
 
   // Stato Lightning receive — tutti gli hook devono essere chiamati incondizionatamente
-  const [lnAmountSat,  setLnAmountSat]  = useState("");
+  const [lnAmountStr,  setLnAmountStr]  = useState("");
+  const [lnInputMode,  setLnInputMode]  = useState<"btc" | "eur" | "usd">("btc");
+  const [lnPrices,     setLnPrices]     = useState<AssetPrices | null>(null);
   const [lnInvoice,    setLnInvoice]    = useState<string | null>(null);
   const [lnInvoiceErr, setLnInvoiceErr] = useState<string | null>(null);
   const [lnExpiry,     setLnExpiry]     = useState<number | null>(null);
   const [lnLoading,    setLnLoading]    = useState(false);
   const [lnQrUrl,      setLnQrUrl]      = useState<string>("");
   const [lnCopied,     setLnCopied]     = useState(false);
+
+  // Fetch prezzi BTC solo per Lightning (per conversione EUR/USD → sat)
+  useEffect(() => {
+    if (!isLightning) return;
+    fetchPrices().then(setLnPrices).catch(() => {});
+  }, [isLightning]);
 
   // QR on-chain (skippato per Lightning: nessun indirizzo)
   useEffect(() => {
@@ -1507,6 +1515,27 @@ function ReceiveView({ onBack: _onBack }: { onBack: () => void }) {
       setTimeout(() => setCopied(false), 3000);
     });
 
+  /**
+   * Converte l'importo inserito (BTC, EUR o USD) in satoshi.
+   * Restituisce null se vuoto, non numerico o prezzi assenti per fiat.
+   */
+  const computeLnSat = (): bigint | null => {
+    const raw = lnAmountStr.trim().replace(",", ".");
+    if (!raw) return null;
+    const num = parseFloat(raw);
+    if (isNaN(num) || num <= 0) return null;
+    if (lnInputMode === "btc") {
+      const sat = Math.round(num * 1e8);
+      return sat > 0 ? BigInt(sat) : null;
+    }
+    // EUR / USD → sat tramite prezzo BTC corrente
+    const btcPriceObj = lnPrices?.btc as { eur: number; usd: number } | undefined;
+    const btcPrice = btcPriceObj?.[lnInputMode];
+    if (!btcPrice || btcPrice <= 0) return null;
+    const sat = Math.round((num / btcPrice) * 1e8);
+    return sat > 0 ? BigInt(sat) : null;
+  };
+
   /** Genera BOLT11 invoice via Spark SDK — non richiede saldo preesistente */
   const generateInvoice = async () => {
     if (!spark || spark.state !== "connected") {
@@ -1518,7 +1547,7 @@ function ReceiveView({ onBack: _onBack }: { onBack: () => void }) {
     setLnInvoice(null);
     setLnQrUrl("");
     try {
-      const amountSat = lnAmountSat ? BigInt(Math.round(parseFloat(lnAmountSat))) : undefined;
+      const amountSat = computeLnSat() ?? undefined;
       const result = await spark.createReceiveInvoice({
         method: "bolt11",
         amountSat,
@@ -1543,22 +1572,94 @@ function ReceiveView({ onBack: _onBack }: { onBack: () => void }) {
 
   // ── Lightning Receive ──────────────────────────────────────────────────────
   if (isLightning) {
+    // Preview live: sat calcolati dall'importo corrente
+    const previewSat   = computeLnSat();
+    const previewBtc   = previewSat !== null ? (Number(previewSat) / 1e8).toFixed(8) : null;
+    const btcPriceObj  = lnPrices?.btc as { eur: number; usd: number } | undefined;
+    const inputSymbol  = lnInputMode === "btc" ? "BTC" : lnInputMode === "eur" ? "€" : "$";
+    const fiatNeeds    = lnInputMode !== "btc" && !btcPriceObj;
+
     return (
       <div className="aw-receive">
         <p className="aw-receive-network-label">{networkLabel}</p>
         {!lnInvoice ? (
           <>
-            <label className="aw-label">Importo in sat (facoltativo)</label>
-            <input
-              type="text"
-              inputMode="numeric"
-              className="aw-input"
-              value={lnAmountSat}
-              onChange={e => setLnAmountSat(e.target.value.replace(/\D/g, ""))}
-              placeholder="Lascia vuoto per invoice «any amount»"
-            />
-            <p className="aw-receive-hint">
-              Funziona anche con saldo 0 — ricevere Lightning non richiede fondi preesistenti.
+            {/* ── Selettore valuta ── */}
+            <label className="aw-label">Importo richiesto (facoltativo)</label>
+            <div className="aw-amount-mode-toggle" style={{ marginBottom: 8 }}>
+              {(["btc", "eur", "usd"] as const).map(mode => (
+                <button
+                  key={mode}
+                  type="button"
+                  className={`aw-mode-pill${lnInputMode === mode ? " aw-mode-pill--active" : ""}`}
+                  onClick={() => { setLnInputMode(mode); setLnAmountStr(""); setLnInvoiceErr(null); }}
+                  disabled={mode !== "btc" && !btcPriceObj}
+                  title={mode !== "btc" && !btcPriceObj ? "Prezzi non disponibili" : undefined}>
+                  {mode === "btc" ? "BTC" : mode === "eur" ? "€ EUR" : "$ USD"}
+                </button>
+              ))}
+            </div>
+
+            {/* ── Campo importo ── */}
+            <div className="aw-amount-row">
+              {lnInputMode !== "btc" && (
+                <span className="aw-amount-symbol" style={{ minWidth: 20, color: "rgba(255,255,255,.6)" }}>
+                  {lnInputMode === "eur" ? "€" : "$"}
+                </span>
+              )}
+              <input
+                type="text"
+                inputMode="decimal"
+                className="aw-input aw-input--amount"
+                value={lnAmountStr}
+                onChange={e => { setLnAmountStr(e.target.value.replace(",", ".")); setLnInvoiceErr(null); }}
+                placeholder={lnInputMode === "btc" ? "0.001  (vuoto = any amount)" : "0.00"}
+                autoComplete="off"
+              />
+              {lnInputMode === "btc" && (
+                <span className="aw-amount-symbol">BTC</span>
+              )}
+            </div>
+
+            {/* ── Preview conversione in tempo reale ── */}
+            {previewSat !== null && previewBtc !== null && (
+              <div className="aw-amount-fiat" style={{ margin: "4px 0 2px" }}>
+                {lnInputMode === "btc"
+                  ? `≈ ${Number(previewSat).toLocaleString()} sat`
+                  : `≈ ${previewBtc} BTC · ${Number(previewSat).toLocaleString()} sat`}
+              </div>
+            )}
+            {fiatNeeds && (
+              <div className="aw-sub" style={{ fontSize: "0.78rem", color: "rgba(255,200,0,.8)" }}>
+                Prezzi non disponibili — seleziona BTC.
+              </div>
+            )}
+
+            {/* ── Riepilogo pre-conferma ── */}
+            {previewSat !== null && (
+              <div style={{
+                margin: "10px 0 4px",
+                padding: "10px 12px",
+                background: "rgba(255,255,255,0.06)",
+                borderRadius: 10,
+                fontSize: "0.82rem",
+                lineHeight: 1.6,
+              }}>
+                <div><strong>Richiesta:</strong> {lnAmountStr} {inputSymbol}</div>
+                <div><strong>Invoice per:</strong> {previewBtc} BTC ({Number(previewSat).toLocaleString()} sat)</div>
+                {lnInputMode !== "btc" && btcPriceObj && (
+                  <div style={{ color: "rgba(255,255,255,.5)", fontSize: "0.76rem" }}>
+                    Prezzo BTC usato:{" "}
+                    {lnInputMode === "eur"
+                      ? `€ ${btcPriceObj.eur.toLocaleString("it-IT")}`
+                      : `$ ${btcPriceObj.usd.toLocaleString("en-US")}`}
+                  </div>
+                )}
+              </div>
+            )}
+
+            <p className="aw-receive-hint" style={{ marginTop: 6 }}>
+              Lascia l'importo vuoto per un invoice «any amount». Ricevere Lightning non richiede fondi preesistenti.
             </p>
             {lnInvoiceErr && <div className="aw-error">{lnInvoiceErr}</div>}
             <button
@@ -1601,7 +1702,10 @@ function ReceiveView({ onBack: _onBack }: { onBack: () => void }) {
             <button
               className="aw-btn aw-btn--secondary"
               style={{ width: "100%", marginTop: 8 }}
-              onClick={() => { setLnInvoice(null); setLnQrUrl(""); setLnCopied(false); setLnExpiry(null); }}>
+              onClick={() => {
+                setLnInvoice(null); setLnQrUrl(""); setLnCopied(false);
+                setLnExpiry(null); setLnAmountStr(""); setLnInvoiceErr(null);
+              }}>
               ↻ Nuova invoice
             </button>
           </>
