@@ -14,6 +14,7 @@ import SecurityDeepDiveSection from '@/components/sections/SecurityDeepDiveSecti
 import WalletDeepDiveSection from '@/components/sections/WalletDeepDiveSection';
 import PaymentSection from '@/components/sections/PaymentSection';
 import MultiChainSection from '@/components/sections/MultiChainSection';
+import LightningSection from '@/components/sections/LightningSection';
 import HeroPaymentSection from '@/components/sections/HeroPaymentSection';
 import HeroTransferSection from '@/components/sections/HeroTransferSection';
 import EcosystemSection from '@/components/sections/EcosystemSection';
@@ -90,6 +91,11 @@ export default function Book({ lang, theme, toggleTheme }: BookProps) {
         {/* ── Multi-Chain Engine ── */}
         <div className="max-w-4xl mx-auto px-6 mt-32 md:mt-48">
           <MultiChainSection dict={dict} />
+        </div>
+
+        {/* ── Bitcoin Lightning Network ── */}
+        <div className="max-w-4xl mx-auto px-6 mt-32 md:mt-48">
+          <LightningSection dict={dict} />
         </div>
 
         {/* ── Hero 3: Transfer ── */}

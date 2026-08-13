@@ -208,6 +208,104 @@ export const en = {
     platformFeeTitle: "Fee Model",
     platformFeeDesc: "Alpha Wallet generates revenue through a platform fee applied on each self-custodial transaction sent. The fee is calculated as a percentage of the sent amount, with a minimum floor for Bitcoin (546 sat dust limit). The flow is fully transparent: the user sees fee, net amount, and quote before signing."
   },
+  lightning: {
+    title: "Bitcoin Lightning Network",
+    subtitle: "Instant, sub-cent payments. Natively inside Alpha Wallet.",
+    desc: "Bitcoin Lightning is the Layer 2 payment network built on top of Bitcoin mainnet. Where on-chain Bitcoin transactions can take 10+ minutes and cost dollars in fees, Lightning settles payments in milliseconds for fractions of a cent — with the same cryptographic security guarantees of the Bitcoin base layer. Alpha Wallet integrates Lightning natively via Breez SDK Spark: a WebAssembly engine that runs entirely client-side, giving users a non-custodial Lightning wallet without running a full node.",
+    architectureTitle: "Network Architecture",
+    architectureLayers: [
+      {
+        name: "Bitcoin L1 — Base Layer",
+        detail: "Bitcoin mainnet · UTXO security model · final settlement anchor · 21M supply cap"
+      },
+      {
+        name: "⚡ Lightning Network — L2",
+        detail: "Payment channels · HTLC routing · millisecond settlement · sub-cent fees · BOLT11 invoices"
+      },
+      {
+        name: "Breez SDK Spark — WASM Runtime",
+        detail: "WebAssembly engine · crossOriginIsolated · COOP/COEP headers · SharedArrayBuffer · client-only"
+      },
+      {
+        name: "Alpha Wallet — Integration Layer",
+        detail: "SparkWalletProvider · BOLT11 generate/pay · IDB alpha-lightning-v1 · event subscription"
+      }
+    ],
+    bolt11Title: "BOLT11 Invoice Flow",
+    bolt11Steps: [
+      {
+        icon: "⚡",
+        name: "Generate Invoice",
+        desc: "Alpha Wallet calls Breez SDK to create a BOLT11 invoice with expirySecs: 3600 (1 hour). The SDK generates a payment hash and encodes amount, description, and expiry in the BOLT11 string."
+      },
+      {
+        icon: "📱",
+        name: "Share & Present",
+        desc: "The invoice is rendered as a scannable QR code. The user shares via Web Share API (native iOS/Android sheet) or copies the raw BOLT11 string. QR payload is exclusively the BOLT11 — no added data."
+      },
+      {
+        icon: "🔔",
+        name: "Detect Payment",
+        desc: "Breez SDK monitors the Lightning channel in real time via event subscription. When the HTLC is fulfilled, the SDK fires a payment_received event. Alpha Wallet also polls every 15 seconds as a fallback."
+      },
+      {
+        icon: "✅",
+        name: "Instant Settlement",
+        desc: "Payment credited in milliseconds. The preimage is revealed, confirming cryptographic proof of payment. The transaction is saved to IDB alpha-lightning-v1 with status paid and paidAt timestamp."
+      }
+    ],
+    sparkTitle: "Breez SDK Spark — Technical Architecture",
+    sparkFeatures: [
+      {
+        title: "WebAssembly Engine",
+        spec: "WASM · Threads",
+        desc: "Breez SDK Spark runs as a WebAssembly module with multi-threading support. The WASM binary executes entirely in the browser sandbox — no native code, no server-side Lightning node required."
+      },
+      {
+        title: "COOP / COEP Isolation",
+        spec: "crossOriginIsolated",
+        desc: "WASM threads require SharedArrayBuffer, which browsers permit only in crossOriginIsolated contexts. The app serves Cross-Origin-Opener-Policy: same-origin and Cross-Origin-Embedder-Policy: require-corp headers via a custom Node.js server."
+      },
+      {
+        title: "Non-Custodial Mnemonic",
+        spec: "BIP-39 · Session-only",
+        desc: "The Lightning wallet mnemonic is the same BIP-39 seed as Alpha Wallet, decrypted from IndexedDB using the user's PIN for the duration of the session. It is passed to the Breez SDK exclusively in RAM and never transmitted to any server."
+      },
+      {
+        title: "Payment Event Subscription",
+        spec: "addEventListener · 15s poll",
+        desc: "SDK exposes addEventListener('paymentReceived') for real-time HTLC fulfillment detection. A 15-second polling fallback via listPayments() ensures robustness in environments where the WebSocket event is missed (PWA background, iOS suspension)."
+      },
+      {
+        title: "IDB Lightning Store",
+        spec: "alpha-lightning-v1",
+        desc: "All Lightning transactions — invoices generated, payments sent, payment events — are persisted in a dedicated IndexedDB store (alpha-lightning-v1), separate from the on-chain wallet store. Records include bolt11, amountSat, status, expiresAt, paidAt, and feeSat."
+      },
+      {
+        title: "BOLT11 Invoice Control",
+        spec: "expirySecs: 3600",
+        desc: "Invoice expiry is explicitly set to 3600 seconds (1 hour) on every createReceiveInvoice() call, overriding the SDK default of ~30 days. The expiry is decoded from the BOLT11 payload and displayed as a live countdown, turning red on expiry."
+      }
+    ],
+    comparisonTitle: "Lightning vs On-Chain: When to Use Each",
+    comparisonLightning: [
+      "Instant settlement — milliseconds, not minutes",
+      "Sub-cent fees — ideal for micro-payments and tips",
+      "No on-chain escrow required — HTLC is the escrow",
+      "Ideal for frequent, smaller Bitcoin transfers",
+      "Works offline-to-online via asynchronous BOLT11 invoices"
+    ],
+    comparisonOnchainLabel: "⛓️ On-Chain (Bitcoin UTXO)",
+    comparisonOnchain: [
+      "Final, immutable settlement on Bitcoin mainnet",
+      "Suitable for large amounts without channel capacity limits",
+      "PSBT signing with Native SegWit (bech32) addresses",
+      "Dynamic miner fee via mempool estimation",
+      "No counterparty required — pure UTXO model"
+    ],
+    wasmCalloutTitle: "WASM Security Isolation",
+    wasmCalloutDesc: "The Breez SDK WASM runtime executes in a strict browser sandbox with crossOriginIsolated = true. SharedArrayBuffer — required for WASM multi-threading — is only available in this isolated context. The mnemonic is passed to WASM exclusively in memory, zeroed after SDK initialization. The Lightning node state is maintained client-side only, in WASM memory and IDB — the server has zero visibility into Lightning channel state, payment history, or the user's mnemonic."
+  },
   multiChain: {
     title: "Multi-Chain Payment Engine",
     subtitle: "On-chain escrow across four blockchains with dynamic gas abstraction.",
