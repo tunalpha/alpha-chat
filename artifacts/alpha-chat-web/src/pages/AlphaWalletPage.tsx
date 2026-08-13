@@ -278,7 +278,7 @@ function AlphaWalletInner({ onBack }: Props) {
         ) : (
           <>
             <button className="aw-back-btn"
-              onClick={() => subView === "overview" ? onBack() : setSubView("overview")}
+              onClick={() => (subView === "overview" || subView === "unlock") ? onBack() : setSubView("overview")}
               aria-label="Indietro"
             >
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="20" height="20">
