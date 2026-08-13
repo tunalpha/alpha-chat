@@ -25,4 +25,6 @@ Attempts that failed:
 2. `${import.meta.env.BASE_URL}logo.svg` → still 404 (BASE_PATH not set in dev → BASE_URL=`/` → proxy root mismatch)  
 3. `import logoAwUrl from "../assets/logo-aw.svg"` → Vite import correct, but SVG content itself malformed → iOS still broken
 
-Fix: `import logoAwUrl from "../assets/logo-aw.png"` — PNG from `public/logo.png` copied to `src/assets/logo-aw.png`.
+Fix: Use `src="/logo.png"` directly (hardcoded stable URL). `public/logo.png` → Vite copies to `dist/public/logo.png` during every build → served at `https://alphachat.sbs/logo.png` by server.mjs. No import, no hash, no BASE_URL dependency.
+
+**Why Vite asset import also failed:** even with a correct PNG import, the production build generates a DIFFERENT hash than the local build (because `BUILD_TIME` changes every millisecond — injected via `vite.config.ts define`). The deployment snapshot may be taken with SVG-import code even if PNG-import is in workspace at suggest-deploy time. Using `public/` files with hardcoded `/filename.ext` URLs is immune to all these issues.

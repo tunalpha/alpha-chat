@@ -79,7 +79,7 @@ import {
 } from "../wallet/services/btc-signer";
 import type { BtcUTXO } from "../lib/alpha-wallet-api";
 import "./AlphaWalletPage.css";
-import logoAwUrl from "../assets/logo-aw.png";
+// logo.png è in public/ → copiato da Vite in dist/public/logo.png → sempre servito a /logo.png
 
 // ─── Sub-view types ─────────────────────────────────────────────────────────
 
@@ -1844,7 +1844,7 @@ function ReceiveView({ onBack: _onBack }: { onBack: () => void }) {
               gap: 4, margin: "2px 0 10px",
             }}>
               <img
-                src={logoAwUrl}
+                src="/logo.png"
                 alt="Alpha Wallet"
                 style={{ width: 44, height: 44, borderRadius: 10, boxShadow: "0 2px 8px rgba(0,0,0,.35)" }}
                 draggable={false}
@@ -2010,11 +2010,11 @@ function ReceiveView({ onBack: _onBack }: { onBack: () => void }) {
             {/* ── URL branding sotto il pulsante ── */}
             <div style={{
               textAlign: "center",
-              marginTop: 12,
-              fontSize: "0.75rem",
-              fontWeight: 500,
-              color: "rgba(255,255,255,.45)",
-              letterSpacing: "0.03em",
+              marginTop: 14,
+              fontSize: "0.78rem",
+              fontWeight: 600,
+              color: "rgba(255,255,255,.62)",
+              letterSpacing: "0.04em",
               userSelect: "none",
             }}>
               alphachat.sbs
