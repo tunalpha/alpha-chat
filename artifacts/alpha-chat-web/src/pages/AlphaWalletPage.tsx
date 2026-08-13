@@ -1843,7 +1843,7 @@ function ReceiveView({ onBack: _onBack }: { onBack: () => void }) {
               gap: 4, margin: "2px 0 10px",
             }}>
               <img
-                src="/logo.svg"
+                src={`${import.meta.env.BASE_URL}logo.svg`}
                 alt="Alpha Wallet"
                 style={{ width: 44, height: 44, borderRadius: 10, boxShadow: "0 2px 8px rgba(0,0,0,.35)" }}
                 draggable={false}
@@ -2005,6 +2005,17 @@ function ReceiveView({ onBack: _onBack }: { onBack: () => void }) {
               }}>
               ↻ Nuova invoice
             </button>
+
+            {/* ── URL branding sotto il pulsante ── */}
+            <div style={{
+              textAlign: "center",
+              marginTop: 10,
+              fontSize: "0.72rem",
+              color: "rgba(255,255,255,.28)",
+              letterSpacing: "0.02em",
+            }}>
+              alphachat.sbs
+            </div>
           </>
         )}
       </div>
