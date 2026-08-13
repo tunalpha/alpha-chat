@@ -1,0 +1,396 @@
+ALPHA WALLET — BRANDING + CONDIVISIONE INVOICE LIGHTNING
+
+OBIETTIVO
+
+Completare la schermata "Ricevi → Bitcoin Lightning" rendendo l'invoice professionale e riconoscibile come Alpha Wallet.
+
+Aggiungere:
+
+1. Nome "Alpha Wallet"
+2. Logo ufficiale Alpha Wallet già presente nell'app
+3. Pulsante "Condividi"
+4. Condivisione nativa iOS/Android
+5. Branding nella schermata invoice
+
+NON modificare la BOLT11.
+NON modificare il QR.
+NON modificare il core Spark/Breez.
+
+==================================================
+1. HEADER INVOICE
+==================================================
+
+Nella schermata della invoice Lightning mostrare il branding:
+
+[LOGO UFFICIALE ALPHA WALLET]
+
+Alpha Wallet
+
+Bitcoin Lightning
+
+Utilizzare ESATTAMENTE il logo già presente nel progetto/app.
+
+NON creare un nuovo logo.
+NON usare un logo generico Bitcoin.
+NON modificare il logo esistente.
+
+Lo stile deve essere coerente con l'attuale UI Alpha Wallet:
+- stesso stile grafico
+- stessi colori
+- dimensioni equilibrate
+- aspetto pulito e professionale
+
+==================================================
+2. IMPORTO
+==================================================
+
+Mantenere l'attuale visualizzazione dell'importo:
+
+Importo richiesto:
+6 €
+
+≈ 0,00010823 BTC
+10.823 sat
+
+Se l'utente ha scelto BTC:
+mostrare BTC + satoshi.
+
+Se ha scelto EUR:
+mostrare EUR + BTC + satoshi.
+
+Se ha scelto USD:
+mostrare USD + BTC + satoshi.
+
+NON modificare la conversione già funzionante.
+
+==================================================
+3. SCADENZA
+==================================================
+
+Mantenere ESATTAMENTE il sistema expiry/countdown già implementato.
+
+Esempio:
+
+⏱ Scade tra 59:59
+
+Quando scade:
+
+🔴 Invoice scaduta
+
+NON creare una nuova logica expiry.
+
+NON modificare il parsing BOLT11 già implementato.
+
+==================================================
+4. QR CODE
+==================================================
+
+Il QR deve contenere ESCLUSIVAMENTE la BOLT11 paymentRequest.
+
+IMPORTANTE:
+
+NON inserire:
+- logo
+- URL
+- nome Alpha Wallet
+- testo pubblicitario
+- altri dati
+
+nel payload del QR.
+
+Il QR deve rimanere una normale BOLT11 compatibile con qualsiasi wallet Lightning.
+
+Il logo Alpha Wallet può eventualmente essere mostrato VISIVAMENTE sopra/al centro del QR solo se l'attuale libreria QR lo supporta senza modificare il payload.
+
+La priorità assoluta è la compatibilità del QR.
+
+==================================================
+5. BOLT11
+==================================================
+
+Mostrare la BOLT11 come già previsto.
+
+Pulsante:
+
+[ 📋 Copia invoice ]
+
+Il pulsante Copia deve copiare ESCLUSIVAMENTE la stringa BOLT11.
+
+NON aggiungere branding dentro la clipboard.
+
+NON modificare la BOLT11.
+
+==================================================
+6. NUOVO PULSANTE CONDIVIDI
+==================================================
+
+Aggiungere:
+
+[ 📋 Copia invoice ]   [ ↗ Condividi ]
+
+Il pulsante "Condividi" deve usare:
+
+navigator.share()
+
+/ Web Share API
+
+quando disponibile.
+
+Su iPhone deve aprire il normale menu nativo di condivisione iOS.
+
+Su Android deve utilizzare il normale sistema di condivisione Android.
+
+==================================================
+7. CONTENUTO CONDIVISO
+==================================================
+
+Il messaggio condiviso deve essere professionale e riconoscibile.
+
+Esempio:
+
+⚡ Alpha Wallet
+
+Richiesta pagamento Bitcoin Lightning
+
+Importo: 6,00 €
+10.823 sat
+≈ 0,00010823 BTC
+
+Invoice Lightning:
+lnbc...
+
+Alpha Wallet:
+https://alphachat.sbs
+
+La BOLT11 deve essere inclusa integralmente nel testo condiviso.
+
+NON modificare la BOLT11.
+
+NON aggiungere caratteri dentro la stringa BOLT11.
+
+==================================================
+8. BRANDING CONDIVISIONE
+==================================================
+
+Il nome deve essere:
+
+Alpha Wallet
+
+NON:
+- Alpha Chat
+- AlphaBit
+- Bitcoin Wallet
+- Spark Wallet
+
+Il branding deve essere:
+
+⚡ Alpha Wallet
+
+e deve essere presente nel contenuto condiviso.
+
+URL:
+
+https://alphachat.sbs
+
+L'URL deve essere mostrato come testo normale nel contenuto share.
+
+==================================================
+9. SHARE TITLE
+==================================================
+
+Quando la Web Share API supporta title/text:
+
+title:
+
+"Alpha Wallet — Richiesta Bitcoin Lightning"
+
+text:
+
+"⚡ Alpha Wallet
+
+Richiesta pagamento Bitcoin Lightning
+
+Importo: ...
+
+Invoice Lightning:
+lnbc...
+
+https://alphachat.sbs"
+
+Non dipendere da un'immagine o da un file per la condivisione.
+
+La condivisione deve funzionare anche se il sistema non supporta share di immagini.
+
+==================================================
+10. FALLBACK
+==================================================
+
+Se navigator.share non è disponibile:
+
+NON mostrare errore.
+
+Mostrare/continuare a usare:
+
+[ 📋 Copia invoice ]
+
+Eventualmente mostrare un messaggio:
+
+"Condivisione non disponibile — invoice copiata."
+
+NON modificare il comportamento del pagamento.
+
+==================================================
+11. INVOICE SCADUTA
+==================================================
+
+Quando l'invoice è scaduta:
+
+🔴 Invoice scaduta
+
+Il pulsante Condividi può rimanere disponibile solo se coerente con l'attuale UX, ma NON deve far credere che l'invoice sia ancora valida.
+
+Preferenza:
+
+- nascondere/disabilitare Condividi per invoice scadute;
+- mantenere "Nuova invoice".
+
+NON modificare il record storico.
+
+==================================================
+12. STORICO
+==================================================
+
+Il branding non deve alterare la struttura dello storico Lightning.
+
+Mantenere:
+
+- bolt11
+- amountSat
+- paymentId
+- expiresAt
+- paidAt
+- feeSat
+- fiatAmount
+- status
+- direction
+
+==================================================
+13. SICUREZZA
+==================================================
+
+NON loggare:
+
+- BOLT11 completa
+- mnemonic
+- seed
+- private key
+- PIN
+- token
+
+NON inviare la BOLT11 a endpoint esterni aggiuntivi per generare il branding.
+
+Il contenuto share deve essere costruito localmente sul dispositivo.
+
+==================================================
+14. INVARIANTI ASSOLUTI
+==================================================
+
+NON modificare:
+
+- SparkWalletContext.connect()
+- LiveSparkAdapter.connect()
+- syncWallet()
+- send()
+- receive()
+- createReceiveInvoice()
+- parsing expiry BOLT11
+- conversione BTC/EUR/USD
+- amountSat
+- storico Lightning
+- IDB alpha-lightning-v1
+- BTC on-chain
+- EVM
+- USDA
+- Payment Engine
+- Signal/Chat
+- fee
+- Treasury
+
+Questa task riguarda SOLO:
+
+UI invoice
+branding
+nome Alpha Wallet
+logo
+Web Share API
+
+==================================================
+15. TEST OBBLIGATORI
+==================================================
+
+Verificare:
+
+1. Generazione invoice Lightning.
+2. Logo Alpha Wallet visibile.
+3. Nome "Alpha Wallet" visibile.
+4. QR funzionante.
+5. QR contiene esclusivamente BOLT11.
+6. Copia → copia solo BOLT11.
+7. Condividi → apre menu nativo iOS.
+8. Condividi → contiene "Alpha Wallet".
+9. Condividi → contiene importo.
+10. Condividi → contiene BOLT11.
+11. Condividi → contiene https://alphachat.sbs.
+12. BOLT11 condivisa rimane identica all'originale.
+13. Invoice può essere pagata da un wallet Lightning esterno.
+14. Countdown invariato.
+15. Invoice scaduta invariata.
+16. Storico invariato.
+17. BTC on-chain invariato.
+18. EVM invariato.
+
+TEST SPECIFICO IPHONE:
+
+Su Safari/PWA iOS:
+
+Ricevi → Lightning
+→ genera invoice
+→ premi "Condividi"
+→ deve apparire il menu nativo iOS.
+
+Se Web Share non è disponibile, il fallback deve funzionare senza errore.
+
+==================================================
+16. BUILD
+==================================================
+
+Eseguire:
+
+- tutti i test frontend
+- tutti i test Spark
+- TypeScript
+- build production
+
+NON fare Publish automaticamente.
+
+==================================================
+REPORT FINALE
+==================================================
+
+Restituire:
+
+1. File modificati
+2. Logo utilizzato
+3. Dove viene mostrato "Alpha Wallet"
+4. Implementazione Web Share
+5. Contenuto esatto condiviso
+6. Conferma QR = solo BOLT11
+7. Conferma Copia = solo BOLT11
+8. Test iOS/Web Share
+9. Test completi
+10. Build
+11. Conferma ZERO modifiche al core Spark/Breez
+
+STOP dopo il report.
+
+NON fare altre modifiche non richieste.

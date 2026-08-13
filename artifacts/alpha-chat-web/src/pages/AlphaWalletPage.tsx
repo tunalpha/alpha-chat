@@ -1837,6 +1837,52 @@ function ReceiveView({ onBack: _onBack }: { onBack: () => void }) {
           </>
         ) : (
           <>
+            {/* ── Branding header Alpha Wallet ─────────────────────────────── */}
+            <div style={{
+              display: "flex", flexDirection: "column", alignItems: "center",
+              gap: 4, margin: "2px 0 10px",
+            }}>
+              <img
+                src="/logo.svg"
+                alt="Alpha Wallet"
+                style={{ width: 44, height: 44, borderRadius: 10, boxShadow: "0 2px 8px rgba(0,0,0,.35)" }}
+                draggable={false}
+              />
+              <div style={{ fontWeight: 700, fontSize: "0.97rem", letterSpacing: "0.01em", lineHeight: 1.2 }}>
+                Alpha Wallet
+              </div>
+              <div style={{ fontSize: "0.75rem", color: "rgba(255,255,255,.5)", letterSpacing: "0.04em", textTransform: "uppercase" }}>
+                ⚡ Bitcoin Lightning
+              </div>
+            </div>
+
+            {/* ── Importo richiesto ─────────────────────────────────────────── */}
+            {lnGeneratedAmountSat !== null && lnGeneratedAmountSat > 0n && (() => {
+              const sat = Number(lnGeneratedAmountSat);
+              const btc = (sat / 1e8).toFixed(8);
+              const satFmt = sat.toLocaleString("it-IT");
+              return (
+                <div style={{
+                  textAlign: "center",
+                  margin: "0 0 8px",
+                  padding: "8px 12px",
+                  background: "rgba(255,255,255,0.07)",
+                  borderRadius: 10,
+                  opacity: lnExpired ? 0.5 : 1,
+                }}>
+                  {lnInputMode !== "btc" && lnAmountStr && (
+                    <div style={{ fontWeight: 700, fontSize: "1.05rem" }}>
+                      {lnInputMode === "eur" ? "€" : "$"}{" "}
+                      {parseFloat(lnAmountStr).toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    </div>
+                  )}
+                  <div style={{ fontSize: "0.82rem", color: "rgba(255,255,255,.65)" }}>
+                    {btc} BTC · {satFmt} sat
+                  </div>
+                </div>
+              );
+            })()}
+
             {/* ── QR (sempre visibile anche dopo scadenza, per consultazione) ── */}
             {lnQrUrl && (
               <div className="aw-receive-qr-card" style={lnExpired ? { opacity: 0.4 } : {}}>
@@ -1879,20 +1925,75 @@ function ReceiveView({ onBack: _onBack }: { onBack: () => void }) {
               </span>
             </div>
 
-            {/* ── Azioni ── */}
+            {/* ── Azioni: Copia + Condividi ── */}
             {!lnExpired && (
-              <button
-                className={`aw-receive-copy-btn${lnCopied ? " copied" : ""}`}
-                onClick={() =>
-                  void navigator.clipboard.writeText(lnInvoice!).then(() => {
-                    setLnCopied(true);
-                    setTimeout(() => setLnCopied(false), 3000);
-                  })
-                }
-                aria-label={lnCopied ? "Invoice copiata" : "Copia invoice Lightning"}>
-                {lnCopied ? "✅  Copiata!" : "📋  Copia invoice"}
-              </button>
+              <div style={{ display: "flex", gap: 8, marginTop: 4 }}>
+                {/* Copia BOLT11 — copia ESCLUSIVAMENTE la stringa BOLT11, nessun branding */}
+                <button
+                  className={`aw-receive-copy-btn${lnCopied ? " copied" : ""}`}
+                  style={{ flex: 1 }}
+                  onClick={() =>
+                    void navigator.clipboard.writeText(lnInvoice!).then(() => {
+                      setLnCopied(true);
+                      setTimeout(() => setLnCopied(false), 3000);
+                    })
+                  }
+                  aria-label={lnCopied ? "Invoice copiata" : "Copia invoice Lightning"}>
+                  {lnCopied ? "✅ Copiata!" : "📋 Copia invoice"}
+                </button>
+
+                {/* Condividi — Web Share API; fallback: copia + toast */}
+                <button
+                  className="aw-receive-copy-btn"
+                  style={{ flex: 1 }}
+                  onClick={() => {
+                    const sat = lnGeneratedAmountSat !== null ? Number(lnGeneratedAmountSat) : null;
+                    const satFmt = sat !== null ? sat.toLocaleString("it-IT") : null;
+                    const btcFmt = sat !== null ? (sat / 1e8).toFixed(8) : null;
+
+                    // Riga importo: costruita in base alla valuta scelta
+                    let amountLine = "";
+                    if (sat && sat > 0) {
+                      if (lnInputMode !== "btc" && lnAmountStr) {
+                        const sym = lnInputMode === "eur" ? "€" : "$";
+                        const fiatFmt = parseFloat(lnAmountStr).toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+                        amountLine = `Importo: ${sym} ${fiatFmt}\n${satFmt} sat · ${btcFmt} BTC`;
+                      } else {
+                        amountLine = `Importo: ${btcFmt} BTC · ${satFmt} sat`;
+                      }
+                    }
+
+                    const shareText = [
+                      "⚡ Alpha Wallet",
+                      "",
+                      "Richiesta pagamento Bitcoin Lightning",
+                      ...(amountLine ? ["", amountLine] : []),
+                      "",
+                      "Invoice Lightning:",
+                      lnInvoice!,
+                      "",
+                      "https://alphachat.sbs",
+                    ].join("\n");
+
+                    const shareTitle = "Alpha Wallet — Richiesta Bitcoin Lightning";
+
+                    if (typeof navigator.share === "function") {
+                      void navigator.share({ title: shareTitle, text: shareText })
+                        .catch(() => { /* utente ha annullato */ });
+                    } else {
+                      // Fallback: copia il testo completo con branding e mostra toast
+                      void navigator.clipboard.writeText(shareText).then(() => {
+                        setLnCopied(true);
+                        setTimeout(() => setLnCopied(false), 3000);
+                      });
+                    }
+                  }}
+                  aria-label="Condividi invoice Lightning">
+                  ↗ Condividi
+                </button>
+              </div>
             )}
+
             <button
               className="aw-btn aw-btn--secondary"
               style={{ width: "100%", marginTop: 8 }}
