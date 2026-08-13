@@ -289,7 +289,6 @@ function AlphaWalletInner({ onBack }: Props) {
                   🔔
                   {wallet.unreadCount > 0 && <span className="aw-badge">{wallet.unreadCount}</span>}
                 </button>
-                <button className="aw-icon-btn" onClick={() => wallet.lockWallet()} aria-label="Blocca wallet">🔒</button>
                 <button className="aw-icon-btn" onClick={() => setSubView("wallet-settings")} aria-label="Impostazioni">⚙️</button>
               </div>
             ) : <div />}
