@@ -1185,7 +1185,7 @@ export async function getAlphaWalletRecipient(
     const hasAlphaWallet = evmAddress !== null;
     // language è usato dal mittente per costruire il messaggio di invito
     // nella lingua del destinatario anziché nella propria.
-    const language: string = (targetUser as any).language ?? "en";
+    const language: string = (targetUser as any).language ?? "it";
 
     res.json({
       data: {

@@ -62,7 +62,8 @@ function buildWalletInviteText(recipientLang: string | undefined, name: string):
     case "ru": return `👋 Привет ${n}! Чтобы получать прямые платежи через Alpha Wallet, настрой кошелёк в Alpha Chat: Настройки → Alpha Wallet. Это бесплатно и займёт меньше минуты. 🔐`;
     case "zh": return `👋 你好 ${n}！要通过 Alpha Wallet 接收直接付款，请在 Alpha Chat 中设置钱包：设置 → Alpha Wallet。免费，不到一分钟即可完成。🔐`;
     case "ja": return `👋 こんにちは ${n}！Alpha Wallet で直接支払いを受け取るには、Alpha Chat でウォレットを設定してください：設定 → Alpha Wallet。無料で1分もかかりません。🔐`;
-    default:   return `👋 Hi ${n}! To receive direct payments via Alpha Wallet, set up your wallet on Alpha Chat: Settings → Alpha Wallet. It's free and takes less than a minute. 🔐`;
+    case "en": return `👋 Hi ${n}! To receive direct payments via Alpha Wallet, set up your wallet on Alpha Chat: Settings → Alpha Wallet. It's free and takes less than a minute. 🔐`;
+    default:   return `👋 Ciao ${n}! Per ricevere pagamenti diretti tramite Alpha Wallet, configura il tuo wallet su Alpha Chat: Impostazioni → Alpha Wallet. È gratuito e richiede meno di un minuto. 🔐`;
   }
 }
 
