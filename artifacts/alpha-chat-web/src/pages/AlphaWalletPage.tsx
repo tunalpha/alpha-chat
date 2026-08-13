@@ -79,7 +79,7 @@ import {
 } from "../wallet/services/btc-signer";
 import type { BtcUTXO } from "../lib/alpha-wallet-api";
 import "./AlphaWalletPage.css";
-import logoAwUrl from "../assets/logo-aw.svg";
+import logoAwUrl from "../assets/logo-aw.png";
 
 // ─── Sub-view types ─────────────────────────────────────────────────────────
 

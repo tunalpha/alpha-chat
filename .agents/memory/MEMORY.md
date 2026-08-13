@@ -85,6 +85,7 @@
 - [Alpha Wallet TX status stuck pending](alpha-wallet-tx-status-fix.md) — _reconcilePendingEvm skip silenzioso + ID bridge/monitor discrepancy + no forcePoll + stale closure; fix: receipt diretto via /evm/receipt backend
 - [Alpha Wallet — Richiedi con Alpha Wallet](alpha-wallet-request.md) — flow completo richiedente+pagante, bubble WALLETREQ:, 3 endpoint backend, WS event
 - [Build before deploy](build-before-deploy.md) — dist/public è statico; eseguire pnpm build PRIMA di ogni deploy suggestion
+- [SVG broken in img tag — malformed XML](svg-img-broken.md) — iOS Safari rifiuta SVG con XML malformato (es. `/ filter=`) in tag <img>; preferire PNG per logo in produzione
 - [Breez SDK Spark PoC](breez-spark-poc.md) — COOP/COEP headers sopravvivono al proxy Replit dev; crossOriginIsolated=true; SharedArrayBuffer OK; WASM carica
 - [Spark IDB Analysis](spark-idb-analysis.md) — IDB Breez SDK NON cifrata: valori plain JSON, preimage HTLC leggibili, mnemonic NON presente; implicazioni go-live
 - [Spark Phase 3.1 Audit](spark-phase3-audit.md) — 2 regression fixate (build blocker + static import); lazy-load pattern obbligatorio; 773/773 test PASS; prerequisiti GO-LIVE invariati
