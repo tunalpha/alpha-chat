@@ -126,6 +126,9 @@ import {
   clearSealedWalletPin,
   useWalletFaceId,
 } from "../wallet/security/wallet-pin-seal";
+// verifyBiometric diretta — NON usa LockContext per evitare side-effect su isLocked
+// e separare completamente il lock del wallet dal lock dell'app.
+import { verifyBiometric as verifyWalletBiometric } from "../lib/security/biometric";
 
 const ONBOARDING_VIEWS: WalletSubView[] = [
   "create-phrase", "create-verify", "import-phrase",
@@ -254,7 +257,7 @@ function AlphaWalletInner({ onBack }: Props) {
   const isOnboarding = ONBOARDING_VIEWS.includes(subView) || subView === "welcome";
   const subViewTitle: Partial<Record<WalletSubView, string>> = {
     overview: "Alpha Wallet", notifications: "Notifiche", "add-token": "Aggiungi Token",
-    security: "Sicurezza", unlock: "Alpha Wallet", receive: "Ricevi", send: "Invia",
+    security: "Sicurezza", unlock: "Wallet bloccato", receive: "Ricevi", send: "Invia",
     history: "Storico", "seed-export": "Recovery Phrase", "wallet-settings": "Impostazioni",
     portfolio: "Portfolio",
   };
@@ -594,12 +597,21 @@ function UnlockView() {
   };
 
   const handleBiometric = async () => {
-    if (!lock) return;
     setError(null);
     setLoading(true);
     try {
-      const ok = await lock.tryUnlockWithBiometric();
-      if (!ok) { setError("Autenticazione biometrica fallita."); setLoading(false); return; }
+      // Verifica biometrica DIRETTA — bypassa LockContext intenzionalmente:
+      // - nessun side-effect su LockContext.isLocked
+      // - nessun incremento del contatore fallimenti LockContext
+      // - nessun emergencyLock / logout account
+      const userId = localStorage.getItem("ac_user_id") ?? "";
+      const ok = await verifyWalletBiometric(userId);
+      if (!ok) {
+        setError("Autenticazione biometrica fallita. Puoi utilizzare il PIN del wallet.");
+        setShowPin(true);
+        setLoading(false);
+        return;
+      }
       // 1. Prova prima sessionStorage (stessa sessione PWA)
       const cached = sessionStorage.getItem("aw_bio_pin");
       if (cached) { await wallet.unlockWallet(cached); return; }
@@ -610,7 +622,7 @@ function UnlockView() {
       setError("Inserisci il PIN una volta per riattivare Face ID su questo dispositivo.");
       setShowPin(true);
     } catch {
-      setError("Impossibile sbloccare. Usa il PIN.");
+      setError("Impossibile sbloccare. Usa il PIN del wallet.");
       setShowPin(true);
     } finally {
       setLoading(false);
@@ -630,12 +642,12 @@ function UnlockView() {
   return (
     <div className="aw-unlock">
       <div className="aw-unlock-icon">🔐</div>
-      <h2>Alpha Wallet</h2>
+      <h2>Wallet bloccato</h2>
+      <p className="aw-sub" style={{ marginBottom: 0 }}>Sblocca il wallet per continuare</p>
 
       {/* Modalità biometrica primaria */}
       {primaryBiometric && !showPin ? (
         <>
-          <p className="aw-sub">Usa Face ID per sbloccare il wallet.</p>
           {error && <div className="aw-error">{error}</div>}
           <button
             className="aw-btn aw-btn--primary aw-btn--biometric"
@@ -651,7 +663,7 @@ function UnlockView() {
         </>
       ) : (
         <>
-          <p className="aw-sub">Inserisci il PIN per sbloccare il wallet.</p>
+          <p className="aw-sub" style={{ marginTop: 8 }}>Inserisci il PIN del wallet.</p>
           <input
             type="password"
             inputMode="numeric"
