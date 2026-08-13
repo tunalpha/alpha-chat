@@ -257,9 +257,30 @@ export default function SparkPayPage() {
             {/* Sezione info per chi non ha un wallet */}
             <div style={styles.infoBox}>
               <p style={styles.infoTitle}>Non hai un wallet Lightning?</p>
-              <p style={styles.infoText}>
-                Bitcoin Lightning è un sistema di pagamento istantaneo. Per pagare questa richiesta
-                ti serve un wallet Lightning compatibile.
+
+              {/* ── Cross-promotion Alpha Chat ─────────────────────────── */}
+              <div style={styles.alphaChatPromo}>
+                <div style={styles.alphaChatHeader}>
+                  <span style={styles.alphaChatBadge}>⚡ Hai già Alpha Chat?</span>
+                </div>
+                <p style={styles.alphaChatDesc}>
+                  Puoi pagare questa richiesta Lightning direttamente con{" "}
+                  <strong style={{ color: "#e2e8f0" }}>Alpha Wallet</strong>, integrato in Alpha Chat —
+                  la chat privata con crittografia end-to-end.
+                </p>
+                <a
+                  href="https://alphachat.sbs"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={styles.alphaChatBtn}
+                >
+                  ⚡ Apri Alpha Chat
+                </a>
+              </div>
+              {/* ──────────────────────────────────────────────────────── */}
+
+              <p style={{ ...styles.infoText, marginTop: 14 }}>
+                In alternativa, usa uno di questi wallet Lightning:
               </p>
               <div style={styles.walletList}>
                 <a href="https://phoenix.acinq.co"         target="_blank" rel="noopener noreferrer" style={styles.walletLink}>Phoenix Wallet (iOS/Android)</a>
@@ -476,6 +497,40 @@ const styles = {
     borderRadius:    12,
     padding:         "14px 16px",
     marginTop:       4,
+  },
+  alphaChatPromo: {
+    background:      "rgba(251,191,36,0.06)",
+    border:          "1px solid rgba(251,191,36,0.18)",
+    borderRadius:    10,
+    padding:         "12px 14px",
+    marginBottom:    4,
+  },
+  alphaChatHeader: {
+    marginBottom:    6,
+  },
+  alphaChatBadge: {
+    fontSize:        "0.82rem",
+    fontWeight:      700,
+    color:           "#fbbf24",
+    letterSpacing:   "0.01em",
+  },
+  alphaChatDesc: {
+    color:           "#94a3b8",
+    fontSize:        "0.8rem",
+    lineHeight:      1.5,
+    margin:          "0 0 10px",
+  },
+  alphaChatBtn: {
+    display:         "inline-block",
+    background:      "rgba(251,191,36,0.15)",
+    color:           "#fbbf24",
+    border:          "1px solid rgba(251,191,36,0.3)",
+    borderRadius:    8,
+    padding:         "7px 14px",
+    fontSize:        "0.82rem",
+    fontWeight:      700,
+    textDecoration:  "none",
+    letterSpacing:   "0.01em",
   },
   infoTitle: {
     color:           "#cbd5e1",

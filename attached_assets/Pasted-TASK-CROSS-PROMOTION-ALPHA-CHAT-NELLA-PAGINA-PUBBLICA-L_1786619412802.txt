@@ -1,0 +1,107 @@
+TASK — CROSS-PROMOTION ALPHA CHAT NELLA PAGINA PUBBLICA LIGHTNING
+
+Aggiungere nella SparkPayPage.tsx, nella sezione:
+
+"Non hai un wallet Lightning?"
+
+un riferimento a Alpha Chat per promuovere l'ecosistema Alpha senza interferire con il pagamento.
+
+OBIETTIVO
+
+Chi riceve una richiesta Lightning tramite il link pubblico deve sapere che può utilizzare Alpha Wallet direttamente tramite Alpha Chat.
+
+UI DESIDERATA
+
+Prima dei wallet esterni oppure come prima voce della sezione:
+
+⚡ Hai già Alpha Chat?
+
+Puoi pagare questa richiesta Lightning direttamente con
+Alpha Wallet integrato in Alpha Chat.
+
+[ ⚡ Apri Alpha Chat ]
+
+Sotto, mantenere i wallet Lightning esterni già presenti:
+
+Phoenix Wallet (iOS/Android)
+Breez Wallet (iOS/Android)
+Muun Wallet (iOS/Android)
+Blue Wallet (iOS/Android)
+
+Il pulsante/link "Apri Alpha Chat" deve aprire:
+
+https://alphachat.sbs
+
+in modo sicuro.
+
+AGGIUNGERE ANCHE UNA BREVE IDENTITÀ DEL PRODOTTO:
+
+Alpha Chat
+Chat privata con crittografia end-to-end.
+
+OBIETTIVO UX
+
+La sezione deve far capire chiaramente:
+
+1. Alpha Chat contiene Alpha Wallet.
+2. Alpha Wallet supporta Bitcoin Lightning.
+3. L'utente può utilizzare Alpha Chat come wallet/applicazione per il pagamento.
+4. Se non usa Alpha Chat, può comunque utilizzare gli altri wallet Lightning.
+
+IMPORTANTE
+
+NON trasformare Alpha Chat in un requisito per pagare.
+
+Il pagamento deve continuare a funzionare normalmente con:
+- QR Lightning;
+- Copia pagamento Lightning/BOLT11;
+- "Paga con wallet Lightning";
+- wallet Lightning esterni.
+
+NON modificare:
+- BOLT11;
+- QR;
+- deep link server-side;
+- URL opaque;
+- expiry/countdown;
+- pagamento Lightning;
+- Spark/Breez core;
+- backend invoice;
+- condivisione;
+- IndexedDB.
+
+Il link Alpha Chat deve essere esclusivamente promozionale/navigazionale.
+
+UI
+
+Mantenere esattamente lo stile grafico della pagina attuale:
+- stessa card;
+- stessi bordi;
+- stessa tipografia;
+- stesso spacing;
+- responsive mobile;
+- nessun elemento che blocchi lo scroll;
+- non rendere la sezione troppo grande.
+
+Preferire un piccolo blocco Alpha Chat evidenziato elegantemente, seguito dai wallet esterni.
+
+TEST
+
+1. Verificare che "Apri Alpha Chat" apra:
+   https://alphachat.sbs
+2. Verificare che non interferisca con il pulsante:
+   "⚡ Paga con wallet Lightning"
+3. Verificare che QR e BOLT11 siano invariati.
+4. Verificare che la pagina continui a scrollare correttamente su iPhone/Safari/WhatsApp.
+5. Test automatici.
+6. Build production.
+
+NON fare Publish prima di avere test e build PASS.
+
+Nel report finale indicare:
+- file modificati;
+- UI aggiunta;
+- URL Alpha Chat utilizzato;
+- test;
+- build;
+- conferma che il pagamento Lightning non è stato modificato.
