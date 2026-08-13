@@ -233,7 +233,7 @@ export default function SparkPayPage() {
             {/* Bottoni azione */}
             <div style={styles.btnRow}>
               <button style={styles.btnSecondary} onClick={copyBolt11}>
-                {copied ? "✅ Copiata!" : "📋 Copia indirizzo Lightning"}
+                {copied ? "✅ Pagamento Lightning copiato" : "📋 Copia pagamento Lightning"}
               </button>
               <a
                 href={`lightning:${data.bolt11}`}

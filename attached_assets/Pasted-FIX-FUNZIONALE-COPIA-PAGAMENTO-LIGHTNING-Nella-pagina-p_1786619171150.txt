@@ -1,0 +1,83 @@
+FIX FUNZIONALE — COPIA PAGAMENTO LIGHTNING
+
+Nella pagina pubblica SparkPayPage.tsx il pulsante attuale:
+
+📋 Copia invoice
+
+deve diventare:
+
+📋 Copia pagamento Lightning
+
+NON fare solamente una modifica estetica del testo.
+
+Il pulsante deve effettuare realmente la copia della BOLT11 completa negli appunti, in modo che il destinatario possa incollarla/importarla in un wallet Lightning compatibile e pagare la richiesta.
+
+COMPORTAMENTO OBBLIGATORIO:
+
+1. Recuperare la BOLT11 originale ricevuta dal backend.
+2. Copiare negli appunti ESATTAMENTE la BOLT11 completa.
+3. Non modificarla, non troncarla, non aggiungere testo.
+4. Non copiare il link HTTPS.
+5. Non copiare l'ID opaque.
+6. Non copiare il QR.
+7. Non aggiungere "Alpha Wallet", importo o altri testi alla clipboard.
+8. Dopo la copia mostrare un feedback chiaro, ad esempio:
+   ✅ Copiato
+   oppure
+   ✅ Pagamento Lightning copiato
+9. Il valore copiato deve poter essere incollato direttamente in un wallet Lightning per effettuare il pagamento.
+
+IMPORTANTE:
+La BOLT11 NON è un indirizzo permanente come un indirizzo Bitcoin on-chain.
+È una Lightning payment request/invoice.
+Quindi il comportamento corretto è copiare la BOLT11 completa, che rappresenta la richiesta di pagamento.
+
+Mantenere separati i tre comportamenti:
+
+📋 Copia pagamento Lightning
+→ copia BOLT11 completa
+
+⚡ Paga con wallet Lightning
+→ apre lightning:<BOLT11>
+
+↗ Condividi
+→ condivide il link HTTPS:
+https://alphachat.sbs/pay/lightning/<opaque-id>
+
+Il QR deve continuare a contenere esclusivamente la BOLT11.
+
+NON modificare:
+- deep link server-side;
+- URL opaque;
+- backend;
+- expiry/countdown;
+- QR;
+- pulsante Paga con wallet Lightning;
+- condivisione;
+- Spark/Breez core;
+- createReceiveInvoice;
+- send/receive;
+- IndexedDB;
+- BTC on-chain;
+- EVM.
+
+TEST OBBLIGATORI:
+
+1. Generare una invoice reale.
+2. Premere "Copia pagamento Lightning".
+3. Incollare il risultato in un campo di testo e verificare che inizi con l'hrp Lightning corretto (es. lnbc...).
+4. Verificare che la stringa sia completa e identica alla BOLT11 originale.
+5. Verificare che un wallet Lightning compatibile possa utilizzarla per il pagamento.
+6. Verificare il feedback "Copiato".
+7. Verificare che Condividi continui a inviare SOLO il link HTTPS.
+8. Verificare che Paga con wallet Lightning continui a usare lightning:<BOLT11>.
+9. Test automatici completi.
+10. Build production.
+
+Alla fine restituisci report con:
+- file modificati;
+- comportamento effettivo della copia;
+- conferma BOLT11 copiata integralmente;
+- test eseguiti;
+- build;
+- conferma che non è stata modificata la logica Spark/Breez.
