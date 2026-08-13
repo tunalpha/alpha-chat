@@ -1,0 +1,180 @@
+TASK — MANTENERE LA VALUTA ORIGINALE NELLA PAGINA PUBBLICA LIGHTNING
+
+Nella SparkPayPage.tsx attualmente la pagina mostra principalmente:
+
+10.887 sat
+0.00010887 BTC
+
+Ma deve mostrare anche l'importo nella VALUTA CON CUI IL RICHIEDENTE HA GENERATO L'INVOICE.
+
+REGOLA:
+
+La valuta scelta durante la creazione dell'invoice deve essere persistita nel Lightning Invoice Link e mostrata nella pagina pubblica.
+
+CASI:
+
+1. Invoice generata in EUR
+
+Esempio:
+Richiesta originale: 6 EUR
+
+Pagina pubblica:
+
+6,00 €
+0.00010887 BTC
+10.887 sat
+
+2. Invoice generata in USD
+
+Esempio:
+Richiesta originale: 6 USD
+
+Pagina pubblica:
+
+$6.00
+0.00010887 BTC
+10.887 sat
+
+3. Invoice generata in BTC
+
+Esempio:
+Richiesta originale: 0.001 BTC
+
+Pagina pubblica:
+
+0.00100000 BTC
+100.000 sat
+≈ valore EUR corrente
+
+In questo caso, come valuta fiat secondaria/default, utilizzare EUR.
+
+4. Invoice "any amount"
+
+Se l'invoice è stata generata senza importo:
+
+NON inventare un importo fiat.
+
+Mostrare invece:
+
+Importo libero
+Any amount
+
+e, quando applicabile, nessun valore BTC/sat fisso fino al pagamento.
+
+DATI DA PERSISTERE
+
+Il link server-side deve conservare almeno:
+
+- originalAmount
+- originalCurrency: BTC | EUR | USD
+- amountSat
+- bolt11
+- expiresAt
+- opaqueId
+
+NON tentare di ricavare EUR/USD dalla BOLT11.
+
+La BOLT11 deve continuare a essere usata come fonte dell'importo Lightning effettivo in satoshi.
+
+IMPORTANTE — CONSISTENZA
+
+Il valore EUR/USD visualizzato deve essere quello richiesto dall'utente al momento della creazione dell'invoice.
+
+NON ricalcolare l'importo originale utilizzando il prezzo BTC corrente.
+
+Esempio:
+
+Utente crea 6 EUR quando BTC = 55.000 EUR.
+
+La pagina deve continuare a mostrare:
+
+6,00 €
+...
+
+anche se successivamente BTC sale o scende.
+
+L'equivalente BTC/sat deve corrispondere all'invoice realmente generata.
+
+PER INVOICE GENERATE IN BTC
+
+Se l'utente ha scelto BTC come valuta di input, mostrare BTC come importo principale.
+
+La valuta fiat secondaria deve essere EUR come default, calcolata con il prezzo disponibile secondo la logica già esistente.
+
+UI DESIDERATA
+
+Per EUR:
+
+6,00 €
+0.00010887 BTC
+10.887 sat
+
+Per USD:
+
+$6.00
+0.00010887 BTC
+10.887 sat
+
+Per BTC:
+
+0.00100000 BTC
+100.000 sat
+≈ €55,00
+
+Mantenere lo stile grafico attuale.
+
+CONDIVISIONE
+
+Aggiornare anche il testo condiviso affinché utilizzi la valuta originale:
+
+EUR:
+Importo: 6,00 € · 10.887 sat · 0.00010887 BTC
+
+USD:
+Importo: $6.00 · 10.887 sat · 0.00010887 BTC
+
+BTC:
+Importo: 0.001 BTC · 100.000 sat
+
+NON inserire la BOLT11 nel testo condiviso.
+
+INVARIANTI
+
+NON modificare:
+
+- BOLT11
+- QR
+- copia pagamento Lightning
+- pulsante Paga con wallet Lightning
+- expiry/countdown
+- deep link opaque
+- Spark/Breez core
+- createReceiveInvoice
+- send/receive
+- BTC on-chain
+- EVM
+- storico Lightning
+
+TEST OBBLIGATORI
+
+Testare tutti e 4 i casi:
+
+1. EUR
+2. USD
+3. BTC
+4. Any amount
+
+Verificare inoltre:
+
+- il valore originale non cambia dopo variazioni del prezzo BTC;
+- la BOLT11 rimane invariata;
+- il valore satoshi corrisponde all'invoice;
+- la condivisione mostra la valuta corretta;
+- la pagina pubblica mostra la valuta corretta;
+- nessuna BOLT11 nel testo condiviso.
+
+Eseguire test completi + build production.
+
+NON fare Publish finché tutto non è PASS.
+
+Restituire report finale con file modificati, schema dei dati persistiti, test e build.

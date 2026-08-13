@@ -1755,9 +1755,11 @@ export interface AppFeatureFlags {
  * @returns invoiceId — ID a 12 caratteri da usare in alphachat.sbs/pay/lightning/:id
  */
 export async function apiCreateLightningInvoiceLink(payload: {
-  bolt11:    string;
-  amountSat: number | null;
-  expiresAt: number; // Unix seconds
+  bolt11:           string;
+  amountSat:        number | null;
+  expiresAt:        number; // Unix seconds
+  originalAmount:   number | null;
+  originalCurrency: "BTC" | "EUR" | "USD";
 }): Promise<{ invoiceId: string }> {
   return request<{ invoiceId: string }>("POST", "/lightning/invoice-links", payload);
 }

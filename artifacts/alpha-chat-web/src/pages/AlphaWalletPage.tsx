@@ -1983,9 +1983,13 @@ function ReceiveView({ onBack: _onBack }: { onBack: () => void }) {
                     try {
                       // Crea link opaque per questa invoice specifica (nessun userId esposto)
                       const { invoiceId } = await apiCreateLightningInvoiceLink({
-                        bolt11:    lnInvoice,
-                        amountSat: sat,
-                        expiresAt: expSec,
+                        bolt11:           lnInvoice,
+                        amountSat:        sat,
+                        expiresAt:        expSec,
+                        originalAmount:   lnInputMode !== "btc"
+                                            ? (parseFloat(lnAmountStr) || null)
+                                            : (sat !== null ? sat / 1e8 : null),
+                        originalCurrency: lnInputMode.toUpperCase() as "BTC" | "EUR" | "USD",
                       });
                       invoiceLink = `https://alphachat.sbs/pay/lightning/${invoiceId}`;
                     } catch {

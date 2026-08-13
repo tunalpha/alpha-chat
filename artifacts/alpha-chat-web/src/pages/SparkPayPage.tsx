@@ -19,10 +19,12 @@ import type { CSSProperties } from "react";
 // ── Tipi ─────────────────────────────────────────────────────────────────────
 
 interface InvoiceData {
-  bolt11:    string;
-  amountSat: number | null;
-  expiresAt: number;  // Unix secondi
-  isExpired: boolean;
+  bolt11:           string;
+  amountSat:        number | null;
+  expiresAt:        number;  // Unix secondi
+  isExpired:        boolean;
+  originalAmount:   number | null;
+  originalCurrency: "BTC" | "EUR" | "USD" | null;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -202,11 +204,30 @@ export default function SparkPayPage() {
             {/* Titolo */}
             <div style={styles.lnBadge}>⚡ Richiesta di pagamento Lightning</div>
 
-            {/* Importo */}
+            {/* Importo — mostra la valuta originale come principale */}
             {data.amountSat !== null && data.amountSat > 0 ? (
               <div style={styles.amountBlock}>
-                <span style={styles.satAmount}>{formatSat(data.amountSat)} sat</span>
-                <span style={styles.btcAmount}>{formatBtc(data.amountSat)} BTC</span>
+                {/* Valuta originale del richiedente — mai ricalcolata */}
+                {data.originalCurrency === "EUR" && data.originalAmount !== null ? (
+                  <span style={styles.satAmount}>
+                    {data.originalAmount.toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 })} €
+                  </span>
+                ) : data.originalCurrency === "USD" && data.originalAmount !== null ? (
+                  <span style={styles.satAmount}>
+                    ${data.originalAmount.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  </span>
+                ) : (
+                  /* BTC come valuta originale — o nessuna valuta originale salvata */
+                  <span style={styles.satAmount}>{formatSat(data.amountSat)} sat</span>
+                )}
+                {/* BTC/sat sempre secondari */}
+                {data.originalCurrency !== "EUR" && data.originalCurrency !== "USD" ? (
+                  <span style={styles.btcAmount}>{formatBtc(data.amountSat)} BTC</span>
+                ) : (
+                  <span style={styles.btcAmount}>
+                    {formatBtc(data.amountSat)} BTC · {formatSat(data.amountSat)} sat
+                  </span>
+                )}
               </div>
             ) : (
               <div style={styles.amountBlock}>
