@@ -1998,10 +1998,7 @@ function ReceiveView({ onBack: _onBack }: { onBack: () => void }) {
                       "Richiesta pagamento Bitcoin Lightning",
                       ...(amountLine ? ["", amountLine] : []),
                       "",
-                      "Invoice Lightning:",
-                      lnInvoice,
-                      "",
-                      "⚡ Paga questa invoice Lightning",
+                      "👉 Paga con Bitcoin Lightning:",
                       invoiceLink,
                     ].join("\n");
 

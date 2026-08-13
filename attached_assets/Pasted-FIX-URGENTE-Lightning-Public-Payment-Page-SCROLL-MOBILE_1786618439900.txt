@@ -1,0 +1,201 @@
+FIX URGENTE — Lightning Public Payment Page: SCROLL MOBILE + CONDIVISIONE LINK
+
+Ho testato in produzione la nuova pagina pubblica:
+https://alphachat.sbs/pay/lightning/<opaque-id>
+
+Screenshot allegato: su iPhone/Safari la pagina viene aperta correttamente, ma il cliente NON riesce a fare scroll verso il basso. Il pulsante "⚡ Paga con wallet Lightning" rimane parzialmente fuori dalla viewport e quindi il pagamento non è utilizzabile.
+
+Inoltre la condivisione continua a mostrare/inviare la lunga stringa BOLT11 `lnbc...` insieme al link. Voglio che la condivisione utilizzi principalmente il link pubblico cliccabile.
+
+========================================
+BUG 1 — SCROLL MOBILE BLOCCATO — PRIORITÀ MASSIMA
+========================================
+
+Analizza SparkPayPage.tsx e tutti i suoi container/layout parent.
+
+La pagina pubblica deve essere completamente scrollabile su:
+- iPhone Safari
+- iPhone PWA
+- Android Chrome
+- desktop
+
+NON usare hack che blocchino il body.
+
+Controllare in particolare:
+- height: 100vh
+- min-height: 100vh
+- overflow: hidden
+- position: fixed
+- position: absolute
+- overscroll-behavior
+- container interni con overflow
+- wrapper applicativi che impediscono il document scroll
+- eventuali `touch-action`
+- `overflow-y: auto` applicato al container sbagliato
+
+La pagina deve usare un layout mobile-safe, ad esempio:
+- root della pagina con min-height: 100dvh
+- contenuto naturalmente più alto della viewport quando necessario
+- overflow-y: auto sul vero contenitore scrollabile, se necessario
+- padding-bottom sufficiente per evitare che il pulsante finale finisca sotto la barra Safari
+
+IMPORTANTE:
+Non ridurre QR, testo o pulsante semplicemente per farli entrare nella viewport.
+Il comportamento corretto è che il cliente possa scorrere liberamente.
+
+Testare esplicitamente:
+1. apertura link da WhatsApp su iPhone
+2. pagina iniziale
+3. swipe verso l'alto
+4. raggiungimento del pulsante "⚡ Paga con wallet Lightning"
+5. pulsante completamente visibile e cliccabile
+6. nessun elemento Safari/browser deve coprire il pulsante
+7. ritorno verso l'alto tramite swipe
+8. nessun blocco del touch scroll
+
+========================================
+BUG 2 — CONDIVISIONE: NON MOSTRARE LA BOLT11 COME TESTO PRINCIPALE
+========================================
+
+La nuova architettura server-side con:
+
+https://alphachat.sbs/pay/lightning/<opaque-id>
+
+deve diventare il vero link di pagamento condiviso.
+
+Quando l'utente preme "Condividi" da Alpha Wallet, NON voglio più inviare una quantità enorme di testo contenente:
+
+Invoice Lightning:
+lnbc...
+
+La BOLT11 deve rimanere disponibile internamente nel database associata all'opaque ID, ma NON deve essere necessaria nel testo condiviso.
+
+Il testo condiviso deve essere breve e chiaro, ad esempio:
+
+⚡ Alpha Wallet
+
+Richiesta pagamento Bitcoin Lightning
+
+Importo: € 6,00
+10.823 sat · 0,00010823 BTC
+
+👉 Paga con Bitcoin Lightning:
+https://alphachat.sbs/pay/lightning/ABC123xyz
+
+La BOLT11 NON deve essere inclusa nel testo condiviso.
+
+IMPORTANTE:
+- Il link deve essere un vero URL cliccabile.
+- Non concatenare la BOLT11 al link.
+- Non usare la BOLT11 come href principale.
+- Non modificare la BOLT11 salvata nel backend.
+- Non modificare il QR.
+- Il QR nella pagina pubblica deve continuare a contenere ESCLUSIVAMENTE la BOLT11.
+
+========================================
+COMPORTAMENTO DELLA PAGINA PUBBLICA
+========================================
+
+Quando il cliente apre:
+
+https://alphachat.sbs/pay/lightning/ABC123xyz
+
+deve vedere:
+
+Alpha Wallet
+⚡ Richiesta di pagamento Lightning
+
+IMPORTO
+10.823 sat
+0.00010823 BTC
+[eventuale controvalore fiat]
+
+Scadenza
+⏱️ 59:22
+
+QR BOLT11
+
+[Copia invoice]
+
+[⚡ Paga con wallet Lightning]
+
+Il pulsante "Paga con wallet Lightning" deve essere raggiungibile tramite scroll normale.
+
+Il pulsante deve continuare a usare la BOLT11 recuperata server-side, NON quella presente nell'URL.
+
+========================================
+LINK PAGAMENTO
+========================================
+
+Il link pubblico deve rimanere:
+
+/pay/lightning/<opaque-id>
+
+L'opaque ID NON deve contenere:
+- userId
+- wallet address
+- BOLT11
+- informazioni sensibili
+
+La BOLT11 deve essere recuperata dal backend usando l'opaque ID.
+
+========================================
+INVOICE SCADUTA
+========================================
+
+Se l'invoice è scaduta:
+
+- mostra "⏱️ Invoice scaduta"
+- nessun pulsante "Paga con wallet Lightning"
+- nessun QR utilizzabile
+- nessun link di pagamento attivo
+
+========================================
+NON TOCCARE
+========================================
+
+NON modificare:
+- SparkWalletContext.connect()
+- LiveSparkAdapter.connect()
+- syncWallet()
+- send()
+- receive()
+- createReceiveInvoice()
+- core Spark/Breez
+- BTC on-chain
+- EVM
+- USDA
+- Payment Engine
+- Signal/Chat
+- IDB alpha-lightning-v1
+- parsing BOLT11
+- expiry dell'invoice
+- generazione QR
+
+========================================
+TEST OBBLIGATORI
+========================================
+
+1. npm test / suite completa
+2. build production
+3. verificare SparkPayPage su mobile
+4. verificare scroll reale su iOS Safari/PWA
+5. verificare pulsante pagamento completamente raggiungibile
+6. verificare link condiviso senza BOLT11
+7. verificare che il link WhatsApp sia cliccabile
+8. verificare che aprendo il link venga caricata la corretta invoice
+9. verificare che il pulsante "Paga con wallet Lightning" utilizzi la BOLT11 corretta
+10. verificare invoice scaduta
+
+Nel report finale indicare:
+- causa esatta del blocco scroll
+- file modificati
+- fix CSS/layout applicato
+- nuovo formato esatto del testo condiviso
+- conferma che la BOLT11 NON è più presente nel testo condiviso
+- conferma che QR e pagamento continuano a usare la BOLT11 corretta
+- test
+- build
+
+NON fare refactoring generale.
+Fix chirurgico.

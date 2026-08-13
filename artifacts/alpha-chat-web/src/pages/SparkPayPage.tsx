@@ -57,6 +57,30 @@ function formatCountdown(secs: number): string {
 export default function SparkPayPage() {
   const invoiceId = getInvoiceId();
 
+  // ── Override scroll — index.css applica overflow:hidden a html,body,#root
+  // per l'app principale. Questa pagina pubblica è standalone e richiede
+  // scroll libero su iOS Safari / PWA / Android Chrome.
+  useEffect(() => {
+    const targets: HTMLElement[] = [document.documentElement, document.body];
+    const root = document.getElementById("root");
+    if (root) targets.push(root);
+    const saved = targets.map((el) => ({
+      el,
+      overflow: el.style.overflow,
+      height:   el.style.height,
+    }));
+    targets.forEach((el) => {
+      el.style.overflow = "visible";
+      el.style.height   = "auto";
+    });
+    return () => {
+      saved.forEach(({ el, overflow, height }) => {
+        el.style.overflow = overflow;
+        el.style.height   = height;
+      });
+    };
+  }, []);
+
   const [loading,   setLoading]   = useState(true);
   const [error,     setError]     = useState<string | null>(null);
   const [data,      setData]      = useState<InvoiceData | null>(null);
