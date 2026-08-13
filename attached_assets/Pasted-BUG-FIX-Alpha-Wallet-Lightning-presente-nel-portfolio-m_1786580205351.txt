@@ -1,0 +1,114 @@
+BUG FIX — Alpha Wallet: Lightning presente nel portfolio ma assente dal selettore Chain
+
+Ho verificato il comportamento reale su iPhone.
+
+RISULTATO ATTUALE:
+
+Nel Portfolio globale Lightning è presente correttamente:
+
+⚡ BTC
+Lightning
+0.00000000 BTC
+
+Il Portfolio mostra correttamente:
+
+5 chain · 12 asset
+
+e Lightning viene riconosciuto come:
+
+chainId = -1
+network = Lightning
+name = Bitcoin Lightning
+
+PROBLEMA:
+
+Quando apro il selettore delle chain/reti, vedo:
+
+- Polygon
+- Ethereum
+- BNB Smart Chain
+- Bitcoin
+
+MA NON vedo:
+
+- Lightning
+
+Quindi Lightning è presente nell'elenco degli asset ma non è selezionabile tramite il filtro chain.
+
+OBIETTIVO:
+
+Aggiungere Lightning al selettore delle chain.
+
+La voce deve essere:
+
+⚡ Lightning
+
+e deve corrispondere a:
+
+chainId = -1
+network = "Lightning"
+name = "Bitcoin Lightning"
+
+Quando seleziono Lightning, il Portfolio deve mostrare esclusivamente gli asset Lightning.
+
+Per esempio:
+
+⚡ BTC
+Bitcoin Lightning
+0.00000000 BTC
+
+Se il saldo è disponibile:
+
+⚡ BTC
+Bitcoin Lightning
+X BTC
+
+IMPORTANTE:
+
+NON modificare la logica Spark/Breez.
+NON modificare connect().
+NON modificare syncWallet().
+NON modificare send/receive Lightning.
+NON modificare il saldo Lightning.
+NON modificare il feature flag.
+NON modificare BTC on-chain.
+NON modificare Polygon/Ethereum/BNB.
+NON modificare Payment Engine.
+NON modificare fee.
+NON modificare il portfolio calculation.
+
+È SOLO una modifica alla rappresentazione/filtro del selettore chain.
+
+REGOLE:
+
+1. Individua dove viene costruita la lista delle chain nel selettore.
+2. Verifica perché chainId -1 viene escluso.
+3. Aggiungi Lightning come opzione valida.
+4. Non usare "Chain -1" come label UI: mostrare "Lightning".
+5. Usare icona ⚡ coerente con l'asset Lightning.
+6. Quando Lightning è selezionato, filtrare correttamente gli asset con chainId = -1.
+7. Quando Bitcoin è selezionato, NON includere Lightning.
+8. Quando Lightning è selezionato, NON includere BTC on-chain.
+9. Il totale Lightning deve essere separato dal BTC on-chain.
+10. Se Lightning non è disponibile/non connesso, mantenere il comportamento già implementato senza inventare un saldo.
+
+TEST OBBLIGATORI:
+
+- Lightning presente nel portfolio → opzione Lightning presente nel selector.
+- Lightning selezionato → mostra BTC Lightning.
+- Bitcoin selezionato → mostra solo BTC on-chain.
+- Lightning e BTC non vengono mai aggregati/doppiati.
+- chainId -1 correttamente riconosciuto.
+- Polygon/Ethereum/BNB continuano a funzionare.
+- Nessuna regressione nei test esistenti.
+
+Eseguire test + build production.
+
+NON fare altre modifiche funzionali.
+
+Alla fine riportare:
+- file modificati
+- root cause
+- test PASS
+- build PASS
+- conferma che Spark/Breez core non è stato modificato.

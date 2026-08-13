@@ -20,6 +20,8 @@
 import { useState, useCallback, useRef, useEffect } from "react";
 // Phase 5: Spark/Lightning portfolio integration (safe hook — null se flag=false)
 import { useSparkWalletOptional } from "../contexts/SparkWalletContext";
+// Admin monitoring: registra stato Spark nell'admin monitor (fire-and-forget)
+import { apiRegisterSparkStatus } from "../lib/spark/spark-admin-register";
 import { useSecurePhraseDisplay } from "../hooks/useSecurePhraseDisplay";
 import { useLock } from "../contexts/LockContext";
 import { WalletProvider, useWallet } from "../wallet/context/WalletContext";
@@ -932,6 +934,15 @@ function usePortfolioBalances() {
       // state → "error" → sparkOffline=true → UI mostra "Lightning non disponibile"
     });
   }, [spark?.isEnabled, spark?.state, meta]); // meta null→non-null all'unlock = trigger
+
+  // Admin monitoring: registra/aggiorna stato Spark nell'admin monitor (fire-and-forget).
+  // Separato dall'auto-connect — non blocca mai il flusso Spark.
+  useEffect(() => {
+    if (!spark?.isEnabled) return;
+    if (spark.state === "connected") {
+      void apiRegisterSparkStatus("enabled").catch(() => {});
+    }
+  }, [spark?.state, spark?.isEnabled]);
 
   // Spark Lightning balance — letto dal context (no fetch rete, già in memoria)
   // null se: Spark disabilitato | non connesso | walletInfo non ancora disponibile

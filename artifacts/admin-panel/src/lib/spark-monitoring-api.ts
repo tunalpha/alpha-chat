@@ -139,6 +139,55 @@ export function apiGetSparkReconciliation(): Promise<SparkReconciliationData> {
     .then(r => r.data);
 }
 
+// ─── Tipi utenti Spark ──────────────────────────────────────────────────────
+
+export interface SparkUserRecord {
+  userId:       string;
+  username:     string | null;
+  display_name: string | null;
+  status:       "enabled" | "disabled";
+  createdAt:    string;
+  updatedAt:    string;
+  lastSeenAt:   string | null;
+  movements_note: string;   // sempre "N/D" — fee records no userId per design
+}
+
+export interface SparkUsersData {
+  total: number;
+  page:  number;
+  limit: number;
+  pages: number;
+  users: SparkUserRecord[];
+}
+
+export interface SparkUserStats {
+  total_enabled:           number;
+  total_disabled:          number;
+  total:                   number;
+  movements_per_user_note: string;
+}
+
+export interface SparkUsersParams {
+  status?: "enabled" | "disabled" | "";
+  limit?:  number;
+  page?:   number;
+}
+
+export function apiGetSparkUsers(params: SparkUsersParams = {}): Promise<SparkUsersData> {
+  const qs = new URLSearchParams();
+  if (params.status) qs.set("status", params.status);
+  if (params.limit)  qs.set("limit",  String(params.limit));
+  if (params.page)   qs.set("page",   String(params.page));
+  const query = qs.toString() ? `?${qs.toString()}` : "";
+  return sparkMonitorFetch<{ data: SparkUsersData }>(`/monitoring/users${query}`)
+    .then(r => r.data);
+}
+
+export function apiGetSparkUserStats(): Promise<SparkUserStats> {
+  return sparkMonitorFetch<{ data: SparkUserStats }>("/monitoring/users/stats")
+    .then(r => r.data);
+}
+
 // ─── Formatters ────────────────────────────────────────────────────────────
 
 /** Formatta un importo float string (es. "0.00001234") come "0.00001234 BTC" */

@@ -1,0 +1,331 @@
+PROMPT — Admin Spark/Lightning: utenti con Wallet Lightning abilitato
+
+OBIETTIVO
+
+Migliorare esclusivamente la sezione Admin → Spark / Lightning Monitor.
+
+Attualmente la pagina mostra:
+
+"Utenti con Spark abilitato"
+"Il tracking per-utente Spark non è disponibile lato server..."
+
+Questo non è sufficiente.
+
+Voglio che l'Admin possa vedere chiaramente QUANTI utenti hanno abilitato Spark/Lightning e, se tecnicamente possibile senza modificare il core dei pagamenti, quali utenti lo hanno abilitato.
+
+IMPORTANTE:
+NON modificare il funzionamento del wallet Spark.
+NON modificare Breez SDK.
+NON modificare Alpha Wallet.
+NON modificare Payment Engine.
+NON modificare BTC on-chain.
+NON modificare Signal/Chat.
+NON modificare USDA.
+NON modificare fee Spark esistenti.
+NON modificare il sistema di invio/ricezione Lightning.
+NON aggiungere userId ai fee records esistenti se questo richiede modifiche al core Spark.
+
+La modifica deve essere limitata al tracking amministrativo dell'abilitazione Spark.
+
+--------------------------------------------------
+1. REGISTRO UTENTI SPARK
+--------------------------------------------------
+
+Creare un meccanismo server-side separato per registrare l'abilitazione Spark di un utente.
+
+Quando un utente abilita Spark/Lightning, registrare almeno:
+
+- userId
+- stato: enabled / disabled
+- createdAt
+- updatedAt
+- lastSeenAt, se facilmente disponibile
+- eventuale wallet Spark identifier NON sensibile, solo se già disponibile e sicuro
+
+NON salvare:
+- mnemonic
+- seed
+- private key
+- PIN
+- segreti Breez
+- dati sensibili del wallet.
+
+Creare una collection separata, ad esempio:
+
+spark_user_status
+
+con indice unico su userId.
+
+Se esiste già un meccanismo equivalente nel progetto, riutilizzarlo invece di crearne uno duplicato.
+
+--------------------------------------------------
+2. QUANDO REGISTRARE L'UTENTE
+--------------------------------------------------
+
+Il record deve essere creato/aggiornato quando Spark viene effettivamente abilitato per l'utente.
+
+IMPORTANTE:
+
+"Feature flag globale ON" NON significa che l'utente abbia Spark abilitato.
+
+Distinguere chiaramente:
+
+A) Spark globale disponibile
+B) Utente con Spark configurato/abilitato
+C) Utente effettivamente connesso a Spark
+
+L'Admin deve poter distinguere questi stati.
+
+Non considerare un utente "Spark enabled" semplicemente perché il feature flag globale è true.
+
+--------------------------------------------------
+3. ADMIN — CARD TOTALI
+--------------------------------------------------
+
+Nella pagina:
+
+Admin → Spark / Lightning Monitor
+
+aggiungere card reali:
+
+⚡ UTENTI SPARK
+Numero totale utenti con Spark abilitato.
+
+🟢 ATTIVI
+Utenti Spark con stato attivo/abilitato.
+
+🔴 DISABILITATI
+Utenti che hanno disabilitato Spark, se il dato è disponibile.
+
+💸 MOVIMENTI LIGHTNING
+Numero totale dei movimenti Spark già presenti nei fee records.
+
+Non inventare numeri.
+
+Se non ci sono dati mostrare 0.
+
+--------------------------------------------------
+4. SEZIONE "UTENTI CON SPARK ABILITATO"
+--------------------------------------------------
+
+Sostituire l'attuale messaggio:
+
+"Il tracking per-utente Spark non è disponibile lato server"
+
+con una vera tabella/lista.
+
+Colonne desiderate:
+
+- Utente
+- Stato Spark
+- Data abilitazione
+- Ultima attività
+- Movimenti
+- Ultimo movimento
+
+Esempio:
+
+⚡ Utente123
+🟢 Attivo
+13/08/2026 22:10
+13/08/2026 22:41
+5 movimenti
+13/08/2026 22:41
+
+Se alcuni dati non sono disponibili, mostrare "N/D".
+
+NON inventare dati.
+
+--------------------------------------------------
+5. PRIVACY
+--------------------------------------------------
+
+L'Admin deve vedere solamente le informazioni necessarie per la gestione del servizio.
+
+NON mostrare mai:
+
+- mnemonic
+- seed
+- private key
+- PIN
+- credenziali Breez
+- dati crittografici
+- segreti del wallet.
+
+Se il sistema utilizza username/display name, preferire quello all'ObjectId MongoDB.
+
+Se non esiste username disponibile, utilizzare un identificatore amministrativo già previsto dal sistema.
+
+--------------------------------------------------
+6. MOVIMENTI
+--------------------------------------------------
+
+NON modificare alpha_wallet_fee_records.
+
+NON aggiungere userId ai fee records esistenti solo per ottenere questo risultato.
+
+Per associare i movimenti all'utente, utilizzare il nuovo registro separato o una relazione già esistente nel database.
+
+Se una relazione affidabile non esiste, NON fare associazioni speculative.
+
+In quel caso:
+
+Movimenti totali → dato aggregato reale.
+
+Movimenti per singolo utente → N/D.
+
+--------------------------------------------------
+7. SICUREZZA ADMIN
+--------------------------------------------------
+
+Tutte le nuove API devono essere protette come le attuali API Spark Monitor.
+
+Accesso:
+
+read_only admin → può visualizzare i dati.
+
+super_admin → può visualizzare e gestire.
+
+Nessun utente normale deve poter accedere alle API amministrative.
+
+Validare userId lato server.
+
+Non esporre dati sensibili.
+
+--------------------------------------------------
+8. API
+--------------------------------------------------
+
+Creare endpoint dedicati, ad esempio:
+
+GET /api/v1/spark/monitoring/users
+
+GET /api/v1/spark/monitoring/users/stats
+
+oppure adattarsi alle convenzioni già presenti nel progetto.
+
+L'endpoint deve restituire solo dati necessari al monitor.
+
+Implementare:
+
+- paginazione
+- eventuale filtro enabled/disabled
+- ordinamento per lastSeenAt o createdAt
+- conteggio totale
+
+Non fare query inefficienti sull'intera collection ad ogni caricamento.
+
+--------------------------------------------------
+9. UI
+--------------------------------------------------
+
+Mantenere esattamente lo stile attuale di Spark Monitor.
+
+Tema chiaro leggibile.
+
+Niente text-white su background bianco.
+
+Responsive anche su iPhone.
+
+La sezione deve essere semplice e professionale.
+
+In alto:
+
+Spark / Lightning Monitor
+
+Healthy
+
+Dashboard
+
+Poi:
+
+Overview
+
+Utenti Spark
+
+Movimenti
+
+Health
+
+Treasury Reconciliation
+
+ecc.
+
+--------------------------------------------------
+10. TEST
+--------------------------------------------------
+
+Aggiungere test automatici per:
+
+1. creazione record utente Spark
+2. aggiornamento record esistente
+3. duplicato userId → nessun duplicato
+4. enabled/disabled
+5. conteggio utenti
+6. paginazione
+7. filtro stato
+8. autorizzazione admin
+9. utente normale → 401/403
+10. nessun dato sensibile nella response
+11. nessun mnemonic/seed/private key restituito
+12. movimenti senza relazione → N/D, mai dati inventati
+13. nessuna regressione sui test esistenti
+
+Eseguire:
+
+- test alpha-chat-web
+- test admin-panel
+- test api-server
+- build production
+
+--------------------------------------------------
+11. REGOLA FONDAMENTALE
+--------------------------------------------------
+
+QUESTO È UN ADMIN MONITORING TASK.
+
+NON trasformarlo in una modifica funzionale di Spark.
+
+NON cambiare il flusso:
+
+Alpha Wallet → Spark → Breez → Lightning.
+
+NON cambiare connect(), syncWallet(), send, receive o balance logic.
+
+NON cambiare il feature flag globale.
+
+NON cambiare fee.
+
+NON cambiare Treasury.
+
+NON cambiare Payment Engine.
+
+NON modificare BTC on-chain.
+
+--------------------------------------------------
+12. REPORT FINALE OBBLIGATORIO
+--------------------------------------------------
+
+Prima di modificare qualsiasi cosa, analizza il codice esistente e indica:
+
+- dove viene attualmente determinato che un utente ha Spark abilitato
+- quale userId è disponibile in quel punto
+- se esiste già una collection equivalente
+- come collegare in sicurezza l'utente al monitor
+- quali file dovranno essere modificati
+
+Poi implementa.
+
+Alla fine restituisci:
+
+1. file modificati
+2. collection/API create
+3. come viene registrato un utente Spark
+4. come viene mostrato nell'Admin
+5. test PASS
+6. build PASS
+7. conferma esplicita che NON hai modificato il core Spark/Lightning
+8. eventuali dati che rimangono N/D per mancanza di relazione affidabile
+
+NON fare altre modifiche non richieste.
+STOP dopo il report finale.

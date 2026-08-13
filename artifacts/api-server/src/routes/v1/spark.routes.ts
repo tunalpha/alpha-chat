@@ -13,6 +13,7 @@
 
 import { Router } from "express";
 import { requireAdmin } from "../../middleware/require-admin.middleware";
+import { authenticate } from "../../middleware/authenticate.middleware";
 import {
   getSparkFeeConfigHandler,
   updateSparkFeeConfigHandler,
@@ -23,6 +24,11 @@ import {
   getSparkHealthHandler,
   getSparkReconciliationHandler,
 } from "../../controllers/spark-monitoring.controller.js";
+import {
+  upsertSparkUserStatusHandler,
+  getSparkUsersHandler,
+  getSparkUsersStatsHandler,
+} from "../../controllers/spark-user-status.controller.js";
 
 const router = Router();
 
@@ -60,5 +66,29 @@ router.get("/monitoring/health",          requireAdmin("read_only"), getSparkHea
 
 /** GET /api/v1/spark/monitoring/reconciliation — Treasury reconciliation Spark vs failed records */
 router.get("/monitoring/reconciliation",  requireAdmin("read_only"), getSparkReconciliationHandler);
+
+/**
+ * POST /api/v1/spark/user-status
+ * Crea o aggiorna il record di stato Spark per l'utente autenticato.
+ * Chiamato dal client (AlphaWalletPage) quando spark.state → "connected".
+ * Fire-and-forget: errori non bloccano il flusso Spark.
+ * Auth: utente normale autenticato (authenticate, NON requireAdmin).
+ */
+router.post("/user-status", authenticate, upsertSparkUserStatusHandler);
+
+/**
+ * GET /api/v1/spark/monitoring/users
+ * Lista paginata degli utenti con stato Spark registrato.
+ * Accesso: read_only admin o superiore.
+ * Query: status (enabled|disabled), limit (1-100), page (1-based)
+ */
+router.get("/monitoring/users",       requireAdmin("read_only"), getSparkUsersHandler);
+
+/**
+ * GET /api/v1/spark/monitoring/users/stats
+ * Conteggi aggregati utenti Spark (total_enabled, total_disabled, total).
+ * Accesso: read_only admin o superiore.
+ */
+router.get("/monitoring/users/stats", requireAdmin("read_only"), getSparkUsersStatsHandler);
 
 export default router;

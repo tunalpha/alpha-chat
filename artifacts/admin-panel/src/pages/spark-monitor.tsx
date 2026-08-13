@@ -48,15 +48,19 @@ import {
 import {
   Zap, BarChart2, Activity, AlertTriangle, CheckCircle2,
   RefreshCw, Power, PowerOff, ChevronLeft, ChevronRight,
-  ShieldCheck, Info, ExternalLink,
+  ShieldCheck, Info, ExternalLink, Users,
 } from "lucide-react";
 
 import {
   type SparkMovementRecord,
+  type SparkUserRecord,
+  type SparkUsersParams,
   apiGetSparkDashboard,
   apiGetSparkMovements,
   apiGetSparkHealth,
   apiGetSparkReconciliation,
+  apiGetSparkUsers,
+  apiGetSparkUserStats,
   formatSparkFeeAmount,
   formatSparkDate,
   sparkStatusLabel,
@@ -122,15 +126,23 @@ export default function SparkMonitorPage() {
   const isSuperAdmin = user?.admin_role === "super_admin";
 
   const [toggleConfirm, setToggleConfirm] = useState<"enable" | "disable" | null>(null);
-  const [range,  setRange]  = useState<MovementsParams["range"]>("7d");
-  const [status, setStatus] = useState<string>("");
-  const [page,   setPage]   = useState(1);
+  const [range,        setRange]        = useState<MovementsParams["range"]>("7d");
+  const [status,       setStatus]       = useState<string>("");
+  const [page,         setPage]         = useState(1);
+  const [usersStatus,  setUsersStatus]  = useState<SparkUsersParams["status"]>("");
+  const [usersPage,    setUsersPage]    = useState(1);
 
   // ── Queries ────────────────────────────────────────────────────────────────
   const dashboard      = useQuery({ queryKey: ["spark-dashboard"],       queryFn: apiGetSparkDashboard,      staleTime: 30_000 });
   const health         = useQuery({ queryKey: ["spark-health"],          queryFn: apiGetSparkHealth,         staleTime: 15_000 });
   const reconciliation = useQuery({ queryKey: ["spark-reconciliation"],  queryFn: apiGetSparkReconciliation, staleTime: 60_000 });
   const sparkEnabled   = useQuery({ queryKey: ["spark-enabled"],         queryFn: apiGetSparkEnabled,        staleTime: 10_000 });
+  const sparkUserStats = useQuery({ queryKey: ["spark-user-stats"],      queryFn: apiGetSparkUserStats,      staleTime: 30_000 });
+  const sparkUsers     = useQuery({
+    queryKey: ["spark-users", usersStatus, usersPage],
+    queryFn:  () => apiGetSparkUsers({ status: usersStatus, page: usersPage, limit: 15 }),
+    staleTime: 20_000,
+  });
   const movements      = useQuery({
     queryKey: ["spark-movements", range, status, page],
     queryFn:  () => apiGetSparkMovements({ range, status: status as MovementsParams["status"], page, limit: 20 }),
@@ -163,6 +175,8 @@ export default function SparkMonitorPage() {
     void queryClient.invalidateQueries({ queryKey: ["spark-reconciliation"] });
     void queryClient.invalidateQueries({ queryKey: ["spark-movements"] });
     void queryClient.invalidateQueries({ queryKey: ["spark-enabled"] });
+    void queryClient.invalidateQueries({ queryKey: ["spark-user-stats"] });
+    void queryClient.invalidateQueries({ queryKey: ["spark-users"] });
   }
 
   const d  = dashboard.data;
@@ -170,6 +184,8 @@ export default function SparkMonitorPage() {
   const r  = reconciliation.data;
   const mv = movements.data;
   const se = sparkEnabled.data ?? false;
+  const us = sparkUserStats.data;
+  const uv = sparkUsers.data;
 
   // ─── Render ────────────────────────────────────────────────────────────────
   return (
@@ -296,37 +312,124 @@ export default function SparkMonitorPage() {
               sub="createdAt più recente" />
           </div>
         )}
-        <div className="mt-3 flex items-start gap-2 rounded-lg bg-blue-50 border border-blue-200 px-3 py-2">
-          <Info className="h-4 w-4 text-blue-600 shrink-0 mt-0.5" />
-          <p className="text-xs text-blue-700">
-            <strong>Wallet Spark abilitati:</strong> non tracciato lato server — il numero di utenti Spark è
-            registrato nel client (Breez SDK IDB). I fee records non contengono userId per privacy.
-          </p>
-        </div>
       </section>
 
       {/* ── §2 Utenti Spark ── */}
       <section>
-        <SectionHeader icon={Activity} title="Utenti con Spark abilitato" sub="Aggregazione da fee records" />
-        <Card className="bg-card">
-          <CardContent className="pt-4">
-            <div className="flex items-start gap-2">
-              <Info className="h-4 w-4 text-blue-500 shrink-0 mt-0.5" />
-              <div className="text-sm text-muted-foreground space-y-1">
-                <p>
-                  Il tracking per-utente Spark <strong className="text-foreground">non è disponibile lato server</strong>.
-                  I fee records (<code className="text-xs bg-muted px-1 rounded">alpha_wallet_fee_records</code> con
-                  <code className="text-xs bg-muted px-1 rounded"> source=spark_lightning</code>) non contengono
-                  l'identificatore utente per design (privacy-by-design).
-                </p>
-                <p>
-                  Stat disponibili: <strong className="text-foreground">{d?.movements_total ?? 0}</strong> movimenti totali,
-                  di cui <strong className="text-green-700">{d?.movements_completed ?? 0}</strong> completati.
-                </p>
-              </div>
+        <SectionHeader icon={Users} title="Utenti Spark" sub="Utenti che hanno abilitato Spark Lightning almeno una volta" />
+
+        {/* Cards aggregati */}
+        {sparkUserStats.isLoading ? (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+            {[...Array(4)].map((_, i) => <div key={i} className="h-24 bg-muted rounded-xl animate-pulse" />)}
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+            <StatCard label="⚡ Utenti Spark"       value={us?.total           ?? 0} />
+            <StatCard label="🟢 Attivi"              value={us?.total_enabled   ?? 0} accent="text-green-700" />
+            <StatCard label="🔴 Disabilitati"        value={us?.total_disabled  ?? 0}
+              accent={(us?.total_disabled ?? 0) > 0 ? "text-amber-700" : "text-foreground"} />
+            <StatCard label="💸 Movimenti Lightning" value={d?.movements_total  ?? 0} />
+          </div>
+        )}
+
+        {/* Filtro stato */}
+        <div className="flex items-center gap-2 mb-3">
+          <Select
+            value={usersStatus ?? ""}
+            onValueChange={v => { setUsersStatus(v as SparkUsersParams["status"]); setUsersPage(1); }}
+          >
+            <SelectTrigger className="w-40 h-8 text-xs">
+              <SelectValue placeholder="Tutti gli stati" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="">Tutti</SelectItem>
+              <SelectItem value="enabled">🟢 Attivi</SelectItem>
+              <SelectItem value="disabled">🔴 Disabilitati</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
+
+        {/* Tabella utenti */}
+        {sparkUsers.isLoading ? (
+          <div className="h-36 bg-muted rounded-xl animate-pulse" />
+        ) : sparkUsers.isError ? (
+          <p className="text-sm text-destructive">Errore caricamento utenti.</p>
+        ) : !uv || uv.users.length === 0 ? (
+          <Card className="bg-card">
+            <CardContent className="pt-6 pb-6">
+              <p className="text-sm text-muted-foreground text-center">
+                Nessun utente ha ancora abilitato Spark Lightning.
+              </p>
+            </CardContent>
+          </Card>
+        ) : (
+          <Card className="bg-card overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-border bg-muted/30">
+                    <th className="text-left px-3 py-2 font-mono uppercase tracking-wider text-muted-foreground">Utente</th>
+                    <th className="text-left px-3 py-2 font-mono uppercase tracking-wider text-muted-foreground">Stato Spark</th>
+                    <th className="text-left px-3 py-2 font-mono uppercase tracking-wider text-muted-foreground">Data abilitazione</th>
+                    <th className="text-left px-3 py-2 font-mono uppercase tracking-wider text-muted-foreground">Ultima attività</th>
+                    <th className="text-left px-3 py-2 font-mono uppercase tracking-wider text-muted-foreground">Movimenti</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {uv.users.map((u: SparkUserRecord) => (
+                    <tr key={u.userId} className="border-b border-border/50 hover:bg-muted/20 transition-colors">
+                      <td className="px-3 py-2 font-medium text-foreground">
+                        <span className="mr-1">⚡</span>
+                        {u.display_name ?? u.username ?? `…${u.userId.slice(-8)}`}
+                      </td>
+                      <td className="px-3 py-2">
+                        <Badge variant="outline" className={
+                          u.status === "enabled"
+                            ? "border-green-500/50 text-green-700 bg-green-50 text-xs"
+                            : "border-amber-500/50 text-amber-700 bg-amber-50 text-xs"
+                        }>
+                          {u.status === "enabled" ? "🟢 Attivo" : "🔴 Disabilitato"}
+                        </Badge>
+                      </td>
+                      <td className="px-3 py-2 text-muted-foreground">{formatSparkDate(u.createdAt)}</td>
+                      <td className="px-3 py-2 text-muted-foreground">
+                        {formatSparkDate(u.lastSeenAt ?? u.updatedAt)}
+                      </td>
+                      <td className="px-3 py-2 text-muted-foreground">N/D</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
             </div>
-          </CardContent>
-        </Card>
+            {/* Paginazione */}
+            {uv.pages > 1 && (
+              <div className="flex items-center justify-between px-3 py-2 border-t border-border text-xs text-muted-foreground">
+                <span>Pagina {uv.page} di {uv.pages} ({uv.total} utenti)</span>
+                <div className="flex gap-1">
+                  <Button size="sm" variant="ghost" className="h-6 w-6 p-0"
+                    disabled={usersPage <= 1}
+                    onClick={() => setUsersPage(p => p - 1)}>
+                    <ChevronLeft className="h-3 w-3" />
+                  </Button>
+                  <Button size="sm" variant="ghost" className="h-6 w-6 p-0"
+                    disabled={usersPage >= uv.pages}
+                    onClick={() => setUsersPage(p => p + 1)}>
+                    <ChevronRight className="h-3 w-3" />
+                  </Button>
+                </div>
+              </div>
+            )}
+          </Card>
+        )}
+
+        <div className="mt-3 flex items-start gap-2 rounded-lg bg-blue-50 border border-blue-200 px-3 py-2">
+          <Info className="h-4 w-4 text-blue-600 shrink-0 mt-0.5" />
+          <p className="text-xs text-blue-700">
+            <strong>Movimenti per utente: N/D</strong> — i fee records non contengono userId per design
+            (privacy-by-design). Il totale movimenti Lightning è disponibile nell'Overview.
+          </p>
+        </div>
       </section>
 
       {/* ── §4 Health Monitor ── */}

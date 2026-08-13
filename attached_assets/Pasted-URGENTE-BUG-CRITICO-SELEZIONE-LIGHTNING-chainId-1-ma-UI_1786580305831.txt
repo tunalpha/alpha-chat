@@ -1,0 +1,252 @@
+URGENTE — BUG CRITICO SELEZIONE LIGHTNING: chainId -1 ma UI mostra dati BNB/EVM
+
+Ho fatto il test reale su iPhone.
+
+Quando seleziono Lightning, il selettore mostra:
+
+Chain -1
+
+QUINDI il filtro riconosce correttamente chainId = -1.
+
+MA LA UI SOTTO È SBAGLIATA:
+
+Mostra:
+
+Saldo totale
+0 BNB
+
+e:
+
+Il tuo indirizzo EVM
+0x04631A6e863718a8F4c21c2ce1303e30dC87B298
+
+Questo NON deve mai accadere quando Lightning è selezionato.
+
+ROOT CAUSE DA CERCARE:
+
+Il selected chain state cambia a chainId = -1, ma il componente del portfolio continua a utilizzare balance/address/asset data della chain precedente (EVM/BNB).
+
+È quindi un problema di sincronizzazione tra:
+
+selectedChain
+chainId = -1
+filtered assets
+selected chain balance
+selected chain address
+UI actions
+
+OBIETTIVO:
+
+Quando selectedChain = Lightning / chainId = -1:
+
+1. Mostrare SOLO dati Lightning.
+
+2. Il saldo deve provenire esclusivamente da Spark/Breez:
+
+sparkSat
+
+e NON da:
+
+BNB balance
+ETH balance
+POL balance
+BTC on-chain balance
+EVM balance
+fallback balance.
+
+3. Il simbolo deve essere:
+
+⚡ BTC
+
+4. Network:
+
+Lightning
+
+5. chainId:
+
+-1
+
+6. Nome:
+
+Bitcoin Lightning
+
+7. NON mostrare un indirizzo EVM 0x....
+
+8. NON mostrare un indirizzo Bitcoin on-chain bc1... come indirizzo Lightning.
+
+9. NON mostrare BNB/ETH/POL come saldo.
+
+10. NON mantenere dati della chain precedente dopo il cambio a Lightning.
+
+11. Se Spark non è connesso o il saldo non è disponibile:
+
+NON mostrare 0 come fallback.
+
+Mostrare invece:
+
+"Lightning non disponibile"
+
+oppure lo stato già previsto:
+
+"⚠️ Dati parziali · Lightning non disponibile"
+
+12. Quando torno da Lightning a Polygon/Ethereum/BNB/Bitcoin:
+
+la UI deve tornare correttamente ai dati della chain selezionata.
+
+IMPORTANTE — SEPARAZIONE BTC:
+
+Bitcoin on-chain:
+chainId = 0
+network = Bitcoin
+asset = BTC
+indirizzo = bc1...
+
+Lightning:
+chainId = -1
+network = Lightning
+asset = BTC
+saldo = Spark/Breez
+NON è Bitcoin on-chain.
+
+NON sommare i due saldi due volte.
+
+--------------------------------------------------
+
+CONTROLLO SPECIFICO DA FARE
+
+Analizza il codice del selettore chain e del rendering del wallet.
+
+Trova:
+
+- selectedChain state
+- chainId mapping
+- filteredAssets
+- selected balance
+- selected address
+- rendering del "Saldo totale"
+- rendering dell'indirizzo
+- rendering dei pulsanti Invia/Ricevi
+- eventuali fallback quando chainId non è riconosciuto.
+
+Verifica se esiste una logica tipo:
+
+selectedChain → chainConfig → balance
+
+che per chainId = -1 non viene gestita correttamente.
+
+NON fare un workaround semplicemente nascondendo BNB.
+
+Correggere la sorgente dati in modo che chainId = -1 sia una chain completamente supportata dalla UI.
+
+--------------------------------------------------
+
+UI ATTESA QUANDO LIGHTNING È SELEZIONATO
+
+Esempio:
+
+⚡ Lightning
+
+Saldo totale
+
+0 BTC
+oppure
+0 sat
+
+⚡ Bitcoin Lightning
+
+Se disponibile:
+
+0.00000000 BTC
+
+Se non disponibile:
+
+⚠️ Lightning non disponibile
+
+NON:
+
+0 BNB
+0 ETH
+0 POL
+indirizzo 0x...
+indirizzo EVM
+
+--------------------------------------------------
+
+PULSANTI
+
+Verificare anche i pulsanti:
+
+Invia
+Ricevi
+Storico
+
+Quando Lightning è selezionato devono utilizzare le funzioni Lightning corrette.
+
+NON devono chiamare accidentalmente i flussi EVM.
+
+Se i flussi Lightning Send/Receive non sono ancora pronti, NON inventare funzionalità: mostrare lo stato corretto o disabilitare temporaneamente il pulsante.
+
+NON modificare il core Spark/Breez.
+
+--------------------------------------------------
+
+TEST OBBLIGATORI
+
+Testare almeno:
+
+1. Polygon → Lightning
+2. Ethereum → Lightning
+3. BNB → Lightning
+4. Bitcoin → Lightning
+5. Lightning → Polygon
+6. Lightning → Bitcoin
+7. Lightning senza connessione Spark
+8. Lightning con saldo 0
+9. Lightning con saldo > 0
+10. BTC on-chain e Lightning contemporaneamente presenti
+
+Verificare soprattutto:
+
+Lightning selezionato → MAI dati BNB/ETH/POL/EVM.
+
+Bitcoin selezionato → MAI dati Lightning.
+
+Lightning e BTC on-chain devono rimanere completamente separati.
+
+--------------------------------------------------
+
+REGRESSIONI
+
+NON modificare:
+
+- Spark/Breez connect
+- syncWallet
+- send/receive core
+- mnemonic/seed
+- WalletContext BTC
+- Payment Engine
+- USDA
+- EVM transactions
+- fee
+- Treasury
+- Signal/Chat
+
+Questa modifica riguarda esclusivamente il corretto rendering e filtering del portfolio quando chainId = -1.
+
+Eseguire tutti i test esistenti + nuovi test specifici Lightning selector.
+
+Build production.
+
+Alla fine riportare:
+
+1. root cause esatta
+2. file modificati
+3. fix applicato
+4. test PASS
+5. build PASS
+6. conferma che selezionando Lightning non vengono più mostrati dati EVM/BNB
+7. conferma che BTC on-chain e Lightning restano separati.
+
+NON fare altre modifiche non richieste.
+STOP dopo il report.
