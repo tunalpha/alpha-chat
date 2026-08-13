@@ -1,6 +1,7 @@
 import { useEffect, useRef, useCallback, useState } from "react";
 import { getAccessToken } from "../lib/auth";
 import { diagLog } from "../lib/diagnosticLogger";
+import { getWsUrl } from "../lib/platform-config";
 
 export type WsEvent =
   | { type: "message.new"; payload: Record<string, unknown> }
@@ -133,8 +134,7 @@ export function useWebSocket(accessToken: string | null) {
       }
       console.log('[WS] token ok (' + freshToken.substring(0, 12) + '...) — apertura WebSocket');
 
-      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
-      const ws = new WebSocket(`${protocol}//${window.location.host}/api/ws`);
+      const ws = new WebSocket(getWsUrl()); // URL centralizzata in platform-config (Web: window.location, Capacitor: VITE_WS_BASE_URL)
       wsRef.current = ws;
 
       ws.onopen = () => {

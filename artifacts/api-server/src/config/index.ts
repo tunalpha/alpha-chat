@@ -16,6 +16,14 @@ const EnvSchema = z.object({
     .string()
     .default("*")
     .transform((s) => (s === "*" ? ["*"] : s.split(",").map((o) => o.trim()))),
+  // Origini aggiuntive per Capacitor (futura integrazione iOS/Android).
+  // Lasciare vuoto in produzione Web. Impostare nel build Capacitor:
+  //   CAPACITOR_ORIGINS=capacitor://localhost,https://localhost
+  // Non usare wildcard — vengono aggiunte alla lista esplicita di ALLOWED_ORIGINS.
+  CAPACITOR_ORIGINS: z
+    .string()
+    .optional()
+    .transform((s) => (s ? s.split(",").map((o) => o.trim()).filter(Boolean) : [])),
   MIN_CLIENT_VERSION: z.string().default("1.0.0"),
   // "silent" aggiunto per supporto test (pino accetta "silent" come livello)
   LOG_LEVEL: z
@@ -53,11 +61,20 @@ if (!parsed.success) {
   process.exit(1);
 }
 
+// Merge ALLOWED_ORIGINS + CAPACITOR_ORIGINS.
+// Se ALLOWED_ORIGINS è ["*"] il wildcard rimane e copre tutto;
+// altrimenti le origini Capacitor vengono aggiunte esplicitamente.
+const _baseOrigins = parsed.data.ALLOWED_ORIGINS;
+const _capOrigins  = parsed.data.CAPACITOR_ORIGINS; // [] quando CAPACITOR_ORIGINS non è impostata
+const _mergedOrigins: string[] = _baseOrigins.includes("*")
+  ? ["*"]                              // wildcard già presente → non concatenare
+  : [...new Set([..._baseOrigins, ..._capOrigins])];
+
 export const config = {
   app: {
     env: parsed.data.NODE_ENV,
     port: parsed.data.PORT,
-    allowedOrigins: parsed.data.ALLOWED_ORIGINS,
+    allowedOrigins: _mergedOrigins,
     minClientVersion: parsed.data.MIN_CLIENT_VERSION,
   },
   db: {

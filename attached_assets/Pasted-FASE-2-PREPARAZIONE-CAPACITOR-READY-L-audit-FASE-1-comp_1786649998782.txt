@@ -1,0 +1,133 @@
+FASE 2 — PREPARAZIONE CAPACITOR-READY
+
+L'audit FASE 1 è completato.
+
+Ora voglio preparare Alpha Chat Web per una futura integrazione Capacitor.
+
+IMPORTANTE:
+La versione Web/PWA deve continuare a funzionare esattamente come prima.
+
+NON installare Capacitor.
+NON creare ios/.
+NON creare android/.
+NON installare plugin.
+NON modificare Spark/Lightning.
+NON modificare Alpha Wallet.
+NON modificare Face ID.
+NON modificare WalletConnect.
+NON modificare Push.
+NON modificare chiamate/WebRTC.
+NON modificare Signal.
+NON modificare il routing applicativo.
+
+Questa fase riguarda SOLO la configurazione API/WS e CORS necessaria per rendere il progetto compatibile con una futura WebView Capacitor.
+
+1. API BASE URL
+
+Trova tutti i punti in cui il frontend costruisce API URL usando:
+- window.location.host
+- window.location.hostname
+- window.location.origin
+- window.location.protocol + host
+
+Crea una configurazione centralizzata, ad esempio:
+
+VITE_API_BASE_URL
+VITE_WS_BASE_URL
+
+Regole:
+
+WEB:
+se le variabili non sono impostate, mantieni il comportamento attuale.
+
+CAPACITOR:
+le variabili potranno in futuro essere impostate a:
+
+https://alphachat.sbs
+wss://alphachat.sbs
+
+NON hardcodare questi valori nei componenti.
+
+Non modificare i singoli endpoint API: devono continuare a funzionare come prima.
+
+2. WEBSOCKET
+
+Trova tutte le costruzioni WebSocket basate su:
+- window.location.host
+- window.location.protocol
+- window.location.hostname
+
+Centralizzale nella stessa configurazione.
+
+WEB:
+comportamento attuale invariato.
+
+NATIVE:
+potrà utilizzare VITE_WS_BASE_URL.
+
+3. CORS BACKEND
+
+Analizza la configurazione CORS attuale.
+
+Prepara il backend per accettare, tramite configurazione/env e senza rompere la configurazione esistente:
+
+capacitor://localhost
+https://localhost
+
+Mantieni SEMPRE:
+
+https://alphachat.sbs
+
+Non permettere wildcard * se attualmente non presente.
+
+Non modificare autenticazione o autorizzazione.
+
+4. ENV
+
+Aggiungi solo le variabili necessarie alla configurazione.
+
+Non inserire segreti nel frontend.
+
+Non creare ancora una configurazione Capacitor completa.
+
+5. COMPATIBILITÀ WEB
+
+Dopo le modifiche verifica che:
+
+- alphachat.sbs continui a funzionare;
+- login funzioni;
+- API funzionino;
+- WebSocket funzionino;
+- refresh token funzioni;
+- Signal/Chat non siano modificati;
+- Alpha Wallet non sia modificato;
+- Spark/Lightning non siano modificati.
+
+6. TEST
+
+Esegui:
+
+- test frontend;
+- test backend interessati;
+- build production.
+
+Confronta il comportamento con quello precedente.
+
+7. REPORT FINALE
+
+Nel report finale indicami:
+
+- file modificati;
+- variabili ENV aggiunte;
+- tutti i punti window.location.* trovati e modificati;
+- modifica CORS;
+- test;
+- build;
+- conferma esplicita che Spark/Lightning, Wallet, Signal, Push, WebRTC e routing non sono stati modificati.
+
+Se trovi un punto che richiede una modifica fuori da questo perimetro, FERMATI e segnalalo invece di modificarlo.
+
+NON procedere ancora all'installazione di Capacitor.
+NON creare ancora ios/ o android/.
+
+Questa è esclusivamente la FASE 2 di preparazione.

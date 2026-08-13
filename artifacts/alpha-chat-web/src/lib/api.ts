@@ -10,8 +10,11 @@
  */
 
 import { getAccessToken, getRefreshToken, updateAccessToken, updateAccessTokenExpiry, saveAuth, clearAuth, getDeviceId, isAccessTokenExpired } from "./auth";
+import { API_BASE_URL } from "./platform-config";
 
-const BASE = "/api/v1";
+// Web: API_BASE_URL="" → "/api/v1" (relativo, comportamento invariato)
+// Capacitor: API_BASE_URL="https://alphachat.sbs" → "https://alphachat.sbs/api/v1"
+const BASE = `${API_BASE_URL}/api/v1`;
 
 // ---------------------------------------------------------------------------
 // Tipi backend — corrispondono esattamente alle shape restituite dal server
