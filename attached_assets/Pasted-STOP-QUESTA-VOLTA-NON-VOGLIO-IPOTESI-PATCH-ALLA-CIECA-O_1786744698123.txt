@@ -1,0 +1,372 @@
+STOP. QUESTA VOLTA NON VOGLIO IPOTESI, PATCH ALLA CIECA O TEST FIXTURE.
+
+ABBIAMO UNA PROVA REALE IN PRODUZIONE.
+
+RISULTATO REALE OSSERVATO:
+
+BSC USDT #1
+- importo: 1.00 USDT
+- stato chat: "Pagamento completato"
+- timestamp: 22:31
+- la TX è stata realmente eseguita on-chain
+- NON presente in Alpha Wallet → Storico
+- NON presente in Alpha Wallet → Notifiche
+
+BSC USDT #2
+- importo: 0.50 USDT
+- stato chat: "Pagamento completato"
+- timestamp: 22:55
+- la TX è stata realmente eseguita on-chain
+- NON presente in Alpha Wallet → Storico
+- NON presente in Alpha Wallet → Notifiche
+
+LE SCREENSHOT SONO LA PROVA DEL FALLIMENTO.
+
+==================================================
+REGOLA #1 — NIENTE NUOVE MODIFICHE FINCHÉ NON TROVI IL PUNTO DI PERDITA
+==================================================
+
+Non modificare codice.
+
+Non fare refactor.
+
+Non toccare signing BSC.
+
+Non toccare walletsBsc.
+
+Non toccare switchChain.
+
+Non toccare Trust Wallet.
+
+Non dichiarare PASS sulla base di 1061/1061.
+
+Prima devi ricostruire la pipeline con una TX REALE.
+
+==================================================
+1. RECUPERA LA TX REALE
+==================================================
+
+Devi recuperare gli hash delle TX BSC reali delle prove delle 22:31 e 22:55.
+
+Fonti ammesse:
+- database MongoDB
+- multichain_transfers
+- log backend
+- WS payload
+- ChatPage system_metadata
+- API history
+- explorer/on-chain
+- qualsiasi log persistente della produzione
+
+NON chiedere semplicemente "non ho l'hash".
+
+Il sistema deve avere l'hash se la chat mostra "Pagamento completato" e "Vedi transazione".
+
+Identifica almeno una delle due TX con:
+
+txHash
+chainId=56
+token=USDT
+sender
+recipient
+amount
+status
+timestamp
+
+==================================================
+2. TRACE HISTORY END-TO-END
+==================================================
+
+Prendi LA TX REALE e seguila esattamente:
+
+BSC TX
+→ multichain_transfers
+→ tx_hash_deposit
+→ tx_hash_release
+→ backend detection
+→ mc_payment.state_changed
+→ ChatPage.tsx
+→ saveTxRecord()
+→ IndexedDB alpha-wallet-v1 / tx-history
+→ loadTxHistory()
+→ refreshTxHistory()
+→ HistoryView
+
+Per OGNI PASSAGGIO devi dire:
+
+PASS / FAIL
+
+e mostrare il dato concreto.
+
+In particolare verifica:
+
+A) il WS released contiene realmente tx_hash_deposit e tx_hash_release?
+
+B) quale hash deve vedere il SENDER?
+
+C) quale hash deve vedere il RECEIVER?
+
+D) sender_id / recipient_id sono corretti?
+
+E) il guard conversation_id !== activeConvId viene ancora eseguito prima di saveTxRecord?
+
+F) saveTxRecord() viene realmente chiamato?
+
+G) con quale id?
+
+Atteso:
+
+${chainId}:${txHash}:${direction}:
+
+H) getTxRecord(id) restituisce il record?
+
+I) il record sopravvive a reload?
+
+J) HistoryView lo filtra?
+
+K) il record viene creato sul wallet corretto?
+
+==================================================
+3. TRACE NOTIFICHE END-TO-END
+==================================================
+
+La TX reale deve essere seguita separatamente:
+
+mc_payment.state_changed
+→ dispatchWalletNotification()
+→ notification store
+→ persistenza
+→ userId
+→ NotificationsView
+
+Verifica concretamente:
+
+A) dispatchWalletNotification viene chiamata?
+
+B) con quale userId?
+
+C) con quale txHash?
+
+D) con quale tipo di notifica?
+
+E) viene scritto nello store?
+
+F) lo store viene letto da NotificationsView?
+
+G) la notifica viene filtrata per userId?
+
+H) viene filtrata per wallet/address?
+
+I) viene esclusa perché direction/token/network non corrispondono?
+
+J) viene persa perché il WS event arriva quando l'utente è fuori dalla ChatPage?
+
+QUESTO PUNTO È CRITICO.
+
+Il precedente root cause History era:
+
+if (conversation_id !== activeConvId) break;
+
+Ma ora abbiamo già spostato saveTxRecord e dispatchWalletNotification prima del guard.
+
+DEVI VERIFICARE NEL CODICE ATTUALE CHE SIA VERAMENTE COSÌ.
+
+NON ASSUMERLO.
+
+==================================================
+4. VERIFICA LA DIFFERENZA TRA CHAT E WALLET
+==================================================
+
+La chat mostra:
+
+"Pagamento completato"
+
+Questo significa che almeno una pipeline riceve l'evento.
+
+Devi spiegare perché:
+
+CHAT = PASS
+
+ma:
+
+HISTORY = FAIL
+NOTIFICHE = FAIL
+
+Se entrambe falliscono nello stesso punto, trovare quel punto comune.
+
+Se falliscono in punti diversi, documentarli separatamente.
+
+==================================================
+5. ATTENZIONE AL SENDER TRUST WALLET
+==================================================
+
+Il sender NON è necessariamente l'Alpha Wallet address.
+
+La TX BSC può essere:
+
+Trust Wallet
+→ escrow
+→ recipient
+
+NON usare il tx-monitor che scansiona solamente l'Alpha Wallet come unica fonte.
+
+Per MultiChain la TX reale deve essere persistita usando gli hash forniti dal backend:
+
+tx_hash_deposit
+tx_hash_release
+
+Gli hash sono reali e già verificati dal backend.
+
+==================================================
+6. VERIFICA IL BACKFILL
+==================================================
+
+Il backfill NON può essere considerato funzionante solo perché i test fixture passano.
+
+Prendi la TX REALE.
+
+Esegui/verifica:
+
+apiMCHistory()
+→ backend /transfers/history
+→ MongoDB
+→ authorization userId
+→ backfillMCHistory()
+→ saveTxRecord()
+→ refreshTxHistory()
+
+Verifica se la TX reale viene restituita dall'endpoint.
+
+Se NON viene restituita:
+
+ROOT CAUSE = backend/history query.
+
+Se viene restituita ma NON compare:
+
+ROOT CAUSE = frontend/backfill/IDB/UI.
+
+==================================================
+7. VERIFICA AUTHORIZATION
+==================================================
+
+Controlla la query:
+
+requireUserId
++
+$or:
+[
+  sender_id,
+  recipient_id
+]
+
+Verifica che il userId della TX reale corrisponda davvero al JWT dell'utente che sta guardando History/Notifiche.
+
+NON assumere che sender_id e recipient_id siano stringhe/address.
+
+Verifica i tipi reali MongoDB/ObjectId.
+
+==================================================
+8. NON FARE QUESTO
+==================================================
+
+NON:
+
+- creare record sintetici;
+- inventare txHash;
+- duplicare TX;
+- aggiungere polling casuale;
+- fare scansioni blockchain infinite;
+- modificare il tx-monitor per "provare";
+- modificare il signing;
+- modificare WalletConnect;
+- modificare UI senza root cause;
+- dichiarare risolto perché la build passa.
+
+==================================================
+9. SOLO DOPO LA ROOT CAUSE
+==================================================
+
+Quando hai trovato ESATTAMENTE il punto di perdita:
+
+proponi IL MINIMO FIX POSSIBILE.
+
+Massimo principio:
+
+1 root cause
+→ 1 fix mirato.
+
+Nessun refactor.
+
+==================================================
+10. TEST OBBLIGATORI DOPO IL FIX
+==================================================
+
+Automated tests.
+
+Poi TEST REALE:
+
+BSC USDT 1 TX.
+
+Verificare:
+
+[ ] firma
+[ ] TX on-chain
+[ ] Chat "Pagamento completato"
+[ ] History presente
+[ ] History presente dopo reload
+[ ] Notifications presente
+[ ] data + ora corretti
+[ ] nessun duplicato
+
+Poi seconda TX:
+
+BSC USDT 0.50.
+
+Verificare nuovamente:
+
+[ ] History
+[ ] Notifications
+[ ] nessun duplicato
+
+==================================================
+OUTPUT OBBLIGATORIO
+==================================================
+
+Non voglio un report generico.
+
+Voglio:
+
+1. TX HASH REALE
+2. DOVE VIENE TROVATA
+3. WS PAYLOAD REALE
+4. ROOT CAUSE HISTORY
+5. ROOT CAUSE NOTIFICHE
+6. ROOT CAUSE COMUNE, SE ESISTE
+7. FILE + RIGA/FUNZIONE
+8. FIX MINIMO PROPOSTO
+9. TEST AUTOMATICI
+10. TEST REALE
+11. HISTORY = PASS/FAIL
+12. NOTIFICHE = PASS/FAIL
+13. RELOAD = PASS/FAIL
+14. DUPLICATI = PASS/FAIL
+15. REGRESSIONI
+16. DEPLOY STATUS
+
+IMPORTANTE:
+
+FINCHÉ UNA TX BSC REALE NON COMPARE SIA IN:
+
+Alpha Wallet → Storico
+
+E SIA IN:
+
+Alpha Wallet → Notifiche
+
+IL BUG È ANCORA APERTO.
+
+NON SCRIVERE "PRODUCTION VERIFIED".
+
+NON SCRIVERE "READY".
+
+NON MODIFICARE ALTRO CODICE FINCHÉ NON HAI IDENTIFICATO IL PUNTO ESATTO DI PERDITA.
