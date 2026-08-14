@@ -1,0 +1,337 @@
+🚨🚨 BLOCCO TOTALE — REGRESSIONE CRITICA
+
+FERMATI.
+
+Dopo le ultime modifiche il flusso MultiChain è rotto.
+
+Ho appena eseguito un pagamento USDA e la schermata mostra:
+
+Missing or invalid. request() chainId: eip155:137
+
+seguito da:
+
+Nessun deposito rilevato on-chain — ripremi «Firma e Invia» per riprovare.
+
+Il sistema quindi arriva alla fase INVIO ma non riesce più a completare correttamente la richiesta.
+
+In precedenza abbiamo anche avuto:
+
+USDT BSC → Errore interno del server
+
+Quindi abbiamo già dimostrato che non è un singolo caso isolato.
+
+Abbiamo una regressione che interessa il flow di pagamento MultiChain.
+
+🔴 ORDINE DI PRIORITÀ
+
+Dimentica temporaneamente la History.
+
+Dimentica temporaneamente il backfill.
+
+Dimentica temporaneamente il tx-monitor.
+
+DOBBIAMO RIPRISTINARE IL PAGAMENTO.
+
+Non fare altri fix alla cieca.
+
+⸻
+
+1. TROVA LA ROOT CAUSE DELLA REGRESSIONE
+
+Parti dall’errore reale:
+
+Missing or invalid. request() chainId: eip155:137
+
+Identifica:
+
+* file;
+* funzione;
+* riga;
+* chiamata request();
+* valore passato a chainId;
+* valore atteso;
+* origine di quel valore;
+* quale modifica recente lo ha cambiato.
+
+Voglio sapere precisamente:
+
+prima → valore
+
+adesso → valore
+
+perché è cambiato
+
+⸻
+
+2. CONFRONTA CON L’ULTIMA VERSIONE FUNZIONANTE
+
+Fai un diff tra l’ultima versione sicuramente funzionante del pagamento MultiChain e quella attuale.
+
+NON limitarti ai file della History.
+
+Cerca modifiche che possono avere influenzato:
+
+* chainId;
+* network;
+* EIP-155;
+* wallet client;
+* Thirdweb;
+* request();
+* transaction parameters;
+* signing;
+* deposit;
+* MultiChain controller;
+* payload;
+* auth;
+* routing;
+* serialization.
+
+In particolare controlla se qualcuno ha trasformato:
+
+137
+
+in:
+
+eip155:137
+
+o viceversa in un punto dove request() richiede esclusivamente un determinato formato.
+
+⸻
+
+3. BSC + POLYGON
+
+Abbiamo già due sintomi:
+
+BSC
+
+USDT → BSC → 1 USDT
+
+→ Errore interno del server
+
+Polygon
+
+USDA → Polygon
+
+→ request() chainId: eip155:137
+
+Quindi devi trattare il problema come:
+
+REGRESSIONE GENERALE DEL NETWORK/CHAIN HANDLING
+
+e NON come problema specifico di USDA.
+
+⸻
+
+4. NON MODIFICARE LA HISTORY
+
+Per ora NON modificare:
+
+* mc-history-backfill.ts
+* saveTxRecord()
+* apiMCHistory()
+* AlphaWalletPage.tsx
+* tx-monitor
+* IndexedDB
+
+Il problema attuale avviene PRIMA.
+
+Prima deve tornare funzionante:
+
+selezione rete
+→ conferma
+→ firma
+→ request()
+→ deposit
+→ release
+
+⸻
+
+5. CONTROLLO DELLE MODIFICHE RECENTI
+
+Le ultime modifiche dichiarate erano:
+
+Backend:
+
+* multichain-events.ts
+* multichain-payment.controller.ts
+* multichain-payment.routes.ts
+
+Frontend:
+
+* mc-history-backfill.ts
+* multichain-api.ts
+* ChatPage.tsx
+* AlphaWalletPage.tsx
+
+Verifica se una di queste ha modificato indirettamente il flow di pagamento.
+
+Se nessuna è responsabile, continua con il diff completo fino a trovare la modifica responsabile.
+
+NON assumere che il problema sia nei file appena modificati.
+
+⸻
+
+6. TEST DI RIPRODUZIONE
+
+Prima di modificare il codice devi riuscire a riprodurre almeno:
+
+Test A
+
+USDT → BSC → 1 USDT
+
+Test B
+
+USDA → Polygon → importo minimo
+
+Per entrambi raccogli:
+
+* request;
+* chainId;
+* network;
+* wallet/client;
+* endpoint;
+* payload;
+* response;
+* errore completo.
+
+⸻
+
+7. FIX MINIMALE
+
+Una volta identificata la causa:
+
+ripristina il comportamento precedente funzionante.
+
+NON creare una nuova architettura.
+
+NON aggiungere fallback casuali.
+
+NON convertire automaticamente chainId in più formati “per sicurezza”.
+
+Il formato deve essere quello richiesto dalla specifica API/client usata in quel punto.
+
+⸻
+
+8. REGRESSION TEST OBBLIGATORI
+
+Dopo il fix devi verificare:
+
+Polygon
+
+USDA → Polygon → Firma → Deposit
+
+BSC
+
+USDT → BSC → Firma → Deposit
+
+Ethereum
+
+USDT → Ethereum → Firma → Deposit
+
+Non serve completare transazioni reali se l’ambiente non lo permette, ma almeno il flow deve arrivare correttamente alla richiesta di firma senza:
+
+Missing or invalid request() chainId
+
+⸻
+
+9. NON USARE I 1061 TEST COME SCUDO
+
+Il fatto che:
+
+1061/1061 PASS
+
+non significa nulla rispetto a questa regressione.
+
+Il test reale ha già dimostrato che il pagamento è rotto.
+
+Quindi aggiungi un test di regressione specifico per il problema:
+
+request() chainId
+
+che fallisca se qualcuno passa:
+
+eip155:137
+
+dove è richiesto:
+
+137
+
+o viceversa.
+
+Il test deve riflettere il contratto reale della funzione.
+
+⸻
+
+10. OUTPUT OBBLIGATORIO PRIMA DI QUALSIASI FIX
+
+Restituisci:
+
+ROOT CAUSE REGRESSION
+
+file:
+
+function:
+
+line:
+
+request():
+
+chainId ricevuto:
+
+chainId atteso:
+
+ULTIMA VERSIONE FUNZIONANTE
+
+chainId:
+
+network:
+
+request():
+
+VERSIONE ROTTA
+
+chainId:
+
+network:
+
+request():
+
+MODIFICA RESPONSABILE
+
+Spiega esattamente quale modifica ha introdotto la regressione.
+
+FIX PROPOSTO
+
+Una sola modifica minima.
+
+NON applicarla finché non hai mostrato la root cause.
+
+⸻
+
+🚫 STATO DEL PROGETTO
+
+Attualmente:
+
+DEPLOY BLOCCATO
+
+PAGAMENTI BLOCCATI
+
+NON FARE ALTRI DEPLOY
+
+NON FARE ALTRI TEST REALI DI PAGAMENTO
+
+finché la regressione non è identificata e risolta.
+
+La History è secondaria in questo momento.
+
+Prima deve tornare a funzionare il core:
+
+SEND → SIGN → DEPOSIT
+
+Solo dopo torniamo a verificare:
+
+DEPOSIT → WS → IDB → HISTORY
+
+Non voglio un altro ciclo di “fix → deploy → scopriamo un’altra regressione”.
+
+Prima root cause. Poi fix minimo. Poi test. Poi deploy.

@@ -1,0 +1,269 @@
+🚨 REGRESSIONE CRITICA — BLOCCARE IL LAVORO SULLA HISTORY
+
+Dopo l’ultimo deploy è comparsa una regressione nel flusso di invio crypto.
+
+Caso riprodotto:
+
+* destinatario: Cricco
+* token: USDT
+* rete: BSC
+* importo: 1 USDT
+* schermata “Invia Cripto”
+* premendo “Continua” compare:
+
+“Errore interno del server. Il team è stato notificato.”
+
+Questa funzionalità funzionava prima delle modifiche recenti.
+
+PRIORITÀ ASSOLUTA
+
+NON modificare ancora il sistema History.
+
+NON aggiungere workaround.
+
+NON modificare nuovamente mc-history-backfill.
+
+NON toccare il tx-monitor.
+
+NON fare altri refactor.
+
+Prima devi capire quale modifica ha introdotto la regressione.
+
+⸻
+
+1. RIPRODUCI E TROVA L’ERRORE REALE
+
+Esegui esattamente:
+
+USDT → BSC → 1 USDT → Continua
+
+e identifica:
+
+* endpoint chiamato;
+* HTTP method;
+* HTTP status;
+* request payload;
+* response;
+* stack trace backend;
+* file;
+* funzione;
+* riga;
+* errore reale del server.
+
+Non accetto come diagnosi:
+
+“Errore interno del server”
+
+Quello è soltanto il messaggio mostrato all’utente.
+
+Voglio l’errore reale nei log.
+
+⸻
+
+2. CONFRONTA CON L’ULTIMA VERSIONE FUNZIONANTE
+
+Fai un diff preciso tra:
+
+ultima versione funzionante
+
+e
+
+versione attualmente deployata.
+
+Identifica tutte le modifiche introdotte dall’ultimo deploy.
+
+Poi determina quale modifica tocca indirettamente o direttamente il flow:
+
+send crypto → MultiChain → BSC → USDT
+
+⸻
+
+3. ATTENZIONE ALLE MODIFICHE RECENTI
+
+Nel precedente report hai indicato modifiche a:
+
+Backend
+
+* multichain-events.ts
+* multichain-payment.controller.ts
+* multichain-payment.routes.ts
+
+Frontend
+
+* mc-history-backfill.ts
+* multichain-api.ts
+* ChatPage.tsx
+* AlphaWalletPage.tsx
+
+Devi verificare se una di queste modifiche ha alterato:
+
+* route ordering;
+* controller;
+* request validation;
+* auth;
+* MongoDB query;
+* MultiChain transfer creation;
+* payload;
+* error handling;
+* import;
+* runtime initialization.
+
+In particolare, hai appena aggiunto:
+
+GET /transfers/history
+
+prima di:
+
+/:id
+
+Verifica che questa modifica non abbia effetti collaterali sul routing o sui controller esistenti.
+
+⸻
+
+4. NON CONFONDERE TEST VERDI CON REGRESSION-FREE
+
+I 1061/1061 test verdi NON sono sufficienti.
+
+Il test reale ha appena dimostrato:
+
+REGRESSIONE REALE PRESENTE.
+
+Quindi lo stato NON è:
+
+ROOT CAUSE FIXED + CODE VERIFIED
+
+Lo stato attuale è:
+
+REGRESSION DETECTED — DEPLOY BLOCKED
+
+⸻
+
+5. PRIORITÀ: RIPRISTINARE IL SEND
+
+Se la regressione è stata introdotta dall’ultimo deploy, la priorità è:
+
+ripristinare il comportamento precedente del send.
+
+Se è sicuro farlo, valuta rollback alla precedente versione funzionante.
+
+NON voglio che il sistema rimanga in produzione con:
+
+Invia USDT BSC → Errore interno del server
+
+solo per mantenere online il nuovo fix History.
+
+La History può aspettare.
+
+Un pagamento bloccato NO.
+
+⸻
+
+6. DOPO AVER RIPRISTINATO IL SEND
+
+Solo quando questo test torna a funzionare:
+
+USDT BSC → 1 USDT → Continua
+
+e il normale flow arriva nuovamente alla fase di conferma/firma,
+
+potrai riprendere il lavoro sulla History.
+
+⸻
+
+7. NON FARE QUESTO
+
+NON fare:
+
+* “provo a cambiare questa cosa”;
+* “aggiungo un try/catch”;
+* “ignoro l’errore”;
+* “faccio fallback”;
+* “se BSC fallisce uso un’altra route”;
+* “modifico il controller finché passa”;
+* “aggiungo un default”;
+* “disabilito la validazione”.
+
+Prima:
+
+ROOT CAUSE DELLA REGRESSIONE.
+
+Poi:
+
+FIX MINIMALE.
+
+Poi:
+
+TEST REALE DEL SEND.
+
+⸻
+
+8. OUTPUT OBBLIGATORIO
+
+Prima di modificare codice restituisci:
+
+REGRESSION ROOT CAUSE
+
+* endpoint:
+* status HTTP:
+* errore reale:
+* file:
+* funzione:
+* riga:
+* modifica che lo ha causato:
+
+LAST WORKING VERSION
+
+* commit/versione:
+* comportamento BSC USDT:
+
+CURRENT VERSION
+
+* comportamento:
+* errore:
+
+REGRESSION DIFF
+
+Spiega esattamente quale modifica ha rotto il send.
+
+RECOVERY
+
+* rollback necessario: YES/NO
+* fix minimale proposto:
+
+NON applicare il fix finché non hai identificato la causa.
+
+⸻
+
+9. CRITERIO DI SBLOCCO
+
+Il deploy NON è accettato finché non passa:
+
+SEND TEST
+
+USDT
+BSC
+1 USDT
+→ Continua
+→ Conferma
+→ Firma
+→ pagamento completato
+
+e non compare più:
+
+“Errore interno del server.”
+
+Solo dopo aver ripristinato il send potremo verificare nuovamente la History.
+
+ORDINE CORRETTO
+
+1. BLOCCARE DEPLOY
+
+2. TROVARE REGRESSIONE
+
+3. RIPRISTINARE SEND
+
+4. TESTARE SEND REALE
+
+5. SOLO DOPO TESTARE HISTORY
+
+Non voglio altri cambiamenti alla cieca.
