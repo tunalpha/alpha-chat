@@ -26,7 +26,7 @@ import { MessageModel }                                  from "../models/message
 import { acquireLock, writeAudit }                       from "./lock";
 import { transferFromCustodial, getCustodialBalance }     from "./usda-custodial.service";
 import { emitPaymentStateChanged }                        from "./events";
-import { autoReleaseForRequest }                          from "./chat-payment.service";
+import { autoReleaseForRequest, autoReleaseForSend }      from "./chat-payment.service";
 import { syncRequestFromTransfer }                        from "../services/usda.service";
 import { logger }                                         from "../lib/logger";
 import type { ChatTransferStatus }                        from "./state-machine";
@@ -57,6 +57,15 @@ const REQUEST_RELEASE_STALE_MS = 5 * 60 * 1000; // 5 minuti
 
 /** Intervallo del retry auto-release richieste. */
 const REQUEST_RELEASE_INTERVAL_MS = 5 * 60 * 1000; // 5 minuti
+
+/**
+ * Soglia oltre la quale un transfer "send" pending (deposito confermato,
+ * release non avvenuto) viene ri-tentato.
+ */
+const SEND_RELEASE_STALE_MS = 5 * 60 * 1000; // 5 minuti
+
+/** Intervallo del retry auto-release send. */
+const SEND_RELEASE_INTERVAL_MS = 5 * 60 * 1000; // 5 minuti
 
 /** Mappa lo stato terminale del transfer allo stato della bolla richiesta. */
 function _requestStatusForTerminal(terminal: ChatTransferStatus): "confirmed" | "pending_claim" {
@@ -347,6 +356,52 @@ export async function processStuckTransfers(): Promise<void> {
 }
 
 // ---------------------------------------------------------------------------
+// processPendingSendTransfers — GAP CORRETTO
+// ---------------------------------------------------------------------------
+
+/**
+ * Ri-tenta l'auto-release dei transfer "send" (non legati a una richiesta) rimasti
+ * `pending` dopo la conferma del deposito.
+ *
+ * Questo colma il gap del Bug #2 dell'incidente doppio-addebito del 2026-08-14:
+ * il deposito di Transfer-1 (18a04c19) fu confermato dallo scheduler alle 11:27 ma
+ * il release fallì (probabilmente per gas/RPC) e non c'era nessun job di retry.
+ * Il transfer rimase bloccato fino alla scadenza (2026-08-16), quando sarebbe stato
+ * rimborsato al mittente anziché rilasciato al destinatario.
+ *
+ * Analogamente a processPendingRequestReleases, ma per i transfer "send" diretti.
+ * Delega a autoReleaseForSend(), che è idempotente, balance-checked e usa il
+ * lock atomico pending→accepting.
+ */
+export async function processPendingSendTransfers(): Promise<void> {
+  const staleThreshold = new Date(Date.now() - SEND_RELEASE_STALE_MS);
+
+  const candidates = await ChatTransferModel.find(
+    {
+      status:             "pending",
+      request_payment_id: null,             // solo invii diretti
+      tx_hash_deposit:    { $ne: null },    // deposito confermato on-chain
+      confirmed_at:       { $lt: staleThreshold },
+      expires_at:         { $gt: new Date() },
+    },
+    { transfer_id: 1 },
+  ).limit(BATCH_SIZE).lean();
+
+  if (candidates.length === 0) return;
+
+  logger.info({ count: candidates.length }, "[Scheduler] Auto-release invii diretti in sospeso da completare");
+
+  for (const candidate of candidates) {
+    const transferId = candidate.transfer_id as string;
+    try {
+      await autoReleaseForSend(transferId);
+    } catch (err) {
+      logger.error({ err, transferId }, "[Scheduler] Errore auto-release invio diretto in sospeso");
+    }
+  }
+}
+
+// ---------------------------------------------------------------------------
 // processPendingRequestReleases
 // ---------------------------------------------------------------------------
 
@@ -410,6 +465,7 @@ export async function startPaymentScheduler(): Promise<void> {
       await processStuckTransfers();
       await processExpiredTransfers();
       await processPendingRequestReleases();
+      await processPendingSendTransfers();  // FIX Bug#2: recovery invii diretti
       logger.info("[Scheduler] Passata iniziale completata ✓");
     } catch (err) {
       logger.error({ err }, "[Scheduler] Errore passata iniziale — server continua normalmente");
@@ -425,11 +481,15 @@ export async function startPaymentScheduler(): Promise<void> {
   // Retry auto-release richieste rimaste pending — ogni 5 minuti
   setInterval(() => { void processPendingRequestReleases(); }, REQUEST_RELEASE_INTERVAL_MS).unref();
 
+  // Retry auto-release invii diretti rimasti pending — ogni 5 minuti (FIX Bug#2)
+  setInterval(() => { void processPendingSendTransfers(); }, SEND_RELEASE_INTERVAL_MS).unref();
+
   logger.info(
     {
       expireIntervalMin:         EXPIRE_INTERVAL_MS / 60_000,
       recoveryIntervalMin:       RECOVERY_INTERVAL_MS / 60_000,
       requestReleaseIntervalMin: REQUEST_RELEASE_INTERVAL_MS / 60_000,
+      sendReleaseIntervalMin:    SEND_RELEASE_INTERVAL_MS / 60_000,
     },
     "[Scheduler] Payment Engine scheduler avviato",
   );

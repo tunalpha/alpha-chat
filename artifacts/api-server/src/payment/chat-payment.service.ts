@@ -920,6 +920,91 @@ function _enrichReleaseBlock(transferId: string, txHash: string): void {
  * — possa completarlo. Un eventuale crash mid-release lascia lo stato in
  * `accepting`, coperto dal recovery processStuckTransfers().
  */
+/**
+ * Auto-release per transfer "send" non legati a una richiesta.
+ *
+ * Corrisponde ad autoReleaseForRequest ma senza il vincolo request_payment_id.
+ * Usato dallo scheduler per recuperare i transfer pending con deposito
+ * confermato che non hanno mai ricevuto il release (es. crash post-confirmDeposit,
+ * timeout RPC durante il release, riavvio server).
+ *
+ * Sicurezza: stessa guardia anti-double-spend di autoReleaseForRequest
+ * (verifica saldo escrow prima di inviare la TX).
+ * Idempotente: acquisisce il lock atomico pending→accepting, skippa se già rilasciato.
+ */
+export async function autoReleaseForSend(transferId: string): Promise<void> {
+  const transfer = await ChatTransferModel.findOne({ transfer_id: transferId });
+  if (!transfer)                     { logger.warn({ transferId }, "[Payment] Auto-release-send: transfer non trovato"); return; }
+  if (transfer.request_payment_id)   return;                    // delegato a autoReleaseForRequest
+  if (transfer.status !== "pending") return;                    // idempotente: già rilasciato/in corso
+  if (transfer.expires_at < new Date()) {
+    logger.warn({ transferId }, "[Payment] Auto-release-send: transfer scaduto — lo gestirà l'expiry job");
+    return;
+  }
+  if (!transfer.recipient_wallet) {
+    // Lazy-resolve: il destinatario potrebbe aver salvato il wallet dopo la creazione.
+    const recipientUser = await UserModel.findById(transfer.recipient_id).lean() as any;
+    const resolvedWallet: string | null =
+      recipientUser?.wallets?.usda?.address ?? recipientUser?.wallet_address ?? null;
+    if (!resolvedWallet) {
+      logger.error({ transferId }, "[Payment] Auto-release-send: wallet destinatario assente — resta pending");
+      return;
+    }
+    await ChatTransferModel.updateOne(
+      { transfer_id: transferId },
+      { $set: { recipient_wallet: resolvedWallet } },
+    );
+    transfer.recipient_wallet = resolvedWallet;
+  }
+
+  const locked = await acquireLock(transferId, "pending", "accepting");
+  if (!locked) { logger.info({ transferId }, "[Payment] Auto-release-send: lock non acquisito, salto"); return; }
+
+  const now = new Date();
+  try {
+    // Guardia anti-double-spend: se l'escrow è già vuoto, un tentativo precedente
+    // ha già rilasciato → ripristina "accepted" senza re-inviare la TX.
+    const balanceStr = await getCustodialBalance({ address: locked.escrow_wallet, assetAddress: locked.asset_address });
+    const alreadyReleased = BigInt(balanceStr) < BigInt(locked.amount_units);
+
+    let txHash = locked.tx_hash_release ?? undefined;
+    if (!alreadyReleased) {
+      await ensureEscrowGas(locked.escrow_wallet);
+      const res = await transferFromCustodial({
+        encryptedPk:  locked.escrow_encrypted_pk,
+        toAddress:    locked.recipient_wallet!,
+        amountUnits:  locked.amount_units,
+        assetAddress: locked.asset_address,
+      });
+      txHash = res.txHash;
+    } else {
+      logger.warn({ transferId }, "[Payment] Auto-release-send: escrow già vuoto — ripristino accepted senza re-invio");
+    }
+
+    const accepted = await ChatTransferModel.findOneAndUpdate(
+      { transfer_id: transferId, status: "accepting" },
+      { $set: { status: "accepted", tx_hash_release: txHash ?? null, responded_at: now, completed_at: now, locked_at: null } },
+      { returnDocument: "after" },
+    );
+    if (!accepted) throw new Error("findOneAndUpdate post-release restituito null");
+
+    await writeAudit({ transferId, fromStatus: "accepting", toStatus: "accepted", triggeredBy: "system", txHash, note: "Auto-release send (recovery scheduler)" });
+    await _updateMessageMeta(accepted);
+    emitPaymentStateChanged(accepted);
+    void _sendCompletedNotification(accepted);
+    if (txHash) _enrichReleaseBlock(transferId, txHash);
+
+    logger.info({ transferId, txHash }, "[Payment] Auto-release-send completato ✓");
+  } catch (err) {
+    // NON marcare failed: ripristina pending per un retry sicuro.
+    logger.error({ err, transferId }, "[Payment] Auto-release-send fallito — ripristino stato 'pending' per retry");
+    await ChatTransferModel.findOneAndUpdate(
+      { transfer_id: transferId, status: "accepting" },
+      { $set: { status: "pending", locked_at: null } },
+    );
+  }
+}
+
 export async function autoReleaseForRequest(transferId: string): Promise<void> {
   const transfer = await ChatTransferModel.findOne({ transfer_id: transferId });
   if (!transfer)                     { logger.warn({ transferId }, "[Payment] Auto-release: transfer non trovato"); return; }

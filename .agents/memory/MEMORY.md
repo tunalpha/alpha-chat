@@ -102,3 +102,4 @@
 - [Spark user tracking — admin monitoring](spark-user-tracking.md) — collection spark_user_status; POST /api/v1/spark/user-status (authenticate); movimenti per-utente sempre N/D (fee records no userId)
 - [Admin panel dark-theme bug](spark-monitor-url-bugs.md) — text-white/bg-white/5 invisibili su tema chiaro; + doppio /admin/ in apiFetch; + monitoring API usa sparkMonitorFetch (base /api/v1/spark)
 - [OWASP Top 10 hardening](owasp-hardening.md) — rate limit auth routes, ip-address CVE fix, broadcastLimiter IPv6 fix, scanner clean; gap: DAST + body limit per-route
+- [Double-charge incident 2026-08-14](double-charge-incident.md) — 3 root causes: generic error msg, no scheduler for pending sends, gas depletion; processPendingSendTransfers() added; Transfer-1 released ✅

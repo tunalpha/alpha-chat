@@ -1024,7 +1024,7 @@
     "signCancelled": "Hai annullato la firma nel wallet.",
     "signAbortedRetry": "Firma annullata. Ripremi «Firma e Invia» per riprovare.",
     "depositNotFound": "Nessun deposito rilevato on-chain — ripremi «Firma e Invia» per riprovare.",
-    "depositTimeout": "Timeout: deposito non rilevato dopo 10 minuti. Se hai già firmato nella app wallet usa «Controlla deposito» nella chat, altrimenti ripremi «Firma e Invia» per riprovare.",
+    "depositTimeout": "⚠️ Timeout: il deposito non è ancora confermato, ma la transazione potrebbe essere già in elaborazione sulla blockchain. NON reinviare — i tuoi fondi sono al sicuro nell'escrow. Usa «Controlla deposito» nella chat oppure attendi qualche minuto e riprova con «Riprova firma».",
     "depositAlreadyConfirmed": "Il deposito risulta già confermato. Aggiorna la chat.",
     "depositNotDetected": "Deposito non ancora rilevato on-chain.\n• Se hai già firmato: la transazione potrebbe essere ancora in conferma (1–2 min), riprova tra poco.\n• Se il wallet non si è aperto o la firma non è partita: usa «Riprova firma» qui sotto per reinviare il deposito."
   },
