@@ -24,6 +24,7 @@ import { ChatWalletRequestBubble }   from "../components/chat/ChatWalletRequestB
 import type { WalletRequestMeta, AWRequestStatus } from "../components/chat/ChatWalletRequestBubble";
 import { useChatWalletBridge }       from "../wallet/bridge/chat-wallet-bridge-context";
 import { saveTxRecord }              from "../wallet/services/tx-store";
+import { dispatchWalletNotification } from "../wallet/notifications/wallet-notification-store";
 import {
   mcDecimalsFor,
   MC_CHAIN_ID,
@@ -1947,40 +1948,24 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
             gross_amount?:   string;
             net_amount?:     string;
           };
-          if (conversation_id !== activeConvId) break;
-          setMessages((prev) =>
-            prev.map((m) => {
-              const meta = (m.system_metadata as Record<string, unknown>) ?? {};
-              const isMatch =
-                (meta.transfer_id && meta.transfer_id === transfer_id) ||
-                (message_id != null && m.id === message_id);
-              if (!isMatch) return m;
-              return {
-                ...m,
-                system_metadata: {
-                  ...meta,
-                  status,
-                  tx_hash_release: tx_hash_release ?? meta.tx_hash_release ?? null,
-                  tx_hash_deposit: tx_hash_deposit ?? meta.tx_hash_deposit ?? null,
-                },
-              };
-            }),
-          );
-
           // ── Persist TX nel tx-store IDB (Alpha Wallet History) ────────────
           //
-          // Root cause bug storico: il WS handler aggiornava solo la bolla chat
-          // ma non scriveva mai nel tx-store IDB alimentato dalla History view.
-          // La TX scompariva dalla pipeline esattamente qui.
+          // IMPORTANTE: questo blocco deve girare PRIMA della guard
+          // `conversation_id !== activeConvId`. Il guard protegge solo
+          // l'aggiornamento della bolla chat (setMessages) — non deve
+          // impedire la scrittura IDB.
           //
-          // Fix: quando status === "released" abbiamo tx_hash_deposit (TX reale
-          // on-chain del sender → escrow) e tx_hash_release (TX reale on-chain
-          // escrow → recipient). Salviamo il record pertinente al ruolo corrente.
+          // Root cause precedente: saveTxRecord era dopo il guard → se l'utente
+          // navigava via dalla conversazione prima che il backend emettesse
+          // "released", la TX non veniva mai salvata in History.
+          //
+          // Fix: saveTxRecord + dispatchWalletNotification corrono sempre,
+          // indipendentemente dalla conversazione attiva.
           //   Sender:   tx_hash_deposit, direction="out", amount=gross_amount
           //   Receiver: tx_hash_release, direction="in",  amount=net_amount
           //
           // Idempotente: saveTxRecord usa id="${chainId}:${txHash}:${dir}:" come
-          // chiave di upsert — stessa TX ricevuta N volte → 1 solo record.
+          // chiave di upsert. dispatchWalletNotification usa buildDedupKey.
           if (
             status === "released" &&
             network && asset && gross_amount && net_amount &&
@@ -2017,11 +2002,47 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
                   status:    "confirmed",
                   updatedAt: now,
                 });
+
+                // Notifica wallet (in-app + browser notification se permesso).
+                // Era assente per il flow MultiChain — solo tx-monitor Alpha Wallet
+                // la chiamava, ma non conosce le TX esterne (Trust Wallet / WC).
+                await dispatchWalletNotification({
+                  type:    isSender ? "sent"     : "received",
+                  chainId,
+                  network: netName,
+                  asset,
+                  amount:  formatMCAmount(rawAmt, decimals),
+                  txHash,
+                  timestamp: now,
+                  status:  "confirmed",
+                });
               } catch (err) {
-                console.warn("[MC History] saveTxRecord fallito:", err);
+                console.warn("[MC History/Notify] errore:", err);
               }
             })();
           }
+
+          // Guard: aggiorna la bolla chat solo se l'utente è nella conversazione
+          // corretta. Il blocco saveTxRecord sopra gira sempre (indipendente).
+          if (conversation_id !== activeConvId) break;
+          setMessages((prev) =>
+            prev.map((m) => {
+              const meta = (m.system_metadata as Record<string, unknown>) ?? {};
+              const isMatch =
+                (meta.transfer_id && meta.transfer_id === transfer_id) ||
+                (message_id != null && m.id === message_id);
+              if (!isMatch) return m;
+              return {
+                ...m,
+                system_metadata: {
+                  ...meta,
+                  status,
+                  tx_hash_release: tx_hash_release ?? meta.tx_hash_release ?? null,
+                  tx_hash_deposit: tx_hash_deposit ?? meta.tx_hash_deposit ?? null,
+                },
+              };
+            }),
+          );
           break;
         }
 

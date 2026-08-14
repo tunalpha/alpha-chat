@@ -21,7 +21,7 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { isNetworkError } from "../../lib/multichain-poll";
 import { useTranslation } from "react-i18next";
 import QRCode from "qrcode";
-import { useActiveAccount, useActiveWalletChain, useSwitchActiveWalletChain, ConnectButton } from "thirdweb/react";
+import { useActiveAccount, useActiveWallet, useActiveWalletChain, useSwitchActiveWalletChain, ConnectButton } from "thirdweb/react";
 import { client, wallets, walletsBsc, polygon, bsc, ethereum } from "../../lib/thirdweb";
 import {
   apiMCCreate,
@@ -153,6 +153,7 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
 
   // ThirdWeb — condiviso con USDA, NON un wallet system separato
   const account           = useActiveAccount();
+  const activeWallet      = useActiveWallet();   // per auto-open iOS (wallet native scheme)
   const activeWalletChain = useActiveWalletChain();
   const switchChain       = useSwitchActiveWalletChain();
   const isConnected       = !!account;
@@ -510,6 +511,35 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
     if (depositAmount === 0n) { setSignError("Importo deposito non valido."); return; }
 
     setSignError(null);
+
+    // ── iOS: pre-open wallet PRIMA di qualsiasi await ────────────────────────
+    //
+    // Root cause: dopo await switchChain() + await apiMCDetect() il contesto
+    // user-gesture iOS è perso. ThirdWeb chiama window.location.href="trust://"
+    // per aprire il wallet → iOS WebKit BLOCCA la navigazione (nessun gesture).
+    // Il relay WC consegna comunque la richiesta via WebSocket, ma Trust Wallet
+    // rimane in background e l'utente deve aprirlo manualmente.
+    //
+    // Fix: sparare window.location.href PRIMA del primo await, nel tick sincrono
+    // del click handler. Trust Wallet/SafePal vengono portati in foreground ORA;
+    // la richiesta WC arriverà via relay pochi istanti dopo.
+    //
+    // Il map è un subset sicuro — solo schemi nativi confermati su iOS.
+    // Nessun rischio di doppia TX: apriamo solo l'app, non inviamo nulla.
+    if (/iphone|ipad|ipod/i.test(navigator.userAgent)) {
+      const NATIVE_SCHEME: Record<string, string> = {
+        "com.trustwallet.app": "trust://",
+        "io.metamask":         "metamask://",
+        "com.coinbase.wallet": "cbwallet://",
+        "me.rainbow":          "rainbow://",
+        "io.zerion.wallet":    "zerion://",
+      };
+      const scheme = activeWallet?.id ? NATIVE_SCHEME[activeWallet.id] : undefined;
+      if (scheme) {
+        console.log("[MC] pre-open wallet iOS:", activeWallet?.id, "→", scheme);
+        window.location.href = scheme;
+      }
+    }
 
     // ── 1. Chain switch esplicito (awaited) ───────────────────────────────
     //

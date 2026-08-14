@@ -1,0 +1,210 @@
+STOP. NON MODIFICARE ANCORA IL CODICE.
+
+Abbiamo appena eseguito una TRANSAZIONE REALE BSC USDT in produzione.
+
+RISULTATO REALE:
+- Connect BSC: PASS
+- richiesta firma: PASS
+- Trust Wallet ha ricevuto la richiesta: PASS
+- firma: PASS
+- TX broadcastata: PASS
+- TX reale presente on-chain: DA VERIFICARE CON HASH REALE
+- AUTO-OPEN TRUST WALLET: FAIL — wallet non si apre automaticamente
+- CRONOLOGIA ALPHA WALLET: FAIL — la TX reale non compare
+- NOTIFICHE: FAIL — la TX reale non compare nelle notifiche
+
+NON dichiarare il sistema pronto.
+NON usare 1061/1061 come prova sufficiente.
+I test automatici non hanno verificato questa pipeline end-to-end reale.
+
+==================================================
+OBIETTIVO 1 — ANALIZZARE LA TX REALE
+==================================================
+
+Prima cosa:
+
+recupera l'hash della TX BSC appena eseguita.
+
+Verifica on-chain:
+- chainId = 56
+- token = USDT BEP-20
+- from
+- to
+- amount
+- block
+- status
+- timestamp
+
+Poi segui l'hash attraverso TUTTA la pipeline applicativa.
+
+==================================================
+OBIETTIVO 2 — CRONOLOGIA
+==================================================
+
+La TX reale è stata eseguita correttamente ma NON appare in:
+
+Alpha Wallet → Storico → On-chain
+
+Devi determinare ESATTAMENTE dove viene persa.
+
+TRACE OBBLIGATORIO:
+
+wallet sendTransaction
+→ txHash
+→ tx-monitor / indexing
+→ saveTxRecord()
+→ IndexedDB alpha-wallet-v1 / tx-history
+→ loadTxHistory()
+→ refreshTxHistory()
+→ History UI
+
+Verifica con dati reali:
+
+1. il txHash reale viene ricevuto dal frontend?
+2. viene passato al tx-monitor?
+3. il tx-monitor scansiona l'indirizzo corretto?
+4. BSC chainId 56 è incluso?
+5. USDT BSC è riconosciuto con il contract address corretto?
+6. il record viene scritto in IndexedDB?
+7. quale ID viene generato?
+8. esiste già un record con quell'ID?
+9. loadTxHistory() lo recupera?
+10. HistoryView lo filtra/esclude?
+
+Se il tx-monitor NON può recuperare la TX perché il wallet è Trust Wallet esterno, NON inventare una soluzione.
+
+In quel caso verificare se il TX HASH reale può essere registrato direttamente nel tx-store nel momento in cui sendTransaction() restituisce il receipt/hash.
+
+==================================================
+OBIETTIVO 3 — NOTIFICHE
+==================================================
+
+La stessa TX reale non compare nella sezione Notifiche.
+
+Trace obbligatorio:
+
+TX reale
+→ evento backend / WS / notification service
+→ persist notification
+→ userId
+→ notification store
+→ NotificationsView
+→ UI
+
+Determinare ESATTAMENTE dove si perde.
+
+IMPORTANTE:
+
+History e Notifications sono due pipeline diverse.
+
+NON assumere che risolvere History risolva Notifications.
+
+Verificare entrambe separatamente.
+
+==================================================
+OBIETTIVO 4 — NON TOCCARE IL SIGNING BSC
+==================================================
+
+Il signing BSC ora funziona.
+
+NON modificare:
+
+- walletsBsc
+- optionalChains
+- BSC ConnectButton
+- switchChain(bsc)
+- accountRef
+- sendTransaction()
+- namespace handling
+- polling della firma
+
+a meno che il code audit dimostri una relazione DIRETTA con History/Notifications.
+
+Niente refactor.
+
+Niente riscrittura dell'architettura.
+
+==================================================
+OBIETTIVO 5 — AUTO-OPEN WALLET
+==================================================
+
+Questo è un problema separato.
+
+La richiesta arriva a Trust Wallet ma Trust Wallet non viene aperto automaticamente.
+
+NON risolverlo nello stesso fix di History/Notifications.
+
+Prima identificare separatamente:
+
+sendTransaction
+→ WalletConnect request
+→ sessionRequestHandler
+→ walletLinkToOpen
+→ iOS deep link
+
+==================================================
+REGOLA FONDAMENTALE
+==================================================
+
+NON dichiarare:
+
+"FIX PASS"
+
+solo perché:
+
+- TypeScript compila
+- build passa
+- 1061/1061 passa
+- code audit statico passa.
+
+Per questa sessione il criterio PASS è:
+
+TX REALE BSC
+→ on-chain confermata
+→ presente in History
+→ presente nelle Notifiche
+→ persistente dopo reload
+→ nessun duplicato.
+
+==================================================
+FIX
+==================================================
+
+Solo DOPO aver individuato il punto esatto di perdita:
+
+- applicare il fix MINIMO possibile;
+- modificare solo i file necessari;
+- nessun refactor;
+- nessuna modifica ai workflow già funzionanti.
+
+Poi:
+
+BUILD
+TEST AUTOMATICI
+TEST REALE
+
+==================================================
+OUTPUT OBBLIGATORIO
+==================================================
+
+1. TX HASH REALE
+2. ROOT CAUSE HISTORY
+3. ROOT CAUSE NOTIFICHE
+4. ROOT CAUSE AUTO-OPEN WALLET
+5. FILE/FUNZIONE ESATTA
+6. FIX MINIMO
+7. FILE MODIFICATI
+8. BUILD
+9. TEST AUTOMATICI
+10. TEST REALE
+11. HISTORY REAL TX: PASS/FAIL
+12. NOTIFICHE REAL TX: PASS/FAIL
+13. AUTO-OPEN WALLET: PASS/FAIL
+14. REGRESSIONI
+15. DEPLOY STATUS
+
+FINCHÉ HISTORY + NOTIFICHE DELLA TX REALE NON SONO VERIFICATE:
+
+DEPLOY STATUS = BLOCKED.
+
+NON dichiarare production ready.

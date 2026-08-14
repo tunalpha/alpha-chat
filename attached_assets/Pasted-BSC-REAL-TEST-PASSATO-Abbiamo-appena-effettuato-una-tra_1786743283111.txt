@@ -1,0 +1,135 @@
+BSC REAL TEST PASSATO.
+
+Abbiamo appena effettuato una transazione reale USDT BSC.
+
+RISULTATO:
+- nuova sessione BSC + ETH: PASS
+- switch/connessione BSC: PASS
+- eth_sendTransaction: PASS
+- richiesta di firma: PASS
+- firma reale: PASS
+- transazione broadcastata: PASS
+
+QUINDI NON TOCCARE PIÙ:
+- walletsBsc
+- optionalChains
+- session namespace
+- sendTransaction
+- accountRef
+- BSC transaction logic
+- History/backfill
+- payment logic
+
+È RISOLTO.
+
+--------------------------------------------------
+NUOVO BUG RESIDUO: AUTO-OPEN WALLET SU iOS
+--------------------------------------------------
+
+Durante il test reale:
+
+Alpha Chat mostra la fase di attesa.
+
+La richiesta di firma viene effettivamente ricevuta da Trust Wallet, perché aprendo manualmente Trust Wallet trovo la richiesta pronta da confermare.
+
+MA:
+
+Alpha Chat NON apre automaticamente Trust Wallet.
+
+Il comportamento attuale è:
+
+Alpha Chat
+→ eth_sendTransaction
+→ richiesta arriva a Trust Wallet
+→ Alpha Chat rimane in attesa
+→ Trust Wallet NON viene aperto automaticamente
+→ utente deve aprire manualmente Trust Wallet
+→ richiesta di firma è presente
+→ firma funziona.
+
+Quindi NON è un problema di WalletConnect namespace e NON è un problema di sendTransaction.
+
+È esclusivamente un problema di:
+wallet deep-link / sessionRequestHandler / walletLinkToOpen / apertura automatica dell'app su iOS.
+
+--------------------------------------------------
+OBIETTIVO
+--------------------------------------------------
+
+Quando Alpha Chat invia una richiesta di firma su iOS:
+
+1. la richiesta WC viene creata;
+2. viene aperto automaticamente il wallet corretto;
+3. Trust Wallet/SafePal mostra immediatamente la richiesta;
+4. l'utente firma;
+5. Alpha Chat ritorna in foreground;
+6. il polling continua normalmente.
+
+--------------------------------------------------
+PRIMA DI MODIFICARE
+--------------------------------------------------
+
+Fai code-path audit del percorso:
+
+sendTransaction()
+→ requestAndOpenWallet()
+→ sessionRequestHandler
+→ walletLinkToOpen
+→ deep link
+→ ritorno ad Alpha Chat
+
+Identifica ESATTAMENTE perché:
+
+- la request arriva al wallet;
+- ma il wallet non viene aperto automaticamente.
+
+Verifica anche se il problema è specifico di iOS/WalletConnect e se il deep-link viene generato ma non eseguito.
+
+--------------------------------------------------
+IMPORTANTISSIMO
+--------------------------------------------------
+
+NON modificare il meccanismo di invio della TX.
+
+NON aggiungere retry della transazione.
+
+NON chiamare sendTransaction una seconda volta.
+
+NON cambiare polling.
+
+NON cambiare History.
+
+NON cambiare BSC session configuration.
+
+NON cambiare amount/fee.
+
+NON introdurre workaround che possano causare doppie TX.
+
+Il fix deve riguardare SOLO l'apertura automatica del wallet.
+
+--------------------------------------------------
+TEST
+--------------------------------------------------
+
+Dopo il fix:
+
+- Trust Wallet iOS: richiesta deve aprire automaticamente Trust Wallet.
+- SafePal iOS: richiesta deve aprire automaticamente SafePal.
+- firma deve continuare a funzionare.
+- nessuna doppia TX.
+- Alpha Chat deve riprendere correttamente dopo il ritorno dal wallet.
+
+Prima di dichiarare PASS, verificare con wallet reale.
+
+Non fare un deploy definitivo se non è possibile verificare il comportamento reale iOS.
+
+OUTPUT:
+
+ROOT CAUSE
+FIX MINIMO
+FILE/FUNZIONE
+BUILD
+TEST AUTOMATICI
+TRUST WALLET iOS
+SAFEPAL iOS
+DEPLOY STATUS
