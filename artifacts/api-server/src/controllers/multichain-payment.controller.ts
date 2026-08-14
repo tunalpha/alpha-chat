@@ -638,6 +638,59 @@ export async function handleCancelTransfer(
   }
 }
 
+// ─── GET /multichain/transfers/history ───────────────────────────────────────
+//
+// Restituisce tutti i trasferimenti "released" o "refunded" in cui l'utente
+// autenticato è mittente o destinatario, con i dati necessari per costruire
+// i record nel tx-store IDB del frontend (Alpha Wallet History).
+//
+// Scopo principale: backfill delle TX MultiChain (Trust Wallet) che non
+// passano attraverso il tx-monitor (che scansiona solo Alpha Wallet address).
+//
+// SECURITY (H-02/H-06): userId da req.user.userId; query limitata alle TX
+// dell'utente autenticato. Nessun dato di altri utenti viene esposto.
+
+export async function handleGetTransferHistory(
+  req: Request,
+  res: Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const userId  = requireUserId(req);
+    const mongoId = new mongoose.Types.ObjectId(userId);
+
+    const docs = await MultiChainTransferModel.find({
+      $or: [{ sender_id: mongoId }, { recipient_id: mongoId }],
+      status: { $in: ["released", "refunded"] },
+    })
+      .sort({ createdAt: -1 })
+      .limit(200)
+      .select(
+        "transfer_id network asset gross_amount net_amount " +
+        "tx_hash_deposit tx_hash_release sender_id recipient_id status createdAt",
+      )
+      .lean();
+
+    const history = docs.map((d) => ({
+      transferId:    d.transfer_id,
+      network:       d.network,
+      asset:         d.asset,
+      grossAmount:   d.gross_amount,
+      netAmount:     d.net_amount,
+      txHashDeposit: d.tx_hash_deposit ?? null,
+      txHashRelease: d.tx_hash_release ?? null,
+      senderId:      d.sender_id.toString(),
+      recipientId:   d.recipient_id.toString(),
+      status:        d.status,
+      createdAt:     (d.createdAt instanceof Date ? d.createdAt : new Date()).toISOString(),
+    }));
+
+    res.json({ history });
+  } catch (err) {
+    next(err);
+  }
+}
+
 // ─── POST /multichain/transfers/:id/refund ───────────────────────────────────
 
 export async function handleRefundTransfer(

@@ -24,6 +24,12 @@ import { ChatWalletRequestBubble }   from "../components/chat/ChatWalletRequestB
 import type { WalletRequestMeta, AWRequestStatus } from "../components/chat/ChatWalletRequestBubble";
 import { useChatWalletBridge }       from "../wallet/bridge/chat-wallet-bridge-context";
 import { saveTxRecord }              from "../wallet/services/tx-store";
+import {
+  mcDecimalsFor,
+  MC_CHAIN_ID,
+  MC_NETWORK_NAME,
+  formatMCAmount,
+}                                    from "../wallet/services/mc-history-backfill";
 import type { ChatPaymentResult }    from "../wallet/bridge/chat-wallet-bridge";
 import type { MCSystemMeta }        from "../lib/multichain-api";
 
@@ -1982,44 +1988,34 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
           ) {
             void (async () => {
               try {
-                const MC_CHAIN_ID: Record<string, number> = {
-                  bsc: 56, polygon: 137, ethereum: 1,
-                };
-                const MC_NETWORK_NAME: Record<string, string> = {
-                  bsc: "BNB Smart Chain", polygon: "Polygon", ethereum: "Ethereum",
-                };
-                // BSC+USDT=18dec, Polygon+USDA=18dec, Polygon+USDT=6dec, ETH+USDT=6dec
-                const MC_DECIMALS: Record<string, number> = {
-                  "bsc:USDT": 18, "polygon:USDA": 18,
-                  "polygon:USDT": 6, "ethereum:USDT": 6,
-                };
-                const decimals = MC_DECIMALS[`${network}:${asset}`] ?? 6;
-                const chainId  = MC_CHAIN_ID[network] ?? 0;
+                const chainId = MC_CHAIN_ID[network] ?? 0;
+                if (chainId === 0) return; // skip Bitcoin / rete non mappata
+
+                const decimals = mcDecimalsFor(network, asset);
                 const netName  = MC_NETWORK_NAME[network] ?? network;
                 const now      = Date.now();
 
+                // sender_id = MongoDB ObjectId del User (ref "User"),
+                // auth?.userId = stesso tipo → confronto diretto corretto (H-06)
+                if (!auth?.userId) return;
                 const isSender = sender_id === auth.userId;
                 const txHash   = isSender ? tx_hash_deposit : tx_hash_release;
-                const rawAmt   = isSender ? gross_amount     : net_amount;
-                const dir      = isSender ? "out" as const   : "in" as const;
+                const rawAmt   = isSender ? gross_amount    : net_amount;
+                const dir      = isSender ? "out" as const  : "in" as const;
 
-                if (!txHash || chainId === 0) return;
-
-                const humanAmt = (parseFloat(rawAmt) / 10 ** decimals).toFixed(
-                  decimals >= 18 ? 4 : 2,
-                );
+                if (!txHash) return;
 
                 await saveTxRecord({
-                  id:          `${chainId}:${txHash}:${dir}:`,
+                  id:        `${chainId}:${txHash}:${dir}:`,
                   chainId,
-                  network:     netName,
+                  network:   netName,
                   txHash,
-                  direction:   dir,
+                  direction: dir,
                   asset,
-                  amount:      humanAmt,
-                  timestamp:   now,
-                  status:      "confirmed",
-                  updatedAt:   now,
+                  amount:    formatMCAmount(rawAmt, decimals),
+                  timestamp: now,
+                  status:    "confirmed",
+                  updatedAt: now,
                 });
               } catch (err) {
                 console.warn("[MC History] saveTxRecord fallito:", err);

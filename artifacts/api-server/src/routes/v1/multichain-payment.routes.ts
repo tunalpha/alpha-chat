@@ -23,6 +23,7 @@ import {
   handleRequestTransfer,
   handlePaymentQuote,
   handleGetTransfer,
+  handleGetTransferHistory,
   handleDetectDeposit,
   handleReleaseTransfer,
   handleRefundTransfer,
@@ -119,6 +120,9 @@ router.post(
   handleRequestTransfer,
 );
 
+// IMPORTANTE: routes statiche (/history, /quote, /request) PRIMA di /:id
+// per evitare che Express le intercetti come parametro dinamico.
+router.get("/transfers/history",      authenticate, handleGetTransferHistory);
 router.get("/transfers/:id",          authenticate, handleGetTransfer);
 router.post("/transfers/:id/cancel",  authenticate, handleCancelTransfer);
 router.post("/transfers/:id/detect",  authenticate, detectRateLimit, handleDetectDeposit);

@@ -46,6 +46,8 @@ import {
 } from "../wallet/notifications/wallet-notification-types";
 import { markAllNotificationsRead } from "../wallet/notifications/wallet-notification-store";
 import type { WalletTxRecord } from "../wallet/services/tx-store";
+import { backfillMCHistory }      from "../wallet/services/mc-history-backfill";
+import { apiMCHistory }           from "../lib/multichain-api";
 // Phase C: balance, price, gas, signing
 import {
   fetchEvmBalance,
@@ -3424,6 +3426,33 @@ function HistoryView({ onBack }: { onBack: () => void }) {
 
   // Carica on-chain sempre; carica Lightning al primo accesso al tab
   useEffect(() => { void wallet.refreshTxHistory(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Backfill MultiChain TX (Trust Wallet / WalletConnect) nel tx-store IDB.
+  //
+  // Root cause: il WS handler mc_payment.state_changed aggiornava solo la bolla chat
+  // ma non scriveva nel tx-store IDB. Le TX MultiChain (es. BSC USDT via Trust Wallet)
+  // erano persi permanentemente dalla History.
+  //
+  // Fix: al primo accesso alla History, recuperiamo tutti i trasferimenti completati
+  // dal backend e li upsert nel tx-store IDB (idempotente: stessa TX → stesso record).
+  // Per le TX future il WS handler in ChatPage.tsx le salva al momento del "released".
+  useEffect(() => {
+    const userId = localStorage.getItem("ac_user_id") ?? "";
+    if (!userId) return;
+
+    void (async () => {
+      try {
+        const items = await apiMCHistory();
+        const { saved } = await backfillMCHistory(items, userId);
+        if (saved > 0) {
+          // Aggiorna la UI con i nuovi record inseriti
+          await wallet.refreshTxHistory();
+        }
+      } catch {
+        // Backfill è best-effort: non mostrare errori all'utente
+      }
+    })();
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Finding 7: Riconciliazione IDB ↔ SDK al caricamento della tab Lightning.
   //

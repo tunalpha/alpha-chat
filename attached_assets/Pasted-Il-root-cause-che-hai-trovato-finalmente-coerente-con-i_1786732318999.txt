@@ -1,0 +1,249 @@
+Il root cause che hai trovato è finalmente coerente con il problema. Ma il lavoro NON è concluso.
+
+Non dichiarare il bug risolto solo perché il codice compila e i server sono live.
+
+Adesso devi fare una VALIDAZIONE END-TO-END REALE.
+
+1. TEST OBBLIGATORIO CON UN NUOVO PAGAMENTO REALE
+
+Esegui un nuovo pagamento:
+
+1 USDT — BSC/BEP-20
+
+da un wallet esterno/Trust Wallet verso un Alpha Wallet.
+
+Dopo il completamento verifica obbligatoriamente:
+
+Sender
+
+La History del mittente deve contenere:
+
+* direction = out
+* chainId = 56
+* token = USDT
+* amount corretto
+* txHash = tx_hash_deposit
+* record presente in alpha-wallet-v1/tx-history
+
+Receiver
+
+La History del destinatario deve contenere:
+
+* direction = in
+* chainId = 56
+* token = USDT
+* amount netto corretto
+* txHash = tx_hash_release
+* record presente in alpha-wallet-v1/tx-history
+
+2. VERIFICA CHE NON SIANO STATI SCAMBIATI I DUE HASH
+
+Questo è fondamentale.
+
+Il mittente deve avere come transazione OUT il vero:
+
+tx_hash_deposit
+
+Il destinatario deve avere come transazione IN il vero:
+
+tx_hash_release
+
+Non accettare una soluzione in cui entrambi vedono lo stesso hash solo perché il pagamento è lo stesso.
+
+Devono essere due operazioni blockchain distinte quando il sistema MultiChain utilizza deposit → escrow → release.
+
+3. VERIFICA L’IDENTITÀ SENDER/RECEIVER
+
+Controlla concretamente il payload WS.
+
+Deve essere impossibile che:
+
+* il sender salvi la TX del receiver;
+* il receiver salvi la TX del sender;
+* entrambi salvino entrambe le TX;
+* un utente non coinvolto riceva un record.
+
+Verifica esplicitamente la condizione usata nel frontend:
+
+auth.userId === sender_id
+
+e
+
+auth.userId === recipient_id
+
+Se sender_id e recipient_id sono user ID, dimostralo. Se sono wallet address, NON confrontarli direttamente con auth.userId.
+
+4. VERIFICA L’IDEMPOTENZA
+
+Simula lo stesso evento WS ricevuto più volte.
+
+Esempio:
+
+* evento ricevuto 1 volta;
+* evento ricevuto 2 volte;
+* reconnect;
+* retry;
+* refresh;
+* eventuale evento duplicato dal backend.
+
+Risultato obbligatorio:
+
+1 sola riga nella History.
+
+Verifica direttamente l’ID:
+
+56:${txHash}:${direction}:
+
+e verifica che saveTxRecord() faccia realmente upsert e non generi duplicati.
+
+5. VERIFICA LA CRONOLOGIA
+
+Dopo il nuovo pagamento:
+
+1. apri History del mittente;
+2. apri History del destinatario;
+3. fai refresh;
+4. chiudi e riapri l’app/pagina;
+5. verifica nuovamente.
+
+La transazione deve rimanere presente perché è stata persistita nell’IDB.
+
+Non deve dipendere dal fatto che la chat sia ancora aperta.
+
+6. VERIFICA IL CASO REALE SEGNALATO
+
+La TX originale:
+
+0xcd5b3e97e63ec9bae93b11473e848a6faeeb27e362db5bbcd0c1444014909e9e
+
+NON DEVE ESSERE DIMENTICATA.
+
+Hai dichiarato che:
+
+“il WS event released è già stato emesso in passato”
+
+Quindi il nuovo codice non la recupererà automaticamente.
+
+Questo significa che il bug storico rimane riproducibile nell’ambiente attuale.
+
+Devi quindi creare un backfill una tantum sicuro e idempotente per quella transazione, oppure un meccanismo equivalente che recuperi dal multichain_transfers i pagamenti già completati ma assenti da tx-history.
+
+Il backfill deve:
+
+* recuperare tx_hash_deposit;
+* recuperare tx_hash_release;
+* identificare correttamente sender e receiver;
+* creare i rispettivi record;
+* usare la stessa deduplication key;
+* NON creare duplicati se eseguito più volte.
+
+Dopo il backfill verifica che la TX originale appaia realmente nella History di entrambi gli utenti.
+
+7. NON LIMITARTI A BSC
+
+Il fix è stato inserito nel generic handler:
+
+mc_payment.state_changed
+
+Quindi devi verificare che non sia stato introdotto un comportamento specifico e fragile per BSC/USDT.
+
+Controlla almeno:
+
+* BSC / USDT
+* Polygon / USDT
+* Polygon / USDA
+
+e verifica correttamente i decimals già previsti dal progetto.
+
+8. TEST DI REGRESSIONE
+
+Verifica che il nuovo saveTxRecord() nel WS handler NON causi:
+
+* duplicati nella History;
+* transazioni duplicate rispetto al tx-monitor;
+* record con direction errata;
+* amount errati;
+* chain errata;
+* token errato;
+* problemi sui pagamenti Lightning;
+* problemi sui normali trasferimenti Alpha Wallet → Alpha Wallet.
+
+9. OUTPUT FINALE OBBLIGATORIO
+
+Non rispondere semplicemente “fix completato”.
+
+Restituisci:
+
+NUOVA TX DI TEST
+
+* tx_hash_deposit:
+* tx_hash_release:
+* chain:
+* token:
+* amount:
+
+SENDER
+
+* record ID:
+* presente in IDB: YES/NO
+* direction:
+* amount:
+* hash:
+* visualizzato in History: YES/NO
+
+RECEIVER
+
+* record ID:
+* presente in IDB: YES/NO
+* direction:
+* amount:
+* hash:
+* visualizzato in History: YES/NO
+
+DUPLICATION TEST
+
+* stesso WS event ricevuto N volte:
+* record finali:
+* risultato:
+
+BACKFILL TX ORIGINALE
+
+* 0xcd5b3e97...4909e9e
+* record sender creato:
+* record receiver creato:
+* visualizzato in entrambe le History:
+* duplicati:
+
+REGRESSION TEST
+
+* BSC USDT:
+* Polygon USDT:
+* Polygon USDA:
+* Lightning:
+* tx-monitor:
+
+REGOLA FINALE
+
+Non dichiarare “FIXED” finché non vedo una nuova TX reale presente nella History di sender e receiver e finché la TX originale non è stata verificata tramite backfill.
+
+Il fatto che:
+
+1032/1032 server live
+
+non è una prova di funzionamento.
+
+Il fatto che:
+
+TypeScript compila
+
+non è una prova di funzionamento.
+
+Il fatto che:
+
+saveTxRecord() venga chiamato
+
+non è una prova di funzionamento.
+
+La prova è: pagamento reale → blockchain → WS → IDB → History sender + History receiver → refresh → ancora presente → nessun duplicato.
+
+Fai questa verifica adesso.

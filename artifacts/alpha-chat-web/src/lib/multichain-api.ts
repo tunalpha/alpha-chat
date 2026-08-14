@@ -270,6 +270,31 @@ export interface MCNetworkEntry {
  */
 let _networksCache: { data: MCNetworkEntry[]; at: number } | null = null;
 
+// ─── History (backfill MultiChain TX nel tx-store IDB) ───────────────────────
+
+export interface MCHistoryItemRaw {
+  transferId:    string;
+  network:       string;
+  asset:         string;
+  grossAmount:   string;
+  netAmount:     string;
+  txHashDeposit: string | null;
+  txHashRelease: string | null;
+  senderId:      string;
+  recipientId:   string;
+  status:        string;
+  createdAt:     string;
+}
+
+/**
+ * Restituisce i trasferimenti MultiChain completati (released/refunded) dell'utente.
+ * Usato dal backfill per popolare il tx-store IDB della History view.
+ */
+export async function apiMCHistory(): Promise<MCHistoryItemRaw[]> {
+  const data = await mcFetch<{ history: MCHistoryItemRaw[] }>("GET", "/transfers/history");
+  return data.history ?? [];
+}
+
 export async function apiMCNetworks(): Promise<MCNetworkEntry[]> {
   if (_networksCache && Date.now() - _networksCache.at < 5 * 60 * 1000) {
     return _networksCache.data;
