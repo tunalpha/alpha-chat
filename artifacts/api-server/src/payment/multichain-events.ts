@@ -31,6 +31,10 @@ export interface MCPaymentStateChangedPayload {
   tx_hash_release: string | null;
   tx_hash_deposit: string | null;
   expires_at:      string | null;
+  /** Aggiunto per consentire al frontend di determinare sender/receiver
+   *  e salvare la TX nel tx-store IDB della History (Alpha Wallet Storico). */
+  sender_id:       string;
+  recipient_id:    string;
 }
 
 // ---------------------------------------------------------------------------
@@ -59,6 +63,8 @@ export function emitMCPaymentStateChanged(doc: MultiChainTransferDocument): void
       tx_hash_release: doc.tx_hash_release ?? null,
       tx_hash_deposit: doc.tx_hash_deposit ?? null,
       expires_at:      doc.expires_at?.toISOString() ?? null,
+      sender_id:       doc.sender_id.toString(),
+      recipient_id:    doc.recipient_id.toString(),
     };
 
     const userIds = [

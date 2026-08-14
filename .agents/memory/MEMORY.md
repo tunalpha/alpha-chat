@@ -104,6 +104,7 @@
 - [OWASP Top 10 hardening](owasp-hardening.md) — rate limit auth routes, ip-address CVE fix, broadcastLimiter IPv6 fix, scanner clean; gap: DAST + body limit per-route
 - [Double-charge incident 2026-08-14](double-charge-incident.md) — 3 root causes: generic error msg, no scheduler for pending sends, gas depletion; processPendingSendTransfers() added; Transfer-1 released ✅
 - [Double-spend uncertain state](double-spend-uncertain-state.md) — signedUncertain flag previene double-spend quando sendTransaction torna "Load failed" dopo firma su iOS; NON mostrare bottone firma; continuare polling 10 min
+- [MC History IDB gap](mc-history-idb-gap.md) — TX MultiChain (Trust Wallet) non appaiono in History: WS handler mc_payment.state_changed aggiornava solo bolla, mai saveTxRecord(); fix: save su released con tx_hash_deposit (sender) / tx_hash_release (receiver)
 - [Alpha Wallet Monitor](alpha-wallet-monitor.md) — pagina admin monitoring AW: 5 endpoint read-only, 5 tab UI, modelli UserModel+FeeRecord+PayReq; bug fix min_fee_btc_sat ?? 0
 - [Spark Reliability Fixes — Audit](spark-reliability-fixes.md) — Finding 1,2,4,5,7,9,10,11 risolti; regola TRANSACTION HISTORY INTEGRITY adottata; 1032 test PASS; Lightning rimane OFF in prod
 - [Read receipt one-check bug](read-receipt-one-check-bug.md) — 3 cause: no guard monotonica in handleSelectConv, read.receipt non aggiornava conversations, reconnect non refreshava conversations

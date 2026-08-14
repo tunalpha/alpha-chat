@@ -1,0 +1,210 @@
+BUG CRITICO — TRANSAZIONE BSC/USDT NON PRESENTE IN HISTORY
+
+Questo bug è ANCORA PRESENTE. È già stato “fixato” numerose volte senza risultato. Da questo momento NON voglio altri fix alla cieca, workaround o modifiche cosmetiche alla UI.
+
+Caso reale da usare come test obbligatorio
+
+Transazione reale:
+
+0xcd5b3e97e63ec9bae93b11473e848a6faeeb27e362db5bbcd0c1444014909e9e
+
+È una transazione BSC / BEP-20 / 1 USDT.
+
+La chat mostra correttamente:
+
+“Pagamento completato — 1 USDT inviati con successo”
+
+La blockchain contiene la transazione.
+
+MA:
+
+la transazione NON viene registrata/visualizzata nella cronologia di entrambi gli utenti.
+
+Questo è il bug da risolvere.
+
+⸻
+
+STOP AI FIX SUPERFICIALI
+
+Non modificare semplicemente:
+
+* polling;
+* timeout;
+* refresh;
+* rendering della History;
+* ordinamento;
+* filtri UI;
+* messaggi “Pagamento completato”;
+* cache;
+* retry casuali;
+* delay arbitrari;
+* inserimenti manuali scollegati dalla TX;
+* workaround che aggiungono una transazione quando il pagamento risulta “success”.
+
+Prima devi dimostrare dove viene persa questa specifica TX.
+
+⸻
+
+DEBUG OBBLIGATORIO END-TO-END
+
+Segui questa transazione esattamente attraverso tutta la pipeline:
+
+send payment
+→ tx hash
+→ receipt
+→ Transfer event
+→ transaction normalization
+→ history persistence
+→ database
+→ history query
+→ frontend
+→ render
+
+Per ogni passaggio devi verificare concretamente:
+
+1. txHash
+2. chainId
+3. network BSC
+4. token contract USDT
+5. sender
+6. recipient
+7. amount
+8. transaction receipt
+9. receipt status
+10. Transfer log
+11. logIndex
+12. timestamp/block
+13. eventuale record creato nel database
+14. eventuale upsert/deduplication
+15. query usata dalla History
+16. eventuali filtri che eliminano la transazione
+17. mapping finale verso il modello History
+
+Devi identificare il punto esatto in cui:
+
+0xcd5b3e97e63ec9bae93b11473e848a6faeeb27e362db5bbcd0c1444014909e9e
+
+scompare dalla pipeline.
+
+Non accetto “probabilmente”, “potrebbe essere”, “sembra”.
+
+Voglio sapere:
+
+QUI la TX entra. QUI viene persa. QUESTA è la condizione/codice che la elimina.
+
+⸻
+
+ATTENZIONE AL DOUBLE-SPEND / DUPLICATI
+
+Non introdurre una soluzione che possa creare una seconda transazione o un secondo record per la stessa operazione.
+
+La History deve essere idempotente.
+
+La stessa transazione rilevata più volte deve produrre un solo record.
+
+La chiave di deduplicazione deve essere basata sulla reale identità on-chain, ad esempio:
+
+chainId + txHash + logIndex
+
+o sull’equivalente corretto già previsto dall’architettura.
+
+NON usare timestamp + amount + sender come identificatore primario.
+
+⸻
+
+SOURCE OF TRUTH
+
+La blockchain deve essere la source of truth per il pagamento on-chain.
+
+Il fatto che la chat mostri:
+
+“Pagamento completato”
+
+NON significa automaticamente che la History sia stata aggiornata.
+
+La conferma della chat e l’indicizzazione della transazione devono essere trattate come due passaggi distinti e coerenti.
+
+⸻
+
+TEST OBBLIGATORIO
+
+Non considerare il bug risolto perché una nuova transazione “sembra funzionare”.
+
+Devi riprodurre e verificare il caso reale con:
+
+0xcd5b3e97e63ec9bae93b11473e848a6faeeb27e362db5bbcd0c1444014909e9e
+
+e dimostrare che:
+
+* la TX viene riconosciuta;
+* viene normalizzata correttamente;
+* viene salvata/indexata;
+* appare nella History del mittente;
+* appare nella History del destinatario;
+* appare con rete BSC;
+* appare come USDT;
+* appare con importo 1;
+* mantiene il corretto txHash;
+* non genera duplicati.
+
+Poi esegui anche un test con una nuova TX reale, perché il caso storico potrebbe essere già fuori dal normale percorso di indexing.
+
+⸻
+
+REGOLA FONDAMENTALE
+
+NON dichiarare “FIXED” finché non hai trovato la causa radice e non hai dimostrato il percorso completo della TX.
+
+Se scopri che il problema è nel backend/database/indexer, correggi quello.
+
+Se scopri che il problema è nel frontend/query della History, correggi quello.
+
+Se scopri che il problema è nella normalizzazione BSC/BEP-20, correggi quello.
+
+Ma non modificare componenti non coinvolti solo per tentativi.
+
+⸻
+
+OUTPUT OBBLIGATORIO PRIMA DEL FIX
+
+Prima di modificare il codice, restituisci:
+
+ROOT CAUSE
+
+* file:
+* funzione:
+* condizione:
+* perché la TX viene persa:
+
+TRACE DELLA TX
+
+* txHash:
+* chain:
+* token:
+* sender:
+* recipient:
+* amount:
+* receipt:
+* Transfer log:
+* database:
+* history query:
+* punto esatto di perdita:
+
+FIX
+
+* file modificati:
+* modifica:
+* perché risolve la causa radice:
+* perché non crea duplicati:
+
+TEST
+
+* test eseguiti:
+* risultato:
+* History mittente:
+* History destinatario:
+* duplicate check:
+
+Solo dopo questa analisi puoi applicare il fix.
+
+Questo bug è già costato numerosi tentativi falliti. Non voglio un altro workaround: voglio la causa radice e una correzione verificabile end-to-end.
