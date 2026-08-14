@@ -1,0 +1,283 @@
+ALPHA CHAT — SPARK / LIGHTNING RELIABILITY AUDIT
+
+We are now entering a dedicated reliability audit of the Alpha Wallet Lightning/Spark implementation.
+
+IMPORTANT:
+This is an AUDIT ONLY.
+Do NOT modify any code yet.
+Do NOT refactor anything.
+Do NOT change dependencies.
+Do NOT change the Spark SDK version.
+Do NOT change wallet logic.
+Do NOT change Capacitor.
+Do NOT change the PWA.
+Do NOT change the backend.
+Do NOT deploy anything.
+
+The goal is to understand whether the current Lightning/Spark implementation is reliable enough for production and, eventually, iOS/Android.
+
+CURRENT CONTEXT
+
+The project uses:
+- @breeztech/breez-sdk-spark 0.15.1
+- Spark/Lightning is feature-flagged
+- Spark SDK/WASM is loaded from public/spark/
+- Spark uses IndexedDB
+- Lightning transaction history uses IndexedDB
+- Lightning invoices use BOLT11
+- The application currently runs as a React/Vite web app
+- Capacitor projects already exist, but native integration is currently paused
+- iOS WKWebView has known lifecycle/background limitations
+- We previously identified that transaction-history checkpointing must never advance after an API failure
+
+AUDIT THE FOLLOWING AREAS:
+
+1. SPARK INITIALIZATION
+Trace the complete initialization flow:
+- where Spark is initialized
+- when it is initialized
+- what happens if initialization fails
+- retry behavior
+- reconnect behavior
+- cleanup behavior
+- what happens if initialization is called twice
+- whether duplicate SDK instances can exist
+
+2. CONNECTION / RECONNECTION
+Trace:
+- connect
+- disconnect
+- reconnect
+- network loss
+- network restoration
+- browser visibilitychange
+- app resume
+- app suspension
+- app termination/restart
+
+Determine whether the current implementation can:
+- lose Spark state
+- create duplicate connections
+- miss events
+- miss payments
+- duplicate payments
+- leave the wallet in a stale state
+
+3. INDEXEDDB / PERSISTENCE
+Audit every Spark-related IndexedDB operation.
+
+Specifically determine:
+- database names
+- stores
+- critical writes
+- transaction boundaries
+- whether writes are atomic
+- whether writes can be interrupted by iOS suspension
+- whether state can become partially written
+- whether recovery exists after an interrupted write
+- whether the SDK itself handles persistence safely
+
+Pay particular attention to iOS WKWebView lifecycle behavior.
+
+4. BALANCE SYNCHRONIZATION
+Trace how Lightning balance is obtained.
+
+Determine:
+- source of truth
+- when balance is refreshed
+- whether balance can become stale
+- what happens after reconnect/resume
+- whether a failed refresh can incorrectly display an old balance
+- whether the UI clearly distinguishes loading/stale/error states
+
+5. INVOICE CREATION
+Audit BOLT11 invoice creation.
+
+Determine:
+- exact code path
+- amount handling
+- expiration
+- invoice persistence
+- duplicate invoice behavior
+- what happens if the app is closed immediately after creation
+- what happens if the network disconnects after invoice creation
+
+6. INVOICE PAYMENT
+Audit the complete payment flow.
+
+Determine:
+- how a BOLT11 invoice is parsed
+- how payment is submitted
+- confirmation handling
+- timeout behavior
+- retry behavior
+- duplicate-payment protection
+- what happens if the app is suspended during payment
+- what happens if the network disconnects during payment
+- how the final payment status is determined
+
+CRITICAL:
+A retry must NEVER be able to accidentally pay the same Lightning invoice twice.
+
+7. INCOMING PAYMENTS
+Determine how incoming Lightning payments are detected.
+
+Check:
+- event listeners
+- polling, if any
+- reconnect behavior
+- missed-event recovery
+- duplicate event handling
+- persistence
+- history reconciliation
+
+Determine what happens if:
+- payment arrives while app is foreground
+- payment arrives while app is backgrounded
+- payment arrives while app is killed
+- app resumes later
+
+8. LIGHTNING TRANSACTION HISTORY
+Audit the complete history pipeline.
+
+Verify:
+- event → persistence → UI
+- duplicate protection
+- ordering
+- status transitions
+- reconciliation after reconnect
+- recovery after database failure
+
+Confirm that there is NO equivalent of the EVM checkpoint bug we previously fixed.
+
+9. ERROR HANDLING
+Find every Spark/Lightning error path.
+
+For every failure determine:
+- is it surfaced to the user?
+- is it logged?
+- is it retryable?
+- can it incorrectly appear successful?
+- can it incorrectly appear failed?
+- can state become inconsistent?
+
+CRITICAL RULE:
+No Lightning operation may be marked successful unless the SDK/backend confirms success.
+
+10. SECURITY
+Audit:
+- private keys
+- seed
+- wallet credentials
+- PIN
+- session state
+- Spark credentials
+- sensitive logs
+- error messages
+- IndexedDB contents
+
+Determine whether any sensitive material is:
+- stored in plaintext
+- unnecessarily duplicated
+- exposed to logs
+- exposed to UI state
+- persisted longer than necessary
+
+Do not change anything; only report.
+
+11. IOS / WKWEBVIEW COMPATIBILITY
+Specifically analyze:
+
+- iOS 15+
+- WKWebView suspension
+- background execution
+- app resume
+- IndexedDB persistence
+- WebAssembly
+- SharedArrayBuffer
+- crossOriginIsolated
+- COOP/COEP
+- Spark WASM requirements
+
+Determine whether the current Spark SDK 0.15.1 can realistically operate inside Capacitor WKWebView.
+
+If there is uncertainty, clearly separate:
+CONFIRMED
+LIKELY
+UNKNOWN / NEEDS BREEZ CONFIRMATION
+
+Do NOT assume.
+
+12. ANDROID WEBVIEW
+Perform the same analysis for modern Android WebView.
+
+13. BREEZ SDK VERSION
+Check the actual package/version used by the repository.
+
+Determine whether the current version has:
+- known limitations relevant to WebView
+- single-thread WASM mode
+- SharedArrayBuffer requirements
+- lifecycle requirements
+- recommended mobile architecture
+
+Do not upgrade the SDK during this audit.
+
+14. TEST COVERAGE
+Identify existing tests covering:
+- initialization
+- connection
+- invoice creation
+- invoice payment
+- incoming payments
+- reconnect
+- persistence
+- duplicate payments
+- history
+
+Report important missing tests.
+
+15. FINAL RISK CLASSIFICATION
+
+Classify every finding:
+
+🔴 CRITICAL
+🟠 HIGH
+🟡 MEDIUM
+🟢 LOW
+⚪ INFORMATIONAL
+
+For every finding provide:
+- exact root cause
+- affected files
+- affected platform
+- realistic failure scenario
+- recommended fix
+- whether the fix requires native Swift/Kotlin
+- whether the fix can remain in shared React code
+
+FINAL REPORT MUST INCLUDE:
+
+A. Complete Spark architecture map
+B. Initialization/reconnect flow
+C. Payment flow
+D. Incoming payment flow
+E. Persistence flow
+F. iOS compatibility assessment
+G. Android compatibility assessment
+H. Security assessment
+I. Test coverage assessment
+J. All findings ranked by severity
+K. Recommended fixes ordered by priority
+L. What can remain shared React code
+M. What would require native iOS/Android code
+N. Whether Spark should remain in the current architecture or requires a native plugin
+O. Whether the current implementation is safe enough for continued development
+
+IMPORTANT:
+Do not make any changes.
+Do not deploy.
+Do not install packages.
+Do not upgrade dependencies.
+
+This audit must be based on the actual repository code, not assumptions.
