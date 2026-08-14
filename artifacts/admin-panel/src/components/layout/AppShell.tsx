@@ -39,7 +39,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   if (!user && !getToken()) {
-    return null;
+    // Token assente o appena cancellato — il redirect a /login è in corso via useEffect.
+    // Mostriamo il loader invece di null per evitare la pagina completamente bianca.
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="w-8 h-8 border-4 border-primary border-t-transparent rounded-full animate-spin" />
+      </div>
+    );
   }
 
   return (
