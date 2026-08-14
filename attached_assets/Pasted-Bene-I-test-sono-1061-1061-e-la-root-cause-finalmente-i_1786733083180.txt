@@ -1,0 +1,378 @@
+Bene. I test sono 1061/1061 e la root cause è finalmente identificata.
+
+NON voglio altri cambiamenti architetturali adesso.
+
+Prima di considerare il bug CHIUSO, fai un ultimo AUDIT DEL FIX ESISTENTE e verifica che non ci sia una falsa sicurezza nei test.
+
+1. DISTINGUI CHIARAMENTE TEST FIXTURE DA TEST REALE
+
+Hai dichiarato:
+
+“Non posso eseguire pagamenti blockchain reali dall’ambiente di sviluppo.”
+
+Va bene.
+
+Quindi NON scrivere che la nuova TX reale è stata verificata.
+
+La situazione corretta è:
+
+* root cause verificata;
+* pipeline verificata con fixture;
+* idempotenza verificata;
+* backfill verificato;
+* regressioni verificate;
+* pagamento blockchain reale non eseguito in ambiente dev.
+
+Non confondere questi livelli di verifica.
+
+⸻
+
+2. VERIFICA IL BACKFILL REALE
+
+Questo è il punto più importante rimasto.
+
+Hai implementato:
+
+apiMCHistory()
+→ backfillMCHistory()
+→ wallet.refreshTxHistory()
+
+Devi verificare il percorso reale contro il backend/MongoDB, non soltanto la utility con fixture.
+
+Per la TX:
+
+0xcd5b3e97e63ec9bae93b11473e848a6faeeb27e362db5bbcd0c1444014909e9e
+
+devi dimostrare che:
+
+GET /transfers/history
+
+restituisce effettivamente il transfer corretto.
+
+Poi:
+
+apiMCHistory()
+
+deve riceverlo.
+
+Poi:
+
+backfillMCHistory()
+
+deve creare il record corretto.
+
+Poi:
+
+wallet.refreshTxHistory()
+
+deve aggiornare la History UI.
+
+⸻
+
+3. CONTROLLO CRITICO SENDER / RECEIVER
+
+Questo è fondamentale.
+
+Non basta che il record venga creato.
+
+Devi dimostrare che il backend restituisce correttamente:
+
+* sender_id
+* recipient_id
+* tx_hash_deposit
+* tx_hash_release
+* gross_amount
+* net_amount
+
+e che il frontend assegna il record esclusivamente all’utente corretto.
+
+Verifica esplicitamente:
+
+Sender
+
+vede:
+
+tx_hash_deposit
+
+direction:
+
+out
+
+amount:
+
+gross_amount
+
+Receiver
+
+vede:
+
+tx_hash_release
+
+direction:
+
+in
+
+amount:
+
+net_amount
+
+E soprattutto:
+
+il sender NON deve ricevere il record release.
+
+il receiver NON deve ricevere il record deposit.
+
+⸻
+
+4. ATTENZIONE AL CASO TRUST WALLET
+
+Questo era uno dei punti centrali del bug originale.
+
+Il deposit:
+
+0xcd5b3e97...
+
+parte da un indirizzo Trust Wallet che è diverso dall’Alpha Wallet.
+
+Quindi verifica che il nuovo sistema non abbia implicitamente bisogno che il sender wallet address coincida con l’Alpha Wallet address.
+
+Il collegamento deve avvenire tramite il sender_id fornito dal backend/MultiChain transfer, non tramite una scansione on-chain dell’Alpha Wallet.
+
+Se il sender è un Trust Wallet esterno, deve comunque comparire correttamente nella History dell’utente Alpha associato al pagamento.
+
+⸻
+
+5. VERIFICA LA SECURITY DEL BACKFILL
+
+Questa è una verifica obbligatoria.
+
+GET /transfers/history
+
+NON deve permettere a un utente di ottenere i pagamenti MultiChain di altri utenti semplicemente chiamando l’endpoint.
+
+Controlla:
+
+* autenticazione;
+* autorizzazione;
+* filtro per sender_id;
+* filtro per recipient_id;
+* eventuali ID manipolabili;
+* eventuale possibilità di leggere tx_hash_deposit / tx_hash_release appartenenti ad altri utenti.
+
+Il backend deve restituire solo i transfer che appartengono all’utente autenticato.
+
+Non accettare un endpoint che restituisce globalmente tutti i released da MongoDB.
+
+⸻
+
+6. VERIFICA LA CRONOLOGIA DOPO REFRESH
+
+Il record non deve soltanto apparire subito dopo il backfill.
+
+Deve sopravvivere a:
+
+1. refresh pagina;
+2. chiusura/riapertura History;
+3. cambio tab;
+4. reload dell’app;
+5. nuova sessione.
+
+La source finale della History deve essere l’IDB locale, dopo che il backfill lo ha popolato.
+
+⸻
+
+7. CONTROLLO DUPLICATI TRA BACKFILL + WS + TX-MONITOR
+
+Questo è un caso che voglio verificato esplicitamente.
+
+Sequenza:
+
+1. arriva WS released;
+2. saveTxRecord();
+3. successivamente viene eseguito apiMCHistory();
+4. backfillMCHistory();
+5. tx-monitor rileva una transazione;
+6. History viene ricaricata.
+
+Risultato obbligatorio:
+
+UN SOLO RECORD.
+
+Non importa quale pipeline arrivi prima.
+
+Deve essere idempotente in entrambe le direzioni.
+
+⸻
+
+8. VERIFICA IL CASO PIÙ PERICOLOSO
+
+Se esiste già:
+
+56:${txHash}:out:
+
+nel tx-store con stato confirmed
+
+e arriva successivamente un record MultiChain con stato differente/pending:
+
+NON deve essere fatto downgrade.
+
+Hai dichiarato che questo test passa.
+
+Controlla però che valga sia per:
+
+* WS;
+* backfill;
+* tx-monitor.
+
+⸻
+
+9. VERIFICA I DUE HASH REALI
+
+Nel report hai scritto:
+
+56:${tx_hash_release}:in:
+
+Voglio verificare che nel codice finale NON sia rimasta una stringa/template placeholder.
+
+Deve essere presente il valore runtime reale:
+
+56:${VALORE_REALE_TX_HASH_RELEASE}:in:
+
+e non letteralmente:
+
+56:${tx_hash_release}:in:
+
+Fai un controllo sul codice compilato e sui test.
+
+⸻
+
+10. CONTROLLO ROUTING
+
+Hai aggiunto:
+
+GET /transfers/history
+
+prima di:
+
+/:id
+
+Verifica che:
+
+/transfers/history
+
+non venga intercettato dalla route dinamica /:id.
+
+Testa esplicitamente HTTP status e response.
+
+⸻
+
+11. NON TOCCARE ALTRO
+
+Se tutte le verifiche sopra passano:
+
+STOP.
+
+Non aggiungere altri workaround.
+
+Non modificare il sistema di History ulteriormente.
+
+Non cambiare il tx-monitor.
+
+Non cambiare la logica di pagamento.
+
+Non cambiare il comportamento Lightning.
+
+La root cause è stata individuata e il fix deve rimanere minimale.
+
+⸻
+
+12. REPORT FINALE
+
+Restituisci esattamente:
+
+ROOT CAUSE
+
+Confermata: YES/NO
+
+WS FIX
+
+Confermato: YES/NO
+
+BACKFILL
+
+Confermato con backend reale: YES/NO
+
+AUTHORIZATION
+
+Un utente può vedere solo i propri MultiChain transfer: YES/NO
+
+SENDER
+
+Deposit hash corretto: YES/NO
+Direction OUT: YES/NO
+Gross amount: YES/NO
+
+RECEIVER
+
+Release hash corretto: YES/NO
+Direction IN: YES/NO
+Net amount: YES/NO
+
+TRUST WALLET
+
+Sender esterno correttamente supportato: YES/NO
+
+IDEMPOTENZA
+
+WS + backfill + tx-monitor producono un solo record: YES/NO
+
+REFRESH
+
+Record persistente dopo reload: YES/NO
+
+ROUTING
+
+/transfers/history correttamente raggiungibile: YES/NO
+
+REGRESSION
+
+BSC USDT: PASS/FAIL
+Polygon USDT: PASS/FAIL
+Polygon USDA: PASS/FAIL
+Ethereum USDT: PASS/FAIL
+Lightning: PASS/FAIL
+Alpha → Alpha: PASS/FAIL
+
+TEST REALI
+
+Pagamento blockchain reale eseguito: YES/NO
+
+Se NO, scrivilo chiaramente.
+
+⸻
+
+CRITERIO DI CHIUSURA
+
+Il bug può essere dichiarato:
+
+ROOT CAUSE FIXED + CODE VERIFIED
+
+solo se tutte le verifiche sopra sono PASS.
+
+Puoi dichiarare:
+
+PRODUCTION VERIFIED
+
+solo dopo una transazione blockchain reale che percorra:
+
+payment → blockchain → backend → WS → IDB → History
+
+oppure:
+
+payment → blockchain → backend → API history → backfill → IDB → History
+
+e che venga verificata sia dal sender sia dal receiver.
+
+Non confondere “1061 test verdi” con “bug verificato in produzione”.
+
+I test sono ottimi e necessari, ma non sono la stessa cosa di una prova end-to-end reale.
