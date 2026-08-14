@@ -16,8 +16,10 @@ import { useState, useCallback, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
 import {
   useActiveAccount,
+  useActiveWallet,
   useActiveWalletChain,
   useSwitchActiveWalletChain,
+  useDisconnect,
   ConnectButton,
 } from "thirdweb/react";
 
@@ -285,8 +287,10 @@ export default function UsdaSettingsPage({ onBack, onOpenAlphaWallet }: Props) {
 
   const account          = useActiveAccount();
   const address          = account?.address;
+  const activeWallet     = useActiveWallet();
   const activeChain      = useActiveWalletChain();
   const switchChain      = useSwitchActiveWalletChain();
+  const { disconnect }   = useDisconnect();
   const isConnected      = !!account;
   // Vera verifica rete: il wallet deve essere su Polygon (chainId 137)
   const isCorrectNetwork = !!account && activeChain?.id === USDA_CHAIN_ID;
@@ -498,19 +502,51 @@ export default function UsdaSettingsPage({ onBack, onOpenAlphaWallet }: Props) {
               <p className="ups-card-body">
                 {t("wrongNetworkDescA")}<strong>Polygon Mainnet</strong>{t("wrongNetworkDescB")}
               </p>
-              {/* Pulsante custom con timeout: evita spinner infinito su iOS/WalletConnect */}
+
+              {/* 1 — Switch Network automatico con timeout 15s */}
               <button
                 type="button"
                 className="ups-switch-network-btn"
-                style={{ marginTop: 12, width: "100%", padding: "12px 0", borderRadius: 10, fontWeight: 600, fontSize: 15, cursor: isSwitching ? "not-allowed" : "pointer", opacity: isSwitching ? 0.7 : 1 }}
+                style={{
+                  marginTop: 12, width: "100%", padding: "12px 0",
+                  borderRadius: 10, fontWeight: 600, fontSize: 15,
+                  cursor: isSwitching ? "not-allowed" : "pointer",
+                  opacity: isSwitching ? 0.7 : 1,
+                }}
                 onClick={handleSwitchNetwork}
                 disabled={isSwitching}
               >
-                {isSwitching ? "⏳ Cambio rete in corso…" : "Switch Network"}
+                {isSwitching ? "⏳ Cambio rete in corso…" : "🔄 Switch Network"}
               </button>
               {switchError && (
-                <p style={{ color: "#f87171", fontSize: 13, marginTop: 8, textAlign: "center" }}>{switchError}</p>
+                <p style={{ color: "#f87171", fontSize: 13, marginTop: 8, textAlign: "center" }}>
+                  {switchError}
+                </p>
               )}
+
+              {/* Divider */}
+              <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "16px 0" }}>
+                <hr style={{ flex: 1, border: "none", borderTop: "1px solid rgba(255,255,255,0.12)" }} />
+                <span style={{ fontSize: 12, color: "rgba(255,255,255,0.4)", whiteSpace: "nowrap" }}>oppure</span>
+                <hr style={{ flex: 1, border: "none", borderTop: "1px solid rgba(255,255,255,0.12)" }} />
+              </div>
+
+              {/* 2 — Disconnetti wallet (utile se Switch Network non funziona su iOS) */}
+              <p style={{ fontSize: 13, color: "rgba(255,255,255,0.55)", textAlign: "center", marginBottom: 10 }}>
+                Disconnetti il wallet e riconnettiti già su Polygon Mainnet.
+              </p>
+              <button
+                type="button"
+                style={{
+                  width: "100%", padding: "11px 0", borderRadius: 10,
+                  fontWeight: 600, fontSize: 14, background: "rgba(255,255,255,0.07)",
+                  border: "1px solid rgba(255,255,255,0.15)", color: "#f87171",
+                  cursor: "pointer",
+                }}
+                onClick={() => { if (activeWallet) disconnect(activeWallet); }}
+              >
+                🔌 Disconnetti wallet
+              </button>
             </div>
           )}
 
