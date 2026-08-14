@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useAuth } from "@/hooks/use-auth";
-import { ShieldCheck, Lock } from "lucide-react";
+import { ShieldCheck, Lock, Eye, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -9,6 +9,7 @@ export default function Login() {
   const { login, isLoggingIn, loginError } = useAuth();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -52,15 +53,24 @@ export default function Login() {
             <div className="space-y-2">
               <Label htmlFor="password" className="text-xs uppercase tracking-wider font-mono text-muted-foreground">Passphrase</Label>
               <div className="relative">
-                <Input 
-                  id="password" 
-                  type="password"
-                  value={password} 
-                  onChange={e => setPassword(e.target.value)} 
+                <Lock className="w-4 h-4 absolute left-3 top-3 text-muted-foreground pointer-events-none" />
+                <Input
+                  id="password"
+                  type={showPassword ? "text" : "password"}
+                  value={password}
+                  onChange={e => setPassword(e.target.value)}
                   placeholder="••••••••••••••••"
-                  className="font-mono pl-10"
+                  className="font-mono pl-10 pr-10"
                 />
-                <Lock className="w-4 h-4 absolute left-3 top-3 text-muted-foreground" />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(v => !v)}
+                  className="absolute right-3 top-2.5 text-muted-foreground hover:text-foreground transition-colors"
+                  tabIndex={-1}
+                  aria-label={showPassword ? "Nascondi password" : "Mostra password"}
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
               </div>
             </div>
           </div>
