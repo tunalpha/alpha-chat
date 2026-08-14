@@ -1,0 +1,218 @@
+OBIETTIVO
+
+NON modificare il codice in questa fase.
+
+Abbiamo appena effettuato un test reale su iPhone + Trust Wallet con Alpha Chat.
+
+Risultato:
+
+1. Alpha Chat → Invio Crypto → USDT BSC → 1 USDT
+2. Importo ✅
+3. Conferma ✅
+4. Firma
+5. Trust Wallet si apre correttamente ✅
+6. Tuttavia non compare la richiesta di approvazione/firma della transazione ❌
+7. Successivamente Alpha Chat mostra:
+
+“Connessione interrotta dopo la firma”
+
+con errore:
+
+undefined is not an object (evaluating 'this.namespace.methods.includes')
+
+Quindi NON continuare a tentare fix su WalletConnect/ThirdWeb in questa fase.
+
+1. BLOCCO MODIFICHE
+
+Per questa attività:
+
+NON modificare alcun file.
+
+NON fare commit.
+
+NON applicare fix.
+
+NON aggiornare dipendenze.
+
+NON modificare Capacitor.
+
+NON modificare ThirdWeb.
+
+NON modificare WalletConnect.
+
+Voglio esclusivamente un’analisi diagnostica.
+
+⸻
+
+2. IDENTIFICARE IL PUNTO DI INTRODUZIONE DI CAPACITOR
+
+Ricostruisci la cronologia delle modifiche effettuate ieri relative all’introduzione di Capacitor.
+
+Individua:
+
+* commit/versione prima dell’introduzione di Capacitor;
+* commit/versione immediatamente successiva;
+* tutti i file modificati;
+* dipendenze aggiunte/modificate;
+* configurazioni Capacitor;
+* modifiche iOS/PWA;
+* modifiche WebView;
+* modifiche deep link;
+* modifiche Universal Links;
+* modifiche WalletConnect;
+* modifiche ThirdWeb;
+* eventuali modifiche al provider;
+* eventuali modifiche all’inizializzazione wallet;
+* eventuali modifiche a getProvider();
+* eventuali modifiche a sendTransaction();
+* eventuali modifiche alla gestione delle sessioni WalletConnect.
+
+⸻
+
+3. CONFRONTO CON LA VERSIONE PRE-CAPACITOR
+
+Confronta la versione immediatamente precedente all’introduzione di Capacitor con la versione attuale.
+
+Focus particolare su:
+
+ThirdWeb
+WalletConnect
+WalletConnect namespaces
+EIP-1193 provider
+session
+session namespaces
+accounts
+methods
+events
+deep links
+redirect
+iOS/PWA lifecycle
+provider initialization
+wallet connection
+sendTransaction
+
+Cerca specificamente qualsiasi modifica che possa spiegare:
+
+this.namespace.methods.includes
+
+con:
+
+this.namespace.methods === undefined
+
+⸻
+
+4. IPOTESI DA VERIFICARE
+
+Voglio verificare concretamente questa ipotesi:
+
+Prima dell’introduzione di Capacitor:
+
+Alpha Chat
+→ WalletConnect
+→ Trust Wallet
+→ richiesta firma
+→ firma
+→ TX hash
+→ blockchain
+
+funzionava correttamente.
+
+Dopo Capacitor:
+
+Alpha Chat
+→ WalletConnect
+→ Trust Wallet si apre
+→ richiesta firma NON visualizzata
+→ errore namespace.methods
+
+Se la cronologia dei commit e il codice lo confermano, indicare chiaramente:
+
+“Probabile regressione introdotta da Capacitor”
+
+Se invece non lo confermano, spiegare precisamente perché.
+
+⸻
+
+5. NON FARE ROLLBACK ANCORA
+
+Non effettuare ancora il rollback.
+
+Voglio prima sapere quale sarebbe la versione/commit corretta a cui tornare.
+
+Fornire:
+
+Commit/versione:
+Data:
+Descrizione:
+Motivo per cui è il candidato corretto:
+File Capacitor introdotti successivamente:
+
+⸻
+
+6. VERIFICA IMPORTANTE
+
+Controlla anche il commit immediatamente precedente a Capacitor per verificare se esistevano già:
+
+* ThirdWeb v5;
+* WalletConnect;
+* Trust Wallet;
+* BSC;
+* USDT BSC;
+* sendTransaction();
+* flusso MultiChainSendSheet.
+
+L’obiettivo è essere sicuri che il rollback non elimini funzionalità che erano state aggiunte prima.
+
+⸻
+
+7. REPORT FINALE
+
+Restituisci SOLO un report diagnostico con:
+
+A. Versione funzionante candidata
+
+Commit/versione esatta.
+
+B. Versione attuale
+
+Commit/versione attuale.
+
+C. Diff rilevante
+
+Elenco dei file e delle modifiche che possono essere correlate al problema.
+
+D. Root cause ipotizzata
+
+Spiegare se Capacitor può aver alterato la sessione/provider WalletConnect e causato:
+
+this.namespace.methods.includes
+
+E. Conferma regressione
+
+Indicare:
+
+CONFERMATA
+oppure
+NON CONFERMATA
+oppure
+NON DETERMINABILE
+
+e spiegare perché.
+
+F. Piano consigliato
+
+Se la versione pre-Capacitor è chiaramente quella funzionante, indicare:
+
+“Raccomando rollback alla versione X”
+
+senza eseguirlo.
+
+Se non è possibile dimostrarlo, NON raccomandare rollback alla cieca.
+
+REGOLA FONDAMENTALE
+
+In questa fase voglio spendere il minimo possibile.
+
+Nessuna modifica al codice. Nessun nuovo tentativo di fix. Nessun aggiornamento dipendenze. Nessun rollback automatico.
+
+Prima dobbiamo sapere cosa ha introdotto la regressione e qual è l’ultima versione sicuramente funzionante.
