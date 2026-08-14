@@ -1,0 +1,46 @@
+Sì, vedo. L’Agent non è proprio partito: lo screenshot mostra Agent ran into an error dopo ~1 secondo, quindi non ha eseguito l’audit del codice. Non è un risultato negativo dell’app e non dobbiamo trarre conclusioni sul bug USDA da questo tentativo.
+
+Per evitare che l’Agent si blocchi di nuovo, mandagli un unico prompt molto circoscritto, senza chiedergli contemporaneamente modifiche:
+
+AUDIT SOLO — NON MODIFICARE CODICE
+
+Abbiamo appena verificato in produzione:
+
+BSC USDT → Alpha Wallet nativo: PASS completo. Firma, pagamento diretto, History e Notifications funzionano.
+
+USDA → stesso destinatario: FAIL parziale. Il pagamento va correttamente in escrow, il destinatario accetta, la chat mostra “Pagamento completato”, ma non compare né in History né in Notifications.
+
+Devi fare SOLO un root-cause audit del percorso USDA escrow.
+
+Traccia questa transazione end-to-end:
+
+USDA payment → multichain transfer → escrow deposit → recipient accept → release → mc_payment.state_changed → ChatPage.tsx → saveTxRecord → dispatchWalletNotification → IndexedDB → History/Notifications
+
+Verifica in particolare:
+
+1. quale evento WS viene emesso per USDA;
+2. payload completo di mc_payment.state_changed;
+3. network, asset, status;
+4. tx_hash_deposit e tx_hash_release;
+5. se ChatPage.tsx entra nel relativo handler;
+6. quale condizione eventualmente causa l’uscita prima di saveTxRecord;
+7. se USDA viene riconosciuto dal mapper di History;
+8. se USDA viene riconosciuto da dispatchWalletNotification;
+9. se il problema è specifico del sender USDA escrow o generale.
+
+NON modificare nessun file. NON aggiungere test. NON fare refactor.
+
+Alla fine restituisci esclusivamente:
+
+ROOT CAUSE:
+FILE:
+RIGA/FUNZIONE:
+CONDIZIONE CHE BLOCCA:
+FIX MINIMO PROPOSTO:
+REGRESSION RISK:
+
+Non assumere che il problema sia uguale al precedente BSC tx_hash_deposit=null: dimostralo dal codice e dal percorso USDA.
+
+Questo è il prompt giusto per il prossimo tentativo: prima troviamo esattamente dove sparisce USDA, poi decidiamo il fix.
+
+E soprattutto: non far applicare nessuna modifica finché non abbiamo il root cause report. BSC adesso è finalmente PASS reale e non voglio rischiare di toccarlo.
