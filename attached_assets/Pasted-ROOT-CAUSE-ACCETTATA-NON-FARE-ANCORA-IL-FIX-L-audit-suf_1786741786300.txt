@@ -1,0 +1,236 @@
+ROOT CAUSE ACCETTATA — NON FARE ANCORA IL FIX.
+
+L'audit è sufficientemente preciso e coerente con i due test reali Trust Wallet + SafePal.
+
+Abbiamo confermato:
+
+Trust Wallet:
+switchChain BSC → wallet approval → nessuna firma
+
+SafePal:
+switchChain BSC → wallet approval → nessuna firma
+
+Quindi il problema è strutturale nel percorso WalletConnect post-switch:
+
+WC2 sessione iniziale:
+ETH + Polygon approvati
+
+BSC:
+non presente nel namespace approvato
+
+switchChain(BSC):
+funziona e cambia il defaultChain
+
+eth_sendTransaction(eip155:56):
+fallisce prima del dispatch perché il provider BSC non dispone del namespace/metodi approvati.
+
+Il wallet quindi NON riceve mai la richiesta di firma.
+
+IL FIX accountRef NON È LA SOLUZIONE DEL BUG.
+
+==================================================
+ORA VOGLIO SOLO IL FIX MINIMO DELLA ROOT CAUSE
+==================================================
+
+NON toccare:
+
+- History
+- mc-history-backfill
+- tx-monitor
+- Lightning
+- Alpha → Alpha
+- USDA flow
+- notifiche
+- backend payment quote
+- logica di escrow
+- amount/fee calculation
+- polling
+- signedUncertain logic, salvo la gestione dell'errore specifico necessaria
+- architettura generale
+
+NON fare refactor.
+
+NON aggiungere retry ciechi.
+
+NON creare una seconda transazione.
+
+==================================================
+OBIETTIVO TECNICO
+==================================================
+
+Risolvere il problema:
+
+WC2 sessione inizialmente con ETH + Polygon
+↓
+switchChain(BSC)
+↓
+eth_sendTransaction su eip155:56
+↓
+BSC non presente nel namespace WC approvato
+↓
+UniversalProvider non riesce a dispatchare la request.
+
+Il fix deve garantire che, quando il flow BSC richiede una transazione, BSC sia realmente disponibile/approvata nel contesto WalletConnect utilizzato dal wallet.
+
+IMPORTANTE:
+
+NON assumere che:
+
+await switchChain(bsc)
+
+sia sufficiente.
+
+L'audit ha dimostrato che NON lo è.
+
+Devi verificare il meccanismo corretto supportato dalla versione effettivamente installata:
+
+ThirdWeb 5.120.0
+UniversalProvider / WalletConnect 2.21.1
+
+e dal connector effettivamente utilizzato da Alpha Chat.
+
+==================================================
+PRIMA DEL CODICE
+==================================================
+
+Identifica nel codice:
+
+1. dove viene creato il wallet connector;
+2. dove viene inizializzata la sessione WalletConnect;
+3. quali chains vengono dichiarate come requiredChains;
+4. quali chains vengono dichiarate come optionalChains;
+5. quali chains vengono effettivamente approvate dal wallet;
+6. se BSC è presente nella proposta iniziale;
+7. se esiste un metodo ufficiale ThirdWeb/WC per aggiungere/negoziare BSC dopo la connessione;
+8. se la sessione deve essere ricreata per ottenere BSC nel namespace;
+9. quale soluzione è compatibile con Trust Wallet E SafePal su iOS.
+
+==================================================
+CRITERIO DI FIX
+==================================================
+
+Il flow corretto deve diventare:
+
+wallet connect
+→ sessione WC compatibile con BSC
+→ BSC presente nel namespace necessario
+→ switchChain(BSC), se necessario
+→ sendTransaction
+→ richiesta di firma realmente ricevuta dal wallet
+→ TX hash
+→ polling/deposito
+→ completamento.
+
+NON voglio un workaround che intercetti il TypeError dopo che è successo.
+
+Voglio impedire che il TypeError avvenga.
+
+==================================================
+GESTIONE DELL'ERRORE
+==================================================
+
+Solo se utile, aggiungi un handling specifico per distinguere:
+
+"sessione WC non autorizzata per BSC"
+
+da:
+
+"TX già inviata"
+
+da:
+
+"utente ha rifiutato"
+
+NON classificare automaticamente un errore pre-dispatch come:
+
+"La transazione potrebbe essere già stata inviata".
+
+Se sendTransaction non ha mai raggiunto il relay, la UI NON deve suggerire che una TX potrebbe essere già partita.
+
+==================================================
+TEST OBBLIGATORI PRIMA DI DICHIARARE PASS
+==================================================
+
+Test automatici:
+
+- build
+- TypeScript
+- 1061 regression tests
+
+Ma soprattutto test reale.
+
+NON considero il fix verificato finché non abbiamo:
+
+### TEST 1 — SAFE PAL
+
+1. connessione wallet;
+2. sessione WC;
+3. BSC disponibile/approvata;
+4. switch BSC;
+5. richiesta firma USDT;
+6. firma;
+7. TX hash reale.
+
+### TEST 2 — TRUST WALLET
+
+Stesso identico test.
+
+Entrambi devono arrivare alla schermata di FIRMA.
+
+Non basta che cambino rete.
+
+==================================================
+REGOLA FONDAMENTALE
+==================================================
+
+NON fare il deploy definitivo se il fix è verificato solo con fixture o test automatici.
+
+Se non puoi eseguire il test reale in questo ambiente:
+
+- applica il fix minimo;
+- builda;
+- esegui tutti i test disponibili;
+- dimostra staticamente il code path;
+- dichiara esplicitamente:
+
+"REAL WALLET VERIFICATION REQUIRED"
+
+NON dichiarare PASS.
+
+==================================================
+OUTPUT RICHIESTO
+==================================================
+
+Prima del fix:
+
+ROOT CAUSE:
+<spiegazione breve>
+
+FIX PROPOSTO:
+<file + funzione + modifica minima>
+
+PERCHÉ RISOLVE:
+<spiegazione del namespace WC>
+
+REGRESSION RISK:
+<quali flow potrebbero essere toccati>
+
+Dopo il fix:
+
+BUILD:
+PASS/FAIL
+
+TEST:
+X/X
+
+FILES MODIFIED:
+<lista>
+
+REAL WALLET:
+SAFE PAL = PASS/NOT VERIFIED
+TRUST WALLET = PASS/NOT VERIFIED
+
+DEPLOY STATUS:
+READY / BLOCKED
+
+NON applicare ulteriori modifiche finché la soluzione tecnica non è stata identificata con precisione.

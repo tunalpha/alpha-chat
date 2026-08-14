@@ -76,33 +76,59 @@ export const USDA_CONTRACT_ADDRESS = "0xe714655fD1B3ba96B887DF1F94336c2A78E24001
 export const USDA_CHAIN_ID  = 137;
 export const USDA_DECIMALS  = 18;
 
-// ── Wallets (condivisi tra tutti i payment flow) ──────────────────────────────
+// ── Wallets ───────────────────────────────────────────────────────────────────
 //
-// optionalChains: tutte e tre le chain incluse nel WC session proposal iniziale.
-// Senza questo, la sessione WC parte solo sulla chain primaria (es. Polygon) e
-// switchChain() verso BSC/ETH fallisce perché eip155:56 / eip155:1 non sono
-// nel namespace della sessione → sendTransaction({ chainId }) viene rifiutato.
-// Con optionalChains l'utente non deve disconnettersi tra pagamenti su chain diverse.
+// WalletConnect v2 session contract (root cause, agosto 2026):
+//   La sessione WC2 si stabilisce UNA sola volta alla connessione; il wallet
+//   approva solo le chain che sceglie dagli optionalNamespaces.
+//   Trust Wallet / SafePal iOS, quando la proposta include Polygon, lo approvano
+//   sempre e spesso escludono BSC → EIP155Provider per eip155:56 ha methods=undefined
+//   → crash in provider.request prima del relay → firma mai ricevuta.
+//
+// STRATEGIA:
+//   `wallets`    — Polygon + ETH in optionalChains (USDA, Polygon USDT, ETH USDT).
+//                  Trust Wallet approva ETH + Polygon → sessione Polygon OK.
+//   `walletsBsc` — optionalChains vuoto: proposta = solo BSC + ETH mainnet (sempre
+//                  aggiunto da ThirdWeb). Senza Polygon nella lista, Trust Wallet
+//                  vede BSC + ETH e approva BSC → eip155:56 entra nel namespace.
 //
 // Il cast `as any` è necessario: ThirdWeb v5 non espone walletConnect.optionalChains
-// nei tipi delle creazioni per wallet ID specifici (DeepLinkSupportedWalletCreationOptions),
-// ma il runtime connectWC() li usa correttamente per tutti i wallet WC-based.
-// Per Coinbase/Rainbow/Zerion (che ignorano il 2° arg) questo è un no-op sicuro.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const _wcOpts: any = {
-  walletConnect: {
-    projectId:      import.meta.env.VITE_WALLETCONNECT_PROJECT_ID as string | undefined,
-    optionalChains: [polygon, bsc, ethereum],
-  },
-};
-
+// nei tipi per wallet ID specifici (DeepLinkSupportedWalletCreationOptions),
+// ma il runtime connectWC() li usa correttamente. Per Coinbase/Rainbow/Zerion
+// (che ignorano il 2° arg) è un no-op sicuro.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const _cw = createWallet as (...a: any[]) => ReturnType<typeof createWallet>;
 
+const _wcOpts: any = {
+  walletConnect: {
+    projectId:      import.meta.env.VITE_WALLETCONNECT_PROJECT_ID as string | undefined,
+    optionalChains: [polygon, ethereum],  // Polygon + ETH (per USDA / Polygon USDT / ETH USDT)
+  },
+};
+
+/** Wallet per USDA, Polygon USDT, ETH USDT — sessione proposta: Polygon + ETH */
 export const wallets = [
-  createWallet("io.metamask",       _wcOpts),   // 2nd arg supportato
-  _cw("com.trustwallet.app",        _wcOpts),   // cast: runtime OK, tipo non esposto
-  createWallet("com.coinbase.wallet"),           // 1-arg only
-  createWallet("me.rainbow"),                    // 1-arg only
-  createWallet("io.zerion.wallet"),              // 1-arg only
+  createWallet("io.metamask",       _wcOpts),
+  _cw("com.trustwallet.app",        _wcOpts),
+  createWallet("com.coinbase.wallet"),
+  createWallet("me.rainbow"),
+  createWallet("io.zerion.wallet"),
+];
+
+const _wcOptsBsc: any = {
+  walletConnect: {
+    projectId:      import.meta.env.VITE_WALLETCONNECT_PROJECT_ID as string | undefined,
+    optionalChains: [],   // vuoto → proposta = solo BSC (dal chain prop) + ETH mainnet
+                          // Trust Wallet non può preferire Polygon (non è nella lista)
+                          // → approva BSC → eip155:56 entra nel namespace → firma OK
+  },
+};
+
+/** Wallet per BSC USDT — sessione proposta: solo BSC + ETH mainnet */
+export const walletsBsc = [
+  createWallet("io.metamask",       _wcOptsBsc),
+  _cw("com.trustwallet.app",        _wcOptsBsc),
+  createWallet("com.coinbase.wallet"),
+  createWallet("me.rainbow"),
+  createWallet("io.zerion.wallet"),
 ];

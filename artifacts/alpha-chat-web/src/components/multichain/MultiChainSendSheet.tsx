@@ -22,7 +22,7 @@ import { isNetworkError } from "../../lib/multichain-poll";
 import { useTranslation } from "react-i18next";
 import QRCode from "qrcode";
 import { useActiveAccount, useActiveWalletChain, useSwitchActiveWalletChain, ConnectButton } from "thirdweb/react";
-import { client, wallets, polygon, bsc, ethereum } from "../../lib/thirdweb";
+import { client, wallets, walletsBsc, polygon, bsc, ethereum } from "../../lib/thirdweb";
 import {
   apiMCCreate,
   apiMCCancel,
@@ -664,6 +664,25 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
         signedUncertain = true;
         signErrorMsg    = "⚠️ Connessione interrotta durante la firma. La transazione potrebbe essere già stata inviata — stiamo verificando automaticamente.";
         console.warn("[MC] wallet_signature_timeout — TX potrebbe essere in mempool:", msg);
+      } else if (
+        // ─── Pre-dispatch: BSC non presente nel namespace WC2 ────────────────
+        // Crash sincrono PRIMA che la richiesta raggiunga il relay WalletConnect.
+        // La TX non è mai stata inviata al wallet → pollAborted (mai signedUncertain).
+        //
+        // Causa: Trust Wallet / SafePal approvano solo ETH+Polygon dalla sessione
+        // iniziale; eip155:56 non è nel namespace → EIP155Provider.namespace.methods
+        // === undefined → TypeError.
+        //
+        // Fix per l'utente: disconnettere il wallet corrente (sessione Polygon/ETH)
+        // e riconnettersi — il ConnectButton per BSC usa walletsBsc che propone
+        // solo BSC+ETH, forzando Trust Wallet ad approvare BSC nel nuovo namespace.
+        /namespace.*methods|methods.*namespace/i.test(msg) ||
+        /is not an object.*evaluating.*namespace/i.test(msg) ||
+        /Cannot read.*properties.*undefined.*includes/i.test(msg)
+      ) {
+        pollAborted  = true;
+        signErrorMsg = `Sessione wallet non compatibile con BSC.\n\nDisconnetti il wallet (tocca l'indirizzo in alto), poi premi "Connetti wallet" e approva BSC nella nuova sessione.`;
+        console.warn("[MC] wc2_namespace_bsc_missing — TX mai inviata:", msg);
       } else if (/rpc|provider/i.test(msg)) {
         signedUncertain = true;
         signErrorMsg    = `Errore RPC su ${selectedNet.sublabel}. La transazione potrebbe essere già stata inviata — stiamo verificando.`;
@@ -1024,7 +1043,7 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
                 <div className="sp-wallet-prompt">
                   <p className="sp-wallet-prompt-text">Connetti il wallet per firmare la transazione</p>
                   <div className="usda-connect-btn-wrap">
-                    <ConnectButton client={client} chain={evmChain ?? polygon} wallets={wallets} />
+                    <ConnectButton client={client} chain={evmChain ?? polygon} wallets={network === "bsc" ? walletsBsc : wallets} />
                   </div>
                 </div>
               ) : (
@@ -1147,7 +1166,7 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
                 <div className="sp-wallet-prompt">
                   <p className="sp-wallet-prompt-text">Connetti il wallet per firmare</p>
                   <div className="usda-connect-btn-wrap">
-                    <ConnectButton client={client} chain={evmChain ?? polygon} wallets={wallets} />
+                    <ConnectButton client={client} chain={evmChain ?? polygon} wallets={network === "bsc" ? walletsBsc : wallets} />
                   </div>
                 </div>
               ) : (
