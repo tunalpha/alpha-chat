@@ -1,0 +1,76 @@
+CRITICAL BUG CONFIRMED — READ RECEIPT DOES NOT UPDATE IN REAL TIME
+
+The previous audit reported PASS, but a real-world test has disproved it.
+
+I have a screenshot proving the problem:
+
+1. Sender sends a message at 17:16:
+   "Non spuntano dopo due spunte"
+   → sender UI shows ONE CHECK.
+
+2. Receiver replies at 17:17.
+   → Therefore the receiver necessarily opened/read the conversation and saw the previous message.
+
+3. However, the sender's 17:16 message STILL shows only ONE CHECK instead of the READ / DOUBLE-CHECK state.
+
+This means the read receipt lifecycle is NOT actually working correctly end-to-end.
+
+IMPORTANT:
+Do NOT perform another general audit.
+Do NOT touch wallet, payments, EVM, Lightning, Capacitor, or unrelated features.
+
+Investigate ONLY this exact bug.
+
+Trace the real-time flow:
+
+Receiver opens/views message
+→ apiMarkRead
+→ server updates last_read_at
+→ server emits read.receipt
+→ sender WebSocket receives read.receipt
+→ ChatPage updates readReceipts
+→ existing outgoing message UI changes from one check to double check.
+
+Determine exactly where the chain breaks.
+
+Pay particular attention to:
+- whether apiMarkRead is called when the receiver receives/views a NEW message;
+- whether the sender's WebSocket connection receives read.receipt after the receiver opens the conversation;
+- whether read.receipt is emitted to the correct sender/user;
+- whether ChatPage updates the existing message state;
+- whether the timestamp comparison is correct;
+- whether React state/cache prevents the existing message from re-rendering;
+- whether this works for messages sent AFTER the conversation was already open.
+
+REAL ACCEPTANCE TEST:
+
+Sender:
+send "TEST READ RECEIPT 123"
+
+Receiver:
+open the conversation and read the message
+
+Receiver:
+reply "I READ IT"
+
+Sender:
+must see the original message change to the READ / DOUBLE-CHECK state.
+
+Do NOT consider the test passed based only on static code inspection.
+
+Reproduce the actual end-to-end scenario.
+
+If a fix is required:
+- make the smallest possible fix;
+- do not redesign the messaging system;
+- add a regression test for this exact scenario;
+- run the relevant tests and full frontend test suite.
+
+FINAL RESPONSE MUST STATE:
+1. Exact root cause.
+2. Exact file(s) changed.
+3. Exact fix.
+4. Test result.
+5. Confirmation that the sender now receives the read receipt for a message that the receiver has actually read.
+
+STOP after this. No additional audit.

@@ -1571,10 +1571,12 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
     };
   }, []);
 
-  // ── Refetch messaggi alla riconnessione WS ────────────────────────────────
+  // ── Refetch messaggi + conversazioni alla riconnessione WS ─────────────────
   // Quando il WS si disconnette e rientra (iOS bg, network flap, ecc.)
   // i messaggi arrivati durante l'assenza non vengono consegnati via WS.
   // Alla riconnessione (false→true) rifetchiamo silenziosamente la lista.
+  // Recuperiamo anche le conversazioni per aggiornare other_user_last_read_at:
+  // i read.receipt inviati mentre eravamo offline sarebbero andati persi.
   const prevConnectedRef = useRef(false);
   useEffect(() => {
     const wasConnected = prevConnectedRef.current;
@@ -1586,6 +1588,27 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
           const msgs = [...res.items].reverse();
           setMessages(msgs);
           void decryptBatch(msgs);
+        })
+        .catch(() => {});
+
+      // Recupera anche le conversazioni aggiornate: durante la disconnessione
+      // potrebbero essere arrivati read.receipt che non abbiamo ricevuto.
+      void apiListConversations()
+        .then((res) => {
+          setConversations(res.items);
+          // Aggiorna readReceipts in un unico batch (guard monotonica per ciascuna).
+          setReadReceipts((prev) => {
+            let updated = prev;
+            for (const conv of res.items) {
+              if (!conv.other_user_last_read_at) continue;
+              const existing = updated[conv.conversation_id];
+              const newVal = conv.other_user_last_read_at as string;
+              if (existing && existing >= newVal) continue;
+              if (updated === prev) updated = { ...prev };
+              updated[conv.conversation_id] = newVal;
+            }
+            return updated;
+          });
         })
         .catch(() => {});
     }
@@ -1608,6 +1631,24 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
             const msgs = [...res.items].reverse();
             setMessages(msgs);
             void decryptBatch(msgs);
+          })
+          .catch(() => {});
+        // Aggiorna conversazioni per recuperare read.receipt persi in background.
+        void apiListConversations()
+          .then((res) => {
+            setConversations(res.items);
+            setReadReceipts((prev) => {
+              let updated = prev;
+              for (const conv of res.items) {
+                if (!conv.other_user_last_read_at) continue;
+                const existing = updated[conv.conversation_id];
+                const newVal = conv.other_user_last_read_at as string;
+                if (existing && existing >= newVal) continue;
+                if (updated === prev) updated = { ...prev };
+                updated[conv.conversation_id] = newVal;
+              }
+              return updated;
+            });
           })
           .catch(() => {});
       }
@@ -1770,6 +1811,15 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
             if (existing && existing >= read_at) return prev;
             return { ...prev, [conversation_id]: read_at };
           });
+          // Mantieni conversations sincronizzate: così handleSelectConv avrà
+          // sempre other_user_last_read_at aggiornato se il sender naviga via e torna.
+          setConversations((prev) =>
+            prev.map((c) => {
+              if (c.conversation_id !== conversation_id) return c;
+              if (c.other_user_last_read_at && c.other_user_last_read_at >= read_at) return c;
+              return { ...c, other_user_last_read_at: read_at };
+            }),
+          );
           break;
         }
         case "message.edited": {
@@ -3233,13 +3283,18 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
         ? { ...c, unread_count: 0 }
         : c)),
     );
-    // Inizializza read receipt dalla lista conversazioni
+    // Inizializza read receipt dalla lista conversazioni.
+    // Guard monotonica: non sovrascrivere mai un valore più recente già arrivato
+    // via WS read.receipt (es. se l'utente naviga via e torna mentre la receipt
+    // era già stata ricevuta ma conversations non è ancora stato aggiornato).
     const conv = conversations.find((c) => c.conversation_id === convId);
     if (conv?.other_user_last_read_at) {
-      setReadReceipts((prev) => ({
-        ...prev,
-        [convId]: conv.other_user_last_read_at as string,
-      }));
+      setReadReceipts((prev) => {
+        const existing = prev[convId];
+        const newVal = conv.other_user_last_read_at as string;
+        if (existing && existing >= newVal) return prev;
+        return { ...prev, [convId]: newVal };
+      });
     }
     // Notifica il backend che abbiamo letto i messaggi
     void apiMarkRead(convId).catch(() => {/* silenzioso */});

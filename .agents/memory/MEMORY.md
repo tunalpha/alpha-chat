@@ -105,3 +105,4 @@
 - [Double-charge incident 2026-08-14](double-charge-incident.md) — 3 root causes: generic error msg, no scheduler for pending sends, gas depletion; processPendingSendTransfers() added; Transfer-1 released ✅
 - [Alpha Wallet Monitor](alpha-wallet-monitor.md) — pagina admin monitoring AW: 5 endpoint read-only, 5 tab UI, modelli UserModel+FeeRecord+PayReq; bug fix min_fee_btc_sat ?? 0
 - [Spark Reliability Fixes — Audit](spark-reliability-fixes.md) — Finding 1,2,4,5,7,9,10,11 risolti; regola TRANSACTION HISTORY INTEGRITY adottata; 1032 test PASS; Lightning rimane OFF in prod
+- [Read receipt one-check bug](read-receipt-one-check-bug.md) — 3 cause: no guard monotonica in handleSelectConv, read.receipt non aggiornava conversations, reconnect non refreshava conversations
