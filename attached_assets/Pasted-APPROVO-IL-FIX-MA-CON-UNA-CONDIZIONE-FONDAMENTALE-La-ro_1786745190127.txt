@@ -1,0 +1,213 @@
+APPROVO IL FIX, MA CON UNA CONDIZIONE FONDAMENTALE.
+
+La root cause è CONFERMATA:
+
+BSC reale
+→ tx_hash_deposit = NULL sistematicamente
+→ WS invia NULL
+→ ChatPage sender seleziona NULL
+→ if (!txHash) return
+→ saveTxRecord() mai chiamata
+→ dispatchWalletNotification() mai chiamata
+→ History FAIL
+→ Notifications FAIL
+
+NON TOCCARE:
+- signing BSC
+- walletsBsc
+- switchChain
+- WalletConnect
+- Trust Wallet
+- USDA
+- polling
+- dynamic fee
+- tx-monitor
+
+APPLICA SOLO IL FIX NECESSARIO.
+
+MA ATTENZIONE:
+
+Non presentare tx_hash_release come "deposit TX hash".
+
+Per il sender il vero deposito Trust Wallet NON è conosciuto dal backend.
+tx_hash_release identifica la transazione escrow → recipient.
+
+Quindi nel codice/documentazione deve essere esplicito che:
+
+- se tx_hash_deposit esiste → usare quello per il sender;
+- se tx_hash_deposit è NULL → usare tx_hash_release SOLO come fallback di indicizzazione/storicizzazione;
+- non chiamarlo "deposit hash";
+- non dichiarare che il sender record rappresenta la TX on-chain Trust Wallet originale.
+
+==================================================
+FIX 1 — CHAT
+==================================================
+
+Nel mc_payment.state_changed:
+
+const txHash = isSender
+  ? (tx_hash_deposit ?? tx_hash_release)
+  : tx_hash_release;
+
+Va bene.
+
+Ma aggiungi un campo/metadata interno se la struttura WalletTxRecord lo permette, oppure almeno una commento esplicativo:
+
+"sender fallback hash: release TX because backend does not persist deposit hash"
+
+NON inventare un tx_hash_deposit.
+
+==================================================
+FIX 2 — BACKFILL
+==================================================
+
+Nel mc-history-backfill:
+
+const effectiveOutHash = txHashDeposit ?? txHashRelease;
+
+e usare effectiveOutHash per il record sender.
+
+Stessa regola:
+
+deposit hash reale ha priorità;
+release hash solo fallback.
+
+==================================================
+FIX 3 — NOTIFICHE
+==================================================
+
+La stessa effective hash DEVE essere utilizzata coerentemente per dispatchWalletNotification.
+
+Sender:
+effectiveOutHash
+
+Receiver:
+txHashRelease
+
+La notifica deve quindi essere creata anche quando tx_hash_deposit è NULL.
+
+==================================================
+CRITICO — NON DUPLICARE
+==================================================
+
+Verifica che:
+
+sender:
+56:${effectiveOutHash}:out:
+
+receiver:
+56:${txHashRelease}:in:
+
+siano sempre chiavi diverse per direction.
+
+Se sender e receiver usano lo stesso release hash, NON devono diventare lo stesso record.
+
+==================================================
+TEST OBBLIGATORI
+==================================================
+
+Aggiungi test specifici per il caso REALE che abbiamo appena trovato:
+
+CASE 1:
+sender + tx_hash_deposit presente
+→ usa deposit hash.
+
+CASE 2:
+sender + tx_hash_deposit NULL + tx_hash_release presente
+→ usa release hash fallback.
+
+CASE 3:
+receiver + tx_hash_release presente
+→ usa release hash.
+
+CASE 4:
+sender + entrambi NULL
+→ skip senza creare record falso.
+
+CASE 5:
+stesso WS event ricevuto 3 volte
+→ 1 record.
+
+CASE 6:
+backfill dello stesso transfer
+→ nessun duplicato.
+
+CASE 7:
+notification sender con deposit hash NULL
+→ notifica creata.
+
+CASE 8:
+notification receiver
+→ notifica creata.
+
+==================================================
+REGRESSIONE
+==================================================
+
+Verifica esplicitamente:
+
+- BSC USDT
+- Polygon USDT
+- Polygon USDA
+- Ethereum USDT
+- Lightning
+- Alpha → Alpha
+- tx-monitor
+- History
+- Notifications
+- signing BSC
+
+NON modificare questi flow per far passare i test.
+
+==================================================
+DOPO IL FIX
+==================================================
+
+BUILD.
+
+TEST AUTOMATICI.
+
+Poi NON dichiarare production verified.
+
+Il test reale obbligatorio è:
+
+1. BSC USDT reale.
+2. Pagamento completato.
+3. History immediatamente.
+4. Reload.
+5. Notifications.
+6. Ora presente.
+7. Nessun duplicato.
+
+E soprattutto verifica le due TX reali già eseguite:
+
+TX release:
+0xfadf4a2bc384bfab539f4ff8f84862262306b41461ea2b003414d933cfe612e1
+
+TX release:
+0x4fe9123a468fce650c0139fb77edac8639d9b43a35cc3732604233b0e7564d1f
+
+Il backfill deve renderle visibili al sender e al receiver secondo la nuova regola.
+
+==================================================
+OUTPUT
+==================================================
+
+Restituisci:
+
+ROOT CAUSE = CONFIRMED
+FIX = APPLIED
+BUILD = PASS/FAIL
+TEST = X/X
+HISTORY REAL TX #1 = PASS/FAIL
+HISTORY REAL TX #2 = PASS/FAIL
+NOTIFICATION REAL TX #1 = PASS/FAIL
+NOTIFICATION REAL TX #2 = PASS/FAIL
+RELOAD = PASS/FAIL
+DUPLICATES = PASS/FAIL
+BSC SIGNING = PASS/FAIL
+REGRESSIONS = PASS/FAIL
+
+FINCHÉ NON VEDIAMO UNA TX REALE IN HISTORY E NOTIFICATIONS:
+
+DEPLOY STATUS = BLOCKED.

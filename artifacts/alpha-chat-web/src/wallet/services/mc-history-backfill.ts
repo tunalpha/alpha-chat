@@ -133,13 +133,26 @@ export async function backfillMCHistory(
     const timestamp = createdAt ? new Date(createdAt).getTime() : now;
 
     if (status === "released") {
-      // Sender: TX di deposito dal suo wallet → escrow
-      if (isSender && txHashDeposit) {
+      // Sender: TX di deposito dal suo wallet → escrow.
+      //
+      // tx_hash_deposit è null su BSC: il backend rileva il deposito via balance
+      // check sull'escrow (non log scan) → la hash del deposito Trust Wallet non
+      // viene mai persistita nel documento MongoDB.
+      //
+      // Fallback: se tx_hash_deposit è null, usa tx_hash_release come
+      // identificatore stabile per il record IDB del sender (direction="out").
+      //   - tx_hash_deposit (hash reale deposito) ha priorità se presente.
+      //   - tx_hash_release (escrow→recipient) è fallback di indicizzazione
+      //     ONLY — NON rappresenta la TX on-chain del sender.
+      // Non-collision: sender → `${chainId}:${hash}:out:`,
+      //                receiver → `${chainId}:${hash}:in:` → chiavi distinte.
+      const effectiveOutHash = txHashDeposit ?? txHashRelease;
+      if (isSender && effectiveOutHash) {
         const record: WalletTxRecord = {
-          id:        `${chainId}:${txHashDeposit}:out:`,
+          id:        `${chainId}:${effectiveOutHash}:out:`,
           chainId,
           network:   netName,
-          txHash:    txHashDeposit,
+          txHash:    effectiveOutHash,
           direction: "out",
           asset,
           amount:    formatMCAmount(grossAmount, decimals),
@@ -167,8 +180,11 @@ export async function backfillMCHistory(
         await saveTxRecord(record);
         saved++;
       }
+      // Skip counter: incrementa solo se non è stato salvato nulla.
+      // - Sender: effectiveOutHash è null → né deposit né release disponibili.
+      // - Receiver: txHashRelease è null.
       if (
-        (isSender  && !txHashDeposit) ||
+        (isSender  && !effectiveOutHash) ||
         (!isSender && !txHashRelease)
       ) {
         skipped++;

@@ -1984,9 +1984,21 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
                 // auth?.userId = stesso tipo → confronto diretto corretto (H-06)
                 if (!auth?.userId) return;
                 const isSender = sender_id === auth.userId;
-                const txHash   = isSender ? tx_hash_deposit : tx_hash_release;
-                const rawAmt   = isSender ? gross_amount    : net_amount;
-                const dir      = isSender ? "out" as const  : "in" as const;
+
+                // tx_hash_deposit è null su BSC: il backend rileva il deposito via
+                // balance check sull'escrow, NON via log scan — quindi non conosce
+                // mai la tx hash del deposito Trust Wallet del sender.
+                //
+                // Fallback: se tx_hash_deposit è null, usa tx_hash_release come
+                // chiave di indicizzazione IDB (escrow→recipient TX).
+                // NON è la tx del sender — è usata solo come ID stabile per lo store.
+                // Se tx_hash_deposit è presente (Polygon/future), ha priorità.
+                const txHash = isSender
+                  ? (tx_hash_deposit ?? tx_hash_release)  // fallback release hash (indexing only)
+                  : tx_hash_release;
+
+                const rawAmt = isSender ? gross_amount : net_amount;
+                const dir    = isSender ? "out" as const : "in" as const;
 
                 if (!txHash) return;
 

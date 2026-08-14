@@ -211,6 +211,135 @@ describe("Sicurezza notifiche — nessun dato sensibile", () => {
   });
 });
 
+// ─── CASE 7-8 — MultiChain BSC: notifiche con deposit hash NULL ──────────────
+//
+// Bug produzione 2026-08-14: per BSC USDT via Trust Wallet, tx_hash_deposit è
+// sempre null. dispatchWalletNotification deve creare una notifica anche in
+// questo caso usando tx_hash_release come identificatore (fallback applicato
+// in ChatPage.tsx prima di chiamare questa funzione).
+
+describe("CASE 7-8 — Notifiche MC BSC con deposit hash NULL", () => {
+  afterEach(() => { closeWalletDB(); });
+  beforeEach(async () => { closeWalletDB(); await clearAllNotifications(); });
+
+  const REAL_RELEASE_1 = "0xfadf4a2bc384bfab539f4ff8f84862262306b41461ea2b003414d933cfe612e1";
+  const REAL_RELEASE_2 = "0x4fe9123a468fce650c0139fb77edac8639d9b43a35cc3732604233b0e7564d1f";
+
+  // CASE 7: sender con deposit hash NULL → notifica "sent" creata usando release hash
+  it("CASE 7: sender BSC + deposit=null → dispatchWalletNotification crea notifica 'sent'", async () => {
+    // In ChatPage.tsx, il fix calcola: txHash = tx_hash_deposit ?? tx_hash_release = release hash
+    // Poi chiama dispatchWalletNotification con quel txHash.
+    const result = await dispatchWalletNotification({
+      type:      "sent",
+      chainId:   56,
+      network:   "BNB Smart Chain",
+      asset:     "USDT",
+      amount:    "1.0010",
+      txHash:    REAL_RELEASE_1,   // fallback release hash (deposit era null)
+      timestamp: 1723674688000,
+      status:    "confirmed",
+    });
+    expect(result).toBe(true);
+
+    const all = await loadNotifications();
+    expect(all).toHaveLength(1);
+    expect(all[0].type).toBe("sent");
+    expect(all[0].chainId).toBe(56);
+    expect(all[0].txHash).toBe(REAL_RELEASE_1);
+    expect(all[0].asset).toBe("USDT");
+    expect(all[0].amount).toBe("1.0010");
+    expect(all[0].read).toBe(false);
+  });
+
+  // CASE 7 idempotenza: stessa notifica 3 volte → 1 sola notifica
+  it("CASE 7 idempotenza: stessa notifica sender BSC 3 volte → 1 record", async () => {
+    const partial = {
+      type:      "sent" as const,
+      chainId:   56,
+      network:   "BNB Smart Chain",
+      asset:     "USDT",
+      amount:    "1.0010",
+      txHash:    REAL_RELEASE_1,
+      timestamp: 1723674688000,
+      status:    "confirmed" as const,
+    };
+    await dispatchWalletNotification(partial);
+    await dispatchWalletNotification(partial);
+    await dispatchWalletNotification(partial);
+
+    expect(await loadNotifications()).toHaveLength(1);
+  });
+
+  // CASE 8: receiver → notifica "received" creata con release hash
+  it("CASE 8: receiver BSC → dispatchWalletNotification crea notifica 'received'", async () => {
+    const result = await dispatchWalletNotification({
+      type:      "received",
+      chainId:   56,
+      network:   "BNB Smart Chain",
+      asset:     "USDT",
+      amount:    "1.0000",
+      txHash:    REAL_RELEASE_1,
+      timestamp: 1723674688000,
+      status:    "confirmed",
+    });
+    expect(result).toBe(true);
+
+    const all = await loadNotifications();
+    expect(all[0].type).toBe("received");
+  });
+
+  // CASE 8b: sender e receiver stessa TX → dedupKey diverso (sent ≠ received)
+  it("CASE 8b: sender e receiver stessa TX → 2 notifiche separate (sent ≠ received)", async () => {
+    await dispatchWalletNotification({
+      type: "sent", chainId: 56, network: "BNB Smart Chain", asset: "USDT",
+      amount: "1.0010", txHash: REAL_RELEASE_2, timestamp: Date.now(), status: "confirmed",
+    });
+    await dispatchWalletNotification({
+      type: "received", chainId: 56, network: "BNB Smart Chain", asset: "USDT",
+      amount: "1.0000", txHash: REAL_RELEASE_2, timestamp: Date.now(), status: "confirmed",
+    });
+    // dedupKey = "56:${hash}:sent:" vs "56:${hash}:received:" → chiavi diverse
+    const all = await loadNotifications();
+    expect(all).toHaveLength(2);
+    const types = all.map(n => n.type).sort();
+    expect(types).toEqual(["received", "sent"]);
+  });
+
+  // TX reale #1 (22:31) backfill notification
+  it("TX reale #1 — notifica sender con REAL_RELEASE_1", async () => {
+    const r = await dispatchWalletNotification({
+      type:      "sent",
+      chainId:   56,
+      network:   "BNB Smart Chain",
+      asset:     "USDT",
+      amount:    "1.0010",
+      txHash:    REAL_RELEASE_1,
+      timestamp: new Date("2026-08-14T21:31:28.252Z").getTime(),
+      status:    "confirmed",
+    });
+    expect(r).toBe(true);
+    const all = await loadNotifications();
+    expect(all[0].txHash).toBe(REAL_RELEASE_1);
+  });
+
+  // TX reale #2 (22:55) backfill notification
+  it("TX reale #2 — notifica sender con REAL_RELEASE_2", async () => {
+    const r = await dispatchWalletNotification({
+      type:      "sent",
+      chainId:   56,
+      network:   "BNB Smart Chain",
+      asset:     "USDT",
+      amount:    "0.5005",
+      txHash:    REAL_RELEASE_2,
+      timestamp: new Date("2026-08-14T21:55:27.886Z").getTime(),
+      status:    "confirmed",
+    });
+    expect(r).toBe(true);
+    const all = await loadNotifications();
+    expect(all[0].txHash).toBe(REAL_RELEASE_2);
+  });
+});
+
 describe("Tipi e helper", () => {
   it("buildDedupKey genera chiave consistente", () => {
     const k1 = buildDedupKey(137, "0xabc", "received", 0);

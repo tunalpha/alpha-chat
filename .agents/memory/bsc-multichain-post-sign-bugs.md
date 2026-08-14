@@ -3,6 +3,31 @@ name: BSC MultiChain — Post-sign bugs (History, Notifiche, Auto-open)
 description: Tre root cause trovati dopo la conferma del fix BSC signing (walletsBsc). Relativi a TX reale non visibile in History/Notifiche e wallet non aperto automaticamente su iOS.
 ---
 
+## Fix applicato (2026-08-14) — confermato e testato
+
+**FIX 1 — ChatPage.tsx** (`mc_payment.state_changed` handler):
+```typescript
+const txHash = isSender
+  ? (tx_hash_deposit ?? tx_hash_release)  // fallback: release hash per indicizzazione
+  : tx_hash_release;
+```
+
+**FIX 2 — mc-history-backfill.ts** (backfill storico):
+```typescript
+const effectiveOutHash = txHashDeposit ?? txHashRelease;
+if (isSender && effectiveOutHash) { /* salva con effectiveOutHash */ }
+// skip counter: usa !effectiveOutHash, non !txHashDeposit
+if ((isSender && !effectiveOutHash) || (!isSender && !txHashRelease)) { skipped++; }
+```
+
+**Semantica**: `tx_hash_deposit` ha priorità; `tx_hash_release` è fallback di SOLA INDICIZZAZIONE per sender BSC — non rappresenta la TX Trust Wallet originale. Commentato esplicitamente nel codice.
+
+**Test**: 8 casi aggiunti in `23-mc-history-backfill.test.ts` e `notifications.test.ts`. 1074/1074 PASS. Build OK.
+
+**TX reali da verificare in produzione**:
+- `0xfadf4a2bc384bfab539f4ff8f84862262306b41461ea2b003414d933cfe612e1` (22:31)
+- `0x4fe9123a468fce650c0139fb77edac8639d9b43a35cc3732604233b0e7564d1f` (22:55)
+
 ## History — TX non appare (root cause)
 
 `ChatPage.tsx` — handler WS `mc_payment.state_changed`:

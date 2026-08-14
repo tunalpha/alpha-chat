@@ -195,9 +195,27 @@ describe("backfillMCHistory — idempotenza", () => {
 // ─── 6. Edge case: txHash mancante / rete non EVM ────────────────────────────
 
 describe("backfillMCHistory — edge case", () => {
-  it("salta item con txHashDeposit=null (sender)", async () => {
+  it("CASE 2 — sender con txHashDeposit=null + txHashRelease presente → fallback release hash", async () => {
+    // tx_hash_deposit è null su BSC: il backend non persiste mai l'hash del deposito.
+    // Il fix usa tx_hash_release come identificatore IDB di fallback per il sender.
     const result = await backfillMCHistory(
       [makeItem({ txHashDeposit: null })],
+      SENDER_USER_ID,
+    );
+    expect(result.saved).toBe(1);
+    expect(result.skipped).toBe(0);
+
+    // L'id usa tx_hash_release (fallback), direction="out" → chiave diversa dal receiver
+    const record = await getTxRecord(`56:${TX_HASH_RELEASE}:out:`);
+    expect(record).toBeDefined();
+    expect(record?.direction).toBe("out");
+    expect(record?.txHash).toBe(TX_HASH_RELEASE);
+    expect(record?.amount).toBe("1.0000");   // gross (sender usa grossAmount)
+  });
+
+  it("CASE 4 — sender con entrambi gli hash NULL → skip (nessun record falso)", async () => {
+    const result = await backfillMCHistory(
+      [makeItem({ txHashDeposit: null, txHashRelease: null })],
       SENDER_USER_ID,
     );
     expect(result.saved).toBe(0);
@@ -320,7 +338,116 @@ describe("backfillMCHistory — non interferisce con record esistenti", () => {
   });
 });
 
-// ─── 9. TX originale segnalata nel bug report ─────────────────────────────────
+// ─── 9. CASE 1–8 — BSC real-TX null deposit hash fallback ────────────────────
+//
+// Questi test coprono esattamente il bug produzione confermato il 2026-08-14:
+// BSC USDT via Trust Wallet → tx_hash_deposit = null sistematicamente.
+// Root cause: il backend rileva il deposito via balance check (non log scan)
+// e non persiste mai la tx hash del deposito del sender.
+
+describe("CASE 1–8 — BSC null deposit hash (bug produzione 2026-08-14)", () => {
+  const REAL_TX_RELEASE_1 = "0xfadf4a2bc384bfab539f4ff8f84862262306b41461ea2b003414d933cfe612e1";
+  const REAL_TX_RELEASE_2 = "0x4fe9123a468fce650c0139fb77edac8639d9b43a35cc3732604233b0e7564d1f";
+
+  // CASE 1: sender + tx_hash_deposit presente → usa deposit hash (priorità)
+  it("CASE 1: sender + txHashDeposit presente → usa deposit hash (priorità sul fallback)", async () => {
+    const DEPOSIT = "0xdeposit_hash_00000000000000000000000000000000000000000000000001";
+    const RELEASE = "0xrelease_hash_00000000000000000000000000000000000000000000000001";
+    const result = await backfillMCHistory(
+      [makeItem({ txHashDeposit: DEPOSIT, txHashRelease: RELEASE })],
+      SENDER_USER_ID,
+    );
+    expect(result.saved).toBe(1);
+    const record = await getTxRecord(`56:${DEPOSIT}:out:`);
+    expect(record).toBeDefined();
+    expect(record?.txHash).toBe(DEPOSIT);   // deposit hash ha priorità
+    // nessun record con release hash per direction="out"
+    expect(await getTxRecord(`56:${RELEASE}:out:`)).toBeUndefined();
+  });
+
+  // CASE 3: receiver + tx_hash_release presente → usa release hash
+  it("CASE 3: receiver + txHashRelease presente → usa release hash", async () => {
+    const RELEASE = "0xrelease_hash_receiver_000000000000000000000000000000000000000001";
+    const result = await backfillMCHistory(
+      [makeItem({ txHashDeposit: null, txHashRelease: RELEASE })],
+      RECEIVER_USER_ID,
+    );
+    expect(result.saved).toBe(1);
+    const record = await getTxRecord(`56:${RELEASE}:in:`);
+    expect(record).toBeDefined();
+    expect(record?.direction).toBe("in");
+    expect(record?.txHash).toBe(RELEASE);
+  });
+
+  // CASE 5: stesso WS event ricevuto 3 volte → 1 solo record
+  it("CASE 5: backfill chiamato 3 volte con stessa TX (deposit=null) → 1 record", async () => {
+    const item = makeItem({ txHashDeposit: null, txHashRelease: REAL_TX_RELEASE_1 });
+    await backfillMCHistory([item], SENDER_USER_ID);
+    await backfillMCHistory([item], SENDER_USER_ID);
+    await backfillMCHistory([item], SENDER_USER_ID);
+
+    expect(await countTxRecords()).toBe(1);
+    const record = await getTxRecord(`56:${REAL_TX_RELEASE_1}:out:`);
+    expect(record).toBeDefined();
+  });
+
+  // CASE 6: sender e receiver stessa TX → chiavi IDB distinte, nessun duplicato
+  it("CASE 6: sender e receiver stessa TX (deposit=null) → 2 record distinti, nessun duplicato", async () => {
+    const item = makeItem({ txHashDeposit: null, txHashRelease: REAL_TX_RELEASE_1 });
+    await backfillMCHistory([item], SENDER_USER_ID);
+    await backfillMCHistory([item], RECEIVER_USER_ID);
+
+    // 2 record: ":out:" per sender, ":in:" per receiver — stesso txHash, direzioni diverse
+    expect(await countTxRecords()).toBe(2);
+    const senderRec   = await getTxRecord(`56:${REAL_TX_RELEASE_1}:out:`);
+    const receiverRec = await getTxRecord(`56:${REAL_TX_RELEASE_1}:in:`);
+    expect(senderRec?.direction).toBe("out");
+    expect(receiverRec?.direction).toBe("in");
+    // I due record hanno lo stesso txHash ma id diversi → nessuna collisione IDB
+    expect(senderRec?.id).not.toBe(receiverRec?.id);
+  });
+
+  // TX reali dal bug report 2026-08-14: backfill deve renderle visibili
+  it("TX reale #1 (22:31 UTC) — sender con deposit=null → record con release hash", async () => {
+    const item = makeItem({
+      transferId:    "6a7f8930562e071147963446",
+      grossAmount:   "1001001001001001002",
+      netAmount:     "1000000000000000001",
+      txHashDeposit: null,
+      txHashRelease: REAL_TX_RELEASE_1,
+      createdAt:     "2026-08-14T21:31:28.252Z",
+    });
+    await backfillMCHistory([item], SENDER_USER_ID);
+
+    const record = await getTxRecord(`56:${REAL_TX_RELEASE_1}:out:`);
+    expect(record).toBeDefined();
+    expect(record?.direction).toBe("out");
+    expect(record?.chainId).toBe(56);
+    expect(record?.asset).toBe("USDT");
+    // gross_amount 1001001001001001002 / 10^18 ≈ 1.0010
+    expect(record?.amount).toBe("1.0010");
+  });
+
+  it("TX reale #2 (22:55 UTC) — sender con deposit=null → record con release hash", async () => {
+    const item = makeItem({
+      transferId:    "6a7f8ecf99750ed3c8a8d598",
+      grossAmount:   "500500500500500501",
+      netAmount:     "500000000000000001",
+      txHashDeposit: null,
+      txHashRelease: REAL_TX_RELEASE_2,
+      createdAt:     "2026-08-14T21:55:27.886Z",
+    });
+    await backfillMCHistory([item], SENDER_USER_ID);
+
+    const record = await getTxRecord(`56:${REAL_TX_RELEASE_2}:out:`);
+    expect(record).toBeDefined();
+    expect(record?.direction).toBe("out");
+    // gross 500500500500500501 / 10^18 ≈ 0.5005
+    expect(record?.amount).toBe("0.5005");
+  });
+});
+
+// ─── 10. TX originale segnalata nel bug report ─────────────────────────────────
 
 describe("backfillMCHistory — TX originale bug report (0xcd5b3e97...)", () => {
   it("genera record IDB corretto per il sender", async () => {
