@@ -109,7 +109,8 @@ type SignPhase =
   | "signing"    // sendTransaction in corso — wallet modal aperto per la TX
   | "confirming" // TX inviata o BTC atteso, polling backend
   | "done"
-  | "error";
+  | "error"
+  | "uncertain"; // TX potrebbe essere già in mempool — NON mostrare "Firma transazione" (prevenire double-spend)
 
 // ─── Reti ─────────────────────────────────────────────────────────────────────
 
@@ -562,7 +563,8 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
     // optionalChains in thirdweb.ts garantisce che la chain sia nel namespace
     // dalla connessione iniziale → nessun switch mid-session necessario.
 
-    let pollAborted  = false;
+    let pollAborted     = false;
+    let signedUncertain = false; // true = TX potrebbe essere già in mempool → NON mostrare "Firma"
     let signErrorMsg: string | null = null;
 
     account.sendTransaction({
@@ -574,24 +576,44 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
     }).catch((err: unknown) => {
       const msg = (err as Error)?.message ?? "";
       if (/reject|cancel|denied|refused|user rejected/i.test(msg)) {
+        // Rifiuto esplicito utente: la TX NON è stata inviata → retry sicuro
         pollAborted  = true;
         signErrorMsg = "Firma rifiutata. Premi \"Firma transazione\" per riprovare.";
       } else if (/nonce.*too.*low|nonce.*used|nonce.*already/i.test(msg)) {
         // TX già inviata con questo nonce — il polling la rileverà on-chain.
         console.warn("[MC] Nonce già usato — polling rileverà il deposito.");
       } else if (/insufficient funds|insufficient balance/i.test(msg)) {
+        // Balance insufficiente: la TX è stata rifiutata dal nodo prima del broadcast
         pollAborted  = true;
         signErrorMsg = `Gas insufficiente. Aggiungi ${selectedNet.sublabel === "BSC" ? "BNB" : selectedNet.sublabel === "Ethereum" ? "ETH" : "POL"} per le fee di rete.`;
       } else if (/missing or invalid|eip155|unrecognized chain|does not support|wrong network/i.test(msg)) {
-        // Dopo lo switch esplicito questo non dovrebbe accadere, ma gestiamo comunque
+        // Errore chain: la TX è stata rifiutata dal wallet — retry sicuro dopo reconnessione
         pollAborted  = true;
         signErrorMsg = `Errore di rete: il wallet non ha accettato ${selectedNet.sublabel}. Disconnetti, riconnetti e riprova.`;
-      } else if (/timeout|timed out/i.test(msg)) {
-        signErrorMsg = "Timeout della firma. Se la transazione è partita, il sistema la rileverà automaticamente.";
+      } else if (
+        // ⚠️  CASO CRITICO — double-spend risk:
+        // "Load failed" (iOS Safari), "Failed to fetch" (Chrome), "NetworkError" (Firefox),
+        // timeout WalletConnect: il relay di rete è caduto DOPO che il wallet ha firmato
+        // e inviato la TX. La TX è probabilmente già in mempool.
+        // NON abortire, NON mostrare "Firma transazione" → prevenire double-spend.
+        isNetworkError(err) ||
+        msg.includes("Load failed") ||
+        msg.includes("Failed to fetch") ||
+        msg.startsWith("NetworkError") ||
+        /timeout|timed out/i.test(msg)
+      ) {
+        signedUncertain = true;
+        signErrorMsg    = "⚠️ Connessione interrotta durante la firma. La transazione potrebbe essere già stata inviata — stiamo verificando automaticamente.";
+        console.warn("[MC] sendTransaction: rete caduta dopo firma — TX potrebbe essere in mempool:", msg);
       } else if (/rpc|provider/i.test(msg)) {
-        signErrorMsg = `Errore RPC su ${selectedNet.sublabel}. Riprova tra qualche secondo.`;
+        signedUncertain = true;
+        signErrorMsg    = `Errore RPC su ${selectedNet.sublabel}. La transazione potrebbe essere già stata inviata — stiamo verificando.`;
+        console.warn("[MC] sendTransaction: errore RPC dopo firma:", msg);
       } else {
-        signErrorMsg = `Errore firma: ${(err as Error)?.message || "Errore sconosciuto."}`;
+        // Errore sconosciuto: trattare come incerto (TX potrebbe essere in mempool)
+        signedUncertain = true;
+        signErrorMsg    = `⚠️ Errore firma: ${msg || "Errore sconosciuto."} La transazione potrebbe essere già stata inviata — stiamo verificando.`;
+        console.warn("[MC] sendTransaction: errore sconosciuto dopo firma:", msg);
       }
     });
 
@@ -632,9 +654,18 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
         // Solo lo status post-"awaiting_deposit" costituisce una conferma reale.
         if (t.status === "awaiting_deposit") {
           if (signErrorMsg && pollCount >= SIGN_ERROR_GRACE_POLLS) {
-            setSignPhase("error");
-            setSignError(signErrorMsg);
-            return;
+            if (signedUncertain) {
+              // ⚠️ TX potrebbe essere già in mempool — NON mostrare "Firma transazione".
+              // Mostra avviso "uncertain" e CONTINUA il polling (non fare return).
+              setSignPhase("uncertain");
+              setSignError(signErrorMsg);
+              // continua il loop — la TX potrebbe arrivare nei prossimi blocchi
+            } else {
+              // Rifiuto esplicito o errore pre-broadcast confermato: retry sicuro
+              setSignPhase("error");
+              setSignError(signErrorMsg);
+              return;
+            }
           }
           continue; // Deposito non ancora presente — ripolla
         }
@@ -644,21 +675,33 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
         const code = (pollErr as Error & { code?: string })?.code;
         if (code === "DEPOSIT_TX_NOT_DETECTED" || code === "ADAPTER_NOT_FOUND") {
           if (signErrorMsg && pollCount >= SIGN_ERROR_GRACE_POLLS) {
-            setSignPhase("error");
-            setSignError(signErrorMsg);
-            return;
+            if (signedUncertain) {
+              setSignPhase("uncertain");
+              setSignError(signErrorMsg);
+              // continua polling
+            } else {
+              setSignPhase("error");
+              setSignError(signErrorMsg);
+              return;
+            }
           }
           continue;
         }
-        // Errore reale
+        // Errore reale (applicativo): stop
         setSignPhase("error");
         setSignError((pollErr as Error)?.message ?? "Errore verifica deposito.");
         return;
       }
     }
 
-    setSignPhase("error");
-    setSignError("Timeout: deposito non rilevato in 10 minuti. Controlla la transazione nel tuo wallet.");
+    // Timeout 10 minuti: se la TX era incerta, non mostrare il bottone firma
+    if (signedUncertain) {
+      setSignPhase("uncertain");
+      setSignError("⚠️ Verifica automatica scaduta. Se hai firmato la transazione nel wallet, premi \"Ho inviato\" per confermare manualmente.");
+    } else {
+      setSignPhase("error");
+      setSignError("Timeout: deposito non rilevato in 10 minuti. Controlla la transazione nel tuo wallet.");
+    }
   }
 
   // ── Polling BTC e recovery EVM (senza la logica firma) ───────────────────
@@ -1019,8 +1062,36 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
               <div className="usda-error" role="alert" style={{ whiteSpace: "pre-line" }}>{signError}</div>
             )}
 
+            {/* Stato incerto: TX potrebbe essere già in mempool — NON mostrare retry firma */}
+            {signPhase === "uncertain" && (
+              <div style={{
+                background: "rgba(251,191,36,0.08)",
+                border: "1px solid rgba(251,191,36,0.3)",
+                borderRadius: 10,
+                padding: "12px 14px",
+                display: "flex",
+                gap: 10,
+                alignItems: "flex-start",
+                marginTop: 4,
+              }} role="alert">
+                <span style={{ fontSize: 18, flexShrink: 0, marginTop: 1 }}>⚠️</span>
+                <div>
+                  <p style={{ fontWeight: 600, color: "#fbbf24", fontSize: 14, margin: "0 0 4px" }}>
+                    Connessione interrotta dopo la firma
+                  </p>
+                  <p style={{ fontSize: 13, color: "rgba(255,255,255,0.65)", margin: 0, lineHeight: 1.4 }}>
+                    {signError ?? "La transazione potrebbe essere già stata inviata. Stiamo continuando la verifica automatica — non firmare di nuovo."}
+                  </p>
+                  <p style={{ fontSize: 12, color: "rgba(251,191,36,0.7)", marginTop: 6 }}>
+                    🔄 Verifica automatica in corso…
+                  </p>
+                </div>
+              </div>
+            )}
+
             {/* Azione principale: connetti o firma */}
-            {signPhase !== "done" && signPhase !== "confirming" && signPhase !== "switching" && signPhase !== "signing" && (
+            {/* "uncertain" escluso deliberatamente: la TX potrebbe essere già in mempool → prevenire double-spend */}
+            {signPhase !== "done" && signPhase !== "confirming" && signPhase !== "switching" && signPhase !== "signing" && signPhase !== "uncertain" && (
               !isConnected ? (
                 <div className="sp-wallet-prompt">
                   <p className="sp-wallet-prompt-text">Connetti il wallet per firmare</p>
