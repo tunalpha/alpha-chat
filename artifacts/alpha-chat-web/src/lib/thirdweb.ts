@@ -89,7 +89,12 @@ export const USDA_DECIMALS  = 18;
 // ma il runtime connectWC() li usa correttamente per tutti i wallet WC-based.
 // Per Coinbase/Rainbow/Zerion (che ignorano il 2° arg) questo è un no-op sicuro.
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const _wcOpts: any = { walletConnect: { optionalChains: [polygon, bsc, ethereum] } };
+const _wcOpts: any = {
+  walletConnect: {
+    projectId:      import.meta.env.VITE_WALLETCONNECT_PROJECT_ID as string | undefined,
+    optionalChains: [polygon, bsc, ethereum],
+  },
+};
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const _cw = createWallet as (...a: any[]) => ReturnType<typeof createWallet>;

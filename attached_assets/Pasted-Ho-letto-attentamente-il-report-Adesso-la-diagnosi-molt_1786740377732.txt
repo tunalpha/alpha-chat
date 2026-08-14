@@ -1,0 +1,75 @@
+Ho letto attentamente il report. Adesso la diagnosi è molto più solida e, soprattutto, finalmente abbiamo una spiegazione che collega tutti i sintomi.
+
+La mia valutazione: il prossimo passo proposto dall’agente è ragionevole
+
+Thirdweb documenta esplicitamente che il proprio ConnectButton può ricevere un walletConnect.projectId personalizzato e, anzi, raccomanda di usare un proprio Project ID invece del default Thirdweb. 
+
+Quindi il fatto che Alpha Chat stia usando il Project ID di default Thirdweb, mentre hai già un tuo VITE_WALLETCONNECT_PROJECT_ID, è una configurazione che vale la pena correggere.
+
+Ma farei una precisazione importante:
+
+collegare il Project ID non è ancora la prova che risolverà il problema BSC.
+
+Ci sono infatti due problemi distinti:
+
+1. ⚠️ Dominio non valido
+    * molto probabilmente risolvibile configurando correttamente il tuo Project ID WalletConnect e il relativo dominio.
+2. 🔴 namespace.methods.includes
+    * è il problema che impedisce concretamente alla richiesta BSC di arrivare a Trust Wallet.
+    * il collegamento del Project ID potrebbe modificarne il comportamento, ma non abbiamo ancora la certezza che lo risolva.
+
+Quindi io farei esattamente UNA modifica
+
+Non farei ancora:
+
+* cambio optionalChains;
+* requiredChains;
+* aggiornamento ThirdWeb;
+* aggiornamento WalletConnect;
+* modifica del flusso USDA;
+* modifica di sendTransaction;
+* rollback Capacitor.
+
+Solo collegare il Project ID WalletConnect proprietario.
+
+E poi fare immediatamente un nuovo test.
+
+Perché è un buon test diagnostico
+
+Prima:
+
+ThirdWeb default Project ID
+→ Trust Wallet
+→ dominio alphachat.sbs non verificato
+→ sessione con BSC non approvata
+→ namespace.methods undefined
+→ niente firma.
+
+Dopo:
+
+Project ID Alpha Chat
+→ Trust Wallet riconosce il progetto/dominio
+→ nuova sessione WalletConnect pulita
+→ vediamo quali chain approva realmente
+→ vediamo se BSC entra nel namespace
+→ vediamo se arriva la richiesta di firma.
+
+Questo ci dà una risposta molto più pulita.
+
+⚠️ Una cosa che farei aggiungere al prompt
+
+Il Project ID da solo non basta: il dominio alphachat.sbs deve essere associato/configurato nel progetto WalletConnect corrispondente, altrimenti potresti continuare a vedere “Dominio non valido”.
+
+Thirdweb conferma che il projectId personalizzato è supportato e che il metadata dell’app viene passato al wallet. 
+
+Quindi, prima di far spendere altri soldi all’agente, gli direi:
+
+applica esclusivamente il collegamento del Project ID già presente e configura/verifica il dominio, senza modificare nessun’altra parte del flusso.
+
+Poi testiamo.
+
+Se dopo questo Trust Wallet finalmente mostra la firma → abbiamo trovato una parte importante della causa.
+
+Se continua a mostrare namespace.methods.includes → stop. A quel punto non farei altri tentativi casuali: analizzeremo direttamente la combinazione ThirdWeb 5.120.0 + WalletConnect 2.21.8 + Trust Wallet iOS e decideremo il fix minimo.
+
+E soprattutto: niente rollback Capacitor. Il report ha ormai fornito prove sufficienti per abbandonare quella pista.
