@@ -1,0 +1,127 @@
+DEPLOY PRODUZIONE — INCIDENTE TRANSFER USDA — FIX GIÀ VERIFICATI
+
+L'incidente è definitivamente chiuso a livello funzionale e contabile.
+
+Transfer verificati:
+- d8781bff — Sirtre → Alpha — accepted — Alpha ha ricevuto 1733 USDA
+- 18a04c19 — Sirtre → Alpha — accepted — Alpha ha ricevuto 1733 USDA, rilasciato dallo scheduler fix — TX 0x6730…
+- 586ca479 — Alpha → Sirtre — accepted — Sirtre ha ricevuto 1733 USDA come rimborso
+
+Bilancio finale:
+- Sirtre: -3466 + 1733 = -1733 USDA
+- Alpha: +3466 - 1733 = +1733 USDA
+
+NON CI SONO PERDITE DI FONDI.
+NON C'È STATA UNA VIOLAZIONE DI SICUREZZA.
+NON C'È STATO ACCESSO NON AUTORIZZATO.
+
+I tre problemi già identificati e risolti sono:
+
+1. MESSAGGIO DI ERRORE GENERICO
+Quando il confirm tardava a rispondere, l'app mostrava "load error".
+È stato corretto con il messaggio appropriato:
+"deposito in corso, non reinviare"
+Verificare che il fix sia presente anche nella build destinata alla produzione.
+
+2. GAP NELLO SCHEDULER
+Il recovery automatico copriva i pagamenti-richiesta ma non i direct send transfer rimasti bloccati.
+
+Sono stati aggiunti:
+- processPendingSendTransfers()
+- autoReleaseForSend()
+
+Lo scheduler deve eseguirli automaticamente ogni 5 minuti.
+
+3. TIMING DEL PRIMO BATCH
+Durante il primo run sono stati processati due escrow contemporaneamente.
+Il secondo trasferimento ha incontrato un timing issue durante il gas top-up ed è stato completato correttamente al retry successivo.
+
+Questo è comportamento normale del meccanismo di retry e NON deve essere trasformato in una modifica architetturale non richiesta.
+
+GAS STATION:
+Address:
+0x32D2368284230c3cCDf9033689b22eB29D486485
+
+Balance attuale:
+28.82 POL
+
+La balance è sufficiente.
+NON modificare la gas station.
+NON modificare il sistema di gas management.
+
+OBIETTIVO DI QUESTO TASK
+
+Eseguire il deploy in PRODUZIONE dei fix già implementati e verificati.
+
+PRIMA DEL DEPLOY:
+1. Controlla git diff / stato delle modifiche.
+2. Identifica esattamente quali file contengono i fix dell'incidente.
+3. Verifica che:
+   - processPendingSendTransfers() sia realmente registrato nello scheduler;
+   - l'intervallo sia 5 minuti;
+   - autoReleaseForSend() venga chiamato correttamente;
+   - il recovery sia idempotente;
+   - un transfer già completato/accepted non possa essere rilasciato nuovamente;
+   - non possano essere creati doppi payout;
+   - il nuovo messaggio di errore sia presente nel frontend/build di produzione.
+4. Esegui i test disponibili relativi a questi flussi.
+5. Se trovi un problema CRITICO che impedisce il deploy, FERMATI e riportalo.
+6. Se non ci sono problemi critici, procedi con il deploy.
+
+DOPO IL DEPLOY:
+1. Verifica che la produzione sia online.
+2. Verifica che lo scheduler sia attivo.
+3. Verifica dai log che il processo di recovery sia schedulato ogni 5 minuti.
+4. Verifica che non ci siano errori nuovi relativi a:
+   - send transfers
+   - escrow
+   - auto release
+   - gas top-up
+   - scheduler
+   - duplicate payout
+5. Verifica che il deploy contenga effettivamente i fix descritti sopra.
+
+IMPORTANTISSIMO — SCOPE LOCK
+
+NON modificare:
+- USDA contract
+- fee
+- fee calculation
+- chain switching
+- wallet architecture
+- gas station balance/configuration
+- RPC architecture
+- database schema
+- altri flussi di pagamento
+- Richiedi Cripto
+- Invia Cripto, salvo esclusivamente il codice già necessario per questi fix
+- logica di rimborso già funzionante
+- smart contract
+- sicurezza/autorizzazioni
+- UI non collegata al bug
+- configurazioni non necessarie al deploy
+
+NON fare refactoring.
+NON ottimizzare codice non correlato.
+NON introdurre nuove feature.
+NON cambiare comportamenti già funzionanti.
+
+Il principio deve essere:
+"Deploy dei fix già verificati, senza modificare altro."
+
+AL TERMINE restituisci un REPORT PRECISO con:
+
+1. Commit/versione deployata
+2. Ambiente deployato
+3. File modificati
+4. Fix verificati
+5. Test eseguiti e risultato
+6. Scheduler verificato: sì/no
+7. Intervallo scheduler verificato: sì/no
+8. Idempotenza autoRelease verificata: sì/no
+9. Produzione online: sì/no
+10. Errori post-deploy: sì/no
+11. Eventuali anomalie
+12. Conclusione finale: DEPLOY RIUSCITO oppure DEPLOY BLOCCATO
+
+NON dichiarare il deploy riuscito senza averlo effettivamente verificato in produzione.
