@@ -157,6 +157,14 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
   const switchChain       = useSwitchActiveWalletChain();
   const isConnected       = !!account;
 
+  // Ref per leggere l'account più aggiornato in handleSign (evita closure stale).
+  // ThirdWeb v5 può sostituire l'oggetto account quando la chain cambia:
+  // la closure di handleSign cattura il valore al momento del render, ma dopo
+  // await switchChain() il componente si ri-renderizza con un nuovo account →
+  // accountRef.current punta sempre all'istanza più recente.
+  const accountRef = useRef(account);
+  useEffect(() => { accountRef.current = account; }, [account]);
+
   // State
   const [step,           setStep]           = useState<Step>("form");
   const [network,        setNetwork]        = useState<MCNetwork>(mode === "btc" ? "bitcoin" : "polygon");
@@ -559,15 +567,22 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
     // ── 4. sendTransaction fire-and-forget ────────────────────────────────
     //
     // NON await txHash — fonte di verità = backend detect.
-    // chainId: routing WC corretto verso eip155:${evmChainId}.
-    // optionalChains in thirdweb.ts garantisce che la chain sia nel namespace
-    // dalla connessione iniziale → nessun switch mid-session necessario.
+    // Usa accountRef.current (non la closure `account`) per ottenere l'account
+    // aggiornato dopo switchChain: ThirdWeb v5 può rimpiazzare l'oggetto account
+    // al cambio chain; la closure stale causa "connect() before request()".
+
+    const currentAccount = accountRef.current;
+    if (!currentAccount) {
+      setSignError("Wallet disconnesso dopo il cambio rete. Riconnetti il wallet e riprova.");
+      setSignPhase("ready");
+      return;
+    }
 
     let pollAborted     = false;
     let signedUncertain = false; // true = TX potrebbe essere già in mempool → NON mostrare "Firma"
     let signErrorMsg: string | null = null;
 
-    account.sendTransaction({
+    currentAccount.sendTransaction({
       to:    tokenAddress,
       data:  encodeERC20Transfer(transfer.escrowWallet, depositAmount),
       gas:   BigInt(150000),
@@ -586,6 +601,11 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
         // Balance insufficiente: la TX è stata rifiutata dal nodo prima del broadcast
         pollAborted  = true;
         signErrorMsg = `Gas insufficiente. Aggiungi ${selectedNet.sublabel === "BSC" ? "BNB" : selectedNet.sublabel === "Ethereum" ? "ETH" : "POL"} per le fee di rete.`;
+      } else if (/connect.*before.*request|please.*call.*connect/i.test(msg)) {
+        // Wallet non connesso quando sendTransaction ha tentato di firmare.
+        // ThirdWeb lancia questo PRIMA di inviare al wallet → TX definitivamente NON inviata.
+        pollAborted  = true;
+        signErrorMsg = "Wallet non connesso. Chiudi, riconnetti il wallet e riprova.";
       } else if (/missing or invalid|eip155|unrecognized chain|does not support|wrong network/i.test(msg)) {
         // Errore chain: la TX è stata rifiutata dal wallet — retry sicuro dopo reconnessione
         pollAborted  = true;

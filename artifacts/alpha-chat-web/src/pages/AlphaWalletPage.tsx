@@ -2854,7 +2854,7 @@ function NotificationsView({ onBack }: { onBack: () => void }) {
               </a>
             )}
           </div>
-          <div className="aw-notif-time">{new Date(n.timestamp).toLocaleDateString("it-IT", { day: "2-digit", month: "short" })}</div>
+          <div className="aw-notif-time">{new Date(n.timestamp).toLocaleDateString("it-IT", { day: "2-digit", month: "short" })} · {new Date(n.timestamp).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" })}</div>
         </div>
       ))}
     </div>

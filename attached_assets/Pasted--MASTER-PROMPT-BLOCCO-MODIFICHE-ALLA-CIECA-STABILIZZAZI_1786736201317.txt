@@ -1,0 +1,419 @@
+🚨 MASTER PROMPT — BLOCCO MODIFICHE ALLA CIECA / STABILIZZAZIONE ALPHA CHAT
+
+DA QUESTO MOMENTO NON VOGLIO PIÙ FIX ISOLATI CHE RISOLVONO UN BUG E NE INTRODUCONO ALTRI.
+
+Il progetto ha avuto troppe regressioni consecutive.
+
+L’obiettivo adesso è:
+
+STABILIZZARE L’APP COMPLETAMENTE PRIMA DI QUALSIASI NUOVO DEPLOY.
+
+NON fare modifiche speculative.
+
+NON fare refactor.
+
+NON cambiare architettura.
+
+NON toccare componenti che non sono direttamente coinvolti nel bug verificato.
+
+Ogni modifica deve avere:
+
+1. root cause identificata;
+2. modifica minima;
+3. test di regressione;
+4. verifica che i flussi già funzionanti non siano stati rotti.
+
+⸻
+
+🔴 PROBLEMI ATTUALI DA RISOLVERE
+
+1 — HISTORY MULTICHAIN
+
+Root cause già identificata:
+
+mc_payment.state_changed
+
+aggiornava la chat ma non chiamava saveTxRecord().
+
+Fix già implementato:
+
+* WS → saveTxRecord()
+* mc-history-backfill
+* GET /transfers/history
+* idempotenza
+* authorization sender/receiver
+* persistenza IndexedDB
+
+NON riscrivere questa architettura.
+
+Deve rimanere funzionante.
+
+⸻
+
+2 — BSC USDT QUOTE
+
+Problema identificato:
+
+CoinGecko HTTP 429 → cache BSC vuota → PriceUnavailableError → global handler → HTTP 500.
+
+Fix già applicato:
+
+PriceUnavailableError / DynamicFeeError → AppError → HTTP 503
+
+NON modificare ulteriormente questa parte se funziona.
+
+⸻
+
+3 — USDA POLYGON WALLETCONNECT
+
+Problema identificato:
+
+SendPaymentSheet.tsx eseguiva sendTransaction(chainId: 137) senza switchChain(polygon).
+
+Fix applicato:
+
+switchChain(polygon) immediatamente prima di sendTransaction().
+
+NON modificare ulteriormente questa parte se funziona.
+
+⸻
+
+4 — NUOVO PROBLEMA: FIRMA USDT BSC
+
+È stato osservato:
+
+“Errore firma: Please call connect() before request()”
+
+e:
+
+“La transazione potrebbe essere già stata inviata — stiamo verificando.”
+
+Questo NON deve essere risolto cancellando o bypassando la verifica della transazione.
+
+Devi prima determinare:
+
+* perché connect() non è disponibile;
+* quale wallet/sessione è attiva;
+* quale chain è attiva;
+* quale client sta chiamando request();
+* se il wallet è effettivamente connesso;
+* se la transazione potrebbe essere già stata inviata.
+
+La verifica deve essere idempotente.
+
+NON fare retry ciechi che potrebbero generare doppio pagamento.
+
+⸻
+
+5 — PAGAMENTO USDA E HISTORY
+
+È stato effettuato un pagamento USDA reale.
+
+La chat mostra:
+
+Pagamento completato
+1 USDA inviati con successo
+
+MA la transazione non compare nella History.
+
+Questo è ora un TEST REALE DEL FIX HISTORY.
+
+Devi identificare la TX reale generata da quel pagamento e verificare:
+
+txHash
+→ backend
+→ WS/API
+→ IDB
+→ History
+
+NON usare fixture per dichiarare questo test superato.
+
+Voglio la TX reale.
+
+⸻
+
+6 — NOTIFICHE: MANCA L’ORARIO
+
+Nella schermata Notifiche viene mostrato:
+
+14 ago
+
+ma manca l’ora.
+
+La History invece mostra data + ora.
+
+Deve diventare:
+
+14 ago · 20:09
+
+usando il timestamp reale già presente nei dati.
+
+IMPORTANTE:
+
+questo è SOLO un problema di rendering.
+
+NON modificare backend/database/blockchain.
+
+NON creare nuovi timestamp lato frontend.
+
+NON alterare il timestamp originale.
+
+⸻
+
+7 — NON MODIFICARE TUTTO INSIEME
+
+Prima di ogni modifica:
+
+individua esattamente il file e la funzione responsabile.
+
+Poi modifica SOLO quella parte.
+
+Dopo ogni modifica:
+
+* build;
+* test;
+* regression check.
+
+Non accumulare 10 modifiche e poi verificare tutto alla fine.
+
+⸻
+
+🔴 TEST DI ACCETTAZIONE OBBLIGATORI
+
+Prima di dichiarare il progetto pronto al deploy devono passare TUTTI questi flussi.
+
+A — BSC USDT
+
+Invio reale:
+
+USDT → BSC → 1 USDT
+
+Deve:
+
+* aprire correttamente;
+* quotare correttamente;
+* arrivare alla firma;
+* non mostrare Please call connect() before request();
+* non generare doppia transazione;
+* completare il pagamento;
+* mostrare la TX corretta;
+* registrare la TX nella History.
+
+⸻
+
+B — USDA POLYGON
+
+Invio reale:
+
+USDA → Polygon → 1 USDA
+
+Deve:
+
+* fare switchChain(polygon);
+* arrivare alla firma;
+* completare il pagamento;
+* mostrare la TX;
+* registrarla nella History.
+
+NON deve più comparire:
+
+Missing or invalid. request() chainId: eip155:137
+
+⸻
+
+C — HISTORY SENDER
+
+Dopo un pagamento reale:
+
+History sender deve mostrare:
+
+* OUT;
+* rete corretta;
+* token corretto;
+* amount corretto;
+* txHash reale;
+* timestamp corretto.
+
+⸻
+
+D — HISTORY RECEIVER
+
+History receiver deve mostrare:
+
+* IN;
+* rete corretta;
+* token corretto;
+* amount corretto;
+* txHash reale;
+* timestamp corretto.
+
+⸻
+
+E — REFRESH
+
+Dopo il pagamento:
+
+1. apri History;
+2. verifica TX;
+3. chiudi;
+4. riapri;
+5. fai refresh;
+6. verifica nuovamente.
+
+Il record deve rimanere.
+
+⸻
+
+F — DUPLICATI
+
+Lo stesso evento WS ricevuto più volte deve creare:
+
+1 SOLO RECORD
+
+Mai duplicati.
+
+⸻
+
+G — NOTIFICHE
+
+Ogni notifica transaction deve mostrare:
+
+data + ora
+
+Esempio:
+
+14 ago · 20:09
+
+con timestamp reale.
+
+⸻
+
+H — LIGHTNING
+
+Verificare che Lightning continui a funzionare.
+
+Non deve essere influenzato dal nuovo tx-store MultiChain.
+
+⸻
+
+I — ALPHA → ALPHA
+
+Verificare che i normali trasferimenti Alpha Wallet → Alpha Wallet continuino a funzionare.
+
+⸻
+
+🔴 REGOLA FONDAMENTALE
+
+NON dichiarare:
+
+FIXED
+
+perché i test automatici sono verdi.
+
+NON dichiarare:
+
+READY FOR DEPLOY
+
+finché i flussi critici sopra non sono verificati.
+
+I test automatici sono necessari ma NON sufficienti.
+
+Abbiamo già dimostrato che:
+
+1061/1061 PASS
+
+può coesistere con un pagamento reale rotto.
+
+⸻
+
+PROCEDURA OBBLIGATORIA
+
+Per ogni bug:
+
+1.
+
+ROOT CAUSE
+
+2.
+
+FILE + FUNZIONE + RIGA
+
+3.
+
+FIX MINIMALE
+
+4.
+
+TEST
+
+5.
+
+REGRESSION TEST
+
+6.
+
+SOLO DOPO → PASS
+
+⸻
+
+🚫 DIVIETI
+
+NON:
+
+* fare refactor;
+* cambiare architettura;
+* cambiare API non necessarie;
+* modificare History per risolvere un problema di firma;
+* modificare blockchain logic per risolvere un problema UI;
+* aggiungere fallback non richiesti;
+* aggiungere retry automatici rischiosi;
+* generare transazioni duplicate;
+* usare fixture per dichiarare un test reale PASS;
+* dichiarare production verified senza TX reale.
+
+⸻
+
+OUTPUT FINALE CHE VOGLIO
+
+Quando hai finito, restituisci UNA SOLA tabella:
+
+Test	Risultato
+BSC USDT reale	PASS/FAIL
+USDA Polygon reale	PASS/FAIL
+History sender	PASS/FAIL
+History receiver	PASS/FAIL
+History dopo refresh	PASS/FAIL
+No duplicati	PASS/FAIL
+Notifiche data + ora	PASS/FAIL
+Lightning	PASS/FAIL
+Alpha → Alpha	PASS/FAIL
+Build	PASS/FAIL
+Automated tests	X/X
+
+Poi:
+
+BLOCKING ISSUES
+
+Solo i problemi che impediscono il deploy.
+
+FILE MODIFICATI
+
+Solo quelli realmente modificati durante questa stabilizzazione.
+
+DEPLOY STATUS
+
+Una sola delle due:
+
+READY FOR DEPLOY
+
+oppure
+
+DEPLOY BLOCKED
+
+NON voglio altre spiegazioni generiche.
+
+L’obiettivo è semplice:
+
+UN’APP FUNZIONANTE END-TO-END, NON UNA COLLEZIONE DI FIX LOCALI.
+
+NON FARE IL DEPLOY FINCHÉ NON È READY FOR DEPLOY.
