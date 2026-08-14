@@ -14,7 +14,12 @@
 
 import { useState, useCallback, useEffect, useRef } from "react";
 import { useTranslation } from "react-i18next";
-import { useActiveAccount, ConnectButton } from "thirdweb/react";
+import {
+  useActiveAccount,
+  useActiveWalletChain,
+  useSwitchActiveWalletChain,
+  ConnectButton,
+} from "thirdweb/react";
 
 // ── HowItWorksDialog ─────────────────────────────────────────────────────────
 
@@ -280,8 +285,34 @@ export default function UsdaSettingsPage({ onBack, onOpenAlphaWallet }: Props) {
 
   const account          = useActiveAccount();
   const address          = account?.address;
+  const activeChain      = useActiveWalletChain();
+  const switchChain      = useSwitchActiveWalletChain();
   const isConnected      = !!account;
-  const isCorrectNetwork = !!account;
+  // Vera verifica rete: il wallet deve essere su Polygon (chainId 137)
+  const isCorrectNetwork = !!account && activeChain?.id === USDA_CHAIN_ID;
+
+  // Stato per il pulsante Switch Network manuale con timeout e gestione errori
+  const [isSwitching,  setIsSwitching]  = useState(false);
+  const [switchError,  setSwitchError]  = useState<string | null>(null);
+
+  async function handleSwitchNetwork() {
+    setSwitchError(null);
+    setIsSwitching(true);
+    // Timeout di 15s per evitare spinner infinito su iOS/WalletConnect
+    const timer = setTimeout(() => {
+      setIsSwitching(false);
+      setSwitchError("Timeout: apri il wallet e accetta il cambio rete, poi riprova.");
+    }, 15_000);
+    try {
+      await switchChain(polygon);
+      setSwitchError(null);
+    } catch {
+      setSwitchError("Cambio rete non riuscito. Prova manualmente da Trust Wallet o MetaMask.");
+    } finally {
+      clearTimeout(timer);
+      setIsSwitching(false);
+    }
+  }
 
   // Traccia l'ultimo indirizzo già persistito per evitare scritture duplicate
   const lastPersistedRef = useRef<string | null>(null);
@@ -467,9 +498,19 @@ export default function UsdaSettingsPage({ onBack, onOpenAlphaWallet }: Props) {
               <p className="ups-card-body">
                 {t("wrongNetworkDescA")}<strong>Polygon Mainnet</strong>{t("wrongNetworkDescB")}
               </p>
-              <div className="ups-connect-wrap" style={{ marginTop: 8 }}>
-                <ConnectButton client={client} chain={polygon} wallets={wallets} />
-              </div>
+              {/* Pulsante custom con timeout: evita spinner infinito su iOS/WalletConnect */}
+              <button
+                type="button"
+                className="ups-switch-network-btn"
+                style={{ marginTop: 12, width: "100%", padding: "12px 0", borderRadius: 10, fontWeight: 600, fontSize: 15, cursor: isSwitching ? "not-allowed" : "pointer", opacity: isSwitching ? 0.7 : 1 }}
+                onClick={handleSwitchNetwork}
+                disabled={isSwitching}
+              >
+                {isSwitching ? "⏳ Cambio rete in corso…" : "Switch Network"}
+              </button>
+              {switchError && (
+                <p style={{ color: "#f87171", fontSize: 13, marginTop: 8, textAlign: "center" }}>{switchError}</p>
+              )}
             </div>
           )}
 

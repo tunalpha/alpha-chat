@@ -3302,12 +3302,22 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
 
   async function handleLogout() {
     setLoggingOut(true);
-    await logout();
+    try {
+      await logout();
+    } catch {
+      // logout() svuota l'auth state anche in caso di errore API → la navigazione
+      // avviene comunque; resettiamo il flag solo se siamo ancora montati.
+      setLoggingOut(false);
+    }
   }
 
   async function handleLogoutAll() {
     setLoggingOut(true);
-    await logoutAll();
+    try {
+      await logoutAll();
+    } catch {
+      setLoggingOut(false);
+    }
   }
 
   // ── Derived ──────────────────────────────────────────────────────────────

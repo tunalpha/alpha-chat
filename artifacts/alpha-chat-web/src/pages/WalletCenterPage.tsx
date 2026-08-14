@@ -11,7 +11,7 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useTranslation } from "react-i18next";
-import { useActiveAccount, ConnectButton } from "thirdweb/react";
+import { useActiveAccount, useActiveWalletChain, ConnectButton } from "thirdweb/react";
 import {
   client,
   polygon,
@@ -80,8 +80,10 @@ export default function WalletCenterPage({ onBack, onOpenAlphaWallet }: Props) {
 
   const account           = useActiveAccount();
   const address           = account?.address;
+  const activeChain       = useActiveWalletChain();
   const isWalletConnected = !!account;
-  const isCorrectNetwork  = !!account;
+  // Vera verifica rete: il wallet deve essere su Polygon (chainId 137)
+  const isCorrectNetwork  = !!account && activeChain?.id === USDA_CHAIN_ID;
 
   const { phase: awPhase, meta: awMeta } = useWallet();
   const hasAlphaWallet = awPhase === "unlocked" || awPhase === "locked";
