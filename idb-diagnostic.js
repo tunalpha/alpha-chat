@@ -13,7 +13,7 @@
 
   console.log(`\n${"=".repeat(60)}`);
   console.log(`  SIGNAL IDB DIAGNOSTIC`);
-  console.log(`  user     : ${username} (${userId.slice(0,8)}…)`);
+  console.log(`  user     : [REDACTED] (${userId.slice(0,8)}…)`);
   console.log(`  deviceId : ${deviceId}`);
   console.log(`${"=".repeat(60)}`);
 

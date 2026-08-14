@@ -128,7 +128,7 @@ export default function Home() {
                   type={showPassword ? "text" : "password"}
                   value={uri}
                   onChange={(e) => setUri(e.target.value)}
-                  placeholder="mongodb+srv://user:pass@cluster.mongodb.net/app_db"
+                  placeholder="Incolla qui la tua Connection String MongoDB"
                   className="w-full bg-input border border-border/30 rounded-lg px-4 py-3 pr-12 text-foreground focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent transition-shadow placeholder:text-muted-foreground/50 font-mono text-sm"
                 />
                 <button

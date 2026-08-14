@@ -44,13 +44,15 @@ router.use(authenticate);
 
 // SECURITY: Rate limit broadcast endpoints — 10 requests/minute per authenticated user.
 // Prevents RPC abuse, transaction spam, and nonce exhaustion attacks.
+// keyGenerator usa userId perché authenticate è già applicato su router.use() sopra —
+// req.user è sempre presente; non servono fallback a req.ip (IPv6-safe by design).
 const broadcastLimiter = rateLimit({
-  windowMs:          60 * 1000,
-  max:               10,
-  keyGenerator:      (req) => (req as any).user?.userId ?? req.ip ?? "unknown",
-  standardHeaders:   true,
-  legacyHeaders:     false,
-  message:           { error: "BROADCAST_RATE_LIMIT", message: "Troppi broadcast. Riprova tra un minuto." },
+  windowMs:        60 * 1000,
+  max:             10,
+  keyGenerator:    (req) => (req as any).user!.userId as string,
+  standardHeaders: "draft-8",
+  legacyHeaders:   false,
+  message:         { error: { code: "BROADCAST_RATE_LIMIT", message: "Troppi broadcast. Riprova tra un minuto." } },
 });
 
 // ── Token info (Phase B) ──────────────────────────────────────────────────
