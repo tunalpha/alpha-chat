@@ -6,7 +6,9 @@ import NotFound from '@/pages/not-found';
 import { Route, Switch, Router as WouterRouter } from 'wouter';
 import { AppShell } from '@/components/layout/AppShell';
 
-import Login from '@/pages/login';
+import Login          from '@/pages/login';
+import ForgotPassword from '@/pages/forgot-password';
+import ResetPassword  from '@/pages/reset-password';
 import Dashboard from '@/pages/dashboard';
 import Growth from '@/pages/growth';
 import SecurityFeatures from '@/pages/security-features';
@@ -73,7 +75,9 @@ function ProtectedRoutes() {
 function Router() {
   return (
     <Switch>
-      <Route path="/login" component={Login} />
+      <Route path="/login"            component={Login}          />
+      <Route path="/forgot-password"  component={ForgotPassword} />
+      <Route path="/reset-password"   component={ResetPassword}  />
       <Route path="/.*" component={ProtectedRoutes} />
       <Route component={NotFound} />
     </Switch>

@@ -13,6 +13,7 @@
 import { Router, type Request, type Response, type NextFunction } from "express";
 import mongoose from "mongoose";
 import os from "node:os";
+import crypto from "node:crypto";
 import argon2 from "argon2";
 import { ListObjectsV2Command, HeadObjectCommand } from "@aws-sdk/client-s3";
 import { r2 } from "../../lib/r2-client";
@@ -39,6 +40,20 @@ import { MediaModel } from "../../models/media.model";
 import { BlockModel } from "../../models/block.model";
 import { RecoveryContactModel } from "../../models/recovery-contact.model";
 import { callMetrics } from "../../lib/call-metrics";
+import { sendEmail } from "../../services/email.service";
+
+// ---------------------------------------------------------------------------
+// In-memory store per i token di reset password (TTL 15 min)
+// Singolo admin → Map è sufficiente. Non persistito su DB intenzionalmente.
+// ---------------------------------------------------------------------------
+interface ResetEntry { userId: string; expiresAt: number }
+const resetTokens = new Map<string, ResetEntry>();
+const RESET_TTL_MS = 15 * 60 * 1000; // 15 minuti
+
+function pruneResetTokens() {
+  const now = Date.now();
+  for (const [k, v] of resetTokens) if (v.expiresAt < now) resetTokens.delete(k);
+}
 import { DiagnosticEventModel } from "../../models/diagnostic-event.model";
 
 const router = Router();
@@ -131,6 +146,108 @@ router.post("/auth/login", async (req: Request, res: Response, next: NextFunctio
         admin_role: user.admin_role,
       },
     });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// POST /admin/auth/forgot-password
+// Genera un token di reset e invia email all'admin.
+// Risponde sempre 200 (non rivela se l'utente esiste).
+// ---------------------------------------------------------------------------
+
+router.post("/auth/forgot-password", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { username } = req.body as { username?: string };
+    if (!username) { res.json({ ok: true }); return; }
+
+    pruneResetTokens();
+
+    const user = await UserModel.findOne({
+      username: username.toLowerCase().trim(),
+      admin_role: { $ne: null },
+    }).select("_id email username admin_role");
+
+    // Risponde sempre 200 — non rivela se l'utente esiste
+    if (!user || !user.email) { res.json({ ok: true }); return; }
+
+    const token = crypto.randomBytes(32).toString("hex");
+    resetTokens.set(token, { userId: user._id.toString(), expiresAt: Date.now() + RESET_TTL_MS });
+
+    const ADMIN_BASE = process.env.PUBLIC_URL ? `${process.env.PUBLIC_URL}/admin` : "https://alphachat.sbs/admin";
+    const resetUrl   = `${ADMIN_BASE}/reset-password?token=${token}`;
+
+    await sendEmail({
+      to:      user.email,
+      subject: "Alpha Ops — Reset password amministratore",
+      html: `
+        <div style="font-family:sans-serif;max-width:480px;margin:auto;background:#0d0d1a;color:#fff;border-radius:12px;padding:24px;border:1px solid #2d1b69;">
+          <h2 style="margin:0 0 8px;font-size:20px;color:#a78bfa;">🔐 Reset Password</h2>
+          <p style="color:#bbb;font-size:14px;margin:0 0 20px;">
+            Hai richiesto il reset della password per l'account admin <strong style="color:#fff;">@${user.username}</strong>.
+          </p>
+          <a href="${resetUrl}"
+             style="display:block;text-align:center;background:#3b82f6;color:#fff;text-decoration:none;
+                    border-radius:8px;padding:14px;font-weight:600;font-size:15px;margin-bottom:20px;">
+            Reimposta password
+          </a>
+          <p style="color:#666;font-size:12px;margin:0;">
+            Il link scade tra 15 minuti. Se non hai richiesto il reset, ignora questa email.
+          </p>
+          <p style="color:#555;font-size:11px;margin:8px 0 0;border-top:1px solid #2d1b69;padding-top:8px;">
+            Alpha Ops — Accesso non autorizzato è proibito e registrato.
+          </p>
+        </div>`,
+      text: `Alpha Ops — Reset password\n\nClicca il link per reimpostare la password:\n${resetUrl}\n\nScade tra 15 minuti.`,
+    });
+
+    logger.info({ username: user.username }, "Admin password reset email sent");
+    res.json({ ok: true });
+  } catch (err) {
+    next(err);
+  }
+});
+
+// ---------------------------------------------------------------------------
+// POST /admin/auth/reset-password
+// Valida il token e aggiorna la password.
+// ---------------------------------------------------------------------------
+
+router.post("/auth/reset-password", async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const { token, newPassword } = req.body as { token?: string; newPassword?: string };
+
+    if (!token || !newPassword) throw new AppError("MISSING_FIELDS", 400);
+    if (newPassword.length < 8)  throw new AppError("PASSWORD_TOO_SHORT", 400);
+
+    pruneResetTokens();
+    const entry = resetTokens.get(token);
+    if (!entry || entry.expiresAt < Date.now()) {
+      throw new AppError("TOKEN_INVALID_OR_EXPIRED", 400);
+    }
+
+    const hash = await argon2.hash(newPassword);
+    const user = await UserModel.findByIdAndUpdate(
+      entry.userId,
+      { $set: { password_hash: hash, updatedAt: new Date() } },
+      { new: true },
+    ).select("username admin_role");
+
+    if (!user || !user.admin_role) throw new AppError("USER_NOT_FOUND", 404);
+
+    resetTokens.delete(token);
+
+    logAuditEvent({
+      event:      "USER_PASSWORD_RESET" as any,
+      user_id:    user._id.toString(),
+      device_id:  "admin-panel",
+      created_at: new Date().toISOString(),
+      metadata:   { source: "admin_password_reset" },
+    });
+
+    logger.info({ username: user.username }, "Admin password reset successfully");
+    res.json({ ok: true });
   } catch (err) {
     next(err);
   }

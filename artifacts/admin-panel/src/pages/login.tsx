@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { ShieldCheck, Lock, Eye, EyeOff } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -6,6 +7,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
 export default function Login() {
+  const [, setLocation] = useLocation();
   const { login, isLoggingIn, loginError } = useAuth();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
@@ -78,6 +80,16 @@ export default function Login() {
           <Button type="submit" className="w-full" disabled={isLoggingIn || !username || !password}>
             {isLoggingIn ? "AUTHENTICATING..." : "AUTHORIZE ACCESS"}
           </Button>
+
+          <div className="text-center pt-1">
+            <button
+              type="button"
+              onClick={() => setLocation("/forgot-password")}
+              className="text-xs text-muted-foreground hover:text-foreground font-mono uppercase tracking-wider transition-colors"
+            >
+              Dimentica la password?
+            </button>
+          </div>
         </form>
 
         <p className="mt-8 text-center text-xs text-muted-foreground font-mono uppercase">
