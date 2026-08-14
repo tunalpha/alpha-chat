@@ -1,0 +1,332 @@
+OBIETTIVO
+
+Abbiamo ora una nuova evidenza molto importante dal test reale su iPhone + Trust Wallet.
+
+Quando Alpha Chat tenta di collegarsi a Trust Wallet, Trust Wallet mostra:
+
+* DApp: Alpha Chat — Il tuo bunker digitale
+* dominio: alphachat.sbs
+* errore: “Dominio non valido”
+* avviso: “Impossibile verificare questo dominio. Procedi con cautela.”
+* reti mostrate nella sessione: Ethereum + Polygon
+* BSC NON compare
+
+Successivamente, durante il tentativo di firma, Alpha Chat riceve:
+
+undefined is not an object (evaluating 'this.namespace.methods.includes')
+
+Voglio determinare con precisione la causa tecnica.
+
+⸻
+
+REGOLA ASSOLUTA
+
+Questa è una fase di SOLO ANALISI.
+
+NON modificare alcun file.
+
+NON fare commit.
+
+NON aggiornare dipendenze.
+
+NON cambiare ThirdWeb.
+
+NON cambiare WalletConnect.
+
+NON cambiare optionalChains.
+
+NON fare rollback.
+
+NON applicare workaround.
+
+NON correggere il problema.
+
+Voglio esclusivamente individuare la causa.
+
+⸻
+
+1. ANALIZZARE LA SESSION PROPOSAL REALE
+
+Analizza il codice che costruisce la connessione WalletConnect/ThirdWeb e determina esattamente quale session proposal viene generata.
+
+Voglio sapere quali valori vengono realmente richiesti per:
+
+requiredNamespaces
+optionalNamespaces
+chains
+methods
+events
+
+e in particolare per:
+
+eip155:1
+eip155:137
+eip155:56
+
+⸻
+
+2. VERIFICARE BSC
+
+Spiegare perché nella schermata Trust Wallet compaiono:
+
+Ethereum
+Polygon
+
+ma non:
+
+BNB Smart Chain / BSC
+
+Verificare se BSC:
+
+* non viene richiesto;
+* viene richiesto come optional;
+* viene richiesto con formato errato;
+* viene filtrato da ThirdWeb;
+* viene rifiutato da Trust Wallet;
+* viene inserito nella sessione ma successivamente perso;
+* oppure viene escluso per un’altra ragione.
+
+⸻
+
+3. VERIFICARE I METHODS
+
+Questo è il punto più importante.
+
+Individuare esattamente quale oggetto namespace arriva dopo la connessione.
+
+Controllare se esiste qualcosa del tipo:
+
+session.namespaces["eip155:56"]
+
+e verificare:
+
+methods
+accounts
+chains
+events
+
+Voglio sapere se:
+
+session.namespaces["eip155:56"].methods
+
+è:
+
+undefined
+
+oppure:
+
+["eth_sendTransaction", ...]
+
+Fare la stessa verifica per:
+
+session.namespaces["eip155:1"]
+session.namespaces["eip155:137"]
+
+⸻
+
+4. COLLEGARE L’ERRORE ALLA SESSIONE
+
+Determinare se l’errore:
+
+this.namespace.methods.includes
+
+è causato direttamente da un namespace ricevuto senza methods.
+
+Spiegare esattamente:
+
+Session proposal
+        ↓
+WalletConnect response
+        ↓
+session.namespaces
+        ↓
+ThirdWeb namespace
+        ↓
+this.namespace.methods
+        ↓
+.includes(...)
+        ↓
+TypeError
+
+Se questa catena non è corretta, spiegare esattamente dove avviene l’errore.
+
+⸻
+
+5. DOMINIO ALPHACHAT.SBS
+
+Analizzare anche il messaggio mostrato da Trust Wallet:
+
+“Dominio non valido”
+
+e:
+
+“Impossibile verificare questo dominio. Procedi con cautela.”
+
+Determinare:
+
+* quale dominio viene effettivamente dichiarato nella sessione;
+* quale URL/origin sta utilizzando la PWA;
+* se il dominio alphachat.sbs è coerente con l’URL effettivo dell’app;
+* se esiste una configurazione WalletConnect/ThirdWeb per metadata/domain;
+* se il dominio può influenzare la sessione o la richiesta di firma;
+* se si tratta solamente di un warning di Trust Wallet oppure di un errore funzionale.
+
+NON modificare il dominio.
+
+⸻
+
+6. THIRDWEB
+
+Analizzare src/lib/thirdweb.ts e il modo in cui vengono create:
+
+createWallet(...)
+
+e le eventuali opzioni:
+
+walletConnect
+optionalChains
+requiredChains
+
+Determinare esattamente cosa viene passato a Trust Wallet.
+
+Non modificare il codice.
+
+⸻
+
+7. CONFRONTO USDT E USDA
+
+Confrontare i due flussi:
+
+USDT BSC
+
+Alpha Chat
+→ ThirdWeb
+→ WalletConnect
+→ Trust Wallet
+→ nessuna firma
+→ namespace.methods error
+
+USDA
+
+Alpha Chat
+→ ThirdWeb
+→ WalletConnect
+→ Trust Wallet
+→ nessuna firma
+→ namespace.methods error
+
+Individuare il componente comune esatto che gestisce la firma.
+
+Voglio sapere se entrambi utilizzano:
+
+* stesso currentAccount;
+* stesso provider;
+* stessa sessione WalletConnect;
+* stesso sendTransaction();
+* stesso ThirdWeb wallet;
+* stesso namespace;
+* stessa infrastruttura di firma.
+
+⸻
+
+8. CAPACITOR
+
+Non assumere che Capacitor sia la causa.
+
+Verificare soltanto se le modifiche Capacitor possono influenzare:
+
+WalletConnect session
+deep link
+provider
+origin
+window.location
+navigator
+WebView
+PWA
+ThirdWeb
+
+Se non possono influenzare il problema, confermarlo.
+
+⸻
+
+9. NON FARE IPOTESI NON VERIFICATE
+
+Non dichiarare:
+
+“è sicuramente Trust Wallet”
+
+oppure:
+
+“è sicuramente optionalChains”
+
+oppure:
+
+“è sicuramente Capacitor”
+
+senza evidenza.
+
+Classificare la conclusione come:
+
+CONFERMATA
+
+PROBABILE
+
+oppure
+
+NON DETERMINABILE
+
+⸻
+
+10. REPORT FINALE
+
+Restituire esclusivamente:
+
+1. Session proposal richiesta
+
+Indicare chains, methods ed events.
+
+2. Session response ricevuta
+
+Indicare i namespace effettivamente ricevuti.
+
+3. Problema methods
+
+Indicare esattamente quale namespace ha methods undefined.
+
+4. BSC
+
+Spiegare perché non compare nella schermata Trust Wallet.
+
+5. Dominio
+
+Spiegare il significato di “Dominio non valido”.
+
+6. Errore
+
+Spiegare la causa precisa di:
+
+this.namespace.methods.includes
+
+7. USDT + USDA
+
+Spiegare cosa hanno in comune.
+
+8. Capacitor
+
+Dire se esiste o meno una relazione tecnica dimostrabile.
+
+9. Root cause
+
+Classificare:
+
+CONFERMATA / PROBABILE / NON DETERMINABILE
+
+10. Prossima azione consigliata
+
+Indicare una sola azione tecnica, senza eseguirla.
+
+IMPORTANTE
+
+NON MODIFICARE NULLA.
+
+Voglio prima vedere questo report e decidere insieme il prossimo passo, perché vogliamo evitare altri costi inutili dell’agente.
