@@ -411,23 +411,32 @@ export function ChatWalletBridgeProvider({ children }: Props) {
       }
 
       // ── 4. Salva nel tx-store (con chatMessageId opzionale) ─────────
+      // INVARIANTE: il broadcast è già avvenuto e txHash è valido.
+      // Un fallimento IDB NON deve far sembrare il pagamento fallito all'utente.
+      // Il tx-monitor riconcilia il record entro il prossimo ciclo di polling (≤30s).
       const txId = network === "bitcoin"
         ? `btc:${txHash}:out:`
         : `${NETWORK_CHAIN_IDS[network]}:${txHash}:out:chat`;
 
-      await saveTxRecord({
-        id:        txId,
-        chainId:   network === "bitcoin" ? 0 : NETWORK_CHAIN_IDS[network],
-        network:   NETWORK_LABELS[network],
-        txHash,
-        direction: "out",
-        asset:     assetSymbol,
-        amount,
-        toAddress: recipientAddress,
-        timestamp: Date.now(),
-        status:    "pending",
-        updatedAt: Date.now(),
-      });
+      try {
+        await saveTxRecord({
+          id:        txId,
+          chainId:   network === "bitcoin" ? 0 : NETWORK_CHAIN_IDS[network],
+          network:   NETWORK_LABELS[network],
+          txHash,
+          direction: "out",
+          asset:     assetSymbol,
+          amount,
+          toAddress: recipientAddress,
+          timestamp: Date.now(),
+          status:    "pending",
+          updatedAt: Date.now(),
+        });
+      } catch {
+        // IDB write failure: il TX è on-chain. Il monitor scrive il record
+        // nel prossimo poll (≤30s). Non propagare l'errore.
+        console.warn("[ChatWalletBridge] saveTxRecord fallito post-broadcast — il monitor recupererà il record:", txHash);
+      }
 
       // ── 5. Accelera reconciliation: forza un poll aggressivo ─────────
       // Dopo il broadcast, la TX è in mempool. Il primo poll normale
