@@ -142,7 +142,7 @@ function useLiveTxStatus(
 // ─── Component ────────────────────────────────────────────────────────────
 
 export function ChatWalletPaymentBubble({ meta, isMine }: Props) {
-  const { txHash, network, assetSymbol, amount, fee, direction, explorerUrl } = meta;
+  const { txHash, network, assetSymbol, amount, fee, explorerUrl } = meta;
 
   // Status live — controlla IDB e receipt direttamente, senza dipendere da txMonitor
   const status = useLiveTxStatus(txHash, network, meta.status);
@@ -150,26 +150,29 @@ export function ChatWalletPaymentBubble({ meta, isMine }: Props) {
   const netName = NETWORK_NAMES[network] ?? network;
   const netIcon = NETWORK_ICONS[network] ?? "⬡";
 
-  // Direzione
-  const dirIcon = direction === "out" ? "🚀" : "📩";
-  const dirText = direction === "out" ? "CRIPTO INVIATA" : "CRIPTO RICEVUTA";
+  // Direzione — derivata da isMine (prospettiva del viewer) invece di meta.direction.
+  // meta.direction è sempre "out" (prospettiva del mittente al momento della creazione):
+  // usarla per il destinatario causerebbe "CRIPTO INVIATA" per chi la riceve.
+  const effectiveDirection: "out" | "in" = isMine ? "out" : "in";
+  const dirIcon = effectiveDirection === "out" ? "🚀" : "📩";
+  const dirText = effectiveDirection === "out" ? "CRIPTO INVIATA" : "CRIPTO RICEVUTA";
 
   // Variant per colori status
   const variant  = status === "confirmed" ? "success" : status === "failed" ? "fail" : "waiting";
   const animated = status === "sent";
 
   const statusIcon  = useMemo(() => {
-    if (status === "confirmed") return direction === "out" ? "✅" : "💰";
+    if (status === "confirmed") return effectiveDirection === "out" ? "✅" : "💰";
     if (status === "failed")    return "❌";
     return "";
-  }, [status, direction]);
+  }, [status, effectiveDirection]);
 
   const statusTitle = status === "confirmed" ? "Pagamento completato"
     : status === "failed" ? "Transazione fallita"
     : "In attesa di conferma…";
 
   const statusSub = status === "confirmed"
-    ? (direction === "out" ? "Fondi inviati con successo" : "Fondi ricevuti nel wallet")
+    ? (effectiveDirection === "out" ? "Fondi inviati con successo" : "Fondi ricevuti nel wallet")
     : status === "failed" ? "Controlla l'explorer per i dettagli"
     : null;
 
