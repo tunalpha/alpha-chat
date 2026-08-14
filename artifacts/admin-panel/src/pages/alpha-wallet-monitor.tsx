@@ -148,12 +148,14 @@ function OverviewTab() {
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <KpiCard icon={Wallet}     label="Wallet abilitati"       value={u.wallet_enabled}       color="purple" />
-        <KpiCard icon={Activity}   label="Self-custodial EVM"     value={u.self_custodial_evm}   color="blue"
-                 sub={`+ ${u.self_custodial_btc} BTC`} />
-        <KpiCard icon={Globe}      label="Terze parti (any)"      value={u.third_party_any}      color="orange"
+        <KpiCard icon={Wallet}   label="Alpha Wallet Nativo (EVM)" value={u.self_custodial_evm}  color="purple"
+                 sub="Wallet generato in-app" />
+        <KpiCard icon={Bitcoin}  label="Alpha Wallet Nativo (BTC)" value={u.self_custodial_btc}  color="orange"
+                 sub="Wallet BTC in-app" />
+        <KpiCard icon={Activity} label="Wallet abilitati"          value={u.wallet_enabled}      color="blue"
+                 sub="feature wallet attiva" />
+        <KpiCard icon={Globe}    label="Terze parti (any)"         value={u.third_party_any}     color="gray"
                  sub={`POL:${u.third_party_polygon} ETH:${u.third_party_ethereum} USDA:${u.third_party_usda}`} />
-        <KpiCard icon={Users}      label="Tot. wallet attivi"     value={u.wallet_enabled}       color="gray" />
       </div>
 
       <h2 className="text-sm font-semibold text-foreground uppercase tracking-wider">Fee Records</h2>
@@ -238,8 +240,8 @@ function UsersTab() {
                 <tr>
                   <th className="text-left py-2 px-3 text-xs text-muted-foreground font-medium">Utente</th>
                   <th className="text-center py-2 px-3 text-xs text-muted-foreground font-medium">Abilitato</th>
-                  <th className="text-left py-2 px-3 text-xs text-muted-foreground font-medium">Self-custodial EVM</th>
-                  <th className="text-left py-2 px-3 text-xs text-muted-foreground font-medium">Self-custodial BTC</th>
+                  <th className="text-left py-2 px-3 text-xs text-muted-foreground font-medium">Alpha Wallet EVM</th>
+                  <th className="text-left py-2 px-3 text-xs text-muted-foreground font-medium">Alpha Wallet BTC</th>
                   <th className="text-left py-2 px-3 text-xs text-muted-foreground font-medium">Terze parti</th>
                   <th className="text-left py-2 px-3 text-xs text-muted-foreground font-medium">Registrato</th>
                 </tr>
