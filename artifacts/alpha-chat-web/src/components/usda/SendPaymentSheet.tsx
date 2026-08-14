@@ -21,7 +21,7 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useTranslation } from "react-i18next";
-import { useActiveAccount, ConnectButton } from "thirdweb/react";
+import { useActiveAccount, ConnectButton, useSwitchActiveWalletChain } from "thirdweb/react";
 import { client, polygon, wallets } from "../../lib/thirdweb";
 import {
   apiPaymentCreate,
@@ -135,6 +135,7 @@ export function SendPaymentSheet({
   const busyRef = useRef(false);
 
   const account     = useActiveAccount();
+  const switchChain = useSwitchActiveWalletChain();
   const isConnected = !!account;
 
   const STEPS: { id: Step; label: string }[] = [
@@ -290,6 +291,21 @@ export function SendPaymentSheet({
 
     let pollAborted  = false;
     let signErrorMsg: string | null = null;
+
+    // ── Chain switch prima di sendTransaction ─────────────────────────────────
+    // Assicura che la sessione WalletConnect includa Polygon nel namespace prima
+    // di inviare la TX. Pattern identico a MultiChainSendSheet / MultiChainPayRequestSheet.
+    // Senza questo, ThirdWeb converte chainId:137 in CAIP "eip155:137" e WalletConnect
+    // rifiuta la richiesta con "Missing or invalid" se Polygon non è nel namespace.
+    try {
+      await switchChain(polygon);
+    } catch (switchErr: unknown) {
+      const msg = (switchErr as Error)?.message ?? "";
+      setError(humanizeUsdaError(msg) || "Impossibile passare a Polygon. Riconnetti il wallet e riprova.");
+      setPhase("error");
+      busyRef.current = false;
+      return;
+    }
 
     { const _tok = localStorage.getItem("ac_access_token"); fetch("/api/v1/diagnostics/events", { method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${_tok ?? ""}` }, body: JSON.stringify({ event: "USDA-DIAG:START", chainId: 137 }) }); }
     account.sendTransaction({

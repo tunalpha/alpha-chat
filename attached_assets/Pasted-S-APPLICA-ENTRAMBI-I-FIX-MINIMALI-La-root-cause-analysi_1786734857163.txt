@@ -1,0 +1,137 @@
+SÌ — APPLICA ENTRAMBI I FIX MINIMALI.
+
+La root cause analysis è chiara e accettata.
+
+FIX 1 — BSC USDT / QUOTE 500 → 503
+
+Applica SOLO la correzione in handlePaymentQuote per PriceUnavailableError / DynamicFeeError.
+
+Obiettivo:
+
+* PriceUnavailableError → HTTP 503
+* DynamicFeeError → HTTP 503
+* mantenere invariato il comportamento normale quando il prezzo è disponibile
+* NON modificare CoinGecko
+* NON modificare native-price-provider
+* NON modificare dynamic-fee-estimator
+* NON introdurre fallback inventati
+* NON nascondere l’errore
+
+Usa il meccanismo AppError già esistente nel progetto.
+
+FIX 2 — USDA Polygon / WalletConnect
+
+In:
+
+artifacts/alpha-chat-web/src/components/usda/SendPaymentSheet.tsx
+
+aggiungi switchChain(polygon) immediatamente prima di account.sendTransaction() nel flow handleSign().
+
+Segui ESATTAMENTE il pattern già utilizzato da:
+
+* MultiChainSendSheet.tsx
+* MultiChainPayRequestSheet.tsx
+
+NON modificare altro del flow USDA.
+
+Obiettivo:
+
+USDA → Polygon → Firma
+
+deve assicurarsi che il wallet sia sulla Polygon corretta prima di chiamare:
+
+account.sendTransaction()
+
+IMPORTANTISSIMO
+
+NON modificare:
+
+* History
+* backfill
+* tx-monitor
+* saveTxRecord
+* mc-history-backfill
+* MultiChain payment logic
+* Lightning
+* altri network flow
+
+Questi due fix sono separati dal bug History.
+
+TEST OBBLIGATORI DOPO I FIX
+
+BSC USDT
+
+Verifica:
+
+USDT → BSC → quote
+
+Caso normale:
+
+* quote disponibile → comportamento invariato.
+
+Caso CoinGecko unavailable/rate limit:
+
+* NON deve più uscire HTTP 500;
+* deve uscire HTTP 503;
+* frontend deve mostrare un errore gestibile.
+
+USDA Polygon
+
+Verifica:
+
+USDA → Polygon → Continua → Conferma → Firma
+
+Deve sparire:
+
+Missing or invalid. request() chainId: eip155:137
+
+e deve essere eseguito switchChain(polygon) prima del sendTransaction().
+
+REGRESSION TEST
+
+Verifica anche:
+
+* BSC USDT
+* Polygon USDT
+* Polygon USDA
+* Ethereum USDT
+* Alpha → Alpha
+* Lightning
+
+NON dichiarare il pagamento reale riuscito se non hai fatto una TX reale.
+
+OUTPUT FINALE
+
+Dammi:
+
+FIX 1
+
+PASS/FAIL
+
+FIX 2
+
+PASS/FAIL
+
+BUILD
+
+PASS/FAIL
+
+TEST REGRESSIONE
+
+elenco con PASS/FAIL
+
+FILE MODIFICATI
+
+solo i file effettivamente modificati
+
+BLOCKING ISSUES
+
+solo problemi reali.
+
+Se tutto passa:
+
+STOP.
+
+Non fare altri refactor e non modificare la History.
+
+A quel punto prepariamo un nuovo deploy controllato.

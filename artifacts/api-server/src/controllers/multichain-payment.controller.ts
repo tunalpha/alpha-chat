@@ -371,9 +371,12 @@ export async function handlePaymentQuote(
         : null,
     });
   } catch (err) {
-    // Errori di infrastruttura (RPC down, CoinGecko stale) → 503 esplicito
+    // Errori di infrastruttura (RPC down, CoinGecko stale) → 503 esplicito.
+    // PriceUnavailableError / DynamicFeeError non estendono AppError: il global
+    // error handler li tratta come "Unhandled error" → 500. Wrappare in AppError
+    // garantisce che il client riceva 503 con codice leggibile.
     if (err instanceof DynamicFeeError || err instanceof PriceUnavailableError) {
-      next(err);  // AppError-like con httpStatus 503
+      next(new AppError("PRICE_UNAVAILABLE", 503));
       return;
     }
     next(err);
