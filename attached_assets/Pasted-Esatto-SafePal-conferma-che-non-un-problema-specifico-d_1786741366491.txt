@@ -1,0 +1,106 @@
+Esatto. SafePal conferma che non è un problema specifico di Trust Wallet.
+
+La sequenza è molto importante:
+
+1. Alpha Chat mostra “Cambio rete a BSC…”.
+2. SafePal riceve correttamente la richiesta “Consentire a questo sito di cambiare rete?”.
+3. Tu confermi BNB Chain.
+4. La rete viene cambiata.
+5. Non arriva mai la richiesta di firma della transazione.
+
+Quindi il nuovo accountRef non ha risolto il problema reale. Il problema è nella fase post-switchChain() → sendTransaction() / sessione WalletConnect, prima della firma.
+
+A questo punto NON fare un altro pagamento
+
+Abbiamo già una prova comparativa:
+
+Trust Wallet ❌
+SafePal ❌
+
+Quindi basta test con wallet diversi. Non rischiamo altri fondi.
+
+Devi far analizzare all’agente esattamente la transizione dopo switchChain(), senza fargli modificare subito il codice.
+
+Mandagli questo:
+
+STOP MODIFICHE. NUOVA EVIDENZA REALE — TRUST WALLET + SAFEPAL FALLISCONO NELLO STESSO PUNTO
+
+Ho appena eseguito lo stesso test BSC USDT con SafePal.
+
+Risultato:
+
+1. Alpha Chat → Cambio rete a BSC…
+2. SafePal riceve correttamente Consentire a questo sito di cambiare rete?
+3. Confermo BNB Chain.
+4. La rete viene cambiata correttamente.
+5. NON compare la richiesta di firma della transazione.
+
+Trust Wallet aveva esattamente lo stesso comportamento.
+
+Quindi il problema NON può essere considerato specifico di Trust Wallet.
+
+CONCLUSIONE
+
+Il failure point è:
+
+switchChain(BSC) → post-switch → sendTransaction() / WalletConnect session → firma
+
+Il fix accountRef NON è sufficiente.
+
+NON FARE ANCORA NESSUNA MODIFICA
+
+Voglio prima un code-path audit strumentale del flow BSC:
+
+handleSign()
+→ switchChain(bsc)
+→ aggiornamento account
+→ aggiornamento chain/session
+→ sendTransaction()
+→ WalletConnect request
+→ firma
+
+Per ogni passaggio dimostra:
+
+* account/address corrente;
+* chainId corrente;
+* connector/wallet corrente;
+* stato della sessione WalletConnect;
+* valore di accountRef.current;
+* quale oggetto viene realmente usato da sendTransaction();
+* se switchChain() invalida/rimpiazza il provider/sessione;
+* se sendTransaction() viene effettivamente chiamato;
+* errore esatto restituito se non viene chiamato.
+
+IMPORTANTE: aggiungi temporaneamente solo logging diagnostico, se necessario. NON applicare workaround e NON modificare la logica di pagamento.
+
+Voglio soprattutto sapere se dopo:
+
+await switchChain(bsc)
+
+la chiamata:
+
+account.sendTransaction(...)
+
+viene realmente eseguita.
+
+Se viene eseguita, voglio l’errore originale completo del connector/WalletConnect.
+
+Se NON viene eseguita, identifica esattamente quale guard/condition interrompe il flow.
+
+NON ACCETTO
+
+* altro switchChain();
+* altro accountRef alla cieca;
+* retry automatici;
+* fallback manuali;
+* simulazioni;
+* fixture;
+* dichiarazioni PASS basate sui 1061 test.
+
+Abbiamo appena dimostrato con due wallet diversi che il problema persiste dopo il cambio rete.
+
+Prima voglio la root cause esatta del blocco post-switch.
+
+Solo dopo l’identificazione della root cause proporrai il fix minimo, senza toccare History, Lightning, USDA o altri flow.
+
+Questa è la strada giusta adesso. Le due prove con wallet differenti ci hanno dato un’informazione molto più utile di un altro tentativo.
