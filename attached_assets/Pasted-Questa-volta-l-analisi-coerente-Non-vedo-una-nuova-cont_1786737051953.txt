@@ -1,0 +1,171 @@
+Questa volta l’analisi è coerente. Non vedo una nuova contraddizione come prima.
+
+Il nuovo bug BSC è spiegato bene: dopo switchChain(bsc) viene cambiata l’istanza account, mentre handleSign() utilizzava il riferimento precedente. L’accountRef aggiornato è una correzione mirata.
+
+Anche il fix Notifiche è banalmente corretto.
+
+Ma c’è un problema pratico
+
+L’agente dice DEPLOY BLOCKED perché deve verificare BSC reale, Lightning e Alpha→Alpha.
+
+Se questa versione non è ancora deployata, non può verificare il fix BSC reale. Quindi rischiamo di entrare in un loop infinito:
+
+fix → non posso testarlo → deploy blocked → nessuna verifica reale → altro fix.
+
+Io farei ora un controlled/canary deploy della versione esatta appena testata, senza altre modifiche, e poi farei i test reali.
+
+Non chiederei altri cambiamenti di codice.
+
+Mandagli questo unico prompt:
+
+OK. ROOT CAUSE E FIX SONO ACCETTATI.
+
+NON FARE ALTRI CAMBI DI CODICE.
+
+Il problema adesso è solo la VALIDAZIONE REALE della versione appena modificata.
+
+Hai indicato:
+
+* BSC USDT → fix accountRef applicato
+* USDA Polygon → PASS reale
+* History → fix attivo
+* Notifiche → fix applicato
+* Build → PASS
+* 1061/1061 → PASS
+
+Il BSC reale non può essere verificato se questa versione non viene eseguita nell’ambiente dove è disponibile il wallet reale.
+
+PROCEDI CON UN CONTROLLED DEPLOY DELLA VERSIONE ATTUALE
+
+NON aggiungere:
+
+* altri fix;
+* refactor;
+* workaround;
+* modifiche alla History;
+* modifiche al tx-monitor;
+* modifiche al wallet flow.
+
+Deploya ESATTAMENTE il codice attuale.
+
+DOPO IL DEPLOY — TEST OBBLIGATORI
+
+1. BSC USDT
+
+Esegui un pagamento reale:
+
+USDT → BSC → 1 USDT
+
+Verifica:
+
+* switchChain(bsc)
+* account aggiornato dopo lo switch;
+* firma;
+* transaction hash;
+* deposito;
+* completamento;
+* nessun:
+
+Please call connect() before request()
+
+* nessun doppio invio.
+
+Questo è il test principale del nuovo accountRef.
+
+2. HISTORY DELLA STESSA TX
+
+Usando la stessa TX BSC reale:
+
+Sender
+
+* OUT
+* hash corretto
+* amount corretto
+* presente in History
+
+Receiver
+
+* IN
+* hash corretto
+* amount corretto
+* presente in History
+
+Poi:
+
+* refresh;
+* riapertura History;
+* verifica che il record rimanga;
+* verifica che non ci siano duplicati.
+
+3. USDA POLYGON
+
+Il test reale precedente è PASS.
+
+Non modificare nulla.
+
+Controlla solo che continui a funzionare dopo il deploy.
+
+4. LIGHTNING
+
+Fai un smoke test minimo per verificare che il flow Lightning non sia stato alterato.
+
+5. ALPHA → ALPHA
+
+Fai un smoke test minimo del trasferimento normale Alpha Wallet → Alpha Wallet.
+
+6. NOTIFICHE
+
+Verifica che ora venga visualizzato:
+
+14 ago · HH:MM
+
+con l’orario reale.
+
+IMPORTANTE
+
+NON dichiarare che il test BSC è PASS prima della TX reale.
+
+NON usare i 1061 test come sostituto del test reale.
+
+NON modificare nuovamente il codice se un test fallisce prima di identificare la root cause.
+
+Se un test fallisce:
+
+1. STOP;
+2. raccogli errore reale;
+3. identifica file/funzione/riga;
+4. NON applicare subito un workaround;
+5. riportami la root cause.
+
+OUTPUT FINALE
+
+Dopo il controlled deploy restituisci:
+
+Test	Risultato
+BSC USDT reale	PASS/FAIL
+BSC firma dopo switch	PASS/FAIL
+BSC TX hash	valore reale
+History sender	PASS/FAIL
+History receiver	PASS/FAIL
+History dopo refresh	PASS/FAIL
+No duplicati	PASS/FAIL
+USDA Polygon	PASS/FAIL
+Lightning	PASS/FAIL
+Alpha → Alpha	PASS/FAIL
+Notifiche data + ora	PASS/FAIL
+Build	PASS
+Automated tests	1061/1061
+
+CRITERIO FINALE
+
+Se tutti i test passano:
+
+READY FOR PRODUCTION
+
+Se anche UNO dei flussi critici fallisce:
+
+DEPLOY BLOCKED
+
+e voglio la root cause prima di qualsiasi altro cambio.
+
+NON MODIFICARE ALTRO ADESSO. Prima validiamo il codice attuale nel mondo reale.
