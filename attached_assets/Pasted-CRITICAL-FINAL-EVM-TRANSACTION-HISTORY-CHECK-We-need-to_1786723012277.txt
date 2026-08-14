@@ -1,0 +1,92 @@
+CRITICAL — FINAL EVM TRANSACTION HISTORY CHECK
+
+We need to focus ONLY on EVM transaction history.
+
+Do NOT perform another general audit.
+Do NOT investigate Lightning/Spark.
+Do NOT touch Capacitor.
+Do NOT modify unrelated features.
+
+Our main concern is transaction-history integrity for EVM, especially Alpha-to-Alpha payments.
+
+We have previously experienced successful EVM transactions that were NOT reflected in the transaction history.
+
+The previous fixes included:
+- Ethereum / Polygon / BSC monitoring
+- BSC Alchemy endpoint fix
+- order: "desc" for recent transactions
+- checkpoint protection on API errors
+- protection against latestBlock = 0x0
+- manual resync
+- idempotent transaction records
+
+Now verify ONLY this requirement:
+
+CRITICAL INVARIANT:
+
+EVERY SUCCESSFULLY COMPLETED EVM TRANSACTION MUST EVENTUALLY APPEAR IN THE CORRECT USER'S TRANSACTION HISTORY.
+
+This includes:
+1. Alpha → Alpha payments
+2. Alpha → external wallet
+3. External wallet → Alpha
+4. EVM native assets
+5. Supported ERC-20 tokens
+6. Chat Payment EVM transactions
+
+MOST IMPORTANT:
+Verify Alpha → Alpha specifically.
+
+For a successful Alpha → Alpha payment:
+
+Sender:
+payment successful → sender history record
+
+Receiver:
+payment successful → receiver history record
+
+Both must be guaranteed.
+
+Please inspect the actual current code path and determine:
+
+- Where the transaction is created/submitted
+- Where the TX hash is obtained
+- Where the sender history record is created
+- Where the receiver history record is created
+- Whether either record depends only on blockchain polling
+- What happens if polling is temporarily unavailable
+- What happens if the app/server restarts
+- What happens if the history write fails
+- Whether the transaction can be successfully completed but silently disappear from history
+- Whether duplicate discovery is safely idempotent
+
+IMPORTANT:
+Do not just report that tests pass.
+
+Verify the actual transaction lifecycle.
+
+Also check the EVM transactions that were reported as missing TODAY, using existing application records, payment records, logs, and blockchain data where available.
+
+Determine whether those transactions:
+- actually succeeded,
+- have a valid TX hash,
+- are present on-chain,
+- are present in payment records,
+- are present in transaction history,
+- and if missing, exactly why.
+
+If today's transactions are confirmed but missing from history, identify the exact code path responsible.
+
+FINAL RESPONSE MUST BE SHORT AND DEFINITIVE:
+
+1. EVM transaction history is GUARANTEED / NOT GUARANTEED.
+2. Alpha → Alpha history is GUARANTEED / NOT GUARANTEED.
+3. Today's missing transactions: FOUND / NOT FOUND, with the exact reason.
+4. If a fix is required, list ONLY the files and minimal changes required.
+5. State whether the existing PWA behavior is affected.
+
+Do NOT implement any changes yet unless absolutely necessary to demonstrate the root cause.
+
+Do NOT deploy.
+
+Stop after this report.
