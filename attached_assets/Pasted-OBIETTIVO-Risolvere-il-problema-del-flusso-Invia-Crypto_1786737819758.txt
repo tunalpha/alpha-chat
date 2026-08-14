@@ -1,0 +1,402 @@
+OBIETTIVO
+
+Risolvere il problema del flusso Invia Crypto su Alpha Chat in cui, su iPhone/iOS con wallet esterno (in particolare Trust Wallet), l’utente arriva a:
+
+Importo ✅ → Conferma ✅ → Firma 🔵
+
+ma non riceve mai la richiesta di firma nel wallet.
+
+Lo screenshot mostra inoltre un messaggio prematuro:
+
+“Transazione inviata — Stiamo verificando il pagamento sulla blockchain…”
+
+quando in realtà la transazione non è ancora stata firmata.
+
+IMPORTANTE
+
+Non modificare altre funzionalità del sistema. Il fix deve essere mirato esclusivamente al flusso di firma e invio crypto.
+
+⸻
+
+1. ANALISI PRIMA DI MODIFICARE IL CODICE
+
+Analizza il flusso completo:
+
+Alpha Chat → ThirdWeb/WalletConnect → Trust Wallet → firma → ritorno alla PWA → broadcast → TX hash → polling blockchain
+
+Individua esattamente dove si interrompe il flusso.
+
+Controlla in particolare:
+
+* inizializzazione ThirdWeb;
+* WalletConnect session;
+* provider attivo;
+* sendTransaction();
+* eventuali wrapper getProvider();
+* gestione della sessione WalletConnect;
+* redirect/deep link iOS;
+* ritorno da Trust Wallet alla PWA;
+* promise di sendTransaction();
+* gestione degli errori;
+* eventuale fire-and-forget;
+* polling della transazione;
+* stato UI del wizard.
+
+Non limitarti a nascondere il problema nella UI: identificare e correggere la causa reale.
+
+⸻
+
+2. REGOLA FONDAMENTALE DEL FLUSSO
+
+La sequenza corretta deve essere:
+
+STEP 1 — Importo
+
+L’utente inserisce l’importo.
+
+STEP 2 — Conferma
+
+L’utente conferma destinatario, rete e importo.
+
+STEP 3 — Firma
+
+L’app deve chiamare il wallet e attendere effettivamente la risposta del wallet.
+
+In questa fase la UI deve mostrare:
+
+“In attesa della firma nel wallet…”
+
+e non:
+
+“Transazione inviata”
+
+STEP 4 — Transazione firmata/inviata
+
+Solo quando sendTransaction() restituisce correttamente il risultato della transazione e abbiamo un TX hash, passare allo stato:
+
+“Transazione inviata — verifica sulla blockchain…”
+
+STEP 5 — Conferma blockchain
+
+Solo dopo il TX hash avviare il polling della blockchain.
+
+⸻
+
+3. NON CONSIDERARE “TRANSAZIONE INVIATA” PRIMA DEL TX HASH
+
+È vietato impostare lo stato sent, submitted, broadcasted o equivalente semplicemente perché:
+
+* è stata costruita la transazione;
+* è stato chiamato sendTransaction();
+* è iniziato il polling;
+* la promise è stata avviata.
+
+Lo stato “inviata” deve essere considerato vero solo dopo aver ricevuto un TX hash valido.
+
+Se la firma è ancora pendente:
+
+Firma richiesta → in attesa
+
+Se l’utente rifiuta:
+
+Firma rifiutata
+
+Se il wallet non risponde:
+
+Firma non ricevuta / timeout
+
+Se la firma produce TX hash:
+
+Transazione inviata
+
+⸻
+
+4. TRUST WALLET / iOS / PWA
+
+Verificare specificamente il comportamento di Trust Wallet su iOS.
+
+Controllare:
+
+* WalletConnect URI;
+* deep link verso Trust Wallet;
+* universal links;
+* ritorno alla PWA;
+* sessione WalletConnect dopo il ritorno;
+* eventuale perdita del provider;
+* eventuale sessione stale;
+* eventuali più sessioni WalletConnect contemporaneamente;
+* eventuale doppia inizializzazione del provider;
+* eventuale chiamata a disconnect() nel momento sbagliato;
+* eventuale getProvider() che crea/reinizializza una seconda istanza;
+* gestione della pagina quando Safari/PWA viene messa in background;
+* resume dell’app dopo il ritorno da Trust Wallet.
+
+Non introdurre una seconda inizializzazione di ThirdWeb/WalletConnect se esiste già un provider/sessione valida.
+
+⸻
+
+5. GESTIONE DELLA PROMISE DI SENDTRANSACTION
+
+Verificare il codice attuale.
+
+La logica deve essere concettualmente:
+
+await sendTransaction(...)
+        ↓
+attesa della risposta del wallet
+        ↓
+TX hash ricevuto
+        ↓
+aggiornamento UI = "Transazione inviata"
+        ↓
+polling blockchain
+
+Non deve essere:
+
+sendTransaction(...)
+        ↓
+imposta subito "Transazione inviata"
+        ↓
+polling
+        ↓
+wallet forse riceve la richiesta
+
+Se il progetto usa un meccanismo fire-and-forget, modificarlo esclusivamente se necessario per garantire che la richiesta di firma venga realmente attesa.
+
+Non eliminare il comportamento asincrono dove è necessario per evitare problemi di nonce/iOS già risolti in precedenza.
+
+⸻
+
+6. ERROR HANDLING
+
+Gestire esplicitamente almeno:
+
+Utente rifiuta
+
+Mostrare:
+
+“Firma rifiutata nel wallet.”
+
+Non creare una transazione pendente.
+
+Wallet non disponibile
+
+Mostrare:
+
+“Impossibile collegarsi al wallet. Riapri il wallet e riprova.”
+
+Timeout firma
+
+Dopo un timeout ragionevole:
+
+“La richiesta di firma non è stata ricevuta dal wallet.”
+
+Consentire di riprovare senza creare una seconda transazione logica.
+
+Provider/sessione persa
+
+Tentare il recupero della sessione esistente prima di richiedere una nuova connessione.
+
+TX hash ricevuto
+
+Salvare immediatamente il TX hash e passare al polling.
+
+⸻
+
+7. EVITARE DOPPIE TRANSAZIONI
+
+Il fix non deve permettere che un doppio tap o un resume iOS provochi due chiamate di invio.
+
+Aggiungere/controllare un lock lato client durante la firma:
+
+isSigning = true
+
+e bloccare ulteriori richieste fino a:
+
+* firma completata;
+* rifiuto;
+* errore;
+* timeout.
+
+Il lock deve essere sempre rilasciato anche in caso di eccezione.
+
+⸻
+
+8. STATO UI CORRETTO
+
+Implementare chiaramente gli stati:
+
+idle
+confirming
+waiting_for_signature
+transaction_submitted
+confirming_on_chain
+confirmed
+failed
+rejected
+timeout
+
+La schermata mostrata nello screenshot deve quindi diventare:
+
+Prima della firma
+
+Firma
+
+🟣
+
+In attesa della firma nel wallet…
+
+Dopo TX hash
+
+Transazione inviata
+
+Stiamo verificando il pagamento sulla blockchain…
+
+Non mostrare mai “Transazione inviata” prima del TX hash.
+
+⸻
+
+9. LOGGING DIAGNOSTICO
+
+Aggiungere logging tecnico non sensibile per capire esattamente dove si blocca il flusso.
+
+Registrare:
+
+wallet_send_start
+wallet_provider_detected
+walletconnect_session_detected
+wallet_signature_requested
+wallet_signature_returned
+transaction_hash_received
+transaction_polling_started
+transaction_confirmed
+wallet_signature_rejected
+wallet_signature_timeout
+wallet_provider_error
+
+NON registrare:
+
+* private key;
+* seed phrase;
+* PIN;
+* dati sensibili;
+* payload sensibili non necessari.
+
+Se esiste già DIAGNOSTIC_MODE, utilizzare quello anziché introdurre un secondo sistema di logging.
+
+⸻
+
+10. TEST OBBLIGATORI
+
+Dopo il fix eseguire test reali almeno su:
+
+Trust Wallet iOS/PWA
+
+Connect wallet
+→ Invia Crypto
+→ USDT BSC
+→ 1 USDT
+→ Conferma
+→ richiesta firma
+→ firma
+→ TX hash
+→ conferma blockchain
+
+Rifiuto
+
+Conferma
+→ Trust Wallet
+→ Rifiuta
+→ ritorno Alpha Chat
+
+Verificare che non venga creata una TX.
+
+Timeout
+
+Simulare wallet che non risponde.
+
+Verificare che l’app non rimanga indefinitamente su “Transazione inviata”.
+
+Doppio tap
+
+Premere rapidamente il pulsante di invio più volte.
+
+Verificare che venga effettuata una sola richiesta.
+
+Resume iOS
+
+Mettere la PWA in background, aprire Trust Wallet, firmare e tornare alla PWA.
+
+Verificare che lo stato venga recuperato correttamente.
+
+⸻
+
+11. NON TOCCARE
+
+Non modificare senza necessità:
+
+* contratti smart;
+* gestione dei saldi;
+* fee;
+* network fee;
+* USDT;
+* USDA;
+* BTC;
+* chain switching;
+* backend payment engine;
+* database;
+* logica di conferma blockchain già funzionante;
+* auto-release;
+* altre funzionalità di Alpha Chat.
+
+Il problema da correggere è esclusivamente:
+
+wallet signature → TX hash → stato UI/polling
+
+⸻
+
+12. REPORT FINALE OBBLIGATORIO
+
+Prima di dichiarare il fix completato, fornire un report con:
+
+Root cause
+
+Spiegare esattamente perché la richiesta di firma non arrivava al wallet.
+
+File modificati
+
+Elencare ogni file modificato e cosa è stato cambiato.
+
+WalletConnect / ThirdWeb
+
+Spiegare come è stato corretto il flusso iOS/PWA.
+
+UI state
+
+Spiegare come è stata corretta la distinzione:
+
+waiting for signature ≠ transaction submitted
+
+Test
+
+Indicare quali test sono stati eseguiti e il risultato.
+
+Regressioni
+
+Confermare che non sono state modificate le funzionalità non interessate.
+
+CRITERIO DI SUCCESSO
+
+Il fix è considerato riuscito solo se, su Trust Wallet iOS/PWA, premendo “Invia”:
+
+Importo ✅ → Conferma ✅ → Firma
+
+porta realmente alla richiesta di firma nel wallet.
+
+Dopo la firma:
+
+Firma ✅ → TX hash → Transazione inviata → verifica blockchain → confermata
+
+Se la firma non avviene, non deve essere mostrato “Transazione inviata”.
+
+Prima di concludere, controlla il diff completo e verifica che non siano stati modificati file o funzionalità fuori dallo scope.

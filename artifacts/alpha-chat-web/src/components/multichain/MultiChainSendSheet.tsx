@@ -578,20 +578,59 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
       return;
     }
 
+    // ── Diagnostica ────────────────────────────────────────────────────────
+    console.log("[MC] wallet_send_start", { network, chainId: evmChainId });
+    console.log("[MC] wallet_provider_detected");
+
+    // Cattura transferId ora (chiusura safe — transfer è non-null per il guard sopra).
+    const capturedTransferId = transfer.transferId;
+
     let pollAborted     = false;
     let signedUncertain = false; // true = TX potrebbe essere già in mempool → NON mostrare "Firma"
     let signErrorMsg: string | null = null;
 
+    // ── sendTransaction fire-and-forget ─────────────────────────────────────
+    //
+    // Il pattern rimane fire-and-forget per evitare problemi di nonce/iOS già risolti.
+    //
+    // CORREZIONE STATO UI (bug del 14/08/2026):
+    //   PRIMA: setSignPhase("confirming") subito dopo .catch() → "Transazione inviata"
+    //          appariva nel momento della chiamata, PRIMA che il wallet firmasse.
+    //   ORA:   setSignPhase("confirming") è dentro .then() → scatta solo quando
+    //          ThirdWeb ha ricevuto il TX hash dal wallet.
+    //   INVARIANTE: signPhase resta "signing" ("In attesa della firma nel wallet…")
+    //               finché il wallet non risponde o non fallisce.
+    console.log("[MC] wallet_signature_requested");
     currentAccount.sendTransaction({
       to:    tokenAddress,
       data:  encodeERC20Transfer(transfer.escrowWallet, depositAmount),
       gas:   BigInt(150000),
       value: BigInt(0),
       chainId: evmChainId,
+    }).then(() => {
+      // ── TX hash ricevuto: il wallet ha firmato e la TX è broadcast ─────────
+      // Solo in questo punto è corretto mostrare "Transazione inviata".
+      console.log("[MC] wallet_signature_returned, transaction_hash_received");
+      setSignPhase(prev => {
+        // Guard anti-regressione: il polling potrebbe aver già rilevato il deposito
+        // (setSignPhase("done")) durante il round-trip WalletConnect. In quel caso
+        // non tornare indietro a "confirming".
+        if (prev === "done" || prev === "error" || prev === "uncertain") return prev;
+        return "confirming";
+      });
+      // Aggiorna recovery: signed=true — solo dopo TX hash confermato
+      localStorage.setItem(MC_PENDING_KEY, JSON.stringify({
+        transferId:     capturedTransferId,
+        conversationId,
+        network,
+        timestamp:      Date.now(),
+        signed:         true,
+      } satisfies MCPendingPayment));
     }).catch((err: unknown) => {
       const msg = (err as Error)?.message ?? "";
       if (/reject|cancel|denied|refused|user rejected/i.test(msg)) {
         // Rifiuto esplicito utente: la TX NON è stata inviata → retry sicuro
+        console.log("[MC] wallet_signature_rejected:", msg);
         pollAborted  = true;
         signErrorMsg = "Firma rifiutata. Premi \"Firma transazione\" per riprovare.";
       } else if (/nonce.*too.*low|nonce.*used|nonce.*already/i.test(msg)) {
@@ -624,29 +663,20 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
       ) {
         signedUncertain = true;
         signErrorMsg    = "⚠️ Connessione interrotta durante la firma. La transazione potrebbe essere già stata inviata — stiamo verificando automaticamente.";
-        console.warn("[MC] sendTransaction: rete caduta dopo firma — TX potrebbe essere in mempool:", msg);
+        console.warn("[MC] wallet_signature_timeout — TX potrebbe essere in mempool:", msg);
       } else if (/rpc|provider/i.test(msg)) {
         signedUncertain = true;
         signErrorMsg    = `Errore RPC su ${selectedNet.sublabel}. La transazione potrebbe essere già stata inviata — stiamo verificando.`;
-        console.warn("[MC] sendTransaction: errore RPC dopo firma:", msg);
+        console.warn("[MC] wallet_provider_error:", msg);
       } else {
         // Errore sconosciuto: trattare come incerto (TX potrebbe essere in mempool)
         signedUncertain = true;
         signErrorMsg    = `⚠️ Errore firma: ${msg || "Errore sconosciuto."} La transazione potrebbe essere già stata inviata — stiamo verificando.`;
-        console.warn("[MC] sendTransaction: errore sconosciuto dopo firma:", msg);
+        console.warn("[MC] wallet_provider_error (sconosciuto):", msg);
       }
     });
 
-    // Aggiorna recovery: signed=true
-    localStorage.setItem(MC_PENDING_KEY, JSON.stringify({
-      transferId:     transfer.transferId,
-      conversationId,
-      network,
-      timestamp:      Date.now(),
-      signed:         true,
-    } satisfies MCPendingPayment));
-
-    setSignPhase("confirming");
+    console.log("[MC] transaction_polling_started");
 
     // Polling con grace period per errori firma (identico a USDA)
     const POLL_INTERVAL_MS       = 10_000;
@@ -689,6 +719,7 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
           }
           continue; // Deposito non ancora presente — ripolla
         }
+        console.log("[MC] transaction_confirmed");
         setSignPhase("done");
         return;
       } catch (pollErr: unknown) {
@@ -1064,8 +1095,8 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
               <div className="usda-phase-box">
                 <span className="usda-btn-spinner usda-phase-icon" aria-hidden="true" />
                 <div>
-                  <p className="usda-phase-title">Firma in corso…</p>
-                  <p className="usda-phase-desc">Approva la transazione USDT nel wallet.</p>
+                  <p className="usda-phase-title">In attesa della firma nel wallet…</p>
+                  <p className="usda-phase-desc">Approva la transazione USDT nel wallet. Se il wallet non si apre automaticamente, aprilo manualmente e cerca la richiesta in sospeso.</p>
                 </div>
               </div>
             )}
