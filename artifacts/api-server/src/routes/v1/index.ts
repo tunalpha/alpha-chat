@@ -102,6 +102,10 @@ v1Router.use("/admin/bitcoin", adminBitcoinRoutes);
 import alphaWalletRoutes from "./alpha-wallet.routes";
 v1Router.use("/alpha-wallet", alphaWalletRoutes);
 
+// Alpha Wallet Monitor — Admin monitoring (read-only)
+import alphaWalletMonitorRoutes from "./admin-alpha-wallet-monitor.routes";
+v1Router.use("/admin/alpha-wallet-monitor", alphaWalletMonitorRoutes);
+
 // Spark/Lightning — Platform Fee config (Phase Spark)
 // ISOLAMENTO: completamente separato da Alpha Wallet BTC, MultiChain, USDA.
 // Default feature flag spark_lightning_enabled = false fino a go-live esplicito.

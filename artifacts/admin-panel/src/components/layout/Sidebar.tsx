@@ -51,7 +51,8 @@ const navItems = [
   { href: "/bitcoin-ops",        label: "Bitcoin Ops",      icon: Bitcoin    },
   { href: "/fee-config",         label: "Fee per Rete",     icon: Percent    },
   { href: "/revenue-monitor",    label: "Revenue",          icon: TrendingUp },
-  { href: "/alpha-wallet-fee",   label: "Alpha Wallet Fee", icon: Wallet     },
+  { href: "/alpha-wallet-fee",     label: "Alpha Wallet Fee",     icon: Wallet     },
+  { href: "/alpha-wallet-monitor", label: "Alpha Wallet Monitor", icon: BarChart2  },
   { href: "/spark-lightning-fee", label: "Spark / Lightning", icon: Zap       },
   { href: "/spark-monitor",       label: "Spark Monitor",     icon: BarChart2  },
 ];

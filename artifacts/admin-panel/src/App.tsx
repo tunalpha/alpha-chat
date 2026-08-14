@@ -28,8 +28,9 @@ import MultichainMonitor from '@/pages/multichain-monitor';
 import BitcoinOps from '@/pages/bitcoin-ops';
 import FeeConfig from '@/pages/fee-config';
 import RevenueMonitor from '@/pages/revenue-monitor';
-import AlphaWalletFee from '@/pages/alpha-wallet-fee';
-import SparkLightningFee from '@/pages/spark-lightning-fee';
+import AlphaWalletFee     from '@/pages/alpha-wallet-fee';
+import AlphaWalletMonitor from '@/pages/alpha-wallet-monitor';
+import SparkLightningFee  from '@/pages/spark-lightning-fee';
 import SparkMonitor      from '@/pages/spark-monitor';
 
 const queryClient = new QueryClient();
@@ -57,7 +58,8 @@ function ProtectedRoutes() {
         <Route path="/bitcoin-ops" component={BitcoinOps} />
         <Route path="/fee-config" component={FeeConfig} />
         <Route path="/revenue-monitor" component={RevenueMonitor} />
-        <Route path="/alpha-wallet-fee" component={AlphaWalletFee} />
+        <Route path="/alpha-wallet-fee"     component={AlphaWalletFee}     />
+        <Route path="/alpha-wallet-monitor" component={AlphaWalletMonitor} />
         <Route path="/spark-lightning-fee" component={SparkLightningFee} />
         <Route path="/spark-monitor"       component={SparkMonitor} />
         <Route path="/access-log" component={AccessLogPage} />

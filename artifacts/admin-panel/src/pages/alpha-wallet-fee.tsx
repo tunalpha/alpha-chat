@@ -293,7 +293,7 @@ export default function AlphaWalletFeePage() {
               />
               <InfoRow
                 label="Fee minima BTC"
-                value={`${config.min_fee_btc_sat.toLocaleString()} sat`}
+                value={`${(config.min_fee_btc_sat ?? 0).toLocaleString()} sat`}
                 sub="Commissione minima Alpha Wallet BTC (satoshi)"
               />
 
@@ -591,9 +591,9 @@ export default function AlphaWalletFeePage() {
                 <div className="rounded-lg bg-muted/40 p-3">
                   <p className="text-xs text-muted-foreground mb-2">Fee minima BTC</p>
                   <div className="flex items-center gap-3 text-sm">
-                    <span className="text-muted-foreground">{config.min_fee_btc_sat.toLocaleString()} sat</span>
+                    <span className="text-muted-foreground">{(config.min_fee_btc_sat ?? 0).toLocaleString()} sat</span>
                     <span className="text-muted-foreground">→</span>
-                    <span className="text-green-700 font-medium">{pendingPatch.min_fee_btc_sat!.toLocaleString()} sat</span>
+                    <span className="text-green-700 font-medium">{(pendingPatch.min_fee_btc_sat ?? 0).toLocaleString()} sat</span>
                   </div>
                 </div>
               )}
