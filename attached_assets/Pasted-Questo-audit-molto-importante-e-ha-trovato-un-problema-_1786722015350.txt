@@ -1,0 +1,132 @@
+Questo audit è molto importante e ha trovato un problema che si collega direttamente a quello che mi hai appena detto: una transazione Lightning può essere completata ma non comparire nello storico.
+
+Io non farei ancora deploy né attiverei Lightning in produzione. Prima farei correggere i finding critici.
+
+🔴 Le 3 priorità assolute
+
+1. Riconciliazione dopo riavvio
+
+Questo è il problema più importante.
+
+Oggi può succedere:
+
+creo invoice → chiudo app → qualcuno paga → riapro
+
+e l’app non sa più quale invoice stava aspettando.
+
+Il pagamento può quindi rimanere pending per sempre nello storico.
+
+Fix: dopo la connessione a Spark, interrogare lo storico SDK e riconciliare automaticamente tutte le invoice pending.
+
+⸻
+
+2. Doppio pagamento
+
+Se l’utente preme due volte rapidamente Pay, oggi potrebbero partire due send().
+
+Devono aggiungere un vero lock:
+
+Pay
+ ↓
+sendInProgress = true
+ ↓
+spark.send()
+ ↓
+finally → sendInProgress = false
+
+La protezione deve essere nel codice, non solo nel bottone UI.
+
+⸻
+
+3. Lifecycle iOS
+
+Questo è importante per il futuro iPhone.
+
+iOS può sospendere WKWebView. Il problema è che Alpha Chat potrebbe continuare a pensare:
+
+“Spark è connected”
+
+quando invece la connessione reale è stata interrotta.
+
+Al resume bisogna quindi verificare realmente la connessione e, se necessario, fare un reconnect completo.
+
+Questo però non va affrontato ora con Capacitor: abbiamo deciso di tenerlo in standby.
+
+⸻
+
+🟠 Poi farei questi
+
+4. saveLightningTx() non deve più essere fire-and-forget.
+    Se il pagamento riesce ma il salvataggio fallisce, dobbiamo saperlo e riconciliarlo.
+5. Riconciliare SDK Spark ↔ nostro IndexedDB.
+    Questo è fondamentale per il requisito che abbiamo stabilito:
+
+Pagamento completato = transazione presente nello storico.
+
+6. Gestire correttamente gli errori di syncWallet().
+7. Gestire l’errore di caricamento della configurazione delle fee.
+8. Proteggere connect() da doppie chiamate.
+
+🔴 Un punto che voglio approfondire prima del fix
+
+Finding 6 — SDK IndexedDB non cifrata.
+
+Qui non farei modifiche basandomi solamente sull’audit.
+
+Voglio una verifica ufficiale da Breez su:
+
+* cosa viene realmente salvato nell’IndexedDB dello SDK 0.15.1;
+* se contiene davvero HTLC preimage;
+* se è previsto che sia cifrato;
+* se esiste una configurazione per cifrarlo;
+* se una versione più recente dello SDK risolve il problema.
+
+Non aggiornerei lo SDK automaticamente.
+
+⸻
+
+E c’è una cosa ancora più importante
+
+L’audit ha confermato che il problema dello storico non è limitato alle blockchain EVM.
+
+Abbiamo già avuto:
+
+transazioni Alpha → Alpha completate ma non presenti nello storico.
+
+E ora scopriamo che Lightning ha un’altra possibile strada per lo stesso problema.
+
+Per questo io trasformerei definitivamente questo requisito in una regola architetturale di Alpha Chat:
+
+TRANSACTION HISTORY INTEGRITY
+
+No successfully completed transaction may ever remain permanently absent from transaction history.
+
+Non importa se viene scoperta tramite:
+
+* pagamento appena effettuato;
+* blockchain polling;
+* evento Spark;
+* WebSocket;
+* riapertura dell’app;
+* manual resync;
+* reconciliation.
+
+Tutti questi percorsi devono convergere nello stesso sistema idempotente di transaction records.
+
+⸻
+
+Cosa farei adesso
+
+Non chiederei ancora a Replit di fare tutti i fix insieme.
+
+Prima gli farei correggere i Finding 1–6, ma separando il problema Breez.
+
+Il prossimo prompt dovrebbe essere:
+
+Fix Finding 1, 2, 4, 5, 7, 9, 10 e 11. Do not touch Capacitor or iOS native code. Do not upgrade Breez SDK. For Finding 6, perform only the requested Breez investigation and report back before changing anything. Add regression tests for every fix.
+
+Poi vediamo il report.
+
+E soprattutto, Lightning rimane spark_lightning_enabled=false in produzione fino alla conclusione di questo lavoro.
+
+Questa è la scelta prudente. L’audit ci ha dato esattamente quello che volevamo: abbiamo trovato i punti deboli prima di metterli nelle mani degli utenti.

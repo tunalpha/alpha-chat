@@ -133,10 +133,16 @@ export function SparkWalletProvider({ children, isEnabled, storageDir = "spark-w
   const [walletInfo, setInfo]  = useState<SparkWalletInfo | undefined>();
   const [feeConfig, setFee]    = useState<SparkFeeConfig | undefined>();
 
-  // Carica fee config una volta sola
+  // Carica fee config una volta sola (Finding 9: error handler esplicito)
   useEffect(() => {
     if (!isEnabled) return;
-    apiGetSparkFeeConfig().then(setFee);
+    apiGetSparkFeeConfig()
+      .then(setFee)
+      .catch(() => {
+        // Fail silenzioso — i default hardcoded in calculateSendFee sono usati come fallback.
+        // L'utente non viene bloccato, ma non vediamo la fee config del backend.
+        console.warn("[SparkWallet] Impossibile caricare fee config dal backend — uso defaults");
+      });
   }, [isEnabled]);
 
   // visibilitychange: syncWallet al ritorno in foreground (iOS background fix)
@@ -159,6 +165,12 @@ export function SparkWalletProvider({ children, isEnabled, storageDir = "spark-w
 
   const connect = useCallback(async () => {
     if (!isEnabled) return;
+    // Finding 5: guard contro doppia chiamata — evita SDK orfani
+    if (
+      state === "connecting" ||
+      state === "connected"  ||
+      state === "syncing"
+    ) return;
     setState("connecting");
     setError(undefined);
     try {
@@ -179,7 +191,7 @@ export function SparkWalletProvider({ children, isEnabled, storageDir = "spark-w
       setError(e);
       setState("error");
     }
-  }, [isEnabled, storageDir]);
+  }, [isEnabled, storageDir, state]);
 
   const disconnect = useCallback(async () => {
     await adapterRef.current?.disconnect().catch(() => {});

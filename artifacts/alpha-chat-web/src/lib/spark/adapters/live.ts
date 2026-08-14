@@ -261,7 +261,10 @@ export class LiveSparkAdapter implements BreezSparkAdapter {
     };
     void (sdk["addEventListener"] as (l: unknown) => Promise<string>)(listener)
       .then(id => { listenerId = id; })
-      .catch(() => {});
+      .catch((err: unknown) => {
+        // Finding 11: log failure senza PII — il polling 15s in ReceiveView funge da fallback
+        console.warn("[SparkLive] addEventListener fallito — eventi real-time non disponibili:", (err as Error)?.message ?? err);
+      });
     return () => {
       if (listenerId !== null) {
         void (sdk["removeEventListener"] as (id: string) => Promise<boolean>)(listenerId).catch(() => {});

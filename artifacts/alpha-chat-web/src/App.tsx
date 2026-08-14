@@ -372,6 +372,9 @@ function AppContent() {
  */
 function SparkWalletProviderWrapper({ children }: { children: ReactNode }) {
   const [sparkEnabled, setSparkEnabled] = useState(false);
+  // Finding 10: storageDir include userId → nessuna collisione IDB tra utenti sullo stesso device
+  const { auth } = useAuth();
+  const userId = auth?.userId ?? "anon";
 
   useEffect(() => {
     void apiGetAppFeatureFlags()
@@ -411,7 +414,7 @@ function SparkWalletProviderWrapper({ children }: { children: ReactNode }) {
   // spark_lightning_enabled=true → lazy-load SparkWalletContext per la prima volta
   return (
     <Suspense fallback={<>{children}</>}>
-      <_LazySparkProvider isEnabled={true} getMnemonic={getMnemonic}>
+      <_LazySparkProvider isEnabled={true} getMnemonic={getMnemonic} storageDir={`spark-${userId}-v1`}>
         {children}
       </_LazySparkProvider>
     </Suspense>

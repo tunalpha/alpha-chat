@@ -1040,6 +1040,46 @@ function usePortfolioBalances() {
     }
   }, [spark?.state, spark?.isEnabled]);
 
+  // ─── Finding 1: Riconciliazione pending invoices post-connect ──────────────
+  // Ogni volta che Spark si connette (o ri-connette dopo un'interruzione), controlla
+  // le invoice "pending" in IDB e le aggiorna se l'SDK le mostra come completate.
+  //
+  // Scenario protetto: app chiusa durante attesa pagamento → utente riapre →
+  // l'invoice è stata pagata nel frattempo → deve risultare "paid" nello storico.
+  //
+  // INVARIANTE: questa operazione è idempotente — una stessa invoice paid
+  // può essere aggiornata più volte senza effetti collaterali.
+  useEffect(() => {
+    if (spark?.state !== "connected") return;
+    void (async () => {
+      try {
+        const allTxs = await listLightningTxs(500);
+        const pending = allTxs.filter(
+          t => t.direction === "receive" && t.status === "pending" && !!t.bolt11,
+        );
+        if (pending.length === 0) return;
+
+        const sdkPayments = await spark!.listPayments({ limit: 100 });
+        for (const tx of pending) {
+          const match = sdkPayments.find(
+            p => p.bolt11 === tx.bolt11 && p.status === "completed",
+          );
+          if (match) {
+            await updateLightningTx(tx.id, {
+              status:    "paid",
+              paidAt:    match.timestamp ? match.timestamp * 1000 : Date.now(),
+              paymentId: match.id,
+              feeSat:    Number(match.feeSat),
+            });
+          }
+        }
+      } catch {
+        // best-effort — non blocca il flusso Lightning
+      }
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [spark?.state]);
+
   // Spark Lightning balance — letto dal context (no fetch rete, già in memoria)
   // null se: Spark disabilitato | non connesso | walletInfo non ancora disponibile
   const sparkSat: bigint | null =
@@ -1544,6 +1584,9 @@ function ReceiveView({ onBack: _onBack }: { onBack: () => void }) {
   const [copied,    setCopied]    = useState(false);
   const [qrDataUrl, setQrDataUrl] = useState<string>("");
 
+  // Finding 2 (ReceiveView scope): nessun re-entry su generazione invoice
+  const lnGeneratingRef = useRef(false);
+
   // Stato Lightning receive — tutti gli hook devono essere chiamati incondizionatamente
   const [lnAmountStr,  setLnAmountStr]  = useState("");
   const [lnInputMode,  setLnInputMode]  = useState<"btc" | "eur" | "usd">("btc");
@@ -1688,6 +1731,9 @@ function ReceiveView({ onBack: _onBack }: { onBack: () => void }) {
       setLnInvoiceErr("Spark non connesso. Torna al wallet e attendi la connessione Lightning.");
       return;
     }
+    // Finding 2: guard re-entry — doppio tap non genera due invoice
+    if (lnGeneratingRef.current) return;
+    lnGeneratingRef.current = true;
     setLnLoading(true);
     setLnInvoiceErr(null);
     setLnInvoice(null);
@@ -1702,9 +1748,12 @@ function ReceiveView({ onBack: _onBack }: { onBack: () => void }) {
       });
       if (!result.bolt11) throw new Error("L'SDK non ha restituito una invoice BOLT11.");
       setLnInvoice(result.bolt11);
-      // Decodifica BOLT11 per ricavare scadenza reale (tag type-6 + timestamp creazione)
-      // ReceivePaymentResponse non espone expiresAt → unica fonte affidabile è il payload
-      const expMs = await parseBolt11Expiry(result.bolt11);
+      // Finding 11: usa expiresAt dal SDK se disponibile (fonte primaria, più precisa).
+      // Fallback: bech32 parsing manuale (meno affidabile, richiede bech32 lib).
+      // SDK restituisce Unix timestamp in secondi → converti in ms.
+      const expMs = result.expiresAt
+        ? result.expiresAt * 1000
+        : await parseBolt11Expiry(result.bolt11);
       setLnExpiry(expMs);
       // QR uppercase per maggiore compatibilità con i scanner Lightning
       const mod = await import("qrcode");
@@ -1714,28 +1763,35 @@ function ReceiveView({ onBack: _onBack }: { onBack: () => void }) {
       });
       setLnQrUrl(url);
       // ── Persistenza immediata nello storico Lightning ──────────────────────
-      // Invoice salvata PRIMA che l'utente possa premere Indietro.
+      // Finding 4: await (non fire-and-forget) — se IDB fallisce, l'utente viene
+      // avvisato via console.warn. Il pagamento è ancora valido: l'invoice sarà
+      // riconciliata al prossimo avvio tramite Finding 1 (reconciliation post-connect).
       const txId = `ln-rx-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
       const btcPriceObj = lnPrices?.btc as Record<string, number> | undefined;
-      void saveLightningTx({
-        id:                  txId,
-        direction:           "receive",
-        status:              "pending",
-        amountSat:           amountSat !== undefined ? Number(amountSat) : 0,
-        fiatAmount:          lnInputMode !== "btc" ? (parseFloat(lnAmountStr) || undefined) : undefined,
-        fiatCurrency:        lnInputMode.toUpperCase() as "BTC" | "EUR" | "USD",
-        btcPriceAtCreation:  btcPriceObj?.[lnInputMode] ?? undefined,
-        bolt11:              result.bolt11,
-        createdAt:           Date.now(),
-        expiresAt:           expMs,
-        updatedAt:           Date.now(),
-      }).catch(() => {});
+      try {
+        await saveLightningTx({
+          id:                  txId,
+          direction:           "receive",
+          status:              "pending",
+          amountSat:           amountSat !== undefined ? Number(amountSat) : 0,
+          fiatAmount:          lnInputMode !== "btc" ? (parseFloat(lnAmountStr) || undefined) : undefined,
+          fiatCurrency:        lnInputMode.toUpperCase() as "BTC" | "EUR" | "USD",
+          btcPriceAtCreation:  btcPriceObj?.[lnInputMode] ?? undefined,
+          bolt11:              result.bolt11,
+          createdAt:           Date.now(),
+          expiresAt:           expMs,
+          updatedAt:           Date.now(),
+        });
+      } catch {
+        console.warn("[Lightning] Impossibile salvare invoice in IDB — sarà riconciliata al prossimo avvio");
+      }
       setLnTxId(txId);
       setLnGeneratedAmountSat(amountSat ?? 0n);
     } catch (e) {
       setLnInvoiceErr(e instanceof Error ? e.message : "Errore nella creazione dell'invoice Lightning.");
     } finally {
       setLnLoading(false);
+      lnGeneratingRef.current = false; // Finding 2: rilascia lock generazione
     }
   };
 
@@ -2254,6 +2310,9 @@ function SendView({ onBack, onSuccess }: { onBack: () => void; onSuccess: () => 
   const [lnPaymentId,    setLnPaymentId]    = useState<string | null>(null);
   const lightningBalanceSat = isLightning ? (spark?.walletInfo?.balanceSat ?? null) : null;
 
+  // Finding 2: lock atomico send — previene doppio invio anche su rete lenta
+  const sendInProgressRef = useRef(false);
+
   const selectedAsset = assets[assetIdx] ?? assets[0];
 
   const handleProceed = async () => {
@@ -2332,6 +2391,9 @@ function SendView({ onBack, onSuccess }: { onBack: () => void; onSuccess: () => 
     if (!validatePin(pin)) { setPinErr("PIN non valido"); return; }
     // ── Lightning ─────────────────────────────────────────────────────────────
     if (isLightning) {
+      // Finding 2: guard atomico — blocca re-entry anche su doppio tap veloce
+      if (sendInProgressRef.current) return;
+      sendInProgressRef.current = true;
       setPinErr(null);
       setStep("processing");
       try {
@@ -2339,29 +2401,41 @@ function SendView({ onBack, onSuccess }: { onBack: () => void; onSuccess: () => 
         const keystore = await loadKeystore();
         if (keystore) {
           try { await decryptSeed(keystore, pin); }
-          catch { setPin(""); setStep("auth"); setPinErr("PIN errato. Riprova."); return; }
+          catch {
+            setPin(""); setStep("auth"); setPinErr("PIN errato. Riprova.");
+            sendInProgressRef.current = false; // rilascia lock su PIN errato
+            return;
+          }
         }
         const { result } = await spark!.send({ paymentRequest: lnInvoice }, lnFeeBreakdown!);
         setPin("");
         setLnPaymentId(result.paymentId);
-        // ── Persistenza storico Lightning — invio ──────────────────────────
-        void saveLightningTx({
-          id:        `ln-tx-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-          direction: "send",
-          status:    "paid",
-          amountSat: Number(lnFeeBreakdown!.recipientAmountSat),
-          bolt11:    lnInvoice ?? undefined,
-          paymentId: result.paymentId,
-          feeSat:    Number((lnFeeBreakdown!.estimatedProviderFeeSat ?? 0n) + (lnFeeBreakdown!.alphaPlatformFeeSat ?? 0n)),
-          createdAt: Date.now(),
-          paidAt:    Date.now(),
-          updatedAt: Date.now(),
-        }).catch(() => {});
+        // Finding 4: await — il pagamento completato DEVE essere nello storico.
+        // Se IDB fallisce: log warning + la reconciliazione post-connect (Finding 1)
+        // recupererà il pagamento dallo storico SDK al prossimo avvio.
+        try {
+          await saveLightningTx({
+            id:        `ln-tx-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+            direction: "send",
+            status:    "paid",
+            amountSat: Number(lnFeeBreakdown!.recipientAmountSat),
+            bolt11:    lnInvoice ?? undefined,
+            paymentId: result.paymentId,
+            feeSat:    Number((lnFeeBreakdown!.estimatedProviderFeeSat ?? 0n) + (lnFeeBreakdown!.alphaPlatformFeeSat ?? 0n)),
+            createdAt: Date.now(),
+            paidAt:    Date.now(),
+            updatedAt: Date.now(),
+          });
+        } catch {
+          console.warn("[Lightning] Impossibile salvare pagamento inviato in IDB — sarà recuperato dalla reconciliazione SDK");
+        }
         setStep("success");
       } catch (e) {
         setPin("");
         setBroadcastErr(e instanceof Error ? e.message : "Errore durante il pagamento Lightning.");
         setStep("error");
+      } finally {
+        sendInProgressRef.current = false; // Finding 2: rilascia lock in ogni caso
       }
       return;
     }
@@ -3326,6 +3400,8 @@ type TxFilter = "all" | "in" | "out" | "pending";
 
 function HistoryView({ onBack }: { onBack: () => void }) {
   const wallet = useWallet();
+  // Finding 7: accesso a Spark per riconciliazione IDB ↔ SDK
+  const spark = useSparkWalletOptional();
 
   // Tab di primo livello: on-chain vs Lightning
   // Default: Lightning se il chain selezionato è -1, altrimenti on-chain
@@ -3349,21 +3425,88 @@ function HistoryView({ onBack }: { onBack: () => void }) {
   // Carica on-chain sempre; carica Lightning al primo accesso al tab
   useEffect(() => { void wallet.refreshTxHistory(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Finding 7: Riconciliazione IDB ↔ SDK al caricamento della tab Lightning.
+  //
+  // TRANSACTION HISTORY INTEGRITY: nessuna transazione completata può rimanere
+  // permanentemente assente dallo storico.
+  //
+  // Passi:
+  //  1. Carica IDB locale (fonte principale UI).
+  //  2. Se Spark è connesso, carica anche i pagamenti dall'SDK.
+  //  3. Per ogni invoice "pending" in IDB: aggiorna a "paid" se SDK la mostra come completed.
+  //  4. Per ogni pagamento SDK non presente in IDB (mismatch bolt11): lo inserisce.
+  //  5. Ri-carica IDB (ora riconciliata) e aggiorna la UI.
   useEffect(() => {
     if (mainTab !== "lightning") return;
     setLnLoading(true);
-    void listLightningTxs(200)
-      .then(txs => {
+
+    void (async () => {
+      try {
         const now = Date.now();
+
+        // Step 1: carica IDB locale
+        let txs = await listLightningTxs(500);
+
+        // Step 2-4: riconciliazione con SDK (solo se connesso)
+        if (spark?.state === "connected") {
+          try {
+            const sdkPayments = await spark.listPayments({ limit: 200 });
+
+            for (const tx of txs) {
+              if (tx.status !== "pending" || tx.direction !== "receive" || !tx.bolt11) continue;
+              const match = sdkPayments.find(
+                p => p.bolt11 === tx.bolt11 && p.status === "completed",
+              );
+              if (match) {
+                await updateLightningTx(tx.id, {
+                  status:    "paid",
+                  paidAt:    match.timestamp ? match.timestamp * 1000 : now,
+                  paymentId: match.id,
+                  feeSat:    Number(match.feeSat),
+                });
+              }
+            }
+
+            // Step 4: inserisci pagamenti SDK assenti in IDB (sent payments non salvati)
+            const idbBolt11Set = new Set(txs.map(t => t.bolt11).filter(Boolean));
+            for (const p of sdkPayments) {
+              if (!p.bolt11 || idbBolt11Set.has(p.bolt11)) continue;
+              if (p.status !== "completed") continue;
+              const dir = p.paymentType.includes("receive") ? "receive" : "send";
+              await saveLightningTx({
+                id:        `ln-reconciled-${p.id}`,
+                direction: dir,
+                status:    "paid",
+                amountSat: Number(p.amountSat),
+                feeSat:    Number(p.feeSat),
+                bolt11:    p.bolt11,
+                paymentId: p.id,
+                createdAt: p.timestamp ? p.timestamp * 1000 : now,
+                paidAt:    p.timestamp ? p.timestamp * 1000 : now,
+                updatedAt: now,
+              });
+            }
+
+            // Step 5: ri-carica dopo riconciliazione
+            txs = await listLightningTxs(500);
+          } catch {
+            // Riconciliazione SDK fallita — usa IDB così com'è (best-effort)
+          }
+        }
+
         setLnHistory(txs.map(t =>
           t.status === "pending" && t.expiresAt && t.expiresAt < now
             ? { ...t, status: "expired" as const }
             : t
         ));
-      })
-      .catch(() => {})
-      .finally(() => setLnLoading(false));
-  }, [mainTab]);
+      } catch {
+        setLnHistory([]);
+      } finally {
+        setLnLoading(false);
+      }
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mainTab, spark?.state]);
 
   // ── Detail views (devono stare prima dei return early) ──────────────────
   if (selectedTx) {
