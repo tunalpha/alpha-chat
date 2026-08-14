@@ -681,10 +681,10 @@ export async function getFeeConfig(req: Request, res: Response, next: NextFuncti
     const cfg = await _loadFeeConfig();
     res.json({
       data: {
-        fee_bps:            cfg.fee_bps,
-        quote_validity_sec: cfg.quote_validity_sec,
-        min_fee_usdt:       cfg.min_fee_usdt   ?? ALPHA_WALLET_FEE_DEFAULTS.min_fee_usdt,
-        min_fee_btc_sat:    cfg.min_fee_btc_sat ?? ALPHA_WALLET_FEE_DEFAULTS.min_fee_btc_sat,
+        fee_bps:            cfg.fee_bps            ?? ALPHA_WALLET_FEE_DEFAULTS.fee_bps,
+        quote_validity_sec: cfg.quote_validity_sec ?? ALPHA_WALLET_FEE_DEFAULTS.quote_validity_sec,
+        min_fee_usdt:       cfg.min_fee_usdt       ?? ALPHA_WALLET_FEE_DEFAULTS.min_fee_usdt,
+        min_fee_btc_sat:    cfg.min_fee_btc_sat    ?? ALPHA_WALLET_FEE_DEFAULTS.min_fee_btc_sat,
         // Fee wallet addresses — public on-chain, safe to expose to authenticated users
         fee_wallet_evm: process.env.POLYGON_FEE_WALLET ?? null,
         fee_wallet_btc: process.env.BTC_FEE_WALLET     ?? null,

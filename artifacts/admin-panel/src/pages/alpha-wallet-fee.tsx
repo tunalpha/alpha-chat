@@ -273,22 +273,22 @@ export default function AlphaWalletFeePage() {
                 </div>
                 <div className="flex items-center gap-2">
                   <Badge variant="outline" className="bg-purple-50 text-purple-700 border-purple-200 font-mono text-xs">
-                    {config.fee_bps} bps
+                    {config.fee_bps ?? 0} bps
                   </Badge>
                   <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 font-mono text-xs">
-                    {bpsToPercent(config.fee_bps)}
+                    {bpsToPercent(config.fee_bps ?? 0)}
                   </Badge>
                 </div>
               </div>
 
               <InfoRow
                 label="Validità Quote"
-                value={`${config.quote_validity_sec} secondi`}
+                value={`${config.quote_validity_sec ?? 30} secondi`}
                 sub="Finestra di conferma per l'utente"
               />
               <InfoRow
                 label="Fee minima USDT"
-                value={`${config.min_fee_usdt} USDT`}
+                value={`${config.min_fee_usdt ?? 0} USDT`}
                 sub="Commissione minima Alpha Wallet (non network fee)"
               />
               <InfoRow
@@ -560,7 +560,7 @@ export default function AlphaWalletFeePage() {
                 <div className="rounded-lg bg-muted/40 p-3">
                   <p className="text-xs text-muted-foreground mb-2">Platform Fee</p>
                   <div className="flex items-center gap-3 text-sm">
-                    <span className="text-muted-foreground font-mono">{bpsToPercent(config.fee_bps)}</span>
+                    <span className="text-muted-foreground font-mono">{bpsToPercent(config.fee_bps ?? 0)}</span>
                     <span className="text-muted-foreground">→</span>
                     <span className="text-green-700 font-mono font-medium">{bpsToPercent(pendingPatch.fee_bps)}</span>
                     <Badge variant="outline" className="text-xs font-mono">{pendingPatch.fee_bps} bps</Badge>
@@ -571,7 +571,7 @@ export default function AlphaWalletFeePage() {
                 <div className="rounded-lg bg-muted/40 p-3">
                   <p className="text-xs text-muted-foreground mb-2">Validità Quote</p>
                   <div className="flex items-center gap-3 text-sm">
-                    <span className="text-muted-foreground">{config.quote_validity_sec}s</span>
+                    <span className="text-muted-foreground">{config.quote_validity_sec ?? 30}s</span>
                     <span className="text-muted-foreground">→</span>
                     <span className="text-green-700 font-medium">{pendingPatch.quote_validity_sec}s</span>
                   </div>
@@ -581,7 +581,7 @@ export default function AlphaWalletFeePage() {
                 <div className="rounded-lg bg-muted/40 p-3">
                   <p className="text-xs text-muted-foreground mb-2">Fee minima USDT</p>
                   <div className="flex items-center gap-3 text-sm">
-                    <span className="text-muted-foreground">{config.min_fee_usdt} USDT</span>
+                    <span className="text-muted-foreground">{config.min_fee_usdt ?? 0} USDT</span>
                     <span className="text-muted-foreground">→</span>
                     <span className="text-green-700 font-medium">{pendingPatch.min_fee_usdt} USDT</span>
                   </div>
