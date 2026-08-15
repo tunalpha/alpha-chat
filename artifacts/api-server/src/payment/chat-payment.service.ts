@@ -744,12 +744,16 @@ export async function detectDeposit(params: {
   }
 
   // Filtra: (a) importo >= amount_units SE rawContract.value è disponibile,
-  // E (b) blockTimestamp >= createdAt - 5min.
+  // E (b) blockTimestamp >= createdAt - 5min SE blockTimestamp è disponibile.
   //
   // Fix A: rawContract.value è opzionale — Alchemy può non popolarlo se non riesce
   // a decodificare l'ABI del token. In quel caso ci fidiamo dei filtri upstream
   // (toAddress + contractAddresses + category: erc20) che già circoscrivono la TX
   // al token corretto verso l'escrow corretto. Il filtro importo diventa best-effort.
+  //
+  // Fix C: metadata.blockTimestamp è opzionale — Alchemy può non popolarlo per
+  // alcune TX (ABI non decodificata, response parziale). Stessa logica di Fix A:
+  // se il campo manca saltiamo il controllo timestamp e ci fidiamo dei filtri upstream.
   const minAmount   = BigInt(transfer.amount_units);
   const minTs       = createdAt.getTime() - 5 * 60 * 1000; // createdAt - 5 minuti
   const match = transfers.find((t) => {
@@ -757,8 +761,12 @@ export async function detectDeposit(params: {
       // Se rawContract.value è presente verifichiamo l'importo; se assente, omettiamo
       // il check importo (toAddress + contractAddresses sono già filtri sufficienti).
       if (t.rawContract?.value != null && BigInt(t.rawContract.value) < minAmount) return false;
-      const ts = t.metadata?.blockTimestamp ? Date.parse(t.metadata.blockTimestamp) : NaN;
-      if (Number.isNaN(ts) || ts < minTs) return false;
+      // Se blockTimestamp è presente verifichiamo la finestra temporale; se assente,
+      // omettiamo il check (l'upstream toAddress+contractAddresses è sufficiente).
+      if (t.metadata?.blockTimestamp) {
+        const ts = Date.parse(t.metadata.blockTimestamp);
+        if (Number.isNaN(ts) || ts < minTs) return false;
+      }
       return true;
     } catch { return false; }
   });
