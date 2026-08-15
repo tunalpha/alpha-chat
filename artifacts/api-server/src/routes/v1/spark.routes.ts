@@ -56,6 +56,16 @@ import {
   getSparkReconciliationHandler,
 } from "../../controllers/spark-monitoring.controller.js";
 import {
+  triggerManualSweepHandler,
+  getSweepPreviewHandler,
+  getSweepStatusHandler,
+  getSweepHistoryHandler,
+  updateSweepConfigHandler,
+  getSweepConfigHandler,
+  forceAutoSweepCheckHandler,
+  getSweepOperationHandler,
+} from "../../controllers/spark-sweep.controller.js";
+import {
   upsertSparkUserStatusHandler,
   getSparkUsersHandler,
   getSparkUsersStatsHandler,
@@ -151,6 +161,64 @@ router.get("/fee-wallet/health",       requireAdmin("read_only"), getFeeWalletHe
  * SECURITY: NON accetta mnemonic — solo l'address pubblico ricevente.
  */
 router.patch("/fee-wallet/configure-address", requireAdmin("super_admin"), configureFeeAddressHandler);
+
+// ─── Sweep fee wallet → treasury ─────────────────────────────────────────────
+
+/**
+ * GET /api/v1/spark/fee-wallet/sweep/preview
+ * Anteprima sweep: saldo, importo, treasury, BTC price.
+ * Accesso: read_only admin.
+ */
+router.get("/fee-wallet/sweep/preview", requireAdmin("read_only"), getSweepPreviewHandler);
+
+/**
+ * GET /api/v1/spark/fee-wallet/sweep/config
+ * Configurazione sweep corrente + soglia calcolata in SAT.
+ * Accesso: read_only admin.
+ */
+router.get("/fee-wallet/sweep/config", requireAdmin("read_only"), getSweepConfigHandler);
+
+/**
+ * PATCH /api/v1/spark/fee-wallet/sweep/config
+ * Aggiorna soglia EUR, treasury address, auto-sweep flag.
+ * Accesso: super_admin.
+ */
+router.patch("/fee-wallet/sweep/config", requireAdmin("super_admin"), updateSweepConfigHandler);
+
+/**
+ * POST /api/v1/spark/fee-wallet/sweep/trigger
+ * Avvia prelievo manuale verso il treasury Spark.
+ * Accesso: super_admin. IDEMPOTENTE: 409 se già processing.
+ * SECURITY: mnemonic mai in response.
+ */
+router.post("/fee-wallet/sweep/trigger", requireAdmin("super_admin"), triggerManualSweepHandler);
+
+/**
+ * GET /api/v1/spark/fee-wallet/sweep/status
+ * Stato corrente: pending/processing, ultimo sweep, config.
+ * Accesso: read_only admin.
+ */
+router.get("/fee-wallet/sweep/status", requireAdmin("read_only"), getSweepStatusHandler);
+
+/**
+ * GET /api/v1/spark/fee-wallet/sweep/history?page=1&limit=20
+ * Storico sweep paginato.
+ * Accesso: read_only admin.
+ */
+router.get("/fee-wallet/sweep/history", requireAdmin("read_only"), getSweepHistoryHandler);
+
+/**
+ * GET /api/v1/spark/fee-wallet/sweep/operation/:id
+ * Stato di una specifica operazione sweep (polling post-trigger).
+ * Accesso: read_only admin.
+ */
+router.get("/fee-wallet/sweep/operation/:id", requireAdmin("read_only"), getSweepOperationHandler);
+
+/**
+ * POST /api/v1/spark/fee-wallet/sweep/auto-check
+ * Forza un controllo auto-sweep immediato (super_admin, debug).
+ */
+router.post("/fee-wallet/sweep/auto-check", requireAdmin("super_admin"), forceAutoSweepCheckHandler);
 
 // ─── Monitoring ───────────────────────────────────────────────────────────────
 

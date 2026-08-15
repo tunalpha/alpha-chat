@@ -72,6 +72,8 @@ import {
   type SparkFeeConfig,
   type FeeWalletInfo,
   type FeeWalletHistoryRecord,
+  type SweepConfig,
+  type SweepOperation,
   sparkBpsToPercent,
   computeSparkExampleFee,
   validateSparkFeeBps,
@@ -84,7 +86,12 @@ import {
   apiGetFeeWalletInfo,
   apiGetFeeWalletStats,
   apiGetFeeWalletHistory,
-  apiGetSweepDesign,
+  apiGetSweepConfig,
+  apiUpdateSweepConfig,
+  apiTriggerManualSweep,
+  apiGetSweepStatus,
+  apiGetSweepHistory,
+  apiGetSweepPreview,
   apiGetFeeWalletHealth,
   apiConfigureFeeAddress,
 } from "@/lib/spark-api";
@@ -195,6 +202,15 @@ export default function SparkLightningFeePage() {
   const [addressEditing,   setAddressEditing]   = useState(false);
   const [addressConfirm,   setAddressConfirm]   = useState(false);
 
+  // §3.5 Sweep state
+  const [sweepDialogOpen,    setSweepDialogOpen]    = useState(false);
+  const [sweepPollingId,     setSweepPollingId]     = useState<string | null>(null);
+  const [sweepHistPage,      setSweepHistPage]      = useState(1);
+  const [thresholdInput,     setThresholdInput]     = useState("");
+  const [thresholdEditing,   setThresholdEditing]   = useState(false);
+  const [treasuryInput,      setTreasuryInput]      = useState("");
+  const [treasuryEditing,    setTreasuryEditing]    = useState(false);
+
   // ── Queries ────────────────────────────────────────────────────────────────
   const { data: config, isLoading: loadingConfig, isError: errorConfig } = useQuery({
     queryKey:  ["spark-fee-config"],
@@ -211,11 +227,32 @@ export default function SparkLightningFeePage() {
   const walletInfo  = useQuery({ queryKey: ["fw-info"],   queryFn: apiGetFeeWalletInfo,   staleTime: 20_000 });
   const walletStats = useQuery({ queryKey: ["fw-stats"],  queryFn: apiGetFeeWalletStats,  staleTime: 20_000 });
   const walletHealth = useQuery({ queryKey: ["fw-health"], queryFn: apiGetFeeWalletHealth, staleTime: 30_000 });
-  const sweepDesign = useQuery({ queryKey: ["fw-sweep"],  queryFn: apiGetSweepDesign,     staleTime: 60_000 });
   const walletHist  = useQuery({
     queryKey: ["fw-history", walletHistPage, walletHistStatus],
     queryFn:  () => apiGetFeeWalletHistory(walletHistPage, 20, walletHistStatus),
     staleTime: 15_000,
+  });
+
+  // Sweep queries
+  const sweepConfig  = useQuery({ queryKey: ["sw-config"],  queryFn: apiGetSweepConfig,  staleTime: 30_000 });
+  const sweepStatus  = useQuery({ queryKey: ["sw-status"],  queryFn: apiGetSweepStatus,  staleTime: 10_000 });
+  const sweepPreview = useQuery({
+    queryKey: ["sw-preview"],
+    queryFn:  apiGetSweepPreview,
+    enabled:  sweepDialogOpen,
+    staleTime: 0,
+  });
+  const sweepHistory = useQuery({
+    queryKey: ["sw-history", sweepHistPage],
+    queryFn:  () => apiGetSweepHistory(sweepHistPage, 10),
+    staleTime: 15_000,
+  });
+  // Polling per operazione sweep in corso (ogni 3s finché pending/processing)
+  const sweepOpPoll = useQuery({
+    queryKey: ["sw-op", sweepPollingId],
+    queryFn:  () => apiGetSweepPreview(),  // usa preview per aggiornare lo stato
+    enabled:  !!sweepPollingId,
+    refetchInterval: 3_000,
   });
 
   // ── Mutations ──────────────────────────────────────────────────────────────
@@ -243,6 +280,38 @@ export default function SparkLightningFeePage() {
       setEditing(false);
       setForm(null);
       toast({ title: "✅ Spark fee aggiornata", description: "La nuova configurazione è attiva." });
+    },
+    onError: (err: Error) => {
+      toast({ title: "❌ Aggiornamento fallito", description: err.message, variant: "destructive" });
+    },
+  });
+
+  // Sweep mutations
+  const sweepTriggerMutation = useMutation({
+    mutationFn: apiTriggerManualSweep,
+    onSuccess: (data) => {
+      setSweepDialogOpen(false);
+      if (data.operationId) setSweepPollingId(data.operationId);
+      void queryClient.invalidateQueries({ queryKey: ["sw-status"] });
+      void queryClient.invalidateQueries({ queryKey: ["sw-history"] });
+      toast({
+        title: "⚡ Sweep avviato",
+        description: `Operazione ${data.operationId?.slice(0, 8)}… in corso. Monitora lo stato.`,
+      });
+    },
+    onError: (err: Error) => {
+      setSweepDialogOpen(false);
+      toast({ title: "❌ Sweep fallito", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const sweepConfigMutation = useMutation({
+    mutationFn: apiUpdateSweepConfig,
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["sw-config"] });
+      setThresholdEditing(false);
+      setTreasuryEditing(false);
+      toast({ title: "✅ Configurazione sweep aggiornata" });
     },
     onError: (err: Error) => {
       toast({ title: "❌ Aggiornamento fallito", description: err.message, variant: "destructive" });
@@ -314,16 +383,33 @@ export default function SparkLightningFeePage() {
     void queryClient.invalidateQueries({ queryKey: ["fw-stats"] });
     void queryClient.invalidateQueries({ queryKey: ["fw-history"] });
     void queryClient.invalidateQueries({ queryKey: ["fw-health"] });
-    void queryClient.invalidateQueries({ queryKey: ["fw-sweep"] });
+    void queryClient.invalidateQueries({ queryKey: ["sw-config"] });
+    void queryClient.invalidateQueries({ queryKey: ["sw-status"] });
+    void queryClient.invalidateQueries({ queryKey: ["sw-history"] });
+  }
+
+  function sweepStatusBadge(op: SweepOperation | null | undefined) {
+    if (!op) return null;
+    if (op.status === "success")    return <Badge className="bg-green-100 text-green-800 border-0">✅ Completato</Badge>;
+    if (op.status === "processing") return <Badge className="bg-blue-100 text-blue-800 border-0">⏳ In corso</Badge>;
+    if (op.status === "pending")    return <Badge className="bg-amber-100 text-amber-800 border-0">⏳ In attesa</Badge>;
+    if (op.status === "failed")     return <Badge className="bg-red-100 text-red-800 border-0">❌ Fallito</Badge>;
+    return null;
   }
 
   // ── Data aliases ───────────────────────────────────────────────────────────
   const wi = walletInfo.data;
   const ws = walletStats.data;
   const wh = walletHealth.data;
-  const sd = sweepDesign.data;
   const wv = walletHist.data;
+  const sc = sweepConfig.data as SweepConfig | undefined;
+  const ss = sweepStatus.data;
+  const sp = sweepPreview.data;
+  const sh = sweepHistory.data;
   const walletStatusInfo = wi ? walletStatusLabel(wi.status) : null;
+
+  // Polling: se c'è un'operazione in corso, aggiorna status ogni 3s
+  void sweepOpPoll; // montato per effetto collaterale (polling)
 
   return (
     <div className="space-y-8 max-w-3xl">
@@ -755,53 +841,245 @@ export default function SparkLightningFeePage() {
           ) : null}
         </div>
 
-        {/* §3.5 Sweep design */}
-        <Card className="bg-card border-dashed border-muted-foreground/30">
-          <CardHeader className="pb-2 border-b border-border/50 bg-muted/10 pt-3">
-            <CardTitle className="text-sm text-foreground flex items-center gap-2">
-              <ArrowDownToLine className="h-4 w-4 text-purple-500" />
-              Sweep verso BTC Treasury
-              <Badge variant="outline" className="text-xs border-muted-foreground/50 text-muted-foreground ml-1">
-                Non ancora attivo
-              </Badge>
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="pt-3 space-y-2">
-            {sweepDesign.isLoading ? (
-              <div className="h-12 bg-muted rounded animate-pulse" />
-            ) : sd ? (
-              <div className="space-y-2">
-                <div className="grid grid-cols-2 gap-3">
+        {/* §3.5 Sweep fee wallet → treasury */}
+        <div className="space-y-3">
+          <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+            <ArrowDownToLine className="h-4 w-4 text-purple-500" />
+            Sweep verso Treasury Spark
+          </h3>
+
+          {/* Status corrente */}
+          <Card className="bg-card">
+            <CardContent className="pt-3 pb-3">
+              {sweepStatus.isLoading ? (
+                <div className="h-8 bg-muted rounded animate-pulse" />
+              ) : ss ? (
+                <div className="flex flex-wrap items-center gap-4 text-sm">
                   <div>
-                    <p className="text-xs text-muted-foreground">Soglia sweep</p>
-                    <p className="text-sm font-medium text-foreground">{fmtSat(sd.thresholdSat)}</p>
-                    <p className="text-xs text-muted-foreground mt-0.5">configurabile via SPARK_SWEEP_THRESHOLD_SAT</p>
-                  </div>
-                  <div>
-                    <p className="text-xs text-muted-foreground">BTC Treasury (destinazione)</p>
-                    <p className={`text-sm font-mono ${sd.btcTreasuryAddress ? "text-foreground" : "text-amber-700"}`}>
-                      {sd.btcTreasuryAddress
-                        ? `${sd.btcTreasuryAddress.slice(0, 10)}…`
-                        : "BTC_FEE_WALLET non impostato"}
+                    <span className="text-muted-foreground text-xs">Auto-sweep</span>
+                    <p>
+                      {ss.autoSweepEnabled
+                        ? <span className="text-green-700 font-medium">✅ Abilitato</span>
+                        : <span className="text-muted-foreground">⏸ Disabilitato</span>
+                      }
                     </p>
                   </div>
+                  <div>
+                    <span className="text-muted-foreground text-xs">Stato</span>
+                    <p>
+                      {ss.hasProcessing
+                        ? <span className="text-blue-700 font-medium">⏳ Sweep in corso</span>
+                        : ss.hasPending
+                          ? <span className="text-amber-700 font-medium">⏳ In attesa</span>
+                          : <span className="text-muted-foreground">Inattivo</span>
+                      }
+                    </p>
+                  </div>
+                  {ss.lastSweep && (
+                    <div>
+                      <span className="text-muted-foreground text-xs">Ultimo sweep</span>
+                      <p className="text-foreground">{fmtDate(ss.lastSweep.completedAt)} — {fmtSat(ss.lastSweep.amountSat)}</p>
+                    </div>
+                  )}
                 </div>
-                <div className="rounded-lg bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-                  <strong className="text-foreground">Flusso sweep:</strong>{" "}
-                  Alpha Spark Fee Wallet → accumulo fee → soglia configurata → sweep → BTC Treasury on-chain.
-                  {" "}{sd.note}
-                </div>
-              </div>
-            ) : null}
+              ) : (
+                <p className="text-xs text-muted-foreground">Stato non disponibile</p>
+              )}
+            </CardContent>
+          </Card>
 
-            <div className="flex gap-2 pt-1">
-              <Button size="sm" disabled className="opacity-50 cursor-not-allowed">
-                <ArrowDownToLine className="h-3.5 w-3.5 mr-1.5" />
-                Sweep manuale (non attivo)
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+          {/* Configurazione sweep (super_admin) */}
+          {isSuperAdmin && sc && (
+            <Card className="bg-card border-purple-100">
+              <CardHeader className="pb-2 border-b border-border/50 bg-purple-50/30 pt-3">
+                <CardTitle className="text-sm text-foreground flex items-center gap-2">
+                  <Shield className="h-4 w-4 text-purple-500" />
+                  Configurazione Sweep (super_admin)
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="pt-3 space-y-4">
+                {/* Soglia EUR */}
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Soglia auto-sweep (EUR)</Label>
+                  {thresholdEditing ? (
+                    <div className="flex gap-2 items-center">
+                      <Input
+                        type="number" min={1} max={100000}
+                        value={thresholdInput}
+                        onChange={e => setThresholdInput(e.target.value)}
+                        className="h-7 w-28 text-sm"
+                        placeholder="Es. 100"
+                      />
+                      <Button size="sm" variant="ghost" className="h-7 px-2 text-xs"
+                        onClick={() => setThresholdEditing(false)}>
+                        <X className="h-3 w-3" />
+                      </Button>
+                      <Button size="sm" className="h-7 px-2 text-xs bg-purple-600 hover:bg-purple-500 text-white"
+                        disabled={sweepConfigMutation.isPending}
+                        onClick={() => sweepConfigMutation.mutate({ sweep_threshold_eur: Number(thresholdInput) })}>
+                        <Check className="h-3 w-3 mr-1" />Salva
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-medium text-foreground">€{sc.sweep_threshold_eur}</span>
+                      {sc.threshold_sat !== null && (
+                        <span className="text-xs text-muted-foreground">
+                          ({fmtSat(sc.threshold_sat)} @{" "}
+                          {sc.btc_price_eur ? `€${sc.btc_price_eur.toLocaleString("it-IT")}/BTC` : "prezzo N/D"})
+                        </span>
+                      )}
+                      <Button size="sm" variant="ghost" className="h-6 px-1.5 text-xs"
+                        onClick={() => { setThresholdInput(String(sc.sweep_threshold_eur)); setThresholdEditing(true); }}>
+                        <Pencil className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  )}
+                  {/* Quick presets */}
+                  {thresholdEditing && (
+                    <div className="flex gap-1 mt-1">
+                      {[50, 100, 250, 500].map(v => (
+                        <Button key={v} size="sm" variant="outline" className="h-6 px-2 text-xs"
+                          onClick={() => setThresholdInput(String(v))}>
+                          €{v}
+                        </Button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Treasury Spark address */}
+                <div className="space-y-1">
+                  <Label className="text-xs text-muted-foreground">Treasury Spark Address (destinazione)</Label>
+                  {treasuryEditing ? (
+                    <div className="flex flex-col gap-2">
+                      <Input
+                        value={treasuryInput}
+                        onChange={e => setTreasuryInput(e.target.value)}
+                        placeholder="sp1q… (mainnet) o sprt… (testnet)"
+                        className="h-8 text-xs font-mono"
+                      />
+                      <div className="flex gap-2">
+                        <Button size="sm" variant="ghost" className="h-7 px-2 text-xs"
+                          onClick={() => setTreasuryEditing(false)}>
+                          <X className="h-3 w-3 mr-1" />Annulla
+                        </Button>
+                        <Button size="sm" className="h-7 px-2 text-xs bg-purple-600 hover:bg-purple-500 text-white"
+                          disabled={sweepConfigMutation.isPending || (!treasuryInput.startsWith("sp1") && !treasuryInput.startsWith("sprt"))}
+                          onClick={() => sweepConfigMutation.mutate({ sweep_treasury_spark_address: treasuryInput || null })}>
+                          <Check className="h-3 w-3 mr-1" />Salva
+                        </Button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      {sc.sweep_treasury_spark_address ? (
+                        <span className="text-xs font-mono text-foreground">
+                          {sc.sweep_treasury_spark_address.slice(0, 12)}…{sc.sweep_treasury_spark_address.slice(-8)}
+                        </span>
+                      ) : (
+                        <span className="text-xs text-amber-700">⚠️ Non configurato</span>
+                      )}
+                      <Button size="sm" variant="ghost" className="h-6 px-1.5 text-xs"
+                        onClick={() => { setTreasuryInput(sc.sweep_treasury_spark_address ?? ""); setTreasuryEditing(true); }}>
+                        <Pencil className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Auto-sweep toggle */}
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="text-xs text-foreground font-medium">Auto-sweep</p>
+                    <p className="text-xs text-muted-foreground">
+                      Lo scheduler avvia uno sweep automatico quando il saldo supera la soglia.
+                    </p>
+                  </div>
+                  <Button
+                    size="sm"
+                    variant={sc.auto_sweep_enabled ? "destructive" : "outline"}
+                    className="text-xs"
+                    disabled={sweepConfigMutation.isPending || !sc.sweep_treasury_spark_address}
+                    onClick={() => sweepConfigMutation.mutate({ auto_sweep_enabled: !sc.auto_sweep_enabled })}
+                  >
+                    {sc.auto_sweep_enabled ? "🔴 Disabilita" : "🟢 Abilita"}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {/* Storico sweep */}
+          <Card className="bg-card">
+            <CardHeader className="pb-2 border-b border-border/50 bg-muted/10 pt-3">
+              <div className="flex items-center justify-between">
+                <CardTitle className="text-sm text-foreground">Storico Sweep</CardTitle>
+                {isSuperAdmin && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="text-xs border-purple-300 text-purple-700 hover:bg-purple-50"
+                    disabled={sweepStatus.data?.hasProcessing || sweepTriggerMutation.isPending}
+                    onClick={() => setSweepDialogOpen(true)}
+                  >
+                    <ArrowDownToLine className="h-3.5 w-3.5 mr-1.5" />
+                    Prelievo manuale
+                  </Button>
+                )}
+              </div>
+            </CardHeader>
+            <CardContent className="pt-3">
+              {sweepHistory.isLoading ? (
+                <div className="space-y-2">
+                  {[...Array(3)].map((_, i) => <div key={i} className="h-10 bg-muted rounded animate-pulse" />)}
+                </div>
+              ) : sh && sh.operations.length > 0 ? (
+                <div className="space-y-0 text-xs">
+                  <div className="grid grid-cols-5 gap-2 pb-1 border-b border-border/50 text-muted-foreground font-medium">
+                    <span>Data</span>
+                    <span>Tipo</span>
+                    <span>Importo</span>
+                    <span>Tasso BTC</span>
+                    <span>Stato</span>
+                  </div>
+                  {sh.operations.map(op => (
+                    <div key={op._id} className="grid grid-cols-5 gap-2 py-1.5 border-b border-border/30 last:border-0 items-start">
+                      <span className="text-muted-foreground text-[10px]">{fmtDate(op.createdAt)}</span>
+                      <span>{op.type === "auto" ? "🤖 Auto" : "👤 Manuale"}</span>
+                      <span className="font-mono">{fmtSat(op.amountSat)}</span>
+                      <span className="text-muted-foreground">
+                        {op.btcPriceEur > 0 ? `€${op.btcPriceEur.toLocaleString("it-IT")}` : "—"}
+                      </span>
+                      <span>{sweepStatusBadge(op)}</span>
+                    </div>
+                  ))}
+                  {/* Paginazione */}
+                  <div className="flex items-center justify-between mt-2">
+                    <span className="text-xs text-muted-foreground">{sh.total} operazioni totali</span>
+                    <div className="flex gap-1">
+                      <Button size="sm" variant="ghost" disabled={sweepHistPage <= 1}
+                        onClick={() => setSweepHistPage(p => p - 1)}>
+                        <ChevronLeft className="h-3 w-3" />
+                      </Button>
+                      <Button size="sm" variant="ghost" disabled={sh.operations.length < 10}
+                        onClick={() => setSweepHistPage(p => p + 1)}>
+                        <ChevronRight className="h-3 w-3" />
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground py-2">
+                  Nessuno sweep eseguito ancora.{" "}
+                  {isSuperAdmin && sc?.sweep_treasury_spark_address
+                    ? "Clicca «Prelievo manuale» per avviare il primo sweep."
+                    : "Configura il treasury address per abilitare lo sweep."}
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        </div>{/* end §3.5 */}
 
       </div>{/* end §3 */}
 
@@ -829,6 +1107,92 @@ export default function SparkLightningFeePage() {
           ))}
         </CardContent>
       </Card>
+
+      {/* ── Dialog Prelievo Manuale ── */}
+      <Dialog open={sweepDialogOpen} onOpenChange={o => { if (!o) setSweepDialogOpen(false); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <ArrowDownToLine className="h-5 w-5 text-purple-500" />
+              Prelievo manuale verso Treasury
+            </DialogTitle>
+            <DialogDescription>
+              I fondi accumulati nel fee wallet Spark verranno inviati al treasury configurato.
+              L'operazione avviene in background — monitora lo stato nel pannello.
+            </DialogDescription>
+          </DialogHeader>
+
+          {sweepPreview.isLoading ? (
+            <div className="space-y-2">
+              {[...Array(4)].map((_, i) => <div key={i} className="h-6 bg-muted rounded animate-pulse" />)}
+            </div>
+          ) : sp ? (
+            <div className="space-y-3">
+              <div className="bg-muted/40 rounded-lg p-3 space-y-2 text-sm">
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Saldo disponibile</span>
+                  <span className="font-medium font-mono text-foreground">{fmtSat(sp.availableSat)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Importo sweep</span>
+                  <span className="font-medium font-mono text-foreground">{fmtSat(sp.availableSat)}</span>
+                </div>
+                <div className="flex justify-between">
+                  <span className="text-muted-foreground">Prezzo BTC</span>
+                  <span className="font-medium text-foreground">
+                    {sp.btcPriceEur ? `€${sp.btcPriceEur.toLocaleString("it-IT")}` : "N/D"}
+                  </span>
+                </div>
+                <div className="flex justify-between border-t border-border/50 pt-2">
+                  <span className="text-muted-foreground">Destinazione</span>
+                  {sp.treasuryAddress ? (
+                    <span className="font-mono text-xs text-foreground">
+                      {sp.treasuryAddress.slice(0, 12)}…{sp.treasuryAddress.slice(-8)}
+                    </span>
+                  ) : (
+                    <span className="text-amber-700 text-xs">Non configurato</span>
+                  )}
+                </div>
+                {sp.isAboveThreshold && (
+                  <div className="text-xs text-green-700 bg-green-50 rounded px-2 py-1">
+                    ✅ Saldo sopra la soglia automatica (€{sp.thresholdEur})
+                  </div>
+                )}
+              </div>
+
+              {!sp.canSweep && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800">
+                  ⚠️ {sp.reason ?? "Sweep non disponibile"}
+                </div>
+              )}
+            </div>
+          ) : null}
+
+          <div className="bg-purple-50 border border-purple-200 rounded-lg p-3 text-xs text-purple-800 space-y-1">
+            <p><strong>SICUREZZA:</strong></p>
+            <p>• Mnemonic letto esclusivamente da Replit Secret backend</p>
+            <p>• Solo paymentId pubblico viene registrato nel log</p>
+            <p>• Fee records marcati "swept" solo dopo conferma SDK</p>
+          </div>
+
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setSweepDialogOpen(false)}
+              disabled={sweepTriggerMutation.isPending}>
+              Annulla
+            </Button>
+            <Button
+              disabled={!sp?.canSweep || sweepTriggerMutation.isPending}
+              onClick={() => sweepTriggerMutation.mutate()}
+              className="bg-purple-600 hover:bg-purple-500 text-white"
+            >
+              {sweepTriggerMutation.isPending
+                ? "Avvio sweep…"
+                : `⚡ Conferma prelievo ${sp ? fmtSat(sp.availableSat) : ""}`
+              }
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* ── Dialog conferma address ── */}
       <Dialog open={addressConfirm} onOpenChange={o => { if (!o) { setAddressConfirm(false); } }}>

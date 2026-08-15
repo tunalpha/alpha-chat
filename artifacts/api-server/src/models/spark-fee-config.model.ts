@@ -43,6 +43,26 @@ export interface ISparkFeeConfig {
    *   4. Configura questo campo con l'indirizzo Spark derivato
    */
   fee_address?:       string | null;
+
+  // ─── Sweep configuration ──────────────────────────────────────────────────
+  /**
+   * Soglia in EUR per l'auto-sweep (default 100 €).
+   * Il sistema converte in SAT al momento della valutazione usando il prezzo BTC/EUR live.
+   */
+  sweep_threshold_eur:          number;
+  /**
+   * Indirizzo Spark del treasury (destinazione sweep).
+   * SICUREZZA: indirizzo pubblico, non una chiave privata.
+   * Null finché non configurato dall'admin.
+   */
+  sweep_treasury_spark_address?: string | null;
+  /**
+   * Auto-sweep abilitato (default: false — deve essere abilitato esplicitamente dall'admin).
+   * Quando false, lo scheduler controlla il saldo ma non invia sweep automatici.
+   * Il prelievo manuale funziona sempre indipendentemente da questo flag.
+   */
+  auto_sweep_enabled:            boolean;
+
   /** Audit: chi ha modificato per ultimo */
   updated_at?:        Date;
   updated_by?:        string;
@@ -50,9 +70,12 @@ export interface ISparkFeeConfig {
 }
 
 export const SPARK_FEE_DEFAULTS: Omit<ISparkFeeConfig, "_id"> = {
-  fee_bps:            10,   // 0.10%
-  min_fee_sat:        1,    // 1 satoshi minimo
-  quote_validity_sec: 30,
+  fee_bps:                     10,    // 0.10%
+  min_fee_sat:                 1,     // 1 satoshi minimo
+  quote_validity_sec:          30,
+  sweep_threshold_eur:         100,   // 100 € default
+  sweep_treasury_spark_address: null,
+  auto_sweep_enabled:          false, // disabilitato finché non verificato in produzione
 };
 
 const schema = new Schema<ISparkFeeConfig>(
@@ -61,10 +84,13 @@ const schema = new Schema<ISparkFeeConfig>(
     fee_bps:            { type: Number, required: true, min: 0, max: 500 },
     min_fee_sat:        { type: Number, required: true, min: 0 },
     quote_validity_sec: { type: Number, required: true, min: 5, max: 300 },
-    fee_address:        { type: String, default: null },
-    updated_at:         Date,
-    updated_by:         String,
-    updated_by_email:   String,
+    fee_address:                  { type: String, default: null },
+    sweep_threshold_eur:          { type: Number, default: 100, min: 1 },
+    sweep_treasury_spark_address: { type: String, default: null },
+    auto_sweep_enabled:           { type: Boolean, default: false },
+    updated_at:                   Date,
+    updated_by:                   String,
+    updated_by_email:             String,
   },
   { versionKey: false, timestamps: false, _id: false },
 );

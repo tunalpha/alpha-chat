@@ -11,6 +11,7 @@ import { reconcilePendingPayments } from "./services/usda.service";
 import { initCustodialService }    from "./payment/usda-custodial.service";
 import { startPaymentScheduler }      from "./payment/payment-scheduler.service";
 import { startMultiChainScheduler }   from "./payment/multichain-scheduler";
+import { startSparkSweepScheduler }  from "./schedulers/spark-sweep.scheduler";
 import { registerDefaultAdapters }    from "./blockchain/adapter-registry";
 
 const port = config.app.port;
@@ -71,6 +72,11 @@ async function start(): Promise<void> {
   // Multi-Chain Payment Engine scheduler — recovery lock bloccati + scadenze
   // Avviato dopo 12s per garantire che tutti gli indici siano pronti.
   setTimeout(() => { startMultiChainScheduler(); }, 12_000);
+
+  // Spark Sweep scheduler — auto-sweep fee wallet → treasury ogni 15 min.
+  // Avviato dopo 20s (dopo MongoDB ready + altri schedulers).
+  // SICUREZZA: il mnemonic viene letto dall'executor solo durante l'esecuzione reale.
+  setTimeout(() => { startSparkSweepScheduler(); }, 20_000);
 
   // ── Graceful shutdown ───────────────────────────────────────────────────────
   const shutdown = async (signal: string): Promise<void> => {

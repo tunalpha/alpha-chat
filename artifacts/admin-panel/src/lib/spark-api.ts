@@ -188,6 +188,101 @@ export function apiConfigureFeeAddress(fee_address: string | null): Promise<{ ok
   }).then(r => r.data);
 }
 
+// ── Sweep fee wallet → treasury ──────────────────────────────────────────────
+
+export interface SweepPreview {
+  availableSat:     number;
+  btcPriceEur:      number | null;
+  thresholdEur:     number;
+  thresholdSat:     number;
+  treasuryAddress:  string | null;
+  isAboveThreshold: boolean;
+  canSweep:         boolean;
+  reason?:          string;
+}
+
+export interface SweepConfig {
+  sweep_threshold_eur:          number;
+  sweep_treasury_spark_address: string | null;
+  auto_sweep_enabled:           boolean;
+  btc_price_eur:                number | null;
+  threshold_sat:                number | null;
+}
+
+export interface SweepOperation {
+  _id:               string;
+  type:              "auto" | "manual";
+  status:            "pending" | "processing" | "success" | "failed";
+  requestedBy?:      string;
+  availableAmountSat: number;
+  amountSat:         number;
+  thresholdEur:      number;
+  thresholdSat:      number;
+  btcPriceEur:       number;
+  priceTimestamp:    string;
+  treasuryAddress:   string;
+  paymentId?:        string;
+  networkFeeSat?:    number;
+  netAmountSat?:     number;
+  lastError?:        string;
+  startedAt?:        string;
+  completedAt?:      string;
+  createdAt:         string;
+  updatedAt:         string;
+}
+
+export interface SweepHistoryResult {
+  operations: SweepOperation[];
+  total:      number;
+}
+
+export interface SweepStatus {
+  hasPending:       boolean;
+  hasProcessing:    boolean;
+  lastSweep:        SweepOperation | null;
+  autoSweepEnabled: boolean;
+  thresholdEur:     number;
+}
+
+export function apiGetSweepPreview(): Promise<SweepPreview> {
+  return sparkFetch<{ data: SweepPreview }>("/fee-wallet/sweep/preview").then(r => r.data);
+}
+
+export function apiGetSweepConfig(): Promise<SweepConfig> {
+  return sparkFetch<{ data: SweepConfig }>("/fee-wallet/sweep/config").then(r => r.data);
+}
+
+export function apiUpdateSweepConfig(payload: {
+  sweep_threshold_eur?:          number;
+  sweep_treasury_spark_address?: string | null;
+  auto_sweep_enabled?:           boolean;
+}): Promise<{ ok: boolean }> {
+  return sparkFetch<{ ok: boolean }>("/fee-wallet/sweep/config", {
+    method: "PATCH",
+    body:   JSON.stringify(payload),
+  });
+}
+
+export function apiTriggerManualSweep(): Promise<{ ok: boolean; operationId?: string }> {
+  return sparkFetch<{ data: { ok: boolean; operationId?: string } }>("/fee-wallet/sweep/trigger", {
+    method: "POST",
+    body:   "{}",
+  }).then(r => r.data);
+}
+
+export function apiGetSweepStatus(): Promise<SweepStatus> {
+  return sparkFetch<{ data: SweepStatus }>("/fee-wallet/sweep/status").then(r => r.data);
+}
+
+export function apiGetSweepHistory(page = 1, limit = 20): Promise<SweepHistoryResult> {
+  const qs = new URLSearchParams({ page: String(page), limit: String(limit) });
+  return sparkFetch<{ data: SweepHistoryResult }>(`/fee-wallet/sweep/history?${qs}`).then(r => r.data);
+}
+
+export function apiGetSweepOperation(id: string): Promise<SweepOperation> {
+  return sparkFetch<{ data: SweepOperation }>(`/fee-wallet/sweep/operation/${id}`).then(r => r.data);
+}
+
 // ── Admin Settings — spark_lightning_enabled kill switch ──────────────────
 // BASE in api.ts = "/api/v1/admin" — il path passato ad apiFetch NON deve
 // ripetere "/admin/": apiFetch("/notification-settings") →

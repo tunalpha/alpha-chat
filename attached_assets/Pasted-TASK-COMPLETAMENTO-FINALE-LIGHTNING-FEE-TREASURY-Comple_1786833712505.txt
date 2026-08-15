@@ -1,0 +1,283 @@
+TASK — COMPLETAMENTO FINALE LIGHTNING FEE TREASURY
+
+Completa ora esclusivamente il sistema di prelievo delle commissioni Lightning già raccolte nel nuovo Alpha Spark Fee Wallet.
+
+IMPORTANTE:
+Dopo questa task faremo UN SOLO DEPLOY e poi un test Lightning reale piccolo.
+
+NON voglio altri refactoring generali.
+
+==================================================
+1. MAIN PAYMENT FLOW — ASSOLUTAMENTE BLOCCATO
+==================================================
+
+NON modificare in alcun modo:
+
+- main Lightning payment flow
+- prepareSend()
+- prepareSendPayment()
+- sendPayment()
+- spark.send() del pagamento principale
+- sendInProgress / double-send protection
+- payment confirmation
+- payment polling
+- transaction history
+- reconciliation
+- balance logic
+- calculateSendFee()
+- calculateSparkFeeBreakdown()
+- EVM transactions
+- BTC on-chain transactions
+- USDA
+- WalletConnect
+- Thirdweb
+- ChatPage
+- recovery phrase del wallet principale
+
+Il main payment flow deve rimanere esattamente quello già testato.
+
+La fee è un sistema completamente separato.
+
+==================================================
+2. AUTO-SWEEP
+==================================================
+
+Implementa il trasferimento:
+
+Alpha Spark Fee Wallet
+        ↓
+BTC Treasury
+
+Default automatic sweep threshold:
+
+100 € equivalenti.
+
+La soglia deve essere configurabile dall'Admin.
+
+Valori rapidi:
+- 50 €
+- 100 €
+- 250 €
+- 500 €
+- custom
+
+NON usare un cambio BTC/EUR inventato.
+
+La conversione EUR → sat deve utilizzare una fonte di prezzo già disponibile/affidabile nel progetto oppure una configurazione esplicita.
+
+Salvare nel record dello sweep:
+- exchange rate utilizzato
+- threshold in EUR
+- threshold in sat
+- timestamp della valutazione
+
+==================================================
+3. SWEEP AUTOMATICO
+==================================================
+
+Quando il saldo disponibile del Fee Wallet raggiunge la soglia:
+
+- creare una sweep operation
+- acquisire un lock atomico
+- verificare nuovamente saldo
+- verificare Treasury address
+- eseguire lo sweep
+- salvare transaction/payment ID
+- salvare amount
+- salvare eventuali network/provider fees
+- segnare i fondi come swept
+- aggiornare Admin
+
+NON effettuare più di uno sweep contemporaneamente.
+
+Se lo scheduler e l'Admin richiedono lo sweep nello stesso momento:
+→ deve partire UNA SOLA operazione.
+
+==================================================
+4. PRELIEVO MANUALE ADMIN
+==================================================
+
+Nella sezione ESISTENTE:
+
+Admin → Spark / Lightning Fee
+
+aggiungere/attivare:
+
+"Richiedi prelievo"
+
+Solo super_admin.
+
+Il pulsante deve mostrare prima della conferma:
+
+- saldo Fee Wallet
+- importo da prelevare
+- BTC Treasury destination
+- eventuale costo stimato
+- importo netto stimato
+
+Il prelievo manuale deve essere possibile anche sotto la soglia automatica.
+
+Non creare una nuova sezione Admin.
+
+Usare esclusivamente la sezione Fee già esistente.
+
+==================================================
+5. SICUREZZA
+==================================================
+
+ALPHA_SPARK_FEE_MNEMONIC:
+
+- mai frontend
+- mai API response
+- mai MongoDB
+- mai Admin UI
+- mai log
+- mai error message
+
+Il mnemonic deve essere utilizzato esclusivamente server-side.
+
+Il Treasury address è pubblico e può essere mostrato nell'Admin.
+
+==================================================
+6. IDEMPOTENZA
+==================================================
+
+Proteggere contro:
+
+- doppio click Admin
+- scheduler simultaneo
+- backend restart
+- retry
+- timeout HTTP
+- risposta persa dopo una TX già effettuata
+
+Prima di ritentare una sweep operation:
+VERIFICARE la history reale del Fee Wallet.
+
+Un errore HTTP NON deve essere interpretato automaticamente come "TX fallita".
+
+==================================================
+7. RECOVERY
+==================================================
+
+Se il backend si riavvia durante uno sweep:
+
+- trovare operation processing
+- verificare la history reale
+- riconciliare
+- completare lo stato corretto
+- NON creare un secondo pagamento
+
+Stati:
+
+pending
+processing
+success
+failed
+
+Solo dopo conferma reale della transazione:
+→ success
+→ swept
+
+==================================================
+8. ADMIN
+==================================================
+
+Nella sezione esistente Admin → Spark / Lightning Fee mostrare:
+
+- Fee Wallet address
+- saldo Fee Wallet
+- totale fee raccolte
+- totale fee pending
+- totale fee failed
+- totale fee swept
+- soglia automatica
+- equivalente in sat
+- BTC Treasury address
+- ultimo sweep
+- prossimo possibile auto-sweep
+- stato auto-sweep
+
+Storico:
+
+- data
+- automatico/manuale
+- importo
+- exchange rate
+- network fee
+- destination
+- transaction/payment ID
+- status
+
+==================================================
+9. NON FARE ANCORA MOVIMENTI REALI
+==================================================
+
+IMPORTANTE:
+
+NON eseguire nessuno sweep reale.
+
+NON trasferire fondi al Treasury.
+
+NON modificare Secrets esistenti salvo necessità tecnica documentata.
+
+==================================================
+10. TEST
+==================================================
+
+Aggiungere/verificare:
+
+1. saldo sotto soglia → nessun auto-sweep
+2. saldo sopra soglia → auto-sweep richiesto
+3. manuale sotto soglia → consentito
+4. doppio click → una sola operation
+5. scheduler + manuale contemporaneamente → una sola operation
+6. backend restart → nessun doppio sweep
+7. timeout dopo TX → riconciliazione history
+8. sweep failed → fondi non marcati swept
+9. sweep success → fondi marcati swept
+10. Treasury address invalido → blocco
+11. utente non super_admin → access denied
+12. mnemonic mai esposto
+13. main payment tests invariati
+
+Tutti i test devono passare salvo i 4 failure backend già noti e pre-esistenti.
+
+==================================================
+11. DEPLOY
+==================================================
+
+NON fare deploy autonomamente.
+
+Prima dammi il report finale.
+
+Il report deve contenere:
+
+A. file modificati
+B. test risultati
+C. auto-sweep implementato
+D. manual sweep implementato
+E. idempotenza verificata
+F. recovery verificata
+G. Admin verificato
+H. conferma che il mnemonic non è esposto
+I. conferma esplicita:
+
+"MAIN PAYMENT FLOW NON MODIFICATO"
+
+J. conferma esplicita:
+
+"NESSUN MOVIMENTO REALE DI FONDI ESEGUITO"
+
+Dopo questo report ci fermiamo.
+
+Io farò partire UN SOLO DEPLOY.
+
+Dopo il deploy faremo insieme UNA SOLA transazione Lightning reale di piccolo importo per verificare end-to-end:
+
+MAIN PAYMENT
+→ FEE COLLECTION
+→ ALPHA FEE WALLET
+→ ADMIN LEDGER
+
+Non modificare altro prima di quel test reale.
