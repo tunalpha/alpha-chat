@@ -1,0 +1,221 @@
+LIGHTNING FEE COLLECTION — DESIGN ONLY / DO NOT MODIFY PAYMENT LOGIC
+
+IMPORTANT: The existing Lightning payment flow is considered FIXED AND HARDENED.
+
+DO NOT modify, refactor, redesign, or otherwise touch the existing Lightning payment logic.
+
+In particular, DO NOT change:
+- invoice creation
+- BOLT11 handling
+- prepareSend
+- spark.send() for the MAIN payment
+- payment confirmation
+- payment status handling
+- sendInProgress protection
+- transaction history persistence
+- Lightning reconciliation
+- retry/recovery logic for the MAIN payment
+- existing fee calculation logic unless strictly necessary to connect the new fee-collection ledger
+- existing user balance calculations
+- existing UI payment flow
+
+The ONLY objective is to design a separate mechanism for collecting Alpha's 0.10% Lightning platform fee.
+
+CURRENT SITUATION
+
+The existing payment sends the exact invoice amount to the recipient.
+
+Example:
+User pays 9,179 sat
+Alpha fee calculation = 9 sat
+
+Currently the 9 sat fee is only calculated/displayed/accounted for. It is NOT physically collected.
+
+REQUIRED FUTURE ARCHITECTURE
+
+Main payment must remain completely unchanged:
+
+User
+  ↓
+9,179 sat
+  ↓
+Recipient
+
+After the MAIN payment has successfully completed, a SEPARATE fee-collection operation may occur:
+
+User
+  ↓
+9 sat
+  ↓
+ALPHA SPARK FEE WALLET
+
+The fee collection must be completely independent from the main payment.
+
+CRITICAL RULE:
+
+IF MAIN PAYMENT SUCCEEDS:
+→ MAIN PAYMENT REMAINS SUCCESSFUL
+→ NEVER reverse it
+→ NEVER mark it failed because fee collection failed
+→ NEVER retry the MAIN payment
+→ NEVER submit the MAIN payment again
+
+If fee collection fails:
+→ record pending_fee_collection
+→ retry ONLY the fee collection
+→ never retry the main payment.
+
+FIRST TASK — DESIGN ONLY
+
+Do NOT implement anything yet.
+
+Determine the safest architecture for an Alpha-owned Lightning/Spark fee wallet.
+
+We need to know:
+
+1. What type of Spark wallet/address should Alpha use to receive platform fees?
+2. How should the Alpha fee wallet be created?
+3. Who controls its keys/credentials?
+4. Where should its mnemonic/credentials be stored?
+5. Must it be a separate wallet from users' Alpha Wallets?
+6. How can we generate a stable Alpha Spark receiving address?
+7. Can Spark-to-Spark payment be made directly to that address?
+8. What are the minimum practical fee amounts?
+9. Are there any Spark/Breez SDK constraints for receiving 1–9 sat payments?
+10. Can multiple fee payments be received safely by the same Alpha fee wallet?
+11. How should accumulated fees eventually reach the BTC Treasury?
+12. What is the safest sweep mechanism?
+13. What threshold should trigger a sweep?
+14. What happens if a sweep fails?
+15. How do we reconcile fee ledger ↔ Spark fee wallet ↔ Treasury?
+
+SECURITY REQUIREMENTS
+
+The Alpha fee wallet MUST NOT use:
+- a user's personal Alpha Wallet
+- a user's mnemonic
+- a user's PIN
+- the frontend
+- browser localStorage
+- sessionStorage
+- VITE environment variables containing private keys
+
+The fee wallet must be an Alpha-controlled treasury component.
+
+PRIVATE KEYS / MNEMONICS:
+
+Do NOT generate or store any production mnemonic yet.
+
+First determine the correct secure architecture and where the credential should live.
+
+Do NOT put a private key or mnemonic into the frontend.
+
+IDEMPOTENCY
+
+Every fee collection must have a deterministic unique identifier based on the existing main payment identity.
+
+Example concept:
+
+spark_fee_<mainPaymentId>
+
+The exact implementation must first be checked against the existing database/model architecture.
+
+The same main payment must NEVER result in two successful fee collections.
+
+FAILURE MODEL
+
+Main payment:
+SUCCESS
+    ↓
+attempt fee collection
+    ↓
+SUCCESS → fee status = success
+    OR
+FAILURE → fee status = pending_fee_collection
+             ↓
+          retry fee ONLY
+
+The retry system must survive:
+- browser reload
+- app restart
+- backend restart
+- temporary network failure
+- Spark SDK failure
+
+No fee retry may ever trigger another main payment.
+
+DATABASE / LEDGER
+
+Design the required fields for the existing fee ledger.
+
+At minimum consider:
+- mainPaymentId
+- feeAmountSat
+- feePaymentId
+- feeWallet/address
+- status
+- attempts
+- lastError
+- createdAt
+- collectedAt
+- nextRetryAt
+
+Do NOT create or modify the schema until the design is approved.
+
+TREASURY SWEEP
+
+Design, but do NOT implement:
+
+Alpha Spark Fee Wallet
+        ↓
+accumulated Lightning fees
+        ↓
+periodic/threshold-based sweep
+        ↓
+BTC Treasury
+
+Explain the safest way to move the accumulated fees to the existing BTC Treasury.
+
+IMPORTANT:
+Do not assume that an on-chain sweep is always the best option.
+Evaluate the available Spark/Breez mechanisms first.
+
+TESTING PLAN
+
+Before implementation, define tests proving:
+
+1. Main payment behavior is unchanged.
+2. Successful main payment → exactly one fee collection.
+3. Failed fee collection → main payment remains successful.
+4. Fee retry never retries main payment.
+5. Duplicate processing cannot collect the same fee twice.
+6. Browser/app restart does not lose pending fee collection.
+7. Backend restart does not lose pending fee collection.
+8. Fee collection history is reconciled correctly.
+9. Treasury sweep cannot double-spend accumulated fees.
+
+MOST IMPORTANT SCOPE LOCK
+
+This task MUST NOT modify the existing main Lightning payment logic.
+
+If the proposed architecture requires changes to the existing payment flow, STOP and report exactly why before changing anything.
+
+NO CODE CHANGES.
+NO WALLET CREATION.
+NO FUND MOVEMENT.
+NO DEPLOY.
+NO CAPACITOR CHANGES.
+
+FIRST RESPONSE MUST BE DESIGN REPORT ONLY.
+
+The report must clearly state:
+
+A. Which Alpha-owned Spark wallet/address should collect the fees.
+B. How it should be securely controlled.
+C. How the 0.10% fee should be collected.
+D. How retries and idempotency work.
+E. How fees eventually reach BTC Treasury.
+F. Exact files/models that would need modification.
+G. Confirmation that the existing main payment logic remains untouched.
+
+STOP after the design report and wait for approval.
