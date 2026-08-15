@@ -22,6 +22,7 @@
 - [Biometric-only lock (Face ID)](sprint-biometric-only.md) — biometricOnly flag in LockSettings; enableBiometricOnly/disableBiometricOnly in LockContext; LockScreen senza PinPad; PrivacyPage sezione Face ID
 - [Signal recovery guard fix](signal-recovery-guard.md) — recovery in signalDecrypt() gated su "Unknown identity key"; processV3 non awaita isTrustedIdentity (async store → irraggiungibile in prod); fix blocca OTPK exhaustion
 - [Path C double-decrypt bug](path-c-double-decrypt-bug.md) — cache guard mancante in decryptSingleMsg path 1:1 senza dc → WS reconnect → secondo decrypt → [Messaggio non decifrabile] su testo già decifrato
+- [Payment non-regression policy (🔒 permanente)](payment-non-regression-policy.md) — payment stack PROTECTED: no refactor/deps/naming; codice condiviso → stop e chiedi; approvazione utente prima del publish
 - [Module isolation policy](module-isolation-policy.md) — Messaggi CONGELATO; Chiamate separato; se un fix chiamate richiede ChatPage.tsx → stop e chiedi approvazione
 - [Signal bundle self-heal](signal-bundle-self-heal.md) — signalkeybundles svuotato → maybeReplenishOtpks ora rileva bundleExists=false e riesegue _firstTimeSetup con IK invariata
 - [Call fixes batch 1](call-fixes-batch1.md) — stream leak/callee timeout/pending-call re-delivery on WS reconnect

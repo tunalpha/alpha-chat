@@ -1,0 +1,262 @@
+🔒 PAYMENT SYSTEM — REGOLA ASSOLUTA DI NON REGRESSIONE
+
+Da questo momento considera l’intera architettura dei pagamenti di Alpha Chat come PROTECTED / DO NOT BREAK.
+
+La parte pagamenti è una componente critica e NON deve essere modificata, rifattorizzata, semplificata, unificata o ottimizzata durante attività che non riguardano direttamente un bug di pagamento.
+
+FLUSSI PROTETTI — NON MODIFICARE SENZA AUTORIZZAZIONE ESPLICITA
+
+Devono essere considerati protetti e già funzionanti:
+
+* BTC on-chain
+* Bitcoin Lightning / Spark / Breez
+* USDA
+* USDT BSC
+* USDT Ethereum ERC-20
+* USDT Polygon
+* Alpha Wallet
+* wallet legacy / USDA WalletConnect
+* WalletConnect
+* iOS / Safari / PWA lifecycle
+* firma delle transazioni
+* retry e gestione degli errori di firma
+* transaction detection
+* transaction polling
+* deposit detection
+* gas top-up
+* escrow
+* release
+* recovery
+* scheduler dei pagamenti
+* webhook/callback
+* aggiornamento stato pagamento
+* storico transazioni
+* UI degli stati di pagamento
+
+REGOLA PRINCIPALE
+
+Se una modifica richiesta NON riguarda direttamente i pagamenti:
+
+NON TOCCARE codice, funzioni, file, dipendenze o configurazioni relative ai pagamenti.
+
+Non fare refactoring “per migliorare il codice”.
+Non unificare codice duplicato.
+Non cambiare naming.
+Non spostare funzioni.
+Non cambiare provider.
+Non aggiornare dipendenze che possono influenzare il payment stack senza autorizzazione.
+
+SE UNA MODIFICA TOCCA CODICE CONDIVISO
+
+Se per risolvere un problema devi modificare una funzione o un modulo utilizzato anche dai pagamenti:
+
+FERMATI PRIMA DI MODIFICARE.
+
+Dimmi:
+
+1. quale file vuoi modificare;
+2. quale funzione vuoi modificare;
+3. quali payment flow la utilizzano;
+4. perché la modifica è necessaria;
+5. quale rischio di regressione introduce;
+6. come intendi dimostrare che tutti i payment flow rimangono invariati.
+
+Attendi la mia autorizzazione prima di procedere.
+
+REGOLA DI ISOLAMENTO
+
+Ogni nuovo pagamento o nuova rete deve essere implementato come codice isolato dal payment flow già esistente.
+
+Preferisci:
+
+* nuove funzioni;
+* nuovi adapter;
+* nuovi service dedicati;
+* feature flag;
+* test specifici;
+
+invece di modificare direttamente una logica già utilizzata da pagamenti funzionanti.
+
+REGOLA DI TEST
+
+Prima di qualsiasi modifica al payment system devi creare/verificare test di regressione per TUTTI i flussi già funzionanti.
+
+Il minimo richiesto è:
+
+BTC → Lightning → USDA → USDT BSC → USDT Ethereum → USDT Polygon.
+
+Per ogni rete verifica almeno:
+
+connect → create payment → sign → broadcast → tx/invoice → detection → eventuale gas → confirmation → release → final state → UI → storico.
+
+Un singolo test rosso relativo a un payment flow BLOCCA il completamento della modifica.
+
+REGOLA PER PRODUZIONE
+
+MAI pubblicare una modifica al payment system direttamente dopo il primo fix.
+
+Sequenza obbligatoria:
+
+1. analisi;
+2. identificazione della root cause;
+3. modifica minima possibile;
+4. test automatici;
+5. regression test;
+6. code review indipendente;
+7. verifica del diff;
+8. commit separato;
+9. report dettagliato;
+10. mia approvazione;
+11. publish;
+12. test reale in produzione.
+
+REGOLA “NO BLIND FIX”
+
+Se un pagamento fallisce:
+
+NON applicare immediatamente un fix.
+
+Prima raccogli:
+
+* tx hash;
+* invoice/payment hash;
+* network;
+* sender;
+* recipient;
+* wallet utilizzato;
+* stato backend;
+* stato frontend;
+* log;
+* polling state;
+* eventuale gas transaction;
+* escrow state;
+* release transaction.
+
+Identifica il punto esatto della catena in cui il pagamento si è fermato.
+
+Poi proponi il fix.
+
+REGOLA WALLET
+
+La risoluzione del destinatario deve mantenere sempre questa priorità:
+
+1. Alpha Wallet
+2. USDA / WalletConnect wallet
+3. legacy wallet
+
+MAI inviare fondi a un wallet legacy se è disponibile un Alpha Wallet valido.
+
+Ogni payout deve validare il formato dell’indirizzo prima dell’invio.
+
+REGOLA TRANSAZIONI
+
+Un errore frontend, WalletConnect, Safari, timeout HTTP o perdita di connessione NON deve essere interpretato automaticamente come “transazione non effettuata”.
+
+Prima di consentire un retry bisogna verificare se:
+
+* la TX è stata firmata;
+* esiste un tx hash;
+* la TX è in mempool;
+* la TX è stata confermata;
+* il deposito è stato rilevato.
+
+Mai generare un secondo pagamento se il primo potrebbe essere già stato broadcastato.
+
+REGOLA TIMEOUT
+
+I timeout devono essere configurati per rete e non hardcoded arbitrariamente.
+
+Ethereum, BSC, Polygon, BTC e Lightning hanno caratteristiche diverse.
+
+Non modificare timeout di una rete senza verificare:
+
+* block time;
+* confirmation policy;
+* provider;
+* mempool behavior;
+* retry/recovery logic.
+
+REGOLA SCHEDULER / RECOVERY
+
+Recovery e scheduler non devono mai creare pagamenti duplicati.
+
+Prima di avviare un nuovo ciclo verificare sempre:
+
+* stato corrente;
+* eventuale TX già inviata;
+* eventuale TX pending;
+* eventuale recovery già in corso;
+* lock/concurrency state.
+
+Mai eseguire due recovery concorrenti sullo stesso pagamento.
+
+REGOLA GAS / ESCROW
+
+Per EVM:
+
+deposit detection → gas availability → gas top-up → confirmation → escrow release.
+
+Un timeout del gas top-up NON deve trasformarsi automaticamente in un nuovo payout.
+
+I timeout devono essere per-rete.
+
+REGOLA BTC / LIGHTNING
+
+BTC on-chain e Lightning devono essere trattati come sistemi separati dall’architettura EVM.
+
+NON introdurre logiche EVM, gas station, escrow EVM o receipt polling nei percorsi BTC/Lightning.
+
+Prima di modificare qualunque componente condiviso verificare esplicitamente che BTC/Lightning non siano coinvolti.
+
+REGOLA DIPENDENZE
+
+NON aggiornare:
+
+* Breez;
+* Spark;
+* WalletConnect;
+* Thirdweb;
+* Alchemy;
+* SDK blockchain;
+* librerie wallet;
+* librerie transaction/signing;
+
+senza prima verificare l’impatto su tutti i payment flow.
+
+REGOLA DIFF
+
+Prima di ogni publish relativo ai pagamenti mostra:
+
+* file modificati;
+* funzioni modificate;
+* righe interessate;
+* payment flow coinvolti;
+* payment flow NON coinvolti;
+* test eseguiti;
+* risultati;
+* eventuali warning.
+
+Se il diff contiene modifiche non necessarie al problema dichiarato:
+
+FERMATI.
+
+REGOLA FINALE
+
+La stabilità dei pagamenti ha priorità assoluta rispetto a:
+
+* refactoring;
+* performance;
+* code cleanup;
+* DRY;
+* nuove astrazioni;
+* nuove feature.
+
+NON rompere qualcosa che funziona per migliorare qualcosa che non è richiesto.
+
+Se una modifica può essere implementata senza toccare il payment system, questa è sempre la soluzione preferita.
+
+Se hai anche solo un dubbio che una modifica possa influenzare un pagamento:
+
+FERMATI E CHIEDIMI AUTORIZZAZIONE.
+
+Queste regole sono permanenti per Alpha Chat e devono essere applicate a ogni futura sessione Agent.
