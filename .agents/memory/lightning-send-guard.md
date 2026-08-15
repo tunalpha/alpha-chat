@@ -14,5 +14,7 @@ description: sendPayment WASM Breez/Spark senza timeout → spinner infinito; pa
 - BOLT11-only imposto al boundary UI (LNURL/Lightning Address/BOLT12 vietati: un retry dinamico risolverebbe una NUOVA invoice → doppio pagamento);
 - UI: su esito incerto niente "Riprova", lock mantenuto.
 
+**ROOT CAUSE EFFETTIVO (2026-08-15):** `sendPayment()` WASM richiede `{ prepareResponse: PrepareSendPaymentResponse }` come unico campo — il SDK TypeScript lo dichiara esplicitamente. Il live adapter la chiamava con `{ paymentRequest, amount }` (parametri di `prepareSendPayment`): campi sconosciuti → Promise mai risolta. Fix: `prepareSend()` salva la risposta RAW in `_lastPrepareResponse`; `send()` la consuma e la passa come `prepareResponse`. Senza questo il pagamento non parte MAI, indipendentemente dalla rete.
+
 **Why:** qualsiasi timeout su un pagamento già firmato/inviato deve produrre "esito incerto + blocco retry + riconciliazione", MAI "errore + riprova".
 **How to apply:** ogni nuova via di pagamento client-side (WASM/SDK) deve passare da un guard con questo contratto; review architect ha richiesto 4 round (FAIL×3) proprio su finestra storico, durabilità del lock e richieste dinamiche.
