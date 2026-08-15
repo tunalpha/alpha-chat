@@ -1607,10 +1607,25 @@ function ReceiveView({ onBack: _onBack }: { onBack: () => void }) {
   const [lnPaid,               setLnPaid]               = useState(false);
   const [lnGeneratedAmountSat, setLnGeneratedAmountSat] = useState<bigint | null>(null);
 
-  // Fetch prezzi BTC solo per Lightning (per conversione EUR/USD → sat)
+  // Fetch prezzi BTC solo per Lightning (per conversione EUR/USD → sat).
+  // Retry con backoff: un singolo fallimento silenzioso lasciava lnPrices=null
+  // → la conversione €→sat falliva → invoice generata SENZA importo
+  // (incidente "6 sat invece di 6 €", ago 2026).
   useEffect(() => {
     if (!isLightning) return;
-    fetchPrices().then(setLnPrices).catch(() => {});
+    let cancelled = false;
+    const load = async (attempt = 0): Promise<void> => {
+      try {
+        const p = await fetchPrices();
+        if (!cancelled) setLnPrices(p);
+      } catch {
+        if (!cancelled && attempt < 3) {
+          setTimeout(() => { if (!cancelled) void load(attempt + 1); }, 2000 * (attempt + 1));
+        }
+      }
+    };
+    void load();
+    return () => { cancelled = true; };
   }, [isLightning]);
 
   // Countdown live: aggiorna ogni secondo finché lnExpiry è impostato
@@ -1733,6 +1748,25 @@ function ReceiveView({ onBack: _onBack }: { onBack: () => void }) {
       setLnInvoiceErr("Spark non connesso. Torna al wallet e attendi la connessione Lightning.");
       return;
     }
+    // ── Guard anti-fallback silenzioso ────────────────────────────────────
+    // Se l'utente HA digitato un importo ma la conversione fallisce, NON
+    // generare una invoice "Qualsiasi importo": bloccare con errore chiaro.
+    // (Incidente ago 2026: €6 → prezzo BTC assente → invoice senza importo
+    // → il pagante ha inviato 6 sat invece di ~6 €.)
+    // Invoice senza importo resta possibile SOLO con campo importo vuoto.
+    const amountEntered   = lnAmountStr.trim() !== "";
+    const computedAmount  = computeLnSat();
+    if (amountEntered && computedAmount === null) {
+      const btcPriceObj = lnPrices?.btc as { eur: number; usd: number } | undefined;
+      if (lnInputMode !== "btc" && !(btcPriceObj?.[lnInputMode] && btcPriceObj[lnInputMode] > 0)) {
+        setLnInvoiceErr(`Tasso BTC/${lnInputMode.toUpperCase()} non ancora disponibile: impossibile convertire l'importo in satoshi. Attendi qualche secondo e riprova.`);
+        // Ritenta subito il caricamento del prezzo
+        void fetchPrices().then(setLnPrices).catch(() => {});
+      } else {
+        setLnInvoiceErr("Importo non valido. Inserisci un numero maggiore di zero.");
+      }
+      return;
+    }
     // Finding 2: guard re-entry — doppio tap non genera due invoice
     if (lnGeneratingRef.current) return;
     lnGeneratingRef.current = true;
@@ -1741,7 +1775,7 @@ function ReceiveView({ onBack: _onBack }: { onBack: () => void }) {
     setLnInvoice(null);
     setLnQrUrl("");
     try {
-      const amountSat = computeLnSat() ?? undefined;
+      const amountSat = computedAmount ?? undefined;
       const result = await spark.createReceiveInvoice({
         method:      "bolt11",
         amountSat,
