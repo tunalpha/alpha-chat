@@ -121,6 +121,7 @@
 - [MC receipt timeout per-rete](mc-receipt-timeout-eth.md) — 30s fisso rompeva USDT ERC-20 (top-up gas in timeout → waiting_for_gas); mappa per-rete + guard anti-overlap scheduler
 - [Recipient wallet priority — Alpha Wallet first](recipient-wallet-priority.md) — cascata unica alpha_wallet_evm_address→usda→legacy; resolveRecipientEvmWallet(); mai isAddress strict su indirizzi DB lowercase
 - [Lightning invoice senza importo](lightning-amountless-invoice-bug.md) — fetchPrices fallito in silenzio → invoice "any amount" → 6 sat invece di 6 €; mai degradare importo, bloccare con errore
+- [BTC send hang + logout](btc-send-hang-logout.md) — walletRequest ora timeout 30s; grace window refresh 30s ancorata alla rotazione originale (mai aggiornare last_used_at nel retry)
 - [Lightning send — invoice senza importo](lightning-send-amountless.md) — SDK esige amount per BOLT11 amount-less; WASM amount è bigint in send, number in receive
 - [MC sign-poll Load failed fix](mc-poll-load-failed-fix.md) — catch polling post-firma: `!code && isNetworkError → continue`; errori applicativi con .code sempre fatali
 - [MC Send State Machine — confirming timing](mc-send-state-machine.md) — setSignPhase("confirming") nel .then() di sendTransaction, mai sincrono dopo fire-and-forget; guard anti-regressione; localStorage signed:true nel .then()
