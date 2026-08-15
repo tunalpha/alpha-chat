@@ -107,6 +107,7 @@
 - [BSC incoming notification fix](bsc-incoming-notification-fix.md) — safety net dispatcha IDB ma non chiama refreshNotifications() → badge stale; fix: onConfirmed include refreshNotifications()
 - [USDA detectDeposit blocked — Fix A+B](usda-detect-deposit-fix.md) — rawContract.value null esclude la TX (Fix A: rendi opzionale); status post-deposit → 409 invece di done (Fix B: idempotente)
 - [Double-spend uncertain state](double-spend-uncertain-state.md) — signedUncertain flag previene double-spend quando sendTransaction torna "Load failed" dopo firma su iOS; NON mostrare bottone firma; continuare polling 10 min
+- [iOS polling network abort](ios-polling-network-abort.md) — Safari iOS aborta HTTP in-flight in background → "Load failed" nel catch polling → trattare come DEPOSIT_TX_NOT_DETECTED, non errore fatale
 - [BSC MultiChain post-sign bugs](bsc-multichain-post-sign-bugs.md) — History/Notifiche perse se utente non in conversazione al momento di "released"; auto-open iOS bloccato da gesture context perso dopo await chain
 - [ChatWalletBubble direction+size](chatwalletbubble-direction-size.md) — meta.direction="out" permanente nel msg; usare isMine per direzione; wallet_payment mancava da payment-bubble class (width: 340px)
 - [MC History IDB gap](mc-history-idb-gap.md) — TX MultiChain (Trust Wallet) non appaiono in History: WS handler mc_payment.state_changed aggiornava solo bolla, mai saveTxRecord(); fix: save su released con tx_hash_deposit (sender) / tx_hash_release (receiver)

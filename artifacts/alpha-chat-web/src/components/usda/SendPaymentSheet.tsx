@@ -402,6 +402,21 @@ export function SendPaymentSheet({
           }
           continue;
         }
+        // Errore di rete temporaneo (iOS background → request abortita da Safari:
+        // "Load failed", "Failed to fetch", NetworkError, AbortError).
+        // Trattiamo come DEPOSIT_TX_NOT_DETECTED: il TX potrebbe essere on-chain,
+        // continuiamo il polling invece di mostrare errore fatale.
+        const pollErrMsg = (pollErr as Error)?.message ?? "";
+        if (/load.?failed|failed.?to.?fetch|network.?error|the.?request.?was.?aborted|abortederror/i.test(pollErrMsg)) {
+          if (signErrorMsg && !pollAborted && pollCount >= SIGN_ERROR_GRACE_POLLS) {
+            if (signedUncertain) {
+              setPhase("uncertain");
+            } else {
+              throw new Error(signErrorMsg + "\n" + t("usda.depositNotFound"));
+            }
+          }
+          continue;
+        }
         // Errore reale (RPC, accesso negato, stato invalido, ecc.) → interrompi
         throw pollErr;
       }
