@@ -18,6 +18,10 @@ import {
   getSparkFeeConfig,
 } from "../models/spark-fee-config.model";
 import { logAuditEvent } from "../lib/audit";
+import {
+  recordSparkFee,
+  emitSparkFeeAccountingFailureAlert,
+} from "../services/spark-treasury-accounting.js";
 
 /** GET /api/v1/spark/fee-config */
 export async function getSparkFeeConfigHandler(
@@ -140,5 +144,64 @@ export async function updateSparkFeeConfigHandler(
         updated_by_email:   updated?.updated_by_email   ?? null,
       },
     });
+  } catch (err) { next(err); }
+}
+
+/**
+ * POST /api/v1/spark/fee-record
+ *
+ * Registra nel ledger MongoDB la fee Alpha Platform derivante da un pagamento
+ * Lightning/Spark completato. Chiamato dal client dopo ogni invio riuscito.
+ *
+ * Idempotente: paymentId è la chiave di deduplicazione.
+ * Auth: utente autenticato normale (NON admin).
+ * Fire-and-forget lato client: risposta 200/409 non blocca il flusso UI.
+ *
+ * ISOLAMENTO: non tocca BTC fee engine, MultiChain, USDA, Payment Engine.
+ */
+export async function recordSparkFeeHandler(
+  req:  Request,
+  res:  Response,
+  next: NextFunction,
+): Promise<void> {
+  try {
+    const user = (req as any).user as { userId?: string };
+    const { paymentId, alphaPlatformFeeSat } = req.body as {
+      paymentId:           string;
+      alphaPlatformFeeSat: number;
+    };
+
+    if (!paymentId || typeof paymentId !== "string" || paymentId.length < 16) {
+      res.status(400).json({ error: "INVALID_PAYMENT_ID", message: "paymentId obbligatorio (min 16 chars)" });
+      return;
+    }
+    if (typeof alphaPlatformFeeSat !== "number" || alphaPlatformFeeSat < 0) {
+      res.status(400).json({ error: "INVALID_FEE", message: "alphaPlatformFeeSat deve essere un numero >= 0" });
+      return;
+    }
+
+    const feeWallet = process.env["BTC_FEE_WALLET"] ?? "";
+    if (!feeWallet) {
+      res.status(500).json({ error: "FEE_WALLET_MISSING", message: "BTC_FEE_WALLET non configurato" });
+      return;
+    }
+
+    try {
+      const result = await recordSparkFee({
+        paymentHash:         paymentId,
+        alphaPlatformFeeSat: BigInt(Math.round(alphaPlatformFeeSat)),
+        feeWallet,
+        userId: user.userId,
+      });
+      res.status(result.duplicate ? 200 : 201).json({ data: { ok: true, duplicate: result.duplicate } });
+    } catch (err) {
+      emitSparkFeeAccountingFailureAlert(
+        paymentId,
+        BigInt(Math.round(alphaPlatformFeeSat)),
+        err,
+      );
+      // Non blocca il chiamante — risposta 200 comunque
+      res.json({ data: { ok: false, error: "ACCOUNTING_FAILED" } });
+    }
   } catch (err) { next(err); }
 }

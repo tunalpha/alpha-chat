@@ -1757,6 +1757,17 @@ export interface AppFeatureFlags {
  * Nessun dato personale associato: privacy by design.
  * @returns invoiceId — ID a 12 caratteri da usare in alphachat.sbs/pay/lightning/:id
  */
+/**
+ * Registra nel ledger backend la fee Alpha Platform di un pagamento Lightning.
+ * Idempotente su paymentId. Fire-and-forget: errori non bloccano la UI.
+ */
+export async function apiSparkRecordFee(payload: {
+  paymentId:           string;
+  alphaPlatformFeeSat: number;
+}): Promise<void> {
+  await request<{ ok: boolean }>("POST", "/spark/fee-record", payload);
+}
+
 export async function apiCreateLightningInvoiceLink(payload: {
   bolt11:           string;
   amountSat:        number | null;

@@ -17,6 +17,7 @@ import { authenticate } from "../../middleware/authenticate.middleware";
 import {
   getSparkFeeConfigHandler,
   updateSparkFeeConfigHandler,
+  recordSparkFeeHandler,
 } from "../../controllers/spark-fee.controller.js";
 import {
   getSparkDashboardHandler,
@@ -75,6 +76,14 @@ router.get("/monitoring/reconciliation",  requireAdmin("read_only"), getSparkRec
  * Auth: utente normale autenticato (authenticate, NON requireAdmin).
  */
 router.post("/user-status", authenticate, upsertSparkUserStatusHandler);
+
+/**
+ * POST /api/v1/spark/fee-record
+ * Registra nel ledger la fee Alpha Platform di un pagamento Lightning completato.
+ * Idempotente su paymentId. Fire-and-forget lato client.
+ * Auth: utente autenticato normale.
+ */
+router.post("/fee-record", authenticate, recordSparkFeeHandler);
 
 /**
  * GET /api/v1/spark/monitoring/users

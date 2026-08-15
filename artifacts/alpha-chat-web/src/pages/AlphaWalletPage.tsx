@@ -44,7 +44,7 @@ import { loadKeystore, decryptSeed, loadWalletMeta } from "../wallet/core/keysto
 import { requestNotificationPermission } from "../wallet/notifications/wallet-notification-store";
 import { buildCustomTokenPreview, getVerifiedTokens } from "../wallet/evm/token-registry";
 import { apiWalletGetTokenInfo } from "../lib/alpha-wallet-api";
-import { apiCreateLightningInvoiceLink } from "../lib/api";
+import { apiCreateLightningInvoiceLink, apiSparkRecordFee } from "../lib/api";
 import { getNetworkByChainId, txExplorerUrl } from "../wallet/evm/evm-network-config";
 import {
   notificationIcon,
@@ -2582,6 +2582,7 @@ function SendView({ onBack, onSuccess }: { onBack: () => void; onSuccess: () => 
         // recupererà il pagamento dallo storico SDK al prossimo avvio.
         const persistLnSuccess = async (paymentId: string) => {
           setLnPaymentId(paymentId);
+          // 1. Salva in IDB locale (cronologia dispositivo)
           try {
             await saveLightningTx({
               id:        `ln-tx-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
@@ -2598,6 +2599,13 @@ function SendView({ onBack, onSuccess }: { onBack: () => void; onSuccess: () => 
           } catch {
             console.warn("[Lightning] Impossibile salvare pagamento inviato in IDB — sarà recuperato dalla reconciliazione SDK");
           }
+          // 2. Registra fee nel ledger backend (admin monitoring) — fire-and-forget
+          void apiSparkRecordFee({
+            paymentId,
+            alphaPlatformFeeSat: Number(lnFeeBreakdown!.alphaPlatformFeeSat ?? 0n),
+          }).catch(err => {
+            console.warn("[Lightning] Fee record backend fallito (non bloccante):", err);
+          });
           setStep("success");
         };
         const guarded = await sendLightningGuarded({
