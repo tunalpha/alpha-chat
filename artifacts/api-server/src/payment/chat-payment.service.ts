@@ -659,7 +659,20 @@ export async function detectDeposit(params: {
   const transfer = await ChatTransferModel.findOne({ transfer_id: params.transferId });
   if (!transfer) throw new AppError("TRANSFER_NOT_FOUND", 404);
   if (transfer.sender_id.toString() !== params.requesterId) throw new AppError("TRANSFER_ACCESS_DENIED", 403);
-  if (transfer.status !== "awaiting_deposit")                throw new AppError("TRANSFER_INVALID_TRANSITION", 409);
+  if (transfer.status !== "awaiting_deposit") {
+    // Idempotente: il deposito è già stato rilevato e processato da un altro path
+    // (scheduler, bolla, chiamata concorrente di detectDeposit, ecc.).
+    // Restituiamo il transfer corrente come successo invece di 409, così
+    // signAndPoll() riceve 200 → setPhase("done") senza nuovo send.
+    // "failed" è escluso: significa che il deposito non è mai avvenuto
+    // o che una release è fallita permanentemente → 409 come prima.
+    const DEPOSIT_RECEIVED: readonly string[] = [
+      "pending", "accepting", "accepted",
+      "rejecting", "rejected", "cancelling", "cancelled",
+    ];
+    if (DEPOSIT_RECEIVED.includes(transfer.status)) return _format(transfer);
+    throw new AppError("TRANSFER_INVALID_TRANSITION", 409);
+  }
 
   if (process.env.PAYMENT_SKIP_CHAIN_VERIFY === "true") {
     // In dev mode non c'è blockchain reale — non possiamo rilevare nulla
@@ -730,15 +743,20 @@ export async function detectDeposit(params: {
     throw new AppError("DEPOSIT_DETECT_RPC_ERROR", 502);
   }
 
-  // Filtra: (a) importo >= amount_units E (b) blockTimestamp >= createdAt - 5min
-  // (buffer). Il filtro temporale evita falsi match se l'escrow venisse riusato
-  // o avesse ricevuto depositi precedenti. order:"desc" → prendiamo il più
-  // recente che soddisfa entrambi i criteri.
+  // Filtra: (a) importo >= amount_units SE rawContract.value è disponibile,
+  // E (b) blockTimestamp >= createdAt - 5min.
+  //
+  // Fix A: rawContract.value è opzionale — Alchemy può non popolarlo se non riesce
+  // a decodificare l'ABI del token. In quel caso ci fidiamo dei filtri upstream
+  // (toAddress + contractAddresses + category: erc20) che già circoscrivono la TX
+  // al token corretto verso l'escrow corretto. Il filtro importo diventa best-effort.
   const minAmount   = BigInt(transfer.amount_units);
   const minTs       = createdAt.getTime() - 5 * 60 * 1000; // createdAt - 5 minuti
   const match = transfers.find((t) => {
     try {
-      if (t.rawContract?.value == null || BigInt(t.rawContract.value) < minAmount) return false;
+      // Se rawContract.value è presente verifichiamo l'importo; se assente, omettiamo
+      // il check importo (toAddress + contractAddresses sono già filtri sufficienti).
+      if (t.rawContract?.value != null && BigInt(t.rawContract.value) < minAmount) return false;
       const ts = t.metadata?.blockTimestamp ? Date.parse(t.metadata.blockTimestamp) : NaN;
       if (Number.isNaN(ts) || ts < minTs) return false;
       return true;

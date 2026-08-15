@@ -1,0 +1,44 @@
+Sì, approverei il fix, ma con una piccola correzione di metodo: Fix A sì; Fix B sì solo dopo una verifica della semantica degli stati pending/released.
+
+La root cause è ben dimostrata: la TX esiste ed è visibile in History, ma detectDeposit() la scarta per filtri più restrittivi. Quindi non toccherei assolutamente signing, createdTransferRef, signedUncertain o retry.
+
+Fix A — APPROVATO
+
+Questa modifica è corretta:
+
+if (t.rawContract?.value != null && BigInt(t.rawContract.value) < minAmount) {
+  return false;
+}
+
+Perché toAddress + contractAddresses + category: ["erc20"] hanno già ristretto la ricerca al trasferimento del token corretto. rawContract.value deve diventare un controllo aggiuntivo quando disponibile, non una condizione necessaria per riconoscere la TX.
+
+Fix B — APPROVATO CON UNA VERIFICA
+
+Questo:
+
+if (transfer.status !== "awaiting_deposit") {
+  if (transfer.status === "pending" || transfer.status === "released") {
+    return toPublicTransfer(transfer);
+  }
+  throw ...
+}
+
+ha senso se e solo se pending significa realmente:
+
+il deposito è già stato rilevato/processato e il transfer può essere considerato concluso dal punto di vista della SendPaymentSheet.
+
+released è chiaramente compatibile con il completamento; pending invece voglio che l’agente controlli nel state machine prima di applicarlo.
+
+Quindi gli direi:
+
+Applica Fix A. Per Fix B, prima verifica nel backend tutte le transizioni awaiting_deposit → pending → released e conferma che pending implichi effettivamente deposito già rilevato. Se sì, applica B. Se pending può significare uno stato intermedio non ancora confermato, NON trattarlo come successo e modifica solo la gestione necessaria del caso già processato.
+
+Il punto fondamentale è che non dobbiamo “far sparire” il loop dicendo done a una TX non verificata.
+
+Se la verifica conferma la semantica proposta, allora sì: fix minimale, backend-only, e nessun tocco alla logica di invio.
+
+Dopo il fix il test reale deve essere semplicissimo:
+
+1 firma → 1 TX → History → sheet Pagamento completato → Notification → nessun retry/loop.
+
+Questa è la modifica che farei adesso.

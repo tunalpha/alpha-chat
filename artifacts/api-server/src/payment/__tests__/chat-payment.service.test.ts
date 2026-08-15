@@ -475,18 +475,22 @@ describe("detectDeposit", () => {
     })).rejects.toMatchObject({ code: "TRANSFER_ACCESS_DENIED", httpStatus: 403 });
   });
 
-  it("idempotenza: se il deposito è già confermato (status != awaiting_deposit) → TRANSFER_INVALID_TRANSITION, nessun double-count", async () => {
-    // Scenario RETRY FIRMA: l'utente firma due volte; il primo deposito è già
-    // stato rilevato e il transfer è passato a "pending". Un secondo detect
-    // (o un detect concorrente) NON deve riprocessare lo stato.
+  it("idempotenza: se il deposito è già confermato (status=pending) → restituisce il transfer senza double-count", async () => {
+    // Fix B — comportamento idempotente: il deposito è già stato rilevato e il
+    // transfer è passato a "pending" (da un detect concorrente, dallo scheduler,
+    // dalla bolla). detectDeposit ora restituisce il transfer esistente invece di
+    // 409, così signAndPoll() riceve 200 → setPhase("done") senza nuovo send.
     vi.mocked(ChatTransferModel.findOne).mockResolvedValue(makeTransfer({ status: "pending" }) as any);
 
-    await expect(detectDeposit({
+    const result = await detectDeposit({
       transferId:  TRANSFER_ID,
       requesterId: SENDER_ID,
-    })).rejects.toMatchObject({ code: "TRANSFER_INVALID_TRANSITION", httpStatus: 409 });
+    });
 
-    // Guardia PRIMA di qualsiasi lavoro on-chain: nessun consumo anti-replay.
+    // Deve risolvere con i dati del transfer (non lanciare).
+    expect(result).toMatchObject({ status: "pending", transfer_id: TRANSFER_ID });
+
+    // Guardia fondamentale: NESSUN consumo anti-replay (il deposito era già processato).
     expect(antiReplay.checkAndMarkTx).not.toHaveBeenCalled();
   });
 
@@ -541,6 +545,11 @@ describe("acceptTransfer", () => {
     vi.mocked(ChatTransferModel.findOne).mockResolvedValue(
       makeTransfer({ status: "pending", recipient_wallet: null }) as any,
     );
+    // ADR-004 lazy-resolve: il global mock restituisce sempre RECIPIENT_WALLET,
+    // quindi dobbiamo sovrascriverlo per simulare il caso "utente senza wallet".
+    vi.mocked(UserModel.findById).mockImplementationOnce(() => ({
+      lean: () => Promise.resolve({ wallets: {}, wallet_address: null }),
+    } as any));
 
     await expect(acceptTransfer({ transferId: TRANSFER_ID, requesterId: RECIPIENT_ID }))
       .rejects.toMatchObject({ code: "WALLET_NOT_CONFIGURED", httpStatus: 412 });
