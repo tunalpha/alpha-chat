@@ -1,0 +1,106 @@
+CRITICAL — LIGHTNING FEE TRACE + COLLECTION DESIGN
+
+We discovered that Lightning Alpha fees are currently recorded in MongoDB but are NOT physically collected into a Lightning wallet.
+
+Before implementing anything, I need a precise investigation of the fee from today's real transaction.
+
+TODAY'S TRANSACTION:
+Amount sent: 9,179 sat
+Alpha fee: approximately 9 sat (0.10%)
+
+IMPORTANT:
+I need to understand exactly what happened to those ~9 sat.
+
+TRACE THE ACTUAL TRANSACTION END-TO-END.
+
+Determine:
+
+1. What was the original Lightning balance before the payment?
+2. What amount was actually paid by the sender?
+3. What amount was actually received by the recipient?
+4. Where exactly were the ~9 sat fee deducted?
+5. From which wallet/balance/account did those sat come?
+6. Where are those sat NOW?
+7. Do they still exist in the Spark wallet balance?
+8. Are they included in the SDK payment record?
+9. Are they represented only as a MongoDB accounting record?
+10. Is the fee already embedded in the payment amount/settlement rather than physically separated?
+11. Can we identify the exact payment ID / transaction ID associated with today's fee?
+12. Can we prove the current balance before and after the transaction?
+
+DO NOT assume that the fee is "somewhere in the Lightning circuit".
+
+We need to identify the actual satoshis/accounting flow.
+
+If the fee was never physically separated, explain exactly why and where the corresponding balance remains.
+
+Then design the CORRECT production architecture for collecting Alpha's Lightning fee.
+
+REQUIREMENT:
+
+Alpha fee = 0.10% of the payment.
+
+The fee must eventually become real Alpha revenue, not just a MongoDB accounting entry.
+
+Propose a safe architecture for:
+
+Payment
+→ fee calculation
+→ fee collection
+→ fee ledger
+→ Lightning fee wallet/sub-wallet
+→ periodic sweep
+→ BTC Treasury
+
+The design must cover:
+
+1. How the fee is collected from each Lightning payment.
+2. Whether the fee should be deducted from the sender, recipient, or payment flow.
+3. Which Lightning wallet/sub-wallet receives the fee.
+4. How a fee invoice/payment should be created if required.
+5. How to handle fees smaller than the minimum practical Lightning amount.
+6. Whether fees should accumulate until a threshold before being swept.
+7. How the accumulated fee balance is tracked.
+8. How the sweep to BTC Treasury works.
+9. What happens if collection fails.
+10. What happens if the sweep fails.
+11. Idempotency — never collect the same fee twice.
+12. Reconciliation between:
+   - payment record
+   - fee record
+   - Spark SDK
+   - fee wallet
+   - BTC Treasury
+13. How to recover fees after app restart/crash.
+14. How to recover fees if the backend is temporarily unavailable.
+15. Security implications.
+16. Required tests.
+
+VERY IMPORTANT:
+
+Do NOT implement anything yet.
+
+Do NOT create a new wallet.
+Do NOT move any funds.
+Do NOT change production configuration.
+Do NOT deploy.
+
+FIRST REPORT ONLY.
+
+The report must have two clearly separated sections:
+
+A) TODAY'S ~9 SAT FEE
+Exactly where are those sat now, with evidence from the existing system.
+
+B) FUTURE LIGHTNING FEE COLLECTION
+The recommended architecture for actually collecting the 0.10% fee safely.
+
+At the end give a simple answer:
+
+"Today's fee is currently located in: ______"
+
+and
+
+"To collect future Lightning fees we should: ______"
+
+Stop after the report.
