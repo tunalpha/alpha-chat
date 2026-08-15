@@ -22,7 +22,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useTranslation } from "react-i18next";
 import { useActiveAccount, ConnectButton, useSwitchActiveWalletChain } from "thirdweb/react";
-import { client, polygon, wallets } from "../../lib/thirdweb";
+import { client, polygon, wallets, appMetadata } from "../../lib/thirdweb";
 import {
   apiPaymentCreate,
   apiPaymentDetectDeposit,
@@ -817,7 +817,7 @@ export function SendPaymentSheet({
                   {t("usda.walletConnectPrompt")}
                 </p>
                 <div className="usda-connect-btn-wrap">
-                  <ConnectButton client={client} chain={polygon} wallets={wallets} />
+                  <ConnectButton client={client} chain={polygon} wallets={wallets} appMetadata={appMetadata} />
                 </div>
               </div>
             ) : (

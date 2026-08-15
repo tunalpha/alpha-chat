@@ -19,6 +19,7 @@ import {
   USDA_CONTRACT_ADDRESS,
   USDA_CHAIN_ID,
   USDA_DECIMALS,
+  appMetadata,
 } from "../../lib/thirdweb";
 import { humanizeUsdaError, isRecipientNoWallet } from "../../lib/usda-errors";
 import { apiUsdaPreparePayment, apiUsdaSubmitPayment } from "../../lib/usda-api";
@@ -309,7 +310,7 @@ export function SendUsdaSheet({ conversationId, toUserId, toName, onClose, onSen
                   ))}
                 </div>
                 <div className="usda-connect-btn-wrap">
-                  <ConnectButton client={client} chain={polygon} wallets={wallets} />
+                  <ConnectButton client={client} chain={polygon} wallets={wallets} appMetadata={appMetadata} />
                 </div>
               </div>
             )}
@@ -319,7 +320,7 @@ export function SendUsdaSheet({ conversationId, toUserId, toName, onClose, onSen
               <div className="usda-network-warning" role="alert">
                 <p>⚠️ Rete non corretta — passa a <strong>Polygon Mainnet</strong>.</p>
                 <p className="usda-network-current">Rete attuale: non Polygon Mainnet</p>
-                <ConnectButton client={client} chain={polygon} wallets={wallets} />
+                <ConnectButton client={client} chain={polygon} wallets={wallets} appMetadata={appMetadata} />
               </div>
             )}
 

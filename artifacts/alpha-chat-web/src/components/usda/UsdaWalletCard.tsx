@@ -4,7 +4,7 @@
 
 import { useActiveAccount, ConnectButton } from "thirdweb/react";
 import { useWs } from "../../contexts/WebSocketContext";
-import { client, polygon, wallets } from "../../lib/thirdweb";
+import { client, polygon, wallets, appMetadata } from "../../lib/thirdweb";
 
 export interface UsdaWalletCardProps {
   onSend:    () => void;
@@ -38,6 +38,7 @@ export function UsdaWalletCard({ onManage }: UsdaWalletCardProps) {
               client={client}
               chain={polygon}
               wallets={wallets}
+              appMetadata={appMetadata}
             />
             <button
               type="button"
@@ -63,6 +64,7 @@ export function UsdaWalletCard({ onManage }: UsdaWalletCardProps) {
               client={client}
               chain={polygon}
               wallets={wallets}
+              appMetadata={appMetadata}
             />
             <button
               type="button"

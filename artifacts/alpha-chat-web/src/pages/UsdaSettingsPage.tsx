@@ -173,6 +173,7 @@ import {
   wallets,
   USDA_CONTRACT_ADDRESS,
   USDA_CHAIN_ID,
+  appMetadata,
 } from "../lib/thirdweb";
 import { apiUsdaSetWalletAddress } from "../lib/usda-api";
 
@@ -491,7 +492,7 @@ export default function UsdaSettingsPage({ onBack, onOpenAlphaWallet }: Props) {
               )}
 
               <div className="ups-connect-wrap">
-                <ConnectButton client={client} chain={polygon} wallets={wallets} />
+                <ConnectButton client={client} chain={polygon} wallets={wallets} appMetadata={appMetadata} />
               </div>
             </div>
           )}
@@ -573,7 +574,7 @@ export default function UsdaSettingsPage({ onBack, onOpenAlphaWallet }: Props) {
               </div>
               <div className="ups-wallet-actions">
                 <div className="ups-connect-wrap">
-                  <ConnectButton client={client} chain={polygon} wallets={wallets} />
+                  <ConnectButton client={client} chain={polygon} wallets={wallets} appMetadata={appMetadata} />
                 </div>
               </div>
             </div>

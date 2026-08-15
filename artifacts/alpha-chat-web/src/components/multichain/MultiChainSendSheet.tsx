@@ -22,7 +22,7 @@ import { isNetworkError } from "../../lib/multichain-poll";
 import { useTranslation } from "react-i18next";
 import QRCode from "qrcode";
 import { useActiveAccount, useActiveWallet, useActiveWalletChain, useSwitchActiveWalletChain, ConnectButton } from "thirdweb/react";
-import { client, wallets, walletsBsc, polygon, bsc, ethereum } from "../../lib/thirdweb";
+import { client, wallets, walletsBsc, polygon, bsc, ethereum, appMetadata } from "../../lib/thirdweb";
 import {
   apiMCCreate,
   apiMCCancel,
@@ -1087,7 +1087,7 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
                 <div className="sp-wallet-prompt">
                   <p className="sp-wallet-prompt-text">Connetti il wallet per firmare la transazione</p>
                   <div className="usda-connect-btn-wrap">
-                    <ConnectButton client={client} chain={evmChain ?? polygon} wallets={network === "bsc" ? walletsBsc : wallets} />
+                    <ConnectButton client={client} chain={evmChain ?? polygon} wallets={network === "bsc" ? walletsBsc : wallets} appMetadata={appMetadata} />
                   </div>
                 </div>
               ) : (
@@ -1210,7 +1210,7 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
                 <div className="sp-wallet-prompt">
                   <p className="sp-wallet-prompt-text">Connetti il wallet per firmare</p>
                   <div className="usda-connect-btn-wrap">
-                    <ConnectButton client={client} chain={evmChain ?? polygon} wallets={network === "bsc" ? walletsBsc : wallets} />
+                    <ConnectButton client={client} chain={evmChain ?? polygon} wallets={network === "bsc" ? walletsBsc : wallets} appMetadata={appMetadata} />
                   </div>
                 </div>
               ) : (

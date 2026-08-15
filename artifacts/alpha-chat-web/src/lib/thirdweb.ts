@@ -22,6 +22,20 @@ export const client = createThirdwebClient({
   clientId: import.meta.env.VITE_THIRDWEB_CLIENT_ID as string,
 });
 
+/**
+ * Metadata app per WalletConnect (WC Verify).
+ * Passata come prop `appMetadata` a ogni ConnectButton: i wallet esterni
+ * (Trust Wallet, MetaMask…) mostrano nome/logo/dominio corretti invece
+ * dell'avviso "Dominio non valido". L'avviso sparisce del tutto solo dopo
+ * la verifica del dominio alphachat.sbs su dashboard.reown.com.
+ */
+export const appMetadata = {
+  name:        "AlphaChat",
+  url:         "https://alphachat.sbs",
+  description: "AlphaChat — messaggistica sicura con pagamenti integrati",
+  logoUrl:     "https://alphachat.sbs/logo.png",
+};
+
 // ── RPC per ogni chain ────────────────────────────────────────────────────────
 // Evita il relay ThirdWeb non-whitelisted su *.replit.dev.
 // Priorità per Polygon: Alchemy (VITE_ALCHEMY_API_KEY) → VITE_POLYGON_RPC.

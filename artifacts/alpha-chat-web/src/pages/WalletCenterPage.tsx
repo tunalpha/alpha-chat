@@ -17,6 +17,7 @@ import {
   polygon,
   wallets,
   USDA_CHAIN_ID,
+  appMetadata,
 } from "../lib/thirdweb";
 import { useWallet } from "../wallet/context/WalletContext";
 import {
@@ -346,7 +347,7 @@ export default function WalletCenterPage({ onBack, onOpenAlphaWallet }: Props) {
                       <span className="wc-tw-addr">{address}</span>
                     </div>
                     <div className="wc-tw-connect-btn">
-                      <ConnectButton client={client} chain={polygon} wallets={wallets} />
+                      <ConnectButton client={client} chain={polygon} wallets={wallets} appMetadata={appMetadata} />
                     </div>
                   </div>
                 ) : (
@@ -356,7 +357,7 @@ export default function WalletCenterPage({ onBack, onOpenAlphaWallet }: Props) {
                       {t("connectWalletHint")}
                     </p>
                     <div className="wc-tw-connect-btn">
-                      <ConnectButton client={client} chain={polygon} wallets={wallets} />
+                      <ConnectButton client={client} chain={polygon} wallets={wallets} appMetadata={appMetadata} />
                     </div>
                   </div>
                 )}
@@ -541,7 +542,7 @@ export default function WalletCenterPage({ onBack, onOpenAlphaWallet }: Props) {
                   <span className="wc-tw-addr">{address}</span>
                 </div>
                 <div className="wc-tw-connect-btn">
-                  <ConnectButton client={client} chain={polygon} wallets={wallets} />
+                  <ConnectButton client={client} chain={polygon} wallets={wallets} appMetadata={appMetadata} />
                 </div>
               </div>
             ) : (
@@ -551,7 +552,7 @@ export default function WalletCenterPage({ onBack, onOpenAlphaWallet }: Props) {
                   {t("noWalletHint")}
                 </p>
                 <div className="wc-tw-connect-btn">
-                  <ConnectButton client={client} chain={polygon} wallets={wallets} />
+                  <ConnectButton client={client} chain={polygon} wallets={wallets} appMetadata={appMetadata} />
                 </div>
               </div>
             )}

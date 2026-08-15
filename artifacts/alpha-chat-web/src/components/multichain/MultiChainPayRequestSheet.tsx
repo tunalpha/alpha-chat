@@ -27,7 +27,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { useActiveAccount, useActiveWalletChain, useSwitchActiveWalletChain, ConnectButton } from "thirdweb/react";
-import { client, wallets, polygon, bsc, ethereum } from "../../lib/thirdweb";
+import { client, wallets, polygon, bsc, ethereum, appMetadata } from "../../lib/thirdweb";
 import {
   apiMCDetect,
   MC_TOKEN_CONTRACT,
@@ -564,6 +564,7 @@ export function MultiChainPayRequestSheet({
                     client={client}
                     chain={evmChain ?? polygon}
                     wallets={wallets}
+                    appMetadata={appMetadata}
                     connectButton={{ label: "🔗 Collega wallet per pagare" }}
                     connectModal={{ size: "compact" }}
                   />
