@@ -1,0 +1,182 @@
+LIGHTNING FEE COLLECTION — DESIGN REPORT
+
+Scope lock confermato: nessuna modifica al payment flow principale. Solo design.
+
+A. QUALE WALLET ALPHA DEVE RICEVERE LE FEE
+
+Tipo raccomandato: Spark Address statico (identity pubkey), controllato dal backend.
+
+Il Breez Spark SDK identifica ogni wallet tramite una identityPubkey (Spark address). Questo indirizzo è deterministicamente derivato dal mnemonic — è stabile, non richiede che il destinatario sia online al momento della ricezione (il protocollo Spark aggrega i leaf nel nodo), e accetta pagamenti Spark-to-Spark a costo zero di routing.
+
+User Spark wallet  →  ALPHA_SPARK_FEE_ADDRESS  (Spark-to-Spark, 0 routing fee)
+Alternativa scartata — BOLT11 invoice per ogni fee: Richiederebbe generare un'invoice prima di ogni invio, esponendo una dipendenza network sincrona. L'invoice ha una scadenza (30 secondi nel nostro config). Se il retry avviene dopo la scadenza, l'invoice è inutilizzabile. Non adatta.
+
+Alternativa scartata — Lightning Address / LNURL: Richiederebbe un server HTTP raggiungibile pubblicamente su un dominio. Overengineering per questo caso.
+
+B. COME DEVE ESSERE CONTROLLATO IN MODO SICURO
+
+Generazione del mnemonic (una volta, offline o in un script isolato):
+
+Generato con @scure/bip39 (già dipendenza del progetto) — 24 parole, entropia 256 bit
+MAI nel frontend, MAI in VITE env vars, MAI nel codice sorgente
+Storage:
+
+Replit Secret: ALPHA_SPARK_FEE_MNEMONIC   ← mnemonic 24 parole (admin-only)
+Replit Secret: ALPHA_SPARK_FEE_ADDRESS    ← identity pubkey derivata (pubblica, leggibile dal backend)
+ALPHA_SPARK_FEE_ADDRESS è pubblica (un indirizzo, non una chiave privata) — il backend la usa come destinazione senza mai toccare il mnemonic durante la normale operatività.
+
+Il mnemonic viene usato solo in due momenti:
+
+Al momento della generazione (script isolato, una tantum)
+Durante lo sweep periodico (backend script autenticato admin)
+Chi controlla: il solo backend api-server, mai il frontend, mai i client utente.
+
+C. COME VIENE RACCOLTA LA FEE 0.10%
+
+Flusso post-main-payment (senza toccare il payment flow):
+
+[main payment completed]  ← INVARIATO
+        │
+        ▼
+[NUOVO] apiSparkRecordFee() — già aggiunto oggi
+        │  scrive in MongoDB: status="pending_fee_collection"
+        │  _id = "spark_fee_" + mainPaymentId  (idempotency key)
+        │
+        ▼
+[NUOVO] spark.send({ paymentRequest: ALPHA_SPARK_FEE_ADDRESS, amountSat: 9n })
+        │  nel client, fire-and-forget dopo persistLnSuccess
+        │  usa l'adapter già instanziato — zero nuove dipendenze SDK
+        │
+        ├─ SUCCESS → apiSparkRecordFeeResult(mainPaymentId, feePaymentId)
+        │            backend aggiorna: status="success", feePaymentId, collectedAt
+        │
+        └─ FAILURE → salva lastError, attempts++
+                     scheduler backend riprova ogni 10 min (max 24h)
+Dettaglio SDK call lato client:
+
+La chiamata usa lo stesso adapter spark già connesso — nessuna nuova connessione, nessun nuovo mnemonic. È semplicemente un secondo send() verso un indirizzo statico.
+
+// DOPO persistLnSuccess — completamente separato
+const feeResult = await spark.send({
+  paymentRequest: ALPHA_SPARK_FEE_ADDRESS,  // da env backend → passato al client via /api/v1/spark/fee-config
+  amountSat: lnFeeBreakdown.alphaPlatformFeeSat,
+});
+// → apiSparkRecordFeeResult(mainPaymentId, feeResult.paymentId)
+Importo minimo pratico Spark-to-Spark: 1 sat. Il nostro min_fee_sat: 1 è già corretto. Per pagamenti < 1000 sat dove alphaPlatformFeeSat = 0 (fee arrotonda a zero), nessun secondo send viene effettuato.
+
+Ricezione di 1–9 sat: Spark-to-Spark non usa routing esterno — nessun minimo di rete. Il Spark node gestisce i leaf internamente. 1 sat è ricevibile.
+
+Pagamenti multipli allo stesso indirizzo Alpha: Pienamente supportati. Ogni utente invia la propria fee in modo indipendente. Il Spark node accumula.
+
+D. RETRY E IDEMPOTENZA
+
+Idempotency key:
+
+_id = "spark_fee_" + mainPaymentId
+mainPaymentId è il paymentId restituito dall'SDK al completamento del main payment. È univoco per costruzione SDK. Stesso mainPaymentId → stesso _id → $setOnInsert non sovrascrive → nessun doppio addebito.
+
+Failure model:
+
+main payment SUCCESS
+        │
+        ▼
+fee attempt 1
+        ├─ SUCCESS → status="success", feePaymentId=X
+        └─ FAILURE → status="pending_fee_collection", lastError, nextRetryAt=+10min
+                            │
+                    scheduler backend (ogni 5 min)
+                            │
+                    fee attempt 2..N (max 144 tentativi = 24h)
+                            ├─ SUCCESS → status="success"
+                            └─ esaurito → status="failed_permanent" + alert WARN
+Survivability:
+
+Evento	Comportamento
+Browser reload	status="pending_fee_collection" persiste in MongoDB. Lo scheduler backend riprova senza coinvolgere il client.
+App restart (client)	Stesso — il retry è backend-side, non dipende dal client.
+Backend restart	Lo scheduler rileva i record pending_fee_collection al riavvio.
+Network failure temporanea	nextRetryAt ritarda il retry; errore transiente non diventa permanente.
+Spark SDK failure	lastError cattura il messaggio. Il retry prova una nuova connessione SDK.
+Il retry backend usa: un'istanza Spark separata (backend Node.js) con ALPHA_SPARK_FEE_MNEMONIC che esegue il secondo send come mittente Alpha verso il destinatario utente? No — il problema è che la fee deve essere inviata dall'utente, non da Alpha.
+
+Correzione critica sul retry: Se il client non completa il fee send (crash, rete), il backend non può inviare i sat per conto dell'utente — non ha accesso al wallet utente. Il retry lato backend deve quindi:
+
+Opzione R1: Registrare il debito nel profilo utente e detrarlo al prossimo pagamento (accumulazione passiva)
+Opzione R2: Inviare una notifica push al client con il pending_fee_collection record — al prossimo open dell'app, il client completa il send
+Raccomandazione: Opzione R2 (client-driven retry con fallback contabile). Al login/open app, il client legge i propri record pending_fee_collection dal backend e riprova il send. Il backend mantiene il record come debito tracciato. Dopo 24h senza completamento, lo chiude come failed_permanent con alert — la fee (9 sat) viene registrata come uncollected nel ledger (accettabile per importi minimi).
+
+E. COME LE FEE RAGGIUNGONO IL BTC TREASURY
+
+Sweep non urgente — non on-chain immediato:
+
+ALPHA_SPARK_FEE_ADDRESS
+  accumulated balance (es. X sat)
+        │
+        ▼ quando balance > SWEEP_THRESHOLD_SAT (es. 100,000 sat ≈ ~50€)
+        │
+  [opzione A] Spark → Lightning → on-chain BTC   (submarine swap via Breez SDK `sendOnchain`)
+  [opzione B] Script admin: connect SDK con ALPHA_SPARK_FEE_MNEMONIC → withdraw to BTC_FEE_WALLET
+        │
+        ▼
+  BTC_FEE_WALLET (già configurato, stesso del treasury Alpha Wallet)
+Soglia suggerita: 100,000 sat (~50€ a prezzi attuali). Sweep settimanale o a soglia. Non urgente finché il balance è tracciato.
+
+Sweep failure: Il sweep fallisce → retry manuale (admin trigger). I sat rimangono nell'address Alpha — non sono persi, solo non ancora spostati on-chain.
+
+Reconciliation sweep:
+
+balance_in_spark_address
+= SUM(feeRecords WHERE status="success" AND NOT swept)
+- tolerance per routing fee del sweep stesso
+F. FILE E MODELLI CHE RICHIEDEREBBERO MODIFICA
+
+Backend api-server:
+
+File	Modifica richiesta
+models/alpha-wallet-fee-record.model.ts	Aggiungere: feeAmountSat: number, feePaymentId?: string, nextRetryAt?: Date, collectedAt?: Date; nuovo status enum value: "pending_fee_collection"
+services/spark-treasury-accounting.ts	recordSparkFee(): scrivere con status="pending_fee_collection" inizialmente; aggiungere updateSparkFeeCollected(mainPaymentId, feePaymentId) per marcare success
+controllers/spark-fee.controller.ts	Aggiungere POST /fee-record/result (client chiama dopo fee send riuscito) e GET /fee-record/pending (client legge pending al login)
+routes/v1/spark.routes.ts	Registrare i nuovi endpoint
+lib/scheduler.ts (o nuovo file)	Scheduler per alert su record pending_fee_collection scaduti
+.env / Replit Secrets	Aggiungere: ALPHA_SPARK_FEE_ADDRESS (pubblica), ALPHA_SPARK_FEE_MNEMONIC (privato, solo per sweep)
+Frontend alpha-chat-web:
+
+File	Modifica richiesta
+pages/AlphaWalletPage.tsx	In persistLnSuccess: dopo il main payment, chiamare fee send verso ALPHA_SPARK_FEE_ADDRESS; chiamare apiSparkRecordFeeResult se successo
+lib/api.ts	Aggiungere apiSparkGetPendingFees() e apiSparkRecordFeeResult()
+lib/spark/spark-adapter.ts + adapters/live.ts	NESSUNA MODIFICA — il send() verso un Spark address è già supportato dall'interfaccia attuale
+File NON toccati (scope lock):
+
+spark-send-guard.ts — invariato
+calculateSendFee, prepareSend, sendPayment main flow — invariati
+SparkFeeBreakdown, calculateSparkFeeBreakdown — invariati
+Tutta la logica BTC on-chain, EVM, USDA — invariata
+ChatPage.tsx — invariata
+G. CONFERMA: MAIN PAYMENT LOGIC INTATTA
+
+Il main payment flow è:
+
+prepareSend() → send(prepareResponse) → persistLnSuccess()
+Il fee collection viene inserito dentro persistLnSuccess(), come terzo step separato, dopo che setStep("success") ha già aggiornato la UI. Il main payment ha già completato prima che il fee send inizi.
+
+[main payment: SDK send()]      ← INVARIATO
+[IDB save: saveLightningTx()]   ← INVARIATO
+[UI: setStep("success")]        ← INVARIATO
+[fee MongoDB record: pending]   ← NUOVO — fire-and-forget
+[fee Spark send: 9 sat → Alpha] ← NUOVO — fire-and-forget, nessun throw
+[fee MongoDB update: success]   ← NUOVO — fire-and-forget
+Un'eccezione nel fee send non può propagarsi al main flow — è all'interno di un .catch() separato. Il main payment success è irreversibile.
+
+PIANO DI TEST (pre-implementazione)
+
+#	Test	Verifica
+T1	Main payment con fee send mock che lancia	status="success" main; status="pending_fee_collection" fee record
+T2	Fee send riuscito	feePaymentId presente nel record; status="success"
+T3	_id = "spark_fee_" + mainPaymentId già esistente	Secondo $setOnInsert non sovrascrive → duplicate=true
+T4	Client reload con record pending	Client al login legge pending e riprova send (mock)
+T5	Fee send con balance utente < 1 sat	Fee non inviata (guard su alphaPlatformFeeSat > 0)
+T6	Sweep threshold non raggiunto	Nessun sweep; record swept=false
+T7	Sweep con idempotency	swept=true già → skip
+T8	Backend restart con pending records	Scheduler rileva e logga pending; alert dopo 24h
+T9	Fee send a indirizzo Alpha inesistente	failed_transient → retry; dopo max → failed_permanent + WARN alert
+Stop. In attesa di approvazione per procedere con l'implementazione.

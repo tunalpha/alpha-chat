@@ -1,0 +1,66 @@
+STOP — ONE ARCHITECTURAL ISSUE TO RESOLVE BEFORE IMPLEMENTATION
+
+I approve the general direction, but I do NOT approve implementation yet.
+
+The main payment flow must remain completely untouched and hardened.
+
+There is one critical issue in the proposed fee-collection architecture:
+
+The Alpha fee is supposed to be paid by the USER from the user's Spark wallet to the Alpha Spark Fee Address.
+
+Therefore the backend cannot retry the fee payment itself because it does not control the user's wallet.
+
+Before implementing anything, resolve ONLY this problem:
+
+How do we guarantee reliable collection of the 0.10% Lightning fee when:
+
+- the user closes the app immediately after the main payment;
+- iOS backgrounds/suspends the app;
+- the phone loses network;
+- the browser crashes;
+- the user does not reopen Alpha Chat for a long time;
+- the fee send fails after the main payment succeeds?
+
+We must NOT:
+- modify the main payment flow;
+- retry the main payment;
+- block or delay the main payment;
+- require the user to remain on the screen;
+- use the user's mnemonic/PIN on the backend;
+- create a custodial wallet for users.
+
+Compare the viable architectures.
+
+OPTION A:
+Second Spark payment from the user's wallet after the main payment.
+
+OPTION B:
+Include the platform fee in the payment amount before the main payment, if Spark/BOLT11 allows a safe and deterministic implementation without changing the recipient's requested invoice amount.
+
+OPTION C:
+Another non-custodial architecture supported by Spark/Breez.
+
+For each option explain:
+1. Reliability if the app closes.
+2. Reliability on iOS background.
+3. Whether the fee can be guaranteed.
+4. Whether the user must remain online.
+5. Whether the recipient receives exactly the requested amount.
+6. Whether double collection is possible.
+7. Whether it changes the existing hardened payment flow.
+8. Complexity.
+9. Security implications.
+
+IMPORTANT:
+
+Do NOT implement anything yet.
+
+Do NOT create the Alpha fee wallet yet.
+Do NOT generate a mnemonic.
+Do NOT move any funds.
+Do NOT modify production Secrets.
+Do NOT modify existing payment code.
+
+I want a final recommendation explaining how Alpha can reliably collect the fee while keeping the existing main payment flow completely untouched.
+
+STOP after the architectural recommendation and wait for approval.
