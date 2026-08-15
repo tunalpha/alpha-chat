@@ -24,6 +24,12 @@ import { useSparkWalletOptional } from "../contexts/SparkWalletContext";
 import { apiRegisterSparkStatus } from "../lib/spark/spark-admin-register";
 import type { SparkFeeBreakdown } from "../lib/spark/spark-types";
 import {
+  sendLightningGuarded,
+  resolveUncertainMarker,
+  isBolt11Invoice,
+  SparkSendUncertainError,
+} from "../lib/spark/spark-send-guard";
+import {
   saveLightningTx,
   updateLightningTx,
   listLightningTxs,
@@ -2375,6 +2381,8 @@ function SendView({ onBack, onSuccess }: { onBack: () => void; onSuccess: () => 
   const [btcPreview, setBtcPreview]     = useState<(BtcSendPreview & { feeRate: number }) | null>(null);
   const [txHash, setTxHash]             = useState<string | null>(null);
   const [broadcastErr, setBroadcastErr] = useState<string | null>(null);
+  // Esito Lightning incerto (timeout senza conferma): blocca il retry.
+  const [lnUncertain, setLnUncertain] = useState(false);
   const [pin, setPin]                   = useState("");
   const [pinErr, setPinErr]             = useState<string | null>(null);
 
@@ -2408,6 +2416,12 @@ function SendView({ onBack, onSuccess }: { onBack: () => void; onSuccess: () => 
     // ── Lightning ─────────────────────────────────────────────────────────────
     if (isLightning) {
       if (!lnInvoice.trim()) { setLnInvoiceErr("Inserisci un invoice Lightning (BOLT11)."); return; }
+      // BOLT11-ONLY al boundary: LNURL/Lightning Address/BOLT12 sono richieste
+      // dinamiche non riconciliabili per invoice → vietate (anti double-pay).
+      if (!isBolt11Invoice(lnInvoice)) {
+        setLnInvoiceErr("Formato non supportato: incolla un'invoice BOLT11 (inizia con \"lnbc\").");
+        return;
+      }
       // Invoice senza importo → l'importo digitato dall'utente è obbligatorio
       let lnAmountSat: bigint | undefined;
       if (lnIsAmountless) {
@@ -2514,6 +2528,22 @@ function SendView({ onBack, onSuccess }: { onBack: () => void; onSuccess: () => 
       setPinErr(null);
       setStep("processing");
       try {
+        // ANTI DOUBLE-SPEND (persistente): un invio precedente con esito
+        // incerto blocca ogni nuovo invio finché lo storico SDK non dà
+        // una risposta autoritativa (sopravvive a unmount/riapertura).
+        const resolution = await resolveUncertainMarker((req) => spark!.listPayments(req));
+        if (resolution.status === "still_uncertain") {
+          throw new SparkSendUncertainError();
+        }
+        if (resolution.status === "confirmed_paid") {
+          setLnUncertain(false);
+          sendInProgressRef.current = false;
+          setBroadcastErr(
+            "Il pagamento precedente risulta COMPLETATO: non è stato ripetuto. Controlla lo Storico.",
+          );
+          setStep("error");
+          return;
+        }
         // Verifica PIN tramite keystore (conferma identità — Spark SDK gestisce i propri segreti)
         const keystore = await loadKeystore();
         if (keystore) {
@@ -2527,45 +2557,74 @@ function SendView({ onBack, onSuccess }: { onBack: () => void; onSuccess: () => 
         // Per invoice senza importo l'SDK esige l'amount anche in send:
         // riusiamo ESATTAMENTE l'importo del quote (recipientAmountSat), mai re-parse dell'input.
         // Per invoice sub-satoshi usiamo il ceiling deterministico calcolato dall'HRP.
-        const { result } = await spark!.send(
-          {
-            paymentRequest: lnInvoice,
-            ...(lnIsAmountless
-              ? { amountSat: lnFeeBreakdown!.recipientAmountSat }
-              : lnSubSatCeilSat !== null
-                ? { amountSat: lnSubSatCeilSat }
-                : {}),
-          },
-          lnFeeBreakdown!,
-        );
-        setPin("");
-        setLnPaymentId(result.paymentId);
+        // Incidente 2026-08-15: sendPayment WASM senza timeout → spinner infinito
+        // se iOS congela la rete. Guard: timeout 60s + riconciliazione storico SDK
+        // (mai dichiarare fallito un pagamento che potrebbe essere partito).
         // Finding 4: await — il pagamento completato DEVE essere nello storico.
         // Se IDB fallisce: log warning + la reconciliazione post-connect (Finding 1)
         // recupererà il pagamento dallo storico SDK al prossimo avvio.
-        try {
-          await saveLightningTx({
-            id:        `ln-tx-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-            direction: "send",
-            status:    "paid",
-            amountSat: Number(lnFeeBreakdown!.recipientAmountSat),
-            bolt11:    lnInvoice ?? undefined,
-            paymentId: result.paymentId,
-            feeSat:    Number((lnFeeBreakdown!.estimatedProviderFeeSat ?? 0n) + (lnFeeBreakdown!.alphaPlatformFeeSat ?? 0n)),
-            createdAt: Date.now(),
-            paidAt:    Date.now(),
-            updatedAt: Date.now(),
-          });
-        } catch {
-          console.warn("[Lightning] Impossibile salvare pagamento inviato in IDB — sarà recuperato dalla reconciliazione SDK");
-        }
-        setStep("success");
+        const persistLnSuccess = async (paymentId: string) => {
+          setLnPaymentId(paymentId);
+          try {
+            await saveLightningTx({
+              id:        `ln-tx-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+              direction: "send",
+              status:    "paid",
+              amountSat: Number(lnFeeBreakdown!.recipientAmountSat),
+              bolt11:    lnInvoice ?? undefined,
+              paymentId,
+              feeSat:    Number((lnFeeBreakdown!.estimatedProviderFeeSat ?? 0n) + (lnFeeBreakdown!.alphaPlatformFeeSat ?? 0n)),
+              createdAt: Date.now(),
+              paidAt:    Date.now(),
+              updatedAt: Date.now(),
+            });
+          } catch {
+            console.warn("[Lightning] Impossibile salvare pagamento inviato in IDB — sarà recuperato dalla reconciliazione SDK");
+          }
+          setStep("success");
+        };
+        const guarded = await sendLightningGuarded({
+          send: async () => {
+            const { result } = await spark!.send(
+              {
+                paymentRequest: lnInvoice,
+                ...(lnIsAmountless
+                  ? { amountSat: lnFeeBreakdown!.recipientAmountSat }
+                  : lnSubSatCeilSat !== null
+                    ? { amountSat: lnSubSatCeilSat }
+                    : {}),
+              },
+              lnFeeBreakdown!,
+            );
+            return result;
+          },
+          listPayments: (req) => spark!.listPayments(req),
+          invoice: lnInvoice,
+          // Continuation one-shot: il send WASM è completato DOPO il timeout —
+          // persisti l'esito, sblocca il lock e mostra il successo.
+          onLateResolve: (result) => {
+            sendInProgressRef.current = false;
+            setLnUncertain(false);
+            setBroadcastErr(null);
+            void persistLnSuccess(result.paymentId);
+          },
+        });
+        const paymentId = guarded.outcome === "sent"
+          ? guarded.result.paymentId
+          : guarded.payment.id;
+        setPin("");
+        await persistLnSuccess(paymentId);
+        sendInProgressRef.current = false;
       } catch (e) {
         setPin("");
+        const uncertain = e instanceof SparkSendUncertainError;
+        // ANTI DOUBLE-SPEND: esito incerto → il lock di invio RESTA attivo
+        // (nessun "Riprova"); si sblocca solo se onLateResolve conferma
+        // il pagamento, oppure uscendo e ricontrollando lo Storico.
+        setLnUncertain(uncertain);
+        if (!uncertain) sendInProgressRef.current = false;
         setBroadcastErr(e instanceof Error ? e.message : "Errore durante il pagamento Lightning.");
         setStep("error");
-      } finally {
-        sendInProgressRef.current = false; // Finding 2: rilascia lock in ogni caso
       }
       return;
     }
@@ -2966,8 +3025,11 @@ function SendView({ onBack, onSuccess }: { onBack: () => void; onSuccess: () => 
       <h2>Invio fallito</h2>
       <div className="aw-error-box">{broadcastErr ?? "Errore sconosciuto"}</div>
       <div className="aw-btn-row">
-        <button className="aw-btn aw-btn--secondary" onClick={() => { setStep("confirm"); setBroadcastErr(null); }}>← Riprova</button>
-        <button className="aw-btn aw-btn--primary" onClick={onBack}>Annulla</button>
+        {/* ANTI DOUBLE-SPEND: esito incerto → niente "Riprova" (il pagamento potrebbe essere partito) */}
+        {!lnUncertain && (
+          <button className="aw-btn aw-btn--secondary" onClick={() => { setStep("confirm"); setBroadcastErr(null); }}>← Riprova</button>
+        )}
+        <button className="aw-btn aw-btn--primary" onClick={onBack}>{lnUncertain ? "Vai allo Storico" : "Annulla"}</button>
       </div>
     </div>
   );
