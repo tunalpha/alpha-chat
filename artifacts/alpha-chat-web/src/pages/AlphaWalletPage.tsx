@@ -1563,6 +1563,20 @@ async function parseBolt11Expiry(bolt11: string): Promise<number> {
   }
 }
 
+// ─── BOLT11 amount detector ──────────────────────────────────────────────────
+// Rileva dal prefisso HRP se l'invoice specifica un importo.
+// "lnbc10u1..." → amount presente; "lnbc1..." → invoice SENZA importo
+// ("Qualsiasi importo"): il Breez SDK esige un amount esplicito, altrimenti
+// fallisce con "Amount must not be less than the invoice amount".
+// Puro parsing di stringa, nessuna chiamata di rete, nessun impatto su invoice
+// con importo (per quelle il comportamento resta identico).
+function detectBolt11Amountless(bolt11: string): boolean {
+  const s = bolt11.trim().toLowerCase().replace(/^lightning:/, "");
+  const m = /^ln(?:bc|tb|bcrt)(\d*)[munp]?1/.exec(s);
+  if (!m) return false;          // non parsabile → lascia decidere all'SDK
+  return m[1] === "";            // nessuna cifra dopo il prefisso → amount-less
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // RECEIVE VIEW (Phase C)
 // ═══════════════════════════════════════════════════════════════════════════
@@ -2344,6 +2358,9 @@ function SendView({ onBack, onSuccess }: { onBack: () => void; onSuccess: () => 
   const [lnInvoice,      setLnInvoice]      = useState("");
   const [lnInvoiceErr,   setLnInvoiceErr]   = useState<string | null>(null);
   const [lnFeeBreakdown, setLnFeeBreakdown] = useState<SparkFeeBreakdown | null>(null);
+  // Invoice senza importo ("Qualsiasi importo"): l'SDK esige un amount esplicito
+  const [lnSendAmountStr, setLnSendAmountStr] = useState("");
+  const lnIsAmountless = isLightning && lnInvoice.trim() !== "" && detectBolt11Amountless(lnInvoice);
   const [lnPaymentId,    setLnPaymentId]    = useState<string | null>(null);
   const lightningBalanceSat = isLightning ? (spark?.walletInfo?.balanceSat ?? null) : null;
 
@@ -2356,10 +2373,23 @@ function SendView({ onBack, onSuccess }: { onBack: () => void; onSuccess: () => 
     // ── Lightning ─────────────────────────────────────────────────────────────
     if (isLightning) {
       if (!lnInvoice.trim()) { setLnInvoiceErr("Inserisci un invoice Lightning (BOLT11)."); return; }
+      // Invoice senza importo → l'importo digitato dall'utente è obbligatorio
+      let lnAmountSat: bigint | undefined;
+      if (lnIsAmountless) {
+        const n = parseInt(lnSendAmountStr.trim(), 10);
+        if (!Number.isFinite(n) || n <= 0 || String(n) !== lnSendAmountStr.trim()) {
+          setLnInvoiceErr("Questa invoice non specifica un importo: inserisci l'importo in satoshi (numero intero maggiore di zero).");
+          return;
+        }
+        lnAmountSat = BigInt(n);
+      }
       setLnInvoiceErr(null);
       setStep("confirming-gas");
       try {
-        const breakdown = await spark!.calculateSendFee({ paymentRequest: lnInvoice }, "fee_excluded");
+        const breakdown = await spark!.calculateSendFee(
+          { paymentRequest: lnInvoice, ...(lnAmountSat !== undefined ? { amountSat: lnAmountSat } : {}) },
+          "fee_excluded",
+        );
         // Verifica saldo Lightning sufficiente
         if (lightningBalanceSat !== null && breakdown.totalDebitSat > lightningBalanceSat) {
           setLnInvoiceErr(
@@ -2371,7 +2401,12 @@ function SendView({ onBack, onSuccess }: { onBack: () => void; onSuccess: () => 
         setLnFeeBreakdown(breakdown);
         setStep("confirm");
       } catch (e) {
-        setLnInvoiceErr(e instanceof Error ? e.message : "Errore nel calcolo fee Lightning.");
+        const raw = e instanceof Error ? e.message : "";
+        // Rete di sicurezza: errore SDK per invoice senza importo → messaggio umano
+        const msg = raw.includes("Amount must not be less than the invoice amount")
+          ? "Questa invoice non specifica un importo valido. Inserisci l'importo in satoshi nel campo dedicato."
+          : raw || "Errore nel calcolo fee Lightning.";
+        setLnInvoiceErr(msg);
         setStep("form");
       }
       return;
@@ -2444,7 +2479,15 @@ function SendView({ onBack, onSuccess }: { onBack: () => void; onSuccess: () => 
             return;
           }
         }
-        const { result } = await spark!.send({ paymentRequest: lnInvoice }, lnFeeBreakdown!);
+        // Per invoice senza importo l'SDK esige l'amount anche in send:
+        // riusiamo ESATTAMENTE l'importo del quote (recipientAmountSat), mai re-parse dell'input
+        const { result } = await spark!.send(
+          {
+            paymentRequest: lnInvoice,
+            ...(lnIsAmountless ? { amountSat: lnFeeBreakdown!.recipientAmountSat } : {}),
+          },
+          lnFeeBreakdown!,
+        );
         setPin("");
         setLnPaymentId(result.paymentId);
         // Finding 4: await — il pagamento completato DEVE essere nello storico.
@@ -2547,6 +2590,24 @@ function SendView({ onBack, onSuccess }: { onBack: () => void; onSuccess: () => 
             autoCapitalize="none"
             spellCheck={false}
           />
+          {/* Invoice "Qualsiasi importo" → campo importo obbligatorio (l'SDK lo esige) */}
+          {lnIsAmountless && (
+            <>
+              <label className="aw-label" style={{ marginTop: 10 }}>Importo (sat)</label>
+              <input
+                className="aw-input"
+                type="text"
+                inputMode="numeric"
+                value={lnSendAmountStr}
+                onChange={e => { setLnSendAmountStr(e.target.value.replace(/[^0-9]/g, "")); setLnInvoiceErr(null); }}
+                placeholder="es. 5000"
+                autoComplete="off"
+              />
+              <p className="aw-sub" style={{ fontSize: "0.78rem", margin: "4px 0 0" }}>
+                ⚡ Questa invoice non specifica un importo: indica tu quanti satoshi inviare.
+              </p>
+            </>
+          )}
           {lnInvoiceErr && <div className="aw-error">{lnInvoiceErr}</div>}
           <p className="aw-sub" style={{ fontSize: "0.78rem", margin: "4px 0 0" }}>
             Incolla un invoice BOLT11 generato dal destinatario.
@@ -2555,7 +2616,7 @@ function SendView({ onBack, onSuccess }: { onBack: () => void; onSuccess: () => 
           <div className="aw-btn-row">
             <button className="aw-btn aw-btn--secondary" onClick={onBack}>Annulla</button>
             <button className="aw-btn aw-btn--primary" onClick={handleProceed}
-              disabled={step === "confirming-gas" || !lnInvoice.trim()}>
+              disabled={step === "confirming-gas" || !lnInvoice.trim() || (lnIsAmountless && !lnSendAmountStr.trim())}>
               {step === "confirming-gas" ? "Calcolo fee…" : "Rivedi →"}
             </button>
           </div>

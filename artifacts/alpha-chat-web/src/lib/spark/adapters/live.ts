@@ -131,6 +131,8 @@ export class LiveSparkAdapter implements BreezSparkAdapter {
     const sdk = this._assertSdk();
     const raw = await (sdk["prepareSendPayment"] as (r: unknown) => Promise<unknown>)({
       paymentRequest: req.paymentRequest,
+      // amount è bigint nel WASM (PrepareSendPaymentRequest.amount?: bigint) —
+      // diverso da amountSats (number) usato in receive
       ...(req.amountSat !== undefined ? { amount: req.amountSat } : {}),
     }) as Record<string, unknown>;
 
@@ -145,6 +147,8 @@ export class LiveSparkAdapter implements BreezSparkAdapter {
     const sdk = this._assertSdk();
     const raw = await (sdk["sendPayment"] as (r: unknown) => Promise<unknown>)({
       paymentRequest: req.paymentRequest,
+      // amount è bigint nel WASM (SendPaymentRequest.amount: bigint) —
+      // diverso da amountSats (number) usato in receive
       ...(req.amountSat !== undefined ? { amount: req.amountSat } : {}),
     }) as Record<string, unknown>;
 
