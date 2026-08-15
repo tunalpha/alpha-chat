@@ -892,13 +892,30 @@ function OverviewView({ onNavigate }: { onNavigate: (v: WalletSubView) => void }
       <div className="aw-actions">
         {/* Invia/Ricevi: per Lightning usa i flussi Spark/Breez; per BTC/EVM usa i flussi on-chain */}
         <button className="aw-action-btn" onClick={() => onNavigate("send")}>
-          📤<br /><small>Invia</small>
+          {/* Crypto send: freccia diagonale su-destra da cerchio */}
+          <svg viewBox="0 0 24 24" fill="none" width="26" height="26" stroke="#8b5cf6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="10"/>
+            <line x1="8" y1="16" x2="16" y2="8"/>
+            <polyline points="10 8 16 8 16 14"/>
+          </svg>
+          <small>Invia</small>
         </button>
         <button className="aw-action-btn" onClick={() => onNavigate("receive")}>
-          📥<br /><small>Ricevi</small>
+          {/* Crypto receive: freccia giù nel cerchio */}
+          <svg viewBox="0 0 24 24" fill="none" width="26" height="26" stroke="#22c55e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="10"/>
+            <line x1="12" y1="8" x2="12" y2="16"/>
+            <polyline points="8 12 12 16 16 12"/>
+          </svg>
+          <small>Ricevi</small>
         </button>
         <button className="aw-action-btn" onClick={() => onNavigate("history")}>
-          📋<br /><small>Storico</small>
+          {/* Storico: orologio con freccia circolare */}
+          <svg viewBox="0 0 24 24" fill="none" width="26" height="26" stroke="rgba(255,255,255,.85)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="12 8 12 12 14.5 14.5"/>
+            <path d="M3.05 11a9 9 0 1 1 .5 4M3 16v-5h5"/>
+          </svg>
+          <small>Storico</small>
         </button>
         <button className="aw-action-btn" onClick={() => onNavigate("notifications")} style={{ position: "relative" }}>
           🔔<br /><small>Notifiche</small>
