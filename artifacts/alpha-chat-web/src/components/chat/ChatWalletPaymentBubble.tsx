@@ -10,12 +10,18 @@
  *   1. IDB locale (getTxRecordByHash) — istantaneo
  *   2. eth_getTransactionReceipt diretto via backend — fallback se IDB = pending
  *      Aggiorna anche IDB così i check successivi sono veloci.
+ *
+ * HISTORY + NOTIFICATIONS SAFETY NET:
+ *   Quando status diventa "confirmed" (da qualunque livello), questo componente
+ *   bootstrappa il record IDB e la notifica se il tx-monitor non ha ancora girato.
+ *   Idempotente: ref guard (sessione) + getTxRecordByHash (cross-sessione).
  */
 
 import { useState, useEffect, useMemo, useRef } from "react";
 import type { SupportedNetwork } from "../../wallet/bridge/chat-wallet-bridge";
 import { NETWORK_CHAIN_IDS }    from "../../wallet/bridge/chat-wallet-bridge";
-import { getTxRecordByHash, updateTxStatus } from "../../wallet/services/tx-store";
+import { getTxRecordByHash, saveTxRecord, updateTxStatus } from "../../wallet/services/tx-store";
+import { dispatchWalletNotification } from "../../wallet/notifications/wallet-notification-store";
 import { apiWalletGetEvmReceipt } from "../../lib/alpha-wallet-api";
 import "./ChatWalletPaymentBubble.css";
 
@@ -149,6 +155,77 @@ export function ChatWalletPaymentBubble({ meta, isMine }: Props) {
 
   const netName = NETWORK_NAMES[network] ?? network;
   const netIcon = NETWORK_ICONS[network] ?? "⬡";
+
+  // ── History + Notifications safety net ──────────────────────────────────
+  //
+  // Problema: useLiveTxStatus Level 2 (apiWalletGetEvmReceipt) risolve "confirmed"
+  // senza creare il record IDB quando il tx-monitor non ha ancora girato. La bolla
+  // mostra "Pagamento completato" ma History e Notifications restano vuote.
+  //
+  // Fix: quando status diventa "confirmed", bootstrappiamo il record IDB e la
+  // notifica se non esistono ancora. Il tx-monitor rimane il path principale;
+  // questo è un safety net che copre il gap di timing.
+  //
+  // Idempotenza garantita a due livelli:
+  //   1. bootstrappedRef: session-level guard (stesso render multiplo → 1 sola volta)
+  //   2. getTxRecordByHash: cross-session guard (reload → salta se già presente)
+  //
+  // direction = isMine ? "out" : "in"  (NON meta.direction, sempre "out")
+  const bootstrappedRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (status !== "confirmed") return;
+    if (!txHash) return;
+
+    const chainId = (NETWORK_CHAIN_IDS as Record<string, number>)[network] ?? 0;
+    if (chainId === 0) return; // Bitcoin: nessun receipt EVM disponibile
+
+    const dir: "out" | "in" = isMine ? "out" : "in";
+    const guardKey = `${chainId}:${txHash}:${dir}`;
+
+    // Livello 1: se già bootstrappato in questa sessione, esci subito
+    if (bootstrappedRef.current === guardKey) return;
+    bootstrappedRef.current = guardKey;
+
+    void (async () => {
+      try {
+        // Livello 2: se il record esiste già in IDB (tx-monitor già passato), skip
+        const existing = await getTxRecordByHash(txHash);
+        if (existing) return;
+
+        const now = Date.now();
+        const id  = `${chainId}:${txHash}:${dir}:`;
+
+        // Salva in IDB tx-store (dedup interno per id)
+        await saveTxRecord({
+          id,
+          chainId,
+          network:   netName,
+          txHash,
+          direction: dir,
+          asset:     assetSymbol,
+          amount,
+          timestamp: now,
+          status:    "confirmed",
+          updatedAt: now,
+        });
+
+        // Dispatch notifica (dedup interno via buildDedupKey in dispatchWalletNotification)
+        await dispatchWalletNotification({
+          type:      isMine ? "sent" : "received",
+          chainId,
+          network:   netName,
+          asset:     assetSymbol,
+          amount,
+          txHash,
+          timestamp: now,
+          status:    "confirmed",
+        });
+      } catch {
+        // Safety net non-critico: il tx-monitor coprirà il gap nel prossimo ciclo
+      }
+    })();
+  }, [status, txHash, network, isMine, assetSymbol, amount, netName]);
 
   // Direzione — derivata da isMine (prospettiva del viewer) invece di meta.direction.
   // meta.direction è sempre "out" (prospettiva del mittente al momento della creazione):

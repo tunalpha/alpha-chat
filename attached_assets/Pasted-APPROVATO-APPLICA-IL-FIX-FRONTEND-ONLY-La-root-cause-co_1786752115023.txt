@@ -1,0 +1,221 @@
+APPROVATO — APPLICA IL FIX FRONTEND-ONLY.
+
+La root cause è confermata.
+
+Non modificare il backend.
+
+Non modificare:
+- BSC
+- WalletConnect
+- signing
+- tx-monitor
+- USDA payment flow
+- usda.service.ts
+- ChatPage WS handlers
+
+FIX DA APPLICARE:
+solo ChatWalletPaymentBubble.tsx.
+
+Implementa il safety net quando il pagamento passa realmente a:
+
+status = "confirmed"
+
+usando i dati già presenti in WalletPaymentMeta:
+
+- txHash
+- network / chainId
+- assetSymbol
+- amount
+- fee
+- isMine
+- timestamp disponibile
+
+Il record deve essere creato con direction calcolata dal viewer:
+
+isMine ? "out" : "in"
+
+NON usare meta.direction per determinare la direzione.
+
+==================================================
+IDEMPOTENZA — OBBLIGATORIA
+==================================================
+
+Il useEffect NON deve eseguire saveTxRecord/dispatchWalletNotification ad ogni render.
+
+Deve essere protetto da una chiave deterministica, ad esempio:
+
+chainId + txHash + direction
+
+oppure verificando prima getTxRecordByHash/getTxRecord.
+
+Obiettivo:
+
+stessa TX:
+- stesso render → 1 record
+- re-render → 1 record
+- WS duplicate → 1 record
+- reload/backfill → 1 record
+- notification → 1 sola
+
+NON creare notifiche duplicate.
+
+==================================================
+ORDINE CORRETTO
+==================================================
+
+Quando status diventa confirmed:
+
+1. verificare txHash valido;
+2. determinare chainId/network;
+3. determinare direction con isMine;
+4. verificare se il record esiste già;
+5. se non esiste → saveTxRecord();
+6. dispatchWalletNotification() SOLO se necessario e in modo idempotente;
+7. NON alterare lo stato della transazione;
+8. NON inviare nuovamente la TX.
+
+Se il record esiste già:
+→ NON creare un secondo record;
+→ NON creare una seconda notifica.
+
+==================================================
+IMPORTANTISSIMO
+==================================================
+
+Il safety net deve essere legato alla CONFERMA REALE della TX.
+
+Non salvare la TX semplicemente perché il meta status dice "sent".
+
+Il trigger deve essere il confirmed derivato da useLiveTxStatus / receipt reale.
+
+==================================================
+DIREZIONE
+==================================================
+
+Sender:
+isMine === true
+→ OUT
+→ 🚀 CRIPTO INVIATA
+
+Receiver:
+isMine === false
+→ IN
+→ 📩 CRIPTO RICEVUTA
+
+Questo deve essere coerente con il fix già applicato alla bolla.
+
+==================================================
+BOLLA USDA
+==================================================
+
+NON perdere i fix già applicati:
+
+- effectiveDirection = isMine ? "out" : "in"
+- wallet_payment → payment-bubble
+
+La bolla deve mantenere le dimensioni corrette.
+
+==================================================
+TEST OBBLIGATORI
+==================================================
+
+Aggiungi test specifici:
+
+1. confirmed + IDB assente
+   → saveTxRecord chiamato una volta
+
+2. confirmed + IDB già presente
+   → nessun duplicato
+
+3. stesso confirmed renderizzato più volte
+   → 1 record
+
+4. sender
+   → direction out
+
+5. receiver
+   → direction in
+
+6. notification sender
+   → "sent"
+
+7. notification receiver
+   → "received"
+
+8. txHash mancante
+   → nessun record falso
+
+9. status sent
+   → NON salvare come confirmed
+
+10. BSC/USDT regression
+   → invariato
+
+11. USDA/Polygon
+   → funzionante
+
+12. bubble dimensions
+   → invariato/corretto
+
+==================================================
+BUILD + TEST
+==================================================
+
+Build obbligatoria.
+
+Tutti i test devono passare.
+
+NON dichiarare production verified solo dai test automatici.
+
+==================================================
+TEST REALE OBBLIGATORIO
+==================================================
+
+Dopo deploy controllato fare una nuova transazione USDA reale:
+
+Sender:
+- chat completata
+- History OUT
+- Notification SENT
+
+Receiver:
+- chat completata
+- History IN
+- Notification RECEIVED
+
+Poi reload:
+- record ancora presente
+- notifica ancora presente
+- nessun duplicato.
+
+Verificare anche:
+
+- bolla USDA dimensione corretta;
+- sender = CRIPTO INVIATA;
+- receiver = CRIPTO RICEVUTA.
+
+BSC già PASS reale → NON TOCCARE.
+
+==================================================
+OUTPUT
+==================================================
+
+ROOT CAUSE = CONFIRMED
+FIX = APPLIED
+FILES MODIFIED
+BUILD
+TEST X/X
+USDA SENDER HISTORY
+USDA RECEIVER HISTORY
+USDA SENDER NOTIFICATION
+USDA RECEIVER NOTIFICATION
+DIRECTION
+BUBBLE SIZE
+RELOAD
+DUPLICATES
+BSC REGRESSION
+DEPLOY STATUS
+
+FINCHÉ UNA TX USDA REALE NON PASSA HISTORY + NOTIFICATIONS SU ENTRAMBI I LATI:
+
+DEPLOY STATUS = BLOCKED.
