@@ -2360,7 +2360,11 @@ function SendView({ onBack, onSuccess }: { onBack: () => void; onSuccess: () => 
   const [lnFeeBreakdown, setLnFeeBreakdown] = useState<SparkFeeBreakdown | null>(null);
   // Invoice senza importo ("Qualsiasi importo"): l'SDK esige un amount esplicito
   const [lnSendAmountStr, setLnSendAmountStr] = useState("");
-  const lnIsAmountless = isLightning && lnInvoice.trim() !== "" && detectBolt11Amountless(lnInvoice);
+  // Fallback: se l'SDK rifiuta per importo mancante ma il rilevatore HRP non
+  // aveva classificato l'invoice come amount-less, forziamo il campo importo
+  const [lnForceAmountless, setLnForceAmountless] = useState(false);
+  const lnIsAmountless = isLightning && lnInvoice.trim() !== ""
+    && (lnForceAmountless || detectBolt11Amountless(lnInvoice));
   const [lnPaymentId,    setLnPaymentId]    = useState<string | null>(null);
   const lightningBalanceSat = isLightning ? (spark?.walletInfo?.balanceSat ?? null) : null;
 
@@ -2402,11 +2406,18 @@ function SendView({ onBack, onSuccess }: { onBack: () => void; onSuccess: () => 
         setStep("confirm");
       } catch (e) {
         const raw = e instanceof Error ? e.message : "";
-        // Rete di sicurezza: errore SDK per invoice senza importo → messaggio umano
-        const msg = raw.includes("Amount must not be less than the invoice amount")
-          ? "Questa invoice non specifica un importo valido. Inserisci l'importo in satoshi nel campo dedicato."
-          : raw || "Errore nel calcolo fee Lightning.";
-        setLnInvoiceErr(msg);
+        // Rete di sicurezza: errore SDK per importo mancante → mostra il campo
+        // importo anche se il rilevatore HRP non aveva riconosciuto l'invoice
+        if (raw.includes("Amount must not be less than the invoice amount")) {
+          setLnForceAmountless(true);
+          setLnInvoiceErr(
+            lnAmountSat !== undefined
+              ? "L'SDK ha rifiutato l'importo indicato: verifica l'importo in satoshi e riprova."
+              : "Questa invoice non specifica un importo: inserisci qui sotto l'importo in satoshi da inviare.",
+          );
+        } else {
+          setLnInvoiceErr(raw || "Errore nel calcolo fee Lightning.");
+        }
         setStep("form");
       }
       return;
@@ -2584,7 +2595,7 @@ function SendView({ onBack, onSuccess }: { onBack: () => void; onSuccess: () => 
             className={`aw-input${lnInvoiceErr ? " aw-input--error" : ""}`}
             style={{ minHeight: 90, fontFamily: "monospace", fontSize: "0.78rem", resize: "vertical" }}
             value={lnInvoice}
-            onChange={e => { setLnInvoice(e.target.value.trim()); setLnInvoiceErr(null); }}
+            onChange={e => { setLnInvoice(e.target.value.trim()); setLnInvoiceErr(null); setLnForceAmountless(false); setLnSendAmountStr(""); }}
             placeholder="lnbc…"
             autoComplete="off"
             autoCapitalize="none"
