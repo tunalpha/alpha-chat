@@ -256,7 +256,7 @@ function AlphaWalletInner({ onBack }: Props) {
       case "seed-export-lightning":
         return <LightningSeedExportView onBack={() => setSubView("security")} />;
       case "wallet-settings":
-        return <WalletSettingsView onBack={() => setSubView("overview")} onGoSecurity={() => setSubView("security")} onGoSeedExport={() => setSubView("seed-export")} onLockAndExit={onBack} />;
+        return <WalletSettingsView onBack={() => setSubView("overview")} onGoSecurity={() => setSubView("security")} onGoSeedExport={() => setSubView("seed-export")} onGoSeedExportLightning={() => setSubView("seed-export-lightning")} onLockAndExit={onBack} />;
       case "portfolio":
         return <PortfolioView
           onBack={() => setSubView("overview")}
@@ -3252,14 +3252,17 @@ function WalletSettingsView({
   onBack,
   onGoSecurity,
   onGoSeedExport,
+  onGoSeedExportLightning,
   onLockAndExit,
 }: {
   onBack: () => void;
   onGoSecurity: () => void;
   onGoSeedExport: () => void;
+  onGoSeedExportLightning: () => void;
   onLockAndExit?: () => void;
 }) {
   const wallet = useWallet();
+  const spark  = useSparkWalletOptional();
   const { currency, setCurrency } = useWalletCurrency();
   const { walletFaceIdEnabled, setWalletFaceIdEnabled } = useWalletFaceId();
   const lock = useLock();
@@ -3614,6 +3617,15 @@ function WalletSettingsView({
           <span className="aw-settings-item-label">Recovery phrase</span>
           <span className="aw-settings-item-chevron">›</span>
         </button>
+
+        {/* Recovery phrase Bitcoin / Lightning — solo se Spark abilitato */}
+        {spark?.isEnabled && (
+          <button className="aw-settings-item" onClick={onGoSeedExportLightning}>
+            <span className="aw-settings-item-icon">⚡</span>
+            <span className="aw-settings-item-label">Recovery phrase Bitcoin / Lightning</span>
+            <span className="aw-settings-item-chevron">›</span>
+          </button>
+        )}
 
         {/* Stato backup */}
         <div className="aw-settings-item aw-settings-item--info">
