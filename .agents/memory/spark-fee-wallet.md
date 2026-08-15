@@ -39,9 +39,34 @@ PATCH /api/v1/spark/fee-wallet/configure-address  # super_admin — imposta fee_
 - Validation: deve iniziare con `sp1` o `sprt`, min 20 char
 - Come ottenere: `getInfo().sparkAddress` via SDK (browser PoC o backend)
 
+## Fee Wallet attivo (generato da agente)
+
+- **SparkAddress**: `sp1qdalx0t5eqvjg9740pwxdx8a4g6l4jc848feshf0eux64g7lr58r5wdemqg`
+- **PubkeyHex**: `037bf33d74c8192417d5785c6698fdaa35facb07a9d3985d2fcf0daaa3df1d0e3a`
+- **Env var mnemonic**: `ALPHA_SPARK_FEE_MNEMONIC` (settata, mai esposta)
+- **Env var address**: `ALPHA_SPARK_FEE_ADDRESS` (settata)
+- **MongoDB**: `sparkfeeconfigs._id='spark-fee'.fee_address` configurato
+
+## Derivazione offline (no network) tramite SDK WASM Node.js
+
+```javascript
+// defaultExternalSigner(mnemonic, passphrase, network, keySetConfig)
+// network = 'mainnet' (lowercase!) — 'MAINNET' causa errore variant
+const sdk = require('@breeztech/breez-sdk-spark/nodejs');
+const signer = sdk.defaultExternalSigner(mnemonic, '', 'mainnet', null);
+const pk = signer.identityPublicKey(); // { bytes: number[] } — non Uint8Array!
+signer.free();
+const pubkeyBytes = Buffer.from(pk.bytes); // 33 bytes
+// Bech32m encode HRP 'sp'
+const bm = require('bech32/dist/index.js');
+const sparkAddress = bm.bech32m.encode('sp', bm.bech32m.toWords(pubkeyBytes));
+```
+
+**Nota importante**: `identityPublicKey()` ritorna `{ bytes: number[] }`, NON Uint8Array — `pk.bytes` è l'array.
+
 ## Mnemonic
 
-- Secret: `ALPHA_SPARK_FEE_MNEMONIC` (Replit Secret — mai nel codice)
+- Secret: `ALPHA_SPARK_FEE_MNEMONIC` (Replit env var — mai nel codice)
 - Formato: BIP39 24 parole (256 bit)
 - `mnemonicConfigured`: boolean flag nell'API (mai il valore)
 - Sweep design: `BTC_FEE_WALLET` env come treasury address; soglia `SPARK_SWEEP_THRESHOLD_SAT` (default 10000 sat)
