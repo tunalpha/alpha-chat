@@ -13,4 +13,6 @@ description: Breez SDK esige amount esplicito per BOLT11 amount-less; contratto 
 - `PrepareSendPaymentRequest.amount?: bigint` e `SendPaymentRequest.amount: bigint` → forwarding bigint, MAI `Number()`
 - receive `bolt11Invoice.amountSats: number` → conversione `Number()` necessaria
 
+**Fallback obbligatorio:** il rilevatore HRP può sbagliare su invoice reali (visto in campo). Se l'SDK risponde "Amount must not be less than the invoice amount", forzare comunque la visualizzazione del campo importo (`lnForceAmountless`) invece di mostrare solo l'errore — mai lasciare l'utente in vicolo cieco.
+
 **Why:** una prima implementazione convertiva a Number "per coerenza col receive" — la review architetturale l'ha bloccata confrontando il .d.ts. Verificare sempre il contratto in `public/spark/breez_sdk_spark_wasm.d.ts` prima di passare nuovi campi all'SDK.
