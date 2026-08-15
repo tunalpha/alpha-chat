@@ -1,0 +1,111 @@
+TASK SUCCESSIVA — VERIFICA E ATTIVAZIONE RACCOLTA FEE LIGHTNING
+
+Il wallet commissioni Alpha Spark è ora configurato:
+
+- ALPHA_SPARK_FEE_MNEMONIC presente nei Replit Secrets
+- ALPHA_SPARK_FEE_ADDRESS configurato
+- Spark Address configurato in MongoDB
+- wallet visibile in Admin → Spark / Lightning Fee
+- payment flow principale già blindato e NON deve essere modificato
+
+OBIETTIVO:
+verificare end-to-end che una fee Lightning reale venga effettivamente raccolta nel nuovo Alpha Spark Fee Wallet.
+
+SCOPE LOCK ASSOLUTO:
+
+NON modificare:
+- prepareSend()
+- sendPayment()
+- spark.send() del pagamento principale
+- spark-send-guard.ts
+- polling/transazione principale
+- calculateSendFee()
+- calculateSparkFeeBreakdown()
+- logica BTC on-chain
+- logica EVM/USDA
+- WalletConnect/Thirdweb
+- ChatPage
+- recovery phrase del wallet principale
+
+La raccolta fee deve rimanere completamente separata dal main payment.
+
+FASE 1 — AUDIT PRIMA DEL TEST
+
+Verifica dal codice che:
+
+1. Dopo un main payment Lightning SUCCESS, la fee venga registrata come pending_collection.
+2. collectFee() venga eseguito SOLO dopo il successo del pagamento principale.
+3. Se fee_address è configurato, venga effettuato il secondo pagamento verso ALPHA_SPARK_FEE_ADDRESS.
+4. Un errore nella raccolta fee NON possa mai trasformare un main payment riuscito in un errore.
+5. L'idempotenza impedisca una doppia raccolta della stessa fee.
+6. Tier 2 recuperi correttamente eventuali pending_collection alla riapertura/login.
+7. Admin mostri correttamente pending / collected / failed / swept.
+8. Il ledger MongoDB registri mainPaymentId, userId, feeAmountSat, feePaymentId e status.
+
+FASE 2 — TEST REALE
+
+Prima di muovere fondi reali, verifica che tutti i test automatici siano verdi.
+
+Poi prepara un test reale con un importo Lightning piccolo e controllato.
+
+IMPORTANTE:
+- non modificare il main payment;
+- non aumentare la fee;
+- non fare test multipli;
+- non fare retry manuali;
+- non effettuare sweep;
+- non trasferire fondi dal fee wallet al Treasury.
+
+Esegui UNA SOLA transazione reale di test.
+
+Dopo il test verifica separatamente:
+
+A) Main payment
+- destinatario ha ricevuto l'importo corretto;
+- main payment risulta SUCCESS.
+
+B) Fee
+- MongoDB contiene il fee record;
+- status = success;
+- feeAmountSat corretto;
+- feePaymentId presente;
+- mainPaymentId associato correttamente.
+
+C) Fee wallet
+- il pagamento fee è realmente arrivato al nuovo Spark Address Alpha;
+- verifica il saldo/history del fee wallet, non solo MongoDB.
+
+D) Admin
+- la fee appare nella sezione Admin → Spark / Lightning Fee;
+- statistiche aggiornate;
+- storico aggiornato.
+
+FASE 3 — FALLIMENTO
+
+Verifica anche che, se il secondo pagamento fee fallisce:
+
+- il main payment rimanga SUCCESS;
+- il record rimanga pending_collection;
+- nessun doppio addebito venga effettuato;
+- Tier 2 possa recuperarlo successivamente.
+
+NON simulare errori sul main payment e NON modificare il main payment flow per fare questo test.
+
+FASE 4 — REPORT
+
+Alla fine restituiscimi SOLO:
+
+1. Main payment: PASS/FAIL
+2. Fee collection: PASS/FAIL
+3. Fee realmente ricevuta dal wallet Alpha: PASS/FAIL
+4. MongoDB ledger: PASS/FAIL
+5. Admin panel: PASS/FAIL
+6. Idempotenza: PASS/FAIL
+7. Recovery pending fee: PASS/FAIL
+8. Test automatici: X/X
+9. File modificati
+10. Conferma esplicita: "MAIN PAYMENT FLOW NON MODIFICATO"
+
+Se trovi un problema nella raccolta fee, fermati e correggi SOLO il sistema fee.
+
+NON fare refactoring generale e NON toccare il payment flow già blindato.

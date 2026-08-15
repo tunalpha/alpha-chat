@@ -41,8 +41,10 @@ export type FeeRecordStatus =
 export type FeeRecordSource = "btc_onchain" | "spark_lightning";
 
 export interface IAlphaWalletFeeRecord {
-  /** Idempotency key = txHash della TX principale del pagamento */
+  /** Idempotency key = "spark_" + mainPaymentId oppure mainTxHash per BTC */
   _id:        string;
+  /** ID del pagamento Lightning principale — campo esplicito per query e audit */
+  mainPaymentId?: string;
   network:    string;
   assetSymbol: string;
   /** Importo fee in formato human-readable (es. "9 sat") */
@@ -86,9 +88,11 @@ const FeeRecordSchema = new mongoose.Schema<IAlphaWalletFeeRecord>(
     assetSymbol: { type: String, required: true },
     feeAmount:   { type: String, required: true },
     feeWallet:   { type: String, required: true },
+    /** ID esplicito del pagamento Lightning principale (per query e audit) */
+    mainPaymentId: { type: String },
     status:      {
       type:    String,
-      enum:    ["success", "failed_transient", "failed_permanent"],
+      enum:    ["pending_collection", "success", "failed_transient", "failed_permanent", "swept"],
       required: true,
     },
     attempts:    { type: Number, required: true, min: 1 },

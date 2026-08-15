@@ -117,16 +117,17 @@ export async function recordSparkFee(
       { _id: recordId },
       {
         $setOnInsert: {
-          _id:          recordId,
-          network:      SPARK_NETWORK,
-          assetSymbol:  SPARK_ASSET,
-          feeAmount:    feeAmountStr,
+          _id:           recordId,
+          mainPaymentId: payload.paymentHash,   // campo esplicito per audit e query
+          network:       SPARK_NETWORK,
+          assetSymbol:   SPARK_ASSET,
+          feeAmount:     feeAmountStr,
           feeAmountSat,
-          feeWallet:    payload.feeWallet || "pending-wallet-setup",
-          status:       "pending_collection",   // C2+A: inizia sempre come pending
-          attempts:     1,
-          source:       SPARK_SOURCE,
-          userId:       payload.userId ?? null,
+          feeWallet:     payload.feeWallet || "pending-wallet-setup",
+          status:        "pending_collection",  // C2+A: inizia sempre come pending
+          attempts:      1,
+          source:        SPARK_SOURCE,
+          userId:        payload.userId ?? null,
         },
       },
       { upsert: true, returnDocument: "after" },
