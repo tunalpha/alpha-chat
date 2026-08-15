@@ -1,0 +1,44 @@
+Sì. Questo report dell’agente è finalmente coerente con quello che vediamo nelle schermate, e soprattutto ha rispettato il vincolo fondamentale: non ha toccato la logica di invio.
+
+La diagnosi è molto precisa:
+
+* chat-wallet-bridge-context.tsx salva già il record outgoing come pending.
+* Il monitor lo porta a confirmed.
+* Però nel percorso _reconcilePendingEvm non parte la notifica.
+* Inoltre hasNew resta false, quindi History non viene ricaricata.
+* Il tuo safety-net precedente aveva un ulteriore problema: vedeva il record già presente e faceva return, saltando proprio notifica + refresh.
+
+Quindi il punto non è che il record non esiste necessariamente: può essere già in IndexedDB, ma la UI resta stale e la notifica non viene emessa.
+
+Il fix proposto mi va bene
+
+I due cambiamenti:
+
+1. ChatWalletPaymentBubble.tsx
+    * non fare return solo perché il record esiste;
+    * separare persistenza record da dispatch notification;
+    * notificare anche quando il record esiste già;
+    * callback onConfirmed.
+2. ChatPage.tsx
+    * passare refreshTxHistory() al bubble;
+    * quando la TX outgoing viene confermata, aggiornare immediatamente lo stato della History.
+
+E soprattutto:
+
+NON modificare chat-wallet-bridge-context.tsx, tx-monitor.ts, Alchemy, signing, broadcast, polling o la logica di invio.
+
+Una cosa però gli farei controllare PRIMA di chiudere
+
+Il punto GAP A va verificato con attenzione per evitare notifiche duplicate.
+
+Se _processEvmTx trova successivamente la stessa TX e fa già:
+
+dispatchWalletNotification({ type: "sent" })
+
+mentre il nuovo safety-net fa anch’esso dispatch, bisogna assicurarsi che la notifica sia idempotente/deduplicata per txHash.
+
+Quindi il criterio finale è:
+
+una TX outgoing confermata → esattamente 1 record History + esattamente 1 notifica, indipendentemente dall’ordine in cui arrivano bridge, reconcile e Alchemy.
+
+Per il resto, approverei questo fix minimo. È molto più pulito dei workaround precedenti e lascia completamente intatto il send che funziona.

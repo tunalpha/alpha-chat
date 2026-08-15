@@ -3,6 +3,26 @@ name: USDA History + Notifications safety net
 description: Root cause e fix del gap tra useLiveTxStatus Level 2 receipt e mancata persistenza IDB per USDA Alpha Wallet payments
 ---
 
+## Audit completo percorso outgoing (sender)
+
+**Gap A — Notifiche**: né il bridge (`saveTxRecord({status:"pending"})`) né
+`_reconcilePendingEvm` (`updateTxStatus`) chiamano `dispatchWalletNotification`.
+Solo `_processEvmTx` lo fa — ma solo se Alchemy trova la TX nel range di blocchi
+del poll corrente (race condition). La notifica del SENDER è permanentemente persa
+finché il tx-monitor non trova la TX via Alchemy.
+
+**Gap B — History React state**: `_reconcilePendingEvm` aggiorna IDB senza
+impostare `hasNew=true` → `onNewTransaction` NON fires → `_refreshTxHistory` NON
+chiamata → React state `txHistory` stale. Il record bridge È in IDB ma la UI non
+si aggiorna.
+
+**Gap C — Bug nel safety net originale**: `if (existing) return` usciva senza
+dispatch notification quando il bridge record esisteva già.
+
+**Perché incoming (receiver) funziona**: nessun bridge record → `_processEvmTx`
+via Alchemy → record + notification + `hasNew=true` → `onNewTransaction` →
+`_refreshTxHistory`. Percorso completo.
+
 ## Root cause
 
 `useLiveTxStatus` Level 2 (`apiWalletGetEvmReceipt`) risolve "confirmed" nella bolla

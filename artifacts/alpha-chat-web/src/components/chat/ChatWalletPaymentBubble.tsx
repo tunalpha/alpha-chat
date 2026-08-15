@@ -41,8 +41,11 @@ export interface WalletPaymentMeta {
 }
 
 interface Props {
-  meta:      WalletPaymentMeta;
-  isMine:    boolean;
+  meta:          WalletPaymentMeta;
+  isMine:        boolean;
+  /** Callback opzionale chiamata dopo che il safety net ha confermato la TX.
+   *  Il chiamante (es. ChatPage) può usarla per aggiornare il React state di History. */
+  onConfirmed?:  () => void;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────
@@ -147,7 +150,7 @@ function useLiveTxStatus(
 
 // ─── Component ────────────────────────────────────────────────────────────
 
-export function ChatWalletPaymentBubble({ meta, isMine }: Props) {
+export function ChatWalletPaymentBubble({ meta, isMine, onConfirmed }: Props) {
   const { txHash, network, assetSymbol, amount, fee, explorerUrl } = meta;
 
   // Status live — controlla IDB e receipt direttamente, senza dipendere da txMonitor
@@ -189,28 +192,39 @@ export function ChatWalletPaymentBubble({ meta, isMine }: Props) {
 
     void (async () => {
       try {
-        // Livello 2: se il record esiste già in IDB (tx-monitor già passato), skip
-        const existing = await getTxRecordByHash(txHash);
-        if (existing) return;
-
         const now = Date.now();
-        const id  = `${chainId}:${txHash}:${dir}:`;
 
-        // Salva in IDB tx-store (dedup interno per id)
-        await saveTxRecord({
-          id,
-          chainId,
-          network:   netName,
-          txHash,
-          direction: dir,
-          asset:     assetSymbol,
-          amount,
-          timestamp: now,
-          status:    "confirmed",
-          updatedAt: now,
-        });
+        // ── Record IDB ────────────────────────────────────────────────────
+        // Crea il record SOLO se non esiste già (tx-monitor o bridge potrebbero
+        // averlo già scritto). Se esiste, lo lasciamo invariato.
+        const existing = await getTxRecordByHash(txHash);
+        if (!existing) {
+          const id = `${chainId}:${txHash}:${dir}:`;
+          await saveTxRecord({
+            id,
+            chainId,
+            network:   netName,
+            txHash,
+            direction: dir,
+            asset:     assetSymbol,
+            amount,
+            timestamp: now,
+            status:    "confirmed",
+            updatedAt: now,
+          });
+        }
 
-        // Dispatch notifica (dedup interno via buildDedupKey in dispatchWalletNotification)
+        // ── Notifica ──────────────────────────────────────────────────────
+        // Dispatcha SEMPRE: dispatchWalletNotification è idempotente via
+        // buildDedupKey (chainId:txHash:type:logIndex). Se la notifica esiste
+        // già (es. tx-monitor già passato), saveNotification restituisce false
+        // e non crea duplicati.
+        //
+        // CRITICAL: questo è il SOLO punto che dispatcha la notifica per il
+        // percorso outgoing del mittente — né il bridge né _reconcilePendingEvm
+        // lo fanno. La notifica del mittente sarebbe persa finché _processEvmTx
+        // non gira (timing Alchemy). Il dispatch qui garantisce che la notifica
+        // esista non appena la TX è confirmed (via Level 1 IDB o Level 2 receipt).
         await dispatchWalletNotification({
           type:      isMine ? "sent" : "received",
           chainId,
@@ -221,11 +235,18 @@ export function ChatWalletPaymentBubble({ meta, isMine }: Props) {
           timestamp: now,
           status:    "confirmed",
         });
+
+        // ── History refresh ───────────────────────────────────────────────
+        // Notifica il chiamante (ChatPage → WalletContext) che il record IDB
+        // è stato aggiornato/creato, così _refreshTxHistory() aggiorna React
+        // state senza aspettare il prossimo onNewTransaction del tx-monitor.
+        onConfirmed?.();
+
       } catch {
         // Safety net non-critico: il tx-monitor coprirà il gap nel prossimo ciclo
       }
     })();
-  }, [status, txHash, network, isMine, assetSymbol, amount, netName]);
+  }, [status, txHash, network, isMine, assetSymbol, amount, netName, onConfirmed]);
 
   // Direzione — derivata da isMine (prospettiva del viewer) invece di meta.direction.
   // meta.direction è sempre "out" (prospettiva del mittente al momento della creazione):

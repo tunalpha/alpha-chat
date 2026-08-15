@@ -91,11 +91,14 @@ describe("ChatWalletPaymentBubble — safety net History + Notifications", () =>
     });
   });
 
-  // ── CASE 2: confirmed + IDB già presente → skip ────────────────────────
+  // ── CASE 2: confirmed + IDB già presente → skip saveTxRecord, MA dispatch notifica ──
 
-  it("CASE 2 — confirmed + IDB presente: nessun saveTxRecord duplicato", async () => {
+  it("CASE 2 — confirmed + IDB presente: nessun saveTxRecord, MA notifica dispatched", async () => {
+    // Il bridge/tx-monitor ha già salvato un record pending→confirmed.
+    // Il safety net NON crea un secondo record (dedup per id),
+    // MA dispatcha comunque la notifica (il bridge non lo fa mai, solo _processEvmTx).
     mockGetTxRecordByHash.mockResolvedValue({
-      id: `137:${TX_USDA}:out:`,
+      id: `137:${TX_USDA}:out:chat`,   // record del bridge (id con suffisso :chat)
       chainId: 137,
       network: "Polygon",
       txHash: TX_USDA,
@@ -109,26 +112,30 @@ describe("ChatWalletPaymentBubble — safety net History + Notifications", () =>
 
     render(<ChatWalletPaymentBubble meta={makeMeta()} isMine={true} />);
 
-    // Aspetta abbastanza da garantire che il check IDB sia completato
-    await new Promise(r => setTimeout(r, 80));
-
-    expect(mockSaveTxRecord).not.toHaveBeenCalled();
-    expect(mockDispatchNotification).not.toHaveBeenCalled();
+    await waitFor(() => {
+      // Record NON creato (esiste già)
+      expect(mockSaveTxRecord).not.toHaveBeenCalled();
+      // Notifica dispatched comunque (bridge e _reconcilePendingEvm non la dispatcano)
+      expect(mockDispatchNotification).toHaveBeenCalledTimes(1);
+    });
   });
 
-  // ── CASE 3: stesso confirmed, re-render multipli → 1 record ─────────────
+  // ── CASE 3: stesso confirmed, re-render multipli → 1 record, 1 notifica ──
 
-  it("CASE 3 — re-render multipli: 1 solo saveTxRecord (ref guard)", async () => {
+  it("CASE 3 — re-render multipli: 1 solo saveTxRecord + 1 sola notifica (ref guard)", async () => {
     mockGetTxRecordByHash.mockResolvedValue(undefined);
     const meta = makeMeta();
+    const onConfirmed = vi.fn();
 
-    const { rerender } = render(<ChatWalletPaymentBubble meta={meta} isMine={true} />);
+    const { rerender } = render(<ChatWalletPaymentBubble meta={meta} isMine={true} onConfirmed={onConfirmed} />);
     // Forza re-render con stesse props
-    rerender(<ChatWalletPaymentBubble meta={meta} isMine={true} />);
-    rerender(<ChatWalletPaymentBubble meta={meta} isMine={true} />);
+    rerender(<ChatWalletPaymentBubble meta={meta} isMine={true} onConfirmed={onConfirmed} />);
+    rerender(<ChatWalletPaymentBubble meta={meta} isMine={true} onConfirmed={onConfirmed} />);
 
     await waitFor(() => {
       expect(mockSaveTxRecord).toHaveBeenCalledTimes(1);
+      expect(mockDispatchNotification).toHaveBeenCalledTimes(1);
+      expect(onConfirmed).toHaveBeenCalledTimes(1);
     });
   });
 
@@ -279,9 +286,13 @@ describe("ChatWalletPaymentBubble — safety net History + Notifications", () =>
 
 describe("ChatWalletPaymentBubble — idempotenza cross-sessione", () => {
 
-  it("RELOAD — se record già in IDB, skip sia saveTxRecord che notification", async () => {
+  it("RELOAD — se record già in IDB, skip saveTxRecord MA dispatch notifica (idempotente)", async () => {
+    // Scenario: reload dopo che tx-monitor aveva già salvato il record.
+    // Il safety net non crea un secondo record (dedup IDB per id).
+    // MA dispatcha la notifica: dispatchWalletNotification ha dedup interno
+    // → saveNotification ritorna false se dedupKey già presente → no duplicato reale.
     mockGetTxRecordByHash.mockResolvedValue({
-      id: `137:${TX_USDA}:in:`,
+      id: `137:${TX_USDA}:in:`,      // record del tx-monitor
       chainId: 137,
       network: "Polygon",
       txHash: TX_USDA,
@@ -296,10 +307,12 @@ describe("ChatWalletPaymentBubble — idempotenza cross-sessione", () => {
     // Simula secondo mount (dopo reload) con stessa TX
     render(<ChatWalletPaymentBubble meta={makeMeta()} isMine={false} />);
 
-    await new Promise(r => setTimeout(r, 100));
-
-    expect(mockSaveTxRecord).not.toHaveBeenCalled();
-    expect(mockDispatchNotification).not.toHaveBeenCalled();
+    await waitFor(() => {
+      // Record NON creato di nuovo
+      expect(mockSaveTxRecord).not.toHaveBeenCalled();
+      // Notifica dispatched (dedup reale è in saveNotification, non nel mock)
+      expect(mockDispatchNotification).toHaveBeenCalledTimes(1);
+    });
   });
 
   it("DUPLICATE WS — stessa TX montata due volte: saveTxRecord max 1 per istanza (IDB dedup reale)", async () => {

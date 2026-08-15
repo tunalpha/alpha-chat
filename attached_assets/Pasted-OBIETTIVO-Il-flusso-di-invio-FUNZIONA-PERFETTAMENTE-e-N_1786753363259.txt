@@ -1,0 +1,135 @@
+OBIETTIVO
+
+Il flusso di invio FUNZIONA PERFETTAMENTE e NON DEVE ESSERE MODIFICATO.
+
+Le TX outgoing:
+
+* vengono firmate correttamente;
+* vengono inviate correttamente on-chain;
+* vengono confermate;
+* il destinatario riceve correttamente i fondi;
+* la chat del mittente mostra correttamente Pagamento completato.
+
+Il SOLO problema rimasto è:
+
+il wallet che invia non crea/mostra la propria traccia in Storico e Notifiche.
+
+REGOLA ASSOLUTA
+
+NON MODIFICARE IN ALCUN MODO LA LOGICA DI INVIO.
+
+Non modificare:
+
+* wallet signing;
+* WalletConnect;
+* relay;
+* sendTransaction;
+* costruzione della TX;
+* amount;
+* token;
+* chain/network;
+* recipient;
+* gas;
+* polling;
+* receipt;
+* conferma on-chain;
+* gestione errori dell’invio;
+* retry;
+* stato completed;
+* UI della payment bubble;
+* comportamento del destinatario.
+
+NON “rifattorizzare” il send.
+
+NON aggiungere workaround dentro la logica che esegue/invia la transazione.
+
+COSA DEVI INDAGARE
+
+Parti dalla TX outgoing già completata.
+
+Segui esclusivamente il percorso POST-SUCCESSO:
+
+TX confirmed/completed
+→ saveTxRecord
+→ IndexedDB
+→ History
+→ dispatchWalletNotification
+→ Notifications
+
+Confronta il percorso outgoing con quello incoming che sappiamo funzionare.
+
+Trova ESATTAMENTE dove il record outgoing del mittente non viene persistito.
+
+CRITERIO TECNICO
+
+Quando una TX outgoing è già arrivata correttamente a confirmed/completed, deve essere garantita la persistenza del record locale del mittente tramite il meccanismo ESISTENTE del progetto (saveTxRecord o equivalente).
+
+La persistenza deve essere IDEMPOTENTE usando il txHash come identificatore/deduplication key.
+
+Quindi:
+
+* se il tx-monitor ha già salvato il record → NON creare duplicati;
+* se il tx-monitor non l’ha ancora salvato → la safety-net deve poterlo creare;
+* successivamente il monitor deve poter passare senza creare un secondo record.
+
+Stessa cosa per la notifica: usare il dispatcher esistente e mantenerlo idempotente/deduplicato.
+
+DEBUG OBBLIGATORIO PRIMA DEL FIX
+
+Non modificare subito il codice.
+
+Prima individua, con ricerca nel repository, tutti i punti che gestiscono:
+
+* saveTxRecord
+* dispatchWalletNotification
+* tx-monitor
+* confirmed
+* completed
+* direction: "sent" / equivalente
+* persistenza IndexedDB dei transaction records.
+
+Poi ricostruisci il percorso reale:
+
+outgoing success → confirmed → saveTxRecord? → IDB
+
+Devi dimostrare quale passaggio manca.
+
+FIX CONSENTITO
+
+Il fix deve essere il più piccolo possibile e riguardare ESCLUSIVAMENTE la persistenza locale post-successo della TX outgoing.
+
+Preferire:
+
+* riutilizzare funzioni già esistenti;
+* riutilizzare il formato record già usato dall’app;
+* riutilizzare la deduplication esistente;
+* aggiungere una safety-net solo dopo confirmed/completed, se realmente necessaria.
+
+NON duplicare la logica di invio.
+
+TEST OBBLIGATORI
+
+Dopo il fix:
+
+1. inviare una piccola quantità di test;
+2. verificare che la TX sia confermata on-chain;
+3. verificare che la chat continui a mostrare Pagamento completato;
+4. verificare che il mittente abbia il record in IndexedDB;
+5. verificare che compaia in Storico → Inviato;
+6. verificare che compaia in Notifiche;
+7. verificare che il destinatario continui a ricevere normalmente;
+8. verificare che non vengano creati duplicati quando interviene successivamente il tx-monitor.
+
+VINCOLO FINALE
+
+Se per risolvere History/Notifications ritieni necessario modificare la logica di invio, FERMATI e non applicare il cambiamento.
+
+Prima riporta:
+
+* file;
+* funzione;
+* punto esatto in cui il record outgoing viene perso;
+* perché il percorso incoming funziona;
+* modifica minima proposta.
+
+Non toccare il send. Il send è dichiarato FUNZIONANTE e fuori scope.
