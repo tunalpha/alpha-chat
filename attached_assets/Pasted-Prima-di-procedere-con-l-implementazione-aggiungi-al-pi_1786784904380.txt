@@ -1,0 +1,286 @@
+Prima di procedere con l’implementazione, aggiungi al piano un requisito NON OPZIONALE relativo a NOTIFICHE e CRONOLOGIA.
+
+Il direct transfer non deve essere considerato completo semplicemente perché esiste una TX on-chain.
+
+La singola TX on-chain deve essere rappresentata rigorosamente e una sola volta in:
+
+* stato del payment;
+* cronologia del mittente;
+* cronologia del destinatario;
+* notifiche;
+* UI della chat.
+
+1. SOURCE OF TRUTH
+
+Per direct transfer la TX on-chain confermata deve essere la source of truth.
+
+Quando detectDeposit/recovery identifica una TX valida:
+
+sender_wallet
+→ recipient_wallet
+→ USDA contract corretto
+→ amount corretto
+→ chain Polygon corretta
+
+il sistema deve associare definitivamente quella TX al transfer tramite tx hash.
+
+Il tx hash deve diventare l’identificatore idempotente della transazione.
+
+2. CRONOLOGIA — REGISTRAZIONE RIGOROSA
+
+Per un direct transfer deve essere registrato UN SOLO movimento economico per ciascun lato:
+
+MITTENTE:
+“Pagamento inviato”
+
+* tipo: direct transfer
+* amount: X USDA
+* destinatario: recipient
+* recipient_wallet: address effettivamente usato
+* tx_hash: hash della TX on-chain
+* chain: Polygon
+* token: USDA
+* timestamp: timestamp della transazione/confirm
+* status: completed/confirmed
+
+DESTINATARIO:
+“Pagamento ricevuto”
+
+* tipo: direct transfer
+* amount: X USDA
+* mittente: sender
+* sender_wallet: address effettivo
+* tx_hash: stesso identico hash della TX
+* chain: Polygon
+* token: USDA
+* timestamp: stesso evento on-chain
+* status: completed/confirmed
+
+NON devono essere creati record separati chiamati:
+
+* deposito;
+* rilascio;
+* escrow deposit;
+* escrow release;
+
+per un direct transfer.
+
+La cronologia deve quindi mostrare chiaramente che si tratta di:
+
+MITTENTE → DESTINATARIO
+
+e non di:
+
+MITTENTE → ESCROW → DESTINATARIO.
+
+3. IDEMPOTENZA CRONOLOGIA
+
+Questo è CRITICO per il problema iOS/WalletConnect già risolto.
+
+Scenario:
+
+1. utente firma;
+2. TX viene broadcastata;
+3. WalletConnect restituisce “Load failed”;
+4. frontend entra in signedUncertain;
+5. recovery trova la TX on-chain;
+6. transfer viene marcato accepted/completed.
+
+Il punto 5 NON deve creare:
+
+* una seconda transazione;
+* una seconda entry nella cronologia;
+* una seconda notifica.
+
+Prima di creare un record di history verificare se esiste già un record con lo stesso:
+
+* transfer_id;
+* oppure tx_hash;
+* preferibilmente entrambi.
+
+Il recovery deve essere idempotente.
+
+Se la stessa TX viene rilevata 10 volte dal polling, deve risultare comunque:
+
+1 TX
+1 record mittente
+1 record destinatario
+1 notifica mittente
+1 notifica destinatario
+
+mai 10.
+
+4. NOTIFICA
+
+Quando il direct transfer viene confermato on-chain, deve essere generata la normale notifica di pagamento per entrambe le parti secondo il sistema di notifiche già esistente.
+
+Mittente:
+“Pagamento completato — X USDA inviati a [destinatario]”
+
+Destinatario:
+“Hai ricevuto X USDA da [mittente]”
+
+La notifica deve contenere/collegarsi allo stesso payment/transfer e, quando supportato dall’attuale sistema, permettere di aprire la transazione.
+
+NON utilizzare terminologia escrow per il direct flow.
+
+5. IDEMPOTENZA NOTIFICHE
+
+Anche le notifiche devono essere idempotenti.
+
+Un retry di:
+
+* detectDeposit;
+* confirmDeposit;
+* recovery;
+* scheduler;
+* page refresh;
+* reconnect WalletConnect;
+
+non deve generare una seconda notifica per la stessa TX.
+
+Usare un identificatore stabile, ad esempio:
+
+transfer_id + event_type
+
+oppure
+
+tx_hash + recipient/sender + event_type
+
+in base all’architettura notification/event già esistente.
+
+Prima di emettere una notifica verificare che lo stesso evento non sia già stato emesso/processato.
+
+6. EVENTI
+
+Analizza gli eventi già presenti in events.ts e nel sistema di notification/history.
+
+NON creare un secondo sistema parallelo se quello esistente può essere riutilizzato.
+
+Determina esattamente:
+
+* quale evento oggi crea la notifica “Pagamento completato”;
+* quale evento aggiorna la cronologia;
+* quale evento viene emesso da confirmDeposit;
+* se emitPaymentStateChanged("accepted") genera indirettamente notifiche/history;
+* se esiste già un meccanismo di deduplicazione.
+
+Il direct transfer deve inserirsi nella stessa pipeline dove possibile.
+
+7. ATTENZIONE A accepted
+
+Il passaggio:
+
+awaiting_deposit → accepted
+
+non deve essere interpretato come due eventi economici.
+
+Nel direct flow esiste una sola operazione economica:
+
+sender → recipient
+
+accepted è lo stato finale di QUELLA operazione.
+
+Se l’attuale pipeline genera notifiche/history sia durante “deposit detected” sia durante “accepted”, verificare che il direct flow non produca duplicati.
+
+8. CHAT PAYMENT BUBBLE
+
+Per direct transfer la bolla deve rappresentare:
+
+✅ Pagamento completato
+X USDA inviati con successo
+
+→ Visualizza transazione
+
+e NON:
+
+→ Visualizza deposito
+→ Visualizza rilascio
+
+Il link deve puntare alla stessa TX hash salvata nel transfer.
+
+Il destinatario deve vedere la stessa TX hash come transazione ricevuta.
+
+9. CRONOLOGIA E CHAT DEVONO ESSERE COERENTI
+
+Dopo un direct transfer completato, verificare che:
+
+Chat:
+1 pagamento completato
+
+Cronologia mittente:
+1 uscita di X USDA
+
+Cronologia destinatario:
+1 entrata di X USDA
+
+Blockchain:
+1 TX
+
+Notifiche:
+1 al mittente
+1 al destinatario
+
+Non devono comparire record intermedi escrow.
+
+10. ESCROW DEVE RIMANERE SEPARATO
+
+Per il fallback escrow, invece, mantenere il comportamento attuale:
+
+TX1:
+sender → escrow
+
+TX2:
+escrow → recipient
+
+e la relativa rappresentazione deposito/rilascio.
+
+NON alterare la cronologia dei vecchi transfer escrow.
+
+11. TEST OBBLIGATORI AGGIUNTIVI
+
+Aggiungere ai test:
+
+T16 — Direct history
+Una TX direct produce esattamente una entry di uscita per il mittente.
+
+T17 — Direct recipient history
+La stessa TX produce esattamente una entry di entrata per il destinatario.
+
+T18 — Same tx hash
+Mittente e destinatario devono referenziare lo stesso tx_hash.
+
+T19 — Direct notifications
+Una TX confermata genera una sola notifica per il mittente e una sola per il destinatario.
+
+T20 — Recovery idempotency
+Ripetere detectDeposit/confirm 10 volte sulla stessa TX → nessun record/notifica duplicato.
+
+T21 — iOS Load failed
+TX broadcastata + Load failed + recovery → una sola history entry e una sola notifica per lato.
+
+T22 — Refresh/reconnect
+Refresh durante recovery → nessun duplicato.
+
+T23 — Chat UI
+Direct → solo “Visualizza transazione”, mai deposito/rilascio.
+
+T24 — History UI
+Direct → mostra sender/recipient e TX hash reale, senza escrow.
+
+T25 — Escrow regression
+Vecchio escrow → cronologia deposito/rilascio invariata.
+
+12. OUTPUT AGGIUNTIVO PRIMA DEL CODICE
+
+Prima di modificare qualsiasi file, indicami esattamente:
+
+1. quale funzione crea oggi la history;
+2. quale funzione crea oggi la notification;
+3. quali eventi le attivano;
+4. quale identificatore viene utilizzato oggi per deduplicare;
+5. se la pipeline è già idempotente;
+6. dove inserire il direct transfer senza creare un secondo sistema;
+7. come garantire matematicamente che una TX produca una sola rappresentazione nella history e una sola notifica per ciascun lato.
+
+NON implementare ancora finché questo punto non è stato verificato.
