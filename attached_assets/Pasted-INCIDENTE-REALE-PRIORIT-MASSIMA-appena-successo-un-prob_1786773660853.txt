@@ -1,0 +1,306 @@
+INCIDENTE REALE — PRIORITÀ MASSIMA
+
+È appena successo un problema critico sul SEND USDA.
+
+TEST REALE
+
+1. È stata inviata una TX da 1 USDT:
+    * firma corretta;
+    * transazione corretta;
+    * notifica corretta;
+    * History corretta.
+    * TEST PASSATO.
+2. Subito dopo è stato tentato un invio da 1.15 USDA.
+
+Risultato osservato sul device:
+
+* UI resta in Errore;
+* compare Load failed;
+* appare Riprova firma;
+* il sistema continua a richiedere/gestire nuove firme;
+* alla fine sono state eseguite più transazioni reali da 1.15 USDA;
+* History esterna mostra almeno 3 movimenti -1.15 USDA ravvicinati.
+
+La schermata dell’app dice esplicitamente:
+
+Load failed
+
+ma anche:
+
+Il trasferimento è stato creato — puoi anche usare «Controlla deposito» o «Riprova firma» nella chat.
+
+Questo indica una possibile divergenza critica tra:
+
+* stato UI della fase di firma;
+* stato reale della TX;
+* retry/polling;
+* deposito creato;
+* idempotenza del send.
+
+⸻
+
+REGOLA ASSOLUTA
+
+NON APPLICARE FIX.
+
+Prima esegui un audit READ-ONLY completo.
+
+NON modificare:
+
+* send flow;
+* signing;
+* WalletConnect;
+* relay;
+* polling;
+* retry;
+* receipt;
+* gestione Load failed;
+* setSignPhase;
+* deposito;
+* bridge;
+* tx-monitor;
+* History;
+* Notifications.
+
+Prima dobbiamo identificare la root cause dell’incidente.
+
+⸻
+
+OBIETTIVO DELL’AUDIT
+
+Ricostruire esattamente perché:
+
+Load failed
+→ UI rimane in errore
+→ retry/firma viene resa nuovamente disponibile
+→ viene creata una nuova TX
+→ la precedente TX potrebbe essere già stata firmata/inviata
+→ vengono quindi eseguite più TX reali dello stesso importo.
+
+Cerca in particolare
+
+1. Tutti i punti che impostano errore
+
+Cerca:
+
+* Load failed
+* signErrorMsg
+* setSignPhase("error")
+* signPhase
+* .catch(
+* return dopo errore
+* timeout
+* polling terminato/interrotto
+
+Ricostruisci esattamente cosa succede quando il relay restituisce Load failed.
+
+⸻
+
+2. Tutti i punti che possono creare una nuova TX
+
+Cerca:
+
+* sendTransaction
+* prepareTransaction
+* wallet_send
+* eth_sendTransaction
+* firma della TX
+* deposito
+* createTransfer
+* qualsiasi funzione che genera il txHash.
+
+Determina se il retry può chiamare nuovamente il percorso che crea/firma/invia una TX.
+
+⸻
+
+3. CORRELAZIONE CRITICA
+
+Per il test 1.15 USDA, ricostruisci per ogni TX:
+
+attempt
+→ signing request
+→ relay request
+→ wallet response
+→ txHash
+→ broadcast
+→ receipt
+→ confirmed
+
+Voglio una tabella:
+
+Attempt	txHash	Firmata?	Broadcast?	Confirmed?	UI state
+
+Se esistono 3+ txHash differenti per lo stesso invio da 1.15 USDA, dobbiamo dimostrare chi ha creato ogni nuovo attempt.
+
+⸻
+
+PUNTO CRITICO DA VERIFICARE
+
+Il caso sospetto è:
+
+TX #1
+↓
+firmata
+↓
+broadcast riuscito
+↓
+Load failed sul ritorno del relay / WalletConnect
+↓
+catch()
+↓
+signPhase = error
+↓
+polling non riconosce correttamente la TX già creata
+↓
+utente vede "Riprova firma"
+↓
+retry
+↓
+NUOVA TX
+
+Se è questo il percorso, il problema è una failure di idempotenza dello stato di signing, non un semplice problema di UI.
+
+Ma NON assumere questa conclusione: dimostrala dai log/codice.
+
+⸻
+
+VERIFICA SPECIFICA DEL PRECEDENTE FIX iOS
+
+Nella sessione precedente era già stato identificato un caso in cui:
+
+WalletConnect → iOS Safari
+
+poteva restituire:
+
+Load failed
+
+dopo che la TX era già stata firmata/inviata.
+
+Era stato introdotto un polling/safety mechanism per evitare di bloccare il flusso.
+
+Verifica attentamente che quel meccanismo NON abbia ora un comportamento regressivo:
+
+TX già creata
++
+relay response fallito
++
+polling non trova ancora deposito
++
+signPhase error
++
+retry disponibile
+
+e soprattutto che il retry non possa generare una seconda TX quando esiste già una TX in-flight per quello stesso payment intent.
+
+⸻
+
+VERIFICA IDENTITY / IDEMPOTENCY
+
+Cerca quale identificatore rappresenta il singolo pagamento/chat intent.
+
+Possibili identificatori:
+
+* paymentId
+* transferId
+* depositId
+* chat message id
+* request id
+* txHash
+* nonce
+* qualsiasi id persistente del pagamento.
+
+Dobbiamo capire se una stessa richiesta da 1.15 USDA può creare:
+
+payment intent A
+→ txHash A
+
+e poi:
+
+retry
+→ payment intent B
+→ txHash B
+
+anziché riutilizzare/recuperare A.
+
+⸻
+
+NON FARE AFFIDAMENTO SOLO SULLA UI
+
+La schermata Load failed NON dimostra che la TX sia fallita.
+
+La schermata mostra contemporaneamente:
+
+Load failed
+
+e:
+
+Il trasferimento è stato creato
+
+Quindi lo stato UI potrebbe essere falso rispetto allo stato blockchain.
+
+La blockchain/txHash/receipt deve essere la source of truth.
+
+⸻
+
+OUTPUT OBBLIGATORIO DELL’AUDIT
+
+Prima di modificare qualunque file, restituisci:
+
+ROOT CAUSE
+
+Spiega esattamente quale condizione causa la generazione delle TX multiple.
+
+TIMELINE
+
+Ricostruisci il percorso dell’incidente:
+
+T0:
+T1:
+T2:
+T3:
+...
+
+TX
+
+Elenca tutti i txHash generati dal test 1.15 USDA, se disponibili.
+
+FILE/FUNZIONI
+
+Indica:
+
+* file;
+* funzione;
+* riga;
+* stato prima;
+* stato dopo;
+* punto esatto in cui viene persa l’informazione che la TX è già stata creata.
+
+RETRY
+
+Dimostra perché Riprova firma può creare una nuova TX.
+
+RISCHIO
+
+Indica se lo stesso problema può causare double-spend / multiple payment su:
+
+* iOS;
+* WalletConnect;
+* 4G/rete instabile;
+* relay timeout;
+* Load failed.
+
+⸻
+
+REGOLA FINALE
+
+NON applicare nessun fix durante questo audit.
+
+Il send funzionava correttamente nel test da 1 USDT.
+
+Il nuovo incidente dimostra che il problema è nella gestione dell’errore/retry dopo una possibile TX già creata.
+
+Prima voglio la ROOT CAUSE dimostrata dai log e dal codice.
+
+Solo dopo l’approvazione verrà definito il fix minimo.
+
+Priorità: impedire assolutamente che una singola azione dell’utente possa generare più transazioni reali.
