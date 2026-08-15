@@ -1,0 +1,47 @@
+Sì. Questa root cause è convincente e spiega esattamente le 3 TX da 1.15 USDA. L’incidente è riprodotto logicamente nel codice: non è un problema blockchain, né di History/Notifiche, né di doppia esecuzione casuale del wallet.
+
+Il punto critico è questo:
+
+TX già creata → Load failed → throw → created.transfer_id perso → Riprova torna a handleSend() → apiPaymentCreate() crea un nuovo transfer → nuova TX.
+
+Quindi non approverei un semplice aumento di GRACE_POLLS come unica soluzione. Anche portarlo da 30 s a 10 minuti lascerebbe comunque un percorso pericoloso quando il polling termina.
+
+Fix che approverei
+
+Bisogna portare in SendPaymentSheet.tsx lo stesso modello già funzionante di MultiChainSendSheet:
+
+1. Appena apiPaymentCreate() restituisce il transfer, salvare transferId in useRef/state.
+2. Se sendTransaction() dà Load failed, trattarlo come stato incerto, non come fallimento della transazione.
+3. Entrare in signedUncertain.
+4. Bloccare completamente handleSend() finché esiste un transfer già creato/in-flight.
+5. Il retry interno non deve mai chiamare apiPaymentCreate().
+6. Deve invece fare resume della firma sul medesimo transferId.
+7. Mantenere il polling della TX/deposito abbastanza a lungo da coprire relay/indexing lag.
+8. Se alla fine non si riesce a determinare lo stato, mantenere lo stato uncertain, senza offrire un nuovo invio.
+9. Solo un rifiuto esplicito dell’utente prima della creazione/broadcast deve seguire il normale percorso di errore.
+10. Il txHash/transfer già creato deve essere la source of truth per impedire una seconda transazione.
+
+Vincolo fondamentale
+
+Non modificare il percorso che ha appena dimostrato di funzionare:
+
+1 USDT → firma → broadcast → conferma → History → Notifica
+
+Il fix deve riguardare solo la gestione dell’incertezza dopo Load failed e il retry interno.
+
+E soprattutto farei aggiungere un invariant test:
+
+Per ogni singolo payment intent, apiPaymentCreate() può essere chiamato al massimo una volta.
+
+Quello è il vero guardrail contro il problema appena visto.
+
+Dopo il fix, prima del deploy, il test reale deve essere:
+
+* invio normale USDA → 1 sola TX;
+* simulazione/condizione Load failed → nessuna seconda TX;
+* Riprova firma → stesso transferId;
+* eventuale TX già in mempool/confirmed → nessun nuovo apiPaymentCreate;
+* History → una sola transazione;
+* Notification → una sola notifica.
+
+Questa volta la root cause è sufficientemente dimostrata da poter procedere al fix.

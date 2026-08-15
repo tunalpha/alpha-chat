@@ -91,6 +91,7 @@ type SendPhase =
   | "signing"     // wallet aperto — in attesa firma
   | "confirming"  // polling detect-deposit
   | "done"
+  | "uncertain"   // TX potrebbe essere già in mempool — NON richiedere nuova firma
   | "error";
 
 // STEPS e PHASE_LABEL sono calcolati dentro il componente per supportare i18n
@@ -134,6 +135,20 @@ export function SendPaymentSheet({
   const resumeRef = useRef<{ escrowWallet: string; amountStr: string; assetAddress: string | null } | null>(null);
   const busyRef = useRef(false);
 
+  /**
+   * INVARIANTE ANTI-DOUBLE-SPEND:
+   * Appena apiPaymentCreate() restituisce il transferId, lo salviamo qui.
+   * Da quel momento handleSend() NON chiamerà più apiPaymentCreate() —
+   * anche se la firma fallisce con "Load failed" e l'utente preme "Riprova".
+   * Il retry usa questo stesso transferId (≡ handleRetrySign).
+   */
+  const createdTransferRef = useRef<{
+    transferId:   string;
+    escrowWallet: string;
+    amountStr:    string;
+    assetAddress: string | null;
+  } | null>(null);
+
   const account     = useActiveAccount();
   const switchChain = useSwitchActiveWalletChain();
   const isConnected = !!account;
@@ -150,6 +165,7 @@ export function SendPaymentSheet({
     signing:    t("usda.phaseSigning"),
     confirming: t("usda.phaseConfirming"),
     done:       t("usda.phaseDone"),
+    uncertain:  "⚠️ Verifica in corso…",
     error:      t("common.error"),
   };
 
@@ -289,7 +305,8 @@ export function SendPaymentSheet({
       // Deposito non ancora presente — procediamo con la firma.
     }
 
-    let pollAborted  = false;
+    let pollAborted     = false;
+    let signedUncertain = false; // true = TX potrebbe essere già in mempool → NON offrire nuovo invio
     let signErrorMsg: string | null = null;
 
     // ── Chain switch prima di sendTransaction ─────────────────────────────────
@@ -330,10 +347,14 @@ export function SendPaymentSheet({
         // dal polling. NON settiamo signErrorMsg per evitare l'abort del polling.
         console.warn("[SendPayment] Nonce already used — tx precedente già on-chain, continuo il polling.");
       } else {
-        // Altri errori: la tx POTREBBE essere stata comunque trasmessa (relay/
-        // deep-link). Conserviamo il messaggio umano: se dopo una breve grace il
-        // deposito non emerge, lo mostriamo invece di stallare per 10 minuti.
-        signErrorMsg = humanizeUsdaError(msg);
+        // Qualsiasi altro errore (Load failed, Failed to fetch, NetworkError, RPC,
+        // timeout del relay…) può verificarsi DOPO che la TX è stata firmata e
+        // broadcast. Trattiamo come "incerto": la TX è probabilmente in mempool.
+        //
+        // INVARIANTE ANTI-DOUBLE-SPEND: NON settiamo pollAborted → il polling
+        // continua. NON offriamo nuova firma finché non sappiamo l'esito.
+        signedUncertain = true;
+        signErrorMsg    = humanizeUsdaError(msg) || "Connessione interrotta durante la firma.";
       }
     });
 
@@ -366,11 +387,18 @@ export function SendPaymentSheet({
       } catch (pollErr: unknown) {
         const code = (pollErr as Error & { code?: string })?.code;
         if (code === "DEPOSIT_TX_NOT_DETECTED") {
-          // Se la firma ha già dato un errore e dopo la grace non emerge nulla
-          // on-chain, la tx quasi certamente non è mai partita → mostra l'errore
-          // reale e lascia riprovare, invece di attendere 10 minuti a vuoto.
           if (signErrorMsg && !pollAborted && pollCount >= SIGN_ERROR_GRACE_POLLS) {
-            throw new Error(signErrorMsg + "\n" + t("usda.depositNotFound"));
+            if (signedUncertain) {
+              // TX potrebbe essere già in mempool: NON lanciare errore.
+              // Mostra stato "uncertain" (warning ambra) e CONTINUA il polling
+              // fino al timeout di 10 minuti — specchio di MultiChainSendSheet.
+              setPhase("uncertain");
+              // non fare return: il loop continua
+            } else {
+              // Errore pre-broadcast confermato (rifiuto esplicito già gestito
+              // via pollAborted): retry sicuro senza rischio double-spend.
+              throw new Error(signErrorMsg + "\n" + t("usda.depositNotFound"));
+            }
           }
           continue;
         }
@@ -379,21 +407,47 @@ export function SendPaymentSheet({
       }
     }
 
+    // Timeout 10 minuti
+    if (signedUncertain) {
+      // Non sappiamo se la TX è on-chain: mantieni stato "uncertain".
+      // NON throw: handleSend non va nel catch → nessuna nuova TX.
+      setPhase("uncertain");
+      return;
+    }
     throw new Error(t("usda.depositTimeout"));
   }, [account, conversationId, t]);
 
   // ── Step 2 → Step 3: crea trasferimento poi firma ──────────────────────────
   const handleSend = useCallback(async () => {
     if (busyRef.current || !account) return;
+
+    // ── GUARD ANTI-DOUBLE-SPEND ───────────────────────────────────────────────
+    // Se un transfer è già stato creato in questa sessione (anche se la firma è
+    // fallita con "Load failed"), NON chiamare apiPaymentCreate() di nuovo.
+    // Riprova invece la firma sul medesimo transfer → nessuna nuova TX.
+    if (createdTransferRef.current) {
+      busyRef.current = true;
+      setError(null);
+      setStep("sending");
+      try {
+        await signAndPoll(createdTransferRef.current);
+      } catch (e: unknown) {
+        const msg = humanizeUsdaError(e instanceof Error ? e.message : String(e), { toName });
+        setError(msg + "\n\nIl trasferimento è stato creato — puoi anche usare «Controlla deposito» o «Riprova firma» nella chat.");
+        setPhase("error");
+      } finally {
+        busyRef.current = false;
+      }
+      return;
+    }
+
     busyRef.current = true;
     setError(null);
     setStep("sending");
 
-    let created: CreateTransferResult | null = null;
-
     try {
       setPhase("creating");
-      created = await apiPaymentCreate({
+      const created = await apiPaymentCreate({
         recipient_id:    toUserId,
         conversation_id: conversationId,
         amount:          amount.trim(),
@@ -407,16 +461,20 @@ export function SendPaymentSheet({
         throw new Error("Il backend non ha restituito un indirizzo escrow. Riprova.");
       }
 
-      await signAndPoll({
+      // Salva immediatamente: da qui in poi nessun nuovo apiPaymentCreate() è
+      // possibile per questo payment intent, anche dopo Load failed + retry.
+      createdTransferRef.current = {
         transferId:   created.transfer_id,
         escrowWallet: created.escrow_wallet,
         amountStr:    created.amount,
-        assetAddress: created.asset_address,
-      });
+        assetAddress: created.asset_address ?? null,
+      };
+
+      await signAndPoll(createdTransferRef.current);
     } catch (e: unknown) {
       const msg = humanizeUsdaError(e instanceof Error ? e.message : String(e), { toName });
       console.error("[SendPayment] errore:", e);
-      const detail = created
+      const detail = createdTransferRef.current
         ? "\n\nIl trasferimento è stato creato — puoi anche usare «Controlla deposito» o «Riprova firma» nella chat."
         : "";
       setError(msg + detail);
@@ -424,9 +482,28 @@ export function SendPaymentSheet({
     } finally {
       busyRef.current = false;
     }
-  }, [account, toUserId, conversationId, amount, note, requestPaymentId, signAndPoll]);
+  }, [account, toUserId, conversationId, amount, note, requestPaymentId, signAndPoll, toName]);
 
-  // ── RETRY FIRMA: rifirma un transfer esistente (nessun nuovo transfer) ──────
+  // ── RETRY FIRMA INTERNO: usato da stato "uncertain" / "error" quando il
+  //    transfer è già stato creato — riprova la firma senza nuovo apiPaymentCreate.
+  const handleRetrySign = useCallback(async () => {
+    const data = createdTransferRef.current;
+    if (!data || busyRef.current || !account) return;
+    busyRef.current = true;
+    setPhase("signing");
+    setError(null);
+    try {
+      await signAndPoll(data);
+    } catch (e: unknown) {
+      const msg = humanizeUsdaError(e instanceof Error ? e.message : String(e), { toName });
+      setError(msg + "\n\nIl trasferimento è stato creato — puoi anche usare «Controlla deposito» o «Riprova firma» nella chat.");
+      setPhase("error");
+    } finally {
+      busyRef.current = false;
+    }
+  }, [account, toName, signAndPoll]);
+
+  // ── RETRY FIRMA ESTERNO: rifirma un transfer esistente (nessun nuovo transfer) ──────
   const handleResumeSign = useCallback(async () => {
     if (busyRef.current || !account || !resumeTransferId) return;
     const data = resumeRef.current;
@@ -620,6 +697,33 @@ export function SendPaymentSheet({
                   {amountNum} USDA → {toName}
                 </p>
               </div>
+            ) : phase === "uncertain" ? (
+              // ── STATO INCERTO: TX potrebbe essere già in mempool ─────────────
+              // NON offrire un nuovo invio — solo riprova firma sul medesimo transfer.
+              <>
+                <div className="sp-err-icon" aria-hidden="true">⚠️</div>
+                <p className="sp-err-title">Connessione interrotta durante la firma</p>
+                <p
+                  className="usda-error sp-err-detail"
+                  role="alert"
+                  style={{ borderColor: "#f59e0b", background: "rgba(245,158,11,0.08)", color: "#f59e0b" }}
+                >
+                  La transazione potrebbe essere già stata inviata al network — stiamo verificando automaticamente.{"\n\n"}
+                  Se hai firmato nel wallet, attendi: il deposito sarà rilevato automaticamente.{"\n"}
+                  Oppure premi «Riprova firma» per inviare di nuovo la richiesta di firma al wallet.
+                </p>
+                <div className="usda-sheet-actions" style={{ marginTop: 16 }}>
+                  <button type="button" className="usda-btn-secondary" onClick={onClose}>{t("common.close")}</button>
+                  <button
+                    type="button"
+                    className="usda-btn-primary"
+                    onClick={() => void handleRetrySign()}
+                    disabled={!isConnected}
+                  >
+                    🔐 Riprova firma
+                  </button>
+                </div>
+              </>
             ) : phase === "error" ? (
               <>
                 <div className="sp-err-icon" aria-hidden="true">⚠️</div>
@@ -630,7 +734,16 @@ export function SendPaymentSheet({
                   <button
                     type="button"
                     className="usda-btn-primary"
-                    onClick={() => { setStep("confirm"); setPhase(null); setError(null); }}
+                    onClick={() => {
+                      if (createdTransferRef.current) {
+                        // Transfer già creato: riprova firma senza nuovo apiPaymentCreate.
+                        // INVARIANTE: una sola apiPaymentCreate() per payment intent.
+                        void handleRetrySign();
+                      } else {
+                        // Errore pre-creazione: torna a confirm (sicuro, nessun transfer esiste).
+                        setStep("confirm"); setPhase(null); setError(null);
+                      }
+                    }}
                   >
                     {t("common.retry")}
                   </button>

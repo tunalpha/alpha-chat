@@ -20,4 +20,19 @@ Quando `sendTransaction` rigetta con un errore di rete (non un rifiuto utente), 
 - Errore POST-broadcast (rete, timeout, RPC) → incerto → `signedUncertain`
 - File: `MultiChainSendSheet.tsx`, `MultiChainPayRequestSheet.tsx`, `SendPaymentSheet.tsx`
 
-**Incidente:** BSCScan TX 0xfbf3...c16d confermata, UI mostrava "Load failed" + bottone firma attivo.
+**Incidente BSC 2026:** BSCScan TX 0xfbf3...c16d confermata, UI mostrava "Load failed" + bottone firma attivo.
+
+## Incidente USDA 2026-08-15 — Triple charge 1.15 USDA
+
+**Root cause**: `SendPaymentSheet.tsx` NON aveva `signedUncertain`. Dopo "Load failed" + 30s GRACE_POLLS → throw → phase="error" → bottone "Riprova" → `setStep("confirm")` con `isResume=false` → `handleSend()` → `apiPaymentCreate()` → NUOVA TX reale.
+
+**Fix applicato** (pattern identico a MultiChainSendSheet):
+- `signedUncertain = true` nel .catch() di sendTransaction per errori non-rifiuto
+- GRACE_POLLS: se `signedUncertain` → `setPhase("uncertain")` e CONTINUA il loop (no throw)
+- Timeout 10 min: se `signedUncertain` → `setPhase("uncertain"); return` (no throw)
+- `createdTransferRef`: salvato immediatamente dopo `apiPaymentCreate()` → guard in `handleSend` impedisce secondo `apiPaymentCreate()` se ref già settato
+- `handleRetrySign()`: retry firma senza nuovo transfer
+- "Riprova" in phase="error": se `createdTransferRef.current` → `handleRetrySign()`, altrimenti `setStep("confirm")`
+- **Invariant test**: `src/tests/usda-send-idempotency.test.ts` — §1-§3 (8 casi)
+
+**INVARIANTE**: per ogni payment intent, `apiPaymentCreate()` è chiamata al massimo 1 volta.
