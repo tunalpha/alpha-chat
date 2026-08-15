@@ -787,6 +787,20 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
           }
           continue;
         }
+        // Errore di RETE transitorio nel polling (iOS Safari aborta la fetch
+        // in-flight quando l'app va in background durante la firma nel wallet:
+        // "Load failed" / "Failed to fetch" / "NetworkError").
+        // NON è un fallimento del pagamento: la TX potrebbe essere già in mempool.
+        // → continua il polling; MAI setSignPhase("error") (ri-mostrerebbe "Firma"
+        //   → rischio double-spend). isNetworkError() riconosce SOLO TypeError di
+        //   fetch: gli errori applicativi (con .code o custom) restano fatali sotto.
+        // Gate `!code`: un errore applicativo con .code resta SEMPRE fatale,
+        // anche se per qualche ragione fosse un TypeError con messaggio da fetch.
+        if (!code && isNetworkError(pollErr)) {
+          console.warn("[MC] poll_network_abort — transitorio, continuo il polling:",
+            (pollErr as Error)?.message);
+          continue;
+        }
         // Errore reale (applicativo): stop
         setSignPhase("error");
         setSignError((pollErr as Error)?.message ?? "Errore verifica deposito.");
