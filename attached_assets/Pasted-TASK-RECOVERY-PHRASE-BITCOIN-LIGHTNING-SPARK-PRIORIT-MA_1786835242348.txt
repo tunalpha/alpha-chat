@@ -1,0 +1,259 @@
+TASK — RECOVERY PHRASE BITCOIN / LIGHTNING (SPARK) — PRIORITÀ MASSIMA
+
+Dobbiamo completare la sicurezza del wallet Bitcoin Lightning/Spark degli utenti.
+
+Nelle schermate Impostazioni → Sicurezza attualmente esiste solo:
+
+- Recovery phrase
+- Mostra recovery phrase
+- verifica backup
+
+Questa recovery phrase è quella del wallet EVM/main wallet.
+
+VOGLIO AGGIUNGERE UNA SEZIONE SEPARATA E CHIARAMENTE IDENTIFICATA:
+
+"Recovery phrase Bitcoin / Lightning"
+
+IMPORTANTE:
+La recovery phrase Lightning/Spark è distinta dalla recovery phrase EVM.
+NON devono essere confuse, sostituite o sovrascritte.
+
+==================================================
+1. PRIMA FARE AUDIT — NON MODIFICARE ANCORA
+==================================================
+
+Individua esattamente:
+
+- come viene creato il wallet Spark/Lightning dell'utente
+- quale mnemonic/seed utilizza
+- chi lo genera
+- dove viene conservato
+- se viene persistito localmente
+- se viene ricostruito dal wallet al reconnect
+- quale formato utilizza realmente il Breez Spark SDK
+- se è 12, 24 parole o altro
+
+NON inventare una recovery phrase.
+
+NON generare una nuova phrase se esiste già una phrase associata al wallet dell'utente.
+
+La recovery phrase mostrata all'utente DEVE essere quella reale che permette di recuperare quel wallet Spark/Lightning.
+
+==================================================
+2. OBIETTIVO
+==================================================
+
+L'utente deve poter:
+
+1. vedere la propria recovery phrase Bitcoin/Lightning
+2. copiarla
+3. salvarla offline
+4. verificare di averla salvata
+5. recuperare il wallet in caso di perdita/disinstallazione del dispositivo
+
+La phrase deve essere disponibile SOLO al proprietario del wallet.
+
+==================================================
+3. UI
+==================================================
+
+In:
+
+Impostazioni → Sicurezza
+
+mantenere invariata la sezione EVM:
+
+"Recovery phrase"
+
+e aggiungere sotto una sezione separata:
+
+"Recovery phrase Bitcoin / Lightning"
+
+Descrizione:
+
+"La recovery phrase del tuo wallet Bitcoin/Lightning è diversa da quella del wallet EVM. Conservala offline: serve per recuperare i tuoi fondi Lightning."
+
+Pulsante:
+
+"Mostra recovery phrase Bitcoin / Lightning"
+
+==================================================
+4. PROTEZIONE
+==================================================
+
+Prima di mostrare la phrase richiedere:
+
+- Face ID / Touch ID se disponibile
+- oppure PIN del wallet
+
+Non mostrare mai la phrase:
+
+- nei log
+- in console
+- nelle API response
+- in MongoDB
+- nei Replit Secrets
+- nei log server
+- nei crash report
+- nelle analytics
+- nel codice sorgente
+- nelle schermate Admin
+
+Il backend NON deve poter leggere la recovery phrase privata dell'utente.
+
+==================================================
+5. BACKUP
+==================================================
+
+Quando viene mostrata:
+
+mostrare chiaramente:
+
+⚠️ IMPORTANTE
+
+"Questa è la chiave di recupero del tuo wallet Bitcoin/Lightning."
+
+"Scrivila su carta e conservala in un luogo sicuro."
+
+"Chi possiede questa frase può recuperare i fondi."
+
+"Non condividerla con nessuno."
+
+Aggiungere:
+
+"Ho salvato la recovery phrase"
+
+e una verifica della phrase.
+
+La verifica deve chiedere alcune parole in posizione casuale oppure una verifica equivalente sicura.
+
+Non salvare la phrase per effettuare la verifica.
+
+==================================================
+6. COPIA / SALVATAGGIO
+==================================================
+
+Consentire:
+
+- copia negli appunti
+- visualizzazione ordinata delle parole
+- eventuale funzione di backup/export solo se sicura
+
+Dopo la copia:
+
+mostrare un avviso che gli appunti possono essere accessibili da altre app/sistemi.
+
+NON salvare automaticamente la phrase in:
+
+- localStorage non protetto
+- IndexedDB non protetto
+- database
+- server
+
+Se il wallet usa già un secure storage nativo/protetto, utilizzarlo.
+
+==================================================
+7. RECOVERY REALE
+==================================================
+
+La parte più importante:
+
+verificare che la recovery phrase mostrata sia realmente sufficiente a ricreare lo stesso wallet Spark/Lightning.
+
+Implementare/verificare un percorso:
+
+Recovery phrase
+→ inizializzazione Spark wallet
+→ stessa identity/address
+→ stesso saldo/history recuperabile dal protocollo
+
+NON dichiarare "backup completato" se la phrase non è stata verificata.
+
+==================================================
+8. DISINSTALLAZIONE / NUOVO DISPOSITIVO
+==================================================
+
+Verificare il caso:
+
+utente elimina il wallet dal dispositivo
+→ reinstalla Alpha Chat
+→ sceglie "Recupera wallet"
+→ seleziona "Bitcoin / Lightning"
+→ inserisce la recovery phrase
+→ Spark wallet viene ricostruito
+
+NON modificare il wallet EVM durante questo processo.
+
+Devono esistere due recovery indipendenti:
+
+EVM recovery phrase
+Bitcoin/Lightning recovery phrase
+
+==================================================
+9. TEST OBBLIGATORI
+==================================================
+
+Aggiungere test per:
+
+1. Lightning wallet possiede una recovery phrase reale
+2. phrase EVM e Lightning sono separate
+3. mostra phrase protetta da PIN/biometria
+4. phrase non appare nei log
+5. phrase non viene inviata al backend
+6. copia phrase
+7. backup verification
+8. recovery da phrase
+9. wallet recovered = stesso wallet/address
+10. saldo recuperabile dopo recovery
+11. reinstallazione simulata
+12. nessuna regressione EVM
+13. nessuna modifica al payment flow
+14. nessuna modifica alla fee collection
+15. nessuna modifica al Fee Wallet Alpha
+
+==================================================
+10. SCOPE LOCK
+==================================================
+
+NON TOCCARE:
+
+- main payment flow
+- Lightning send già funzionante
+- fee collection
+- Alpha Spark Fee Wallet
+- sweep
+- Admin Fee
+- EVM wallet
+- WalletConnect
+- Thirdweb
+- BTC on-chain
+- USDA
+
+Questa task riguarda ESCLUSIVAMENTE:
+
+RECOVERY DEL WALLET BITCOIN / LIGHTNING DELL'UTENTE.
+
+==================================================
+11. REPORT FINALE
+==================================================
+
+Prima di qualsiasi deploy dammi:
+
+A. dove viene generata la Lightning recovery phrase
+B. formato reale (12/24/etc.)
+C. dove viene custodita
+D. come viene recuperata
+E. come viene verificata
+F. come viene protetta
+G. come funziona il recovery su nuovo dispositivo
+H. test eseguiti
+I. conferma che EVM recovery phrase resta separata
+J. conferma:
+
+"MAIN PAYMENT FLOW NON MODIFICATO"
+
+K. conferma:
+
+"FEE COLLECTION E FEE WALLET NON MODIFICATI"
+
+NON fare deploy autonomamente.
