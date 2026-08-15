@@ -8,7 +8,7 @@
 
 // ── Fee ───────────────────────────────────────────────────────────────────────
 
-/** Platform fee Spark caricata dal backend (/api/v1/spark/fee-config). */
+/** Platform fee Spark caricata dal backend (/api/v1/spark/user-fee-config). */
 export interface SparkFeeConfig {
   /** Alpha platform fee in basis points. 10 = 0.10%. */
   fee_bps: number;
@@ -16,6 +16,25 @@ export interface SparkFeeConfig {
   min_fee_sat: number;
   /** Secondi di validità della quote prima che scada. */
   quote_validity_sec: number;
+  /**
+   * Indirizzo Spark (identity pubkey) dove inviare la fee Alpha Platform.
+   * Null finché il wallet Alpha Spark Fee non è configurato dall'admin.
+   * Quando null: il client registra la fee come pending_collection ma non esegue
+   * il pagamento Spark (sarà raccolto manualmente dopo la configurazione).
+   *
+   * SICUREZZA: è un indirizzo pubblico (receiving address), non una chiave privata.
+   */
+  fee_address?: string | null;
+}
+
+/** Pendenza fee Lightning per un utente (restituita da GET /spark/fee-record/pending). */
+export interface SparkFeePendingRecord {
+  /** ID del record nel ledger = "spark_" + mainPaymentId */
+  recordId:      string;
+  /** ID del pagamento principale — usato per marcare come raccolto */
+  mainPaymentId: string;
+  /** Fee in satoshi */
+  feeAmountSat:  number;
 }
 
 /**

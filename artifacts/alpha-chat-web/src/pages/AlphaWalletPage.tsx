@@ -44,7 +44,7 @@ import { loadKeystore, decryptSeed, loadWalletMeta } from "../wallet/core/keysto
 import { requestNotificationPermission } from "../wallet/notifications/wallet-notification-store";
 import { buildCustomTokenPreview, getVerifiedTokens } from "../wallet/evm/token-registry";
 import { apiWalletGetTokenInfo } from "../lib/alpha-wallet-api";
-import { apiCreateLightningInvoiceLink, apiSparkRecordFee } from "../lib/api";
+import { apiCreateLightningInvoiceLink } from "../lib/api";
 import { getNetworkByChainId, txExplorerUrl } from "../wallet/evm/evm-network-config";
 import {
   notificationIcon,
@@ -2599,12 +2599,15 @@ function SendView({ onBack, onSuccess }: { onBack: () => void; onSuccess: () => 
           } catch {
             console.warn("[Lightning] Impossibile salvare pagamento inviato in IDB — sarà recuperato dalla reconciliazione SDK");
           }
-          // 2. Registra fee nel ledger backend (admin monitoring) — fire-and-forget
-          void apiSparkRecordFee({
+          // 2. C2+A Tier 1: registra fee pending + tenta invio immediato verso Alpha Spark.
+          //    SCOPE LOCK: main payment già completato e SUCCESS — questa sezione è
+          //    completamente separata. Se fallisce, il main payment resta SUCCESS.
+          //    La fee viene registrata come pending_collection e raccolta al prossimo avvio (Tier 2).
+          void spark!.collectFee(
             paymentId,
-            alphaPlatformFeeSat: Number(lnFeeBreakdown!.alphaPlatformFeeSat ?? 0n),
-          }).catch(err => {
-            console.warn("[Lightning] Fee record backend fallito (non bloccante):", err);
+            lnFeeBreakdown!.alphaPlatformFeeSat ?? 0n,
+          ).catch(err => {
+            console.warn("[Lightning] Fee collection non bloccante — sarà ritentata al prossimo avvio:", err);
           });
           setStep("success");
         };

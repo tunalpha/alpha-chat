@@ -16,7 +16,20 @@
 import mongoose from "mongoose";
 import { logger } from "../lib/logger";
 
-export type FeeRecordStatus = "success" | "failed_transient" | "failed_permanent";
+/**
+ * Status del fee record Lightning/Spark:
+ *   pending_collection — debito registrato, fee non ancora inviata fisicamente
+ *   success            — fee inviata e ricevuta dall'Alpha Spark Fee Wallet
+ *   failed_transient   — tentativo fallito, retry in corso
+ *   failed_permanent   — tutti i tentativi esauriti, alert emesso
+ *   swept              — fee inclusa in uno sweep verso il BTC Treasury on-chain
+ */
+export type FeeRecordStatus =
+  | "pending_collection"
+  | "success"
+  | "failed_transient"
+  | "failed_permanent"
+  | "swept";
 
 /**
  * Source di una fee record — identifica l'origine del pagamento.
@@ -32,15 +45,25 @@ export interface IAlphaWalletFeeRecord {
   _id:        string;
   network:    string;
   assetSymbol: string;
-  /** Importo fee in formato human-readable (es. "0.10") */
+  /** Importo fee in formato human-readable (es. "9 sat") */
   feeAmount:  string;
+  /** Importo fee in satoshi (numerico) — per aggregazione Tier-2 */
+  feeAmountSat?: number;
   feeWallet:  string;
   status:     FeeRecordStatus;
   attempts:   number;
-  /** txHash della TX fee, se raccolta con successo */
+  /** txHash/paymentId della TX fee on-chain (BTC) o Spark payment ID */
   feeTxHash?: string;
+  /** Spark payment ID del pagamento fee verso Alpha Spark Fee Wallet */
+  feePaymentId?: string;
   /** Ultimo messaggio di errore */
   lastError?: string;
+  /** Quando la fee è stata fisicamente raccolta (status → success) */
+  collectedAt?: Date;
+  /** Prossimo tentativo di raccolta (per retry scheduler) */
+  nextRetryAt?: Date;
+  /** userId del mittente (per lookup fee pendenti per utente) */
+  userId?: string;
   /**
    * Sorgente della fee — identifica il sistema che ha generato questa fee.
    *
@@ -69,8 +92,13 @@ const FeeRecordSchema = new mongoose.Schema<IAlphaWalletFeeRecord>(
       required: true,
     },
     attempts:    { type: Number, required: true, min: 1 },
+    feeAmountSat: { type: Number },
     feeTxHash:   { type: String },
+    feePaymentId: { type: String },
     lastError:   { type: String },
+    collectedAt: { type: Date },
+    nextRetryAt: { type: Date },
+    userId:      { type: String },
     /**
      * Source retrocompatibile: assente sui record pre-esistenti = btc_onchain.
      * GUARDRAIL: i record Spark DEVONO avere source="spark_lightning".

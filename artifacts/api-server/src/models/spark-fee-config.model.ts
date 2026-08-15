@@ -28,6 +28,21 @@ export interface ISparkFeeConfig {
   min_fee_sat:        number;
   /** Validità della quote in secondi prima che l'utente debba riconfermare. */
   quote_validity_sec: number;
+  /**
+   * Alpha Spark Fee Wallet address (Spark identity pubkey).
+   * Configurato dall'admin DOPO la verifica del metodo di creazione/controllo wallet.
+   * Null finché il wallet non è verificato e creato.
+   *
+   * SICUREZZA: questo è un indirizzo pubblico (receiving address), non una chiave privata.
+   * Il mnemonic del wallet NON è mai salvato qui.
+   *
+   * Workflow:
+   *   1. Verifica architettura wallet con Breez Spark
+   *   2. Genera wallet offline con @scure/bip39
+   *   3. Salva mnemonic in Replit Secret ALPHA_SPARK_FEE_MNEMONIC (admin-only)
+   *   4. Configura questo campo con l'indirizzo Spark derivato
+   */
+  fee_address?:       string | null;
   /** Audit: chi ha modificato per ultimo */
   updated_at?:        Date;
   updated_by?:        string;
@@ -46,6 +61,7 @@ const schema = new Schema<ISparkFeeConfig>(
     fee_bps:            { type: Number, required: true, min: 0, max: 500 },
     min_fee_sat:        { type: Number, required: true, min: 0 },
     quote_validity_sec: { type: Number, required: true, min: 5, max: 300 },
+    fee_address:        { type: String, default: null },
     updated_at:         Date,
     updated_by:         String,
     updated_by_email:   String,

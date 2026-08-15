@@ -10,6 +10,14 @@
  * - Non ha dipendenze da EVM, USDA, MultiChain, Signal.
  *
  * STATO: disconnected → connecting → connected ↔ syncing → error
+ *
+ * ARCHITETTURA C2+A (fee collection):
+ * - collectFee(mainPaymentId, feeAmountSat):
+ *     Tier 1 — registra fee come pending + tenta invio immediato verso Alpha Spark.
+ *     Chiamato da AlphaWalletPage.persistLnSuccess dopo ogni main payment.
+ *     SCOPE LOCK: NON modifica prepareSend/send/sendInProgress/reconciliation.
+ * - Tier 2 (on-connect): all'avvio/login legge fee pendenti dal backend e le
+ *     aggrega in un unico pagamento Spark. Fire-and-forget, non blocca la UI.
  */
 
 import {
@@ -22,7 +30,13 @@ import {
   type ReactNode,
 } from "react";
 import { createSparkAdapter, type BreezSparkAdapter } from "../lib/spark/spark-adapter";
-import { apiGetSparkFeeConfig } from "../lib/spark/spark-api";
+import {
+  apiGetSparkUserFeeConfig,
+  apiSparkRecordFee,
+  apiSparkMarkFeeCollected,
+  apiSparkMarkFeesBulkCollected,
+  apiSparkGetPendingFees,
+} from "../lib/spark/spark-api";
 import type {
   SparkAdapterState,
   SparkAdapterError,
@@ -59,6 +73,13 @@ export interface SparkWalletContextValue {
   /** Platform fee config (loaded from backend) */
   feeConfig?:     SparkFeeConfig;
 
+  /**
+   * Alpha Spark Fee Wallet address (identity pubkey).
+   * Null finché non configurato dall'admin (wallet non ancora creato).
+   * Quando null: fee registrata come pending, invio skippato.
+   */
+  feeAddress:     string | null;
+
   // ── Actions ─────────────────────────────────────────────────────────────────
   connect():                         Promise<void>;
   disconnect():                      Promise<void>;
@@ -88,6 +109,20 @@ export interface SparkWalletContextValue {
    * Delegato direttamente all'adapter tramite ref — stabile, nessun re-render.
    */
   subscribeToEvents(cb: (e: SparkPaymentEvent) => void): () => void;
+
+  /**
+   * C2+A Tier 1: registra la fee come pending + tenta l'invio immediato verso Alpha Spark.
+   *
+   * SCOPE LOCK: non modifica il main Lightning payment flow.
+   * - NON tocca prepareSend, sendPayment, sendInProgress, reconciliation, history.
+   * - Se fallisce: il main payment resta SUCCESS, la fee resta pending_collection.
+   * - L'invio Spark fee è completamente separato dall'invio principale.
+   * - Se fee_address è null: registra solo il pending, nessun invio Spark.
+   *
+   * @param mainPaymentId — paymentId del main payment (idempotency key)
+   * @param feeAmountSat  — fee Alpha in satoshi (bigint)
+   */
+  collectFee(mainPaymentId: string, feeAmountSat: bigint): Promise<void>;
 }
 
 // ── Context ───────────────────────────────────────────────────────────────────
@@ -133,14 +168,18 @@ export function SparkWalletProvider({ children, isEnabled, storageDir = "spark-w
   const [walletInfo, setInfo]  = useState<SparkWalletInfo | undefined>();
   const [feeConfig, setFee]    = useState<SparkFeeConfig | undefined>();
 
-  // Carica fee config una volta sola (Finding 9: error handler esplicito)
+  /** Ref per il fee address — stabile, nessun re-render nelle callback */
+  const feeAddressRef = useRef<string | null>(null);
+
+  // Carica user fee config (include fee_address) — accessibile a utenti normali
   useEffect(() => {
     if (!isEnabled) return;
-    apiGetSparkFeeConfig()
-      .then(setFee)
+    apiGetSparkUserFeeConfig()
+      .then(cfg => {
+        setFee(cfg);
+        feeAddressRef.current = cfg.fee_address ?? null;
+      })
       .catch(() => {
-        // Fail silenzioso — i default hardcoded in calculateSendFee sono usati come fallback.
-        // L'utente non viene bloccato, ma non vediamo la fee config del backend.
         console.warn("[SparkWallet] Impossibile caricare fee config dal backend — uso defaults");
       });
   }, [isEnabled]);
@@ -163,6 +202,48 @@ export function SparkWalletProvider({ children, isEnabled, storageDir = "spark-w
     return () => document.removeEventListener("visibilitychange", handler);
   }, [isEnabled]);
 
+  // ── C2+A Tier 2: raccolta pending fees all'avvio/connect ──────────────────
+  // Funzione interna — non esposta nel context, chiamata dopo connect().
+  // Aggrega N fee pendenti in un unico pagamento Spark verso Alpha.
+  // Fire-and-forget: errori non bloccano la UI né il main payment flow.
+
+  const _collectPendingFees = async (): Promise<void> => {
+    const addr = feeAddressRef.current;
+    if (!addr) return; // fee_address non configurato → skip (fee restano pending)
+
+    const adapter = adapterRef.current;
+    if (!adapter || adapter.state !== "connected") return;
+
+    try {
+      const { pendingFees, totalSat } = await apiSparkGetPendingFees();
+      if (!pendingFees.length || totalSat <= 0) return;
+
+      const totalSatBig = BigInt(totalSat);
+
+      // prepareSend imposta _lastPrepareResponse nell'adapter
+      await adapter.prepareSend({ paymentRequest: addr, amountSat: totalSatBig });
+      const result = await adapter.send({ paymentRequest: addr, amountSat: totalSatBig });
+
+      // Refresh balance post fee collection
+      const info = await adapter.getInfo().catch(() => undefined);
+      if (info) setInfo(info);
+
+      // Marca tutte le fee come raccolte con il singolo feePaymentId
+      await apiSparkMarkFeesBulkCollected({
+        mainPaymentIds: pendingFees.map(f => f.mainPaymentId),
+        feePaymentId:   result.paymentId,
+      });
+
+      console.info(`[SparkFee] Tier 2: raccolte ${pendingFees.length} fee pendenti (${totalSat} sat) → ${result.paymentId}`);
+    } catch (err) {
+      // Non bloccare il flusso — le fee restano pending_collection e verranno
+      // ritentate al prossimo connect/visibilitychange.
+      console.warn("[SparkFee] Tier 2 pending collection fallita (non bloccante):", err);
+    }
+  };
+
+  // ── Lifecycle ─────────────────────────────────────────────────────────────
+
   const connect = useCallback(async () => {
     if (!isEnabled) return;
     // Finding 5: guard contro doppia chiamata — evita SDK orfani
@@ -182,6 +263,10 @@ export function SparkWalletProvider({ children, isEnabled, storageDir = "spark-w
       const info = await adapter.getInfo();
       setInfo(info);
       setState("connected");
+
+      // C2+A Tier 2: raccoglie fee pendenti da sessioni precedenti.
+      // Fire-and-forget — errori non bloccano il connect né la UI.
+      void _collectPendingFees().catch(() => {});
     } catch (err) {
       const e: SparkAdapterError = {
         code:        "CONNECT_FAILED",
@@ -191,6 +276,7 @@ export function SparkWalletProvider({ children, isEnabled, storageDir = "spark-w
       setError(e);
       setState("error");
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isEnabled, storageDir, state]);
 
   const disconnect = useCallback(async () => {
@@ -212,6 +298,8 @@ export function SparkWalletProvider({ children, isEnabled, storageDir = "spark-w
       setState("connected");
     }
   }, []);
+
+  // ── Send ──────────────────────────────────────────────────────────────────
 
   const calculateSendFee = useCallback(async (
     req:        SparkPrepareSendRequest,
@@ -241,7 +329,7 @@ export function SparkWalletProvider({ children, isEnabled, storageDir = "spark-w
   ) => {
     const adapter = adapterRef.current;
     if (!adapter) throw new Error("Adapter non inizializzato");
-    const result           = await adapter.send(req);
+    const result            = await adapter.send(req);
     const resolvedBreakdown = resolveActualProviderFee(breakdown, result.feeSat);
     // Refresh balance post-send
     const info = await adapter.getInfo().catch(() => walletInfo);
@@ -266,6 +354,69 @@ export function SparkWalletProvider({ children, isEnabled, storageDir = "spark-w
     return adapterRef.current?.subscribeToEvents(cb) ?? (() => {});
   }, []); // dipendenze vuote: adapterRef è un ref, sempre attuale
 
+  // ── C2+A Tier 1: collectFee ───────────────────────────────────────────────
+
+  /**
+   * Tier 1: registra fee pending + tenta invio immediato verso Alpha Spark.
+   *
+   * SCOPE LOCK: non tocca prepareSend/send/sendInProgress/reconciliation/history.
+   * Se l'invio Spark fallisce → fee resta pending_collection (Tier 2 la recupera).
+   * Se fee_address è null → registra solo il pending, nessun invio.
+   *
+   * IDEMPOTENZA: mainPaymentId è la chiave — lo stesso pagamento non può generare
+   * due riscossioni anche se collectFee viene chiamata più volte.
+   */
+  const collectFee = useCallback(async (
+    mainPaymentId: string,
+    feeAmountSat:  bigint,
+  ): Promise<void> => {
+    if (feeAmountSat <= 0n) return; // fee zero → skip
+
+    // 1. Registra come pending_collection nel backend (idempotente)
+    try {
+      await apiSparkRecordFee({
+        paymentId:           mainPaymentId,
+        alphaPlatformFeeSat: Number(feeAmountSat),
+      });
+    } catch (err) {
+      console.warn("[SparkFee] Impossibile registrare fee pending nel backend:", err);
+      return; // Senza record non possiamo procedere in modo idempotente
+    }
+
+    // 2. Tier 1: tenta invio immediato se fee_address configurato
+    const addr    = feeAddressRef.current;
+    const adapter = adapterRef.current;
+    if (!addr || !adapter || adapter.state !== "connected") {
+      // fee_address non ancora configurato (wallet non ancora creato)
+      // oppure adapter non connesso → fee resta pending, Tier 2 la raccoglierà
+      return;
+    }
+
+    try {
+      // prepareSend imposta _lastPrepareResponse nell'adapter (eseguito dopo il main payment)
+      await adapter.prepareSend({ paymentRequest: addr, amountSat: feeAmountSat });
+      const feeResult = await adapter.send({ paymentRequest: addr, amountSat: feeAmountSat });
+
+      // Refresh balance post fee send
+      const info = await adapter.getInfo().catch(() => undefined);
+      if (info) setInfo(info);
+
+      // Marca come raccolta (idempotente su feePaymentId)
+      await apiSparkMarkFeeCollected({
+        mainPaymentId,
+        feePaymentId: feeResult.paymentId,
+      });
+
+      console.info(`[SparkFee] Tier 1: fee raccolta → ${feeResult.paymentId} (${feeAmountSat} sat)`);
+    } catch (err) {
+      // Tier 1 fallito → fee resta pending_collection
+      // Tier 2 la raccoglierà al prossimo connect/avvio
+      console.warn("[SparkFee] Tier 1 fee send fallito — sarà ritentato al prossimo avvio:", err);
+    }
+  }, []); // dipendenze vuote: chiude su refs stabili
+
+  // ── Context value ─────────────────────────────────────────────────────────
+
   const value: SparkWalletContextValue = {
     adapterType:  isEnabled ? (adapterRef.current?.adapterType ?? null) : null,
     state:        isEnabled ? state : "disabled",
@@ -273,6 +424,7 @@ export function SparkWalletProvider({ children, isEnabled, storageDir = "spark-w
     isEnabled,
     walletInfo,
     feeConfig,
+    feeAddress:   feeAddressRef.current,
     connect,
     disconnect,
     syncWallet,
@@ -281,6 +433,7 @@ export function SparkWalletProvider({ children, isEnabled, storageDir = "spark-w
     createReceiveInvoice,
     listPayments,
     subscribeToEvents,
+    collectFee,
   };
 
   return (

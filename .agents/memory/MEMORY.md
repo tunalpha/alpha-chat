@@ -90,6 +90,7 @@
 - [Wallet lock back-button race condition](wallet-lock-race-condition.md) — lockWallet() è sincrono, setSubView("unlock") è asincrono (useEffect); back button deve check wallet.phase==="locked" PRIMA di qualsiasi subView check
 - [Wallet unlock auto-trigger bug](wallet-unlock-autotrigger.md) — NON auto-triggerare Face ID in UnlockView: monta anche post-lockWallet() → sblocca senza consenso
 - [SVG broken in img tag — malformed XML](svg-img-broken.md) — iOS Safari rifiuta SVG con XML malformato (es. `/ filter=`) in tag <img>; preferire PNG per logo in produzione
+- [Lightning fee collection C2+A](lightning-fee-collection-c2a.md) — fee_address=null finché wallet non creato; pending_collection→success via Tier1/Tier2; scope lock su main payment flow
 - [Breez SDK Spark PoC](breez-spark-poc.md) — COOP/COEP headers sopravvivono al proxy Replit dev; crossOriginIsolated=true; SharedArrayBuffer OK; WASM carica
 - [Spark IDB Analysis](spark-idb-analysis.md) — IDB Breez SDK NON cifrata: valori plain JSON, preimage HTLC leggibili, mnemonic NON presente; implicazioni go-live
 - [Spark Phase 3.1 Audit](spark-phase3-audit.md) — 2 regression fixate (build blocker + static import); lazy-load pattern obbligatorio; 773/773 test PASS; prerequisiti GO-LIVE invariati
