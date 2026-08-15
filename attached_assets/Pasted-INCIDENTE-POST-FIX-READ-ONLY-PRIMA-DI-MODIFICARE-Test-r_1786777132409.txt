@@ -1,0 +1,261 @@
+INCIDENTE POST-FIX — READ-ONLY PRIMA DI MODIFICARE
+
+Test reale appena eseguito:
+
+* USDA: 1.15
+* firma effettuata: UNA SOLA VOLTA
+* nessun retry
+* nessuna seconda firma
+* transazione reale eseguita correttamente
+* History mostra immediatamente:
+
+Inviata -1.15 USDA — 15 ago 07:57
+
+MA la SendPaymentSheet resta indefinitamente su:
+
+Conferma blockchain...
+
+con:
+
+Non chiudere l'app.
+
+Quindi:
+
+ANTI-DOUBLE-SPEND: PASS
+
+ma:
+
+CONFIRMATION DETECTION NELLA SHEET: FAIL
+
+⸻
+
+REGOLA ASSOLUTA
+
+NON modificare:
+
+* apiPaymentCreate
+* handleSend salvo strettissima necessità legata ESCLUSIVAMENTE alla chiusura del polling
+* signing
+* WalletConnect
+* broadcast
+* retry
+* createdTransferRef
+* signedUncertain
+* handleRetrySign
+* tx-monitor
+* History
+* Notifications
+* deduplication.
+
+Il test appena eseguito dimostra che una sola firma produce una sola TX.
+
+Non rischiare di rompere il fix anti-triple-charge.
+
+⸻
+
+OBIETTIVO
+
+Trovare perché:
+
+TX reale
+↓
+confirmed / presente in History
+↓
+tx-monitor la riconosce
+↓
+SendPaymentSheet continua:
+"Conferma blockchain..."
+
+Audit read-only
+
+Traccia esattamente il polling interno di:
+
+SendPaymentSheet.tsx
+
+in particolare:
+
+* signAndPoll
+* polling interval
+* pollCount
+* pollAborted
+* signedUncertain
+* signErrorMsg
+* DEPOSIT_TX_NOT_DETECTED
+* deposit
+* transferId
+* txHash
+* apiWalletGetEvmReceipt
+* qualsiasi endpoint usato per verificare il deposito.
+
+⸻
+
+CONFRONTO FONDAMENTALE
+
+Confronta due fonti:
+
+SOURCE A — SendPaymentSheet
+
+Quale condizione deve essere vera affinché:
+
+setPhase("done")
+
+venga eseguito?
+
+SOURCE B — History / tx-monitor
+
+Quale condizione sta già permettendo alla stessa TX di apparire in:
+
+History → Inviata -1.15 USDA
+
+Voglio capire perché A e B non stanno riconoscendo la stessa conferma.
+
+⸻
+
+IPOTESI DA VERIFICARE
+
+NON assumere che sia questa, ma controlla:
+
+Ipotesi 1 — mismatch transferId
+
+Il monitor/History riconosce:
+
+txHash = 0x...
+
+ma signAndPoll() cerca il deposito usando:
+
+transferId
+
+e quel transferId non viene più correlato correttamente alla TX.
+
+Ipotesi 2 — mismatch txHash
+
+La TX è confermata, ma il polling aspetta un txHash diverso/non ancora aggiornato.
+
+Ipotesi 3 — endpoint Alchemy timing
+
+History usa una fonte/endpoint che vede già la TX, mentre apiWalletGetEvmReceipt usato da signAndPoll() non la vede o restituisce ancora null.
+
+Ipotesi 4 — polling continua anche dopo conferma
+
+Il deposito è già stato riconosciuto da un altro percorso, ma signAndPoll() non riceve quell’evento e continua il proprio polling autonomo.
+
+Ipotesi 5 — stato React stale
+
+La condizione di conferma è stata soddisfatta, ma lo state/ref letto dal polling non viene aggiornato.
+
+⸻
+
+VERIFICA CRITICA
+
+La screenshot mostra una prova molto forte:
+
+SendPaymentSheet:
+"Conferma blockchain..."
+History:
+"Inviata -1.15 USDA"
+
+Quindi dobbiamo determinare:
+
+qual è la funzione esatta che ha scritto quella voce in History e quale informazione possiede che signAndPoll() non sta usando.
+
+Non duplicare la detection.
+
+Se il tx-monitor ha già riconosciuto la stessa TX, valutare soltanto se SendPaymentSheet può riutilizzare quella stessa source of truth oppure se il polling deve riconoscere lo stesso txHash.
+
+⸻
+
+FIX CONSENTITO
+
+Solo dopo aver trovato la causa:
+
+rendere il completamento della sheet coerente con una TX già confermata.
+
+Il fix deve garantire:
+
+TX confirmed
+→ SendPaymentSheet termina
+→ phase="done"
+→ nessun nuovo send
+→ nessun nuovo apiPaymentCreate
+→ nessuna nuova firma
+
+Se la TX è già confermata e presente in History, la sheet non deve continuare indefinitamente a mostrare “Conferma blockchain…”.
+
+⸻
+
+INVARIANTE ANTI-DOUBLE-SPEND
+
+Il fix NON deve mai modificare questo comportamento:
+
+createdTransferRef presente
+→ nessun nuovo apiPaymentCreate()
+→ nessuna nuova TX
+
+Anche in caso di:
+
+* timeout;
+* Load failed;
+* polling lag;
+* Alchemy lag;
+* WalletConnect lag;
+* app in background;
+* receipt delayed.
+
+⸻
+
+TEST OBBLIGATORI
+
+Dopo il fix:
+
+Test A — normale
+
+1. invio USDA;
+2. una sola firma;
+3. una sola TX;
+4. TX confermata;
+5. sheet → Pagamento completato;
+6. History → una TX;
+7. Notification → una notification.
+
+Test B — rete instabile
+
+Load failed:
+
+* entra in uncertain;
+* nessuna nuova TX;
+* stesso transferId;
+* polling/resume corretto.
+
+Test C — TX confermata prima che la sheet la rilevi
+
+Simulare/replicare il caso appena osservato:
+
+TX on-chain
+↓
+History la vede
+↓
+sheet polling ancora attivo
+
+La sheet deve chiudersi correttamente.
+
+TEST DI REGRESSIONE
+
+Verificare esplicitamente:
+
+una firma = una TX.
+
+Questo è più importante di qualsiasi modifica estetica allo stato della sheet.
+
+⸻
+
+OUTPUT PRIMA DEL FIX
+
+Prima di modificare codice riportare:
+
+1. funzione che ha rilevato la TX per History;
+2. funzione che SendPaymentSheet usa per rilevare la conferma;
+3. differenza tra le due;
+4. condizione che impedisce setPhase("done");
+5. fix minimo proposto.
+
+NON applicare il fix finché la causa non è dimostrata.
