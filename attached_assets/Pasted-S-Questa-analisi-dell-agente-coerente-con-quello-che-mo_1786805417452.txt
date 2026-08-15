@@ -1,0 +1,112 @@
+Sì. Questa analisi dell’agente è coerente con quello che mostrano le schermate e, soprattutto, il log chiarisce definitivamente che il problema NON è il payout blockchain.
+
+La parte più importante
+
+Il test reale ha dimostrato che il fix di oggi sulla priorità wallet ha funzionato:
+
+Alpha Chat → Alpha Wallet
+0x0463…B298 ✅
+
+e non è stato utilizzato il vecchio wallet legacy:
+
+0x2b39…5805
+
+Quindi questo requisito è validato con un test reale.
+
+La sequenza:
+
+deposito 0.908341 USDT
+→ Alpha Wallet risolto
+→ gas top-up
+→ TX firmata
+→ TX inviata
+→ 0x638497…83cb
+
+significa che il backend ha completato la parte critica del payout.
+
+Quindi cos’era “Load failed”?
+
+L’agente ha individuato una distinzione fondamentale:
+
+Trust Wallet / cambio app iOS
+→ Safari mette temporaneamente in background Alpha Chat
+→ una richiesta HTTP del polling frontend può essere interrotta
+→ il browser restituisce Load failed
+→ il catch attuale lo interpreta erroneamente come errore definitivo
+→ mostra Load failed
+→ riappare “Firma transazione”
+
+Quindi la UI può far credere all’utente:
+
+❌ “La firma è fallita”
+
+quando in realtà:
+
+✅ la transazione potrebbe essere già stata firmata e inviata.
+
+Ed è esattamente quello che è successo nel tuo test.
+
+Il fix #146 mi sembra corretto
+
+Io autorizzerei il fix, ma con una condizione molto precisa:
+
+solo il catch del polling deve essere modificato, senza modificare la logica di firma, invio, escrow, fee, wallet priority o recovery.
+
+Il comportamento desiderato deve diventare:
+
+Errore di rete/transitorio durante polling
+→ non mostrare Load failed
+→ non mostrare nuovamente Firma
+→ continuare il polling
+→ verificare lo stato reale del pagamento.
+
+Mentre:
+
+Errore applicativo reale
+→ continua a essere gestito come errore reale.
+
+E soprattutto deve rimanere attiva la protezione signedUncertain.
+
+Una cosa che controllerei prima di dare il via libera definitivo
+
+Chiederei all’agente di garantire esplicitamente che il nuovo catch non trasformi qualsiasi errore in “transitorio”.
+
+Deve distinguere almeno:
+
+* TypeError: Failed to fetch
+* Load failed
+* network interruption / AbortError
+
+da:
+
+* errore applicativo del payment status;
+* pagamento realmente fallito;
+* transaction reverted;
+* invalid response;
+* stato definitivo di errore.
+
+Altrimenti rischiamo di nascondere un vero errore backend.
+
+Stato del test di oggi
+
+Per me il risultato è:
+
+Componente	Risultato
+Deposito 1 USDA	✅
+Richiesta 1 USDT	✅
+Deposito USDT	✅ 0.908341
+Priorità Alpha Wallet	✅ confermata
+Wallet destinatario corretto	✅
+Gas top-up	✅
+TX payout firmata	✅
+TX payout inviata	✅
+Blockchain payout	🟢 in transito / releasing
+UI durante cambio app	❌ mostra erroneamente Load failed
+Doppia firma	🛡️ protetta
+Fix necessario	🔧 solo frontend polling
+
+Quindi non farei rollback e non toccherei assolutamente i fix di oggi.
+
+Approvarei task #146 come fix isolato, poi farei un nuovo test reale USDT Polygon → Alpha Wallet. Il test di accettazione deve essere molto semplice: entrare in Trust Wallet → firmare → tornare ad Alpha Chat → nessun Load failed → il pagamento deve continuare automaticamente fino a Rilasciato, senza dover premere nuovamente “Firma”.
+
+E una cosa è già stata dimostrata oggi: non devi ri-firmare quando compare quel vecchio Load failed. La TX 0x638497…83cb dimostra perché.
