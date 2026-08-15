@@ -57,6 +57,7 @@ import {
 } from "../wallet/services/balance-service";
 import {
   fetchPrices,
+  formatBtcFiat,
   formatCrypto,
   formatFiat,
   getSymbolPrice,
@@ -3458,6 +3459,20 @@ function HistoryView({ onBack }: { onBack: () => void }) {
   const [selectedLnTx, setSelectedLnTx] = useState<LightningTxRecord | null>(null);
   const [lnFilter,     setLnFilter]     = useState<"all" | "receive" | "send">("all");
 
+  // ── Equivalente fiat (display-only) ─────────────────────────────────────
+  // Valuta dell'account (EUR/USD da impostazioni wallet) + prezzo BTC live.
+  // Solo visualizzazione: nessun impatto su importi, invoice o record IDB.
+  const { currency: lnFiatCurrency } = useWalletCurrency();
+  const [lnBtcPrice, setLnBtcPrice] = useState<{ eur: number; usd: number } | null>(null);
+  useEffect(() => {
+    if (mainTab !== "lightning") return;
+    let cancelled = false;
+    fetchPrices()
+      .then(p => { if (!cancelled) setLnBtcPrice((p?.btc as { eur: number; usd: number } | undefined) ?? null); })
+      .catch(() => { /* prezzo assente → l'equivalente fiat semplicemente non appare */ });
+    return () => { cancelled = true; };
+  }, [mainTab]);
+
   // Carica on-chain sempre; carica Lightning al primo accesso al tab
   useEffect(() => { void wallet.refreshTxHistory(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -3580,6 +3595,8 @@ function HistoryView({ onBack }: { onBack: () => void }) {
       tx={selectedLnTx}
       onBack={() => setSelectedLnTx(null)}
       onUpdated={updated => setSelectedLnTx(updated)}
+      btcPrice={lnBtcPrice}
+      fiatCurrency={lnFiatCurrency}
     />;
   }
 
@@ -3638,7 +3655,8 @@ function HistoryView({ onBack }: { onBack: () => void }) {
         ) : (
           <div className="aw-history-list">
             {lnFiltered.map(tx => (
-              <LightningTxListItem key={tx.id} tx={tx} onClick={() => setSelectedLnTx(tx)} />
+              <LightningTxListItem key={tx.id} tx={tx} onClick={() => setSelectedLnTx(tx)}
+                btcPrice={lnBtcPrice} fiatCurrency={lnFiatCurrency} />
             ))}
           </div>
         )}
@@ -3857,7 +3875,12 @@ function TxDetailView({ tx, onBack }: { tx: WalletTxRecord; onBack: () => void }
 
 // ─── LightningTxListItem ─────────────────────────────────────────────────────
 
-function LightningTxListItem({ tx, onClick }: { tx: LightningTxRecord; onClick: () => void }) {
+function LightningTxListItem({ tx, onClick, btcPrice, fiatCurrency }: {
+  tx: LightningTxRecord;
+  onClick: () => void;
+  btcPrice?: { eur: number; usd: number } | null;
+  fiatCurrency?: "EUR" | "USD";
+}) {
   const isReceive = tx.direction === "receive";
   const isPaid    = tx.status === "paid";
   const isPending = tx.status === "pending";
@@ -3889,6 +3912,11 @@ function LightningTxListItem({ tx, onClick }: { tx: LightningTxRecord; onClick: 
     ? `${amtPrefix}${amtSat.toLocaleString("it-IT")} sat`
     : isReceive ? "⚡ Qualsiasi" : "—";
 
+  // Equivalente fiat display-only (valuta account) — assente se prezzo non disponibile
+  const fiatEquiv = amtSat > 0 && btcPrice && fiatCurrency
+    ? formatBtcFiat(BigInt(amtSat), btcPrice, fiatCurrency)
+    : null;
+
   return (
     <div className="aw-tx-item" onClick={onClick} role="button" tabIndex={0}
       onKeyDown={e => e.key === "Enter" && onClick()}>
@@ -3904,6 +3932,9 @@ function LightningTxListItem({ tx, onClick }: { tx: LightningTxRecord; onClick: 
       </div>
       <div className="aw-tx-amount-col">
         <div className={`aw-tx-amount ${amtClass}`}>{amtDisplay}</div>
+        {fiatEquiv && fiatEquiv !== "—" && (
+          <div className="aw-tx-date" style={{ opacity: 0.85 }}>≈ {fiatEquiv}</div>
+        )}
         <div className="aw-tx-date">{dateStr} {timeStr}</div>
       </div>
     </div>
@@ -3916,10 +3947,14 @@ function LightningTxDetailView({
   tx,
   onBack,
   onUpdated,
+  btcPrice,
+  fiatCurrency,
 }: {
   tx: LightningTxRecord;
   onBack: () => void;
   onUpdated: (updated: LightningTxRecord) => void;
+  btcPrice?: { eur: number; usd: number } | null;
+  fiatCurrency?: "EUR" | "USD";
 }) {
   const isReceive = tx.direction === "receive";
   const isPaid    = tx.status === "paid";
@@ -4005,6 +4040,15 @@ function LightningTxDetailView({
             ? `${tx.amountSat.toLocaleString("it-IT")} sat`
             : isReceive ? "Qualsiasi importo" : "—"}
         </div>
+        {(() => {
+          // Equivalente fiat display-only (valuta account, prezzo BTC live)
+          const fx = tx.amountSat > 0 && btcPrice && fiatCurrency
+            ? formatBtcFiat(BigInt(tx.amountSat), btcPrice, fiatCurrency)
+            : null;
+          return fx && fx !== "—" ? (
+            <div style={{ fontSize: "0.95rem", opacity: 0.75, marginTop: 2 }}>≈ {fx}</div>
+          ) : null;
+        })()}
         <div className="aw-tx-detail-amount-network">⚡ Lightning · {dirLabel}</div>
       </div>
 
