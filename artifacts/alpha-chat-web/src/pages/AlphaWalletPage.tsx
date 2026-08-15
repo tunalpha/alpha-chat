@@ -3834,7 +3834,7 @@ function HistoryView({ onBack }: { onBack: () => void }) {
               className={`aw-filter-chip ${lnFilter === f ? "aw-filter-chip--active" : ""}`}
               onClick={() => setLnFilter(f)}
             >
-              {f === "all" ? "Tutto" : f === "receive" ? "💰 Ricevuto" : "📤 Inviato"}
+              {f === "all" ? "Tutto" : f === "receive" ? "🟢↓ Ricevuto" : "🟣↑ Inviato"}
             </button>
           ))}
         </div>
@@ -3889,7 +3889,7 @@ function HistoryView({ onBack }: { onBack: () => void }) {
             className={`aw-filter-chip ${filter === f ? "aw-filter-chip--active" : ""}`}
             onClick={() => { setFilter(f); setPage(1); }}
           >
-            {f === "all" ? "Tutto" : f === "in" ? "💰 Ricevuto" : f === "out" ? "📤 Inviato" : "⏳ In attesa"}
+            {f === "all" ? "Tutto" : f === "in" ? "🟢↓ Ricevuto" : f === "out" ? "🟣↑ Inviato" : "⏳ In attesa"}
           </button>
         ))}
         {/* Pulsante reset monitor: forza un poll fresco da block 0 con order:desc */}
@@ -3935,8 +3935,8 @@ function TxListItem({ tx, onClick }: { tx: WalletTxRecord; onClick: () => void }
   const isPending = tx.status === "pending";
   const isFailed  = tx.status === "failed";
 
-  const iconClass = isPending ? "aw-tx-icon--pending" : isIn ? "aw-tx-icon--in" : "aw-tx-icon--out";
-  const icon      = isPending ? "⏳" : isIn ? "💰" : "📤";
+  const iconClass = isPending ? "aw-tx-icon--pending" : "";
+  const icon      = isPending ? "⏳" : isIn ? "🟢↓" : "🟣↑";
   const label     = isPending ? "In attesa" : isIn ? "Ricevuto" : "Inviato";
   const amtClass  = isPending ? "aw-tx-amount--pending" : isIn ? "aw-tx-amount--in" : "aw-tx-amount--out";
   const amtPrefix = isIn ? "+" : "-";
@@ -3948,15 +3948,7 @@ function TxListItem({ tx, onClick }: { tx: WalletTxRecord; onClick: () => void }
   return (
     <div className="aw-tx-item" onClick={onClick} role="button" tabIndex={0}
       onKeyDown={e => e.key === "Enter" && onClick()}>
-      <div className={`aw-tx-icon ${iconClass}`}>
-        {!isPending && !isIn
-          ? <svg viewBox="0 0 24 24" fill="none" width="22" height="22" stroke="#8b5cf6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="10"/>
-              <line x1="8" y1="16" x2="16" y2="8"/>
-              <polyline points="10 8 16 8 16 14"/>
-            </svg>
-          : icon}
-      </div>
+      <div className={`aw-tx-icon ${iconClass}`}>{icon}</div>
       <div className="aw-tx-body">
         <div className="aw-tx-title">
           {label}
@@ -4010,12 +4002,7 @@ function TxDetailView({ tx, onBack }: { tx: WalletTxRecord; onBack: () => void }
       </div>
 
       <div className="aw-tx-detail-icon">
-        {isPending ? "⏳" : isIn ? "💰"
-          : <svg viewBox="0 0 24 24" fill="none" width="44" height="44" stroke="#8b5cf6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="10"/>
-              <line x1="8" y1="16" x2="16" y2="8"/>
-              <polyline points="10 8 16 8 16 14"/>
-            </svg>}
+        {isPending ? "⏳" : isIn ? "🟢↓" : "🟣↑"}
       </div>
 
       <div className="aw-tx-detail-amount">
@@ -4097,12 +4084,9 @@ function LightningTxListItem({ tx, onClick, btcPrice, fiatCurrency }: {
   const isExpired = tx.status === "expired";
   const isFailed  = tx.status === "failed";
 
-  const icon      = isReceive ? (isPaid ? "💰" : isExpired ? "⏰" : isFailed ? "❌" : "⏳")
-                              : (isPaid ? "📤" : "❌");
-  const iconClass = isPaid
-    ? (isReceive ? "aw-tx-icon--in" : "aw-tx-icon--out")
-    : isPending ? "aw-tx-icon--pending"
-    : "aw-tx-icon--pending";
+  const icon      = isReceive ? (isPaid ? "🟢↓" : isExpired ? "⏰" : isFailed ? "❌" : "⏳")
+                              : (isPaid ? "🟣↑" : "❌");
+  const iconClass = isPending ? "aw-tx-icon--pending" : "";
 
   const label     = isReceive
     ? (isPaid ? "Ricevuto ⚡" : isPending ? "In attesa" : isExpired ? "Scaduta" : "Fallita")
@@ -4130,15 +4114,7 @@ function LightningTxListItem({ tx, onClick, btcPrice, fiatCurrency }: {
   return (
     <div className="aw-tx-item" onClick={onClick} role="button" tabIndex={0}
       onKeyDown={e => e.key === "Enter" && onClick()}>
-      <div className={`aw-tx-icon ${iconClass}`}>
-        {!isReceive && isPaid
-          ? <svg viewBox="0 0 24 24" fill="none" width="22" height="22" stroke="#8b5cf6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <circle cx="12" cy="12" r="10"/>
-              <line x1="8" y1="16" x2="16" y2="8"/>
-              <polyline points="10 8 16 8 16 14"/>
-            </svg>
-          : icon}
-      </div>
+      <div className={`aw-tx-icon ${iconClass}`}>{icon}</div>
       <div className="aw-tx-body">
         <div className="aw-tx-title">
           {label}
