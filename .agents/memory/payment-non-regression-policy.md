@@ -7,8 +7,10 @@ description: Policy utente vincolante per ogni sessione — l'intero payment sta
 
 **Why:** richiesta esplicita dell'utente (2026-08-15) dopo incidenti reali (double-charge, timeout ETH, payout al wallet sbagliato). La stabilità dei pagamenti ha priorità assoluta su refactoring/DRY/performance/feature.
 
+**🔒 LIGHTNING CONGELATO (2026-08-15):** il pagamento Lightning via Breez Spark SDK è stato verificato funzionante in produzione (screenshot confermato, Payment ID 01a006ec-0617-7033-9d8f-63ee3174ca5f). Il flusso Lightning NON va toccato. Root cause storica documentata in `lightning-send-guard.md`: sendPayment WASM richiedeva `{ prepareResponse }` e non `{ paymentRequest, amount }` — bug silenzioso che causava spinner ∞. Fix: `prepareSend()` salva raw response in `_lastPrepareResponse`, `send()` la consuma. Se un futuro task sembra richiedere modifiche a Lightning → FERMARSI e chiedere autorizzazione.
+
 **How to apply — punti operativi:**
-- **Flussi protetti:** BTC on-chain, Lightning/Spark/Breez, USDA, USDT BSC/ETH/Polygon, Alpha Wallet, WalletConnect, iOS/PWA lifecycle, firma+retry, detection/polling, gas top-up, escrow, release, recovery, scheduler, webhook, stato/storico/UI pagamenti.
+- **Flussi protetti (TUTTI CONGELATI):** BTC on-chain, Lightning/Spark/Breez (**🔒 funzionante**), USDA, USDT BSC/ETH/Polygon, Alpha Wallet, WalletConnect, iOS/PWA lifecycle, firma+retry, detection/polling, gas top-up, escrow, release, recovery, scheduler, webhook, stato/storico/UI pagamenti.
 - **Codice condiviso:** prima di toccare una funzione usata anche dai pagamenti → FERMARSI e chiedere autorizzazione indicando: file, funzione, flow coinvolti, motivo, rischio, come si dimostra la non-regressione.
 - **Nuove reti/pagamenti:** codice isolato (nuovi adapter/service/feature flag), mai modificare logica già in uso.
 - **Test:** un solo test rosso su un payment flow BLOCCA la modifica. Regression minima: BTC → Lightning → USDA → USDT BSC → ETH → Polygon.
