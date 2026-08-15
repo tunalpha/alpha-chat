@@ -383,3 +383,153 @@ describe("USDA Send — Invariant: apiPaymentCreate chiamata al massimo una volt
     })();
   });
 });
+
+// ── §4: Fix incidente 2×0.7 USDA 2026-08-15 ─────────────────────────────────
+// Notifiche di firma multiple nel wallet + "Hai annullato la firma" con TX on-chain.
+
+describe("USDA Send — §4 single-flight firma + final-detect su rifiuto + pre-sign strict", () => {
+  // Replica della logica single-flight persistente (localStorage + token) di
+  // SendPaymentSheet.tsx — lock durevole al reload, cleanup token-based.
+  const PREFIX = "test_sign_inflight_";
+  const TTL = 10 * 60 * 1000;
+  function getLock(id: string): { ts: number; token: string } | null {
+    const raw = localStorage.getItem(PREFIX + id);
+    if (!raw) return null;
+    const e = JSON.parse(raw) as { ts: number; token: string };
+    if (Date.now() - e.ts >= TTL) { localStorage.removeItem(PREFIX + id); return null; }
+    return e;
+  }
+  function setLock(id: string): string {
+    const token = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    localStorage.setItem(PREFIX + id, JSON.stringify({ ts: Date.now(), token }));
+    return token;
+  }
+  function clearLock(id: string, token: string): void {
+    const raw = localStorage.getItem(PREFIX + id);
+    if (!raw) return;
+    if ((JSON.parse(raw) as { token?: string }).token === token) localStorage.removeItem(PREFIX + id);
+  }
+
+  beforeEach(() => { localStorage.clear(); });
+
+  it("§4.1 — single-flight: seconda signAndPoll per lo stesso transfer NON invia una seconda richiesta firma", () => {
+    const sendTransaction = vi.fn().mockReturnValue(new Promise(() => {})); // mai risolta (in coda nel wallet)
+
+    function dispatchSign(transferId: string): "dispatched" | "skipped" {
+      if (getLock(transferId)) return "skipped"; // → uncertain, solo polling
+      setLock(transferId);
+      sendTransaction();
+      return "dispatched";
+    }
+
+    expect(dispatchSign("T-1")).toBe("dispatched");
+    // Retry mentre la richiesta è ancora in coda nel wallet:
+    expect(dispatchSign("T-1")).toBe("skipped");
+    expect(dispatchSign("T-1")).toBe("skipped");
+    // INVARIANTE: una sola richiesta di firma raggiunge il wallet
+    expect(sendTransaction).toHaveBeenCalledTimes(1);
+    // Transfer diverso: richiesta consentita
+    expect(dispatchSign("T-2")).toBe("dispatched");
+    expect(sendTransaction).toHaveBeenCalledTimes(2);
+  });
+
+  it("§4.2 — single-flight: dopo risoluzione (firma o rifiuto) un nuovo dispatch è consentito", () => {
+    const token = setLock("T-1");
+    clearLock("T-1", token); // la richiesta si risolve → entry rimossa
+    expect(getLock("T-1")).toBeNull(); // dispatch di nuovo consentito
+  });
+
+  it("§4.2b — cleanup token-based: una risoluzione STALE non cancella il lock di un dispatch più recente", () => {
+    const tokenA = setLock("T-1");   // dispatch A
+    const tokenB = setLock("T-1");   // dispatch B sostituisce il lock (dopo TTL scaduto, ipotetico)
+    clearLock("T-1", tokenA);        // A si risolve TARDI → non deve rimuovere il lock di B
+    expect(getLock("T-1")).not.toBeNull();
+    clearLock("T-1", tokenB);        // B si risolve → lock rimosso
+    expect(getLock("T-1")).toBeNull();
+  });
+
+  it("§4.2c — il lock è in localStorage: sopravvive a un reload (nuovo modulo, stesso storage)", () => {
+    setLock("T-RELOAD");
+    // Simula reload: la sola cosa che persiste è localStorage — getLock rilegge da lì.
+    expect(getLock("T-RELOAD")).not.toBeNull();
+  });
+
+  it("§4.3 — rifiuto firma MA deposito on-chain (richiesta stale rifiutata): final detect → done, NON errore", async () => {
+    // Scenario incidente: l'utente firma la richiesta vera e rifiuta quella stale.
+    // Il "user rejected" arriva al flusso → pollAborted → PRIMA di lanciare errore
+    // va fatto un ultimo detect: se il deposito c'è → successo.
+    let pollAborted = true;
+    const detectDeposit = vi.fn().mockResolvedValue({ status: "accepted" });
+    const phases: string[] = [];
+
+    async function confirmOrAbort(): Promise<boolean> {
+      try {
+        await detectDeposit();
+        phases.push("done");
+        return true;
+      } catch { /* rifiuto reale */ }
+      throw new Error("Firma annullata.");
+    }
+
+    if (pollAborted) {
+      const ok = await confirmOrAbort();
+      expect(ok).toBe(true);
+    }
+    expect(phases).toEqual(["done"]);
+  });
+
+  it("§4.4 — rifiuto firma E nessun deposito: final detect fallisce → errore (comportamento invariato)", async () => {
+    const detectDeposit = vi.fn().mockRejectedValue(
+      Object.assign(new Error("not detected"), { code: "DEPOSIT_TX_NOT_DETECTED" }),
+    );
+
+    async function confirmOrAbort(): Promise<boolean> {
+      try {
+        await detectDeposit();
+        return true;
+      } catch { /* rifiuto reale */ }
+      throw new Error("Firma annullata.");
+    }
+
+    await expect(confirmOrAbort()).rejects.toThrow("Firma annullata.");
+  });
+
+  it("§4.5 — pre-sign check: errore di rete (non DEPOSIT_TX_NOT_DETECTED) → NIENTE firma", async () => {
+    // Se non sappiamo se il deposito esiste, firmare al buio = rischio doppio addebito.
+    const detectDeposit = vi.fn().mockRejectedValue(new Error("Load failed")); // nessun code
+    const sendTransaction = vi.fn();
+    let outcome = "";
+
+    try {
+      await detectDeposit();
+      outcome = "done"; // deposito già presente
+    } catch (preErr: unknown) {
+      const code = (preErr as Error & { code?: string })?.code;
+      if (code !== "DEPOSIT_TX_NOT_DETECTED") {
+        outcome = "error-no-sign"; // rete instabile → non firmare
+      } else {
+        sendTransaction();
+        outcome = "signed";
+      }
+    }
+
+    expect(outcome).toBe("error-no-sign");
+    expect(sendTransaction).not.toHaveBeenCalled();
+  });
+
+  it("§4.6 — pre-sign check: DEPOSIT_TX_NOT_DETECTED esplicito → firma consentita", async () => {
+    const detectDeposit = vi.fn().mockRejectedValue(
+      Object.assign(new Error("not detected"), { code: "DEPOSIT_TX_NOT_DETECTED" }),
+    );
+    const sendTransaction = vi.fn();
+
+    try {
+      await detectDeposit();
+    } catch (preErr: unknown) {
+      const code = (preErr as Error & { code?: string })?.code;
+      if (code === "DEPOSIT_TX_NOT_DETECTED") sendTransaction();
+    }
+
+    expect(sendTransaction).toHaveBeenCalledTimes(1);
+  });
+});

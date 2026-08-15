@@ -102,6 +102,55 @@ type SendPhase =
 
 const PENDING_KEY = "ac_pending_payment";
 
+/**
+ * SINGLE-FLIGHT FIRMA — lock persistente per transfer in localStorage.
+ * Impedisce di accodare più richieste WalletConnect per lo stesso transfer:
+ * l'utente vedrebbe più notifiche di firma nel wallet, le firmerebbe tutte e
+ * la stessa somma partirebbe più volte on-chain (incidente 2×0.7 USDA 15/08/26).
+ *
+ * Design (da review architetturale):
+ * - localStorage (non Map module-level): il lock sopravvive al reload iOS.
+ * - Ogni dispatch riceve un token univoco; la rimozione del lock avviene SOLO
+ *   se il token memorizzato coincide — una richiesta stale che si risolve tardi
+ *   non può cancellare il lock di un dispatch più recente.
+ * - La entry viene rimossa quando la richiesta si risolve (firma o rifiuto);
+ *   per errori di rete resta attiva fino al TTL (10 min = finestra di polling):
+ *   la richiesta potrebbe essere ancora viva nel wallet.
+ */
+const SIGN_INFLIGHT_PREFIX = "ac_sign_inflight_";
+const SIGN_INFLIGHT_TTL_MS = 10 * 60 * 1000;
+
+function getSignInFlight(transferId: string): { ts: number; token: string } | null {
+  try {
+    const raw = localStorage.getItem(SIGN_INFLIGHT_PREFIX + transferId);
+    if (!raw) return null;
+    const entry = JSON.parse(raw) as { ts: number; token: string };
+    if (typeof entry.ts !== "number" || Date.now() - entry.ts >= SIGN_INFLIGHT_TTL_MS) {
+      localStorage.removeItem(SIGN_INFLIGHT_PREFIX + transferId);
+      return null;
+    }
+    return entry;
+  } catch { return null; }
+}
+
+function setSignInFlight(transferId: string): string {
+  const token = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  try {
+    localStorage.setItem(SIGN_INFLIGHT_PREFIX + transferId, JSON.stringify({ ts: Date.now(), token }));
+  } catch { /* quota — il lock semplicemente non persiste */ }
+  return token;
+}
+
+/** Rimuove il lock SOLO se il token coincide (una risoluzione stale non cancella un lock più recente). */
+function clearSignInFlight(transferId: string, token: string): void {
+  try {
+    const raw = localStorage.getItem(SIGN_INFLIGHT_PREFIX + transferId);
+    if (!raw) return;
+    const entry = JSON.parse(raw) as { token?: string };
+    if (entry.token === token) localStorage.removeItem(SIGN_INFLIGHT_PREFIX + transferId);
+  } catch { /* ignore */ }
+}
+
 interface PendingPayment {
   transferId:     string;
   conversationId: string;
@@ -237,18 +286,52 @@ export function SendPaymentSheet({
         localStorage.removeItem(PENDING_KEY);
         setPhase("done");
       })
-      .catch(() => {
-        // Pulisce la chiave in modo che riaprendo il foglio non scatti
-        // di nuovo il recovery automatico (che causerebbe un loop errore→chiudi→riapri→errore).
-        localStorage.removeItem(PENDING_KEY);
-        // Torna allo step firma così l'utente può riprovare manualmente.
-        setStep("confirm");
-        setPhase(null);
-        setError(
-          "Deposito non ancora rilevato on-chain.\n" +
-          "La transazione potrebbe essere in elaborazione (1-2 min).\n" +
-          "Premi «🔐 Firma e Invia» per riprovare la firma, oppure chiudi e usa «Controlla deposito» nella chat.",
-        );
+      .catch(async () => {
+        // ANTI-DOUBLE-SPEND: dopo un reload iOS createdTransferRef è vuoto.
+        // Se l'utente premesse «Firma e Invia» senza questo recupero, handleSend
+        // chiamerebbe apiPaymentCreate() creando un SECONDO transfer reale.
+        // Carichiamo quindi il transfer pendente e lo agganciamo al ref: il
+        // pulsante rifirmerà lo STESSO transfer, mai uno nuovo.
+        try {
+          const tr = await apiPaymentGet(pending.transferId);
+          if (tr.status !== "awaiting_deposit") {
+            // Deposito già confermato nel frattempo → successo.
+            localStorage.removeItem(PENDING_KEY);
+            setPhase("done");
+            return;
+          }
+          const toAddr = tr.transfer_mode === "direct" ? tr.recipient_wallet : tr.escrow_wallet;
+          if (!toAddr) throw new Error("routing address mancante");
+          createdTransferRef.current = {
+            transferId:   pending.transferId,
+            toAddress:    toAddr,
+            amountStr:    tr.amount,
+            assetAddress: tr.asset_address ?? null,
+          };
+          setAmount(tr.amount);
+          // Ref agganciato: da qui «Firma e Invia» rifirma lo STESSO transfer.
+          // Solo ora è sicuro rimuovere la chiave pending.
+          localStorage.removeItem(PENDING_KEY);
+          setStep("confirm");
+          setPhase(null);
+          setError(
+            "Deposito non ancora rilevato on-chain.\n" +
+            "La transazione potrebbe essere in elaborazione (1-2 min).\n" +
+            "Premi «🔐 Firma e Invia» per riprovare la firma, oppure chiudi e usa «Controlla deposito» nella chat.",
+          );
+        } catch {
+          // Transfer non caricabile (rete giù o dati incompleti): NON tornare al
+          // form di firma — senza createdTransferRef un nuovo «Firma e Invia»
+          // creerebbe un secondo transfer reale. Manteniamo PENDING_KEY così il
+          // recovery riparte alla prossima apertura, e blocchiamo questa sheet.
+          setStep("sending");
+          setPhase("error");
+          setError(
+            "📡 Non riesco a verificare il pagamento in sospeso (connessione instabile).\n" +
+            "Per sicurezza la firma è disabilitata. Chiudi, controlla la rete e riapri — " +
+            "oppure usa «Controlla deposito» nella chat.",
+          );
+        }
       });
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -301,13 +384,28 @@ export function SendPaymentSheet({
     // Controlla se il deposito è già presente on-chain PRIMA di richiedere una
     // nuova firma. Evita il doppio-prompt su WalletConnect quando una richiesta
     // precedente (stale relay) è ancora in coda nel wallet dell'utente.
+    //
+    // ANTI-DOUBLE-SPEND: procediamo con la firma SOLO se il backend risponde
+    // esplicitamente DEPOSIT_TX_NOT_DETECTED ("non c'è nessun deposito").
+    // Un errore di rete/server qui significa che NON SAPPIAMO se una TX esiste
+    // già → firmare al buio rischia il doppio addebito. In quel caso mostriamo
+    // errore e l'utente riprova quando la rete torna (il retry rifà il check).
     try {
       await apiPaymentDetectDeposit(args.transferId);
       // Deposito già rilevato — nessuna firma necessaria.
       setPhase("done");
       return;
-    } catch {
-      // Deposito non ancora presente — procediamo con la firma.
+    } catch (preErr: unknown) {
+      const preCode = (preErr as Error & { code?: string })?.code;
+      if (preCode !== "DEPOSIT_TX_NOT_DETECTED") {
+        setError(
+          "📡 Non riesco a verificare lo stato del pagamento (connessione instabile).\n" +
+          "Per sicurezza la firma non è partita. Controlla la rete e ripremi «Riprova».",
+        );
+        setPhase("error");
+        return;
+      }
+      // DEPOSIT_TX_NOT_DETECTED confermato — nessun deposito, firma sicura.
     }
 
     let pollAborted     = false;
@@ -329,6 +427,20 @@ export function SendPaymentSheet({
       return;
     }
 
+    // ── SINGLE-FLIGHT FIRMA (ANTI notifiche multiple / doppio addebito) ──────
+    // Se una richiesta di firma per QUESTO transfer è già in coda nel wallet
+    // (dispatch recente non ancora risolto), NON ne accodiamo un'altra: l'utente
+    // vedrebbe più notifiche di firma nel wallet, le firmerebbe entrambe e la
+    // stessa somma partirebbe due volte on-chain (incidente 2×0.7 USDA 2026-08-15).
+    // In quel caso saltiamo la firma e andiamo direttamente al polling in stato
+    // "uncertain": il wallet ha già la richiesta, se l'utente la firma il
+    // deposito emergerà dal detect.
+    const inFlightEntry = getSignInFlight(args.transferId);
+    if (inFlightEntry) {
+      signedUncertain = true;
+      signErrorMsg    = "Una richiesta di firma è già aperta nel wallet — firmala lì, senza nuove richieste.";
+    } else {
+    const signToken = setSignInFlight(args.transferId);
     { const _tok = localStorage.getItem("ac_access_token"); fetch("/api/v1/diagnostics/events", { method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${_tok ?? ""}` }, body: JSON.stringify({ event: "USDA-DIAG:START", chainId: 137 }) }); }
     account.sendTransaction({
       to:      contractAddress,
@@ -337,15 +449,21 @@ export function SendPaymentSheet({
       value:   BigInt(0),
       chainId: 137,
     }).then((r: unknown) => {
+      // Firma risolta → la richiesta non è più in coda nel wallet.
+      clearSignInFlight(args.transferId, signToken);
       { const _tok = localStorage.getItem("ac_access_token"); fetch("/api/v1/diagnostics/events", { method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${_tok ?? ""}` }, body: JSON.stringify({ event: "USDA-DIAG:RESOLVED", result: String(r) }) }); }
     }).catch((err: unknown) => {
       { const _tok = localStorage.getItem("ac_access_token"); fetch("/api/v1/diagnostics/events", { method: "POST", headers: { "Content-Type": "application/json", "Authorization": `Bearer ${_tok ?? ""}` }, body: JSON.stringify({ event: "USDA-DIAG:REJECTED", error: (err as Error)?.message ?? String(err) }) }); }
       const msg = (err as Error)?.message ?? "";
       if (/reject|cancel|denied|refused|user.*cancel|user rejected/i.test(msg)) {
-        // Reject esplicito dell'utente → interrompe subito il polling.
+        // Reject esplicito → la richiesta è stata consumata (rifiutata) nel wallet.
+        clearSignInFlight(args.transferId, signToken);
+        // NB: il rifiuto potrebbe riguardare una richiesta STALE mentre un'altra
+        // è andata a buon fine → prima di arrenderci il loop fa un ultimo detect.
         pollAborted  = true;
         signErrorMsg = t("usda.signCancelled");
       } else if (/nonce.*too.*low|nonce.*used|nonce.*already/i.test(msg)) {
+        clearSignInFlight(args.transferId, signToken);
         // "nonce too low" significa che una tx con lo stesso nonce è già stata
         // inviata e confermata (es. la richiesta stale del WalletConnect relay
         // dalla prima firma). NON è un errore critico: il deposito sarà rilevato
@@ -360,8 +478,11 @@ export function SendPaymentSheet({
         // continua. NON offriamo nuova firma finché non sappiamo l'esito.
         signedUncertain = true;
         signErrorMsg    = humanizeUsdaError(msg) || "Connessione interrotta durante la firma.";
+        // NON rimuoviamo la entry in-flight: con un errore di rete la richiesta
+        // potrebbe essere ancora viva nel wallet — il TTL la farà scadere.
       }
     });
+    } // fine dispatch single-flight
 
     // ── Polling detect-deposit ────────────────────────────────────────────
     const POLL_INTERVAL_MS       = 10_000;          // 10s — come USDA
@@ -370,9 +491,22 @@ export function SendPaymentSheet({
     const pollStart              = Date.now();
     let   pollCount              = 0;
 
+    // Rifiuto esplicito nel wallet: prima di arrenderci facciamo un ULTIMO
+    // detect — il rifiuto potrebbe riguardare una richiesta STALE mentre una
+    // firma precedente è andata a buon fine (incidente 2×0.7 + "Hai annullato
+    // la firma" del 15/08/26: TX on-chain ma UI in errore).
+    const confirmOrAbort = async (): Promise<boolean> => {
+      try {
+        await apiPaymentDetectDeposit(args.transferId);
+        setPhase("done");
+        return true; // deposito trovato nonostante il "rifiuto" → successo
+      } catch { /* nessun deposito: il rifiuto era reale */ }
+      throw new Error(signErrorMsg ?? t("usda.signAbortedRetry"));
+    };
+
     while (Date.now() - pollStart < POLL_MAX_MS) {
       if (pollAborted) {
-        throw new Error(signErrorMsg ?? t("usda.signAbortedRetry"));
+        if (await confirmOrAbort()) return;
       }
 
       await new Promise<void>((resolve) => setTimeout(resolve, POLL_INTERVAL_MS));
@@ -382,7 +516,7 @@ export function SendPaymentSheet({
       if (pollCount === 1) setPhase("confirming");
 
       if (pollAborted) {
-        throw new Error(signErrorMsg ?? t("usda.signAbortedRetry"));
+        if (await confirmOrAbort()) return;
       }
 
       try {
