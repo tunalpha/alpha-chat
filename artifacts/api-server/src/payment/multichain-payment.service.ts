@@ -364,6 +364,22 @@ const MC_GAS_STATION_BUFFER = 2n;        // 2× safety margin per gas price in s
 const MC_GAS_STATION_CAP    = 500_000_000_000_000_000n; // 0.5 native coin cap
 
 /**
+ * Timeout receipt per-rete per le TX ausiliarie (gas top-up, TX3 reclaim).
+ * 30s era adeguato per Polygon/BSC (blocchi 2-3s) ma troppo corto per Ethereum
+ * (~12s/block + propagazione): il timeout faceva scartare il top-up e il
+ * transfer restava in waiting_for_gas (incidente USDT ERC-20, ago 2026).
+ * Valori allineati ai receiptTimeoutMs degli adapter EVM (ethereum 300s,
+ * bsc/polygon 120s). Il fallback per reti EVM future è volutamente
+ * conservativo (120s), MAI 30s.
+ */
+const MC_RECEIPT_TIMEOUT_MS: Record<string, number> = {
+  ethereum: 300_000, // 5 min — come EthereumAdapter
+  bsc:      120_000,
+  polygon:  120_000,
+};
+const MC_RECEIPT_TIMEOUT_FALLBACK_MS = 120_000;
+
+/**
  * Map chain EVM per createPublicClient / createWalletClient nel gas station.
  *
  * POLYGON_CHAIN_ID=80002 → Polygon Amoy testnet (per test script)
@@ -503,7 +519,10 @@ async function ensureMultiChainEscrowGas(
       to:    escrowAddress as `0x${string}`,
       value: topUp,
     });
-    await publicClient.waitForTransactionReceipt({ hash: txHash, timeout: 30_000 });
+    await publicClient.waitForTransactionReceipt({
+      hash:    txHash,
+      timeout: MC_RECEIPT_TIMEOUT_MS[network] ?? MC_RECEIPT_TIMEOUT_FALLBACK_MS,
+    });
     logger.info(
       { network, escrowAddress, txHash, topUp: topUp.toString() },
       "[MCGasStation] Top-up nativo confermato ✓",
@@ -1430,7 +1449,7 @@ async function _reclaimEscrowGas(
 
     const receipt = await publicClient.waitForTransactionReceipt({
       hash:            txHash,
-      timeout:         30_000,
+      timeout:         MC_RECEIPT_TIMEOUT_MS[doc.network] ?? MC_RECEIPT_TIMEOUT_FALLBACK_MS,
       pollingInterval: 4_000,
     });
 

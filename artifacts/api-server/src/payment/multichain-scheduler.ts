@@ -82,6 +82,24 @@ const BATCH_SIZE = 50;
 
 let _schedulerStarted = false;
 
+/**
+ * Guard anti-sovrapposizione per i job periodici.
+ * Con i timeout receipt per-rete (fino a 5 min su Ethereum) un job può durare
+ * più del suo intervallo: senza guard le passate si accumulerebbero,
+ * moltiplicando lavoro RPC e release concorrenti sugli stessi transfer.
+ */
+const _jobInFlight = new Set<string>();
+function _guarded(jobName: string, fn: () => Promise<void>): void {
+  if (_jobInFlight.has(jobName)) {
+    logger.warn({ jobName }, "[MCScheduler] Passata precedente ancora in corso — skip");
+    return;
+  }
+  _jobInFlight.add(jobName);
+  void fn()
+    .catch((err) => logger.error({ err, jobName }, "[MCScheduler] Job error"))
+    .finally(() => _jobInFlight.delete(jobName));
+}
+
 // ─── Recovery: releasing ──────────────────────────────────────────────────────
 
 /**
@@ -680,29 +698,29 @@ export function startMultiChainScheduler(): void {
 
   // Recovery stuck releasing/refunding — ogni 10 min
   setInterval(() => {
-    void processStuckReleasingTransfers();
-    void processStuckRefundingTransfers();
+    _guarded("stuckReleasing", processStuckReleasingTransfers);
+    _guarded("stuckRefunding", processStuckRefundingTransfers);
   }, RECOVERY_INTERVAL_MS).unref();
 
   // Expiry awaiting_deposit + pending — ogni 5 min
   setInterval(() => {
-    void processExpiredMCTransfers();
-    void processExpiredPendingTransfers();
+    _guarded("expiredMC", processExpiredMCTransfers);
+    _guarded("expiredPending", processExpiredPendingTransfers);
   }, EXPIRE_INTERVAL_MS).unref();
 
   // Gas Reserve Recovery: waiting_for_gas → retry release — ogni 5 min
   setInterval(() => {
-    void processWaitingForGasTransfers();
+    _guarded("waitingForGas", processWaitingForGasTransfers);
   }, EXPIRE_INTERVAL_MS).unref();
 
   // Auto-release pending freschi (safety-net per i detect fire-and-forget) — ogni 2 min
   setInterval(() => {
-    void processNewPendingTransfers();
+    _guarded("newPending", processNewPendingTransfers);
   }, 2 * 60_000).unref();
 
   // Reclaim retry: TX3 fallite precedentemente — ogni 30 min
   setInterval(() => {
-    void processFailedReclaims();
+    _guarded("failedReclaims", processFailedReclaims);
   }, 30 * 60_000).unref();
 
   logger.info(
