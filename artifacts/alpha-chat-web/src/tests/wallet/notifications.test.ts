@@ -92,9 +92,10 @@ describe("Notification Store — CRUD", () => {
   });
 
   it("loadNotifications ordina dalla più recente", async () => {
-    await saveNotification(makeNotif({ id: "n1", dedupKey: "1:tx1:r:", timestamp: 1000 }));
-    await saveNotification(makeNotif({ id: "n2", dedupKey: "1:tx2:r:", timestamp: 2000 }));
-    await saveNotification(makeNotif({ id: "n3", dedupKey: "1:tx3:r:", timestamp: 500 }));
+    // Nota: txHash univoci per evitare la dedup cross-sorgente (stesso txHash+type → 1 sola notifica)
+    await saveNotification(makeNotif({ id: "n1", txHash: "0xaaaaa0001", dedupKey: "1:0xaaaaa0001:received:", timestamp: 1000 }));
+    await saveNotification(makeNotif({ id: "n2", txHash: "0xaaaaa0002", dedupKey: "1:0xaaaaa0002:received:", timestamp: 2000 }));
+    await saveNotification(makeNotif({ id: "n3", txHash: "0xaaaaa0003", dedupKey: "1:0xaaaaa0003:received:", timestamp: 500 }));
     const all = await loadNotifications();
     expect(all[0].timestamp).toBe(2000);
     expect(all[all.length - 1].timestamp).toBe(500);
@@ -124,8 +125,9 @@ describe("Anti-duplicazione notifiche", () => {
   });
 
   it("stessa TX ma tipo diverso → due notifiche separate", async () => {
-    const n1 = makeNotif({ id: "n1", dedupKey: buildDedupKey(1, TX_ETH, "pending") });
-    const n2 = makeNotif({ id: "n2", dedupKey: buildDedupKey(1, TX_ETH, "confirmed") });
+    // "pending" e "confirmed" sono tipi distinti: devono coesistere nello store.
+    const n1 = makeNotif({ id: "n1", type: "pending",   dedupKey: buildDedupKey(1, TX_ETH, "pending") });
+    const n2 = makeNotif({ id: "n2", type: "confirmed", dedupKey: buildDedupKey(1, TX_ETH, "confirmed") });
     await saveNotification(n1);
     await saveNotification(n2);
     expect(await loadNotifications()).toHaveLength(2);
@@ -178,6 +180,79 @@ describe("Anti-duplicazione notifiche", () => {
     const r2 = await dispatchWalletNotification(partial);
     expect(r1).toBe(true);
     expect(r2).toBe(false);
+  });
+
+  // ── Dedup cross-sorgente (safety-net vs _processEvmTx) ───────────────────
+
+  it("CROSS-SOURCE: safety-net (no logIndex) + _processEvmTx (logIndex) → 1 sola notifica", async () => {
+    // Scenario: safety-net dispatcha senza logIndex, poi tx-monitor dispatcha con logIndex.
+    // Devono risultare in 1 sola notifica, non 2.
+    const txHash = "0xcafe0000111122223333444455556666777788889999aaaabbbbccccdddd9999";
+
+    // Safety-net: dedupKey = "137:TX:sent:"
+    const r1 = await dispatchWalletNotification({
+      type: "sent", chainId: 137, network: "Polygon",
+      asset: "USDA", amount: "1", txHash,
+      timestamp: Date.now(), status: "confirmed",
+      // logIndex: undefined (assente)
+    });
+
+    // _processEvmTx: dedupKey = "137:TX:sent:42" (logIndex diverso → dedupKey diversa)
+    const r2 = await dispatchWalletNotification({
+      type: "sent", chainId: 137, network: "Polygon",
+      asset: "USDA", amount: "1", txHash,
+      logIndex: 42,
+      timestamp: Date.now(), status: "confirmed",
+    });
+
+    expect(r1).toBe(true);   // prima notifica salvata
+    expect(r2).toBe(false);  // seconda bloccata dal dedup cross-sorgente
+    expect(await loadNotifications()).toHaveLength(1);
+  });
+
+  it("CROSS-SOURCE: ordine inverso (_processEvmTx prima, safety-net dopo) → 1 sola notifica", async () => {
+    const txHash = "0xdead0000111122223333444455556666777788889999aaaabbbbccccdddd8888";
+
+    // _processEvmTx: dispatcha per primo con logIndex
+    const r1 = await dispatchWalletNotification({
+      type: "sent", chainId: 137, network: "Polygon",
+      asset: "USDA", amount: "1", txHash,
+      logIndex: 7,
+      timestamp: Date.now(), status: "confirmed",
+    });
+
+    // Safety-net: dispatcha dopo senza logIndex
+    const r2 = await dispatchWalletNotification({
+      type: "sent", chainId: 137, network: "Polygon",
+      asset: "USDA", amount: "1", txHash,
+      timestamp: Date.now(), status: "confirmed",
+    });
+
+    expect(r1).toBe(true);
+    expect(r2).toBe(false);
+    expect(await loadNotifications()).toHaveLength(1);
+  });
+
+  it("MULTI-TRANSFER: stessa TX, stesso tipo, entrambi con logIndex → 2 notifiche (DEX swap)", async () => {
+    // Scenario legittimo: una TX DEX ha 2 Transfer ERC-20 con logIndex diversi.
+    // Entrambe devono essere salvate (asset/importi diversi per ogni Transfer event).
+    const txHash = "0xbeef0000111122223333444455556666777788889999aaaabbbbccccdddd7777";
+
+    const r1 = await dispatchWalletNotification({
+      type: "received", chainId: 137, network: "Polygon",
+      asset: "USDT", amount: "100", txHash,
+      logIndex: 3, timestamp: Date.now(), status: "confirmed",
+    });
+
+    const r2 = await dispatchWalletNotification({
+      type: "received", chainId: 137, network: "Polygon",
+      asset: "WETH", amount: "0.05", txHash,
+      logIndex: 5, timestamp: Date.now(), status: "confirmed",
+    });
+
+    expect(r1).toBe(true);
+    expect(r2).toBe(true);  // salvata: entrambi hanno logIndex → NON è cross-source dedup
+    expect(await loadNotifications()).toHaveLength(2);
   });
 });
 

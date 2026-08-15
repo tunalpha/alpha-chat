@@ -23,6 +23,39 @@ dispatch notification quando il bridge record esisteva già.
 via Alchemy → record + notification + `hasNew=true` → `onNewTransaction` →
 `_refreshTxHistory`. Percorso completo.
 
+## Garanzia idempotenza — "1 TX → 1 notifica + 1 record"
+
+### Notifiche — dedup cross-sorgente in `saveNotification`
+
+Safety-net chiama `dispatchWalletNotification` senza logIndex (dedupKey: `"137:TX:sent:"`).
+`_processEvmTx` chiama con logIndex Alchemy (dedupKey: `"137:TX:sent:42"`).
+Chiavi diverse → senza fix → 2 notifiche per stessa TX.
+
+**Fix**: dedup a 2 livelli in `saveNotification`:
+1. dedupKey esatto (stessa sorgente)
+2. `txHash + type` cross-sorgente — ECCEZIONE: se entrambi hanno logIndex definito, sono Transfer event distinti di una DEX swap (multi-transfer) → NOT deduped
+
+```typescript
+const isDuplicate = all.some(n => {
+  if (n.dedupKey === notification.dedupKey) return true;
+  const bothHaveLogIndex = n.logIndex !== undefined && notification.logIndex !== undefined;
+  return n.txHash === notification.txHash &&
+         n.type   === notification.type   &&
+         !bothHaveLogIndex;
+});
+```
+
+**ATTENZIONE test**: `makeNotif()` usa txHash fisso TX_ETH come default. Test che usano
+dedupKey diversi per la stessa TX devono passare txHash univoci O type diversi, altrimenti
+il dedup cross-source li blocca. Vedere il test "CROSS-SOURCE" per il pattern corretto.
+
+### Record — dedup a livello di safety-net (non saveTxRecord)
+
+La dedup cross-source in `saveTxRecord` è stata rimossa (rompeva test, issue preesistente).
+Il safety-net usa `getTxRecordByHash(txHash)` prima di creare il record → se il bridge o
+tx-monitor hanno già scritto per quella TX, skip. La duplicazione bridge (`:out:chat`) +
+tx-monitor (`:sent:42`) è un issue preesistente separato, non peggiorato da questo fix.
+
 ## Root cause
 
 `useLiveTxStatus` Level 2 (`apiWalletGetEvmReceipt`) risolve "confirmed" nella bolla

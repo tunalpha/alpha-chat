@@ -27,6 +27,17 @@ import {
 /**
  * Salva una nuova notifica se non è già presente (anti-dedup).
  * Restituisce true se salvata, false se era un duplicato.
+ *
+ * Deduplicazione a DUE LIVELLI:
+ *   1. dedupKey esatto  — `${chainId}:${txHash}:${type}:${logIndex ?? ""}`
+ *      Evita duplicati identici (stessa sorgente).
+ *   2. txHash + type    — dedup cross-sorgente.
+ *      Evita che safety-net (senza logIndex) e _processEvmTx (con logIndex)
+ *      generino due notifiche per la stessa TX outgoing/incoming.
+ *      Esempio: "137:TX:sent:" (safety-net) vs "137:TX:sent:42" (_processEvmTx)
+ *      → stessa TX, stesso tipo → 1 sola notifica.
+ *
+ * INVARIANTE: 1 TX confermata → esattamente 1 notifica per tipo.
  */
 export async function saveNotification(
   notification: WalletNotification
@@ -34,7 +45,17 @@ export async function saveNotification(
   const db = await getWalletDB();
   // Controlla deduplicazione
   const all: WalletNotification[] = await db.getAll(STORE_WALLET_NOTIFICATIONS);
-  const isDuplicate = all.some(n => n.dedupKey === notification.dedupKey);
+  const isDuplicate = all.some(n => {
+    // Livello 1: dedupKey identico (stessa sorgente, stessa TX, stesso logIndex)
+    if (n.dedupKey === notification.dedupKey) return true;
+    // Livello 2: stessa TX + stesso tipo → dedup cross-sorgente.
+    // ECCEZIONE: se ENTRAMBI hanno logIndex definito, sono Transfer event distinti
+    // sulla stessa TX (es. DEX swap multi-transfer) → NON deduplicare.
+    const bothHaveLogIndex = n.logIndex !== undefined && notification.logIndex !== undefined;
+    return n.txHash === notification.txHash &&
+           n.type   === notification.type   &&
+           !bothHaveLogIndex;
+  });
   if (isDuplicate) return false;
 
   await db.put(STORE_WALLET_NOTIFICATIONS, notification);
