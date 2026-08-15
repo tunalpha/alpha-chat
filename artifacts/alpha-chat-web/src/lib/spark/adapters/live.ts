@@ -39,6 +39,12 @@ export class LiveSparkAdapter implements BreezSparkAdapter {
   private _sdk: SdkInstance | null = null;
   /** Callback iniettato da SparkWalletContext.connect() per accedere al keystore */
   private _getMnemonicFn?: () => Promise<string>;
+  /**
+   * Risposta RAW dell'SDK da prepareSendPayment — DEVE essere passata a
+   * sendPayment({ prepareResponse }). Senza questo campo, sendPayment
+   * riceve parametri sconosciuti e la Promise non risolve mai (spinner ∞).
+   */
+  private _lastPrepareResponse: Record<string, unknown> | null = null;
 
   get state()     { return this._state;     }
   get lastError() { return this._lastError; }
@@ -136,6 +142,10 @@ export class LiveSparkAdapter implements BreezSparkAdapter {
       ...(req.amountSat !== undefined ? { amount: req.amountSat } : {}),
     }) as Record<string, unknown>;
 
+    // CRITICO: salviamo la risposta RAW — sendPayment la richiede come
+    // { prepareResponse } e non accetta paymentRequest/amount direttamente.
+    this._lastPrepareResponse = raw;
+
     return {
       estimatedProviderFeeSat: BigInt((raw["fees"] as number | bigint) ?? 0),
       recipientAmountSat:      BigInt((raw["amount"] as number | bigint) ?? (req.amountSat ?? 0n)),
@@ -143,18 +153,28 @@ export class LiveSparkAdapter implements BreezSparkAdapter {
     };
   }
 
-  async send(req: SparkSendRequest): Promise<SparkSendResult> {
+  async send(_req: SparkSendRequest): Promise<SparkSendResult> {
     const sdk = this._assertSdk();
+
+    // ROOT CAUSE FIX (2026-08-15):
+    // sendPayment() del SDK WASM richiede { prepareResponse: PrepareSendPaymentResponse }
+    // come unico campo obbligatorio. Passare { paymentRequest, amount } (i parametri
+    // di prepareSendPayment) consegna campi sconosciuti all'SDK → la Promise non
+    // risolve mai → spinner infinito. Il campo prepareResponse è la risposta RAW
+    // salvata da prepareSend() sopra.
+    if (!this._lastPrepareResponse) {
+      throw new Error("SPARK_PREPARE_MISSING: prepareSend() deve essere chiamato prima di send()");
+    }
+    const prepareResponse = this._lastPrepareResponse;
+    this._lastPrepareResponse = null; // consumed — evita riuso accidentale
+
     const raw = await (sdk["sendPayment"] as (r: unknown) => Promise<unknown>)({
-      paymentRequest: req.paymentRequest,
-      // amount è bigint nel WASM (SendPaymentRequest.amount: bigint) —
-      // diverso da amountSats (number) usato in receive
-      ...(req.amountSat !== undefined ? { amount: req.amountSat } : {}),
+      prepareResponse,
     }) as Record<string, unknown>;
 
     const payment = (raw["payment"] ?? raw) as Record<string, unknown>;
     return {
-      paymentId: payment["id"] as string ?? "unknown",
+      paymentId: (payment["id"] as string | undefined) ?? "unknown",
       amountSat: BigInt((payment["amount"] as number | bigint) ?? 0),
       feeSat:    BigInt((payment["fees"]   as number | bigint) ?? 0),
       status:    "completed",
