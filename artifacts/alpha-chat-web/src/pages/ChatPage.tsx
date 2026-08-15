@@ -851,7 +851,7 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
   const walletBridge = useChatWalletBridge();
   // Safety net History refresh: chiamato da ChatWalletPaymentBubble quando la TX outgoing
   // è confirmed — _reconcilePendingEvm aggiorna IDB senza triggerare onNewTransaction.
-  const { refreshTxHistory } = useWallet();
+  const { refreshTxHistory, refreshNotifications } = useWallet();
 
   const { t } = useTranslation();
   const [conversations, setConversations] = useState<ConversationItem[]>([]);
@@ -4201,7 +4201,7 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
                                 <ChatWalletPaymentBubble
                                   meta={msg.system_metadata as unknown as WalletPaymentMeta}
                                   isMine={isMine}
-                                  onConfirmed={() => { void refreshTxHistory(); }}
+                                  onConfirmed={() => { void refreshTxHistory(); void refreshNotifications(); }}
                                 />
                               </ErrorBoundary>
                             : null
@@ -4226,7 +4226,7 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
                               const meta = JSON.parse(raw) as WalletPaymentMeta;
                               return meta.txHash
                                 ? <ErrorBoundary fallback={<div style={{ fontSize: "0.78rem", opacity: 0.5, padding: "8px 12px" }}>⚠ Pagamento wallet non visualizzabile</div>}>
-                                    <ChatWalletPaymentBubble meta={meta} isMine={isMine} onConfirmed={() => { void refreshTxHistory(); }} />
+                                    <ChatWalletPaymentBubble meta={meta} isMine={isMine} onConfirmed={() => { void refreshTxHistory(); void refreshNotifications(); }} />
                                   </ErrorBoundary>
                                 : null;
                             } catch { return null; }

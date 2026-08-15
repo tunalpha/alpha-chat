@@ -103,6 +103,7 @@
 - [Admin panel dark-theme bug](spark-monitor-url-bugs.md) — text-white/bg-white/5 invisibili su tema chiaro; + doppio /admin/ in apiFetch; + monitoring API usa sparkMonitorFetch (base /api/v1/spark)
 - [OWASP Top 10 hardening](owasp-hardening.md) — rate limit auth routes, ip-address CVE fix, broadcastLimiter IPv6 fix, scanner clean; gap: DAST + body limit per-route
 - [Double-charge incident 2026-08-14](double-charge-incident.md) — 3 root causes: generic error msg, no scheduler for pending sends, gas depletion; processPendingSendTransfers() added; Transfer-1 released ✅
+- [BSC incoming notification fix](bsc-incoming-notification-fix.md) — safety net dispatcha IDB ma non chiama refreshNotifications() → badge stale; fix: onConfirmed include refreshNotifications()
 - [Double-spend uncertain state](double-spend-uncertain-state.md) — signedUncertain flag previene double-spend quando sendTransaction torna "Load failed" dopo firma su iOS; NON mostrare bottone firma; continuare polling 10 min
 - [BSC MultiChain post-sign bugs](bsc-multichain-post-sign-bugs.md) — History/Notifiche perse se utente non in conversazione al momento di "released"; auto-open iOS bloccato da gesture context perso dopo await chain
 - [ChatWalletBubble direction+size](chatwalletbubble-direction-size.md) — meta.direction="out" permanente nel msg; usare isMine per direzione; wallet_payment mancava da payment-bubble class (width: 340px)

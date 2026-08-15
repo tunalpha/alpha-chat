@@ -1,0 +1,151 @@
+Sì. Questo è un dettaglio minore e va trattato chirurgicamente, soprattutto dopo tutto il lavoro fatto sul send/idempotenza. Non toccherei assolutamente la logica di invio BSC.
+
+La diagnosi più probabile, visto il comportamento:
+
+* BSC TX ricevuta → History presente ✅
+* BSC TX ricevuta → Notification assente ❌
+* quindi la persistenza/indicizzazione della TX incoming funziona;
+* manca solo il dispatchWalletNotification nel percorso BSC incoming, oppure viene filtrato/deduplicato prima del dispatch.
+
+Prompt da dare all’agente
+
+OBIETTIVO
+
+C’è UN SOLO dettaglio rimasto sul flusso BSC, che per il resto è FUNZIONANTE.
+
+Test reale BSC:
+
+* TX ricevuta correttamente ✅
+* History → transazione presente ✅
+* saldo/fondi corretti ✅
+* Chat/ricezione corretta ✅
+* 🔔 Notification sul wallet ricevente → MANCANTE ❌
+
+Il problema riguarda quindi ESCLUSIVAMENTE la notifica incoming BSC.
+
+REGOLA ASSOLUTA — NON TOCCARE IL SEND
+
+NON modificare:
+
+* logica invio BSC;
+* signing;
+* WalletConnect;
+* broadcast;
+* retry;
+* polling del send;
+* gestione errori send;
+* transfer creation;
+* deposito;
+* amount;
+* chain switching;
+* tx-monitor generale se non strettamente necessario per il singolo dispatch incoming;
+* History;
+* saveTxRecord;
+* idempotenza già implementata per outgoing.
+
+Il flusso send è dichiarato FUNZIONANTE e deve rimanere invariato.
+
+AUDIT READ-ONLY PRIMA DEL FIX
+
+Confronta il percorso di una TX BSC incoming che:
+
+on-chain → History
+
+ma non arriva a:
+
+→ Notification.
+
+Traccia esattamente:
+
+BSC incoming TX
+→ detection
+→ parsing
+→ saveTxRecord
+→ dispatchWalletNotification?
+→ dedup?
+→ Notifications UI
+
+Confrontalo con il percorso Polygon/USDA incoming che sappiamo già funzionare.
+
+DOMANDA DA RISOLVERE
+
+Determinare precisamente quale di questi casi è presente:
+
+A. saveTxRecord() viene chiamato ma dispatchWalletNotification() non viene mai chiamato.
+
+B. dispatchWalletNotification() viene chiamato ma la notifica viene eliminata dal dedup.
+
+C. La TX BSC viene classificata con un type diverso e quindi non entra nel ramo received.
+
+D. Il record viene salvato da una sorgente BSC diversa da quella che normalmente genera la notification.
+
+E. Altro — dimostrarlo dal codice.
+
+FIX
+
+Una volta individuato il punto esatto, applicare il minimo cambiamento possibile esclusivamente al percorso BSC incoming.
+
+Preferire il riuso del dispatcher esistente:
+
+dispatchWalletNotification(...)
+
+e del formato notification già usato dalle ricezioni funzionanti.
+
+NON creare un secondo sistema di notifiche.
+
+NON duplicare il record History.
+
+NON modificare il comportamento outgoing.
+
+IDEMPOTENZA
+
+La correzione DEVE rispettare l’idempotenza già esistente.
+
+Una singola TX BSC incoming deve produrre:
+
+* 1 record History;
+* 1 Notification;
+* nessun duplicato se il tx-monitor la rileva nuovamente.
+
+Se esiste già una dedupKey/txHash guard, riutilizzarla.
+
+TEST OBBLIGATORI
+
+BSC incoming
+
+Una nuova TX reale:
+
+* History → presente ✅
+* Notification → presente ✅
+* reload → presente ancora una volta;
+* nessun duplicato.
+
+BSC outgoing
+
+Verificare soltanto che il comportamento precedente sia invariato.
+
+NON modificare il percorso outgoing per risolvere questo problema.
+
+Regressione
+
+Verificare che:
+
+* Polygon incoming continui a funzionare;
+* USDA incoming continui a funzionare;
+* USDA outgoing continui a funzionare;
+* idempotenza notification continui a funzionare.
+
+OUTPUT PRIMA DEL FIX
+
+Prima di modificare il codice, riportare:
+
+1. file;
+2. funzione;
+3. riga/punto esatto;
+4. perché History viene popolata;
+5. perché Notification non viene popolata;
+6. modifica minima proposta.
+
+Non applicare workaround generali.
+
+Questo è un fix chirurgico sul solo percorso BSC incoming notification.
