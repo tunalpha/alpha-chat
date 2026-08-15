@@ -42,6 +42,14 @@ import {
   getPendingFeesHandler,
 } from "../../controllers/spark-fee.controller.js";
 import {
+  getFeeWalletInfoHandler,
+  getFeeWalletStatsHandler,
+  getFeeWalletHistoryHandler,
+  getSweepDesignHandler,
+  getFeeWalletHealthHandler,
+  configureFeeAddressHandler,
+} from "../../controllers/spark-fee-wallet.controller.js";
+import {
   getSparkDashboardHandler,
   getSparkMovementsHandler,
   getSparkHealthHandler,
@@ -102,6 +110,47 @@ router.patch("/fee-record/bulk-collected", authenticate, markFeesBulkCollectedHa
  * Il client usa questa risposta per il Tier-2 aggregated collection al login.
  */
 router.get("/fee-record/pending", authenticate, getPendingFeesHandler);
+
+// ─── Alpha Spark Fee Wallet (admin) ──────────────────────────────────────────
+
+/**
+ * GET /api/v1/spark/fee-wallet/info
+ * Stato wallet: status, sparkAddress, ledgerBalance, liveBalance, flags.
+ * SECURITY: mnemonic e apiKey mai esposti — solo boolean flag.
+ */
+router.get("/fee-wallet/info",         requireAdmin("read_only"), getFeeWalletInfoHandler);
+
+/**
+ * GET /api/v1/spark/fee-wallet/stats
+ * Statistiche aggregate: pending/success/failed/swept count + totalSat.
+ */
+router.get("/fee-wallet/stats",        requireAdmin("read_only"), getFeeWalletStatsHandler);
+
+/**
+ * GET /api/v1/spark/fee-wallet/history
+ * Storico fee records paginato. Include feePaymentId e sweep status.
+ */
+router.get("/fee-wallet/history",      requireAdmin("read_only"), getFeeWalletHistoryHandler);
+
+/**
+ * GET /api/v1/spark/fee-wallet/sweep-design
+ * Design sweep (non ancora attivo). Mostra soglia e BTC Treasury address.
+ */
+router.get("/fee-wallet/sweep-design", requireAdmin("read_only"), getSweepDesignHandler);
+
+/**
+ * GET /api/v1/spark/fee-wallet/health
+ * Fee pendenti stale, address configurato, mnemonic presente.
+ */
+router.get("/fee-wallet/health",       requireAdmin("read_only"), getFeeWalletHealthHandler);
+
+/**
+ * PATCH /api/v1/spark/fee-wallet/configure-address
+ * Configura il fee_address del wallet Spark (super_admin).
+ * Valida formato: deve iniziare con sp1 (mainnet) o sprt (testnet).
+ * SECURITY: NON accetta mnemonic — solo l'address pubblico ricevente.
+ */
+router.patch("/fee-wallet/configure-address", requireAdmin("super_admin"), configureFeeAddressHandler);
 
 // ─── Monitoring ───────────────────────────────────────────────────────────────
 

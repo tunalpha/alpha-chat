@@ -1,0 +1,177 @@
+TASK #152 — ALPHA SPARK FEE WALLET
+
+Procedi con la verifica tecnica e l'implementazione del wallet Spark dedicato alla raccolta delle commissioni Lightning.
+
+IMPORTANTE — SCOPE LOCK
+
+Il Lightning main payment flow è già hardened e NON deve essere modificato.
+
+NON modificare:
+- prepareSend
+- main spark.send()
+- sendInProgress protection
+- payment confirmation
+- payment history
+- reconciliation del main payment
+- balance logic
+- existing fee calculation
+- existing C2+A collection logic già implementata
+
+Il nuovo wallet serve ESCLUSIVAMENTE a ricevere le commissioni Lightning Alpha.
+
+ADMIN UI
+
+IMPORTANTE: nel progetto ESISTE GIÀ una sezione Admin dedicata alle Fee.
+
+NON creare una nuova pagina/sezione.
+
+Integra il wallet Lightning nella sezione Admin → Fees già esistente.
+
+Nella sezione esistente voglio poter vedere almeno:
+
+- Alpha Spark Fee Wallet
+- stato del wallet
+- Spark Address pubblico
+- saldo disponibile
+- totale fee raccolte
+- fee pending
+- fee non riscosse / failed
+- storico fee
+- fee payment ID
+- eventuale stato dello sweep verso BTC Treasury
+
+NON mostrare mai:
+- mnemonic
+- seed phrase
+- private key
+- credenziali sensibili
+
+WALLET CREATION
+
+Prima di creare il wallet reale, verifica con la documentazione/API ufficiale Breez Spark SDK:
+
+1. Qual è il formato corretto di address utilizzabile per ricevere pagamenti Spark.
+2. Come deve essere generato un wallet Spark dedicato alla tesoreria fee.
+3. Come viene derivato il receiving address.
+4. Come il wallet può ricevere pagamenti Spark-to-Spark.
+5. Come viene successivamente effettuato lo sweep verso il BTC Treasury.
+6. Qual è il modo corretto e sicuro di custodire il mnemonic.
+7. Se il wallet deve essere gestito esclusivamente backend-side.
+8. Se esistono limiti/minimi per ricevere fee molto piccole (1–9 sat).
+
+SECURITY
+
+Il wallet fee deve essere separato da:
+- wallet Alpha degli utenti
+- wallet personali
+- wallet WalletConnect
+- BTC wallet personale dell'utente
+
+Il mnemonic del Fee Wallet:
+- NON deve essere nel frontend
+- NON deve essere nel codice
+- NON deve essere in localStorage/sessionStorage
+- NON deve essere esposto nell'Admin UI
+- NON deve essere inviato al client
+
+Usare esclusivamente un meccanismo server-side sicuro compatibile con l'infrastruttura attuale.
+
+IMPORTANTISSIMO:
+
+NON generare ancora un mnemonic reale se prima non hai verificato il metodo corretto con Breez Spark.
+
+Prima mostrami:
+- formato address
+- metodo di creazione
+- metodo di custodia
+- metodo di ricezione
+- metodo di sweep
+
+Poi, una volta verificato, puoi procedere.
+
+FEE COLLECTION
+
+L'architettura già implementata C2+A deve rimanere:
+
+Tier 1:
+main payment SUCCESS
+→ fee collection best-effort
+→ fee raccolta → success
+→ fee fallisce → pending_collection
+
+Tier 2:
+al successivo connect/open
+→ recupera fee pending
+→ aggrega le fee
+→ esegue un singolo pagamento verso Alpha Spark Fee Address
+→ aggiorna il ledger
+
+NON modificare questo comportamento salvo che la verifica Breez dimostri che è tecnicamente necessario.
+
+IDEMPOTENZA
+
+Garantire che la stessa fee non possa essere raccolta due volte.
+
+Il sistema deve distinguere chiaramente:
+- pending_collection
+- success/collected
+- failed_permanent
+- swept
+
+TREASURY / SWEEP
+
+Il Fee Wallet deve essere separato dal BTC Treasury.
+
+Progettare lo sweep:
+
+Alpha Spark Fee Wallet
+→ accumulo fee
+→ soglia configurabile
+→ sweep
+→ BTC Treasury
+
+Lo sweep deve essere idempotente e riconciliabile.
+
+NON effettuare ancora uno sweep reale.
+
+TEST
+
+Aggiungere/verificare test per:
+
+1. Fee 1 sat.
+2. Fee 9 sat.
+3. Fee multiple aggregate.
+4. Fee wallet address valido.
+5. Fee wallet address invalido.
+6. Fee collection success.
+7. Fee collection failure.
+8. Retry.
+9. Idempotenza.
+10. App restart.
+11. Backend restart.
+12. Sweep idempotenza.
+13. Main payment invariato.
+
+PRODUZIONE
+
+NON fare deploy finale.
+NON muovere fondi reali.
+NON utilizzare fondi reali per test.
+
+Prima completa la verifica tecnica e prepara il wallet in modo sicuro.
+
+REPORT FINALE
+
+Quando hai finito, riportami chiaramente:
+
+A. Come viene creato il Fee Wallet.
+B. Dove viene custodito il mnemonic.
+C. Qual è il formato dello Spark Address.
+D. Come viene configurato fee_address.
+E. Come appare nella sezione Admin → Fees ESISTENTE.
+F. Come funzionano raccolta, retry e aggregazione.
+G. Come funzionerà lo sweep verso BTC Treasury.
+H. Conferma esplicita che il main Lightning payment flow non è stato modificato.
+I. Test risultati.
+
+FERMATI prima di qualsiasi movimento di fondi reali e chiedi approvazione per il test finale.

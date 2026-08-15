@@ -104,7 +104,88 @@ export function validateSparkQuoteValiditySec(val: number): string | null {
 // ─── API functions ─────────────────────────────────────────────────────────
 
 export function apiGetSparkFeeConfig(): Promise<SparkFeeConfig> {
-  return sparkFetch<SparkFeeConfig>("/fee-config");
+  return sparkFetch<{ data: SparkFeeConfig }>("/fee-config").then(r => r.data ?? r as unknown as SparkFeeConfig);
+}
+
+// ─── Alpha Spark Fee Wallet ───────────────────────────────────────────────────
+
+export type FeeWalletStatus = "not_configured" | "address_only" | "sdk_connected" | "error";
+
+export interface FeeWalletInfo {
+  status:             FeeWalletStatus;
+  sparkAddress:       string | null;
+  ledgerBalanceSat:   number;
+  liveBalanceSat:     number | null;
+  mnemonicConfigured: boolean;
+  apiKeyConfigured:   boolean;
+}
+
+export interface FeeWalletStats {
+  pending:           { count: number; totalSat: number };
+  success:           { count: number; totalSat: number };
+  failed:            { count: number; totalSat: number };
+  swept:             { count: number; totalSat: number };
+  totalCollectedSat: number;
+}
+
+export interface FeeWalletHistoryRecord {
+  recordId:      string;
+  mainPaymentId: string;
+  feeAmountSat:  number;
+  status:        string;
+  feePaymentId?: string;
+  collectedAt?:  string;
+  createdAt?:    string;
+  lastError?:    string;
+}
+
+export interface FeeWalletHistoryResult {
+  records: FeeWalletHistoryRecord[];
+  total:   number;
+  page:    number;
+  pages:   number;
+}
+
+export interface SweepDesign {
+  configured:         boolean;
+  thresholdSat:       number;
+  btcTreasuryAddress: string | null;
+  note:               string;
+}
+
+export interface FeeWalletHealth {
+  healthy:      boolean;
+  pendingStale: number;
+  alerts:       string[];
+}
+
+export function apiGetFeeWalletInfo(): Promise<FeeWalletInfo> {
+  return sparkFetch<{ data: FeeWalletInfo }>("/fee-wallet/info").then(r => r.data);
+}
+
+export function apiGetFeeWalletStats(): Promise<FeeWalletStats> {
+  return sparkFetch<{ data: FeeWalletStats }>("/fee-wallet/stats").then(r => r.data);
+}
+
+export function apiGetFeeWalletHistory(page = 1, limit = 25, status = ""): Promise<FeeWalletHistoryResult> {
+  const qs = new URLSearchParams({ page: String(page), limit: String(limit) });
+  if (status) qs.set("status", status);
+  return sparkFetch<{ data: FeeWalletHistoryResult }>(`/fee-wallet/history?${qs.toString()}`).then(r => r.data);
+}
+
+export function apiGetSweepDesign(): Promise<SweepDesign> {
+  return sparkFetch<{ data: SweepDesign }>("/fee-wallet/sweep-design").then(r => r.data);
+}
+
+export function apiGetFeeWalletHealth(): Promise<FeeWalletHealth> {
+  return sparkFetch<{ data: FeeWalletHealth }>("/fee-wallet/health").then(r => r.data);
+}
+
+export function apiConfigureFeeAddress(fee_address: string | null): Promise<{ ok: boolean; fee_address: string | null }> {
+  return sparkFetch<{ data: { ok: boolean; fee_address: string | null } }>("/fee-wallet/configure-address", {
+    method: "PATCH",
+    body:   JSON.stringify({ fee_address }),
+  }).then(r => r.data);
 }
 
 // ── Admin Settings — spark_lightning_enabled kill switch ──────────────────
