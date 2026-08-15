@@ -1,0 +1,52 @@
+Analizza il payment flow di Alpha Wallet e verifica perché, quando il destinatario è già configurato su Alpha Wallet e dispone di un wallet/address di ricezione valido, il trasferimento viene comunque eseguito attraverso l’escrow.
+
+Il comportamento attuale sembra essere:
+
+MITTENTE → ESCROW → DESTINATARIO
+
+quindi con due transazioni on-chain:
+
+1. TX mittente → escrow
+2. TX escrow → destinatario
+
+Per un destinatario Alpha Wallet già configurato, il comportamento desiderato è invece:
+
+MITTENTE → DESTINATARIO
+
+con una sola transazione on-chain.
+
+NON modificare ancora il codice. Prima analizza il codice esistente e individua con precisione:
+
+* dove viene determinato il payment route;
+* quale condizione decide tra direct transfer ed escrow;
+* come viene verificato che il destinatario sia un utente Alpha Wallet configurato;
+* quale wallet/address del destinatario viene utilizzato;
+* dove viene chiamata la funzione di deposito verso escrow;
+* perché questa chiamata avviene anche quando il destinatario può ricevere direttamente;
+* dove viene effettuato il release dall’escrow;
+* se l’escrow è realmente necessario per qualche requisito funzionale oppure viene utilizzato come payment rail universale;
+* se esistono fallback legittimi che devono continuare a usare l’escrow.
+
+Ricostruisci il flow completo attuale, indicando file, funzioni e condizioni coinvolte.
+
+Poi proponi la modifica architetturale minima necessaria affinché:
+
+* destinatario Alpha Wallet configurato + address valido → DIRECT TRANSFER;
+* destinatario non configurato / senza address utilizzabile → ESCROW FALLBACK;
+* non venga mai creato un deposito escrow inutilmente per un destinatario che può ricevere direttamente;
+* il cambio di routing non introduca retry, double-spend o doppia esecuzione della stessa TX;
+* il sistema continui a gestire correttamente gli errori WalletConnect/iOS già affrontati.
+
+Controlla inoltre che l’UI non mostri “Visualizza deposito / Visualizza rilascio” per un pagamento che è stato realmente eseguito come direct transfer.
+
+Alla fine dammi:
+
+1. ROOT CAUSE esatta;
+2. file e funzioni da modificare;
+3. flow attuale;
+4. flow corretto;
+5. modifica minima consigliata;
+6. eventuali rischi/regressioni;
+7. test da eseguire per verificare che un destinatario Alpha configurato produca esattamente UNA sola TX: mittente → destinatario.
+
+Non fare assunzioni sull’architettura: verifica il codice e cita le evidenze concrete prima di proporre il fix.
