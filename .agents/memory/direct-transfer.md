@@ -51,6 +51,20 @@ Recipient vede `depositUrl` (link TX deposito) anche per direct (non c'è `relea
 ## Escrow function guards
 `acceptTransfer`, `rejectTransfer`, `cancelTransfer`, `autoReleaseForSend`, `autoReleaseForRequest` lanciano `TRANSFER_ESCROW_NOT_AVAILABLE` se `escrow_wallet` è null.
 
+## Bug critico risolto — senderWallet priority + from filter
+**Sintomo**: `DEPOSIT_TX_NOT_DETECTED` anche con TX confermata on-chain.
+
+**Root cause**: In `createTransfer`, `senderWalletOverride` (= `account.address` del wallet reale che firma) era l'ULTIMA priorità dopo `wallets.usda.address`. Se l'utente ha un Trust Wallet nel profilo ma firma con Alpha Wallet, `sender_wallet` nel DB = Trust Wallet, ma Alchemy vede `from = Alpha Wallet` → filtro `from` rigettava la TX.
+
+**Fix 1**: `senderWalletOverride` promosso a PRIMA priorità in `createTransfer`:
+```
+senderWalletOverride ?? alpha_wallet_evm_address ?? wallets.usda.address ?? wallet_address ?? null
+```
+
+**Fix 2**: Filtro `from` in `detectDeposit` reso SOFT (WARN ma non reject). La sicurezza è garantita da `toAddress=recipient_wallet + contractAddresses=USDA_contract`, già filtri stretti. Un mismatch from genera solo un log WARN.
+
+**Why Fix 2 anche con Fix 1**: Casi edge (resume flow, relay stale WalletConnect) potrebbero ancora causare mismatch. Defense-in-depth.
+
 ## Testing pattern
 - `vi.mock("../usda-custodial.service")` mette a mock ANCHE `getRpcUrl` → assegnare `(custodial as any).getRpcUrl = vi.fn().mockReturnValue("https://mock-polygon-rpc")` in beforeEach.
 - Con SKIP=true: `eth_blockNumber` saltato (fromBlock=0n), `_verifyDepositTx` torna null. Solo Alchemy scan via `global.fetch`.

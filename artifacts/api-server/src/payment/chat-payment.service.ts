@@ -455,10 +455,20 @@ export async function createTransfer(
   // connesso il wallet via ThirdWeb ma non lo hanno ancora salvato nel profilo.
   const sender = await UserModel.findById(senderId).lean() as any;
   if (!sender) throw new AppError("USER_NOT_FOUND", 404);
+  // Priorità senderWallet:
+  // 1. senderWalletOverride = account.address del client (wallet reale che firmerà la TX)
+  //    → DEVE avere precedenza: è l'indirizzo che Alchemy vedrà come "from".
+  // 2. alpha_wallet_evm_address = Alpha Wallet self-custodial
+  // 3. wallets.usda.address = wallet WalletConnect registrato
+  // 4. wallet_address legacy
+  //
+  // ATTENZIONE: mettere senderWalletOverride ULTIMO (come era prima) causa
+  // DEPOSIT_TX_NOT_DETECTED: sender_wallet nel DB != "from" della TX on-chain.
   const senderWallet: string | null =
+    params.senderWalletOverride ??
+    sender.alpha_wallet_evm_address ??
     sender.wallets?.usda?.address ??
     sender.wallet_address ??
-    params.senderWalletOverride ??
     null;
   if (!senderWallet) throw new AppError("WALLET_NOT_CONFIGURED", 412);
 
@@ -776,6 +786,14 @@ export async function detectDeposit(params: {
     const json = await res.json() as { result?: { transfers?: AssetTransfer[] }; error?: unknown };
     if (json.error) throw new Error(JSON.stringify(json.error));
     transfers = json.result?.transfers ?? [];
+    logger.info({
+      transferId:    params.transferId,
+      transfer_mode: transfer.transfer_mode,
+      scanToAddress,
+      sender_wallet: transfer.sender_wallet,
+      fromBlock:     fromBlock.toString(),
+      alchemyCount:  transfers.length,
+    }, "[Payment] detectDeposit: risposta Alchemy");
   } catch (rpcErr) {
     logger.error({ rpcErr, transferId: params.transferId }, "[Payment] detectDeposit RPC error");
     throw new AppError("DEPOSIT_DETECT_RPC_ERROR", 502);
@@ -783,7 +801,10 @@ export async function detectDeposit(params: {
 
   // Filtra: (a) importo >= amount_units SE rawContract.value è disponibile,
   // E (b) blockTimestamp >= createdAt - 5min SE blockTimestamp è disponibile.
-  // Per direct: (c) fromAddress === sender_wallet (verifica aggiuntiva).
+  // Per direct: (c) fromAddress === sender_wallet (SOFT check — WARN se diverso,
+  //   ma NON rigettare per evitare falsi negativi se l'utente firma con un wallet
+  //   diverso da quello registrato nel profilo. toAddress+contractAddresses sono
+  //   già filtri stretti).
   //
   // Fix A: rawContract.value è opzionale — Alchemy può non popolarlo se non riesce
   // a decodificare l'ABI del token. In quel caso ci fidiamo dei filtri upstream
@@ -798,10 +819,18 @@ export async function detectDeposit(params: {
   const senderLower = transfer.sender_wallet.toLowerCase();
   const match = transfers.find((t) => {
     try {
-      // Per direct: verifica che il from sia il sender atteso.
-      // La scansione già filtra toAddress=recipient_wallet, ma vogliamo escludere
-      // TX di terzi che potrebbero aver inviato al recipient_wallet.
-      if (isDirect && t.from && t.from.toLowerCase() !== senderLower) return false;
+      // Per direct: verifica soft che il from sia il sender atteso.
+      // La scansione già filtra toAddress=recipient_wallet. Il check from è
+      // difensivo: un mismatch viene loggato ma NON rigetta la TX (il mittente
+      // potrebbe aver firmato con un wallet diverso da quello registrato nel profilo).
+      if (isDirect && t.from && t.from.toLowerCase() !== senderLower) {
+        logger.warn({
+          transferId: params.transferId,
+          txHash:     t.hash,
+          fromOnChain: t.from,
+          senderWalletInDb: transfer.sender_wallet,
+        }, "[Payment] detectDeposit: from on-chain != sender_wallet in DB (soft check — accettato)");
+      }
       // Se rawContract.value è presente verifichiamo l'importo; se assente, omettiamo
       // il check importo (toAddress + contractAddresses sono già filtri sufficienti).
       if (t.rawContract?.value != null && BigInt(t.rawContract.value) < minAmount) return false;

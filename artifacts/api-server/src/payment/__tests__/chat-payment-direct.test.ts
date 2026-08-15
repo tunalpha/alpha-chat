@@ -350,14 +350,23 @@ describe("T6–T10: _confirmDirect via detectDeposit", () => {
     expect(custodial.transferFromCustodial).not.toHaveBeenCalled();
   });
 
-  it("T7: filtra TX con from diverso dal sender → lancia DEPOSIT_TX_NOT_DETECTED", async () => {
+  it("T7: from diverso dal sender_wallet → SOFT check (WARN + TX accettata comunque)", async () => {
+    // Dalla sessione di bugfix: il filtro from è diventato SOFT (log WARN ma non reject)
+    // per evitare falsi DEPOSIT_TX_NOT_DETECTED quando l'utente firma con un wallet
+    // diverso da quello registrato nel profilo (es. Alpha Wallet vs Trust Wallet).
+    // La sicurezza è garantita da toAddress=recipient_wallet + contractAddresses.
     global.fetch = makeMockFetch({
       alchemyResult: alchemyResponse({ from: "0xRANDOM00000000000000000000000000000000" }),
     });
+    vi.mocked(ChatTransferModel.findOneAndUpdate).mockResolvedValue(
+      makeDirectTransfer({ status: "accepted", tx_hash_deposit: TX_HASH }) as any,
+    );
 
-    await expect(detectDeposit({ transferId: TRANSFER_ID, requesterId: SENDER_ID }))
-      .rejects.toMatchObject({ code: "DEPOSIT_TX_NOT_DETECTED", httpStatus: 404 });
-    expect(antiReplay.checkAndMarkTx).not.toHaveBeenCalled();
+    // Il deposito viene rilevato e confermato — il from diverso genera solo un WARN
+    const result = await detectDeposit({ transferId: TRANSFER_ID, requesterId: SENDER_ID });
+    expect(result).toMatchObject({ status: "accepted" });
+    // checkAndMarkTx viene chiamato (TX accettata)
+    expect(antiReplay.checkAndMarkTx).toHaveBeenCalledWith(TX_HASH, "chat-transfer-deposit");
   });
 
   it("T8: lancia TRANSFER_EXPIRED se il transfer è scaduto", async () => {
