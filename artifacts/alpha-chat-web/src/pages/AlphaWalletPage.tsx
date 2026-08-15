@@ -4111,9 +4111,18 @@ function LightningTxListItem({ tx, onClick, btcPrice, fiatCurrency }: {
         <div className="aw-tx-meta">⚡ Lightning</div>
       </div>
       <div className="aw-tx-amount-col">
-        <div className={`aw-tx-amount ${amtClass}`}>{amtDisplay}</div>
-        {fiatEquiv && fiatEquiv !== "—" && (
-          <div className="aw-tx-date" style={{ opacity: 0.85 }}>≈ {fiatEquiv}</div>
+        {/* Fiat in evidenza (primario), sat sotto (secondario) */}
+        {fiatEquiv && fiatEquiv !== "—" ? (
+          <>
+            <div className={`aw-tx-amount ${amtClass}`}>
+              {amtPrefix}{fiatEquiv}
+            </div>
+            <div className="aw-tx-date" style={{ opacity: 0.75 }}>
+              {amtSat > 0 ? `${amtPrefix}${amtSat.toLocaleString("it-IT")} sat` : amtDisplay}
+            </div>
+          </>
+        ) : (
+          <div className={`aw-tx-amount ${amtClass}`}>{amtDisplay}</div>
         )}
         <div className="aw-tx-date">{dateStr} {timeStr}</div>
       </div>
@@ -4214,20 +4223,33 @@ function LightningTxDetailView({
       <div className="aw-tx-detail-icon">{statusEmoji}</div>
 
       <div className="aw-tx-detail-amount">
-        <div className={`aw-tx-detail-amount-value ${isReceive && isPaid ? "aw-tx-amount--in" : !isPaid ? "aw-tx-amount--pending" : "aw-tx-amount--out"}`}>
-          {isReceive ? "+" : "-"}
-          {tx.amountSat > 0
-            ? `${tx.amountSat.toLocaleString("it-IT")} sat`
-            : isReceive ? "Qualsiasi importo" : "—"}
-        </div>
+        {/* Fiat in evidenza (primario), sat sotto (secondario) */}
         {(() => {
-          // Equivalente fiat display-only (valuta account, prezzo BTC live)
+          const amtPrefix = isReceive ? "+" : "-";
+          const amtColorClass = isReceive && isPaid ? "aw-tx-amount--in" : !isPaid ? "aw-tx-amount--pending" : "aw-tx-amount--out";
           const fx = tx.amountSat > 0 && btcPrice && fiatCurrency
             ? formatBtcFiat(BigInt(tx.amountSat), btcPrice, fiatCurrency)
             : null;
-          return fx && fx !== "—" ? (
-            <div style={{ fontSize: "0.95rem", opacity: 0.75, marginTop: 2 }}>≈ {fx}</div>
-          ) : null;
+          if (fx && fx !== "—") {
+            return (
+              <>
+                <div className={`aw-tx-detail-amount-value ${amtColorClass}`}>
+                  {amtPrefix}{fx}
+                </div>
+                <div style={{ fontSize: "0.95rem", opacity: 0.70, marginTop: 3 }}>
+                  {amtPrefix}{tx.amountSat.toLocaleString("it-IT")} sat
+                </div>
+              </>
+            );
+          }
+          return (
+            <div className={`aw-tx-detail-amount-value ${amtColorClass}`}>
+              {amtPrefix}
+              {tx.amountSat > 0
+                ? `${tx.amountSat.toLocaleString("it-IT")} sat`
+                : isReceive ? "Qualsiasi importo" : "—"}
+            </div>
+          );
         })()}
         <div className="aw-tx-detail-amount-network">⚡ Lightning · {dirLabel}</div>
       </div>
