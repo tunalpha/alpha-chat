@@ -1,0 +1,57 @@
+Sì. Questo audit è molto importante e adesso il quadro è più chiaro. Però non approverei ancora il fix backend così com’è: c’è un punto da verificare prima.
+
+Diagnosi
+
+Per BSC abbiamo ormai il percorso:
+
+BSC → firma → release → History + Notifica = PASS ✅
+
+Per USDA invece il problema è diverso:
+
+usda.payment.update
+        ↓
+status confirmed / claimed
+        ↓
+ChatPage.tsx
+        ↓
+❌ nessun saveTxRecord()
+❌ nessun dispatchWalletNotification()
+
+Quindi History e Notifiche USDA possono fallire anche se il pagamento è perfettamente completato.
+
+Ma prima di modificare usda.service.ts
+
+L’audit dice correttamente che manca una conferma:
+
+il payload USDA potrebbe non avere abbastanza dati, oppure il messaggio potrebbe essere passato attraverso un altro message_type.
+
+Quindi farei prima un audit di sola lettura, senza modifiche:
+
+1. identificare il message_type esatto della transazione USDA che hai appena fatto;
+2. leggere il relativo system_metadata;
+3. verificare sender_id, recipient_id, importo, network, asset e stato;
+4. verificare se quei dati sono già sufficienti per saveTxRecord() e dispatchWalletNotification();
+5. solo se realmente mancanti, modificare il payload WS backend.
+
+Non voglio aggiungere dati al backend alla cieca.
+
+🔴 E aggiungiamo definitivamente il problema della bolla
+
+Questo resta separato e non deve essere dimenticato:
+
+BUG UI — dimensione bolla USDA
+
+La card USDA nell’ultimo screenshot è visibilmente più piccola rispetto alla card BSC/MultiChain. Va verificato:
+
+* componente utilizzato per la bolla USDA;
+* CSS/classi di dimensionamento;
+* eventuale variante usda_send / usda.payment.update;
+* altezza/larghezza/padding rispetto alla card BSC;
+* che il fix non alteri le altre bolle.
+
+Quindi nel prossimo intervento abbiamo due problemi distinti:
+
+A. USDA History + Notifiche → audit del message type/metadata → fix chirurgico.
+B. USDA bubble size → ripristinare le dimensioni corrette.
+
+E soprattutto: non tocchiamo BSC, che dai test reali è finalmente PASS.
