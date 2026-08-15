@@ -1895,17 +1895,86 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
         case "payment.state_changed": {
           const {
             transfer_id, message_id, conversation_id, status,
-            tx_hash_release, amount, expires_at, asset_symbol,
+            tx_hash_deposit, tx_hash_release,
+            amount, expires_at, asset_symbol,
+            transfer_mode, sender_id: paymentSenderId,
+            recipient_wallet: paymentRecipientWallet,
+            sender_wallet:    paymentSenderWallet,
           } = event.payload as {
-            transfer_id:     string;
-            conversation_id: string;
-            message_id:      string | null;
-            status:          string;
-            asset_symbol:    string;
-            amount:          string;
-            expires_at:      string | null;
-            tx_hash_release: string | null;
+            transfer_id:      string;
+            conversation_id:  string;
+            message_id:       string | null;
+            status:           string;
+            asset_symbol:     string;
+            amount:           string;
+            expires_at:       string | null;
+            tx_hash_deposit:  string | null;
+            tx_hash_release:  string | null;
+            transfer_mode?:   "direct" | "escrow";
+            sender_id?:       string;
+            recipient_wallet?: string | null;
+            sender_wallet?:    string | null;
           };
+
+          // ── Cronologia + notifiche Alpha Wallet per direct transfer ───────────
+          // Questo blocco gira PRIMA del guard conversation_id (stesso pattern di
+          // mc_payment.state_changed) per garantire la persistenza IDB anche se
+          // l'utente è in un'altra conversazione al momento dell'evento.
+          //
+          // Idempotente:
+          //   saveTxRecord  → IDB upsert per id="${chainId}:${txHash}:${dir}:"
+          //   dispatchWalletNotification → 2-level dedup per dedupKey+txHash+type
+          //
+          // Un solo record out per il sender, un solo record in per il recipient,
+          // indipendentemente dal numero di retry/WS duplicati.
+          if (
+            status === "accepted" &&
+            transfer_mode === "direct" &&
+            tx_hash_deposit &&
+            paymentSenderId &&
+            auth?.userId
+          ) {
+            void (async () => {
+              try {
+                const POLYGON_CHAIN_ID = 137;
+                const now      = Date.now();
+                const isSender = paymentSenderId === auth.userId;
+                const dir      = isSender ? "out" as const : "in" as const;
+
+                await saveTxRecord({
+                  id:          `${POLYGON_CHAIN_ID}:${tx_hash_deposit}:${dir}:`,
+                  chainId:     POLYGON_CHAIN_ID,
+                  network:     "Polygon",
+                  txHash:      tx_hash_deposit,
+                  direction:   dir,
+                  asset:       asset_symbol ?? "USDA",
+                  amount,
+                  fromAddress: paymentSenderWallet    ?? undefined,
+                  toAddress:   paymentRecipientWallet ?? undefined,
+                  timestamp:   now,
+                  status:      "confirmed",
+                  updatedAt:   now,
+                });
+
+                await dispatchWalletNotification({
+                  type:      isSender ? "sent" : "received",
+                  chainId:   POLYGON_CHAIN_ID,
+                  network:   "Polygon",
+                  asset:     asset_symbol ?? "USDA",
+                  amount,
+                  txHash:    tx_hash_deposit,
+                  timestamp: now,
+                  status:    "confirmed",
+                });
+
+                void refreshNotifications();
+                void refreshTxHistory();
+              } catch (err) {
+                console.warn("[USDA Direct History/Notify] errore:", err);
+              }
+            })();
+          }
+
           if (conversation_id !== activeConvId) break;
           setMessages((prev) =>
             prev.map((m) => {
@@ -1921,10 +1990,14 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
                 system_metadata: {
                   ...meta,
                   status,
-                  tx_hash_release: tx_hash_release ?? meta.tx_hash_release ?? null,
-                  amount:          amount          ?? meta.amount,
-                  expires_at:      expires_at      ?? meta.expires_at      ?? null,
-                  asset_symbol:    asset_symbol    ?? meta.asset_symbol,
+                  transfer_mode:    transfer_mode    ?? meta.transfer_mode    ?? "escrow",
+                  tx_hash_deposit:  tx_hash_deposit  ?? meta.tx_hash_deposit  ?? null,
+                  tx_hash_release:  tx_hash_release  ?? meta.tx_hash_release  ?? null,
+                  amount:           amount            ?? meta.amount,
+                  expires_at:       expires_at        ?? meta.expires_at       ?? null,
+                  asset_symbol:     asset_symbol      ?? meta.asset_symbol,
+                  sender_wallet:    paymentSenderWallet    ?? meta.sender_wallet    ?? null,
+                  recipient_wallet: paymentRecipientWallet ?? meta.recipient_wallet ?? null,
                 },
               };
             }),

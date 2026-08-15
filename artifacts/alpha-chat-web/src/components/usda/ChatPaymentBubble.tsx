@@ -420,12 +420,15 @@ export const ChatPaymentBubble = memo(function ChatPaymentBubble({ data, isMine,
 
         // --- DESTINATARIO ---
         if (!isMine) {
-          // Link solo a pagamento ricevuto (release), niente deposito.
-          if (data.status !== "accepted" || !releaseUrl) return null;
+          if (data.status !== "accepted") return null;
+          // Direct: l'unica TX è tx_hash_deposit; non c'è tx_hash_release.
+          // Escrow: mostra il link alla release (la TX ricevuta dal destinatario).
+          const recipientLinkUrl = releaseUrl ?? (data.transfer_mode === "direct" ? depositUrl : null);
+          if (!recipientLinkUrl) return null;
           return (
             <div className="cp-bubble-scan-links">
               <a
-                href={releaseUrl}
+                href={recipientLinkUrl}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="cp-scan-link"

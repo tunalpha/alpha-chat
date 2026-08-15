@@ -30,16 +30,20 @@ export type ChatTransferStatus =
 export interface ChatPaymentData {
   transfer_id:     string;
   status:          ChatTransferStatus;
+  /** "direct" = 1 TX sender → recipient; "escrow" = 2 TX via custodial. Default: "escrow". */
+  transfer_mode?:  "direct" | "escrow";
   amount:          string;
   asset_symbol:    string;
   sender_id:       string;
   recipient_id:    string;
+  sender_wallet?:    string | null;
+  recipient_wallet?: string | null;
   // Se true il transfer soddisfa una richiesta (usda_request): il consenso del
   // richiedente è la richiesta stessa → rilascio automatico, nessun Accetta/Rifiuta.
   is_request?:     boolean;
   expires_at:           string | null;
-  tx_hash_deposit?:     string | null;   // hash deposito (per PolygonScan)
-  tx_hash_release:      string | null;   // hash rilascio
+  tx_hash_deposit?:     string | null;   // hash deposito o TX diretta
+  tx_hash_release:      string | null;   // hash rilascio (solo escrow)
   deposit_block_number?:    number | null;  // block number Polygon deposito
   release_block_number?:    number | null;  // block number Polygon rilascio
   deposit_polygonscan_url?: string | null;  // link PolygonScan deposito
@@ -51,19 +55,22 @@ export interface ChatPaymentData {
 }
 
 export interface ChatTransferResponse {
-  transfer_id:     string;
-  status:          ChatTransferStatus;
-  amount:          string;
-  asset_symbol:    string;
-  asset_address?:  string | null;
-  sender_id:       string;
-  recipient_id:    string;
-  escrow_wallet?:  string | null;
-  sender_wallet?:  string | null;
-  expires_at:      string | null;
-  tx_hash_release: string | null;
-  message_id:      string | null;
-  conversation_id: string;
+  transfer_id:      string;
+  status:           ChatTransferStatus;
+  transfer_mode?:   "direct" | "escrow";
+  amount:           string;
+  asset_symbol:     string;
+  asset_address?:   string | null;
+  sender_id:        string;
+  recipient_id:     string;
+  escrow_wallet?:   string | null;
+  sender_wallet?:   string | null;
+  recipient_wallet?: string | null;
+  expires_at:       string | null;
+  tx_hash_deposit?: string | null;
+  tx_hash_release:  string | null;
+  message_id:       string | null;
+  conversation_id:  string;
 }
 
 // ---------------------------------------------------------------------------
@@ -121,23 +128,25 @@ export async function apiPaymentGet(transferId: string): Promise<ChatTransferRes
   return paymentFetch<ChatTransferResponse>("GET", `/${transferId}`);
 }
 
-/** Risposta di createTransfer — include dati escrow visibili al mittente. */
+/** Risposta di createTransfer — include dati di routing visibili al mittente. */
 export interface CreateTransferResult {
-  transfer_id:     string;
-  status:          ChatTransferStatus;
-  amount:          string;
-  asset_symbol:    string;
-  asset_address:   string | null;
-  sender_id:       string;
-  recipient_id:    string;
-  conversation_id: string;
-  message_id:      string | null;
-  escrow_wallet:   string | null;
-  sender_wallet:   string | null;
-  fee:             string;
-  note:            string | null;
-  expires_at:      string | null;
-  tx_hash_release: string | null;
+  transfer_id:      string;
+  status:           ChatTransferStatus;
+  transfer_mode:    "direct" | "escrow";
+  amount:           string;
+  asset_symbol:     string;
+  asset_address:    string | null;
+  sender_id:        string;
+  recipient_id:     string;
+  conversation_id:  string;
+  message_id:       string | null;
+  escrow_wallet:    string | null;   // null per transfer_mode === "direct"
+  recipient_wallet: string | null;   // valorizzato per transfer_mode === "direct"
+  sender_wallet:    string | null;
+  fee:              string;
+  note:             string | null;
+  expires_at:       string | null;
+  tx_hash_release:  string | null;
 }
 
 /** Crea un nuovo trasferimento P2P (nuovo Payment Engine). */

@@ -55,6 +55,10 @@ async function main() {
     if (t.status !== "failed") { console.log(`  ⚠️  status != failed (${t.status}) — skip`); continue; }
     if (t.tx_hash_release) { console.log("  ⚠️  tx_hash_release già presente — skip"); continue; }
 
+    if (!t.escrow_wallet || !t.escrow_encrypted_pk) {
+      console.log("  ⚠️  escrow_wallet/escrow_encrypted_pk null (direct transfer?) — skip");
+      continue;
+    }
     const balance = await getCustodialBalance({ address: t.escrow_wallet, assetAddress: t.asset_address });
     console.log(`  balanceOf(escrow) = ${balance} (serve >= ${t.amount_units})`);
     if (BigInt(balance) < BigInt(t.amount_units)) {
@@ -69,12 +73,12 @@ async function main() {
 
     // 1. Gas top-up dinamico
     console.log("  → ensureEscrowGas...");
-    await ensureEscrowGas(t.escrow_wallet);
+    await ensureEscrowGas(t.escrow_wallet!);
 
     // 2. Rimborso escrow → sender_wallet
     console.log("  → transferFromCustodial (rimborso escrow → sender)...");
     const { txHash } = await transferFromCustodial({
-      encryptedPk:  t.escrow_encrypted_pk,
+      encryptedPk:  t.escrow_encrypted_pk!,
       toAddress:    t.sender_wallet,
       amountUnits:  t.amount_units,
       assetAddress: t.asset_address,

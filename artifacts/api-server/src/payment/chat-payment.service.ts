@@ -62,6 +62,7 @@ function _format(doc: ChatTransferDocument): Record<string, unknown> {
   return {
     transfer_id:              doc.transfer_id,
     status:                   doc.status,
+    transfer_mode:            doc.transfer_mode ?? "escrow",
     amount:                   doc.amount?.toString() ?? "0",
     amount_units:             doc.amount_units,
     asset_symbol:             doc.asset_symbol,
@@ -72,7 +73,7 @@ function _format(doc: ChatTransferDocument): Record<string, unknown> {
     recipient_id:             doc.recipient_id.toString(),
     conversation_id:          doc.conversation_id.toString(),
     message_id:               doc.message_id?.toString() ?? null,
-    escrow_wallet:            doc.escrow_wallet,
+    escrow_wallet:            doc.escrow_wallet ?? null,
     sender_wallet:            doc.sender_wallet,
     recipient_wallet:         doc.recipient_wallet ?? null,
     tx_hash_deposit:          doc.tx_hash_deposit ?? null,
@@ -96,6 +97,7 @@ function _paymentMeta(doc: ChatTransferDocument): Record<string, unknown> {
   return {
     transfer_id:             doc.transfer_id,
     status:                  doc.status,
+    transfer_mode:           doc.transfer_mode ?? "escrow",
     amount:                  doc.amount?.toString() ?? "0",
     asset_symbol:            doc.asset_symbol,
     asset_address:           doc.asset_address,
@@ -106,7 +108,9 @@ function _paymentMeta(doc: ChatTransferDocument): Record<string, unknown> {
     // richiedente È la richiesta stessa: nessun "Accetta/Rifiuta" manuale, il
     // rilascio è automatico. Il frontend usa questo flag per nascondere i bottoni.
     is_request:              !!doc.request_payment_id,
-    escrow_wallet:           doc.escrow_wallet,
+    escrow_wallet:           doc.escrow_wallet ?? null,
+    sender_wallet:           doc.sender_wallet,
+    recipient_wallet:        doc.recipient_wallet ?? null,
     expires_at:              doc.expires_at.toISOString(),
     tx_hash_deposit:         doc.tx_hash_deposit ?? null,
     tx_hash_release:         doc.tx_hash_release ?? null,
@@ -327,7 +331,8 @@ async function _sendCompletedNotification(transfer: ChatTransferDocument): Promi
  */
 async function _verifyDepositTx(params: {
   txHash:       string;
-  escrowWallet: string;
+  /** Indirizzo destinatario atteso (escrow per mode "escrow", recipient_wallet per mode "direct") */
+  toAddress:    string;
   amountUnits:  string;
   assetAddress: string;
 }): Promise<number | null> {
@@ -357,13 +362,13 @@ async function _verifyDepositTx(params: {
   }
 
   // topics[2] = to address — ERC-20 Transfer event (padded a 32 byte)
-  const escrowPadded = `0x000000000000000000000000${params.escrowWallet.slice(2).toLowerCase()}`;
-  const minAmount    = BigInt(params.amountUnits);
+  const toPadded  = `0x000000000000000000000000${params.toAddress.slice(2).toLowerCase()}`;
+  const minAmount = BigInt(params.amountUnits);
 
   const validLog = receipt.logs.find((log) => {
     if (log.address.toLowerCase() !== params.assetAddress.toLowerCase()) return false;
     if (log.topics[0]?.toLowerCase() !== ERC20_TRANSFER_TOPIC)           return false;
-    if (log.topics[2]?.toLowerCase() !== escrowPadded)                   return false;
+    if (log.topics[2]?.toLowerCase() !== toPadded)                       return false;
     try {
       return hexToBigInt(log.data as `0x${string}`) >= minAmount;
     } catch {
@@ -460,7 +465,20 @@ export async function createTransfer(
   // Carica destinatario (wallet può essere null — ADR-004)
   const recipient = await UserModel.findById(recipientId).lean() as any;
   if (!recipient) throw new AppError("USER_NOT_FOUND", 404);
-  const recipientWallet: string | null = recipient.wallets?.usda?.address ?? recipient.wallet_address ?? null;
+  // Priorità wallet destinatario:
+  //   1. Alpha Wallet self-custodial (alpha_wallet_evm_address) — disponibile senza WalletConnect
+  //   2. WalletConnect USDA (wallets.usda.address)
+  //   3. Legacy wallet_address
+  const recipientWallet: string | null =
+    recipient.alpha_wallet_evm_address ??
+    recipient.wallets?.usda?.address ??
+    recipient.wallet_address ??
+    null;
+
+  // ROUTING DECISION: direct se il destinatario ha già un indirizzo EVM valido.
+  // Direct → 1 TX sender → recipient (no escrow generato).
+  // Escrow → 2 TX via custodial (comportamento esistente).
+  const transferMode: "direct" | "escrow" = recipientWallet ? "direct" : "escrow";
 
   // Verifica appartenenza alla conversazione
   const members    = await memberRepo.listMembers(convId);
@@ -506,8 +524,15 @@ export async function createTransfer(
       throw new AppError("REQUEST_AMOUNT_MISMATCH", 422);
   }
 
-  // Genera wallet escrow (fail-fast se ESCROW_MASTER_KEY mancante)
-  const escrow = generateEscrowWallet();
+  // Genera wallet escrow solo per il flow escrow (fail-fast se ESCROW_MASTER_KEY mancante).
+  // Per direct transfer non viene generato alcun escrow.
+  let escrowAddress:    string | null = null;
+  let escrowEncryptedPk: string | null = null;
+  if (transferMode === "escrow") {
+    const escrow   = generateEscrowWallet();
+    escrowAddress    = escrow.address;
+    escrowEncryptedPk = escrow.encryptedPk;
+  }
 
   const transferId = randomUUID();
   const now        = new Date();
@@ -533,8 +558,9 @@ export async function createTransfer(
     note:                params.note ?? null,
     sender_wallet:       senderWallet,
     recipient_wallet:    recipientWallet,
-    escrow_wallet:       escrow.address,
-    escrow_encrypted_pk: escrow.encryptedPk,
+    transfer_mode:       transferMode,
+    escrow_wallet:       escrowAddress,
+    escrow_encrypted_pk: escrowEncryptedPk,
     status:              "awaiting_deposit",
     expires_at:          expiresAt,
   });
@@ -569,11 +595,11 @@ export async function createTransfer(
         assetSymbol:     transfer.asset_symbol,
         senderUserId:    transfer.sender_id.toString(),
         recipientUserId: transfer.recipient_id.toString(),
-        escrowWallet:    transfer.escrow_wallet,
+        escrowWallet:    transfer.escrow_wallet ?? `(direct:${transfer.recipient_wallet ?? "?"})`,
       });
     } catch { /* silenzioso — email non critica */ }
   })();
-  logger.info({ transferId, sender: params.senderId, amount: params.amount }, "[Payment] Transfer creato ✓");
+  logger.info({ transferId, sender: params.senderId, amount: params.amount, mode: transferMode }, "[Payment] Transfer creato ✓");
   return _format(transfer);
 }
 
@@ -602,7 +628,7 @@ export async function confirmDeposit(params: {
   try {
     depositBlockNumber = await _verifyDepositTx({
       txHash:       params.txHash,
-      escrowWallet: transfer.escrow_wallet,
+      toAddress:    transfer.escrow_wallet!,
       amountUnits:  transfer.amount_units,
       assetAddress: transfer.asset_address,
     });
@@ -679,11 +705,6 @@ export async function detectDeposit(params: {
     throw new AppError("TRANSFER_INVALID_TRANSITION", 409);
   }
 
-  if (process.env.PAYMENT_SKIP_CHAIN_VERIFY === "true") {
-    // In dev mode non c'è blockchain reale — non possiamo rilevare nulla
-    throw new AppError("DEPOSIT_TX_NOT_DETECTED", 404);
-  }
-
   // Range di blocchi: NON stimiamo fromBlock dal block time (fragile — Polygon
   // gira a ~1.5s/blocco e la stima a 2.5s spingeva fromBlock DOPO il blocco del
   // deposito, escludendolo dalla finestra → falso DEPOSIT_TX_NOT_DETECTED).
@@ -700,20 +721,32 @@ export async function detectDeposit(params: {
   const ageMs      = BigInt(Math.max(0, Date.now() - createdAt.getTime()));
   const ageBlocks  = ageMs / BigInt(POLYGON_BLOCK_TIME_MS) + SAFETY_BUFFER;
 
-  const publicClient = createPublicClient({
-    chain:     polygon,
-    transport: http(getRpcUrl()),
-  });
-  const currentBlock = await publicClient.getBlockNumber();
-  const fromBlock    = currentBlock > ageBlocks ? currentBlock - ageBlocks : 0n;
+  // In dev/test mode saltiamo la chiamata eth_blockNumber e usiamo fromBlock=0n:
+  // Alchemy accetta fromBlock=0x0 e i mock non devono gestire questa RPC call.
+  // In produzione calcoliamo fromBlock in modo conservativo dall'età del transfer.
+  let fromBlock = 0n;
+  if (process.env.PAYMENT_SKIP_CHAIN_VERIFY !== "true") {
+    const publicClient = createPublicClient({
+      chain:     polygon,
+      transport: http(getRpcUrl()),
+    });
+    const currentBlock = await publicClient.getBlockNumber();
+    fromBlock = currentBlock > ageBlocks ? currentBlock - ageBlocks : 0n;
+  }
 
   // NON usare eth_getLogs: gli RPC pubblici gratuiti rifiutano getLogs su
   // range storici ("Archive requests require a personal token" su publicnode,
   // "ranges over 10000 blocks" su drpc, cap 10 blocchi su Alchemy free).
   // Usiamo alchemy_getAssetTransfers (enhanced API, free tier, range illimitato)
   // — stesso approccio del backend USDA per il poll-tx.
+  // Per direct transfer scansioniamo TX verso recipient_wallet;
+  // per escrow scansioniamo TX verso escrow_wallet.
+  const isDirect        = transfer.transfer_mode === "direct";
+  const scanToAddress   = isDirect ? transfer.recipient_wallet! : transfer.escrow_wallet!;
+
   interface AssetTransfer {
     hash?:        string;
+    from?:        string;
     rawContract?: { value?: string };
     metadata?:    { blockTimestamp?: string };
   }
@@ -731,7 +764,7 @@ export async function detectDeposit(params: {
         params: [{
           fromBlock:         `0x${fromBlock.toString(16)}`,
           toBlock:           "latest",
-          toAddress:         transfer.escrow_wallet,
+          toAddress:         scanToAddress,
           contractAddresses: [transfer.asset_address],
           category:          ["erc20"],
           withMetadata:      true,
@@ -750,19 +783,25 @@ export async function detectDeposit(params: {
 
   // Filtra: (a) importo >= amount_units SE rawContract.value è disponibile,
   // E (b) blockTimestamp >= createdAt - 5min SE blockTimestamp è disponibile.
+  // Per direct: (c) fromAddress === sender_wallet (verifica aggiuntiva).
   //
   // Fix A: rawContract.value è opzionale — Alchemy può non popolarlo se non riesce
   // a decodificare l'ABI del token. In quel caso ci fidiamo dei filtri upstream
   // (toAddress + contractAddresses + category: erc20) che già circoscrivono la TX
-  // al token corretto verso l'escrow corretto. Il filtro importo diventa best-effort.
+  // al token corretto verso il destinatario corretto. Il filtro importo diventa best-effort.
   //
   // Fix C: metadata.blockTimestamp è opzionale — Alchemy può non popolarlo per
   // alcune TX (ABI non decodificata, response parziale). Stessa logica di Fix A:
   // se il campo manca saltiamo il controllo timestamp e ci fidiamo dei filtri upstream.
   const minAmount   = BigInt(transfer.amount_units);
   const minTs       = createdAt.getTime() - 5 * 60 * 1000; // createdAt - 5 minuti
+  const senderLower = transfer.sender_wallet.toLowerCase();
   const match = transfers.find((t) => {
     try {
+      // Per direct: verifica che il from sia il sender atteso.
+      // La scansione già filtra toAddress=recipient_wallet, ma vogliamo escludere
+      // TX di terzi che potrebbero aver inviato al recipient_wallet.
+      if (isDirect && t.from && t.from.toLowerCase() !== senderLower) return false;
       // Se rawContract.value è presente verifichiamo l'importo; se assente, omettiamo
       // il check importo (toAddress + contractAddresses sono già filtri sufficienti).
       if (t.rawContract?.value != null && BigInt(t.rawContract.value) < minAmount) return false;
@@ -777,18 +816,99 @@ export async function detectDeposit(params: {
   });
 
   if (!match?.hash) {
-    logger.info({ transferId: params.transferId, blocksScanned: currentBlock - fromBlock }, "[Payment] detectDeposit: nessun tx trovato");
+    logger.info({ transferId: params.transferId, fromBlock: fromBlock.toString() }, "[Payment] detectDeposit: nessun tx trovato");
     throw new AppError("DEPOSIT_TX_NOT_DETECTED", 404);
   }
 
   logger.info({ transferId: params.transferId, txHash: match.hash }, "[Payment] Deposito rilevato automaticamente ✓");
 
-  // Riusa la logica esistente (anti-replay + verifica on-chain + state machine)
+  // Riusa la logica appropriata in base al transfer_mode:
+  // - "direct": _confirmDirect (awaiting_deposit → accepted direttamente, no escrow TX)
+  // - "escrow": confirmDeposit (awaiting_deposit → pending → accepted via escrow)
+  if (transfer.transfer_mode === "direct") {
+    return _confirmDirect({
+      transferId:  params.transferId,
+      txHash:      match.hash,
+      requesterId: params.requesterId,
+    });
+  }
   return confirmDeposit({
     transferId:  params.transferId,
     txHash:      match.hash,
     requesterId: params.requesterId,
   });
+}
+
+/**
+ * Conferma una transazione direct on-chain: awaiting_deposit → accepted (senza passare per "pending").
+ * Usato esclusivamente per transfer_mode === "direct": non genera TX escrow.
+ *
+ * Anti-replay: checkAndMarkTx impedisce la doppia conferma dello stesso txHash.
+ * Idempotente: se detectDeposit viene chiamato 10 volte con la stessa TX → 1 sola conferma.
+ */
+async function _confirmDirect(params: {
+  transferId:  string;
+  txHash:      string;
+  requesterId: string;
+}): Promise<Record<string, unknown>> {
+  const transfer = await ChatTransferModel.findOne({ transfer_id: params.transferId });
+  if (!transfer) throw new AppError("TRANSFER_NOT_FOUND", 404);
+
+  if (transfer.sender_id.toString() !== params.requesterId) throw new AppError("TRANSFER_ACCESS_DENIED", 403);
+  if (transfer.status !== "awaiting_deposit")               throw new AppError("TRANSFER_INVALID_TRANSITION", 409);
+  if (transfer.expires_at < new Date())                     throw new AppError("TRANSFER_EXPIRED", 410);
+  if (!transfer.recipient_wallet)                           throw new AppError("WALLET_NOT_CONFIGURED", 412);
+
+  // Anti-replay — impedisce la doppia conferma dello stesso txHash
+  await checkAndMarkTx(params.txHash, "chat-transfer-deposit");
+
+  // Verifica on-chain: la TX deve essere sender → recipient_wallet
+  let depositBlockNumber: number | null = null;
+  try {
+    depositBlockNumber = await _verifyDepositTx({
+      txHash:       params.txHash,
+      toAddress:    transfer.recipient_wallet,
+      amountUnits:  transfer.amount_units,
+      assetAddress: transfer.asset_address,
+    });
+  } catch (verifyErr) {
+    await rollbackTx(params.txHash);
+    throw verifyErr;
+  }
+
+  const now      = new Date();
+  // Transizione atomica: awaiting_deposit → accepted direttamente.
+  // Se un'altra chiamata concorrente ha già completato la transizione, findOneAndUpdate
+  // ritorna null (perché il filtro {status:"awaiting_deposit"} non combacia più) → 409.
+  const accepted = await ChatTransferModel.findOneAndUpdate(
+    { transfer_id: params.transferId, status: "awaiting_deposit" },
+    {
+      $set: {
+        status:               "accepted",
+        tx_hash_deposit:      params.txHash,
+        deposit_block_number: depositBlockNumber,
+        confirmed_at:         now,
+        completed_at:         now,
+      },
+    },
+    { returnDocument: "after" },
+  );
+  if (!accepted) throw new AppError("TRANSFER_INVALID_TRANSITION", 409);
+
+  await writeAudit({
+    transferId:  params.transferId,
+    fromStatus:  "awaiting_deposit",
+    toStatus:    "accepted",
+    triggeredBy: "sender",
+    txHash:      params.txHash,
+    note:        "Direct transfer confermato on-chain (sender → recipient, no escrow)",
+  });
+  await _updateMessageMeta(accepted);
+  emitPaymentStateChanged(accepted);
+  void _sendCompletedNotification(accepted);
+
+  logger.info({ transferId: params.transferId, txHash: params.txHash }, "[Payment] Direct transfer confermato ✓");
+  return _format(accepted);
 }
 
 /**
@@ -826,6 +946,11 @@ export async function acceptTransfer(params: {
 
   const locked = await acquireLock(params.transferId, "pending", "accepting");
   if (!locked) throw new AppError("TRANSFER_LOCK_FAILED", 409);
+
+  // Guardia escrow: acceptTransfer è solo per escrow-mode (direct salta "pending")
+  if (!locked.escrow_wallet || !locked.escrow_encrypted_pk) {
+    throw new AppError("TRANSFER_ESCROW_NOT_AVAILABLE", 500);
+  }
 
   const now = new Date();
   try {
@@ -991,6 +1116,11 @@ export async function autoReleaseForSend(transferId: string): Promise<void> {
   const locked = await acquireLock(transferId, "pending", "accepting");
   if (!locked) { logger.info({ transferId }, "[Payment] Auto-release-send: lock non acquisito, salto"); return; }
 
+  // Guardia escrow: autoReleaseForSend è solo per escrow-mode (direct salta "pending")
+  if (!locked.escrow_wallet || !locked.escrow_encrypted_pk) {
+    throw new AppError("TRANSFER_ESCROW_NOT_AVAILABLE", 500);
+  }
+
   const now = new Date();
   try {
     // Guardia anti-double-spend: se l'escrow è già vuoto, un tentativo precedente
@@ -1064,6 +1194,11 @@ export async function autoReleaseForRequest(transferId: string): Promise<void> {
   const locked = await acquireLock(transferId, "pending", "accepting");
   if (!locked) { logger.info({ transferId }, "[Payment] Auto-release: lock non acquisito, salto"); return; }
 
+  // Guardia escrow: autoReleaseForRequest è solo per escrow-mode (direct salta "pending")
+  if (!locked.escrow_wallet || !locked.escrow_encrypted_pk) {
+    throw new AppError("TRANSFER_ESCROW_NOT_AVAILABLE", 500);
+  }
+
   const now = new Date();
   try {
     // Guardia anti-double-spend: se l'escrow è già vuoto, un tentativo precedente
@@ -1129,6 +1264,11 @@ export async function rejectTransfer(params: {
 
   const locked = await acquireLock(params.transferId, "pending", "rejecting");
   if (!locked) throw new AppError("TRANSFER_LOCK_FAILED", 409);
+
+  // Guardia escrow: rejectTransfer è solo per escrow-mode (direct salta "pending")
+  if (!locked.escrow_wallet || !locked.escrow_encrypted_pk) {
+    throw new AppError("TRANSFER_ESCROW_NOT_AVAILABLE", 500);
+  }
 
   const now = new Date();
   try {
@@ -1197,6 +1337,11 @@ export async function cancelTransfer(params: {
 
   const locked = await acquireLock(params.transferId, "pending", "cancelling");
   if (!locked) throw new AppError("TRANSFER_LOCK_FAILED", 409);
+
+  // Guardia escrow: cancelTransfer è solo per escrow-mode (direct salta "pending")
+  if (!locked.escrow_wallet || !locked.escrow_encrypted_pk) {
+    throw new AppError("TRANSFER_ESCROW_NOT_AVAILABLE", 500);
+  }
 
   const now = new Date();
   try {

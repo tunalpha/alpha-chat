@@ -131,8 +131,9 @@ export function SendPaymentSheet({
   const [error,  setError]  = useState<string | null>(null);
   const [phase,  setPhase]  = useState<SendPhase | null>(null);
   const [resumeLoading, setResumeLoading] = useState(isResume);
-  // Dati escrow del transfer esistente (resume): caricati da apiPaymentGet.
-  const resumeRef = useRef<{ escrowWallet: string; amountStr: string; assetAddress: string | null } | null>(null);
+  // Dati del transfer esistente (resume): caricati da apiPaymentGet.
+  // toAddress = recipient_wallet (direct) o escrow_wallet (escrow).
+  const resumeRef = useRef<{ toAddress: string; amountStr: string; assetAddress: string | null } | null>(null);
   const busyRef = useRef(false);
 
   /**
@@ -143,9 +144,10 @@ export function SendPaymentSheet({
    * Il retry usa questo stesso transferId (≡ handleRetrySign).
    */
   const createdTransferRef = useRef<{
-    transferId:   string;
-    escrowWallet: string;
-    amountStr:    string;
+    transferId:  string;
+    /** Indirizzo di destinazione della firma: recipient_wallet (direct) o escrow_wallet (escrow). */
+    toAddress:   string;
+    amountStr:   string;
     assetAddress: string | null;
   } | null>(null);
 
@@ -193,9 +195,11 @@ export function SendPaymentSheet({
           setPhase("done");
           return;
         }
-        if (!t.escrow_wallet) throw new Error("Indirizzo escrow non disponibile per questo trasferimento.");
+        // Per direct transfer usa recipient_wallet; per escrow usa escrow_wallet.
+        const toAddress = t.transfer_mode === "direct" ? t.recipient_wallet : t.escrow_wallet;
+        if (!toAddress) throw new Error("Indirizzo destinatario non disponibile per questo trasferimento.");
         resumeRef.current = {
-          escrowWallet: t.escrow_wallet,
+          toAddress,
           amountStr:    t.amount,
           assetAddress: t.asset_address ?? null,
         };
@@ -267,9 +271,10 @@ export function SendPaymentSheet({
   // Ogni interruzione/errore della firma emerge con un messaggio umano e lascia
   // il flusso ripetibile (lo stato resta awaiting_deposit lato backend).
   const signAndPoll = useCallback(async (args: {
-    transferId:   string;
-    escrowWallet: string;
-    amountStr:    string;
+    transferId:  string;
+    /** Indirizzo destinatario della TX: recipient_wallet (direct) o escrow_wallet (escrow). */
+    toAddress:   string;
+    amountStr:   string;
     assetAddress: string | null;
   }): Promise<void> => {
     if (!account) throw new Error("Wallet non connesso. Connetti il wallet e riprova.");
@@ -279,7 +284,7 @@ export function SendPaymentSheet({
       args.assetAddress ?? "0xe714655fD1B3ba96B887DF1F94336c2A78E24001"
     ) as `0x${string}`;
     const amountWei = toWei18(args.amountStr);
-    const calldata  = encodeERC20Transfer(args.escrowWallet, amountWei);
+    const calldata  = encodeERC20Transfer(args.toAddress, amountWei);
 
     // Firma fire-and-forget. NON aspettiamo il txHash: fonte di verità =
     // detect-deposit. Catturiamo però OGNI errore per poterlo mostrare se il
@@ -472,16 +477,20 @@ export function SendPaymentSheet({
         request_payment_id: requestPaymentId,
       });
 
-      if (!created.escrow_wallet) {
-        throw new Error("Il backend non ha restituito un indirizzo escrow. Riprova.");
+      // Routing: direct → recipient_wallet; escrow → escrow_wallet.
+      const toAddress = created.transfer_mode === "direct"
+        ? created.recipient_wallet
+        : created.escrow_wallet;
+      if (!toAddress) {
+        throw new Error("Il backend non ha restituito un indirizzo destinatario. Riprova.");
       }
 
       // Salva immediatamente: da qui in poi nessun nuovo apiPaymentCreate() è
       // possibile per questo payment intent, anche dopo Load failed + retry.
       createdTransferRef.current = {
-        transferId:   created.transfer_id,
-        escrowWallet: created.escrow_wallet,
-        amountStr:    created.amount,
+        transferId:  created.transfer_id,
+        toAddress,
+        amountStr:   created.amount,
         assetAddress: created.asset_address ?? null,
       };
 
@@ -528,9 +537,9 @@ export function SendPaymentSheet({
     setStep("sending");
     try {
       await signAndPoll({
-        transferId:   resumeTransferId,
-        escrowWallet: data.escrowWallet,
-        amountStr:    data.amountStr,
+        transferId:  resumeTransferId,
+        toAddress:   data.toAddress,
+        amountStr:   data.amountStr,
         assetAddress: data.assetAddress,
       });
     } catch (e: unknown) {

@@ -1,0 +1,479 @@
+PROCEDI CON L’IMPLEMENTAZIONE.
+
+La verifica tecnica è conclusa. Implementa il direct transfer seguendo l’architettura minima identificata, con una regola fondamentale:
+
+Per un destinatario Alpha Wallet configurato deve esistere UNA SOLA operazione on-chain: MITTENTE → DESTINATARIO. Tutto il sistema — backend, frontend, stato, chat, cronologia e notifiche — deve rappresentare esattamente quella stessa operazione.
+
+1. ROUTING
+
+Se il destinatario possiede un alpha_wallet_evm_address valido:
+
+DIRECT:
+MITTENTE → DESTINATARIO
+
+Non generare alcun escrow wallet.
+
+Se non esiste un wallet destinatario utilizzabile:
+
+ESCROW:
+MITTENTE → ESCROW → DESTINATARIO
+
+Il flow escrow esistente deve rimanere invariato.
+
+Priorità recipient address:
+
+recipient.alpha_wallet_evm_address
+→ recipient.wallets?.usda?.address
+→ recipient.wallet_address
+
+Salvare nel transfer il recipient_wallet effettivamente scelto come snapshot al momento della creazione.
+
+Non ricaricare successivamente un altro address per completare la TX.
+
+2. TRANSFER MODE
+
+Aggiungere:
+
+transfer_mode: "direct" | "escrow"
+
+Default:
+
+"escrow"
+
+I record esistenti devono continuare a comportarsi come escrow.
+
+Direct:
+
+* transfer_mode = "direct"
+* escrow_wallet = null
+
+Escrow:
+
+* transfer_mode = "escrow"
+* escrow_wallet != null
+
+3. DIRECT TRANSACTION
+
+Nel direct flow il frontend deve firmare:
+
+ERC20.transfer(recipient_wallet, amountWei)
+
+NON:
+
+ERC20.transfer(escrow_wallet, amountWei)
+
+Chain, contract USDA, decimals e sender devono rimanere identici al flow esistente.
+
+La TX deve essere:
+
+sender_wallet → recipient_wallet
+
+una sola volta.
+
+4. IOS / WALLETCONNECT — REGOLA ASSOLUTA
+
+Riutilizzare il meccanismo già esistente:
+
+* signedUncertain
+* PENDING_KEY
+* polling
+* recovery
+* checkAndMarkTx
+* lock atomico
+
+Scenario obbligatorio:
+
+SIGN
+→ TX broadcastata
+→ WalletConnect restituisce Load failed
+→ recovery
+→ TX trovata on-chain
+→ transfer accepted
+→ DONE
+
+Mai:
+
+TX broadcastata
+→ Load failed
+→ recovery non trova TX
+→ seconda firma
+→ seconda TX
+
+Il recovery deve cercare la TX direct verificando almeno:
+
+* chain Polygon;
+* USDA contract;
+* sender_wallet;
+* recipient_wallet;
+* amount;
+* transferId quando disponibile.
+
+Una TX già utilizzata deve essere protetta da checkAndMarkTx.
+
+5. STATO
+
+Direct:
+
+awaiting_deposit → accepted
+
+Non deve passare da pending.
+
+Non deve entrare nei job:
+
+* processExpiredTransfers
+* processPendingSendTransfers
+* autoReleaseForSend
+
+I scheduler devono essere esplicitamente protetti contro transfer_mode === "direct".
+
+Un direct transfer non deve mai tentare di utilizzare escrow_encrypted_pk.
+
+6. EVENTS — MODIFICA DEFINITIVA
+
+Modificare events.ts.
+
+payment.state_changed deve includere almeno:
+
+transfer_mode
+tx_hash_deposit
+recipient_wallet
+
+con valori coerenti.
+
+Esempio concettuale:
+
+transfer_mode: "direct"
+tx_hash_deposit: "0x..."
+recipient_wallet: "0x..."
+
+Il frontend non deve dedurre il direct flow semplicemente dall’assenza di tx_hash_release.
+
+7. CRONOLOGIA — REQUISITO RIGOROSO
+
+Questo è obbligatorio.
+
+Per una singola TX direct:
+
+Mittente
+
+Creare ESATTAMENTE una history entry:
+
+* direction = out
+* amount = importo reale
+* fromAddress = sender_wallet
+* toAddress = recipient_wallet
+* txHash = TX reale
+* chainId = 137
+* token = USDA
+* status = confirmed/completed
+
+Destinatario
+
+Creare ESATTAMENTE una history entry:
+
+* direction = in
+* amount = importo reale
+* fromAddress = sender_wallet
+* toAddress = recipient_wallet
+* txHash = STESSO identico TX hash
+* chainId = 137
+* token = USDA
+* status = confirmed/completed
+
+IMPORTANTE:
+
+Il client deve determinare il proprio ruolo.
+
+Se l’utente corrente è il sender:
+→ crea SOLO out.
+
+Se l’utente corrente è il recipient:
+→ crea SOLO in.
+
+NON creare contemporaneamente out e in su ogni client che riceve il WebSocket.
+
+8. BLOCKCHAIN CONSISTENCY
+
+La history non deve essere una semplice copia del messaggio chat.
+
+Deve rappresentare la TX effettivamente verificata on-chain.
+
+Verificare:
+
+chainId = 137
+
+token = USDA contract
+
+from = sender_wallet
+
+to = recipient_wallet
+
+amount = importo del transfer
+
+txHash = hash reale
+
+Mittente e destinatario devono avere lo stesso txHash.
+
+9. IDEMPOTENZA HISTORY
+
+Usare il meccanismo già esistente di saveTxRecord.
+
+La stessa TX rilevata 10 volte deve produrre:
+
+1 record out per il sender
+1 record in per il recipient
+
+mai duplicati.
+
+Non introdurre un nuovo sistema di history.
+
+10. NOTIFICHE
+
+Riutilizzare:
+
+dispatchWalletNotification()
+
+Per direct transfer:
+
+Mittente:
+“Pagamento completato — X USDA inviati a [destinatario]”
+
+Destinatario:
+“Hai ricevuto X USDA da [mittente]”
+
+Usare il sistema esistente di deduplication.
+
+Una TX deve generare:
+
+1 notifica sent
+1 notifica received
+
+Mai più di una per ciascun lato.
+
+Non usare terminologia:
+
+* escrow
+* deposito
+* rilascio
+
+nelle notifiche del direct flow.
+
+11. CHAT PAYMENT NOTIFICATION
+
+_sendCompletedNotification() deve continuare a generare il normale payment_notification nella chat.
+
+Deve essere eseguito una sola volta grazie alla transizione atomica.
+
+Non creare una seconda notification pipeline.
+
+12. IDEMPOTENZA GLOBALE
+
+Per una singola TX direct:
+
+10 chiamate detectDeposit
++
+10 retry frontend
++
+10 eventi WS duplicati
++
+refresh pagina
++
+reconnect WalletConnect
+
+devono comunque produrre:
+
+* 1 TX on-chain;
+* 1 transition accepted;
+* 1 payment_notification;
+* 1 history out sender;
+* 1 history in recipient;
+* 1 notification sent;
+* 1 notification received.
+
+La deduplicazione deve essere effettiva, non affidata solamente al comportamento normale del frontend.
+
+13. BUBBLE
+
+Direct:
+
+“Pagamento completato”
+
+→ “Visualizza transazione”
+
+Il link deve utilizzare tx_hash_deposit, che nel direct flow rappresenta la TX unica.
+
+NON mostrare:
+
+“Visualizza deposito”
+
+“Visualizza rilascio”
+
+Escrow deve rimanere invariato.
+
+14. DESTINATARIO
+
+Il destinatario deve poter vedere nella bubble:
+
+“Visualizza transazione”
+
+collegata allo stesso TX hash.
+
+Non deve dipendere da tx_hash_release nel direct flow.
+
+15. CRONOLOGIA UI
+
+La cronologia Alpha Wallet deve mostrare il direct transfer come normale movimento USDA:
+
+Sender:
+- X USDA → Recipient
+
+Recipient:
++ X USDA ← Sender
+
+Deve essere possibile aprire la TX reale.
+
+Non deve apparire come:
+
+* deposito;
+* rilascio;
+* escrow payment.
+
+16. FILE DA MODIFICARE
+
+Modificare solo quanto necessario:
+
+Backend:
+
+* chat-payment.service.ts
+    * createTransfer()
+    * detectDeposit()
+    * confirmDeposit() / funzione direct equivalente
+* chat-transfer.model.ts
+    * transfer_mode
+* payment-scheduler.service.ts
+    * protezione direct
+* events.ts
+    * payload payment.state_changed
+
+Frontend:
+
+* SendPaymentSheet.tsx
+    * routing target
+    * createdTransferRef
+    * handleSend
+    * signAndPoll
+    * handleResumeSign
+* ChatPaymentBubble.tsx
+    * direct transaction link
+* ChatPage.tsx
+    * handler payment.state_changed
+    * history
+    * wallet notification
+
+Non creare sistemi paralleli se quelli esistenti possono essere riutilizzati.
+
+17. TEST OBBLIGATORI
+
+Implementare e passare almeno:
+
+T1 — Alpha recipient → direct, no escrow.
+
+T2 — recipient senza wallet → escrow.
+
+T3 — direct completo → esattamente 1 TX.
+
+T4 — escrow invariato → 2 TX.
+
+T5 — iOS Load failed dopo broadcast → recovery senza seconda TX.
+
+T6 — refresh durante direct recovery → nessuna seconda firma.
+
+T7 — retry polling → nessuna seconda TX.
+
+T8 — double click → nessuna seconda create/sign.
+
+T9 — scheduler → direct mai processato come escrow.
+
+T10 — vecchio escrow → invariato.
+
+T11 — direct sender history → 1 out.
+
+T12 — direct recipient history → 1 in.
+
+T13 — sender/recipient history hanno stesso txHash.
+
+T14 — history from/to/amount/chain/token corrispondono alla TX.
+
+T15 — direct → 1 notification sent + 1 received.
+
+T16 — WS duplicato 10 volte → nessun duplicate.
+
+T17 — recovery 10 volte → nessun duplicate.
+
+T18 — direct bubble → solo “Visualizza transazione”.
+
+T19 — direct notification → nessuna parola escrow/deposito/rilascio.
+
+T20 — escrow UI/history/notification → comportamento attuale invariato.
+
+18. ORDINE DI IMPLEMENTAZIONE
+
+Procedi in questo ordine:
+
+1. schema/model;
+2. backend routing;
+3. backend direct detection/confirmation;
+4. scheduler protection;
+5. events payload;
+6. frontend signing/recovery;
+7. ChatPage history + notification;
+8. Bubble;
+9. test unit;
+10. integration;
+11. E2E.
+
+Dopo ogni gruppo esegui i test pertinenti.
+
+NON fare refactor generale.
+
+NON cambiare il comportamento escrow.
+
+NON introdurre una seconda macchina di stato.
+
+NON introdurre una seconda notification/history pipeline.
+
+L’obiettivo finale verificabile è:
+
+DESTINATARIO ALPHA CONFIGURATO
+
+→ 1 sola TX Polygon sender → recipient
+
+→ 1 solo stato accepted
+
+→ 1 sola payment notification chat
+
+→ 1 history out mittente
+
+→ 1 history in destinatario
+
+→ 1 notification sent
+
+→ 1 notification received
+
+→ stesso TX hash in tutti i riferimenti
+
+→ nessun escrow
+
+→ nessun deposito
+
+→ nessun rilascio
+
+→ nessuna duplicazione anche dopo Load failed, refresh, retry o WS duplicati.
+
+Procedi con l’implementazione e alla fine restituisci:
+
+* file modificati;
+* diff concettuale;
+* test eseguiti;
+* risultati;
+* eventuali problemi residui.

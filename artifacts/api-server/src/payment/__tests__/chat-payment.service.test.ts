@@ -203,6 +203,18 @@ afterEach(() => {
 
 describe("createTransfer", () => {
   it("crea un trasferimento con escrow wallet e messaggio in chat", async () => {
+    // Override: destinatario SENZA wallet → forza routing escrow (transfer_mode="escrow")
+    vi.mocked(UserModel.findById).mockImplementation((id: any) => ({
+      lean: () => Promise.resolve({
+        _id:                    new mongoose.Types.ObjectId(id.toString()),
+        alpha_wallet_evm_address: null,
+        wallets:                id.toString() === SENDER_ID
+          ? { usda: { address: SENDER_WALLET } }
+          : {},           // destinatario senza wallet → escrow mode
+        wallet_address:         null,
+      }),
+    }) as any);
+
     const result = await createTransfer({
       senderId:       SENDER_ID,
       recipientId:    RECIPIENT_ID,
@@ -494,14 +506,20 @@ describe("detectDeposit", () => {
     expect(antiReplay.checkAndMarkTx).not.toHaveBeenCalled();
   });
 
-  it("in dev (PAYMENT_SKIP_CHAIN_VERIFY) su awaiting_deposit → DEPOSIT_TX_NOT_DETECTED", async () => {
-    process.env.PAYMENT_SKIP_CHAIN_VERIFY = "true";
+  it("senza USDA_POLYGON_RPC lancia RPC_NOT_CONFIGURED su awaiting_deposit", async () => {
+    // Rimuove eventuali RPC URL per simulare ambiente senza configurazione RPC.
+    // detectDeposit non ha più una guard SKIP_CHAIN_VERIFY early: prova sempre
+    // la scansione Alchemy, e getRpcUrl() lancia RPC_NOT_CONFIGURED se il
+    // USDA_POLYGON_RPC non è configurato.
+    delete process.env.USDA_POLYGON_RPC;
     // default findOne mock = awaiting_deposit
 
     await expect(detectDeposit({
       transferId:  TRANSFER_ID,
       requesterId: SENDER_ID,
-    })).rejects.toMatchObject({ code: "DEPOSIT_TX_NOT_DETECTED", httpStatus: 404 });
+    // Senza RPC URL, fetch dell'Alchemy scan viene catturato e
+    // re-lanciato come DEPOSIT_DETECT_RPC_ERROR.
+    })).rejects.toMatchObject({ code: "DEPOSIT_DETECT_RPC_ERROR", httpStatus: 502 });
   });
 });
 

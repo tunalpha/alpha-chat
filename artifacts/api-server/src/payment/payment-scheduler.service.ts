@@ -139,7 +139,13 @@ export async function processExpiredTransfers(): Promise<void> {
   const now = new Date();
 
   const candidates = await ChatTransferModel.find(
-    { status: "pending", expires_at: { $lt: now } },
+    {
+      status:        "pending",
+      expires_at:    { $lt: now },
+      // Guard: i transfer direct non usano mai escrow_encrypted_pk.
+      // Nella pratica non raggiungono mai "pending", ma il filtro è difensivo.
+      transfer_mode: { $ne: "direct" },
+    },
     { transfer_id: 1 }, // proiezione minima per la lista
   ).limit(BATCH_SIZE).lean();
 
@@ -154,6 +160,12 @@ export async function processExpiredTransfers(): Promise<void> {
     const locked = await acquireLock(transferId, "pending", "refunding");
     if (!locked) {
       logger.debug({ transferId }, "[Scheduler] Scaduto: lock non disponibile, salto");
+      continue;
+    }
+
+    // Guardia escrow: processExpiredTransfers filtra transfer_mode !== "direct"
+    if (!locked.escrow_encrypted_pk) {
+      logger.error({ transferId }, "[Scheduler] escrow_encrypted_pk null su transfer scaduto — skip");
       continue;
     }
 
@@ -286,6 +298,12 @@ export async function processStuckTransfers(): Promise<void> {
       continue;
     }
 
+    // Guardia escrow: processPendingSendTransfers filtra transfer_mode !== "direct"
+    if (!transfer.escrow_wallet || !transfer.escrow_encrypted_pk) {
+      logger.error({ transferId: transfer.transfer_id }, "[Scheduler] escrow null su transfer pending — skip");
+      continue;
+    }
+
     try {
       // Verifica saldo escrow on-chain
       const balanceStr = await getCustodialBalance({
@@ -383,6 +401,8 @@ export async function processPendingSendTransfers(): Promise<void> {
       tx_hash_deposit:    { $ne: null },    // deposito confermato on-chain
       confirmed_at:       { $lt: staleThreshold },
       expires_at:         { $gt: new Date() },
+      // Guard: i transfer direct non passano per "pending" e non hanno escrow_encrypted_pk.
+      transfer_mode:      { $ne: "direct" },
     },
     { transfer_id: 1 },
   ).limit(BATCH_SIZE).lean();

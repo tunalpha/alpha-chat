@@ -37,11 +37,15 @@ export interface IChatTransfer {
   fee:                 mongoose.Types.Decimal128;
   note:                string | null;
 
+  // Routing
+  /** "direct" = 1 TX sender → recipient; "escrow" = 2 TX via custodial. Default: "escrow". */
+  transfer_mode:       "direct" | "escrow";
+
   // Wallet — snapshot al momento della create
   sender_wallet:       string;
-  recipient_wallet:    string | null;       // ADR-004: può essere null
-  escrow_wallet:       string;
-  escrow_encrypted_pk: string;             // AES-256-GCM — mai esposto via API
+  recipient_wallet:    string | null;       // ADR-004: può essere null; valorizzato al CREATE per direct
+  escrow_wallet:       string | null;       // null per transfer_mode === "direct"
+  escrow_encrypted_pk: string | null;       // AES-256-GCM — mai esposto via API; null per direct
 
   // Stato
   status:              ChatTransferStatus;
@@ -93,11 +97,18 @@ const ChatTransferSchema = new Schema<ChatTransferDocument>(
     fee:                 { type: Schema.Types.Decimal128, default: 0 },
     note:                { type: String, default: null },
 
+    // Routing
+    transfer_mode: {
+      type:    String,
+      enum:    ["direct", "escrow"],
+      default: "escrow",
+    },
+
     // Wallet
     sender_wallet:       { type: String, required: true },
     recipient_wallet:    { type: String, default: null },
-    escrow_wallet:       { type: String, required: true },
-    escrow_encrypted_pk: { type: String, required: true },
+    escrow_wallet:       { type: String, default: null },       // null per direct
+    escrow_encrypted_pk: { type: String, default: null },       // null per direct
 
     // Stato
     status: {

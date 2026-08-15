@@ -16,15 +16,20 @@ import { logger } from "../lib/logger";
 // ---------------------------------------------------------------------------
 
 export interface PaymentStateChangedPayload {
-  transfer_id:     string;
-  conversation_id: string;
-  message_id:      string | null;
-  status:          string;
-  asset_symbol:    string;
-  asset_address:   string;
-  amount:          string;
-  expires_at:      string | null;
-  tx_hash_release: string | null;
+  transfer_id:      string;
+  conversation_id:  string;
+  message_id:       string | null;
+  status:           string;
+  asset_symbol:     string;
+  asset_address:    string;
+  amount:           string;
+  expires_at:       string | null;
+  tx_hash_deposit:  string | null;
+  tx_hash_release:  string | null;
+  transfer_mode:    "direct" | "escrow";
+  sender_id:        string;
+  recipient_wallet: string | null;
+  sender_wallet:    string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -39,15 +44,20 @@ export interface PaymentStateChangedPayload {
 export function emitPaymentStateChanged(transfer: ChatTransferDocument): void {
   try {
     const payload: PaymentStateChangedPayload = {
-      transfer_id:     transfer.transfer_id,
-      conversation_id: transfer.conversation_id.toString(),
-      message_id:      transfer.message_id?.toString() ?? null,
-      status:          transfer.status,
-      asset_symbol:    transfer.asset_symbol,
-      asset_address:   transfer.asset_address,
-      amount:          transfer.amount?.toString() ?? "0",
-      expires_at:      transfer.expires_at?.toISOString() ?? null,
-      tx_hash_release: transfer.tx_hash_release ?? null,
+      transfer_id:      transfer.transfer_id,
+      conversation_id:  transfer.conversation_id.toString(),
+      message_id:       transfer.message_id?.toString() ?? null,
+      status:           transfer.status,
+      asset_symbol:     transfer.asset_symbol,
+      asset_address:    transfer.asset_address,
+      amount:           transfer.amount?.toString() ?? "0",
+      expires_at:       transfer.expires_at?.toISOString() ?? null,
+      tx_hash_deposit:  transfer.tx_hash_deposit  ?? null,
+      tx_hash_release:  transfer.tx_hash_release  ?? null,
+      transfer_mode:    (transfer.transfer_mode as "direct" | "escrow") ?? "escrow",
+      sender_id:        transfer.sender_id.toString(),
+      recipient_wallet: transfer.recipient_wallet ?? null,
+      sender_wallet:    transfer.sender_wallet    ?? null,
     };
 
     const userIds = [
