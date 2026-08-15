@@ -116,4 +116,5 @@
 - [Spark Reliability Fixes — Audit](spark-reliability-fixes.md) — Finding 1,2,4,5,7,9,10,11 risolti; regola TRANSACTION HISTORY INTEGRITY adottata; 1032 test PASS; Lightning rimane OFF in prod
 - [USDA History + Notifications safety net](usda-history-notifications-safety-net.md) — useLiveTxStatus Level 2 risolve bolla senza IDB record; fix: useEffect in ChatWalletPaymentBubble
 - [Read receipt one-check bug](read-receipt-one-check-bug.md) — 3 cause: no guard monotonica in handleSelectConv, read.receipt non aggiornava conversations, reconnect non refreshava conversations
+- [USDA float→wei precision bug](usda-float-wei-bug.md) — Number(amount).toFixed(18) → 44 wei in meno → detectDeposit scarta la TX vera; fix: parsing string-based + tolleranza 0.0001% backend
 - [MC Send State Machine — confirming timing](mc-send-state-machine.md) — setSignPhase("confirming") nel .then() di sendTransaction, mai sincrono dopo fire-and-forget; guard anti-regressione; localStorage signed:true nel .then()

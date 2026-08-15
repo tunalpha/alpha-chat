@@ -329,6 +329,28 @@ async function _sendCompletedNotification(transfer: ChatTransferDocument): Promi
  * Verifica on-chain e ritorna il block number del tx (per audit).
  * In dev mode (PAYMENT_SKIP_CHAIN_VERIFY=true) ritorna null.
  */
+/**
+ * Floor di accettazione importo deposito.
+ *
+ * I client legacy convertivano l'importo passando da Number() (double IEEE-754):
+ * 0.7 → 699999999999999956 wei on-chain, 44 wei in MENO di amount_units → il
+ * confronto esatto scartava la TX reale per sempre (incidente 2026-08-15).
+ *
+ * La tolleranza è dimensionata sull'errore di rappresentazione double
+ * (~1e-16 relativo): amountUnits/10^15 + 1000 wei costante. Per 0.7 USDA
+ * (7e17 units) → 1700 wei ≈ 1.7e-15 USDA; per 1M USDA → 1e9 wei = 1e-9 USDA.
+ * Ordini di grandezza sotto qualsiasi valore economico: nessun underpayment
+ * sfruttabile. NON allargare (es. 1 ppm sarebbe un'accettazione di sottopagamento
+ * materiale su importi grandi).
+ */
+export function depositAmountFloor(amountUnits: bigint): bigint {
+  const tolerance = amountUnits / 1_000_000_000_000_000n + 1000n;
+  // MAI ridurre a zero un importo positivo: per importi minuscoli (≤ tolleranza)
+  // si torna al confronto ESATTO — altrimenti una TX ERC-20 da 0 verso il
+  // destinatario soddisferebbe la verifica e marcherebbe il pagamento accettato.
+  return amountUnits > tolerance ? amountUnits - tolerance : amountUnits;
+}
+
 async function _verifyDepositTx(params: {
   txHash:       string;
   /** Indirizzo destinatario atteso (escrow per mode "escrow", recipient_wallet per mode "direct") */
@@ -363,7 +385,10 @@ async function _verifyDepositTx(params: {
 
   // topics[2] = to address — ERC-20 Transfer event (padded a 32 byte)
   const toPadded  = `0x000000000000000000000000${params.toAddress.slice(2).toLowerCase()}`;
-  const minAmount = BigInt(params.amountUnits);
+  // Stessa tolleranza legacy-float di detectDeposit: senza, la TX corta di
+  // pochi wei passerebbe il detect ma verrebbe rigettata qui (TRANSFER_TX_INVALID)
+  // e il loop resterebbe.
+  const minAmount = depositAmountFloor(BigInt(params.amountUnits));
 
   const validLog = receipt.logs.find((log) => {
     if (log.address.toLowerCase() !== params.assetAddress.toLowerCase()) return false;
@@ -815,6 +840,8 @@ export async function detectDeposit(params: {
   // alcune TX (ABI non decodificata, response parziale). Stessa logica di Fix A:
   // se il campo manca saltiamo il controllo timestamp e ci fidiamo dei filtri upstream.
   const minAmount   = BigInt(transfer.amount_units);
+  // Tolleranza importo legacy-float: vedi depositAmountFloor().
+  const minAmountFloor  = depositAmountFloor(minAmount);
   const minTs       = createdAt.getTime() - 5 * 60 * 1000; // createdAt - 5 minuti
   const senderLower = transfer.sender_wallet.toLowerCase();
   const match = transfers.find((t) => {
@@ -833,7 +860,7 @@ export async function detectDeposit(params: {
       }
       // Se rawContract.value è presente verifichiamo l'importo; se assente, omettiamo
       // il check importo (toAddress + contractAddresses sono già filtri sufficienti).
-      if (t.rawContract?.value != null && BigInt(t.rawContract.value) < minAmount) return false;
+      if (t.rawContract?.value != null && BigInt(t.rawContract.value) < minAmountFloor) return false;
       // Se blockTimestamp è presente verifichiamo la finestra temporale; se assente,
       // omettiamo il check (l'upstream toAddress+contractAddresses è sufficiente).
       if (t.metadata?.blockTimestamp) {

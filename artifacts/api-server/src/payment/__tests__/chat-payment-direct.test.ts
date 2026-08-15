@@ -61,6 +61,7 @@ import * as events                      from "../events";
 import {
   createTransfer,
   detectDeposit,
+  depositAmountFloor,
 } from "../chat-payment.service";
 
 // ---------------------------------------------------------------------------
@@ -121,20 +122,29 @@ function makeMockFetch(opts: {
   receiptResult?: object;
   toAddr?: string;
 } = {}) {
+  // Risposta compatibile sia con i consumer diretti (res.json()) sia con viem,
+  // che legge headers/status/ok in readResponseBody.
+  const mockRes = (payload: object) => ({
+    ok:      true,
+    status:  200,
+    headers: new Headers({ "Content-Type": "application/json" }),
+    json:    () => Promise.resolve(payload),
+    text:    () => Promise.resolve(JSON.stringify(payload)),
+  });
   return vi.fn().mockImplementation(async (_url: string, init?: RequestInit) => {
     const body = JSON.parse((init?.body as string) ?? "{}");
     const method: string = body.method ?? "";
     if (method === "eth_blockNumber") {
       // viem chiama eth_blockNumber per calcolare fromBlock
-      return { json: () => Promise.resolve({ jsonrpc: "2.0", id: body.id ?? 1, result: "0x1400000" }) } as any;
+      return mockRes({ jsonrpc: "2.0", id: body.id ?? 1, result: "0x1400000" }) as any;
     }
     if (method === "alchemy_getAssetTransfers") {
-      return { json: () => Promise.resolve(opts.alchemyResult ?? alchemyResponse()) } as any;
+      return mockRes(opts.alchemyResult ?? alchemyResponse()) as any;
     }
     if (method === "eth_getTransactionReceipt") {
-      return { json: () => Promise.resolve(opts.receiptResult ?? receiptResponse(opts.toAddr)) } as any;
+      return mockRes(opts.receiptResult ?? receiptResponse(opts.toAddr)) as any;
     }
-    return { json: () => Promise.resolve({ jsonrpc: "2.0", id: body.id ?? 1, result: null }) } as any;
+    return mockRes({ jsonrpc: "2.0", id: body.id ?? 1, result: null }) as any;
   });
 }
 
@@ -460,6 +470,80 @@ describe("T11–T15: detectDeposit Alchemy scan address", () => {
 
     const result = await detectDeposit({ transferId: TRANSFER_ID, requesterId: SENDER_ID });
     expect(result).toMatchObject({ status: "accepted" });
+  });
+
+  it("T14b: tolleranza importo — TX con pochi wei in meno (errore float client) è accettata", async () => {
+    // Incidente 2026-08-15: client legacy convertiva con Number(amount).toFixed(18)
+    // → 0.7 diventava 699999999999999956 wei (−44 wei) → TX reale scartata per sempre.
+    const fortyFourWeiShort = (BigInt("100000000000000000000") - 44n).toString();
+    global.fetch = makeMockFetch({ alchemyResult: alchemyResponse({ value: fortyFourWeiShort }) });
+    vi.mocked(ChatTransferModel.findOneAndUpdate).mockResolvedValue(
+      makeDirectTransfer({ status: "accepted", tx_hash_deposit: TX_HASH }) as any,
+    );
+
+    const result = await detectDeposit({ transferId: TRANSFER_ID, requesterId: SENDER_ID });
+    expect(result).toMatchObject({ status: "accepted" });
+  });
+
+  it("T14c: importo sotto il floor di tolleranza (boundary esatto) → DEPOSIT_TX_NOT_DETECTED", async () => {
+    // floor = amount - (amount/10^15 + 1000). Un wei SOTTO il floor → rigettata.
+    const amount = BigInt("100000000000000000000");
+    const belowFloor = (depositAmountFloor(amount) - 1n).toString();
+    global.fetch = makeMockFetch({ alchemyResult: alchemyResponse({ value: belowFloor }) });
+
+    await expect(detectDeposit({ transferId: TRANSFER_ID, requesterId: SENDER_ID }))
+      .rejects.toMatchObject({ code: "DEPOSIT_TX_NOT_DETECTED", httpStatus: 404 });
+  });
+
+  it("T14d: depositAmountFloor — bound IEEE-754, mai underpayment materiale", () => {
+    // 0.7 token (18 dec): floor copre i −44 wei dell'incidente reale
+    const a = 700000000000000000n;
+    expect(depositAmountFloor(a)).toBe(a - (a / 1_000_000_000_000_000n + 1000n));
+    expect(699999999999999956n >= depositAmountFloor(a)).toBe(true);  // TX incidente accettata
+    // Boundary: esattamente il floor passa, floor−1 no
+    expect(depositAmountFloor(a) >= depositAmountFloor(a)).toBe(true);
+    // Importo grande (1M token): tolleranza = 1e9 wei + 1000 = 1e-9 token → trascurabile
+    const big = 1_000_000n * 10n ** 18n;
+    expect(big - depositAmountFloor(big)).toBe(big / 1_000_000_000_000_000n + 1000n);
+    expect(big - depositAmountFloor(big) < 10n ** 10n).toBe(true);
+    // Importi minuscoli (≤ tolleranza): confronto ESATTO, mai floor 0 —
+    // una TX da 0 wei NON deve mai soddisfare un intent positivo.
+    expect(depositAmountFloor(500n)).toBe(500n);
+    expect(depositAmountFloor(1n)).toBe(1n);
+    expect(0n >= depositAmountFloor(1n)).toBe(false); // zero-transfer rigettata
+  });
+
+  it("T14e: verifica receipt COMPLETA (no skip-chain-verify) — TX −44 wei passa anche _verifyDepositTx", async () => {
+    // Il fix deve valere in produzione: detect E verifica receipt condividono il floor.
+    process.env.PAYMENT_SKIP_CHAIN_VERIFY = "false";
+    try {
+      const shortValue = BigInt("100000000000000000000") - 44n;
+      const shortHex   = `0x${shortValue.toString(16).padStart(64, "0")}`;
+      global.fetch = makeMockFetch({
+        alchemyResult: alchemyResponse({ value: shortValue.toString() }),
+        receiptResult: {
+          jsonrpc: "2.0", id: 1,
+          result: {
+            transactionHash: TX_HASH,
+            status:          "0x1",
+            blockNumber:     "0x1000",
+            logs: [{
+              address: "0xUSDA",
+              topics:  [ERC20_TRANSFER_TOPIC, padAddress(SENDER_WALLET), padAddress(RECIPIENT_WALLET)],
+              data:    shortHex,
+            }],
+          },
+        },
+      });
+      vi.mocked(ChatTransferModel.findOneAndUpdate).mockResolvedValue(
+        makeDirectTransfer({ status: "accepted", tx_hash_deposit: TX_HASH }) as any,
+      );
+
+      const result = await detectDeposit({ transferId: TRANSFER_ID, requesterId: SENDER_ID });
+      expect(result).toMatchObject({ status: "accepted" });
+    } finally {
+      process.env.PAYMENT_SKIP_CHAIN_VERIFY = "true";
+    }
   });
 
   it("T15: se transfer già in 'accepted' → ritorna formato senza checkAndMarkTx", async () => {

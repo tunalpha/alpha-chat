@@ -533,3 +533,27 @@ describe("USDA Send — §4 single-flight firma + final-detect su rifiuto + pre-
     expect(sendTransaction).toHaveBeenCalledTimes(1);
   });
 });
+
+// §5 — toWei18: conversione decimale ESATTA (incidente 2026-08-15: Number(0.7)
+// → 699999999999999956 wei → detectDeposit scartava la TX reale per sempre)
+import { toWei18 } from "../components/usda/SendPaymentSheet";
+import { describe as describe5, it as it5, expect as expect5 } from "vitest";
+
+describe5("§5 toWei18 — precisione decimale", () => {
+  it5("0.7 → esattamente 700000000000000000 wei (nessun errore float)", () => {
+    expect5(toWei18("0.7")).toBe(700000000000000000n);
+  });
+  it5("valori tipici esatti", () => {
+    expect5(toWei18("1")).toBe(1000000000000000000n);
+    expect5(toWei18("0.1")).toBe(100000000000000000n);
+    expect5(toWei18("123.456789012345678901")).toBe(123456789012345678901n); // 18 dec esatti
+    expect5(toWei18("1.1234567890123456789999")).toBe(1123456789012345678n);  // tronca oltre 18 dec
+    expect5(toWei18("0.000000000000000001")).toBe(1n);
+    expect5(toWei18(" 2.5 ")).toBe(2500000000000000000n);
+  });
+  it5("input non valido → throw (mai firma con importo corrotto)", () => {
+    expect5(() => toWei18("abc")).toThrow();
+    expect5(() => toWei18("")).toThrow();
+    expect5(() => toWei18("1,5")).toThrow();
+  });
+});

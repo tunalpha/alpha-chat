@@ -40,10 +40,19 @@ import { humanizeUsdaError } from "../../lib/usda-errors";
  * Converte un importo USDA (stringa decimale) in BigInt a 18 decimali
  * senza errori di floating point.
  */
-function toWei18(amount: string): bigint {
-  const str = Number(amount).toFixed(18);
-  const [int, dec] = str.split(".");
-  return BigInt(int) * BigInt("1000000000000000000") + BigInt(dec);
+export function toWei18(amount: string): bigint {
+  // MAI passare da Number(): il double IEEE-754 non rappresenta 0.7 →
+  // Number("0.7").toFixed(18) === "0.699999999999999956" → on-chain mancavano
+  // 44 wei rispetto ad amount_units nel DB → detectDeposit scartava la TX per
+  // sempre (loop infinito "Conferma blockchain…", incidente 2026-08-15).
+  // Parsing puramente stringa: esatto per qualsiasi input decimale.
+  const clean = amount.trim();
+  if (!/^\d*(\.\d*)?$/.test(clean) || clean === "" || clean === ".") {
+    throw new Error(`Importo non valido: "${amount}"`);
+  }
+  const [int = "0", dec = ""] = clean.split(".");
+  const decPadded = (dec + "0".repeat(18)).slice(0, 18);
+  return BigInt(int || "0") * BigInt("1000000000000000000") + BigInt(decPadded);
 }
 
 /**
