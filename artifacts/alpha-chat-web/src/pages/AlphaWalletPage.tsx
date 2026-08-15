@@ -109,8 +109,9 @@ type WalletSubView =
   | "add-token"
   | "security"
   | "history"           // Phase F
-  | "seed-export"       // Phase F
-  | "wallet-settings"   // Phase I — impostazioni wallet
+  | "seed-export"              // Phase F
+  | "seed-export-lightning"    // Lightning recovery phrase (stessa phrase, contesto diverso)
+  | "wallet-settings"          // Phase I — impostazioni wallet
   | "portfolio";        // Portfolio Multi-Chain
 
 // ─── Currency preference hook ────────────────────────────────────────────────
@@ -247,11 +248,13 @@ function AlphaWalletInner({ onBack }: Props) {
       case "add-token":
         return <AddTokenView onBack={() => setSubView("overview")} />;
       case "security":
-        return <SecurityView onBack={() => setSubView("overview")} onForget={onBack} onExportSeed={() => setSubView("seed-export")} onLockAndExit={onBack} />;
+        return <SecurityView onBack={() => setSubView("overview")} onForget={onBack} onExportSeed={() => setSubView("seed-export")} onExportSeedLightning={() => setSubView("seed-export-lightning")} onLockAndExit={onBack} />;
       case "history":
         return <HistoryView onBack={() => setSubView("overview")} />;
       case "seed-export":
         return <SeedExportView onBack={() => setSubView("security")} />;
+      case "seed-export-lightning":
+        return <LightningSeedExportView onBack={() => setSubView("security")} />;
       case "wallet-settings":
         return <WalletSettingsView onBack={() => setSubView("overview")} onGoSecurity={() => setSubView("security")} onGoSeedExport={() => setSubView("seed-export")} onLockAndExit={onBack} />;
       case "portfolio":
@@ -267,7 +270,7 @@ function AlphaWalletInner({ onBack }: Props) {
   const subViewTitle: Partial<Record<WalletSubView, string>> = {
     overview: "Alpha Wallet", notifications: "Notifiche", "add-token": "Aggiungi Token",
     security: "Sicurezza", unlock: "Wallet bloccato", receive: "Ricevi", send: "Invia",
-    history: "Storico", "seed-export": "Recovery Phrase", "wallet-settings": "Impostazioni",
+    history: "Storico", "seed-export": "Recovery Phrase", "seed-export-lightning": "Recovery phrase Bitcoin / Lightning", "wallet-settings": "Impostazioni",
     portfolio: "Portfolio",
   };
 
@@ -3173,8 +3176,9 @@ function AddTokenView({ onBack }: { onBack: () => void }) {
 
 // ─── Security (Phase B + F) ────────────────────────────────────────────────
 
-function SecurityView({ onBack, onForget, onExportSeed, onLockAndExit }: { onBack: () => void; onForget: () => void; onExportSeed: () => void; onLockAndExit?: () => void }) {
+function SecurityView({ onBack, onForget, onExportSeed, onExportSeedLightning, onLockAndExit }: { onBack: () => void; onForget: () => void; onExportSeed: () => void; onExportSeedLightning: () => void; onLockAndExit?: () => void }) {
   const wallet = useWallet();
+  const spark  = useSparkWalletOptional();
   const [showForgetConfirm, setShowForgetConfirm] = useState(false);
   const [forgetting, setForgetting] = useState(false);
   const forget = async () => { setForgetting(true); await wallet.forgetWallet(); onForget(); };
@@ -3187,7 +3191,7 @@ function SecurityView({ onBack, onForget, onExportSeed, onLockAndExit }: { onBac
         </div>
       </div>
 
-      {/* Phase F: seed export autenticato */}
+      {/* Phase F: seed export EVM autenticato */}
       <div className="aw-security-section">
         <h3>Recovery Phrase</h3>
         <p style={{ fontSize: 13, color: "rgba(255,255,255,.45)", margin: "0 0 10px" }}>
@@ -3197,6 +3201,19 @@ function SecurityView({ onBack, onForget, onExportSeed, onLockAndExit }: { onBac
           📋 Mostra recovery phrase
         </button>
       </div>
+
+      {/* Recovery phrase Bitcoin / Lightning — visibile solo se Spark è abilitato */}
+      {spark?.isEnabled && (
+        <div className="aw-security-section">
+          <h3>Recovery phrase Bitcoin / Lightning</h3>
+          <p style={{ fontSize: 13, color: "rgba(255,255,255,.45)", margin: "0 0 10px" }}>
+            La recovery phrase del tuo wallet Bitcoin/Lightning è la stessa del wallet Alpha/EVM. Conservala offline: serve per recuperare i tuoi fondi Lightning.
+          </p>
+          <button className="aw-btn aw-btn--secondary" onClick={onExportSeedLightning}>
+            ⚡ Mostra recovery phrase Bitcoin / Lightning
+          </button>
+        </div>
+      )}
 
       <div className="aw-security-section">
         <h3>Sessione</h3>
@@ -4368,6 +4385,136 @@ function LightningTxDetailView({
 // ═══════════════════════════════════════════════════════════════════════════
 
 const PHRASE_VISIBLE_SECS = 30; // secondi prima dell'auto-hide
+
+// ═══════════════════════════════════════════════════════════════════════════
+// LIGHTNING SEED EXPORT VIEW
+// Mostra la stessa recovery phrase del wallet Alpha/EVM con contesto Lightning.
+// SECURITY: identico flusso di SeedExportView — PIN required, auto-hide, no log.
+// La phrase è LA STESSA dell'Alpha Wallet: una sola frase BIP39 per entrambi.
+// ═══════════════════════════════════════════════════════════════════════════
+
+function LightningSeedExportView({ onBack }: { onBack: () => void }) {
+  const [pin, setPin] = useState("");
+  const [pinErr, setPinErr] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [words, setWords] = useState<string[] | null>(null);
+  const [copied, setCopied] = useState(false);
+  const [secsLeft, setSecsLeft] = useState(PHRASE_VISIBLE_SECS);
+
+  const handleReveal = async () => {
+    if (!validatePin(pin)) { setPinErr("PIN non valido"); return; }
+    setPinErr(null);
+    setLoading(true);
+    try {
+      const keystore = await loadKeystore();
+      if (!keystore) { setPinErr("Keystore non trovato. Ricrea il wallet."); return; }
+      const mnemonic = await decryptSeed(keystore, pin);
+      setWords(mnemonic.split(" "));
+      setPin(""); // SECURITY: cancella PIN dalla memoria
+    } catch {
+      setPin("");
+      setPinErr("PIN errato. Riprova.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCopy = () => {
+    if (!words) return;
+    void navigator.clipboard.writeText(words.join(" "))
+      .then(() => { setCopied(true); setTimeout(() => setCopied(false), 3000); });
+  };
+
+  // Hook sicurezza — sempre chiamato sopra i return condizionali
+  const { isProtected, isScreenShare, reveal } = useSecurePhraseDisplay();
+
+  // Auto-hide: la frase scompare dopo PHRASE_VISIBLE_SECS
+  useEffect(() => {
+    if (!words) { setSecsLeft(PHRASE_VISIBLE_SECS); return; }
+    setSecsLeft(PHRASE_VISIBLE_SECS);
+    const iv = setInterval(() => {
+      setSecsLeft(s => {
+        if (s <= 1) { clearInterval(iv); setWords(null); return 0; }
+        return s - 1;
+      });
+    }, 1000);
+    return () => clearInterval(iv);
+  }, [words]);
+
+  if (words) {
+    return (
+      <div className="aw-seed-export">
+        {/* Banner Lightning specifico */}
+        <div className="aw-seed-export-lightning-banner">
+          🔐 <strong>Questa recovery phrase protegge sia il wallet Alpha/EVM sia il wallet Bitcoin/Lightning.</strong>
+          {" "}Conservala in un luogo sicuro. Chi possiede questa frase può recuperare i tuoi fondi.
+        </div>
+        <div className="aw-seed-export-warning">
+          ⚠️ <strong>Non condividere mai queste parole.</strong> Chiunque le abbia può accedere ai tuoi fondi Bitcoin e Lightning.
+          Non fare screenshot — le immagini possono essere intercettate.
+          <br />
+          <span style={{ fontVariantNumeric: "tabular-nums", opacity: 0.75 }}>
+            La frase scomparirà automaticamente in{" "}
+            <strong style={{ color: secsLeft <= 10 ? "#ef4444" : undefined }}>{secsLeft}s</strong>.
+          </span>
+        </div>
+        <div className="aw-seed-export-phrase" style={{ position: "relative" }}>
+          {words.map((w, i) => (
+            <div key={i} className="aw-seed-export-word">
+              <span className="aw-seed-export-word-num">{i + 1}</span>
+              <span>{w}</span>
+            </div>
+          ))}
+          {isProtected && <SecureOverlay isScreenShare={isScreenShare} onReveal={reveal} />}
+        </div>
+        <button className="aw-btn aw-btn--ghost" onClick={handleCopy}>
+          {copied ? "✅ Copiata negli appunti" : "📋 Copia recovery phrase"}
+        </button>
+        {copied && (
+          <div className="aw-seed-export-clipboard-note">
+            ℹ️ Gli appunti possono essere accessibili da altre app. Incolla la phrase in un posto sicuro e poi cancella gli appunti.
+          </div>
+        )}
+        <button className="aw-btn aw-btn--secondary" onClick={onBack}>← Torna alla sicurezza</button>
+      </div>
+    );
+  }
+
+  // Form PIN
+  return (
+    <div className="aw-seed-export">
+      {/* Banner descrittivo prima del PIN */}
+      <div className="aw-seed-export-lightning-banner">
+        🔐 <strong>Recovery phrase Bitcoin / Lightning</strong>
+        <br />
+        Questa è la stessa frase a 12 parole del wallet Alpha/EVM. Una sola recovery phrase protegge entrambi i wallet.
+      </div>
+      <div className="aw-seed-export-warning">
+        ⚡ Questa phrase ti permette di recuperare i fondi Bitcoin/Lightning su qualsiasi dispositivo.
+        Conservala in un posto fisico sicuro, mai in foto o file digitali.
+      </div>
+      <p className="aw-sub">Inserisci il PIN per vedere la recovery phrase.</p>
+      <input
+        type="password"
+        inputMode="numeric"
+        className={`aw-input aw-input--pin ${pinErr ? "aw-input--error" : ""}`}
+        value={pin}
+        onChange={e => { setPin(e.target.value.replace(/\D/g, "")); setPinErr(null); }}
+        onKeyDown={e => e.key === "Enter" && void handleReveal()}
+        maxLength={12}
+        placeholder="••••••"
+        autoFocus
+      />
+      {pinErr && <div className="aw-error">{pinErr}</div>}
+      <div className="aw-btn-row">
+        <button className="aw-btn aw-btn--secondary" onClick={onBack}>Annulla</button>
+        <button className="aw-btn aw-btn--primary" onClick={handleReveal} disabled={loading || pin.length < 6}>
+          {loading ? "Verifica…" : "Mostra phrase →"}
+        </button>
+      </div>
+    </div>
+  );
+}
 
 function SeedExportView({ onBack }: { onBack: () => void }) {
   const [pin, setPin] = useState("");

@@ -1259,6 +1259,26 @@
 }
 .aw-seed-export-word-num { font-size: 10px; color: rgba(255,255,255,.3); min-width: 16px; }
 
+/* Lightning recovery phrase banner */
+.aw-seed-export-lightning-banner {
+  background: rgba(139,92,246,.10);
+  border: 1px solid rgba(139,92,246,.30);
+  border-radius: 12px;
+  padding: 14px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #c4b5fd;
+}
+.aw-seed-export-clipboard-note {
+  background: rgba(251,191,36,.08);
+  border: 1px solid rgba(251,191,36,.20);
+  border-radius: 10px;
+  padding: 10px 14px;
+  font-size: 12px;
+  color: #fde68a;
+  line-height: 1.5;
+}
+
 /* ── Wallet Settings View ────────────────────────────────────────────────── */
 .aw-settings {
   padding: 12px 0 40px;
