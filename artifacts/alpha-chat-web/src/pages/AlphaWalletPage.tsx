@@ -1570,11 +1570,35 @@ async function parseBolt11Expiry(bolt11: string): Promise<number> {
 // fallisce con "Amount must not be less than the invoice amount".
 // Puro parsing di stringa, nessuna chiamata di rete, nessun impatto su invoice
 // con importo (per quelle il comportamento resta identico).
-function detectBolt11Amountless(bolt11: string): boolean {
+/**
+ * Parsa l'importo dall'HRP di una invoice BOLT11.
+ * - `{ amountless: true }`  → invoice "Qualsiasi importo"
+ * - `{ amountless: false, msat }` → importo in millisatoshi
+ * - `null` → non parsabile (lascia decidere all'SDK)
+ * Nota: invoice generate da conversione fiat spesso hanno precisione
+ * sub-satoshi (es. 91781310p = 9178,131 sat) — l'SDK Spark invia solo
+ * satoshi interi, quindi serve arrotondare per ECCESSO (≥ importo invoice).
+ */
+export function parseBolt11Amount(bolt11: string): { amountless: boolean; msat?: bigint } | null {
   const s = bolt11.trim().toLowerCase().replace(/^lightning:/, "");
-  const m = /^ln(?:bc|tb|bcrt)(\d*)[munp]?1/.exec(s);
-  if (!m) return false;          // non parsabile → lascia decidere all'SDK
-  return m[1] === "";            // nessuna cifra dopo il prefisso → amount-less
+  const m = /^ln(?:bc|tb|bcrt)(\d*)([munp]?)1/.exec(s);
+  if (!m) return null;
+  if (m[1] === "") return { amountless: true };
+  const digits = BigInt(m[1]);
+  // 1 BTC = 10^11 msat
+  let msat: bigint;
+  switch (m[2]) {
+    case "m": msat = digits * 100_000_000n; break;      // milli-BTC  = 10^8 msat
+    case "u": msat = digits * 100_000n;     break;      // micro-BTC  = 10^5 msat
+    case "n": msat = digits * 100n;         break;      // nano-BTC   = 10^2 msat
+    case "p": msat = digits / 10n;          break;      // pico-BTC   = 0.1 msat (BOLT11: ultima cifra sempre 0)
+    default:  msat = digits * 100_000_000_000n; break;  // BTC interi
+  }
+  return { amountless: false, msat };
+}
+
+function detectBolt11Amountless(bolt11: string): boolean {
+  return parseBolt11Amount(bolt11)?.amountless === true;
 }
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -2365,6 +2389,13 @@ function SendView({ onBack, onSuccess }: { onBack: () => void; onSuccess: () => 
   const [lnForceAmountless, setLnForceAmountless] = useState(false);
   const lnIsAmountless = isLightning && lnInvoice.trim() !== ""
     && (lnForceAmountless || detectBolt11Amountless(lnInvoice));
+  // Invoice con precisione sub-satoshi (msat non multipli di 1000): l'SDK Spark
+  // invia solo sat interi → arrotondiamo per ECCESSO (l'SDK accetta ≥ invoice)
+  const lnParsedAmount = isLightning && lnInvoice.trim() !== "" ? parseBolt11Amount(lnInvoice) : null;
+  const lnSubSatCeilSat: bigint | null =
+    lnParsedAmount && !lnParsedAmount.amountless && lnParsedAmount.msat! % 1000n !== 0n
+      ? (lnParsedAmount.msat! + 999n) / 1000n
+      : null;
   const [lnPaymentId,    setLnPaymentId]    = useState<string | null>(null);
   const lightningBalanceSat = isLightning ? (spark?.walletInfo?.balanceSat ?? null) : null;
 
@@ -2386,6 +2417,9 @@ function SendView({ onBack, onSuccess }: { onBack: () => void; onSuccess: () => 
           return;
         }
         lnAmountSat = BigInt(n);
+      } else if (lnSubSatCeilSat !== null) {
+        // Importo sub-satoshi nell'invoice → arrotonda per eccesso al sat intero
+        lnAmountSat = lnSubSatCeilSat;
       }
       setLnInvoiceErr(null);
       setStep("confirming-gas");
@@ -2491,11 +2525,16 @@ function SendView({ onBack, onSuccess }: { onBack: () => void; onSuccess: () => 
           }
         }
         // Per invoice senza importo l'SDK esige l'amount anche in send:
-        // riusiamo ESATTAMENTE l'importo del quote (recipientAmountSat), mai re-parse dell'input
+        // riusiamo ESATTAMENTE l'importo del quote (recipientAmountSat), mai re-parse dell'input.
+        // Per invoice sub-satoshi usiamo il ceiling deterministico calcolato dall'HRP.
         const { result } = await spark!.send(
           {
             paymentRequest: lnInvoice,
-            ...(lnIsAmountless ? { amountSat: lnFeeBreakdown!.recipientAmountSat } : {}),
+            ...(lnIsAmountless
+              ? { amountSat: lnFeeBreakdown!.recipientAmountSat }
+              : lnSubSatCeilSat !== null
+                ? { amountSat: lnSubSatCeilSat }
+                : {}),
           },
           lnFeeBreakdown!,
         );
@@ -2601,6 +2640,13 @@ function SendView({ onBack, onSuccess }: { onBack: () => void; onSuccess: () => 
             autoCapitalize="none"
             spellCheck={false}
           />
+          {/* Invoice con precisione sub-satoshi → informiamo dell'arrotondamento */}
+          {!lnIsAmountless && lnSubSatCeilSat !== null && (
+            <p className="aw-sub" style={{ fontSize: "0.78rem", margin: "6px 0 0" }}>
+              ⚡ L'invoice richiede un importo con frazioni di satoshi: verranno inviati{" "}
+              {lnSubSatCeilSat.toLocaleString("it-IT")} sat (arrotondamento al satoshi intero).
+            </p>
+          )}
           {/* Invoice "Qualsiasi importo" → campo importo obbligatorio (l'SDK lo esige) */}
           {lnIsAmountless && (
             <>
