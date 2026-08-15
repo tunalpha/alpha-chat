@@ -1,0 +1,171 @@
+Prima di modificare qualsiasi codice, fai una verifica tecnica approfondita della proposta di introduzione del direct transfer.
+
+NON implementare ancora il fix.
+
+Abbiamo identificato questi fatti:
+
+1. createTransfer() genera sempre un escrow.
+2. recipientWallet viene risolto senza considerare recipient.alpha_wallet_evm_address.
+3. Un destinatario Alpha Wallet configurato può quindi risultare recipientWallet = null.
+4. Il flow desiderato è:
+    * Alpha Wallet configurato → MITTENTE → DESTINATARIO, 1 sola TX
+    * destinatario non configurato → MITTENTE → ESCROW → DESTINATARIO, 2 TX
+
+Prima dell’implementazione verifica questi punti:
+
+A. Validità di alpha_wallet_evm_address
+
+Verifica nel codice completo dove alpha_wallet_evm_address viene:
+
+* generato;
+* validato;
+* salvato;
+* eventualmente aggiornato;
+* associato all’utente;
+* utilizzato da altri payment/wallet flow.
+
+Conferma che sia effettivamente l’indirizzo EVM corretto a cui inviare USDA direttamente.
+
+Verifica inoltre se esiste qualche condizione per cui l’indirizzo può essere presente ma non essere ancora utilizzabile come destination address.
+
+B. Chain e token
+
+Ricostruisci esattamente:
+
+* chain utilizzata dal current escrow payment;
+* contract address USDA;
+* decimals;
+* funzione ERC-20 utilizzata;
+* sender address effettivo;
+* escrow address;
+* recipient address.
+
+Conferma che il direct transfer debba usare ESATTAMENTE la stessa chain/token/configurazione del transfer attuale, cambiando esclusivamente il destination address da escrow → recipient.
+
+C. Idempotenza e iOS / WalletConnect
+
+Analizza in dettaglio il fix già implementato per il problema:
+
+WalletConnect/iOS → Load failed → TX eventualmente già broadcastata.
+
+Individua:
+
+* signedUncertain;
+* stato del transfer durante una firma incerta;
+* polling attuale;
+* come viene identificata una TX già broadcastata;
+* come viene impedita una seconda firma;
+* come vengono gestiti retry e recovery;
+* quali endpoint/backend partecipano alla recovery.
+
+Determina se il nuovo direct flow può riutilizzare la stessa macchina di stato e lo stesso meccanismo di recovery invece di introdurre una seconda logica parallela.
+
+Particolare attenzione a questo scenario:
+
+SIGN
+→ TX broadcastata
+→ WalletConnect restituisce “Load failed”
+→ frontend perde la risposta
+→ polling/recovery trova TX sender → recipient
+→ transfer diventa completed
+→ NESSUNA seconda firma
+
+Deve essere garantito anche in caso di refresh della pagina, riapertura della chat e retry.
+
+D. Stato e database
+
+Valuta se transfer_mode: "direct" | "escrow" sia realmente necessario oppure se l’architettura attuale può essere modificata con il minimo numero possibile di nuovi stati/campi.
+
+Se transfer_mode è necessario, verifica:
+
+* migration DB;
+* default per i record esistenti;
+* compatibilità con vecchi transfer;
+* scheduler/recovery;
+* processPendingSendTransfers;
+* processExpiredTransfers;
+* autoReleaseForSend;
+* detectDeposit;
+* confirmDeposit.
+
+I vecchi transfer escrow devono continuare a funzionare senza alcuna regressione.
+
+E. Backend API
+
+Verifica se è davvero necessario creare un nuovo endpoint confirm-direct.
+
+Prima di introdurlo, controlla se l’attuale endpoint di conferma/recovery può essere generalizzato per verificare:
+
+sender → destination
+
+senza duplicare la logica esistente.
+
+Preferire una singola macchina di conferma/recovery riutilizzabile piuttosto che due implementazioni parallele, se compatibile con l’architettura attuale.
+
+F. Frontend
+
+Verifica esattamente cosa riceve oggi SendPaymentSheet da POST /payments.
+
+Determina il minimo cambiamento necessario affinché:
+
+* direct → firma verso recipient;
+* escrow → firma verso escrow;
+* polling/recovery sia coerente;
+* il frontend non possa accidentalmente usare un vecchio escrow_wallet;
+* un retry non possa cambiare destination dopo che la firma è iniziata.
+
+G. UI
+
+Verifica come ChatPaymentBubble determina oggi:
+
+* deposito;
+* rilascio;
+* pagamento completato;
+* TX hash.
+
+Proponi il minimo cambiamento per distinguere:
+
+DIRECT:
+“Pagamento completato”
+“Visualizza transazione”
+
+ESCROW:
+“Pagamento completato”
+“Visualizza deposito”
+“Visualizza rilascio”
+
+Non modificare ancora la UI.
+
+H. Test plan
+
+Prima di implementare, produci un test plan completo per:
+
+1. Alpha Wallet configurato → 1 TX sender → recipient.
+2. Alpha Wallet non configurato → 2 TX sender → escrow → recipient.
+3. WalletConnect Load failed dopo broadcast direct → recovery senza seconda TX.
+4. Refresh durante firma direct.
+5. Retry dopo errore di rete direct.
+6. Duplicate click.
+7. Vecchio transfer escrow ancora pending.
+8. Scheduler che incontra transfer direct.
+9. Recipient address mancante.
+10. Recipient address invalido.
+11. Recipient Alpha Wallet configurato ma wallet non disponibile.
+12. Chain/network errata.
+13. Importo/decimals errati.
+14. TX verso address diverso dal recipient registrato.
+
+OUTPUT RICHIESTO
+
+Non modificare file.
+
+Restituisci soltanto:
+
+1. CONFERMATO — ciò che è già dimostrato dal codice;
+2. DA VERIFICARE — ciò che non è ancora sufficientemente dimostrato;
+3. RISCHI — soprattutto idempotenza/double-spend iOS;
+4. ARCHITETTURA MINIMA CONSIGLIATA;
+5. FILE/FUNZIONI che verranno modificati;
+6. TEST obbligatori prima del deploy.
+
+Non procedere all’implementazione finché questi punti non sono stati verificati.
