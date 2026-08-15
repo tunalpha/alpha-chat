@@ -31,6 +31,20 @@ Un bug delle chiamate si corregge modificando **solo**:
 
 Se durante un fix delle chiamate emerge la necessità di modificare **qualsiasi file del sistema messaggi**, il lavoro deve **fermarsi immediatamente** e richiedere approvazione esplicita prima di procedere.
 
-**Why:** Una regressione critica ([Messaggio non decifrabile]) è comparsa durante un intervento alla chat (swipe-to-reply). Non è stato possibile determinare con certezza se fosse il bug Signal pre-esistente o una nuova regressione, perché mancavano log DECRYPT-FAILURE / SESSION-SELECTION al momento dell'occorrenza. La policy elimina alla radice il rischio di contaminazione tra moduli.
+### Logica di INVIO pagamenti = CONGELATA (aggiunto 2026-08-15)
+
+Dopo una serie di bug critici risolti con fatica (double-spend, loop "Conferma blockchain…", float→wei precision), l'utente ha dichiarato la logica di invio pagamenti **CONGELATA**.
+
+Nessun intervento sui seguenti file senza autorizzazione esplicita dell'utente:
+
+- `artifacts/alpha-chat-web/src/components/usda/SendPaymentSheet.tsx`
+- qualsiasi hook/utility che governa il flusso di firma e invio USDA
+- la state machine di firma in-flight (`ac_sign_inflight_*` in localStorage)
+
+Un fix che riguarda detectDeposit, verifica receipt, scheduler o backend può toccare `chat-payment.service.ts` e i relativi test **senza** toccare il frontend di invio. Se un fix richiede di entrare in `SendPaymentSheet.tsx` → **fermarsi e chiedere approvazione esplicita**.
+
+---
+
+**Why:** La logica di invio ha richiesto tre wave di fix + review architetturale per raggiungere la stabilità (sign lock idempotente, confirmOrAbort, float→wei string-based). Ogni regressione in quel modulo produce double-charge o loop irreversibili visibili dall'utente in produzione.
 
 **How to apply:** Prima di ogni edit, verificare che il file rientri nel perimetro consentito dal task assegnato. In caso di dubbio, fermarsi e chiedere.
