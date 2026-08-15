@@ -13,6 +13,19 @@
 const WALLET_API_BASE = "/api/v1";
 const TOKEN_KEY       = "ac_access_token";
 
+// Timeout per ogni chiamata wallet: senza, un fetch congelato da iOS Safari
+// (app in background) lascia lo spinner "Firma e broadcast" bloccato per sempre.
+const WALLET_TIMEOUT_MS = 30_000;
+
+/** Errore di rete/timeout: e.code === "WALLET_NETWORK_ERROR" per i chiamanti. */
+export class WalletNetworkError extends Error {
+  readonly code = "WALLET_NETWORK_ERROR";
+  constructor() {
+    super("Rete interrotta o assente: verifica la connessione. Controlla saldo e storico prima di riprovare.");
+    this.name = "WalletNetworkError";
+  }
+}
+
 async function walletRequest<T>(path: string, opts: RequestInit = {}): Promise<T> {
   const token = localStorage.getItem(TOKEN_KEY) ?? "";
   const headers: Record<string, string> = {
@@ -20,7 +33,17 @@ async function walletRequest<T>(path: string, opts: RequestInit = {}): Promise<T
     ...(token ? { Authorization: `Bearer ${token}` } : {}),
     ...(opts.headers as Record<string, string> ?? {}),
   };
-  const res = await fetch(`${WALLET_API_BASE}${path}`, { ...opts, headers });
+  const ctrl  = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), WALLET_TIMEOUT_MS);
+  let res: Response;
+  try {
+    res = await fetch(`${WALLET_API_BASE}${path}`, { ...opts, headers, signal: ctrl.signal });
+  } catch {
+    // AbortError (timeout) o TypeError "Load failed" (abort iOS in background)
+    throw new WalletNetworkError();
+  } finally {
+    clearTimeout(timer);
+  }
   if (!res.ok) {
     let msg = `Errore ${res.status}`;
     try {

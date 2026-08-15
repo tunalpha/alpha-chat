@@ -18,10 +18,11 @@ const loginLimiter = rateLimit({
   skipSuccessfulRequests: true, // conta solo i fallimenti
 });
 
-// Register: 5 nuovi account per ora per IP
+// Register: 5 nuovi account per ora per IP (nessun limite nei test integration,
+// che registrano un utente per ogni caso e superavano il tetto)
 const registerLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
-  max: 5,
+  max: process.env.NODE_ENV === "test" ? 100_000 : 5,
   standardHeaders: "draft-8",
   legacyHeaders: false,
   message: { error: { code: "TOO_MANY_REQUESTS", message: "Troppe registrazioni. Riprova più tardi." } },

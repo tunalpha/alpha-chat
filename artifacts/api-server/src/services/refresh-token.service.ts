@@ -117,6 +117,37 @@ export async function rotateRefreshToken(
   if (!session) {
     const staleSession = await SessionModel.findOne({ previous_refresh_token_hash: hash });
     if (staleSession) {
+      // ── Finestra di grazia (iOS Safari abort) ─────────────────────────────
+      // Scenario reale (incidente 2026-08-15): il client invia il refresh, il
+      // server ruota il token, ma iOS aborta la richiesta in background → la
+      // risposta (col nuovo token) non arriva mai al client. Al retry il client
+      // presenta il token precedente → veniva trattato come theft → logout.
+      // Se la rotazione è avvenuta da pochissimo (REFRESH_REUSE_GRACE_MS) e la
+      // sessione è attiva, trattiamo il retry come idempotente: nuova rotazione
+      // dalla stessa famiglia. Il token "orfano" (mai consegnato) resta
+      // inutilizzabile. Oltre la finestra: theft detection invariata.
+      const GRACE_MS = 30_000;
+      const rotatedAt = staleSession.last_used_at?.getTime() ?? 0;
+      if (
+        staleSession.deleted_at === null &&
+        staleSession.expires_at >= new Date() &&
+        Date.now() - rotatedAt < GRACE_MS
+      ) {
+        logger.info(
+          { userId: staleSession.user_id.toString(), familyId: staleSession.family_id },
+          "Refresh token retry entro finestra di grazia (probabile abort iOS) — rotazione idempotente",
+        );
+        const graceRawToken = generateRefreshToken();
+        staleSession.refresh_token_hash = hashRefreshToken(graceRawToken);
+        // previous_refresh_token_hash resta l'hash presentato: un ulteriore
+        // retry entro la finestra è ancora idempotente; oltre → theft.
+        // SECURITY: last_used_at NON viene aggiornato — la finestra di grazia
+        // resta ancorata alla rotazione ORIGINALE. Un replay continuo del
+        // vecchio token non può estenderla: oltre 30s → theft detection.
+        staleSession.expires_at = refreshTokenExpiresAt();
+        await staleSession.save();
+        return { newRefreshToken: graceRawToken, session: staleSession };
+      }
       // Token già ruotato usato di nuovo → theft detection
       logger.warn(
         { userId: staleSession.user_id.toString(), familyId: staleSession.family_id },

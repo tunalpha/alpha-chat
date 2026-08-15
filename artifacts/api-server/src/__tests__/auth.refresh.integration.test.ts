@@ -117,7 +117,10 @@ describe("POST /api/v1/auth/refresh", () => {
       .send({ refresh_token: oldRt })
       .expect(200);
 
-    // Riutilizzo del vecchio RT → theft detection
+    // Riutilizzo OLTRE la finestra di grazia (30s) → theft detection.
+    // Backdatiamo last_used_at: entro 30s il retry è idempotente (abort iOS).
+    await SessionModel.updateMany({}, { last_used_at: new Date(Date.now() - 31_000) });
+
     const res = await request(app)
       .post("/api/v1/auth/refresh")
       .send({ refresh_token: oldRt })
@@ -126,11 +129,75 @@ describe("POST /api/v1/auth/refresh", () => {
     expect(res.body.error.code).toBe("REFRESH_TOKEN_REUSED");
   });
 
+  it("200 — retry entro la finestra di grazia (abort iOS): rotazione idempotente, niente logout", async () => {
+    const tokens = await registerAndLogin();
+    const oldRt = tokens.refresh_token;
+
+    // Prima rotazione — il client "perde" la risposta (abort iOS)
+    const first = await request(app)
+      .post("/api/v1/auth/refresh")
+      .send({ refresh_token: oldRt })
+      .expect(200);
+    const orphanRt = first.body.data.tokens.refresh_token;
+
+    // Retry immediato col vecchio RT → 200, nuova rotazione dalla stessa famiglia
+    const retry = await request(app)
+      .post("/api/v1/auth/refresh")
+      .send({ refresh_token: oldRt })
+      .expect(200);
+    const graceRt = retry.body.data.tokens.refresh_token;
+    expect(graceRt).not.toBe(oldRt);
+    expect(graceRt).not.toBe(orphanRt);
+
+    // Il token "orfano" (mai consegnato) non è più utilizzabile
+    await request(app)
+      .post("/api/v1/auth/refresh")
+      .send({ refresh_token: orphanRt })
+      .expect(401);
+
+    // La sessione resta attiva e il token della grazia funziona
+    const sessions = await SessionModel.find({ deleted_at: null });
+    expect(sessions).toHaveLength(1);
+    await SessionModel.updateMany({}, { last_used_at: new Date(Date.now() - 31_000) });
+    await request(app)
+      .post("/api/v1/auth/refresh")
+      .send({ refresh_token: graceRt })
+      .expect(200);
+  });
+
+  it("SECURITY: il replay continuo del vecchio RT non estende la finestra di grazia", async () => {
+    const tokens = await registerAndLogin();
+    const oldRt = tokens.refresh_token;
+
+    // Rotazione originale
+    await request(app).post("/api/v1/auth/refresh").send({ refresh_token: oldRt }).expect(200);
+
+    // Simula 20s trascorsi dalla rotazione originale
+    const originalRotation = new Date(Date.now() - 20_000);
+    await SessionModel.updateMany({}, { last_used_at: originalRotation });
+
+    // Replay entro la finestra → 200, ma last_used_at NON deve avanzare
+    await request(app).post("/api/v1/auth/refresh").send({ refresh_token: oldRt }).expect(200);
+    const s = await SessionModel.findOne({ deleted_at: null });
+    expect(s!.last_used_at.getTime()).toBe(originalRotation.getTime());
+
+    // Oltre i 30s dalla rotazione ORIGINALE il replay è theft → famiglia revocata
+    await SessionModel.updateMany({}, { last_used_at: new Date(Date.now() - 31_000) });
+    const res = await request(app)
+      .post("/api/v1/auth/refresh")
+      .send({ refresh_token: oldRt })
+      .expect(401);
+    expect(res.body.error.code).toBe("REFRESH_TOKEN_REUSED");
+    expect(await SessionModel.find({ deleted_at: null })).toHaveLength(0);
+  });
+
   it("S-03: dopo theft detection tutte le sessioni della famiglia sono revocate", async () => {
     const tokens = await registerAndLogin();
     const oldRt = tokens.refresh_token;
 
     await request(app).post("/api/v1/auth/refresh").send({ refresh_token: oldRt });
+    // Oltre la finestra di grazia → theft detection
+    await SessionModel.updateMany({}, { last_used_at: new Date(Date.now() - 31_000) });
     await request(app).post("/api/v1/auth/refresh").send({ refresh_token: oldRt });
 
     // Tutte le sessioni devono essere revocate
