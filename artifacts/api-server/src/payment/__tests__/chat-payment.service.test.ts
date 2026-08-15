@@ -80,8 +80,8 @@ const RECIPIENT_ID = new mongoose.Types.ObjectId().toString();
 const CONV_ID      = new mongoose.Types.ObjectId().toString();
 const TRANSFER_ID  = "test-transfer-uuid-0001";
 const ESCROW_ADDR  = "0xESCROW0000000000000000000000000000000000";
-const SENDER_WALLET    = "0xSENDER000000000000000000000000000000000";
-const RECIPIENT_WALLET = "0xRECIPIENT00000000000000000000000000000";
+const SENDER_WALLET    = "0x5e17de1000000000000000000000000000000001";
+const RECIPIENT_WALLET = "0x1ec191e170000000000000000000000000000002";
 
 function makeTransfer(overrides: Record<string, unknown> = {}): any {
   const now = new Date();

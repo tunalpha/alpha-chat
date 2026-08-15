@@ -72,8 +72,8 @@ const SENDER_ID     = new mongoose.Types.ObjectId().toString();
 const RECIPIENT_ID  = new mongoose.Types.ObjectId().toString();
 const CONV_ID       = new mongoose.Types.ObjectId().toString();
 const TRANSFER_ID   = "direct-test-uuid-0001";
-const SENDER_WALLET    = "0xSENDER000000000000000000000000000000000";
-const RECIPIENT_WALLET = "0xRECIPIENT00000000000000000000000000000";
+const SENDER_WALLET    = "0x5e17de1000000000000000000000000000000001";
+const RECIPIENT_WALLET = "0x1ec191e170000000000000000000000000000002";
 const TX_HASH          = "0x" + "a".repeat(64);
 
 // ERC-20 Transfer log topic
@@ -309,12 +309,12 @@ describe("T1–T5: createTransfer routing", () => {
   });
 
   it("T4: priorità alpha_wallet_evm_address > wallets.usda.address", async () => {
-    const ALPHA_ADDR = "0xALPHA000000000000000000000000000000000";
+    const ALPHA_ADDR = "0xa19fa00000000000000000000000000000000003";
     vi.mocked(UserModel.findById).mockImplementation((id: any) => ({
       lean: () => Promise.resolve({
         _id:                    new mongoose.Types.ObjectId(id.toString()),
         alpha_wallet_evm_address: id.toString() === RECIPIENT_ID ? ALPHA_ADDR : null,
-        wallets:                { usda: { address: id.toString() === SENDER_ID ? SENDER_WALLET : "0xFALLBACK" } },
+        wallets:                { usda: { address: id.toString() === SENDER_ID ? SENDER_WALLET : "0xfa11bac000000000000000000000000000000004" } },
         wallet_address:         null,
       }),
     }) as any);

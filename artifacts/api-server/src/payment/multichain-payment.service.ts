@@ -879,10 +879,10 @@ export async function releaseMultiChainTransfer(transferId: string): Promise<Mul
     const { UserModel } = await import("../models/user.model");
     const recipientUser = await UserModel.findOne(
       { _id: locked.recipient_id },
-      // Proietta sia il campo legacy che la struttura wallets multi-chain.
+      // Proietta Alpha Wallet, campo legacy e struttura wallets multi-chain.
       // Per le chain EVM (BSC, Polygon, Ethereum) l'indirizzo è intercambiabile:
       // stessa derivazione BIP-44, stesso formato 0x.
-      { wallet_address: 1, wallets: 1 },
+      { alpha_wallet_evm_address: 1, wallet_address: 1, wallets: 1 },
     ).lean();
 
     // Helper: rollback a pending — deposito al sicuro nell'escrow, ritenterà al prossimo ciclo
@@ -892,11 +892,14 @@ export async function releaseMultiChainTransfer(transferId: string): Promise<Mul
     );
 
     // Risolvi il wallet EVM del destinatario con fallback a cascata:
-    // 1. campo legacy wallet_address
-    // 2. wallets.polygon (preferito — stessa chain family EVM)
-    // 3. wallets.ethereum
-    // 4. wallets.usda (USDA è ERC-20 su Polygon, stessa key derivation)
+    // 1. alpha_wallet_evm_address (Alpha Wallet self-custodial — priorità assoluta,
+    //    coerente con il flusso USDA in chat-payment.service)
+    // 2. campo legacy wallet_address (es. Trust Wallet verificato)
+    // 3. wallets.polygon (stessa chain family EVM)
+    // 4. wallets.ethereum
+    // 5. wallets.usda (USDA è ERC-20 su Polygon, stessa key derivation)
     const resolvedWallet: string | null | undefined =
+      recipientUser?.alpha_wallet_evm_address ||
       recipientUser?.wallet_address ||
       recipientUser?.wallets?.polygon?.address ||
       recipientUser?.wallets?.ethereum?.address ||

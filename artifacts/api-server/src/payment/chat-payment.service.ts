@@ -343,6 +343,36 @@ async function _sendCompletedNotification(transfer: ChatTransferDocument): Promi
  * sfruttabile. NON allargare (es. 1 ppm sarebbe un'accettazione di sottopagamento
  * materiale su importi grandi).
  */
+/**
+ * Risolve il wallet EVM del destinatario con priorità Alpha Wallet.
+ *
+ * Cascata (stringhe vuote saltate, semantica ||):
+ *   1. alpha_wallet_evm_address (Alpha Wallet self-custodial — priorità assoluta)
+ *   2. wallets.usda.address
+ *   3. wallet_address legacy
+ *
+ * Ritorna null se nessun wallet configurato. Lancia AppError 422 se l'indirizzo
+ * selezionato ha formato non valido (fail-closed: mai payout verso indirizzo malformato).
+ */
+export function resolveRecipientEvmWallet(recipientUser: {
+  alpha_wallet_evm_address?: string | null;
+  wallets?: { usda?: { address?: string | null } | null } | null;
+  wallet_address?: string | null;
+} | null | undefined): string | null {
+  const resolved =
+    recipientUser?.alpha_wallet_evm_address ||
+    recipientUser?.wallets?.usda?.address ||
+    recipientUser?.wallet_address ||
+    null;
+  // Regex (no checksum viem): gli indirizzi salvati nel DB sono spesso lowercase
+  // e il checksum strict li rifiuterebbe. Qui interessa solo il formato.
+  if (resolved && !/^0x[0-9a-fA-F]{40}$/.test(resolved)) {
+    throw new AppError("RECIPIENT_WALLET_INVALID_FORMAT", 422,
+      `Il wallet del destinatario ha un formato non valido: ${resolved}`);
+  }
+  return resolved;
+}
+
 export function depositAmountFloor(amountUnits: bigint): bigint {
   const tolerance = amountUnits / 1_000_000_000_000_000n + 1000n;
   // MAI ridurre a zero un importo positivo: per importi minuscoli (≤ tolleranza)
@@ -504,11 +534,7 @@ export async function createTransfer(
   //   1. Alpha Wallet self-custodial (alpha_wallet_evm_address) — disponibile senza WalletConnect
   //   2. WalletConnect USDA (wallets.usda.address)
   //   3. Legacy wallet_address
-  const recipientWallet: string | null =
-    recipient.alpha_wallet_evm_address ??
-    recipient.wallets?.usda?.address ??
-    recipient.wallet_address ??
-    null;
+  const recipientWallet: string | null = resolveRecipientEvmWallet(recipient);
 
   // ROUTING DECISION: direct se il destinatario ha già un indirizzo EVM valido.
   // Direct → 1 TX sender → recipient (no escrow generato).
@@ -989,8 +1015,7 @@ export async function acceptTransfer(params: {
   // ha un wallet, lo salviamo nel documento prima di procedere.
   if (!transfer.recipient_wallet) {
     const recipientUser = await UserModel.findById(transfer.recipient_id).lean() as any;
-    const resolvedWallet: string | null =
-      recipientUser?.wallets?.usda?.address ?? recipientUser?.wallet_address ?? null;
+    const resolvedWallet: string | null = resolveRecipientEvmWallet(recipientUser);
     if (!resolvedWallet) throw new AppError("WALLET_NOT_CONFIGURED", 412);
     // Aggiorna il documento e la variabile locale in-memory
     await ChatTransferModel.updateOne(
@@ -1156,8 +1181,7 @@ export async function autoReleaseForSend(transferId: string): Promise<void> {
   if (!transfer.recipient_wallet) {
     // Lazy-resolve: il destinatario potrebbe aver salvato il wallet dopo la creazione.
     const recipientUser = await UserModel.findById(transfer.recipient_id).lean() as any;
-    const resolvedWallet: string | null =
-      recipientUser?.wallets?.usda?.address ?? recipientUser?.wallet_address ?? null;
+    const resolvedWallet: string | null = resolveRecipientEvmWallet(recipientUser);
     if (!resolvedWallet) {
       logger.error({ transferId }, "[Payment] Auto-release-send: wallet destinatario assente — resta pending");
       return;
@@ -1234,8 +1258,7 @@ export async function autoReleaseForRequest(transferId: string): Promise<void> {
   if (!transfer.recipient_wallet) {
     // Lazy-resolve: il richiedente potrebbe aver salvato il wallet dopo la creazione.
     const recipientUser = await UserModel.findById(transfer.recipient_id).lean() as any;
-    const resolvedWallet: string | null =
-      recipientUser?.wallets?.usda?.address ?? recipientUser?.wallet_address ?? null;
+    const resolvedWallet: string | null = resolveRecipientEvmWallet(recipientUser);
     if (!resolvedWallet) {
       logger.error({ transferId }, "[Payment] Auto-release: wallet richiedente assente — resta pending");
       return;
