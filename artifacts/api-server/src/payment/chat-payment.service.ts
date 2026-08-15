@@ -638,6 +638,11 @@ export async function confirmDeposit(params: {
     // il transfer resta "pending" e lo scheduler lo ricompleta (non va in failed).
     void syncRequestFromTransfer(updated.request_payment_id.toString(), "pending");
     void autoReleaseForRequest(updated.transfer_id);
+  } else {
+    // Invio diretto (no request_payment_id): rilascio immediato fire-and-forget.
+    // Il destinatario riceve i fondi automaticamente senza dover premere "Accetta".
+    // Lo scheduler rimane come safety-net in caso di crash/gas failure.
+    void autoReleaseForSend(updated.transfer_id);
   }
 
   logger.info({ transferId: params.transferId, txHash: params.txHash }, "[Payment] Deposito confermato ✓");

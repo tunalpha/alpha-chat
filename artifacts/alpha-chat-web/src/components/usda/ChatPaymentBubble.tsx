@@ -53,9 +53,9 @@ function getVariant(status: ChatTransferStatus, isMine: boolean, isRequest: bool
   if (isLockTransferStatus(status))   return "spinning";
   switch (status) {
     case "awaiting_deposit": return "waiting";
-    // Transfer legato a una richiesta: il destinatario (richiedente) non decide
-    // nulla → nessuna variante "action" (niente pulsanti), solo attesa/arrivo.
-    case "pending":          return isMine ? "waiting" : (isRequest ? "waiting" : "action");
+    // Tutti i transfer pending: rilascio automatico immediato lato server.
+    // Nessun "Accetta" manuale — né per richieste né per invii diretti.
+    case "pending":          return "waiting";
     case "accepted":         return "success";
     case "rejected":
     case "failed":           return "fail";
