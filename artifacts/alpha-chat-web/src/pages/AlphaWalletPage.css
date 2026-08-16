@@ -492,7 +492,44 @@
   border-radius: 10px;
   margin-bottom: 6px;
 }
-.aw-asset-icon { font-size: 24px; width: 32px; text-align: center; }
+.aw-asset-icon { font-size: 24px; width: 36px; text-align: center; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+
+/* ── CoinIcon ───────────────────────────────────────────────────────────────── */
+.aw-coin-icon-wrap {
+  position: relative;
+  width: 32px;
+  height: 32px;
+  flex-shrink: 0;
+}
+.aw-coin-icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  object-fit: contain;
+  display: block;
+}
+.aw-coin-icon--fallback {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: rgba(255,255,255,.12);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  font-weight: 700;
+  color: rgba(255,255,255,.7);
+}
+.aw-coin-icon-badge {
+  position: absolute;
+  bottom: -3px;
+  right: -4px;
+  font-size: 11px;
+  line-height: 1;
+  background: #0b0f14;
+  border-radius: 50%;
+  padding: 1px 2px;
+}
 .aw-asset-info { flex: 1; min-width: 0; }
 .aw-asset-name { font-size: 15px; font-weight: 600; display: flex; align-items: center; gap: 4px; }
 .aw-asset-network { font-size: 12px; color: rgba(255,255,255,.45); }
@@ -1553,9 +1590,10 @@
   border-color: rgba(139,92,246,.3);
 }
 .aw-portfolio-asset-icon {
-  font-size: 22px;
-  width: 32px;
-  text-align: center;
+  width: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   flex-shrink: 0;
 }
 .aw-portfolio-asset-info {

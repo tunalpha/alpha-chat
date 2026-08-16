@@ -948,7 +948,7 @@ function OverviewView({ onNavigate }: { onNavigate: (v: WalletSubView) => void }
         <div className="aw-asset-list">
           {sparkConnected && sparkBalance !== null ? (
             <div className="aw-asset-item">
-              <div className="aw-asset-icon">⚡</div>
+              <div className="aw-asset-icon"><CoinIcon symbol="BTC" badge="⚡" /></div>
               <div className="aw-asset-info">
                 <div className="aw-asset-symbol">BTC</div>
                 <div className="aw-asset-network">Bitcoin Lightning</div>
@@ -1262,13 +1262,39 @@ function PortfolioTotalCard({
   );
 }
 
+// ─── Coin logo map ────────────────────────────────────────────────────────────
+
+const COIN_LOGOS: Record<string, string> = {
+  eth:   "https://assets.trustwallet.com/blockchains/ethereum/info/logo.png",
+  btc:   "https://assets.trustwallet.com/blockchains/bitcoin/info/logo.png",
+  bnb:   "https://assets.trustwallet.com/blockchains/smartchain/info/logo.png",
+  pol:   "https://assets.trustwallet.com/blockchains/polygon/info/logo.png",
+  matic: "https://assets.trustwallet.com/blockchains/polygon/info/logo.png",
+  usdt:  "https://assets.trustwallet.com/blockchains/ethereum/assets/0xdAC17F958D2ee523a2206206994597C13D831ec7/logo.png",
+  usdc:  "https://assets.trustwallet.com/blockchains/ethereum/assets/0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48/logo.png",
+  usda:  "/logo.png",
+};
+
+function CoinIcon({ symbol, badge }: { symbol: string; badge?: string }) {
+  const url = COIN_LOGOS[symbol.toLowerCase()] ?? null;
+  const [failed, setFailed] = React.useState(false);
+  return (
+    <div className="aw-coin-icon-wrap">
+      {url && !failed
+        ? <img src={url} alt={symbol} className="aw-coin-icon" onError={() => setFailed(true)} />
+        : <div className="aw-coin-icon--fallback">{symbol.charAt(0)}</div>
+      }
+      {badge && <span className="aw-coin-icon-badge">{badge}</span>}
+    </div>
+  );
+}
+
 // ─── PortfolioView ────────────────────────────────────────────────────────────
 
 interface PortfolioAssetRow {
   chainId:   number;
   network:   string;
   symbol:    string;
-  icon:      string;
   name:      string;
   amount:    string;
   fiatValue: number;
@@ -1305,7 +1331,6 @@ function PortfolioView({
     rows.push({
       chainId, network,
       symbol: balance.native.symbol,
-      icon: "⬡",
       name: balance.native.name,
       amount: balance.native.formatted,
       fiatValue: nativeFiatVal,
@@ -1319,7 +1344,6 @@ function PortfolioView({
       rows.push({
         chainId, network,
         symbol: t.symbol,
-        icon: "🪙",
         name: t.name,
         amount: formatCrypto(t.rawBalance, t.decimals, t.symbol),
         fiatValue: fv,
@@ -1338,7 +1362,7 @@ function PortfolioView({
     const po   = prices?.btc as { eur: number; usd: number } | undefined;
     rows.push({
       chainId: 0, network: "Bitcoin",
-      symbol: "BTC", icon: "₿", name: "Bitcoin",
+      symbol: "BTC", name: "Bitcoin",
       amount: all.btc.formatted,
       fiatValue: fv,
       fiatStr: po ? formatFiat(all.btc.confirmedSat, 8, po, currency) : null,
@@ -1354,7 +1378,7 @@ function PortfolioView({
     const po   = prices?.btc as { eur: number; usd: number } | undefined;
     rows.push({
       chainId: -1, network: "Lightning",
-      symbol: "BTC", icon: "⚡", name: "Bitcoin Lightning",
+      symbol: "BTC", name: "Bitcoin Lightning",
       amount: formatSatoshisToBtc(sparkSat),
       fiatValue: fv,
       fiatStr: po ? formatFiat(sparkSat, 8, po, currency) : null,
@@ -1420,7 +1444,9 @@ function PortfolioView({
                 onClick={() => onSelectChain(row.chainId)}
                 aria-label={`Vai a ${row.network}`}
               >
-                <div className="aw-portfolio-asset-icon">{row.icon}</div>
+                <div className="aw-portfolio-asset-icon">
+                  <CoinIcon symbol={row.symbol} badge={row.chainId === -1 ? "⚡" : undefined} />
+                </div>
                 <div className="aw-portfolio-asset-info">
                   <div className="aw-portfolio-asset-symbol">{row.symbol}</div>
                   <div className="aw-portfolio-asset-network">{row.network}</div>
@@ -1462,7 +1488,7 @@ function AssetList({ chainId, chainBalance, btcBalance, prices, loading, currenc
     return (
       <div className="aw-asset-list">
         <div className="aw-asset-item">
-          <div className="aw-asset-icon">₿</div>
+          <div className="aw-asset-icon"><CoinIcon symbol="BTC" /></div>
           <div className="aw-asset-info">
             <div className="aw-asset-name">Bitcoin <span className="aw-badge-verified">✅</span></div>
             <div className="aw-asset-network">Bitcoin · Native SegWit</div>
@@ -1489,7 +1515,7 @@ function AssetList({ chainId, chainBalance, btcBalance, prices, loading, currenc
         const fiatStr = nPrice ? formatFiat(n.rawBalance, 18, nPrice, currency) : null;
         return (
           <div className="aw-asset-item">
-            <div className="aw-asset-icon">⬡</div>
+            <div className="aw-asset-icon"><CoinIcon symbol={n.symbol} /></div>
             <div className="aw-asset-info">
               <div className="aw-asset-name">{n.symbol} <span className="aw-badge-verified">✅</span></div>
               <div className="aw-asset-network">{n.name}</div>
@@ -1516,7 +1542,7 @@ function AssetList({ chainId, chainBalance, btcBalance, prices, loading, currenc
         const isCustomToken   = t.verification === "custom";
         return (
           <div key={`${t.chainId}-${t.contractAddress}`} className="aw-asset-item">
-            <div className="aw-asset-icon">🪙</div>
+            <div className="aw-asset-icon"><CoinIcon symbol={t.symbol} /></div>
             <div className="aw-asset-info">
               <div className="aw-asset-name">
                 {t.symbol}
