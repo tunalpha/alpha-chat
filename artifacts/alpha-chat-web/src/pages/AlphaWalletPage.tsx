@@ -1265,13 +1265,13 @@ function PortfolioTotalCard({
 // ─── Coin logo map ────────────────────────────────────────────────────────────
 
 const COIN_LOGOS: Record<string, string> = {
-  eth:   "https://assets.trustwallet.com/blockchains/ethereum/info/logo.png",
-  btc:   "https://assets.trustwallet.com/blockchains/bitcoin/info/logo.png",
-  bnb:   "https://assets.trustwallet.com/blockchains/smartchain/info/logo.png",
-  pol:   "https://assets.trustwallet.com/blockchains/polygon/info/logo.png",
-  matic: "https://assets.trustwallet.com/blockchains/polygon/info/logo.png",
-  usdt:  "https://assets.trustwallet.com/blockchains/ethereum/assets/0xdAC17F958D2ee523a2206206994597C13D831ec7/logo.png",
-  usdc:  "https://assets.trustwallet.com/blockchains/ethereum/assets/0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48/logo.png",
+  eth:   "/coin-icons/eth.png",
+  btc:   "/coin-icons/btc.png",
+  bnb:   "/coin-icons/bnb.png",
+  pol:   "/coin-icons/pol.png",
+  matic: "/coin-icons/pol.png",
+  usdt:  "/coin-icons/usdt.png",
+  usdc:  "/coin-icons/usdc.png",
   usda:  "/logo.png",
 };
 
