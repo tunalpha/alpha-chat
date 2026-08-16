@@ -1,0 +1,647 @@
+Certo. Ti consiglio di darlo all’agente Power come prompt molto rigido, specificando soprattutto che non deve modificare in alcun modo la logica dei pagamenti esistenti.
+
+ALPHA SWAP — IMPLEMENTAZIONE ISOLATA E NON REGRESSIVA
+
+OBIETTIVO
+
+Implementare in Alpha Wallet una nuova funzione Swap per consentire lo scambio tra gli asset già presenti e supportati da Alpha, utilizzando un provider/aggregatore di swap.
+
+Questa funzionalità deve essere progettata come MODULO COMPLETAMENTE ISOLATO.
+
+REGOLA ASSOLUTA
+
+NON modificare, rifattorizzare, sostituire, semplificare o alterare nessuna logica esistente relativa ai pagamenti, trasferimenti o firme.
+
+Sono fuori scope e devono rimanere intatti:
+
+* invio BTC on-chain;
+* ricezione BTC;
+* UTXO management;
+* fee logic degli invii BTC;
+* RBF;
+* Lightning payments esistenti;
+* USDT/USDC/ETH/POL e altri normali transfer;
+* WalletConnect;
+* ThirdWeb;
+* firma delle transazioni esistenti;
+* polling delle transazioni esistenti;
+* escrow;
+* deposit detection;
+* cronologia pagamenti esistente;
+* balance logic esistente;
+* qualsiasi backend/API utilizzato dai pagamenti normali.
+
+Lo Swap deve avere codice, stato, API, componenti e monitoring separati.
+
+Se per implementare Swap è necessario modificare una parte della payment logic esistente, FERMATI E SEGNALA IL CONFLITTO invece di modificarla.
+
+⸻
+
+1. ARCHITETTURA ISOLATA
+
+Creare un modulo dedicato, ad esempio:
+
+swap/
+
+con separazione chiara tra:
+
+* swap UI;
+* swap state;
+* quote;
+* provider adapter;
+* fee calculation;
+* swap execution;
+* swap monitoring;
+* swap history;
+* admin monitoring.
+
+Non duplicare la logica di pagamento esistente se non strettamente necessario.
+
+Creare un’astrazione provider:
+
+SwapProvider
+
+in modo che il provider possa essere sostituito in futuro senza modificare la UI.
+
+Il primo provider deve essere quello già scelto per l’integrazione Swap.
+
+⸻
+
+2. ASSET DISPONIBILI
+
+Lo Swap deve partire dagli asset già presenti/supportati da Alpha.
+
+NON creare manualmente centinaia di coppie.
+
+L’utente deve poter selezionare:
+
+Asset A → Asset B
+
+e il provider deve determinare automaticamente se esiste una route.
+
+Esempi:
+
+* USDT → USDC
+* USDC → ETH
+* ETH → POL
+* POL → USDT
+* BTC → asset supportato
+* ecc.
+
+Se una combinazione non è supportata dal provider:
+
+NON mostrare una falsa quotazione.
+
+Mostrare invece:
+
+Swap non disponibile per questa coppia
+
+⸻
+
+3. ESCLUDERE TEMPORANEAMENTE USDA
+
+IMPORTANTISSIMO:
+
+USDA deve essere temporaneamente esclusa dalla lista degli asset disponibili nello Swap.
+
+Motivazione:
+
+USDA attualmente non dispone di liquidità sufficiente per essere utilizzato nello Swap.
+
+Questa esclusione deve essere implementata tramite una configurazione/feature flag centralizzata, NON tramite condizioni sparse nella UI.
+
+Esempio concettuale:
+
+SWAP_EXCLUDED_ASSETS = ["USDA"]
+
+In questo modo in futuro USDA potrà essere riabilitato semplicemente modificando la configurazione.
+
+Non eliminare USDA da Alpha.
+
+USDA deve continuare a funzionare normalmente per tutte le sue funzioni esistenti.
+
+L’esclusione riguarda SOLO il modulo Swap.
+
+⸻
+
+4. COMMISSIONE ALPHA
+
+Implementare una commissione configurabile per Alpha.
+
+Default:
+
+0,25%
+
+= 25 basis points
+
+NON hardcodare 0.25 in più punti del codice.
+
+Creare una configurazione centralizzata:
+
+ALPHA_SWAP_FEE_BPS = 25
+
+La commissione deve essere calcolata separatamente da:
+
+* provider fee;
+* network fee;
+* gas;
+* slippage;
+* eventuali bridge fee.
+
+L’utente deve vedere chiaramente prima della conferma:
+
+* importo input;
+* importo stimato ricevuto;
+* Alpha Fee;
+* provider fee;
+* network fee;
+* slippage;
+* eventuali altre commissioni;
+* importo finale stimato.
+
+Treasury
+
+La commissione Alpha deve essere indirizzata a un wallet/recipient configurabile.
+
+NON hardcodare un address nel frontend.
+
+Il recipient deve essere configurabile lato backend/configuration.
+
+⸻
+
+5. SICUREZZA FEE
+
+La fee Alpha NON deve essere semplicemente sottratta dal saldo visualizzato.
+
+Deve essere incorporata correttamente nella quote/transaction secondo le modalità supportate dal provider.
+
+Prima di implementare:
+
+* verificare la documentazione ufficiale del provider;
+* verificare esattamente come viene applicata la fee;
+* verificare che il provider supporti la fee per la chain/token specifica;
+* verificare l’importo effettivamente ricevuto dal treasury.
+
+Se il provider non supporta la fee su una determinata route:
+
+NON inventare una soluzione.
+
+Segnalare la route come non supportata oppure utilizzare un provider alternativo compatibile.
+
+⸻
+
+6. UI SWAP
+
+Creare una nuova sezione:
+
+Swap
+
+UI minima:
+
+DA
+
+[ Asset ]
+
+A
+
+[ Asset ]
+
+[ Importo ]
+
+→ quote
+
+Mostrare:
+
+Ricevi circa: X
+Alpha Fee: X
+Network Fee: X
+Provider Fee: X
+Slippage: X
+Totale: X
+
+Pulsante:
+
+Conferma Swap
+
+La UI deve essere completamente separata dalle schermate di invio normali.
+
+NON riutilizzare componenti di pagamento se questo comporta accoppiamento con la payment logic.
+
+⸻
+
+7. QUOTE
+
+La quote deve essere richiesta al provider in tempo reale.
+
+Non usare prezzi hardcoded.
+
+Gestire:
+
+* quote scaduta;
+* quote cambiata;
+* route non disponibile;
+* liquidity insufficiente;
+* amount troppo piccolo;
+* amount troppo grande;
+* token non supportato;
+* errore provider;
+* errore RPC;
+* timeout.
+
+Prima della firma/pagamento deve essere verificato che la quote sia ancora valida.
+
+⸻
+
+8. EXECUTION
+
+L’esecuzione dello Swap deve avere un proprio state machine.
+
+Esempio:
+
+idle
+→ quoting
+→ quoted
+→ confirming
+→ signing
+→ submitted
+→ pending
+→ completed
+
+Stati di errore separati:
+
+quote_error
+execution_error
+provider_error
+timeout
+cancelled
+
+NON riutilizzare gli stati delle normali payment transaction se questo crea accoppiamento.
+
+⸻
+
+9. ANTI-DOPPIO INVIO
+
+OBBLIGATORIO.
+
+Lo Swap deve impedire:
+
+* doppia firma;
+* doppio submit;
+* doppio click;
+* retry che ricrea accidentalmente lo stesso swap;
+* polling duplicato.
+
+Il retry deve essere idempotente.
+
+Una quote/swap già eseguita non deve poter essere accidentalmente eseguita una seconda volta.
+
+⸻
+
+10. STORICO SWAP
+
+Creare uno storico separato:
+
+Swap History
+
+Ogni swap deve avere almeno:
+
+* swap ID;
+* timestamp;
+* asset input;
+* chain input;
+* amount input;
+* asset output;
+* chain output;
+* amount output;
+* Alpha fee;
+* provider fee;
+* network fee;
+* status;
+* transaction hash input;
+* transaction hash output, se disponibile;
+* provider;
+* eventuale route;
+* error code/error message.
+
+NON mescolare lo storico Swap con lo storico dei normali pagamenti se questo richiede modifiche alla struttura esistente.
+
+Se l’attuale UI mostra tutto insieme, creare una distinzione logica chiara:
+
+Payments
+Swaps
+
+⸻
+
+11. ADMIN — MONITORING SWAP
+
+Aggiungere in Admin una nuova sezione:
+
+Swap Monitoring
+
+L’admin deve poter vedere l’elenco degli swap.
+
+Tabella minima:
+
+Data	Swap ID	From	To	Amount	Alpha Fee	Provider	Status	TX
+
+Filtri:
+
+* data;
+* asset;
+* chain;
+* provider;
+* status;
+* errore;
+* swap ID;
+* transaction hash.
+
+Status:
+
+* QUOTED
+* CONFIRMING
+* SUBMITTED
+* PENDING
+* COMPLETED
+* FAILED
+* CANCELLED
+* EXPIRED
+
+⸻
+
+12. ADMIN — MONITORING FEE
+
+Creare anche una sezione:
+
+Swap Revenue / Fees
+
+Mostrare:
+
+* fee Alpha totale;
+* fee Alpha giornaliera;
+* fee Alpha settimanale;
+* fee Alpha mensile;
+* numero swap;
+* volume totale swap;
+* fee media;
+* fee per asset;
+* fee per chain;
+* fee per provider.
+
+Esempio:
+
+Swap Volume: €XX,XXX
+
+Alpha Fees: €XX.XX
+
+Completed Swaps: XXX
+
+Average Fee: €X.XX
+
+I dati devono essere calcolati dagli swap realmente completati.
+
+NON conteggiare quote fallite o swap non completati come revenue realizzata.
+
+⸻
+
+13. ADMIN — CONFIGURAZIONE
+
+Aggiungere configurazione admin per:
+
+* Alpha fee BPS;
+* treasury recipient;
+* enable/disable Swap;
+* asset esclusi;
+* provider enable/disable.
+
+Per USDA deve essere possibile:
+
+USDA → excluded
+
+senza modificare codice.
+
+Default iniziale
+
+Alpha Fee = 25 BPS
+
+USDA = excluded
+
+Swap = enabled
+
+⸻
+
+14. LOGGING
+
+Creare logging dedicato:
+
+SWAP:QUOTE
+
+SWAP:CONFIRM
+
+SWAP:SUBMIT
+
+SWAP:PENDING
+
+SWAP:COMPLETE
+
+SWAP:FAIL
+
+SWAP:FEE
+
+Ogni log deve contenere uno swapId.
+
+NON usare tag generici che possano confondersi con i payment log.
+
+⸻
+
+15. MONITORING E ALERT
+
+L’admin deve poter individuare rapidamente:
+
+* aumento swap falliti;
+* provider down;
+* quote error;
+* liquidity error;
+* transaction stuck;
+* fee calculation error;
+* swap pending troppo a lungo;
+* discrepancy tra quote e risultato;
+* commissione Alpha non ricevuta.
+
+Creare una vista:
+
+Problem Swaps
+
+con gli swap che richiedono attenzione.
+
+⸻
+
+16. TEST OBBLIGATORI
+
+Prima del deploy eseguire test per:
+
+Quote
+
+* USDT → USDC
+* USDC → USDT
+* ETH → USDC
+* almeno una coppia su ogni chain supportata.
+
+Errori
+
+* coppia non supportata;
+* liquidità insufficiente;
+* quote scaduta;
+* provider offline;
+* RPC failure;
+* transaction failure;
+* user cancellation.
+
+Fee
+
+Verificare matematicamente:
+
+25 BPS = 0,25%
+
+Verificare che:
+
+* la fee mostrata UI;
+* la fee backend;
+* la fee provider;
+* la fee ricevuta dal treasury
+
+siano coerenti.
+
+USDA
+
+Verificare che:
+
+* USDA NON appaia nello Swap;
+* USDA continui a funzionare normalmente nei normali pagamenti;
+* nessun altro modulo venga influenzato.
+
+⸻
+
+17. REGRESSION SAFETY — OBBLIGATORIO
+
+Prima del deploy verificare esplicitamente che NON siano cambiati:
+
+* send BTC;
+* receive BTC;
+* BTC UTXO selection;
+* BTC fee logic;
+* RBF;
+* Lightning;
+* USDT transfer;
+* USDC transfer;
+* ETH transfer;
+* POL transfer;
+* WalletConnect;
+* ThirdWeb;
+* signing flow;
+* polling;
+* deposit detection;
+* payment history;
+* balance logic.
+
+Se un test di pagamento esistente fallisce dopo l’implementazione Swap:
+
+NON correggere il test modificando la payment logic.
+
+Individuare il motivo dell’interferenza e isolare ulteriormente Swap.
+
+⸻
+
+18. DATABASE
+
+Se è necessario aggiungere persistenza:
+
+creare tabelle/collection dedicate allo Swap.
+
+Esempio:
+
+swaps
+
+swap_events
+
+swap_fees
+
+NON modificare inutilmente le strutture utilizzate dai pagamenti esistenti.
+
+⸻
+
+19. DEPLOY
+
+Prima del deploy:
+
+1. verificare TypeScript;
+2. verificare build production;
+3. eseguire test Swap;
+4. eseguire regression test dei pagamenti;
+5. verificare che USDA sia esclusa SOLO dallo Swap;
+6. verificare fee Alpha;
+7. verificare Admin monitoring;
+8. verificare logging;
+9. verificare che non siano state modificate API/payment endpoint esistenti.
+
+Deployment iniziale
+
+Preferire un feature flag.
+
+Possibilità:
+
+SWAP_ENABLED = false
+
+→ deploy del codice.
+
+Poi:
+
+SWAP_ENABLED = true
+
+solo dopo aver verificato che tutto sia isolato.
+
+⸻
+
+20. REGOLA FINALE
+
+QUESTO PROGETTO NON DEVE ROMPERE NULLA DI QUELLO CHE GIÀ FUNZIONA.
+
+Lo Swap è una nuova funzionalità indipendente.
+
+Non rifattorizzare il payment engine per “riutilizzare codice”.
+
+Non modificare codice esistente solo perché potrebbe essere più elegante.
+
+Non sostituire componenti di pagamento con componenti Swap.
+
+Non modificare WalletConnect.
+
+Non modificare il flusso di firma esistente.
+
+Non modificare la logica BTC appena corretta.
+
+Non modificare la gestione USDA fuori dallo Swap.
+
+Se trovi un conflitto architetturale:
+
+FERMATI → DOCUMENTA IL CONFLITTO → PROPONI UNA SOLUZIONE ISOLATA.
+
+OUTPUT OBBLIGATORIO PRIMA DEL DEPLOY
+
+Restituire:
+
+1. architettura implementata;
+2. file creati;
+3. file modificati;
+4. API/provider utilizzati;
+5. fee Alpha implementata;
+6. asset esclusi;
+7. test eseguiti;
+8. regression test pagamenti;
+9. risultati Admin monitoring;
+10. eventuali rischi residui.
+
+NON PUBBLICARE IN PRODUZIONE se esiste una regressione nei pagamenti esistenti.
+
+Il criterio di successo è:
+
+Swap funzionante + commissione Alpha 0,25% + USDA esclusa + monitoring completo in Admin + ZERO regressioni nella logica pagamenti esistente.
