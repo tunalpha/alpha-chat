@@ -1,0 +1,43 @@
+No. Non procederei ancora con l’implementazione della fee Li.Fi.
+
+Il risultato è chiaro: alphachat non è registrato, quindi oggi il parametro di fee viene rifiutato. Prima registriamo l’integrator e configuriamo i wallet.
+
+Puoi mandare all’agente questo prompt:
+
+STOP IMPLEMENTAZIONE Li.Fi — prima registrazione integrator
+
+Non modificare ancora il codice EVM swap e non implementare fee alternative.
+
+La verifica reale Li.Fi ha confermato:
+alphachat = NON REGISTRATO
+API error 1011: integrator non configurato per collecting fees.
+
+Per ora:
+
+* NON creare un nuovo integrator autonomamente.
+* NON scegliere/modificare fee wallet.
+* NON modificare la fee globale Alpha.
+* NON implementare una raccolta fee alternativa.
+* NON mostrare una fee come “raccolta” se non viene realmente raccolta.
+* NON toccare in alcun modo BTC/Lightning, Boltz, Breez, SwapRouter o la payment logic esistente.
+* NON attivare ulteriormente nulla oltre a quanto già configurato.
+
+Attendi la registrazione manuale dell’integrator Li.Fi.
+
+Quando ti comunicherò l’ID integrator ufficiale e la configurazione confermata, verifica nuovamente tramite API reale:
+
+1. integrator riconosciuto;
+2. fee collection attiva;
+3. fee 0,25% = 25 bps accettata;
+4. fee wallet configurato correttamente per Ethereum, Polygon e BSC;
+5. una quote reale contiene effettivamente la fee integrator.
+
+Solo dopo questa verifica procedi con l’integrazione della fee nel codice.
+
+Mantieni comunque l’architettura EVM completamente isolata da BTC/Lightning e conserva la possibilità di sostituire/configurare il provider senza modificare la UI o la payment logic.
+
+NON considerare la fee Li.Fi completata finché una chiamata API reale non dimostra che la fee viene effettivamente raccolta.
+
+E una cosa importante: non usare un altro ID al posto di alphachat senza che lo decidiamo noi. Prima registriamo quello che vogliamo realmente usare per Alpha Chat.
+
+Se vuoi, posso anche guidarti passo-passo nel portale Li.Fi per registrare alphachat e configurare i tre wallet.
