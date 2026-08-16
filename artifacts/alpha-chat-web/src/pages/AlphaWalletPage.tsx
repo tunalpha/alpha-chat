@@ -82,6 +82,7 @@ import {
 } from "../wallet/services/evm-signer";
 import {
   signAndBroadcastBtcTx,
+  BtcSendUncertainError,
   validateBtcAddress,
   getBtcSendPreview,
   satToBtc,
@@ -2670,6 +2671,7 @@ function SendView({ onBack, onSuccess, preselectedSymbol }: { onBack: () => void
   const [broadcastErr, setBroadcastErr] = useState<string | null>(null);
   // Esito Lightning incerto (timeout senza conferma): blocca il retry.
   const [lnUncertain, setLnUncertain] = useState(false);
+  const [btcUncertain, setBtcUncertain] = useState(false);
   const [pin, setPin]                   = useState("");
   const [pinErr, setPinErr]             = useState<string | null>(null);
 
@@ -2961,7 +2963,12 @@ function SendView({ onBack, onSuccess, preselectedSymbol }: { onBack: () => void
     } catch (e) {
       // SECURITY: clear PIN from React state on error too
       setPin("");
-      sendInProgressRef.current = false;
+      const uncertain = e instanceof BtcSendUncertainError;
+      // ANTI DOUBLE-SPEND: se la rete è caduta DOPO il broadcast, la TX
+      // potrebbe essere già in mempool. Teniamo il lock attivo per impedire
+      // il retry cieco (stesso pattern di Lightning + SparkSendUncertainError).
+      if (!uncertain) sendInProgressRef.current = false;
+      setBtcUncertain(uncertain);
       setBroadcastErr(e instanceof Error ? e.message : "Errore durante l'invio");
       setStep("error");
     }
@@ -3362,12 +3369,24 @@ function SendView({ onBack, onSuccess, preselectedSymbol }: { onBack: () => void
       <div className="aw-send-error-icon">❌</div>
       <h2>Invio fallito</h2>
       <div className="aw-error-box">{broadcastErr ?? "Errore sconosciuto"}</div>
+      {/* ANTI DOUBLE-SPEND BTC: rete caduta DOPO il broadcast → TX potrebbe essere in mempool */}
+      {btcUncertain && (
+        <div className="aw-uncertain-warning">
+          ⚠️ La connessione è caduta dopo la firma. Il BTC potrebbe essere già stato inviato alla rete.
+          {" "}<strong>Controlla il saldo e lo Storico prima di riprovare</strong> per evitare un doppio invio.
+        </div>
+      )}
       <div className="aw-btn-row">
         {/* ANTI DOUBLE-SPEND: esito incerto → niente "Riprova" (il pagamento potrebbe essere partito) */}
-        {!lnUncertain && (
+        {!lnUncertain && !btcUncertain && (
           <button className="aw-btn aw-btn--secondary" onClick={() => { setStep("confirm"); setBroadcastErr(null); }}>← Riprova</button>
         )}
-        <button className="aw-btn aw-btn--primary" onClick={onBack}>{lnUncertain ? "Vai allo Storico" : "Annulla"}</button>
+        <button
+          className="aw-btn aw-btn--primary"
+          onClick={() => { setBtcUncertain(false); sendInProgressRef.current = false; onBack(); }}
+        >
+          {lnUncertain || btcUncertain ? "Vai allo Storico" : "Annulla"}
+        </button>
       </div>
     </div>
   );

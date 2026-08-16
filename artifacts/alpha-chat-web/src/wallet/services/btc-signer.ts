@@ -27,8 +27,24 @@ import {
   apiWalletGetBtcUTXOs,
   apiWalletGetBtcFeeRate,
   apiWalletBroadcastBtcTx,
+  WalletNetworkError,
   type BtcUTXO,
 } from "../../lib/alpha-wallet-api";
+
+/**
+ * Lanciato quando il broadcast BTC ha ricevuto la richiesta dal backend
+ * ma la risposta HTTP è stata persa (rete iOS interrotta, timeout).
+ * La TX POTREBBE essere già in mempool — non permettere retry cieco.
+ */
+export class BtcSendUncertainError extends Error {
+  constructor() {
+    super(
+      "Connessione interrotta dopo la firma. La TX potrebbe essere già in mempool: " +
+      "verifica il saldo e lo storico prima di riprovare.",
+    );
+    this.name = "BtcSendUncertainError";
+  }
+}
 
 // ─── Costanti ──────────────────────────────────────────────────────────────
 
@@ -336,7 +352,16 @@ export async function signAndBroadcastBtcTx(
     const txHex  = bytesToHex(rawTx);
 
     // 6. Broadcast via backend proxy (backend never sees private key)
-    return apiWalletBroadcastBtcTx(txHex);
+    // ANTI DOUBLE-SPEND: se la rete cade DOPO che il backend ha chiamato
+    // Blockstream (WalletNetworkError), la TX potrebbe già essere in mempool.
+    // Rilanciamo BtcSendUncertainError invece di WalletNetworkError per
+    // impedire al chiamante di mostrare il bottone "Riprova".
+    try {
+      return await apiWalletBroadcastBtcTx(txHex);
+    } catch (e) {
+      if (e instanceof WalletNetworkError) throw new BtcSendUncertainError();
+      throw e;
+    }
   } finally {
     // 7. Zero out private key bytes
     keyPair.privateKey.fill(0);
