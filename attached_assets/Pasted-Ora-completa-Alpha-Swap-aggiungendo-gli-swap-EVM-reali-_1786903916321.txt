@@ -1,0 +1,409 @@
+Ora completa Alpha Swap aggiungendo gli swap EVM reali tramite Li.Fi, mantenendo invariato tutto ciò che già funziona per BTC ↔ Lightning.
+
+OBIETTIVO
+
+Alpha Swap deve diventare un’unica interfaccia intuitiva con:
+
+1. EVM → EVM
+2. EVM cross-chain
+3. BTC → Lightning
+4. Lightning → BTC
+
+La UI deve utilizzare il nuovo modello:
+
+Paga → Ricevi → Quote → Fee → Scambia
+
+NON creare una demo o uno swap simulato.
+
+⸻
+
+FASE 1 — READ-ONLY PRIMA DI MODIFICARE
+
+Prima analizza il repository e verifica:
+
+* chain EVM già supportate da Alpha Wallet;
+* token già supportati;
+* provider wallet utilizzato;
+* ThirdWeb;
+* WalletConnect;
+* eventuali RPC già configurati;
+* configurazione fee Alpha Swap;
+* eventuali secrets/env già presenti per Li.Fi;
+* architettura attuale di SwapView;
+* gestione firma/transazioni già utilizzata dall’Alpha Wallet.
+
+Non modificare nulla durante questa fase.
+
+Restituisci un breve piano tecnico prima di iniziare.
+
+⸻
+
+FASE 2 — INTEGRAZIONE Li.Fi
+
+Implementa l’integrazione reale Li.Fi per gli swap EVM.
+
+Usa esclusivamente API/SDK ufficiali e attuali di Li.Fi.
+
+NON inventare endpoint.
+
+NON creare mock quote.
+
+NON creare transazioni simulate.
+
+NON dichiarare operativo un percorso che Li.Fi non supporta realmente.
+
+L’integrazione deve permettere almeno:
+
+EVM → EVM stessa chain
+
+Esempio:
+
+USDA → USDC su BSC
+
+EVM → EVM cross-chain
+
+Esempio:
+
+USDA su BSC → USDC su Ethereum
+
+La lista di chain/token disponibili deve derivare dalla configurazione reale e dalle capacità di Li.Fi, non da valori hardcoded inventati.
+
+⸻
+
+FASE 3 — QUOTE
+
+Quando l’utente seleziona:
+
+Paga
+
+* token
+* chain
+* importo
+
+e:
+
+Ricevi
+
+* token
+* chain
+
+richiedi una quote reale Li.Fi.
+
+Mostra:
+
+Riceverai circa
+X TOKEN
+
+Fee Alpha Swap
+0,25%
+
+Fee provider
+X
+
+Network fee
+X
+
+Slippage
+X% quando applicabile.
+
+NON mostrare valori fittizi.
+
+Gestisci:
+
+* quote non disponibile;
+* token non supportato;
+* chain non supportata;
+* slippage insufficiente;
+* errore Li.Fi;
+* quote scaduta.
+
+⸻
+
+FASE 4 — FEE ALPHA
+
+La fee ufficiale di Alpha Swap è:
+
+0,25% = 25 bps
+
+NON cambiarla.
+
+NON usare 0,10%.
+
+La fee deve essere applicata una sola volta e deve essere calcolata/validata server-side quando l’architettura lo richiede.
+
+Deve essere mostrata chiaramente nella preview prima della conferma.
+
+Verifica inoltre dove confluisce la fee e mantieni i wallet/configurazioni già definiti per Alpha.
+
+NON cambiare autonomamente i wallet di raccolta.
+
+⸻
+
+FASE 5 — ESECUZIONE
+
+Dopo la quote l’utente preme:
+
+Scambia
+
+L’app deve:
+
+1. ottenere la route Li.Fi;
+2. preparare la transazione;
+3. chiedere la firma al wallet dell’utente;
+4. inviare la transazione;
+5. monitorare lo stato reale;
+6. mostrare il completamento.
+
+La transazione deve essere realmente firmabile dal wallet connesso.
+
+NON custodire le chiavi private.
+
+⸻
+
+FASE 6 — CROSS-CHAIN
+
+Per cross-chain:
+
+Esempio:
+
+Paga
+USDA · BNB Chain
+
+↓
+
+Ricevi
+USDC · Ethereum
+
+La UI deve mostrare chiaramente:
+
+Rete di partenza
+BNB Chain
+
+Rete di arrivo
+Ethereum
+
+Riceverai circa
+X USDC
+
+Fee Alpha
+0,25%
+
+Fee provider/network
+X
+
+Stato
+In elaborazione…
+
+Il completamento deve essere basato sullo stato reale della route Li.Fi.
+
+NON considerare completata la transazione semplicemente perché la TX sulla chain di partenza è confermata.
+
+⸻
+
+FASE 7 — SICUREZZA
+
+Implementa controlli contro:
+
+* doppio click;
+* doppia firma;
+* retry dopo TX già inviata;
+* refresh della PWA;
+* chiusura browser durante polling;
+* TX pending;
+* TX failed;
+* quote scaduta;
+* route fallita;
+* chain/network errata;
+* cambio account durante il processo.
+
+Una stessa operazione non deve poter essere eseguita due volte accidentalmente.
+
+⸻
+
+FASE 8 — RECOVERY
+
+Come già fatto per BTC → Lightning, l’utente deve poter chiudere e riaprire Alpha Wallet senza perdere lo stato dello swap.
+
+Persisti un identificativo sicuro dell’operazione e implementa il recupero dello stato reale.
+
+Al riavvio:
+
+Swap in corso
+
+→ recupera lo stato
+
+→ mostra:
+
+In attesa
+
+oppure
+
+Completato
+
+oppure
+
+Errore
+
+oppure
+
+Azione richiesta
+
+NON lasciare spinner infiniti.
+
+⸻
+
+FASE 9 — UI
+
+Mantieni la nuova UI appena implementata.
+
+Struttura:
+
+Paga
+
+[Token] [Rete]
+
+Importo
+
+↓
+
+Ricevi
+
+[Token] [Rete]
+
+≈ Importo
+
+↓
+
+Preview:
+
+Riceverai circa
+X
+
+Fee Alpha
+0,25%
+
+Fee provider
+X
+
+Network fee
+X
+
+Slippage
+X%
+
+[ Scambia ]
+
+Il selettore token deve essere intuitivo e mostrare:
+
+* logo;
+* ticker;
+* nome;
+* rete;
+* saldo.
+
+Il selettore rete deve essere altrettanto chiaro.
+
+⸻
+
+FASE 10 — BTC/LIGHTNING
+
+NON rompere ciò che è già implementato.
+
+Mantieni invariati:
+
+* BTC → Lightning;
+* Boltz;
+* recovery;
+* lockup;
+* idempotenza;
+* UI Paga/Ricevi;
+* Lightning → BTC hardening già applicato.
+
+Se trovi un problema nel modulo BTC/Lightning, NON correggerlo durante questa implementazione EVM senza prima segnalarlo.
+
+⸻
+
+FASE 11 — DISPONIBILITÀ
+
+Quando Li.Fi è realmente integrato:
+
+🟢 EVM Swap
+
+deve diventare disponibile nella UI.
+
+Se una specifica chain/token non è supportata:
+
+NON mostrarla come disponibile.
+
+Mostra solo combinazioni realmente supportate.
+
+⸻
+
+FASE 12 — TEST
+
+Prima del deploy esegui test reali e automatizzati per:
+
+Same-chain
+
+EVM token A → EVM token B
+
+Cross-chain
+
+EVM token A chain A → EVM token B chain B
+
+Errori
+
+* quote fallita;
+* route non disponibile;
+* utente rifiuta firma;
+* TX fallisce;
+* TX pending;
+* cambio rete;
+* cambio account;
+* refresh;
+* chiusura PWA;
+* doppio click.
+
+Fee
+
+Verifica che:
+
+Alpha Swap = 0,25%
+
+e che non venga applicata due volte.
+
+BTC/Lightning regression
+
+Esegui tutti i test già esistenti e assicurati che l’integrazione EVM non abbia modificato il comportamento BTC/Lightning.
+
+⸻
+
+FASE 13 — PRIMA DEL DEPLOY
+
+NON fare deploy automaticamente.
+
+Restituisci:
+
+1. chain EVM supportate;
+2. token supportati;
+3. percorsi same-chain disponibili;
+4. percorsi cross-chain disponibili;
+5. integrazione Li.Fi utilizzata;
+6. gestione quote;
+7. gestione fee 0,25%;
+8. gestione firma;
+9. gestione recovery;
+10. risultati test;
+11. file modificati;
+12. eventuali env/secrets necessari;
+13. eventuali limitazioni rimaste.
+
+REGOLA FONDAMENTALE
+
+Non voglio una UI che sembra avere EVM Swap.
+
+Voglio un EVM Swap realmente operativo, con quote reali, transazioni reali, firma reale, monitoraggio reale e recovery.
+
+E voglio mantenere separati e funzionanti i flussi BTC ↔ Lightning già implementati.
+
+NON fare deploy finché il report finale non è completo.

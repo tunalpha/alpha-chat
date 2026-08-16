@@ -1,0 +1,89 @@
+La nuova UI Alpha Swap e il primo hardening LN→BTC sono stati implementati.
+
+Risultati attuali:
+
+* BreezSparkBtcLnProvider.ts hardening applicato.
+* _lnBtcExecuting impedisce doppia esecuzione nella stessa sessione.
+* Promise.race con timeout 60 secondi.
+* aw_lnbtc_ikey persistente in sessionStorage.
+* clearIdempotencyKey() disponibile.
+* SwapView.tsx riscritto con UI Paga/Ricevi.
+* 1.177/1.177 test passati.
+* Fee Alpha Swap BTC→LN confermata a 25 bps = 0,25%.
+* EVM/Li.Fi rimane “In arrivo”.
+
+NON modificare codice in questa fase.
+
+Voglio verificare una sola cosa: LN→BTC è realmente recuperabile e idempotente anche se la PWA viene chiusa durante spark.send()?
+
+Verifica obbligatoria
+
+Ricostruisci il flusso esatto:
+
+1. Utente inserisce importo.
+2. Inserisce indirizzo BTC.
+3. Riceve la quote.
+4. Preme “Scambia”.
+5. Viene creato/utilizzato aw_lnbtc_ikey.
+6. Parte spark.send().
+7. Immagina che la PWA venga chiusa immediatamente dopo l’inizio di spark.send().
+8. L’utente riapre Alpha Wallet.
+9. Verifica cosa succede.
+
+Devi determinare se l’app può distinguere realmente tra:
+
+* pagamento non ancora iniziato;
+* pagamento già iniziato;
+* pagamento completato;
+* pagamento fallito;
+* pagamento sconosciuto perché il browser è stato chiuso.
+
+Verifica idempotenza
+
+Determina se aw_lnbtc_ikey viene effettivamente utilizzata dal backend/provider per impedire una seconda esecuzione oppure se viene soltanto conservata nel browser.
+
+Verifica anche:
+
+* reload;
+* nuova tab;
+* doppio click;
+* timeout locale mentre spark.send() continua;
+* riapertura PWA;
+* retry;
+* stesso swap eseguito da due contesti JavaScript.
+
+Non considerare _lnBtcExecuting sufficiente come idempotenza globale.
+
+Verifica recovery
+
+Dimostra se dopo la chiusura della PWA esiste un modo per interrogare lo stato reale dell’operazione.
+
+Se NON esiste, dichiaralo chiaramente.
+
+Non chiamare “recovery completo” la semplice persistenza della idempotency key.
+
+Output
+
+Restituisci:
+
+A. Idempotenza reale: completa / parziale / assente
+
+B. Recovery reale: completo / parziale / assente
+
+C. Cosa succede se la PWA viene chiusa durante spark.send()
+
+D. Possibilità di doppio pagamento dopo reload/retry
+
+E. Rischio residuo con fondi reali
+
+F. Fix minimo eventualmente necessario
+
+NON applicare alcun fix.
+
+NON modificare fee.
+
+NON modificare la UI.
+
+NON modificare BTC→Lightning.
+
+Dopo questo audit decideremo se LN→BTC può essere dichiarato pronto per un test con fondi reali.
