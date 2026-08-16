@@ -224,17 +224,11 @@ function bytesToHex(bytes: Uint8Array): string {
   return Array.from(bytes).map(b => b.toString(16).padStart(2, "0")).join("");
 }
 
-/**
- * Converts a txid from display/explorer format (big-endian)
- * to raw byte order (little-endian, reversed) for Bitcoin protocol.
- */
-function displayTxidToRaw(txidHex: string): Uint8Array {
-  const bytes = new Uint8Array(txidHex.length / 2);
-  for (let i = 0; i < txidHex.length; i += 2) {
-    bytes[i / 2] = parseInt(txidHex.slice(i, i + 2), 16);
-  }
-  return bytes.reverse();
-}
+// NOTE: @scure/btc-signer v2.3.0 stores txid internally in DISPLAY format (big-endian)
+// and reverses bytes automatically when serializing the raw TX via P.bytes(32, true).
+// Do NOT reverse the txid bytes before passing to addInput — the library handles it.
+// Pass utxo.txid as a plain hex string (display format) and let normalizeInput do
+// hex.decode() without reversing. Double-reversing caused bad-txns-inputs-missingorspent.
 
 // ─── Preview (without signing) ─────────────────────────────────────────────
 
@@ -316,7 +310,7 @@ export async function signAndBroadcastBtcTx(
 
     for (const utxo of selection.selected) {
       tx.addInput({
-        txid:        displayTxidToRaw(utxo.txid),
+        txid:        utxo.txid, // display-format hex string; library reverses internally via P.bytes(32,true)
         index:       utxo.vout,
         witnessUtxo: {
           script: payment.script,
