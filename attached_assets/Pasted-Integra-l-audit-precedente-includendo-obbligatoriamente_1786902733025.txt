@@ -1,0 +1,114 @@
+Integra l’audit precedente includendo obbligatoriamente anche tutto il sistema Swap EVM.
+
+L’obiettivo è mappare l’intero Alpha Swap attualmente implementato, senza modificare nulla.
+
+1. SWAP EVM
+
+Verifica separatamente:
+
+* EVM → EVM
+* chain → chain
+* token → token
+* eventuali swap sulla stessa chain
+* eventuali cross-chain
+* eventuali EVM ↔ BTC supportati dall’architettura attuale
+
+Per ogni flusso identifica:
+
+* chain sorgente;
+* token sorgente;
+* chain destinazione;
+* token destinazione;
+* provider utilizzato;
+* ruolo effettivo di Li.Fi;
+* endpoint quote;
+* endpoint/route di esecuzione;
+* wallet che firma;
+* gestione della transazione;
+* monitoraggio dello stato;
+* settlement;
+* gestione degli errori;
+* recovery dopo refresh/chiusura PWA;
+* fee Alpha dello 0,10%;
+* wallet configurato che riceve la fee.
+
+2. LI.FI
+
+Verifica nel codice cosa è realmente implementato tramite Li.Fi.
+
+NON assumere che una funzione sia operativa solo perché esiste nella UI o perché Li.Fi è configurato.
+
+Per ogni funzione restituisci:
+
+Funzione	Codice presente	Operativa	Provider	Testata
+EVM → EVM	?	?	?	?
+EVM cross-chain	?	?	?	?
+EVM → BTC	?	?	?	?
+BTC → EVM	?	?	?	?
+BTC → Lightning	?	?	?	?
+Lightning → BTC	?	?	?	?
+
+3. UI / ARCHITETTURA
+
+Verifica perché nella schermata attuale vediamo:
+
+BTC → ⚡ LN → BTC
+
+e se gli swap EVM sono:
+
+* nella stessa pagina;
+* in un selettore/modal;
+* in un’altra modalità;
+* nascosti da una condizione;
+* oppure non ancora collegati alla nuova UI.
+
+Identifica il componente principale che dovrebbe permettere all’utente di scegliere:
+
+EVM / BTC / Lightning
+
+e le relative direzioni.
+
+4. STATO REALE DEL PRODOTTO
+
+Dividi chiaramente le funzionalità in:
+
+🟢 Completamente implementato e pronto al test
+
+🟡 Parzialmente implementato / richiede verifica
+
+🔴 Solo UI / non operativo
+
+5. SICUREZZA
+
+Per gli swap EVM verifica anche:
+
+* doppia esecuzione;
+* retry dopo una TX già firmata;
+* TX in mempool ma frontend offline;
+* polling;
+* refresh della PWA;
+* idempotenza;
+* recovery;
+* quote scaduta;
+* slippage;
+* chain/network errata;
+* fallimento del bridge;
+* fee 0,10% applicata una sola volta.
+
+6. OUTPUT FINALE
+
+Restituisci una mappa completa:
+
+Alpha Swap
+→ EVM Swap
+→ BTC Swap
+→ Lightning Swap
+→ Cross-chain
+→ Provider
+→ Fee
+→ Settlement
+→ Recovery
+
+Per ogni ramo indica precisamente cosa è già funzionante oggi e cosa manca.
+
+IMPORTANTE: READ-ONLY. Nessuna modifica, nessun deploy e nessun cambio di configurazione.

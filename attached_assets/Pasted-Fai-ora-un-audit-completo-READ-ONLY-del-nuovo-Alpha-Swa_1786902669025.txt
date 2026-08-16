@@ -1,0 +1,107 @@
+Fai ora un audit completo READ-ONLY del nuovo Alpha Swap, perché dopo il fix la schermata è finalmente accessibile ma la UX non è sufficientemente chiara e voglio prima capire esattamente come funziona il flusso reale.
+
+NON modificare codice, UI, backend, provider, secrets o configurazioni.
+
+1. Mappa il flusso BTC → Lightning
+
+Descrivi esattamente:
+
+* cosa deve inserire l’utente;
+* in quale unità;
+* quale wallet deve firmare;
+* quale transazione on-chain viene effettuata;
+* quale endpoint/backend la riceve;
+* quale provider viene utilizzato;
+* come viene effettuata la conversione BTC → Lightning;
+* come viene determinato l’importo Lightning ricevuto;
+* dove viene inviata la liquidità Lightning;
+* come viene gestita la fee dello 0,10%;
+* quale wallet riceve la fee;
+* quale stato attraversa lo swap fino a completed.
+
+2. Mappa il flusso Lightning → BTC
+
+Descrivi esattamente:
+
+* cosa deve inserire l’utente;
+* se deve inserire una Lightning invoice;
+* come viene identificata la destinazione BTC;
+* quale transazione Lightning viene effettuata;
+* quale provider esegue il bridge/swap;
+* come viene effettuato il pagamento BTC on-chain;
+* dove viene inviato il BTC;
+* come viene applicata la fee dello 0,10%;
+* quali stati attraversa lo swap.
+
+3. Verifica la UI attuale
+
+Analizza la schermata mostrata all’utente e dimmi:
+
+* perché compare “BTC → ⚡ LN ⚡ → BTC”;
+* come viene selezionata la direzione;
+* cosa significa esattamente “Attivo”;
+* cosa significa “Importo BTC on-chain (sat)”;
+* cosa succede quando viene premuto “Calcola quote”;
+* quali campi dovrebbero apparire successivamente;
+* se attualmente l’utente può capire senza documentazione quale operazione sta effettuando.
+
+NON modificare la UI: voglio prima la diagnosi.
+
+4. Verifica implementazione reale
+
+Per ciascuna direzione:
+
+Funzione	Implementata	Endpoint	Provider	Testata
+BTC → Lightning	?	?	?	?
+Lightning → BTC	?	?	?	?
+Quote	?	?	?	?
+Fee 0,10%	?	?	?	?
+Settlement	?	?	?	?
+Recovery	?	?	?	?
+
+Non dare per implementata una funzione solo perché esiste nella UI.
+
+5. Verifica provider
+
+Conferma quale provider viene effettivamente utilizzato nel codice per:
+
+* BTC on-chain;
+* Lightning;
+* eventuale bridge;
+* quote;
+* settlement.
+
+Se è presente Li.Fi, specifica esattamente quale parte del flusso gestisce Li.Fi e quale parte richiede un provider Lightning separato.
+
+6. Verifica sicurezza del denaro
+
+Prima di qualsiasi test con fondi reali, verifica:
+
+* replay/doppio processamento;
+* idempotenza;
+* recovery dopo refresh;
+* recovery dopo chiusura PWA;
+* timeout;
+* transazione on-chain già confermata ma frontend offline;
+* swap rimasto processing;
+* impossibilità di pagare due volte lo stesso swap;
+* gestione degli errori del provider;
+* gestione della fee 0,10%.
+
+7. Conclusione
+
+Restituisci:
+
+A. Come funziona realmente oggi
+
+B. Cosa è completamente implementato
+
+C. Cosa è parzialmente implementato
+
+D. Cosa è solo UI/mock/non operativo
+
+E. Cosa manca prima di poter utilizzare lo Swap con denaro reale
+
+F. Perché la schermata attuale è poco comprensibile e quali modifiche UX sarebbero necessarie
+
+IMPORTANTE: READ-ONLY. Nessun fix e nessun deploy in questa fase.
