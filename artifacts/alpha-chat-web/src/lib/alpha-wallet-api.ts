@@ -51,15 +51,24 @@ async function walletRequest<T>(path: string, opts: RequestInit = {}): Promise<T
       // Backend può restituire:
       //   { message: "stringa" }
       //   { error: "stringa" }
-      //   { error: { code: "RATE_LIMIT", message: "stringa" } }  ← rate limiter
-      // In tutti i casi estraiamo una stringa leggibile.
+      //   { error: { code, message, details? } }  ← errorResponse standard + rate limiter
+      // Priorità: details.blockstreamError > error.message > error (stringa)
       const raw = j?.message ?? j?.error;
       if (typeof raw === "string" && raw) {
         msg = raw;
       } else if (raw && typeof raw === "object") {
-        // Oggetto annidato (es. rate limiter): cerca .message dentro
-        const nested = (raw as Record<string, unknown>).message;
-        msg = typeof nested === "string" && nested ? nested : JSON.stringify(raw);
+        const obj     = raw as Record<string, unknown>;
+        const details = obj.details as Record<string, unknown> | null | undefined;
+        // Mostra l'errore grezzo di Blockstream se disponibile (più informativo del codice)
+        const blockstreamErr = details?.blockstreamError;
+        const nested         = obj.message;
+        if (typeof blockstreamErr === "string" && blockstreamErr) {
+          msg = blockstreamErr;
+        } else if (typeof nested === "string" && nested) {
+          msg = nested;
+        } else {
+          msg = JSON.stringify(raw);
+        }
       }
     } catch { /* ignore */ }
     throw new Error(msg);

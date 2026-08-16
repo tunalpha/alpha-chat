@@ -383,9 +383,12 @@ export async function broadcastBtcTx(
 
     if (!resp.ok) {
       const errText = await resp.text().catch(() => `HTTP ${resp.status}`);
-      if (errText.includes("dust")) throw new AppError("BTC_DUST", 400);
+      // Log the raw Blockstream rejection so production logs are searchable
+      logger.warn({ blockstreamStatus: resp.status, blockstreamError: errText }, "[AW] Blockstream BTC broadcast rejected");
+      if (errText.includes("dust"))    throw new AppError("BTC_DUST",    400);
       if (errText.includes("mempool")) throw new AppError("BTC_MEMPOOL", 400);
-      throw new AppError("BTC_BROADCAST_ERROR", 502);
+      // Pass the raw Blockstream message in details so the client can display it
+      throw new AppError("BTC_BROADCAST_ERROR", 502, undefined, { blockstreamError: errText });
     }
 
     const txid = await resp.text(); // Blockstream returns txid as plain text
