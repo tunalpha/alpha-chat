@@ -1574,9 +1574,69 @@ function AssetList({ chainId, chainBalance, btcBalance, prices, loading, currenc
   // Escludi i token nativi (contractAddress null/undefined) — già mostrati nella sezione dedicata sopra
   const allTokenDefs = [...verifiedTokens, ...wallet.customTokens].filter(t => t.contractAddress != null);
 
+  // USDA è la moneta nativa della piattaforma → mostrata prima di tutto, incluso il token nativo della chain
+  const usdaDef    = allTokenDefs.find(t => t.symbol === "USDA");
+  const otherDefs  = allTokenDefs.filter(t => t.symbol !== "USDA");
+
+  const renderErc20 = (t: typeof allTokenDefs[number]) => {
+    const balItem = chainBalance?.tokens.find(
+      b => b.contractAddress?.toLowerCase() === t.contractAddress?.toLowerCase()
+    );
+    const bal    = balItem?.rawBalance ?? 0n;
+    const fmtBal = loading ? "…" : formatCrypto(bal, t.decimals, t.symbol);
+    const sym    = t.symbol.toLowerCase() as keyof AssetPrices;
+    const price  = prices ? prices[sym] as { usd: number; eur: number } | undefined : null;
+    const fiat   = !loading && price ? formatFiat(bal, t.decimals, price, currency) : null;
+    const isVerifiedToken = t.verification === "verified";
+    const isCustomToken   = t.verification === "custom";
+    const tokenDetail: TokenDetailInfo = {
+      symbol: t.symbol, name: t.name, chainId: t.chainId,
+      isNative: false, contractAddress: t.contractAddress ?? undefined,
+      decimals: t.decimals, balance: bal, fiatStr: fiat, verified: isVerifiedToken,
+    };
+    return (
+      <div
+        key={`${t.chainId}-${t.contractAddress}`}
+        className={`aw-asset-item${onSelectToken ? " aw-asset-item--tappable" : ""}`}
+        role={onSelectToken ? "button" : undefined}
+        tabIndex={onSelectToken ? 0 : undefined}
+        onClick={() => onSelectToken?.(tokenDetail)}
+        onKeyDown={e => e.key === "Enter" && onSelectToken?.(tokenDetail)}
+      >
+        <div className="aw-asset-icon"><CoinIcon symbol={t.symbol} /></div>
+        <div className="aw-asset-info">
+          <div className="aw-asset-name">
+            {t.symbol}
+            {isVerifiedToken
+              ? <span className="aw-badge-verified" title="Token verificato">✅</span>
+              : <span className="aw-badge-custom" title="Token custom">⚠️</span>
+            }
+          </div>
+          <div className="aw-asset-network">{t.name}</div>
+        </div>
+        <div className="aw-asset-balance-col">
+          <div className="aw-asset-balance">{fmtBal}</div>
+          {fiat && <div className="aw-asset-fiat">{fiat}</div>}
+        </div>
+        {onSelectToken && <span className="aw-asset-chevron">›</span>}
+        {isCustomToken && t.contractAddress && (
+          <button
+            className="aw-asset-remove-btn"
+            title="Rimuovi token"
+            onClick={e => { e.stopPropagation(); void wallet.removeToken(t.chainId, t.contractAddress!); }}
+            aria-label={`Rimuovi ${t.symbol}`}
+          >✕</button>
+        )}
+      </div>
+    );
+  };
+
   return (
     <div className="aw-asset-list">
-      {/* Native token */}
+      {/* USDA — moneta nativa della piattaforma, sempre prima */}
+      {usdaDef && chainId === 137 && renderErc20(usdaDef)}
+
+      {/* Native token della chain (POL / ETH / BNB) */}
       {chainBalance && (() => {
         const n = chainBalance.native;
         const nKey = chainId === 1 ? "eth" : chainId === 137 ? "pol" : "bnb";
@@ -1608,60 +1668,8 @@ function AssetList({ chainId, chainBalance, btcBalance, prices, loading, currenc
         );
       })()}
 
-      {/* ERC-20 tokens */}
-      {allTokenDefs.map(t => {
-        const balItem = chainBalance?.tokens.find(
-          b => b.contractAddress?.toLowerCase() === t.contractAddress?.toLowerCase()
-        );
-        const bal    = balItem?.rawBalance ?? 0n;
-        const fmtBal = loading ? "…" : formatCrypto(bal, t.decimals, t.symbol);
-        const sym    = t.symbol.toLowerCase() as keyof AssetPrices;
-        const price  = prices ? prices[sym] as { usd: number; eur: number } | undefined : null;
-        const fiat   = !loading && price ? formatFiat(bal, t.decimals, price, currency) : null;
-        const isVerifiedToken = t.verification === "verified";
-        const isCustomToken   = t.verification === "custom";
-        const tokenDetail: TokenDetailInfo = {
-          symbol: t.symbol, name: t.name, chainId: t.chainId,
-          isNative: false, contractAddress: t.contractAddress ?? undefined,
-          decimals: t.decimals, balance: bal, fiatStr: fiat, verified: isVerifiedToken,
-        };
-        return (
-          <div
-            key={`${t.chainId}-${t.contractAddress}`}
-            className={`aw-asset-item${onSelectToken ? " aw-asset-item--tappable" : ""}`}
-            role={onSelectToken ? "button" : undefined}
-            tabIndex={onSelectToken ? 0 : undefined}
-            onClick={() => onSelectToken?.(tokenDetail)}
-            onKeyDown={e => e.key === "Enter" && onSelectToken?.(tokenDetail)}
-          >
-            <div className="aw-asset-icon"><CoinIcon symbol={t.symbol} /></div>
-            <div className="aw-asset-info">
-              <div className="aw-asset-name">
-                {t.symbol}
-                {isVerifiedToken
-                  ? <span className="aw-badge-verified" title="Token verificato">✅</span>
-                  : <span className="aw-badge-custom" title="Token custom">⚠️</span>
-                }
-              </div>
-              <div className="aw-asset-network">{t.name}</div>
-            </div>
-            <div className="aw-asset-balance-col">
-              <div className="aw-asset-balance">{fmtBal}</div>
-              {fiat && <div className="aw-asset-fiat">{fiat}</div>}
-            </div>
-            {onSelectToken && <span className="aw-asset-chevron">›</span>}
-            {/* Phase F: remove custom token button */}
-            {isCustomToken && t.contractAddress && (
-              <button
-                className="aw-asset-remove-btn"
-                title="Rimuovi token"
-                onClick={e => { e.stopPropagation(); void wallet.removeToken(t.chainId, t.contractAddress!); }}
-                aria-label={`Rimuovi ${t.symbol}`}
-              >✕</button>
-            )}
-          </div>
-        );
-      })}
+      {/* Restanti ERC-20 (USDA già renderizzata sopra) */}
+      {otherDefs.map(renderErc20)}
 
       {/* Placeholder rows while loading */}
       {loading && !chainBalance && [1, 2, 3].map(i => (
