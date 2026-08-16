@@ -2436,6 +2436,44 @@ function SendView({ onBack, onSuccess }: { onBack: () => void; onSuccess: () => 
   }, [chainId, chainBalance]);
   const [recipient, setRecipient]       = useState("");
   const [amountStr, setAmountStr]       = useState("");
+  const qrFileRef                       = useRef<HTMLInputElement>(null);
+
+  // QR scan via camera (jsqr)
+  const handleQrFile = useCallback(async (file: File) => {
+    try {
+      const jsQR = (await import("jsqr")).default;
+      const bitmap = await createImageBitmap(file);
+      const canvas = document.createElement("canvas");
+      canvas.width = bitmap.width; canvas.height = bitmap.height;
+      const ctx = canvas.getContext("2d")!;
+      ctx.drawImage(bitmap, 0, 0);
+      const imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      const result = jsQR(imgData.data, imgData.width, imgData.height);
+      if (result) {
+        let addr = result.data.trim();
+        if (addr.startsWith("ethereum:")) addr = addr.slice(9).split("?")[0];
+        else if (addr.startsWith("bitcoin:")) addr = addr.slice(8).split("?")[0];
+        setRecipient(addr); setRecipientErr(null);
+      } else {
+        setRecipientErr("Nessun QR trovato nell'immagine");
+      }
+    } catch { setRecipientErr("Errore nella lettura del QR"); }
+  }, []);
+
+  // Fraction shortcut: apply % of balance (always sets crypto mode)
+  const applyFraction = useCallback((num: number, denom: number) => {
+    const a = selectedAsset;
+    if (!a || a.balance === 0n) return;
+    const raw = a.balance * BigInt(num) / BigInt(denom);
+    // bigint → decimal string without floating-point loss
+    const divisor = 10n ** BigInt(a.decimals);
+    const whole = raw / divisor;
+    const frac  = raw % divisor;
+    const str   = frac === 0n
+      ? whole.toString()
+      : `${whole}.${frac.toString().padStart(a.decimals, "0").replace(/0+$/, "")}`;
+    setInputMode("crypto"); setAmountStr(str); setAmountErr(null); setPendingRaw(null);
+  }, [selectedAsset]);
   const [inputMode, setInputMode]       = useState<"crypto" | "eur" | "usd">("crypto");
   const [pendingRaw, setPendingRaw]     = useState<bigint | null>(null); // raw bigint confirmed in handleProceed
   const [recipientErr, setRecipientErr] = useState<string | null>(null);
@@ -2837,16 +2875,38 @@ function SendView({ onBack, onSuccess }: { onBack: () => void; onSuccess: () => 
 
         {/* Recipient */}
         <label className="aw-label">Indirizzo destinatario</label>
-        <input
-          type="text"
-          className={`aw-input ${recipientErr ? "aw-input--error" : ""}`}
-          value={recipient}
-          onChange={e => { setRecipient(e.target.value.trim()); setRecipientErr(null); }}
-          placeholder={isBtc ? "bc1q… oppure 1…" : "0x…"}
-          autoComplete="off"
-          autoCapitalize="none"
-          spellCheck={false}
-        />
+        <div className="aw-input-with-action">
+          <input
+            type="text"
+            className={`aw-input ${recipientErr ? "aw-input--error" : ""}`}
+            value={recipient}
+            onChange={e => { setRecipient(e.target.value.trim()); setRecipientErr(null); }}
+            placeholder={isBtc ? "bc1q… oppure 1…" : "0x…"}
+            autoComplete="off"
+            autoCapitalize="none"
+            spellCheck={false}
+          />
+          <button
+            type="button"
+            className="aw-qr-scan-btn"
+            title="Scansiona QR"
+            aria-label="Scansiona codice QR"
+            onClick={() => qrFileRef.current?.click()}
+          >
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/>
+              <path d="M14 14h2v2h-2zM18 14h3M14 18v3M18 18h3v3h-3z"/>
+            </svg>
+          </button>
+          <input
+            ref={qrFileRef}
+            type="file"
+            accept="image/*"
+            capture="environment"
+            style={{ display: "none" }}
+            onChange={e => { const f = e.target.files?.[0]; if (f) void handleQrFile(f); e.target.value = ""; }}
+          />
+        </div>
         {recipientErr && <div className="aw-error">{recipientErr}</div>}
 
         {/* Amount — with native / EUR / USD toggle */}
@@ -2880,6 +2940,20 @@ function SendView({ onBack, onSuccess }: { onBack: () => void; onSuccess: () => 
             USD $
           </button>
         </div>
+
+        {/* % fraction shortcuts */}
+        {selectedAsset && selectedAsset.balance > 0n && (
+          <div className="aw-fraction-btns">
+            {([10, 25, 50] as const).map(pct => (
+              <button key={pct} type="button" className="aw-fraction-btn" onClick={() => applyFraction(pct, 100)}>
+                {pct}%
+              </button>
+            ))}
+            <button type="button" className="aw-fraction-btn aw-fraction-btn--max" onClick={() => applyFraction(1, 1)}>
+              Max
+            </button>
+          </div>
+        )}
 
         {/* Amount input */}
         <div className="aw-amount-row">

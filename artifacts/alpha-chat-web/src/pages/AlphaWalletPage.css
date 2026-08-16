@@ -840,6 +840,69 @@
   text-align: right;
   margin-top: -8px;
 }
+/* ── Input with action button (QR) ──────────────────────────────────────────── */
+.aw-input-with-action {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+.aw-input-with-action .aw-input {
+  flex: 1;
+  padding-right: 44px;
+}
+.aw-qr-scan-btn {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: rgba(255,255,255,.55);
+  border-radius: 8px;
+  transition: color .15s, background .15s;
+  padding: 0;
+  -webkit-tap-highlight-color: transparent;
+}
+.aw-qr-scan-btn:hover, .aw-qr-scan-btn:active {
+  color: var(--accent, #6366f1);
+  background: rgba(99,102,241,.12);
+}
+
+/* ── Fraction shortcuts (10% 25% 50% Max) ───────────────────────────────────── */
+.aw-fraction-btns {
+  display: flex;
+  gap: 8px;
+  margin-top: -6px;
+}
+.aw-fraction-btn {
+  flex: 1;
+  padding: 7px 0;
+  background: rgba(255,255,255,.06);
+  border: 1px solid rgba(255,255,255,.1);
+  border-radius: 8px;
+  color: rgba(255,255,255,.75);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background .15s, border-color .15s, color .15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.aw-fraction-btn:hover, .aw-fraction-btn:active {
+  background: rgba(99,102,241,.18);
+  border-color: rgba(99,102,241,.45);
+  color: #fff;
+}
+.aw-fraction-btn--max {
+  color: var(--accent, #6366f1);
+  border-color: rgba(99,102,241,.3);
+}
+
 .aw-amount-row {
   display: flex;
   align-items: center;
