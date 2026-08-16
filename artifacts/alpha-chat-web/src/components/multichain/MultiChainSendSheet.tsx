@@ -1097,18 +1097,19 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
               !isConnected ? (
                 <div className="sp-wallet-prompt">
                   <p className="sp-wallet-prompt-text">Connetti il wallet per firmare la transazione</p>
-                  <div className="usda-connect-btn-wrap">
+                  {/* onClickCapture: su iOS fire trust:// nel tick sincrono del tap,
+                      prima che ThirdWeb apra il modal → Trust Wallet si apre subito
+                      mentre la sessione WC si stabilisce in background. */}
+                  <div
+                    className="usda-connect-btn-wrap"
+                    onClickCapture={() => {
+                      if (/iphone|ipad|ipod/i.test(navigator.userAgent)) {
+                        window.location.href = "trust://";
+                      }
+                    }}
+                  >
                     <ConnectButton client={client} chain={evmChain ?? polygon} wallets={network === "bsc" ? walletsBsc : wallets} appMetadata={appMetadata} />
                   </div>
-                  {/iphone|ipad|ipod/i.test(navigator.userAgent) && (
-                    <button
-                      type="button"
-                      onClick={() => { window.location.href = "trust://"; }}
-                      style={{ marginTop: 10, background: "none", border: "none", color: "rgba(167,139,250,0.85)", fontSize: "0.82em", cursor: "pointer", textDecoration: "underline" }}
-                    >
-                      → Hai già Trust Wallet? Aprila qui
-                    </button>
-                  )}
                 </div>
               ) : (
                 <div className="sp-wallet-ready">
@@ -1229,18 +1230,16 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
               !isConnected ? (
                 <div className="sp-wallet-prompt">
                   <p className="sp-wallet-prompt-text">Connetti il wallet per firmare</p>
-                  <div className="usda-connect-btn-wrap">
+                  <div
+                    className="usda-connect-btn-wrap"
+                    onClickCapture={() => {
+                      if (/iphone|ipad|ipod/i.test(navigator.userAgent)) {
+                        window.location.href = "trust://";
+                      }
+                    }}
+                  >
                     <ConnectButton client={client} chain={evmChain ?? polygon} wallets={network === "bsc" ? walletsBsc : wallets} appMetadata={appMetadata} />
                   </div>
-                  {/iphone|ipad|ipod/i.test(navigator.userAgent) && (
-                    <button
-                      type="button"
-                      onClick={() => { window.location.href = "trust://"; }}
-                      style={{ marginTop: 10, background: "none", border: "none", color: "rgba(167,139,250,0.85)", fontSize: "0.82em", cursor: "pointer", textDecoration: "underline" }}
-                    >
-                      → Hai già Trust Wallet? Aprila qui
-                    </button>
-                  )}
                 </div>
               ) : (
                 <button
