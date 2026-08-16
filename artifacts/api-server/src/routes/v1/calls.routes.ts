@@ -37,6 +37,14 @@ const getIceConfig: RequestHandler = (_req, res) => {
     if (turnUsername) entry.username   = turnUsername;
     if (turnPassword) entry.credential = turnPassword;
     servers.push(entry);
+  } else {
+    // ⚠️ TURN non configurato: chiamate tra reti mobili diverse (carrier NAT simmetrico)
+    // rischiano audio monodirezionale o assente. Per abilitare TURN impostare le env:
+    //   TURN_URLS=turn:yourserver.com:3478,turns:yourserver.com:443
+    //   TURN_USERNAME=username
+    //   TURN_PASSWORD=password
+    // Servizi consigliati: Metered (metered.ca), Xirsys, Twilio NTS, Cloudflare Calls.
+    console.warn('[ICE] ⚠️  Nessun TURN configurato — chiamate iOS↔Android su 4G potrebbero avere audio monodirezionale.');
   }
 
   // STUN aggiuntivi opzionali
