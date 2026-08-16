@@ -1,0 +1,768 @@
+Certo. Questo è il prompt che darei a Power, aggiungendo BTC ↔ Lightning come provider obbligatorio nella V1, ma mantenendo tutto completamente isolato.
+
+ALPHA SWAP V1 — LI.FI + BTC/LIGHTNING
+
+OBIETTIVO
+
+Procedere con l’implementazione completa del modulo Alpha Swap, mantenendolo totalmente isolato dalla payment logic esistente.
+
+La V1 deve avere due integrazioni provider:
+
+PROVIDER 1 — LI.FI
+
+Responsabile di:
+
+* swap EVM;
+* cross-chain;
+* asset/reti supportati da LI.FI;
+* Bitcoin on-chain quando la route LI.FI lo supporta.
+
+PROVIDER 2 — BTC/LIGHTNING
+
+Responsabile esclusivamente di:
+
+* BTC Mainnet → BTC Lightning;
+* BTC Lightning → BTC Mainnet.
+
+Il provider BTC/Lightning deve essere scelto verificando prima la documentazione ufficiale e la disponibilità di:
+
+* submarine swap;
+* reverse submarine swap;
+* API;
+* quote;
+* monitoring;
+* gestione degli stati;
+* supporto non-custodial;
+* possibilità di applicare una fee integrator/partner/affiliate.
+
+NON scegliere un provider BTC/Lightning arbitrariamente.
+
+Prima dell’integrazione verificare quale provider soddisfa meglio questi requisiti e riportare la scelta.
+
+⸻
+
+1. ARCHITETTURA
+
+Creare un’astrazione comune:
+
+SwapProvider
+
+con adapter separati:
+
+LiFiSwapProvider
+
+BitcoinLightningSwapProvider
+
+La UI NON deve conoscere quale provider sta eseguendo lo swap.
+
+Esempio:
+
+BTC → BTC Lightning
+
+→ routing interno
+→ BitcoinLightningSwapProvider
+
+E:
+
+USDT → USDC
+
+→ routing interno
+→ LiFiSwapProvider
+
+⸻
+
+2. REGOLA ASSOLUTA — ZERO REGRESSIONI
+
+NON MODIFICARE LA PAYMENT LOGIC ESISTENTE.
+
+Sono completamente fuori scope:
+
+* invio BTC on-chain esistente;
+* ricezione BTC;
+* UTXO selection esistente;
+* BTC fee logic esistente;
+* RBF;
+* Lightning payment logic già esistente;
+* USDT transfer;
+* USDC transfer;
+* ETH transfer;
+* POL transfer;
+* WalletConnect;
+* ThirdWeb;
+* firma delle transazioni esistenti;
+* polling esistente;
+* deposit detection;
+* escrow;
+* payment history;
+* balance logic esistente.
+
+Se una parte dello Swap richiede una modifica alla payment logic:
+
+FERMATI. NON MODIFICARLA. Segnala il conflitto.
+
+Lo Swap deve essere completamente isolato.
+
+⸻
+
+3. ASSET
+
+Lo Swap deve utilizzare gli asset già presenti/supportati da Alpha.
+
+NON creare manualmente ogni coppia.
+
+Il sistema deve permettere:
+
+Asset A → Asset B
+
+quando esiste una route supportata.
+
+Esempi:
+
+* USDT → USDC
+* USDC → ETH
+* ETH → POL
+* POL → USDT
+* BTC → ETH
+* BTC → USDT
+* BTC → BTC Lightning
+* BTC Lightning → BTC
+
+Se non esiste una route:
+
+Swap non disponibile per questa coppia
+
+NON mostrare quote inventate.
+
+⸻
+
+4. USDA
+
+USDA deve essere temporaneamente esclusa SOLO dal modulo Swap.
+
+Configurazione:
+
+SWAP_EXCLUDED_ASSETS = ["USDA"]
+
+USDA:
+
+* NON deve apparire nel selettore Swap;
+* NON deve essere quotabile nello Swap;
+* NON deve essere modificata o rimossa dal wallet;
+* deve continuare a funzionare normalmente nelle sue funzioni esistenti.
+
+L’esclusione deve essere configurabile, così in futuro USDA può essere riattivata senza modifiche strutturali.
+
+⸻
+
+5. FEE ALPHA
+
+Fee iniziale:
+
+0,25% = 25 BPS
+
+Configurazione centralizzata:
+
+ALPHA_SWAP_FEE_BPS = 25
+
+NON hardcodare la fee in più punti.
+
+La fee deve essere configurabile dall’Admin.
+
+L’Admin deve poter modificare:
+
+* Alpha Fee BPS;
+* treasury recipient;
+* Swap ON/OFF;
+* asset esclusi;
+* provider ON/OFF.
+
+La fee deve essere applicata lato backend/provider, non affidata solamente al frontend.
+
+⸻
+
+6. FEE SEPARATE
+
+Mostrare separatamente:
+
+* Alpha Fee;
+* Provider Fee;
+* Network Fee;
+* Bridge Fee, quando presente;
+* Slippage;
+* Importo stimato ricevuto.
+
+Non sommare tutto sotto una voce generica.
+
+L’utente deve sapere chiaramente quanto paga ad Alpha.
+
+⸻
+
+7. LI.FI
+
+Usare LI.FI come provider principale per le route che supporta.
+
+Utilizzare la modalità ufficiale di integrator fee.
+
+L’integrator deve essere configurabile:
+
+alpha-wallet
+
+La fee deve essere applicata tramite i meccanismi ufficiali LI.FI.
+
+NON alterare manualmente transaction data BTC o dati raw forniti dal provider.
+
+API key/segreti/treasury NON devono essere esposti nel frontend.
+
+⸻
+
+8. BTC ↔ LIGHTNING
+
+Implementare il secondo provider come adapter separato.
+
+Deve supportare:
+
+BTC Mainnet → Lightning
+
+Submarine swap.
+
+Lightning → BTC Mainnet
+
+Reverse submarine swap.
+
+Il flusso deve essere:
+
+Quote
+
+→ Confirm
+
+→ Payment/Firma
+
+→ Submitted
+
+→ Pending
+
+→ Completed
+
+oppure:
+
+Failed
+
+Expired
+
+Cancelled
+
+Il provider deve essere selezionato solo dopo verifica della documentazione ufficiale.
+
+NON implementare un protocollo Lightning proprietario.
+
+NON custodire le chiavi private degli utenti.
+
+⸻
+
+9. BTC/LIGHTNING FEE
+
+Verificare se il provider BTC/Lightning scelto supporta una fee per integrator/partner.
+
+Obiettivo:
+
+Alpha Fee configurabile anche sugli swap BTC ↔ Lightning.
+
+Se il provider supporta la fee:
+
+applicare la stessa configurazione Alpha:
+
+ALPHA_SWAP_FEE_BPS
+
+Se il provider NON supporta una fee nativa:
+
+NON creare workaround non documentati.
+
+Segnalare il limite prima del deploy.
+
+⸻
+
+10. ROUTING
+
+Creare un router interno:
+
+SwapRouter
+
+Responsabile di scegliere il provider.
+
+Esempio:
+
+BTC → BTC Lightning
+
+→ BitcoinLightningSwapProvider
+
+BTC Lightning → BTC
+
+→ BitcoinLightningSwapProvider
+
+USDT → USDC
+
+→ LiFiSwapProvider
+
+ETH → POL
+
+→ LiFiSwapProvider
+
+Il router deve essere estendibile.
+
+In futuro deve essere possibile aggiungere:
+
+ZeroXSwapProvider
+
+senza riscrivere UI o state management.
+
+⸻
+
+11. UI
+
+Il pulsante principale nella home è:
+
+⇄ Swap
+
+al posto di Notifiche.
+
+La campanella 🔔 in alto rimane invariata.
+
+UI:
+
+Da
+
+[ Asset ]
+
+A
+
+[ Asset ]
+
+[ Importo ]
+
+Quote:
+
+Ricevi circa: X
+
+Alpha Fee: X
+
+Provider Fee: X
+
+Network Fee: X
+
+Slippage: X
+
+[ Conferma Swap ]
+
+⸻
+
+12. BTC LIGHTNING UI
+
+Quando la coppia è:
+
+BTC → BTC Lightning
+
+mostrare chiaramente:
+
+Bitcoin Mainnet
+
+→
+
+Bitcoin Lightning
+
+e viceversa.
+
+Non chiamarlo semplicemente “BTC → BTC” senza indicare la rete.
+
+Mostrare inoltre:
+
+* importo;
+* fee Alpha;
+* fee provider;
+* fee network;
+* importo finale;
+* eventuale invoice Lightning;
+* stato swap.
+
+⸻
+
+13. STATO SWAP
+
+Creare state machine dedicata:
+
+idle
+
+quoting
+
+quoted
+
+confirming
+
+signing
+
+submitted
+
+pending
+
+completed
+
+failed
+
+expired
+
+cancelled
+
+Non utilizzare gli stati delle normali payment transaction.
+
+⸻
+
+14. ANTI-DOPPIO INVIO
+
+OBBLIGATORIO.
+
+Impedire:
+
+* doppio click;
+* doppia firma;
+* doppio submit;
+* retry che crea un secondo swap;
+* polling duplicato.
+
+Ogni swap deve avere:
+
+swapId
+
+univoco.
+
+Retry idempotente.
+
+⸻
+
+15. SWAP HISTORY
+
+Creare storico separato:
+
+Swap
+
+Ogni record deve contenere:
+
+* swapId;
+* timestamp;
+* provider;
+* from asset;
+* from chain;
+* from amount;
+* to asset;
+* to chain;
+* to amount;
+* Alpha Fee;
+* provider fee;
+* network fee;
+* status;
+* transaction hash;
+* Lightning payment hash/preimage quando applicabile;
+* route;
+* error.
+
+Non modificare inutilmente lo storico dei pagamenti esistenti.
+
+⸻
+
+16. ADMIN — SWAP MONITORING
+
+Creare:
+
+Swap Monitoring
+
+Tabella:
+
+Data	Swap ID	Provider	From	To	Amount	Alpha Fee	Status	TX
+
+Filtri:
+
+* data;
+* provider;
+* asset;
+* chain;
+* status;
+* swapId;
+* TX hash;
+* error.
+
+⸻
+
+17. ADMIN — REVENUE
+
+Creare:
+
+Swap Revenue
+
+Mostrare:
+
+* volume totale;
+* numero swap completati;
+* Alpha Fee totale;
+* fee giornaliera;
+* fee settimanale;
+* fee mensile;
+* fee per provider;
+* fee per asset;
+* fee per chain.
+
+Solo swap completati devono essere contabilizzati come revenue realizzata.
+
+Quote fallite/pending/cancelled NON devono essere considerate revenue.
+
+⸻
+
+18. ADMIN — FEE CONFIGURATION
+
+Creare pannello:
+
+Swap Fee
+
+Campo:
+
+Alpha Fee
+
+esempio:
+
+0,25%
+
+oppure:
+
+25 BPS
+
+L’Admin deve poter modificare il valore.
+
+Aggiungere:
+
+* valore minimo consentito;
+* valore massimo consentito;
+* conferma prima del salvataggio;
+* log della modifica.
+
+Il log deve registrare:
+
+* valore precedente;
+* nuovo valore;
+* timestamp;
+* admin che ha effettuato la modifica.
+
+La modifica deve essere applicata lato server/config.
+
+⸻
+
+19. ADMIN — PROVIDERS
+
+Creare:
+
+Swap Providers
+
+Visualizzare:
+
+LI.FI — ACTIVE
+
+BTC/LIGHTNING PROVIDER — ACTIVE
+
+Possibilità di:
+
+* enable;
+* disable.
+
+Se un provider viene disabilitato:
+
+le route che dipendono da quel provider devono diventare automaticamente non disponibili.
+
+NON deve influenzare i normali pagamenti.
+
+⸻
+
+20. LOGGING
+
+Log dedicati:
+
+SWAP:QUOTE
+
+SWAP:CONFIRM
+
+SWAP:SUBMIT
+
+SWAP:PENDING
+
+SWAP:COMPLETE
+
+SWAP:FAIL
+
+SWAP:FEE
+
+SWAP:PROVIDER
+
+Ogni evento deve contenere swapId.
+
+⸻
+
+21. PROVIDER FAILURE
+
+Se LI.FI non restituisce una route:
+
+non rompere il wallet.
+
+Se il provider BTC/Lightning non è disponibile:
+
+non rompere il wallet.
+
+Mostrare:
+
+Swap temporaneamente non disponibile
+
+La normale funzione Invia/Ricevi deve continuare a funzionare normalmente.
+
+⸻
+
+22. TEST OBBLIGATORI
+
+LI.FI
+
+Testare almeno:
+
+* USDT → USDC;
+* USDC → USDT;
+* ETH → USDC;
+* ETH → POL;
+* cross-chain dove supportato.
+
+BTC/LIGHTNING
+
+Testare:
+
+* BTC → Lightning;
+* Lightning → BTC.
+
+USDA
+
+Verificare:
+
+* USDA assente dallo Swap;
+* USDA normale payment invariato.
+
+Fee
+
+Verificare:
+
+25 BPS = 0,25%
+
+Verificare che la fee visualizzata sia uguale a quella realmente applicata.
+
+Failure
+
+Testare:
+
+* provider offline;
+* route inesistente;
+* quote scaduta;
+* liquidity insufficiente;
+* RPC failure;
+* user cancellation;
+* transaction failure;
+* Lightning invoice failure;
+* timeout.
+
+⸻
+
+23. REGRESSION TEST
+
+Prima del deploy verificare esplicitamente:
+
+* BTC send;
+* BTC receive;
+* BTC UTXO selection;
+* BTC fee floor;
+* BTC RBF;
+* Lightning payments esistenti;
+* USDT transfer;
+* USDC transfer;
+* ETH transfer;
+* POL transfer;
+* WalletConnect;
+* ThirdWeb;
+* signing;
+* polling;
+* deposit detection;
+* balances;
+* payment history.
+
+ZERO regressioni accettabili.
+
+⸻
+
+24. DEPLOY SICURO
+
+Implementare feature flag:
+
+SWAP_ENABLED
+
+Prima:
+
+SWAP_ENABLED = false
+
+Deploy.
+
+Test.
+
+Solo dopo:
+
+SWAP_ENABLED = true
+
+Per la prima fase è accettabile testare con:
+
+ALPHA_SWAP_FEE_BPS = 0
+
+finché LI.FI integrator e il provider BTC/Lightning non sono configurati correttamente.
+
+La fee reale dello 0,25% deve essere attivata solo dopo la verifica del treasury.
+
+⸻
+
+25. OUTPUT OBBLIGATORIO
+
+Prima del go-live fornire:
+
+1. provider BTC/Lightning scelto;
+2. motivazione della scelta;
+3. documentazione ufficiale verificata;
+4. API utilizzate;
+5. supporto submarine/reverse submarine;
+6. supporto fee Alpha;
+7. chain supportate;
+8. asset supportati;
+9. route non supportate;
+10. configurazione LI.FI;
+11. configurazione treasury;
+12. fee Alpha;
+13. USDA exclusion;
+14. Admin monitoring;
+15. Admin revenue;
+16. test eseguiti;
+17. regression test;
+18. eventuali rischi residui.
+
+REGOLA FINALE
+
+NON pubblicare in produzione se:
+
+* il provider BTC/Lightning non è stato verificato;
+* la fee Alpha non è correttamente contabilizzata;
+* USDA compare nello Swap;
+* Admin monitoring non funziona;
+* esiste una regressione nei pagamenti;
+* la payment logic esistente è stata modificata per implementare Swap.
+
+Il risultato finale deve essere:
+
+Alpha Swap
+→ LI.FI per le route supportate
+→ BTC/Lightning provider per BTC ↔ Lightning
+→ Alpha Fee configurabile
+→ USDA esclusa
+→ Admin monitoring + revenue
+→ ZERO regressioni sui pagamenti esistenti.
