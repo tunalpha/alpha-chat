@@ -2460,6 +2460,9 @@ function SendView({ onBack, onSuccess }: { onBack: () => void; onSuccess: () => 
     } catch { setRecipientErr("Errore nella lettura del QR"); }
   }, []);
 
+  // Must be declared before applyFraction (which closes over it)
+  const selectedAsset = assets[assetIdx] ?? assets[0];
+
   // Fraction shortcut: apply % of balance (always sets crypto mode)
   const applyFraction = useCallback((num: number, denom: number) => {
     const a = selectedAsset;
@@ -2510,8 +2513,6 @@ function SendView({ onBack, onSuccess }: { onBack: () => void; onSuccess: () => 
 
   // Finding 2: lock atomico send — previene doppio invio anche su rete lenta
   const sendInProgressRef = useRef(false);
-
-  const selectedAsset = assets[assetIdx] ?? assets[0];
 
   const handleProceed = async () => {
     // ── Lightning ─────────────────────────────────────────────────────────────
