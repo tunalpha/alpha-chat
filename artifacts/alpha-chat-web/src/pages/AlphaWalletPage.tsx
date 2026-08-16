@@ -861,7 +861,7 @@ function OverviewView({ onNavigate, onSelectToken }: { onNavigate: (v: WalletSub
         totalFiatRaw = (Number(sparkBalance) / 1e8) * btcP;
       }
     } else if (isBtc && btcBalance) {
-      totalFiatRaw = (Number(btcBalance.confirmedSat) / 1e8) * (prices.btc?.[fiatKey] ?? 0);
+      totalFiatRaw = (Number(btcBalance.totalSat) / 1e8) * (prices.btc?.[fiatKey] ?? 0);
     } else if (chainBalance) {
       totalFiatRaw = 0;
       const nativeKey = wallet.selectedChainId === 1 ? "eth" : wallet.selectedChainId === 137 ? "pol" : "bnb";
@@ -1253,7 +1253,7 @@ function calcPortfolioTotal(
       total += (Number(t.rawBalance) / 10 ** t.decimals) * price(t.symbol.toLowerCase());
   }
   if (all.btc) {
-    total += (Number(all.btc.confirmedSat) / 1e8) * price("btc");
+    total += (Number(all.btc.totalSat) / 1e8) * price("btc");
   }
   // Phase 5: Spark Lightning balance — stesso prezzo BTC, contabilizzato separatamente
   // GUARD: null = Spark non connesso → non includere nel totale (dati parziali)
@@ -1415,14 +1415,14 @@ function PortfolioView({
 
   if (all.btc) {
     const btcP = price("btc");
-    const fv   = (Number(all.btc.confirmedSat) / 1e8) * btcP;
+    const fv   = (Number(all.btc.totalSat) / 1e8) * btcP;
     const po   = prices?.btc as { eur: number; usd: number } | undefined;
     rows.push({
       chainId: 0, network: "Bitcoin",
       symbol: "BTC", name: "Bitcoin",
       amount: all.btc.formatted,
       fiatValue: fv,
-      fiatStr: po ? formatFiat(all.btc.confirmedSat, 8, po, currency) : null,
+      fiatStr: po ? formatFiat(all.btc.totalSat, 8, po, currency) : null,
     });
   }
 
@@ -1541,11 +1541,11 @@ function AssetList({ chainId, chainBalance, btcBalance, prices, loading, currenc
   if (isBtc) {
     const btcPrice = prices?.btc ?? null;
     const fiatStr  = btcBalance && btcPrice
-      ? formatFiat(btcBalance.confirmedSat, 8, btcPrice, currency)
+      ? formatFiat(btcBalance.totalSat, 8, btcPrice, currency)
       : null;
     const btcToken: TokenDetailInfo = {
       symbol: "BTC", name: "Bitcoin", chainId: 0, isNative: true,
-      decimals: 8, balance: btcBalance?.confirmedSat ?? 0n, fiatStr, verified: true,
+      decimals: 8, balance: btcBalance?.totalSat ?? 0n, fiatStr, verified: true,
     };
     return (
       <div className="aw-asset-list">
@@ -2594,7 +2594,7 @@ function SendView({ onBack, onSuccess, preselectedSymbol }: { onBack: () => void
 
   // Build asset list
   const assets: SendAsset[] = isBtc
-    ? [{ symbol: "BTC", decimals: 8, balance: btcBalance?.confirmedSat ?? 0n, isNative: true, chainId: 0, name: "Bitcoin" }]
+    ? [{ symbol: "BTC", decimals: 8, balance: btcBalance?.totalSat ?? 0n, isNative: true, chainId: 0, name: "Bitcoin" }]
     : chainBalance
     ? [
         {

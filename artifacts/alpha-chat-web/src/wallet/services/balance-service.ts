@@ -96,7 +96,8 @@ export async function fetchBtcBalance(address: string): Promise<BtcBalance> {
   const resp: BtcBalanceResponse = await apiWalletGetBtcBalance(address);
   const confirmedSat = BigInt(resp.confirmedSat);
   const totalSat     = BigInt(resp.totalSat);
-  const btcValue     = Number(confirmedSat) / 1e8;
+  // Usa totalSat per il display: include il delta mempool (TX pending in uscita/entrata)
+  const btcValue     = Number(totalSat) / 1e8;
 
   return {
     confirmedSat,
