@@ -1,0 +1,329 @@
+ALPHA SWAP V1 — HARDENING PRE-GO-LIVE
+TASK #165 + ZERO LOST TRANSACTIONS
+
+OBIETTIVO
+
+Prima di qualsiasi test con fondi reali voglio rendere Alpha Swap V1 resistente a:
+- chiusura PWA
+- background iOS/Android
+- perdita temporanea di rete
+- timeout HTTP
+- risposta tardiva del provider
+- crash/restart frontend
+- crash/restart backend
+- retry
+- doppio submit
+- provider che accetta una transazione ma la risposta HTTP viene persa
+- swap interrotta dopo il deposito
+
+Il requisito fondamentale è:
+
+ZERO LOST TRANSACTIONS.
+
+Una transazione non deve mai essere considerata persa solo perché il frontend,
+la rete o una richiesta HTTP è fallita.
+
+==================================================
+PARTE 1 — TASK #165
+CHIAVE REFUND BOLTZ DETERMINISTICA
+==================================================
+
+Implementa una strategia deterministica e sicura per la refund key di Boltz.
+
+REQUISITI:
+
+1. Ogni swap BTC → Lightning deve avere una refund key deterministica
+   associata esclusivamente a quella swap.
+
+2. La derivazione deve essere:
+   - deterministica
+   - riproducibile
+   - non riutilizzare la stessa chiave tra swap diverse
+   - non dipendere dal browser dopo la creazione della swap.
+
+3. La chiave privata NON deve essere:
+   - salvata in chiaro nei log
+   - restituita dalle API
+   - inviata al frontend se non strettamente indispensabile
+   - salvata in MongoDB in chiaro.
+
+4. Deve essere possibile recuperare/derivare nuovamente la refund key
+   in caso di restart del backend.
+
+5. Associa ogni refund key a uno swapId deterministico.
+
+6. Se esiste già una soluzione parzialmente implementata, analizzala
+   prima di modificarla e preserva la compatibilità.
+
+7. Test obbligatori:
+   - stessa swap → stessa derivazione
+   - swap diverse → chiavi diverse
+   - restart backend → stessa derivazione
+   - refund key non presente nei log
+   - refund key non presente nelle API response
+   - impossibilità di usare la chiave di una swap per un'altra.
+
+==================================================
+PARTE 2 — ZERO LOST TRANSACTIONS
+==================================================
+
+Implementa una state machine PERSISTENTE server-side.
+
+La UI NON deve essere la fonte della verità.
+
+Ogni swap deve avere uno stato persistente, ad esempio:
+
+created
+→ submitted
+→ pending
+→ detected
+→ processing
+→ completed
+
+e stati di errore controllati:
+
+failed_recoverable
+failed_permanent
+refund_pending
+refunded
+
+NON dichiarare "failed" solo perché:
+- fetch timeout
+- browser chiuso
+- PWA in background
+- WebSocket disconnesso
+- risposta HTTP persa
+- provider temporaneamente non raggiungibile.
+
+Prima di dichiarare failed bisogna riconciliare lo stato reale
+con il provider/blockchain/Lightning.
+
+==================================================
+PARTE 3 — IDEMPOTENZA
+==================================================
+
+Ogni swap deve avere un swapId/idempotency key stabile.
+
+Un retry dello stesso swap NON deve creare:
+- una seconda swap
+- un secondo deposito
+- una seconda transazione
+- un secondo pagamento.
+
+Prima di ogni retry:
+
+1. controlla lo stato persistente;
+2. controlla il provider;
+3. controlla eventuale TX/deposito già creato;
+4. solo se è realmente necessario esegui il retry.
+
+Se il provider ha accettato la richiesta ma la risposta HTTP è andata persa,
+la swap deve essere riconciliata e NON ricreata.
+
+==================================================
+PARTE 4 — RECOVERY SERVER-SIDE
+==================================================
+
+La riconciliazione NON deve dipendere dal browser.
+
+Creare un processo/scheduler backend che rilevi swap:
+
+- submitted
+- pending
+- processing
+- refund_pending
+
+e le riconcili automaticamente.
+
+Il sistema deve continuare a funzionare anche se:
+
+- l'utente chiude Alpha Chat;
+- l'iPhone va in background;
+- Android viene chiuso;
+- il browser viene terminato;
+- il frontend perde completamente la connessione.
+
+Al successivo accesso l'utente deve semplicemente vedere lo stato reale
+della swap già presente.
+
+==================================================
+PARTE 5 — RECOVERY DOPO RESTART
+==================================================
+
+Backend restart:
+→ recupera tutte le swap non terminali
+→ riconcilia con provider/blockchain
+→ riprende il processo.
+
+Frontend restart:
+→ legge le swap pending dal backend
+→ non crea nuove swap
+→ mostra lo stato reale.
+
+==================================================
+PARTE 6 — TIMEOUT E NETWORK FAILURE
+==================================================
+
+Un timeout NON significa automaticamente che la transazione non sia stata
+creata.
+
+Gestire separatamente:
+
+REQUEST_TIMEOUT
+PROVIDER_UNAVAILABLE
+SUBMITTED_UNKNOWN
+PENDING
+CONFIRMED
+FAILED_RECOVERABLE
+FAILED_PERMANENT
+
+Per SUBMITTED_UNKNOWN:
+prima riconciliare con provider/blockchain,
+poi decidere cosa fare.
+
+==================================================
+PARTE 7 — AUDIT TRA PROVIDER
+==================================================
+
+La UI deve rimanere completamente indipendente dal provider.
+
+L'utente deve vedere:
+
+Alpha Chat
+→ Swap BTC ↔ Lightning
+→ stato della swap
+→ importo
+→ fee
+→ completamento
+
+NON deve essere obbligato a utilizzare direttamente il sito Boltz o Breez.
+
+Il provider rimane un componente backend.
+
+==================================================
+PARTE 8 — FALLBACK BREEZ
+==================================================
+
+Mantieni:
+
+BTC → Lightning:
+provider previsto/Boltz
+
+Lightning → BTC:
+Breez Spark fallback temporaneo
+
+Fee Alpha su Breez LN → BTC:
+0% temporaneamente.
+
+NON modificare:
+ALPHA_SWAP_FEE_BPS
+fee globali Alpha
+fee wallet esistenti
+treasury esistenti.
+
+Quando verrà trovato un provider LN → BTC con integrator fee,
+deve poter sostituire Breez senza modificare UI/state machine/payment logic.
+
+==================================================
+PARTE 9 — SWAP DISABILITATO
+==================================================
+
+MANTENERE:
+
+SWAP_ENABLED=false
+
+Nessun movimento reale di fondi.
+Nessun test con fondi reali.
+Nessuna attivazione automatica.
+
+==================================================
+PARTE 10 — TEST DI FAULT INJECTION
+==================================================
+
+Creare/eseguire test per tutti questi scenari:
+
+T1 — rete persa prima del submit
+T2 — rete persa durante submit
+T3 — provider accetta la swap ma HTTP response viene persa
+T4 — frontend chiuso subito dopo submit
+T5 — PWA iOS va in background
+T6 — Android viene chiuso
+T7 — refresh pagina
+T8 — backend restart durante pending
+T9 — provider timeout
+T10 — provider temporaneamente offline
+T11 — retry dopo provider acceptance
+T12 — doppio click
+T13 — doppia richiesta con stesso idempotency key
+T14 — deposito già ricevuto ma frontend offline
+T15 — swap bloccata in processing
+T16 — refund necessaria
+T17 — refund request timeout
+T18 — backend restart durante refund
+T19 — stesso swap riconciliata dopo restart
+T20 — provider ritorna stato già completed.
+
+RISULTATO ATTESO:
+
+NESSUN DUPLICATO.
+NESSUNA SWAP PERSA.
+NESSUN DEPOSITO DIMENTICATO.
+NESSUNA refund irrecuperabile per perdita dello stato.
+
+==================================================
+PARTE 11 — REGRESSION LOCK
+==================================================
+
+NON modificare assolutamente:
+
+- main payment flow
+- sendPayment
+- prepareSend
+- sendLightningGuarded
+- Spark payment flow normale
+- fee collection Lightning già implementata
+- Fee Wallet
+- Treasury
+- auto-sweep
+- EVM payments
+- USDA
+- BTC on-chain esistente
+- WalletConnect
+- WebRTC/TURN
+- recovery phrase wallet.
+
+Il lavoro deve essere ISOLATO al modulo Alpha Swap.
+
+Prima di modificare file condivisi con il payment engine:
+FERMATI E CHIEDI APPROVAZIONE.
+
+==================================================
+PARTE 12 — REPORT FINALE
+==================================================
+
+NON fare deploy.
+
+NON attivare SWAP_ENABLED.
+
+Al termine produci un report con:
+
+1. file modificati
+2. state machine finale
+3. strategia refund key
+4. strategia idempotenza
+5. strategia recovery
+6. scheduler/reconciliation
+7. comportamento dopo crash frontend
+8. comportamento dopo crash backend
+9. comportamento dopo timeout provider
+10. risultati T1–T20
+11. test regression completi
+12. conferma che il payment flow esistente è INVARIATO
+13. conferma che SWAP_ENABLED resta false
+14. rischi residui prima del go-live.
+
+NON considerare Alpha Swap pronta al go-live finché:
+- #165 è completata
+- ZERO LOST TRANSACTIONS è verificato
+- tutti i test sono verdi
+- audit finale è completato.

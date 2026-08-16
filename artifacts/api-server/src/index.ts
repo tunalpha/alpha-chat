@@ -14,6 +14,7 @@ import { startMultiChainScheduler }   from "./payment/multichain-scheduler";
 import { startSparkSweepScheduler }  from "./schedulers/spark-sweep.scheduler";
 import { registerDefaultAdapters }    from "./blockchain/adapter-registry";
 import { autoConfigureSparkFeeWallet } from "./services/spark-fee-wallet.service";
+import { startSwapReconciler }          from "./services/swap/swap-reconciler.service.js";
 
 const port = config.app.port;
 
@@ -83,6 +84,12 @@ async function start(): Promise<void> {
   // da ALPHA_SPARK_FEE_MNEMONIC / ALPHA_SPARK_TREASURY_MNEMONIC se non già configurati.
   // Idempotente: se già configurati non fa nulla. Fire-and-forget.
   setTimeout(() => { void autoConfigureSparkFeeWallet(); }, 25_000);
+
+  // Alpha Swap reconciler — riconcilia swap BTC→Lightning non-terminali con Boltz ogni 30s.
+  // Si avvia immediatamente (startup recovery) + cicli periodici.
+  // ISOLAMENTO: zero interferenze con payment engine, USDA, MultiChain, treasury.
+  // SWAP_ENABLED=false non ferma il reconciler (gestisce swap esistenti).
+  setTimeout(() => { startSwapReconciler(); }, 15_000);
 
   // ── Graceful shutdown ───────────────────────────────────────────────────────
   const shutdown = async (signal: string): Promise<void> => {

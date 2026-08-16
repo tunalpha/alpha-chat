@@ -4,18 +4,17 @@
  * ISOLAMENTO: completamente separato da payment, USDA, MultiChain, Spark, alpha-wallet.
  *
  * Routes:
- *   GET  /api/v1/swap/config                — config pubblica (enabled + assets)
+ *   GET  /api/v1/swap/config                — config pubblica
  *   GET  /api/v1/swap/quote/btcln           — quote BTC→Lightning (auth)
- *   POST /api/v1/swap/create/btcln          — crea submarine swap (auth)
- *   POST /api/v1/swap/record/lnbtc          — registra swap LN→BTC eseguito client-side (auth)
+ *   POST /api/v1/swap/create/btcln          — crea submarine swap (auth, idempotent)
+ *   POST /api/v1/swap/record/lnbtc          — registra swap LN→BTC client-side (auth)
  *   GET  /api/v1/swap/status/:swapId        — stato swap (auth)
+ *   GET  /api/v1/swap/active                — swap BTC→LN attivo per recovery (auth)
  *   GET  /api/v1/swap/history               — storico utente (auth)
  *   GET  /api/v1/swap/admin/config          — config completa admin
  *   PATCH /api/v1/swap/admin/config         — aggiorna config (super_admin)
  *   GET  /api/v1/swap/admin/swaps           — lista swap (read_only admin)
  *   GET  /api/v1/swap/admin/revenue         — revenue aggregata (read_only admin)
- *
- * SWAP_ENABLED = false — tutti gli endpoint auth ritornano 503 quando disabilitato.
  */
 
 import { Router } from "express";
@@ -27,6 +26,7 @@ import {
   createBtcLnSwapHandler,
   recordLnBtcSwapHandler,
   getSwapStatusHandler,
+  getActiveBtcLnSwapHandler,
   getSwapHistoryHandler,
   adminGetSwapsHandler,
   adminGetRevenueHandler,
@@ -43,13 +43,14 @@ router.get("/config", getSwapConfigHandler);
 router.get("/quote/btcln",      authenticate, getBtcLnQuoteHandler);
 router.post("/create/btcln",    authenticate, createBtcLnSwapHandler);
 router.post("/record/lnbtc",    authenticate, recordLnBtcSwapHandler);
+router.get("/active",           authenticate, getActiveBtcLnSwapHandler);
 router.get("/status/:swapId",   authenticate, getSwapStatusHandler);
 router.get("/history",          authenticate, getSwapHistoryHandler);
 
 // ── Admin ──────────────────────────────────────────────────────────────────────
-router.get("/admin/config",   requireAdmin("read_only"), adminGetSwapConfigHandler);
+router.get("/admin/config",   requireAdmin("read_only"),   adminGetSwapConfigHandler);
 router.patch("/admin/config", requireAdmin("super_admin"), adminPatchSwapConfigHandler);
-router.get("/admin/swaps",    requireAdmin("read_only"), adminGetSwapsHandler);
-router.get("/admin/revenue",  requireAdmin("read_only"), adminGetRevenueHandler);
+router.get("/admin/swaps",    requireAdmin("read_only"),   adminGetSwapsHandler);
+router.get("/admin/revenue",  requireAdmin("read_only"),   adminGetRevenueHandler);
 
 export default router;

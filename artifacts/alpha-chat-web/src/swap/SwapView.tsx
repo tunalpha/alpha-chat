@@ -38,22 +38,30 @@ function satToDisplay(sat: number): string {
 }
 
 const STATE_LABELS: Record<string, string> = {
-  quoting:          "Calcolo quote...",
-  quoted:           "Quote pronta",
-  confirming:       "Attendi conferma...",
-  creating:         "Creazione swap...",
-  created:          "In attesa del deposito",
-  sending_btc:      "Invio BTC...",
-  awaiting_deposit: "Deposito rilevato (0-conf)",
-  processing:       "Elaborazione in corso...",
-  completed:        "✓ Completato",
-  failed:           "Swap fallito",
-  refunded:         "Rimborsato",
-  expired:          "Scaduto",
-  cancelled:        "Annullato",
+  quoting:            "Calcolo quote...",
+  quoted:             "Quote pronta",
+  confirming:         "Attendi conferma...",
+  creating:           "Creazione swap...",
+  // ── Nuovi stati hardened ────────────────────────────────────────────────────
+  submitted:          "Swap registrato — attesa Boltz...",
+  created:            "In attesa del deposito",
+  detected:           "Deposito rilevato in mempool (0-conf)...",
+  sending_btc:        "Invio BTC...",
+  awaiting_deposit:   "Deposito rilevato (0-conf)",
+  processing:         "Deposito confermato — pagamento Lightning...",
+  failed_recoverable: "Riconciliazione in corso...",
+  failed_permanent:   "Swap fallita",
+  refund_pending:     "Rimborso richiesto — in attesa di elaborazione",
+  completed:          "✓ Completato",
+  failed:             "Swap fallita",
+  refunded:           "Rimborsato",
+  expired:            "Scaduto (timeout Boltz)",
+  cancelled:          "Annullato",
 };
 
-const TERMINAL_STATES: SwapState[] = ["completed", "failed", "refunded", "expired", "cancelled"];
+const TERMINAL_STATES: SwapState[] = [
+  "completed", "failed", "failed_permanent", "refunded", "expired", "cancelled",
+];
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
@@ -209,8 +217,28 @@ export function SwapView({ onBack }: SwapViewProps) {
     );
   }
 
+  // ── Render: recovery check in corso (GET /active al mount) ────────────────
+  if (sv.recovering) {
+    return (
+      <div className="flex flex-col h-full items-center justify-center gap-3 text-muted-foreground">
+        <Loader2 className="w-7 h-7 animate-spin" />
+        <span className="text-sm">Verifica swap in corso...</span>
+      </div>
+    );
+  }
+
   // ── Render: swap in corso ──────────────────────────────────────────────────
-  const inProgressStates: SwapState[] = ["created", "sending_btc", "awaiting_deposit", "processing", "creating"];
+  // Include tutti i nuovi stati hardened (submitted, detected, failed_recoverable, refund_pending)
+  const inProgressStates: SwapState[] = [
+    "submitted",          // write-before-submit: swap in DB, Boltz non ha ancora risposto
+    "created",            // lockup address disponibile, in attesa deposito
+    "detected",           // deposito in mempool (0-conf)
+    "awaiting_deposit",   // compatibilità: alias per created
+    "processing",         // deposito confermato, Boltz sta pagando Lightning
+    "creating",           // richiesta in volo
+    "failed_recoverable", // errore temporaneo — NON mostrare come errore definitivo
+    "refund_pending",     // deposito ricevuto, Lightning fallita — rimborso necessario
+  ];
   if (sv.swapId && inProgressStates.includes(sv.state)) {
     return (
       <SwapInProgress
@@ -480,7 +508,34 @@ function SwapInProgress({
   copied:  boolean;
   onBack:  () => void;
 }) {
-  const isTerminal = TERMINAL_STATES.includes(sv.state);
+  const isTerminal         = TERMINAL_STATES.includes(sv.state);
+  const isRecoverable      = sv.state === "failed_recoverable";
+  const isRefundPending    = sv.state === "refund_pending";
+  const isPermanentFailure = sv.state === "failed_permanent" || sv.state === "failed" || sv.state === "expired";
+  const showLockupAddress  = sv.lockupAddress &&
+    (sv.state === "submitted" || sv.state === "created" || sv.state === "awaiting_deposit");
+
+  // Colore icona
+  const iconBg =
+    sv.state === "completed"          ? "bg-green-500/10"  :
+    isPermanentFailure                ? "bg-destructive/10":
+    isRefundPending                   ? "bg-amber-500/10"  :
+    isRecoverable                     ? "bg-amber-500/10"  :
+    "bg-primary/10";
+
+  const iconEl =
+    sv.state === "completed" ? (
+      <CheckCircle className="w-9 h-9 text-green-500" />
+    ) : isPermanentFailure ? (
+      <AlertTriangle className="w-9 h-9 text-destructive" />
+    ) : isRefundPending ? (
+      <AlertTriangle className="w-9 h-9 text-amber-500" />
+    ) : isRecoverable ? (
+      // failed_recoverable: spinner giallo — NON mostrare icona di errore
+      <Loader2 className="w-9 h-9 text-amber-500 animate-spin" />
+    ) : (
+      <Loader2 className="w-9 h-9 text-primary animate-spin" />
+    );
 
   return (
     <div className="flex flex-col h-full">
@@ -493,33 +548,37 @@ function SwapInProgress({
       </div>
 
       <div className="flex-1 flex flex-col items-center justify-center gap-5 px-5 py-6">
-        <div className={`w-16 h-16 rounded-full flex items-center justify-center ${
-          sv.state === "completed"
-            ? "bg-green-500/10"
-            : sv.state === "failed" || sv.state === "expired"
-              ? "bg-destructive/10"
-              : "bg-primary/10"
-        }`}>
-          {sv.state === "completed" ? (
-            <CheckCircle className="w-9 h-9 text-green-500" />
-          ) : sv.state === "failed" || sv.state === "expired" ? (
-            <AlertTriangle className="w-9 h-9 text-destructive" />
-          ) : (
-            <Loader2 className="w-9 h-9 text-primary animate-spin" />
-          )}
+        <div className={`w-16 h-16 rounded-full flex items-center justify-center ${iconBg}`}>
+          {iconEl}
         </div>
 
         <div className="text-center">
           <p className="font-semibold text-base mb-1">{STATE_LABELS[sv.state] ?? sv.state}</p>
-          {sv.state === "created" && sv.lockupAddress && (
+          {(sv.state === "submitted" || sv.state === "created") && sv.lockupAddress && (
             <p className="text-sm text-muted-foreground">
               Invia <strong>{satToDisplay(sv.sendAmountSat ?? 0)}</strong> BTC all&apos;indirizzo sottostante
+            </p>
+          )}
+          {sv.state === "submitted" && !sv.lockupAddress && (
+            <p className="text-sm text-muted-foreground">
+              Connessione con Boltz in corso — l&apos;indirizzo apparirà a breve.
+            </p>
+          )}
+          {isRecoverable && (
+            <p className="text-sm text-amber-600/80">
+              Il server sta riconciliando lo swap. Non chiudere la pagina.
+            </p>
+          )}
+          {isRefundPending && (
+            <p className="text-sm text-amber-600/80">
+              Il deposito BTC è stato ricevuto ma il pagamento Lightning è fallito.
+              Il rimborso sarà elaborato dal sistema. Contatta il supporto con l&apos;ID swap.
             </p>
           )}
         </div>
 
         {/* Indirizzo Boltz lockup */}
-        {sv.lockupAddress && (sv.state === "created" || sv.state === "awaiting_deposit") && (
+        {showLockupAddress && (
           <div className="w-full max-w-sm space-y-2">
             <p className="text-xs text-muted-foreground font-medium">Indirizzo BTC lockup Boltz:</p>
             <div
@@ -539,15 +598,41 @@ function SwapInProgress({
           </div>
         )}
 
+        {/* Stato detected / processing: conferma progressione */}
+        {(sv.state === "detected" || sv.state === "processing") && (
+          <div className="w-full max-w-sm p-3 rounded-xl bg-primary/5 border border-primary/20">
+            <p className="text-xs text-primary font-medium">
+              {sv.state === "detected"
+                ? "Deposito rilevato in mempool — in attesa di conferma on-chain (1-2 blocchi)"
+                : "Deposito confermato — Boltz sta pagando la invoice Lightning"}
+            </p>
+          </div>
+        )}
+
         {sv.txHash && (
           <div className="text-xs font-mono text-muted-foreground bg-muted/40 px-3 py-2 rounded-lg">
             TX: {sv.txHash.slice(0, 20)}...
           </div>
         )}
 
-        {sv.error && (
+        {/* Errore permanente (NON failed_recoverable) */}
+        {sv.error && !isRecoverable && (
           <div className="w-full max-w-sm p-3 rounded-xl bg-destructive/10 border border-destructive/20">
             <p className="text-xs text-destructive">{sv.error.message}</p>
+          </div>
+        )}
+
+        {/* ID swap (utile per refund_pending e supporto) */}
+        {(isRefundPending || isPermanentFailure) && sv.swapId && (
+          <div className="w-full max-w-sm space-y-1">
+            <p className="text-xs text-muted-foreground">ID Swap (per supporto):</p>
+            <div
+              className="flex items-center gap-2 p-2 rounded-lg bg-muted/50 cursor-pointer"
+              onClick={() => onCopy(sv.swapId!)}
+            >
+              <span className="font-mono text-xs flex-1 break-all">{sv.swapId}</span>
+              <Copy className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+            </div>
           </div>
         )}
       </div>

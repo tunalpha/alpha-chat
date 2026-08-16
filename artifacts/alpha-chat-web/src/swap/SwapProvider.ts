@@ -43,10 +43,12 @@ export interface ExecuteResult {
 }
 
 export interface StatusResult {
-  swap_id:   string;
-  state:     string;
-  error?:    string;
-  tx_hash?:  string;
+  swap_id:         string;
+  state:           string;
+  error?:          string;
+  tx_hash?:        string;
+  lockup_address?: string;
+  send_amount_sat?: number;
 }
 
 /**

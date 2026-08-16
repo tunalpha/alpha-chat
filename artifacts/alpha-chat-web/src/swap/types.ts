@@ -1,86 +1,70 @@
 /**
- * Alpha Swap — Tipi condivisi
+ * Alpha Swap — tipi condivisi
  *
- * ISOLAMENTO: nessuna dipendenza da payment engine, USDA, MultiChain.
- * Importato esclusivamente da src/swap/**.
+ * ISOLAMENTO: zero import da payment engine, USDA, MultiChain, Spark, wallet bridge.
  */
 
-// ── Route ─────────────────────────────────────────────────────────────────────
-
 export type SwapDirection =
-  | "btc_to_lightning"     // BTC on-chain → Lightning (Boltz Submarine)
-  | "lightning_to_btc";   // Lightning → BTC on-chain (Breez Spark Fallback)
+  | "btc_to_lightning"   // BTC on-chain → Lightning (Boltz Submarine)
+  | "lightning_to_btc";  // Lightning → BTC on-chain (Breez Spark fallback)
 
-export type SwapProviderName =
-  | "boltz_submarine"
-  | "breez_spark_reverse";
-
-// ── Quote ─────────────────────────────────────────────────────────────────────
+/**
+ * Stati UI della state machine swap.
+ *
+ * ATTENZIONE: `failed_recoverable` NON è un errore definitivo.
+ * NON mostrare "swap fallito" quando lo stato è failed_recoverable — il reconciler riprova.
+ */
+export type SwapState =
+  | "idle"               // Nessuno swap in corso
+  | "quoting"            // Calcolo quote in corso
+  | "quoted"             // Quote disponibile
+  | "confirming"         // Utente sta confermando
+  | "creating"           // Richiesta di creazione swap in volo
+  | "submitted"          // Swap salvato in DB, attendendo risposta Boltz
+  | "created"            // Boltz ha risposto, lockup address disponibile
+  | "detected"           // Deposito BTC rilevato in mempool (0-conf)
+  | "awaiting_deposit"   // Legacy — alias per created (compatibilità)
+  | "processing"         // Deposito confermato, Boltz sta pagando Lightning
+  | "completed"          // Swap completato
+  | "failed_recoverable" // Errore temporaneo — reconciler riprova (NON mostrare come errore definitivo)
+  | "failed_permanent"   // Errore definitivo
+  | "refund_pending"     // Deposito ricevuto ma Lightning fallita — refund necessario
+  | "refunded"           // BTC rimborsato
+  | "expired"            // Timeout Boltz scaduto
+  | "cancelled"          // Cancellato
+  | "failed";            // Legacy alias per failed_permanent
 
 export interface SwapQuote {
-  direction:          SwapDirection;
-  provider:           SwapProviderName;
-  from_amount_sat:    number;
-  to_amount_sat:      number;
-  alpha_fee_sat:      number;
-  alpha_fee_bps:      number;       // 0 per Breez Spark
-  provider_fee_sat:   number;
-  miner_fee_sat:      number;
-  total_debit_sat:    number;
-  expires_at:         number;       // unix ms
-  provider_note?:     string;
-  limits?: {
-    min_sat: number;
-    max_sat: number;
-  };
+  direction:        SwapDirection;
+  provider:         string;
+  from_amount_sat:  number;
+  to_amount_sat:    number;
+  alpha_fee_sat:    number;
+  alpha_fee_bps:    number;
+  provider_fee_sat: number;
+  miner_fee_sat:    number;
+  total_debit_sat:  number;
+  expires_at:       number;  // unix ms
+  provider_note?:   string;
+  limits?:          { min_sat: number; max_sat: number };
 }
 
-// ── Create result ─────────────────────────────────────────────────────────────
-
-/** Risultato della creazione swap BTC→Lightning (Boltz) */
 export interface BtcLnSwapCreated {
-  swap_id:              string;
-  state:                SwapState;
-  lockup_address:       string;     // BTC address dove inviare i fondi
-  expected_amount_sat:  number;     // importo esatto da inviare (include fees)
+  swap_id:             string;
+  state:               SwapState;
+  boltz_lockup_address: string;
+  expected_amount_sat:  number;
   alpha_fee_sat:        number;
   provider_fee_sat:     number;
   miner_fee_sat:        number;
   timeout_block_height?: number;
 }
 
-/** Risultato della creazione swap LN→BTC (Breez Spark, client-side) */
 export interface LnBtcSwapCreated {
-  swap_id:         string;
-  state:           SwapState;
-  alpha_fee_bps:   number;   // sempre 0
-  spark_payment_id: string;
+  swap_id:      string;
+  state:        SwapState;
+  payment_id?:  string;
 }
-
-// ── State machine ─────────────────────────────────────────────────────────────
-
-export type SwapState =
-  | "idle"
-  | "quoting"
-  | "quoted"
-  | "confirming"
-  | "creating"
-  | "created"              // BTC→LN: in attesa invio BTC
-  | "sending_btc"          // BTC→LN: tx BTC in corso
-  | "awaiting_deposit"     // BTC→LN: mempool
-  | "processing"
-  | "completed"
-  | "failed"
-  | "refunded"
-  | "expired"
-  | "cancelled";
-
-export interface SwapError {
-  code:    string;
-  message: string;
-}
-
-// ── Config pubblica ────────────────────────────────────────────────────────────
 
 export interface SwapPublicConfig {
   enabled:         boolean;
@@ -100,23 +84,48 @@ export interface SwapPublicConfig {
   };
 }
 
-// ── History ───────────────────────────────────────────────────────────────────
+export interface SwapError {
+  code:    string;
+  message: string;
+}
 
 export interface SwapHistoryItem {
-  _id:                string;
-  route:              string;
-  provider:           string;
-  state:              string;
-  from_amount_sat:    number;
-  to_amount_sat_estimated: number;
-  to_amount_sat_actual?: number;
-  alpha_fee_sat:      number;
-  alpha_fee_bps:      number;
-  provider_fee_sat:   number;
-  miner_fee_sat:      number;
-  tx_hash_deposit?:   string;
-  tx_hash_claim?:     string;
-  completed_at?:      string;
-  error_message?:     string;
-  created_at:         string;
+  _id?:                    string;   // MongoDB document ID (presente nelle risposte lean())
+  swap_id:                 string;
+  route:                   string;
+  provider:                string;
+  state:                   SwapState;
+  from_amount_sat:         number;
+  to_amount_sat:           number;
+  to_amount_sat_actual?:   number;      // importo effettivo post-completamento
+  to_amount_sat_estimated?: number;     // stima iniziale
+  alpha_fee_sat:           number;
+  created_at:              string;
+  completed_at?:           string;
 }
+
+/** Risposta del backend per uno swap BTC→LN attivo (recovery frontend). */
+export interface ActiveBtcLnSwap {
+  swap_id:              string;
+  state:                SwapState;
+  boltz_lockup_address?: string;
+  expected_amount_sat?:  number;
+  from_amount_sat:       number;
+  to_amount_sat:         number;
+  alpha_fee_sat:         number;
+  provider_fee_sat:      number;
+  miner_fee_sat:         number;
+  tx_hash_deposit?:      string;
+  error_message?:        string;
+}
+
+/** Terminale: stati che non cambieranno più. */
+export const TERMINAL_SWAP_STATES: SwapState[] = [
+  "completed", "failed_permanent", "refunded", "expired", "cancelled", "failed",
+];
+
+/** Recuperabile: lo swap è in corso ma può ancora completarsi. */
+export const RECOVERABLE_SWAP_STATES: SwapState[] = [
+  "submitted", "created", "detected", "awaiting_deposit", "processing",
+  "failed_recoverable", "refund_pending",
+];

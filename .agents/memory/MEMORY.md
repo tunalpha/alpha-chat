@@ -98,7 +98,8 @@
 - [Spark Phase 5 — Pre-Go-Live Validation](spark-phase5.md) — COOP/COEP via server.mjs (no-deps) + kill switch admin panel; artifact.toml da static → process; deploy-ready 993/993 PASS
 - [Spark Fee Wallet Sweep System](spark-fee-wallet-sweep.md) — auto/manual sweep fee wallet→treasury; lock MongoDB; reconcile on restart; 19/19 test PASS; auto_sweep_enabled=false default
 - [Alpha Spark Fee Wallet](spark-fee-wallet.md) — ledger-based (no SDK Node.js); 6 endpoint /fee-wallet/*; spark1/sprt1 address format; vi.resetAllMocks() per test Once queue
-- [Alpha Swap V1 — BTC↔Lightning](alpha-swap-v1.md) — provider-swappable isolato; Boltz 25bps BTC→LN; Spark fallback 0% LN→BTC; SWAP_ENABLED=false; chiave refund ephemeral (TODO)
+- [Alpha Swap V1 — BTC↔Lightning](alpha-swap-v1.md) — provider-swappable isolato; Boltz 25bps BTC→LN; Spark fallback 0% LN→BTC; SWAP_ENABLED=false; hardening completato (vedi alpha-swap-v1-hardening.md)
+- [Alpha Swap V1 Hardening](alpha-swap-v1-hardening.md) — refund key HMAC-SHA256 server-side; write-before-submit; idempotency_key UUID; reconciler 30s; GET /active recovery; 63 test T1-T20 PASS
 - [Breez Spark SDK Node.js API](spark-sdk-nodejs-api.md) — connect() con Seed (non connectWithSigner); sparkAddress da receivePayment().paymentRequest; getInfo NON ha sparkAddress; prefisso mainnet = spark1
 - [TX Monitor Hardening](tx-monitor-hardening.md) — silent checkpoint advancement bug; chain supportate; guard "0x0" e Alchemy error; bottone 🔄; 1003 test PASS
 - [Capacitor FASE 2 — platform-config](capacitor-phase2.md) — API_BASE_URL + getWsUrl() centralizzati; CAPACITOR_ORIGINS backend; biometric.ts NON toccato; 993 test green

@@ -149,7 +149,7 @@ export function SwapHistory() {
             <div className="flex items-center gap-1 text-xs text-muted-foreground">
               <span>{satToDisplay(item.from_amount_sat)}</span>
               <ArrowLeftRight className="w-2.5 h-2.5" />
-              <span>{satToDisplay(item.to_amount_sat_actual ?? item.to_amount_sat_estimated)}</span>
+              <span>{satToDisplay(item.to_amount_sat_actual ?? item.to_amount_sat_estimated ?? item.to_amount_sat)}</span>
             </div>
             {item.alpha_fee_sat > 0 && (
               <p className="text-xs text-muted-foreground">Fee Alpha: {satToDisplay(item.alpha_fee_sat)}</p>
