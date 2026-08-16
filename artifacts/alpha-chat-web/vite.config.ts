@@ -1,9 +1,18 @@
 import path from 'path';
 import fs from 'node:fs';
 import { execSync } from 'child_process';
+import { createRequire } from 'node:module';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import { defineConfig } from 'vite';
+
+// @lifi/sdk v4: l'ESM entry (dist/esm/index.js) non esporta createConfig né EVM.
+// La build CJS (dist/cjs/index.js) le esporta entrambe.
+// Il dev-server di Vite pre-bundla via CJS (optimizeDeps) → funziona.
+// Il build Rollup usa l'ESM entry → fallisce con "createConfig is not exported".
+// Fix: alias diretto alla CJS build, sia in dev che in prod.
+const _require = createRequire(import.meta.url);
+const lifiSdkCjs = _require.resolve('@lifi/sdk'); // → dist/cjs/index.js (usa 'main')
 
 // Metadati di build iniettati come costanti globali nel bundle
 const BUILD_COMMIT = (() => {
@@ -73,6 +82,9 @@ export default defineConfig({
   ],
   resolve: {
     alias: {
+      // @lifi/sdk v4: forza la build CJS che esporta createConfig + EVM.
+      // Senza questo alias Rollup usa l'ESM entry che non ha queste API.
+      '@lifi/sdk': lifiSdkCjs,
       '@': path.resolve(import.meta.dirname, 'src'),
       '@assets': path.resolve(
         import.meta.dirname,
