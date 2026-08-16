@@ -114,6 +114,7 @@
 - [Direct Transfer Flow](direct-transfer.md) — sender→recipient 1 TX on-chain; transfer_mode=direct; _confirmDirect; getRpcUrl mock pattern per test; SKIP guard rimossa da detectDeposit
 - [Double-spend uncertain state](double-spend-uncertain-state.md) — signedUncertain flag previene double-spend quando sendTransaction torna "Load failed" dopo firma su iOS; NON mostrare bottone firma; continuare polling 10 min
 - [BTC Send Uncertain Error](btc-send-uncertain.md) — iOS aborta HTTP post-broadcast → BtcSendUncertainError blocca retry cieco; stesso pattern di lnUncertain per Lightning
+- [BTC txid double-reverse bug](btc-txid-double-reverse.md) — @scure/btc-signer inverte txid internamente via P.bytes(32,true); NON invertire prima di addInput o txid sarà sbagliato
 - [iOS polling network abort](ios-polling-network-abort.md) — Safari iOS aborta HTTP in-flight in background → "Load failed" nel catch polling → trattare come DEPOSIT_TX_NOT_DETECTED, non errore fatale
 - [BSC MultiChain post-sign bugs](bsc-multichain-post-sign-bugs.md) — History/Notifiche perse se utente non in conversazione al momento di "released"; auto-open iOS bloccato da gesture context perso dopo await chain
 - [ChatWalletBubble direction+size](chatwalletbubble-direction-size.md) — meta.direction="out" permanente nel msg; usare isMine per direzione; wallet_payment mancava da payment-bubble class (width: 340px)
