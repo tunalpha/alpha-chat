@@ -43,9 +43,15 @@ PATCH /api/v1/spark/fee-wallet/configure-address  # super_admin — imposta fee_
 ## Fee Wallet attivo (auto-configurato dal server)
 
 - **SparkAddress**: `spark1pgssx7ln84…` (salvato in MongoDB automaticamente al boot)
-- **Env var mnemonic**: `ALPHA_SPARK_FEE_MNEMONIC` (settata, mai esposta)
+- **Env var mnemonic**: `ALPHA_SPARK_FEE_MNEMONIC` (Replit Secret, mai esposta)
 - **MongoDB**: `sparkfeeconfigs._id='spark-fee'.fee_address` configurato via auto-configure in index.ts (setTimeout 25s)
 - Auto-configure è idempotente: salta se già configurato
+
+## Treasury Spark (auto-configurato da ALPHA_SPARK_TREASURY_MNEMONIC)
+
+- **SparkAddress**: `spark1pgss8zjapk…` (salvato in MongoDB come `sweep_treasury_spark_address`)
+- **Env var mnemonic**: `ALPHA_SPARK_TREASURY_MNEMONIC` (generato dal server, salvato come shared env var; l'utente deve convertirlo in Replit Secret per encryption a riposo)
+- **auto_sweep_enabled**: false (invariato, non toccare)
 
 ## Mnemonic
 
