@@ -897,20 +897,27 @@ function OverviewView({ onNavigate, onSelectToken }: { onNavigate: (v: WalletSub
       {/* Portfolio total card — sopra il selettore chain, tap apre Portfolio */}
       <PortfolioTotalCard onOpen={() => onNavigate("portfolio")} currency={currency} />
 
-      {/* Network selector */}
+      {/* Network selector — pill unico con select nativo sovrapposto */}
       <div className="aw-network-bar">
-        <div className="aw-network-badge" style={{ borderColor: net?.color ?? "#888" }}>
-          <span style={{ color: net?.color }}>●</span>
-          {isLightning ? "⚡ Lightning" : isBtc ? "Bitcoin" : (net?.name ?? `Chain ${wallet.selectedChainId}`)}
+        <div className="aw-network-pill" style={{ borderColor: net?.color ?? "#888" }}>
+          <span className="aw-network-dot" style={{ color: net?.color ?? "#888" }}>●</span>
+          <span className="aw-network-pill-label">
+            {isLightning ? "⚡ Lightning" : isBtc ? "Bitcoin" : (net?.name ?? `Chain ${wallet.selectedChainId}`)}
+          </span>
+          <span className="aw-network-pill-chevron">▾</span>
+          <select
+            className="aw-network-pill-select"
+            value={wallet.selectedChainId}
+            onChange={e => wallet.setSelectedChainId(Number(e.target.value))}
+            aria-label="Seleziona rete"
+          >
+            <option value={137}>Polygon</option>
+            <option value={1}>Ethereum</option>
+            <option value={56}>BNB Smart Chain</option>
+            <option value={0}>Bitcoin</option>
+            {spark?.isEnabled && <option value={-1}>⚡ Lightning</option>}
+          </select>
         </div>
-        <select className="aw-network-select" value={wallet.selectedChainId} onChange={e => wallet.setSelectedChainId(Number(e.target.value))} aria-label="Seleziona rete">
-          <option value={137}>Polygon</option>
-          <option value={1}>Ethereum</option>
-          <option value={56}>BNB Smart Chain</option>
-          <option value={0}>Bitcoin</option>
-          {/* Lightning è un canale off-chain (chainId=-1); mostrato solo quando Spark è abilitato */}
-          {spark?.isEnabled && <option value={-1}>⚡ Lightning</option>}
-        </select>
       </div>
 
       {/* Balance card */}
