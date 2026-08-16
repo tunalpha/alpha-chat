@@ -438,9 +438,10 @@ export async function getBtcFeeRate(
 
     const estimates = await resp.json() as Record<string, number>;
     // Return: 1-block (fastest), 6-block (normal), 144-block (economy)
-    const fastest = estimates["1"]  ?? 20;
-    const normal  = estimates["6"]  ?? 10;
-    const economy = estimates["144"] ?? 5;
+    // Floor: 1 sat/vB è il minimum relay fee standard — non scendere mai sotto.
+    const fastest = Math.max(1, estimates["1"]   ?? 20);
+    const normal  = Math.max(1, estimates["6"]   ?? 10);
+    const economy = Math.max(1, estimates["144"] ?? 5);
 
     res.json({ data: { fastest, normal, economy } });
   } catch (err) { next(err); }
