@@ -2742,6 +2742,9 @@ function SendView({ onBack, onSuccess }: { onBack: () => void; onSuccess: () => 
       return;
     }
     // ── BTC / EVM ─────────────────────────────────────────────────────────────
+    // Guard atomico identico a Lightning: blocca re-entry su doppio tap
+    if (sendInProgressRef.current) return;
+    sendInProgressRef.current = true;
     setPinErr(null);
     setStep("processing");
     // Use the raw value confirmed during handleProceed (already validated + converted from fiat if needed)
@@ -2754,6 +2757,7 @@ function SendView({ onBack, onSuccess }: { onBack: () => void; onSuccess: () => 
       catch {
         // SECURITY: wrong PIN — clear entered PIN so user retypes from scratch
         setPin("");
+        sendInProgressRef.current = false; // rilascia lock su PIN errato → retry possibile
         setStep("auth"); setPinErr("PIN errato. Riprova."); return;
       }
 
@@ -2769,10 +2773,12 @@ function SendView({ onBack, onSuccess }: { onBack: () => void; onSuccess: () => 
       }
       // SECURITY: clear PIN from React state on success
       setPin("");
+      sendInProgressRef.current = false;
       setStep("success");
     } catch (e) {
       // SECURITY: clear PIN from React state on error too
       setPin("");
+      sendInProgressRef.current = false;
       setBroadcastErr(e instanceof Error ? e.message : "Errore durante l'invio");
       setStep("error");
     }

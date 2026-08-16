@@ -47,8 +47,20 @@ async function walletRequest<T>(path: string, opts: RequestInit = {}): Promise<T
   if (!res.ok) {
     let msg = `Errore ${res.status}`;
     try {
-      const j = await res.json() as { message?: string; error?: string };
-      msg = j?.message ?? j?.error ?? msg;
+      const j = await res.json() as Record<string, unknown>;
+      // Backend può restituire:
+      //   { message: "stringa" }
+      //   { error: "stringa" }
+      //   { error: { code: "RATE_LIMIT", message: "stringa" } }  ← rate limiter
+      // In tutti i casi estraiamo una stringa leggibile.
+      const raw = j?.message ?? j?.error;
+      if (typeof raw === "string" && raw) {
+        msg = raw;
+      } else if (raw && typeof raw === "object") {
+        // Oggetto annidato (es. rate limiter): cerca .message dentro
+        const nested = (raw as Record<string, unknown>).message;
+        msg = typeof nested === "string" && nested ? nested : JSON.stringify(raw);
+      }
     } catch { /* ignore */ }
     throw new Error(msg);
   }
