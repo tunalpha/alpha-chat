@@ -329,20 +329,47 @@ export async function getBtcUTXOs(
       throw new AppError("INVALID_BTC_ADDRESS", 400);
     }
 
-    const resp = await fetch(`${BLOCKSTREAM_BASE}/address/${address}/utxo`, {
-      headers: { "User-Agent": "AlphaChat-Wallet/1.0" },
-    });
-    if (!resp.ok) throw new AppError("BLOCKSTREAM_ERROR", 502);
+    // Fetch UTXO list + mempool transactions in parallel.
+    // The mempool list lets us exclude UTXOs already being spent in pending
+    // transactions — Blockstream keeps them in /utxo until the spend confirms,
+    // so without this check we'd build a TX on spent inputs and get
+    // "bad-txns-inputs-missingorspent" on broadcast.
+    const [utxoResp, mempoolResp] = await Promise.all([
+      fetch(`${BLOCKSTREAM_BASE}/address/${address}/utxo`,          { headers: { "User-Agent": "AlphaChat-Wallet/1.0" } }),
+      fetch(`${BLOCKSTREAM_BASE}/address/${address}/txs/mempool`,   { headers: { "User-Agent": "AlphaChat-Wallet/1.0" } }),
+    ]);
+    if (!utxoResp.ok) throw new AppError("BLOCKSTREAM_ERROR", 502);
 
-    const utxos = await resp.json() as Array<{
+    const utxos = await utxoResp.json() as Array<{
       txid: string;
       vout: number;
       status: { confirmed: boolean; block_height?: number };
       value: number; // satoshi
     }>;
 
-    // Only return confirmed UTXOs for signing (safer)
-    const confirmed = utxos.filter(u => u.status.confirmed);
+    // Build set of UTXO keys spent by pending mempool TXs
+    const mempoolSpent = new Set<string>();
+    if (mempoolResp.ok) {
+      type MempoolTx = { vin: Array<{ txid: string; vout: number }> };
+      const mempoolTxs = await mempoolResp.json() as MempoolTx[];
+      for (const tx of mempoolTxs) {
+        for (const vin of tx.vin ?? []) {
+          mempoolSpent.add(`${vin.txid}:${vin.vout}`);
+        }
+      }
+    }
+
+    // Only return confirmed UTXOs not currently being spent in the mempool
+    const confirmed = utxos.filter(
+      u => u.status.confirmed && !mempoolSpent.has(`${u.txid}:${u.vout}`),
+    );
+
+    if (mempoolSpent.size > 0) {
+      logger.info(
+        { address, mempoolSpentCount: mempoolSpent.size, confirmedAvailable: confirmed.length },
+        "[AW] BTC UTXO: excluded mempool-spent UTXOs",
+      );
+    }
 
     res.json({
       data: {
