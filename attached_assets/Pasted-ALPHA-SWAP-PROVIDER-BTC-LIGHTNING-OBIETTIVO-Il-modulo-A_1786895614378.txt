@@ -1,0 +1,356 @@
+ALPHA SWAP — PROVIDER BTC ↔ LIGHTNING
+
+OBIETTIVO
+
+Il modulo Alpha Swap è già predisposto con LI.FI per gli swap EVM/cross-chain.
+
+Ora dobbiamo completare la parte fondamentale:
+
+BTC Mainnet ↔ BTC Lightning
+
+Questa funzionalità NON deve rimanere uno stub indefinitamente.
+
+Prima di implementare qualsiasi cosa, eseguire una ricerca tecnica aggiornata e verificabile per identificare il miglior provider disponibile per Alpha Wallet.
+
+⸻
+
+1. PROVIDER DA ANALIZZARE
+
+Valutare almeno:
+
+A. Boltz
+
+Verificare:
+
+* disponibilità attuale;
+* Submarine Swap;
+* Reverse Submarine Swap;
+* API/client ufficiale;
+* compatibilità server-side;
+* compatibilità con Alpha Wallet/PWA;
+* non-custodial;
+* quote;
+* monitoring;
+* refund/recovery;
+* limiti;
+* fee;
+* possibilità di applicare una fee Alpha.
+
+B. Breez SDK
+
+Verificare:
+
+* supporto BTC + Lightning;
+* swap on-chain ↔ Lightning;
+* compatibilità con l’architettura Alpha;
+* web/PWA compatibility;
+* non-custodial;
+* liquidità;
+* API/SDK;
+* fee;
+* possibilità di monetizzazione Alpha;
+* eventuale necessità di running node/backend.
+
+C. Lightning Loop
+
+Verificare:
+
+* supporto attuale;
+* direzione Lightning → BTC;
+* direzione BTC → Lightning;
+* eventuali limitazioni;
+* compatibilità con Alpha;
+* fee;
+* stato di sviluppo.
+
+D. Altri provider
+
+Cercare anche eventuali provider attualmente disponibili nel 2026 che offrano:
+
+BTC on-chain ↔ Lightning
+
+tramite submarine/reverse submarine swap.
+
+NON limitarsi ai tre nomi sopra se esiste una soluzione migliore.
+
+⸻
+
+2. CRITERI OBBLIGATORI
+
+Il provider scelto deve essere valutato su:
+
+1. BTC → Lightning
+2. Lightning → BTC
+3. non-custodial
+4. API/SDK ufficiale
+5. affidabilità
+6. liquidità
+7. quote in tempo reale
+8. monitoring dello swap
+9. gestione failure
+10. refund/recovery
+11. compatibilità con Alpha Wallet
+12. compatibilità con PWA/web/mobile
+13. sicurezza
+14. documentazione
+15. disponibilità attuale
+16. costi
+17. possibilità di applicare Alpha Fee
+18. supporto a una fee integrator/partner/affiliate oppure meccanismo equivalente.
+
+⸻
+
+3. FEE ALPHA
+
+Alpha deve mantenere il modello:
+
+Alpha Fee = 0,25% = 25 BPS
+
+La fee deve essere configurabile dall’Admin tramite:
+
+ALPHA_SWAP_FEE_BPS
+
+NON hardcodare la fee.
+
+Verificare specificamente per il provider BTC/Lightning scelto:
+
+È tecnicamente possibile applicare una commissione Alpha del 0,25% in modo trasparente e non-custodial?
+
+Se sì:
+
+documentare esattamente come.
+
+Se no:
+
+NON inventare workaround.
+
+Indicare chiaramente il limite.
+
+⸻
+
+4. NON TOCCARE PAYMENT LOGIC
+
+Questa è una regola assoluta.
+
+NON modificare:
+
+* BTC send esistente;
+* BTC receive;
+* UTXO selection;
+* BTC fee logic;
+* RBF;
+* Lightning payment logic esistente;
+* WalletConnect;
+* ThirdWeb;
+* signing flow;
+* polling;
+* deposit detection;
+* payment history;
+* balance logic.
+
+Il nuovo provider deve essere implementato esclusivamente dentro:
+
+SwapProvider
+
+/ adapter dedicato.
+
+Esempio:
+
+BitcoinLightningSwapProvider
+
+Lo Swap deve rimanere completamente isolato.
+
+⸻
+
+5. ARCHITETTURA
+
+L’architettura deve rimanere:
+
+Alpha Swap Engine
+        |
+        +---- LiFiSwapProvider
+        |
+        +---- BitcoinLightningSwapProvider
+
+La UI non deve sapere quale provider viene utilizzato.
+
+Per:
+
+BTC → Lightning
+
+il router seleziona:
+
+BitcoinLightningSwapProvider
+
+Per:
+
+Lightning → BTC
+
+stesso provider.
+
+In futuro deve essere possibile sostituire il provider senza modificare:
+
+* UI;
+* state machine;
+* Admin;
+* Swap History.
+
+⸻
+
+6. NON IMPLEMENTARE ANCORA SE IL PROVIDER NON È VERIFICATO
+
+Se durante la ricerca emerge che un provider non è realmente disponibile, non-custodial o non supporta entrambe le direzioni:
+
+NON implementarlo semplicemente perché era già presente nello stub.
+
+Lo stub attuale può essere mantenuto.
+
+Prima scegliere il provider corretto.
+
+⸻
+
+7. TEST TECNICO
+
+Prima del go-live verificare almeno:
+
+BTC → Lightning
+
+* creazione quote;
+* creazione swap;
+* pagamento/firma;
+* monitoring;
+* completamento;
+* importo ricevuto;
+* fee.
+
+Lightning → BTC
+
+* creazione swap;
+* invoice;
+* pagamento Lightning;
+* monitoring;
+* transazione BTC;
+* fee;
+* completamento.
+
+Failure
+
+Testare:
+
+* quote scaduta;
+* liquidity insufficiente;
+* provider offline;
+* payment fallito;
+* timeout;
+* refund;
+* swap cancellato;
+* transazione BTC pending;
+* errore Lightning.
+
+⸻
+
+8. ADMIN
+
+Il provider BTC/Lightning deve comparire in Admin:
+
+Swap → Providers
+
+con:
+
+BTC / Lightning Provider
+
+Status:
+
+* ACTIVE
+* DISABLED
+* ERROR
+
+Il monitoring deve distinguere:
+
+* LI.FI;
+* BTC/Lightning provider.
+
+Anche le revenue devono essere separate:
+
+Alpha Swap Revenue
+
+→ LI.FI
+→ BTC/Lightning
+
+⸻
+
+9. OUTPUT OBBLIGATORIO PRIMA DELL’IMPLEMENTAZIONE
+
+Restituire una tabella comparativa:
+
+Provider	BTC→LN	LN→BTC	Non-custodial	API/SDK	PWA	Fee Alpha	Liquidità	Stato
+
+Poi indicare:
+
+PROVIDER RACCOMANDATO
+
+Nome:
+
+________
+
+MOTIVAZIONE
+
+Spiegare perché è la scelta migliore per Alpha.
+
+FEE
+
+Spiegare esattamente come Alpha può ricevere il proprio 0,25%.
+
+RISCHI
+
+Elencare eventuali limiti o dipendenze.
+
+⸻
+
+10. FONTI
+
+Per la scelta utilizzare documentazione ufficiale aggiornata del provider.
+
+NON basarsi esclusivamente su vecchi articoli, post o informazioni precedenti.
+
+Se una caratteristica non è documentata ufficialmente:
+
+segnalarla come NON VERIFICATA.
+
+⸻
+
+11. CRITERIO DI SUCCESSO
+
+Il risultato deve consentire ad Alpha di offrire realmente:
+
+BTC ₿ → BTC ⚡
+
+e
+
+BTC ⚡ → BTC ₿
+
+con:
+
+* provider affidabile;
+* quote;
+* execution;
+* monitoring;
+* recovery;
+* fee Alpha configurabile;
+* Admin monitoring;
+* storico Swap;
+* zero modifiche alla payment logic esistente.
+
+IMPORTANTE
+
+NON dichiarare il lavoro completo se BTC ↔ Lightning è ancora uno stub.
+
+Prima identificare il provider migliore.
+
+Dopo l’approvazione della scelta, implementare esclusivamente il relativo adapter:
+
+BitcoinLightningSwapProvider
+
+senza modificare il resto dell’architettura Swap.
+
+Prima ricerca e confronto. Poi scelta. Poi implementazione.
