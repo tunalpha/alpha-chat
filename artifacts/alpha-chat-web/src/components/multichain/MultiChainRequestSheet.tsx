@@ -26,6 +26,7 @@ import {
   type MCQuote,
   type MCAmountMode,
 } from "../../lib/multichain-api";
+import { CoinIcon, NETWORK_COIN } from "../shared/CoinIcon";
 import {
   useBtcPrice,
   fiatToSatoshi,
@@ -37,14 +38,19 @@ import {
 
 // ─── Reti ─────────────────────────────────────────────────────────────────────
 
-interface NetOption { id: MCNetwork; label: string; sublabel: string; icon: string; ticker: string; }
+interface NetOption { id: MCNetwork; label: string; sublabel: string; ticker: string; }
 
 const ALL_USDT_OPTS: NetOption[] = [
-  { id: "polygon",  label: "USDT", sublabel: "Polygon",  icon: "🔵", ticker: "USDT" },
-  { id: "ethereum", label: "USDT", sublabel: "Ethereum", icon: "⬡",  ticker: "USDT" },
-  { id: "bsc",      label: "USDT", sublabel: "BSC",      icon: "🟡", ticker: "USDT" },
+  { id: "polygon",  label: "USDT", sublabel: "Polygon",  ticker: "USDT" },
+  { id: "ethereum", label: "USDT", sublabel: "Ethereum", ticker: "USDT" },
+  { id: "bsc",      label: "USDT", sublabel: "BSC",      ticker: "USDT" },
 ];
-const BTC_NET: NetOption = { id: "bitcoin", label: "BTC", sublabel: "Bitcoin Network", icon: "₿", ticker: "BTC" };
+const ALL_USDC_OPTS: NetOption[] = [
+  { id: "polygon",  label: "USDC", sublabel: "Polygon",  ticker: "USDC" },
+  { id: "ethereum", label: "USDC", sublabel: "Ethereum", ticker: "USDC" },
+  { id: "bsc",      label: "USDC", sublabel: "BSC",      ticker: "USDC" },
+];
+const BTC_NET: NetOption = { id: "bitcoin", label: "BTC", sublabel: "Bitcoin Network", ticker: "BTC" };
 
 // ─── Steps ────────────────────────────────────────────────────────────────────
 
@@ -62,7 +68,7 @@ interface Props {
   toName:         string;
   onClose:        () => void;
   onRequested:    () => void;
-  mode?: "usdt" | "btc";
+  mode?: "usdt" | "usdc" | "btc";
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -94,16 +100,18 @@ export function MultiChainRequestSheet({ conversationId, toUserId, toName, onClo
   const [error,            setError]            = useState<string | null>(null);
   const [quote,            setQuote]            = useState<MCQuote | null>(null);
   const [targetNetUnits,   setTargetNetUnits]   = useState<string | null>(null);
-  const [availableNets,    setAvailableNets]    = useState<NetOption[]>(ALL_USDT_OPTS);
+  const [availableNets,    setAvailableNets]    = useState<NetOption[]>(mode === "usdc" ? ALL_USDC_OPTS : ALL_USDT_OPTS);
 
   const { price, loading: priceLoading, error: priceError, currency, setCurrency } = useBtcPrice();
 
   useEffect(() => {
-    if (mode !== "usdt") return;
+    if (mode === "btc") return;
+    const assetFilter = mode === "usdc" ? "USDC" : "USDT";
+    const baseOpts    = mode === "usdc" ? ALL_USDC_OPTS : ALL_USDT_OPTS;
     apiMCNetworks().then(nets => {
-      const ids      = new Set(nets.map(n => n.id));
-      const filtered = ALL_USDT_OPTS.filter(n => ids.has(n.id));
-      setAvailableNets(filtered.length > 0 ? filtered : ALL_USDT_OPTS);
+      const ids      = new Set(nets.filter(n => n.asset === assetFilter).map(n => n.id));
+      const filtered = baseOpts.filter(n => ids.has(n.id));
+      setAvailableNets(filtered.length > 0 ? filtered : baseOpts);
       if (filtered.length > 0 && !ids.has(network)) setNetwork(filtered[0]!.id);
     }).catch(() => {});
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -149,7 +157,7 @@ export function MultiChainRequestSheet({ conversationId, toUserId, toName, onClo
       else setTargetNetUnits(null);
       const res = await apiMCQuote({
         network,
-        asset:     MC_ASSET[network],
+        asset:     mode === "usdc" ? "USDC" : MC_ASSET[network],
         amountMode,
         ...(amountMode === "send_amount"
           ? { grossAmountUnits:     units }
@@ -246,13 +254,13 @@ export function MultiChainRequestSheet({ conversationId, toUserId, toName, onClo
             ) : (
               <>
                 <div className="mc-section-label">{t("multichain.selectNetwork")}</div>
-                <div className="mc-token-group-label">USDT <span className="mc-token-group-desc">· ERC-20 / BEP-20</span></div>
+                <div className="mc-token-group-label">{mode === "usdc" ? "USDC" : "USDT"} <span className="mc-token-group-desc">· ERC-20 / BEP-20</span></div>
                 <div className="mc-network-grid">
                   {availableNets.map(n => (
                     <button key={n.id} type="button"
                       className={`mc-network-item${network === n.id ? " selected" : ""}`}
                       onClick={() => { setNetwork(n.id); setAmount(""); setError(null); setQuote(null); }}>
-                      <span className="mc-network-icon">{n.icon}</span>
+                      <span className="mc-network-icon"><CoinIcon symbol={NETWORK_COIN[n.id] ?? n.id} size={32} /></span>
                       <span className="mc-network-label">{n.label}</span>
                       <span className="mc-network-sublabel">{n.sublabel}</span>
                     </button>

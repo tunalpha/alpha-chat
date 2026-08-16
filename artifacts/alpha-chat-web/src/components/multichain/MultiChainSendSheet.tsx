@@ -35,6 +35,7 @@ import {
   MC_DISPLAY_DECIMALS,
   MC_ASSET,
   MC_TOKEN_CONTRACT,
+  MC_USDC_CONTRACT,
   toSmallestUnit,
   fmtDisplay,
   type MCNetwork,
@@ -123,6 +124,11 @@ const ALL_USDT_OPTS: NetOption[] = [
   { id: "ethereum", label: "USDT", sublabel: "Ethereum", ticker: "USDT" },
   { id: "bsc",      label: "USDT", sublabel: "BSC",      ticker: "USDT" },
 ];
+const ALL_USDC_OPTS: NetOption[] = [
+  { id: "polygon",  label: "USDC", sublabel: "Polygon",  ticker: "USDC" },
+  { id: "ethereum", label: "USDC", sublabel: "Ethereum", ticker: "USDC" },
+  { id: "bsc",      label: "USDC", sublabel: "BSC",      ticker: "USDC" },
+];
 const BTC_NET: NetOption = { id: "bitcoin", label: "BTC", sublabel: "Bitcoin Network", ticker: "BTC" };
 
 // ─── Props ────────────────────────────────────────────────────────────────────
@@ -133,7 +139,7 @@ interface Props {
   toName:         string;
   onClose:        () => void;
   onSent:         () => void;
-  mode?: "usdt" | "btc";
+  mode?: "usdt" | "usdc" | "btc";
 }
 
 // ─── Helpers fee/amount ───────────────────────────────────────────────────────
@@ -179,7 +185,7 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
   const [transfer,       setTransfer]       = useState<MCTransfer | null>(null);
   const [copied,         setCopied]         = useState(false);
   const [showManual,     setShowManual]     = useState(false);
-  const [availableNets,  setAvailableNets]  = useState<NetOption[]>(ALL_USDT_OPTS);
+  const [availableNets,  setAvailableNets]  = useState<NetOption[]>(mode === "usdc" ? ALL_USDC_OPTS : ALL_USDT_OPTS);
   const [signPhase,      setSignPhase]      = useState<SignPhase>("ready");
   const [signError,      setSignError]      = useState<string | null>(null);
   const [targetNetUnits, setTargetNetUnits] = useState<string | null>(null);
@@ -237,11 +243,13 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
 
   // Carica reti abilitate
   useEffect(() => {
-    if (mode !== "usdt") return;
+    if (mode === "btc") return;
+    const assetFilter = mode === "usdc" ? "USDC" : "USDT";
+    const baseOpts    = mode === "usdc" ? ALL_USDC_OPTS : ALL_USDT_OPTS;
     apiMCNetworks().then(nets => {
-      const ids      = new Set(nets.map(n => n.id));
-      const filtered = ALL_USDT_OPTS.filter(n => ids.has(n.id));
-      setAvailableNets(filtered.length > 0 ? filtered : ALL_USDT_OPTS);
+      const ids      = new Set(nets.filter(n => n.asset === assetFilter).map(n => n.id));
+      const filtered = baseOpts.filter(n => ids.has(n.id));
+      setAvailableNets(filtered.length > 0 ? filtered : baseOpts);
       if (filtered.length > 0 && !ids.has(network)) setNetwork(filtered[0]!.id);
     }).catch(() => {});
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -506,8 +514,9 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
   async function handleSign() {
     if (!account || !transfer || !evmChain || !evmChainId) return;
 
-    const tokenAddress = MC_TOKEN_CONTRACT[network] as `0x${string}` | null | undefined;
-    if (!tokenAddress) { setSignError("Rete non supportata per USDT."); return; }
+    const contractMap  = mode === "usdc" ? MC_USDC_CONTRACT : MC_TOKEN_CONTRACT;
+    const tokenAddress = contractMap[network] as `0x${string}` | null | undefined;
+    if (!tokenAddress) { setSignError("Rete non supportata."); return; }
 
     const depositAmount = BigInt(transfer.minDepositAmount ?? transfer.grossAmount ?? "0");
     if (depositAmount === 0n) { setSignError("Importo deposito non valido."); return; }
@@ -942,7 +951,7 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
             ) : (
               <>
                 <div className="mc-section-label">{t("multichain.selectNetwork")}</div>
-                <div className="mc-token-group-label">USDT <span className="mc-token-group-desc">· ERC-20 / BEP-20</span></div>
+                <div className="mc-token-group-label">{mode === "usdc" ? "USDC" : "USDT"} <span className="mc-token-group-desc">· ERC-20 / BEP-20</span></div>
                 <div className="mc-network-grid">
                   {availableNets.map(n => (
                     <button key={n.id} type="button"

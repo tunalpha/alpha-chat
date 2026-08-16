@@ -22,7 +22,7 @@
 // ─── Network / Asset identifiers ─────────────────────────────────────────────
 
 export type NetworkId   = "polygon" | "ethereum" | "bsc" | "bitcoin";
-export type AssetSymbol = "USDA" | "USDT" | "BTC";
+export type AssetSymbol = "USDA" | "USDT" | "USDC" | "BTC";
 
 // ─── Transaction status ───────────────────────────────────────────────────────
 

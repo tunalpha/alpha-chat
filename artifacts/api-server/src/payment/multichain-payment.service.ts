@@ -293,9 +293,12 @@ function getAssetAddress(network: MCNetworkId, asset: MCAssetSymbol): string {
   if (network === "polygon") {
     if (asset === "USDT") return TOKEN_CONTRACTS.polygon.USDT;
     if (asset === "USDA") return TOKEN_CONTRACTS.polygon.USDA;
+    if (asset === "USDC") return TOKEN_CONTRACTS.polygon.USDC;
   }
   if (network === "ethereum" && asset === "USDT") return TOKEN_CONTRACTS.ethereum.USDT;
+  if (network === "ethereum" && asset === "USDC") return TOKEN_CONTRACTS.ethereum.USDC;
   if (network === "bsc"      && asset === "USDT") return TOKEN_CONTRACTS.bsc.USDT;
+  if (network === "bsc"      && asset === "USDC") return TOKEN_CONTRACTS.bsc.USDC;
   if (network === "bitcoin"  && asset === "BTC")  return "native";
   throw multichainError("INVALID_ASSET", { network, asset });
 }
@@ -307,13 +310,13 @@ function getDecimals(network: MCNetworkId, asset: MCAssetSymbol): number {
 }
 
 function assertFeatureEnabled(network: MCNetworkId, asset: MCAssetSymbol): void {
-  if (network === "polygon" && asset === "USDT" && !FEATURE_FLAGS.ENABLE_POLYGON_USDT) {
+  if (network === "polygon" && (asset === "USDT" || asset === "USDC") && !FEATURE_FLAGS.ENABLE_POLYGON_USDT) {
     throw multichainError("FEATURE_DISABLED", { network, asset, flag: "ENABLE_POLYGON_USDT" });
   }
-  if (network === "ethereum" && !FEATURE_FLAGS.ENABLE_ETHEREUM_USDT) {
+  if (network === "ethereum" && (asset === "USDT" || asset === "USDC") && !FEATURE_FLAGS.ENABLE_ETHEREUM_USDT) {
     throw multichainError("FEATURE_DISABLED", { network, asset, flag: "ENABLE_ETHEREUM_USDT" });
   }
-  if (network === "bsc" && !FEATURE_FLAGS.ENABLE_BSC_USDT) {
+  if (network === "bsc" && (asset === "USDT" || asset === "USDC") && !FEATURE_FLAGS.ENABLE_BSC_USDT) {
     throw multichainError("FEATURE_DISABLED", { network, asset, flag: "ENABLE_BSC_USDT" });
   }
   if (network === "bitcoin" && !FEATURE_FLAGS.ENABLE_BITCOIN) {

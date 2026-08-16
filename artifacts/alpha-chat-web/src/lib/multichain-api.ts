@@ -32,6 +32,18 @@ export const MC_TOKEN_CONTRACT: Record<MCNetwork, string | null> = {
   bitcoin:  null,
 };
 
+/** Indirizzi ufficiali del token USDC per ogni rete EVM.
+ *   Polygon USDC  (native, 6 dec)  : 0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359
+ *   BSC USDC      (BSC-Peg, 18 dec): 0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d
+ *   Ethereum USDC (6 dec)           : 0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48
+ */
+export const MC_USDC_CONTRACT: Record<MCNetwork, string | null> = {
+  polygon:  "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359",
+  bsc:      "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d",
+  ethereum: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+  bitcoin:  null,
+};
+
 /** ChainId EVM per ogni rete. Bitcoin non è EVM → null. */
 export const MC_CHAIN_ID: Record<MCNetwork, number | null> = {
   polygon:  137,
@@ -39,7 +51,7 @@ export const MC_CHAIN_ID: Record<MCNetwork, number | null> = {
   ethereum: 1,
   bitcoin:  null,
 };
-export type MCAsset   = "USDT" | "BTC";
+export type MCAsset   = "USDT" | "USDC" | "BTC";
 export type MCStatus  =
   | "awaiting_deposit"
   | "detecting"

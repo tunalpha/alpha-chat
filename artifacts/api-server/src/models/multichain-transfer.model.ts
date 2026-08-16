@@ -36,7 +36,7 @@ export type MultiChainTransferStatus =
 // ─── Supported networks and assets ───────────────────────────────────────────
 
 export type MCNetworkId   = "polygon" | "ethereum" | "bsc" | "bitcoin";
-export type MCAssetSymbol = "USDA" | "USDT" | "BTC";
+export type MCAssetSymbol = "USDA" | "USDT" | "USDC" | "BTC";
 
 // ─── Interface ────────────────────────────────────────────────────────────────
 
@@ -241,7 +241,7 @@ const MultiChainTransferSchema = new Schema<MultiChainTransferDocument>(
     message_id:      { type: Schema.Types.ObjectId, ref: "Message", default: null },
 
     network:       { type: String, enum: ["polygon", "ethereum", "bsc", "bitcoin"], required: true },
-    asset:         { type: String, enum: ["USDA", "USDT", "BTC"], required: true },
+    asset:         { type: String, enum: ["USDA", "USDT", "USDC", "BTC"], required: true },
     asset_address: { type: String, required: true },
     decimals:      { type: Number, required: true },
 

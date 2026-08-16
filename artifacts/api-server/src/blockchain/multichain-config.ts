@@ -165,26 +165,35 @@ export const FEE_WALLETS: Record<NetworkId, string | null> = {
 export const TOKEN_CONTRACTS = {
   polygon: {
     /** USDA su Polygon (già usato da USDA esistente) */
-    USDA: env("USDA_CONTRACT_ADDRESS")   ?? "0xe714655fD1B3ba96B887DF1F94336c2A78E24001",
+    USDA: env("USDA_CONTRACT_ADDRESS")    ?? "0xe714655fD1B3ba96B887DF1F94336c2A78E24001",
     /** USDT su Polygon (Tether USD, 6 decimali) */
-    USDT: env("POLYGON_USDT_CONTRACT")  ?? "0xc2132D05D31c914a87C6611C10748AEb04B58e8F",
+    USDT: env("POLYGON_USDT_CONTRACT")   ?? "0xc2132D05D31c914a87C6611C10748AEb04B58e8F",
+    /** USDC native su Polygon (USD Coin, 6 decimali) */
+    USDC: env("POLYGON_USDC_CONTRACT")   ?? "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359",
   },
   ethereum: {
     /** USDT su Ethereum Mainnet (Tether USD, 6 decimali) */
-    USDT: env("ETHEREUM_USDT_CONTRACT") ?? "0xdAC17F958D2ee523a2206206994597C13D831ec7",
+    USDT: env("ETHEREUM_USDT_CONTRACT")  ?? "0xdAC17F958D2ee523a2206206994597C13D831ec7",
+    /** USDC su Ethereum Mainnet (USD Coin, 6 decimali) */
+    USDC: env("ETHEREUM_USDC_CONTRACT")  ?? "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
   },
   bsc: {
     /** BSC-Peg USDT (18 decimali — diverso da ETH/Polygon USDT) */
-    USDT: env("BSC_USDT_CONTRACT")      ?? "0x55d398326f99059fF775485246999027B3197955",
+    USDT: env("BSC_USDT_CONTRACT")       ?? "0x55d398326f99059fF775485246999027B3197955",
+    /** BSC-Peg USDC (18 decimali) */
+    USDC: env("BSC_USDC_CONTRACT")       ?? "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d",
   },
 } as const;
 
 /** Decimali per indirizzo contratto (lower-case) */
 export const TOKEN_DECIMALS: Readonly<Record<string, number>> = {
-  [TOKEN_CONTRACTS.polygon.USDA.toLowerCase()]:     18,
-  [TOKEN_CONTRACTS.polygon.USDT.toLowerCase()]:      6,
-  [TOKEN_CONTRACTS.ethereum.USDT.toLowerCase()]:     6,
-  [TOKEN_CONTRACTS.bsc.USDT.toLowerCase()]:         18,
+  [TOKEN_CONTRACTS.polygon.USDA.toLowerCase()]:      18,
+  [TOKEN_CONTRACTS.polygon.USDT.toLowerCase()]:       6,
+  [TOKEN_CONTRACTS.polygon.USDC.toLowerCase()]:       6,
+  [TOKEN_CONTRACTS.ethereum.USDT.toLowerCase()]:      6,
+  [TOKEN_CONTRACTS.ethereum.USDC.toLowerCase()]:      6,
+  [TOKEN_CONTRACTS.bsc.USDT.toLowerCase()]:          18,
+  [TOKEN_CONTRACTS.bsc.USDC.toLowerCase()]:          18,
 };
 
 // ─── BTC fee rate configuration ───────────────────────────────────────────────

@@ -13,7 +13,7 @@ import { z } from "zod";
 // ─── Costanti ──────────────────────────────────────────────────────────────────
 
 const VALID_NETWORKS = ["polygon", "ethereum", "bsc", "bitcoin"] as const;
-const VALID_ASSETS   = ["USDT", "USDA", "BTC"]                   as const;
+const VALID_ASSETS   = ["USDT", "USDA", "USDC", "BTC"]           as const;
 
 /** Combinazioni network/asset valide */
 const VALID_COMBOS = new Set([

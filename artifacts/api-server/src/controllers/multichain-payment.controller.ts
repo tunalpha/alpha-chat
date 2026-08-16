@@ -202,12 +202,15 @@ export async function handleGetNetworks(
 
     if (FEATURE_FLAGS.ENABLE_POLYGON_USDT) {
       networks.push({ id: "polygon",  asset: "USDT", label: "Polygon",         decimals: 6  });
+      networks.push({ id: "polygon",  asset: "USDC", label: "Polygon",         decimals: 6  });
     }
     if (FEATURE_FLAGS.ENABLE_ETHEREUM_USDT) {
       networks.push({ id: "ethereum", asset: "USDT", label: "Ethereum",        decimals: 6  });
+      networks.push({ id: "ethereum", asset: "USDC", label: "Ethereum",        decimals: 6  });
     }
     if (FEATURE_FLAGS.ENABLE_BSC_USDT) {
       networks.push({ id: "bsc",      asset: "USDT", label: "BSC",             decimals: 18 });
+      networks.push({ id: "bsc",      asset: "USDC", label: "BSC",             decimals: 18 });
     }
     if (FEATURE_FLAGS.ENABLE_BITCOIN) {
       networks.push({ id: "bitcoin",  asset: "BTC",  label: "Bitcoin Network", decimals: 8  });
@@ -257,7 +260,12 @@ export async function getMultiChainConfig(
       supportedAssets: [
         {
           network: "polygon",  asset: "USDT", enabled: FEATURE_FLAGS.ENABLE_POLYGON_USDT,  decimals: 6,
-          networkFeeIsDynamic: true,  // fee calcolata live al momento del quote
+          networkFeeIsDynamic: true,
+          networkFeeAsset: NATIVE_ASSET_SYMBOL.polygon,
+        },
+        {
+          network: "polygon",  asset: "USDC", enabled: FEATURE_FLAGS.ENABLE_POLYGON_USDT,  decimals: 6,
+          networkFeeIsDynamic: true,
           networkFeeAsset: NATIVE_ASSET_SYMBOL.polygon,
         },
         {
@@ -271,13 +279,23 @@ export async function getMultiChainConfig(
           networkFeeAsset: NATIVE_ASSET_SYMBOL.ethereum,
         },
         {
+          network: "ethereum", asset: "USDC", enabled: FEATURE_FLAGS.ENABLE_ETHEREUM_USDT, decimals: 6,
+          networkFeeIsDynamic: true,
+          networkFeeAsset: NATIVE_ASSET_SYMBOL.ethereum,
+        },
+        {
           network: "bsc",      asset: "USDT", enabled: FEATURE_FLAGS.ENABLE_BSC_USDT,      decimals: 18,
           networkFeeIsDynamic: true,
           networkFeeAsset: NATIVE_ASSET_SYMBOL.bsc,
         },
         {
+          network: "bsc",      asset: "USDC", enabled: FEATURE_FLAGS.ENABLE_BSC_USDT,      decimals: 18,
+          networkFeeIsDynamic: true,
+          networkFeeAsset: NATIVE_ASSET_SYMBOL.bsc,
+        },
+        {
           network: "bitcoin",  asset: "BTC",  enabled: FEATURE_FLAGS.ENABLE_BITCOIN,       decimals: 8,
-          defaultNetworkFeeCharged: "0", // incluso nel minDepositAmount
+          defaultNetworkFeeCharged: "0",
           networkFeeAsset: NATIVE_ASSET_SYMBOL.bitcoin,
         },
       ],

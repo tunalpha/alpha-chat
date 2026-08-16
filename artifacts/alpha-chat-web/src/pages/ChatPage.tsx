@@ -10,6 +10,7 @@ import { SendPaymentSheet } from "../components/usda/SendPaymentSheet";
 import { RequestUsdaSheet } from "../components/usda/RequestUsdaSheet";
 import { UsdaPaymentDetail } from "../components/usda/UsdaPaymentDetail";
 import { MultiChainSendSheet }        from "../components/multichain/MultiChainSendSheet";
+import { CoinIcon }                   from "../components/shared/CoinIcon";
 import { MultiChainRequestSheet }     from "../components/multichain/MultiChainRequestSheet";
 import { MultiChainPaymentBubble }    from "../components/multichain/MultiChainPaymentBubble";
 import { MultiChainPayRequestSheet }  from "../components/multichain/MultiChainPayRequestSheet";
@@ -947,10 +948,12 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
   /** Mappa requestId → status — aggiornata da WS aw_payment_request.state_changed */
   const [walletRequestStatuses, setWalletRequestStatuses] = useState<Map<string, AWRequestStatus>>(new Map());
   // ── Multi-Chain Payments ─────────────────────────────────────────────
-  const [showMCPay,      setShowMCPay]      = useState(false);
-  const [showMCRequest,  setShowMCRequest]  = useState(false);
-  const [showBTCPay,     setShowBTCPay]     = useState(false);
-  const [showBTCRequest, setShowBTCRequest] = useState(false);
+  const [showMCPay,        setShowMCPay]        = useState(false);
+  const [showMCRequest,    setShowMCRequest]    = useState(false);
+  const [showMCPayUsdc,    setShowMCPayUsdc]    = useState(false);
+  const [showMCRequestUsdc,setShowMCRequestUsdc]= useState(false);
+  const [showBTCPay,       setShowBTCPay]       = useState(false);
+  const [showBTCRequest,   setShowBTCRequest]   = useState(false);
   /** Dati del transfer mc_payment richiesta da pagare — apre MultiChainPayRequestSheet */
   const [mcPayRequest,   setMcPayRequest]   = useState<MCSystemMeta | null>(null);
   const [sendPrefill, setSendPrefill] = useState<{ amount?: string; requestPaymentId?: string } | null>(null);
@@ -4802,24 +4805,31 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
                   className="attach-sheet-item"
                   onClick={() => { setShowAttachSheet(false); setAttachSubMenu("none"); setSendPrefill(null); setTimeout(() => setShowSendPayment(true), 80); }}
                 >
-                  <span className="attach-sheet-icon">💰</span>
+                  <span className="attach-sheet-icon"><CoinIcon symbol="USDA" size={32} /></span>
                   <span>USDA</span>
                 </button>
-                {/* USDT + BTC — solo se flag admin ON */}
+                {/* USDT + USDC + BTC — solo se flag admin ON */}
                 {multichainEnabled && (
                   <>
                     <button
                       className="attach-sheet-item"
                       onClick={() => { setShowAttachSheet(false); setAttachSubMenu("none"); setTimeout(() => setShowMCPay(true), 80); }}
                     >
-                      <span className="attach-sheet-icon">💎</span>
+                      <span className="attach-sheet-icon"><CoinIcon symbol="USDT" size={32} /></span>
                       <span>USDT</span>
+                    </button>
+                    <button
+                      className="attach-sheet-item"
+                      onClick={() => { setShowAttachSheet(false); setAttachSubMenu("none"); setTimeout(() => setShowMCPayUsdc(true), 80); }}
+                    >
+                      <span className="attach-sheet-icon"><CoinIcon symbol="USDC" size={32} /></span>
+                      <span>USDC</span>
                     </button>
                     <button
                       className="attach-sheet-item"
                       onClick={() => { setShowAttachSheet(false); setAttachSubMenu("none"); setTimeout(() => setShowBTCPay(true), 80); }}
                     >
-                      <span className="attach-sheet-icon">₿</span>
+                      <span className="attach-sheet-icon"><CoinIcon symbol="BTC" size={32} /></span>
                       <span>BTC</span>
                     </button>
                   </>
@@ -4835,34 +4845,31 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
                   className="attach-sheet-item"
                   onClick={() => { setShowAttachSheet(false); setAttachSubMenu("none"); setTimeout(() => setShowRequestUsda(true), 80); }}
                 >
-                  <span className="attach-sheet-icon">💰</span>
+                  <span className="attach-sheet-icon"><CoinIcon symbol="USDA" size={32} /></span>
                   <span>USDA</span>
                 </button>
-                {/* Alpha Wallet — self-custodial */}
-                {walletBridge.status !== "unavailable" && activeConv?.type !== "group" && (
-                  <button
-                    className="attach-sheet-item"
-                    onClick={() => { setShowAttachSheet(false); setAttachSubMenu("none"); setTimeout(() => setShowWalletRequest(true), 80); }}
-                  >
-                    <span className="attach-sheet-icon">🔐</span>
-                    <span>Alpha Wallet{walletBridge.status === "locked" ? " 🔒" : ""}</span>
-                  </button>
-                )}
-                {/* USDT + BTC */}
+                {/* USDT + USDC + BTC — solo se flag admin ON */}
                 {multichainEnabled && (
                   <>
                     <button
                       className="attach-sheet-item"
                       onClick={() => { setShowAttachSheet(false); setAttachSubMenu("none"); setTimeout(() => setShowMCRequest(true), 80); }}
                     >
-                      <span className="attach-sheet-icon">💎</span>
+                      <span className="attach-sheet-icon"><CoinIcon symbol="USDT" size={32} /></span>
                       <span>USDT</span>
+                    </button>
+                    <button
+                      className="attach-sheet-item"
+                      onClick={() => { setShowAttachSheet(false); setAttachSubMenu("none"); setTimeout(() => setShowMCRequestUsdc(true), 80); }}
+                    >
+                      <span className="attach-sheet-icon"><CoinIcon symbol="USDC" size={32} /></span>
+                      <span>USDC</span>
                     </button>
                     <button
                       className="attach-sheet-item"
                       onClick={() => { setShowAttachSheet(false); setAttachSubMenu("none"); setTimeout(() => setShowBTCRequest(true), 80); }}
                     >
-                      <span className="attach-sheet-icon">₿</span>
+                      <span className="attach-sheet-icon"><CoinIcon symbol="BTC" size={32} /></span>
                       <span>BTC</span>
                     </button>
                   </>
@@ -5401,6 +5408,30 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
             toName={activeConv.other_user?.display_name ?? activeConv.other_user?.username ?? "Utente"}
             onClose={() => setShowMCRequest(false)}
             onRequested={() => setShowMCRequest(false)}
+          />
+        </ErrorBoundary>
+      )}
+      {showMCPayUsdc && activeConv && auth && activeConv.type !== "group" && (
+        <ErrorBoundary fallback={null} onError={() => setShowMCPayUsdc(false)}>
+          <MultiChainSendSheet
+            mode="usdc"
+            conversationId={activeConvId ?? ""}
+            toUserId={activeConv.other_user?.user_id ?? ""}
+            toName={activeConv.other_user?.display_name ?? activeConv.other_user?.username ?? "Utente"}
+            onClose={() => setShowMCPayUsdc(false)}
+            onSent={() => setShowMCPayUsdc(false)}
+          />
+        </ErrorBoundary>
+      )}
+      {showMCRequestUsdc && activeConv && auth && activeConv.type !== "group" && (
+        <ErrorBoundary fallback={null} onError={() => setShowMCRequestUsdc(false)}>
+          <MultiChainRequestSheet
+            mode="usdc"
+            conversationId={activeConvId ?? ""}
+            toUserId={activeConv.other_user?.user_id ?? ""}
+            toName={activeConv.other_user?.display_name ?? activeConv.other_user?.username ?? "Utente"}
+            onClose={() => setShowMCRequestUsdc(false)}
+            onRequested={() => setShowMCRequestUsdc(false)}
           />
         </ErrorBoundary>
       )}
