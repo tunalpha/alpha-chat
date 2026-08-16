@@ -1715,3 +1715,113 @@
   text-align: left;
   line-height: 1.4;
 }
+
+/* ── Token Detail View ───────────────────────────────────────────────────── */
+.aw-token-detail-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  padding: 24px 16px 20px;
+  background: rgba(255,255,255,.04);
+  border-radius: 16px;
+  margin: 0 16px 4px;
+}
+.aw-token-detail-icon {
+  font-size: 40px;
+  width: 56px;
+  height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 6px;
+}
+.aw-token-detail-icon .aw-coin-icon-wrap,
+.aw-token-detail-icon .aw-coin-icon {
+  width: 52px !important;
+  height: 52px !important;
+  border-radius: 50%;
+}
+.aw-token-detail-name {
+  font-size: 22px;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: .3px;
+}
+.aw-token-detail-fullname {
+  font-size: 12px;
+  color: rgba(255,255,255,.5);
+  margin-top: 2px;
+}
+.aw-token-detail-balance {
+  font-size: 20px;
+  font-weight: 600;
+  color: #fff;
+  margin-top: 10px;
+}
+.aw-token-detail-fiat {
+  font-size: 14px;
+  color: rgba(255,255,255,.5);
+}
+
+.aw-token-detail-info {
+  margin: 8px 16px 0;
+  background: rgba(255,255,255,.04);
+  border-radius: 14px;
+  padding: 14px 16px;
+}
+.aw-token-detail-info-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: rgba(255,255,255,.4);
+  margin-bottom: 10px;
+}
+.aw-token-detail-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 7px 0;
+  border-bottom: 1px solid rgba(255,255,255,.06);
+}
+.aw-token-detail-row:last-child { border-bottom: none; }
+.aw-token-detail-row--contract { flex-direction: column; gap: 4px; }
+.aw-token-detail-label {
+  font-size: 13px;
+  color: rgba(255,255,255,.45);
+  flex-shrink: 0;
+  width: 90px;
+}
+.aw-token-detail-value {
+  font-size: 13px;
+  color: rgba(255,255,255,.85);
+  text-align: right;
+  word-break: break-all;
+}
+.aw-token-detail-contract { display: flex; flex-direction: column; width: 100%; }
+.aw-token-detail-contract-addr {
+  font-family: monospace;
+  font-size: 11px;
+  color: rgba(255,255,255,.6);
+  word-break: break-all;
+}
+
+/* tappable asset rows */
+.aw-asset-item--tappable {
+  cursor: pointer;
+  transition: background .15s;
+}
+.aw-asset-item--tappable:hover,
+.aw-asset-item--tappable:focus-visible {
+  background: rgba(139,92,246,.18);
+  outline: none;
+}
+.aw-asset-chevron {
+  font-size: 20px;
+  color: rgba(255,255,255,.3);
+  flex-shrink: 0;
+  margin-left: auto;
+  padding-left: 4px;
+  line-height: 1;
+}

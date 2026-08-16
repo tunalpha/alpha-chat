@@ -112,7 +112,22 @@ type WalletSubView =
   | "seed-export"              // Phase F
   | "seed-export-lightning"    // Lightning recovery phrase (stessa phrase, contesto diverso)
   | "wallet-settings"          // Phase I — impostazioni wallet
-  | "portfolio";        // Portfolio Multi-Chain
+  | "portfolio"         // Portfolio Multi-Chain
+  | "token-detail";    // Token Detail — invia/ricevi/storico/info per un singolo asset
+
+// ─── Token detail info ───────────────────────────────────────────────────────
+
+interface TokenDetailInfo {
+  symbol:           string;
+  name:             string;
+  chainId:          number;
+  isNative:         boolean;
+  contractAddress?: string;
+  decimals:         number;
+  balance:          bigint;
+  fiatStr:          string | null;
+  verified:         boolean;
+}
 
 // ─── Currency preference hook ────────────────────────────────────────────────
 
@@ -168,6 +183,12 @@ function AlphaWalletInner({ onBack }: Props) {
   const [pendingMnemonic, setPendingMnemonic] = useState<string>("");
   const [pendingPin, setPendingPin] = useState<string>("");
   const [flowType, setFlowType] = useState<"create" | "import">("create");
+  const [selectedTokenInfo, setSelectedTokenInfo] = useState<TokenDetailInfo | null>(null);
+
+  const handleSelectToken = (token: TokenDetailInfo) => {
+    setSelectedTokenInfo(token);
+    setSubView("token-detail");
+  };
 
   subViewRef.current = subView;
 
@@ -238,11 +259,25 @@ function AlphaWalletInner({ onBack }: Props) {
       case "unlock":
         return <UnlockView onExit={onBack} />;
       case "overview":
-        return <OverviewView onNavigate={setSubView} />;
+        return <OverviewView onNavigate={setSubView} onSelectToken={handleSelectToken} />;
       case "receive":
         return <ReceiveView onBack={() => setSubView("overview")} />;
       case "send":
-        return <SendView onBack={() => setSubView("overview")} onSuccess={() => setSubView("overview")} />;
+        return <SendView
+          onBack={() => { setSelectedTokenInfo(null); setSubView("overview"); }}
+          onSuccess={() => { setSelectedTokenInfo(null); setSubView("overview"); }}
+          preselectedSymbol={selectedTokenInfo?.symbol}
+        />;
+      case "token-detail":
+        return selectedTokenInfo ? (
+          <TokenDetailView
+            token={selectedTokenInfo}
+            onBack={() => { setSelectedTokenInfo(null); setSubView("overview"); }}
+            onSend={() => setSubView("send")}
+            onReceive={() => setSubView("receive")}
+            onHistory={() => setSubView("history")}
+          />
+        ) : null;
       case "notifications":
         return <NotificationsView onBack={() => setSubView("overview")} />;
       case "add-token":
@@ -271,7 +306,7 @@ function AlphaWalletInner({ onBack }: Props) {
     overview: "Alpha Wallet", notifications: "Notifiche", "add-token": "Aggiungi Token",
     security: "Sicurezza", unlock: "Wallet bloccato", receive: "Ricevi", send: "Invia",
     history: "Storico", "seed-export": "Recovery Phrase", "seed-export-lightning": "Recovery phrase Bitcoin / Lightning", "wallet-settings": "Impostazioni",
-    portfolio: "Portfolio",
+    portfolio: "Portfolio", "token-detail": selectedTokenInfo?.symbol ?? "Token",
   };
 
   return (
@@ -731,7 +766,7 @@ function UnlockView({ onExit }: { onExit?: () => void }) {
 // OVERVIEW (Phase C — real balances)
 // ═══════════════════════════════════════════════════════════════════════════
 
-function OverviewView({ onNavigate }: { onNavigate: (v: WalletSubView) => void }) {
+function OverviewView({ onNavigate, onSelectToken }: { onNavigate: (v: WalletSubView) => void; onSelectToken: (t: TokenDetailInfo) => void }) {
   const wallet = useWallet();
   const { currency } = useWalletCurrency();
   const meta = wallet.meta;
@@ -972,7 +1007,7 @@ function OverviewView({ onNavigate }: { onNavigate: (v: WalletSubView) => void }
           )}
         </div>
       ) : (
-        <AssetList chainId={wallet.selectedChainId} chainBalance={chainBalance} btcBalance={btcBalance} prices={prices} loading={balanceLoading} currency={currency} />
+        <AssetList chainId={wallet.selectedChainId} chainBalance={chainBalance} btcBalance={btcBalance} prices={prices} loading={balanceLoading} currency={currency} onSelectToken={onSelectToken} />
       )}
 
       {/* Push notification prompt */}
@@ -1467,15 +1502,16 @@ function PortfolioView({
 // ─── Asset List (Phase C — real balances) ────────────────────────────────────
 
 interface AssetListProps {
-  chainId:      number;
-  chainBalance: ChainBalance | null;
-  btcBalance:   BtcBalance | null;
-  prices:       AssetPrices | null;
-  loading:      boolean;
-  currency:     "EUR" | "USD";
+  chainId:        number;
+  chainBalance:   ChainBalance | null;
+  btcBalance:     BtcBalance | null;
+  prices:         AssetPrices | null;
+  loading:        boolean;
+  currency:       "EUR" | "USD";
+  onSelectToken?: (t: TokenDetailInfo) => void;
 }
 
-function AssetList({ chainId, chainBalance, btcBalance, prices, loading, currency }: AssetListProps) {
+function AssetList({ chainId, chainBalance, btcBalance, prices, loading, currency, onSelectToken }: AssetListProps) {
   const wallet = useWallet();
   const isBtc = chainId === 0;
   const verifiedTokens = getVerifiedTokens(isBtc ? 137 : chainId);
@@ -1485,9 +1521,19 @@ function AssetList({ chainId, chainBalance, btcBalance, prices, loading, currenc
     const fiatStr  = btcBalance && btcPrice
       ? formatFiat(btcBalance.confirmedSat, 8, btcPrice, currency)
       : null;
+    const btcToken: TokenDetailInfo = {
+      symbol: "BTC", name: "Bitcoin", chainId: 0, isNative: true,
+      decimals: 8, balance: btcBalance?.confirmedSat ?? 0n, fiatStr, verified: true,
+    };
     return (
       <div className="aw-asset-list">
-        <div className="aw-asset-item">
+        <div
+          className={`aw-asset-item${onSelectToken ? " aw-asset-item--tappable" : ""}`}
+          role={onSelectToken ? "button" : undefined}
+          tabIndex={onSelectToken ? 0 : undefined}
+          onClick={() => onSelectToken?.(btcToken)}
+          onKeyDown={e => e.key === "Enter" && onSelectToken?.(btcToken)}
+        >
           <div className="aw-asset-icon"><CoinIcon symbol="BTC" /></div>
           <div className="aw-asset-info">
             <div className="aw-asset-name">Bitcoin <span className="aw-badge-verified">✅</span></div>
@@ -1497,6 +1543,7 @@ function AssetList({ chainId, chainBalance, btcBalance, prices, loading, currenc
             <div className="aw-asset-balance">{loading ? "…" : (btcBalance?.formatted ?? "0.00000000 BTC")}</div>
             {fiatStr && <div className="aw-asset-fiat">{fiatStr}</div>}
           </div>
+          {onSelectToken && <span className="aw-asset-chevron">›</span>}
         </div>
       </div>
     );
@@ -1513,8 +1560,18 @@ function AssetList({ chainId, chainBalance, btcBalance, prices, loading, currenc
         const nKey = chainId === 1 ? "eth" : chainId === 137 ? "pol" : "bnb";
         const nPrice = prices ? prices[nKey as keyof AssetPrices] as { usd: number; eur: number } | undefined : null;
         const fiatStr = nPrice ? formatFiat(n.rawBalance, 18, nPrice, currency) : null;
+        const nativeToken: TokenDetailInfo = {
+          symbol: n.symbol, name: n.name, chainId, isNative: true,
+          decimals: 18, balance: n.rawBalance, fiatStr, verified: true,
+        };
         return (
-          <div className="aw-asset-item">
+          <div
+            className={`aw-asset-item${onSelectToken ? " aw-asset-item--tappable" : ""}`}
+            role={onSelectToken ? "button" : undefined}
+            tabIndex={onSelectToken ? 0 : undefined}
+            onClick={() => onSelectToken?.(nativeToken)}
+            onKeyDown={e => e.key === "Enter" && onSelectToken?.(nativeToken)}
+          >
             <div className="aw-asset-icon"><CoinIcon symbol={n.symbol} /></div>
             <div className="aw-asset-info">
               <div className="aw-asset-name">{n.symbol} <span className="aw-badge-verified">✅</span></div>
@@ -1524,6 +1581,7 @@ function AssetList({ chainId, chainBalance, btcBalance, prices, loading, currenc
               <div className="aw-asset-balance">{n.formatted}</div>
               {fiatStr && <div className="aw-asset-fiat">{fiatStr}</div>}
             </div>
+            {onSelectToken && <span className="aw-asset-chevron">›</span>}
           </div>
         );
       })()}
@@ -1540,8 +1598,20 @@ function AssetList({ chainId, chainBalance, btcBalance, prices, loading, currenc
         const fiat   = !loading && price ? formatFiat(bal, t.decimals, price, currency) : null;
         const isVerifiedToken = t.verification === "verified";
         const isCustomToken   = t.verification === "custom";
+        const tokenDetail: TokenDetailInfo = {
+          symbol: t.symbol, name: t.name, chainId: t.chainId,
+          isNative: false, contractAddress: t.contractAddress ?? undefined,
+          decimals: t.decimals, balance: bal, fiatStr: fiat, verified: isVerifiedToken,
+        };
         return (
-          <div key={`${t.chainId}-${t.contractAddress}`} className="aw-asset-item">
+          <div
+            key={`${t.chainId}-${t.contractAddress}`}
+            className={`aw-asset-item${onSelectToken ? " aw-asset-item--tappable" : ""}`}
+            role={onSelectToken ? "button" : undefined}
+            tabIndex={onSelectToken ? 0 : undefined}
+            onClick={() => onSelectToken?.(tokenDetail)}
+            onKeyDown={e => e.key === "Enter" && onSelectToken?.(tokenDetail)}
+          >
             <div className="aw-asset-icon"><CoinIcon symbol={t.symbol} /></div>
             <div className="aw-asset-info">
               <div className="aw-asset-name">
@@ -1557,6 +1627,7 @@ function AssetList({ chainId, chainBalance, btcBalance, prices, loading, currenc
               <div className="aw-asset-balance">{fmtBal}</div>
               {fiat && <div className="aw-asset-fiat">{fiat}</div>}
             </div>
+            {onSelectToken && <span className="aw-asset-chevron">›</span>}
             {/* Phase F: remove custom token button */}
             {isCustomToken && t.contractAddress && (
               <button
@@ -1578,6 +1649,108 @@ function AssetList({ chainId, chainBalance, btcBalance, prices, loading, currenc
           <div className="aw-asset-balance">…</div>
         </div>
       ))}
+    </div>
+  );
+}
+
+// ─── Token Detail View ───────────────────────────────────────────────────────
+
+interface TokenDetailViewProps {
+  token:     TokenDetailInfo;
+  onBack:    () => void;
+  onSend:    () => void;
+  onReceive: () => void;
+  onHistory: () => void;
+}
+
+function TokenDetailView({ token, onBack, onSend, onReceive, onHistory }: TokenDetailViewProps) {
+  const networkNames: Record<number, string> = { 137: "Polygon", 1: "Ethereum", 56: "BNB Smart Chain", 0: "Bitcoin" };
+  const networkName = networkNames[token.chainId] ?? `Chain ${token.chainId}`;
+  const [copied, setCopied] = useState(false);
+
+  const copyContract = () => {
+    if (!token.contractAddress) return;
+    void navigator.clipboard.writeText(token.contractAddress).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    });
+  };
+
+  return (
+    <div className="aw-overview">
+      {/* Token header */}
+      <div className="aw-token-detail-header">
+        <div className="aw-token-detail-icon"><CoinIcon symbol={token.symbol} /></div>
+        <div className="aw-token-detail-name">
+          {token.symbol}
+          {token.verified
+            ? <span className="aw-badge-verified" title="Token verificato"> ✅</span>
+            : <span className="aw-badge-custom" title="Token non verificato"> ⚠️</span>
+          }
+        </div>
+        <div className="aw-token-detail-fullname">{token.name} · {networkName}</div>
+        <div className="aw-token-detail-balance">
+          {token.balance === 0n
+            ? `0 ${token.symbol}`
+            : formatCrypto(token.balance, token.decimals, token.symbol)}
+        </div>
+        {token.fiatStr && <div className="aw-token-detail-fiat">≈ {token.fiatStr}</div>}
+      </div>
+
+      {/* Action buttons */}
+      <div className="aw-actions" style={{ marginTop: 8 }}>
+        <button className="aw-action-btn" onClick={onSend}>
+          <svg viewBox="0 0 24 24" fill="none" width="26" height="26" stroke="#8b5cf6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="10"/>
+            <line x1="8" y1="16" x2="16" y2="8"/>
+            <polyline points="10 8 16 8 16 14"/>
+          </svg>
+          <small>Invia</small>
+        </button>
+        <button className="aw-action-btn" onClick={onReceive}>
+          <svg viewBox="0 0 24 24" fill="none" width="26" height="26" stroke="#22c55e" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="12" cy="12" r="10"/>
+            <line x1="12" y1="8" x2="12" y2="16"/>
+            <polyline points="8 12 12 16 16 12"/>
+          </svg>
+          <small>Ricevi</small>
+        </button>
+        <button className="aw-action-btn" onClick={onHistory}>
+          <svg viewBox="0 0 24 24" fill="none" width="26" height="26" stroke="rgba(255,255,255,.85)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="12 8 12 12 14.5 14.5"/>
+            <path d="M3.05 11a9 9 0 1 1 .5 4M3 16v-5h5"/>
+          </svg>
+          <small>Storico</small>
+        </button>
+      </div>
+
+      {/* Token info */}
+      <div className="aw-token-detail-info">
+        <div className="aw-token-detail-info-title">Info token</div>
+        <div className="aw-token-detail-row">
+          <span className="aw-token-detail-label">Rete</span>
+          <span className="aw-token-detail-value">{networkName}</span>
+        </div>
+        <div className="aw-token-detail-row">
+          <span className="aw-token-detail-label">Decimali</span>
+          <span className="aw-token-detail-value">{token.decimals}</span>
+        </div>
+        <div className="aw-token-detail-row">
+          <span className="aw-token-detail-label">Tipo</span>
+          <span className="aw-token-detail-value">{token.isNative ? "Nativo" : "ERC-20"}</span>
+        </div>
+        {token.contractAddress && (
+          <div className="aw-token-detail-row aw-token-detail-row--contract">
+            <span className="aw-token-detail-label">Contratto</span>
+            <span className="aw-token-detail-value aw-token-detail-contract">
+              <span className="aw-token-detail-contract-addr">{token.contractAddress}</span>
+              <button className="aw-copy-btn" style={{ marginTop: 4 }} onClick={copyContract}>
+                {copied ? "✅ Copiato" : "📋 Copia"}
+              </button>
+            </span>
+          </div>
+        )}
+      </div>
     </div>
   );
 }
@@ -2349,7 +2522,7 @@ function resolveRaw(
   try { return BigInt(rawNum); } catch { return null; }
 }
 
-function SendView({ onBack, onSuccess }: { onBack: () => void; onSuccess: () => void }) {
+function SendView({ onBack, onSuccess, preselectedSymbol }: { onBack: () => void; onSuccess: () => void; preselectedSymbol?: string }) {
   const wallet      = useWallet();
   const meta        = wallet.meta!;
   const chainId     = wallet.selectedChainId;
@@ -2418,10 +2591,20 @@ function SendView({ onBack, onSuccess }: { onBack: () => void; onSuccess: () => 
   const [step, setStep]                 = useState<SendStep>("form");
   const [assetIdx, setAssetIdx]         = useState(0);
 
-  // Auto-select USDA as default on Polygon (chainId 137).
-  // Fires when chainBalance loads or chain changes.
+  // Auto-select asset: preselectedSymbol (from token detail) takes priority,
+  // then USDA on Polygon, otherwise native.
   useEffect(() => {
-    if (chainId === 137 && chainBalance) {
+    if (preselectedSymbol && chainBalance) {
+      const idx = [
+        { symbol: chainBalance.native.symbol } as { symbol: string },
+        ...chainBalance.tokens,
+      ].findIndex(a => a.symbol === preselectedSymbol);
+      if (idx >= 0) { setAssetIdx(idx); }
+      else if (chainId === 137) {
+        const usdaIdx = chainBalance.tokens.findIndex(t => t.symbol === "USDA");
+        setAssetIdx(usdaIdx >= 0 ? usdaIdx + 1 : 0);
+      } else { setAssetIdx(0); }
+    } else if (chainId === 137 && chainBalance) {
       const usdaTokenIdx = chainBalance.tokens.findIndex(t => t.symbol === "USDA");
       // assets = [native(0), ...tokens]; token i → index i+1
       setAssetIdx(usdaTokenIdx >= 0 ? usdaTokenIdx + 1 : 0);
@@ -2433,7 +2616,7 @@ function SendView({ onBack, onSuccess }: { onBack: () => void; onSuccess: () => 
     setInputMode("crypto");
     setPendingRaw(null);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [chainId, chainBalance]);
+  }, [chainId, chainBalance, preselectedSymbol]);
   const [recipient, setRecipient]       = useState("");
   const [amountStr, setAmountStr]       = useState("");
   const qrFileRef                       = useRef<HTMLInputElement>(null);
