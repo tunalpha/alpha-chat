@@ -214,7 +214,7 @@ const swapSchema = new Schema<ISwap>(
 // Indice composto per idempotency: (user_id + idempotency_key) unique tra swaps attivi
 swapSchema.index(
   { user_id: 1, idempotency_key: 1 },
-  { unique: true, sparse: true, partialFilterExpression: { idempotency_key: { $exists: true } } },
+  { unique: true, partialFilterExpression: { idempotency_key: { $exists: true } } },
 );
 
 const swapEventSchema = new Schema<ISwapEvent>(
