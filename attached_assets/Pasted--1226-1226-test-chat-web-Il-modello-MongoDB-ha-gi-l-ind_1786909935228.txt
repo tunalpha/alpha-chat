@@ -1,0 +1,107 @@
+**1226/1226** test chat-web ✅ — Il modello MongoDB ha già l'indice composto `(user_id, idempotency_key)` con `partialFilterExpression`. Tutto verde.
+
+---
+
+## Rapporto Hardening LN→BTC
+
+### A — Idempotenza
+
+**Lato client:** `LNBTC_IKEY` (UUID) viene generato una volta e persistito in `localStorage`. Se `LNBTC_RESULT_KEY` esiste già al momento di `execute()`, il pagamento Spark non viene rieseguito — viene restituito il risultato esistente (T3 ✓).
+
+**Lato server:** `POST /record/lnbtc` ora accetta `idempotency_key`. Il service fa `findOne({ user_id, idempotency_key })` prima di creare — se esiste, restituisce il record esistente invece di crearne uno nuovo. L'indice `{ user_id: 1, idempotency_key: 1 }` con `partialFilterExpression` garantisce unicità a livello DB.
+
+---
+
+### B — Recovery
+
+Tre livelli di recovery al mount di `useSwapState`:
+
+| Stato localStorage | `readLnBtcRecovery()` → | Azione UI |
+|---|---|---|
+| `LNBTC_RESULT_KEY.recorded=true` | `"completed"` | Mostra schermata completato |
+| `LNBTC_RESULT_KEY.recorded=false` | `"completed_unrecorded"` | Ritenta il `/record/lnbtc` in background |
+| `LNBTC_LOCK_KEY.uncertain=true` | `"unknown"` | Mostra schermata "Stato da verificare" |
+| Lock fresco senza risultato | `"in_progress"` | Mostra `LnBtcCreatingView` |
+| Vuoto | `"not_started"` | Schermata normale |
+
+---
+
+### C — History
+
+Il path rimane invariato: `spark.send()` → salva risultato in localStorage → chiama `/record/lnbtc` con **3 tentativi** (backoff 1s, 2s). Se tutti e tre falliscono, `recorded=false` rimane in localStorage; al prossimo avvio il recovery rileva `"completed_unrecorded"` e ritenta la registrazione backend automaticamente. L'utente vede comunque "completato" — non perde la schermata di conferma.
+
+---
+
+### D — Doppio pagamento
+
+Tre livelli di protezione:
+1. **Module-level lock** `_lnBtcExecuting` — blocca il secondo click nello stesso tab (T1 ✓)
+2. **Cross-tab lock** in localStorage con TTL 90s — blocca altri tab aperti (T2 ✓)
+3. **Client idempotency** — se `LNBTC_RESULT_KEY` esiste, `spark.send()` non viene mai chiamato (T3 ✓)
+4. **Server idempotency** — doppia chiamata a `/record/lnbtc` con la stessa key restituisce il record esistente
+
+---
+
+### E — Timeout / Stato incerto
+
+Dopo 60 secondi senza risposta da Spark, `Promise.race` rigetta con `TIMEOUT_UNCERTAIN`. Il provider:
+- **Non pulisce** lo stato localStorage (intent + lock con `uncertain=true` rimangono)
+- **Non rilancia** il pagamento automaticamente
+- `useSwapState` intercetta l'errore → imposta `state = "lnbtc_unknown"`
+- `SwapView` mostra `LnBtcUnknownView` con checklist e CTA "Ho verificato — Torna all'inizio"
+- Solo dopo conferma esplicita dell'utente (`clearLnBtcState()` + `actions.reset()`) il flusso viene sbloccato
+
+---
+
+### F — Test automatici
+
+**17/17** test LN→BTC hardening passano (`src/tests/swap/lnbtc-hardening.test.ts`):
+
+| Test | Coverage |
+|---|---|
+| T1 | Doppio click — lock module-level |
+| T2 | Cross-tab lock localStorage |
+| T3 | Idempotenza client (result già presente) |
+| T4 | Chiave UUID scritta in localStorage prima di `spark.send()` |
+| T5 | Timeout 60s → `TIMEOUT_UNCERTAIN` |
+| T6 | Dopo timeout: intent + lock `uncertain=true` persistono |
+| T7 | Errore definitivo → `clearLnBtcState()`, retry permesso |
+| T8 | `/record/lnbtc` fallisce 3× → nessuna eccezione (pagamento avvenuto) |
+| T9 | `/record/lnbtc` 2 fail + 1 successo → `state=completed` |
+| T10–T14 | `readLnBtcRecovery()` tutti e 5 i casi |
+| T15 | `clearLnBtcState()` rimuove le 4 chiavi |
+| T16 | `idempotency_key` inclusa nel body POST |
+| T17 | Write-before-submit verificato |
+
+Suite completa: **1226/1226** alpha-chat-web ✅ · **983/987** api-server (4 failure pre-esistenti non correlate).
+
+---
+
+### G — Modifiche ai file
+
+| File | Tipo | Descrizione |
+|---|---|---|
+| `swap/providers/BreezSparkBtcLnProvider.ts` | Riscrittura | localStorage ikey, write-before-submit, lock cross-tab 90s TTL, retry record (3 tentativi), TIMEOUT_UNCERTAIN, clearTimeout su race, `readLnBtcRecovery()` + `clearLnBtcState()` esportate |
+| `swap/types.ts` | Aggiunta | `"lnbtc_unknown"` in `SwapState` |
+| `swap/useSwapState.ts` | Aggiunta | Recovery mount LN→BTC, handler `TIMEOUT_UNCERTAIN` → `lnbtc_unknown`, `reset()` chiama `clearLnBtcState()` |
+| `swap/SwapView.tsx` | Aggiornamento | `LnBtcCreatingView`, `LnBtcUnknownView`, routing `lnbtc_unknown`, CTA "Scambia" uniforme, testo info aggiornato |
+| `api-server/src/services/swap/swap.service.ts` | Aggiornamento | Idempotency check `findOne` + campo `idempotency_key` nel documento |
+| `api-server/src/controllers/swap.controller.ts` | Aggiornamento | Estrae e valida `idempotency_key` dal body, la passa al service |
+| `tests/swap/lnbtc-hardening.test.ts` | Nuovo | 17 test T1–T17 |
+
+---
+
+### H — Test reale
+
+⚠️ **Non eseguito** — il controllo Spark LN→BTC richiede fondi Lightning reali nel wallet dell'utente e un indirizzo BTC di destinazione valido. Da eseguire in sessione controllata su rete mainnet con importo minimo (≥ minimo Spark, ~1000 sat). Prerequisiti: wallet Spark connesso, Lightning balance disponibile, SWAP_ENABLED=true.
+
+---
+
+### I — Rischi residui
+
+| Rischio | Entità | Note |
+|---|---|---|
+| **iOS Safari PWA localStorage** | Basso | iOS può cancellare localStorage < 50 MB after inactivity; per go-live monitorare la quota |
+| **Spark API silente** | Medio | Se `spark.send()` restituisce `paymentId` ma il pagamento non avviene on-chain, il sistema lo segna come completato. Mitigazione: verifica manuale al test reale |
+| **Recovery `completed_unrecorded`** | Basso | Il secondo tentativo `/record/lnbtc` al mount usa la stessa `idempotency_key` → idempotente ✓, ma se il backend è offline a lungo, la history resta mancante fino al prossimo mount |
+| **Test reale LN→BTC** | Aperto | Nessun test end-to-end su mainnet ancora eseguito per questo path — obbligatorio prima del go-live |
