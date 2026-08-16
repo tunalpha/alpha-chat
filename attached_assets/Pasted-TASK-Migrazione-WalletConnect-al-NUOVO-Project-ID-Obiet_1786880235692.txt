@@ -1,0 +1,63 @@
+TASK — Migrazione WalletConnect al NUOVO Project ID
+
+Obiettivo:
+Sostituire il vecchio WalletConnect Project ID con il NUOVO Project ID del progetto Reown appena configurato.
+
+NUOVO PROJECT ID:
+b06ac60bf832bac...06d02d
+
+IMPORTANTE:
+- Usa il valore COMPLETO del nuovo Project ID già presente/configurato nel progetto Reown; non usare la versione abbreviata sopra se il valore completo è disponibile.
+- NON modificare il payment engine.
+- NON modificare Lightning/Spark.
+- NON modificare fee collection.
+- NON modificare Spark fee wallet, treasury o auto-sweep.
+- NON modificare USDA, EVM, BTC on-chain o MultiChain.
+- NON rigenerare wallet, mnemonic o seed.
+- NON modificare altri Secret.
+
+Prima fai un audit:
+1. Cerca tutte le occorrenze di VITE_WALLETCONNECT_PROJECT_ID e del vecchio Project ID nel repository.
+2. Identifica esattamente quali file/configurazioni usano il vecchio ID.
+3. Verifica come server.mjs genera/serve:
+   /.well-known/walletconnect.txt
+4. Verifica che walletconnect.txt debba ora restituire il NUOVO Project ID.
+5. Controlla che il nuovo dominio https://alphachat.sbs sia già allowlisted nel nuovo progetto Reown.
+
+Poi esegui la migrazione:
+1. Aggiorna VITE_WALLETCONNECT_PROJECT_ID con il NUOVO Project ID.
+2. Aggiorna qualsiasi riferimento server-side necessario.
+3. Mantieni il supporto dinamico di:
+   /.well-known/walletconnect.txt
+   usando il Project ID configurato, senza hardcodare valori duplicati se possibile.
+4. Non creare nuovi wallet o credenziali.
+5. Non toccare la logica di connessione Trust Wallet oltre allo stretto necessario per usare il nuovo Project ID.
+
+SICUREZZA:
+- Non stampare token, Secret, credenziali o valori sensibili nei log/report.
+- Non mostrare il valore completo del Project ID in output se non necessario.
+- Non modificare o esporre VITE_BREEZ_API_KEY, TURN_PASSWORD, mnemonic o altri Secret.
+
+TEST OBBLIGATORI:
+- Verifica che il frontend usi il nuovo Project ID.
+- Verifica che /.well-known/walletconnect.txt restituisca il nuovo Project ID.
+- Verifica build frontend.
+- Esegui i test WalletConnect correlati.
+- Verifica che non ci siano riferimenti residui al vecchio Project ID nelle configurazioni attive.
+- Verifica che i test payment/Lightning/Spark restino invariati.
+- Se possibile, verifica GET/HEAD su:
+  https://alphachat.sbs/.well-known/walletconnect.txt
+
+Prima del deploy dammi un report:
+A) file modificati
+B) configurazioni aggiornate
+C) vecchio ID completamente rimosso dalle configurazioni attive
+D) nuovo ID correttamente utilizzato
+E) risultato test
+F) conferma esplicita: MAIN PAYMENT FLOW NON MODIFICATO
+
+NON fare modifiche architetturali.
+NON fare refactoring.
+NON toccare codice non necessario.
+
+Dopo aver verificato tutto, prepara il deploy.
