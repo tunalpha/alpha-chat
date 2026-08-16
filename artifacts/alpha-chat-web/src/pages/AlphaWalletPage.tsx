@@ -114,7 +114,8 @@ type WalletSubView =
   | "seed-export-lightning"    // Lightning recovery phrase (stessa phrase, contesto diverso)
   | "wallet-settings"          // Phase I — impostazioni wallet
   | "portfolio"         // Portfolio Multi-Chain
-  | "token-detail";    // Token Detail — invia/ricevi/storico/info per un singolo asset
+  | "token-detail"     // Token Detail — invia/ricevi/storico/info per un singolo asset
+  | "swap";            // Swap — modulo isolato (non modifica payment logic)
 
 // ─── Token detail info ───────────────────────────────────────────────────────
 
@@ -282,6 +283,8 @@ function AlphaWalletInner({ onBack }: Props) {
         ) : null;
       case "notifications":
         return <NotificationsView onBack={() => setSubView("overview")} />;
+      case "swap":
+        return <SwapComingSoonView onBack={() => setSubView("overview")} />;
       case "add-token":
         return <AddTokenView onBack={() => setSubView("overview")} />;
       case "security":
@@ -311,7 +314,7 @@ function AlphaWalletInner({ onBack }: Props) {
     overview: "Alpha Wallet", notifications: "Notifiche", "add-token": "Aggiungi Token",
     security: "Sicurezza", unlock: "Wallet bloccato", receive: "Ricevi", send: "Invia",
     history: "Storico", "seed-export": "Recovery Phrase", "seed-export-lightning": "Recovery phrase Bitcoin / Lightning", "wallet-settings": "Impostazioni",
-    portfolio: "Portfolio", "token-detail": selectedTokenInfo?.symbol ?? "Token",
+    portfolio: "Portfolio", "token-detail": selectedTokenInfo?.symbol ?? "Token", swap: "Swap",
   };
 
   return (
@@ -967,9 +970,13 @@ function OverviewView({ onNavigate, onSelectToken }: { onNavigate: (v: WalletSub
           </svg>
           <small>Storico</small>
         </button>
-        <button className="aw-action-btn" onClick={() => onNavigate("notifications")} style={{ position: "relative" }}>
-          🔔<br /><small>Notifiche</small>
-          {wallet.unreadCount > 0 && <span className="aw-badge-sm">{wallet.unreadCount}</span>}
+        <button className="aw-action-btn" onClick={() => onNavigate("swap")}>
+          {/* Swap: frecce orizzontali incrociate */}
+          <svg viewBox="0 0 24 24" fill="none" width="26" height="26" stroke="#f59e0b" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M7 16H17M17 16L14 13M17 16L14 19"/>
+            <path d="M17 8H7M7 8L10 5M7 8L10 11"/>
+          </svg>
+          <small>Swap</small>
         </button>
       </div>
 
@@ -3465,6 +3472,36 @@ function NotificationsView({ onBack }: { onBack: () => void }) {
         </div>
         );
       })}
+    </div>
+  );
+}
+
+// ─── Swap — stub isolato (modulo completo in arrivo) ────────────────────────
+// ISOLAMENTO: questo componente NON importa né modifica nessuna payment logic.
+// Quando il modulo Swap sarà implementato, questo stub verrà sostituito
+// con <SwapView> dal modulo swap/ dedicato.
+
+function SwapComingSoonView({ onBack }: { onBack: () => void }) {
+  return (
+    <div className="aw-empty-state" style={{ paddingTop: 48 }}>
+      <div style={{ fontSize: 48, marginBottom: 12 }}>
+        <svg viewBox="0 0 24 24" fill="none" width="52" height="52" stroke="#f59e0b" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M7 16H17M17 16L14 13M17 16L14 19"/>
+          <path d="M17 8H7M7 8L10 5M7 8L10 11"/>
+        </svg>
+      </div>
+      <div className="aw-empty-title" style={{ fontSize: 20 }}>Swap</div>
+      <p className="aw-empty-sub" style={{ maxWidth: 260, margin: "8px auto 0" }}>
+        Scambia asset direttamente nel tuo wallet.<br />
+        <span style={{ opacity: 0.6, fontSize: 13 }}>In arrivo — powered by Li.Fi</span>
+      </p>
+      <button
+        className="aw-btn aw-btn--secondary"
+        style={{ maxWidth: 200, margin: "24px auto 0" }}
+        onClick={onBack}
+      >
+        ← Torna al wallet
+      </button>
     </div>
   );
 }
