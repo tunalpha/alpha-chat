@@ -25,6 +25,7 @@ import {
 import {
   EVM_SWAP_ACTIVE_KEY, EVM_SWAP_IKEY,
   LIFI_INTEGRATOR, LIFI_FEE,
+  EVM_SWAP_CHAINS,
   toTokenUnits, getDefaultFromToken, getTokensForChain,
   type EvmSwapPhase, type EvmSwapStateValue, type EvmSwapActions,
   type EvmToken, type EvmActiveSwap, type EvmSwapQuote,
@@ -154,6 +155,30 @@ export function useEvmSwapState(): [EvmSwapStateValue, EvmSwapActions] {
     check();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // ── Chain auto-sync: quando active chain cambia → aggiorna fromChain ───────
+  useEffect(() => {
+    if (!activeChain?.id) return;
+    const supported = EVM_SWAP_CHAINS.find(c => c.id === activeChain.id);
+    if (!supported) return;
+    setSv(prev => {
+      if (prev.phase !== "idle" && prev.phase !== "quoted") return prev; // non interrompere swap in corso
+      if (prev.fromChainId === activeChain.id) return prev; // già sulla chain giusta
+      const newFromToken = getDefaultFromToken(activeChain.id);
+      return {
+        ...prev,
+        fromChainId: activeChain.id,
+        fromToken:   newFromToken,
+        toChainId:   activeChain.id,
+        toToken:     getTokensForChain(activeChain.id)[2] ?? newFromToken,
+        fromAmount:  "",
+        quote:       null,
+        error:       null,
+        phase:       "idle",
+      };
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeChain?.id]);
 
   // ── Actions ────────────────────────────────────────────────────────────────
 

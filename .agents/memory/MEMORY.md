@@ -137,3 +137,4 @@
 - [Lightning send guard](lightning-send-guard.md) — sendPayment WASM senza timeout = spinner infinito senza log server; guard single-owner + lock persistente anti double-pay; BOLT11-only
 - [MC sign-poll Load failed fix](mc-poll-load-failed-fix.md) — catch polling post-firma: `!code && isNetworkError → continue`; errori applicativi con .code sempre fatali
 - [MC Send State Machine — confirming timing](mc-send-state-machine.md) — setSignPhase("confirming") nel .then() di sendTransaction, mai sincrono dopo fire-and-forget; guard anti-regressione; localStorage signed:true nel .then()
+- [Alpha Swap CSS + vitest timeout](alpha-swap-css-vitest.md) — asw-* classes in AlphaWalletPage.css; vitest testTimeout alzato a 15000 per barrel ESM import

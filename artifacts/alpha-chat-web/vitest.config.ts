@@ -8,6 +8,8 @@ export default defineConfig({
   test: {
     environment: "happy-dom",
     globals: false,
+    testTimeout: 15000,      // default 5000; alzato per import barrel con ESM pesanti (ThirdWeb, Li.Fi)
+    hookTimeout: 15000,
     include: [
       "src/tests/**/*.test.ts",
       "src/tests/**/*.test.tsx",

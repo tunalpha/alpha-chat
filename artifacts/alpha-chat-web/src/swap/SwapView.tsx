@@ -1,43 +1,40 @@
 /**
- * SwapView — Alpha Swap UI (v2)
+ * SwapView — Alpha Swap UI
  *
- * UX: due card Paga/Ricevi ispirate a wallet moderni (Trust Wallet).
- * Architettura UI riutilizzabile per futuri percorsi (EVM, cross-chain).
+ * Design system: aw-* + asw-* (nativi Alpha Chat — vedi AlphaWalletPage.css)
+ * Zero Tailwind utility classes — zero import da payment engine / USDA / MultiChain.
  *
- * Stato reale del backend (da audit 2026-08-16):
- *   🟢 BTC → Lightning  — Boltz, hardened, pronto al test controllato
- *   🟡 Lightning → BTC  — Breez Spark, sincrono, idempotenza e lock anti-double-click aggiunti
- *   🔴 EVM Swap         — Non implementato (Li.Fi non integrato) → "In arrivo"
+ * AUTO-DETECTION:
+ *   - Al mount, se un wallet EVM (ThirdWeb/WalletConnect) è connesso → tab EVM
+ *   - Altrimenti → tab BTC / Lightning
  *
- * NOTA FEE: BTC→Lightning usa 25 bps (0.25%) — non 0.10%.
- * La discrepanza rispetto all'obiettivo commerciale (0.10%) deve essere
- * corretta separatamente tramite admin panel / modifica config DB.
- *
- * ISOLAMENTO CRITICO:
- *   - Zero import da payment engine, USDA, MultiChain, chat-wallet-bridge
- *   - Importa SOLO src/swap/** + SparkWalletContext (sola lettura)
+ * Stato backend reale:
+ *   🟢 BTC → Lightning  (Boltz, hardened)
+ *   🟡 Lightning → BTC  (Breez Spark, idempotenza + lock)
+ *   🟢 EVM Swap         (Li.Fi, 25 bps fee)
  */
 
 import React, {
   useEffect, useMemo, useState, useCallback, useRef,
 } from "react";
 import {
-  ChevronDown, ArrowUpDown, Copy, Check,
+  ChevronLeft, ArrowUpDown, Copy, Check,
   AlertTriangle, Loader2, CheckCircle, Clock, Info,
 } from "lucide-react";
-import { useSparkWallet }                from "../contexts/SparkWalletContext.js";
-import { BoltzBtcLnProvider }            from "./providers/BoltzBtcLnProvider.js";
+import { useActiveAccount }                from "thirdweb/react";
+import { useSparkWallet }                  from "../contexts/SparkWalletContext.js";
+import { BoltzBtcLnProvider }              from "./providers/BoltzBtcLnProvider.js";
 import {
   BreezSparkBtcLnProvider,
   clearLnBtcState,
   type SparkSwapExecutor,
-}                                        from "./providers/BreezSparkBtcLnProvider.js";
-import { SwapRouter, fetchSwapConfig }   from "./SwapRouter.js";
-import { useSwapState }                  from "./useSwapState.js";
+}                                          from "./providers/BreezSparkBtcLnProvider.js";
+import { SwapRouter, fetchSwapConfig }     from "./SwapRouter.js";
+import { useSwapState }                    from "./useSwapState.js";
 import type {
   SwapDirection, SwapPublicConfig, SwapState, SwapQuote, SwapError,
 } from "./types.js";
-import { EvmSwapView }                   from "./evm/EvmSwapView.js";
+import { EvmSwapView }                     from "./evm/EvmSwapView.js";
 
 // ── Tab type ──────────────────────────────────────────────────────────────────
 type SwapTab = "btcln" | "evm";
@@ -78,6 +75,45 @@ function stepFromState(state: SwapState): number {
   return 0;
 }
 
+// ── Shared header ─────────────────────────────────────────────────────────────
+
+interface SwapHeaderProps {
+  activeTab: SwapTab;
+  onTabChange: (t: SwapTab) => void;
+  onBack?: () => void;
+  onReset: () => void;
+}
+
+function SwapHeader({ activeTab, onTabChange, onBack, onReset }: SwapHeaderProps) {
+  return (
+    <div className="asw-header">
+      <div className="asw-header-row">
+        {onBack && (
+          <button
+            onClick={() => { onReset(); onBack(); }}
+            className="aw-back-btn"
+            aria-label="Indietro"
+          >
+            <ChevronLeft size={22} />
+          </button>
+        )}
+        <span className="asw-title">Alpha Swap</span>
+      </div>
+      <div className="asw-tabs">
+        {([["btcln", "BTC / Lightning"], ["evm", "EVM"]] as const).map(([tab, label]) => (
+          <button
+            key={tab}
+            onClick={() => onTabChange(tab)}
+            className={`asw-tab${activeTab === tab ? " asw-tab--active" : ""}`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ── BTC→LN in-progress view ───────────────────────────────────────────────────
 
 interface BtcLnInProgressProps {
@@ -89,125 +125,107 @@ interface BtcLnInProgressProps {
 }
 
 function BtcLnInProgressView({ sv, onCopy, copied, onDone, Header }: BtcLnInProgressProps) {
-  const step       = stepFromState(sv.state);
-  const isRefund   = sv.state === "refund_pending";
-  const isRecon    = sv.state === "failed_recoverable";
+  const step     = stepFromState(sv.state);
+  const isRefund = sv.state === "refund_pending";
+  const isRecon  = sv.state === "failed_recoverable";
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="asw-root">
       {Header}
-      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-4">
+      <div className="asw-content">
+        <div className="asw-form">
 
-        {/* Stepper */}
-        <div className="space-y-2">
-          {STEPS.map((s, i) => {
-            const done    = i < step;
-            const current = i === step;
-            return (
-              <div
-                key={i}
-                className={`flex items-start gap-3 p-3 rounded-xl transition-colors
-                  ${current ? "bg-card border border-border/40" : ""}
-                  ${!done && !current ? "opacity-30" : ""}`}
-              >
-                <div className={`w-6 h-6 rounded-full flex items-center justify-center shrink-0 mt-0.5 text-xs font-bold
-                  ${done    ? "bg-primary/20 text-primary" : ""}
-                  ${current ? "bg-primary text-primary-foreground" : ""}
-                  ${!done && !current ? "bg-muted/40 text-muted-foreground" : ""}`}
+          {/* Stepper */}
+          <div className="asw-stepper">
+            {STEPS.map((s, i) => {
+              const done    = i < step;
+              const current = i === step;
+              return (
+                <div
+                  key={i}
+                  className={`asw-step-item${current ? " asw-step-item--active" : ""}${!done && !current ? " asw-step-item--pending" : ""}`}
                 >
-                  {done ? <Check className="w-3 h-3" /> : i + 1}
+                  <div className={`asw-step-num${done ? " asw-step-num--done" : current ? " asw-step-num--current" : ""}`}>
+                    {done ? <Check size={12} /> : i + 1}
+                  </div>
+                  <div>
+                    <p className="asw-step-label">{s.label}</p>
+                    {current && <p className="asw-step-sub">{s.sub}</p>}
+                  </div>
+                  {current && !isRefund && !isRecon && (
+                    <Loader2 size={14} className="aw-spinner" style={{ margin: "2px 0 0 auto", width: 14, height: 14, border: "2px solid rgba(255,255,255,.15)", borderTopColor: "var(--accent,#6366f1)", animation: "aw-spin .8s linear infinite" }} />
+                  )}
                 </div>
+              );
+            })}
+          </div>
+
+          {/* Lockup address card */}
+          {sv.lockupAddress && step === 0 && !isRefund && (
+            <div className="asw-deposit-card">
+              <p className="asw-deposit-label">Invia BTC a questo indirizzo</p>
+              <p className="asw-deposit-addr">{sv.lockupAddress}</p>
+              <div className="asw-deposit-row">
                 <div>
-                  <p className="text-sm font-medium">{s.label}</p>
-                  {current && <p className="text-xs text-muted-foreground mt-0.5">{s.sub}</p>}
+                  <p className="asw-deposit-amount-label">Importo esatto</p>
+                  <p className="asw-deposit-amount-value">
+                    {fmtSat(sv.sendAmountSat)} <span className="asw-deposit-amount-unit">sat</span>
+                  </p>
                 </div>
-                {current && !isRefund && !isRecon && (
-                  <Loader2 className="w-4 h-4 animate-spin text-muted-foreground ml-auto mt-0.5 shrink-0" />
-                )}
+                <button
+                  onClick={() => onCopy(sv.lockupAddress!)}
+                  className="aw-btn-sm"
+                  style={{ display: "flex", alignItems: "center", gap: 6 }}
+                >
+                  {copied ? <Check size={13} /> : <Copy size={13} />}
+                  {copied ? "Copiato!" : "Copia"}
+                </button>
               </div>
-            );
-          })}
-        </div>
-
-        {/* Lockup address card */}
-        {sv.lockupAddress && step === 0 && !isRefund && (
-          <div className="bg-card border border-primary/30 rounded-2xl p-4 space-y-3">
-            <p className="text-xs font-semibold text-primary uppercase tracking-wide">
-              Invia BTC a questo indirizzo
-            </p>
-            <div className="bg-muted/30 rounded-xl p-3">
-              <p className="text-xs font-mono break-all leading-relaxed text-foreground">
-                {sv.lockupAddress}
+              <p className="asw-alert asw-alert--warn" style={{ marginTop: 10 }}>
+                ⚠️ Invia l'importo esatto indicato. Importi diversi potrebbero non essere riconosciuti.
               </p>
             </div>
-            <div className="flex items-center justify-between">
+          )}
+
+          {/* Waiting for lockup */}
+          {!sv.lockupAddress && step === 0 && !isRefund && (
+            <div className="asw-alert asw-alert--neutral">
+              <Loader2 size={16} style={{ flexShrink: 0, animation: "aw-spin .8s linear infinite" }} />
+              <span>Connessione con Boltz in corso… L'indirizzo di deposito sarà disponibile a breve.</span>
+            </div>
+          )}
+
+          {/* Reconciling */}
+          {isRecon && (
+            <div className="asw-alert asw-alert--warn">
+              <Loader2 size={16} style={{ flexShrink: 0, animation: "aw-spin .8s linear infinite" }} />
               <div>
-                <p className="text-xs text-muted-foreground">Importo esatto</p>
-                <p className="text-lg font-bold mt-0.5">
-                  {fmtSat(sv.sendAmountSat)} <span className="text-sm font-normal text-muted-foreground">sat</span>
-                </p>
+                <strong>Riconciliazione automatica</strong>
+                <p style={{ marginTop: 4 }}>Si è verificato un errore temporaneo. Il sistema sta riprovando automaticamente ogni 30 secondi. Non chiudere l'app.</p>
               </div>
-              <button
-                onClick={() => onCopy(sv.lockupAddress!)}
-                className="flex items-center gap-1.5 px-4 py-2 rounded-xl bg-primary/10 text-primary text-xs font-semibold hover:bg-primary/20 transition-colors"
-              >
-                {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                {copied ? "Copiato!" : "Copia"}
-              </button>
             </div>
-            <p className="text-xs text-muted-foreground bg-muted/20 rounded-lg px-3 py-2">
-              ⚠️ Invia l'importo esatto indicato. Importi diversi potrebbero non essere riconosciuti.
-            </p>
-          </div>
-        )}
+          )}
 
-        {/* Waiting for lockup (submitted, no address yet) */}
-        {!sv.lockupAddress && step === 0 && !isRefund && (
-          <div className="flex items-center gap-3 p-4 rounded-xl bg-muted/20 border border-border/20">
-            <Loader2 className="w-5 h-5 animate-spin text-muted-foreground shrink-0" />
-            <p className="text-sm text-muted-foreground">
-              Connessione con Boltz in corso…<br />
-              <span className="text-xs">L'indirizzo di deposito sarà disponibile a breve.</span>
-            </p>
-          </div>
-        )}
-
-        {/* Reconciling */}
-        {isRecon && (
-          <div className="flex items-start gap-3 p-4 rounded-xl bg-orange-500/10 border border-orange-500/20">
-            <Loader2 className="w-5 h-5 animate-spin text-orange-400 shrink-0 mt-0.5" />
-            <div>
-              <p className="text-sm font-medium text-orange-400">Riconciliazione automatica</p>
-              <p className="text-xs text-orange-400/80 mt-1">
-                Si è verificato un errore temporaneo. Il sistema sta riprovando automaticamente ogni 30 secondi. Non chiudere l'app.
-              </p>
+          {/* Refund pending */}
+          {isRefund && (
+            <div className="asw-alert asw-alert--error">
+              <AlertTriangle size={16} style={{ flexShrink: 0 }} />
+              <div>
+                <strong>Rimborso necessario</strong>
+                <p style={{ marginTop: 4 }}>Il deposito BTC è stato ricevuto ma il pagamento Lightning non è riuscito. I tuoi BTC saranno rimborsati automaticamente. Contatta il supporto se non ricevi il rimborso entro 24 ore.</p>
+              </div>
             </div>
-          </div>
-        )}
+          )}
 
-        {/* Refund pending */}
-        {isRefund && (
-          <div className="p-4 rounded-xl bg-destructive/10 border border-destructive/20 space-y-2">
-            <p className="text-sm font-semibold text-destructive">Rimborso necessario</p>
-            <p className="text-xs text-muted-foreground leading-relaxed">
-              Il deposito BTC è stato ricevuto ma il pagamento Lightning non è riuscito. I tuoi BTC saranno rimborsati automaticamente. Contatta il supporto se non ricevi il rimborso entro 24 ore.
-            </p>
-          </div>
-        )}
+          {/* Error detail */}
+          {sv.error && (
+            <p className="asw-mono-box" style={{ marginTop: 0 }}>{sv.error.message}</p>
+          )}
 
-        {/* Error detail */}
-        {sv.error && (
-          <div className="p-3 rounded-xl bg-muted/20 border border-border/20">
-            <p className="text-xs text-muted-foreground font-mono">{sv.error.message}</p>
-          </div>
-        )}
-
-        <button
-          onClick={onDone}
-          className="w-full py-3 rounded-2xl border border-border/30 text-sm text-muted-foreground hover:bg-muted/20 transition-colors"
-        >
-          Torna alla home
-        </button>
+          <button onClick={onDone} className="aw-btn aw-btn--secondary" style={{ marginTop: 4 }}>
+            Torna alla home
+          </button>
+        </div>
       </div>
     </div>
   );
@@ -216,38 +234,33 @@ function BtcLnInProgressView({ sv, onCopy, copied, onDone, Header }: BtcLnInProg
 // ── Completed view ────────────────────────────────────────────────────────────
 
 interface CompletedViewProps {
-  direction:          SwapDirection;
-  toAmountSat:        number | null;
-  Header:             React.ReactNode;
-  onDone:             () => void;
+  direction:    SwapDirection;
+  toAmountSat:  number | null;
+  Header:       React.ReactNode;
+  onDone:       () => void;
 }
 
 function SwapCompletedView({ direction, toAmountSat, Header, onDone }: CompletedViewProps) {
   const isBtcLn = direction === "btc_to_lightning";
   return (
-    <div className="flex flex-col h-full">
+    <div className="asw-root">
       {Header}
-      <div className="flex-1 flex flex-col items-center justify-center px-6 text-center gap-6">
-        <div className="w-20 h-20 rounded-full bg-green-500/20 flex items-center justify-center">
-          <CheckCircle className="w-10 h-10 text-green-400" />
+      <div className="asw-status-view">
+        <div className="asw-status-icon asw-status-icon--success">
+          <CheckCircle size={36} />
         </div>
         <div>
-          <p className="font-bold text-xl mb-2">Swap completato!</p>
+          <p className="asw-status-title">Swap completato!</p>
           {toAmountSat != null && (
-            <p className="text-2xl font-bold text-green-400 mt-1">
-              {fmtSat(toAmountSat)} sat
-            </p>
+            <p className="asw-status-amount">{fmtSat(toAmountSat)} sat</p>
           )}
-          <p className="text-sm text-muted-foreground mt-3 leading-relaxed">
+          <p className="asw-status-sub" style={{ marginTop: 10 }}>
             {isBtcLn
               ? "I sat Lightning sono stati inviati nel tuo wallet Spark."
               : "Il BTC on-chain è stato inviato all'indirizzo indicato."}
           </p>
         </div>
-        <button
-          onClick={onDone}
-          className="w-full max-w-xs py-4 rounded-2xl bg-primary text-primary-foreground font-bold text-base active:scale-[0.98] transition-transform"
-        >
+        <button onClick={onDone} className="aw-btn aw-btn--primary" style={{ maxWidth: 300 }}>
           Fatto
         </button>
       </div>
@@ -273,25 +286,20 @@ interface ErrorViewProps {
 
 function SwapErrorView({ state, error, onRetry, Header }: ErrorViewProps) {
   return (
-    <div className="flex flex-col h-full">
+    <div className="asw-root">
       {Header}
-      <div className="flex-1 flex flex-col items-center justify-center px-6 text-center gap-5">
-        <AlertTriangle className="w-12 h-12 text-destructive" />
+      <div className="asw-status-view">
+        <div className="asw-status-icon asw-status-icon--error">
+          <AlertTriangle size={36} />
+        </div>
         <div>
-          <p className="font-bold text-lg mb-2">Swap non riuscito</p>
-          <p className="text-sm text-muted-foreground leading-relaxed">
-            {ERROR_MESSAGES[state] ?? "Si è verificato un errore."}
-          </p>
+          <p className="asw-status-title">Swap non riuscito</p>
+          <p className="asw-status-sub">{ERROR_MESSAGES[state] ?? "Si è verificato un errore."}</p>
           {error?.message && (
-            <p className="text-xs text-muted-foreground/60 mt-3 font-mono bg-muted/20 rounded-lg px-3 py-2">
-              {error.message}
-            </p>
+            <p className="asw-mono-box" style={{ marginTop: 12, textAlign: "left" }}>{error.message}</p>
           )}
         </div>
-        <button
-          onClick={onRetry}
-          className="w-full max-w-xs py-4 rounded-2xl bg-primary text-primary-foreground font-bold"
-        >
+        <button onClick={onRetry} className="aw-btn aw-btn--primary" style={{ maxWidth: 300 }}>
           Riprova
         </button>
       </div>
@@ -299,37 +307,29 @@ function SwapErrorView({ state, error, onRetry, Header }: ErrorViewProps) {
   );
 }
 
-// ── LN→BTC in-progress view (durante spark.send()) ───────────────────────────
+// ── LN→BTC creating view ───────────────────────────────────────────────────────
 
 function LnBtcCreatingView({ Header }: { Header: React.ReactNode }) {
   return (
-    <div className="flex flex-col h-full">
+    <div className="asw-root">
       {Header}
-      <div className="flex-1 flex flex-col items-center justify-center px-6 text-center gap-6">
-        <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center">
-          <Loader2 className="w-10 h-10 animate-spin text-primary" />
+      <div className="asw-status-view">
+        <div className="asw-status-icon asw-status-icon--pending">
+          <Loader2 size={36} style={{ animation: "aw-spin .8s linear infinite" }} />
         </div>
         <div>
-          <p className="font-bold text-xl mb-2">Pagamento Lightning in corso…</p>
-          <p className="text-sm text-muted-foreground leading-relaxed mt-1">
-            Il pagamento è in elaborazione. Non chiudere l'app.
-          </p>
-          <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground/70 mt-4">
-            <div className="w-1.5 h-1.5 rounded-full bg-orange-400 animate-pulse" />
-            BTC in elaborazione verso l'indirizzo di destinazione
-          </div>
+          <p className="asw-status-title">Pagamento Lightning in corso…</p>
+          <p className="asw-status-sub">Il pagamento è in elaborazione. Non chiudere l'app.</p>
         </div>
-        <div className="max-w-xs w-full bg-orange-500/10 border border-orange-500/20 rounded-xl px-4 py-3">
-          <p className="text-xs text-orange-400 leading-relaxed">
-            ⚠️ Non chiudere o aggiornare l'app. L'operazione richiede fino a 60 secondi.
-          </p>
+        <div className="asw-alert asw-alert--warn" style={{ maxWidth: 320 }}>
+          ⚠️ Non chiudere o aggiornare l'app. L'operazione richiede fino a 60 secondi.
         </div>
       </div>
     </div>
   );
 }
 
-// ── LN→BTC unknown state view (timeout / stato incerto) ───────────────────────
+// ── LN→BTC unknown state view ─────────────────────────────────────────────────
 
 interface LnBtcUnknownViewProps {
   error:   SwapError | null;
@@ -339,35 +339,29 @@ interface LnBtcUnknownViewProps {
 
 function LnBtcUnknownView({ error, onReset, Header }: LnBtcUnknownViewProps) {
   return (
-    <div className="flex flex-col h-full">
+    <div className="asw-root">
       {Header}
-      <div className="flex-1 flex flex-col items-center justify-center px-6 text-center gap-5">
-        <div className="w-20 h-20 rounded-full bg-orange-500/10 flex items-center justify-center">
-          <AlertTriangle className="w-10 h-10 text-orange-400" />
+      <div className="asw-status-view">
+        <div className="asw-status-icon asw-status-icon--warn">
+          <AlertTriangle size={36} />
         </div>
         <div>
-          <p className="font-bold text-xl mb-2">Stato da verificare</p>
-          <p className="text-sm text-muted-foreground leading-relaxed">
-            {error?.message ??
-              "Il pagamento potrebbe essere stato inviato. Verifica manualmente prima di riprovare."}
+          <p className="asw-status-title">Stato da verificare</p>
+          <p className="asw-status-sub">
+            {error?.message ?? "Il pagamento potrebbe essere stato inviato. Verifica manualmente prima di riprovare."}
           </p>
         </div>
-        <div className="w-full max-w-xs space-y-3">
-          <div className="p-4 rounded-xl bg-orange-500/10 border border-orange-500/20 text-left space-y-2">
-            <p className="text-xs font-semibold text-orange-400">Prima di procedere</p>
-            <ul className="text-xs text-orange-400/80 space-y-1 leading-relaxed">
-              <li>• Verifica il tuo saldo Lightning nel wallet Spark</li>
-              <li>• Controlla che l'indirizzo BTC di destinazione non abbia ricevuto nulla</li>
-              <li>• Se i fondi non arrivano entro 30 min, contatta il supporto</li>
-            </ul>
-          </div>
-          <button
-            onClick={onReset}
-            className="w-full py-4 rounded-2xl bg-primary text-primary-foreground font-bold text-base active:scale-[0.98] transition-transform"
-          >
-            Ho verificato — Torna all'inizio
-          </button>
+        <div className="asw-alert asw-alert--warn" style={{ maxWidth: 320, textAlign: "left" }}>
+          <AlertTriangle size={14} style={{ flexShrink: 0 }} />
+          <ul style={{ margin: 0, padding: 0, listStyle: "none", display: "flex", flexDirection: "column", gap: 4 }}>
+            <li>• Verifica il tuo saldo Lightning nel wallet Spark</li>
+            <li>• Controlla che l'indirizzo BTC di destinazione non abbia ricevuto nulla</li>
+            <li>• Se i fondi non arrivano entro 30 min, contatta il supporto</li>
+          </ul>
         </div>
+        <button onClick={onReset} className="aw-btn aw-btn--primary" style={{ maxWidth: 300 }}>
+          Ho verificato — Torna all'inizio
+        </button>
       </div>
     </div>
   );
@@ -376,30 +370,28 @@ function LnBtcUnknownView({ error, onReset, Header }: LnBtcUnknownViewProps) {
 // ── Asset card ────────────────────────────────────────────────────────────────
 
 interface AssetCardProps {
-  label:         string;
-  icon:          string;
-  ticker:        string;
-  network:       string;
-  children:      React.ReactNode;
+  label:    string;
+  icon:     string;
+  ticker:   string;
+  network:  string;
+  children: React.ReactNode;
 }
 
 function AssetCard({ label, icon, ticker, network, children }: AssetCardProps) {
   return (
-    <div className="bg-card border border-border/30 rounded-2xl p-4">
-      <p className="text-xs font-medium text-muted-foreground mb-3 uppercase tracking-wide">{label}</p>
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="w-11 h-11 rounded-full bg-muted/50 flex items-center justify-center text-xl shrink-0 border border-border/20">
-            {icon}
-          </div>
-          <div className="min-w-0">
-            <p className="font-bold text-base">{ticker}</p>
-            <p className="text-xs text-muted-foreground truncate">{network}</p>
+    <div className="asw-card">
+      <div className="asw-card-head">
+        <span className="asw-card-label">{label}</span>
+      </div>
+      <div className="asw-token-row">
+        <div className="asw-token-btn" style={{ cursor: "default" }}>
+          <div className="asw-token-icon">{icon}</div>
+          <div className="asw-token-info">
+            <div className="asw-token-name">{ticker}</div>
+            <div className="asw-token-network">{network}</div>
           </div>
         </div>
-        <div className="shrink-0 text-right">
-          {children}
-        </div>
+        <div className="asw-amount-col">{children}</div>
       </div>
     </div>
   );
@@ -412,56 +404,54 @@ function FeePreview({ quote, direction }: { quote: SwapQuote; direction: SwapDir
   const providerLbl = isBtcLn ? "Boltz" : "Breez Spark";
 
   return (
-    <div className="bg-muted/15 border border-border/20 rounded-xl px-4 py-3 space-y-2">
-      <div className="flex justify-between items-center">
-        <span className="text-xs text-muted-foreground">Riceverai circa</span>
-        <span className="text-sm font-bold">{fmtSat(quote.to_amount_sat)} sat</span>
+    <div className="asw-info-box">
+      <div className="asw-info-row">
+        <span className="asw-info-label">Riceverai circa</span>
+        <span className="asw-info-value" style={{ fontWeight: 700 }}>{fmtSat(quote.to_amount_sat)} sat</span>
       </div>
 
       {quote.alpha_fee_sat > 0 ? (
-        <div className="flex justify-between items-center">
-          <span className="text-xs text-muted-foreground">
-            Fee Alpha ({fmtBps(quote.alpha_fee_bps)})
-          </span>
-          <span className="text-xs text-orange-400 font-medium">
-            {fmtSat(quote.alpha_fee_sat)} sat
-          </span>
+        <div className="asw-info-row">
+          <span className="asw-info-label">Fee Alpha ({fmtBps(quote.alpha_fee_bps)})</span>
+          <span className="asw-info-value asw-info-value--fee">{fmtSat(quote.alpha_fee_sat)} sat</span>
         </div>
       ) : (
-        <div className="flex justify-between items-center">
-          <span className="text-xs text-muted-foreground">Fee Alpha</span>
-          <span className="text-xs text-green-400 font-medium">0% — Gratuito</span>
+        <div className="asw-info-row">
+          <span className="asw-info-label">Fee Alpha</span>
+          <span className="asw-info-value asw-info-value--green">0% — Gratuito</span>
         </div>
       )}
 
       {quote.provider_fee_sat > 0 && (
-        <div className="flex justify-between items-center">
-          <span className="text-xs text-muted-foreground">Fee provider</span>
-          <span className="text-xs">{fmtSat(quote.provider_fee_sat)} sat</span>
+        <div className="asw-info-row">
+          <span className="asw-info-label">Fee provider</span>
+          <span className="asw-info-value">{fmtSat(quote.provider_fee_sat)} sat</span>
         </div>
       )}
 
       {quote.miner_fee_sat > 0 && (
-        <div className="flex justify-between items-center">
-          <span className="text-xs text-muted-foreground">Fee rete (miner)</span>
-          <span className="text-xs">{fmtSat(quote.miner_fee_sat)} sat</span>
+        <div className="asw-info-row">
+          <span className="asw-info-label">Fee rete (miner)</span>
+          <span className="asw-info-value">{fmtSat(quote.miner_fee_sat)} sat</span>
         </div>
       )}
 
-      <div className="border-t border-border/20 pt-2 flex justify-between items-center">
-        <span className="text-xs font-semibold">Totale da inviare</span>
-        <span className="text-sm font-bold">{fmtSat(quote.total_debit_sat)} sat</span>
+      <hr className="asw-info-sep" />
+      <div className="asw-info-row asw-info-row--total">
+        <span className="asw-info-label" style={{ fontWeight: 600, color: "rgba(255,255,255,.75)" }}>Totale da inviare</span>
+        <span className="asw-info-value" style={{ fontWeight: 700 }}>{fmtSat(quote.total_debit_sat)} sat</span>
       </div>
 
-      <div className="flex justify-between items-center">
-        <span className="text-xs text-muted-foreground">Provider</span>
-        <span className="text-xs text-muted-foreground">{providerLbl}</span>
+      <div className="asw-info-row">
+        <span className="asw-info-label">Provider</span>
+        <span className="asw-provider-chip">{providerLbl}</span>
       </div>
 
       {quote.limits && (
-        <p className="text-xs text-muted-foreground/60 pt-1">
-          Limite: {fmtSat(quote.limits.min_sat)} – {fmtSat(quote.limits.max_sat)} sat
-        </p>
+        <div className="asw-info-row" style={{ paddingTop: 0 }}>
+          <span className="asw-info-label">Limite</span>
+          <span className="asw-info-value">{fmtSat(quote.limits.min_sat)} – {fmtSat(quote.limits.max_sat)} sat</span>
+        </div>
       )}
     </div>
   );
@@ -476,9 +466,9 @@ interface SwapMainFormProps {
 }
 
 function SwapMainForm({ sv, actions, config }: SwapMainFormProps) {
-  const dir      = sv.direction;
-  const isBtcLn  = dir === "btc_to_lightning";
-  const isLnBtc  = !isBtcLn;
+  const dir     = sv.direction;
+  const isBtcLn = dir === "btc_to_lightning";
+  const isLnBtc = !isBtcLn;
 
   const pay = payAsset(dir);
   const rcv = receiveAsset(dir);
@@ -508,7 +498,7 @@ function SwapMainForm({ sv, actions, config }: SwapMainFormProps) {
 
   const handleSwap = () => {
     if (!canSwap) return;
-    actions.confirm(); // useEffect in SwapView auto-calls execute() when state becomes "confirming"
+    actions.confirm();
   };
 
   const handleAmountChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -518,10 +508,10 @@ function SwapMainForm({ sv, actions, config }: SwapMainFormProps) {
   };
 
   return (
-    <div className="flex-1 overflow-y-auto">
-      <div className="px-4 py-4 space-y-3 pb-8">
+    <div className="asw-content">
+      <div className="asw-form">
 
-        {/* ── PAGA card ─────────────────────────────────────────────────── */}
+        {/* PAGA card */}
         <AssetCard label="Paga" icon={pay.icon} ticker={pay.ticker} network={pay.network}>
           <input
             type="text"
@@ -530,52 +520,52 @@ function SwapMainForm({ sv, actions, config }: SwapMainFormProps) {
             placeholder="0"
             value={sv.amountSat > 0 ? sv.amountSat.toLocaleString("it-IT") : ""}
             onChange={handleAmountChange}
-            className="bg-transparent text-right text-2xl font-bold w-36 outline-none text-foreground placeholder:text-muted-foreground/40"
+            className="asw-amount-input"
             aria-label="Importo in satoshi"
           />
         </AssetCard>
 
-        {/* ── Direction toggle ───────────────────────────────────────────── */}
-        <div className="flex justify-center -my-1">
+        {/* Direction toggle */}
+        <div className="asw-dir-wrap">
           <button
             onClick={handleToggle}
-            className="w-10 h-10 rounded-full bg-card border border-border/30 flex items-center justify-center hover:bg-muted/50 active:scale-90 transition-all z-10"
+            className="asw-dir-btn"
             aria-label="Inverti direzione"
           >
-            <ArrowUpDown className="w-4 h-4 text-muted-foreground" />
+            <ArrowUpDown size={16} />
           </button>
         </div>
 
-        {/* ── RICEVI card ────────────────────────────────────────────────── */}
+        {/* RICEVI card */}
         <AssetCard label="Ricevi" icon={rcv.icon} ticker={rcv.ticker} network={rcv.network}>
           {isQuoting ? (
-            <div className="flex items-center gap-2">
-              <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
-              <span className="text-sm text-muted-foreground">Calcolo…</span>
+            <div className="asw-amount-loading">
+              <Loader2 size={14} style={{ animation: "aw-spin .8s linear infinite" }} />
+              <span>Calcolo…</span>
             </div>
           ) : hasQuote ? (
-            <div className="text-right">
-              <p className="text-2xl font-bold">≈ {fmtSat(sv.quote!.to_amount_sat)}</p>
-              <p className="text-xs text-muted-foreground">sat</p>
+            <div style={{ textAlign: "right" }}>
+              <p className="asw-amount-input" style={{ width: "auto", display: "block", pointerEvents: "none", color: "#fff" }}>
+                ≈ {fmtSat(sv.quote!.to_amount_sat)}
+              </p>
+              <p style={{ fontSize: 11, color: "rgba(255,255,255,.4)", marginTop: 2 }}>sat</p>
             </div>
           ) : (
-            <p className="text-2xl font-bold text-muted-foreground/30">—</p>
+            <span className="asw-amount-display">—</span>
           )}
         </AssetCard>
 
-        {/* ── BTC address (LN→BTC only) ──────────────────────────────────── */}
+        {/* BTC address (LN→BTC only) */}
         {isLnBtc && (
-          <div className="bg-card border border-border/30 rounded-2xl px-4 py-3 space-y-2">
-            <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">
-              Indirizzo BTC di destinazione
-            </p>
+          <div className="asw-addr-card">
+            <span className="asw-card-label">Indirizzo BTC di destinazione</span>
             <input
               type="text"
               inputMode="text"
               placeholder="bc1q… oppure 1… oppure 3…"
               value={sv.btcAddress}
               onChange={e => actions.setBtcAddress(e.target.value.trim())}
-              className="w-full bg-transparent text-sm outline-none text-foreground placeholder:text-muted-foreground/40 font-mono py-1"
+              className="asw-addr-input"
               aria-label="Indirizzo Bitcoin di destinazione"
               autoCorrect="off"
               autoCapitalize="none"
@@ -584,121 +574,92 @@ function SwapMainForm({ sv, actions, config }: SwapMainFormProps) {
           </div>
         )}
 
-        {/* ── Fee preview ────────────────────────────────────────────────── */}
-        {hasQuote && sv.quote && (
-          <FeePreview quote={sv.quote} direction={dir} />
-        )}
+        {/* Fee preview */}
+        {hasQuote && sv.quote && <FeePreview quote={sv.quote} direction={dir} />}
 
-        {/* ── Quote expired ──────────────────────────────────────────────── */}
+        {/* Quote expired */}
         {quoteExpired && (
-          <div className="flex items-center gap-2 p-3 rounded-xl bg-orange-500/10 border border-orange-500/20">
-            <Clock className="w-4 h-4 text-orange-400 shrink-0" />
-            <p className="text-xs text-orange-400">Quote scaduta — verrà aggiornata automaticamente.</p>
+          <div className="asw-alert asw-alert--warn">
+            <Clock size={14} style={{ flexShrink: 0, marginTop: 1 }} />
+            <span>Quote scaduta — verrà aggiornata automaticamente.</span>
           </div>
         )}
 
-        {/* ── LN→BTC: irreversible warning ──────────────────────────────── */}
+        {/* LN→BTC: irreversible warning */}
         {isLnBtc && hasQuote && (
-          <div className="flex items-start gap-2 p-3 rounded-xl bg-orange-500/10 border border-orange-500/20">
-            <AlertTriangle className="w-4 h-4 text-orange-400 shrink-0 mt-0.5" />
-            <p className="text-xs text-orange-400 leading-relaxed">
-              <strong>Il pagamento Lightning è irreversibile.</strong> Verifica l'indirizzo BTC prima di confermare.
-            </p>
+          <div className="asw-alert asw-alert--warn">
+            <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 1 }} />
+            <span><strong>Il pagamento Lightning è irreversibile.</strong> Verifica l'indirizzo BTC prima di confermare.</span>
           </div>
         )}
 
-        {/* ── LN→BTC: availability notice ────────────────────────────────── */}
+        {/* LN→BTC: availability notice */}
         {isLnBtc && (
-          <div className="flex items-start gap-2 p-3 rounded-xl bg-blue-500/10 border border-blue-500/20">
-            <Info className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" />
-            <p className="text-xs text-blue-400 leading-relaxed">
-              <strong>Non chiudere l'app durante l'invio.</strong> Il pagamento è reversibile solo prima della conferma — verifica sempre l'indirizzo BTC.
-            </p>
+          <div className="asw-alert asw-alert--info">
+            <Info size={14} style={{ flexShrink: 0, marginTop: 1 }} />
+            <span><strong>Non chiudere l'app durante l'invio.</strong> Il pagamento è reversibile solo prima della conferma.</span>
           </div>
         )}
 
-        {/* ── Provider unavailable ───────────────────────────────────────── */}
+        {/* Provider unavailable */}
         {!dirEnabled && (
-          <div className="flex items-center gap-2 p-3 rounded-xl bg-muted/20 border border-border/20">
-            <AlertTriangle className="w-4 h-4 text-muted-foreground shrink-0" />
-            <p className="text-xs text-muted-foreground">
-              {isBtcLn ? "BTC → Lightning" : "Lightning → BTC"} non disponibile al momento.
-            </p>
+          <div className="asw-alert asw-alert--neutral">
+            <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 1 }} />
+            <span>{isBtcLn ? "BTC → Lightning" : "Lightning → BTC"} non disponibile al momento.</span>
           </div>
         )}
 
-        {/* ── Error from last attempt ────────────────────────────────────── */}
+        {/* Error */}
         {sv.error && sv.state === "idle" && (
-          <div className="flex items-start gap-2 p-3 rounded-xl bg-destructive/10 border border-destructive/20">
-            <AlertTriangle className="w-4 h-4 text-destructive shrink-0 mt-0.5" />
-            <p className="text-xs text-destructive leading-relaxed">{sv.error.message}</p>
+          <div className="asw-alert asw-alert--error">
+            <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 1 }} />
+            <span>{sv.error.message}</span>
           </div>
         )}
 
-        {/* ── BTC→LN: how it works (before quote) ───────────────────────── */}
+        {/* BTC→LN: how it works */}
         {isBtcLn && !hasQuote && !isQuoting && sv.amountSat > 0 && (
-          <div className="bg-muted/10 border border-border/20 rounded-xl px-4 py-3">
-            <p className="text-xs text-muted-foreground font-medium mb-2">Come funziona</p>
-            <div className="space-y-2">
-              {[
-                "Inserisci l'importo BTC",
-                "Invia BTC all'indirizzo che ti forniremo",
-                "Boltz pagherà la tua invoice Lightning",
-                "Ricevi sat nel wallet Spark",
-              ].map((step, i) => (
-                <div key={i} className="flex items-center gap-2.5">
-                  <div className="w-5 h-5 rounded-full bg-muted/60 flex items-center justify-center shrink-0">
-                    <span className="text-[10px] font-bold text-muted-foreground">{i + 1}</span>
-                  </div>
-                  <span className="text-xs text-muted-foreground">{step}</span>
-                </div>
-              ))}
-            </div>
+          <div className="asw-info-box">
+            <p style={{ fontSize: 11, fontWeight: 700, textTransform: "uppercase", letterSpacing: ".5px", color: "rgba(255,255,255,.4)", marginBottom: 10 }}>Come funziona</p>
+            {["Inserisci l'importo BTC", "Invia BTC all'indirizzo che ti forniremo", "Boltz pagherà la tua invoice Lightning", "Ricevi sat nel wallet Spark"].map((step, i) => (
+              <div key={i} style={{ display: "flex", alignItems: "center", gap: 10, padding: "4px 0" }}>
+                <div className="asw-step-num" style={{ width: 20, height: 20, fontSize: 10 }}>{i + 1}</div>
+                <span style={{ fontSize: 13, color: "rgba(255,255,255,.6)" }}>{step}</span>
+              </div>
+            ))}
           </div>
         )}
 
-        {/* ── CTA ────────────────────────────────────────────────────────── */}
+        {/* CTA */}
         <button
           onClick={handleSwap}
           disabled={!canSwap || isBusy}
-          className={`w-full py-4 rounded-2xl font-bold text-base transition-all mt-2
-            ${canSwap && !isBusy
-              ? "bg-primary text-primary-foreground hover:bg-primary/90 active:scale-[0.98]"
-              : "bg-muted/40 text-muted-foreground cursor-not-allowed"
-            }`}
+          className="aw-btn aw-btn--primary"
+          style={{ marginTop: 4 }}
         >
           {isBusy ? (
-            <span className="flex items-center justify-center gap-2">
-              <Loader2 className="w-5 h-5 animate-spin" />
+            <span style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+              <Loader2 size={18} style={{ animation: "aw-spin .8s linear infinite" }} />
               Scambio in corso…
             </span>
-          ) : (
-            "Scambia"
-          )}
+          ) : "Scambia"}
         </button>
 
-        {/* ── Hint: no amount ───────────────────────────────────────────── */}
+        {/* Hints */}
         {sv.amountSat <= 0 && (
-          <p className="text-center text-xs text-muted-foreground/60">
-            Inserisci un importo per vedere la quote
-          </p>
+          <p className="asw-hint">Inserisci un importo per vedere la quote</p>
         )}
-
-        {/* ── Hint: LN→BTC needs address ────────────────────────────────── */}
         {isLnBtc && sv.amountSat > 0 && sv.btcAddress.trim().length < 10 && (
-          <p className="text-center text-xs text-muted-foreground/60">
-            Inserisci l'indirizzo BTC di destinazione
-          </p>
+          <p className="asw-hint">Inserisci l'indirizzo BTC di destinazione</p>
         )}
 
-        {/* ── Fee discrepancy note (BTC→LN) ─────────────────────────────── */}
+        {/* Fee discrepancy note */}
         {isBtcLn && hasQuote && sv.quote && sv.quote.alpha_fee_bps > 10 && (
-          <p className="text-center text-[10px] text-muted-foreground/50 px-2 leading-relaxed">
+          <p className="asw-disclaimer">
             Fee Alpha corrente: {fmtBps(sv.quote.alpha_fee_bps)} ({sv.quote.alpha_fee_bps} bps).
-            Obiettivo commerciale 0.10% — modifica configurazione tramite admin panel.
+            Obiettivo commerciale 0.10% — modifica config tramite admin panel.
           </p>
         )}
-
 
       </div>
     </div>
@@ -712,7 +673,8 @@ interface SwapViewProps {
 }
 
 export function SwapView({ onBack }: SwapViewProps) {
-  const spark = useSparkWallet();
+  const spark         = useSparkWallet();
+  const activeAccount = useActiveAccount();   // ThirdWeb/WalletConnect EVM account
 
   const [activeTab, setActiveTab]   = useState<SwapTab>("btcln");
   const [config, setConfig]         = useState<SwapPublicConfig | null>(null);
@@ -720,7 +682,17 @@ export function SwapView({ onBack }: SwapViewProps) {
   const [cfgError, setCfgError]     = useState<string | null>(null);
   const [copied, setCopied]         = useState(false);
 
-  // ── Router (unchanged from v1) ──────────────────────────────────────────────
+  // ── Auto-detect tab based on connected wallets ─────────────────────────────
+  const didAutoSelect = useRef(false);
+  useEffect(() => {
+    if (didAutoSelect.current) return;
+    if (activeAccount?.address) {
+      setActiveTab("evm");
+      didAutoSelect.current = true;
+    }
+  }, [activeAccount?.address]);
+
+  // ── Router (unchanged) ─────────────────────────────────────────────────────
   const router = useMemo(() => {
     if (!spark) return null;
 
@@ -758,20 +730,16 @@ export function SwapView({ onBack }: SwapViewProps) {
   const [sv, actions] = useSwapState(router);
 
   // ── Auto-execute when state becomes "confirming" ───────────────────────────
-  // Needed because confirm() and execute() are separate — confirm() sets state
-  // to "confirming" via React state (async), so we can't call execute() immediately.
   useEffect(() => {
-    if (sv.state === "confirming") {
-      actions.execute();
-    }
+    if (sv.state === "confirming") actions.execute();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sv.state]);
 
-  // ── Auto-quote debounce ─────────────────────────────────────────────────────
+  // ── Auto-quote debounce ────────────────────────────────────────────────────
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const prevAmt     = useRef(0);
-  const prevAddr    = useRef("");
-  const prevDir     = useRef<SwapDirection>("btc_to_lightning");
+  const prevAmt  = useRef(0);
+  const prevAddr = useRef("");
+  const prevDir  = useRef<SwapDirection>("btc_to_lightning");
 
   useEffect(() => {
     if (sv.amountSat <= 0 || !router || !config?.enabled) return;
@@ -796,7 +764,7 @@ export function SwapView({ onBack }: SwapViewProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sv.amountSat, sv.direction, sv.btcAddress, router, config?.enabled]);
 
-  // ── Load config ─────────────────────────────────────────────────────────────
+  // ── Load config ────────────────────────────────────────────────────────────
   useEffect(() => {
     setCfgLoading(true);
     fetchSwapConfig()
@@ -815,48 +783,24 @@ export function SwapView({ onBack }: SwapViewProps) {
     onBack?.();
   }, [actions, onBack]);
 
-  // ── Shared header ───────────────────────────────────────────────────────────
-  const Header = (
-    <div className="border-b border-border/30 shrink-0">
-      <div className="flex items-center gap-3 px-4 py-4">
-        {onBack && (
-          <button
-            onClick={() => { actions.reset(); onBack(); }}
-            className="p-2 rounded-xl hover:bg-muted/50 transition-colors"
-            aria-label="Indietro"
-          >
-            <ChevronDown className="w-5 h-5 rotate-90" />
-          </button>
-        )}
-        <span className="font-bold text-lg">Alpha Swap</span>
-      </div>
-      {/* Tab switcher */}
-      <div className="flex px-4 pb-0 gap-1">
-        {([ ["btcln", "BTC / Lightning"], ["evm", "EVM"] ] as const).map(([tab, label]) => (
-          <button
-            key={tab}
-            onClick={() => setActiveTab(tab)}
-            className={`flex-1 py-2 text-sm font-semibold rounded-t-xl transition-colors border-b-2
-              ${activeTab === tab
-                ? "border-primary text-primary"
-                : "border-transparent text-muted-foreground hover:text-foreground"
-              }`}
-          >
-            {label}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
+  // ── Shared header props ────────────────────────────────────────────────────
+  const headerProps: SwapHeaderProps = {
+    activeTab,
+    onTabChange: setActiveTab,
+    onBack,
+    onReset: actions.reset,
+  };
 
-  // ── Loading config ──────────────────────────────────────────────────────────
+  const Header = <SwapHeader {...headerProps} />;
+
+  // ── Loading ────────────────────────────────────────────────────────────────
   if (cfgLoading) {
     return (
-      <div className="flex flex-col h-full">
+      <div className="asw-root">
         {Header}
-        <div className="flex-1 flex items-center justify-center gap-3 text-muted-foreground">
-          <Loader2 className="w-6 h-6 animate-spin" />
-          <span className="text-sm">Caricamento…</span>
+        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 12, color: "rgba(255,255,255,.5)" }}>
+          <Loader2 size={22} style={{ animation: "aw-spin .8s linear infinite" }} />
+          <span style={{ fontSize: 14 }}>Caricamento…</span>
         </div>
       </div>
     );
@@ -864,12 +808,14 @@ export function SwapView({ onBack }: SwapViewProps) {
 
   if (cfgError) {
     return (
-      <div className="flex flex-col h-full">
+      <div className="asw-root">
         {Header}
-        <div className="flex-1 flex flex-col items-center justify-center gap-4 px-6 text-center">
-          <AlertTriangle className="w-10 h-10 text-destructive" />
-          <p className="text-sm text-muted-foreground">Impossibile caricare la configurazione.</p>
-          <button onClick={() => window.location.reload()} className="text-xs text-primary underline">
+        <div className="asw-status-view">
+          <AlertTriangle size={40} style={{ color: "#f87171" }} />
+          <div>
+            <p className="asw-status-sub">Impossibile caricare la configurazione.</p>
+          </div>
+          <button onClick={() => window.location.reload()} className="aw-btn aw-btn--secondary" style={{ maxWidth: 200 }}>
             Riprova
           </button>
         </div>
@@ -877,25 +823,25 @@ export function SwapView({ onBack }: SwapViewProps) {
     );
   }
 
-  // ── Recovery spinner (bug fixed: 204 → null now resets recovering) ──────────
+  // ── Recovery spinner ───────────────────────────────────────────────────────
   if (sv.recovering) {
     return (
-      <div className="flex flex-col h-full">
+      <div className="asw-root">
         {Header}
-        <div className="flex-1 flex items-center justify-center gap-3 text-muted-foreground">
-          <Loader2 className="w-6 h-6 animate-spin" />
-          <span className="text-sm">Verifica swap in corso…</span>
+        <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 12, color: "rgba(255,255,255,.5)" }}>
+          <Loader2 size={22} style={{ animation: "aw-spin .8s linear infinite" }} />
+          <span style={{ fontSize: 14 }}>Verifica swap in corso…</span>
         </div>
       </div>
     );
   }
 
-  // ── LN→BTC in-progress (durante execute / spark.send()) ────────────────────
+  // ── LN→BTC in-progress (durante execute / spark.send()) ───────────────────
   if (sv.direction === "lightning_to_btc" && sv.state === "creating") {
     return <LnBtcCreatingView Header={Header} />;
   }
 
-  // ── LN→BTC unknown state (timeout / chiusura PWA durante pagamento) ─────────
+  // ── LN→BTC unknown state ──────────────────────────────────────────────────
   if (sv.state === "lnbtc_unknown") {
     return (
       <LnBtcUnknownView
@@ -906,33 +852,28 @@ export function SwapView({ onBack }: SwapViewProps) {
     );
   }
 
-  // ── Swap disabled ───────────────────────────────────────────────────────────
+  // ── Swap disabled ──────────────────────────────────────────────────────────
   if (!config?.enabled) {
     return (
-      <div className="flex flex-col h-full">
+      <div className="asw-root">
         {Header}
-        <div className="flex-1 flex flex-col items-center justify-center gap-5 px-6 text-center">
-          <div className="w-16 h-16 rounded-2xl bg-muted/30 flex items-center justify-center">
-            <ArrowUpDown className="w-8 h-8 text-muted-foreground" />
+        <div className="asw-status-view">
+          <div className="asw-status-icon asw-status-icon--pending" style={{ width: 64, height: 64 }}>
+            <ArrowUpDown size={28} />
           </div>
           <div>
-            <p className="font-bold text-base mb-2">Alpha Swap — In arrivo</p>
-            <p className="text-sm text-muted-foreground leading-relaxed">
-              Converti BTC on-chain in Lightning e viceversa direttamente dal tuo wallet.
-            </p>
+            <p className="asw-status-title">Alpha Swap — In arrivo</p>
+            <p className="asw-status-sub">Converti BTC on-chain in Lightning e viceversa direttamente dal tuo wallet.</p>
           </div>
         </div>
       </div>
     );
   }
 
-  // ── BTC→LN in-progress ──────────────────────────────────────────────────────
+  // ── BTC→LN in-progress ────────────────────────────────────────────────────
   const btcLnInProgress = sv.swapId != null
     && sv.direction === "btc_to_lightning"
-    && ([
-      "submitted", "created", "awaiting_deposit",
-      "detected", "processing", "failed_recoverable", "refund_pending",
-    ] as SwapState[]).includes(sv.state);
+    && (["submitted", "created", "awaiting_deposit", "detected", "processing", "failed_recoverable", "refund_pending"] as SwapState[]).includes(sv.state);
 
   if (btcLnInProgress) {
     return (
@@ -946,7 +887,7 @@ export function SwapView({ onBack }: SwapViewProps) {
     );
   }
 
-  // ── Completed ───────────────────────────────────────────────────────────────
+  // ── Completed ─────────────────────────────────────────────────────────────
   if (sv.state === "completed" && sv.swapId) {
     return (
       <SwapCompletedView
@@ -958,11 +899,8 @@ export function SwapView({ onBack }: SwapViewProps) {
     );
   }
 
-  // ── Permanent error ─────────────────────────────────────────────────────────
-  if (
-    (["failed_permanent", "expired", "cancelled", "failed"] as SwapState[]).includes(sv.state)
-    && sv.swapId
-  ) {
+  // ── Permanent error ───────────────────────────────────────────────────────
+  if ((["failed_permanent", "expired", "cancelled", "failed"] as SwapState[]).includes(sv.state) && sv.swapId) {
     return (
       <SwapErrorView
         state={sv.state}
@@ -973,19 +911,19 @@ export function SwapView({ onBack }: SwapViewProps) {
     );
   }
 
-  // ── EVM tab ─────────────────────────────────────────────────────────────────
+  // ── EVM tab ───────────────────────────────────────────────────────────────
   if (activeTab === "evm") {
     return (
-      <div className="flex flex-col h-full">
+      <div className="asw-root">
         {Header}
         <EvmSwapView onBack={onBack} />
       </div>
     );
   }
 
-  // ── Main form (BTC/Lightning) ────────────────────────────────────────────────
+  // ── Main form (BTC/Lightning) ─────────────────────────────────────────────
   return (
-    <div className="flex flex-col h-full">
+    <div className="asw-root">
       {Header}
       <SwapMainForm sv={sv} actions={actions} config={config} />
     </div>

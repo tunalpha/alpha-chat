@@ -1,10 +1,14 @@
 /**
  * EvmSwapView — UI EVM Swap con Li.Fi
  *
- * Copre tutti gli stati della state machine:
- *   idle, quoting, quoted, approving, signing, submitted, pending, completed, failed, action_required
+ * Design system: asw-* (nativi Alpha Chat — vedi AlphaWalletPage.css)
+ * Zero Tailwind utility classes — zero import da payment engine / USDA / MultiChain.
  *
- * ISOLAMENTO: zero import da payment engine, USDA, MultiChain.
+ * FUNZIONALITÀ:
+ *   - Auto-detect chain attiva (via useActiveWalletChain)
+ *   - Balance reale dei token (via RPC diretto)
+ *   - Bottone MAX su token PAGA
+ *   - TokenSelector con balance display
  */
 
 import React, {
@@ -14,11 +18,11 @@ import {
   ArrowUpDown, Loader2, CheckCircle, AlertTriangle,
   Copy, Check, ExternalLink, RefreshCw, Info, ChevronDown,
 } from "lucide-react";
-import { useActiveAccount } from "thirdweb/react";
+import { useActiveAccount, useActiveWalletChain } from "thirdweb/react";
 import { useEvmSwapState }  from "./useEvmSwapState.js";
 import { TokenSelector }    from "./TokenSelector.js";
 import {
-  fromTokenUnits, getChainInfo, EVM_SWAP_CHAINS,
+  fromTokenUnits, getChainInfo, EVM_SWAP_CHAINS, getTokensForChain,
   LIFI_FEE, type EvmToken,
 } from "./types.js";
 
@@ -28,80 +32,157 @@ function fmtPct(fee: number) { return (fee * 100).toFixed(2) + "%"; }
 
 function txUrl(chainId: number, txHash: string): string {
   const chain = getChainInfo(chainId);
-  if (!chain) return "#";
-  return `${chain.explorerUrl}/tx/${txHash}`;
+  return chain ? `${chain.explorerUrl}/tx/${txHash}` : "#";
 }
 
+/** Colore e icona per chain */
 const CHAIN_COLOR: Record<number, string> = {
   137: "#8247E5",
   56:  "#F3BA2F",
   1:   "#627EEA",
 };
-const CHAIN_ICON: Record<number, string> = {
-  137: "🟣", 56: "🟡", 1: "🔵",
+
+// ── Lettura balance via RPC ───────────────────────────────────────────────────
+
+const CHAIN_RPC: Record<number, string> = {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  137: ((import.meta as any).env?.VITE_POLYGON_RPC as string | undefined) ?? "https://polygon-rpc.com",
+  56:  "https://bsc-dataseed.binance.org/",
+  1:   "https://eth.llamarpc.com",
 };
 
-// ── Sub-components ────────────────────────────────────────────────────────────
+async function rpcPost<T>(rpcUrl: string, method: string, params: unknown[]): Promise<T> {
+  const res = await fetch(rpcUrl, {
+    method:  "POST",
+    headers: { "Content-Type": "application/json" },
+    body:    JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
+  });
+  const data = await res.json() as { result?: T; error?: { message: string } };
+  if (data.error) throw new Error(data.error.message);
+  return data.result as T;
+}
+
+function useEvmTokenBalances(chainId: number, address: string | undefined): Map<string, bigint> {
+  const [balances, setBalances] = useState<Map<string, bigint>>(new Map());
+
+  useEffect(() => {
+    if (!address) { setBalances(new Map()); return; }
+    const rpcUrl = CHAIN_RPC[chainId];
+    if (!rpcUrl) return;
+
+    const tokens = getTokensForChain(chainId);
+    let cancelled = false;
+
+    Promise.allSettled(
+      tokens.map(async (t) => {
+        if (t.isNative) {
+          const hex = await rpcPost<string>(rpcUrl, "eth_getBalance", [address, "latest"]);
+          return [t.address, BigInt(hex)] as const;
+        } else {
+          const pad = address.slice(2).padStart(64, "0");
+          const hex = await rpcPost<string>(rpcUrl, "eth_call", [
+            { to: t.address, data: `0x70a08231${pad}` }, "latest",
+          ]);
+          return [t.address, BigInt(hex || "0x0")] as const;
+        }
+      }),
+    ).then(results => {
+      if (cancelled) return;
+      const entries: [string, bigint][] = [];
+      for (const r of results) {
+        if (r.status === "fulfilled") entries.push(r.value);
+      }
+      setBalances(new Map(entries));
+    }).catch(() => null);
+
+    return () => { cancelled = true; };
+  }, [chainId, address]);
+
+  return balances;
+}
+
+/** Formatta balance in human-readable, con max 6 cifre significative */
+function fmtBal(raw: bigint | undefined, decimals: number): string {
+  if (raw === undefined || raw === 0n) return "0";
+  const human = fromTokenUnits(raw.toString(), decimals);
+  const n = parseFloat(human);
+  if (n === 0) return "0";
+  if (n < 0.000001) return "<0.000001";
+  return n.toFixed(Math.min(6, decimals));
+}
+
+// ── TokenCard ─────────────────────────────────────────────────────────────────
 
 interface TokenCardProps {
-  label:     string;
-  chainId:   number;
-  token:     EvmToken | null;
-  amount?:   string;      // human amount (stringa)
+  label:           string;
+  chainId:         number;
+  token:           EvmToken | null;
+  amount?:         string;
   onAmountChange?: (v: string) => void;
   onTokenClick:    () => void;
   readOnly?:       boolean;
+  balance?:        bigint;
+  onMax?:          () => void;
 }
 
-function TokenCard({ label, chainId, token, amount, onAmountChange, onTokenClick, readOnly }: TokenCardProps) {
-  const chain = getChainInfo(chainId);
+function TokenCard({
+  label, chainId, token, amount, onAmountChange, onTokenClick, readOnly, balance, onMax,
+}: TokenCardProps) {
+  const chain        = getChainInfo(chainId);
+  const chainColor   = CHAIN_COLOR[chainId] ?? "#888";
+  const hasBalance   = balance !== undefined;
+  const balStr       = hasBalance && token ? fmtBal(balance, token.decimals) : null;
+  const showMax      = hasBalance && onMax && onAmountChange && balStr !== "0" && balStr !== null && balance !== 0n;
+
   return (
-    <div className="bg-card border border-border/30 rounded-2xl p-4">
-      <p className="text-xs font-medium text-muted-foreground mb-3 uppercase tracking-wide">{label}</p>
-      <div className="flex items-center justify-between gap-3">
-        {/* Token selector */}
-        <button
-          onClick={onTokenClick}
-          className="flex items-center gap-2.5 min-w-0 hover:opacity-80 transition-opacity"
-          aria-label={`Seleziona token ${label}`}
-        >
-          <div className="w-11 h-11 rounded-full bg-muted/50 flex items-center justify-center text-sm font-bold shrink-0 border border-border/20">
+    <div className="asw-card">
+      <div className="asw-card-head">
+        <span className="asw-card-label">{label}</span>
+        {hasBalance && token && (
+          <div className="asw-card-balance">
+            <span>{balStr} {token.symbol}</span>
+            {showMax && (
+              <button className="asw-max-btn" onClick={onMax} type="button">MAX</button>
+            )}
+          </div>
+        )}
+      </div>
+      <div className="asw-token-row">
+        <button className="asw-token-btn" onClick={onTokenClick} aria-label={`Seleziona token ${label}`}>
+          <div className="asw-token-icon" style={{ background: `${chainColor}22`, color: chainColor }}>
             {token ? token.symbol.slice(0, 2) : "?"}
           </div>
-          <div className="min-w-0 text-left">
-            <div className="flex items-center gap-1.5">
-              <p className="font-bold text-base">{token?.symbol ?? "—"}</p>
-              <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
+          <div className="asw-token-info">
+            <div className="asw-token-name">
+              {token?.symbol ?? "—"}
+              <ChevronDown size={14} className="asw-token-chevron" />
             </div>
-            <div className="flex items-center gap-1 mt-0.5">
-              <span style={{ color: CHAIN_COLOR[chainId] }} className="text-xs">
-                {CHAIN_ICON[chainId]}
-              </span>
-              <p className="text-xs text-muted-foreground truncate">{chain?.name ?? chainId}</p>
+            <div className="asw-token-network">
+              <span className="asw-net-dot" style={{ background: chainColor }} />
+              {chain?.name ?? chainId}
             </div>
           </div>
         </button>
 
-        {/* Amount */}
-        {onAmountChange ? (
-          <input
-            type="text"
-            inputMode="decimal"
-            placeholder="0"
-            value={amount ?? ""}
-            onChange={e => {
-              const val = e.target.value.replace(/[^0-9.]/g, "").replace(/(\..*)\./g, "$1");
-              onAmountChange(val);
-            }}
-            readOnly={readOnly}
-            className="bg-transparent text-right text-2xl font-bold w-36 outline-none text-foreground placeholder:text-muted-foreground/40"
-            aria-label={`Importo ${label}`}
-          />
-        ) : (
-          <p className="text-2xl font-bold text-muted-foreground/40 shrink-0">
-            {amount ?? "—"}
-          </p>
-        )}
+        <div className="asw-amount-col">
+          {onAmountChange ? (
+            <input
+              type="text"
+              inputMode="decimal"
+              placeholder="0"
+              value={amount ?? ""}
+              onChange={e => {
+                const val = e.target.value.replace(/[^0-9.]/g, "").replace(/(\..*)\./g, "$1");
+                onAmountChange(val);
+              }}
+              readOnly={readOnly}
+              className="asw-amount-input"
+              aria-label={`Importo ${label}`}
+            />
+          ) : (
+            <span className="asw-amount-display">{amount ?? "—"}</span>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -114,42 +195,43 @@ function EvmFeePreview({ quote }: { quote: NonNullable<ReturnType<typeof useEvmS
   const toMin   = fromTokenUnits(quote.toAmountMin, quote.toToken.decimals);
 
   return (
-    <div className="bg-muted/15 border border-border/20 rounded-xl px-4 py-3 space-y-2">
-      <div className="flex justify-between items-center">
-        <span className="text-xs text-muted-foreground">Riceverai circa</span>
-        <span className="text-sm font-bold">{parseFloat(toHuman).toFixed(6)} {quote.toToken.symbol}</span>
+    <div className="asw-info-box">
+      <div className="asw-info-row">
+        <span className="asw-info-label">Riceverai circa</span>
+        <span className="asw-info-value" style={{ fontWeight: 700 }}>{parseFloat(toHuman).toFixed(6)} {quote.toToken.symbol}</span>
       </div>
-      <div className="flex justify-between items-center">
-        <span className="text-xs text-muted-foreground">Minimo garantito</span>
-        <span className="text-xs">{parseFloat(toMin).toFixed(6)} {quote.toToken.symbol}</span>
+      <div className="asw-info-row">
+        <span className="asw-info-label">Minimo garantito</span>
+        <span className="asw-info-value">{parseFloat(toMin).toFixed(6)} {quote.toToken.symbol}</span>
       </div>
-      <div className="flex justify-between items-center">
-        <span className="text-xs text-muted-foreground">Fee Alpha ({fmtPct(LIFI_FEE)})</span>
-        <span className="text-xs text-orange-400 font-medium">≈ ${quote.alphaFeeUSD}</span>
+      <div className="asw-info-row">
+        <span className="asw-info-label">Fee Alpha ({fmtPct(LIFI_FEE)})</span>
+        <span className="asw-info-value asw-info-value--fee">≈ ${quote.alphaFeeUSD}</span>
       </div>
       {parseFloat(quote.gasCostUSD) > 0 && (
-        <div className="flex justify-between items-center">
-          <span className="text-xs text-muted-foreground">Gas stimato</span>
-          <span className="text-xs">≈ ${quote.gasCostUSD}</span>
+        <div className="asw-info-row">
+          <span className="asw-info-label">Gas stimato</span>
+          <span className="asw-info-value">≈ ${quote.gasCostUSD}</span>
         </div>
       )}
-      <div className="border-t border-border/20 pt-2 flex justify-between items-center">
-        <span className="text-xs font-semibold">Fee totale</span>
-        <span className="text-xs">≈ ${quote.totalFeeUSD}</span>
+      <hr className="asw-info-sep" />
+      <div className="asw-info-row asw-info-row--total">
+        <span className="asw-info-label" style={{ fontWeight: 600, color: "rgba(255,255,255,.75)" }}>Fee totale</span>
+        <span className="asw-info-value" style={{ fontWeight: 700 }}>≈ ${quote.totalFeeUSD}</span>
       </div>
-      <div className="flex justify-between items-center">
-        <span className="text-xs text-muted-foreground">Provider</span>
-        <span className="text-xs text-muted-foreground capitalize">{quote.tool}</span>
+      <div className="asw-info-row">
+        <span className="asw-info-label">Provider</span>
+        <span className="asw-provider-chip">🔀 {quote.tool}</span>
       </div>
-      <div className="flex justify-between items-center">
-        <span className="text-xs text-muted-foreground">Slippage</span>
-        <span className="text-xs text-muted-foreground">{(quote.slippage * 100).toFixed(1)}%</span>
+      <div className="asw-info-row">
+        <span className="asw-info-label">Slippage</span>
+        <span className="asw-info-value">{(quote.slippage * 100).toFixed(1)}%</span>
       </div>
     </div>
   );
 }
 
-// ── In-progress / completed / failed ─────────────────────────────────────────
+// ── Pending / Completed / Failed views ───────────────────────────────────────
 
 function EvmPendingView({ txHash, fromChainId, onBack }: { txHash: string | null; fromChainId: number; onBack: () => void }) {
   const [copied, setCopied] = useState(false);
@@ -158,37 +240,31 @@ function EvmPendingView({ txHash, fromChainId, onBack }: { txHash: string | null
     setCopied(true);
     setTimeout(() => setCopied(false), 1500);
   };
+
   return (
-    <div className="flex-1 flex flex-col items-center justify-center px-6 text-center gap-6">
-      <div className="w-20 h-20 rounded-full bg-primary/20 flex items-center justify-center">
-        <Loader2 className="w-10 h-10 text-primary animate-spin" />
+    <div className="asw-status-view">
+      <div className="asw-status-icon asw-status-icon--pending">
+        <Loader2 size={36} style={{ animation: "aw-spin .8s linear infinite" }} />
       </div>
       <div>
-        <p className="font-bold text-xl mb-2">Swap in corso…</p>
-        <p className="text-sm text-muted-foreground leading-relaxed">
-          La transazione è stata inviata. Attendi la conferma on-chain.
-        </p>
+        <p className="asw-status-title">Swap in corso…</p>
+        <p className="asw-status-sub">La transazione è stata inviata. Attendi la conferma on-chain.</p>
       </div>
       {txHash && (
-        <div className="w-full bg-muted/20 rounded-xl p-3 space-y-2">
-          <p className="text-xs text-muted-foreground font-mono break-all">{txHash.slice(0, 16)}…{txHash.slice(-12)}</p>
-          <div className="flex gap-2 justify-center">
-            <button onClick={copy} className="flex items-center gap-1 text-xs text-primary">
-              {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+        <div className="asw-mono-box" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <span>{txHash.slice(0, 18)}…{txHash.slice(-14)}</span>
+          <div style={{ display: "flex", gap: 12, justifyContent: "center" }}>
+            <button onClick={copy} style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--accent,#6366f1)", background: "none", border: "none", cursor: "pointer", fontFamily: "inherit" }}>
+              {copied ? <Check size={13} /> : <Copy size={13} />}
               {copied ? "Copiato" : "Copia"}
             </button>
-            <a
-              href={txUrl(fromChainId, txHash)}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center gap-1 text-xs text-primary"
-            >
-              <ExternalLink className="w-3 h-3" /> Explorer
+            <a href={txUrl(fromChainId, txHash)} target="_blank" rel="noopener noreferrer" style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: "var(--accent,#6366f1)", textDecoration: "none" }}>
+              <ExternalLink size={13} /> Explorer
             </a>
           </div>
         </div>
       )}
-      <button onClick={onBack} className="w-full py-3 rounded-2xl border border-border/30 text-sm text-muted-foreground hover:bg-muted/20">
+      <button onClick={onBack} className="aw-btn aw-btn--secondary" style={{ maxWidth: 280 }}>
         Torna alla home
       </button>
     </div>
@@ -200,35 +276,24 @@ function EvmCompletedView({ txHash, fromChainId, toToken, toAmount, onDone }: {
   toAmount: string; onDone: () => void;
 }) {
   return (
-    <div className="flex-1 flex flex-col items-center justify-center px-6 text-center gap-6">
-      <div className="w-20 h-20 rounded-full bg-green-500/20 flex items-center justify-center">
-        <CheckCircle className="w-10 h-10 text-green-400" />
+    <div className="asw-status-view">
+      <div className="asw-status-icon asw-status-icon--success">
+        <CheckCircle size={36} />
       </div>
       <div>
-        <p className="font-bold text-xl mb-2">Swap completato!</p>
+        <p className="asw-status-title">Swap completato!</p>
         {toToken && parseFloat(toAmount) > 0 && (
-          <p className="text-2xl font-bold text-green-400 mt-1">
-            ≈ {parseFloat(toAmount).toFixed(6)} {toToken.symbol}
-          </p>
+          <p className="asw-status-amount">≈ {parseFloat(toAmount).toFixed(6)} {toToken.symbol}</p>
         )}
-        <p className="text-sm text-muted-foreground mt-3 leading-relaxed">
-          I token sono stati inviati al tuo wallet.
-        </p>
+        <p className="asw-status-sub" style={{ marginTop: 8 }}>I token sono stati inviati al tuo wallet.</p>
       </div>
       {txHash && (
-        <a
-          href={txUrl(fromChainId, txHash)}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="flex items-center gap-1.5 text-xs text-primary underline"
-        >
-          <ExternalLink className="w-3.5 h-3.5" /> Vedi su explorer
+        <a href={txUrl(fromChainId, txHash)} target="_blank" rel="noopener noreferrer"
+          style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 13, color: "var(--accent,#6366f1)", textDecoration: "none" }}>
+          <ExternalLink size={14} /> Vedi su explorer
         </a>
       )}
-      <button
-        onClick={onDone}
-        className="w-full max-w-xs py-4 rounded-2xl bg-primary text-primary-foreground font-bold text-base active:scale-[0.98] transition-transform"
-      >
+      <button onClick={onDone} className="aw-btn aw-btn--primary" style={{ maxWidth: 300 }}>
         Fatto
       </button>
     </div>
@@ -237,17 +302,16 @@ function EvmCompletedView({ txHash, fromChainId, toToken, toAmount, onDone }: {
 
 function EvmFailedView({ error, onRetry }: { error: string; onRetry: () => void }) {
   return (
-    <div className="flex-1 flex flex-col items-center justify-center px-6 text-center gap-5">
-      <AlertTriangle className="w-12 h-12 text-destructive" />
-      <div>
-        <p className="font-bold text-lg mb-2">Swap non riuscito</p>
-        <p className="text-sm text-muted-foreground leading-relaxed">{error}</p>
+    <div className="asw-status-view">
+      <div className="asw-status-icon asw-status-icon--error">
+        <AlertTriangle size={36} />
       </div>
-      <button
-        onClick={onRetry}
-        className="flex items-center gap-2 w-full max-w-xs py-4 rounded-2xl bg-primary text-primary-foreground font-bold justify-center"
-      >
-        <RefreshCw className="w-4 h-4" /> Riprova
+      <div>
+        <p className="asw-status-title">Swap non riuscito</p>
+        <p className="asw-status-sub">{error}</p>
+      </div>
+      <button onClick={onRetry} className="aw-btn aw-btn--primary" style={{ maxWidth: 300, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+        <RefreshCw size={16} /> Riprova
       </button>
     </div>
   );
@@ -256,19 +320,22 @@ function EvmFailedView({ error, onRetry }: { error: string; onRetry: () => void 
 // ── Main component ────────────────────────────────────────────────────────────
 
 interface EvmSwapViewProps {
-  /** Callback opzionale quando l'utente vuole tornare indietro */
   onBack?: () => void;
 }
 
 export function EvmSwapView({ onBack }: EvmSwapViewProps) {
   const [sv, actions] = useEvmSwapState();
   const activeAccount  = useActiveAccount();
+  const activeChain    = useActiveWalletChain();
 
-  // Selettore token
+  // Balance per i token sulla chain from
+  const balances = useEvmTokenBalances(sv.fromChainId, activeAccount?.address);
+
+  // Token selector state
   const [tokenSelectorOpen, setTokenSelectorOpen] = useState(false);
   const [tokenSide, setTokenSide] = useState<"from" | "to">("from");
 
-  // Quote display: importo toToken in human-readable
+  // Quote display
   const toAmountDisplay = sv.quote
     ? parseFloat(fromTokenUnits(sv.quote.toAmount, sv.quote.toToken.decimals)).toFixed(6)
     : "";
@@ -299,7 +366,7 @@ export function EvmSwapView({ onBack }: EvmSwapViewProps) {
     }, 700);
 
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sv.fromAmount, sv.fromToken, sv.toToken, sv.phase, activeAccount?.address]);
 
   const handleTokenSelect = useCallback((token: EvmToken, chainId: number) => {
@@ -312,6 +379,15 @@ export function EvmSwapView({ onBack }: EvmSwapViewProps) {
     }
   }, [tokenSide, actions]);
 
+  // MAX button: imposta l'intero balance come importo
+  const handleMax = useCallback(() => {
+    if (!sv.fromToken) return;
+    const raw = balances.get(sv.fromToken.address);
+    if (!raw || raw === 0n) return;
+    const human = fromTokenUnits(raw.toString(), sv.fromToken.decimals);
+    actions.setFromAmount(human);
+  }, [sv.fromToken, balances, actions]);
+
   const quoteExpired = sv.quote && Date.now() > sv.quote.expiresAt;
   const isIdle       = sv.phase === "idle";
   const isQuoting    = sv.phase === "quoting";
@@ -323,9 +399,9 @@ export function EvmSwapView({ onBack }: EvmSwapViewProps) {
   // ── Recovery spinner ───────────────────────────────────────────────────────
   if (sv.recovering) {
     return (
-      <div className="flex-1 flex items-center justify-center gap-3 text-muted-foreground">
-        <Loader2 className="w-6 h-6 animate-spin" />
-        <span className="text-sm">Verifica swap in corso…</span>
+      <div style={{ flex: 1, display: "flex", alignItems: "center", justifyContent: "center", gap: 12, color: "rgba(255,255,255,.5)" }}>
+        <Loader2 size={22} style={{ animation: "aw-spin .8s linear infinite" }} />
+        <span style={{ fontSize: 14 }}>Verifica swap in corso…</span>
       </div>
     );
   }
@@ -333,65 +409,76 @@ export function EvmSwapView({ onBack }: EvmSwapViewProps) {
   // ── Pending / submitted ────────────────────────────────────────────────────
   if (sv.phase === "pending" || sv.phase === "submitted") {
     return (
-      <EvmPendingView
-        txHash={sv.txHash}
-        fromChainId={sv.fromChainId}
-        onBack={onBack ?? actions.reset}
-      />
+      <div className="asw-content">
+        <EvmPendingView txHash={sv.txHash} fromChainId={sv.fromChainId} onBack={onBack ?? actions.reset} />
+      </div>
     );
   }
 
   // ── Completed ──────────────────────────────────────────────────────────────
   if (sv.phase === "completed") {
     return (
-      <EvmCompletedView
-        txHash={sv.txHash}
-        fromChainId={sv.fromChainId}
-        toToken={sv.toToken}
-        toAmount={sv.quote ? fromTokenUnits(sv.quote.toAmount, sv.quote.toToken.decimals) : "0"}
-        onDone={actions.reset}
-      />
+      <div className="asw-content">
+        <EvmCompletedView
+          txHash={sv.txHash}
+          fromChainId={sv.fromChainId}
+          toToken={sv.toToken}
+          toAmount={sv.quote ? fromTokenUnits(sv.quote.toAmount, sv.quote.toToken.decimals) : "0"}
+          onDone={actions.reset}
+        />
+      </div>
     );
   }
 
   // ── Failed ─────────────────────────────────────────────────────────────────
   if (sv.phase === "failed") {
     return (
-      <EvmFailedView
-        error={sv.error?.message ?? "Si è verificato un errore."}
-        onRetry={actions.reset}
-      />
+      <div className="asw-content">
+        <EvmFailedView error={sv.error?.message ?? "Si è verificato un errore."} onRetry={actions.reset} />
+      </div>
     );
   }
 
   // ── Action required ────────────────────────────────────────────────────────
   if (sv.phase === "action_required") {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center px-6 text-center gap-5">
-        <Info className="w-12 h-12 text-blue-400" />
-        <div>
-          <p className="font-bold text-lg mb-2">Azione richiesta</p>
-          <p className="text-sm text-muted-foreground leading-relaxed">
-            Controlla il tuo wallet per un'azione richiesta (es. cambio di rete).
-          </p>
+      <div className="asw-content">
+        <div className="asw-status-view">
+          <div className="asw-status-icon asw-status-icon--pending">
+            <Info size={32} />
+          </div>
+          <div>
+            <p className="asw-status-title">Azione richiesta</p>
+            <p className="asw-status-sub">Controlla il tuo wallet per un'azione richiesta (es. cambio di rete).</p>
+          </div>
+          <button onClick={actions.reset} className="aw-btn aw-btn--secondary" style={{ maxWidth: 200 }}>
+            Annulla
+          </button>
         </div>
-        <button onClick={actions.reset} className="text-xs text-primary underline">Annulla</button>
       </div>
     );
   }
 
   // ── Main form ──────────────────────────────────────────────────────────────
-  return (
-    <div className="flex-1 overflow-y-auto">
-      <div className="px-4 py-4 space-y-3 pb-8">
+  const fromBal = sv.fromToken ? balances.get(sv.fromToken.address) : undefined;
 
-        {/* Wallet not connected */}
+  return (
+    <div className="asw-content">
+      <div className="asw-form">
+
+        {/* Wallet non connesso */}
         {!activeAccount && (
-          <div className="flex items-center gap-2 p-3 rounded-xl bg-orange-500/10 border border-orange-500/20">
-            <AlertTriangle className="w-4 h-4 text-orange-400 shrink-0" />
-            <p className="text-xs text-orange-400">
-              Connetti il wallet EVM (ThirdWeb / WalletConnect) per effettuare swap.
-            </p>
+          <div className="asw-alert asw-alert--warn">
+            <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 1 }} />
+            <span>Connetti il wallet EVM (ThirdWeb / WalletConnect) per effettuare swap.</span>
+          </div>
+        )}
+
+        {/* Chain disconnessa rispetto alla chain attiva */}
+        {activeAccount && activeChain && !EVM_SWAP_CHAINS.find(c => c.id === activeChain.id) && (
+          <div className="asw-alert asw-alert--info">
+            <Info size={14} style={{ flexShrink: 0, marginTop: 1 }} />
+            <span>La chain attiva ({activeChain.name ?? activeChain.id}) non è supportata. Usa Polygon, BSC o Ethereum.</span>
           </div>
         )}
 
@@ -403,17 +490,19 @@ export function EvmSwapView({ onBack }: EvmSwapViewProps) {
           amount={sv.fromAmount}
           onAmountChange={actions.setFromAmount}
           onTokenClick={() => { setTokenSide("from"); setTokenSelectorOpen(true); }}
+          balance={fromBal}
+          onMax={handleMax}
         />
 
-        {/* Toggle direction */}
-        <div className="flex justify-center -my-1">
+        {/* Direction toggle */}
+        <div className="asw-dir-wrap">
           <button
             onClick={actions.swapDirection}
             disabled={isBusy}
-            className="w-10 h-10 rounded-full bg-card border border-border/30 flex items-center justify-center hover:bg-muted/50 active:scale-90 transition-all z-10 disabled:opacity-30"
+            className="asw-dir-btn"
             aria-label="Inverti direzione"
           >
-            <ArrowUpDown className="w-4 h-4 text-muted-foreground" />
+            <ArrowUpDown size={16} />
           </button>
         </div>
 
@@ -422,19 +511,15 @@ export function EvmSwapView({ onBack }: EvmSwapViewProps) {
           label="Ricevi"
           chainId={sv.toChainId}
           token={sv.toToken}
-          amount={
-            isQuoting   ? undefined
-            : hasQuote  ? toAmountDisplay
-            : undefined
-          }
+          amount={isQuoting ? undefined : hasQuote ? toAmountDisplay : undefined}
           onAmountChange={undefined}
           onTokenClick={() => { setTokenSide("to"); setTokenSelectorOpen(true); }}
           readOnly
         />
         {isQuoting && (
-          <div className="flex items-center gap-2 px-1">
-            <Loader2 className="w-3.5 h-3.5 animate-spin text-muted-foreground" />
-            <p className="text-xs text-muted-foreground">Calcolo quote in corso…</p>
+          <div className="asw-amount-loading" style={{ padding: "0 4px" }}>
+            <Loader2 size={14} style={{ animation: "aw-spin .8s linear infinite" }} />
+            <span>Calcolo quote in corso…</span>
           </div>
         )}
 
@@ -443,28 +528,25 @@ export function EvmSwapView({ onBack }: EvmSwapViewProps) {
 
         {/* Quote scaduta */}
         {sv.quote && quoteExpired && (
-          <div className="flex items-center gap-2 p-3 rounded-xl bg-orange-500/10 border border-orange-500/20">
-            <AlertTriangle className="w-4 h-4 text-orange-400 shrink-0" />
-            <p className="text-xs text-orange-400">Quote scaduta. Aggiorno automaticamente.</p>
+          <div className="asw-alert asw-alert--warn">
+            <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 1 }} />
+            <span>Quote scaduta. Aggiorno automaticamente.</span>
           </div>
         )}
 
         {/* Errore */}
         {sv.error && (sv.phase === "idle" || sv.phase === "quoted") && (
-          <div className="flex items-start gap-2 p-3 rounded-xl bg-destructive/10 border border-destructive/20">
-            <AlertTriangle className="w-4 h-4 text-destructive shrink-0 mt-0.5" />
-            <p className="text-xs text-destructive leading-relaxed">{sv.error.message}</p>
+          <div className="asw-alert asw-alert--error">
+            <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 1 }} />
+            <span>{sv.error.message}</span>
           </div>
         )}
 
-        {/* Nota fee */}
+        {/* Fee info */}
         {hasQuote && (
-          <div className="flex items-start gap-2 p-3 rounded-xl bg-blue-500/10 border border-blue-500/20">
-            <Info className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" />
-            <p className="text-xs text-blue-400 leading-relaxed">
-              La fee Alpha ({fmtPct(LIFI_FEE)}) viene raccolta automaticamente tramite Li.Fi.
-              Nessuna transazione aggiuntiva.
-            </p>
+          <div className="asw-alert asw-alert--info">
+            <Info size={14} style={{ flexShrink: 0, marginTop: 1 }} />
+            <span>La fee Alpha ({fmtPct(LIFI_FEE)}) viene raccolta automaticamente tramite Li.Fi. Nessuna transazione aggiuntiva.</span>
           </div>
         )}
 
@@ -472,37 +554,37 @@ export function EvmSwapView({ onBack }: EvmSwapViewProps) {
         <button
           onClick={actions.execute}
           disabled={!canSwap || isBusy}
-          className={`w-full py-4 rounded-2xl font-bold text-base transition-all mt-2
-            ${canSwap && !isBusy
-              ? "bg-primary text-primary-foreground hover:bg-primary/90 active:scale-[0.98]"
-              : "bg-muted/40 text-muted-foreground cursor-not-allowed"
-            }`}
+          className="aw-btn aw-btn--primary"
+          style={{ marginTop: 4, opacity: (!canSwap || isBusy) ? 0.4 : 1, cursor: (!canSwap || isBusy) ? "not-allowed" : "pointer" }}
         >
           {sv.phase === "approving" ? (
-            <span className="flex items-center justify-center gap-2">
-              <Loader2 className="w-5 h-5 animate-spin" /> Approvazione token…
+            <span style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+              <Loader2 size={18} style={{ animation: "aw-spin .8s linear infinite" }} /> Approvazione token…
             </span>
           ) : sv.phase === "signing" ? (
-            <span className="flex items-center justify-center gap-2">
-              <Loader2 className="w-5 h-5 animate-spin" /> In attesa della firma…
+            <span style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+              <Loader2 size={18} style={{ animation: "aw-spin .8s linear infinite" }} /> In attesa della firma…
             </span>
-          ) : (
-            "Scambia"
-          )}
+          ) : "Scambia"}
         </button>
 
-        {/* Hint */}
+        {/* Hints */}
         {isIdle && (!sv.fromAmount || sv.fromAmount === "0") && (
-          <p className="text-center text-xs text-muted-foreground/60">
-            Inserisci un importo per vedere la quote
+          <p className="asw-hint">Inserisci un importo per vedere la quote</p>
+        )}
+
+        {/* Cross-chain note */}
+        {sv.fromChainId !== sv.toChainId && (
+          <p className="asw-disclaimer">
+            Swap cross-chain: da {getChainInfo(sv.fromChainId)?.name} a {getChainInfo(sv.toChainId)?.name}.
+            Potrebbe richiedere qualche minuto.
           </p>
         )}
 
-        {/* Nota cross-chain */}
-        {sv.fromChainId !== sv.toChainId && (
-          <p className="text-center text-[10px] text-muted-foreground/60 px-2 leading-relaxed">
-            Swap cross-chain: da {getChainInfo(sv.fromChainId)?.name} a {getChainInfo(sv.toChainId)?.name}.
-            Potrebbe richiedere qualche minuto.
+        {/* Disclaimer */}
+        {hasQuote && (
+          <p className="asw-disclaimer">
+            A causa delle fluttuazioni dei tassi di cambio, potrebbe esserci una piccola differenza tra l'importo ricevuto e l'importo stimato.
           </p>
         )}
 
@@ -516,6 +598,8 @@ export function EvmSwapView({ onBack }: EvmSwapViewProps) {
         currentChainId={tokenSide === "from" ? sv.fromChainId : sv.toChainId}
         side={tokenSide}
         otherToken={tokenSide === "from" ? sv.toToken ?? undefined : sv.fromToken ?? undefined}
+        balances={balances}
+        walletAddress={activeAccount?.address}
       />
     </div>
   );

@@ -1,0 +1,156 @@
+STOP. NON FARE DEPLOY E NON FARE TRANSAZIONI.
+
+L'attuale Alpha Swap NON è accettabile.
+
+Gli screenshot forniti sono il riferimento visivo e funzionale. L'implementazione attuale non corrisponde al design e soprattutto non rispetta il comportamento richiesto.
+
+PROBLEMI OSSERVATI
+
+1. UI completamente fuori design:
+- bordi e card errati
+- "PAGA" e "RICEVI" tagliati/sovrapposti
+- spaziature errate
+- typography errata
+- componenti non allineati
+- selettori token non coerenti
+- layout mobile non professionale
+- non sembra integrato con il design esistente di Alpha Chat
+
+NON inventare un nuovo design.
+NON creare una UI generica Tailwind.
+Usare il design system/componenti già presenti nell'app e gli screenshot forniti come riferimento visivo.
+
+2. COMPORTAMENTO ERRATO — AUTO-DETECTION
+
+Alpha Swap NON deve essere hardcoded inizialmente su:
+BTC → Lightning.
+
+Quando l'utente apre Swap deve:
+
+- rilevare automaticamente il wallet collegato
+- rilevare account/address
+- rilevare chain attiva
+- rilevare asset/token supportati disponibili
+- rilevare saldo reale
+- mostrare ticker + logo + network + balance
+- proporre automaticamente il token/chain compatibile
+- aggiornare la disponibilità quando cambia chain
+- aggiornare la disponibilità quando cambia account
+- aggiornare i balance
+- non mostrare asset che il wallet non possiede, salvo esplicita opzione "tutti gli asset"
+
+Per EVM:
+Ethereum
+Polygon
+BSC
+
+Token già supportati dal progetto:
+Ethereum: ETH, USDT, USDC
+Polygon: POL, USDA, USDT, USDC
+BSC: BNB, USDT, USDC
+
+Il wallet ThirdWeb/WalletConnect è già presente nel progetto.
+USARE quello esistente.
+NON creare un secondo sistema di connessione wallet.
+
+3. MODALITÀ SWAP
+
+Devono rimanere due modalità chiaramente separate:
+
+BTC / Lightning
+EVM
+
+BTC / Lightning deve mantenere il flusso esistente.
+
+EVM deve usare LI.FI.
+
+Quando l'utente seleziona EVM:
+- mostrare token/chain realmente disponibili
+- leggere balance reale
+- consentire scelta from/to
+- ottenere quote LI.FI
+- mostrare fee Alpha 0,25%
+- mostrare eventuale approval
+- eseguire tramite ThirdWeb + LI.FI
+
+4. DESIGN
+
+Usare gli screenshot allegati come riferimento.
+
+NON copiare il codice di un'altra app.
+NON cambiare arbitrariamente il design system Alpha Chat.
+
+Ricostruire il componente in modo coerente con:
+- card
+- spacing
+- typography
+- token selector
+- amount field
+- swap direction button
+- CTA
+- fee/quote information
+- mobile responsive layout
+
+La UI deve sembrare una parte NATIVA di Alpha Chat, non un iframe o un prototipo.
+
+5. PRIMA DI MODIFICARE
+
+Analizza:
+- SwapView.tsx
+- EvmSwapView.tsx
+- TokenSelector.tsx
+- componenti UI esistenti
+- CSS aw-*
+- wallet/account hooks ThirdWeb
+- chain/account detection già presenti nel progetto
+
+Individua perché sono stati ignorati i componenti/design esistenti.
+
+6. NON TOCCARE
+
+NON modificare:
+- payment flow
+- BTC/Lightning provider
+- Boltz
+- Breez Spark
+- treasury
+- fee wallet
+- sweep
+- USDA
+- WalletConnect configuration
+- ThirdWeb configuration
+
+7. TEST
+
+Dopo il fix:
+
+- 1226/1226 alpha-chat-web
+- 17/17 LN→BTC hardening
+- test auto-detection wallet
+- test auto-detection chain
+- test token balance
+- test cambio account
+- test cambio chain
+- test EVM token selector
+- test quote LI.FI
+- test fee 25 bps
+- test BTC/Lightning regression
+
+IMPORTANTE:
+
+NON fare un nuovo deploy.
+
+Prima restituisci:
+
+A. Perché l'UI attuale non corrisponde al design.
+B. Perché il sistema parte con BTC/Lightning invece di rilevare automaticamente wallet/asset.
+C. Quali componenti/hook esistenti devono essere riutilizzati.
+D. Piano del fix.
+
+Poi applica il fix e mostra il risultato.
+
+NON considerare il lavoro completato finché:
+- la UI non corrisponde al riferimento;
+- wallet/chain/token/balance vengono rilevati automaticamente;
+- EVM funziona realmente;
+- BTC/Lightning continua a funzionare.

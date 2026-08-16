@@ -1,26 +1,29 @@
 /**
  * TokenSelector — selezione token per EVM Swap
  *
- * Sheet bottom-up con lista token per chain selezionata.
+ * Sheet bottom-up nativo Alpha Chat (asw-* CSS).
  * ISOLAMENTO: zero import da payment engine, USDA, MultiChain.
  */
 
 import React, { useState, useMemo } from "react";
-import { X, Search, ChevronRight } from "lucide-react";
+import { X, Search } from "lucide-react";
 import {
   EVM_SWAP_CHAINS, EVM_SWAP_TOKENS,
+  fromTokenUnits,
   type EvmToken, type EvmChainInfo,
 } from "./types.js";
 
 interface TokenSelectorProps {
-  open:          boolean;
-  onClose:       () => void;
-  onSelectToken: (token: EvmToken, chainId: number) => void;
+  open:           boolean;
+  onClose:        () => void;
+  onSelectToken:  (token: EvmToken, chainId: number) => void;
   currentChainId: number;
-  /** "from" | "to" — usato per il titolo */
-  side:          "from" | "to";
-  /** Token già selezionato sull'altro lato (per evitare stesso token same-chain) */
-  otherToken?:   EvmToken;
+  side:           "from" | "to";
+  otherToken?:    EvmToken;
+  /** Balance per address token → bigint */
+  balances?:      Map<string, bigint>;
+  /** Wallet address (per sapere se mostrare balance) */
+  walletAddress?: string;
 }
 
 const CHAIN_ICONS: Record<number, string> = {
@@ -29,8 +32,24 @@ const CHAIN_ICONS: Record<number, string> = {
   1:   "🔵",
 };
 
+const CHAIN_COLOR: Record<number, string> = {
+  137: "#8247E5",
+  56:  "#F3BA2F",
+  1:   "#627EEA",
+};
+
+function fmtBal(raw: bigint | undefined, decimals: number): string | null {
+  if (raw === undefined) return null;
+  if (raw === 0n) return "0";
+  const human = fromTokenUnits(raw.toString(), decimals);
+  const n = parseFloat(human);
+  if (n === 0) return "0";
+  if (n < 0.000001) return "<0.000001";
+  return n.toFixed(6).replace(/\.?0+$/, "");
+}
+
 export function TokenSelector({
-  open, onClose, onSelectToken, currentChainId, side, otherToken,
+  open, onClose, onSelectToken, currentChainId, side, otherToken, balances, walletAddress,
 }: TokenSelectorProps) {
   const [selectedChain, setSelectedChain] = useState<number>(currentChainId);
   const [query, setQuery] = useState("");
@@ -46,47 +65,30 @@ export function TokenSelector({
 
   if (!open) return null;
 
-  const title = side === "from" ? "Paga con" : "Ricevi";
+  const title = side === "from" ? "Seleziona token da inviare" : "Seleziona token da ricevere";
+  const hasWallet = !!walletAddress;
 
   return (
-    <div className="fixed inset-0 z-50 flex flex-col justify-end" onClick={onClose}>
-      {/* Backdrop */}
-      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
-
-      {/* Sheet */}
-      <div
-        className="relative bg-background border-t border-border/30 rounded-t-3xl max-h-[80vh] flex flex-col"
-        onClick={e => e.stopPropagation()}
-      >
-        {/* Handle */}
-        <div className="flex justify-center pt-3 pb-1">
-          <div className="w-10 h-1 rounded-full bg-muted-foreground/30" />
-        </div>
+    <div className="asw-sheet-backdrop" onClick={onClose}>
+      <div className="asw-sheet" onClick={e => e.stopPropagation()}>
+        <div className="asw-sheet-handle" />
 
         {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-border/20">
-          <p className="font-bold text-base">{title}</p>
-          <button
-            onClick={onClose}
-            className="p-2 rounded-xl hover:bg-muted/50 transition-colors"
-            aria-label="Chiudi"
-          >
-            <X className="w-5 h-5" />
+        <div className="asw-sheet-header">
+          <p className="asw-sheet-title">{title}</p>
+          <button className="asw-close-btn" onClick={onClose} aria-label="Chiudi">
+            <X size={16} />
           </button>
         </div>
 
         {/* Chain selector */}
-        <div className="flex gap-2 px-4 py-3 overflow-x-auto scrollbar-none border-b border-border/10">
+        <div className="asw-chain-bar">
           {EVM_SWAP_CHAINS.map((chain: EvmChainInfo) => (
             <button
               key={chain.id}
               onClick={() => setSelectedChain(chain.id)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-semibold whitespace-nowrap transition-all
-                ${selectedChain === chain.id
-                  ? "text-white"
-                  : "bg-muted/30 text-muted-foreground hover:bg-muted/50"
-                }`}
-              style={selectedChain === chain.id ? { backgroundColor: chain.color } : undefined}
+              className={`asw-chain-pill${selectedChain === chain.id ? " asw-chain-pill--active" : ""}`}
+              style={selectedChain === chain.id ? { backgroundColor: `${CHAIN_COLOR[chain.id]}33`, borderColor: CHAIN_COLOR[chain.id] } : undefined}
             >
               <span>{CHAIN_ICONS[chain.id] ?? "⬡"}</span>
               {chain.name}
@@ -95,30 +97,36 @@ export function TokenSelector({
         </div>
 
         {/* Search */}
-        <div className="px-4 py-2">
-          <div className="flex items-center gap-2 bg-muted/20 border border-border/20 rounded-xl px-3 py-2">
-            <Search className="w-4 h-4 text-muted-foreground shrink-0" />
+        <div className="asw-search-row">
+          <div className="asw-search-box">
+            <Search size={15} style={{ color: "rgba(255,255,255,.4)", flexShrink: 0 }} />
             <input
               type="text"
               placeholder="Cerca token…"
               value={query}
               onChange={e => setQuery(e.target.value)}
-              className="flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground/50"
+              className="asw-search-input"
               autoFocus
             />
           </div>
         </div>
 
         {/* Token list */}
-        <div className="flex-1 overflow-y-auto px-4 pb-8 space-y-1">
+        <div className="asw-token-list">
           {tokens.length === 0 ? (
-            <p className="text-center text-sm text-muted-foreground py-8">Nessun token trovato.</p>
+            <p className="asw-hint" style={{ padding: "32px 0" }}>Nessun token trovato.</p>
           ) : (
             tokens.map(token => {
               const isSameAsOther =
                 otherToken &&
                 otherToken.chainId === token.chainId &&
                 otherToken.address.toLowerCase() === token.address.toLowerCase();
+
+              const rawBal  = balances?.get(token.address);
+              const balStr  = (hasWallet && selectedChain === token.chainId)
+                ? fmtBal(rawBal, token.decimals)
+                : null;
+              const hasBal  = balStr !== null && balStr !== "0";
 
               return (
                 <button
@@ -128,29 +136,32 @@ export function TokenSelector({
                     onClose();
                   }}
                   disabled={!!isSameAsOther}
-                  className={`w-full flex items-center justify-between gap-3 px-3 py-3 rounded-xl transition-colors
-                    ${isSameAsOther
-                      ? "opacity-30 cursor-not-allowed"
-                      : "hover:bg-muted/30 active:bg-muted/50"
-                    }`}
+                  className="asw-token-list-item"
                 >
-                  <div className="flex items-center gap-3">
-                    {/* Token icon placeholder */}
-                    <div className="w-10 h-10 rounded-full bg-muted/40 border border-border/20 flex items-center justify-center text-sm font-bold shrink-0">
+                  <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                    <div className="asw-token-list-icon" style={{ background: `${CHAIN_COLOR[token.chainId] ?? "#888"}22`, color: CHAIN_COLOR[token.chainId] ?? "#fff" }}>
                       {token.symbol.slice(0, 2)}
                     </div>
-                    <div className="text-left">
-                      <p className="font-semibold text-sm">{token.symbol}</p>
-                      <p className="text-xs text-muted-foreground">{token.name}</p>
+                    <div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                        <span className="asw-token-list-name">{token.symbol}</span>
+                        {token.isNative && <span className="asw-native-badge">Native</span>}
+                      </div>
+                      <p className="asw-token-list-sub">{token.name}</p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2 text-right">
-                    {token.isNative && (
-                      <span className="text-[10px] bg-primary/10 text-primary px-1.5 py-0.5 rounded-full">
-                        Native
-                      </span>
+
+                  <div className="asw-token-list-right">
+                    {balStr !== null ? (
+                      <>
+                        <p className={`asw-token-list-bal${!hasBal ? "" : ""}`} style={{ color: hasBal ? "rgba(255,255,255,.85)" : "rgba(255,255,255,.35)" }}>
+                          {balStr}
+                        </p>
+                        <p className="asw-token-list-bal-sub">{token.symbol}</p>
+                      </>
+                    ) : (
+                      <span style={{ fontSize: 12, color: "rgba(255,255,255,.3)" }}>—</span>
                     )}
-                    <ChevronRight className="w-4 h-4 text-muted-foreground/50" />
                   </div>
                 </button>
               );
