@@ -555,14 +555,25 @@ export function MultiChainPayRequestSheet({
 
                 {!isConnected ? (
                   /* Wallet non connesso — mostra ConnectButton (UX spec) */
-                  <ConnectButton
-                    client={client}
-                    chain={evmChain ?? polygon}
-                    wallets={wallets}
-                    appMetadata={appMetadata}
-                    connectButton={{ label: "🔗 Collega wallet per pagare" }}
-                    connectModal={{ size: "compact" }}
-                  />
+                  <>
+                    <ConnectButton
+                      client={client}
+                      chain={evmChain ?? polygon}
+                      wallets={wallets}
+                      appMetadata={appMetadata}
+                      connectButton={{ label: "🔗 Collega wallet per pagare" }}
+                      connectModal={{ size: "compact" }}
+                    />
+                    {/iphone|ipad|ipod/i.test(navigator.userAgent) && (
+                      <button
+                        type="button"
+                        onClick={() => { window.location.href = "trust://"; }}
+                        style={{ marginTop: 8, background: "none", border: "none", color: "rgba(167,139,250,0.85)", fontSize: "0.82em", cursor: "pointer", textDecoration: "underline" }}
+                      >
+                        → Hai già Trust Wallet? Aprila qui
+                      </button>
+                    )}
+                  </>
                 ) : (
                   /* Wallet connesso — pulsante firma principale */
                   <button

@@ -1100,6 +1100,15 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
                   <div className="usda-connect-btn-wrap">
                     <ConnectButton client={client} chain={evmChain ?? polygon} wallets={network === "bsc" ? walletsBsc : wallets} appMetadata={appMetadata} />
                   </div>
+                  {/iphone|ipad|ipod/i.test(navigator.userAgent) && (
+                    <button
+                      type="button"
+                      onClick={() => { window.location.href = "trust://"; }}
+                      style={{ marginTop: 10, background: "none", border: "none", color: "rgba(167,139,250,0.85)", fontSize: "0.82em", cursor: "pointer", textDecoration: "underline" }}
+                    >
+                      → Hai già Trust Wallet? Aprila qui
+                    </button>
+                  )}
                 </div>
               ) : (
                 <div className="sp-wallet-ready">
@@ -1223,6 +1232,15 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
                   <div className="usda-connect-btn-wrap">
                     <ConnectButton client={client} chain={evmChain ?? polygon} wallets={network === "bsc" ? walletsBsc : wallets} appMetadata={appMetadata} />
                   </div>
+                  {/iphone|ipad|ipod/i.test(navigator.userAgent) && (
+                    <button
+                      type="button"
+                      onClick={() => { window.location.href = "trust://"; }}
+                      style={{ marginTop: 10, background: "none", border: "none", color: "rgba(167,139,250,0.85)", fontSize: "0.82em", cursor: "pointer", textDecoration: "underline" }}
+                    >
+                      → Hai già Trust Wallet? Aprila qui
+                    </button>
+                  )}
                 </div>
               ) : (
                 <button
