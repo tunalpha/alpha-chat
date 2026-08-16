@@ -29,6 +29,12 @@ Chiamata API reale `GET https://li.quest/v1/quote?integrator=alphachat&fee=0.002
 
 **Why:** Li.Fi rifiuta con HTTP 400 il parametro `fee` se l'integrator non è registrato — non è solo "non raccolta", è errore bloccante che impedisce di ottenere qualsiasi quote.
 
+## Fee wallet — risultato confronto (2026-08-16)
+
+`ETHEREUM_FEE_WALLET` = `POLYGON_FEE_WALLET` = `BSC_FEE_WALLET` → **stesso indirizzo EVM**
+
+Inserire quell'unico indirizzo nel portale Li.Fi per la famiglia EVM. Nessun nuovo wallet, nessuna modifica ai segreti Replit.
+
 ## Come verificare dopo registrazione
 
 ```javascript
