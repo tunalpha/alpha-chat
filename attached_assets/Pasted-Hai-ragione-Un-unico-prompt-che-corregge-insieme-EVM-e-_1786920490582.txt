@@ -1,0 +1,107 @@
+Hai ragione. Un unico prompt, che corregge insieme EVM e BTC senza altri passaggi:
+
+Esegui ora un fix completo e definitivo di Alpha Swap. NON chiedermi chiarimenti e NON fare modifiche speculative. Analizza il codice, identifica le root cause, applica i fix e testa tutto.
+
+PROBLEMA 1 — EVM SWAP FALLISCE
+
+Su iPhone la quote EVM funziona correttamente:
+Polygon → Polygon, POL → USDC, quote Li.Fi presente, SushiSwap presente.
+
+Quando premo Swap compare:
+LiFiClient: wallet non configurato. Chiama configureLiFiWallet() prima.
+
+Correggi il problema alla radice.
+
+REQUISITI:
+
+* Il wallet deve essere quello EVM interno di Alpha Wallet già disponibile nel WalletContext/meta.
+* NON usare useActiveAccount() come requisito.
+* NON richiedere una sessione WalletConnect per lo swap.
+* Prima dell’execute Li.Fi deve essere sempre configurato con l’indirizzo EVM corretto di Alpha Wallet.
+* Elimina eventuali race condition tra caricamento wallet/config e pressione di Swap.
+* Se la configurazione è ancora in corso, attendere invece di chiamare execute prematuramente.
+* Non mascherare l’errore con try/catch: il wallet deve essere realmente configurato.
+* Mantieni invariati quote, provider, fee Alpha e flusso di firma già validati.
+
+TEST EVM:
+
+* Apri Alpha Swap → EVM deve essere default.
+* Quote POL → USDC.
+* Premi Swap.
+* Deve partire il corretto flusso di firma Alpha Wallet.
+* Completa un test reale con importo minimo.
+* Verifica la TX on-chain.
+* Verifica anche refresh → quote → swap.
+* Verifica EVM → BTC → EVM → swap.
+
+PROBLEMA 2 — BTC / LIGHTNING
+
+Il saldo BTC ora funziona correttamente e NON va rimosso:
+0.00011496 BTC (11.496 sat)
+
+Correggi il flusso BTC secondo questa architettura:
+
+BTC on-chain → BTC Lightning:
+
+* l’utente NON deve inserire alcun indirizzo di destinazione;
+* deve essere usato automaticamente il wallet Lightning interno di Alpha dell’utente;
+* NON mostrare Indirizzo BTC di destinazione;
+* NON chiedere bc1..., 1..., 3...;
+* la destinazione deve essere risolta internamente dal sistema.
+
+Lightning → BTC on-chain:
+
+* anche qui l’utente NON deve inserire un indirizzo se la destinazione è il proprio wallet Alpha;
+* usare automaticamente l’indirizzo BTC on-chain del wallet Alpha (meta.btcAddress).
+
+AGGIUNGI:
+
+* pulsante MAX sul campo BTC, come nell’EVM;
+* MAX deve usare il saldo BTC disponibile;
+* deve rispettare fee e importo minimo, senza permettere di spendere più del saldo effettivamente spendibile.
+
+IMPORTANTE:
+Non limitarti a cambiare le label.
+Verifica la macchina a stati e gli endpoint/backend/provider effettivamente utilizzati per BTC ↔ Lightning e collega correttamente le destinazioni interne del wallet Alpha.
+
+NON MODIFICARE:
+
+* EVM quote Li.Fi già funzionante;
+* provider SushiSwap;
+* fee Alpha;
+* logica di firma già validata;
+* saldo BTC funzionante;
+* architettura del wallet Alpha;
+* EVM come tab default;
+* BTC/Lightning come seconda tab.
+
+REGRESSION TEST OBBLIGATORI:
+
+* EVM default ✓
+* EVM quote ✓
+* EVM swap reale ✓
+* firma Alpha Wallet ✓
+* TX on-chain ✓
+* BTC balance ✓
+* BTC → Lightning senza richiesta indirizzo ✓
+* Lightning → BTC senza richiesta indirizzo ✓
+* MAX BTC ✓
+* cambio tab EVM ↔ BTC ✓
+* refresh su iPhone ✓
+* nessuna schermata bianca ✓
+* nessun errore runtime ✓
+* tutti i test automatici ✓
+* build ✓
+
+NON considerare il lavoro concluso finché EVM swap reale e BTC/Lightning non sono entrambi verificati.
+
+Alla fine restituisci un solo report con:
+
+1. root cause EVM;
+2. root cause BTC;
+3. fix applicati;
+4. file modificati;
+5. test automatici;
+6. build;
+7. risultato dei test reali;
+8. eventuale TX hash del test EVM.

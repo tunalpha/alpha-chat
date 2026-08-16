@@ -48,6 +48,8 @@ export interface SwapQuote {
   expires_at:       number;  // unix ms
   provider_note?:   string;
   limits?:          { min_sat: number; max_sat: number };
+  /** Solo BTC→LN: BOLT11 invoice del wallet Lightning interno generata al momento dell'execute. */
+  lightning_invoice?: string;
 }
 
 export interface BtcLnSwapCreated {

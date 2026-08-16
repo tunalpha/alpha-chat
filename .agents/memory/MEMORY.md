@@ -101,6 +101,7 @@
 - [Alpha Swap V1 — BTC↔Lightning](alpha-swap-v1.md) — provider-swappable isolato; Boltz 25bps BTC→LN; Spark fallback 0% LN→BTC; SWAP_ENABLED=false; hardening completato (vedi alpha-swap-v1-hardening.md)
 - [Alpha Swap EVM — Alpha Wallet Bridge](alpha-swap-evm-bridge.md) — effectiveAddress=ThirdWeb??AlphaWallet; adapter crea viem WalletClient da IDB keystore; clearLiFiWallet() in cleanup; crash era callbacks modulo lifi-client post-unmount
 - [Alpha Swap V2 — EVM Li.Fi](alpha-swap-v2-evm.md) — integrator alpha-chat (con trattino); fee 0.0025 (25bps) via Fee Forwarder; thirdweb.ts esporta `client` non `thirdwebClient`; vi.mock @lifi/sdk obbligatorio nei test
+- [Alpha Swap BTC/LN + EVM fixes](alpha-swap-btcln-evm-fixes.md) — EVM race condition: configureLiFiWallet sync in execute; EVM tab check deve precedere guard BTC/LN; BTC→LN: invoice Spark auto-generata; LN→BTC: btcAddress auto da meta; MAX button 2000sat reserve
 - [EVM Swap crash — viemAdapter account prop](evm-swap-crash-viem-adapter.md) — `viemAdapter.walletClient.toViem` vuole `account:` (Account), non `wallet:`; errore silenzioso → black screen iOS PWA
 - [@lifi/sdk CJS alias (🔒 permanente)](lifi-sdk-cjs-alias.md) — ESM entry di @lifi/sdk v4 non esporta createConfig/EVM; alias vite.config.ts → CJS via createRequire obbligatorio per il build prod
 - [LN→BTC Hardening](lnbtc-hardening.md) — localStorage ikey/lock/intent/result; cross-tab TTL 90s; TIMEOUT_UNCERTAIN clearTimeout pattern; idempotency_key backend; 17 test T1-T17

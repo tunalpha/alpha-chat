@@ -85,7 +85,22 @@ const INITIAL: SwapStateValue = {
   recovering:    false,
 };
 
-export function useSwapState(router: SwapRouter | null): [SwapStateValue, SwapActions] {
+/** Opzioni passate da SwapView per auto-risoluzione degli indirizzi. */
+export interface SwapStateOpts {
+  /**
+   * BTC→LN: genera una BOLT11 invoice dall'interno del wallet Lightning
+   * dell'utente per `amountSat`. Il sistema la inietta nel quote prima
+   * di chiamare provider.execute(), eliminando l'input manuale.
+   */
+  generateLightningInvoice?: (amountSat: number) => Promise<string>;
+  /**
+   * LN→BTC: indirizzo BTC on-chain del wallet Alpha dell'utente.
+   * Viene auto-impostato come destinazione per swap Lightning→BTC.
+   */
+  walletBtcAddress?: string;
+}
+
+export function useSwapState(router: SwapRouter | null, opts?: SwapStateOpts): [SwapStateValue, SwapActions] {
   const [sv, setSv] = useState<SwapStateValue>(INITIAL);
   const pollRef     = useRef<ReturnType<typeof setInterval> | null>(null);
   const routerRef   = useRef<SwapRouter | null>(router);
@@ -217,9 +232,21 @@ export function useSwapState(router: SwapRouter | null): [SwapStateValue, SwapAc
     _set({ state: "creating", error: null });
     try {
       const provider = routerRef.current.resolve(sv.direction);
+
+      // ── BTC→LN: genera invoice Lightning automaticamente ─────────────────────
+      // La invoice BOLT11 viene creata dal wallet Spark interno per `to_amount_sat`
+      // (i sat che l'utente riceverà in Lightning). Non viene richiesto alcun
+      // indirizzo manuale — il sistema risolve la destinazione internamente.
+      let quoteForExec = sv.quote;
+      if (sv.direction === "btc_to_lightning" && opts?.generateLightningInvoice) {
+        const bolt11 = await opts.generateLightningInvoice(sv.quote.to_amount_sat);
+        quoteForExec = { ...sv.quote, lightning_invoice: bolt11 };
+      }
+
+      // ── LN→BTC: usa btcAddress dal wallet Alpha (già auto-impostato in stato) ─
       const result = await provider.execute({
-        quote:       sv.quote,
-        btc_address: sv.btcAddress || undefined,
+        quote:       quoteForExec,
+        btc_address: sv.btcAddress || opts?.walletBtcAddress || undefined,
       });
 
       if (sv.direction === "btc_to_lightning") {

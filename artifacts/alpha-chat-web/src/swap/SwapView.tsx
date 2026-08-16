@@ -559,18 +559,34 @@ function SwapMainForm({ sv, actions, config, btcBalance, btcBalLoading }: SwapMa
     <div className="asw-content">
       <div className="asw-form">
 
-        {/* BTC on-chain balance (sopra la card PAGA) */}
+        {/* BTC on-chain balance + MAX (sopra la card PAGA) */}
         {isBtcLn && (
-          <div className="asw-card-balance" style={{ paddingBottom: 0, marginBottom: -4 }}>
-            {btcBalLoading ? (
-              <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, color: "rgba(255,255,255,.35)" }}>
-                <Loader2 size={11} style={{ animation: "aw-spin .8s linear infinite" }} /> Saldo…
-              </span>
-            ) : btcBalance ? (
-              <span style={{ fontSize: 12, color: "rgba(255,255,255,.45)" }}>
-                Saldo BTC: {(btcBalance.totalSat / 1e8).toFixed(8)} BTC ({btcBalance.totalSat.toLocaleString("it-IT")} sat)
-              </span>
-            ) : null}
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingBottom: 0, marginBottom: -4 }}>
+            <span style={{ fontSize: 12, color: "rgba(255,255,255,.45)", minHeight: 18 }}>
+              {btcBalLoading ? (
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                  <Loader2 size={11} style={{ animation: "aw-spin .8s linear infinite" }} /> Saldo…
+                </span>
+              ) : btcBalance ? (
+                `Saldo: ${(btcBalance.totalSat / 1e8).toFixed(8)} BTC`
+              ) : null}
+            </span>
+            {btcBalance && btcBalance.totalSat > 0 && (
+              <button
+                onClick={() => {
+                  // MAX = saldo disponibile - stima fee miner (2000 sat) - almeno 1 sat sicurezza
+                  // Rispetta il minimo del provider se disponibile nella quote
+                  const minSat = sv.quote?.limits?.min_sat ?? 10_000;
+                  const maxSpendable = Math.max(0, btcBalance.totalSat - 2000);
+                  const clamped = Math.max(minSat, Math.min(maxSpendable, btcBalance.totalSat - 2000));
+                  if (clamped > 0) actions.setAmountSat(clamped);
+                }}
+                className="aw-btn aw-btn--secondary"
+                style={{ padding: "2px 10px", fontSize: 11, fontWeight: 700, height: 24, minWidth: 0, letterSpacing: ".5px" }}
+              >
+                MAX
+              </button>
+            )}
           </div>
         )}
 
@@ -618,22 +634,13 @@ function SwapMainForm({ sv, actions, config, btcBalance, btcBalLoading }: SwapMa
           )}
         </AssetCard>
 
-        {/* BTC address (LN→BTC only) */}
-        {isLnBtc && (
-          <div className="asw-addr-card">
-            <span className="asw-card-label">Indirizzo BTC di destinazione</span>
-            <input
-              type="text"
-              inputMode="text"
-              placeholder="bc1q… oppure 1… oppure 3…"
-              value={sv.btcAddress}
-              onChange={e => actions.setBtcAddress(e.target.value.trim())}
-              className="asw-addr-input"
-              aria-label="Indirizzo Bitcoin di destinazione"
-              autoCorrect="off"
-              autoCapitalize="none"
-              spellCheck={false}
-            />
+        {/* LN→BTC: destinazione auto-risolta dal wallet Alpha (nessun input manuale) */}
+        {isLnBtc && sv.btcAddress && (
+          <div className="asw-addr-card" style={{ opacity: 0.7 }}>
+            <span className="asw-card-label">Destinazione (wallet Alpha)</span>
+            <p style={{ fontSize: 11, fontFamily: "monospace", color: "rgba(255,255,255,.55)", wordBreak: "break-all", margin: 0, padding: "4px 0" }}>
+              {sv.btcAddress}
+            </p>
           </div>
         )}
 
@@ -711,9 +718,6 @@ function SwapMainForm({ sv, actions, config, btcBalance, btcBalLoading }: SwapMa
         {/* Hints */}
         {sv.amountSat <= 0 && (
           <p className="asw-hint">Inserisci un importo per vedere la quote</p>
-        )}
-        {isLnBtc && sv.amountSat > 0 && sv.btcAddress.trim().length < 10 && (
-          <p className="asw-hint">Inserisci l'indirizzo BTC di destinazione</p>
         )}
 
         {/* Fee discrepancy note */}
@@ -812,7 +816,27 @@ export function SwapView({ onBack }: SwapViewProps) {
     return new SwapRouter(new BoltzBtcLnProvider(), new BreezSparkBtcLnProvider(executor));
   }, [spark]);
 
-  const [sv, actions] = useSwapState(router);
+  // ── Genera Lightning invoice automaticamente (BTC→LN) ─────────────────────
+  // Usa il wallet Spark interno — nessun indirizzo manuale richiesto.
+  const generateLightningInvoice = useCallback(async (amountSat: number) => {
+    if (!spark) throw new Error("Wallet Lightning non disponibile. Assicurati che Spark sia connesso.");
+    const result = await spark.createReceiveInvoice({ amountSat, description: "Alpha Swap BTC→Lightning" });
+    if (!result.bolt11) throw new Error("Impossibile generare invoice Lightning.");
+    return result.bolt11;
+  }, [spark]);
+
+  const [sv, actions] = useSwapState(router, {
+    generateLightningInvoice,
+    walletBtcAddress: walletMeta?.btcAddress ?? undefined,
+  });
+
+  // ── Auto-set btcAddress per LN→BTC (usa btcAddress del wallet Alpha) ───────
+  useEffect(() => {
+    if (sv.direction === "lightning_to_btc" && !sv.btcAddress && walletMeta?.btcAddress) {
+      actions.setBtcAddress(walletMeta.btcAddress);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sv.direction, walletMeta?.btcAddress]);
 
   // ── Auto-execute when state becomes "confirming" ───────────────────────────
   useEffect(() => {
@@ -828,7 +852,7 @@ export function SwapView({ onBack }: SwapViewProps) {
 
   useEffect(() => {
     if (sv.amountSat <= 0 || !router || !config?.enabled) return;
-    if (sv.direction === "lightning_to_btc" && sv.btcAddress.trim().length < 10) return;
+    // Per LN→BTC l'indirizzo è auto-impostato — non bloccare la quote
 
     if (debounceRef.current) clearTimeout(debounceRef.current);
     debounceRef.current = setTimeout(() => {
