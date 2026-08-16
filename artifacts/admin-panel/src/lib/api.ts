@@ -920,3 +920,49 @@ export async function cancelStaleTransfers(olderThanMinutes = 0): Promise<Cancel
     body:   JSON.stringify({ olderThanMinutes }),
   });
 }
+
+// ---------------------------------------------------------------------------
+// Alpha Swap — Admin API
+// ISOLAMENTO: usa /api/v1/swap/admin/* (non /api/v1/admin/)
+// SWAP_ENABLED = false default — non abilitare senza audit completo
+// ---------------------------------------------------------------------------
+
+const SWAP_ADMIN_BASE = "/api/v1/swap/admin";
+
+export async function swapAdminFetch<T>(path: string, options?: RequestInit): Promise<T> {
+  const token = getToken();
+  const controller = new AbortController();
+  const timeoutId  = setTimeout(() => controller.abort(), 12_000);
+  let res: Response;
+  try {
+    res = await fetch(`${SWAP_ADMIN_BASE}${path}`, {
+      ...options,
+      signal: controller.signal,
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(options?.headers as Record<string, string> | undefined),
+      },
+    });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+  if (res.status === 401 || res.status === 403) {
+    clearToken();
+    window.location.href = "/admin/login";
+    throw new Error("Unauthorized");
+  }
+  if (!res.ok) {
+    let message = `HTTP ${res.status}`;
+    try { const b = await res.json(); message = b?.error?.message ?? b?.message ?? message; } catch { /**/ }
+    throw new Error(message);
+  }
+  return res.json() as Promise<T>;
+}
+
+export async function swapAdminPatch(patch: Record<string, unknown>): Promise<void> {
+  await swapAdminFetch("/config", {
+    method: "PATCH",
+    body:   JSON.stringify(patch),
+  });
+}

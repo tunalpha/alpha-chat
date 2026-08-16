@@ -26,6 +26,7 @@ import {
   Wallet,
   Zap,
   BarChart2,
+  ArrowLeftRight,
 } from "lucide-react";
 import { useAuth } from "@/hooks/use-auth";
 
@@ -54,7 +55,10 @@ const navItems = [
   { href: "/alpha-wallet-fee",     label: "Alpha Wallet Fee",     icon: Wallet     },
   { href: "/alpha-wallet-monitor", label: "Alpha Wallet Monitor", icon: BarChart2  },
   { href: "/spark-lightning-fee", label: "Spark / Lightning", icon: Zap       },
-  { href: "/spark-monitor",       label: "Spark Monitor",     icon: BarChart2  },
+  { href: "/spark-monitor",       label: "Spark Monitor",     icon: BarChart2       },
+  { href: "/swap-monitor",        label: "Swap Monitor",      icon: ArrowLeftRight  },
+  { href: "/swap-revenue",        label: "Swap Revenue",      icon: TrendingUp      },
+  { href: "/swap-fee-config",     label: "Swap Fee Config",   icon: ArrowLeftRight  },
 ];
 
 interface SidebarProps {

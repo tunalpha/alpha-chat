@@ -1,0 +1,95 @@
+Sì. La scelta corretta per ora è Breez Spark come fallback esclusivamente LN → BTC, mantenendo tutto disattivato fino all’audit.
+
+Darei all’agente questo prompt, molto vincolante:
+
+PROCEDI CON IL FALLBACK BREEZ SPARK — BTC/LIGHTNING SWAP
+Implementa la strategia approvata con queste condizioni NON NEGOZIABILI:
+ARCHITETTURA
+1. Crea/usa BitcoinLightningSwapProvider come interfaccia astratta.
+2. Implementa:
+   - BoltzBtcLnProvider per BTC → Lightning
+   - BreezSparkBtcLnProvider come fallback SOLO per Lightning → BTC
+3. SwapRouter deve selezionare automaticamente:
+   - BTC → Lightning: continua a usare la route/provider già previsto
+   - Lightning → BTC: Breez Spark temporaneamente
+4. Quando in futuro sarà disponibile un provider Boltz reverse con fee Alpha, deve essere sostituibile tramite configurazione/provider senza modificare:
+   - UI
+   - state machine
+   - Admin
+   - payment logic esistente
+FEE
+5. Breez Spark LN → BTC:
+   - Alpha Fee = 0% temporaneamente
+   - NON modificare ALPHA_SWAP_FEE_BPS
+   - NON modificare la fee globale Alpha
+   - NON modificare nessun treasury wallet esistente
+6. BTC → Lightning deve mantenere la fee/provider già previsto.
+7. Continua separatamente la ricerca di un provider LN → BTC che supporti una integrator fee Alpha.
+ISOLAMENTO CRITICO
+8. NON modificare il payment engine esistente.
+9. NON modificare:
+   - USDA payments
+   - EVM transfers
+   - Lightning payments normali
+   - Spark payments normali
+   - fee collection esistente
+   - treasury
+   - sweep
+   - wallet configuration
+   - WalletConnect
+10. Il nuovo codice deve essere completamente isolato nel modulo swap/provider.
+SWAP DISABILITATO
+11. NON attivare globalmente gli swap.
+12. Lasciare:
+   SWAP_ENABLED=false
+13. Nessuna nuova route swap deve diventare operativa per gli utenti finché non viene esplicitamente abilitata dopo audit.
+SICUREZZA / REGRESSIONI
+14. Prima di modificare qualsiasi file, identifica esattamente i punti di integrazione.
+15. Non duplicare la payment logic.
+16. Non spostare né riutilizzare wallet/treasury destinati alle fee esistenti.
+17. Gestisci esplicitamente errori, timeout e provider unavailable.
+18. Se Breez non riesce a completare LN → BTC, restituisci un errore controllato senza coinvolgere il payment engine.
+TEST OBBLIGATORI
+Esegui test specifici per:
+- provider interface
+- BTC → Lightning routing
+- Lightning → BTC routing verso Breez
+- provider unavailable
+- fee = 0% sul fallback Breez
+- ALPHA_SWAP_FEE_BPS invariato
+- SWAP_ENABLED=false
+- treasury invariati
+- payment flow esistente invariato
+Poi esegui l'intera suite regression.
+AUDIT FINALE
+Prima di considerare il lavoro concluso, produci un report con:
+1. File modificati
+2. File NON modificati relativi ai pagamenti
+3. Flusso BTC → Lightning
+4. Flusso Lightning → BTC
+5. Provider utilizzato per ogni direzione
+6. Fee applicata per ogni direzione
+7. Conferma che Breez non altera la fee globale Alpha
+8. Conferma che treasury e fee wallet esistenti sono invariati
+9. Conferma SWAP_ENABLED=false
+10. Risultati test
+11. Eventuali rischi residui
+NON dichiarare la soluzione definitiva:
+Breez LN → BTC è esclusivamente un FALLBACK TEMPORANEO.
+NON fare deploy/attivazione dello swap. Prima voglio vedere il report e fare l'audit.
+
+In pratica
+
+La situazione che vogliamo ottenere è:
+
+BTC → Lightning → provider previsto/Boltz → fee Alpha mantenuta
+
+Lightning → BTC → Breez Spark → fee Alpha 0% temporaneamente
+
+Swap globale → 🔴 OFF
+
+Payment engine esistente → 🔒 intoccato
+
+E soprattutto, quando troveremo un provider che permette la fee Alpha anche su LN → BTC, dovremo poter sostituire Breez solo cambiando il provider, senza rifare tutta la logica dell’app.
+
+Io farei esattamente così e non farei attivare nulla prima dell’audit completo.

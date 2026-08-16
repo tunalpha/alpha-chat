@@ -90,6 +90,7 @@ import {
 } from "../wallet/services/btc-signer";
 import type { BtcUTXO } from "../lib/alpha-wallet-api";
 import "./AlphaWalletPage.css";
+import { SwapView } from "../swap/index";
 // logo.png è in public/ → copiato da Vite in dist/public/logo.png → sempre servito a /logo.png
 
 // ─── Sub-view types ─────────────────────────────────────────────────────────
@@ -284,7 +285,7 @@ function AlphaWalletInner({ onBack }: Props) {
       case "notifications":
         return <NotificationsView onBack={() => setSubView("overview")} />;
       case "swap":
-        return <SwapComingSoonView onBack={() => setSubView("overview")} />;
+        return <SwapView onBack={() => setSubView("overview")} />;
       case "add-token":
         return <AddTokenView onBack={() => setSubView("overview")} />;
       case "security":

@@ -34,6 +34,9 @@ import AlphaWalletFee     from '@/pages/alpha-wallet-fee';
 import AlphaWalletMonitor from '@/pages/alpha-wallet-monitor';
 import SparkLightningFee  from '@/pages/spark-lightning-fee';
 import SparkMonitor      from '@/pages/spark-monitor';
+import SwapMonitor       from '@/pages/swap-monitor';
+import SwapRevenue       from '@/pages/swap-revenue';
+import SwapFeeConfig     from '@/pages/swap-fee-config';
 
 const queryClient = new QueryClient();
 
@@ -64,6 +67,9 @@ function ProtectedRoutes() {
         <Route path="/alpha-wallet-monitor" component={AlphaWalletMonitor} />
         <Route path="/spark-lightning-fee" component={SparkLightningFee} />
         <Route path="/spark-monitor"       component={SparkMonitor} />
+        <Route path="/swap-monitor"        component={SwapMonitor}    />
+        <Route path="/swap-revenue"        component={SwapRevenue}    />
+        <Route path="/swap-fee-config"     component={SwapFeeConfig}  />
         <Route path="/access-log" component={AccessLogPage} />
         <Route path="/performance" component={PerformancePage} />
         <Route component={NotFound} />

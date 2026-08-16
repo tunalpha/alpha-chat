@@ -117,4 +117,10 @@ v1Router.use("/spark", sparkRoutes);
 import lightningRoutes from "./lightning.routes";
 v1Router.use("/lightning/invoice-links", lightningRoutes);
 
+// Alpha Swap — BTC↔Lightning swap module
+// ISOLAMENTO: completamente separato da payment engine, USDA, MultiChain, Spark fee.
+// SWAP_ENABLED = false — default protetto, abilitare solo dopo audit di sicurezza.
+import swapRoutes from "./swap.routes";
+v1Router.use("/swap", swapRoutes);
+
 export default v1Router;
