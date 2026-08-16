@@ -1,0 +1,234 @@
+STOP. Il precedente report "PASS" non corrisponde al comportamento reale su iPhone.
+
+Ho eseguito il test reale dopo il deploy/build e ci sono ancora problemi concreti.
+
+PROBLEMI OSSERVATI SU IPHONE:
+
+1. WALLET EVM GIÀ CONNESSO MA UI DICE ANCORA:
+   "Per effettuare swap collega il tuo wallet EVM (WalletConnect) dalla sezione Pagamenti."
+
+   Questo è ERRATO.
+   La stessa app mostra nella sezione Pagamenti:
+   "Wallet attivo"
+   con indirizzo Polygon 0x32D236...486485 e saldo 27.0653 POL.
+
+   Quindi NON dobbiamo chiedere all'utente di collegare nuovamente il wallet.
+   Dobbiamo usare ESATTAMENTE la sessione/account EVM già attiva nell'app.
+
+2. SALDO EVM ERRATO:
+   In Alpha Swap → EVM il saldo POL viene mostrato come "0".
+   Il wallet reale invece possiede circa 27.0653 POL.
+
+3. MANCA IL PULSANTE MAX:
+   La card PAGA deve mostrare il saldo reale e il pulsante MAX quando esiste un balance spendibile.
+
+4. MANCANO I SUGGERIMENTI/QUOTE PERCENTUALI:
+   Dopo aver inserito un importo, il componente deve mostrare correttamente la quote Li.Fi e le opzioni previste dal design Alpha Swap.
+   Non deve rimanere unicamente "Inserisci un importo per vedere la quote".
+
+5. CRASH NAVIGAZIONE:
+   Quando esco dalla schermata Swap, in alcuni casi l'app diventa completamente vuota/nera.
+   Questo è un crash reale/unhandled exception e va diagnosticato dal runtime log, non semplicemente ignorato.
+
+IMPORTANTE:
+NON limitarti a modificare la UI per nascondere il problema.
+Devi trovare la ROOT CAUSE del runtime.
+
+PRIMA FASE — DIAGNOSI OBBLIGATORIA
+
+Analizza:
+
+- useEvmSwapState.ts
+- SwapView.tsx
+- EvmSwapView.tsx
+- eventuali provider/context ThirdWeb
+- useActiveAccount()
+- useActiveWallet()
+- useActiveWalletChain()
+- wallet/account session state
+- useEvmTokenBalances()
+- viemAdapter
+- eventuali errori console/runtime durante mount/unmount
+- eventuali errori WalletConnect/ThirdWeb durante uscita dalla pagina
+
+Verifica esplicitamente se:
+A) activeAccount è presente ma il componente legge uno stato diverso;
+B) activeWallet/account diventa undefined durante reconnessione;
+C) il wallet mostrato nella sezione Pagamenti usa un'altra fonte di stato rispetto a Swap;
+D) il balance RPC viene richiesto con chain/account errati;
+E) il provider ThirdWeb viene smontato prima che Swap finisca di leggere account/balance;
+F) il crash all'uscita è causato da cleanup/useEffect, adapter, WalletConnect o stato aggiornato dopo unmount.
+
+NON assumere che "useActiveAccount() esiste" significhi che il problema è risolto.
+Serve verificare il valore runtime reale su iPhone.
+
+SECONDA FASE — FIX
+
+Obiettivo:
+
+Wallet già connesso nell'app
+        ↓
+Alpha Swap
+        ↓
+EVM rilevato automaticamente
+        ↓
+account corretto
+        ↓
+chain corretta
+        ↓
+balance reale
+        ↓
+MAX
+        ↓
+importo
+        ↓
+quote Li.Fi
+        ↓
+swap
+
+Nessun secondo collegamento manuale deve essere richiesto.
+
+Se il wallet è presente nella sessione globale dell'app, Swap deve considerarlo connesso.
+
+Il warning "collega il wallet" deve apparire SOLO quando:
+- dopo la completa inizializzazione/reconnection
+- activeAccount è realmente assente
+- e non esiste una sessione EVM valida recuperabile.
+
+TERZA FASE — BALANCE
+
+Per Polygon:
+
+- account: 0x32D236...486485
+- il balance deve essere letto dalla chain Polygon
+- usare il provider/RPC già configurato nell'app
+- verificare che eth_getBalance riceva l'indirizzo corretto
+- non trasformare un errore RPC/loading in "0"
+- distinguere chiaramente:
+  loading
+  error
+  zero
+  balance reale
+
+Il valore deve corrispondere al wallet reale.
+
+QUARTA FASE — MAX
+
+Implementare MAX usando il balance reale.
+
+Per native POL:
+MAX deve tenere conto del gas reserve necessario.
+NON deve semplicemente impostare amount = totalBalance se questo può causare una transazione fallita per gas insufficiente.
+
+QUINTA FASE — TOKEN ICONS
+
+Le icone ora sembrano corrette:
+POL = logo Polygon
+USDC = logo USDC
+
+NON rimuoverle e NON sostituirle con abbreviazioni.
+
+SESTA FASE — QUOTE
+
+Dopo amount > 0:
+
+- chiamare Li.Fi
+- usare integrator = alpha-chat
+- usare fee = 0.0025
+- mostrare la quote reale
+- mostrare provider/route/slippage secondo il design Alpha Swap
+- non inventare valori
+- gestire loading/error/no-route separatamente.
+
+La fee Li.Fi è già stata verificata lato API:
+integrator alpha-chat
+fee 0.0025
+fee collection ATTIVA
+alpha-chat share 0.25%.
+
+NON modificare questa configurazione.
+
+SETTIMA FASE — CRASH USCITA
+
+Riprodurre specificamente:
+
+Alpha Wallet
+→ Swap
+→ EVM
+→ back/uscita
+
+e anche:
+
+Alpha Wallet
+→ Swap
+→ EVM
+→ BTC/Lightning
+→ back/uscita
+
+Controllare console/runtime e stack trace.
+
+Nessun:
+- setState dopo unmount
+- accesso a walletClient dopo cleanup
+- adapter undefined
+- subscription non rimossa
+- WalletConnect listener non ripulito
+- BigInt/viem exception
+- errore React non gestito
+
+deve provocare una schermata vuota.
+
+OTTAVA FASE — TEST REALE
+
+Non dichiarare PASS basandoti soltanto sui test unitari.
+
+Aggiungi log diagnostici temporanei per:
+
+[SWAP]
+account
+wallet
+chain
+balance loading
+balance result
+wallet hint state
+
+e per il lifecycle:
+
+[mount]
+[unmount]
+[wallet-change]
+[chain-change]
+[balance-fetch]
+[balance-error]
+
+Poi esegui test production build.
+
+CRITERI DI ACCETTAZIONE FINALI:
+
+1. Wallet già connesso → Swap NON mostra "collega wallet".
+2. EVM tab selezionato automaticamente.
+3. Polygon rilevata.
+4. Account corretto.
+5. Balance POL reale ≈ 27.0653 POL nel wallet del test.
+6. MAX presente.
+7. Inserendo importo → quote Li.Fi reale.
+8. Fee integrator 0.25% presente nella richiesta.
+9. Icone POL/USDC originali.
+10. BTC/Lightning continua a funzionare senza regressioni.
+11. Uscendo da Swap → nessun crash/schermata vuota.
+12. 1226/1226 test esistenti devono continuare a passare.
+13. Build production PASS.
+
+IMPORTANTE:
+NON dichiarare "PASS" finché questi criteri non sono verificati.
+Il precedente test statico 1226/1226 non è sufficiente: il problema è ora chiaramente runtime su iPhone.
+
+Prima fammi avere:
+A) root cause del wallet non riconosciuto,
+B) root cause del balance = 0,
+C) root cause del crash all'uscita,
+D) fix applicati,
+E) test runtime effettuati,
+F) risultato finale.
+
+NON fare un nuovo deploy pubblico finché non hai completato questa verifica.

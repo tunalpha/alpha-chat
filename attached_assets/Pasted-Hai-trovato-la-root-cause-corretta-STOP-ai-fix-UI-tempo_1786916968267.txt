@@ -1,0 +1,119 @@
+Hai trovato la root cause corretta.
+
+STOP ai fix UI temporanei.
+
+Il requisito architetturale è:
+
+Alpha Wallet ha già un wallet EVM connesso tramite WalletContext/bip39/IDB.
+Alpha Swap NON deve richiedere una seconda connessione ThirdWeb/WalletConnect.
+
+Devi ora progettare e implementare il BRIDGE tra il wallet EVM già attivo di Alpha Wallet e il motore EVM Swap/Li.Fi.
+
+OBIETTIVO:
+
+Wallet già connesso in Alpha Wallet
+→ Swap
+→ EVM
+→ rileva automaticamente lo stesso account
+→ rileva chain
+→ legge balance reale
+→ MAX
+→ quote Li.Fi
+→ firma usando LO STESSO WALLET
+→ ritorno corretto a Alpha Wallet
+→ nessun crash.
+
+NON creare un secondo wallet.
+NON chiedere WalletConnect dalla sezione Pagamenti.
+NON duplicare la sessione.
+NON mostrare "collega wallet" se Alpha Wallet ha già un EVM account.
+
+Prima di modificare il codice:
+
+1. Analizza WalletContext.tsx.
+2. Analizza il modello wallet persistito in IDB/bip39.
+3. Analizza come Alpha Wallet oggi esegue le transazioni EVM e come ottiene:
+   - address
+   - chainId
+   - provider/RPC
+   - signer
+   - sendTransaction
+   - firma
+4. Analizza l'attuale li-fi-client.ts.
+5. Analizza useEvmSwapState.ts.
+6. Verifica quale interfaccia richiede Li.Fi per eseguire lo step EVM.
+7. Determina il modo corretto per adattare il signer/provider Alpha Wallet al flusso Li.Fi/viem/ThirdWeb.
+
+IMPORTANTE:
+Non assumere che ThirdWeb debba possedere il wallet.
+Se Alpha Wallet possiede già il signer, il motore swap deve utilizzare quell'infrastruttura.
+
+Poi implementa un adapter esplicito, ad esempio:
+
+AlphaWalletEvmAdapter
+    ↓
+address
+chainId
+getBalance
+signTransaction / sendTransaction
+switchChain (se supportato)
+    ↓
+Li.Fi execution
+
+L'adapter deve avere una sola source of truth: WalletContext.
+
+BALANCE:
+deve leggere l'account reale dal WalletContext e usare la chain corretta.
+Non convertire error/loading in 0.
+
+AUTO-DETECTION:
+se WalletContext dice wallet EVM attivo:
+- tab EVM disponibile
+- account valorizzato
+- nessun warning "collega wallet"
+
+Se non esiste wallet EVM:
+- mostrare il messaggio di connessione appropriato
+- ma NON aprire/creare automaticamente una seconda sessione WalletConnect.
+
+MAX:
+usare il balance reale.
+Per native token lasciare riserva gas appropriata.
+
+CRASH:
+riprodurre:
+Swap → EVM → back
+Swap → EVM → BTC/LN → back
+e controllare cleanup di adapter/provider/listener.
+Nessun crash React.
+
+SICUREZZA:
+Non esporre private key, seed o secret.
+Non spostare credenziali in localStorage.
+Non creare un nuovo wallet.
+Non copiare seed/private key nel frontend swap.
+
+TEST OBBLIGATORI:
+
+1. Alpha Wallet con wallet EVM già connesso → EVM rilevato.
+2. Address uguale a quello mostrato nella sezione Pagamenti.
+3. Chain corretta.
+4. Balance reale.
+5. MAX.
+6. Quote Li.Fi.
+7. Firma con lo stesso wallet.
+8. BTC/LN invariato.
+9. Disconnect → stato corretto.
+10. Back/unmount → nessun crash.
+11. 1226/1226 test.
+12. Build production.
+
+Prima di dichiarare PASS mostrami:
+- architettura del bridge
+- file modificati
+- root cause del crash
+- come viene ottenuto il signer
+- come viene garantito che NON venga creato un secondo wallet
+- risultati test.
+
+NON fare deploy pubblico finché il bridge non è verificato.

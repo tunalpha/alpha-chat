@@ -6,20 +6,30 @@
  *   ✓ Idempotency key: sessionStorage EVM_SWAP_IKEY
  *   ✓ Write-before-submit: localStorage + backend PRIMA della firma
  *   ✓ Quote expiry guard: verifica expiresAt prima di execute
- *   ✓ Account change abort: confronto account pre/post firma
+ *   ✓ Account change abort: confronto account pre/post firma (ThirdWeb mode)
  *   ✓ Chain switch: registrato in configureLiFiWallet
  *   ✓ Recovery al mount: legge localStorage, interroga Li.Fi status
+ *   ✓ isMounted guard: nessun setState dopo unmount
+ *   ✓ Cleanup unmount: clearLiFiWallet() svuota callback modulo
+ *
+ * WALLET BRIDGE:
+ *   - ThirdWeb (WalletConnect): se activeWallet + activeAccount sono presenti
+ *   - Alpha Wallet interno: se opts.getAlphaWalletClient è fornito
+ *   - effectiveAddress: activeAccount?.address ?? opts?.alphaWalletAddress
+ *     → usato per balance fetch, quote fromAddress, e guard esecuzione
  *
  * ISOLAMENTO: zero import da payment engine, USDA, MultiChain, wallet bridge.
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useActiveAccount, useActiveWallet, useActiveWalletChain, useSwitchActiveWalletChain } from "thirdweb/react";
-import { defineChain }     from "thirdweb";
-import { viemAdapter }     from "thirdweb/adapters/viem";
+import { defineChain }       from "thirdweb";
+import { viemAdapter }       from "thirdweb/adapters/viem";
+import { type WalletClient } from "viem";
 import { client as thirdwebClient } from "../../lib/thirdweb.js";
 import {
-  fetchLiFiQuote, executeLiFiSwap, getLiFiStatus, configureLiFiWallet,
+  fetchLiFiQuote, executeLiFiSwap, getLiFiStatus,
+  configureLiFiWallet, clearLiFiWallet,
   type LiFiStatus,
 } from "./lifi-client.js";
 import {
@@ -72,41 +82,106 @@ function makeInitial(): EvmSwapStateValue {
   };
 }
 
+// ── Opts ──────────────────────────────────────────────────────────────────────
+
+export interface EvmSwapStateOpts {
+  /**
+   * Indirizzo EVM dell'Alpha Wallet interno.
+   * Usato come fallback quando nessun account ThirdWeb è connesso.
+   * Fornisce fromAddress per quote Li.Fi e abilita il fetch dei balance.
+   */
+  alphaWalletAddress?: string;
+  /**
+   * Factory per creare un viem WalletClient dall'Alpha Wallet interno.
+   * Chiamata da Li.Fi al momento della firma — la chiave viene derivata
+   * fresh (da keystore IDB + aw_bio_pin sessionStorage) e azzerata dopo ogni chiamata.
+   * Stabile: deve essere creata con useCallback(fn, []) nel chiamante.
+   */
+  getAlphaWalletClient?: (chainId: number) => Promise<WalletClient>;
+}
+
 // ── Hook ──────────────────────────────────────────────────────────────────────
 
-export function useEvmSwapState(): [EvmSwapStateValue, EvmSwapActions] {
+export function useEvmSwapState(opts?: EvmSwapStateOpts): [EvmSwapStateValue, EvmSwapActions] {
   const [sv, setSv] = useState<EvmSwapStateValue>(makeInitial);
 
-  const activeAccount     = useActiveAccount();
-  const activeWallet      = useActiveWallet();
-  const activeChain       = useActiveWalletChain();
-  const switchChainFn     = useSwitchActiveWalletChain();
+  const activeAccount  = useActiveAccount();
+  const activeWallet   = useActiveWallet();
+  const activeChain    = useActiveWalletChain();
+  const switchChainFn  = useSwitchActiveWalletChain();
 
-  // Ref per evitare stale closure in execute
-  const accountRef = useRef(activeAccount?.address);
+  // ── effectiveAddress: ThirdWeb oppure Alpha Wallet interno ────────────────
+  const effectiveAddress = activeAccount?.address ?? opts?.alphaWalletAddress;
+
+  // ── Refs ──────────────────────────────────────────────────────────────────
+  const accountRef     = useRef(activeAccount?.address);
+  const fromChainIdRef = useRef(sv.fromChainId);
+  const isMounted      = useRef(true);
+
   useEffect(() => { accountRef.current = activeAccount?.address; }, [activeAccount]);
+  useEffect(() => { fromChainIdRef.current = sv.fromChainId; }, [sv.fromChainId]);
+
+  // ── Lifecycle + cleanup Li.Fi callbacks ───────────────────────────────────
+  useEffect(() => {
+    isMounted.current = true;
+    return () => {
+      isMounted.current = false;
+      clearLiFiWallet(); // svuota callback modulo — nessuna chiamata post-unmount
+    };
+  }, []);
 
   // ── Configura Li.Fi wallet ogni volta che il wallet cambia ─────────────────
   useEffect(() => {
-    if (!activeWallet || !activeAccount) return;
+    const alphaGetClient = opts?.getAlphaWalletClient;
 
-    configureLiFiWallet(
-      async () => {
-        const chainId = activeChain?.id ?? sv.fromChainId;
-        // FIX CRASH: prop corretta è `account`, non `wallet` (TypeScript + runtime)
-        return viemAdapter.walletClient.toViem({
-          client:  thirdwebClient,
-          chain:   defineChain(chainId),
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-          account: activeAccount as any,
-        });
-      },
-      async (chainId: number) => {
-        await switchChainFn(defineChain(chainId));
-      },
-    );
+    if (activeWallet && activeAccount) {
+      // ── ThirdWeb / WalletConnect mode ─────────────────────────────────────
+      configureLiFiWallet(
+        async () => {
+          const chainId = activeChain?.id ?? fromChainIdRef.current;
+          // FIX CRASH: prop corretta è `account`, non `wallet`
+          return viemAdapter.walletClient.toViem({
+            client:  thirdwebClient,
+            chain:   defineChain(chainId),
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            account: activeAccount as any,
+          });
+        },
+        async (chainId: number) => {
+          await switchChainFn(defineChain(chainId));
+        },
+      );
+    } else if (alphaGetClient) {
+      // ── Alpha Wallet internal mode ────────────────────────────────────────
+      // getWalletClient usa fromChainIdRef (sempre aggiornato) via closure
+      configureLiFiWallet(
+        () => alphaGetClient(fromChainIdRef.current),
+        async (chainId: number) => {
+          // Li.Fi richiede cambio chain (swap cross-chain):
+          // Alpha Wallet non ha WalletConnect da switchare — aggiorniamo il ref
+          // e la UI, il prossimo getWalletClient userà la nuova chain
+          fromChainIdRef.current = chainId;
+          if (!isMounted.current) return;
+          setSv(prev => {
+            if (prev.phase !== "idle" && prev.phase !== "quoted") return prev;
+            const newToken = getDefaultFromToken(chainId);
+            return {
+              ...prev,
+              fromChainId: chainId,
+              fromToken:   newToken,
+              toChainId:   chainId,
+              toToken:     getTokensForChain(chainId)[2] ?? newToken,
+              fromAmount:  "",
+              quote:       null,
+              error:       null,
+              phase:       "idle",
+            };
+          });
+        },
+      );
+    }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeWallet, activeAccount, activeChain?.id]);
+  }, [activeWallet, activeAccount, activeChain?.id, opts?.getAlphaWalletClient]);
 
   // ── Recovery al mount ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -117,19 +192,17 @@ export function useEvmSwapState(): [EvmSwapStateValue, EvmSwapActions] {
     try { active = JSON.parse(raw) as EvmActiveSwap; }
     catch { localStorage.removeItem(EVM_SWAP_ACTIVE_KEY); return; }
 
-    // Swap scaduto (> 4 ore)
     if (Date.now() - active.startedAt > 4 * 60 * 60 * 1000) {
       localStorage.removeItem(EVM_SWAP_ACTIVE_KEY);
       return;
     }
 
-    setSv(prev => ({ ...prev, recovering: true, phase: "pending" }));
+    if (isMounted.current) setSv(prev => ({ ...prev, recovering: true, phase: "pending" }));
 
     const check = async () => {
       if (!active.txHash) {
-        // Nessun txHash: swap non ancora inviato — reset
         localStorage.removeItem(EVM_SWAP_ACTIVE_KEY);
-        setSv(prev => ({ ...prev, recovering: false, phase: "idle" }));
+        if (isMounted.current) setSv(prev => ({ ...prev, recovering: false, phase: "idle" }));
         return;
       }
 
@@ -137,17 +210,19 @@ export function useEvmSwapState(): [EvmSwapStateValue, EvmSwapActions] {
         .catch(() => ({ status: "PENDING" as LiFiStatus }));
 
       const finalState = resolveLiFiStatus(result.status);
-      setSv(prev => ({
-        ...prev,
-        recovering:  false,
-        phase:       finalState,
-        txHash:      active.txHash ?? prev.txHash,
-        fromToken:   active.fromToken,
-        toToken:     active.toToken,
-        fromAmount:  active.fromAmount,
-        fromChainId: active.fromChainId,
-        toChainId:   active.toChainId,
-      }));
+      if (isMounted.current) {
+        setSv(prev => ({
+          ...prev,
+          recovering:  false,
+          phase:       finalState,
+          txHash:      active.txHash ?? prev.txHash,
+          fromToken:   active.fromToken,
+          toToken:     active.toToken,
+          fromAmount:  active.fromAmount,
+          fromChainId: active.fromChainId,
+          toChainId:   active.toChainId,
+        }));
+      }
 
       if (finalState === "completed" || finalState === "failed") {
         localStorage.removeItem(EVM_SWAP_ACTIVE_KEY);
@@ -158,14 +233,14 @@ export function useEvmSwapState(): [EvmSwapStateValue, EvmSwapActions] {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // ── Chain auto-sync: quando active chain cambia → aggiorna fromChain ───────
+  // ── Chain auto-sync: quando active ThirdWeb chain cambia → aggiorna fromChain
   useEffect(() => {
     if (!activeChain?.id) return;
     const supported = EVM_SWAP_CHAINS.find(c => c.id === activeChain.id);
     if (!supported) return;
     setSv(prev => {
-      if (prev.phase !== "idle" && prev.phase !== "quoted") return prev; // non interrompere swap in corso
-      if (prev.fromChainId === activeChain.id) return prev; // già sulla chain giusta
+      if (prev.phase !== "idle" && prev.phase !== "quoted") return prev;
+      if (prev.fromChainId === activeChain.id) return prev;
       const newFromToken = getDefaultFromToken(activeChain.id);
       return {
         ...prev,
@@ -190,7 +265,7 @@ export function useEvmSwapState(): [EvmSwapStateValue, EvmSwapActions] {
       ...prev,
       fromChainId: chainId,
       fromToken:   token,
-      toChainId:   chainId,         // reset toChain su stessa chain di default
+      toChainId:   chainId,
       toToken:     getTokensForChain(chainId)[2] ?? token,
       quote:       null,
       error:       null,
@@ -246,14 +321,20 @@ export function useEvmSwapState(): [EvmSwapStateValue, EvmSwapActions] {
     });
 
     if (!snap.fromToken || !snap.toToken || !snap.fromAmount || snap.fromAmount === "0") return;
-    if (!activeAccount?.address) {
-      setSv(prev => ({ ...prev, phase: "idle", error: { code: "NO_WALLET", message: "Connetti il wallet prima di ottenere una quote." } }));
+
+    if (!effectiveAddress) {
+      if (isMounted.current) {
+        setSv(prev => ({
+          ...prev, phase: "idle",
+          error: { code: "NO_WALLET", message: "Sblocca Alpha Wallet o connetti un wallet EVM prima di ottenere una quote." },
+        }));
+      }
       return;
     }
 
     const fromUnits = toTokenUnits(snap.fromAmount, snap.fromToken.decimals);
     if (fromUnits === "0") {
-      setSv(prev => ({ ...prev, phase: "idle" }));
+      if (isMounted.current) setSv(prev => ({ ...prev, phase: "idle" }));
       return;
     }
 
@@ -264,52 +345,50 @@ export function useEvmSwapState(): [EvmSwapStateValue, EvmSwapActions] {
         fromToken:    snap.fromToken,
         toToken:      snap.toToken,
         fromAmount:   fromUnits,
-        fromAddress:  activeAccount.address,
+        fromAddress:  effectiveAddress,
       });
-      setSv(prev => ({ ...prev, phase: "quoted", quote, error: null }));
+      if (isMounted.current) setSv(prev => ({ ...prev, phase: "quoted", quote, error: null }));
     } catch (err) {
       const msg = err instanceof Error ? err.message : "Errore nel calcolo della quote.";
-      setSv(prev => ({ ...prev, phase: "idle", error: { code: "QUOTE_ERROR", message: msg } }));
+      if (isMounted.current) setSv(prev => ({ ...prev, phase: "idle", error: { code: "QUOTE_ERROR", message: msg } }));
     }
-  }, [activeAccount]);
+  }, [effectiveAddress]);
 
   const execute = useCallback(async () => {
     if (_evmExecuting) return;
 
-    // Snapshot stato corrente
     const current = await new Promise<EvmSwapStateValue>(resolve => {
       setSv(prev => { resolve(prev); return prev; });
     });
 
     if (!current.quote) {
-      setSv(prev => ({ ...prev, error: { code: "NO_QUOTE", message: "Nessuna quote disponibile." } }));
+      if (isMounted.current) setSv(prev => ({ ...prev, error: { code: "NO_QUOTE", message: "Nessuna quote disponibile." } }));
       return;
     }
     if (Date.now() > current.quote.expiresAt) {
-      setSv(prev => ({ ...prev, phase: "idle", quote: null, error: { code: "QUOTE_EXPIRED", message: "Quote scaduta. Ricarica la quote." } }));
+      if (isMounted.current) setSv(prev => ({ ...prev, phase: "idle", quote: null, error: { code: "QUOTE_EXPIRED", message: "Quote scaduta. Ricarica la quote." } }));
       return;
     }
-    if (!activeAccount?.address) {
-      setSv(prev => ({ ...prev, error: { code: "NO_WALLET", message: "Wallet non connesso." } }));
-      return;
-    }
-    if (!activeWallet) {
-      setSv(prev => ({ ...prev, error: { code: "NO_WALLET", message: "Wallet non connesso." } }));
+    if (!effectiveAddress) {
+      if (isMounted.current) setSv(prev => ({ ...prev, error: { code: "NO_WALLET", message: "Wallet non connesso." } }));
       return;
     }
 
-    // Lock anti-double-click
+    // Permetti esecuzione con: ThirdWeb wallet OPPURE Alpha Wallet configurato
+    const alphaMode = !!(opts?.getAlphaWalletClient && !activeAccount);
+    if (!activeWallet && !alphaMode) {
+      if (isMounted.current) setSv(prev => ({ ...prev, error: { code: "NO_WALLET", message: "Wallet non connesso." } }));
+      return;
+    }
+
     _evmExecuting = true;
 
-    // Salva idempotency key
     const ikey = sessionStorage.getItem(EVM_SWAP_IKEY) ?? crypto.randomUUID();
     sessionStorage.setItem(EVM_SWAP_IKEY, ikey);
 
-    // Snapshot account prima della firma (rilevamento cambio account)
     const accountBefore = accountRef.current;
 
     try {
-      // Write-before-submit: salva active swap in localStorage
       const activeSwap: EvmActiveSwap = {
         routeId:      current.quote.routeId,
         fromChainId:  current.quote.fromChainId,
@@ -322,7 +401,6 @@ export function useEvmSwapState(): [EvmSwapStateValue, EvmSwapActions] {
       };
       localStorage.setItem(EVM_SWAP_ACTIVE_KEY, JSON.stringify(activeSwap));
 
-      // Write-before-submit: notifica backend
       await swapApi("/start", {
         method: "POST",
         body: JSON.stringify({
@@ -338,26 +416,24 @@ export function useEvmSwapState(): [EvmSwapStateValue, EvmSwapActions] {
           alphaFeeUSD:  current.quote.alphaFeeUSD,
           tool:         current.quote.tool,
         }),
-      }).catch(() => null); // non-blocking: best-effort
+      }).catch(() => null);
 
-      setSv(prev => ({ ...prev, phase: "signing", error: null }));
+      if (isMounted.current) setSv(prev => ({ ...prev, phase: "signing", error: null }));
 
       let submittedTxHash = "";
 
       const { txHash } = await executeLiFiSwap(current.quote, {
         onRouteUpdate: (route) => {
-          // Rileva fase approving
           const steps = route.steps ?? [];
           for (const step of steps) {
             const s = step as unknown as Record<string, unknown>;
             if (s.type === "approve" && (s.status === "ACTION_REQUIRED" || s.status === "PENDING")) {
-              setSv(prev => ({ ...prev, phase: "approving" }));
+              if (isMounted.current) setSv(prev => ({ ...prev, phase: "approving" }));
             }
           }
         },
         onTxSubmitted: (hash) => {
           submittedTxHash = hash;
-          // Aggiorna localStorage con txHash
           const stored = localStorage.getItem(EVM_SWAP_ACTIVE_KEY);
           if (stored) {
             try {
@@ -365,39 +441,35 @@ export function useEvmSwapState(): [EvmSwapStateValue, EvmSwapActions] {
               localStorage.setItem(EVM_SWAP_ACTIVE_KEY, JSON.stringify({ ...parsed, txHash: hash }));
             } catch { /* ignore */ }
           }
-          setSv(prev => ({ ...prev, phase: "submitted", txHash: hash }));
+          if (isMounted.current) setSv(prev => ({ ...prev, phase: "submitted", txHash: hash }));
         },
       });
 
-      // Verifica cambio account durante esecuzione
-      if (accountRef.current && accountBefore && accountRef.current !== accountBefore) {
+      // Verifica cambio account solo in ThirdWeb mode
+      if (!alphaMode && accountRef.current && accountBefore && accountRef.current !== accountBefore) {
         throw new Error("ACCOUNT_CHANGED: il wallet è cambiato durante l'esecuzione.");
       }
 
       const finalTxHash = txHash || submittedTxHash;
 
-      // Aggiorna backend
       await swapApi(`/${current.quote.routeId}`, {
         method: "PATCH",
-        body: JSON.stringify({
-          txHash:  finalTxHash,
-          state:   "completed",
-        }),
+        body: JSON.stringify({ txHash: finalTxHash, state: "completed" }),
       }).catch(() => null);
 
-      // Clear localStorage e idempotency key
       localStorage.removeItem(EVM_SWAP_ACTIVE_KEY);
       sessionStorage.removeItem(EVM_SWAP_IKEY);
 
-      setSv(prev => ({ ...prev, phase: "completed", txHash: finalTxHash, error: null }));
+      if (isMounted.current) setSv(prev => ({ ...prev, phase: "completed", txHash: finalTxHash, error: null }));
     } catch (err) {
       const msg  = err instanceof Error ? err.message : "Errore durante lo swap.";
-      const code = msg.startsWith("ACCOUNT_CHANGED") ? "ACCOUNT_CHANGED"
-                 : msg === "QUOTE_EXPIRED"             ? "QUOTE_EXPIRED"
+      const code = msg.startsWith("ACCOUNT_CHANGED")         ? "ACCOUNT_CHANGED"
+                 : msg === "QUOTE_EXPIRED"                    ? "QUOTE_EXPIRED"
+                 : msg.startsWith("ALPHA_WALLET_LOCKED")      ? "ALPHA_WALLET_LOCKED"
+                 : msg.startsWith("ALPHA_WALLET_NO_KEYSTORE") ? "ALPHA_WALLET_LOCKED"
                  : msg.includes("rejected") || msg.includes("denied") || msg.includes("refused") ? "USER_REJECTED"
                  : "EXECUTE_ERROR";
 
-      // Notifica backend del fallimento (best-effort)
       if (current.quote) {
         await swapApi(`/${current.quote.routeId}`, {
           method: "PATCH",
@@ -405,7 +477,8 @@ export function useEvmSwapState(): [EvmSwapStateValue, EvmSwapActions] {
         }).catch(() => null);
       }
 
-      // User rejected: non è un errore critico — torna a quoted
+      if (!isMounted.current) return;
+
       if (code === "USER_REJECTED") {
         localStorage.removeItem(EVM_SWAP_ACTIVE_KEY);
         setSv(prev => ({ ...prev, phase: "quoted", error: { code, message: "Firma rifiutata. Puoi riprovare." } }));
@@ -413,19 +486,21 @@ export function useEvmSwapState(): [EvmSwapStateValue, EvmSwapActions] {
         localStorage.removeItem(EVM_SWAP_ACTIVE_KEY);
         sessionStorage.removeItem(EVM_SWAP_IKEY);
         setSv(prev => ({ ...prev, phase: "idle", quote: null, error: { code, message: "Quote scaduta. Ricarica la quote." } }));
+      } else if (code === "ALPHA_WALLET_LOCKED") {
+        setSv(prev => ({ ...prev, phase: "idle", error: { code, message: "Wallet bloccato. Sblocca Alpha Wallet con il PIN e riprova." } }));
       } else {
         setSv(prev => ({ ...prev, phase: "failed", error: { code, message: msg } }));
       }
     } finally {
       _evmExecuting = false;
     }
-  }, [activeAccount, activeWallet]);
+  }, [effectiveAddress, activeAccount, activeWallet, opts?.getAlphaWalletClient]);
 
   const reset = useCallback(() => {
     localStorage.removeItem(EVM_SWAP_ACTIVE_KEY);
     sessionStorage.removeItem(EVM_SWAP_IKEY);
     _evmExecuting = false;
-    setSv(makeInitial());
+    if (isMounted.current) setSv(makeInitial());
   }, []);
 
   const actions: EvmSwapActions = {

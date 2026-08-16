@@ -56,6 +56,17 @@ export function configureLiFiWallet(
   }
 }
 
+/**
+ * Rimuove i callback wallet correnti dal modulo Li.Fi.
+ * Chiamare in cleanup useEffect su unmount di useEvmSwapState per evitare
+ * che il SDK chiami getWalletClient su un componente già smontato.
+ * Non resetta _lifiConfigured perché createConfig è idempotente.
+ */
+export function clearLiFiWallet(): void {
+  _currentGetWallet   = null;
+  _currentSwitchChain = null;
+}
+
 // ── Quote ─────────────────────────────────────────────────────────────────────
 
 const LIFI_API = "https://li.quest/v1";

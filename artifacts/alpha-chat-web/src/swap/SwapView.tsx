@@ -22,6 +22,8 @@ import {
   AlertTriangle, Loader2, CheckCircle, Clock, Info,
 } from "lucide-react";
 import { useActiveAccount }                from "thirdweb/react";
+import { useWallet }                       from "../wallet/context/WalletContext.js";
+import { createAlphaWalletViemClient }     from "./evm/alpha-wallet-evm-adapter.js";
 import { useSparkWallet }                  from "../contexts/SparkWalletContext.js";
 import { BoltzBtcLnProvider }              from "./providers/BoltzBtcLnProvider.js";
 import {
@@ -676,6 +678,21 @@ export function SwapView({ onBack }: SwapViewProps) {
   const spark         = useSparkWallet();
   const activeAccount = useActiveAccount();   // ThirdWeb/WalletConnect EVM account
 
+  // ── Alpha Wallet bridge ────────────────────────────────────────────────────
+  // WalletContext è sempre disponibile qui (SwapView è dentro AlphaWalletPage
+  // che wrappa tutto con WalletProvider).
+  // Se il wallet è sbloccato, usiamo il suo indirizzo EVM come fonte primaria
+  // per balance + quote — senza richiedere una seconda connessione WalletConnect.
+  const { meta: walletMeta, phase: walletPhase } = useWallet();
+  const alphaWalletAddress = walletPhase === "unlocked" ? (walletMeta?.evmAddress ?? undefined) : undefined;
+
+  // Factory stabile: crea il viem WalletClient dall'Alpha Wallet interno al momento della firma.
+  // La chiave privata viene derivata fresh da IDB e azzerata dopo ogni call.
+  const getAlphaWalletClient = useCallback(
+    (chainId: number) => createAlphaWalletViemClient(chainId),
+    [],
+  );
+
   const [activeTab, setActiveTab]   = useState<SwapTab>("btcln");
   const [config, setConfig]         = useState<SwapPublicConfig | null>(null);
   const [cfgLoading, setCfgLoading] = useState(true);
@@ -916,7 +933,11 @@ export function SwapView({ onBack }: SwapViewProps) {
     return (
       <div className="asw-root">
         {Header}
-        <EvmSwapView onBack={onBack} />
+        <EvmSwapView
+          onBack={onBack}
+          alphaWalletAddress={alphaWalletAddress}
+          getAlphaWalletClient={getAlphaWalletClient}
+        />
       </div>
     );
   }

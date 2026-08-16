@@ -4,11 +4,19 @@
  * Design system: asw-* (nativi Alpha Chat — vedi AlphaWalletPage.css)
  * Zero Tailwind utility classes — zero import da payment engine / USDA / MultiChain.
  *
+ * WALLET BRIDGE:
+ *   - Se l'Alpha Wallet interno è sbloccato, usa il suo indirizzo EVM
+ *     (alphaWalletAddress prop proveniente da SwapView → WalletContext)
+ *   - Se è presente anche un account ThirdWeb (WalletConnect), quello ha priorità
+ *   - effectiveAddress = activeAccount?.address ?? alphaWalletAddress
+ *   - Il messaggio "collega wallet" appare SOLO quando effectiveAddress è assente
+ *     per più di 3 secondi (evita falso positivo durante il reconnect)
+ *
  * FUNZIONALITÀ:
- *   - Auto-detect chain attiva (via useActiveWalletChain)
- *   - Balance reale dei token (via RPC diretto)
- *   - Bottone MAX su token PAGA
- *   - TokenSelector con balance display
+ *   - Balance reale dei token (via RPC diretto con effectiveAddress)
+ *   - Bottone MAX con riserva gas per token nativi
+ *   - Quote Li.Fi automatica al cambio importo/token
+ *   - Auto-detect chain attiva (via useActiveWalletChain, ThirdWeb mode)
  */
 
 import React, {
@@ -19,6 +27,7 @@ import {
   Copy, Check, ExternalLink, RefreshCw, Info, ChevronDown,
 } from "lucide-react";
 import { useActiveAccount, useActiveWalletChain } from "thirdweb/react";
+import { type WalletClient } from "viem";
 import { useEvmSwapState }  from "./useEvmSwapState.js";
 import { TokenSelector }    from "./TokenSelector.js";
 import {
@@ -35,7 +44,7 @@ function txUrl(chainId: number, txHash: string): string {
   return chain ? `${chain.explorerUrl}/tx/${txHash}` : "#";
 }
 
-/** Colore e icona per chain */
+/** Colore chain */
 const CHAIN_COLOR: Record<number, string> = {
   137: "#8247E5",
   56:  "#F3BA2F",
@@ -44,8 +53,8 @@ const CHAIN_COLOR: Record<number, string> = {
 
 // ── Lettura balance via RPC ───────────────────────────────────────────────────
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
 const CHAIN_RPC: Record<number, string> = {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   137: ((import.meta as any).env?.VITE_POLYGON_RPC as string | undefined) ?? "https://polygon-rpc.com",
   56:  "https://bsc-dataseed.binance.org/",
   1:   "https://eth.llamarpc.com",
@@ -119,6 +128,13 @@ function fmtBal(raw: bigint | undefined, decimals: number): string {
   return n.toFixed(Math.min(6, decimals));
 }
 
+// Riserva gas per token nativi (MAX non deve azzerare il gas)
+const GAS_RESERVE: Record<number, bigint> = {
+  137: 20000000000000000n,   // 0.02 POL  (Polygon — gas economico)
+  56:  5000000000000000n,    // 0.005 BNB (BSC)
+  1:   5000000000000000n,    // 0.005 ETH (Ethereum)
+};
+
 // ── TokenCard ─────────────────────────────────────────────────────────────────
 
 interface TokenCardProps {
@@ -134,7 +150,7 @@ interface TokenCardProps {
   onMax?:          () => void;
 }
 
-/** Icona token: <img> con logoURI se disponibile, altrimenti cerchio colorato con 2 lettere */
+/** Icona token: <img> con logoURI se disponibile, altrimenti cerchio colorato */
 function TokenIcon({ token, chainId }: { token: EvmToken | null; chainId: number }) {
   const chainColor = CHAIN_COLOR[chainId] ?? "#888";
   const [imgError, setImgError] = useState(false);
@@ -359,34 +375,47 @@ function EvmFailedView({ error, onRetry }: { error: string; onRetry: () => void 
 
 interface EvmSwapViewProps {
   onBack?: () => void;
+  /** Indirizzo EVM dell'Alpha Wallet interno (da WalletContext via SwapView) */
+  alphaWalletAddress?: string;
+  /**
+   * Factory per il viem WalletClient dell'Alpha Wallet (da SwapView).
+   * Stabile: creata con useCallback(fn, []) in SwapView.
+   */
+  getAlphaWalletClient?: (chainId: number) => Promise<WalletClient>;
 }
 
-export function EvmSwapView({ onBack }: EvmSwapViewProps) {
-  const [sv, actions] = useEvmSwapState();
-  const activeAccount  = useActiveAccount();
-  const activeChain    = useActiveWalletChain();
+export function EvmSwapView({ onBack, alphaWalletAddress, getAlphaWalletClient }: EvmSwapViewProps) {
+  const [sv, actions] = useEvmSwapState({ alphaWalletAddress, getAlphaWalletClient });
 
-  // Balance per i token sulla chain from
-  const balancesState = useEvmTokenBalances(sv.fromChainId, activeAccount?.address);
+  // ThirdWeb hooks (usati in modalità WalletConnect, se attiva)
+  const activeAccount = useActiveAccount();
+  const activeChain   = useActiveWalletChain();
+
+  // effectiveAddress: ThirdWeb oppure Alpha Wallet interno (unica source of truth per UI)
+  const effectiveAddress = activeAccount?.address ?? alphaWalletAddress;
+
+  // Balance per i token sulla chain "from" — usa effectiveAddress
+  const balancesState = useEvmTokenBalances(sv.fromChainId, effectiveAddress);
 
   // Token selector state
   const [tokenSelectorOpen, setTokenSelectorOpen] = useState(false);
   const [tokenSide, setTokenSide] = useState<"from" | "to">("from");
 
-  // Wallet warning: mostra l'avviso solo dopo 3s (evita falsi positivi durante il reconnect ThirdWeb)
+  // Wallet warning: appare SOLO quando effectiveAddress è assente per più di 3s
+  // (evita falso positivo durante il reconnect di ThirdWeb e l'init di WalletContext)
   const [showWalletHint, setShowWalletHint] = useState(false);
   useEffect(() => {
-    if (activeAccount) { setShowWalletHint(false); return; }
+    if (effectiveAddress) { setShowWalletHint(false); return; }
     const t = setTimeout(() => setShowWalletHint(true), 3000);
     return () => clearTimeout(t);
-  }, [activeAccount]);
+  }, [effectiveAddress]);
 
   // Quote display
   const toAmountDisplay = sv.quote
     ? parseFloat(fromTokenUnits(sv.quote.toAmount, sv.quote.toToken.decimals)).toFixed(6)
     : "";
 
-  // Debounce quote
+  // Debounce quote — usa effectiveAddress (non solo activeAccount)
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prevFrom    = useRef("");
   const prevFTok    = useRef("");
@@ -394,7 +423,7 @@ export function EvmSwapView({ onBack }: EvmSwapViewProps) {
 
   useEffect(() => {
     if (!sv.fromAmount || sv.fromAmount === "0" || !sv.fromToken || !sv.toToken) return;
-    if (!activeAccount?.address) return;
+    if (!effectiveAddress) return; // nessun wallet disponibile
 
     const fromKey = sv.fromToken.chainId + sv.fromToken.address;
     const toKey   = sv.toToken.chainId   + sv.toToken.address;
@@ -412,8 +441,8 @@ export function EvmSwapView({ onBack }: EvmSwapViewProps) {
     }, 700);
 
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sv.fromAmount, sv.fromToken, sv.toToken, sv.phase, activeAccount?.address]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sv.fromAmount, sv.fromToken, sv.toToken, sv.phase, effectiveAddress]);
 
   const handleTokenSelect = useCallback((token: EvmToken, chainId: number) => {
     if (tokenSide === "from") {
@@ -425,14 +454,22 @@ export function EvmSwapView({ onBack }: EvmSwapViewProps) {
     }
   }, [tokenSide, actions]);
 
-  // MAX button: imposta l'intero balance come importo
+  // MAX button con riserva gas per token nativi
   const handleMax = useCallback(() => {
     if (!sv.fromToken) return;
     const raw = balancesState.map.get(sv.fromToken.address);
     if (!raw || raw === 0n) return;
-    const human = fromTokenUnits(raw.toString(), sv.fromToken.decimals);
+
+    let maxAmount = raw;
+    if (sv.fromToken.isNative) {
+      const reserve = GAS_RESERVE[sv.fromChainId] ?? 10000000000000000n;
+      maxAmount = raw > reserve ? raw - reserve : 0n;
+    }
+    if (maxAmount <= 0n) return;
+
+    const human = fromTokenUnits(maxAmount.toString(), sv.fromToken.decimals);
     actions.setFromAmount(human);
-  }, [sv.fromToken, balancesState.map, actions]);
+  }, [sv.fromToken, sv.fromChainId, balancesState.map, actions]);
 
   const quoteExpired = sv.quote && Date.now() > sv.quote.expiresAt;
   const isIdle       = sv.phase === "idle";
@@ -440,7 +477,8 @@ export function EvmSwapView({ onBack }: EvmSwapViewProps) {
   const hasQuote     = sv.phase === "quoted" && sv.quote != null && !quoteExpired;
   const isBusy       = ["approving", "signing", "submitted", "pending"].includes(sv.phase);
 
-  const canSwap = hasQuote && !isBusy && !!activeAccount;
+  // canSwap: richiede effectiveAddress (ThirdWeb oppure Alpha Wallet), non solo activeAccount
+  const canSwap = hasQuote && !isBusy && !!effectiveAddress;
 
   // ── Recovery spinner ───────────────────────────────────────────────────────
   if (sv.recovering) {
@@ -512,15 +550,15 @@ export function EvmSwapView({ onBack }: EvmSwapViewProps) {
     <div className="asw-content">
       <div className="asw-form">
 
-        {/* Wallet non connesso — hint visibile solo dopo 3s (evita falso positivo durante reconnect) */}
-        {showWalletHint && (
+        {/* Wallet non disponibile — hint dopo 3s, solo se nessun wallet (né ThirdWeb né Alpha) */}
+        {showWalletHint && !effectiveAddress && (
           <div className="asw-alert asw-alert--info">
             <Info size={14} style={{ flexShrink: 0, marginTop: 1 }} />
-            <span>Per effettuare swap collega il tuo wallet EVM (WalletConnect) dalla sezione Pagamenti.</span>
+            <span>Per effettuare swap sblocca Alpha Wallet con il PIN oppure connetti un wallet EVM (WalletConnect) dalla sezione Pagamenti.</span>
           </div>
         )}
 
-        {/* Chain disconnessa rispetto alla chain attiva */}
+        {/* Chain ThirdWeb disconnessa rispetto alle chain supportate */}
         {activeAccount && activeChain && !EVM_SWAP_CHAINS.find(c => c.id === activeChain.id) && (
           <div className="asw-alert asw-alert--info">
             <Info size={14} style={{ flexShrink: 0, marginTop: 1 }} />
@@ -646,7 +684,7 @@ export function EvmSwapView({ onBack }: EvmSwapViewProps) {
         side={tokenSide}
         otherToken={tokenSide === "from" ? sv.toToken ?? undefined : sv.fromToken ?? undefined}
         balances={balancesState.map}
-        walletAddress={activeAccount?.address}
+        walletAddress={effectiveAddress}
       />
     </div>
   );
