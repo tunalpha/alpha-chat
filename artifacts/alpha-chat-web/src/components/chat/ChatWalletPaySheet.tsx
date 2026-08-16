@@ -15,6 +15,7 @@
  * ISOLAMENTO: importa solo da bridge/chat-wallet-bridge e alpha-wallet-api.
  */
 
+import { CoinIcon } from "../shared/CoinIcon";
 import {
   useState,
   useEffect,
@@ -708,7 +709,7 @@ export function ChatWalletPaySheet({
                     : {}}
                   onClick={() => setAssetIdx(i)}
                 >
-                  <span className="cwp-asset-icon">{a.icon}</span>
+                  <span className="cwp-asset-icon"><CoinIcon symbol={a.symbol} size={30} /></span>
                   <span className="cwp-asset-info">
                     <span className="cwp-asset-symbol">{a.symbol}</span>
                     <span className="cwp-asset-name">{a.name}</span>
@@ -747,7 +748,7 @@ export function ChatWalletPaySheet({
               <span className="cwp-ctx-pill" style={{ color: getContrastColor(netColor) === "#111111" ? "#555" : netColor, borderColor: `${netColor}60`, background: `${netColor}20` }}>
                 {NETWORK_LABELS[network]}
               </span>
-              <span className="cwp-ctx-pill">{asset.icon} {asset.symbol}</span>
+              <span className="cwp-ctx-pill"><CoinIcon symbol={asset.symbol} size={14} style={{ verticalAlign: "middle", marginRight: 3 }} /> {asset.symbol}</span>
               <span className="cwp-ctx-pill">→ {displayName}</span>
             </div>
             <div className="cwp-section">
@@ -776,7 +777,7 @@ export function ChatWalletPaySheet({
               <span className="cwp-ctx-pill" style={{ color: getContrastColor(netColor) === "#111111" ? "#555" : netColor, borderColor: `${netColor}60`, background: `${netColor}20` }}>
                 {NETWORK_LABELS[network]}
               </span>
-              <span className="cwp-ctx-pill">{asset.icon} {asset.symbol}</span>
+              <span className="cwp-ctx-pill"><CoinIcon symbol={asset.symbol} size={14} style={{ verticalAlign: "middle", marginRight: 3 }} /> {asset.symbol}</span>
               <span className="cwp-ctx-pill">→ {displayName}</span>
             </div>
 

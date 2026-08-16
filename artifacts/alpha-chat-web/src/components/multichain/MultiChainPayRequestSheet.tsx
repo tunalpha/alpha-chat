@@ -26,6 +26,7 @@
  */
 
 import { useState, useEffect, useCallback } from "react";
+import { CoinIcon, NETWORK_COIN } from "../shared/CoinIcon";
 import { useActiveAccount, useActiveWalletChain, useSwitchActiveWalletChain, ConnectButton } from "thirdweb/react";
 import { client, wallets, polygon, bsc, ethereum, appMetadata } from "../../lib/thirdweb";
 import {
@@ -58,12 +59,6 @@ const NETWORK_LABEL: Partial<Record<MCNetwork, string>> = {
   polygon:  "Polygon",
   bsc:      "BSC",
   ethereum: "Ethereum",
-};
-
-const NETWORK_ICON: Partial<Record<MCNetwork, string>> = {
-  polygon:  "🔵",
-  bsc:      "🟡",
-  ethereum: "⬡",
 };
 
 // ─── ERC-20 calldata manuale ──────────────────────────────────────────────────
@@ -146,7 +141,7 @@ export function MultiChainPayRequestSheet({
   const evmChain     = EVM_CHAIN[network as keyof typeof EVM_CHAIN] ?? null;
   const evmChainId   = EVM_CHAIN_ID[network] ?? null;
   const networkLabel = NETWORK_LABEL[network] ?? network;
-  const networkIcon  = NETWORK_ICON[network] ?? "🔗";
+  const networkCoinSym = NETWORK_COIN[network] ?? "ETH";
   const nativeSym    = EVM_NATIVE_SYMBOL[network] ?? "ETH";
 
   // Importo che il pagatore deve depositare nell'escrow:
@@ -454,7 +449,7 @@ export function MultiChainPayRequestSheet({
 
         {/* ── Badge rete ── */}
         <div className="mc-network-badge" style={{ margin: "8px 0 16px" }}>
-          <span aria-hidden="true">{networkIcon}</span>
+          <CoinIcon symbol={networkCoinSym} size={20} style={{ verticalAlign: "middle" }} />
           <span>{networkLabel} · {asset}</span>
         </div>
 

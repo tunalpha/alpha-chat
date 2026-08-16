@@ -114,14 +114,16 @@ type SignPhase =
 
 // ─── Reti ─────────────────────────────────────────────────────────────────────
 
-interface NetOption { id: MCNetwork; label: string; sublabel: string; icon: string; ticker: string; }
+import { CoinIcon, NETWORK_COIN } from "../shared/CoinIcon";
+
+interface NetOption { id: MCNetwork; label: string; sublabel: string; ticker: string; }
 
 const ALL_USDT_OPTS: NetOption[] = [
-  { id: "polygon",  label: "USDT", sublabel: "Polygon",  icon: "🔵", ticker: "USDT" },
-  { id: "ethereum", label: "USDT", sublabel: "Ethereum", icon: "⬡",  ticker: "USDT" },
-  { id: "bsc",      label: "USDT", sublabel: "BSC",      icon: "🟡", ticker: "USDT" },
+  { id: "polygon",  label: "USDT", sublabel: "Polygon",  ticker: "USDT" },
+  { id: "ethereum", label: "USDT", sublabel: "Ethereum", ticker: "USDT" },
+  { id: "bsc",      label: "USDT", sublabel: "BSC",      ticker: "USDT" },
 ];
-const BTC_NET: NetOption = { id: "bitcoin", label: "BTC", sublabel: "Bitcoin Network", icon: "₿", ticker: "BTC" };
+const BTC_NET: NetOption = { id: "bitcoin", label: "BTC", sublabel: "Bitcoin Network", ticker: "BTC" };
 
 // ─── Props ────────────────────────────────────────────────────────────────────
 
@@ -931,7 +933,7 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
 
             {isBtc ? (
               <div className="mc-btc-card selected" style={{ cursor: "default", marginBottom: 14 }}>
-                <span className="mc-btc-symbol">₿</span>
+                <CoinIcon symbol="BTC" size={36} />
                 <div className="mc-btc-text">
                   <span className="mc-btc-name">BTC <em>— Bitcoin nativo</em></span>
                   <span className="mc-btc-net">Bitcoin Network</span>
@@ -947,7 +949,7 @@ export function MultiChainSendSheet({ conversationId, toUserId, toName, onClose,
                       className={`mc-network-item${network === n.id ? " selected" : ""}`}
                       onClick={() => { setNetwork(n.id); setAmount(""); setError(null); setQuote(null); }}
                     >
-                      <span className="mc-network-icon">{n.icon}</span>
+                      <span className="mc-network-icon"><CoinIcon symbol={NETWORK_COIN[n.id] ?? n.id} size={32} /></span>
                       <span className="mc-network-label">{n.label}</span>
                       <span className="mc-network-sublabel">{n.sublabel}</span>
                     </button>
