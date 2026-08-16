@@ -128,7 +128,11 @@ export async function recordLnBtcSwapHandler(req: Request, res: Response, next: 
     const userId = (req as Request & { user?: { id: string } }).user?.id;
     if (!userId) throw new AppError("UNAUTHORIZED", 401);
 
-    const { from_amount_sat, btc_destination_address, provider_fee_sat, spark_payment_id, tx_hash_claim } = req.body ?? {};
+    const {
+      from_amount_sat, btc_destination_address, provider_fee_sat,
+      spark_payment_id, tx_hash_claim, idempotency_key,
+    } = req.body ?? {};
+
     if (!from_amount_sat || !btc_destination_address || !spark_payment_id) {
       throw new AppError("MISSING_FIELDS", 400);
     }
@@ -140,6 +144,9 @@ export async function recordLnBtcSwapHandler(req: Request, res: Response, next: 
       provider_fee_sat:       Number(provider_fee_sat ?? 0),
       spark_payment_id,
       tx_hash_claim,
+      idempotency_key:        typeof idempotency_key === "string" && idempotency_key.length >= 8
+        ? idempotency_key
+        : undefined,
     });
 
     res.status(201).json({ swap_id: swap._id, state: swap.state, alpha_fee_bps: 0 });

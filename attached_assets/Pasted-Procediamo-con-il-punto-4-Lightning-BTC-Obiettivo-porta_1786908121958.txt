@@ -1,0 +1,226 @@
+Procediamo con il punto 4: Lightning → BTC.
+
+Obiettivo: portare questa direzione da 🟡 parzialmente sicura a 🟢 pronta per un test controllato con fondi reali.
+
+La UI è già stata riscritta e il primo hardening è già presente.
+
+NON modificare:
+
+* BTC → Lightning;
+* EVM/Li.Fi;
+* fee Alpha Swap;
+* wallet fee;
+* integrator Li.Fi;
+* payment engine;
+* USDA;
+* MultiChain;
+* treasury;
+* sweep.
+
+La fee Alpha Swap rimane 0,25% = 25 bps dove applicabile.
+
+1. AUDIT DEL CODICE ATTUALE
+
+Analizza BreezSparkBtcLnProvider.ts e tutto il percorso LN→BTC.
+
+Verifica esattamente:
+
+* _lnBtcExecuting;
+* aw_lnbtc_ikey;
+* clearIdempotencyKey();
+* timeout 60 secondi;
+* spark.send();
+* calculateSendFee();
+* record/lnbtc;
+* persistenza dello stato;
+* recovery al riavvio;
+* history.
+
+Non considerare la semplice presenza della idempotency key come prova di idempotenza reale.
+
+2. RISOLVI L’IDEMPOTENZA REALE
+
+Deve essere impossibile eseguire accidentalmente lo stesso swap due volte in seguito a:
+
+* doppio click;
+* retry;
+* refresh;
+* chiusura e riapertura PWA;
+* timeout locale;
+* due tab;
+* perdita temporanea della connessione.
+
+Se l’idempotenza server-side è necessaria, implementala nel modo più semplice e sicuro possibile.
+
+Una stessa operazione deve avere un identificativo univoco persistente e il backend deve poter riconoscere una richiesta già eseguita o già in corso.
+
+NON creare un secondo pagamento se esiste già un’operazione associata alla stessa idempotency key.
+
+3. RECOVERY REALE
+
+Implementa/verifica il recovery.
+
+Scenario obbligatorio:
+
+1. Utente prepara LN → BTC.
+2. Inserisce importo.
+3. Inserisce indirizzo BTC.
+4. Riceve la stima.
+5. Preme “Scambia”.
+6. spark.send() parte.
+7. La PWA viene chiusa/interrotta durante l’operazione.
+8. L’utente riapre Alpha Wallet.
+
+Dopo la riapertura l’app deve poter determinare lo stato reale:
+
+* non iniziato;
+* in corso;
+* completato;
+* fallito;
+* stato sconosciuto.
+
+NON deve ripetere automaticamente il pagamento se non è certo che il precedente non sia partito.
+
+Se non è possibile recuperare lo stato reale dal provider, implementa una gestione sicura dello stato sconosciuto e impedisci il retry automatico.
+
+4. HISTORY
+
+Assicurati che un pagamento completato venga registrato correttamente nella history anche se:
+
+* record/lnbtc fallisce temporaneamente;
+* la PWA viene chiusa;
+* il browser perde la connessione.
+
+La history non deve dipendere esclusivamente da una chiamata best-effort nel momento del pagamento.
+
+5. UI
+
+Mantieni la UI Paga/Ricevi già realizzata.
+
+Per LN → BTC deve mostrare:
+
+Paga
+⚡ Lightning
+
+Ricevi
+₿ BTC
+
+Prima della conferma:
+
+* importo;
+* indirizzo BTC;
+* importo stimato ricevuto;
+* fee;
+* eventuale fee provider;
+* avviso di irreversibilità.
+
+CTA:
+
+Scambia
+
+Dopo il primo click:
+
+Pagamento in corso…
+
+e disabilita la CTA.
+
+Non permettere un secondo pagamento.
+
+6. STATI
+
+Implementa messaggi chiari:
+
+Preparazione
+
+Quote disponibile
+
+Conferma
+
+Pagamento Lightning in corso
+
+BTC in elaborazione
+
+Completato
+
+Errore
+
+Stato da verificare
+
+Mai lasciare uno spinner infinito.
+
+7. TEST
+
+Esegui test automatici per:
+
+* doppio click;
+* retry;
+* reload;
+* idempotency key;
+* timeout;
+* provider error;
+* record/lnbtc failure;
+* recovery;
+* history;
+* cambio account;
+* due tab;
+* PWA chiusa durante l’esecuzione.
+
+Tutti i test esistenti devono continuare a passare.
+
+8. TEST CON FONDI REALI
+
+NON utilizzare importi significativi.
+
+Prima verifica che tutti i test automatici passino.
+
+Poi prepara un test reale minimo LN → BTC.
+
+NON eseguire il test reale automaticamente se il sistema non è in grado di garantire idempotenza e recovery.
+
+9. OUTPUT OBBLIGATORIO
+
+Restituisci:
+
+A. Idempotenza
+
+PASS / FAIL
+
+B. Recovery
+
+PASS / FAIL
+
+C. History
+
+PASS / FAIL
+
+D. Doppio pagamento
+
+PASS / FAIL
+
+E. Timeout
+
+PASS / FAIL
+
+F. Test automatici
+
+X/X passati
+
+G. Modifiche
+
+elenco preciso dei file modificati
+
+H. Test reale
+
+NON eseguito / PASS / FAIL
+
+I. Rischi residui
+
+IMPORTANTE:
+
+Non dichiarare LN → BTC “pronto per fondi reali” se esiste ancora una possibilità concreta di doppio pagamento o perdita dello stato dopo chiusura della PWA.
+
+Non modificare la fee Alpha Swap: resta 0,25%.
+
+Non modificare EVM/Li.Fi.
+
+Non fare deploy automatico senza riportare prima il risultato finale.

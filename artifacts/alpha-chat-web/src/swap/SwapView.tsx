@@ -29,6 +29,7 @@ import { useSparkWallet }                from "../contexts/SparkWalletContext.js
 import { BoltzBtcLnProvider }            from "./providers/BoltzBtcLnProvider.js";
 import {
   BreezSparkBtcLnProvider,
+  clearLnBtcState,
   type SparkSwapExecutor,
 }                                        from "./providers/BreezSparkBtcLnProvider.js";
 import { SwapRouter, fetchSwapConfig }   from "./SwapRouter.js";
@@ -298,6 +299,80 @@ function SwapErrorView({ state, error, onRetry, Header }: ErrorViewProps) {
   );
 }
 
+// ── LN→BTC in-progress view (durante spark.send()) ───────────────────────────
+
+function LnBtcCreatingView({ Header }: { Header: React.ReactNode }) {
+  return (
+    <div className="flex flex-col h-full">
+      {Header}
+      <div className="flex-1 flex flex-col items-center justify-center px-6 text-center gap-6">
+        <div className="w-20 h-20 rounded-full bg-primary/10 flex items-center justify-center">
+          <Loader2 className="w-10 h-10 animate-spin text-primary" />
+        </div>
+        <div>
+          <p className="font-bold text-xl mb-2">Pagamento Lightning in corso…</p>
+          <p className="text-sm text-muted-foreground leading-relaxed mt-1">
+            Il pagamento è in elaborazione. Non chiudere l'app.
+          </p>
+          <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground/70 mt-4">
+            <div className="w-1.5 h-1.5 rounded-full bg-orange-400 animate-pulse" />
+            BTC in elaborazione verso l'indirizzo di destinazione
+          </div>
+        </div>
+        <div className="max-w-xs w-full bg-orange-500/10 border border-orange-500/20 rounded-xl px-4 py-3">
+          <p className="text-xs text-orange-400 leading-relaxed">
+            ⚠️ Non chiudere o aggiornare l'app. L'operazione richiede fino a 60 secondi.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ── LN→BTC unknown state view (timeout / stato incerto) ───────────────────────
+
+interface LnBtcUnknownViewProps {
+  error:   SwapError | null;
+  onReset: () => void;
+  Header:  React.ReactNode;
+}
+
+function LnBtcUnknownView({ error, onReset, Header }: LnBtcUnknownViewProps) {
+  return (
+    <div className="flex flex-col h-full">
+      {Header}
+      <div className="flex-1 flex flex-col items-center justify-center px-6 text-center gap-5">
+        <div className="w-20 h-20 rounded-full bg-orange-500/10 flex items-center justify-center">
+          <AlertTriangle className="w-10 h-10 text-orange-400" />
+        </div>
+        <div>
+          <p className="font-bold text-xl mb-2">Stato da verificare</p>
+          <p className="text-sm text-muted-foreground leading-relaxed">
+            {error?.message ??
+              "Il pagamento potrebbe essere stato inviato. Verifica manualmente prima di riprovare."}
+          </p>
+        </div>
+        <div className="w-full max-w-xs space-y-3">
+          <div className="p-4 rounded-xl bg-orange-500/10 border border-orange-500/20 text-left space-y-2">
+            <p className="text-xs font-semibold text-orange-400">Prima di procedere</p>
+            <ul className="text-xs text-orange-400/80 space-y-1 leading-relaxed">
+              <li>• Verifica il tuo saldo Lightning nel wallet Spark</li>
+              <li>• Controlla che l'indirizzo BTC di destinazione non abbia ricevuto nulla</li>
+              <li>• Se i fondi non arrivano entro 30 min, contatta il supporto</li>
+            </ul>
+          </div>
+          <button
+            onClick={onReset}
+            className="w-full py-4 rounded-2xl bg-primary text-primary-foreground font-bold text-base active:scale-[0.98] transition-transform"
+          >
+            Ho verificato — Torna all'inizio
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Asset card ────────────────────────────────────────────────────────────────
 
 interface AssetCardProps {
@@ -532,12 +607,12 @@ function SwapMainForm({ sv, actions, config }: SwapMainFormProps) {
           </div>
         )}
 
-        {/* ── LN→BTC: limited availability notice ───────────────────────── */}
+        {/* ── LN→BTC: availability notice ────────────────────────────────── */}
         {isLnBtc && (
           <div className="flex items-start gap-2 p-3 rounded-xl bg-blue-500/10 border border-blue-500/20">
             <Info className="w-4 h-4 text-blue-400 shrink-0 mt-0.5" />
             <p className="text-xs text-blue-400 leading-relaxed">
-              <strong>Non chiudere l'app durante l'invio.</strong> Il pagamento Lightning è sincrono e non recuperabile dopo chiusura della PWA.
+              <strong>Non chiudere l'app durante l'invio.</strong> Il pagamento è reversibile solo prima della conferma — verifica sempre l'indirizzo BTC.
             </p>
           </div>
         )}
@@ -597,8 +672,6 @@ function SwapMainForm({ sv, actions, config }: SwapMainFormProps) {
               <Loader2 className="w-5 h-5 animate-spin" />
               Scambio in corso…
             </span>
-          ) : isLnBtc && hasQuote ? (
-            "Conferma e invia"
           ) : (
             "Scambia"
           )}
@@ -814,6 +887,22 @@ export function SwapView({ onBack }: SwapViewProps) {
           <span className="text-sm">Verifica swap in corso…</span>
         </div>
       </div>
+    );
+  }
+
+  // ── LN→BTC in-progress (durante execute / spark.send()) ────────────────────
+  if (sv.direction === "lightning_to_btc" && sv.state === "creating") {
+    return <LnBtcCreatingView Header={Header} />;
+  }
+
+  // ── LN→BTC unknown state (timeout / chiusura PWA durante pagamento) ─────────
+  if (sv.state === "lnbtc_unknown") {
+    return (
+      <LnBtcUnknownView
+        error={sv.error}
+        onReset={() => { clearLnBtcState(); actions.reset(); }}
+        Header={Header}
+      />
     );
   }
 

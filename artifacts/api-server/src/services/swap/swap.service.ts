@@ -104,6 +104,8 @@ export interface CreateLnBtcRecordParams {
   provider_fee_sat:        number;
   spark_payment_id:        string;
   tx_hash_claim?:          string;
+  /** UUID client-generated — garantisce no-duplicate su retry e recovery */
+  idempotency_key?:        string;
 }
 
 // ── Public config ─────────────────────────────────────────────────────────────
@@ -313,10 +315,26 @@ export async function createBtcLnSwap(params: CreateBtcLnSwapParams): Promise<IS
 // ── Lightning → BTC record (client-side execution via Breez) ─────────────────
 
 export async function recordLnBtcSwap(params: CreateLnBtcRecordParams): Promise<ISwap> {
+  // ── Idempotency: se esiste già un record con questa chiave, restituiscilo ────
+  if (params.idempotency_key) {
+    const existing = await SwapModel.findOne({
+      user_id:         params.user_id,
+      idempotency_key: params.idempotency_key,
+    });
+    if (existing) {
+      logger.info(
+        { swapId: existing._id, userId: params.user_id, idempotencyKey: params.idempotency_key },
+        "SWAP:LNBTC:IDEMPOTENT_RETURN",
+      );
+      return existing;
+    }
+  }
+
   const swapId = randomUUID();
   const doc = await SwapModel.create({
     _id:                     swapId,
     user_id:                 params.user_id,
+    idempotency_key:         params.idempotency_key,
     route:                   "lightning_to_btc_onchain" satisfies SwapRoute,
     provider:                "breez_spark_reverse" satisfies SwapProvider,
     state:                   "completed" satisfies SwapState,
@@ -337,6 +355,7 @@ export async function recordLnBtcSwap(params: CreateLnBtcRecordParams): Promise<
     spark_payment_id: params.spark_payment_id,
     provider:         "breez_spark_reverse",
     alpha_fee_bps:    0,
+    idempotency_key:  params.idempotency_key,
   });
 
   logger.info({ swapId, userId: params.user_id }, "SWAP:LNBTC:RECORDED");

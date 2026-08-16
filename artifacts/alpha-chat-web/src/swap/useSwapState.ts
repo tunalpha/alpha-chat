@@ -7,27 +7,31 @@
  * - Usa solo SwapRouter + providers + /api/v1/swap/*
  *
  * HARDENING:
- *   1. Recovery al mount: GET /active → se esiste uno swap BTC→LN in corso, lo riprende
- *   2. failed_recoverable ≠ errore definitivo: mostra "in riconciliazione" non "swap fallito"
- *   3. Idempotency key: gestita dal BoltzBtcLnProvider (sessionStorage)
- *   4. Polling robusto: continua anche se il frontend era offline
- *   5. Reset: pulisce idempotency key per permettere nuovi swap
+ *   1. Recovery BTC→LN al mount: GET /active → riprende swap in corso
+ *   2. Recovery LN→BTC al mount: legge localStorage → detecta completato/incerto
+ *   3. failed_recoverable ≠ errore definitivo: mostra "in riconciliazione"
+ *   4. Idempotency key: gestita da BreezSparkBtcLnProvider (localStorage persistente)
+ *   5. TIMEOUT_UNCERTAIN: stato "lnbtc_unknown" — non permette retry automatico
+ *   6. Reset: pulisce stato LN→BTC per permettere nuovi swap
  *
- * Transizioni stato (state machine completa):
+ * Transizioni stato BTC→LN:
  *   idle → quoting → quoted → confirming → creating
- *        → submitted (swap in DB, Boltz non ancora risposto)
- *        → created (lockup address disponibile)
- *        → detected (deposito in mempool)
- *        → processing (Boltz sta pagando Lightning)
+ *        → submitted → created → detected → processing
  *        → completed ✓
- *        → failed_recoverable (errore rete — reconciler riprova, NON mostrare "failed")
- *        → failed_permanent / expired / refund_pending / refunded / cancelled
+ *        → failed_recoverable → failed_permanent / expired / refund_pending / refunded / cancelled
+ *
+ * Transizioni stato LN→BTC:
+ *   idle → quoting → quoted → confirming → creating
+ *        → completed ✓
+ *        → lnbtc_unknown (timeout — stato incerto)
+ *        → idle + error (errore definitivo)
  */
 
 import { useState, useCallback, useRef, useEffect } from "react";
 import type { SwapRouter }    from "./SwapRouter.js";
 import type { SwapQuote, SwapState, SwapError, SwapDirection, ActiveBtcLnSwap } from "./types.js";
 import { TERMINAL_SWAP_STATES, RECOVERABLE_SWAP_STATES } from "./types.js";
+import { readLnBtcRecovery, clearLnBtcState } from "./providers/BreezSparkBtcLnProvider.js";
 
 const SWAP_API = "/api/v1/swap";
 
@@ -52,7 +56,7 @@ export interface SwapStateValue {
   lockupAddress: string | null;
   sendAmountSat: number | null;
   txHash:       string | null;
-  recovering:   boolean;   // true mentre si controlla lo swap attivo al mount
+  recovering:   boolean;
 }
 
 export interface SwapActions {
@@ -94,9 +98,50 @@ export function useSwapState(router: SwapRouter | null): [SwapStateValue, SwapAc
     if (pollRef.current) { clearInterval(pollRef.current); pollRef.current = null; }
   }, []);
 
-  // ── Recovery al mount: controlla se c'è uno swap BTC→LN attivo ────────────
+  // ── Recovery al mount ────────────────────────────────────────────────────────
   useEffect(() => {
     let cancelled = false;
+
+    // ── 1. LN→BTC recovery — sincrono (solo localStorage) ─────────────────────
+    const lnBtcRecovery = readLnBtcRecovery();
+
+    if (lnBtcRecovery.state !== "not_started") {
+      if (
+        lnBtcRecovery.state === "completed" ||
+        lnBtcRecovery.state === "completed_unrecorded"
+      ) {
+        // Pagamento completato — mostra schermata successo
+        clearLnBtcState(); // pulizia (backend ha già il record o lo avrà al prossimo retry)
+        _set({
+          recovering:  false,
+          direction:   "lightning_to_btc",
+          state:       "completed",
+          swapId:      lnBtcRecovery.payment_id ?? "recovered",
+        });
+        return;
+      }
+
+      if (lnBtcRecovery.state === "in_progress" || lnBtcRecovery.state === "unknown") {
+        // In_progress = lock fresco ma la promise è andata (crash/chiusura).
+        // Non possiamo sapere se spark.send() è andato a buon fine — stato incerto.
+        _set({
+          recovering:  false,
+          direction:   "lightning_to_btc",
+          state:       "lnbtc_unknown",
+          swapId:      "uncertain",
+          error: {
+            code:    "TIMEOUT_UNCERTAIN",
+            message:
+              lnBtcRecovery.state === "in_progress"
+                ? "L'app è stata chiusa durante il pagamento. Verifica il tuo saldo Lightning e l'indirizzo BTC di destinazione."
+                : "Il pagamento non ha risposto entro i 60 secondi. Verifica manualmente prima di riprovare.",
+          },
+        });
+        return;
+      }
+    }
+
+    // ── 2. BTC→LN recovery — asincrono (API call) ─────────────────────────────
     _set({ recovering: true });
 
     swapFetch<ActiveBtcLnSwap>("/active")
@@ -107,7 +152,6 @@ export function useSwapState(router: SwapRouter | null): [SwapStateValue, SwapAc
           return;
         }
 
-        // Swap attivo trovato — riprendi la UI dallo stato reale
         _set({
           recovering:    false,
           state:         active.state as SwapState,
@@ -120,9 +164,10 @@ export function useSwapState(router: SwapRouter | null): [SwapStateValue, SwapAc
             : null,
         });
 
-        // Se lo stato è ancora in corso (non terminale), riprendi il polling
-        if (RECOVERABLE_SWAP_STATES.includes(active.state as SwapState) &&
-            !TERMINAL_SWAP_STATES.includes(active.state as SwapState)) {
+        if (
+          RECOVERABLE_SWAP_STATES.includes(active.state as SwapState) &&
+          !TERMINAL_SWAP_STATES.includes(active.state as SwapState)
+        ) {
           _startPollingById(active.swap_id);
         }
       })
@@ -178,7 +223,6 @@ export function useSwapState(router: SwapRouter | null): [SwapStateValue, SwapAc
       });
 
       if (sv.direction === "btc_to_lightning") {
-        // BTC→LN: mostra stato attuale (submitted o created)
         const nextState: SwapState =
           result.state === "submitted" || result.state === "failed_recoverable"
             ? (result.state as SwapState)
@@ -191,17 +235,31 @@ export function useSwapState(router: SwapRouter | null): [SwapStateValue, SwapAc
           sendAmountSat: result.send_amount_sat ?? null,
         });
 
-        // Avvia polling anche se submitted (il reconciler potrebbe passare a created)
         _startPollingById(result.swap_id);
       } else {
+        // LN→BTC — sincrono: già completed
         _stopPoll();
         _set({ state: "completed", swapId: result.swap_id });
       }
     } catch (err) {
-      _set({
-        state: "idle",
-        error: { code: "EXECUTE_FAILED", message: (err as Error).message },
-      });
+      const msg = (err as Error).message ?? "";
+
+      if (msg.startsWith("TIMEOUT_UNCERTAIN")) {
+        // Stato incerto: la PWA non deve permettere retry automatico
+        _set({
+          state:  "lnbtc_unknown",
+          swapId: "uncertain",
+          error: {
+            code:    "TIMEOUT_UNCERTAIN",
+            message: "Il pagamento non ha risposto entro 60 secondi. Verifica manualmente prima di riprovare.",
+          },
+        });
+      } else {
+        _set({
+          state: "idle",
+          error: { code: "EXECUTE_FAILED", message: msg },
+        });
+      }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sv.quote, sv.state, sv.direction, sv.btcAddress, _set]);
@@ -224,7 +282,7 @@ export function useSwapState(router: SwapRouter | null): [SwapStateValue, SwapAc
 
       if (TERMINAL_SWAP_STATES.includes(newState)) _stopPoll();
     } catch {
-      // poll silenzioso — errori di rete non fermano il polling
+      // poll silenzioso
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [sv.swapId, sv.direction, _set, _stopPoll]);
@@ -249,7 +307,7 @@ export function useSwapState(router: SwapRouter | null): [SwapStateValue, SwapAc
 
         if (TERMINAL_SWAP_STATES.includes(newState)) _stopPoll();
       } catch {
-        // Errore di rete — continua polling (non è un errore definitivo)
+        // Errore di rete — continua polling
       }
     }, 15_000);
   }
@@ -261,7 +319,7 @@ export function useSwapState(router: SwapRouter | null): [SwapStateValue, SwapAc
 
   const reset = useCallback(() => {
     _stopPoll();
-    // Pulisce idempotency key per permettere un nuovo swap
+    // Pulisce idempotency key BTC→LN (Boltz)
     const r = routerRef.current;
     if (r) {
       try {
@@ -269,6 +327,8 @@ export function useSwapState(router: SwapRouter | null): [SwapStateValue, SwapAc
         boltz.clearIdempotencyKey?.();
       } catch { /* provider potrebbe non avere clearIdempotencyKey */ }
     }
+    // Pulisce stato LN→BTC (localStorage persistente)
+    clearLnBtcState();
     setSv(INITIAL);
   }, [_stopPoll]);
 

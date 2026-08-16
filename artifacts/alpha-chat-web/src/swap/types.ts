@@ -32,7 +32,8 @@ export type SwapState =
   | "refunded"           // BTC rimborsato
   | "expired"            // Timeout Boltz scaduto
   | "cancelled"          // Cancellato
-  | "failed";            // Legacy alias per failed_permanent
+  | "failed"             // Legacy alias per failed_permanent
+  | "lnbtc_unknown";     // LN→BTC — timeout/stato incerto dopo chiusura PWA
 
 export interface SwapQuote {
   direction:        SwapDirection;
