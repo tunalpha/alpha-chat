@@ -1277,7 +1277,7 @@ const COIN_LOGOS: Record<string, string> = {
 
 function CoinIcon({ symbol, badge }: { symbol: string; badge?: string }) {
   const url = COIN_LOGOS[symbol.toLowerCase()] ?? null;
-  const [failed, setFailed] = React.useState(false);
+  const [failed, setFailed] = useState(false);
   return (
     <div className="aw-coin-icon-wrap">
       {url && !failed
