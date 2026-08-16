@@ -24,6 +24,7 @@ import {
 import { useActiveAccount }                from "thirdweb/react";
 import { useWallet }                       from "../wallet/context/WalletContext.js";
 import { createAlphaWalletViemClient }     from "./evm/alpha-wallet-evm-adapter.js";
+import { apiWalletGetBtcBalance, type BtcBalanceResponse } from "../lib/alpha-wallet-api.js";
 import { useSparkWallet }                  from "../contexts/SparkWalletContext.js";
 import { BoltzBtcLnProvider }              from "./providers/BoltzBtcLnProvider.js";
 import {
@@ -40,6 +41,49 @@ import { EvmSwapView }                     from "./evm/EvmSwapView.js";
 
 // ── Tab type ──────────────────────────────────────────────────────────────────
 type SwapTab = "btcln" | "evm";
+
+// ── ErrorBoundary per EvmSwapView ─────────────────────────────────────────────
+// Cattura qualsiasi errore di rendering EVM e mostra un messaggio invece di
+// propagare il crash all'intera pagina (che causerebbe schermata nera/bianca).
+interface EvmErrBoundaryState { error: Error | null }
+class EvmErrorBoundary extends React.Component<
+  { children: React.ReactNode; onReset: () => void },
+  EvmErrBoundaryState
+> {
+  constructor(props: { children: React.ReactNode; onReset: () => void }) {
+    super(props);
+    this.state = { error: null };
+  }
+  static getDerivedStateFromError(error: Error) { return { error }; }
+  componentDidCatch(error: Error, info: React.ErrorInfo) {
+    console.error("[EvmSwapView] render error:", error, info.componentStack);
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="asw-content">
+          <div className="asw-status-view">
+            <AlertTriangle size={36} style={{ color: "#f87171" }} />
+            <div>
+              <p className="asw-status-title">Errore EVM Swap</p>
+              <p className="asw-status-sub" style={{ fontSize: 12, fontFamily: "monospace", wordBreak: "break-all" }}>
+                {this.state.error.message}
+              </p>
+            </div>
+            <button
+              onClick={() => { this.setState({ error: null }); this.props.onReset(); }}
+              className="aw-btn aw-btn--secondary"
+              style={{ maxWidth: 220 }}
+            >
+              Riprova
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -462,12 +506,14 @@ function FeePreview({ quote, direction }: { quote: SwapQuote; direction: SwapDir
 // ── Main swap form ────────────────────────────────────────────────────────────
 
 interface SwapMainFormProps {
-  sv:      ReturnType<typeof useSwapState>[0];
-  actions: ReturnType<typeof useSwapState>[1];
-  config:  SwapPublicConfig;
+  sv:             ReturnType<typeof useSwapState>[0];
+  actions:        ReturnType<typeof useSwapState>[1];
+  config:         SwapPublicConfig;
+  btcBalance?:    BtcBalanceResponse | null;
+  btcBalLoading?: boolean;
 }
 
-function SwapMainForm({ sv, actions, config }: SwapMainFormProps) {
+function SwapMainForm({ sv, actions, config, btcBalance, btcBalLoading }: SwapMainFormProps) {
   const dir     = sv.direction;
   const isBtcLn = dir === "btc_to_lightning";
   const isLnBtc = !isBtcLn;
@@ -512,6 +558,21 @@ function SwapMainForm({ sv, actions, config }: SwapMainFormProps) {
   return (
     <div className="asw-content">
       <div className="asw-form">
+
+        {/* BTC on-chain balance (sopra la card PAGA) */}
+        {isBtcLn && (
+          <div className="asw-card-balance" style={{ paddingBottom: 0, marginBottom: -4 }}>
+            {btcBalLoading ? (
+              <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, color: "rgba(255,255,255,.35)" }}>
+                <Loader2 size={11} style={{ animation: "aw-spin .8s linear infinite" }} /> Saldo…
+              </span>
+            ) : btcBalance ? (
+              <span style={{ fontSize: 12, color: "rgba(255,255,255,.45)" }}>
+                Saldo BTC: {(btcBalance.totalSat / 1e8).toFixed(8)} BTC ({btcBalance.totalSat.toLocaleString("it-IT")} sat)
+              </span>
+            ) : null}
+          </div>
+        )}
 
         {/* PAGA card */}
         <AssetCard label="Paga" icon={pay.icon} ticker={pay.ticker} network={pay.network}>
@@ -693,21 +754,28 @@ export function SwapView({ onBack }: SwapViewProps) {
     [],
   );
 
-  const [activeTab, setActiveTab]   = useState<SwapTab>("btcln");
+  // EVM è la tab predefinita
+  const [activeTab, setActiveTab]   = useState<SwapTab>("evm");
   const [config, setConfig]         = useState<SwapPublicConfig | null>(null);
   const [cfgLoading, setCfgLoading] = useState(true);
   const [cfgError, setCfgError]     = useState<string | null>(null);
   const [copied, setCopied]         = useState(false);
 
-  // ── Auto-detect tab based on connected wallets ─────────────────────────────
-  const didAutoSelect = useRef(false);
+  // ── BTC on-chain balance (per il tab BTC/Lightning) ───────────────────────
+  const [btcBalance, setBtcBalance]           = useState<BtcBalanceResponse | null>(null);
+  const [btcBalanceLoading, setBtcBalLoading] = useState(false);
+
+  const btcAddress = walletPhase === "unlocked" ? (walletMeta?.btcAddress ?? null) : null;
+
   useEffect(() => {
-    if (didAutoSelect.current) return;
-    if (activeAccount?.address) {
-      setActiveTab("evm");
-      didAutoSelect.current = true;
-    }
-  }, [activeAccount?.address]);
+    if (!btcAddress) { setBtcBalance(null); return; }
+    let cancelled = false;
+    setBtcBalLoading(true);
+    apiWalletGetBtcBalance(btcAddress)
+      .then(bal => { if (!cancelled) { setBtcBalance(bal); setBtcBalLoading(false); } })
+      .catch(() => { if (!cancelled) setBtcBalLoading(false); });
+    return () => { cancelled = true; };
+  }, [btcAddress]);
 
   // ── Router (unchanged) ─────────────────────────────────────────────────────
   const router = useMemo(() => {
@@ -928,16 +996,21 @@ export function SwapView({ onBack }: SwapViewProps) {
     );
   }
 
-  // ── EVM tab ───────────────────────────────────────────────────────────────
+  // ── EVM tab (check anticipato — prima di qualsiasi stato BTC/LN) ──────────
+  // IMPORTANTE: questo check deve precedere tutti i guard BTC/LN (recovering,
+  // lnbtc_unknown, btcLnInProgress, ecc.) altrimenti lo stato della state
+  // machine BTC intercetta il render e la tab EVM non viene mai mostrata.
   if (activeTab === "evm") {
     return (
       <div className="asw-root">
         {Header}
-        <EvmSwapView
-          onBack={onBack}
-          alphaWalletAddress={alphaWalletAddress}
-          getAlphaWalletClient={getAlphaWalletClient}
-        />
+        <EvmErrorBoundary onReset={actions.reset}>
+          <EvmSwapView
+            onBack={onBack}
+            alphaWalletAddress={alphaWalletAddress}
+            getAlphaWalletClient={getAlphaWalletClient}
+          />
+        </EvmErrorBoundary>
       </div>
     );
   }
@@ -946,7 +1019,13 @@ export function SwapView({ onBack }: SwapViewProps) {
   return (
     <div className="asw-root">
       {Header}
-      <SwapMainForm sv={sv} actions={actions} config={config} />
+      <SwapMainForm
+        sv={sv}
+        actions={actions}
+        config={config}
+        btcBalance={btcBalance}
+        btcBalLoading={btcBalanceLoading}
+      />
     </div>
   );
 }

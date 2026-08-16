@@ -1,0 +1,49 @@
+Esegui questo intervento su Alpha Swap con priorità alla stabilità.
+
+OBIETTIVO UI:
+
+* La tab EVM deve essere la tab predefinita quando l’utente apre Alpha Swap.
+* La tab BTC / Lightning deve rimanere disponibile come seconda tab.
+* Non cambiare il design generale della schermata.
+* Mantieni l’attuale selettore EVM / BTC-Lightning.
+
+PRIORITÀ 1 — EVM:
+
+* Risolvi la schermata bianca/crash che si verifica entrando nella tab EVM.
+* Individua prima la root cause nei log/runtime e non fare modifiche speculative.
+* Verifica in particolare errori React/render, hook che restituiscono undefined, wallet/account state, chain configuration e inizializzazione dei token.
+* NON modificare la logica di swap EVM già validata sul test Polygon mainnet.
+* Dopo il fix verifica:
+    1. apertura Alpha Swap → EVM mostrata automaticamente;
+    2. refresh della pagina;
+    3. cambio EVM → BTC;
+    4. cambio BTC → EVM;
+    5. nessuna schermata bianca;
+    6. nessun errore runtime in console.
+
+PRIORITÀ 2 — BTC:
+
+* Indaga perché nella tab BTC / Lightning il saldo BTC on-chain viene mostrato come 0.
+* Verifica quale indirizzo BTC usa Alpha Wallet.
+* Verifica che l’indirizzo venga passato correttamente al provider del saldo.
+* Verifica che venga interrogata la Bitcoin mainnet e non una rete errata.
+* Verifica anche la distinzione tra saldo BTC on-chain e BTC Lightning.
+* Non mostrare un falso 0 se il saldo non è ancora stato caricato: usare uno stato loading/errore appropriato.
+* Non modificare ancora l’architettura Lightning o il provider di swap: prima identificare esattamente il problema del saldo.
+
+REGOLA IMPORTANTE:
+Non toccare codice funzionante del flusso EVM swap più del necessario per risolvere il crash. Evita refactor non necessari.
+
+AL TERMINE restituisci un report con:
+
+* root cause del crash EVM;
+* fix applicato;
+* root cause del saldo BTC a 0;
+* fix applicato oppure motivo per cui serve un intervento separato;
+* file modificati;
+* test eseguiti;
+* conferma che EVM è ora la tab default;
+* conferma che BTC / Lightning continua a funzionare come seconda tab;
+* eventuali rischi/regressioni residue.
+
+Non considerare il lavoro concluso finché EVM e BTC sono stati entrambi verificati dopo il cambio della tab predefinita.

@@ -134,51 +134,67 @@ export function useEvmSwapState(opts?: EvmSwapStateOpts): [EvmSwapStateValue, Ev
   useEffect(() => {
     const alphaGetClient = opts?.getAlphaWalletClient;
 
-    if (activeWallet && activeAccount) {
-      // ── ThirdWeb / WalletConnect mode ─────────────────────────────────────
-      configureLiFiWallet(
-        async () => {
-          const chainId = activeChain?.id ?? fromChainIdRef.current;
-          // FIX CRASH: prop corretta è `account`, non `wallet`
-          return viemAdapter.walletClient.toViem({
-            client:  thirdwebClient,
-            chain:   defineChain(chainId),
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            account: activeAccount as any,
-          });
-        },
-        async (chainId: number) => {
-          await switchChainFn(defineChain(chainId));
-        },
-      );
-    } else if (alphaGetClient) {
-      // ── Alpha Wallet internal mode ────────────────────────────────────────
-      // getWalletClient usa fromChainIdRef (sempre aggiornato) via closure
-      configureLiFiWallet(
-        () => alphaGetClient(fromChainIdRef.current),
-        async (chainId: number) => {
-          // Li.Fi richiede cambio chain (swap cross-chain):
-          // Alpha Wallet non ha WalletConnect da switchare — aggiorniamo il ref
-          // e la UI, il prossimo getWalletClient userà la nuova chain
-          fromChainIdRef.current = chainId;
-          if (!isMounted.current) return;
-          setSv(prev => {
-            if (prev.phase !== "idle" && prev.phase !== "quoted") return prev;
-            const newToken = getDefaultFromToken(chainId);
-            return {
-              ...prev,
-              fromChainId: chainId,
-              fromToken:   newToken,
-              toChainId:   chainId,
-              toToken:     getTokensForChain(chainId)[2] ?? newToken,
-              fromAmount:  "",
-              quote:       null,
-              error:       null,
-              phase:       "idle",
-            };
-          });
-        },
-      );
+    try {
+      if (activeWallet && activeAccount) {
+        // ── ThirdWeb / WalletConnect mode ───────────────────────────────────
+        configureLiFiWallet(
+          async () => {
+            const chainId = activeChain?.id ?? fromChainIdRef.current;
+            // FIX CRASH: prop corretta è `account`, non `wallet`
+            return viemAdapter.walletClient.toViem({
+              client:  thirdwebClient,
+              chain:   defineChain(chainId),
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              account: activeAccount as any,
+            });
+          },
+          async (chainId: number) => {
+            await switchChainFn(defineChain(chainId));
+          },
+        );
+      } else if (alphaGetClient) {
+        // ── Alpha Wallet internal mode ──────────────────────────────────────
+        // getWalletClient usa fromChainIdRef (sempre aggiornato) via closure
+        configureLiFiWallet(
+          () => alphaGetClient(fromChainIdRef.current),
+          async (chainId: number) => {
+            // Li.Fi richiede cambio chain (swap cross-chain):
+            // Alpha Wallet non ha WalletConnect da switchare — aggiorniamo il ref
+            // e la UI, il prossimo getWalletClient userà la nuova chain
+            fromChainIdRef.current = chainId;
+            if (!isMounted.current) return;
+            setSv(prev => {
+              if (prev.phase !== "idle" && prev.phase !== "quoted") return prev;
+              const newToken = getDefaultFromToken(chainId);
+              return {
+                ...prev,
+                fromChainId: chainId,
+                fromToken:   newToken,
+                toChainId:   chainId,
+                toToken:     getTokensForChain(chainId)[2] ?? newToken,
+                fromAmount:  "",
+                quote:       null,
+                error:       null,
+                phase:       "idle",
+              };
+            });
+          },
+        );
+      }
+    } catch (err) {
+      // Li.Fi SDK init può lanciare in ambienti non supportati o su re-init.
+      // L'errore viene loggato ma non propaga — il componente rimane in idle
+      // e l'utente può riprovare tramite la UI.
+      console.error("[useEvmSwapState] configureLiFiWallet failed:", err);
+      if (isMounted.current) {
+        setSv(prev => ({
+          ...prev,
+          error: {
+            code: "LIFI_INIT_ERROR",
+            message: "Errore inizializzazione swap EVM. Ricarica la pagina.",
+          },
+        }));
+      }
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeWallet, activeAccount, activeChain?.id, opts?.getAlphaWalletClient]);
