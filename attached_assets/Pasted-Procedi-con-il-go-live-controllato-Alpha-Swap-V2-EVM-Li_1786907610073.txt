@@ -1,0 +1,127 @@
+Procedi con il go-live controllato Alpha Swap V2 EVM / Li.Fi.
+
+L’implementazione è stata verificata con:
+
+* 32/32 test EVM passati;
+* 1209/1209 regression test passati;
+* TypeScript backend EVM: 0 errori;
+* Vite dev server: 0 errori;
+* API server operativo;
+* fee Alpha Swap: 0,25% = 25 bps;
+* integrator Li.Fi: alpha-chat;
+* fee verificata nelle URL di quote;
+* anti-double-click;
+* quote expiry guard;
+* write-before-submit;
+* account-change detection;
+* recovery al mount;
+* fee raccolta tramite Li.Fi Fee Forwarder senza TX aggiuntiva.
+
+OBIETTIVO
+
+Eseguire un test controllato con wallet reale e importo minimo, senza modificare l’architettura già verificata.
+
+NON modificare:
+
+* BTC/Lightning;
+* payment engine;
+* USDA;
+* MultiChain;
+* Spark;
+* treasury;
+* sweep;
+* wallet fee;
+* fee Alpha Swap;
+* integrator Li.Fi.
+
+La fee deve rimanere 0,25%.
+
+TEST REALE
+
+Utilizza un wallet EVM reale già supportato da Alpha Wallet e un importo minimo possibile.
+
+Prima del test verifica:
+
+1. chain sorgente;
+2. token sorgente;
+3. chain destinazione;
+4. token destinazione;
+5. saldo sufficiente;
+6. gas sufficiente;
+7. quote Li.Fi;
+8. fee Alpha = 25 bps;
+9. integrator = alpha-chat;
+10. fee applicata una sola volta.
+
+NON utilizzare importi significativi.
+
+ESECUZIONE
+
+Esegui un percorso EVM → EVM reale.
+
+Verifica:
+
+1. quote ricevuta;
+2. importo stimato;
+3. fee Alpha 0,25%;
+4. firma richiesta al wallet;
+5. transazione firmata;
+6. TX inviata;
+7. Li.Fi rileva la transazione;
+8. stato aggiornato correttamente;
+9. asset ricevuto sulla chain destinazione;
+10. swap marcato completed.
+
+VERIFICA FEE
+
+È fondamentale verificare che:
+
+* la fee Alpha sia esattamente 0,25%;
+* venga raccolta tramite il meccanismo Li.Fi configurato;
+* non venga effettuata una seconda TX separata per la fee;
+* non venga applicata due volte.
+
+Se la fee non confluisce nel wallet configurato come previsto, FERMA il test e non procedere con altri importi.
+
+RECOVERY
+
+Durante il test, dove possibile, verifica anche:
+
+* refresh della PWA;
+* riapertura della pagina durante pending;
+* recupero dello stato dal localStorage/backend;
+* completamento corretto dopo il recovery.
+
+Non interrompere deliberatamente una transazione già in firma se questo può causare un rischio per i fondi.
+
+OUTPUT
+
+Restituisci un report con:
+
+A. Chain/token testati
+
+B. Importo utilizzato
+
+C. TX hash
+
+D. Quote ricevuta
+
+E. Fee Alpha prevista
+
+F. Fee Alpha effettivamente applicata
+
+G. Wallet/destinazione fee
+
+H. Importo effettivamente ricevuto
+
+I. Stato finale Li.Fi
+
+J. Recovery verificato
+
+K. Eventuali differenze tra quote e risultato
+
+L. Esito finale: PASS / FAIL
+
+NON fare ulteriori modifiche al codice durante il test.
+
+Se il test reale fallisce, fermati alla diagnosi e non applicare fix automaticamente.
