@@ -15,12 +15,8 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
-// Mock @lifi/sdk prima di qualsiasi import che lo utilizzi
-vi.mock("@lifi/sdk", () => ({
-  createConfig: vi.fn(),
-  EVM:          vi.fn().mockReturnValue({}),
-  executeRoute: vi.fn(),
-}));
+// @lifi/sdk non è più usato direttamente in lifi-client.ts v4.4.0
+// (createConfig/EVM rimossi; l'esecuzione usa REST + viem sendTransaction).
 
 import {
   fetchLiFiQuote, verifyAlphaFeeInResponse,
@@ -242,26 +238,53 @@ describe("T5: ERC-20 approval step", () => {
 // TEST 6 — Rejection firma (user rejected)
 // ─────────────────────────────────────────────────────────────────────────────
 describe("T6: rejection firma", () => {
-  it("executeLiFiSwap propaga errore user-rejected", async () => {
-    // @lifi/sdk è già mockato a livello di modulo (vi.mock in cima al file).
-    // executeRoute è un vi.fn() — lo facciamo rigettare.
-    const { executeRoute } = await import("@lifi/sdk");
-    vi.mocked(executeRoute).mockRejectedValueOnce(new Error("user rejected the request"));
-
+  it("executeLiFiSwap propaga errore quando transactionRequest manca", async () => {
+    // In v4.4.0 l'esecuzione usa REST+viem: se il route non ha transactionRequest → errore chiaro
     configureLiFiWallet(
       async () => ({} as import("viem").WalletClient),
       async () => {},
     );
 
     const mockQuote: EvmSwapQuote = {
-      route: {}, routeId: "test", fromChainId: 137, toChainId: 137,
+      route: {}, // route vuoto — nessun transactionRequest
+      routeId: "test", fromChainId: 137, toChainId: 137,
       fromToken: USDT_POLYGON, toToken: USDC_POLYGON,
       fromAmount: "10000000", toAmount: "9940000", toAmountMin: "9920000",
       alphaFeeUSD: "0.025", gasCostUSD: "0.005", totalFeeUSD: "0.030",
       slippage: 0.005, expiresAt: Date.now() + 60000, tool: "across",
     };
 
-    await expect(executeLiFiSwap(mockQuote)).rejects.toThrow("rejected");
+    await expect(executeLiFiSwap(mockQuote)).rejects.toThrow("transactionRequest");
+  });
+
+  it("executeLiFiSwap propaga errore user-rejected da sendTransaction", async () => {
+    // Wallet con sendTransaction che rigetta (simulazione firma rifiutata)
+    const mockWallet = {
+      account: { address: USER_ADDRESS as `0x${string}` },
+      sendTransaction: vi.fn().mockRejectedValueOnce(new Error("user rejected the request")),
+    } as unknown as import("viem").WalletClient;
+
+    configureLiFiWallet(
+      async () => mockWallet,
+      async () => {},
+    );
+
+    const mockQuote: EvmSwapQuote = {
+      route: {
+        transactionRequest: {
+          to:    "0x1231DEB6f5749EF6cE6943a275A1D3E7486F4EaE",
+          data:  "0xabcd",
+          value: "0",
+        },
+      },
+      routeId: "test", fromChainId: 137, toChainId: 137,
+      fromToken: POL_NATIVE, toToken: USDC_POLYGON, // POL nativo — no approval
+      fromAmount: "1000000000000000000", toAmount: "9940000", toAmountMin: "9920000",
+      alphaFeeUSD: "0.025", gasCostUSD: "0.005", totalFeeUSD: "0.030",
+      slippage: 0.005, expiresAt: Date.now() + 60000, tool: "across",
+    };
+
+    await expect(executeLiFiSwap(mockQuote)).rejects.toThrow("user rejected");
   });
 });
 

@@ -269,7 +269,11 @@ export function useSwapState(router: SwapRouter | null, opts?: SwapStateOpts): [
         _set({ state: "completed", swapId: result.swap_id });
       }
     } catch (err) {
-      const msg = (err as Error).message ?? "";
+      const msg = err instanceof Error
+        ? err.message
+        : typeof err === "string"
+          ? err
+          : JSON.stringify(err) || "Errore sconosciuto";
 
       if (msg.startsWith("TIMEOUT_UNCERTAIN")) {
         // Stato incerto: la PWA non deve permettere retry automatico

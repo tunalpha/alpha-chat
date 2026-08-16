@@ -3,8 +3,16 @@
  *
  * Responsabilità:
  *   - Quote: GET /v1/quote con integrator=alpha-chat, fee=0.0025
- *   - Execute: @lifi/sdk executeRoute con wallet ThirdWeb → viem
+ *   - Execute: REST transactionRequest + viem sendTransaction (NO @lifi/sdk EVM/createConfig)
  *   - Status: GET /v1/status per recovery
+ *
+ * NOTE VERSIONE:
+ *   @lifi/sdk v4.4.0 ha rimosso createConfig() ed EVM() (erano API v3).
+ *   Usiamo executeRoute tramite approccio REST-first:
+ *     1. /v1/quote   → route con transactionRequest (pronto per sendTransaction)
+ *     2. viem sendTransaction → firma e broadcast con Alpha Wallet interno
+ *     3. /v1/status  → polling stato
+ *   L'approvazione ERC-20 è gestita localmente via readContract + writeContract.
  *
  * SICUREZZA:
  *   - API key Li.Fi: mai usata qui (solo server-side), le quote pubbliche non la richiedono
@@ -14,53 +22,38 @@
  * ISOLAMENTO: zero import da payment engine, USDA, MultiChain.
  */
 
-import { createConfig, EVM, executeRoute, type Route } from "@lifi/sdk";
-import type { WalletClient } from "viem";
+import {
+  createPublicClient, http, erc20Abi, maxUint256,
+  type WalletClient, type PublicClient,
+} from "viem";
 import {
   LIFI_INTEGRATOR, LIFI_FEE, LIFI_SLIPPAGE, QUOTE_VALIDITY_MS,
   NATIVE_ADDRESS, tokenAddressForLiFi,
   type EvmToken, type EvmSwapQuote,
 } from "./types.js";
 
-// ── Li.Fi SDK init ─────────────────────────────────────────────────────────────
+// ── Wallet state ─────────────────────────────────────────────────────────────
 
-let _lifiConfigured = false;
 let _currentGetWallet: (() => Promise<WalletClient>) | null = null;
 let _currentSwitchChain: ((chainId: number) => Promise<void>) | null = null;
 
 /**
- * Inizializza (o aggiorna) il wallet usato dal Li.Fi SDK.
- * Chiamare ogni volta che il wallet ThirdWeb cambia.
- * createConfig è idempotente: eseguito solo al primo mount, i callback
- * puntano a closure mutabili così la wallet rotation funziona senza re-init.
+ * Registra i callback del wallet da usare per l'esecuzione.
+ * Non serve più init SDK — la configurazione è solo locale.
+ * Firma invariata rispetto alla versione precedente.
  */
 export function configureLiFiWallet(
   getWalletClient: () => Promise<WalletClient>,
   switchChain: (chainId: number) => Promise<void>,
 ): void {
-  // Aggiorna sempre i puntatori (wallet rotation)
   _currentGetWallet  = getWalletClient;
   _currentSwitchChain = switchChain;
-
-  if (!_lifiConfigured) {
-    createConfig({
-      integrator: LIFI_INTEGRATOR,
-      providers: [
-        EVM({
-          getWalletClient:  () => _currentGetWallet!(),
-          switchChain:      (id: number) => _currentSwitchChain!(id),
-        }),
-      ],
-    });
-    _lifiConfigured = true;
-  }
 }
 
 /**
- * Rimuove i callback wallet correnti dal modulo Li.Fi.
- * Chiamare in cleanup useEffect su unmount di useEvmSwapState per evitare
- * che il SDK chiami getWalletClient su un componente già smontato.
- * Non resetta _lifiConfigured perché createConfig è idempotente.
+ * Rimuove i callback wallet correnti dal modulo.
+ * Chiamare in cleanup useEffect su unmount per evitare
+ * che il modulo chiami getWalletClient su un componente già smontato.
  */
 export function clearLiFiWallet(): void {
   _currentGetWallet   = null;
@@ -135,7 +128,6 @@ function parseQuoteResponse(
     for (const rec of recipients) {
       const r = rec as Record<string, unknown>;
       if (r.name === LIFI_INTEGRATOR && r.walletAddress == null) {
-        // Fee Forwarder — non ha walletAddress nella risposta (corretto)
         const feeRaw = String(r.fee ?? "0");
         const token  = (f.token as Record<string, unknown> | undefined);
         const dec    = (token?.decimals as number) ?? 6;
@@ -166,7 +158,7 @@ function parseQuoteResponse(
   const tool        = String((body.tool as string) ?? "lifi");
 
   return {
-    route:        body,   // Li.Fi Route (opaque) — passato intero a executeRoute
+    route:        body,   // Li.Fi Route (opaque) — contiene transactionRequest
     routeId:      String((body.id as string) ?? `${Date.now()}`),
     fromChainId:  params.fromChainId,
     toChainId:    params.toChainId,
@@ -187,25 +179,27 @@ function parseQuoteResponse(
 // ── Execute ───────────────────────────────────────────────────────────────────
 
 export interface ExecuteCallbacks {
-  /** Chiamato ad ogni cambio di stato del route durante l'esecuzione */
-  onRouteUpdate?: (route: Route) => void;
-  /** Chiamato quando la TX è stata firmata e inviata */
+  /** Chiamato quando è richiesta la firma dell'approvazione ERC-20 */
+  onApproving?: () => void;
+  /** Chiamato quando la TX di swap è stata inviata */
   onTxSubmitted?: (txHash: string, chainId: number) => void;
 }
 
 /**
- * Esegue uno swap Li.Fi.
- * Il wallet deve essere già configurato via configureLiFiWallet().
+ * Esegue uno swap Li.Fi tramite REST + viem (NO @lifi/sdk EVM provider).
  *
- * SICUREZZA:
- *   - Verifica che configureLiFiWallet sia stato chiamato
- *   - Verifica che la quote non sia scaduta prima di procedere
+ * Flusso:
+ *   1. Estrae transactionRequest dal route Li.Fi
+ *   2. Se il token non è nativo → controlla allowance ERC-20 → approve se necessario
+ *   3. sendTransaction con viem WalletClient (Alpha Wallet interno)
+ *
+ * Il wallet deve essere già registrato via configureLiFiWallet().
  */
 export async function executeLiFiSwap(
   quote: EvmSwapQuote,
   callbacks?: ExecuteCallbacks,
 ): Promise<{ txHash: string }> {
-  if (!_lifiConfigured || !_currentGetWallet) {
+  if (!_currentGetWallet) {
     throw new Error("LiFiClient: wallet non configurato. Chiama configureLiFiWallet() prima.");
   }
 
@@ -214,30 +208,122 @@ export async function executeLiFiSwap(
     throw new Error("QUOTE_EXPIRED");
   }
 
-  let lastTxHash = "";
+  // Estrae il transactionRequest dal route Li.Fi
+  // Li.Fi /v1/quote risponde con `transactionRequest` ready-to-sign per swap same-chain
+  const route  = quote.route as Record<string, unknown>;
+  const txReq  = route.transactionRequest as Record<string, string | undefined> | undefined;
 
-  await executeRoute(quote.route as Route, {
-    updateRouteHook(updatedRoute: Route) {
-      callbacks?.onRouteUpdate?.(updatedRoute);
+  if (!txReq?.to || !txReq?.data) {
+    throw new Error(
+      "La quote non contiene dati della transazione (transactionRequest). " +
+      "Premi 'Riprova' per ottenere una nuova quote.",
+    );
+  }
 
-      // Estrae txHash dall'ultimo step completato
-      const steps = updatedRoute.steps ?? [];
-      for (const step of steps) {
-        const txs = (step as unknown as Record<string, unknown>).transactionHistory;
-        if (Array.isArray(txs)) {
-          for (const tx of txs) {
-            const txRec = tx as Record<string, unknown>;
-            if (txRec.txHash) {
-              lastTxHash = String(txRec.txHash);
-              callbacks?.onTxSubmitted?.(lastTxHash, (step as unknown as Record<string, unknown>).action?.fromChainId as number ?? quote.fromChainId);
-            }
-          }
-        }
-      }
-    },
+  const walletClient = await _currentGetWallet();
+  const account = walletClient.account;
+  if (!account) throw new Error("ALPHA_WALLET_NO_KEYSTORE");
+
+  // ── ERC-20 approval check ─────────────────────────────────────────────────
+  const isNative =
+    !quote.fromToken.address ||
+    quote.fromToken.address.toLowerCase() === NATIVE_ADDRESS.toLowerCase();
+
+  if (!isNative) {
+    const estimate = route.estimate as Record<string, unknown> | undefined;
+    const approvalAddress = estimate?.approvalAddress as string | undefined;
+
+    if (approvalAddress) {
+      await _handleErc20Approval(
+        walletClient,
+        quote.fromToken.address as `0x${string}`,
+        approvalAddress as `0x${string}`,
+        BigInt(quote.fromAmount),
+        quote.fromChainId,
+        callbacks,
+      );
+    }
+  }
+
+  // ── Invia swap transaction ────────────────────────────────────────────────
+  const txHash = await walletClient.sendTransaction({
+    to:    txReq.to    as `0x${string}`,
+    data:  txReq.data  as `0x${string}`,
+    value: txReq.value ? BigInt(txReq.value) : 0n,
+    chain: null,   // non impone chain switch — il wallet è già sulla chain giusta
+    account,
   });
 
-  return { txHash: lastTxHash };
+  callbacks?.onTxSubmitted?.(txHash, quote.fromChainId);
+
+  return { txHash };
+}
+
+/**
+ * Controlla l'allowance ERC-20 e invia `approve(MAX_UINT256)` se necessario.
+ * Attende la conferma on-chain prima di procedere con lo swap.
+ */
+async function _handleErc20Approval(
+  walletClient: WalletClient,
+  tokenAddress:    `0x${string}`,
+  spenderAddress:  `0x${string}`,
+  needed:          bigint,
+  chainId:         number,
+  callbacks?:      ExecuteCallbacks,
+): Promise<void> {
+  const account = walletClient.account!;
+  const publicClient = _makePublicClient(chainId);
+
+  const allowance = await publicClient.readContract({
+    address:      tokenAddress,
+    abi:          erc20Abi,
+    functionName: "allowance",
+    args:         [account.address, spenderAddress],
+  });
+
+  if ((allowance as bigint) >= needed) return; // allowance sufficiente
+
+  // Chiede all'utente di firmare l'approval
+  callbacks?.onApproving?.();
+
+  const approvalHash = await walletClient.writeContract({
+    address:      tokenAddress,
+    abi:          erc20Abi,
+    functionName: "approve",
+    args:         [spenderAddress, maxUint256],
+    chain:        null,
+    account,
+  });
+
+  // Attende conferma on-chain (max 3 min)
+  await publicClient.waitForTransactionReceipt({
+    hash:    approvalHash,
+    timeout: 180_000,
+  });
+}
+
+/**
+ * Crea un PublicClient viem per la chain richiesta.
+ * Usato solo per letture (allowance) e attesa receipt approval — nessuna chiave privata.
+ */
+function _makePublicClient(chainId: number): PublicClient {
+  const rpc = _publicRpc(chainId);
+  return createPublicClient({ transport: http(rpc) }) as PublicClient;
+}
+
+function _publicRpc(chainId: number): string {
+  switch (chainId) {
+    case 137: {
+      // Usa il segreto VITE_POLYGON_RPC se disponibile (iniettato nel bundle)
+      const env = (typeof import.meta !== "undefined"
+        ? (import.meta as { env?: { VITE_POLYGON_RPC?: string } }).env?.VITE_POLYGON_RPC
+        : undefined) ?? "";
+      return env || "https://polygon-rpc.com";
+    }
+    case 56:  return "https://bsc-dataseed.binance.org";
+    case 1:   return "https://cloudflare-eth.com";
+    default:  return "https://polygon-rpc.com";
+  }
 }
 
 // ── Status (per recovery) ─────────────────────────────────────────────────────
@@ -245,8 +331,8 @@ export async function executeLiFiSwap(
 export type LiFiStatus = "PENDING" | "DONE" | "FAILED" | "INVALID" | "NOT_FOUND";
 
 export interface LiFiStatusResult {
-  status:  LiFiStatus;
-  txHash?: string;
+  status:   LiFiStatus;
+  txHash?:  string;
   toAmount?: string;
 }
 
@@ -298,17 +384,12 @@ export function verifyAlphaFeeInResponse(quoteBody: Record<string, unknown>): {
     for (const rec of recipients) {
       const r = rec as Record<string, unknown>;
       if (r.name === LIFI_INTEGRATOR) {
-        // percentage è la % dell'intera fee, non la % su fromAmount
-        // alphaFee / fromAmount × 100 = bps/100
         const lifiFee = BigInt(String(split!.lifiFee ?? "0"));
         const intFee  = BigInt(String(split!.integratorFee ?? "0"));
         const total   = lifiFee + intFee;
         if (total === 0n) return { found: true, bps: 0 };
-        // intFee / total × (total_pct × 10000) — stima approssimata
-        // Usiamo percentage del FeeCost che rappresenta % su fromAmount
         const pctStr = String(f.percentage ?? "0");
-        const pct    = parseFloat(pctStr);         // es. 0.005 = 0.5% totale
-        // Li.Fi split 50/50 tra lifi e integrator → metà del pct va all'integrator
+        const pct    = parseFloat(pctStr);
         const intBps = Math.round((pct / 2) * 10000);
         return { found: true, bps: intBps };
       }

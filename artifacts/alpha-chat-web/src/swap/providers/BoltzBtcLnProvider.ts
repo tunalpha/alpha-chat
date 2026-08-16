@@ -48,7 +48,13 @@ async function swapFetch<T>(path: string, options?: RequestInit): Promise<T> {
   if (res.status === 204) return undefined as T;
   const body = await res.json() as Record<string, unknown>;
   if (!res.ok) {
-    const msg = (body?.error as string) ?? (body?.message as string) ?? `HTTP ${res.status}`;
+    // body.error / body.message possono essere stringhe O oggetti — serializzare correttamente
+    const errRaw = body?.error ?? body?.message;
+    const msg = typeof errRaw === "string"
+      ? errRaw
+      : errRaw != null
+        ? JSON.stringify(errRaw)
+        : `HTTP ${res.status}`;
     throw new Error(msg);
   }
   return body as T;

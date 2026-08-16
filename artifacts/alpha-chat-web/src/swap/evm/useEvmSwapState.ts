@@ -448,14 +448,8 @@ export function useEvmSwapState(opts?: EvmSwapStateOpts): [EvmSwapStateValue, Ev
       let submittedTxHash = "";
 
       const { txHash } = await executeLiFiSwap(current.quote, {
-        onRouteUpdate: (route) => {
-          const steps = route.steps ?? [];
-          for (const step of steps) {
-            const s = step as unknown as Record<string, unknown>;
-            if (s.type === "approve" && (s.status === "ACTION_REQUIRED" || s.status === "PENDING")) {
-              if (isMounted.current) setSv(prev => ({ ...prev, phase: "approving" }));
-            }
-          }
+        onApproving: () => {
+          if (isMounted.current) setSv(prev => ({ ...prev, phase: "approving" }));
         },
         onTxSubmitted: (hash) => {
           submittedTxHash = hash;

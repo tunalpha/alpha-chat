@@ -574,12 +574,11 @@ function SwapMainForm({ sv, actions, config, btcBalance, btcBalLoading }: SwapMa
             {btcBalance && btcBalance.totalSat > 0 && (
               <button
                 onClick={() => {
-                  // MAX = saldo disponibile - stima fee miner (2000 sat) - almeno 1 sat sicurezza
-                  // Rispetta il minimo del provider se disponibile nella quote
-                  const minSat = sv.quote?.limits?.min_sat ?? 10_000;
-                  const maxSpendable = Math.max(0, btcBalance.totalSat - 2000);
-                  const clamped = Math.max(minSat, Math.min(maxSpendable, btcBalance.totalSat - 2000));
-                  if (clamped > 0) actions.setAmountSat(clamped);
+                  // MAX = saldo spendibile - riserva miner fee (2000 sat)
+                  // NON clampare al minimo del provider: se il saldo è sotto il minimo,
+                  // l'utente vedrà l'errore dalla quote — meglio di inflare artificialmente.
+                  const spendable = Math.max(0, btcBalance.totalSat - 2000);
+                  if (spendable > 0) actions.setAmountSat(spendable);
                 }}
                 className="aw-btn aw-btn--secondary"
                 style={{ padding: "2px 10px", fontSize: 11, fontWeight: 700, height: 24, minWidth: 0, letterSpacing: ".5px" }}
@@ -592,16 +591,22 @@ function SwapMainForm({ sv, actions, config, btcBalance, btcBalLoading }: SwapMa
 
         {/* PAGA card */}
         <AssetCard label="Paga" icon={pay.icon} ticker={pay.ticker} network={pay.network}>
-          <input
-            type="text"
-            inputMode="numeric"
-            pattern="[0-9]*"
-            placeholder="0"
-            value={sv.amountSat > 0 ? sv.amountSat.toLocaleString("it-IT") : ""}
-            onChange={handleAmountChange}
-            className="asw-amount-input"
-            aria-label="Importo in satoshi"
-          />
+          <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
+            <input
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              placeholder="0"
+              value={sv.amountSat > 0 ? sv.amountSat.toLocaleString("it-IT") : ""}
+              onChange={handleAmountChange}
+              className="asw-amount-input"
+              aria-label="Importo in satoshi"
+              style={{ flex: 1, minWidth: 0 }}
+            />
+            {isBtcLn && (
+              <span style={{ fontSize: 11, color: "rgba(255,255,255,.35)", flexShrink: 0, paddingBottom: 2 }}>sat</span>
+            )}
+          </div>
         </AssetCard>
 
         {/* Direction toggle */}

@@ -1,0 +1,218 @@
+FERMATI CON I FIX PRECEDENTI E FAI UN AUDIT TECNICO DELLA BUILD ATTUALE. Abbiamo appena eseguito il test reale su iPhone e ci sono regressioni che i 1226 test automatici non hanno rilevato.
+
+NON fare altri workaround superficiali. Individua la root cause reale, correggi il codice e ripeti test/build.
+
+==================================================
+
+1. BLOCCO CRITICO — EVM CRASH
+    ==================================================
+
+Su iPhone, entrando nella tab EVM compare:
+
+Errore EVM Swap
+Jx.EVM is not a function. (In 'Jx.EVM({getWalletClient:()=>fl(),switchChain:a=>Vx(a)})', 'Jx.EVM' is undefined)
+
+Questo è un ERRORE RUNTIME reale.
+
+IMPORTANTE:
+
+* Non nascondere l’errore con ErrorBoundary.
+* Non usare try/catch per mascherarlo.
+* Individua esattamente quale import/API/library produce Jx.EVM.
+* Verifica versione e API effettivamente installata del pacchetto EVM/Li.Fi.
+* Verifica se è stato introdotto un uso di un’API inesistente/deprecata.
+* Verifica gli import statici e named/default export.
+* Verifica eventuali differenze tra build development/test e production.
+* Verifica il codice generato/minificato solo per risalire al modulo originale.
+* Mantieni l’architettura Alpha Wallet e NON reintrodurre useActiveAccount() come requisito.
+* NON richiedere WalletConnect.
+* Il wallet EVM deve essere quello interno Alpha Wallet.
+
+Il risultato richiesto è:
+EVM deve aprire senza crash, generare quote e permettere l’esecuzione reale dello swap.
+
+Prima di dichiararlo risolto, verifica il percorso completo:
+Alpha Wallet → EVM → Polygon → POL → USDC → quote → Swap → firma → TX.
+
+==================================================
+2. BLOCCO CRITICO — BTC MAX / UNITÀ
+
+Screenshot reale:
+
+Saldo:
+0.00011496 BTC
+
+ma il campo PAGA mostra:
+10.000 BTC
+
+Questo è INACCETTABILE.
+
+Il sistema deve impedire matematicamente che l’importo superi il saldo spendibile.
+
+Controlla TUTTA la catena delle unità:
+
+* BTC decimal;
+* satoshi;
+* bigint;
+* number;
+* string;
+* conversione input/display;
+* conversione MAX;
+* conversione quote;
+* conversione provider.
+
+NON assumere che 10.000 sia solo un problema grafico.
+
+Verifica:
+MAX = saldo spendibile - fee/reserve
+
+e che il valore passato al provider sia espresso nell’unità corretta.
+
+Per un saldo di:
+0.00011496 BTC = 11,496 sat
+
+MAX NON deve mai risultare 10 BTC, 10.000 BTC o qualsiasi valore superiore al saldo spendibile.
+
+Aggiungi anche una validazione finale prima dell’execute:
+amountSat <= spendableBalanceSat
+
+Se falso, BLOCCA l’operazione e mostra un errore comprensibile.
+
+==================================================
+3. BLOCCO CRITICO — BTC → LIGHTNING
+
+La UI mostra:
+
+[object Object]
+
+Questo significa che un errore/risultato strutturato viene convertito erroneamente in stringa.
+
+Correggi la gestione errori per mostrare il messaggio reale.
+
+MA soprattutto individua la root cause del problema BTC → Lightning.
+
+Il flusso desiderato è:
+
+BTC on-chain → BTC Lightning
+
+L’utente:
+
+* NON inserisce un indirizzo;
+* NON inserisce manualmente una Lightning invoice;
+* NON deve vedere campi tecnici inutili.
+
+La destinazione Lightning deve essere gestita internamente dall’architettura Alpha/Spark prevista.
+
+Verifica quindi:
+
+* generateLightningInvoice;
+* spark.createReceiveInvoice;
+* .bolt11;
+* payload passato a Boltz;
+* amount in satoshi;
+* quote;
+* execute;
+* eventuale errore restituito da Boltz.
+
+Non limitarti a sostituire [object Object] con un altro testo.
+
+==================================================
+4. BTC → BTC LIGHTNING E INVERSO
+
+Mantieni:
+
+BTC → Lightning:
+destinazione Lightning interna Alpha.
+
+Lightning → BTC:
+destinazione BTC on-chain interna Alpha tramite walletMeta.btcAddress.
+
+NON chiedere manualmente l’indirizzo se il wallet Alpha lo conosce già.
+
+==================================================
+5. REGOLA FONDAMENTALE
+
+NON modificare il funzionamento EVM già validato più del necessario.
+
+NON modificare:
+
+* fee Alpha;
+* provider SushiSwap;
+* quote Li.Fi;
+* WalletContext;
+* indirizzi wallet Alpha;
+* architettura Spark;
+* logica di firma funzionante;
+* EVM come tab default.
+
+Prima identifica le root cause, poi applica il minimo fix necessario.
+
+==================================================
+6. TEST OBBLIGATORI
+
+Dopo i fix:
+
+A) EVM
+
+* apertura EVM senza crash;
+* quote POL → USDC;
+* Swap;
+* firma Alpha Wallet;
+* TX reale;
+* verifica TX on-chain.
+
+B) BTC
+Con saldo di esempio 0.00011496 BTC / 11,496 sat:
+
+* MAX deve essere <= saldo spendibile;
+* nessuna possibilità di visualizzare 10 BTC;
+* conversione sat/BTC verificata;
+* validazione finale prima dell’execute.
+
+C) BTC → Lightning
+
+* inserimento importo;
+* generazione invoice interna;
+* nessun indirizzo/invoice richiesto all’utente;
+* execute Boltz;
+* errore reale leggibile se il provider fallisce.
+
+D) Lightning → BTC
+
+* indirizzo BTC Alpha automatico;
+* nessun input manuale;
+* execute verificato.
+
+E) Navigazione
+
+* EVM → BTC → EVM;
+* refresh;
+* iPhone Safari/PWA;
+* nessuna schermata nera;
+* nessun crash runtime.
+
+F) Qualità
+
+* tutti i test automatici;
+* build;
+* verifica che i test coprano anche le nuove condizioni MAX/unit conversion e gli error path.
+
+==================================================
+7. REPORT FINALE OBBLIGATORIO
+
+Non scrivere semplicemente “test PASS”.
+
+Restituisci:
+
+1. root cause EVM Jx.EVM;
+2. root cause BTC MAX/unità;
+3. root cause BTC [object Object];
+4. file modificati;
+5. fix applicati;
+6. test automatici;
+7. build;
+8. risultato test reale;
+9. TX hash EVM se eseguita;
+10. conferma esplicita che MAX non può superare il saldo spendibile.
+
+NON considerare il lavoro concluso se EVM continua a crashare o se MAX può produrre un importo superiore al saldo.
