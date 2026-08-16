@@ -50,7 +50,7 @@ function buildPayload(event: PushEvent): string {
     case "message.new":
       return JSON.stringify({
         type:  "message.new",
-        title: "Alpha Chat",
+        title: "Alpha Chat ⇄ Wallet",
         body:  `${event.senderName} — nuovo messaggio`,
         data:  {
           conversationId:   event.conversationId,
@@ -88,7 +88,7 @@ function buildPayload(event: PushEvent): string {
     case "call.missed":
       return JSON.stringify({
         type:  "call.missed",
-        title: "Alpha Chat",
+        title: "Alpha Chat ⇄ Wallet",
         body:  `📵 Chiamata persa da ${event.callerName}`,
         data:  {
           callerId:   event.callerId,

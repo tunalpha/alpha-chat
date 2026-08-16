@@ -15,7 +15,7 @@
 /* global self, clients */
 'use strict';
 
-const APP_NAME   = 'Alpha Chat';
+const APP_NAME   = 'Alpha Chat ⇄ Wallet';
 
 // ── Lifecycle: aggiornamento automatico ───────────────────────────────────────
 // skipWaiting() forza l'attivazione immediata del nuovo SW senza aspettare
