@@ -1,0 +1,62 @@
+Bene, questo è un fix molto più convincente: hanno individuato una root cause concreta del crash (wallet inesistente nell’API runtime) e non solo mascherato il problema.
+
+Però non farei ancora un deploy alla cieca. Prima chiederei all’agente un’ultima verifica mirata, perché i problemi che abbiamo visto erano tutti live su iPhone.
+
+Mandagli:
+
+Bene. Prima del deploy fai SOLO una verifica finale dei fix, senza altre modifiche se non trovi problemi.
+
+Testa specificamente:
+
+1. Wallet già connesso
+    * apri Alpha Wallet;
+    * verifica che ThirdWeb/WalletConnect abbia già l’account;
+    * entra in Swap → EVM;
+    * conferma che NON compaia il messaggio “Connetti wallet”.
+2. EVM
+    * entra/esci da EVM più volte;
+    * nessun crash/black screen;
+    * nessuna eccezione runtime.
+3. Polygon
+    * account reale già collegato;
+    * chain Polygon;
+    * POL deve mostrare il saldo reale;
+    * USDC deve mostrare il saldo reale oppure 0, se realmente zero;
+    * durante il caricamento deve apparire “Saldo…”, non 0.
+4. Icone
+    * POL, USDC, ETH, USDT e BNB devono usare le immagini reali;
+    * nessun fallback PO, US, ecc. nel caso normale.
+5. Cambio chain/account
+    * cambia chain;
+    * verifica che token e saldo si aggiornino;
+    * cambia account, se possibile, e verifica che il saldo non rimanga quello precedente.
+6. Esegui nuovamente 1226/1226 e build production.
+
+NON fare ancora il deploy.
+
+Restituisci solo:
+
+WALLET CONNECTED: PASS/FAIL
+EVM NO CRASH: PASS/FAIL
+BALANCE REAL: PASS/FAIL
+TOKEN ICONS: PASS/FAIL
+CHAIN/ACCOUNT SYNC: PASS/FAIL
+TEST: x/x
+BUILD: PASS/FAIL
+
+Se tutto è PASS, allora procediamo al deploy e facciamo il test reale su iPhone.
+
+Perché questa volta sono più tranquillo
+
+La correzione:
+
+toViem({ wallet: activeWallet }) ❌
+→ toViem({ account: activeAccount }) ✅
+
+è coerente con il crash che avevi visto.
+
+E il fatto che il saldo fosse 0 / — potrebbe effettivamente essere stato una conseguenza del crash, quindi il nuovo loading + BigInt(hex ?? "0x0") affronta anche quel problema.
+
+Ma le icone via TrustWallet CDN le considererei corrette solo dopo averle viste realmente sul dispositivo.
+
+Quindi: ancora niente deploy. Un ultimo check dell’agente, poi sì.
