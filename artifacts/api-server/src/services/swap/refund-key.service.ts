@@ -33,24 +33,36 @@ const DEV_FALLBACK_SECRET = Buffer.from(
 
 /**
  * Restituisce il buffer del secret dal env.
- * THROWS in produzione se non configurato.
+ *
+ * GUARD OBBLIGATORIO:
+ *   - In test (NODE_ENV=test): usa fallback deterministico (i mock non chiamano Boltz reale)
+ *   - In qualsiasi altro ambiente (development, production): THROW se secret non configurato
+ *
+ * Questo garantisce che l'app rifiuti di eseguire swap reali senza il secret,
+ * indipendentemente da NODE_ENV o SWAP_ENABLED.
  */
 function _getSecret(): Buffer {
   const envSecret = process.env.ALPHA_SWAP_REFUND_SECRET;
+
+  // ── Caso 1: secret configurato correttamente ────────────────────────────────
   if (envSecret && envSecret.length >= 64) {
     return Buffer.from(envSecret.slice(0, 64), "hex");
   }
-  if (process.env.NODE_ENV === "production") {
-    throw new Error(
-      "ALPHA_SWAP_REFUND_SECRET must be set (64 hex chars = 32 bytes) before enabling swap in production",
-    );
+
+  // ── Caso 2: ambiente test/CI → fallback deterministico (mock non chiama Boltz reale) ──
+  if (process.env.NODE_ENV === "test") {
+    return DEV_FALLBACK_SECRET;
   }
-  // Dev/test fallback — safe perché SWAP_ENABLED=false
-  logger.warn(
-    "ALPHA_SWAP_REFUND_SECRET non configurato — usando fallback dev. " +
-    "NON usare in produzione. NON abilitare swap in produzione senza impostare il segreto.",
+
+  // ── Caso 3: secret mancante in development o production → BLOCCO ────────────
+  // NON usiamo fallback in development: se qualcuno abilita SWAP_ENABLED=true
+  // senza configurare il secret, riceve un errore esplicito invece di usare
+  // una chiave prevedibile che comprometterebbe i refund.
+  throw new Error(
+    "[ALPHA_SWAP] ALPHA_SWAP_REFUND_SECRET non configurato. " +
+    "Impostare il segreto (64 hex chars = 32 byte) come Replit Secret prima di usare Alpha Swap. " +
+    "Generare con: node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\"",
   );
-  return DEV_FALLBACK_SECRET;
 }
 
 /**
