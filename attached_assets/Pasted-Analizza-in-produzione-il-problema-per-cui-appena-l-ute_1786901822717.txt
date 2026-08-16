@@ -1,0 +1,132 @@
+Analizza in produzione il problema per cui, appena l’utente clicca su Swap, l’app rimane bloccata sulla schermata:
+
+“Verifica swap in corso…”
+
+OBIETTIVO
+
+Voglio una diagnosi tecnica completa e read-only iniziale, senza modificare codice, configurazioni o secrets finché non hai identificato con certezza la root cause.
+
+Abbiamo già verificato quanto segue:
+
+* WalletConnect Project ID usato in produzione: b06ac60bf832baccf0c3e967dd06d02d
+* walletconnect.txt in produzione contiene lo stesso Project ID.
+* Origin browser: https://alphachat.sbs
+* appMetadata.url: https://alphachat.sbs
+* Trust Wallet mostra “Dominio non valido”.
+* Reown Verify classifica il dominio come INVALID.
+* Il codice usa VITE_WALLETCONNECT_PROJECT_ID.
+* ThirdWeb Client ID è diverso e non va modificato senza una motivazione tecnica.
+* public/.well-known/walletconnect.txt nel repository contiene ancora WALLETCONNECT_VERIFY_TOKEN_PLACEHOLDER, mentre la produzione contiene temporaneamente il Project ID corretto.
+
+FASE 1 — TROVA ESATTAMENTE COSA BLOCCA LO SWAP
+
+Segui il percorso completo dal click su Swap fino alla schermata:
+
+Verifica swap in corso...
+
+Identifica:
+
+1. Il componente/pagina che gestisce il click Swap.
+2. La funzione eseguita immediatamente dopo il click.
+3. La funzione che imposta lo stato “Verifica swap in corso”.
+4. Tutte le chiamate API/backend/provider eseguite dopo tale stato.
+5. Quale Promise/fetch/call rimane pending o non restituisce mai uno stato conclusivo.
+6. Eventuali polling, retry, timeout o useEffect coinvolti.
+7. Quale condizione dovrebbe permettere di uscire dallo stato di verifica.
+8. Se l’errore WalletConnect Verify può realmente causare questo spinner oppure se il problema Swap è indipendente.
+
+FASE 2 — CORRELAZIONE CON REOWN VERIFY
+
+Verifica nel codice se “Verifica swap in corso…” richiama direttamente o indirettamente:
+
+* Reown Verify;
+* WalletConnect Verify;
+* walletconnect.txt;
+* Project ID WalletConnect;
+* ThirdWeb;
+* Trust Wallet;
+* una verifica del dominio/origin.
+
+Non assumere che siano la stessa cosa: dimostralo seguendo il call chain.
+
+Se sono indipendenti, dichiaralo esplicitamente.
+
+FASE 3 — CONFIGURAZIONE REOWN
+
+Verifica, senza modificare nulla, che il progetto associato al Project ID:
+
+b06ac60bf832baccf0c3e967dd06d02d
+
+sia configurato con:
+
+* App URL: https://alphachat.sbs
+* Allowed Domain / Allowlist: alphachat.sbs
+* nessun requisito esclusivo per www.alphachat.sbs
+* nessun vecchio dominio .replit.dev
+* stesso account Reown che possiede il Project ID utilizzato dal bundle di produzione.
+
+Se non puoi verificare direttamente il dashboard Reown, non inventare il risultato: indica esattamente cosa deve essere controllato manualmente.
+
+FASE 4 — walletconnect.txt
+
+Controlla la situazione del file:
+
+public/.well-known/walletconnect.txt
+
+e conferma:
+
+* valore attuale nel repository;
+* valore presente nel build/dist;
+* valore presente in produzione;
+* rischio che un prossimo deploy sovrascriva quello corretto con il placeholder.
+
+NON modificare ancora il file.
+
+FASE 5 — NON FARE MODIFICHE ALLA CIECA
+
+Non cambiare:
+
+* VITE_WALLETCONNECT_PROJECT_ID
+* VITE_THIRDWEB_CLIENT_ID
+* ThirdWeb
+* provider Li.Fi
+* logica Swap
+* secrets
+* configurazione Reown
+
+finché non hai identificato la root cause.
+
+OUTPUT RICHIESTO
+
+Restituisci un report strutturato con:
+
+A. Root cause
+
+* causa esatta;
+* file/funzione coinvolta;
+* evidenza tecnica.
+
+B. WalletConnect Verify
+
+* conferma se è la causa dello spinner Swap oppure un problema separato.
+
+C. Punto preciso del blocco
+
+* chiamata/Promise/polling che non termina;
+* stato che rimane bloccato;
+* perché non viene raggiunto lo stato successivo.
+
+D. Fix minimo consigliato
+
+* modifica esatta necessaria;
+* nessuna modifica non correlata.
+
+E. Rischi di regressione
+
+* cosa potrebbe rompersi;
+* come verificarlo.
+
+F. Test post-fix
+Definisci un test completo da eseguire su iOS + Trust Wallet e, se pertinente, anche desktop/mobile browser.
+
+IMPORTANTE: questa prima fase è READ-ONLY. Non applicare fix finché non hai restituito la diagnosi e identificato con precisione la root cause.
