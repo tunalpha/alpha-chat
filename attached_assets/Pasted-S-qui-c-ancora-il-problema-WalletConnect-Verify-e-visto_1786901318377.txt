@@ -1,0 +1,52 @@
+Sì, qui c’è ancora il problema WalletConnect Verify, e visto che sono già passate più di 6 ore, non aspetterei semplicemente oltre.
+
+La cosa importante è questa: nella documentazione ufficiale WalletConnect, l’Allowlist del Project ID dovrebbe propagarsi in circa 15 minuti, non 6 ore. 
+
+Inoltre, la schermata di Trust Wallet che mostri dice “Dominio non valido”, non semplicemente “non verificato”. Verify distingue infatti tra VALID, UNKNOWN (non verificato) e INVALID (mismatch del dominio). 
+
+Quindi non toccherei più la whitelist
+
+Abbiamo già fatto:
+
+* alphachat.sbs nella allowlist ✅
+* www tentato ✅
+* walletconnect.txt corretto ✅
+* Project ID nuovo ✅
+* bundle ricompilato/deployato ✅ secondo l’ultimo report
+* appMetadata.url = https://alphachat.sbs ✅
+
+Adesso dobbiamo capire perché Trust Wallet sta ancora ricevendo una sessione con un’identità/domain origin che Verify considera non valido.
+
+E soprattutto: non cambierei ancora Project ID. Potremmo semplicemente creare un altro problema e perdere il filo della diagnosi.
+
+Farei fare all’agente un audit mirato
+
+Mandagli questo:
+
+STOP — non modificare codice, Project ID, whitelist o configurazioni.
+
+Il dominio https://alphachat.sbs è stato allowlistato da oltre 6 ore, ma Trust Wallet continua a mostrare “Dominio non valido / Impossibile verificare questo dominio”.
+
+Esegui ora una diagnosi esclusivamente read-only del flusso WalletConnect Verify in produzione.
+
+Verifica in particolare:
+
+1. Quale Project ID effettivo viene usato dal bundle JS attualmente servito da https://alphachat.sbs.
+2. Quale origin effettivo viene inviato nella session proposal.
+3. Quale appMetadata.url effettivo viene inviato.
+4. Verifica che origin, appMetadata.url e dominio allowlistato siano esattamente:
+    https://alphachat.sbs
+5. Controlla se esistono redirect, iframe, subdomain, www, porta o altro origin coinvolto.
+6. Interroga il Verify API ufficiale con il Project ID effettivamente usato e l’origin effettivo.
+7. Determina se Verify restituisce VALID, UNKNOWN, INVALID oppure 404.
+8. Controlla se Trust Wallet sta riutilizzando una vecchia sessione WalletConnect con il precedente Project ID/origin.
+9. Verifica se nel browser/session storage/local storage esiste una sessione WC precedente.
+10. Verifica che il nuovo Project ID sia quello associato al progetto Reown corretto.
+
+NON modificare nulla. NON creare un nuovo Project ID. NON cambiare whitelist. NON fare deploy.
+
+Voglio un report con i valori tecnici necessari per individuare esattamente il mismatch, senza mostrare secret o credenziali.
+
+Questo ci dirà finalmente se il problema è Reown/Verify oppure una sessione vecchia di Trust Wallet.
+
+E sì: possiamo affrontare questo problema mentre aspettiamo il deploy di Alpha Swap, senza interferire minimamente con la parte Swap.
