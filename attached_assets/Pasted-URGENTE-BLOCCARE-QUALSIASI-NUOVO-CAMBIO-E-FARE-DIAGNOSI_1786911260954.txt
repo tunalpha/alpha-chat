@@ -1,0 +1,56 @@
+URGENTE — BLOCCARE QUALSIASI NUOVO CAMBIO E FARE DIAGNOSI UI.
+
+Dopo l'ultimo deploy, la pagina Alpha Swap su mobile è visibilmente rotta.
+
+Screenshot reale:
+- titolo "Alpha Swap" presente
+- tab "BTC / Lightning EVM" presenti ma senza styling corretto
+- "Paga" / "Ricevi" presenti
+- token e testi presenti
+- importo mostra "0"
+- campi, card, selettori, icone e pulsanti sono praticamente privi del layout/styling previsto
+- la pagina appare come HTML/testo grezzo su sfondo nero
+
+NON procedere con nuove funzionalità.
+NON modificare backend, provider, fee, wallet o payment flow.
+
+DIAGNOSI PRIORITARIA:
+
+1. Confronta SwapView.tsx / EvmSwapView.tsx / TokenSelector.tsx con l'ultima versione funzionante.
+2. Verifica se l'integrazione EVM ha introdotto:
+   - CSS/import mancanti
+   - className errate
+   - componenti UI non importati
+   - Tailwind/CSS non compilato
+   - componenti renderizzati fuori dal container/layout previsto
+   - regressione dark-mode/mobile
+   - CSS reset o global styles che sovrascrivono SwapView
+   - errore JavaScript che interrompe il rendering dopo il primo livello
+3. Controlla console browser e runtime/server logs per errori relativi a SwapView/EvmSwapView.
+4. Verifica il DOM generato della pagina.
+5. Verifica che gli asset/icon/componenti UI siano caricati.
+6. Confronta desktop e mobile.
+7. Verifica specificamente il routing:
+   BTC/Lightning deve continuare a usare il vecchio SwapView funzionante.
+   EVM deve essere isolato.
+
+TEST DI REGRESSIONE OBBLIGATORI:
+- 1226/1226 alpha-chat-web
+- 17/17 LN→BTC hardening
+- nessuna regressione BTC/Lightning
+- nessuna modifica a payment flow
+- nessuna modifica a treasury/fee wallet/sweep
+
+IMPORTANTISSIMO:
+NON "risolvere" nascondendo elementi o facendo una nuova UI semplificata.
+Ripristinare il layout previsto dall'app e mantenere il design esistente.
+
+Prima di modificare codice restituisci:
+A. Root cause esatta
+B. File responsabile
+C. perché il problema è comparso dopo il deploy
+D. fix minimo necessario
+
+Poi applica SOLO il fix necessario, testa e restituisci screenshot/verifica della pagina Swap correttamente renderizzata.
+
+NON fare un nuovo deploy senza mia approvazione.

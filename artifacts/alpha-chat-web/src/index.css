@@ -1,3 +1,11 @@
+/* ─── Tailwind v4 — DEVE stare prima di qualsiasi CSS custom ─────────────────
+   @tailwindcss/vite inietta le utility classes via virtual module in dev, ma
+   in production Rollup ha bisogno dell'import esplicito per generare il CSS.
+   Usiamo theme + utilities (senza preflight) per non sovrascrivere i reset
+   personalizzati e le classi aw-* esistenti.                                 */
+@import "tailwindcss/theme" layer(base);
+@import "tailwindcss/utilities" layer(utilities);
+
 /* ── Reset & root ──────────────────────────────────────────────────────────── */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
