@@ -1,0 +1,411 @@
+Usa come riferimento UX lo screenshot allegato in questa conversazione.
+
+NON copiarne branding, colori, logo o identità visiva. Voglio replicare il concetto di UX: semplice, pulito, immediatamente comprensibile.
+
+STRUTTURA PRINCIPALE
+
+Alpha Swap deve avere una schermata composta principalmente da due card:
+
+CARD 1 — PAGA
+
+Mostra:
+
+Paga
+
+[ icona ] Asset
+Nome asset
+Rete
+
+                     [ Importo ]
+
+Esempio:
+
+Paga
+
+₿ BTC
+Bitcoin
+
+             50.000 sats
+
+⸻
+
+CARD 2 — RICEVI
+
+Mostra:
+
+Ricevi
+
+[ icona ] Asset
+Nome asset
+Rete
+
+                     [ Importo stimato ]
+
+Esempio:
+
+Ricevi
+
+⚡ BTC
+Lightning
+
+             ≈ 49.800 sats
+
+Tra le due card inserisci un pulsante centrale con le frecce:
+
+↑↓
+
+che permette di invertire Paga/Ricevi.
+
+⸻
+
+1. SELEZIONE ASSET
+
+Cliccando sull’asset si deve aprire un selettore chiaro.
+
+L’utente deve poter vedere:
+
+* logo asset;
+* ticker;
+* nome;
+* rete;
+* saldo disponibile.
+
+Esempio:
+
+BTC
+Bitcoin
+Bitcoin Network
+
+Non mostrare informazioni tecniche inutili.
+
+⸻
+
+2. SELEZIONE RETE
+
+Per gli asset EVM, la rete deve essere chiaramente visibile.
+
+Esempio:
+
+USDC
+USD Coin
+BNB Chain
+
+oppure:
+
+USDC
+USD Coin
+Ethereum
+
+L’utente deve capire immediatamente su quale rete sta pagando e su quale rete riceverà.
+
+⸻
+
+3. IMPORTI
+
+Campo Paga:
+
+Inserisci l’importo
+
+Quando l’utente inserisce l’importo:
+
+* richiedi la quote;
+* mostra l’importo stimato ricevuto;
+* mostra fee;
+* mostra provider;
+* mostra eventuale slippage.
+
+Il campo Ricevi NON deve essere presentato come se fosse un importo garantito se la quote è variabile.
+
+Usa:
+
+≈ importo stimato
+
+quando appropriato.
+
+⸻
+
+4. PREVIEW DELLO SWAP
+
+Sotto le due card mostra una sezione compatta:
+
+Riceverai circa
+
+X TOKEN
+
+Poi:
+
+Tasso
+1 TOKEN ≈ X TOKEN
+
+Fee Alpha
+0,10% — X
+
+Fee provider
+X
+
+Slippage
+X%
+
+Se un dato non è applicabile, non mostrarlo.
+
+NON inventare valori.
+
+⸻
+
+5. CTA
+
+Un unico pulsante principale:
+
+Scambia
+
+Il pulsante deve essere:
+
+* disabilitato senza importo;
+* disabilitato se non c’è una quote valida;
+* disabilitato se la rete non è supportata;
+* disabilitato se il wallet non è connesso;
+* disabilitato durante l’esecuzione;
+* impossibile da premere due volte durante una stessa operazione.
+
+Durante l’esecuzione:
+
+Scambio in corso…
+
+⸻
+
+6. BTC ↔ LIGHTNING
+
+Il flusso BTC/Lightning deve utilizzare esattamente questa UX.
+
+Esempio:
+
+Paga
+
+₿ BTC
+Bitcoin
+
+50.000 sats
+
+↓
+
+Ricevi
+
+⚡ BTC
+Lightning
+
+≈ 49.800 sats
+
+Riceverai circa 49.800 sats
+
+Fee Alpha
+X sats
+
+Fee provider
+X sats
+
+[ Scambia ]
+
+Dopo la conferma, mostra una procedura guidata semplice.
+
+Per BTC → Lightning:
+
+1. Swap creato
+
+2. Invia BTC
+
+Mostra chiaramente l’indirizzo e l’importo.
+
+3. Pagamento rilevato
+
+4. Lightning ricevuto
+
+NON mostrare semplicemente un indirizzo senza spiegazione.
+
+⸻
+
+7. LIGHTNING → BTC
+
+Stessa UX:
+
+Paga
+
+⚡ BTC
+Lightning
+
+50.000 sats
+
+↓
+
+Ricevi
+
+₿ BTC
+Bitcoin
+
+≈ X sats
+
+Prima dell’esecuzione, chiedi chiaramente l’indirizzo BTC di destinazione.
+
+Mostra inoltre:
+
+⚠️ Il pagamento Lightning è irreversibile.
+
+Dopo il primo click su Scambia, impedisci qualsiasi doppia esecuzione.
+
+IMPORTANTE: se il backend non garantisce ancora idempotenza/recovery sicuri, NON rendere questa funzione disponibile per fondi reali. Mostrala come:
+
+Disponibilità limitata / In preparazione
+
+finché non è sicura.
+
+⸻
+
+8. EVM
+
+La stessa interfaccia deve essere utilizzata per EVM.
+
+Esempio:
+
+Paga
+
+USDA
+BNB Chain
+
+0,70
+
+↓
+
+Ricevi
+
+USDC
+Ethereum
+
+≈ X
+
+Preview:
+
+Tasso
+X
+
+Fee Alpha
+0,10%
+
+Provider
+Li.Fi
+
+Slippage
+X%
+
+[ Scambia ]
+
+MA:
+
+⚠️ NON mostrare Li.Fi come provider finché Li.Fi non è realmente integrato nel codice.
+
+L’audit precedente ha rilevato che Li.Fi attualmente non è implementato.
+
+Quindi, se l’integrazione non è ancora presente, EVM Swap deve mostrare:
+
+EVM Swap
+Scambia token tra reti EVM
+
+In arrivo
+
+e non deve effettuare transazioni simulate.
+
+⸻
+
+9. SCHERMATA INIZIALE
+
+La pagina Swap deve permettere all’utente di scegliere facilmente:
+
+Paga
+Asset + rete
+
+↓
+
+Ricevi
+Asset + rete
+
+Non voglio più una UI dedicata esclusivamente a:
+
+BTC → ⚡ LN ⚡ → BTC
+
+La stessa architettura UI deve essere riutilizzabile per:
+
+* EVM → EVM
+* BTC → Lightning
+* Lightning → BTC
+* futuri percorsi cross-chain realmente supportati.
+
+⸻
+
+10. DESIGN
+
+Mantieni il design Alpha Wallet:
+
+* dark;
+* elegante;
+* minimal;
+* premium;
+* mobile-first.
+
+Prendi dallo screenshot come riferimento:
+
+* card grandi;
+* asset molto evidenti;
+* importo allineato a destra;
+* frecce centrali;
+* CTA grande;
+* informazioni avanzate sotto “Mostra di più”;
+* messaggi di attenzione chiari.
+
+NON riempire la schermata di testo tecnico.
+
+L’utente deve poter capire l’operazione in pochi secondi.
+
+⸻
+
+11. REGOLA CRITICA
+
+La UI deve riflettere solo ciò che è realmente implementato.
+
+Non creare:
+
+* quote finte;
+* provider finti;
+* transazioni simulate;
+* integrazioni Li.Fi fittizie;
+* percorsi EVM non implementati.
+
+Prima di attivare una modalità verifica il backend reale.
+
+⸻
+
+12. FEE
+
+Non modificare autonomamente le fee.
+
+L’audit ha rilevato che BTC → Lightning usa attualmente 25 bps (0,25%), mentre l’obiettivo previsto per Alpha è 0,10%.
+
+Mantieni la configurazione attuale durante questo lavoro e segnala la discrepanza separatamente.
+
+Non cambiare wallet di raccolta fee.
+
+⸻
+
+13. OUTPUT
+
+Prima di fare deploy:
+
+1. mostra la nuova struttura UI;
+2. elenca i file modificati;
+3. indica quali modalità sono realmente operative;
+4. indica quali modalità sono “In arrivo”;
+5. esegui tutti i test disponibili;
+6. verifica mobile iOS;
+7. verifica che non esistano doppie esecuzioni;
+8. NON fare deploy automatico.
+
+Obiettivo finale:
+
+Alpha Swap deve sembrare una funzione semplice come quella dello screenshot: l’utente sceglie cosa paga, cosa riceve, inserisce l’importo, vede quanto riceverà e preme “Scambia”. Tutta la complessità blockchain deve rimanere dietro le quinte.

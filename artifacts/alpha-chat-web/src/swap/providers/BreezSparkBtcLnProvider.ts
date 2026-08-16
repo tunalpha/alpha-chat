@@ -2,18 +2,18 @@
  * BreezSparkBtcLnProvider — Lightning → BTC on-chain (FALLBACK TEMPORANEO)
  *
  * Provider Breez Spark SDK per la direzione Lightning→BTC.
- * Usa il reverse submarine swap interno del Breez SDK (send a BTC address).
  *
- * ISOLAMENTO CRITICO:
- * - Zero modifiche a Spark payments normali, fee collection, treasury, WalletConnect
- * - Chiama SOLO la callback `executeSwap` iniettata dall'esterno
- * - SparkFeeBreakdown / SparkSendResult NON importati in questo file
+ * HARDENING v2:
+ *   - Lock anti-double-payment (module-level _lnBtcExecuting)
+ *   - Idempotency key in sessionStorage (aw_lnbtc_ikey)
+ *   - Timeout 60s su executeSwap — previene spinner infinito
+ *   - clearIdempotencyKey() esposta per reset corretto
  *
- * FEE ALPHA = 0% TEMPORANEAMENTE
- * - Breez SDK non espone integrator fee per reverse submarine swap
- * - Fallback temporaneo — trovare provider con fee integrator prima del go-live
+ * LIMITAZIONE NOTA (documentata):
+ *   - Il pagamento Spark è sincrono ma non recuperabile dopo chiusura PWA.
+ *   - Avvisare sempre l'utente di non chiudere l'app durante il pagamento.
  *
- * L'esecuzione è client-side. Il backend registra solo il record dopo completamento.
+ * FEE ALPHA = 0% — Breez SDK non espone integrator fee per reverse submarine swap.
  */
 
 import type {
@@ -25,7 +25,11 @@ import type {
 } from "../SwapProvider.js";
 import type { SwapQuote, SwapDirection } from "../types.js";
 
-const SWAP_API = "/api/v1/swap";
+const SWAP_API    = "/api/v1/swap";
+const LNBTC_IKEY  = "aw_lnbtc_ikey";   // sessionStorage — idempotency key corrente
+
+/** Lock module-level: impedisce doppia esecuzione anche con doppio click rapido. */
+let _lnBtcExecuting = false;
 
 async function swapFetch<T>(path: string, options?: RequestInit): Promise<T> {
   const token = localStorage.getItem("ac_access_token");
@@ -51,17 +55,7 @@ async function swapFetch<T>(path: string, options?: RequestInit): Promise<T> {
  * Implementata in SwapView.tsx dove il contesto Spark è disponibile.
  */
 export interface SparkSwapExecutor {
-  /**
-   * Stima la fee del provider per inviare `amountSat` sat a `btcAddress`.
-   * Internamente chiama `sparkContext.prepareSend()`.
-   */
   estimateFee(btcAddress: string, amountSat: bigint): Promise<{ estimatedProviderFeeSat: bigint }>;
-
-  /**
-   * Esegue il pagamento: prepara + invia.
-   * Internamente chiama `sparkContext.prepareSend()` poi `sparkContext.send()`.
-   * Ritorna paymentId e feeSat effettiva.
-   */
   executeSwap(btcAddress: string, amountSat: bigint): Promise<{ paymentId: string; feeSat: bigint }>;
 }
 
@@ -87,7 +81,7 @@ export class BreezSparkBtcLnProvider implements BitcoinLightningSwapProvider {
       const est = await this.executor.estimateFee(req.btc_address, BigInt(req.from_amount_sat));
       providerFeeSat = Number(est.estimatedProviderFeeSat);
     } catch {
-      // Stima conservativa se estimateFee fallisce: 0.5% + 300 sat miner fee
+      // Stima conservativa: 0.5% + 300 sat miner fee
       providerFeeSat = Math.ceil(req.from_amount_sat * 0.005) + 300;
     }
 
@@ -98,10 +92,10 @@ export class BreezSparkBtcLnProvider implements BitcoinLightningSwapProvider {
       provider:         "breez_spark_reverse",
       from_amount_sat:  req.from_amount_sat,
       to_amount_sat:    toAmountSat,
-      alpha_fee_sat:    0,      // 0% — fallback temporaneo
-      alpha_fee_bps:    0,      // NON modifica alcun fee globale
+      alpha_fee_sat:    0,
+      alpha_fee_bps:    0,
       provider_fee_sat: providerFeeSat,
-      miner_fee_sat:    0,      // incluso nel provider_fee
+      miner_fee_sat:    0,
       total_debit_sat:  req.from_amount_sat,
       expires_at:       Date.now() + 3 * 60_000,
       provider_note:    "Fallback temporaneo. Alpha Fee = 0% su questa direzione.",
@@ -113,13 +107,41 @@ export class BreezSparkBtcLnProvider implements BitcoinLightningSwapProvider {
       throw new Error("Indirizzo BTC destinazione richiesto per LN→BTC");
     }
 
-    const amountSat = req.quote.from_amount_sat;
+    // ── Anti-double-click lock ────────────────────────────────────────────────
+    if (_lnBtcExecuting) {
+      throw new Error("Pagamento già in corso — attendi il completamento prima di riprovare.");
+    }
 
-    const result = await this.executor.executeSwap(req.btc_address, BigInt(amountSat));
+    // ── Idempotency key (sessionStorage — sopravvive solo nella sessione) ─────
+    let idempotencyKey = sessionStorage.getItem(LNBTC_IKEY);
+    if (!idempotencyKey) {
+      idempotencyKey = crypto.randomUUID();
+      sessionStorage.setItem(LNBTC_IKEY, idempotencyKey);
+    }
 
-    // Registra il record sul backend Alpha Swap (best-effort)
+    _lnBtcExecuting = true;
+    const amountSat  = req.quote.from_amount_sat;
+
     try {
-      await swapFetch("/record/lnbtc", {
+      // ── 60s timeout guard — previene spinner infinito ─────────────────────
+      const result = await Promise.race([
+        this.executor.executeSwap(req.btc_address, BigInt(amountSat)),
+        new Promise<never>((_, reject) =>
+          setTimeout(
+            () => reject(new Error(
+              "TIMEOUT: il pagamento non ha risposto entro 60 secondi. " +
+              "Verifica il tuo wallet Lightning prima di riprovare.",
+            )),
+            60_000,
+          )
+        ),
+      ]);
+
+      // ── Pulizia idempotency key (completato con successo) ─────────────────
+      sessionStorage.removeItem(LNBTC_IKEY);
+
+      // ── Registra su backend (best-effort, non blocca il risultato) ────────
+      swapFetch("/record/lnbtc", {
         method: "POST",
         body: JSON.stringify({
           from_amount_sat:         amountSat,
@@ -127,21 +149,22 @@ export class BreezSparkBtcLnProvider implements BitcoinLightningSwapProvider {
           provider_fee_sat:        Number(result.feeSat),
           spark_payment_id:        result.paymentId,
         }),
-      });
-    } catch {
-      // fire-and-forget
-    }
+      }).catch(() => { /* fire-and-forget */ });
 
-    return {
-      swap_id:          result.paymentId,
-      state:            "completed",
-      spark_payment_id: result.paymentId,
-      note:             "Pagamento Lightning inviato. BTC arriverà all'indirizzo destinazione.",
-    };
+      return {
+        swap_id:          result.paymentId,
+        state:            "completed",
+        spark_payment_id: result.paymentId,
+        note:             "Pagamento Lightning inviato. BTC arriverà all'indirizzo indicato.",
+      };
+
+    } finally {
+      _lnBtcExecuting = false;
+    }
   }
 
   async getStatus(swapId: string): Promise<StatusResult> {
-    // Breez Spark: lo swap è sincrono (completato in execute)
+    // Breez Spark: lo swap è sincrono — completato al termine di execute()
     return { swap_id: swapId, state: "completed" };
   }
 
@@ -152,5 +175,14 @@ export class BreezSparkBtcLnProvider implements BitcoinLightningSwapProvider {
     } catch {
       return false;
     }
+  }
+
+  /**
+   * Pulisce idempotency key e lock.
+   * Chiamare al reset dello swap o dopo un errore definitivo.
+   */
+  clearIdempotencyKey(): void {
+    sessionStorage.removeItem(LNBTC_IKEY);
+    _lnBtcExecuting = false;
   }
 }

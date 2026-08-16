@@ -1,0 +1,400 @@
+Voglio trasformare Alpha Swap in una funzione semplice e intuitiva per un utente normale.
+
+Prima di modificare qualsiasi cosa, leggi l’implementazione attuale dello Swap e il report dell’audit già eseguito.
+
+OBIETTIVO
+
+L’utente deve entrare in Swap e capire immediatamente:
+
+* cosa può scambiare;
+* cosa riceverà;
+* quanto sta inviando;
+* quali sono le fee;
+* quale rete sta utilizzando;
+* cosa deve fare dopo aver confermato;
+* se lo swap è realmente disponibile oppure no.
+
+NON voglio una UI tecnica o ambigua.
+
+NON mostrare semplicemente:
+
+BTC → ⚡ LN ⚡ → BTC
+
+come nella UI attuale.
+
+⸻
+
+1. NUOVA UI PRINCIPALE
+
+La pagina deve essere organizzata in modo molto semplice.
+
+Titolo:
+
+Alpha Swap
+
+Sotto il titolo, mostra una selezione chiara delle modalità disponibili:
+
+Crypto
+
+EVM Swap
+Scambia token tra reti EVM.
+
+Bitcoin
+
+BTC ↔ Lightning
+Converti Bitcoin on-chain in Lightning e viceversa.
+
+Se una funzione non è ancora implementata realmente, NON simularla.
+
+Mostra invece chiaramente:
+
+In arrivo
+
+e non permettere l’esecuzione.
+
+IMPORTANTE: non inventare funzionalità che il backend non supporta.
+
+⸻
+
+2. UI BTC ↔ LIGHTNING
+
+Quando l’utente sceglie BTC ↔ Lightning, mostra due pulsanti molto chiari:
+
+BTC → Lightning
+
+Invia BTC on-chain e ricevi Lightning
+
+Lightning → BTC
+
+Invia Lightning e ricevi BTC on-chain
+
+La direzione selezionata deve essere visivamente evidente.
+
+NON usare un singolo testo ambiguo come:
+
+BTC → ⚡ LN ⚡ → BTC
+
+⸻
+
+3. BTC → LIGHTNING
+
+Mostra:
+
+Da
+
+BTC on-chain
+
+Importo
+
+[ 0 BTC ]
+
+Sotto l’importo mostra anche il valore in satoshi quando appropriato.
+
+Poi:
+
+Ricevi
+
+⚡ Lightning
+
+Dopo l’inserimento dell’importo, mostra una preview:
+
+Riceverai circa
+X sats Lightning
+
+Fee Alpha
+X sats / X%
+
+Fee provider
+X sats
+
+Totale
+X sats
+
+Poi CTA:
+
+Calcola swap
+
+Dopo la quote, mostra chiaramente che l’utente dovrà effettuare un pagamento on-chain.
+
+Esempio UI:
+
+1. Crea swap
+2. Invia BTC all’indirizzo indicato
+3. Attendi la conferma
+4. Ricevi Lightning
+
+Quando viene creato il lockup address, mostrarlo in una card chiara con:
+
+Invia BTC a questo indirizzo
+
+[indirizzo]
+
+Importo richiesto
+
+[X sats]
+
+e pulsante:
+
+Copia indirizzo
+
+Non mostrare l’indirizzo senza spiegare cosa deve farci l’utente.
+
+⸻
+
+4. LIGHTNING → BTC
+
+Mostra:
+
+Da
+
+⚡ Lightning
+
+Importo
+
+[ 0 sats ]
+
+Ricevi
+
+BTC on-chain
+
+Indirizzo Bitcoin di destinazione
+
+[ indirizzo BTC ]
+
+Mostra la preview:
+
+Riceverai circa
+X sats BTC
+
+Fee provider
+X sats
+
+Fee Alpha
+X sats / X%
+
+Totale
+X sats
+
+CTA:
+
+Calcola swap
+
+Prima dell’esecuzione mostra chiaramente:
+
+Attenzione
+Il pagamento Lightning è irreversibile.
+
+Dopo la conferma, la CTA deve diventare:
+
+Conferma e invia
+
+Durante l’esecuzione:
+
+Pagamento in corso…
+
+La CTA deve essere disabilitata per impedire doppio click.
+
+⸻
+
+5. FEE
+
+La UI deve mostrare sempre le fee prima della conferma.
+
+NON nascondere le fee.
+
+NON mostrare percentuali diverse da quelle realmente configurate nel backend.
+
+Prima di modificare qualsiasi fee, verifica la configurazione attuale.
+
+L’obiettivo commerciale previsto è 0,10%, ma NON cambiare automaticamente la configurazione: se il codice attuale utilizza 0,25%, segnala la discrepanza nel report finale e aspetta una decisione separata.
+
+⸻
+
+6. EVM SWAP
+
+Verifica prima l’implementazione reale.
+
+Se EVM Swap non è ancora implementato, crea la UI predisposta ma NON simulare uno swap.
+
+La UI può mostrare:
+
+EVM Swap
+
+“Scambia token tra reti EVM”
+
+ma se il backend non è operativo deve apparire:
+
+In arrivo
+
+e il pulsante di esecuzione deve essere disabilitato.
+
+NON creare mock transaction.
+
+NON creare una falsa quote.
+
+NON far credere all’utente che Li.Fi sia già operativo se non è realmente integrato.
+
+⸻
+
+7. LI.FI
+
+Non dichiarare Li.Fi “integrato” se il codice non lo utilizza realmente.
+
+Se l’integrazione Li.Fi è ancora assente:
+
+* NON inventare endpoint;
+* NON creare fake quote;
+* NON creare fake transaction;
+* NON mostrare EVM swap come operativo.
+
+Nel report finale indica chiaramente cosa serve per completare l’integrazione reale.
+
+⸻
+
+8. SICUREZZA LIGHTNING → BTC
+
+Prima di dichiarare questa direzione pronta per fondi reali, correggi i problemi già identificati:
+
+* impedire doppio click/doppio pagamento;
+* introdurre idempotenza;
+* persistere lo stato;
+* gestire chiusura/riapertura della PWA;
+* gestire timeout;
+* permettere recovery;
+* garantire che la history venga aggiornata;
+* impedire che la stessa operazione venga eseguita due volte.
+
+NON modificare BTC → Lightning se non necessario.
+
+⸻
+
+9. STATI UI
+
+Ogni operazione deve avere stati chiari:
+
+Preparazione
+
+Quote disponibile
+
+Conferma richiesta
+
+In attesa del pagamento
+
+Pagamento rilevato
+
+In elaborazione
+
+Completato
+
+Errore
+
+Rimborso / assistenza, se applicabile.
+
+MAI lasciare uno spinner infinito senza spiegazione.
+
+Ogni stato deve avere un messaggio comprensibile a un utente normale.
+
+⸻
+
+10. DESIGN
+
+Mantieni il design attuale dark/premium di Alpha Wallet, ma rendilo molto più leggibile.
+
+Priorità:
+
+1. importo;
+2. asset di origine;
+3. asset di destinazione;
+4. quantità ricevuta;
+5. fee;
+6. stato;
+7. prossima azione.
+
+Riduci testo tecnico.
+
+Usa card e sezioni separate.
+
+La schermata deve essere comprensibile anche da un utente che non conosce Boltz, Breez, Lightning, Li.Fi o blockchain.
+
+⸻
+
+11. RESPONSIVE
+
+La UI deve funzionare perfettamente su:
+
+* iPhone/PWA;
+* Android;
+* mobile browser;
+* desktop.
+
+Particolare attenzione a:
+
+* tastiera iOS;
+* input numerici;
+* pulsanti facilmente cliccabili;
+* indirizzi lunghi;
+* QR/copia indirizzo quando appropriato;
+* scrolling durante la procedura;
+* dark mode.
+
+⸻
+
+12. REGOLA FONDAMENTALE
+
+NON fare un semplice restyling cosmetico.
+
+La UI deve riflettere lo stato reale del backend.
+
+Se una funzione è:
+
+🟢 realmente operativa → mostrarla come disponibile.
+
+🟡 operativa ma non sicura per fondi reali → non consentire l’uso reale finché non sono applicate le protezioni necessarie.
+
+🔴 non implementata → mostrarla come “In arrivo”, senza simulazioni.
+
+⸻
+
+13. TEST
+
+Dopo le modifiche esegui:
+
+* test esistenti;
+* test BTC → Lightning;
+* test Lightning → BTC;
+* test doppio click;
+* test refresh durante swap;
+* test chiusura PWA durante swap;
+* test recovery;
+* test quote;
+* test errore provider;
+* test responsive mobile.
+
+Non fare deploy automaticamente.
+
+⸻
+
+OUTPUT FINALE
+
+Prima del deploy restituisci:
+
+1. screenshot/descrizione della nuova UI;
+2. elenco dei file modificati;
+3. cosa è stato modificato nel frontend;
+4. cosa è stato modificato nel backend;
+5. quali funzioni sono realmente operative;
+6. quali sono ancora “In arrivo”;
+7. risultati dei test;
+8. eventuali rischi rimasti.
+
+IMPORTANTE:
+
+Non modificare arbitrariamente fee, provider, wallet di destinazione o configurazioni finanziarie.
+
+Non inventare integrazioni Li.Fi.
+
+Non dichiarare operativo EVM Swap finché non esiste un’integrazione reale.
+
+L’obiettivo principale di questo lavoro è:
+
+Alpha Swap deve essere semplice da capire, sicuro da usare e trasparente su ciò che è realmente disponibile.
