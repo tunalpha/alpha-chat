@@ -1,0 +1,152 @@
+PROCEDI CON L'IMPLEMENTAZIONE EVM LI.FI.
+
+Configurazione LI.FI già verificata con dati reali:
+- Integrator string: alpha-chat
+- Integration: ATTIVA
+- Default EVM receiver: CONFIGURATO
+- Fee collection: ATTIVA
+- Alpha fee: 0,25% = 25 bps
+- fee=0.0025 accettato dalla API
+- Quote reale verificata: alpha-chat share = 25 bps
+- Fee Forwarder LI.FI: attivo
+- API key/UUID: ESCLUSIVAMENTE server-side, MAI nel frontend e MAI nei log
+
+OBIETTIVO
+Implementare EVM Swap con LI.FI mantenendo completamente separato il sistema BTC/Lightning.
+
+CHAIN SUPPORTATE
+- Ethereum 1
+- Polygon 137
+- BSC 56
+
+TOKEN già supportati dal progetto:
+- Ethereum: ETH, USDT, USDC
+- Polygon: POL, USDA, USDT, USDC
+- BSC: BNB, USDT, USDC
+
+ARCHITETTURA
+Creare:
+src/swap/evm/
+  types.ts
+  lifi-client.ts
+  useEvmSwapState.ts
+  EvmSwapView.tsx
+  TokenSelector.tsx
+
+Backend:
+api-server/src/services/swap/evm-swap.service.ts
+api-server/src/routes/swap/evm-swap.routes.ts
+
+INTEGRAZIONE
+Usare @lifi/sdk.
+Integrare con ThirdWeb v5 tramite l'adapter viem già presente.
+Non sostituire ThirdWeb/WalletConnect.
+
+FEE
+Usare l'integrator:
+alpha-chat
+
+Usare fee:
+0.0025
+
+La fee Alpha deve essere raccolta tramite il meccanismo LI.FI ufficiale.
+NON implementare una seconda fee on-chain.
+NON fare trasferimenti manuali della fee.
+NON modificare ETHEREUM_FEE_WALLET, POLYGON_FEE_WALLET o BSC_FEE_WALLET.
+
+SICUREZZA
+Mantenere:
+- anti-double-click module-level lock
+- idempotency key
+- verifica chain prima della firma
+- verifica account prima/durante l'esecuzione
+- quote expiry
+- allowance/approval ERC-20
+- recovery dopo refresh/background
+- write-before-submit
+- reconciler
+- gestione action_required
+
+API key LI.FI:
+- se necessaria, conservarla esclusivamente in Replit Secrets/server-side
+- mai processarla nel frontend
+- mai stamparla nei log
+- mai inserirla nel repository
+- mai restituirla tramite API response
+
+UI
+Aggiungere nella SwapView una tab separata:
+BTC / Lightning | EVM
+
+Il flusso BTC/Lightning deve rimanere invariato.
+
+STATE MACHINE EVM
+idle
+→ quoting
+→ quoted
+→ approving
+→ signing
+→ submitted
+→ pending
+→ completed
+
+Errori:
+failed
+action_required
+
+RECOVERY
+Persistenza localStorage:
+aw_evm_swap_active
+
+Al mount, se esiste una swap attiva:
+- recuperare lo status LI.FI
+- non creare una nuova transazione
+- mostrare lo stato reale
+- consentire recovery/azione richiesta quando necessario
+
+LIMITI IMPORTANTI
+NON modificare:
+- BoltzBtcLnProvider.ts
+- BreezSparkBtcLnProvider.ts
+- useSwapState.ts
+- SwapProvider.ts
+- SwapRouter.ts
+- payment flow principale
+- treasury
+- fee wallet
+- sweep
+- USDA
+- BTC on-chain
+
+TEST
+Prima di considerare il lavoro completo:
+1. test quote same-chain
+2. test quote cross-chain
+3. test ETH/native
+4. test ERC-20 con allowance sufficiente
+5. test ERC-20 con approval necessario
+6. test rejection firma
+7. test cambio account
+8. test cambio chain
+9. test quote scaduta
+10. test doppio click
+11. test recovery dopo refresh
+12. test action_required
+13. verifica fee 0.25%
+14. verifica che la fee non venga duplicata
+
+Poi eseguire obbligatoriamente la regression completa:
+1177/1177 test esistenti.
+
+NON fare deploy automatico.
+
+Alla fine restituisci:
+- file modificati
+- architettura finale
+- test EVM
+- regression BTC/Lightning
+- verifica fee 25 bps
+- eventuali rischi residui
+- conferma che nessun payment flow esistente è stato modificato.
+
+Fermati prima del deploy e attendi la mia approvazione.

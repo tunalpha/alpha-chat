@@ -123,4 +123,10 @@ v1Router.use("/lightning/invoice-links", lightningRoutes);
 import swapRoutes from "./swap.routes";
 v1Router.use("/swap", swapRoutes);
 
+// Alpha Swap — EVM (Li.Fi) — completamente separato da BTC/Lightning.
+// Fee 0.25% raccolta tramite Li.Fi Fee Forwarder (integrator: alpha-chat).
+// NON modifica fee wallet, NON tocca payment engine esistente.
+import evmSwapRoutes from "./evm-swap.routes";
+v1Router.use("/swap/evm", evmSwapRoutes);
+
 export default v1Router;

@@ -36,6 +36,10 @@ import { useSwapState }                  from "./useSwapState.js";
 import type {
   SwapDirection, SwapPublicConfig, SwapState, SwapQuote, SwapError,
 } from "./types.js";
+import { EvmSwapView }                   from "./evm/EvmSwapView.js";
+
+// ── Tab type ──────────────────────────────────────────────────────────────────
+type SwapTab = "btcln" | "evm";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
@@ -622,19 +626,6 @@ function SwapMainForm({ sv, actions, config }: SwapMainFormProps) {
           </p>
         )}
 
-        {/* ── EVM placeholder ────────────────────────────────────────────── */}
-        <div className="border border-border/20 rounded-2xl p-4 mt-4">
-          <div className="flex items-center justify-between mb-1.5">
-            <p className="font-semibold text-sm">EVM Swap</p>
-            <span className="text-xs bg-muted/50 text-muted-foreground px-2.5 py-0.5 rounded-full border border-border/20">
-              In arrivo
-            </span>
-          </div>
-          <p className="text-xs text-muted-foreground leading-relaxed">
-            Scambia token tra reti EVM (Polygon, BSC, Ethereum, BNB Chain).
-            Disponibile dopo l'integrazione Li.Fi.
-          </p>
-        </div>
 
       </div>
     </div>
@@ -650,6 +641,7 @@ interface SwapViewProps {
 export function SwapView({ onBack }: SwapViewProps) {
   const spark = useSparkWallet();
 
+  const [activeTab, setActiveTab]   = useState<SwapTab>("btcln");
   const [config, setConfig]         = useState<SwapPublicConfig | null>(null);
   const [cfgLoading, setCfgLoading] = useState(true);
   const [cfgError, setCfgError]     = useState<string | null>(null);
@@ -752,17 +744,35 @@ export function SwapView({ onBack }: SwapViewProps) {
 
   // ── Shared header ───────────────────────────────────────────────────────────
   const Header = (
-    <div className="flex items-center gap-3 px-4 py-4 border-b border-border/30 shrink-0">
-      {onBack && (
-        <button
-          onClick={() => { actions.reset(); onBack(); }}
-          className="p-2 rounded-xl hover:bg-muted/50 transition-colors"
-          aria-label="Indietro"
-        >
-          <ChevronDown className="w-5 h-5 rotate-90" />
-        </button>
-      )}
-      <span className="font-bold text-lg">Alpha Swap</span>
+    <div className="border-b border-border/30 shrink-0">
+      <div className="flex items-center gap-3 px-4 py-4">
+        {onBack && (
+          <button
+            onClick={() => { actions.reset(); onBack(); }}
+            className="p-2 rounded-xl hover:bg-muted/50 transition-colors"
+            aria-label="Indietro"
+          >
+            <ChevronDown className="w-5 h-5 rotate-90" />
+          </button>
+        )}
+        <span className="font-bold text-lg">Alpha Swap</span>
+      </div>
+      {/* Tab switcher */}
+      <div className="flex px-4 pb-0 gap-1">
+        {([ ["btcln", "BTC / Lightning"], ["evm", "EVM"] ] as const).map(([tab, label]) => (
+          <button
+            key={tab}
+            onClick={() => setActiveTab(tab)}
+            className={`flex-1 py-2 text-sm font-semibold rounded-t-xl transition-colors border-b-2
+              ${activeTab === tab
+                ? "border-primary text-primary"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+              }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
     </div>
   );
 
@@ -874,7 +884,17 @@ export function SwapView({ onBack }: SwapViewProps) {
     );
   }
 
-  // ── Main form ───────────────────────────────────────────────────────────────
+  // ── EVM tab ─────────────────────────────────────────────────────────────────
+  if (activeTab === "evm") {
+    return (
+      <div className="flex flex-col h-full">
+        {Header}
+        <EvmSwapView onBack={onBack} />
+      </div>
+    );
+  }
+
+  // ── Main form (BTC/Lightning) ────────────────────────────────────────────────
   return (
     <div className="flex flex-col h-full">
       {Header}

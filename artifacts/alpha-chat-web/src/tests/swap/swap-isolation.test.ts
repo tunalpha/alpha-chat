@@ -12,6 +12,27 @@
 
 import { describe, it, expect, vi, beforeEach } from "vitest";
 
+// Mock librerie pesanti trascinate da SwapView → EvmSwapView → useEvmSwapState
+// (ThirdWeb, Li.Fi SDK) che causano timeout nel test isolation del barrel.
+vi.mock("thirdweb/react", () => ({
+  useActiveAccount:          vi.fn(),
+  useActiveWallet:           vi.fn(),
+  useActiveWalletChain:      vi.fn(),
+  useSwitchActiveWalletChain: vi.fn(),
+}));
+vi.mock("thirdweb/adapters/viem", () => ({
+  viemAdapter: { walletClient: { toViem: vi.fn() } },
+}));
+vi.mock("thirdweb", () => ({
+  defineChain:    vi.fn(),
+  createThirdwebClient: vi.fn(),
+}));
+vi.mock("@lifi/sdk", () => ({
+  createConfig: vi.fn(),
+  EVM:          vi.fn().mockReturnValue({}),
+  executeRoute: vi.fn(),
+}));
+
 // ── 1. SWAP_ENABLED = false guard ─────────────────────────────────────────────
 
 describe("SWAP_ENABLED = false guard", () => {

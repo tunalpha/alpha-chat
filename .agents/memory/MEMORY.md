@@ -99,6 +99,7 @@
 - [Spark Fee Wallet Sweep System](spark-fee-wallet-sweep.md) — auto/manual sweep fee wallet→treasury; lock MongoDB; reconcile on restart; 19/19 test PASS; auto_sweep_enabled=false default
 - [Alpha Spark Fee Wallet](spark-fee-wallet.md) — ledger-based (no SDK Node.js); 6 endpoint /fee-wallet/*; spark1/sprt1 address format; vi.resetAllMocks() per test Once queue
 - [Alpha Swap V1 — BTC↔Lightning](alpha-swap-v1.md) — provider-swappable isolato; Boltz 25bps BTC→LN; Spark fallback 0% LN→BTC; SWAP_ENABLED=false; hardening completato (vedi alpha-swap-v1-hardening.md)
+- [Alpha Swap V2 — EVM Li.Fi](alpha-swap-v2-evm.md) — integrator alpha-chat (con trattino); fee 0.0025 (25bps) via Fee Forwarder; thirdweb.ts esporta `client` non `thirdwebClient`; vi.mock @lifi/sdk obbligatorio nei test
 - [Alpha Swap V1 Hardening](alpha-swap-v1-hardening.md) — refund key HMAC-SHA256 server-side; write-before-submit; idempotency_key UUID; reconciler 30s; GET /active recovery; 63 test T1-T20 PASS
 - [Breez Spark SDK Node.js API](spark-sdk-nodejs-api.md) — connect() con Seed (non connectWithSigner); sparkAddress da receivePayment().paymentRequest; getInfo NON ha sparkAddress; prefisso mainnet = spark1
 - [TX Monitor Hardening](tx-monitor-hardening.md) — silent checkpoint advancement bug; chain supportate; guard "0x0" e Alchemy error; bottone 🔄; 1003 test PASS
