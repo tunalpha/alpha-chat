@@ -45,14 +45,30 @@ const MIME = {
 // ── Server ────────────────────────────────────────────────────────────────────
 
 const server = createServer((req, res) => {
+  const url = (req.url ?? "/").split("?")[0];
+
+  // ── WalletConnect domain verification ────────────────────────────────────────
+  // https://docs.walletconnect.com/cloud/verify
+  // Il file /.well-known/walletconnect.txt deve contenere esattamente il Project ID.
+  // Il verify server di WalletConnect legge questo file per marcare il dominio come valido
+  // ed eliminare l'avviso "Dominio non valido" / "Impossibile verificare" in Trust Wallet.
+  if (url === "/.well-known/walletconnect.txt") {
+    const projectId = process.env["VITE_WALLETCONNECT_PROJECT_ID"] ?? "";
+    res.writeHead(200, {
+      "Content-Type":                "text/plain; charset=utf-8",
+      "Cache-Control":               "no-cache",
+      "Access-Control-Allow-Origin": "*",
+    });
+    res.end(projectId + "\n");
+    return;
+  }
+
   // COOP/COEP — obbligatori per crossOriginIsolated=true su iOS Safari PWA.
   // Senza questi headers: SharedArrayBuffer non disponibile → Breez SDK WASM fallisce.
   res.setHeader("Cross-Origin-Opener-Policy",  "same-origin");
   res.setHeader("Cross-Origin-Embedder-Policy", "require-corp");
   // Permetti il preview iframe di Replit (non blocca il proxy embed)
   res.setHeader("X-Frame-Options",              "SAMEORIGIN");
-
-  const url     = (req.url ?? "/").split("?")[0];
   const cleaned = url.replace(/\.\.+/g, "").replace(/\/+/g, "/"); // path traversal guard
   const abs     = join(PUBLIC, cleaned);
 
