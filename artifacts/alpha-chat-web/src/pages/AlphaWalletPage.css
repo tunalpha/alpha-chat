@@ -411,6 +411,7 @@
   border: 1.5px solid;
   cursor: pointer;
   user-select: none;
+  margin-left: auto;
 }
 .aw-network-dot { font-size: 10px; line-height: 1; }
 .aw-network-pill-label { white-space: nowrap; }
