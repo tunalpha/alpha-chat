@@ -185,6 +185,7 @@ function AlphaWalletInner({ onBack }: Props) {
   const [pendingPin, setPendingPin] = useState<string>("");
   const [flowType, setFlowType] = useState<"create" | "import">("create");
   const [selectedTokenInfo, setSelectedTokenInfo] = useState<TokenDetailInfo | null>(null);
+  const [historyFilterSymbol, setHistoryFilterSymbol] = useState<string | undefined>(undefined);
 
   const handleSelectToken = (token: TokenDetailInfo) => {
     setSelectedTokenInfo(token);
@@ -276,7 +277,7 @@ function AlphaWalletInner({ onBack }: Props) {
             onBack={() => { setSelectedTokenInfo(null); setSubView("overview"); }}
             onSend={() => setSubView("send")}
             onReceive={() => setSubView("receive")}
-            onHistory={() => setSubView("history")}
+            onHistory={() => { setHistoryFilterSymbol(selectedTokenInfo.symbol); setSubView("history"); }}
           />
         ) : null;
       case "notifications":
@@ -286,7 +287,10 @@ function AlphaWalletInner({ onBack }: Props) {
       case "security":
         return <SecurityView onBack={() => setSubView("overview")} onForget={onBack} onExportSeed={() => setSubView("seed-export")} onExportSeedLightning={() => setSubView("seed-export-lightning")} onLockAndExit={onBack} />;
       case "history":
-        return <HistoryView onBack={() => setSubView("overview")} />;
+        return <HistoryView
+          onBack={() => { setHistoryFilterSymbol(undefined); setSubView("overview"); }}
+          filterSymbol={historyFilterSymbol}
+        />;
       case "seed-export":
         return <SeedExportView onBack={() => setSubView("security")} />;
       case "seed-export-lightning":
@@ -767,7 +771,7 @@ function UnlockView({ onExit }: { onExit?: () => void }) {
 // OVERVIEW (Phase C — real balances)
 // ═══════════════════════════════════════════════════════════════════════════
 
-function OverviewView({ onNavigate, onSelectToken }: { onNavigate: (v: WalletSubView) => void; onSelectToken: (t: TokenDetailInfo) => void }) {
+function OverviewView({ onNavigate, onSelectToken }: { onNavigate: (v: WalletSubView) => void; onSelectToken?: (t: TokenDetailInfo) => void }) {
   const wallet = useWallet();
   const { currency } = useWalletCurrency();
   const meta = wallet.meta;
@@ -982,25 +986,35 @@ function OverviewView({ onNavigate, onSelectToken }: { onNavigate: (v: WalletSub
         // Lightning: mostra solo il saldo BTC Lightning dal Spark SDK
         // NON mostrare saldi EVM/BNB/BTC on-chain
         <div className="aw-asset-list">
-          {sparkConnected && sparkBalance !== null ? (
-            <div className="aw-asset-item">
-              <div className="aw-asset-icon"><CoinIcon symbol="BTC" badge="⚡" /></div>
-              <div className="aw-asset-info">
-                <div className="aw-asset-symbol">BTC</div>
-                <div className="aw-asset-network">Bitcoin Lightning</div>
+          {sparkConnected && sparkBalance !== null ? (() => {
+            const lnFiatStr = (prices && totalFiatRaw !== null && totalFiatRaw > 0)
+              ? new Intl.NumberFormat(currency === "EUR" ? "it-IT" : "en-US", { style: "currency", currency, maximumFractionDigits: 2 }).format(totalFiatRaw)
+              : null;
+            const lnToken: TokenDetailInfo = {
+              symbol: "BTC", name: "Bitcoin Lightning", chainId: -1,
+              isNative: true, decimals: 8, balance: sparkBalance, fiatStr: lnFiatStr, verified: true,
+            };
+            return (
+              <div
+                className={`aw-asset-item${onSelectToken ? " aw-asset-item--tappable" : ""}`}
+                role={onSelectToken ? "button" : undefined}
+                tabIndex={onSelectToken ? 0 : undefined}
+                onClick={() => onSelectToken?.(lnToken)}
+                onKeyDown={e => e.key === "Enter" && onSelectToken?.(lnToken)}
+              >
+                <div className="aw-asset-icon"><CoinIcon symbol="BTC" badge="⚡" /></div>
+                <div className="aw-asset-info">
+                  <div className="aw-asset-symbol">BTC</div>
+                  <div className="aw-asset-network">Bitcoin Lightning</div>
+                </div>
+                <div className="aw-asset-balance">
+                  <div className="aw-asset-amount">{formatSatoshisToBtc(sparkBalance)}</div>
+                  {lnFiatStr && <div className="aw-asset-fiat">{lnFiatStr}</div>}
+                </div>
+                {onSelectToken && <span className="aw-asset-chevron">›</span>}
               </div>
-              <div className="aw-asset-balance">
-                <div className="aw-asset-amount">{formatSatoshisToBtc(sparkBalance)}</div>
-                {prices && totalFiatRaw !== null && totalFiatRaw > 0 && (
-                  <div className="aw-asset-fiat">
-                    {new Intl.NumberFormat(currency === "EUR" ? "it-IT" : "en-US", {
-                      style: "currency", currency, maximumFractionDigits: 2,
-                    }).format(totalFiatRaw)}
-                  </div>
-                )}
-              </div>
-            </div>
-          ) : (
+            );
+          })() : (
             <div className="aw-asset-item"
               style={{ justifyContent: "center", color: "rgba(255,255,255,0.45)", fontSize: "0.85rem", padding: "1rem" }}>
               ⚠️ Lightning non disponibile
@@ -1698,8 +1712,8 @@ function TokenDetailView({ token, onBack, onSend, onReceive, onHistory }: TokenD
         {token.fiatStr && <div className="aw-token-detail-fiat">≈ {token.fiatStr}</div>}
       </div>
 
-      {/* Action buttons */}
-      <div className="aw-actions" style={{ marginTop: 8 }}>
+      {/* Action buttons — 3 col (non 4) per allinearsi alla card superiore */}
+      <div className="aw-actions aw-actions--3col" style={{ marginTop: 8 }}>
         <button className="aw-action-btn" onClick={onSend}>
           <svg viewBox="0 0 24 24" fill="none" width="26" height="26" stroke="#8b5cf6" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <circle cx="12" cy="12" r="10"/>
@@ -4005,13 +4019,14 @@ function WalletSettingsView({
 
 type TxFilter = "all" | "in" | "out" | "pending";
 
-function HistoryView({ onBack }: { onBack: () => void }) {
+function HistoryView({ onBack, filterSymbol }: { onBack: () => void; filterSymbol?: string }) {
   const wallet = useWallet();
   // Finding 7: accesso a Spark per riconciliazione IDB ↔ SDK
   const spark = useSparkWalletOptional();
 
   // Tab di primo livello: on-chain vs Lightning
-  // Default: Lightning se il chain selezionato è -1, altrimenti on-chain
+  // Default: Lightning se il chain selezionato è -1, altrimenti on-chain.
+  // Se filterSymbol viene da un token Lightning (chainId=-1), forza Lightning.
   const [mainTab, setMainTab] = useState<"onchain" | "lightning">(
     wallet.selectedChainId === -1 ? "lightning" : "onchain"
   );
@@ -4242,6 +4257,8 @@ function HistoryView({ onBack }: { onBack: () => void }) {
   }
 
   const filtered = wallet.txHistory.filter(tx => {
+    // Token filter from Token Detail view
+    if (filterSymbol && tx.asset !== filterSymbol) return false;
     if (filter === "all") return true;
     if (filter === "in") return tx.direction === "in" && tx.status !== "pending";
     if (filter === "out") return tx.direction === "out" && tx.status !== "pending";
@@ -4255,6 +4272,15 @@ function HistoryView({ onBack }: { onBack: () => void }) {
   return (
     <div className="aw-history">
       {tabBar}
+      {/* Chip filtro token attivo — mostrato solo quando si viene da Token Detail */}
+      {filterSymbol && (
+        <div style={{ padding: "6px 16px 0", display: "flex", alignItems: "center", gap: 6 }}>
+          <span style={{ fontSize: 12, color: "rgba(255,255,255,.5)" }}>Filtro:</span>
+          <span className="aw-filter-chip aw-filter-chip--active" style={{ display: "flex", alignItems: "center", gap: 4 }}>
+            {filterSymbol}
+          </span>
+        </div>
+      )}
       <div className="aw-history-filters" style={{ display: "flex", alignItems: "center", gap: 6 }}>
         {(["all", "in", "out", "pending"] as TxFilter[]).map(f => (
           <button

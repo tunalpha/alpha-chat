@@ -1825,3 +1825,6 @@
   padding-left: 4px;
   line-height: 1;
 }
+
+/* ── Token Detail — 3 bottoni (invece di 4) ──────────────────────────────── */
+.aw-actions--3col { grid-template-columns: repeat(3, 1fr); }
