@@ -2391,6 +2391,23 @@ function SendView({ onBack, onSuccess }: { onBack: () => void; onSuccess: () => 
   // Send form state
   const [step, setStep]                 = useState<SendStep>("form");
   const [assetIdx, setAssetIdx]         = useState(0);
+
+  // Auto-select USDA as default on Polygon (chainId 137).
+  // Fires when chainBalance loads or chain changes.
+  useEffect(() => {
+    if (chainId === 137 && chainBalance) {
+      const usdaTokenIdx = chainBalance.tokens.findIndex(t => t.symbol === "USDA");
+      // assets = [native(0), ...tokens]; token i → index i+1
+      setAssetIdx(usdaTokenIdx >= 0 ? usdaTokenIdx + 1 : 0);
+    } else {
+      setAssetIdx(0);
+    }
+    setAmountStr("");
+    setAmountErr(null);
+    setInputMode("crypto");
+    setPendingRaw(null);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chainId, chainBalance]);
   const [recipient, setRecipient]       = useState("");
   const [amountStr, setAmountStr]       = useState("");
   const [inputMode, setInputMode]       = useState<"crypto" | "eur" | "usd">("crypto");
