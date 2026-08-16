@@ -105,6 +105,19 @@ export const VERIFIED_TOKENS: TokenConfig[] = [
   },
   {
     chainId: 137,
+    symbol: "USDA",
+    name: "USDA Stablecoin",
+    decimals: 18,
+    // Indirizzo verificato: corrisponde a USDA_CONTRACT_ADDRESS in src/lib/thirdweb.ts
+    // ⚠️ Nota: l'indirizzo ha 39 hex chars (non 40 standard EVM). È il valore
+    // usato da tutto il sistema USDA esistente — non modificare senza verifica on-chain.
+    contractAddress: USDA_POLYGON_ADDRESS,
+    standard: "ERC-20",
+    explorerUrl: "https://polygonscan.com",
+    verification: "verified",
+  },
+  {
+    chainId: 137,
     symbol: "USDT",
     name: "Tether USD",
     decimals: 6,
@@ -123,19 +136,6 @@ export const VERIFIED_TOKENS: TokenConfig[] = [
     standard: "ERC-20",
     explorerUrl: "https://polygonscan.com",
     coingeckoId: "usd-coin",
-    verification: "verified",
-  },
-  {
-    chainId: 137,
-    symbol: "USDA",
-    name: "USDA Stablecoin",
-    decimals: 18,
-    // Indirizzo verificato: corrisponde a USDA_CONTRACT_ADDRESS in src/lib/thirdweb.ts
-    // ⚠️ Nota: l'indirizzo ha 39 hex chars (non 40 standard EVM). È il valore
-    // usato da tutto il sistema USDA esistente — non modificare senza verifica on-chain.
-    contractAddress: USDA_POLYGON_ADDRESS,
-    standard: "ERC-20",
-    explorerUrl: "https://polygonscan.com",
     verification: "verified",
   },
 
