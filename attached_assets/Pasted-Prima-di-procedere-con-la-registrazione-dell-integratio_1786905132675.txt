@@ -1,0 +1,76 @@
+Prima di procedere con la registrazione dell'integration LI.FI, STOP e verifica esattamente come funziona la schermata "Add wallets to collect fees" che sto vedendo nel portale LI.FI.
+
+OBIETTIVO:
+Configurare LI.FI per Alpha Chat con fee Alpha Swap = 0,25% (25 bps), senza modificare nessuno dei wallet già esistenti nel progetto.
+
+Nel progetto esistono già:
+- ETHEREUM_FEE_WALLET
+- POLYGON_FEE_WALLET
+- BSC_FEE_WALLET
+
+La schermata LI.FI mostra:
+"Add wallets to collect fees"
+Network family: EVM — Ethereum-compatible chains
+e chiede un singolo "Wallet address".
+
+NON inserire ancora alcun indirizzo.
+NON modificare i wallet Alpha esistenti.
+NON creare nuovi wallet.
+
+Verifica tramite documentazione ufficiale LI.FI e, se possibile, tramite API/dashboard:
+
+1. Quel campo "EVM Wallet address" è:
+   - un wallet unico per tutte le EVM chain?
+   - oppure successivamente permette wallet differenti per Ethereum, Polygon e BSC?
+
+2. Se inseriamo un solo wallet EVM, le fee provenienti da:
+   - Ethereum
+   - Polygon
+   - BSC
+   vengono tutte raccolte su quello stesso wallet?
+
+3. Possiamo configurare:
+   Ethereum → ETHEREUM_FEE_WALLET
+   Polygon → POLYGON_FEE_WALLET
+   BSC → BSC_FEE_WALLET
+   oppure LI.FI impone un unico wallet EVM?
+
+4. Verifica se il wallet configurato in LI.FI può essere modificato successivamente senza cambiare l'integration string.
+
+5. Verifica esattamente come funziona la fee collection LI.FI per l'integration string "alpha-chat".
+
+6. Conferma che la fee prevista per Alpha sia 0,25% = 25 bps.
+
+7. NON creare una seconda integration.
+   L'integration string deve rimanere:
+   alpha-chat
+
+8. NON modificare:
+   - ETHEREUM_FEE_WALLET
+   - POLYGON_FEE_WALLET
+   - BSC_FEE_WALLET
+   - fee globale Alpha
+   - payment logic
+   - BTC/Lightning swap
+
+9. Voglio una risposta PRIMA di qualsiasi modifica.
+
+Restituisci esattamente:
+
+LI.FI EVM wallet model:
+→ UNICO / CHAIN-SPECIFIC / NON VERIFICABILE
+
+Wallet consigliato da inserire ora:
+→ ...
+
+Motivazione:
+→ ...
+
+Impatto sui wallet Alpha esistenti:
+→ ...
+
+Possiamo mantenere i tre fee wallet chain-specifici di Alpha?
+→ SI / NO / NON VERIFICABILE
+
+IMPORTANTE:
+Non cliccare "Save wallet" e non completare la registrazione finché questa verifica non è conclusa.
