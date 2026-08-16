@@ -145,19 +145,33 @@ export const EVM_SWAP_CHAINS: EvmChainInfo[] = [
 /** Token nativi */
 export const NATIVE_ADDRESS = "0x0000000000000000000000000000000000000000";
 
+// ── CDN logo URLs (TrustWallet assets repo — stabile, open-source) ────────────
+// Native logos
+const _TW = "https://raw.githubusercontent.com/trustwallet/assets/master/blockchains";
+const _ETH_LOGO  = `${_TW}/ethereum/info/logo.png`;
+const _POL_LOGO  = `${_TW}/polygon/info/logo.png`;
+const _BNB_LOGO  = `${_TW}/smartchain/info/logo.png`;
+// ERC-20 logos (canonical per-chain address folder)
+const _USDT_ETH  = `${_TW}/ethereum/assets/0xdAC17F958D2ee523a2206206994597C13D831ec7/logo.png`;
+const _USDC_ETH  = `${_TW}/ethereum/assets/0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48/logo.png`;
+const _USDT_POL  = `${_TW}/polygon/assets/0xc2132D05D31c914a87C6611C10748AEb04B58e8F/logo.png`;
+const _USDC_POL  = `${_TW}/polygon/assets/0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359/logo.png`;
+const _USDT_BSC  = `${_TW}/smartchain/assets/0x55d398326f99059fF775485246999027B3197955/logo.png`;
+const _USDC_BSC  = `${_TW}/smartchain/assets/0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d/logo.png`;
+
 export const EVM_SWAP_TOKENS: EvmToken[] = [
   // Ethereum (1)
-  { chainId: 1,   address: NATIVE_ADDRESS,                               symbol: "ETH",  name: "Ether",       decimals: 18, isNative: true },
-  { chainId: 1,   address: "0xdAC17F958D2ee523a2206206994597C13D831ec7", symbol: "USDT", name: "Tether USD",   decimals: 6,  isNative: false },
-  { chainId: 1,   address: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", symbol: "USDC", name: "USD Coin",     decimals: 6,  isNative: false },
+  { chainId: 1,   address: NATIVE_ADDRESS,                               symbol: "ETH",  name: "Ether",       decimals: 18, isNative: true,  logoURI: _ETH_LOGO },
+  { chainId: 1,   address: "0xdAC17F958D2ee523a2206206994597C13D831ec7", symbol: "USDT", name: "Tether USD",   decimals: 6,  isNative: false, logoURI: _USDT_ETH },
+  { chainId: 1,   address: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", symbol: "USDC", name: "USD Coin",     decimals: 6,  isNative: false, logoURI: _USDC_ETH },
   // Polygon (137)
-  { chainId: 137, address: NATIVE_ADDRESS,                               symbol: "POL",  name: "POL",          decimals: 18, isNative: true },
-  { chainId: 137, address: "0xc2132D05D31c914a87C6611C10748AEb04B58e8F", symbol: "USDT", name: "Tether USD",   decimals: 6,  isNative: false },
-  { chainId: 137, address: "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359", symbol: "USDC", name: "USD Coin",     decimals: 6,  isNative: false },
+  { chainId: 137, address: NATIVE_ADDRESS,                               symbol: "POL",  name: "POL",          decimals: 18, isNative: true,  logoURI: _POL_LOGO },
+  { chainId: 137, address: "0xc2132D05D31c914a87C6611C10748AEb04B58e8F", symbol: "USDT", name: "Tether USD",   decimals: 6,  isNative: false, logoURI: _USDT_POL },
+  { chainId: 137, address: "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359", symbol: "USDC", name: "USD Coin",     decimals: 6,  isNative: false, logoURI: _USDC_POL },
   // BSC (56) — ⚠️ USDT e USDC su BSC hanno 18 decimali
-  { chainId: 56,  address: NATIVE_ADDRESS,                               symbol: "BNB",  name: "BNB",          decimals: 18, isNative: true },
-  { chainId: 56,  address: "0x55d398326f99059fF775485246999027B3197955", symbol: "USDT", name: "Tether USD",   decimals: 18, isNative: false },
-  { chainId: 56,  address: "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d", symbol: "USDC", name: "USD Coin",     decimals: 18, isNative: false },
+  { chainId: 56,  address: NATIVE_ADDRESS,                               symbol: "BNB",  name: "BNB",          decimals: 18, isNative: true,  logoURI: _BNB_LOGO },
+  { chainId: 56,  address: "0x55d398326f99059fF775485246999027B3197955", symbol: "USDT", name: "Tether USD",   decimals: 18, isNative: false, logoURI: _USDT_BSC },
+  { chainId: 56,  address: "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d", symbol: "USDC", name: "USD Coin",     decimals: 18, isNative: false, logoURI: _USDC_BSC },
 ];
 
 export function getTokensForChain(chainId: number): EvmToken[] {

@@ -1,0 +1,122 @@
+Sì. Questa volta ci sono problemi reali e non va fatto un altro deploy così. Gli screenshot mostrano chiaramente quattro regressioni:
+
+1. Wallet già connesso → Alpha Swap dice “Connetti il wallet EVM” ❌
+    Quindi lo stato della connessione in Swap non sta leggendo correttamente lo stesso account ThirdWeb/WC già attivo nell’Alpha Wallet.
+2. Aprendo EVM la schermata va in crash / non completa il rendering ❌
+    Questo è prioritario: dobbiamo trovare l’eccezione reale, non correggerla “a intuito”.
+3. I saldi non vengono letti ❌
+    Il campo mostra 0/— invece del saldo effettivo del wallet. Deve usare l’account e la chain realmente connessi e leggere il balance on-chain.
+4. Icone crypto sbagliate ❌
+    PO, US sono fallback/testo, non le icone ufficiali dei token. Dobbiamo riutilizzare gli asset/token metadata già presenti nel progetto, non inventare loghi.
+
+Fermiamo il deploy
+
+Manderei esattamente questo all’agente Replit:
+
+Abbiamo fatto il test LIVE su iPhone dopo il deploy e ci sono regressioni reali. NON fare un nuovo deploy e NON considerare il task completato.
+
+Dagli screenshot risultano 4 problemi:
+
+1. WALLET STATE — PRIORITÀ MASSIMA
+Il wallet ThirdWeb/WalletConnect è già collegato e l’Alpha Wallet mostra correttamente l’indirizzo e il saldo POL, ma Alpha Swap EVM mostra:
+“Connetti il wallet EVM (ThirdWeb / WalletConnect) per effettuare swap.”
+
+Quindi SwapView/EvmSwapView non sta leggendo correttamente l’account già connesso.
+
+Verifica concretamente:
+
+* useActiveAccount() nel contesto reale dell’app;
+* useActiveWalletChain();
+* eventuale provider/context duplicato;
+* eventuale inizializzazione separata di ThirdWeb;
+* timing del mount/hydration;
+* differenza tra account usato da Alpha Wallet e account letto da Swap;
+* WalletConnect session già attiva.
+
+NON aggiungere un secondo pulsante “Connect wallet” come workaround.
+Se il wallet è già connesso nell’app, Swap deve riconoscerlo automaticamente.
+
+2. CRASH EVM
+Riproduci il crash entrando in:
+Alpha Wallet → Swap → EVM
+
+Recupera l’errore/stack trace reale dalla console/runtime e individua la riga responsabile.
+
+NON mascherare l’errore con optional chaining o fallback generici senza capire la root cause.
+
+Aggiungi un error boundary solo se appropriato, ma prima correggi la causa.
+
+3. BALANCE
+Dopo aver risolto l’account:
+
+* leggere il saldo nativo della chain attiva;
+* leggere i saldi ERC-20 dei token disponibili;
+* aggiornare il saldo quando cambia chain/account;
+* MAX deve usare il saldo reale;
+* non mostrare 0 se il dato non è ancora stato caricato: distinguere loading da saldo zero.
+
+Per il test live il wallet mostrava già circa 27 POL su Polygon, quindi Polygon/POL deve essere rilevato e il saldo deve comparire.
+
+4. TOKEN ICONS
+Le icone attuali PO e US sono fallback e NON sono accettabili.
+
+Cercare nel progetto gli asset/metadata/token icons già usati dall’Alpha Wallet e riutilizzare quelli.
+
+Devono essere visualizzati correttamente almeno:
+
+* POL
+* USDC
+* ETH
+* USDT
+* BNB
+    e gli altri token già supportati.
+
+Non creare loghi testuali tipo PO / US.
+
+5. NON TOCCARE BTC/LIGHTNING
+BoltzBtcLnProvider.ts, BreezSparkBtcLnProvider.ts, useSwapState.ts e il relativo hardening rimangono invariati salvo modifiche strettamente necessarie per il routing condiviso.
+
+6. REGRESSION TEST OBBLIGATORI
+Prima di dichiarare concluso:
+
+* test account già connesso;
+* test account non connesso;
+* test cambio chain;
+* test Polygon + POL;
+* test ERC-20 + USDC;
+* test balance loading/loading error;
+* test token icons;
+* test EVM crash path;
+* regression BTC/LN.
+
+Poi esegui tutta la suite.
+
+NON fare deploy.
+
+Restituisci:
+
+ROOT CAUSE WALLET: ...
+
+ROOT CAUSE CRASH: ...
+
+ROOT CAUSE BALANCE: ...
+
+ROOT CAUSE ICONS: ...
+
+FIX APPLIED: ...
+
+TEST: .../...
+
+BUILD: PASS/FAIL
+
+E soprattutto fai una verifica LIVE/preview della schermata con wallet già collegato, mostrando account, chain, saldo e icone reali.
+
+Una cosa importante
+
+La schermata Pagamenti Crypto che hai allegato dimostra che il wallet è effettivamente riconosciuto dall’app e che il saldo Polygon è disponibile (27.0653 POL). Quindi non è un problema del wallet dell’iPhone.
+
+Il sospetto principale è proprio integrazione/stato ThirdWeb tra Alpha Wallet e il nuovo modulo Swap.
+
+E non accetterei una soluzione del tipo “se non trova l’account mostra Connect Wallet”: sarebbe nascondere il problema. Dobbiamo fare in modo che lo stesso wallet già connesso venga rilevato automaticamente da Alpha Swap.
+
+Per ora niente altro deploy.

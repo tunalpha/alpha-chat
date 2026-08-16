@@ -93,10 +93,12 @@ export function useEvmSwapState(): [EvmSwapStateValue, EvmSwapActions] {
     configureLiFiWallet(
       async () => {
         const chainId = activeChain?.id ?? sv.fromChainId;
+        // FIX CRASH: prop corretta è `account`, non `wallet` (TypeScript + runtime)
         return viemAdapter.walletClient.toViem({
           client:  thirdwebClient,
           chain:   defineChain(chainId),
-          wallet:  activeWallet,
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
+          account: activeAccount as any,
         });
       },
       async (chainId: number) => {

@@ -62,22 +62,28 @@ async function rpcPost<T>(rpcUrl: string, method: string, params: unknown[]): Pr
   return data.result as T;
 }
 
-function useEvmTokenBalances(chainId: number, address: string | undefined): Map<string, bigint> {
-  const [balances, setBalances] = useState<Map<string, bigint>>(new Map());
+interface BalancesState {
+  map:     Map<string, bigint>;
+  loading: boolean;
+}
+
+function useEvmTokenBalances(chainId: number, address: string | undefined): BalancesState {
+  const [state, setState] = useState<BalancesState>({ map: new Map(), loading: false });
 
   useEffect(() => {
-    if (!address) { setBalances(new Map()); return; }
+    if (!address) { setState({ map: new Map(), loading: false }); return; }
     const rpcUrl = CHAIN_RPC[chainId];
     if (!rpcUrl) return;
 
     const tokens = getTokensForChain(chainId);
     let cancelled = false;
+    setState(prev => ({ ...prev, loading: true }));
 
     Promise.allSettled(
       tokens.map(async (t) => {
         if (t.isNative) {
           const hex = await rpcPost<string>(rpcUrl, "eth_getBalance", [address, "latest"]);
-          return [t.address, BigInt(hex)] as const;
+          return [t.address, BigInt(hex ?? "0x0")] as const;
         } else {
           const pad = address.slice(2).padStart(64, "0");
           const hex = await rpcPost<string>(rpcUrl, "eth_call", [
@@ -92,13 +98,15 @@ function useEvmTokenBalances(chainId: number, address: string | undefined): Map<
       for (const r of results) {
         if (r.status === "fulfilled") entries.push(r.value);
       }
-      setBalances(new Map(entries));
-    }).catch(() => null);
+      setState({ map: new Map(entries), loading: false });
+    }).catch(() => {
+      if (!cancelled) setState(prev => ({ ...prev, loading: false }));
+    });
 
     return () => { cancelled = true; };
   }, [chainId, address]);
 
-  return balances;
+  return state;
 }
 
 /** Formatta balance in human-readable, con max 6 cifre significative */
@@ -122,11 +130,35 @@ interface TokenCardProps {
   onTokenClick:    () => void;
   readOnly?:       boolean;
   balance?:        bigint;
+  balLoading?:     boolean;
   onMax?:          () => void;
 }
 
+/** Icona token: <img> con logoURI se disponibile, altrimenti cerchio colorato con 2 lettere */
+function TokenIcon({ token, chainId }: { token: EvmToken | null; chainId: number }) {
+  const chainColor = CHAIN_COLOR[chainId] ?? "#888";
+  const [imgError, setImgError] = useState(false);
+
+  if (token?.logoURI && !imgError) {
+    return (
+      <img
+        src={token.logoURI}
+        alt={token.symbol}
+        className="asw-token-icon asw-token-icon--img"
+        onError={() => setImgError(true)}
+        style={{ objectFit: "cover", borderRadius: "50%" }}
+      />
+    );
+  }
+  return (
+    <div className="asw-token-icon" style={{ background: `${chainColor}22`, color: chainColor }}>
+      {token ? token.symbol.slice(0, 3) : "?"}
+    </div>
+  );
+}
+
 function TokenCard({
-  label, chainId, token, amount, onAmountChange, onTokenClick, readOnly, balance, onMax,
+  label, chainId, token, amount, onAmountChange, onTokenClick, readOnly, balance, balLoading, onMax,
 }: TokenCardProps) {
   const chain        = getChainInfo(chainId);
   const chainColor   = CHAIN_COLOR[chainId] ?? "#888";
@@ -138,20 +170,26 @@ function TokenCard({
     <div className="asw-card">
       <div className="asw-card-head">
         <span className="asw-card-label">{label}</span>
-        {hasBalance && token && (
+        {token && (
           <div className="asw-card-balance">
-            <span>{balStr} {token.symbol}</span>
-            {showMax && (
-              <button className="asw-max-btn" onClick={onMax} type="button">MAX</button>
-            )}
+            {balLoading ? (
+              <span style={{ fontSize: 12, color: "rgba(255,255,255,.35)", display: "flex", alignItems: "center", gap: 4 }}>
+                <Loader2 size={11} style={{ animation: "aw-spin .8s linear infinite" }} /> Saldo…
+              </span>
+            ) : balStr !== null ? (
+              <>
+                <span>{balStr} {token.symbol}</span>
+                {showMax && (
+                  <button className="asw-max-btn" onClick={onMax} type="button">MAX</button>
+                )}
+              </>
+            ) : null}
           </div>
         )}
       </div>
       <div className="asw-token-row">
         <button className="asw-token-btn" onClick={onTokenClick} aria-label={`Seleziona token ${label}`}>
-          <div className="asw-token-icon" style={{ background: `${chainColor}22`, color: chainColor }}>
-            {token ? token.symbol.slice(0, 2) : "?"}
-          </div>
+          <TokenIcon token={token} chainId={chainId} />
           <div className="asw-token-info">
             <div className="asw-token-name">
               {token?.symbol ?? "—"}
@@ -329,11 +367,19 @@ export function EvmSwapView({ onBack }: EvmSwapViewProps) {
   const activeChain    = useActiveWalletChain();
 
   // Balance per i token sulla chain from
-  const balances = useEvmTokenBalances(sv.fromChainId, activeAccount?.address);
+  const balancesState = useEvmTokenBalances(sv.fromChainId, activeAccount?.address);
 
   // Token selector state
   const [tokenSelectorOpen, setTokenSelectorOpen] = useState(false);
   const [tokenSide, setTokenSide] = useState<"from" | "to">("from");
+
+  // Wallet warning: mostra l'avviso solo dopo 3s (evita falsi positivi durante il reconnect ThirdWeb)
+  const [showWalletHint, setShowWalletHint] = useState(false);
+  useEffect(() => {
+    if (activeAccount) { setShowWalletHint(false); return; }
+    const t = setTimeout(() => setShowWalletHint(true), 3000);
+    return () => clearTimeout(t);
+  }, [activeAccount]);
 
   // Quote display
   const toAmountDisplay = sv.quote
@@ -382,11 +428,11 @@ export function EvmSwapView({ onBack }: EvmSwapViewProps) {
   // MAX button: imposta l'intero balance come importo
   const handleMax = useCallback(() => {
     if (!sv.fromToken) return;
-    const raw = balances.get(sv.fromToken.address);
+    const raw = balancesState.map.get(sv.fromToken.address);
     if (!raw || raw === 0n) return;
     const human = fromTokenUnits(raw.toString(), sv.fromToken.decimals);
     actions.setFromAmount(human);
-  }, [sv.fromToken, balances, actions]);
+  }, [sv.fromToken, balancesState.map, actions]);
 
   const quoteExpired = sv.quote && Date.now() > sv.quote.expiresAt;
   const isIdle       = sv.phase === "idle";
@@ -460,17 +506,17 @@ export function EvmSwapView({ onBack }: EvmSwapViewProps) {
   }
 
   // ── Main form ──────────────────────────────────────────────────────────────
-  const fromBal = sv.fromToken ? balances.get(sv.fromToken.address) : undefined;
+  const fromBal = sv.fromToken ? balancesState.map.get(sv.fromToken.address) : undefined;
 
   return (
     <div className="asw-content">
       <div className="asw-form">
 
-        {/* Wallet non connesso */}
-        {!activeAccount && (
-          <div className="asw-alert asw-alert--warn">
-            <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 1 }} />
-            <span>Connetti il wallet EVM (ThirdWeb / WalletConnect) per effettuare swap.</span>
+        {/* Wallet non connesso — hint visibile solo dopo 3s (evita falso positivo durante reconnect) */}
+        {showWalletHint && (
+          <div className="asw-alert asw-alert--info">
+            <Info size={14} style={{ flexShrink: 0, marginTop: 1 }} />
+            <span>Per effettuare swap collega il tuo wallet EVM (WalletConnect) dalla sezione Pagamenti.</span>
           </div>
         )}
 
@@ -491,6 +537,7 @@ export function EvmSwapView({ onBack }: EvmSwapViewProps) {
           onAmountChange={actions.setFromAmount}
           onTokenClick={() => { setTokenSide("from"); setTokenSelectorOpen(true); }}
           balance={fromBal}
+          balLoading={balancesState.loading}
           onMax={handleMax}
         />
 
@@ -598,7 +645,7 @@ export function EvmSwapView({ onBack }: EvmSwapViewProps) {
         currentChainId={tokenSide === "from" ? sv.fromChainId : sv.toChainId}
         side={tokenSide}
         otherToken={tokenSide === "from" ? sv.toToken ?? undefined : sv.fromToken ?? undefined}
-        balances={balances}
+        balances={balancesState.map}
         walletAddress={activeAccount?.address}
       />
     </div>

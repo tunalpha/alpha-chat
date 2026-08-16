@@ -13,6 +13,35 @@ import {
   type EvmToken, type EvmChainInfo,
 } from "./types.js";
 
+const CHAIN_COLOR: Record<number, string> = {
+  137: "#8247E5",
+  56:  "#F3BA2F",
+  1:   "#627EEA",
+};
+
+/** Icona token: <img> con logoURI se disponibile, altrimenti cerchio colorato */
+function TokenLogoIcon({ token, chainId }: { token: EvmToken; chainId: number }) {
+  const [imgError, setImgError] = useState(false);
+  const color = CHAIN_COLOR[chainId] ?? "#888";
+
+  if (token.logoURI && !imgError) {
+    return (
+      <img
+        src={token.logoURI}
+        alt={token.symbol}
+        className="asw-token-list-icon"
+        style={{ objectFit: "cover", borderRadius: "50%", padding: 0 }}
+        onError={() => setImgError(true)}
+      />
+    );
+  }
+  return (
+    <div className="asw-token-list-icon" style={{ background: `${color}22`, color }}>
+      {token.symbol.slice(0, 3)}
+    </div>
+  );
+}
+
 interface TokenSelectorProps {
   open:           boolean;
   onClose:        () => void;
@@ -30,12 +59,6 @@ const CHAIN_ICONS: Record<number, string> = {
   137: "🟣",
   56:  "🟡",
   1:   "🔵",
-};
-
-const CHAIN_COLOR: Record<number, string> = {
-  137: "#8247E5",
-  56:  "#F3BA2F",
-  1:   "#627EEA",
 };
 
 function fmtBal(raw: bigint | undefined, decimals: number): string | null {
@@ -139,9 +162,8 @@ export function TokenSelector({
                   className="asw-token-list-item"
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                    <div className="asw-token-list-icon" style={{ background: `${CHAIN_COLOR[token.chainId] ?? "#888"}22`, color: CHAIN_COLOR[token.chainId] ?? "#fff" }}>
-                      {token.symbol.slice(0, 2)}
-                    </div>
+                    <TokenLogoIcon token={token} chainId={token.chainId} />
+
                     <div>
                       <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
                         <span className="asw-token-list-name">{token.symbol}</span>

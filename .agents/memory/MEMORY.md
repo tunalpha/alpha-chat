@@ -100,6 +100,7 @@
 - [Alpha Spark Fee Wallet](spark-fee-wallet.md) — ledger-based (no SDK Node.js); 6 endpoint /fee-wallet/*; spark1/sprt1 address format; vi.resetAllMocks() per test Once queue
 - [Alpha Swap V1 — BTC↔Lightning](alpha-swap-v1.md) — provider-swappable isolato; Boltz 25bps BTC→LN; Spark fallback 0% LN→BTC; SWAP_ENABLED=false; hardening completato (vedi alpha-swap-v1-hardening.md)
 - [Alpha Swap V2 — EVM Li.Fi](alpha-swap-v2-evm.md) — integrator alpha-chat (con trattino); fee 0.0025 (25bps) via Fee Forwarder; thirdweb.ts esporta `client` non `thirdwebClient`; vi.mock @lifi/sdk obbligatorio nei test
+- [EVM Swap crash — viemAdapter account prop](evm-swap-crash-viem-adapter.md) — `viemAdapter.walletClient.toViem` vuole `account:` (Account), non `wallet:`; errore silenzioso → black screen iOS PWA
 - [@lifi/sdk CJS alias (🔒 permanente)](lifi-sdk-cjs-alias.md) — ESM entry di @lifi/sdk v4 non esporta createConfig/EVM; alias vite.config.ts → CJS via createRequire obbligatorio per il build prod
 - [LN→BTC Hardening](lnbtc-hardening.md) — localStorage ikey/lock/intent/result; cross-tab TTL 90s; TIMEOUT_UNCERTAIN clearTimeout pattern; idempotency_key backend; 17 test T1-T17
 - [Alpha Swap V1 Hardening](alpha-swap-v1-hardening.md) — refund key HMAC-SHA256 server-side; write-before-submit; idempotency_key UUID; reconciler 30s; GET /active recovery; 63 test T1-T20 PASS
