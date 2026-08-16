@@ -3,31 +3,21 @@ name: Li.Fi integrator registration status
 description: Stato registrazione integrator Li.Fi per Alpha Swap EVM — BLOCCATO in attesa di registrazione manuale
 ---
 
-## Stato
+## Stato — CONFIGURAZIONE COMPLETATA (verificata 2026-08-16)
 
-**Integrator `alphachat`: NON REGISTRATO su Li.Fi (verificato 2026-08-16)**
+**Integrator `alpha-chat`: ATTIVO e VERIFICATO via API reale**
 
-Chiamata API reale `GET https://li.quest/v1/quote?integrator=alphachat&fee=0.0025...`
-→ HTTP 400, code 1011: "Integrator 'alphachat' is not configured for collecting fees."
+- HTTP 200 con `fee=0.0025` su Polygon same-chain e BSC→Polygon cross-chain
+- Fee split: Li.Fi 0.25% + alpha-chat 0.25% = 0.50% totale ✅
+- `wallet=undefined` nella risposta è CORRETTO — Fee Forwarder model (apr 2026): fee va direttamente al withdrawal address senza accumulo nel contratto
+- ID integrator: `alpha-chat` (con trattino)
+- API Key portale (UUID): trattare come SEGRETO — non mettere nel codice frontend
 
-## Cosa manca
+## Fee wallet — risultato confronto (2026-08-16)
 
-1. Registrazione manuale su https://portal.li.fi/
-2. Configurazione fee wallet per chain:
-   - Polygon (137) → `POLYGON_FEE_WALLET` (secret Replit)
-   - BSC (56) → `BSC_FEE_WALLET` (secret Replit)
-   - Ethereum (1) → `ETHEREUM_FEE_WALLET` (secret Replit)
-3. Fee = 0.25% = 0.0025
-4. Conferma ID integrator finale (potrebbe essere diverso da `alphachat`)
+`ETHEREUM_FEE_WALLET` = `POLYGON_FEE_WALLET` = `BSC_FEE_WALLET` → **stesso indirizzo EVM** (confermato via confronto sicuro senza esporre valori)
 
-## Regola (permanente)
-
-**NON implementare fee Li.Fi nel codice finché una chiamata API reale non dimostra che:**
-- integrator è riconosciuto (HTTP 200 con fee nei feeCosts)
-- fee 0.25% è raccolta
-- fee wallet è configurato per tutte e 3 le chain
-
-**Why:** Li.Fi rifiuta con HTTP 400 il parametro `fee` se l'integrator non è registrato — non è solo "non raccolta", è errore bloccante che impedisce di ottenere qualsiasi quote.
+Li.Fi usa un unico wallet EVM — coincide perfettamente con la struttura Alpha esistente.
 
 ## Fee wallet — risultato confronto (2026-08-16)
 
