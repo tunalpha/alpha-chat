@@ -32,37 +32,20 @@ GET  /api/v1/spark/fee-wallet/health           # read_only — alert stale + con
 PATCH /api/v1/spark/fee-wallet/configure-address  # super_admin — imposta fee_address (sp1.../sprt...)
 ```
 
-## Address format (Breez Spark SDK v0.15.1)
+## Address format (Breez Spark SDK v0.15.1 — Node.js backend)
 
-- Mainnet: `sp1...` (bech32-like, static, derivato da mnemonic)
+- Mainnet live: `spark1...` (bech32m, derivato dalla chiave identità) — NON `sp1`
 - Testnet/Regtest: `sprt1...`
-- Validation: deve iniziare con `sp1` o `sprt`, min 20 char
-- Come ottenere: `getInfo().sparkAddress` via SDK (browser PoC o backend)
+- Validation: inizia con `spark1`, `sp1`, o `sprt` — min 20 char
+- Come ottenere backend Node.js: `connect()` con Seed + `receivePayment({ paymentMethod: { type: "sparkAddress" } }).paymentRequest`
+- Vedere `spark-sdk-nodejs-api.md` per i dettagli completi
 
-## Fee Wallet attivo (generato da agente)
+## Fee Wallet attivo (auto-configurato dal server)
 
-- **SparkAddress**: `sp1qdalx0t5eqvjg9740pwxdx8a4g6l4jc848feshf0eux64g7lr58r5wdemqg`
-- **PubkeyHex**: `037bf33d74c8192417d5785c6698fdaa35facb07a9d3985d2fcf0daaa3df1d0e3a`
+- **SparkAddress**: `spark1pgssx7ln84…` (salvato in MongoDB automaticamente al boot)
 - **Env var mnemonic**: `ALPHA_SPARK_FEE_MNEMONIC` (settata, mai esposta)
-- **Env var address**: `ALPHA_SPARK_FEE_ADDRESS` (settata)
-- **MongoDB**: `sparkfeeconfigs._id='spark-fee'.fee_address` configurato
-
-## Derivazione offline (no network) tramite SDK WASM Node.js
-
-```javascript
-// defaultExternalSigner(mnemonic, passphrase, network, keySetConfig)
-// network = 'mainnet' (lowercase!) — 'MAINNET' causa errore variant
-const sdk = require('@breeztech/breez-sdk-spark/nodejs');
-const signer = sdk.defaultExternalSigner(mnemonic, '', 'mainnet', null);
-const pk = signer.identityPublicKey(); // { bytes: number[] } — non Uint8Array!
-signer.free();
-const pubkeyBytes = Buffer.from(pk.bytes); // 33 bytes
-// Bech32m encode HRP 'sp'
-const bm = require('bech32/dist/index.js');
-const sparkAddress = bm.bech32m.encode('sp', bm.bech32m.toWords(pubkeyBytes));
-```
-
-**Nota importante**: `identityPublicKey()` ritorna `{ bytes: number[] }`, NON Uint8Array — `pk.bytes` è l'array.
+- **MongoDB**: `sparkfeeconfigs._id='spark-fee'.fee_address` configurato via auto-configure in index.ts (setTimeout 25s)
+- Auto-configure è idempotente: salta se già configurato
 
 ## Mnemonic
 

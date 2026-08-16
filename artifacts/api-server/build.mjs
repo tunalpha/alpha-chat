@@ -30,6 +30,8 @@ async function buildAll() {
     external: [
       "*.node",
       "sharp",
+      "@breeztech/breez-sdk-spark",
+      "@breeztech/breez-sdk-spark/nodejs",
       "better-sqlite3",
       "sqlite3",
       "canvas",

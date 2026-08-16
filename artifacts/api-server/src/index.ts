@@ -13,6 +13,7 @@ import { startPaymentScheduler }      from "./payment/payment-scheduler.service"
 import { startMultiChainScheduler }   from "./payment/multichain-scheduler";
 import { startSparkSweepScheduler }  from "./schedulers/spark-sweep.scheduler";
 import { registerDefaultAdapters }    from "./blockchain/adapter-registry";
+import { autoConfigureSparkFeeWallet } from "./services/spark-fee-wallet.service";
 
 const port = config.app.port;
 
@@ -77,6 +78,11 @@ async function start(): Promise<void> {
   // Avviato dopo 20s (dopo MongoDB ready + altri schedulers).
   // SICUREZZA: il mnemonic viene letto dall'executor solo durante l'esecuzione reale.
   setTimeout(() => { startSparkSweepScheduler(); }, 20_000);
+
+  // Spark Fee Wallet auto-configure — deriva fee_address e treasury_address
+  // da ALPHA_SPARK_FEE_MNEMONIC / ALPHA_SPARK_TREASURY_MNEMONIC se non già configurati.
+  // Idempotente: se già configurati non fa nulla. Fire-and-forget.
+  setTimeout(() => { void autoConfigureSparkFeeWallet(); }, 25_000);
 
   // ── Graceful shutdown ───────────────────────────────────────────────────────
   const shutdown = async (signal: string): Promise<void> => {

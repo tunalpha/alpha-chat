@@ -19,7 +19,14 @@
  */
 
 import path from "path";
+import { createRequire } from "module";
 import { logger } from "../lib/logger.js";
+
+// Supporta sia ESM (tsx, Node.js ESM) che CJS (esbuild bundle)
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const _require: NodeRequire = typeof require !== "undefined"
+  ? require
+  : createRequire(import.meta.url);
 
 // ─── Tipi di risposta ─────────────────────────────────────────────────────────
 
@@ -80,8 +87,7 @@ function loadSparkSdk(): any {
     origWarn(msg, ...rest);
   };
   try {
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    const sdk = require("@breeztech/breez-sdk-spark/nodejs");
+    const sdk = _require("@breeztech/breez-sdk-spark/nodejs");
     return sdk;
   } finally {
     console.warn = origWarn;
@@ -108,22 +114,138 @@ async function connectFeeWalletSdk(): Promise<any> {
   const config    = sdk.defaultConfig("mainnet");
   config.apiKey   = apiKey;
 
-  const signer = sdk.defaultExternalSigner(mnemonic, "", "mainnet", null);
-
   const storageDir = path.resolve(STORAGE_DIR);
 
   logger.info({ storageDir }, "[SparkExecutor] Connessione SDK fee wallet");
 
+  // Usa connect() con Seed (non connectWithSigner + defaultExternalSigner):
+  // defaultExternalSigner non implementa eciesEncrypt nel build Node.js WASM.
   const breezSdk = await withTimeout(
-    sdk.connectWithSigner(config, signer, storageDir),
+    sdk.connect({
+      config,
+      seed:       { type: "mnemonic", mnemonic, passphrase: "" },
+      storageDir,
+    }),
     SDK_TIMEOUT,
-    "connectWithSigner",
+    "connect",
   );
 
   return breezSdk;
 }
 
 // ─── API pubblica ─────────────────────────────────────────────────────────────
+
+/**
+ * Deriva il Spark address del fee wallet dall'ALPHA_SPARK_FEE_MNEMONIC.
+ *
+ * SICUREZZA:
+ * - Legge il mnemonic da env, MAI loggato o esposto
+ * - Ritorna solo l'address pubblico (sp1...)
+ * - Connette → getInfo() → disconnette (lazy, stateless)
+ *
+ * @throws se ALPHA_SPARK_FEE_MNEMONIC non è configurato o il SDK fallisce
+ */
+export async function getFeeWalletSparkAddress(): Promise<string> {
+  let sdk: ReturnType<typeof connectFeeWalletSdk> extends Promise<infer T> ? T : never = null;
+  try {
+    sdk = await connectFeeWalletSdk();
+    // La Spark address si ottiene via receivePayment (non getInfo).
+    // receivePayment({ paymentMethod: { type: "sparkAddress" } }) → { sparkAddress: "sp1..." }
+    const raw = await withTimeout(
+      (sdk as { receivePayment: (r: unknown) => Promise<Record<string, unknown>> })
+        .receivePayment({ paymentMethod: { type: "sparkAddress" } }),
+      60_000,
+      "receivePayment(sparkAddress)",
+    ) as Record<string, unknown>;
+    // Il SDK restituisce { paymentRequest: "sp1...", fee: bigint }
+    // (il campo si chiama "paymentRequest" per tutti i tipi, incluso sparkAddress)
+    const addr: unknown = raw?.sparkAddress ?? raw?.spark_address ?? raw?.paymentRequest;
+    if (typeof addr !== "string" || addr.length < 10) {
+      throw new Error(
+        `[SparkExecutor] receivePayment non ha restituito indirizzo (keys: ${Object.keys(raw ?? {}).join(", ")})`,
+      );
+    }
+    // Indirizzi Spark validi: sp1... (legacy), spark1... (mainnet), sprt1... (testnet)
+    if (!addr.startsWith("sp1") && !addr.startsWith("spark1") && !addr.startsWith("sprt")) {
+      throw new Error(
+        `[SparkExecutor] sparkAddress formato non riconosciuto (ottenuto: ${addr.slice(0, 20)}…)`,
+      );
+    }
+    return addr;
+  } catch (err) {
+    logger.warn({ err: (err as Error).message }, "[SparkExecutor] getFeeWalletSparkAddress fallito");
+    throw err;
+  } finally {
+    if (sdk) { try { await sdk.disconnect(); } catch { /* ignore */ } }
+  }
+}
+
+/**
+ * Deriva il Spark address da un mnemonic arbitrario (es. per il treasury).
+ *
+ * SICUREZZA:
+ * - mnemonic passato in memoria, MAI loggato
+ * - Usa storageDir separato (/tmp/spark-treasury-derive) — eliminato dopo l'uso
+ * - Ritorna solo l'address pubblico (sp1...)
+ *
+ * @param mnemonic  BIP39 24 parole (plaintext, in memoria)
+ * @throws se il mnemonic non è valido o il SDK fallisce
+ */
+export async function getSparkAddressFromMnemonic(mnemonic: string): Promise<string> {
+  const words = mnemonic.trim().split(/\s+/);
+  if (words.length !== 12 && words.length !== 24) {
+    throw new Error("[SparkExecutor] mnemonic deve avere 12 o 24 parole");
+  }
+
+  const apiKey = getApiKey();
+  const sdk    = loadSparkSdk();
+
+  const config  = sdk.defaultConfig("mainnet");
+  config.apiKey = apiKey;
+
+  // Usa connect() con Seed (non connectWithSigner): defaultExternalSigner
+  // non implementa eciesEncrypt nel build Node.js WASM.
+  const storageDir = path.resolve("/tmp/spark-treasury-derive-tmp");
+
+  let derivedSdk: unknown = null;
+  try {
+    derivedSdk = await withTimeout(
+      sdk.connect({
+        config,
+        seed:       { type: "mnemonic", mnemonic: mnemonic.trim(), passphrase: "" },
+        storageDir,
+      }),
+      SDK_TIMEOUT,
+      "connect(treasury)",
+    );
+
+    const raw2 = await withTimeout(
+      (derivedSdk as { receivePayment: (r: unknown) => Promise<Record<string, unknown>> })
+        .receivePayment({ paymentMethod: { type: "sparkAddress" } }),
+      60_000,
+      "receivePayment(sparkAddress,treasury)",
+    ) as Record<string, unknown>;
+
+    const addr: unknown = raw2?.sparkAddress ?? raw2?.spark_address ?? raw2?.paymentRequest;
+    if (typeof addr !== "string" || addr.length < 10) {
+      throw new Error(
+        `[SparkExecutor] treasury receivePayment non ha restituito indirizzo (keys: ${Object.keys(raw2 ?? {}).join(", ")})`,
+      );
+    }
+    if (!addr.startsWith("sp1") && !addr.startsWith("spark1") && !addr.startsWith("sprt")) {
+      throw new Error(
+        `[SparkExecutor] treasury sparkAddress formato non riconosciuto (ottenuto: ${addr.slice(0, 20)}…)`,
+      );
+    }
+    return addr;
+  } finally {
+    if (derivedSdk) {
+      try {
+        await (derivedSdk as { disconnect: () => Promise<void> }).disconnect();
+      } catch { /* ignore */ }
+    }
+  }
+}
 
 /**
  * Ottieni il saldo live dal SDK.

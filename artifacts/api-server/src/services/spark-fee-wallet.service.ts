@@ -25,8 +25,12 @@
  */
 
 import { AlphaWalletFeeRecordModel } from "../models/alpha-wallet-fee-record.model.js";
-import { getSparkFeeConfig }          from "../models/spark-fee-config.model.js";
+import { getSparkFeeConfig, SparkFeeConfigModel } from "../models/spark-fee-config.model.js";
 import { logger }                     from "../lib/logger.js";
+import {
+  getFeeWalletSparkAddress,
+  getSparkAddressFromMnemonic,
+} from "./spark-fee-wallet-executor.js";
 
 // ─── Tipi ────────────────────────────────────────────────────────────────────
 
@@ -311,4 +315,76 @@ export async function checkFeeWalletHealth(maxAgeHours = 24): Promise<{
   }
 
   return { healthy: alerts.length === 0, pendingStale, alerts };
+}
+
+// ─── Auto-configure al boot ───────────────────────────────────────────────────
+
+/**
+ * autoConfigureSparkFeeWallet — chiamata una volta al boot del server.
+ *
+ * Deriva automaticamente:
+ * 1. fee_address da ALPHA_SPARK_FEE_MNEMONIC (se fee_address è null)
+ * 2. sweep_treasury_spark_address da ALPHA_SPARK_TREASURY_MNEMONIC (se impostata e null)
+ *
+ * SICUREZZA:
+ * - Mnemonic lette ESCLUSIVAMENTE da process.env, mai loggate
+ * - Usa gli address Spark PUBBLICI (sp1...) per i campi MongoDB
+ * - Fire-and-forget: errori loggati ma non bloccano il boot
+ * - Idempotente: se già configurato non fa nulla
+ */
+export async function autoConfigureSparkFeeWallet(): Promise<void> {
+  const mnemonic = process.env["ALPHA_SPARK_FEE_MNEMONIC"];
+  if (!mnemonic) {
+    logger.warn("[AutoConfig] ALPHA_SPARK_FEE_MNEMONIC non impostato — skip auto-configure");
+    return;
+  }
+
+  const cfg = await getSparkFeeConfig();
+
+  // ── Fee address ───────────────────────────────────────────────────────────
+  if (!cfg.fee_address) {
+    logger.info("[AutoConfig] fee_address non configurato — derivo dall'SDK...");
+    try {
+      const feeAddress = await getFeeWalletSparkAddress();
+      await SparkFeeConfigModel.findOneAndUpdate(
+        { _id: "spark-fee" },
+        { $set: { fee_address: feeAddress, updated_at: new Date(), updated_by: "auto-configure" } },
+        { upsert: true },
+      );
+      logger.info(
+        { feeAddress: `${feeAddress.slice(0, 16)}…` },
+        "[AutoConfig] ✓ fee_address configurato",
+      );
+    } catch (err) {
+      logger.warn({ err: (err as Error).message }, "[AutoConfig] Derivazione fee_address fallita");
+    }
+  } else {
+    logger.info({ feeAddress: `${cfg.fee_address.slice(0, 16)}…` }, "[AutoConfig] fee_address già configurato");
+  }
+
+  // ── Treasury address ──────────────────────────────────────────────────────
+  const treasuryMnemonic = process.env["ALPHA_SPARK_TREASURY_MNEMONIC"];
+  const cfgAfter = await getSparkFeeConfig();
+
+  if (!cfgAfter.sweep_treasury_spark_address && treasuryMnemonic) {
+    logger.info("[AutoConfig] sweep_treasury_spark_address non configurato — derivo treasury dall'SDK...");
+    try {
+      const treasuryAddress = await getSparkAddressFromMnemonic(treasuryMnemonic);
+      await SparkFeeConfigModel.findOneAndUpdate(
+        { _id: "spark-fee" },
+        { $set: { sweep_treasury_spark_address: treasuryAddress, updated_at: new Date(), updated_by: "auto-configure" } },
+        { upsert: true },
+      );
+      logger.info(
+        { treasuryAddress: `${treasuryAddress.slice(0, 16)}…` },
+        "[AutoConfig] ✓ sweep_treasury_spark_address configurato",
+      );
+    } catch (err) {
+      logger.warn({ err: (err as Error).message }, "[AutoConfig] Derivazione treasury address fallita");
+    }
+  } else if (!treasuryMnemonic) {
+    logger.info("[AutoConfig] ALPHA_SPARK_TREASURY_MNEMONIC non impostato — treasury non configurato");
+  } else {
+    logger.info("[AutoConfig] sweep_treasury_spark_address già configurato");
+  }
 }

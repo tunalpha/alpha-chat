@@ -1,0 +1,108 @@
+TASK — CONFIGURAZIONE COMPLETA SPARK FEE WALLET + TREASURY
+
+Obiettivo: completa autonomamente tutta la configurazione degli indirizzi Spark necessaria per la raccolta e lo sweep delle fee Lightning.
+
+SCOPE LOCK — IMPORTANTISSIMO
+- NON modificare in alcun modo il main payment flow Lightning.
+- NON modificare prepareSend, sendPayment, spark-send-guard, polling, retry o logica di firma.
+- NON modificare la fee calculation dello 0,10%.
+- NON modificare BTC on-chain, EVM o USDA.
+- NON generare un nuovo fee wallet se il mnemonic ALPHA_SPARK_FEE_MNEMONIC esistente identifica già il wallet creato.
+- NON chiedermi di copiare manualmente mnemonic o indirizzi se puoi recuperarli/configurarli direttamente tramite gli strumenti disponibili.
+- Il mnemonic NON deve mai comparire nei log, API response, frontend, MongoDB, report o codice.
+
+STATO CONFERMATO
+- ALPHA_SPARK_FEE_MNEMONIC: già presente nei Replit Secrets.
+- VITE_BREEZ_API_KEY: già configurata.
+- Fee wallet Spark già creato.
+- Fee wallet Spark address già derivabile dal mnemonic.
+- Admin panel ha già la sezione "Spark / Lightning Fee".
+- Sistema fee collection C2+A già implementato e testato.
+- Sistema sweep già implementato e testato.
+- Soglia desiderata: €100.
+- Auto-sweep deve rimanere DISABILITATO finché tutta la configurazione non è verificata.
+
+OBIETTIVO 1 — FEE SPARK ADDRESS
+1. Usa il wallet associato ad ALPHA_SPARK_FEE_MNEMONIC.
+2. Tramite il Breez Spark SDK/PoC o altro metodo già presente nel progetto, ricava il relativo sparkAddress.
+3. Verifica che sia un indirizzo Spark mainnet valido con prefisso sp1.
+4. NON creare un wallet nuovo.
+5. Configura automaticamente questo indirizzo nel backend/database come:
+   sparkfeeconfigs.fee_address
+6. Verifica tramite API Admin che risulti configurato.
+7. NON mostrare mai il mnemonic.
+
+OBIETTIVO 2 — TREASURY SPARK ADDRESS
+Serve un indirizzo Spark separato per il Treasury.
+
+Prima verifica se il progetto dispone già di un wallet/account Spark Treasury configurato o di un address Spark Treasury esistente.
+
+Se esiste:
+- usa quello;
+- verifica che sia mainnet e inizi con sp1;
+- configurarlo come sweep_treasury_spark_address.
+
+Se NON esiste:
+- NON inventare un address.
+- NON usare BTC_FEE_WALLET bc1.../3... come Treasury Spark.
+- Verifica se è possibile generare/configurare in modo sicuro un Treasury Spark dedicato usando l'infrastruttura già presente nel progetto.
+- Se per crearlo serve un nuovo mnemonic, generarlo in modo sicuro e salvarlo esclusivamente come Replit Secret dedicato, MAI nel codice/frontend/database/log.
+- Configura il relativo sp1... come sweep_treasury_spark_address.
+
+IMPORTANTE:
+Fee Wallet Spark e Treasury Spark devono essere logicamente separati.
+Il BTC_FEE_WALLET on-chain NON è un Spark Address e non deve essere usato nel campo Treasury Spark.
+
+OBIETTIVO 3 — ADMIN PANEL
+Verifica che Admin → Spark / Lightning Fee mostri correttamente:
+
+- Fee Wallet: Configurato 🟢
+- Spark Address: sp1...
+- Mnemonic: configurato, ma MAI visualizzato
+- Treasury Spark Address: sp1...
+- Soglia sweep: €100
+- Auto-sweep: DISABILITATO
+- Prelievo manuale: disponibile
+
+Se necessario correggi solo la configurazione/UI per riflettere lo stato reale.
+Non modificare il payment flow.
+
+OBIETTIVO 4 — SICUREZZA
+Controlla che:
+- ALPHA_SPARK_FEE_MNEMONIC non finisca mai in frontend bundle;
+- non venga restituito dalle API;
+- non venga salvato in MongoDB;
+- non venga scritto nei log;
+- non venga incluso negli errori;
+- sia utilizzato esclusivamente lato backend/SDK quando necessario.
+Fai anche una ricerca nel codice per verificare eventuali esposizioni accidentali.
+
+OBIETTIVO 5 — VERIFICHE
+Esegui test automatici dopo la configurazione.
+
+Verifica almeno:
+1. fee_address valido;
+2. treasury Spark address valido;
+3. entrambi mainnet sp1...;
+4. mnemonic presente ma non esposto;
+5. auto_sweep_enabled=false;
+6. threshold=100 EUR;
+7. sweep manuale disponibile;
+8. fee ledger invariato;
+9. nessuna modifica al main payment flow;
+10. tutte le suite precedentemente verdi rimangono verdi.
+
+NON effettuare alcun movimento reale di fondi durante questa task.
+
+Alla fine dammi un report preciso con:
+- Fee Spark Address configurato: sì/no
+- Treasury Spark Address configurato: sì/no
+- Auto-sweep: DISABILITATO
+- Threshold: €100
+- Secret configurati: sì/no, senza mostrare valori
+- Test eseguiti e risultato
+- File modificati
+- Conferma esplicita: MAIN PAYMENT FLOW INVARIATO
+- Conferma esplicita: NESSUN FONDO MOVIMENTATO
+
+Se per il Treasury Spark manca una risorsa indispensabile che non può essere creata automaticamente in sicurezza, fermati SOLO su quel punto e indicami esattamente cosa manca. Non modificare altro.

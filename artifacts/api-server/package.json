@@ -15,6 +15,7 @@
   "dependencies": {
     "@aws-sdk/client-s3": "^3.1090.0",
     "@aws-sdk/s3-request-presigner": "^3.1090.0",
+    "@scure/bip39": "^2.3.0",
     "@signalapp/libsignal-client": "^0.97.3",
     "@types/helmet": "^4.0.0",
     "@types/nodemailer": "^8.0.1",

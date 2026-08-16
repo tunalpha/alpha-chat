@@ -97,7 +97,8 @@
 - [Spark Phase 4 — Keystore + Admin + Treasury](spark-phase4.md) — getMnemonic callback via sessionStorage aw_bio_pin; admin UI Spark fee; FeeRecordSource; 5 test file; 861 test PASS
 - [Spark Phase 5 — Pre-Go-Live Validation](spark-phase5.md) — COOP/COEP via server.mjs (no-deps) + kill switch admin panel; artifact.toml da static → process; deploy-ready 993/993 PASS
 - [Spark Fee Wallet Sweep System](spark-fee-wallet-sweep.md) — auto/manual sweep fee wallet→treasury; lock MongoDB; reconcile on restart; 19/19 test PASS; auto_sweep_enabled=false default
-- [Alpha Spark Fee Wallet](spark-fee-wallet.md) — ledger-based (no SDK Node.js); 6 endpoint /fee-wallet/*; sp1/sprt address format; vi.resetAllMocks() per test Once queue
+- [Alpha Spark Fee Wallet](spark-fee-wallet.md) — ledger-based (no SDK Node.js); 6 endpoint /fee-wallet/*; spark1/sprt1 address format; vi.resetAllMocks() per test Once queue
+- [Breez Spark SDK Node.js API](spark-sdk-nodejs-api.md) — connect() con Seed (non connectWithSigner); sparkAddress da receivePayment().paymentRequest; getInfo NON ha sparkAddress; prefisso mainnet = spark1
 - [TX Monitor Hardening](tx-monitor-hardening.md) — silent checkpoint advancement bug; chain supportate; guard "0x0" e Alchemy error; bottone 🔄; 1003 test PASS
 - [Capacitor FASE 2 — platform-config](capacitor-phase2.md) — API_BASE_URL + getWsUrl() centralizzati; CAPACITOR_ORIGINS backend; biometric.ts NON toccato; 993 test green
 - [Capacitor FASE 3 — installazione base](capacitor-phase3.md) — v8.5.0; com.alphachat.app; webDir=dist/public; android/ + ios/ in artifacts/alpha-chat-web; SPM (no CocoaPods); 993 test green
