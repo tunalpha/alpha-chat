@@ -438,6 +438,9 @@ export interface RegistrationAlertParams {
 }
 
 export async function sendRegistrationAlertEmail(params: RegistrationAlertParams): Promise<void> {
+  // Non spedire email durante i test automatizzati
+  if (process.env["NODE_ENV"] === "test") return;
+
   // Check admin toggle
   const { getAdminSettings } = await import("../models/admin-settings.model");
   const settings = await getAdminSettings();
@@ -654,6 +657,12 @@ export async function sendInvestorContactMessage(params: InvestorContactMessageP
 // ---------------------------------------------------------------------------
 
 async function _send(params: { to: string; subject: string; html: string; text?: string }): Promise<void> {
+  // Guard globale: mai spedire email reali durante i test automatizzati
+  if (process.env["NODE_ENV"] === "test") {
+    logger.debug({ to: params.to, subject: params.subject }, "[Email] skipped in test environment");
+    return;
+  }
+
   const { to, subject, html, text } = params;
   const transport = createTransport();
 
