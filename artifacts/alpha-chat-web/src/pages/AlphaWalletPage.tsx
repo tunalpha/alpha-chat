@@ -3102,9 +3102,15 @@ function NotificationsView({ onBack }: { onBack: () => void }) {
   }
   return (
     <div className="aw-notifications">
-      {wallet.notifications.map(n => (
+      {wallet.notifications.map(n => {
+        const isIn      = n.type === "received" || n.type === "confirmed";
+        const isPending = n.type === "pending";
+        const isFailed  = n.type === "failed";
+        const txIcon    = isPending ? "⏳" : isFailed ? "❌" : isIn ? "🟢↓" : "🟣↑";
+        const txCls     = isPending ? "aw-tx-icon--pending" : "";
+        return (
         <div key={n.id} className={`aw-notif-item ${!n.read ? "aw-notif-item--unread" : ""}`}>
-          <div className="aw-notif-icon">{notificationIcon(n.type)}</div>
+          <div className={`aw-tx-icon ${txCls}`}>{txIcon}</div>
           <div className="aw-notif-body">
             <div className="aw-notif-title">{n.amount} {n.asset}</div>
             <div className="aw-notif-meta">
@@ -3119,7 +3125,8 @@ function NotificationsView({ onBack }: { onBack: () => void }) {
           </div>
           <div className="aw-notif-time">{new Date(n.timestamp).toLocaleDateString("it-IT", { day: "2-digit", month: "short" })} · {new Date(n.timestamp).toLocaleTimeString("it-IT", { hour: "2-digit", minute: "2-digit" })}</div>
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
