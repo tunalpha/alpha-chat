@@ -101,7 +101,11 @@ export function useSwapState(router: SwapRouter | null): [SwapStateValue, SwapAc
 
     swapFetch<ActiveBtcLnSwap>("/active")
       .then(active => {
-        if (cancelled || !active) return;
+        if (cancelled) return;
+        if (!active) {
+          _set({ recovering: false });
+          return;
+        }
 
         // Swap attivo trovato — riprendi la UI dallo stato reale
         _set({

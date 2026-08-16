@@ -1,0 +1,84 @@
+Applica SOLO il fix già identificato per il blocco:
+
+“Verifica swap in corso…”
+
+File da modificare esclusivamente:
+
+artifacts/alpha-chat-web/src/swap/useSwapState.ts
+
+Modifica richiesta
+
+Nel useEffect di recovery di useSwapState, separa il controllo attuale:
+
+if (cancelled || !active) return;
+
+in:
+
+if (cancelled) return;
+if (!active) {
+  _set({ recovering: false });
+  return;
+}
+
+Il motivo è che:
+
+GET /api/v1/swap/active → HTTP 204 → swapFetch() restituisce null → !active → il codice usciva senza mai impostare recovering: false.
+
+REGOLE IMPORTANTI
+
+NON modificare nient’altro.
+
+In particolare NON modificare:
+
+* backend /api/v1/swap/active
+* controller Swap
+* Li.Fi
+* ThirdWeb
+* WalletConnect
+* Reown
+* VITE_WALLETCONNECT_PROJECT_ID
+* VITE_THIRDWEB_CLIENT_ID
+* secrets
+* walletconnect.txt
+* polling degli swap
+* gestione degli swap attivi
+* configurazione SWAP_ENABLED
+
+Prima del deploy
+
+1. Applica esclusivamente la modifica sopra.
+2. Esegui lint/typecheck/test disponibili.
+3. Verifica che non siano stati modificati altri file.
+4. Mostra il diff esatto della modifica.
+5. Se i test falliscono per motivi preesistenti e non collegati al fix, NON correggere altro codice: riportali separatamente.
+
+Test obbligatorio dopo il fix
+
+Caso principale:
+
+* utente senza swap attivo;
+* aprire Swap;
+* GET /api/v1/swap/active deve restituire 204;
+* il frontend deve impostare recovering=false;
+* deve comparire il form Swap;
+* NON deve rimanere “Verifica swap in corso…”.
+
+Poi verifica che il caso opposto sia invariato:
+
+* utente con swap attivo;
+* active !== null;
+* deve continuare ad apparire SwapInProgress;
+* polling e recovery devono continuare normalmente.
+
+IMPORTANTE
+
+Non fare il deploy automaticamente se il processo di deploy è normalmente separato.
+
+Prima restituisci:
+
+1. diff applicato
+2. risultati test/typecheck
+3. conferma che nessun altro file è stato modificato
+4. risultato dei test Swap
+
+Dopo questa verifica decideremo separatamente come procedere con il problema Reown/WalletConnect “Dominio non valido”.
