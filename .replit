@@ -67,6 +67,7 @@ BSC_FLAT_NETWORK_FEE_USDT = "500000000000000000"
 BTC_TREASURY_WALLET = "bc1qdwytvvjs8audqs57n54hf6njkkfr64qjqv0hp8"
 ALPHA_SPARK_FEE_ADDRESS = "sp1qdalx0t5eqvjg9740pwxdx8a4g6l4jc848feshf0eux64g7lr58r5wdemqg"
 ALPHA_SPARK_FEE_MNEMONIC = "ozone lumber split gift debate palm cotton series draft doll gauge bid mosquito voice hotel solar trap swim labor fly birth adjust buddy skull"
+ALPHA_SWAP_REFUND_SECRET = "159b3268d79c7b1fde3984309f49b2dee27ed74c71c23ef40d53733094f6291c"
 
 [nix]
 channel = "stable-25_05"
