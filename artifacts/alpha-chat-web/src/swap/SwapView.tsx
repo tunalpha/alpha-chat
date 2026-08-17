@@ -19,7 +19,7 @@ import React, {
 } from "react";
 import {
   ChevronLeft, ArrowUpDown, Copy, Check,
-  AlertTriangle, Loader2, CheckCircle, Clock, Info,
+  AlertTriangle, Loader2, CheckCircle, Clock, Info, Zap,
 } from "lucide-react";
 import { useActiveAccount }                from "thirdweb/react";
 import { useWallet }                       from "../wallet/context/WalletContext.js";
@@ -34,6 +34,7 @@ import {
 }                                          from "./providers/BreezSparkBtcLnProvider.js";
 import { SwapRouter, fetchSwapConfig }     from "./SwapRouter.js";
 import { useSwapState }                    from "./useSwapState.js";
+import { BTC_LN_COMING_SOON }             from "./btcln-coming-soon.js";
 import type {
   SwapDirection, SwapPublicConfig, SwapState, SwapQuote, SwapError,
 } from "./types.js";
@@ -1041,6 +1042,9 @@ export function SwapView({ onBack }: SwapViewProps) {
 
   // ── Router (unchanged) ─────────────────────────────────────────────────────
   const router = useMemo(() => {
+    // BTC/LN temporaneamente disabilitato — nessun provider viene istanziato.
+    // Per riattivare: imposta BTC_LN_COMING_SOON = false in btcln-coming-soon.ts
+    if (BTC_LN_COMING_SOON) return null;
     if (!spark) return null;
 
     const executor: SparkSwapExecutor = {
@@ -1185,6 +1189,28 @@ export function SwapView({ onBack }: SwapViewProps) {
           <button onClick={() => window.location.reload()} className="aw-btn aw-btn--secondary" style={{ maxWidth: 200 }}>
             Riprova
           </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ── BTC/LN "Presto disponibile" ───────────────────────────────────────────
+  // Questo guard precede tutti i guard della state machine BTC/LN.
+  // Quando BTC_LN_COMING_SOON è true e la tab attiva è "btcln", mostra
+  // il banner senza avviare alcuna quote, firma o transazione.
+  // EVM Swap non è coinvolto: quando activeTab === "evm" questo guard non scatta.
+  if (activeTab === "btcln" && BTC_LN_COMING_SOON) {
+    return (
+      <div className="asw-root">
+        {Header}
+        <div className="asw-status-view">
+          <div className="asw-status-icon asw-status-icon--pending" style={{ width: 64, height: 64 }}>
+            <Zap size={28} />
+          </div>
+          <div>
+            <p className="asw-status-title">Presto disponibile</p>
+            <p className="asw-status-sub">Stiamo completando l'integrazione Lightning.</p>
+          </div>
         </div>
       </div>
     );

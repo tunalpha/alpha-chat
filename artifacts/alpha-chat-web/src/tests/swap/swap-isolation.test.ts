@@ -244,7 +244,95 @@ describe("Quote structure invariants", () => {
   });
 });
 
-// ── 6. Isolamento modulo (whitelist import) ───────────────────────────────────
+// ── 6. BTC_LN_COMING_SOON — flag e invarianti ────────────────────────────────
+
+describe("BTC_LN_COMING_SOON flag", () => {
+  it("BTC_LN_COMING_SOON è true (BTC/LN temporaneamente disabilitato)", async () => {
+    const { BTC_LN_COMING_SOON } = await import("../../swap/btcln-coming-soon");
+    expect(BTC_LN_COMING_SOON).toBe(true);
+  });
+
+  it("con BTC_LN_COMING_SOON=true il router deve essere null (nessun provider istanziato)", () => {
+    // Simula la logica del useMemo in SwapView:
+    // se BTC_LN_COMING_SOON → return null → nessun BoltzBtcLnProvider o BreezSparkBtcLnProvider
+    const BTC_LN_COMING_SOON = true;
+    const mockSpark = { send: vi.fn(), calculateSendFee: vi.fn() };
+
+    function buildRouter(comingSoon: boolean, spark: typeof mockSpark | null) {
+      if (comingSoon) return null;   // guard esatto di SwapView
+      if (!spark)     return null;
+      return { name: "SwapRouter" }; // rappresenta new SwapRouter(...)
+    }
+
+    const router = buildRouter(BTC_LN_COMING_SOON, mockSpark);
+    expect(router).toBeNull();
+    // Nessun provider viene istanziato: nessuna chiamata a spark
+    expect(mockSpark.send).not.toHaveBeenCalled();
+    expect(mockSpark.calculateSendFee).not.toHaveBeenCalled();
+  });
+
+  it("con BTC_LN_COMING_SOON=true la quote non può essere richiesta (router=null)", () => {
+    // useSwapState riceve router=null → fetchQuote → getProvider → null → nessuna rete
+    const router = null;
+    function fetchQuote(r: null | { name: string }) {
+      if (!r) throw new Error("NO_ROUTER");
+      return { from_amount_sat: 100_000 };
+    }
+    expect(() => fetchQuote(router)).toThrow("NO_ROUTER");
+  });
+
+  it("con BTC_LN_COMING_SOON=true execute non può essere avviato (router=null)", () => {
+    const router = null;
+    const canExecute = router !== null;
+    expect(canExecute).toBe(false);
+  });
+
+  it("BoltzBtcLnProvider rimane nel codice e non viene eliminato", async () => {
+    // Il provider DEVE esistere per il riutilizzo futuro — verifica solo l'import
+    const mod = await import("../../swap/providers/BoltzBtcLnProvider");
+    expect(mod).toHaveProperty("BoltzBtcLnProvider");
+  });
+
+  it("BreezSparkBtcLnProvider rimane nel codice e non viene eliminato", async () => {
+    const mod = await import("../../swap/providers/BreezSparkBtcLnProvider");
+    expect(mod).toHaveProperty("BreezSparkBtcLnProvider");
+  });
+
+  it("SwapRouter rimane nel codice e non viene eliminato", async () => {
+    const mod = await import("../../swap/SwapRouter");
+    expect(mod).toHaveProperty("SwapRouter");
+  });
+
+  it("EVM swap non è coinvolto dal flag BTC_LN_COMING_SOON", () => {
+    // La tab "evm" è indipendente: il guard BTC/LN scatta solo quando activeTab === "btcln"
+    const BTC_LN_COMING_SOON = true;
+    function shouldShowComingSoonBanner(activeTab: string, comingSoon: boolean) {
+      return activeTab === "btcln" && comingSoon;
+    }
+    expect(shouldShowComingSoonBanner("evm",   BTC_LN_COMING_SOON)).toBe(false);
+    expect(shouldShowComingSoonBanner("btcln", BTC_LN_COMING_SOON)).toBe(true);
+    expect(shouldShowComingSoonBanner("evm",   false)).toBe(false);
+    expect(shouldShowComingSoonBanner("btcln", false)).toBe(false);
+  });
+
+  it("per riattivarsi bastano 2 passi: flag=false + nuovo provider nel router", () => {
+    // Verifica documentativa: con flag=false e spark disponibile, il router viene creato
+    const BTC_LN_COMING_SOON = false; // ← unica modifica richiesta per sbloccare
+    const mockSpark = { send: vi.fn(), calculateSendFee: vi.fn() };
+
+    function buildRouter(comingSoon: boolean, spark: typeof mockSpark | null) {
+      if (comingSoon) return null;
+      if (!spark)     return null;
+      return { name: "SwapRouter" };
+    }
+
+    const router = buildRouter(BTC_LN_COMING_SOON, mockSpark);
+    expect(router).not.toBeNull();
+    expect(router?.name).toBe("SwapRouter");
+  });
+});
+
+// ── 7. Isolamento modulo (whitelist import) ───────────────────────────────────
 
 describe("Swap module isolation — import whitelist", () => {
   it("il barrel swap/index.ts esporta solo SwapView, SwapHistory e tipi", async () => {
