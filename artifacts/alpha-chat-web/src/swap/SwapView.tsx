@@ -1249,6 +1249,8 @@ export function SwapView({ onBack }: SwapViewProps) {
             onBack={onBack}
             alphaWalletAddress={alphaWalletAddress}
             getAlphaWalletClient={getAlphaWalletClient}
+            btcAddress={btcAddress ?? undefined}
+            btcBalanceSat={btcBalance?.totalSat ?? undefined}
           />
         </EvmErrorBoundary>
       </div>

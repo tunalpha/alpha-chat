@@ -8,16 +8,17 @@
 // ── State machine ──────────────────────────────────────────────────────────────
 
 export type EvmSwapPhase =
-  | "idle"           // Nessuno swap in corso
-  | "quoting"        // Quote in fetching
-  | "quoted"         // Quote disponibile, attende conferma
-  | "approving"      // Approval ERC-20 in corso
-  | "signing"        // Firma transazione in corso
-  | "submitted"      // TX inviata alla mempool
-  | "pending"        // In attesa di conferma on-chain
-  | "completed"      // Swap completato
-  | "failed"         // Errore definitivo
-  | "action_required"; // Azione utente richiesta (es. switch chain manuale)
+  | "idle"                  // Nessuno swap in corso
+  | "quoting"               // Quote in fetching
+  | "quoted"                // Quote disponibile, attende conferma
+  | "approving"             // Approval ERC-20 in corso
+  | "signing"               // Firma transazione in corso
+  | "submitted"             // TX inviata alla mempool
+  | "pending"               // In attesa di conferma on-chain
+  | "completed"             // Swap completato
+  | "failed"                // Errore definitivo
+  | "action_required"       // Azione utente richiesta (es. switch chain manuale)
+  | "awaiting_btc_deposit"; // BTC→EVM: mostra indirizzo deposito all'utente
 
 // ── Token e chain ─────────────────────────────────────────────────────────────
 
@@ -69,7 +70,7 @@ export interface EvmSwapQuote {
   slippage:         number;
   /** Scade a (unix ms) */
   expiresAt:        number;
-  /** Tool/bridge usato (es. "across", "stargate") */
+  /** Tool/bridge usato (es. "across", "stargate", "thorchain") */
   tool:             string;
   /**
    * Importo da inviare calcolato da Li.Fi in unità minime (raw).
@@ -77,6 +78,12 @@ export interface EvmSwapQuote {
    * Usato per mostrare in PAGA quanto occorre inviare per ricevere l'importo desiderato.
    */
   computedFromAmount?: string;
+  /**
+   * Solo per swaps BTC→EVM: indirizzo Bitcoin a cui inviare i fondi.
+   * Estratto da transactionRequest.to della risposta Li.Fi.
+   * L'utente copia questo indirizzo e invia BTC manualmente (o via Alpha Wallet).
+   */
+  btcDepositAddress?: string;
 }
 
 // ── Active swap (per recovery localStorage) ───────────────────────────────────
@@ -113,6 +120,10 @@ export interface EvmSwapStateValue {
   error:       EvmSwapError | null;
   txHash:      string | null;
   recovering:  boolean;
+  /** Solo per phase=awaiting_btc_deposit: indirizzo BTC a cui inviare i fondi */
+  btcDepositAddress?:    string;
+  /** Solo per phase=awaiting_btc_deposit: importo in satoshi da inviare */
+  btcDepositAmountSat?:  number;
 }
 
 // ── Actions ───────────────────────────────────────────────────────────────────
@@ -140,17 +151,28 @@ export const QUOTE_VALIDITY_MS = 60_000         as const;  // 60s
 export const EVM_SWAP_ACTIVE_KEY = "aw_evm_swap_active" as const;
 export const EVM_SWAP_IKEY       = "aw_evm_swap_ikey"   as const;
 
+/** Li.Fi chain ID per Bitcoin (non-EVM) */
+export const BTC_CHAIN_ID       = 20000000000001 as const;
+/** Li.Fi token address per Bitcoin native */
+export const BTC_NATIVE_ADDRESS = "bitcoin"       as const;
+
+/** Restituisce true se la chain è Bitcoin (non-EVM) */
+export function isBtcChain(chainId: number): boolean {
+  return chainId === BTC_CHAIN_ID;
+}
+
 // ── Supported chains ──────────────────────────────────────────────────────────
 
 export const EVM_SWAP_CHAINS: EvmChainInfo[] = [
-  { id: 137, name: "Polygon",        shortName: "POL", nativeSymbol: "POL", color: "#8247E5", explorerUrl: "https://polygonscan.com" },
-  { id: 56,  name: "BNB Smart Chain", shortName: "BSC", nativeSymbol: "BNB", color: "#F3BA2F", explorerUrl: "https://bscscan.com" },
-  { id: 1,   name: "Ethereum",       shortName: "ETH", nativeSymbol: "ETH", color: "#627EEA", explorerUrl: "https://etherscan.io" },
+  { id: 137,           name: "Polygon",         shortName: "POL", nativeSymbol: "POL", color: "#8247E5", explorerUrl: "https://polygonscan.com" },
+  { id: 56,            name: "BNB Smart Chain",  shortName: "BSC", nativeSymbol: "BNB", color: "#F3BA2F", explorerUrl: "https://bscscan.com" },
+  { id: 1,             name: "Ethereum",         shortName: "ETH", nativeSymbol: "ETH", color: "#627EEA", explorerUrl: "https://etherscan.io" },
+  { id: BTC_CHAIN_ID,  name: "Bitcoin",          shortName: "BTC", nativeSymbol: "BTC", color: "#F7931A", explorerUrl: "https://mempool.space" },
 ];
 
 // ── Token list (inline, senza dipendenze IDB) ─────────────────────────────────
 
-/** Token nativi */
+/** Token nativi EVM (address zero) */
 export const NATIVE_ADDRESS = "0x0000000000000000000000000000000000000000";
 
 // ── CDN logo URLs (TrustWallet assets repo — stabile, open-source) ────────────
@@ -159,6 +181,7 @@ const _TW = "https://raw.githubusercontent.com/trustwallet/assets/master/blockch
 const _ETH_LOGO  = `${_TW}/ethereum/info/logo.png`;
 const _POL_LOGO  = `${_TW}/polygon/info/logo.png`;
 const _BNB_LOGO  = `${_TW}/smartchain/info/logo.png`;
+const _BTC_LOGO  = "https://assets.coingecko.com/coins/images/1/standard/bitcoin.png";
 // ERC-20 logos (canonical per-chain address folder)
 const _USDT_ETH  = `${_TW}/ethereum/assets/0xdAC17F958D2ee523a2206206994597C13D831ec7/logo.png`;
 const _USDC_ETH  = `${_TW}/ethereum/assets/0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48/logo.png`;
@@ -168,6 +191,8 @@ const _USDT_BSC  = `${_TW}/smartchain/assets/0x55d398326f99059fF775485246999027B
 const _USDC_BSC  = `${_TW}/smartchain/assets/0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d/logo.png`;
 
 export const EVM_SWAP_TOKENS: EvmToken[] = [
+  // Bitcoin (BTC_CHAIN_ID) — cross-chain via Li.Fi/Thorchain
+  { chainId: BTC_CHAIN_ID, address: BTC_NATIVE_ADDRESS,                           symbol: "BTC",  name: "Bitcoin",     decimals: 8,  isNative: true,  logoURI: _BTC_LOGO },
   // Ethereum (1)
   { chainId: 1,   address: NATIVE_ADDRESS,                               symbol: "ETH",  name: "Ether",       decimals: 18, isNative: true,  logoURI: _ETH_LOGO },
   { chainId: 1,   address: "0xdAC17F958D2ee523a2206206994597C13D831ec7", symbol: "USDT", name: "Tether USD",   decimals: 6,  isNative: false, logoURI: _USDT_ETH },
@@ -194,8 +219,9 @@ export function getChainInfo(chainId: number): EvmChainInfo | undefined {
   return EVM_SWAP_CHAINS.find(c => c.id === chainId);
 }
 
-/** Indirizzo da passare a Li.Fi: native → "0x0000..." */
+/** Indirizzo da passare a Li.Fi: BTC → "bitcoin", native EVM → "0x0000...", altrimenti address contratto */
 export function tokenAddressForLiFi(token: EvmToken): string {
+  if (isBtcChain(token.chainId)) return BTC_NATIVE_ADDRESS;
   return token.isNative ? NATIVE_ADDRESS : token.address;
 }
 

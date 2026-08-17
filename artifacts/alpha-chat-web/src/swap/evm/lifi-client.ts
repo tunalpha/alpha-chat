@@ -28,7 +28,7 @@ import {
 } from "viem";
 import {
   LIFI_INTEGRATOR, LIFI_FEE, LIFI_SLIPPAGE, QUOTE_VALIDITY_MS,
-  NATIVE_ADDRESS, tokenAddressForLiFi,
+  NATIVE_ADDRESS, tokenAddressForLiFi, isBtcChain,
   type EvmToken, type EvmSwapQuote,
 } from "./types.js";
 
@@ -77,7 +77,13 @@ export interface LiFiQuoteParams {
    * Alternativo a fromAmount — impostare uno dei due, non entrambi.
    */
   toAmount?:    string;
-  fromAddress:  string;  // wallet address dell'utente
+  fromAddress:  string;  // wallet address mittente (BTC address per BTC→EVM, EVM address altrimenti)
+  /**
+   * Indirizzo destinazione (obbligatorio per EVM→BTC).
+   * Per BTC→EVM: non necessario (Li.Fi usa fromAddress per la route, dest è in transactionRequest).
+   * Per EVM→BTC: indirizzo Bitcoin dove ricevere i fondi.
+   */
+  toAddress?:   string;
   /** Slippage massimo (0.005 = 0.5%). Default: LIFI_SLIPPAGE */
   slippage?:    number;
 }
@@ -104,6 +110,8 @@ export async function fetchLiFiQuote(params: LiFiQuoteParams): Promise<EvmSwapQu
     ...(params.fromAmount ? { fromAmount: params.fromAmount } : {}),
     ...(params.toAmount   ? { toAmount:   params.toAmount   } : {}),
     fromAddress: params.fromAddress,
+    // toAddress è obbligatorio per EVM→BTC (dest Bitcoin) e per BTC→EVM (dest EVM)
+    ...(params.toAddress  ? { toAddress:  params.toAddress  } : {}),
     integrator:  LIFI_INTEGRATOR,
     fee:         String(LIFI_FEE),
     slippage:    String(params.slippage ?? LIFI_SLIPPAGE),
@@ -174,6 +182,11 @@ function parseQuoteResponse(
   // Importo da inviare calcolato da Li.Fi (rilevante in exact-output mode)
   const computedFromAmount = String(action.fromAmount ?? params.fromAmount ?? "0");
 
+  // Per BTC→EVM: Li.Fi include l'indirizzo deposito in transactionRequest.to
+  // (è il vault Thorchain o l'indirizzo del bridge a cui inviare BTC)
+  const txReq = body.transactionRequest as Record<string, string> | undefined;
+  const btcDepositAddress = isBtcChain(params.fromChainId) && txReq?.to ? txReq.to : undefined;
+
   return {
     route:        body,   // Li.Fi Route (opaque) — contiene transactionRequest
     routeId:      String((body.id as string) ?? `${Date.now()}`),
@@ -181,7 +194,7 @@ function parseQuoteResponse(
     toChainId:    params.toChainId,
     fromToken:    params.fromToken,
     toToken:      params.toToken,
-    fromAmount:   params.fromAmount,
+    fromAmount:   params.fromAmount ?? "",
     toAmount,
     toAmountMin,
     alphaFeeUSD,
@@ -191,6 +204,7 @@ function parseQuoteResponse(
     expiresAt:    Date.now() + QUOTE_VALIDITY_MS,
     tool,
     computedFromAmount,
+    btcDepositAddress,
   };
 }
 

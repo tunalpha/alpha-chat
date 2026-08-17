@@ -36,7 +36,7 @@ import { apiRefreshSession } from "../../lib/api.js";
 import {
   EVM_SWAP_ACTIVE_KEY, EVM_SWAP_IKEY,
   LIFI_INTEGRATOR, LIFI_FEE,
-  EVM_SWAP_CHAINS,
+  EVM_SWAP_CHAINS, isBtcChain, BTC_CHAIN_ID,
   toTokenUnits, fromTokenUnits, getDefaultFromToken, getTokensForChain,
   type EvmSwapPhase, type EvmSwapStateValue, type EvmSwapActions,
   type EvmToken, type EvmActiveSwap, type EvmSwapQuote,
@@ -89,7 +89,7 @@ export interface EvmSwapStateOpts {
   /**
    * Indirizzo EVM dell'Alpha Wallet interno.
    * Usato come fallback quando nessun account ThirdWeb è connesso.
-   * Fornisce fromAddress per quote Li.Fi e abilita il fetch dei balance.
+   * Fornisce fromAddress per quote Li.Fi (EVM→EVM/EVM→BTC) e abilita il fetch dei balance.
    */
   alphaWalletAddress?: string;
   /**
@@ -104,6 +104,13 @@ export interface EvmSwapStateOpts {
    * Passato direttamente a Li.Fi nella query quote.
    */
   slippage?: number;
+  /**
+   * Indirizzo Bitcoin dell'Alpha Wallet interno (es. bc1q…).
+   * Necessario per swaps BTC↔EVM:
+   *   - BTC→EVM: usato come fromAddress nella quote Li.Fi
+   *   - EVM→BTC: usato come toAddress nella quote Li.Fi (destinazione Bitcoin)
+   */
+  btcAddress?: string;
 }
 
 // ── Hook ──────────────────────────────────────────────────────────────────────
@@ -124,6 +131,7 @@ export function useEvmSwapState(opts?: EvmSwapStateOpts): [EvmSwapStateValue, Ev
   const fromChainIdRef = useRef(sv.fromChainId);
   const isMounted      = useRef(true);
   const slippageRef    = useRef(opts?.slippage);
+  const btcAddressRef  = useRef<string | undefined>(opts?.btcAddress);
 
   const svRef        = useRef<EvmSwapStateValue>(sv);
   const effectiveRef = useRef<string | undefined>(effectiveAddress ?? undefined);
@@ -131,6 +139,7 @@ export function useEvmSwapState(opts?: EvmSwapStateOpts): [EvmSwapStateValue, Ev
   useEffect(() => { accountRef.current     = activeAccount?.address;         }, [activeAccount]);
   useEffect(() => { fromChainIdRef.current = sv.fromChainId;                 }, [sv.fromChainId]);
   useEffect(() => { slippageRef.current    = opts?.slippage;                 }, [opts?.slippage]);
+  useEffect(() => { btcAddressRef.current  = opts?.btcAddress;               }, [opts?.btcAddress]);
   useEffect(() => { svRef.current          = sv;                             }, [sv]);
   useEffect(() => { effectiveRef.current   = effectiveAddress ?? undefined;  }, [effectiveAddress]);
 
@@ -245,7 +254,9 @@ export function useEvmSwapState(opts?: EvmSwapStateOpts): [EvmSwapStateValue, Ev
   // ── Chain auto-sync: quando active ThirdWeb chain cambia → aggiorna fromChain
   useEffect(() => {
     if (!activeChain?.id) return;
-    const supported = EVM_SWAP_CHAINS.find(c => c.id === activeChain.id);
+    // BTC non è mai una ThirdWeb chain — salta se il chainId è quello di BTC
+    if (isBtcChain(activeChain.id)) return;
+    const supported = EVM_SWAP_CHAINS.find(c => c.id === activeChain.id && !isBtcChain(c.id));
     if (!supported) return;
     setSv(prev => {
       if (prev.phase !== "idle" && prev.phase !== "quoted") return prev;
@@ -284,13 +295,20 @@ export function useEvmSwapState(opts?: EvmSwapStateOpts): [EvmSwapStateValue, Ev
       const fromUnits = toTokenUnits(snap.fromAmount, snap.fromToken.decimals);
       if (fromUnits === "0") return;
       try {
+        const btcAddr2 = btcAddressRef.current;
+        const refreshFromAddr = isBtcChain(snap.fromChainId) ? (btcAddr2 ?? addr) : addr;
+        const refreshToAddr: string | undefined =
+          isBtcChain(snap.toChainId)   ? btcAddr2 :
+          isBtcChain(snap.fromChainId) ? (addr ?? undefined) :
+          undefined;
         const newQuote = await fetchLiFiQuote({
           fromChainId: snap.fromChainId,
           toChainId:   snap.toChainId,
           fromToken:   snap.fromToken,
           toToken:     snap.toToken,
           fromAmount:  fromUnits,
-          fromAddress: addr,
+          fromAddress: refreshFromAddr,
+          ...(refreshToAddr ? { toAddress: refreshToAddr } : {}),
           slippage:    slippageRef.current,
         });
         if (isMounted.current) {
@@ -310,12 +328,18 @@ export function useEvmSwapState(opts?: EvmSwapStateOpts): [EvmSwapStateValue, Ev
 
   const setFromChain = useCallback((chainId: number) => {
     const token = getDefaultFromToken(chainId);
+    // Quando FROM=BTC, TO deve essere una chain EVM (default Polygon USDT)
+    // per evitare swap BTC→BTC che non esiste
+    const defaultToChainId = isBtcChain(chainId) ? 137 : chainId;
+    const defaultToToken = isBtcChain(chainId)
+      ? (getTokensForChain(137)[2] ?? getDefaultFromToken(137))  // USDT Polygon
+      : (getTokensForChain(chainId)[2] ?? token);
     setSv(prev => ({
       ...prev,
       fromChainId: chainId,
       fromToken:   token,
-      toChainId:   chainId,
-      toToken:     getTokensForChain(chainId)[2] ?? token,
+      toChainId:   defaultToChainId,
+      toToken:     defaultToToken,
       quote:       null,
       error:       null,
       phase:       "idle",
@@ -387,6 +411,24 @@ export function useEvmSwapState(opts?: EvmSwapStateOpts): [EvmSwapStateValue, Ev
       return;
     }
 
+    // ── Indirizzi BTC↔EVM ─────────────────────────────────────────────────
+    const btcAddr = opts?.btcAddress;
+    if (isBtcChain(snap.fromChainId) && !btcAddr) {
+      if (isMounted.current) setSv(prev => ({ ...prev, phase: "idle", error: { code: "NO_BTC_WALLET", message: "Alpha Wallet non sbloccato. Sblocca per usare BTC." } }));
+      return;
+    }
+    if (isBtcChain(snap.toChainId) && !btcAddr) {
+      if (isMounted.current) setSv(prev => ({ ...prev, phase: "idle", error: { code: "NO_BTC_WALLET", message: "Alpha Wallet non sbloccato. Sblocca per inviare a BTC." } }));
+      return;
+    }
+    // fromAddress: BTC address se FROM=BTC, EVM address altrimenti
+    const quoteFromAddress = isBtcChain(snap.fromChainId) ? (btcAddr ?? "") : (effectiveAddress ?? "");
+    // toAddress: BTC address se TO=BTC (EVM→BTC), EVM address se FROM=BTC (BTC→EVM), undefined altrimenti
+    const quoteToAddress: string | undefined =
+      isBtcChain(snap.toChainId)   ? btcAddr :
+      isBtcChain(snap.fromChainId) ? (effectiveAddress ?? undefined) :
+      undefined;
+
     try {
       const quote = await fetchLiFiQuote({
         fromChainId:  snap.fromChainId,
@@ -394,7 +436,8 @@ export function useEvmSwapState(opts?: EvmSwapStateOpts): [EvmSwapStateValue, Ev
         fromToken:    snap.fromToken,
         toToken:      snap.toToken,
         fromAmount:   fromUnits,
-        fromAddress:  effectiveAddress,
+        fromAddress:  quoteFromAddress,
+        ...(quoteToAddress ? { toAddress: quoteToAddress } : {}),
         slippage:     slippageRef.current,
       });
       if (isMounted.current) setSv(prev => ({ ...prev, phase: "quoted", quote, error: null }));
@@ -434,6 +477,12 @@ export function useEvmSwapState(opts?: EvmSwapStateOpts): [EvmSwapStateValue, Ev
 
     if (isMounted.current) setSv(prev => ({ ...prev, phase: "quoting", error: null, quote: null }));
 
+    // Exact-output non supportato per BTC (quote BTC→EVM/EVM→BTC richiede from-mode)
+    if (isBtcChain(snap.fromChainId) || isBtcChain(snap.toChainId)) {
+      if (isMounted.current) setSv(prev => ({ ...prev, phase: "idle" }));
+      return;
+    }
+
     try {
       const quote = await fetchLiFiQuote({
         fromChainId:  snap.fromChainId,
@@ -441,7 +490,7 @@ export function useEvmSwapState(opts?: EvmSwapStateOpts): [EvmSwapStateValue, Ev
         fromToken:    snap.fromToken,
         toToken:      snap.toToken,
         toAmount:     toUnits,
-        fromAddress:  effectiveAddress,
+        fromAddress:  effectiveAddress ?? "",
         slippage:     slippageRef.current,
       });
       // Aggiorna fromAmount con il valore calcolato da Li.Fi (action.fromAmount)
@@ -483,7 +532,30 @@ export function useEvmSwapState(opts?: EvmSwapStateOpts): [EvmSwapStateValue, Ev
       return;
     }
 
-    // Permetti esecuzione con: ThirdWeb wallet OPPURE Alpha Wallet configurato
+    // ── BTC→EVM: nessuna firma EVM necessaria — mostra indirizzo deposito ───
+    if (isBtcChain(current.quote.fromChainId)) {
+      _evmExecuting = true;
+      const depositAddr = current.quote.btcDepositAddress;
+      if (!depositAddr) {
+        if (isMounted.current) setSv(prev => ({
+          ...prev, error: { code: "NO_DEPOSIT_ADDR", message: "Indirizzo deposito non disponibile. Riprova la quote." }
+        }));
+        _evmExecuting = false;
+        return;
+      }
+      const amtRaw = parseInt(current.quote.fromAmount ?? "0", 10);
+      if (isMounted.current) setSv(prev => ({
+        ...prev,
+        phase:               "awaiting_btc_deposit",
+        btcDepositAddress:   depositAddr,
+        btcDepositAmountSat: isNaN(amtRaw) ? 0 : amtRaw,
+        error:               null,
+      }));
+      _evmExecuting = false;
+      return;
+    }
+
+    // EVM→EVM / EVM→BTC: richiede wallet EVM per la firma
     const alphaMode = !!(opts?.getAlphaWalletClient && !activeAccount);
     if (!activeWallet && !alphaMode) {
       if (isMounted.current) setSv(prev => ({ ...prev, error: { code: "NO_WALLET", message: "Wallet non connesso." } }));

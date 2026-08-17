@@ -8,15 +8,16 @@
 import React, { useState, useMemo } from "react";
 import { X, Search } from "lucide-react";
 import {
-  EVM_SWAP_CHAINS, EVM_SWAP_TOKENS,
+  EVM_SWAP_CHAINS, EVM_SWAP_TOKENS, BTC_CHAIN_ID,
   fromTokenUnits,
   type EvmToken, type EvmChainInfo,
 } from "./types.js";
 
 const CHAIN_COLOR: Record<number, string> = {
-  137: "#8247E5",
-  56:  "#F3BA2F",
-  1:   "#627EEA",
+  137:         "#8247E5",
+  56:          "#F3BA2F",
+  1:           "#627EEA",
+  [BTC_CHAIN_ID]: "#F7931A",
 };
 
 /** Icona token: <img> con logoURI se disponibile, altrimenti cerchio colorato */
@@ -56,9 +57,10 @@ interface TokenSelectorProps {
 }
 
 const CHAIN_ICONS: Record<number, string> = {
-  137: "🟣",
-  56:  "🟡",
-  1:   "🔵",
+  137:         "🟣",
+  56:          "🟡",
+  1:           "🔵",
+  [BTC_CHAIN_ID]: "🟠",
 };
 
 function fmtBal(raw: bigint | undefined, decimals: number): string | null {

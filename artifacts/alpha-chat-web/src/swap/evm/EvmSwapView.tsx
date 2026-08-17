@@ -24,7 +24,7 @@ import React, {
 } from "react";
 import {
   ArrowUpDown, Loader2, CheckCircle, AlertTriangle,
-  Copy, Check, ExternalLink, RefreshCw, Info, ChevronDown, ChevronRight, X,
+  Copy, Check, ExternalLink, RefreshCw, Info, ChevronDown, ChevronRight, X, Clock,
 } from "lucide-react";
 import { useActiveAccount, useActiveWalletChain } from "thirdweb/react";
 import { type WalletClient } from "viem";
@@ -32,6 +32,7 @@ import { useEvmSwapState }  from "./useEvmSwapState.js";
 import { TokenSelector }    from "./TokenSelector.js";
 import {
   fromTokenUnits, toTokenUnits, getChainInfo, EVM_SWAP_CHAINS, getTokensForChain,
+  isBtcChain, BTC_CHAIN_ID,
   LIFI_FEE, type EvmToken,
 } from "./types.js";
 
@@ -46,9 +47,10 @@ function txUrl(chainId: number, txHash: string): string {
 
 /** Colore chain */
 const CHAIN_COLOR: Record<number, string> = {
-  137: "#8247E5",
-  56:  "#F3BA2F",
-  1:   "#627EEA",
+  137:         "#8247E5",
+  56:          "#F3BA2F",
+  1:           "#627EEA",
+  [BTC_CHAIN_ID]: "#F7931A",
 };
 
 // ── Lettura balance via RPC ───────────────────────────────────────────────────
@@ -104,7 +106,8 @@ function useEvmTokenBalances(chainId: number, address: string | undefined): Bala
 
   useEffect(() => {
     if (!address) { setState({ map: new Map(), loading: false }); return; }
-    if (!CHAIN_RPC[chainId]?.length) return;
+    // BTC non è una chain EVM — nessun RPC call; resetta lo stato per evitare saldo stale
+    if (!CHAIN_RPC[chainId]?.length) { setState({ map: new Map(), loading: false }); return; }
 
     const tokens = getTokensForChain(chainId);
     let cancelled = false;
@@ -128,7 +131,7 @@ function useEvmTokenBalances(chainId: number, address: string | undefined): Bala
       if (cancelled) return;
       const entries: [string, bigint][] = [];
       for (const r of results) {
-        if (r.status === "fulfilled") entries.push(r.value);
+        if (r.status === "fulfilled") entries.push(r.value as [string, bigint]);
       }
       setState({ map: new Map(entries), loading: false });
     }).catch(() => {
@@ -154,9 +157,10 @@ function fmtBal(raw: bigint | undefined, decimals: number): string {
 // Riserva gas per token nativi (MAX non deve azzerare il gas)
 // ETH: 0.003 ETH copre ~150k gas a 20 gwei ($5.70 a $1900/ETH)
 const GAS_RESERVE: Record<number, bigint> = {
-  137: 20000000000000000n,   // 0.02 POL  (Polygon — gas economico)
-  56:  5000000000000000n,    // 0.005 BNB (BSC)
-  1:   3000000000000000n,    // 0.003 ETH (Ethereum — ridotto da 0.005)
+  137:            20000000000000000n,  // 0.02 POL  (Polygon — gas economico)
+  56:             5000000000000000n,   // 0.005 BNB (BSC)
+  1:              3000000000000000n,   // 0.003 ETH (Ethereum — ridotto da 0.005)
+  [BTC_CHAIN_ID]: 2000n,              // 2000 sat (Bitcoin — riserva per miner fee)
 };
 
 // ── Hook: prezzo token in USD e EUR (via Li.Fi + exchangerate-api) ─────────────
@@ -859,12 +863,73 @@ interface EvmSwapViewProps {
    * Stabile: creata con useCallback(fn, []) in SwapView.
    */
   getAlphaWalletClient?: (chainId: number) => Promise<WalletClient>;
+  /** Indirizzo Bitcoin dell'Alpha Wallet (bc1q…). Necessario per swap BTC↔EVM via Li.Fi. */
+  btcAddress?: string;
+  /**
+   * Saldo BTC del wallet in satoshi (da WalletContext).
+   * Usato per il controllo saldo e il bottone MAX quando FROM=BTC.
+   */
+  btcBalanceSat?: number;
 }
 
-export function EvmSwapView({ onBack, alphaWalletAddress, getAlphaWalletClient }: EvmSwapViewProps) {
+// ── BtcDepositView ─────────────────────────────────────────────────────────────
+// Mostrato quando phase=awaiting_btc_deposit (swap BTC→EVM via Li.Fi/Thorchain).
+// L'utente invia BTC manualmente all'indirizzo del vault; il bridge consegna automaticamente.
+function BtcDepositView({
+  depositAddress, amountSat, toToken, onDone,
+}: { depositAddress: string; amountSat: number; toToken: EvmToken | null; onDone: () => void }) {
+  const [copied, setCopied] = useState(false);
+  const amountBtc = amountSat > 0
+    ? (amountSat / 1e8).toFixed(8).replace(/0+$/, "").replace(/\.$/, "")
+    : "—";
+  const handleCopy = () => {
+    navigator.clipboard.writeText(depositAddress).catch(() => {});
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2500);
+  };
+  return (
+    <div className="asw-status-view" style={{ alignItems: "flex-start", gap: 16 }}>
+      <div className="asw-status-icon asw-status-icon--pending" style={{ background: "rgba(247,147,26,.12)", color: "#F7931A" }}>
+        <Clock size={32} />
+      </div>
+      <div>
+        <p className="asw-status-title">Invia BTC al bridge</p>
+        <p className="asw-status-sub" style={{ textAlign: "left" }}>
+          Invia <strong>{amountBtc} BTC</strong> all'indirizzo sottostante.
+          Il bridge Li.Fi/Thorchain consegnerà automaticamente{toToken ? ` ${toToken.symbol}` : " i token"} al tuo wallet EVM.
+        </p>
+      </div>
+      <div style={{ width: "100%", boxSizing: "border-box", background: "rgba(247,147,26,.08)", border: "1px solid rgba(247,147,26,.3)", borderRadius: 14, padding: 16 }}>
+        <p style={{ fontSize: 12, color: "rgba(255,255,255,.45)", margin: "0 0 6px", textTransform: "uppercase", letterSpacing: ".05em" }}>Indirizzo deposito BTC</p>
+        <p style={{ fontSize: 13, color: "#fff", fontFamily: "monospace", wordBreak: "break-all", margin: "0 0 14px", lineHeight: 1.6 }}>{depositAddress || "—"}</p>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
+          <div>
+            <p style={{ fontSize: 12, color: "rgba(255,255,255,.45)", margin: 0 }}>Importo esatto</p>
+            <p style={{ fontSize: 16, fontWeight: 700, color: "#F7931A", margin: "3px 0 0" }}>
+              {amountBtc} <span style={{ fontSize: 12, fontWeight: 400, color: "rgba(255,255,255,.45)" }}>BTC</span>
+            </p>
+          </div>
+          <button onClick={handleCopy} className="aw-btn-sm" style={{ display: "flex", alignItems: "center", gap: 6, flexShrink: 0 }}>
+            {copied ? <Check size={13} /> : <Copy size={13} />}
+            {copied ? "Copiato!" : "Copia indirizzo"}
+          </button>
+        </div>
+      </div>
+      <div className="asw-alert asw-alert--warn" style={{ width: "100%", boxSizing: "border-box" }}>
+        <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 2 }} />
+        <span>Invia l'importo esatto. Importi diversi potrebbero non essere riconosciuti. Bridge gestito da Li.Fi + Thorchain (non custodiato).</span>
+      </div>
+      <button onClick={onDone} className="aw-btn aw-btn--secondary" style={{ width: "100%", maxWidth: 340 }}>
+        Torna all'inizio
+      </button>
+    </div>
+  );
+}
+
+export function EvmSwapView({ onBack, alphaWalletAddress, getAlphaWalletClient, btcAddress, btcBalanceSat }: EvmSwapViewProps) {
   const [slippage, setSlippage] = useState(0.005); // 0.5% default
   const [slippageOpen, setSlippageOpen] = useState(false);
-  const [sv, actions] = useEvmSwapState({ alphaWalletAddress, getAlphaWalletClient, slippage });
+  const [sv, actions] = useEvmSwapState({ alphaWalletAddress, getAlphaWalletClient, slippage, btcAddress });
 
   // ThirdWeb hooks (usati in modalità WalletConnect, se attiva)
   const activeAccount = useActiveAccount();
@@ -1039,7 +1104,10 @@ export function EvmSwapView({ onBack, alphaWalletAddress, getAlphaWalletClient }
   // Bottoni % (10 / 25 / 50 / 100=MAX) con riserva gas per token nativi
   const handlePct = useCallback((pct: number) => {
     if (!sv.fromToken) return;
-    const raw = balancesState.map.get(sv.fromToken.address);
+    // BTC: usa btcBalanceSat invece del balance EVM map
+    const raw = isBtcChain(sv.fromChainId)
+      ? (btcBalanceSat != null ? BigInt(btcBalanceSat) : undefined)
+      : balancesState.map.get(sv.fromToken.address);
     if (!raw || raw === 0n) return;
 
     let spendable = raw;
@@ -1067,10 +1135,17 @@ export function EvmSwapView({ onBack, alphaWalletAddress, getAlphaWalletClient }
     setToInput("");
     setFiatCurrency("");        // torna in modalità crypto dopo pct
     actions.setFromAmount(human);
-  }, [sv.fromToken, sv.fromChainId, balancesState.map, actions, showGasWarning]);
+  }, [sv.fromToken, sv.fromChainId, balancesState.map, btcBalanceSat, actions, showGasWarning]);
 
   // ── Balance guard ────────────────────────────────────────────────────────────
-  const fromBal = sv.fromToken ? balancesState.map.get(sv.fromToken.address) : undefined;
+  // BTC: usa btcBalanceSat (in satoshi → bigint) invece del balance EVM map
+  const fromBal = (() => {
+    if (!sv.fromToken) return undefined;
+    if (isBtcChain(sv.fromChainId)) {
+      return btcBalanceSat != null ? BigInt(btcBalanceSat) : undefined;
+    }
+    return balancesState.map.get(sv.fromToken.address);
+  })();
   const amountExceedsBalance = (() => {
     if (fromBal === undefined || !sv.fromToken) return false;
     // In from-mode: verifica sv.fromAmount
@@ -1092,7 +1167,10 @@ export function EvmSwapView({ onBack, alphaWalletAddress, getAlphaWalletClient }
   const isBusy       = ["approving", "signing", "submitted", "pending"].includes(sv.phase);
 
   // canSwap: richiede effectiveAddress, quote valida e importo NON superiore al saldo
-  const canSwap = hasQuote && !isBusy && !!effectiveAddress && !amountExceedsBalance;
+  // Per swap BTC↔EVM: serve anche btcAddress (Alpha Wallet sbloccato)
+  const btcInvolved = isBtcChain(sv.fromChainId) || isBtcChain(sv.toChainId);
+  const canSwap = hasQuote && !isBusy && !!effectiveAddress && !amountExceedsBalance
+    && (!btcInvolved || !!btcAddress);
 
   // ── Recovery spinner ───────────────────────────────────────────────────────
   if (sv.recovering) {
@@ -1133,6 +1211,20 @@ export function EvmSwapView({ onBack, alphaWalletAddress, getAlphaWalletClient }
     return (
       <div className="asw-content">
         <EvmFailedView error={sv.error?.message ?? "Si è verificato un errore."} onRetry={actions.reset} />
+      </div>
+    );
+  }
+
+  // ── Awaiting BTC deposit (BTC→EVM) ─────────────────────────────────────────
+  if (sv.phase === "awaiting_btc_deposit") {
+    return (
+      <div className="asw-content">
+        <BtcDepositView
+          depositAddress={sv.btcDepositAddress ?? ""}
+          amountSat={sv.btcDepositAmountSat ?? 0}
+          toToken={sv.toToken}
+          onDone={actions.reset}
+        />
       </div>
     );
   }
@@ -1299,6 +1391,8 @@ export function EvmSwapView({ onBack, alphaWalletAddress, getAlphaWalletClient }
             <span style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
               <Loader2 size={18} style={{ animation: "aw-spin .8s linear infinite" }} /> In attesa della firma…
             </span>
+          ) : isBtcChain(sv.fromChainId) ? (
+            "Ottieni indirizzo deposito"
           ) : "Scambia"}
         </button>
 

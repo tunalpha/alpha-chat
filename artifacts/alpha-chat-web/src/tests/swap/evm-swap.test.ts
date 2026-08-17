@@ -25,7 +25,7 @@ import {
 } from "../../swap/evm/lifi-client.js";
 import {
   toTokenUnits, fromTokenUnits, tokenAddressForLiFi,
-  EVM_SWAP_TOKENS, EVM_SWAP_CHAINS,
+  EVM_SWAP_TOKENS, EVM_SWAP_CHAINS, isBtcChain,
   LIFI_INTEGRATOR, LIFI_FEE, NATIVE_ADDRESS, QUOTE_VALIDITY_MS,
   getTokensForChain, getDefaultFromToken,
   type EvmToken, type EvmSwapQuote,
@@ -544,10 +544,12 @@ describe("Utility: toTokenUnits / fromTokenUnits", () => {
 });
 
 describe("Token registry", () => {
-  it("tutti e 3 le chain hanno almeno 3 token", () => {
+  it("le chain EVM hanno almeno 3 token, BTC almeno 1", () => {
     for (const chain of EVM_SWAP_CHAINS) {
       const tokens = getTokensForChain(chain.id);
-      expect(tokens.length).toBeGreaterThanOrEqual(3);
+      // Bitcoin ha solo il token nativo (BTC) per design — le chain EVM ne hanno almeno 3
+      const minTokens = isBtcChain(chain.id) ? 1 : 3;
+      expect(tokens.length).toBeGreaterThanOrEqual(minTokens);
     }
   });
 
