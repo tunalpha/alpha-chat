@@ -53,8 +53,10 @@ export interface WalletTxRecord {
   updatedAt:   number;
   /** "swap" se la TX è parte di uno swap (non un invio normale) */
   txType?:     "swap";
-  /** Symbol del token di destinazione (es. "USDC") — compilato per txType==="swap" */
+  /** Symbol del token di destinazione (es. "USDT") — compilato per txType==="swap" */
   swapToAsset?: string;
+  /** Importo ricevuto human-readable (es. "1.6576") — compilato per txType==="swap" */
+  swapToAmount?: string;
 }
 
 // ─── CRUD ──────────────────────────────────────────────────────────────────
@@ -77,8 +79,9 @@ export async function saveTxRecord(record: WalletTxRecord): Promise<void> {
       ...record,
       // Preserva metadata swap — non sovrascrivere con undefined quando il tx-monitor
       // aggiorna un record già taggato come swap (il monitor non conosce txType).
-      txType:      existing.txType      ?? record.txType,
-      swapToAsset: existing.swapToAsset ?? record.swapToAsset,
+      txType:       existing.txType       ?? record.txType,
+      swapToAsset:  existing.swapToAsset  ?? record.swapToAsset,
+      swapToAmount: existing.swapToAmount ?? record.swapToAmount,
       updatedAt:   Date.now(),
     });
   } else {

@@ -4357,7 +4357,13 @@ function HistoryView({ onBack, filterSymbol, onClearFilterSymbol }: { onBack: ()
     // Chain filter — confronto sempre come number per robustezza (IDB può restituire strings)
     if (chainFilter !== "all" && Number(tx.chainId) !== chainFilter) return false;
     // Token filter from Token Detail view (con alias MATIC↔POL)
-    if (filterSymbol && _normalizeAsset(tx.asset) !== _normalizeAsset(filterSymbol)) return false;
+    // Include anche gli swap dove il token ricevuto corrisponde al filtro
+    if (filterSymbol) {
+      const norm = _normalizeAsset;
+      const matchAsset   = norm(tx.asset) === norm(filterSymbol);
+      const matchSwapTo  = !!(tx.swapToAsset && norm(tx.swapToAsset) === norm(filterSymbol));
+      if (!matchAsset && !matchSwapTo) return false;
+    }
     if (filter === "swap") return tx.txType === "swap";
     if (filter === "all") return true;
     if (filter === "in") return tx.direction === "in" && tx.status !== "pending";
@@ -4468,6 +4474,16 @@ function HistoryView({ onBack, filterSymbol, onClearFilterSymbol }: { onBack: ()
 
 // ─── TxListItem ─────────────────────────────────────────────────────────────
 
+/** Formatta un importo numerico per la cronologia: max 4 decimali, no trailing zeros. */
+function fmtAmt(a: string | undefined): string {
+  if (!a) return "0";
+  const n = parseFloat(a);
+  if (isNaN(n)) return a;
+  if (n === 0) return "0";
+  if (Math.abs(n) < 0.001) return parseFloat(n.toPrecision(4)).toString();
+  return parseFloat(n.toFixed(4)).toString();
+}
+
 function TxListItem({ tx, onClick }: { tx: WalletTxRecord; onClick: () => void }) {
   const isIn      = tx.direction === "in";
   const isPending = tx.status === "pending";
@@ -4507,7 +4523,10 @@ function TxListItem({ tx, onClick }: { tx: WalletTxRecord; onClick: () => void }
         <div className="aw-tx-meta">{tx.network} · {tx.txHash.slice(0, 8)}…{tx.txHash.slice(-6)}</div>
       </div>
       <div className="aw-tx-amount-col">
-        <div className={`aw-tx-amount ${amtClass}`}>{amtPrefix}{tx.amount} {tx.asset}</div>
+        <div className={`aw-tx-amount ${amtClass}`}>{amtPrefix}{fmtAmt(tx.amount)} {tx.asset}</div>
+        {isSwap && tx.swapToAmount && tx.swapToAsset && (
+          <div className="aw-tx-amount aw-tx-amount--in">+{fmtAmt(tx.swapToAmount)} {tx.swapToAsset}</div>
+        )}
         <div className="aw-tx-date">{dateStr} {timeStr}</div>
       </div>
     </div>
@@ -4568,8 +4587,13 @@ function TxDetailView({ tx, onBack }: { tx: WalletTxRecord; onBack: () => void }
 
       <div className="aw-tx-detail-amount">
         <div className={`aw-tx-detail-amount-value ${amtClass}`}>
-          {amtPrefix}{tx.amount} {tx.asset}
+          {amtPrefix}{fmtAmt(tx.amount)} {tx.asset}
         </div>
+        {tx.txType === "swap" && tx.swapToAmount && tx.swapToAsset && (
+          <div className="aw-tx-detail-amount-value" style={{ color: "#4ade80", marginTop: 4 }}>
+            +{fmtAmt(tx.swapToAmount)} {tx.swapToAsset}
+          </div>
+        )}
         <div className="aw-tx-detail-amount-network">{tx.network}</div>
       </div>
 
@@ -4578,6 +4602,14 @@ function TxDetailView({ tx, onBack }: { tx: WalletTxRecord; onBack: () => void }
           <span className="aw-tx-detail-label">Stato</span>
           <span className="aw-tx-detail-value">{statusLabel}</span>
         </div>
+        {tx.txType === "swap" && tx.swapToAmount && tx.swapToAsset && (
+          <div className="aw-tx-detail-row">
+            <span className="aw-tx-detail-label">Ricevuto</span>
+            <span className="aw-tx-detail-value" style={{ color: "#4ade80", fontWeight: 600 }}>
+              +{fmtAmt(tx.swapToAmount)} {tx.swapToAsset}
+            </span>
+          </div>
+        )}
         <div className="aw-tx-detail-row">
           <span className="aw-tx-detail-label">Data</span>
           <span className="aw-tx-detail-value">{dateStr}</span>

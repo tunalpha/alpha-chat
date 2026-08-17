@@ -638,20 +638,24 @@ export function useEvmSwapState(opts?: EvmSwapStateOpts): [EvmSwapStateValue, Ev
         startBtcPoll(txid);
 
         // Tag la TX come swap in IDB — il tx-monitor la ritroverà e non sovrascriverà txType
-        const toSymbol = current.quote.toToken?.symbol;
+        const toSymbol   = current.quote.toToken?.symbol;
+        const toAmtHuman = current.quote.toToken
+          ? fromTokenUnits(current.quote.toAmount, current.quote.toToken.decimals)
+          : undefined;
         saveTxRecord({
-          id:          `btc:${txid}:out:`,
-          chainId:     0,
-          network:     "Bitcoin",
-          txHash:      txid,
-          direction:   "out",
-          asset:       "BTC",
-          amount:      fromTokenUnits(amtRaw.toString(), 8),
-          txType:      "swap",
-          swapToAsset: toSymbol,
-          timestamp:   Date.now(),
-          status:      "pending",
-          updatedAt:   Date.now(),
+          id:           `btc:${txid}:out:`,
+          chainId:      0,
+          network:      "Bitcoin",
+          txHash:       txid,
+          direction:    "out",
+          asset:        "BTC",
+          amount:       fromTokenUnits(amtRaw.toString(), 8),
+          txType:       "swap",
+          swapToAsset:  toSymbol,
+          swapToAmount: toAmtHuman,
+          timestamp:    Date.now(),
+          status:       "pending",
+          updatedAt:    Date.now(),
         }).catch(() => { /* best-effort */ });
 
       } catch (err) {
@@ -787,25 +791,29 @@ export function useEvmSwapState(opts?: EvmSwapStateOpts): [EvmSwapStateValue, Ev
       // ID unico "evm-swap:chainId:txHash" — non collidere con i record del tx-monitor
       // (che usano "chainId:txHash:direction:logIndex" per le ERC-20 transfer).
       if (finalTxHash) {
-        const cId      = current.quote.fromChainId;
-        const netName  = chainName(cId);
-        const fromSym  = current.quote.fromToken.symbol;
-        const toSym    = current.quote.toToken?.symbol ?? "";
-        const amtHuman = fromTokenUnits(current.quote.fromAmount, current.quote.fromToken.decimals);
+        const cId        = current.quote.fromChainId;
+        const netName    = chainName(cId);
+        const fromSym    = current.quote.fromToken.symbol;
+        const toSym      = current.quote.toToken?.symbol ?? "";
+        const amtHuman   = fromTokenUnits(current.quote.fromAmount, current.quote.fromToken.decimals);
+        const toAmtHuman = current.quote.toToken
+          ? fromTokenUnits(current.quote.toAmount, current.quote.toToken.decimals)
+          : undefined;
 
         saveTxRecord({
-          id:          `evm-swap:${cId}:${finalTxHash}`,
-          chainId:     cId,
-          network:     netName,
-          txHash:      finalTxHash,
-          direction:   "out",
-          asset:       fromSym,
-          amount:      amtHuman,
-          txType:      "swap",
-          swapToAsset: toSym,
-          timestamp:   Date.now(),
-          status:      "confirmed",
-          updatedAt:   Date.now(),
+          id:           `evm-swap:${cId}:${finalTxHash}`,
+          chainId:      cId,
+          network:      netName,
+          txHash:       finalTxHash,
+          direction:    "out",
+          asset:        fromSym,
+          amount:       amtHuman,
+          txType:       "swap",
+          swapToAsset:  toSym,
+          swapToAmount: toAmtHuman,
+          timestamp:    Date.now(),
+          status:       "confirmed",
+          updatedAt:    Date.now(),
         }).catch(() => { /* best-effort */ });
 
         dispatchWalletNotification({
