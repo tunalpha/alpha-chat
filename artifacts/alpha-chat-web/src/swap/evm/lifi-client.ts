@@ -378,7 +378,7 @@ function _publicRpc(chainId: number): string {
       return env || "https://polygon-rpc.com";
     }
     case 56:  return "https://bsc-dataseed.binance.org";
-    case 1:   return "https://cloudflare-eth.com";
+    case 1:   return "https://ethereum.publicnode.com";
     default:  return "https://polygon-rpc.com";
   }
 }
