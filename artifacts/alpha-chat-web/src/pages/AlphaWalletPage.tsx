@@ -4354,11 +4354,13 @@ function HistoryView({ onBack, filterSymbol, onClearFilterSymbol }: { onBack: ()
   const _normalizeAsset = (a: string) => (a === "MATIC" ? "POL" : a);
 
   const filtered = wallet.txHistory.filter(tx => {
+    // Swap filter bypassa chainFilter: gli swap BTC/Lightning hanno chainId=-1
+    // e verrebbero esclusi se chainFilter fosse impostato su una rete EVM.
+    if (filter === "swap") return tx.txType === "swap";
     // Chain filter — confronto sempre come number per robustezza (IDB può restituire strings)
     if (chainFilter !== "all" && Number(tx.chainId) !== chainFilter) return false;
     // Token filter from Token Detail view (con alias MATIC↔POL)
     if (filterSymbol && _normalizeAsset(tx.asset) !== _normalizeAsset(filterSymbol)) return false;
-    if (filter === "swap") return tx.txType === "swap";
     if (filter === "all") return true;
     if (filter === "in") return tx.direction === "in" && tx.status !== "pending";
     if (filter === "out") return tx.direction === "out" && tx.status !== "pending" && tx.txType !== "swap";
@@ -4391,9 +4393,11 @@ function HistoryView({ onBack, filterSymbol, onClearFilterSymbol }: { onBack: ()
           )}
         </div>
       )}
-      {/* Filtro rete — mostrato solo se ci sono TX su più di 1 chain */}
-      {chainsInHistory.length > 1 && (
-        <div className="aw-history-filters" style={{ display: "flex", alignItems: "center", gap: 6, paddingBottom: 0 }}>
+      {/* Filtro rete + direzione — nascosti quando si arriva da Token Detail (filterSymbol attivo).
+          Nel token-detail l'utente vede già solo le TX di quel token: filtri aggiuntivi
+          sarebbero ridondanti e affollerebbero la UI. */}
+      {!filterSymbol && chainsInHistory.length > 1 && (
+        <div className="aw-history-filters">
           <button
             className={`aw-filter-chip ${chainFilter === "all" ? "aw-filter-chip--active" : ""}`}
             onClick={() => { setChainFilter("all"); setPage(1); }}
@@ -4412,35 +4416,37 @@ function HistoryView({ onBack, filterSymbol, onClearFilterSymbol }: { onBack: ()
           ))}
         </div>
       )}
-      {/* Filtro direzione */}
-      <div className="aw-history-filters" style={{ display: "flex", alignItems: "center", gap: 6 }}>
-        {(["all", "in", "out", "pending", "swap"] as TxFilter[]).map(f => (
+      {/* Filtro direzione — nascosto in token-detail */}
+      {!filterSymbol && (
+        <div className="aw-history-filters">
+          {(["all", "in", "out", "pending", "swap"] as TxFilter[]).map(f => (
+            <button
+              key={f}
+              className={`aw-filter-chip ${filter === f ? "aw-filter-chip--active" : ""}`}
+              onClick={() => { setFilter(f); setPage(1); }}
+            >
+              {f === "all" ? "Tutto"
+                : f === "in" ? "🟢↓ Ricevuto"
+                : f === "out" ? "🟣↑ Inviato"
+                : f === "pending" ? "⏳ In attesa"
+                : <span style={{ display: "flex", alignItems: "center", gap: 3 }}>
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="13" height="13" strokeLinecap="round" strokeLinejoin="round"><path d="M7 16V4m0 0L3 8m4-4 4 4M17 8v12m0 0 4-4m-4 4-4-4"/></svg>
+                    Swap
+                  </span>}
+            </button>
+          ))}
+          {/* Pulsante reset monitor: forza un poll fresco da block 0 con order:desc */}
           <button
-            key={f}
-            className={`aw-filter-chip ${filter === f ? "aw-filter-chip--active" : ""}`}
-            onClick={() => { setFilter(f); setPage(1); }}
+            className="aw-filter-chip"
+            style={{ marginLeft: "auto", minWidth: 32, opacity: repolling ? 0.5 : 1 }}
+            disabled={repolling}
+            onClick={() => { void handleResetAndRepoll(); }}
+            title="Aggiorna storico completo"
           >
-            {f === "all" ? "Tutto"
-              : f === "in" ? "🟢↓ Ricevuto"
-              : f === "out" ? "🟣↑ Inviato"
-              : f === "pending" ? "⏳ In attesa"
-              : <span style={{ display: "flex", alignItems: "center", gap: 3 }}>
-                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="13" height="13" strokeLinecap="round" strokeLinejoin="round"><path d="M7 16V4m0 0L3 8m4-4 4 4M17 8v12m0 0 4-4m-4 4-4-4"/></svg>
-                  Swap
-                </span>}
+            {repolling ? "⏳" : "🔄"}
           </button>
-        ))}
-        {/* Pulsante reset monitor: forza un poll fresco da block 0 con order:desc */}
-        <button
-          className="aw-filter-chip"
-          style={{ marginLeft: "auto", minWidth: 32, opacity: repolling ? 0.5 : 1 }}
-          disabled={repolling}
-          onClick={() => { void handleResetAndRepoll(); }}
-          title="Aggiorna storico completo"
-        >
-          {repolling ? "⏳" : "🔄"}
-        </button>
-      </div>
+        </div>
+      )}
 
       {filtered.length === 0 ? (
         <div className="aw-history-empty">
