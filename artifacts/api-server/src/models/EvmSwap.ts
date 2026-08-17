@@ -18,8 +18,10 @@ export interface IEvmSwap extends Document {
   toAddress:    string;
   fromAmount:   string;       // in unità minime (stringa)
   toAmount?:    string;       // ricevuto effettivo (valorizzato al complete)
-  alphaFeeUSD?: string;
+  alphaFeeUSD?: string;       // commissione Alpha 25 bps in USD
+  volumeUSD?:   string;       // volume in USD al momento dello swap
   tool?:        string;       // bridge/dex usato (es. "across")
+  source?:      string;       // "user_flow" | "historical_import"
   state:        "pending" | "completed" | "failed";
   txHash?:      string;
   error?:       string;
@@ -40,7 +42,9 @@ const evmSwapSchema = new Schema<IEvmSwap>({
   fromAmount:   { type: String, required: true },
   toAmount:     { type: String },
   alphaFeeUSD:  { type: String },
+  volumeUSD:    { type: String },
   tool:         { type: String },
+  source:       { type: String },
   state:        { type: String, enum: ["pending", "completed", "failed"], default: "pending" },
   txHash:       { type: String },
   error:        { type: String },

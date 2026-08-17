@@ -3,8 +3,8 @@
  *
  * Responsabilità:
  *   - Crea e aggiorna record swap EVM su MongoDB
- *   - Restituisce storico swap per utente
- *   - Validazione base (chainId supportati, importi non zero)
+ *   - Importa record storici con deduplicazione su txHash
+ *   - Restituisce storico swap per utente e aggregati admin
  *
  * La fee collection è gestita interamente da Li.Fi (Fee Forwarder).
  * NON implementa raccolta fee alternativa.
@@ -17,8 +17,17 @@ import { EvmSwapModel, type IEvmSwap } from "../../models/EvmSwap.js";
 
 const logger = pino({ name: "evm-swap-service" });
 
-// Chain supportate (dev.spec: Ethereum 1, Polygon 137, BSC 56)
-const SUPPORTED_CHAINS = new Set([1, 56, 137]);
+// Mappa chainId → nome leggibile
+const CHAIN_NAMES: Record<number, string> = {
+  1:   "Ethereum",
+  56:  "BSC",
+  137: "Polygon",
+  0:   "Bitcoin",
+};
+
+function chainName(id: number): string {
+  return CHAIN_NAMES[id] ?? `Chain ${id}`;
+}
 
 export interface StartEvmSwapParams {
   userId:       string;
@@ -44,6 +53,17 @@ export interface CompleteEvmSwapParams {
   error?:      string;
 }
 
+export interface HistoricalSwapRecord {
+  txHash:      string;
+  fromChainId: number;
+  toChainId:   number;
+  fromToken:   string;
+  toToken:     string;
+  volumeUSD:   number;  // USD al momento dello swap
+  tool:        string;
+  timestamp:   Date;
+}
+
 export interface EvmSwapHistoryItem {
   routeId:      string;
   fromChainId:  number;
@@ -53,22 +73,36 @@ export interface EvmSwapHistoryItem {
   fromAmount:   string;
   toAmount?:    string;
   alphaFeeUSD?: string;
+  volumeUSD?:   string;
   tool?:        string;
+  source?:      string;
   state:        string;
   txHash?:      string;
   startedAt:    string;
   completedAt?: string;
 }
 
+export interface EvmSwapAggregate {
+  totalSwaps:  number;
+  totalFeeUSD: string;
+  byChain:     Record<string, { count: number; feeUSD: string; volumeUSD: string }>;
+  byToken:     Record<string, { count: number; feeUSD: string; volumeUSD: string }>;
+}
+
+export interface ImportResult {
+  inserted: number;
+  skipped:  number;
+  details:  string[];
+}
+
 class EvmSwapService {
   /**
    * Crea un record swap in stato "pending".
    * Idempotente: se routeId esiste già, restituisce il record esistente.
+   * Non limita le chain: qualsiasi fromChainId/toChainId è accettato
+   * per tracciare anche swap cross-chain verso Bitcoin.
    */
   async startSwap(params: StartEvmSwapParams): Promise<IEvmSwap> {
-    if (!SUPPORTED_CHAINS.has(params.fromChainId) || !SUPPORTED_CHAINS.has(params.toChainId)) {
-      throw new Error(`Chain non supportata: from=${params.fromChainId} to=${params.toChainId}`);
-    }
     if (!params.fromAmount || params.fromAmount === "0") {
       throw new Error("fromAmount non può essere zero");
     }
@@ -92,7 +126,7 @@ class EvmSwapService {
       fromAmount:   params.fromAmount,
       toAmount:     params.toAmount,
       alphaFeeUSD:  params.alphaFeeUSD,
-      tool:         params.tool,
+      source:       "user_flow",
       state:        "pending",
       startedAt:    new Date(),
     });
@@ -127,6 +161,57 @@ class EvmSwapService {
     return doc;
   }
 
+  /**
+   * Importa record storici con deduplicazione su txHash.
+   * Usa txHash come routeId e "historical_import" come userId.
+   * La fee (25 bps) è calcolata sul volumeUSD fornito.
+   * Non inventa dati: usa solo i campi presenti nel record.
+   */
+  async importHistorical(records: HistoricalSwapRecord[]): Promise<ImportResult> {
+    let inserted = 0;
+    let skipped  = 0;
+    const details: string[] = [];
+
+    for (const rec of records) {
+      // Deduplicazione su txHash (usato come routeId)
+      const existing = await EvmSwapModel.findOne({ routeId: rec.txHash });
+      if (existing) {
+        skipped++;
+        details.push(`SKIP  ${rec.txHash.slice(0, 12)}… (già presente)`);
+        continue;
+      }
+
+      const feeUSD = (rec.volumeUSD * 0.0025).toFixed(6);
+
+      await EvmSwapModel.create({
+        userId:       "historical_import",
+        routeId:      rec.txHash,      // txHash come identificativo unico
+        fromChainId:  rec.fromChainId,
+        toChainId:    rec.toChainId,
+        fromToken:    rec.fromToken,
+        fromAddress:  "unknown",       // non disponibile nell'export
+        toToken:      rec.toToken,
+        toAddress:    "unknown",       // non disponibile nell'export
+        fromAmount:   String(rec.volumeUSD),
+        alphaFeeUSD:  feeUSD,
+        volumeUSD:    String(rec.volumeUSD),
+        tool:         rec.tool,
+        source:       "historical_import",
+        state:        "completed",
+        txHash:       rec.txHash,
+        startedAt:    rec.timestamp,
+        completedAt:  rec.timestamp,
+      });
+
+      inserted++;
+      details.push(`INSERT ${rec.txHash.slice(0, 12)}… ${rec.fromToken}→${rec.toToken} $${rec.volumeUSD} fee=$${feeUSD}`);
+      logger.info({ txHash: rec.txHash, tool: rec.tool }, "evm-swap: import storico inserito");
+    }
+
+    logger.info({ inserted, skipped }, "evm-swap: import storico completato");
+    return { inserted, skipped, details };
+  }
+
   /** Storico swap per utente (ultimi 50, più recenti prima). */
   async getHistory(userId: string, limit = 50): Promise<EvmSwapHistoryItem[]> {
     const docs = await EvmSwapModel
@@ -144,7 +229,9 @@ class EvmSwapService {
       fromAmount:   d.fromAmount,
       toAmount:     d.toAmount,
       alphaFeeUSD:  d.alphaFeeUSD,
+      volumeUSD:    d.volumeUSD,
       tool:         d.tool,
+      source:       d.source,
       state:        d.state,
       txHash:       d.txHash,
       startedAt:    d.startedAt.toISOString(),
@@ -152,8 +239,8 @@ class EvmSwapService {
     }));
   }
 
-  /** Admin: tutti gli swap (ultimi 200). */
-  async adminGetAll(limit = 200): Promise<EvmSwapHistoryItem[]> {
+  /** Admin: tutti gli swap (ultimi 500, più recenti prima). */
+  async adminGetAll(limit = 500): Promise<EvmSwapHistoryItem[]> {
     const docs = await EvmSwapModel
       .find({})
       .sort({ startedAt: -1 })
@@ -169,12 +256,70 @@ class EvmSwapService {
       fromAmount:   d.fromAmount,
       toAmount:     d.toAmount,
       alphaFeeUSD:  d.alphaFeeUSD,
+      volumeUSD:    d.volumeUSD,
       tool:         d.tool,
+      source:       d.source,
       state:        d.state,
       txHash:       d.txHash,
       startedAt:    d.startedAt.toISOString(),
       completedAt:  d.completedAt?.toISOString(),
     }));
+  }
+
+  /**
+   * Aggregati admin: fee per chain, per token, totali.
+   * Considera solo swap in stato "completed".
+   * NOTA: le fee Li.Fi (25 bps) sono raccolte on-chain automaticamente.
+   * Questo conteggio interno rappresenta le fee Alpha maturate —
+   * NON è prova dell'accredito on-chain.
+   */
+  async adminGetAggregate(): Promise<EvmSwapAggregate> {
+    const docs = await EvmSwapModel.find({ state: "completed" }).lean();
+
+    let totalFee    = 0;
+    let totalVolume = 0;
+    const byChain: Record<string, { count: number; fee: number; vol: number }> = {};
+    const byToken: Record<string, { count: number; fee: number; vol: number }> = {};
+
+    for (const doc of docs) {
+      const fee = parseFloat(doc.alphaFeeUSD ?? "0") || 0;
+      const vol = parseFloat(doc.volumeUSD ?? doc.fromAmount ?? "0") || 0;
+      totalFee    += fee;
+      totalVolume += vol;
+
+      // Raggruppa per chain di partenza
+      const ck = chainName(doc.fromChainId);
+      if (!byChain[ck]) byChain[ck] = { count: 0, fee: 0, vol: 0 };
+      byChain[ck].count++;
+      byChain[ck].fee += fee;
+      byChain[ck].vol += vol;
+
+      // Raggruppa per token di partenza
+      const tk = doc.fromToken;
+      if (!byToken[tk]) byToken[tk] = { count: 0, fee: 0, vol: 0 };
+      byToken[tk].count++;
+      byToken[tk].fee += fee;
+      byToken[tk].vol += vol;
+    }
+
+    return {
+      totalSwaps:  docs.length,
+      totalFeeUSD: totalFee.toFixed(6),
+      byChain:     Object.fromEntries(
+        Object.entries(byChain).map(([k, v]) => [k, {
+          count:     v.count,
+          feeUSD:    v.fee.toFixed(6),
+          volumeUSD: v.vol.toFixed(2),
+        }]),
+      ),
+      byToken: Object.fromEntries(
+        Object.entries(byToken).map(([k, v]) => [k, {
+          count:     v.count,
+          feeUSD:    v.fee.toFixed(6),
+          volumeUSD: v.vol.toFixed(2),
+        }]),
+      ),
+    };
   }
 }
 

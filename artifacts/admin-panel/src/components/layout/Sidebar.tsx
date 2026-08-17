@@ -57,6 +57,7 @@ const navItems = [
   { href: "/spark-lightning-fee", label: "Spark / Lightning", icon: Zap       },
   { href: "/spark-monitor",       label: "Spark Monitor",     icon: BarChart2       },
   { href: "/swap-monitor",        label: "Swap Monitor",      icon: ArrowLeftRight  },
+  { href: "/evm-swap-monitor",    label: "EVM Swap Monitor",  icon: ArrowLeftRight  },
   { href: "/swap-revenue",        label: "Swap Revenue",      icon: TrendingUp      },
   { href: "/swap-fee-config",     label: "Swap Fee Config",   icon: ArrowLeftRight  },
 ];

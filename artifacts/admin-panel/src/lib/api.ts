@@ -929,6 +929,43 @@ export async function cancelStaleTransfers(olderThanMinutes = 0): Promise<Cancel
 
 const SWAP_ADMIN_BASE = "/api/v1/swap/admin";
 
+// EVM Swap — Admin API
+// ISOLAMENTO: usa /api/v1/swap/evm/admin/* separato da BTC/Lightning
+// ---------------------------------------------------------------------------
+
+const EVM_SWAP_ADMIN_BASE = "/api/v1/swap/evm/admin";
+
+export async function evmSwapAdminFetch<T>(path: string, options?: RequestInit): Promise<T> {
+  const token = getToken();
+  const controller = new AbortController();
+  const timeoutId  = setTimeout(() => controller.abort(), 15_000);
+  let res: Response;
+  try {
+    res = await fetch(`${EVM_SWAP_ADMIN_BASE}${path}`, {
+      ...options,
+      signal: controller.signal,
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(options?.headers as Record<string, string> | undefined),
+      },
+    });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+  if (res.status === 401 || res.status === 403) {
+    clearToken();
+    window.location.href = "/admin/login";
+    throw new Error("Unauthorized");
+  }
+  if (!res.ok) {
+    let message = `HTTP ${res.status}`;
+    try { const b = await res.json(); message = b?.error?.message ?? b?.message ?? b?.error ?? message; } catch { /**/ }
+    throw new Error(message);
+  }
+  return res.json() as Promise<T>;
+}
+
 export async function swapAdminFetch<T>(path: string, options?: RequestInit): Promise<T> {
   const token = getToken();
   const controller = new AbortController();

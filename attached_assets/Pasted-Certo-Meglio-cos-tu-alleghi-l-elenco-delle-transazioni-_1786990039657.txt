@@ -1,0 +1,58 @@
+Certo. Meglio così: tu alleghi l’elenco delle transazioni e l’agente le trascrive nel DB come storico iniziale, poi da quel momento il sistema registra automaticamente quelle nuove.
+
+Prompt unico
+
+Voglio sistemare definitivamente lo storico interno delle commissioni EVM.
+
+Ti allego un elenco delle transazioni/swap già effettuati. Usa esclusivamente i dati presenti nell’allegato: non inventare né modificare importi, TX hash, date, token o chain.
+
+FASE 1 — Storico iniziale
+
+* Analizza l’elenco allegato.
+* Per ogni swap completato trascrivi manualmente nel DB un record storico.
+* Salva almeno: data/ora, TX hash, chain, tokenIn, tokenOut, amountIn, amountOut, feeBps=25, feeAmount, feeToken, wallet fee e stato completed.
+* Se un dato non è presente nell’elenco, lascialo null/non disponibile: non inventarlo.
+* Mantieni i TX hash come identificativo per evitare duplicati.
+* Non modificare le transazioni on-chain: stiamo creando solamente il nostro audit trail interno.
+
+FASE 2 — Registrazione automatica futura
+Dopo aver importato lo storico, correggi il flusso EVM affinché ogni nuovo swap completato venga automaticamente registrato nel DB con gli stessi dati.
+
+Il salvataggio dell’audit non deve mai bloccare o annullare uno swap già eseguito.
+
+FASE 3 — Conteggio interno
+Aggiungi/usa un aggregato interno che permetta di vedere:
+
+* fee maturate per chain;
+* fee maturate per token;
+* numero totale di swap;
+* totale fee maturate;
+* storico completo delle singole transazioni.
+
+Il conteggio interno deve rappresentare le fee Alpha maturate (25 bps) e NON deve essere presentato come prova dell’accredito on-chain.
+
+NON TOCCARE:
+
+* calcolo 0,25%;
+* Fee Wallet;
+* Treasury;
+* payment flow;
+* routing LI.FI;
+* firma delle transazioni;
+* comportamento on-chain;
+* SWAP_ENABLED;
+* Secret o refund flow.
+
+Non usare .catch(() => null) per nascondere errori di registrazione nel DB. Se il tracking fallisce, registralo chiaramente nei log senza impedire lo swap.
+
+Alla fine:
+
+1. verifica che tutti i record dell’allegato siano stati trascritti;
+2. verifica che non ci siano duplicati;
+3. mostra una tabella riepilogativa dei record importati;
+4. aggiungi test automatici per storico, deduplicazione, aggregazione e registrazione dei nuovi swap;
+5. esegui test e build.
+
+NON fare deploy e NON modificare altro senza mia approvazione.
+
+Il mio obiettivo è avere: storico delle transazioni già fatte + registrazione automatica di tutte quelle future, così Alpha ha finalmente un proprio conteggio interno delle commissioni.

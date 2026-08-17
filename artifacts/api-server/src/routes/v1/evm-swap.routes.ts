@@ -6,17 +6,19 @@
  * NON implementa fee collection aggiuntiva, NON tocca fee wallet.
  *
  * Routes:
- *   POST  /api/v1/swap/evm/start        — registra swap avviato (auth)
- *   PATCH /api/v1/swap/evm/:routeId     — aggiorna stato (auth)
- *   GET   /api/v1/swap/evm/history      — storico utente (auth)
- *   GET   /api/v1/swap/evm/admin/all    — tutti gli swap (admin read_only)
+ *   POST  /api/v1/swap/evm/start           — registra swap avviato (auth)
+ *   PATCH /api/v1/swap/evm/:routeId        — aggiorna stato (auth)
+ *   GET   /api/v1/swap/evm/history         — storico utente (auth)
+ *   GET   /api/v1/swap/evm/admin/all       — tutti gli swap (admin read_only)
+ *   GET   /api/v1/swap/evm/admin/aggregate — aggregati fee per chain/token (admin read_only)
+ *   POST  /api/v1/swap/evm/admin/import    — importa record storici (admin)
  */
 
 import { Router, type Request, type Response, type NextFunction } from "express";
 import { z } from "zod";
 import { authenticate   } from "../../middleware/authenticate.middleware.js";
 import { requireAdmin   } from "../../middleware/require-admin.middleware.js";
-import { evmSwapService } from "../../services/swap/evm-swap.service.js";
+import { evmSwapService, type HistoricalSwapRecord } from "../../services/swap/evm-swap.service.js";
 import { dispatchToOne  } from "../../services/push/PushDispatcher.js";
 
 const router = Router();
@@ -26,7 +28,7 @@ const router = Router();
 const StartSchema = z.object({
   routeId:      z.string().min(1),
   fromChainId:  z.number().int().positive(),
-  toChainId:    z.number().int().positive(),
+  toChainId:    z.number().int().nonnegative(), // 0 = Bitcoin (non-EVM)
   fromToken:    z.string().min(1),
   fromAddress:  z.string().min(1),
   toToken:      z.string().min(1),
@@ -38,10 +40,25 @@ const StartSchema = z.object({
 });
 
 const CompleteSchema = z.object({
-  txHash:   z.string().min(1),
+  txHash:   z.string(),           // può essere vuoto in caso di failure
   toAmount: z.string().optional(),
   state:    z.enum(["completed", "failed"]),
   error:    z.string().optional(),
+});
+
+const HistoricalRecordSchema = z.object({
+  txHash:      z.string().min(10),
+  fromChainId: z.number().int().nonnegative(),
+  toChainId:   z.number().int().nonnegative(),
+  fromToken:   z.string().min(1),
+  toToken:     z.string().min(1),
+  volumeUSD:   z.number().positive(),
+  tool:        z.string().min(1),
+  timestamp:   z.string().datetime(),
+});
+
+const ImportSchema = z.object({
+  records: z.array(HistoricalRecordSchema).min(1).max(500),
 });
 
 // ── Handlers ───────────────────────────────────────────────────────────────────
@@ -113,6 +130,47 @@ router.get("/admin/all", requireAdmin("read_only"), async (_req: Request, res: R
   try {
     const swaps = await evmSwapService.adminGetAll();
     res.json({ ok: true, count: swaps.length, swaps });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * GET /admin/aggregate
+ * Aggregati fee per chain e token (solo swap completed).
+ * NOTA: rappresenta le fee Alpha maturate internamente (25 bps su volume),
+ * NON è prova dell'accredito on-chain Li.Fi.
+ */
+router.get("/admin/aggregate", requireAdmin("read_only"), async (_req: Request, res: Response, next: NextFunction) => {
+  try {
+    const agg = await evmSwapService.adminGetAggregate();
+    res.json({ ok: true, ...agg });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
+ * POST /admin/import
+ * Importa record storici con deduplicazione su txHash.
+ * Ogni record deve avere: txHash, fromChainId, toChainId, fromToken, toToken,
+ * volumeUSD, tool, timestamp (ISO 8601).
+ */
+router.post("/admin/import", requireAdmin(), async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const parsed = ImportSchema.safeParse(req.body);
+    if (!parsed.success) {
+      res.status(400).json({ error: "Dati non validi", details: parsed.error.issues });
+      return;
+    }
+
+    const records: HistoricalSwapRecord[] = parsed.data.records.map(r => ({
+      ...r,
+      timestamp: new Date(r.timestamp),
+    }));
+
+    const result = await evmSwapService.importHistorical(records);
+    res.status(201).json({ ok: true, ...result });
   } catch (err) {
     next(err);
   }

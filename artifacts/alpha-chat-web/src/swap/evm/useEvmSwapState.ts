@@ -33,6 +33,7 @@ import {
   type LiFiStatus,
 } from "./lifi-client.js";
 import { getAccessToken } from "../../lib/auth.js";
+import { API_BASE_URL   } from "../../lib/platform-config.js";
 import {
   EVM_SWAP_ACTIVE_KEY, EVM_SWAP_IKEY,
   LIFI_INTEGRATOR, LIFI_FEE,
@@ -52,12 +53,12 @@ let _evmExecuting = false;
 // Usa getAccessToken() direttamente (stesso pattern di request() in api.ts).
 // apiRefreshSession() era problematico: se il refresh falliva (cooldown 10s),
 // ritornava null → header Authorization assente → 401 su ogni chiamata di tracking.
-// Le chiamate swapApi sono fire-and-forget (.catch(() => null)) — non è necessario
-// un refresh proattivo; se il token è scaduto il server risponde 401 e viene ignorato.
+// Le chiamate swapApi sono fire-and-forget — se falliscono loggano un WARN
+// ma NON interrompono né annullano lo swap già eseguito.
 
 async function swapApi(path: string, options?: RequestInit): Promise<unknown> {
   const token = getAccessToken() ?? "";
-  const base  = (window as unknown as Record<string, string>).__VITE_API_BASE__ ?? "";
+  const base  = API_BASE_URL;  // "" in Web, "https://alphachat.sbs" in Capacitor
   const res   = await fetch(`${base}/api/v1/swap/evm${path}`, {
     ...options,
     headers: {
@@ -717,7 +718,9 @@ export function useEvmSwapState(opts?: EvmSwapStateOpts): [EvmSwapStateValue, Ev
           alphaFeeUSD:  current.quote.alphaFeeUSD,
           tool:         current.quote.tool,
         }),
-      }).catch(() => null);
+      }).catch((err: Error) => {
+        console.warn("[EVM-swap tracking] /start failed:", err.message);
+      });
 
       if (isMounted.current) setSv(prev => ({ ...prev, phase: "signing", error: null }));
 
@@ -819,7 +822,9 @@ export function useEvmSwapState(opts?: EvmSwapStateOpts): [EvmSwapStateValue, Ev
       await swapApi(`/${current.quote.routeId}`, {
         method: "PATCH",
         body: JSON.stringify({ txHash: finalTxHash, state: "completed" }),
-      }).catch(() => null);
+      }).catch((err: Error) => {
+        console.warn("[EVM-swap tracking] PATCH completed failed:", err.message);
+      });
 
       localStorage.removeItem(EVM_SWAP_ACTIVE_KEY);
       sessionStorage.removeItem(EVM_SWAP_IKEY);
@@ -840,7 +845,9 @@ export function useEvmSwapState(opts?: EvmSwapStateOpts): [EvmSwapStateValue, Ev
         await swapApi(`/${current.quote.routeId}`, {
           method: "PATCH",
           body: JSON.stringify({ txHash: "", state: "failed", error: msg }),
-        }).catch(() => null);
+        }).catch((err: Error) => {
+          console.warn("[EVM-swap tracking] PATCH failed failed:", err.message);
+        });
       }
 
       if (!isMounted.current) return;
