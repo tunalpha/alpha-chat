@@ -17,6 +17,7 @@ import { z } from "zod";
 import { authenticate   } from "../../middleware/authenticate.middleware.js";
 import { requireAdmin   } from "../../middleware/require-admin.middleware.js";
 import { evmSwapService } from "../../services/swap/evm-swap.service.js";
+import { dispatchToOne  } from "../../services/push/PushDispatcher.js";
 
 const router = Router();
 
@@ -77,6 +78,18 @@ router.patch("/:routeId", authenticate, async (req: Request, res: Response, next
 
     const doc = await evmSwapService.completeSwap({ userId, routeId, ...parsed.data });
     if (!doc) { res.status(404).json({ error: "Swap non trovato" }); return; }
+
+    // Push notification fire-and-forget per swap completato con successo
+    if (parsed.data.state === "completed") {
+      dispatchToOne(userId, {
+        type:           "swap.completed",
+        recipientUserId: userId,
+        fromToken:      doc.fromToken,
+        toToken:        doc.toToken,
+        fromAmount:     doc.fromAmount,
+        toAmount:       doc.toAmount ?? "",
+      });
+    }
 
     res.json({ ok: true, routeId: doc.routeId, state: doc.state, txHash: doc.txHash });
   } catch (err) {

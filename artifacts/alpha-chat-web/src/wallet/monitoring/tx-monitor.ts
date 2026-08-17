@@ -392,6 +392,29 @@ export class TxMonitor {
     if (this._running) await this._poll();
   }
 
+  /**
+   * Esegue un singolo poll con l'address fornito, anche se il monitor non è avviato.
+   * Usato dopo uno swap EVM per aggiornare subito la cronologia Alpha Wallet.
+   */
+  async pollWithAddress(evmAddress: string): Promise<void> {
+    if (this._running) {
+      // Monitor già attivo: usa il poll normale (ha già l'address corretto)
+      await this._poll();
+      return;
+    }
+    // One-shot: imposta temporaneamente l'address, esegue un poll, poi ripristina
+    const savedEvm = this._evmAddress;
+    const savedBtc = this._btcAddress;
+    this._evmAddress = evmAddress;
+    this._btcAddress = null;
+    try {
+      await this._poll();
+    } finally {
+      this._evmAddress = savedEvm;
+      this._btcAddress = savedBtc;
+    }
+  }
+
   private _visibilityHandler = (): void => {
     if (!this._running) return;
     if (document.visibilityState === "visible") {

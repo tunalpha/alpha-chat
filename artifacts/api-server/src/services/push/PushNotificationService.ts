@@ -97,7 +97,18 @@ function buildPayload(event: PushEvent): string {
         },
         tag:  `call-missed-${event.callerId}`,
         icon: "/favicon-192.png",
-        badge: "/favicon-192.png",   // iOS richiede PNG — SVG ignorato
+        badge: "/favicon-192.png",
+      });
+
+    case "swap.completed":
+      return JSON.stringify({
+        type:  "swap.completed",
+        title: "✅ Alpha Swap completato",
+        body:  `${event.fromAmount} ${event.fromToken} → ${event.toAmount} ${event.toToken}`,
+        data:  { url: "/" },
+        tag:   "swap-completed",
+        icon:  "/favicon-192.png",
+        badge: "/favicon-192.png",
       });
   }
 }

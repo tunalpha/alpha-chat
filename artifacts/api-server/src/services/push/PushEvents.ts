@@ -36,4 +36,13 @@ export interface CallMissedEvent {
   callerName: string;
 }
 
-export type PushEvent = MessageNewEvent | CallIncomingEvent | CallMissedEvent;
+export interface SwapCompletedEvent {
+  type: "swap.completed";
+  recipientUserId: string;
+  fromToken: string;
+  toToken: string;
+  fromAmount: string;
+  toAmount: string;
+}
+
+export type PushEvent = MessageNewEvent | CallIncomingEvent | CallMissedEvent | SwapCompletedEvent;

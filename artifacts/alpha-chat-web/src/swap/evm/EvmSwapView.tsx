@@ -870,13 +870,21 @@ export function EvmSwapView({ onBack, alphaWalletAddress, getAlphaWalletClient }
   useEffect(() => {
     if (prevPhase.current !== "completed" && sv.phase === "completed") {
       setHistoryRefreshKey(k => k + 1);
-      // Lazy-import del txMonitor per evitare dipendenza circolare nel bundle
+      // Lazy-import del txMonitor. Se il monitor è già avviato usa forcePoll(),
+      // altrimenti pollWithAddress() esegue un poll one-shot con l'address corrente
+      // (fix: forcePoll era no-op se il monitor non era ancora partito).
       import("../../wallet/monitoring/tx-monitor.js")
-        .then(({ txMonitor }) => { void txMonitor.forcePoll(); })
+        .then(({ txMonitor }) => {
+          if (effectiveAddress) {
+            void txMonitor.pollWithAddress(effectiveAddress);
+          } else {
+            void txMonitor.forcePoll();
+          }
+        })
         .catch(() => {});
     }
     prevPhase.current = sv.phase;
-  }, [sv.phase]);
+  }, [sv.phase, effectiveAddress]);
 
   // Quote display (from-mode)
   const toAmountDisplay = sv.quote
