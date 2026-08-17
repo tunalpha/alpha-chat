@@ -133,6 +133,8 @@
 - [USDA History + Notifications safety net](usda-history-notifications-safety-net.md) — useLiveTxStatus Level 2 risolve bolla senza IDB record; fix: useEffect in ChatWalletPaymentBubble
 - [Read receipt one-check bug](read-receipt-one-check-bug.md) — 3 cause: no guard monotonica in handleSelectConv, read.receipt non aggiornava conversations, reconnect non refreshava conversations
 - [USDA float→wei precision bug](usda-float-wei-bug.md) — Number(amount).toFixed(18) → 44 wei in meno → detectDeposit scarta la TX vera; fix: parsing string-based + tolleranza 0.0001% backend
+- [EVM token balance BigInt("0x") bug](evm-token-balance-bigint-bug.md) — eth_call ritorna "0x" per saldo 0; BigInt("0x") lancia SyntaxError; usare hex && hex !== "0x" ? hex : "0x0"
+- [USDT Ethereum approval reset](usdt-eth-approval-reset.md) — approve(MAX) reverte se allowance esistente >0; reset a 0 prima, poi approve maxUint256
 - [MC receipt timeout per-rete](mc-receipt-timeout-eth.md) — 30s fisso rompeva USDT ERC-20 (top-up gas in timeout → waiting_for_gas); mappa per-rete + guard anti-overlap scheduler
 - [Recipient wallet priority — Alpha Wallet first](recipient-wallet-priority.md) — cascata unica alpha_wallet_evm_address→usda→legacy; resolveRecipientEvmWallet(); mai isAddress strict su indirizzi DB lowercase
 - [Lightning invoice senza importo](lightning-amountless-invoice-bug.md) — fetchPrices fallito in silenzio → invoice "any amount" → 6 sat invece di 6 €; mai degradare importo, bloccare con errore

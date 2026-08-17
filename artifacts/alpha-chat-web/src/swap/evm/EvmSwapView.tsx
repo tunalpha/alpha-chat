@@ -124,7 +124,8 @@ function useEvmTokenBalances(chainId: number, address: string | undefined): Bala
           const hex = await rpcPostWithFallback<string>(chainId, "eth_call", [
             { to: t.address, data: `0x70a08231${pad}` }, "latest",
           ]);
-          return [t.address, BigInt(hex || "0x0")] as const;
+          // "0x" è truthy in JS ma BigInt("0x") lancia SyntaxError → usare "0x0" per risposta vuota
+          return [t.address, BigInt(hex && hex !== "0x" ? hex : "0x0")] as const;
         }
       }),
     ).then(results => {

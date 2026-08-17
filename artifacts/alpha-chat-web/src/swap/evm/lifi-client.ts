@@ -318,6 +318,21 @@ async function _handleErc20Approval(
   // Chiede all'utente di firmare l'approval
   callbacks?.onApproving?.();
 
+  // USDT su Ethereum (e alcuni altri token) ha un approval non-standard:
+  // se c'è già un'allowance non-zero, reverte se provi a impostarne un'altra non-zero.
+  // Soluzione: reset a 0 prima di impostare maxUint256.
+  if ((allowance as bigint) > 0n) {
+    const resetHash = await walletClient.writeContract({
+      address:      tokenAddress,
+      abi:          erc20Abi,
+      functionName: "approve",
+      args:         [spenderAddress, 0n],
+      chain:        null,
+      account,
+    });
+    await publicClient.waitForTransactionReceipt({ hash: resetHash, timeout: 120_000 });
+  }
+
   const approvalHash = await walletClient.writeContract({
     address:      tokenAddress,
     abi:          erc20Abi,
