@@ -286,7 +286,8 @@ function TokenCard({
     : null;
 
   const handleFiatChange = (raw: string) => {
-    const cleaned = raw.replace(/[^0-9.]/g, "").replace(/(\..*)\./g, "$1");
+    // iOS Italian keyboard emette la virgola come separatore decimale — normalizza prima
+    const cleaned = raw.replace(",", ".").replace(/[^0-9.]/g, "").replace(/(\..*)\./g, "$1");
     setFiatInput(cleaned);
     if (onAmountChange && price && price > 0) {
       const n = parseFloat(cleaned);
@@ -402,7 +403,8 @@ function TokenCard({
                   placeholder="0"
                   value={amount ?? ""}
                   onChange={e => {
-                    const val = e.target.value.replace(/[^0-9.]/g, "").replace(/(\..*)\./g, "$1");
+                    // iOS Italian keyboard → normalizza virgola a punto
+                    const val = e.target.value.replace(",", ".").replace(/[^0-9.]/g, "").replace(/(\..*)\./g, "$1");
                     onAmountChange(val);
                   }}
                   readOnly={readOnly}
@@ -707,6 +709,108 @@ function humanizeEvmCode(code: string): string {
   }
 }
 
+// ── EVM Swap History (mini sezione collassabile) ─────────────────────────────
+
+interface _EvmSwapRecord {
+  _id: string;
+  fromToken: string; toToken: string;
+  fromChainId: number; toChainId: number;
+  fromAmount: string; toAmount?: string;
+  state: "pending" | "completed" | "failed";
+  txHash?: string;
+  startedAt: string;
+}
+
+async function _fetchEvmHistory(): Promise<_EvmSwapRecord[]> {
+  const token = localStorage.getItem("ac_access_token");
+  const res = await fetch("/api/v1/swap/evm/history", {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) return [];
+  const data = await res.json() as { ok: boolean; swaps: _EvmSwapRecord[] };
+  return Array.isArray(data.swaps) ? data.swaps : [];
+}
+
+const _CNAME: Record<number, string> = { 1: "Eth", 137: "Pol", 56: "BSC" };
+
+function EvmSwapHistorySection({ refreshKey }: { refreshKey: number }) {
+  const [items, setItems] = useState<_EvmSwapRecord[] | null>(null);
+  const [open, setOpen]   = useState(false);
+  const loadedKey = useRef(-1);
+
+  useEffect(() => {
+    if (!open) return;
+    // Ricarica ogni volta che la sezione si apre O refreshKey cambia (nuovo swap completato)
+    if (items !== null && loadedKey.current === refreshKey) return;
+    loadedKey.current = refreshKey;
+    _fetchEvmHistory().then(setItems).catch(() => setItems([]));
+  }, [open, refreshKey, items]);
+
+  return (
+    <div style={{ marginTop: 16 }}>
+      <button
+        type="button"
+        onClick={() => setOpen(p => !p)}
+        style={{
+          display: "flex", alignItems: "center", justifyContent: "space-between",
+          width: "100%", background: "none", border: "none", cursor: "pointer",
+          padding: "6px 2px", borderTop: "1px solid rgba(255,255,255,.07)",
+        }}
+      >
+        <span style={{ fontSize: 13, color: "rgba(255,255,255,.45)", fontWeight: 600 }}>
+          Cronologia swap EVM
+        </span>
+        <ChevronDown size={15} style={{
+          color: "rgba(255,255,255,.3)",
+          transform: open ? "rotate(180deg)" : "none",
+          transition: "transform .2s",
+        }} />
+      </button>
+
+      {open && (
+        <div style={{ marginTop: 6, display: "flex", flexDirection: "column", gap: 6 }}>
+          {items === null ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "6px 0", color: "rgba(255,255,255,.35)", fontSize: 12 }}>
+              <Loader2 size={13} style={{ animation: "aw-spin .8s linear infinite" }} /> Caricamento…
+            </div>
+          ) : items.length === 0 ? (
+            <p style={{ fontSize: 12, color: "rgba(255,255,255,.35)", padding: "6px 0", margin: 0 }}>Nessun swap EVM ancora</p>
+          ) : (
+            items.slice(0, 8).map(it => {
+              const ok = it.state === "completed";
+              const ko = it.state === "failed";
+              const dot = ok ? "#22c55e" : ko ? "#f87171" : "rgba(255,255,255,.45)";
+              const lbl = ok ? "✓" : ko ? "✗" : "…";
+              const date = new Date(it.startedAt).toLocaleDateString("it-IT", {
+                day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit",
+              });
+              const cross = it.fromChainId !== it.toChainId;
+              const chainNote = cross
+                ? ` (${_CNAME[it.fromChainId] ?? it.fromChainId}→${_CNAME[it.toChainId] ?? it.toChainId})`
+                : "";
+              return (
+                <div key={it._id} style={{
+                  background: "rgba(255,255,255,.04)", borderRadius: 10,
+                  padding: "8px 10px", display: "flex", alignItems: "center", justifyContent: "space-between",
+                }}>
+                  <div>
+                    <p style={{ fontSize: 13, fontWeight: 600, color: "rgba(255,255,255,.8)", margin: 0 }}>
+                      {it.fromToken} → {it.toToken}
+                      {cross && <span style={{ fontSize: 11, color: "rgba(255,255,255,.35)", fontWeight: 400 }}>{chainNote}</span>}
+                    </p>
+                    <p style={{ fontSize: 11, color: "rgba(255,255,255,.35)", margin: "2px 0 0" }}>{date}</p>
+                  </div>
+                  <span style={{ fontSize: 15, color: dot, fontWeight: 700, lineHeight: 1 }}>{lbl}</span>
+                </div>
+              );
+            })
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 interface EvmSwapViewProps {
@@ -758,6 +862,21 @@ export function EvmSwapView({ onBack, alphaWalletAddress, getAlphaWalletClient }
     const t = setTimeout(() => setShowWalletHint(true), 3000);
     return () => clearTimeout(t);
   }, [effectiveAddress]);
+
+  // Dopo completion: forza un ciclo del tx-monitor (aggiorna cronologia Alpha Wallet)
+  // + incrementa historyRefreshKey per ricaricare la cronologia EVM inline
+  const [historyRefreshKey, setHistoryRefreshKey] = useState(0);
+  const prevPhase = useRef(sv.phase);
+  useEffect(() => {
+    if (prevPhase.current !== "completed" && sv.phase === "completed") {
+      setHistoryRefreshKey(k => k + 1);
+      // Lazy-import del txMonitor per evitare dipendenza circolare nel bundle
+      import("../../wallet/monitoring/tx-monitor.js")
+        .then(({ txMonitor }) => { void txMonitor.forcePoll(); })
+        .catch(() => {});
+    }
+    prevPhase.current = sv.phase;
+  }, [sv.phase]);
 
   // Quote display (from-mode)
   const toAmountDisplay = sv.quote
@@ -1147,6 +1266,9 @@ export function EvmSwapView({ onBack, alphaWalletAddress, getAlphaWalletClient }
             A causa delle fluttuazioni dei tassi di cambio, potrebbe esserci una piccola differenza tra l'importo ricevuto e l'importo stimato.
           </p>
         )}
+
+        {/* Cronologia swap EVM (collassabile) */}
+        <EvmSwapHistorySection refreshKey={historyRefreshKey} />
 
       </div>
 

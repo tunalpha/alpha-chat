@@ -628,7 +628,8 @@ function SwapMainForm({ sv, actions, config, btcBalance, btcBalLoading }: SwapMa
   const inBtcFiatMode = isBtcLn && !!btcFiatCurrency && !!btcFiatPrice;
 
   const handleBtcFiatChange = (raw: string) => {
-    const cleaned = raw.replace(/[^0-9.]/g, "").replace(/(\..*)\./g, "$1");
+    // iOS Italian keyboard emette virgola come separatore decimale — normalizza prima
+    const cleaned = raw.replace(",", ".").replace(/[^0-9.]/g, "").replace(/(\..*)\./g, "$1");
     setBtcFiatInput(cleaned);
     if (btcFiatPrice && btcFiatPrice > 0) {
       const n = parseFloat(cleaned);
