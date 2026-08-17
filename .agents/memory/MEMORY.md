@@ -108,6 +108,7 @@
 - [Alpha Swap V1 Hardening](alpha-swap-v1-hardening.md) — refund key HMAC-SHA256 server-side; write-before-submit; idempotency_key UUID; reconciler 30s; GET /active recovery; 63 test T1-T20 PASS
 - [EVM Swap Tracking](evm-swap-tracking.md) — evm_swaps aveva 0 record: SUPPORTED_CHAINS rifiutava BTC (toChainId=0); .catch(()=>null) inghiottiva tutto; window.__VITE_API_BASE__ mai impostata
 - [BTC P2TR validation bug](btc-address-p2tr-bug.md) — validateBtcAddress non accettava bc1p (Taproot); Li.Fi vault può essere P2TR → bloccava EVM→BTC
+- [BTC bridge refund — Thorchain minimum](btc-bridge-refund.md) — BTC_BRIDGE_REFUND codice errore; nasconde "Riprova" (evita double-spend); manca guard pre-invio su minAmount
 - [Critical Payment Test Suite](critical-payment-tests.md) — 110 test in tests/critical/; bash scripts/pre-deploy-check.sh come gate pre-deploy; anti-regex trap: /\bnull\b/ non /null/ per testi italiani
 - [EVM Swap gasLimit fix](evm-swap-gaslimit-fix.md) — usare gasLimit da Li.Fi transactionRequest; senza di esso eth_estimateGas su RPC stale → "execution reverted" bloccava tutti gli swap
 - [Token logo source — Swap view](token-logo-inline-svg.md) — logoURI in EVM_SWAP_TOKENS devono usare /coin-icons/*.png locali; CDN TrustWallet bloccati su Safari iOS prod

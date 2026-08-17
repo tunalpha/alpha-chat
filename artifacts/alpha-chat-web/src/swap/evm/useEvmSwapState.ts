@@ -605,8 +605,11 @@ export function useEvmSwapState(opts?: EvmSwapStateOpts): [EvmSwapStateValue, Ev
               }));
             } else if (st.status === "FAILED" || st.status === "INVALID") {
               localStorage.removeItem(EVM_SWAP_ACTIVE_KEY);
+              // BTC già inviato al vault Thorchain — il bridge ha rifiutato lo swap.
+              // Thorchain rimborsa automaticamente il BTC all'indirizzo mittente entro 30-60 min.
+              // NON mostrare "Riprova" (evita invio di altro BTC).
               if (isMounted.current) setSv(prev => ({
-                ...prev, phase: "failed", error: { code: "SWAP_FAILED", message: "SWAP_UNAVAILABLE" },
+                ...prev, phase: "failed", error: { code: "BTC_BRIDGE_REFUND", message: "BTC_BRIDGE_REFUND" },
               }));
             } else {
               // PENDING / NOT_FOUND — riprova tra 30s (conferme BTC+Thorchain richiedono tempo)

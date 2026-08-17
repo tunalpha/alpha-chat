@@ -498,18 +498,27 @@ function EvmCompletedView({ txHash, fromChainId, toToken, toAmount, onDone }: {
 }
 
 function EvmFailedView({ error, onRetry }: { error?: string; onRetry: () => void }) {
+  // BTC_BRIDGE_REFUND: il BTC è già partito — non mostrare "Riprova" (evita doppio invio)
+  const isBtcRefund = error === "BTC_BRIDGE_REFUND";
   return (
     <div className="asw-status-view">
       <div className="asw-status-icon asw-status-icon--error">
         <AlertTriangle size={36} />
       </div>
       <div>
-        <p className="asw-status-title">Swap non riuscito</p>
+        <p className="asw-status-title">{isBtcRefund ? "Swap rifiutato dal bridge" : "Swap non riuscito"}</p>
         <p className="asw-status-sub">{humanizeEvmError(error ?? "SWAP_UNAVAILABLE")}</p>
       </div>
-      <button onClick={onRetry} className="aw-btn aw-btn--primary" style={{ maxWidth: 300, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
-        <RefreshCw size={16} /> Riprova
-      </button>
+      {!isBtcRefund && (
+        <button onClick={onRetry} className="aw-btn aw-btn--primary" style={{ maxWidth: 300, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
+          <RefreshCw size={16} /> Riprova
+        </button>
+      )}
+      {isBtcRefund && (
+        <button onClick={onRetry} className="aw-btn aw-btn--secondary" style={{ maxWidth: 300 }}>
+          Torna allo swap
+        </button>
+      )}
     </div>
   );
 }
@@ -637,6 +646,8 @@ function humanizeEvmCode(code: string): string {
       return "Sblocca Alpha Wallet con il PIN prima di procedere.";
     case "SWAP_UNAVAILABLE":
       return "Swap non disponibile al momento. Riprova tra qualche istante.";
+    case "BTC_BRIDGE_REFUND":
+      return "Lo swap è stato rifiutato dal bridge (importo sotto il minimo Thorchain). Il BTC inviato sarà rimborsato automaticamente all'indirizzo mittente entro 30-60 minuti.";
     default: {
       // Messaggi Li.Fi specifici (passati direttamente come message) → parsing testuale
       const lower = code.toLowerCase();
