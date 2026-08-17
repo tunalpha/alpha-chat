@@ -519,8 +519,22 @@ function EvmPendingView({ txHash, fromChainId, onBack }: { txHash: string | null
       </div>
       <div>
         <p className="asw-status-title">Swap in corso…</p>
-        <p className="asw-status-sub">La transazione è stata inviata. Attendi la conferma on-chain.</p>
+        <p className="asw-status-sub">
+          {isBtcChain(fromChainId)
+            ? "BTC inviato al bridge. Thorchain elabora dopo la prima conferma Bitcoin."
+            : "La transazione è stata inviata. Attendi la conferma on-chain."}
+        </p>
       </div>
+      {isBtcChain(fromChainId) && (
+        <div className="asw-alert asw-alert--info" style={{ textAlign: "left" }}>
+          <span style={{ fontSize: 16, flexShrink: 0 }}>⏱</span>
+          <span>
+            <strong>Attesa minima ~10 min.</strong> Gli swap BTC via Thorchain richiedono
+            1 conferma Bitcoin (~10 min) + elaborazione bridge (~5-15 min).
+            Totale stimato: 15-30 min.
+          </span>
+        </div>
+      )}
       {txHash && (
         <div className="asw-mono-box" style={{ display: "flex", flexDirection: "column", gap: 10 }}>
           <span>{txHash.slice(0, 18)}…{txHash.slice(-14)}</span>
@@ -1358,8 +1372,9 @@ export function EvmSwapView({ onBack, alphaWalletAddress, getAlphaWalletClient, 
         {/* Cross-chain note */}
         {sv.fromChainId !== sv.toChainId && (
           <p className="asw-disclaimer">
-            Swap cross-chain: da {getChainInfo(sv.fromChainId)?.name} a {getChainInfo(sv.toChainId)?.name}.
-            Potrebbe richiedere qualche minuto.
+            {isBtcChain(sv.fromChainId)
+              ? "⏱ BTC→EVM via Thorchain: attesa minima ~10 min (1 conferma BTC + bridge)."
+              : `Swap cross-chain: da ${getChainInfo(sv.fromChainId)?.name} a ${getChainInfo(sv.toChainId)?.name}. Potrebbe richiedere qualche minuto.`}
           </p>
         )}
 
