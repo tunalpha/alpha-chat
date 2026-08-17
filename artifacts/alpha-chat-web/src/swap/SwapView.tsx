@@ -873,6 +873,17 @@ function SwapMainForm({ sv, actions, config, btcBalance, btcBalLoading }: SwapMa
           </div>
         )}
 
+        {/* BTC→LN: confirmation time warning */}
+        {isBtcLn && hasQuote && (
+          <div className="asw-alert asw-alert--info">
+            <Clock size={14} style={{ flexShrink: 0, marginTop: 1 }} />
+            <span>
+              <strong>Tempi di attesa: 10–30 minuti.</strong>{" "}
+              Il deposito BTC richiede conferme blockchain prima di essere elaborato.
+            </span>
+          </div>
+        )}
+
         {/* LN→BTC: irreversible warning */}
         {isLnBtc && hasQuote && (
           <div className="asw-alert asw-alert--warn">
