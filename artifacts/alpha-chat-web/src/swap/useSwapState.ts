@@ -32,6 +32,13 @@ import type { SwapRouter }    from "./SwapRouter.js";
 import type { SwapQuote, SwapState, SwapError, SwapDirection, ActiveBtcLnSwap } from "./types.js";
 import { TERMINAL_SWAP_STATES, RECOVERABLE_SWAP_STATES } from "./types.js";
 import { readLnBtcRecovery, clearLnBtcState } from "./providers/BreezSparkBtcLnProvider.js";
+import { saveTxRecord } from "../wallet/services/tx-store.js";
+import { dispatchWalletNotification } from "../wallet/notifications/wallet-notification-store.js";
+
+/** Converte satoshi in stringa BTC leggibile (es. "0.00010000 BTC") */
+function _satsToBtc(sat: number): string {
+  return `${(sat / 1e8).toFixed(8)} BTC`;
+}
 
 const SWAP_API = "/api/v1/swap";
 
@@ -105,6 +112,8 @@ export function useSwapState(router: SwapRouter | null, opts?: SwapStateOpts): [
   const pollRef     = useRef<ReturnType<typeof setInterval> | null>(null);
   const routerRef   = useRef<SwapRouter | null>(router);
   routerRef.current = router;
+  /** Snapshot della quote corrente — accessibile nelle closure del polling (setInterval). */
+  const quoteRef    = useRef<SwapQuote | null>(null);
 
   const _set = useCallback((patch: Partial<SwapStateValue>) =>
     setSv(prev => ({ ...prev, ...patch })), []);
@@ -262,11 +271,47 @@ export function useSwapState(router: SwapRouter | null, opts?: SwapStateOpts): [
           sendAmountSat: result.send_amount_sat ?? null,
         });
 
+        // Salva la quote nel ref — accessibile nelle closure del polling (setInterval stale)
+        quoteRef.current = quoteForExec;
         _startPollingById(result.swap_id);
       } else {
         // LN→BTC — sincrono: già completed
         _stopPoll();
         _set({ state: "completed", swapId: result.swap_id });
+
+        // Tag in IDB + notifica — appare subito nel filtro "Swap" dello Storico
+        const q = sv.quote;
+        if (q) {
+          const amtStr  = _satsToBtc(q.from_amount_sat);
+          const swapId  = result.swap_id;
+          const ts      = Date.now();
+          saveTxRecord({
+            id:          `ln-swap:${swapId}`,
+            chainId:     -1,
+            network:     "Lightning",
+            txHash:      swapId,
+            direction:   "out",
+            asset:       "BTC",
+            amount:      amtStr,
+            txType:      "swap",
+            swapToAsset: "BTC",
+            timestamp:   ts,
+            status:      "confirmed",
+            updatedAt:   ts,
+          }).catch(() => { /* best-effort */ });
+          dispatchWalletNotification({
+            type:        "sent",
+            chainId:     -1,
+            network:     "Lightning",
+            asset:       "BTC",
+            amount:      amtStr,
+            txHash:      swapId,
+            status:      "confirmed",
+            txType:      "swap",
+            swapToAsset: "BTC",
+            timestamp:   ts,
+          }).catch(() => { /* best-effort */ });
+        }
       }
     } catch (err) {
       const msg = err instanceof Error
@@ -336,7 +381,47 @@ export function useSwapState(router: SwapRouter | null, opts?: SwapStateOpts): [
           sendAmountSat: (status as { send_amount_sat?: number }).send_amount_sat ?? prev.sendAmountSat,
         }));
 
-        if (TERMINAL_SWAP_STATES.includes(newState)) _stopPoll();
+        if (TERMINAL_SWAP_STATES.includes(newState)) {
+          _stopPoll();
+
+          // BTC→LN completato: taga la TX BTC come swap + notifica Lightning ricevuta
+          if (newState === "completed") {
+            const q      = quoteRef.current;
+            const txHash = status.tx_hash ?? swapId;
+            const ts     = Date.now();
+            if (q) {
+              // Salva il BTC outgoing come swap (se il tx-monitor lo aggiorna, preserva txType)
+              saveTxRecord({
+                id:          `0:${txHash}:out:`,
+                chainId:     0,
+                network:     "Bitcoin",
+                txHash,
+                direction:   "out",
+                asset:       "BTC",
+                amount:      _satsToBtc(q.from_amount_sat),
+                txType:      "swap",
+                swapToAsset: "BTC",
+                timestamp:   ts,
+                status:      "confirmed",
+                updatedAt:   ts,
+              }).catch(() => { /* best-effort */ });
+
+              // Notifica "Lightning ricevuta"
+              dispatchWalletNotification({
+                type:        "received",
+                chainId:     -1,
+                network:     "Lightning",
+                asset:       "BTC",
+                amount:      _satsToBtc(q.to_amount_sat),
+                txHash:      swapId,
+                status:      "confirmed",
+                txType:      "swap",
+                swapToAsset: "BTC",
+                timestamp:   ts,
+              }).catch(() => { /* best-effort */ });
+            }
+          }
+        }
       } catch {
         // Errore di rete — continua polling
       }
