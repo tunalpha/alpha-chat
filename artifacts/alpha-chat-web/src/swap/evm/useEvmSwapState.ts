@@ -32,7 +32,7 @@ import {
   configureLiFiWallet, clearLiFiWallet,
   type LiFiStatus,
 } from "./lifi-client.js";
-import { apiRefreshSession } from "../../lib/api.js";
+import { getAccessToken } from "../../lib/auth.js";
 import {
   EVM_SWAP_ACTIVE_KEY, EVM_SWAP_IKEY,
   LIFI_INTEGRATOR, LIFI_FEE,
@@ -48,11 +48,15 @@ import { chainName } from "../../wallet/notifications/wallet-notification-types.
 // ── Module-level anti-double-click lock ───────────────────────────────────────
 let _evmExecuting = false;
 
-// ── Auth fetch (usa ensureValidToken via apiRefreshSession) ───────────────────
+// ── Auth fetch ────────────────────────────────────────────────────────────────
+// Usa getAccessToken() direttamente (stesso pattern di request() in api.ts).
+// apiRefreshSession() era problematico: se il refresh falliva (cooldown 10s),
+// ritornava null → header Authorization assente → 401 su ogni chiamata di tracking.
+// Le chiamate swapApi sono fire-and-forget (.catch(() => null)) — non è necessario
+// un refresh proattivo; se il token è scaduto il server risponde 401 e viene ignorato.
 
 async function swapApi(path: string, options?: RequestInit): Promise<unknown> {
-  // Garantisce un token valido prima di ogni chiamata — evita 401 da token scaduto
-  const token = await apiRefreshSession() ?? "";
+  const token = getAccessToken() ?? "";
   const base  = (window as unknown as Record<string, string>).__VITE_API_BASE__ ?? "";
   const res   = await fetch(`${base}/api/v1/swap/evm${path}`, {
     ...options,
@@ -824,7 +828,10 @@ export function useEvmSwapState(opts?: EvmSwapStateOpts): [EvmSwapStateValue, Ev
     } catch (err) {
       // Logga i dettagli tecnici — non mostrarli mai all'utente
       console.error("[AlphaSwap] execute error:", err);
-      const msg = err instanceof Error ? err.message : "";
+      // Usa shortMessage di viem (es. "execution reverted") se disponibile —
+      // err.message contiene lo stack trace completo che non serve all'utente.
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const msg = err instanceof Error ? ((err as any).shortMessage ?? err.message) : "";
       const isUserRejected = msg.includes("rejected") || msg.includes("denied") || msg.includes("refused") || msg.includes("USER_REJECTED");
       const isQuoteExpired  = msg === "QUOTE_EXPIRED";
       const isWalletLocked  = msg.startsWith("ALPHA_WALLET_LOCKED") || msg.startsWith("ALPHA_WALLET_NO_KEYSTORE");

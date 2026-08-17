@@ -106,6 +106,7 @@
 - [@lifi/sdk CJS alias (🔒 permanente)](lifi-sdk-cjs-alias.md) — ESM entry di @lifi/sdk v4 non esporta createConfig/EVM; alias vite.config.ts → CJS via createRequire obbligatorio per il build prod
 - [LN→BTC Hardening](lnbtc-hardening.md) — localStorage ikey/lock/intent/result; cross-tab TTL 90s; TIMEOUT_UNCERTAIN clearTimeout pattern; idempotency_key backend; 17 test T1-T17
 - [Alpha Swap V1 Hardening](alpha-swap-v1-hardening.md) — refund key HMAC-SHA256 server-side; write-before-submit; idempotency_key UUID; reconciler 30s; GET /active recovery; 63 test T1-T20 PASS
+- [EVM Swap gasLimit fix](evm-swap-gaslimit-fix.md) — usare gasLimit da Li.Fi transactionRequest; senza di esso eth_estimateGas su RPC stale → "execution reverted" bloccava tutti gli swap
 - [Token logo source — Swap view](token-logo-inline-svg.md) — logoURI in EVM_SWAP_TOKENS devono usare /coin-icons/*.png locali; CDN TrustWallet bloccati su Safari iOS prod
 - [Breez Spark SDK Node.js API](spark-sdk-nodejs-api.md) — connect() con Seed (non connectWithSigner); sparkAddress da receivePayment().paymentRequest; getInfo NON ha sparkAddress; prefisso mainnet = spark1
 - [TX Monitor Hardening](tx-monitor-hardening.md) — silent checkpoint advancement bug; chain supportate; guard "0x0" e Alchemy error; bottone 🔄; 1003 test PASS

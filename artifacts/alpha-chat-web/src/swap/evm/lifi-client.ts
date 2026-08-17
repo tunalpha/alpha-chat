@@ -278,10 +278,20 @@ export async function executeLiFiSwap(
   }
 
   // ── Invia swap transaction ────────────────────────────────────────────────
+  // Usa il gasLimit fornito da Li.Fi (già simulato sul loro end).
+  // Senza gas esplicito viem chiamerebbe eth_estimateGas, che su alcuni RPC
+  // fallisce con "execution reverted" anche quando la TX sarebbe valida.
+  const gasLimit = txReq.gasLimit
+    ? BigInt(txReq.gasLimit as string)
+    : txReq.gas
+      ? BigInt(txReq.gas as string)
+      : undefined;
+
   const txHash = await walletClient.sendTransaction({
     to:    txReq.to    as `0x${string}`,
     data:  txReq.data  as `0x${string}`,
-    value: txReq.value ? BigInt(txReq.value) : 0n,
+    value: txReq.value ? BigInt(txReq.value as string) : 0n,
+    gas:   gasLimit,
     chain: null,   // non impone chain switch — il wallet è già sulla chain giusta
     account,
   });
