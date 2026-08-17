@@ -37,6 +37,7 @@ import { useSwapState }                    from "./useSwapState.js";
 import type {
   SwapDirection, SwapPublicConfig, SwapState, SwapQuote, SwapError,
 } from "./types.js";
+import { BTC_LOGO_URI } from "./evm/types.js";
 import { EvmSwapView }                     from "./evm/EvmSwapView.js";
 
 // ── Tab type ──────────────────────────────────────────────────────────────────
@@ -162,8 +163,9 @@ function fmtBps(bps: number): string {
 
 // ── Asset definitions ─────────────────────────────────────────────────────────
 
-const A_BTC_ONCHAIN = { icon: "₿",  ticker: "BTC", name: "Bitcoin",   network: "Bitcoin on-chain" } as const;
-const A_LIGHTNING   = { icon: "⚡", ticker: "BTC", name: "Lightning", network: "Lightning Network" } as const;
+const BTC_ONCHAIN_ICON = <img src={BTC_LOGO_URI} alt="BTC" style={{ width: 36, height: 36, borderRadius: "50%", objectFit: "cover" }} />;
+const A_BTC_ONCHAIN = { icon: BTC_ONCHAIN_ICON, ticker: "BTC", name: "Bitcoin",   network: "Bitcoin on-chain" };
+const A_LIGHTNING   = { icon: "⚡",              ticker: "BTC", name: "Lightning", network: "Lightning Network" };
 
 function payAsset(dir: SwapDirection)     { return dir === "btc_to_lightning" ? A_BTC_ONCHAIN : A_LIGHTNING; }
 function receiveAsset(dir: SwapDirection) { return dir === "btc_to_lightning" ? A_LIGHTNING   : A_BTC_ONCHAIN; }
@@ -481,7 +483,7 @@ function LnBtcUnknownView({ error, onReset, Header }: LnBtcUnknownViewProps) {
 
 interface AssetCardProps {
   label:    string;
-  icon:     string;
+  icon:     React.ReactNode;
   ticker:   string;
   network:  string;
   children: React.ReactNode;

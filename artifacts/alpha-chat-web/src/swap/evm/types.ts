@@ -178,7 +178,7 @@ const _ETH_LOGO  = `${_TW}/ethereum/info/logo.png`;
 const _POL_LOGO  = `${_TW}/polygon/info/logo.png`;
 const _BNB_LOGO  = `${_TW}/smartchain/info/logo.png`;
 // SVG inline — non dipende da CDN esterni, carica sempre (anche in iframe/PWA offline)
-const _BTC_LOGO  = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='16' fill='%23F7931A'/%3E%3Cpath fill='%23fff' d='M22.5 14.3c.3-2-1.2-3.1-3.3-3.8l.7-2.7-1.7-.4-.7 2.6-.5-.1.7-2.6-1.7-.4-.7 2.7-1-.3-2.3-.6-.5 1.9s1.3.3 1.2.3c.7.2.8.7.8 1l-.8 3.3.3.1-.3-.1-1.1 4.5c-.1.3-.4.7-.9.5l-1.3-.3-.9 2 2.2.6.5.1-.7 2.8 1.7.4.7-2.8.5.1-.7 2.7 1.7.4.7-2.8c2.9.5 5.1.3 6-2.3.7-2.1-.1-3.3-1.5-4.1 1.1-.2 1.9-1 2.1-2.6zm-3.8 5.3c-.5 2.1-4 1-5.1.7l.9-3.7c1.1.3 4.7.8 4.2 3zm.5-5.3c-.5 1.9-3.5 1-4.5.7l.8-3.3c1 .3 4.2.7 3.7 2.6z'/%3E%3C/svg%3E";
+export const BTC_LOGO_URI = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='16' fill='%23F7931A'/%3E%3Cpath fill='%23fff' d='M22.5 14.3c.3-2-1.2-3.1-3.3-3.8l.7-2.7-1.7-.4-.7 2.6-.5-.1.7-2.6-1.7-.4-.7 2.7-1-.3-2.3-.6-.5 1.9s1.3.3 1.2.3c.7.2.8.7.8 1l-.8 3.3.3.1-.3-.1-1.1 4.5c-.1.3-.4.7-.9.5l-1.3-.3-.9 2 2.2.6.5.1-.7 2.8 1.7.4.7-2.8.5.1-.7 2.7 1.7.4.7-2.8c2.9.5 5.1.3 6-2.3.7-2.1-.1-3.3-1.5-4.1 1.1-.2 1.9-1 2.1-2.6zm-3.8 5.3c-.5 2.1-4 1-5.1.7l.9-3.7c1.1.3 4.7.8 4.2 3zm.5-5.3c-.5 1.9-3.5 1-4.5.7l.8-3.3c1 .3 4.2.7 3.7 2.6z'/%3E%3C/svg%3E";
 // ERC-20 logos (canonical per-chain address folder)
 const _USDT_ETH  = `${_TW}/ethereum/assets/0xdAC17F958D2ee523a2206206994597C13D831ec7/logo.png`;
 const _USDC_ETH  = `${_TW}/ethereum/assets/0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48/logo.png`;
@@ -189,7 +189,7 @@ const _USDC_BSC  = `${_TW}/smartchain/assets/0x8AC76a51cc950d9822D68b83fE1Ad97B3
 
 export const EVM_SWAP_TOKENS: EvmToken[] = [
   // Bitcoin (BTC_CHAIN_ID) — cross-chain via Li.Fi/Thorchain
-  { chainId: BTC_CHAIN_ID, address: BTC_NATIVE_ADDRESS,                           symbol: "BTC",  name: "Bitcoin",     decimals: 8,  isNative: true,  logoURI: _BTC_LOGO },
+  { chainId: BTC_CHAIN_ID, address: BTC_NATIVE_ADDRESS,                           symbol: "BTC",  name: "Bitcoin",     decimals: 8,  isNative: true,  logoURI: BTC_LOGO_URI },
   // Ethereum (1)
   { chainId: 1,   address: NATIVE_ADDRESS,                               symbol: "ETH",  name: "Ether",       decimals: 18, isNative: true,  logoURI: _ETH_LOGO },
   { chainId: 1,   address: "0xdAC17F958D2ee523a2206206994597C13D831ec7", symbol: "USDT", name: "Tether USD",   decimals: 6,  isNative: false, logoURI: _USDT_ETH },
