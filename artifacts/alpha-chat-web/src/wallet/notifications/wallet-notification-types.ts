@@ -88,7 +88,7 @@ export function chainName(chainId: number): string {
 export function notificationIcon(type: WalletNotificationType): string {
   switch (type) {
     case "received":  return "💰";
-    case "sent":      return "📤";
+    case "sent":      return "💸";
     case "pending":   return "⏳";
     case "confirmed": return "✅";
     case "failed":    return "❌";
@@ -99,7 +99,7 @@ export function notificationIcon(type: WalletNotificationType): string {
 export function notificationTitle(n: WalletNotification): string {
   switch (n.type) {
     case "received":  return `💰 Alpha Wallet — ${n.amount} ${n.asset} ricevuto`;
-    case "sent":      return `📤 Alpha Wallet — Invio ${n.asset} confermato`;
+    case "sent":      return `💸 Alpha Wallet — Invio ${n.asset} confermato`;
     case "pending":   return `⏳ Alpha Wallet — ${n.asset} in attesa`;
     case "confirmed": return `✅ Alpha Wallet — Transazione confermata`;
     case "failed":    return `❌ Alpha Wallet — Transazione fallita`;

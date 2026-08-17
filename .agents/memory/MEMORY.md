@@ -141,3 +141,5 @@
 - [MC sign-poll Load failed fix](mc-poll-load-failed-fix.md) — catch polling post-firma: `!code && isNetworkError → continue`; errori applicativi con .code sempre fatali
 - [MC Send State Machine — confirming timing](mc-send-state-machine.md) — setSignPhase("confirming") nel .then() di sendTransaction, mai sincrono dopo fire-and-forget; guard anti-regressione; localStorage signed:true nel .then()
 - [Alpha Swap CSS + vitest timeout](alpha-swap-css-vitest.md) — asw-* classes in AlphaWalletPage.css; vitest testTimeout alzato a 15000 per barrel ESM import
+- [EvmFailedView error prop unused bug](evm-failed-view-prop.md) — `error` prop dichiarato ma ignorato in JSX; messaggio sempre hardcoded; fix: usare `humanizeEvmError(error)` nel componente
+- [iOS PWA notification icon](ios-pwa-notif-icon.md) — iOS mostra sempre l'icona app nelle push notification PWA; `icon` field ignorato; "from [App Name]" è sistema iOS, non modificabile
