@@ -78,6 +78,8 @@ export interface LiFiQuoteParams {
    */
   toAmount?:    string;
   fromAddress:  string;  // wallet address dell'utente
+  /** Slippage massimo (0.005 = 0.5%). Default: LIFI_SLIPPAGE */
+  slippage?:    number;
 }
 
 /** Errore restituito se quote non disponibile */
@@ -104,7 +106,7 @@ export async function fetchLiFiQuote(params: LiFiQuoteParams): Promise<EvmSwapQu
     fromAddress: params.fromAddress,
     integrator:  LIFI_INTEGRATOR,
     fee:         String(LIFI_FEE),
-    slippage:    String(LIFI_SLIPPAGE),
+    slippage:    String(params.slippage ?? LIFI_SLIPPAGE),
   });
 
   const res  = await fetch(`${LIFI_API}/quote?${qs}`, {
@@ -185,7 +187,7 @@ function parseQuoteResponse(
     alphaFeeUSD,
     gasCostUSD,
     totalFeeUSD,
-    slippage:     LIFI_SLIPPAGE,
+    slippage:     params.slippage ?? LIFI_SLIPPAGE,
     expiresAt:    Date.now() + QUOTE_VALIDITY_MS,
     tool,
     computedFromAmount,

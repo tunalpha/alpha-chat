@@ -121,6 +121,41 @@ function fmtSat(sat: number | null | undefined): string {
   return sat.toLocaleString("it-IT");
 }
 
+// ── BTC price hook (CoinGecko public API) ─────────────────────────────────────
+
+type BtcFiatCurrency = "" | "USD" | "EUR";
+
+interface BtcPriceState {
+  priceUSD: number | null;
+  priceEUR: number | null;
+  loading:  boolean;
+}
+
+function useBtcPrice(): BtcPriceState {
+  const [state, setState] = useState<BtcPriceState>({ priceUSD: null, priceEUR: null, loading: false });
+  useEffect(() => {
+    let cancelled = false;
+    setState(prev => ({ ...prev, loading: true }));
+    (async () => {
+      try {
+        const res  = await fetch(
+          "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd,eur",
+          { signal: AbortSignal.timeout(6000) }
+        );
+        if (!res.ok || cancelled) return;
+        const data = await res.json() as { bitcoin?: { usd?: number; eur?: number } };
+        const usd  = data.bitcoin?.usd ?? null;
+        const eur  = data.bitcoin?.eur ?? null;
+        if (!cancelled) setState({ priceUSD: usd, priceEUR: eur, loading: false });
+      } catch {
+        if (!cancelled) setState(prev => ({ ...prev, loading: false }));
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+  return state;
+}
+
 function fmtBps(bps: number): string {
   return (bps / 100).toFixed(2) + "%";
 }
@@ -584,66 +619,205 @@ function SwapMainForm({ sv, actions, config, btcBalance, btcBalLoading }: SwapMa
     actions.setAmountSat(val);
   };
 
+  // ── Fiat toggle per BTC ────────────────────────────────────────────────────
+  const btcPrice = useBtcPrice();
+  const [btcFiatCurrency, setBtcFiatCurrency] = useState<BtcFiatCurrency>("");
+  const [btcFiatInput, setBtcFiatInput] = useState("");
+
+  const btcFiatPrice = btcFiatCurrency === "EUR" ? btcPrice.priceEUR : (btcFiatCurrency === "USD" ? btcPrice.priceUSD : null);
+  const inBtcFiatMode = isBtcLn && !!btcFiatCurrency && !!btcFiatPrice;
+
+  const handleBtcFiatChange = (raw: string) => {
+    const cleaned = raw.replace(/[^0-9.]/g, "").replace(/(\..*)\./g, "$1");
+    setBtcFiatInput(cleaned);
+    if (btcFiatPrice && btcFiatPrice > 0) {
+      const n = parseFloat(cleaned);
+      if (isFinite(n) && n > 0) {
+        const sat = Math.floor((n / btcFiatPrice) * 1e8);
+        actions.setAmountSat(sat);
+      } else {
+        actions.setAmountSat(0);
+      }
+    }
+  };
+
+  // Reset fiat input quando l'utente cambia direzione
+  const handleToggleFiat = (c: BtcFiatCurrency) => {
+    setBtcFiatCurrency(c);
+    setBtcFiatInput("");
+  };
+
+  // % chips per BTC (10/25/50/MAX con 2000 sat riserva)
+  const PCT_BTC: [number, string][] = [[10, "10%"], [25, "25%"], [50, "50%"], [100, "MAX"]];
+  const handleBtcPct = (pct: number) => {
+    if (!btcBalance || btcBalance.totalSat <= 0) return;
+    const spendable = Math.max(0, btcBalance.totalSat - 2000);
+    const sat = Math.floor(spendable * pct / 100);
+    if (sat > 0) {
+      actions.setAmountSat(sat);
+      handleToggleFiat(""); // torna in sat mode
+    }
+  };
+
+  // Hint fiat sotto il campo sat (solo in sat mode)
+  const btcFiatHint = !inBtcFiatMode && btcFiatPrice && sv.amountSat > 0
+    ? `≈ ${btcFiatCurrency === "EUR" ? "€" : "$"}${((sv.amountSat / 1e8) * btcFiatPrice).toFixed(2)}`
+    : null;
+
   return (
     <div className="asw-content">
       <div className="asw-form">
 
-        {/* BTC on-chain balance + MAX (sopra la card PAGA) */}
-        {isBtcLn && (
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingBottom: 2, marginBottom: -4 }}>
-            {/* Saldo prominente */}
-            <div style={{ display: "flex", flexDirection: "column" }}>
-              <span style={{ fontSize: 11, color: "rgba(255,255,255,.35)", fontWeight: 500, letterSpacing: ".3px", textTransform: "uppercase" }}>
-                Saldo
-              </span>
-              <span style={{ fontSize: 15, fontWeight: 700, color: "rgba(255,255,255,.85)", minHeight: 20 }}>
-                {btcBalLoading ? (
-                  <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 13, fontWeight: 400 }}>
-                    <Loader2 size={11} style={{ animation: "aw-spin .8s linear infinite" }} />
-                    <span style={{ color: "rgba(255,255,255,.4)" }}>Caricamento…</span>
-                  </span>
-                ) : btcBalance ? (
-                  `${(btcBalance.totalSat / 1e8).toFixed(8)} BTC`
-                ) : (
-                  <span style={{ color: "rgba(255,255,255,.3)", fontSize: 13, fontWeight: 400 }}>—</span>
+        {/* ── BTC PAGA card con fiat toggle + % chips ─────────────────────────── */}
+        {isBtcLn ? (
+          <div className="asw-card" style={{ marginBottom: 0 }}>
+            {/* Header: PAGA label + fiat toggle pill + saldo */}
+            <div className="asw-card-head">
+              <span className="asw-card-label">Paga</span>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                {/* Fiat toggle — $ verde, € viola */}
+                {(btcPrice.priceUSD ?? 0) > 0 && (
+                  <div style={{ display: "flex", gap: 2, background: "rgba(255,255,255,.07)", borderRadius: 10, padding: "2px 3px" }}>
+                    {(["USD", "EUR"] as const).map(c => {
+                      const isActive = btcFiatCurrency === c;
+                      const accentBg = c === "USD" ? "#16a34a" : "#6366f1";
+                      const accentTxt = c === "USD" ? "#22c55e" : "#a5b4fc";
+                      return (
+                        <button
+                          key={c}
+                          type="button"
+                          onClick={() => handleToggleFiat(btcFiatCurrency === c ? "" : c)}
+                          style={{
+                            fontSize: 12, fontWeight: 800, padding: "2px 9px", borderRadius: 8,
+                            border: "none", cursor: "pointer", lineHeight: "18px",
+                            background: isActive ? accentBg : "transparent",
+                            color: isActive ? "#fff" : accentTxt,
+                            transition: "background .15s", letterSpacing: ".5px",
+                          }}
+                        >
+                          {c === "USD" ? "$" : "€"}
+                        </button>
+                      );
+                    })}
+                  </div>
                 )}
-              </span>
+                {/* Saldo */}
+                {btcBalance && (
+                  <span style={{ fontSize: 12, color: "rgba(255,255,255,.4)" }}>
+                    {btcBalLoading
+                      ? <Loader2 size={11} style={{ animation: "aw-spin .8s linear infinite", verticalAlign: "middle" }} />
+                      : `${(btcBalance.totalSat / 1e8).toFixed(8)} BTC`
+                    }
+                  </span>
+                )}
+              </div>
             </div>
-            {/* MAX button piccolo */}
-            {btcBalance && btcBalance.totalSat > 0 && (
-              <button
-                onClick={() => {
-                  const spendable = Math.max(0, btcBalance.totalSat - 2000);
-                  if (spendable > 0) actions.setAmountSat(spendable);
-                }}
-                className="asw-max-btn"
-                style={{ fontSize: 11, padding: "3px 10px", height: 26 }}
-              >
-                MAX
-              </button>
-            )}
-          </div>
-        )}
 
-        {/* PAGA card */}
-        <AssetCard label="Paga" icon={pay.icon} ticker={pay.ticker} network={pay.network}>
-          <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
-            <input
-              type="text"
-              inputMode="numeric"
-              pattern="[0-9]*"
-              placeholder="0"
-              value={sv.amountSat > 0 ? sv.amountSat.toLocaleString("it-IT") : ""}
-              onChange={handleAmountChange}
-              className="asw-amount-input"
-              aria-label="Importo in satoshi"
-              style={{ flex: 1, minWidth: 0 }}
-            />
-            {isBtcLn && (
-              <span style={{ fontSize: 11, color: "rgba(255,255,255,.35)", flexShrink: 0, paddingBottom: 2 }}>sat</span>
+            {/* Token row: icona + input */}
+            <div className="asw-token-row">
+              <div className="asw-token-btn" style={{ cursor: "default" }}>
+                <div className="asw-token-icon">{pay.icon}</div>
+                <div className="asw-token-info">
+                  <div className="asw-token-name">{pay.ticker}</div>
+                  <div className="asw-token-network">{pay.network}</div>
+                </div>
+              </div>
+              <div className="asw-amount-col">
+                {inBtcFiatMode ? (
+                  /* Modalità fiat */
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 1 }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 3 }}>
+                      <span style={{ fontSize: 20, fontWeight: 700, color: "rgba(255,255,255,.4)" }}>
+                        {btcFiatCurrency === "EUR" ? "€" : "$"}
+                      </span>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        placeholder="0"
+                        value={btcFiatInput}
+                        onChange={e => handleBtcFiatChange(e.target.value)}
+                        className="asw-amount-input"
+                        aria-label={`Importo in ${btcFiatCurrency}`}
+                        style={{ maxWidth: 130 }}
+                      />
+                    </div>
+                    {sv.amountSat > 0 && (
+                      <span style={{ fontSize: 11, color: "rgba(255,255,255,.3)", paddingRight: 2 }}>
+                        ≈ {sv.amountSat.toLocaleString("it-IT")} sat
+                      </span>
+                    )}
+                  </div>
+                ) : (
+                  /* Modalità sat */
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 1 }}>
+                    <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        pattern="[0-9]*"
+                        placeholder="0"
+                        value={sv.amountSat > 0 ? sv.amountSat.toLocaleString("it-IT") : ""}
+                        onChange={handleAmountChange}
+                        className="asw-amount-input"
+                        aria-label="Importo in satoshi"
+                        style={{ flex: 1, minWidth: 0 }}
+                      />
+                      <span style={{ fontSize: 11, color: "rgba(255,255,255,.35)", flexShrink: 0, paddingBottom: 2 }}>sat</span>
+                    </div>
+                    {btcFiatHint && (
+                      <span style={{ fontSize: 11, color: "rgba(255,255,255,.3)", paddingRight: 2 }}>
+                        {btcFiatHint}
+                      </span>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* % chips */}
+            {btcBalance && btcBalance.totalSat > 2000 && (
+              <div style={{
+                display: "flex", gap: 6, marginTop: 10,
+                paddingTop: 10, borderTop: "1px solid rgba(255,255,255,.07)",
+              }}>
+                {PCT_BTC.map(([pct, lbl]) => (
+                  <button
+                    key={pct}
+                    type="button"
+                    onClick={() => handleBtcPct(pct)}
+                    style={{
+                      flex: 1, fontSize: 12, fontWeight: 600, padding: "5px 0",
+                      borderRadius: 8, border: "1px solid rgba(255,255,255,.12)",
+                      background: "rgba(255,255,255,.06)", color: "rgba(255,255,255,.7)",
+                      cursor: "pointer", letterSpacing: ".2px", transition: "background .12s",
+                    }}
+                    onPointerEnter={e => (e.currentTarget.style.background = "rgba(255,255,255,.14)")}
+                    onPointerLeave={e => (e.currentTarget.style.background = "rgba(255,255,255,.06)")}
+                  >
+                    {lbl}
+                  </button>
+                ))}
+              </div>
             )}
           </div>
-        </AssetCard>
+        ) : (
+          /* LN→BTC: card semplice (nessun fiat toggle, nessun chip) */
+          <AssetCard label="Paga" icon={pay.icon} ticker={pay.ticker} network={pay.network}>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 4 }}>
+              <input
+                type="text"
+                inputMode="decimal"
+                pattern="[0-9]*"
+                placeholder="0"
+                value={sv.amountSat > 0 ? sv.amountSat.toLocaleString("it-IT") : ""}
+                onChange={handleAmountChange}
+                className="asw-amount-input"
+                aria-label="Importo in satoshi"
+                style={{ flex: 1, minWidth: 0 }}
+              />
+            </div>
+          </AssetCard>
+        )}
 
         {/* Direction toggle */}
         <div className="asw-dir-wrap">

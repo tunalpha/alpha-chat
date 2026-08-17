@@ -98,6 +98,11 @@ export interface EvmSwapStateOpts {
    * Stabile: deve essere creata con useCallback(fn, []) nel chiamante.
    */
   getAlphaWalletClient?: (chainId: number) => Promise<WalletClient>;
+  /**
+   * Slippage massimo (es. 0.005 = 0.5%). Default: LIFI_SLIPPAGE (costante globale).
+   * Passato direttamente a Li.Fi nella query quote.
+   */
+  slippage?: number;
 }
 
 // ── Hook ──────────────────────────────────────────────────────────────────────
@@ -117,9 +122,11 @@ export function useEvmSwapState(opts?: EvmSwapStateOpts): [EvmSwapStateValue, Ev
   const accountRef     = useRef(activeAccount?.address);
   const fromChainIdRef = useRef(sv.fromChainId);
   const isMounted      = useRef(true);
+  const slippageRef    = useRef(opts?.slippage);
 
   useEffect(() => { accountRef.current = activeAccount?.address; }, [activeAccount]);
   useEffect(() => { fromChainIdRef.current = sv.fromChainId; }, [sv.fromChainId]);
+  useEffect(() => { slippageRef.current = opts?.slippage; }, [opts?.slippage]);
 
   // ── Lifecycle + cleanup Li.Fi callbacks ───────────────────────────────────
   useEffect(() => {
@@ -342,6 +349,7 @@ export function useEvmSwapState(opts?: EvmSwapStateOpts): [EvmSwapStateValue, Ev
         toToken:      snap.toToken,
         fromAmount:   fromUnits,
         fromAddress:  effectiveAddress,
+        slippage:     slippageRef.current,
       });
       if (isMounted.current) setSv(prev => ({ ...prev, phase: "quoted", quote, error: null }));
     } catch (err) {
@@ -386,6 +394,7 @@ export function useEvmSwapState(opts?: EvmSwapStateOpts): [EvmSwapStateValue, Ev
         toToken:      snap.toToken,
         toAmount:     toUnits,
         fromAddress:  effectiveAddress,
+        slippage:     slippageRef.current,
       });
       // Aggiorna fromAmount con il valore calcolato da Li.Fi (action.fromAmount)
       const computedFrom = quote.computedFromAmount

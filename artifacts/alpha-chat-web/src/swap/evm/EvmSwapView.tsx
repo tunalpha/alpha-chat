@@ -24,7 +24,7 @@ import React, {
 } from "react";
 import {
   ArrowUpDown, Loader2, CheckCircle, AlertTriangle,
-  Copy, Check, ExternalLink, RefreshCw, Info, ChevronDown,
+  Copy, Check, ExternalLink, RefreshCw, Info, ChevronDown, ChevronRight, X,
 } from "lucide-react";
 import { useActiveAccount, useActiveWalletChain } from "thirdweb/react";
 import { type WalletClient } from "viem";
@@ -285,25 +285,31 @@ function TokenCard({
         <span className="asw-card-label">{label}</span>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
 
-          {/* Fiat toggle pill */}
+          {/* Fiat toggle pill — $ verde, € viola */}
           {hasFiatToggle && onFiatToggle && (
             <div style={{ display: "flex", gap: 2, background: "rgba(255,255,255,.07)", borderRadius: 10, padding: "2px 3px" }}>
-              {(["USD", "EUR"] as const).map(c => (
-                <button
-                  key={c}
-                  type="button"
-                  onClick={() => { onFiatToggle(fiatCurrency === c ? "" : c); setFiatInput(""); }}
-                  style={{
-                    fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 8,
-                    border: "none", cursor: "pointer", lineHeight: "16px",
-                    background: fiatCurrency === c ? "var(--accent,#6366f1)" : "transparent",
-                    color: fiatCurrency === c ? "#fff" : "rgba(255,255,255,.4)",
-                    transition: "background .15s",
-                  }}
-                >
-                  {c === "USD" ? "$" : "€"}
-                </button>
-              ))}
+              {(["USD", "EUR"] as const).map(c => {
+                const isActive = fiatCurrency === c;
+                const accentBg = c === "USD" ? "#16a34a" : "#6366f1";
+                const accentTxt = c === "USD" ? "#22c55e" : "#a5b4fc";
+                return (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => { onFiatToggle(fiatCurrency === c ? "" : c); setFiatInput(""); }}
+                    style={{
+                      fontSize: 12, fontWeight: 800, padding: "2px 9px", borderRadius: 8,
+                      border: "none", cursor: "pointer", lineHeight: "18px",
+                      background: isActive ? accentBg : "transparent",
+                      color: isActive ? "#fff" : accentTxt,
+                      transition: "background .15s",
+                      letterSpacing: ".5px",
+                    }}
+                  >
+                    {c === "USD" ? "$" : "€"}
+                  </button>
+                );
+              })}
             </div>
           )}
 
@@ -553,6 +559,110 @@ function EvmFailedView({ onRetry }: { error?: string; onRetry: () => void }) {
   );
 }
 
+// ── Slippage modal ────────────────────────────────────────────────────────────
+
+const SLIPPAGE_PRESETS = [0.005, 0.01, 0.02, 0.03, 0.04, 0.05] as const;
+
+function SlippageModal({ current, onConfirm, onClose }: {
+  current: number;
+  onConfirm: (v: number) => void;
+  onClose: () => void;
+}) {
+  const [selected, setSelected] = useState<number>(current);
+  const [customRaw, setCustomRaw] = useState(
+    SLIPPAGE_PRESETS.includes(current as typeof SLIPPAGE_PRESETS[number]) ? "" : (current * 100).toFixed(1),
+  );
+  const effectiveSlippage = customRaw
+    ? Math.min(Math.max(parseFloat(customRaw) / 100 || current, 0.001), 0.5)
+    : selected;
+
+  return (
+    <div
+      style={{
+        position: "fixed", inset: 0, zIndex: 9999,
+        background: "rgba(0,0,0,.7)", display: "flex", alignItems: "flex-end",
+      }}
+      onClick={onClose}
+    >
+      <div
+        style={{
+          width: "100%", maxWidth: 480, margin: "0 auto",
+          background: "#1a1a2e", borderRadius: "20px 20px 0 0",
+          padding: "24px 20px 36px",
+        }}
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+          <p style={{ fontSize: 17, fontWeight: 700, color: "#fff", margin: 0 }}>Slippage massimo</p>
+          <button onClick={onClose} style={{ background: "none", border: "none", color: "rgba(255,255,255,.5)", cursor: "pointer", padding: 4 }}>
+            <X size={20} />
+          </button>
+        </div>
+        <p style={{ fontSize: 13, color: "rgba(255,255,255,.45)", marginBottom: 20, lineHeight: 1.5 }}>
+          La transazione non può essere processata se i cambi del prezzo sono più sfavorevoli di questa percentuale.
+        </p>
+
+        {/* Preset grid */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8, marginBottom: 16 }}>
+          {SLIPPAGE_PRESETS.map(v => {
+            const isActive = !customRaw && selected === v;
+            return (
+              <button
+                key={v}
+                type="button"
+                onClick={() => { setSelected(v); setCustomRaw(""); }}
+                style={{
+                  padding: "10px 0", borderRadius: 12, fontSize: 15, fontWeight: 600,
+                  border: isActive ? "none" : "1px solid rgba(255,255,255,.15)",
+                  background: isActive ? "var(--accent,#6366f1)" : "rgba(255,255,255,.05)",
+                  color: isActive ? "#fff" : "rgba(255,255,255,.7)",
+                  cursor: "pointer", transition: "background .12s",
+                }}
+              >
+                {(v * 100).toFixed(1).replace(".0", "")}%
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Custom input */}
+        <div style={{
+          display: "flex", alignItems: "center", gap: 8,
+          background: "rgba(255,255,255,.07)", borderRadius: 12,
+          padding: "10px 14px", marginBottom: 20,
+          border: customRaw ? "1px solid var(--accent,#6366f1)" : "1px solid rgba(255,255,255,.1)",
+        }}>
+          <input
+            type="text"
+            inputMode="decimal"
+            placeholder="Personalizzato"
+            value={customRaw}
+            onChange={e => {
+              const v = e.target.value.replace(/[^0-9.]/g, "").replace(/(\..*)\./g, "$1");
+              setCustomRaw(v);
+              if (v) setSelected(-1);
+            }}
+            style={{
+              flex: 1, background: "none", border: "none", outline: "none",
+              fontSize: 15, color: "#fff", fontFamily: "inherit",
+            }}
+          />
+          <span style={{ fontSize: 15, color: "rgba(255,255,255,.5)", fontWeight: 600 }}>%</span>
+        </div>
+
+        {/* Conferma */}
+        <button
+          onClick={() => { onConfirm(effectiveSlippage); onClose(); }}
+          className="aw-btn aw-btn--primary"
+        >
+          Conferma
+        </button>
+      </div>
+    </div>
+  );
+}
+
 // ── EVM error humanizer ───────────────────────────────────────────────────────
 
 function humanizeEvmError(raw: string): string {
@@ -590,7 +700,9 @@ interface EvmSwapViewProps {
 }
 
 export function EvmSwapView({ onBack, alphaWalletAddress, getAlphaWalletClient }: EvmSwapViewProps) {
-  const [sv, actions] = useEvmSwapState({ alphaWalletAddress, getAlphaWalletClient });
+  const [slippage, setSlippage] = useState(0.005); // 0.5% default
+  const [slippageOpen, setSlippageOpen] = useState(false);
+  const [sv, actions] = useEvmSwapState({ alphaWalletAddress, getAlphaWalletClient, slippage });
 
   // ThirdWeb hooks (usati in modalità WalletConnect, se attiva)
   const activeAccount = useActiveAccount();
@@ -962,6 +1074,23 @@ export function EvmSwapView({ onBack, alphaWalletAddress, getAlphaWalletClient }
           ) : "Scambia"}
         </button>
 
+        {/* Slippage row */}
+        <button
+          type="button"
+          onClick={() => setSlippageOpen(true)}
+          style={{
+            display: "flex", alignItems: "center", justifyContent: "space-between",
+            width: "100%", background: "none", border: "none", cursor: "pointer",
+            padding: "10px 2px", borderBottom: "1px solid rgba(255,255,255,.07)",
+          }}
+        >
+          <span style={{ fontSize: 14, color: "rgba(255,255,255,.55)" }}>Slippage</span>
+          <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 14, color: "rgba(255,255,255,.8)", fontWeight: 600 }}>
+            {(slippage * 100).toFixed(1).replace(".0", "")}%
+            <ChevronRight size={15} style={{ color: "rgba(255,255,255,.35)" }} />
+          </span>
+        </button>
+
         {/* Hints */}
         {isIdle && (!sv.fromAmount || sv.fromAmount === "0") && (
           <p className="asw-hint">Inserisci un importo per vedere la quote</p>
@@ -995,6 +1124,15 @@ export function EvmSwapView({ onBack, alphaWalletAddress, getAlphaWalletClient }
         balances={balancesState.map}
         walletAddress={effectiveAddress}
       />
+
+      {/* Slippage modal */}
+      {slippageOpen && (
+        <SlippageModal
+          current={slippage}
+          onConfirm={(v) => { setSlippage(v); }}
+          onClose={() => setSlippageOpen(false)}
+        />
+      )}
     </div>
   );
 }
