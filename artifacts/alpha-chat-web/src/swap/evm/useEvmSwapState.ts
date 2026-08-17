@@ -36,7 +36,7 @@ import {
   EVM_SWAP_ACTIVE_KEY, EVM_SWAP_IKEY,
   LIFI_INTEGRATOR, LIFI_FEE,
   EVM_SWAP_CHAINS,
-  toTokenUnits, getDefaultFromToken, getTokensForChain,
+  toTokenUnits, fromTokenUnits, getDefaultFromToken, getTokensForChain,
   type EvmSwapPhase, type EvmSwapStateValue, type EvmSwapActions,
   type EvmToken, type EvmActiveSwap, type EvmSwapQuote,
 } from "./types.js";
@@ -345,8 +345,64 @@ export function useEvmSwapState(opts?: EvmSwapStateOpts): [EvmSwapStateValue, Ev
       });
       if (isMounted.current) setSv(prev => ({ ...prev, phase: "quoted", quote, error: null }));
     } catch (err) {
-      const msg = err instanceof Error ? err.message : "Errore nel calcolo della quote.";
-      if (isMounted.current) setSv(prev => ({ ...prev, phase: "idle", error: { code: "QUOTE_ERROR", message: msg } }));
+      console.error("[AlphaSwap] fetchQuote error:", err);
+      if (isMounted.current) setSv(prev => ({ ...prev, phase: "idle", error: { code: "QUOTE_ERROR", message: "SWAP_UNAVAILABLE" } }));
+    }
+  }, [effectiveAddress]);
+
+  /**
+   * Calcola quote partendo dall'importo DESIDERATO in output (exact-output mode).
+   * Aggiorna sv.fromAmount con il valore calcolato da Li.Fi.
+   */
+  const fetchQuoteExactOut = useCallback(async (toAmountHuman: string) => {
+    if (!toAmountHuman || toAmountHuman === "0") return;
+
+    const snap = await new Promise<EvmSwapStateValue>(resolve => {
+      setSv(prev => { resolve(prev); return prev; });
+    });
+
+    if (!snap.fromToken || !snap.toToken) return;
+
+    if (!effectiveAddress) {
+      if (isMounted.current) {
+        setSv(prev => ({
+          ...prev, phase: "idle",
+          error: { code: "NO_WALLET", message: "Sblocca Alpha Wallet prima di ottenere una quote." },
+        }));
+      }
+      return;
+    }
+
+    const toUnits = toTokenUnits(toAmountHuman, snap.toToken.decimals);
+    if (toUnits === "0") return;
+
+    if (isMounted.current) setSv(prev => ({ ...prev, phase: "quoting", error: null, quote: null }));
+
+    try {
+      const quote = await fetchLiFiQuote({
+        fromChainId:  snap.fromChainId,
+        toChainId:    snap.toChainId,
+        fromToken:    snap.fromToken,
+        toToken:      snap.toToken,
+        toAmount:     toUnits,
+        fromAddress:  effectiveAddress,
+      });
+      // Aggiorna fromAmount con il valore calcolato da Li.Fi (action.fromAmount)
+      const computedFrom = quote.computedFromAmount
+        ? fromTokenUnits(quote.computedFromAmount, quote.fromToken.decimals)
+        : "";
+      if (isMounted.current) {
+        setSv(prev => ({
+          ...prev,
+          phase:      "quoted",
+          quote,
+          fromAmount: computedFrom,
+          error:      null,
+        }));
+      }
+    } catch (err) {
+      console.error("[AlphaSwap] fetchQuoteExactOut error:", err);
+      if (isMounted.current) setSv(prev => ({ ...prev, phase: "idle", error: { code: "QUOTE_ERROR", message: "SWAP_UNAVAILABLE" } }));
     }
   }, [effectiveAddress]);
 
@@ -481,13 +537,12 @@ export function useEvmSwapState(opts?: EvmSwapStateOpts): [EvmSwapStateValue, Ev
 
       if (isMounted.current) setSv(prev => ({ ...prev, phase: "completed", txHash: finalTxHash, error: null }));
     } catch (err) {
-      const msg  = err instanceof Error ? err.message : "Errore durante lo swap.";
-      const code = msg.startsWith("ACCOUNT_CHANGED")         ? "ACCOUNT_CHANGED"
-                 : msg === "QUOTE_EXPIRED"                    ? "QUOTE_EXPIRED"
-                 : msg.startsWith("ALPHA_WALLET_LOCKED")      ? "ALPHA_WALLET_LOCKED"
-                 : msg.startsWith("ALPHA_WALLET_NO_KEYSTORE") ? "ALPHA_WALLET_LOCKED"
-                 : msg.includes("rejected") || msg.includes("denied") || msg.includes("refused") ? "USER_REJECTED"
-                 : "EXECUTE_ERROR";
+      // Logga i dettagli tecnici — non mostrarli mai all'utente
+      console.error("[AlphaSwap] execute error:", err);
+      const msg = err instanceof Error ? err.message : "";
+      const isUserRejected = msg.includes("rejected") || msg.includes("denied") || msg.includes("refused") || msg.includes("USER_REJECTED");
+      const isQuoteExpired  = msg === "QUOTE_EXPIRED";
+      const isWalletLocked  = msg.startsWith("ALPHA_WALLET_LOCKED") || msg.startsWith("ALPHA_WALLET_NO_KEYSTORE");
 
       if (current.quote) {
         await swapApi(`/${current.quote.routeId}`, {
@@ -498,17 +553,17 @@ export function useEvmSwapState(opts?: EvmSwapStateOpts): [EvmSwapStateValue, Ev
 
       if (!isMounted.current) return;
 
-      if (code === "USER_REJECTED") {
+      if (isUserRejected) {
         localStorage.removeItem(EVM_SWAP_ACTIVE_KEY);
-        setSv(prev => ({ ...prev, phase: "quoted", error: { code, message: "Firma rifiutata. Puoi riprovare." } }));
-      } else if (code === "QUOTE_EXPIRED") {
+        setSv(prev => ({ ...prev, phase: "quoted", error: { code: "USER_REJECTED", message: "USER_REJECTED" } }));
+      } else if (isQuoteExpired) {
         localStorage.removeItem(EVM_SWAP_ACTIVE_KEY);
         sessionStorage.removeItem(EVM_SWAP_IKEY);
-        setSv(prev => ({ ...prev, phase: "idle", quote: null, error: { code, message: "Quote scaduta. Ricarica la quote." } }));
-      } else if (code === "ALPHA_WALLET_LOCKED") {
-        setSv(prev => ({ ...prev, phase: "idle", error: { code, message: "Wallet bloccato. Sblocca Alpha Wallet con il PIN e riprova." } }));
+        setSv(prev => ({ ...prev, phase: "idle", quote: null, error: { code: "QUOTE_EXPIRED", message: "QUOTE_EXPIRED" } }));
+      } else if (isWalletLocked) {
+        setSv(prev => ({ ...prev, phase: "idle", error: { code: "ALPHA_WALLET_LOCKED", message: "ALPHA_WALLET_LOCKED" } }));
       } else {
-        setSv(prev => ({ ...prev, phase: "failed", error: { code, message: msg } }));
+        setSv(prev => ({ ...prev, phase: "failed", error: { code: "EXECUTE_ERROR", message: "SWAP_UNAVAILABLE" } }));
       }
     } finally {
       _evmExecuting = false;
@@ -524,7 +579,7 @@ export function useEvmSwapState(opts?: EvmSwapStateOpts): [EvmSwapStateValue, Ev
 
   const actions: EvmSwapActions = {
     setFromChain, setToChain, setFromToken, setToToken,
-    setFromAmount, swapDirection, fetchQuote, execute, reset,
+    setFromAmount, swapDirection, fetchQuote, fetchQuoteExactOut, execute, reset,
   };
 
   return [sv, actions];

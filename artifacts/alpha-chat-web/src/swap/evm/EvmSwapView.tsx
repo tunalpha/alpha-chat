@@ -31,7 +31,7 @@ import { type WalletClient } from "viem";
 import { useEvmSwapState }  from "./useEvmSwapState.js";
 import { TokenSelector }    from "./TokenSelector.js";
 import {
-  fromTokenUnits, getChainInfo, EVM_SWAP_CHAINS, getTokensForChain,
+  fromTokenUnits, toTokenUnits, getChainInfo, EVM_SWAP_CHAINS, getTokensForChain,
   LIFI_FEE, type EvmToken,
 } from "./types.js";
 
@@ -57,7 +57,8 @@ const CHAIN_COLOR: Record<number, string> = {
 const CHAIN_RPC: Record<number, string> = {
   137: ((import.meta as any).env?.VITE_POLYGON_RPC as string | undefined) ?? "https://polygon-rpc.com",
   56:  "https://bsc-dataseed.binance.org/",
-  1:   "https://eth.llamarpc.com",
+  // Cloudflare Ethereum gateway — più affidabile di llamarpc in tutti i mercati
+  1:   "https://cloudflare-eth.com",
 };
 
 async function rpcPost<T>(rpcUrl: string, method: string, params: unknown[]): Promise<T> {
@@ -135,19 +136,79 @@ const GAS_RESERVE: Record<number, bigint> = {
   1:   5000000000000000n,    // 0.005 ETH (Ethereum)
 };
 
+// ── Hook: prezzo token in USD e EUR (via Li.Fi + exchangerate-api) ─────────────
+
+type FiatCurrency = "USD" | "EUR" | "";
+
+interface TokenPriceState {
+  priceUSD: number | null;
+  priceEUR: number | null;
+  loading:  boolean;
+}
+
+function useTokenPrice(chainId: number, token: EvmToken | null): TokenPriceState {
+  const [state, setState] = useState<TokenPriceState>({ priceUSD: null, priceEUR: null, loading: false });
+
+  useEffect(() => {
+    if (!token) { setState({ priceUSD: null, priceEUR: null, loading: false }); return; }
+    let cancelled = false;
+    setState(prev => ({ ...prev, loading: true }));
+
+    (async () => {
+      try {
+        const addr = token.isNative ? "0x0000000000000000000000000000000000000000" : token.address;
+        const res  = await fetch(
+          `https://li.quest/v1/token?chain=${chainId}&token=${addr}`,
+          { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(5000) }
+        );
+        if (!res.ok || cancelled) return;
+        const data = await res.json() as { priceUSD?: string };
+        const usd  = parseFloat(data.priceUSD ?? "0");
+        if (!isFinite(usd) || usd <= 0) return;
+
+        let eurRate = 0.92;
+        try {
+          const fx = await fetch("https://open.er-api.com/v6/latest/USD", { signal: AbortSignal.timeout(3000) });
+          if (fx.ok) {
+            const fxData = await fx.json() as { rates?: Record<string, number> };
+            eurRate = fxData.rates?.EUR ?? 0.92;
+          }
+        } catch { /* usa tasso fisso */ }
+
+        if (!cancelled) setState({ priceUSD: usd, priceEUR: usd * eurRate, loading: false });
+      } catch {
+        if (!cancelled) setState(prev => ({ ...prev, loading: false }));
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [chainId, token?.address]);
+
+  return state;
+}
+
 // ── TokenCard ─────────────────────────────────────────────────────────────────
 
+const PCT_OPTIONS: [number, string][] = [[10, "10%"], [25, "25%"], [50, "50%"], [100, "MAX"]];
+
 interface TokenCardProps {
-  label:           string;
-  chainId:         number;
-  token:           EvmToken | null;
-  amount?:         string;
-  onAmountChange?: (v: string) => void;
-  onTokenClick:    () => void;
-  readOnly?:       boolean;
-  balance?:        bigint;
-  balLoading?:     boolean;
-  onMax?:          () => void;
+  label:            string;
+  chainId:          number;
+  token:            EvmToken | null;
+  amount?:          string;
+  onAmountChange?:  (v: string) => void;
+  onTokenClick:     () => void;
+  readOnly?:        boolean;
+  balance?:         bigint;
+  balLoading?:      boolean;
+  /** Callback bottoni percentuale (pct = 10 | 25 | 50 | 100) */
+  onPct?:           (pct: number) => void;
+  exceedsBalance?:  boolean;
+  // Fiat toggle
+  fiatCurrency?:    FiatCurrency;
+  priceUSD?:        number | null;
+  priceEUR?:        number | null;
+  onFiatToggle?:    (c: FiatCurrency) => void;
 }
 
 /** Icona token: <img> con logoURI se disponibile, altrimenti cerchio colorato */
@@ -174,35 +235,96 @@ function TokenIcon({ token, chainId }: { token: EvmToken | null; chainId: number
 }
 
 function TokenCard({
-  label, chainId, token, amount, onAmountChange, onTokenClick, readOnly, balance, balLoading, onMax,
+  label, chainId, token, amount, onAmountChange, onTokenClick,
+  readOnly, balance, balLoading, onPct, exceedsBalance,
+  fiatCurrency, priceUSD, priceEUR, onFiatToggle,
 }: TokenCardProps) {
   const chain        = getChainInfo(chainId);
   const chainColor   = CHAIN_COLOR[chainId] ?? "#888";
   const hasBalance   = balance !== undefined;
   const balStr       = hasBalance && token ? fmtBal(balance, token.decimals) : null;
-  const showMax      = hasBalance && onMax && onAmountChange && balStr !== "0" && balStr !== null && balance !== 0n;
+  const hasPct       = !!onPct && hasBalance && (balance ?? 0n) > 0n;
+  const hasFiatToggle = !!onFiatToggle && (priceUSD ?? 0) > 0;
+  const inFiatMode   = hasFiatToggle && !!fiatCurrency;
+  const price        = fiatCurrency === "EUR" ? priceEUR : (fiatCurrency === "USD" ? priceUSD : null);
+
+  // Fiat input locale (non sincronizzato col crypto amount, che è la source of truth)
+  const [fiatInput, setFiatInput] = useState("");
+  const prevCryptoRef = useRef("");
+  // Se l'amount crypto cambia esternamente (pct / quote), reset fiat input
+  useEffect(() => {
+    if ((amount ?? "") !== prevCryptoRef.current) {
+      prevCryptoRef.current = amount ?? "";
+      if (inFiatMode) setFiatInput("");
+    }
+  }, [amount, inFiatMode]);
+
+  // Fiat hint sotto il campo crypto (solo crypto mode)
+  const fiatHint = !inFiatMode && price && price > 0 && amount && parseFloat(amount) > 0
+    ? `≈ ${fiatCurrency === "EUR" ? "€" : "$"}${(parseFloat(amount) * price).toFixed(2)}`
+    : null;
+
+  const handleFiatChange = (raw: string) => {
+    const cleaned = raw.replace(/[^0-9.]/g, "").replace(/(\..*)\./g, "$1");
+    setFiatInput(cleaned);
+    if (onAmountChange && price && price > 0) {
+      const n = parseFloat(cleaned);
+      if (isFinite(n) && n > 0) {
+        onAmountChange((n / price).toFixed(8));
+      } else {
+        onAmountChange("");
+      }
+    }
+  };
 
   return (
-    <div className="asw-card">
+    <div className="asw-card" style={exceedsBalance ? { borderColor: "#f87171", borderWidth: 1, borderStyle: "solid" } : undefined}>
+
+      {/* Header: label + toggle €/$ + saldo */}
       <div className="asw-card-head">
         <span className="asw-card-label">{label}</span>
-        {token && (
-          <div className="asw-card-balance">
-            {balLoading ? (
-              <span style={{ fontSize: 12, color: "rgba(255,255,255,.35)", display: "flex", alignItems: "center", gap: 4 }}>
-                <Loader2 size={11} style={{ animation: "aw-spin .8s linear infinite" }} /> Saldo…
-              </span>
-            ) : balStr !== null ? (
-              <>
-                <span>{balStr} {token.symbol}</span>
-                {showMax && (
-                  <button className="asw-max-btn" onClick={onMax} type="button">MAX</button>
-                )}
-              </>
-            ) : null}
-          </div>
-        )}
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+
+          {/* Fiat toggle pill */}
+          {hasFiatToggle && onFiatToggle && (
+            <div style={{ display: "flex", gap: 2, background: "rgba(255,255,255,.07)", borderRadius: 10, padding: "2px 3px" }}>
+              {(["USD", "EUR"] as const).map(c => (
+                <button
+                  key={c}
+                  type="button"
+                  onClick={() => { onFiatToggle(fiatCurrency === c ? "" : c); setFiatInput(""); }}
+                  style={{
+                    fontSize: 10, fontWeight: 700, padding: "2px 8px", borderRadius: 8,
+                    border: "none", cursor: "pointer", lineHeight: "16px",
+                    background: fiatCurrency === c ? "var(--accent,#6366f1)" : "transparent",
+                    color: fiatCurrency === c ? "#fff" : "rgba(255,255,255,.4)",
+                    transition: "background .15s",
+                  }}
+                >
+                  {c === "USD" ? "$" : "€"}
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Saldo */}
+          {token && (
+            <div className="asw-card-balance">
+              {balLoading ? (
+                <span style={{ fontSize: 12, color: "rgba(255,255,255,.35)", display: "flex", alignItems: "center", gap: 4 }}>
+                  <Loader2 size={11} style={{ animation: "aw-spin .8s linear infinite" }} /> Saldo…
+                </span>
+              ) : balStr !== null ? (
+                <span style={{ fontSize: 12, color: "rgba(255,255,255,.4)" }}>
+                  {balStr} {token.symbol}
+                </span>
+              ) : null}
+            </div>
+          )}
+        </div>
       </div>
+
+      {/* Token selector + importo */}
       <div className="asw-token-row">
         <button className="asw-token-btn" onClick={onTokenClick} aria-label={`Seleziona token ${label}`}>
           <TokenIcon token={token} chainId={chainId} />
@@ -220,24 +342,84 @@ function TokenCard({
 
         <div className="asw-amount-col">
           {onAmountChange ? (
-            <input
-              type="text"
-              inputMode="decimal"
-              placeholder="0"
-              value={amount ?? ""}
-              onChange={e => {
-                const val = e.target.value.replace(/[^0-9.]/g, "").replace(/(\..*)\./g, "$1");
-                onAmountChange(val);
-              }}
-              readOnly={readOnly}
-              className="asw-amount-input"
-              aria-label={`Importo ${label}`}
-            />
+            inFiatMode ? (
+              /* Modalità fiat: input in €/$ con hint crypto sotto */
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 1 }}>
+                <div style={{ display: "flex", alignItems: "center", gap: 3 }}>
+                  <span style={{ fontSize: 20, fontWeight: 700, color: "rgba(255,255,255,.4)" }}>
+                    {fiatCurrency === "EUR" ? "€" : "$"}
+                  </span>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    placeholder="0"
+                    value={fiatInput}
+                    onChange={e => handleFiatChange(e.target.value)}
+                    className="asw-amount-input"
+                    aria-label={`Importo in ${fiatCurrency}`}
+                    style={{ maxWidth: 130 }}
+                  />
+                </div>
+                {amount && parseFloat(amount) > 0 && (
+                  <span style={{ fontSize: 11, color: "rgba(255,255,255,.3)", paddingRight: 2 }}>
+                    ≈ {parseFloat(amount).toFixed(6)} {token?.symbol ?? ""}
+                  </span>
+                )}
+              </div>
+            ) : (
+              /* Modalità crypto standard */
+              <div style={{ display: "flex", flexDirection: "column", alignItems: "flex-end", gap: 1 }}>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="0"
+                  value={amount ?? ""}
+                  onChange={e => {
+                    const val = e.target.value.replace(/[^0-9.]/g, "").replace(/(\..*)\./g, "$1");
+                    onAmountChange(val);
+                  }}
+                  readOnly={readOnly}
+                  className="asw-amount-input"
+                  aria-label={`Importo ${label}`}
+                />
+                {fiatHint && (
+                  <span style={{ fontSize: 11, color: "rgba(255,255,255,.3)", paddingRight: 2 }}>
+                    {fiatHint}
+                  </span>
+                )}
+              </div>
+            )
           ) : (
             <span className="asw-amount-display">{amount ?? "—"}</span>
           )}
         </div>
       </div>
+
+      {/* Bottoni percentuale 10% / 25% / 50% / MAX */}
+      {hasPct && (
+        <div style={{
+          display: "flex", gap: 6, marginTop: 10,
+          paddingTop: 10, borderTop: "1px solid rgba(255,255,255,.07)",
+        }}>
+          {PCT_OPTIONS.map(([pct, lbl]) => (
+            <button
+              key={pct}
+              type="button"
+              onClick={() => { onPct!(pct); if (inFiatMode && onFiatToggle) onFiatToggle(""); }}
+              style={{
+                flex: 1, fontSize: 12, fontWeight: 600, padding: "5px 0",
+                borderRadius: 8, border: "1px solid rgba(255,255,255,.12)",
+                background: "rgba(255,255,255,.06)", color: "rgba(255,255,255,.7)",
+                cursor: "pointer", letterSpacing: ".2px", transition: "background .12s",
+              }}
+              onPointerEnter={e => (e.currentTarget.style.background = "rgba(255,255,255,.14)")}
+              onPointerLeave={e => (e.currentTarget.style.background = "rgba(255,255,255,.06)")}
+            >
+              {lbl}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -354,7 +536,7 @@ function EvmCompletedView({ txHash, fromChainId, toToken, toAmount, onDone }: {
   );
 }
 
-function EvmFailedView({ error, onRetry }: { error: string; onRetry: () => void }) {
+function EvmFailedView({ onRetry }: { error?: string; onRetry: () => void }) {
   return (
     <div className="asw-status-view">
       <div className="asw-status-icon asw-status-icon--error">
@@ -362,13 +544,36 @@ function EvmFailedView({ error, onRetry }: { error: string; onRetry: () => void 
       </div>
       <div>
         <p className="asw-status-title">Swap non riuscito</p>
-        <p className="asw-status-sub">{error}</p>
+        <p className="asw-status-sub">Swap non disponibile al momento. Riprova tra qualche istante.</p>
       </div>
       <button onClick={onRetry} className="aw-btn aw-btn--primary" style={{ maxWidth: 300, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
         <RefreshCw size={16} /> Riprova
       </button>
     </div>
   );
+}
+
+// ── EVM error humanizer ───────────────────────────────────────────────────────
+
+function humanizeEvmError(raw: string): string {
+  // I codici sono già sanitizzati da useEvmSwapState (USER_REJECTED, ALPHA_WALLET_LOCKED…)
+  // Per qualsiasi altro contenuto, il fallback di humanizeEvmCode è già generico.
+  return humanizeEvmCode(raw ?? "");
+}
+
+function humanizeEvmCode(code: string): string {
+  switch (code) {
+    case "USER_REJECTED":
+      return "Firma annullata. Puoi riprovare quando vuoi.";
+    case "QUOTE_EXPIRED":
+      return "La quote è scaduta. Ricarica per ottenerne una nuova.";
+    case "NO_WALLET":
+    case "ALPHA_WALLET_LOCKED":
+      return "Sblocca Alpha Wallet con il PIN prima di procedere.";
+    // Tutto il resto (errori di rete, revert on-chain, liquidità, ecc.) → generico
+    default:
+      return "Swap non disponibile al momento. Riprova tra qualche istante.";
+  }
 }
 
 // ── Main component ────────────────────────────────────────────────────────────
@@ -397,12 +602,23 @@ export function EvmSwapView({ onBack, alphaWalletAddress, getAlphaWalletClient }
   // Balance per i token sulla chain "from" — usa effectiveAddress
   const balancesState = useEvmTokenBalances(sv.fromChainId, effectiveAddress);
 
+  // Prezzo token from (per toggle fiat €/$)
+  const tokenPrice = useTokenPrice(sv.fromChainId, sv.fromToken);
+
+  // Stato toggle fiat: "" = crypto; "USD" = dollari; "EUR" = euro
+  const [fiatCurrency, setFiatCurrency] = useState<FiatCurrency>("");
+
   // Token selector state
   const [tokenSelectorOpen, setTokenSelectorOpen] = useState(false);
   const [tokenSide, setTokenSide] = useState<"from" | "to">("from");
 
+  // ── Exact-output mode (RICEVI editabile) ────────────────────────────────────
+  // "from" = utente ha digitato in PAGA  (calcola quanto riceve)
+  // "to"   = utente ha digitato in RICEVI (calcola quanto deve inviare)
+  const [amountMode, setAmountMode] = useState<"from" | "to">("from");
+  const [toInput, setToInput] = useState("");
+
   // Wallet warning: appare SOLO quando effectiveAddress è assente per più di 3s
-  // (evita falso positivo durante il reconnect di ThirdWeb e l'init di WalletContext)
   const [showWalletHint, setShowWalletHint] = useState(false);
   useEffect(() => {
     if (effectiveAddress) { setShowWalletHint(false); return; }
@@ -410,20 +626,30 @@ export function EvmSwapView({ onBack, alphaWalletAddress, getAlphaWalletClient }
     return () => clearTimeout(t);
   }, [effectiveAddress]);
 
-  // Quote display
+  // Quote display (from-mode)
   const toAmountDisplay = sv.quote
     ? parseFloat(fromTokenUnits(sv.quote.toAmount, sv.quote.toToken.decimals)).toFixed(6)
     : "";
 
-  // Debounce quote — usa effectiveAddress (non solo activeAccount)
-  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const prevFrom    = useRef("");
-  const prevFTok    = useRef("");
-  const prevTTok    = useRef("");
+  // Quote display per PAGA (to-mode): computed fromAmount da Li.Fi
+  const fromAmountDisplay = amountMode === "to" && sv.quote?.computedFromAmount && sv.quote.fromToken
+    ? parseFloat(fromTokenUnits(sv.quote.computedFromAmount, sv.quote.fromToken.decimals)).toFixed(6)
+    : undefined;
+
+  // Debounce from-mode quote
+  const debounceRef   = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const prevFrom      = useRef("");
+  const prevFTok      = useRef("");
+  const prevTTok      = useRef("");
+
+  // Debounce to-mode quote
+  const debounceToRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const prevToInput   = useRef("");
 
   useEffect(() => {
+    if (amountMode !== "from") return;
     if (!sv.fromAmount || sv.fromAmount === "0" || !sv.fromToken || !sv.toToken) return;
-    if (!effectiveAddress) return; // nessun wallet disponibile
+    if (!effectiveAddress) return;
 
     const fromKey = sv.fromToken.chainId + sv.fromToken.address;
     const toKey   = sv.toToken.chainId   + sv.toToken.address;
@@ -442,7 +668,24 @@ export function EvmSwapView({ onBack, alphaWalletAddress, getAlphaWalletClient }
 
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sv.fromAmount, sv.fromToken, sv.toToken, sv.phase, effectiveAddress]);
+  }, [amountMode, sv.fromAmount, sv.fromToken, sv.toToken, sv.phase, effectiveAddress]);
+
+  useEffect(() => {
+    if (amountMode !== "to") return;
+    if (!toInput || toInput === "0" || !sv.fromToken || !sv.toToken) return;
+    if (!effectiveAddress) return;
+
+    if (toInput === prevToInput.current) return;
+
+    if (debounceToRef.current) clearTimeout(debounceToRef.current);
+    debounceToRef.current = setTimeout(() => {
+      prevToInput.current = toInput;
+      actions.fetchQuoteExactOut(toInput);
+    }, 700);
+
+    return () => { if (debounceToRef.current) clearTimeout(debounceToRef.current); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [amountMode, toInput, sv.fromToken, sv.toToken, effectiveAddress]);
 
   const handleTokenSelect = useCallback((token: EvmToken, chainId: number) => {
     if (tokenSide === "from") {
@@ -452,24 +695,63 @@ export function EvmSwapView({ onBack, alphaWalletAddress, getAlphaWalletClient }
       actions.setToChain(chainId);
       actions.setToToken(token);
     }
+    // Reset mode su cambio token
+    setAmountMode("from");
+    setToInput("");
   }, [tokenSide, actions]);
 
-  // MAX button con riserva gas per token nativi
-  const handleMax = useCallback(() => {
+  const handleFromAmountChange = useCallback((val: string) => {
+    setAmountMode("from");
+    setToInput("");
+    actions.setFromAmount(val);
+  }, [actions]);
+
+  const handleToAmountChange = useCallback((val: string) => {
+    setAmountMode("to");
+    setToInput(val);
+    // Resetta fromAmount nel state (sarà calcolato dalla quote)
+    actions.setFromAmount("");
+  }, [actions]);
+
+  // Bottoni % (10 / 25 / 50 / 100=MAX) con riserva gas per token nativi
+  const handlePct = useCallback((pct: number) => {
     if (!sv.fromToken) return;
     const raw = balancesState.map.get(sv.fromToken.address);
     if (!raw || raw === 0n) return;
 
-    let maxAmount = raw;
+    let spendable = raw;
     if (sv.fromToken.isNative) {
       const reserve = GAS_RESERVE[sv.fromChainId] ?? 10000000000000000n;
-      maxAmount = raw > reserve ? raw - reserve : 0n;
+      spendable = raw > reserve ? raw - reserve : 0n;
     }
-    if (maxAmount <= 0n) return;
+    if (spendable <= 0n) return;
 
-    const human = fromTokenUnits(maxAmount.toString(), sv.fromToken.decimals);
+    const fraction = BigInt(pct);
+    const portion  = (spendable * fraction) / 100n;
+    if (portion <= 0n) return;
+
+    const human = fromTokenUnits(portion.toString(), sv.fromToken.decimals);
+    setAmountMode("from");
+    setToInput("");
+    setFiatCurrency("");        // torna in modalità crypto dopo pct
     actions.setFromAmount(human);
   }, [sv.fromToken, sv.fromChainId, balancesState.map, actions]);
+
+  // ── Balance guard ────────────────────────────────────────────────────────────
+  const fromBal = sv.fromToken ? balancesState.map.get(sv.fromToken.address) : undefined;
+  const amountExceedsBalance = (() => {
+    if (fromBal === undefined || !sv.fromToken) return false;
+    // In from-mode: verifica sv.fromAmount
+    // In to-mode: verifica computed fromAmount dalla quote
+    const amountStr = amountMode === "from"
+      ? sv.fromAmount
+      : (sv.quote?.computedFromAmount ? fromTokenUnits(sv.quote.computedFromAmount, sv.fromToken.decimals) : "");
+    if (!amountStr || amountStr === "0") return false;
+    try {
+      const amountRaw = BigInt(toTokenUnits(amountStr, sv.fromToken.decimals));
+      return amountRaw > fromBal;
+    } catch { return false; }
+  })();
 
   const quoteExpired = sv.quote && Date.now() > sv.quote.expiresAt;
   const isIdle       = sv.phase === "idle";
@@ -477,8 +759,8 @@ export function EvmSwapView({ onBack, alphaWalletAddress, getAlphaWalletClient }
   const hasQuote     = sv.phase === "quoted" && sv.quote != null && !quoteExpired;
   const isBusy       = ["approving", "signing", "submitted", "pending"].includes(sv.phase);
 
-  // canSwap: richiede effectiveAddress (ThirdWeb oppure Alpha Wallet), non solo activeAccount
-  const canSwap = hasQuote && !isBusy && !!effectiveAddress;
+  // canSwap: richiede effectiveAddress, quote valida e importo NON superiore al saldo
+  const canSwap = hasQuote && !isBusy && !!effectiveAddress && !amountExceedsBalance;
 
   // ── Recovery spinner ───────────────────────────────────────────────────────
   if (sv.recovering) {
@@ -544,7 +826,17 @@ export function EvmSwapView({ onBack, alphaWalletAddress, getAlphaWalletClient }
   }
 
   // ── Main form ──────────────────────────────────────────────────────────────
-  const fromBal = sv.fromToken ? balancesState.map.get(sv.fromToken.address) : undefined;
+  // fromBal è già calcolato sopra per il balance guard
+
+  // Importo da mostrare in PAGA: se siamo in to-mode e c'è una quote, mostriamo il fromAmount calcolato
+  const pagaDisplayAmount = amountMode === "to"
+    ? (fromAmountDisplay ?? sv.fromAmount)
+    : sv.fromAmount;
+
+  // Importo da mostrare in RICEVI: se siamo in to-mode → toInput; altrimenti fromQuote
+  const riceviDisplayAmount = amountMode === "to"
+    ? toInput
+    : (isQuoting ? undefined : (hasQuote ? toAmountDisplay : undefined));
 
   return (
     <div className="asw-content">
@@ -566,23 +858,41 @@ export function EvmSwapView({ onBack, alphaWalletAddress, getAlphaWalletClient }
           </div>
         )}
 
-        {/* PAGA card */}
+        {/* PAGA card — in to-mode è read-only (importo calcolato da Li.Fi) */}
         <TokenCard
           label="Paga"
           chainId={sv.fromChainId}
           token={sv.fromToken}
-          amount={sv.fromAmount}
-          onAmountChange={actions.setFromAmount}
+          amount={pagaDisplayAmount}
+          onAmountChange={amountMode === "to" ? undefined : handleFromAmountChange}
+          readOnly={amountMode === "to"}
           onTokenClick={() => { setTokenSide("from"); setTokenSelectorOpen(true); }}
           balance={fromBal}
           balLoading={balancesState.loading}
-          onMax={handleMax}
+          onPct={amountMode !== "to" ? handlePct : undefined}
+          exceedsBalance={amountExceedsBalance}
+          fiatCurrency={fiatCurrency}
+          priceUSD={tokenPrice.priceUSD}
+          priceEUR={tokenPrice.priceEUR}
+          onFiatToggle={(c) => { setFiatCurrency(c); setAmountMode("from"); setToInput(""); }}
         />
+
+        {/* Guard saldo insufficiente */}
+        {amountExceedsBalance && !balancesState.loading && (
+          <div className="asw-alert asw-alert--error" style={{ marginTop: -8 }}>
+            <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 1 }} />
+            <span>Saldo insufficiente. Inserisci un importo minore o premi MAX.</span>
+          </div>
+        )}
 
         {/* Direction toggle */}
         <div className="asw-dir-wrap">
           <button
-            onClick={actions.swapDirection}
+            onClick={() => {
+              actions.swapDirection();
+              setAmountMode("from");
+              setToInput("");
+            }}
             disabled={isBusy}
             className="asw-dir-btn"
             aria-label="Inverti direzione"
@@ -591,15 +901,14 @@ export function EvmSwapView({ onBack, alphaWalletAddress, getAlphaWalletClient }
           </button>
         </div>
 
-        {/* RICEVI card */}
+        {/* RICEVI card — editabile per exact-output mode */}
         <TokenCard
           label="Ricevi"
           chainId={sv.toChainId}
           token={sv.toToken}
-          amount={isQuoting ? undefined : hasQuote ? toAmountDisplay : undefined}
-          onAmountChange={undefined}
+          amount={riceviDisplayAmount}
+          onAmountChange={handleToAmountChange}
           onTokenClick={() => { setTokenSide("to"); setTokenSelectorOpen(true); }}
-          readOnly
         />
         {isQuoting && (
           <div className="asw-amount-loading" style={{ padding: "0 4px" }}>
@@ -623,7 +932,7 @@ export function EvmSwapView({ onBack, alphaWalletAddress, getAlphaWalletClient }
         {sv.error && (sv.phase === "idle" || sv.phase === "quoted") && (
           <div className="asw-alert asw-alert--error">
             <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 1 }} />
-            <span>{sv.error.message}</span>
+            <span>{humanizeEvmError(sv.error.message)}</span>
           </div>
         )}
 

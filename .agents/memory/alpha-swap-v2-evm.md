@@ -48,3 +48,36 @@ Il file `src/lib/thirdweb.ts` esporta `client` (non `thirdwebClient`). Import: `
 - Recovery: localStorage `aw_evm_swap_active` reletto al mount con getLiFiStatus
 
 **Why:** Li.Fi Fee Forwarder non richiede seconda TX; duplicare la fee sarebbe un errore utente grave e una regressione sul payment non-regression policy.
+
+## Aggiornamenti sessione 2026-08-17
+
+### Errori: mai mostrare tecnico
+- `useEvmSwapState.ts` catch blocks → `console.error()` + message generico ("SWAP_UNAVAILABLE", "USER_REJECTED", "QUOTE_EXPIRED", "ALPHA_WALLET_LOCKED")
+- `humanizeEvmCode()` default → "Swap non disponibile al momento."
+- `EvmFailedView` → testo fisso generico, parametro `error` ignorato in UI
+- BTC: `humanizeBtcCode()` default → stesso testo generico
+
+### Tastiera iOS: punto decimale
+- `inputMode="decimal"` (non "numeric") → mostra `.` non `,`
+
+### Bottoni percentuale 10%/25%/50%/MAX
+- Aggiunti in `TokenCard` quando `onPct` prop e balance > 0
+- Calcolo con GAS_RESERVE per token nativi
+- `handlePct(pct: number)` in `EvmSwapView`
+
+### Toggle fiat €/$
+- Hook `useTokenPrice()`: Li.Fi /v1/token + exchangerate-api EUR
+- `FiatCurrency` type = "USD" | "EUR" | ""
+- Card PAGA: pill toggle €/$ in header; in fiat mode input mostra simbolo + hint crypto sotto
+- `onFiatToggle` resetta amountMode="from" e toInput
+
+### Exact-output mode (RICEVI editabile)
+- `amountMode: "from"|"to"` state + `toInput: string`
+- `fetchQuoteExactOut(toAmountHuman)` in useEvmSwapState → Li.Fi `toAmount` param
+- Quote ritorna `computedFromAmount` (action.fromAmount) → mostrato in PAGA read-only
+
+### ETH RPC
+- `eth.llamarpc.com` → `cloudflare-eth.com` (più affidabile)
+
+### Balance guard
+- `amountExceedsBalance` → bordo rosso card PAGA + alert "Saldo insufficiente" + canSwap=false

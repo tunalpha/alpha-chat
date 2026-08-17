@@ -69,7 +69,14 @@ export interface LiFiQuoteParams {
   toChainId:    number;
   fromToken:    EvmToken;
   toToken:      EvmToken;
-  fromAmount:   string;  // in token units (stringa)
+  /** Importo da inviare in unità minime. Obbligatorio se toAmount non è impostato. */
+  fromAmount?:  string;
+  /**
+   * Importo desiderato in output (exact-output mode). Quando impostato, Li.Fi calcola
+   * automaticamente il fromAmount necessario. Usa raw units (unità minime del toToken).
+   * Alternativo a fromAmount — impostare uno dei due, non entrambi.
+   */
+  toAmount?:    string;
   fromAddress:  string;  // wallet address dell'utente
 }
 
@@ -83,12 +90,17 @@ export class LiFiQuoteError extends Error {
 
 /** Recupera una quote Li.Fi (REST, senza SDK — più testabile e stabile). */
 export async function fetchLiFiQuote(params: LiFiQuoteParams): Promise<EvmSwapQuote> {
+  if (!params.fromAmount && !params.toAmount) {
+    throw new Error("LiFiQuoteParams: fromAmount o toAmount deve essere impostato.");
+  }
+
   const qs = new URLSearchParams({
     fromChain:   String(params.fromChainId),
     toChain:     String(params.toChainId),
     fromToken:   tokenAddressForLiFi(params.fromToken),
     toToken:     tokenAddressForLiFi(params.toToken),
-    fromAmount:  params.fromAmount,
+    ...(params.fromAmount ? { fromAmount: params.fromAmount } : {}),
+    ...(params.toAmount   ? { toAmount:   params.toAmount   } : {}),
     fromAddress: params.fromAddress,
     integrator:  LIFI_INTEGRATOR,
     fee:         String(LIFI_FEE),
@@ -157,6 +169,9 @@ function parseQuoteResponse(
   const toAmountMin = String(estimate.toAmountMin ?? "0");
   const tool        = String((body.tool as string) ?? "lifi");
 
+  // Importo da inviare calcolato da Li.Fi (rilevante in exact-output mode)
+  const computedFromAmount = String(action.fromAmount ?? params.fromAmount ?? "0");
+
   return {
     route:        body,   // Li.Fi Route (opaque) — contiene transactionRequest
     routeId:      String((body.id as string) ?? `${Date.now()}`),
@@ -173,6 +188,7 @@ function parseQuoteResponse(
     slippage:     LIFI_SLIPPAGE,
     expiresAt:    Date.now() + QUOTE_VALIDITY_MS,
     tool,
+    computedFromAmount,
   };
 }
 

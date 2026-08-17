@@ -1,0 +1,398 @@
+FERMATI CON I FIX PARZIALI. Dalle prove reali su iPhone è evidente che il problema EVM non è più soltanto l’execute Li.Fi: la selezione token, i saldi e gli importi sono incoerenti.
+
+Fai un audit completo del flusso EVM e correggi l’architettura alla radice.
+
+OBIETTIVO PRODOTTO:
+
+Alpha Swap deve funzionare come:
+
+TOKEN A → TOKEN B
+
+L’utente sceglie:
+
+1. rete;
+2. token A da inviare;
+3. token B da ricevere;
+4. importo.
+
+Il sistema deve automaticamente:
+
+* leggere il saldo reale del token A dal wallet Alpha;
+* impedire importi superiori al saldo spendibile;
+* mostrare MAX corretto;
+* ottenere la quote usando esattamente Token A → Token B sulla rete selezionata;
+* mostrare il risultato reale;
+* eseguire la transazione con Alpha Wallet.
+
+==================================================
+
+1. SALDI EVM — ROOT FIX
+    ==================================================
+
+Attualmente su Ethereum ETH mostra saldo —.
+
+Su BNB Smart Chain il wallet mostra circa:
+0.024571 BNB
+
+ma la UI permette:
+1 BNB
+
+Questo NON deve essere possibile.
+
+Implementa una singola fonte affidabile per il saldo EVM:
+
+wallet Alpha EVM address
++
+chainId
++
+token address / native token
+
+saldo reale.
+
+Per token nativo:
+
+* ETH su Ethereum;
+* BNB su BSC;
+* POL su Polygon;
+* ecc.
+
+Per ERC-20:
+
+* usare il token contract corretto;
+* leggere balanceOf;
+* usare decimals del token.
+
+NON usare placeholder, saldo precedente, fallback arbitrari o valori della quote come saldo.
+
+Durante il caricamento mostra loading.
+Se il saldo non è disponibile, NON mostrare un importo utilizzabile.
+
+==================================================
+2. TOKEN A → TOKEN B
+
+Ristruttura la UI EVM per seguire realmente il concetto:
+
+PAGA = Token A
+RICEVI = Token B
+
+Il selettore Token A deve mostrare esclusivamente i token disponibili/supportati sulla rete corrente.
+
+Il selettore Token B deve mostrare i token supportati sulla stessa rete corrente.
+
+Esempio:
+
+Ethereum:
+ETH → USDC
+ETH → USDT
+USDC → ETH
+ecc.
+
+BNB Smart Chain:
+BNB → USDC
+BNB → USDT
+USDC → BNB
+ecc.
+
+Polygon:
+POL → USDC
+POL → USDT
+ecc.
+
+Non mischiare token di reti diverse nello stesso swap EVM locale.
+
+Se in futuro sarà supportato cross-chain, deve essere un flusso esplicito separato, non un comportamento implicito.
+
+==================================================
+3. CAMBIO RETE
+
+Quando l’utente cambia rete:
+
+RESET/REFRESH AUTOMATICAMENTE:
+
+* token A;
+* token B;
+* saldo A;
+* saldo B se mostrato;
+* decimals;
+* MAX;
+* quote;
+* provider;
+* gas;
+* transaction request.
+
+Non mantenere una quote della rete precedente.
+
+Esempio:
+Ethereum → BSC
+
+deve diventare immediatamente:
+
+BNB → [token B disponibile su BSC]
+
+con saldo BNB reale.
+
+==================================================
+4. IMPORTO E MAX
+
+Questa è una regola ASSOLUTA:
+
+amount <= spendableBalance
+
+Mai il contrario.
+
+MAX deve essere calcolato dal saldo reale.
+
+Per token nativo:
+
+MAX = balance - gasReserve
+
+Per ERC-20:
+
+MAX = tokenBalance
+
+tenendo conto delle fee/gas quando necessario.
+
+Non usare mai:
+
+* valori minimi come fallback che superano il saldo;
+* importi hardcoded;
+* valori della quote come saldo;
+* conversioni implicite sbagliate tra wei/token decimals.
+
+Tutti gli importi interni devono essere gestiti in unità precise:
+
+* bigint/raw units on-chain;
+* decimals del token;
+* conversione UI solo all’ingresso/uscita.
+
+Aggiungi validazione finale immediatamente prima dell’execute:
+amountRaw <= spendableBalanceRaw
+
+Se non è vero:
+BLOCCA la transazione.
+
+==================================================
+5. QUOTE Li.Fi
+
+La quote deve ricevere ESATTAMENTE:
+
+* chainId sorgente;
+* chainId destinazione;
+* token A;
+* token B;
+* wallet Alpha;
+* amountRaw corretto.
+
+Per uno swap locale:
+
+chainId sorgente === chainId destinazione.
+
+Non accettare una quote che non corrisponde alla selezione attualmente visualizzata.
+
+Quando cambia:
+
+* rete;
+* token A;
+* token B;
+* importo;
+
+la quote precedente deve essere invalidata e richiesta nuovamente.
+
+==================================================
+6. ESEMPIO CRITICO DA RIPRODURRE
+
+Con wallet BSC:
+
+saldo:
+0.024571 BNB
+
+Se seleziono:
+
+PAGA:
+BNB / BNB Smart Chain
+
+RICEVI:
+USDC / BNB Smart Chain
+
+e inserisco:
+1 BNB
+
+la UI DEVE BLOCCARE l’importo perché supera il saldo.
+
+MAX deve essere circa il saldo spendibile meno il gas, NON 1 BNB.
+
+Se invece inserisco un importo valido, ad esempio una piccola frazione del saldo, la quote deve essere calcolata su QUELLA quantità reale.
+
+NON deve mai apparire una quote come:
+599.367773 USDC
+se l’importo effettivamente inviato è incompatibile con quella quantità.
+
+La quote deve essere matematicamente coerente con l’amount inviato a Li.Fi.
+
+==================================================
+7. FEE ALPHA
+
+Mantieni la fee Alpha attuale e non alterarla.
+
+Mostra separatamente:
+
+* importo swap;
+* fee Alpha;
+* gas stimato;
+* fee totale.
+
+La somma deve essere matematicamente coerente.
+
+Non usare valori della quote in modo ambiguo per calcolare la fee totale.
+
+==================================================
+8. EVM WALLET
+
+Mantieni Alpha Wallet come wallet principale.
+
+NON reintrodurre:
+useActiveAccount()
+
+NON rendere obbligatorio WalletConnect.
+
+Il wallet EVM address deve provenire dal wallet Alpha già configurato.
+
+L’execute Li.Fi REST + viem già implementato deve ricevere:
+
+* wallet client corretto;
+* chain corretta;
+* transactionRequest della quote;
+* eventuale approve ERC-20.
+
+==================================================
+9. BTC / LIGHTNING
+
+NON modificare il flusso BTC funzionante mentre correggi EVM.
+
+Mantieni:
+
+* saldo BTC reale;
+* MAX BTC in sat;
+* BTC → Lightning con destinazione interna Alpha;
+* Lightning → BTC con walletMeta.btcAddress.
+
+Il lavoro EVM non deve creare regressioni BTC.
+
+==================================================
+10. TEST OBBLIGATORI
+
+Crea test specifici per evitare che questi bug tornino.
+
+TEST SALDI:
+
+* Ethereum ETH;
+* BSC BNB;
+* Polygon POL;
+* ERC-20.
+
+TEST MAX:
+
+* saldo 0;
+* saldo piccolo;
+* saldo normale;
+* MAX non supera mai saldo spendibile.
+
+TEST RETE:
+
+* Ethereum → BSC → Polygon;
+* verifica reset di token, saldo e quote.
+
+TEST TOKEN:
+
+* ETH → USDC;
+* BNB → USDC;
+* POL → USDC;
+* USDC → native token.
+
+TEST IMPORTO:
+
+* amount valido;
+* amount > balance;
+* amount = balance;
+* amount = 0;
+* decimals elevati.
+
+TEST QUOTE:
+
+* chain corretta;
+* token A corretto;
+* token B corretto;
+* amount corretto;
+* quote invalidata dopo cambio selezione.
+
+TEST ESECUZIONE:
+
+* native token;
+* ERC-20 con approve;
+* wallet Alpha;
+* transaction request;
+* firma;
+* receipt.
+
+TEST MOBILE:
+
+* iPhone Safari/PWA;
+* apertura Alpha Swap;
+* cambio rete;
+* cambio token;
+* inserimento importo;
+* MAX;
+* quote;
+* execute.
+
+==================================================
+11. REGOLA FINALE
+
+NON considerare il lavoro concluso con “1227/1227 PASS” se i test non verificano realmente:
+
+* saldo;
+* unità;
+* chain;
+* token A;
+* token B;
+* amount;
+* quote coerente.
+
+Aggiungi test che riproducano ESATTAMENTE il bug osservato:
+
+Wallet BSC:
+0.024571 BNB
+
+Tentativo:
+1 BNB
+
+Risultato obbligatorio:
+TRANSAZIONE BLOCCATA.
+
+Poi:
+MAX
+
+Risultato:
+importo <= saldo spendibile.
+
+Infine:
+BNB → USDC
+
+Risultato:
+quote coerente con l’importo reale.
+
+Alla fine restituisci un unico report con:
+
+1. root cause architetturale;
+2. come vengono letti i saldi;
+3. come vengono gestite le unità;
+4. come funziona Token A → Token B;
+5. come funziona il cambio rete;
+6. come viene calcolato MAX;
+7. come viene costruita la quote;
+8. file modificati;
+9. test aggiunti;
+10. test totali PASS;
+11. build PASS.
+
+NON fare altri rattoppi specifici per ETH o BNB: deve essere risolto il modello generale EVM Token A → Token B.

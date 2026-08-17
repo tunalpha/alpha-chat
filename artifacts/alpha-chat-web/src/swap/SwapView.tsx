@@ -87,6 +87,35 @@ class EvmErrorBoundary extends React.Component<
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+// ── BTC/LN error humanizer ────────────────────────────────────────────────────
+
+function humanizeBtcSwapError(raw: string): string {
+  if (!raw) return "Errore sconosciuto durante lo swap.";
+  // Difensivo: JSON grezzo (non dovrebbe più arrivare dopo fix swapFetch, ma per sicurezza)
+  if (raw.startsWith("{")) {
+    try {
+      const p = JSON.parse(raw) as Record<string, unknown>;
+      const code = String(p.code ?? p.message ?? "");
+      return humanizeBtcCode(code || raw);
+    } catch { /* ignore */ }
+  }
+  return humanizeBtcCode(raw);
+}
+
+function humanizeBtcCode(code: string): string {
+  switch (code) {
+    case "SWAP_BELOW_MINIMUM":
+      return "Importo inferiore al minimo. Prova con un importo maggiore.";
+    case "SWAP_ABOVE_MAXIMUM":
+      return "Importo superiore al massimo. Prova con un importo minore.";
+    // Tutto il resto → generico, nessun dettaglio tecnico all'utente
+    default:
+      return "Swap non disponibile al momento. Riprova tra qualche istante.";
+  }
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
 function fmtSat(sat: number | null | undefined): string {
   if (sat == null) return "—";
   return sat.toLocaleString("it-IT");
@@ -561,27 +590,34 @@ function SwapMainForm({ sv, actions, config, btcBalance, btcBalLoading }: SwapMa
 
         {/* BTC on-chain balance + MAX (sopra la card PAGA) */}
         {isBtcLn && (
-          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingBottom: 0, marginBottom: -4 }}>
-            <span style={{ fontSize: 12, color: "rgba(255,255,255,.45)", minHeight: 18 }}>
-              {btcBalLoading ? (
-                <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-                  <Loader2 size={11} style={{ animation: "aw-spin .8s linear infinite" }} /> Saldo…
-                </span>
-              ) : btcBalance ? (
-                `Saldo: ${(btcBalance.totalSat / 1e8).toFixed(8)} BTC`
-              ) : null}
-            </span>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", paddingBottom: 2, marginBottom: -4 }}>
+            {/* Saldo prominente */}
+            <div style={{ display: "flex", flexDirection: "column" }}>
+              <span style={{ fontSize: 11, color: "rgba(255,255,255,.35)", fontWeight: 500, letterSpacing: ".3px", textTransform: "uppercase" }}>
+                Saldo
+              </span>
+              <span style={{ fontSize: 15, fontWeight: 700, color: "rgba(255,255,255,.85)", minHeight: 20 }}>
+                {btcBalLoading ? (
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 4, fontSize: 13, fontWeight: 400 }}>
+                    <Loader2 size={11} style={{ animation: "aw-spin .8s linear infinite" }} />
+                    <span style={{ color: "rgba(255,255,255,.4)" }}>Caricamento…</span>
+                  </span>
+                ) : btcBalance ? (
+                  `${(btcBalance.totalSat / 1e8).toFixed(8)} BTC`
+                ) : (
+                  <span style={{ color: "rgba(255,255,255,.3)", fontSize: 13, fontWeight: 400 }}>—</span>
+                )}
+              </span>
+            </div>
+            {/* MAX button piccolo */}
             {btcBalance && btcBalance.totalSat > 0 && (
               <button
                 onClick={() => {
-                  // MAX = saldo spendibile - riserva miner fee (2000 sat)
-                  // NON clampare al minimo del provider: se il saldo è sotto il minimo,
-                  // l'utente vedrà l'errore dalla quote — meglio di inflare artificialmente.
                   const spendable = Math.max(0, btcBalance.totalSat - 2000);
                   if (spendable > 0) actions.setAmountSat(spendable);
                 }}
-                className="aw-btn aw-btn--secondary"
-                style={{ padding: "2px 10px", fontSize: 11, fontWeight: 700, height: 24, minWidth: 0, letterSpacing: ".5px" }}
+                className="asw-max-btn"
+                style={{ fontSize: 11, padding: "3px 10px", height: 26 }}
               >
                 MAX
               </button>
@@ -688,7 +724,7 @@ function SwapMainForm({ sv, actions, config, btcBalance, btcBalLoading }: SwapMa
         {sv.error && sv.state === "idle" && (
           <div className="asw-alert asw-alert--error">
             <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 1 }} />
-            <span>{sv.error.message}</span>
+            <span>{humanizeBtcSwapError(sv.error.message)}</span>
           </div>
         )}
 

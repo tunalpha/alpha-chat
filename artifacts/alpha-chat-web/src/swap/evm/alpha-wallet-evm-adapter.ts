@@ -23,7 +23,7 @@ import { deriveEvmWallet, toHexKey } from "../../wallet/core/hd-wallet";
 const AW_CHAIN_RPC: Record<number, string> = {
   137: ((import.meta as any).env?.VITE_POLYGON_RPC as string | undefined) ?? "https://polygon-rpc.com",
   56:  "https://bsc-dataseed.binance.org/",
-  1:   "https://eth.llamarpc.com",
+  1:   "https://cloudflare-eth.com",
 };
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any

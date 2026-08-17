@@ -71,6 +71,12 @@ export interface EvmSwapQuote {
   expiresAt:        number;
   /** Tool/bridge usato (es. "across", "stargate") */
   tool:             string;
+  /**
+   * Importo da inviare calcolato da Li.Fi in unità minime (raw).
+   * Presente solo quando la quote è stata ottenuta in exact-output mode (toAmount param).
+   * Usato per mostrare in PAGA quanto occorre inviare per ricevere l'importo desiderato.
+   */
+  computedFromAmount?: string;
 }
 
 // ── Active swap (per recovery localStorage) ───────────────────────────────────
@@ -119,6 +125,8 @@ export interface EvmSwapActions {
   setFromAmount: (amount: string) => void;
   swapDirection: () => void;
   fetchQuote:    () => Promise<void>;
+  /** Calcola la quote a partire dall'importo DESIDERATO in output (exact-output mode). */
+  fetchQuoteExactOut: (toAmountHuman: string) => Promise<void>;
   execute:       () => Promise<void>;
   reset:         () => void;
 }
