@@ -108,7 +108,8 @@ function useEvmTokenBalances(chainId: number, address: string | undefined): Bala
 
     const tokens = getTokensForChain(chainId);
     let cancelled = false;
-    setState(prev => ({ ...prev, loading: true }));
+    // Cancella subito il saldo vecchio — mai mostrare saldo Polygon mentre si aspetta Ethereum
+    setState({ map: new Map(), loading: true });
 
     Promise.allSettled(
       tokens.map(async (t) => {
