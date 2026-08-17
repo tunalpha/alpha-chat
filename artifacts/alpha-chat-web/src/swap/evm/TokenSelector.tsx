@@ -8,7 +8,7 @@
 import React, { useState, useMemo } from "react";
 import { X, Search } from "lucide-react";
 import {
-  EVM_SWAP_CHAINS, EVM_SWAP_TOKENS, BTC_CHAIN_ID,
+  EVM_SWAP_CHAINS, EVM_SWAP_TOKENS, BTC_CHAIN_ID, isBtcChain,
   fromTokenUnits,
   type EvmToken, type EvmChainInfo,
 } from "./types.js";
