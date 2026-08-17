@@ -1080,7 +1080,9 @@ export function EvmSwapView({ onBack, alphaWalletAddress, getAlphaWalletClient, 
     if (sv.fromToken.isNative) {
       const reserve = GAS_RESERVE[sv.fromChainId] ?? 10000000000000000n;
       if (raw <= reserve) {
-        const reserveHuman = parseFloat(fromTokenUnits(reserve.toString(), sv.fromToken.decimals)).toFixed(4);
+        const reserveHuman = parseFloat(fromTokenUnits(reserve.toString(), sv.fromToken.decimals))
+          .toFixed(Math.min(sv.fromToken.decimals, 8))
+          .replace(/\.?0+$/, ""); // rimuove zeri trailing → "0.00002" non "0.00002000"
         showGasWarning(
           `Saldo ${sv.fromToken.symbol} insufficiente per coprire il gas. ` +
           `Riserva minima: ${reserveHuman} ${sv.fromToken.symbol}.`
