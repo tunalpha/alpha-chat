@@ -435,7 +435,7 @@ describe("Tipi e helper", () => {
 
   it("notificationIcon restituisce emoji corretta per ogni tipo", () => {
     expect(notificationIcon("received")).toBe("💰");
-    expect(notificationIcon("sent")).toBe("📤");
+    expect(notificationIcon("sent")).toBe("💸");
     expect(notificationIcon("pending")).toBe("⏳");
     expect(notificationIcon("confirmed")).toBe("✅");
     expect(notificationIcon("failed")).toBe("❌");

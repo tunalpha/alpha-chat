@@ -724,8 +724,23 @@ function humanizeEvmCode(code: string): string {
       if (lower.includes("wallet non configurato") || lower.includes("wallet not configured") || lower.includes("configurelifi")) {
         return "Wallet non configurato. Riprova.";
       }
-      // Fallback generico
-      return "Swap non disponibile al momento. Riprova tra qualche istante.";
+      if (lower.includes("execution reverted") || lower.includes("call_exception") || lower.includes("revert")) {
+        return "Transazione rifiutata dalla rete. Prova con un importo o token diverso.";
+      }
+      if (lower.includes("rate") || lower.includes("too many request") || lower.includes("429")) {
+        return "Troppe richieste. Riprova tra qualche secondo.";
+      }
+      if (lower.includes("timeout") || lower.includes("timed out")) {
+        return "Timeout. Controlla la connessione e riprova.";
+      }
+      if (lower.includes("network") || lower.includes("fetch") || lower.includes("failed to fetch") || lower.includes("load failed")) {
+        return "Errore di rete. Verifica la connessione e riprova.";
+      }
+      // Fallback: mostra l'errore grezzo (troncato) se è leggibile, altrimenti messaggio generico
+      if (code && code.length > 0 && code.length < 120 && !code.includes("\n") && !code.includes("at ")) {
+        return `Swap non riuscito: ${code.charAt(0).toUpperCase() + code.slice(1)}`;
+      }
+      return "Swap non riuscito. Verifica saldo, gas e rete, poi riprova.";
     }
   }
 }

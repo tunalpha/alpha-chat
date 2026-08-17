@@ -125,9 +125,14 @@ export function useEvmSwapState(opts?: EvmSwapStateOpts): [EvmSwapStateValue, Ev
   const isMounted      = useRef(true);
   const slippageRef    = useRef(opts?.slippage);
 
-  useEffect(() => { accountRef.current = activeAccount?.address; }, [activeAccount]);
-  useEffect(() => { fromChainIdRef.current = sv.fromChainId; }, [sv.fromChainId]);
-  useEffect(() => { slippageRef.current = opts?.slippage; }, [opts?.slippage]);
+  const svRef        = useRef<EvmSwapStateValue>(sv);
+  const effectiveRef = useRef<string | undefined>(effectiveAddress ?? undefined);
+
+  useEffect(() => { accountRef.current     = activeAccount?.address;         }, [activeAccount]);
+  useEffect(() => { fromChainIdRef.current = sv.fromChainId;                 }, [sv.fromChainId]);
+  useEffect(() => { slippageRef.current    = opts?.slippage;                 }, [opts?.slippage]);
+  useEffect(() => { svRef.current          = sv;                             }, [sv]);
+  useEffect(() => { effectiveRef.current   = effectiveAddress ?? undefined;  }, [effectiveAddress]);
 
   // ── Lifecycle + cleanup Li.Fi callbacks ───────────────────────────────────
   useEffect(() => {
@@ -260,6 +265,46 @@ export function useEvmSwapState(opts?: EvmSwapStateOpts): [EvmSwapStateValue, Ev
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeChain?.id]);
+
+  // ── Auto-refresh quote 5s prima della scadenza (silenzioso, nessun cambio di fase) ──
+  useEffect(() => {
+    if (sv.phase !== "quoted" || !sv.quote) return;
+    const delay = Math.max(0, sv.quote.expiresAt - Date.now() - 5_000);
+    const id = setTimeout(async () => {
+      const snap = svRef.current;
+      const addr = effectiveRef.current;
+      if (
+        !isMounted.current
+        || snap.phase !== "quoted"
+        || !snap.quote
+        || !snap.fromToken
+        || !snap.toToken
+        || !addr
+      ) return;
+      const fromUnits = toTokenUnits(snap.fromAmount, snap.fromToken.decimals);
+      if (fromUnits === "0") return;
+      try {
+        const newQuote = await fetchLiFiQuote({
+          fromChainId: snap.fromChainId,
+          toChainId:   snap.toChainId,
+          fromToken:   snap.fromToken,
+          toToken:     snap.toToken,
+          fromAmount:  fromUnits,
+          fromAddress: addr,
+          slippage:    slippageRef.current,
+        });
+        if (isMounted.current) {
+          // Aggiorna la quote in-place senza cambiare fase — nessun flickering UI
+          setSv(prev => prev.phase === "quoted" ? { ...prev, quote: newQuote, error: null } : prev);
+        }
+      } catch {
+        // Silenzioso: se il refresh fallisce la quote vecchia resta visibile;
+        // il guard expiresAt in execute() impedirà l'esecuzione con quote davvero scaduta.
+      }
+    }, delay);
+    return () => clearTimeout(id);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [sv.phase, sv.quote?.expiresAt]);
 
   // ── Actions ────────────────────────────────────────────────────────────────
 
