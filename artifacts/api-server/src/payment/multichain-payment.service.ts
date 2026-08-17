@@ -1045,10 +1045,16 @@ export async function releaseFromWaitingForGas(transferId: string): Promise<Mult
     // Errore non gas-related (RPC, TX, ecc.).
     // C-1: se tx_hash_release è già impostato, non tornare indietro.
     // Torna a waiting_for_gas (conservativo) se TX1 non era ancora partita.
-    await MultiChainTransferModel.findOneAndUpdate(
+    const revertedDoc = await MultiChainTransferModel.findOneAndUpdate(
       { transfer_id: transferId, status: "releasing", tx_hash_release: null },
       { $set: { status: "waiting_for_gas", locked_at: null } },
+      { returnDocument: "after" },
     );
+    // Gap 3 fix: emette WS e sync meta anche per il path di errore non-gas
+    if (revertedDoc) {
+      emitMCPaymentStateChanged(revertedDoc);
+      void _syncTransferMessageMeta(revertedDoc);
+    }
     logger.error(
       { err, transferId },
       "[MCPayment] releaseFromWaitingForGas: errore non-gas — torno a waiting_for_gas",
@@ -1090,7 +1096,10 @@ async function _transitionToWaitingForGas(
   const retryCount = updated?.gas_retry_count ?? 1;
   _fireGasDepletedAlert(transferId, doc, err, retryCount);
 
-  if (updated) emitMCPaymentStateChanged(updated);
+  if (updated) {
+    emitMCPaymentStateChanged(updated);
+    void _syncTransferMessageMeta(updated); // Gap 2 fix: persiste stato waiting_for_gas nel messaggio
+  }
   return toInfo(updated ?? doc);
 }
 
@@ -1858,11 +1867,16 @@ export async function retryEVMFeeTx(transferId: string): Promise<void> {
 
   if (!doc.fee_wallet || tx2Amount === 0n) {
     // Nessun fee da inviare — finalizza direttamente
-    await MultiChainTransferModel.findOneAndUpdate(
+    const noFeeReleased = await MultiChainTransferModel.findOneAndUpdate(
       { transfer_id: transferId, status: "releasing" },
       { $set: { status: "released", completed_at: new Date(), locked_at: null } },
+      { returnDocument: "after" },
     );
     logger.info({ transferId }, "[MCPayment] retryEVMFeeTx: nessun fee wallet — released direttamente");
+    if (noFeeReleased) {
+      emitMCPaymentStateChanged(noFeeReleased);
+      void _syncTransferMessageMeta(noFeeReleased);
+    }
     return;
   }
 
@@ -1904,7 +1918,7 @@ export async function retryEVMFeeTx(transferId: string): Promise<void> {
 
     const prevFee = BigInt(doc.network_fee ?? "0");
 
-    await MultiChainTransferModel.findOneAndUpdate(
+    const tx2Released = await MultiChainTransferModel.findOneAndUpdate(
       { transfer_id: transferId, status: "releasing" },
       {
         $set: {
@@ -1915,12 +1929,17 @@ export async function retryEVMFeeTx(transferId: string): Promise<void> {
           locked_at:    null,
         },
       },
+      { returnDocument: "after" },
     );
 
     logger.info(
       { transferId, txHash: tx2Hash },
       "[MCPayment] retryEVMFeeTx: TX2 completata → released",
     );
+    if (tx2Released) {
+      emitMCPaymentStateChanged(tx2Released);
+      void _syncTransferMessageMeta(tx2Released);
+    }
   } catch (err) {
     logger.error({ err, transferId }, "[MCPayment] retryEVMFeeTx: TX2 fallita — lo scheduler riproverà");
     // Non aggiorniamo lo stato: resta "releasing" con tx_hash_release impostato.

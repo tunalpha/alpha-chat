@@ -764,7 +764,8 @@ describe("retryEVMFeeTx", () => {
     };
 
     vi.mocked(MultiChainTransferModel.findOne).mockResolvedValue(partialDoc as any);
-    vi.mocked(MultiChainTransferModel.findOneAndUpdate).mockResolvedValue(null as any);
+    // Restituisce il doc aggiornato (Gap 1 fix: returnDocument:"after" per emettere WS)
+    vi.mocked(MultiChainTransferModel.findOneAndUpdate).mockResolvedValue({ ...partialDoc, status: "released" } as any);
 
     const adapter = makeEvmAdapter();
     vi.mocked(adapterRegistry.get).mockReturnValue(adapter as any);
@@ -774,10 +775,11 @@ describe("retryEVMFeeTx", () => {
     // Nessuna TX inviata
     expect(adapter._mockBuildAndSign).not.toHaveBeenCalled();
     expect(adapter._mockBroadcast).not.toHaveBeenCalled();
-    // Stato aggiornato direttamente a released
+    // Stato aggiornato direttamente a released (ora con returnDocument:"after")
     expect(MultiChainTransferModel.findOneAndUpdate).toHaveBeenCalledWith(
       expect.objectContaining({ transfer_id: TRANSFER_ID, status: "releasing" }),
       { $set: { status: "released", completed_at: expect.any(Date), locked_at: null } },
+      { returnDocument: "after" },
     );
   });
 });

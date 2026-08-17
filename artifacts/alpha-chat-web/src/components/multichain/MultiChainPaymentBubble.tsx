@@ -101,9 +101,18 @@ export const MultiChainPaymentBubble = memo(function MultiChainPaymentBubble({ d
   // useState() si inizializza una sola volta al mount e non reagisce ai prop change.
   // Questo effetto garantisce che WS "released", "pending", ecc. si riflettano subito
   // nella bolla senza aspettare il prossimo ciclo di polling (30 s).
+  //
+  // Gap 4 fix — anti-regressione:
+  //   • Mai tornare a "awaiting_deposit" da uno stato avanzato (es. stale WS dopo reconnect).
+  //   • Mai regredire da uno stato terminale (released / refunded / expired / failed / cancelled).
   useEffect(() => {
     if (data?.status && data.status !== status) {
-      setStatus(data.status as MCStatus);
+      setStatus(prev => {
+        const incoming = data.status as MCStatus;
+        if (isMCTerminal(prev)) return prev;                                   // già terminale: immutabile
+        if (prev !== "awaiting_deposit" && incoming === "awaiting_deposit") return prev; // stale WS
+        return incoming;
+      });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data?.status]);

@@ -20,21 +20,24 @@ import type { MultiChainTransferDocument } from "../models/multichain-transfer.m
 // ---------------------------------------------------------------------------
 
 export interface MCPaymentStateChangedPayload {
-  transfer_id:     string;
-  conversation_id: string;
-  message_id:      string | null;
-  status:          string;
-  network:         string;
-  asset:           string;
-  gross_amount:    string;
-  net_amount:      string;
-  tx_hash_release: string | null;
-  tx_hash_deposit: string | null;
-  expires_at:      string | null;
+  transfer_id:           string;
+  conversation_id:       string;
+  message_id:            string | null;
+  status:                string;
+  network:               string;
+  asset:                 string;
+  gross_amount:          string;
+  net_amount:            string;
+  tx_hash_release:       string | null;
+  tx_hash_deposit:       string | null;
+  expires_at:            string | null;
+  /** Motivo del blocco gas (es. NETWORK_COST_TOO_HIGH, GAS_STATION_DEPLETED).
+   *  Incluso per permettere alla bolla di mostrare il messaggio corretto su waiting_for_gas. */
+  waiting_for_gas_reason: string | null;
   /** Aggiunto per consentire al frontend di determinare sender/receiver
    *  e salvare la TX nel tx-store IDB della History (Alpha Wallet Storico). */
-  sender_id:       string;
-  recipient_id:    string;
+  sender_id:             string;
+  recipient_id:          string;
 }
 
 // ---------------------------------------------------------------------------
@@ -52,19 +55,20 @@ export interface MCPaymentStateChangedPayload {
 export function emitMCPaymentStateChanged(doc: MultiChainTransferDocument): void {
   try {
     const payload: MCPaymentStateChangedPayload = {
-      transfer_id:     doc.transfer_id,
-      conversation_id: doc.conversation_id.toString(),
-      message_id:      doc.message_id?.toString() ?? null,
-      status:          doc.status,
-      network:         doc.network,
-      asset:           doc.asset,
-      gross_amount:    doc.gross_amount,
-      net_amount:      doc.net_amount,
-      tx_hash_release: doc.tx_hash_release ?? null,
-      tx_hash_deposit: doc.tx_hash_deposit ?? null,
-      expires_at:      doc.expires_at?.toISOString() ?? null,
-      sender_id:       doc.sender_id.toString(),
-      recipient_id:    doc.recipient_id.toString(),
+      transfer_id:            doc.transfer_id,
+      conversation_id:        doc.conversation_id.toString(),
+      message_id:             doc.message_id?.toString() ?? null,
+      status:                 doc.status,
+      network:                doc.network,
+      asset:                  doc.asset,
+      gross_amount:           doc.gross_amount,
+      net_amount:             doc.net_amount,
+      tx_hash_release:        doc.tx_hash_release ?? null,
+      tx_hash_deposit:        doc.tx_hash_deposit ?? null,
+      expires_at:             doc.expires_at?.toISOString() ?? null,
+      waiting_for_gas_reason: (doc as any).waiting_for_gas_reason ?? null,
+      sender_id:              doc.sender_id.toString(),
+      recipient_id:           doc.recipient_id.toString(),
     };
 
     const userIds = [

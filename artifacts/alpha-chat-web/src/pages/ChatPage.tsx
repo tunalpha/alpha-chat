@@ -2015,18 +2015,20 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
             transfer_id, message_id, conversation_id, status,
             tx_hash_release, tx_hash_deposit,
             sender_id, network, asset, gross_amount, net_amount,
+            waiting_for_gas_reason,
           } = event.payload as {
-            transfer_id:     string;
-            conversation_id: string;
-            message_id:      string | null;
-            status:          string;
-            tx_hash_release: string | null;
-            tx_hash_deposit: string | null;
-            sender_id?:      string;
-            network?:        string;
-            asset?:          string;
-            gross_amount?:   string;
-            net_amount?:     string;
+            transfer_id:            string;
+            conversation_id:        string;
+            message_id:             string | null;
+            status:                 string;
+            tx_hash_release:        string | null;
+            tx_hash_deposit:        string | null;
+            sender_id?:             string;
+            network?:               string;
+            asset?:                 string;
+            gross_amount?:          string;
+            net_amount?:            string;
+            waiting_for_gas_reason?: string | null;
           };
           // ── Persist TX nel tx-store IDB (Alpha Wallet History) ────────────
           //
@@ -2124,13 +2126,26 @@ export default function ChatPage({ onNavigate, requestedConvId, onConvOpened }: 
                 (meta.transfer_id && meta.transfer_id === transfer_id) ||
                 (message_id != null && m.id === message_id);
               if (!isMatch) return m;
+
+              // Gap 4 fix — anti-regressione status:
+              //   • Mai tornare a "awaiting_deposit" da uno stato avanzato.
+              //   • Mai regredire da uno stato terminale.
+              const TERMINAL_MC = new Set(["released","refunded","expired","failed","cancelled"]);
+              const currentStatus = (meta.status as string) ?? "";
+              const safeStatus =
+                TERMINAL_MC.has(currentStatus)                           ? currentStatus :  // già terminale
+                (currentStatus !== "awaiting_deposit" && status === "awaiting_deposit") ? currentStatus :  // stale
+                status;
+
               return {
                 ...m,
                 system_metadata: {
                   ...meta,
-                  status,
+                  status: safeStatus,
                   tx_hash_release: tx_hash_release ?? meta.tx_hash_release ?? null,
                   tx_hash_deposit: tx_hash_deposit ?? meta.tx_hash_deposit ?? null,
+                  // Gap 5 fix: propaga waiting_for_gas_reason dal WS
+                  ...(waiting_for_gas_reason != null && { waiting_for_gas_reason }),
                 },
               };
             }),
