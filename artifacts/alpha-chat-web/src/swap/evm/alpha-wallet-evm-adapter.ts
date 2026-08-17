@@ -18,6 +18,7 @@ import { polygon, mainnet, bsc } from "viem/chains";
 import { privateKeyToAccount } from "viem/accounts";
 import { loadKeystore, decryptSeed } from "../../wallet/core/keystore";
 import { deriveEvmWallet, toHexKey } from "../../wallet/core/hd-wallet";
+import { signAndBroadcastBtcTx, BtcSendUncertainError } from "../../wallet/services/btc-signer";
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const AW_CHAIN_RPC: Record<number, string> = {
@@ -90,5 +91,46 @@ export async function createAlphaWalletViemClient(chainId: number): Promise<Wall
     if (privKey) privKey.fill(0);
     // Il mnemonic è una stringa JS — non azzerabile direttamente,
     // ma dereferenziata al termine di questa funzione (garbage collected).
+  }
+}
+
+/**
+ * Invia BTC dall'Alpha Wallet interno al vault Thorchain per swap BTC→EVM via Li.Fi.
+ *
+ * Stesso pattern di sicurezza di createAlphaWalletViemClient:
+ *   - PIN da sessionStorage["aw_bio_pin"] (wallet sbloccato in questa sessione)
+ *   - Mnemonic decifrato da IDB, usato una volta e scartato
+ *   - Nessuna chiave privata esposta fuori dallo stack locale
+ *
+ * @returns txid della transazione BTC broadcast
+ * @throws Error("ALPHA_WALLET_LOCKED") — se il wallet non è sbloccato
+ * @throws Error("BTC_SEND_UNCERTAIN") — se la TX potrebbe essere stata broadcast
+ *         (BtcSendUncertainError — tipico su iOS dopo network abort post-firma)
+ */
+export async function sendAlphaWalletBtcTx(params: {
+  toAddress: string;
+  amountSat: bigint;
+}): Promise<string> {
+  const pin = sessionStorage.getItem("aw_bio_pin");
+  if (!pin) throw new Error("ALPHA_WALLET_LOCKED: sblocca Alpha Wallet prima di inviare BTC.");
+
+  const entry = await loadKeystore();
+  if (!entry) throw new Error("ALPHA_WALLET_NO_KEYSTORE: nessun keystore trovato.");
+
+  const mnemonic = await decryptSeed(entry, pin);
+
+  try {
+    const result = await signAndBroadcastBtcTx({
+      mnemonic,
+      recipientAddress: params.toAddress,
+      amountSat:        params.amountSat,
+      feeTarget:        "normal",
+    });
+    return result.txid;
+  } catch (err) {
+    // Converte BtcSendUncertainError in un codice stringa riconoscibile
+    // da useEvmSwapState senza importare wallet services (isolamento modulo).
+    if (err instanceof BtcSendUncertainError) throw new Error("BTC_SEND_UNCERTAIN");
+    throw err;
   }
 }

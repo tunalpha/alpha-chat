@@ -111,6 +111,15 @@ export interface EvmSwapStateOpts {
    *   - EVM→BTC: usato come toAddress nella quote Li.Fi (destinazione Bitcoin)
    */
   btcAddress?: string;
+  /**
+   * Callback per inviare BTC dal wallet interno al vault Thorchain (swap BTC→EVM).
+   * Fornito da SwapView tramite sendAlphaWalletBtcTx — accede al keystore IDB con PIN.
+   * Stabile: creata con useCallback(fn, []) nel chiamante.
+   * @returns txid della transazione BTC broadcast
+   * @throws Error("ALPHA_WALLET_LOCKED") — wallet non sbloccato
+   * @throws Error("BTC_SEND_UNCERTAIN") — TX potenzialmente broadcast (iOS network abort)
+   */
+  sendBtcForSwap?: (params: { toAddress: string; amountSat: bigint }) => Promise<string>;
 }
 
 // ── Hook ──────────────────────────────────────────────────────────────────────
@@ -532,27 +541,114 @@ export function useEvmSwapState(opts?: EvmSwapStateOpts): [EvmSwapStateValue, Ev
       return;
     }
 
-    // ── BTC→EVM: nessuna firma EVM necessaria — mostra indirizzo deposito ───
+    // ── BTC→EVM: invia BTC automaticamente al vault Thorchain ────────────────
     if (isBtcChain(current.quote.fromChainId)) {
-      _evmExecuting = true;
       const depositAddr = current.quote.btcDepositAddress;
       if (!depositAddr) {
         if (isMounted.current) setSv(prev => ({
-          ...prev, error: { code: "NO_DEPOSIT_ADDR", message: "Indirizzo deposito non disponibile. Riprova la quote." }
+          ...prev, error: { code: "NO_DEPOSIT_ADDR", message: "Indirizzo vault non disponibile. Riprova la quote." }
         }));
-        _evmExecuting = false;
+        return;
+      }
+      const sendBtcFn = opts?.sendBtcForSwap;
+      if (!sendBtcFn) {
+        if (isMounted.current) setSv(prev => ({
+          ...prev, phase: "idle", error: { code: "ALPHA_WALLET_LOCKED", message: "ALPHA_WALLET_LOCKED" }
+        }));
         return;
       }
       const amtRaw = parseInt(current.quote.fromAmount ?? "0", 10);
-      if (isMounted.current) setSv(prev => ({
-        ...prev,
-        phase:               "awaiting_btc_deposit",
-        btcDepositAddress:   depositAddr,
-        btcDepositAmountSat: isNaN(amtRaw) ? 0 : amtRaw,
-        error:               null,
-      }));
-      _evmExecuting = false;
-      return;
+      if (!amtRaw || isNaN(amtRaw)) {
+        if (isMounted.current) setSv(prev => ({
+          ...prev, error: { code: "INVALID_AMOUNT", message: "Importo non valido. Riprova la quote." }
+        }));
+        return;
+      }
+
+      _evmExecuting = true;
+
+      // Write-before-submit: persisti swap info prima di inviare
+      const btcActiveSwap: EvmActiveSwap = {
+        routeId:     current.quote.routeId,
+        fromChainId: current.quote.fromChainId,
+        toChainId:   current.quote.toChainId,
+        fromToken:   current.quote.fromToken,
+        toToken:     current.quote.toToken,
+        fromAmount:  current.fromAmount,
+        toAmount:    current.quote.toAmount,
+        startedAt:   Date.now(),
+      };
+      localStorage.setItem(EVM_SWAP_ACTIVE_KEY, JSON.stringify(btcActiveSwap));
+
+      if (isMounted.current) setSv(prev => ({ ...prev, phase: "signing", error: null }));
+
+      // Helper: avvia polling Li.Fi per BTC→EVM (Thorchain, ~10-30 min)
+      const capturedFromChainId = current.quote.fromChainId;
+      const capturedToChainId   = current.quote.toChainId;
+      const startBtcPoll = (txid: string) => {
+        const poll = async () => {
+          if (!isMounted.current) return;
+          try {
+            const st = await getLiFiStatus(txid, capturedFromChainId, capturedToChainId);
+            if (st.status === "DONE") {
+              localStorage.removeItem(EVM_SWAP_ACTIVE_KEY);
+              if (isMounted.current) setSv(prev => ({
+                ...prev, phase: "completed", txHash: st.txHash ?? txid, error: null,
+              }));
+            } else if (st.status === "FAILED" || st.status === "INVALID") {
+              localStorage.removeItem(EVM_SWAP_ACTIVE_KEY);
+              if (isMounted.current) setSv(prev => ({
+                ...prev, phase: "failed", error: { code: "SWAP_FAILED", message: "SWAP_UNAVAILABLE" },
+              }));
+            } else {
+              // PENDING / NOT_FOUND — riprova tra 30s (conferme BTC+Thorchain richiedono tempo)
+              setTimeout(poll, 30_000);
+            }
+          } catch {
+            if (isMounted.current) setTimeout(poll, 30_000);
+          }
+        };
+        setTimeout(poll, 30_000); // prima verifica dopo 30s
+      };
+
+      try {
+        const txid = await sendBtcFn({ toAddress: depositAddr, amountSat: BigInt(amtRaw) });
+
+        // Persisti txid per recovery al mount
+        const stored = localStorage.getItem(EVM_SWAP_ACTIVE_KEY);
+        if (stored) {
+          try {
+            const parsed = JSON.parse(stored) as EvmActiveSwap;
+            localStorage.setItem(EVM_SWAP_ACTIVE_KEY, JSON.stringify({ ...parsed, txHash: txid }));
+          } catch { /* ignore */ }
+        }
+
+        if (isMounted.current) setSv(prev => ({ ...prev, phase: "submitted", txHash: txid }));
+        startBtcPoll(txid);
+
+      } catch (err) {
+        console.error("[AlphaSwap] BTC send error:", err);
+        const msg = err instanceof Error ? err.message : "";
+        const isUncertain = msg === "BTC_SEND_UNCERTAIN";
+        const isLocked    = msg.startsWith("ALPHA_WALLET_LOCKED") || msg.startsWith("ALPHA_WALLET_NO_KEYSTORE");
+
+        if (isUncertain) {
+          // TX potenzialmente broadcast su rete — lascia pending e avvia polling
+          // (il txid non è disponibile, la recovery al mount gestirà il caso se salvato)
+          if (isMounted.current) setSv(prev => ({ ...prev, phase: "pending" }));
+        } else {
+          localStorage.removeItem(EVM_SWAP_ACTIVE_KEY);
+          if (!isMounted.current) { _evmExecuting = false; return; }
+          if (isLocked) {
+            setSv(prev => ({ ...prev, phase: "idle", error: { code: "ALPHA_WALLET_LOCKED", message: "ALPHA_WALLET_LOCKED" } }));
+          } else {
+            setSv(prev => ({ ...prev, phase: "failed", error: { code: "EXECUTE_ERROR", message: msg || "SWAP_UNAVAILABLE" } }));
+          }
+        }
+      } finally {
+        _evmExecuting = false;
+      }
+      return; // ← fine branch BTC→EVM
     }
 
     // EVM→EVM / EVM→BTC: richiede wallet EVM per la firma
@@ -698,7 +794,7 @@ export function useEvmSwapState(opts?: EvmSwapStateOpts): [EvmSwapStateValue, Ev
     } finally {
       _evmExecuting = false;
     }
-  }, [effectiveAddress, activeAccount, activeWallet, opts?.getAlphaWalletClient]);
+  }, [effectiveAddress, activeAccount, activeWallet, opts?.getAlphaWalletClient, opts?.sendBtcForSwap]);
 
   const reset = useCallback(() => {
     localStorage.removeItem(EVM_SWAP_ACTIVE_KEY);

@@ -23,7 +23,7 @@ import {
 } from "lucide-react";
 import { useActiveAccount }                from "thirdweb/react";
 import { useWallet }                       from "../wallet/context/WalletContext.js";
-import { createAlphaWalletViemClient }     from "./evm/alpha-wallet-evm-adapter.js";
+import { createAlphaWalletViemClient, sendAlphaWalletBtcTx } from "./evm/alpha-wallet-evm-adapter.js";
 import { apiWalletGetBtcBalance, type BtcBalanceResponse } from "../lib/alpha-wallet-api.js";
 import { useSparkWallet }                  from "../contexts/SparkWalletContext.js";
 import { BoltzBtcLnProvider }              from "./providers/BoltzBtcLnProvider.js";
@@ -974,6 +974,13 @@ export function SwapView({ onBack }: SwapViewProps) {
     [],
   );
 
+  // Callback stabile per inviare BTC al vault Thorchain (swap BTC→EVM via Li.Fi).
+  // Usa lo stesso keystore IDB + PIN dell'EVM adapter; ritorna il txid broadcast.
+  const sendBtcForSwap = useCallback(
+    (params: { toAddress: string; amountSat: bigint }) => sendAlphaWalletBtcTx(params),
+    [],
+  );
+
   // EVM è la tab predefinita
   const [activeTab, setActiveTab]   = useState<SwapTab>("evm");
   const [config, setConfig]         = useState<SwapPublicConfig | null>(null);
@@ -1251,6 +1258,7 @@ export function SwapView({ onBack }: SwapViewProps) {
             getAlphaWalletClient={getAlphaWalletClient}
             btcAddress={btcAddress ?? undefined}
             btcBalanceSat={btcBalance?.totalSat ?? undefined}
+            sendBtcForSwap={sendBtcForSwap}
           />
         </EvmErrorBoundary>
       </div>

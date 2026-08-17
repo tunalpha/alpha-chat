@@ -8,17 +8,16 @@
 // ── State machine ──────────────────────────────────────────────────────────────
 
 export type EvmSwapPhase =
-  | "idle"                  // Nessuno swap in corso
-  | "quoting"               // Quote in fetching
-  | "quoted"                // Quote disponibile, attende conferma
-  | "approving"             // Approval ERC-20 in corso
-  | "signing"               // Firma transazione in corso
-  | "submitted"             // TX inviata alla mempool
-  | "pending"               // In attesa di conferma on-chain
-  | "completed"             // Swap completato
-  | "failed"                // Errore definitivo
-  | "action_required"       // Azione utente richiesta (es. switch chain manuale)
-  | "awaiting_btc_deposit"; // BTC→EVM: mostra indirizzo deposito all'utente
+  | "idle"           // Nessuno swap in corso
+  | "quoting"        // Quote in fetching
+  | "quoted"         // Quote disponibile, attende conferma
+  | "approving"      // Approval ERC-20 in corso
+  | "signing"        // Firma transazione / invio BTC al vault in corso
+  | "submitted"      // TX inviata alla rete (EVM mempool o BTC broadcast)
+  | "pending"        // In attesa di conferma on-chain (EVM) / bridge Thorchain (BTC→EVM)
+  | "completed"      // Swap completato
+  | "failed"         // Errore definitivo
+  | "action_required"; // Azione utente richiesta (es. switch chain manuale)
 
 // ── Token e chain ─────────────────────────────────────────────────────────────
 
@@ -79,9 +78,10 @@ export interface EvmSwapQuote {
    */
   computedFromAmount?: string;
   /**
-   * Solo per swaps BTC→EVM: indirizzo Bitcoin a cui inviare i fondi.
+   * Solo per swaps BTC→EVM: indirizzo Bitcoin vault Thorchain a cui inviare i fondi.
    * Estratto da transactionRequest.to della risposta Li.Fi.
-   * L'utente copia questo indirizzo e invia BTC manualmente (o via Alpha Wallet).
+   * Usato internamente da useEvmSwapState.execute() per inviare BTC automaticamente
+   * tramite sendAlphaWalletBtcTx — non mostrato all'utente.
    */
   btcDepositAddress?: string;
 }
@@ -120,10 +120,6 @@ export interface EvmSwapStateValue {
   error:       EvmSwapError | null;
   txHash:      string | null;
   recovering:  boolean;
-  /** Solo per phase=awaiting_btc_deposit: indirizzo BTC a cui inviare i fondi */
-  btcDepositAddress?:    string;
-  /** Solo per phase=awaiting_btc_deposit: importo in satoshi da inviare */
-  btcDepositAmountSat?:  number;
 }
 
 // ── Actions ───────────────────────────────────────────────────────────────────
