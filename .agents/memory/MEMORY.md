@@ -117,6 +117,7 @@
 - [OWASP Top 10 hardening](owasp-hardening.md) — rate limit auth routes, ip-address CVE fix, broadcastLimiter IPv6 fix, scanner clean; gap: DAST + body limit per-route
 - [detectDeposit Fix A+B+C — CONGELATO](detect-deposit-fix-abc.md) — rawContract.value + blockTimestamp opzionali; Fix B idempotente; MAI rendere obbligatori questi filtri
 - [Double-charge incident 2026-08-14](double-charge-incident.md) — 3 root causes: generic error msg, no scheduler for pending sends, gas depletion; processPendingSendTransfers() added; Transfer-1 released ✅
+- [MC Release stuck on server restart](mc-release-stuck-on-restart.md) — broadcastAndWait(tx2) abbandonata su restart → DB bloccato in "releasing"; fix: detect fast-path + bolla chiama detect in releasing + scheduler emette WS
 - [BSC incoming notification fix](bsc-incoming-notification-fix.md) — safety net dispatcha IDB ma non chiama refreshNotifications() → badge stale; fix: onConfirmed include refreshNotifications()
 - [USDA detectDeposit blocked — Fix A+B](usda-detect-deposit-fix.md) — rawContract.value null esclude la TX (Fix A: rendi opzionale); status post-deposit → 409 invece di done (Fix B: idempotente)
 - [Direct Transfer Flow](direct-transfer.md) — sender→recipient 1 TX on-chain; transfer_mode=direct; _confirmDirect; getRpcUrl mock pattern per test; SKIP guard rimossa da detectDeposit

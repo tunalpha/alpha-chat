@@ -121,7 +121,9 @@ export const MultiChainPaymentBubble = memo(function MultiChainPaymentBubble({ d
     if (isMCTerminal(status)) return;
     pollRef.current = setInterval(async () => {
       try {
-        const updated = status === "awaiting_deposit"
+        // Chiama detect anche durante "releasing": il backend controlla on-chain
+        // se TX1 è confermata e aggiorna subito senza aspettare lo scheduler (10 min).
+        const updated = (status === "awaiting_deposit" || status === "releasing")
           ? await apiMCDetect(data.transfer_id)
           : await apiMCGet(data.transfer_id);
         // OBIETTIVO 4b: mai regredire a "awaiting_deposit" se lo stato interno

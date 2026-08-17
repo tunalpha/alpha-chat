@@ -786,7 +786,48 @@ export async function createMultiChainTransfer(
 export async function detectMultiChainDeposit(transferId: string): Promise<MultiChainTransferInfo> {
   const doc = await MultiChainTransferModel.findOne({ transfer_id: transferId });
   if (!doc) throw new AppError("TRANSFER_NOT_FOUND", 404);
-  if (doc.status !== "awaiting_deposit") return toInfo(doc);
+  if (doc.status !== "awaiting_deposit") {
+    // Fast-path per "releasing": controlla on-chain senza aspettare lo scheduler stale (10 min).
+    // Idempotente: findOneAndUpdate con filtro status="releasing" garantisce atomicità.
+    if (doc.status === "releasing" && doc.tx_hash_release) {
+      try {
+        const rlAdapter = adapterRegistry.get(doc.network);
+        const txSt = await rlAdapter.getTransactionStatus(doc.tx_hash_release);
+        if (txSt === "confirmed") {
+          const tx2Amt =
+            BigInt(doc.project_fee ?? "0") +
+            BigInt(doc.network_fee_charged ?? "0");
+          const hasFeeSetup = !isBitcoin(doc.network) && !!doc.fee_wallet && tx2Amt > 0n;
+          const needsFeeTx  = hasFeeSetup && !doc.tx_hash_fee;
+          // Se TX2 non ancora inviata, deferisce allo scheduler (retryEVMFeeTx).
+          // Altrimenti (BTC, no fee wallet, o TX2 già staged/confirmed) → mark released.
+          if (!needsFeeTx) {
+            const confirmed = await MultiChainTransferModel.findOneAndUpdate(
+              { transfer_id: transferId, status: "releasing" },
+              { $set: { status: "released", completed_at: new Date(), locked_at: null } },
+              { returnDocument: "after" },
+            );
+            if (confirmed) {
+              logger.info(
+                { transferId, txHash: doc.tx_hash_release },
+                "[MCPayment] detect fast-path: TX1 confermata on-chain → released",
+              );
+              emitMCPaymentStateChanged(confirmed);
+              void _syncTransferMessageMeta(confirmed);
+            }
+            const fresh = await MultiChainTransferModel.findOne({ transfer_id: transferId });
+            return toInfo(fresh ?? doc);
+          }
+        }
+      } catch (err) {
+        logger.debug(
+          { err, transferId },
+          "[MCPayment] detect fast-path: errore verifica TX releasing (ignorato — scheduler recovery)",
+        );
+      }
+    }
+    return toInfo(doc);
+  }
 
   assertFeatureEnabled(doc.network, doc.asset);
 
@@ -1258,6 +1299,11 @@ const TX3_GAS_UNITS = 21_000n;
  *
  * Fire-and-forget: non blocca il caller, gli errori sono loggati silenziosamente.
  */
+/** Exported wrapper per lo scheduler che non può accedere alla versione privata. */
+export async function syncTransferMessageMeta(doc: MultiChainTransferDocument): Promise<void> {
+  return _syncTransferMessageMeta(doc);
+}
+
 async function _syncTransferMessageMeta(doc: MultiChainTransferDocument): Promise<void> {
   try {
     if (!doc.message_id) return; // messaggio non ancora creato (race normale)

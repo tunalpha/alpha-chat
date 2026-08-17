@@ -63,6 +63,7 @@ import { MultiChainTransferModel } from "../models/multichain-transfer.model";
 import { adapterRegistry }          from "../blockchain/adapter-registry";
 import { FEATURE_FLAGS }            from "../blockchain/multichain-config";
 import { logger }                   from "../lib/logger";
+import { emitMCPaymentStateChanged } from "./multichain-events";
 
 // ─── Costanti ──────────────────────────────────────────────────────────────────
 
@@ -199,14 +200,22 @@ export async function processStuckReleasingTransfers(): Promise<void> {
 
           if (tx2Status === "confirmed") {
             // Entrambe le TX confermate → mark released
-            await MultiChainTransferModel.findOneAndUpdate(
+            const releasedDoc = await MultiChainTransferModel.findOneAndUpdate(
               { transfer_id: doc.transfer_id, status: "releasing" },
               { $set: { status: "released", completed_at: new Date(), locked_at: null } },
+              { returnDocument: "after" },
             );
             logger.info(
               { transferId: doc.transfer_id, tx1: doc.tx_hash_release, tx2: doc.tx_hash_fee },
               "[MCScheduler] C-02 recovery: TX1+TX2 confermate on-chain → released",
             );
+            // WS push + aggiornamento system_metadata messaggio
+            if (releasedDoc) {
+              emitMCPaymentStateChanged(releasedDoc);
+              void import("./multichain-payment.service").then(({ syncTransferMessageMeta }) =>
+                syncTransferMessageMeta(releasedDoc).catch(() => {}),
+              ).catch(() => {});
+            }
             // Email admin: pagamento completato via recovery scheduler (fire-and-forget)
             void import("../services/email.service").then(({ sendMultiChainTransactionEmail }) =>
               sendMultiChainTransactionEmail({
@@ -248,14 +257,22 @@ export async function processStuckReleasingTransfers(): Promise<void> {
           }
         } else {
           // Nessuna TX2 necessaria (BTC, no fee wallet, tx2Amount=0) → released
-          await MultiChainTransferModel.findOneAndUpdate(
+          const releasedDoc = await MultiChainTransferModel.findOneAndUpdate(
             { transfer_id: doc.transfer_id, status: "releasing" },
             { $set: { status: "released", completed_at: new Date(), locked_at: null } },
+            { returnDocument: "after" },
           );
           logger.info(
             { transferId: doc.transfer_id, txHash: doc.tx_hash_release },
             "[MCScheduler] TX confermata on-chain → released",
           );
+          // WS push + aggiornamento system_metadata messaggio
+          if (releasedDoc) {
+            emitMCPaymentStateChanged(releasedDoc);
+            void import("./multichain-payment.service").then(({ syncTransferMessageMeta }) =>
+              syncTransferMessageMeta(releasedDoc).catch(() => {}),
+            ).catch(() => {});
+          }
           // Email admin: pagamento completato via recovery scheduler (fire-and-forget)
           void import("../services/email.service").then(({ sendMultiChainTransactionEmail }) =>
             sendMultiChainTransactionEmail({

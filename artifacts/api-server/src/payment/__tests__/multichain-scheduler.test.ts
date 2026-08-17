@@ -234,6 +234,7 @@ describe("processStuckReleasingTransfers", () => {
     expect(mockFindOneAndUpdate).toHaveBeenCalledWith(
       { transfer_id: doc.transfer_id, status: "releasing" as any },
       { $set: { status: "released" as any, completed_at: expect.any(Date), locked_at: null } },
+      { returnDocument: "after" },
     );
   });
 
