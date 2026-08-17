@@ -1365,6 +1365,8 @@ interface PortfolioAssetRow {
   amount:    string;
   fiatValue: number;
   fiatStr:   string | null;
+  /** true per token nativi della chain (POL, ETH, BNB, BTC) */
+  isNative?: boolean;
 }
 
 function PortfolioView({
@@ -1401,6 +1403,7 @@ function PortfolioView({
       amount: balance.native.formatted,
       fiatValue: nativeFiatVal,
       fiatStr: nativePriceObj ? formatFiat(balance.native.rawBalance, 18, nativePriceObj, currency) : null,
+      isNative: true,
     });
     for (const t of balance.tokens) {
       const sym = t.symbol.toLowerCase();
@@ -1451,8 +1454,29 @@ function PortfolioView({
     });
   }
 
-  // Ordina per valore fiat decrescente
-  rows.sort((a, b) => b.fiatValue - a.fiatValue);
+  // Ordine fisso: USDA sempre prima, poi raggruppato per chain
+  // (Polygon → Ethereum → BSC → Bitcoin → Lightning)
+  // All'interno di ogni chain: token nativo per primo, poi gli altri per valore desc.
+  const CHAIN_ORDER: Record<number, number> = { 137: 0, 1: 1, 56: 2, 0: 3, [-1]: 4 };
+  rows.sort((a, b) => {
+    // USDA (moneta nativa piattaforma) — sempre in cima, prima di tutto
+    const aIsUsda = a.symbol === "USDA";
+    const bIsUsda = b.symbol === "USDA";
+    if (aIsUsda && !bIsUsda) return -1;
+    if (bIsUsda && !aIsUsda) return 1;
+
+    // Raggruppa per chain nell'ordine fisso
+    const cA = CHAIN_ORDER[a.chainId] ?? 99;
+    const cB = CHAIN_ORDER[b.chainId] ?? 99;
+    if (cA !== cB) return cA - cB;
+
+    // Stessa chain: nativo prima
+    if (a.isNative && !b.isNative) return -1;
+    if (b.isNative && !a.isNative) return 1;
+
+    // Stessa priorità: valore fiat decrescente
+    return b.fiatValue - a.fiatValue;
+  });
 
   const partialCount = failedChains + (sparkOffline ? 1 : 0);
 
