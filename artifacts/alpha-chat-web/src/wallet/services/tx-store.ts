@@ -72,7 +72,15 @@ export async function saveTxRecord(record: WalletTxRecord): Promise<void> {
     // Non fare downgrade di stato (confirmed → pending non ha senso)
     const statusRank: Record<TxStatus, number> = { pending: 0, confirmed: 1, failed: 1 };
     if (statusRank[record.status] < statusRank[existing.status]) return;
-    await db.put(STORE_TX_HISTORY, { ...existing, ...record, updatedAt: Date.now() });
+    await db.put(STORE_TX_HISTORY, {
+      ...existing,
+      ...record,
+      // Preserva metadata swap — non sovrascrivere con undefined quando il tx-monitor
+      // aggiorna un record già taggato come swap (il monitor non conosce txType).
+      txType:      existing.txType      ?? record.txType,
+      swapToAsset: existing.swapToAsset ?? record.swapToAsset,
+      updatedAt:   Date.now(),
+    });
   } else {
     await db.put(STORE_TX_HISTORY, record);
   }

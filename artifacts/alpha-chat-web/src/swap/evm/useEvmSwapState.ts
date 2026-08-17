@@ -42,6 +42,8 @@ import {
   type EvmToken, type EvmActiveSwap, type EvmSwapQuote,
 } from "./types.js";
 import { saveTxRecord } from "../../wallet/services/tx-store.js";
+import { dispatchWalletNotification } from "../../wallet/notifications/wallet-notification-store.js";
+import { chainName } from "../../wallet/notifications/wallet-notification-types.js";
 
 // ── Module-level anti-double-click lock ───────────────────────────────────────
 let _evmExecuting = false;
@@ -769,6 +771,46 @@ export function useEvmSwapState(opts?: EvmSwapStateOpts): [EvmSwapStateValue, Ev
       }
 
       const finalTxHash = txHash || submittedTxHash;
+
+      // Salva la TX come "swap" in IDB — appare IMMEDIATAMENTE in History+Notifications
+      // senza aspettare il tx-monitor (che impiega 1-3 min via Alchemy).
+      // ID unico "evm-swap:chainId:txHash" — non collidere con i record del tx-monitor
+      // (che usano "chainId:txHash:direction:logIndex" per le ERC-20 transfer).
+      if (finalTxHash) {
+        const cId      = current.quote.fromChainId;
+        const netName  = chainName(cId);
+        const fromSym  = current.quote.fromToken.symbol;
+        const toSym    = current.quote.toToken?.symbol ?? "";
+        const amtHuman = fromTokenUnits(current.quote.fromAmount, current.quote.fromToken.decimals);
+
+        saveTxRecord({
+          id:          `evm-swap:${cId}:${finalTxHash}`,
+          chainId:     cId,
+          network:     netName,
+          txHash:      finalTxHash,
+          direction:   "out",
+          asset:       fromSym,
+          amount:      amtHuman,
+          txType:      "swap",
+          swapToAsset: toSym,
+          timestamp:   Date.now(),
+          status:      "confirmed",
+          updatedAt:   Date.now(),
+        }).catch(() => { /* best-effort */ });
+
+        dispatchWalletNotification({
+          type:        "sent",
+          chainId:     cId,
+          network:     netName,
+          asset:       fromSym,
+          amount:      amtHuman,
+          txHash:      finalTxHash,
+          status:      "confirmed",
+          txType:      "swap",
+          swapToAsset: toSym,
+          timestamp:   Date.now(),
+        }).catch(() => { /* best-effort */ });
+      }
 
       await swapApi(`/${current.quote.routeId}`, {
         method: "PATCH",
