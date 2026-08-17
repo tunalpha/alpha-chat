@@ -30,9 +30,9 @@ bash scripts/pre-deploy-check.sh
 ```
 
 ## Conteggio test (al 2026-08-17)
-- Frontend critici: 65 test
-- Backend critici: 45 test
-- Totale: 110 test, ~5s di esecuzione
+- Frontend critici: 87 test (4 file — incluso mobile-ios-safety.test.ts)
+- Backend critici: 45 test (2 file)
+- Totale: 132 test, ~7s di esecuzione
 
 ## Regola
 Ogni nuova funzione di validazione indirizzi, firma, o stato di pagamento DEVE aggiungere
