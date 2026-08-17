@@ -157,8 +157,8 @@ export async function getBtcLnQuote(fromAmountSat: number): Promise<BtcLnQuote> 
   const toAmountSat = fromAmountSat - providerFee - minerFee;
 
   if (toAmountSat <= 0) throw new AppError("SWAP_AMOUNT_TOO_SMALL", 400);
-  if (fromAmountSat < info.limits.minimal) throw new AppError("SWAP_BELOW_MINIMUM", 400);
-  if (fromAmountSat > info.limits.maximal) throw new AppError("SWAP_ABOVE_MAXIMUM", 400);
+  if (fromAmountSat < info.limits.minimal) throw new AppError("SWAP_BELOW_MINIMUM", 400, undefined, { min_sat: info.limits.minimal, max_sat: info.limits.maximal });
+  if (fromAmountSat > info.limits.maximal) throw new AppError("SWAP_ABOVE_MAXIMUM", 400, undefined, { min_sat: info.limits.minimal, max_sat: info.limits.maximal });
 
   return {
     route:            "btc_onchain_to_lightning",

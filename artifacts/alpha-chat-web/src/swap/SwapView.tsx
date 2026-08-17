@@ -97,18 +97,25 @@ function humanizeBtcSwapError(raw: string): string {
     try {
       const p = JSON.parse(raw) as Record<string, unknown>;
       const code = String(p.code ?? p.message ?? "");
-      return humanizeBtcCode(code || raw);
+      const details = p.details as Record<string, unknown> | undefined;
+      const minSat = typeof details?.min_sat === "number" ? details.min_sat : undefined;
+      const maxSat = typeof details?.max_sat === "number" ? details.max_sat : undefined;
+      return humanizeBtcCode(code || raw, minSat, maxSat);
     } catch { /* ignore */ }
   }
   return humanizeBtcCode(raw);
 }
 
-function humanizeBtcCode(code: string): string {
+function humanizeBtcCode(code: string, minSat?: number, maxSat?: number): string {
   switch (code) {
     case "SWAP_BELOW_MINIMUM":
-      return "Importo inferiore al minimo. Prova con un importo maggiore.";
+      return minSat != null
+        ? `Importo inferiore al minimo di ${minSat.toLocaleString("it-IT")} sat. Ricarica il wallet o riduci le fee.`
+        : "Importo inferiore al minimo. Prova con un importo maggiore.";
     case "SWAP_ABOVE_MAXIMUM":
-      return "Importo superiore al massimo. Prova con un importo minore.";
+      return maxSat != null
+        ? `Importo superiore al massimo di ${maxSat.toLocaleString("it-IT")} sat.`
+        : "Importo superiore al massimo. Prova con un importo minore.";
     // Tutto il resto → generico, nessun dettaglio tecnico all'utente
     default:
       return "Swap non disponibile al momento. Riprova tra qualche istante.";
