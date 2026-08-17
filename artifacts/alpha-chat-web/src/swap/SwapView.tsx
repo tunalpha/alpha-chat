@@ -90,7 +90,16 @@ class EvmErrorBoundary extends React.Component<
 
 // ── BTC/LN error humanizer ────────────────────────────────────────────────────
 
-function humanizeBtcSwapError(raw: string): string {
+interface BtcPrices { priceUSD: number | null; priceEUR: number | null }
+
+function satToFiat(sat: number, prices: BtcPrices): string {
+  const btc = sat / 1e8;
+  if (prices.priceEUR) return `≈ €${(btc * prices.priceEUR).toFixed(2)}`;
+  if (prices.priceUSD) return `≈ $${(btc * prices.priceUSD).toFixed(2)}`;
+  return "";
+}
+
+function humanizeBtcSwapError(raw: string, prices?: BtcPrices): string {
   if (!raw) return "Errore sconosciuto durante lo swap.";
   // Difensivo: JSON grezzo (non dovrebbe più arrivare dopo fix swapFetch, ma per sicurezza)
   if (raw.startsWith("{")) {
@@ -100,22 +109,28 @@ function humanizeBtcSwapError(raw: string): string {
       const details = p.details as Record<string, unknown> | undefined;
       const minSat = typeof details?.min_sat === "number" ? details.min_sat : undefined;
       const maxSat = typeof details?.max_sat === "number" ? details.max_sat : undefined;
-      return humanizeBtcCode(code || raw, minSat, maxSat);
+      return humanizeBtcCode(code || raw, minSat, maxSat, prices);
     } catch { /* ignore */ }
   }
-  return humanizeBtcCode(raw);
+  return humanizeBtcCode(raw, undefined, undefined, prices);
 }
 
-function humanizeBtcCode(code: string, minSat?: number, maxSat?: number): string {
+function humanizeBtcCode(code: string, minSat?: number, maxSat?: number, prices?: BtcPrices): string {
   switch (code) {
-    case "SWAP_BELOW_MINIMUM":
-      return minSat != null
-        ? `Importo inferiore al minimo di ${minSat.toLocaleString("it-IT")} sat. Ricarica il wallet o riduci le fee.`
-        : "Importo inferiore al minimo. Prova con un importo maggiore.";
-    case "SWAP_ABOVE_MAXIMUM":
-      return maxSat != null
-        ? `Importo superiore al massimo di ${maxSat.toLocaleString("it-IT")} sat.`
-        : "Importo superiore al massimo. Prova con un importo minore.";
+    case "SWAP_BELOW_MINIMUM": {
+      if (minSat != null) {
+        const fiat = prices ? satToFiat(minSat, prices) : "";
+        return `Importo inferiore al minimo di ${minSat.toLocaleString("it-IT")} sat${fiat ? ` (${fiat})` : ""}. Ricarica il wallet per procedere.`;
+      }
+      return "Importo inferiore al minimo. Prova con un importo maggiore.";
+    }
+    case "SWAP_ABOVE_MAXIMUM": {
+      if (maxSat != null) {
+        const fiat = prices ? satToFiat(maxSat, prices) : "";
+        return `Importo superiore al massimo di ${maxSat.toLocaleString("it-IT")} sat${fiat ? ` (${fiat})` : ""}.`;
+      }
+      return "Importo superiore al massimo. Prova con un importo minore.";
+    }
     // Tutto il resto → generico, nessun dettaglio tecnico all'utente
     default:
       return "Swap non disponibile al momento. Riprova tra qualche istante.";
@@ -919,7 +934,7 @@ function SwapMainForm({ sv, actions, config, btcBalance, btcBalLoading }: SwapMa
         {sv.error && sv.state === "idle" && (
           <div className="asw-alert asw-alert--error">
             <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 1 }} />
-            <span>{humanizeBtcSwapError(sv.error.message)}</span>
+            <span>{humanizeBtcSwapError(sv.error.message, btcPrice)}</span>
           </div>
         )}
 
