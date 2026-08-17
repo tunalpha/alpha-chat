@@ -32,6 +32,7 @@ import {
   configureLiFiWallet, clearLiFiWallet,
   type LiFiStatus,
 } from "./lifi-client.js";
+import { apiRefreshSession } from "../../lib/api.js";
 import {
   EVM_SWAP_ACTIVE_KEY, EVM_SWAP_IKEY,
   LIFI_INTEGRATOR, LIFI_FEE,
@@ -44,11 +45,11 @@ import {
 // ── Module-level anti-double-click lock ───────────────────────────────────────
 let _evmExecuting = false;
 
-// ── Auth fetch (isolato — legge token da localStorage) ────────────────────────
-const AC_TOKEN_KEY = "ac_access_token";
+// ── Auth fetch (usa ensureValidToken via apiRefreshSession) ───────────────────
 
 async function swapApi(path: string, options?: RequestInit): Promise<unknown> {
-  const token = localStorage.getItem(AC_TOKEN_KEY) ?? "";
+  // Garantisce un token valido prima di ogni chiamata — evita 401 da token scaduto
+  const token = await apiRefreshSession() ?? "";
   const base  = (window as unknown as Record<string, string>).__VITE_API_BASE__ ?? "";
   const res   = await fetch(`${base}/api/v1/swap/evm${path}`, {
     ...options,
