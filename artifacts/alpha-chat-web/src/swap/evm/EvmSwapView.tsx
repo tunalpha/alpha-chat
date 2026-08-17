@@ -566,7 +566,7 @@ function EvmCompletedView({ txHash, fromChainId, toToken, toAmount, onDone }: {
   );
 }
 
-function EvmFailedView({ onRetry }: { error?: string; onRetry: () => void }) {
+function EvmFailedView({ error, onRetry }: { error?: string; onRetry: () => void }) {
   return (
     <div className="asw-status-view">
       <div className="asw-status-icon asw-status-icon--error">
@@ -574,7 +574,7 @@ function EvmFailedView({ onRetry }: { error?: string; onRetry: () => void }) {
       </div>
       <div>
         <p className="asw-status-title">Swap non riuscito</p>
-        <p className="asw-status-sub">Swap non disponibile al momento. Riprova tra qualche istante.</p>
+        <p className="asw-status-sub">{humanizeEvmError(error ?? "SWAP_UNAVAILABLE")}</p>
       </div>
       <button onClick={onRetry} className="aw-btn aw-btn--primary" style={{ maxWidth: 300, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
         <RefreshCw size={16} /> Riprova
@@ -715,8 +715,14 @@ function humanizeEvmCode(code: string): string {
       if (lower.includes("no route") || lower.includes("no routes") || lower.includes("not found")) {
         return "Nessuna route disponibile per questa coppia. Prova un importo o token diverso.";
       }
+      if (lower.includes("insufficient funds") || lower.includes("insufficient balance") || lower.includes("not enough") || lower.includes("exceeds balance")) {
+        return "Saldo insufficiente per gas + importo. Riduci l'importo.";
+      }
       if (lower.includes("insufficient liquidity") || lower.includes("liquidity")) {
         return "Liquidità insufficiente. Prova un importo minore.";
+      }
+      if (lower.includes("wallet non configurato") || lower.includes("wallet not configured") || lower.includes("configurelifi")) {
+        return "Wallet non configurato. Riprova.";
       }
       // Fallback generico
       return "Swap non disponibile al momento. Riprova tra qualche istante.";

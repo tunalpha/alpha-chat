@@ -98,11 +98,11 @@ export function notificationIcon(type: WalletNotificationType): string {
 /** Titolo push notification */
 export function notificationTitle(n: WalletNotification): string {
   switch (n.type) {
-    case "received":  return `💰 Hai ricevuto ${n.amount} ${n.asset}`;
-    case "sent":      return `📤 Invio ${n.asset} confermato`;
-    case "pending":   return `⏳ ${n.asset} in attesa di conferma`;
-    case "confirmed": return `✅ Transazione confermata`;
-    case "failed":    return `❌ Transazione fallita`;
+    case "received":  return `💰 Alpha Wallet — ${n.amount} ${n.asset} ricevuto`;
+    case "sent":      return `📤 Alpha Wallet — Invio ${n.asset} confermato`;
+    case "pending":   return `⏳ Alpha Wallet — ${n.asset} in attesa`;
+    case "confirmed": return `✅ Alpha Wallet — Transazione confermata`;
+    case "failed":    return `❌ Alpha Wallet — Transazione fallita`;
   }
 }
 

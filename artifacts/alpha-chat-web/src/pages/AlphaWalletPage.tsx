@@ -4086,6 +4086,7 @@ function HistoryView({ onBack, filterSymbol }: { onBack: () => void; filterSymbo
 
   // ── On-chain state ──────────────────────────────────────────────────────
   const [filter,      setFilter]      = useState<TxFilter>("all");
+  const [chainFilter, setChainFilter] = useState<number | "all">("all");
   const [selectedTx,  setSelectedTx]  = useState<WalletTxRecord | null>(null);
   const [page,        setPage]        = useState(1);
   const [repolling,   setRepolling]   = useState(false);
@@ -4309,7 +4310,13 @@ function HistoryView({ onBack, filterSymbol }: { onBack: () => void; filterSymbo
     try { await wallet.resetAndRepoll(); } finally { setRepolling(false); }
   }
 
+  // Reti presenti nello storico (per mostrare solo i chip rilevanti)
+  const chainsInHistory = Array.from(new Set(wallet.txHistory.map(t => t.chainId))).sort((a, b) => a - b);
+  const chainShortLabel: Record<number, string> = { 137: "Polygon", 1: "Ethereum", 56: "BSC", 0: "Bitcoin" };
+
   const filtered = wallet.txHistory.filter(tx => {
+    // Chain filter
+    if (chainFilter !== "all" && tx.chainId !== chainFilter) return false;
     // Token filter from Token Detail view
     if (filterSymbol && tx.asset !== filterSymbol) return false;
     if (filter === "all") return true;
@@ -4334,6 +4341,27 @@ function HistoryView({ onBack, filterSymbol }: { onBack: () => void; filterSymbo
           </span>
         </div>
       )}
+      {/* Filtro rete — mostrato solo se ci sono TX su più di 1 chain */}
+      {chainsInHistory.length > 1 && (
+        <div className="aw-history-filters" style={{ display: "flex", alignItems: "center", gap: 6, paddingBottom: 0 }}>
+          <button
+            className={`aw-filter-chip ${chainFilter === "all" ? "aw-filter-chip--active" : ""}`}
+            onClick={() => { setChainFilter("all"); setPage(1); }}
+          >
+            Tutte le reti
+          </button>
+          {chainsInHistory.map(cid => (
+            <button
+              key={cid}
+              className={`aw-filter-chip ${chainFilter === cid ? "aw-filter-chip--active" : ""}`}
+              onClick={() => { setChainFilter(cid); setPage(1); }}
+            >
+              {chainShortLabel[cid] ?? `#${cid}`}
+            </button>
+          ))}
+        </div>
+      )}
+      {/* Filtro direzione */}
       <div className="aw-history-filters" style={{ display: "flex", alignItems: "center", gap: 6 }}>
         {(["all", "in", "out", "pending"] as TxFilter[]).map(f => (
           <button

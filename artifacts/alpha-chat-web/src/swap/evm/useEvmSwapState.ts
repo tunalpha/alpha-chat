@@ -575,7 +575,8 @@ export function useEvmSwapState(opts?: EvmSwapStateOpts): [EvmSwapStateValue, Ev
       } else if (isWalletLocked) {
         setSv(prev => ({ ...prev, phase: "idle", error: { code: "ALPHA_WALLET_LOCKED", message: "ALPHA_WALLET_LOCKED" } }));
       } else {
-        setSv(prev => ({ ...prev, phase: "failed", error: { code: "EXECUTE_ERROR", message: "SWAP_UNAVAILABLE" } }));
+        // Passa il messaggio reale → humanizeEvmCode mostrerà un testo specifico
+        setSv(prev => ({ ...prev, phase: "failed", error: { code: "EXECUTE_ERROR", message: msg || "SWAP_UNAVAILABLE" } }));
       }
     } finally {
       _evmExecuting = false;
