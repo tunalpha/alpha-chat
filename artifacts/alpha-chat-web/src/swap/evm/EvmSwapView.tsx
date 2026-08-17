@@ -655,6 +655,9 @@ function humanizeEvmCode(code: string): string {
       if (lower.includes("wallet non configurato") || lower.includes("wallet not configured") || lower.includes("configurelifi")) {
         return "Wallet non configurato. Riprova.";
       }
+      if (lower.includes("indirizzo bitcoin non valido") || lower.includes("bitcoin") && lower.includes("non valido")) {
+        return "Formato indirizzo Bitcoin non supportato. Riprova la quote.";
+      }
       if (lower.includes("execution reverted") || lower.includes("call_exception") || lower.includes("revert")) {
         return "Transazione rifiutata dalla rete. Prova con un importo o token diverso.";
       }

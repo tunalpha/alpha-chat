@@ -90,9 +90,13 @@ export interface BtcBroadcastResult {
 
 export function validateBtcAddress(addr: string): string | null {
   if (!addr.trim()) return "Inserisci un indirizzo Bitcoin destinatario";
-  // bc1q (P2WPKH) mainnet
-  if (/^bc1q[ac-hj-np-z02-9]{38,87}$/.test(addr)) return null;
-  // Legacy (P2PKH) — 1...
+  // bc1q — P2WPKH (42 chars) e P2WSH (62 chars), entrambi native segwit
+  if (/^bc1q[ac-hj-np-z02-9]{6,87}$/.test(addr)) return null;
+  // bc1p — P2TR Taproot (62 chars, bech32m). @scure/btc-signer addOutputAddress la supporta.
+  // Li.Fi/Thorchain vault addresses possono essere Taproot — senza questo la validazione bloccava
+  // tutti gli swap EVM→BTC verso indirizzi bc1p. (Fix: 2026-08-17)
+  if (/^bc1p[ac-hj-np-z02-9]{6,87}$/.test(addr)) return null;
+  // Legacy P2PKH (1…) e P2SH (3…)
   if (/^[13][a-km-zA-HJ-NP-Z1-9]{25,34}$/.test(addr)) return null;
   return "Indirizzo Bitcoin non valido";
 }
