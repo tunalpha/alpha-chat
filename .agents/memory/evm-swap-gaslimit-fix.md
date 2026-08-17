@@ -32,3 +32,8 @@ const txHash = await walletClient.sendTransaction({
 ## swapApi auth fix (correlato)
 `swapApi` usava `apiRefreshSession()` (= `ensureValidToken()`) che in cooldown (10s post-refresh-fail) tornava `null` → niente header Authorization → 401 su ogni tracking call.
 Fix: usa `getAccessToken()` direttamente (stesso pattern di `request()` in api.ts). Le chiamate swapApi sono fire-and-forget — non serve refresh proattivo.
+
+## Ethereum RPC — cloudflare-eth.com MORTO (🔒 permanente)
+`cloudflare-eth.com` è stato dismesso nel 2023 e restituisce `{"error":"Cannot fulfill request"}`.
+RPC sostitutivo validato in produzione (swap USDT→POL confermato 17 ago 2026): `https://ethereum.publicnode.com`.
+Non usare mai cloudflare-eth.com per nessun motivo.
