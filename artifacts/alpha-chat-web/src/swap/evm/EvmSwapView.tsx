@@ -151,10 +151,11 @@ function fmtBal(raw: bigint | undefined, decimals: number): string {
 }
 
 // Riserva gas per token nativi (MAX non deve azzerare il gas)
+// ETH: 0.003 ETH copre ~150k gas a 20 gwei ($5.70 a $1900/ETH)
 const GAS_RESERVE: Record<number, bigint> = {
   137: 20000000000000000n,   // 0.02 POL  (Polygon — gas economico)
   56:  5000000000000000n,    // 0.005 BNB (BSC)
-  1:   5000000000000000n,    // 0.005 ETH (Ethereum)
+  1:   3000000000000000n,    // 0.003 ETH (Ethereum — ridotto da 0.005)
 };
 
 // ── Hook: prezzo token in USD e EUR (via Li.Fi + exchangerate-api) ─────────────
@@ -703,9 +704,23 @@ function humanizeEvmCode(code: string): string {
     case "NO_WALLET":
     case "ALPHA_WALLET_LOCKED":
       return "Sblocca Alpha Wallet con il PIN prima di procedere.";
-    // Tutto il resto (errori di rete, revert on-chain, liquidità, ecc.) → generico
-    default:
+    case "SWAP_UNAVAILABLE":
       return "Swap non disponibile al momento. Riprova tra qualche istante.";
+    default: {
+      // Messaggi Li.Fi specifici (passati direttamente come message) → parsing testuale
+      const lower = code.toLowerCase();
+      if (lower.includes("min") && (lower.includes("amount") || lower.includes("requirement"))) {
+        return "Importo troppo basso per questo swap. Prova un importo maggiore.";
+      }
+      if (lower.includes("no route") || lower.includes("no routes") || lower.includes("not found")) {
+        return "Nessuna route disponibile per questa coppia. Prova un importo o token diverso.";
+      }
+      if (lower.includes("insufficient liquidity") || lower.includes("liquidity")) {
+        return "Liquidità insufficiente. Prova un importo minore.";
+      }
+      // Fallback generico
+      return "Swap non disponibile al momento. Riprova tra qualche istante.";
+    }
   }
 }
 
@@ -989,6 +1004,16 @@ export function EvmSwapView({ onBack, alphaWalletAddress, getAlphaWalletClient }
     actions.setFromAmount("");
   }, [actions]);
 
+  // Messaggio gas insufficiente per chip % (mostrato temporaneamente)
+  const [gasWarning, setGasWarning] = useState<string | null>(null);
+  const gasWarnTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const showGasWarning = useCallback((msg: string) => {
+    if (gasWarnTimerRef.current) clearTimeout(gasWarnTimerRef.current);
+    setGasWarning(msg);
+    gasWarnTimerRef.current = setTimeout(() => setGasWarning(null), 4000);
+  }, []);
+
   // Bottoni % (10 / 25 / 50 / 100=MAX) con riserva gas per token nativi
   const handlePct = useCallback((pct: number) => {
     if (!sv.fromToken) return;
@@ -998,7 +1023,15 @@ export function EvmSwapView({ onBack, alphaWalletAddress, getAlphaWalletClient }
     let spendable = raw;
     if (sv.fromToken.isNative) {
       const reserve = GAS_RESERVE[sv.fromChainId] ?? 10000000000000000n;
-      spendable = raw > reserve ? raw - reserve : 0n;
+      if (raw <= reserve) {
+        const reserveHuman = parseFloat(fromTokenUnits(reserve.toString(), sv.fromToken.decimals)).toFixed(4);
+        showGasWarning(
+          `Saldo ${sv.fromToken.symbol} insufficiente per coprire il gas. ` +
+          `Riserva minima: ${reserveHuman} ${sv.fromToken.symbol}.`
+        );
+        return;
+      }
+      spendable = raw - reserve;
     }
     if (spendable <= 0n) return;
 
@@ -1006,12 +1039,13 @@ export function EvmSwapView({ onBack, alphaWalletAddress, getAlphaWalletClient }
     const portion  = (spendable * fraction) / 100n;
     if (portion <= 0n) return;
 
+    setGasWarning(null);
     const human = fromTokenUnits(portion.toString(), sv.fromToken.decimals);
     setAmountMode("from");
     setToInput("");
     setFiatCurrency("");        // torna in modalità crypto dopo pct
     actions.setFromAmount(human);
-  }, [sv.fromToken, sv.fromChainId, balancesState.map, actions]);
+  }, [sv.fromToken, sv.fromChainId, balancesState.map, actions, showGasWarning]);
 
   // ── Balance guard ────────────────────────────────────────────────────────────
   const fromBal = sv.fromToken ? balancesState.map.get(sv.fromToken.address) : undefined;
@@ -1158,6 +1192,14 @@ export function EvmSwapView({ onBack, alphaWalletAddress, getAlphaWalletClient }
           <div className="asw-alert asw-alert--error" style={{ marginTop: -8 }}>
             <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 1 }} />
             <span>Saldo insufficiente. Inserisci un importo minore o premi MAX.</span>
+          </div>
+        )}
+
+        {/* Warning gas insufficiente (chip %) */}
+        {gasWarning && (
+          <div className="asw-alert asw-alert--warn" style={{ marginTop: -8 }}>
+            <AlertTriangle size={14} style={{ flexShrink: 0, marginTop: 1 }} />
+            <span>{gasWarning}</span>
           </div>
         )}
 

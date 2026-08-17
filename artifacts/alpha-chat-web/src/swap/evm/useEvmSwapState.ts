@@ -355,7 +355,9 @@ export function useEvmSwapState(opts?: EvmSwapStateOpts): [EvmSwapStateValue, Ev
       if (isMounted.current) setSv(prev => ({ ...prev, phase: "quoted", quote, error: null }));
     } catch (err) {
       console.error("[AlphaSwap] fetchQuote error:", err);
-      if (isMounted.current) setSv(prev => ({ ...prev, phase: "idle", error: { code: "QUOTE_ERROR", message: "SWAP_UNAVAILABLE" } }));
+      // Propaga il messaggio Li.Fi per consentire all'UI messaggi più specifici
+      const errMsg = err instanceof Error ? err.message : "SWAP_UNAVAILABLE";
+      if (isMounted.current) setSv(prev => ({ ...prev, phase: "idle", error: { code: "QUOTE_ERROR", message: errMsg } }));
     }
   }, [effectiveAddress]);
 
