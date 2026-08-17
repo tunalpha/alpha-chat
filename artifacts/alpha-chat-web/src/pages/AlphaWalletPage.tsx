@@ -4310,13 +4310,15 @@ function HistoryView({ onBack, filterSymbol }: { onBack: () => void; filterSymbo
     try { await wallet.resetAndRepoll(); } finally { setRepolling(false); }
   }
 
-  // Reti presenti nello storico (per mostrare solo i chip rilevanti)
-  const chainsInHistory = Array.from(new Set(wallet.txHistory.map(t => t.chainId))).sort((a, b) => a - b);
+  // Reti presenti nello storico — coerce sempre a number per evitare mismatch IDB (string vs number)
+  const chainsInHistory = Array.from(new Set(wallet.txHistory.map(t => Number(t.chainId))))
+    .filter(n => !isNaN(n))
+    .sort((a, b) => a - b);
   const chainShortLabel: Record<number, string> = { 137: "Polygon", 1: "Ethereum", 56: "BSC", 0: "Bitcoin" };
 
   const filtered = wallet.txHistory.filter(tx => {
-    // Chain filter
-    if (chainFilter !== "all" && tx.chainId !== chainFilter) return false;
+    // Chain filter — confronto sempre come number per robustezza (IDB può restituire strings)
+    if (chainFilter !== "all" && Number(tx.chainId) !== chainFilter) return false;
     // Token filter from Token Detail view
     if (filterSymbol && tx.asset !== filterSymbol) return false;
     if (filter === "all") return true;
@@ -4353,8 +4355,9 @@ function HistoryView({ onBack, filterSymbol }: { onBack: () => void; filterSymbo
           {chainsInHistory.map(cid => (
             <button
               key={cid}
+              type="button"
               className={`aw-filter-chip ${chainFilter === cid ? "aw-filter-chip--active" : ""}`}
-              onClick={() => { setChainFilter(cid); setPage(1); }}
+              onClick={() => { setChainFilter(Number(cid)); setPage(1); }}
             >
               {chainShortLabel[cid] ?? `#${cid}`}
             </button>
