@@ -6,12 +6,13 @@
  */
 
 import React, { useState, useMemo } from "react";
-import { X, Search } from "lucide-react";
+import { X, Search, Loader2 } from "lucide-react";
 import {
   EVM_SWAP_CHAINS, EVM_SWAP_TOKENS, BTC_CHAIN_ID, isBtcChain,
   fromTokenUnits,
   type EvmToken, type EvmChainInfo,
 } from "./types.js";
+import { useEvmTokenBalances } from "./useEvmTokenBalances.js";
 
 const CHAIN_COLOR: Record<number, string> = {
   137:         "#8247E5",
@@ -50,9 +51,9 @@ interface TokenSelectorProps {
   currentChainId: number;
   side:           "from" | "to";
   otherToken?:    EvmToken;
-  /** Balance per address token → bigint */
+  /** @deprecated — i saldi vengono fetchati internamente per-chain; questo prop è ignorato */
   balances?:      Map<string, bigint>;
-  /** Wallet address (per sapere se mostrare balance) */
+  /** Wallet address — necessario per mostrare i saldi */
   walletAddress?: string;
 }
 
@@ -76,10 +77,17 @@ function fmtBal(raw: bigint | undefined, decimals: number): string | null {
 }
 
 export function TokenSelector({
-  open, onClose, onSelectToken, currentChainId, side, otherToken, balances, walletAddress,
+  open, onClose, onSelectToken, currentChainId, side, otherToken, walletAddress,
 }: TokenSelectorProps) {
   const [selectedChain, setSelectedChain] = useState<number>(currentChainId);
   const [query, setQuery] = useState("");
+
+  // Fetch saldi per la chain SELEZIONATA nel selettore — si aggiorna automaticamente
+  // quando l'utente cambia la chain pill, evitando saldi stale cross-chain.
+  const { map: balances, loading: balLoading } = useEvmTokenBalances(
+    selectedChain,
+    walletAddress,
+  );
 
   const tokens = useMemo(() => {
     const list = EVM_SWAP_TOKENS.filter(t => t.chainId === selectedChain);
@@ -147,10 +155,9 @@ export function TokenSelector({
             <p className="asw-hint" style={{ padding: "32px 0" }}>Nessun token trovato.</p>
           ) : (
             tokens.map(token => {
-              const rawBal  = balances?.get(token.address);
-              const balStr  = (hasWallet && selectedChain === token.chainId)
-                ? fmtBal(rawBal, token.decimals)
-                : null;
+              const rawBal  = balances.get(token.address);
+              // Saldi sempre disponibili per la chain selezionata (fetchati internamente)
+              const balStr  = hasWallet ? fmtBal(rawBal, token.decimals) : null;
               const hasBal  = balStr !== null && balStr !== "0";
 
               return (
@@ -175,9 +182,11 @@ export function TokenSelector({
                   </div>
 
                   <div className="asw-token-list-right">
-                    {balStr !== null ? (
+                    {hasWallet && balLoading ? (
+                      <Loader2 size={14} style={{ color: "rgba(255,255,255,.3)", animation: "spin 1s linear infinite" }} />
+                    ) : balStr !== null ? (
                       <>
-                        <p className={`asw-token-list-bal${!hasBal ? "" : ""}`} style={{ color: hasBal ? "rgba(255,255,255,.85)" : "rgba(255,255,255,.35)" }}>
+                        <p className="asw-token-list-bal" style={{ color: hasBal ? "rgba(255,255,255,.85)" : "rgba(255,255,255,.35)" }}>
                           {balStr}
                         </p>
                         <p className="asw-token-list-bal-sub">{token.symbol}</p>
