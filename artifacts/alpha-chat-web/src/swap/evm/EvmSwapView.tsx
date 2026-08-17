@@ -54,11 +54,19 @@ const CHAIN_COLOR: Record<number, string> = {
 // ── Lettura balance via RPC ───────────────────────────────────────────────────
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const CHAIN_RPC: Record<number, string> = {
-  137: ((import.meta as any).env?.VITE_POLYGON_RPC as string | undefined) ?? "https://polygon-rpc.com",
-  56:  "https://bsc-dataseed.binance.org/",
-  // Cloudflare Ethereum gateway — più affidabile di llamarpc in tutti i mercati
-  1:   "https://cloudflare-eth.com",
+const _VITE_POLY = ((import.meta as any).env?.VITE_POLYGON_RPC as string | undefined);
+
+/** Lista ordinata di RPC per chain — il primo che risponde viene usato */
+const CHAIN_RPC: Record<number, string[]> = {
+  137: [_VITE_POLY ?? "https://polygon-rpc.com"],
+  56:  ["https://bsc-dataseed.binance.org/", "https://bsc-dataseed1.ninicoin.io/"],
+  // Ethereum: più fallback perché cloudflare può bloccare Safari iOS
+  1:   [
+    "https://rpc.ankr.com/eth",
+    "https://ethereum-rpc.publicnode.com",
+    "https://1rpc.io/eth",
+    "https://cloudflare-eth.com",
+  ],
 };
 
 async function rpcPost<T>(rpcUrl: string, method: string, params: unknown[]): Promise<T> {
@@ -72,6 +80,20 @@ async function rpcPost<T>(rpcUrl: string, method: string, params: unknown[]): Pr
   return data.result as T;
 }
 
+/** Prova ogni RPC nell'ordine finché uno risponde */
+async function rpcPostWithFallback<T>(chainId: number, method: string, params: unknown[]): Promise<T> {
+  const urls = CHAIN_RPC[chainId] ?? [];
+  let lastErr: unknown;
+  for (const url of urls) {
+    try {
+      return await rpcPost<T>(url, method, params);
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+  throw lastErr ?? new Error(`No RPC available for chain ${chainId}`);
+}
+
 interface BalancesState {
   map:     Map<string, bigint>;
   loading: boolean;
@@ -82,8 +104,7 @@ function useEvmTokenBalances(chainId: number, address: string | undefined): Bala
 
   useEffect(() => {
     if (!address) { setState({ map: new Map(), loading: false }); return; }
-    const rpcUrl = CHAIN_RPC[chainId];
-    if (!rpcUrl) return;
+    if (!CHAIN_RPC[chainId]?.length) return;
 
     const tokens = getTokensForChain(chainId);
     let cancelled = false;
@@ -92,11 +113,11 @@ function useEvmTokenBalances(chainId: number, address: string | undefined): Bala
     Promise.allSettled(
       tokens.map(async (t) => {
         if (t.isNative) {
-          const hex = await rpcPost<string>(rpcUrl, "eth_getBalance", [address, "latest"]);
+          const hex = await rpcPostWithFallback<string>(chainId, "eth_getBalance", [address, "latest"]);
           return [t.address, BigInt(hex ?? "0x0")] as const;
         } else {
           const pad = address.slice(2).padStart(64, "0");
-          const hex = await rpcPost<string>(rpcUrl, "eth_call", [
+          const hex = await rpcPostWithFallback<string>(chainId, "eth_call", [
             { to: t.address, data: `0x70a08231${pad}` }, "latest",
           ]);
           return [t.address, BigInt(hex || "0x0")] as const;
@@ -801,16 +822,32 @@ export function EvmSwapView({ onBack, alphaWalletAddress, getAlphaWalletClient }
 
   const handleTokenSelect = useCallback((token: EvmToken, chainId: number) => {
     if (tokenSide === "from") {
+      // Auto-swap: se l'utente sceglie lo stesso token che è già in RICEVI → inverti
+      const sameAsTo = sv.toToken
+        && sv.toToken.chainId === chainId
+        && sv.toToken.address.toLowerCase() === token.address.toLowerCase();
+      if (sameAsTo && sv.fromToken) {
+        actions.setToChain(sv.fromChainId);
+        actions.setToToken(sv.fromToken);
+      }
       actions.setFromChain(chainId);
       actions.setFromToken(token);
     } else {
+      // Auto-swap: se l'utente sceglie lo stesso token che è già in PAGA → inverti
+      const sameAsFrom = sv.fromToken
+        && sv.fromToken.chainId === chainId
+        && sv.fromToken.address.toLowerCase() === token.address.toLowerCase();
+      if (sameAsFrom && sv.toToken) {
+        actions.setFromChain(sv.toChainId);
+        actions.setFromToken(sv.toToken);
+      }
       actions.setToChain(chainId);
       actions.setToToken(token);
     }
     // Reset mode su cambio token
     setAmountMode("from");
     setToInput("");
-  }, [tokenSide, actions]);
+  }, [tokenSide, actions, sv.fromToken, sv.toToken, sv.fromChainId, sv.toChainId]);
 
   const handleFromAmountChange = useCallback((val: string) => {
     setAmountMode("from");

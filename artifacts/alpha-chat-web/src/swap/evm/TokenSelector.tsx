@@ -140,11 +140,6 @@ export function TokenSelector({
             <p className="asw-hint" style={{ padding: "32px 0" }}>Nessun token trovato.</p>
           ) : (
             tokens.map(token => {
-              const isSameAsOther =
-                otherToken &&
-                otherToken.chainId === token.chainId &&
-                otherToken.address.toLowerCase() === token.address.toLowerCase();
-
               const rawBal  = balances?.get(token.address);
               const balStr  = (hasWallet && selectedChain === token.chainId)
                 ? fmtBal(rawBal, token.decimals)
@@ -158,7 +153,6 @@ export function TokenSelector({
                     onSelectToken(token, selectedChain);
                     onClose();
                   }}
-                  disabled={!!isSameAsOther}
                   className="asw-token-list-item"
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
