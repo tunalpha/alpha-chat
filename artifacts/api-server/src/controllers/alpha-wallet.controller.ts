@@ -643,9 +643,16 @@ interface AlchemyTransfer {
   log?: { logIndex?: number };
 }
 
+function _normalizeAsset(rawAsset: string | null | undefined, chainId: number): string {
+  // Alchemy restituisce "MATIC" per il nativo Polygon (pre-rebrand); normalizziamo a "POL"
+  // per consistenza con il portfolio (nativeSymbol = "POL" per chainId 137).
+  if (rawAsset === "MATIC" && chainId === 137) return "POL";
+  return rawAsset ?? (chainId === 1 ? "ETH" : chainId === 137 ? "POL" : "BNB");
+}
+
 function _mapAlchemy(t: AlchemyTransfer, myAddress: string, dir: "in" | "out", chainId: number) {
   const ts = t.metadata?.blockTimestamp ? Math.floor(new Date(t.metadata.blockTimestamp).getTime() / 1000) : undefined;
-  return { hash: t.hash, from: t.from, to: t.to ?? "", value: t.value != null ? String(t.value) : "0", asset: t.asset ?? (chainId === 1 ? "ETH" : chainId === 137 ? "POL" : "BNB"), category: t.category, blockNum: t.blockNum, timestamp: ts, status: "confirmed" as const, direction: dir, logIndex: t.log?.logIndex, contractAddress: t.rawContract?.address };
+  return { hash: t.hash, from: t.from, to: t.to ?? "", value: t.value != null ? String(t.value) : "0", asset: _normalizeAsset(t.asset, chainId), category: t.category, blockNum: t.blockNum, timestamp: ts, status: "confirmed" as const, direction: dir, logIndex: t.log?.logIndex, contractAddress: t.rawContract?.address };
 }
 
 // ─── GET /btc/transactions ─────────────────────────────────────────────────

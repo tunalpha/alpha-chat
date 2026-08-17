@@ -294,6 +294,7 @@ function AlphaWalletInner({ onBack }: Props) {
         return <HistoryView
           onBack={() => { setHistoryFilterSymbol(undefined); setSubView("overview"); }}
           filterSymbol={historyFilterSymbol}
+          onClearFilterSymbol={() => setHistoryFilterSymbol(undefined)}
         />;
       case "seed-export":
         return <SeedExportView onBack={() => setSubView("security")} />;
@@ -4077,9 +4078,9 @@ function WalletSettingsView({
 // Due tab fissi sempre visibili indipendentemente dal chain selezionato.
 // ═══════════════════════════════════════════════════════════════════════════
 
-type TxFilter = "all" | "in" | "out" | "pending";
+type TxFilter = "all" | "in" | "out" | "pending" | "swap";
 
-function HistoryView({ onBack, filterSymbol }: { onBack: () => void; filterSymbol?: string }) {
+function HistoryView({ onBack, filterSymbol, onClearFilterSymbol }: { onBack: () => void; filterSymbol?: string; onClearFilterSymbol?: () => void }) {
   const wallet = useWallet();
   // Finding 7: accesso a Spark per riconciliazione IDB ↔ SDK
   const spark = useSparkWalletOptional();
@@ -4323,14 +4324,20 @@ function HistoryView({ onBack, filterSymbol }: { onBack: () => void; filterSymbo
     .sort((a, b) => a - b);
   const chainShortLabel: Record<number, string> = { 137: "Polygon", 1: "Ethereum", 56: "BSC", 0: "Bitcoin" };
 
+  // Alias MATIC→POL: Alchemy restituiva "MATIC" per Polygon native pre-rebrand;
+  // i record già in IDB hanno asset="MATIC", quelli nuovi asset="POL".
+  // La normalizzazione backend copre i nuovi record; questo alias copre quelli vecchi.
+  const _normalizeAsset = (a: string) => (a === "MATIC" ? "POL" : a);
+
   const filtered = wallet.txHistory.filter(tx => {
     // Chain filter — confronto sempre come number per robustezza (IDB può restituire strings)
     if (chainFilter !== "all" && Number(tx.chainId) !== chainFilter) return false;
-    // Token filter from Token Detail view
-    if (filterSymbol && tx.asset !== filterSymbol) return false;
+    // Token filter from Token Detail view (con alias MATIC↔POL)
+    if (filterSymbol && _normalizeAsset(tx.asset) !== _normalizeAsset(filterSymbol)) return false;
+    if (filter === "swap") return tx.txType === "swap";
     if (filter === "all") return true;
     if (filter === "in") return tx.direction === "in" && tx.status !== "pending";
-    if (filter === "out") return tx.direction === "out" && tx.status !== "pending";
+    if (filter === "out") return tx.direction === "out" && tx.status !== "pending" && tx.txType !== "swap";
     if (filter === "pending") return tx.status === "pending";
     return true;
   });
@@ -4348,6 +4355,16 @@ function HistoryView({ onBack, filterSymbol }: { onBack: () => void; filterSymbo
           <span className="aw-filter-chip aw-filter-chip--active" style={{ display: "flex", alignItems: "center", gap: 4 }}>
             {filterSymbol}
           </span>
+          {/* Pulsante per rimuovere il filtro token e vedere tutto */}
+          {onClearFilterSymbol && (
+            <button
+              onClick={() => { onClearFilterSymbol(); setChainFilter("all"); setFilter("all"); setPage(1); }}
+              title="Mostra tutte le transazioni"
+              style={{ background: "rgba(255,255,255,.08)", border: "1px solid rgba(255,255,255,.12)", borderRadius: 20, color: "rgba(255,255,255,.6)", fontSize: 11, padding: "2px 8px", cursor: "pointer" }}
+            >
+              Vedi tutto ×
+            </button>
+          )}
         </div>
       )}
       {/* Filtro rete — mostrato solo se ci sono TX su più di 1 chain */}
@@ -4373,13 +4390,20 @@ function HistoryView({ onBack, filterSymbol }: { onBack: () => void; filterSymbo
       )}
       {/* Filtro direzione */}
       <div className="aw-history-filters" style={{ display: "flex", alignItems: "center", gap: 6 }}>
-        {(["all", "in", "out", "pending"] as TxFilter[]).map(f => (
+        {(["all", "in", "out", "pending", "swap"] as TxFilter[]).map(f => (
           <button
             key={f}
             className={`aw-filter-chip ${filter === f ? "aw-filter-chip--active" : ""}`}
             onClick={() => { setFilter(f); setPage(1); }}
           >
-            {f === "all" ? "Tutto" : f === "in" ? "🟢↓ Ricevuto" : f === "out" ? "🟣↑ Inviato" : "⏳ In attesa"}
+            {f === "all" ? "Tutto"
+              : f === "in" ? "🟢↓ Ricevuto"
+              : f === "out" ? "🟣↑ Inviato"
+              : f === "pending" ? "⏳ In attesa"
+              : <span style={{ display: "flex", alignItems: "center", gap: 3 }}>
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="13" height="13" strokeLinecap="round" strokeLinejoin="round"><path d="M7 16V4m0 0L3 8m4-4 4 4M17 8v12m0 0 4-4m-4 4-4-4"/></svg>
+                  Swap
+                </span>}
           </button>
         ))}
         {/* Pulsante reset monitor: forza un poll fresco da block 0 con order:desc */}
