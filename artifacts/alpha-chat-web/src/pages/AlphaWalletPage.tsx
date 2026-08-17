@@ -3452,15 +3452,22 @@ function NotificationsView({ onBack }: { onBack: () => void }) {
         const isIn      = n.type === "received" || n.type === "confirmed";
         const isPending = n.type === "pending";
         const isFailed  = n.type === "failed";
-        const txIcon    = isPending ? "⏳" : isFailed ? "❌" : isIn ? "🟢↓" : "🟣↑";
-        const txCls     = isPending ? "aw-tx-icon--pending" : "";
+        const isSwapN   = n.txType === "swap";
+        const txCls     = isPending ? "aw-tx-icon--pending" : isSwapN ? "aw-tx-icon--swap" : "";
+        const txIcon    = isPending ? "⏳" : isFailed ? "❌" : isSwapN
+          ? <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="18" height="18" strokeLinecap="round" strokeLinejoin="round"><path d="M7 16V4m0 0L3 8m4-4 4 4M17 8v12m0 0 4-4m-4 4-4-4"/></svg>
+          : isIn ? "🟢↓" : "🟣↑";
         return (
         <div key={n.id} className={`aw-notif-item ${!n.read ? "aw-notif-item--unread" : ""}`}>
           <div className={`aw-tx-icon ${txCls}`}>{txIcon}</div>
           <div className="aw-notif-body">
-            <div className="aw-notif-title">{n.amount} {n.asset}</div>
+            <div className="aw-notif-title">
+              {isSwapN
+                ? <>Swap{n.swapToAsset ? <span style={{ color: "rgba(255,255,255,.45)", fontWeight: 400, fontSize: 13, marginLeft: 4 }}>{n.asset} → {n.swapToAsset}</span> : ""}</>
+                : <>{n.amount} {n.asset}</>}
+            </div>
             <div className="aw-notif-meta">
-              {chainName(n.chainId)} · {n.status === "confirmed" ? "Confermato" : n.status === "pending" ? "In attesa" : "Fallito"}
+              {isSwapN ? `${n.amount} ${n.asset}` : chainName(n.chainId)} · {n.status === "confirmed" ? "Confermato" : n.status === "pending" ? "In attesa" : "Fallito"}
             </div>
             {n.txHash && (
               <a className="aw-notif-hash" href={txExplorerUrl(n.chainId, n.txHash)} target="_blank" rel="noopener noreferrer">
@@ -4418,9 +4425,15 @@ function TxListItem({ tx, onClick }: { tx: WalletTxRecord; onClick: () => void }
   const isPending = tx.status === "pending";
   const isFailed  = tx.status === "failed";
 
-  const iconClass = isPending ? "aw-tx-icon--pending" : "";
-  const icon      = isPending ? "⏳" : isIn ? "🟢↓" : "🟣↑";
-  const label     = isPending ? "In attesa" : isIn ? "Ricevuto" : "Inviato";
+  const isSwap    = tx.txType === "swap";
+  const iconClass = isPending ? "aw-tx-icon--pending" : isSwap ? "aw-tx-icon--swap" : "";
+  const swapArrowIcon = (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="18" height="18" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M7 16V4m0 0L3 8m4-4 4 4M17 8v12m0 0 4-4m-4 4-4-4"/>
+    </svg>
+  );
+  const icon      = isPending ? "⏳" : isSwap ? swapArrowIcon : isIn ? "🟢↓" : "🟣↑";
+  const label     = isPending ? "In attesa" : isSwap ? "Swap" : isIn ? "Ricevuto" : "Inviato";
   const amtClass  = isPending ? "aw-tx-amount--pending" : isIn ? "aw-tx-amount--in" : "aw-tx-amount--out";
   const amtPrefix = isIn ? "+" : "-";
 
@@ -4435,6 +4448,11 @@ function TxListItem({ tx, onClick }: { tx: WalletTxRecord; onClick: () => void }
       <div className="aw-tx-body">
         <div className="aw-tx-title">
           {label}
+          {isSwap && tx.swapToAsset && (
+            <span style={{ fontWeight: 400, color: "rgba(255,255,255,.45)", fontSize: 13, marginLeft: 4 }}>
+              {tx.asset} → {tx.swapToAsset}
+            </span>
+          )}
           {isFailed && <span className="aw-tx-status-badge aw-tx-status-badge--failed">Fallita</span>}
           {isPending && <span className="aw-tx-status-badge aw-tx-status-badge--pending">Pending</span>}
         </div>
@@ -4485,8 +4503,20 @@ function TxDetailView({ tx, onBack }: { tx: WalletTxRecord; onBack: () => void }
       </div>
 
       <div className="aw-tx-detail-icon">
-        {isPending ? "⏳" : isIn ? "🟢↓" : "🟣↑"}
+        {isPending ? "⏳" : tx.txType === "swap"
+          ? <div className="aw-tx-icon aw-tx-icon--swap" style={{ width: 56, height: 56, fontSize: 22, borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" width="24" height="24" strokeLinecap="round" strokeLinejoin="round"><path d="M7 16V4m0 0L3 8m4-4 4 4M17 8v12m0 0 4-4m-4 4-4-4"/></svg>
+            </div>
+          : isIn ? "🟢↓" : "🟣↑"}
       </div>
+      {tx.txType === "swap" && (
+        <div style={{ textAlign: "center", marginTop: 4, marginBottom: 4 }}>
+          <span style={{ color: "#a78bfa", fontWeight: 600, fontSize: 15 }}>Swap</span>
+          {tx.swapToAsset && (
+            <span style={{ color: "rgba(255,255,255,.5)", fontSize: 14, marginLeft: 6 }}>{tx.asset} → {tx.swapToAsset}</span>
+          )}
+        </div>
+      )}
 
       <div className="aw-tx-detail-amount">
         <div className={`aw-tx-detail-amount-value ${amtClass}`}>

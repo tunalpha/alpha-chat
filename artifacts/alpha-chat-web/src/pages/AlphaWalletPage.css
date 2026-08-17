@@ -1186,6 +1186,7 @@
 .aw-tx-icon--in      { background: rgba(34,197,94,.15); }
 .aw-tx-icon--out     { background: rgba(239,68,68,.12); }
 .aw-tx-icon--pending { background: rgba(245,158,11,.12); }
+.aw-tx-icon--swap    { background: rgba(139,92,246,.18); color: #a78bfa; display: flex; align-items: center; justify-content: center; }
 
 .aw-tx-body { flex: 1; min-width: 0; }
 .aw-tx-title {

@@ -51,6 +51,10 @@ export interface WalletTxRecord {
   fee?:        string;
   /** Timestamp ultimo aggiornamento (per reconciliation) */
   updatedAt:   number;
+  /** "swap" se la TX è parte di uno swap (non un invio normale) */
+  txType?:     "swap";
+  /** Symbol del token di destinazione (es. "USDC") — compilato per txType==="swap" */
+  swapToAsset?: string;
 }
 
 // ─── CRUD ──────────────────────────────────────────────────────────────────

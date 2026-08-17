@@ -41,6 +41,7 @@ import {
   type EvmSwapPhase, type EvmSwapStateValue, type EvmSwapActions,
   type EvmToken, type EvmActiveSwap, type EvmSwapQuote,
 } from "./types.js";
+import { saveTxRecord } from "../../wallet/services/tx-store.js";
 
 // ── Module-level anti-double-click lock ───────────────────────────────────────
 let _evmExecuting = false;
@@ -625,6 +626,23 @@ export function useEvmSwapState(opts?: EvmSwapStateOpts): [EvmSwapStateValue, Ev
 
         if (isMounted.current) setSv(prev => ({ ...prev, phase: "submitted", txHash: txid }));
         startBtcPoll(txid);
+
+        // Tag la TX come swap in IDB — il tx-monitor la ritroverà e non sovrascriverà txType
+        const toSymbol = current.quote.toToken?.symbol;
+        saveTxRecord({
+          id:          `btc:${txid}:out:`,
+          chainId:     0,
+          network:     "Bitcoin",
+          txHash:      txid,
+          direction:   "out",
+          asset:       "BTC",
+          amount:      fromTokenUnits(amtRaw.toString(), 8),
+          txType:      "swap",
+          swapToAsset: toSymbol,
+          timestamp:   Date.now(),
+          status:      "pending",
+          updatedAt:   Date.now(),
+        }).catch(() => { /* best-effort */ });
 
       } catch (err) {
         console.error("[AlphaSwap] BTC send error:", err);

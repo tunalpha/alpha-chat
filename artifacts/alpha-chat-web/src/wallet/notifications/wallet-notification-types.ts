@@ -53,6 +53,10 @@ export interface WalletNotification {
   /** Notifica già vista dall'utente */
   read: boolean;
   status: WalletNotificationStatus;
+  /** "swap" se la notifica riguarda uno swap (non un invio normale) */
+  txType?:      "swap";
+  /** Symbol del token di destinazione — compilato per txType==="swap" */
+  swapToAsset?: string;
 }
 
 /** Numero massimo di notifiche conservate in IDB */
@@ -97,6 +101,12 @@ export function notificationIcon(type: WalletNotificationType): string {
 
 /** Titolo push notification */
 export function notificationTitle(n: WalletNotification): string {
+  if (n.txType === "swap") {
+    const pair = n.swapToAsset ? `${n.asset} → ${n.swapToAsset}` : n.asset;
+    if (n.status === "pending")   return `⇄ Alpha Wallet — Swap ${pair} in attesa`;
+    if (n.status === "confirmed") return `⇄ Alpha Wallet — Swap ${pair} confermato`;
+    if (n.status === "failed")    return `❌ Alpha Wallet — Swap ${pair} fallito`;
+  }
   switch (n.type) {
     case "received":  return `💰 Alpha Wallet — ${n.amount} ${n.asset} ricevuto`;
     case "sent":      return `💸 Alpha Wallet — Invio ${n.asset} confermato`;
