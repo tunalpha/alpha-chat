@@ -53,6 +53,17 @@ const logger = pino({ name: "changenow-evm-swap-service" });
 
 // ── Guard ─────────────────────────────────────────────────────────────────────
 
+/**
+ * ChangeNOW's fixed-rate create response may omit the two expected-amount
+ * fields even though the immediately preceding locked-rate quote contains the
+ * definitive amounts. Do not let that optional response shape turn a valid,
+ * already-created provider order into a local Mongo 500.
+ */
+function positiveFiniteNumber(value: unknown): number | null {
+  const parsed = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : null;
+}
+
 async function assertChangeNowEnabled(): Promise<void> {
   const enabled = await isProviderEnabled("changenow");
   if (!enabled) throw new AppError("CHANGENOW_DISABLED", 503);
@@ -275,6 +286,7 @@ export async function createEvmExchange(input: EvmCreateInput): Promise<EvmCreat
   //   1. GET /v1/exchange-amount/fixed-rate → rateId
   //   2. POST /v1/transactions/fixed-rate/{api_key} → exchange
   let rateId: string;
+  let lockedEstimatedToAmount: number | null = null;
   try {
     const range = await cnGetFixedRateRange(fromTicker, toTicker);
     if (
@@ -290,6 +302,10 @@ export async function createEvmExchange(input: EvmCreateInput): Promise<EvmCreat
       toCurrency:   toTicker,
     });
     rateId = fixedRate.rateId;
+    lockedEstimatedToAmount = positiveFiniteNumber(fixedRate.estimatedAmount);
+    if (!lockedEstimatedToAmount) {
+      throw new AppError("CHANGENOW_MALFORMED_RESPONSE", 503);
+    }
     logger.info(
       { fromTicker, toTicker, fromAmount, rateId, validUntil: fixedRate.validUntil },
       "EVM fixed-rate quote obtained"
@@ -311,14 +327,24 @@ export async function createEvmExchange(input: EvmCreateInput): Promise<EvmCreat
     rateId,
   });
 
+  // The provider has already accepted the fixed-rate order. Some responses
+  // omit expectedSendAmount/expectedReceiveAmount, so persist the user input
+  // and the just-locked quote rather than rejecting the valid order locally.
+  const expectedFromAmount = positiveFiniteNumber(tx.expectedSendAmount) ?? fromAmount;
+  const expectedToAmount =
+    positiveFiniteNumber(tx.expectedReceiveAmount) ?? lockedEstimatedToAmount;
+  if (!expectedToAmount) {
+    throw new AppError("CHANGENOW_MALFORMED_RESPONSE", 503);
+  }
+
   // Persist su MongoDB
   const doc = await ChangeNowEvmSwapModel.create({
     userId,
     exchangeId:           tx.id,
     fromTicker,
     toTicker,
-    fromAmount:           tx.expectedSendAmount,
-    estimatedToAmount:    tx.expectedReceiveAmount,
+    fromAmount:           expectedFromAmount,
+    estimatedToAmount:    expectedToAmount,
     depositEvmAddress:    tx.payinAddress,
     destinationEvmAddress,
     refundEvmAddress:     refundEvmAddress || destinationEvmAddress,
@@ -339,8 +365,8 @@ export async function createEvmExchange(input: EvmCreateInput): Promise<EvmCreat
     swapId:             doc._id.toString(),
     exchangeId:         tx.id,
     depositEvmAddress:  tx.payinAddress,
-    expectedFromAmount: tx.expectedSendAmount,
-    expectedToAmount:   tx.expectedReceiveAmount,
+    expectedFromAmount,
+    expectedToAmount,
     fromTicker,
     toTicker,
     destinationAddress: destinationEvmAddress,

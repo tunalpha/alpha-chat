@@ -1,15 +1,8 @@
 - [MongoDB null unique index bug](mongo-null-unique-index.md) — sparse+unique indicizza null esplicitamente; usare partialFilterExpression per campi nullable
 - [validate middleware read-only query](validate-middleware-query.md) — req.query è getter read-only in Express 5; usare Object.defineProperty per target query/params
-- [Sprint 16 Fase 1 — Signal key management](signal-phase1.md) — chiavi, dipendenze, API, decisioni architetturali
-- [Sprint 16 Fase 2 — Signal E2E Integration](signal-phase2.md) — signalEncrypt/Decrypt, body base64 roundtrip, ChatPage decrypt pattern
-- [Sprint 16 Fase 3 — Media E2E](signal-phase3.md) — AES-256-GCM per blob, key wrapping Signal, pipeline upload/decrypt
-- [Sprint 16 Fase 4 — Multi-device, Media Cache, Thumbnail, DeviceManager](signal-phase4.md) — fan-out Signal per device, cache IDB cifrata, thumbnail E2E, revoca device
-- [Sprint 16 Fase 5 — Identity Verification](signal-phase5.md) — Safety Number, TOFU trust manager IDB separato, QR, key-change banner, 26 test (18.1-18.7)
 - [Sprint 18 — Phoenix Protocol](sprint-18-phoenix.md) — argon2id Phoenix Code, email confirm token, Lock Mode vs destroy, Emergency Portal /emergency
 - [Sprint 21 — Gruppi E2E](sprint-21-groups.md) — fan-out Signal per membro, device_id=userId, overlay GroupInfo in ChatPage, AuditEventType esteso
 - [Sprint 22 — Account Recovery](sprint-22-recovery.md) — Recovery Card auto-generata, argon2.verify senza opts, validate("body",Schema), AppError in errors/AppError, revokeAllSessions in refresh-token.service
-- [Sprint 24 — Chiamate professionali](sprint-24-calls.md) — audio remoto, vivavoce iOS, squillo OfflineAudioContext, getStats tipi any, ConversationItem fields
-- [Sprint 25 — Chiamate Secure Pro](sprint-25-calls.md) — busy detect (WsManager in-memory), multi-device dismissal, ICE restart, cronologia CallLog, suonerie multi-tone, CallVerifyModal via apiGetKeyBundle
 - [Sprint 27 — Personalizzazione Globale](sprint-27-personalization.md) — i18n 10 lingue, AppSettingsContext, temi/accenti/testo/bolle/animazioni CSS, AppearancePage, NotificationsPage, LanguagePage, backend notifiche
 - [Sprint 21 Group E2E — decrypt fix](sprint-21-group-e2e-fix.md) — type-1 senza sessione + isGroupMsg race condition su conversations state
 - [Sprint 28 — Shared Identity Key](sprint-28-shared-ik.md) — IK JSON+base64 (pubKey 33B); account-recovery.controller usava `auth` invece di `req.user` (fix bug); prerequisiti Phase 4 PASS
@@ -25,8 +18,6 @@
 - [Payment non-regression policy (🔒 permanente)](payment-non-regression-policy.md) — payment stack PROTECTED: no refactor/deps/naming; codice condiviso → stop e chiedi; approvazione utente prima del publish
 - [Module isolation policy](module-isolation-policy.md) — Messaggi CONGELATO; Chiamate separato; se un fix chiamate richiede ChatPage.tsx → stop e chiedi approvazione
 - [Signal bundle self-heal](signal-bundle-self-heal.md) — signalkeybundles svuotato → maybeReplenishOtpks ora rileva bundleExists=false e riesegue _firstTimeSetup con IK invariata
-- [Call fixes batch 1](call-fixes-batch1.md) — stream leak/callee timeout/pending-call re-delivery on WS reconnect
-- [Call fixes batch 2](call-fixes-batch2.md) — spinner infinito: timeout totale 15s su acceptCall, safety-net 16s in modal; Phoenix UNAUTHORIZED: chiave localStorage sbagliata
 - [Phoenix localStorage key bug](phoenix-localstorage-key.md) — PhoenixSetupPage usava authFetch custom con chiave "alpha-chat-access-token" (inesistente); chiave reale è "ac_access_token" da KEYS in auth.ts
 - [Call ICE bugs — TURN cache + InvalidStateError](call-ice-bugs.md) — _iceLoaded bloccava TURN post-deploy; flush buffer ICE deve avvenire DOPO setRemoteDescription
 - [iOS audio routing — playsInline fix](ios-audio-playsInline.md) — playsInline=true forces speaker on iOS even in PlayAndRecord; omit on iOS for earpiece
@@ -109,6 +100,7 @@
 - [Alpha Swap V1 Hardening](alpha-swap-v1-hardening.md) — refund key HMAC-SHA256 server-side; write-before-submit; idempotency_key UUID; reconciler 30s; GET /active recovery; 63 test T1-T20 PASS
 - [ChangeNOW FASE 1 — BTC↔EVM](changenow-fase1.md) — invarianti btcTxHash≠destTx; fundsCommitted write-before-submit; API key server-only; Li.Fi files invariati; 28 test PASS
 - [ChangeNOW EVM — Fixed-Rate Requirement](changenow-evm-fixed-rate.md) — EVM→EVM richiede fixed-rate; floating-rate (/v1/transactions) → 404; cnGetFixedRateAmount+cnCreateFixedRateTransaction obbligatori
+- [ChangeNOW fixed-rate create response](changenow-fixed-rate-create-response.md) — la risposta create può omettere gli importi; persistere input + quote bloccata per evitare 500 dopo l’ordine
 - [ChangeNOW token balance sources](changenow-token-balances.md) — il catalogo ChangeNOW può usare contratti diversi da Li.Fi; interrogare il contratto del token selezionato
 - [ChangeNOW Fee Architecture](changenow-fee-architecture.md) — NESSUNA fee Alpha su flussi CN; 0,40% Partner share da ChangeNOW direttamente; FEE ARCHITECTURE=PASS
 - [ChangeNOW EVM provider bug](changenow-evm-provider-bug.md) — /swap/providers admin-only → sempre "lifi"; fix: query modello diretta in getPublicSwapConfig (no cross-service import — bug Vitest ESM)

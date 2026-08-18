@@ -312,6 +312,32 @@ describe("createEvmExchange", () => {
       })
     ).rejects.toMatchObject({ message: expect.stringContaining("ACTIVE_EVM_SWAP_EXISTS") });
   });
+
+  it("T36 — risposta fixed-rate senza expected amounts: persiste input + quote bloccata", async () => {
+    vi.mocked(cnGetFixedRateAmount).mockResolvedValueOnce({
+      ...MOCK_FIXED_RATE,
+      estimatedAmount: 42.123456,
+    });
+    vi.mocked(cnCreateFixedRateTransaction).mockResolvedValueOnce({
+      ...MOCK_TX_RESPONSE,
+      id: "cn_T36_partial_response",
+      expectedSendAmount: undefined,
+      expectedReceiveAmount: undefined,
+    } as any);
+
+    const result = await createEvmExchange({
+      userId:                USER_ID + "_T36",
+      fromTicker:            "usdtbsc",
+      toTicker:              "pol",
+      fromAmount:            13.50514576,
+      destinationEvmAddress: DEST_EVM,
+      refundEvmAddress:      REFUND,
+    });
+
+    expect(result.expectedFromAmount).toBe(13.50514576);
+    expect(result.expectedToAmount).toBe(42.123456);
+    expect(result.swapId).toBeTruthy();
+  });
 });
 
 // ── commitEvmFunds ────────────────────────────────────────────────────────────
