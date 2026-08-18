@@ -1,0 +1,424 @@
+ALPHA — ADMIN SWAP PROVIDER MANAGER
+ISOLATED INFRASTRUCTURE — ZERO REGRESSIONS
+
+OBIETTIVO
+
+Creare nell'Admin Panel un sistema per gestire i provider utilizzati ESCLUSIVAMENTE dal modulo SWAP.
+
+Vogliamo preparare ora tutta l'infrastruttura, senza ancora integrare ChangeNOW.
+
+LI.FI deve rimanere completamente funzionante e ATTIVO.
+
+IMPORTANTE:
+ChangeNOW NON è ancora operativo.
+Non usare API ChangeNOW.
+Non usare API key ChangeNOW.
+Non creare exchange ChangeNOW.
+Non modificare il flusso LI.FI esistente.
+
+==================================================
+1. PROVIDER SUPPORTATI
+==================================================
+
+Preparare il sistema per:
+
+- LI.FI
+- ChangeNOW
+- futuri provider
+
+NON hardcodare il sistema in modo che supporti solamente questi due.
+
+Il provider deve essere identificato da un ID stabile, ad esempio:
+
+lifi
+changenow
+
+==================================================
+2. STATI PROVIDER
+==================================================
+
+Ogni provider deve poter avere uno stato:
+
+ENABLED
+DISABLED
+FALLBACK
+
+Significato:
+
+ENABLED
+→ provider disponibile per essere utilizzato come provider principale.
+
+DISABLED
+→ provider completamente escluso dal routing Swap.
+
+FALLBACK
+→ provider disponibile esclusivamente come alternativa quando il provider principale non può completare l'operazione.
+
+IMPORTANTE:
+
+FALLBACK NON significa "esegui automaticamente un secondo swap dopo che il primo ha inviato fondi".
+
+NON effettuare MAI un secondo send se il primo provider ha già ricevuto/inviato fondi.
+
+Il fallback automatico deve essere consentito SOLO prima dell'esecuzione irreversibile del pagamento, oppure quando il provider restituisce esplicitamente che nessun deposito è stato effettuato.
+
+Se esiste qualsiasi dubbio sul fatto che i fondi siano già stati inviati:
+
+→ NON fare fallback automatico
+→ mantenere lo swap in stato pending/recovery
+→ richiedere gestione manuale.
+
+==================================================
+3. CONFIGURAZIONE INIZIALE
+==================================================
+
+Al termine dell'implementazione la configurazione deve essere:
+
+LI.FI:
+status = ENABLED
+primary = TRUE
+
+ChangeNOW:
+status = DISABLED
+primary = FALSE
+
+NON modificare questo comportamento.
+
+LI.FI deve rimanere il provider operativo fino a quando non daremo esplicitamente approvazione.
+
+==================================================
+4. ADMIN UI
+==================================================
+
+Creare una sezione:
+
+SWAP PROVIDERS
+
+Mostrare per ogni provider:
+
+Provider
+Status
+Primary
+Fallback
+
+Esempio:
+
+-----------------------------------------
+SWAP PROVIDERS
+
+LI.FI
+Status: 🟢 ENABLED
+Role: PRIMARY
+
+[ Disable ] [ Set Fallback ]
+
+-----------------------------------------
+
+ChangeNOW
+Status: ⚪ DISABLED
+Role: NONE
+
+[ Enable ] [ Set Fallback ]
+
+-----------------------------------------
+
+Future Provider
+Status: ⚪ DISABLED
+Role: NONE
+-----------------------------------------
+
+La UI deve essere semplice, premium e coerente con l'Admin Panel esistente.
+
+==================================================
+5. REGOLE DI SICUREZZA
+==================================================
+
+La configurazione provider NON deve essere controllabile dal client.
+
+NON fidarsi di:
+
+localStorage
+sessionStorage
+query parameters
+frontend state
+
+Il backend deve determinare il provider effettivamente utilizzato.
+
+Un utente normale NON deve poter modificare la configurazione.
+
+Solo Admin autorizzato.
+
+==================================================
+6. PROVIDER ROUTER
+==================================================
+
+Creare una struttura astratta:
+
+SwapProviderRouter
+
+Il router deve poter determinare:
+
+primary provider
+fallback provider
+disabled providers
+
+Esempio:
+
+getActiveSwapProvider()
+
+getFallbackProvider()
+
+isProviderEnabled()
+
+getProviderConfiguration()
+
+IMPORTANTE:
+
+Per ora il router deve continuare a restituire LI.FI come provider operativo.
+
+ChangeNOW deve essere registrato ma DISABLED.
+
+==================================================
+7. LI.FI — ZERO REGRESSIONI
+==================================================
+
+NON modificare la logica interna LI.FI se non strettamente necessario per collegarla all'astrazione.
+
+NON cambiare:
+
+quote
+execution
+BTC flow
+EVM flow
+polling
+direction guard
+destination TX validation
+recovery
+anti-double-send
+
+Il comportamento LI.FI deve rimanere identico a quello attuale.
+
+Se per creare il router è necessario modificare codice LI.FI:
+
+creare un adapter sopra il codice esistente.
+
+NON riscrivere LI.FI.
+
+==================================================
+8. PAGAMENTI — COMPLETAMENTE FUORI SCOPE
+==================================================
+
+NON modificare assolutamente:
+
+- Send
+- Receive
+- direct transfer
+- USDA
+- USDT
+- USDC
+- POL
+- BNB
+- WalletConnect
+- firma
+- payment polling
+- payment notifications
+- transaction history dei pagamenti
+- balance/accounting
+- database payment
+- API payment
+
+Provider Router e Provider Manager riguardano ESCLUSIVAMENTE SWAP.
+
+==================================================
+9. CHANGE NOW
+==================================================
+
+Creare solamente il punto di integrazione futuro.
+
+Esempio:
+
+ChangeNowSwapProvider
+
+MA:
+
+NON chiamare API.
+
+NON inserire API key.
+
+NON creare quote reali.
+
+NON creare exchange.
+
+NON effettuare test con fondi reali.
+
+Il provider deve rimanere:
+
+status = DISABLED
+
+==================================================
+10. FALLBACK — REGOLA CRITICA
+
+NON implementare fallback automatico cieco.
+
+Scenario:
+
+LI.FI riceve BTC
+↓
+LI.FI/provider ha già ricevuto i fondi
+↓
+errore
+
+NON chiamare ChangeNOW.
+
+Questo potrebbe causare doppio invio/perdita fondi.
+
+Il fallback automatico può essere utilizzato soltanto quando il provider primario fallisce PRIMA dell'irreversible send.
+
+Definire esplicitamente nel codice uno stato:
+
+FUNDS_COMMITTED = true/false
+
+Se:
+
+FUNDS_COMMITTED = true
+
+→ fallback automatico BLOCCATO.
+
+==================================================
+11. FUTURA CONFIGURAZIONE DESIDERATA
+
+Il sistema deve permettere successivamente:
+
+Scenario A:
+
+LI.FI
+🟢 PRIMARY
+
+ChangeNOW
+⚪ DISABLED
+
+
+Scenario B:
+
+ChangeNOW
+🟢 PRIMARY
+
+LI.FI
+🟡 FALLBACK
+
+
+Scenario C:
+
+LI.FI
+🟢 PRIMARY
+
+ChangeNOW
+🟡 FALLBACK
+
+
+Scenario D:
+
+ChangeNOW
+🟢 PRIMARY
+
+LI.FI
+⚪ DISABLED
+
+==================================================
+12. LOGGING / AUDIT
+
+Ogni cambio di provider effettuato dall'Admin deve registrare:
+
+- admin ID
+- timestamp
+- provider precedente
+- provider nuovo
+- stato precedente
+- stato nuovo
+
+NON registrare API key o secrets.
+
+==================================================
+13. TEST
+
+Creare test per:
+
+1. LI.FI ENABLED → selezionato
+2. LI.FI DISABLED → escluso
+3. ChangeNOW DISABLED → escluso
+4. ChangeNOW ENABLED → selezionabile
+5. fallback configurato
+6. nessun fallback configurato
+7. provider sconosciuto → rifiutato
+8. utente normale → impossibile modificare configurazione
+9. Admin → può modificare
+10. FUNDS_COMMITTED=true → fallback automatico bloccato
+11. FUNDS_COMMITTED=false → fallback consentito secondo policy
+12. configurazione persistente dopo reload
+13. LI.FI comportamento invariato
+14. tutti i test esistenti senza regressioni
+
+==================================================
+14. TEST COMPLETI
+
+Eseguire:
+
+- test suite completa
+- TypeScript
+- build
+
+OBIETTIVO:
+
+ZERO REGRESSIONI.
+
+I pagamenti attuali devono rimanere completamente funzionanti.
+
+==================================================
+15. DEPLOY
+
+NON fare deploy automatico.
+
+NON attivare ChangeNOW.
+
+NON cambiare il provider operativo.
+
+Configurazione finale obbligatoria:
+
+LI.FI = ENABLED / PRIMARY
+ChangeNOW = DISABLED
+
+==================================================
+16. OUTPUT
+
+Prima di modificare il codice:
+
+restituire:
+
+1. architettura attuale Swap
+2. architettura Provider Router proposta
+3. file da creare
+4. file da modificare
+5. file Payments che resteranno intatti
+6. gestione Admin
+7. gestione fallback
+8. protezione double-send
+9. piano test
+
+Poi implementare esclusivamente quanto approvato.
+
+Alla fine restituire:
+
+- file modificati
+- nuovi file
+- test totali
+- test PASS
+- TypeScript
+- build
+- conferma LI.FI ancora PRIMARY
+- conferma ChangeNOW DISABLED
+- conferma ZERO modifiche ai pagamenti
+- conferma ZERO API ChangeNOW utilizzate.
+
+REGOLA ASSOLUTA:
+
+IL SISTEMA DEVE ESSERE PRONTO PER COLLEGARE CHANGENOW IN SEGUITO, MA FINO A NOSTRA AUTORIZZAZIONE LI.FI DEVE RIMANERE IL SOLO PROVIDER OPERATIVO.
