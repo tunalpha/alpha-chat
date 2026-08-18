@@ -1,5 +1,5 @@
 /**
- * ChangeNOW Swap Routes — /api/v1/swap/changenow
+ * ChangeNOW BTC→EVM Swap Routes — /api/v1/swap/changenow
  *
  * ╔══════════════════════════════════════════════════════════════╗
  * ║  SICUREZZA                                                  ║
@@ -8,15 +8,18 @@
  * ║  • Il backend è l'unico layer che chiama l'API ChangeNOW    ║
  * ╚══════════════════════════════════════════════════════════════╝
  *
- * ISOLAMENTO: zero import da payment engine, USDA, MultiChain, Spark, Li.Fi.
+ * Ticker validi (verificati 2026-08-18):
+ *   usdterc20, usdtmatic, usdtbsc, usdcmatic, eth, pol, matic, bnbbsc
  *
  * Routes:
- *   GET  /pairs/:toChain      — verifica disponibilità coppia BTC→USDT
- *   POST /quote               — stima importo USDT ricevuto
+ *   GET  /pairs/:toTicker     — verifica disponibilità coppia BTC→{token}
+ *   POST /quote               — stima importo ricevuto
  *   POST /create              — crea exchange (ottieni deposit address BTC)
- *   POST /:swapId/commit      — segna fundsCommitted=true + btcTxHash (write-before-submit)
+ *   POST /:swapId/commit      — segna fundsCommitted=true + btcTxHash
  *   GET  /:swapId/status      — poll status corrente
  *   GET  /active              — swap attivo utente (per recovery post-reload)
+ *
+ * ISOLAMENTO: zero import da payment engine, USDA, MultiChain, Spark, Li.Fi.
  */
 
 import { Router, type Request, type Response, type NextFunction } from "express";
@@ -30,21 +33,24 @@ import {
   getSwapStatus,
   getActiveSwapForUser,
 } from "../../services/swap/changenow-swap.service.js";
+import { CN_BTC_VALID_TICKERS } from "../../services/swap/changenow.service.js";
 
 const router = Router();
 
-// ── Schemas di validazione ────────────────────────────────────────────────────
+// ── Schemas ───────────────────────────────────────────────────────────────────
 
-const ToChainSchema = z.enum(["ethereum", "polygon", "bsc"]);
+const VALID_TICKERS = Array.from(CN_BTC_VALID_TICKERS) as [string, ...string[]];
+
+const ToTickerSchema = z.enum(VALID_TICKERS);
 
 const QuoteSchema = z.object({
   fromAmountBtc: z.number().positive().max(10),
-  toChain:       ToChainSchema,
+  toTicker:      ToTickerSchema,
 });
 
 const CreateSchema = z.object({
   fromAmountBtc:         z.number().positive().max(10),
-  toChain:               ToChainSchema,
+  toTicker:              ToTickerSchema,
   destinationEvmAddress: z.string().min(10).max(100),
   btcRefundAddress:      z.string().min(10).max(100).optional(),
 });
@@ -53,20 +59,18 @@ const CommitSchema = z.object({
   btcTxHash: z.string().min(10).max(100),
 });
 
-// ── Helper: estrai userId da req ──────────────────────────────────────────────
-
 function getUserId(req: Request): string | null {
   return (req as any).user?.userId ?? null;
 }
 
-// ── GET /pairs/:toChain ───────────────────────────────────────────────────────
+// ── GET /pairs/:toTicker ──────────────────────────────────────────────────────
 
 router.get(
-  "/pairs/:toChain",
+  "/pairs/:toTicker",
   authenticate,
   async (req: Request, res: Response, next: NextFunction) => {
     try {
-      const result = await checkPairAvailability(req.params.toChain);
+      const result = await checkPairAvailability(req.params.toTicker);
       res.json({ ok: true, ...result });
     } catch (err) {
       next(err);
@@ -74,7 +78,7 @@ router.get(
   }
 );
 
-// ── GET /active — PRIMA di /:swapId per evitare conflitti di routing ──────────
+// ── GET /active ───────────────────────────────────────────────────────────────
 
 router.get(
   "/active",
@@ -125,7 +129,6 @@ router.post(
       }
       const userId = getUserId(req);
       if (!userId) { res.status(401).json({ ok: false, code: "UNAUTHORIZED" }); return; }
-
       const result = await createExchange({ userId, ...parsed.data });
       res.json({ ok: true, ...result });
     } catch (err) {
@@ -148,7 +151,6 @@ router.post(
       }
       const userId = getUserId(req);
       if (!userId) { res.status(401).json({ ok: false, code: "UNAUTHORIZED" }); return; }
-
       const result = await commitFunds({
         swapId:    req.params.swapId,
         userId,
@@ -170,7 +172,6 @@ router.get(
     try {
       const userId = getUserId(req);
       if (!userId) { res.status(401).json({ ok: false, code: "UNAUTHORIZED" }); return; }
-
       const status = await getSwapStatus({ swapId: req.params.swapId, userId });
       res.json({ ok: true, swap: status });
     } catch (err) {

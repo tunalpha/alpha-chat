@@ -388,14 +388,15 @@ describe("getActiveEvmSwapForUser", () => {
 // ── CN_EVM_TOKENS: verifica integrità ticker ──────────────────────────────────
 
 describe("CN_EVM_TOKENS — integrità ticker verificati", () => {
-  it("contiene pol, usdcmatic, usdtmatic, eth, usdterc20, bnb, usdtbsc", () => {
+  it("contiene pol, usdcmatic, usdtmatic, eth, usdterc20, bnbbsc, usdtbsc", () => {
     const tickers = CN_EVM_TOKENS.map(t => t.ticker);
     expect(tickers).toContain("pol");
     expect(tickers).toContain("usdcmatic");
     expect(tickers).toContain("usdtmatic");
     expect(tickers).toContain("eth");
     expect(tickers).toContain("usdterc20");
-    expect(tickers).toContain("bnb");
+    // BNB ticker verificato è "bnbbsc" (non "bnb" che è inactive su ChangeNOW)
+    expect(tickers).toContain("bnbbsc");
     expect(tickers).toContain("usdtbsc");
   });
 

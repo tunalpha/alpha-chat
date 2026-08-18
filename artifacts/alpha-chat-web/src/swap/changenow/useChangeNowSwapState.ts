@@ -1,5 +1,7 @@
 /**
- * useChangeNowSwapState — State machine frontend per swap BTC→USDT via ChangeNOW
+ * useChangeNowSwapState — State machine BTC→any EVM token via ChangeNOW
+ *
+ * Versione estesa: tutti gli 8 ticker verificati (non solo USDT).
  *
  * ═══════════════════════════════════════════════════════════════
  *  REGOLA DOUBLE-SEND (ASSOLUTA):
@@ -8,9 +10,12 @@
  *    2. commitFunds() PRIMA del broadcast BTC (write-before-submit)
  *    3. fundsCommitted=true → blocco assoluto su nuovo exchange
  *
- *  REGOLA PROVIDER:
- *    Questo hook viene usato SOLO quando il provider attivo è "changenow".
- *    Se provider = lifi → useEvmSwapState (file separato, invariato).
+ *  REGOLA COMPLETED (ASSOLUTA):
+ *    isCompleted = cnStatus=finished && destinationTxHash presente
+ *                  && destinationTxHash !== btcTxHash
+ *
+ *  DESTINATION ADDRESS: sempre alphaWalletAddress (EVM unificato).
+ *    MAI da input utente.
  *
  *  ISOLAMENTO:
  *    Zero import da lifi-client.ts, useEvmSwapState.ts, EvmSwapView.tsx.
@@ -25,6 +30,8 @@ import {
   type CnQuote,
   type CnCreateResult,
   type CnSwapStatusResult,
+  type CnBtcDestToken,
+  CN_BTC_DEST_TOKENS,
   CHANGENOW_SWAP_ACTIVE_KEY,
   isCnTerminal,
   humanizeCnError,
@@ -32,8 +39,8 @@ import {
 
 // ── API helpers ───────────────────────────────────────────────────────────────
 
-const TOKEN_KEY    = "ac_access_token";
-const API_BASE     = "/api/v1";
+const TOKEN_KEY        = "ac_access_token";
+const API_BASE         = "/api/v1";
 const POLL_INTERVAL_MS = 15_000;
 
 async function cnRequest<T>(
@@ -63,37 +70,33 @@ async function cnRequest<T>(
 // ── State ─────────────────────────────────────────────────────────────────────
 
 export interface CnSwapState {
-  uiState:        CnUiState;
-  selectedChain:  CnToChain;
-  amountBtc:      string;           // stringa per l'input
-  quote:          CnQuote   | null;
-  exchange:       CnCreateResult | null;
-  status:         CnSwapStatusResult | null;
-  error:          string | null;
-  pairAvailable:  boolean | null;
+  uiState:       CnUiState;
+  selectedToken: CnBtcDestToken;   // token destinazione selezionato
+  amountBtc:     string;
+  quote:         CnQuote   | null;
+  exchange:      CnCreateResult | null;
+  status:        CnSwapStatusResult | null;
+  error:         string | null;
+  pairAvailable: boolean | null;
 }
 
 export interface CnSwapActions {
-  setChain:       (chain: CnToChain) => void;
-  setAmountBtc:   (amount: string)   => void;
+  setToken:       (token: CnBtcDestToken) => void;
+  setAmountBtc:   (amount: string) => void;
   checkPair:      () => Promise<void>;
   fetchQuote:     () => Promise<void>;
-  /**
-   * Crea l'exchange su ChangeNOW.
-   * @param destinationEvmAddress — indirizzo EVM Alpha Wallet dell'utente (destinazione USDT)
-   */
   createExchange: (destinationEvmAddress: string) => Promise<void>;
-  /**
-   * Chiamare PRIMA del broadcast BTC (write-before-submit).
-   * Imposta fundsCommitted=true sul backend, poi chiama sendBtc.
-   */
   commitAndSend:  (sendBtc: (depositAddress: string, amountBtc: number) => Promise<string>) => Promise<void>;
   reset:          () => void;
 }
 
+const DEFAULT_TOKEN: CnBtcDestToken =
+  CN_BTC_DEST_TOKENS.find(t => t.ticker === "usdtmatic")
+  ?? CN_BTC_DEST_TOKENS[0]!;
+
 const INITIAL_STATE: CnSwapState = {
   uiState:       "idle",
-  selectedChain: "polygon",
+  selectedToken: DEFAULT_TOKEN,
   amountBtc:     "",
   quote:         null,
   exchange:      null,
@@ -106,8 +109,8 @@ const INITIAL_STATE: CnSwapState = {
 
 export function useChangeNowSwapState(): [CnSwapState, CnSwapActions] {
   const [state, setState] = useState<CnSwapState>(INITIAL_STATE);
-  const pollTimerRef  = useRef<ReturnType<typeof setInterval> | null>(null);
-  const mountedRef    = useRef(true);
+  const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const mountedRef   = useRef(true);
 
   // ── Cleanup ──────────────────────────────────────────────────────────────
 
@@ -120,9 +123,6 @@ export function useChangeNowSwapState(): [CnSwapState, CnSwapActions] {
   }, []);
 
   // ── Recovery su mount ────────────────────────────────────────────────────
-  //
-  // Se esiste un swap attivo salvato in localStorage, lo recuperiamo dal
-  // backend e riprendiamo il polling SENZA creare un nuovo exchange.
 
   useEffect(() => {
     const savedId = localStorage.getItem(CHANGENOW_SWAP_ACTIVE_KEY);
@@ -136,30 +136,33 @@ export function useChangeNowSwapState(): [CnSwapState, CnSwapActions] {
         );
         if (cancelled || !mountedRef.current) return;
         if (data.swap && !isCnTerminal(data.swap.cnStatus)) {
+          // Ricostruisci il token dal ticker salvato
+          const token = CN_BTC_DEST_TOKENS.find(t => t.ticker === data.swap!.toTicker)
+            ?? DEFAULT_TOKEN;
           setState(prev => ({
             ...prev,
+            selectedToken: token,
             exchange: {
               swapId:            data.swap!.swapId,
               exchangeId:        data.swap!.exchangeId,
               btcDepositAddress: data.swap!.btcDepositAddress,
               estimatedToAmount: data.swap!.estimatedToAmount,
               fromAmount:        data.swap!.fromAmount,
+              toTicker:          data.swap!.toTicker,
+              toAsset:           data.swap!.toAsset,
               toChain:           data.swap!.toChain,
-              toAsset:           "USDT",
+              toChainName:       data.swap!.toChainName,
             },
-            selectedChain: data.swap!.toChain,
-            status:        data.swap!,
-            uiState:       data.swap!.fundsCommitted ? "committed" : "awaiting_deposit",
+            status:  data.swap!,
+            uiState: data.swap!.fundsCommitted ? "committed" : "awaiting_deposit",
           }));
           if (data.swap!.fundsCommitted) {
             _startPolling(data.swap!.swapId);
           }
         } else {
-          // Swap terminale o non trovato → pulisci localStorage
           localStorage.removeItem(CHANGENOW_SWAP_ACTIVE_KEY);
         }
       } catch {
-        // Recovery silenzioso: se fallisce, l'utente reinizia da idle
         if (!cancelled) localStorage.removeItem(CHANGENOW_SWAP_ACTIVE_KEY);
       }
     })();
@@ -195,7 +198,6 @@ export function useChangeNowSwapState(): [CnSwapState, CnSwapActions] {
             : "failed";
           setState(prev => ({ ...prev, uiState: terminalUiState }));
         } else {
-          // Aggiorna uiState intermedio
           const mid: CnUiState =
             data.swap.cnStatus === "confirming" ? "confirming"
             : data.swap.cnStatus === "exchanging" ? "exchanging"
@@ -204,7 +206,7 @@ export function useChangeNowSwapState(): [CnSwapState, CnSwapActions] {
           setState(prev => ({ ...prev, uiState: mid }));
         }
       } catch {
-        // Errore di polling: continua — NON interrompere
+        // Polling error silenzioso — continua
       }
     };
 
@@ -214,18 +216,32 @@ export function useChangeNowSwapState(): [CnSwapState, CnSwapActions] {
 
   // ── Actions ───────────────────────────────────────────────────────────────
 
+  const setToken = useCallback((token: CnBtcDestToken) => {
+    setState(prev => ({
+      ...prev,
+      selectedToken: token,
+      quote: null,
+      pairAvailable: null,
+      error: null,
+    }));
+  }, []);
+
+  const setAmountBtc = useCallback((amount: string) => {
+    setState(prev => ({ ...prev, amountBtc: amount, quote: null, error: null }));
+  }, []);
+
   const checkPair = useCallback(async () => {
     setState(prev => ({ ...prev, uiState: "checking_pair", error: null, pairAvailable: null }));
     try {
       const data = await cnRequest<{ ok: boolean; available: boolean }>(
-        `/swap/changenow/pairs/${state.selectedChain}`
+        `/swap/changenow/pairs/${state.selectedToken.ticker}`
       );
       if (!mountedRef.current) return;
       setState(prev => ({
         ...prev,
         pairAvailable: data.available,
-        uiState: data.available ? "ready" : "pair_unavailable",
-        error: data.available ? null : "Coppia BTC→USDT non disponibile al momento.",
+        uiState: data.available ? "idle" : "pair_unavailable",
+        error: data.available ? null : `La coppia BTC→${state.selectedToken.symbol} non è disponibile.`,
       }));
     } catch (err) {
       if (!mountedRef.current) return;
@@ -236,7 +252,7 @@ export function useChangeNowSwapState(): [CnSwapState, CnSwapActions] {
         pairAvailable: false,
       }));
     }
-  }, [state.selectedChain]);
+  }, [state.selectedToken.ticker, state.selectedToken.symbol]);
 
   const fetchQuote = useCallback(async () => {
     const amountNum = parseFloat(state.amountBtc);
@@ -249,8 +265,8 @@ export function useChangeNowSwapState(): [CnSwapState, CnSwapActions] {
       const data = await cnRequest<{ ok: boolean; quote: CnQuote }>(
         "/swap/changenow/quote",
         {
-          method:  "POST",
-          body:    JSON.stringify({ fromAmountBtc: amountNum, toChain: state.selectedChain }),
+          method: "POST",
+          body:   JSON.stringify({ fromAmountBtc: amountNum, toTicker: state.selectedToken.ticker }),
         }
       );
       if (!mountedRef.current) return;
@@ -265,15 +281,15 @@ export function useChangeNowSwapState(): [CnSwapState, CnSwapActions] {
       setState(prev => ({
         ...prev,
         uiState: "idle",
-        error:   err instanceof Error ? err.message : "Errore nella stima dello swap.",
+        error: err instanceof Error ? err.message : "Errore nella stima.",
       }));
     }
-  }, [state.amountBtc, state.selectedChain]);
+  }, [state.amountBtc, state.selectedToken.ticker]);
 
   const createExchange = useCallback(async (destinationEvmAddress: string) => {
     if (!state.quote) { setState(prev => ({ ...prev, error: "Ottieni prima una stima." })); return; }
     if (!destinationEvmAddress || destinationEvmAddress.length < 10) {
-      setState(prev => ({ ...prev, error: "Indirizzo EVM non disponibile. Sblocca Alpha Wallet." }));
+      setState(prev => ({ ...prev, error: "Sblocca Alpha Wallet per continuare." }));
       return;
     }
     setState(prev => ({ ...prev, uiState: "creating", error: null }));
@@ -284,13 +300,12 @@ export function useChangeNowSwapState(): [CnSwapState, CnSwapActions] {
           method: "POST",
           body:   JSON.stringify({
             fromAmountBtc:         state.quote!.fromAmount,
-            toChain:               state.selectedChain,
+            toTicker:              state.selectedToken.ticker,
             destinationEvmAddress,
           }),
         }
       );
       if (!mountedRef.current) return;
-      // Salva per recovery post-reload
       localStorage.setItem(CHANGENOW_SWAP_ACTIVE_KEY, data.swapId);
       setState(prev => ({
         ...prev,
@@ -303,25 +318,11 @@ export function useChangeNowSwapState(): [CnSwapState, CnSwapActions] {
       setState(prev => ({
         ...prev,
         uiState: "idle",
-        error:   err instanceof Error ? err.message : "Errore creazione exchange.",
+        error: err instanceof Error ? err.message : "Errore creazione exchange.",
       }));
     }
-  }, [state.quote, state.selectedChain]);
+  }, [state.quote, state.selectedToken.ticker]);
 
-  /**
-   * commitAndSend — sequenza sicura anti-double-spend:
-   *   1. POST /commit con btcTxHash DOPO firma ma PRIMA o INSIEME al broadcast
-   *   2. Avvia polling
-   *
-   * Il chiamante (ChangeNowSwapView) fornisce sendBtc(depositAddress, amountBtc)
-   * che firma e broadcasta la TX BTC e restituisce il txid.
-   *
-   * Pattern:
-   *   a) Aggiorna UI a "signing"
-   *   b) Chiama sendBtc → ottieni txid
-   *   c) POST /commit (write-before-submit in relazione al polling)
-   *   d) Avvia polling
-   */
   const commitAndSend = useCallback(async (
     sendBtc: (depositAddress: string, amountBtc: number) => Promise<string>
   ) => {
@@ -332,7 +333,6 @@ export function useChangeNowSwapState(): [CnSwapState, CnSwapActions] {
     setState(prev => ({ ...prev, uiState: "signing", error: null }));
 
     try {
-      // a) Firma e broadcast BTC
       const btcTxHash = await sendBtc(
         state.exchange.btcDepositAddress,
         state.exchange.fromAmount
@@ -340,7 +340,6 @@ export function useChangeNowSwapState(): [CnSwapState, CnSwapActions] {
 
       if (!mountedRef.current) return;
 
-      // b) Commit sul backend (write-before-submit: fundsCommitted=true)
       await cnRequest<{ ok: boolean; fundsCommitted: true }>(
         `/swap/changenow/${state.exchange.swapId}/commit`,
         {
@@ -350,19 +349,17 @@ export function useChangeNowSwapState(): [CnSwapState, CnSwapActions] {
       );
 
       if (!mountedRef.current) return;
-
       setState(prev => ({ ...prev, uiState: "committed", error: null }));
       _startPolling(state.exchange!.swapId);
     } catch (err) {
       if (!mountedRef.current) return;
-      const msg = err instanceof Error ? err.message : "Errore durante l'invio BTC.";
-      // Se l'errore è UNCERTAIN (iOS abort post-sign), mantieni stato pending
+      const msg  = err instanceof Error ? err.message : "Errore invio BTC.";
       const code = (err as any).code as string | undefined;
       if (code === "BTC_SEND_UNCERTAIN" || msg.includes("UNCERTAIN")) {
         setState(prev => ({
           ...prev,
-          uiState: "committed",  // mantieni polling — forse la TX è passata
-          error: "Connessione interrotta dopo la firma. Verifica il saldo e attendi.",
+          uiState: "committed",
+          error:   "Connessione interrotta dopo la firma. Verifica il saldo e attendi.",
         }));
         if (state.exchange) _startPolling(state.exchange.swapId);
       } else {
@@ -377,16 +374,8 @@ export function useChangeNowSwapState(): [CnSwapState, CnSwapActions] {
     setState(INITIAL_STATE);
   }, []);
 
-  const setChain = useCallback((chain: CnToChain) => {
-    setState(prev => ({ ...prev, selectedChain: chain, quote: null, pairAvailable: null, error: null }));
-  }, []);
-
-  const setAmountBtc = useCallback((amount: string) => {
-    setState(prev => ({ ...prev, amountBtc: amount, quote: null, error: null }));
-  }, []);
-
   const actions: CnSwapActions = {
-    setChain,
+    setToken,
     setAmountBtc,
     checkPair,
     fetchQuote,

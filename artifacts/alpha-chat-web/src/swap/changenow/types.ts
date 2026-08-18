@@ -1,20 +1,76 @@
 /**
- * ChangeNOW Swap — Frontend types (BTC→USDT + EVM→EVM)
+ * ChangeNOW Swap — Frontend types (BTC→EVM + EVM→EVM)
+ *
+ * Versione estesa: supporta tutti gli 8 ticker BTC→EVM verificati.
+ * Precedente versione: solo BTC→USDT (3 chain).
  *
  * ISOLAMENTO: zero import da payment engine, USDA, MultiChain, Spark.
- * Li.Fi operational files (lifi-client.ts, useEvmSwapState.ts, EvmSwapView.tsx)
- * non importano mai da questo modulo.
+ * Li.Fi operational files invariati.
  */
 
-// ── Chain support ─────────────────────────────────────────────────────────────
+// ── BTC destination tokens (verificati 2026-08-18) ───────────────────────────
+
+export interface CnBtcDestToken {
+  symbol:       string;   // "USDT", "USDC", "ETH", "POL", "MATIC", "BNB"
+  ticker:       string;   // ticker ChangeNOW: "usdtmatic", "eth", "pol", …
+  name:         string;   // nome esteso
+  chain:        CnToChain;
+  chainName:    string;   // "Ethereum", "Polygon", "BSC"
+  decimals:     number;
+  minAmountBtc: number;   // minimo BTC verificato via API
+}
 
 export type CnToChain = "ethereum" | "polygon" | "bsc";
 
-export const CN_SUPPORTED_CHAINS: { id: CnToChain; label: string; ticker: string }[] = [
-  { id: "ethereum", label: "Ethereum",   ticker: "USDT ERC-20" },
-  { id: "polygon",  label: "Polygon",    ticker: "USDT (Polygon)" },
-  { id: "bsc",      label: "BSC",        ticker: "USDT BEP-20" },
+/**
+ * Tutti i token BTC→EVM verificati via API ChangeNOW (2026-08-18).
+ *
+ * INATTIVI (esclusi): usdcerc20, busd, bnb (usa bnbbsc)
+ *
+ * NOTA su pol/matic: entrambi sono ERC-20 su Ethereum.
+ *   addressExplorerMask = etherscan.io → payoutAddress = ETH address.
+ *   L'indirizzo Alpha Wallet (EVM) è valido per entrambi.
+ */
+export const CN_BTC_DEST_TOKENS: CnBtcDestToken[] = [
+  // ── Stablecoin ──────────────────────────────────────────────────────────
+  {
+    symbol: "USDT", ticker: "usdterc20", name: "USDT (Ethereum)",
+    chain: "ethereum", chainName: "Ethereum", decimals: 6, minAmountBtc: 0.0000179,
+  },
+  {
+    symbol: "USDT", ticker: "usdtmatic", name: "USDT (Polygon)",
+    chain: "polygon",  chainName: "Polygon",  decimals: 6, minAmountBtc: 0.0000148,
+  },
+  {
+    symbol: "USDT", ticker: "usdtbsc", name: "USDT (BSC)",
+    chain: "bsc",      chainName: "BSC",       decimals: 18, minAmountBtc: 0.0000131,
+  },
+  {
+    symbol: "USDC", ticker: "usdcmatic", name: "USDC (Polygon)",
+    chain: "polygon",  chainName: "Polygon",  decimals: 6, minAmountBtc: 0.0000164,
+  },
+  // ── Native EVM ──────────────────────────────────────────────────────────
+  {
+    symbol: "ETH", ticker: "eth", name: "ETH (Ethereum)",
+    chain: "ethereum", chainName: "Ethereum", decimals: 18, minAmountBtc: 0.000016,
+  },
+  {
+    symbol: "POL", ticker: "pol", name: "POL ERC-20 (Ethereum)",
+    chain: "ethereum", chainName: "Ethereum", decimals: 18, minAmountBtc: 0.0000151,
+  },
+  {
+    symbol: "MATIC", ticker: "matic", name: "MATIC ERC-20 (Ethereum)",
+    chain: "ethereum", chainName: "Ethereum", decimals: 18, minAmountBtc: 0.0000152,
+  },
+  {
+    symbol: "BNB", ticker: "bnbbsc", name: "BNB (BSC)",
+    chain: "bsc",      chainName: "BSC",       decimals: 18, minAmountBtc: 0.0000127,
+  },
 ];
+
+export function getCnBtcDestToken(ticker: string): CnBtcDestToken | undefined {
+  return CN_BTC_DEST_TOKENS.find(t => t.ticker === ticker);
+}
 
 // ── Status ────────────────────────────────────────────────────────────────────
 
@@ -43,11 +99,13 @@ export function isCnTerminal(status: CnSwapStatus): boolean {
 
 export interface CnQuote {
   fromCurrency:             string;
-  toCurrency:               string;
+  toTicker:                 string;
+  toAsset:                  string;
   toChain:                  CnToChain;
   fromAmount:               number;
   estimatedToAmount:        number;
   transactionSpeedForecast: string | null;
+  minAmountBtc:             number;
 }
 
 export interface CnCreateResult {
@@ -56,8 +114,10 @@ export interface CnCreateResult {
   btcDepositAddress: string;
   estimatedToAmount: number;
   fromAmount:        number;
+  toTicker:          string;
+  toAsset:           string;
   toChain:           CnToChain;
-  toAsset:           "USDT";
+  toChainName:       string;
 }
 
 export interface CnSwapStatusResult {
@@ -71,7 +131,10 @@ export interface CnSwapStatusResult {
   btcTxHash:             string | null;
   destinationTxHash:     string | null;
   fundsCommitted:        boolean;
+  toTicker:              string;
+  toAsset:               string;
   toChain:               CnToChain;
+  toChainName:           string;
   refundDetails:         { refundHash?: string; refundAddress?: string } | null;
   isTerminal:            boolean;
   isCompleted:           boolean;
@@ -80,56 +143,57 @@ export interface CnSwapStatusResult {
 // ── State machine ─────────────────────────────────────────────────────────────
 
 export type CnUiState =
-  | "idle"              // nessuno swap attivo
-  | "checking_pair"     // verifica disponibilità coppia
-  | "pair_unavailable"  // coppia non disponibile
-  | "quoting"           // richiesta quote in corso
-  | "ready"             // quote ricevuta, in attesa conferma utente
-  | "creating"          // creazione exchange in corso
-  | "awaiting_deposit"  // exchange creato, utente deve inviare BTC
-  | "signing"           // utente sta firmando/broadcasting BTC TX
-  | "committed"         // BTC TX broadcast, polling in corso
-  | "confirming"        // deposito BTC rilevato da ChangeNOW
-  | "exchanging"        // conversione in corso
-  | "sending"           // invio USDT verso destinazione
-  | "completed"         // swap completato con destinationTxHash verificato
-  | "refunded"          // rimborsato
-  | "failed"            // fallito
-  | "expired"           // scaduto
-  | "error";            // errore interno
+  | "idle"
+  | "checking_pair"
+  | "pair_unavailable"
+  | "quoting"
+  | "ready"
+  | "creating"
+  | "awaiting_deposit"
+  | "signing"
+  | "committed"
+  | "confirming"
+  | "exchanging"
+  | "sending"
+  | "completed"
+  | "refunded"
+  | "failed"
+  | "expired"
+  | "error";
 
-export const CHANGENOW_SWAP_ACTIVE_KEY = "cn_swap_active_id";
+export const CHANGENOW_SWAP_ACTIVE_KEY    = "cn_swap_active_id";
 export const CHANGENOW_SWAP_COMMITTED_KEY = "cn_swap_committed";
 
-// ── Step labels per UI ────────────────────────────────────────────────────────
+// ── Step labels ───────────────────────────────────────────────────────────────
 
 export const CN_STEPS = [
   { label: "Exchange creato",      sub: "In attesa del tuo deposito BTC" },
   { label: "Deposito rilevato",    sub: "ChangeNOW ha ricevuto i BTC" },
-  { label: "Conversione in corso", sub: "Scambio BTC → USDT" },
-  { label: "Invio USDT",           sub: "USDT in arrivo al tuo wallet" },
-  { label: "Completato",           sub: "USDT ricevuti ✓" },
+  { label: "Conversione in corso", sub: "Scambio BTC → token" },
+  { label: "Invio token",          sub: "Token in arrivo al tuo wallet" },
+  { label: "Completato",           sub: "Token ricevuti ✓" },
 ] as const;
 
 export function cnStepFromStatus(status: CnSwapStatus): number {
   if (["created", "waiting"].includes(status)) return 0;
   if (status === "confirming") return 1;
   if (status === "exchanging") return 2;
-  if (status === "sending") return 3;
-  if (status === "finished") return 4;
+  if (status === "sending")    return 3;
+  if (status === "finished")   return 4;
   return 0;
 }
 
-// ── Humanized error messages ──────────────────────────────────────────────────
+// ── Error messages ────────────────────────────────────────────────────────────
 
 export function humanizeCnError(code: string): string {
   switch (code) {
-    case "CHANGENOW_DISABLED":     return "Il provider ChangeNOW non è attualmente disponibile.";
-    case "UNSUPPORTED_TO_CHAIN":   return "Chain di destinazione non supportata.";
-    case "PAIR_UNAVAILABLE":       return "La coppia BTC→USDT non è disponibile al momento. Riprova più tardi.";
-    case "FUNDS_ALREADY_COMMITTED":return "Hai già inviato BTC per questo swap. Attendi il completamento.";
-    case "ACTIVE_SWAP_EXISTS":     return "Hai già uno swap in corso. Completalo prima di crearne uno nuovo.";
-    case "SWAP_NOT_FOUND":         return "Swap non trovato.";
-    default:                       return "Errore durante lo swap. Riprova tra qualche istante.";
+    case "CHANGENOW_DISABLED":           return "Il provider ChangeNOW non è disponibile.";
+    case "UNSUPPORTED_BTC_DESTINATION":  return "Token di destinazione non supportato.";
+    case "PAIR_UNAVAILABLE":             return "La coppia BTC→token non è disponibile. Riprova più tardi.";
+    case "FUNDS_ALREADY_COMMITTED":      return "Hai già inviato BTC per questo swap. Attendi il completamento.";
+    case "ACTIVE_SWAP_EXISTS":           return "Hai già uno swap in corso. Completalo prima di crearne uno nuovo.";
+    case "SWAP_NOT_FOUND":               return "Swap non trovato.";
+    case "EVM_DESTINATION_ADDRESS_REQUIRED": return "Wallet non sbloccato. Sblocca Alpha Wallet per continuare.";
+    default:                             return "Errore durante lo swap. Riprova tra qualche istante.";
   }
 }

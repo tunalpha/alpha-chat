@@ -1,30 +1,31 @@
 /**
- * ChangeNOW Swap Service — business logic
+ * ChangeNOW Swap Service — BTC → any EVM token
  *
- * Responsabilità:
- *   - Verifica pair BTC→USDT su chain specifica (senza assumere disponibilità)
- *   - Quote/stima importo USDT ricevuto
- *   - Creazione exchange con persistenza MongoDB
- *   - Commit funds (write-before-submit: fundsCommitted=true PRIMA del broadcast)
- *   - Polling status con aggiornamento DB
- *   - Recovery dopo reload/riavvio PWA
+ * Versione estesa: supporta tutti gli 8 ticker BTC→EVM verificati via API.
+ * Precedente versione: solo BTC→USDT (3 chain).
  *
  * ═══════════════════════════════════════════════════════════════
  *  REGOLA DOUBLE-SEND (ASSOLUTA):
  *    fundsCommitted=true → blocco assoluto su nuovo exchange
  *    Il flag è scritto su MongoDB PRIMA del broadcast BTC.
- *    Recovery: cerca swap esistente → riprende polling senza nuovo send.
  *
  *  REGOLA DESTINATION TX (ASSOLUTA):
- *    destinationTxHash  ← CnTransactionResponse.payoutHash (TX EVM)
- *    btcTxHash          ← CnTransactionResponse.payinHash  (TX BTC)
- *    I due campi sono semanticamente distinti e NON sostituibili.
+ *    destinationTxHash  ← CnTransactionResponse.payoutHash (TX EVM out)
+ *    btcTxHash          ← CnTransactionResponse.payinHash  (TX BTC in)
+ *    I due campi NON sono mai intercambiabili.
  *
  *  REGOLA COMPLETED (ASSOLUTA):
  *    isCompleted = true SOLO se:
  *      (1) cnStatus === "finished"
  *      (2) destinationTxHash presente e non vuoto
  *      (3) destinationTxHash !== btcTxHash
+ *
+ *  TICKER VALIDI (verificati 2026-08-18):
+ *    usdterc20, usdtmatic, usdtbsc, usdcmatic, eth, pol, matic, bnbbsc
+ *
+ *  FEE ALPHA 0,25%:
+ *    Non raccolta come TX separata per i ChangeNOW swap (richiede PSBT multi-output
+ *    o programma affiliato ChangeNOW). Documentata come pending nella checklist.
  * ═══════════════════════════════════════════════════════════════
  *
  * ISOLAMENTO: zero import da payment engine, USDA, MultiChain, Spark, Li.Fi.
@@ -41,9 +42,8 @@ import {
   cnGetExchangeAmount,
   cnCreateTransaction,
   cnGetTransactionStatus,
-  cnIsPairAvailable,
-  CN_USDT_TICKERS,
-  CN_FROM_CURRENCY,
+  getCnBtcDestToken,
+  CN_BTC_VALID_TICKERS,
   type CnApiStatus,
 } from "./changenow.service.js";
 import { isProviderEnabled } from "./swap-provider-router.service.js";
@@ -51,7 +51,7 @@ import { AppError } from "../../errors/AppError.js";
 
 const logger = pino({ name: "changenow-swap-service" });
 
-// ── Status mapping ChangeNOW API → internal ───────────────────────────────────
+// ── Status mapping ────────────────────────────────────────────────────────────
 
 const CN_STATUS_MAP: Record<CnApiStatus, CnSwapStatus> = {
   new:        "created",
@@ -71,20 +71,16 @@ export const CN_TERMINAL_STATUSES: CnSwapStatus[] = [
   "finished", "failed", "refunded", "expired", "error",
 ];
 
-// ── Guards interni ────────────────────────────────────────────────────────────
+// ── Guards ────────────────────────────────────────────────────────────────────
 
 async function assertChangeNowEnabled(): Promise<void> {
   const enabled = await isProviderEnabled("changenow");
-  if (!enabled) {
-    throw new AppError("CHANGENOW_DISABLED", 503);
-  }
+  if (!enabled) throw new AppError("CHANGENOW_DISABLED", 503);
 }
 
-function assertSupportedToChain(
-  toChain: string
-): asserts toChain is CnToChain {
-  if (!["ethereum", "polygon", "bsc"].includes(toChain)) {
-    throw new AppError("UNSUPPORTED_TO_CHAIN", 400);
+function assertValidTicker(ticker: string): void {
+  if (!CN_BTC_VALID_TICKERS.has(ticker)) {
+    throw new AppError("UNSUPPORTED_BTC_DESTINATION", 400);
   }
 }
 
@@ -93,23 +89,28 @@ function assertSupportedToChain(
 export interface CheckPairResult {
   available:    boolean;
   fromCurrency: string;
-  toCurrency:   string;
+  toTicker:     string;
+  toAsset:      string;
   toChain:      string;
+  minAmountBtc: number;
 }
 
 export interface QuoteResult {
   fromCurrency:             string;
-  toCurrency:               string;
+  toTicker:                 string;
+  toAsset:                  string;
   toChain:                  CnToChain;
   fromAmount:               number;
   estimatedToAmount:        number;
   transactionSpeedForecast: string | null;
+  minAmountBtc:             number;
 }
 
 export interface CreateExchangeParams {
   userId:                string;
   fromAmountBtc:         number;
-  toChain:               CnToChain;
+  /** Ticker ChangeNOW del token destinazione (es. "usdtmatic", "eth", "pol") */
+  toTicker:              string;
   destinationEvmAddress: string;
   btcRefundAddress?:     string;
 }
@@ -120,8 +121,10 @@ export interface CreateExchangeResult {
   btcDepositAddress: string;
   estimatedToAmount: number;
   fromAmount:        number;
+  toTicker:          string;
+  toAsset:           string;
   toChain:           CnToChain;
-  toAsset:           "USDT";
+  toChainName:       string;
 }
 
 export interface CommitFundsParams {
@@ -141,7 +144,10 @@ export interface SwapStatusResult {
   btcTxHash:             string | null;
   destinationTxHash:     string | null;
   fundsCommitted:        boolean;
+  toTicker:              string;
+  toAsset:               string;
   toChain:               CnToChain;
+  toChainName:           string;
   refundDetails:         { refundHash?: string; refundAddress?: string } | null;
   isTerminal:            boolean;
   /** true SOLO se: finished + destinationTxHash presente + destinationTxHash ≠ btcTxHash */
@@ -151,114 +157,127 @@ export interface SwapStatusResult {
 // ── Public service functions ──────────────────────────────────────────────────
 
 /**
- * Verifica la disponibilità della coppia BTC→USDT su una chain specifica.
- * Chiama sempre l'API ChangeNOW — non assume disponibilità.
+ * Verifica la disponibilità della coppia BTC→{toTicker} via API ChangeNOW.
+ * Chiama sempre l'API — non assume disponibilità.
  */
 export async function checkPairAvailability(
-  toChain: string
+  toTicker: string
 ): Promise<CheckPairResult> {
   await assertChangeNowEnabled();
-  assertSupportedToChain(toChain);
+  assertValidTicker(toTicker);
 
-  const toCurrency = CN_USDT_TICKERS[toChain];
-  if (!toCurrency) throw new AppError("UNSUPPORTED_TO_CHAIN", 400);
+  const dest = getCnBtcDestToken(toTicker)!;
 
-  const available = await cnIsPairAvailable(toCurrency);
-  logger.info({ toChain, toCurrency, available }, "pair availability checked");
-
-  if (!available) {
-    logger.warn({ toChain, toCurrency }, "Pair not available on ChangeNOW");
+  try {
+    await cnGetExchangeAmount({
+      amount:       dest.minAmountBtc * 2,  // use 2x min to get a valid quote
+      fromCurrency: "btc",
+      toCurrency:   toTicker,
+    });
+    logger.info({ toTicker, available: true }, "BTC→EVM pair available");
+    return {
+      available:    true,
+      fromCurrency: "btc",
+      toTicker,
+      toAsset:      dest.symbol,
+      toChain:      dest.chain,
+      minAmountBtc: dest.minAmountBtc,
+    };
+  } catch {
+    logger.warn({ toTicker }, "BTC→EVM pair unavailable or API error");
+    return {
+      available:    false,
+      fromCurrency: "btc",
+      toTicker,
+      toAsset:      dest.symbol,
+      toChain:      dest.chain,
+      minAmountBtc: dest.minAmountBtc,
+    };
   }
-
-  return { available, fromCurrency: CN_FROM_CURRENCY, toCurrency, toChain };
 }
 
 /**
- * Ottieni una stima dell'importo USDT ricevuto per un dato importo BTC.
- * Non imposta fundsCommitted — nessun movimento di fondi.
+ * Ottieni una stima dell'importo token ricevuto per un dato importo BTC.
  */
 export async function getQuote(params: {
   fromAmountBtc: number;
-  toChain:       CnToChain;
+  toTicker:      string;
 }): Promise<QuoteResult> {
   await assertChangeNowEnabled();
-  assertSupportedToChain(params.toChain);
+  assertValidTicker(params.toTicker);
 
-  const toCurrency = CN_USDT_TICKERS[params.toChain];
-  if (!toCurrency) throw new AppError("UNSUPPORTED_TO_CHAIN", 400);
+  const dest = getCnBtcDestToken(params.toTicker)!;
 
   const result = await cnGetExchangeAmount({
     amount:       params.fromAmountBtc,
-    fromCurrency: CN_FROM_CURRENCY,
-    toCurrency,
+    fromCurrency: "btc",
+    toCurrency:   params.toTicker,
   });
 
   return {
-    fromCurrency:             CN_FROM_CURRENCY,
-    toCurrency,
-    toChain:                  params.toChain,
+    fromCurrency:             "btc",
+    toTicker:                 params.toTicker,
+    toAsset:                  dest.symbol,
+    toChain:                  dest.chain,
     fromAmount:               params.fromAmountBtc,
     estimatedToAmount:        result.estimatedAmount,
     transactionSpeedForecast: result.transactionSpeedForecast ?? null,
+    minAmountBtc:             dest.minAmountBtc,
   };
 }
 
 /**
- * Crea un nuovo exchange ChangeNOW e lo persiste su MongoDB.
+ * Crea un nuovo exchange ChangeNOW BTC→EVM e persiste su MongoDB.
  *
  * DOUBLE-SEND PREVENTION:
- *   • Se l'utente ha uno swap attivo con fundsCommitted=true → 409
- *   • Se ha uno swap non-terminale non-committed → 409 (evita duplicati)
- *   Solo dopo verifica assenza conflitti viene chiamata l'API ChangeNOW.
- *   Un failure dell'API ChangeNOW NON imposta fundsCommitted.
+ *   • Se l'utente ha uno swap attivo non-terminale → 409
+ *   Solo dopo verifica viene chiamata l'API ChangeNOW.
  */
 export async function createExchange(
   params: CreateExchangeParams
 ): Promise<CreateExchangeResult> {
   await assertChangeNowEnabled();
-  assertSupportedToChain(params.toChain);
+  assertValidTicker(params.toTicker);
 
-  // 1. Guard anti-duplicati: cerca swap attivo per questo utente
+  const dest = getCnBtcDestToken(params.toTicker)!;
+
+  if (!params.destinationEvmAddress || params.destinationEvmAddress.length < 10) {
+    throw new AppError("EVM_DESTINATION_ADDRESS_REQUIRED", 400);
+  }
+
+  // Guard anti-duplicati
   const existingActive = await ChangeNowSwapModel.findOne({
     userId:   params.userId,
     cnStatus: { $nin: CN_TERMINAL_STATUSES },
   }).lean();
 
   if (existingActive) {
-    if (existingActive.fundsCommitted) {
-      logger.warn(
-        { userId: params.userId, existingSwapId: String(existingActive._id) },
-        "createExchange blocked: fundsCommitted=true on existing swap"
-      );
-      throw new AppError("FUNDS_ALREADY_COMMITTED", 409);
-    }
-    logger.warn(
-      { userId: params.userId, existingSwapId: String(existingActive._id) },
-      "createExchange blocked: active swap already exists"
-    );
-    throw new AppError("ACTIVE_SWAP_EXISTS", 409);
+    const code = existingActive.fundsCommitted
+      ? "FUNDS_ALREADY_COMMITTED"
+      : "ACTIVE_SWAP_EXISTS";
+    logger.warn({ userId: params.userId, code }, "createExchange blocked");
+    throw new AppError(code, 409);
   }
 
-  const toCurrency = CN_USDT_TICKERS[params.toChain]!;
-
-  // 2. Crea exchange su ChangeNOW (failure qui NON imposta fundsCommitted)
+  // Crea exchange su ChangeNOW
   const cnTx = await cnCreateTransaction({
-    fromCurrency:   CN_FROM_CURRENCY,
-    toCurrency,
-    amount:         params.fromAmountBtc,
-    address:        params.destinationEvmAddress,
-    refundAddress:  params.btcRefundAddress,
+    fromCurrency:  "btc",
+    toCurrency:    params.toTicker,
+    amount:        params.fromAmountBtc,
+    address:       params.destinationEvmAddress,
+    refundAddress: params.btcRefundAddress,
   });
 
-  // 3. Persisti su MongoDB con fundsCommitted=false
+  // Persisti
   const swap = await ChangeNowSwapModel.create({
     userId:                params.userId,
     provider:              "changenow",
     exchangeId:            cnTx.id,
     fromChain:             "bitcoin",
-    toChain:               params.toChain,
+    toChain:               dest.chain,
     fromAsset:             "BTC",
-    toAsset:               "USDT",
+    toAsset:               dest.symbol,
+    toTicker:              params.toTicker,
     fromAmount:            params.fromAmountBtc,
     estimatedToAmount:     cnTx.expectedReceiveAmount,
     btcDepositAddress:     cnTx.payinAddress,
@@ -271,8 +290,8 @@ export async function createExchange(
   });
 
   logger.info(
-    { userId: params.userId, swapId: String(swap._id), exchangeId: cnTx.id, toChain: params.toChain },
-    "ChangeNOW exchange created"
+    { userId: params.userId, swapId: String(swap._id), exchangeId: cnTx.id, toTicker: params.toTicker },
+    "BTC→EVM exchange created"
   );
 
   return {
@@ -281,21 +300,16 @@ export async function createExchange(
     btcDepositAddress: cnTx.payinAddress,
     estimatedToAmount: cnTx.expectedReceiveAmount,
     fromAmount:        params.fromAmountBtc,
-    toChain:           params.toChain,
-    toAsset:           "USDT",
+    toTicker:          params.toTicker,
+    toAsset:           dest.symbol,
+    toChain:           dest.chain,
+    toChainName:       dest.chainName,
   };
 }
 
 /**
  * Segna fundsCommitted=true e persiste il btcTxHash.
- *
- * CRITICO — WRITE-BEFORE-SUBMIT:
- *   Chiamare PRIMA del broadcast BTC.
- *   Da questo momento: nessun nuovo exchange, nessun fallback automatico.
- *
- * INVARIANTE:
- *   btcTxHash qui è il txid della TX Bitcoin di deposito.
- *   NON viene mai copiato in destinationTxHash (campo EVM).
+ * CRITICO — chiamare PRIMA del broadcast BTC (write-before-submit).
  */
 export async function commitFunds(
   params: CommitFundsParams
@@ -318,7 +332,6 @@ export async function commitFunds(
       userId: params.userId,
     });
     if (!existing) throw new AppError("SWAP_NOT_FOUND", 404);
-    // Già committed — idempotent
     if (existing.fundsCommitted) {
       logger.info({ swapId: params.swapId }, "commitFunds: already committed (idempotent)");
       return { swapId: params.swapId, fundsCommitted: true };
@@ -326,24 +339,13 @@ export async function commitFunds(
     throw new AppError("COMMIT_FAILED", 500);
   }
 
-  logger.info(
-    { swapId: params.swapId, userId: params.userId, btcTxHash: params.btcTxHash },
-    "Funds committed — BTC TX broadcast registered"
-  );
+  logger.info({ swapId: params.swapId, btcTxHash: params.btcTxHash }, "Funds committed");
   return { swapId: params.swapId, fundsCommitted: true };
 }
 
 /**
  * Interroga ChangeNOW per lo stato corrente e aggiorna il DB.
- *
- * REGOLA DESTINATION TX:
- *   destinationTxHash ← cnTx.payoutHash (TX EVM di uscita)
- *   btcTxHash         ← cnTx.payinHash  (TX BTC di deposito, già nota)
- *   Guard finale: destinationTxHash !== btcTxHash.
- *
- * COMPLETAMENTO:
- *   isCompleted=true solo se cnStatus="finished" AND destinationTxHash presente
- *   AND destinationTxHash !== btcTxHash.
+ * Resiliente: se ChangeNOW non risponde, usa il dato DB.
  */
 export async function getSwapStatus(params: {
   swapId: string;
@@ -355,57 +357,49 @@ export async function getSwapStatus(params: {
   });
   if (!swap) throw new AppError("SWAP_NOT_FOUND", 404);
 
-  // Se già terminale → restituisci senza chiamare ChangeNOW
+  // Già terminale → nessun polling
   if (CN_TERMINAL_STATUSES.includes(swap.cnStatus)) {
     return _toStatusResult(swap);
   }
 
-  // Polling ChangeNOW
-  const cnTx = await cnGetTransactionStatus(swap.exchangeId);
-  const newStatus: CnSwapStatus = CN_STATUS_MAP[cnTx.status] ?? "error";
+  try {
+    const cnTx = await cnGetTransactionStatus(swap.exchangeId);
+    const newStatus: CnSwapStatus = CN_STATUS_MAP[cnTx.status] ?? "error";
 
-  // btcTxHash: preferisce il valore già in DB (impostato da commitFunds),
-  // altrimenti prende da ChangeNOW
-  const btcTxHash = swap.btcTxHash ?? cnTx.payinHash ?? null;
+    const btcTxHash       = swap.btcTxHash ?? cnTx.payinHash ?? null;
+    const rawDestTx       = cnTx.payoutHash ?? null;
+    const destinationTxHash = rawDestTx && rawDestTx !== btcTxHash ? rawDestTx : null;
+    const refundDetails   = cnTx.refundHash
+      ? { refundHash: cnTx.refundHash }
+      : (swap.refundDetails ?? null);
 
-  // destinationTxHash: SOLO dal payoutHash ChangeNOW
-  // Guard: NON può essere uguale al btcTxHash
-  const rawDestTx = cnTx.payoutHash ?? null;
-  const destinationTxHash =
-    rawDestTx && rawDestTx !== btcTxHash ? rawDestTx : null;
+    await ChangeNowSwapModel.findOneAndUpdate(
+      { _id: params.swapId },
+      {
+        $set: {
+          cnStatus:         newStatus,
+          btcTxHash,
+          destinationTxHash,
+          refundDetails,
+          fundsCommitted:   swap.fundsCommitted || !!btcTxHash,
+        },
+      }
+    );
 
-  // Refund details: aggiorna se ChangeNOW ne ha di nuovi
-  const refundDetails = cnTx.refundHash
-    ? { refundHash: cnTx.refundHash }
-    : (swap.refundDetails ?? null);
-
-  // Aggiorna DB
-  await ChangeNowSwapModel.findOneAndUpdate(
-    { _id: params.swapId },
-    {
-      $set: {
-        cnStatus:         newStatus,
-        btcTxHash,
-        destinationTxHash,
-        refundDetails,
-        // Se ChangeNOW ha rilevato il deposito → fundsCommitted=true
-        fundsCommitted:   swap.fundsCommitted || !!btcTxHash,
-      },
-    }
-  );
-
-  const updated = await ChangeNowSwapModel.findById(params.swapId);
-  if (!updated) throw new AppError("SWAP_NOT_FOUND", 404);
-  return _toStatusResult(updated);
+    const updated = await ChangeNowSwapModel.findById(params.swapId);
+    if (!updated) throw new AppError("SWAP_NOT_FOUND", 404);
+    return _toStatusResult(updated);
+  } catch (err) {
+    // Se fallisce il polling ChangeNOW → usa dato DB (resilienza)
+    if (err instanceof AppError) throw err;
+    logger.warn({ swapId: params.swapId, err: String(err) }, "Status fetch failed — using DB state");
+    return _toStatusResult(swap);
+  }
 }
 
 /**
- * Recupera lo swap attivo per un utente (recovery post-reload).
- * Restituisce null se non esiste uno swap non-terminale.
- *
- * RECOVERY:
- *   Il frontend salva swapId in localStorage["cn_swap_active_id"].
- *   Su mount chiama /active → se esiste → riprende polling senza nuovo send.
+ * Recupera lo swap attivo (non-terminale) per un utente.
+ * Usato per recovery post-reload PWA.
  */
 export async function getActiveSwapForUser(
   userId: string
@@ -424,11 +418,18 @@ export async function getActiveSwapForUser(
 function _toStatusResult(swap: IChangeNowSwap): SwapStatusResult {
   const isTerminal = CN_TERMINAL_STATUSES.includes(swap.cnStatus);
 
-  // isCompleted richiede TUTTE le condizioni (spec: nessun completed senza dest TX)
   const isCompleted =
     swap.cnStatus === "finished" &&
     !!swap.destinationTxHash &&
     swap.destinationTxHash !== swap.btcTxHash;
+
+  // Deriva toChainName dal toTicker se disponibile, altrimenti dal toChain
+  const dest = getCnBtcDestToken(swap.toTicker);
+  const toChainName = dest?.chainName ?? (
+    swap.toChain === "ethereum" ? "Ethereum"
+    : swap.toChain === "polygon"  ? "Polygon"
+    : "BSC"
+  );
 
   return {
     swapId:                String(swap._id),
@@ -441,7 +442,10 @@ function _toStatusResult(swap: IChangeNowSwap): SwapStatusResult {
     btcTxHash:             swap.btcTxHash,
     destinationTxHash:     swap.destinationTxHash,
     fundsCommitted:        swap.fundsCommitted,
+    toTicker:              swap.toTicker,
+    toAsset:               swap.toAsset,
     toChain:               swap.toChain,
+    toChainName,
     refundDetails:         swap.refundDetails ?? null,
     isTerminal,
     isCompleted,

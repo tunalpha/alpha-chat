@@ -1,85 +1,84 @@
 /**
- * ChangeNowSwapView — UI per swap BTC→USDT via ChangeNOW
+ * ChangeNowSwapView — UI per swap BTC→any EVM token via ChangeNOW
  *
- * Design system: asw-* (stesso di EvmSwapView — vedi AlphaWalletPage.css)
- * Zero Tailwind, zero import da Li.Fi operativo, zero import da payment engine.
+ * Versione estesa: 8 destinazioni verificate (USDT, USDC, ETH, POL, MATIC, BNB).
+ * Precedente versione: solo BTC→USDT su 3 chain.
  *
- * Viene renderizzata da SwapView SOLO quando il provider attivo è "changenow".
- * Se provider = lifi → EvmSwapView (file separato, invariato).
+ * Design system: asw-* (AlphaWalletPage.css)
+ * Zero Tailwind, zero import da Li.Fi operativo, zero payment engine.
  *
  * FLUSSO:
- *   1. Selezione chain destinazione (ETH/Polygon/BSC)
- *   2. Inserimento importo BTC
- *   3. Stima USDT ricevuto (quote)
- *   4. Creazione exchange → ricezione deposit address BTC
- *   5. Utente invia BTC dal wallet interno (Alpha Wallet)
- *   6. Commit + polling fino a completamento
+ *   1. Selezione token destinazione
+ *   2. Importo BTC
+ *   3. Quote
+ *   4. Crea exchange → deposit address BTC
+ *   5. Invia BTC con Alpha Wallet
+ *   6. Commit + polling
  */
 
 import React, {
   useCallback, useEffect, useRef, useState,
 } from "react";
 import {
-  ChevronDown, Copy, Check, Loader2, CheckCircle,
-  AlertTriangle, Clock, ArrowRight,
+  Copy, Check, Loader2, CheckCircle, AlertTriangle, Clock, ArrowRight, ChevronDown,
 } from "lucide-react";
-import {
-  useChangeNowSwapState,
-} from "./useChangeNowSwapState.js";
-import {
-  CN_SUPPORTED_CHAINS,
-  CN_STEPS,
-  cnStepFromStatus,
-  type CnToChain,
-} from "./types.js";
-import { BTC_LOGO_URI } from "../evm/types.js";
+import { useChangeNowSwapState }          from "./useChangeNowSwapState.js";
+import { CN_BTC_DEST_TOKENS, CN_STEPS, cnStepFromStatus, type CnBtcDestToken } from "./types.js";
+import { BTC_LOGO_URI }                   from "../evm/types.js";
 
 // ── Props ─────────────────────────────────────────────────────────────────────
 
 interface ChangeNowSwapViewProps {
-  onBack:              () => void;
-  alphaWalletAddress:  string | null;   // indirizzo EVM Alpha Wallet (destinazione USDT)
-  btcAddress:          string | undefined;
-  btcBalanceSat:       number | undefined;
-  /** Firma e broadcasta una TX BTC dal wallet interno. Restituisce il txid. */
-  sendBtcForSwap:      (params: { toAddress: string; amountSat: bigint }) => Promise<string>;
+  onBack:             () => void;
+  alphaWalletAddress: string | null;
+  btcAddress:         string | undefined;
+  btcBalanceSat:      number | undefined;
+  sendBtcForSwap:     (params: { toAddress: string; amountSat: bigint }) => Promise<string>;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
-function satToBtc(sat: number): number { return sat / 1e8; }
+function satToBtc(sat: number): number  { return sat / 1e8; }
 function btcToSat(btc: number): number  { return Math.round(btc * 1e8); }
-function fmtUsdt(n: number): string     { return n.toFixed(2); }
 function fmtBtc(n: number): string      { return n.toFixed(8).replace(/0+$/, "").replace(/\.$/, ".0"); }
+
+function fmtToken(n: number, decimals: number): string {
+  const places = Math.min(decimals, 6);
+  return n.toFixed(places).replace(/\.?0+$/, "") || "0";
+}
+
+// ── Token groupings for selector ──────────────────────────────────────────────
+
+const TOKEN_GROUPS: { label: string; tokens: CnBtcDestToken[] }[] = [
+  {
+    label: "Stablecoin",
+    tokens: CN_BTC_DEST_TOKENS.filter(t => ["USDT", "USDC"].includes(t.symbol)),
+  },
+  {
+    label: "Native",
+    tokens: CN_BTC_DEST_TOKENS.filter(t => !["USDT", "USDC"].includes(t.symbol)),
+  },
+];
 
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function ChangeNowSwapView({
   onBack,
   alphaWalletAddress,
-  btcAddress,
   btcBalanceSat,
   sendBtcForSwap,
 }: ChangeNowSwapViewProps) {
   const [state, actions] = useChangeNowSwapState();
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied]       = useState(false);
+  const [showTokenMenu, setShowTokenMenu] = useState(false);
   const hasAutoQuoted = useRef(false);
 
-  // Indirizzo EVM di destinazione: usa Alpha Wallet interno
   const destinationEvm = alphaWalletAddress;
 
-  // ── Auto-check pair al cambio chain ──────────────────────────────────────
-  useEffect(() => {
-    if (state.uiState === "idle" && destinationEvm) {
-      actions.checkPair();
-    }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.selectedChain]);
-
-  // ── Auto-quote quando importo cambia ─────────────────────────────────────
+  // ── Auto-quote al cambio importo ──────────────────────────────────────────
   useEffect(() => {
     if (!state.amountBtc || parseFloat(state.amountBtc) <= 0) return;
-    if (state.uiState !== "ready" && state.uiState !== "idle" && state.uiState !== "quoting") return;
+    if (!["idle", "ready", "quoting"].includes(state.uiState)) return;
     const t = setTimeout(() => {
       if (!hasAutoQuoted.current || state.quote === null) {
         hasAutoQuoted.current = true;
@@ -90,14 +89,19 @@ export function ChangeNowSwapView({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.amountBtc]);
 
-  // ── Copy address ──────────────────────────────────────────────────────────
+  // Reset quote quando cambia token
+  useEffect(() => {
+    hasAutoQuoted.current = false;
+  }, [state.selectedToken.ticker]);
+
+  // ── Handlers ──────────────────────────────────────────────────────────────
+
   const handleCopy = useCallback((text: string) => {
     navigator.clipboard.writeText(text).catch(() => {});
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   }, []);
 
-  // ── Send BTC bridge ───────────────────────────────────────────────────────
   const handleSend = useCallback(async () => {
     if (!state.exchange) return;
     await actions.commitAndSend(async (depositAddress, amountBtc) => {
@@ -106,35 +110,82 @@ export function ChangeNowSwapView({
     });
   }, [state.exchange, actions, sendBtcForSwap]);
 
-  // ── MAX button ────────────────────────────────────────────────────────────
   const handleMax = useCallback(() => {
     if (!btcBalanceSat || btcBalanceSat <= 2000) return;
-    const reserveSat = 2000;
-    const usableSat  = btcBalanceSat - reserveSat;
-    const usableBtc  = satToBtc(usableSat);
-    actions.setAmountBtc(fmtBtc(usableBtc));
+    const usableSat = btcBalanceSat - 2000;
+    actions.setAmountBtc(fmtBtc(satToBtc(usableSat)));
   }, [btcBalanceSat, actions]);
 
-  // ── Chain selector ────────────────────────────────────────────────────────
-  const ChainSelector = (
-    <div className="asw-field" style={{ marginBottom: 12 }}>
-      <label className="asw-label">Chain destinazione (USDT)</label>
-      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-        {CN_SUPPORTED_CHAINS.map(ch => (
-          <button
-            key={ch.id}
-            onClick={() => { hasAutoQuoted.current = false; actions.setChain(ch.id as CnToChain); }}
-            className={`asw-tab${state.selectedChain === ch.id ? " asw-tab--active" : ""}`}
-            style={{ fontSize: 12, padding: "5px 10px" }}
-          >
-            {ch.label}
-          </button>
-        ))}
-      </div>
+  const handleTokenSelect = useCallback((t: CnBtcDestToken) => {
+    actions.setToken(t);
+    setShowTokenMenu(false);
+  }, [actions]);
+
+  // ── Token selector ────────────────────────────────────────────────────────
+  const tok = state.selectedToken;
+  const TokenSelector = (
+    <div className="asw-field" style={{ position: "relative", marginBottom: 12 }}>
+      <label className="asw-label">Token destinazione</label>
+      <button
+        onClick={() => setShowTokenMenu(v => !v)}
+        style={{
+          display: "flex", alignItems: "center", gap: 8, width: "100%",
+          background: "rgba(255,255,255,.06)", border: "1px solid rgba(255,255,255,.12)",
+          borderRadius: 10, padding: "9px 12px", cursor: "pointer", color: "rgba(255,255,255,.9)",
+          fontSize: 14, fontWeight: 600,
+        }}
+      >
+        <span style={{ flex: 1, textAlign: "left" }}>
+          {tok.symbol}
+          <span style={{ fontWeight: 400, fontSize: 12, color: "rgba(255,255,255,.5)", marginLeft: 6 }}>
+            {tok.name}
+          </span>
+        </span>
+        <ChevronDown size={14} style={{ color: "rgba(255,255,255,.4)" }} />
+      </button>
+
+      {showTokenMenu && (
+        <div style={{
+          position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, zIndex: 50,
+          background: "#1e1e2e", border: "1px solid rgba(255,255,255,.12)",
+          borderRadius: 10, overflow: "hidden", boxShadow: "0 8px 24px rgba(0,0,0,.5)",
+          maxHeight: 280, overflowY: "auto",
+        }}>
+          {TOKEN_GROUPS.map(g => (
+            <div key={g.label}>
+              <p style={{
+                fontSize: 10, fontWeight: 700, letterSpacing: "0.06em",
+                color: "rgba(255,255,255,.35)", padding: "8px 12px 4px",
+                textTransform: "uppercase",
+              }}>{g.label}</p>
+              {g.tokens.map(t => (
+                <button
+                  key={t.ticker}
+                  onClick={() => handleTokenSelect(t)}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 8, width: "100%",
+                    background: t.ticker === tok.ticker ? "rgba(99,102,241,.15)" : "transparent",
+                    border: "none", padding: "8px 12px", cursor: "pointer",
+                    color: "rgba(255,255,255,.85)", fontSize: 13, textAlign: "left",
+                  }}
+                >
+                  <span style={{ fontWeight: 600, minWidth: 44 }}>{t.symbol}</span>
+                  <span style={{ fontSize: 11, color: "rgba(255,255,255,.4)", flex: 1 }}>
+                    {t.chainName}
+                  </span>
+                  <span style={{ fontSize: 10, color: "rgba(255,255,255,.25)" }}>
+                    min {t.minAmountBtc} BTC
+                  </span>
+                </button>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 
-  // ── Render: no EVM wallet ─────────────────────────────────────────────────
+  // ── Render: no wallet ─────────────────────────────────────────────────────
   if (!destinationEvm) {
     return (
       <div className="asw-content">
@@ -143,7 +194,7 @@ export function ChangeNowSwapView({
           <div>
             <p className="asw-status-title">Wallet non sbloccato</p>
             <p className="asw-status-sub">
-              Sblocca l'Alpha Wallet per continuare. L'indirizzo EVM è necessario per ricevere USDT.
+              Sblocca Alpha Wallet per ricevere {tok.symbol} all'indirizzo EVM.
             </p>
           </div>
           <button onClick={onBack} className="aw-btn aw-btn--secondary" style={{ maxWidth: 220 }}>
@@ -163,12 +214,12 @@ export function ChangeNowSwapView({
           <div>
             <p className="asw-status-title">Swap completato!</p>
             <p className="asw-status-sub">
-              {fmtUsdt(state.status.estimatedToAmount)} USDT ricevuti su{" "}
-              {CN_SUPPORTED_CHAINS.find(c => c.id === state.status!.toChain)?.label ?? state.status.toChain}
+              ≈ {fmtToken(state.status.estimatedToAmount, tok.decimals)} {state.status.toAsset}{" "}
+              ricevuti su {state.status.toChainName}
             </p>
           </div>
           {state.status.destinationTxHash && (
-            <p style={{ fontSize: 11, color: "rgba(255,255,255,.4)", wordBreak: "break-all", textAlign: "center" }}>
+            <p style={{ fontSize: 11, color: "rgba(255,255,255,.35)", wordBreak: "break-all", textAlign: "center" }}>
               TX: {state.status.destinationTxHash}
             </p>
           )}
@@ -182,11 +233,9 @@ export function ChangeNowSwapView({
 
   // ── Render: terminal errors ───────────────────────────────────────────────
   if (["failed", "expired", "refunded"].includes(state.uiState)) {
-    const label = state.uiState === "refunded"
-      ? "Rimborso in corso"
-      : state.uiState === "expired"
-        ? "Exchange scaduto"
-        : "Swap non riuscito";
+    const label = state.uiState === "refunded" ? "Rimborso in corso"
+      : state.uiState === "expired"  ? "Exchange scaduto"
+      : "Swap non riuscito";
     return (
       <div className="asw-content">
         <div className="asw-status-view">
@@ -195,7 +244,7 @@ export function ChangeNowSwapView({
             <p className="asw-status-title">{label}</p>
             <p className="asw-status-sub">
               {state.uiState === "refunded"
-                ? `I BTC verranno rimborsati all'indirizzo originale.${state.status?.refundDetails?.refundHash ? ` TX rimborso: ${state.status.refundDetails.refundHash}` : ""}`
+                ? `I BTC verranno rimborsati.${state.status?.refundDetails?.refundHash ? ` TX: ${state.status.refundDetails.refundHash}` : ""}`
                 : state.error ?? "Lo swap non è stato completato."}
             </p>
           </div>
@@ -207,14 +256,13 @@ export function ChangeNowSwapView({
     );
   }
 
-  // ── Render: polling / in-progress ─────────────────────────────────────────
+  // ── Render: polling in-progress ───────────────────────────────────────────
   const pollingStates = ["committed", "confirming", "exchanging", "sending"];
   if (pollingStates.includes(state.uiState) && state.exchange) {
     const step = state.status ? cnStepFromStatus(state.status.cnStatus) : 0;
     return (
       <div className="asw-content">
         <div className="asw-form">
-          {/* Stepper */}
           <div className="asw-stepper">
             {CN_STEPS.map((s, i) => {
               const done    = i < step;
@@ -248,7 +296,6 @@ export function ChangeNowSwapView({
             })}
           </div>
 
-          {/* Info swap */}
           <div className="asw-deposit-card" style={{ marginTop: 12 }}>
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
               <span style={{ fontSize: 12, color: "rgba(255,255,255,.5)" }}>Invii</span>
@@ -259,7 +306,7 @@ export function ChangeNowSwapView({
             <div style={{ display: "flex", justifyContent: "space-between" }}>
               <span style={{ fontSize: 12, color: "rgba(255,255,255,.5)" }}>Ricevi (stima)</span>
               <span style={{ fontSize: 13, color: "rgba(255,255,255,.85)", fontWeight: 600 }}>
-                ≈ {fmtUsdt(state.exchange.estimatedToAmount)} USDT
+                ≈ {fmtToken(state.exchange.estimatedToAmount, tok.decimals)} {state.exchange.toAsset}
               </span>
             </div>
           </div>
@@ -269,7 +316,6 @@ export function ChangeNowSwapView({
               {state.error}
             </p>
           )}
-
           <p style={{ fontSize: 11, color: "rgba(255,255,255,.35)", textAlign: "center", marginTop: 12 }}>
             <Clock size={11} style={{ verticalAlign: "middle", marginRight: 3 }} />
             Aggiornamento automatico ogni 15s
@@ -309,17 +355,12 @@ export function ChangeNowSwapView({
           </div>
 
           <p style={{ fontSize: 11, color: "rgba(255,255,255,.4)", textAlign: "center", marginTop: 8 }}>
-            Riceverai ≈ {fmtUsdt(state.exchange.estimatedToAmount)} USDT su{" "}
-            {CN_SUPPORTED_CHAINS.find(c => c.id === state.exchange!.toChain)?.label}
+            Riceverai ≈ {fmtToken(state.exchange.estimatedToAmount, tok.decimals)}{" "}
+            {state.exchange.toAsset} su {state.exchange.toChainName}
           </p>
 
-          {/* Invio tramite Alpha Wallet interno */}
-          {btcBalanceSat !== undefined && btcBalanceSat > 0 && (
-            <button
-              onClick={handleSend}
-              className="aw-btn aw-btn--primary"
-              style={{ marginTop: 14 }}
-            >
+          {btcBalanceSat !== undefined && btcBalanceSat > 2000 && (
+            <button onClick={handleSend} className="aw-btn aw-btn--primary" style={{ marginTop: 14 }}>
               <img src={BTC_LOGO_URI} alt="BTC" style={{ width: 16, height: 16, borderRadius: "50%" }} />
               Invia BTC con Alpha Wallet
             </button>
@@ -350,17 +391,17 @@ export function ChangeNowSwapView({
     );
   }
 
-  // ── Render: main form (idle/checking/quoting/ready/creating) ──────────────
+  // ── Render: form principale ───────────────────────────────────────────────
   const isLoading = ["checking_pair", "quoting", "creating"].includes(state.uiState);
   const hasQuote  = !!state.quote && state.uiState === "ready";
 
   return (
-    <div className="asw-content">
+    <div className="asw-content" onClick={() => { if (showTokenMenu) setShowTokenMenu(false); }}>
       <div className="asw-form">
-        {/* Chain selector */}
-        {ChainSelector}
+        {/* Token selector */}
+        {TokenSelector}
 
-        {/* Amount input */}
+        {/* Importo BTC */}
         <div className="asw-field">
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
             <label className="asw-label">Importo BTC da inviare</label>
@@ -391,33 +432,35 @@ export function ChangeNowSwapView({
               style={{ paddingLeft: 40 }}
             />
           </div>
+          {tok.minAmountBtc > 0 && (
+            <p style={{ fontSize: 10, color: "rgba(255,255,255,.3)", marginTop: 3 }}>
+              Min: {tok.minAmountBtc} BTC per questa coppia
+            </p>
+          )}
         </div>
 
-        {/* Quote result */}
+        {/* Quote */}
         {hasQuote && state.quote && (
           <div className="asw-quote-card">
             <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
               <span style={{ fontSize: 13, color: "rgba(255,255,255,.6)" }}>Ricevi (stima)</span>
               <ArrowRight size={14} style={{ color: "rgba(255,255,255,.3)" }} />
               <span style={{ fontSize: 15, fontWeight: 700, color: "rgba(255,255,255,.92)" }}>
-                ≈ {fmtUsdt(state.quote.estimatedToAmount)} USDT
+                ≈ {fmtToken(state.quote.estimatedToAmount, tok.decimals)} {tok.symbol}
               </span>
             </div>
             <p style={{ fontSize: 11, color: "rgba(255,255,255,.35)", marginTop: 4 }}>
-              Provider: ChangeNOW · Destinazione: {CN_SUPPORTED_CHAINS.find(c => c.id === state.selectedChain)?.label}
+              Provider: ChangeNOW · Rete: {tok.chainName}
             </p>
-            {state.quote.transactionSpeedForecast && (
-              <p style={{ fontSize: 11, color: "rgba(255,255,255,.35)" }}>
-                Tempo stimato: {state.quote.transactionSpeedForecast}
-              </p>
-            )}
           </div>
         )}
 
-        {/* Destination EVM address */}
+        {/* Wallet destinazione */}
         {destinationEvm && (
           <div className="asw-field">
-            <label className="asw-label">Destinazione USDT (Alpha Wallet)</label>
+            <label className="asw-label">
+              Destinazione {tok.symbol} (Alpha Wallet · {tok.chainName})
+            </label>
             <p style={{ fontSize: 11, color: "rgba(255,255,255,.45)", wordBreak: "break-all", marginTop: 4 }}>
               {destinationEvm}
             </p>
@@ -439,9 +482,10 @@ export function ChangeNowSwapView({
             disabled={isLoading || !state.amountBtc}
             className="aw-btn aw-btn--primary"
           >
-            {isLoading ? (
-              <><Loader2 size={14} style={{ animation: "aw-spin .8s linear infinite", borderRadius: "50%", border: "2px solid rgba(255,255,255,.2)", borderTopColor: "#fff" }} /> Verifica in corso…</>
-            ) : "Stima importo →"}
+            {isLoading
+              ? <><Loader2 size={14} style={{ animation: "aw-spin .8s linear infinite", borderRadius: "50%", border: "2px solid rgba(255,255,255,.2)", borderTopColor: "#fff" }} /> Verifica in corso…</>
+              : `Stima ${tok.symbol} →`
+            }
           </button>
         ) : (
           <button
@@ -449,14 +493,15 @@ export function ChangeNowSwapView({
             disabled={isLoading || !destinationEvm}
             className="aw-btn aw-btn--primary"
           >
-            {isLoading ? (
-              <><Loader2 size={14} style={{ animation: "aw-spin .8s linear infinite", borderRadius: "50%", border: "2px solid rgba(255,255,255,.2)", borderTopColor: "#fff" }} /> Creazione…</>
-            ) : "Crea exchange →"}
+            {isLoading
+              ? <><Loader2 size={14} style={{ animation: "aw-spin .8s linear infinite", borderRadius: "50%", border: "2px solid rgba(255,255,255,.2)", borderTopColor: "#fff" }} /> Creazione…</>
+              : "Crea exchange →"
+            }
           </button>
         )}
 
-        <p style={{ fontSize: 10, color: "rgba(255,255,255,.25)", textAlign: "center", marginTop: 8 }}>
-          Powered by ChangeNOW · Le stime non includono fee miner BTC
+        <p style={{ fontSize: 10, color: "rgba(255,255,255,.2)", textAlign: "center", marginTop: 8 }}>
+          Powered by ChangeNOW · Stime escluse fee miner BTC
         </p>
       </div>
     </div>

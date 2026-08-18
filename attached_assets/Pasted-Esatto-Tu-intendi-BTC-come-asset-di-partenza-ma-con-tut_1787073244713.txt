@@ -1,0 +1,111 @@
+Esatto. Tu intendi BTC come asset di partenza, ma con tutte le destinazioni che Alpha deve supportare, non solo BTC→USDT.
+
+Gli direi così:
+
+Estendi la verifica e l’implementazione ChangeNOW includendo BTC come asset SOURCE con tutte le varianti di destinazione che Alpha deve supportare.
+
+BTC → tutte le destinazioni
+
+Verifica direttamente tramite API ufficiale ChangeNOW le pair e i ticker reali per:
+
+Stablecoin
+
+* BTC → USDT su Ethereum
+* BTC → USDT su Polygon
+* BTC → USDT su BSC
+* BTC → USDC su Ethereum
+* BTC → USDC su Polygon
+* BTC → USDC su BSC, se supportato
+
+Native coin
+
+* BTC → ETH / Ethereum
+* BTC → POL / Polygon
+* BTC → BNB / BSC
+* BTC → eventuali altre native EVM già supportate da Alpha
+
+IMPORTANTE: non limitarti a verificare che il ticker esista. Per ogni combinazione verifica realmente:
+
+1. ticker ChangeNOW esatto
+2. pair disponibile
+3. rete/chain di destinazione
+4. minAmount
+5. quote
+6. creazione transaction
+7. payinAddress
+8. payoutAddress
+9. exchangeId
+10. tutti gli status fino a finished
+11. payoutHash
+12. eventuale refund
+
+EVM → EVM
+
+Mantieni inoltre la verifica già fatta per:
+
+* POL → USDC
+* POL → USDT
+* ETH → USDT
+* ETH → USDC
+* BNB → USDT
+* BNB → USDC
+* e le altre combinazioni supportate da ChangeNOW che Alpha espone realmente nell’interfaccia.
+
+BTC → EVM: attenzione all’indirizzo
+
+Verifica specificamente che il payoutAddress sia l’indirizzo EVM corretto del wallet dell’utente sulla rete scelta e che non venga mai utilizzato un indirizzo appartenente alla chain sbagliata.
+
+Fee Alpha
+
+Verifica che la fee Alpha 0,25% venga applicata correttamente a TUTTI i percorsi:
+
+BTC → USDT/USDC/native EVM
+
+EVM → USDT/USDC/native EVM
+
+La fee deve finire nei wallet fee già configurati.
+
+UI
+
+La tab Swap deve permettere all’utente di scegliere chiaramente:
+
+BTC / Lightning → destinazione
+
+e, per EVM:
+
+rete + token di destinazione
+
+senza mostrare Li.Fi quando ChangeNOW è PRIMARY.
+
+Test
+
+Aggiungi test automatici per tutte le combinazioni realmente supportate dall’API. Non inventare pair non supportate.
+
+Per ogni pair fai almeno:
+
+* availability
+* minAmount
+* quote
+* create
+* commit
+* polling
+* completed
+* failed
+* refunded
+* idempotenza
+
+NON fare deploy e NON fare transazioni reali.
+
+Alla fine restituisci una tabella:
+
+| SOURCE | DESTINAZIONE | RETE | TICKER CN | PAIR | DISPONIBILE | MIN | QUOTE | CREATE | STATUS | PRONTO |
+
+Includi tutte le varianti BTC → USDT, BTC → USDC e BTC → native coin realmente supportate da ChangeNOW.
+
+Chiudi con:
+BTC COVERAGE: X/X pair verificate
+EVM COVERAGE: X/X pair verificate
+FEE 0,25%: PASS/FAIL
+PRONTO PER TEST REALE: SI/NO
+
+Così gli fai fare una mappatura completa BTC → EVM, comprese USDT, USDC e coin native, invece di fermarsi al semplice BTC→USDT.

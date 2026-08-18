@@ -66,9 +66,9 @@ export const CN_EVM_TOKENS: CnEvmToken[] = [
     chainId: 1, network: "Ethereum", decimals: 6, isNative: false,
     contractAddress: "0xdAC17F958D2ee523a2206206994597C13D831ec7",
   },
-  // BSC
+  // BSC — ticker è "bnbbsc" (non "bnb" che è inactive su ChangeNOW)
   {
-    symbol: "BNB", ticker: "bnb", name: "BNB",
+    symbol: "BNB", ticker: "bnbbsc", name: "BNB (BSC)",
     chainId: 56, network: "BSC", decimals: 18, isNative: true, contractAddress: null,
   },
   {

@@ -1,14 +1,19 @@
 /**
  * ChangeNowSwap — MongoDB model
  *
- * Persistenza completa per recovery/audit degli swap BTC→USDT via ChangeNOW.
+ * Persistenza completa per recovery/audit degli swap BTC→any via ChangeNOW.
+ * Versione estesa: supporta tutti i 8 destination token verificati (non solo USDT).
  *
  * ISOLAMENTO: zero import da payment engine, USDA, MultiChain, Spark, Li.Fi.
  *
- * REGOLA CRITICA:
- *   btcTxHash   = txid Bitcoin di deposito al deposit address ChangeNOW
- *   destinationTxHash = txid EVM di uscita verso l'utente
- *   I due campi NON sono mai intercambiabili (invariante di sistema).
+ * REGOLE CRITICHE:
+ *   btcTxHash        = txid Bitcoin di deposito al deposit address ChangeNOW
+ *   destinationTxHash = txid EVM di uscita verso l'utente (payoutHash)
+ *   I due campi NON sono mai intercambiabili.
+ *
+ * BACKWARD COMPAT:
+ *   I record esistenti (BTC→USDT) hanno toAsset="USDT" e toTicker in CN_USDT_TICKERS.
+ *   I nuovi record hanno toTicker esplicito e toAsset derivato.
  */
 
 import mongoose, { Schema, type Document, type Model } from "mongoose";
@@ -18,7 +23,7 @@ export type CnSwapStatus =
   | "waiting"     // ChangeNOW in attesa del deposito
   | "confirming"  // deposito BTC rilevato, in conferma sulla chain Bitcoin
   | "exchanging"  // fondi ricevuti, conversione in corso
-  | "sending"     // USDT in invio verso destinazione EVM
+  | "sending"     // token in invio verso destinazione EVM
   | "finished"    // completato — destinationTxHash presente
   | "failed"      // exchange fallito
   | "refunded"    // rimborso eseguito
@@ -26,6 +31,7 @@ export type CnSwapStatus =
   | "verifying"   // verifica manuale da parte di ChangeNOW
   | "error";      // errore interno non classificato
 
+// Kept for backward compat with existing BTC→USDT records
 export type CnToChain = "ethereum" | "polygon" | "bsc";
 
 export interface IChangeNowSwap extends Document {
@@ -33,11 +39,15 @@ export interface IChangeNowSwap extends Document {
   provider:              "changenow";
   exchangeId:            string;
   fromChain:             "bitcoin";
+  /** ChangeNOW ticker del token destinazione (es. "usdtmatic", "eth", "pol") */
+  toTicker:              string;
+  /** Chain EVM di destinazione (per display / explorer) */
   toChain:               CnToChain;
   fromAsset:             "BTC";
-  toAsset:               "USDT";
+  /** Asset display name (es. "USDT", "ETH", "POL", "BNB") */
+  toAsset:               string;
   fromAmount:            number;        // in BTC (e.g. 0.001)
-  estimatedToAmount:     number;        // in USDT al momento della creazione
+  estimatedToAmount:     number;        // in toAsset al momento della creazione
   btcDepositAddress:     string;        // indirizzo BTC fornito da ChangeNOW
   destinationEvmAddress: string;        // indirizzo EVM dell'utente
   cnStatus:              CnSwapStatus;
@@ -51,7 +61,7 @@ export interface IChangeNowSwap extends Document {
     refundHash?:    string;
     refundAddress?: string;
   } | null;
-  providerFeeEstimate:   number | null; // stima fee ChangeNOW in USDT
+  providerFeeEstimate:   number | null;
   error:                 string | null;
   validUntil:            Date   | null;
   createdAt:             Date;
@@ -64,10 +74,13 @@ const changeNowSwapSchema = new Schema<IChangeNowSwap>(
     provider:  { type: String, enum: ["changenow"], required: true, default: "changenow" },
     exchangeId:{ type: String, required: true },
 
-    fromChain: { type: String, enum: ["bitcoin"],                         required: true, default: "bitcoin" },
-    toChain:   { type: String, enum: ["ethereum", "polygon", "bsc"],     required: true },
-    fromAsset: { type: String, enum: ["BTC"],                            required: true, default: "BTC" },
-    toAsset:   { type: String, enum: ["USDT"],                           required: true, default: "USDT" },
+    fromChain: { type: String, enum: ["bitcoin"],             required: true, default: "bitcoin" },
+    toChain:   { type: String, enum: ["ethereum","polygon","bsc"], required: true },
+    fromAsset: { type: String, enum: ["BTC"],                required: true, default: "BTC" },
+    // Flexible: USDT, USDC, ETH, POL, MATIC, BNB
+    toAsset:   { type: String, required: true },
+    // ChangeNOW ticker: usdterc20, usdtmatic, usdtbsc, usdcmatic, eth, pol, matic, bnbbsc
+    toTicker:  { type: String, required: true },
 
     fromAmount:            { type: Number, required: true },
     estimatedToAmount:     { type: Number, required: true },
