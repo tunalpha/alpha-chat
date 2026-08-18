@@ -465,6 +465,206 @@
 .aw-action-btn:hover:not(:disabled) { background: rgba(255,255,255,.1); }
 .aw-action-btn:disabled { opacity: .35; cursor: not-allowed; }
 .aw-action-btn small { font-size: 11px; font-weight: 600; }
+/* ── Buy with Card card (sostituisce .aw-address-card nella home) ─────────── */
+.aw-buy-card {
+  display: block;
+  width: calc(100% - 32px);
+  margin: 0 16px 12px;
+  background: linear-gradient(135deg, rgba(99,74,169,.28) 0%, rgba(55,48,90,.32) 100%);
+  border: 1px solid rgba(167,139,250,.18);
+  border-radius: 14px;
+  padding: 13px 14px;
+  cursor: pointer;
+  text-align: left;
+  color: inherit;
+  position: relative;
+  overflow: hidden;
+  transition: border-color .18s, transform .12s;
+  -webkit-tap-highlight-color: transparent;
+}
+.aw-buy-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(135deg, rgba(167,139,250,.06) 0%, transparent 60%);
+  pointer-events: none;
+}
+.aw-buy-card:active { transform: scale(.985); border-color: rgba(167,139,250,.35); }
+.aw-buy-card__inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.aw-buy-card__left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+.aw-buy-card__icon {
+  flex-shrink: 0;
+  width: 36px;
+  height: 36px;
+  background: rgba(167,139,250,.12);
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.aw-buy-card__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.aw-buy-card__title {
+  font-size: 13px;
+  font-weight: 600;
+  color: rgba(255,255,255,.92);
+  letter-spacing: .01em;
+  white-space: nowrap;
+}
+.aw-buy-card__sub {
+  font-size: 11px;
+  color: rgba(255,255,255,.45);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.aw-buy-card__right {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 5px;
+  flex-shrink: 0;
+}
+.aw-buy-card__logos {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+.aw-pay-logo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255,255,255,.9);
+  border-radius: 4px;
+  padding: 2px 4px;
+  height: 18px;
+  box-shadow: 0 1px 3px rgba(0,0,0,.18);
+}
+.aw-pay-logo--visa { background: #fff; }
+.aw-pay-logo--mc   { background: #fff; padding: 1px 3px; }
+.aw-pay-logo--apple {
+  background: #000;
+  color: #fff;
+  padding: 1px 5px;
+}
+.aw-pay-logo--gpay {
+  background: #fff;
+  color: #202124;
+  padding: 1px 5px;
+}
+.aw-buy-card__cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  color: rgba(167,139,250,.9);
+  letter-spacing: .02em;
+}
+
+/* ── Buy with Card modal placeholder ─────────────────────────────────────── */
+.aw-buy-modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,.65);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  z-index: 9999;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  animation: aw-fade-in .15s ease;
+}
+.aw-buy-modal {
+  background: #1a1630;
+  border: 1px solid rgba(167,139,250,.2);
+  border-radius: 24px 24px 0 0;
+  padding: 28px 24px 40px;
+  width: 100%;
+  max-width: 480px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  animation: aw-slide-up .2s ease;
+}
+@keyframes aw-slide-up {
+  from { transform: translateY(60px); opacity: 0; }
+  to   { transform: translateY(0);    opacity: 1; }
+}
+@keyframes aw-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.aw-buy-modal__icon {
+  width: 60px;
+  height: 60px;
+  background: rgba(167,139,250,.12);
+  border-radius: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 4px;
+}
+.aw-buy-modal__title {
+  font-size: 20px;
+  font-weight: 700;
+  color: rgba(255,255,255,.95);
+  margin: 0;
+  letter-spacing: -.01em;
+}
+.aw-buy-modal__desc {
+  font-size: 14px;
+  color: rgba(255,255,255,.6);
+  margin: 0;
+  text-align: center;
+}
+.aw-buy-modal__status {
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(167,139,250,.75);
+  background: rgba(167,139,250,.1);
+  border: 1px solid rgba(167,139,250,.18);
+  border-radius: 20px;
+  padding: 4px 14px;
+  margin: 4px 0 8px;
+}
+.aw-buy-modal__logos {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 4px 0;
+}
+.aw-buy-modal__close {
+  margin-top: 10px;
+  width: 100%;
+  background: rgba(255,255,255,.07);
+  border: 1px solid rgba(255,255,255,.1);
+  border-radius: 12px;
+  padding: 13px;
+  color: rgba(255,255,255,.7);
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background .15s;
+}
+.aw-buy-modal__close:active { background: rgba(255,255,255,.12); }
+
+/* ── (conserva .aw-address-card per la sezione Ricevi — INVARIATA) ────────── */
 .aw-address-card {
   margin: 0 16px 12px;
   background: rgba(255,255,255,.04);

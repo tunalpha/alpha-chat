@@ -1,0 +1,230 @@
+ALPHA WALLET — SOSTITUZIONE UI “COPIA INDIRIZZO” CON “ACQUISTA CON CARTA”
+
+⚠️ SOLO MODIFICA UI — ZERO REGRESSIONI
+
+OBIETTIVO PRECISO
+
+Nella schermata principale di Alpha Wallet esiste attualmente il riquadro:
+
+“Il tuo indirizzo POL”
+[indirizzo]
+[ Copia ]
+
+NON eliminare la funzionalità dell'indirizzo POL.
+
+NON modificare la pagina/sezione “Ricevi”.
+
+NON modificare i dati del wallet.
+
+Vogliamo esclusivamente SOSTITUIRE VISIVAMENTE, nella schermata principale, il riquadro/bottone dedicato a “Copia indirizzo” con una nuova card premium:
+
+💳 ACQUISTA CON CARTA
+
+Quindi:
+
+PRIMA
+
+[ Il tuo indirizzo POL ]
+[ 0x0463... ]
+[ Copia indirizzo ]
+
+DOPO
+
+[ 💳 ACQUISTA CON CARTA ]
+[ Acquista crypto con carta ]
+[ Visa • Mastercard • Apple Pay • Google Pay ]
+
+L'indirizzo POL deve rimanere normalmente disponibile nella sezione Ricevi.
+
+==================================================
+REGOLA ASSOLUTA
+==================================================
+
+NON creare una nuova card aggiuntiva.
+
+NON aggiungere un quinto pulsante alla barra.
+
+NON creare una seconda sezione.
+
+NON spostare Invia/Ricevi/Storico/Swap.
+
+NON modificare il layout generale.
+
+NON modificare:
+- pagamenti
+- invia
+- ricevi
+- storico
+- swap
+- BTC
+- Lightning
+- EVM
+- WalletConnect
+- firma
+- balance
+- database
+- notifiche
+- fee
+- LI.FI
+- provider esistenti
+
+La modifica deve riguardare ESCLUSIVAMENTE il componente UI che oggi mostra “Copia indirizzo” nella schermata principale.
+
+==================================================
+POSIZIONE
+==================================================
+
+La barra superiore/centrale deve rimanere ESATTAMENTE:
+
+[ Invia ] [ Ricevi ] [ Storico ] [ Swap ]
+
+Subito sotto, nello SPAZIO ATTUALMENTE OCCUPATO DAL RIQUADRO “COPIA INDIRIZZO”:
+
+→ sostituire quel componente con:
+
+┌─────────────────────────────────────┐
+│                                     │
+│              💳                     │
+│                                     │
+│       ACQUISTA CON CARTA            │
+│                                     │
+│    Acquista crypto in modo          │
+│    semplice e sicuro                │
+│                                     │
+│  Visa  Mastercard  Apple Pay       │
+│              Google Pay             │
+│                                     │
+│              Acquista →             │
+│                                     │
+└─────────────────────────────────────┘
+
+Deve occupare sostanzialmente lo stesso spazio del vecchio componente.
+
+NON aumentare inutilmente l'altezza della schermata.
+
+==================================================
+DESIGN PREMIUM
+==================================================
+
+Deve sembrare una funzionalità nativa di Alpha Wallet.
+
+Stile:
+
+- premium
+- elegante
+- moderno
+- dark-first
+- minimal
+- bordi arrotondati
+- micro-gradient raffinato
+- profondità discreta
+- ottima tipografia
+- animazioni leggere
+- perfetto su iPhone
+- responsive
+
+NON deve sembrare un banner pubblicitario.
+
+==================================================
+LOGHI PAGAMENTO
+==================================================
+
+Utilizzare i LOGHI ORIGINALI/UFFICIALI:
+
+- Visa
+- Mastercard
+- Apple Pay
+- Google Pay
+
+Non usare semplicemente testo.
+
+Non deformare i loghi.
+
+Mantenerli piccoli, eleganti e armonizzati con il design Alpha.
+
+Questi sono i metodi che vogliamo predisporre per l'integrazione ChangeNOW.
+
+==================================================
+INTERAZIONE
+==================================================
+
+Il nuovo elemento deve essere cliccabile.
+
+Per ora NON deve effettuare alcun acquisto.
+
+Aprire una schermata/modal placeholder:
+
+“Acquista crypto”
+
+“Acquista crypto con carta.”
+
+“Servizio in configurazione”
+
+NON chiamare API.
+
+NON usare API key.
+
+NON creare ordini.
+
+NON chiedere dati della carta.
+
+NON effettuare pagamenti.
+
+==================================================
+ARCHITETTURA FUTURA
+==================================================
+
+Predisporre il componente per il futuro collegamento ChangeNOW.
+
+NON implementare ancora ChangeNOW.
+
+NON implementare ancora il Provider Router per questo modulo.
+
+NON implementare ancora il Fiat On-Ramp.
+
+Il collegamento verrà fatto successivamente.
+
+==================================================
+TEST
+==================================================
+
+Prima e dopo la modifica:
+
+- tutti i test esistenti devono passare;
+- TypeScript deve passare;
+- build deve passare;
+- Invia deve funzionare;
+- Ricevi deve funzionare;
+- Storico deve funzionare;
+- Swap deve funzionare;
+- l'indirizzo POL deve essere ancora disponibile nella sezione Ricevi;
+- nessuna transazione deve essere modificata;
+- nessun pagamento deve essere modificato.
+
+OBIETTIVO:
+
+ZERO REGRESSIONI.
+
+==================================================
+OUTPUT
+==================================================
+
+Alla fine restituisci:
+
+1. file modificati;
+2. conferma che è stato modificato SOLO il componente “Copia indirizzo” della home;
+3. conferma che l'indirizzo POL nella sezione Ricevi è invariato;
+4. conferma che nessun pagamento è stato toccato;
+5. test totali;
+6. test PASS;
+7. TypeScript;
+8. build;
+9. screenshot della nuova UI.
+
+NON modificare altro.
+
+NON fare deploy.
+
+NON integrare ChangeNOW.
+
+SOLO sostituzione UI del riquadro “Copia indirizzo” con “Acquista con carta”.
