@@ -1,5 +1,5 @@
 /**
- * ChangeNOW Swap — Frontend types
+ * ChangeNOW Swap — Frontend types (BTC→USDT + EVM→EVM)
  *
  * ISOLAMENTO: zero import da payment engine, USDA, MultiChain, Spark.
  * Li.Fi operational files (lifi-client.ts, useEvmSwapState.ts, EvmSwapView.tsx)

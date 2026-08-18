@@ -1,0 +1,170 @@
+CONFERMATO — PROCEDI CON IL PIANO, MA APPLICA QUESTE 3 CORREZIONI OBBLIGATORIE.
+
+1. DESTINATION ADDRESS — AUTOMATICO
+
+L'utente NON deve mai copiare/incollare un indirizzo.
+
+Per EVM → EVM:
+- leggere automaticamente l'indirizzo dal wallet EVM attualmente connesso;
+- usare quell'indirizzo come destination address ChangeNOW;
+- se l'utente cambia account nel wallet, rileggere il nuovo address;
+- se l'utente cambia chain/account durante il flusso, invalidare la sessione di swap precedente e richiedere una nuova quote;
+- mostrare l'indirizzo solo come informazione/preview, non come campo editabile.
+
+NON creare input "Destination address".
+NON chiedere all'utente di incollare il proprio address.
+
+2. CRONOLOGIA ALPHA — UN SOLO SWAP LOGICO
+
+Usare il sistema esistente di notifiche e cronologia Alpha.
+
+Il record OUT e il record IN possono essere utilizzati internamente per rappresentare i due movimenti, ma devono essere collegati allo stesso swap ChangeNOW e visualizzati all'utente come UNICA operazione:
+
+"Swap ChangeNOW"
+- Inviato: X FROM_TOKEN
+- Ricevuto: Y TO_TOKEN
+- Stato
+- ChangeNOW exchange ID
+- TX deposito
+- TX ricezione
+
+Non voglio che l'interfaccia faccia sembrare OUT e IN due operazioni indipendenti.
+
+Usare swapId/exchangeId come chiave di correlazione stabile.
+
+Tutti gli aggiornamenti devono essere idempotenti.
+
+3. COMPLETED — REGOLA ASSOLUTA
+
+Non impostare mai lo swap come completed solamente perché:
+- il deposito è stato rilevato;
+- lo stato è confirming;
+- lo stato è exchanging;
+- lo stato è sending;
+- il polling termina;
+- il backend ha ricevuto una risposta positiva generica.
+
+La condizione definitiva deve essere:
+
+isCompleted =
+  cnStatus === "finished"
+  && destinationTxHash != null
+  && destinationTxHash !== depositTxHash
+
+Solo allora:
+- WalletTxRecord → confirmed
+- notifica "Swap completato"
+- record IN definitivo
+- UI → Completed
+
+4. SOURCE OF TRUTH
+
+Quando ChangeNOW è PRIMARY:
+
+ChangeNOW API = source of truth dello stato operativo dello swap.
+
+Usare:
+- exchange ID ChangeNOW
+- status ChangeNOW
+- deposit TX hash
+- destination TX hash
+- refund information disponibile
+- eventuale errore/status finale
+
+Il polling deve essere resiliente e riprendibile anche dopo:
+- refresh pagina
+- chiusura browser
+- PWA in background
+- perdita temporanea di rete.
+
+5. NOTIFICHE
+
+Riutilizzare ESCLUSIVAMENTE il sistema notifiche Alpha esistente.
+
+Dedup obbligatorio:
+
+cn_evm:${swapId}:${eventType}
+
+Nessun doppio invio se il polling riceve lo stesso stato più volte.
+
+6. SICUREZZA / FONDI
+
+Prima di modificare qualsiasi file:
+- verificare il flusso di firma EVM esistente;
+- NON bypassare WalletConnect/ThirdWeb;
+- NON introdurre private key;
+- NON custodire fondi;
+- NON fare broadcast server-side della TX utente.
+
+Il server deve creare l'ordine ChangeNOW e fornire il deposit address.
+La firma e il broadcast della TX EVM dell'utente devono avvenire nel wallet dell'utente.
+
+7. NON TOCCARE:
+
+- payment engine
+- USDA
+- MultiChain
+- Spark
+- WalletConnect
+- lifi-client.ts
+- useEvmSwapState.ts
+- EvmSwapView.tsx
+
+ATTENZIONE:
+Il vecchio ChangeNowSwapView BTC→USDT deve rimanere funzionante.
+
+8. PRIMA DI IMPLEMENTARE
+
+Verifica realmente le API ChangeNOW per EVM→EVM:
+- pair availability
+- quote
+- create transaction
+- deposit address
+- destination address
+- status
+- payout hash
+- refund
+
+Non assumere che gli endpoint BTC→EVM abbiano esattamente lo stesso formato per EVM→EVM.
+
+Se una capacità non è realmente supportata dall'API, fermati e segnalala prima di implementarla.
+
+9. TEST OBBLIGATORI
+
+Creare test per almeno:
+
+- Polygon POL → Polygon USDC
+- Polygon USDC → Polygon POL
+- EVM → EVM cross-chain se supportato
+- wallet address automatico
+- cambio account wallet
+- quote scaduta
+- deposit rilevato
+- finished senza payoutHash → NON completed
+- finished con payoutHash → completed
+- payoutHash uguale al depositTxHash → NON completed
+- failed
+- refunded
+- expired
+- refresh durante polling
+- polling duplicato
+- notifiche duplicate
+- cronologia duplicata
+
+NESSUN MOVIMENTO DI FONDI REALI durante i test automatici.
+
+10. OUTPUT FINALE
+
+Prima di chiedere deploy mostra:
+
+- file modificati
+- file invariati
+- endpoint ChangeNOW utilizzati
+- mapping stati
+- struttura cronologia
+- sistema notifiche
+- test eseguiti
+- eventuali rischi residui
+
+NON fare deploy automaticamente.
+NON cambiare provider senza mia approvazione esplicita.

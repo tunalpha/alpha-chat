@@ -13,12 +13,24 @@
  *             USDA, MultiChain, ThirdWeb.
  */
 
-import { createWalletClient, http, type WalletClient } from "viem";
+import {
+  createWalletClient, http, type WalletClient,
+  parseEther, parseUnits,
+} from "viem";
 import { polygon, mainnet, bsc } from "viem/chains";
 import { privateKeyToAccount } from "viem/accounts";
 import { loadKeystore, decryptSeed } from "../../wallet/core/keystore";
 import { deriveEvmWallet, toHexKey } from "../../wallet/core/hd-wallet";
 import { signAndBroadcastBtcTx, BtcSendUncertainError } from "../../wallet/services/btc-signer";
+
+// ── Minimal ERC-20 ABI per transfer ──────────────────────────────────────────
+const ERC20_TRANSFER_ABI = [{
+  name:            "transfer",
+  type:            "function",
+  inputs:          [{ name: "to", type: "address" }, { name: "amount", type: "uint256" }],
+  outputs:         [{ type: "bool" }],
+  stateMutability: "nonpayable",
+}] as const;
 
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 const AW_CHAIN_RPC: Record<number, string> = {

@@ -143,6 +143,9 @@ v1Router.use("/swap/providers", swapProvidersRoutes);
 import changeNowSwapRoutes from "./changenow-swap.routes";
 v1Router.use("/swap/changenow", changeNowSwapRoutes);
 
+import changeNowEvmSwapRoutes from "./changenow-evm-swap.routes.js";
+v1Router.use("/swap/changenow/evm", changeNowEvmSwapRoutes);
+
 // ── Buy with Card — Fiat→Crypto onramp (FASE 2) ───────────────────────────────
 // ISOLATO: zero import da payment engine, swap, USDA, MultiChain, Spark.
 // Provider stub (ChangeNOW Fiat) — richiede KYB completato per endpoint reali.

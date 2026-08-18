@@ -40,6 +40,84 @@ export const CN_USDT_TICKERS: Record<string, string> = {
 
 export const CN_FROM_CURRENCY = "btc";
 
+// ── Token EVM supportati per swap EVM→EVM ─────────────────────────────────────
+
+export interface CnEvmTokenDef {
+  /** Symbol visualizzato (es. "POL", "USDC") */
+  symbol:          string;
+  /** Ticker ChangeNOW (verificato via API pubblica) */
+  ticker:          string;
+  name:            string;
+  chainId:         number;
+  network:         string;
+  decimals:        number;
+  isNative:        boolean;
+  /** Indirizzo contratto ERC-20 (null per native) */
+  contractAddress: string | null;
+}
+
+/**
+ * Lista token EVM supportati per swap via ChangeNOW.
+ * Ticker verificati via API pubblica il 2026-08-18:
+ *   pol, matic, usdcmatic, usdtmatic, eth, usdterc20, bnb, usdtbsc
+ *
+ * Contratti ufficiali Polygon:
+ *   USDC: 0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174
+ *   USDT: 0xc2132D05D31c914a87C6611C10748AEb04B58e8F
+ */
+export const CN_EVM_TOKENS: CnEvmTokenDef[] = [
+  // Polygon
+  {
+    symbol: "POL", ticker: "pol", name: "Polygon Ecosystem Token",
+    chainId: 137, network: "Polygon", decimals: 18, isNative: true, contractAddress: null,
+  },
+  {
+    symbol: "USDC", ticker: "usdcmatic", name: "USD Coin (Polygon)",
+    chainId: 137, network: "Polygon", decimals: 6, isNative: false,
+    contractAddress: "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+  },
+  {
+    symbol: "USDT", ticker: "usdtmatic", name: "Tether (Polygon)",
+    chainId: 137, network: "Polygon", decimals: 6, isNative: false,
+    contractAddress: "0xc2132D05D31c914a87C6611C10748AEb04B58e8F",
+  },
+  // Ethereum
+  {
+    symbol: "ETH", ticker: "eth", name: "Ethereum",
+    chainId: 1, network: "Ethereum", decimals: 18, isNative: true, contractAddress: null,
+  },
+  {
+    symbol: "USDT", ticker: "usdterc20", name: "Tether (ERC-20)",
+    chainId: 1, network: "Ethereum", decimals: 6, isNative: false,
+    contractAddress: "0xdAC17F958D2ee523a2206206994597C13D831ec7",
+  },
+  // BSC
+  {
+    symbol: "BNB", ticker: "bnb", name: "BNB",
+    chainId: 56, network: "BSC", decimals: 18, isNative: true, contractAddress: null,
+  },
+  {
+    symbol: "USDT", ticker: "usdtbsc", name: "Tether (BEP-20)",
+    chainId: 56, network: "BSC", decimals: 18, isNative: false,
+    contractAddress: "0x55d398326f99059fF775485246999027B3197955",
+  },
+];
+
+// ── Status map: API ChangeNOW → stato interno ─────────────────────────────────
+
+export const CN_STATUS_MAP: Record<string, string> = {
+  new:        "created",
+  waiting:    "waiting",
+  confirming: "confirming",
+  exchanging: "exchanging",
+  sending:    "sending",
+  finished:   "finished",
+  failed:     "failed",
+  refunded:   "refunded",
+  expired:    "expired",
+  verifying:  "verifying",
+};
+
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 /** Statuses nativi dell'API ChangeNOW v1 */
@@ -68,6 +146,8 @@ export interface CnExchangeAmountResponse {
   transactionSpeedForecast?: string;
   warningMessage?:           string | null;
   rateId?:                   string | null;
+  /** Importo minimo inviabile (restituito dall'API per alcune coppie) */
+  minAmount?:                number;
 }
 
 export interface CnCreateTransactionParams {

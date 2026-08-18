@@ -43,6 +43,7 @@ import { EvmSwapView }                     from "./evm/EvmSwapView.js";
 // ChangeNOW — caricato solo se il provider attivo è "changenow"
 // Li.Fi operational files (EvmSwapView, lifi-client, useEvmSwapState) invariati.
 import { ChangeNowSwapView }               from "./changenow/ChangeNowSwapView.js";
+import { ChangeNowEvmSwapView }            from "./changenow/ChangeNowEvmSwapView.js";
 
 // ── Tab type ──────────────────────────────────────────────────────────────────
 type SwapTab = "btcln" | "evm";
@@ -1343,12 +1344,10 @@ export function SwapView({ onBack }: SwapViewProps) {
         {Header}
         <EvmErrorBoundary onReset={actions.reset}>
           {activeEvmProvider === "changenow" ? (
-            <ChangeNowSwapView
+            <ChangeNowEvmSwapView
               onBack={onBack ?? (() => {})}
               alphaWalletAddress={alphaWalletAddress ?? null}
-              btcAddress={btcAddress ?? undefined}
-              btcBalanceSat={btcBalance?.totalSat ?? undefined}
-              sendBtcForSwap={sendBtcForSwap}
+              activeEvmAddress={activeAccount?.address ?? null}
             />
           ) : (
             <EvmSwapView
