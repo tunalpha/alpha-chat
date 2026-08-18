@@ -202,7 +202,9 @@ export interface CnEvmSwapState {
   pairAvailable:    boolean | null;
   minAmount:        number | null;
   /** Indirizzo EVM destinazione (auto, mai da input) */
-  destinationAddr:  string | null;
+  destinationAddr:     string | null;
+  /** Indirizzo BTC destinazione per swap EVM→BTC (auto, mai da input) */
+  btcDestinationAddr:  string | null;
 }
 
 export interface CnEvmSwapActions {
@@ -225,28 +227,32 @@ const DEFAULT_FROM = CN_EVM_TOKENS.find(t => t.ticker === "pol") ?? CN_EVM_TOKEN
 const DEFAULT_TO   = CN_EVM_TOKENS.find(t => t.ticker === "usdcmatic") ?? CN_EVM_TOKENS[1]!;
 
 const INITIAL_STATE: CnEvmSwapState = {
-  uiState:        "idle",
-  fromToken:      DEFAULT_FROM,
-  toToken:        DEFAULT_TO,
-  fromAmount:     "",
-  quote:          null,
-  exchange:       null,
-  status:         null,
-  error:          null,
-  pairAvailable:  null,
-  minAmount:      null,
-  destinationAddr: null,
+  uiState:            "idle",
+  fromToken:          DEFAULT_FROM,
+  toToken:            DEFAULT_TO,
+  fromAmount:         "",
+  quote:              null,
+  exchange:           null,
+  status:             null,
+  error:              null,
+  pairAvailable:      null,
+  minAmount:          null,
+  destinationAddr:    null,
+  btcDestinationAddr: null,
 };
 
 // ── Hook ──────────────────────────────────────────────────────────────────────
 
 export function useChangeNowEvmSwapState(
   /** Indirizzo EVM automatico — Alpha Wallet o Reown (mai input manuale) */
-  destinationAddress: string | null | undefined
+  destinationAddress:    string | null | undefined,
+  /** Indirizzo BTC automatico — Alpha Wallet (per swap EVM→BTC) */
+  btcDestinationAddress: string | null | undefined = null
 ): [CnEvmSwapState, CnEvmSwapActions] {
   const [state, setState] = useState<CnEvmSwapState>({
     ...INITIAL_STATE,
-    destinationAddr: destinationAddress ?? null,
+    destinationAddr:    destinationAddress ?? null,
+    btcDestinationAddr: btcDestinationAddress ?? null,
   });
   const pollTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const mountedRef   = useRef(true);
@@ -256,7 +262,7 @@ export function useChangeNowEvmSwapState(
   // ── Sync destinationAddress se cambia account ─────────────────────────────
   useEffect(() => {
     setState(prev => {
-      // Se cambia indirizzo durante uno swap non-terminale → invalida lo stato
+      // Se cambia indirizzo EVM durante uno swap non-terminale → invalida lo stato
       if (
         prev.destinationAddr !== null
         && destinationAddress
@@ -268,13 +274,19 @@ export function useChangeNowEvmSwapState(
         localStorage.removeItem(CHANGENOW_EVM_SWAP_KEY);
         return {
           ...INITIAL_STATE,
-          destinationAddr: destinationAddress,
+          destinationAddr:    destinationAddress,
+          btcDestinationAddr: btcDestinationAddress ?? null,
           error: "Account cambiato — ripeti il processo di swap.",
         };
       }
       return { ...prev, destinationAddr: destinationAddress ?? null };
     });
-  }, [destinationAddress]);
+  }, [destinationAddress]);  // eslint-disable-line react-hooks/exhaustive-deps
+
+  // ── Sync btcDestinationAddress ────────────────────────────────────────────
+  useEffect(() => {
+    setState(prev => ({ ...prev, btcDestinationAddr: btcDestinationAddress ?? null }));
+  }, [btcDestinationAddress]);
 
   // ── Cleanup ───────────────────────────────────────────────────────────────
 
@@ -585,26 +597,46 @@ export function useChangeNowEvmSwapState(
   }, [state.fromToken, state.toToken, state.fromAmount, state.minAmount]);
 
   const createExchange = useCallback(async () => {
-    const { quote, fromToken: from, toToken: to, destinationAddr } = state;
+    const {
+      quote, fromToken: from, toToken: to,
+      destinationAddr, btcDestinationAddr,
+    } = state;
     if (!quote || !from || !to) {
       setState(prev => ({ ...prev, error: "Ottieni prima una stima." }));
       return;
     }
-    if (!destinationAddr || destinationAddr.length < 10) {
-      setState(prev => ({
-        ...prev,
-        error: "Nessun wallet EVM connesso. Sblocca Alpha Wallet per continuare.",
-      }));
-      return;
+
+    const isBtcFrom = from.ticker === "btc";
+    const isBtcTo   = to.ticker   === "btc";
+
+    // Guard indirizzo destinazione
+    if (isBtcFrom || !isBtcTo) {
+      // BTC→EVM o EVM→EVM: serve EVM address
+      if (!destinationAddr || destinationAddr.length < 10) {
+        setState(prev => ({
+          ...prev,
+          error: "Nessun wallet EVM connesso. Sblocca Alpha Wallet per continuare.",
+        }));
+        return;
+      }
     }
+    if (isBtcTo) {
+      // EVM→BTC o BTC→EVM: serve BTC address
+      if (!btcDestinationAddr || btcDestinationAddr.length < 10) {
+        setState(prev => ({
+          ...prev,
+          error: "Nessun indirizzo BTC disponibile. Sblocca Alpha Wallet (BTC).",
+        }));
+        return;
+      }
+    }
+
     setState(prev => ({ ...prev, uiState: "creating", error: null }));
     try {
-      const isBtcFrom = from.ticker === "btc";
       let exchange: CnEvmCreateResult;
 
       if (isBtcFrom) {
         // BTC→EVM: endpoint BTC (/swap/changenow/create)
-        // risposta: { swapId, exchangeId, btcDepositAddress, estimatedToAmount, fromAmount, ... }
         // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const data = await cnEvmRequest<any>(
           "/swap/changenow/create",
@@ -613,7 +645,10 @@ export function useChangeNowEvmSwapState(
             body: JSON.stringify({
               fromAmountBtc:         quote.fromAmount,
               toTicker:              to.ticker,
-              destinationEvmAddress: destinationAddr,
+              // Se TO=BTC (improbabile ma gestito): usa btcDestinationAddr
+              destinationEvmAddress: isBtcTo
+                ? btcDestinationAddr!
+                : destinationAddr!,
             }),
           }
         );
@@ -621,15 +656,20 @@ export function useChangeNowEvmSwapState(
         exchange = {
           swapId:             data.swapId,
           exchangeId:         data.exchangeId,
-          depositEvmAddress:  data.btcDepositAddress,   // BTC deposit address
+          depositEvmAddress:  data.btcDepositAddress,   // BTC deposit address ChangeNOW
           expectedFromAmount: data.fromAmount,
           expectedToAmount:   data.estimatedToAmount,
           fromTicker:         "btc",
           toTicker:           to.ticker,
-          destinationAddress: destinationAddr,
+          destinationAddress: isBtcTo ? btcDestinationAddr! : destinationAddr!,
         };
       } else {
-        // EVM→EVM: endpoint EVM
+        // EVM→EVM o EVM→BTC: endpoint EVM
+        //   destinationEvmAddress = btcAddr quando TO=BTC, altrimenti evmAddr
+        //   refundEvmAddress      = sempre EVM address (source chain)
+        const destinationForCreate = isBtcTo ? btcDestinationAddr! : destinationAddr!;
+        const refundForCreate      = destinationAddr!;
+
         const data = await cnEvmRequest<CnEvmCreateResult & { ok: boolean }>(
           "/swap/changenow/evm/create",
           {
@@ -638,13 +678,16 @@ export function useChangeNowEvmSwapState(
               fromTicker:            from.ticker,
               toTicker:              to.ticker,
               fromAmount:            quote.fromAmount,
-              destinationEvmAddress: destinationAddr,
-              refundEvmAddress:      destinationAddr,
+              destinationEvmAddress: destinationForCreate,
+              refundEvmAddress:      refundForCreate,
             }),
           }
         );
         if (!mountedRef.current) return;
-        exchange = data;
+        exchange = {
+          ...data,
+          destinationAddress: destinationForCreate,
+        };
       }
 
       localStorage.setItem(CHANGENOW_EVM_SWAP_KEY, exchange.swapId);
@@ -662,7 +705,7 @@ export function useChangeNowEvmSwapState(
         error:   err instanceof Error ? err.message : "Errore creazione exchange.",
       }));
     }
-  }, [state.quote, state.fromToken, state.toToken, state.destinationAddr]);
+  }, [state.quote, state.fromToken, state.toToken, state.destinationAddr, state.btcDestinationAddr]);
 
   /**
    * commitAndSend (EVM→EVM) — sequenza sicura anti-double-spend:

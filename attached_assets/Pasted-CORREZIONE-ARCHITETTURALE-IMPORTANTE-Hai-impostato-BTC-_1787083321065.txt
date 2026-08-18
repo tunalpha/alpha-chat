@@ -1,0 +1,154 @@
+CORREZIONE ARCHITETTURALE IMPORTANTE.
+
+Hai impostato BTC come:
+fromOnly: true
+
+QUESTO È ERRATO.
+
+ChangeNOW supporta anche EVM → BTC.
+Ho verificato direttamente l'interfaccia ChangeNOW: ad esempio
+USDT (Ethereum) → BTC è una coppia supportata.
+
+Quindi NON dobbiamo limitare BTC a FROM.
+
+OBIETTIVO FINALE DI ALPHA SWAP:
+
+1. BTC → EVM
+2. EVM → BTC
+3. EVM → EVM
+
+BTC deve poter essere selezionato sia come FROM sia come TO.
+
+NON usare `fromOnly: true` come limitazione permanente.
+
+IMPORTANTE:
+La disponibilità della coppia deve essere determinata da ChangeNOW tramite API.
+Non creare una nuova whitelist artificiale delle coppie.
+
+IMPLEMENTA EVM → BTC mantenendo completamente intatto BTC → EVM.
+
+FLUSSO EVM → BTC:
+
+FROM:
+EVM token con network/ticker ChangeNOW
+
+TO:
+BTC
+
+CHECK:
+verificare la coppia tramite ChangeNOW `/v1/min-amount/{from}_{btcTicker}`
+e ottenere il minimo reale dalla API.
+
+QUOTE:
+usare la normale API ChangeNOW per la coppia EVM → BTC.
+
+CREATE:
+creare l'exchange ChangeNOW con:
+- from EVM
+- to BTC
+- payout/destination BTC address dell'utente
+- refund address EVM corretto
+
+SIGN:
+l'utente firma SOLO la transazione EVM verso il deposit address ChangeNOW.
+
+NON usare sendBtcForSwap() nel percorso EVM → BTC.
+
+Il percorso deve essere:
+
+EVM wallet
+→ firma EVM
+→ deposit address ChangeNOW
+→ ChangeNOW exchange
+→ payout BTC address dell'utente
+→ polling status
+→ completed quando ChangeNOW conferma il payout BTC.
+
+BTC → EVM deve continuare a usare:
+sendBtcForSwap()
+e il relativo percorso BTC già implementato.
+
+MINIMUM:
+
+Il minimum deve essere sempre quello della coppia corrente.
+
+Esempi da verificare realmente:
+
+USDT Ethereum → BTC
+ETH Ethereum → BTC
+USDC Polygon → BTC
+POL Polygon → BTC
+USDT BSC → BTC
+
+Per ciascuna:
+- coppia disponibile?
+- ticker FROM
+- ticker TO = BTC
+- minAmount reale ChangeNOW
+- quote
+- create
+- destination BTC address
+- status endpoint
+
+UI:
+
+BTC deve comparire nel dropdown TO.
+
+Non deve comparire solo come FROM.
+
+Quando BTC viene selezionato come TO:
+- cambiare correttamente il network/asset target a Bitcoin
+- mostrare campo destination BTC
+- mostrare il minimum reale della nuova coppia
+- aggiornare il minimum quando cambia FROM o TO
+- eliminare immediatamente il vecchio minimum durante il cambio coppia.
+
+REGRESSIONI OBBLIGATORIE:
+
+A) BTC → USDC
+B) BTC → USDT
+C) BTC → ETH
+D) POL → USDC
+E) ETH → USDC
+F) USDT BSC → USDC
+G) USDT Ethereum → BTC
+H) ETH → BTC
+I) USDC Polygon → BTC
+
+TESTARE ANCHE:
+
+- BTC non deve passare dal signer EVM quando è FROM.
+- BTC non deve passare da sendBtcForSwap quando è TO.
+- EVM → BTC deve usare signer EVM.
+- BTC → EVM deve usare sendBtcForSwap.
+- Nessuna coppia deve ereditare il minimum della coppia precedente.
+- Nessuna risposta API stale deve sovrascrivere la coppia attuale.
+- Nessuna whitelist deve impedire una coppia che ChangeNOW dichiara disponibile.
+
+NON fare deploy.
+NON effettuare transazioni reali.
+Usare API read-only per verificare le coppie.
+
+Poi esegui:
+- test BTC
+- test EVM
+- test EVM→BTC
+- test BTC→EVM
+- test minimum amount
+- test cambio FROM/TO
+- race-condition test
+- regression test
+- frontend build
+- backend build
+
+Nel report finale indicare separatamente:
+
+BTC → EVM: PASS/FAIL
+EVM → BTC: PASS/FAIL
+EVM → EVM: PASS/FAIL
+Minimum dinamico: PASS/FAIL
+Routing/signing: PASS/FAIL
+Regression: PASS/FAIL
+Build: PASS/FAIL
+
+NON considerare il lavoro completo finché EVM → BTC non è realmente verificato.

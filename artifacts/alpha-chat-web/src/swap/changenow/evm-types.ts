@@ -34,23 +34,26 @@ export interface CnEvmToken {
   decimals:        number;
   isNative:        boolean;
   contractAddress: string | null;
-  /** true = compare solo come FROM, mai come TO (es. BTC) */
-  fromOnly?:       boolean;
 }
 
 /**
  * Ticker verificati via API ChangeNOW pubblica (2026-08-18):
  *   pol ✅  usdcmatic ✅  usdtmatic ✅  eth ✅  usdterc20 ✅  bnb ✅  usdtbsc ✅  btc ✅
  *
- * BTC: fromOnly=true — usato solo come FROM (non come TO in questo flusso EVM).
- *   chainId=0 → non-EVM; il deposit address è un indirizzo Bitcoin.
+ * BTC (chainId=0, non-EVM):
+ *   – Come FROM: il deposit address ChangeNOW è un indirizzo Bitcoin;
+ *     il wallet utente invia BTC tramite sendBtcForSwap().
+ *   – Come TO:   il payout address è l'indirizzo BTC dell'utente;
+ *     il wallet utente firma solo la TX EVM verso il deposit address EVM.
+ *
+ * La disponibilità delle coppie è determinata da ChangeNOW API. Nessuna whitelist.
  */
 export const CN_EVM_TOKENS: CnEvmToken[] = [
-  // Bitcoin (FROM-only)
+  // Bitcoin (FROM o TO)
   {
     symbol: "BTC", ticker: "btc", name: "Bitcoin",
     chainId: 0, network: "Bitcoin", decimals: 8, isNative: true,
-    contractAddress: null, fromOnly: true,
+    contractAddress: null,
   },
   // Polygon
   {

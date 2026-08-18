@@ -227,13 +227,15 @@ export function ChangeNowEvmSwapView({
   const destinationAddr = alphaWalletAddress ?? activeEvmAddress ?? null;
   const hasAlphaWallet  = !!alphaWalletAddress;
 
-  const [state, actions] = useChangeNowEvmSwapState(destinationAddr);
+  // Hook: EVM address + BTC address (per EVM→BTC)
+  const [state, actions] = useChangeNowEvmSwapState(destinationAddr, btcAddress ?? null);
   const [fromMenuOpen, setFromMenuOpen] = useState(false);
   const [toMenuOpen, setToMenuOpen]     = useState(false);
   const autoQuotedRef = useRef(false);
 
-  // ── Balance ───────────────────────────────────────────────────────────────
+  // ── Flags ─────────────────────────────────────────────────────────────────
   const isBtcFrom   = state.fromToken?.ticker === "btc";
+  const isBtcTo     = state.toToken?.ticker   === "btc";
   const effectiveAddr = destinationAddr ?? undefined;
   const { map: balances, loading: evmBalLoading } = useEvmTokenBalances(
     isBtcFrom ? 137 : (state.fromToken?.chainId ?? 137), // no-op chain quando BTC
@@ -665,7 +667,7 @@ export function ChangeNowEvmSwapView({
                 borderRadius: 12, overflow: "hidden", boxShadow: "0 12px 32px rgba(0,0,0,.6)",
                 maxHeight: 260, overflowY: "auto",
               }}>
-                {CN_EVM_TOKENS.filter(t => t.ticker !== state.fromToken?.ticker && !t.fromOnly).map(t => (
+                {CN_EVM_TOKENS.filter(t => t.ticker !== state.fromToken?.ticker).map(t => (
                   <button
                     key={t.ticker}
                     type="button"
@@ -703,7 +705,10 @@ export function ChangeNowEvmSwapView({
   const isReady       = state.uiState === "ready" && state.quote !== null;
   const canGetQuote   = ["idle","ready","checking_pair"].includes(state.uiState)
     && !!state.fromAmount && parseFloat(state.fromAmount) > 0;
-  const canCreateExch = isReady && !!destinationAddr;
+  // Serve: EVM address per il from EVM (o rimborso), BTC address quando TO=BTC
+  const canCreateExch = isReady
+    && (isBtcFrom ? !!destinationAddr : !!destinationAddr)   // EVM address always needed for refund / from-EVM
+    && (!isBtcTo  || !!btcAddress);                          // BTC address needed when TO=BTC
 
   return (
     <div className="asw-content">
@@ -780,8 +785,8 @@ export function ChangeNowEvmSwapView({
               borderRadius: 12, overflow: "hidden", boxShadow: "0 12px 32px rgba(0,0,0,.6)",
               maxHeight: 300, overflowY: "auto",
             }}>
-              {/* fromOnly (BTC) escluso dalla selezione TO */}
-              {CN_EVM_TOKENS.filter(t => t.ticker !== state.fromToken?.ticker && !t.fromOnly).map(t => {
+              {/* BTC disponibile come TO quando FROM è EVM */}
+              {CN_EVM_TOKENS.filter(t => t.ticker !== state.fromToken?.ticker).map(t => {
                 const logo = COIN_LOGOS[t.ticker];
                 return (
                   <button
@@ -837,10 +842,22 @@ export function ChangeNowEvmSwapView({
               Destinazione (auto)
             </span>
             <span className="asw-info-value" style={{ fontSize: 11 }}>
-              {destinationAddr ? truncAddr(destinationAddr) : <span style={{ color: "#fbbf24" }}>Wallet non collegato</span>}
+              {isBtcTo
+                ? (btcAddress
+                    ? truncAddr(btcAddress)
+                    : <span style={{ color: "#fbbf24" }}>BTC wallet non collegato</span>)
+                : (destinationAddr
+                    ? truncAddr(destinationAddr)
+                    : <span style={{ color: "#fbbf24" }}>Wallet non collegato</span>)
+              }
             </span>
           </div>
-          {!hasAlphaWallet && destinationAddr && (
+          {isBtcTo && !btcAddress && (
+            <p style={{ fontSize: 11, color: "#fbbf24", marginTop: 4 }}>
+              ⚠ Sblocca Alpha Wallet per ricevere BTC automaticamente.
+            </p>
+          )}
+          {!isBtcTo && !hasAlphaWallet && destinationAddr && (
             <p style={{ fontSize: 11, color: "#fbbf24", marginTop: 4 }}>
               ⚠ Alpha Wallet non sbloccato — firma richiederà wallet esterno.
             </p>

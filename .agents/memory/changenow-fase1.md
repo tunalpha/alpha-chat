@@ -1,7 +1,18 @@
 ---
-name: ChangeNOW FASE 1 — BTC→USDT Integration
-description: Architettura, decisioni e invarianti per l'integrazione ChangeNOW come secondo provider EVM swap
+name: ChangeNOW FASE 1 — BTC↔EVM Integration
+description: Architettura, decisioni e invarianti per l'integrazione ChangeNOW (BTC→EVM, EVM→BTC, EVM→EVM)
 ---
+
+## BTC come FROM e TO — regola fondamentale
+
+BTC NON ha `fromOnly`. Può essere selezionato sia come FROM che come TO.
+- **BTC→EVM**: depositEvmAddress=BTC address, firma via `sendBtcForSwap`, endpoint `/swap/changenow/create`
+- **EVM→BTC**: destinationEvmAddress=BTC address, refundEvmAddress=EVM address, firma EVM, endpoint `/swap/changenow/evm/create`
+- **EVM→EVM**: destinationEvmAddress=EVM address, endpoint `/swap/changenow/evm/create`
+
+Il backend EVM (`/evm/pairs`, `/evm/quote`, `/evm/create`, `/evm/commit`, `/evm/status`) usa `assertTickerFormat` (no whitelist) → supporta qualsiasi coppia inclusa EVM→BTC.
+
+Hook: `useChangeNowEvmSwapState(evmAddress, btcAddress)` — btcAddress usato come destinazione quando TO=BTC, come "non-signing" address quando BTC è FROM.
 
 ## Architettura
 
