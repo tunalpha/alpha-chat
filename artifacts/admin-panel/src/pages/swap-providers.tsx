@@ -10,7 +10,24 @@
  */
 
 import { useState, useEffect } from "react";
-import { apiFetch } from "../lib/api";
+import { getToken } from "../lib/api";
+
+const SWAP_PROVIDERS_BASE = "/api/v1/swap/providers";
+
+async function swapProvidersFetch<T>(path: string, init?: RequestInit): Promise<T> {
+  const token = getToken();
+  const res = await fetch(`${SWAP_PROVIDERS_BASE}${path}`, {
+    ...init,
+    headers: {
+      "Content-Type": "application/json",
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      ...(init?.headers ?? {}),
+    },
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) throw new Error((data as any).message ?? `HTTP ${res.status}`);
+  return data as T;
+}
 
 // ── Tipi ──────────────────────────────────────────────────────────────────────
 
@@ -66,7 +83,7 @@ export default function SwapProviders() {
     setLoading(true);
     setError(null);
     try {
-      const data = await apiFetch("/api/v1/swap/providers");
+      const data = await swapProvidersFetch<{ providers: SwapProvider[] }>("");
       setProviders(data.providers ?? []);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Errore caricamento provider");
@@ -85,9 +102,8 @@ export default function SwapProviders() {
   ) {
     setUpdating(providerId);
     try {
-      await apiFetch(`/api/v1/swap/providers/${providerId}`, {
+      await swapProvidersFetch(`/${providerId}`, {
         method: "PATCH",
-        headers: { "Content-Type": "application/json" },
         body:    JSON.stringify(body),
       });
       showToast("Configurazione aggiornata", true);
@@ -120,19 +136,39 @@ export default function SwapProviders() {
         </p>
       </div>
 
-      {/* Notice ChangeNOW */}
-      <div style={{
-        background: "#fef9c3", border: "1px solid #fde047",
-        borderRadius: 10, padding: "10px 14px",
-        fontSize: 13, color: "#713f12", marginBottom: 20,
-        display: "flex", gap: 8, alignItems: "flex-start",
-      }}>
-        <span>⚠️</span>
-        <span>
-          <strong>ChangeNOW</strong> è registrato ma rimane <strong>DISABLED</strong> fino ad autorizzazione esplicita.
-          Non abilitare senza approvazione. Li.Fi è e deve rimanere il solo provider operativo.
-        </span>
-      </div>
+      {/* Notice stato attuale provider */}
+      {!loading && providers.length > 0 && (() => {
+        const cn   = providers.find(p => p.providerId === "changenow");
+        const lifi = providers.find(p => p.providerId === "lifi");
+        const cnActive = cn?.status === "enabled" && cn?.isPrimary;
+        return cnActive ? (
+          <div style={{
+            background: "#dcfce7", border: "1px solid #86efac",
+            borderRadius: 10, padding: "10px 14px",
+            fontSize: 13, color: "#14532d", marginBottom: 20,
+            display: "flex", gap: 8, alignItems: "flex-start",
+          }}>
+            <span>✅</span>
+            <span>
+              <strong>ChangeNOW</strong> è attivo come provider <strong>PRIMARY</strong>.
+              {lifi?.status === "disabled" ? " Li.Fi è DISABLED." : ""}
+            </span>
+          </div>
+        ) : (
+          <div style={{
+            background: "#fef9c3", border: "1px solid #fde047",
+            borderRadius: 10, padding: "10px 14px",
+            fontSize: 13, color: "#713f12", marginBottom: 20,
+            display: "flex", gap: 8, alignItems: "flex-start",
+          }}>
+            <span>⚠️</span>
+            <span>
+              <strong>Li.Fi</strong> è il provider operativo corrente.
+              ChangeNOW è{" "}<strong>{cn?.status?.toUpperCase() ?? "DISABLED"}</strong>.
+            </span>
+          </div>
+        );
+      })()}
 
       {/* Stato caricamento */}
       {loading && (

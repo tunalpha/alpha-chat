@@ -19,6 +19,8 @@ import {
 } from "./buy-api";
 import type { BuyCryptoState, BuyAsset, BuyOrder } from "./types";
 import { BUY_TERMINAL_STATUSES, humanizeBuyError } from "./types";
+import { saveTxRecord }              from "../wallet/services/tx-store";
+import { dispatchWalletNotification } from "../wallet/notifications/wallet-notification-store";
 
 const POLL_INTERVAL_MS = 8_000;
 
@@ -162,10 +164,37 @@ export function useBuyCryptoState() {
       try {
         const res = await apiBuyGetOrder(orderId);
         if (!mounted.current) return;
-        _set({ order: res.order, step: _stepFromStatus(res.order) });
+        const newStep = _stepFromStatus(res.order);
+        _set({ order: res.order, step: newStep });
         if (BUY_TERMINAL_STATUSES.includes(res.order.status)) {
           clearInterval(pollTimer.current!);
           pollTimer.current = null;
+          // Salva in History + notifica solo su completato con TX hash
+          if (res.order.status === "completed" && res.order.destinationTxHash) {
+            const networkChainId = _networkToChainId(res.order.cryptoNetwork);
+            void saveTxRecord({
+              id:          `buy:${res.order.id}`,
+              chainId:     networkChainId,
+              network:     res.order.cryptoNetwork,
+              txHash:      res.order.destinationTxHash,
+              direction:   "in",
+              asset:       res.order.cryptoAsset,
+              amount:      String(res.order.cryptoAmountReceived ?? res.order.estimatedCryptoAmount ?? ""),
+              timestamp:   Date.now(),
+              status:      "confirmed",
+              updatedAt:   Date.now(),
+            }).catch(() => {});
+            void dispatchWalletNotification({
+              type:      "received",
+              chainId:   _networkToChainId(res.order.cryptoNetwork),
+              network:   res.order.cryptoNetwork,
+              asset:     res.order.cryptoAsset,
+              amount:    String(res.order.cryptoAmountReceived ?? res.order.estimatedCryptoAmount ?? ""),
+              txHash:    res.order.destinationTxHash,
+              timestamp: Date.now(),
+              status:    "confirmed",
+            }).catch(() => {});
+          }
         }
       } catch { /* continua polling */ }
     }, POLL_INTERVAL_MS);
@@ -199,6 +228,16 @@ export function useBuyCryptoState() {
     state,
     actions: { selectAsset, setFiatInput, setFiat, selectMethod, fetchQuote, createOrder, reset },
   };
+}
+
+function _networkToChainId(network: string): number {
+  switch (network.toLowerCase()) {
+    case "polygon":  return 137;
+    case "ethereum": return 1;
+    case "bsc":      return 56;
+    case "bitcoin":  return 0;
+    default:         return 137;
+  }
 }
 
 function _stepFromStatus(order: BuyOrder): BuyCryptoState["step"] {
