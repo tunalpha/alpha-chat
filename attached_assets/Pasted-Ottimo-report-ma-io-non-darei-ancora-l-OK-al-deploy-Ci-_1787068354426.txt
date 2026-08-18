@@ -1,0 +1,60 @@
+Ottimo report, ma io non darei ancora l’OK al deploy. Ci sono due punti da chiudere.
+
+1. Fee 0,40% — manca la verifica che avevamo chiesto
+
+Il report non dice esplicitamente:
+
+ChangeNOW restituisce il payout già al netto delle fee/partner share e Alpha non aggiunge un altro 0,40%.
+
+Questa è fondamentale per evitare un doppio conteggio.
+
+2. apiKey nel database
+
+Vedo questa modifica:
+
+swap-provider-config.model.ts → aggiunto campo apiKey
+
+mentre il report dice che la key viene letta esclusivamente da:
+
+process.env.CHANGENOW_API_KEY
+
+Quindi dobbiamo capire perché esiste il campo DB. Non voglio una copia della API key nel MongoDB se non è necessaria.
+
+Manderei questo ultimo prompt, senza modifiche:
+
+ULTIMO CHECK OBBLIGATORIO PRIMA DEL DEPLOY — NON MODIFICARE NULLA
+
+Il report è positivo, ma mancano due verifiche precise.
+
+A) FEE / PAYOUT CHANGENOW
+Verifica nel codice changenow.service.ts, changenow-swap.service.ts e ChangeNowSwapView.tsx:
+
+* il payout/toAmount mostrato all’utente viene preso dal risultato ufficiale ChangeNOW;
+* Alpha NON aggiunge autonomamente lo 0,40%;
+* Alpha NON sottrae una seconda volta lo 0,40%;
+* non esiste alcun markup/fee nascosto aggiunto da Alpha;
+* la service fee ChangeNOW non viene mostrata come valore separato se l’API non la fornisce.
+
+Restituisci esplicitamente:
+PARTNER FEE DOUBLE-COUNT: NO/POSSIBLE
+
+B) API KEY
+Hai aggiunto apiKey a swap-provider-config.model.ts, ma il report dice che la API key viene letta esclusivamente da process.env.CHANGENOW_API_KEY.
+
+Verifica:
+
+* perché esiste il campo apiKey nel modello;
+* se contiene realmente la secret oppure è solo un campo preparatorio;
+* se la secret può essere salvata accidentalmente in MongoDB;
+* se viene mai restituita da GET/PATCH/admin API;
+* se viene mai serializzata, loggata o inviata al frontend.
+
+NON modificare il codice. NON fare deploy. NON cambiare provider.
+
+Restituisci soltanto il risultato delle due verifiche e indica eventuali modifiche necessarie.
+
+Configurazione deve rimanere:
+Li.Fi ENABLED + PRIMARY
+ChangeNOW DISABLED + NOT PRIMARY
+
+Dopo questo check, se entrambi sono PASS, per me possiamo procedere al deploy controllato. E al momento del deploy faremo Li.Fi OFF → ChangeNOW ON/PRIMARY, come stabilito, ma solo dopo l’ultimo controllo.
