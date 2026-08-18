@@ -1,0 +1,316 @@
+Esegui una verifica URGENTE, COMPLETAMENTE READ-ONLY, per determinare dove sono finiti i BTC del precedente tentativo BTC → USDT.
+
+NON modificare codice.
+NON modificare database.
+NON cambiare stati.
+NON effettuare retry.
+NON inviare altri BTC.
+NON fare nuovi swap.
+NON firmare nessuna transazione.
+
+DATI CERTI ON-CHAIN
+
+1. BTC ricevuti nel wallet
+
+TX:
+
+96b55dc7ea0d7b34fd56a93835f890c1eca875eda4e63d740411731b6639281e
+
+Importo:
+
++0.00022745 BTC
+
+Data:
+
+17/08/2026 18:08:04
+
+Questa TX ha accreditato i BTC al wallet Alpha.
+
+2. TX successiva
+
+TX:
+
+ce259f4b1523baf694dfd931f6dd611e1c6f2278aa1b541284744cd11497933d
+
+Input:
+
+0.00022745 BTC
+
+Output:
+
+0.00022604 BTC
+
+Destinazione:
+
+bc1plxa9q77gz9r33g8pd4c2ygzezchjffuedtzdrkclyceseyw8v80qasmquf
+
+Fee:
+
+0.00000141 BTC
+
+Blockstream mostra:
+
+Possibly self-transfer
+
+IMPORTANTE:
+“Possibly self-transfer” NON deve essere considerato prova che l’indirizzo appartenga al wallet Alpha.
+
+OBIETTIVO
+
+Voglio sapere con certezza:
+
+A chi appartiene l’indirizzo
+
+bc1plxa9q77gz9r33g8pd4c2ygzezchjffuedtzdrkclyceseyw8v80qasmquf
+
+e soprattutto:
+
+perché Alpha ha firmato e trasmesso la TX ce259f4b....
+
+1. VERIFICA APPARTENENZA INDIRIZZO
+
+Analizza il codice del wallet BTC e il keystore.
+
+Determina se:
+
+bc1plxa9q77gz9r33g8pd4c2ygzezchjffuedtzdrkclyceseyw8v80qasmquf
+
+può essere derivato dal seed/HD wallet utilizzato da Alpha.
+
+NON mostrare seed, private key o dati sensibili.
+
+Voglio solo:
+
+* SI / NO
+* derivation path, se sicuro mostrarlo
+* tipo di address
+* componente del wallet che lo genera
+* funzione responsabile della generazione
+* se è un change address
+* se è un receive address
+* se è un deposit address
+* se è un address di provider
+
+Se non è possibile determinare matematicamente l’appartenenza, dichiaralo chiaramente.
+
+2. CONFRONTA CON GLI ADDRESS DEL WALLET
+
+Recupera in READ-ONLY tutti gli address BTC che Alpha considera appartenenti al wallet corrente.
+
+Confronta:
+
+bc1plxa9q77gz9r33g8pd4c2ygzezchjffuedtzdrkclyceseyw8v80qasmquf
+
+con l’address set del wallet.
+
+Determina se è:
+
+* address noto del wallet;
+* change address;
+* address derivato ma non indicizzato;
+* address esterno;
+* address sconosciuto.
+
+3. ANALIZZA LA TX ce259f4b
+
+Ricostruisci esattamente:
+
+* input UTXO;
+* output;
+* change;
+* fee;
+* address source;
+* address destination;
+* quale funzione Alpha ha creato la transazione;
+* quale funzione ha firmato;
+* quale funzione ha effettuato il broadcast.
+
+Voglio il percorso del codice:
+
+UI action
+→ function
+→ transaction builder
+→ sign
+→ broadcast
+
+4. TROVA CHI HA CHIAMATO IL SEND
+
+Cerca nei log applicativi la TX:
+
+ce259f4b1523baf694dfd931f6dd611e1c6f2278aa1b541284744cd11497933d
+
+e determina:
+
+* timestamp della richiesta;
+* componente/frontend;
+* funzione chiamata;
+* tipo di operazione;
+* swap ID associato;
+* transfer ID associato;
+* eventuale Li.Fi order/quote ID;
+* eventuale provider;
+* motivo/intent registrato;
+* amount richiesto;
+* destinatario richiesto.
+
+5. VERIFICA SE ERA DAVVERO UN BTC→USDT
+
+Determina se la TX ce259f4b... è stata generata dal flusso:
+
+BTC → USDT
+
+oppure da:
+
+* consolidamento UTXO;
+* cambio address;
+* gestione interna del wallet;
+* sweep;
+* fee management;
+* altro transfer;
+* operazione automatica non legata allo swap.
+
+NON assumere che il nome mostrato nella UI sia corretto.
+
+6. CORRELAZIONE CON IL VECCHIO INCIDENTE
+
+Cerca qualsiasi riferimento a:
+
+96b55dc7ea0d7b34fd56a93835f890c1eca875eda4e63d740411731b6639281e
+
+e:
+
+ce259f4b1523baf694dfd931f6dd611e1c6f2278aa1b541284744cd11497933d
+
+Verifica se entrambe sono state associate allo stesso:
+
+* swap;
+* transfer;
+* Li.Fi route;
+* sessione;
+* EvmActiveSwap.
+
+7. VERIFICA DELLE DESTINAZIONI
+
+Per bc1plxa9q77gz9r33g8pd4c2ygzezchjffuedtzdrkclyceseyw8v80qasmquf verifica:
+
+* transazioni precedenti;
+* transazioni successive;
+* UTXO ricevuti;
+* UTXO spesi;
+* eventuali pattern di address;
+* eventuale relazione con altri address del wallet;
+* eventuale relazione con Thorchain;
+* eventuale relazione con Li.Fi;
+* eventuale relazione con provider BTC.
+
+NON classificare l’indirizzo come “interno” solo perché Blockstream dice “Possibly self-transfer”.
+
+8. VERIFICA CRITICA DEL SALDO
+
+Riconcilia il saldo BTC del wallet:
+
+saldo prima
++
+0.00022745 BTC
+
+0.00022604 BTC
+
+fee
+
+altri movimenti
+
+e confrontalo con il saldo mostrato da Alpha.
+
+Voglio sapere se esiste una discrepanza tra:
+
+* saldo on-chain degli UTXO appartenenti al wallet;
+* saldo mostrato da Alpha;
+* database interno Alpha.
+
+9. SE L’ADDRESS È ESTERNO
+
+Se bc1plxa9... NON appartiene al wallet Alpha:
+
+NON fermarti.
+
+Determina:
+
+1. quale componente ha deciso quel destinatario;
+2. quale funzione ha costruito la TX;
+3. quale operazione ha autorizzato la firma;
+4. se il destinatario proveniva da Li.Fi/Thorchain;
+5. se il destinatario proveniva dal database;
+6. se il destinatario era hardcoded/configurato;
+7. se esiste un bug nel flusso BTC→EVM.
+
+Se i BTC sono effettivamente usciti verso un address esterno, questa è una PRIORITÀ CRITICA.
+
+10. IMPORTANTE — NON FARE ASSUNZIONI
+
+Non voglio:
+
+“sembra un self-transfer”
+
+Voglio:
+
+“appartiene al wallet perché ______”
+
+oppure:
+
+“non appartiene al wallet perché ______”
+
+con evidenza dal codice/derivation/address set/on-chain.
+
+OUTPUT FINALE
+
+Concludi obbligatoriamente con:
+
+DESTINATARIO bc1plxa9...
+
+* Appartiene al wallet Alpha: SI / NO / NON DETERMINABILE
+* Tipo address:
+* Derivation path:
+* È change address: SI / NO
+* È receive address: SI / NO
+* È provider address: SI / NO
+* È Thorchain address: SI / NO
+* È Li.Fi address: SI / NO
+
+TX ce259f4b...
+
+* Chi l’ha creata:
+* Chi l’ha firmata:
+* Perché:
+* Swap associato:
+* Provider associato:
+* Destinatario:
+* Importo:
+* Fee:
+
+FONDI
+
+* I 0.00022745 BTC sono ancora sotto controllo del wallet: SI / NO
+* Se NO, dove sono stati inviati:
+* Se SI, perché Alpha non li mostra:
+* Saldo on-chain reale:
+* Saldo Alpha:
+
+CLASSIFICAZIONE
+
+Scegli una sola:
+
+FUNDS_SAFE_WALLET_ACCOUNTING_BUG
+
+FUNDS_SAFE_INTERNAL_TRANSFER
+
+FUNDS_SENT_TO_PROVIDER
+
+FUNDS_SENT_TO_UNKNOWN_EXTERNAL_ADDRESS
+
+FUNDS_LOSS_OR_UNAUTHORIZED_TRANSFER
+
+INSUFFICIENT_DATA
+
+NON implementare alcun fix.
+
+Prima voglio esclusivamente stabilire dove sono finiti realmente i BTC e chi ha autorizzato la TX.
