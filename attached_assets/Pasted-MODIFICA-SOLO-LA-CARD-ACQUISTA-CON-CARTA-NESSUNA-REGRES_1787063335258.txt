@@ -1,0 +1,55 @@
+MODIFICA SOLO LA CARD "ACQUISTA CON CARTA" — NESSUNA REGRESSIONE
+
+Nel componente della home Alpha Wallet, modifica esclusivamente la card "Acquista con carta" già presente sotto i quattro pulsanti Invia / Ricevi / Storico / Swap.
+
+NON creare una nuova pagina.
+NON spostare la card.
+NON modificare i pulsanti esistenti.
+NON modificare saldo, asset, invio, ricezione, storico, swap o pagamenti attuali.
+NON modificare alcuna logica backend.
+
+OBIETTIVO GRAFICO
+
+Mantieni il design premium attuale della card, inclusi:
+- icona carta
+- titolo "Acquista con carta"
+- loghi Visa, Mastercard, Apple Pay e Google Pay
+- pulsante "Acquista →"
+
+Sostituisci esclusivamente il sottotitolo attuale troncato:
+
+"Crypto in mod..."
+
+con:
+
+"Crypto direttamente nel tuo wallet"
+
+Il testo deve essere responsive e non deve mai essere troncato con "..." su mobile.
+Se lo spazio non è sufficiente, deve andare automaticamente su una seconda riga mantenendo il layout elegante.
+
+REQUISITO FUNZIONALE IMPORTANTE
+
+La card deve essere progettata per il futuro collegamento con ChangeNOW.
+
+Quando l'utente entrerà nel flusso "Acquista con carta":
+- NON chiedere di copiare/incollare un indirizzo;
+- NON mostrare un campo "indirizzo wallet" modificabile;
+- l'indirizzo di ricezione dovrà essere determinato automaticamente dal wallet Alpha e dalla chain/asset selezionati;
+- l'utente potrà eventualmente vedere l'indirizzo abbreviato solo come conferma, ma non dovrà inserirlo manualmente.
+
+Per questa modifica ATTUALE non collegare ancora ChangeNOW e non implementare il pagamento con carta: preparare solamente la UI.
+
+IMPORTANTISSIMO:
+Lavoro totalmente isolato.
+Zero regressioni.
+Non toccare nessuna logica dei pagamenti esistenti.
+Non modificare il flusso Swap.
+Non modificare Li.Fi.
+Non modificare API, database o provider.
+
+Prima esegui i test/regression check esistenti.
+Alla fine riportami:
+1. file modificati;
+2. modifiche effettuate;
+3. conferma esplicita che nessun pagamento esistente è stato modificato;
+4. risultati test completi.

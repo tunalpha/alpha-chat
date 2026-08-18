@@ -528,9 +528,10 @@
 .aw-buy-card__sub {
   font-size: 11px;
   color: rgba(255,255,255,.45);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  overflow: visible;
+  line-height: 1.35;
+  word-break: break-word;
 }
 .aw-buy-card__right {
   display: flex;

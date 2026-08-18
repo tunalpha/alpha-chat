@@ -1004,7 +1004,7 @@ function OverviewView({ onNavigate, onSelectToken }: { onNavigate: (v: WalletSub
             </div>
             <div className="aw-buy-card__text">
               <span className="aw-buy-card__title">Acquista con carta</span>
-              <span className="aw-buy-card__sub">Crypto in modo semplice e sicuro</span>
+              <span className="aw-buy-card__sub">Crypto direttamente nel tuo wallet</span>
             </div>
           </div>
           <div className="aw-buy-card__right">
