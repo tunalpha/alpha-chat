@@ -1,0 +1,283 @@
+APPLICA IL FIX, MA PRIMA VERIFICA L'API CHANGE NOW REALE.
+
+La diagnosi ha identificato correttamente che abbiamo trasformato una lista di token testati in una whitelist artificiale.
+
+OBIETTIVO PRINCIPALE:
+
+Alpha Swap deve supportare il più ampio numero possibile di coppie ChangeNOW, senza whitelist hardcoded delle coppie.
+
+Le coppie precedentemente testate NON sono una whitelist.
+Erano solamente test di verifica.
+
+CHANGE NOW DEVE ESSERE LA SOURCE OF TRUTH sulla disponibilità della coppia.
+
+==================================================
+1. VERIFICA API CHANGE NOW PRIMA DEL CODICE
+==================================================
+
+NON assumere automaticamente che:
+
+GET /v2/exchange/estimated-amount
+
+sia necessariamente l'endpoint/metodo corretto.
+
+Verifica nella documentazione/API ChangeNOW attuale:
+
+- endpoint esatto per ottenere una stima EVM → EVM
+- metodo HTTP
+- autenticazione
+- fromCurrency
+- fromNetwork
+- toCurrency
+- toNetwork
+- fromAmount
+- flow
+- eventuale rateId
+- formato della risposta
+- gestione degli errori
+- minAmount
+- eventuale endpoint ufficiale per currencies/networks disponibili.
+
+Se necessario usa anche l'endpoint ufficiale delle currencies per ottenere dinamicamente asset e network supportati.
+
+NON implementare un endpoint inventato o basato solo su supposizioni.
+
+==================================================
+2. ELIMINA LA WHITELIST COME GATE
+==================================================
+
+Rimuovere il blocco:
+
+assertValidTicker()
+→ CN_EVM_TOKENS.some(...)
+
+e qualsiasi altro controllo che impedisca una coppia solo perché non è presente nella lista locale.
+
+Rimuovere anche:
+
+VALID_TICKERS.includes(...)
+
+dagli schema Zod.
+
+Sostituire con validazione sintattica sicura del ticker/network.
+
+Esempio:
+
+ticker:
+^[a-z0-9]{1,30}$
+
+network:
+^[a-z0-9_-]{1,30}$
+
+La validazione deve impedire input malevoli/inattesi, NON limitare gli asset supportati da ChangeNOW.
+
+==================================================
+3. SEPARARE TOKEN UI DA PAIR AVAILABILITY
+==================================================
+
+CN_EVM_TOKENS NON deve più essere utilizzato come whitelist API.
+
+Può rimanere come catalogo UI iniziale se necessario.
+
+Ma:
+
+SUPPORTED TOKENS
+≠
+SUPPORTED PAIRS
+
+La coppia viene verificata dinamicamente da ChangeNOW.
+
+==================================================
+4. VALUTA SE RENDERE DINAMICO ANCHE IL CATALOGO
+==================================================
+
+Se ChangeNOW espone un endpoint ufficiale per:
+
+- currencies
+- networks
+- ticker
+- network
+- contract address
+- decimals
+- status
+
+valuta di usarlo per alimentare il catalogo token dell'interfaccia.
+
+Obiettivo:
+
+se ChangeNOW aggiunge un nuovo token/rete supportata, Alpha Swap non deve richiedere una modifica del codice per riconoscerlo.
+
+Se invece per motivi UX/security è necessario mantenere un catalogo locale, va bene, MA NON deve essere usato come gate della coppia API.
+
+==================================================
+5. FIX CHECK EVM PAIR
+==================================================
+
+checkEvmPair() deve:
+
+1. ricevere:
+   fromTicker
+   fromNetwork
+   toTicker
+   toNetwork
+   amount
+
+2. chiamare l'endpoint ChangeNOW corretto per EVM swap.
+
+3. se ChangeNOW restituisce una stima valida:
+   available = true
+
+4. se ChangeNOW restituisce coppia non disponibile:
+   available = false
+
+5. se ChangeNOW restituisce errore temporaneo/API/network:
+   distinguere chiaramente:
+   - pair unavailable
+   - provider/API error
+
+NON trasformare ogni errore indistintamente in "coppia non disponibile".
+
+==================================================
+6. TEST REALE OBBLIGATORIO
+==================================================
+
+Prima di dichiarare PASS verifica realmente almeno:
+
+POL Polygon → USDC Polygon
+POL Polygon → USDT Polygon
+POL Polygon → ETH Ethereum
+ETH Ethereum → USDC Polygon
+ETH Ethereum → USDT Polygon
+BNB BSC → USDT BSC
+BNB BSC → USDC Polygon
+
+E almeno una coppia non precedentemente presente nella nostra lista hardcoded.
+
+Per ogni coppia verifica:
+
+- ticker
+- network
+- endpoint
+- HTTP status
+- risposta ChangeNOW
+- estimated amount
+- min amount se presente.
+
+IMPORTANTE:
+
+POL → USDC Polygon DEVE essere il test di regressione principale perché è la coppia che attualmente mostra:
+
+"Coppia non disponibile su ChangeNOW al momento."
+
+==================================================
+7. CREATE EXCHANGE
+==================================================
+
+Dopo aver sistemato quote/check:
+
+verifica che createEvmExchange() utilizzi ESATTAMENTE gli stessi:
+
+fromCurrency
+fromNetwork
+toCurrency
+toNetwork
+
+utilizzati dalla quote.
+
+Non deve esserci un secondo mapping hardcoded che reintroduce la vecchia whitelist.
+
+Verifica inoltre:
+
+- payout address
+- refund address
+- amount
+- rateId se richiesto
+- flow
+- type
+- exchange ID
+- deposit address.
+
+==================================================
+8. NON TOCCARE ALTRO
+==================================================
+
+NON modificare:
+
+- Li.Fi
+- EvmSwapView Li.Fi
+- payment engine
+- USDA
+- MultiChain
+- Spark
+- WalletConnect
+- BTC signer
+- Lightning
+- Boltz
+- fee architecture.
+
+ChangeNOW deve continuare a usare:
+
+Alpha fee = 0%
+
+Revenue:
+ChangeNOW Partner Share = 0,40%
+
+Nessuna seconda TX.
+Nessun fee wallet.
+Nessun PSBT multi-output.
+
+==================================================
+9. TEST AUTOMATICI
+==================================================
+
+Aggiorna i test per verificare:
+
+T1 token valido → API chiamata
+T2 ticker non presente nel catalogo locale → API comunque chiamata
+T3 pair disponibile → available=true
+T4 pair non disponibile → available=false
+T5 API error → provider error, non pair unavailable
+T6 quote valida
+T7 create exchange
+T8 fromNetwork corretto
+T9 toNetwork corretto
+T10 POL → USDC Polygon
+T11 pair precedentemente non presente nella whitelist
+T12 nessun fallback Li.Fi
+T13 sicurezza input ticker/network
+T14 regressione BTC→EVM
+T15 regressione EVM→EVM.
+
+==================================================
+10. BUILD E REPORT
+==================================================
+
+Esegui:
+
+- tutti i test ChangeNOW
+- test swap provider
+- test public config
+- build frontend
+- build backend
+
+Poi fammi un report finale con:
+
+A) endpoint ChangeNOW effettivamente utilizzato
+B) documentazione/API verificata
+C) whitelist eliminate
+D) catalogo token UI e suo ruolo
+E) mapping ticker/network
+F) risultato reale POL→USDC Polygon
+G) risultato delle altre coppie
+H) eventuale nuova coppia mai presente nei test precedenti
+I) test totali PASS/FAIL/SKIP
+J) file modificati
+K) conferma che Li.Fi non viene chiamato nel branch ChangeNOW
+L) conferma fee Alpha = 0%
+M) conferma NESSUN deploy automatico.
+
+NON fare deploy.
+
+NON effettuare transazioni reali.
+
+Prima di dichiarare "READY", voglio vedere almeno una verifica API reale riuscita di POL → USDC Polygon.
