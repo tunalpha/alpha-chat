@@ -1028,13 +1028,18 @@ export function SwapView({ onBack }: SwapViewProps) {
   const [cfgError, setCfgError]     = useState<string | null>(null);
   const [copied, setCopied]         = useState(false);
 
-  // ── Provider EVM attivo (lifi | changenow) — letto dal config pubblico ───────
-  // Viene incluso in SwapPublicConfig restituito da GET /api/v1/swap/config
-  // (endpoint pubblico, nessun auth richiesto).
-  // NON usare /api/v1/swap/providers che richiede requireAdmin e restituisce 401
-  // per i token utente normali, causando il default permanente "lifi".
+  // ── Provider EVM attivo (lifi | changenow | undefined) ───────────────────────
+  // Letto da SwapPublicConfig → GET /api/v1/swap/config (pubblico, no auth).
+  // REGOLA ASSOLUTA (no fallback silenzioso):
+  //   "changenow"  → ChangeNowEvmSwapView
+  //   "lifi"       → EvmSwapView
+  //   undefined    → "Swap EVM temporaneamente non disponibile"
+  //
+  // Li.Fi viene usato SOLO quando il backend dichiara esplicitamente "lifi".
+  // NON esiste un default implicito a Li.Fi: se il config non è ancora disponibile
+  // (cfgLoading=true) o è indefinito, l'utente vede lo stato di indisponibilità.
   // ISOLAMENTO: nessuna modifica a EvmSwapView / lifi-client / useEvmSwapState.
-  const activeEvmProvider: string = config?.activeEvmProvider ?? "lifi";
+  const activeEvmProvider: string | undefined = config?.activeEvmProvider;
 
   // ── BTC on-chain balance (per il tab BTC/Lightning) ───────────────────────
   const [btcBalance, setBtcBalance]           = useState<BtcBalanceResponse | null>(null);
@@ -1321,32 +1326,66 @@ export function SwapView({ onBack }: SwapViewProps) {
   // lnbtc_unknown, btcLnInProgress, ecc.) altrimenti lo stato della state
   // machine BTC intercetta il render e la tab EVM non viene mai mostrata.
   //
-  // PROVIDER BRANCH (minimale):
-  //   - activeEvmProvider === "changenow" → ChangeNowSwapView (BTC→USDT)
-  //   - altrimenti → EvmSwapView con Li.Fi (invariato)
-  //   Li.Fi operational files (lifi-client.ts, useEvmSwapState.ts, EvmSwapView.tsx)
-  //   non vengono mai modificati in questo branch.
+  // PROVIDER BRANCH — tre vie (NO fallback silenzioso a Li.Fi):
+  //   "changenow"  → ChangeNowEvmSwapView   (ChangeNOW, zero fee Alpha)
+  //   "lifi"       → EvmSwapView             (Li.Fi, fee 0.25% Li.Fi integrator)
+  //   undefined    → "Swap EVM non disponibile" (config non caricato o provider sconosciuto)
+  //
+  // Li.Fi viene mostrato SOLO quando il backend dichiara esplicitamente "lifi".
+  // Li.Fi operational files (lifi-client.ts, useEvmSwapState.ts, EvmSwapView.tsx)
+  // non vengono mai modificati.
   if (activeTab === "evm") {
+    let evmContent: React.ReactNode;
+
+    if (activeEvmProvider === "changenow") {
+      evmContent = (
+        <ChangeNowEvmSwapView
+          onBack={onBack ?? (() => {})}
+          alphaWalletAddress={alphaWalletAddress ?? null}
+          activeEvmAddress={activeAccount?.address ?? null}
+        />
+      );
+    } else if (activeEvmProvider === "lifi") {
+      evmContent = (
+        <EvmSwapView
+          onBack={onBack}
+          alphaWalletAddress={alphaWalletAddress}
+          getAlphaWalletClient={getAlphaWalletClient}
+          btcAddress={btcAddress ?? undefined}
+          btcBalanceSat={btcBalance?.totalSat ?? undefined}
+          sendBtcForSwap={sendBtcForSwap}
+        />
+      );
+    } else {
+      // activeEvmProvider è undefined: config caricato ma provider non riconosciuto.
+      // NON eseguire fallback a Li.Fi — mostrare indisponibilità esplicita.
+      evmContent = (
+        <div className="asw-content">
+          <div className="asw-status-view">
+            <AlertTriangle size={36} style={{ color: "#f59e0b" }} />
+            <div>
+              <p className="asw-status-title">Swap EVM non disponibile</p>
+              <p className="asw-status-sub">
+                Il provider EVM non è configurato. Riprova tra qualche istante.
+              </p>
+            </div>
+            <button
+              onClick={() => window.location.reload()}
+              className="aw-btn aw-btn--secondary"
+              style={{ maxWidth: 220 }}
+            >
+              Ricarica
+            </button>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="asw-root">
         {Header}
         <EvmErrorBoundary onReset={actions.reset}>
-          {activeEvmProvider === "changenow" ? (
-            <ChangeNowEvmSwapView
-              onBack={onBack ?? (() => {})}
-              alphaWalletAddress={alphaWalletAddress ?? null}
-              activeEvmAddress={activeAccount?.address ?? null}
-            />
-          ) : (
-            <EvmSwapView
-              onBack={onBack}
-              alphaWalletAddress={alphaWalletAddress}
-              getAlphaWalletClient={getAlphaWalletClient}
-              btcAddress={btcAddress ?? undefined}
-              btcBalanceSat={btcBalance?.totalSat ?? undefined}
-              sendBtcForSwap={sendBtcForSwap}
-            />
-          )}
+          {evmContent}
         </EvmErrorBoundary>
       </div>
     );

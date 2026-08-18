@@ -1,0 +1,129 @@
+Il report è chiaro. Ora fai l'ULTIMO PASSO prima del deploy.
+
+NON fare deploy.
+
+1. CONFIGURAZIONE ADMIN
+Verifica il normale flusso del pannello Admin → Swap Providers.
+
+Deve essere possibile ottenere realmente:
+
+ChangeNOW:
+  status = enabled
+  isPrimary = true
+
+Li.Fi:
+  isPrimary = false
+
+Non modificare manualmente il DB se il pannello Admin deve essere la source of truth.
+
+2. RIMUOVI IL FALLBACK SILENZIOSO A LI.FI
+
+Attualmente hai:
+
+const activeEvmProvider = config?.activeEvmProvider ?? "lifi"
+
+Questo NON va bene.
+
+Se `activeEvmProvider` è null/undefined perché il config non è ancora disponibile o c'è un errore, NON dobbiamo mandare l'utente automaticamente su Li.Fi.
+
+Comportamento richiesto:
+
+- "changenow" → ChangeNowEvmSwapView
+- "lifi" → EvmSwapView
+- null/undefined → "Swap EVM temporaneamente non disponibile"
+
+Li.Fi deve essere usato solo quando il backend dichiara esplicitamente `activeEvmProvider: "lifi"`.
+
+3. VERIFICA CONFIG
+
+Con ChangeNOW impostato PRIMARY nel pannello:
+
+GET /api/v1/swap/config
+
+deve restituire:
+
+activeEvmProvider: "changenow"
+
+Verifica anche che un normale utente possa riceverlo.
+
+4. VERIFICA RUNTIME
+
+Senza fare deploy, usa il dev environment aggiornato e verifica realmente:
+
+Admin → ChangeNOW PRIMARY
+↓
+GET /swap/config
+↓
+activeEvmProvider = changenow
+↓
+Alpha Swap → EVM
+↓
+ChangeNowEvmSwapView
+↓
+POL → USDC Polygon
+↓
+quote ChangeNOW
+
+La UI NON deve mostrare:
+
+- SushiSwap
+- Li.Fi
+- Fee Alpha 0,25%
+
+5. VERIFICA CHE LI.FI NON VENGA CHIAMATO
+
+Nel percorso ChangeNOW controlla network/log/runtime e dimostra che non viene eseguito il quote/routing Li.Fi.
+
+6. FEE
+
+Con ChangeNOW:
+
+Fee Alpha = 0
+Nessuna seconda TX
+Nessun PSBT multi-output
+Nessun wallet fee Alpha
+
+Revenue esclusivamente tramite Partner Share ChangeNOW 0,40%.
+
+7. REGRESSIONE
+
+Verifica che impostando esplicitamente Li.Fi PRIMARY:
+
+activeEvmProvider = "lifi"
+→ EvmSwapView
+→ Li.Fi funziona come prima
+→ fee Li.Fi funziona come prima.
+
+Quindi abbiamo una vera separazione:
+
+ChangeNOW → ChangeNOWEvmSwapView
+Li.Fi → EvmSwapView
+
+8. TEST
+
+Esegui tutti i test esistenti + aggiungi/aggiorna quelli necessari per:
+
+- ChangeNOW routing
+- Li.Fi routing
+- provider null
+- nessun fallback automatico a Li.Fi
+- fee ChangeNOW = 0
+- config pubblico
+- admin primary provider
+
+9. REPORT FINALE
+
+Alla fine dammi SOLO:
+
+A) cosa hai modificato
+B) test X/X
+C) build frontend/backend
+D) configurazione provider verificata
+E) runtime ChangeNOW verificato
+F) Li.Fi escluso dal percorso ChangeNOW
+G) fallback pericoloso eliminato
+H) eventuali problemi residui
+
+NON fare deploy.
+NON modificare altre parti dell'app.
+NON dichiarare PASS se hai verificato solo il codice: voglio la verifica runtime.

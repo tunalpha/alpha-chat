@@ -52,8 +52,9 @@ import {
   getBoltzSwapStatus,
   checkBoltzHealth,
 } from "./boltz.service.js";
-import { deriveRefundPublicKey } from "./refund-key.service.js";
-import { AppError } from "../../errors/AppError.js";
+import { deriveRefundPublicKey }    from "./refund-key.service.js";
+import { AppError }                 from "../../errors/AppError.js";
+import { SwapProviderConfigModel }  from "../../models/swap-provider-config.model.js";
 
 const logger = pino({ name: "swap-service" });
 
@@ -130,13 +131,15 @@ export async function getPublicSwapConfig(): Promise<SwapPublicConfig> {
     }
   }
 
-  // Legge il provider EVM primario dal DB (SwapProviderConfigModel).
-  // getPrimaryProvider() è già importata in swap-provider-router.service.ts
-  // ma qui usiamo l'import diretto dal model per non creare dipendenza circolare.
+  // Legge il provider EVM primario dal DB — query diretta sul modello.
+  // NON usa import cross-service (evita problemi di modulo in test ESM).
+  // fail-open: se la query fallisce → default "lifi".
   let activeEvmProvider = "lifi";
   try {
-    const { getPrimaryProvider } = await import("./swap-provider-router.service.js");
-    const primary = await getPrimaryProvider();
+    const primary = await SwapProviderConfigModel
+      .findOne({ status: "enabled", isPrimary: true })
+      .lean()
+      .exec();
     if (primary?.providerId) activeEvmProvider = primary.providerId;
   } catch {
     // default "lifi" — fail-open
