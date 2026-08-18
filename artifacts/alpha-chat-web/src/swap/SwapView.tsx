@@ -1343,6 +1343,9 @@ export function SwapView({ onBack }: SwapViewProps) {
           onBack={onBack ?? (() => {})}
           alphaWalletAddress={alphaWalletAddress ?? null}
           activeEvmAddress={activeAccount?.address ?? null}
+          btcAddress={btcAddress ?? undefined}
+          btcBalanceSat={btcBalance?.totalSat ?? undefined}
+          sendBtcForSwap={sendBtcForSwap}
         />
       );
     } else if (activeEvmProvider === "lifi") {

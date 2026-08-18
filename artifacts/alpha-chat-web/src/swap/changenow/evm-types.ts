@@ -26,21 +26,32 @@
 // ── Token ─────────────────────────────────────────────────────────────────────
 
 export interface CnEvmToken {
-  symbol:          string;   // "POL", "USDC", "USDT", "ETH", "BNB"
-  ticker:          string;   // ticker ChangeNOW: "pol", "usdcmatic", …
+  symbol:          string;   // "POL", "USDC", "USDT", "ETH", "BNB", "BTC"
+  ticker:          string;   // ticker ChangeNOW: "pol", "usdcmatic", "btc", …
   name:            string;
-  chainId:         number;
-  network:         string;   // "Polygon", "Ethereum", "BSC"
+  chainId:         number;   // 0 per BTC (non-EVM)
+  network:         string;   // "Polygon", "Ethereum", "BSC", "Bitcoin"
   decimals:        number;
   isNative:        boolean;
   contractAddress: string | null;
+  /** true = compare solo come FROM, mai come TO (es. BTC) */
+  fromOnly?:       boolean;
 }
 
 /**
  * Ticker verificati via API ChangeNOW pubblica (2026-08-18):
- *   pol ✅  usdcmatic ✅  usdtmatic ✅  eth ✅  usdterc20 ✅  bnb ✅  usdtbsc ✅
+ *   pol ✅  usdcmatic ✅  usdtmatic ✅  eth ✅  usdterc20 ✅  bnb ✅  usdtbsc ✅  btc ✅
+ *
+ * BTC: fromOnly=true — usato solo come FROM (non come TO in questo flusso EVM).
+ *   chainId=0 → non-EVM; il deposit address è un indirizzo Bitcoin.
  */
 export const CN_EVM_TOKENS: CnEvmToken[] = [
+  // Bitcoin (FROM-only)
+  {
+    symbol: "BTC", ticker: "btc", name: "Bitcoin",
+    chainId: 0, network: "Bitcoin", decimals: 8, isNative: true,
+    contractAddress: null, fromOnly: true,
+  },
   // Polygon
   {
     symbol: "POL", ticker: "pol", name: "Polygon Ecosystem Token",

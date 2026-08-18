@@ -212,11 +212,12 @@ export interface CnEvmSwapActions {
   checkPair:       () => Promise<void>;
   fetchQuote:      () => Promise<void>;
   createExchange:  () => Promise<void>;
-  /**
-   * Commit + inizio polling.
-   * sendEvm firma e broadcasta la TX EVM e restituisce il txHash.
-   */
+  /** Commit EVM→EVM: firma TX EVM → commit → polling. */
   commitAndSend:   (sendEvm: (depositEvmAddress: string, fromToken: CnEvmToken, amount: number) => Promise<string>) => Promise<void>;
+  /** Commit BTC→EVM: chiamato dopo sendBtcForSwap → commit → polling. */
+  commitBtcSwap:      (btcTxHash: string) => Promise<void>;
+  /** Flusso completo BTC→EVM (signing → send → commit → poll). */
+  commitAndSendBtc:   (sendBtc: (params: { toAddress: string; amountSat: bigint }) => Promise<string>) => Promise<void>;
   reset:           () => void;
 }
 
@@ -339,16 +340,44 @@ export function useChangeNowEvmSwapState(
   const _startPolling = useCallback((
     swapId:    string,
     fromToken: CnEvmToken,
-    toToken:   CnEvmToken
+    toToken:   CnEvmToken,
+    swapKind:  "evm" | "btc" = "evm"
   ) => {
     if (pollTimerRef.current) clearInterval(pollTimerRef.current);
 
     const poll = async () => {
       if (!mountedRef.current) return;
       try {
-        const data = await cnEvmRequest<{ ok: boolean; swap: CnEvmSwapStatusResult }>(
-          `/swap/changenow/evm/${swapId}/status`
-        );
+        const statusUrl = swapKind === "btc"
+          ? `/swap/changenow/${swapId}/status`
+          : `/swap/changenow/evm/${swapId}/status`;
+
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const rawData = await cnEvmRequest<{ ok: boolean; swap: any }>(statusUrl);
+
+        // Adatta risposta BTC → forma CnEvmSwapStatusResult
+        const rawSwap = rawData.swap;
+        const adaptedSwap: CnEvmSwapStatusResult = swapKind === "btc"
+          ? {
+              swapId:             rawSwap.swapId,
+              exchangeId:         rawSwap.exchangeId,
+              cnStatus:           rawSwap.cnStatus,
+              fromAmount:         rawSwap.fromAmount,
+              estimatedToAmount:  rawSwap.estimatedToAmount,
+              depositEvmAddress:  rawSwap.btcDepositAddress,
+              destinationAddress: rawSwap.destinationEvmAddress,
+              depositTxHash:      rawSwap.btcTxHash,
+              destinationTxHash:  rawSwap.destinationTxHash,
+              fundsCommitted:     rawSwap.fundsCommitted,
+              fromTicker:         "btc",
+              toTicker:           rawSwap.toTicker,
+              refundDetails:      rawSwap.refundDetails ?? null,
+              isTerminal:         rawSwap.isTerminal,
+              isCompleted:        rawSwap.isCompleted,
+            }
+          : rawData.swap as CnEvmSwapStatusResult;
+
+        const data = { ok: rawData.ok, swap: adaptedSwap };
         if (!mountedRef.current) return;
         const swap = data.swap;
 
@@ -455,16 +484,34 @@ export function useChangeNowEvmSwapState(
     }
     setState(prev => ({ ...prev, uiState: "checking_pair", error: null, pairAvailable: null }));
     try {
-      const data = await cnEvmRequest<{ ok: boolean; available: boolean; minAmount?: number }>(
-        `/swap/changenow/evm/pairs/${from.ticker}/${to.ticker}`
-      );
-      if (!mountedRef.current) return;
+      // BTC→EVM: usa endpoint BTC (/swap/changenow/pairs/:toTicker)
+      // EVM→EVM: usa endpoint EVM (/swap/changenow/evm/pairs/:from/:to)
+      const isBtcFrom = from.ticker === "btc";
+      let available = false;
+      let minAmount: number | null = null;
+
+      if (isBtcFrom) {
+        const data = await cnEvmRequest<{ ok: boolean; available: boolean; minAmountBtc?: number }>(
+          `/swap/changenow/pairs/${to.ticker}`
+        );
+        if (!mountedRef.current) return;
+        available = data.available;
+        minAmount = data.minAmountBtc ?? null;
+      } else {
+        const data = await cnEvmRequest<{ ok: boolean; available: boolean; minAmount?: number }>(
+          `/swap/changenow/evm/pairs/${from.ticker}/${to.ticker}`
+        );
+        if (!mountedRef.current) return;
+        available = data.available;
+        minAmount = data.minAmount ?? null;
+      }
+
       setState(prev => ({
         ...prev,
-        pairAvailable: data.available,
-        minAmount:     data.minAmount ?? null,
-        uiState:       data.available ? "ready" : "pair_unavailable",
-        error:         data.available ? null : "Coppia non disponibile. Prova un'altra combinazione.",
+        pairAvailable: available,
+        minAmount,
+        uiState:       available ? "ready" : "pair_unavailable",
+        error:         available ? null : "Coppia non disponibile. Prova un'altra combinazione.",
       }));
     } catch (err) {
       if (!mountedRef.current) return;
@@ -494,17 +541,36 @@ export function useChangeNowEvmSwapState(
     }
     setState(prev => ({ ...prev, uiState: "quoting", error: null }));
     try {
-      const data = await cnEvmRequest<{ ok: boolean; quote: CnEvmQuote }>(
-        "/swap/changenow/evm/quote",
-        {
-          method: "POST",
-          body: JSON.stringify({ fromTicker: from.ticker, toTicker: to.ticker, fromAmount: amount }),
-        }
-      );
-      if (!mountedRef.current) return;
+      const isBtcFrom = from.ticker === "btc";
+      let quote: CnEvmQuote;
+
+      if (isBtcFrom) {
+        // BTC→EVM: endpoint BTC restituisce { quote: { estimatedToAmount, fromAmount } }
+        const data = await cnEvmRequest<{ ok: boolean; quote: { estimatedToAmount: number; fromAmount: number } }>(
+          "/swap/changenow/quote",
+          { method: "POST", body: JSON.stringify({ fromAmountBtc: amount, toTicker: to.ticker }) }
+        );
+        if (!mountedRef.current) return;
+        quote = {
+          fromTicker:        "btc",
+          toTicker:          to.ticker,
+          fromAmount:        data.quote.fromAmount,
+          estimatedToAmount: data.quote.estimatedToAmount,
+          minAmount:         state.minAmount ?? 0,
+        };
+      } else {
+        // EVM→EVM
+        const data = await cnEvmRequest<{ ok: boolean; quote: CnEvmQuote }>(
+          "/swap/changenow/evm/quote",
+          { method: "POST", body: JSON.stringify({ fromTicker: from.ticker, toTicker: to.ticker, fromAmount: amount }) }
+        );
+        if (!mountedRef.current) return;
+        quote = data.quote;
+      }
+
       setState(prev => ({
         ...prev,
-        quote:   data.quote,
+        quote,
         uiState: "ready",
         error:   null,
       }));
@@ -533,26 +599,60 @@ export function useChangeNowEvmSwapState(
     }
     setState(prev => ({ ...prev, uiState: "creating", error: null }));
     try {
-      const data = await cnEvmRequest<CnEvmCreateResult & { ok: boolean }>(
-        "/swap/changenow/evm/create",
-        {
-          method: "POST",
-          body: JSON.stringify({
-            fromTicker:            from.ticker,
-            toTicker:              to.ticker,
-            fromAmount:            quote.fromAmount,
-            destinationEvmAddress: destinationAddr,
-            refundEvmAddress:      destinationAddr,
-          }),
-        }
-      );
-      if (!mountedRef.current) return;
-      localStorage.setItem(CHANGENOW_EVM_SWAP_KEY, data.swapId);
+      const isBtcFrom = from.ticker === "btc";
+      let exchange: CnEvmCreateResult;
+
+      if (isBtcFrom) {
+        // BTC→EVM: endpoint BTC (/swap/changenow/create)
+        // risposta: { swapId, exchangeId, btcDepositAddress, estimatedToAmount, fromAmount, ... }
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
+        const data = await cnEvmRequest<any>(
+          "/swap/changenow/create",
+          {
+            method: "POST",
+            body: JSON.stringify({
+              fromAmountBtc:         quote.fromAmount,
+              toTicker:              to.ticker,
+              destinationEvmAddress: destinationAddr,
+            }),
+          }
+        );
+        if (!mountedRef.current) return;
+        exchange = {
+          swapId:             data.swapId,
+          exchangeId:         data.exchangeId,
+          depositEvmAddress:  data.btcDepositAddress,   // BTC deposit address
+          expectedFromAmount: data.fromAmount,
+          expectedToAmount:   data.estimatedToAmount,
+          fromTicker:         "btc",
+          toTicker:           to.ticker,
+          destinationAddress: destinationAddr,
+        };
+      } else {
+        // EVM→EVM: endpoint EVM
+        const data = await cnEvmRequest<CnEvmCreateResult & { ok: boolean }>(
+          "/swap/changenow/evm/create",
+          {
+            method: "POST",
+            body: JSON.stringify({
+              fromTicker:            from.ticker,
+              toTicker:              to.ticker,
+              fromAmount:            quote.fromAmount,
+              destinationEvmAddress: destinationAddr,
+              refundEvmAddress:      destinationAddr,
+            }),
+          }
+        );
+        if (!mountedRef.current) return;
+        exchange = data;
+      }
+
+      localStorage.setItem(CHANGENOW_EVM_SWAP_KEY, exchange.swapId);
       setState(prev => ({
         ...prev,
-        exchange: data,
-        uiState:  "awaiting_deposit",
-        error:    null,
+        exchange,
+        uiState: "awaiting_deposit",
+        error:   null,
       }));
     } catch (err) {
       if (!mountedRef.current) return;
@@ -565,12 +665,10 @@ export function useChangeNowEvmSwapState(
   }, [state.quote, state.fromToken, state.toToken, state.destinationAddr]);
 
   /**
-   * commitAndSend — sequenza sicura anti-double-spend:
+   * commitAndSend (EVM→EVM) — sequenza sicura anti-double-spend:
    *   1. Chiama sendEvm (firma e broadcast TX EVM nel wallet utente)
-   *   2. POST /commit con depositTxHash (write-before-submit)
+   *   2. POST /evm/:swapId/commit con depositTxHash (write-before-submit)
    *   3. Avvia polling
-   *
-   * Il server NON fa mai il broadcast: solo il wallet dell'utente firma e invia.
    */
   const commitAndSend = useCallback(async (
     sendEvm: (depositEvmAddress: string, fromToken: CnEvmToken, amount: number) => Promise<string>
@@ -627,10 +725,11 @@ export function useChangeNowEvmSwapState(
       }, from, to).catch(() => {});
 
       setState(prev => ({ ...prev, uiState: "committed", error: null }));
-      _startPolling(exchange.swapId, from, to);
+      _startPolling(exchange.swapId, from, to, "evm");
     } catch (err) {
       if (!mountedRef.current) return;
       const msg  = err instanceof Error ? err.message : "Errore durante l'invio dei token.";
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const code = (err as any).code as string | undefined;
       // Pattern iOS-abort post-sign: continua il polling
       if (code === "EVM_SEND_UNCERTAIN" || msg.includes("UNCERTAIN") || msg.includes("Load failed")) {
@@ -639,12 +738,92 @@ export function useChangeNowEvmSwapState(
           uiState: "committed",
           error: "Connessione interrotta dopo la firma. Verifica il saldo e attendi.",
         }));
-        if (exchange) _startPolling(exchange.swapId, from, to);
+        if (exchange) _startPolling(exchange.swapId, from, to, "evm");
       } else {
         setState(prev => ({ ...prev, uiState: "awaiting_deposit", error: msg }));
       }
     }
   }, [state.exchange, state.fromToken, state.toToken, state.status, _startPolling]);
+
+  /**
+   * commitBtcSwap (BTC→EVM) — dopo sendBtcForSwap:
+   *   1. POST /swap/changenow/:swapId/commit con btcTxHash
+   *   2. Avvia polling via endpoint BTC
+   */
+  const commitBtcSwap = useCallback(async (btcTxHash: string) => {
+    const { exchange, fromToken: from, toToken: to } = state;
+    if (!exchange || !from || !to) {
+      setState(prev => ({ ...prev, error: "Nessun exchange BTC attivo." }));
+      return;
+    }
+    try {
+      await cnEvmRequest<{ ok: boolean; fundsCommitted: true }>(
+        `/swap/changenow/${exchange.swapId}/commit`,
+        { method: "POST", body: JSON.stringify({ btcTxHash }) }
+      );
+      if (!mountedRef.current) return;
+      setState(prev => ({ ...prev, uiState: "committed", error: null }));
+      _startPolling(exchange.swapId, from, to, "btc");
+    } catch (err) {
+      if (!mountedRef.current) return;
+      const msg = err instanceof Error ? err.message : "Errore commit BTC.";
+      // Pattern iOS-abort: continua il polling ugualmente
+      if (msg.includes("UNCERTAIN") || msg.includes("Load failed")) {
+        setState(prev => ({ ...prev, uiState: "committed", error: "Connessione interrotta. Attendi la conferma." }));
+        _startPolling(exchange.swapId, from, to, "btc");
+      } else {
+        setState(prev => ({ ...prev, uiState: "awaiting_deposit", error: msg }));
+      }
+    }
+  }, [state.exchange, state.fromToken, state.toToken, _startPolling]);
+
+  /**
+   * commitAndSendBtc (BTC→EVM) — flusso completo analogo a commitAndSend per EVM:
+   *   1. Imposta uiState "signing"
+   *   2. Chiama sendBtc (callback del wallet BTC) → btcTxHash
+   *   3. POST /commit con btcTxHash
+   *   4. Avvia polling BTC
+   */
+  const commitAndSendBtc = useCallback(async (
+    sendBtc: (params: { toAddress: string; amountSat: bigint }) => Promise<string>
+  ) => {
+    const { exchange, fromToken: from, toToken: to } = state;
+    if (!exchange || !from || !to) {
+      setState(prev => ({ ...prev, error: "Nessun exchange attivo." }));
+      return;
+    }
+    setState(prev => ({ ...prev, uiState: "signing", error: null }));
+    try {
+      const amountSat = BigInt(Math.round(exchange.expectedFromAmount * 1e8));
+      const btcTxHash = await sendBtc({
+        toAddress: exchange.depositEvmAddress,  // contiene btcDepositAddress
+        amountSat,
+      });
+      if (!mountedRef.current) return;
+      await cnEvmRequest<{ ok: boolean; fundsCommitted: true }>(
+        `/swap/changenow/${exchange.swapId}/commit`,
+        { method: "POST", body: JSON.stringify({ btcTxHash }) }
+      );
+      if (!mountedRef.current) return;
+      setState(prev => ({ ...prev, uiState: "committed", error: null }));
+      _startPolling(exchange.swapId, from, to, "btc");
+    } catch (err) {
+      if (!mountedRef.current) return;
+      const msg  = err instanceof Error ? err.message : "Errore invio BTC.";
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const code = (err as any).code as string | undefined;
+      if (code === "BTC_SEND_UNCERTAIN" || msg.includes("UNCERTAIN") || msg.includes("Load failed")) {
+        setState(prev => ({
+          ...prev,
+          uiState: "committed",
+          error:   "Connessione interrotta dopo la firma. Verifica il saldo e attendi.",
+        }));
+        if (exchange) _startPolling(exchange.swapId, from, to, "btc");
+      } else {
+        setState(prev => ({ ...prev, uiState: "awaiting_deposit", error: msg }));
+      }
+    }
+  }, [state.exchange, state.fromToken, state.toToken, _startPolling]);
 
   const reset = useCallback(() => {
     if (pollTimerRef.current) clearInterval(pollTimerRef.current);
@@ -661,6 +840,8 @@ export function useChangeNowEvmSwapState(
     fetchQuote,
     createExchange,
     commitAndSend,
+    commitBtcSwap,
+    commitAndSendBtc,
     reset,
   };
 

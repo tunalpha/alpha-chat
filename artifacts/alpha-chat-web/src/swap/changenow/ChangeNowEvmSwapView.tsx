@@ -72,6 +72,7 @@ function truncAddr(addr: string): string {
 // ── Token logo + chain color ──────────────────────────────────────────────────
 
 const COIN_LOGOS: Record<string, string> = {
+  btc:       "/coin-icons/btc.png",
   pol:       "/coin-icons/pol.png",
   usdcmatic: "/coin-icons/usdc.png",
   usdtmatic: "/coin-icons/usdt.png",
@@ -204,6 +205,12 @@ interface ChangeNowEvmSwapViewProps {
   alphaWalletAddress: string | null | undefined;
   /** Indirizzo EVM da Reown AppKit (fallback se Alpha Wallet non sbloccato) */
   activeEvmAddress?:  string | null;
+  /** Indirizzo BTC Alpha Wallet (per swap BTC→EVM) */
+  btcAddress?:        string;
+  /** Saldo BTC in sat (per bottoni %) */
+  btcBalanceSat?:     number;
+  /** Invia BTC al deposit address ChangeNOW */
+  sendBtcForSwap?:    (params: { toAddress: string; amountSat: bigint }) => Promise<string>;
 }
 
 // ── Component ─────────────────────────────────────────────────────────────────
@@ -212,6 +219,9 @@ export function ChangeNowEvmSwapView({
   onBack,
   alphaWalletAddress,
   activeEvmAddress,
+  btcAddress,
+  btcBalanceSat,
+  sendBtcForSwap,
 }: ChangeNowEvmSwapViewProps) {
   // Priorità: Alpha Wallet → Reown AppKit
   const destinationAddr = alphaWalletAddress ?? activeEvmAddress ?? null;
@@ -223,28 +233,45 @@ export function ChangeNowEvmSwapView({
   const autoQuotedRef = useRef(false);
 
   // ── Balance ───────────────────────────────────────────────────────────────
+  const isBtcFrom   = state.fromToken?.ticker === "btc";
   const effectiveAddr = destinationAddr ?? undefined;
-  const { map: balances, loading: balLoading } = useEvmTokenBalances(
-    state.fromToken?.chainId ?? 137, effectiveAddr
+  const { map: balances, loading: evmBalLoading } = useEvmTokenBalances(
+    isBtcFrom ? 137 : (state.fromToken?.chainId ?? 137), // no-op chain quando BTC
+    isBtcFrom ? undefined : effectiveAddr                // skip fetch per BTC
   );
-  const fromBalance = state.fromToken
-    ? balances[`${state.fromToken.chainId}:${state.fromToken.contractAddress ?? "native"}`]
-    : undefined;
+
+  // Balance effettivo: BTC sat→BigInt oppure EVM
+  const fromBalance: bigint | undefined = isBtcFrom
+    ? (btcBalanceSat !== undefined ? BigInt(btcBalanceSat) : undefined)
+    : state.fromToken
+      ? balances[`${state.fromToken.chainId}:${state.fromToken.contractAddress ?? "native"}`]
+      : undefined;
+  const balLoading = isBtcFrom ? false : evmBalLoading;
 
   // Bottoni % → calcola importo e setta
   const handlePct = useCallback((pct: number) => {
-    if (!fromBalance || !state.fromToken) return;
+    if (!state.fromToken) return;
+    const isBtc = state.fromToken.ticker === "btc";
     const decimals = state.fromToken.decimals;
-    let raw = fromBalance;
-    // Riserva gas per token nativi
-    if (state.fromToken.isNative) {
-      const reserve = BigInt(Math.round(0.002 * 10 ** decimals));
-      if (raw > reserve) raw = raw - reserve; else raw = 0n;
+
+    if (isBtc) {
+      if (btcBalanceSat === undefined || btcBalanceSat <= 0) return;
+      const spendable = Math.max(0, btcBalanceSat - 2000); // riserva 2000 sat miner fee
+      const amount = (spendable * pct / 100) / 1e8;
+      autoQuotedRef.current = false;
+      actions.setFromAmount(amount > 0 ? amount.toFixed(8) : "");
+    } else {
+      if (!fromBalance) return;
+      let raw = fromBalance;
+      if (state.fromToken.isNative) {
+        const reserve = BigInt(Math.round(0.002 * 10 ** decimals));
+        if (raw > reserve) raw = raw - reserve; else raw = 0n;
+      }
+      const amount = (Number(raw) * pct / 100) / 10 ** decimals;
+      autoQuotedRef.current = false;
+      actions.setFromAmount(amount > 0 ? amount.toFixed(Math.min(decimals, 8)) : "");
     }
-    const amount = (Number(raw) * pct / 100) / 10 ** decimals;
-    autoQuotedRef.current = false;
-    actions.setFromAmount(amount > 0 ? amount.toFixed(Math.min(decimals, 8)) : "");
-  }, [fromBalance, state.fromToken, actions]);
+  }, [fromBalance, state.fromToken, btcBalanceSat, actions]);
 
   // ── Auto-check pair quando cambiano token (senza vincoli su uiState) ─────────
   useEffect(() => {
@@ -305,10 +332,15 @@ export function ChangeNowEvmSwapView({
     }
   }, [hasAlphaWallet]);
 
-  // ── Handle send ───────────────────────────────────────────────────────────
+  // ── Handle send (EVM o BTC a seconda del token FROM) ─────────────────────
   const handleSend = useCallback(async () => {
-    await actions.commitAndSend(sendEvmForSwap);
-  }, [actions, sendEvmForSwap]);
+    if (isBtcFrom) {
+      if (!sendBtcForSwap) return;   // nessun wallet BTC — mostrare indirizzo manuale
+      await actions.commitAndSendBtc(sendBtcForSwap);
+    } else {
+      await actions.commitAndSend(sendEvmForSwap);
+    }
+  }, [isBtcFrom, sendBtcForSwap, actions, sendEvmForSwap]);
 
   // ── No wallet ─────────────────────────────────────────────────────────────
   if (!destinationAddr) {
@@ -513,13 +545,22 @@ export function ChangeNowEvmSwapView({
             </p>
           )}
 
-          {/* CTA */}
-          {hasAlphaWallet ? (
-            <button
-              onClick={handleSend}
-              className="aw-btn aw-btn--primary"
-              style={{ marginTop: 16 }}
-            >
+          {/* CTA — diverso per BTC e EVM */}
+          {isBtcFrom ? (
+            sendBtcForSwap ? (
+              <button onClick={handleSend} className="aw-btn aw-btn--primary" style={{ marginTop: 16 }}>
+                Invia BTC con Alpha Wallet
+              </button>
+            ) : (
+              <div style={{ marginTop: 16, padding: "10px 12px", background: "rgba(251,191,36,.08)", borderRadius: 10, border: "1px solid rgba(251,191,36,.2)" }}>
+                <p style={{ fontSize: 12, color: "#fbbf24", margin: 0 }}>
+                  Sblocca Alpha Wallet (BTC) per inviare automaticamente. In alternativa invia
+                  <strong> {fmtToken(state.exchange.expectedFromAmount, 8)} BTC</strong> all'indirizzo sopra manualmente.
+                </p>
+              </div>
+            )
+          ) : hasAlphaWallet ? (
+            <button onClick={handleSend} className="aw-btn aw-btn--primary" style={{ marginTop: 16 }}>
               Invia con Alpha Wallet
             </button>
           ) : (
@@ -573,27 +614,84 @@ export function ChangeNowEvmSwapView({
     return (
       <div className="asw-content">
         <div className="asw-form">
-          {/* Token selectors (same as form, so user can change) */}
-          <TokenSelectors
-            fromToken={state.fromToken}
-            toToken={state.toToken}
-            fromMenuOpen={fromMenuOpen}
-            toMenuOpen={toMenuOpen}
-            setFromMenuOpen={setFromMenuOpen}
-            setToMenuOpen={setToMenuOpen}
-            onSelectFrom={(t) => { setFromMenuOpen(false); actions.setFromToken(t); }}
-            onSelectTo={(t) => { setToMenuOpen(false); actions.setToToken(t); }}
-          />
-          <div style={{ textAlign: "center", padding: "16px 0", color: "#f59e0b" }}>
-            <AlertTriangle size={28} style={{ marginBottom: 6 }} />
-            <p style={{ fontSize: 13 }}>Coppia non disponibile su ChangeNOW al momento.</p>
-            <p style={{ fontSize: 11, color: "rgba(255,255,255,.4)" }}>
-              Prova una combinazione diversa di token.
-            </p>
+          {/* FROM selector */}
+          <div style={{ position: "relative" }}>
+            <CnTokenCard
+              label="Da"
+              token={state.fromToken}
+              amount={state.fromAmount}
+              onAmountChange={v => actions.setFromAmount(v)}
+              onTokenClick={() => { setFromMenuOpen(v => !v); setToMenuOpen(false); }}
+            />
+            {fromMenuOpen && (
+              <div style={{
+                position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, zIndex: 60,
+                background: "#1e1b2e", border: "1px solid rgba(255,255,255,.12)",
+                borderRadius: 12, overflow: "hidden", boxShadow: "0 12px 32px rgba(0,0,0,.6)",
+                maxHeight: 260, overflowY: "auto",
+              }}>
+                {CN_EVM_TOKENS.filter(t => t.ticker !== state.toToken?.ticker).map(t => (
+                  <button
+                    key={t.ticker}
+                    type="button"
+                    onClick={() => { setFromMenuOpen(false); actions.setFromToken(t); }}
+                    style={{
+                      width: "100%", padding: "10px 14px", background: "none",
+                      border: "none", borderBottom: "1px solid rgba(255,255,255,.05)",
+                      color: "#fff", cursor: "pointer", textAlign: "left", fontSize: 13,
+                      display: "flex", alignItems: "center", gap: 10,
+                      ...(t.ticker === state.fromToken?.ticker ? { background: "rgba(167,139,250,.12)" } : {}),
+                    }}
+                  >
+                    {COIN_LOGOS[t.ticker] && <img src={COIN_LOGOS[t.ticker]} alt={t.symbol} width={26} height={26} style={{ borderRadius: "50%", objectFit: "cover" }} />}
+                    <div><div style={{ fontWeight: 700 }}>{t.symbol}</div><div style={{ fontSize: 11, color: "rgba(255,255,255,.4)" }}>{t.network}</div></div>
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
-          <button onClick={onBack} className="aw-btn aw-btn--secondary">
-            Indietro
-          </button>
+
+          {/* TO selector */}
+          <div style={{ position: "relative" }}>
+            <CnTokenCard
+              label="A"
+              token={state.toToken}
+              onTokenClick={() => { setToMenuOpen(v => !v); setFromMenuOpen(false); }}
+            />
+            {toMenuOpen && (
+              <div style={{
+                position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, zIndex: 60,
+                background: "#1e1b2e", border: "1px solid rgba(255,255,255,.12)",
+                borderRadius: 12, overflow: "hidden", boxShadow: "0 12px 32px rgba(0,0,0,.6)",
+                maxHeight: 260, overflowY: "auto",
+              }}>
+                {CN_EVM_TOKENS.filter(t => t.ticker !== state.fromToken?.ticker && !t.fromOnly).map(t => (
+                  <button
+                    key={t.ticker}
+                    type="button"
+                    onClick={() => { setToMenuOpen(false); actions.setToToken(t); }}
+                    style={{
+                      width: "100%", padding: "10px 14px", background: "none",
+                      border: "none", borderBottom: "1px solid rgba(255,255,255,.05)",
+                      color: "#fff", cursor: "pointer", textAlign: "left", fontSize: 13,
+                      display: "flex", alignItems: "center", gap: 10,
+                      ...(t.ticker === state.toToken?.ticker ? { background: "rgba(167,139,250,.12)" } : {}),
+                    }}
+                  >
+                    {COIN_LOGOS[t.ticker] && <img src={COIN_LOGOS[t.ticker]} alt={t.symbol} width={26} height={26} style={{ borderRadius: "50%", objectFit: "cover" }} />}
+                    <div><div style={{ fontWeight: 700 }}>{t.symbol}</div><div style={{ fontSize: 11, color: "rgba(255,255,255,.4)" }}>{t.network}</div></div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div style={{ textAlign: "center", padding: "12px 0", color: "#f59e0b" }}>
+            <AlertTriangle size={26} style={{ marginBottom: 6 }} />
+            <p style={{ fontSize: 13 }}>Coppia non disponibile su ChangeNOW al momento.</p>
+            <p style={{ fontSize: 11, color: "rgba(255,255,255,.4)" }}>Prova una combinazione diversa.</p>
+          </div>
+          <button onClick={onBack} className="aw-btn aw-btn--secondary">Indietro</button>
         </div>
       </div>
     );
@@ -682,7 +780,8 @@ export function ChangeNowEvmSwapView({
               borderRadius: 12, overflow: "hidden", boxShadow: "0 12px 32px rgba(0,0,0,.6)",
               maxHeight: 300, overflowY: "auto",
             }}>
-              {CN_EVM_TOKENS.filter(t => t.ticker !== state.fromToken?.ticker).map(t => {
+              {/* fromOnly (BTC) escluso dalla selezione TO */}
+              {CN_EVM_TOKENS.filter(t => t.ticker !== state.fromToken?.ticker && !t.fromOnly).map(t => {
                 const logo = COIN_LOGOS[t.ticker];
                 return (
                   <button
