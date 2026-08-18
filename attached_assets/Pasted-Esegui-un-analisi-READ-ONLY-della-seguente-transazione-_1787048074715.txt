@@ -1,0 +1,157 @@
+Esegui un’analisi READ-ONLY della seguente transazione Ethereum rilevata da Alpha subito dopo il deploy del fix BTC→EVM:
+
+TX:
+0xeae7dce0559189e25c542d8348ec8bfc7129a2124e5b1e49ae53dedd863416d8
+
+NON modificare codice.
+NON modificare database.
+NON cambiare stati delle transazioni.
+NON effettuare retry.
+NON inviare fondi.
+
+OBIETTIVO
+
+Determinare esattamente perché Alpha ha mostrato:
+
+0 ETH — Ethereum — Confermato
+
+e capire se questa TX è collegata in qualche modo allo swap BTC → USDT problematico.
+
+1. ANALISI ON-CHAIN DELLA TX
+
+Recupera e restituisci:
+
+* block number
+* timestamp
+* status
+* from
+* to
+* value ETH
+* gas limit
+* gas used
+* effective gas price
+* transaction fee
+* input data
+* function/method chiamato
+* eventuali logs/events
+* eventuali internal transactions
+
+2. TOKEN TRANSFER
+
+Controlla TUTTI gli eventi ERC-20 Transfer contenuti nella TX.
+
+Per ciascuno:
+
+* token contract
+* token symbol
+* amount
+* from
+* to
+* decimals
+
+È fondamentale verificare se, nonostante value = 0 ETH, la TX abbia trasferito USDT, USDC o altro token.
+
+3. VERIFICA COLLEGAMENTO CON ALPHA
+
+Controlla se from o to corrispondono a:
+
+* wallet utente
+* smart contract Alpha
+* contratto Li.Fi
+* router Li.Fi
+* bridge
+* eventuale address di settlement
+
+Indica chiaramente se la TX sembra appartenere al normale funzionamento di Alpha.
+
+4. CORRELAZIONE CON LO SWAP BTC → USDT
+
+Correla questa TX con l’operazione:
+
+BTC TX:
+96b55dc7ea0d7b34fd56a93835f890c1eca875eda4e63d740411731b6639281e
+
+Importo:
+0.00022745 BTC
+
+Destinazione EVM:
+0x04631A6e863718a8F4c21c2ce1303e30dC87B298
+
+Verifica nei database e nei production logs se:
+
+0xeae7dce0559189e25c542d8348ec8bfc7129a2124e5b1e49ae53dedd863416d8
+
+è stata associata allo stesso swap.
+
+Controlla in particolare:
+
+* swap ID
+* transfer ID
+* Li.Fi transaction/order ID
+* quote ID
+* provider
+* destination chain
+* destination token
+* destination transaction hash
+
+5. VERIFICA CRITICA
+
+Determina se questa TX rappresenta:
+
+A. un vero payout USDT;
+B. una chiamata EVM con 0 ETH ma senza token transfer;
+C. una transazione tecnica di Li.Fi/bridge;
+D. una transazione unrelated;
+E. un falso positivo del parser/notifiche Alpha.
+
+Non fare supposizioni: basati sui dati on-chain e sui log.
+
+6. CONTROLLA IL NUOVO BUG DELLE NOTIFICHE
+
+Trova nel codice la logica che ha generato la notifica:
+
+0 ETH — Ethereum — Confermato
+
+Identifica:
+
+* file
+* funzione
+* criterio di classificazione
+* perché una TX con value = 0 viene mostrata come accredito
+* se vengono controllati gli ERC-20 Transfer
+* se viene verificato che il wallet sia effettivamente destinatario di un valore
+* se la TX è classificata correttamente come incoming/outgoing
+
+NON correggere ancora questo problema.
+
+Prima voglio solo la diagnosi.
+
+7. OUTPUT FINALE
+
+Concludi con:
+
+TX 0xeae7...
+
+* È un accredito reale? SI/NO
+* Ha trasferito token? SI/NO
+* Token trasferito:
+* Importo:
+* Destinatario:
+* Collegata allo swap BTC→USDT? SI/NO
+* È una TX Li.Fi/bridge? SI/NO
+* È un falso positivo della cronologia Alpha? SI/NO
+
+Swap BTC→USDT
+
+* BTC ricevuti:
+* BTC inviati:
+* EVM payout trovato:
+* Destination TX:
+* Refund trovato:
+* Stato reale:
+
+Root cause
+
+Spiega in massimo 5 punti cosa sta succedendo.
+
+NON applicare fix finché non abbiamo approvato la diagnosi.
