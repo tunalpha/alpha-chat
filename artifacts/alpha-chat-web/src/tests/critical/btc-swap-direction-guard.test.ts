@@ -36,9 +36,10 @@ describe("_validateBtcToEvmDone — CASO A: vecchio USDT→BTC, Li.Fi restituisc
    * RISULTATO ATTESO: NON COMPLETED (valid=false)
    */
   it("DONE + receiving.chainId=BTC_CHAIN_ID != ETH(1) → MISMATCH, non completed", () => {
-    const result: Pick<LiFiStatusResult, "status" | "receivingChainId"> = {
+    const result: Pick<LiFiStatusResult, "status" | "receivingChainId" | "txHash"> = {
       status:           "DONE",
       receivingChainId: BTC_CHAIN_ID,  // ← BTC, non ETH
+      txHash:           undefined,
     };
     const capturedToChainId = 1; // ETH
 
@@ -212,9 +213,10 @@ describe("_validateBtcToEvmDone — CASO D: DONE ma receiving.chainId assente", 
    * RISULTATO ATTESO: NON COMPLETED
    */
   it("DONE + receivingChainId=undefined → NON completed (direction unverifiable)", () => {
-    const result: Pick<LiFiStatusResult, "status" | "receivingChainId"> = {
+    const result: Pick<LiFiStatusResult, "status" | "receivingChainId" | "txHash"> = {
       status:           "DONE",
       receivingChainId: undefined,
+      txHash:           undefined,
     };
     const { valid, reason } = _validateBtcToEvmDone(result, 1);
     expect(valid).toBe(false);
@@ -373,9 +375,10 @@ describe("Anti-regression — il vecchio criterio 'status===DONE' era insufficie
     const btcTxFromOldSwap = "96b55dc7ea0d7b34fd56a93835f890c1eca875eda4e63d740411731b6639281e";
 
     // 2. Li.Fi restituisce per quella TX (come prima):
-    const liFiResponse: Pick<LiFiStatusResult, "status" | "receivingChainId"> = {
+    const liFiResponse: Pick<LiFiStatusResult, "status" | "receivingChainId" | "txHash"> = {
       status:           "DONE",
       receivingChainId: BTC_CHAIN_ID,  // ← BTC, non ETH
+      txHash:           undefined,
     };
 
     // 3. Il nuovo swap è BTC→USDT su Ethereum
