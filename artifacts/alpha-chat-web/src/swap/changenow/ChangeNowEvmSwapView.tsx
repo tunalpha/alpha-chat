@@ -91,6 +91,97 @@ const CHAIN_COLORS: Record<number, string> = {
 
 const PCT_OPTIONS: [number, string][] = [[25, "25%"], [50, "50%"], [75, "75%"], [100, "MAX"]];
 
+/** Token ChangeNOW convertiti nel formato del reader saldi EVM. */
+const CN_EVM_BALANCE_TOKENS: Record<137 | 1 | 56, EvmToken[]> = {
+  137: CN_EVM_TOKENS
+    .filter((token) => token.chainId === 137)
+    .map((token) => ({
+      chainId: token.chainId,
+      address: token.isNative ? NATIVE_ADDRESS : token.contractAddress!,
+      symbol: token.symbol,
+      name: token.name,
+      decimals: token.decimals,
+      isNative: token.isNative,
+    })),
+  1: CN_EVM_TOKENS
+    .filter((token) => token.chainId === 1)
+    .map((token) => ({
+      chainId: token.chainId,
+      address: token.isNative ? NATIVE_ADDRESS : token.contractAddress!,
+      symbol: token.symbol,
+      name: token.name,
+      decimals: token.decimals,
+      isNative: token.isNative,
+    })),
+  56: CN_EVM_TOKENS
+    .filter((token) => token.chainId === 56)
+    .map((token) => ({
+      chainId: token.chainId,
+      address: token.isNative ? NATIVE_ADDRESS : token.contractAddress!,
+      symbol: token.symbol,
+      name: token.name,
+      decimals: token.decimals,
+      isNative: token.isNative,
+    })),
+};
+
+/**
+ * Lista token ChangeNOW con saldo della rete corretta.
+ * La lista è condivisa da "Da" e "A": rende impossibile che una delle due
+ * tendine perda i saldi a causa di markup duplicato.
+ */
+export function CnTokenMenu({
+  tokens,
+  selectedTicker,
+  onChoose,
+  getBalance,
+  isBalanceLoading,
+}: {
+  tokens: CnEvmToken[];
+  selectedTicker?: string;
+  onChoose: (token: CnEvmToken) => void;
+  getBalance: (token: CnEvmToken) => bigint | undefined;
+  isBalanceLoading: (token: CnEvmToken) => boolean;
+}) {
+  return (
+    <div className="asw-token-list" aria-label="Token disponibili">
+      {tokens.map((token) => {
+        const logo = COIN_LOGOS[token.ticker];
+        const balance = getBalance(token);
+        const loading = isBalanceLoading(token);
+        const chainColor = CHAIN_COLORS[token.chainId] ?? "#f59e0b";
+
+        return (
+          <button
+            key={token.ticker}
+            type="button"
+            className="asw-token-list-item"
+            onClick={() => onChoose(token)}
+            style={token.ticker === selectedTicker ? { background: "rgba(167,139,250,.16)" } : undefined}
+          >
+            {logo
+              ? <img src={logo} alt="" className="asw-token-list-icon" style={{ objectFit: "cover" }} />
+              : <span className="asw-token-list-icon">{token.symbol.slice(0, 2)}</span>
+            }
+            <span style={{ flex: 1, minWidth: 0 }}>
+              <span className="asw-token-list-name">{token.symbol}</span>
+              <span className="asw-token-list-sub">
+                <span className="asw-net-dot" style={{ background: chainColor }} /> {token.name} · {token.network}
+              </span>
+            </span>
+            <span className="asw-token-list-right">
+              <span className="asw-token-list-bal">
+                {loading ? "Saldo…" : balance === undefined ? "Saldo non disponibile" : `${fmtBal(balance, token.decimals)} ${token.symbol}`}
+              </span>
+              <span className="asw-token-list-bal-sub">Saldo</span>
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
 // ── Fiat price ────────────────────────────────────────────────────────────────
 
 type FiatCurrency = "USD" | "EUR";
@@ -281,12 +372,13 @@ function CnTokenCard({
         </div>
       </div>
 
-      {/* min amount sotto il fiat (se fiat è presente) */}
+       {/* Il range fixed-rate è distinto dal minimo dinamico mostrato nell'app ChangeNOW. */}
        {minAmount && minAmount > 0 && (
-        <div style={{ fontSize: 10, color: "rgba(255,255,255,.3)", textAlign: "right", marginTop: 2 }}>
-          min {fmtToken(minAmount, token?.decimals ?? 6)} {token?.symbol}
-        </div>
-      )}
+         <div className="asw-minimum" title="Limite richiesto da ChangeNOW per il tasso garantito">
+           <span>Minimo tasso garantito</span>
+           <strong>{fmtToken(minAmount, token?.decimals ?? 6)} {token?.symbol}</strong>
+         </div>
+       )}
 
        {/* Scorciatoie sempre visibili; attive solo quando il saldo on-chain è noto. */}
        {onPct && (
@@ -355,29 +447,53 @@ export function ChangeNowEvmSwapView({
   const isBtcFrom   = state.fromToken?.ticker === "btc";
   const isBtcTo     = state.toToken?.ticker   === "btc";
   const effectiveAddr = destinationAddr ?? undefined;
-  const selectedBalanceToken: EvmToken[] = state.fromToken && !isBtcFrom
-    ? [{
-        chainId: state.fromToken.chainId,
-        address: state.fromToken.isNative ? NATIVE_ADDRESS : state.fromToken.contractAddress!,
-        symbol: state.fromToken.symbol,
-        name: state.fromToken.name,
-        decimals: state.fromToken.decimals,
-        isNative: state.fromToken.isNative,
-      }]
-    : [];
-  const { map: balances, loading: evmBalLoading } = useEvmTokenBalances(
-    isBtcFrom ? 137 : (state.fromToken?.chainId ?? 137), // no-op chain quando BTC
-    isBtcFrom ? undefined : effectiveAddr,               // skip fetch per BTC
-    selectedBalanceToken,
+  // Carichiamo la rete del token "Da" per la card. Quando una tendina è aperta,
+  // carichiamo anche le altre due reti per poter mostrare ogni saldo nella lista.
+  const tokenMenuOpen = fromMenuOpen || toMenuOpen;
+  const shouldLoadPolygon = state.fromToken?.chainId === 137 || tokenMenuOpen;
+  const shouldLoadEthereum = state.fromToken?.chainId === 1 || tokenMenuOpen;
+  const shouldLoadBsc = state.fromToken?.chainId === 56 || tokenMenuOpen;
+  const polygonBalances = useEvmTokenBalances(
+    137,
+    shouldLoadPolygon ? effectiveAddr : undefined,
+    CN_EVM_BALANCE_TOKENS[137],
+  );
+  const ethereumBalances = useEvmTokenBalances(
+    1,
+    shouldLoadEthereum ? effectiveAddr : undefined,
+    CN_EVM_BALANCE_TOKENS[1],
+  );
+  const bscBalances = useEvmTokenBalances(
+    56,
+    shouldLoadBsc ? effectiveAddr : undefined,
+    CN_EVM_BALANCE_TOKENS[56],
   );
 
+  const getTokenBalance = (token: CnEvmToken): bigint | undefined => {
+    if (token.ticker === "btc") return btcBalanceSat === undefined ? undefined : BigInt(btcBalanceSat);
+    const balanceMap = token.chainId === 137
+      ? polygonBalances.map
+      : token.chainId === 1
+        ? ethereumBalances.map
+        : token.chainId === 56
+          ? bscBalances.map
+          : undefined;
+    return balanceMap?.get(token.isNative ? NATIVE_ADDRESS : token.contractAddress!);
+  };
+  const isTokenBalanceLoading = (token: CnEvmToken): boolean => {
+    if (token.ticker === "btc") return false;
+    return token.chainId === 137
+      ? polygonBalances.loading
+      : token.chainId === 1
+        ? ethereumBalances.loading
+        : token.chainId === 56
+          ? bscBalances.loading
+          : false;
+  };
+
   // Balance effettivo: BTC sat→BigInt oppure EVM
-  const fromBalance: bigint | undefined = isBtcFrom
-    ? (btcBalanceSat !== undefined ? BigInt(btcBalanceSat) : undefined)
-    : state.fromToken
-      ? balances.get(state.fromToken.isNative ? NATIVE_ADDRESS : state.fromToken.contractAddress!)
-      : undefined;
-  const balLoading = isBtcFrom ? false : evmBalLoading;
+  const fromBalance = state.fromToken ? getTokenBalance(state.fromToken) : undefined;
+  const balLoading = state.fromToken ? isTokenBalanceLoading(state.fromToken) : false;
 
   // Bottoni % → calcola importo e setta
   const handlePct = useCallback((pct: number) => {
@@ -774,23 +890,13 @@ export function ChangeNowEvmSwapView({
                 borderRadius: 12, overflow: "hidden", boxShadow: "0 12px 32px rgba(0,0,0,.6)",
                 maxHeight: 260, overflowY: "auto",
               }}>
-                {CN_EVM_TOKENS.filter(t => t.ticker !== state.toToken?.ticker).map(t => (
-                  <button
-                    key={t.ticker}
-                    type="button"
-                    onClick={() => { setFromMenuOpen(false); actions.setFromToken(t); }}
-                    style={{
-                      width: "100%", padding: "10px 14px", background: "none",
-                      border: "none", borderBottom: "1px solid rgba(255,255,255,.05)",
-                      color: "#fff", cursor: "pointer", textAlign: "left", fontSize: 13,
-                      display: "flex", alignItems: "center", gap: 10,
-                      ...(t.ticker === state.fromToken?.ticker ? { background: "rgba(167,139,250,.12)" } : {}),
-                    }}
-                  >
-                    {COIN_LOGOS[t.ticker] && <img src={COIN_LOGOS[t.ticker]} alt={t.symbol} width={26} height={26} style={{ borderRadius: "50%", objectFit: "cover" }} />}
-                    <div><div style={{ fontWeight: 700 }}>{t.symbol}</div><div style={{ fontSize: 11, color: "rgba(255,255,255,.4)" }}>{t.network}</div></div>
-                  </button>
-                ))}
+                <CnTokenMenu
+                  tokens={CN_EVM_TOKENS.filter(t => t.ticker !== state.toToken?.ticker)}
+                  selectedTicker={state.fromToken?.ticker}
+                  onChoose={(token) => { setFromMenuOpen(false); actions.setFromToken(token); }}
+                  getBalance={getTokenBalance}
+                  isBalanceLoading={isTokenBalanceLoading}
+                />
               </div>
             )}
           </div>
@@ -809,23 +915,13 @@ export function ChangeNowEvmSwapView({
                 borderRadius: 12, overflow: "hidden", boxShadow: "0 12px 32px rgba(0,0,0,.6)",
                 maxHeight: 260, overflowY: "auto",
               }}>
-                {CN_EVM_TOKENS.filter(t => t.ticker !== state.fromToken?.ticker).map(t => (
-                  <button
-                    key={t.ticker}
-                    type="button"
-                    onClick={() => { setToMenuOpen(false); actions.setToToken(t); }}
-                    style={{
-                      width: "100%", padding: "10px 14px", background: "none",
-                      border: "none", borderBottom: "1px solid rgba(255,255,255,.05)",
-                      color: "#fff", cursor: "pointer", textAlign: "left", fontSize: 13,
-                      display: "flex", alignItems: "center", gap: 10,
-                      ...(t.ticker === state.toToken?.ticker ? { background: "rgba(167,139,250,.12)" } : {}),
-                    }}
-                  >
-                    {COIN_LOGOS[t.ticker] && <img src={COIN_LOGOS[t.ticker]} alt={t.symbol} width={26} height={26} style={{ borderRadius: "50%", objectFit: "cover" }} />}
-                    <div><div style={{ fontWeight: 700 }}>{t.symbol}</div><div style={{ fontSize: 11, color: "rgba(255,255,255,.4)" }}>{t.network}</div></div>
-                  </button>
-                ))}
+                <CnTokenMenu
+                  tokens={CN_EVM_TOKENS.filter(t => t.ticker !== state.fromToken?.ticker)}
+                  selectedTicker={state.toToken?.ticker}
+                  onChoose={(token) => { setToMenuOpen(false); actions.setToToken(token); }}
+                  getBalance={getTokenBalance}
+                  isBalanceLoading={isTokenBalanceLoading}
+                />
               </div>
             )}
           </div>
@@ -880,33 +976,17 @@ export function ChangeNowEvmSwapView({
               borderRadius: 12, overflow: "hidden", boxShadow: "0 12px 32px rgba(0,0,0,.6)",
               maxHeight: 300, overflowY: "auto",
             }}>
-              {CN_EVM_TOKENS.filter(t => t.ticker !== state.toToken?.ticker).map(t => {
-                const logo = COIN_LOGOS[t.ticker];
-                const [err, setErr] = [false, () => {}]; // static fallback
-                return (
-                  <button
-                    key={t.ticker}
-                    type="button"
-                    onClick={() => { setFromMenuOpen(false); autoQuotedRef.current = false; actions.setFromToken(t); }}
-                    style={{
-                      width: "100%", padding: "10px 14px", background: "none",
-                      border: "none", borderBottom: "1px solid rgba(255,255,255,.05)",
-                      color: "#fff", cursor: "pointer", textAlign: "left", fontSize: 13,
-                      display: "flex", alignItems: "center", gap: 10,
-                      ...(t.ticker === state.fromToken?.ticker ? { background: "rgba(167,139,250,.12)" } : {}),
-                    }}
-                  >
-                    {logo
-                      ? <img src={logo} alt={t.symbol} width={28} height={28} style={{ borderRadius: "50%", objectFit: "cover", flexShrink: 0 }} />
-                      : <div style={{ width: 28, height: 28, borderRadius: "50%", background: "rgba(255,255,255,.1)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, flexShrink: 0 }}>{t.symbol.slice(0,2)}</div>
-                    }
-                    <div>
-                      <div style={{ fontWeight: 700 }}>{t.symbol}</div>
-                      <div style={{ fontSize: 11, color: "rgba(255,255,255,.4)" }}>{t.name} · {t.network}</div>
-                    </div>
-                  </button>
-                );
-              })}
+              <CnTokenMenu
+                tokens={CN_EVM_TOKENS.filter(t => t.ticker !== state.toToken?.ticker)}
+                selectedTicker={state.fromToken?.ticker}
+                onChoose={(token) => {
+                  setFromMenuOpen(false);
+                  autoQuotedRef.current = false;
+                  actions.setFromToken(token);
+                }}
+                getBalance={getTokenBalance}
+                isBalanceLoading={isTokenBalanceLoading}
+              />
             </div>
           )}
         </div>
@@ -944,33 +1024,17 @@ export function ChangeNowEvmSwapView({
               borderRadius: 12, overflow: "hidden", boxShadow: "0 12px 32px rgba(0,0,0,.6)",
               maxHeight: 300, overflowY: "auto",
             }}>
-              {/* BTC disponibile come TO quando FROM è EVM */}
-              {CN_EVM_TOKENS.filter(t => t.ticker !== state.fromToken?.ticker).map(t => {
-                const logo = COIN_LOGOS[t.ticker];
-                return (
-                  <button
-                    key={t.ticker}
-                    type="button"
-                    onClick={() => { setToMenuOpen(false); autoQuotedRef.current = false; actions.setToToken(t); }}
-                    style={{
-                      width: "100%", padding: "10px 14px", background: "none",
-                      border: "none", borderBottom: "1px solid rgba(255,255,255,.05)",
-                      color: "#fff", cursor: "pointer", textAlign: "left", fontSize: 13,
-                      display: "flex", alignItems: "center", gap: 10,
-                      ...(t.ticker === state.toToken?.ticker ? { background: "rgba(167,139,250,.12)" } : {}),
-                    }}
-                  >
-                    {logo
-                      ? <img src={logo} alt={t.symbol} width={28} height={28} style={{ borderRadius: "50%", objectFit: "cover", flexShrink: 0 }} />
-                      : <div style={{ width: 28, height: 28, borderRadius: "50%", background: "rgba(255,255,255,.1)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, flexShrink: 0 }}>{t.symbol.slice(0,2)}</div>
-                    }
-                    <div>
-                      <div style={{ fontWeight: 700 }}>{t.symbol}</div>
-                      <div style={{ fontSize: 11, color: "rgba(255,255,255,.4)" }}>{t.name} · {t.network}</div>
-                    </div>
-                  </button>
-                );
-              })}
+              <CnTokenMenu
+                tokens={CN_EVM_TOKENS.filter(t => t.ticker !== state.fromToken?.ticker)}
+                selectedTicker={state.toToken?.ticker}
+                onChoose={(token) => {
+                  setToMenuOpen(false);
+                  autoQuotedRef.current = false;
+                  actions.setToToken(token);
+                }}
+                getBalance={getTokenBalance}
+                isBalanceLoading={isTokenBalanceLoading}
+              />
             </div>
           )}
         </div>

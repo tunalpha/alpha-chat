@@ -1,8 +1,10 @@
-import { act, renderHook, waitFor } from "@testing-library/react";
+import { act, render, renderHook, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useChangeNowEvmSwapState } from "../../swap/changenow/useChangeNowEvmSwapState.js";
 import { useEvmTokenBalances } from "../../swap/evm/useEvmTokenBalances.js";
 import { NATIVE_ADDRESS, type EvmToken } from "../../swap/evm/types.js";
+import { CnTokenMenu } from "../../swap/changenow/ChangeNowEvmSwapView.js";
+import { CN_EVM_TOKENS } from "../../swap/changenow/evm-types.js";
 
 const WALLET = "0x1111111111111111111111111111111111111111";
 const POLYGON_USDC: EvmToken = {
@@ -53,5 +55,21 @@ describe("ChangeNOW EVM swap — saldi e inversione UI", () => {
     expect(result.current[0].fromAmount).toBe("");
     expect(result.current[0].quote).toBeNull();
     expect(result.current[0].minAmount).toBeNull();
+  });
+
+  it("mostra il saldo on-chain accanto a ogni token nella tendina", () => {
+    const token = CN_EVM_TOKENS.find((item) => item.ticker === "pol")!;
+
+    render(
+      <CnTokenMenu
+        tokens={[token]}
+        onChoose={() => {}}
+        getBalance={() => 4_390_000_000_000_000_000n}
+        isBalanceLoading={() => false}
+      />,
+    );
+
+    expect(screen.getByText("4.39 POL")).toBeTruthy();
+    expect(screen.getByText("Saldo")).toBeTruthy();
   });
 });
