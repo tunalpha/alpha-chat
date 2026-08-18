@@ -23,9 +23,10 @@
  *  TICKER VALIDI (verificati 2026-08-18):
  *    usdterc20, usdtmatic, usdtbsc, usdcmatic, eth, pol, matic, bnbbsc
  *
- *  FEE ALPHA 0,25%:
- *    Non raccolta come TX separata per i ChangeNOW swap (richiede PSBT multi-output
- *    o programma affiliato ChangeNOW). Documentata come pending nella checklist.
+ *  FEE ARCHITECTURE:
+ *    Nessuna fee Alpha aggiuntiva sui flussi ChangeNOW.
+ *    Il Partner Program ChangeNOW eroga 0,40% di revenue share al Partner balance.
+ *    Il payout al destinatario è esattamente quello calcolato da ChangeNOW.
  * ═══════════════════════════════════════════════════════════════
  *
  * ISOLAMENTO: zero import da payment engine, USDA, MultiChain, Spark, Li.Fi.
