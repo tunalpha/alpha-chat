@@ -1,0 +1,290 @@
+OBIETTIVO
+
+Esegui un audit tecnico end-to-end della seguente operazione BTC → USDT.
+
+NON modificare codice, database, stato della transazione o fondi.
+NON eseguire retry, refund o nuovo swap.
+Questa è una verifica READ-ONLY.
+
+DATI DELL’OPERAZIONE
+
+TX Bitcoin di pagamento:
+
+96b55dc7ea0d7b34fd56a93835f890c1eca875eda4e63d740411731b6639281e
+
+Dati verificati on-chain:
+
+* 94 conferme
+* input totale: 0.00024788 BTC
+* output verso destinatario: 0.00022745 BTC
+* fee: 0.00000314 BTC
+* output principale:
+    bc1qdveggayeayksq6hm7vj8zfm4fvwd9rz59n37ay
+* change:
+    bc1plxa9q77gz9r33g8pd4c2ygzezchjffuedtzdrkclyceseyw8v80qasmquf
+
+Destinazione EVM prevista:
+
+0x04631A6e863718a8F4c21c2ce1303e30dC87B298
+
+Importo mostrato da Alpha:
+
+0.0002274 BTC
+
+Stato mostrato da Alpha:
+
+Swap BTC → USDT — Confermata
+
+Problema:
+
+NESSUN USDT risulta ricevuto sull’indirizzo EVM indicato.
+
+1. TROVA L’OPERAZIONE NEL DATABASE
+
+Parti dalla TX:
+
+96b55dc7ea0d7b34fd56a93835f890c1eca875eda4e63d740411731b6639281e
+
+Trova il record swap associato.
+
+Restituisci:
+
+* swap ID
+* transfer ID
+* createdAt
+* updatedAt
+* stato interno
+* stato mostrato al frontend
+* provider
+* route
+* source chain
+* destination chain
+* source asset
+* destination asset
+* source amount
+* expected destination amount
+* recipient
+* deposit address
+* eventuale provider order ID
+* eventuale quote ID
+* eventuale destinationTxHash
+* eventuale refundTxHash
+
+2. RICOSTRUISCI IL FLUSSO REALE
+
+Ricostruisci temporalmente:
+
+1. creazione dello swap
+2. generazione quote
+3. scelta provider
+4. generazione deposit address BTC
+5. invio BTC
+6. rilevamento della TX
+7. numero di conferme richiesto
+8. passaggio dello swap a confirmed
+9. richiesta di settlement/payout USDT
+10. eventuale TX USDT
+11. eventuale aggiornamento saldo Alpha
+
+Per ogni passaggio indica timestamp e fonte del dato.
+
+3. VERIFICA IL PROVIDER
+
+Identifica ESATTAMENTE quale provider ha gestito questo swap.
+
+Non assumere che sia LI.FI solo perché è presente nell’architettura.
+
+Controlla database, backend, logs e response API.
+
+Voglio sapere:
+
+* provider effettivo
+* API/endpoint utilizzato
+* quote/order ID
+* stato restituito dal provider
+* eventuale stato pending, waiting, confirming, exchanging, sending, finished, failed, refunded o equivalente
+* destination transaction hash restituito dal provider
+* eventuale refund transaction hash
+
+4. VERIFICA CRITICA DELLA TX BITCOIN
+
+Conferma che la TX:
+
+96b55dc7ea0d7b34fd56a93835f890c1eca875eda4e63d740411731b6639281e
+
+sia effettivamente quella utilizzata da Alpha per lo swap.
+
+Conferma inoltre che:
+
+0.00022745 BTC
+
+sia stata inviata al deposit address associato allo swap.
+
+Se coincide, considera questo il PROOF OF PAYMENT del cliente.
+
+5. CERCA IL PAYOUT USDT
+
+Cerca qualsiasi transazione USDT verso:
+
+0x04631A6e863718a8F4c21c2ce1303e30dC87B298
+
+su TUTTE le reti EVM che il provider può utilizzare per questo swap.
+
+Non limitarti alla rete attualmente selezionata dal frontend.
+
+Controlla almeno le reti supportate dal provider/configurazione corrente.
+
+Per ogni eventuale payout restituisci:
+
+* chain
+* token contract
+* amount
+* from
+* to
+* block
+* timestamp
+* tx hash
+* status
+
+Se non esiste alcun payout, dichiararlo esplicitamente.
+
+6. VERIFICA IL CRITERIO “CONFIRMED”
+
+Questo è il controllo più importante.
+
+Trova nel codice la funzione esatta che porta lo swap a:
+
+confirmed
+
+Indica:
+
+* file
+* funzione
+* condizione
+* campo DB modificato
+* evento/log emesso
+
+Determina se Alpha considera lo swap “confirmed” semplicemente perché:
+
+BTC payment detected + sufficient confirmations
+
+oppure se richiede anche:
+
+provider payout confirmed
+
+Questa distinzione è fondamentale.
+
+Se oggi il codice fa:
+
+BTC confirmed → swap = confirmed
+
+senza verificare il payout USDT, consideralo un BUG.
+
+7. VERIFICA DESTINATION TX HASH
+
+Cerca nel database e nei log eventuali campi come:
+
+* destinationTxHash
+* payoutTxHash
+* receiveTxHash
+* settlementTxHash
+* outputTxHash
+* txHash
+* providerTxHash
+
+Se uno di questi esiste, verifica che sia realmente una TX USDT on-chain verso:
+
+0x04631A6e863718a8F4c21c2ce1303e30dC87B298
+
+NON considerare sufficiente la presenza di un hash nel database.
+
+Deve essere verificato on-chain.
+
+8. VERIFICA EVENTUALE BUG DI POLLING
+
+Controlla il polling dello swap.
+
+Determina se il frontend/backend:
+
+* smette di interrogare il provider troppo presto
+* interpreta erroneamente confirmed
+* confonde conferma del deposito BTC con completamento dello swap
+* non attende il payout
+* perde lo stato quando la PWA va in background
+* non recupera correttamente lo stato dopo un refresh
+* salva uno stato terminale prematuramente
+
+Controlla anche eventuali timeout/retry.
+
+9. VERIFICA EVENTUALE REFUND
+
+Controlla se il provider ha emesso un refund BTC.
+
+Cerca eventuali:
+
+* refund address
+* refund transaction
+* refund status
+
+Se esiste un refund, identificarlo on-chain.
+
+10. CONFRONTO DATABASE VS BLOCKCHAIN
+
+Produci una tabella:
+
+Elemento	Database Alpha	Blockchain/Provider	Coerente?
+BTC TX			
+BTC amount			
+Deposit address			
+BTC confirmations			
+Provider			
+Swap status			
+Destination address			
+Destination chain			
+USDT payout TX			
+USDT amount			
+Refund TX			
+
+11. CONCLUSIONE OBBLIGATORIA
+
+Alla fine rispondi chiaramente a queste 5 domande:
+
+1. I BTC sono stati realmente pagati al provider?
+2. Il provider ha effettivamente eseguito lo swap?
+3. Esiste una TX USDT verificabile?
+4. Se non esiste, perché Alpha mostra Confermata?
+5. Dove si trovano attualmente i fondi?
+
+Classifica il problema in una sola categoria:
+
+* PAYOUT_COMPLETED_BUT_FRONTEND_NOT_CREDITED
+* PROVIDER_SWAP_STILL_PENDING
+* PROVIDER_SWAP_FAILED
+* PROVIDER_REFUND_PENDING
+* INCORRECT_ALPHA_STATUS
+* UNKNOWN — INSUFFICIENT_DATA
+
+12. IMPORTANTISSIMO
+
+NON correggere ancora il codice.
+
+NON cambiare lo stato nel database.
+
+NON creare un nuovo swap.
+
+NON effettuare retry.
+
+NON inviare altri BTC.
+
+Prima voglio esclusivamente il report diagnostico completo con:
+
+* timeline
+* provider
+* quote/order ID
+* stato provider
+* TX BTC
+* eventuale TX USDT
+* eventuale refund
+* causa esatta della discrepanza
+
+Solo dopo il report decideremo insieme quale fix implementare.
