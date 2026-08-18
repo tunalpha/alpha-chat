@@ -405,8 +405,8 @@ export async function cnGetExchangeAmount(params: {
 }
 
 /**
- * Crea una nuova transazione di exchange su ChangeNOW.
- * Restituisce l'ID exchange e il deposit address BTC.
+ * Crea una nuova transazione di exchange su ChangeNOW (floating-rate).
+ * Usato per BTC→EVM. Per EVM→EVM usare cnGetFixedRateAmount + cnCreateFixedRateTransaction.
  */
 export async function cnCreateTransaction(
   params: CnCreateTransactionParams
@@ -421,6 +421,58 @@ export async function cnCreateTransaction(
         to:      params.toCurrency,
         amount:  params.amount,
         address: params.address,
+        ...(params.refundAddress ? { refundAddress: params.refundAddress } : {}),
+      }),
+    }
+  );
+}
+
+/**
+ * Ottieni la stima e il rateId per un exchange fixed-rate EVM→EVM.
+ *
+ * ENDPOINT: GET /v1/exchange-amount/fixed-rate/{amount}/{from}_{to}?api_key=KEY
+ *
+ * Il rateId ha una validità limitata (~30 min). Deve essere usato
+ * immediatamente in cnCreateFixedRateTransaction.
+ *
+ * Nota: le coppie EVM→EVM (pol→usdcmatic, eth→usdc, ecc.) su ChangeNOW
+ * supportano SOLO il flusso fixed-rate. Il flusso floating-rate
+ * (/v1/transactions) restituisce 404 per queste coppie.
+ */
+export async function cnGetFixedRateAmount(params: {
+  amount:       number;
+  fromCurrency: string;
+  toCurrency:   string;
+}): Promise<{ estimatedAmount: number; rateId: string; validUntil: string }> {
+  const key = getApiKey();
+  const { amount, fromCurrency, toCurrency } = params;
+  return cnFetch<{ estimatedAmount: number; rateId: string; validUntil: string }>(
+    `${CN_BASE_URL}/exchange-amount/fixed-rate/${amount}/${fromCurrency}_${toCurrency}?api_key=${key}`
+  );
+}
+
+/**
+ * Crea una transazione fixed-rate su ChangeNOW per coppie EVM→EVM.
+ *
+ * ENDPOINT: POST /v1/transactions/fixed-rate/{api_key}
+ *   (l'API key va nell'URL path per le transazioni fixed-rate, non come query param)
+ *
+ * Richiede rateId ottenuto da cnGetFixedRateAmount.
+ */
+export async function cnCreateFixedRateTransaction(
+  params: CnCreateTransactionParams & { rateId: string }
+): Promise<CnTransactionResponse> {
+  const key = getApiKey();
+  return cnFetch<CnTransactionResponse>(
+    `${CN_BASE_URL}/transactions/fixed-rate/${key}`,
+    {
+      method: "POST",
+      body: JSON.stringify({
+        from:          params.fromCurrency,
+        to:            params.toCurrency,
+        amount:        params.amount,
+        address:       params.address,
+        rateId:        params.rateId,
         ...(params.refundAddress ? { refundAddress: params.refundAddress } : {}),
       }),
     }

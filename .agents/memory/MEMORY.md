@@ -107,7 +107,8 @@
 - [@lifi/sdk CJS alias (🔒 permanente)](lifi-sdk-cjs-alias.md) — ESM entry di @lifi/sdk v4 non esporta createConfig/EVM; alias vite.config.ts → CJS via createRequire obbligatorio per il build prod
 - [LN→BTC Hardening](lnbtc-hardening.md) — localStorage ikey/lock/intent/result; cross-tab TTL 90s; TIMEOUT_UNCERTAIN clearTimeout pattern; idempotency_key backend; 17 test T1-T17
 - [Alpha Swap V1 Hardening](alpha-swap-v1-hardening.md) — refund key HMAC-SHA256 server-side; write-before-submit; idempotency_key UUID; reconciler 30s; GET /active recovery; 63 test T1-T20 PASS
-- [ChangeNOW FASE 1 — BTC→USDT](changenow-fase1.md) — invarianti btcTxHash≠destTx; fundsCommitted write-before-submit; API key server-only; Li.Fi files invariati; 28 test PASS
+- [ChangeNOW FASE 1 — BTC↔EVM](changenow-fase1.md) — invarianti btcTxHash≠destTx; fundsCommitted write-before-submit; API key server-only; Li.Fi files invariati; 28 test PASS
+- [ChangeNOW EVM — Fixed-Rate Requirement](changenow-evm-fixed-rate.md) — EVM→EVM richiede fixed-rate; floating-rate (/v1/transactions) → 404; cnGetFixedRateAmount+cnCreateFixedRateTransaction obbligatori
 - [ChangeNOW Fee Architecture](changenow-fee-architecture.md) — NESSUNA fee Alpha su flussi CN; 0,40% Partner share da ChangeNOW direttamente; FEE ARCHITECTURE=PASS
 - [ChangeNOW EVM provider bug](changenow-evm-provider-bug.md) — /swap/providers admin-only → sempre "lifi"; fix: query modello diretta in getPublicSwapConfig (no cross-service import — bug Vitest ESM)
 - [EVM Swap Tracking](evm-swap-tracking.md) — evm_swaps aveva 0 record: SUPPORTED_CHAINS rifiutava BTC (toChainId=0); .catch(()=>null) inghiottiva tutto; window.__VITE_API_BASE__ mai impostata

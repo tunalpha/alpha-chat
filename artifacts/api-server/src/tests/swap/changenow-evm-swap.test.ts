@@ -79,10 +79,11 @@ vi.mock("../../services/swap/changenow.service.js", async (importOriginal) => {
   const real = await importOriginal() as Record<string, unknown>;
   return {
     ...real,
-    cnGetMinAmount:          vi.fn(),
-    cnGetExchangeAmount:     vi.fn(),
-    cnCreateTransaction:     vi.fn(),
-    cnGetTransactionStatus:  vi.fn(),
+    cnGetMinAmount:              vi.fn(),
+    cnGetExchangeAmount:         vi.fn(),
+    cnGetFixedRateAmount:        vi.fn(),
+    cnCreateFixedRateTransaction: vi.fn(),
+    cnGetTransactionStatus:      vi.fn(),
   };
 });
 
@@ -91,7 +92,8 @@ import {
   CnApiError,
   cnGetMinAmount,
   cnGetExchangeAmount,
-  cnCreateTransaction,
+  cnGetFixedRateAmount,
+  cnCreateFixedRateTransaction,
   cnGetTransactionStatus,
   CN_EVM_TOKENS,
 } from "../../services/swap/changenow.service.js";
@@ -148,6 +150,13 @@ const MOCK_TX_RESPONSE = {
 function cnErr(status: number) {
   return new CnApiError(status, `ChangeNOW API error ${status}`);
 }
+
+// Fixture fixed-rate quote (usata da tutti i test che chiamano createEvmExchange)
+const MOCK_FIXED_RATE = {
+  rateId:          "mock-rate-id-001",
+  estimatedAmount: 3.2,
+  validUntil:      "2099-01-01T00:00:00Z",
+};
 
 // ── checkEvmPair ──────────────────────────────────────────────────────────────
 
@@ -253,7 +262,8 @@ describe("getEvmQuote", () => {
 
 describe("createEvmExchange", () => {
   it("T13 — crea ordine correttamente", async () => {
-    vi.mocked(cnCreateTransaction).mockResolvedValueOnce(MOCK_TX_RESPONSE as any);
+    vi.mocked(cnGetFixedRateAmount).mockResolvedValueOnce({ ...MOCK_FIXED_RATE });
+    vi.mocked(cnCreateFixedRateTransaction).mockResolvedValueOnce(MOCK_TX_RESPONSE as any);
     const result = await createEvmExchange({
       userId:                USER_ID + "_T13",
       fromTicker:            "pol",
@@ -267,12 +277,13 @@ describe("createEvmExchange", () => {
     expect(result.destinationAddress).toBe(DEST_EVM);
     expect(result.fromTicker).toBe("pol");
     expect(result.toTicker).toBe("usdcmatic");
-    // Verifica che cnCreateTransaction sia stato chiamato con i ticker corretti
-    expect(cnCreateTransaction).toHaveBeenCalledWith(expect.objectContaining({
+    // Verifica che cnCreateFixedRateTransaction sia stato chiamato con i ticker corretti e il rateId
+    expect(cnCreateFixedRateTransaction).toHaveBeenCalledWith(expect.objectContaining({
       fromCurrency: "pol",
       toCurrency:   "usdcmatic",
       amount:       15,
       address:      DEST_EVM,
+      rateId:       MOCK_FIXED_RATE.rateId,
     }));
   });
 
@@ -286,7 +297,8 @@ describe("createEvmExchange", () => {
   });
 
   it("T15 — swap attivo (fundsCommitted) già presente → errore ACTIVE_EVM_SWAP_EXISTS", async () => {
-    vi.mocked(cnCreateTransaction).mockResolvedValueOnce({
+    vi.mocked(cnGetFixedRateAmount).mockResolvedValueOnce({ ...MOCK_FIXED_RATE });
+    vi.mocked(cnCreateFixedRateTransaction).mockResolvedValueOnce({
       ...MOCK_TX_RESPONSE, id: "cn_T15_a",
     } as any);
     const created = await createEvmExchange({
@@ -308,7 +320,8 @@ describe("createEvmExchange", () => {
 
 describe("commitEvmFunds", () => {
   it("T16 — salva depositTxHash e fundsCommitted=true", async () => {
-    vi.mocked(cnCreateTransaction).mockResolvedValueOnce({
+    vi.mocked(cnGetFixedRateAmount).mockResolvedValueOnce({ ...MOCK_FIXED_RATE });
+    vi.mocked(cnCreateFixedRateTransaction).mockResolvedValueOnce({
       ...MOCK_TX_RESPONSE, id: "cn_T16",
     } as any);
     const created = await createEvmExchange({
@@ -338,7 +351,8 @@ describe("commitEvmFunds", () => {
 
 describe("getEvmSwapStatus — REGOLA COMPLETED ASSOLUTA", () => {
   async function makeSwap(userId: string, id: string) {
-    vi.mocked(cnCreateTransaction).mockResolvedValueOnce({
+    vi.mocked(cnGetFixedRateAmount).mockResolvedValueOnce({ ...MOCK_FIXED_RATE, rateId: `rate_${id}` });
+    vi.mocked(cnCreateFixedRateTransaction).mockResolvedValueOnce({
       ...MOCK_TX_RESPONSE, id,
     } as any);
     return createEvmExchange({
@@ -445,7 +459,8 @@ describe("getEvmSwapStatus — REGOLA COMPLETED ASSOLUTA", () => {
 
 describe("getActiveEvmSwapForUser", () => {
   it("T26 — swap attivo trovato", async () => {
-    vi.mocked(cnCreateTransaction).mockResolvedValueOnce({
+    vi.mocked(cnGetFixedRateAmount).mockResolvedValueOnce({ ...MOCK_FIXED_RATE });
+    vi.mocked(cnCreateFixedRateTransaction).mockResolvedValueOnce({
       ...MOCK_TX_RESPONSE, id: "cn_active_T26",
     } as any);
     await createEvmExchange({
@@ -517,7 +532,8 @@ describe("Nessun fallback Li.Fi", () => {
 
 describe("Idempotenza polling", () => {
   it("T33 — polling duplicato non modifica stato terminale già raggiunto", async () => {
-    vi.mocked(cnCreateTransaction).mockResolvedValueOnce({
+    vi.mocked(cnGetFixedRateAmount).mockResolvedValueOnce({ ...MOCK_FIXED_RATE });
+    vi.mocked(cnCreateFixedRateTransaction).mockResolvedValueOnce({
       ...MOCK_TX_RESPONSE, id: "cn_idem_T33",
     } as any);
     const created = await createEvmExchange({

@@ -41,7 +41,8 @@ import {
   CnApiError,
   cnGetMinAmount,
   cnGetExchangeAmount,
-  cnCreateTransaction,
+  cnGetFixedRateAmount,
+  cnCreateFixedRateTransaction,
   cnGetTransactionStatus,
   CN_STATUS_MAP,
   type CnApiStatus,
@@ -262,13 +263,36 @@ export async function createEvmExchange(input: EvmCreateInput): Promise<EvmCreat
   }).lean();
   if (existing) throw new AppError("ACTIVE_EVM_SWAP_EXISTS", 409);
 
-  // Crea exchange su ChangeNOW
-  const tx = await cnCreateTransaction({
+  // Flusso fixed-rate: le coppie EVM→EVM su ChangeNOW non supportano
+  // il floating-rate (/v1/transactions → 404). Serve:
+  //   1. GET /v1/exchange-amount/fixed-rate → rateId
+  //   2. POST /v1/transactions/fixed-rate/{api_key} → exchange
+  let rateId: string;
+  try {
+    const fixedRate = await cnGetFixedRateAmount({
+      amount:       fromAmount,
+      fromCurrency: fromTicker,
+      toCurrency:   toTicker,
+    });
+    rateId = fixedRate.rateId;
+    logger.info(
+      { fromTicker, toTicker, fromAmount, rateId, validUntil: fixedRate.validUntil },
+      "EVM fixed-rate quote obtained"
+    );
+  } catch (err) {
+    if (err instanceof CnApiError && err.isClientError) {
+      throw new AppError("CHANGENOW_PAIR_UNAVAILABLE", 400);
+    }
+    throw new AppError("CHANGENOW_API_ERROR", 503);
+  }
+
+  const tx = await cnCreateFixedRateTransaction({
     fromCurrency:  fromTicker,
     toCurrency:    toTicker,
     amount:        fromAmount,
     address:       destinationEvmAddress,
     refundAddress: refundEvmAddress || destinationEvmAddress,
+    rateId,
   });
 
   // Persist su MongoDB
