@@ -9,8 +9,8 @@
  *   ChangeNOW → DISABLED           (integrazione futura — NON abilitare senza autorizzazione)
  */
 
-import { useState, useEffect } from "preact/hooks";
-import { apiFetch } from "../lib/apiFetch";
+import { useState, useEffect } from "react";
+import { apiFetch } from "../lib/api";
 
 // ── Tipi ──────────────────────────────────────────────────────────────────────
 

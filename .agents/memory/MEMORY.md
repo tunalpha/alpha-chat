@@ -86,6 +86,7 @@
 - [Alpha Wallet TX status stuck pending](alpha-wallet-tx-status-fix.md) — _reconcilePendingEvm skip silenzioso + ID bridge/monitor discrepancy + no forcePoll + stale closure; fix: receipt diretto via /evm/receipt backend
 - [Alpha Wallet — Richiedi con Alpha Wallet](alpha-wallet-request.md) — flow completo richiedente+pagante, bubble WALLETREQ:, 3 endpoint backend, WS event
 - [Build before deploy](build-before-deploy.md) — dist/public è statico; eseguire pnpm build PRIMA di ogni deploy suggestion
+- [Admin Panel build pitfalls](admin-panel-build-pitfalls.md) — import "preact/hooks" e path "../lib/apiFetch" sbagliati → vite build fallisce; usare "react" e "../lib/api"
 - [Investor book build command](investor-book-build.md) — PORT=3000 BASE_PATH=/investor-book/ pnpm build obbligatori; vite.config.ts lancia eccezione senza
 - [Wallet lock back-button race condition](wallet-lock-race-condition.md) — lockWallet() è sincrono, setSubView("unlock") è asincrono (useEffect); back button deve check wallet.phase==="locked" PRIMA di qualsiasi subView check
 - [Wallet unlock auto-trigger bug](wallet-unlock-autotrigger.md) — NON auto-triggerare Face ID in UnlockView: monta anche post-lockWallet() → sblocca senza consenso
