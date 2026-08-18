@@ -490,17 +490,12 @@
   pointer-events: none;
 }
 .aw-buy-card:active { transform: scale(.985); border-color: rgba(167,139,250,.35); }
-.aw-buy-card__inner {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-.aw-buy-card__left {
+/* ── Riga 1: icona + testo + CTA ── */
+.aw-buy-card__top {
   display: flex;
   align-items: center;
   gap: 10px;
-  min-width: 0;
+  margin-bottom: 9px;
 }
 .aw-buy-card__icon {
   flex-shrink: 0;
@@ -513,69 +508,63 @@
   justify-content: center;
 }
 .aw-buy-card__text {
+  flex: 1;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 2px;
-  min-width: 0;
 }
 .aw-buy-card__title {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 600;
   color: rgba(255,255,255,.92);
   letter-spacing: .01em;
+  /* Il titolo ha spazio garantito (flex:1) — non viene mai compresso dai loghi */
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 .aw-buy-card__sub {
   font-size: 11px;
   color: rgba(255,255,255,.45);
   white-space: normal;
-  overflow: visible;
   line-height: 1.35;
   word-break: break-word;
 }
-.aw-buy-card__right {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 5px;
+.aw-buy-card__cta {
   flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(167,139,250,.9);
+  letter-spacing: .02em;
+  white-space: nowrap;
 }
-.aw-buy-card__logos {
+/* ── Riga 2: loghi metodi di pagamento — fascia dedicata ── */
+.aw-buy-card__logos-row {
   display: flex;
   align-items: center;
-  gap: 5px;
+  gap: 6px;
+  padding-top: 9px;
+  border-top: 1px solid rgba(255,255,255,.07);
 }
+/* Badge loghi — base */
 .aw-pay-logo {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  background: rgba(255,255,255,.9);
   border-radius: 4px;
   padding: 2px 4px;
   height: 18px;
-  box-shadow: 0 1px 3px rgba(0,0,0,.18);
+  box-shadow: 0 1px 3px rgba(0,0,0,.2);
+  flex-shrink: 0;
 }
-.aw-pay-logo--visa { background: #fff; }
-.aw-pay-logo--mc   { background: #fff; padding: 1px 3px; }
-.aw-pay-logo--apple {
-  background: #000;
-  color: #fff;
-  padding: 1px 5px;
-}
-.aw-pay-logo--gpay {
-  background: #fff;
-  color: #202124;
-  padding: 1px 5px;
-}
-.aw-buy-card__cta {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 11px;
-  font-weight: 600;
-  color: rgba(167,139,250,.9);
-  letter-spacing: .02em;
-}
+.aw-pay-logo--visa  { background: #fff; }
+.aw-pay-logo--mc    { background: #fff; padding: 1px 3px; }
+.aw-pay-logo--apple { background: #000; padding: 1px 5px; }
+.aw-pay-logo--gpay  { background: #fff; padding: 1px 4px; }
 
 /* ── Buy with Card modal placeholder ─────────────────────────────────────── */
 .aw-buy-modal-overlay {

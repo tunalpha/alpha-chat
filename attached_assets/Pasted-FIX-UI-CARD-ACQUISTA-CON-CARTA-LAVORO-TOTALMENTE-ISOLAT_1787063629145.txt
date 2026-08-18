@@ -1,0 +1,100 @@
+FIX UI — CARD “ACQUISTA CON CARTA”
+LAVORO TOTALMENTE ISOLATO — ZERO REGRESSIONI
+
+Modifica esclusivamente la card “Acquista con carta” già presente nella Home di Alpha Wallet.
+
+NON creare una nuova card.
+NON creare una nuova pagina.
+NON spostare la card.
+NON modificare Invio, Ricevi, Storico, Swap, asset, saldo o pagamenti esistenti.
+NON modificare backend, API, database o logica dei pagamenti.
+NON collegare ancora ChangeNOW.
+
+OBIETTIVO
+
+La card deve avere un aspetto realmente premium e soprattutto deve essere perfettamente leggibile su mobile.
+
+PROBLEMA ATTUALE
+
+Nel layout attuale i loghi Visa, Mastercard, Apple Pay e Google Pay occupano troppo spazio orizzontale e comprimono il titolo:
+
+“Acquista con c...”
+
+I loghi NON devono mai sovrapporsi, comprimere o interferire con il titolo.
+
+LAYOUT DESIDERATO
+
+Titolo:
+“Acquista con carta”
+
+Sottotitolo:
+“Crypto direttamente nel tuo wallet”
+
+Loghi:
+- Visa
+- Mastercard
+- Apple Pay
+- Google Pay
+
+Mantieni i loghi ufficiali/brand assets già utilizzati, senza ridisegnarli arbitrariamente.
+
+Su mobile:
+- il titolo deve rimanere sempre completamente leggibile;
+- il sottotitolo deve essere leggibile;
+- i loghi devono avere dimensioni compatte e proporzionate;
+- i loghi possono disporsi in una seconda fascia/riga oppure ridursi dinamicamente;
+- MAI sovrapporre loghi e testo;
+- MAI mostrare “Acquista con c...” a causa dei loghi;
+- MAI mostrare testi troncati con “...” se è possibile andare a capo.
+
+STRUTTURA PREMIUM SUGGERITA
+
+[ Icona carta ]  [ Acquista con carta ]
+                  [ Crypto direttamente nel tuo wallet ]
+
+Sotto o sulla destra, in una fascia dedicata:
+[ VISA ] [ Mastercard ] [ Apple Pay ] [ Google Pay ]
+
+E mantenere:
+“Acquista →”
+
+La card deve conservare lo stile attuale Alpha Wallet:
+- dark/premium;
+- bordi arrotondati;
+- glow/viola già presente;
+- icona carta;
+- gerarchia tipografica elegante;
+- nessun redesign dell'intera Home.
+
+IMPORTANTE — FUTURO FLUSSO ACQUISTO
+
+La UI deve essere predisposta per il futuro collegamento con ChangeNOW.
+
+Quando verrà collegato il flusso:
+- l'indirizzo di ricezione verrà letto AUTOMATICAMENTE dal wallet Alpha;
+- l'utente NON dovrà copiare/incollare l'indirizzo;
+- NON deve esserci un campo modificabile per l'indirizzo wallet;
+- la crypto acquistata dovrà essere indirizzata automaticamente al wallet/chain/asset selezionato.
+
+Per ora NON implementare questa logica e NON effettuare chiamate ChangeNOW.
+
+SICUREZZA / REGRESSIONI
+
+Prima di terminare:
+1. controlla il diff;
+2. verifica che siano stati modificati SOLO i file necessari alla card;
+3. conferma che nessun file payment sia stato modificato;
+4. conferma che nessun file Swap/Li.Fi sia stato modificato;
+5. esegui i test/regression check disponibili.
+
+OUTPUT FINALE
+
+Riportami:
+- file modificati;
+- cosa è stato modificato;
+- conferma “PAYMENTS MODIFIED: 0”;
+- conferma “SWAP/Li.Fi MODIFIED: 0”;
+- test eseguiti e risultati;
+- screenshot/preview della card su mobile.
+
+NON procedere con altre modifiche oltre a questa card.

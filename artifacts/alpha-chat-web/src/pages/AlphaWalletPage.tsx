@@ -986,69 +986,63 @@ function OverviewView({ onNavigate, onSelectToken }: { onNavigate: (v: WalletSub
       {/* ── Buy with Card card — sostituisce visivamente il vecchio "Copia indirizzo" ── */}
       {/* L'indirizzo rimane disponibile e invariato nella sezione Ricevi.           */}
       <button className="aw-buy-card" onClick={() => setShowBuyModal(true)} aria-label="Acquista crypto con carta">
-        <div className="aw-buy-card__inner">
-          <div className="aw-buy-card__left">
-            {/* Card icon */}
-            <div className="aw-buy-card__icon">
-              <svg viewBox="0 0 24 24" fill="none" width="22" height="22">
-                <rect x="2" y="5" width="20" height="14" rx="3" stroke="url(#aw-card-grad)" strokeWidth="1.6"/>
-                <path d="M2 9h20" stroke="url(#aw-card-grad)" strokeWidth="1.6"/>
-                <rect x="5" y="13" width="4" height="2" rx="1" fill="url(#aw-card-grad)"/>
-                <defs>
-                  <linearGradient id="aw-card-grad" x1="2" y1="5" x2="22" y2="19" gradientUnits="userSpaceOnUse">
-                    <stop stopColor="#a78bfa"/>
-                    <stop offset="1" stopColor="#818cf8"/>
-                  </linearGradient>
-                </defs>
-              </svg>
-            </div>
-            <div className="aw-buy-card__text">
-              <span className="aw-buy-card__title">Acquista con carta</span>
-              <span className="aw-buy-card__sub">Crypto direttamente nel tuo wallet</span>
-            </div>
+        {/* ── Riga 1: icona + testo + CTA — mai compressa dai loghi ── */}
+        <div className="aw-buy-card__top">
+          <div className="aw-buy-card__icon">
+            <svg viewBox="0 0 24 24" fill="none" width="22" height="22">
+              <rect x="2" y="5" width="20" height="14" rx="3" stroke="url(#aw-card-grad)" strokeWidth="1.6"/>
+              <path d="M2 9h20" stroke="url(#aw-card-grad)" strokeWidth="1.6"/>
+              <rect x="5" y="13" width="4" height="2" rx="1" fill="url(#aw-card-grad)"/>
+              <defs>
+                <linearGradient id="aw-card-grad" x1="2" y1="5" x2="22" y2="19" gradientUnits="userSpaceOnUse">
+                  <stop stopColor="#a78bfa"/>
+                  <stop offset="1" stopColor="#818cf8"/>
+                </linearGradient>
+              </defs>
+            </svg>
           </div>
-          <div className="aw-buy-card__right">
-            {/* Payment logos */}
-            <div className="aw-buy-card__logos">
-              {/* Visa */}
-              <span className="aw-pay-logo aw-pay-logo--visa" title="Visa">
-                <svg viewBox="0 0 60 20" width="34" height="12">
-                  <text x="0" y="16" fontFamily="Arial,sans-serif" fontWeight="800" fontSize="18" fill="#1a1f71" letterSpacing="-0.5">VISA</text>
-                </svg>
-              </span>
-              {/* Mastercard */}
-              <span className="aw-pay-logo aw-pay-logo--mc" title="Mastercard">
-                <svg viewBox="0 0 38 24" width="26" height="16">
-                  <circle cx="14" cy="12" r="10" fill="#EB001B"/>
-                  <circle cx="24" cy="12" r="10" fill="#F79E1B"/>
-                  <path d="M19 4.8a10 10 0 0 1 0 14.4A10 10 0 0 1 19 4.8z" fill="#FF5F00"/>
-                </svg>
-              </span>
-              {/* Apple Pay */}
-              <span className="aw-pay-logo aw-pay-logo--apple" title="Apple Pay">
-                <svg viewBox="0 0 52 22" width="38" height="14">
-                  <text x="0" y="16" fontFamily="-apple-system,BlinkMacSystemFont,sans-serif" fontWeight="500" fontSize="13" fill="currentColor"> Pay</text>
-                  <path d="M8.2 3.2c.7-.8 1.1-1.9 1-3-.9.1-2 .6-2.6 1.4-.6.7-1.1 1.8-1 2.9 1 .1 2-.5 2.6-1.3z" fill="currentColor"/>
-                  <path d="M9.2 4.5c-1.4-.1-2.6.8-3.3.8-.7 0-1.8-.8-3-.7C1.4 4.7.1 5.6-.5 7c-1.2 2.2-.3 5.4.9 7.2.6.9 1.3 1.8 2.2 1.8.9 0 1.2-.6 2.3-.6 1.1 0 1.4.6 2.4.6.9 0 1.6-.9 2.2-1.8.7-1 1-2 1-2-2.2-.8-2.5-3.9-.3-5-.6-.8-1.6-1.3-2.6-1.3" fill="currentColor"/>
-                </svg>
-              </span>
-              {/* Google Pay */}
-              <span className="aw-pay-logo aw-pay-logo--gpay" title="Google Pay">
-                <svg viewBox="0 0 52 22" width="42" height="14">
-                  <text x="0" y="16" fontFamily="Arial,sans-serif" fontWeight="500" fontSize="13" fill="currentColor">G</text>
-                  <text x="10" y="16" fontFamily="Arial,sans-serif" fontWeight="400" fontSize="13" fill="currentColor">Pay</text>
-                  <circle cx="5" cy="10" r="5" fill="none" stroke="#4285F4" strokeWidth="1.8" clipPath="url(#gclip)"/>
-                  <path d="M5 5a5 5 0 0 1 4.5 2.8H5V10h5a5 5 0 0 1-10 0A5 5 0 0 1 5 5z" fill="none"/>
-                </svg>
-              </span>
-            </div>
-            <span className="aw-buy-card__cta">
-              Acquista
-              <svg viewBox="0 0 16 16" width="12" height="12" fill="none">
-                <path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-            </span>
+          <div className="aw-buy-card__text">
+            <span className="aw-buy-card__title">Acquista con carta</span>
+            <span className="aw-buy-card__sub">Crypto direttamente nel tuo wallet</span>
           </div>
+          <span className="aw-buy-card__cta">
+            Acquista
+            <svg viewBox="0 0 16 16" width="11" height="11" fill="none">
+              <path d="M3 8h10M9 4l4 4-4 4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </span>
+        </div>
+        {/* ── Riga 2: loghi metodi di pagamento — fascia dedicata ── */}
+        <div className="aw-buy-card__logos-row">
+          {/* Visa */}
+          <span className="aw-pay-logo aw-pay-logo--visa" title="Visa">
+            <svg viewBox="0 0 50 18" width="30" height="12">
+              <text x="1" y="14" fontFamily="Arial,Helvetica,sans-serif" fontWeight="800" fontSize="16" fill="#1a1f71" letterSpacing="-0.5">VISA</text>
+            </svg>
+          </span>
+          {/* Mastercard */}
+          <span className="aw-pay-logo aw-pay-logo--mc" title="Mastercard">
+            <svg viewBox="0 0 34 22" width="22" height="14">
+              <circle cx="12" cy="11" r="9" fill="#EB001B"/>
+              <circle cx="22" cy="11" r="9" fill="#F79E1B"/>
+              <path d="M17 3.8a9 9 0 0 1 0 14.4A9 9 0 0 1 17 3.8z" fill="#FF5F00"/>
+            </svg>
+          </span>
+          {/* Apple Pay — &#xF8FF; è il carattere Apple logo (U+F8FF PUA) renderizzato
+               correttamente da iOS Safari con -apple-system font. Approccio text-only:
+               zero path con coordinate negative, zero clip, zero rendering bug mobile. */}
+          <span className="aw-pay-logo aw-pay-logo--apple" title="Apple Pay">
+            <svg viewBox="0 0 44 16" width="40" height="14">
+              <text x="3" y="12" fontFamily="-apple-system,BlinkMacSystemFont,'SF Pro Text',Helvetica,sans-serif" fontSize="11" fontWeight="500" fill="white">&#xF8FF; Pay</text>
+            </svg>
+          </span>
+          {/* Google Pay */}
+          <span className="aw-pay-logo aw-pay-logo--gpay" title="Google Pay">
+            <svg viewBox="0 0 46 16" width="40" height="14">
+              <text x="2" y="12" fontFamily="Arial,Helvetica,sans-serif" fontSize="11" fontWeight="700" fill="#4285F4">G</text>
+              <text x="12" y="12" fontFamily="Arial,Helvetica,sans-serif" fontSize="11" fontWeight="400" fill="#202124">Pay</text>
+            </svg>
+          </span>
         </div>
       </button>
 
@@ -1082,19 +1076,15 @@ function OverviewView({ onNavigate, onSelectToken }: { onNavigate: (v: WalletSub
                   <path d="M19 4.8a10 10 0 0 1 0 14.4A10 10 0 0 1 19 4.8z" fill="#FF5F00"/>
                 </svg>
               </span>
-              <span className="aw-pay-logo aw-pay-logo--apple" title="Apple Pay" style={{ color: "rgba(255,255,255,0.85)" }}>
-                <svg viewBox="0 0 52 22" width="44" height="16">
-                  <text x="0" y="16" fontFamily="-apple-system,BlinkMacSystemFont,sans-serif" fontWeight="500" fontSize="13" fill="currentColor"> Pay</text>
-                  <path d="M8.2 3.2c.7-.8 1.1-1.9 1-3-.9.1-2 .6-2.6 1.4-.6.7-1.1 1.8-1 2.9 1 .1 2-.5 2.6-1.3z" fill="currentColor"/>
-                  <path d="M9.2 4.5c-1.4-.1-2.6.8-3.3.8-.7 0-1.8-.8-3-.7C1.4 4.7.1 5.6-.5 7c-1.2 2.2-.3 5.4.9 7.2.6.9 1.3 1.8 2.2 1.8.9 0 1.2-.6 2.3-.6 1.1 0 1.4.6 2.4.6.9 0 1.6-.9 2.2-1.8.7-1 1-2 1-2-2.2-.8-2.5-3.9-.3-5-.6-.8-1.6-1.3-2.6-1.3" fill="currentColor"/>
+              <span className="aw-pay-logo aw-pay-logo--apple" title="Apple Pay">
+                <svg viewBox="0 0 52 18" width="48" height="16">
+                  <text x="3" y="13" fontFamily="-apple-system,BlinkMacSystemFont,'SF Pro Text',Helvetica,sans-serif" fontSize="12" fontWeight="500" fill="white">&#xF8FF; Pay</text>
                 </svg>
               </span>
-              <span className="aw-pay-logo aw-pay-logo--gpay" title="Google Pay" style={{ color: "rgba(255,255,255,0.85)" }}>
-                <svg viewBox="0 0 52 22" width="48" height="16">
-                  <text x="10" y="16" fontFamily="Arial,sans-serif" fontWeight="400" fontSize="13" fill="currentColor">Pay</text>
-                  <text x="0" y="16" fontFamily="Arial,sans-serif" fontWeight="700" fontSize="13">
-                    <tspan fill="#4285F4">G</tspan>
-                  </text>
+              <span className="aw-pay-logo aw-pay-logo--gpay" title="Google Pay">
+                <svg viewBox="0 0 52 18" width="48" height="16">
+                  <text x="2" y="13" fontFamily="Arial,Helvetica,sans-serif" fontSize="12" fontWeight="700" fill="#4285F4">G</text>
+                  <text x="14" y="13" fontFamily="Arial,Helvetica,sans-serif" fontSize="12" fontWeight="400" fill="#202124">Pay</text>
                 </svg>
               </span>
             </div>
