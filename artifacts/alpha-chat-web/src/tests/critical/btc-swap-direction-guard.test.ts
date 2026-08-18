@@ -52,62 +52,130 @@ describe("_validateBtcToEvmDone — CASO A: vecchio USDT→BTC, Li.Fi restituisc
 
   it("la TX 96b55dc7 (incident BTC) non può mai produrre phase:completed su BTC→ETH", () => {
     // Simula esattamente il risultato Li.Fi dell'incidente diagnosticato
-    const lifiIncidentResult: Pick<LiFiStatusResult, "status" | "receivingChainId"> = {
+    // Fallisce a step 3 (MISMATCH chain) prima ancora di controllare txHash
+    const lifiIncidentResult: Pick<LiFiStatusResult, "status" | "receivingChainId" | "txHash"> = {
       status:           "DONE",
       receivingChainId: BTC_CHAIN_ID,   // Li.Fi ha trovato la TX come receiving di USDT→BTC
+      txHash:           undefined,       // nessun EVM txHash
     };
 
     const { valid } = _validateBtcToEvmDone(lifiIncidentResult, 1 /* ETH */);
-    expect(valid).toBe(false); // MUST NOT produce completed
+    expect(valid).toBe(false); // MUST NOT produce completed (MISMATCH chain)
   });
 
   it("receiving.chainId=BTC, swap destinazione Polygon(137) → MISMATCH", () => {
-    const result = { status: "DONE" as const, receivingChainId: BTC_CHAIN_ID };
+    const result = { status: "DONE" as const, receivingChainId: BTC_CHAIN_ID, txHash: undefined };
     const { valid } = _validateBtcToEvmDone(result, 137);
     expect(valid).toBe(false);
   });
 
   it("receiving.chainId=BTC, swap destinazione BSC(56) → MISMATCH", () => {
-    const result = { status: "DONE" as const, receivingChainId: BTC_CHAIN_ID };
+    const result = { status: "DONE" as const, receivingChainId: BTC_CHAIN_ID, txHash: undefined };
     const { valid } = _validateBtcToEvmDone(result, 56);
     expect(valid).toBe(false);
   });
 });
 
-describe("_validateBtcToEvmDone — CASO B: vero BTC→ETH completato", () => {
+describe("_validateBtcToEvmDone — CASO B: vero BTC→EVM completato (con destination txHash)", () => {
   /**
-   * Scenario: Li.Fi restituisce DONE con receiving.chainId = 1 (ETH).
+   * Scenario: Li.Fi restituisce DONE con receiving.chainId = EVM corretta
+   * E receiving.txHash presente.
    * RISULTATO ATTESO: COMPLETED (valid=true)
+   *
+   * FIX 1: receiving.txHash è ora obbligatorio per accettare DONE.
    */
-  it("DONE + receiving.chainId=1 (ETH) + capturedToChainId=1 → VALID, completed", () => {
-    const result: Pick<LiFiStatusResult, "status" | "receivingChainId"> = {
+  it("DONE + receiving.chainId=1 (ETH) + txHash presente → VALID, completed", () => {
+    const result: Pick<LiFiStatusResult, "status" | "receivingChainId" | "txHash"> = {
       status:           "DONE",
-      receivingChainId: 1, // ETH — receiving è la chain EVM di destinazione ✓
+      receivingChainId: 1,
+      txHash:           "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
     };
-    const capturedToChainId = 1;
-
-    const { valid, reason } = _validateBtcToEvmDone(result, capturedToChainId);
-
+    const { valid, reason } = _validateBtcToEvmDone(result, 1);
     expect(valid).toBe(true);
     expect(reason).toContain("VALID");
+    expect(reason).toContain("0xabcdef");
   });
 
-  it("DONE + receiving.chainId=137 (Polygon) + capturedToChainId=137 → VALID", () => {
-    const result = { status: "DONE" as const, receivingChainId: 137 };
+  it("DONE + receiving.chainId=137 (Polygon) + txHash presente → VALID", () => {
+    const result = { status: "DONE" as const, receivingChainId: 137, txHash: "0xpoly123" };
     const { valid } = _validateBtcToEvmDone(result, 137);
     expect(valid).toBe(true);
   });
 
-  it("DONE + receiving.chainId=56 (BSC) + capturedToChainId=56 → VALID", () => {
-    const result = { status: "DONE" as const, receivingChainId: 56 };
+  it("DONE + receiving.chainId=56 (BSC) + txHash presente → VALID", () => {
+    const result = { status: "DONE" as const, receivingChainId: 56, txHash: "0xbsc456" };
     const { valid } = _validateBtcToEvmDone(result, 56);
     expect(valid).toBe(true);
   });
 
-  it("DONE + receiving.chainId=42161 (Arbitrum) + capturedToChainId=42161 → VALID", () => {
-    const result = { status: "DONE" as const, receivingChainId: 42161 };
+  it("DONE + receiving.chainId=42161 (Arbitrum) + txHash presente → VALID", () => {
+    const result = { status: "DONE" as const, receivingChainId: 42161, txHash: "0xarb789" };
     const { valid } = _validateBtcToEvmDone(result, 42161);
     expect(valid).toBe(true);
+  });
+});
+
+describe("_validateBtcToEvmDone — FIX 1: DONE + chain corretta + txHash assente → NON completed", () => {
+  /**
+   * Scenario E (spec): Li.Fi restituisce DONE con receiving.chainId corretto
+   * MA receiving.txHash è assente/null/undefined.
+   *
+   * Prima del FIX 1: Alpha marcava "completed" senza prova della destination TX EVM.
+   * Dopo il FIX 1: Alpha continua il polling finché txHash non è presente.
+   *
+   * Regola assoluta: completed → destination TX EVM obbligatoria.
+   */
+  it("DONE + EVM chain corretta + txHash undefined → NON completed (Scenario E)", () => {
+    const result: Pick<LiFiStatusResult, "status" | "receivingChainId" | "txHash"> = {
+      status:           "DONE",
+      receivingChainId: 1,       // ETH ✓
+      txHash:           undefined, // ← assente
+    };
+    const { valid, reason } = _validateBtcToEvmDone(result, 1);
+    expect(valid).toBe(false);
+    expect(reason).toContain("receiving.txHash missing");
+  });
+
+  it("DONE + EVM chain corretta + txHash stringa vuota → NON completed", () => {
+    const result = { status: "DONE" as const, receivingChainId: 137, txHash: "" };
+    const { valid, reason } = _validateBtcToEvmDone(result, 137);
+    expect(valid).toBe(false);
+    expect(reason).toContain("receiving.txHash missing");
+  });
+
+  it("DONE + Polygon + txHash undefined → NON completed", () => {
+    const result = { status: "DONE" as const, receivingChainId: 56, txHash: undefined };
+    const { valid } = _validateBtcToEvmDone(result, 56);
+    expect(valid).toBe(false);
+  });
+
+  it("prima del FIX 1 questo sarebbe stato accettato, ora NON lo è", () => {
+    // Il vecchio codice non controllava txHash → valid: true anche senza prova
+    // Il nuovo codice richiede txHash → valid: false
+    const resultSenzaTxHash = {
+      status:           "DONE" as const,
+      receivingChainId: 1,
+      txHash:           undefined as string | undefined,
+    };
+    const { valid } = _validateBtcToEvmDone(resultSenzaTxHash, 1);
+    expect(valid).toBe(false); // ← comportamento corretto post-fix
+
+    // Con txHash è accettato:
+    const resultConTxHash = { ...resultSenzaTxHash, txHash: "0xevmTxHash" };
+    const { valid: validConHash } = _validateBtcToEvmDone(resultConTxHash, 1);
+    expect(validConHash).toBe(true); // ← completamento legittimo
+  });
+
+  it("la regola è assoluta: BTC input TX non può mai essere la destination TX EVM", () => {
+    // Il BTC txid della TX incidentata (96b55dc7...) non ha un txHash EVM
+    const resultConBtcTxid: Pick<LiFiStatusResult, "status" | "receivingChainId" | "txHash"> = {
+      status:           "DONE",
+      receivingChainId: 1,    // supponiamo chain corretta per questo test
+      // La TX BTC non ha un EVM txHash — la mancanza di txHash blocca il completed
+      txHash:           undefined,
+    };
+    const { valid } = _validateBtcToEvmDone(resultConBtcTxid, 1);
+    expect(valid).toBe(false); // non può produrre completed senza EVM txHash
   });
 });
 

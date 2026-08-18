@@ -273,6 +273,14 @@ export function useEvmSwapState(opts?: EvmSwapStateOpts): [EvmSwapStateValue, Ev
       if (finalState === "completed" || finalState === "failed") {
         localStorage.removeItem(EVM_SWAP_ACTIVE_KEY);
       }
+
+      // FIX 2: se lo swap BTC→EVM è ancora in corso (pending) dopo il reload,
+      // riavvia automaticamente il loop di polling ogni 30s.
+      // SICUREZZA: _runBtcPoll NON chiama sendBtcForSwap() — solo polling Li.Fi.
+      // Il BTC è già stato inviato al vault Thorchain prima del reload.
+      if (finalState === "pending" && isBtcChain(active.fromChainId) && active.txHash) {
+        _runBtcPoll(active.txHash, active.fromChainId, active.toChainId);
+      }
     };
 
     check();
@@ -540,6 +548,69 @@ export function useEvmSwapState(opts?: EvmSwapStateOpts): [EvmSwapStateValue, Ev
     }
   }, [effectiveAddress]);
 
+  // ── _runBtcPoll — hook-level, richiamabile sia da execute che da recovery ──
+  //
+  // FIX 2: estratto da execute per consentire il riavvio automatico del polling
+  // dopo un reload/chiusura browser, senza dover richiedere un secondo reload.
+  //
+  // SICUREZZA ASSOLUTA: questa funzione NON chiama mai sendBtcForSwap() né
+  // qualsiasi altra operazione che invii BTC. Gestisce ESCLUSIVAMENTE il polling
+  // dello stato Li.Fi di uno swap già avviato (BTC già inviato).
+  //
+  // FIX 1 integrato: _validateBtcToEvmDone ora richiede anche receiving.txHash —
+  // senza prova della destination TX EVM lo swap rimane in "pending/processing".
+  const _runBtcPoll = (txid: string, fromChainId: number, toChainId: number) => {
+    const poll = async () => {
+      if (!isMounted.current) return;
+      try {
+        const st = await getLiFiStatus(txid, fromChainId, toChainId);
+        if (st.status === "DONE") {
+          // ── Direction guard + destination TX guard (FIX 1 + FIX 2) ────────
+          const validation = _validateBtcToEvmDone(st, toChainId);
+
+          console.info(
+            "[AlphaSwap BTC-poll] Li.Fi DONE",
+            "| swap BTC→chain:", toChainId,
+            "| receiving.chainId:", st.receivingChainId,
+            "| sending.chainId:",   st.sendingChainId,
+            "| lifi.txHash:", st.txHash ?? "(none)",
+            "|", validation.valid ? "✓ VALID" : `✗ NOT-READY (${validation.reason})`,
+          );
+
+          if (!validation.valid) {
+            // DONE non appartiene a questo swap OPPURE manca la destination TX EVM:
+            // NON completare, NON rimuovere EVM_SWAP_ACTIVE_KEY → continuare polling.
+            if (isMounted.current) setTimeout(poll, 30_000);
+            return;
+          }
+
+          // DONE genuino + receivingChainId corretto + destinationTxHash presente.
+          // completed → prova verificabile della destination TX EVM garantita.
+          localStorage.removeItem(EVM_SWAP_ACTIVE_KEY);
+          if (isMounted.current) setSv(prev => ({
+            // FIX 1: st.txHash è receiving.txHash (EVM TX) — non la BTC input TX.
+            // _validateBtcToEvmDone garantisce st.txHash non-null a questo punto.
+            ...prev, phase: "completed", txHash: st.txHash!, error: null,
+          }));
+        } else if (st.status === "FAILED" || st.status === "INVALID") {
+          localStorage.removeItem(EVM_SWAP_ACTIVE_KEY);
+          // BTC già inviato al vault Thorchain — il bridge ha rifiutato lo swap.
+          // Thorchain rimborsa automaticamente il BTC all'indirizzo mittente (30-60 min).
+          // NON mostrare "Riprova" (eviterebbe un secondo invio BTC).
+          if (isMounted.current) setSv(prev => ({
+            ...prev, phase: "failed", error: { code: "BTC_BRIDGE_REFUND", message: "BTC_BRIDGE_REFUND" },
+          }));
+        } else {
+          // PENDING / NOT_FOUND — riprova tra 30s (Thorchain richiede 10-30 min)
+          if (isMounted.current) setTimeout(poll, 30_000);
+        }
+      } catch {
+        if (isMounted.current) setTimeout(poll, 30_000);
+      }
+    };
+    setTimeout(poll, 30_000); // prima verifica dopo 30s
+  };
+
   const execute = useCallback(async () => {
     if (_evmExecuting) return;
 
@@ -588,14 +659,17 @@ export function useEvmSwapState(opts?: EvmSwapStateOpts): [EvmSwapStateValue, Ev
 
       // Write-before-submit: persisti swap info prima di inviare
       const btcActiveSwap: EvmActiveSwap = {
-        routeId:     current.quote.routeId,
-        fromChainId: current.quote.fromChainId,
-        toChainId:   current.quote.toChainId,
-        fromToken:   current.quote.fromToken,
-        toToken:     current.quote.toToken,
-        fromAmount:  current.fromAmount,
-        toAmount:    current.quote.toAmount,
-        startedAt:   Date.now(),
+        routeId:          current.quote.routeId,
+        fromChainId:      current.quote.fromChainId,
+        toChainId:        current.quote.toChainId,
+        fromToken:        current.quote.fromToken,
+        toToken:          current.quote.toToken,
+        fromAmount:       current.fromAmount,
+        toAmount:         current.quote.toAmount,
+        startedAt:        Date.now(),
+        // ── Audit trail (FIX 2: persiste per recovery + debug incidenti) ──
+        btcDepositAddress: depositAddr,                   // vault Thorchain a cui viene inviato il BTC
+        toAddress:         effectiveAddress ?? undefined, // EVM recipient (0x...)
       };
       localStorage.setItem(EVM_SWAP_ACTIVE_KEY, JSON.stringify(btcActiveSwap));
 
@@ -604,60 +678,6 @@ export function useEvmSwapState(opts?: EvmSwapStateOpts): [EvmSwapStateValue, Ev
       // Helper: avvia polling Li.Fi per BTC→EVM (Thorchain, ~10-30 min)
       const capturedFromChainId = current.quote.fromChainId;
       const capturedToChainId   = current.quote.toChainId;
-      const startBtcPoll = (txid: string) => {
-        const poll = async () => {
-          if (!isMounted.current) return;
-          try {
-            const st = await getLiFiStatus(txid, capturedFromChainId, capturedToChainId);
-            if (st.status === "DONE") {
-              // ── REQUISITI 2-7: Direction guard BTC→EVM ────────────────────────
-              // Li.Fi può restituire DONE se txid è registrata come receiving di
-              // un vecchio swap EVM→BTC (direzione opposta). Verificare che
-              // receiving.chainId sia la chain EVM di destinazione corrente,
-              // non la BTC chain — altrimenti è un falso positivo.
-              const validation = _validateBtcToEvmDone(st, capturedToChainId);
-
-              console.info(
-                "[AlphaSwap BTC-poll] Li.Fi DONE",
-                "| swap BTC→chain:", capturedToChainId,
-                "| receiving.chainId:", st.receivingChainId,
-                "| sending.chainId:",   st.sendingChainId,
-                "| lifi.txHash:", st.txHash ?? "(none)",
-                "|", validation.valid ? "✓ VALID" : `✗ MISMATCH (${validation.reason})`,
-              );
-
-              if (!validation.valid) {
-                // DONE non appartiene a questo swap — NON completare [REQUISITO 5]
-                // NON rimuovere EVM_SWAP_ACTIVE_KEY — continuare polling
-                if (isMounted.current) setTimeout(poll, 30_000);
-                return;
-              }
-
-              // DONE genuino: receiving chain corrisponde alla destinazione EVM
-              localStorage.removeItem(EVM_SWAP_ACTIVE_KEY);
-              if (isMounted.current) setSv(prev => ({
-                // REQUISITO 7: txHash è la destination EVM TX, non la BTC input TX.
-                // Se Li.Fi non fornisce il txHash EVM di destinazione, lasciamo null.
-                ...prev, phase: "completed", txHash: st.txHash ?? null, error: null,
-              }));
-            } else if (st.status === "FAILED" || st.status === "INVALID") {
-              localStorage.removeItem(EVM_SWAP_ACTIVE_KEY);
-              // BTC già inviato al vault Thorchain — il bridge ha rifiutato lo swap.
-              // Thorchain rimborsa automaticamente il BTC all'indirizzo mittente entro 30-60 min.
-              // NON mostrare "Riprova" (evita invio di altro BTC).
-              if (isMounted.current) setSv(prev => ({
-                ...prev, phase: "failed", error: { code: "BTC_BRIDGE_REFUND", message: "BTC_BRIDGE_REFUND" },
-              }));
-            } else {
-              // PENDING / NOT_FOUND — riprova tra 30s (conferme BTC+Thorchain richiedono tempo)
-              setTimeout(poll, 30_000);
-            }
-          } catch {
-            if (isMounted.current) setTimeout(poll, 30_000);
-          }
-        };
-        setTimeout(poll, 30_000); // prima verifica dopo 30s
-      };
 
       try {
         const txid = await sendBtcFn({ toAddress: depositAddr, amountSat: BigInt(amtRaw) });
@@ -672,7 +692,7 @@ export function useEvmSwapState(opts?: EvmSwapStateOpts): [EvmSwapStateValue, Ev
         }
 
         if (isMounted.current) setSv(prev => ({ ...prev, phase: "submitted", txHash: txid }));
-        startBtcPoll(txid);
+        _runBtcPoll(txid, capturedFromChainId, capturedToChainId);
 
         // Tag la TX come swap in IDB — il tx-monitor la ritroverà e non sovrascriverà txType
         const toSymbol   = current.quote.toToken?.symbol;
@@ -951,7 +971,7 @@ export function useEvmSwapState(opts?: EvmSwapStateOpts): [EvmSwapStateValue, Ev
  * @internal Esportata con prefisso _ per i test; non usare in produzione al di fuori di useEvmSwapState.
  */
 export function _validateBtcToEvmDone(
-  result: Pick<LiFiStatusResult, "status" | "receivingChainId">,
+  result: Pick<LiFiStatusResult, "status" | "receivingChainId" | "txHash">,
   capturedToChainId: number,
 ): { valid: boolean; reason: string } {
   if (result.status !== "DONE") {
@@ -968,7 +988,17 @@ export function _validateBtcToEvmDone(
       reason: `MISMATCH — receiving.chainId=${rc} != capturedToChainId=${capturedToChainId}`,
     };
   }
-  return { valid: true, reason: "VALID — receiving.chainId matches destination" };
+  // FIX 1: receiving.txHash obbligatorio — senza prova della destination TX EVM
+  // non si può considerare lo swap definitivamente completato.
+  // Regola assoluta: BTC input TX ≠ EVM destination TX.
+  // completed → destination TX EVM obbligatoria.
+  if (!result.txHash) {
+    return {
+      valid:  false,
+      reason: "receiving.txHash missing — no verifiable proof of EVM payout (still processing)",
+    };
+  }
+  return { valid: true, reason: `VALID — receiving.chainId=${rc} matches, txHash=${result.txHash}` };
 }
 
 function resolveLiFiStatus(status: LiFiStatus): EvmSwapPhase {

@@ -1,0 +1,159 @@
+Procedi con i DUE FIX indicati dall’audit.
+
+NON fare ancora il test con fondi reali.
+
+FIX 1 — DONE senza destination TX
+
+Modifica il criterio di completamento BTC → EVM.
+
+Attualmente:
+
+status === DONE
++
+receiving.chainId === capturedToChainId
+→ completed
+
+Deve diventare:
+
+status === DONE
++
+receiving.chainId === capturedToChainId
++
+receiving.chainId presente
++
+receiving.txHash presente
+→ completed
+
+Se:
+
+status === DONE
+receiving.chainId === EVM corretta
+receiving.txHash === null/undefined
+
+NON impostare:
+
+phase = completed
+
+Deve invece:
+
+phase = processing/pending
+
+e continuare il polling.
+
+La regola deve essere assoluta:
+
+BTC input TX ≠ EVM destination TX
+
+e:
+
+completed → destination TX EVM obbligatoria
+
+Aggiungi test specifici per:
+
+* DONE + EVM chain + txHash presente → completed
+* DONE + EVM chain + txHash assente → NON completed
+* DONE + BTC receiving → NON completed
+* DONE + chain assente → NON completed
+* destination TX failed → NON completed
+
+FIX 2 — Recovery dopo reload
+
+Attualmente il recovery al mount fa una sola chiamata a getLiFiStatus().
+
+Correggere in modo che:
+
+EvmActiveSwap esiste
++
+txHash BTC presente
++
+swap non terminale
++
+BTC → EVM
+
+→ riavvii automaticamente startBtcPoll(txHash).
+
+Non deve essere necessario un secondo reload.
+
+Il comportamento deve essere:
+
+BTC inviato
+↓
+PWA/browser viene chiuso o ricaricato
+↓
+Alpha recupera EvmActiveSwap
+↓
+recupera BTC txHash
+↓
+riparte automaticamente polling ogni 30s
+↓
+provider processing
+↓
+provider DONE
+↓
+receiving.chainId corretta
+↓
+receiving.txHash presente
+↓
+destination TX verificabile
+↓
+completed
+
+IMPORTANTE — NON duplicare il pagamento
+
+Il recovery NON deve mai richiamare:
+
+sendBtcForSwap()
+
+Deve esclusivamente riprendere il polling dello swap esistente.
+
+Verifica esplicitamente che il reload non possa generare un secondo invio BTC.
+
+MIGLIORAMENTO AUDIT TRAIL
+
+Persisti anche:
+
+btcDepositAddress
+toAddress
+quote/order ID
+
+nell’EvmActiveSwap.
+
+Non è obbligatorio per il funzionamento, ma serve per poter ricostruire completamente un incidente.
+
+TEST
+
+Dopo i fix esegui:
+
+npm test
+
+e la suite critica.
+
+Voglio:
+
+* test precedenti: tutti PASS
+* nuovi test Scenario E: PASS
+* recovery post-reload: PASS
+* nessuna regressione
+* nessuna modifica al comportamento EVM→BTC
+
+NON FARE ANCORA
+
+NON eseguire swap reale.
+
+NON modificare fondi.
+
+NON fare retry della vecchia operazione.
+
+NON cambiare manualmente stati nel database.
+
+Dopo i fix restituisci:
+
+1. file modificati;
+2. diff concettuale;
+3. test aggiunti;
+4. test totali;
+5. risultato completo;
+6. conferma che il recovery non può effettuare un secondo BTC send;
+7. nuova classificazione READY / NOT READY.
+
+Solo se entrambi i fix sono PASS procederemo al test controllato BTC → EVM.

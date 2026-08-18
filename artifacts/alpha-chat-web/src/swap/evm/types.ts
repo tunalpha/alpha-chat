@@ -98,6 +98,11 @@ export interface EvmActiveSwap {
   fromAmount:   string;
   toAmount:     string;
   startedAt:    number;
+  // ── Audit trail — non necessari per il funzionamento, servono per ricostruire incidenti ──
+  /** Vault Thorchain/bridge a cui è stato inviato il BTC (da transactionRequest.to della quote). */
+  btcDepositAddress?: string;
+  /** Indirizzo EVM destinatario finale (0x...) — per verificare che i fondi arrivino al posto giusto. */
+  toAddress?: string;
 }
 
 // ── Error ─────────────────────────────────────────────────────────────────────
