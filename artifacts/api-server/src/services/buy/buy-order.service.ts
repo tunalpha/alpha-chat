@@ -31,11 +31,19 @@ function getProvider(providerId: string): IBuyProvider {
 // ── Supported assets ─────────────────────────────────────────────────────────
 
 export const BUY_SUPPORTED_ASSETS = [
-  { asset: "ETH",  network: "ethereum", label: "Ethereum",        decimals: 18 },
-  { asset: "USDT", network: "polygon",  label: "USDT (Polygon)",  decimals: 6  },
-  { asset: "USDT", network: "ethereum", label: "USDT (Ethereum)", decimals: 6  },
+  // Stesso catalogo asset dell'Alpha Wallet: l'on-ramp deve poter accreditare
+  // tutte le coin e token che il wallet mostra e gestisce, non solo la vecchia
+  // selezione iniziale.
   { asset: "BTC",  network: "bitcoin",  label: "Bitcoin",         decimals: 8  },
-  { asset: "MATIC",network: "polygon",  label: "Polygon (MATIC)", decimals: 18 },
+  { asset: "ETH",  network: "ethereum", label: "Ethereum",        decimals: 18 },
+  { asset: "USDT", network: "ethereum", label: "USDT (Ethereum)", decimals: 6  },
+  { asset: "USDC", network: "ethereum", label: "USDC (Ethereum)", decimals: 6  },
+  { asset: "POL",  network: "polygon",  label: "Polygon",         decimals: 18 },
+  { asset: "USDT", network: "polygon",  label: "USDT (Polygon)",  decimals: 6  },
+  { asset: "USDC", network: "polygon",  label: "USDC (Polygon)",  decimals: 6  },
+  { asset: "BNB",  network: "bsc",      label: "BNB Smart Chain", decimals: 18 },
+  { asset: "USDT", network: "bsc",      label: "USDT (BSC)",      decimals: 18 },
+  { asset: "USDC", network: "bsc",      label: "USDC (BSC)",      decimals: 18 },
 ] as const;
 
 export const BUY_SUPPORTED_FIATS = ["EUR", "USD"] as const;

@@ -13,6 +13,7 @@
 import React from "react";
 import { useBuyCryptoState } from "./useBuyCryptoState";
 import { BUY_STATUS_LABELS, type BuyAsset } from "./types";
+import { CoinIcon } from "../components/shared/CoinIcon";
 import { AlertTriangle, ArrowRight, CheckCircle, Clock, CreditCard, Loader2, RefreshCw } from "lucide-react";
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -97,9 +98,13 @@ export function BuyCryptoView({ onClose }: BuyCryptoViewProps) {
                 key={i}
                 className={`aw-buy-asset-btn${selectedAsset?.asset === a.asset && selectedAsset?.network === a.network ? " aw-buy-asset-btn--selected" : ""}`}
                 onClick={() => actions.selectAsset(a)}
+                aria-label={`Acquista ${a.asset} su ${a.network}`}
               >
-                <span className="aw-buy-asset-symbol">{a.asset}</span>
-                <span className="aw-buy-asset-net">{a.network}</span>
+                <CoinIcon symbol={a.asset} size={28} />
+                <span className="aw-buy-asset-copy">
+                  <span className="aw-buy-asset-symbol">{a.asset}</span>
+                  <span className="aw-buy-asset-net">{a.network}</span>
+                </span>
               </button>
             ))}
           </div>

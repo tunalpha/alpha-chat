@@ -116,6 +116,18 @@ describe("Buy Crypto — Route tests", () => {
     expect(Array.isArray(res.body.assets)).toBe(true);
     expect(res.body.fiats).toContain("EUR");
     expect(res.body.fiats).toContain("USD");
+    expect(res.body.assets).toEqual(expect.arrayContaining([
+      expect.objectContaining({ asset: "BTC",  network: "bitcoin" }),
+      expect.objectContaining({ asset: "ETH",  network: "ethereum" }),
+      expect.objectContaining({ asset: "POL",  network: "polygon" }),
+      expect.objectContaining({ asset: "BNB",  network: "bsc" }),
+      expect.objectContaining({ asset: "USDT", network: "ethereum" }),
+      expect.objectContaining({ asset: "USDT", network: "polygon" }),
+      expect.objectContaining({ asset: "USDT", network: "bsc" }),
+      expect.objectContaining({ asset: "USDC", network: "ethereum" }),
+      expect.objectContaining({ asset: "USDC", network: "polygon" }),
+      expect.objectContaining({ asset: "USDC", network: "bsc" }),
+    ]));
   });
 
   // T2 — GET /quote → 503 FIAT_BUY_NOT_ENABLED
