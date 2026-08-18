@@ -1,0 +1,90 @@
+APPROVATO — DEPLOY + SWITCH PROVIDER PER TEST CONTROLATO CHANGENOW
+
+Procedi con il deploy della FASE 1 ChangeNOW.
+
+AL MOMENTO DEL GO-LIVE, modifica la configurazione Provider Manager:
+
+Li.Fi:
+- status = DISABLED
+- isPrimary = false
+- isFallback = false
+
+ChangeNOW:
+- status = ENABLED
+- isPrimary = true
+- isFallback = false
+
+OBIETTIVO:
+Il test controllato deve utilizzare REALMENTE ChangeNOW.
+L'EVM Swap NON deve utilizzare Li.Fi durante il test.
+
+IMPORTANTE:
+- NON rimuovere Li.Fi dal codice.
+- NON modificare l'implementazione Li.Fi.
+- Li.Fi deve rimanere disponibile nel Provider Manager per poter essere riattivato successivamente.
+- NON modificare i pagamenti esistenti.
+- NON modificare WalletConnect.
+- NON modificare send/receive.
+- NON modificare BTC/LN payment flows.
+- NON modificare la card Acquista con carta.
+- NON implementare fiat/card in questa fase.
+
+FALLBACK:
+Durante questo test:
+- ChangeNOW è PRIMARY.
+- Nessun fallback automatico verso Li.Fi.
+- Se ChangeNOW fallisce PRIMA dell'invio BTC, lo swap deve rimanere in stato di errore controllato.
+- Se BTC è già stato inviato → fundsCommitted=true.
+- Dopo fundsCommitted=true NON deve mai essere chiamato Li.Fi.
+- Nessun secondo send.
+- Nessun secondo exchange.
+- Nessun nuovo deposit address.
+
+TEST REALE:
+Dopo il deploy NON eseguire automaticamente uno swap.
+Aspetta la mia conferma esplicita prima di inviare fondi reali.
+
+Prima verifica:
+1. Provider Manager:
+   Li.Fi = DISABLED
+   ChangeNOW = ENABLED + PRIMARY
+2. Frontend EVM Swap mostra il flusso ChangeNOW.
+3. Quote ChangeNOW funzionante.
+4. API key funzionante server-side.
+5. Deposit address ricevuto.
+6. Exchange ID persistito.
+7. Nessuna API key esposta.
+8. Nessuna regressione pagamenti.
+9. Notifiche ChangeNOW correttamente collegate.
+10. Cronologia ChangeNOW correttamente collegata.
+
+SOLO DOPO QUESTE VERIFICHE:
+attenderemo la mia autorizzazione per il test BTC reale con importo minimo.
+
+DOPO IL TEST REALE VERIFICARE:
+- BTC transaction hash
+- ChangeNOW exchange ID
+- status progression
+- destination EVM transaction hash
+- destination address
+- amount ricevuto
+- notifiche
+- cronologia
+- recovery
+- completed SOLO con destination TX hash verificabile
+- BTC TX NON utilizzata come destination TX
+
+DEPLOY REPORT:
+Al termine riportami:
+- deploy PASS/FAIL
+- provider configuration effettiva
+- ChangeNOW API connectivity
+- quote PASS/FAIL
+- frontend PASS/FAIL
+- notifications PASS/FAIL
+- history PASS/FAIL
+- tests
+- regressions
+- conferma che nessun fondo è stato movimentato AUTOMATICAMENTE.
+
+NON eseguire lo swap reale senza mia successiva autorizzazione.
