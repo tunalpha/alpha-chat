@@ -129,4 +129,11 @@ v1Router.use("/swap", swapRoutes);
 import evmSwapRoutes from "./evm-swap.routes";
 v1Router.use("/swap/evm", evmSwapRoutes);
 
+// Swap Provider Manager — infrastruttura admin per gestione provider EVM Swap.
+// ISOLATO da Li.Fi operativo, payment engine, USDA, MultiChain.
+// Solo admin autenticati possono leggere/modificare (requireAdmin nel router).
+// ChangeNOW DISABLED — nessuna API ChangeNOW chiamata.
+import swapProvidersRoutes from "./swap-providers.routes";
+v1Router.use("/swap/providers", swapProvidersRoutes);
+
 export default v1Router;

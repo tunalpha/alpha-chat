@@ -1,0 +1,130 @@
+APPROVATO — PROCEDI CON L'IMPLEMENTAZIONE.
+
+Confermo il piano architetturale esattamente come descritto.
+
+CONDIZIONI OBBLIGATORIE:
+
+1. LI.FI DEVE RIMANERE OPERATIVO
+Configurazione iniziale:
+- LI.FI = enabled
+- LI.FI = primary
+- LI.FI = not fallback
+- ChangeNOW = disabled
+- ChangeNOW = not primary
+- ChangeNOW = not fallback
+
+NON modificare il comportamento operativo di LI.FI.
+
+NON modificare:
+- lifi-client.ts
+- useEvmSwapState.ts
+- SwapView.tsx
+- EvmSwapView.tsx
+
+Il nuovo Provider Manager deve essere infrastruttura isolata e non deve intercettare il traffico LI.FI attuale.
+
+2. PAGAMENTI = COMPLETAMENTE FUORI SCOPE
+
+NON modificare nessun flusso di pagamento esistente.
+
+ZERO modifiche a:
+- send
+- receive
+- direct transfer
+- USDA
+- USDT
+- USDC
+- POL
+- BNB
+- WalletConnect
+- signing
+- balance
+- transaction history
+- payment polling
+- payment notifications
+- payment database
+- fee/accounting
+
+Se durante l'implementazione emerge la necessità di modificare un file appartenente ai Payments:
+STOP e segnalalo invece di modificarlo.
+
+3. CHANGE NOW
+
+Creare solo l'infrastruttura/configurazione.
+
+NON:
+- usare API key
+- chiamare API ChangeNOW
+- creare quote
+- creare exchange
+- inviare fondi
+- fare test reali
+
+ChangeNOW deve rimanere DISABLED.
+
+4. FALLBACK — REGOLA CRITICA
+
+Il fallback automatico è consentito SOLO quando è certo che il provider primario abbia fallito PRIMA di qualsiasi movimento irreversibile di fondi.
+
+Se:
+fundsCommitted = true
+oppure
+stato = uncertain
+oppure
+non è possibile stabilire con certezza se i fondi siano stati inviati
+
+→ FALLBACK BLOCCATO.
+
+NON chiamare il secondo provider.
+
+NON effettuare un secondo send.
+
+5. ADMIN SECURITY
+
+Tutte le modifiche devono essere:
+- admin authenticated
+- backend enforced
+- validate server-side
+- audit logged
+
+Nessuna configurazione provider deve essere controllabile dal frontend di un utente normale.
+
+6. TEST
+
+Prima e dopo l'implementazione eseguire:
+- test suite completa
+- TypeScript
+- build
+- test specifici del Provider Manager
+
+Richiedo ZERO regressioni.
+
+7. VERIFICA DIFF
+
+Alla fine mostrami esplicitamente:
+
+PAYMENTS MODIFIED:
+0
+
+LI.FI OPERATIONAL FILES MODIFIED:
+0
+
+CHANGE NOW API CALLS:
+0
+
+REAL FUNDS MOVED:
+0
+
+DEPLOY:
+NO
+
+Inoltre mostra:
+- file creati
+- file modificati
+- test totali
+- test PASS
+- TypeScript PASS/FAIL
+- build PASS/FAIL
+- configurazione finale dei provider.
+
+PROCEDI.

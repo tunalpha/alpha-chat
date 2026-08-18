@@ -38,6 +38,7 @@ import EvmSwapMonitor   from '@/pages/evm-swap-monitor';
 import SwapMonitor       from '@/pages/swap-monitor';
 import SwapRevenue       from '@/pages/swap-revenue';
 import SwapFeeConfig     from '@/pages/swap-fee-config';
+import SwapProviders     from '@/pages/swap-providers';
 
 const queryClient = new QueryClient();
 
@@ -72,6 +73,7 @@ function ProtectedRoutes() {
         <Route path="/evm-swap-monitor"    component={EvmSwapMonitor} />
         <Route path="/swap-revenue"        component={SwapRevenue}    />
         <Route path="/swap-fee-config"     component={SwapFeeConfig}  />
+        <Route path="/swap-providers"      component={SwapProviders}  />
         <Route path="/access-log" component={AccessLogPage} />
         <Route path="/performance" component={PerformancePage} />
         <Route component={NotFound} />

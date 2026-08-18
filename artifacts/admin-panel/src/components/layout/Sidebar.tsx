@@ -60,6 +60,7 @@ const navItems = [
   { href: "/evm-swap-monitor",    label: "EVM Swap Monitor",  icon: ArrowLeftRight  },
   { href: "/swap-revenue",        label: "Swap Revenue",      icon: TrendingUp      },
   { href: "/swap-fee-config",     label: "Swap Fee Config",   icon: ArrowLeftRight  },
+  { href: "/swap-providers",      label: "Swap Providers",    icon: ArrowLeftRight  },
 ];
 
 interface SidebarProps {
