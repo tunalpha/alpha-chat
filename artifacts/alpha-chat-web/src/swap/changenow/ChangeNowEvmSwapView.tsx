@@ -28,7 +28,7 @@ import React, {
 } from "react";
 import {
   ChevronDown, Check, Loader2, CheckCircle,
-  AlertTriangle, ArrowRight, Info,
+  AlertTriangle, ArrowRight, ArrowDownUp, Info,
 } from "lucide-react";
 import {
   useChangeNowEvmSwapState,
@@ -41,6 +41,7 @@ import {
 } from "./evm-types.js";
 import { createAlphaWalletViemClient } from "../evm/alpha-wallet-evm-adapter.js";
 import { useEvmTokenBalances } from "../evm/useEvmTokenBalances.js";
+import { NATIVE_ADDRESS, type EvmToken } from "../evm/types.js";
 import { parseEther, parseUnits } from "viem";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -171,7 +172,7 @@ function fmtFiat(amount: number, price: number, currency: FiatCurrency): string 
 function CnTokenCard({
   label, token, amount, onAmountChange, onTokenClick,
   balance, balLoading, onPct, minAmount,
-  priceUSD, priceEUR, fiatCurrency, onFiatToggle,
+  priceUSD, priceEUR, fiatCurrency, onFiatChange,
 }: {
   label:           string;
   token:           CnEvmToken | null;
@@ -185,14 +186,14 @@ function CnTokenCard({
   priceUSD?:       number | null;
   priceEUR?:       number | null;
   fiatCurrency?:   FiatCurrency;
-  onFiatToggle?:   () => void;
+  onFiatChange?:   (currency: FiatCurrency) => void;
 }) {
   const [imgErr, setImgErr] = useState(false);
   const logo       = token ? COIN_LOGOS[token.ticker] : null;
   const chainColor = token ? (CHAIN_COLORS[token.chainId] ?? "#888") : "#888";
   const hasBalance = balance !== undefined;
   const balStr     = hasBalance && token ? fmtBal(balance, token.decimals) : null;
-  const hasPct     = !!onPct && hasBalance && (balance ?? 0n) > 0n;
+  const hasSpendableBalance = hasBalance && (balance ?? 0n) > 0n;
 
   // Calcola valore fiat — strip "≈ " e altri non-numerici (per la card TO)
   const numAmount  = parseFloat((amount ?? "0").replace(/[^0-9.]/g, "") || "0");
@@ -211,7 +212,7 @@ function CnTokenCard({
             ? <span style={{ fontSize: 11, color: "rgba(255,255,255,.35)" }}>Saldo…</span>
             : balStr !== null && token
               ? <span style={{ fontSize: 12 }}>{balStr} {token.symbol}</span>
-              : null
+              : <span style={{ fontSize: 11, color: "rgba(255,255,255,.3)" }}>Saldo non disponibile</span>
           }
         </div>
       </div>
@@ -253,49 +254,51 @@ function CnTokenCard({
               />
             : <span className="asw-amount-display">{amount ?? "—"}</span>
           }
-          {/* Valore fiat — clic per toggle USD/EUR */}
-          {fiatStr && (
-            <div
-              onClick={onFiatToggle}
-              style={{
-                fontSize: 11, color: "#a78bfa", marginTop: 2, textAlign: "right",
-                cursor: onFiatToggle ? "pointer" : "default",
-                userSelect: "none",
-              }}
-              title={onFiatToggle ? "Clicca per cambiare valuta" : undefined}
-            >
-              ≈ {fiatStr}
-            </div>
-          )}
-          {!fiatStr && minAmount && minAmount > 0 && (
-            <div style={{ fontSize: 10, color: "rgba(255,255,255,.3)", marginTop: 2, textAlign: "right" }}>
-              min {fmtToken(minAmount, token?.decimals ?? 6)} {token?.symbol}
+          {/* Valore + scelta fiat esplicita: non un gesto nascosto sul prezzo. */}
+          {onFiatChange && (
+            <div className="asw-fiat-row">
+              <div className="asw-fiat-switch" aria-label="Valuta del controvalore">
+                <button
+                  type="button"
+                  className={`asw-fiat-btn${fiatCurrency === "USD" ? " asw-fiat-btn--active" : ""}`}
+                  onClick={() => onFiatChange("USD")}
+                  aria-pressed={fiatCurrency === "USD"}
+                >
+                  $ USD
+                </button>
+                <button
+                  type="button"
+                  className={`asw-fiat-btn${fiatCurrency === "EUR" ? " asw-fiat-btn--active" : ""}`}
+                  onClick={() => onFiatChange("EUR")}
+                  aria-pressed={fiatCurrency === "EUR"}
+                >
+                  € EUR
+                </button>
+              </div>
+              <span className="asw-fiat-value">{fiatStr ? `≈ ${fiatStr}` : "—"}</span>
             </div>
           )}
         </div>
       </div>
 
       {/* min amount sotto il fiat (se fiat è presente) */}
-      {fiatStr && minAmount && minAmount > 0 && (
+       {minAmount && minAmount > 0 && (
         <div style={{ fontSize: 10, color: "rgba(255,255,255,.3)", textAlign: "right", marginTop: 2 }}>
           min {fmtToken(minAmount, token?.decimals ?? 6)} {token?.symbol}
         </div>
       )}
 
-      {/* Bottoni % / MAX */}
-      {hasPct && (
-        <div style={{ display: "flex", gap: 6, marginTop: 10, paddingTop: 10, borderTop: "1px solid rgba(255,255,255,.07)" }}>
+       {/* Scorciatoie sempre visibili; attive solo quando il saldo on-chain è noto. */}
+       {onPct && (
+         <div className="asw-shortcuts">
           {PCT_OPTIONS.map(([pct, lbl]) => (
             <button
               key={pct}
               type="button"
               onClick={() => onPct!(pct)}
-              style={{
-                flex: 1, fontSize: 12, fontWeight: 600, padding: "5px 0",
-                borderRadius: 8, border: "1px solid rgba(255,255,255,.12)",
-                background: "rgba(255,255,255,.06)", color: "rgba(255,255,255,.7)",
-                cursor: "pointer", letterSpacing: ".2px",
-              }}
+               className="asw-shortcut-btn"
+               disabled={!hasSpendableBalance}
+               title={hasSpendableBalance ? `Usa il ${lbl} del saldo disponibile` : "Saldo non ancora disponibile"}
             >
               {lbl}
             </button>
@@ -346,22 +349,33 @@ export function ChangeNowEvmSwapView({
   const fromPrice = useCnTokenPrice(state.fromToken);
   const toPrice   = useCnTokenPrice(state.toToken);
   const [fiatCurrency, setFiatCurrency] = useState<FiatCurrency>("USD");
-  const toggleFiat = useCallback(() => setFiatCurrency(c => c === "USD" ? "EUR" : "USD"), []);
+  const setFiatCurrencyForCard = useCallback((currency: FiatCurrency) => setFiatCurrency(currency), []);
 
   // ── Flags ─────────────────────────────────────────────────────────────────
   const isBtcFrom   = state.fromToken?.ticker === "btc";
   const isBtcTo     = state.toToken?.ticker   === "btc";
   const effectiveAddr = destinationAddr ?? undefined;
+  const selectedBalanceToken: EvmToken[] = state.fromToken && !isBtcFrom
+    ? [{
+        chainId: state.fromToken.chainId,
+        address: state.fromToken.isNative ? NATIVE_ADDRESS : state.fromToken.contractAddress!,
+        symbol: state.fromToken.symbol,
+        name: state.fromToken.name,
+        decimals: state.fromToken.decimals,
+        isNative: state.fromToken.isNative,
+      }]
+    : [];
   const { map: balances, loading: evmBalLoading } = useEvmTokenBalances(
     isBtcFrom ? 137 : (state.fromToken?.chainId ?? 137), // no-op chain quando BTC
-    isBtcFrom ? undefined : effectiveAddr                // skip fetch per BTC
+    isBtcFrom ? undefined : effectiveAddr,               // skip fetch per BTC
+    selectedBalanceToken,
   );
 
   // Balance effettivo: BTC sat→BigInt oppure EVM
   const fromBalance: bigint | undefined = isBtcFrom
     ? (btcBalanceSat !== undefined ? BigInt(btcBalanceSat) : undefined)
     : state.fromToken
-      ? balances[`${state.fromToken.chainId}:${state.fromToken.contractAddress ?? "native"}`]
+      ? balances.get(state.fromToken.isNative ? NATIVE_ADDRESS : state.fromToken.contractAddress!)
       : undefined;
   const balLoading = isBtcFrom ? false : evmBalLoading;
 
@@ -389,6 +403,19 @@ export function ChangeNowEvmSwapView({
       actions.setFromAmount(amount > 0 ? amount.toFixed(Math.min(decimals, 8)) : "");
     }
   }, [fromBalance, state.fromToken, btcBalanceSat, actions]);
+
+  const canInvertDirection = !state.exchange
+    && ["idle", "ready", "pair_unavailable"].includes(state.uiState)
+    && !!state.fromToken
+    && !!state.toToken
+    && state.fromToken.ticker !== state.toToken.ticker;
+  const handleInvertDirection = useCallback(() => {
+    if (!canInvertDirection) return;
+    autoQuotedRef.current = false;
+    setFromMenuOpen(false);
+    setToMenuOpen(false);
+    actions.invertDirection();
+  }, [actions, canInvertDirection]);
 
   // ── Auto-check pair quando cambiano token (senza vincoli su uiState) ─────────
   useEffect(() => {
@@ -844,7 +871,7 @@ export function ChangeNowEvmSwapView({
             priceUSD={fromPrice.priceUSD}
             priceEUR={fromPrice.priceEUR}
             fiatCurrency={fiatCurrency}
-            onFiatToggle={toggleFiat}
+            onFiatChange={setFiatCurrencyForCard}
           />
           {fromMenuOpen && (
             <div style={{
@@ -884,9 +911,18 @@ export function ChangeNowEvmSwapView({
           )}
         </div>
 
-        {/* ── Arrow ─────────────────────────────────────────────────────── */}
-        <div style={{ textAlign: "center", margin: "-4px 0" }}>
-          <ArrowRight size={18} style={{ color: "rgba(255,255,255,.3)" }} />
+        {/* ── Direction switch: operazione atomica, bloccata dopo create ─── */}
+        <div className="asw-dir-wrap">
+          <button
+            type="button"
+            className="asw-dir-btn"
+            onClick={handleInvertDirection}
+            disabled={!canInvertDirection}
+            aria-label="Inverti token di partenza e arrivo"
+            title={canInvertDirection ? "Inverti direzione" : "Direzione bloccata durante uno swap attivo"}
+          >
+            <ArrowDownUp size={18} aria-hidden="true" />
+          </button>
         </div>
 
         {/* ── TO card ───────────────────────────────────────────────────── */}
@@ -899,7 +935,7 @@ export function ChangeNowEvmSwapView({
             priceUSD={toPrice.priceUSD}
             priceEUR={toPrice.priceEUR}
             fiatCurrency={fiatCurrency}
-            onFiatToggle={toggleFiat}
+            onFiatChange={setFiatCurrencyForCard}
           />
           {toMenuOpen && (
             <div style={{

@@ -109,6 +109,7 @@
 - [Alpha Swap V1 Hardening](alpha-swap-v1-hardening.md) — refund key HMAC-SHA256 server-side; write-before-submit; idempotency_key UUID; reconciler 30s; GET /active recovery; 63 test T1-T20 PASS
 - [ChangeNOW FASE 1 — BTC↔EVM](changenow-fase1.md) — invarianti btcTxHash≠destTx; fundsCommitted write-before-submit; API key server-only; Li.Fi files invariati; 28 test PASS
 - [ChangeNOW EVM — Fixed-Rate Requirement](changenow-evm-fixed-rate.md) — EVM→EVM richiede fixed-rate; floating-rate (/v1/transactions) → 404; cnGetFixedRateAmount+cnCreateFixedRateTransaction obbligatori
+- [ChangeNOW token balance sources](changenow-token-balances.md) — il catalogo ChangeNOW può usare contratti diversi da Li.Fi; interrogare il contratto del token selezionato
 - [ChangeNOW Fee Architecture](changenow-fee-architecture.md) — NESSUNA fee Alpha su flussi CN; 0,40% Partner share da ChangeNOW direttamente; FEE ARCHITECTURE=PASS
 - [ChangeNOW EVM provider bug](changenow-evm-provider-bug.md) — /swap/providers admin-only → sempre "lifi"; fix: query modello diretta in getPublicSwapConfig (no cross-service import — bug Vitest ESM)
 - [EVM Swap Tracking](evm-swap-tracking.md) — evm_swaps aveva 0 record: SUPPORTED_CHAINS rifiutava BTC (toChainId=0); .catch(()=>null) inghiottiva tutto; window.__VITE_API_BASE__ mai impostata
@@ -155,5 +156,4 @@
 - [MC sign-poll Load failed fix](mc-poll-load-failed-fix.md) — catch polling post-firma: `!code && isNetworkError → continue`; errori applicativi con .code sempre fatali
 - [MC Send State Machine — confirming timing](mc-send-state-machine.md) — setSignPhase("confirming") nel .then() di sendTransaction, mai sincrono dopo fire-and-forget; guard anti-regressione; localStorage signed:true nel .then()
 - [Alpha Swap CSS + vitest timeout](alpha-swap-css-vitest.md) — asw-* classes in AlphaWalletPage.css; vitest testTimeout alzato a 15000 per barrel ESM import
-- [EvmFailedView error prop unused bug](evm-failed-view-prop.md) — `error` prop dichiarato ma ignorato in JSX; messaggio sempre hardcoded; fix: usare `humanizeEvmError(error)` nel componente
 - [iOS PWA notification icon](ios-pwa-notif-icon.md) — iOS mostra sempre l'icona app nelle push notification PWA; `icon` field ignorato; "from [App Name]" è sistema iOS, non modificabile

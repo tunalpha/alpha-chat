@@ -6,7 +6,7 @@
  */
 
 import { useState, useEffect } from "react";
-import { getTokensForChain } from "./types.js";
+import { getTokensForChain, type EvmToken } from "./types.js";
 
 // ── Costanti RPC ─────────────────────────────────────────────────────────────
 
@@ -65,15 +65,30 @@ export interface BalancesState {
  * Fetch dei saldi EVM (nativo + ERC-20) per una chain e un indirizzo.
  * Si re-esegue automaticamente quando cambia chainId o address.
  */
-export function useEvmTokenBalances(chainId: number, address: string | undefined): BalancesState {
+export function useEvmTokenBalances(
+  chainId: number,
+  address: string | undefined,
+  additionalTokens: readonly EvmToken[] = [],
+): BalancesState {
   const [state, setState] = useState<BalancesState>({ map: new Map(), loading: false });
+  // ChangeNOW ha alcuni contratti diversi dal catalogo Li.Fi (es. USDC Polygon).
+  // Usiamo una chiave stabile, non la reference dell'array, per evitare fetch infiniti.
+  const additionalTokenKey = additionalTokens
+    .filter(t => t.chainId === chainId)
+    .map(t => `${t.chainId}:${t.address.toLowerCase()}`)
+    .sort()
+    .join("|");
 
   useEffect(() => {
     if (!address) { setState({ map: new Map(), loading: false }); return; }
     // BTC non è una chain EVM — nessun RPC call; resetta lo stato per evitare saldo stale
     if (!CHAIN_RPC[chainId]?.length) { setState({ map: new Map(), loading: false }); return; }
 
-    const tokens = getTokensForChain(chainId);
+    const knownTokens = getTokensForChain(chainId);
+    const tokens = [...knownTokens, ...additionalTokens.filter(t => t.chainId === chainId)]
+      .filter((token, index, all) =>
+        all.findIndex(other => other.address.toLowerCase() === token.address.toLowerCase()) === index
+      );
     let cancelled = false;
     // Cancella subito il saldo vecchio — mai mostrare saldo Polygon mentre si aspetta Ethereum
     setState({ map: new Map(), loading: true });
@@ -104,7 +119,7 @@ export function useEvmTokenBalances(chainId: number, address: string | undefined
     });
 
     return () => { cancelled = true; };
-  }, [chainId, address]);
+  }, [chainId, address, additionalTokenKey]);
 
   return state;
 }

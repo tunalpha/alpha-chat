@@ -2483,6 +2483,76 @@
   justify-content: flex-end;
 }
 
+.asw-fiat-row {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  margin-top: 5px;
+  min-height: 24px;
+}
+
+.asw-fiat-switch {
+  display: inline-flex;
+  padding: 2px;
+  gap: 2px;
+  border: 1px solid rgba(255,255,255,.10);
+  border-radius: 7px;
+  background: rgba(255,255,255,.035);
+}
+
+.asw-fiat-btn,
+.asw-shortcut-btn {
+  border: 0;
+  font: inherit;
+  cursor: pointer;
+}
+
+.asw-fiat-btn {
+  padding: 3px 5px;
+  border-radius: 5px;
+  background: transparent;
+  color: rgba(255,255,255,.42);
+  font-size: 9px;
+  font-weight: 750;
+  letter-spacing: .1px;
+}
+
+.asw-fiat-btn--active {
+  color: #fff;
+  background: rgba(139,92,246,.55);
+}
+
+.asw-fiat-value {
+  color: #a78bfa;
+  font-size: 11px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.asw-shortcuts {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid rgba(255,255,255,.07);
+}
+
+.asw-shortcut-btn {
+  padding: 6px 0;
+  border: 1px solid rgba(255,255,255,.13);
+  border-radius: 8px;
+  background: rgba(255,255,255,.06);
+  color: rgba(255,255,255,.78);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .15px;
+}
+
+.asw-shortcut-btn:hover:not(:disabled) { background: rgba(139,92,246,.23); }
+.asw-shortcut-btn:disabled { cursor: not-allowed; color: rgba(255,255,255,.25); }
+
 /* ── Direction button ──────────────────────────────────────────────────────── */
 .asw-dir-wrap {
   display: flex;

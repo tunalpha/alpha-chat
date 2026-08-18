@@ -215,6 +215,8 @@ export interface CnEvmSwapState {
 export interface CnEvmSwapActions {
   setFromToken:    (t: CnEvmToken) => void;
   setToToken:      (t: CnEvmToken) => void;
+  /** Inverte la coppia solo prima della creazione dell'exchange. */
+  invertDirection: () => void;
   setFromAmount:   (a: string) => void;
   checkPair:       () => Promise<void>;
   fetchQuote:      () => Promise<void>;
@@ -480,6 +482,32 @@ export function useChangeNowEvmSwapState(
       ...prev, toToken: t, quote: null, pairAvailable: null,
       minAmount: null, error: null, uiState: "idle",
     }));
+  }, []);
+
+  const invertDirection = useCallback(() => {
+    setState(prev => {
+      // Dopo la creazione l'ordine e il suo indirizzo di deposito non sono reversibili.
+      // Lasciamo intatti exchange, recovery locale e polling.
+      const canInvert = !prev.exchange
+        && ["idle", "ready", "pair_unavailable"].includes(prev.uiState)
+        && prev.fromToken
+        && prev.toToken
+        && prev.fromToken.ticker !== prev.toToken.ticker;
+      if (!canInvert) return prev;
+
+      return {
+        ...prev,
+        fromToken:     prev.toToken,
+        toToken:       prev.fromToken,
+        // L'importo e la quote dipendono da decimali, saldo e direzione: mai riusarli.
+        fromAmount:    "",
+        quote:         null,
+        pairAvailable: null,
+        minAmount:     null,
+        error:         null,
+        uiState:       "idle",
+      };
+    });
   }, []);
 
   const setFromAmount = useCallback((a: string) => {
@@ -883,6 +911,7 @@ export function useChangeNowEvmSwapState(
   const actions: CnEvmSwapActions = {
     setFromToken,
     setToToken,
+    invertDirection,
     setFromAmount,
     checkPair,
     fetchQuote,
