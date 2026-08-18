@@ -54,6 +54,15 @@ export interface ISwapProviderConfig {
   /** Note interne (non esposte al frontend utente) */
   notes?: string;
 
+  /**
+   * API key del provider — write-only.
+   * select:false → NON inclusa nelle query normali.
+   * Letta esplicitamente solo da changenow.service.ts tramite .select("+apiKey").
+   * MAI restituita nelle risposte HTTP. MAI loggata.
+   * Priorità: process.env.CHANGENOW_API_KEY > apiKey DB.
+   */
+  apiKey?: string;
+
   createdAt: Date;
   updatedAt: Date;
   updatedBy?: string;
@@ -69,6 +78,9 @@ const schema = new Schema<ISwapProviderConfig>(
     isPrimary:      { type: Boolean, default: false, index: true },
     isFallback:     { type: Boolean, default: false },
     notes:          { type: String },
+    // select:false → mai inclusa nelle query normali; letta solo esplicitamente
+    // MAI restituita nelle risposte HTTP — solo hasApiKey:boolean viene esposto
+    apiKey:         { type: String, select: false },
     updatedBy:      { type: String },
     updatedByEmail: { type: String },
   },
