@@ -90,11 +90,88 @@ const CHAIN_COLORS: Record<number, string> = {
 
 const PCT_OPTIONS: [number, string][] = [[25, "25%"], [50, "50%"], [75, "75%"], [100, "MAX"]];
 
+// ── Fiat price ────────────────────────────────────────────────────────────────
+
+type FiatCurrency = "USD" | "EUR";
+
+interface CnTokenPriceState {
+  priceUSD: number | null;
+  priceEUR: number | null;
+  loading:  boolean;
+}
+
+/** Fetch prezzo USD + EUR per qualsiasi token della ChangeNOW EVM view.
+ *  BTC → CoinGecko; EVM → li.quest (stesso endpoint di EvmSwapView Li.Fi). */
+function useCnTokenPrice(token: CnEvmToken | null): CnTokenPriceState {
+  const [state, setState] = useState<CnTokenPriceState>({ priceUSD: null, priceEUR: null, loading: false });
+
+  useEffect(() => {
+    if (!token) { setState({ priceUSD: null, priceEUR: null, loading: false }); return; }
+    let cancelled = false;
+    setState(prev => ({ ...prev, loading: true }));
+
+    (async () => {
+      try {
+        if (token.ticker === "btc") {
+          const res = await fetch(
+            "https://api.coingecko.com/api/v3/simple/price?ids=bitcoin&vs_currencies=usd,eur",
+            { signal: AbortSignal.timeout(6000) }
+          );
+          if (!res.ok || cancelled) return;
+          const data = await res.json() as { bitcoin?: { usd?: number; eur?: number } };
+          if (!cancelled) setState({ priceUSD: data.bitcoin?.usd ?? null, priceEUR: data.bitcoin?.eur ?? null, loading: false });
+          return;
+        }
+        // EVM token — usa li.quest (no chiave richiesta)
+        const addr = token.isNative
+          ? "0x0000000000000000000000000000000000000000"
+          : token.contractAddress;
+        const res = await fetch(
+          `https://li.quest/v1/token?chain=${token.chainId}&token=${addr}`,
+          { headers: { Accept: "application/json" }, signal: AbortSignal.timeout(5000) }
+        );
+        if (!res.ok || cancelled) return;
+        const data = await res.json() as { priceUSD?: string };
+        const usd  = parseFloat(data.priceUSD ?? "0");
+        if (!isFinite(usd) || usd <= 0 || cancelled) return;
+
+        let eurRate = 0.92;
+        try {
+          const fx = await fetch("https://open.er-api.com/v6/latest/USD", { signal: AbortSignal.timeout(3000) });
+          if (fx.ok) {
+            const d = await fx.json() as { rates?: Record<string, number> };
+            eurRate = d.rates?.EUR ?? 0.92;
+          }
+        } catch { /* usa tasso fisso 0.92 */ }
+
+        if (!cancelled) setState({ priceUSD: usd, priceEUR: usd * eurRate, loading: false });
+      } catch {
+        if (!cancelled) setState(prev => ({ ...prev, loading: false }));
+      }
+    })();
+
+    return () => { cancelled = true; };
+  }, [token?.ticker]);
+
+  return state;
+}
+
+/** Formatta il valore fiat: es. "$23.45", "€1,204" */
+function fmtFiat(amount: number, price: number, currency: FiatCurrency): string {
+  const val = amount * price;
+  const sym = currency === "EUR" ? "€" : "$";
+  if (!isFinite(val) || val <= 0) return "";
+  if (val < 0.01) return `<${sym}0.01`;
+  if (val < 1000) return `${sym}${val.toFixed(2)}`;
+  return `${sym}${val.toLocaleString("en-US", { maximumFractionDigits: 0 })}`;
+}
+
 // ── Token card (input FROM / display TO) ─────────────────────────────────────
 
 function CnTokenCard({
   label, token, amount, onAmountChange, onTokenClick,
   balance, balLoading, onPct, minAmount,
+  priceUSD, priceEUR, fiatCurrency, onFiatToggle,
 }: {
   label:           string;
   token:           CnEvmToken | null;
@@ -105,6 +182,10 @@ function CnTokenCard({
   balLoading?:     boolean;
   onPct?:          (pct: number) => void;
   minAmount?:      number | null;
+  priceUSD?:       number | null;
+  priceEUR?:       number | null;
+  fiatCurrency?:   FiatCurrency;
+  onFiatToggle?:   () => void;
 }) {
   const [imgErr, setImgErr] = useState(false);
   const logo       = token ? COIN_LOGOS[token.ticker] : null;
@@ -112,6 +193,13 @@ function CnTokenCard({
   const hasBalance = balance !== undefined;
   const balStr     = hasBalance && token ? fmtBal(balance, token.decimals) : null;
   const hasPct     = !!onPct && hasBalance && (balance ?? 0n) > 0n;
+
+  // Calcola valore fiat — strip "≈ " e altri non-numerici (per la card TO)
+  const numAmount  = parseFloat((amount ?? "0").replace(/[^0-9.]/g, "") || "0");
+  const price      = fiatCurrency === "EUR" ? (priceEUR ?? null) : (priceUSD ?? null);
+  const fiatStr    = (price && isFinite(numAmount) && numAmount > 0)
+    ? fmtFiat(numAmount, price, fiatCurrency ?? "USD")
+    : null;
 
   return (
     <div className="asw-card">
@@ -165,7 +253,21 @@ function CnTokenCard({
               />
             : <span className="asw-amount-display">{amount ?? "—"}</span>
           }
-          {minAmount && minAmount > 0 && (
+          {/* Valore fiat — clic per toggle USD/EUR */}
+          {fiatStr && (
+            <div
+              onClick={onFiatToggle}
+              style={{
+                fontSize: 11, color: "#a78bfa", marginTop: 2, textAlign: "right",
+                cursor: onFiatToggle ? "pointer" : "default",
+                userSelect: "none",
+              }}
+              title={onFiatToggle ? "Clicca per cambiare valuta" : undefined}
+            >
+              ≈ {fiatStr}
+            </div>
+          )}
+          {!fiatStr && minAmount && minAmount > 0 && (
             <div style={{ fontSize: 10, color: "rgba(255,255,255,.3)", marginTop: 2, textAlign: "right" }}>
               min {fmtToken(minAmount, token?.decimals ?? 6)} {token?.symbol}
             </div>
@@ -173,7 +275,14 @@ function CnTokenCard({
         </div>
       </div>
 
-      {/* Bottoni % */}
+      {/* min amount sotto il fiat (se fiat è presente) */}
+      {fiatStr && minAmount && minAmount > 0 && (
+        <div style={{ fontSize: 10, color: "rgba(255,255,255,.3)", textAlign: "right", marginTop: 2 }}>
+          min {fmtToken(minAmount, token?.decimals ?? 6)} {token?.symbol}
+        </div>
+      )}
+
+      {/* Bottoni % / MAX */}
       {hasPct && (
         <div style={{ display: "flex", gap: 6, marginTop: 10, paddingTop: 10, borderTop: "1px solid rgba(255,255,255,.07)" }}>
           {PCT_OPTIONS.map(([pct, lbl]) => (
@@ -232,6 +341,12 @@ export function ChangeNowEvmSwapView({
   const [fromMenuOpen, setFromMenuOpen] = useState(false);
   const [toMenuOpen, setToMenuOpen]     = useState(false);
   const autoQuotedRef = useRef(false);
+
+  // Prezzi fiat (USD / EUR) per i due token selezionati
+  const fromPrice = useCnTokenPrice(state.fromToken);
+  const toPrice   = useCnTokenPrice(state.toToken);
+  const [fiatCurrency, setFiatCurrency] = useState<FiatCurrency>("USD");
+  const toggleFiat = useCallback(() => setFiatCurrency(c => c === "USD" ? "EUR" : "USD"), []);
 
   // ── Flags ─────────────────────────────────────────────────────────────────
   const isBtcFrom   = state.fromToken?.ticker === "btc";
@@ -726,6 +841,10 @@ export function ChangeNowEvmSwapView({
             balLoading={balLoading}
             onPct={handlePct}
             minAmount={state.minAmount}
+            priceUSD={fromPrice.priceUSD}
+            priceEUR={fromPrice.priceEUR}
+            fiatCurrency={fiatCurrency}
+            onFiatToggle={toggleFiat}
           />
           {fromMenuOpen && (
             <div style={{
@@ -777,6 +896,10 @@ export function ChangeNowEvmSwapView({
             token={state.toToken}
             amount={isReady && state.quote ? `≈ ${fmtToken(state.quote.estimatedToAmount, state.toToken?.decimals)}` : undefined}
             onTokenClick={() => { setToMenuOpen(v => !v); setFromMenuOpen(false); }}
+            priceUSD={toPrice.priceUSD}
+            priceEUR={toPrice.priceEUR}
+            fiatCurrency={fiatCurrency}
+            onFiatToggle={toggleFiat}
           />
           {toMenuOpen && (
             <div style={{
