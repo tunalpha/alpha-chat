@@ -40,6 +40,7 @@ import {
   type CnEvmToken,
 } from "./evm-types.js";
 import { createAlphaWalletViemClient } from "../evm/alpha-wallet-evm-adapter.js";
+import { useEvmTokenBalances } from "../evm/useEvmTokenBalances.js";
 import { parseEther, parseUnits } from "viem";
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -56,36 +57,142 @@ function fmtToken(n: number, decimals = 6): string {
   return n.toFixed(Math.min(decimals, 6)).replace(/\.?0+$/, "");
 }
 
+function fmtBal(raw: bigint, decimals: number): string {
+  const n = Number(raw) / 10 ** decimals;
+  if (n === 0) return "0";
+  if (n < 0.0001) return "<0.0001";
+  return n.toFixed(Math.min(decimals, 6)).replace(/\.?0+$/, "");
+}
+
 function truncAddr(addr: string): string {
   if (!addr || addr.length < 12) return addr;
   return `${addr.slice(0, 8)}…${addr.slice(-6)}`;
 }
 
-// ── Token selector ────────────────────────────────────────────────────────────
+// ── Token logo + chain color ──────────────────────────────────────────────────
 
-function TokenPill({
-  token,
-  selected,
-  onClick,
-  disabled,
+const COIN_LOGOS: Record<string, string> = {
+  pol:       "/coin-icons/pol.png",
+  usdcmatic: "/coin-icons/usdc.png",
+  usdtmatic: "/coin-icons/usdt.png",
+  eth:       "/coin-icons/eth.png",
+  usdterc20: "/coin-icons/usdt.png",
+  bnbbsc:    "/coin-icons/bnb.png",
+  usdtbsc:   "/coin-icons/usdt.png",
+};
+
+const CHAIN_COLORS: Record<number, string> = {
+  137: "#8247e5",   // Polygon
+  1:   "#627eea",   // Ethereum
+  56:  "#f0b90b",   // BSC
+};
+
+const PCT_OPTIONS: [number, string][] = [[25, "25%"], [50, "50%"], [75, "75%"], [100, "MAX"]];
+
+// ── Token card (input FROM / display TO) ─────────────────────────────────────
+
+function CnTokenCard({
+  label, token, amount, onAmountChange, onTokenClick,
+  balance, balLoading, onPct, minAmount,
 }: {
-  token:    CnEvmToken;
-  selected: boolean;
-  onClick:  () => void;
-  disabled?: boolean;
+  label:           string;
+  token:           CnEvmToken | null;
+  amount?:         string;
+  onAmountChange?: (v: string) => void;
+  onTokenClick:    () => void;
+  balance?:        bigint;
+  balLoading?:     boolean;
+  onPct?:          (pct: number) => void;
+  minAmount?:      number | null;
 }) {
+  const [imgErr, setImgErr] = useState(false);
+  const logo       = token ? COIN_LOGOS[token.ticker] : null;
+  const chainColor = token ? (CHAIN_COLORS[token.chainId] ?? "#888") : "#888";
+  const hasBalance = balance !== undefined;
+  const balStr     = hasBalance && token ? fmtBal(balance, token.decimals) : null;
+  const hasPct     = !!onPct && hasBalance && (balance ?? 0n) > 0n;
+
   return (
-    <button
-      onClick={onClick}
-      disabled={disabled}
-      className={`asw-tab${selected ? " asw-tab--active" : ""}`}
-      style={{ fontSize: 12, padding: "5px 10px", opacity: disabled ? 0.4 : 1 }}
-    >
-      {token.symbol}
-      <span style={{ fontSize: 10, opacity: 0.6, marginLeft: 3 }}>
-        {token.network.slice(0, 3)}
-      </span>
-    </button>
+    <div className="asw-card">
+      {/* Header */}
+      <div className="asw-card-head">
+        <span className="asw-card-label">{label}</span>
+        <div className="asw-card-balance">
+          {balLoading
+            ? <span style={{ fontSize: 11, color: "rgba(255,255,255,.35)" }}>Saldo…</span>
+            : balStr !== null && token
+              ? <span style={{ fontSize: 12 }}>{balStr} {token.symbol}</span>
+              : null
+          }
+        </div>
+      </div>
+
+      {/* Token selector + amount */}
+      <div className="asw-token-row">
+        <button className="asw-token-btn" onClick={onTokenClick} type="button">
+          {logo && !imgErr
+            ? <img src={logo} onError={() => setImgErr(true)} className="asw-token-icon"
+                style={{ objectFit: "cover", borderRadius: "50%" }} alt={token?.symbol} />
+            : <div className="asw-token-icon" style={{ background: `${chainColor}22`, color: chainColor }}>
+                {token?.symbol?.slice(0, 3) ?? "?"}
+              </div>
+          }
+          <div className="asw-token-info">
+            <div className="asw-token-name">
+              {token?.symbol ?? "—"}
+              <ChevronDown size={14} className="asw-token-chevron" />
+            </div>
+            <div className="asw-token-network">
+              <span className="asw-net-dot" style={{ background: chainColor }} />
+              {token?.network ?? ""}
+            </div>
+          </div>
+        </button>
+
+        <div className="asw-amount-col">
+          {onAmountChange
+            ? <input
+                type="text"
+                inputMode="decimal"
+                placeholder="0"
+                value={amount ?? ""}
+                onChange={e => {
+                  const val = e.target.value.replace(",", ".").replace(/[^0-9.]/g, "").replace(/(\..*)\./g, "$1");
+                  onAmountChange(val);
+                }}
+                className="asw-amount-input"
+              />
+            : <span className="asw-amount-display">{amount ?? "—"}</span>
+          }
+          {minAmount && minAmount > 0 && (
+            <div style={{ fontSize: 10, color: "rgba(255,255,255,.3)", marginTop: 2, textAlign: "right" }}>
+              min {fmtToken(minAmount, token?.decimals ?? 6)} {token?.symbol}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* Bottoni % */}
+      {hasPct && (
+        <div style={{ display: "flex", gap: 6, marginTop: 10, paddingTop: 10, borderTop: "1px solid rgba(255,255,255,.07)" }}>
+          {PCT_OPTIONS.map(([pct, lbl]) => (
+            <button
+              key={pct}
+              type="button"
+              onClick={() => onPct!(pct)}
+              style={{
+                flex: 1, fontSize: 12, fontWeight: 600, padding: "5px 0",
+                borderRadius: 8, border: "1px solid rgba(255,255,255,.12)",
+                background: "rgba(255,255,255,.06)", color: "rgba(255,255,255,.7)",
+                cursor: "pointer", letterSpacing: ".2px",
+              }}
+            >
+              {lbl}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -115,9 +222,33 @@ export function ChangeNowEvmSwapView({
   const [toMenuOpen, setToMenuOpen]     = useState(false);
   const autoQuotedRef = useRef(false);
 
-  // ── Auto-check pair quando cambiano token ─────────────────────────────────
+  // ── Balance ───────────────────────────────────────────────────────────────
+  const effectiveAddr = destinationAddr ?? undefined;
+  const { map: balances, loading: balLoading } = useEvmTokenBalances(
+    state.fromToken?.chainId ?? 137, effectiveAddr
+  );
+  const fromBalance = state.fromToken
+    ? balances[`${state.fromToken.chainId}:${state.fromToken.contractAddress ?? "native"}`]
+    : undefined;
+
+  // Bottoni % → calcola importo e setta
+  const handlePct = useCallback((pct: number) => {
+    if (!fromBalance || !state.fromToken) return;
+    const decimals = state.fromToken.decimals;
+    let raw = fromBalance;
+    // Riserva gas per token nativi
+    if (state.fromToken.isNative) {
+      const reserve = BigInt(Math.round(0.002 * 10 ** decimals));
+      if (raw > reserve) raw = raw - reserve; else raw = 0n;
+    }
+    const amount = (Number(raw) * pct / 100) / 10 ** decimals;
+    autoQuotedRef.current = false;
+    actions.setFromAmount(amount > 0 ? amount.toFixed(Math.min(decimals, 8)) : "");
+  }, [fromBalance, state.fromToken, actions]);
+
+  // ── Auto-check pair quando cambiano token (senza vincoli su uiState) ─────────
   useEffect(() => {
-    if (state.fromToken && state.toToken && state.uiState === "idle") {
+    if (state.fromToken && state.toToken) {
       autoQuotedRef.current = false;
       actions.checkPair();
     }
@@ -469,244 +600,192 @@ export function ChangeNowEvmSwapView({
   }
 
   // ── Main form: idle / checking_pair / quoting / ready ─────────────────────
-  const isLoadingPair   = state.uiState === "checking_pair";
-  const isQuoting       = state.uiState === "quoting";
-  const isReady         = state.uiState === "ready" && state.quote !== null;
-  const canGetQuote     = ["idle","ready"].includes(state.uiState) && !!state.fromAmount && parseFloat(state.fromAmount) > 0;
-  const canCreateExch   = isReady && !!destinationAddr;
+  const isLoadingPair = state.uiState === "checking_pair";
+  const isQuoting     = state.uiState === "quoting";
+  const isReady       = state.uiState === "ready" && state.quote !== null;
+  const canGetQuote   = ["idle","ready","checking_pair"].includes(state.uiState)
+    && !!state.fromAmount && parseFloat(state.fromAmount) > 0;
+  const canCreateExch = isReady && !!destinationAddr;
 
   return (
     <div className="asw-content">
       <div className="asw-form">
-        {/* Token selectors */}
-        <TokenSelectors
-          fromToken={state.fromToken}
-          toToken={state.toToken}
-          fromMenuOpen={fromMenuOpen}
-          toMenuOpen={toMenuOpen}
-          setFromMenuOpen={setFromMenuOpen}
-          setToMenuOpen={setToMenuOpen}
-          onSelectFrom={(t) => { setFromMenuOpen(false); autoQuotedRef.current = false; actions.setFromToken(t); }}
-          onSelectTo={(t) => { setToMenuOpen(false); autoQuotedRef.current = false; actions.setToToken(t); }}
-        />
 
-        {/* Amount input */}
-        <div className="asw-field">
-          <label className="asw-label">
-            Importo {state.fromToken?.symbol}
-            {state.minAmount ? (
-              <span style={{ float: "right", fontSize: 11, color: "rgba(255,255,255,.4)" }}>
-                Min: {fmtToken(state.minAmount, state.fromToken?.decimals)}
-              </span>
-            ) : null}
-          </label>
-          <input
-            type="number"
-            className="asw-input"
-            placeholder={state.minAmount ? `min ${fmtToken(state.minAmount, state.fromToken?.decimals)}` : "0.00"}
-            value={state.fromAmount}
-            onChange={e => { autoQuotedRef.current = false; actions.setFromAmount(e.target.value); }}
+        {/* ── FROM card ─────────────────────────────────────────────────── */}
+        <div style={{ position: "relative" }}>
+          <CnTokenCard
+            label="Da"
+            token={state.fromToken}
+            amount={state.fromAmount}
+            onAmountChange={v => { autoQuotedRef.current = false; actions.setFromAmount(v); }}
+            onTokenClick={() => { setFromMenuOpen(v => !v); setToMenuOpen(false); }}
+            balance={fromBalance}
+            balLoading={balLoading}
+            onPct={handlePct}
+            minAmount={state.minAmount}
           />
+          {fromMenuOpen && (
+            <div style={{
+              position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, zIndex: 60,
+              background: "#1e1b2e", border: "1px solid rgba(255,255,255,.12)",
+              borderRadius: 12, overflow: "hidden", boxShadow: "0 12px 32px rgba(0,0,0,.6)",
+              maxHeight: 300, overflowY: "auto",
+            }}>
+              {CN_EVM_TOKENS.filter(t => t.ticker !== state.toToken?.ticker).map(t => {
+                const logo = COIN_LOGOS[t.ticker];
+                const [err, setErr] = [false, () => {}]; // static fallback
+                return (
+                  <button
+                    key={t.ticker}
+                    type="button"
+                    onClick={() => { setFromMenuOpen(false); autoQuotedRef.current = false; actions.setFromToken(t); }}
+                    style={{
+                      width: "100%", padding: "10px 14px", background: "none",
+                      border: "none", borderBottom: "1px solid rgba(255,255,255,.05)",
+                      color: "#fff", cursor: "pointer", textAlign: "left", fontSize: 13,
+                      display: "flex", alignItems: "center", gap: 10,
+                      ...(t.ticker === state.fromToken?.ticker ? { background: "rgba(167,139,250,.12)" } : {}),
+                    }}
+                  >
+                    {logo
+                      ? <img src={logo} alt={t.symbol} width={28} height={28} style={{ borderRadius: "50%", objectFit: "cover", flexShrink: 0 }} />
+                      : <div style={{ width: 28, height: 28, borderRadius: "50%", background: "rgba(255,255,255,.1)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, flexShrink: 0 }}>{t.symbol.slice(0,2)}</div>
+                    }
+                    <div>
+                      <div style={{ fontWeight: 700 }}>{t.symbol}</div>
+                      <div style={{ fontSize: 11, color: "rgba(255,255,255,.4)" }}>{t.name} · {t.network}</div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
         </div>
 
-        {/* Quote result */}
-        {isQuoting && (
-          <div className="asw-info-box" style={{ textAlign: "center" }}>
-            <Loader2 size={14} style={{ animation: "spin 1s linear infinite" }} />
-            <span style={{ marginLeft: 6, fontSize: 13 }}>Calcolo stima…</span>
-          </div>
-        )}
+        {/* ── Arrow ─────────────────────────────────────────────────────── */}
+        <div style={{ textAlign: "center", margin: "-4px 0" }}>
+          <ArrowRight size={18} style={{ color: "rgba(255,255,255,.3)" }} />
+        </div>
+
+        {/* ── TO card ───────────────────────────────────────────────────── */}
+        <div style={{ position: "relative" }}>
+          <CnTokenCard
+            label="A"
+            token={state.toToken}
+            amount={isReady && state.quote ? `≈ ${fmtToken(state.quote.estimatedToAmount, state.toToken?.decimals)}` : undefined}
+            onTokenClick={() => { setToMenuOpen(v => !v); setFromMenuOpen(false); }}
+          />
+          {toMenuOpen && (
+            <div style={{
+              position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, zIndex: 60,
+              background: "#1e1b2e", border: "1px solid rgba(255,255,255,.12)",
+              borderRadius: 12, overflow: "hidden", boxShadow: "0 12px 32px rgba(0,0,0,.6)",
+              maxHeight: 300, overflowY: "auto",
+            }}>
+              {CN_EVM_TOKENS.filter(t => t.ticker !== state.fromToken?.ticker).map(t => {
+                const logo = COIN_LOGOS[t.ticker];
+                return (
+                  <button
+                    key={t.ticker}
+                    type="button"
+                    onClick={() => { setToMenuOpen(false); autoQuotedRef.current = false; actions.setToToken(t); }}
+                    style={{
+                      width: "100%", padding: "10px 14px", background: "none",
+                      border: "none", borderBottom: "1px solid rgba(255,255,255,.05)",
+                      color: "#fff", cursor: "pointer", textAlign: "left", fontSize: 13,
+                      display: "flex", alignItems: "center", gap: 10,
+                      ...(t.ticker === state.toToken?.ticker ? { background: "rgba(167,139,250,.12)" } : {}),
+                    }}
+                  >
+                    {logo
+                      ? <img src={logo} alt={t.symbol} width={28} height={28} style={{ borderRadius: "50%", objectFit: "cover", flexShrink: 0 }} />
+                      : <div style={{ width: 28, height: 28, borderRadius: "50%", background: "rgba(255,255,255,.1)", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, flexShrink: 0 }}>{t.symbol.slice(0,2)}</div>
+                    }
+                    <div>
+                      <div style={{ fontWeight: 700 }}>{t.symbol}</div>
+                      <div style={{ fontSize: 11, color: "rgba(255,255,255,.4)" }}>{t.name} · {t.network}</div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* ── Rate (se quote disponibile) ───────────────────────────────── */}
         {isReady && state.quote && (
           <div className="asw-info-box">
             <div className="asw-info-row">
-              <span className="asw-info-label">Stima ricevuta</span>
-              <span className="asw-info-value" style={{ color: "#34d399", fontWeight: 700 }}>
-                ≈ {fmtToken(state.quote.estimatedToAmount, state.toToken?.decimals)} {state.toToken?.symbol}
-              </span>
-            </div>
-            <div className="asw-info-row">
               <span className="asw-info-label">Rate</span>
-              <span className="asw-info-value" style={{ fontSize: 11 }}>
+              <span className="asw-info-value" style={{ fontSize: 12 }}>
                 1 {state.fromToken?.symbol} ≈ {fmtToken(state.quote.estimatedToAmount / state.quote.fromAmount, 4)} {state.toToken?.symbol}
               </span>
             </div>
             <div className="asw-info-row">
               <span className="asw-info-label">Provider</span>
-              <span className="asw-info-value" style={{ fontSize: 11, color: "rgba(255,255,255,.5)" }}>
-                ChangeNOW (source of truth)
+              <span className="asw-info-value" style={{ fontSize: 11, color: "rgba(255,255,255,.45)" }}>
+                ChangeNOW
               </span>
             </div>
           </div>
         )}
 
-        {/* Destination address (read-only) */}
-        <div className="asw-info-box" style={{ marginTop: 8 }}>
+        {/* ── Destinazione (read-only) ──────────────────────────────────── */}
+        <div className="asw-info-box">
           <div className="asw-info-row">
             <span className="asw-info-label">
               <Info size={11} style={{ marginRight: 3 }} />
               Destinazione (auto)
             </span>
             <span className="asw-info-value" style={{ fontSize: 11 }}>
-              {truncAddr(destinationAddr)}
+              {destinationAddr ? truncAddr(destinationAddr) : <span style={{ color: "#fbbf24" }}>Wallet non collegato</span>}
             </span>
           </div>
-          {!hasAlphaWallet && (
+          {!hasAlphaWallet && destinationAddr && (
             <p style={{ fontSize: 11, color: "#fbbf24", marginTop: 4 }}>
-              ⚠ Alpha Wallet non sbloccato — la firma EVM richiederà un wallet esterno.
+              ⚠ Alpha Wallet non sbloccato — firma richiederà wallet esterno.
             </p>
           )}
         </div>
 
-        {/* Error */}
+        {/* ── Error ────────────────────────────────────────────────────── */}
         {state.error && (
-          <p style={{ color: "#f87171", fontSize: 12, marginTop: 8, textAlign: "center" }}>
-            {state.error}
-          </p>
+          <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "8px 12px", background: "rgba(248,113,113,.08)", border: "1px solid rgba(248,113,113,.2)", borderRadius: 10 }}>
+            <AlertTriangle size={13} style={{ color: "#f87171", flexShrink: 0 }} />
+            <span style={{ color: "#f87171", fontSize: 12 }}>{state.error}</span>
+          </div>
         )}
 
-        {/* Loading pair */}
+        {/* ── Checking pair indicator ───────────────────────────────────── */}
         {isLoadingPair && (
-          <p style={{ textAlign: "center", fontSize: 12, color: "rgba(255,255,255,.4)" }}>
-            <Loader2 size={12} style={{ animation: "spin 1s linear infinite" }} /> Verifica coppia…
+          <p style={{ textAlign: "center", fontSize: 12, color: "rgba(255,255,255,.4)", display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}>
+            <Loader2 size={12} style={{ animation: "aw-spin .8s linear infinite" }} />
+            Verifica coppia…
           </p>
         )}
 
-        {/* CTA */}
-        {!isReady && canGetQuote && !isQuoting && (
-          <button
-            onClick={actions.fetchQuote}
-            className="aw-btn aw-btn--primary"
-            style={{ marginTop: 8 }}
-          >
+        {/* ── Quoting indicator ─────────────────────────────────────────── */}
+        {isQuoting && (
+          <p style={{ textAlign: "center", fontSize: 12, color: "rgba(255,255,255,.4)", display: "flex", alignItems: "center", justifyContent: "center", gap: 5 }}>
+            <Loader2 size={12} style={{ animation: "aw-spin .8s linear infinite" }} />
+            Calcolo stima…
+          </p>
+        )}
+
+        {/* ── CTA ──────────────────────────────────────────────────────── */}
+        {!isReady && canGetQuote && !isQuoting && !isLoadingPair && (
+          <button onClick={actions.fetchQuote} className="aw-btn aw-btn--primary" style={{ marginTop: 4 }}>
             Ottieni stima
           </button>
         )}
-
         {canCreateExch && (
-          <button
-            onClick={actions.createExchange}
-            className="aw-btn aw-btn--primary"
-            style={{ marginTop: 8 }}
-          >
+          <button onClick={actions.createExchange} className="aw-btn aw-btn--primary" style={{ marginTop: 4 }}>
             Crea Swap <ArrowRight size={14} style={{ marginLeft: 4 }} />
           </button>
         )}
-
         <button onClick={onBack} className="aw-btn aw-btn--secondary" style={{ marginTop: 4, fontSize: 13 }}>
           Indietro
         </button>
-      </div>
-    </div>
-  );
-}
-
-// ── Token selectors sub-component ─────────────────────────────────────────────
-
-function TokenSelectors({
-  fromToken, toToken,
-  fromMenuOpen, toMenuOpen,
-  setFromMenuOpen, setToMenuOpen,
-  onSelectFrom, onSelectTo,
-}: {
-  fromToken:        CnEvmToken | null;
-  toToken:          CnEvmToken | null;
-  fromMenuOpen:     boolean;
-  toMenuOpen:       boolean;
-  setFromMenuOpen:  (v: boolean) => void;
-  setToMenuOpen:    (v: boolean) => void;
-  onSelectFrom:     (t: CnEvmToken) => void;
-  onSelectTo:       (t: CnEvmToken) => void;
-}) {
-  return (
-    <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 12 }}>
-      {/* FROM selector */}
-      <div style={{ flex: 1, position: "relative" }}>
-        <label className="asw-label" style={{ marginBottom: 4 }}>Da</label>
-        <button
-          onClick={() => { setFromMenuOpen(!fromMenuOpen); setToMenuOpen(false); }}
-          className="asw-token-select-btn"
-          style={{
-            width: "100%", display: "flex", alignItems: "center", gap: 6,
-            padding: "8px 10px", borderRadius: 10,
-            background: "rgba(255,255,255,.07)", border: "1px solid rgba(255,255,255,.1)",
-            color: "#fff", cursor: "pointer", fontSize: 13,
-          }}
-        >
-          <span style={{ fontWeight: 700 }}>{fromToken?.symbol ?? "—"}</span>
-          <span style={{ fontSize: 10, color: "rgba(255,255,255,.45)" }}>{fromToken?.network}</span>
-          <ChevronDown size={12} style={{ marginLeft: "auto" }} />
-        </button>
-        {fromMenuOpen && (
-          <div style={{
-            position: "absolute", top: "100%", left: 0, right: 0, zIndex: 50,
-            background: "#1e1b2e", border: "1px solid rgba(255,255,255,.12)",
-            borderRadius: 10, overflow: "hidden", boxShadow: "0 8px 24px rgba(0,0,0,.5)",
-          }}>
-            {CN_EVM_TOKENS.filter(t => t.ticker !== toToken?.ticker).map(t => (
-              <button
-                key={t.ticker}
-                onClick={() => onSelectFrom(t)}
-                style={{
-                  width: "100%", padding: "9px 12px", background: "none",
-                  border: "none", color: "#fff", cursor: "pointer",
-                  textAlign: "left", fontSize: 13,
-                  ...(t.ticker === fromToken?.ticker ? { background: "rgba(167,139,250,.15)" } : {}),
-                }}
-              >
-                <strong>{t.symbol}</strong>{" "}
-                <span style={{ fontSize: 11, color: "rgba(255,255,255,.4)" }}>
-                  {t.name} · {t.network}
-                </span>
-              </button>
-            ))}
-          </div>
-        )}
-      </div>
-
-      <ArrowRight size={16} style={{ color: "rgba(255,255,255,.4)", marginTop: 18, flexShrink: 0 }} />
-
-      {/* TO selector */}
-      <div style={{ flex: 1, position: "relative" }}>
-        <label className="asw-label" style={{ marginBottom: 4 }}>A</label>
-        <button
-          onClick={() => { setToMenuOpen(!toMenuOpen); setFromMenuOpen(false); }}
-          className="asw-token-select-btn"
-          style={{
-            width: "100%", display: "flex", alignItems: "center", gap: 6,
-            padding: "8px 10px", borderRadius: 10,
-            background: "rgba(255,255,255,.07)", border: "1px solid rgba(255,255,255,.1)",
-            color: "#fff", cursor: "pointer", fontSize: 13,
-          }}
-        >
-          <span style={{ fontWeight: 700 }}>{toToken?.symbol ?? "—"}</span>
-          <span style={{ fontSize: 10, color: "rgba(255,255,255,.45)" }}>{toToken?.network}</span>
-          <ChevronDown size={12} style={{ marginLeft: "auto" }} />
-        </button>
-        {toMenuOpen && (
-          <div style={{
-            position: "absolute", top: "100%", left: 0, right: 0, zIndex: 50,
-            background: "#1e1b2e", border: "1px solid rgba(255,255,255,.12)",
-            borderRadius: 10, overflow: "hidden", boxShadow: "0 8px 24px rgba(0,0,0,.5)",
-          }}>
-            {CN_EVM_TOKENS.filter(t => t.ticker !== fromToken?.ticker).map(t => (
-              <button
-                key={t.ticker}
-                onClick={() => onSelectTo(t)}
-                style={{
-                  width: "100%", padding: "9px 12px", background: "none",
-                  border: "none", color: "#fff", cursor: "pointer",
-                  textAlign: "left", fontSize: 13,
-                  ...(t.ticker === toToken?.ticker ? { background: "rgba(167,139,250,.15)" } : {}),
-                }}
-              >
-                <strong>{t.symbol}</strong>{" "}
-                <span style={{ fontSize: 11, color: "rgba(255,255,255,.4)" }}>
-                  {t.name} · {t.network}
-                </span>
-              </button>
-            ))}
-          </div>
-        )}
       </div>
     </div>
   );

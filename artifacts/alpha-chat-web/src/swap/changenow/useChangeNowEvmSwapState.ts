@@ -424,13 +424,15 @@ export function useChangeNowEvmSwapState(
 
   const setFromToken = useCallback((t: CnEvmToken) => {
     setState(prev => ({
-      ...prev, fromToken: t, quote: null, pairAvailable: null, error: null,
+      ...prev, fromToken: t, quote: null, pairAvailable: null,
+      minAmount: null, error: null, uiState: "idle",
     }));
   }, []);
 
   const setToToken = useCallback((t: CnEvmToken) => {
     setState(prev => ({
-      ...prev, toToken: t, quote: null, pairAvailable: null, error: null,
+      ...prev, toToken: t, quote: null, pairAvailable: null,
+      minAmount: null, error: null, uiState: "idle",
     }));
   }, []);
 
