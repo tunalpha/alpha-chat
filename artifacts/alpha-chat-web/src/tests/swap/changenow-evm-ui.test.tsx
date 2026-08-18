@@ -3,7 +3,12 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { useChangeNowEvmSwapState } from "../../swap/changenow/useChangeNowEvmSwapState.js";
 import { useEvmTokenBalances } from "../../swap/evm/useEvmTokenBalances.js";
 import { NATIVE_ADDRESS, type EvmToken } from "../../swap/evm/types.js";
-import { CnTokenMenu, CnTokenSheet } from "../../swap/changenow/ChangeNowEvmSwapView.js";
+import {
+  CnAwaitingConfirmation,
+  CnTokenCard,
+  CnTokenMenu,
+  CnTokenSheet,
+} from "../../swap/changenow/ChangeNowEvmSwapView.js";
 import { CN_EVM_TOKENS } from "../../swap/changenow/evm-types.js";
 
 const WALLET = "0x1111111111111111111111111111111111111111";
@@ -97,5 +102,98 @@ describe("ChangeNOW EVM swap — saldi e inversione UI", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Chiudi selettore token" }));
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("mantiene importo e MAX interattivi dopo una inversione", () => {
+    const token = CN_EVM_TOKENS.find((item) => item.ticker === "pol")!;
+    const onAmountChange = vi.fn();
+    const onPct = vi.fn();
+
+    render(
+      <CnTokenCard
+        label="Da"
+        token={token}
+        amount=""
+        onAmountChange={onAmountChange}
+        onTokenClick={() => {}}
+        balance={4_390_000_000_000_000_000n}
+        balLoading={false}
+        onPct={onPct}
+      />,
+    );
+
+    fireEvent.change(screen.getByRole("textbox", { name: "Importo Da POL" }), {
+      target: { value: "1,25" },
+    });
+    expect(onAmountChange).toHaveBeenCalledWith("1.25");
+
+    fireEvent.click(screen.getByRole("button", { name: "MAX" }));
+    expect(onPct).toHaveBeenCalledWith(100);
+  });
+
+  it("dopo l'inversione collega ancora la card al nuovo token e all'importo", () => {
+    function InversionHarness() {
+      const [state, actions] = useChangeNowEvmSwapState(WALLET, null);
+      return (
+        <>
+          <button type="button" onClick={actions.invertDirection}>Inverti</button>
+          <CnTokenCard
+            label="Da"
+            token={state.fromToken}
+            amount={state.fromAmount}
+            onAmountChange={actions.setFromAmount}
+            onTokenClick={() => {}}
+            balance={10_000_000n}
+            onPct={() => actions.setFromAmount("10")}
+          />
+        </>
+      );
+    }
+
+    render(<InversionHarness />);
+    fireEvent.click(screen.getByRole("button", { name: "Inverti" }));
+
+    const amount = screen.getByRole("textbox", { name: "Importo Da USDC" });
+    fireEvent.change(amount, { target: { value: "2" } });
+    expect(amount).toHaveValue("2");
+
+    fireEvent.click(screen.getByRole("button", { name: "MAX" }));
+    expect(amount).toHaveValue("10");
+  });
+
+  it("mostra il saldo disponibile anche nella card del token da ricevere", () => {
+    const token = CN_EVM_TOKENS.find((item) => item.ticker === "pol")!;
+
+    render(
+      <CnTokenCard
+        label="A"
+        token={token}
+        onTokenClick={() => {}}
+        balance={4_390_000_000_000_000_000n}
+        balLoading={false}
+      />,
+    );
+
+    expect(screen.getByText("4.39 POL")).toBeTruthy();
+    expect(screen.queryByText("Saldo non disponibile")).toBeNull();
+  });
+
+  it("mostra una conferma senza provider o indirizzo tecnico", () => {
+    render(
+      <CnAwaitingConfirmation
+        fromAmount={13.5}
+        fromSymbol="USDT"
+        fromDecimals={6}
+        toAmount={160.97}
+        toSymbol="POL"
+        toDecimals={18}
+      />,
+    );
+
+    expect(screen.getByText("Conferma l’invio nel tuo wallet")).toBeTruthy();
+    expect(screen.getByText("13.5 USDT")).toBeTruthy();
+    expect(screen.getByText("160.97 POL")).toBeTruthy();
+    expect(screen.queryByText(/ChangeNOW/i)).toBeNull();
+    expect(screen.queryByText(/0x[a-f0-9]{8}/i)).toBeNull();
   });
 });

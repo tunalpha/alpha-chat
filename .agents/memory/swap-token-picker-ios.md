@@ -11,6 +11,7 @@ alla card del form.
 coperto o tagliato, dando l’impressione che il tap sul token non abbia aperto
 nessuna lista.
 
-**How to apply:** mostrare rete e saldo nelle righe del sheet; chiudere alla
-selezione, alla X o al tap sul backdrop. Riutilizzare le classi `asw-sheet-*`
-per mantenere z-index e comportamento mobile coerenti.
+**How to apply:** montare il sheet in un React portal su `document.body`, poi
+mostrare rete e saldo nelle righe; chiudere alla selezione, alla X o al tap sul
+backdrop. Riutilizzare le classi `asw-sheet-*` per mantenere z-index e
+comportamento mobile coerenti.

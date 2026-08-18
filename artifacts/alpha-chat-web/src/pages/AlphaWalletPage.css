@@ -2397,6 +2397,8 @@
   min-width: 0;
   font-family: inherit;
   flex-shrink: 0;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .asw-token-icon {
@@ -2464,6 +2466,8 @@
   font-family: inherit;
   display: block;
   margin-left: auto;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 .asw-amount-input::placeholder { color: rgba(255,255,255,.2); }
 
@@ -2571,6 +2575,8 @@
   font-size: 11px;
   font-weight: 700;
   letter-spacing: .15px;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 
 .asw-shortcut-btn:hover:not(:disabled) { background: rgba(139,92,246,.23); }
@@ -2597,6 +2603,8 @@
   cursor: pointer;
   color: #fff;
   transition: background .15s, transform .1s;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
 .asw-dir-btn:hover:not(:disabled) { background: rgba(99,102,241,.32); }
 .asw-dir-btn:active:not(:disabled) { transform: scale(.92); }

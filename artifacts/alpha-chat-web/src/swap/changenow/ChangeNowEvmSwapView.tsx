@@ -26,6 +26,7 @@
 import React, {
   useCallback, useEffect, useRef, useState,
 } from "react";
+import { createPortal } from "react-dom";
 import {
   ChevronDown, Check, Loader2, CheckCircle,
   AlertTriangle, ArrowRight, ArrowDownUp, Info, X,
@@ -206,7 +207,13 @@ export function CnTokenSheet({
 }) {
   const title = side === "from" ? "Seleziona token da inviare" : "Seleziona token da ricevere";
 
-  return (
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => { document.body.style.overflow = previousOverflow; };
+  }, []);
+
+  const sheet = (
     <div className="asw-sheet-backdrop" onClick={onClose} role="presentation">
       <div className="asw-sheet" onClick={event => event.stopPropagation()} role="dialog" aria-modal="true" aria-label={title}>
         <div className="asw-sheet-handle" />
@@ -226,6 +233,10 @@ export function CnTokenSheet({
       </div>
     </div>
   );
+
+  // Il portale evita che i contenitori scrollabili della PWA iOS taglino o
+  // nascondano il foglio sotto la schermata dello swap.
+  return createPortal(sheet, document.body);
 }
 
 // ── Fiat price ────────────────────────────────────────────────────────────────
@@ -306,7 +317,7 @@ function fmtFiat(amount: number, price: number, currency: FiatCurrency): string 
 
 // ── Token card (input FROM / display TO) ─────────────────────────────────────
 
-function CnTokenCard({
+export function CnTokenCard({
   label, token, amount, onAmountChange, onTokenClick,
   balance, balLoading, onPct, minAmount,
   priceUSD, priceEUR, fiatCurrency, onFiatChange,
@@ -356,7 +367,12 @@ function CnTokenCard({
 
       {/* Token selector + amount */}
       <div className="asw-token-row">
-        <button className="asw-token-btn" onClick={onTokenClick} type="button">
+        <button
+          className="asw-token-btn"
+          onClick={onTokenClick}
+          type="button"
+          aria-label={`Seleziona token ${label}`}
+        >
           {logo && !imgErr
             ? <img src={logo} onError={() => setImgErr(true)} className="asw-token-icon"
                 style={{ objectFit: "cover", borderRadius: "50%" }} alt={token?.symbol} />
@@ -382,6 +398,7 @@ function CnTokenCard({
                 type="text"
                 inputMode="decimal"
                 placeholder="0"
+                aria-label={`Importo ${label} ${token?.symbol ?? ""}`}
                 value={amount ?? ""}
                 onChange={e => {
                   const val = e.target.value.replace(",", ".").replace(/[^0-9.]/g, "").replace(/(\..*)\./g, "$1");
@@ -492,12 +509,13 @@ export function ChangeNowEvmSwapView({
   const isBtcFrom   = state.fromToken?.ticker === "btc";
   const isBtcTo     = state.toToken?.ticker   === "btc";
   const effectiveAddr = destinationAddr ?? undefined;
-  // Carichiamo la rete del token "Da" per la card. Quando una tendina è aperta,
-  // carichiamo anche le altre due reti per poter mostrare ogni saldo nella lista.
+  // Le due card devono sempre mostrare il saldo sulla loro rete. Quando la
+  // tendina è aperta carichiamo inoltre tutte le altre reti del catalogo.
   const tokenMenuOpen = tokenMenuSide !== null;
-  const shouldLoadPolygon = state.fromToken?.chainId === 137 || tokenMenuOpen;
-  const shouldLoadEthereum = state.fromToken?.chainId === 1 || tokenMenuOpen;
-  const shouldLoadBsc = state.fromToken?.chainId === 56 || tokenMenuOpen;
+  const selectedChainIds = [state.fromToken?.chainId, state.toToken?.chainId];
+  const shouldLoadPolygon = selectedChainIds.includes(137) || tokenMenuOpen;
+  const shouldLoadEthereum = selectedChainIds.includes(1) || tokenMenuOpen;
+  const shouldLoadBsc = selectedChainIds.includes(56) || tokenMenuOpen;
   const polygonBalances = useEvmTokenBalances(
     137,
     shouldLoadPolygon ? effectiveAddr : undefined,
@@ -558,7 +576,9 @@ export function ChangeNowEvmSwapView({
 
   // Balance effettivo: BTC sat→BigInt oppure EVM
   const fromBalance = state.fromToken ? getTokenBalance(state.fromToken) : undefined;
-  const balLoading = state.fromToken ? isTokenBalanceLoading(state.fromToken) : false;
+  const fromBalLoading = state.fromToken ? isTokenBalanceLoading(state.fromToken) : false;
+  const toBalance = state.toToken ? getTokenBalance(state.toToken) : undefined;
+  const toBalLoading = state.toToken ? isTokenBalanceLoading(state.toToken) : false;
 
   // Bottoni % → calcola importo e setta
   const handlePct = useCallback((pct: number) => {
@@ -829,39 +849,14 @@ export function ChangeNowEvmSwapView({
     return (
       <div className="asw-content">
         <div className="asw-form">
-          <p className="asw-section-title">
-            Invia {fmtToken(state.exchange.expectedFromAmount, state.fromToken?.decimals)} {state.fromToken?.symbol} a:
-          </p>
-
-          {/* Deposit address — read-only */}
-          <div className="asw-address-box">
-            <span className="asw-address-label">Deposit address ChangeNOW</span>
-            <span className="asw-address-value" style={{ wordBreak: "break-all", fontSize: 12 }}>
-              {state.exchange.depositEvmAddress}
-            </span>
-            <span className="asw-address-network" style={{ fontSize: 11, color: "#a78bfa" }}>
-              rete: {state.fromToken?.network}
-            </span>
-          </div>
-
-          {/* Destination — read-only */}
-          <div className="asw-info-box" style={{ marginTop: 8 }}>
-            <div className="asw-info-row">
-              <span className="asw-info-label">
-                <Info size={12} style={{ marginRight: 4 }} />
-                Destinazione (auto)
-              </span>
-              <span className="asw-info-value" style={{ fontSize: 12 }}>
-                {truncAddr(state.exchange.destinationAddress)}
-              </span>
-            </div>
-            <div className="asw-info-row">
-              <span className="asw-info-label">Exchange ID</span>
-              <span className="asw-info-value" style={{ fontSize: 11 }}>
-                {state.exchange.exchangeId}
-              </span>
-            </div>
-          </div>
+          <CnAwaitingConfirmation
+            fromAmount={state.exchange.expectedFromAmount}
+            fromSymbol={state.fromToken?.symbol ?? state.exchange.fromTicker}
+            fromDecimals={state.fromToken?.decimals}
+            toAmount={state.exchange.expectedToAmount}
+            toSymbol={state.toToken?.symbol ?? state.exchange.toTicker}
+            toDecimals={state.toToken?.decimals}
+          />
 
           {state.error && (
             <p style={{ color: "#f87171", fontSize: 12, marginTop: 8, textAlign: "center" }}>
@@ -878,8 +873,7 @@ export function ChangeNowEvmSwapView({
             ) : (
               <div style={{ marginTop: 16, padding: "10px 12px", background: "rgba(251,191,36,.08)", borderRadius: 10, border: "1px solid rgba(251,191,36,.2)" }}>
                 <p style={{ fontSize: 12, color: "#fbbf24", margin: 0 }}>
-                  Sblocca Alpha Wallet (BTC) per inviare automaticamente. In alternativa invia
-                  <strong> {fmtToken(state.exchange.expectedFromAmount, 8)} BTC</strong> all'indirizzo sopra manualmente.
+                  Sblocca Alpha Wallet (BTC) per completare l’invio in modo sicuro.
                 </p>
               </div>
             )
@@ -890,8 +884,7 @@ export function ChangeNowEvmSwapView({
           ) : (
             <div style={{ marginTop: 16, padding: "10px 12px", background: "rgba(251,191,36,.08)", borderRadius: 10, border: "1px solid rgba(251,191,36,.2)" }}>
               <p style={{ fontSize: 12, color: "#fbbf24", margin: 0 }}>
-                Sblocca Alpha Wallet per inviare automaticamente. In alternativa,
-                usa il tuo wallet esterno per inviare <strong>{fmtToken(state.exchange.expectedFromAmount, state.fromToken?.decimals)} {state.fromToken?.symbol}</strong> all'indirizzo sopra.
+                Sblocca Alpha Wallet per completare l’invio in modo sicuro.
               </p>
             </div>
           )}
@@ -989,7 +982,7 @@ export function ChangeNowEvmSwapView({
           onAmountChange={v => { autoQuotedRef.current = false; actions.setFromAmount(v); }}
           onTokenClick={() => openTokenMenu("from")}
           balance={fromBalance}
-          balLoading={balLoading}
+          balLoading={fromBalLoading}
           onPct={handlePct}
           minAmount={state.minAmount}
           priceUSD={fromPrice.priceUSD}
@@ -1018,6 +1011,8 @@ export function ChangeNowEvmSwapView({
           token={state.toToken}
           amount={isReady && state.quote ? `≈ ${fmtToken(state.quote.estimatedToAmount, state.toToken?.decimals)}` : undefined}
           onTokenClick={() => openTokenMenu("to")}
+          balance={toBalance}
+          balLoading={toBalLoading}
           priceUSD={toPrice.priceUSD}
           priceEUR={toPrice.priceEUR}
           fiatCurrency={fiatCurrency}
@@ -1031,12 +1026,6 @@ export function ChangeNowEvmSwapView({
               <span className="asw-info-label">Rate</span>
               <span className="asw-info-value" style={{ fontSize: 12 }}>
                 1 {state.fromToken?.symbol} ≈ {fmtToken(state.quote.estimatedToAmount / state.quote.fromAmount, 4)} {state.toToken?.symbol}
-              </span>
-            </div>
-            <div className="asw-info-row">
-              <span className="asw-info-label">Provider</span>
-              <span className="asw-info-value" style={{ fontSize: 11, color: "rgba(255,255,255,.45)" }}>
-                ChangeNOW
               </span>
             </div>
           </div>
@@ -1113,5 +1102,45 @@ export function ChangeNowEvmSwapView({
       </div>
       {tokenPicker}
     </div>
+  );
+}
+
+/** Conferma utente senza esporre provider, exchange ID o indirizzo tecnico. */
+export function CnAwaitingConfirmation({
+  fromAmount,
+  fromSymbol,
+  fromDecimals,
+  toAmount,
+  toSymbol,
+  toDecimals,
+}: {
+  fromAmount: number;
+  fromSymbol: string;
+  fromDecimals?: number;
+  toAmount: number;
+  toSymbol: string;
+  toDecimals?: number;
+}) {
+  return (
+    <>
+      <p className="asw-section-title">Conferma l’invio nel tuo wallet</p>
+      <div className="asw-info-box">
+        <div className="asw-info-row">
+          <span className="asw-info-label">Invii</span>
+          <span className="asw-info-value" style={{ fontSize: 12 }}>
+            {fmtToken(fromAmount, fromDecimals)} {fromSymbol}
+          </span>
+        </div>
+        <div className="asw-info-row">
+          <span className="asw-info-label">Ricevi circa</span>
+          <span className="asw-info-value" style={{ fontSize: 12 }}>
+            {fmtToken(toAmount, toDecimals)} {toSymbol}
+          </span>
+        </div>
+        <p style={{ fontSize: 12, color: "rgba(255,255,255,.5)", lineHeight: 1.45, marginTop: 10 }}>
+          Apriremo il tuo wallet per confermare l’operazione. Non invieremo fondi senza la tua autorizzazione.
+        </p>
+      </div>
+    </>
   );
 }
