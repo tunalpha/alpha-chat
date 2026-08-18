@@ -143,4 +143,12 @@ v1Router.use("/swap/providers", swapProvidersRoutes);
 import changeNowSwapRoutes from "./changenow-swap.routes";
 v1Router.use("/swap/changenow", changeNowSwapRoutes);
 
+// ── Buy with Card — Fiat→Crypto onramp (FASE 2) ───────────────────────────────
+// ISOLATO: zero import da payment engine, swap, USDA, MultiChain, Spark.
+// Provider stub (ChangeNOW Fiat) — richiede KYB completato per endpoint reali.
+// FIAT_BUY_ENABLED=false di default — ogni endpoint operativo lancia 503.
+// destinationAddress sempre da wallet Alpha verificato server-side, mai dall'utente.
+import { buyRouter } from "./buy.routes";
+v1Router.use("/buy", buyRouter);
+
 export default v1Router;

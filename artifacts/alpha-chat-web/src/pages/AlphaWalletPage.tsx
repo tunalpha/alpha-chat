@@ -91,6 +91,7 @@ import {
 import type { BtcUTXO } from "../lib/alpha-wallet-api";
 import "./AlphaWalletPage.css";
 import { SwapView } from "../swap/index";
+import { BuyCryptoView } from "../buy/BuyCryptoView";
 // logo.png è in public/ → copiato da Vite in dist/public/logo.png → sempre servito a /logo.png
 
 // ─── Sub-view types ─────────────────────────────────────────────────────────
@@ -1061,54 +1062,7 @@ function OverviewView({ onNavigate, onSelectToken }: { onNavigate: (v: WalletSub
       {/* ── Buy with Card modal placeholder ── */}
       {showBuyModal && (
         <div className="aw-buy-modal-overlay" onClick={() => setShowBuyModal(false)}>
-          <div className="aw-buy-modal" onClick={e => e.stopPropagation()}>
-            <div className="aw-buy-modal__icon">
-              <svg viewBox="0 0 24 24" fill="none" width="36" height="36">
-                <rect x="2" y="5" width="20" height="14" rx="3" stroke="url(#mbg)" strokeWidth="1.5"/>
-                <path d="M2 9h20" stroke="url(#mbg)" strokeWidth="1.5"/>
-                <rect x="5" y="13" width="4" height="2" rx="1" fill="url(#mbg)"/>
-                <defs>
-                  <linearGradient id="mbg" x1="2" y1="5" x2="22" y2="19" gradientUnits="userSpaceOnUse">
-                    <stop stopColor="#a78bfa"/><stop offset="1" stopColor="#818cf8"/>
-                  </linearGradient>
-                </defs>
-              </svg>
-            </div>
-            <h2 className="aw-buy-modal__title">Acquista crypto</h2>
-            <p className="aw-buy-modal__desc">Acquista crypto con carta.</p>
-            <p className="aw-buy-modal__status">Servizio in configurazione</p>
-            <div className="aw-buy-modal__logos">
-              <span className="aw-pay-logo aw-pay-logo--visa" title="Visa">
-                <svg viewBox="0 0 50 18" width="44" height="16"><text x="1" y="14" fontFamily="Arial,Helvetica,sans-serif" fontWeight="800" fontSize="16" fill="#1a1f71" letterSpacing="-0.5">VISA</text></svg>
-              </span>
-              <span className="aw-pay-logo aw-pay-logo--mc" title="Mastercard">
-                <svg viewBox="0 0 34 22" width="34" height="22">
-                  <circle cx="12" cy="11" r="9" fill="#EB001B"/>
-                  <circle cx="22" cy="11" r="9" fill="#F79E1B"/>
-                  <path d="M17 3.8a9 9 0 0 1 0 14.4A9 9 0 0 1 17 3.8z" fill="#FF5F00"/>
-                </svg>
-              </span>
-              <span className="aw-pay-logo aw-pay-logo--apple" title="Apple Pay">
-                <svg viewBox="0 0 44 16" width="58" height="22">
-                  <text x="3" y="12" fontFamily="-apple-system,BlinkMacSystemFont,'SF Pro Text',Helvetica,sans-serif" fontSize="11" fontWeight="500" fill="white">&#xF8FF; Pay</text>
-                </svg>
-              </span>
-              {/* Google Pay — logo ufficiale Google G (4 colori) + Pay */}
-              <span className="aw-pay-logo aw-pay-logo--gpay" title="Google Pay">
-                <svg viewBox="0 0 68 22" width="64" height="22" xmlns="http://www.w3.org/2000/svg">
-                  {/* G centrato in (11,11) R=9 r=5.5 */}
-                  <path d="M11 2A9 9 0 0 1 20 11L14.5 11A5.5 5.5 0 0 0 11 5.5Z" fill="#4285F4"/>
-                  <path d="M20 11A9 9 0 0 1 11 20L11 14.5A5.5 5.5 0 0 0 14.5 11Z" fill="#34A853"/>
-                  <path d="M11 20A9 9 0 0 1 2 11L6.5 11A5.5 5.5 0 0 0 11 16.5Z" fill="#FBBC04"/>
-                  <path d="M2 11A9 9 0 0 1 11 2L11 6.5A5.5 5.5 0 0 0 6.5 11Z" fill="#EA4335"/>
-                  <circle cx="11" cy="11" r="5.5" fill="white"/>
-                  <rect x="11" y="8.8" width="9.2" height="4.4" fill="#4285F4"/>
-                  <text x="24" y="15.5" fontFamily="Arial,Helvetica,sans-serif" fontSize="12" fontWeight="500" fill="#202124">Pay</text>
-                </svg>
-              </span>
-            </div>
-            <button className="aw-buy-modal__close" onClick={() => setShowBuyModal(false)}>Chiudi</button>
-          </div>
+          <BuyCryptoView onClose={() => setShowBuyModal(false)} />
         </div>
       )}
 

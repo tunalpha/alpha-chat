@@ -1,0 +1,238 @@
+Sì. Mentre termina il deploy possiamo preparare la Fase 2: Acquista con carta, ma la terrei completamente isolata dalla Fase 1 dello swap.
+
+Ti consiglio di dare all’agente questo prompt:
+
+FASE 2 — ACQUISTA CON CARTA / FIAT BUY
+ARCHITETTURA E IMPLEMENTAZIONE ISOLATA
+Vogliamo iniziare a preparare l'integrazione "Acquista con carta" mostrata nella Alpha Wallet.
+IMPORTANTE:
+Questa è una fase SEPARATA dallo swap ChangeNOW appena deployato.
+NON modificare:
+- payment engine esistente
+- chat payments
+- USDA
+- MultiChain
+- Spark
+- BTC/LN payments
+- WalletConnect
+- send/receive wallet
+- Li.Fi
+- ChangeNOW Exchange API FASE 1
+- Swap Provider Manager
+- notifiche/storico degli swap esistenti
+NON fare deploy.
+NON effettuare acquisti reali.
+NON effettuare transazioni reali.
+NON utilizzare ancora API fiat in produzione.
+NON inserire secret/API key nel frontend.
+OBIETTIVO
+Preparare il flusso "Acquista con carta" che abbiamo già inserito nella Alpha Wallet.
+La card esistente:
+"Acquista con carta"
+"Crypto direttamente nel tuo wallet"
+deve diventare il punto di ingresso del nuovo flusso.
+FLUSSO UTENTE DESIDERATO
+Alpha Wallet
+→ Acquista con carta
+→ pagina/modal Buy Crypto premium
+→ selezione valuta fiat (es. EUR/USD)
+→ selezione crypto
+→ importo
+→ metodo di pagamento disponibile
+→ provider fiat
+→ pagamento
+→ crypto inviata DIRETTAMENTE all'indirizzo del wallet Alpha
+→ stato ordine
+→ conferma accredito
+→ notifica
+→ cronologia.
+CRITICO — DESTINATION ADDRESS
+L'utente NON deve mai dover:
+- copiare l'indirizzo;
+- incollare l'indirizzo;
+- digitare l'indirizzo.
+Il sistema deve leggere automaticamente:
+- wallet EVM attualmente connesso/selezionato;
+- chain selezionata;
+- token selezionato;
+- address corretto per quella chain.
+Prima di creare qualsiasi ordine, mostrare chiaramente:
+"Riceverai sul tuo wallet"
+0x....
+Se l'indirizzo non è disponibile:
+→ bloccare l'acquisto
+→ nessun ordine creato.
+NON permettere all'utente di modificare manualmente il recipient.
+PROVIDER
+Abbiamo verificato con ChangeNOW che il servizio Buy/Sell fiat esiste e che per il fiat è richiesto il relativo processo KYB.
+NON assumere ancora quale endpoint fiat definitivo utilizzare.
+Prima di implementare chiamate reali:
+1. studiare la documentazione/API fiat disponibile;
+2. identificare esattamente il provider fiat utilizzato;
+3. identificare quote/order/status;
+4. verificare supporto Visa/Mastercard/Apple Pay/Google Pay/SEPA;
+5. verificare KYB requirements;
+6. verificare callback/webhook oppure polling;
+7. verificare refund flow.
+Se la documentazione non è sufficiente:
+→ NON inventare endpoint;
+→ prepara adapter/interface;
+→ lascia provider implementation behind a feature flag.
+ARCHITETTURA
+Creare un modulo isolato, ad esempio:
+frontend:
+src/buy/
+  types.ts
+  buy-provider.ts
+  useBuyCryptoState.ts
+  BuyCryptoView.tsx
+backend:
+services/buy/
+  buy-provider.interface.ts
+  changenow-buy.service.ts
+  buy-order.service.ts
+models:
+buy-order.model.ts
+routes:
+routes/v1/buy.routes.ts
+Il provider deve essere astratto:
+BuyProvider
+├── getQuote()
+├── createOrder()
+├── getStatus()
+├── getPaymentMethods()
+└── getRefundStatus()
+In futuro potremo aggiungere un secondo provider senza riscrivere la UI.
+SICUREZZA
+Qualsiasi API key/provider secret:
+- esclusivamente server-side;
+- Replit Secret/env;
+- mai frontend;
+- mai localStorage;
+- mai response;
+- mai log.
+ORDER STATE MACHINE
+Prevedere almeno:
+created
+→ quoted
+→ awaiting_payment
+→ payment_processing
+→ crypto_processing
+→ completed
+Terminal states:
+failed
+refunded
+expired
+COMPLETED
+NON considerare un acquisto completato solo perché:
+- il pagamento fiat è riuscito;
+- il provider dice "paid";
+- l'ordine è "finished".
+Serve una prova verificabile dell'accredito crypto:
+- destination transaction hash, quando disponibile;
+- destination address corrispondente al wallet Alpha;
+- chain corretta.
+Solo allora:
+status = completed.
+NOTIFICHE
+Integrare il nuovo ordine nel sistema notifiche Alpha ESISTENTE.
+NON creare un secondo notification system.
+Prevedere notifiche coerenti:
+- acquisto creato;
+- pagamento in attesa;
+- acquisto in elaborazione;
+- crypto inviata;
+- acquisto completato;
+- acquisto fallito;
+- refund.
+CRONOLOGIA
+Integrare nel sistema cronologia Alpha ESISTENTE.
+Ogni ordine deve conservare almeno:
+- provider;
+- fiat amount;
+- fiat currency;
+- crypto asset;
+- crypto amount;
+- destination address;
+- destination chain;
+- order ID;
+- payment status;
+- crypto status;
+- destination TX hash;
+- refund status/hash se disponibile;
+- timestamps.
+UI PREMIUM
+Riutilizzare la card "Acquista con carta" già presente.
+NON creare una pagina scollegata dal wallet.
+La UI deve essere coerente con Alpha Wallet:
+- premium;
+- pulita;
+- mobile-first;
+- responsive;
+- nessun indirizzo copiabile richiesto;
+- mostrare chiaramente crypto, fiat, importo e destinatario.
+METODI DI PAGAMENTO
+Preparare UI per mostrare dinamicamente solo i metodi realmente restituiti dal provider.
+Possibili:
+- Visa
+- Mastercard
+- Apple Pay
+- Google Pay
+- SEPA
+NON disegnare metodi come disponibili se il provider/API non li restituisce realmente.
+LOGHI:
+utilizzare loghi ufficiali/autorizzati ove tecnicamente possibile.
+NON ricreare loghi commerciali approssimativi con testo SVG inventato.
+FEE
+NON inventare una fee fiat.
+Prima di mostrarla, determinare dalla API:
+- provider fee;
+- network fee;
+- eventuale spread;
+- eventuale partner revenue.
+Se la fee non è disponibile separatamente:
+→ mostrare solo il payout/total effettivamente restituito dal provider;
+→ non inventare una percentuale.
+TEST
+Prima di modificare codice:
+1. mappa completa dei file coinvolti;
+2. identifica esattamente il sistema notifiche;
+3. identifica esattamente il sistema cronologia;
+4. identifica la card già esistente;
+5. identifica il wallet address source;
+6. identifica la documentazione/API fiat disponibile.
+Poi implementazione isolata.
+TEST obbligatori:
+- wallet address automatico;
+- address mancante → ordine bloccato;
+- chain corretta;
+- nessun recipient manuale;
+- API key non esposta;
+- quote;
+- order creation;
+- status recovery;
+- destination TX;
+- completed senza destination TX → IMPOSSIBILE;
+- refund;
+- notification integration;
+- history integration;
+- reload/recovery;
+- mobile UI;
+- zero regressioni.
+REPORT FINALE
+Prima di qualsiasi deploy restituisci:
+FILES CREATED
+FILES MODIFIED
+PAYMENTS MODIFIED = 0
+SWAP / CHANGE NOW EXCHANGE MODIFIED = 0
+LI.FI MODIFIED = 0
+REAL FUNDS MOVED = 0
+REAL FIAT PURCHASE = 0
+API KEYS EXPOSED = 0
+NOTIFICATION REGRESSION = 0
+HISTORY REGRESSION = 0
+TESTS PASS
+BUILD PASS
+NON fare deploy senza mia approvazione esplicita.
+
+Questo ci prepara già tutta l’architettura, mentre il deploy ChangeNOW Fase 1 procede. Poi, appena abbiamo conferma definitiva dell’API fiat/KYB, colleghiamo il provider reale senza dover rifare la struttura.
