@@ -1,0 +1,399 @@
+FIX CRITICO — FALSO “COMPLETED” NELLO SWAP BTC → EVM
+
+Obiettivo
+
+Correggere esclusivamente il bug per cui Alpha può considerare COMPLETED/CONFIRMED uno swap BTC → EVM (es. BTC → USDT Ethereum) quando Li.Fi restituisce status: "DONE" relativo in realtà a una vecchia transazione BTC ricevuta dall’utente appartenente a uno swap precedente nella direzione opposta.
+
+Il caso diagnosticato è:
+
+* Vecchio swap: USDT → BTC
+* TX BTC ricevuta dall’utente: 96b55dc7...
+* Successivo tentativo: BTC → USDT
+* Alpha ha interrogato Li.Fi usando 96b55dc7...
+* Li.Fi ha restituito DONE perché quella TX era già registrata come receiving del precedente USDT → BTC
+* Alpha ha erroneamente interpretato quel DONE come completamento del nuovo BTC → USDT.
+
+File interessato
+
+artifacts/alpha-chat-web/src/swap/evm/useEvmSwapState.ts
+
+Funzione:
+
+startBtcPoll
+
+Attualmente il codice accetta:
+
+if (st.status === "DONE") {
+  localStorage.removeItem(EVM_SWAP_ACTIVE_KEY);
+  if (isMounted.current) setSv(prev => ({
+    ...prev,
+    phase: "completed",
+    txHash: st.txHash ?? txid,
+    error: null,
+  }));
+}
+
+Questo criterio è INSUFFICIENTE.
+
+⸻
+
+REQUISITO 1 — NON ACCETTARE PIÙ DONE DA SOLO
+
+st.status === "DONE" NON deve più essere sufficiente per impostare:
+
+phase = completed
+
+Prima di accettare DONE, verificare che la risposta Li.Fi corrisponda realmente allo swap attualmente in corso.
+
+⸻
+
+REQUISITO 2 — VALIDARE LA DESTINATION CHAIN
+
+Per uno swap BTC → USDT Ethereum:
+
+capturedToChainId = 1
+
+Se Li.Fi restituisce:
+
+receiving.chainId = 20000000000001
+
+cioè Bitcoin, questo NON è il payout dello swap BTC → Ethereum.
+
+Deve essere considerato:
+
+MISMATCH
+
+e MAI:
+
+COMPLETED
+
+In generale:
+
+receiving.chainId === capturedToChainId
+
+deve essere una condizione necessaria per accettare DONE.
+
+NON hardcodare Ethereum se il motore supporta altre EVM chain.
+
+⸻
+
+REQUISITO 3 — VALIDARE LA DIREZIONE
+
+Verificare che il risultato Li.Fi rappresenti realmente:
+
+source = BTC
+destination = chain EVM richiesta
+
+e non:
+
+source = EVM
+destination = BTC
+
+Nel caso diagnosticato:
+
+USDT → BTC
+
+è la direzione del vecchio swap.
+
+Non deve mai essere accettata come risultato del nuovo:
+
+BTC → USDT
+
+⸻
+
+REQUISITO 4 — VALIDARE IL PAYOUT EVM
+
+Prima di impostare completed, verificare che esista effettivamente un risultato di destinazione coerente con:
+
+* chain EVM prevista;
+* token previsto;
+* importo previsto;
+* transaction hash della destinazione EVM, se fornito da Li.Fi.
+
+Per BTC → USDT Ethereum, il risultato valido deve rappresentare effettivamente un payout USDT sulla rete Ethereum.
+
+La semplice presenza di:
+
+status = DONE
+
+NON è sufficiente.
+
+⸻
+
+REQUISITO 5 — NON CANCELLARE LO STATO LOCALE IN CASO DI MISMATCH
+
+Attualmente il codice esegue:
+
+localStorage.removeItem(EVM_SWAP_ACTIVE_KEY);
+
+quando riceve DONE.
+
+Questo cleanup deve avvenire solo dopo aver verificato che il risultato Li.Fi appartenga realmente allo swap corrente.
+
+Se il risultato è:
+
+DONE + wrong chain
+DONE + wrong direction
+DONE + missing destination payout
+DONE + mismatched token
+
+NON cancellare:
+
+EVM_SWAP_ACTIVE_KEY
+
+e non impostare:
+
+phase = completed
+
+⸻
+
+REQUISITO 6 — GESTIRE IL MISMATCH IN MODO SICURO
+
+Se Li.Fi restituisce DONE ma il risultato non corrisponde allo swap corrente:
+
+NON → completed
+NON → confirmed
+NON → success
+NON → cleanup dello stato
+
+Registrare invece un risultato diagnostico tipo:
+
+Li.Fi DONE but result does not match current swap
+
+e mantenere lo stato in una condizione non completata.
+
+Se il risultato non può essere associato con certezza allo swap corrente, è preferibile:
+
+PENDING / MISMATCH
+
+piuttosto che:
+
+COMPLETED
+
+Non inventare un completamento.
+
+⸻
+
+REQUISITO 7 — NON USARE UNA BTC TX COME DESTINATION TX EVM
+
+Non impostare:
+
+txHash: st.txHash ?? txid
+
+come prova di completamento se txid è semplicemente la BTC transaction usata per il polling.
+
+La BTC TX di input/deposito e la EVM destination transaction sono concetti differenti.
+
+Quando il payout EVM non esiste, NON deve essere mostrato un BTC hash come se fosse la destination TX USDT.
+
+⸻
+
+REQUISITO 8 — LOG DIAGNOSTICI
+
+Aggiungere log chiari e non sensibili quando viene ricevuto DONE, mostrando almeno:
+
+current swap:
+sourceChain
+destinationChain
+sourceToken
+destinationToken
+input tx hash
+Li.Fi result:
+status
+sending.chainId
+receiving.chainId
+sending.txHash
+receiving.txHash
+tool
+
+E un risultato esplicito:
+
+LiFi match: VALID
+
+oppure:
+
+LiFi match: MISMATCH
+
+Esempio del caso che NON deve più essere considerato completato:
+
+Current swap:
+BTC → USDT
+destination chain: Ethereum (1)
+LiFi:
+status: DONE
+receiving chain: Bitcoin (20000000000001)
+receiving tx: 96b55dc7...
+RESULT:
+MISMATCH — receiving chain != requested destination chain
+
+⸻
+
+REQUISITO 9 — NON TOCCARE ALTRI FLUSSI
+
+Questo fix deve essere strettamente limitato alla validazione dello stato Li.Fi nel flusso BTC → EVM.
+
+NON modificare:
+
+* fee;
+* network fee;
+* USDA;
+* BTC wallet generation;
+* BTC balance;
+* USDT contract;
+* EVM chain switching;
+* Thorchain;
+* altri swap già funzionanti;
+* payout;
+* database;
+* backend;
+* autenticazione;
+* altri provider;
+* UI non necessaria al fix.
+
+Non effettuare refactoring generale.
+
+Non cambiare librerie.
+
+Non cambiare API Li.Fi.
+
+Non cambiare architettura.
+
+⸻
+
+REQUISITO 10 — TEST OBBLIGATORI
+
+Dopo l’implementazione eseguire test almeno per questi casi:
+
+Caso A — Vecchia TX USDT → BTC
+
+Li.Fi:
+
+status = DONE
+receiving.chainId = BTC
+
+Nuovo swap:
+
+BTC → Ethereum USDT
+
+RISULTATO ATTESO:
+
+NON COMPLETED
+MISMATCH
+
+⸻
+
+Caso B — Vero BTC → Ethereum USDT completato
+
+Li.Fi:
+
+status = DONE
+receiving.chainId = Ethereum
+receiving.txHash = EVM TX valida
+destination token = USDT
+
+RISULTATO ATTESO:
+
+COMPLETED
+
+⸻
+
+Caso C — DONE ma destination chain errata
+
+status = DONE
+receiving.chainId != capturedToChainId
+
+RISULTATO ATTESO:
+
+NON COMPLETED
+
+⸻
+
+Caso D — DONE ma nessun payout EVM
+
+status = DONE
+destination EVM transaction assente
+
+RISULTATO ATTESO:
+
+NON COMPLETED
+
+⸻
+
+Caso E — Swap EVM → BTC esistente
+
+Verificare che il fix NON rompa il flusso già funzionante EVM → BTC.
+
+RISULTATO ATTESO:
+
+NESSUNA REGRESSIONE
+
+⸻
+
+CRITERIO DI ACCETTAZIONE FINALE
+
+Uno swap BTC → EVM può essere mostrato come:
+
+CONFIRMED / COMPLETED
+
+SOLO quando il risultato Li.Fi è verificato come appartenente allo swap corrente.
+
+In particolare deve essere impossibile che:
+
+vecchio USDT → BTC
+        ↓
+BTC receiving TX
+        ↓
+nuovo BTC → USDT
+        ↓
+Li.Fi restituisce DONE
+        ↓
+Alpha = COMPLETED
+
+Il comportamento corretto deve essere:
+
+vecchio USDT → BTC
+        ↓
+BTC receiving TX
+        ↓
+nuovo BTC → USDT
+        ↓
+Li.Fi restituisce DONE
+        ↓
+receiving.chainId = BTC
+        ↓
+MISMATCH
+        ↓
+NON COMPLETED
+
+Mentre per un vero completamento:
+
+BTC → USDT
+        ↓
+Li.Fi DONE
+        ↓
+receiving.chainId = Ethereum
+        ↓
+destination USDT verificato
+        ↓
+destination TX verificata
+        ↓
+COMPLETED
+
+IMPORTANTE
+
+Prima di modificare il codice:
+
+1. analizza l’implementazione attuale;
+2. individua esattamente come vengono catturati capturedToChainId, token e direzione;
+3. non assumere nomi di campi che non esistono;
+4. implementa il minimo cambiamento necessario;
+5. esegui i test;
+6. restituisci un report con:
+    * file modificati;
+    * righe modificate;
+    * logica precedente;
+    * logica nuova;
+    * test eseguiti;
+    * eventuali regressioni.
+
+NON dichiarare il fix completato senza aver verificato che il vecchio caso 96b55dc7... non possa più produrre phase: "completed" per un nuovo swap BTC → USDT.

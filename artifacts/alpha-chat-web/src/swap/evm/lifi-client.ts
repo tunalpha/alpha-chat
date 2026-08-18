@@ -388,9 +388,18 @@ function _publicRpc(chainId: number): string {
 export type LiFiStatus = "PENDING" | "DONE" | "FAILED" | "INVALID" | "NOT_FOUND";
 
 export interface LiFiStatusResult {
-  status:   LiFiStatus;
-  txHash?:  string;
-  toAmount?: string;
+  status:           LiFiStatus;
+  txHash?:          string;
+  toAmount?:        string;
+  /**
+   * chainId del lato "receiving" — la chain che riceve il payout.
+   * Per BTC→EVM deve essere la chain EVM di destinazione (es. 1, 137, 56).
+   * Se è la BTC chain (20000000000001) su un swap BTC→EVM, il DONE si riferisce
+   * a uno swap nella direzione opposta e NON deve essere accettato.
+   */
+  receivingChainId?: number;
+  /** chainId del lato "sending" — la chain sorgente. */
+  sendingChainId?:   number;
 }
 
 /** Controlla lo stato di uno swap Li.Fi via txHash + chain. */
@@ -411,10 +420,14 @@ export async function getLiFiStatus(
 
     if (!res.ok) return { status: "INVALID" };
 
+    const receiving = body.receiving as Record<string, unknown> | undefined;
+    const sending   = body.sending   as Record<string, unknown> | undefined;
     return {
-      status:   (body.status as LiFiStatus) ?? "PENDING",
-      txHash:   (body.receiving as Record<string, unknown>)?.txHash as string | undefined,
-      toAmount: (body.receiving as Record<string, unknown>)?.amount as string | undefined,
+      status:           (body.status as LiFiStatus) ?? "PENDING",
+      txHash:           receiving?.txHash   as string | undefined,
+      toAmount:         receiving?.amount   as string | undefined,
+      receivingChainId: receiving?.chainId  as number | undefined,
+      sendingChainId:   sending?.chainId    as number | undefined,
     };
   } catch {
     return { status: "PENDING" };

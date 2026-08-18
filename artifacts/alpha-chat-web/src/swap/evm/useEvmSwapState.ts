@@ -30,7 +30,7 @@ import { client as thirdwebClient } from "../../lib/thirdweb.js";
 import {
   fetchLiFiQuote, executeLiFiSwap, getLiFiStatus,
   configureLiFiWallet, clearLiFiWallet,
-  type LiFiStatus,
+  type LiFiStatus, type LiFiStatusResult,
 } from "./lifi-client.js";
 import { getAccessToken } from "../../lib/auth.js";
 import { API_BASE_URL   } from "../../lib/platform-config.js";
@@ -242,9 +242,20 @@ export function useEvmSwapState(opts?: EvmSwapStateOpts): [EvmSwapStateValue, Ev
       }
 
       const result = await getLiFiStatus(active.txHash, active.fromChainId, active.toChainId)
-        .catch(() => ({ status: "PENDING" as LiFiStatus }));
+        .catch((): LiFiStatusResult => ({ status: "PENDING" }));
 
-      const finalState = resolveLiFiStatus(result.status);
+      // REQUISITO 2: per swap BTC→EVM, applicare lo stesso direction guard
+      // presente in startBtcPoll — previene falso "completed" al reload/recovery.
+      let finalState = resolveLiFiStatus(result.status);
+      if (isBtcChain(active.fromChainId) && result.status === "DONE") {
+        const validation = _validateBtcToEvmDone(result, active.toChainId);
+        console.info(
+          "[AlphaSwap recover] Li.Fi DONE | BTC→chain:", active.toChainId,
+          "| receiving.chainId:", result.receivingChainId,
+          "|", validation.valid ? "✓ VALID" : `✗ MISMATCH (${validation.reason})`,
+        );
+        if (!validation.valid) finalState = "pending"; // non completare
+      }
       if (isMounted.current) {
         setSv(prev => ({
           ...prev,
@@ -599,9 +610,35 @@ export function useEvmSwapState(opts?: EvmSwapStateOpts): [EvmSwapStateValue, Ev
           try {
             const st = await getLiFiStatus(txid, capturedFromChainId, capturedToChainId);
             if (st.status === "DONE") {
+              // ── REQUISITI 2-7: Direction guard BTC→EVM ────────────────────────
+              // Li.Fi può restituire DONE se txid è registrata come receiving di
+              // un vecchio swap EVM→BTC (direzione opposta). Verificare che
+              // receiving.chainId sia la chain EVM di destinazione corrente,
+              // non la BTC chain — altrimenti è un falso positivo.
+              const validation = _validateBtcToEvmDone(st, capturedToChainId);
+
+              console.info(
+                "[AlphaSwap BTC-poll] Li.Fi DONE",
+                "| swap BTC→chain:", capturedToChainId,
+                "| receiving.chainId:", st.receivingChainId,
+                "| sending.chainId:",   st.sendingChainId,
+                "| lifi.txHash:", st.txHash ?? "(none)",
+                "|", validation.valid ? "✓ VALID" : `✗ MISMATCH (${validation.reason})`,
+              );
+
+              if (!validation.valid) {
+                // DONE non appartiene a questo swap — NON completare [REQUISITO 5]
+                // NON rimuovere EVM_SWAP_ACTIVE_KEY — continuare polling
+                if (isMounted.current) setTimeout(poll, 30_000);
+                return;
+              }
+
+              // DONE genuino: receiving chain corrisponde alla destinazione EVM
               localStorage.removeItem(EVM_SWAP_ACTIVE_KEY);
               if (isMounted.current) setSv(prev => ({
-                ...prev, phase: "completed", txHash: st.txHash ?? txid, error: null,
+                // REQUISITO 7: txHash è la destination EVM TX, non la BTC input TX.
+                // Se Li.Fi non fornisce il txHash EVM di destinazione, lasciamo null.
+                ...prev, phase: "completed", txHash: st.txHash ?? null, error: null,
               }));
             } else if (st.status === "FAILED" || st.status === "INVALID") {
               localStorage.removeItem(EVM_SWAP_ACTIVE_KEY);
@@ -898,6 +935,42 @@ export function useEvmSwapState(opts?: EvmSwapStateOpts): [EvmSwapStateValue, Ev
 
 // ── Helper ────────────────────────────────────────────────────────────────────
 
+/**
+ * Valida che un risultato Li.Fi DONE corrisponda allo swap BTC→EVM corrente.
+ * [REQUISITI 2, 3, 4, 6 — fix falso-completed BTC→EVM]
+ *
+ * Problema diagnosticato (2026-08-18):
+ *   Li.Fi può restituire status=DONE se la TX BTC fornita è già registrata come
+ *   `receiving` di un vecchio swap EVM→BTC (direzione opposta). Alpha accettava
+ *   quel DONE marcando erroneamente il nuovo swap BTC→EVM come completato, senza
+ *   che alcun payout EVM/USDT fosse mai avvenuto.
+ *
+ * Regola: per BTC→EVM, `receiving.chainId` DEVE essere uguale a `capturedToChainId`
+ * (la chain EVM attesa). Se è la BTC chain, il DONE appartiene a uno swap opposto.
+ *
+ * @internal Esportata con prefisso _ per i test; non usare in produzione al di fuori di useEvmSwapState.
+ */
+export function _validateBtcToEvmDone(
+  result: Pick<LiFiStatusResult, "status" | "receivingChainId">,
+  capturedToChainId: number,
+): { valid: boolean; reason: string } {
+  if (result.status !== "DONE") {
+    return { valid: false, reason: "status is not DONE" };
+  }
+  const rc = result.receivingChainId;
+  if (rc === undefined) {
+    // receiving.chainId assente: direzione non verificabile → tratta come PENDING
+    return { valid: false, reason: "receiving.chainId missing — direction unverifiable" };
+  }
+  if (rc !== capturedToChainId) {
+    return {
+      valid:  false,
+      reason: `MISMATCH — receiving.chainId=${rc} != capturedToChainId=${capturedToChainId}`,
+    };
+  }
+  return { valid: true, reason: "VALID — receiving.chainId matches destination" };
+}
+
 function resolveLiFiStatus(status: LiFiStatus): EvmSwapPhase {
   switch (status) {
     case "DONE":    return "completed";
@@ -910,3 +983,4 @@ function resolveLiFiStatus(status: LiFiStatus): EvmSwapPhase {
 // ── Re-export types for convenience ───────────────────────────────────────────
 export type { EvmSwapStateValue, EvmSwapActions, EvmSwapQuote };
 export { LIFI_INTEGRATOR, LIFI_FEE };
+// _validateBtcToEvmDone è già esportata sopra (prefisso _ = internal/testing)
