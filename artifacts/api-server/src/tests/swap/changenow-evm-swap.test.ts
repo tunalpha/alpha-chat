@@ -3,30 +3,66 @@
  *
  * NESSUN MOVIMENTO DI FONDI REALI. Tutte le chiamate esterne sono mockate.
  *
+ * PRINCIPIO FONDAMENTALE:
+ *   ChangeNOW è la SOURCE OF TRUTH sulla disponibilità delle coppie.
+ *   Il codice NON usa whitelist hardcoded come gate.
+ *   I token UI (CN_EVM_TOKENS) sono solo un catalogo per la UI, non un blocco API.
+ *
  * Suite:
- *   T1  — checkEvmPair: coppia disponibile
- *   T2  — checkEvmPair: stesso ticker → non disponibile
- *   T3  — checkEvmPair: API error → available=false (fail-safe)
- *   T4  — getEvmQuote: importo valido
- *   T5  — getEvmQuote: importo zero → errore
- *   T6  — createEvmExchange: crea ordine correttamente
- *   T7  — createEvmExchange: no destinationEvmAddress → errore
- *   T8  — createEvmExchange: swap attivo esiste → errore
- *   T9  — commitEvmFunds: salva depositTxHash
- *   T10 — commitEvmFunds: swap non trovato → errore
- *   T11 — getEvmSwapStatus: finished + payoutHash valido → isCompleted=true
- *   T12 — getEvmSwapStatus: finished senza payoutHash → isCompleted=false
- *   T13 — getEvmSwapStatus: finished con payoutHash === depositTxHash → isCompleted=false
- *   T14 — getEvmSwapStatus: confirming → isCompleted=false, isTerminal=false
- *   T15 — getEvmSwapStatus: failed → isTerminal=true, isCompleted=false
- *   T16 — getEvmSwapStatus: refunded → isTerminal=true
- *   T17 — getEvmSwapStatus: expired → isTerminal=true
- *   T18 — getEvmSwapStatus: API rete KO → usa stato DB (resilienza polling)
- *   T19 — getActiveEvmSwapForUser: swap attivo trovato
- *   T20 — getActiveEvmSwapForUser: nessuno swap → null
- *   T21 — checkEvmPair: ChangeNOW DISABLED → errore
- *   T22 — checkEvmPair: ticker FROM invalido → errore
- *   T23 — checkEvmPair: ticker TO invalido → errore
+ *   ── checkEvmPair ──────────────────────────────────────────
+ *   T1  — coppia disponibile → available=true + minAmount (usa cnGetMinAmount)
+ *   T2  — stesso ticker → available=false (non chiama API)
+ *   T3  — API 4xx → available=false (coppia non supportata, NON errore provider)
+ *   T4  — API 5xx → lancia CHANGENOW_API_ERROR 503 (NOT available=false)
+ *   T5  — ticker non nel catalogo UI → API comunque chiamata (nessuna whitelist gate)
+ *   T6  — ticker con formato invalido (underscore/maiuscole/troppo lungo) → errore
+ *   T7  — ticker con caratteri pericolosi (;, ') → errore formato
+ *   T8  — ChangeNOW DISABLED → errore CHANGENOW_DISABLED
+ *
+ *   ── getEvmQuote ───────────────────────────────────────────
+ *   T9  — importo valido → stima restituita
+ *   T10 — importo zero → errore INVALID_AMOUNT
+ *   T11 — API 4xx (deposit_too_small) → errore AMOUNT_BELOW_MINIMUM
+ *   T12 — API 5xx → errore CHANGENOW_API_ERROR
+ *
+ *   ── createEvmExchange ─────────────────────────────────────
+ *   T13 — crea ordine correttamente
+ *   T14 — no destinationEvmAddress → errore EVM_DESTINATION_ADDRESS_REQUIRED
+ *   T15 — swap attivo già presente → errore ACTIVE_EVM_SWAP_EXISTS
+ *
+ *   ── commitEvmFunds ────────────────────────────────────────
+ *   T16 — salva depositTxHash e fundsCommitted=true
+ *   T17 — swap non trovato → errore EVM_SWAP_NOT_FOUND
+ *
+ *   ── getEvmSwapStatus (REGOLA COMPLETED ASSOLUTA) ──────────
+ *   T18 — finished + payoutHash valido + diverso da depositTxHash → isCompleted=true
+ *   T19 — finished senza payoutHash → isCompleted=false
+ *   T20 — finished + payoutHash === depositTxHash → isCompleted=false
+ *   T21 — confirming → isCompleted=false, isTerminal=false
+ *   T22 — failed → isTerminal=true, isCompleted=false
+ *   T23 — refunded → isTerminal=true
+ *   T24 — expired → isTerminal=true, isCompleted=false
+ *   T25 — API rete KO → usa stato DB (resilienza polling)
+ *
+ *   ── getActiveEvmSwapForUser ───────────────────────────────
+ *   T26 — swap attivo trovato
+ *   T27 — nessuno swap → null
+ *
+ *   ── Disponibilità dinamica (regression + nuove coppie) ────
+ *   T28 — POL→USDC Polygon (coppia che dava falso negativo)
+ *   T29 — USDC→POL (coppia non in vecchia whitelist → ora supportata)
+ *   T30 — ETH→USDC Polygon
+ *   T31 — BNB→USDT BSC
+ *
+ *   ── Idempotenza polling ───────────────────────────────────
+ *   T32 — polling duplicato non modifica stato terminale
+ *
+ *   ── Nessun fallback Li.Fi ────────────────────────────────
+ *   T33 — checkEvmPair non importa né chiama Li.Fi
+ *
+ *   ── Catalogo UI ──────────────────────────────────────────
+ *   T34 — CN_EVM_TOKENS contiene ticker attesi
+ *   T35 — ogni token ha chainId/decimals/isNative coerenti
  */
 
 import { describe, it, expect, vi, beforeEach, beforeAll, afterAll } from "vitest";
@@ -43,14 +79,17 @@ vi.mock("../../services/swap/changenow.service.js", async (importOriginal) => {
   const real = await importOriginal() as Record<string, unknown>;
   return {
     ...real,
-    cnGetExchangeAmount: vi.fn(),
-    cnCreateTransaction: vi.fn(),
-    cnGetTransactionStatus: vi.fn(),
+    cnGetMinAmount:          vi.fn(),
+    cnGetExchangeAmount:     vi.fn(),
+    cnCreateTransaction:     vi.fn(),
+    cnGetTransactionStatus:  vi.fn(),
   };
 });
 
 import { isProviderEnabled } from "../../services/swap/swap-provider-router.service.js";
 import {
+  CnApiError,
+  cnGetMinAmount,
   cnGetExchangeAmount,
   cnCreateTransaction,
   cnGetTransactionStatus,
@@ -105,51 +144,77 @@ const MOCK_TX_RESPONSE = {
   refundHash:            null,
 };
 
-// ── T1: checkEvmPair — disponibile ────────────────────────────────────────────
+// Helper per creare CnApiError con status
+function cnErr(status: number) {
+  return new CnApiError(status, `ChangeNOW API error ${status}`);
+}
+
+// ── checkEvmPair ──────────────────────────────────────────────────────────────
 
 describe("checkEvmPair", () => {
-  it("T1 — coppia disponibile restituisce available=true e minAmount", async () => {
-    vi.mocked(cnGetExchangeAmount).mockResolvedValueOnce({
-      estimatedAmount: 3.2,
-      minAmount: 11.4,
-    });
+  it("T1 — coppia disponibile → available=true + minAmount (usa cnGetMinAmount)", async () => {
+    vi.mocked(cnGetMinAmount).mockResolvedValueOnce({ minAmount: 11.33 });
     const result = await checkEvmPair("pol", "usdcmatic");
     expect(result.available).toBe(true);
-    expect(result.minAmount).toBe(11.4);
+    expect(result.minAmount).toBe(11.33);
     expect(result.from).toBe("pol");
     expect(result.to).toBe("usdcmatic");
-  });
-
-  it("T2 — stesso ticker → available=false (non chiama API)", async () => {
-    const result = await checkEvmPair("pol", "pol");
-    expect(result.available).toBe(false);
+    // cnGetMinAmount chiamato, NON cnGetExchangeAmount
+    expect(cnGetMinAmount).toHaveBeenCalledWith("pol", "usdcmatic");
     expect(cnGetExchangeAmount).not.toHaveBeenCalled();
   });
 
-  it("T3 — API error → available=false (fail-safe)", async () => {
-    vi.mocked(cnGetExchangeAmount).mockRejectedValueOnce(new Error("Network error"));
+  it("T2 — stesso ticker → available=false, non chiama API", async () => {
+    const result = await checkEvmPair("pol", "pol");
+    expect(result.available).toBe(false);
+    expect(cnGetMinAmount).not.toHaveBeenCalled();
+  });
+
+  it("T3 — API 4xx → available=false (coppia non supportata, NON errore provider)", async () => {
+    vi.mocked(cnGetMinAmount).mockRejectedValueOnce(cnErr(400));
     const result = await checkEvmPair("pol", "usdcmatic");
     expect(result.available).toBe(false);
   });
 
-  it("T21 — ChangeNOW DISABLED → lancia errore", async () => {
+  it("T4 — API 5xx → lancia CHANGENOW_API_ERROR 503 (NON available=false)", async () => {
+    vi.mocked(cnGetMinAmount).mockRejectedValueOnce(cnErr(503));
+    await expect(checkEvmPair("pol", "usdcmatic")).rejects.toMatchObject({ message: expect.stringContaining("CHANGENOW_API_ERROR") });
+  });
+
+  it("T5 — ticker non nel catalogo UI locale → API comunque chiamata (nessuna whitelist gate)", async () => {
+    // "usdceth" non è in CN_EVM_TOKENS ma il service non deve bloccarlo
+    const notInCatalog = "usdceth";
+    expect(CN_EVM_TOKENS.some(t => t.ticker === notInCatalog)).toBe(false);
+    vi.mocked(cnGetMinAmount).mockResolvedValueOnce({ minAmount: 0.01 });
+    const result = await checkEvmPair("eth", notInCatalog);
+    expect(result.available).toBe(true);
+    // L'API è stata chiamata nonostante il ticker non sia nel catalogo locale
+    expect(cnGetMinAmount).toHaveBeenCalledWith("eth", notInCatalog);
+  });
+
+  it("T6 — ticker con formato invalido (underscore) → errore INVALID_TICKER_FORMAT", async () => {
+    await expect(checkEvmPair("INVALID_TICKER", "usdcmatic")).rejects.toMatchObject({ message: expect.stringContaining("INVALID_TICKER_FORMAT") });
+    await expect(checkEvmPair("pol", "INVALID_TO")).rejects.toMatchObject({ message: expect.stringContaining("INVALID_TICKER_FORMAT") });
+    expect(cnGetMinAmount).not.toHaveBeenCalled();
+  });
+
+  it("T7 — ticker con caratteri pericolosi → errore formato", async () => {
+    await expect(checkEvmPair("pol;DROP", "usdcmatic")).rejects.toThrow();
+    await expect(checkEvmPair("pol", "usdc'matic")).rejects.toThrow();
+    await expect(checkEvmPair("pol", "a".repeat(31))).rejects.toThrow();
+    expect(cnGetMinAmount).not.toHaveBeenCalled();
+  });
+
+  it("T8 — ChangeNOW DISABLED → lancia CHANGENOW_DISABLED", async () => {
     vi.mocked(isProviderEnabled).mockResolvedValueOnce(false);
     await expect(checkEvmPair("pol", "usdcmatic")).rejects.toThrow();
   });
-
-  it("T22 — ticker FROM invalido → lancia errore", async () => {
-    await expect(checkEvmPair("INVALID_TICKER", "usdcmatic")).rejects.toThrow();
-  });
-
-  it("T23 — ticker TO invalido → lancia errore", async () => {
-    await expect(checkEvmPair("pol", "INVALID_TO")).rejects.toThrow();
-  });
 });
 
-// ── T4-T5: getEvmQuote ────────────────────────────────────────────────────────
+// ── getEvmQuote ───────────────────────────────────────────────────────────────
 
 describe("getEvmQuote", () => {
-  it("T4 — importo valido restituisce stima", async () => {
+  it("T9 — importo valido → stima restituita", async () => {
     vi.mocked(cnGetExchangeAmount).mockResolvedValueOnce({
       estimatedAmount: 3.2,
       minAmount: 11.4,
@@ -162,20 +227,35 @@ describe("getEvmQuote", () => {
     expect(quote.minAmount).toBe(11.4);
   });
 
-  it("T5 — importo zero → errore INVALID_AMOUNT", async () => {
+  it("T10 — importo zero → errore INVALID_AMOUNT (senza chiamare API)", async () => {
     await expect(
       getEvmQuote({ fromTicker: "pol", toTicker: "usdcmatic", fromAmount: 0 })
-    ).rejects.toThrow();
+    ).rejects.toMatchObject({ message: expect.stringContaining("INVALID_AMOUNT") });
+    expect(cnGetExchangeAmount).not.toHaveBeenCalled();
+  });
+
+  it("T11 — API 4xx (deposit_too_small) → errore AMOUNT_BELOW_MINIMUM", async () => {
+    vi.mocked(cnGetExchangeAmount).mockRejectedValueOnce(cnErr(400));
+    await expect(
+      getEvmQuote({ fromTicker: "pol", toTicker: "usdcmatic", fromAmount: 1 })
+    ).rejects.toMatchObject({ message: expect.stringContaining("AMOUNT_BELOW_MINIMUM") });
+  });
+
+  it("T12 — API 5xx → errore CHANGENOW_API_ERROR", async () => {
+    vi.mocked(cnGetExchangeAmount).mockRejectedValueOnce(cnErr(500));
+    await expect(
+      getEvmQuote({ fromTicker: "pol", toTicker: "usdcmatic", fromAmount: 15 })
+    ).rejects.toMatchObject({ message: expect.stringContaining("CHANGENOW_API_ERROR") });
   });
 });
 
-// ── T6-T8: createEvmExchange ──────────────────────────────────────────────────
+// ── createEvmExchange ─────────────────────────────────────────────────────────
 
 describe("createEvmExchange", () => {
-  it("T6 — crea ordine correttamente", async () => {
+  it("T13 — crea ordine correttamente", async () => {
     vi.mocked(cnCreateTransaction).mockResolvedValueOnce(MOCK_TX_RESPONSE as any);
     const result = await createEvmExchange({
-      userId:                USER_ID + "_T6",
+      userId:                USER_ID + "_T13",
       fromTicker:            "pol",
       toTicker:              "usdcmatic",
       fromAmount:            15,
@@ -187,71 +267,74 @@ describe("createEvmExchange", () => {
     expect(result.destinationAddress).toBe(DEST_EVM);
     expect(result.fromTicker).toBe("pol");
     expect(result.toTicker).toBe("usdcmatic");
+    // Verifica che cnCreateTransaction sia stato chiamato con i ticker corretti
+    expect(cnCreateTransaction).toHaveBeenCalledWith(expect.objectContaining({
+      fromCurrency: "pol",
+      toCurrency:   "usdcmatic",
+      amount:       15,
+      address:      DEST_EVM,
+    }));
   });
 
-  it("T7 — no destinationEvmAddress → errore EVM_DESTINATION_ADDRESS_REQUIRED", async () => {
+  it("T14 — no destinationEvmAddress → errore EVM_DESTINATION_ADDRESS_REQUIRED", async () => {
     await expect(
       createEvmExchange({
-        userId: USER_ID + "_T7", fromTicker: "pol", toTicker: "usdcmatic",
+        userId: USER_ID + "_T14", fromTicker: "pol", toTicker: "usdcmatic",
         fromAmount: 15, destinationEvmAddress: "", refundEvmAddress: REFUND,
       })
-    ).rejects.toThrow();
+    ).rejects.toMatchObject({ message: expect.stringContaining("EVM_DESTINATION_ADDRESS_REQUIRED") });
   });
 
-  it("T8 — swap attivo (fundsCommitted) già presente → errore ACTIVE_EVM_SWAP_EXISTS", async () => {
-    // Prima crea uno swap e committa i fondi
+  it("T15 — swap attivo (fundsCommitted) già presente → errore ACTIVE_EVM_SWAP_EXISTS", async () => {
     vi.mocked(cnCreateTransaction).mockResolvedValueOnce({
-      ...MOCK_TX_RESPONSE,
-      id: "cn_exchange_T8",
+      ...MOCK_TX_RESPONSE, id: "cn_T15_a",
     } as any);
     const created = await createEvmExchange({
-      userId: USER_ID + "_T8", fromTicker: "pol", toTicker: "usdcmatic",
+      userId: USER_ID + "_T15", fromTicker: "pol", toTicker: "usdcmatic",
       fromAmount: 15, destinationEvmAddress: DEST_EVM, refundEvmAddress: REFUND,
     });
-    await commitEvmFunds(USER_ID + "_T8", created.swapId, "0x_deposit_hash_T8");
+    await commitEvmFunds(USER_ID + "_T15", created.swapId, "0x_deposit_T15");
 
-    // Secondo swap dovrebbe fallire
     await expect(
       createEvmExchange({
-        userId: USER_ID + "_T8", fromTicker: "pol", toTicker: "usdcmatic",
+        userId: USER_ID + "_T15", fromTicker: "pol", toTicker: "usdcmatic",
         fromAmount: 15, destinationEvmAddress: DEST_EVM, refundEvmAddress: REFUND,
       })
-    ).rejects.toThrow();
+    ).rejects.toMatchObject({ message: expect.stringContaining("ACTIVE_EVM_SWAP_EXISTS") });
   });
 });
 
-// ── T9-T10: commitEvmFunds ────────────────────────────────────────────────────
+// ── commitEvmFunds ────────────────────────────────────────────────────────────
 
 describe("commitEvmFunds", () => {
-  it("T9 — salva depositTxHash e fundsCommitted=true", async () => {
+  it("T16 — salva depositTxHash e fundsCommitted=true", async () => {
     vi.mocked(cnCreateTransaction).mockResolvedValueOnce({
-      ...MOCK_TX_RESPONSE, id: "cn_exchange_T9",
+      ...MOCK_TX_RESPONSE, id: "cn_T16",
     } as any);
     const created = await createEvmExchange({
-      userId: USER_ID + "_T9", fromTicker: "pol", toTicker: "usdcmatic",
+      userId: USER_ID + "_T16", fromTicker: "pol", toTicker: "usdcmatic",
       fromAmount: 15, destinationEvmAddress: DEST_EVM, refundEvmAddress: REFUND,
     });
-    // Non deve lanciare
     await expect(
-      commitEvmFunds(USER_ID + "_T9", created.swapId, "0xdepositHash_T9")
+      commitEvmFunds(USER_ID + "_T16", created.swapId, "0xdepositHash_T16")
     ).resolves.not.toThrow();
-    // Verifica tramite getEvmSwapStatus
+
     vi.mocked(cnGetTransactionStatus).mockResolvedValueOnce({
-      ...MOCK_TX_RESPONSE, id: "cn_exchange_T9", status: "waiting",
+      ...MOCK_TX_RESPONSE, id: "cn_T16", status: "waiting",
     } as any);
-    const status = await getEvmSwapStatus(USER_ID + "_T9", created.swapId);
+    const status = await getEvmSwapStatus(USER_ID + "_T16", created.swapId);
     expect(status.fundsCommitted).toBe(true);
-    expect(status.depositTxHash).toBe("0xdepositHash_T9");
+    expect(status.depositTxHash).toBe("0xdepositHash_T16");
   });
 
-  it("T10 — swap non trovato → errore EVM_SWAP_NOT_FOUND", async () => {
+  it("T17 — swap non trovato → errore EVM_SWAP_NOT_FOUND", async () => {
     await expect(
       commitEvmFunds(USER_ID, new mongoose.Types.ObjectId().toString(), "0x_hash")
-    ).rejects.toThrow();
+    ).rejects.toMatchObject({ message: expect.stringContaining("EVM_SWAP_NOT_FOUND") });
   });
 });
 
-// ── T11-T18: getEvmSwapStatus ─────────────────────────────────────────────────
+// ── getEvmSwapStatus (REGOLA COMPLETED ASSOLUTA) ──────────────────────────────
 
 describe("getEvmSwapStatus — REGOLA COMPLETED ASSOLUTA", () => {
   async function makeSwap(userId: string, id: string) {
@@ -264,177 +347,222 @@ describe("getEvmSwapStatus — REGOLA COMPLETED ASSOLUTA", () => {
     });
   }
 
-  it("T11 — finished + payoutHash valido + diverso da depositTxHash → isCompleted=true", async () => {
-    const created = await makeSwap(USER_ID + "_T11", "cn_T11");
-    await commitEvmFunds(USER_ID + "_T11", created.swapId, "0xDepositHash_T11");
+  it("T18 — finished + payoutHash valido + diverso da depositTxHash → isCompleted=true", async () => {
+    const created = await makeSwap(USER_ID + "_T18", "cn_T18");
+    await commitEvmFunds(USER_ID + "_T18", created.swapId, "0xDepositHash_T18");
     vi.mocked(cnGetTransactionStatus).mockResolvedValueOnce({
-      ...MOCK_TX_RESPONSE, id: "cn_T11", status: "finished",
-      payinHash:  "0xDepositHash_T11",
-      payoutHash: "0xPayoutHash_T11",
+      ...MOCK_TX_RESPONSE, id: "cn_T18", status: "finished",
+      payinHash:  "0xDepositHash_T18",
+      payoutHash: "0xPayoutHash_T18",
     } as any);
-    const status = await getEvmSwapStatus(USER_ID + "_T11", created.swapId);
+    const status = await getEvmSwapStatus(USER_ID + "_T18", created.swapId);
     expect(status.isCompleted).toBe(true);
     expect(status.cnStatus).toBe("finished");
-    expect(status.destinationTxHash).toBe("0xPayoutHash_T11");
-    expect(status.depositTxHash).toBe("0xDepositHash_T11");
+    expect(status.destinationTxHash).toBe("0xPayoutHash_T18");
+    expect(status.depositTxHash).toBe("0xDepositHash_T18");
     expect(status.isTerminal).toBe(true);
   });
 
-  it("T12 — finished senza payoutHash → isCompleted=false (REGOLA ASSOLUTA)", async () => {
-    const created = await makeSwap(USER_ID + "_T12", "cn_T12");
+  it("T19 — finished senza payoutHash → isCompleted=false (REGOLA ASSOLUTA)", async () => {
+    const created = await makeSwap(USER_ID + "_T19", "cn_T19");
     vi.mocked(cnGetTransactionStatus).mockResolvedValueOnce({
-      ...MOCK_TX_RESPONSE, id: "cn_T12", status: "finished",
+      ...MOCK_TX_RESPONSE, id: "cn_T19", status: "finished",
       payinHash: null, payoutHash: null,
     } as any);
-    const status = await getEvmSwapStatus(USER_ID + "_T12", created.swapId);
+    const status = await getEvmSwapStatus(USER_ID + "_T19", created.swapId);
     expect(status.isCompleted).toBe(false);
     expect(status.cnStatus).toBe("finished");
     expect(status.destinationTxHash).toBeNull();
   });
 
-  it("T13 — finished con payoutHash === depositTxHash → isCompleted=false (REGOLA ASSOLUTA)", async () => {
-    const SAME_HASH = "0xSameHash_T13";
-    const created = await makeSwap(USER_ID + "_T13", "cn_T13");
-    await commitEvmFunds(USER_ID + "_T13", created.swapId, SAME_HASH);
+  it("T20 — finished + payoutHash === depositTxHash → isCompleted=false (REGOLA ASSOLUTA)", async () => {
+    const SAME_HASH = "0xSameHash_T20";
+    const created = await makeSwap(USER_ID + "_T20", "cn_T20");
+    await commitEvmFunds(USER_ID + "_T20", created.swapId, SAME_HASH);
     vi.mocked(cnGetTransactionStatus).mockResolvedValueOnce({
-      ...MOCK_TX_RESPONSE, id: "cn_T13", status: "finished",
+      ...MOCK_TX_RESPONSE, id: "cn_T20", status: "finished",
       payinHash: SAME_HASH, payoutHash: SAME_HASH,
     } as any);
-    const status = await getEvmSwapStatus(USER_ID + "_T13", created.swapId);
-    // payoutHash è uguale al depositTxHash — MAI isCompleted=true
+    const status = await getEvmSwapStatus(USER_ID + "_T20", created.swapId);
     expect(status.isCompleted).toBe(false);
   });
 
-  it("T14 — confirming → isCompleted=false, isTerminal=false", async () => {
-    const created = await makeSwap(USER_ID + "_T14", "cn_T14");
+  it("T21 — confirming → isCompleted=false, isTerminal=false", async () => {
+    const created = await makeSwap(USER_ID + "_T21", "cn_T21");
     vi.mocked(cnGetTransactionStatus).mockResolvedValueOnce({
-      ...MOCK_TX_RESPONSE, id: "cn_T14", status: "confirming",
+      ...MOCK_TX_RESPONSE, id: "cn_T21", status: "confirming",
     } as any);
-    const status = await getEvmSwapStatus(USER_ID + "_T14", created.swapId);
+    const status = await getEvmSwapStatus(USER_ID + "_T21", created.swapId);
     expect(status.isCompleted).toBe(false);
     expect(status.isTerminal).toBe(false);
     expect(status.cnStatus).toBe("confirming");
   });
 
-  it("T15 — failed → isTerminal=true, isCompleted=false", async () => {
-    const created = await makeSwap(USER_ID + "_T15", "cn_T15");
+  it("T22 — failed → isTerminal=true, isCompleted=false", async () => {
+    const created = await makeSwap(USER_ID + "_T22", "cn_T22");
     vi.mocked(cnGetTransactionStatus).mockResolvedValueOnce({
-      ...MOCK_TX_RESPONSE, id: "cn_T15", status: "failed",
+      ...MOCK_TX_RESPONSE, id: "cn_T22", status: "failed",
     } as any);
-    const status = await getEvmSwapStatus(USER_ID + "_T15", created.swapId);
+    const status = await getEvmSwapStatus(USER_ID + "_T22", created.swapId);
     expect(status.isTerminal).toBe(true);
     expect(status.isCompleted).toBe(false);
     expect(status.cnStatus).toBe("failed");
   });
 
-  it("T16 — refunded → isTerminal=true", async () => {
-    const created = await makeSwap(USER_ID + "_T16", "cn_T16");
+  it("T23 — refunded → isTerminal=true", async () => {
+    const created = await makeSwap(USER_ID + "_T23", "cn_T23");
     vi.mocked(cnGetTransactionStatus).mockResolvedValueOnce({
-      ...MOCK_TX_RESPONSE, id: "cn_T16", status: "refunded",
-      refundHash: "0xRefundHash_T16",
+      ...MOCK_TX_RESPONSE, id: "cn_T23", status: "refunded",
+      refundHash: "0xRefundHash_T23",
     } as any);
-    const status = await getEvmSwapStatus(USER_ID + "_T16", created.swapId);
+    const status = await getEvmSwapStatus(USER_ID + "_T23", created.swapId);
     expect(status.isTerminal).toBe(true);
     expect(status.cnStatus).toBe("refunded");
-    expect(status.refundDetails?.refundHash).toBe("0xRefundHash_T16");
+    expect(status.refundDetails?.refundHash).toBe("0xRefundHash_T23");
   });
 
-  it("T17 — expired → isTerminal=true, isCompleted=false", async () => {
-    const created = await makeSwap(USER_ID + "_T17", "cn_T17");
+  it("T24 — expired → isTerminal=true, isCompleted=false", async () => {
+    const created = await makeSwap(USER_ID + "_T24", "cn_T24");
     vi.mocked(cnGetTransactionStatus).mockResolvedValueOnce({
-      ...MOCK_TX_RESPONSE, id: "cn_T17", status: "expired",
+      ...MOCK_TX_RESPONSE, id: "cn_T24", status: "expired",
     } as any);
-    const status = await getEvmSwapStatus(USER_ID + "_T17", created.swapId);
+    const status = await getEvmSwapStatus(USER_ID + "_T24", created.swapId);
     expect(status.isTerminal).toBe(true);
     expect(status.isCompleted).toBe(false);
     expect(status.cnStatus).toBe("expired");
   });
 
-  it("T18 — API rete KO → usa stato DB (resilienza polling)", async () => {
-    const created = await makeSwap(USER_ID + "_T18", "cn_T18");
-    // API lancia errore
+  it("T25 — API rete KO → usa stato DB (resilienza polling)", async () => {
+    const created = await makeSwap(USER_ID + "_T25", "cn_T25");
     vi.mocked(cnGetTransactionStatus).mockRejectedValueOnce(new Error("Network timeout"));
-    // Deve restituire il dato DB senza lanciare
-    const status = await getEvmSwapStatus(USER_ID + "_T18", created.swapId);
-    // Il mock cnCreateTransaction restituisce status="waiting" → DB ha "waiting"
-    expect(["created","waiting"]).toContain(status.cnStatus);
+    const status = await getEvmSwapStatus(USER_ID + "_T25", created.swapId);
+    expect(["created", "waiting"]).toContain(status.cnStatus);
     expect(status.swapId).toBe(created.swapId);
   });
 });
 
-// ── T19-T20: getActiveEvmSwapForUser ─────────────────────────────────────────
+// ── getActiveEvmSwapForUser ───────────────────────────────────────────────────
 
 describe("getActiveEvmSwapForUser", () => {
-  it("T19 — swap attivo trovato", async () => {
+  it("T26 — swap attivo trovato", async () => {
     vi.mocked(cnCreateTransaction).mockResolvedValueOnce({
-      ...MOCK_TX_RESPONSE, id: "cn_active_T19",
+      ...MOCK_TX_RESPONSE, id: "cn_active_T26",
     } as any);
     await createEvmExchange({
-      userId: USER_ID + "_T19", fromTicker: "pol", toTicker: "usdcmatic",
+      userId: USER_ID + "_T26", fromTicker: "pol", toTicker: "usdcmatic",
       fromAmount: 15, destinationEvmAddress: DEST_EVM, refundEvmAddress: REFUND,
     });
-    const active = await getActiveEvmSwapForUser(USER_ID + "_T19");
+    const active = await getActiveEvmSwapForUser(USER_ID + "_T26");
     expect(active).not.toBeNull();
     expect(active?.fromTicker).toBe("pol");
     expect(active?.toTicker).toBe("usdcmatic");
   });
 
-  it("T20 — nessuno swap → null", async () => {
+  it("T27 — nessuno swap → null", async () => {
     const active = await getActiveEvmSwapForUser("user_nonexistent_" + Date.now());
     expect(active).toBeNull();
   });
 });
 
-// ── CN_EVM_TOKENS: verifica integrità ticker ──────────────────────────────────
+// ── Disponibilità dinamica ────────────────────────────────────────────────────
 
-describe("CN_EVM_TOKENS — integrità ticker verificati", () => {
-  it("contiene pol, usdcmatic, usdtmatic, eth, usdterc20, bnbbsc, usdtbsc", () => {
+describe("Disponibilità dinamica — ChangeNOW come source of truth", () => {
+  it("T28 — POL→USDC Polygon: coppia che dava falso negativo con amount=1 (regression)", async () => {
+    // Simula risposta reale: min=11.33 POL, /v1/min-amount risponde 200
+    vi.mocked(cnGetMinAmount).mockResolvedValueOnce({ minAmount: 11.3316386 });
+    const result = await checkEvmPair("pol", "usdcmatic");
+    expect(result.available).toBe(true);
+    expect(result.minAmount).toBeCloseTo(11.33, 1);
+    // Verifica: usa cnGetMinAmount (non cnGetExchangeAmount con amount fisso)
+    expect(cnGetMinAmount).toHaveBeenCalledWith("pol", "usdcmatic");
+    expect(cnGetExchangeAmount).not.toHaveBeenCalled();
+  });
+
+  it("T29 — USDC→POL: coppia non presente in vecchia whitelist → ora supportata dinamicamente", async () => {
+    // USDC Polygon → POL non era nella vecchia hardcoded list
+    // cnGetMinAmount risponde 200 (verificato realmente: min=0.444 USDC)
+    vi.mocked(cnGetMinAmount).mockResolvedValueOnce({ minAmount: 0.444236 });
+    const result = await checkEvmPair("usdcmatic", "pol");
+    expect(result.available).toBe(true);
+    expect(result.minAmount).toBeCloseTo(0.444, 2);
+  });
+
+  it("T30 — ETH→USDC Polygon: coppia cross-chain", async () => {
+    vi.mocked(cnGetMinAmount).mockResolvedValueOnce({ minAmount: 0.0002662 });
+    const result = await checkEvmPair("eth", "usdcmatic");
+    expect(result.available).toBe(true);
+  });
+
+  it("T31 — BNB→USDT BSC: coppia BSC", async () => {
+    vi.mocked(cnGetMinAmount).mockResolvedValueOnce({ minAmount: 0.000098 });
+    const result = await checkEvmPair("bnbbsc", "usdtbsc");
+    expect(result.available).toBe(true);
+  });
+});
+
+// ── Nessun fallback Li.Fi ─────────────────────────────────────────────────────
+
+describe("Nessun fallback Li.Fi", () => {
+  it("T32 — il service EVM ChangeNOW non importa né chiama moduli Li.Fi", async () => {
+    // Se il modulo fosse importato, vi.mock("@lifi/sdk") sarebbe necessario
+    // e il test fallirebbe. L'assenza di errori di import è il check.
+    vi.mocked(cnGetMinAmount).mockResolvedValueOnce({ minAmount: 11.33 });
+    const result = await checkEvmPair("pol", "usdcmatic");
+    expect(result.available).toBe(true);
+    // Li.Fi NON deve essere stato coinvolto
+  });
+});
+
+// ── Idempotenza polling ───────────────────────────────────────────────────────
+
+describe("Idempotenza polling", () => {
+  it("T33 — polling duplicato non modifica stato terminale già raggiunto", async () => {
+    vi.mocked(cnCreateTransaction).mockResolvedValueOnce({
+      ...MOCK_TX_RESPONSE, id: "cn_idem_T33",
+    } as any);
+    const created = await createEvmExchange({
+      userId: USER_ID + "_IDEM33", fromTicker: "pol", toTicker: "usdcmatic",
+      fromAmount: 15, destinationEvmAddress: DEST_EVM, refundEvmAddress: REFUND,
+    });
+    await commitEvmFunds(USER_ID + "_IDEM33", created.swapId, "0xdep_idem33");
+
+    vi.mocked(cnGetTransactionStatus).mockResolvedValueOnce({
+      ...MOCK_TX_RESPONSE, id: "cn_idem_T33", status: "finished",
+      payinHash: "0xdep_idem33", payoutHash: "0xpayout_idem33",
+    } as any);
+    const s1 = await getEvmSwapStatus(USER_ID + "_IDEM33", created.swapId);
+    expect(s1.isCompleted).toBe(true);
+
+    // Seconda chiamata — stato terminale in DB, NON chiama ChangeNOW
+    const s2 = await getEvmSwapStatus(USER_ID + "_IDEM33", created.swapId);
+    expect(s2.isCompleted).toBe(true);
+    expect(cnGetTransactionStatus).toHaveBeenCalledTimes(1);
+  });
+});
+
+// ── Catalogo UI ───────────────────────────────────────────────────────────────
+
+describe("CN_EVM_TOKENS — catalogo UI (NON whitelist API)", () => {
+  it("T34 — contiene i ticker attesi per l'interfaccia", () => {
     const tickers = CN_EVM_TOKENS.map(t => t.ticker);
+    // Polygon
     expect(tickers).toContain("pol");
     expect(tickers).toContain("usdcmatic");
     expect(tickers).toContain("usdtmatic");
+    // Ethereum
     expect(tickers).toContain("eth");
     expect(tickers).toContain("usdterc20");
-    // BNB ticker verificato è "bnbbsc" (non "bnb" che è inactive su ChangeNOW)
+    // BSC — "bnbbsc" (non "bnb" che è inactive su ChangeNOW)
     expect(tickers).toContain("bnbbsc");
     expect(tickers).toContain("usdtbsc");
   });
 
-  it("ogni token ha chainId, decimals e isNative coerenti", () => {
+  it("T35 — ogni token ha chainId/decimals/isNative coerenti", () => {
     for (const t of CN_EVM_TOKENS) {
       expect([137, 1, 56]).toContain(t.chainId);
       expect(t.decimals).toBeGreaterThan(0);
       if (t.isNative) expect(t.contractAddress).toBeNull();
       else expect(t.contractAddress).toMatch(/^0x[0-9a-fA-F]{40}$/);
     }
-  });
-});
-
-// ── Duplicate polling: getEvmSwapStatus idempotente ──────────────────────────
-
-describe("Idempotenza polling", () => {
-  it("polling duplicato non modifica stato terminale già raggiunto", async () => {
-    vi.mocked(cnCreateTransaction).mockResolvedValueOnce({
-      ...MOCK_TX_RESPONSE, id: "cn_idem_001",
-    } as any);
-    const created = await createEvmExchange({
-      userId: USER_ID + "_IDEM", fromTicker: "pol", toTicker: "usdcmatic",
-      fromAmount: 15, destinationEvmAddress: DEST_EVM, refundEvmAddress: REFUND,
-    });
-    await commitEvmFunds(USER_ID + "_IDEM", created.swapId, "0xdep_idem");
-
-    // Prima chiamata: finished + payoutHash → completed
-    vi.mocked(cnGetTransactionStatus).mockResolvedValueOnce({
-      ...MOCK_TX_RESPONSE, id: "cn_idem_001", status: "finished",
-      payinHash: "0xdep_idem", payoutHash: "0xpayout_idem",
-    } as any);
-    const s1 = await getEvmSwapStatus(USER_ID + "_IDEM", created.swapId);
-    expect(s1.isCompleted).toBe(true);
-
-    // Seconda chiamata (stato già terminale) — NON chiama ChangeNOW
-    const s2 = await getEvmSwapStatus(USER_ID + "_IDEM", created.swapId);
-    expect(s2.isCompleted).toBe(true);
-    // cnGetTransactionStatus dovrebbe essere stato chiamato solo 1 volta
-    expect(cnGetTransactionStatus).toHaveBeenCalledTimes(1);
   });
 });

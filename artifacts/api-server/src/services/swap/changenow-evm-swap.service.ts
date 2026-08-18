@@ -38,11 +38,12 @@ import {
   CN_EVM_TERMINAL_STATUSES,
 } from "../../models/changenow-evm-swap.model.js";
 import {
+  CnApiError,
+  cnGetMinAmount,
   cnGetExchangeAmount,
   cnCreateTransaction,
   cnGetTransactionStatus,
   CN_STATUS_MAP,
-  CN_EVM_TOKENS,
   type CnApiStatus,
 } from "./changenow.service.js";
 import { isProviderEnabled } from "./swap-provider-router.service.js";
@@ -57,9 +58,15 @@ async function assertChangeNowEnabled(): Promise<void> {
   if (!enabled) throw new AppError("CHANGENOW_DISABLED", 503);
 }
 
-function assertValidTicker(ticker: string, label: string): void {
-  const exists = CN_EVM_TOKENS.some(t => t.ticker === ticker);
-  if (!exists) throw new AppError(`INVALID_EVM_TOKEN_${label.toUpperCase()}`, 400);
+/**
+ * Validazione sintattica del ticker: solo caratteri alfanumerici, 1-30 char.
+ * Impedisce input malevoli (injection, path traversal). NON limita le coppie
+ * supportate da ChangeNOW — la disponibilità è determinata dalla sua API.
+ */
+function assertTickerFormat(ticker: string, label: string): void {
+  if (!/^[a-z0-9]{1,30}$/.test(ticker)) {
+    throw new AppError(`INVALID_TICKER_FORMAT_${label.toUpperCase()}`, 400);
+  }
 }
 
 // ── Public types ──────────────────────────────────────────────────────────────
@@ -156,27 +163,45 @@ function toStatusResult(doc: IChangeNowEvmSwap): EvmSwapStatusResult {
 
 // ── Check pair ────────────────────────────────────────────────────────────────
 
+/**
+ * Verifica se una coppia EVM→EVM è disponibile su ChangeNOW.
+ *
+ * SOURCE OF TRUTH: ChangeNOW API — non whitelist locale.
+ *
+ * Usa /v1/min-amount/{from}_{to} invece di /v1/exchange-amount per evitare
+ * falsi negativi causati dall'amount fisso (es. 1 POL < min 11.33 POL).
+ *
+ * Distingue chiaramente:
+ *   4xx → coppia non supportata da ChangeNOW → available=false
+ *   5xx / rete → errore provider → lancia CHANGENOW_API_ERROR (503)
+ */
 export async function checkEvmPair(
   fromTicker: string,
   toTicker:   string
 ): Promise<EvmPairResult> {
   await assertChangeNowEnabled();
-  assertValidTicker(fromTicker, "from");
-  assertValidTicker(toTicker, "to");
+  assertTickerFormat(fromTicker, "from");
+  assertTickerFormat(toTicker, "to");
   if (fromTicker === toTicker) {
     return { available: false, from: fromTicker, to: toTicker };
   }
   try {
-    const res = await cnGetExchangeAmount({ amount: 1, fromCurrency: fromTicker, toCurrency: toTicker });
-    // Se la coppia non esiste, l'API lancia errore
+    const { minAmount } = await cnGetMinAmount(fromTicker, toTicker);
     return {
       available: true,
       from:      fromTicker,
       to:        toTicker,
-      minAmount: res.minAmount,
+      minAmount,
     };
-  } catch {
-    return { available: false, from: fromTicker, to: toTicker };
+  } catch (err) {
+    if (err instanceof CnApiError && err.isClientError) {
+      // 4xx: coppia non supportata da ChangeNOW
+      logger.info({ fromTicker, toTicker, status: err.httpStatus }, "EVM pair not available on ChangeNOW");
+      return { available: false, from: fromTicker, to: toTicker };
+    }
+    // 5xx o errore di rete: problema del provider, non della coppia
+    logger.warn({ fromTicker, toTicker }, "ChangeNOW API provider error during pair check");
+    throw new AppError("CHANGENOW_API_ERROR", 503);
   }
 }
 
@@ -189,23 +214,31 @@ export async function getEvmQuote(params: {
 }): Promise<EvmQuoteResult> {
   await assertChangeNowEnabled();
   const { fromTicker, toTicker, fromAmount } = params;
-  assertValidTicker(fromTicker, "from");
-  assertValidTicker(toTicker, "to");
+  assertTickerFormat(fromTicker, "from");
+  assertTickerFormat(toTicker, "to");
   if (fromAmount <= 0) throw new AppError("INVALID_AMOUNT", 400);
 
-  const res = await cnGetExchangeAmount({
-    amount:       fromAmount,
-    fromCurrency: fromTicker,
-    toCurrency:   toTicker,
-  });
+  try {
+    const res = await cnGetExchangeAmount({
+      amount:       fromAmount,
+      fromCurrency: fromTicker,
+      toCurrency:   toTicker,
+    });
 
-  return {
-    fromTicker,
-    toTicker,
-    fromAmount,
-    estimatedToAmount: res.estimatedAmount,
-    minAmount:         res.minAmount ?? 0,
-  };
+    return {
+      fromTicker,
+      toTicker,
+      fromAmount,
+      estimatedToAmount: res.estimatedAmount,
+      minAmount:         res.minAmount ?? 0,
+    };
+  } catch (err) {
+    if (err instanceof CnApiError && err.isClientError) {
+      // 400 deposit_too_small o coppia non supportata
+      throw new AppError("AMOUNT_BELOW_MINIMUM", 400);
+    }
+    throw new AppError("CHANGENOW_API_ERROR", 503);
+  }
 }
 
 // ── Create exchange ───────────────────────────────────────────────────────────
@@ -214,8 +247,8 @@ export async function createEvmExchange(input: EvmCreateInput): Promise<EvmCreat
   await assertChangeNowEnabled();
   const { userId, fromTicker, toTicker, fromAmount, destinationEvmAddress, refundEvmAddress } = input;
 
-  assertValidTicker(fromTicker, "from");
-  assertValidTicker(toTicker, "to");
+  assertTickerFormat(fromTicker, "from");
+  assertTickerFormat(toTicker, "to");
   if (!destinationEvmAddress || destinationEvmAddress.length < 10) {
     throw new AppError("EVM_DESTINATION_ADDRESS_REQUIRED", 400);
   }

@@ -258,6 +258,31 @@ export interface CnTransactionResponse {
   depositReceivedAt?:    string | null;
 }
 
+// ── CnApiError — errore tipizzato con HTTP status ─────────────────────────────
+
+/**
+ * Errore lanciato da cnFetch quando ChangeNOW restituisce una risposta non-2xx.
+ * httpStatus consente ai chiamanti di distinguere:
+ *   4xx → coppia non supportata / parametri invalidi
+ *   5xx → errore server temporaneo
+ *   0   → errore di rete (timeout, DNS, ecc.)
+ */
+export class CnApiError extends Error {
+  constructor(
+    public readonly httpStatus: number,
+    message: string,
+  ) {
+    super(message);
+    this.name = "CnApiError";
+  }
+
+  /** true se è un errore di tipo "client" (coppia non supportata, parametri sbagliati) */
+  get isClientError(): boolean { return this.httpStatus >= 400 && this.httpStatus < 500; }
+
+  /** true se è un errore temporaneo del provider (server/rete) */
+  get isProviderError(): boolean { return this.httpStatus === 0 || this.httpStatus >= 500; }
+}
+
 // ── Internal fetch helper ─────────────────────────────────────────────────────
 
 /**
@@ -296,13 +321,14 @@ async function cnFetch<T>(url: string, init?: RequestInit): Promise<T> {
   } catch (err) {
     const msg = err instanceof Error ? err.message : "Network error";
     logger.error({ path: safePath, err: msg }, "ChangeNOW API network error");
-    throw new Error(`ChangeNOW network error: ${msg}`);
+    // httpStatus=0 → errore di rete
+    throw new CnApiError(0, `ChangeNOW network error: ${msg}`);
   }
 
   if (!res.ok) {
     // NON loghiamo il body completo (potrebbe contenere info interne ChangeNOW)
     logger.warn({ path: safePath, status: res.status }, "ChangeNOW API error response");
-    throw new Error(`ChangeNOW API error ${res.status}`);
+    throw new CnApiError(res.status, `ChangeNOW API error ${res.status}`);
   }
 
   const data = await res.json() as T;
@@ -340,7 +366,31 @@ export async function cnIsPairAvailable(toCurrency: string): Promise<boolean> {
 }
 
 /**
- * Ottieni la stima dell'importo ricevuto per un dato importo BTC.
+ * Verifica se una coppia {fromCurrency}→{toCurrency} è supportata da ChangeNOW
+ * e restituisce il minimo inviabile.
+ *
+ * ENDPOINT: GET /v1/min-amount/{from}_{to}
+ *
+ * Usare questo endpoint (invece di /exchange-amount) per il check di disponibilità
+ * perché risponde HTTP 200 indipendentemente dall'importo. Se la coppia non è
+ * supportata → 4xx → CnApiError.isClientError=true.
+ *
+ * VERIFICATO: funziona per tutte le coppie EVM→EVM (pol_usdcmatic, eth_usdcmatic, ecc.)
+ */
+export async function cnGetMinAmount(
+  fromCurrency: string,
+  toCurrency:   string,
+): Promise<{ minAmount: number }> {
+  const key = getApiKey();
+  return cnFetch<{ minAmount: number }>(
+    `${CN_BASE_URL}/min-amount/${fromCurrency}_${toCurrency}?api_key=${key}`
+  );
+}
+
+/**
+ * Ottieni la stima dell'importo ricevuto per un dato importo.
+ * NOTA: se amount < minAmount → CnApiError(400) con deposit_too_small.
+ * Usare cnGetMinAmount per verificare la disponibilità della coppia prima.
  */
 export async function cnGetExchangeAmount(params: {
   amount:       number;

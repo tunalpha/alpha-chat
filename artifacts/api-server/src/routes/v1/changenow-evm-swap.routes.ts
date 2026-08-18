@@ -32,23 +32,28 @@ import {
   getEvmSwapStatus,
   getActiveEvmSwapForUser,
 } from "../../services/swap/changenow-evm-swap.service.js";
-import { CN_EVM_TOKENS } from "../../services/swap/changenow.service.js";
 
 const router = Router();
 
 // ── Validation schemas ────────────────────────────────────────────────────────
+//
+// IMPORTANTE: i ticker NON vengono validati contro una whitelist hardcoded.
+// La disponibilità della coppia è determinata dalla API ChangeNOW.
+// La regex impedisce input malevoli (injection, path traversal) senza
+// limitare artificialmente le coppie supportate.
 
-const VALID_TICKERS = CN_EVM_TOKENS.map(t => t.ticker);
+/** Ticker ChangeNOW: solo caratteri alfanumerici minuscoli, 1-30 char */
+const tickerSchema = z.string().regex(/^[a-z0-9]{1,30}$/, "Formato ticker non valido");
 
 const EvmQuoteSchema = z.object({
-  fromTicker: z.string().refine(t => VALID_TICKERS.includes(t), "Ticker FROM non supportato"),
-  toTicker:   z.string().refine(t => VALID_TICKERS.includes(t), "Ticker TO non supportato"),
+  fromTicker: tickerSchema,
+  toTicker:   tickerSchema,
   fromAmount: z.number().positive().max(100_000),
 });
 
 const EvmCreateSchema = z.object({
-  fromTicker:            z.string().refine(t => VALID_TICKERS.includes(t), "Ticker FROM non supportato"),
-  toTicker:              z.string().refine(t => VALID_TICKERS.includes(t), "Ticker TO non supportato"),
+  fromTicker:            tickerSchema,
+  toTicker:              tickerSchema,
   fromAmount:            z.number().positive().max(100_000),
   /** Indirizzo EVM di destinazione — letto automaticamente dal wallet frontend */
   destinationEvmAddress: z.string().min(10).max(100),
