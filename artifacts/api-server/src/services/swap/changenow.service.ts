@@ -232,6 +232,11 @@ export interface CnExchangeAmountResponse {
   minAmount?:                number;
 }
 
+export interface CnExchangeRangeResponse {
+  minAmount: number;
+  maxAmount: number | null;
+}
+
 export interface CnCreateTransactionParams {
   fromCurrency:   string;
   toCurrency:     string;
@@ -405,6 +410,23 @@ export async function cnGetExchangeAmount(params: {
 }
 
 /**
+ * Ottieni il range effettivo per una coppia fixed-rate.
+ *
+ * Il range standard e quello fixed-rate sono diversi: una coppia può accettare
+ * 20 POL in standard, ma richiederne ~88 in fixed-rate. Questo è il range che
+ * deve governare tutta la UX EVM→EVM.
+ */
+export async function cnGetFixedRateRange(
+  fromCurrency: string,
+  toCurrency: string,
+): Promise<CnExchangeRangeResponse> {
+  const key = getApiKey();
+  return cnFetch<CnExchangeRangeResponse>(
+    `${CN_BASE_URL}/exchange-range/fixed-rate/${fromCurrency}_${toCurrency}?api_key=${key}`
+  );
+}
+
+/**
  * Crea una nuova transazione di exchange su ChangeNOW (floating-rate).
  * Usato per BTC→EVM. Per EVM→EVM usare cnGetFixedRateAmount + cnCreateFixedRateTransaction.
  */
@@ -430,8 +452,10 @@ export async function cnCreateTransaction(
 /**
  * Ottieni la stima e il rateId per un exchange fixed-rate EVM→EVM.
  *
- * ENDPOINT: GET /v1/exchange-amount/fixed-rate/{amount}/{from}_{to}?api_key=KEY
+ * ENDPOINT: GET /v1/exchange-amount/fixed-rate/{amount}/{from}_{to}?api_key=KEY&useRateId=true
  *
+ * `useRateId=true` è obbligatorio: senza questo parametro ChangeNOW restituisce
+ * una stima valida, ma non il rateId necessario a congelarla nella transazione.
  * Il rateId ha una validità limitata (~30 min). Deve essere usato
  * immediatamente in cnCreateFixedRateTransaction.
  *
@@ -447,7 +471,7 @@ export async function cnGetFixedRateAmount(params: {
   const key = getApiKey();
   const { amount, fromCurrency, toCurrency } = params;
   return cnFetch<{ estimatedAmount: number; rateId: string; validUntil: string }>(
-    `${CN_BASE_URL}/exchange-amount/fixed-rate/${amount}/${fromCurrency}_${toCurrency}?api_key=${key}`
+    `${CN_BASE_URL}/exchange-amount/fixed-rate/${amount}/${fromCurrency}_${toCurrency}?api_key=${key}&useRateId=true`
   );
 }
 

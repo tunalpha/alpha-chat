@@ -211,6 +211,8 @@ export function humanizeCnEvmError(code: string): string {
     case "EVM_DESTINATION_ADDRESS_REQUIRED": return "Nessun wallet EVM connesso. Sblocca Alpha Wallet per continuare.";
     case "INVALID_AMOUNT":              return "Importo non valido.";
     case "AMOUNT_BELOW_MINIMUM":        return "Importo inferiore al minimo richiesto per questa coppia.";
+    case "AMOUNT_OUTSIDE_FIXED_RATE_RANGE":
+      return "L'importo è fuori dal range consentito da ChangeNOW per il cambio a tasso fisso.";
     case "WALLET_NOT_UNLOCKED":         return "Sblocca Alpha Wallet per inviare i token.";
     default:                            return "Errore durante lo swap. Riprova tra qualche istante.";
   }

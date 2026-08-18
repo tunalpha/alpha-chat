@@ -39,8 +39,7 @@ import {
 } from "../../models/changenow-evm-swap.model.js";
 import {
   CnApiError,
-  cnGetMinAmount,
-  cnGetExchangeAmount,
+  cnGetFixedRateRange,
   cnGetFixedRateAmount,
   cnCreateFixedRateTransaction,
   cnGetTransactionStatus,
@@ -169,8 +168,8 @@ function toStatusResult(doc: IChangeNowEvmSwap): EvmSwapStatusResult {
  *
  * SOURCE OF TRUTH: ChangeNOW API — non whitelist locale.
  *
- * Usa /v1/min-amount/{from}_{to} invece di /v1/exchange-amount per evitare
- * falsi negativi causati dall'amount fisso (es. 1 POL < min 11.33 POL).
+ * Usa /v1/exchange-range/fixed-rate/{from}_{to}, perché il limite fixed-rate
+ * è diverso da quello standard ed è il solo flusso utilizzabile per EVM→EVM.
  *
  * Distingue chiaramente:
  *   4xx → coppia non supportata da ChangeNOW → available=false
@@ -187,7 +186,7 @@ export async function checkEvmPair(
     return { available: false, from: fromTicker, to: toTicker };
   }
   try {
-    const { minAmount } = await cnGetMinAmount(fromTicker, toTicker);
+    const { minAmount } = await cnGetFixedRateRange(fromTicker, toTicker);
     return {
       available: true,
       from:      fromTicker,
@@ -220,7 +219,15 @@ export async function getEvmQuote(params: {
   if (fromAmount <= 0) throw new AppError("INVALID_AMOUNT", 400);
 
   try {
-    const res = await cnGetExchangeAmount({
+    const range = await cnGetFixedRateRange(fromTicker, toTicker);
+    if (
+      fromAmount < range.minAmount
+      || (range.maxAmount !== null && fromAmount > range.maxAmount)
+    ) {
+      throw new AppError("AMOUNT_OUTSIDE_FIXED_RATE_RANGE", 400, "fromAmount", range);
+    }
+
+    const res = await cnGetFixedRateAmount({
       amount:       fromAmount,
       fromCurrency: fromTicker,
       toCurrency:   toTicker,
@@ -231,12 +238,12 @@ export async function getEvmQuote(params: {
       toTicker,
       fromAmount,
       estimatedToAmount: res.estimatedAmount,
-      minAmount:         res.minAmount ?? 0,
+      minAmount:         range.minAmount,
     };
   } catch (err) {
+    if (err instanceof AppError) throw err;
     if (err instanceof CnApiError && err.isClientError) {
-      // 400 deposit_too_small o coppia non supportata
-      throw new AppError("AMOUNT_BELOW_MINIMUM", 400);
+      throw new AppError("AMOUNT_OUTSIDE_FIXED_RATE_RANGE", 400);
     }
     throw new AppError("CHANGENOW_API_ERROR", 503);
   }
@@ -269,6 +276,14 @@ export async function createEvmExchange(input: EvmCreateInput): Promise<EvmCreat
   //   2. POST /v1/transactions/fixed-rate/{api_key} → exchange
   let rateId: string;
   try {
+    const range = await cnGetFixedRateRange(fromTicker, toTicker);
+    if (
+      fromAmount < range.minAmount
+      || (range.maxAmount !== null && fromAmount > range.maxAmount)
+    ) {
+      throw new AppError("AMOUNT_OUTSIDE_FIXED_RATE_RANGE", 400, "fromAmount", range);
+    }
+
     const fixedRate = await cnGetFixedRateAmount({
       amount:       fromAmount,
       fromCurrency: fromTicker,
@@ -280,8 +295,9 @@ export async function createEvmExchange(input: EvmCreateInput): Promise<EvmCreat
       "EVM fixed-rate quote obtained"
     );
   } catch (err) {
+    if (err instanceof AppError) throw err;
     if (err instanceof CnApiError && err.isClientError) {
-      throw new AppError("CHANGENOW_PAIR_UNAVAILABLE", 400);
+      throw new AppError("AMOUNT_OUTSIDE_FIXED_RATE_RANGE", 400);
     }
     throw new AppError("CHANGENOW_API_ERROR", 503);
   }

@@ -10,7 +10,7 @@
  *
  * Suite:
  *   ── checkEvmPair ──────────────────────────────────────────
- *   T1  — coppia disponibile → available=true + minAmount (usa cnGetMinAmount)
+ *   T1  — coppia disponibile → available=true + minAmount fixed-rate
  *   T2  — stesso ticker → available=false (non chiama API)
  *   T3  — API 4xx → available=false (coppia non supportata, NON errore provider)
  *   T4  — API 5xx → lancia CHANGENOW_API_ERROR 503 (NOT available=false)
@@ -22,7 +22,7 @@
  *   ── getEvmQuote ───────────────────────────────────────────
  *   T9  — importo valido → stima restituita
  *   T10 — importo zero → errore INVALID_AMOUNT
- *   T11 — API 4xx (deposit_too_small) → errore AMOUNT_BELOW_MINIMUM
+ *   T11 — amount fuori range fixed-rate → errore AMOUNT_OUTSIDE_FIXED_RATE_RANGE
  *   T12 — API 5xx → errore CHANGENOW_API_ERROR
  *
  *   ── createEvmExchange ─────────────────────────────────────
@@ -79,8 +79,7 @@ vi.mock("../../services/swap/changenow.service.js", async (importOriginal) => {
   const real = await importOriginal() as Record<string, unknown>;
   return {
     ...real,
-    cnGetMinAmount:              vi.fn(),
-    cnGetExchangeAmount:         vi.fn(),
+    cnGetFixedRateRange:         vi.fn(),
     cnGetFixedRateAmount:        vi.fn(),
     cnCreateFixedRateTransaction: vi.fn(),
     cnGetTransactionStatus:      vi.fn(),
@@ -90,8 +89,7 @@ vi.mock("../../services/swap/changenow.service.js", async (importOriginal) => {
 import { isProviderEnabled } from "../../services/swap/swap-provider-router.service.js";
 import {
   CnApiError,
-  cnGetMinAmount,
-  cnGetExchangeAmount,
+  cnGetFixedRateRange,
   cnGetFixedRateAmount,
   cnCreateFixedRateTransaction,
   cnGetTransactionStatus,
@@ -123,6 +121,10 @@ afterAll(async () => {
 beforeEach(() => {
   vi.clearAllMocks();
   vi.mocked(isProviderEnabled).mockResolvedValue(true);
+  vi.mocked(cnGetFixedRateRange).mockResolvedValue({
+    minAmount: 1,
+    maxAmount: null,
+  });
 });
 
 // ── Fixtures ──────────────────────────────────────────────────────────────────
@@ -161,32 +163,30 @@ const MOCK_FIXED_RATE = {
 // ── checkEvmPair ──────────────────────────────────────────────────────────────
 
 describe("checkEvmPair", () => {
-  it("T1 — coppia disponibile → available=true + minAmount (usa cnGetMinAmount)", async () => {
-    vi.mocked(cnGetMinAmount).mockResolvedValueOnce({ minAmount: 11.33 });
+  it("T1 — coppia disponibile → available=true + minAmount fixed-rate", async () => {
+    vi.mocked(cnGetFixedRateRange).mockResolvedValueOnce({ minAmount: 88.31, maxAmount: 7504 });
     const result = await checkEvmPair("pol", "usdcmatic");
     expect(result.available).toBe(true);
-    expect(result.minAmount).toBe(11.33);
+    expect(result.minAmount).toBe(88.31);
     expect(result.from).toBe("pol");
     expect(result.to).toBe("usdcmatic");
-    // cnGetMinAmount chiamato, NON cnGetExchangeAmount
-    expect(cnGetMinAmount).toHaveBeenCalledWith("pol", "usdcmatic");
-    expect(cnGetExchangeAmount).not.toHaveBeenCalled();
+    expect(cnGetFixedRateRange).toHaveBeenCalledWith("pol", "usdcmatic");
   });
 
   it("T2 — stesso ticker → available=false, non chiama API", async () => {
     const result = await checkEvmPair("pol", "pol");
     expect(result.available).toBe(false);
-    expect(cnGetMinAmount).not.toHaveBeenCalled();
+    expect(cnGetFixedRateRange).not.toHaveBeenCalled();
   });
 
   it("T3 — API 4xx → available=false (coppia non supportata, NON errore provider)", async () => {
-    vi.mocked(cnGetMinAmount).mockRejectedValueOnce(cnErr(400));
+    vi.mocked(cnGetFixedRateRange).mockRejectedValueOnce(cnErr(400));
     const result = await checkEvmPair("pol", "usdcmatic");
     expect(result.available).toBe(false);
   });
 
   it("T4 — API 5xx → lancia CHANGENOW_API_ERROR 503 (NON available=false)", async () => {
-    vi.mocked(cnGetMinAmount).mockRejectedValueOnce(cnErr(503));
+    vi.mocked(cnGetFixedRateRange).mockRejectedValueOnce(cnErr(503));
     await expect(checkEvmPair("pol", "usdcmatic")).rejects.toMatchObject({ message: expect.stringContaining("CHANGENOW_API_ERROR") });
   });
 
@@ -194,24 +194,24 @@ describe("checkEvmPair", () => {
     // "usdceth" non è in CN_EVM_TOKENS ma il service non deve bloccarlo
     const notInCatalog = "usdceth";
     expect(CN_EVM_TOKENS.some(t => t.ticker === notInCatalog)).toBe(false);
-    vi.mocked(cnGetMinAmount).mockResolvedValueOnce({ minAmount: 0.01 });
+    vi.mocked(cnGetFixedRateRange).mockResolvedValueOnce({ minAmount: 0.01, maxAmount: null });
     const result = await checkEvmPair("eth", notInCatalog);
     expect(result.available).toBe(true);
     // L'API è stata chiamata nonostante il ticker non sia nel catalogo locale
-    expect(cnGetMinAmount).toHaveBeenCalledWith("eth", notInCatalog);
+    expect(cnGetFixedRateRange).toHaveBeenCalledWith("eth", notInCatalog);
   });
 
   it("T6 — ticker con formato invalido (underscore) → errore INVALID_TICKER_FORMAT", async () => {
     await expect(checkEvmPair("INVALID_TICKER", "usdcmatic")).rejects.toMatchObject({ message: expect.stringContaining("INVALID_TICKER_FORMAT") });
     await expect(checkEvmPair("pol", "INVALID_TO")).rejects.toMatchObject({ message: expect.stringContaining("INVALID_TICKER_FORMAT") });
-    expect(cnGetMinAmount).not.toHaveBeenCalled();
+    expect(cnGetFixedRateRange).not.toHaveBeenCalled();
   });
 
   it("T7 — ticker con caratteri pericolosi → errore formato", async () => {
     await expect(checkEvmPair("pol;DROP", "usdcmatic")).rejects.toThrow();
     await expect(checkEvmPair("pol", "usdc'matic")).rejects.toThrow();
     await expect(checkEvmPair("pol", "a".repeat(31))).rejects.toThrow();
-    expect(cnGetMinAmount).not.toHaveBeenCalled();
+    expect(cnGetFixedRateRange).not.toHaveBeenCalled();
   });
 
   it("T8 — ChangeNOW DISABLED → lancia CHANGENOW_DISABLED", async () => {
@@ -224,10 +224,8 @@ describe("checkEvmPair", () => {
 
 describe("getEvmQuote", () => {
   it("T9 — importo valido → stima restituita", async () => {
-    vi.mocked(cnGetExchangeAmount).mockResolvedValueOnce({
-      estimatedAmount: 3.2,
-      minAmount: 11.4,
-    });
+    vi.mocked(cnGetFixedRateRange).mockResolvedValueOnce({ minAmount: 11.4, maxAmount: null });
+    vi.mocked(cnGetFixedRateAmount).mockResolvedValueOnce({ ...MOCK_FIXED_RATE });
     const quote = await getEvmQuote({ fromTicker: "pol", toTicker: "usdcmatic", fromAmount: 15 });
     expect(quote.estimatedToAmount).toBe(3.2);
     expect(quote.fromTicker).toBe("pol");
@@ -240,18 +238,18 @@ describe("getEvmQuote", () => {
     await expect(
       getEvmQuote({ fromTicker: "pol", toTicker: "usdcmatic", fromAmount: 0 })
     ).rejects.toMatchObject({ message: expect.stringContaining("INVALID_AMOUNT") });
-    expect(cnGetExchangeAmount).not.toHaveBeenCalled();
+    expect(cnGetFixedRateRange).not.toHaveBeenCalled();
   });
 
-  it("T11 — API 4xx (deposit_too_small) → errore AMOUNT_BELOW_MINIMUM", async () => {
-    vi.mocked(cnGetExchangeAmount).mockRejectedValueOnce(cnErr(400));
+  it("T11 — amount sotto il range fixed-rate → errore AMOUNT_OUTSIDE_FIXED_RATE_RANGE", async () => {
+    vi.mocked(cnGetFixedRateRange).mockResolvedValueOnce({ minAmount: 88.31, maxAmount: null });
     await expect(
-      getEvmQuote({ fromTicker: "pol", toTicker: "usdcmatic", fromAmount: 1 })
-    ).rejects.toMatchObject({ message: expect.stringContaining("AMOUNT_BELOW_MINIMUM") });
+      getEvmQuote({ fromTicker: "pol", toTicker: "usdcmatic", fromAmount: 20 })
+    ).rejects.toMatchObject({ message: expect.stringContaining("AMOUNT_OUTSIDE_FIXED_RATE_RANGE") });
   });
 
   it("T12 — API 5xx → errore CHANGENOW_API_ERROR", async () => {
-    vi.mocked(cnGetExchangeAmount).mockRejectedValueOnce(cnErr(500));
+    vi.mocked(cnGetFixedRateAmount).mockRejectedValueOnce(cnErr(500));
     await expect(
       getEvmQuote({ fromTicker: "pol", toTicker: "usdcmatic", fromAmount: 15 })
     ).rejects.toMatchObject({ message: expect.stringContaining("CHANGENOW_API_ERROR") });
@@ -482,34 +480,30 @@ describe("getActiveEvmSwapForUser", () => {
 // ── Disponibilità dinamica ────────────────────────────────────────────────────
 
 describe("Disponibilità dinamica — ChangeNOW come source of truth", () => {
-  it("T28 — POL→USDC Polygon: coppia che dava falso negativo con amount=1 (regression)", async () => {
-    // Simula risposta reale: min=11.33 POL, /v1/min-amount risponde 200
-    vi.mocked(cnGetMinAmount).mockResolvedValueOnce({ minAmount: 11.3316386 });
+  it("T28 — POL→USDC Polygon espone il minimo fixed-rate reale", async () => {
+    vi.mocked(cnGetFixedRateRange).mockResolvedValueOnce({ minAmount: 88.3059783, maxAmount: 7504.77 });
     const result = await checkEvmPair("pol", "usdcmatic");
     expect(result.available).toBe(true);
-    expect(result.minAmount).toBeCloseTo(11.33, 1);
-    // Verifica: usa cnGetMinAmount (non cnGetExchangeAmount con amount fisso)
-    expect(cnGetMinAmount).toHaveBeenCalledWith("pol", "usdcmatic");
-    expect(cnGetExchangeAmount).not.toHaveBeenCalled();
+    expect(result.minAmount).toBeCloseTo(88.31, 1);
+    expect(cnGetFixedRateRange).toHaveBeenCalledWith("pol", "usdcmatic");
   });
 
   it("T29 — USDC→POL: coppia non presente in vecchia whitelist → ora supportata dinamicamente", async () => {
     // USDC Polygon → POL non era nella vecchia hardcoded list
-    // cnGetMinAmount risponde 200 (verificato realmente: min=0.444 USDC)
-    vi.mocked(cnGetMinAmount).mockResolvedValueOnce({ minAmount: 0.444236 });
+    vi.mocked(cnGetFixedRateRange).mockResolvedValueOnce({ minAmount: 0.444236, maxAmount: null });
     const result = await checkEvmPair("usdcmatic", "pol");
     expect(result.available).toBe(true);
     expect(result.minAmount).toBeCloseTo(0.444, 2);
   });
 
   it("T30 — ETH→USDC Polygon: coppia cross-chain", async () => {
-    vi.mocked(cnGetMinAmount).mockResolvedValueOnce({ minAmount: 0.0002662 });
+    vi.mocked(cnGetFixedRateRange).mockResolvedValueOnce({ minAmount: 0.0002662, maxAmount: null });
     const result = await checkEvmPair("eth", "usdcmatic");
     expect(result.available).toBe(true);
   });
 
   it("T31 — BNB→USDT BSC: coppia BSC", async () => {
-    vi.mocked(cnGetMinAmount).mockResolvedValueOnce({ minAmount: 0.000098 });
+    vi.mocked(cnGetFixedRateRange).mockResolvedValueOnce({ minAmount: 0.000098, maxAmount: null });
     const result = await checkEvmPair("bnbbsc", "usdtbsc");
     expect(result.available).toBe(true);
   });
@@ -521,7 +515,7 @@ describe("Nessun fallback Li.Fi", () => {
   it("T32 — il service EVM ChangeNOW non importa né chiama moduli Li.Fi", async () => {
     // Se il modulo fosse importato, vi.mock("@lifi/sdk") sarebbe necessario
     // e il test fallirebbe. L'assenza di errori di import è il check.
-    vi.mocked(cnGetMinAmount).mockResolvedValueOnce({ minAmount: 11.33 });
+    vi.mocked(cnGetFixedRateRange).mockResolvedValueOnce({ minAmount: 88.31, maxAmount: null });
     const result = await checkEvmPair("pol", "usdcmatic");
     expect(result.available).toBe(true);
     // Li.Fi NON deve essere stato coinvolto

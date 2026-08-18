@@ -62,8 +62,13 @@ async function cnEvmRequest<T>(path: string, opts: RequestInit = {}): Promise<T>
     signal: opts.signal ?? AbortSignal.timeout(30_000),
   });
   if (!res.ok) {
-    const body = await res.json().catch(() => ({})) as Record<string, unknown>;
-    const code = (body.code as string) ?? `HTTP_${res.status}`;
+    const body = await res.json().catch(() => ({})) as {
+      code?: string;
+      error?: { code?: string };
+    };
+    // L'API usa il formato standard { error: { code, ... } }. Supportiamo anche
+    // il vecchio formato piatto per non trasformare un errore utile in HTTP_400.
+    const code = body.error?.code ?? body.code ?? `HTTP_${res.status}`;
     const err = new Error(humanizeCnEvmError(code));
     (err as any).code = code;
     throw err;
