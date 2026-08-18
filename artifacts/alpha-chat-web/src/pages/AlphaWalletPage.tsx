@@ -1016,31 +1016,43 @@ function OverviewView({ onNavigate, onSelectToken }: { onNavigate: (v: WalletSub
         <div className="aw-buy-card__logos-row">
           {/* Visa */}
           <span className="aw-pay-logo aw-pay-logo--visa" title="Visa">
-            <svg viewBox="0 0 50 18" width="30" height="12">
+            <svg viewBox="0 0 50 18" width="38" height="14">
               <text x="1" y="14" fontFamily="Arial,Helvetica,sans-serif" fontWeight="800" fontSize="16" fill="#1a1f71" letterSpacing="-0.5">VISA</text>
             </svg>
           </span>
           {/* Mastercard */}
           <span className="aw-pay-logo aw-pay-logo--mc" title="Mastercard">
-            <svg viewBox="0 0 34 22" width="22" height="14">
+            <svg viewBox="0 0 34 22" width="28" height="18">
               <circle cx="12" cy="11" r="9" fill="#EB001B"/>
               <circle cx="22" cy="11" r="9" fill="#F79E1B"/>
               <path d="M17 3.8a9 9 0 0 1 0 14.4A9 9 0 0 1 17 3.8z" fill="#FF5F00"/>
             </svg>
           </span>
-          {/* Apple Pay — &#xF8FF; è il carattere Apple logo (U+F8FF PUA) renderizzato
-               correttamente da iOS Safari con -apple-system font. Approccio text-only:
-               zero path con coordinate negative, zero clip, zero rendering bug mobile. */}
+          {/* Apple Pay — &#xF8FF; (U+F8FF Apple PUA char) reso correttamente da -apple-system */}
           <span className="aw-pay-logo aw-pay-logo--apple" title="Apple Pay">
-            <svg viewBox="0 0 44 16" width="40" height="14">
+            <svg viewBox="0 0 44 16" width="50" height="18">
               <text x="3" y="12" fontFamily="-apple-system,BlinkMacSystemFont,'SF Pro Text',Helvetica,sans-serif" fontSize="11" fontWeight="500" fill="white">&#xF8FF; Pay</text>
             </svg>
           </span>
-          {/* Google Pay */}
+          {/* Google Pay — logo ufficiale Google G (4 colori) + Pay */}
           <span className="aw-pay-logo aw-pay-logo--gpay" title="Google Pay">
-            <svg viewBox="0 0 46 16" width="40" height="14">
-              <text x="2" y="12" fontFamily="Arial,Helvetica,sans-serif" fontSize="11" fontWeight="700" fill="#4285F4">G</text>
-              <text x="12" y="12" fontFamily="Arial,Helvetica,sans-serif" fontSize="11" fontWeight="400" fill="#202124">Pay</text>
+            {/* viewBox 57×20, G centrato in (10,10) R=8 r=4.8; testo "Pay" a x=22 */}
+            <svg viewBox="0 0 57 20" width="54" height="18" xmlns="http://www.w3.org/2000/svg">
+              {/* 4 quadranti colorati del Google G (ciascuno 90°) */}
+              {/* Blu: da top (270°) a right (0°) */}
+              <path d="M10 2A8 8 0 0 1 18 10L14.8 10A4.8 4.8 0 0 0 10 5.2Z" fill="#4285F4"/>
+              {/* Verde: da right (0°) a bottom (90°) */}
+              <path d="M18 10A8 8 0 0 1 10 18L10 14.8A4.8 4.8 0 0 0 14.8 10Z" fill="#34A853"/>
+              {/* Giallo: da bottom (90°) a left (180°) */}
+              <path d="M10 18A8 8 0 0 1 2 10L5.2 10A4.8 4.8 0 0 0 10 14.8Z" fill="#FBBC04"/>
+              {/* Rosso: da left (180°) a top (270°) */}
+              <path d="M2 10A8 8 0 0 1 10 2L10 5.2A4.8 4.8 0 0 0 5.2 10Z" fill="#EA4335"/>
+              {/* Cerchio bianco interno */}
+              <circle cx="10" cy="10" r="4.8" fill="white"/>
+              {/* Barra orizzontale blu (la traversa della G) */}
+              <rect x="10" y="8.2" width="8.1" height="3.6" fill="#4285F4"/>
+              {/* Testo "Pay" */}
+              <text x="22" y="14" fontFamily="Arial,Helvetica,sans-serif" fontSize="10.5" fontWeight="500" fill="#202124">Pay</text>
             </svg>
           </span>
         </div>
@@ -1067,24 +1079,31 @@ function OverviewView({ onNavigate, onSelectToken }: { onNavigate: (v: WalletSub
             <p className="aw-buy-modal__status">Servizio in configurazione</p>
             <div className="aw-buy-modal__logos">
               <span className="aw-pay-logo aw-pay-logo--visa" title="Visa">
-                <svg viewBox="0 0 60 20" width="38" height="13"><text x="0" y="16" fontFamily="Arial,sans-serif" fontWeight="800" fontSize="18" fill="#1a1f71" letterSpacing="-0.5">VISA</text></svg>
+                <svg viewBox="0 0 50 18" width="44" height="16"><text x="1" y="14" fontFamily="Arial,Helvetica,sans-serif" fontWeight="800" fontSize="16" fill="#1a1f71" letterSpacing="-0.5">VISA</text></svg>
               </span>
               <span className="aw-pay-logo aw-pay-logo--mc" title="Mastercard">
-                <svg viewBox="0 0 38 24" width="30" height="18">
-                  <circle cx="14" cy="12" r="10" fill="#EB001B"/>
-                  <circle cx="24" cy="12" r="10" fill="#F79E1B"/>
-                  <path d="M19 4.8a10 10 0 0 1 0 14.4A10 10 0 0 1 19 4.8z" fill="#FF5F00"/>
+                <svg viewBox="0 0 34 22" width="34" height="22">
+                  <circle cx="12" cy="11" r="9" fill="#EB001B"/>
+                  <circle cx="22" cy="11" r="9" fill="#F79E1B"/>
+                  <path d="M17 3.8a9 9 0 0 1 0 14.4A9 9 0 0 1 17 3.8z" fill="#FF5F00"/>
                 </svg>
               </span>
               <span className="aw-pay-logo aw-pay-logo--apple" title="Apple Pay">
-                <svg viewBox="0 0 52 18" width="48" height="16">
-                  <text x="3" y="13" fontFamily="-apple-system,BlinkMacSystemFont,'SF Pro Text',Helvetica,sans-serif" fontSize="12" fontWeight="500" fill="white">&#xF8FF; Pay</text>
+                <svg viewBox="0 0 44 16" width="58" height="22">
+                  <text x="3" y="12" fontFamily="-apple-system,BlinkMacSystemFont,'SF Pro Text',Helvetica,sans-serif" fontSize="11" fontWeight="500" fill="white">&#xF8FF; Pay</text>
                 </svg>
               </span>
+              {/* Google Pay — logo ufficiale Google G (4 colori) + Pay */}
               <span className="aw-pay-logo aw-pay-logo--gpay" title="Google Pay">
-                <svg viewBox="0 0 52 18" width="48" height="16">
-                  <text x="2" y="13" fontFamily="Arial,Helvetica,sans-serif" fontSize="12" fontWeight="700" fill="#4285F4">G</text>
-                  <text x="14" y="13" fontFamily="Arial,Helvetica,sans-serif" fontSize="12" fontWeight="400" fill="#202124">Pay</text>
+                <svg viewBox="0 0 68 22" width="64" height="22" xmlns="http://www.w3.org/2000/svg">
+                  {/* G centrato in (11,11) R=9 r=5.5 */}
+                  <path d="M11 2A9 9 0 0 1 20 11L14.5 11A5.5 5.5 0 0 0 11 5.5Z" fill="#4285F4"/>
+                  <path d="M20 11A9 9 0 0 1 11 20L11 14.5A5.5 5.5 0 0 0 14.5 11Z" fill="#34A853"/>
+                  <path d="M11 20A9 9 0 0 1 2 11L6.5 11A5.5 5.5 0 0 0 11 16.5Z" fill="#FBBC04"/>
+                  <path d="M2 11A9 9 0 0 1 11 2L11 6.5A5.5 5.5 0 0 0 6.5 11Z" fill="#EA4335"/>
+                  <circle cx="11" cy="11" r="5.5" fill="white"/>
+                  <rect x="11" y="8.8" width="9.2" height="4.4" fill="#4285F4"/>
+                  <text x="24" y="15.5" fontFamily="Arial,Helvetica,sans-serif" fontSize="12" fontWeight="500" fill="#202124">Pay</text>
                 </svg>
               </span>
             </div>

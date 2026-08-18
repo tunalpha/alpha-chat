@@ -1,0 +1,98 @@
+FIX FINALE — CARD “ACQUISTA CON CARTA”
+SOLO UI — ZERO REGRESSIONI
+
+Modifica esclusivamente la card “Acquista con carta” nella Home Alpha Wallet.
+
+NON creare nuove pagine.
+NON modificare la posizione della card.
+NON modificare Invio, Ricevi, Storico, Swap, asset, saldo o pagamenti.
+NON modificare backend/API/database.
+NON collegare ChangeNOW.
+NON modificare Li.Fi.
+
+PROBLEMI DA RISOLVERE
+
+1. GOOGLE PAY
+Il Google Pay attuale appare come:
+“G Pay”
+
+NON va bene: non deve essere una semplice ricostruzione testuale.
+
+Utilizza il LOGO UFFICIALE Google Pay / Google Pay brand asset, nella sua forma corretta e riconoscibile.
+
+Non inventare, ridisegnare o approssimare il logo con testo.
+
+Se nel progetto esiste già un asset ufficiale Google Pay, riutilizzalo.
+Se non esiste, usa un asset ufficiale/brand-compliant disponibile nel progetto o nella libreria già utilizzata dall'app.
+
+Mantieni il logo Apple Pay ufficiale/brand-compliant già corretto.
+
+Mantieni inoltre:
+- Visa
+- Mastercard
+
+2. SPAZIO VUOTO NELLA CARD
+
+Attualmente nella riga dei loghi rimane troppo spazio vuoto sulla destra.
+
+Ottimizza il layout sfruttando meglio lo spazio disponibile:
+
+[ VISA ] [ MASTERCARD ] [ APPLE PAY ] [ GOOGLE PAY ]
+
+I loghi devono:
+- essere leggermente più grandi e proporzionati;
+- avere dimensioni visivamente equilibrate tra loro;
+- avere spacing uniforme;
+- occupare meglio la larghezza disponibile;
+- mantenere margini laterali eleganti;
+- non arrivare mai a bordo card;
+- non sovrapporsi;
+- non comprimere titolo, sottotitolo o CTA.
+
+NON allargare artificialmente i loghi deformandoli.
+Mantieni sempre il rapporto d'aspetto originale dei brand asset.
+
+RESPONSIVE MOBILE
+
+Su iPhone/mobile:
+- titolo “Acquista con carta” sempre completamente leggibile;
+- sottotitolo “Crypto direttamente nel tuo wallet” leggibile;
+- “Acquista →” sempre visibile;
+- loghi su riga separata;
+- nessuna sovrapposizione;
+- nessun logo deformato;
+- nessun testo troncato;
+- se lo spazio disponibile cambia, ridimensionare/scalare i loghi mantenendo proporzioni e spacing.
+
+OBIETTIVO VISIVO
+
+La card deve sembrare una vera sezione premium di un wallet finanziario.
+
+Struttura:
+
+┌─────────────────────────────────────────┐
+│ [icona] Acquista con carta   Acquista → │
+│         Crypto direttamente nel wallet  │
+│ ─────────────────────────────────────── │
+│ [VISA] [MC] [Apple Pay] [Google Pay]    │
+└─────────────────────────────────────────┘
+
+La riga dei loghi deve utilizzare meglio lo spazio disponibile, ma senza rendere la card troppo alta.
+
+IMPORTANTE
+
+Non modificare la logica funzionale della card.
+Non implementare ancora il pagamento.
+
+Il futuro flusso dovrà ricevere automaticamente l'indirizzo del wallet Alpha, senza chiedere all'utente di copiare/incollare o digitare manualmente l'indirizzo.
+
+VERIFICA FINALE
+
+Controlla il diff e conferma:
+
+PAYMENTS MODIFIED: 0
+SWAP / Li.Fi MODIFIED: 0
+ChangeNOW API CALLS: 0
+BACKEND MODIFIED: 0
+
+Esegui la suite di test/regression disponibile e riportami il risultato.
