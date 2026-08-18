@@ -1,9 +1,9 @@
-import { act, render, renderHook, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, renderHook, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { useChangeNowEvmSwapState } from "../../swap/changenow/useChangeNowEvmSwapState.js";
 import { useEvmTokenBalances } from "../../swap/evm/useEvmTokenBalances.js";
 import { NATIVE_ADDRESS, type EvmToken } from "../../swap/evm/types.js";
-import { CnTokenMenu } from "../../swap/changenow/ChangeNowEvmSwapView.js";
+import { CnTokenMenu, CnTokenSheet } from "../../swap/changenow/ChangeNowEvmSwapView.js";
 import { CN_EVM_TOKENS } from "../../swap/changenow/evm-types.js";
 
 const WALLET = "0x1111111111111111111111111111111111111111";
@@ -71,5 +71,31 @@ describe("ChangeNOW EVM swap — saldi e inversione UI", () => {
 
     expect(screen.getByText("4.39 POL")).toBeTruthy();
     expect(screen.getByText("Saldo")).toBeTruthy();
+  });
+
+  it("apre un bottom sheet selezionabile, come il selettore Li.Fi", () => {
+    const token = CN_EVM_TOKENS.find((item) => item.ticker === "pol")!;
+    const onChoose = vi.fn();
+    const onClose = vi.fn();
+
+    render(
+      <CnTokenSheet
+        side="from"
+        tokens={[token]}
+        onChoose={onChoose}
+        onClose={onClose}
+        getBalance={() => 4_390_000_000_000_000_000n}
+        isBalanceLoading={() => false}
+      />,
+    );
+
+    expect(screen.getByRole("dialog", { name: "Seleziona token da inviare" })).toBeTruthy();
+    expect(screen.getByText("4.39 POL")).toBeTruthy();
+
+    fireEvent.click(screen.getByText("POL"));
+    expect(onChoose).toHaveBeenCalledWith(token);
+
+    fireEvent.click(screen.getByRole("button", { name: "Chiudi selettore token" }));
+    expect(onClose).toHaveBeenCalledTimes(1);
   });
 });

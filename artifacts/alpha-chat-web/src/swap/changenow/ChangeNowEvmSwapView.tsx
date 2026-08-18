@@ -28,7 +28,7 @@ import React, {
 } from "react";
 import {
   ChevronDown, Check, Loader2, CheckCircle,
-  AlertTriangle, ArrowRight, ArrowDownUp, Info,
+  AlertTriangle, ArrowRight, ArrowDownUp, Info, X,
 } from "lucide-react";
 import {
   useChangeNowEvmSwapState,
@@ -178,6 +178,52 @@ export function CnTokenMenu({
           </button>
         );
       })}
+    </div>
+  );
+}
+
+/**
+ * Il selettore deve essere un bottom sheet, non un menu assoluto dentro la
+ * card: sul PWA iOS i menu inline vengono facilmente coperti o tagliati dal
+ * contenitore scrollabile dello swap.
+ */
+export function CnTokenSheet({
+  side,
+  tokens,
+  selectedTicker,
+  onChoose,
+  onClose,
+  getBalance,
+  isBalanceLoading,
+}: {
+  side: "from" | "to";
+  tokens: CnEvmToken[];
+  selectedTicker?: string;
+  onChoose: (token: CnEvmToken) => void;
+  onClose: () => void;
+  getBalance: (token: CnEvmToken) => bigint | undefined;
+  isBalanceLoading: (token: CnEvmToken) => boolean;
+}) {
+  const title = side === "from" ? "Seleziona token da inviare" : "Seleziona token da ricevere";
+
+  return (
+    <div className="asw-sheet-backdrop" onClick={onClose} role="presentation">
+      <div className="asw-sheet" onClick={event => event.stopPropagation()} role="dialog" aria-modal="true" aria-label={title}>
+        <div className="asw-sheet-handle" />
+        <div className="asw-sheet-header">
+          <p className="asw-sheet-title">{title}</p>
+          <button className="asw-close-btn" onClick={onClose} aria-label="Chiudi selettore token">
+            <X size={16} />
+          </button>
+        </div>
+        <CnTokenMenu
+          tokens={tokens}
+          selectedTicker={selectedTicker}
+          onChoose={onChoose}
+          getBalance={getBalance}
+          isBalanceLoading={isBalanceLoading}
+        />
+      </div>
     </div>
   );
 }
@@ -433,8 +479,7 @@ export function ChangeNowEvmSwapView({
 
   // Hook: EVM address + BTC address (per EVM→BTC)
   const [state, actions] = useChangeNowEvmSwapState(destinationAddr, btcAddress ?? null);
-  const [fromMenuOpen, setFromMenuOpen] = useState(false);
-  const [toMenuOpen, setToMenuOpen]     = useState(false);
+  const [tokenMenuSide, setTokenMenuSide] = useState<"from" | "to" | null>(null);
   const autoQuotedRef = useRef(false);
 
   // Prezzi fiat (USD / EUR) per i due token selezionati
@@ -449,7 +494,7 @@ export function ChangeNowEvmSwapView({
   const effectiveAddr = destinationAddr ?? undefined;
   // Carichiamo la rete del token "Da" per la card. Quando una tendina è aperta,
   // carichiamo anche le altre due reti per poter mostrare ogni saldo nella lista.
-  const tokenMenuOpen = fromMenuOpen || toMenuOpen;
+  const tokenMenuOpen = tokenMenuSide !== null;
   const shouldLoadPolygon = state.fromToken?.chainId === 137 || tokenMenuOpen;
   const shouldLoadEthereum = state.fromToken?.chainId === 1 || tokenMenuOpen;
   const shouldLoadBsc = state.fromToken?.chainId === 56 || tokenMenuOpen;
@@ -490,6 +535,26 @@ export function ChangeNowEvmSwapView({
           ? bscBalances.loading
           : false;
   };
+  const openTokenMenu = useCallback((side: "from" | "to") => setTokenMenuSide(side), []);
+  const closeTokenMenu = useCallback(() => setTokenMenuSide(null), []);
+  const tokenPicker = tokenMenuSide ? (
+    <CnTokenSheet
+      side={tokenMenuSide}
+      tokens={CN_EVM_TOKENS.filter(token => token.ticker !== (
+        tokenMenuSide === "from" ? state.toToken?.ticker : state.fromToken?.ticker
+      ))}
+      selectedTicker={tokenMenuSide === "from" ? state.fromToken?.ticker : state.toToken?.ticker}
+      onChoose={(token) => {
+        closeTokenMenu();
+        autoQuotedRef.current = false;
+        if (tokenMenuSide === "from") actions.setFromToken(token);
+        else actions.setToToken(token);
+      }}
+      onClose={closeTokenMenu}
+      getBalance={getTokenBalance}
+      isBalanceLoading={isTokenBalanceLoading}
+    />
+  ) : null;
 
   // Balance effettivo: BTC sat→BigInt oppure EVM
   const fromBalance = state.fromToken ? getTokenBalance(state.fromToken) : undefined;
@@ -528,10 +593,9 @@ export function ChangeNowEvmSwapView({
   const handleInvertDirection = useCallback(() => {
     if (!canInvertDirection) return;
     autoQuotedRef.current = false;
-    setFromMenuOpen(false);
-    setToMenuOpen(false);
+    closeTokenMenu();
     actions.invertDirection();
-  }, [actions, canInvertDirection]);
+  }, [actions, canInvertDirection, closeTokenMenu]);
 
   // ── Auto-check pair quando cambiano token (senza vincoli su uiState) ─────────
   useEffect(() => {
@@ -875,56 +939,20 @@ export function ChangeNowEvmSwapView({
       <div className="asw-content">
         <div className="asw-form">
           {/* FROM selector */}
-          <div style={{ position: "relative" }}>
-            <CnTokenCard
-              label="Da"
-              token={state.fromToken}
-              amount={state.fromAmount}
-              onAmountChange={v => actions.setFromAmount(v)}
-              onTokenClick={() => { setFromMenuOpen(v => !v); setToMenuOpen(false); }}
-            />
-            {fromMenuOpen && (
-              <div style={{
-                position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, zIndex: 60,
-                background: "#1e1b2e", border: "1px solid rgba(255,255,255,.12)",
-                borderRadius: 12, overflow: "hidden", boxShadow: "0 12px 32px rgba(0,0,0,.6)",
-                maxHeight: 260, overflowY: "auto",
-              }}>
-                <CnTokenMenu
-                  tokens={CN_EVM_TOKENS.filter(t => t.ticker !== state.toToken?.ticker)}
-                  selectedTicker={state.fromToken?.ticker}
-                  onChoose={(token) => { setFromMenuOpen(false); actions.setFromToken(token); }}
-                  getBalance={getTokenBalance}
-                  isBalanceLoading={isTokenBalanceLoading}
-                />
-              </div>
-            )}
-          </div>
+          <CnTokenCard
+            label="Da"
+            token={state.fromToken}
+            amount={state.fromAmount}
+            onAmountChange={v => actions.setFromAmount(v)}
+            onTokenClick={() => openTokenMenu("from")}
+          />
 
           {/* TO selector */}
-          <div style={{ position: "relative" }}>
-            <CnTokenCard
-              label="A"
-              token={state.toToken}
-              onTokenClick={() => { setToMenuOpen(v => !v); setFromMenuOpen(false); }}
-            />
-            {toMenuOpen && (
-              <div style={{
-                position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, zIndex: 60,
-                background: "#1e1b2e", border: "1px solid rgba(255,255,255,.12)",
-                borderRadius: 12, overflow: "hidden", boxShadow: "0 12px 32px rgba(0,0,0,.6)",
-                maxHeight: 260, overflowY: "auto",
-              }}>
-                <CnTokenMenu
-                  tokens={CN_EVM_TOKENS.filter(t => t.ticker !== state.fromToken?.ticker)}
-                  selectedTicker={state.toToken?.ticker}
-                  onChoose={(token) => { setToMenuOpen(false); actions.setToToken(token); }}
-                  getBalance={getTokenBalance}
-                  isBalanceLoading={isTokenBalanceLoading}
-                />
-              </div>
-            )}
-          </div>
+          <CnTokenCard
+            label="A"
+            token={state.toToken}
+            onTokenClick={() => openTokenMenu("to")}
+          />
 
           <div style={{ textAlign: "center", padding: "12px 0", color: "#f59e0b" }}>
             <AlertTriangle size={26} style={{ marginBottom: 6 }} />
@@ -933,6 +961,7 @@ export function ChangeNowEvmSwapView({
           </div>
           <button onClick={onBack} className="aw-btn aw-btn--secondary">Indietro</button>
         </div>
+        {tokenPicker}
       </div>
     );
   }
@@ -953,43 +982,21 @@ export function ChangeNowEvmSwapView({
       <div className="asw-form">
 
         {/* ── FROM card ─────────────────────────────────────────────────── */}
-        <div style={{ position: "relative" }}>
-          <CnTokenCard
-            label="Da"
-            token={state.fromToken}
-            amount={state.fromAmount}
-            onAmountChange={v => { autoQuotedRef.current = false; actions.setFromAmount(v); }}
-            onTokenClick={() => { setFromMenuOpen(v => !v); setToMenuOpen(false); }}
-            balance={fromBalance}
-            balLoading={balLoading}
-            onPct={handlePct}
-            minAmount={state.minAmount}
-            priceUSD={fromPrice.priceUSD}
-            priceEUR={fromPrice.priceEUR}
-            fiatCurrency={fiatCurrency}
-            onFiatChange={setFiatCurrencyForCard}
-          />
-          {fromMenuOpen && (
-            <div style={{
-              position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, zIndex: 60,
-              background: "#1e1b2e", border: "1px solid rgba(255,255,255,.12)",
-              borderRadius: 12, overflow: "hidden", boxShadow: "0 12px 32px rgba(0,0,0,.6)",
-              maxHeight: 300, overflowY: "auto",
-            }}>
-              <CnTokenMenu
-                tokens={CN_EVM_TOKENS.filter(t => t.ticker !== state.toToken?.ticker)}
-                selectedTicker={state.fromToken?.ticker}
-                onChoose={(token) => {
-                  setFromMenuOpen(false);
-                  autoQuotedRef.current = false;
-                  actions.setFromToken(token);
-                }}
-                getBalance={getTokenBalance}
-                isBalanceLoading={isTokenBalanceLoading}
-              />
-            </div>
-          )}
-        </div>
+        <CnTokenCard
+          label="Da"
+          token={state.fromToken}
+          amount={state.fromAmount}
+          onAmountChange={v => { autoQuotedRef.current = false; actions.setFromAmount(v); }}
+          onTokenClick={() => openTokenMenu("from")}
+          balance={fromBalance}
+          balLoading={balLoading}
+          onPct={handlePct}
+          minAmount={state.minAmount}
+          priceUSD={fromPrice.priceUSD}
+          priceEUR={fromPrice.priceEUR}
+          fiatCurrency={fiatCurrency}
+          onFiatChange={setFiatCurrencyForCard}
+        />
 
         {/* ── Direction switch: operazione atomica, bloccata dopo create ─── */}
         <div className="asw-dir-wrap">
@@ -1006,38 +1013,16 @@ export function ChangeNowEvmSwapView({
         </div>
 
         {/* ── TO card ───────────────────────────────────────────────────── */}
-        <div style={{ position: "relative" }}>
-          <CnTokenCard
-            label="A"
-            token={state.toToken}
-            amount={isReady && state.quote ? `≈ ${fmtToken(state.quote.estimatedToAmount, state.toToken?.decimals)}` : undefined}
-            onTokenClick={() => { setToMenuOpen(v => !v); setFromMenuOpen(false); }}
-            priceUSD={toPrice.priceUSD}
-            priceEUR={toPrice.priceEUR}
-            fiatCurrency={fiatCurrency}
-            onFiatChange={setFiatCurrencyForCard}
-          />
-          {toMenuOpen && (
-            <div style={{
-              position: "absolute", top: "calc(100% + 4px)", left: 0, right: 0, zIndex: 60,
-              background: "#1e1b2e", border: "1px solid rgba(255,255,255,.12)",
-              borderRadius: 12, overflow: "hidden", boxShadow: "0 12px 32px rgba(0,0,0,.6)",
-              maxHeight: 300, overflowY: "auto",
-            }}>
-              <CnTokenMenu
-                tokens={CN_EVM_TOKENS.filter(t => t.ticker !== state.fromToken?.ticker)}
-                selectedTicker={state.toToken?.ticker}
-                onChoose={(token) => {
-                  setToMenuOpen(false);
-                  autoQuotedRef.current = false;
-                  actions.setToToken(token);
-                }}
-                getBalance={getTokenBalance}
-                isBalanceLoading={isTokenBalanceLoading}
-              />
-            </div>
-          )}
-        </div>
+        <CnTokenCard
+          label="A"
+          token={state.toToken}
+          amount={isReady && state.quote ? `≈ ${fmtToken(state.quote.estimatedToAmount, state.toToken?.decimals)}` : undefined}
+          onTokenClick={() => openTokenMenu("to")}
+          priceUSD={toPrice.priceUSD}
+          priceEUR={toPrice.priceEUR}
+          fiatCurrency={fiatCurrency}
+          onFiatChange={setFiatCurrencyForCard}
+        />
 
         {/* ── Rate (se quote disponibile) ───────────────────────────────── */}
         {isReady && state.quote && (
@@ -1126,6 +1111,7 @@ export function ChangeNowEvmSwapView({
           Indietro
         </button>
       </div>
+      {tokenPicker}
     </div>
   );
 }

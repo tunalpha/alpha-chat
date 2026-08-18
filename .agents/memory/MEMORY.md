@@ -102,6 +102,7 @@
 - [ChangeNOW EVM — Fixed-Rate Requirement](changenow-evm-fixed-rate.md) — EVM→EVM richiede fixed-rate; floating-rate (/v1/transactions) → 404; cnGetFixedRateAmount+cnCreateFixedRateTransaction obbligatori
 - [ChangeNOW fixed-rate create response](changenow-fixed-rate-create-response.md) — la risposta create può omettere gli importi; persistere input + quote bloccata per evitare 500 dopo l’ordine
 - [ChangeNOW token balance sources](changenow-token-balances.md) — il catalogo ChangeNOW può usare contratti diversi da Li.Fi; interrogare il contratto del token selezionato
+- [Swap token picker on iOS](swap-token-picker-ios.md) — nei flussi swap usare bottom sheet fixed, non menu assoluti dentro card scrollabili
 - [ChangeNOW Fee Architecture](changenow-fee-architecture.md) — NESSUNA fee Alpha su flussi CN; 0,40% Partner share da ChangeNOW direttamente; FEE ARCHITECTURE=PASS
 - [ChangeNOW EVM provider bug](changenow-evm-provider-bug.md) — /swap/providers admin-only → sempre "lifi"; fix: query modello diretta in getPublicSwapConfig (no cross-service import — bug Vitest ESM)
 - [EVM Swap Tracking](evm-swap-tracking.md) — evm_swaps aveva 0 record: SUPPORTED_CHAINS rifiutava BTC (toChainId=0); .catch(()=>null) inghiottiva tutto; window.__VITE_API_BASE__ mai impostata
