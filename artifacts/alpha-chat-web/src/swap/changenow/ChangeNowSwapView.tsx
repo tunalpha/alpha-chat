@@ -89,9 +89,11 @@ export function ChangeNowSwapView({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.amountBtc]);
 
-  // Reset quote quando cambia token
+  // checkPair + reset quote quando cambia token (o su mount)
   useEffect(() => {
     hasAutoQuoted.current = false;
+    actions.checkPair();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [state.selectedToken.ticker]);
 
   // ── Handlers ──────────────────────────────────────────────────────────────
@@ -432,9 +434,9 @@ export function ChangeNowSwapView({
               style={{ paddingLeft: 40 }}
             />
           </div>
-          {tok.minAmountBtc > 0 && (
+          {state.minAmountBtc !== null && state.minAmountBtc > 0 && (
             <p style={{ fontSize: 10, color: "rgba(255,255,255,.3)", marginTop: 3 }}>
-              Min: {tok.minAmountBtc} BTC per questa coppia
+              Importo minimo: {state.minAmountBtc} BTC
             </p>
           )}
         </div>

@@ -78,6 +78,8 @@ export interface CnSwapState {
   status:        CnSwapStatusResult | null;
   error:         string | null;
   pairAvailable: boolean | null;
+  /** Minimo BTC dinamico da ChangeNOW API — null finché checkPair non è completato */
+  minAmountBtc:  number | null;
 }
 
 export interface CnSwapActions {
@@ -103,6 +105,7 @@ const INITIAL_STATE: CnSwapState = {
   status:        null,
   error:         null,
   pairAvailable: null,
+  minAmountBtc:  null,
 };
 
 // ── Hook ──────────────────────────────────────────────────────────────────────
@@ -220,9 +223,10 @@ export function useChangeNowSwapState(): [CnSwapState, CnSwapActions] {
     setState(prev => ({
       ...prev,
       selectedToken: token,
-      quote: null,
+      quote:         null,
       pairAvailable: null,
-      error: null,
+      minAmountBtc:  null,
+      error:         null,
     }));
   }, []);
 
@@ -233,13 +237,14 @@ export function useChangeNowSwapState(): [CnSwapState, CnSwapActions] {
   const checkPair = useCallback(async () => {
     setState(prev => ({ ...prev, uiState: "checking_pair", error: null, pairAvailable: null }));
     try {
-      const data = await cnRequest<{ ok: boolean; available: boolean }>(
+      const data = await cnRequest<{ ok: boolean; available: boolean; minAmountBtc?: number }>(
         `/swap/changenow/pairs/${state.selectedToken.ticker}`
       );
       if (!mountedRef.current) return;
       setState(prev => ({
         ...prev,
         pairAvailable: data.available,
+        minAmountBtc:  data.available ? (data.minAmountBtc ?? null) : null,
         uiState: data.available ? "idle" : "pair_unavailable",
         error: data.available ? null : `La coppia BTC→${state.selectedToken.symbol} non è disponibile.`,
       }));
@@ -258,6 +263,14 @@ export function useChangeNowSwapState(): [CnSwapState, CnSwapActions] {
     const amountNum = parseFloat(state.amountBtc);
     if (!amountNum || amountNum <= 0) {
       setState(prev => ({ ...prev, error: "Inserisci un importo valido." }));
+      return;
+    }
+    // Validazione minimo dinamico da ChangeNOW — usa il valore numerico reale (no arrotondamento)
+    if (state.minAmountBtc !== null && amountNum < state.minAmountBtc) {
+      setState(prev => ({
+        ...prev,
+        error: `Importo minimo: ${state.minAmountBtc} BTC per questa coppia`,
+      }));
       return;
     }
     setState(prev => ({ ...prev, uiState: "quoting", error: null }));

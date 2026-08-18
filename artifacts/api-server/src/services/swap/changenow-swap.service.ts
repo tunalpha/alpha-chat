@@ -40,6 +40,8 @@ import {
   type CnToChain,
 } from "../../models/changenow-swap.model.js";
 import {
+  CnApiError,
+  cnGetMinAmount,
   cnGetExchangeAmount,
   cnCreateTransaction,
   cnGetTransactionStatus,
@@ -170,30 +172,30 @@ export async function checkPairAvailability(
   const dest = getCnBtcDestToken(toTicker)!;
 
   try {
-    await cnGetExchangeAmount({
-      amount:       dest.minAmountBtc * 2,  // use 2x min to get a valid quote
-      fromCurrency: "btc",
-      toCurrency:   toTicker,
-    });
-    logger.info({ toTicker, available: true }, "BTC→EVM pair available");
+    const { minAmount } = await cnGetMinAmount("btc", toTicker);
+    logger.info({ toTicker, available: true, minAmount }, "BTC→EVM pair available");
     return {
       available:    true,
       fromCurrency: "btc",
       toTicker,
       toAsset:      dest.symbol,
       toChain:      dest.chain,
-      minAmountBtc: dest.minAmountBtc,
+      minAmountBtc: minAmount,
     };
-  } catch {
-    logger.warn({ toTicker }, "BTC→EVM pair unavailable or API error");
-    return {
-      available:    false,
-      fromCurrency: "btc",
-      toTicker,
-      toAsset:      dest.symbol,
-      toChain:      dest.chain,
-      minAmountBtc: dest.minAmountBtc,
-    };
+  } catch (err) {
+    if (err instanceof CnApiError && err.isClientError) {
+      logger.warn({ toTicker, httpStatus: err.httpStatus }, "BTC→EVM pair not available on ChangeNOW");
+      return {
+        available:    false,
+        fromCurrency: "btc",
+        toTicker,
+        toAsset:      dest.symbol,
+        toChain:      dest.chain,
+        minAmountBtc: dest.minAmountBtc,
+      };
+    }
+    logger.warn({ toTicker }, "ChangeNOW API provider error during BTC pair check");
+    throw new AppError("CHANGENOW_API_ERROR", 503);
   }
 }
 

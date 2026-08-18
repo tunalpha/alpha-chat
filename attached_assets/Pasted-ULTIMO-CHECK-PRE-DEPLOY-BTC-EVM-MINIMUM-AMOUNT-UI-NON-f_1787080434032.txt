@@ -1,0 +1,171 @@
+ULTIMO CHECK PRE-DEPLOY — BTC + EVM + MINIMUM AMOUNT UI
+
+NON fare deploy e NON effettuare transazioni reali.
+
+Voglio verificare una cosa fondamentale: il `minAmount` restituito da ChangeNOW deve essere utilizzato anche dalla UI Alpha, non soltanto verificato nei test backend.
+
+### 1. BTC — verifica completa
+
+Verifica che i test BTC siano realmente presenti e PASS:
+
+- changenow-btc-swap.test.ts
+- tutte le 8 destinazioni BTC→EVM attive precedentemente verificate
+- availability
+- minAmount
+- quote
+- create
+- status
+- completed
+- failed/refunded/expired
+- recovery/idempotenza
+
+Deve risultare chiaramente:
+`BTC TESTS = 40/40 PASS`
+
+### 2. EVM — verifica completa
+
+Mantieni i test Dynamic Pairs:
+
+- POL → USDC Polygon
+- POL → USDT Polygon
+- POL → ETH Ethereum
+- ETH → USDC Polygon
+- ETH → USDT Polygon
+- BNB → USDT BSC
+- BNB → USDC Polygon
+- almeno una coppia precedentemente fuori dalla whitelist
+
+Deve risultare:
+`EVM TESTS = 35/35 PASS`
+
+### 3. MINIMUM AMOUNT — BACKEND
+
+Per OGNI coppia selezionata:
+
+ChangeNOW
+→ `/v1/min-amount/{from}_{to}`
+→ `minAmount`
+
+Il valore deve essere restituito al frontend.
+
+Non hardcodare i minimi.
+
+Non usare valori statici.
+
+### 4. MINIMUM AMOUNT — UI ALPHA
+
+Verifica nel frontend che il `minAmount` venga realmente mostrato all'utente.
+
+Esempio:
+
+POL → USDC Polygon
+
+ChangeNOW restituisce:
+`minAmount = 11.41 POL`
+
+Alpha deve mostrare chiaramente:
+
+**Importo minimo: 11,41 POL**
+
+e impedire il proseguimento se l'importo è inferiore.
+
+Lo stesso deve funzionare per BTC e per tutte le destinazioni disponibili.
+
+### 5. Cambio coppia
+
+Quando l'utente cambia:
+
+FROM token
+oppure
+TO token
+oppure
+rete
+
+il `minAmount` deve essere ricaricato dalla API ChangeNOW.
+
+Non deve rimanere il minimo della coppia precedente.
+
+### 6. Quote
+
+Se l'utente inserisce un importo:
+
+`amount < minAmount`
+
+Alpha deve bloccare il quote/create e mostrare il minimo.
+
+Se:
+
+`amount >= minAmount`
+
+può procedere con il quote ChangeNOW.
+
+### 7. Precisione
+
+NON arrotondare il minimo in modo tale da permettere un importo realmente sotto il minimo.
+
+La validazione deve utilizzare il valore numerico reale restituito da ChangeNOW.
+
+La UI può formattarlo per la visualizzazione.
+
+### 8. Nessuna whitelist
+
+Il `minAmount` deve essere dinamico.
+
+NON ricreare una whitelist di coppie solo per gestire il minimo.
+
+ChangeNOW rimane la source of truth.
+
+### 9. Regression
+
+Verifica che questa modifica NON tocchi:
+
+- Li.Fi
+- EvmSwapView
+- payment engine
+- USDA
+- MultiChain
+- Spark
+- WalletConnect
+- Lightning
+- Boltz
+- fee architecture
+
+ChangeNOW:
+`Alpha fee = 0%`
+`Partner Share = 0,40%`
+
+### 10. Test UI obbligatori
+
+Aggiungi test per:
+
+T1 — minAmount ricevuto
+T2 — minAmount visualizzato
+T3 — importo sotto minimo → bloccato
+T4 — importo uguale al minimo → consentito
+T5 — importo sopra minimo → consentito
+T6 — cambio coppia → nuovo minimo
+T7 — BTC → destinazione → minimo corretto
+T8 — EVM → destinazione → minimo corretto
+T9 — errore API minAmount → stato errore appropriato
+T10 — nessun minimo hardcoded
+
+### 11. Report finale
+
+Voglio:
+
+BTC TESTS: X/X
+EVM TESTS: X/X
+MINIMUM API: PASS/FAIL
+MINIMUM UI: PASS/FAIL
+BELOW MINIMUM BLOCK: PASS/FAIL
+PAIR CHANGE REFRESH: PASS/FAIL
+NO HARDCODED MINIMUMS: PASS/FAIL
+REGRESSION: PASS/FAIL
+FRONTEND BUILD: PASS/FAIL
+BACKEND BUILD: PASS/FAIL
+
+NON fare deploy.
+
+NON effettuare transazioni reali.
+
+Se il minimo è già correttamente mostrato e validato, NON modificare il codice: limitati a verificarlo e riportarlo.

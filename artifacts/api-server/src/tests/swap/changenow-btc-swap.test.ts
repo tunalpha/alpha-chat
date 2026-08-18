@@ -72,7 +72,8 @@ vi.mock("../../services/swap/swap-provider-router.service.js", () => ({
 vi.mock("../../services/swap/changenow.service.js", async (importOriginal) => {
   const real = await importOriginal() as Record<string, unknown>;
   return {
-    ...real,  // re-export CN_BTC_DESTINATION_TOKENS, getCnBtcDestToken, etc.
+    ...real,  // re-export CN_BTC_DESTINATION_TOKENS, getCnBtcDestToken, CnApiError, etc.
+    cnGetMinAmount:        vi.fn(),
     cnGetExchangeAmount:   vi.fn(),
     cnCreateTransaction:   vi.fn(),
     cnGetTransactionStatus: vi.fn(),
@@ -81,6 +82,7 @@ vi.mock("../../services/swap/changenow.service.js", async (importOriginal) => {
 
 import { isProviderEnabled } from "../../services/swap/swap-provider-router.service.js";
 import {
+  cnGetMinAmount,
   cnGetExchangeAmount,
   cnCreateTransaction,
   cnGetTransactionStatus,
@@ -155,20 +157,19 @@ describe("checkPairAvailability — tutti i ticker verificati", () => {
 
   for (const ticker of VERIFIED) {
     it(`T${VERIFIED.indexOf(ticker) + 1} — BTC→${ticker} disponibile`, async () => {
-      vi.mocked(cnGetExchangeAmount).mockResolvedValueOnce({
-        estimatedAmount: 50,
-        minAmount: 0.001,
-      });
+      vi.mocked(cnGetMinAmount).mockResolvedValueOnce({ minAmount: 0.001 });
       const result = await checkPairAvailability(ticker);
       expect(result.available).toBe(true);
       expect(result.toTicker).toBe(ticker);
       expect(result.fromCurrency).toBe("btc");
+      // Minimo dinamico da ChangeNOW API — non hardcoded
+      expect(result.minAmountBtc).toBe(0.001);
     });
   }
 
   it("T9 — ticker invalido → errore UNSUPPORTED_BTC_DESTINATION", async () => {
     await expect(checkPairAvailability("INVALID_TICKER")).rejects.toThrow();
-    expect(cnGetExchangeAmount).not.toHaveBeenCalled();
+    expect(cnGetMinAmount).not.toHaveBeenCalled();
   });
 
   it("T10 — ChangeNOW DISABLED → errore CHANGENOW_DISABLED", async () => {
