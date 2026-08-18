@@ -1,0 +1,84 @@
+HAI RAGIONE: CORREGGI L'APPROCCIO.
+
+NON dobbiamo trattare le 13 coppie precedentemente verificate come una whitelist delle coppie ChangeNOW.
+
+ChangeNOW supporta centinaia di combinazioni e il nostro obiettivo è utilizzare la disponibilità REALE restituita dalla API ChangeNOW, non limitare artificialmente l'app alle coppie che abbiamo testato manualmente.
+
+Il test live POL → USDC Polygon mostra:
+"Coppia non disponibile su ChangeNOW al momento."
+
+Il routing è però CORRETTO:
+Alpha Swap → EVM → ChangeNowEvmSwapView.
+
+ORA ANALIZZA IL CODICE E TROVA SE STIAMO LIMITANDO ARTIFICIALMENTE LE COPPIE.
+
+VERIFICA:
+
+1. Cerca tutte le whitelist/enum/array hardcoded relativi alle coppie EVM ChangeNOW:
+- CN_EVM_TOKENS
+- pair allowlist
+- supported pairs
+- valid tickers
+- mapping from/to
+- checkEvmPair
+- eventuali `includes()`
+- eventuali enum che limitano le destinazioni.
+
+2. Verifica se `CN_EVM_TOKENS` descrive semplicemente i token supportati dall'interfaccia oppure se viene erroneamente utilizzato come whitelist delle coppie.
+
+3. NON voglio una lista hardcoded di 13 coppie.
+
+4. La disponibilità della coppia deve essere determinata dalla API ChangeNOW.
+
+Il principio deve essere:
+
+utente seleziona FROM token + TO token
+↓
+otteniamo i ticker ChangeNOW corretti
+↓
+chiamiamo ChangeNOW
+↓
+ChangeNOW determina se la coppia è disponibile
+↓
+se disponibile → quote
+↓
+se non disponibile → messaggio non disponibile.
+
+5. Verifica quale API ChangeNOW è attualmente utilizzata per `checkEvmPair()`.
+
+Se l'endpoint `/exchange-amount/...` non è sufficiente per determinare correttamente tutte le coppie supportate, verifica la documentazione/API ChangeNOW e utilizza l'endpoint appropriato per ottenere le coppie/token disponibili.
+
+6. IMPORTANTE:
+NON limitare l'app alle 13 coppie testate.
+
+Le 13 coppie erano TEST DI VERIFICA, NON una whitelist di produzione.
+
+7. Mantieni comunque una lista di token UI valida se necessaria, ma separa chiaramente:
+
+SUPPORTED TOKENS
+da
+AVAILABLE PAIRS.
+
+8. Il sistema deve poter supportare nuove coppie ChangeNOW senza dover modificare il codice ogni volta che ChangeNOW aggiunge una nuova coppia.
+
+9. Verifica anche POL → USDC Polygon:
+FROM ticker = `pol`
+TO ticker = `usdcmatic`
+
+Ma NON assumere che questa sia l'unica coppia valida.
+
+10. NON modificare Li.Fi.
+NON riattivare Li.Fi.
+NON aggiungere fallback.
+NON fare transazioni reali.
+
+Prima fai solo l'audit e dimmi:
+
+A) quale whitelist sta limitando le coppie
+B) quale endpoint ChangeNOW dovrebbe essere usato
+C) perché POL → USDC viene dichiarata unavailable
+D) come rendere il supporto dinamico alle coppie ChangeNOW
+E) quali file dovrebbero essere modificati
+
+FERMATI DOPO LA DIAGNOSI.
+NON APPLICARE ANCORA IL FIX.
