@@ -1,0 +1,73 @@
+STOP. Questo risultato è INACCETTABILE e contraddice il report appena dichiarato come completato.
+
+Ho appena aperto Alpha Swap → EVM in produzione e la schermata mostra:
+
+- POL → USDC Polygon
+- Provider: SushiSwap
+- Fee Alpha (0.25%)
+- UI Li.Fi/SushiSwap
+
+Questo dimostra che la tab EVM STA ANCORA USANDO Li.Fi.
+
+Il requisito concordato era invece:
+
+CHANGE NOW = provider EVM attivo
+→ la tab EVM deve usare ChangeNOW
+→ NON Li.Fi
+→ NON SushiSwap
+→ NON deve comparire la Fee Alpha 0,25%
+→ nessuna fee Alpha aggiuntiva sui flussi ChangeNOW
+→ revenue esclusivamente tramite il Partner Share ChangeNOW 0,40%.
+
+Non voglio supposizioni. Fai ora un AUDIT RUNTIME COMPLETO per trovare esattamente perché la produzione continua a entrare nel vecchio percorso Li.Fi.
+
+VERIFICA OBBLIGATORIAMENTE:
+
+1. Da dove viene letto `activeEvmProvider` in produzione.
+2. Qual è il valore reale ricevuto dal frontend.
+3. Se il valore è davvero `changenow`.
+4. Se esiste una configurazione DB/admin che continua a restituire `lifi`.
+5. Se esiste un default/fallback che forza Li.Fi.
+6. Il branch effettivamente eseguito in `SwapView.tsx`.
+7. Se `ChangeNowEvmSwapView` è realmente incluso nel build/deploy attualmente online.
+8. Se esiste caching PWA/browser/Service Worker che sta servendo il vecchio bundle.
+9. Se esistono feature flag separati che sovrascrivono `activeEvmProvider`.
+10. Se la configurazione ChangeNOW è correttamente propagata dal backend al frontend.
+11. Individua ESATTAMENTE il punto in cui viene scelto Li.Fi/SushiSwap.
+12. Verifica anche perché viene ancora mostrata "Fee Alpha (0.25%)".
+
+IMPORTANTISSIMO:
+
+NON modificare codice alla cieca.
+NON creare un altro toggle.
+NON aggiungere fallback.
+NON nascondere semplicemente la UI Li.Fi.
+
+Prima produci una diagnosi con:
+
+A) valore provider configurato nel DB/admin
+B) valore provider ricevuto dal frontend
+C) branch realmente eseguito
+D) bundle/deploy realmente servito
+E) origine della Fee Alpha 0,25%
+F) causa esatta per cui viene mostrato SushiSwap
+
+Poi proponi il fix minimo necessario.
+
+OBIETTIVO FINALE:
+
+Quando ChangeNOW è PRIMARY/ACTIVE nel pannello admin:
+
+Alpha Swap → EVM
+deve aprire SOLO ChangeNowEvmSwapView.
+
+La schermata NON deve mostrare:
+- Li.Fi
+- SushiSwap
+- Fee Alpha 0,25%
+- vecchio quote engine Li.Fi
+
+Deve mostrare invece il flusso ChangeNOW:
+token → quote ChangeNOW → deposito → invio → polling → ricezione → cronologia/notifica.
+
+NON dichiarare "PASS" finché non viene verificato il comportamento REALE della produzione.

@@ -74,6 +74,13 @@ export interface SwapPublicConfig {
     provider:         "breez_spark_reverse";
     provider_note:    string;
   };
+  /**
+   * Provider EVM attivo: "lifi" | "changenow"
+   * Letto dall'endpoint pubblico GET /api/v1/swap/config (no auth richiesta).
+   * Determinato da SwapProviderConfigModel (isPrimary=true, status=enabled).
+   * Default: "lifi" se nessun provider configurato.
+   */
+  activeEvmProvider: string;
 }
 
 export interface BtcLnQuote {
@@ -123,9 +130,21 @@ export async function getPublicSwapConfig(): Promise<SwapPublicConfig> {
     }
   }
 
+  // Legge il provider EVM primario dal DB (SwapProviderConfigModel).
+  // getPrimaryProvider() è già importata in swap-provider-router.service.ts
+  // ma qui usiamo l'import diretto dal model per non creare dipendenza circolare.
+  let activeEvmProvider = "lifi";
+  try {
+    const { getPrimaryProvider } = await import("./swap-provider-router.service.js");
+    const primary = await getPrimaryProvider();
+    if (primary?.providerId) activeEvmProvider = primary.providerId;
+  } catch {
+    // default "lifi" — fail-open
+  }
+
   return {
-    enabled:         cfg.enabled,
-    excluded_assets: cfg.excluded_assets,
+    enabled:          cfg.enabled,
+    excluded_assets:  cfg.excluded_assets,
     btcln: {
       enabled:         cfg.boltz_btcln_enabled,
       fee_bps:         cfg.btcln_fee_bps,
@@ -138,6 +157,7 @@ export async function getPublicSwapConfig(): Promise<SwapPublicConfig> {
       provider:        "breez_spark_reverse",
       provider_note:   "Fallback temporaneo. Alpha Fee = 0% su questa direzione.",
     },
+    activeEvmProvider,
   };
 }
 

@@ -109,6 +109,7 @@
 - [Alpha Swap V1 Hardening](alpha-swap-v1-hardening.md) — refund key HMAC-SHA256 server-side; write-before-submit; idempotency_key UUID; reconciler 30s; GET /active recovery; 63 test T1-T20 PASS
 - [ChangeNOW FASE 1 — BTC→USDT](changenow-fase1.md) — invarianti btcTxHash≠destTx; fundsCommitted write-before-submit; API key server-only; Li.Fi files invariati; 28 test PASS
 - [ChangeNOW Fee Architecture](changenow-fee-architecture.md) — NESSUNA fee Alpha su flussi CN; 0,40% Partner share da ChangeNOW direttamente; FEE ARCHITECTURE=PASS
+- [ChangeNOW EVM provider bug](changenow-evm-provider-bug.md) — /swap/providers era admin-only → frontend bloccato su "lifi"; fix: activeEvmProvider nel config pubblico
 - [EVM Swap Tracking](evm-swap-tracking.md) — evm_swaps aveva 0 record: SUPPORTED_CHAINS rifiutava BTC (toChainId=0); .catch(()=>null) inghiottiva tutto; window.__VITE_API_BASE__ mai impostata
 - [BTC P2TR validation bug](btc-address-p2tr-bug.md) — validateBtcAddress non accettava bc1p (Taproot); Li.Fi vault può essere P2TR → bloccava EVM→BTC
 - [BTC bridge refund — Thorchain minimum](btc-bridge-refund.md) — BTC_BRIDGE_REFUND codice errore; nasconde "Riprova" (evita double-spend); manca guard pre-invio su minAmount

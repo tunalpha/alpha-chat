@@ -1028,25 +1028,13 @@ export function SwapView({ onBack }: SwapViewProps) {
   const [cfgError, setCfgError]     = useState<string | null>(null);
   const [copied, setCopied]         = useState(false);
 
-  // ── Provider EVM attivo (lifi | changenow) — determinato dal backend ─────────
-  // Fetch al mount. Se il backend non risponde o non è configurato → fallback "lifi"
-  // (comportamento safe: EvmSwapView è invariata).
+  // ── Provider EVM attivo (lifi | changenow) — letto dal config pubblico ───────
+  // Viene incluso in SwapPublicConfig restituito da GET /api/v1/swap/config
+  // (endpoint pubblico, nessun auth richiesto).
+  // NON usare /api/v1/swap/providers che richiede requireAdmin e restituisce 401
+  // per i token utente normali, causando il default permanente "lifi".
   // ISOLAMENTO: nessuna modifica a EvmSwapView / lifi-client / useEvmSwapState.
-  const [activeEvmProvider, setActiveEvmProvider] = useState<string>("lifi");
-  useEffect(() => {
-    const token = localStorage.getItem("ac_access_token") ?? "";
-    fetch("/api/v1/swap/providers", {
-      headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
-      signal: AbortSignal.timeout(5_000),
-    })
-      .then(r => r.ok ? r.json() : null)
-      .then((data: { providers?: { providerId: string; status: string; isPrimary: boolean }[] } | null) => {
-        if (!data?.providers) return;
-        const primary = data.providers.find(p => p.isPrimary && p.status === "enabled");
-        if (primary) setActiveEvmProvider(primary.providerId);
-      })
-      .catch(() => { /* fallback: lifi */ });
-  }, []);
+  const activeEvmProvider: string = config?.activeEvmProvider ?? "lifi";
 
   // ── BTC on-chain balance (per il tab BTC/Lightning) ───────────────────────
   const [btcBalance, setBtcBalance]           = useState<BtcBalanceResponse | null>(null);

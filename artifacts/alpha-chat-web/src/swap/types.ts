@@ -85,6 +85,12 @@ export interface SwapPublicConfig {
     provider:        string;
     provider_note:   string;
   };
+  /**
+   * Provider EVM attivo: "lifi" | "changenow"
+   * Restituito dal backend via GET /api/v1/swap/config (pubblico, no auth).
+   * Default: "lifi".
+   */
+  activeEvmProvider?: string;
 }
 
 export interface SwapError {
