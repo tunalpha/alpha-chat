@@ -1,0 +1,369 @@
+Esegui un AUDIT COMPLETO, READ-ONLY, del flusso BTC → EVM di Alpha prima di autorizzare qualsiasi nuovo swap con fondi reali.
+
+NON modificare codice.
+NON modificare database.
+NON modificare stati.
+NON effettuare retry.
+NON inviare BTC.
+NON creare un nuovo swap.
+
+CONTESTO DELL’INCIDENTE
+
+Abbiamo ricostruito on-chain il precedente caso.
+
+BTC ricevuti
+
+TX:
+
+96b55dc7ea0d7b34fd56a93835f890c1eca875eda4e63d740411731b6639281e
+
+Importo:
+
++0.00022745 BTC
+
+Questa TX ha effettivamente accreditato BTC al wallet Alpha.
+
+Movimento successivo
+
+TX:
+
+ce259f4b1523baf694dfd931f6dd611e1c6f2278aa1b541284744cd11497933d
+
+Input:
+
+0.00022745 BTC
+
+Output:
+
+0.00022604 BTC
+
+Destinatario:
+
+bc1plxa9q77gz9r33g8pd4c2ygzezchjffuedtzdrkclyceseyw8v80qasmquf
+
+Fee:
+
+0.00000141 BTC
+
+Blockstream indica:
+
+Possibly self-transfer
+
+Quindi è stato verificato che questa TX NON era un pagamento a Li.Fi/provider.
+
+Problema storico
+
+Alpha aveva mostrato:
+
+Swap BTC → USDT — Confermata
+
+ma non esisteva alcun pagamento BTC verso un provider e non esisteva alcun payout USDT.
+
+La causa era il falso positivo:
+
+Li.Fi DONE
+→ Alpha non verificava la direzione
+→ una vecchia TX BTC veniva interpretata come completamento del nuovo swap.
+
+È stato implementato il nuovo BTC→EVM Direction Guard.
+
+OBIETTIVO DELL’AUDIT
+
+Voglio sapere se ORA il flusso BTC → EVM è realmente pronto per un nuovo test controllato.
+
+Non limitarti a verificare che i test passino.
+
+Devi verificare l’intero percorso:
+
+BTC wallet
+→ creazione swap
+→ quote
+→ provider
+→ deposit address BTC
+→ pagamento BTC
+→ rilevamento pagamento
+→ conferme
+→ stato provider
+→ payout EVM
+→ destination TX
+→ aggiornamento Alpha.
+
+1. CREAZIONE DELL’ORDINE
+
+Trova nel codice il punto esatto in cui Alpha crea il nuovo ordine BTC → EVM.
+
+Indica:
+
+* file
+* funzione
+* provider
+* API utilizzata
+* parametri inviati
+* fromChain
+* toChain
+* fromToken
+* toToken
+* amount
+* recipient
+* quote/order ID restituito
+* deposit address BTC restituito dal provider
+
+VERIFICA CHE IL DEPOSIT ADDRESS SIA REALMENTE UN INDIRIZZO DEL PROVIDER E NON UN INDIRIZZO DEL WALLET UTENTE.
+
+2. PAGAMENTO BTC
+
+Verifica come Alpha determina che il pagamento BTC sia stato effettuato.
+
+Deve essere chiaro:
+
+* quale TX hash viene utilizzato;
+* quale output viene verificato;
+* quale importo viene verificato;
+* quale indirizzo BTC viene verificato;
+* quante conferme sono necessarie;
+* come viene associata la TX all’ordine specifico.
+
+IMPORTANTE:
+
+Alpha NON deve poter associare una vecchia TX BTC a un nuovo ordine solo perché la TX esiste.
+
+Deve esserci una correlazione forte tra:
+
+orderId
+depositAddress
+BTC txHash
+output
+amount
+
+3. POLLING LI.FI
+
+Verifica il nuovo codice BTC→EVM Direction Guard.
+
+Conferma che:
+
+receiving.chainId === capturedToChainId
+
+sia realmente verificato prima di impostare:
+
+phase = completed
+
+Verifica anche:
+
+* cosa succede se receiving.chainId è BTC;
+* cosa succede se receiving.chainId è assente;
+* cosa succede se Li.Fi restituisce DONE per un vecchio ordine;
+* cosa succede dopo refresh;
+* cosa succede se la PWA va in background;
+* cosa succede dopo perdita di rete;
+* cosa succede se il polling viene riavviato.
+
+4. CRITERIO DI COMPLETAMENTO
+
+Il nuovo comportamento corretto deve essere:
+
+BTC payment confirmed
+≠
+swap completed
+
+Lo swap può diventare completed SOLO quando esiste una prova reale del payout EVM.
+
+Idealmente:
+
+provider status DONE
++
+correct receiving chain
++
+destination transaction hash
++
+destination transaction verificabile on-chain
+
+Se il codice considera sufficiente un semplice DONE, segnalalo come rischio.
+
+5. DESTINATION TX
+
+Verifica dove viene salvato:
+
+destinationTxHash
+
+e assicurati che:
+
+txHash
+
+non possa mai essere sostituito con la BTC input TX.
+
+Questa regola deve essere assoluta:
+
+BTC input TX ≠ EVM destination TX.
+
+Se non esiste una destination TX EVM:
+
+txHash = null
+
+e lo swap NON deve risultare completato.
+
+6. DESTINATION ADDRESS
+
+Verifica che l’indirizzo EVM:
+
+0x04631A6e863718a8F4c21c2ce1303e30dC87B298
+
+venga passato correttamente al provider come destinatario finale.
+
+Controlla che non venga:
+
+* modificato;
+* troncato;
+* sostituito;
+* interpretato come BTC address;
+* perso durante il polling/recovery.
+
+7. RECOVERY
+
+Verifica il recovery al mount/reload.
+
+Se il browser viene chiuso dopo il pagamento BTC e riaperto successivamente, Alpha deve essere in grado di recuperare:
+
+* swap ID
+* provider order ID
+* deposit address
+* BTC TX
+* destination chain
+* destination address
+* stato provider
+
+senza ricominciare lo swap e senza creare un nuovo ordine.
+
+8. ERRORI
+
+Verifica tutti questi scenari:
+
+A
+
+BTC payment non ancora ricevuto.
+
+Risultato atteso:
+
+pending
+
+B
+
+BTC payment ricevuto ma poche conferme.
+
+Risultato atteso:
+
+confirming
+
+C
+
+BTC payment confermato ma provider non ha ancora effettuato swap.
+
+Risultato:
+
+processing
+
+NON completed.
+
+D
+
+Li.Fi restituisce DONE ma receiving chain = BTC.
+
+Risultato:
+
+NON completed
+
+Continuare polling.
+
+E
+
+Li.Fi restituisce DONE e receiving chain = EVM corretta ma manca destination TX.
+
+Risultato:
+
+NON considerare definitivamente completato finché non esiste una prova verificabile.
+
+F
+
+Destination TX EVM esiste ma è FAILED.
+
+Risultato:
+
+NON completed.
+
+G
+
+Destination TX EVM SUCCESS e token trasferito al recipient corretto.
+
+Risultato:
+
+completed.
+
+9. TEST
+
+Aggiungi/esegui test specifici per:
+
+* vecchia TX BTC riutilizzata;
+* BTC → EVM corretto;
+* EVM → BTC;
+* chain mismatch;
+* missing receiving chain;
+* missing destination TX;
+* destination TX failed;
+* destination TX success;
+* refresh;
+* PWA background;
+* retry;
+* network failure;
+* provider timeout.
+
+Riporta:
+
+test pass / test total
+
+e indica eventuali regressioni.
+
+10. SECURITY CHECK
+
+Verifica che non sia possibile:
+
+* marcare arbitrariamente uno swap completed;
+* usare una vecchia BTC TX;
+* usare una TX appartenente a un altro swap;
+* usare una TX BTC come destination TX EVM;
+* usare un DONE di un altro ordine;
+* accreditare USDT senza una reale transazione EVM.
+
+11. AUDIT FINALE
+
+Concludi con una classificazione:
+
+🟢 READY FOR CONTROLLED TEST
+
+Se il flusso è coerente end-to-end.
+
+🟡 NOT READY — MINOR FIX
+
+Se esistono problemi non legati alla sicurezza dei fondi.
+
+🔴 NOT READY — FUNDS/SETTLEMENT RISK
+
+Se esiste ancora la possibilità di addebitare BTC senza verificare il payout EVM.
+
+OUTPUT OBBLIGATORIO
+
+Fornisci:
+
+1. architettura attuale BTC→EVM;
+2. provider effettivo;
+3. punto di creazione ordine;
+4. punto di pagamento BTC;
+5. punto di polling;
+6. criterio esatto di completed;
+7. gestione destination TX;
+8. gestione recovery;
+9. risultati test;
+10. vulnerabilità residue;
+11. classificazione finale READY / NOT READY.
+
+NON implementare ulteriori fix.
+
+Prima voglio esclusivamente l’audit e la conclusione se possiamo fare un nuovo test controllato.
