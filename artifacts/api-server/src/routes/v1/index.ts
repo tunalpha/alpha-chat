@@ -136,4 +136,11 @@ v1Router.use("/swap/evm", evmSwapRoutes);
 import swapProvidersRoutes from "./swap-providers.routes";
 v1Router.use("/swap/providers", swapProvidersRoutes);
 
+// ── ChangeNOW Swap — BTC→USDT (DISABLED di default, abilitabile da admin) ────
+// ISOLATO: zero import da Li.Fi, payment engine, USDA, MultiChain, Spark.
+// Richiede autenticazione JWT per tutti gli endpoint.
+// La API key ChangeNOW è server-side only — MAI esposta al frontend.
+import changeNowSwapRoutes from "./changenow-swap.routes";
+v1Router.use("/swap/changenow", changeNowSwapRoutes);
+
 export default v1Router;

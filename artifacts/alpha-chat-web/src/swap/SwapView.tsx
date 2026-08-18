@@ -40,6 +40,9 @@ import type {
 } from "./types.js";
 import { BTC_LOGO_URI } from "./evm/types.js";
 import { EvmSwapView }                     from "./evm/EvmSwapView.js";
+// ChangeNOW — caricato solo se il provider attivo è "changenow"
+// Li.Fi operational files (EvmSwapView, lifi-client, useEvmSwapState) invariati.
+import { ChangeNowSwapView }               from "./changenow/ChangeNowSwapView.js";
 
 // ── Tab type ──────────────────────────────────────────────────────────────────
 type SwapTab = "btcln" | "evm";
@@ -1024,6 +1027,26 @@ export function SwapView({ onBack }: SwapViewProps) {
   const [cfgError, setCfgError]     = useState<string | null>(null);
   const [copied, setCopied]         = useState(false);
 
+  // ── Provider EVM attivo (lifi | changenow) — determinato dal backend ─────────
+  // Fetch al mount. Se il backend non risponde o non è configurato → fallback "lifi"
+  // (comportamento safe: EvmSwapView è invariata).
+  // ISOLAMENTO: nessuna modifica a EvmSwapView / lifi-client / useEvmSwapState.
+  const [activeEvmProvider, setActiveEvmProvider] = useState<string>("lifi");
+  useEffect(() => {
+    const token = localStorage.getItem("ac_access_token") ?? "";
+    fetch("/api/v1/swap/providers", {
+      headers: { ...(token ? { Authorization: `Bearer ${token}` } : {}) },
+      signal: AbortSignal.timeout(5_000),
+    })
+      .then(r => r.ok ? r.json() : null)
+      .then((data: { providers?: { providerId: string; status: string; isPrimary: boolean }[] } | null) => {
+        if (!data?.providers) return;
+        const primary = data.providers.find(p => p.isPrimary && p.status === "enabled");
+        if (primary) setActiveEvmProvider(primary.providerId);
+      })
+      .catch(() => { /* fallback: lifi */ });
+  }, []);
+
   // ── BTC on-chain balance (per il tab BTC/Lightning) ───────────────────────
   const [btcBalance, setBtcBalance]           = useState<BtcBalanceResponse | null>(null);
   const [btcBalanceLoading, setBtcBalLoading] = useState(false);
@@ -1308,19 +1331,35 @@ export function SwapView({ onBack }: SwapViewProps) {
   // IMPORTANTE: questo check deve precedere tutti i guard BTC/LN (recovering,
   // lnbtc_unknown, btcLnInProgress, ecc.) altrimenti lo stato della state
   // machine BTC intercetta il render e la tab EVM non viene mai mostrata.
+  //
+  // PROVIDER BRANCH (minimale):
+  //   - activeEvmProvider === "changenow" → ChangeNowSwapView (BTC→USDT)
+  //   - altrimenti → EvmSwapView con Li.Fi (invariato)
+  //   Li.Fi operational files (lifi-client.ts, useEvmSwapState.ts, EvmSwapView.tsx)
+  //   non vengono mai modificati in questo branch.
   if (activeTab === "evm") {
     return (
       <div className="asw-root">
         {Header}
         <EvmErrorBoundary onReset={actions.reset}>
-          <EvmSwapView
-            onBack={onBack}
-            alphaWalletAddress={alphaWalletAddress}
-            getAlphaWalletClient={getAlphaWalletClient}
-            btcAddress={btcAddress ?? undefined}
-            btcBalanceSat={btcBalance?.totalSat ?? undefined}
-            sendBtcForSwap={sendBtcForSwap}
-          />
+          {activeEvmProvider === "changenow" ? (
+            <ChangeNowSwapView
+              onBack={onBack ?? (() => {})}
+              alphaWalletAddress={alphaWalletAddress ?? null}
+              btcAddress={btcAddress ?? undefined}
+              btcBalanceSat={btcBalance?.totalSat ?? undefined}
+              sendBtcForSwap={sendBtcForSwap}
+            />
+          ) : (
+            <EvmSwapView
+              onBack={onBack}
+              alphaWalletAddress={alphaWalletAddress}
+              getAlphaWalletClient={getAlphaWalletClient}
+              btcAddress={btcAddress ?? undefined}
+              btcBalanceSat={btcBalance?.totalSat ?? undefined}
+              sendBtcForSwap={sendBtcForSwap}
+            />
+          )}
         </EvmErrorBoundary>
       </div>
     );

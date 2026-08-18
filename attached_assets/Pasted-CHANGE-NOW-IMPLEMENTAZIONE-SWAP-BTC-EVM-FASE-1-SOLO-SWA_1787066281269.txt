@@ -1,0 +1,264 @@
+CHANGE NOW — IMPLEMENTAZIONE SWAP BTC→EVM
+FASE 1 — SOLO SWAP CRYPTO→CRYPTO
+
+OBIETTIVO
+Integrare ChangeNOW come provider reale per gli swap BTC on-chain → EVM, mantenendo Li.Fi completamente operativo e senza modificare in alcun modo i flussi di pagamento esistenti.
+
+IMPORTANTE:
+NON implementare ancora Acquista con carta.
+NON implementare fiat/on-ramp.
+NON modificare la card "Acquista con carta".
+NON modificare i pagamenti Alpha.
+NON modificare il sistema BTC/Lightning esistente.
+Questa fase riguarda ESCLUSIVAMENTE il nuovo adapter ChangeNOW per swap BTC→EVM.
+
+ARCHITETTURA PROVIDER
+Il Provider Manager appena creato deve essere utilizzato come punto di selezione.
+
+Configurazione iniziale:
+- Li.Fi = ENABLED + PRIMARY
+- ChangeNOW = DISABLED
+- Nessun cambio automatico di provider.
+- Nessuna chiamata ChangeNOW finché ChangeNOW non viene esplicitamente abilitato dall'admin.
+
+Quando ChangeNOW sarà ENABLED/PRIMARY:
+il flusso BTC→EVM dovrà poter utilizzare ChangeNOW tramite un adapter isolato.
+
+NON eliminare Li.Fi.
+NON sostituire definitivamente Li.Fi.
+NON modificare il comportamento Li.Fi esistente.
+
+CHANGE NOW API
+Usare esclusivamente la documentazione ufficiale/API fornita da ChangeNOW:
+https://documenter.getpostman.com/view/8180765/SVfTPnM8?version=latest#intro
+
+L'API key ChangeNOW è SEGRETA.
+
+REGOLA ASSOLUTA:
+L'API key NON deve mai essere inserita nel frontend, codice client, bundle Vite, localStorage, sessionStorage o variabili VITE_*.
+
+Deve essere utilizzata esclusivamente lato backend tramite secret environment/configuration già previsto dal progetto.
+
+NON stampare la API key nei log.
+NON restituire la API key al frontend.
+NON inserirla nei test.
+NON committarla.
+
+SCOPE SUPPORTATO
+Implementare inizialmente esclusivamente:
+
+BTC on-chain → USDT Ethereum
+BTC on-chain → USDT Polygon
+BTC on-chain → USDT BSC
+
+Il provider deve ottenere dinamicamente disponibilità/coppie da ChangeNOW.
+
+NON assumere che una coppia sia disponibile senza verificarla tramite API.
+
+NON implementare ancora BTCLN.
+ChangeNOW ha confermato che BTC Lightning è attualmente non disponibile per le transazioni.
+
+FLUSSO
+Implementare un adapter/service isolato con flusso:
+
+1. verifica pair/availability
+2. quote/rate
+3. create exchange
+4. ricezione deposit address BTC
+5. restituzione exchange/order ID
+6. l'utente firma e invia BTC dal proprio Alpha Wallet
+7. backend salva lo stato dell'operazione
+8. polling ChangeNOW Transaction Status
+9. attendere stato finale verificabile
+10. ottenere destination transaction hash
+11. SOLO con prova verificabile della destination transaction → completed
+12. in caso di refund → mantenere lo swap in stato appropriato e registrare le informazioni restituite da ChangeNOW
+
+CRITICO — FUNDS COMMITTED
+Una volta che il BTC è stato effettivamente inviato al deposit address ChangeNOW:
+
+fundsCommitted = true
+
+Da quel momento:
+- NON cambiare provider
+- NON creare un secondo exchange
+- NON generare un nuovo deposit address
+- NON reinviare BTC
+- NON fare fallback automatico
+- NON tentare un secondo send
+
+Se lo stato è incerto dopo l'invio BTC:
+→ pending/recovery
+→ polling/status recovery
+→ MAI double-send.
+
+DESTINATION TX
+NON considerare completed semplicemente perché ChangeNOW restituisce uno stato generico di successo.
+
+Richiedere una prova verificabile:
+- stato finale appropriato
+- destination transaction hash presente
+
+Se destination transaction hash è assente:
+→ NON completed
+→ continuare recovery/polling secondo policy.
+
+BTC TX ≠ DESTINATION TX:
+Il txid Bitcoin utilizzato per il deposito NON deve mai essere registrato come destination EVM transaction hash.
+
+PERSISTENZA
+Persistire almeno:
+
+- provider
+- provider exchange/order ID
+- fromChain
+- toChain
+- fromAsset
+- toAsset
+- fromAmount
+- expected/estimated amount
+- BTC deposit address
+- destination EVM address
+- BTC transaction hash
+- destination transaction hash
+- status
+- fundsCommitted
+- timestamps
+- eventuali refund details disponibili
+
+La persistenza deve consentire recovery dopo reload/PWA background.
+
+RECOVERY
+Se l'app viene ricaricata dopo l'invio BTC:
+- NON effettuare un nuovo send
+- recuperare l'exchange esistente
+- interrogare ChangeNOW
+- continuare il monitoraggio
+- aggiornare lo stato fino alla conclusione.
+
+PROVIDER ROUTER
+Utilizzare il Provider Manager già implementato.
+
+NON duplicare la logica di selezione provider.
+
+Il router deve determinare quale provider è attivo.
+
+IMPORTANTE:
+Il fallback automatico è vietato dopo fundsCommitted=true.
+
+Se ChangeNOW è disabled:
+→ il codice ChangeNOW NON deve essere chiamato.
+
+Se Li.Fi è primary:
+→ Li.Fi continua a funzionare esattamente come prima.
+
+FEE
+NON modificare la fee utente attualmente configurata.
+
+La commissione Partner ChangeNOW dello 0,40% è una revenue share del Partner account e NON deve essere mostrata come una fee Alpha separata all'utente.
+
+Nel nuovo adapter conservare comunque tutti i dati necessari per distinguere:
+- provider fee
+- network/miner fee
+- partner revenue
+- eventuale fee applicata dal provider
+
+Non inventare percentuali.
+
+TEST OBBLIGATORI
+Prima di dichiarare completato:
+
+1. ChangeNOW disabled → nessuna chiamata API ChangeNOW
+2. ChangeNOW enabled → adapter utilizzabile
+3. BTC→USDT Ethereum
+4. BTC→USDT Polygon
+5. BTC→USDT BSC
+6. pair unavailable → errore controllato
+7. quote failure → nessun fundsCommitted
+8. create exchange failure → nessun BTC send
+9. deposit address ricevuto correttamente
+10. exchange ID persistito
+11. BTC TX persistita
+12. fundsCommitted=true dopo BTC broadcast
+13. recovery dopo reload
+14. destination TX hash presente → completed
+15. destination TX hash assente → NON completed
+16. BTC txid NON può diventare destination EVM tx hash
+17. provider fallback bloccato dopo fundsCommitted
+18. nessun double-send
+19. refund status gestito
+20. API key mai esposta al frontend/log
+21. Li.Fi invariato
+22. tutti i test esistenti passano senza regressioni
+
+REGOLA PAGAMENTI — ASSOLUTA
+NON MODIFICARE:
+
+api-server/src/payment/**
+api-server/src/routes/v1/payment*
+api-server/src/routes/v1/multichain*
+models USDA
+USDA services
+custodial services
+Spark payment/treasury
+multichain transfers
+Alpha Wallet payment fee records
+qualsiasi state machine dei pagamenti esistenti.
+
+NON MODIFICARE il normale invio/ricezione Alpha Wallet.
+
+NON MODIFICARE BTC/LN payment flows esistenti.
+
+ACQUISTA CON CARTA
+La card "Acquista con carta" è FUORI SCOPE.
+
+NON modificarla.
+NON collegarla a ChangeNOW in questa fase.
+NON implementare fiat.
+NON implementare KYB.
+NON implementare on-ramp.
+
+La faremo in FASE 2 separata dopo aver validato lo swap.
+
+ISOLAMENTO FILE
+Prima di modificare qualsiasi file:
+- analizza il codice esistente
+- identifica esattamente i file necessari
+- non fare refactor generali
+- non modificare file non necessari.
+
+Dopo l'implementazione mostra:
+
+1. FILE CREATI
+2. FILE MODIFICATI
+3. FILE NON TOCCATI
+4. PAYMENT FILES MODIFIED = 0
+5. Li.Fi operational files modified = 0, salvo integrazione minima indispensabile e previamente dichiarata
+6. ChangeNOW API calls = elenco
+7. API key exposure check
+8. test results
+9. regressions
+10. conferma che nessun fondo reale è stato movimentato
+
+NON fare deploy.
+NON eseguire swap reale.
+NON utilizzare fondi reali.
+NON modificare la configurazione production senza mia autorizzazione esplicita.
+
+PRIMA DI CODIFICARE
+Fai una breve analisi dell'architettura attuale e indicami:
+- quali file utilizzerai
+- quale adapter creerai
+- quali endpoint ChangeNOW utilizzerai
+- come verrà protetta la API key
+- come impedirai il double-send
+- come manterrai Li.Fi invariato.
+
+Poi procedi con l'implementazione isolata.
+
+OBIETTIVO FINALE:
+Preparare ChangeNOW come secondo provider reale, ma SENZA sostituire Li.Fi e senza toccare pagamenti o fondi esistenti.
+
+Li.Fi deve rimanere operativo.
+ChangeNOW deve rimanere disattivato finché non sarà verificato.
+NESSUN FONDO REALE deve essere movimentato durante questa implementazione.
