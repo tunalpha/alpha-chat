@@ -22,6 +22,10 @@ import { privateKeyToAccount } from "viem/accounts";
 import { loadKeystore, decryptSeed } from "../../wallet/core/keystore";
 import { deriveEvmWallet, toHexKey } from "../../wallet/core/hd-wallet";
 import { signAndBroadcastBtcTx, BtcSendUncertainError } from "../../wallet/services/btc-signer";
+import {
+  signAndBroadcastLiFiBtcPsbt,
+  LiFiBtcBroadcastUncertainError,
+} from "./lifi-btc-psbt-signer";
 
 // ── Minimal ERC-20 ABI per transfer ──────────────────────────────────────────
 const ERC20_TRANSFER_ABI = [{
@@ -143,6 +147,43 @@ export async function sendAlphaWalletBtcTx(params: {
     // Converte BtcSendUncertainError in un codice stringa riconoscibile
     // da useEvmSwapState senza importare wallet services (isolamento modulo).
     if (err instanceof BtcSendUncertainError) throw new Error("BTC_SEND_UNCERTAIN");
+    throw err;
+  }
+}
+
+/**
+ * Signs and broadcasts precisely the BTC PSBT supplied by Li.FI.
+ *
+ * This is intentionally separate from sendAlphaWalletBtcTx(): normal sends and
+ * ChangeNOW construct their own transfer, while a Li.FI BTC route is valid only
+ * when its OP_RETURN memo and every quoted PSBT output remain untouched.
+ */
+export async function sendAlphaWalletLiFiBtcPsbt(params: {
+  psbtHex: string;
+  memo: string;
+  vaultAddress: string;
+  amountSat: bigint;
+}): Promise<string> {
+  const pin = sessionStorage.getItem("aw_bio_pin");
+  if (!pin) throw new Error("ALPHA_WALLET_LOCKED: sblocca Alpha Wallet prima di firmare lo swap.");
+
+  const entry = await loadKeystore();
+  if (!entry) throw new Error("ALPHA_WALLET_NO_KEYSTORE: nessun keystore trovato.");
+
+  const mnemonic = await decryptSeed(entry, pin);
+  try {
+    const result = await signAndBroadcastLiFiBtcPsbt({
+      mnemonic,
+      expected: {
+        psbtHex: params.psbtHex,
+        memo: params.memo,
+        vaultAddress: params.vaultAddress,
+        vaultAmountSat: params.amountSat,
+      },
+    });
+    return result.txid;
+  } catch (err) {
+    if (err instanceof LiFiBtcBroadcastUncertainError) throw new Error("BTC_SEND_UNCERTAIN");
     throw err;
   }
 }

@@ -97,6 +97,45 @@ describe("_validateBtcToEvmDone — CASO B: vero BTC→EVM completato (con desti
     expect(reason).toContain("0xabcdef");
   });
 
+  it("richiede che il txid BTC dello status corrisponda al deposito firmato", () => {
+    const signedBtcTxid = "a".repeat(64);
+    const result = {
+      status:           "DONE" as const,
+      receivingChainId: 1,
+      txHash:           "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
+      sendingChainId:   BTC_CHAIN_ID,
+      sendingTxHash:    signedBtcTxid.toUpperCase(),
+    };
+    const validation = _validateBtcToEvmDone(result, 1, signedBtcTxid);
+    expect(validation.valid).toBe(true);
+  });
+
+  it("mantiene pending un DONE senza source txid BTC correlato", () => {
+    const expectedBtcTxid = "b".repeat(64);
+    const result = {
+      status:           "DONE" as const,
+      receivingChainId: 1,
+      txHash:           "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
+      sendingChainId:   BTC_CHAIN_ID,
+    };
+    const validation = _validateBtcToEvmDone(result, 1, expectedBtcTxid);
+    expect(validation.valid).toBe(false);
+    expect(validation.reason).toContain("sending.txHash missing");
+  });
+
+  it("mantiene pending un DONE di un diverso deposito BTC", () => {
+    const result = {
+      status:           "DONE" as const,
+      receivingChainId: 1,
+      txHash:           "0xabcdef1234567890abcdef1234567890abcdef1234567890abcdef1234567890",
+      sendingChainId:   BTC_CHAIN_ID,
+      sendingTxHash:    "c".repeat(64),
+    };
+    const validation = _validateBtcToEvmDone(result, 1, "d".repeat(64));
+    expect(validation.valid).toBe(false);
+    expect(validation.reason).toContain("sending.txHash does not match");
+  });
+
   it("DONE + receiving.chainId=137 (Polygon) + txHash presente → VALID", () => {
     const result = { status: "DONE" as const, receivingChainId: 137, txHash: "0xpoly123" };
     const { valid } = _validateBtcToEvmDone(result, 137);
@@ -271,7 +310,7 @@ describe("getLiFiStatus — estrazione receivingChainId e sendingChainId", () =>
       json: async () => ({
         status:    "DONE",
         receiving: { chainId: 1, txHash: "0xabc123", amount: "1000000" },
-        sending:   { chainId: BTC_CHAIN_ID },
+        sending:   { chainId: BTC_CHAIN_ID, txHash: "a".repeat(64) },
       }),
     });
 
@@ -283,6 +322,7 @@ describe("getLiFiStatus — estrazione receivingChainId e sendingChainId", () =>
       expect(result.status).toBe("DONE");
       expect(result.receivingChainId).toBe(1);
       expect(result.sendingChainId).toBe(BTC_CHAIN_ID);
+      expect(result.sendingTxHash).toBe("a".repeat(64));
       expect(result.txHash).toBe("0xabc123");
     } finally {
       globalThis.fetch = origFetch;

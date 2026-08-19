@@ -84,6 +84,10 @@ export interface EvmSwapQuote {
    * tramite sendAlphaWalletBtcTx — non mostrato all'utente.
    */
   btcDepositAddress?: string;
+  /** PSBT immutabile emesso da Li.FI per BTC→EVM. Mai ricostruire a mano. */
+  btcPsbtHex?: string;
+  /** Memo OP_RETURN estratto dal PSBT Li.FI e verificato prima della firma. */
+  btcMemo?: string;
 }
 
 // ── Active swap (per recovery localStorage) ───────────────────────────────────
@@ -103,6 +107,8 @@ export interface EvmActiveSwap {
   btcDepositAddress?: string;
   /** Indirizzo EVM destinatario finale (0x...) — per verificare che i fondi arrivino al posto giusto. */
   toAddress?: string;
+  /** Memo OP_RETURN della quote Li.FI, mantenuto solo come audit trail del deposito BTC. */
+  btcMemo?: string;
 }
 
 // ── Error ─────────────────────────────────────────────────────────────────────

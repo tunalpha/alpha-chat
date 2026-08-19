@@ -31,6 +31,7 @@ import {
   NATIVE_ADDRESS, tokenAddressForLiFi, isBtcChain,
   type EvmToken, type EvmSwapQuote,
 } from "./types.js";
+import { inspectLiFiBtcPsbt } from "./lifi-btc-psbt.js";
 
 // ── Wallet state ─────────────────────────────────────────────────────────────
 
@@ -182,10 +183,25 @@ function parseQuoteResponse(
   // Importo da inviare calcolato da Li.Fi (rilevante in exact-output mode)
   const computedFromAmount = String(action.fromAmount ?? params.fromAmount ?? "0");
 
-  // Per BTC→EVM: Li.Fi include l'indirizzo deposito in transactionRequest.to
-  // (è il vault Thorchain o l'indirizzo del bridge a cui inviare BTC)
+  // BTC→EVM: Li.FI requires its supplied PSBT, including the OP_RETURN memo.
+  // Never replace this with a hand-built "send BTC to vault" transaction.
   const txReq = body.transactionRequest as Record<string, string> | undefined;
-  const btcDepositAddress = isBtcChain(params.fromChainId) && txReq?.to ? txReq.to : undefined;
+  let btcDepositAddress: string | undefined;
+  let btcPsbtHex: string | undefined;
+  let btcMemo: string | undefined;
+  if (isBtcChain(params.fromChainId)) {
+    if (!txReq?.to || !txReq.data) {
+      throw new Error("La quote Li.FI non contiene il PSBT Bitcoin richiesto. Richiedi una nuova quote.");
+    }
+    const instructions = inspectLiFiBtcPsbt(txReq.data, txReq.to);
+    const expectedAmount = BigInt(computedFromAmount);
+    if (instructions.vaultAmountSat !== expectedAmount) {
+      throw new Error("L'importo nel PSBT non corrisponde alla quote Li.FI. Nessuna transazione è stata creata.");
+    }
+    btcDepositAddress = instructions.vaultAddress;
+    btcPsbtHex = instructions.psbtHex;
+    btcMemo = instructions.memo;
+  }
 
   return {
     route:        body,   // Li.Fi Route (opaque) — contiene transactionRequest
@@ -205,6 +221,8 @@ function parseQuoteResponse(
     tool,
     computedFromAmount,
     btcDepositAddress,
+    btcPsbtHex,
+    btcMemo,
   };
 }
 
@@ -400,6 +418,8 @@ export interface LiFiStatusResult {
   receivingChainId?: number;
   /** chainId del lato "sending" — la chain sorgente. */
   sendingChainId?:   number;
+  /** txid lato sending: per BTC→EVM deve essere il deposito BTC effettivamente firmato. */
+  sendingTxHash?:    string;
 }
 
 /** Controlla lo stato di uno swap Li.Fi via txHash + chain. */
@@ -428,6 +448,7 @@ export async function getLiFiStatus(
       toAmount:         receiving?.amount   as string | undefined,
       receivingChainId: receiving?.chainId  as number | undefined,
       sendingChainId:   sending?.chainId    as number | undefined,
+      sendingTxHash:    sending?.txHash     as string | undefined,
     };
   } catch {
     return { status: "PENDING" };

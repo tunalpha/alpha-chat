@@ -120,14 +120,19 @@ export interface EvmSwapStateOpts {
    */
   btcAddress?: string;
   /**
-   * Callback per inviare BTC dal wallet interno al vault Thorchain (swap BTC→EVM).
-   * Fornito da SwapView tramite sendAlphaWalletBtcTx — accede al keystore IDB con PIN.
+   * Callback dedicato Li.FI BTC→EVM: firma il PSBT Li.FI invariato.
+   * Non usa e non deve mai usare il sender BTC generico/ChangeNOW.
    * Stabile: creata con useCallback(fn, []) nel chiamante.
    * @returns txid della transazione BTC broadcast
    * @throws Error("ALPHA_WALLET_LOCKED") — wallet non sbloccato
    * @throws Error("BTC_SEND_UNCERTAIN") — TX potenzialmente broadcast (iOS network abort)
    */
-  sendBtcForSwap?: (params: { toAddress: string; amountSat: bigint }) => Promise<string>;
+  sendLiFiBtcPsbt?: (params: {
+    psbtHex: string;
+    memo: string;
+    vaultAddress: string;
+    amountSat: bigint;
+  }) => Promise<string>;
 }
 
 // ── Hook ──────────────────────────────────────────────────────────────────────
@@ -248,7 +253,7 @@ export function useEvmSwapState(opts?: EvmSwapStateOpts): [EvmSwapStateValue, Ev
       // presente in startBtcPoll — previene falso "completed" al reload/recovery.
       let finalState = resolveLiFiStatus(result.status);
       if (isBtcChain(active.fromChainId) && result.status === "DONE") {
-        const validation = _validateBtcToEvmDone(result, active.toChainId);
+        const validation = _validateBtcToEvmDone(result, active.toChainId, active.txHash);
         console.info(
           "[AlphaSwap recover] Li.Fi DONE | BTC→chain:", active.toChainId,
           "| receiving.chainId:", result.receivingChainId,
@@ -276,7 +281,7 @@ export function useEvmSwapState(opts?: EvmSwapStateOpts): [EvmSwapStateValue, Ev
 
       // FIX 2: se lo swap BTC→EVM è ancora in corso (pending) dopo il reload,
       // riavvia automaticamente il loop di polling ogni 30s.
-      // SICUREZZA: _runBtcPoll NON chiama sendBtcForSwap() — solo polling Li.Fi.
+      // SICUREZZA: _runBtcPoll NON firma né invia BTC — solo polling Li.Fi.
       // Il BTC è già stato inviato al vault Thorchain prima del reload.
       if (finalState === "pending" && isBtcChain(active.fromChainId) && active.txHash) {
         _runBtcPoll(active.txHash, active.fromChainId, active.toChainId);
@@ -553,7 +558,7 @@ export function useEvmSwapState(opts?: EvmSwapStateOpts): [EvmSwapStateValue, Ev
   // FIX 2: estratto da execute per consentire il riavvio automatico del polling
   // dopo un reload/chiusura browser, senza dover richiedere un secondo reload.
   //
-  // SICUREZZA ASSOLUTA: questa funzione NON chiama mai sendBtcForSwap() né
+  // SICUREZZA ASSOLUTA: questa funzione NON chiama mai il signer Li.FI né
   // qualsiasi altra operazione che invii BTC. Gestisce ESCLUSIVAMENTE il polling
   // dello stato Li.Fi di uno swap già avviato (BTC già inviato).
   //
@@ -566,7 +571,7 @@ export function useEvmSwapState(opts?: EvmSwapStateOpts): [EvmSwapStateValue, Ev
         const st = await getLiFiStatus(txid, fromChainId, toChainId);
         if (st.status === "DONE") {
           // ── Direction guard + destination TX guard (FIX 1 + FIX 2) ────────
-          const validation = _validateBtcToEvmDone(st, toChainId);
+          const validation = _validateBtcToEvmDone(st, toChainId, txid);
 
           console.info(
             "[AlphaSwap BTC-poll] Li.Fi DONE",
@@ -631,24 +636,39 @@ export function useEvmSwapState(opts?: EvmSwapStateOpts): [EvmSwapStateValue, Ev
       return;
     }
 
-    // ── BTC→EVM: invia BTC automaticamente al vault Thorchain ────────────────
+    // ── BTC→EVM: firma esclusivamente il PSBT immutabile Li.FI ───────────────
     if (isBtcChain(current.quote.fromChainId)) {
       const depositAddr = current.quote.btcDepositAddress;
-      if (!depositAddr) {
+      const psbtHex = current.quote.btcPsbtHex;
+      const memo = current.quote.btcMemo;
+      if (!depositAddr || !psbtHex || !memo) {
         if (isMounted.current) setSv(prev => ({
-          ...prev, error: { code: "NO_DEPOSIT_ADDR", message: "Indirizzo vault non disponibile. Riprova la quote." }
+          ...prev, error: {
+            code: "LIFI_BTC_PSBT_MISSING",
+            message: "La quote Li.FI non contiene il PSBT con memo richiesto. Ricarica la quote.",
+          }
         }));
         return;
       }
-      const sendBtcFn = opts?.sendBtcForSwap;
-      if (!sendBtcFn) {
+      const sendLiFiBtcPsbt = opts?.sendLiFiBtcPsbt;
+      if (!sendLiFiBtcPsbt) {
         if (isMounted.current) setSv(prev => ({
-          ...prev, phase: "idle", error: { code: "ALPHA_WALLET_LOCKED", message: "ALPHA_WALLET_LOCKED" }
+          ...prev,
+          phase: "idle",
+          error: { code: "LIFI_BTC_SIGNER_UNAVAILABLE", message: "Swap BTC→EVM temporaneamente non disponibile." },
         }));
         return;
       }
-      const amtRaw = parseInt(current.quote.fromAmount ?? "0", 10);
-      if (!amtRaw || isNaN(amtRaw)) {
+      let amountSat: bigint;
+      try {
+        amountSat = BigInt(current.quote.fromAmount);
+      } catch {
+        if (isMounted.current) setSv(prev => ({
+          ...prev, error: { code: "INVALID_AMOUNT", message: "Importo non valido. Riprova la quote." }
+        }));
+        return;
+      }
+      if (amountSat <= 0n) {
         if (isMounted.current) setSv(prev => ({
           ...prev, error: { code: "INVALID_AMOUNT", message: "Importo non valido. Riprova la quote." }
         }));
@@ -670,6 +690,7 @@ export function useEvmSwapState(opts?: EvmSwapStateOpts): [EvmSwapStateValue, Ev
         // ── Audit trail (FIX 2: persiste per recovery + debug incidenti) ──
         btcDepositAddress: depositAddr,                   // vault Thorchain a cui viene inviato il BTC
         toAddress:         effectiveAddress ?? undefined, // EVM recipient (0x...)
+        btcMemo:           memo,
       };
       localStorage.setItem(EVM_SWAP_ACTIVE_KEY, JSON.stringify(btcActiveSwap));
 
@@ -680,7 +701,12 @@ export function useEvmSwapState(opts?: EvmSwapStateOpts): [EvmSwapStateValue, Ev
       const capturedToChainId   = current.quote.toChainId;
 
       try {
-        const txid = await sendBtcFn({ toAddress: depositAddr, amountSat: BigInt(amtRaw) });
+        const txid = await sendLiFiBtcPsbt({
+          psbtHex,
+          memo,
+          vaultAddress: depositAddr,
+          amountSat,
+        });
 
         // Persisti txid per recovery al mount
         const stored = localStorage.getItem(EVM_SWAP_ACTIVE_KEY);
@@ -706,7 +732,7 @@ export function useEvmSwapState(opts?: EvmSwapStateOpts): [EvmSwapStateValue, Ev
           txHash:       txid,
           direction:    "out",
           asset:        "BTC",
-          amount:       fromTokenUnits(amtRaw.toString(), 8),
+          amount:       fromTokenUnits(amountSat.toString(), 8),
           txType:       "swap",
           swapToAsset:  toSymbol,
           swapToAmount: toAmtHuman,
@@ -936,7 +962,7 @@ export function useEvmSwapState(opts?: EvmSwapStateOpts): [EvmSwapStateValue, Ev
     } finally {
       _evmExecuting = false;
     }
-  }, [effectiveAddress, activeAccount, activeWallet, opts?.getAlphaWalletClient, opts?.sendBtcForSwap]);
+  }, [effectiveAddress, activeAccount, activeWallet, opts?.getAlphaWalletClient, opts?.sendLiFiBtcPsbt]);
 
   const reset = useCallback(() => {
     localStorage.removeItem(EVM_SWAP_ACTIVE_KEY);
@@ -971,8 +997,12 @@ export function useEvmSwapState(opts?: EvmSwapStateOpts): [EvmSwapStateValue, Ev
  * @internal Esportata con prefisso _ per i test; non usare in produzione al di fuori di useEvmSwapState.
  */
 export function _validateBtcToEvmDone(
-  result: Pick<LiFiStatusResult, "status" | "receivingChainId" | "txHash">,
+  result: Pick<
+    LiFiStatusResult,
+    "status" | "receivingChainId" | "txHash" | "sendingChainId" | "sendingTxHash"
+  >,
   capturedToChainId: number,
+  expectedBtcTxid?: string,
 ): { valid: boolean; reason: string } {
   if (result.status !== "DONE") {
     return { valid: false, reason: "status is not DONE" };
@@ -987,6 +1017,26 @@ export function _validateBtcToEvmDone(
       valid:  false,
       reason: `MISMATCH — receiving.chainId=${rc} != capturedToChainId=${capturedToChainId}`,
     };
+  }
+  if (result.sendingChainId !== undefined && !isBtcChain(result.sendingChainId)) {
+    return {
+      valid: false,
+      reason: `MISMATCH — sending.chainId=${result.sendingChainId} is not Bitcoin`,
+    };
+  }
+  if (expectedBtcTxid) {
+    if (!result.sendingTxHash) {
+      return {
+        valid: false,
+        reason: "sending.txHash missing — source BTC deposit is not correlated",
+      };
+    }
+    if (result.sendingTxHash.toLowerCase() !== expectedBtcTxid.toLowerCase()) {
+      return {
+        valid: false,
+        reason: "MISMATCH — sending.txHash does not match the signed BTC deposit",
+      };
+    }
   }
   // FIX 1: receiving.txHash obbligatorio — senza prova della destination TX EVM
   // non si può considerare lo swap definitivamente completato.

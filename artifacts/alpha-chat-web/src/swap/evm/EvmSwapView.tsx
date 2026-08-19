@@ -811,17 +811,21 @@ interface EvmSwapViewProps {
    */
   btcBalanceSat?: number;
   /**
-   * Callback per inviare BTC al vault Thorchain automaticamente (swap BTC→EVM).
-   * Creata con useCallback(fn, []) in SwapView tramite sendAlphaWalletBtcTx.
+   * Callback dedicato BTC→EVM: firma il PSBT immutabile ricevuto da Li.FI.
    * @returns txid della transazione BTC broadcast
    */
-  sendBtcForSwap?: (params: { toAddress: string; amountSat: bigint }) => Promise<string>;
+  sendLiFiBtcPsbt?: (params: {
+    psbtHex: string;
+    memo: string;
+    vaultAddress: string;
+    amountSat: bigint;
+  }) => Promise<string>;
 }
 
-export function EvmSwapView({ onBack, alphaWalletAddress, getAlphaWalletClient, btcAddress, btcBalanceSat, sendBtcForSwap }: EvmSwapViewProps) {
+export function EvmSwapView({ onBack, alphaWalletAddress, getAlphaWalletClient, btcAddress, btcBalanceSat, sendLiFiBtcPsbt }: EvmSwapViewProps) {
   const [slippage, setSlippage] = useState(0.005); // 0.5% default
   const [slippageOpen, setSlippageOpen] = useState(false);
-  const [sv, actions] = useEvmSwapState({ alphaWalletAddress, getAlphaWalletClient, slippage, btcAddress, sendBtcForSwap });
+  const [sv, actions] = useEvmSwapState({ alphaWalletAddress, getAlphaWalletClient, slippage, btcAddress, sendLiFiBtcPsbt });
 
   // ThirdWeb hooks (usati in modalità WalletConnect, se attiva)
   const activeAccount = useActiveAccount();

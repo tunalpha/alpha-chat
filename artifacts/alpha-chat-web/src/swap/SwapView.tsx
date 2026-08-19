@@ -23,7 +23,11 @@ import {
 } from "lucide-react";
 import { useActiveAccount }                from "thirdweb/react";
 import { useWallet }                       from "../wallet/context/WalletContext.js";
-import { createAlphaWalletViemClient, sendAlphaWalletBtcTx } from "./evm/alpha-wallet-evm-adapter.js";
+import {
+  createAlphaWalletViemClient,
+  sendAlphaWalletBtcTx,
+  sendAlphaWalletLiFiBtcPsbt,
+} from "./evm/alpha-wallet-evm-adapter.js";
 import { apiWalletGetBtcBalance, type BtcBalanceResponse } from "../lib/alpha-wallet-api.js";
 import { useSparkWallet }                  from "../contexts/SparkWalletContext.js";
 import { BoltzBtcLnProvider }              from "./providers/BoltzBtcLnProvider.js";
@@ -1020,6 +1024,13 @@ export function SwapView({ onBack }: SwapViewProps) {
     (params: { toAddress: string; amountSat: bigint }) => sendAlphaWalletBtcTx(params),
     [],
   );
+  // Li.FI only: this callback signs its supplied PSBT and can never construct a
+  // generic BTC transfer. ChangeNOW intentionally keeps sendBtcForSwap above.
+  const sendLiFiBtcPsbt = useCallback(
+    (params: { psbtHex: string; memo: string; vaultAddress: string; amountSat: bigint }) =>
+      sendAlphaWalletLiFiBtcPsbt(params),
+    [],
+  );
 
   // EVM è la tab predefinita
   const [activeTab, setActiveTab]   = useState<SwapTab>("evm");
@@ -1356,7 +1367,7 @@ export function SwapView({ onBack }: SwapViewProps) {
           getAlphaWalletClient={getAlphaWalletClient}
           btcAddress={btcAddress ?? undefined}
           btcBalanceSat={btcBalance?.totalSat ?? undefined}
-          sendBtcForSwap={sendBtcForSwap}
+          sendLiFiBtcPsbt={sendLiFiBtcPsbt}
         />
       );
     } else {
