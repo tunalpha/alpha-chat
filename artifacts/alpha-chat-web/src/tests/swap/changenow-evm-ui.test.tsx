@@ -272,6 +272,17 @@ describe("ChangeNOW EVM swap — saldi e inversione UI", () => {
     expect(screen.queryByText("Saldo non disponibile")).toBeNull();
   });
 
+  it("identifica POL ChangeNOW come ERC-20 Ethereum", () => {
+    const token = CN_EVM_TOKENS.find((item) => item.ticker === "pol")!;
+
+    expect(token).toMatchObject({
+      network: "Ethereum",
+      chainId: 1,
+      isNative: false,
+      contractAddress: "0x455e53cbb86018ac2b8092fdcd39d8444affc3f6",
+    });
+  });
+
   it("mostra e richiude i valori della quotazione come il riepilogo Li.Fi", () => {
     const fromToken = CN_EVM_TOKENS.find((item) => item.ticker === "usdtbsc")!;
     const toToken = CN_EVM_TOKENS.find((item) => item.ticker === "pol")!;

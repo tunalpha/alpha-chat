@@ -586,12 +586,14 @@ export async function getEvmTransactions(
       throw new AppError("UNSUPPORTED_CHAIN", 501);
     }
 
+    const incomingCategories = getAlchemyIncomingCategories(chainId);
     const [inRes, outRes, blockRes] = await Promise.all([
       fetch(alchemyUrl, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        // Incoming: "internal" cattura trasferimenti avviati da contratti (swap, bridge). maxCount 500.
-        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "alchemy_getAssetTransfers", params: [{ fromBlock, toAddress: address, category: ["external", "erc20", "internal"], withMetadata: true, maxCount: "0x1F4", order: "desc" }] }),
+        // "internal" cattura payout di contratti su Ethereum/Polygon, ma Alchemy
+        // non lo supporta su BSC e altrimenti risponde 502 per l'intera cronologia.
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "alchemy_getAssetTransfers", params: [{ fromBlock, toAddress: address, category: incomingCategories, withMetadata: true, maxCount: "0x1F4", order: "desc" }] }),
       }).then(r => r.json()),
       fetch(alchemyUrl, {
         method: "POST",
@@ -633,6 +635,13 @@ export async function getEvmTransactions(
 
     res.json({ data: { transfers, latestBlock } });
   } catch (err) { next(err); }
+}
+
+/** Categorie incoming supportate da Alchemy per ciascuna chain wallet. */
+export function getAlchemyIncomingCategories(chainId: number): ("external" | "erc20" | "internal")[] {
+  return chainId === 56
+    ? ["external", "erc20"]
+    : ["external", "erc20", "internal"];
 }
 
 interface AlchemyTransfer {

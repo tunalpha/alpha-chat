@@ -18,3 +18,17 @@ le scorciatoie percentuali.
 token selezionato alla lettura saldi come token aggiuntivo e usa la chiave della
 Map restituita dal reader. I token nativi devono usare l'indirizzo zero condiviso,
 non una chiave testuale ad hoc.
+
+## Mappatura rete provider
+
+Il ticker ChangeNOW `pol` identifica il token POL ERC-20 su Ethereum
+(`0x455e53cbb86018ac2b8092fdcd39d8444affc3f6`), non il POL nativo su Polygon.
+
+**Why:** Il simbolo POL esiste su entrambe le reti. Trattare il payout provider
+come asset Polygon nasconde un saldo reale sul wallet Ethereum e presenta una
+destinazione di swap fuorviante.
+
+**How to apply:** Conservare la semantica provider-specifica nel catalogo
+ChangeNOW e registrare il contratto in entrambi i registry wallet per renderlo
+leggibile e trasferibile. Non cambiare il POL nativo Polygon, che resta un
+asset distinto.

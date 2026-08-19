@@ -91,6 +91,18 @@ export const VERIFIED_TOKENS: TokenConfig[] = [
     coingeckoId: "usd-coin",
     verification: "verified",
   },
+  {
+    // ChangeNOW ticker "pol": verified POL ERC-20 on Ethereum.
+    // It is distinct from the native POL asset on Polygon (chainId 137).
+    chainId: 1,
+    symbol: "POL",
+    name: "Polygon Ecosystem Token",
+    decimals: 18,
+    contractAddress: "0x455e53cbb86018ac2b8092fdcd39d8444affc3f6",
+    standard: "ERC-20",
+    explorerUrl: "https://etherscan.io",
+    verification: "verified",
+  },
 
   // ── Polygon (chainId: 137) ───────────────────────────────────────────
   {

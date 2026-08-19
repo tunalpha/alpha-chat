@@ -189,6 +189,8 @@ export const EVM_SWAP_TOKENS: EvmToken[] = [
   { chainId: BTC_CHAIN_ID, address: BTC_NATIVE_ADDRESS,                           symbol: "BTC",  name: "Bitcoin",     decimals: 8,  isNative: true,  logoURI: BTC_LOGO_URI },
   // Ethereum (1)
   { chainId: 1,   address: NATIVE_ADDRESS,                               symbol: "ETH",  name: "Ether",       decimals: 18, isNative: true,  logoURI: _ETH_LOGO  },
+  // ChangeNOW ticker "pol": ERC-20 on Ethereum. Distinct from native POL on Polygon.
+  { chainId: 1,   address: "0x455e53cbb86018ac2b8092fdcd39d8444affc3f6", symbol: "POL",  name: "POL (Ethereum)", decimals: 18, isNative: false, logoURI: _POL_LOGO  },
   { chainId: 1,   address: "0xdAC17F958D2ee523a2206206994597C13D831ec7", symbol: "USDT", name: "Tether USD",   decimals: 6,  isNative: false, logoURI: _USDT_LOGO },
   { chainId: 1,   address: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48", symbol: "USDC", name: "USD Coin",     decimals: 6,  isNative: false, logoURI: _USDC_LOGO },
   // Polygon (137)

@@ -68,6 +68,22 @@ describe("VERIFIED_TOKENS — struttura", () => {
       }
     }
   });
+
+  it("registra il POL ERC-20 Ethereum separatamente dal POL nativo Polygon", () => {
+    const polEthereum = findVerifiedByAddress(
+      ETH,
+      "0x455E53CbB86018aC2B8092fDCd39D8444affC3F6",
+    );
+
+    expect(polEthereum).toMatchObject({
+      symbol: "POL",
+      decimals: 18,
+      standard: "ERC-20",
+      verification: "verified",
+    });
+    expect(getNativeToken(POLYGON)).toMatchObject({ symbol: "POL", standard: "native" });
+    expect(isVerifiedAddress(ETH, "0x455e53cbb86018ac2b8092fdcd39d8444affc3f6")).toBe(true);
+  });
 });
 
 describe("⚠️ BSC USDT decimals = 18 (test critico)", () => {

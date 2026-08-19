@@ -14,7 +14,7 @@
  *   GET  /v1/currencies-to                          — coppie disponibili da BTC
  *   GET  /v1/exchange-amount/{amt}/{from}_{to}      — stima importo ricevuto
  *   POST /v1/transactions                           — crea exchange
- *   GET  /v1/transactions/{id}                      — status exchange (polling)
+ *   GET  /v1/transactions/{id}/{api_key}            — status exchange (polling)
  *
  * ISOLAMENTO: zero import da payment engine, USDA, MultiChain, Spark, Li.Fi.
  */
@@ -143,16 +143,13 @@ export interface CnEvmTokenDef {
  * Ticker verificati via API pubblica il 2026-08-18:
  *   pol, matic, usdcmatic, usdtmatic, eth, usdterc20, bnb, usdtbsc
  *
- * Contratti ufficiali Polygon:
+ * Contratti ufficiali:
+ *   POL (Ethereum ERC-20): 0x455e53cbb86018ac2b8092fdcd39d8444affc3f6
  *   USDC: 0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174
  *   USDT: 0xc2132D05D31c914a87C6611C10748AEb04B58e8F
  */
 export const CN_EVM_TOKENS: CnEvmTokenDef[] = [
   // Polygon
-  {
-    symbol: "POL", ticker: "pol", name: "Polygon Ecosystem Token",
-    chainId: 137, network: "Polygon", decimals: 18, isNative: true, contractAddress: null,
-  },
   {
     symbol: "USDC", ticker: "usdcmatic", name: "USD Coin (Polygon)",
     chainId: 137, network: "Polygon", decimals: 6, isNative: false,
@@ -167,6 +164,12 @@ export const CN_EVM_TOKENS: CnEvmTokenDef[] = [
   {
     symbol: "ETH", ticker: "eth", name: "Ethereum",
     chainId: 1, network: "Ethereum", decimals: 18, isNative: true, contractAddress: null,
+  },
+  {
+    // ChangeNOW ticker "pol" is the POL ERC-20 token on Ethereum, not native Polygon POL.
+    symbol: "POL", ticker: "pol", name: "Polygon Ecosystem Token (ERC-20)",
+    chainId: 1, network: "Ethereum", decimals: 18, isNative: false,
+    contractAddress: "0x455e53cbb86018ac2b8092fdcd39d8444affc3f6",
   },
   {
     symbol: "USDT", ticker: "usdterc20", name: "Tether (ERC-20)",
@@ -512,6 +515,9 @@ export async function cnGetTransactionStatus(
 ): Promise<CnTransactionResponse> {
   const key = getApiKey();
   return cnFetch<CnTransactionResponse>(
-    `${CN_BASE_URL}/transactions/${exchangeId}?api_key=${key}`
+    // ChangeNOW richiede la partner key nel path per il transaction-status,
+    // anche per gli exchange creati fixed-rate. Passarla come query string
+    // risponde HTTP 400 e lascia il polling sullo stato MongoDB precedente.
+    `${CN_BASE_URL}/transactions/${exchangeId}/${key}`
   );
 }

@@ -582,10 +582,10 @@ describe("CN_EVM_TOKENS — catalogo UI (NON whitelist API)", () => {
   it("T34 — contiene i ticker attesi per l'interfaccia", () => {
     const tickers = CN_EVM_TOKENS.map(t => t.ticker);
     // Polygon
-    expect(tickers).toContain("pol");
     expect(tickers).toContain("usdcmatic");
     expect(tickers).toContain("usdtmatic");
-    // Ethereum
+    // Ethereum (incluso POL ERC-20)
+    expect(tickers).toContain("pol");
     expect(tickers).toContain("eth");
     expect(tickers).toContain("usdterc20");
     // BSC — "bnbbsc" (non "bnb" che è inactive su ChangeNOW)
@@ -600,5 +600,15 @@ describe("CN_EVM_TOKENS — catalogo UI (NON whitelist API)", () => {
       if (t.isNative) expect(t.contractAddress).toBeNull();
       else expect(t.contractAddress).toMatch(/^0x[0-9a-fA-F]{40}$/);
     }
+  });
+
+  it("T36 — ticker pol è il token ERC-20 ChangeNOW su Ethereum, non il POL nativo Polygon", () => {
+    const pol = CN_EVM_TOKENS.find(t => t.ticker === "pol");
+    expect(pol).toMatchObject({
+      chainId: 1,
+      network: "Ethereum",
+      isNative: false,
+      contractAddress: "0x455e53cbb86018ac2b8092fdcd39d8444affc3f6",
+    });
   });
 });

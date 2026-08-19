@@ -57,10 +57,6 @@ export const CN_EVM_TOKENS: CnEvmToken[] = [
   },
   // Polygon
   {
-    symbol: "POL", ticker: "pol", name: "Polygon Ecosystem Token",
-    chainId: 137, network: "Polygon", decimals: 18, isNative: true, contractAddress: null,
-  },
-  {
     symbol: "USDC", ticker: "usdcmatic", name: "USD Coin (Polygon)",
     chainId: 137, network: "Polygon", decimals: 6, isNative: false,
     contractAddress: "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
@@ -74,6 +70,12 @@ export const CN_EVM_TOKENS: CnEvmToken[] = [
   {
     symbol: "ETH", ticker: "eth", name: "Ethereum",
     chainId: 1, network: "Ethereum", decimals: 18, isNative: true, contractAddress: null,
+  },
+  {
+    // ChangeNOW ticker "pol" is POL ERC-20 on Ethereum, not native Polygon POL.
+    symbol: "POL", ticker: "pol", name: "Polygon Ecosystem Token (ERC-20)",
+    chainId: 1, network: "Ethereum", decimals: 18, isNative: false,
+    contractAddress: "0x455e53cbb86018ac2b8092fdcd39d8444affc3f6",
   },
   {
     symbol: "USDT", ticker: "usdterc20", name: "Tether (ERC-20)",
