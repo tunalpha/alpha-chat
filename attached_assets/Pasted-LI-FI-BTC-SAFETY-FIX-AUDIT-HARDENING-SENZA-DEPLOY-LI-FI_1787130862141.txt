@@ -1,0 +1,115 @@
+LI.FI BTC SAFETY FIX — AUDIT + HARDENING, SENZA DEPLOY
+
+LI.FI è attualmente in PAUSA e ChangeNOW è il provider PRIMARY.
+NON riattivare Li.FI e NON fare alcun deploy/publish.
+
+Voglio correggere ora, in modo definitivo, i due problemi evidenziati da LI.FI nel caso BTC TX:
+
+ce259f4b1523baf694dfd931f6dd611e1c6f2278aa1b541284744cd11497933d
+
+LI.FI ha confermato:
+1. il deposito BTC è stato broadcast senza il memo richiesto dalla quote;
+2. il sistema Alpha ha una correlazione di status non sufficientemente sicura;
+3. senza memo LI.FI non può associare correttamente deposito, ordine e tracking.
+
+OBIETTIVO:
+rendere il ramo BTC→LI.FI sicuro e riattivabile in futuro, senza modificare il percorso ChangeNOW, payment engine, USDA, Spark, MultiChain, WalletConnect o altri flussi protetti.
+
+FASE 1 — AUDIT PRIMA DELLE MODIFICHE
+Individua esattamente:
+- dove viene ricevuta la quote LI.FI;
+- dove LI.FI restituisce memo/payment reference/destination;
+- dove viene costruita la transazione BTC;
+- dove viene effettuato il broadcast;
+- dove viene verificata la presenza del memo;
+- come viene correlato il BTC TX allo swap/order LI.FI;
+- come viene determinato lo status completed/failed/pending;
+- eventuali retry che potrebbero ribroadcastare una TX senza memo.
+
+NON modificare codice prima di aver prodotto questa mappa.
+
+FASE 2 — MEMO SAFETY
+Implementa una guardia fail-closed:
+
+- se la quote LI.FI richiede un memo/payment reference, il memo deve essere obbligatoriamente presente;
+- se manca, NON consentire la firma/broadcast BTC;
+- non usare fallback, memo vuoto, stringa arbitraria o destination address come sostituto;
+- il memo deve essere quello restituito dalla quote/ordine LI.FI;
+- verificare il formato corretto per il tipo di output BTC utilizzato;
+- mostrare all'utente un errore chiaro senza creare una TX;
+- testare esplicitamente il caso "memo missing" → ZERO broadcast.
+
+FASE 3 — STATUS CORRELATION
+Rendere la correlazione fail-closed:
+
+- una BTC TX non può essere considerata appartenente a uno swap solo perché è stata inviata a un address;
+- verificare tutti gli identificatori disponibili: swap/order ID, deposit address, memo/payment reference, TX hash e status provider;
+- non dichiarare COMPLETED finché LI.FI/provider non conferma lo stato terminale corretto;
+- distinguere chiaramente:
+  pending / detected / confirming / completed / failed / refunded;
+- impedire che una TX appartenente a un altro ordine venga associata allo swap corrente;
+- gestire TX senza memo come NON CORRELATA, mai come completed.
+
+FASE 4 — IDEMPOTENZA / RETRY
+Verificare che:
+- una TX già broadcastata non venga ricreata/broadcastata nuovamente;
+- retry di rete, WalletConnect, app background/foreground e timeout non possano generare doppio invio;
+- dopo broadcast salvare immediatamente TX hash e stato locale;
+- polling e retry usino la TX esistente.
+
+FASE 5 — TEST
+Aggiungere test mirati almeno per:
+
+1. quote con memo → broadcast consentito;
+2. quote senza memo quando memo richiesto → broadcast BLOCCATO;
+3. memo errato → broadcast BLOCCATO;
+4. destination corretta ma memo mancante → BLOCCATO;
+5. TX senza memo → mai associata allo swap;
+6. TX con memo di altro swap → mai associata;
+7. TX hash già presente → nessun secondo broadcast;
+8. timeout WalletConnect dopo firma → recovery senza seconda TX;
+9. provider status non terminale → mai COMPLETED;
+10. provider FAILED/REFUNDED → stato corretto;
+11. status polling dopo reload → recovery corretta;
+12. ChangeNOW branch completamente invariato.
+
+FASE 6 — REGRESSION
+Dimostrare con diff/test che NON sono stati modificati:
+- ChangeNOW;
+- payment engine;
+- USDA;
+- MultiChain;
+- Spark;
+- Lightning/Boltz;
+- wallet signing non correlato;
+- fee architecture.
+
+Eseguire:
+- test LI.FI;
+- test BTC;
+- test swap;
+- test routing;
+- test signing;
+- build frontend;
+- build backend;
+- typecheck se possibile.
+
+IMPORTANTE:
+NON effettuare transazioni reali.
+NON creare ordini reali LI.FI.
+NON riattivare Li.FI.
+NON fare deploy/publish.
+
+REPORT FINALE OBBLIGATORIO:
+A. root cause esatta;
+B. file modificati;
+C. diff funzionale;
+D. come viene impedito un BTC broadcast senza memo;
+E. come viene garantita la status correlation;
+F. test PASS/FAIL/SKIP con numeri reali;
+G. regressioni ChangeNOW = 0;
+H. build;
+I. typecheck;
+J. conferma esplicita: nessuna TX reale, nessun deploy.
+
+Se trovi che una parte del flusso LI.FI non può essere resa sicura senza informazioni ulteriori della API LI.FI, NON inventare il comportamento: fermati su quella parte e segnala esattamente cosa manca.
