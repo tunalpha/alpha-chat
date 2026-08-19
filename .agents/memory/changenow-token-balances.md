@@ -35,3 +35,8 @@ ha creato una voce wallet fuorviante e ha cambiato la destinazione promessa.
 Usa un contract ERC-20 Ethereum solo come importazione manuale separata per
 eventuali vecchi payout già ricevuti. Non usare V1 per gli swap EVM, perché il
 solo ticker `pol` viene risolto come Ethereum.
+
+Per USDC, V2 usa la stessa currency su reti diverse: `usdc/eth`, `usdc/matic`
+e `usdc/bsc`. La voce Polygon deve usare il contratto USDC nativo
+`0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359`, non il bridged USDC.e
+`0x2791…`.

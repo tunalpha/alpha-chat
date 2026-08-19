@@ -64,7 +64,7 @@ export const CN_EVM_TOKENS: CnEvmToken[] = [
   {
     symbol: "USDC", ticker: "usdcmatic", name: "USD Coin (Polygon)",
     chainId: 137, network: "Polygon", decimals: 6, isNative: false,
-    contractAddress: "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+    contractAddress: "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359",
   },
   {
     symbol: "USDT", ticker: "usdtmatic", name: "Tether (Polygon)",
@@ -75,6 +75,11 @@ export const CN_EVM_TOKENS: CnEvmToken[] = [
   {
     symbol: "ETH", ticker: "eth", name: "Ethereum",
     chainId: 1, network: "Ethereum", decimals: 18, isNative: true, contractAddress: null,
+  },
+  {
+    symbol: "USDC", ticker: "usdc", name: "USD Coin (Ethereum)",
+    chainId: 1, network: "Ethereum", decimals: 6, isNative: false,
+    contractAddress: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
   },
   {
     symbol: "USDT", ticker: "usdterc20", name: "Tether (ERC-20)",
@@ -90,6 +95,11 @@ export const CN_EVM_TOKENS: CnEvmToken[] = [
     symbol: "USDT", ticker: "usdtbsc", name: "Tether (BEP-20)",
     chainId: 56, network: "BSC", decimals: 18, isNative: false,
     contractAddress: "0x55d398326f99059fF775485246999027B3197955",
+  },
+  {
+    symbol: "USDC", ticker: "usdcbsc", name: "USD Coin (BSC)",
+    chainId: 56, network: "BSC", decimals: 18, isNative: false,
+    contractAddress: "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d",
   },
 ];
 

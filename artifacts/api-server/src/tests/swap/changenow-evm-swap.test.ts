@@ -587,10 +587,12 @@ describe("CN_EVM_TOKENS — catalogo UI (NON whitelist API)", () => {
     // Polygon (POL nativo)
     expect(tickers).toContain("pol");
     expect(tickers).toContain("eth");
+    expect(tickers).toContain("usdc");
     expect(tickers).toContain("usdterc20");
     // BSC — "bnbbsc" (non "bnb" che è inactive su ChangeNOW)
     expect(tickers).toContain("bnbbsc");
     expect(tickers).toContain("usdtbsc");
+    expect(tickers).toContain("usdcbsc");
   });
 
   it("T35 — ogni token ha chainId/decimals/isNative coerenti", () => {
@@ -610,5 +612,22 @@ describe("CN_EVM_TOKENS — catalogo UI (NON whitelist API)", () => {
       isNative: true,
       contractAddress: null,
     });
+  });
+
+  it("T37 — USDC è disponibile con contratto e decimali corretti su Ethereum, Polygon e BSC", () => {
+    expect(CN_EVM_TOKENS.filter(t => t.symbol === "USDC")).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        ticker: "usdc", chainId: 1, decimals: 6,
+        contractAddress: "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48",
+      }),
+      expect.objectContaining({
+        ticker: "usdcmatic", chainId: 137, decimals: 6,
+        contractAddress: "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359",
+      }),
+      expect.objectContaining({
+        ticker: "usdcbsc", chainId: 56, decimals: 18,
+        contractAddress: "0x8AC76a51cc950d9822D68b83fE1Ad97B32Cd580d",
+      }),
+    ]));
   });
 });

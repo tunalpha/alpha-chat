@@ -16,7 +16,7 @@ import { CN_EVM_TOKENS } from "../../swap/changenow/evm-types.js";
 const WALLET = "0x1111111111111111111111111111111111111111";
 const POLYGON_USDC: EvmToken = {
   chainId: 137,
-  address: "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174",
+  address: "0x3c499c542cEF5E3811e1192ce70d8cC03d5c3359",
   symbol: "USDC",
   name: "USD Coin (Polygon)",
   decimals: 6,
@@ -29,6 +29,14 @@ afterEach(() => {
 });
 
 describe("ChangeNOW EVM swap — saldi e inversione UI", () => {
+  it("espone USDC Ethereum, Polygon e BSC nel selettore multi-rete", () => {
+    expect(CN_EVM_TOKENS.filter((item) => item.symbol === "USDC")).toEqual(expect.arrayContaining([
+      expect.objectContaining({ ticker: "usdc", chainId: 1, network: "Ethereum", decimals: 6 }),
+      expect.objectContaining({ ticker: "usdcmatic", chainId: 137, network: "Polygon", decimals: 6 }),
+      expect.objectContaining({ ticker: "usdcbsc", chainId: 56, network: "BSC", decimals: 18 }),
+    ]));
+  });
+
   it("legge il saldo nativo dalla Map e interroga anche il contratto ChangeNOW aggiuntivo", async () => {
     const fetchMock = vi.fn().mockResolvedValue({
       json: async () => ({ result: "0x10" }),
@@ -43,8 +51,9 @@ describe("ChangeNOW EVM swap — saldi e inversione UI", () => {
 
     expect(result.current.map.get(NATIVE_ADDRESS)).toBe(16n);
     expect(result.current.map.get(POLYGON_USDC.address)).toBe(16n);
-    // POL, USDT, USDC nativo nel catalogo + USDC ChangeNOW.
-    expect(fetchMock).toHaveBeenCalledTimes(4);
+    // POL, USDT e USDC nativo. USDC ChangeNOW coincide con il registry wallet,
+    // quindi non deve causare una seconda lettura dello stesso contratto.
+    expect(fetchMock).toHaveBeenCalledTimes(3);
   });
 
   it("inverte la coppia prima dell'exchange e invalida importo/quote", () => {
