@@ -1,0 +1,66 @@
+Perfetto. La RCA è chiara e conferma che non c’è stato alcun problema con ChangeNOW né perdita di fondi.
+
+Il punto è molto preciso:
+
+Il quote ChangeNOW ha usato 134.31867936 POL come fromAmount, ma Alpha Wallet ha poi tentato di inviare esattamente 134.31867936 POL.
+
+Quindi:
+
+Saldo POL ≈ 134.31867936
+        ↓
+Value transazione = 134.31867936 POL
+        ↓
+POL rimasti per gas = 0
+        ↓
+eth_estimateGas
+        ↓
+REVERT: gas required exceeds allowance (6114)
+        ↓
+Nessuna firma
+        ↓
+Nessuna TX on-chain
+        ↓
+Nessun fondo perso
+
+La cosa importante
+
+Non toccherei ChangeNOW, il router o il quote.
+
+Il problema è nel nostro flusso native-token → ChangeNOW deposit address.
+
+Per POL nativo bisogna considerare:
+
+importo inviato + gas necessario ≤ saldo disponibile
+
+Quindi se l’utente ha 134.318679 POL, non possiamo chiedere a ChangeNOW di ricevere tutti i 134.318679 POL.
+
+Dobbiamo lasciare una riserva, ad esempio:
+
+balance = 134.318679 POL
+gas reserve = X POL
+max swap amount = balance - X
+
+E il quote ChangeNOW deve essere calcolato sul valore realmente inviabile, non sul saldo totale.
+
+Attenzione però a un dettaglio
+
+Non fisserei arbitrariamente un buffer tipo 0.01 POL senza prima verificare il gas reale.
+
+La soluzione migliore per Alpha Swap è:
+
+1. leggere il balance POL;
+2. stimare il gas necessario per il trasferimento;
+3. aggiungere un piccolo safety margin;
+4. calcolare:
+
+maxSendable = balance - estimatedGas - safetyMargin
+
+5. usare maxSendable come fromAmount nel quote ChangeNOW;
+6. mostrare all’utente l’importo effettivamente inviato;
+7. mai permettere che value sia uguale al 100% del balance nativo.
+
+Questo è particolarmente importante perché il problema può ripresentarsi con POL, ETH, BNB e qualsiasi altro native token EVM.
+
+Quindi la RCA dell’agente è sostanzialmente corretta: bug lato Alpha Wallet nella gestione del saldo nativo, non problema della rete Polygon e non problema di ChangeNOW.
+
+E soprattutto: i 134.318679 POL sono ancora tutti nel wallet, perché la transazione non è mai stata firmata/inviata.

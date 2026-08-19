@@ -45,6 +45,23 @@ import { useEvmTokenBalances } from "../evm/useEvmTokenBalances.js";
 import { NATIVE_ADDRESS, type EvmToken } from "../evm/types.js";
 import { parseEther, parseUnits } from "viem";
 
+// ── Native gas reserve ────────────────────────────────────────────────────────
+//
+// Per i token nativi (POL, ETH, BNB) il wallet deve tenere una riserva sufficiente
+// a pagare il gas. Senza riserva il nodo rigetta eth_estimateGas con:
+//   "gas required exceeds allowance (N)"
+//
+// La riserva usa il gas price live dal RPC × 30 000 unità (21 000 standard +
+// ~43 % safety margin). Il risultato è di solito < 0.001 POL a gas price normali
+// ma si adatta automaticamente ai picchi di rete.
+
+async function computeNativeGasReserve(chainId: number): Promise<bigint> {
+  const client    = await createAlphaWalletViemClient(chainId);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const gasPrice  = await (client as any).getGasPrice() as bigint;
+  return gasPrice * 30_000n;
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 const ERC20_TRANSFER_ABI = [{
@@ -722,7 +739,9 @@ export function ChangeNowEvmSwapView({
   const toBalLoading = state.toToken ? isTokenBalanceLoading(state.toToken) : false;
 
   // Bottoni % → calcola importo e setta
-  const handlePct = useCallback((pct: number) => {
+  // Per i token nativi EVM usa il gas price live per calcolare la riserva,
+  // così il MAX non propone mai un importo che farebbe fallire eth_estimateGas.
+  const handlePct = useCallback(async (pct: number) => {
     if (!state.fromToken) return;
     const isBtc = state.fromToken.ticker === "btc";
     const decimals = state.fromToken.decimals;
@@ -737,8 +756,15 @@ export function ChangeNowEvmSwapView({
       if (!fromBalance) return;
       let raw = fromBalance;
       if (state.fromToken.isNative) {
-        const reserve = BigInt(Math.round(0.002 * 10 ** decimals));
-        if (raw > reserve) raw = raw - reserve; else raw = 0n;
+        try {
+          // Riserva dinamica: gas price live × 30 000 unità
+          const gasReserve = await computeNativeGasReserve(state.fromToken.chainId);
+          raw = raw > gasReserve ? raw - gasReserve : 0n;
+        } catch {
+          // Fallback statico: 0.005 token nativi se il RPC non risponde
+          const fallback = BigInt(Math.round(0.005 * 10 ** decimals));
+          raw = raw > fallback ? raw - fallback : 0n;
+        }
       }
       const amount = (Number(raw) * pct / 100) / 10 ** decimals;
       autoQuotedRef.current = false;
@@ -798,6 +824,27 @@ export function ChangeNowEvmSwapView({
     if (fromToken.isNative) {
       // Native: POL / ETH / BNB
       const valueWei = parseEther(String(amount));
+
+      // ── Guard gas: verifica che balance copra value + gas prima di firmare ──
+      // Senza questo controllo, eth_estimateGas fallisce con
+      // "gas required exceeds allowance (N)" quando l'utente tenta di inviare
+      // l'intero saldo senza lasciare POL/ETH/BNB per il gas.
+      const [balance, gasPrice] = await Promise.all([
+        c.getBalance({ address: c.account.address }) as Promise<bigint>,
+        c.getGasPrice() as Promise<bigint>,
+      ]);
+      const gasReserve = gasPrice * 30_000n;
+      if (valueWei + gasReserve > balance) {
+        const maxSendable = balance > gasReserve ? balance - gasReserve : 0n;
+        const maxEth      = Number(maxSendable) / 1e18;
+        const symbol      = fromToken.symbol;
+        throw new Error(
+          `INSUFFICIENT_GAS: Saldo insufficiente per coprire il gas. ` +
+          `Importo massimo inviabile: ${maxEth.toFixed(6)} ${symbol}.`,
+        );
+      }
+      // ── Fine guard ────────────────────────────────────────────────────────
+
       const txHash = await c.sendTransaction({
         to:    depositEvmAddress,
         value: valueWei,
