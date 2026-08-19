@@ -110,6 +110,24 @@ function buildPayload(event: PushEvent): string {
         icon:  "/favicon-192.png",
         badge: "/favicon-192.png",
       });
+
+    case "swap.lifecycle": {
+      const labels = {
+        completed: "✅ Alpha Swap completato",
+        failed: "❌ Alpha Swap fallito",
+        refunded: "↩️ Alpha Swap rimborsato",
+        expired: "⌛ Alpha Swap scaduto",
+      } as const;
+      return JSON.stringify({
+        type:  "swap.lifecycle",
+        title: labels[event.lifecycle],
+        body:  `${event.fromAmount} ${event.fromToken} → ${event.toAmount} ${event.toToken}`,
+        data:  { url: "/", swapId: event.swapId, lifecycle: event.lifecycle },
+        tag:   `swap-${event.swapId}-${event.lifecycle}`,
+        icon:  "/favicon-192.png",
+        badge: "/favicon-192.png",
+      });
+    }
   }
 }
 

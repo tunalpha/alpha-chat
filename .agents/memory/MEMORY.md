@@ -152,3 +152,4 @@
 - [MC Send State Machine — confirming timing](mc-send-state-machine.md) — setSignPhase("confirming") nel .then() di sendTransaction, mai sincrono dopo fire-and-forget; guard anti-regressione; localStorage signed:true nel .then()
 - [Alpha Swap CSS + vitest timeout](alpha-swap-css-vitest.md) — asw-* classes in AlphaWalletPage.css; vitest testTimeout alzato a 15000 per barrel ESM import
 - [iOS PWA notification icon](ios-pwa-notif-icon.md) — iOS mostra sempre l'icona app nelle push notification PWA; `icon` field ignorato; "from [App Name]" è sistema iOS, non modificabile
+- [Li.FI server-authoritative lifecycle](lifi-server-authoritative-lifecycle.md) — il client registra solo la source TX; il backend verifica provider, direction e payout prima di ogni stato terminale

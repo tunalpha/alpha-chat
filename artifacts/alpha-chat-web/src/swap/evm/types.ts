@@ -94,6 +94,8 @@ export interface EvmSwapQuote {
 
 export interface EvmActiveSwap {
   routeId:      string;
+  /** Correlazione server-side. Non è un segreto e non include PSBT/seed/PIN. */
+  swapId?:      string;
   txHash?:      string;
   fromChainId:  number;
   toChainId:    number;

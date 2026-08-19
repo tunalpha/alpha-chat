@@ -15,6 +15,7 @@ import { startSparkSweepScheduler }  from "./schedulers/spark-sweep.scheduler";
 import { registerDefaultAdapters }    from "./blockchain/adapter-registry";
 import { autoConfigureSparkFeeWallet } from "./services/spark-fee-wallet.service";
 import { startSwapReconciler }          from "./services/swap/swap-reconciler.service.js";
+import { startEvmSwapReconciler }       from "./services/swap/evm-swap-reconciler.service.js";
 
 const port = config.app.port;
 
@@ -90,6 +91,10 @@ async function start(): Promise<void> {
   // ISOLAMENTO: zero interferenze con payment engine, USDA, MultiChain, treasury.
   // SWAP_ENABLED=false non ferma il reconciler (gestisce swap esistenti).
   setTimeout(() => { startSwapReconciler(); }, 15_000);
+
+  // Li.FI resta disabilitato per nuovi swap. Questo reconciler tocca solo i
+  // journal già esistenti e li verifica server-side dopo restart/offline.
+  setTimeout(() => { startEvmSwapReconciler(); }, 18_000);
 
   // ── Graceful shutdown ───────────────────────────────────────────────────────
   const shutdown = async (signal: string): Promise<void> => {

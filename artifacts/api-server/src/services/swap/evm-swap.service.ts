@@ -12,6 +12,7 @@
  * ISOLAMENTO: zero import da payment engine, USDA, MultiChain, Spark.
  */
 
+import { randomUUID } from "node:crypto";
 import pino from "pino";
 import { EvmSwapModel, type IEvmSwap } from "../../models/EvmSwap.js";
 
@@ -49,14 +50,11 @@ export interface StartEvmSwapParams {
   btcPsbtDigest?:     string;
 }
 
-export interface CompleteEvmSwapParams {
-  routeId:     string;
-  userId:      string;
-  txHash:      string;
-  toAmount?:   string;
-  state:       "completed" | "failed";
-  error?:      string;
-  sourceTxHash?: string;
+type LiFiTerminalState = "completed" | "failed" | "refunded" | "expired";
+
+export interface ReconcileResult {
+  swap: IEvmSwap;
+  transitioned: boolean;
 }
 
 export interface HistoricalSwapRecord {
@@ -122,6 +120,8 @@ class EvmSwapService {
 
     const doc = await EvmSwapModel.create({
       userId:       params.userId,
+      swapId:       randomUUID(),
+      provider:     "lifi",
       routeId:      params.routeId,
       fromChainId:  params.fromChainId,
       toChainId:    params.toChainId,
@@ -144,102 +144,179 @@ class EvmSwapService {
     return doc;
   }
 
-  /** Aggiorna un record swap con txHash e stato finale. */
-  async completeSwap(params: CompleteEvmSwapParams): Promise<IEvmSwap | null> {
-    const existing = await EvmSwapModel.findOne({ routeId: params.routeId, userId: params.userId });
-    if (!existing) {
-      logger.warn({ routeId: params.routeId }, "evm-swap: record non trovato in completeSwap");
-      return null;
+  /**
+   * Registra una source transaction dopo un broadcast. È l'unico input dal
+   * browser accettato dal lifecycle e rimane write-once: non può diventare un
+   * terminal state e non può essere sostituito da una TX di un altro swap.
+   */
+  async recordSourceTransaction(routeId: string, userId: string, sourceTxHash: string): Promise<IEvmSwap | null> {
+    const doc = await EvmSwapModel.findOne({ routeId, userId });
+    if (!doc) return null;
+    if (doc.sourceTxHash && doc.sourceTxHash.toLowerCase() !== sourceTxHash.toLowerCase()) {
+      throw new Error("LIFI_SOURCE_TX_ALREADY_RECORDED");
+    }
+    if (doc.btcDepositTxHash && doc.btcDepositTxHash.toLowerCase() !== sourceTxHash.toLowerCase()) {
+      throw new Error("LIFI_SOURCE_TX_MISMATCH");
     }
 
-    if (existing.fromChainId === LIFI_BTC_CHAIN_ID && params.state === "completed") {
-      if (!params.sourceTxHash || !existing.btcDepositTxHash) {
-        throw new Error("LIFI_BTC_JOURNAL_INCOMPLETE");
-      }
-      if (params.sourceTxHash.toLowerCase() !== existing.btcDepositTxHash.toLowerCase()) {
-        throw new Error("LIFI_BTC_SOURCE_TX_MISMATCH");
-      }
-      const verified = await this.verifyBtcCompletion(existing);
-      const destinationTxHash = verified.destinationTxHash;
-      if (!verified.valid || !destinationTxHash) {
-        logger.warn({ routeId: params.routeId, reason: verified.reason }, "evm-swap: BTC completion Li.FI non verificata");
-        throw new Error("LIFI_BTC_STATUS_UNVERIFIED");
-      }
-      if (params.txHash.toLowerCase() !== destinationTxHash.toLowerCase()) {
-        throw new Error("LIFI_BTC_DESTINATION_TX_MISMATCH");
-      }
+    const isBtc = doc.fromChainId === LIFI_BTC_CHAIN_ID;
+    if (isBtc && (!doc.btcDepositAddress || !doc.btcMemo || !doc.btcPsbtDigest)) {
+      throw new Error("LIFI_BTC_JOURNAL_INCOMPLETE");
     }
 
-    const update: Partial<IEvmSwap> = {
-      state:  params.state,
-      txHash: params.txHash,
-    };
-    if (params.toAmount)     update.toAmount     = params.toAmount;
-    if (params.error)        update.error        = params.error;
-    if (existing.fromChainId === LIFI_BTC_CHAIN_ID && params.state === "completed") {
-      update.destinationTxHash = params.txHash;
-    }
-    // state è sempre "completed" | "failed" — set sempre completedAt
-    update.completedAt = new Date();
+    if (doc.sourceTxHash) return doc;
+    return EvmSwapModel.findOneAndUpdate(
+      { routeId, userId },
+      {
+        $set: {
+          sourceTxHash,
+          ...(isBtc ? { btcDepositTxHash: sourceTxHash } : {}),
+          providerStatus: "SOURCE_SUBMITTED",
+          state: "pending",
+        },
+      },
+      { new: true },
+    );
+  }
 
+  /** Retrocompatibilità del journal BTC: delega al write-once source journal. */
+  async recordBtcDeposit(routeId: string, userId: string, btcDepositTxHash: string): Promise<IEvmSwap | null> {
+    return this.recordSourceTransaction(routeId, userId, btcDepositTxHash);
+  }
+
+  /**
+   * Riconcilia lo swap esclusivamente tramite Li.FI. Una richiesta browser può
+   * avviare questa verifica, ma non può proporre status o payout hash.
+   */
+  async reconcileSwap(routeId: string, userId: string): Promise<ReconcileResult | null> {
+    const existing = await EvmSwapModel.findOne({ routeId, userId });
+    if (!existing) return null;
+    if (this.isTerminal(existing.state)) return { swap: existing, transitioned: false };
+
+    const sourceTxHash = existing.sourceTxHash ?? existing.btcDepositTxHash;
+    if (!sourceTxHash) return { swap: existing, transitioned: false };
+
+    const verified = await this.verifyProviderStatus(existing, sourceTxHash);
+    if (verified.kind === "unavailable") return { swap: existing, transitioned: false };
+
+    if (verified.kind === "completed") {
+      const updated = await this.updateAuthoritativeState(existing, "completed", {
+        providerStatus: verified.providerStatus,
+        destinationTxHash: verified.destinationTxHash,
+        txHash: verified.destinationTxHash,
+        toAmount: verified.toAmount,
+      });
+      return { swap: updated, transitioned: updated.state !== existing.state };
+    }
+
+    if (verified.kind === "terminal") {
+      const updated = await this.updateAuthoritativeState(existing, verified.state, {
+        providerStatus: verified.providerStatus,
+        error: verified.reason,
+      });
+      return { swap: updated, transitioned: updated.state !== existing.state };
+    }
+
+    const updated = await this.updateAuthoritativeState(existing, "processing", {
+      providerStatus: verified.providerStatus,
+    });
+    return { swap: updated, transitioned: updated.state !== existing.state };
+  }
+
+  /** Record non-terminali recuperabili dopo reload, logout o restart backend. */
+  async getPendingForRecovery(limit = 50): Promise<IEvmSwap[]> {
+    return EvmSwapModel.find({
+      state: { $in: ["pending", "processing"] },
+      // Compatibilità con journal BTC creati prima di sourceTxHash.
+      $or: [
+        { sourceTxHash: { $exists: true } },
+        { btcDepositTxHash: { $exists: true } },
+      ],
+    })
+      .sort({ startedAt: 1 })
+      .limit(limit) as unknown as Promise<IEvmSwap[]>;
+  }
+
+  private isTerminal(state: IEvmSwap["state"]): boolean {
+    return state === "completed" || state === "failed" || state === "refunded" || state === "expired";
+  }
+
+  private async updateAuthoritativeState(
+    existing: IEvmSwap,
+    state: IEvmSwap["state"],
+    fields: Partial<IEvmSwap>,
+  ): Promise<IEvmSwap> {
+    const update: Partial<IEvmSwap> = { ...fields, state };
+    if (this.isTerminal(state)) update.completedAt = new Date();
     const doc = await EvmSwapModel.findOneAndUpdate(
-      { routeId: params.routeId, userId: params.userId },
+      { routeId: existing.routeId, userId: existing.userId },
       { $set: update },
       { new: true },
     );
-    if (!doc) return null;
-    logger.info({ routeId: doc.routeId, state: doc.state, txHash: doc.txHash }, "evm-swap: swap aggiornato");
+    if (!doc) throw new Error("LIFI_JOURNAL_UPDATE_FAILED");
+    logger.info({ routeId: doc.routeId, swapId: doc.swapId, state: doc.state }, "evm-swap: stato autorevole aggiornato");
     return doc;
   }
 
   /**
-   * Salva il txid BTC una sola volta dopo il broadcast. Il client non può
-   * sostituirlo con un deposito differente in un secondo momento.
+   * Il server, non il browser, verifica source, direction, destination e payout.
+   * Li.FI status non espone un routeId nella risposta: la correlazione resta
+   * journal routeId + source hash write-once + coppia chain verificata.
    */
-  async recordBtcDeposit(routeId: string, userId: string, btcDepositTxHash: string): Promise<IEvmSwap | null> {
-    const doc = await EvmSwapModel.findOne({ routeId, userId });
-    if (!doc) return null;
-    if (doc.fromChainId !== LIFI_BTC_CHAIN_ID || !doc.btcDepositAddress || !doc.btcMemo || !doc.btcPsbtDigest) {
-      throw new Error("LIFI_BTC_JOURNAL_INCOMPLETE");
-    }
-    if (doc.btcDepositTxHash) {
-      if (doc.btcDepositTxHash.toLowerCase() !== btcDepositTxHash.toLowerCase()) {
-        throw new Error("LIFI_BTC_DEPOSIT_ALREADY_RECORDED");
-      }
-      return doc;
-    }
-    return EvmSwapModel.findOneAndUpdate(
-      { routeId, userId },
-      { $set: { btcDepositTxHash } },
-      { new: true },
-    );
-  }
-
-  /** Il server, non il browser, conferma la correlazione Li.FI BTC→EVM. */
-  private async verifyBtcCompletion(doc: IEvmSwap): Promise<{ valid: boolean; reason?: string; destinationTxHash?: string }> {
+  private async verifyProviderStatus(
+    doc: IEvmSwap,
+    sourceTxHash: string,
+  ): Promise<
+    | { kind: "completed"; providerStatus: string; destinationTxHash: string; toAmount?: string }
+    | { kind: "terminal"; providerStatus: string; state: LiFiTerminalState; reason: string }
+    | { kind: "pending"; providerStatus: string }
+    | { kind: "unavailable" }
+  > {
     try {
       const qs = new URLSearchParams({
-        txHash: doc.btcDepositTxHash!,
+        txHash: sourceTxHash,
         fromChain: String(doc.fromChainId),
         toChain: String(doc.toChainId),
       });
       const response = await fetch(`${LIFI_STATUS_URL}?${qs}`, { headers: { Accept: "application/json" } });
-      if (!response.ok) return { valid: false, reason: `provider HTTP ${response.status}` };
+      if (!response.ok) return { kind: "unavailable" };
       const body = await response.json() as Record<string, unknown>;
       const sending = body.sending as Record<string, unknown> | undefined;
       const receiving = body.receiving as Record<string, unknown> | undefined;
-      const sourceTxHash = typeof sending?.txHash === "string" ? sending.txHash : "";
+      const providerSourceTxHash = typeof sending?.txHash === "string" ? sending.txHash : "";
       const destinationTxHash = typeof receiving?.txHash === "string" ? receiving.txHash : "";
       const sendingChainId = typeof sending?.chainId === "number" ? sending.chainId : undefined;
       const receivingChainId = typeof receiving?.chainId === "number" ? receiving.chainId : undefined;
-      if (body.status !== "DONE") return { valid: false, reason: "provider status is not DONE" };
-      if (sendingChainId !== doc.fromChainId || receivingChainId !== doc.toChainId) return { valid: false, reason: "provider chain mismatch" };
-      if (!sourceTxHash || sourceTxHash.toLowerCase() !== doc.btcDepositTxHash!.toLowerCase()) return { valid: false, reason: "provider source tx mismatch" };
-      if (!destinationTxHash) return { valid: false, reason: "provider destination tx missing" };
-      return { valid: true, destinationTxHash };
+      const providerStatus = String(body.status ?? "PENDING").toUpperCase();
+
+      if (providerStatus === "REFUNDED") {
+        return { kind: "terminal", providerStatus, state: "refunded", reason: "LIFI_REFUNDED" };
+      }
+      if (providerStatus === "EXPIRED") {
+        return { kind: "terminal", providerStatus, state: "expired", reason: "LIFI_EXPIRED" };
+      }
+      if (providerStatus === "FAILED" || providerStatus === "INVALID") {
+        return { kind: "terminal", providerStatus, state: "failed", reason: `LIFI_${providerStatus}` };
+      }
+      if (providerStatus !== "DONE") return { kind: "pending", providerStatus };
+
+      if (sendingChainId !== doc.fromChainId || receivingChainId !== doc.toChainId) {
+        return { kind: "pending", providerStatus: "DIRECTION_MISMATCH" };
+      }
+      const journalSourceTxHash = doc.sourceTxHash ?? doc.btcDepositTxHash;
+      if (!providerSourceTxHash || !journalSourceTxHash || providerSourceTxHash.toLowerCase() !== journalSourceTxHash.toLowerCase()) {
+        return { kind: "pending", providerStatus: "SOURCE_TX_MISMATCH" };
+      }
+      if (!destinationTxHash) return { kind: "pending", providerStatus: "PAYOUT_TX_MISSING" };
+      return {
+        kind: "completed",
+        providerStatus,
+        destinationTxHash,
+        toAmount: typeof receiving?.amount === "string" ? receiving.amount : undefined,
+      };
     } catch (error) {
       logger.warn({ err: error, routeId: doc.routeId }, "evm-swap: verifica Li.FI BTC non disponibile");
-      return { valid: false, reason: "provider unavailable" };
+      return { kind: "unavailable" };
     }
   }
 
@@ -267,6 +344,8 @@ class EvmSwapService {
 
       await EvmSwapModel.create({
         userId:       "historical_import",
+        swapId:       randomUUID(),
+        provider:     "lifi",
         routeId:      rec.txHash,      // txHash come identificativo unico
         fromChainId:  rec.fromChainId,
         toChainId:    rec.toChainId,

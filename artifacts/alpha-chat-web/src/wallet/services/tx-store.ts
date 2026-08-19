@@ -57,6 +57,10 @@ export interface WalletTxRecord {
   swapToAsset?: string;
   /** Importo ricevuto human-readable (es. "1.6576") — compilato per txType==="swap" */
   swapToAmount?: string;
+  /** Correlazione al journal server-side, mai materiale di firma. */
+  swapId?: string;
+  /** Lifecycle autorevole Li.FI; lo status resta compatibile con la History esistente. */
+  swapLifecycle?: "pending" | "processing" | "completed" | "failed" | "refunded" | "expired";
 }
 
 // ─── CRUD ──────────────────────────────────────────────────────────────────
@@ -82,6 +86,8 @@ export async function saveTxRecord(record: WalletTxRecord): Promise<void> {
       txType:       existing.txType       ?? record.txType,
       swapToAsset:  existing.swapToAsset  ?? record.swapToAsset,
       swapToAmount: existing.swapToAmount ?? record.swapToAmount,
+       swapId:       existing.swapId       ?? record.swapId,
+       swapLifecycle: record.swapLifecycle ?? existing.swapLifecycle,
       updatedAt:   Date.now(),
     });
   } else {
@@ -104,6 +110,24 @@ export async function updateTxStatus(
   const statusRank: Record<TxStatus, number> = { pending: 0, confirmed: 1, failed: 1 };
   if (statusRank[status] < statusRank[existing.status]) return false;
   await db.put(STORE_TX_HISTORY, { ...existing, status, ...extra, updatedAt: Date.now() });
+  return true;
+}
+
+/** Aggiorna il lifecycle autorevole di uno swap senza ricreare il record. */
+export async function updateSwapLifecycle(
+  id: string,
+  swapLifecycle: NonNullable<WalletTxRecord["swapLifecycle"]>,
+  swapId?: string,
+): Promise<boolean> {
+  const db = await getWalletDB();
+  const existing = await db.get(STORE_TX_HISTORY, id) as WalletTxRecord | undefined;
+  if (!existing) return false;
+  await db.put(STORE_TX_HISTORY, {
+    ...existing,
+    swapLifecycle,
+    swapId: swapId ?? existing.swapId,
+    updatedAt: Date.now(),
+  });
   return true;
 }
 

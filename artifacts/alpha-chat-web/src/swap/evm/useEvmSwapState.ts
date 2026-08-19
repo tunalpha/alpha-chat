@@ -28,7 +28,7 @@ import { viemAdapter }       from "thirdweb/adapters/viem";
 import { type WalletClient } from "viem";
 import { client as thirdwebClient } from "../../lib/thirdweb.js";
 import {
-  fetchLiFiQuote, executeLiFiSwap, getLiFiStatus,
+  fetchLiFiQuote, executeLiFiSwap,
   configureLiFiWallet, clearLiFiWallet,
   type LiFiStatus, type LiFiStatusResult,
 } from "./lifi-client.js";
@@ -42,7 +42,7 @@ import {
   type EvmSwapPhase, type EvmSwapStateValue, type EvmSwapActions,
   type EvmToken, type EvmActiveSwap, type EvmSwapQuote,
 } from "./types.js";
-import { saveTxRecord } from "../../wallet/services/tx-store.js";
+import { saveTxRecord, updateTxStatus, updateSwapLifecycle } from "../../wallet/services/tx-store.js";
 import { dispatchWalletNotification } from "../../wallet/notifications/wallet-notification-store.js";
 import { chainName } from "../../wallet/notifications/wallet-notification-types.js";
 
@@ -73,6 +73,14 @@ async function swapApi(path: string, options?: RequestInit): Promise<unknown> {
   }
   return res.json();
 }
+
+type ServerSwapState = {
+  swapId: string;
+  state: "pending" | "processing" | "completed" | "failed" | "refunded" | "expired";
+  sourceTxHash?: string;
+  destinationTxHash?: string;
+  providerStatus?: string;
+};
 
 /** Impronta audit del PSBT: il contenuto firmabile non esce mai dal dispositivo. */
 async function sha256Hex(value: string): Promise<string> {
@@ -253,21 +261,13 @@ export function useEvmSwapState(opts?: EvmSwapStateOpts): [EvmSwapStateValue, Ev
         return;
       }
 
-      const result = await getLiFiStatus(active.txHash, active.fromChainId, active.toChainId)
-        .catch((): LiFiStatusResult => ({ status: "PENDING" }));
-
-      // REQUISITO 2: per swap BTC→EVM, applicare lo stesso direction guard
-      // presente in startBtcPoll — previene falso "completed" al reload/recovery.
-      let finalState = resolveLiFiStatus(result.status);
-      if (isBtcChain(active.fromChainId) && result.status === "DONE") {
-        const validation = _validateBtcToEvmDone(result, active.toChainId, active.txHash);
-        console.info(
-          "[AlphaSwap recover] Li.Fi DONE | BTC→chain:", active.toChainId,
-          "| receiving.chainId:", result.receivingChainId,
-          "|", validation.valid ? "✓ VALID" : `✗ MISMATCH (${validation.reason})`,
-        );
-        if (!validation.valid) finalState = "pending"; // non completare
-      }
+      // Il localStorage è solo un puntatore di recovery. Il backend verifica
+      // chain, source TX e payout con Li.FI prima di restituire uno stato finale.
+      const result = await swapApi(`/${active.routeId}/reconcile`, { method: "POST" })
+        .catch((): ServerSwapState => ({ swapId: active.swapId ?? "", state: "pending" })) as ServerSwapState;
+      const finalState = result.state === "completed" ? "completed"
+        : ["failed", "refunded", "expired"].includes(result.state) ? "failed"
+        : "pending";
       if (isMounted.current) {
         setSv(prev => ({
           ...prev,
@@ -282,20 +282,13 @@ export function useEvmSwapState(opts?: EvmSwapStateOpts): [EvmSwapStateValue, Ev
         }));
       }
 
-       // BTC→EVM: il browser non può decidere il completamento. Il loop di polling
-       // ripete la richiesta al journal backend, che verifica Li.FI direttamente.
-       if (isBtcChain(active.fromChainId) && finalState === "completed") {
-         finalState = "pending";
-       }
        if (finalState === "completed" || finalState === "failed") {
         localStorage.removeItem(EVM_SWAP_ACTIVE_KEY);
       }
 
-      // FIX 2: se lo swap BTC→EVM è ancora in corso (pending) dopo il reload,
-      // riavvia automaticamente il loop di polling ogni 30s.
-      // SICUREZZA: _runBtcPoll NON firma né invia BTC — solo polling Li.Fi.
-      // Il BTC è già stato inviato al vault Thorchain prima del reload.
-      if (finalState === "pending" && isBtcChain(active.fromChainId) && active.txHash) {
+       // Recovery server-side per tutti i rami Li.FI: il loop non firma e non
+       // invia nulla, chiede solo la riconciliazione del journal.
+       if (finalState === "pending" && active.txHash) {
         _runBtcPoll(active.txHash, active.fromChainId, active.toChainId);
       }
     };
@@ -580,77 +573,50 @@ export function useEvmSwapState(opts?: EvmSwapStateOpts): [EvmSwapStateValue, Ev
     const poll = async () => {
       if (!isMounted.current) return;
       try {
-        const st = await getLiFiStatus(txid, fromChainId, toChainId);
-        if (st.status === "DONE") {
-          // ── Direction guard + destination TX guard (FIX 1 + FIX 2) ────────
-          const validation = _validateBtcToEvmDone(st, toChainId, txid);
+        const rawActive = localStorage.getItem(EVM_SWAP_ACTIVE_KEY);
+        let active: EvmActiveSwap | null = null;
+        try { active = rawActive ? JSON.parse(rawActive) as EvmActiveSwap : null; } catch { /* retry */ }
+        if (!active?.routeId || active.txHash?.toLowerCase() !== txid.toLowerCase()) return;
 
-          console.info(
-            "[AlphaSwap BTC-poll] Li.Fi DONE",
-            "| swap BTC→chain:", toChainId,
-            "| receiving.chainId:", st.receivingChainId,
-            "| sending.chainId:",   st.sendingChainId,
-            "| lifi.txHash:", st.txHash ?? "(none)",
-            "|", validation.valid ? "✓ VALID" : `✗ NOT-READY (${validation.reason})`,
-          );
-
-          if (!validation.valid) {
-            // DONE non appartiene a questo swap OPPURE manca la destination TX EVM:
-            // NON completare, NON rimuovere EVM_SWAP_ACTIVE_KEY → continuare polling.
-            if (isMounted.current) setTimeout(poll, 30_000);
-            return;
-          }
-
-           // Il browser non chiude lo swap da solo: il server confronta il journal
-           // (txid BTC registrato) e interroga Li.FI prima di accettare completed.
-           const rawActive = localStorage.getItem(EVM_SWAP_ACTIVE_KEY);
-           let active: EvmActiveSwap | null = null;
-           try { active = rawActive ? JSON.parse(rawActive) as EvmActiveSwap : null; } catch { /* retry below */ }
-           if (!active?.routeId || active.txHash?.toLowerCase() !== txid.toLowerCase()) {
-             if (isMounted.current) setTimeout(poll, 30_000);
-             return;
-           }
-           try {
-             // Retry idempotente: copre un abort di rete subito dopo il broadcast.
-             // Senza questo record il server rifiuterà giustamente il completed.
-             await swapApi(`/${active.routeId}/btc-deposit`, {
-               method: "PATCH",
-               body: JSON.stringify({ btcDepositTxHash: txid }),
-             });
-             await swapApi(`/${active.routeId}`, {
-               method: "PATCH",
-               body: JSON.stringify({
-                 txHash:       st.txHash,
-                 toAmount:     st.toAmount,
-                 sourceTxHash: txid,
-                 state:        "completed",
-               }),
-             });
-           } catch (error) {
-             console.warn("[AlphaSwap BTC-poll] backend completion not verified yet", error);
-             if (isMounted.current) setTimeout(poll, 30_000);
-             return;
-           }
-
-           // DONE confermato dal journal server-side.
-          localStorage.removeItem(EVM_SWAP_ACTIVE_KEY);
-          if (isMounted.current) setSv(prev => ({
-            // FIX 1: st.txHash è receiving.txHash (EVM TX) — non la BTC input TX.
-            // _validateBtcToEvmDone garantisce st.txHash non-null a questo punto.
-            ...prev, phase: "completed", txHash: st.txHash!, error: null,
-          }));
-        } else if (st.status === "FAILED" || st.status === "INVALID") {
-          localStorage.removeItem(EVM_SWAP_ACTIVE_KEY);
-          // BTC già inviato al vault Thorchain — il bridge ha rifiutato lo swap.
-          // Thorchain rimborsa automaticamente il BTC all'indirizzo mittente (30-60 min).
-          // NON mostrare "Riprova" (eviterebbe un secondo invio BTC).
-          if (isMounted.current) setSv(prev => ({
-            ...prev, phase: "failed", error: { code: "BTC_BRIDGE_REFUND", message: "BTC_BRIDGE_REFUND" },
-          }));
-        } else {
-          // PENDING / NOT_FOUND — riprova tra 30s (Thorchain richiede 10-30 min)
+        // Idempotente: il journal accetta la stessa source TX ma mai una diversa.
+        await swapApi(`/${active.routeId}/source`, {
+          method: "PATCH",
+          body: JSON.stringify({ sourceTxHash: txid }),
+        });
+        const server = await swapApi(`/${active.routeId}/reconcile`, { method: "POST" }) as ServerSwapState;
+        const terminal = ["completed", "failed", "refunded", "expired"].includes(server.state);
+        if (!terminal) {
+          if (isMounted.current) setSv(prev => ({ ...prev, phase: "pending" }));
           if (isMounted.current) setTimeout(poll, 30_000);
+          return;
         }
+
+        localStorage.removeItem(EVM_SWAP_ACTIVE_KEY);
+        const sourceChain = isBtcChain(fromChainId) ? 0 : fromChainId;
+        const txId = isBtcChain(fromChainId) ? `btc:${txid}:out:` : `evm-swap:${fromChainId}:${txid}`;
+        const failed = server.state !== "completed";
+        void updateTxStatus(txId, failed ? "failed" : "confirmed");
+        void updateSwapLifecycle(txId, server.state, server.swapId);
+        void dispatchWalletNotification({
+          type: failed ? "failed" : "confirmed",
+          chainId: sourceChain,
+          network: chainName(sourceChain),
+          asset: active.fromToken.symbol,
+          amount: active.fromAmount,
+          txHash: txid,
+          status: failed ? "failed" : "confirmed",
+          txType: "swap",
+          swapToAsset: active.toToken.symbol,
+          swapId: server.swapId,
+          swapLifecycle: server.state,
+          timestamp: Date.now(),
+        });
+        if (isMounted.current) setSv(prev => ({
+          ...prev,
+          phase: failed ? "failed" : "completed",
+          txHash: server.destinationTxHash ?? txid,
+          error: failed ? { code: `LIFI_${server.state.toUpperCase()}`, message: `LIFI_${server.state.toUpperCase()}` } : null,
+        }));
       } catch {
         if (isMounted.current) setTimeout(poll, 30_000);
       }
@@ -746,7 +712,7 @@ export function useEvmSwapState(opts?: EvmSwapStateOpts): [EvmSwapStateValue, Ev
         // Il journal è obbligatorio prima della firma. Se il backend non è
         // disponibile, nessun PSBT viene firmato o inviato.
         const btcPsbtDigest = await sha256Hex(psbtHex);
-        await swapApi("/start", {
+        const started = await swapApi("/start", {
           method: "POST",
           body: JSON.stringify({
             routeId:           current.quote.routeId,
@@ -764,12 +730,12 @@ export function useEvmSwapState(opts?: EvmSwapStateOpts): [EvmSwapStateValue, Ev
             btcMemo:           memo,
             btcPsbtDigest,
           }),
-        });
+        }) as { swapId?: string };
         const storedBeforeSend = localStorage.getItem(EVM_SWAP_ACTIVE_KEY);
         if (storedBeforeSend) {
           try {
             const parsed = JSON.parse(storedBeforeSend) as EvmActiveSwap;
-            localStorage.setItem(EVM_SWAP_ACTIVE_KEY, JSON.stringify({ ...parsed, btcPsbtDigest }));
+            localStorage.setItem(EVM_SWAP_ACTIVE_KEY, JSON.stringify({ ...parsed, btcPsbtDigest, swapId: started.swapId }));
           } catch { /* journal remains authoritative */ }
         }
 
@@ -792,9 +758,9 @@ export function useEvmSwapState(opts?: EvmSwapStateOpts): [EvmSwapStateValue, Ev
         if (isMounted.current) setSv(prev => ({ ...prev, phase: "submitted", txHash: txid }));
         // Dopo un broadcast riuscito il failure qui è non-terminal: il deposito
         // potrebbe esistere già, quindi conserviamo recovery e proviamo nel loop.
-        await swapApi(`/${current.quote.routeId}/btc-deposit`, {
+        await swapApi(`/${current.quote.routeId}/source`, {
           method: "PATCH",
-          body: JSON.stringify({ btcDepositTxHash: txid }),
+          body: JSON.stringify({ sourceTxHash: txid }),
         }).catch(error => console.warn("[AlphaSwap BTC] journal deposit pending", error));
         _runBtcPoll(txid, capturedFromChainId, capturedToChainId);
 
@@ -814,8 +780,10 @@ export function useEvmSwapState(opts?: EvmSwapStateOpts): [EvmSwapStateValue, Ev
           txType:       "swap",
           swapToAsset:  toSymbol,
           swapToAmount: toAmtHuman,
+          swapId:       started.swapId,
           timestamp:    Date.now(),
           status:       "pending",
+          swapLifecycle: "pending",
           updatedAt:    Date.now(),
         }).catch(() => { /* best-effort */ });
 
@@ -871,7 +839,7 @@ export function useEvmSwapState(opts?: EvmSwapStateOpts): [EvmSwapStateValue, Ev
       };
       localStorage.setItem(EVM_SWAP_ACTIVE_KEY, JSON.stringify(activeSwap));
 
-      await swapApi("/start", {
+      const started = await swapApi("/start", {
         method: "POST",
         body: JSON.stringify({
           routeId:      current.quote.routeId,
@@ -888,7 +856,11 @@ export function useEvmSwapState(opts?: EvmSwapStateOpts): [EvmSwapStateValue, Ev
         }),
       }).catch((err: Error) => {
         console.warn("[EVM-swap tracking] /start failed:", err.message);
-      });
+        return {} as { swapId?: string };
+      }) as { swapId?: string };
+      if (started.swapId) {
+        localStorage.setItem(EVM_SWAP_ACTIVE_KEY, JSON.stringify({ ...activeSwap, swapId: started.swapId }));
+      }
 
       if (isMounted.current) setSv(prev => ({ ...prev, phase: "signing", error: null }));
 
@@ -972,36 +944,43 @@ export function useEvmSwapState(opts?: EvmSwapStateOpts): [EvmSwapStateValue, Ev
           txType:       "swap",
           swapToAsset:  toSym,
           swapToAmount: toAmtHuman,
+          swapId:       started.swapId,
           timestamp:    Date.now(),
-          status:       "confirmed",
+          status:       "pending",
+          swapLifecycle: "pending",
           updatedAt:    Date.now(),
         }).catch(() => { /* best-effort */ });
 
         dispatchWalletNotification({
-          type:        "sent",
+          type:        "pending",
           chainId:     cId,
           network:     netName,
           asset:       fromSym,
           amount:      amtHuman,
           txHash:      finalTxHash,
-          status:      "confirmed",
+          status:      "pending",
           txType:      "swap",
           swapToAsset: toSym,
+          swapId:      started.swapId,
+          swapLifecycle: "pending",
           timestamp:   Date.now(),
         }).catch(() => { /* best-effort */ });
       }
 
-      await swapApi(`/${current.quote.routeId}`, {
-        method: "PATCH",
-        body: JSON.stringify({ txHash: finalTxHash, state: "completed" }),
-      }).catch((err: Error) => {
-        console.warn("[EVM-swap tracking] PATCH completed failed:", err.message);
-      });
-
-      localStorage.removeItem(EVM_SWAP_ACTIVE_KEY);
+      // Il broadcast conferma solo la source TX. Il risultato del bridge viene
+      // deciso dal reconciler server-side dopo verifica del payout Li.FI.
+      if (finalTxHash) {
+        await swapApi(`/${current.quote.routeId}/source`, {
+          method: "PATCH",
+          body: JSON.stringify({ sourceTxHash: finalTxHash }),
+        }).catch((err: Error) => {
+          console.warn("[EVM-swap tracking] source journal pending:", err.message);
+        });
+        _runBtcPoll(finalTxHash, current.quote.fromChainId, current.quote.toChainId);
+      }
       sessionStorage.removeItem(EVM_SWAP_IKEY);
 
-      if (isMounted.current) setSv(prev => ({ ...prev, phase: "completed", txHash: finalTxHash, error: null }));
+      if (isMounted.current) setSv(prev => ({ ...prev, phase: "pending", txHash: finalTxHash, error: null }));
     } catch (err) {
       // Logga i dettagli tecnici — non mostrarli mai all'utente
       console.error("[AlphaSwap] execute error:", err);
@@ -1012,15 +991,6 @@ export function useEvmSwapState(opts?: EvmSwapStateOpts): [EvmSwapStateValue, Ev
       const isUserRejected = msg.includes("rejected") || msg.includes("denied") || msg.includes("refused") || msg.includes("USER_REJECTED");
       const isQuoteExpired  = msg === "QUOTE_EXPIRED";
       const isWalletLocked  = msg.startsWith("ALPHA_WALLET_LOCKED") || msg.startsWith("ALPHA_WALLET_NO_KEYSTORE");
-
-      if (current.quote) {
-        await swapApi(`/${current.quote.routeId}`, {
-          method: "PATCH",
-          body: JSON.stringify({ txHash: "", state: "failed", error: msg }),
-        }).catch((err: Error) => {
-          console.warn("[EVM-swap tracking] PATCH failed failed:", err.message);
-        });
-      }
 
       if (!isMounted.current) return;
 

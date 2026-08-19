@@ -7,7 +7,8 @@
  *
  * Routes:
  *   POST  /api/v1/swap/evm/start           — registra swap avviato (auth)
- *   PATCH /api/v1/swap/evm/:routeId        — aggiorna stato (auth)
+ *   PATCH /api/v1/swap/evm/:routeId/source — registra TX sorgente (auth)
+ *   POST  /api/v1/swap/evm/:routeId/reconcile — richiede verifica server-side (auth)
  *   GET   /api/v1/swap/evm/history         — storico utente (auth)
  *   GET   /api/v1/swap/evm/admin/all       — tutti gli swap (admin read_only)
  *   GET   /api/v1/swap/evm/admin/aggregate — aggregati fee per chain/token (admin read_only)
@@ -42,12 +43,8 @@ const StartSchema = z.object({
   btcPsbtDigest:     z.string().regex(/^[a-f0-9]{64}$/i).optional(),
 });
 
-const CompleteSchema = z.object({
-  txHash:   z.string(),           // può essere vuoto in caso di failure
-  toAmount: z.string().optional(),
-  state:    z.enum(["completed", "failed"]),
-  error:    z.string().optional(),
-  sourceTxHash: z.string().regex(/^[a-f0-9]{64}$/i).optional(),
+const SourceTransactionSchema = z.object({
+  sourceTxHash: z.string().regex(/^(?:0x)?[a-f0-9]{64}$/i),
 });
 const BtcDepositSchema = z.object({
   btcDepositTxHash: z.string().regex(/^[a-f0-9]{64}$/i),
@@ -82,7 +79,7 @@ router.post("/start", authenticate, async (req: Request, res: Response, next: Ne
     }
 
     const swap = await evmSwapService.startSwap({ userId, ...parsed.data });
-    res.status(201).json({ ok: true, routeId: swap.routeId, state: swap.state });
+    res.status(201).json({ ok: true, swapId: swap.swapId, routeId: swap.routeId, state: swap.state });
   } catch (err) {
     next(err);
   }
@@ -103,34 +100,70 @@ router.patch("/:routeId/btc-deposit", authenticate, async (req: Request, res: Re
   }
 });
 
+/**
+ * Accetta solo il fatto non-terminale che una TX sorgente è stata trasmessa.
+ * Non esiste nessun body client che possa dichiarare completed/failed/refunded.
+ */
+router.patch("/:routeId/source", authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const userId = (req as unknown as Record<string, Record<string, string>>).user?.id;
+    const routeId = String(req.params.routeId);
+    if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+    const parsed = SourceTransactionSchema.safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: "Dati non validi", details: parsed.error.issues }); return; }
+    const doc = await evmSwapService.recordSourceTransaction(routeId, userId, parsed.data.sourceTxHash);
+    if (!doc) { res.status(404).json({ error: "Swap non trovato" }); return; }
+    res.json({ ok: true, swapId: doc.swapId, routeId: doc.routeId, state: doc.state });
+  } catch (err) {
+    next(err);
+  }
+});
+
 router.patch("/:routeId", authenticate, async (req: Request, res: Response, next: NextFunction) => {
   try {
-    const userId  = (req as unknown as Record<string, Record<string, string>>).user?.id;
+    // Compatibilità fail-closed: un vecchio client può tentare questo endpoint,
+    // ma il server rifiuta qualunque terminal state proposto dal browser.
+    res.status(409).json({ error: "LIFI_CLIENT_TERMINAL_STATE_FORBIDDEN" });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post("/:routeId/reconcile", authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const userId = (req as unknown as Record<string, Record<string, string>>).user?.id;
     const routeId = String(req.params.routeId);
     if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
 
-    const parsed = CompleteSchema.safeParse(req.body);
-    if (!parsed.success) {
-      res.status(400).json({ error: "Dati non validi", details: parsed.error.issues });
-      return;
-    }
+    const result = await evmSwapService.reconcileSwap(routeId, userId);
+    if (!result) { res.status(404).json({ error: "Swap non trovato" }); return; }
+    const { swap, transitioned } = result;
 
-    const doc = await evmSwapService.completeSwap({ userId, routeId, ...parsed.data });
-    if (!doc) { res.status(404).json({ error: "Swap non trovato" }); return; }
-
-    // Push notification fire-and-forget per swap completato con successo
-    if (parsed.data.state === "completed") {
+    // L'evento viene emesso solo da una transizione verificata lato server.
+    if (transitioned && ["completed", "failed", "refunded", "expired"].includes(swap.state)) {
+      const lifecycle = swap.state as "completed" | "failed" | "refunded" | "expired";
       dispatchToOne(userId, {
-        type:           "swap.completed",
+        type:           "swap.lifecycle",
         recipientUserId: userId,
-        fromToken:      doc.fromToken,
-        toToken:        doc.toToken,
-        fromAmount:     doc.fromAmount,
-        toAmount:       doc.toAmount ?? "",
+        swapId:         swap.swapId,
+        lifecycle,
+        fromToken:      swap.fromToken,
+        toToken:        swap.toToken,
+        fromAmount:     swap.fromAmount,
+        toAmount:       swap.toAmount ?? "",
       });
     }
 
-    res.json({ ok: true, routeId: doc.routeId, state: doc.state, txHash: doc.txHash });
+    res.json({
+      ok: true,
+      swapId: swap.swapId,
+      routeId: swap.routeId,
+      state: swap.state,
+      providerStatus: swap.providerStatus,
+      sourceTxHash: swap.sourceTxHash,
+      destinationTxHash: swap.destinationTxHash,
+      toAmount: swap.toAmount,
+    });
   } catch (err) {
     next(err);
   }

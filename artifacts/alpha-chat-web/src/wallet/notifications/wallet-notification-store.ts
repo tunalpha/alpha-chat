@@ -46,6 +46,11 @@ export async function saveNotification(
   // Controlla deduplicazione
   const all: WalletNotification[] = await db.getAll(STORE_WALLET_NOTIFICATIONS);
   const isDuplicate = all.some(n => {
+    // Lifecycle swap: stesso journal + stesso evento è esattamente una notifica,
+    // anche dopo reload/poll duplicato o ricezione sia push sia in-app.
+    if (notification.swapId && n.swapId === notification.swapId && n.swapLifecycle === notification.swapLifecycle) {
+      return true;
+    }
     // Livello 1: dedupKey identico (stessa sorgente, stessa TX, stesso logIndex)
     if (n.dedupKey === notification.dedupKey) return true;
     // Livello 2: stessa TX + stesso tipo → dedup cross-sorgente.
@@ -147,7 +152,7 @@ export async function dispatchWalletNotification(
     id: generateNotificationId(),
     dedupKey: buildDedupKey(
       partial.chainId,
-      partial.txHash,
+      partial.swapId ? `swap:${partial.swapId}:${partial.swapLifecycle ?? partial.type}` : partial.txHash,
       partial.type,
       partial.logIndex
     ),

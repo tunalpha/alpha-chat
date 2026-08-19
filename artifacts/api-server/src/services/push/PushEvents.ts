@@ -45,4 +45,21 @@ export interface SwapCompletedEvent {
   toAmount: string;
 }
 
-export type PushEvent = MessageNewEvent | CallIncomingEvent | CallMissedEvent | SwapCompletedEvent;
+/** Evento terminale Li.FI emesso solo dal reconciler server-authoritative. */
+export interface SwapLifecycleEvent {
+  type: "swap.lifecycle";
+  recipientUserId: string;
+  swapId: string;
+  lifecycle: "completed" | "failed" | "refunded" | "expired";
+  fromToken: string;
+  toToken: string;
+  fromAmount: string;
+  toAmount: string;
+}
+
+export type PushEvent =
+  | MessageNewEvent
+  | CallIncomingEvent
+  | CallMissedEvent
+  | SwapCompletedEvent
+  | SwapLifecycleEvent;

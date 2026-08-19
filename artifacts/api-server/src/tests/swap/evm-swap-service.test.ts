@@ -155,30 +155,25 @@ describe("EVM Swap Service", () => {
     ).rejects.toThrow("fromAmount non può essere zero");
   });
 
-  // T5 — completeSwap aggiorna stato
-  it("T5 — completeSwap aggiorna a completed", async () => {
+  // T5 — solo il provider verificato può completare il journal
+  it("T5 — reconcileSwap aggiorna a completed dopo verifica provider", async () => {
     await evmSwapService.startSwap(BASE_START);
-    const doc = await evmSwapService.completeSwap({
-      userId:   "user-001",
-      routeId:  "route-abc-123",
-      txHash:   "0xdeadbeef",
-      toAmount: "4990000",
-      state:    "completed",
-    });
-    expect(doc?.state).toBe("completed");
-    expect(doc?.txHash).toBe("0xdeadbeef");
-    expect(doc?.completedAt).toBeDefined();
+    const source = `0x${"a".repeat(64)}`;
+    const destination = `0x${"b".repeat(64)}`;
+    await evmSwapService.recordSourceTransaction("route-abc-123", "user-001", source);
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ status: "DONE", sending: { chainId: 137, txHash: source }, receiving: { chainId: 137, txHash: destination } }),
+    }));
+    const result = await evmSwapService.reconcileSwap("route-abc-123", "user-001");
+    expect(result?.swap.state).toBe("completed");
+    expect(result?.swap.txHash).toBe(destination);
+    expect(result?.swap.completedAt).toBeDefined();
   });
 
-  // T6 — completeSwap ritorna null se routeId non esiste
-  it("T6 — completeSwap null per routeId inesistente", async () => {
-    const doc = await evmSwapService.completeSwap({
-      userId:  "user-001",
-      routeId: "route-non-esistente",
-      txHash:  "0xabc",
-      state:   "completed",
-    });
-    expect(doc).toBeNull();
+  // T6 — reconcileSwap ritorna null se routeId non esiste
+  it("T6 — reconcileSwap null per routeId inesistente", async () => {
+    expect(await evmSwapService.reconcileSwap("route-non-esistente", "user-001")).toBeNull();
   });
 
   it("T6a — journal BTC registra il deposito una sola volta", async () => {
@@ -199,10 +194,10 @@ describe("EVM Swap Service", () => {
     expect(recorded?.btcDepositTxHash).toBe(btcTxid);
     await expect(evmSwapService.recordBtcDeposit(doc.routeId, "user-001", btcTxid)).resolves.toBeDefined();
     await expect(evmSwapService.recordBtcDeposit(doc.routeId, "user-001", "c".repeat(64)))
-      .rejects.toThrow("LIFI_BTC_DEPOSIT_ALREADY_RECORDED");
+      .rejects.toThrow("LIFI_SOURCE_TX_ALREADY_RECORDED");
   });
 
-  it("T6b — completion BTC richiede il txid sorgente registrato e status Li.FI coerente", async () => {
+  it("T6b — source mismatch provider non può completare BTC→EVM", async () => {
     const sourceTxid = "a".repeat(64);
     const destinationTx = `0x${"b".repeat(64)}`;
     const doc = await evmSwapService.startSwap({
@@ -216,30 +211,21 @@ describe("EVM Swap Service", () => {
       btcPsbtDigest:     "c".repeat(64),
     });
     await evmSwapService.recordBtcDeposit(doc.routeId, "user-001", sourceTxid);
-    await expect(evmSwapService.completeSwap({
-      userId: "user-001", routeId: doc.routeId, txHash: destinationTx,
-      sourceTxHash: "d".repeat(64), state: "completed",
-    })).rejects.toThrow("LIFI_BTC_SOURCE_TX_MISMATCH");
-
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
       ok: true,
       json: async () => ({
         status: "DONE",
-        sending: { chainId: 20_000_000_000_001, txHash: sourceTxid },
+        sending: { chainId: 20_000_000_000_001, txHash: "d".repeat(64) },
         receiving: { chainId: 137, txHash: destinationTx },
       }),
     }));
-    const completed = await evmSwapService.completeSwap({
-      userId: "user-001", routeId: doc.routeId, txHash: destinationTx,
-      sourceTxHash: sourceTxid, state: "completed",
-    });
-    expect(completed?.state).toBe("completed");
-    expect(completed?.destinationTxHash).toBe(destinationTx);
+    const pending = await evmSwapService.reconcileSwap(doc.routeId, "user-001");
+    expect(pending?.swap.state).toBe("processing");
+    expect(pending?.swap.providerStatus).toBe("SOURCE_TX_MISMATCH");
   });
 
-  it("T6c — completion BTC rifiuta un payout Li.FI differente da quello proposto dal browser", async () => {
+  it("T6c — payout Li.FI mancante non può completare BTC→EVM", async () => {
     const sourceTxid = "e".repeat(64);
-    const providerDestination = `0x${"f".repeat(64)}`;
     const doc = await evmSwapService.startSwap({
       ...BASE_START, routeId: "route-lifi-btc-mismatch", fromChainId: 20_000_000_000_001,
       fromToken: "BTC", fromAddress: "bc1qsource", btcDepositAddress: "bc1qvault",
@@ -251,13 +237,29 @@ describe("EVM Swap Service", () => {
       json: async () => ({
         status: "DONE",
         sending: { chainId: 20_000_000_000_001, txHash: sourceTxid },
-        receiving: { chainId: 137, txHash: providerDestination },
+        receiving: { chainId: 137 },
       }),
     }));
-    await expect(evmSwapService.completeSwap({
-      userId: "user-001", routeId: doc.routeId, txHash: `0x${"0".repeat(64)}`,
-      sourceTxHash: sourceTxid, state: "completed",
-    })).rejects.toThrow("LIFI_BTC_DESTINATION_TX_MISMATCH");
+    const pending = await evmSwapService.reconcileSwap(doc.routeId, "user-001");
+    expect(pending?.swap.state).toBe("processing");
+    expect(pending?.swap.providerStatus).toBe("PAYOUT_TX_MISSING");
+  });
+
+  it.each([
+    ["FAILED", "failed"],
+    ["REFUNDED", "refunded"],
+    ["EXPIRED", "expired"],
+  ] as const)("T6d — status provider %s termina il journal come %s", async (providerStatus, expectedState) => {
+    const routeId = `route-terminal-${providerStatus}`;
+    await evmSwapService.startSwap({ ...BASE_START, routeId });
+    await evmSwapService.recordSourceTransaction(routeId, "user-001", `0x${"a".repeat(64)}`);
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ status: providerStatus }),
+    }));
+    const result = await evmSwapService.reconcileSwap(routeId, "user-001");
+    expect(result?.swap.state).toBe(expectedState);
+    expect(result?.swap.completedAt).toBeDefined();
   });
 
   // T7 — importHistorical inserisce record con fee calcolata correttamente

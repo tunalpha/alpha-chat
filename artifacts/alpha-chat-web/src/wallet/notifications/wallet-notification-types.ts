@@ -57,6 +57,9 @@ export interface WalletNotification {
   txType?:      "swap";
   /** Symbol del token di destinazione — compilato per txType==="swap" */
   swapToAsset?: string;
+  /** Correlazione e dedup del lifecycle dal journal swap server-side. */
+  swapId?: string;
+  swapLifecycle?: "pending" | "processing" | "completed" | "failed" | "refunded" | "expired";
 }
 
 /** Numero massimo di notifiche conservate in IDB */
@@ -103,6 +106,9 @@ export function notificationIcon(type: WalletNotificationType): string {
 export function notificationTitle(n: WalletNotification): string {
   if (n.txType === "swap") {
     const pair = n.swapToAsset ? `${n.asset} → ${n.swapToAsset}` : n.asset;
+    if (n.swapLifecycle === "processing") return `⇄ Alpha Wallet — Swap ${pair} in elaborazione`;
+    if (n.swapLifecycle === "refunded") return `↩️ Alpha Wallet — Swap ${pair} rimborsato`;
+    if (n.swapLifecycle === "expired") return `⌛ Alpha Wallet — Swap ${pair} scaduto`;
     if (n.status === "pending")   return `⇄ Alpha Wallet — Swap ${pair} in attesa`;
     if (n.status === "confirmed") return `⇄ Alpha Wallet — Swap ${pair} confermato`;
     if (n.status === "failed")    return `❌ Alpha Wallet — Swap ${pair} fallito`;
@@ -118,5 +124,16 @@ export function notificationTitle(n: WalletNotification): string {
 
 /** Corpo push notification */
 export function notificationBody(n: WalletNotification): string {
+  if (n.txType === "swap" && n.swapLifecycle) {
+    const labels = {
+      pending: "In attesa",
+      processing: "In elaborazione",
+      completed: "Completato",
+      failed: "Fallito",
+      refunded: "Rimborsato",
+      expired: "Scaduto",
+    };
+    return `${n.network} · ${labels[n.swapLifecycle]}`;
+  }
   return `${n.network} · ${n.status === "confirmed" ? "Confermato" : n.status === "pending" ? "In attesa" : "Fallito"}`;
 }
