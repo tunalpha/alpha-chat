@@ -605,8 +605,12 @@ export function ChangeNowEvmSwapView({
     }
   }, [fromBalance, state.fromToken, btcBalanceSat, actions]);
 
+  // Prima della creazione dell'ordine la direzione è sempre reversibile.
+  // In precedenza il tasto veniva disabilitato anche durante checking_pair /
+  // quoting: su mobile quelle richieste partono automaticamente e rendono la
+  // freccia apparentemente inattiva proprio mentre la schermata mostra ancora
+  // una stima. L'unico punto di non ritorno è l'exchange già creato.
   const canInvertDirection = !state.exchange
-    && ["idle", "ready", "pair_unavailable"].includes(state.uiState)
     && !!state.fromToken
     && !!state.toToken
     && state.fromToken.ticker !== state.toToken.ticker;

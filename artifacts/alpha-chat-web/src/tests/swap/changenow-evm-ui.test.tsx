@@ -8,6 +8,7 @@ import {
   CnTokenCard,
   CnTokenMenu,
   CnTokenSheet,
+  ChangeNowEvmSwapView,
 } from "../../swap/changenow/ChangeNowEvmSwapView.js";
 import { CN_EVM_TOKENS } from "../../swap/changenow/evm-types.js";
 
@@ -102,6 +103,47 @@ describe("ChangeNOW EVM swap — saldi e inversione UI", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Chiudi selettore token" }));
     expect(onClose).toHaveBeenCalledTimes(1);
+  });
+
+  it("apre le tendine e inverte la direzione dalla schermata ChangeNOW completa", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/swap/changenow/evm/pairs/")) {
+        return {
+          ok: true,
+          json: async () => ({ ok: true, available: true, minAmount: 1 }),
+        };
+      }
+      return {
+        ok: true,
+        json: async () => ({ result: "0x0" }),
+      };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <ChangeNowEvmSwapView
+        onBack={() => {}}
+        alphaWalletAddress={WALLET}
+      />,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Seleziona token Da" }));
+    expect(screen.getByRole("dialog", { name: "Seleziona token da inviare" })).toBeTruthy();
+    fireEvent.click(screen.getByRole("button", { name: "Chiudi selettore token" }));
+
+    fireEvent.click(screen.getByRole("button", { name: "Inverti token di partenza e arrivo" }));
+    expect(screen.getByRole("textbox", { name: "Importo Da USDC" })).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Seleziona token A" }));
+    expect(screen.getByRole("dialog", { name: "Seleziona token da ricevere" })).toBeTruthy();
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining("/swap/changenow/evm/pairs/usdcmatic/pol"),
+        expect.anything(),
+      );
+    });
   });
 
   it("mantiene importo e MAX interattivi dopo una inversione", () => {

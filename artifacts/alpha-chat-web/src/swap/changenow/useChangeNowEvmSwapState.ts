@@ -488,8 +488,10 @@ export function useChangeNowEvmSwapState(
     setState(prev => {
       // Dopo la creazione l'ordine e il suo indirizzo di deposito non sono reversibili.
       // Lasciamo intatti exchange, recovery locale e polling.
+      // L'exchange è il solo punto di non ritorno. Quote e controllo coppia
+      // sono invalidabili e devono quindi poter essere invertiti anche se una
+      // richiesta automatica è ancora in corso.
       const canInvert = !prev.exchange
-        && ["idle", "ready", "pair_unavailable"].includes(prev.uiState)
         && prev.fromToken
         && prev.toToken
         && prev.fromToken.ticker !== prev.toToken.ticker;
