@@ -1,0 +1,470 @@
+LI.FI — FINAL HARDENING / PARK DEFINITIVELY
+ISSUE RESOLUTION — NON TOCCARE CHANGE NOW
+
+OBIETTIVO
+
+Voglio chiudere definitivamente tutte le issue Li.FI emerse dagli audit precedenti.
+
+Li.FI deve rimanere PARCHEGGIATO e DISABILITATO.
+
+ChangeNOW è il provider PRIMARY e deve rimanere completamente operativo.
+
+È VIETATO modificare, indebolire, bloccare o alterare in qualsiasi modo:
+- ChangeNOW
+- BTC→EVM ChangeNOW
+- EVM→BTC ChangeNOW
+- EVM→EVM ChangeNOW
+- minimum amount ChangeNOW
+- fixed-rate ChangeNOW
+- USDC Ethereum / Polygon native / BSC
+- BTC signer ChangeNOW
+- payment engine
+- USDA
+- MultiChain
+- Spark
+- Lightning/Boltz
+- WalletConnect
+- fee architecture ChangeNOW
+- history/notification ChangeNOW
+
+NON fare deploy/publish.
+NON riattivare Li.FI.
+NON eseguire quote reali.
+NON creare ordini.
+NON firmare.
+NON broadcastare.
+NESSUNA transazione reale.
+
+==================================================
+FASE 1 — AUDIT COMPLETO PRIMA DEL FIX
+==================================================
+
+Mappa completamente tutti i rami Li.FI:
+
+1. BTC → EVM
+2. EVM → EVM
+3. EVM → BTC
+4. eventuali altri cross-chain Li.FI
+
+Per ciascuno ricostruisci:
+
+quote
+→ route/order
+→ journal
+→ firma
+→ broadcast
+→ source transaction
+→ provider status
+→ destination/payout transaction
+→ history
+→ notification
+→ recovery
+→ terminal state
+
+Individua ogni punto in cui il browser può influenzare:
+- status;
+- completed;
+- failed;
+- refund;
+- transaction hash;
+- payout hash;
+- history;
+- notification.
+
+NON fidarti del frontend per nessuno stato terminale.
+
+==================================================
+FASE 2 — BACKEND AUTHORITATIVE
+==================================================
+
+Il browser NON deve mai poter dichiarare autonomamente:
+
+completed
+failed
+refunded
+
+Per tutti i flussi Li.FI:
+
+- il backend deve conservare il journal/order;
+- il backend deve interrogare/verificare Li.FI;
+- il backend deve verificare la chain sorgente;
+- deve verificare la TX sorgente;
+- deve verificare la chain destinazione;
+- deve verificare la TX payout quando prevista;
+- deve verificare che source TX e payout appartengano allo stesso route/order;
+- deve verificare la direzione della route.
+
+Un PATCH dal browser che dichiara "completed" deve essere:
+- ignorato;
+- rifiutato;
+- oppure trattato esclusivamente come evento non autorevole.
+
+MAI deve trasformarsi direttamente in completed.
+
+==================================================
+FASE 3 — JOURNAL UNICO E CORRELAZIONE
+==================================================
+
+Creare/rafforzare un identificatore server-side unico per ogni swap Li.FI.
+
+Il journal deve conservare almeno:
+
+- internal swapId;
+- provider = "lifi";
+- routeId / orderId Li.FI;
+- source chain;
+- destination chain;
+- source asset;
+- destination asset;
+- source address;
+- destination address;
+- expected source amount;
+- expected destination amount quando disponibile;
+- source TX hash;
+- destination/payout TX hash;
+- BTC vault quando applicabile;
+- memo/payment reference quando applicabile;
+- current authoritative provider status;
+- timestamps;
+- terminal status.
+
+Tutti history e notification devono essere correlati a questo journal.
+
+NON usare solamente il TX hash come identificatore dello swap.
+
+==================================================
+FASE 4 — BTC → EVM
+==================================================
+
+Mantenere tutte le protezioni già implementate:
+
+- PSBT originale Li.FI;
+- memo OP_RETURN obbligatorio;
+- vault corretto;
+- importo corretto;
+- PSBT hash;
+- nessuna ricostruzione della TX;
+- txid write-once;
+- backend verification;
+- payout EVM verificato.
+
+Aggiungere/rafforzare:
+
+- history lifecycle;
+- notification lifecycle;
+- recovery server-side;
+- correlazione journal → source TX → payout TX.
+
+==================================================
+FASE 5 — EVM → EVM
+==================================================
+
+Correggere completamente il ramo attuale.
+
+Dopo il broadcast EVM:
+
+NON impostare immediatamente:
+- confirmed come swap completion;
+- completed;
+- notification completed.
+
+Lo stato deve rimanere pending/processing finché il backend non verifica Li.FI.
+
+Il backend deve interrogare Li.FI e verificare:
+
+- routeId/orderId;
+- source chain;
+- source TX;
+- destination chain;
+- destination token;
+- payout transaction;
+- stato terminale provider.
+
+Solo dopo verifica positiva:
+
+history → confirmed/completed
+notification → completed
+
+==================================================
+FASE 6 — EVM → BTC
+==================================================
+
+Stessa architettura.
+
+Dopo il broadcast EVM:
+
+NON dichiarare completed.
+
+Il backend deve verificare:
+
+- route/order Li.FI;
+- source TX EVM;
+- destination chain BTC;
+- BTC payout;
+- eventuale payout TX/hash disponibile;
+- stato terminale Li.FI.
+
+Solo dopo verifica completa:
+- history completed;
+- notification completed.
+
+Gestire anche:
+- failed;
+- refunded;
+- expired;
+- timeout;
+- provider error.
+
+==================================================
+FASE 7 — HISTORY
+==================================================
+
+History deve rappresentare il lifecycle reale.
+
+Non lasciare un record definitivamente "confirmed" solo perché è stata trasmessa la TX sorgente.
+
+Definire chiaramente:
+
+pending
+processing
+completed
+failed
+refunded
+expired
+
+Il record deve essere aggiornato dal backend.
+
+Source TX e payout TX devono essere conservati separatamente quando entrambi esistono.
+
+==================================================
+FASE 8 — NOTIFICHE
+==================================================
+
+Implementare notifiche Li.FI idempotenti per:
+
+- swap pending;
+- deposito/source transaction rilevata;
+- processing/confirming quando significativo;
+- completed;
+- failed;
+- refunded;
+- expired.
+
+Regole:
+
+- notification dedup key basata sul journal/swapId + eventType;
+- polling ripetuto NON deve duplicare notifiche;
+- reload browser NON deve duplicare notifiche;
+- retry NON deve duplicare notifiche;
+- una TX di un altro swap NON deve generare una notifica per questo swap.
+
+La notifica "completed" deve essere emessa SOLO dopo conferma backend-authoritative.
+
+==================================================
+FASE 9 — RECOVERY SERVER-SIDE
+==================================================
+
+Eliminare la dipendenza esclusiva da localStorage/browser.
+
+Creare o utilizzare un meccanismo server-side per recuperare swap Li.FI pending.
+
+Se il browser:
+- viene chiuso;
+- perde connessione;
+- perde localStorage;
+- rimane offline;
+- viene reinstallato;
+
+il backend deve comunque poter riconciliare lo swap.
+
+Implementare polling/reconciliation server-side solo se compatibile con l'architettura esistente.
+
+NON creare un sistema duplicato se esiste già un scheduler appropriato.
+
+==================================================
+FASE 10 — FAIL CLOSED
+==================================================
+
+Se Li.FI non risponde:
+
+→ NON completed.
+
+Se lo status è ambiguo:
+
+→ NON completed.
+
+Se manca source TX:
+
+→ NON completed.
+
+Se manca payout quando richiesto:
+
+→ NON completed.
+
+Se chain non coincide:
+
+→ NON completed.
+
+Se routeId/orderId non coincide:
+
+→ NON completed.
+
+Se hash non coincide:
+
+→ NON completed.
+
+Se il browser dichiara completed ma Li.FI non conferma:
+
+→ NON completed.
+
+==================================================
+FASE 11 — PARK DEFINITIVO
+==================================================
+
+Li.FI deve rimanere disabilitato.
+
+Il codice deve essere strutturato in modo che:
+
+- ChangeNOW rimanga PRIMARY;
+- Li.FI non venga chiamato dal normale flusso operativo;
+- nessun fallback automatico da ChangeNOW a Li.FI;
+- un errore ChangeNOW NON deve attivare automaticamente Li.FI;
+- riattivazione futura richieda esplicita configurazione/admin;
+- nessuna parte del fix Li.FI possa interferire con ChangeNOW.
+
+Verificare anche che il frontend mostri ChangeNOW quando è PRIMARY e non cada silenziosamente su Li.FI.
+
+==================================================
+FASE 12 — TEST OBBLIGATORI
+==================================================
+
+Aggiungere test per TUTTI questi casi:
+
+1. BTC→EVM completed verificato
+2. BTC→EVM memo missing
+3. BTC→EVM memo mismatch
+4. BTC→EVM vault mismatch
+5. BTC→EVM amount mismatch
+6. BTC→EVM duplicate TX
+7. EVM→EVM source TX pending
+8. EVM→EVM provider pending
+9. EVM→EVM payout missing
+10. EVM→EVM payout mismatch
+11. EVM→EVM wrong route
+12. EVM→EVM completed verificato
+13. EVM→BTC payout BTC missing
+14. EVM→BTC payout mismatch
+15. EVM→BTC completed verificato
+16. failed
+17. refunded
+18. expired
+19. provider unavailable
+20. browser lies "completed"
+21. duplicate polling
+22. duplicate notification
+23. reload recovery
+24. server recovery
+25. source TX belonging to another swap
+26. payout belonging to another swap
+27. ChangeNOW PRIMARY → Li.FI NEVER CALLED
+28. ChangeNOW error → NO automatic Li.FI fallback
+
+==================================================
+FASE 13 — REGRESSION
+==================================================
+
+Eseguire separatamente:
+
+CHANGE NOW:
+- BTC→EVM
+- EVM→BTC
+- EVM→EVM
+- minimum amount
+- fixed rate
+- USDC ETH
+- USDC Polygon native
+- USDC BSC
+- history
+- notifications
+
+LI.FI:
+- tutti i test sopra.
+
+PAYMENTS:
+- payment engine
+- USDA
+- MultiChain
+- Spark
+- Lightning/Boltz
+- WalletConnect
+
+Verificare con diff che nessun file protetto sia stato modificato accidentalmente.
+
+==================================================
+FASE 14 — BUILD / TYPECHECK
+==================================================
+
+Eseguire:
+
+- frontend tests;
+- backend tests;
+- Li.FI tests;
+- ChangeNOW regression;
+- payment regression;
+- typecheck;
+- frontend production build;
+- backend production build.
+
+NON nascondere errori.
+NON aumentare timeout arbitrariamente.
+NON saltare test esistenti.
+NON usare skip per rendere verde la suite.
+
+Se esistono failure PRE-ESISTENTI, separarli chiaramente dai failure introdotti.
+
+==================================================
+FASE 15 — REPORT FINALE
+==================================================
+
+Non fare deploy.
+
+Report obbligatorio:
+
+A. root cause trovate;
+B. file modificati;
+C. architettura finale Li.FI;
+D. BTC→EVM status;
+E. EVM→EVM status;
+F. EVM→BTC status;
+G. history;
+H. notifications;
+I. idempotenza;
+J. recovery;
+K. backend authority;
+L. fail-closed;
+M. ChangeNOW regression;
+N. payment regression;
+O. test PASS/FAIL/SKIP con numeri reali;
+P. typecheck;
+Q. frontend build;
+R. backend build;
+S. conferma che Li.FI resta DISABLED;
+T. conferma che ChangeNOW resta PRIMARY;
+U. conferma che NON è stata eseguita alcuna transazione reale;
+V. conferma che NON è stato effettuato alcun deploy.
+
+CONDIZIONE DI SUCCESSO:
+
+Li.FI deve essere considerato "PARKED / PRODUCTION-SAFE FOR FUTURE REACTIVATION" solo se:
+
+- nessun completed può essere deciso dal browser;
+- source e payout sono correlati server-side;
+- history è coerente;
+- notifications sono idempotenti;
+- recovery è server-side;
+- failed/refunded/expired sono gestiti;
+- ChangeNOW non è stato alterato;
+- nessun fallback automatico Li.FI esiste;
+- test critici verdi.
+
+Se una di queste condizioni non può essere soddisfatta, NON dichiarare il lavoro completato: indica esattamente cosa manca.
