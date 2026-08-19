@@ -48,6 +48,30 @@ export default function HowItWorksPage({ onBack, onOpenWallet }: Props) {
 
   return (
     <div className="settings-root hiw-root hiw2-root">
+      <style>{`
+        .settings-root.hiw2-root { width: 100%; min-width: 0; }
+        .settings-body.hiw2-body {
+          display: block !important;
+          align-self: stretch;
+          flex: 1 1 auto;
+          min-height: 0;
+          width: 100%;
+          box-sizing: border-box;
+          padding-bottom: calc(36px + var(--sab)) !important;
+          overflow-x: hidden;
+          overflow-y: auto !important;
+          -webkit-overflow-scrolling: touch;
+          overscroll-behavior-y: contain;
+          touch-action: pan-y;
+        }
+        .hiw2-body > .hiw2-hero,
+        .hiw2-body > .hiw2-section,
+        .hiw2-body > .hiw2-footer {
+          width: 100%;
+          margin-left: auto;
+          margin-right: auto;
+        }
+      `}</style>
       <header className="settings-header hiw2-header">
         <button className="settings-back-btn" onClick={onBack} aria-label="Indietro">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" width="20" height="20" aria-hidden="true">
