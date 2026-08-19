@@ -29,7 +29,7 @@ import React, {
 import { createPortal } from "react-dom";
 import {
   ChevronDown, Check, Loader2, CheckCircle,
-  AlertTriangle, ArrowRight, ArrowDownUp, Info, X,
+  AlertTriangle, ArrowRight, ArrowDownUp, Copy, Info, X,
 } from "lucide-react";
 import {
   useChangeNowEvmSwapState,
@@ -551,6 +551,58 @@ export function CnQuoteDetails({
   );
 }
 
+/**
+ * Valore tecnico cliccabile senza cambiare l'altezza della riga di riepilogo.
+ * Il testo mostrato può essere abbreviato, ma negli appunti va sempre il valore
+ * completo (in particolare per l'hash di deposito).
+ */
+export function CnCopyValue({
+  label,
+  value,
+  displayValue = value,
+  style,
+}: {
+  label: string;
+  value: string;
+  displayValue?: string;
+  style?: React.CSSProperties;
+}) {
+  const [copied, setCopied] = useState(false);
+  const feedbackTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => () => {
+    if (feedbackTimerRef.current) clearTimeout(feedbackTimerRef.current);
+  }, []);
+
+  const handleCopy = useCallback(() => {
+    if (!navigator.clipboard?.writeText) return;
+
+    void navigator.clipboard.writeText(value)
+      .then(() => {
+        setCopied(true);
+        if (feedbackTimerRef.current) clearTimeout(feedbackTimerRef.current);
+        feedbackTimerRef.current = setTimeout(() => setCopied(false), 1600);
+      })
+      .catch(() => null);
+  }, [value]);
+
+  return (
+    <button
+      type="button"
+      className="asw-info-value asw-copy-value"
+      style={style}
+      onClick={handleCopy}
+      aria-label={copied ? `${label} copiato` : `Copia ${label}`}
+      title={copied ? `${label} copiato` : `Copia ${label}`}
+    >
+      <span className="asw-copy-value__text">{displayValue}</span>
+      {copied
+        ? <Check size={12} aria-hidden="true" className="asw-copy-value__icon" />
+        : <Copy size={12} aria-hidden="true" className="asw-copy-value__icon" />}
+    </button>
+  );
+}
+
 // ── Props ─────────────────────────────────────────────────────────────────────
 
 interface ChangeNowEvmSwapViewProps {
@@ -903,16 +955,21 @@ export function ChangeNowEvmSwapView({
             </div>
             <div className="asw-info-row">
               <span className="asw-info-label">Exchange ID</span>
-              <span className="asw-info-value" style={{ fontSize: 11, wordBreak: "break-all" }}>
-                {state.exchange.exchangeId}
-              </span>
+              <CnCopyValue
+                label="Exchange ID"
+                value={state.exchange.exchangeId}
+                style={{ fontSize: 11 }}
+              />
             </div>
             {state.status?.depositTxHash && (
               <div className="asw-info-row">
                 <span className="asw-info-label">TX deposito</span>
-                <span className="asw-info-value" style={{ fontSize: 11, wordBreak: "break-all" }}>
-                  {state.status.depositTxHash.slice(0, 18)}…
-                </span>
+                <CnCopyValue
+                  label="TX deposito"
+                  value={state.status.depositTxHash}
+                  displayValue={`${state.status.depositTxHash.slice(0, 18)}…`}
+                  style={{ fontSize: 11 }}
+                />
               </div>
             )}
           </div>

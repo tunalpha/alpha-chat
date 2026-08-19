@@ -2698,6 +2698,33 @@
 .asw-info-value--accent { color: var(--accent, #6366f1); font-weight: 600; }
 .asw-info-value--fee { color: #fbbf24; font-weight: 600; }
 .asw-info-value--green { color: #4ade80; font-weight: 600; }
+.asw-copy-value {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 4px;
+  min-width: 0;
+  max-width: 65%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  font-family: inherit;
+  line-height: inherit;
+  text-align: right;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+.asw-copy-value:active { opacity: .68; }
+.asw-copy-value__text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.asw-copy-value__icon {
+  flex: 0 0 12px;
+  color: #a78bfa;
+}
 .asw-info-sep { border: none; border-top: 1px solid rgba(255,255,255,.07); margin: 4px 0; }
 .asw-info-row--total { padding-top: 8px; }
 

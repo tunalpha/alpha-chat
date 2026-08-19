@@ -5,6 +5,7 @@ import { useEvmTokenBalances } from "../../swap/evm/useEvmTokenBalances.js";
 import { NATIVE_ADDRESS, type EvmToken } from "../../swap/evm/types.js";
 import {
   CnAwaitingConfirmation,
+  CnCopyValue,
   CnTokenCard,
   CnTokenMenu,
   CnTokenSheet,
@@ -359,5 +360,32 @@ describe("ChangeNOW EVM swap — saldi e inversione UI", () => {
     expect(screen.getByText("160.97 POL")).toBeTruthy();
     expect(screen.queryByText(/ChangeNOW/i)).toBeNull();
     expect(screen.queryByText(/0x[a-f0-9]{8}/i)).toBeNull();
+  });
+
+  it("copia l'Exchange ID e l'hash completo della TX deposito senza mostrare l'hash intero", async () => {
+    const writeText = vi.fn().mockResolvedValue(undefined);
+    vi.stubGlobal("navigator", { clipboard: { writeText } });
+    const depositTxHash = "0x73b90fd29dd6b4ce12a34228a703f94e61f123456789abcdef0123456789abcd";
+
+    render(
+      <>
+        <CnCopyValue label="Exchange ID" value="0039a7aaa4c720" />
+        <CnCopyValue
+          label="TX deposito"
+          value={depositTxHash}
+          displayValue={`${depositTxHash.slice(0, 18)}…`}
+        />
+      </>,
+    );
+
+    fireEvent.click(screen.getByRole("button", { name: "Copia Exchange ID" }));
+    fireEvent.click(screen.getByRole("button", { name: "Copia TX deposito" }));
+
+    await waitFor(() => {
+      expect(writeText).toHaveBeenNthCalledWith(1, "0039a7aaa4c720");
+      expect(writeText).toHaveBeenNthCalledWith(2, depositTxHash);
+    });
+    expect(screen.getByText(`${depositTxHash.slice(0, 18)}…`)).toBeTruthy();
+    expect(screen.queryByText(depositTxHash)).toBeNull();
   });
 });
