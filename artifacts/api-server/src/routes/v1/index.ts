@@ -14,6 +14,7 @@ import securityTimelineRoutes from "./security-timeline.routes";
 import recoveryDashboardRoutes from "./recovery-dashboard.routes";
 import trustCenterRoutes from "./trust-center.routes";
 import groupRoutes from "./group.routes";
+import feedbackRoutes from "./feedback.routes";
 
 /**
  * /api/v1/ — mounts all versioned sub-routers.
@@ -43,6 +44,9 @@ v1Router.use("/trust-center", trustCenterRoutes);
 
 // Gruppi E2E — Sprint 21
 v1Router.use("/groups", groupRoutes);
+
+// Segnalazioni utenti — canale e-mail isolato da pagamenti e swap
+v1Router.use("/feedback", feedbackRoutes);
 
 // Chiamate — Sprint 25
 import callsRoutes from "./calls.routes";

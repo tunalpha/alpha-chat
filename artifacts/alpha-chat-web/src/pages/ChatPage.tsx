@@ -785,6 +785,17 @@ function SidebarMenu({
         </svg>
       ),
     },
+    // 11 — contatto strutturato con l'assistenza, isolato da transazioni e swap
+    {
+      label: "Segnala un problema",
+      view: "feedback",
+      icon: (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16" aria-hidden="true">
+          <path d="M21 15a4 4 0 0 1-4 4H8l-5 3V7a4 4 0 0 1 4-4h10a4 4 0 0 1 4 4Z" />
+          <path d="M12 7v5m0 3h.01" />
+        </svg>
+      ),
+    },
   ];
 
   return (

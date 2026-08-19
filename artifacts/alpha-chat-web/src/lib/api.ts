@@ -1737,6 +1737,26 @@ export async function apiDestroyAccountDirect(): Promise<{ success: boolean }> {
   return request<{ success: boolean }>("POST", "/phoenix/destroy-direct");
 }
 
+// ── Segnalazioni utenti ─────────────────────────────────────────────────────
+
+export type UserFeedbackCategory = "problem" | "transaction" | "suggestion" | "general";
+
+export interface SubmitUserFeedbackInput {
+  category: UserFeedbackCategory;
+  message: string;
+  transactionReference?: string;
+  replyTo?: string;
+}
+
+export async function apiSubmitUserFeedback(input: SubmitUserFeedbackInput): Promise<void> {
+  await request<{ success: boolean }>("POST", "/feedback", {
+    category: input.category,
+    message: input.message,
+    ...(input.transactionReference ? { transaction_reference: input.transactionReference } : {}),
+    ...(input.replyTo ? { reply_to: input.replyTo } : {}),
+  });
+}
+
 // ── App Feature Flags ─────────────────────────────────────────────────────────
 
 export interface AppFeatureFlags {

@@ -211,10 +211,88 @@ export interface GenericEmailParams {
   to: string;
   subject: string;
   html: string;
+  /** Indirizzo opzionale per rispondere al contatto, mai usato come SMTP from. */
+  replyTo?: string;
 }
 
 export async function sendEmail(params: GenericEmailParams): Promise<void> {
   await _send(params);
+}
+
+// ---------------------------------------------------------------------------
+// User feedback reports
+// ---------------------------------------------------------------------------
+
+export type UserFeedbackCategory = "problem" | "transaction" | "suggestion" | "general";
+
+export interface UserFeedbackEmailParams {
+  userId: string;
+  category: UserFeedbackCategory;
+  message: string;
+  transactionReference?: string;
+  replyTo?: string;
+}
+
+function escapeEmailHtml(value: string): string {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}
+
+/**
+ * Invia una segnalazione utente all'amministratore configurato.
+ * L'eventuale email dell'utente è solo Reply-To: il mittente SMTP resta
+ * sempre quello configurato dal server.
+ */
+export async function sendUserFeedbackEmail(params: UserFeedbackEmailParams): Promise<void> {
+  const categoryLabel: Record<UserFeedbackCategory, string> = {
+    problem: "Segnalazione problema",
+    transaction: "Problema transazione",
+    suggestion: "Suggerimento / miglioria",
+    general: "Informazioni generali",
+  };
+
+  const label = categoryLabel[params.category];
+  const rows = [
+    ["Categoria", label],
+    ["Utente autenticato", params.userId],
+    ...(params.transactionReference ? [["Exchange ID / hash", params.transactionReference]] : []),
+    ...(params.replyTo ? [["E-mail per rispondere", params.replyTo]] : []),
+  ]
+    .map(([name, value]) => `
+      <tr>
+        <td style="color:#a78bfa;padding:6px 16px 6px 0;font-weight:600;white-space:nowrap;">${escapeEmailHtml(name)}</td>
+        <td style="color:#e6edf3;word-break:break-word;">${escapeEmailHtml(value)}</td>
+      </tr>`)
+    .join("");
+
+  const body = `
+    <div style="background:#0d0d1a;border:1px solid #2d1b69;border-radius:12px;padding:24px;">
+      <h2 style="margin:0 0 8px;font-size:20px;color:#fff;">📩 Alpha Chat — Nuova segnalazione</h2>
+      <p style="color:#bbb;font-size:14px;margin:0 0 20px;">Un utente ha inviato una richiesta dal modulo di assistenza.</p>
+      <table style="border-collapse:collapse;width:100%;font-size:14px;margin-bottom:20px;">
+        ${rows}
+        <tr>
+          <td style="color:#a78bfa;padding:6px 16px 6px 0;font-weight:600;vertical-align:top;">Messaggio</td>
+          <td style="color:#e6edf3;line-height:1.6;word-break:break-word;">${escapeEmailHtml(params.message).replace(/\n/g, "<br>")}</td>
+        </tr>
+      </table>
+      <div style="background:#111;border-radius:8px;padding:12px;">
+        <p style="color:#6b7280;font-size:11px;margin:0;">Ricevuta: ${new Date().toUTCString()} · Alpha Chat</p>
+      </div>
+    </div>`;
+
+  const html = wrapEmailHtml({ lang: "it", title: `Alpha Chat — ${label}`, body });
+  await _send({
+    to: ADMIN_EMAIL(),
+    subject: `📩 ${label}`,
+    html,
+    replyTo: params.replyTo,
+  });
+  logger.info({ userId: params.userId, category: params.category }, "User feedback email sent");
 }
 
 // ---------------------------------------------------------------------------
@@ -656,14 +734,14 @@ export async function sendInvestorContactMessage(params: InvestorContactMessageP
 // Core send
 // ---------------------------------------------------------------------------
 
-async function _send(params: { to: string; subject: string; html: string; text?: string }): Promise<void> {
+async function _send(params: { to: string; subject: string; html: string; text?: string; replyTo?: string }): Promise<void> {
   // Guard globale: mai spedire email reali durante i test automatizzati
   if (process.env["NODE_ENV"] === "test") {
     logger.debug({ to: params.to, subject: params.subject }, "[Email] skipped in test environment");
     return;
   }
 
-  const { to, subject, html, text } = params;
+  const { to, subject, html, text, replyTo } = params;
   const transport = createTransport();
 
   if (!transport) {
@@ -675,6 +753,6 @@ async function _send(params: { to: string; subject: string; html: string; text?:
     return;
   }
 
-  await transport.sendMail({ from: FROM, to, subject, html, text });
+  await transport.sendMail({ from: FROM, to, subject, html, text, replyTo });
   logger.info({ to, subject }, "Email sent");
 }

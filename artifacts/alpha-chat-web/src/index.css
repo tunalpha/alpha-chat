@@ -76,6 +76,50 @@ html, body, #root {
 button { font: inherit; cursor: pointer; border: none; background: none; color: inherit; outline: none; }
 button:focus-visible { outline: 2px solid var(--brand-3); outline-offset: 2px; }
 input, textarea { font: inherit; color: inherit; background: none; border: none; outline: none; }
+
+/* ── Segnalazioni utenti ─────────────────────────────────────────────────── */
+.feedback-root { background: radial-gradient(circle at top right, rgba(124, 58, 237, 0.12), transparent 38%), var(--bg-0); }
+.feedback-body { max-width: 680px; padding-bottom: 44px; }
+.feedback-intro {
+  display: flex; gap: 14px; align-items: flex-start; padding: 18px;
+  border: 1px solid var(--border-1); border-radius: 16px;
+  background: linear-gradient(135deg, rgba(124, 58, 237, 0.15), rgba(124, 58, 237, 0.03));
+  margin-bottom: 18px;
+}
+.feedback-intro-icon {
+  flex: 0 0 auto; width: 42px; height: 42px; display: grid; place-items: center;
+  color: #c4b5fd; background: rgba(124, 58, 237, 0.22); border-radius: 13px;
+}
+.feedback-intro h2 { margin: 0 0 5px; color: var(--text-1); font-size: 17px; }
+.feedback-intro p { margin: 0; color: var(--text-2); font-size: 13px; line-height: 1.5; }
+.feedback-form { display: grid; gap: 17px; }
+.feedback-field { display: grid; gap: 7px; color: var(--text-1); font-size: 14px; font-weight: 600; }
+.feedback-field > span em { color: var(--text-3); font-size: 12px; font-style: normal; font-weight: 500; }
+.feedback-field input,
+.feedback-field textarea,
+.feedback-field select {
+  width: 100%; box-sizing: border-box; border: 1px solid var(--border-1); border-radius: 11px;
+  background: var(--bg-1); color: var(--text-1); padding: 12px 13px; font: inherit; font-weight: 400;
+}
+.feedback-field textarea { min-height: 130px; resize: vertical; line-height: 1.45; }
+.feedback-field select { appearance: auto; cursor: pointer; }
+.feedback-field input:focus,
+.feedback-field textarea:focus,
+.feedback-field select:focus { border-color: var(--brand-3); box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.14); }
+.feedback-field small { color: var(--text-3); font-size: 12px; font-weight: 400; line-height: 1.35; }
+.feedback-alert { border-radius: 10px; padding: 11px 13px; font-size: 13px; line-height: 1.4; }
+.feedback-alert--error { background: rgba(239, 68, 68, 0.12); border: 1px solid rgba(239, 68, 68, 0.35); color: #fca5a5; }
+.feedback-alert--success { background: rgba(34, 197, 94, 0.11); border: 1px solid rgba(34, 197, 94, 0.32); color: #86efac; }
+.feedback-submit {
+  min-height: 48px; border: 0; border-radius: 12px; color: #fff; background: var(--brand-3);
+  font: inherit; font-weight: 700; cursor: pointer; transition: filter .18s ease, transform .18s ease;
+}
+.feedback-submit:hover:not(:disabled) { filter: brightness(1.1); transform: translateY(-1px); }
+.feedback-submit:disabled { cursor: wait; opacity: .7; }
+@media (max-width: 480px) {
+  .feedback-intro { padding: 15px; }
+  .feedback-intro-icon { width: 38px; height: 38px; }
+}
 a { color: inherit; text-decoration: none; }
 * { -webkit-tap-highlight-color: transparent; }
 /* Min 44px touch targets on mobile */
