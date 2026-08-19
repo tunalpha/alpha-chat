@@ -49,13 +49,26 @@ export default function HowItWorksPage({ onBack, onOpenWallet }: Props) {
   return (
     <div className="settings-root hiw-root hiw2-root">
       <style>{`
-        .settings-root.hiw2-root { width: 100%; min-width: 0; }
+         /*
+          * Il page shell può essere compresso dal contenitore della view
+          * mobile mentre l'header resta viewport-wide. In quel caso le card
+          * risultano centrate su una colonna più stretta e appaiono spostate
+          * a sinistra. Questa pagina deve occupare esattamente il viewport.
+          */
+         .settings-root.hiw2-root {
+           width: 100vw;
+           min-width: 100vw;
+           max-width: 100vw;
+           align-self: flex-start;
+           box-sizing: border-box;
+         }
         .settings-body.hiw2-body {
           display: block !important;
           align-self: stretch;
           flex: 1 1 auto;
           min-height: 0;
-          width: 100%;
+           width: 100vw;
+           max-width: 100vw;
           box-sizing: border-box;
           padding-bottom: calc(36px + var(--sab)) !important;
           overflow-x: hidden;

@@ -1,0 +1,99 @@
+AUDIT NOTIFICHE LI.FI — SOLO ANALISI E TEST
+
+NON FARE DEPLOY.
+NON RIATTIVARE LI.FI.
+NON ESEGUIRE TRANSAZIONI REALI.
+NON MODIFICARE CODICE FINCHÉ NON HAI COMPLETATO L'AUDIT.
+
+Voglio verificare se TUTTI i flussi Li.FI sono correttamente coperti da history e notifiche.
+
+Analizza separatamente:
+
+1. BTC → EVM
+2. EVM → EVM
+3. EVM → BTC
+4. eventuali altri cross-chain Li.FI supportati dall'app
+
+Per ogni flusso mappa:
+
+quote
+→ journal/order
+→ firma
+→ broadcast
+→ deposito rilevato
+→ confirming
+→ exchanging/processing
+→ payout
+→ completed
+→ failed
+→ refunded
+
+Per ogni stato verifica:
+
+- quale componente lo determina;
+- backend o frontend;
+- quale WalletTxRecord viene scritto/aggiornato;
+- quale notifica viene generata;
+- notification type;
+- titolo/body;
+- TX hash utilizzato;
+- dedupKey/idempotenza;
+- cosa succede durante polling ripetuto;
+- cosa succede dopo reload/recovery;
+- cosa succede se la rete cade;
+- cosa succede se il provider cambia stato.
+
+VERIFICA CRITICA:
+
+Il frontend NON deve poter generare autonomamente una notifica "completed" se il backend/provider non ha confermato il completamento.
+
+Controlla inoltre che:
+
+- una stessa transazione non produca notifiche duplicate;
+- una TX di un altro swap non venga associata;
+- failed/refunded non vengano mostrati come completed;
+- il payout EVM venga verificato prima della notifica "ricevuto";
+- BTC deposit e payout siano associati allo swap corretto;
+- history e notifications usino lo stesso swap/order correlation ID.
+
+IMPORTANTE:
+Confronta il comportamento Li.FI con il sistema notifiche già utilizzato da ChangeNOW, ma NON modificare ChangeNOW.
+
+NON modificare:
+- ChangeNOW
+- payment engine
+- USDA
+- MultiChain
+- Spark
+- Lightning/Boltz
+- WalletConnect
+
+Se trovi una copertura mancante:
+NON correggerla subito.
+Prima indicami:
+1. file;
+2. funzione;
+3. flusso interessato;
+4. stato interessato;
+5. cosa succede oggi;
+6. quale comportamento dovrebbe esserci;
+7. rischio.
+
+Poi esegui test mirati per verificare la situazione attuale.
+
+REPORT FINALE:
+
+BTC → EVM: PASS/FAIL
+EVM → EVM: PASS/FAIL
+EVM → BTC: PASS/FAIL
+Cross-chain: PASS/FAIL
+History: PASS/FAIL
+Notifications: PASS/FAIL
+Idempotenza: PASS/FAIL
+Recovery: PASS/FAIL
+Backend authority: PASS/FAIL
+
+Indica anche esattamente quali notifiche vengono generate per ogni stato.
+
+NESSUN DEPLOY.
+NESSUNA MODIFICA FUNZIONALE SENZA MIA APPROVAZIONE.
