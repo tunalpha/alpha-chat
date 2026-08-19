@@ -234,6 +234,25 @@ describe("ChangeNOW EVM swap — saldi e inversione UI", () => {
     expect(onPct).toHaveBeenCalledWith(100);
   });
 
+  it("spiega che il minimo fixed-rate è l'importo del token da inviare", () => {
+    const token = CN_EVM_TOKENS.find((item) => item.ticker === "pol")!;
+
+    render(
+      <CnTokenCard
+        label="Da"
+        token={token}
+        amount="100"
+        onAmountChange={() => {}}
+        onTokenClick={() => {}}
+        minAmount={84.036123}
+      />,
+    );
+
+    expect(screen.getByText("Minimo da inviare per tasso fisso")).toBeTruthy();
+    expect(screen.getByText("84.036123 POL")).toBeTruthy();
+    expect(screen.queryByText("Minimo tasso garantito")).toBeNull();
+  });
+
   it("dopo l'inversione collega ancora la card al nuovo token e all'importo", () => {
     function InversionHarness() {
       const [state, actions] = useChangeNowEvmSwapState(WALLET, null);
@@ -314,7 +333,9 @@ describe("ChangeNOW EVM swap — saldi e inversione UI", () => {
     expect(screen.getByText("13.5 USDT")).toBeTruthy();
     expect(screen.getByText("160.871944 POL")).toBeTruthy();
     expect(screen.getByText("1 USDT ≈ 11.91644 POL")).toBeTruthy();
+    expect(screen.getByText("Minimo da inviare (tasso fisso)")).toBeTruthy();
     expect(screen.getByText("7 USDT")).toBeTruthy();
+    expect(screen.queryByText("Minimo tasso garantito")).toBeNull();
     expect(screen.getByText("Nessuna")).toBeTruthy();
 
     fireEvent.click(screen.getByRole("button", { name: "Dettagli quotazione" }));

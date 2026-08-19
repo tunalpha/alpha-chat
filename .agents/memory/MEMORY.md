@@ -101,6 +101,7 @@
 - [ChangeNOW FASE 1 — BTC↔EVM](changenow-fase1.md) — invarianti btcTxHash≠destTx; fundsCommitted write-before-submit; API key server-only; Li.Fi files invariati; 28 test PASS
 - [ChangeNOW EVM — Fixed-Rate Requirement](changenow-evm-fixed-rate.md) — EVM→EVM richiede fixed-rate; floating-rate (/v1/transactions) → 404; cnGetFixedRateAmount+cnCreateFixedRateTransaction obbligatori
 - [ChangeNOW fixed-rate create response](changenow-fixed-rate-create-response.md) — la risposta create può omettere gli importi; persistere input + quote bloccata per evitare 500 dopo l’ordine
+- [ChangeNOW fixed-rate minimum UI](changenow-fixed-rate-minimum-ui.md) — minAmount è soglia del token inviato: etichettarlo esplicitamente, mai come minimo ricevuto
 - [ChangeNOW token balance sources](changenow-token-balances.md) — il catalogo ChangeNOW può usare contratti diversi da Li.Fi; interrogare il contratto del token selezionato
 - [Swap token picker on iOS](swap-token-picker-ios.md) — nei flussi swap usare bottom sheet fixed, non menu assoluti dentro card scrollabili
 - [ChangeNOW Fee Architecture](changenow-fee-architecture.md) — NESSUNA fee Alpha su flussi CN; 0,40% Partner share da ChangeNOW direttamente; FEE ARCHITECTURE=PASS

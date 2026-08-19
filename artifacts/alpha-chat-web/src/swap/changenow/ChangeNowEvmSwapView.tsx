@@ -435,10 +435,15 @@ export function CnTokenCard({
         </div>
       </div>
 
-       {/* Il range fixed-rate è distinto dal minimo dinamico mostrato nell'app ChangeNOW. */}
+       {/* Il range fixed-rate è un minimo sull'asset inviato, non sull'asset ricevuto. */}
        {minAmount && minAmount > 0 && (
-         <div className="asw-minimum" title="Limite richiesto da ChangeNOW per il tasso garantito">
-           <span>Minimo tasso garantito</span>
+         <div
+           className="asw-minimum"
+           role="note"
+           title={`Importo minimo di ${token?.symbol ?? "questo asset"} richiesto da ChangeNOW per bloccare il tasso fisso. Non è l'importo che riceverai.`}
+         >
+            <Info size={12} aria-hidden="true" />
+            <span>Minimo da inviare per tasso fisso</span>
            <strong>{fmtToken(minAmount, token?.decimals ?? 6)} {token?.symbol}</strong>
          </div>
        )}
@@ -525,7 +530,12 @@ export function CnQuoteDetails({
           </div>
           {quote.minAmount > 0 && (
             <div className="asw-info-row">
-              <span className="asw-info-label">Minimo tasso garantito</span>
+              <span
+                className="asw-info-label"
+                title={`Importo minimo di ${fromToken.symbol} richiesto da ChangeNOW per bloccare il tasso fisso. Non è l'importo che riceverai.`}
+              >
+                Minimo da inviare (tasso fisso)
+              </span>
               <span className="asw-info-value">
                 {fmtToken(quote.minAmount, fromToken.decimals)} {fromToken.symbol}
               </span>
