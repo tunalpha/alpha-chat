@@ -774,6 +774,17 @@ function SidebarMenu({
       view: "security-center",
       icon: null,
     },
+    // 10 — guida informativa, distinta da Alpha Wallet e Centro Crypto
+    {
+      label: "Come funziona",
+      view: "how-it-works",
+      icon: (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" width="16" height="16" aria-hidden="true">
+          <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
+          <path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2Z" />
+        </svg>
+      ),
+    },
   ];
 
   return (

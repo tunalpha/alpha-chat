@@ -40,6 +40,7 @@ import NotificationsPage from "./pages/NotificationsPage";
 import LanguagePage from "./pages/LanguagePage";
 import NuclearDestroyPage from "./pages/NuclearDestroyPage";
 import PwaGuidePage from "./pages/PwaGuidePage";
+import HowItWorksPage from "./pages/HowItWorksPage";
 import AlphaWalletPage from "./pages/AlphaWalletPage";
 // Phase G: Alpha Wallet × Chat bridge (WalletProvider elevato al root)
 import { WalletProvider } from "./wallet/context/WalletContext";
@@ -82,6 +83,7 @@ export type AppView =
   | "wallet-center"
   | "usda-settings"
   | "pwa-guide"
+  | "how-it-works"
   | "alpha-wallet";
 
 /** Controlla se l'URL corrente è la pagina di emergenza (accessibile senza auth). */
@@ -322,6 +324,8 @@ function AppContent() {
             return <UsdaSettingsPage onBack={goSettings} onOpenAlphaWallet={() => setView("alpha-wallet")} />;
           case "pwa-guide":
             return <PwaGuidePage onBack={goSettings} />;
+          case "how-it-works":
+            return <HowItWorksPage onBack={goBack} onOpenWallet={() => setView("alpha-wallet")} />;
           // Alpha Wallet — wallet self-custodial nativo (isolato da Payment Engine)
           case "alpha-wallet":
             return <AlphaWalletPage onBack={goBack} />;
