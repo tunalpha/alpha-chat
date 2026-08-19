@@ -1,0 +1,65 @@
+Certo. Gli darei un prompt diagnostico, senza modificare nulla, così prima capiamo esattamente cosa è successo:
+
+Analizza nei log di Alpha Swap l’errore mostrato nell’ultima operazione EVM.
+
+ERRORE VISIBILE:
+Execution reverted with reason: gas required exceeds allowance (6114)
+
+Dettagli della richiesta mostrata in UI:
+
+* From: 0x04631A6e863718a8F4c21c2ce1303e30dc87B298
+* To: 0x5016f2F688a3D30247f4020Bc8eA829F16B6101c
+* Value: 134.31867936 native POL
+* Quote mostrato: circa 10.709326 USDC
+* Viem: 2.55.4
+
+OBIETTIVO:
+Non modificare codice, configurazioni o smart contract. Fai esclusivamente un’analisi forense dei log per ricostruire cosa è successo.
+
+Cerca nei log, usando timestamp, wallet address, amount, contract address e/o eventuali request/transaction ID, l’intero flusso relativo a questa operazione.
+
+Verifica in particolare:
+
+1. Quale endpoint/funzione di Alpha Swap ha generato la richiesta.
+2. Quale quote/route/provider è stato utilizzato.
+3. Quale to, data, value, chainId e altri parametri sono stati costruiti per la transazione.
+4. Se prima dell’errore è stata eseguita una estimateGas, simulateContract, eth_call o equivalente.
+5. Qual è stata la risposta completa del RPC durante la simulazione.
+6. Se esiste un revert reason più preciso nascosto nei log.
+7. Se 6114 rappresenta realmente un problema di gas oppure se è il risultato di un revert durante la simulazione.
+8. Se il problema è stato causato da:
+    * quote scaduto;
+    * slippage;
+    * amount errato;
+    * route/provider;
+    * contract/router;
+    * balance insufficiente;
+    * allowance;
+    * parametro value;
+    * chain/network;
+    * oppure altro.
+9. Controlla anche i log immediatamente precedenti e successivi all’errore per verificare se l’operazione è stata effettivamente inviata on-chain oppure se è fallita prima dell’invio.
+10. Verifica se esiste un transaction hash. Se esiste, riportalo e controlla lo stato della transazione.
+11. Controlla se ci sono errori analoghi nelle operazioni Alpha Swap precedenti e se il problema è isolato oppure ricorrente.
+
+IMPORTANTE:
+Non limitarti a riportare l’errore della UI. Voglio la ricostruzione completa dai log.
+
+Alla fine produci un RCA sintetico con questa struttura:
+
+* TIMESTAMP OPERAZIONE
+* WALLET
+* ROUTE/PROVIDER
+* CONTRACT
+* AMOUNT
+* ESTIMATE GAS / SIMULATION
+* RPC RESPONSE
+* REVERT REASON REALE
+* TRANSACTION HASH (se presente)
+* TRANSACTION INVIATA? SÌ/NO
+* CAUSA PROBABILE
+* EVIDENZE NEI LOG
+* CONCLUSIONE
+
+NON APPLICARE ALCUN FIX.
+Prima dobbiamo capire esattamente cosa è successo.

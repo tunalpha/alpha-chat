@@ -300,36 +300,80 @@ export default function HowItWorksPage({ onBack, onOpenWallet }: Props) {
               </button>
             </div>
 
+            <div className="hiw2-swap-modal-scroll">
             <p className="hiw2-swap-modal-intro">
               Scegli cosa inviare e cosa ricevere, controlla il riepilogo e firma solo quando tutto ti è chiaro.
             </p>
 
-            <div className="hiw2-swap-preview" aria-label="Anteprima della schermata swap">
+            {/* ── Schermata 1: Quotazione ─────────────────────────────────── */}
+            <p className="hiw2-guide-section-label">① Quotazione</p>
+            <div className="hiw2-swap-preview" aria-label="Anteprima schermata quotazione swap">
               <div className="hiw2-swap-preview-top">
-                <span>Nuovo swap</span>
-                <span className="hiw2-swap-preview-status">PREVIEW</span>
+                <span>Alpha Swap · EVM</span>
+                <span className="hiw2-swap-preview-status">ESEMPIO</span>
               </div>
+
+              {/* coppia token con loghi reali */}
               <div className="hiw2-swap-route">
                 <div className="hiw2-swap-token">
-                  <strong>USDT</strong>
-                  <small>Invii · Polygon</small>
+                  <div className="hiw2-swap-token-head">
+                    <img src="/coin-icons/pol.png" alt="" className="hiw2-token-logo" />
+                    <strong>POL</strong>
+                  </div>
+                  <small>• Polygon</small>
                 </div>
-                <div className="hiw2-swap-route-arrow" aria-hidden="true">→</div>
+                <div className="hiw2-swap-route-arrow" aria-hidden="true">⇅</div>
                 <div className="hiw2-swap-token hiw2-swap-token--receive">
-                  <strong>USDC</strong>
-                  <small>Ricevi · Ethereum</small>
+                  <div className="hiw2-swap-token-head">
+                    <img src="/coin-icons/usdc.png" alt="" className="hiw2-token-logo" />
+                    <strong>USDC</strong>
+                  </div>
+                  <small>• Polygon</small>
                 </div>
               </div>
-              <div className="hiw2-swap-preview-amount">
-                <span>Importo da inviare</span>
-                <strong>25,00 USDT</strong>
+
+              {/* importo stimato */}
+              <div className="hiw2-swap-preview-estimated">
+                <span>Riceverai circa</span>
+                <strong>≈ 10.696922</strong>
               </div>
-              <div className="hiw2-swap-preview-details">
-                <span><i /> Tasso e importo stimato</span>
-                <span><i /> Rete e commissioni</span>
-                <span><i /> Indirizzo di ricezione</span>
+
+              {/* dettagli quotazione come nel vero swap */}
+              <div className="hiw2-swap-quote-details">
+                <div><span>Invii</span><b>134.318 POL</b></div>
+                <div><span>Riceverai circa</span><b>10.696922 USDC</b></div>
+                <div><span>Tasso</span><b>1 POL ≈ 0.079638 USDC</b></div>
+                <div><span>Minimo da inviare</span><b>84.58 POL</b></div>
+                <div className="hiw2-quote-fee-row"><span>Commissione Alpha</span><b className="hiw2-fee-none">Nessuna</b></div>
               </div>
-              <div className="hiw2-swap-preview-cta">Rivedi prima di firmare <ArrowIcon /></div>
+            </div>
+
+            {/* ── Schermata 2: Progress TX ─────────────────────────────────── */}
+            <p className="hiw2-guide-section-label">② Stato in tempo reale</p>
+            <div className="hiw2-swap-progress" aria-label="Anteprima schermata stato swap">
+              <ol className="hiw2-progress-steps">
+                <li className="hiw2-ps-done">
+                  <span className="hiw2-ps-num"><CheckIcon /></span>
+                  <div><strong>Deposito in attesa</strong></div>
+                </li>
+                <li className="hiw2-ps-active">
+                  <span className="hiw2-ps-num"><span className="hiw2-ps-spin" aria-hidden="true" /></span>
+                  <div>
+                    <strong>Deposito rilevato</strong>
+                    <p>ChangeNOW ha ricevuto i fondi</p>
+                  </div>
+                </li>
+                <li><span className="hiw2-ps-num">3</span><div><strong>Conversione in corso</strong></div></li>
+                <li><span className="hiw2-ps-num">4</span><div><strong>Invio token</strong></div></li>
+                <li><span className="hiw2-ps-num">5</span><div><strong>Completato</strong></div></li>
+              </ol>
+              <div className="hiw2-progress-details">
+                <div><span>Inviato</span><b>100 POL</b></div>
+                <div><span>Stimato ricevuto</span><b>7.925 USDC</b></div>
+                <div><span>Exchange ID</span><b className="hiw2-mono">0039a7aaa4c720</b></div>
+                <div><span>TX deposito</span><b className="hiw2-mono">0x73b90fd29…</b></div>
+              </div>
+              <p className="hiw2-progress-note">Aggiornamento automatico ogni 15 secondi</p>
             </div>
 
             <ol className="hiw2-swap-modal-steps">
@@ -343,7 +387,7 @@ export default function HowItWorksPage({ onBack, onOpenWallet }: Props) {
               </li>
               <li>
                 <span>3</span>
-                <div><strong>Firma dal tuo wallet</strong><p>Confermi tu l’operazione. Lo stato resta visibile nella cronologia.</p></div>
+                <div><strong>Firma dal tuo wallet</strong><p>Confermi tu l'operazione. Lo stato resta visibile nella cronologia.</p></div>
               </li>
             </ol>
 
@@ -354,6 +398,7 @@ export default function HowItWorksPage({ onBack, onOpenWallet }: Props) {
             >
               Ho capito
             </button>
+            </div>{/* /hiw2-swap-modal-scroll */}
           </div>
         </div>
       )}

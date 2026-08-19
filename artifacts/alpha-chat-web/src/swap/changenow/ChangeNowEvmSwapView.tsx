@@ -79,9 +79,11 @@ const COIN_LOGOS: Record<string, string> = {
   usdcmatic: "/coin-icons/usdc.png",
   usdtmatic: "/coin-icons/usdt.png",
   eth:       "/coin-icons/eth.png",
+  usdc:      "/coin-icons/usdc.png",   // USDC Ethereum
   usdterc20: "/coin-icons/usdt.png",
   bnbbsc:    "/coin-icons/bnb.png",
   usdtbsc:   "/coin-icons/usdt.png",
+  usdcbsc:   "/coin-icons/usdc.png",   // USDC BSC
 };
 
 const CHAIN_COLORS: Record<number, string> = {

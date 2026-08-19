@@ -32,7 +32,12 @@ describe("HowItWorksPage", () => {
     fireEvent.click(screen.getByRole("button", { name: /Come funziona lo swap/i }));
 
     expect(screen.getByRole("dialog", { name: "Scambia con chiarezza" })).toBeInTheDocument();
-    expect(screen.getByText("Rivedi prima di firmare")).toBeInTheDocument();
+    // Schermata quotazione
+    expect(screen.getByText("Commissione Alpha")).toBeInTheDocument();
+    expect(screen.getByText("Nessuna")).toBeInTheDocument();
+    // Schermata progress
+    expect(screen.getByText("Deposito rilevato")).toBeInTheDocument();
+    // Passi guida
     expect(screen.getByText("Seleziona la coppia")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Chiudi guida swap" }));
