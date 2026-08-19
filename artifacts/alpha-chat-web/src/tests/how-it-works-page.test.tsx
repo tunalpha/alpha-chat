@@ -9,6 +9,7 @@ describe("HowItWorksPage", () => {
     expect(screen.getByRole("heading", { name: "L'ecosistema Alpha" })).toBeInTheDocument();
     expect(screen.getByText(/P2P diretto \(Alpha Wallet\)/i)).toBeInTheDocument();
     expect(screen.getByText(/Sistema Escrow \(Wallet Esterni\)/i)).toBeInTheDocument();
+    expect(screen.getByText("RACCOMANDATO")).toBeInTheDocument();
     expect(screen.getByText("Come funziona lo swap")).toBeInTheDocument();
     expect(screen.queryByText(/acquista con carta/i)).not.toBeInTheDocument();
   });

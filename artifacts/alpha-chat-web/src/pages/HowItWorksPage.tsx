@@ -141,7 +141,10 @@ export default function HowItWorksPage({ onBack, onOpenWallet }: Props) {
             <article className="hiw2-wallet-choice hiw2-wallet-choice--alpha">
               <span className="hiw2-choice-icon">A</span>
               <div>
-                <small>ALPHA WALLET</small>
+                <div className="hiw2-wallet-label">
+                  <small>ALPHA WALLET</small>
+                  <span className="hiw2-recommended-badge"><CheckIcon /> RACCOMANDATO</span>
+                </div>
                 <strong>Il wallet nativo</strong>
                 <p>Creato e gestito direttamente in Alpha Chat.</p>
               </div>
