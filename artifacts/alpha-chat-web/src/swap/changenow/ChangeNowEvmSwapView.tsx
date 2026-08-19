@@ -682,15 +682,11 @@ export function ChangeNowEvmSwapView({
     }
   }, [fromBalance, state.fromToken, btcBalanceSat, actions]);
 
-  // Prima della creazione dell'ordine la direzione è sempre reversibile.
-  // In precedenza il tasto veniva disabilitato anche durante checking_pair /
-  // quoting: su mobile quelle richieste partono automaticamente e rendono la
-  // freccia apparentemente inattiva proprio mentre la schermata mostra ancora
-  // una stima. L'unico punto di non ritorno è l'exchange già creato.
-  const canInvertDirection = !state.exchange
-    && !!state.fromToken
-    && !!state.toToken
-    && state.fromToken.ticker !== state.toToken.ticker;
+  // Una quote è solo una stima e può sempre essere scartata. L'unico punto di
+  // non ritorno è l'ordine ChangeNOW già creato: usare altri flag UI (quoting,
+  // ready, token momentaneamente null durante un render) può rendere la freccia
+  // visivamente disabled anche quando l'utente può ancora invertire la coppia.
+  const canInvertDirection = state.exchange === null;
   const handleInvertDirection = useCallback(() => {
     if (!canInvertDirection) return;
     autoQuotedRef.current = false;

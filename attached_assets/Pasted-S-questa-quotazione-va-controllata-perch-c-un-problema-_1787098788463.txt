@@ -1,0 +1,65 @@
+Sì, questa quotazione va controllata, perché c’è un problema evidente nella UI.
+
+Quello che vedo
+
+Hai:
+
+* Invii: 13,505146 USDT
+* Riceverai circa: 160,795398 POL
+* Tasso: 1 USDT ≈ 11,906232 POL
+* Commissione Alpha: Nessuna ✅
+* Destinazione: indirizzo EVM corretto
+
+Il calcolo torna: 13,505146 × 11,906232 ≈ 160,795398 POL.
+
+⚠️ Il problema è questa riga
+
+Minimo tasso garantito: 6,893906 USDT
+
+Questa dicitura non ha senso come “tasso”: un tasso dovrebbe essere espresso come POL/USDT, non in USDT.
+
+Inoltre 6,893906 USDT non è il minimo della coppia, perché stai già inviando 13,505146 USDT.
+
+Quindi molto probabilmente il frontend sta prendendo un campo ChangeNOW/API corretto ma lo sta traducendo con l’etichetta sbagliata.
+
+ChangeNOW distingue infatti tra il normale classic rate, che può variare, e il fixed rate, che garantisce l’importo concordato se vengono rispettate le condizioni del fixed-rate flow. 
+
+Cosa farei adesso
+
+Non farei lo swap ancora. Farei correggere prima quella riga.
+
+Darei all’agente questo prompt:
+
+AUDIT URGENTE DELLA QUOTAZIONE — NON TOCCARE IL FLUSSO
+
+Nella UI ChangeNOW EVM compare:
+
+* Invii: 13.505146 USDT
+* Riceverai circa: 160.795398 POL
+* Tasso: 1 USDT ≈ 11.906232 POL
+* “Minimo tasso garantito: 6.893906 USDT”
+
+Questa riga è sospetta: un “tasso” non può essere espresso in USDT.
+
+Verifica esattamente quale campo della risposta ChangeNOW API viene usato per 6.893906 e cosa significa realmente secondo la documentazione/API ChangeNOW.
+
+NON fare supposizioni e NON rinominare semplicemente il campo.
+
+Voglio:
+
+1. endpoint ChangeNOW chiamato;
+2. risposta JSON reale completa della quote (oscurando API key/segreti);
+3. nome esatto del campo da cui deriva 6.893906;
+4. significato ufficiale del campo;
+5. confronto con estimatedAmount, minAmount e eventuale minimum guaranteed;
+6. verificare se la UI sta mostrando un valore di minimum amount, minimum received, fixed-rate guarantee, rate, o altro;
+7. correggere esclusivamente label/semantica della UI se necessario;
+8. aggiungere test che impediscano di visualizzare un valore in USDT come “tasso”.
+
+IMPORTANTE: non modificare routing, signing, create/commit, fee architecture, BTC, EVM→BTC o EVM→EVM.
+
+La fee Alpha deve rimanere 0%. ChangeNOW deve rimanere l’unica source of truth per la quotazione.
+
+Dopo il fix esegui test + build e restituisci il JSON/API field mapping usato per questa schermata.
+
+La cosa positiva è che la quotazione principale sembra matematicamente coerente. Il problema che vedo è soprattutto la voce “Minimo tasso garantito”, che prima di fare una transazione reale deve essere chiarita.

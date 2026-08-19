@@ -147,6 +147,57 @@ describe("ChangeNOW EVM swap — saldi e inversione UI", () => {
     });
   });
 
+  it("mantiene attiva la freccia con una quote pronta e inverte la coppia", async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("/swap/changenow/evm/pairs/")) {
+        return {
+          ok: true,
+          json: async () => ({ ok: true, available: true, minAmount: 1 }),
+        };
+      }
+      if (url.includes("/swap/changenow/evm/quote")) {
+        return {
+          ok: true,
+          json: async () => ({
+            ok: true,
+            quote: {
+              fromTicker: "pol",
+              toTicker: "usdcmatic",
+              fromAmount: 2,
+              estimatedToAmount: 1.25,
+              minAmount: 1,
+            },
+          }),
+        };
+      }
+      return { ok: false, json: async () => ({}) };
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    render(
+      <ChangeNowEvmSwapView
+        onBack={() => {}}
+        alphaWalletAddress={WALLET}
+      />,
+    );
+
+    const amount = await screen.findByRole("textbox", { name: "Importo Da POL" });
+    fireEvent.change(amount, { target: { value: "2" } });
+
+    await waitFor(() => expect(screen.getByRole("button", { name: /Crea Swap/i })).toBeTruthy());
+
+    const invert = screen.getByRole("button", {
+      name: "Inverti token di partenza e arrivo",
+    });
+    expect(invert).not.toBeDisabled();
+
+    fireEvent.click(invert);
+
+    expect(screen.getByRole("textbox", { name: "Importo Da USDC" })).toBeTruthy();
+    expect(screen.queryByText("Dettagli quotazione")).toBeNull();
+  });
+
   it("mantiene importo e MAX interattivi dopo una inversione", () => {
     const token = CN_EVM_TOKENS.find((item) => item.ticker === "pol")!;
     const onAmountChange = vi.fn();
