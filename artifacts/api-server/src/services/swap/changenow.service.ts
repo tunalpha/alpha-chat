@@ -143,13 +143,18 @@ export interface CnEvmTokenDef {
  * Ticker verificati via API pubblica il 2026-08-18:
  *   pol, matic, usdcmatic, usdtmatic, eth, usdterc20, bnb, usdtbsc
  *
- * Contratti ufficiali:
- *   POL (Ethereum ERC-20): 0x455e53cbb86018ac2b8092fdcd39d8444affc3f6
+ * Contratti ufficiali Polygon:
  *   USDC: 0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174
  *   USDT: 0xc2132D05D31c914a87C6611C10748AEb04B58e8F
  */
 export const CN_EVM_TOKENS: CnEvmTokenDef[] = [
   // Polygon
+  {
+    // ChangeNOW EVM swap: POL nativo su Polygon.
+    symbol: "POL", ticker: "pol", name: "Polygon Ecosystem Token",
+    chainId: 137, network: "Polygon", decimals: 18, isNative: true,
+    contractAddress: null,
+  },
   {
     symbol: "USDC", ticker: "usdcmatic", name: "USD Coin (Polygon)",
     chainId: 137, network: "Polygon", decimals: 6, isNative: false,
@@ -164,12 +169,6 @@ export const CN_EVM_TOKENS: CnEvmTokenDef[] = [
   {
     symbol: "ETH", ticker: "eth", name: "Ethereum",
     chainId: 1, network: "Ethereum", decimals: 18, isNative: true, contractAddress: null,
-  },
-  {
-    // ChangeNOW ticker "pol" is the POL ERC-20 token on Ethereum, not native Polygon POL.
-    symbol: "POL", ticker: "pol", name: "Polygon Ecosystem Token (ERC-20)",
-    chainId: 1, network: "Ethereum", decimals: 18, isNative: false,
-    contractAddress: "0x455e53cbb86018ac2b8092fdcd39d8444affc3f6",
   },
   {
     symbol: "USDT", ticker: "usdterc20", name: "Tether (ERC-20)",
@@ -266,6 +265,65 @@ export interface CnTransactionResponse {
   depositReceivedAt?:    string | null;
 }
 
+/**
+ * ChangeNOW API v2 separates the token ticker from its blockchain network.
+ * The UI and database retain the established legacy tickers; this adapter is
+ * the single place that translates them before a V2 request is made.
+ */
+interface CnV2Asset {
+  currency: string;
+  network: string;
+}
+
+const CN_V2_ASSET_BY_LEGACY_TICKER: Record<string, CnV2Asset> = {
+  btc:        { currency: "btc",  network: "btc" },
+  eth:        { currency: "eth",  network: "eth" },
+  usdterc20: { currency: "usdt", network: "eth" },
+  usdtbsc:   { currency: "usdt", network: "bsc" },
+  bnbbsc:    { currency: "bnb",  network: "bsc" },
+  usdtmatic: { currency: "usdt", network: "matic" },
+  usdcmatic: { currency: "usdc", network: "matic" },
+  // Native Polygon POL is named MATIC in ChangeNOW's V2 currency catalog.
+  // The `network=matic` discriminator is what prevents a POL ERC-20 payout
+  // on Ethereum.
+  pol:        { currency: "matic", network: "matic" },
+};
+
+function toCnV2Asset(legacyTicker: string): CnV2Asset {
+  const normalized = legacyTicker.toLowerCase();
+  // Preserve the dynamic-pair behavior for tickers outside the local UI
+  // catalog: ChangeNOW remains the authority that accepts or rejects them.
+  return CN_V2_ASSET_BY_LEGACY_TICKER[normalized] ?? {
+    currency: normalized,
+    network: normalized,
+  };
+}
+
+interface CnV2AmountResponse {
+  fromAmount?: number;
+  toAmount?: number;
+  rateId?: string;
+  validUntil?: string;
+}
+
+interface CnV2TransactionResponse {
+  id: string;
+  status: CnApiStatus;
+  payinAddress: string;
+  payoutAddress: string;
+  fromCurrency?: string;
+  toCurrency?: string;
+  fromAmount?: number | null;
+  toAmount?: number | null;
+  expectedAmountFrom?: number | null;
+  expectedAmountTo?: number | null;
+  createdAt?: string;
+  payinHash?: string | null;
+  payoutHash?: string | null;
+  refundHash?: string | null;
+  depositReceivedAt?: string | null;
+}
+
 // ── CnApiError — errore tipizzato con HTTP status ─────────────────────────────
 
 /**
@@ -344,6 +402,42 @@ async function cnFetch<T>(url: string, init?: RequestInit): Promise<T> {
   return data;
 }
 
+function cnV2Url(path: string, params: Record<string, string>): string {
+  const query = new URLSearchParams(params);
+  return `${CN_BASE_URL.replace("/v1", "/v2")}${path}?${query.toString()}`;
+}
+
+async function cnFetchV2<T>(url: string, init?: RequestInit): Promise<T> {
+  return cnFetch<T>(url, {
+    ...init,
+    headers: {
+      "x-changenow-api-key": getApiKey(),
+      ...(init?.headers as Record<string, string> ?? {}),
+    },
+  });
+}
+
+function toCnTransactionResponse(
+  tx: CnV2TransactionResponse,
+  fallback: { fromCurrency?: string; toCurrency?: string } = {},
+): CnTransactionResponse {
+  return {
+    id:                    tx.id,
+    status:                tx.status,
+    payinAddress:          tx.payinAddress,
+    payoutAddress:         tx.payoutAddress,
+    fromCurrency:          tx.fromCurrency ?? fallback.fromCurrency ?? "",
+    toCurrency:            tx.toCurrency ?? fallback.toCurrency ?? "",
+    expectedSendAmount:    tx.fromAmount ?? tx.expectedAmountFrom ?? 0,
+    expectedReceiveAmount: tx.toAmount ?? tx.expectedAmountTo ?? 0,
+    createdAt:             tx.createdAt ?? new Date(0).toISOString(),
+    payinHash:             tx.payinHash ?? null,
+    payoutHash:            tx.payoutHash ?? null,
+    refundHash:            tx.refundHash ?? null,
+    depositReceivedAt:     tx.depositReceivedAt ?? null,
+  };
+}
+
 // ── Public API functions ──────────────────────────────────────────────────────
 
 /**
@@ -415,17 +509,23 @@ export async function cnGetExchangeAmount(params: {
 /**
  * Ottieni il range effettivo per una coppia fixed-rate.
  *
- * Il range standard e quello fixed-rate sono diversi: una coppia può accettare
- * 20 POL in standard, ma richiederne ~88 in fixed-rate. Questo è il range che
- * deve governare tutta la UX EVM→EVM.
+ * ChangeNOW API V2 riceve esplicitamente valuta e rete, evitando che `pol`
+ * venga interpretato come l'ERC-20 Ethereum invece del POL nativo Polygon.
  */
 export async function cnGetFixedRateRange(
   fromCurrency: string,
   toCurrency: string,
 ): Promise<CnExchangeRangeResponse> {
-  const key = getApiKey();
-  return cnFetch<CnExchangeRangeResponse>(
-    `${CN_BASE_URL}/exchange-range/fixed-rate/${fromCurrency}_${toCurrency}?api_key=${key}`
+  const from = toCnV2Asset(fromCurrency);
+  const to = toCnV2Asset(toCurrency);
+  return cnFetchV2<CnExchangeRangeResponse>(
+    cnV2Url("/exchange/range", {
+      fromCurrency: from.currency,
+      toCurrency: to.currency,
+      fromNetwork: from.network,
+      toNetwork: to.network,
+      flow: "fixed-rate",
+    }),
   );
 }
 
@@ -455,14 +555,14 @@ export async function cnCreateTransaction(
 /**
  * Ottieni la stima e il rateId per un exchange fixed-rate EVM→EVM.
  *
- * ENDPOINT: GET /v1/exchange-amount/fixed-rate/{amount}/{from}_{to}?api_key=KEY&useRateId=true
+ * ENDPOINT: GET /v2/exchange/estimated-amount con fromNetwork e toNetwork.
  *
  * `useRateId=true` è obbligatorio: senza questo parametro ChangeNOW restituisce
  * una stima valida, ma non il rateId necessario a congelarla nella transazione.
  * Il rateId ha una validità limitata (~30 min). Deve essere usato
  * immediatamente in cnCreateFixedRateTransaction.
  *
- * Nota: le coppie EVM→EVM (pol→usdcmatic, eth→usdc, ecc.) su ChangeNOW
+ * Nota: le coppie EVM→EVM (POL Polygon→USDC Polygon, ETH→USDC, ecc.) su ChangeNOW
  * supportano SOLO il flusso fixed-rate. Il flusso floating-rate
  * (/v1/transactions) restituisce 404 per queste coppie.
  */
@@ -471,53 +571,81 @@ export async function cnGetFixedRateAmount(params: {
   fromCurrency: string;
   toCurrency:   string;
 }): Promise<{ estimatedAmount: number; rateId: string; validUntil: string }> {
-  const key = getApiKey();
   const { amount, fromCurrency, toCurrency } = params;
-  return cnFetch<{ estimatedAmount: number; rateId: string; validUntil: string }>(
-    `${CN_BASE_URL}/exchange-amount/fixed-rate/${amount}/${fromCurrency}_${toCurrency}?api_key=${key}&useRateId=true`
+  const from = toCnV2Asset(fromCurrency);
+  const to = toCnV2Asset(toCurrency);
+  const quote = await cnFetchV2<CnV2AmountResponse>(
+    cnV2Url("/exchange/estimated-amount", {
+      fromCurrency: from.currency,
+      toCurrency: to.currency,
+      fromAmount: String(amount),
+      toAmount: "",
+      fromNetwork: from.network,
+      toNetwork: to.network,
+      flow: "fixed-rate",
+      type: "",
+      useRateId: "true",
+    }),
   );
+  if (
+    typeof quote.toAmount !== "number"
+    || !quote.rateId
+    || !quote.validUntil
+  ) {
+    throw new CnApiError(502, "ChangeNOW API malformed fixed-rate quote");
+  }
+  return {
+    estimatedAmount: quote.toAmount,
+    rateId: quote.rateId,
+    validUntil: quote.validUntil,
+  };
 }
 
 /**
  * Crea una transazione fixed-rate su ChangeNOW per coppie EVM→EVM.
  *
- * ENDPOINT: POST /v1/transactions/fixed-rate/{api_key}
- *   (l'API key va nell'URL path per le transazioni fixed-rate, non come query param)
+ * ENDPOINT: POST /v2/exchange con fromNetwork e toNetwork espliciti.
  *
  * Richiede rateId ottenuto da cnGetFixedRateAmount.
  */
 export async function cnCreateFixedRateTransaction(
   params: CnCreateTransactionParams & { rateId: string }
 ): Promise<CnTransactionResponse> {
-  const key = getApiKey();
-  return cnFetch<CnTransactionResponse>(
-    `${CN_BASE_URL}/transactions/fixed-rate/${key}`,
+  const from = toCnV2Asset(params.fromCurrency);
+  const to = toCnV2Asset(params.toCurrency);
+  const tx = await cnFetchV2<CnV2TransactionResponse>(
+    cnV2Url("/exchange", {}),
     {
       method: "POST",
       body: JSON.stringify({
-        from:          params.fromCurrency,
-        to:            params.toCurrency,
-        amount:        params.amount,
+        fromCurrency:  from.currency,
+        toCurrency:    to.currency,
+        fromNetwork:   from.network,
+        toNetwork:     to.network,
+        fromAmount:    String(params.amount),
         address:       params.address,
         rateId:        params.rateId,
+        flow:          "fixed-rate",
         ...(params.refundAddress ? { refundAddress: params.refundAddress } : {}),
       }),
-    }
+    },
   );
+  return toCnTransactionResponse(tx, {
+    fromCurrency: params.fromCurrency,
+    toCurrency: params.toCurrency,
+  });
 }
 
 /**
- * Recupera lo stato corrente di una transazione ChangeNOW.
- * Usato per polling fino allo stato finale.
+ * Recupera lo stato corrente di una transazione ChangeNOW tramite API V2.
+ * La risposta V2 conserva sia payinHash sia payoutHash, necessari per non
+ * confondere deposito e payout nel polling.
  */
 export async function cnGetTransactionStatus(
   exchangeId: string
 ): Promise<CnTransactionResponse> {
-  const key = getApiKey();
-  return cnFetch<CnTransactionResponse>(
-    // ChangeNOW richiede la partner key nel path per il transaction-status,
-    // anche per gli exchange creati fixed-rate. Passarla come query string
-    // risponde HTTP 400 e lascia il polling sullo stato MongoDB precedente.
-    `${CN_BASE_URL}/transactions/${exchangeId}/${key}`
+  const tx = await cnFetchV2<CnV2TransactionResponse>(
+    cnV2Url("/exchange/by-id", { id: exchangeId }),
   );
+  return toCnTransactionResponse(tx);
 }

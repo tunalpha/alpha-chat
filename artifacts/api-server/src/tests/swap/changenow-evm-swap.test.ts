@@ -584,7 +584,7 @@ describe("CN_EVM_TOKENS — catalogo UI (NON whitelist API)", () => {
     // Polygon
     expect(tickers).toContain("usdcmatic");
     expect(tickers).toContain("usdtmatic");
-    // Ethereum (incluso POL ERC-20)
+    // Polygon (POL nativo)
     expect(tickers).toContain("pol");
     expect(tickers).toContain("eth");
     expect(tickers).toContain("usdterc20");
@@ -602,13 +602,13 @@ describe("CN_EVM_TOKENS — catalogo UI (NON whitelist API)", () => {
     }
   });
 
-  it("T36 — ticker pol è il token ERC-20 ChangeNOW su Ethereum, non il POL nativo Polygon", () => {
+  it("T36 — ticker pol è il POL nativo Polygon per lo swap EVM", () => {
     const pol = CN_EVM_TOKENS.find(t => t.ticker === "pol");
     expect(pol).toMatchObject({
-      chainId: 1,
-      network: "Ethereum",
-      isNative: false,
-      contractAddress: "0x455e53cbb86018ac2b8092fdcd39d8444affc3f6",
+      chainId: 137,
+      network: "Polygon",
+      isNative: true,
+      contractAddress: null,
     });
   });
 });

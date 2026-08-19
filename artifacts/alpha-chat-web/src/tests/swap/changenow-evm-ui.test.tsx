@@ -272,14 +272,14 @@ describe("ChangeNOW EVM swap — saldi e inversione UI", () => {
     expect(screen.queryByText("Saldo non disponibile")).toBeNull();
   });
 
-  it("identifica POL ChangeNOW come ERC-20 Ethereum", () => {
+  it("identifica POL ChangeNOW come asset nativo Polygon", () => {
     const token = CN_EVM_TOKENS.find((item) => item.ticker === "pol")!;
 
     expect(token).toMatchObject({
-      network: "Ethereum",
-      chainId: 1,
-      isNative: false,
-      contractAddress: "0x455e53cbb86018ac2b8092fdcd39d8444affc3f6",
+      network: "Polygon",
+      chainId: 137,
+      isNative: true,
+      contractAddress: null,
     });
   });
 

@@ -20,8 +20,6 @@ const VERIFIED_TOKENS: VerifiedToken[] = [
   // Ethereum
   { chainId: 1,   symbol: "USDT", name: "Tether USD",    decimals: 6,  contractAddress: "0xdac17f958d2ee523a2206206994597c13d831ec7" },
   { chainId: 1,   symbol: "USDC", name: "USD Coin",      decimals: 6,  contractAddress: "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48" },
-  // ChangeNOW ticker "pol": verified POL ERC-20 on Ethereum (not native Polygon POL).
-  { chainId: 1,   symbol: "POL",  name: "Polygon Ecosystem Token", decimals: 18, contractAddress: "0x455e53cbb86018ac2b8092fdcd39d8444affc3f6" },
   // Polygon
   { chainId: 137, symbol: "USDT", name: "Tether USD",    decimals: 6,  contractAddress: "0xc2132d05d31c914a87c6611c10748aeb04b58e8f" },
   { chainId: 137, symbol: "USDC", name: "USD Coin",      decimals: 6,  contractAddress: "0x3c499c542cef5e3811e1192ce70d8cc03d5c3359" },

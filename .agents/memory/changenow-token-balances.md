@@ -19,16 +19,19 @@ token selezionato alla lettura saldi come token aggiuntivo e usa la chiave della
 Map restituita dal reader. I token nativi devono usare l'indirizzo zero condiviso,
 non una chiave testuale ad hoc.
 
-## Mappatura rete provider
+## Requisito EVM ChangeNOW
 
-Il ticker ChangeNOW `pol` identifica il token POL ERC-20 su Ethereum
-(`0x455e53cbb86018ac2b8092fdcd39d8444affc3f6`), non il POL nativo su Polygon.
+Nel prodotto, il ticker `pol` dello swap EVM deve rappresentare **POL nativo su
+Polygon (chainId 137)**. Non sostituirlo con un token ERC-20 Ethereum solo perché
+il catalogo di un endpoint partner o un’immagine provider è ambigua.
 
-**Why:** Il simbolo POL esiste su entrambe le reti. Trattare il payout provider
-come asset Polygon nasconde un saldo reale sul wallet Ethereum e presenta una
-destinazione di swap fuorviante.
+**Why:** L’app deve seguire la rete/asset selezionati dall’utente e il requisito
+di prodotto è il payout nativo Polygon. Una rimappatura automatica su Ethereum
+ha creato una voce wallet fuorviante e ha cambiato la destinazione promessa.
 
-**How to apply:** Conservare la semantica provider-specifica nel catalogo
-ChangeNOW e registrare il contratto in entrambi i registry wallet per renderlo
-leggibile e trasferibile. Non cambiare il POL nativo Polygon, che resta un
-asset distinto.
+**How to apply:** Il flusso EVM deve usare l'API ChangeNOW V2, che separa
+`currency` e `network`: per il POL nativo Polygon inviare
+`toCurrency=matic` e `toNetwork=matic`, pur mostrando `POL` nel prodotto.
+Usa un contract ERC-20 Ethereum solo come importazione manuale separata per
+eventuali vecchi payout già ricevuti. Non usare V1 per gli swap EVM, perché il
+solo ticker `pol` viene risolto come Ethereum.
