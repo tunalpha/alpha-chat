@@ -1,0 +1,115 @@
+NON FARE DEPLOY E NON FARE PUBLISH.
+
+Il codice funzionale sembra corretto, ma il production frontend build è terminato con EXIT 137. Voglio risolvere e verificare esclusivamente questo problema prima di pubblicare.
+
+OBIETTIVO PRINCIPALE:
+ottenere un vero FRONTEND PRODUCTION BUILD completato con successo, senza modificare il comportamento dell'app.
+
+1. DIAGNOSI EXIT 137
+- Determina esattamente perché il processo viene terminato.
+- Verifica memoria disponibile e consumo durante Vite/Rollup/bundling.
+- Identifica la fase che causa il picco di memoria.
+- Conferma se EXIT 137 è effettivamente OOM.
+- Non dichiarare il build PASS se il processo viene terminato.
+
+2. FIX DEL BUILD
+Se serve:
+- ottimizza esclusivamente il processo/configurazione di build;
+- usa il minimo cambiamento possibile;
+- non eliminare funzionalità;
+- non disabilitare typecheck, test o controlli per ottenere artificialmente un PASS;
+- non ridurre la qualità del bundle;
+- non modificare la logica dello swap solo per abbassare il consumo RAM.
+
+Se il problema è esclusivamente un limite RAM dell'ambiente:
+- documentalo chiaramente;
+- verifica se esiste una modalità supportata per completare il build con la memoria disponibile;
+- se non è possibile, NON inventare un PASS e NON fare deploy.
+
+3. REGRESSION PROTECTION
+NON MODIFICARE questi flussi:
+- BTC → EVM
+- EVM → BTC
+- EVM → EVM
+- ChangeNOW V2
+- minimum amount dinamico
+- quote/fixed rate
+- signing WalletConnect
+- BTC signer
+- payment engine
+- USDA
+- MultiChain
+- Spark
+- Lightning/Boltz
+- Li.Fi
+- fee architecture
+
+Fee Alpha ChangeNOW = 0%.
+Partner Share ChangeNOW = 0,40%.
+Nessuna seconda TX e nessun fee wallet.
+
+4. VERIFICA USDC
+Controlla che il fix precedente sia rimasto corretto:
+
+FROM e TO devono supportare:
+- USDC Ethereum — 6 decimals
+- USDC Polygon native — 6 decimals, contract 0x3c499...
+- USDC BSC — 18 decimals
+
+Verifica:
+- il vecchio USDC Polygon bridged 0x2791... NON venga usato come USDC Polygon nativo;
+- il saldo venga letto dal contratto corretto;
+- ChangeNOW V2 riceva currency/network corretti;
+- Ethereum, Polygon e BSC siano distinti;
+- nessun duplicato nel catalogo.
+
+5. TEST COMPLETI
+Esegui:
+- test backend;
+- test frontend;
+- typecheck;
+- production frontend build COMPLETO;
+- backend production build;
+- smoke test API;
+- verifica che dist/public venga realmente generato;
+- verifica che il bundle generato sia quello production.
+
+6. CRITERIO DI SUCCESSO
+Il risultato deve essere:
+
+BACKEND TESTS: PASS
+FRONTEND TESTS: PASS
+TYPECHECK: PASS
+FRONTEND PRODUCTION BUILD: PASS REALE
+BACKEND PRODUCTION BUILD: PASS
+USDC ETH: PASS
+USDC POLYGON NATIVE: PASS
+USDC BSC: PASS
+REGRESSION: PASS
+
+Se compare ancora EXIT 137:
+→ NON fare deploy
+→ NON dichiarare build PASS
+→ indica memoria disponibile, memoria utilizzata/picco e causa
+→ proponi il minimo intervento necessario.
+
+7. REPORT FINALE
+Restituisci una tabella:
+
+EXIT 137 ROOT CAUSE
+BUILD FIX
+BACKEND TESTS
+FRONTEND TESTS
+TYPECHECK
+FRONTEND PRODUCTION BUILD
+BACKEND BUILD
+USDC NETWORKS
+REGRESSION
+DIST GENERATED
+DEPLOY
+
+Ultima riga obbligatoria:
+
+DEPLOY: NON ESEGUITO
+
+NON PUBBLICARE E NON FARE DEPLOY.
