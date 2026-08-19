@@ -14,7 +14,8 @@
  */
 
 import {
-  createWalletClient, http, type WalletClient,
+  createWalletClient, createPublicClient, http,
+  type WalletClient, type PublicClient,
   parseEther, parseUnits,
 } from "viem";
 import { polygon, mainnet, bsc } from "viem/chains";
@@ -108,6 +109,27 @@ export async function createAlphaWalletViemClient(chainId: number): Promise<Wall
     // Il mnemonic è una stringa JS — non azzerabile direttamente,
     // ma dereferenziata al termine di questa funzione (garbage collected).
   }
+}
+
+/**
+ * Crea un viem PublicClient (sola lettura) per la chain indicata.
+ *
+ * Usa gli stessi RPC di createAlphaWalletViemClient ma NON richiede chiave
+ * privata né PIN. Utile per getBalance, getGasPrice, eth_call read-only.
+ *
+ * @param chainId — 137=Polygon, 56=BSC, 1=ETH
+ * @throws CHAIN_NOT_SUPPORTED — chainId non supportato
+ */
+export function createAlphaWalletPublicClient(chainId: number): PublicClient {
+  const chain = AW_VIEM_CHAIN[chainId];
+  if (!chain) {
+    throw new Error(`CHAIN_NOT_SUPPORTED: chain ${chainId} non è supportata.`);
+  }
+  const rpcUrl = AW_CHAIN_RPC[chainId];
+  return createPublicClient({
+    chain,
+    transport: http(rpcUrl),
+  }) as unknown as PublicClient;
 }
 
 /**

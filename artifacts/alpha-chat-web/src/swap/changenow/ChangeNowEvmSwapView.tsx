@@ -40,7 +40,7 @@ import {
   cnEvmStepFromStatus,
   type CnEvmToken,
 } from "./evm-types.js";
-import { createAlphaWalletViemClient } from "../evm/alpha-wallet-evm-adapter.js";
+import { createAlphaWalletViemClient, createAlphaWalletPublicClient } from "../evm/alpha-wallet-evm-adapter.js";
 import { useEvmTokenBalances } from "../evm/useEvmTokenBalances.js";
 import { NATIVE_ADDRESS, type EvmToken } from "../evm/types.js";
 import { parseEther, parseUnits } from "viem";
@@ -56,9 +56,9 @@ import { parseEther, parseUnits } from "viem";
 // ma si adatta automaticamente ai picchi di rete.
 
 async function computeNativeGasReserve(chainId: number): Promise<bigint> {
-  const client    = await createAlphaWalletViemClient(chainId);
+  const pub      = createAlphaWalletPublicClient(chainId);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const gasPrice  = await (client as any).getGasPrice() as bigint;
+  const gasPrice = await (pub as any).getGasPrice() as bigint;
   return gasPrice * 30_000n;
 }
 
@@ -829,9 +829,13 @@ export function ChangeNowEvmSwapView({
       // Senza questo controllo, eth_estimateGas fallisce con
       // "gas required exceeds allowance (N)" quando l'utente tenta di inviare
       // l'intero saldo senza lasciare POL/ETH/BNB per il gas.
+      // Usa il PublicClient per le letture (WalletClient non ha getBalance/getGasPrice)
+      const pub = createAlphaWalletPublicClient(fromToken.chainId);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const p = pub as any;
       const [balance, gasPrice] = await Promise.all([
-        c.getBalance({ address: c.account.address }) as Promise<bigint>,
-        c.getGasPrice() as Promise<bigint>,
+        p.getBalance({ address: c.account.address }) as Promise<bigint>,
+        p.getGasPrice() as Promise<bigint>,
       ]);
       const gasReserve = gasPrice * 30_000n;
       if (valueWei + gasReserve > balance) {
