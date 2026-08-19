@@ -24,4 +24,18 @@ describe("HowItWorksPage", () => {
     expect(onBack).toHaveBeenCalledOnce();
     expect(onOpenWallet).toHaveBeenCalledOnce();
   });
+
+  it("apre la guida dello swap dalla card e permette di chiuderla", () => {
+    render(<HowItWorksPage onBack={vi.fn()} onOpenWallet={vi.fn()} />);
+
+    fireEvent.click(screen.getByRole("button", { name: /Come funziona lo swap/i }));
+
+    expect(screen.getByRole("dialog", { name: "Scambia con chiarezza" })).toBeInTheDocument();
+    expect(screen.getByText("Rivedi prima di firmare")).toBeInTheDocument();
+    expect(screen.getByText("Seleziona la coppia")).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole("button", { name: "Chiudi guida swap" }));
+
+    expect(screen.queryByRole("dialog", { name: "Scambia con chiarezza" })).not.toBeInTheDocument();
+  });
 });

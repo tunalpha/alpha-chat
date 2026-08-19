@@ -1,4 +1,4 @@
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 interface Props {
   onBack: () => void;
@@ -24,6 +24,7 @@ function ArrowIcon() {
 
 export default function HowItWorksPage({ onBack, onOpenWallet }: Props) {
   const observerRef = useRef<IntersectionObserver | null>(null);
+  const [isSwapGuideOpen, setIsSwapGuideOpen] = useState(false);
 
   useEffect(() => {
     const isReduced = window.matchMedia?.("(prefers-reduced-motion: reduce)").matches ?? false;
@@ -45,6 +46,23 @@ export default function HowItWorksPage({ onBack, onOpenWallet }: Props) {
     document.querySelectorAll(".hiw-anim").forEach((el) => observerRef.current?.observe(el));
     return () => observerRef.current?.disconnect();
   }, []);
+
+  useEffect(() => {
+    if (!isSwapGuideOpen) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setIsSwapGuideOpen(false);
+    };
+
+    document.addEventListener("keydown", handleKeyDown);
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [isSwapGuideOpen]);
 
   return (
     <div className="settings-root hiw-root hiw2-root">
@@ -226,14 +244,21 @@ export default function HowItWorksPage({ onBack, onOpenWallet }: Props) {
         </section>
 
         <section className="hiw2-section hiw-anim">
-          <div className="hiw2-swap-card">
+          <button
+            type="button"
+            className="hiw2-swap-card"
+            onClick={() => setIsSwapGuideOpen(true)}
+            aria-haspopup="dialog"
+            aria-expanded={isSwapGuideOpen}
+          >
             <div className="hiw2-swap-icon" aria-hidden="true"><ArrowIcon /></div>
             <div>
               <span>SCAMBIA CON CONSAPEVOLEZZA</span>
               <h3>Come funziona lo swap</h3>
               <p>Selezioni cosa inviare e ricevere, rivedi i dettagli e firmi dal tuo wallet. Lo stato dello swap resta sempre consultabile in-app.</p>
             </div>
-          </div>
+            <span className="hiw2-swap-card-hint" aria-hidden="true">Apri guida</span>
+          </button>
         </section>
 
         <footer className="hiw2-footer hiw-anim">
@@ -244,6 +269,91 @@ export default function HowItWorksPage({ onBack, onOpenWallet }: Props) {
           <button className="hiw-cta-btn hiw2-cta-btn" onClick={onOpenWallet}>Apri Alpha Wallet <ArrowIcon /></button>
         </footer>
       </main>
+
+      {isSwapGuideOpen && (
+        <div
+          className="hiw2-swap-modal-backdrop"
+          onClick={() => setIsSwapGuideOpen(false)}
+        >
+          <div
+            className="hiw2-swap-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="hiw2-swap-modal-title"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="hiw2-swap-modal-header">
+              <div>
+                <span>SWAP · GUIDA RAPIDA</span>
+                <h2 id="hiw2-swap-modal-title">Scambia con chiarezza</h2>
+              </div>
+              <button
+                type="button"
+                className="hiw2-swap-modal-close"
+                onClick={() => setIsSwapGuideOpen(false)}
+                aria-label="Chiudi guida swap"
+              >
+                <span aria-hidden="true">×</span>
+              </button>
+            </div>
+
+            <p className="hiw2-swap-modal-intro">
+              Scegli cosa inviare e cosa ricevere, controlla il riepilogo e firma solo quando tutto ti è chiaro.
+            </p>
+
+            <div className="hiw2-swap-preview" aria-label="Anteprima della schermata swap">
+              <div className="hiw2-swap-preview-top">
+                <span>Nuovo swap</span>
+                <span className="hiw2-swap-preview-status">PREVIEW</span>
+              </div>
+              <div className="hiw2-swap-route">
+                <div className="hiw2-swap-token">
+                  <strong>USDT</strong>
+                  <small>Invii · Polygon</small>
+                </div>
+                <div className="hiw2-swap-route-arrow" aria-hidden="true">→</div>
+                <div className="hiw2-swap-token hiw2-swap-token--receive">
+                  <strong>USDC</strong>
+                  <small>Ricevi · Ethereum</small>
+                </div>
+              </div>
+              <div className="hiw2-swap-preview-amount">
+                <span>Importo da inviare</span>
+                <strong>25,00 USDT</strong>
+              </div>
+              <div className="hiw2-swap-preview-details">
+                <span><i /> Tasso e importo stimato</span>
+                <span><i /> Rete e commissioni</span>
+                <span><i /> Indirizzo di ricezione</span>
+              </div>
+              <div className="hiw2-swap-preview-cta">Rivedi prima di firmare <ArrowIcon /></div>
+            </div>
+
+            <ol className="hiw2-swap-modal-steps">
+              <li>
+                <span>1</span>
+                <div><strong>Seleziona la coppia</strong><p>Indica il token e la rete da cui parti e quello che vuoi ricevere.</p></div>
+              </li>
+              <li>
+                <span>2</span>
+                <div><strong>Controlla il riepilogo</strong><p>Verifica importo, percorso, commissioni e indirizzo di destinazione.</p></div>
+              </li>
+              <li>
+                <span>3</span>
+                <div><strong>Firma dal tuo wallet</strong><p>Confermi tu l’operazione. Lo stato resta visibile nella cronologia.</p></div>
+              </li>
+            </ol>
+
+            <button
+              type="button"
+              className="hiw2-swap-modal-done"
+              onClick={() => setIsSwapGuideOpen(false)}
+            >
+              Ho capito
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
