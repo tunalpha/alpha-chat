@@ -37,6 +37,9 @@ const StartSchema = z.object({
   toAmount:     z.string().default("0"),
   alphaFeeUSD:  z.string().optional(),
   tool:         z.string().optional(),
+  btcDepositAddress: z.string().min(1).optional(),
+  btcMemo:           z.string().min(1).max(512).optional(),
+  btcPsbtDigest:     z.string().regex(/^[a-f0-9]{64}$/i).optional(),
 });
 
 const CompleteSchema = z.object({
@@ -44,6 +47,10 @@ const CompleteSchema = z.object({
   toAmount: z.string().optional(),
   state:    z.enum(["completed", "failed"]),
   error:    z.string().optional(),
+  sourceTxHash: z.string().regex(/^[a-f0-9]{64}$/i).optional(),
+});
+const BtcDepositSchema = z.object({
+  btcDepositTxHash: z.string().regex(/^[a-f0-9]{64}$/i),
 });
 
 const HistoricalRecordSchema = z.object({
@@ -76,6 +83,21 @@ router.post("/start", authenticate, async (req: Request, res: Response, next: Ne
 
     const swap = await evmSwapService.startSwap({ userId, ...parsed.data });
     res.status(201).json({ ok: true, routeId: swap.routeId, state: swap.state });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.patch("/:routeId/btc-deposit", authenticate, async (req: Request, res: Response, next: NextFunction) => {
+  try {
+    const userId = (req as unknown as Record<string, Record<string, string>>).user?.id;
+    const routeId = String(req.params.routeId);
+    if (!userId) { res.status(401).json({ error: "Unauthorized" }); return; }
+    const parsed = BtcDepositSchema.safeParse(req.body);
+    if (!parsed.success) { res.status(400).json({ error: "Dati non validi", details: parsed.error.issues }); return; }
+    const doc = await evmSwapService.recordBtcDeposit(routeId, userId, parsed.data.btcDepositTxHash);
+    if (!doc) { res.status(404).json({ error: "Swap non trovato" }); return; }
+    res.json({ ok: true, routeId: doc.routeId, state: doc.state });
   } catch (err) {
     next(err);
   }

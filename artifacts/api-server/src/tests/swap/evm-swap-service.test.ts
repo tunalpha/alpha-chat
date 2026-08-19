@@ -16,7 +16,7 @@
  *   T12 — deduplicazione: due import dello stesso file non creano duplicati
  */
 
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 
 // Mock mongoose per zero connessioni reali
 vi.mock("../../models/EvmSwap.js", () => {
@@ -98,6 +98,7 @@ const store = () => (EvmSwapModel as any)._store as Map<string, Record<string, u
 const reset = () => (EvmSwapModel as any)._reset();
 
 beforeEach(() => reset());
+afterEach(() => vi.unstubAllGlobals());
 
 // ── Base swap params ───────────────────────────────────────────────────────────
 
@@ -178,6 +179,85 @@ describe("EVM Swap Service", () => {
       state:   "completed",
     });
     expect(doc).toBeNull();
+  });
+
+  it("T6a — journal BTC registra il deposito una sola volta", async () => {
+    const btcTxid = "a".repeat(64);
+    const doc = await evmSwapService.startSwap({
+      ...BASE_START,
+      routeId:           "route-lifi-btc-journal",
+      fromChainId:       20_000_000_000_001,
+      fromToken:         "BTC",
+      fromAddress:       "bc1qsource",
+      btcDepositAddress: "bc1qvault",
+      btcMemo:           "=:ETH.ETH:0xrecipient",
+      btcPsbtDigest:     "b".repeat(64),
+    });
+    expect(doc.btcPsbtDigest).toBe("b".repeat(64));
+
+    const recorded = await evmSwapService.recordBtcDeposit(doc.routeId, "user-001", btcTxid);
+    expect(recorded?.btcDepositTxHash).toBe(btcTxid);
+    await expect(evmSwapService.recordBtcDeposit(doc.routeId, "user-001", btcTxid)).resolves.toBeDefined();
+    await expect(evmSwapService.recordBtcDeposit(doc.routeId, "user-001", "c".repeat(64)))
+      .rejects.toThrow("LIFI_BTC_DEPOSIT_ALREADY_RECORDED");
+  });
+
+  it("T6b — completion BTC richiede il txid sorgente registrato e status Li.FI coerente", async () => {
+    const sourceTxid = "a".repeat(64);
+    const destinationTx = `0x${"b".repeat(64)}`;
+    const doc = await evmSwapService.startSwap({
+      ...BASE_START,
+      routeId:           "route-lifi-btc-complete",
+      fromChainId:       20_000_000_000_001,
+      fromToken:         "BTC",
+      fromAddress:       "bc1qsource",
+      btcDepositAddress: "bc1qvault",
+      btcMemo:           "=:ETH.ETH:0xrecipient",
+      btcPsbtDigest:     "c".repeat(64),
+    });
+    await evmSwapService.recordBtcDeposit(doc.routeId, "user-001", sourceTxid);
+    await expect(evmSwapService.completeSwap({
+      userId: "user-001", routeId: doc.routeId, txHash: destinationTx,
+      sourceTxHash: "d".repeat(64), state: "completed",
+    })).rejects.toThrow("LIFI_BTC_SOURCE_TX_MISMATCH");
+
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        status: "DONE",
+        sending: { chainId: 20_000_000_000_001, txHash: sourceTxid },
+        receiving: { chainId: 137, txHash: destinationTx },
+      }),
+    }));
+    const completed = await evmSwapService.completeSwap({
+      userId: "user-001", routeId: doc.routeId, txHash: destinationTx,
+      sourceTxHash: sourceTxid, state: "completed",
+    });
+    expect(completed?.state).toBe("completed");
+    expect(completed?.destinationTxHash).toBe(destinationTx);
+  });
+
+  it("T6c — completion BTC rifiuta un payout Li.FI differente da quello proposto dal browser", async () => {
+    const sourceTxid = "e".repeat(64);
+    const providerDestination = `0x${"f".repeat(64)}`;
+    const doc = await evmSwapService.startSwap({
+      ...BASE_START, routeId: "route-lifi-btc-mismatch", fromChainId: 20_000_000_000_001,
+      fromToken: "BTC", fromAddress: "bc1qsource", btcDepositAddress: "bc1qvault",
+      btcMemo: "=:ETH.ETH:0xrecipient", btcPsbtDigest: "1".repeat(64),
+    });
+    await evmSwapService.recordBtcDeposit(doc.routeId, "user-001", sourceTxid);
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({
+        status: "DONE",
+        sending: { chainId: 20_000_000_000_001, txHash: sourceTxid },
+        receiving: { chainId: 137, txHash: providerDestination },
+      }),
+    }));
+    await expect(evmSwapService.completeSwap({
+      userId: "user-001", routeId: doc.routeId, txHash: `0x${"0".repeat(64)}`,
+      sourceTxHash: sourceTxid, state: "completed",
+    })).rejects.toThrow("LIFI_BTC_DESTINATION_TX_MISMATCH");
   });
 
   // T7 — importHistorical inserisce record con fee calcolata correttamente

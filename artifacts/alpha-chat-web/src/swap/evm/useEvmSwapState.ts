@@ -74,6 +74,13 @@ async function swapApi(path: string, options?: RequestInit): Promise<unknown> {
   return res.json();
 }
 
+/** Impronta audit del PSBT: il contenuto firmabile non esce mai dal dispositivo. */
+async function sha256Hex(value: string): Promise<string> {
+  const bytes = new TextEncoder().encode(value);
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest), byte => byte.toString(16).padStart(2, "0")).join("");
+}
+
 // ── Initial state ─────────────────────────────────────────────────────────────
 
 function makeInitial(): EvmSwapStateValue {
@@ -275,7 +282,12 @@ export function useEvmSwapState(opts?: EvmSwapStateOpts): [EvmSwapStateValue, Ev
         }));
       }
 
-      if (finalState === "completed" || finalState === "failed") {
+       // BTC→EVM: il browser non può decidere il completamento. Il loop di polling
+       // ripete la richiesta al journal backend, che verifica Li.FI direttamente.
+       if (isBtcChain(active.fromChainId) && finalState === "completed") {
+         finalState = "pending";
+       }
+       if (finalState === "completed" || finalState === "failed") {
         localStorage.removeItem(EVM_SWAP_ACTIVE_KEY);
       }
 
@@ -589,8 +601,38 @@ export function useEvmSwapState(opts?: EvmSwapStateOpts): [EvmSwapStateValue, Ev
             return;
           }
 
-          // DONE genuino + receivingChainId corretto + destinationTxHash presente.
-          // completed → prova verificabile della destination TX EVM garantita.
+           // Il browser non chiude lo swap da solo: il server confronta il journal
+           // (txid BTC registrato) e interroga Li.FI prima di accettare completed.
+           const rawActive = localStorage.getItem(EVM_SWAP_ACTIVE_KEY);
+           let active: EvmActiveSwap | null = null;
+           try { active = rawActive ? JSON.parse(rawActive) as EvmActiveSwap : null; } catch { /* retry below */ }
+           if (!active?.routeId || active.txHash?.toLowerCase() !== txid.toLowerCase()) {
+             if (isMounted.current) setTimeout(poll, 30_000);
+             return;
+           }
+           try {
+             // Retry idempotente: copre un abort di rete subito dopo il broadcast.
+             // Senza questo record il server rifiuterà giustamente il completed.
+             await swapApi(`/${active.routeId}/btc-deposit`, {
+               method: "PATCH",
+               body: JSON.stringify({ btcDepositTxHash: txid }),
+             });
+             await swapApi(`/${active.routeId}`, {
+               method: "PATCH",
+               body: JSON.stringify({
+                 txHash:       st.txHash,
+                 toAmount:     st.toAmount,
+                 sourceTxHash: txid,
+                 state:        "completed",
+               }),
+             });
+           } catch (error) {
+             console.warn("[AlphaSwap BTC-poll] backend completion not verified yet", error);
+             if (isMounted.current) setTimeout(poll, 30_000);
+             return;
+           }
+
+           // DONE confermato dal journal server-side.
           localStorage.removeItem(EVM_SWAP_ACTIVE_KEY);
           if (isMounted.current) setSv(prev => ({
             // FIX 1: st.txHash è receiving.txHash (EVM TX) — non la BTC input TX.
@@ -701,6 +743,36 @@ export function useEvmSwapState(opts?: EvmSwapStateOpts): [EvmSwapStateValue, Ev
       const capturedToChainId   = current.quote.toChainId;
 
       try {
+        // Il journal è obbligatorio prima della firma. Se il backend non è
+        // disponibile, nessun PSBT viene firmato o inviato.
+        const btcPsbtDigest = await sha256Hex(psbtHex);
+        await swapApi("/start", {
+          method: "POST",
+          body: JSON.stringify({
+            routeId:           current.quote.routeId,
+            fromChainId:       capturedFromChainId,
+            toChainId:         capturedToChainId,
+            fromToken:         current.quote.fromToken.symbol,
+            fromAddress:       String((current.quote.route as { action?: { fromAddress?: string } }).action?.fromAddress ?? "bitcoin"),
+            toToken:           current.quote.toToken.symbol,
+            toAddress:         effectiveAddress,
+            fromAmount:        current.quote.fromAmount,
+            toAmount:          current.quote.toAmount,
+            alphaFeeUSD:       current.quote.alphaFeeUSD,
+            tool:              current.quote.tool,
+            btcDepositAddress: depositAddr,
+            btcMemo:           memo,
+            btcPsbtDigest,
+          }),
+        });
+        const storedBeforeSend = localStorage.getItem(EVM_SWAP_ACTIVE_KEY);
+        if (storedBeforeSend) {
+          try {
+            const parsed = JSON.parse(storedBeforeSend) as EvmActiveSwap;
+            localStorage.setItem(EVM_SWAP_ACTIVE_KEY, JSON.stringify({ ...parsed, btcPsbtDigest }));
+          } catch { /* journal remains authoritative */ }
+        }
+
         const txid = await sendLiFiBtcPsbt({
           psbtHex,
           memo,
@@ -718,6 +790,12 @@ export function useEvmSwapState(opts?: EvmSwapStateOpts): [EvmSwapStateValue, Ev
         }
 
         if (isMounted.current) setSv(prev => ({ ...prev, phase: "submitted", txHash: txid }));
+        // Dopo un broadcast riuscito il failure qui è non-terminal: il deposito
+        // potrebbe esistere già, quindi conserviamo recovery e proviamo nel loop.
+        await swapApi(`/${current.quote.routeId}/btc-deposit`, {
+          method: "PATCH",
+          body: JSON.stringify({ btcDepositTxHash: txid }),
+        }).catch(error => console.warn("[AlphaSwap BTC] journal deposit pending", error));
         _runBtcPoll(txid, capturedFromChainId, capturedToChainId);
 
         // Tag la TX come swap in IDB — il tx-monitor la ritroverà e non sovrascriverà txType

@@ -24,6 +24,12 @@ export interface IEvmSwap extends Document {
   source?:      string;       // "user_flow" | "historical_import"
   state:        "pending" | "completed" | "failed";
   txHash?:      string;
+  /** BTC→EVM Li.FI: dati di correlazione, mai il PSBT o materiale di firma. */
+  btcDepositAddress?: string;
+  btcMemo?:           string;
+  btcPsbtDigest?:     string;
+  btcDepositTxHash?:  string;
+  destinationTxHash?: string;
   error?:       string;
   startedAt:    Date;
   completedAt?: Date;
@@ -47,6 +53,11 @@ const evmSwapSchema = new Schema<IEvmSwap>({
   source:       { type: String },
   state:        { type: String, enum: ["pending", "completed", "failed"], default: "pending" },
   txHash:       { type: String },
+  btcDepositAddress: { type: String },
+  btcMemo:           { type: String },
+  btcPsbtDigest:     { type: String },
+  btcDepositTxHash:  { type: String },
+  destinationTxHash: { type: String },
   error:        { type: String },
   startedAt:    { type: Date, default: () => new Date() },
   completedAt:  { type: Date },

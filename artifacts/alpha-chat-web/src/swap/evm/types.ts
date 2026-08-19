@@ -109,6 +109,8 @@ export interface EvmActiveSwap {
   toAddress?: string;
   /** Memo OP_RETURN della quote Li.FI, mantenuto solo come audit trail del deposito BTC. */
   btcMemo?: string;
+  /** SHA-256 del PSBT Li.FI originale; il PSBT non viene mai salvato nel journal. */
+  btcPsbtDigest?: string;
 }
 
 // ── Error ─────────────────────────────────────────────────────────────────────
