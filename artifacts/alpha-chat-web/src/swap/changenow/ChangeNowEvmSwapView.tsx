@@ -464,6 +464,83 @@ export function CnTokenCard({
   );
 }
 
+// ── Quote details ─────────────────────────────────────────────────────────────
+
+/**
+ * Riepilogo quotazione coerente con la scheda che l'utente vedeva nel flusso
+ * Li.Fi. ChangeNOW non espone una fee Alpha o un gas stimato nella sua quote:
+ * non mostriamo quindi valori inventati, ma solo dati realmente restituiti
+ * dalla quote fixed-rate.
+ */
+export function CnQuoteDetails({
+  quote,
+  fromToken,
+  toToken,
+}: {
+  quote: CnEvmQuote;
+  fromToken: CnEvmToken;
+  toToken: CnEvmToken;
+}) {
+  const [open, setOpen] = useState(true);
+  const rate = quote.fromAmount > 0
+    ? quote.estimatedToAmount / quote.fromAmount
+    : 0;
+
+  return (
+    <div className="asw-quote-details">
+      <button
+        type="button"
+        className="asw-quote-details-toggle"
+        onClick={() => setOpen(value => !value)}
+        aria-expanded={open}
+        aria-controls="cn-quote-details-body"
+      >
+        <span>Dettagli quotazione</span>
+        <ChevronDown
+          size={16}
+          aria-hidden="true"
+          className={`asw-quote-details-chevron${open ? " asw-quote-details-chevron--open" : ""}`}
+        />
+      </button>
+
+      {open && (
+        <div id="cn-quote-details-body" className="asw-quote-details-body">
+          <div className="asw-info-row">
+            <span className="asw-info-label">Invii</span>
+            <span className="asw-info-value">
+              {fmtToken(quote.fromAmount, fromToken.decimals)} {fromToken.symbol}
+            </span>
+          </div>
+          <div className="asw-info-row">
+            <span className="asw-info-label">Riceverai circa</span>
+            <span className="asw-info-value" style={{ fontWeight: 700 }}>
+              {fmtToken(quote.estimatedToAmount, toToken.decimals)} {toToken.symbol}
+            </span>
+          </div>
+          <div className="asw-info-row">
+            <span className="asw-info-label">Tasso</span>
+            <span className="asw-info-value">
+              1 {fromToken.symbol} ≈ {fmtToken(rate, 8)} {toToken.symbol}
+            </span>
+          </div>
+          {quote.minAmount > 0 && (
+            <div className="asw-info-row">
+              <span className="asw-info-label">Minimo tasso garantito</span>
+              <span className="asw-info-value">
+                {fmtToken(quote.minAmount, fromToken.decimals)} {fromToken.symbol}
+              </span>
+            </div>
+          )}
+          <div className="asw-info-row">
+            <span className="asw-info-label">Commissione Alpha</span>
+            <span className="asw-info-value asw-info-value--green">Nessuna</span>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── Props ─────────────────────────────────────────────────────────────────────
 
 interface ChangeNowEvmSwapViewProps {
@@ -1023,16 +1100,13 @@ export function ChangeNowEvmSwapView({
           onFiatChange={setFiatCurrencyForCard}
         />
 
-        {/* ── Rate (se quote disponibile) ───────────────────────────────── */}
+        {/* ── Dettagli quotazione (stessa esperienza del flusso Li.Fi) ──── */}
         {isReady && state.quote && (
-          <div className="asw-info-box">
-            <div className="asw-info-row">
-              <span className="asw-info-label">Rate</span>
-              <span className="asw-info-value" style={{ fontSize: 12 }}>
-                1 {state.fromToken?.symbol} ≈ {fmtToken(state.quote.estimatedToAmount / state.quote.fromAmount, 4)} {state.toToken?.symbol}
-              </span>
-            </div>
-          </div>
+          <CnQuoteDetails
+            quote={state.quote}
+            fromToken={state.fromToken}
+            toToken={state.toToken}
+          />
         )}
 
         {/* ── Destinazione (read-only) ──────────────────────────────────── */}

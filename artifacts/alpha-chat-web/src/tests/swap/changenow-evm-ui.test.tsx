@@ -8,6 +8,7 @@ import {
   CnTokenCard,
   CnTokenMenu,
   CnTokenSheet,
+  CnQuoteDetails,
   ChangeNowEvmSwapView,
 } from "../../swap/changenow/ChangeNowEvmSwapView.js";
 import { CN_EVM_TOKENS } from "../../swap/changenow/evm-types.js";
@@ -218,6 +219,35 @@ describe("ChangeNOW EVM swap — saldi e inversione UI", () => {
 
     expect(screen.getByText("4.39 POL")).toBeTruthy();
     expect(screen.queryByText("Saldo non disponibile")).toBeNull();
+  });
+
+  it("mostra e richiude i valori della quotazione come il riepilogo Li.Fi", () => {
+    const fromToken = CN_EVM_TOKENS.find((item) => item.ticker === "usdtbsc")!;
+    const toToken = CN_EVM_TOKENS.find((item) => item.ticker === "pol")!;
+
+    render(
+      <CnQuoteDetails
+        quote={{
+          fromTicker: "usdtbsc",
+          toTicker: "pol",
+          fromAmount: 13.5,
+          estimatedToAmount: 160.871944,
+          minAmount: 7,
+        }}
+        fromToken={fromToken}
+        toToken={toToken}
+      />,
+    );
+
+    expect(screen.getByText("Dettagli quotazione")).toBeTruthy();
+    expect(screen.getByText("13.5 USDT")).toBeTruthy();
+    expect(screen.getByText("160.871944 POL")).toBeTruthy();
+    expect(screen.getByText("1 USDT ≈ 11.91644 POL")).toBeTruthy();
+    expect(screen.getByText("7 USDT")).toBeTruthy();
+    expect(screen.getByText("Nessuna")).toBeTruthy();
+
+    fireEvent.click(screen.getByRole("button", { name: "Dettagli quotazione" }));
+    expect(screen.queryByText("160.871944 POL")).toBeNull();
   });
 
   it("mostra una conferma senza provider o indirizzo tecnico", () => {

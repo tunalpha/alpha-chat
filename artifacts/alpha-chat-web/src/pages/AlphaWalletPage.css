@@ -2678,6 +2678,47 @@
 .asw-info-sep { border: none; border-top: 1px solid rgba(255,255,255,.07); margin: 4px 0; }
 .asw-info-row--total { padding-top: 8px; }
 
+.asw-quote-details {
+  background: rgba(255,255,255,.04);
+  border: 1px solid rgba(255,255,255,.08);
+  border-radius: 14px;
+  overflow: hidden;
+}
+
+.asw-quote-details-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 12px 14px;
+  border: 0;
+  background: transparent;
+  color: rgba(255,255,255,.86);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 650;
+  text-align: left;
+  cursor: pointer;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.asw-quote-details-toggle:active { background: rgba(255,255,255,.06); }
+
+.asw-quote-details-chevron {
+  flex-shrink: 0;
+  color: rgba(255,255,255,.6);
+  transition: transform .16s ease;
+}
+
+.asw-quote-details-chevron--open { transform: rotate(180deg); }
+
+.asw-quote-details-body {
+  padding: 0 14px 10px;
+  border-top: 1px solid rgba(255,255,255,.07);
+}
+
 .asw-provider-chip {
   display: flex;
   align-items: center;
@@ -2832,21 +2873,13 @@
 .asw-sheet-backdrop {
   position: fixed;
   inset: 0;
-  /*
-   * Il selettore è montato in un portal su document.body. Deve stare sopra
-   * header, viste wallet e overlay della PWA iOS: un valore basso lo rendeva
-   * presente nel DOM ma invisibile/non raggiungibile su alcune pile di livelli.
-   */
-  z-index: 2147483647;
+  z-index: 50;
   display: flex;
   flex-direction: column;
   justify-content: flex-end;
   background: rgba(0,0,0,.55);
   backdrop-filter: blur(4px);
   -webkit-backdrop-filter: blur(4px);
-  pointer-events: auto;
-  touch-action: none;
-  overscroll-behavior: contain;
 }
 
 .asw-sheet {
