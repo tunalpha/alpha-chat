@@ -35,4 +35,16 @@ Solo se il check esce con codice 0 e stampa `✅ DEPLOY OK` è lecito suggerire 
 - Le build in modalità full girano in parallelo con `&` + `wait $PID` per stare sotto 5 min
 - `ECONNREFUSED 127.0.0.1:3000` nel log step 3 è un test che testa errori di rete — normale, non è un fallimento
 
+## Vincolo memoria build Alpha Chat
+
+Il build frontend deve mantenere il limite V8 a **3 GiB** (`--max-old-space-size=3072`).
+
+**Why:** Il cgroup di Replit è limitato a 8 GiB e il limite precedente di 4 GiB
+poteva provocare OOM kill durante il rendering/compressione dei chunk quando
+editor, preview o browser erano attivi.
+
+**How to apply:** Non aumentare il limite heap senza una misurazione isolata di
+RSS e `memory.events`. Un build è valido solo con exit code 0, riga `built in`,
+`dist/public` rigenerata e nessun incremento di `oom_kill`.
+
 **Why:** L'utente ha deployato senza pre-deploy check (2026-08-17) dopo un mio SuggestUserAction immediato. Il check esiste esattamente per prevenire questo.
